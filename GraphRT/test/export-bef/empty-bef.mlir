@@ -1,0 +1,6 @@
+// RUN: graphrt-translate -export-bef < %s > %t
+// RUN: od -t x1 %t | FileCheck %s
+
+// Empty file.  Check to make sure the magic number is right.
+
+// CHECK: 0000000 be f0

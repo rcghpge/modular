@@ -15,13 +15,16 @@
 
 namespace M {
 
-// This function converts the specified MLIR module containing a executor
-// compatible program to the BinaryExecutableFormat (BEF) format, which is the
-// binary format that the executor takes.
-//
-// On error, this emits the error message through the MLIR error handler, and
-// returns an empty AlignedBuffer.
-LogicalResult translateMLIRToBEF(ModuleOp module, raw_ostream &output);
+/// This function converts the specified MLIR module containing a executor
+/// compatible program to the BinaryExecutableFormat (BEF) format, which is the
+/// binary format that the executor takes.  When `disableOptionalSections` is
+/// true, this omits metadata sections required to reverse a BEF file back into
+/// a .mlir file.
+///
+/// On error, this emits the error message through the MLIR error handler, and
+/// returns an empty BEFBuffer.
+std::vector<uint8_t> translateMLIRToBEF(ModuleOp module,
+                                        bool disableOptionalSections = false);
 
 // Register this translation for GraphRTTranslate.
 void registerMLIRToBEFTranslation();
