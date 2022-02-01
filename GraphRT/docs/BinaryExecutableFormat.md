@@ -42,17 +42,17 @@ completed.
 
 ```none
   BYTE                  ::= `0x00`...`0xFF`
-  INTEGER               ::= (`0x80`...`0xFF`)* (`0x00`...`0x7F`)
+  VBR                   ::= (`0x80`...`0xFF`)* (`0x00`...`0x7F`)
   FIXED32               ::= BYTE BYTE BYTE BYTE
   NUL_TERMINATED_STRING ::= (`0x01`...`0xFF`)* `0x00`
-  OFFSET                ::= INTEGER
-  INDEX                 ::= INTEGER
+  OFFSET                ::= VBR
+  INDEX                 ::= VBR
 ```
 
 A BEF file is formed as a byte stream whose top-level structure is a list of
 "sections" that hold various sorts of data. It uses a few fundamental concepts:
 
-*   *Integers* are encoded in a "Variable Byte Rate" (VBR) encoding, allowing
+*   *VBRs* are encoded in a "Variable Byte Rate" (VBR) encoding, allowing
     small integers (less than 2^7) to be stored in one byte, integers up to 2^14
     to be stored in two bytes, etc. This is done by using the high bit of each
     byte in the stream to indicate "more bytes are coming".
@@ -64,13 +64,13 @@ A BEF file is formed as a byte stream whose top-level structure is a list of
     (whose byte value is zero).  These are not used in cases where a string may
     contain an embedded `NUL` character. 
 
-*   *Offsets* are Integers that demarcate a byte offset in the stream from a
+*   *Offsets* are VBRs that demarcate a byte offset in the stream from a
     fixed position (typically the start of a section). These are useful when the
     section contains a bunch of variable length things, e.g. when referring to a
     string in the string table. Because variable sized integers are used
     pervasively in BEF files, offsets are very common.
 
-*   *Indexes* are Integers that demarcate an entry in a table, e.g. a register
+*   *Indexes* are VBRs that demarcate an entry in a table, e.g. a register
     or primitives in a function. These are typically used when indexing into a
     table where the structure is expected to be decoded and held in memory by
     the reader, e.g. as is the case with the primitives and types tables.
@@ -90,7 +90,7 @@ encoder testcases and for dealing with that "random file someone sent you".
 
 ```none
   SECTION                ::= SECTION_HEADER SECTION_DATA
-  SECTION_HEADER         ::= SECTION_ID INTEGER<LENGTH_AND_ALIGNMENT>
+  SECTION_HEADER         ::= SECTION_ID VBR<LENGTH_AND_ALIGNMENT>
                              SECTION_BODY_ALIGNMENT?
   SECTION_ID             ::= BYTE
   LENGTH_AND_ALIGNMENT   ::= (SECTION_LENGTH << 1) | (SECTION_ALIGNMENT_FLAG)
@@ -205,15 +205,15 @@ performance penalty.
 **Grammar**
 
 ```none
-  PRIMITIVES_SECTION ::= INTEGER<"PrimitiveCount"> OFFSET<"PrimitiveNameOffset">*
+  PRIMITIVES_SECTION ::= VBR<"PrimitiveCount"> OFFSET<"PrimitiveNameOffset">*
 ```
 
 The Primitives section defines a table of primitive names, directly
 corresponding to the names in the MLIR GraphRT executor program. This allows
 references from the Functions section to use dense indexes into the table.
 
-The format of this section is an Integer count of the number of primitives in
-the table, followed by 'count' Integer values which are offsets into the string
+The format of this section is a VBR count of the number of primitives in
+the table, followed by 'count' VBR values which are offsets into the string
 table for the primitive name.
 
 ***Rationale***
@@ -228,7 +228,7 @@ mutable array in memory for primitives.
 **Grammar**
 
 ```none
-  TYPES_SECTION ::= INTEGER<"TypeCount"> OFFSET<"TypeNameOffset">*
+  TYPES_SECTION ::= VBR<"TypeCount"> OFFSET<"TypeNameOffset">*
 ```
 
 The Types section defines a table of type names used by the program, and is
@@ -241,10 +241,10 @@ specify types of registers.
 **Grammar**
 
 ```none
-  FUNCTION_INDEX_SECTION ::= INTEGER<"NumFunctions"> FUNCTION_ENTRY*
+  FUNCTION_INDEX_SECTION ::= VBR<"NumFunctions"> FUNCTION_ENTRY*
   FUNCTION_ENTRY         ::= OFFSET<"Function"> OFFSET<"Name">
-                             INTEGER<"NumArguments"> INDEX<"Type">* 
-                             INTEGER<"NumResults"> INDEX<"Type">*
+                             VBR<"NumArguments"> INDEX<"Type">* 
+                             VBR<"NumResults"> INDEX<"Type">*
 ```
 
 The FunctionIndex section defines a table of functions in the BEF file, one for
@@ -295,11 +295,11 @@ with MLIR regions.
   FUNCTION        ::= OFFSET<"Location"> REGISTER_TABLE PRIMITIVE_TABLE
                       RESULT_REGS BYTE<"AlignmentPadding">* PRIMITIVE+
 
-  REGISTER_TABLE  ::= INTEGER<"NumRegs"> REGISTER_ENTRY*
-  REGISTER_ENTRY  ::= INTEGER<"NumUses">
+  REGISTER_TABLE  ::= VBR<"NumRegs"> REGISTER_ENTRY*
+  REGISTER_ENTRY  ::= VBR<"NumUses">
 
-  PRIMITIVE_TABLE ::= INTEGER<"NumPrimitives"> PRIMITIVE_ENTRY*
-  PRIMITIVE_ENTRY ::= OFFSET<"PrimitiveOffset"> INTEGER<"NumOperands">
+  PRIMITIVE_TABLE ::= VBR<"NumPrimitives"> PRIMITIVE_ENTRY*
+  PRIMITIVE_ENTRY ::= OFFSET<"PrimitiveOffset"> VBR<"NumOperands">
 
   RESULT_REGS     ::= INDEX<"Register">*
 ```
@@ -307,7 +307,7 @@ with MLIR regions.
 Each function is defined by a location (an offset into the
 [LocationPositions section](#locationpositions-section)), a register table, a
 primitive table, a list of result registers, a list of primitives with 4-byte
-alignment, and ends with a fixed32 integer of value zero.
+alignment, and ends with a FIXED32 integer of value zero.
 
 The Register Table is a count of registers, and an entry for each register -
 indicating the number of primitives in this section that use the register.
@@ -412,11 +412,11 @@ strings.
   LOCATION ::= CALLSITE_LOCATION | FUSED_LOCATION
 
   UNKNOWN_LOCATION     ::= `0x00`
-  FILELINECOL_LOCATION ::= `0x01` OFFSET<"Filename"> INTEGER<"LineNum">
-                                  INTEGER<"ColumnNum">
+  FILELINECOL_LOCATION ::= `0x01` OFFSET<"Filename"> VBR<"LineNum">
+                                  VBR<"ColumnNum">
   NAME_LOCATION        ::= `0x02` OFFSET<"Name"> LOCATION<"Child">
   CALLSITE_LOCATION    ::= `0x03` LOCATION<"Callee"> LOCATION<"Caller">
-  FUSED_LOCATION       ::= `0x04` INTEGER<"NumLocations"> LOCATION*
+  FUSED_LOCATION       ::= `0x04` VBR<"NumLocations"> LOCATION*
 ```
 
 This section contains a list of "locations", which can have five different
@@ -429,7 +429,7 @@ section.
 **Grammar**
 
 ```none
-  ATTRIBUTE_TYPES_SECTION   ::= INTEGER<"NumAttributes"> ATTRIBUTE_TYPE_ENTRY*
+  ATTRIBUTE_TYPES_SECTION   ::= VBR<"NumAttributes"> ATTRIBUTE_TYPE_ENTRY*
   ATTRIBUTE_TYPE_ENTRY      ::= OFFSET<"Attributes"> BYTE<"AttributeType">
 ```
 
@@ -445,8 +445,8 @@ in [`BEFEncoding.h`](../GraphRT/include/GraphRT/BEF/BEFEncoding.h).
 **Grammar**
 
 ```none
-  ATTRIBUTE_NAMES_SECTION ::= INTEGER<"NumFunctions"> PRIMITIVE_TABLE*
-  PRIMITIVE_TABLE         ::= INTEGER<"NumPrimitives"> OFFSET<"AttributeName">*
+  ATTRIBUTE_NAMES_SECTION ::= VBR<"NumFunctions"> PRIMITIVE_TABLE*
+  PRIMITIVE_TABLE         ::= VBR<"NumPrimitives"> OFFSET<"AttributeName">*
 ```
 
 The AttributeNames sections is an optional section which is not needed for BEF
@@ -464,8 +464,8 @@ name of the attribute used by this primitive.
 **Grammar**
 
 ```none
-  REGISTER_TYPES_SECTION ::= INTEGER<"NumFunctions"> REGISTER_TYPE_TABLE
-  REGISTER_TYPE_TABLE    ::= INTEGER<"NumRegs"> INDEX<"Types">*
+  REGISTER_TYPES_SECTION ::= VBR<"NumFunctions"> REGISTER_TYPE_TABLE
+  REGISTER_TYPE_TABLE    ::= VBR<"NumRegs"> INDEX<"Types">*
 ```
 
 The RegisterTypes section is an optional section which is not needed for BEF
