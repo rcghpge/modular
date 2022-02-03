@@ -71,8 +71,8 @@ A BEF file is formed as a byte stream whose top-level structure is a list of
     pervasively in BEF files, offsets are very common.
 
 *   *Indexes* are VBRs that demarcate an entry in a table, e.g. a register
-    or primitives in a function. These are typically used when indexing into a
-    table where the structure is expected to be decoded and held in memory by
+    or primitives in a BEFFunction. These are typically used when indexing into
+    a table where the structure is expected to be decoded and held in memory by
     the reader, e.g. as is the case with the primitives and types tables.
 
 BEF files can be created by an arbitrary producer, but the standard ways is to
@@ -125,8 +125,8 @@ SECTION_BODY_ALIGNMENT follows.
   SECTION_DATA ::= ATTRIBUTES_SECTION
   SECTION_DATA ::= PRIMITIVES_SECTION
   SECTION_DATA ::= TYPES_SECTION
-  SECTION_DATA ::= FUNCTION_INDEX_SECTION
-  SECTION_DATA ::= FUNCTIONS_SECTION
+  SECTION_DATA ::= BEF_FUNCTION_INDEX_SECTION
+  SECTION_DATA ::= BEF_FUNCTIONS_SECTION
   SECTION_DATA ::= LOCATION_STRINGS_SECTION
   SECTION_DATA ::= LOCATIONS_SECTION
   SECTION_DATA ::= ATTRIBUTE_TYPES_SECTION
@@ -169,7 +169,7 @@ support embedded `NUL` in strings.
 The Attributes section contains the value of attributes used by primitives in
 the BEF program. They are stored on the natural alignment boundary of the type,
 and the address of the attribute is directly passed into the primitive
-implementation function as an const pointer.
+implementation C/C++ function as an const pointer.
 
 BEF files only support a subset of MLIR attributes, currently including:
 
@@ -210,7 +210,7 @@ performance penalty.
 
 The Primitives section defines a table of primitive names, directly
 corresponding to the names in the MLIR GraphRT executor program. This allows
-references from the Functions section to use dense indexes into the table.
+references from the BEF Functions section to use dense indexes into the table.
 
 The format of this section is a VBR count of the number of primitives in
 the table, followed by 'count' VBR values which are offsets into the string
@@ -218,9 +218,9 @@ table for the primitive name.
 
 ***Rationale***
 
-We want dense indexes from primitives in the Functions section, and the GraphRT
-Executor wants to resolve names to primitive implementations at startup time
-anyway, as such, it makes sense for the GraphRT executor to build its own
+We want dense indexes from primitives in the BEF Functions section, and the
+GraphRT Executor wants to resolve names to primitive implementations at startup
+time anyway, as such, it makes sense for the GraphRT executor to build its own
 mutable array in memory for primitives.
 
 ### Types Section
@@ -233,46 +233,46 @@ mutable array in memory for primitives.
 
 The Types section defines a table of type names used by the program, and is
 laid out exactly the same as the [Primitives section](#primitives-section). The
-[Functions section](#functions-section) uses Indexes into this section to
+[BEF Functions section](#bef-functions-section) uses Indexes into this section to
 specify types of registers.
 
-### FunctionIndex Section
+### BEFFunctionIndex Section
 
 **Grammar**
 
 ```none
-  FUNCTION_INDEX_SECTION ::= VBR<"NumFunctions"> FUNCTION_ENTRY*
-  FUNCTION_ENTRY         ::= OFFSET<"Function"> OFFSET<"Name">
-                             VBR<"NumArguments"> INDEX<"Type">* 
-                             VBR<"NumResults"> INDEX<"Type">*
+  BEF_FUNCTION_INDEX_SECTION ::= VBR<"NumBEFFunctions"> BEF_FUNCTION_ENTRY*
+  BEF_FUNCTION_ENTRY         ::= OFFSET<"BEFFunction"> OFFSET<"Name">
+                                 VBR<"NumArguments"> INDEX<"Type">* 
+                                 VBR<"NumResults"> INDEX<"Type">*
 ```
 
-The FunctionIndex section defines a table of functions in the BEF file, one for
-each function, including an Offset into the 
-[Functions Section](#functions-section), a name (an Offset
+The BEFFunctionIndex section defines a table of "functions" in the BEF file, 
+including an Offset into the [BEF Functions Section](#bef-functions-section), a
+name (an Offset
 into the [Strings section](#strings-section), which may be an empty string), and
 a list of argument and result types.
 
 ***Rationale***
 
 This defines a symbol table for the BEF file, allowing clients to look up
-functions by name.  While we could intersperse this information into the
-[Functions section](#functions-section) itself, doing so would require the
-reader to make a pass over all of the functions ahead of time. We'd prefer to
+BEF functions by name.  While we could intersperse this information into the
+[BEF Functions section](#bef-functions-section) itself, doing so would require the
+reader to make a pass over all of the BEF functions ahead of time. We'd prefer to
 have a quick index that the reader can scan at load time, deferring processing
 of any individual function until it is needed.
 
-### Functions Section
+### BEF Functions Section
 
 **Grammar**
 
 ```none
-  FUNCTIONS_SECTION ::= FUNCTION*
+  BEF_FUNCTIONS_SECTION ::= BEF_FUNCTION*
 ```
 
-The Functions section is a list of Function records emitted to the byte stream
-and then addressed by an Offset indicated by the
-[FunctionIndex section](#functionindex-section). This section is 4-byte
+The BEF Functions section is a list of BEF Function records emitted to the byte
+stream and then addressed by an Offset indicated by the
+[BEFFunctionIndex section](#bef-functionindex-section). This section is 4-byte
 aligned.
 
 ***Rationale***
@@ -283,16 +283,16 @@ the abstractions we need to model - in particular, while MLIR regions can have
 multiple basic blocks in them, BEF Functions only support a single block - this
 guarantees that they are always be a DAG of computation.
 
-Functions are used for top-level function (indexed by the function name table)
-as well as in nested positions for control flow and other concepts that occur
-with MLIR regions.
+BEF Functions are used for top-level MLIR `func` operations (indexed by the
+function name table) as well as in nested positions for control flow and other
+concepts that occur with MLIR regions.
 
-### Function Definition
+### BEF Function Definition
 
 **Grammar**
 
 ```none
-  FUNCTION        ::= OFFSET<"Location"> REGISTER_TABLE PRIMITIVE_TABLE
+  BEF_FUNCTION    ::= OFFSET<"Location"> REGISTER_TABLE PRIMITIVE_TABLE
                       RESULT_REGS BYTE<"AlignmentPadding">* PRIMITIVE+
 
   REGISTER_TABLE  ::= VBR<"NumRegs"> REGISTER_ENTRY*
@@ -304,7 +304,7 @@ with MLIR regions.
   RESULT_REGS     ::= INDEX<"Register">*
 ```
 
-Each function is defined by a location (an offset into the
+Each BEF Function is defined by a location (an offset into the
 [LocationPositions section](#locationpositions-section)), a register table, a
 primitive table, a list of result registers, a list of primitives with 4-byte
 alignment, and ends with a FIXED32 integer of value zero.
@@ -312,19 +312,19 @@ alignment, and ends with a FIXED32 integer of value zero.
 The Register Table is a count of registers, and an entry for each register -
 indicating the number of primitives in this section that use the register.
 
-The Primitive Table for a function is a count of primitives, an offset (from the
-end of the Primitive Table) of the start of the primitive and the number of
-operands that the primitive has.
+The Primitive Table for a BEF Function is a count of primitives, an offset
+(from the end of the Primitive Table) of the start of the primitive and the
+number of operands that the primitive has.
 
 The primitive list that is following the Primitive Table contains all the
-primitives used in this function. Note that every function has a
+primitives used in this BEF function. Note that every BEF function has a
 pseudo-primitive that is the single entry point to the rest of the primitives.
-Specifially, a pseudo-primitive defines registers for function arguments and a
+Specifially, a pseudo-primitive defines registers for BEF function arguments and a
 pseudo-register that is conceptually used by primitives that takes no arguments.
 
 The result registers specify the register values to return, and must align with
 the function result types from the
-[FunctionIndex section](#functionindex-section).
+[BEF FunctionIndex section](#bef-functionindex-section).
 
 ***Rationale***
 
@@ -361,11 +361,11 @@ arguments, attributes, functions and results in the primitive body.
 
 The result table contains NumResults FIXED32 integers, indicating the number of
 users for each corresponding result. The primitive body consists of zero or more
-inputs (indexes into the Register Table for this function), zero or more
+inputs (indexes into the Register Table for the enclosing BEF Function), zero or more
 constants (offsets into the [Attributes section](#attributes-section)), zero or
-more functions (indexes into the [FunctionIndex 
-section](#functionindex-section)), zero or more results (indexes into the
-Register table for this function), and zero or more 'used by' records (which are
+more functions (these are regions to the primitive, stored as indexes into the
+[FunctionIndex section](#bef-functionindex-section)), zero or more results (indexes into the
+Register table for the enclosing BEF function), and zero or more 'used by' records (which are
 indexes into the Primitive Table for this function). 'used by' records for the
 same result are grouped together and these groups are in the same order of
 'result' records. For example, if there are two results, A and B, and A has one
@@ -377,7 +377,7 @@ consecutively.
 ***Rationale***
 
 This record allows us to efficiently form the array of arguments and results
-that get passed to a primitive implementation function. When the primitive
+that get passed to a C/C++ function that implements the primitive. When the primitive
 completes, the UsedBy records allow us to efficiently trigger execution of data
 dependent primitives if they are ready, by decrementing the "NumOperands" field
 for the primitive.
@@ -452,8 +452,8 @@ in [`BEFEncoding.h`](../GraphRT/include/GraphRT/BEF/BEFEncoding.h).
 The AttributeNames sections is an optional section which is not needed for BEF
 execution, but this section is necessary for BEFToMLIR conversion. This
 section describes the attribute names used by each primitive. There is a 1:1
-mapping between Primitive Table in this section and Function Entries in
-[FunctionIndex section](#functionindex-section). And there is a 1:1 mapping
+mapping between Primitive Table in this section and BEF Function Entries in
+[BEF FunctionIndex section](#bef-functionindex-section). And there is a 1:1 mapping
 between primitive entries in this section and primitive entries in Functions
 section's primitive table. Each primitive entry contains any number of
 AttributeNames. AttributeName is an offset to Strings section that specifies the
@@ -473,7 +473,7 @@ execution, but this section is necessary for BEFToMLIR conversion. This
 section describes the type information for registers in each function. The
 RegisterType Table is a count of registers, and an entry for each register
 indicating its index into [Types section](#types-section). There is a 1:1
-mapping between RegisterType Tables and Function Entries in
-[FunctionIndex section](#functionindex-section). And it is a 1:1 mapping between
+mapping between RegisterType Tables and BEF Function Entries in
+[BEF FunctionIndex section](#bef-functionindex-section). And it is a 1:1 mapping between
 types in a RegisterType Table and registers in the RegisterTable of the
-corresponding Function.
+corresponding BEF Function.

@@ -18,7 +18,57 @@
 #include "GraphRT/MLIRToBEF.h"
 #include "GraphRT/BEF/BEFEncoding.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "llvm/ADT/StringSet.h"
 using namespace M;
+
+// The "bef.return" primitive gets special case handling in BEF files.
+static bool isReturn(Operation *op) {
+  return op->getName().getStringRef() == "bef.return";
+}
+
+static FunctionType getRegionFunctionType(Region *region) {
+  // Emit information about the type of the function.
+  auto *block = &region->getBlocks().front();
+
+  // Arguments.
+  SmallVector<Type, 4> inputs(block->getArgumentTypes());
+
+  // Results: MLIR Regions don't have an easy way to identify results in
+  // regions, so we just hard code the "bef.return" instruction.
+  assert(isReturn(&block->back()));
+  SmallVector<Type, 4> results(block->back().getOperandTypes());
+  return FunctionType::get(region->getContext(), inputs, results);
+}
+
+//===----------------------------------------------------------------------===//
+// Attribute Processing
+//===----------------------------------------------------------------------===//
+
+namespace {
+enum class WellKnownAttrs {
+  Unknown,   // This isn't a well-known attribute.
+  NonStrict, // This is the bef.nonstrict attribute on a primitive.
+};
+} // end anonymous namespace
+
+/// Classify this attribute, so the rest of the code can know if it gets
+/// special treatment.
+static WellKnownAttrs classifyAttribute(StringRef attrName) {
+  return llvm::StringSwitch<WellKnownAttrs>(attrName)
+      .Case("bef.nonstrict", WellKnownAttrs::NonStrict)
+      .Default(WellKnownAttrs::Unknown);
+}
+
+// Return true if this is a supported attribute that can be emitted as a
+// attribute reference in a primitive.
+static bool isSupportedAttribute(Attribute attr) {
+  // We support references to BEF functions.
+  if (attr.isa<SymbolRefAttr>())
+    return true;
+
+  // FIXME: Generalize
+  return false;
+}
 
 //===----------------------------------------------------------------------===//
 // BEFEmitter
@@ -159,6 +209,302 @@ void BEFEmitter::emitVBRImpl(size_t value, bool isHighPart) {
 }
 
 //===----------------------------------------------------------------------===//
+// EntityTable
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+/// This table keeps track of the interesting entities (attributes, types, other
+/// strings) that we care about.  This is built in the first pass.
+class EntityTable {
+public:
+  /// Walk the IR to build the symbol tables, this returns true on failure.
+  bool collect(ModuleOp module, bool disableOptionalSections);
+  ssize_t getFunctionNamed(StringRef name) const;
+
+  unsigned getTypeIndex(Type type) const {
+    auto it = typeIDs.find(type);
+    assert(it != typeIDs.end() && "unregistered type");
+    return it->second;
+  }
+
+  unsigned getFunctionID(const Region &region) const {
+    auto it = regionFunctionIDs.find(&region);
+    assert(it != regionFunctionIDs.end() && "region not added to entity table");
+    return it->second;
+  }
+
+  unsigned getPrimitiveID(Operation *primitive) const {
+    auto it = primitiveIDs.find(primitive->getName().getStringRef());
+    assert(it != primitiveIDs.end() && "Unknown primitive");
+    return it->second;
+  }
+
+private:
+  void addString(StringRef string) { strings.insert(string); }
+  void addType(Type type);
+  LogicalResult addBEFFunction(Region *region, StringRef name);
+  void addPrimitive(Operation *primitive);
+  void addLocation(Location loc);
+  void addAttributeType(Attribute attr);
+
+private:
+  // Uniquing set of attributes we need to emit, kept in order so we always
+  // produce a determinstic output file.
+  llvm::SetVector<Attribute> attributes;
+
+  // Uniquing set of the primitives that we need to emit.
+  std::vector<StringRef> primitives;
+  llvm::StringMap<unsigned> primitiveIDs;
+
+  /// BEFFunctionEntry keeps track of each of the top level `func`'s and the
+  /// regions attached to control flow statements.  These all turn into BEF
+  /// functions.
+  struct BEFFunctionEntry {
+    BEFFunctionEntry(StringRef name, FunctionType type, Region *region)
+        : name(name), type(type), region(region) {}
+
+    StringRef name;
+    FunctionType type;
+    Region *region;
+  };
+
+  // List of functions that we need to emit, along with a name if they came
+  // from a top level function.
+  std::vector<BEFFunctionEntry> functions;
+  DenseMap<Region *, unsigned> regionFunctionIDs;
+  llvm::StringMap<unsigned> namedFunctionIDs;
+
+  // Types we've seen so far.
+  std::vector<Type> types;
+  DenseMap<Type, unsigned> typeIDs;
+
+  // All of the strings we need to emit the BEF file, an unordered
+  // collection that we sort before emitting.
+  llvm::StringSet<> strings;
+
+  // This is all of the filenames referred to by locations in the file.
+  SmallVector<StringRef, 4> locationFilenames;
+  llvm::StringMap<unsigned> locationFilenamesIndices;
+
+  // This is a list of locations within the file, the first element of the
+  // tuple is a index into locationFilenames, the second and third are line/col
+  // information.
+  typedef std::tuple<unsigned, unsigned, unsigned> LocationTuple;
+  llvm::SetVector<LocationTuple> locationPositions;
+};
+
+} // namespace
+
+// Add a type to our table, checking it by pointer to reduce string
+// conversions.
+void EntityTable::addType(Type type) {
+  // Ignore the type if we've seen it before.
+  if (!typeIDs.insert({type, types.size()}).second)
+    return;
+  types.push_back(type);
+
+  // If it is new, remember the type name as a string.
+  // FIXME: Why is this needed?
+  SmallVector<char, 64> resultStr;
+  llvm::raw_svector_ostream os(resultStr);
+  type.print(os);
+  addString(os.str());
+}
+
+LogicalResult EntityTable::addBEFFunction(Region *region, StringRef name) {
+  // Check to see if we support this region kind.
+  if (region->getBlocks().size() != 1) {
+    mlir::emitError(region->getLoc())
+        << "multi-block regions cannot be emitted to BEF files";
+    return failure();
+  }
+
+  for (auto argTy : region->front().getArgumentTypes())
+    addType(argTy);
+
+  // Remember this function.
+  addString(name);
+  regionFunctionIDs[region] = functions.size();
+  namedFunctionIDs[name] = functions.size();
+  functions.push_back(
+      BEFFunctionEntry(name, getRegionFunctionType(region), region));
+  return success();
+}
+
+// Return the index of the specified function name, returning -1 if the
+// function name cannot be found.
+ssize_t EntityTable::getFunctionNamed(StringRef name) const {
+  auto iter = namedFunctionIDs.find(name);
+  if (iter == namedFunctionIDs.end())
+    return -1;
+  return iter->second;
+}
+
+void EntityTable::addPrimitive(Operation *primitive) {
+  StringRef name = primitive->getName().getStringRef();
+  // Remember the primitive.
+  if (!primitiveIDs.insert({name, primitives.size()}).second)
+    return;
+  primitives.push_back(name);
+
+  // If we haven't seen it already, add it to the string table.
+  addString(name);
+}
+
+void EntityTable::addLocation(Location loc) {
+  StringRef filename = "";
+  unsigned line = 0, col = 0;
+  // TODO: mainline TFRT has a richer location model we could adopt.
+  if (auto fileLineCol = loc.dyn_cast<FileLineColLoc>()) {
+    filename = fileLineCol.getFilename();
+    line = fileLineCol.getLine();
+    col = fileLineCol.getColumn();
+  }
+
+  auto nextFilenameIndex = locationFilenames.size();
+  auto it =
+      locationFilenamesIndices.insert({filename, nextFilenameIndex}).first;
+  if (it->second == nextFilenameIndex)
+    locationFilenames.push_back(filename);
+
+  locationPositions.insert(LocationTuple{it->second, line, col});
+}
+
+void EntityTable::addAttributeType(Attribute attr) {
+  if (auto int_attr = attr.dyn_cast<IntegerAttr>())
+    addType(int_attr.getType());
+
+  if (auto float_attr = attr.dyn_cast<FloatAttr>())
+    addType(float_attr.getType());
+
+  if (auto arr_attr = attr.dyn_cast<ArrayAttr>()) {
+    for (auto attr : arr_attr.getValue()) {
+      addAttributeType(attr);
+    }
+  }
+}
+
+/// Walk the IR to build the symbol tables, this returns true on failure.
+bool EntityTable::collect(ModuleOp module, bool disableOptionalSections) {
+  std::vector<std::pair<SymbolRefAttr, Location>> symbolRefAttrs;
+
+  auto opWalker = [&](Operation *op) -> WalkResult {
+    // Ignore the module itself.
+    if (op == module.getOperation())
+      return WalkResult::advance();
+
+    // The return op gets special handling, ensure it is at the end of its
+    // enclosing block.
+    if (isReturn(op)) {
+      if (&op->getBlock()->back() != op) {
+        op->emitError() << "return op must be at the end of its block";
+        return WalkResult::interrupt();
+      }
+      // Ignore it, return gets special handling.
+      return WalkResult::advance();
+    }
+
+    addLocation(op->getLoc());
+
+    auto *curBlock = op->getBlock();
+
+    // Notice the result and argument types of the ops.
+    for (auto result : op->getResults())
+      addType(result.getType());
+
+    for (auto operand : op->getOperands()) {
+      // Verify that the operand is defined inside the current region.  We
+      // don't support references to outer regions.
+      if (operand.getParentBlock() != curBlock) {
+        op->emitError()
+            << "BEF executor only supports references to primitives within"
+            << " the current region";
+        return WalkResult::interrupt();
+      }
+    }
+
+    // We treat functions specially, putting them into the symbol table and
+    // ignoring their attributes.
+    if (auto fn = dyn_cast<mlir::FuncOp>(op)) {
+      if (fn.isExternal()) {
+        fn.emitError() << "external functions are not allowed";
+        return WalkResult::interrupt();
+      }
+
+      // Verify that all functions end with a return to catch a common
+      // error.
+      auto &lastOp = fn.getBlocks().front().back();
+      if (!isReturn(&lastOp)) {
+        lastOp.emitError() << "all functions need to have a bef.return";
+        return WalkResult::interrupt();
+      }
+
+      if (failed(addBEFFunction(&fn.getBody(), fn.getName())))
+        return WalkResult::interrupt();
+    } else {
+      addPrimitive(op);
+
+      // Keep track of any attributes used by this op.
+      for (auto attr : op->getAttrs()) {
+        // If this is a special attribute, ignore it.
+        if (classifyAttribute(attr.getName()) != WellKnownAttrs::Unknown)
+          continue;
+
+        // Check to make sure that this is a supported attribute, if not,
+        // reject it.
+        if (!isSupportedAttribute(attr.getValue())) {
+          op->emitError() << "BEF files cannot encode the '" << attr.getName()
+                          << "' attribute";
+          return WalkResult::interrupt();
+        }
+
+        if (auto fn_attr = attr.getValue().dyn_cast<SymbolRefAttr>()) {
+          // Keep track of function attributes specially so we can diagnose
+          // them.
+          symbolRefAttrs.push_back({fn_attr, op->getLoc()});
+
+        } else {
+          if (!disableOptionalSections) {
+            // Add attribute names and types for attribute types section and
+            // attribute names section. These will be ignored by executor.
+            addString(attr.getName());
+            addAttributeType(attr.getValue());
+          }
+
+          // We ignore the name of attributes, they just get passed as
+          // arguments.
+          attributes.insert(attr.getValue());
+        }
+      }
+
+      // Keep add any regions used by this op as BEF functions.
+      for (auto &region : op->getRegions()) {
+        if (failed(addBEFFunction(&region, "")))
+          return WalkResult::interrupt();
+      }
+    }
+    return WalkResult::advance();
+  };
+
+  // Walk the whole module finding all the things.
+  if (module.walk(opWalker).wasInterrupted())
+    return true;
+
+  // If we're successful, check to make sure that all functions can be
+  // resolved.
+  for (auto attrAndLoc : symbolRefAttrs) {
+    if (getFunctionNamed(attrAndLoc.first.getRootReference()) == -1) {
+      mlir::emitError(attrAndLoc.second)
+          << "function " << attrAndLoc.first << " not defined";
+      return true;
+    }
+  }
+
+  return false;
+}
+
+//===----------------------------------------------------------------------===//
 // BEFModuleEmitter
 //===----------------------------------------------------------------------===//
 
@@ -166,26 +512,27 @@ namespace {
 /// This emitter generates the top level structure of the BEF file.
 class BEFModuleEmitter : public BEFEmitter {
 public:
-  explicit BEFModuleEmitter(mlir::ModuleOp module) : module(module) {}
+  explicit BEFModuleEmitter(ModuleOp module) : module(module) {}
 
+  /// Walk the IR to build the symbol tables, this returns true on failure.
   bool collectEntities(bool disableOptionalSections) {
-    // TODO.
-    return false;
+    return entities.collect(module, disableOptionalSections);
   }
 
 private:
-  mlir::ModuleOp module;
+  ModuleOp module;
+  EntityTable entities;
 };
 } // end anonymous namespace
 
 /// This function converts the specified MLIR module containing a executor
-/// compatible program to the BinaryExecutableFormat (BEF) format, which is the
-/// binary format that the executor takes.  When `disableOptionalSections` is
-/// true, this omits metadata sections required to reverse a BEF file back into
-/// a .mlir file.
+/// compatible program to the BinaryExecutableFormat (BEF) format, which is
+/// the binary format that the executor takes.  When
+/// `disableOptionalSections` is true, this omits metadata sections required
+/// to reverse a BEF file back into a .mlir file.
 ///
-/// On error, this emits the error message through the MLIR error handler, and
-/// returns an empty vector.
+/// On error, this emits the error message through the MLIR error handler,
+/// and returns an empty vector.
 std::vector<uint8_t> M::translateMLIRToBEF(ModuleOp module,
                                            bool disableOptionalSections) {
   BEFModuleEmitter emitter(module);
