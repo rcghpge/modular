@@ -10,6 +10,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Translation.h"
+#include "GraphRT/BEFDialect/BEFDialect.h"
 #include "GraphRT/MLIRToBEF.h"
 #include "mlir/IR/BuiltinOps.h"
 using namespace M;
@@ -29,5 +30,8 @@ void M::registerMLIRToBEFTranslation() {
           return failure();
         os.write(reinterpret_cast<const char *>(data.data()), data.size());
         return success();
+      },
+      [](mlir::DialectRegistry &registry) {
+        registry.insert<BEF::BEFDialect>();
       });
 }

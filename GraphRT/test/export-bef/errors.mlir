@@ -9,3 +9,7 @@ func @trivial() { // expected-error {{empty block: expect at least a terminator}
   //bef.return
 }
 
+// -----
+
+// expected-error @+1 {{external functions are not allowed}}
+func private @external_func() -> i32

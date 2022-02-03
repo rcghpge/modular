@@ -17,14 +17,10 @@
 
 #include "GraphRT/MLIRToBEF.h"
 #include "GraphRT/BEF/BEFEncoding.h"
+#include "GraphRT/BEFDialect/BEFOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "llvm/ADT/StringSet.h"
 using namespace M;
-
-// The "bef.return" primitive gets special case handling in BEF files.
-static bool isReturn(Operation *op) {
-  return op->getName().getStringRef() == "bef.return";
-}
 
 static FunctionType getRegionFunctionType(Region *region) {
   // Emit information about the type of the function.
@@ -35,7 +31,7 @@ static FunctionType getRegionFunctionType(Region *region) {
 
   // Results: MLIR Regions don't have an easy way to identify results in
   // regions, so we just hard code the "bef.return" instruction.
-  assert(isReturn(&block->back()));
+  assert(isa<BEF::ReturnOp>(&block->back()));
   SmallVector<Type, 4> results(block->back().getOperandTypes());
   return FunctionType::get(region->getContext(), inputs, results);
 }
@@ -396,7 +392,7 @@ bool EntityTable::collect(ModuleOp module, bool disableOptionalSections) {
 
     // The return op gets special handling, ensure it is at the end of its
     // enclosing block.
-    if (isReturn(op)) {
+    if (isa<BEF::ReturnOp>(op)) {
       if (&op->getBlock()->back() != op) {
         op->emitError() << "return op must be at the end of its block";
         return WalkResult::interrupt();
@@ -435,7 +431,7 @@ bool EntityTable::collect(ModuleOp module, bool disableOptionalSections) {
       // Verify that all functions end with a return to catch a common
       // error.
       auto &lastOp = fn.getBlocks().front().back();
-      if (!isReturn(&lastOp)) {
+      if (!isa<BEF::ReturnOp>(&lastOp)) {
         lastOp.emitError() << "all functions need to have a bef.return";
         return WalkResult::interrupt();
       }
