@@ -15,7 +15,7 @@ include "mlir/IR/OpBase.td"
 include "GraphRT/BEFDialect/BEFDialect.td"
 
 // Base class for the operation in this dialect.
-class BEFOp<string mnemonic, list<OpTrait> traits = []> :
+class BEFOp<string mnemonic, list<Trait> traits = []> :
     Op<BEFDialect, mnemonic, traits>;
 
 def ReturnOp : BEFOp<"return", [Terminator]> {

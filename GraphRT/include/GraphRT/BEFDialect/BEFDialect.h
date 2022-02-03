@@ -11,7 +11,6 @@
 #ifndef GRAPHRT_BEFDIALECT_H
 #define GRAPHRT_BEFDIALECT_H
 
-#include "Support/LLVM.h"
 #include "mlir/IR/Dialect.h"
 
 // Pull in the dialect definition.
