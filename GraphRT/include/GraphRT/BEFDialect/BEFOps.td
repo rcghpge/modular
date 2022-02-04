@@ -19,7 +19,6 @@ def FuncOp : BEFOp<"func", [HasParent<"mlir::ModuleOp">, FunctionOpInterface,
   let regions = (region SizedRegion<1>:$body);
 
   let extraClassDeclaration = [{
-
     Block *getBodyBlock() {
       return &getBody().front();
     }
@@ -51,10 +50,12 @@ def OutputOp : BEFOp<"output",
     The operand number and types must match the signature of the bef.func
     that contains the operation. For example:
 
+    ```mlir
       bef.func @foo() : i32, f8 {
         ...
         bef.return %0, %1 : i32, f8
       }
+    ```
   }];
 
   let arguments = (ins Variadic<AnyType>:$operands);

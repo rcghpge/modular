@@ -30,7 +30,7 @@ static FunctionType getRegionFunctionType(Region *region) {
   SmallVector<Type, 4> inputs(block->getArgumentTypes());
 
   // Results: MLIR Regions don't have an easy way to identify results in
-  // regions, so we just hard code the "bef.return" instruction.
+  // regions, so we just hard code the "bef.output" instruction.
   assert(isa<BEF::OutputOp>(&block->back()));
   SmallVector<Type, 4> results(block->back().getOperandTypes());
   return FunctionType::get(region->getContext(), inputs, results);
@@ -390,16 +390,10 @@ bool EntityTable::collect(ModuleOp module, bool disableOptionalSections) {
     if (op == module.getOperation())
       return WalkResult::advance();
 
-    // The return op gets special handling, ensure it is at the end of its
-    // enclosing block.
-    if (isa<BEF::OutputOp>(op)) {
-      if (&op->getBlock()->back() != op) {
-        op->emitError() << "return op must be at the end of its block";
-        return WalkResult::interrupt();
-      }
-      // Ignore it, return gets special handling.
+    // Ignore the OutputOp: it gets special handling, instead of being treated
+    // like a primitive.
+    if (isa<BEF::OutputOp>(op))
       return WalkResult::advance();
-    }
 
     addLocation(op->getLoc());
 
@@ -412,25 +406,15 @@ bool EntityTable::collect(ModuleOp module, bool disableOptionalSections) {
     for (auto operand : op->getOperands()) {
       // Verify that the operand is defined inside the current region.  We
       // don't support references to outer regions.
-      if (operand.getParentBlock() != curBlock) {
-        op->emitError()
-            << "BEF executor only supports references to primitives within"
-            << " the current region";
-        return WalkResult::interrupt();
-      }
+      if (operand.getParentBlock() != curBlock)
+        return op->emitError()
+               << "BEF executor only supports references to primitives within"
+               << " the current region";
     }
 
     // We treat functions specially, putting them into the symbol table and
     // ignoring their attributes.
     if (auto fn = dyn_cast<BEF::FuncOp>(op)) {
-      // Verify that all functions end with a return to catch a common
-      // error.
-      auto &lastOp = fn.getBlocks().front().back();
-      if (!isa<BEF::OutputOp>(&lastOp)) {
-        lastOp.emitError() << "all functions need to have a bef.return";
-        return WalkResult::interrupt();
-      }
-
       if (failed(addBEFFunction(&fn.getBody(), fn.getName())))
         return WalkResult::interrupt();
       return WalkResult::advance();
@@ -446,11 +430,9 @@ bool EntityTable::collect(ModuleOp module, bool disableOptionalSections) {
 
       // Check to make sure that this is a supported attribute, if not,
       // reject it.
-      if (!isSupportedAttribute(attr.getValue())) {
-        op->emitError() << "BEF files cannot encode the '" << attr.getName()
-                        << "' attribute";
-        return WalkResult::interrupt();
-      }
+      if (!isSupportedAttribute(attr.getValue()))
+        return op->emitError() << "BEF files cannot encode the '"
+                               << attr.getName() << "' attribute";
 
       if (auto fn_attr = attr.getValue().dyn_cast<SymbolRefAttr>()) {
         // Keep track of function attributes specially so we can diagnose
