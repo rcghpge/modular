@@ -9,9 +9,113 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphRT/BEFDialect/BEFOps.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/FunctionImplementation.h"
 
 using namespace M;
 using namespace BEF;
+
+//===----------------------------------------------------------------------===//
+// FuncOp
+//===----------------------------------------------------------------------===//
+
+// Parses a BEF Function.
+//
+// operation ::= `func` function-signature function-attributes? function-body
+//
+static ParseResult parseFuncOp(OpAsmParser &parser, OperationState &result) {
+  StringAttr nameAttr;
+  SmallVector<OpAsmParser::OperandType> entryArgs;
+  SmallVector<NamedAttrList> argAttrs;
+  SmallVector<NamedAttrList> resultAttrs;
+  SmallVector<Type> argTypes;
+  SmallVector<Type> resultTypes;
+  SmallVector<Location> argLocations;
+  bool isVariadic;
+
+  if (parser.parseSymbolName(nameAttr, SymbolTable::getSymbolAttrName(),
+                             result.attributes) ||
+      mlir::function_interface_impl::parseFunctionSignature(
+          parser, /*allowVariadic=*/false, entryArgs, argTypes, argAttrs,
+          argLocations, isVariadic, resultTypes, resultAttrs))
+    return failure();
+
+  auto type = FunctionType::get(parser.getContext(), argTypes, resultTypes);
+  result.addAttribute(mlir::FunctionOpInterface::getTypeAttrName(),
+                      TypeAttr::get(type));
+
+  if (failed(parser.parseOptionalAttrDictWithKeyword(result.attributes)))
+    return failure();
+  mlir::function_interface_impl::addArgAndResultAttrs(
+      parser.getBuilder(), result, argAttrs, resultAttrs);
+
+  auto *body = result.addRegion();
+  auto parseResult = parser.parseOptionalRegion(
+      *body, entryArgs, entryArgs.empty() ? ArrayRef<Type>() : argTypes);
+  return failure(parseResult.hasValue() && failed(*parseResult));
+}
+
+// Print the FuncOp. Collects argument and result types and passes them to
+// helper functions. Drops "void" result since it cannot be parsed back.
+static void printFuncOp(FuncOp op, OpAsmPrinter &p) {
+  p << ' ';
+  p.printSymbolName(op.getName());
+
+  FunctionType fnType = op.getType();
+  mlir::function_interface_impl::printFunctionSignature(
+      p, op, fnType.getInputs(), /*isVarArg=*/false, fnType.getResults());
+  mlir::function_interface_impl::printFunctionAttributes(
+      p, op, fnType.getNumInputs(), fnType.getNumResults(), {});
+
+  // Print the body if this is not an external function.
+  Region &body = op.getBody();
+  if (!body.empty()) {
+    p << ' ';
+    p.printRegion(body, /*printEntryBlockArgs=*/false,
+                  /*printBlockTerminators=*/true);
+  }
+}
+
+/// Hook for FunctionOpInterface, called after verifying that the 'type'
+/// attribute is present and checks if it holds a function type. Ensures
+/// getType, getNumFuncArguments, and getNumFuncResults can be called
+/// safely.
+LogicalResult FuncOp::verifyType() {
+  auto llvmType = getTypeAttr().getValue().dyn_cast_or_null<FunctionType>();
+  if (!llvmType)
+    return emitOpError("requires '" + getTypeAttrName() +
+                       "' attribute of function type");
+
+  return success();
+}
+
+LogicalResult FuncOp::verify() {
+  if (!isa_and_nonnull<OutputOp>(getBodyBlock()->getTerminator()))
+    return emitOpError("expected bef.output terminator");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// OutputOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult OutputOp::verify() {
+  // ODS checks the parent is a FuncOp.
+  auto func = cast<FuncOp>(getOperation()->getParentOp());
+
+  // Verify our result types match up with the enclosing func result type.
+  if (getNumOperands() != func.getResultTypes().size())
+    return emitOpError("expected ") << func.getResultTypes().size()
+                                    << " operands for enclosing bef.func";
+
+  for (size_t i = 0, e = getNumOperands(); i != e; ++i) {
+    if (getOperand(i).getType() != func.getResultTypes()[i])
+      return emitOpError("operand #")
+             << i << " has type " << getOperand(i).getType()
+             << " but should be " << func.getResultTypes()[i];
+  }
+  return success();
+}
 
 //===----------------------------------------------------------------------===//
 // TableGen generated logic.

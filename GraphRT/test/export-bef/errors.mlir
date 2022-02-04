@@ -1,15 +1,25 @@
-// RUN: graphrt-translate -export-bef -split-input-file --verify-diagnostics  %s 
+// RUN: graphrt-translate -export-bef -allow-unregistered-dialect -split-input-file --verify-diagnostics  %s 
 
 
-func @trivial() { // expected-error {{empty block: expect at least a terminator}}
-^bb1:
-  //bef.return
-
-^bb2:
-  //bef.return
+bef.func @trivial() {  // expected-error {{must have exactly one block}}
 }
 
 // -----
 
-// expected-error @+1 {{external functions are not allowed}}
-func private @external_func() -> i32
+bef.func @need_output() {  // expected-error {{expected bef.output terminator}}
+  "unknown.term"() : () -> ()
+}
+
+
+// -----
+
+bef.func @need_output() -> i32 {
+  bef.output  // expected-error {{'bef.output' op expected 1 operands for enclosing bef.func}}
+}
+
+// -----
+
+bef.func @type_mismatch(%a: f32) -> i32 {
+  // expected-error @+1 {{'bef.output' op operand #0 has type 'f32' but should be 'i32'}}
+  bef.output %a : f32
+}

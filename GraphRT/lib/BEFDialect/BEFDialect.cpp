@@ -10,6 +10,7 @@
 
 #include "GraphRT/BEFDialect/BEFDialect.h"
 #include "GraphRT/BEFDialect/BEFOps.h"
+#include "mlir/IR/BuiltinOps.h"
 
 using namespace M;
 using namespace BEF;

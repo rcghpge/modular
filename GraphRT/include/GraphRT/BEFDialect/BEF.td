@@ -18,24 +18,6 @@ include "GraphRT/BEFDialect/BEFDialect.td"
 class BEFOp<string mnemonic, list<Trait> traits = []> :
     Op<BEFDialect, mnemonic, traits>;
 
-def ReturnOp : BEFOp<"return", [Terminator]> {
-  let summary = "BEF return operation";
-  let description = [{
-    The "bef.return" operation captures the return values for a BEF function.
-    The operation takes variable number of operands and produces no results.
-    The operand number and types must match the signature of the BEF function
-    that contains the operation. For example:
-
-      func @foo() : i32, f8 {
-        ...
-        bef.return %0, %1 : i32, f8
-      }
-  }];
-
-  let arguments = (ins Variadic<AnyType>:$operands);
-
-  let assemblyFormat = "attr-dict ($operands^ `:` type($operands))?";
-  // TODO: Verifier.
-}
+include "GraphRT/BEFDialect/BEFOps.td"
 
 #endif // BEF_TD

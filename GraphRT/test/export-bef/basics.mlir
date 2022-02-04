@@ -6,11 +6,11 @@
 // CHECK: 0000000 be f0 
 // CHECK: 0000002
 
-func @trivial() {
+bef.func @trivial() {
   //"simple.primitive"() : () -> ()
-  bef.return
+  bef.output
 }
 
-func @args_results(%a: i32, %b: i8) -> (i8, i32) {
-  bef.return %b, %a : i8, i32
+bef.func @args_results(%a: i32, %b: i8) -> (i8, i32) {
+  bef.output %b, %a : i8, i32
 }

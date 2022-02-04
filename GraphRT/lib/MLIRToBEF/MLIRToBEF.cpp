@@ -31,7 +31,7 @@ static FunctionType getRegionFunctionType(Region *region) {
 
   // Results: MLIR Regions don't have an easy way to identify results in
   // regions, so we just hard code the "bef.return" instruction.
-  assert(isa<BEF::ReturnOp>(&block->back()));
+  assert(isa<BEF::OutputOp>(&block->back()));
   SmallVector<Type, 4> results(block->back().getOperandTypes());
   return FunctionType::get(region->getContext(), inputs, results);
 }
@@ -392,7 +392,7 @@ bool EntityTable::collect(ModuleOp module, bool disableOptionalSections) {
 
     // The return op gets special handling, ensure it is at the end of its
     // enclosing block.
-    if (isa<BEF::ReturnOp>(op)) {
+    if (isa<BEF::OutputOp>(op)) {
       if (&op->getBlock()->back() != op) {
         op->emitError() << "return op must be at the end of its block";
         return WalkResult::interrupt();
@@ -422,16 +422,11 @@ bool EntityTable::collect(ModuleOp module, bool disableOptionalSections) {
 
     // We treat functions specially, putting them into the symbol table and
     // ignoring their attributes.
-    if (auto fn = dyn_cast<mlir::FuncOp>(op)) {
-      if (fn.isExternal()) {
-        fn.emitError() << "external functions are not allowed";
-        return WalkResult::interrupt();
-      }
-
+    if (auto fn = dyn_cast<BEF::FuncOp>(op)) {
       // Verify that all functions end with a return to catch a common
       // error.
       auto &lastOp = fn.getBlocks().front().back();
-      if (!isa<BEF::ReturnOp>(&lastOp)) {
+      if (!isa<BEF::OutputOp>(&lastOp)) {
         lastOp.emitError() << "all functions need to have a bef.return";
         return WalkResult::interrupt();
       }

@@ -12,7 +12,14 @@
 #define GRAPHRT_BEFDIALECT_BEFOPS_H
 
 #include "GraphRT/BEFDialect/BEFDialect.h"
+#include "Support/LLVM.h"
+#include "mlir/IR/FunctionInterfaces.h"
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/SymbolTable.h"
+
+namespace mlir {
+class ModuleOp;
+}
 
 namespace M {
 namespace BEF {
