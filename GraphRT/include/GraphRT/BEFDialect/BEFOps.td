@@ -10,6 +10,7 @@
 
 include "mlir/IR/FunctionInterfaces.td"
 include "mlir/IR/SymbolInterfaces.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
 
 def FuncOp : BEFOp<"func", [HasParent<"mlir::ModuleOp">, FunctionOpInterface,
                             Symbol, SymbolTable, IsolatedFromAbove]> {
@@ -41,7 +42,8 @@ def FuncOp : BEFOp<"func", [HasParent<"mlir::ModuleOp">, FunctionOpInterface,
   let hasVerifier = 1;
 }
 
-def OutputOp : BEFOp<"output", [Terminator, HasParent<"BEF::FuncOp">]> {
+def OutputOp : BEFOp<"output",
+                     [Terminator, ReturnLike, HasParent<"BEF::FuncOp">]> {
   let summary = "BEF output operation";
   let description = [{
     The "bef.output" operation specifies the returned values for a BEF function.

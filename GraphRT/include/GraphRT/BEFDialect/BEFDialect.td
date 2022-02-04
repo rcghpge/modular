@@ -14,10 +14,10 @@
 def BEFDialect : Dialect {
   let name = "bef";
 
-  let summary = "Types and operations for the BEF dialect";
+  let summary = "The 'bef' dialect for the BinaryExecutorFormat";
   let description = [{
-    This dialect defines the `bef` dialect, which captures operations and
-    attributes core to the GraphRT "BEF" executor.
+    This dialect defines the `bef` dialect, which captures operations core to
+    the GraphRT "BEF" executor.
   }];
 
   let cppNamespace = "::M::BEF";

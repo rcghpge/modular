@@ -286,7 +286,7 @@ private:
   // This is a list of locations within the file, the first element of the
   // tuple is a index into locationFilenames, the second and third are line/col
   // information.
-  typedef std::tuple<unsigned, unsigned, unsigned> LocationTuple;
+  using LocationTuple = std::tuple<unsigned, unsigned, unsigned>;
   llvm::SetVector<LocationTuple> locationPositions;
 };
 
@@ -433,47 +433,48 @@ bool EntityTable::collect(ModuleOp module, bool disableOptionalSections) {
 
       if (failed(addBEFFunction(&fn.getBody(), fn.getName())))
         return WalkResult::interrupt();
-    } else {
-      addPrimitive(op);
+      return WalkResult::advance();
+    }
 
-      // Keep track of any attributes used by this op.
-      for (auto attr : op->getAttrs()) {
-        // If this is a special attribute, ignore it.
-        if (classifyAttribute(attr.getName()) != WellKnownAttrs::Unknown)
-          continue;
+    addPrimitive(op);
 
-        // Check to make sure that this is a supported attribute, if not,
-        // reject it.
-        if (!isSupportedAttribute(attr.getValue())) {
-          op->emitError() << "BEF files cannot encode the '" << attr.getName()
-                          << "' attribute";
-          return WalkResult::interrupt();
-        }
+    // Keep track of any attributes used by this op.
+    for (auto attr : op->getAttrs()) {
+      // If this is a special attribute, ignore it.
+      if (classifyAttribute(attr.getName()) != WellKnownAttrs::Unknown)
+        continue;
 
-        if (auto fn_attr = attr.getValue().dyn_cast<SymbolRefAttr>()) {
-          // Keep track of function attributes specially so we can diagnose
-          // them.
-          symbolRefAttrs.push_back({fn_attr, op->getLoc()});
-
-        } else {
-          if (!disableOptionalSections) {
-            // Add attribute names and types for attribute types section and
-            // attribute names section. These will be ignored by executor.
-            addString(attr.getName());
-            addAttributeType(attr.getValue());
-          }
-
-          // We ignore the name of attributes, they just get passed as
-          // arguments.
-          attributes.insert(attr.getValue());
-        }
+      // Check to make sure that this is a supported attribute, if not,
+      // reject it.
+      if (!isSupportedAttribute(attr.getValue())) {
+        op->emitError() << "BEF files cannot encode the '" << attr.getName()
+                        << "' attribute";
+        return WalkResult::interrupt();
       }
 
-      // Keep add any regions used by this op as BEF functions.
-      for (auto &region : op->getRegions()) {
-        if (failed(addBEFFunction(&region, "")))
-          return WalkResult::interrupt();
+      if (auto fn_attr = attr.getValue().dyn_cast<SymbolRefAttr>()) {
+        // Keep track of function attributes specially so we can diagnose
+        // them.
+        symbolRefAttrs.push_back({fn_attr, op->getLoc()});
+
+      } else {
+        if (!disableOptionalSections) {
+          // Add attribute names and types for attribute types section and
+          // attribute names section. These will be ignored by executor.
+          addString(attr.getName());
+          addAttributeType(attr.getValue());
+        }
+
+        // We ignore the name of attributes, they just get passed as
+        // arguments.
+        attributes.insert(attr.getValue());
       }
+    }
+
+    // Keep add any regions used by this op as BEF functions.
+    for (auto &region : op->getRegions()) {
+      if (failed(addBEFFunction(&region, "")))
+        return WalkResult::interrupt();
     }
     return WalkResult::advance();
   };
