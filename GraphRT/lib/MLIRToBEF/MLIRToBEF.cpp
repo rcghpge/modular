@@ -22,6 +22,11 @@
 #include "llvm/ADT/StringSet.h"
 using namespace M;
 
+/// This holds an offset into a BEF section.
+struct BEFOffset {
+  size_t value;
+};
+
 static FunctionType getRegionFunctionType(Region *region) {
   // Emit information about the type of the function.
   auto *block = &region->getBlocks().front();
@@ -87,12 +92,18 @@ public:
   // Return the alignment required by this chunk of a BEF file.
   unsigned getRequiredAlignment() const { return requiredAlignment; }
 
-  size_t size() const { return result.size(); }
+  /// Return the current position as a BEFOffset.
+  BEFOffset getOffset() const { return BEFOffset{result.size()}; }
 
   void emitByte(uint8_t byte) { result.push_back(byte); }
 
   void emitBytes(ArrayRef<uint8_t> bytes) {
     result.insert(result.end(), bytes.begin(), bytes.end());
+  }
+
+  void emitNulTerminatedString(StringRef str) {
+    emitBytes({reinterpret_cast<const uint8_t *>(str.data()), str.size()});
+    emitByte(0);
   }
 
   void alignTo(unsigned alignment) {
@@ -105,7 +116,7 @@ public:
     // We need attributes to have proper alignment in the file, so figure out
     // whether we need padding before this to make sure it ends up at the right
     // address.
-    size_t curOffset = size();
+    size_t curOffset = result.size();
     size_t neededPadding = llvm::alignTo(curOffset, alignment) - curOffset;
 
     // Emit dummy padding bytes to get up to the right offset.
@@ -141,12 +152,15 @@ public:
   // Emit a vbr encoded integer of arbitrary width.
   void emitVBR(size_t value) { emitVBRImpl(value, false); }
 
+  /// Emit an offset within a known BEF section.
+  void emitOffset(BEFOffset offset) { emitVBR(offset.value); }
+
   // Many parts of the emitter logic includes forward references into stuff
   // that hasn't been emitted and has variable size.  This is handled by making
   // nested emitters.  This helper function emits the subpieces once they are
   // constructed, ensuring that alignment requirements of the nested emitter
   // are maintained correctly.
-  void EmitEmitter(const BEFEmitter &emitter) {
+  void emitEmitter(const BEFEmitter &emitter) {
     alignTo(emitter.getRequiredAlignment());
     emitBytes(emitter.result);
   }
@@ -244,7 +258,7 @@ private:
   void addLocation(Location loc);
   void addAttributeType(Attribute attr);
 
-private:
+public:
   // Uniquing set of attributes we need to emit, kept in order so we always
   // produce a determinstic output file.
   llvm::SetVector<Attribute> attributes;
@@ -279,15 +293,21 @@ private:
   // collection that we sort before emitting.
   llvm::StringSet<> strings;
 
+  /// This is the offset of each known string in the STRINGS section.
+  DenseMap<StringRef, BEFOffset> stringOffsets;
+
   // This is all of the filenames referred to by locations in the file.
-  SmallVector<StringRef, 4> locationFilenames;
-  DenseMap<StringAttr, unsigned> locationFilenamesIndices;
+  llvm::SetVector<StringAttr> locationFilenames;
 
   // This is a list of locations within the file, the first element of the
   // tuple is a index into locationFilenames, the second and third are line/col
   // information.
-  using LocationTuple = std::tuple<unsigned, unsigned, unsigned>;
-  llvm::SetVector<LocationTuple> locationPositions;
+  using LocationTuple = std::tuple<StringAttr, unsigned, unsigned>;
+  llvm::SetVector<LocationTuple> locations;
+
+  /// This is the offset of a given location record in the LOCATION_POSITIONS
+  /// Section of the BEF file.
+  DenseMap<LocationTuple, BEFOffset> locationOffsets;
 };
 
 } // namespace
@@ -300,12 +320,13 @@ void EntityTable::addType(Type type) {
     return;
   types.push_back(type);
 
+#if 0 // TODO: Remove this.
   // If it is new, remember the type name as a string.
-  // FIXME: Why is this needed?
   SmallVector<char, 64> resultStr;
   llvm::raw_svector_ostream os(resultStr);
   type.print(os);
   addString(os.str());
+#endif
 }
 
 LogicalResult EntityTable::addBEFFunction(Region *region, StringAttr name) {
@@ -354,20 +375,19 @@ void EntityTable::addPrimitive(Operation *primitive) {
 void EntityTable::addLocation(Location loc) {
   StringAttr filename;
   unsigned line = 0, col = 0;
-  // TODO: mainline TFRT has a richer location model we could adopt.
+  // TODO: could support more powerful location approach.
   if (auto fileLineCol = loc.dyn_cast<FileLineColLoc>()) {
     filename = fileLineCol.getFilename();
     line = fileLineCol.getLine();
     col = fileLineCol.getColumn();
+  } else {
+    // TODO Could look through fancy locations to get a FileLineCol in most
+    // cases.
+    filename = StringAttr::get(loc.getContext());
   }
 
-  auto nextFilenameIndex = locationFilenames.size();
-  auto it =
-      locationFilenamesIndices.insert({filename, nextFilenameIndex}).first;
-  if (it->second == nextFilenameIndex)
-    locationFilenames.push_back(filename);
-
-  locationPositions.insert(LocationTuple{it->second, line, col});
+  locationFilenames.insert(filename);
+  locations.insert(LocationTuple{filename, line, col});
 }
 
 void EntityTable::addAttributeType(Attribute attr) {
@@ -495,12 +515,60 @@ public:
   bool collectEntities(bool disableOptionalSections) {
     return entities.collect(module, disableOptionalSections);
   }
+  void emitLocationInfo();
+  void emitStrings();
 
 private:
   ModuleOp module;
   EntityTable entities;
 };
 } // end anonymous namespace
+
+void BEFModuleEmitter::emitLocationInfo() {
+  DenseMap<StringAttr, BEFOffset> filenameOffsets;
+  BEFEmitter filenamesSection;
+  for (StringAttr filename : entities.locationFilenames) {
+    filenameOffsets[filename] = filenamesSection.getOffset();
+    filenamesSection.emitNulTerminatedString(filename.getValue());
+  }
+
+  emitSection(BEF::SectionID::LOCATION_FILENAMES, filenamesSection);
+
+  // Emit each of the positions and remember the offsets within the section.
+  BEFEmitter positionsSection;
+  for (auto position : entities.locations) {
+    entities.locationOffsets[position] = positionsSection.getOffset();
+    positionsSection.emitOffset(filenameOffsets[std::get<0>(position)]);
+    positionsSection.emitVBR(std::get<1>(position));
+    positionsSection.emitVBR(std::get<2>(position));
+  }
+
+  emitSection(BEF::SectionID::LOCATION_POSITIONS, positionsSection);
+}
+
+void BEFModuleEmitter::emitStrings() {
+  // We have an ordered collection of strings: sort them alphabetically to make
+  // them stable.
+  std::vector<StringRef> stringsInOrder;
+  stringsInOrder.reserve(entities.strings.size());
+  for (const auto &str : entities.strings)
+    stringsInOrder.push_back(str.getKey());
+  llvm::sort(stringsInOrder.begin(), stringsInOrder.end());
+
+  // Now that we have all the strings in order, emit them and remember their
+  // offsets in the string section.
+  BEFEmitter stringSection;
+  for (StringRef string : stringsInOrder) {
+    entities.stringOffsets[string] = stringSection.getOffset();
+    stringSection.emitNulTerminatedString(string);
+  }
+
+  emitSection(BEF::SectionID::STRINGS, stringSection);
+}
+
+//===----------------------------------------------------------------------===//
+// Top level emission logic
+//===----------------------------------------------------------------------===//
 
 /// This function converts the specified MLIR module containing a executor
 /// compatible program to the BinaryExecutableFormat (BEF) format, which is
@@ -520,6 +588,8 @@ std::vector<uint8_t> M::translateMLIRToBEF(ModuleOp module,
 
   // Emit magic numbers and format version.
   emitter.emitBytes({BEF::MAGIC1, BEF::MAGIC2 + BEF::VERSION0});
+  emitter.emitLocationInfo();
+  emitter.emitStrings();
 
   return emitter.takeResult();
 }

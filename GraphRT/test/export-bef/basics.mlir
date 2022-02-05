@@ -1,13 +1,12 @@
-// RUN: graphrt-translate -export-bef < %s > %t
+// RUN: graphrt-translate -export-bef -allow-unregistered-dialect < %s > %t
 // RUN: od -t x1 %t | FileCheck %s
 
-// Empty file.  Check to make sure the magic number is right.
+// Check to make sure the magic number is right, and the first section is there.
 
-// CHECK: 0000000 be f0 
-// CHECK: 0000002
+// CHECK: 0000000 be f0 01
 
 bef.func @trivial() {
-  //"simple.primitive"() : () -> ()
+  "simple.primitive"() : () -> ()
   bef.output
 }
 

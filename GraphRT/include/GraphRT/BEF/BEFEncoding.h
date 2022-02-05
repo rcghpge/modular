@@ -29,7 +29,12 @@ enum {
 }; // anonymous enum
 
 enum SectionID {
-  TODO,
+  INVALID_SECTION = 0,
+
+  LOCATION_FILENAMES, // Strings for each filename used by a location.
+  LOCATION_POSITIONS, // Detailed information for locations
+
+  STRINGS, // All of the string data.
 };
 
 } // namespace BEF

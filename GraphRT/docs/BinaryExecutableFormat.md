@@ -127,7 +127,7 @@ SECTION_BODY_ALIGNMENT follows.
   SECTION_DATA ::= TYPES_SECTION
   SECTION_DATA ::= BEF_FUNCTION_INDEX_SECTION
   SECTION_DATA ::= BEF_FUNCTIONS_SECTION
-  SECTION_DATA ::= LOCATION_STRINGS_SECTION
+  SECTION_DATA ::= LOCATION_FILENAMES_SECTION
   SECTION_DATA ::= LOCATIONS_SECTION
   SECTION_DATA ::= ATTRIBUTE_TYPES_SECTION
   SECTION_DATA ::= ATTRIBUTE_NAMES_SECTION
@@ -382,12 +382,12 @@ completes, the UsedBy records allow us to efficiently trigger execution of data
 dependent primitives if they are ready, by decrementing the "NumOperands" field
 for the primitive.
 
-### LocationStrings Section
+### LocationFilenames Section
 
 **Grammar**
 
 ```none
-  LOCATION_STRINGS_SECTION ::= NUL_TERMINATED_STRING*
+  LOCATION_FILENAMES_SECTION ::= NUL_TERMINATED_STRING*
 ```
 
 This section contains a list of NUL terminated strings used by locations
@@ -401,28 +401,17 @@ locations are only ever decoded in the case of an error. There is no reason to
 dirty data cache lines with them, and we expect no reuse with other general
 strings.
 
-### Locations Section
+### LocationPositions Section
 
 **Grammar**
 
 ```none
   LOCATIONS_SECTION ::= LOCATION*
-
-  LOCATION ::= UNKNOWN_LOCATION | FILELINECOL_LOCATION | NAME_LOCATION
-  LOCATION ::= CALLSITE_LOCATION | FUSED_LOCATION
-
-  UNKNOWN_LOCATION     ::= `0x00`
-  FILELINECOL_LOCATION ::= `0x01` OFFSET<"Filename"> VBR<"LineNum">
-                                  VBR<"ColumnNum">
-  NAME_LOCATION        ::= `0x02` OFFSET<"Name"> LOCATION<"Child">
-  CALLSITE_LOCATION    ::= `0x03` LOCATION<"Callee"> LOCATION<"Caller">
-  FUSED_LOCATION       ::= `0x04` VBR<"NumLocations"> LOCATION*
+  LOCATION ::= OFFSET<"Filename"> VBR<"LineNum"> VBR<"ColumnNum">
 ```
 
-This section contains a list of "locations", which can have five different
-types: Unknown, FileLineCol, Name, CallSite location, and Fused locations.
-Strings used in FileLineCol and Name locations are added to the LocationStrings
-section.
+This section contains a list of "locations", which are a VBR offset into the
+LocationFilenames section, and VBRs for the line and column of the position.
 
 ### AttributeTypes Section
 
