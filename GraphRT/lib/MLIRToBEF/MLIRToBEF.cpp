@@ -216,7 +216,7 @@ class EntityTable {
 public:
   /// Walk the IR to build the symbol tables, this returns true on failure.
   bool collect(ModuleOp module, bool disableOptionalSections);
-  ssize_t getFunctionNamed(StringRef name) const;
+  ssize_t getFunctionNamed(StringAttr name) const;
 
   unsigned getTypeIndex(Type type) const {
     auto it = typeIDs.find(type);
@@ -231,7 +231,7 @@ public:
   }
 
   unsigned getPrimitiveID(Operation *primitive) const {
-    auto it = primitiveIDs.find(primitive->getName().getStringRef());
+    auto it = primitiveIDs.find(primitive->getName().getIdentifier());
     assert(it != primitiveIDs.end() && "Unknown primitive");
     return it->second;
   }
@@ -239,7 +239,7 @@ public:
 private:
   void addString(StringRef string) { strings.insert(string); }
   void addType(Type type);
-  LogicalResult addBEFFunction(Region *region, StringRef name);
+  LogicalResult addBEFFunction(Region *region, StringAttr name);
   void addPrimitive(Operation *primitive);
   void addLocation(Location loc);
   void addAttributeType(Attribute attr);
@@ -251,16 +251,16 @@ private:
 
   // Uniquing set of the primitives that we need to emit.
   std::vector<StringRef> primitives;
-  llvm::StringMap<unsigned> primitiveIDs;
+  DenseMap<StringAttr, unsigned> primitiveIDs;
 
   /// BEFFunctionEntry keeps track of each of the top level `func`'s and the
   /// regions attached to control flow statements.  These all turn into BEF
   /// functions.
   struct BEFFunctionEntry {
-    BEFFunctionEntry(StringRef name, FunctionType type, Region *region)
+    BEFFunctionEntry(StringAttr name, FunctionType type, Region *region)
         : name(name), type(type), region(region) {}
 
-    StringRef name;
+    StringAttr name;
     FunctionType type;
     Region *region;
   };
@@ -269,7 +269,7 @@ private:
   // from a top level function.
   std::vector<BEFFunctionEntry> functions;
   DenseMap<Region *, unsigned> regionFunctionIDs;
-  llvm::StringMap<unsigned> namedFunctionIDs;
+  DenseMap<StringAttr, unsigned> namedFunctionIDs;
 
   // Types we've seen so far.
   std::vector<Type> types;
@@ -281,7 +281,7 @@ private:
 
   // This is all of the filenames referred to by locations in the file.
   SmallVector<StringRef, 4> locationFilenames;
-  llvm::StringMap<unsigned> locationFilenamesIndices;
+  DenseMap<StringAttr, unsigned> locationFilenamesIndices;
 
   // This is a list of locations within the file, the first element of the
   // tuple is a index into locationFilenames, the second and third are line/col
@@ -308,7 +308,7 @@ void EntityTable::addType(Type type) {
   addString(os.str());
 }
 
-LogicalResult EntityTable::addBEFFunction(Region *region, StringRef name) {
+LogicalResult EntityTable::addBEFFunction(Region *region, StringAttr name) {
   // Check to see if we support this region kind.
   if (region->getBlocks().size() != 1) {
     mlir::emitError(region->getLoc())
@@ -320,9 +320,12 @@ LogicalResult EntityTable::addBEFFunction(Region *region, StringRef name) {
     addType(argTy);
 
   // Remember this function.
-  addString(name);
+  if (name) {
+    addString(name.getValue());
+    namedFunctionIDs[name] = functions.size();
+  }
+
   regionFunctionIDs[region] = functions.size();
-  namedFunctionIDs[name] = functions.size();
   functions.push_back(
       BEFFunctionEntry(name, getRegionFunctionType(region), region));
   return success();
@@ -330,7 +333,7 @@ LogicalResult EntityTable::addBEFFunction(Region *region, StringRef name) {
 
 // Return the index of the specified function name, returning -1 if the
 // function name cannot be found.
-ssize_t EntityTable::getFunctionNamed(StringRef name) const {
+ssize_t EntityTable::getFunctionNamed(StringAttr name) const {
   auto iter = namedFunctionIDs.find(name);
   if (iter == namedFunctionIDs.end())
     return -1;
@@ -338,7 +341,7 @@ ssize_t EntityTable::getFunctionNamed(StringRef name) const {
 }
 
 void EntityTable::addPrimitive(Operation *primitive) {
-  StringRef name = primitive->getName().getStringRef();
+  StringAttr name = primitive->getName().getIdentifier();
   // Remember the primitive.
   if (!primitiveIDs.insert({name, primitives.size()}).second)
     return;
@@ -349,7 +352,7 @@ void EntityTable::addPrimitive(Operation *primitive) {
 }
 
 void EntityTable::addLocation(Location loc) {
-  StringRef filename = "";
+  StringAttr filename;
   unsigned line = 0, col = 0;
   // TODO: mainline TFRT has a richer location model we could adopt.
   if (auto fileLineCol = loc.dyn_cast<FileLineColLoc>()) {
@@ -415,7 +418,7 @@ bool EntityTable::collect(ModuleOp module, bool disableOptionalSections) {
     // We treat functions specially, putting them into the symbol table and
     // ignoring their attributes.
     if (auto fn = dyn_cast<BEF::FuncOp>(op)) {
-      if (failed(addBEFFunction(&fn.getBody(), fn.getName())))
+      if (failed(addBEFFunction(&fn.getBody(), fn.getNameAttr())))
         return WalkResult::interrupt();
       return WalkResult::advance();
     }
@@ -455,7 +458,7 @@ bool EntityTable::collect(ModuleOp module, bool disableOptionalSections) {
 
     // Keep add any regions used by this op as BEF functions.
     for (auto &region : op->getRegions()) {
-      if (failed(addBEFFunction(&region, "")))
+      if (failed(addBEFFunction(&region, StringAttr())))
         return WalkResult::interrupt();
     }
     return WalkResult::advance();
