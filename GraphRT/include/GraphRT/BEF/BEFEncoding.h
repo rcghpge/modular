@@ -35,6 +35,11 @@ enum SectionID {
   LOCATION_POSITIONS, // Detailed information for locations
 
   STRINGS, // All of the string data.
+  ATTRIBUTES,
+
+  ATTRIBUTE_TYPES,
+  ATTRIBUTE_NAMES,
+  REGISTER_TYPES,
 };
 
 } // namespace BEF

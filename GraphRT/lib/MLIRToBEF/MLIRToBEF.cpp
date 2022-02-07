@@ -95,14 +95,24 @@ public:
   /// Return the current position as a BEFOffset.
   BEFOffset getOffset() const { return BEFOffset{result.size()}; }
 
+  /// Return a raw pointer into the result buffer for the specified offset.
+  uint8_t *getRawPointer(BEFOffset offset) {
+    assert(offset.value <= result.size() && "invalid offset");
+    return result.data() + offset.value;
+  }
+
   void emitByte(uint8_t byte) { result.push_back(byte); }
 
   void emitBytes(ArrayRef<uint8_t> bytes) {
     result.insert(result.end(), bytes.begin(), bytes.end());
   }
 
-  void emitNulTerminatedString(StringRef str) {
+  void emitStringData(StringRef str) {
     emitBytes({reinterpret_cast<const uint8_t *>(str.data()), str.size()});
+  }
+
+  void emitNulTerminatedString(StringRef str) {
+    emitStringData(str);
     emitByte(0);
   }
 
@@ -151,6 +161,7 @@ public:
 
   // Emit a vbr encoded integer of arbitrary width.
   void emitVBR(size_t value) { emitVBRImpl(value, false); }
+  void emitInvertedVBR(size_t value);
 
   /// Emit an offset within a known BEF section.
   void emitOffset(BEFOffset offset) { emitVBR(offset.value); }
@@ -208,14 +219,28 @@ private:
 
 } // namespace
 
-// Our fundamental unit is a bytestream, but we want to be able to emit large
-// values as well.  We use a VBR encoding, where the high bit set indicates
-// that this is only a portion of the value.
+/// Our fundamental unit is a bytestream, but we want to be able to emit large
+/// values as well.  We use a VBR encoding, where the high bit set indicates
+/// that this is only a portion of the value.
 void BEFEmitter::emitVBRImpl(size_t value, bool isHighPart) {
   if ((value >> 7) != 0)
     emitVBRImpl(value >> 7, /*isHighPart=*/true);
 
   emitByte(static_cast<uint8_t>((value & 127) | (isHighPart ? 128 : 0)));
+}
+
+/// Emit the specified value as a "backwards" VBR, which allows clients to
+/// decode/parse it from the end of the value back to the front.  This is used
+/// for things like string/array lengths, where we want a pointer to the string
+/// data to indicate both the data and the length, allowing the executor to
+/// reconstruct a StringRef/ArrayRef.
+void BEFEmitter::emitInvertedVBR(size_t value) {
+  emitByte(uint8_t(value & 0x7F));
+  value >>= 7;
+  while (value != 0) {
+    emitByte(uint8_t((value & 0x7F) | 0x80));
+    value >>= 7;
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -259,11 +284,18 @@ private:
   void addAttributeType(Attribute attr);
 
 public:
-  // Uniquing set of attributes we need to emit, kept in order so we always
-  // produce a determinstic output file.
+  /// Uniquing set of attributes we need to emit, kept in order so we always
+  /// produce a determinstic output file.  This only maintains the attributes
+  /// that are references by the MLIR operations, it doesn't hold the
+  /// recursive elements.
   llvm::SetVector<Attribute> attributes;
+  SmallVector<Location> attributeLocs;
 
-  // Uniquing set of the primitives that we need to emit.
+  /// After the attributes section is emitted, this holds the offset for
+  /// each attribute that is emitted.
+  DenseMap<Attribute, BEFOffset> attributeOffsets;
+
+  /// Uniquing set of the primitives that we need to emit.
   std::vector<StringRef> primitives;
   DenseMap<StringAttr, unsigned> primitiveIDs;
 
@@ -391,16 +423,15 @@ void EntityTable::addLocation(Location loc) {
 }
 
 void EntityTable::addAttributeType(Attribute attr) {
-  if (auto int_attr = attr.dyn_cast<IntegerAttr>())
-    addType(int_attr.getType());
+  if (auto intAttr = attr.dyn_cast<IntegerAttr>())
+    addType(intAttr.getType());
 
-  if (auto float_attr = attr.dyn_cast<FloatAttr>())
-    addType(float_attr.getType());
+  if (auto floatAttr = attr.dyn_cast<FloatAttr>())
+    addType(floatAttr.getType());
 
-  if (auto arr_attr = attr.dyn_cast<ArrayAttr>()) {
-    for (auto attr : arr_attr.getValue()) {
+  if (auto arrAttr = attr.dyn_cast<ArrayAttr>()) {
+    for (auto attr : arrAttr.getValue())
       addAttributeType(attr);
-    }
   }
 }
 
@@ -470,9 +501,13 @@ bool EntityTable::collect(ModuleOp module, bool disableOptionalSections) {
           addAttributeType(attr.getValue());
         }
 
-        // We ignore the name of attributes, they just get passed as
-        // arguments.
-        attributes.insert(attr.getValue());
+        // We just keep track of the top level attributes in the "attributes"
+        // list, we do not recursively process them.  This is because we want to
+        // emit arrays of scalars as "flat" attributes where all the values are
+        // inline.
+        if (attributes.insert(attr.getValue()))
+          // If this attribute is new, remember what used it.
+          attributeLocs.push_back(op->getLoc());
       }
     }
 
@@ -517,6 +552,9 @@ public:
   }
   void emitLocationInfo();
   void emitStrings();
+  void emitAttributes(BEFEmitter *attrTypesSection);
+
+  bool hadError = false;
 
 private:
   ModuleOp module;
@@ -567,6 +605,169 @@ void BEFModuleEmitter::emitStrings() {
 }
 
 //===----------------------------------------------------------------------===//
+// Attribute Emission
+//===----------------------------------------------------------------------===//
+
+/// This is the emitter that builds the attributes section of a BEF.
+///
+/// This is a bit trickier than it may seem because we don't always recursively
+/// process all elements - we leave flat attributes inline, and don't
+/// redundantly emit the scalar values.
+class AttributesEmitter : public BEFEmitter {
+public:
+  explicit AttributesEmitter(EntityTable &entities, bool &hadError)
+      : entities(entities), hadError(hadError) {}
+
+  BEFOffset emitAttribute(Attribute attr, Location loc);
+
+  size_t getNumAttributesEmitted() const { return numAttributesEmitted; }
+
+private:
+  BEFOffset emitAttributeInternal(Attribute attr, Location loc);
+  BEFOffset emitIntegerAttribute(const APInt &value, Location loc);
+  BEFOffset emitStringAttribute(StringRef value);
+  BEFOffset emitArrayAttribute(ArrayAttr value, Location loc);
+  EntityTable &entities;
+  size_t numAttributesEmitted = 0;
+  bool &hadError;
+};
+
+BEFOffset AttributesEmitter::emitIntegerAttribute(const APInt &value,
+                                                  Location loc) {
+  size_t bytes = value.getBitWidth() / 8;
+  alignTo(bytes);
+  auto offset = getOffset();
+
+  switch (value.getBitWidth()) {
+  default:
+    mlir::emitError(loc) << "unsupported integer width " << value.getBitWidth();
+    hadError = true;
+    break;
+  case 1:
+    emitByte(static_cast<uint8_t>(value.getLimitedValue()));
+    break;
+  case 8:
+  case 16:
+  case 32:
+  case 64:
+    uint64_t v = value.getLimitedValue();
+    for (unsigned i = 0; i != bytes; ++i) {
+      emitByte(static_cast<uint8_t>(v & 255));
+      v >>= 8;
+    }
+    break;
+  }
+  return offset;
+}
+
+BEFOffset AttributesEmitter::emitStringAttribute(StringRef value) {
+  // In order to support strings of data with NUL characters in them, we emit
+  // strings as modified Pascal-style strings, that start with a VBR length. The
+  // string passed to the function points to the start of the data, but the
+  // bytes before it specify how long the string is.  To enforce this notion, we
+  // don't emit a zero byte at the end of the string data.
+  emitInvertedVBR(value.size());
+  auto offset = getOffset();
+  emitStringData(value);
+  return offset;
+}
+
+BEFOffset AttributesEmitter::emitArrayAttribute(ArrayAttr array, Location loc) {
+  // We emit dense arrays of integers and floating point values.
+  auto elts = array.getValue();
+
+  BEFOffset sizeStart = getOffset();
+
+  // Emit the number of elements first and then emit all of the attributes
+  // consecutively, returning the offset of the first element in the attribute
+  // array.
+  emitInvertedVBR(array.size());
+
+  BEFOffset sizeEnd = getOffset();
+
+  // The attribute array is empty. We just return the offset past the size.
+  if (elts.empty())
+    return sizeEnd;
+
+  // Emit the first element of the array, this could insert padding if it needs
+  // larger alignment then the current offset.
+  auto firstEltOffset = emitAttributeInternal(elts.front(), loc);
+  for (auto elt : elts.drop_front())
+    (void)emitAttributeInternal(elt, loc);
+
+  // If there is a gap between the size and the first attribute value, we
+  // move the size to be immediately before the first attribute value to
+  // remove the gap.
+  if (sizeEnd.value != firstEltOffset.value) {
+    size_t sizeOfArraySizeInBytes = sizeEnd.value - sizeStart.value;
+    memmove(getRawPointer(firstEltOffset) - sizeOfArraySizeInBytes,
+            getRawPointer(sizeStart), sizeOfArraySizeInBytes);
+    // Set the unused bytes to the alignment filler.
+    memset(getRawPointer(sizeStart), BEF::ALIGNMENT_BYTE,
+           firstEltOffset.value - sizeEnd.value);
+  }
+  return firstEltOffset;
+}
+
+BEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr,
+                                                   Location loc) {
+  if (auto intAttr = attr.dyn_cast<IntegerAttr>())
+    return emitIntegerAttribute(intAttr.getValue(), loc);
+
+  if (auto fpAttr = attr.dyn_cast<FloatAttr>()) {
+    const APFloat &value = fpAttr.getValue();
+    auto size = APFloat::getSizeInBits(value.getSemantics());
+    if (size == 16 || size == 32 || size == 64)
+      return emitIntegerAttribute(value.bitcastToAPInt(), loc);
+  }
+
+  if (auto string = attr.dyn_cast<StringAttr>())
+    return emitStringAttribute(string.getValue());
+
+  if (auto array = attr.dyn_cast<ArrayAttr>())
+    return emitArrayAttribute(array, loc);
+
+  mlir::emitError(loc) << "unsupported attribute " << attr;
+  hadError = true;
+  return {0};
+}
+
+BEFOffset AttributesEmitter::emitAttribute(Attribute attr, Location loc) {
+  // Since there might be nested array attributes, they might have been already
+  // emitted.
+  auto attrIt = entities.attributeOffsets.find(attr);
+  if (attrIt != entities.attributeOffsets.end())
+    return attrIt->second;
+
+  auto offset = emitAttributeInternal(attr, loc);
+  entities.attributeOffsets[attr] = offset;
+
+  // We emitted an attribute.
+  numAttributesEmitted++;
+  return offset;
+}
+
+/// Emit the ATTRIBUTES section.  If attrTypesSection is non-null, we emit type
+/// information into it.
+void BEFModuleEmitter::emitAttributes(BEFEmitter *attrTypesSection) {
+  // Emit attributes and record them in EntityIndex. Nested array attributes
+  // will be traversed recursively and their elements will be emitted and
+  // recorded before the top level offsets array is emitted.
+  AttributesEmitter attributesSection(entities, hadError);
+  for (auto attrAndLoc :
+       llvm::zip(entities.attributes, entities.attributeLocs)) {
+    (void)attributesSection.emitAttribute(std::get<0>(attrAndLoc),
+                                          std::get<1>(attrAndLoc));
+  }
+
+  if (attrTypesSection) {
+    // TODO: Emit attrTypesSection if it is present.
+  }
+
+  emitSection(BEF::SectionID::ATTRIBUTES, attributesSection);
+}
+
+//===----------------------------------------------------------------------===//
 // Top level emission logic
 //===----------------------------------------------------------------------===//
 
@@ -586,10 +787,37 @@ std::vector<uint8_t> M::translateMLIRToBEF(ModuleOp module,
   if (emitter.collectEntities(disableOptionalSections))
     return {};
 
+  // If optional section emission is enabled, these collect the data to emit
+  // into the respective sections.
+  BEFEmitter attrTypesSection, attrNamesSection, registerTypesSection;
+
   // Emit magic numbers and format version.
   emitter.emitBytes({BEF::MAGIC1, BEF::MAGIC2 + BEF::VERSION0});
   emitter.emitLocationInfo();
   emitter.emitStrings();
+
+  emitter.emitAttributes(disableOptionalSections ? nullptr : &attrTypesSection);
+
+#if 0 // TODO
+  emitter.emitPrimitives();
+   emitter.emitTypes();
+   emitter.emitFunctions(disableOptionalSections ? nullptr, &attrNamesSection,
+                        disableOptionalSections ? nullptr,
+                         &registerTypesSection);
+   emitter.emitFunctionIndex();
+#endif
+
+  // Emit all the optional sections at the end if they're requested.
+  if (!disableOptionalSections) {
+    emitter.emitSection(BEF::SectionID::ATTRIBUTE_TYPES, attrTypesSection);
+    emitter.emitSection(BEF::SectionID::ATTRIBUTE_NAMES, attrNamesSection);
+    emitter.emitSection(BEF::SectionID::REGISTER_TYPES, registerTypesSection);
+  }
+
+  // If emission diagnosed an error along the way and emitted a diagnostic,
+  // then we should propagate the failure up.
+  if (emitter.hadError)
+    return {};
 
   return emitter.takeResult();
 }
