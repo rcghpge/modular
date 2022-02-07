@@ -76,7 +76,7 @@ A BEF file is formed as a byte stream whose top-level structure is a list of
     the reader, e.g. as is the case with the primitives and types tables.
 
 BEF files can be created by an arbitrary producer, but the standard ways is to
-use the [MLIRToBEF](../GraphRT/lib/MLIRToBEF)
+use the [MLIRToBEF](../lib/MLIRToBEF)
 translation library (or standalone tool), which turns an MLIR representation of
 a program into a BEF file.
 
@@ -103,10 +103,10 @@ over entirely by the reader) and an optional alignment for the contents of the
 section.
 
 Section IDs and other fundamental constants are defined in
-[`BEFEncoding.h`](../GraphRT/include/GraphRT/BEF/BEFEncoding.h),
+[`BEFEncoding.h`](../include/GraphRT/BEF/BEFEncoding.h),
 and utilities for decoding the basic file structures like VBR integers are
 defined in
-[`BEFReader.h`](../GraphRT/include/GraphRT/BEF/BEFReader.h).
+[`BEFReader.h`](../include/GraphRT/BEF/BEFReader.h).
 
 The LENGTH_AND_ALIGNMENT contains SECTION_LENGTH and SECTION_ALIGNMENT_FLAG. The
 SECTION_LENGTH contains one bit shifted value of the section length and the
@@ -427,7 +427,7 @@ execution, but this section is necessary for BEFToMLIR conversion. This
 section describes the type information for each attribute (specified by an
 Offset into [Attributes section](#attributes-section)). An attribute type is an
 one-byte enum described in [Attributes section](#attributes-section) and defined
-in [`BEFEncoding.h`](../GraphRT/include/GraphRT/BEF/BEFEncoding.h).
+in [`BEFEncoding.h`](../include/GraphRT/BEF/BEFEncoding.h).
 
 ### AttributeNames Section
 
