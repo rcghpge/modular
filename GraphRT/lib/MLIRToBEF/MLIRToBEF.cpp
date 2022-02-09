@@ -275,8 +275,14 @@ public:
     return it->second;
   }
 
+  BEFOffset getStringOffset(StringAttr str) const {
+    auto it = stringOffsets.find(str);
+    assert(it != stringOffsets.end() && "unknown string");
+    return it->second;
+  }
+
 private:
-  void addString(StringRef string) { strings.insert(string); }
+  void addString(StringAttr string) { strings.insert(string); }
   void addType(Type type);
   LogicalResult addBEFFunction(Region *region, StringAttr name);
   void addPrimitive(Operation *primitive);
@@ -296,7 +302,7 @@ public:
   DenseMap<Attribute, BEFOffset> attributeOffsets;
 
   /// Uniquing set of the primitives that we need to emit.
-  std::vector<StringRef> primitives;
+  std::vector<StringAttr> primitives;
   DenseMap<StringAttr, unsigned> primitiveIDs;
 
   /// BEFFunctionEntry keeps track of each of the top level `func`'s and the
@@ -321,12 +327,11 @@ public:
   std::vector<Type> types;
   DenseMap<Type, unsigned> typeIDs;
 
-  // All of the strings we need to emit the BEF file, an unordered
-  // collection that we sort before emitting.
-  llvm::StringSet<> strings;
+  // All of the strings we need to emit the BEF file.
+  llvm::SetVector<StringAttr> strings;
 
   /// This is the offset of each known string in the STRINGS section.
-  DenseMap<StringRef, BEFOffset> stringOffsets;
+  DenseMap<StringAttr, BEFOffset> stringOffsets;
 
   // This is all of the filenames referred to by locations in the file.
   llvm::SetVector<StringAttr> locationFilenames;
@@ -351,14 +356,6 @@ void EntityTable::addType(Type type) {
   if (!typeIDs.insert({type, types.size()}).second)
     return;
   types.push_back(type);
-
-#if 0 // TODO: Remove this.
-  // If it is new, remember the type name as a string.
-  SmallVector<char, 64> resultStr;
-  llvm::raw_svector_ostream os(resultStr);
-  type.print(os);
-  addString(os.str());
-#endif
 }
 
 LogicalResult EntityTable::addBEFFunction(Region *region, StringAttr name) {
@@ -374,7 +371,7 @@ LogicalResult EntityTable::addBEFFunction(Region *region, StringAttr name) {
 
   // Remember this function.
   if (name) {
-    addString(name.getValue());
+    addString(name);
     namedFunctionIDs[name] = functions.size();
   }
 
@@ -553,6 +550,7 @@ public:
   void emitLocationInfo();
   void emitStrings();
   void emitAttributes(BEFEmitter *attrTypesSection);
+  void emitPrimitiveNames();
 
   bool hadError = false;
 
@@ -585,18 +583,9 @@ void BEFModuleEmitter::emitLocationInfo() {
 }
 
 void BEFModuleEmitter::emitStrings() {
-  // We have an ordered collection of strings: sort them alphabetically to make
-  // them stable.
-  std::vector<StringRef> stringsInOrder;
-  stringsInOrder.reserve(entities.strings.size());
-  for (const auto &str : entities.strings)
-    stringsInOrder.push_back(str.getKey());
-  llvm::sort(stringsInOrder.begin(), stringsInOrder.end());
-
-  // Now that we have all the strings in order, emit them and remember their
-  // offsets in the string section.
+  // Emit the strings to the string section and remember their offsets.
   BEFEmitter stringSection;
-  for (StringRef string : stringsInOrder) {
+  for (StringAttr string : entities.strings) {
     entities.stringOffsets[string] = stringSection.getOffset();
     stringSection.emitNulTerminatedString(string);
   }
@@ -767,6 +756,19 @@ void BEFModuleEmitter::emitAttributes(BEFEmitter *attrTypesSection) {
   emitSection(BEF::SectionID::ATTRIBUTES, attributesSection);
 }
 
+void BEFModuleEmitter::emitPrimitiveNames() {
+  // The kernels are already in a stable order, so just emit them in the
+  // order they were found.
+  BEFEmitter primitivesNamesSection;
+  // Count of the number of kernels that exist.
+  primitivesNamesSection.emitVBR(entities.primitives.size());
+
+  for (auto op : entities.primitives)
+    primitivesNamesSection.emitOffset(entities.getStringOffset(op));
+
+  emitSection(BEF::SectionID::PRIMITIVE_NAMES, primitivesNamesSection);
+}
+
 //===----------------------------------------------------------------------===//
 // Top level emission logic
 //===----------------------------------------------------------------------===//
@@ -798,8 +800,8 @@ std::vector<uint8_t> M::translateMLIRToBEF(ModuleOp module,
 
   emitter.emitAttributes(disableOptionalSections ? nullptr : &attrTypesSection);
 
+  emitter.emitPrimitiveNames();
 #if 0 // TODO
-  emitter.emitPrimitives();
    emitter.emitTypes();
    emitter.emitFunctions(disableOptionalSections ? nullptr, &attrNamesSection,
                         disableOptionalSections ? nullptr,

@@ -200,15 +200,15 @@ This means that primitives will need to bswap attributes for big-endian systems,
 but they generally have bswap'ing loads anyway so this shouldn't impose a
 performance penalty.
 
-### Primitives Section
+### Primitive Names Section
 
 **Grammar**
 
 ```none
-  PRIMITIVES_SECTION ::= VBR<"PrimitiveCount"> OFFSET<"PrimitiveNameOffset">*
+  PRIMITIVE_NAMES_SECTION ::= VBR<"PrimitiveCount"> OFFSET<"PrimitiveNameOffset">*
 ```
 
-The Primitives section defines a table of primitive names, directly
+The Primitive names section defines a table of primitive names, directly
 corresponding to the names in the MLIR GraphRT executor program. This allows
 references from the BEF Functions section to use dense indexes into the table.
 
@@ -232,7 +232,7 @@ mutable array in memory for primitives.
 ```
 
 The Types section defines a table of type names used by the program, and is
-laid out exactly the same as the [Primitives section](#primitives-section). The
+laid out exactly the same as the [Primitive Names section](#primitive-names-section). The
 [BEF Functions section](#bef-functions-section) uses Indexes into this section to
 specify types of registers.
 
@@ -355,7 +355,7 @@ table of primitives allows the use of primitive indexes.
 
 Each instance of a primitive includes a primitive header, a result table and a
 primitive body. The primitive header consists of a opcode (an index into the
-Primitives table, defined by the Primitives section), a location (an offset into
+Primitives table, defined by the Primitives names section), a location (an offset into
 the [LocationPositions section](#locationpositions-section)) the numbers of
 arguments, attributes, functions and results in the primitive body.
 

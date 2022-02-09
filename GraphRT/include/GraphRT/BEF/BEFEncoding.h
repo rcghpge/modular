@@ -28,7 +28,7 @@ enum {
   SECTION_ALIGNMENT_FLAG = 0x01,
 }; // anonymous enum
 
-enum SectionID {
+enum class SectionID {
   INVALID_SECTION = 0,
 
   LOCATION_FILENAMES, // Strings for each filename used by a location.
@@ -36,6 +36,7 @@ enum SectionID {
 
   STRINGS, // All of the string data.
   ATTRIBUTES,
+  PRIMITIVE_NAMES,
 
   ATTRIBUTE_TYPES,
   ATTRIBUTE_NAMES,
