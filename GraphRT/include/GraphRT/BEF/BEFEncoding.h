@@ -31,6 +31,22 @@ enum {
   PRIMITIVE_ENTRY_ALIGNMENT = 4,
 }; // anonymous enum
 
+/// This bitfield encodes into a single byte metadata about the format of
+/// emitted attributes.
+enum class AttributeKind {
+  INVALID = 0,
+  I1,
+  I8,
+  I16,
+  I32,
+  I64,
+  F16,
+  F32,
+  F64,
+  STRING,
+  ARRAY_TYPE = 0x80
+};
+
 enum class SectionID {
   INVALID_SECTION = 0,
 
@@ -43,9 +59,9 @@ enum class SectionID {
   BEF_FUNCTIONS,
   BEF_FUNCTION_INDEX,
 
-  ATTRIBUTE_TYPES,
-  ATTRIBUTE_NAMES,
-  REGISTER_TYPES,
+  ATTRIBUTE_KIND_MD,
+  ATTRIBUTE_NAME_MD,
+  REGISTER_TYPE_MD,
 };
 
 } // namespace BEF

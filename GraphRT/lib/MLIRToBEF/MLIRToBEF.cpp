@@ -76,7 +76,6 @@ static bool isSupportedAttribute(Attribute attr) {
 //===----------------------------------------------------------------------===//
 
 namespace {
-
 // This is the emitter that builds a BEF into an std::vector.  This class
 // contains low-level routines used by the various specific emitters.  In
 // addition to collecting the bytes contained in this piece of the BEF file,
@@ -572,59 +571,81 @@ bool EntityTable::collect(ModuleOp module, bool disableOptionalSections) {
 // Attribute Emission
 //===----------------------------------------------------------------------===//
 
+namespace {
+struct OffsetAndAttrKind {
+  BEFOffset offset;
+  BEF::AttributeKind attrKind;
+};
+} // namespace
+
 /// This is the emitter that builds the attributes section of a BEF.
 ///
 /// This is a bit trickier than it may seem because we don't always recursively
 /// process all elements - we leave flat attributes inline, and don't
 /// redundantly emit the scalar values.
+namespace {
 class AttributesEmitter : public BEFEmitter {
 public:
   explicit AttributesEmitter(EntityTable &entities, bool &hadError)
       : entities(entities), hadError(hadError) {}
 
-  BEFOffset emitAttribute(Attribute attr, Location loc);
-
-  size_t getNumAttributesEmitted() const { return numAttributesEmitted; }
+  OffsetAndAttrKind emitAttribute(Attribute attr, Location loc);
 
 private:
-  BEFOffset emitAttributeInternal(Attribute attr, Location loc);
-  BEFOffset emitIntegerAttribute(const APInt &value, Location loc);
-  BEFOffset emitStringAttribute(StringRef value);
-  BEFOffset emitArrayAttribute(ArrayAttr value, Location loc);
+  OffsetAndAttrKind emitAttributeInternal(Attribute attr, Location loc);
+  OffsetAndAttrKind emitIntegerAttribute(const APInt &value, Location loc);
+  OffsetAndAttrKind emitStringAttribute(StringRef value);
+  OffsetAndAttrKind emitArrayAttribute(ArrayAttr value, Location loc);
   EntityTable &entities;
-  size_t numAttributesEmitted = 0;
   bool &hadError;
 };
+} // end anonymous namespace.
 
-BEFOffset AttributesEmitter::emitIntegerAttribute(const APInt &value,
-                                                  Location loc) {
+OffsetAndAttrKind AttributesEmitter::emitIntegerAttribute(const APInt &value,
+                                                          Location loc) {
   size_t bytes = value.getBitWidth() / 8;
   alignTo(bytes);
   auto offset = getOffset();
+  unsigned numBytes;
+  BEF::AttributeKind kind;
 
   switch (value.getBitWidth()) {
   default:
     mlir::emitError(loc) << "unsupported integer width " << value.getBitWidth();
     hadError = true;
-    break;
+    return {offset, BEF::AttributeKind::INVALID};
   case 1:
-    emitByte(static_cast<uint8_t>(value.getLimitedValue()));
+    numBytes = 1;
+    kind = BEF::AttributeKind::I1;
     break;
   case 8:
+    numBytes = 1;
+    kind = BEF::AttributeKind::I8;
+    break;
   case 16:
+    numBytes = 2;
+    kind = BEF::AttributeKind::I16;
+    break;
   case 32:
+    numBytes = 4;
+    kind = BEF::AttributeKind::I32;
+    break;
   case 64:
-    uint64_t v = value.getLimitedValue();
-    for (unsigned i = 0; i != bytes; ++i) {
-      emitByte(static_cast<uint8_t>(v & 255));
-      v >>= 8;
-    }
+    numBytes = 8;
+    kind = BEF::AttributeKind::I64;
     break;
   }
-  return offset;
+
+  uint64_t v = value.getLimitedValue();
+  for (unsigned i = 0; i != bytes; ++i) {
+    emitByte(static_cast<uint8_t>(v & 255));
+    v >>= 8;
+  }
+
+  return {offset, kind};
 }
 
-BEFOffset AttributesEmitter::emitStringAttribute(StringRef value) {
+OffsetAndAttrKind AttributesEmitter::emitStringAttribute(StringRef value) {
   // In order to support strings of data with NUL characters in them, we emit
   // strings as modified Pascal-style strings, that start with a VBR length. The
   // string passed to the function points to the start of the data, but the
@@ -633,10 +654,11 @@ BEFOffset AttributesEmitter::emitStringAttribute(StringRef value) {
   emitInvertedVBR(value.size());
   auto offset = getOffset();
   emitStringData(value);
-  return offset;
+  return {offset, BEF::AttributeKind::STRING};
 }
 
-BEFOffset AttributesEmitter::emitArrayAttribute(ArrayAttr array, Location loc) {
+OffsetAndAttrKind AttributesEmitter::emitArrayAttribute(ArrayAttr array,
+                                                        Location loc) {
   // We emit dense arrays of integers and floating point values.
   auto elts = array.getValue();
 
@@ -651,30 +673,61 @@ BEFOffset AttributesEmitter::emitArrayAttribute(ArrayAttr array, Location loc) {
 
   // The attribute array is empty. We just return the offset past the size.
   if (elts.empty())
-    return sizeEnd;
+    return {sizeEnd, BEF::AttributeKind::ARRAY_TYPE};
 
   // Emit the first element of the array, this could insert padding if it needs
   // larger alignment then the current offset.
-  auto firstEltOffset = emitAttributeInternal(elts.front(), loc);
-  for (auto elt : elts.drop_front())
-    (void)emitAttributeInternal(elt, loc);
+  auto firstEltOffsetAndKind = emitAttributeInternal(elts.front(), loc);
+
+  // Reject unsupported elements of an array.
+  switch (firstEltOffsetAndKind.attrKind) {
+  default:
+    mlir::emitError(loc) << "unsupported array element attribute "
+                         << elts.front();
+    hadError = true;
+    return {sizeEnd, BEF::AttributeKind::INVALID};
+  case BEF::AttributeKind::I1:
+  case BEF::AttributeKind::I8:
+  case BEF::AttributeKind::I16:
+  case BEF::AttributeKind::I32:
+  case BEF::AttributeKind::I64:
+  case BEF::AttributeKind::F16:
+  case BEF::AttributeKind::F32:
+  case BEF::AttributeKind::F64:
+    break;
+  }
+
+  for (auto elt : elts.drop_front()) {
+    auto nextEltKind = emitAttributeInternal(elt, loc).attrKind;
+    if (nextEltKind != firstEltOffsetAndKind.attrKind) {
+      mlir::emitError(loc) << "unsupported array with heterogenous elements "
+                           << elt;
+      hadError = true;
+      return {sizeEnd, BEF::AttributeKind::INVALID};
+    }
+  }
+
+  auto startOffset = firstEltOffsetAndKind.offset;
 
   // If there is a gap between the size and the first attribute value, we
   // move the size to be immediately before the first attribute value to
   // remove the gap.
-  if (sizeEnd.value != firstEltOffset.value) {
+  if (sizeEnd.value != startOffset.value) {
     size_t sizeOfArraySizeInBytes = sizeEnd.value - sizeStart.value;
-    memmove(getRawPointer(firstEltOffset) - sizeOfArraySizeInBytes,
+    memmove(getRawPointer(startOffset) - sizeOfArraySizeInBytes,
             getRawPointer(sizeStart), sizeOfArraySizeInBytes);
     // Set the unused bytes to the alignment filler.
     memset(getRawPointer(sizeStart), BEF::ALIGNMENT_BYTE,
-           firstEltOffset.value - sizeEnd.value);
+           startOffset.value - sizeEnd.value);
   }
-  return firstEltOffset;
+
+  unsigned kindValue = (unsigned)firstEltOffsetAndKind.attrKind |
+                       (unsigned)BEF::AttributeKind::ARRAY_TYPE;
+  return {startOffset, BEF::AttributeKind(kindValue)};
 }
 
-BEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr,
-                                                   Location loc) {
+OffsetAndAttrKind AttributesEmitter::emitAttributeInternal(Attribute attr,
+                                                           Location loc) {
   if (auto intAttr = attr.dyn_cast<IntegerAttr>())
     return emitIntegerAttribute(intAttr.getValue(), loc);
 
@@ -693,28 +746,22 @@ BEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr,
 
   mlir::emitError(loc) << "unsupported attribute " << attr;
   hadError = true;
-  return {0};
+  return {{0}, BEF::AttributeKind::INVALID};
 }
 
-BEFOffset AttributesEmitter::emitAttribute(Attribute attr, Location loc) {
-  // Since there might be nested array attributes, they might have been already
-  // emitted.
-  auto attrIt = entities.attributeOffsets.find(attr);
-  if (attrIt != entities.attributeOffsets.end())
-    return attrIt->second;
-
-  auto offset = emitAttributeInternal(attr, loc);
-  entities.attributeOffsets[attr] = offset;
-
-  // We emitted an attribute.
-  numAttributesEmitted++;
-  return offset;
+OffsetAndAttrKind AttributesEmitter::emitAttribute(Attribute attr,
+                                                   Location loc) {
+  assert(!entities.attributeOffsets.count(attr) && "Attr already emitted?");
+  auto offsetAndKind = emitAttributeInternal(attr, loc);
+  entities.attributeOffsets[attr] = offsetAndKind.offset;
+  return offsetAndKind;
 }
 
 //===----------------------------------------------------------------------===//
 // BEFFunctionEmitter
 //===----------------------------------------------------------------------===//
 
+namespace {
 // This is the emitter that builds the function entry of a BEF.
 class BEFFunctionEmitter : public BEFEmitter {
 public:
@@ -742,6 +789,7 @@ private:
 
   EntityTable &entities;
 };
+} // end anonymous namespace.
 
 void BEFFunctionEmitter::emitFunction(Region *region) {
   assert(region->getBlocks().size() == 1 && "should have a single block");
@@ -981,7 +1029,7 @@ public:
   }
   void emitLocationInfo();
   void emitStrings();
-  void emitAttributes(BEFEmitter *attrTypesSection);
+  void emitAttributes(BEFEmitter &attrKindSection);
   void emitPrimitiveNames();
   void emitBEFFunctions(BEFEmitter *attributeNamesSection,
                         BEFEmitter *registerTypesSection);
@@ -1028,21 +1076,24 @@ void BEFModuleEmitter::emitStrings() {
   emitSection(BEF::SectionID::STRINGS, stringSection);
 }
 
-/// Emit the ATTRIBUTES section.  If attrTypesSection is non-null, we emit type
-/// information into it.
-void BEFModuleEmitter::emitAttributes(BEFEmitter *attrTypesSection) {
+/// Emit the ATTRIBUTES section, and the ATTRIBUTE_KIND_MD sections.
+void BEFModuleEmitter::emitAttributes(BEFEmitter &attrKindsSection) {
+  // The first entry of the ATTRIBUTE_KIND_MD section is a count of attributes.
+  attrKindsSection.emitVBR(entities.attributes.size());
+
   // Emit attributes and record them in EntityIndex. Nested array attributes
   // will be traversed recursively and their elements will be emitted and
   // recorded before the top level offsets array is emitted.
   AttributesEmitter attributesSection(entities, hadError);
   for (auto attrAndLoc :
        llvm::zip(entities.attributes, entities.attributeLocs)) {
-    (void)attributesSection.emitAttribute(std::get<0>(attrAndLoc),
-                                          std::get<1>(attrAndLoc));
-  }
+    auto offsetAndKind = attributesSection.emitAttribute(
+        std::get<0>(attrAndLoc), std::get<1>(attrAndLoc));
 
-  if (attrTypesSection) {
-    // TODO: Emit attrTypesSection if it is present.
+    // Emit metadata for each attribute we put out so BEF2MLIR can interpret the
+    // data correctly.
+    attrKindsSection.emitOffset(offsetAndKind.offset);
+    attrKindsSection.emitByte((unsigned)offsetAndKind.attrKind);
   }
 
   emitSection(BEF::SectionID::ATTRIBUTES, attributesSection);
@@ -1119,14 +1170,14 @@ std::vector<uint8_t> M::translateMLIRToBEF(ModuleOp module,
 
   // If optional section emission is enabled, these collect the data to emit
   // into the respective sections.
-  BEFEmitter attrTypesSection, attrNamesSection, registerTypesSection;
+  BEFEmitter attrKindsSection, attrNamesSection, registerTypesSection;
 
   // Emit magic numbers and format version.
   emitter.emitBytes({BEF::MAGIC1, BEF::MAGIC2 + BEF::VERSION0});
   emitter.emitLocationInfo();
   emitter.emitStrings();
 
-  emitter.emitAttributes(disableOptionalSections ? nullptr : &attrTypesSection);
+  emitter.emitAttributes(attrKindsSection);
 
   emitter.emitPrimitiveNames();
   emitter.emitBEFFunctions(
@@ -1134,11 +1185,14 @@ std::vector<uint8_t> M::translateMLIRToBEF(ModuleOp module,
       disableOptionalSections ? nullptr : &registerTypesSection);
   emitter.emitFunctionIndex();
 
+  // Unconditionally emit metadata that describes the attribute section, this
+  // is the minimal metadata needed by BEF2MLIR.
+  emitter.emitSection(BEF::SectionID::ATTRIBUTE_KIND_MD, attrKindsSection);
+
   // Emit all the optional sections at the end if they're requested.
   if (!disableOptionalSections) {
-    emitter.emitSection(BEF::SectionID::ATTRIBUTE_TYPES, attrTypesSection);
-    emitter.emitSection(BEF::SectionID::ATTRIBUTE_NAMES, attrNamesSection);
-    emitter.emitSection(BEF::SectionID::REGISTER_TYPES, registerTypesSection);
+    emitter.emitSection(BEF::SectionID::ATTRIBUTE_NAME_MD, attrNamesSection);
+    emitter.emitSection(BEF::SectionID::REGISTER_TYPE_MD, registerTypesSection);
   }
 
   // If emission diagnosed an error along the way and emitted a diagnostic,
