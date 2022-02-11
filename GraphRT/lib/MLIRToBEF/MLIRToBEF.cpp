@@ -27,18 +27,18 @@ struct BEFOffset {
   size_t value;
 };
 
-static FunctionType getRegionFunctionType(Region *region) {
+struct BEFFunctionSignature {
+  size_t numArguments, numResults;
+};
+
+static BEFFunctionSignature getBEFFunctionSignature(Region *region) {
   // Emit information about the type of the function.
   auto *block = &region->getBlocks().front();
 
-  // Arguments.
-  SmallVector<Type, 4> inputs(block->getArgumentTypes());
-
-  // Results: MLIR Regions don't have an easy way to identify results in
-  // regions, so we just hard code the "bef.output" instruction.
-  assert(isa<BEF::OutputOp>(&block->back()));
-  SmallVector<Type, 4> results(block->back().getOperandTypes());
-  return FunctionType::get(region->getContext(), inputs, results);
+  // BEF functions produce results with the "bef.output" operation.
+  auto output = dyn_cast<BEF::OutputOp>(&block->back());
+  size_t numResults = output ? output->getNumOperands() : 0;
+  return BEFFunctionSignature{block->getNumArguments(), numResults};
 }
 
 //===----------------------------------------------------------------------===//
@@ -288,8 +288,8 @@ public:
   }
 
   void addBEFFunctionOffset(StringAttr name, BEFOffset offset,
-                            FunctionType type) {
-    functionIndexEntries.push_back({getStringOffset(name), offset, type});
+                            BEFFunctionSignature signature) {
+    functionIndexEntries.push_back({getStringOffset(name), offset, signature});
   }
 
   /// Return the BEFOffset for the specified location entry.
@@ -330,11 +330,12 @@ public:
   /// regions attached to control flow statements.  These all turn into BEF
   /// functions.
   struct BEFFunctionEntry {
-    BEFFunctionEntry(StringAttr name, FunctionType type, Region *region)
-        : name(name), type(type), region(region) {}
+    BEFFunctionEntry(StringAttr name, BEFFunctionSignature signature,
+                     Region *region)
+        : name(name), signature(signature), region(region) {}
 
     StringAttr name;
-    FunctionType type; // FIXME: Strength reduce to #args/#results counts.
+    BEFFunctionSignature signature;
     Region *region;
   };
 
@@ -347,7 +348,7 @@ public:
   struct FunctionIndexEntry {
     BEFOffset nameOffset;
     BEFOffset functionOffset;
-    FunctionType type; // FIXME: Strength reduce to #args/#results counts.
+    BEFFunctionSignature signature;
   };
 
   // This follows the format of the FunctionIndex section.
@@ -406,7 +407,7 @@ LogicalResult EntityTable::addBEFFunction(Region *region, StringAttr name) {
 
   regionFunctionIDs[region] = functions.size();
   functions.push_back(
-      BEFFunctionEntry(name, getRegionFunctionType(region), region));
+      BEFFunctionEntry(name, getBEFFunctionSignature(region), region));
   return success();
 }
 
@@ -1071,7 +1072,7 @@ void BEFModuleEmitter::emitBEFFunctions(BEFEmitter *attributeNamesSection,
   for (auto function : entities.functions) {
     // Remember that we emitted this region to this offset.
     entities.addBEFFunctionOffset(function.name, functionsSection.getOffset(),
-                                  function.type);
+                                  function.signature);
     functionsSection.emitFunction(function.region);
   }
 
@@ -1089,8 +1090,8 @@ void BEFModuleEmitter::emitFunctionIndex() {
   for (const auto &entry : functionIndexEntries) {
     functionIndexSection.emitOffset(entry.functionOffset);
     functionIndexSection.emitOffset(entry.nameOffset);
-    functionIndexSection.emitVBR(entry.type.getInputs().size());
-    functionIndexSection.emitVBR(entry.type.getResults().size());
+    functionIndexSection.emitVBR(entry.signature.numArguments);
+    functionIndexSection.emitVBR(entry.signature.numResults);
   }
 
   emitSection(BEF::SectionID::BEF_FUNCTION_INDEX, functionIndexSection);
