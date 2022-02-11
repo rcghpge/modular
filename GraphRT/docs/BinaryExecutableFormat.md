@@ -243,15 +243,14 @@ specify types of registers.
 ```none
   BEF_FUNCTION_INDEX_SECTION ::= VBR<"NumBEFFunctions"> BEF_FUNCTION_ENTRY*
   BEF_FUNCTION_ENTRY         ::= OFFSET<"BEFFunction"> OFFSET<"Name">
-                                 VBR<"NumArguments"> INDEX<"Type">* 
-                                 VBR<"NumResults"> INDEX<"Type">*
+                                 VBR<"NumArguments"> VBR<"NumResults"> 
 ```
 
 The BEFFunctionIndex section defines a table of "functions" in the BEF file, 
 including an Offset into the [BEF Functions Section](#bef-functions-section), a
 name (an Offset
 into the [Strings section](#strings-section), which may be an empty string), and
-a list of argument and result types.
+a count of argument and result types.
 
 ***Rationale***
 
@@ -339,18 +338,25 @@ table of primitives allows the use of primitive indexes.
 **Grammar**
 
 ```none
-  PRIMITIVE        ::= PRIMITIVE_HEADER PRIMITIVE_RESULT_TABLE PRIMITIVE_BODY
+  PRIMITIVE              ::= PRIMITIVE_HEADER
+                             PRIMITIVE_RESULT_TABLE
+                             PRIMITIVE_BODY
 
-  PRIMITIVE_HEADER ::= FIXED32<"PrimitiveCode"> FIXED32<"PrimitiveLocation">
-                       FIXED32<"NumArguments"> FIXED32<"NumAttributes">
-                       FIXED32<"NumFunctions"> FIXED32<"NumResults">
+  PRIMITIVE_HEADER       ::= FIXED32<"PrimitiveCode">
+                             FIXED32<"PrimitiveLocation">
+                             FIXED32<"NumArguments">
+                             FIXED32<"NumAttributes">
+                             FIXED32<"NumFunctions">
+                             FIXED32<"NumResults">
+                             FIXED32<"SpecialAttrs">
 
-  PRIMITIVE_RESULT_TABLE
-                   ::= FIXED32<"NumUsedBys">*
+  PRIMITIVE_RESULT_TABLE ::= FIXED32<"NumUsedBys">*
 
-  PRIMITIVE_BODY   ::= FIXED32<PrimitiveArgument>* FIXED32<PrimitiveAttribute>*
-                       FIXED32<PrimitiveFunction>* FIXED32<PrimitiveResult>*
-                       FIXED32<PrimitiveUsedBy>*
+  PRIMITIVE_BODY         ::= FIXED32<PrimitiveArgument>*
+                             FIXED32<PrimitiveAttribute>*
+                             FIXED32<PrimitiveFunction>*
+                             FIXED32<PrimitiveResult>*
+                             FIXED32<PrimitiveUsedBy>*
 ```
 
 Each instance of a primitive includes a primitive header, a result table and a

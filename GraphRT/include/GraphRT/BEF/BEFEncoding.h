@@ -26,6 +26,9 @@ enum {
 
   // This indicates whether a section has an explicit alignment.
   SECTION_ALIGNMENT_FLAG = 0x01,
+
+  // Primitives in BEF are 4-byte aligned.
+  PRIMITIVE_ENTRY_ALIGNMENT = 4,
 }; // anonymous enum
 
 enum class SectionID {
@@ -37,6 +40,8 @@ enum class SectionID {
   STRINGS, // All of the string data.
   ATTRIBUTES,
   PRIMITIVE_NAMES,
+  BEF_FUNCTIONS,
+  BEF_FUNCTION_INDEX,
 
   ATTRIBUTE_TYPES,
   ATTRIBUTE_NAMES,

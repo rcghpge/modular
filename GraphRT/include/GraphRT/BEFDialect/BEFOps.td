@@ -53,7 +53,7 @@ def OutputOp : BEFOp<"output",
     ```mlir
       bef.func @foo() : i32, f8 {
         ...
-        bef.return %0, %1 : i32, f8
+        bef.output %0, %1 : i32, f8
       }
     ```
   }];

@@ -139,7 +139,7 @@ public:
 
   // Emit a guaranteed 4-byte integer aligned to 4 bytes, allowing this to be
   // directly mapped into the target process in little-endian form.
-  void EmitInt4(uint32_t value) {
+  void emitInt4(uint32_t value) {
     alignTo(4);
     uint8_t data[] = {uint8_t(value & 0xFF), uint8_t((value >> 8) & 0xFF),
                       uint8_t((value >> 16) & 0xFF),
@@ -281,7 +281,28 @@ public:
     return it->second;
   }
 
+  BEFOffset getAttributeOffset(Attribute attr) const {
+    auto it = attributeOffsets.find(attr);
+    assert(it != attributeOffsets.end() && "unknown attribute");
+    return it->second;
+  }
+
+  void addBEFFunctionOffset(StringAttr name, BEFOffset offset,
+                            FunctionType type) {
+    functionIndexEntries.push_back({getStringOffset(name), offset, type});
+  }
+
+  /// Return the BEFOffset for the specified location entry.
+  BEFOffset getLocationOffset(Location loc) const {
+    auto locInfo = decomposeLocation(loc);
+    auto it = locationOffsets.find(locInfo);
+    assert(it != locationOffsets.end() && "unknown location");
+    return it->second;
+  }
+
 private:
+  using LocationTuple = std::tuple<StringAttr, unsigned, unsigned>;
+  static LocationTuple decomposeLocation(Location loc);
   void addString(StringAttr string) { strings.insert(string); }
   void addType(Type type);
   LogicalResult addBEFFunction(Region *region, StringAttr name);
@@ -313,7 +334,7 @@ public:
         : name(name), type(type), region(region) {}
 
     StringAttr name;
-    FunctionType type;
+    FunctionType type; // FIXME: Strength reduce to #args/#results counts.
     Region *region;
   };
 
@@ -322,6 +343,15 @@ public:
   std::vector<BEFFunctionEntry> functions;
   DenseMap<Region *, unsigned> regionFunctionIDs;
   DenseMap<StringAttr, unsigned> namedFunctionIDs;
+
+  struct FunctionIndexEntry {
+    BEFOffset nameOffset;
+    BEFOffset functionOffset;
+    FunctionType type; // FIXME: Strength reduce to #args/#results counts.
+  };
+
+  // This follows the format of the FunctionIndex section.
+  std::vector<FunctionIndexEntry> functionIndexEntries;
 
   // Types we've seen so far.
   std::vector<Type> types;
@@ -339,7 +369,6 @@ public:
   // This is a list of locations within the file, the first element of the
   // tuple is a index into locationFilenames, the second and third are line/col
   // information.
-  using LocationTuple = std::tuple<StringAttr, unsigned, unsigned>;
   llvm::SetVector<LocationTuple> locations;
 
   /// This is the offset of a given location record in the LOCATION_POSITIONS
@@ -401,7 +430,7 @@ void EntityTable::addPrimitive(Operation *primitive) {
   addString(name);
 }
 
-void EntityTable::addLocation(Location loc) {
+auto EntityTable::decomposeLocation(Location loc) -> LocationTuple {
   StringAttr filename;
   unsigned line = 0, col = 0;
   // TODO: could support more powerful location approach.
@@ -414,9 +443,14 @@ void EntityTable::addLocation(Location loc) {
     // cases.
     filename = StringAttr::get(loc.getContext());
   }
+  return LocationTuple{filename, line, col};
+}
 
-  locationFilenames.insert(filename);
-  locations.insert(LocationTuple{filename, line, col});
+void EntityTable::addLocation(Location loc) {
+  auto locationInfo = decomposeLocation(loc);
+
+  locationFilenames.insert(std::get<0>(locationInfo));
+  locations.insert(locationInfo);
 }
 
 void EntityTable::addAttributeType(Attribute attr) {
@@ -531,66 +565,6 @@ bool EntityTable::collect(ModuleOp module, bool disableOptionalSections) {
   }
 
   return false;
-}
-
-//===----------------------------------------------------------------------===//
-// BEFModuleEmitter
-//===----------------------------------------------------------------------===//
-
-namespace {
-/// This emitter generates the top level structure of the BEF file.
-class BEFModuleEmitter : public BEFEmitter {
-public:
-  explicit BEFModuleEmitter(ModuleOp module) : module(module) {}
-
-  /// Walk the IR to build the symbol tables, this returns true on failure.
-  bool collectEntities(bool disableOptionalSections) {
-    return entities.collect(module, disableOptionalSections);
-  }
-  void emitLocationInfo();
-  void emitStrings();
-  void emitAttributes(BEFEmitter *attrTypesSection);
-  void emitPrimitiveNames();
-
-  bool hadError = false;
-
-private:
-  ModuleOp module;
-  EntityTable entities;
-};
-} // end anonymous namespace
-
-void BEFModuleEmitter::emitLocationInfo() {
-  DenseMap<StringAttr, BEFOffset> filenameOffsets;
-  BEFEmitter filenamesSection;
-  for (StringAttr filename : entities.locationFilenames) {
-    filenameOffsets[filename] = filenamesSection.getOffset();
-    filenamesSection.emitNulTerminatedString(filename.getValue());
-  }
-
-  emitSection(BEF::SectionID::LOCATION_FILENAMES, filenamesSection);
-
-  // Emit each of the positions and remember the offsets within the section.
-  BEFEmitter positionsSection;
-  for (auto position : entities.locations) {
-    entities.locationOffsets[position] = positionsSection.getOffset();
-    positionsSection.emitOffset(filenameOffsets[std::get<0>(position)]);
-    positionsSection.emitVBR(std::get<1>(position));
-    positionsSection.emitVBR(std::get<2>(position));
-  }
-
-  emitSection(BEF::SectionID::LOCATION_POSITIONS, positionsSection);
-}
-
-void BEFModuleEmitter::emitStrings() {
-  // Emit the strings to the string section and remember their offsets.
-  BEFEmitter stringSection;
-  for (StringAttr string : entities.strings) {
-    entities.stringOffsets[string] = stringSection.getOffset();
-    stringSection.emitNulTerminatedString(string);
-  }
-
-  emitSection(BEF::SectionID::STRINGS, stringSection);
 }
 
 //===----------------------------------------------------------------------===//
@@ -736,6 +710,323 @@ BEFOffset AttributesEmitter::emitAttribute(Attribute attr, Location loc) {
   return offset;
 }
 
+//===----------------------------------------------------------------------===//
+// BEFFunctionEmitter
+//===----------------------------------------------------------------------===//
+
+// This is the emitter that builds the function entry of a BEF.
+class BEFFunctionEmitter : public BEFEmitter {
+public:
+  BEFFunctionEmitter(EntityTable &entities, BEFEmitter *attributeNamesSection,
+                     BEFEmitter *registerTypesSection)
+      : entities(entities) {}
+
+  void emitFunction(Region *region);
+
+private:
+  void emitRegisterTable(Block *block);
+  unsigned getNumNonOutputUsers(Value result) const;
+  void emitPrimitiveResultUsers(Value result, BEFEmitter &primitiveBody) const;
+  void emitArgumentsPseudoOp(Block *block, BEFEmitter &primitiveList) const;
+  void emitPrimitive(Operation *op, BEFEmitter &primitiveList) const;
+
+  unsigned getRegisterNumber(Value reg) const {
+    auto it = registerNumbers.find(reg);
+    assert(it != registerNumbers.end() && "Unknown register");
+    return it->second;
+  }
+
+  DenseMap<Value, unsigned> registerNumbers;
+  DenseMap<Operation *, unsigned> primitiveIndices;
+
+  EntityTable &entities;
+};
+
+void BEFFunctionEmitter::emitFunction(Region *region) {
+  assert(region->getBlocks().size() == 1 && "should have a single block");
+  auto &block = region->getBlocks().front();
+
+  emitOffset(entities.getLocationOffset(region->getLoc()));
+
+  // Emit the register table.
+  emitRegisterTable(&block);
+
+  // Get a dense numbering of primitives.
+  unsigned numPrimitives = 0;
+
+  // If the function has arguments, we emit a pseudo-op that provides the
+  // argument values.
+  if (block.getNumArguments() != 0)
+    ++numPrimitives;
+
+  for (auto &op : block.getOperations()) {
+    if (!isa<BEF::OutputOp>(op))
+      primitiveIndices[&op] = numPrimitives++;
+  }
+
+  // Emit a count of primitives, then the offset of each primitive (from the
+  // start of the primitive list) then each primitive is emitted in turn.
+  emitVBR(numPrimitives);
+
+  BEFEmitter primitiveList;
+
+  // If we have arguments, emit a pseudo op (with no opcode) that produces the
+  // registers on entry to the function.
+  if (block.getNumArguments() != 0) {
+    // Offset of the primitive in the list.
+    emitOffset(primitiveList.getOffset());
+    // Pseudo has zero operands that need to be available.
+    emitVBR(0);
+    emitArgumentsPseudoOp(&block, primitiveList);
+  }
+
+  for (auto &op : block) {
+    // Output primitive gets special processing.
+    if (isa<BEF::OutputOp>(&op))
+      continue;
+
+    bool isNonStrict = false;
+    for (auto attrAndName : op.getAttrs())
+      if (classifyAttribute(attrAndName.getName()) ==
+          WellKnownAttrs::NonStrict) {
+        isNonStrict = true;
+      }
+
+    // Offset of the primitive in the list.
+    emitOffset(primitiveList.getOffset());
+    // Number of operands that need to be available before it is ready to go.
+    auto numOperandsBeforeRunning = op.getNumOperands();
+
+    // We set the number to 1 for non-strict primitives so they get kicked off
+    // as soon as any argument is avaiable.  We use 1 instead of zero because we
+    // primitives with no operands ready are likely to just wait anyway.
+    if (isNonStrict && numOperandsBeforeRunning)
+      numOperandsBeforeRunning = 1;
+
+    emitVBR(numOperandsBeforeRunning);
+    emitPrimitive(&op, primitiveList);
+  }
+
+  // Emit the result registers list at the end of the KERNEL_TABLE if present.
+  if (auto outputOp = dyn_cast<BEF::OutputOp>(block.getTerminator())) {
+    for (auto operand : outputOp.getOperands())
+      emitVBR(getRegisterNumber(operand));
+  }
+
+  // Once we're done, we can emit the primitive data after the primitive index
+  // list. Note that primitive entries are fixed32 integers with 4-byte
+  // alignment.
+  alignTo(4);
+  emitEmitter(primitiveList);
+
+  primitiveIndices.clear();
+}
+
+void BEFFunctionEmitter::emitRegisterTable(Block *block) {
+  BEFEmitter regTable;
+  unsigned numRegisters = 0;
+
+  auto emitRegister = [&](Value reg) {
+    // Then the use-count.
+    regTable.emitVBR(std::distance(reg.use_begin(), reg.use_end()));
+    registerNumbers[reg] = numRegisters++;
+  };
+
+  for (auto arg : block->getArguments())
+    emitRegister(arg);
+
+  for (auto &op : *block)
+    for (auto result : op.getResults())
+      emitRegister(result);
+
+  // Emit the number of registers, then the register table.
+  emitVBR(numRegisters);
+  emitEmitter(regTable);
+}
+
+unsigned BEFFunctionEmitter::getNumNonOutputUsers(Value result) const {
+  int numUsers = 0;
+  for (auto *user : result.getUsers()) {
+    // Ignore the 'bef.output' op, it gets special handling.
+    if (!isa<BEF::OutputOp>(user))
+      ++numUsers;
+  }
+  return numUsers;
+}
+
+void BEFFunctionEmitter::emitPrimitiveResultUsers(
+    Value result, BEFEmitter &primitiveBody) const {
+  for (auto *user : result.getUsers()) {
+    // Ignore the 'bef.output' op, it gets special handling.
+    if (isa<BEF::OutputOp>(user))
+      continue;
+
+    auto it = primitiveIndices.find(user);
+    assert(it != primitiveIndices.end() && "Invalid user");
+    primitiveBody.emitInt4(it->second);
+  }
+}
+
+void BEFFunctionEmitter::emitArgumentsPseudoOp(
+    Block *block, BEFEmitter &primitiveList) const {
+  // This primitive starts with a dummy code and a dummy location. And this
+  // primitive only has results and UsedBys in its body.
+  primitiveList.emitInt4(-1U);                      // code
+  primitiveList.emitInt4(-1U);                      // location
+  primitiveList.emitInt4(0);                        // # arguments
+  primitiveList.emitInt4(0);                        // # attributes
+  primitiveList.emitInt4(0);                        // # functions
+  primitiveList.emitInt4(block->getNumArguments()); // # results
+  primitiveList.emitInt4(0);                        // SpecialAttrs
+
+  for (auto arg : block->getArguments())
+    primitiveList.emitInt4(getNumNonOutputUsers(arg));
+  for (auto arg : block->getArguments())
+    primitiveList.emitInt4(getRegisterNumber(arg));
+  for (auto arg : block->getArguments())
+    emitPrimitiveResultUsers(arg, primitiveList);
+}
+
+void BEFFunctionEmitter::emitPrimitive(Operation *op,
+                                       BEFEmitter &primitiveList) const {
+  // Each primitive starts out with an opcode record.
+  primitiveList.emitInt4(entities.getPrimitiveID(op));
+
+  // Include a location.
+  primitiveList.emitInt4(entities.getLocationOffset(op->getLoc()).value);
+
+  // Because the numbers of each types of entries are emitted first, we use
+  // another emitter to keep all entries and append them to primitiveList
+  // later.
+  BEFEmitter primitiveBody;
+
+  // Then we have the arguments.
+  primitiveList.emitInt4(op->getNumOperands());
+  for (auto operand : op->getOperands())
+    primitiveBody.emitInt4(getRegisterNumber(operand));
+
+  // Then attributes.
+  int numInputFunctions = 0;
+  int numInputAttributes = 0;
+  BEFEmitter inputFunctionEmitter;
+  BEFEmitter inputAttributeEmitter;
+  uint32_t specialAttribute = 0;
+  for (auto attrNamePair : op->getAttrs()) {
+    // Emit a flag in primitive header to indicate that the primitive is
+    // non-strict.
+    if (classifyAttribute(attrNamePair.getName()) ==
+        WellKnownAttrs::NonStrict) {
+      specialAttribute |= static_cast<uint32_t>(WellKnownAttrs::NonStrict);
+      continue;
+    }
+    Attribute attr = attrNamePair.getValue();
+    if (auto fnAttr = attr.dyn_cast<FlatSymbolRefAttr>()) {
+      // Function references are emitted as regions.
+      numInputFunctions++;
+      inputFunctionEmitter.emitInt4(
+          entities.getFunctionNamed(fnAttr.getAttr()));
+    } else {
+      numInputAttributes++;
+      inputAttributeEmitter.emitInt4(entities.getAttributeOffset(attr).value);
+    }
+  }
+
+  primitiveList.emitInt4(numInputAttributes);
+  primitiveBody.emitEmitter(inputAttributeEmitter);
+
+  // Then regions.
+  numInputFunctions += op->getNumRegions();
+  for (auto &region : op->getRegions())
+    inputFunctionEmitter.emitInt4(entities.getFunctionID(region));
+
+  primitiveList.emitInt4(numInputFunctions);
+  primitiveBody.emitEmitter(inputFunctionEmitter);
+
+  primitiveList.emitInt4(op->getNumResults());
+  for (auto result : op->getResults())
+    primitiveBody.emitInt4(getRegisterNumber(result));
+
+  // Emit non-strict flag to special_metadata field of primitive header.
+  primitiveList.emitInt4(specialAttribute);
+
+  // Then results with the primitives that use them.
+  for (auto result : op->getResults()) {
+    unsigned numUsers = getNumNonOutputUsers(result);
+    emitPrimitiveResultUsers(result, primitiveBody);
+    primitiveList.emitInt4(numUsers);
+  }
+
+  assert(primitiveList.getOffset().value % BEF::PRIMITIVE_ENTRY_ALIGNMENT == 0);
+  assert(primitiveBody.getOffset().value == 0 ||
+         primitiveBody.getRequiredAlignment() ==
+             BEF::PRIMITIVE_ENTRY_ALIGNMENT);
+  primitiveList.alignTo(4);
+  primitiveList.emitEmitter(primitiveBody);
+}
+
+//===----------------------------------------------------------------------===//
+// BEFModuleEmitter
+//===----------------------------------------------------------------------===//
+
+namespace {
+/// This emitter generates the top level structure of the BEF file.
+class BEFModuleEmitter : public BEFEmitter {
+public:
+  explicit BEFModuleEmitter(ModuleOp module) : module(module) {}
+
+  /// Walk the IR to build the symbol tables, this returns true on failure.
+  bool collectEntities(bool disableOptionalSections) {
+    return entities.collect(module, disableOptionalSections);
+  }
+  void emitLocationInfo();
+  void emitStrings();
+  void emitAttributes(BEFEmitter *attrTypesSection);
+  void emitPrimitiveNames();
+  void emitBEFFunctions(BEFEmitter *attributeNamesSection,
+                        BEFEmitter *registerTypesSection);
+  void emitFunctionIndex();
+
+  bool hadError = false;
+
+private:
+  ModuleOp module;
+  EntityTable entities;
+};
+} // end anonymous namespace
+
+void BEFModuleEmitter::emitLocationInfo() {
+  DenseMap<StringAttr, BEFOffset> filenameOffsets;
+  BEFEmitter filenamesSection;
+  for (StringAttr filename : entities.locationFilenames) {
+    filenameOffsets[filename] = filenamesSection.getOffset();
+    filenamesSection.emitNulTerminatedString(filename.getValue());
+  }
+
+  emitSection(BEF::SectionID::LOCATION_FILENAMES, filenamesSection);
+
+  // Emit each of the positions and remember the offsets within the section.
+  BEFEmitter positionsSection;
+  for (auto position : entities.locations) {
+    entities.locationOffsets[position] = positionsSection.getOffset();
+    positionsSection.emitOffset(filenameOffsets[std::get<0>(position)]);
+    positionsSection.emitVBR(std::get<1>(position));
+    positionsSection.emitVBR(std::get<2>(position));
+  }
+
+  emitSection(BEF::SectionID::LOCATION_POSITIONS, positionsSection);
+}
+
+void BEFModuleEmitter::emitStrings() {
+  // Emit the strings to the string section and remember their offsets.
+  BEFEmitter stringSection;
+  for (StringAttr string : entities.strings) {
+    entities.stringOffsets[string] = stringSection.getOffset();
+    stringSection.emitNulTerminatedString(string);
+  }
+
+  emitSection(BEF::SectionID::STRINGS, stringSection);
+}
+
 /// Emit the ATTRIBUTES section.  If attrTypesSection is non-null, we emit type
 /// information into it.
 void BEFModuleEmitter::emitAttributes(BEFEmitter *attrTypesSection) {
@@ -757,16 +1048,52 @@ void BEFModuleEmitter::emitAttributes(BEFEmitter *attrTypesSection) {
 }
 
 void BEFModuleEmitter::emitPrimitiveNames() {
-  // The kernels are already in a stable order, so just emit them in the
+  // The primitives are already in a stable order, so just emit them in the
   // order they were found.
   BEFEmitter primitivesNamesSection;
-  // Count of the number of kernels that exist.
+  // Count of the number of primitives that exist.
   primitivesNamesSection.emitVBR(entities.primitives.size());
 
   for (auto op : entities.primitives)
     primitivesNamesSection.emitOffset(entities.getStringOffset(op));
 
   emitSection(BEF::SectionID::PRIMITIVE_NAMES, primitivesNamesSection);
+}
+
+/// Emit the BEF_FUNCTIONS section.  If optional metadata is enabled, the
+/// attributeNamesSection/registerTypesSection will be non-null and should be
+/// filled in.
+void BEFModuleEmitter::emitBEFFunctions(BEFEmitter *attributeNamesSection,
+                                        BEFEmitter *registerTypesSection) {
+  BEFFunctionEmitter functionsSection(entities, attributeNamesSection,
+                                      registerTypesSection);
+
+  for (auto function : entities.functions) {
+    // Remember that we emitted this region to this offset.
+    entities.addBEFFunctionOffset(function.name, functionsSection.getOffset(),
+                                  function.type);
+    functionsSection.emitFunction(function.region);
+  }
+
+  emitSection(BEF::SectionID::BEF_FUNCTIONS, functionsSection);
+}
+
+void BEFModuleEmitter::emitFunctionIndex() {
+  auto functionIndexEntries = entities.functionIndexEntries;
+
+  BEFEmitter functionIndexSection;
+
+  // Count of the number of functions that exist.
+  functionIndexSection.emitVBR(functionIndexEntries.size());
+
+  for (const auto &entry : functionIndexEntries) {
+    functionIndexSection.emitOffset(entry.functionOffset);
+    functionIndexSection.emitOffset(entry.nameOffset);
+    functionIndexSection.emitVBR(entry.type.getInputs().size());
+    functionIndexSection.emitVBR(entry.type.getResults().size());
+  }
+
+  emitSection(BEF::SectionID::BEF_FUNCTION_INDEX, functionIndexSection);
 }
 
 //===----------------------------------------------------------------------===//
@@ -801,13 +1128,10 @@ std::vector<uint8_t> M::translateMLIRToBEF(ModuleOp module,
   emitter.emitAttributes(disableOptionalSections ? nullptr : &attrTypesSection);
 
   emitter.emitPrimitiveNames();
-#if 0 // TODO
-   emitter.emitTypes();
-   emitter.emitFunctions(disableOptionalSections ? nullptr, &attrNamesSection,
-                        disableOptionalSections ? nullptr,
-                         &registerTypesSection);
-   emitter.emitFunctionIndex();
-#endif
+  emitter.emitBEFFunctions(
+      disableOptionalSections ? nullptr : &attrNamesSection,
+      disableOptionalSections ? nullptr : &registerTypesSection);
+  emitter.emitFunctionIndex();
 
   // Emit all the optional sections at the end if they're requested.
   if (!disableOptionalSections) {
