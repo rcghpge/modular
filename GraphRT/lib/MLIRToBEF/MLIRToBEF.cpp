@@ -146,18 +146,6 @@ public:
     emitBytes(data);
   }
 
-  // Emit a guaranteed 8-byte integer aligned to 8 bytes, allowing this to be
-  // directly mapped into the target process in little-endian form.
-  void emitInt8(uint64_t value) {
-    alignTo(8);
-    uint8_t data[] = {
-        uint8_t(value & 0xFF),         uint8_t((value >> 8) & 0xFF),
-        uint8_t((value >> 16) & 0xFF), uint8_t((value >> 24) & 0xFF),
-        uint8_t((value >> 32) & 0xFF), uint8_t((value >> 40) & 0xFF),
-        uint8_t((value >> 48) & 0xFF), uint8_t((value >> 56) & 0xFF)};
-    emitBytes(data);
-  }
-
   // Emit a vbr encoded integer of arbitrary width.
   void emitVBR(size_t value) { emitVBRImpl(value, false); }
   void emitInvertedVBR(size_t value);
