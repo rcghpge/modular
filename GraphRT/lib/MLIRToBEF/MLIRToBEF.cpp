@@ -60,17 +60,6 @@ static WellKnownAttrs classifyAttribute(StringRef attrName) {
       .Default(WellKnownAttrs::Unknown);
 }
 
-// Return true if this is a supported attribute that can be emitted as a
-// attribute reference in a primitive.
-static bool isSupportedAttribute(Attribute attr) {
-  // We support references to BEF functions.
-  if (attr.isa<SymbolRefAttr>())
-    return true;
-
-  // FIXME: Generalize
-  return false;
-}
-
 //===----------------------------------------------------------------------===//
 // BEFEmitter
 //===----------------------------------------------------------------------===//
@@ -500,12 +489,6 @@ bool EntityTable::collect(ModuleOp module, bool disableOptionalSections) {
       // If this is a special attribute, ignore it.
       if (classifyAttribute(attr.getName()) != WellKnownAttrs::Unknown)
         continue;
-
-      // Check to make sure that this is a supported attribute, if not,
-      // reject it.
-      if (!isSupportedAttribute(attr.getValue()))
-        return op->emitError() << "BEF files cannot encode the '"
-                               << attr.getName() << "' attribute";
 
       if (auto fn_attr = attr.getValue().dyn_cast<SymbolRefAttr>()) {
         // Keep track of function attributes specially so we can diagnose
@@ -1062,9 +1045,6 @@ void BEFModuleEmitter::emitStrings() {
 
 /// Emit the ATTRIBUTES section, and the ATTRIBUTE_KIND_MD sections.
 void BEFModuleEmitter::emitAttributes(BEFEmitter &attrKindsSection) {
-  // The first entry of the ATTRIBUTE_KIND_MD section is a count of attributes.
-  attrKindsSection.emitVBR(entities.attributes.size());
-
   // Emit attributes and record them in EntityIndex. Nested array attributes
   // will be traversed recursively and their elements will be emitted and
   // recorded before the top level offsets array is emitted.
@@ -1163,8 +1143,6 @@ std::vector<uint8_t> M::translateMLIRToBEF(ModuleOp module,
 
   // Emit magic numbers and format version.
   emitter.emitBytes({BEF::MAGIC1, BEF::MAGIC2 + BEF::VERSION0});
-  // FIXME: Emit location info at the end of the file next to the metadata to
-  // improve locality of the stuff that matters.
   emitter.emitLocationInfo(locationFilenames, locationPositions);
   emitter.emitStrings();
 

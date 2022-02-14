@@ -8,6 +8,7 @@
 
 bef.func @trivial() {
   "simple.primitive"() : () -> ()
+  "other.primitive"() { x = 42 : i8 }: () -> ()
   bef.output
 }
 

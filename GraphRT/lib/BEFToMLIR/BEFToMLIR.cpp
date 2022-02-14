@@ -32,13 +32,13 @@ public:
   // Return true if we've read the entire file.
   bool empty() const { return contents.empty(); }
 
-  bool emitError(const char *message) {
+  bool emitError(const char *message) const {
     mlir::emitError(loc) << message;
     return true;
   }
 
   // Read a single byte from the stream.
-  bool readByte(uint8_t &value) {
+  bool parseByte(uint8_t &value) {
     if (contents.empty())
       return emitError("ran out of bytes");
     value = contents.front();
@@ -47,14 +47,14 @@ public:
   }
 
   // Read a VBR encoded integer from the byte stream.
-  bool readVBR(size_t &value) {
+  bool parseVBR(size_t &value) {
     uint8_t nextByte;
-    if (readByte(nextByte))
+    if (parseByte(nextByte))
       return true;
 
     value = nextByte & 127;
     while ((nextByte & 128) != 0) {
-      if (readByte(nextByte))
+      if (parseByte(nextByte))
         return true;
 
       value = (value << 7) | size_t(nextByte & 127);
@@ -69,7 +69,7 @@ public:
 
     uint8_t padding;
     while (uintptr_t(contents.data()) & (uintptr_t(alignment) - 1))
-      if (readByte(padding))
+      if (parseByte(padding))
         return true;
 
     return false;
@@ -82,6 +82,12 @@ public:
     result = contents.take_front(length);
     contents = contents.drop_front(length);
     return false;
+  }
+
+  /// Ignore the first `length` bytes in this reader.
+  bool dropBytes(size_t length) {
+    ArrayRef<uint8_t> unused;
+    return parseBytes(length, unused);
   }
 
   /// Parse a NUL terminated string into the specified StringRef, not including
@@ -116,11 +122,13 @@ public:
 
   ModuleOp takeModule() { return module.release(); }
 
-  bool readHeader(BEFReader &reader);
+  bool parseHeader(BEFReader &reader);
   bool findSections(BEFReader &reader);
-  bool readLocationPositions();
+  bool parseLocationPositions();
+  bool parseAttributes();
 
 private:
+  MLIRContext *getContext() const { return module.get()->getContext(); }
   Location getLoc() const { return module.get()->getLoc(); }
   BEFReader getSectionReader(BEF::SectionID ID) const {
     ArrayRef<uint8_t> data;
@@ -128,6 +136,9 @@ private:
       data = sections[unsigned(ID)];
     return BEFReader(data, getLoc());
   }
+
+  bool parseAttributeAt(size_t offset, uint8_t attrKind,
+                        const BEFReader &attrSection, Attribute &resultAttr);
 
   mlir::OwningOpRef<ModuleOp> module;
 
@@ -139,14 +150,17 @@ private:
   SmallVector<StringRef> locationFilenames;
   /// This is a list of locations indexed by their number in LOCATION_POSITIONS.
   SmallVector<Location> locations;
+
+  /// This captures the parsed attribute at an offset in the ATTRIBUTES section.
+  DenseMap<size_t, Attribute> attributeAtOffset;
 };
 } // end anonymous namespace.
 
 /// Read the magic number from the start of the BEF file and check it.
-bool BEFToMLIRConverter::readHeader(BEFReader &reader) {
+bool BEFToMLIRConverter::parseHeader(BEFReader &reader) {
   // Read magic number.
   uint8_t byte1, byte2;
-  if (reader.readByte(byte1) || reader.readByte(byte2))
+  if (reader.parseByte(byte1) || reader.parseByte(byte2))
     return true;
 
   if (byte1 != BEF::MAGIC1 || byte2 != BEF::MAGIC2 + BEF::VERSION0)
@@ -161,7 +175,7 @@ bool BEFToMLIRConverter::findSections(BEFReader &reader) {
   while (!reader.empty()) {
     uint8_t sectionID;
     size_t length;
-    if (reader.readByte(sectionID) || reader.readVBR(length))
+    if (reader.parseByte(sectionID) || reader.parseVBR(length))
       return true;
     if (sectionID == (unsigned)BEF::SectionID::INVALID_SECTION)
       return reader.emitError("invalid section ID");
@@ -172,7 +186,7 @@ bool BEFToMLIRConverter::findSections(BEFReader &reader) {
       // If there is an alignment byte, read the alignment byte, and skip over
       // padding bytes until we reach the desired alignment.
       uint8_t alignment;
-      if (reader.readByte(alignment) || reader.alignTo(alignment))
+      if (reader.parseByte(alignment) || reader.alignTo(alignment))
         return true;
     }
 
@@ -192,7 +206,7 @@ bool BEFToMLIRConverter::findSections(BEFReader &reader) {
   return false;
 }
 
-bool BEFToMLIRConverter::readLocationPositions() {
+bool BEFToMLIRConverter::parseLocationPositions() {
   BEFReader filenameReader =
       getSectionReader(BEF::SectionID::LOCATION_FILENAMES);
   BEFReader reader = getSectionReader(BEF::SectionID::LOCATION_POSITIONS);
@@ -203,8 +217,8 @@ bool BEFToMLIRConverter::readLocationPositions() {
   DenseMap<size_t, StringAttr> filenames;
   while (!reader.empty()) {
     size_t filenameOffset, lineNo, colNo;
-    if (reader.readVBR(filenameOffset) || reader.readVBR(lineNo) ||
-        reader.readVBR(colNo))
+    if (reader.parseVBR(filenameOffset) || reader.parseVBR(lineNo) ||
+        reader.parseVBR(colNo))
       return true;
 
     auto &filenameEntry = filenames[filenameOffset];
@@ -217,6 +231,69 @@ bool BEFToMLIRConverter::readLocationPositions() {
     locations.push_back(
         mlir::FileLineColLoc::get(filenameEntry, lineNo, colNo));
   }
+  return false;
+}
+
+/// Parse an attribute at the specified
+bool BEFToMLIRConverter::parseAttributeAt(size_t offset, uint8_t attrKind,
+                                          const BEFReader &attrSection,
+                                          Attribute &resultAttr) {
+  // Copy the BEFReader (a cheap operation) so we can slice out of its body.
+  BEFReader attrReader = attrSection;
+  if (attrReader.dropBytes(offset))
+    return true;
+
+  unsigned size = 1;
+  uint8_t byte;
+  switch ((BEF::AttributeKind)attrKind) {
+  case BEF::AttributeKind::I1:
+    if (attrReader.parseByte(byte))
+      return true;
+    resultAttr = BoolAttr::get(getContext(), byte);
+    return false;
+  default:
+    return attrSection.emitError("unknown attribute");
+  case BEF::AttributeKind::I64:
+    size <<= 1;
+    LLVM_FALLTHROUGH;
+  case BEF::AttributeKind::I32:
+    size <<= 1;
+    LLVM_FALLTHROUGH;
+  case BEF::AttributeKind::I16:
+    size <<= 1;
+    LLVM_FALLTHROUGH;
+  case BEF::AttributeKind::I8: {
+    // Parse integers of various sizes.
+    uint64_t result = 0;
+    for (unsigned i = 0; i != size; ++i) {
+      if (attrReader.parseByte(byte))
+        return true;
+      result |= uint64_t(byte) << (i * 8);
+    }
+    auto type = IntegerType::get(getContext(), size * 8);
+    resultAttr = IntegerAttr::get(type, byte);
+    return false;
+    // TODO: Handle strings, arrays, and floating point.
+  }
+  }
+}
+
+bool BEFToMLIRConverter::parseAttributes() {
+  BEFReader attrReader = getSectionReader(BEF::SectionID::ATTRIBUTES);
+  BEFReader attrKindReader =
+      getSectionReader(BEF::SectionID::ATTRIBUTE_KIND_MD);
+
+  // Read until we run out of attribute kind descriptors.
+  while (!attrKindReader.empty()) {
+    size_t offset;
+    uint8_t attrKind;
+    Attribute resultAttr;
+    if (attrKindReader.parseVBR(offset) || attrKindReader.parseByte(attrKind) ||
+        parseAttributeAt(offset, attrKind, attrReader, resultAttr))
+      return true;
+    attributeAtOffset[offset] = resultAttr;
+  }
+
   return false;
 }
 
@@ -240,9 +317,9 @@ ModuleOp M::translateBEFToMLIR(ArrayRef<uint8_t> buffer, Location loc) {
 
   BEFReader reader(buffer, loc);
   // Read/validate the header and section table.
-  if (converter.readHeader(reader) || converter.findSections(reader) ||
+  if (converter.parseHeader(reader) || converter.findSections(reader) ||
       // Parse sections in a predictable order.
-      converter.readLocationPositions())
+      converter.parseLocationPositions() || converter.parseAttributes())
     return {};
 
   return converter.takeModule();
