@@ -50,18 +50,18 @@ enum class AttributeKind {
 enum class SectionID {
   INVALID_SECTION = 0,
 
-  LOCATION_FILENAMES, // Strings for each filename used by a location.
-  LOCATION_POSITIONS, // Detailed information for locations
+  LOCATION_FILENAMES = 1, // Strings for each filename used by a location.
+  LOCATION_POSITIONS = 2, // Detailed information for locations
 
-  STRINGS, // All of the string data.
-  ATTRIBUTES,
-  PRIMITIVE_NAMES,
-  BEF_FUNCTIONS,
-  BEF_FUNCTION_INDEX,
+  STRINGS = 3, // All of the string data.
+  ATTRIBUTES = 4,
+  PRIMITIVE_NAMES = 5,
+  BEF_FUNCTIONS = 6,
+  BEF_FUNCTION_INDEX = 7,
 
-  ATTRIBUTE_KIND_MD,
-  ATTRIBUTE_NAME_MD,
-  REGISTER_TYPE_MD,
+  ATTRIBUTE_KIND_MD = 8,
+  ATTRIBUTE_NAME_MD = 9,
+  REGISTER_TYPE_MD = 10,
 };
 
 } // namespace BEF

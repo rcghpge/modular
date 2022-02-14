@@ -163,6 +163,8 @@ bool BEFToMLIRConverter::findSections(BEFReader &reader) {
     size_t length;
     if (reader.readByte(sectionID) || reader.readVBR(length))
       return true;
+    if (sectionID == (unsigned)BEF::SectionID::INVALID_SECTION)
+      return reader.emitError("invalid section ID");
 
     // The low bit of the size is a boolean indicating whether there is an
     // alignment byte + padding present.

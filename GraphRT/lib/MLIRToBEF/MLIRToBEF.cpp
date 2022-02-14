@@ -166,12 +166,12 @@ public:
   void emitSection(BEF::SectionID sectionID, ArrayRef<uint8_t> sectionData,
                    unsigned alignment = 1) {
     // Section start with an identifier.
-    result.push_back(static_cast<uint8_t>(sectionID));
+    emitByte(static_cast<uint8_t>(sectionID));
 
     // Emit a length.  The low bit indicates whether alignment padding is
     // present.  We fill it in later.
-    size_t needsAlignmentPaddingOffset = result.size();
     emitVBR(sectionData.size() << 1);
+    size_t needsAlignmentPaddingOffset = result.size() - 1;
 
     // If the section body requires alignment padding, then we need to emit
     // the alignment and the padding bytes.
@@ -1015,7 +1015,8 @@ public:
   bool collectEntities(bool disableOptionalSections) {
     return entities.collect(module, disableOptionalSections);
   }
-  void emitLocationInfo();
+  void emitLocationInfo(BEFEmitter &locationFilenames,
+                        BEFEmitter &locationPositions);
   void emitStrings();
   void emitAttributes(BEFEmitter &attrKindSection);
   void emitPrimitiveNames();
@@ -1031,26 +1032,21 @@ private:
 };
 } // end anonymous namespace
 
-void BEFModuleEmitter::emitLocationInfo() {
+void BEFModuleEmitter::emitLocationInfo(BEFEmitter &locationFilenames,
+                                        BEFEmitter &locationPositions) {
   DenseMap<StringAttr, BEFOffset> filenameOffsets;
-  BEFEmitter filenamesSection;
   for (StringAttr filename : entities.locationFilenames) {
-    filenameOffsets[filename] = filenamesSection.getOffset();
-    filenamesSection.emitNulTerminatedString(filename.getValue());
+    filenameOffsets[filename] = locationFilenames.getOffset();
+    locationFilenames.emitNulTerminatedString(filename.getValue());
   }
-
-  emitSection(BEF::SectionID::LOCATION_FILENAMES, filenamesSection);
 
   // Emit each of the positions and remember the offsets within the section.
-  BEFEmitter positionsSection;
   for (auto position : entities.locations) {
-    entities.locationOffsets[position] = positionsSection.getOffset();
-    positionsSection.emitOffset(filenameOffsets[std::get<0>(position)]);
-    positionsSection.emitVBR(std::get<1>(position));
-    positionsSection.emitVBR(std::get<2>(position));
+    entities.locationOffsets[position] = locationPositions.getOffset();
+    locationPositions.emitOffset(filenameOffsets[std::get<0>(position)]);
+    locationPositions.emitVBR(std::get<1>(position));
+    locationPositions.emitVBR(std::get<2>(position));
   }
-
-  emitSection(BEF::SectionID::LOCATION_POSITIONS, positionsSection);
 }
 
 void BEFModuleEmitter::emitStrings() {
@@ -1156,6 +1152,11 @@ std::vector<uint8_t> M::translateMLIRToBEF(ModuleOp module,
   if (emitter.collectEntities(disableOptionalSections))
     return {};
 
+  // Sections describing location information.  We collect this early, but emit
+  // it near the end of the file since it isn't typically needed by the
+  // BEFExecutor.
+  BEFEmitter locationFilenames, locationPositions;
+
   // If optional section emission is enabled, these collect the data to emit
   // into the respective sections.
   BEFEmitter attrKindsSection, attrNamesSection, registerTypesSection;
@@ -1164,7 +1165,7 @@ std::vector<uint8_t> M::translateMLIRToBEF(ModuleOp module,
   emitter.emitBytes({BEF::MAGIC1, BEF::MAGIC2 + BEF::VERSION0});
   // FIXME: Emit location info at the end of the file next to the metadata to
   // improve locality of the stuff that matters.
-  emitter.emitLocationInfo();
+  emitter.emitLocationInfo(locationFilenames, locationPositions);
   emitter.emitStrings();
 
   emitter.emitAttributes(attrKindsSection);
@@ -1174,6 +1175,11 @@ std::vector<uint8_t> M::translateMLIRToBEF(ModuleOp module,
       disableOptionalSections ? nullptr : &attrNamesSection,
       disableOptionalSections ? nullptr : &registerTypesSection);
   emitter.emitFunctionIndex();
+
+  // Now that we've emitted all of the critical sections used in the common case
+  // of the BEF emitter, emit metadata sections.
+  emitter.emitSection(BEF::SectionID::LOCATION_FILENAMES, locationFilenames);
+  emitter.emitSection(BEF::SectionID::LOCATION_POSITIONS, locationPositions);
 
   // Unconditionally emit metadata that describes the attribute section, this
   // is the minimal metadata needed by BEF2MLIR.

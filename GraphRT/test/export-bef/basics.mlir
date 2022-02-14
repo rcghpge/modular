@@ -3,7 +3,7 @@
 
 // Check to make sure the magic number is right, and the first section is there.
 
-// CHECK: 0000000 be f0 01
+// CHECK: 0000000 be f0 03
 
 bef.func @trivial() {
   "simple.primitive"() : () -> ()
