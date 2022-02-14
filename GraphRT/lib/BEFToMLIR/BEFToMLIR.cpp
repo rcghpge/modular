@@ -84,6 +84,20 @@ public:
     return false;
   }
 
+  /// Parse a NUL terminated string into the specified StringRef, not including
+  /// the NUL terminator.
+  bool parseNULTerminatedStringAt(StringRef &result, size_t position = 0) {
+    if (position >= contents.size())
+      return emitError("invalid location for string");
+
+    auto *start = (const char *)contents.data() + position;
+    auto nul = (const char *)memchr(start, 0, contents.size());
+    if (!nul)
+      return emitError("malformed NUL terminated string");
+    result = StringRef(start, nul - start);
+    return false;
+  }
+
 private:
   ArrayRef<uint8_t> contents;
   Location loc;
@@ -104,10 +118,27 @@ public:
 
   bool readHeader(BEFReader &reader);
   bool findSections(BEFReader &reader);
+  bool readLocationPositions();
 
 private:
+  Location getLoc() const { return module.get()->getLoc(); }
+  BEFReader getSectionReader(BEF::SectionID ID) const {
+    ArrayRef<uint8_t> data;
+    if (unsigned(ID) < sections.size())
+      data = sections[unsigned(ID)];
+    return BEFReader(data, getLoc());
+  }
+
   mlir::OwningOpRef<ModuleOp> module;
+
+  /// This is a list of sections indexed by the BEF section ID.
   SmallVector<ArrayRef<uint8_t>, 12> sections;
+
+  /// This is list of filenames indexed by occurrence in the LOCATION_FILENAMES
+  /// section.
+  SmallVector<StringRef> locationFilenames;
+  /// This is a list of locations indexed by their number in LOCATION_POSITIONS.
+  SmallVector<Location> locations;
 };
 } // end anonymous namespace.
 
@@ -143,8 +174,12 @@ bool BEFToMLIRConverter::findSections(BEFReader &reader) {
         return true;
     }
 
+    // Make sure we have space in the section table for this entry and haven't
+    // already seen this section.
     if (sectionID >= sections.size())
       sections.resize(sectionID + 1);
+    if (sections[sectionID].data())
+      return reader.emitError("duplicate section found");
 
     // Okay, the returned data is whatever is left now.  We shift by one to
     // eliminate the alignment bit.
@@ -152,6 +187,34 @@ bool BEFToMLIRConverter::findSections(BEFReader &reader) {
       return true;
   }
 
+  return false;
+}
+
+bool BEFToMLIRConverter::readLocationPositions() {
+  BEFReader filenameReader =
+      getSectionReader(BEF::SectionID::LOCATION_FILENAMES);
+  BEFReader reader = getSectionReader(BEF::SectionID::LOCATION_POSITIONS);
+  MLIRContext *ctx = module->getContext();
+
+  // It is common to have many references to the same filename.  Parse and
+  // unique each one a single time.
+  DenseMap<size_t, StringAttr> filenames;
+  while (!reader.empty()) {
+    size_t filenameOffset, lineNo, colNo;
+    if (reader.readVBR(filenameOffset) || reader.readVBR(lineNo) ||
+        reader.readVBR(colNo))
+      return true;
+
+    auto &filenameEntry = filenames[filenameOffset];
+    if (!filenameEntry) {
+      StringRef filename;
+      if (filenameReader.parseNULTerminatedStringAt(filename, filenameOffset))
+        return true;
+      filenameEntry = StringAttr::get(ctx, filename);
+    }
+    locations.push_back(
+        mlir::FileLineColLoc::get(filenameEntry, lineNo, colNo));
+  }
   return false;
 }
 
@@ -174,7 +237,10 @@ ModuleOp M::translateBEFToMLIR(ArrayRef<uint8_t> buffer, Location loc) {
   BEFToMLIRConverter converter(loc);
 
   BEFReader reader(buffer, loc);
-  if (converter.readHeader(reader) || converter.findSections(reader))
+  // Read/validate the header and section table.
+  if (converter.readHeader(reader) || converter.findSections(reader) ||
+      // Parse sections in a predictable order.
+      converter.readLocationPositions())
     return {};
 
   return converter.takeModule();

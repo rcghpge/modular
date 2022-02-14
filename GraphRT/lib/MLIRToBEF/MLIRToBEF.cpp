@@ -1162,6 +1162,8 @@ std::vector<uint8_t> M::translateMLIRToBEF(ModuleOp module,
 
   // Emit magic numbers and format version.
   emitter.emitBytes({BEF::MAGIC1, BEF::MAGIC2 + BEF::VERSION0});
+  // FIXME: Emit location info at the end of the file next to the metadata to
+  // improve locality of the stuff that matters.
   emitter.emitLocationInfo();
   emitter.emitStrings();
 
