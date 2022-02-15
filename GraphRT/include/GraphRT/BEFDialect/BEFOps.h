@@ -31,4 +31,7 @@ namespace BEF {
 #define GET_OP_CLASSES
 #include "GraphRT/BEFDialect/BEF.h.inc"
 
+#define GET_TYPEDEF_CLASSES
+#include "GraphRT/BEFDialect/BEFTypes.h.inc"
+
 #endif // GRAPHRT_BEFDIALECT_BEFOPS_H

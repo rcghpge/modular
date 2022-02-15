@@ -13,3 +13,7 @@ bef.func @trivial() {
 bef.func @args_results(%a: i32, %b: i8) -> (i8, i32) {
   bef.output %b, %a : i8, i32
 }
+
+bef.func @unknown_args(%a: !bef.unknown, %b: !bef.unknown) -> !bef.unknown {
+  bef.output %b : !bef.unknown
+}

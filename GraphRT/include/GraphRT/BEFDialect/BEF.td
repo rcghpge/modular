@@ -18,6 +18,7 @@ include "GraphRT/BEFDialect/BEFDialect.td"
 class BEFOp<string mnemonic, list<Trait> traits = []> :
     Op<BEFDialect, mnemonic, traits>;
 
+include "GraphRT/BEFDialect/BEFTypes.td"
 include "GraphRT/BEFDialect/BEFOps.td"
 
 #endif // BEF_TD
