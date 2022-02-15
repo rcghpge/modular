@@ -6,7 +6,9 @@ bef.func @trivial() {  // expected-error {{must have exactly one block}}
 
 // -----
 
-bef.func @need_output() {  // expected-error {{expected bef.output terminator}}
+// expected-error @+2 {{expects regions to end with 'bef.output', found 'unknown.term'}}
+// expected-note @+1 {{the absence of terminator implies 'bef.output'}}
+bef.func @need_output() {
   "unknown.term"() : () -> ()
 }
 

@@ -13,12 +13,15 @@ include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 
 def FuncOp : BEFOp<"func", [HasParent<"mlir::ModuleOp">, FunctionOpInterface,
-                            Symbol, SymbolTable, IsolatedFromAbove]> {
+                            Symbol, SymbolTable, IsolatedFromAbove,
+                            SingleBlockImplicitTerminator<"OutputOp">]> {
   let summary = "Named function in a BEF file";
   let arguments = (ins);
   let regions = (region SizedRegion<1>:$body);
 
   let extraClassDeclaration = [{
+    using FunctionOpInterfaceTrait::getBody;
+    using FunctionOpInterfaceTrait::front;
     Block *getBodyBlock() {
       return &getBody().front();
     }
@@ -35,6 +38,13 @@ def FuncOp : BEFOp<"func", [HasParent<"mlir::ModuleOp">, FunctionOpInterface,
 
     LogicalResult verifyType();
   }];
+
+  let builders = [
+    /// Create a new bef.func with an empty body.
+    OpBuilder<(ins "StringAttr":$name, "ArrayRef<Type>":$inputTypes,
+                   "ArrayRef<Type>":$resultTypes,
+                   CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>
+  ];
 
   let parser = [{ return ::parse$cppClass(parser, result); }];
   let printer = [{ return ::printFuncOp(*this, p); }];

@@ -11,6 +11,7 @@
 #include "GraphRT/BEFToMLIR.h"
 #include "GraphRT/BEF/BEFEncoding.h"
 #include "GraphRT/BEFDialect/BEFOps.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
 using namespace M;
@@ -137,7 +138,7 @@ public:
   bool parseLocationPositions();
   bool parseAttributes();
   bool parsePrimitiveNames();
-  bool parseFunctionIndex();
+  bool parseFunctions();
 
 private:
   MLIRContext *getContext() const { return module.get()->getContext(); }
@@ -169,6 +170,9 @@ private:
 
   /// This is the name for each primitive, indexed by primitive ID.
   SmallVector<StringAttr> primitiveNames;
+
+  /// This is the set of parsed functions indexed by function ID.
+  SmallVector<BEF::FuncOp> functions;
 };
 } // end anonymous namespace.
 
@@ -331,9 +335,16 @@ bool BEFToMLIRConverter::parsePrimitiveNames() {
   return false;
 }
 
-bool BEFToMLIRConverter::parseFunctionIndex() {
+bool BEFToMLIRConverter::parseFunctions() {
   BEFReader reader = getSectionReader(BEF::SectionID::BEF_FUNCTION_INDEX);
   BEFReader stringReader = getSectionReader(BEF::SectionID::STRINGS);
+
+  SmallVector<size_t> functionOffsets;
+
+  auto funcBuilder = OpBuilder::atBlockBegin(module->getBody());
+
+  SmallVector<Type> inputTypes, resultTypes;
+  Type unknownType = BEF::UnknownType::get(funcBuilder.getContext());
 
   // Read until we run out of function descriptors.
   while (!reader.empty()) {
@@ -344,11 +355,26 @@ bool BEFToMLIRConverter::parseFunctionIndex() {
         stringReader.parseNULTerminatedStringAt(nameOffset, name))
       return true;
 
+    functionOffsets.push_back(functionOffset);
+
     // TODO: If we have type metadata, parse the types of the inputs and
     // results.
+    inputTypes.assign(numArgs, unknownType);
+    resultTypes.assign(numResults, unknownType);
 
-    // TODO: Create the bef.func nodes.
+    // FIXME: put the func Location in the right place!
+    auto func = funcBuilder.create<BEF::FuncOp>(module->getLoc(), name,
+                                                inputTypes, resultTypes);
+    functions.push_back(func);
+    inputTypes.clear();
+    resultTypes.clear();
+
+    // FIXME: Handle properly.
+    auto bodyBuilder = OpBuilder::atBlockBegin(func.getBodyBlock());
+    bodyBuilder.create<BEF::OutputOp>(module->getLoc(), ArrayRef<Value>());
   }
+
+  // TODO: Go parse the function bodies from functionOffsets.
   return false;
 }
 
@@ -360,6 +386,8 @@ bool BEFToMLIRConverter::parseFunctionIndex() {
 /// returning the created module on success.  On failure, report an error at the
 /// specified location and return null.
 ModuleOp M::translateBEFToMLIR(ArrayRef<uint8_t> buffer, Location loc) {
+  loc.getContext()->loadDialect<BEF::BEFDialect>();
+
   // We currently always get our buffer out of a SourceMgr so we know it is
   // aligned.  This allows alignTo to be efficient and simple.  If we care about
   // supporting non-aligned inputs in the future, we can either copy the input
@@ -375,7 +403,7 @@ ModuleOp M::translateBEFToMLIR(ArrayRef<uint8_t> buffer, Location loc) {
   if (converter.parseHeader(reader) || converter.findSections(reader) ||
       // Parse sections in a specific order, unbound by their order in the file.
       converter.parseLocationPositions() || converter.parseAttributes() ||
-      converter.parsePrimitiveNames() || converter.parseFunctionIndex())
+      converter.parsePrimitiveNames() || converter.parseFunctions())
     return {};
 
   return converter.takeModule();

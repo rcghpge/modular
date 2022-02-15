@@ -19,6 +19,22 @@ using namespace BEF;
 // FuncOp
 //===----------------------------------------------------------------------===//
 
+void FuncOp::build(OpBuilder &builder, OperationState &state, StringAttr name,
+                   ArrayRef<Type> inputTypes, ArrayRef<Type> resultTypes,
+                   ArrayRef<NamedAttribute> attrs) {
+  state.addAttribute(::SymbolTable::getSymbolAttrName(), name);
+  auto fnType = builder.getFunctionType(inputTypes, resultTypes);
+  state.addAttribute(getTypeAttrName(), TypeAttr::get(fnType));
+  state.attributes.append(attrs.begin(), attrs.end());
+  Region *bodyRegion = state.addRegion();
+  Block *body = new Block();
+  bodyRegion->push_back(body);
+
+  // Add input arguments to the body block.
+  for (auto elt : inputTypes)
+    body->addArgument(elt, state.location);
+}
+
 // Parses a BEF Function.
 //
 // operation ::= `func` function-signature function-attributes? function-body
@@ -50,9 +66,8 @@ static ParseResult parseFuncOp(OpAsmParser &parser, OperationState &result) {
       parser.getBuilder(), result, argAttrs, resultAttrs);
 
   auto *body = result.addRegion();
-  auto parseResult = parser.parseOptionalRegion(
-      *body, entryArgs, entryArgs.empty() ? ArrayRef<Type>() : argTypes);
-  return failure(parseResult.hasValue() && failed(*parseResult));
+  return parser.parseRegion(*body, entryArgs,
+                            entryArgs.empty() ? ArrayRef<Type>() : argTypes);
 }
 
 // Print the FuncOp. Collects argument and result types and passes them to
@@ -90,6 +105,7 @@ LogicalResult FuncOp::verifyType() {
 }
 
 LogicalResult FuncOp::verify() {
+  auto *block = getBodyBlock();
   if (!isa_and_nonnull<OutputOp>(getBodyBlock()->getTerminator()))
     return emitOpError("expected bef.output terminator");
   return success();
