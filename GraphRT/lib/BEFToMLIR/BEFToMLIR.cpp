@@ -33,6 +33,8 @@ public:
   // Return true if we've read the entire file.
   bool empty() const { return contents.empty(); }
 
+  const uint8_t *data() const { return contents.data(); }
+
   bool emitError(const char *message) const {
     mlir::emitError(loc) << message;
     return true;
@@ -154,6 +156,17 @@ private:
   bool parseAttributeAt(size_t offset, uint8_t attrKind,
                         const BEFReader &attrSection, Attribute &resultAttr);
 
+  bool parseLocation(BEFReader &reader, Location &loc) {
+    size_t locOffset;
+    if (reader.parseVBR(locOffset))
+      return true;
+    auto it = locations.find(locOffset);
+    if (it == locations.end())
+      return reader.emitError("invalid location");
+    loc = it->second;
+    return false;
+  }
+
   mlir::OwningOpRef<ModuleOp> module;
 
   /// This is a list of sections indexed by the BEF section ID.
@@ -162,8 +175,10 @@ private:
   /// This is list of filenames indexed by occurrence in the LOCATION_FILENAMES
   /// section.
   SmallVector<StringRef> locationFilenames;
-  /// This is a list of locations indexed by their number in LOCATION_POSITIONS.
-  SmallVector<Location> locations;
+
+  /// This is a list of locations identified by their offset in
+  /// LOCATION_POSITIONS.
+  DenseMap<size_t, Location> locations;
 
   /// This captures the parsed attribute at an offset in the ATTRIBUTES section.
   DenseMap<size_t, Attribute> attributeAtOffset;
@@ -231,11 +246,14 @@ bool BEFToMLIRConverter::parseLocationPositions() {
       getSectionReader(BEF::SectionID::LOCATION_FILENAMES);
   BEFReader reader = getSectionReader(BEF::SectionID::LOCATION_POSITIONS);
 
+  const uint8_t *sectionStart = reader.data();
+
   // It is common to have many references to the same filename.  Parse and
   // unique each one a single time.
   DenseMap<size_t, StringAttr> filenames;
   while (!reader.empty()) {
     size_t filenameOffset, lineNo, colNo;
+    size_t offset = reader.data() - sectionStart;
     if (reader.parseVBR(filenameOffset) || reader.parseVBR(lineNo) ||
         reader.parseVBR(colNo))
       return true;
@@ -246,8 +264,8 @@ bool BEFToMLIRConverter::parseLocationPositions() {
                                                     filenameEntry))
         return true;
     }
-    locations.push_back(
-        mlir::FileLineColLoc::get(filenameEntry, lineNo, colNo));
+    locations.insert(
+        {offset, mlir::FileLineColLoc::get(filenameEntry, lineNo, colNo)});
   }
   return false;
 }
@@ -347,11 +365,13 @@ bool BEFToMLIRConverter::parseFunctions() {
   Type unknownType = BEF::UnknownType::get(funcBuilder.getContext());
 
   // Read until we run out of function descriptors.
+  Location loc = UnknownLoc::get(funcBuilder.getContext());
   while (!reader.empty()) {
     size_t functionOffset, nameOffset, numArgs, numResults;
     StringAttr name;
     if (reader.parseVBR(functionOffset) || reader.parseVBR(nameOffset) ||
-        reader.parseVBR(numArgs) || reader.parseVBR(numResults) ||
+        parseLocation(reader, loc) || reader.parseVBR(numArgs) ||
+        reader.parseVBR(numResults) ||
         stringReader.parseNULTerminatedStringAt(nameOffset, name))
       return true;
 
@@ -362,16 +382,15 @@ bool BEFToMLIRConverter::parseFunctions() {
     inputTypes.assign(numArgs, unknownType);
     resultTypes.assign(numResults, unknownType);
 
-    // FIXME: put the func Location in the right place!
-    auto func = funcBuilder.create<BEF::FuncOp>(module->getLoc(), name,
-                                                inputTypes, resultTypes);
+    auto func =
+        funcBuilder.create<BEF::FuncOp>(loc, name, inputTypes, resultTypes);
     functions.push_back(func);
     inputTypes.clear();
     resultTypes.clear();
 
     // FIXME: Handle properly.
     auto bodyBuilder = OpBuilder::atBlockBegin(func.getBodyBlock());
-    bodyBuilder.create<BEF::OutputOp>(module->getLoc(), ArrayRef<Value>());
+    bodyBuilder.create<BEF::OutputOp>(loc, ArrayRef<Value>());
   }
 
   // TODO: Go parse the function bodies from functionOffsets.

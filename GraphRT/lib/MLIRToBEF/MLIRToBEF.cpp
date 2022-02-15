@@ -263,9 +263,10 @@ public:
     return it->second;
   }
 
-  void addBEFFunctionOffset(StringAttr name, BEFOffset offset,
+  void addBEFFunctionOffset(StringAttr name, BEFOffset offset, Location loc,
                             BEFFunctionSignature signature) {
-    functionIndexEntries.push_back({getStringOffset(name), offset, signature});
+    functionIndexEntries.push_back(
+        {getStringOffset(name), offset, getLocationOffset(loc), signature});
   }
 
   /// Return the BEFOffset for the specified location entry.
@@ -324,6 +325,7 @@ public:
   struct FunctionIndexEntry {
     BEFOffset nameOffset;
     BEFOffset functionOffset;
+    BEFOffset locationOffset;
     BEFFunctionSignature signature;
   };
 
@@ -766,8 +768,6 @@ void BEFFunctionEmitter::emitFunction(Region *region) {
   assert(region->getBlocks().size() == 1 && "should have a single block");
   auto &block = region->getBlocks().front();
 
-  emitOffset(entities.getLocationOffset(region->getLoc()));
-
   // Emit the register table.
   emitRegisterTable(&block);
 
@@ -1084,6 +1084,7 @@ void BEFModuleEmitter::emitBEFFunctions(BEFEmitter *attributeNamesSection,
   for (auto function : entities.functions) {
     // Remember that we emitted this region to this offset.
     entities.addBEFFunctionOffset(function.name, functionsSection.getOffset(),
+                                  function.region->getLoc(),
                                   function.signature);
     functionsSection.emitFunction(function.region);
   }
@@ -1096,6 +1097,7 @@ void BEFModuleEmitter::emitFunctionIndex() {
   for (const auto &entry : entities.functionIndexEntries) {
     functionIndexSection.emitOffset(entry.functionOffset);
     functionIndexSection.emitOffset(entry.nameOffset);
+    functionIndexSection.emitOffset(entry.locationOffset);
     functionIndexSection.emitVBR(entry.signature.numArguments);
     functionIndexSection.emitVBR(entry.signature.numResults);
   }

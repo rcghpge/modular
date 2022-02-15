@@ -173,24 +173,14 @@ implementation C/C++ function as an const pointer.
 
 BEF files only support a subset of MLIR attributes, currently including:
 
-*   i1 integers: stored as 1-byte integers.
-*   i32 integers: stored as 4-byte little endian integers.
-*   i64 integers: stored as 8-byte little endian integers.
+*   i1/i8 integers: stored as 1-byte integers.
+*   i16/i32/i64 integers: stored as 2/4/8-byte little endian integers.
 *   f32 floats: stored as IEEE single precision floats.
 *   f64 floats: stored as IEEE double precision floats.
 *   type enums: stored as 1-byte integers.
 *   strings: stored as arrays of bytes, not necessarily NUL terminated.
-*   dense elements: stored as shape dtype, shape rank, elements count, followed
-    by shape elements and elements themselves. Each element can be any of the
-    integer and float format above.
 *   arrays: all elements of which are of the same type and fixed in width (eg.
     i32, f32, type).
-*   aggregates: stored as array of i32 integers, which are offsets to other
-    constants in Attributes Section. These nested constants can be of any
-    supported attribute type including aggregates. Unlike arrays, an aggregate
-    can contain a mix of different attribute types.
-
-TODO: Support 8/16-bit integers.
 
 ***Rationale***
 
@@ -205,16 +195,15 @@ performance penalty.
 **Grammar**
 
 ```none
-  PRIMITIVE_NAMES_SECTION ::= VBR<"PrimitiveCount"> OFFSET<"PrimitiveNameOffset">*
+  PRIMITIVE_NAMES_SECTION ::= OFFSET<"PrimitiveNameOffset">*
 ```
 
 The Primitive names section defines a table of primitive names, directly
 corresponding to the names in the MLIR GraphRT executor program. This allows
 references from the BEF Functions section to use dense indexes into the table.
 
-The format of this section is a VBR count of the number of primitives in
-the table, followed by 'count' VBR values which are offsets into the string
-table for the primitive name.
+This section contains one VBR value for each primitive, which is an offset into
+the string table for the primitive name.
 
 ***Rationale***
 
@@ -228,13 +217,12 @@ mutable array in memory for primitives.
 **Grammar**
 
 ```none
-  TYPES_SECTION ::= VBR<"TypeCount"> OFFSET<"TypeNameOffset">*
+  TYPES_SECTION ::= OFFSET<"TypeNameOffset">*
 ```
 
 The Types section defines a table of type names used by the program, and is
-laid out exactly the same as the [Primitive Names section](#primitive-names-section). The
-[BEF Functions section](#bef-functions-section) uses Indexes into this section to
-specify types of registers.
+laid out exactly the same as the
+[Primitive Names section](#primitive-names-section).
 
 ### BEFFunctionIndex Section
 
@@ -243,6 +231,7 @@ specify types of registers.
 ```none
   BEF_FUNCTION_INDEX_SECTION ::= VBR<"NumBEFFunctions"> BEF_FUNCTION_ENTRY*
   BEF_FUNCTION_ENTRY         ::= OFFSET<"BEFFunction"> OFFSET<"Name">
+                                 OFFSET<"Location"> 
                                  VBR<"NumArguments"> VBR<"NumResults"> 
 ```
 
@@ -291,7 +280,7 @@ concepts that occur with MLIR regions.
 **Grammar**
 
 ```none
-  BEF_FUNCTION    ::= OFFSET<"Location"> REGISTER_TABLE PRIMITIVE_TABLE
+  BEF_FUNCTION    ::= REGISTER_TABLE PRIMITIVE_TABLE
                       RESULT_REGS BYTE<"AlignmentPadding">* PRIMITIVE+
 
   REGISTER_TABLE  ::= VBR<"NumRegs"> REGISTER_ENTRY*
