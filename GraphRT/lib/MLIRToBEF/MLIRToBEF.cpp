@@ -827,7 +827,7 @@ void BEFFunctionEmitter::emitFunction(Region *region) {
     emitPrimitive(&op, primitiveList);
   }
 
-  // Emit the result registers list at the end of the KERNEL_TABLE if present.
+  // Emit the result registers list at the end, if present.
   if (auto outputOp = dyn_cast<BEF::OutputOp>(block.getTerminator())) {
     for (auto operand : outputOp.getOperands())
       emitVBR(getRegisterNumber(operand));
@@ -1067,9 +1067,6 @@ void BEFModuleEmitter::emitPrimitiveNames() {
   // The primitives are already in a stable order, so just emit them in the
   // order they were found.
   BEFEmitter primitivesNamesSection;
-  // Count of the number of primitives that exist.
-  primitivesNamesSection.emitVBR(entities.primitives.size());
-
   for (auto op : entities.primitives)
     primitivesNamesSection.emitOffset(entities.getStringOffset(op));
 
@@ -1095,14 +1092,8 @@ void BEFModuleEmitter::emitBEFFunctions(BEFEmitter *attributeNamesSection,
 }
 
 void BEFModuleEmitter::emitFunctionIndex() {
-  auto functionIndexEntries = entities.functionIndexEntries;
-
   BEFEmitter functionIndexSection;
-
-  // Count of the number of functions that exist.
-  functionIndexSection.emitVBR(functionIndexEntries.size());
-
-  for (const auto &entry : functionIndexEntries) {
+  for (const auto &entry : entities.functionIndexEntries) {
     functionIndexSection.emitOffset(entry.functionOffset);
     functionIndexSection.emitOffset(entry.nameOffset);
     functionIndexSection.emitVBR(entry.signature.numArguments);

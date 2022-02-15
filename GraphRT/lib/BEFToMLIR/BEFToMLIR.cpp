@@ -92,7 +92,7 @@ public:
 
   /// Parse a NUL terminated string into the specified StringRef, not including
   /// the NUL terminator.
-  bool parseNULTerminatedStringAt(StringRef &result, size_t position = 0) {
+  bool parseNULTerminatedStringAt(size_t position, StringRef &result) {
     if (position >= contents.size())
       return emitError("invalid location for string");
 
@@ -101,6 +101,16 @@ public:
     if (!nul)
       return emitError("malformed NUL terminated string");
     result = StringRef(start, nul - start);
+    return false;
+  }
+
+  /// Parse a NUL terminated string into the specified StringAttr, not including
+  /// the NUL terminator.
+  bool parseNULTerminatedStringAt(size_t position, StringAttr &result) {
+    StringRef resultStr;
+    if (parseNULTerminatedStringAt(position, resultStr))
+      return true;
+    result = StringAttr::get(loc.getContext(), resultStr);
     return false;
   }
 
@@ -126,10 +136,13 @@ public:
   bool findSections(BEFReader &reader);
   bool parseLocationPositions();
   bool parseAttributes();
+  bool parsePrimitiveNames();
+  bool parseFunctionIndex();
 
 private:
   MLIRContext *getContext() const { return module.get()->getContext(); }
   Location getLoc() const { return module.get()->getLoc(); }
+
   BEFReader getSectionReader(BEF::SectionID ID) const {
     ArrayRef<uint8_t> data;
     if (unsigned(ID) < sections.size())
@@ -153,6 +166,9 @@ private:
 
   /// This captures the parsed attribute at an offset in the ATTRIBUTES section.
   DenseMap<size_t, Attribute> attributeAtOffset;
+
+  /// This is the name for each primitive, indexed by primitive ID.
+  SmallVector<StringAttr> primitiveNames;
 };
 } // end anonymous namespace.
 
@@ -210,7 +226,6 @@ bool BEFToMLIRConverter::parseLocationPositions() {
   BEFReader filenameReader =
       getSectionReader(BEF::SectionID::LOCATION_FILENAMES);
   BEFReader reader = getSectionReader(BEF::SectionID::LOCATION_POSITIONS);
-  MLIRContext *ctx = module->getContext();
 
   // It is common to have many references to the same filename.  Parse and
   // unique each one a single time.
@@ -223,10 +238,9 @@ bool BEFToMLIRConverter::parseLocationPositions() {
 
     auto &filenameEntry = filenames[filenameOffset];
     if (!filenameEntry) {
-      StringRef filename;
-      if (filenameReader.parseNULTerminatedStringAt(filename, filenameOffset))
+      if (filenameReader.parseNULTerminatedStringAt(filenameOffset,
+                                                    filenameEntry))
         return true;
-      filenameEntry = StringAttr::get(ctx, filename);
     }
     locations.push_back(
         mlir::FileLineColLoc::get(filenameEntry, lineNo, colNo));
@@ -297,6 +311,47 @@ bool BEFToMLIRConverter::parseAttributes() {
   return false;
 }
 
+/// Build the "primitiveNames" array by parsing the PRIMITIVE_NAMES section,
+/// resolving them all to StringAttr's.
+bool BEFToMLIRConverter::parsePrimitiveNames() {
+  BEFReader reader = getSectionReader(BEF::SectionID::PRIMITIVE_NAMES);
+  BEFReader stringReader = getSectionReader(BEF::SectionID::STRINGS);
+
+  // Read until we run out of names.
+  while (!reader.empty()) {
+    size_t stringOffset;
+    StringAttr name;
+    if (reader.parseVBR(stringOffset) ||
+        stringReader.parseNULTerminatedStringAt(stringOffset, name))
+      return true;
+
+    primitiveNames.push_back(name);
+  }
+
+  return false;
+}
+
+bool BEFToMLIRConverter::parseFunctionIndex() {
+  BEFReader reader = getSectionReader(BEF::SectionID::BEF_FUNCTION_INDEX);
+  BEFReader stringReader = getSectionReader(BEF::SectionID::STRINGS);
+
+  // Read until we run out of function descriptors.
+  while (!reader.empty()) {
+    size_t functionOffset, nameOffset, numArgs, numResults;
+    StringAttr name;
+    if (reader.parseVBR(functionOffset) || reader.parseVBR(nameOffset) ||
+        reader.parseVBR(numArgs) || reader.parseVBR(numResults) ||
+        stringReader.parseNULTerminatedStringAt(nameOffset, name))
+      return true;
+
+    // TODO: If we have type metadata, parse the types of the inputs and
+    // results.
+
+    // TODO: Create the bef.func nodes.
+  }
+  return false;
+}
+
 //===----------------------------------------------------------------------===//
 // translateBEFToMLIR
 //===----------------------------------------------------------------------===//
@@ -318,8 +373,9 @@ ModuleOp M::translateBEFToMLIR(ArrayRef<uint8_t> buffer, Location loc) {
   BEFReader reader(buffer, loc);
   // Read/validate the header and section table.
   if (converter.parseHeader(reader) || converter.findSections(reader) ||
-      // Parse sections in a predictable order.
-      converter.parseLocationPositions() || converter.parseAttributes())
+      // Parse sections in a specific order, unbound by their order in the file.
+      converter.parseLocationPositions() || converter.parseAttributes() ||
+      converter.parsePrimitiveNames() || converter.parseFunctionIndex())
     return {};
 
   return converter.takeModule();
