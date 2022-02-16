@@ -130,8 +130,8 @@ SECTION_BODY_ALIGNMENT follows.
   SECTION_DATA ::= BEF_FUNCTIONS_SECTION
   SECTION_DATA ::= LOCATION_FILENAMES_SECTION
   SECTION_DATA ::= LOCATIONS_SECTION
-  SECTION_DATA ::= ATTRIBUTE_TYPES_SECTION
-  SECTION_DATA ::= ATTRIBUTE_NAMES_SECTION
+  SECTION_DATA ::= ATTRIBUTE_KIND_MD_SECTION
+  SECTION_DATA ::= ATTRIBUTE_NAMES_MD_SECTION
   SECTION_DATA ::= REGISTER_TYPES_SECTION
 
   // Unknown section.
@@ -408,40 +408,36 @@ strings.
 This section contains a list of "locations", which are a VBR offset into the
 LocationFilenames section, and VBRs for the line and column of the position.
 
-### AttributeTypes Section
+### ATTRIBUTE_KIND_MD Section
 
 **Grammar**
 
 ```none
-  ATTRIBUTE_TYPES_SECTION   ::= VBR<"NumAttributes"> ATTRIBUTE_TYPE_ENTRY*
-  ATTRIBUTE_TYPE_ENTRY      ::= OFFSET<"Attributes"> BYTE<"AttributeType">
+  ATTRIBUTE_KIND_MD_SECTION ::= VBR<"NumAttributes"> ATTRIBUTE_KIND_ENTRY*
+  ATTRIBUTE_KIND_ENTRY      ::= OFFSET<"Attributes"> BYTE<"AttributeKind">
 ```
 
-The AttributeTypes section is an optional section which is not needed for BEF
-execution, but this section is necessary for BEFToMLIR conversion. This
-section describes the type information for each attribute (specified by an
-Offset into [Attributes section](#attributes-section)). An attribute type is an
-one-byte enum described in [Attributes section](#attributes-section) and defined
-in [`BEFEncoding.h`](../include/GraphRT/BEF/BEFEncoding.h).
+The ATTRIBUTE_KIND section specifies the kind of each attribute emitted to the
+attribute section, allowing BEFToMLIR conversion (e.g allowing us to know the
+difference between an i1/i8 attribute or an i32/f32). The kind is specified by a
+one-byte enum defined in [`BEFEncoding.h`](../include/GraphRT/BEF/BEFEncoding.h).
 
-### AttributeNames Section
+### ATTRIBUTE_NAMES_MD Section
 
 **Grammar**
 
 ```none
-  ATTRIBUTE_NAMES_SECTION ::= VBR<"NumFunctions"> PRIMITIVE_TABLE*
-  PRIMITIVE_TABLE         ::= VBR<"NumPrimitives"> OFFSET<"AttributeName">*
+  ATTRIBUTE_NAMES_SECTION ::= PRIMITIVE_TABLE*
+  PRIMITIVE_TABLE         ::= OFFSET<"AttributeName">*
 ```
 
 The AttributeNames sections is an optional section which is not needed for BEF
-execution, but this section is necessary for BEFToMLIR conversion. This
+execution, but which makes BEFToMLIR conversion much nicer. This
 section describes the attribute names used by each primitive. There is a 1:1
 mapping between Primitive Table in this section and BEF Function Entries in
-[BEF FunctionIndex section](#bef-functionindex-section). And there is a 1:1 mapping
-between primitive entries in this section and primitive entries in Functions
-section's primitive table. Each primitive entry contains any number of
-AttributeNames. AttributeName is an offset to Strings section that specifies the
-name of the attribute used by this primitive.
+[BEF FunctionIndex section](#bef-functionindex-section). Each attribute and
+region for a primitive has an entry here specifying the name.  The offset is
+into the STRINGS_MD section (not the STRINGS section).
 
 ### RegisterTypes Section
 

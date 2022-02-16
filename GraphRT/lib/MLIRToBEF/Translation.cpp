@@ -16,16 +16,15 @@
 using namespace M;
 
 void M::registerMLIRToBEFTranslation() {
-  static llvm::cl::opt<bool> disableOptionalSections(
-      "disable-optional-bef-sections",
-      llvm::cl::desc("Disable optional sections for register types, attribute "
-                     "types and attribute names."),
+  static llvm::cl::opt<bool> enableBEFMetadata(
+      "enable-bef-metadata",
+      llvm::cl::desc("Enable metadata sections for better BEF2MLIR"),
       llvm::cl::init(false));
 
   static mlir::TranslateFromMLIRRegistration toBEF(
       "export-bef",
       [](ModuleOp module, llvm::raw_ostream &os) -> LogicalResult {
-        auto data = translateMLIRToBEF(module, disableOptionalSections);
+        auto data = translateMLIRToBEF(module, enableBEFMetadata);
         if (data.empty())
           return failure();
         os.write(reinterpret_cast<const char *>(data.data()), data.size());

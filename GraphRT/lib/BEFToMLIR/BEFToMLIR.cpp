@@ -184,7 +184,8 @@ public:
   bool parseAttributes();
   bool parsePrimitiveNames();
   bool parseFunctions();
-  bool parseFunctionBody(BEF::FuncOp func, size_t offset);
+  bool parseFunctionBody(BEF::FuncOp func, size_t offset,
+                         BEFReader &attrNameReader);
 
   bool resolveLocation(size_t locOffset, Location &loc) {
     auto it = locations.find(locOffset);
@@ -208,6 +209,11 @@ public:
       return mlir::emitError(loc) << "invalid attribute offset", true;
     result = it->second;
     return false;
+  }
+
+  bool resolveMetadataString(size_t offset, Location loc, StringAttr &result) {
+    BEFReader stringReader = getSectionReader(BEF::SectionID::STRINGS_MD);
+    return stringReader.parseNULTerminatedStringAt(offset, result);
   }
 
 private:
@@ -458,6 +464,8 @@ bool BEFToMLIRConverter::parsePrimitiveNames() {
 bool BEFToMLIRConverter::parseFunctions() {
   BEFReader reader = getSectionReader(BEF::SectionID::BEF_FUNCTION_INDEX);
   BEFReader stringReader = getSectionReader(BEF::SectionID::STRINGS);
+  BEFReader attrNameReader =
+      getSectionReader(BEF::SectionID::ATTRIBUTE_NAME_MD);
 
   SmallVector<size_t> functionOffsets;
 
@@ -493,7 +501,8 @@ bool BEFToMLIRConverter::parseFunctions() {
 
   // Decode each of the function bodies.
   for (auto fnAndOffset : llvm::zip(functions, functionOffsets)) {
-    if (parseFunctionBody(std::get<0>(fnAndOffset), std::get<1>(fnAndOffset)))
+    if (parseFunctionBody(std::get<0>(fnAndOffset), std::get<1>(fnAndOffset),
+                          attrNameReader))
       return true;
   }
 
@@ -504,8 +513,9 @@ namespace {
 class FunctionParser {
 public:
   FunctionParser(BEF::FuncOp func, BEFReader &funcReader,
-                 BEFToMLIRConverter &converter)
-      : func(func), funcReader(funcReader), converter(converter) {}
+                 BEFReader &attrNameReader, BEFToMLIRConverter &converter)
+      : func(func), funcReader(funcReader), attrNameReader(attrNameReader),
+        converter(converter) {}
 
   /// Entrypoint to parse the function body.
   bool parse();
@@ -518,6 +528,9 @@ private:
 
   BEF::FuncOp func;
   BEFReader &funcReader;
+
+  /// This is non-empty if the file has an attribute names section.
+  BEFReader &attrNameReader;
   BEFToMLIRConverter &converter;
 
   /// This contains the number of operands that must be resolved before the
@@ -608,6 +621,7 @@ bool FunctionParser::parsePrimitiveList() {
         funcReader.parseInt4Array(numResults, resultNos))
       return true;
 
+    // Resolve all the SSA values for the operands.
     SmallVector<Value> operandValues;
     for (auto operand : operands) {
       if (operand >= registerValues.size())
@@ -640,7 +654,7 @@ bool FunctionParser::parsePrimitiveList() {
     }
 
     // Resolve attributes.
-    SmallVector<Attribute> attrs;
+    SmallVector<Attribute> attrs, attrNames;
     for (unsigned attrOffset : attrsOffsets) {
       Attribute attr;
       if (converter.resolveAttribute(attrOffset, loc, attr))
@@ -648,10 +662,24 @@ bool FunctionParser::parsePrimitiveList() {
       attrs.push_back(attr);
     }
 
+    if (!attrNameReader.empty()) {
+      for (unsigned attrOffset : attrsOffsets) {
+        (void)attrOffset;
+        size_t nameOffset;
+        StringAttr name;
+        if (attrNameReader.parseVBR(nameOffset) ||
+            converter.resolveMetadataString(nameOffset, loc, name))
+          return true;
+        attrNames.push_back(name);
+      }
+    }
+
     // Otherwise we need to create a primitive for this.
-    if (numFunctions != 0)
+    if (numFunctions != 0) {
+      // TODO: read all the names from attrNameReader!
       return mlir::emitError(loc, "FIXME: Don't support decoding regions yet!"),
              true;
+    }
 
     // If this operation has more than one operand but only requires one to be
     // available before executing the primitive, then it is a nonstrict
@@ -665,6 +693,10 @@ bool FunctionParser::parsePrimitiveList() {
     auto resultOp = bodyBuilder.create<BEF::OpaqueOp>(
         loc, resultTypes, primitiveName, bodyBuilder.getArrayAttr(attrs),
         nonStrict, operandValues, numFunctions);
+
+    // TODO: Switch to a first class representation instead of OpaqueOp.
+    if (!attrNames.empty())
+      resultOp->setAttr("bef.attr.names", bodyBuilder.getArrayAttr(attrNames));
 
     // Add all the results to the register table so subsequent ops may use it.
     size_t elt = 0;
@@ -686,11 +718,12 @@ bool FunctionParser::parsePrimitiveList() {
   return false;
 }
 
-bool BEFToMLIRConverter::parseFunctionBody(BEF::FuncOp func, size_t offset) {
+bool BEFToMLIRConverter::parseFunctionBody(BEF::FuncOp func, size_t offset,
+                                           BEFReader &attrNameReader) {
   BEFReader funcReader = getSectionReader(BEF::SectionID::BEF_FUNCTIONS);
 
   return funcReader.dropBytes(offset) ||
-         FunctionParser(func, funcReader, *this).parse();
+         FunctionParser(func, funcReader, attrNameReader, *this).parse();
 }
 
 //===----------------------------------------------------------------------===//

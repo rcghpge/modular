@@ -219,7 +219,7 @@ namespace {
 class EntityTable {
 public:
   /// Walk the IR to build the symbol tables, this returns true on failure.
-  bool collect(ModuleOp module, bool disableOptionalSections);
+  bool collect(ModuleOp module, bool enableBEFMetadata);
   ssize_t getFunctionNamed(StringAttr name) const;
 
   unsigned getTypeIndex(Type type) const {
@@ -252,6 +252,12 @@ public:
     return it->second;
   }
 
+  BEFOffset getMetadataStringOffset(StringAttr str) const {
+    auto it = metadataStringOffsets.find(str);
+    assert(it != metadataStringOffsets.end() && "unknown metadata string");
+    return it->second;
+  }
+
   BEFOffset getAttributeOffset(Attribute attr) const {
     auto it = attributeOffsets.find(attr);
     assert(it != attributeOffsets.end() && "unknown attribute");
@@ -281,11 +287,11 @@ private:
   using LocationTuple = std::tuple<StringAttr, unsigned, unsigned>;
   static LocationTuple decomposeLocation(Location loc);
   void addString(StringAttr string) { strings.insert(string); }
+  void addMetadataString(StringAttr string) { metadataStrings.insert(string); }
   void addType(Type type);
   LogicalResult addBEFFunction(Region *region, StringAttr name);
   void addPrimitiveOpcode(StringAttr opcode);
   void addLocation(Location loc);
-  void addAttributeType(Attribute attr);
 
 public:
   bool hadError = false;
@@ -341,8 +347,12 @@ public:
   // All of the strings we need to emit the BEF file.
   llvm::SetVector<StringAttr> strings;
 
-  /// This is the offset of each known string in the STRINGS section.
-  DenseMap<StringAttr, BEFOffset> stringOffsets;
+  // All of the strings we need to emit for metadata in the BEF file.
+  llvm::SetVector<StringAttr> metadataStrings;
+
+  /// This is the offset of each known string in the STRINGS and STRINGS_MD
+  /// section.
+  DenseMap<StringAttr, BEFOffset> stringOffsets, metadataStringOffsets;
 
   // This is all of the filenames referred to by locations in the file.
   llvm::SetVector<StringAttr> locationFilenames;
@@ -433,21 +443,8 @@ void EntityTable::addLocation(Location loc) {
   locations.insert(locationInfo);
 }
 
-void EntityTable::addAttributeType(Attribute attr) {
-  if (auto intAttr = attr.dyn_cast<IntegerAttr>())
-    addType(intAttr.getType());
-
-  if (auto floatAttr = attr.dyn_cast<FloatAttr>())
-    addType(floatAttr.getType());
-
-  if (auto arrAttr = attr.dyn_cast<ArrayAttr>()) {
-    for (auto attr : arrAttr.getValue())
-      addAttributeType(attr);
-  }
-}
-
 /// Walk the IR to build the symbol tables, this returns true on failure.
-bool EntityTable::collect(ModuleOp module, bool disableOptionalSections) {
+bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
   std::vector<std::pair<SymbolRefAttr, Location>> symbolRefAttrs;
 
   auto opWalker = [&](Operation *op) -> WalkResult {
@@ -490,18 +487,15 @@ bool EntityTable::collect(ModuleOp module, bool disableOptionalSections) {
       if (name.getValue() == BEF::NONSTRICT_ATTR)
         return;
 
+      // Add attribute names if requested.
+      if (enableBEFMetadata)
+        addMetadataString(name);
+
       if (auto fn_attr = attr.dyn_cast<SymbolRefAttr>()) {
         // Keep track of function attributes specially so we can diagnose
         // them.
         symbolRefAttrs.push_back({fn_attr, op->getLoc()});
       } else {
-        if (!disableOptionalSections) {
-          // Add attribute names and types for attribute types section and
-          // attribute names section. These will be ignored by executor.
-          addString(name);
-          addAttributeType(attr);
-        }
-
         // We just keep track of the top level attributes in the "attributes"
         // list: do not recursively process them.  This is because we want to
         // emit arrays of scalars as "flat" attributes where all the values are
@@ -749,7 +743,7 @@ class BEFFunctionEmitter : public BEFEmitter {
 public:
   BEFFunctionEmitter(EntityTable &entities, BEFEmitter *attributeNamesSection,
                      BEFEmitter *registerTypesSection)
-      : entities(entities) {}
+      : entities(entities), attributeNamesSection(attributeNamesSection) {}
 
   void emitFunction(Region *region);
 
@@ -770,6 +764,10 @@ private:
   DenseMap<Operation *, unsigned> primitiveIndices;
 
   EntityTable &entities;
+
+  // If optional metadata is enabled, this section collects information about
+  // the names that correspond to primitive attributes.
+  BEFEmitter *attributeNamesSection;
 };
 } // end anonymous namespace.
 
@@ -917,13 +915,21 @@ void BEFFunctionEmitter::emitArgumentsPseudoOp(
 void BEFFunctionEmitter::emitPrimitive(Operation *op,
                                        BEFEmitter &primitiveList) const {
   // Collect the regions and attributes to emit.
-  SmallVector<uint32_t> functionsToEmit, attributesToEmit;
+  SmallVector<std::pair<uint32_t, BEFOffset>> functionsToEmit;
+  SmallVector<uint32_t> attributesToEmit;
   auto processAttr = [&](StringAttr name, Attribute value) {
     if (auto fnAttr = value.dyn_cast<FlatSymbolRefAttr>()) {
       // Function references are emitted as regions.
-      functionsToEmit.push_back(entities.getFunctionNamed(fnAttr.getAttr()));
+      BEFOffset nameIdx = {0};
+      if (attributeNamesSection)
+        nameIdx = entities.getMetadataStringOffset(name);
+      functionsToEmit.push_back(
+          {entities.getFunctionNamed(fnAttr.getAttr()), nameIdx});
     } else {
       attributesToEmit.push_back(entities.getAttributeOffset(value).value);
+      if (attributeNamesSection)
+        attributeNamesSection->emitOffset(
+            entities.getMetadataStringOffset(name));
     }
   };
 
@@ -932,7 +938,7 @@ void BEFFunctionEmitter::emitPrimitive(Operation *op,
   if (auto opaque = dyn_cast<BEF::OpaqueOp>(op)) {
     // All encoded attributes are stored in a single array.
     for (auto attr : opaque.attrs())
-      processAttr(StringAttr(), attr);
+      processAttr(StringAttr::get(op->getContext()), attr);
   } else {
     for (auto attrNamePair : op->getAttrs()) {
       // Don't encode the bef.nonstrict attribute explicitly.
@@ -944,7 +950,7 @@ void BEFFunctionEmitter::emitPrimitive(Operation *op,
 
   // Regions on the op are also considered to be BEF functions.
   for (auto &region : op->getRegions())
-    functionsToEmit.push_back(entities.getFunctionID(region));
+    functionsToEmit.push_back({entities.getFunctionID(region), BEFOffset{0}});
 
   // Ensure this primitive isn't too big to encode.
   if (op->getNumOperands() > 65535 || attributesToEmit.size() > 65535 ||
@@ -968,8 +974,11 @@ void BEFFunctionEmitter::emitPrimitive(Operation *op,
     primitiveList.emitInt4(getRegisterNumber(operand));
   for (auto attrOffset : attributesToEmit)
     primitiveList.emitInt4(attrOffset);
-  for (auto fnOffset : functionsToEmit)
-    primitiveList.emitInt4(fnOffset);
+  for (auto fnOffsetAndName : functionsToEmit) {
+    primitiveList.emitInt4(fnOffsetAndName.first);
+    if (attributeNamesSection)
+      attributeNamesSection->emitOffset(fnOffsetAndName.second);
+  }
   for (auto result : op->getResults())
     primitiveList.emitInt4(getRegisterNumber(result));
   // Then results with the primitives that use them.
@@ -988,12 +997,13 @@ public:
   explicit BEFModuleEmitter(ModuleOp module) : module(module) {}
 
   /// Walk the IR to build the symbol tables, this returns true on failure.
-  bool collectEntities(bool disableOptionalSections) {
-    return entities.collect(module, disableOptionalSections);
+  bool collectEntities(bool enableBEFMetadata) {
+    return entities.collect(module, enableBEFMetadata);
   }
   void emitLocationInfo(BEFEmitter &locationFilenames,
                         BEFEmitter &locationPositions);
   void emitStrings();
+  void emitMetadataStrings(BEFEmitter &metadataStringsSection);
   void emitAttributes(BEFEmitter &attrKindSection);
   void emitPrimitiveNames();
   void emitBEFFunctions(BEFEmitter *attributeNamesSection,
@@ -1034,6 +1044,14 @@ void BEFModuleEmitter::emitStrings() {
   }
 
   emitSection(BEF::SectionID::STRINGS, stringSection);
+}
+
+void BEFModuleEmitter::emitMetadataStrings(BEFEmitter &metadataStringsSection) {
+  // Emit the strings to the metadata string section and remember their offsets.
+  for (StringAttr string : entities.metadataStrings) {
+    entities.metadataStringOffsets[string] = metadataStringsSection.getOffset();
+    metadataStringsSection.emitNulTerminatedString(string);
+  }
 }
 
 /// Emit the ATTRIBUTES section, and the ATTRIBUTE_KIND_MD sections.
@@ -1111,11 +1129,11 @@ void BEFModuleEmitter::emitFunctionIndex() {
 /// On error, this emits the error message through the MLIR error handler,
 /// and returns an empty vector.
 std::vector<uint8_t> M::translateMLIRToBEF(ModuleOp module,
-                                           bool disableOptionalSections) {
+                                           bool enableBEFMetadata) {
   BEFModuleEmitter emitter(module);
 
   // Build the entities table.
-  if (emitter.collectEntities(disableOptionalSections))
+  if (emitter.collectEntities(enableBEFMetadata))
     return {};
 
   // Sections describing location information.  We collect this early, but emit
@@ -1125,19 +1143,21 @@ std::vector<uint8_t> M::translateMLIRToBEF(ModuleOp module,
 
   // If optional section emission is enabled, these collect the data to emit
   // into the respective sections.
-  BEFEmitter attrKindsSection, attrNamesSection, registerTypesSection;
+  BEFEmitter attrKindsSection, metadataStringsSection, attrNamesSection,
+      registerTypesSection;
 
   // Emit magic numbers and format version.
   emitter.emitBytes({BEF::MAGIC1, BEF::MAGIC2 + BEF::VERSION0});
   emitter.emitLocationInfo(locationFilenames, locationPositions);
   emitter.emitStrings();
+  if (enableBEFMetadata)
+    emitter.emitMetadataStrings(metadataStringsSection);
 
   emitter.emitAttributes(attrKindsSection);
 
   emitter.emitPrimitiveNames();
-  emitter.emitBEFFunctions(
-      disableOptionalSections ? nullptr : &attrNamesSection,
-      disableOptionalSections ? nullptr : &registerTypesSection);
+  emitter.emitBEFFunctions(enableBEFMetadata ? &attrNamesSection : nullptr,
+                           enableBEFMetadata ? &registerTypesSection : nullptr);
   emitter.emitFunctionIndex();
 
   // Now that we've emitted all of the critical sections used in the common case
@@ -1150,7 +1170,8 @@ std::vector<uint8_t> M::translateMLIRToBEF(ModuleOp module,
   emitter.emitSection(BEF::SectionID::ATTRIBUTE_KIND_MD, attrKindsSection);
 
   // Emit all the optional sections at the end if they're requested.
-  if (!disableOptionalSections) {
+  if (enableBEFMetadata) {
+    emitter.emitSection(BEF::SectionID::STRINGS_MD, metadataStringsSection);
     emitter.emitSection(BEF::SectionID::ATTRIBUTE_NAME_MD, attrNamesSection);
     emitter.emitSection(BEF::SectionID::REGISTER_TYPE_MD, registerTypesSection);
   }
