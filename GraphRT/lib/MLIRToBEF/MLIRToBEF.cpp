@@ -42,25 +42,6 @@ static BEFFunctionSignature getBEFFunctionSignature(Region *region) {
 }
 
 //===----------------------------------------------------------------------===//
-// Attribute Processing
-//===----------------------------------------------------------------------===//
-
-namespace {
-enum class WellKnownAttrs {
-  Unknown,   // This isn't a well-known attribute.
-  NonStrict, // This is the bef.nonstrict attribute on a primitive.
-};
-} // end anonymous namespace
-
-/// Classify this attribute, so the rest of the code can know if it gets
-/// special treatment.
-static WellKnownAttrs classifyAttribute(StringRef attrName) {
-  return llvm::StringSwitch<WellKnownAttrs>(attrName)
-      .Case("bef.nonstrict", WellKnownAttrs::NonStrict)
-      .Default(WellKnownAttrs::Unknown);
-}
-
-//===----------------------------------------------------------------------===//
 // BEFEmitter
 //===----------------------------------------------------------------------===//
 
@@ -490,8 +471,8 @@ bool EntityTable::collect(ModuleOp module, bool disableOptionalSections) {
     }
 
     auto processAttr = [&](StringAttr name, Attribute attr) {
-      // If this is a special attribute, ignore it.
-      if (classifyAttribute(name) != WellKnownAttrs::Unknown)
+      // If this is a special bef.nonstrict attribute, ignore it.
+      if (name.getValue() == BEF::NONSTRICT_ATTR)
         return;
 
       if (auto fn_attr = attr.dyn_cast<SymbolRefAttr>()) {
@@ -824,15 +805,10 @@ void BEFFunctionEmitter::emitFunction(Region *region) {
       continue;
 
     bool isNonStrict = false;
-    if (auto opaque = dyn_cast<BEF::OpaqueOp>(op)) {
+    if (auto opaque = dyn_cast<BEF::OpaqueOp>(op))
       isNonStrict = opaque.nonstrict();
-    } else {
-      for (auto attrAndName : op.getAttrs())
-        if (classifyAttribute(attrAndName.getName()) ==
-            WellKnownAttrs::NonStrict) {
-          isNonStrict = true;
-        }
-    }
+    else
+      isNonStrict = op.getAttr(BEF::NONSTRICT_ATTR) != Attribute();
 
     // Offset of the primitive in the list.
     emitOffset(primitiveList.getOffset());
@@ -960,8 +936,7 @@ void BEFFunctionEmitter::emitPrimitive(Operation *op,
   } else {
     for (auto attrNamePair : op->getAttrs()) {
       // Don't encode the bef.nonstrict attribute explicitly.
-      if (classifyAttribute(attrNamePair.getName()) ==
-          WellKnownAttrs::NonStrict)
+      if (attrNamePair.getName().getValue() == BEF::NONSTRICT_ATTR)
         continue;
       processAttr(attrNamePair.getName(), attrNamePair.getValue());
     }

@@ -15,6 +15,11 @@
 namespace M {
 
 namespace BEF {
+
+/// This dialect attribute can be added to arbitrary operations to make them
+/// execute in a non-strict way (before all their operands are resolved).
+constexpr const char NONSTRICT_ATTR[] = "bef.nonstrict";
+
 enum {
   // Defined by the BEF_FILE production.
   MAGIC1 = 0xBE,
@@ -29,9 +34,6 @@ enum {
 
   // Primitives in BEF are 4-byte aligned.
   PRIMITIVE_ENTRY_ALIGNMENT = 4,
-
-  // This encodes the 'metadata' field on primitives.
-  NON_STRICT_MD = 1,
 }; // anonymous enum
 
 /// This bitfield encodes into a single byte metadata about the format of
