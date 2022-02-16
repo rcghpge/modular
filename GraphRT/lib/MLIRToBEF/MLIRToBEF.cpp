@@ -576,10 +576,9 @@ private:
 
 OffsetAndAttrKind AttributesEmitter::emitIntegerAttribute(const APInt &value,
                                                           Location loc) {
-  size_t bytes = value.getBitWidth() / 8;
+  size_t bytes = (value.getBitWidth() + 7) / 8;
   alignTo(bytes);
   auto offset = getOffset();
-  unsigned numBytes;
   BEF::AttributeKind kind;
 
   switch (value.getBitWidth()) {
@@ -588,23 +587,18 @@ OffsetAndAttrKind AttributesEmitter::emitIntegerAttribute(const APInt &value,
     hadError = true;
     return {offset, BEF::AttributeKind::INVALID};
   case 1:
-    numBytes = 1;
     kind = BEF::AttributeKind::I1;
     break;
   case 8:
-    numBytes = 1;
     kind = BEF::AttributeKind::I8;
     break;
   case 16:
-    numBytes = 2;
     kind = BEF::AttributeKind::I16;
     break;
   case 32:
-    numBytes = 4;
     kind = BEF::AttributeKind::I32;
     break;
   case 64:
-    numBytes = 8;
     kind = BEF::AttributeKind::I64;
     break;
   }

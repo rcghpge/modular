@@ -72,18 +72,32 @@ public:
   }
 
   /// Parse a VBR encoded integer from the byte stream.
-  bool parseVBR(size_t &value) {
+  bool parseVBR(size_t &result) {
     uint8_t nextByte;
     if (parseByte(nextByte))
       return true;
 
-    value = nextByte & 127;
+    result = nextByte & 127;
     while ((nextByte & 128) != 0) {
       if (parseByte(nextByte))
         return true;
 
-      value = (value << 7) | size_t(nextByte & 127);
+      result = (result << 7) | size_t(nextByte & 127);
     }
+    return false;
+  }
+
+  /// Parse an inverted VBR that ends at the specified offset.
+  bool parseInvertedVBRAt(size_t offset, size_t &result) const {
+    result = 0;
+    uint8_t lastByte;
+    do {
+      if (offset == 0)
+        return emitError("invalid inverted VBR");
+      lastByte = contents[offset - 1];
+      result = (result << 7) | (lastByte & 0x7F);
+      --offset;
+    } while (lastByte & 0x80);
     return false;
   }
 
@@ -117,7 +131,7 @@ public:
 
   /// Parse a NUL terminated string into the specified StringRef, not including
   /// the NUL terminator.
-  bool parseNULTerminatedStringAt(size_t position, StringRef &result) {
+  bool parseNULTerminatedStringAt(size_t position, StringRef &result) const {
     if (position >= contents.size())
       return emitError("invalid location for string");
 
@@ -131,7 +145,7 @@ public:
 
   /// Parse a NUL terminated string into the specified StringAttr, not including
   /// the NUL terminator.
-  bool parseNULTerminatedStringAt(size_t position, StringAttr &result) {
+  bool parseNULTerminatedStringAt(size_t position, StringAttr &result) const {
     StringRef resultStr;
     if (parseNULTerminatedStringAt(position, resultStr))
       return true;
@@ -315,39 +329,71 @@ bool BEFToMLIRConverter::parseAttributeAt(size_t offset, uint8_t attrKind,
   if (attrReader.dropBytes(offset))
     return true;
 
-  unsigned size = 1;
-  uint8_t byte;
-  switch ((BEF::AttributeKind)attrKind) {
-  case BEF::AttributeKind::I1:
-    if (attrReader.parseByte(byte))
-      return true;
-    resultAttr = BoolAttr::get(getContext(), byte);
-    return false;
-  default:
-    return attrSection.emitError("unknown attribute");
-  case BEF::AttributeKind::I64:
-    size <<= 1;
-    LLVM_FALLTHROUGH;
-  case BEF::AttributeKind::I32:
-    size <<= 1;
-    LLVM_FALLTHROUGH;
-  case BEF::AttributeKind::I16:
-    size <<= 1;
-    LLVM_FALLTHROUGH;
-  case BEF::AttributeKind::I8: {
-    // Parse integers of various sizes.
-    uint64_t result = 0;
-    for (unsigned i = 0; i != size; ++i) {
+  // Parse a single attribute value from attrReader and return it, or null on
+  // an error.
+  auto parseAttribute = [&]() -> Attribute {
+    unsigned size = 1;
+    uint8_t byte;
+    switch ((BEF::AttributeKind)attrKind) {
+    default:
+      return attrSection.emitError("unknown attribute"), Attribute();
+    case BEF::AttributeKind::I1:
       if (attrReader.parseByte(byte))
-        return true;
-      result |= uint64_t(byte) << (i * 8);
+        return {};
+      return BoolAttr::get(getContext(), byte);
+    case BEF::AttributeKind::I64:
+      size <<= 1;
+      LLVM_FALLTHROUGH;
+    case BEF::AttributeKind::I32:
+      size <<= 1;
+      LLVM_FALLTHROUGH;
+    case BEF::AttributeKind::I16:
+      size <<= 1;
+      LLVM_FALLTHROUGH;
+    case BEF::AttributeKind::I8: {
+      // Parse integers of various sizes.
+      uint64_t result = 0;
+      for (unsigned i = 0; i != size; ++i) {
+        if (attrReader.parseByte(byte))
+          return {};
+        result |= uint64_t(byte) << (i * 8);
+      }
+      return IntegerAttr::get(IntegerType::get(getContext(), size * 8), result);
     }
-    auto type = IntegerType::get(getContext(), size * 8);
-    resultAttr = IntegerAttr::get(type, byte);
-    return false;
-    // TODO: Handle strings, arrays, and floating point.
+    case BEF::AttributeKind::STRING: {
+      size_t length;
+      ArrayRef<uint8_t> result;
+      if (attrSection.parseInvertedVBRAt(offset, length) ||
+          attrReader.parseBytes(length, result))
+        return {};
+      return StringAttr::get(
+          getContext(), StringRef((const char *)result.data(), result.size()));
+    }
+    }
+  };
+
+  // If this is a scalar attribute value, just parse the single attribute.
+  if ((attrKind & (uint8_t)BEF::AttributeKind::ARRAY_TYPE) == 0) {
+    resultAttr = parseAttribute();
+    return resultAttr == Attribute();
   }
+
+  // Otherwise, if this is an array of attributes, decode each of them and then
+  // assemble the array.
+  size_t length;
+  if (attrSection.parseInvertedVBRAt(offset, length))
+    return true;
+  attrKind &= ~(uint8_t)BEF::AttributeKind::ARRAY_TYPE;
+
+  SmallVector<Attribute> elements;
+  while (length--) {
+    elements.push_back(parseAttribute());
+    if (!elements.back())
+      return true;
   }
+
+  resultAttr = ArrayAttr::get(getContext(), elements);
+  return false;
 }
 
 bool BEFToMLIRConverter::parseAttributes() {
