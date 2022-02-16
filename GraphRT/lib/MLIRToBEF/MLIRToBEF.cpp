@@ -836,7 +836,7 @@ void BEFFunctionEmitter::emitFunction(Region *region) {
   // Once we're done, we can emit the primitive data after the primitive index
   // list. Note that primitive entries are fixed32 integers with 4-byte
   // alignment.
-  alignTo(4);
+  alignTo(BEF::PRIMITIVE_ENTRY_ALIGNMENT);
   emitEmitter(primitiveList);
 
   primitiveIndices.clear();
@@ -893,7 +893,7 @@ void BEFFunctionEmitter::emitArgumentsPseudoOp(
   // primitive only has results and UsedBys in its body.
   primitiveList.emitInt4(-1U);                      // code
   primitiveList.emitInt4(-1U);                      // location
-  primitiveList.emitInt4(0);                        // # arguments
+  primitiveList.emitInt4(0);                        // # operands
   primitiveList.emitInt4(0);                        // # attributes
   primitiveList.emitInt4(0);                        // # functions
   primitiveList.emitInt4(block->getNumArguments()); // # results
@@ -915,21 +915,11 @@ void BEFFunctionEmitter::emitPrimitive(Operation *op,
   // Include a location.
   primitiveList.emitInt4(entities.getLocationOffset(op->getLoc()).value);
 
-  // Because the numbers of each types of entries are emitted first, we use
-  // another emitter to keep all entries and append them to primitiveList
-  // later.
-  BEFEmitter primitiveBody;
-
   // Then we have the arguments.
   primitiveList.emitInt4(op->getNumOperands());
-  for (auto operand : op->getOperands())
-    primitiveBody.emitInt4(getRegisterNumber(operand));
 
   // Then attributes.
-  int numInputFunctions = 0;
-  int numInputAttributes = 0;
-  BEFEmitter inputFunctionEmitter;
-  BEFEmitter inputAttributeEmitter;
+  SmallVector<uint32_t> functionsToEmit, attributesToEmit;
   uint32_t specialAttribute = 0;
   for (auto attrNamePair : op->getAttrs()) {
     // Emit a flag in primitive header to indicate that the primitive is
@@ -942,46 +932,39 @@ void BEFFunctionEmitter::emitPrimitive(Operation *op,
     Attribute attr = attrNamePair.getValue();
     if (auto fnAttr = attr.dyn_cast<FlatSymbolRefAttr>()) {
       // Function references are emitted as regions.
-      numInputFunctions++;
-      inputFunctionEmitter.emitInt4(
-          entities.getFunctionNamed(fnAttr.getAttr()));
+      functionsToEmit.push_back(entities.getFunctionNamed(fnAttr.getAttr()));
     } else {
-      numInputAttributes++;
-      inputAttributeEmitter.emitInt4(entities.getAttributeOffset(attr).value);
+      attributesToEmit.push_back(entities.getAttributeOffset(attr).value);
     }
   }
 
-  primitiveList.emitInt4(numInputAttributes);
-  primitiveBody.emitEmitter(inputAttributeEmitter);
-
-  // Then regions.
-  numInputFunctions += op->getNumRegions();
+  // Regions on the op are also considered to be BEF functions.
   for (auto &region : op->getRegions())
-    inputFunctionEmitter.emitInt4(entities.getFunctionID(region));
+    functionsToEmit.push_back(entities.getFunctionID(region));
 
-  primitiveList.emitInt4(numInputFunctions);
-  primitiveBody.emitEmitter(inputFunctionEmitter);
-
+  primitiveList.emitInt4(attributesToEmit.size());
+  primitiveList.emitInt4(functionsToEmit.size());
   primitiveList.emitInt4(op->getNumResults());
-  for (auto result : op->getResults())
-    primitiveBody.emitInt4(getRegisterNumber(result));
 
   // Emit non-strict flag to special_metadata field of primitive header.
   primitiveList.emitInt4(specialAttribute);
 
-  // Then results with the primitives that use them.
-  for (auto result : op->getResults()) {
-    unsigned numUsers = getNumNonOutputUsers(result);
-    emitPrimitiveResultUsers(result, primitiveBody);
-    primitiveList.emitInt4(numUsers);
-  }
+  // Emit PRIMITIVE_RESULT_TABLE, results with the primitives that use them.
+  for (auto result : op->getResults())
+    primitiveList.emitInt4(getNumNonOutputUsers(result));
 
-  assert(primitiveList.getOffset().value % BEF::PRIMITIVE_ENTRY_ALIGNMENT == 0);
-  assert(primitiveBody.getOffset().value == 0 ||
-         primitiveBody.getRequiredAlignment() ==
-             BEF::PRIMITIVE_ENTRY_ALIGNMENT);
-  primitiveList.alignTo(4);
-  primitiveList.emitEmitter(primitiveBody);
+  // Emit the PRIMITIVE_BODY contents.
+  for (auto operand : op->getOperands())
+    primitiveList.emitInt4(getRegisterNumber(operand));
+  for (auto attrOffset : attributesToEmit)
+    primitiveList.emitInt4(attrOffset);
+  for (auto fnOffset : functionsToEmit)
+    primitiveList.emitInt4(fnOffset);
+  for (auto result : op->getResults())
+    primitiveList.emitInt4(getRegisterNumber(result));
+  // Then results with the primitives that use them.
+  for (auto result : op->getResults())
+    emitPrimitiveResultUsers(result, primitiveList);
 }
 
 //===----------------------------------------------------------------------===//

@@ -14,6 +14,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
+#include <numeric>
 using namespace M;
 
 //===----------------------------------------------------------------------===//
@@ -40,7 +41,7 @@ public:
     return true;
   }
 
-  // Read a single byte from the stream.
+  /// Parse a single byte from the stream.
   bool parseByte(uint8_t &value) {
     if (contents.empty())
       return emitError("ran out of bytes");
@@ -49,7 +50,28 @@ public:
     return false;
   }
 
-  // Read a VBR encoded integer from the byte stream.
+  /// Parse four bytes in little endian format from the stream.
+  bool parseInt4(uint32_t &value) {
+    uint8_t a, b, c, d;
+    if (parseByte(a) || parseByte(b) || parseByte(c) || parseByte(d))
+      return true;
+
+    value = uint32_t(a) | (uint32_t(b) << 8) | (uint32_t(c) << 16) |
+            (uint32_t(d) << 24);
+    return false;
+  }
+
+  /// Parse N int4 values as an array.
+  bool parseInt4Array(size_t numElements, SmallVectorImpl<uint32_t> &result) {
+    while (numElements--) {
+      result.push_back(0);
+      if (parseInt4(result.back()))
+        return true;
+    }
+    return false;
+  }
+
+  /// Parse a VBR encoded integer from the byte stream.
   bool parseVBR(size_t &value) {
     uint8_t nextByte;
     if (parseByte(nextByte))
@@ -65,7 +87,7 @@ public:
     return false;
   }
 
-  // Skip over bytes until reaching the specified alignment.
+  /// Skip over bytes until reaching the specified alignment.
   bool alignTo(unsigned alignment) {
     if (!llvm::isPowerOf2_32(alignment))
       return emitError("tried to align to non-power-of-two");
@@ -141,6 +163,15 @@ public:
   bool parseAttributes();
   bool parsePrimitiveNames();
   bool parseFunctions();
+  bool parseFunctionBody(BEF::FuncOp func, size_t offset);
+
+  bool resolveLocation(size_t locOffset, Location &loc) {
+    auto it = locations.find(locOffset);
+    if (it == locations.end())
+      return mlir::emitError(module->getLoc()) << "invalid location", true;
+    loc = it->second;
+    return false;
+  }
 
 private:
   MLIRContext *getContext() const { return module.get()->getContext(); }
@@ -155,17 +186,6 @@ private:
 
   bool parseAttributeAt(size_t offset, uint8_t attrKind,
                         const BEFReader &attrSection, Attribute &resultAttr);
-
-  bool parseLocation(BEFReader &reader, Location &loc) {
-    size_t locOffset;
-    if (reader.parseVBR(locOffset))
-      return true;
-    auto it = locations.find(locOffset);
-    if (it == locations.end())
-      return reader.emitError("invalid location");
-    loc = it->second;
-    return false;
-  }
 
   mlir::OwningOpRef<ModuleOp> module;
 
@@ -367,11 +387,11 @@ bool BEFToMLIRConverter::parseFunctions() {
   // Read until we run out of function descriptors.
   Location loc = UnknownLoc::get(funcBuilder.getContext());
   while (!reader.empty()) {
-    size_t functionOffset, nameOffset, numArgs, numResults;
+    size_t functionOffset, nameOffset, locOffset, numArgs, numResults;
     StringAttr name;
     if (reader.parseVBR(functionOffset) || reader.parseVBR(nameOffset) ||
-        parseLocation(reader, loc) || reader.parseVBR(numArgs) ||
-        reader.parseVBR(numResults) ||
+        reader.parseVBR(locOffset) || resolveLocation(locOffset, loc) ||
+        reader.parseVBR(numArgs) || reader.parseVBR(numResults) ||
         stringReader.parseNULTerminatedStringAt(nameOffset, name))
       return true;
 
@@ -393,8 +413,156 @@ bool BEFToMLIRConverter::parseFunctions() {
     bodyBuilder.create<BEF::OutputOp>(loc, ArrayRef<Value>());
   }
 
-  // TODO: Go parse the function bodies from functionOffsets.
+  // Decode each of the function bodies.
+  for (auto fnAndOffset : llvm::zip(functions, functionOffsets)) {
+    if (parseFunctionBody(std::get<0>(fnAndOffset), std::get<1>(fnAndOffset)))
+      return true;
+  }
+
   return false;
+}
+
+namespace {
+class FunctionParser {
+public:
+  FunctionParser(BEF::FuncOp func, BEFReader &funcReader,
+                 BEFToMLIRConverter &converter)
+      : func(func), funcReader(funcReader), converter(converter) {}
+
+  /// Entrypoint to parse the function body.
+  bool parse();
+
+private:
+  struct PrimitiveTableEntry {
+    size_t offset, numOperands;
+  };
+
+  bool parseRegisterTable();
+  bool parsePrimitiveTable();
+  bool parseResultRegs();
+  bool parsePrimitiveList();
+
+  BEF::FuncOp func;
+  BEFReader &funcReader;
+  BEFToMLIRConverter &converter;
+
+  /// This contains the offset of each primitive.
+  SmallVector<PrimitiveTableEntry, 4> primitiveTable;
+  /// This contains the register numbers that are output by the BEF function.
+  SmallVector<size_t> resultRegs;
+};
+} // end anonymous namespace
+
+/// Entrypoint to parse the function body.
+bool FunctionParser::parse() {
+  return parseRegisterTable() || parsePrimitiveTable() || parseResultRegs() ||
+         parsePrimitiveList();
+}
+
+/// Parse and ignore the "NumUses" register table.
+bool FunctionParser::parseRegisterTable() {
+  size_t numRegisters;
+  if (funcReader.parseVBR(numRegisters))
+    return true;
+  while (numRegisters--) {
+    size_t numUses;
+    if (funcReader.parseVBR(numUses))
+      return true;
+  }
+  return false;
+}
+
+bool FunctionParser::parsePrimitiveTable() {
+  size_t numPrimitives;
+  if (funcReader.parseVBR(numPrimitives))
+    return true;
+
+  while (numPrimitives--) {
+    PrimitiveTableEntry entry;
+    // TODO: Use numOperands to infer whether this is a non-strict primitive.
+    if (funcReader.parseVBR(entry.offset) ||
+        funcReader.parseVBR(entry.numOperands))
+      return true;
+    primitiveTable.push_back(entry);
+  }
+
+  return false;
+}
+
+bool FunctionParser::parseResultRegs() {
+  for (size_t i = 0, e = func.getResultTypes().size(); i != e; ++i) {
+    size_t registerIndex;
+    if (funcReader.parseVBR(registerIndex))
+      return true;
+    resultRegs.push_back(registerIndex);
+  }
+  return false;
+}
+
+bool FunctionParser::parsePrimitiveList() {
+  if (funcReader.alignTo(BEF::PRIMITIVE_ENTRY_ALIGNMENT))
+    return true;
+
+  Block &block = *func.getBodyBlock();
+  Location loc = func.getLoc();
+
+  SmallVector<Value, 16> registerValues;
+
+  // Read the primitive records.
+  for (size_t i = 0, e = primitiveTable.size(); i != e; ++i) {
+    uint32_t primitiveID, locOffset, numOperands, numAttrs, numFunctions,
+        numResults, metadata;
+    if (funcReader.parseInt4(primitiveID) || funcReader.parseInt4(locOffset) ||
+        converter.resolveLocation(locOffset, loc) ||
+        funcReader.parseInt4(numOperands) || funcReader.parseInt4(numAttrs) ||
+        funcReader.parseInt4(numFunctions) ||
+        funcReader.parseInt4(numResults) || funcReader.parseInt4(metadata))
+      return true;
+
+    // We read and ignore the # users for each result.
+    SmallVector<uint32_t> numResultUsers, operands, attrs, functions, resultNos;
+    if (funcReader.parseInt4Array(numResults, numResultUsers) ||
+        funcReader.parseInt4Array(numOperands, operands) ||
+        funcReader.parseInt4Array(numAttrs, attrs) ||
+        funcReader.parseInt4Array(numResults, resultNos))
+      return true;
+
+    // The "usedBy" records are only used by the BEF executor, we skip over them
+    // without interpreting them.
+    auto numResultUserEntries =
+        std::accumulate(numResultUsers.begin(), numResultUsers.end(), 0);
+    if (funcReader.dropBytes(numResultUserEntries * sizeof(uint32_t)))
+      return true;
+
+    // The first primitive is a pseudo op which only defines the argument
+    // registers.
+    if (i == 0 && !func.getArgumentTypes().empty()) {
+      if (numOperands != 0 || numAttrs != 0 || numFunctions != 0 ||
+          numResults != func.getArgumentTypes().size() || metadata != 0)
+        return funcReader.emitError("malformed argument pseudo op");
+
+      size_t elt = 0;
+      assert(block.getNumArguments() == numResults);
+      for (auto arg : block.getArguments()) {
+        assert(resultNos[elt++] == registerValues.size() &&
+               "result register mismatch");
+        registerValues.push_back(arg);
+      }
+      continue;
+    }
+
+    // Otherwise we need to create a primitive for this.
+  }
+
+  // TODO: make bef.output from resultRegs/registerValues.
+  return false;
+}
+
+bool BEFToMLIRConverter::parseFunctionBody(BEF::FuncOp func, size_t offset) {
+  BEFReader funcReader = getSectionReader(BEF::SectionID::BEF_FUNCTIONS);
+
+  return funcReader.dropBytes(offset) ||
+         FunctionParser(func, funcReader, *this).parse();
 }
 
 //===----------------------------------------------------------------------===//

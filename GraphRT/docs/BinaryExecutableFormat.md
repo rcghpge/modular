@@ -333,7 +333,7 @@ table of primitives allows the use of primitive indexes.
 
   PRIMITIVE_HEADER       ::= FIXED32<"PrimitiveCode">
                              FIXED32<"PrimitiveLocation">
-                             FIXED32<"NumArguments">
+                             FIXED32<"NumOperands">
                              FIXED32<"NumAttributes">
                              FIXED32<"NumFunctions">
                              FIXED32<"NumResults">
@@ -341,7 +341,7 @@ table of primitives allows the use of primitive indexes.
 
   PRIMITIVE_RESULT_TABLE ::= FIXED32<"NumUsedBys">*
 
-  PRIMITIVE_BODY         ::= FIXED32<PrimitiveArgument>*
+  PRIMITIVE_BODY         ::= FIXED32<PrimitiveOperand>*
                              FIXED32<PrimitiveAttribute>*
                              FIXED32<PrimitiveFunction>*
                              FIXED32<PrimitiveResult>*
@@ -352,7 +352,7 @@ Each instance of a primitive includes a primitive header, a result table and a
 primitive body. The primitive header consists of a opcode (an index into the
 Primitives table, defined by the Primitives names section), a location (an offset into
 the [LocationPositions section](#locationpositions-section)) the numbers of
-arguments, attributes, functions and results in the primitive body.
+operands, attributes, functions and results in the primitive body.
 
 The result table contains NumResults FIXED32 integers, indicating the number of
 users for each corresponding result. The primitive body consists of zero or more
@@ -371,7 +371,7 @@ consecutively.
 
 ***Rationale***
 
-This record allows us to efficiently form the array of arguments and results
+This record allows us to efficiently form the array of operands and results
 that get passed to a C/C++ function that implements the primitive. When the primitive
 completes, the UsedBy records allow us to efficiently trigger execution of data
 dependent primitives if they are ready, by decrementing the "NumOperands" field
