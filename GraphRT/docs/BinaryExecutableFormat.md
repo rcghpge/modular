@@ -43,6 +43,7 @@ completed.
 ```none
   BYTE                  ::= `0x00`...`0xFF`
   VBR                   ::= (`0x80`...`0xFF`)* (`0x00`...`0x7F`)
+  FIXED16               ::= BYTE BYTE
   FIXED32               ::= BYTE BYTE BYTE BYTE
   NUL_TERMINATED_STRING ::= (`0x01`...`0xFF`)* `0x00`
   OFFSET                ::= VBR
@@ -333,12 +334,11 @@ table of primitives allows the use of primitive indexes.
 
   PRIMITIVE_HEADER       ::= FIXED32<"PrimitiveCode">
                              FIXED32<"PrimitiveLocation">
-                             FIXED32<"NumOperands">
-                             FIXED32<"NumAttributes">
-                             FIXED32<"NumFunctions">
-                             FIXED32<"NumResults">
-                             FIXED32<"SpecialAttrs">
-
+                             FIXED16<"NumOperands">
+                             FIXED16<"NumAttributes">
+                             FIXED16<"NumFunctions">
+                             FIXED16<"NumResults">
+                             
   PRIMITIVE_RESULT_TABLE ::= FIXED32<"NumUsedBys">*
 
   PRIMITIVE_BODY         ::= FIXED32<PrimitiveOperand>*

@@ -50,14 +50,21 @@ public:
     return false;
   }
 
+  /// Parse two bytes in little endian format from the stream.
+  bool parseInt2(uint16_t &value) {
+    uint8_t a, b;
+    if (parseByte(a) || parseByte(b))
+      return true;
+    value = uint16_t(a) | (uint16_t(b) << 8);
+    return false;
+  }
+
   /// Parse four bytes in little endian format from the stream.
   bool parseInt4(uint32_t &value) {
-    uint8_t a, b, c, d;
-    if (parseByte(a) || parseByte(b) || parseByte(c) || parseByte(d))
+    uint16_t a, b;
+    if (parseInt2(a) || parseInt2(b))
       return true;
-
-    value = uint32_t(a) | (uint32_t(b) << 8) | (uint32_t(c) << 16) |
-            (uint32_t(d) << 24);
+    value = uint32_t(a) | (uint32_t(b) << 16);
     return false;
   }
 
@@ -582,14 +589,14 @@ bool FunctionParser::parsePrimitiveList() {
 
   // Read the primitive records.
   for (size_t i = 0, e = primitiveTable.size(); i != e; ++i) {
-    uint32_t primitiveID, locOffset, numOperands, numAttrs, numFunctions,
-        numResults;
+    uint32_t primitiveID, locOffset;
+    uint16_t numOperands, numAttrs, numFunctions, numResults;
     StringAttr primitiveName;
     if (funcReader.parseInt4(primitiveID) || funcReader.parseInt4(locOffset) ||
         converter.resolveLocation(locOffset, loc) ||
         converter.resolvePrimitiveName(primitiveID, loc, primitiveName) ||
-        funcReader.parseInt4(numOperands) || funcReader.parseInt4(numAttrs) ||
-        funcReader.parseInt4(numFunctions) || funcReader.parseInt4(numResults))
+        funcReader.parseInt2(numOperands) || funcReader.parseInt2(numAttrs) ||
+        funcReader.parseInt2(numFunctions) || funcReader.parseInt2(numResults))
       return true;
 
     // We read and ignore the # users for each result.

@@ -106,6 +106,14 @@ public:
     requiredAlignment = std::max(requiredAlignment, alignment);
   }
 
+  // Emit a guaranteed 2-byte integer aligned to 2 bytes, allowing this to be
+  // directly mapped into the target process in little-endian form.
+  void emitInt2(uint16_t value) {
+    alignTo(2);
+    emitByte(value & 0xFF);
+    emitByte(value >> 8);
+  }
+
   // Emit a guaranteed 4-byte integer aligned to 4 bytes, allowing this to be
   // directly mapped into the target process in little-endian form.
   void emitInt4(uint32_t value) {
@@ -264,6 +272,11 @@ public:
     return it->second;
   }
 
+  mlir::InFlightDiagnostic emitError(Location loc) {
+    hadError = true;
+    return mlir::emitError(loc);
+  }
+
 private:
   using LocationTuple = std::tuple<StringAttr, unsigned, unsigned>;
   static LocationTuple decomposeLocation(Location loc);
@@ -275,6 +288,8 @@ private:
   void addAttributeType(Attribute attr);
 
 public:
+  bool hadError = false;
+
   /// Uniquing set of attributes we need to emit, kept in order so we always
   /// produce a determinstic output file.  This only maintains the attributes
   /// that are references by the MLIR operations, it doesn't hold the
@@ -556,8 +571,7 @@ struct OffsetAndAttrKind {
 namespace {
 class AttributesEmitter : public BEFEmitter {
 public:
-  explicit AttributesEmitter(EntityTable &entities, bool &hadError)
-      : entities(entities), hadError(hadError) {}
+  explicit AttributesEmitter(EntityTable &entities) : entities(entities) {}
 
   OffsetAndAttrKind emitAttribute(Attribute attr, Location loc);
 
@@ -567,7 +581,6 @@ private:
   OffsetAndAttrKind emitStringAttribute(StringRef value);
   OffsetAndAttrKind emitArrayAttribute(ArrayAttr value, Location loc);
   EntityTable &entities;
-  bool &hadError;
 };
 } // end anonymous namespace.
 
@@ -580,8 +593,8 @@ OffsetAndAttrKind AttributesEmitter::emitIntegerAttribute(const APInt &value,
 
   switch (value.getBitWidth()) {
   default:
-    mlir::emitError(loc) << "unsupported integer width " << value.getBitWidth();
-    hadError = true;
+    entities.emitError(loc)
+        << "unsupported integer width " << value.getBitWidth();
     return {offset, BEF::AttributeKind::INVALID};
   case 1:
     kind = BEF::AttributeKind::I1;
@@ -646,9 +659,8 @@ OffsetAndAttrKind AttributesEmitter::emitArrayAttribute(ArrayAttr array,
   // Reject unsupported elements of an array.
   switch (firstEltOffsetAndKind.attrKind) {
   default:
-    mlir::emitError(loc) << "unsupported array element attribute "
-                         << elts.front();
-    hadError = true;
+    entities.emitError(loc)
+        << "unsupported array element attribute " << elts.front();
     return {sizeEnd, BEF::AttributeKind::INVALID};
   case BEF::AttributeKind::I1:
   case BEF::AttributeKind::I8:
@@ -663,9 +675,8 @@ OffsetAndAttrKind AttributesEmitter::emitArrayAttribute(ArrayAttr array,
   for (auto elt : elts.drop_front()) {
     auto nextEltKind = emitAttributeInternal(elt, loc).attrKind;
     if (nextEltKind != firstEltOffsetAndKind.attrKind) {
-      mlir::emitError(loc) << "unsupported array with heterogenous elements "
-                           << elt;
-      hadError = true;
+      entities.emitError(loc)
+          << "unsupported array with heterogenous elements " << elt;
       return {sizeEnd, BEF::AttributeKind::INVALID};
     }
   }
@@ -716,8 +727,7 @@ OffsetAndAttrKind AttributesEmitter::emitAttributeInternal(Attribute attr,
   if (auto array = attr.dyn_cast<ArrayAttr>())
     return emitArrayAttribute(array, loc);
 
-  mlir::emitError(loc) << "unsupported attribute " << attr;
-  hadError = true;
+  entities.emitError(loc) << "unsupported attribute " << attr;
   return {{0}, BEF::AttributeKind::INVALID};
 }
 
@@ -891,10 +901,10 @@ void BEFFunctionEmitter::emitArgumentsPseudoOp(
   // primitive only has results and UsedBys in its body.
   primitiveList.emitInt4(0);                        // code
   primitiveList.emitInt4(0);                        // location
-  primitiveList.emitInt4(0);                        // # operands
-  primitiveList.emitInt4(0);                        // # attributes
-  primitiveList.emitInt4(0);                        // # functions
-  primitiveList.emitInt4(block->getNumArguments()); // # results
+  primitiveList.emitInt2(0);                        // # operands
+  primitiveList.emitInt2(0);                        // # attributes
+  primitiveList.emitInt2(0);                        // # functions
+  primitiveList.emitInt2(block->getNumArguments()); // # results
 
   for (auto arg : block->getArguments())
     primitiveList.emitInt4(getNumNonOutputUsers(arg));
@@ -906,18 +916,8 @@ void BEFFunctionEmitter::emitArgumentsPseudoOp(
 
 void BEFFunctionEmitter::emitPrimitive(Operation *op,
                                        BEFEmitter &primitiveList) const {
-  // Each primitive starts out with an opcode record.
-  primitiveList.emitInt4(entities.getPrimitiveID(op));
-
-  // Include a location.
-  primitiveList.emitInt4(entities.getLocationOffset(op->getLoc()).value);
-
-  // Then we have the arguments.
-  primitiveList.emitInt4(op->getNumOperands());
-
-  // Then attributes.
+  // Collect the regions and attributes to emit.
   SmallVector<uint32_t> functionsToEmit, attributesToEmit;
-
   auto processAttr = [&](StringAttr name, Attribute value) {
     if (auto fnAttr = value.dyn_cast<FlatSymbolRefAttr>()) {
       // Function references are emitted as regions.
@@ -946,9 +946,18 @@ void BEFFunctionEmitter::emitPrimitive(Operation *op,
   for (auto &region : op->getRegions())
     functionsToEmit.push_back(entities.getFunctionID(region));
 
-  primitiveList.emitInt4(attributesToEmit.size());
-  primitiveList.emitInt4(functionsToEmit.size());
-  primitiveList.emitInt4(op->getNumResults());
+  // Ensure this primitive isn't too big to encode.
+  if (op->getNumOperands() > 65535 || attributesToEmit.size() > 65535 ||
+      functionsToEmit.size() > 65535 || op->getNumResults() > 65535)
+    entities.emitError(op->getLoc()) << "operation too large to encode in BEF";
+
+  // Emit the PRIMITIVE_HEADER records.
+  primitiveList.emitInt4(entities.getPrimitiveID(op));
+  primitiveList.emitInt4(entities.getLocationOffset(op->getLoc()).value);
+  primitiveList.emitInt2(op->getNumOperands());
+  primitiveList.emitInt2(attributesToEmit.size());
+  primitiveList.emitInt2(functionsToEmit.size());
+  primitiveList.emitInt2(op->getNumResults());
 
   // Emit PRIMITIVE_RESULT_TABLE, results with the primitives that use them.
   for (auto result : op->getResults())
@@ -991,7 +1000,7 @@ public:
                         BEFEmitter *registerTypesSection);
   void emitFunctionIndex();
 
-  bool hadError = false;
+  bool hadError() const { return entities.hadError; }
 
 private:
   ModuleOp module;
@@ -1032,7 +1041,7 @@ void BEFModuleEmitter::emitAttributes(BEFEmitter &attrKindsSection) {
   // Emit attributes and record them in EntityIndex. Nested array attributes
   // will be traversed recursively and their elements will be emitted and
   // recorded before the top level offsets array is emitted.
-  AttributesEmitter attributesSection(entities, hadError);
+  AttributesEmitter attributesSection(entities);
   for (auto attrAndLoc :
        llvm::zip(entities.attributes, entities.attributeLocs)) {
     auto offsetAndKind = attributesSection.emitAttribute(
@@ -1148,7 +1157,7 @@ std::vector<uint8_t> M::translateMLIRToBEF(ModuleOp module,
 
   // If emission diagnosed an error along the way and emitted a diagnostic,
   // then we should propagate the failure up.
-  if (emitter.hadError)
+  if (emitter.hadError())
     return {};
 
   return emitter.takeResult();
