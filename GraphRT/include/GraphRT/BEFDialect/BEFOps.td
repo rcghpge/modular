@@ -51,6 +51,21 @@ def FuncOp : BEFOp<"func", [HasParent<"mlir::ModuleOp">, FunctionOpInterface,
   let hasVerifier = 1;
 }
 
+def OpaqueOp : BEFOp<"opaque"> {
+  let summary = "opaque BEF operation";
+  let description = [{
+    The "bef.opaque" operation represents an operation parsed from a BEF file
+    without sufficient type information to form the proper MLIR operation.  This
+    allows us to load and round trip arbitrary BEF files even when they don't
+    have additional metadata (e.g. MLIR types, attribute names etc) required to
+    properly form original operations.
+  }];
+
+  let arguments = (ins StrAttr:$opname, Variadic<AnyType>:$operands);
+  let results = (outs Variadic<AnyType>:$results);
+  let regions = (region VariadicRegion<SizedRegion<1>>:$body);
+}
+
 def OutputOp : BEFOp<"output",
                      [Terminator, ReturnLike, HasParent<"BEF::FuncOp">]> {
   let summary = "BEF output operation";

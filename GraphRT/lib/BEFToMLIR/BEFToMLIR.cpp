@@ -173,6 +173,14 @@ public:
     return false;
   }
 
+  bool resolvePrimitiveName(size_t primIndex, Location loc,
+                            StringAttr &result) {
+    if (primIndex >= primitiveNames.size())
+      return mlir::emitError(loc) << "invalid primitive name", true;
+    result = primitiveNames[primIndex];
+    return false;
+  }
+
 private:
   MLIRContext *getContext() const { return module.get()->getContext(); }
   Location getLoc() const { return module.get()->getLoc(); }
@@ -407,10 +415,6 @@ bool BEFToMLIRConverter::parseFunctions() {
     functions.push_back(func);
     inputTypes.clear();
     resultTypes.clear();
-
-    // FIXME: Handle properly.
-    auto bodyBuilder = OpBuilder::atBlockBegin(func.getBodyBlock());
-    bodyBuilder.create<BEF::OutputOp>(loc, ArrayRef<Value>());
   }
 
   // Decode each of the function bodies.
@@ -504,16 +508,22 @@ bool FunctionParser::parsePrimitiveList() {
     return true;
 
   Block &block = *func.getBodyBlock();
+  auto bodyBuilder = OpBuilder::atBlockBegin(&block);
   Location loc = func.getLoc();
+  Type unknownType = BEF::UnknownType::get(bodyBuilder.getContext());
 
+  // This is a table of the SSA values that make up the register table.  BEF
+  // doesn't support forward references, so we can just build this top-down.
   SmallVector<Value, 16> registerValues;
 
   // Read the primitive records.
   for (size_t i = 0, e = primitiveTable.size(); i != e; ++i) {
     uint32_t primitiveID, locOffset, numOperands, numAttrs, numFunctions,
         numResults, metadata;
+    StringAttr primitiveName;
     if (funcReader.parseInt4(primitiveID) || funcReader.parseInt4(locOffset) ||
         converter.resolveLocation(locOffset, loc) ||
+        converter.resolvePrimitiveName(primitiveID, loc, primitiveName) ||
         funcReader.parseInt4(numOperands) || funcReader.parseInt4(numAttrs) ||
         funcReader.parseInt4(numFunctions) ||
         funcReader.parseInt4(numResults) || funcReader.parseInt4(metadata))
@@ -526,6 +536,13 @@ bool FunctionParser::parsePrimitiveList() {
         funcReader.parseInt4Array(numAttrs, attrs) ||
         funcReader.parseInt4Array(numResults, resultNos))
       return true;
+
+    SmallVector<Value> operandValues;
+    for (auto operand : operands) {
+      if (operand >= registerValues.size())
+        return funcReader.emitError("invalid operand register #");
+      operandValues.push_back(registerValues[operand]);
+    }
 
     // The "usedBy" records are only used by the BEF executor, we skip over them
     // without interpreting them.
@@ -552,9 +569,31 @@ bool FunctionParser::parsePrimitiveList() {
     }
 
     // Otherwise we need to create a primitive for this.
+    if (numFunctions != 0)
+      return mlir::emitError(loc, "FIXME: Don't support decoding regions yet!"),
+             true;
+
+    // Since we don't have type information, we create a bef.opaque operation.
+    SmallVector<Type> resultTypes(numResults, unknownType);
+    auto resultOp = bodyBuilder.create<BEF::OpaqueOp>(
+        loc, resultTypes, primitiveName, operandValues, numFunctions);
+    // Add all the results to the register table so subsequent ops may use it.
+    size_t elt = 0;
+    for (auto result : resultOp.getResults()) {
+      assert(resultNos[elt++] == registerValues.size() &&
+             "result register mismatch");
+      registerValues.push_back(result);
+    }
   }
 
-  // TODO: make bef.output from resultRegs/registerValues.
+  // Make bef.output that produces the result regs for the function.
+  SmallVector<Value> operandValues;
+  for (auto resultReg : resultRegs) {
+    if (resultReg >= registerValues.size())
+      return funcReader.emitError("invalid result register #");
+    operandValues.push_back(registerValues[resultReg]);
+  }
+  bodyBuilder.create<BEF::OutputOp>(loc, operandValues);
   return false;
 }
 

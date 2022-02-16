@@ -891,8 +891,8 @@ void BEFFunctionEmitter::emitArgumentsPseudoOp(
     Block *block, BEFEmitter &primitiveList) const {
   // This primitive starts with a dummy code and a dummy location. And this
   // primitive only has results and UsedBys in its body.
-  primitiveList.emitInt4(-1U);                      // code
-  primitiveList.emitInt4(-1U);                      // location
+  primitiveList.emitInt4(0);                        // code
+  primitiveList.emitInt4(0);                        // location
   primitiveList.emitInt4(0);                        // # operands
   primitiveList.emitInt4(0);                        // # attributes
   primitiveList.emitInt4(0);                        // # functions
