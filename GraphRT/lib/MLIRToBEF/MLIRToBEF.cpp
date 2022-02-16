@@ -246,7 +246,13 @@ public:
   }
 
   unsigned getPrimitiveID(Operation *primitive) const {
-    auto it = primitiveIDs.find(primitive->getName().getIdentifier());
+    StringAttr name;
+    if (auto opaque = dyn_cast<BEF::OpaqueOp>(primitive))
+      name = opaque.opnameAttr();
+    else
+      name = primitive->getName().getIdentifier();
+
+    auto it = primitiveIDs.find(name);
     assert(it != primitiveIDs.end() && "Unknown primitive");
     return it->second;
   }
@@ -283,7 +289,7 @@ private:
   void addString(StringAttr string) { strings.insert(string); }
   void addType(Type type);
   LogicalResult addBEFFunction(Region *region, StringAttr name);
-  void addPrimitive(Operation *primitive);
+  void addPrimitiveOpcode(StringAttr opcode);
   void addLocation(Location loc);
   void addAttributeType(Attribute attr);
 
@@ -398,15 +404,14 @@ ssize_t EntityTable::getFunctionNamed(StringAttr name) const {
   return iter->second;
 }
 
-void EntityTable::addPrimitive(Operation *primitive) {
-  StringAttr name = primitive->getName().getIdentifier();
+void EntityTable::addPrimitiveOpcode(StringAttr opcode) {
   // Remember the primitive.
-  if (!primitiveIDs.insert({name, primitives.size()}).second)
+  if (!primitiveIDs.insert({opcode, primitives.size()}).second)
     return;
-  primitives.push_back(name);
+  primitives.push_back(opcode);
 
   // If we haven't seen it already, add it to the string table.
-  addString(name);
+  addString(opcode);
 }
 
 auto EntityTable::decomposeLocation(Location loc) -> LocationTuple {
@@ -484,35 +489,46 @@ bool EntityTable::collect(ModuleOp module, bool disableOptionalSections) {
       return WalkResult::advance();
     }
 
-    addPrimitive(op);
-
-    // Keep track of any attributes used by this op.
-    for (auto attr : op->getAttrs()) {
+    auto processAttr = [&](StringAttr name, Attribute attr) {
       // If this is a special attribute, ignore it.
-      if (classifyAttribute(attr.getName()) != WellKnownAttrs::Unknown)
-        continue;
+      if (classifyAttribute(name) != WellKnownAttrs::Unknown)
+        return;
 
-      if (auto fn_attr = attr.getValue().dyn_cast<SymbolRefAttr>()) {
+      if (auto fn_attr = attr.dyn_cast<SymbolRefAttr>()) {
         // Keep track of function attributes specially so we can diagnose
         // them.
         symbolRefAttrs.push_back({fn_attr, op->getLoc()});
-
       } else {
         if (!disableOptionalSections) {
           // Add attribute names and types for attribute types section and
           // attribute names section. These will be ignored by executor.
-          addString(attr.getName());
-          addAttributeType(attr.getValue());
+          addString(name);
+          addAttributeType(attr);
         }
 
         // We just keep track of the top level attributes in the "attributes"
-        // list, we do not recursively process them.  This is because we want to
+        // list: do not recursively process them.  This is because we want to
         // emit arrays of scalars as "flat" attributes where all the values are
         // inline.
-        if (attributes.insert(attr.getValue()))
+        if (attributes.insert(attr))
           // If this attribute is new, remember what used it.
           attributeLocs.push_back(op->getLoc());
       }
+    };
+
+    // Opaque BEF operations encode some fields in a special way.
+    if (auto opaque = dyn_cast<BEF::OpaqueOp>(op)) {
+      addPrimitiveOpcode(opaque.opnameAttr());
+
+      // Encode the attributes in the attrs array, not all the attributes on the
+      // OpaqueOp itself.
+      for (auto attr : opaque.attrs())
+        processAttr(StringAttr::get(op->getContext()), attr);
+    } else {
+      addPrimitiveOpcode(op->getName().getIdentifier());
+      // Keep track of any attributes used by this op.
+      for (auto attr : op->getAttrs())
+        processAttr(attr.getName(), attr.getValue());
     }
 
     // Keep add any regions used by this op as BEF functions.
@@ -808,11 +824,15 @@ void BEFFunctionEmitter::emitFunction(Region *region) {
       continue;
 
     bool isNonStrict = false;
-    for (auto attrAndName : op.getAttrs())
-      if (classifyAttribute(attrAndName.getName()) ==
-          WellKnownAttrs::NonStrict) {
-        isNonStrict = true;
-      }
+    if (auto opaque = dyn_cast<BEF::OpaqueOp>(op)) {
+      isNonStrict = opaque.nonstrict();
+    } else {
+      for (auto attrAndName : op.getAttrs())
+        if (classifyAttribute(attrAndName.getName()) ==
+            WellKnownAttrs::NonStrict) {
+          isNonStrict = true;
+        }
+    }
 
     // Offset of the primitive in the list.
     emitOffset(primitiveList.getOffset());
@@ -923,20 +943,37 @@ void BEFFunctionEmitter::emitPrimitive(Operation *op,
   // Then attributes.
   SmallVector<uint32_t> functionsToEmit, attributesToEmit;
   uint32_t specialAttribute = 0;
-  for (auto attrNamePair : op->getAttrs()) {
-    // Emit a flag in primitive header to indicate that the primitive is
-    // non-strict.
-    if (classifyAttribute(attrNamePair.getName()) ==
-        WellKnownAttrs::NonStrict) {
-      specialAttribute |= static_cast<uint32_t>(WellKnownAttrs::NonStrict);
-      continue;
-    }
-    Attribute attr = attrNamePair.getValue();
-    if (auto fnAttr = attr.dyn_cast<FlatSymbolRefAttr>()) {
+
+  auto processAttr = [&](StringAttr name, Attribute value) {
+    if (auto fnAttr = value.dyn_cast<FlatSymbolRefAttr>()) {
       // Function references are emitted as regions.
       functionsToEmit.push_back(entities.getFunctionNamed(fnAttr.getAttr()));
     } else {
-      attributesToEmit.push_back(entities.getAttributeOffset(attr).value);
+      attributesToEmit.push_back(entities.getAttributeOffset(value).value);
+    }
+  };
+
+  // bef.opaque operands store attributes in an explicit way since we don't know
+  // the attribute names.
+  if (auto opaque = dyn_cast<BEF::OpaqueOp>(op)) {
+    // The non-strict bit is stored explicitly.
+    if (opaque.nonstrict())
+      specialAttribute |= static_cast<uint32_t>(BEF::NON_STRICT_MD);
+
+    // All encoded attributes are stored in a single array.
+    for (auto attr : opaque.attrs())
+      processAttr(StringAttr::get(op->getContext()), attr);
+
+  } else {
+    for (auto attrNamePair : op->getAttrs()) {
+      // Emit a flag in primitive header to indicate that the primitive is
+      // non-strict.
+      if (classifyAttribute(attrNamePair.getName()) ==
+          WellKnownAttrs::NonStrict) {
+        specialAttribute |= static_cast<uint32_t>(BEF::NON_STRICT_MD);
+        continue;
+      }
+      processAttr(attrNamePair.getName(), attrNamePair.getValue());
     }
   }
 

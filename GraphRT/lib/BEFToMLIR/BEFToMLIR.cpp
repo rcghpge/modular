@@ -650,11 +650,15 @@ bool FunctionParser::parsePrimitiveList() {
       return mlir::emitError(loc, "FIXME: Don't support decoding regions yet!"),
              true;
 
+    mlir::UnitAttr nonStrict;
+    if (metadata & BEF::NON_STRICT_MD)
+      nonStrict = mlir::UnitAttr::get(loc.getContext());
+
     // Since we don't have type information, we create a bef.opaque operation.
     SmallVector<Type> resultTypes(numResults, unknownType);
     auto resultOp = bodyBuilder.create<BEF::OpaqueOp>(
         loc, resultTypes, primitiveName, bodyBuilder.getArrayAttr(attrs),
-        operandValues, numFunctions);
+        nonStrict, operandValues, numFunctions);
 
     // Add all the results to the register table so subsequent ops may use it.
     size_t elt = 0;

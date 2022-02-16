@@ -61,7 +61,7 @@ def OpaqueOp : BEFOp<"opaque"> {
     properly form original operations.
   }];
 
-  let arguments = (ins StrAttr:$opname, ArrayAttr:$attrs,
+  let arguments = (ins StrAttr:$opname, ArrayAttr:$attrs, UnitAttr:$nonstrict,
                        Variadic<AnyType>:$operands);
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region VariadicRegion<SizedRegion<1>>:$body);

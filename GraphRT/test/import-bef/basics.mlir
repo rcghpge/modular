@@ -7,12 +7,12 @@
 
 // CHECK-LABEL: bef.func @trivial() {
 // CHECK-NEXT:    %0:2 = "bef.opaque"() {attrs = [], opname = "simple.primitive"} : () -> (!bef.unknown, !bef.unknown)
-// CHECK-NEXT:    "bef.opaque"(%0#1, %0#0) {attrs = [42 : i8], opname = "other.primitive"} : (!bef.unknown, !bef.unknown) -> ()
+// CHECK-NEXT:    "bef.opaque"(%0#1, %0#0) {attrs = [42 : i8], nonstrict, opname = "other.primitive"} : (!bef.unknown, !bef.unknown) -> ()
 // CHECK-NEXT:    bef.output
 // CHECK-NEXT:  }
 bef.func @trivial() {
   %a, %b = "simple.primitive"() : () -> (i8, i16)
-  "other.primitive"(%b, %a) { x = 42 : i8 }: (i16, i8) -> ()
+  "other.primitive"(%b, %a) { x = 42 : i8, bef.nonstrict }: (i16, i8) -> ()
   bef.output
 }
 
@@ -38,5 +38,17 @@ bef.func @attributes() {
 
   bef.output  // CHECK-NEXT:     bef.output
 }  // CHECK-NEXT:   }
+
+// CHECK-LABEL: bef.func @opaque_round_trip() {
+// CHECK-NEXT:    %0:2 = "bef.opaque"() {attrs = [], opname = "simple.primitive"} : () -> (!bef.unknown, !bef.unknown)
+// CHECK-NEXT:    "bef.opaque"(%0#1, %0#0) {attrs = [42 : i8], opname = "other.primitive"} : (!bef.unknown, !bef.unknown) -> ()
+// CHECK-NEXT:    bef.output
+// CHECK-NEXT:  }
+
+bef.func @opaque_round_trip() {
+  %0:2 = "bef.opaque"() {attrs = [], opname = "simple.primitive"} : () -> (!bef.unknown, !bef.unknown)
+  "bef.opaque"(%0#1, %0#0) {attrs = [42 : i8], opname = "other.primitive"} : (!bef.unknown, !bef.unknown) -> ()
+  bef.output
+}
 
 // CHECK-NEXT: }

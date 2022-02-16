@@ -29,6 +29,9 @@ enum {
 
   // Primitives in BEF are 4-byte aligned.
   PRIMITIVE_ENTRY_ALIGNMENT = 4,
+
+  // This encodes the 'metadata' field on primitives.
+  NON_STRICT_MD = 1,
 }; // anonymous enum
 
 /// This bitfield encodes into a single byte metadata about the format of
