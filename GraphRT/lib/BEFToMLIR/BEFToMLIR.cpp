@@ -181,6 +181,14 @@ public:
     return false;
   }
 
+  bool resolveAttribute(size_t attrOffset, Location loc, Attribute &result) {
+    auto it = attributeAtOffset.find(attrOffset);
+    if (it == attributeAtOffset.end())
+      return mlir::emitError(loc) << "invalid attribute offset", true;
+    result = it->second;
+    return false;
+  }
+
 private:
   MLIRContext *getContext() const { return module.get()->getContext(); }
   Location getLoc() const { return module.get()->getLoc(); }
@@ -530,10 +538,11 @@ bool FunctionParser::parsePrimitiveList() {
       return true;
 
     // We read and ignore the # users for each result.
-    SmallVector<uint32_t> numResultUsers, operands, attrs, functions, resultNos;
+    SmallVector<uint32_t> numResultUsers, operands, attrsOffsets, functions,
+        resultNos;
     if (funcReader.parseInt4Array(numResults, numResultUsers) ||
         funcReader.parseInt4Array(numOperands, operands) ||
-        funcReader.parseInt4Array(numAttrs, attrs) ||
+        funcReader.parseInt4Array(numAttrs, attrsOffsets) ||
         funcReader.parseInt4Array(numResults, resultNos))
       return true;
 
@@ -568,6 +577,15 @@ bool FunctionParser::parsePrimitiveList() {
       continue;
     }
 
+    // Resolve attributes.
+    SmallVector<Attribute> attrs;
+    for (unsigned attrOffset : attrsOffsets) {
+      Attribute attr;
+      if (converter.resolveAttribute(attrOffset, loc, attr))
+        return true;
+      attrs.push_back(attr);
+    }
+
     // Otherwise we need to create a primitive for this.
     if (numFunctions != 0)
       return mlir::emitError(loc, "FIXME: Don't support decoding regions yet!"),
@@ -576,7 +594,9 @@ bool FunctionParser::parsePrimitiveList() {
     // Since we don't have type information, we create a bef.opaque operation.
     SmallVector<Type> resultTypes(numResults, unknownType);
     auto resultOp = bodyBuilder.create<BEF::OpaqueOp>(
-        loc, resultTypes, primitiveName, operandValues, numFunctions);
+        loc, resultTypes, primitiveName, bodyBuilder.getArrayAttr(attrs),
+        operandValues, numFunctions);
+
     // Add all the results to the register table so subsequent ops may use it.
     size_t elt = 0;
     for (auto result : resultOp.getResults()) {

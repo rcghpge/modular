@@ -105,7 +105,6 @@ LogicalResult FuncOp::verifyType() {
 }
 
 LogicalResult FuncOp::verify() {
-  auto *block = getBodyBlock();
   if (!isa_and_nonnull<OutputOp>(getBodyBlock()->getTerminator()))
     return emitOpError("expected bef.output terminator");
   return success();

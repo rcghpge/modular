@@ -6,8 +6,8 @@
 // CHECK: module {
 
 // CHECK-LABEL: bef.func @trivial() {
-// CHECK-NEXT:   "bef.opaque"() {opname = "simple.primitive"} : () -> ()
-// CHECK-NEXT:   "bef.opaque"() {opname = "other.primitive"} : () -> ()
+// CHECK-NEXT:   "bef.opaque"() {attrs = [], opname = "simple.primitive"} : () -> ()
+// CHECK-NEXT:   "bef.opaque"() {attrs = [42 : i8], opname = "other.primitive"} : () -> ()
 // CHECK-NEXT:   bef.output
 // CHECK-NEXT: }
 bef.func @trivial() {
