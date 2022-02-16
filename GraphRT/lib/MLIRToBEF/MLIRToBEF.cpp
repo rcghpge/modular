@@ -919,7 +919,6 @@ void BEFFunctionEmitter::emitArgumentsPseudoOp(
   primitiveList.emitInt4(0);                        // # attributes
   primitiveList.emitInt4(0);                        // # functions
   primitiveList.emitInt4(block->getNumArguments()); // # results
-  primitiveList.emitInt4(0);                        // SpecialAttrs
 
   for (auto arg : block->getArguments())
     primitiveList.emitInt4(getNumNonOutputUsers(arg));
@@ -942,7 +941,6 @@ void BEFFunctionEmitter::emitPrimitive(Operation *op,
 
   // Then attributes.
   SmallVector<uint32_t> functionsToEmit, attributesToEmit;
-  uint32_t specialAttribute = 0;
 
   auto processAttr = [&](StringAttr name, Attribute value) {
     if (auto fnAttr = value.dyn_cast<FlatSymbolRefAttr>()) {
@@ -956,23 +954,15 @@ void BEFFunctionEmitter::emitPrimitive(Operation *op,
   // bef.opaque operands store attributes in an explicit way since we don't know
   // the attribute names.
   if (auto opaque = dyn_cast<BEF::OpaqueOp>(op)) {
-    // The non-strict bit is stored explicitly.
-    if (opaque.nonstrict())
-      specialAttribute |= static_cast<uint32_t>(BEF::NON_STRICT_MD);
-
     // All encoded attributes are stored in a single array.
     for (auto attr : opaque.attrs())
-      processAttr(StringAttr::get(op->getContext()), attr);
-
+      processAttr(StringAttr(), attr);
   } else {
     for (auto attrNamePair : op->getAttrs()) {
-      // Emit a flag in primitive header to indicate that the primitive is
-      // non-strict.
+      // Don't encode the bef.nonstrict attribute explicitly.
       if (classifyAttribute(attrNamePair.getName()) ==
-          WellKnownAttrs::NonStrict) {
-        specialAttribute |= static_cast<uint32_t>(BEF::NON_STRICT_MD);
+          WellKnownAttrs::NonStrict)
         continue;
-      }
       processAttr(attrNamePair.getName(), attrNamePair.getValue());
     }
   }
@@ -984,9 +974,6 @@ void BEFFunctionEmitter::emitPrimitive(Operation *op,
   primitiveList.emitInt4(attributesToEmit.size());
   primitiveList.emitInt4(functionsToEmit.size());
   primitiveList.emitInt4(op->getNumResults());
-
-  // Emit non-strict flag to special_metadata field of primitive header.
-  primitiveList.emitInt4(specialAttribute);
 
   // Emit PRIMITIVE_RESULT_TABLE, results with the primitives that use them.
   for (auto result : op->getResults())

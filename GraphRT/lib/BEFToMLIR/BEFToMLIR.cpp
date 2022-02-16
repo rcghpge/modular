@@ -504,10 +504,6 @@ public:
   bool parse();
 
 private:
-  struct PrimitiveTableEntry {
-    size_t offset, numOperands;
-  };
-
   bool parseRegisterTable();
   bool parsePrimitiveTable();
   bool parseResultRegs();
@@ -517,8 +513,10 @@ private:
   BEFReader &funcReader;
   BEFToMLIRConverter &converter;
 
-  /// This contains the offset of each primitive.
-  SmallVector<PrimitiveTableEntry, 4> primitiveTable;
+  /// This contains the number of operands that must be resolved before the
+  /// primitive is executed by the BEF executor.  This is typically equal to the
+  /// number of operands in the primitive, but is one for nonstrict ops.
+  SmallVector<size_t, 4> primitiveTable;
   /// This contains the register numbers that are output by the BEF function.
   SmallVector<size_t> resultRegs;
 };
@@ -549,12 +547,11 @@ bool FunctionParser::parsePrimitiveTable() {
     return true;
 
   while (numPrimitives--) {
-    PrimitiveTableEntry entry;
-    // TODO: Use numOperands to infer whether this is a non-strict primitive.
-    if (funcReader.parseVBR(entry.offset) ||
-        funcReader.parseVBR(entry.numOperands))
+    size_t offset, numOperandsBeforeExecuting;
+    if (funcReader.parseVBR(offset) ||
+        funcReader.parseVBR(numOperandsBeforeExecuting))
       return true;
-    primitiveTable.push_back(entry);
+    primitiveTable.push_back(numOperandsBeforeExecuting);
   }
 
   return false;
@@ -586,14 +583,13 @@ bool FunctionParser::parsePrimitiveList() {
   // Read the primitive records.
   for (size_t i = 0, e = primitiveTable.size(); i != e; ++i) {
     uint32_t primitiveID, locOffset, numOperands, numAttrs, numFunctions,
-        numResults, metadata;
+        numResults;
     StringAttr primitiveName;
     if (funcReader.parseInt4(primitiveID) || funcReader.parseInt4(locOffset) ||
         converter.resolveLocation(locOffset, loc) ||
         converter.resolvePrimitiveName(primitiveID, loc, primitiveName) ||
         funcReader.parseInt4(numOperands) || funcReader.parseInt4(numAttrs) ||
-        funcReader.parseInt4(numFunctions) ||
-        funcReader.parseInt4(numResults) || funcReader.parseInt4(metadata))
+        funcReader.parseInt4(numFunctions) || funcReader.parseInt4(numResults))
       return true;
 
     // We read and ignore the # users for each result.
@@ -623,7 +619,7 @@ bool FunctionParser::parsePrimitiveList() {
     // registers.
     if (i == 0 && !func.getArgumentTypes().empty()) {
       if (numOperands != 0 || numAttrs != 0 || numFunctions != 0 ||
-          numResults != func.getArgumentTypes().size() || metadata != 0)
+          numResults != func.getArgumentTypes().size())
         return funcReader.emitError("malformed argument pseudo op");
 
       size_t elt = 0;
@@ -650,8 +646,11 @@ bool FunctionParser::parsePrimitiveList() {
       return mlir::emitError(loc, "FIXME: Don't support decoding regions yet!"),
              true;
 
+    // If this operation has more than one operand but only requires one to be
+    // available before executing the primitive, then it is a nonstrict
+    // primitive.
     mlir::UnitAttr nonStrict;
-    if (metadata & BEF::NON_STRICT_MD)
+    if (operands.size() > 1 && primitiveTable[i] == 1)
       nonStrict = mlir::UnitAttr::get(loc.getContext());
 
     // Since we don't have type information, we create a bef.opaque operation.
