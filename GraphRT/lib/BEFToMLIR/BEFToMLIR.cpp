@@ -342,9 +342,11 @@ bool BEFToMLIRConverter::parseAttributeAt(size_t offset, uint8_t attrKind,
         return {};
       return BoolAttr::get(getContext(), byte);
     case BEF::AttributeKind::I64:
+    case BEF::AttributeKind::F64:
       size <<= 1;
       LLVM_FALLTHROUGH;
     case BEF::AttributeKind::I32:
+    case BEF::AttributeKind::F32:
       size <<= 1;
       LLVM_FALLTHROUGH;
     case BEF::AttributeKind::I16:
@@ -358,7 +360,18 @@ bool BEFToMLIRConverter::parseAttributeAt(size_t offset, uint8_t attrKind,
           return {};
         result |= uint64_t(byte) << (i * 8);
       }
-      return IntegerAttr::get(IntegerType::get(getContext(), size * 8), result);
+      auto resultInt = APInt(size * 8, result);
+
+      if (attrKind == (unsigned)BEF::AttributeKind::F32)
+        return FloatAttr::get(mlir::Float32Type::get(getContext()),
+                              APFloat(resultInt.bitsToFloat()));
+
+      if (attrKind == (unsigned)BEF::AttributeKind::F64)
+        return FloatAttr::get(mlir::Float64Type::get(getContext()),
+                              APFloat(resultInt.bitsToDouble()));
+
+      return IntegerAttr::get(IntegerType::get(getContext(), size * 8),
+                              resultInt);
     }
     case BEF::AttributeKind::STRING: {
       size_t length;

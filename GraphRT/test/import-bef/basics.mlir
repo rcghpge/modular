@@ -33,6 +33,8 @@ bef.func @attributes() {
   "a.b"() { a = "foo\00bar" : i64 }: () -> () // CHECK-NEXT: attrs = ["foo\00bar"]
   "a.b"() { a = [] }: () -> () // CHECK-NEXT: attrs = {{.}}[]]
   "a.b"() { a = [true, false, true] }: () -> () // CHECK-NEXT: [true, false, true]
+  "a.b"() { a = 2.0 : f32 }: () -> () // CHECK-NEXT: attrs = [2.000000e+00 : f32]
+  "a.b"() { a = 3.0 : f64 }: () -> () // CHECK-NEXT: attrs = [3.000000e+00]
 
   bef.output  // CHECK-NEXT:     bef.output
 }  // CHECK-NEXT:   }

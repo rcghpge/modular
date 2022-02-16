@@ -658,7 +658,6 @@ OffsetAndAttrKind AttributesEmitter::emitArrayAttribute(ArrayAttr array,
   case BEF::AttributeKind::I16:
   case BEF::AttributeKind::I32:
   case BEF::AttributeKind::I64:
-  case BEF::AttributeKind::F16:
   case BEF::AttributeKind::F32:
   case BEF::AttributeKind::F64:
     break;
@@ -699,10 +698,19 @@ OffsetAndAttrKind AttributesEmitter::emitAttributeInternal(Attribute attr,
     return emitIntegerAttribute(intAttr.getValue(), loc);
 
   if (auto fpAttr = attr.dyn_cast<FloatAttr>()) {
-    const APFloat &value = fpAttr.getValue();
-    auto size = APFloat::getSizeInBits(value.getSemantics());
-    if (size == 16 || size == 32 || size == 64)
-      return emitIntegerAttribute(value.bitcastToAPInt(), loc);
+    OffsetAndAttrKind intResult =
+        emitIntegerAttribute(fpAttr.getValue().bitcastToAPInt(), loc);
+    switch (intResult.attrKind) {
+    default:
+      mlir::emitError(loc) << "unsupported float type" << attr;
+      return {{}, BEF::AttributeKind::INVALID};
+    case BEF::AttributeKind::INVALID:
+      return intResult; // Error already emitted.
+    case BEF::AttributeKind::I32:
+      return {intResult.offset, BEF::AttributeKind::F32};
+    case BEF::AttributeKind::I64:
+      return {intResult.offset, BEF::AttributeKind::F64};
+    }
   }
 
   if (auto string = attr.dyn_cast<StringAttr>())
