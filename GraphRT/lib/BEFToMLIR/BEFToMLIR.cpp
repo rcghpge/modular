@@ -191,7 +191,7 @@ public:
   bool parseTypes();
   bool parsePrimitiveNames();
   bool parseFunctions();
-  bool parseFunctionBody(BEF::FuncOp func, size_t offset,
+  bool parseFunctionBody(BEF::FuncOp func, BEFReader &funcReader,
                          BEFReader &attrNameReader, BEFReader &mlirTypesReader);
 
   bool resolveLocation(size_t locOffset, Location &loc) {
@@ -533,10 +533,11 @@ bool BEFToMLIRConverter::parseFunctions() {
     resultTypes.clear();
   }
 
+  BEFReader funcReader = getSectionReader(BEF::SectionID::BEF_FUNCTIONS);
+
   // Decode each of the function bodies.
-  for (auto fnAndOffset : llvm::zip(functions, functionOffsets)) {
-    if (parseFunctionBody(std::get<0>(fnAndOffset), std::get<1>(fnAndOffset),
-                          attrNameReader, mlirTypesReader))
+  for (auto fn : functions) {
+    if (parseFunctionBody(fn, funcReader, attrNameReader, mlirTypesReader))
       return true;
   }
 
@@ -799,15 +800,14 @@ bool FunctionParser::parsePrimitiveList() {
   return false;
 }
 
-bool BEFToMLIRConverter::parseFunctionBody(BEF::FuncOp func, size_t offset,
+bool BEFToMLIRConverter::parseFunctionBody(BEF::FuncOp func,
+                                           BEFReader &funcReader,
                                            BEFReader &attrNameReader,
                                            BEFReader &mlirTypesReader) {
-  BEFReader funcReader = getSectionReader(BEF::SectionID::BEF_FUNCTIONS);
 
-  return funcReader.dropBytes(offset) ||
-         FunctionParser(func, funcReader, attrNameReader, mlirTypesReader,
+  return FunctionParser(func, funcReader, attrNameReader, mlirTypesReader,
                         *this)
-             .parse();
+      .parse();
 }
 
 //===----------------------------------------------------------------------===//
