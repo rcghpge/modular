@@ -630,6 +630,7 @@ bool FunctionParser::parsePrimitiveList() {
   auto bodyBuilder = OpBuilder::atBlockBegin(&block);
   Location loc = func.getLoc();
   Type unknownType = BEF::UnknownType::get(bodyBuilder.getContext());
+  bool hasMLIRTypes = !mlirTypesReader.empty();
 
   // This is a table of the SSA values that make up the register table.  BEF
   // doesn't support forward references, so we can just build this top-down.
@@ -673,7 +674,7 @@ bool FunctionParser::parsePrimitiveList() {
 
     // Resolve all the result types.
     SmallVector<Type> resultTypes;
-    if (mlirTypesReader.empty()) {
+    if (!hasMLIRTypes) {
       // If we don't have a types section, then just use !bef.unknown type.
       resultTypes.assign(numResults, unknownType);
     } else {
@@ -694,16 +695,13 @@ bool FunctionParser::parsePrimitiveList() {
           numResults != func.getArgumentTypes().size())
         return funcReader.emitError("malformed argument pseudo op");
 
-      size_t elt = 0;
+      size_t argNo = 0;
       assert(block.getNumArguments() == numResults);
       for (auto arg : block.getArguments()) {
-        assert(resultNos[elt++] == registerValues.size() &&
+        assert(resultNos[argNo] == registerValues.size() &&
                "result register mismatch");
         registerValues.push_back(arg);
-
-        if (!mlirTypesReader.empty()) {
-          /// XXX
-        }
+        arg.setType(resultTypes[argNo++]);
       }
       continue;
     }
@@ -717,6 +715,7 @@ bool FunctionParser::parsePrimitiveList() {
       attrs.push_back(attr);
     }
 
+    // If we have attribute names, decode them.
     if (!attrNameReader.empty()) {
       for (unsigned attrOffset : attrsOffsets) {
         (void)attrOffset;
@@ -768,7 +767,17 @@ bool FunctionParser::parsePrimitiveList() {
       return funcReader.emitError("invalid result register #");
     operandValues.push_back(registerValues[resultReg]);
   }
-  bodyBuilder.create<BEF::OutputOp>(loc, operandValues);
+  auto outputOp = bodyBuilder.create<BEF::OutputOp>(loc, operandValues);
+
+  // If we have MLIR type metadata, we can update our function signature to have
+  // the correct types now that we know them.
+  if (hasMLIRTypes) {
+    auto fnType = FunctionType::get(func.getContext(), block.getArgumentTypes(),
+                                    outputOp.getOperandTypes());
+    func->setAttr(mlir::FunctionOpInterface::getTypeAttrName(),
+                  TypeAttr::get(fnType));
+  }
+
   return false;
 }
 

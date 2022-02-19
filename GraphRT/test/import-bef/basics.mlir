@@ -27,8 +27,8 @@ bef.func @trivial() {
 // CHECK-LABEL:  bef.func @args_results(%arg0: !bef.unknown, %arg1: !bef.unknown) -> (!bef.unknown, !bef.unknown) {
 // CHECK-NEXT:     bef.output %arg1, %arg0 : !bef.unknown, !bef.unknown
 // CHECK-NEXT:   }
-// MD-LABEL:  bef.func @args_results(%arg0: !bef.unknown, %arg1: !bef.unknown) -> (!bef.unknown, !bef.unknown) {
-// MD-NEXT:     bef.output %arg1, %arg0 : !bef.unknown, !bef.unknown
+// MD-LABEL:  bef.func @args_results(%arg0: i32, %arg1: i8) -> (i8, i32) {
+// MD-NEXT:     bef.output %arg1, %arg0 : i8, i32
 // MD-NEXT:   }
 bef.func @args_results(%a: i32, %b: i8) -> (i8, i32) {
   bef.output %b, %a : i8, i32
