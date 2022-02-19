@@ -340,15 +340,16 @@ public:
   // This follows the format of the FunctionIndex section.
   std::vector<FunctionIndexEntry> functionIndexEntries;
 
-  // Types we've seen so far.
-  std::vector<Type> types;
-  DenseMap<Type, unsigned> typeIDs;
-
   // All of the strings we need to emit the BEF file.
   llvm::SetVector<StringAttr> strings;
 
-  // All of the strings we need to emit for metadata in the BEF file.
+  // All of the strings we need to emit for metadata in the BEF file, e.g.
+  // attribute names.
   llvm::SetVector<StringAttr> metadataStrings;
+
+  // All of the types we need when emiting metadata in the BEF file.
+  std::vector<Type> types;
+  DenseMap<Type, unsigned> typeIDs;
 
   /// This is the offset of each known string in the STRINGS and STRINGS_MD
   /// section.
@@ -369,8 +370,6 @@ public:
 
 } // namespace
 
-// Add a type to our table, checking it by pointer to reduce string
-// conversions.
 void EntityTable::addType(Type type) {
   // Ignore the type if we've seen it before.
   if (!typeIDs.insert({type, types.size()}).second)
@@ -461,7 +460,8 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
 
     auto *curBlock = op->getBlock();
 
-    // Notice the result and argument types of the ops.
+    // Notice the result types of the ops.  Argument types can only be arguments
+    // to the functions and results of other ops.
     for (auto result : op->getResults())
       addType(result.getType());
 
@@ -742,8 +742,9 @@ namespace {
 class BEFFunctionEmitter : public BEFEmitter {
 public:
   BEFFunctionEmitter(EntityTable &entities, BEFEmitter *attributeNamesSection,
-                     BEFEmitter *registerTypesSection)
-      : entities(entities), attributeNamesSection(attributeNamesSection) {}
+                     BEFEmitter *mlirTypesSection)
+      : entities(entities), attributeNamesSection(attributeNamesSection),
+        mlirTypesSection(mlirTypesSection) {}
 
   void emitFunction(Region *region);
 
@@ -768,6 +769,9 @@ private:
   // If optional metadata is enabled, this section collects information about
   // the names that correspond to primitive attributes.
   BEFEmitter *attributeNamesSection;
+  // If optional metadata is enabled, this section collects information about
+  // the MLIR type for each argument and primitive result.
+  BEFEmitter *mlirTypesSection;
 };
 } // end anonymous namespace.
 
@@ -908,8 +912,13 @@ void BEFFunctionEmitter::emitArgumentsPseudoOp(
     primitiveList.emitInt4(getNumNonOutputUsers(arg));
   for (auto arg : block->getArguments())
     primitiveList.emitInt4(getRegisterNumber(arg));
-  for (auto arg : block->getArguments())
+  for (auto arg : block->getArguments()) {
     emitPrimitiveResultUsers(arg, primitiveList);
+
+    // If extra metadata is enabled, remember the type for each result.
+    if (mlirTypesSection)
+      mlirTypesSection->emitVBR(entities.getTypeIndex(arg.getType()));
+  }
 }
 
 void BEFFunctionEmitter::emitPrimitive(Operation *op,
@@ -982,8 +991,13 @@ void BEFFunctionEmitter::emitPrimitive(Operation *op,
   for (auto result : op->getResults())
     primitiveList.emitInt4(getRegisterNumber(result));
   // Then results with the primitives that use them.
-  for (auto result : op->getResults())
+  for (auto result : op->getResults()) {
     emitPrimitiveResultUsers(result, primitiveList);
+
+    // If extra metadata is enabled, remember the type for each result.
+    if (mlirTypesSection)
+      mlirTypesSection->emitVBR(entities.getTypeIndex(result.getType()));
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -1003,11 +1017,12 @@ public:
   void emitLocationInfo(BEFEmitter &locationFilenames,
                         BEFEmitter &locationPositions);
   void emitStrings();
-  void emitMetadataStrings(BEFEmitter &metadataStringsSection);
+  void emitStringsMD(BEFEmitter &stringsMDSection);
+  void emitTypesMD(BEFEmitter &typeStringsMDSection);
   void emitAttributes(BEFEmitter &attrKindSection);
   void emitPrimitiveNames();
   void emitBEFFunctions(BEFEmitter *attributeNamesSection,
-                        BEFEmitter *registerTypesSection);
+                        BEFEmitter *mlirTypesSection);
   void emitFunctionIndex();
 
   bool hadError() const { return entities.hadError; }
@@ -1046,11 +1061,22 @@ void BEFModuleEmitter::emitStrings() {
   emitSection(BEF::SectionID::STRINGS, stringSection);
 }
 
-void BEFModuleEmitter::emitMetadataStrings(BEFEmitter &metadataStringsSection) {
+void BEFModuleEmitter::emitStringsMD(BEFEmitter &stringsMDSection) {
   // Emit the strings to the metadata string section and remember their offsets.
   for (StringAttr string : entities.metadataStrings) {
-    entities.metadataStringOffsets[string] = metadataStringsSection.getOffset();
-    metadataStringsSection.emitNulTerminatedString(string);
+    entities.metadataStringOffsets[string] = stringsMDSection.getOffset();
+    stringsMDSection.emitNulTerminatedString(string);
+  }
+}
+
+void BEFModuleEmitter::emitTypesMD(BEFEmitter &typeStringsMDSection) {
+  // Emit the type strings to the type string section.
+  llvm::SmallVector<char, 64> result;
+  for (Type type : entities.types) {
+    result.clear();
+    llvm::raw_svector_ostream os(result);
+    type.print(os);
+    typeStringsMDSection.emitNulTerminatedString(os.str());
   }
 }
 
@@ -1085,12 +1111,12 @@ void BEFModuleEmitter::emitPrimitiveNames() {
 }
 
 /// Emit the BEF_FUNCTIONS section.  If optional metadata is enabled, the
-/// attributeNamesSection/registerTypesSection will be non-null and should be
+/// attributeNamesSection/mlirTypesSection will be non-null and should be
 /// filled in.
 void BEFModuleEmitter::emitBEFFunctions(BEFEmitter *attributeNamesSection,
-                                        BEFEmitter *registerTypesSection) {
+                                        BEFEmitter *mlirTypesSection) {
   BEFFunctionEmitter functionsSection(entities, attributeNamesSection,
-                                      registerTypesSection);
+                                      mlirTypesSection);
 
   for (auto function : entities.functions) {
     // Remember that we emitted this region to this offset.
@@ -1143,21 +1169,24 @@ std::vector<uint8_t> M::translateMLIRToBEF(ModuleOp module,
 
   // If optional section emission is enabled, these collect the data to emit
   // into the respective sections.
-  BEFEmitter attrKindsSection, metadataStringsSection, attrNamesSection,
-      registerTypesSection;
+  BEFEmitter attrKindsSection;
+  BEFEmitter stringsMDSection, typeStringsMDSection, attrNamesSection,
+      mlirTypesSection;
 
   // Emit magic numbers and format version.
   emitter.emitBytes({BEF::MAGIC1, BEF::MAGIC2 + BEF::VERSION0});
   emitter.emitLocationInfo(locationFilenames, locationPositions);
   emitter.emitStrings();
-  if (enableBEFMetadata)
-    emitter.emitMetadataStrings(metadataStringsSection);
+  if (enableBEFMetadata) {
+    emitter.emitStringsMD(stringsMDSection);
+    emitter.emitTypesMD(typeStringsMDSection);
+  }
 
   emitter.emitAttributes(attrKindsSection);
 
   emitter.emitPrimitiveNames();
   emitter.emitBEFFunctions(enableBEFMetadata ? &attrNamesSection : nullptr,
-                           enableBEFMetadata ? &registerTypesSection : nullptr);
+                           enableBEFMetadata ? &mlirTypesSection : nullptr);
   emitter.emitFunctionIndex();
 
   // Now that we've emitted all of the critical sections used in the common case
@@ -1171,9 +1200,11 @@ std::vector<uint8_t> M::translateMLIRToBEF(ModuleOp module,
 
   // Emit all the optional sections at the end if they're requested.
   if (enableBEFMetadata) {
-    emitter.emitSection(BEF::SectionID::STRINGS_MD, metadataStringsSection);
+    emitter.emitSection(BEF::SectionID::MLIRTYPE_MD, mlirTypesSection);
+    emitter.emitSection(BEF::SectionID::STRINGS_MD, stringsMDSection);
     emitter.emitSection(BEF::SectionID::ATTRIBUTE_NAME_MD, attrNamesSection);
-    emitter.emitSection(BEF::SectionID::REGISTER_TYPE_MD, registerTypesSection);
+    emitter.emitSection(BEF::SectionID::MLIRTYPE_STRINGS_MD,
+                        typeStringsMDSection);
   }
 
   // If emission diagnosed an error along the way and emitted a diagnostic,

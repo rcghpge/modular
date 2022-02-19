@@ -125,14 +125,14 @@ SECTION_BODY_ALIGNMENT follows.
   SECTION_DATA ::= STRINGS_SECTION
   SECTION_DATA ::= ATTRIBUTES_SECTION
   SECTION_DATA ::= PRIMITIVES_SECTION
-  SECTION_DATA ::= TYPES_SECTION
   SECTION_DATA ::= BEF_FUNCTION_INDEX_SECTION
   SECTION_DATA ::= BEF_FUNCTIONS_SECTION
   SECTION_DATA ::= LOCATION_FILENAMES_SECTION
   SECTION_DATA ::= LOCATIONS_SECTION
   SECTION_DATA ::= ATTRIBUTE_KIND_MD_SECTION
   SECTION_DATA ::= ATTRIBUTE_NAMES_MD_SECTION
-  SECTION_DATA ::= REGISTER_TYPES_SECTION
+  SECTION_DATA ::= MLIRTYPE_STRINGS_MD_SECTION
+  SECTION_DATA ::= MLIRTYPE_MD_SECTION
 
   // Unknown section.
   SECTION_DATA ::= BYTE*
@@ -212,18 +212,6 @@ We want dense indexes from primitives in the BEF Functions section, and the
 GraphRT Executor wants to resolve names to primitive implementations at startup
 time anyway, as such, it makes sense for the GraphRT executor to build its own
 mutable array in memory for primitives.
-
-### Types Section
-
-**Grammar**
-
-```none
-  TYPES_SECTION ::= OFFSET<"TypeNameOffset">*
-```
-
-The Types section defines a table of type names used by the program, and is
-laid out exactly the same as the
-[Primitive Names section](#primitive-names-section).
 
 ### BEFFunctionIndex Section
 
@@ -439,21 +427,41 @@ mapping between Primitive Table in this section and BEF Function Entries in
 region for a primitive has an entry here specifying the name.  The offset is
 into the STRINGS_MD section (not the STRINGS section).
 
-### RegisterTypes Section
+***Rationale***
+
+Attribute names are strings that are not needed by the BEF Executor and have
+nothing to do with types or other metadata so we put them in their own section
+looked up lazily by offset.
+
+### MLIRTYPE_STRINGS_MD Section
 
 **Grammar**
 
 ```none
-  REGISTER_TYPES_SECTION ::= VBR<"NumFunctions"> REGISTER_TYPE_TABLE
-  REGISTER_TYPE_TABLE    ::= VBR<"NumRegs"> INDEX<"Types">*
+  MLIRTYPE_STRINGS_MD_SECTION ::= NUL_TERMINATED_STRING*
 ```
 
-The RegisterTypes section is an optional section which is not needed for BEF
-execution, but this section is necessary for BEFToMLIR conversion. This
-section describes the type information for registers in each function. The
-RegisterType Table is a count of registers, and an entry for each register
-indicating its index into [Types section](#types-section). There is a 1:1
-mapping between RegisterType Tables and BEF Function Entries in
-[BEF FunctionIndex section](#bef-functionindex-section). And it is a 1:1 mapping between
-types in a RegisterType Table and registers in the RegisterTable of the
-corresponding BEF Function.
+The MLIRTYPE_STRINGS_MD section defines a table of MLIR type names used by the
+program, in a format that can be parsed by BEF2MLIR.  These are referenced by
+index into the section, not offset.
+
+***Rationale***
+
+Type names are not needed by the BEF executor, and are decoded in a single dense
+pass up-front in BEF2MLIR.  As such, they are referenced by index (not offset).
+
+### MLIRTYPE_MD Section
+
+**Grammar**
+
+```none
+  MLIRTYPE_MD_SECTION ::= INDEX<"MLIRTYPE_STRINGS_MD">*
+```
+
+The MLIRTYPE_MD section is an optional section which is not needed for BEF
+execution, but allows BEF2MLIR conversion to regenerate the correct types for
+BEF function arguments and the result types of primitives.  This section
+contains a list of VBR encoded indexes into the 
+[MLIRTYPE_STRINGS_MD section](#TYPE_STRINGS_MD-section), and is encoded in
+the same order as the function table.  Each function has a list of argument
+types and a type for each primitive result.

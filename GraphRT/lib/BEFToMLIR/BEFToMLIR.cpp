@@ -14,6 +14,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "mlir/Parser.h"
 #include <numeric>
 using namespace M;
 
@@ -138,16 +139,21 @@ public:
 
   /// Parse a NUL terminated string into the specified StringRef, not including
   /// the NUL terminator.
-  bool parseNULTerminatedStringAt(size_t position, StringRef &result) const {
-    if (position >= contents.size())
-      return emitError("invalid location for string");
-
-    auto *start = (const char *)contents.data() + position;
+  bool parseNULTerminatedString(StringRef &result) {
+    auto *start = (const char *)contents.data();
     auto nul = (const char *)memchr(start, 0, contents.size());
     if (!nul)
       return emitError("malformed NUL terminated string");
     result = StringRef(start, nul - start);
+    contents = contents.drop_front(result.size() + 1);
     return false;
+  }
+
+  /// Parse a NUL terminated string into the specified StringRef, not including
+  /// the NUL terminator.
+  bool parseNULTerminatedStringAt(size_t position, StringRef &result) const {
+    BEFReader tmp = *this;
+    return tmp.dropBytes(position) || tmp.parseNULTerminatedString(result);
   }
 
   /// Parse a NUL terminated string into the specified StringAttr, not including
@@ -182,10 +188,11 @@ public:
   bool findSections(BEFReader &reader);
   bool parseLocationPositions();
   bool parseAttributes();
+  bool parseTypes();
   bool parsePrimitiveNames();
   bool parseFunctions();
   bool parseFunctionBody(BEF::FuncOp func, size_t offset,
-                         BEFReader &attrNameReader);
+                         BEFReader &attrNameReader, BEFReader &mlirTypesReader);
 
   bool resolveLocation(size_t locOffset, Location &loc) {
     auto it = locations.find(locOffset);
@@ -214,6 +221,13 @@ public:
   bool resolveMetadataString(size_t offset, Location loc, StringAttr &result) {
     BEFReader stringReader = getSectionReader(BEF::SectionID::STRINGS_MD);
     return stringReader.parseNULTerminatedStringAt(offset, result);
+  }
+
+  bool resolveType(size_t typeID, Location loc, Type &result) {
+    if (typeID >= types.size())
+      return mlir::emitError(loc) << "invalid type ID #" << typeID, true;
+    result = types[typeID];
+    return false;
   }
 
 private:
@@ -251,6 +265,9 @@ private:
 
   /// This is the set of parsed functions indexed by function ID.
   SmallVector<BEF::FuncOp> functions;
+
+  /// The is the parsed version of the type list when metadata is enabled.
+  std::vector<Type> types;
 };
 } // end anonymous namespace.
 
@@ -441,6 +458,22 @@ bool BEFToMLIRConverter::parseAttributes() {
   return false;
 }
 
+bool BEFToMLIRConverter::parseTypes() {
+  BEFReader section = getSectionReader(BEF::SectionID::MLIRTYPE_STRINGS_MD);
+
+  // Read until we run out of type strings.
+  while (!section.empty()) {
+    StringRef typeStr;
+    if (section.parseNULTerminatedString(typeStr))
+      return true;
+
+    types.push_back(mlir::parseType(typeStr, getContext()));
+    if (!types.back()) // parseType already emits an error.
+      return true;
+  }
+  return false;
+}
+
 /// Build the "primitiveNames" array by parsing the PRIMITIVE_NAMES section,
 /// resolving them all to StringAttr's.
 bool BEFToMLIRConverter::parsePrimitiveNames() {
@@ -466,6 +499,7 @@ bool BEFToMLIRConverter::parseFunctions() {
   BEFReader stringReader = getSectionReader(BEF::SectionID::STRINGS);
   BEFReader attrNameReader =
       getSectionReader(BEF::SectionID::ATTRIBUTE_NAME_MD);
+  BEFReader mlirTypesReader = getSectionReader(BEF::SectionID::MLIRTYPE_MD);
 
   SmallVector<size_t> functionOffsets;
 
@@ -502,7 +536,7 @@ bool BEFToMLIRConverter::parseFunctions() {
   // Decode each of the function bodies.
   for (auto fnAndOffset : llvm::zip(functions, functionOffsets)) {
     if (parseFunctionBody(std::get<0>(fnAndOffset), std::get<1>(fnAndOffset),
-                          attrNameReader))
+                          attrNameReader, mlirTypesReader))
       return true;
   }
 
@@ -513,9 +547,10 @@ namespace {
 class FunctionParser {
 public:
   FunctionParser(BEF::FuncOp func, BEFReader &funcReader,
-                 BEFReader &attrNameReader, BEFToMLIRConverter &converter)
+                 BEFReader &attrNameReader, BEFReader &mlirTypesReader,
+                 BEFToMLIRConverter &converter)
       : func(func), funcReader(funcReader), attrNameReader(attrNameReader),
-        converter(converter) {}
+        mlirTypesReader(mlirTypesReader), converter(converter) {}
 
   /// Entrypoint to parse the function body.
   bool parse();
@@ -529,8 +564,8 @@ private:
   BEF::FuncOp func;
   BEFReader &funcReader;
 
-  /// This is non-empty if the file has an attribute names section.
-  BEFReader &attrNameReader;
+  BEFReader &attrNameReader;  // A (possibly empty) ATTRIBUTE_NAMES_MD section.
+  BEFReader &mlirTypesReader; // A (possibly empty) MLIRTYPE_MD section.
   BEFToMLIRConverter &converter;
 
   /// This contains the number of operands that must be resolved before the
@@ -636,6 +671,22 @@ bool FunctionParser::parsePrimitiveList() {
     if (funcReader.dropBytes(numResultUserEntries * sizeof(uint32_t)))
       return true;
 
+    // Resolve all the result types.
+    SmallVector<Type> resultTypes;
+    if (mlirTypesReader.empty()) {
+      // If we don't have a types section, then just use !bef.unknown type.
+      resultTypes.assign(numResults, unknownType);
+    } else {
+      for (size_t i = 0, e = numResults; i != e; ++i) {
+        size_t typeID;
+        Type type;
+        if (mlirTypesReader.parseVBR(typeID) ||
+            converter.resolveType(typeID, loc, type))
+          return true;
+        resultTypes.push_back(type);
+      }
+    }
+
     // The first primitive is a pseudo op which only defines the argument
     // registers.
     if (i == 0 && !func.getArgumentTypes().empty()) {
@@ -649,6 +700,10 @@ bool FunctionParser::parsePrimitiveList() {
         assert(resultNos[elt++] == registerValues.size() &&
                "result register mismatch");
         registerValues.push_back(arg);
+
+        if (!mlirTypesReader.empty()) {
+          /// XXX
+        }
       }
       continue;
     }
@@ -689,7 +744,6 @@ bool FunctionParser::parsePrimitiveList() {
       nonStrict = mlir::UnitAttr::get(loc.getContext());
 
     // Since we don't have type information, we create a bef.opaque operation.
-    SmallVector<Type> resultTypes(numResults, unknownType);
     auto resultOp = bodyBuilder.create<BEF::OpaqueOp>(
         loc, resultTypes, primitiveName, bodyBuilder.getArrayAttr(attrs),
         nonStrict, operandValues, numFunctions);
@@ -719,11 +773,14 @@ bool FunctionParser::parsePrimitiveList() {
 }
 
 bool BEFToMLIRConverter::parseFunctionBody(BEF::FuncOp func, size_t offset,
-                                           BEFReader &attrNameReader) {
+                                           BEFReader &attrNameReader,
+                                           BEFReader &mlirTypesReader) {
   BEFReader funcReader = getSectionReader(BEF::SectionID::BEF_FUNCTIONS);
 
   return funcReader.dropBytes(offset) ||
-         FunctionParser(func, funcReader, attrNameReader, *this).parse();
+         FunctionParser(func, funcReader, attrNameReader, mlirTypesReader,
+                        *this)
+             .parse();
 }
 
 //===----------------------------------------------------------------------===//
@@ -751,7 +808,8 @@ ModuleOp M::translateBEFToMLIR(ArrayRef<uint8_t> buffer, Location loc) {
   if (converter.parseHeader(reader) || converter.findSections(reader) ||
       // Parse sections in a specific order, unbound by their order in the file.
       converter.parseLocationPositions() || converter.parseAttributes() ||
-      converter.parsePrimitiveNames() || converter.parseFunctions())
+      converter.parseTypes() || converter.parsePrimitiveNames() ||
+      converter.parseFunctions())
     return {};
 
   return converter.takeModule();

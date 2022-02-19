@@ -14,8 +14,8 @@
 // CHECK-NEXT:    bef.output
 // CHECK-NEXT:  }
 // MD-LABEL: bef.func @trivial() {
-// MD-NEXT:    %0:2 = bef.opaque "simple.primitive" []() : () -> (!bef.unknown, !bef.unknown)
-// MD-NEXT:    bef.opaque "other.primitive" nonstrict [42 : i8](%0#1, %0#0) {bef.attr.names = ["x"]} : (!bef.unknown, !bef.unknown) -> ()
+// MD-NEXT:    %0:2 = bef.opaque "simple.primitive" []() : () -> (i8, i16)
+// MD-NEXT:    bef.opaque "other.primitive" nonstrict [42 : i8](%0#1, %0#0) {bef.attr.names = ["x"]} : (i16, i8) -> ()
 // MD-NEXT:    bef.output
 // MD-NEXT:  }
 bef.func @trivial() {
@@ -27,6 +27,9 @@ bef.func @trivial() {
 // CHECK-LABEL:  bef.func @args_results(%arg0: !bef.unknown, %arg1: !bef.unknown) -> (!bef.unknown, !bef.unknown) {
 // CHECK-NEXT:     bef.output %arg1, %arg0 : !bef.unknown, !bef.unknown
 // CHECK-NEXT:   }
+// MD-LABEL:  bef.func @args_results(%arg0: !bef.unknown, %arg1: !bef.unknown) -> (!bef.unknown, !bef.unknown) {
+// MD-NEXT:     bef.output %arg1, %arg0 : !bef.unknown, !bef.unknown
+// MD-NEXT:   }
 bef.func @args_results(%a: i32, %b: i8) -> (i8, i32) {
   bef.output %b, %a : i8, i32
 }
@@ -75,7 +78,6 @@ bef.func @attributes() {
 // CHECK-NEXT:    bef.opaque "other.primitive" [42 : i8](%0#1, %0#0) : (!bef.unknown, !bef.unknown) -> ()
 // CHECK-NEXT:    bef.output
 // CHECK-NEXT:  }
-
 bef.func @opaque_round_trip() {
   %0:2 = "bef.opaque"() {attrs = [], opname = "simple.primitive"} : () -> (!bef.unknown, !bef.unknown)
   "bef.opaque"(%0#1, %0#0) {attrs = [42 : i8], opname = "other.primitive"} : (!bef.unknown, !bef.unknown) -> ()

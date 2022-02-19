@@ -64,9 +64,10 @@ enum class SectionID {
   BEF_FUNCTION_INDEX = 7,
 
   ATTRIBUTE_KIND_MD = 8,
-  STRINGS_MD = 9, // Strings for metadata
-  ATTRIBUTE_NAME_MD = 10,
-  REGISTER_TYPE_MD = 11,
+  STRINGS_MD = 9,           // Strings for metadata
+  ATTRIBUTE_NAME_MD = 10,   // Table of primitive attribute names.
+  MLIRTYPE_STRINGS_MD = 11, // String table of MLIR types.
+  MLIRTYPE_MD = 12,
 };
 
 } // namespace BEF
