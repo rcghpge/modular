@@ -64,7 +64,9 @@ def OpaqueOp : BEFOp<"opaque"> {
                        Variadic<AnyType>:$operands);
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region VariadicRegion<SizedRegion<1>>:$body);
-}
+  let assemblyFormat = "$opname (`nonstrict` $nonstrict^)? $attrs `(` $operands `)` attr-dict `:` "
+   "functional-type($operands, $results) $body";
+ }
 
 def OutputOp : BEFOp<"output",
                      [Terminator, ReturnLike, HasParent<"BEF::FuncOp">]> {
