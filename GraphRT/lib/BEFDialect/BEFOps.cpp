@@ -39,7 +39,7 @@ void FuncOp::build(OpBuilder &builder, OperationState &state, StringAttr name,
 //
 // operation ::= `func` function-signature function-attributes? function-body
 //
-static ParseResult parseFuncOp(OpAsmParser &parser, OperationState &result) {
+ParseResult FuncOp::parse(OpAsmParser &parser, OperationState &result) {
   StringAttr nameAttr;
   SmallVector<OpAsmParser::OperandType> entryArgs;
   SmallVector<NamedAttrList> argAttrs;
@@ -49,7 +49,7 @@ static ParseResult parseFuncOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<Location> argLocations;
   bool isVariadic;
 
-  if (parser.parseSymbolName(nameAttr, SymbolTable::getSymbolAttrName(),
+  if (parser.parseSymbolName(nameAttr, ::SymbolTable::getSymbolAttrName(),
                              result.attributes) ||
       mlir::function_interface_impl::parseFunctionSignature(
           parser, /*allowVariadic=*/false, entryArgs, argTypes, argAttrs,
@@ -72,18 +72,18 @@ static ParseResult parseFuncOp(OpAsmParser &parser, OperationState &result) {
 
 // Print the FuncOp. Collects argument and result types and passes them to
 // helper functions. Drops "void" result since it cannot be parsed back.
-static void printFuncOp(FuncOp op, OpAsmPrinter &p) {
+void FuncOp::print(OpAsmPrinter &p) {
   p << ' ';
-  p.printSymbolName(op.getName());
+  p.printSymbolName(getName());
 
-  FunctionType fnType = op.getType();
+  FunctionType fnType = getType();
   mlir::function_interface_impl::printFunctionSignature(
-      p, op, fnType.getInputs(), /*isVarArg=*/false, fnType.getResults());
+      p, *this, fnType.getInputs(), /*isVarArg=*/false, fnType.getResults());
   mlir::function_interface_impl::printFunctionAttributes(
-      p, op, fnType.getNumInputs(), fnType.getNumResults(), {});
+      p, *this, fnType.getNumInputs(), fnType.getNumResults(), {});
 
   // Print the body if this is not an external function.
-  Region &body = op.getBody();
+  Region &body = getBody();
   if (!body.empty()) {
     p << ' ';
     p.printRegion(body, /*printEntryBlockArgs=*/false,

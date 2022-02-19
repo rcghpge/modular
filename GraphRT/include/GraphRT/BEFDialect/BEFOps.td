@@ -46,8 +46,7 @@ def FuncOp : BEFOp<"func", [HasParent<"mlir::ModuleOp">, FunctionOpInterface,
                    CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>
   ];
 
-  let parser = [{ return ::parse$cppClass(parser, result); }];
-  let printer = [{ return ::printFuncOp(*this, p); }];
+  let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
 }
 
