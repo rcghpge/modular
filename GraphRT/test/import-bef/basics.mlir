@@ -2,7 +2,7 @@
 // RUN: graphrt-translate -import-bef %t | FileCheck %s
 
 // RUN: graphrt-translate -export-bef -allow-unregistered-dialect -enable-bef-metadata %s > %t2
-// RUN: graphrt-translate -import-bef %t2 | FileCheck %s --check-prefix=MD
+// RUN: graphrt-translate -import-bef -allow-unregistered-dialect %t2 | FileCheck %s --check-prefix=MD
 
 // Check to make sure the magic number is right, and the first section is there.
 
@@ -14,8 +14,8 @@
 // CHECK-NEXT:    bef.output
 // CHECK-NEXT:  }
 // MD-LABEL: bef.func @trivial() {
-// MD-NEXT:    %0:2 = bef.opaque "simple.primitive" []() : () -> (i8, i16)
-// MD-NEXT:    bef.opaque "other.primitive" nonstrict [42 : i8](%0#1, %0#0) {bef.attr.names = ["x"]} : (i16, i8) -> ()
+// MD-NEXT:    %0:2 = "simple.primitive"() : () -> (i8, i16)
+// MD-NEXT:    "other.primitive"(%0#1, %0#0) {bef.nonstrict, x = 42 : i8} : (i16, i8) -> ()
 // MD-NEXT:    bef.output
 // MD-NEXT:  }
 bef.func @trivial() {
@@ -38,14 +38,15 @@ bef.func @args_results(%a: i32, %b: i8) -> (i8, i32) {
 // MD-LABEL:  bef.func @attributes() {
 bef.func @attributes() {
   // CHECK-NEXT: "a.b" [true]
-  // MD-NEXT: "a.b" [true]() {bef.attr.names = ["a"]}
+  // MD-NEXT: "a.b"() {a = true}
   "a.b"() { a = 1 : i1 }: () -> ()
 
   // CHECK-NEXT: "a.b" [42 : i8, 17 : i8]
-  // MD-NEXT: "a.b" [42 : i8, 17 : i8]() {bef.attr.names = ["b", "x"]}
+  // MD-NEXT: "a.b"() {b = 42 : i8, x = 17 : i8}
   "a.b"() { b = 42 : i8, x = 17 : i8 }: () -> ()
 
   // CHECK-NEXT: "a.b" [258 : i16]
+  // MD-NEXT: "a.b"() {c = 258 : i16}
   "a.b"() { c = 0x0102 : i16 }: () -> ()
 
   // CHECK-NEXT: "a.b" [32751241 : i32]

@@ -638,6 +638,7 @@ bool FunctionParser::parsePrimitiveList() {
 
   // Read the primitive records.
   for (size_t i = 0, e = primitiveTable.size(); i != e; ++i) {
+    bool isOpaqueOp = false;
     uint32_t primitiveID, locOffset;
     uint16_t numOperands, numAttrs, numFunctions, numResults;
     StringAttr primitiveName;
@@ -685,6 +686,10 @@ bool FunctionParser::parsePrimitiveList() {
             converter.resolveType(typeID, loc, type))
           return true;
         resultTypes.push_back(type);
+        // If we see a !bef.unknown type, then we assume this operation lacks
+        // type information, and therefore needs to be constructed as a
+        // bef.opaque operation.
+        isOpaqueOp |= type.isa<BEF::UnknownType>();
       }
     }
 
@@ -707,7 +712,8 @@ bool FunctionParser::parsePrimitiveList() {
     }
 
     // Resolve attributes.
-    SmallVector<Attribute> attrs, attrNames;
+    SmallVector<Attribute> attrs;
+    SmallVector<StringAttr> attrNames;
     for (unsigned attrOffset : attrsOffsets) {
       Attribute attr;
       if (converter.resolveAttribute(attrOffset, loc, attr))
@@ -717,14 +723,16 @@ bool FunctionParser::parsePrimitiveList() {
 
     // If we have attribute names, decode them.
     if (!attrNameReader.empty()) {
-      for (unsigned attrOffset : attrsOffsets) {
-        (void)attrOffset;
+      for (size_t attr = 0, e = attrsOffsets.size(); attr != e; ++attr) {
         size_t nameOffset;
         StringAttr name;
         if (attrNameReader.parseVBR(nameOffset) ||
             converter.resolveMetadataString(nameOffset, loc, name))
           return true;
         attrNames.push_back(name);
+        // Encoded bef.opaque nodes won't have attribute names.  Reconstruct
+        // them as opaque ops.
+        isOpaqueOp |= name.getValue().empty();
       }
     }
 
@@ -742,18 +750,28 @@ bool FunctionParser::parsePrimitiveList() {
     if (operands.size() > 1 && primitiveTable[i] == 1)
       nonStrict = mlir::UnitAttr::get(loc.getContext());
 
-    // Since we don't have type information, we create a bef.opaque operation.
-    auto resultOp = bodyBuilder.create<BEF::OpaqueOp>(
-        loc, resultTypes, primitiveName, bodyBuilder.getArrayAttr(attrs),
-        nonStrict, operandValues, numFunctions);
+    Operation *resultOp;
+    if (!hasMLIRTypes || isOpaqueOp) {
+      // If we lack type information, create a bef.opaque operation.  We cannot
+      // necessarily create the correct operation when we're lacking type info
+      // and attribute names because we'll trip the op verifier.
+      resultOp = bodyBuilder.create<BEF::OpaqueOp>(
+          loc, resultTypes, primitiveName, bodyBuilder.getArrayAttr(attrs),
+          nonStrict, operandValues, numFunctions);
+    } else {
+      OperationState state(loc, primitiveName, operandValues, resultTypes,
+                           /*attrs*/ {});
+      for (auto nameAndAttr : llvm::zip(attrNames, attrs))
+        state.addAttribute(std::get<0>(nameAndAttr), std::get<1>(nameAndAttr));
+      if (nonStrict)
+        state.addAttribute("bef.nonstrict", nonStrict);
 
-    // TODO: Switch to a first class representation instead of OpaqueOp.
-    if (!attrNames.empty())
-      resultOp->setAttr("bef.attr.names", bodyBuilder.getArrayAttr(attrNames));
+      resultOp = bodyBuilder.createOperation(state);
+    }
 
     // Add all the results to the register table so subsequent ops may use it.
     size_t elt = 0;
-    for (auto result : resultOp.getResults()) {
+    for (auto result : resultOp->getResults()) {
       assert(resultNos[elt++] == registerValues.size() &&
              "result register mismatch");
       registerValues.push_back(result);
