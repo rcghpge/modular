@@ -13,6 +13,9 @@
 using namespace LLCL;
 
 int main(int argc, char **argv) {
+  // TODO: open the input file, autodetect both binary and source forms like
+  // firtool does.
+
   Runtime r(createMallocAllocator());
   printf("hello bef-executor");
   return 0;

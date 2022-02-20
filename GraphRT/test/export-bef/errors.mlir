@@ -1,4 +1,4 @@
-// RUN: graphrt-translate -export-bef -allow-unregistered-dialect -split-input-file --verify-diagnostics  %s 
+// RUN: bef-translate -export-bef -allow-unregistered-dialect -split-input-file --verify-diagnostics  %s 
 
 
 bef.func @trivial() {  // expected-error {{must have exactly one block}}

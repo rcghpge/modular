@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This registers BEFToMLIR as an MLIR translation for use with
-// graphrt-translate.
+// This registers BEFToMLIR as an MLIR translation for use with mlir-translate
+// based tools.
 //
 //===----------------------------------------------------------------------===//
 

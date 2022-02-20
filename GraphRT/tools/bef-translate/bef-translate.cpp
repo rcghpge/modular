@@ -1,4 +1,4 @@
-//===- graphrt-translate.cpp - GraphRT Translation Driver -----------------===//
+//===- bef-translate.cpp - BEF Translation Driver -------------------------===//
 //
 // This file is Modular Inc proprietary.
 //
