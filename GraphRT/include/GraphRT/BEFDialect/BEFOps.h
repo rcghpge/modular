@@ -22,12 +22,6 @@ namespace mlir {
 class ModuleOp;
 }
 
-namespace M {
-namespace BEF {
-// TODO: Helpers here.
-} // namespace BEF
-} // namespace M
-
 #define GET_OP_CLASSES
 #include "GraphRT/BEFDialect/BEF.h.inc"
 

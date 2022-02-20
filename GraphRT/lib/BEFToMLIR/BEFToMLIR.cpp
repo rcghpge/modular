@@ -804,7 +804,6 @@ bool BEFToMLIRConverter::parseFunctionBody(BEF::FuncOp func,
                                            BEFReader &funcReader,
                                            BEFReader &attrNameReader,
                                            BEFReader &mlirTypesReader) {
-
   return FunctionParser(func, funcReader, attrNameReader, mlirTypesReader,
                         *this)
       .parse();

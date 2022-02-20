@@ -33,8 +33,7 @@ We have the following goals:
     reasonable attempts to be dense, etc.
 
 In addition to describing the format, this document describes some of the
-rationale for the design decisions as well as TODO items that need to be
-completed.
+rationale for the design decisions.
 
 ## Fundamental Concepts
 
