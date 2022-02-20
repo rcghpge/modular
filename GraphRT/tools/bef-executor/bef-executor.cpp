@@ -10,6 +10,7 @@
 
 #include "LLCL/Allocator.h"
 #include "LLCL/Runtime.h"
+#include "LLCL/WorkQueue.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/FileUtilities.h"
 #include "llvm/Support/CommandLine.h"
@@ -61,6 +62,12 @@ static std::unique_ptr<Allocator> getAllocator() {
   return allocator;
 }
 
+/// Configure the appropriate work queue based on the command line option
+/// settings.
+static std::unique_ptr<WorkQueue> getWorkQueue() {
+  return createSingleThreadWorkQueue();
+}
+
 int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv, "bef-executor test driver\n");
 
@@ -77,7 +84,7 @@ int main(int argc, char **argv) {
 
   mlir::MLIRContext context;
 
-  Runtime r(getAllocator());
+  Runtime r(getAllocator(), getWorkQueue());
   printf("hello bef-executor");
   return 0;
 }
