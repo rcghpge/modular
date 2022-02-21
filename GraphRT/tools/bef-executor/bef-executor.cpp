@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "LLCL/Allocator.h"
+#include "LLCL/AsyncValue.h"
 #include "LLCL/Runtime.h"
 #include "LLCL/WorkQueue.h"
 #include "mlir/IR/MLIRContext.h"
@@ -84,7 +85,24 @@ int main(int argc, char **argv) {
 
   mlir::MLIRContext context;
 
-  Runtime r(getAllocator(), getWorkQueue());
-  printf("hello bef-executor");
+  Runtime runtime(getAllocator(), getWorkQueue());
+
+  // Make an asyncValue
+  auto *asyncValue = AsyncValue::createUnconstructed<int>(runtime);
+
+  // Whenever it gets completed, we print.
+  asyncValue->andThen([=]() {
+    printf("hello bef-executor %d", asyncValue->get<int>());
+    asyncValue->dropRef();
+  });
+
+  // Add a task that completes the AV and drops its reference.
+  runtime.addTask([=]() {
+    asyncValue->emplace<int>(1);
+  });
+
+  // Do all the work.
+  runtime.quiesce();
+
   return 0;
 }
