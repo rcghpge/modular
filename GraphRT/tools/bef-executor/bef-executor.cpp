@@ -8,10 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "LLCL/Allocator.h"
-#include "LLCL/AsyncValue.h"
-#include "LLCL/Runtime.h"
-#include "LLCL/WorkQueue.h"
+#include "LLCL/Runtime/Allocator.h"
+#include "LLCL/Runtime/AsyncValue.h"
+#include "LLCL/Runtime/Runtime.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/FileUtilities.h"
 #include "llvm/Support/CommandLine.h"
