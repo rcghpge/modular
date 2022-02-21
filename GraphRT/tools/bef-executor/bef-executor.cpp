@@ -88,11 +88,21 @@ int main(int argc, char **argv) {
 
   // Make an asyncValue
   auto *asyncValue = AsyncValue::createUnconstructed<int>(runtime);
+  auto *av2 = AsyncValue::createConstructed<int>(runtime, 42);
+  auto *av3 = AsyncValue::createReady<char>(runtime, 'x');
 
   // Whenever it gets completed, we print.
   asyncValue->andThen([=]() {
-    printf("hello bef-executor %d", asyncValue->get<int>());
+    printf("hello bef-executor %d\n", asyncValue->get<int>());
     asyncValue->dropRef();
+    av2->markReady();
+  });
+
+  // Whenever it gets completed, we print.
+  av2->andThen([=]() {
+    printf("bef barf: %d %c\n", av2->get<int>(), av3->get<char>());
+    av2->dropRef();
+    av3->dropRef();
   });
 
   // Add a task that completes the AV and drops its reference.
