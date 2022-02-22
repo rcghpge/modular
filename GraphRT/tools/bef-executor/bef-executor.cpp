@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "LLCL/Runtime/Allocator.h"
-#include "LLCL/Runtime/AsyncValue.h"
+#include "LLCL/Runtime/AsyncValueRef.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "LLCL/Support/ReferenceCount.h"
 #include "mlir/IR/MLIRContext.h"
@@ -122,6 +122,31 @@ static void test2(Runtime &runtime) {
   runtime.quiesce();
 }
 
+static void test3(Runtime &runtime) {
+  printf("test3: AsyncValueRef\n");
+  // Make an asyncValue
+  auto av1 = AsyncValueRef<int>::createUnconstructed(runtime);
+  auto av2 = AsyncValueRef<int>::createConstructed(runtime, 42);
+  auto av3 = AsyncValueRef<char>::createReady(runtime, 'x');
+
+  // Whenever it gets completed, we print.
+  av1->andThen([av1 = av1.copy(), av2 = av2.copy()]() {
+    printf("hello bef-executor %d\n", av1.get());
+    av2->markReady();
+  });
+
+  // Whenever it gets completed, we print.
+  av2->andThen([av2 = std::move(av2), av3 = std::move(av3)]() {
+    printf("bef barf: %d %c\n", av2.get(), av3.get());
+  });
+
+  // Add a task that completes the AV and drops its reference.
+  runtime.addTask([av1 = std::move(av1)]() { av1.emplace(1); });
+
+  // Do all the work.
+  runtime.quiesce();
+}
+
 int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv, "bef-executor test driver\n");
 
@@ -141,5 +166,6 @@ int main(int argc, char **argv) {
   Runtime runtime(getAllocator(), getWorkQueue());
   test1(runtime);
   test2(runtime);
+  test3(runtime);
   return 0;
 }
