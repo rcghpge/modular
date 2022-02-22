@@ -484,7 +484,7 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
 
     auto processAttr = [&](StringAttr name, Attribute attr) {
       // If this is a special bef.nonstrict attribute, ignore it.
-      if (name.getValue() == BEF::NONSTRICT_ATTR)
+      if (name.getValue() == BEF::kNonStrictAttrName)
         return;
 
       // Add attribute names if requested.
@@ -589,21 +589,21 @@ OffsetAndAttrKind AttributesEmitter::emitIntegerAttribute(const APInt &value,
   default:
     entities.emitError(loc)
         << "unsupported integer width " << value.getBitWidth();
-    return {offset, BEF::AttributeKind::INVALID};
+    return {offset, BEF::AttributeKind::kInvalid};
   case 1:
-    kind = BEF::AttributeKind::I1;
+    kind = BEF::AttributeKind::kI1;
     break;
   case 8:
-    kind = BEF::AttributeKind::I8;
+    kind = BEF::AttributeKind::kI8;
     break;
   case 16:
-    kind = BEF::AttributeKind::I16;
+    kind = BEF::AttributeKind::kI16;
     break;
   case 32:
-    kind = BEF::AttributeKind::I32;
+    kind = BEF::AttributeKind::kI32;
     break;
   case 64:
-    kind = BEF::AttributeKind::I64;
+    kind = BEF::AttributeKind::kI64;
     break;
   }
 
@@ -625,7 +625,7 @@ OffsetAndAttrKind AttributesEmitter::emitStringAttribute(StringRef value) {
   emitInvertedVBR(value.size());
   auto offset = getOffset();
   emitStringData(value);
-  return {offset, BEF::AttributeKind::STRING};
+  return {offset, BEF::AttributeKind::kString};
 }
 
 OffsetAndAttrKind AttributesEmitter::emitArrayAttribute(ArrayAttr array,
@@ -644,7 +644,7 @@ OffsetAndAttrKind AttributesEmitter::emitArrayAttribute(ArrayAttr array,
 
   // The attribute array is empty. We just return the offset past the size.
   if (elts.empty())
-    return {sizeEnd, BEF::AttributeKind::ARRAY_TYPE};
+    return {sizeEnd, BEF::AttributeKind::kArrayType};
 
   // Emit the first element of the array, this could insert padding if it needs
   // larger alignment then the current offset.
@@ -655,14 +655,14 @@ OffsetAndAttrKind AttributesEmitter::emitArrayAttribute(ArrayAttr array,
   default:
     entities.emitError(loc)
         << "unsupported array element attribute " << elts.front();
-    return {sizeEnd, BEF::AttributeKind::INVALID};
-  case BEF::AttributeKind::I1:
-  case BEF::AttributeKind::I8:
-  case BEF::AttributeKind::I16:
-  case BEF::AttributeKind::I32:
-  case BEF::AttributeKind::I64:
-  case BEF::AttributeKind::F32:
-  case BEF::AttributeKind::F64:
+    return {sizeEnd, BEF::AttributeKind::kInvalid};
+  case BEF::AttributeKind::kI1:
+  case BEF::AttributeKind::kI8:
+  case BEF::AttributeKind::kI16:
+  case BEF::AttributeKind::kI32:
+  case BEF::AttributeKind::kI64:
+  case BEF::AttributeKind::kF32:
+  case BEF::AttributeKind::kF64:
     break;
   }
 
@@ -671,7 +671,7 @@ OffsetAndAttrKind AttributesEmitter::emitArrayAttribute(ArrayAttr array,
     if (nextEltKind != firstEltOffsetAndKind.attrKind) {
       entities.emitError(loc)
           << "unsupported array with heterogenous elements " << elt;
-      return {sizeEnd, BEF::AttributeKind::INVALID};
+      return {sizeEnd, BEF::AttributeKind::kInvalid};
     }
   }
 
@@ -690,7 +690,7 @@ OffsetAndAttrKind AttributesEmitter::emitArrayAttribute(ArrayAttr array,
   }
 
   unsigned kindValue = (unsigned)firstEltOffsetAndKind.attrKind |
-                       (unsigned)BEF::AttributeKind::ARRAY_TYPE;
+                       (unsigned)BEF::AttributeKind::kArrayType;
   return {startOffset, BEF::AttributeKind(kindValue)};
 }
 
@@ -705,13 +705,13 @@ OffsetAndAttrKind AttributesEmitter::emitAttributeInternal(Attribute attr,
     switch (intResult.attrKind) {
     default:
       mlir::emitError(loc) << "unsupported float type" << attr;
-      return {{}, BEF::AttributeKind::INVALID};
-    case BEF::AttributeKind::INVALID:
+      return {{}, BEF::AttributeKind::kInvalid};
+    case BEF::AttributeKind::kInvalid:
       return intResult; // Error already emitted.
-    case BEF::AttributeKind::I32:
-      return {intResult.offset, BEF::AttributeKind::F32};
-    case BEF::AttributeKind::I64:
-      return {intResult.offset, BEF::AttributeKind::F64};
+    case BEF::AttributeKind::kI32:
+      return {intResult.offset, BEF::AttributeKind::kF32};
+    case BEF::AttributeKind::kI64:
+      return {intResult.offset, BEF::AttributeKind::kF64};
     }
   }
 
@@ -722,7 +722,7 @@ OffsetAndAttrKind AttributesEmitter::emitAttributeInternal(Attribute attr,
     return emitArrayAttribute(array, loc);
 
   entities.emitError(loc) << "unsupported attribute " << attr;
-  return {{0}, BEF::AttributeKind::INVALID};
+  return {{0}, BEF::AttributeKind::kInvalid};
 }
 
 OffsetAndAttrKind AttributesEmitter::emitAttribute(Attribute attr,
@@ -820,7 +820,7 @@ void BEFFunctionEmitter::emitFunction(Region *region) {
     if (auto opaque = dyn_cast<BEF::OpaqueOp>(op))
       isNonStrict = opaque.nonstrict();
     else
-      isNonStrict = op.getAttr(BEF::NONSTRICT_ATTR) != Attribute();
+      isNonStrict = op.getAttr(BEF::kNonStrictAttrName) != Attribute();
 
     // Offset of the primitive in the list.
     emitOffset(primitiveList.getOffset());
@@ -951,7 +951,7 @@ void BEFFunctionEmitter::emitPrimitive(Operation *op,
   } else {
     for (auto attrNamePair : op->getAttrs()) {
       // Don't encode the bef.nonstrict attribute explicitly.
-      if (attrNamePair.getName().getValue() == BEF::NONSTRICT_ATTR)
+      if (attrNamePair.getName().getValue() == BEF::kNonStrictAttrName)
         continue;
       processAttr(attrNamePair.getName(), attrNamePair.getValue());
     }

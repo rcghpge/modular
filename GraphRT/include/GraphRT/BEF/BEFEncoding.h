@@ -18,7 +18,7 @@ namespace BEF {
 
 /// This dialect attribute can be added to arbitrary operations to make them
 /// execute in a non-strict way (before all their operands are resolved).
-constexpr const char NONSTRICT_ATTR[] = "bef.nonstrict";
+constexpr const char kNonStrictAttrName[] = "bef.nonstrict";
 
 enum {
   // Defined by the BEF_FILE production.
@@ -39,16 +39,16 @@ enum {
 /// This bitfield encodes into a single byte metadata about the format of
 /// emitted attributes.
 enum class AttributeKind {
-  INVALID = 0,
-  I1,
-  I8,
-  I16,
-  I32,
-  I64,
-  F32,
-  F64,
-  STRING,
-  ARRAY_TYPE = 0x80
+  kInvalid = 0,
+  kI1,
+  kI8,
+  kI16,
+  kI32,
+  kI64,
+  kF32,
+  kF64,
+  kString,
+  kArrayType = 0x80
 };
 
 enum class SectionID {

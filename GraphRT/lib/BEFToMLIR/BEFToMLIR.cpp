@@ -367,22 +367,22 @@ bool BEFToMLIRConverter::parseAttributeAt(size_t offset, uint8_t attrKind,
     switch ((BEF::AttributeKind)attrKind) {
     default:
       return attrSection.emitError("unknown attribute"), Attribute();
-    case BEF::AttributeKind::I1:
+    case BEF::AttributeKind::kI1:
       if (attrReader.parseByte(byte))
         return {};
       return BoolAttr::get(getContext(), byte);
-    case BEF::AttributeKind::I64:
-    case BEF::AttributeKind::F64:
+    case BEF::AttributeKind::kI64:
+    case BEF::AttributeKind::kF64:
       size <<= 1;
       LLVM_FALLTHROUGH;
-    case BEF::AttributeKind::I32:
-    case BEF::AttributeKind::F32:
+    case BEF::AttributeKind::kI32:
+    case BEF::AttributeKind::kF32:
       size <<= 1;
       LLVM_FALLTHROUGH;
-    case BEF::AttributeKind::I16:
+    case BEF::AttributeKind::kI16:
       size <<= 1;
       LLVM_FALLTHROUGH;
-    case BEF::AttributeKind::I8: {
+    case BEF::AttributeKind::kI8: {
       // Parse integers of various sizes.
       uint64_t result = 0;
       for (unsigned i = 0; i != size; ++i) {
@@ -392,18 +392,18 @@ bool BEFToMLIRConverter::parseAttributeAt(size_t offset, uint8_t attrKind,
       }
       auto resultInt = APInt(size * 8, result);
 
-      if (attrKind == (unsigned)BEF::AttributeKind::F32)
+      if (attrKind == (unsigned)BEF::AttributeKind::kF32)
         return FloatAttr::get(mlir::Float32Type::get(getContext()),
                               APFloat(resultInt.bitsToFloat()));
 
-      if (attrKind == (unsigned)BEF::AttributeKind::F64)
+      if (attrKind == (unsigned)BEF::AttributeKind::kF64)
         return FloatAttr::get(mlir::Float64Type::get(getContext()),
                               APFloat(resultInt.bitsToDouble()));
 
       return IntegerAttr::get(IntegerType::get(getContext(), size * 8),
                               resultInt);
     }
-    case BEF::AttributeKind::STRING: {
+    case BEF::AttributeKind::kString: {
       size_t length;
       ArrayRef<uint8_t> result;
       if (attrSection.parseInvertedVBRAt(offset, length) ||
@@ -416,7 +416,7 @@ bool BEFToMLIRConverter::parseAttributeAt(size_t offset, uint8_t attrKind,
   };
 
   // If this is a scalar attribute value, just parse the single attribute.
-  if ((attrKind & (uint8_t)BEF::AttributeKind::ARRAY_TYPE) == 0) {
+  if ((attrKind & (uint8_t)BEF::AttributeKind::kArrayType) == 0) {
     resultAttr = parseAttribute();
     return resultAttr == Attribute();
   }
@@ -426,7 +426,7 @@ bool BEFToMLIRConverter::parseAttributeAt(size_t offset, uint8_t attrKind,
   size_t length;
   if (attrSection.parseInvertedVBRAt(offset, length))
     return true;
-  attrKind &= ~(uint8_t)BEF::AttributeKind::ARRAY_TYPE;
+  attrKind &= ~(uint8_t)BEF::AttributeKind::kArrayType;
 
   SmallVector<Attribute> elements;
   while (length--) {

@@ -24,37 +24,37 @@ static llvm::cl::opt<std::string> inputFilename( // NOLINT
 
 enum class AllocatorType {
   // Allocator that just calls malloc/free.
-  malloc,
+  kMalloc,
   /// Allocator that does leak checking.
-  leakChecker,
+  kLeakChecker,
   /// Allocator that does profiling (and leak checking).
-  profiler,
+  kProfiler,
 };
 
 // Enable HostAllocator types to be specified on the command line.
 static llvm::cl::opt<AllocatorType> allocatorType( // NOLINT
     "allocator", llvm::cl::desc("Specify allocator type:"),
-    llvm::cl::values(clEnumValN(AllocatorType::malloc, "malloc",
+    llvm::cl::values(clEnumValN(AllocatorType::kMalloc, "malloc",
                                 "System malloc/free"),
-                     clEnumValN(AllocatorType::leakChecker, "leak-checker",
+                     clEnumValN(AllocatorType::kLeakChecker, "leak-checker",
                                 "Allocator with leak checking"),
-                     clEnumValN(AllocatorType::profiler, "profiler",
+                     clEnumValN(AllocatorType::kProfiler, "profiler",
                                 "Allocator with profiling and leak checking")),
-    llvm::cl::init(AllocatorType::leakChecker));
+    llvm::cl::init(AllocatorType::kLeakChecker));
 
 /// Configure the memory allocator based on the command line option settings.
 static std::unique_ptr<Allocator> getAllocator() {
   std::unique_ptr<Allocator> allocator;
   switch (allocatorType) {
-  case AllocatorType::malloc:
+  case AllocatorType::kMalloc:
     allocator = createMallocAllocator();
     llvm::outs() << "Initializing malloc allocator.\n";
     break;
-  case AllocatorType::leakChecker:
+  case AllocatorType::kLeakChecker:
     allocator = createLeakCheckAllocator(createMallocAllocator());
     llvm::outs() << "Initializing leak check allocator.\n";
     break;
-  case AllocatorType::profiler:
+  case AllocatorType::kProfiler:
     allocator = createProfilingAllocator(createMallocAllocator());
     llvm::outs() << "Initializing profiling allocator.\n";
     break;
