@@ -11,7 +11,8 @@
 #include "LLCL/Runtime/Allocator.h"
 #include "LLCL/Runtime/AsyncValueRef.h"
 #include "LLCL/Runtime/Runtime.h"
-#include "LLCL/Support/ReferenceCount.h"
+#include "LLCL/Support/RCRef.h"
+#include "LLCL/Support/ReferenceCounted.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/FileUtilities.h"
 #include "llvm/Support/CommandLine.h"
@@ -150,6 +151,9 @@ static void test3(Runtime &runtime) {
 int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv, "bef-executor test driver\n");
 
+  LLCL::verifyNoLiveReferenceCountedObjects(
+      "No objects should start allocated");
+
   // TODO: Autodetect and translate source forms like firtool does for
   // convenience.
 
@@ -163,9 +167,15 @@ int main(int argc, char **argv) {
 
   mlir::MLIRContext context;
 
-  Runtime runtime(getAllocator(), getWorkQueue());
-  test1(runtime);
-  test2(runtime);
-  test3(runtime);
+  {
+    Runtime runtime(getAllocator(), getWorkQueue());
+    test1(runtime);
+    test2(runtime);
+    test3(runtime);
+  }
+
+  LLCL::verifyNoLiveReferenceCountedObjects(
+      "All objects should be deallocated");
+
   return 0;
 }
