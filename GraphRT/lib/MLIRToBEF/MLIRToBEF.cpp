@@ -1071,7 +1071,7 @@ void BEFModuleEmitter::emitStringsMD(BEFEmitter &stringsMDSection) {
 
 void BEFModuleEmitter::emitTypesMD(BEFEmitter &typeStringsMDSection) {
   // Emit the type strings to the type string section.
-  llvm::SmallVector<char, 64> result;
+  SmallVector<char, 64> result;
   for (Type type : entities.types) {
     result.clear();
     llvm::raw_svector_ostream os(result);

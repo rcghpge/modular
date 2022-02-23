@@ -765,7 +765,7 @@ bool FunctionParser::parsePrimitiveList() {
       for (auto nameAndAttr : llvm::zip(attrNames, attrs))
         state.addAttribute(std::get<0>(nameAndAttr), std::get<1>(nameAndAttr));
       if (nonStrict)
-        state.addAttribute("bef.nonstrict", nonStrict);
+        state.addAttribute(BEF::kNonStrictAttrName, nonStrict);
 
       resultOp = bodyBuilder.createOperation(state);
     }
