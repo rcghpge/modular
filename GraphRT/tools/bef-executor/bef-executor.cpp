@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GraphRT/BEFExecutor/BEFFile.h"
 #include "LLCL/Runtime/Allocator.h"
 #include "LLCL/Runtime/AsyncValueRef.h"
 #include "LLCL/Runtime/Runtime.h"
@@ -19,6 +20,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 
 using namespace LLCL;
+using namespace M;
 
 static llvm::cl::opt<std::string> inputFilename( // NOLINT
     llvm::cl::Positional, llvm::cl::desc("<input file>"), llvm::cl::init("-"));
@@ -166,12 +168,14 @@ int main(int argc, char **argv) {
   }
 
   mlir::MLIRContext context;
-
   {
     Runtime runtime(getAllocator(), getWorkQueue());
     test1(runtime);
     test2(runtime);
     test3(runtime);
+
+    auto befFile = BEFFile::open(fileBuffer->getBuffer(), runtime);
+    (void)befFile;
   }
 
   LLCL::verifyNoLiveReferenceCountedObjects(
