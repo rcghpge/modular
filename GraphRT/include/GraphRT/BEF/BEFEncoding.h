@@ -12,6 +12,8 @@
 #ifndef GRAPHRT_BEF_BEFENCODING_H
 #define GRAPHRT_BEF_BEFENCODING_H
 
+#include "llvm/ADT/StringRef.h"
+
 namespace M {
 
 namespace BEF {
@@ -69,6 +71,12 @@ enum class SectionID {
   MLIRTYPE_STRINGS_MD = 11, // String table of MLIR types.
   MLIRTYPE_MD = 12,
 };
+
+/// Return true if the magic number makes this look like a BEF file.
+inline bool hasBEFMagicNumber(StringRef contents) {
+  return contents.size() > 2 && uint8_t(contents[0]) == MAGIC1 &&
+         uint8_t(contents[1]) == MAGIC2;
+}
 
 } // namespace BEF
 } // namespace M

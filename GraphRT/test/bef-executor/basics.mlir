@@ -1,4 +1,5 @@
-// RUN: bef-executor %s | FileCheck %s
+// RUN: bef-translate -export-bef -allow-unregistered-dialect %s > %t.bef
+// RUN: bef-executor %t.bef | FileCheck %s
 
 // CHECK: Initializing leak check allocator
 

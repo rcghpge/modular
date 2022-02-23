@@ -18,12 +18,13 @@ namespace M {
 
 /// This class is the implementation details behind the BEFFile::Open method,
 /// which maintains all the state necessary for the BEFExecutor.
-///
 class BEFFileImpl : public BEFFile {
 public:
-  explicit BEFFileImpl();
+  explicit BEFFileImpl(Runtime &runtime) : runtime(runtime) {}
   ~BEFFileImpl() override;
 
+public:
+  Runtime &runtime;
   ArrayRef<uint8_t> file;
 };
 

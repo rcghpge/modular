@@ -170,12 +170,17 @@ int main(int argc, char **argv) {
   mlir::MLIRContext context;
   {
     Runtime runtime(getAllocator(), getWorkQueue());
+    // Hard coded tests until we can run BEF files.
     test1(runtime);
     test2(runtime);
     test3(runtime);
 
+    // Open the BEF file.
     auto befFile = BEFFile::open(fileBuffer->getBuffer(), runtime);
-    (void)befFile;
+    if (auto *error = befFile.getError()) {
+      puts(error);
+      return 1;
+    }
   }
 
   LLCL::verifyNoLiveReferenceCountedObjects(

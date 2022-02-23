@@ -9,6 +9,7 @@
 
 #include "LLCL/ForwardDecls.h"
 #include "LLCL/Support/ReferenceCounted.h"
+#include "Support/ErrorOr.h"
 #include "Support/LLVM.h"
 
 namespace M {
@@ -22,14 +23,16 @@ public:
   virtual ~BEFFile();
 
   /// Open and read a BEF file, setting up our internal state and returning a
-  /// pointer to our initialized object on success.  On failure, an error
-  /// message is emitted to the errorHandler and a null RCRef is returned.
+  /// pointer to our initialized object on success.  On an initial parse
+  /// failure, an error message is returned in the `ErrorOr`.  BEF file format
+  /// errors discovered lazily when running functions, so they are returned
+  /// through the function's result AsyncValue's.
   ///
   /// TODO: This should (optionally) manage ownership of the underlying data
   /// passed in.  For example, we could take a closure to run when the lifetime
   /// of the BEFFile is done, or have a reference counted abstraction for
   /// holding memory buffers.
-  static RCRef<BEFFile> open(StringRef file, Runtime &runtime);
+  static ErrorOr<RCRef<BEFFile>> open(StringRef file, Runtime &runtime);
 
 protected:
   BEFFile() {}
