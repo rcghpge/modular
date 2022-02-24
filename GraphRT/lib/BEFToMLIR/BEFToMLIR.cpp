@@ -10,6 +10,7 @@
 
 #include "GraphRT/BEFToMLIR.h"
 #include "GraphRT/BEF/BEFEncoding.h"
+#include "GraphRT/BEF/BEFReader.h"
 #include "GraphRT/BEFDialect/BEFOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -17,160 +18,6 @@
 #include "mlir/Parser.h"
 #include <numeric>
 using namespace M;
-
-//===----------------------------------------------------------------------===//
-// BEFReader
-//===----------------------------------------------------------------------===//
-
-namespace {
-/// This helper class implements low level binary parsing logic for a byte
-/// range.  The general protocol for failable parsing routines is that they
-/// return false and fill in their operand on success.  On failure, they emit an
-/// error to the MLIR location specified at constructure and return true.
-class BEFReader {
-public:
-  explicit BEFReader(ArrayRef<uint8_t> contents, Location loc)
-      : contents(contents), loc(loc) {}
-
-  // Return true if we've read the entire file.
-  bool empty() const { return contents.empty(); }
-
-  const uint8_t *data() const { return contents.data(); }
-
-  bool emitError(const char *message) const {
-    mlir::emitError(loc) << message;
-    return true;
-  }
-
-  /// Parse a single byte from the stream.
-  bool parseByte(uint8_t &value) {
-    if (contents.empty())
-      return emitError("ran out of bytes");
-    value = contents.front();
-    contents = contents.drop_front();
-    return false;
-  }
-
-  /// Parse two bytes in little endian format from the stream.
-  bool parseInt2(uint16_t &value) {
-    uint8_t a, b;
-    if (parseByte(a) || parseByte(b))
-      return true;
-    value = uint16_t(a) | (uint16_t(b) << 8);
-    return false;
-  }
-
-  /// Parse four bytes in little endian format from the stream.
-  bool parseInt4(uint32_t &value) {
-    uint16_t a, b;
-    if (parseInt2(a) || parseInt2(b))
-      return true;
-    value = uint32_t(a) | (uint32_t(b) << 16);
-    return false;
-  }
-
-  /// Parse N int4 values as an array.
-  bool parseInt4Array(size_t numElements, SmallVectorImpl<uint32_t> &result) {
-    while (numElements--) {
-      result.push_back(0);
-      if (parseInt4(result.back()))
-        return true;
-    }
-    return false;
-  }
-
-  /// Parse a VBR encoded integer from the byte stream.
-  bool parseVBR(size_t &result) {
-    uint8_t nextByte;
-    if (parseByte(nextByte))
-      return true;
-
-    result = nextByte & 127;
-    while ((nextByte & 128) != 0) {
-      if (parseByte(nextByte))
-        return true;
-
-      result = (result << 7) | size_t(nextByte & 127);
-    }
-    return false;
-  }
-
-  /// Parse an inverted VBR that ends at the specified offset.
-  bool parseInvertedVBRAt(size_t offset, size_t &result) const {
-    result = 0;
-    uint8_t lastByte;
-    do {
-      if (offset == 0)
-        return emitError("invalid inverted VBR");
-      lastByte = contents[offset - 1];
-      result = (result << 7) | (lastByte & 0x7F);
-      --offset;
-    } while (lastByte & 0x80);
-    return false;
-  }
-
-  /// Skip over bytes until reaching the specified alignment.
-  bool alignTo(unsigned alignment) {
-    if (!llvm::isPowerOf2_32(alignment))
-      return emitError("tried to align to non-power-of-two");
-
-    uint8_t padding;
-    while (uintptr_t(contents.data()) & (uintptr_t(alignment) - 1))
-      if (parseByte(padding))
-        return true;
-
-    return false;
-  }
-
-  /// Take some number of bytes from the input file and put them into result.
-  bool parseBytes(size_t length, ArrayRef<uint8_t> &result) {
-    if (length > contents.size())
-      return emitError("missing block of data");
-    result = contents.take_front(length);
-    contents = contents.drop_front(length);
-    return false;
-  }
-
-  /// Ignore the first `length` bytes in this reader.
-  bool dropBytes(size_t length) {
-    ArrayRef<uint8_t> unused;
-    return parseBytes(length, unused);
-  }
-
-  /// Parse a NUL terminated string into the specified StringRef, not including
-  /// the NUL terminator.
-  bool parseNULTerminatedString(StringRef &result) {
-    auto *start = (const char *)contents.data();
-    auto nul = (const char *)memchr(start, 0, contents.size());
-    if (!nul)
-      return emitError("malformed NUL terminated string");
-    result = StringRef(start, nul - start);
-    contents = contents.drop_front(result.size() + 1);
-    return false;
-  }
-
-  /// Parse a NUL terminated string into the specified StringRef, not including
-  /// the NUL terminator.
-  bool parseNULTerminatedStringAt(size_t position, StringRef &result) const {
-    BEFReader tmp = *this;
-    return tmp.dropBytes(position) || tmp.parseNULTerminatedString(result);
-  }
-
-  /// Parse a NUL terminated string into the specified StringAttr, not including
-  /// the NUL terminator.
-  bool parseNULTerminatedStringAt(size_t position, StringAttr &result) const {
-    StringRef resultStr;
-    if (parseNULTerminatedStringAt(position, resultStr))
-      return true;
-    result = StringAttr::get(loc.getContext(), resultStr);
-    return false;
-  }
-
-private:
-  ArrayRef<uint8_t> contents;
-  Location loc;
-};
-} // end anonymous namespace
 
 //===----------------------------------------------------------------------===//
 // BEFToMLIRConverter
@@ -220,7 +67,7 @@ public:
 
   bool resolveMetadataString(size_t offset, Location loc, StringAttr &result) {
     BEFReader stringReader = getSectionReader(BEF::SectionID::STRINGS_MD);
-    return stringReader.parseNULTerminatedStringAt(offset, result);
+    return parseNULTerminatedStringAt(offset, stringReader, result);
   }
 
   bool resolveType(size_t typeID, Location loc, Type &result) {
@@ -230,15 +77,32 @@ public:
     return false;
   }
 
+  BEFReader getReaderFor(ArrayRef<uint8_t> data) const {
+    return BEFReader(data, [=](const char *message) {
+      mlir::emitError(this->getLoc()) << message;
+    });
+  }
+
 private:
   MLIRContext *getContext() const { return module.get()->getContext(); }
   Location getLoc() const { return module.get()->getLoc(); }
+
+  /// Parse a NUL terminated string into the specified StringAttr, not including
+  /// the NUL terminator.
+  bool parseNULTerminatedStringAt(size_t position, BEFReader &reader,
+                                  StringAttr &result) {
+    StringRef resultStr;
+    if (reader.parseNULTerminatedStringAt(position, resultStr))
+      return true;
+    result = StringAttr::get(getContext(), resultStr);
+    return false;
+  }
 
   BEFReader getSectionReader(BEF::SectionID ID) const {
     ArrayRef<uint8_t> data;
     if (unsigned(ID) < sections.size())
       data = sections[unsigned(ID)];
-    return BEFReader(data, getLoc());
+    return getReaderFor(data);
   }
 
   bool parseAttributeAt(size_t offset, uint8_t attrKind,
@@ -340,8 +204,8 @@ bool BEFToMLIRConverter::parseLocationPositions() {
 
     auto &filenameEntry = filenames[filenameOffset];
     if (!filenameEntry) {
-      if (filenameReader.parseNULTerminatedStringAt(filenameOffset,
-                                                    filenameEntry))
+      if (parseNULTerminatedStringAt(filenameOffset, filenameReader,
+                                     filenameEntry))
         return true;
     }
     locations.insert(
@@ -355,7 +219,7 @@ bool BEFToMLIRConverter::parseAttributeAt(size_t offset, uint8_t attrKind,
                                           const BEFReader &attrSection,
                                           Attribute &resultAttr) {
   // Copy the BEFReader (a cheap operation) so we can slice out of its body.
-  BEFReader attrReader = attrSection;
+  BEFReader attrReader = getReaderFor(attrSection.getContents());
   if (attrReader.dropBytes(offset))
     return true;
 
@@ -485,7 +349,7 @@ bool BEFToMLIRConverter::parsePrimitiveNames() {
     size_t stringOffset;
     StringAttr name;
     if (reader.parseVBR(stringOffset) ||
-        stringReader.parseNULTerminatedStringAt(stringOffset, name))
+        parseNULTerminatedStringAt(stringOffset, stringReader, name))
       return true;
 
     primitiveNames.push_back(name);
@@ -516,7 +380,7 @@ bool BEFToMLIRConverter::parseFunctions() {
     if (reader.parseVBR(functionOffset) || reader.parseVBR(nameOffset) ||
         reader.parseVBR(locOffset) || resolveLocation(locOffset, loc) ||
         reader.parseVBR(numArgs) || reader.parseVBR(numResults) ||
-        stringReader.parseNULTerminatedStringAt(nameOffset, name))
+        parseNULTerminatedStringAt(nameOffset, stringReader, name))
       return true;
 
     functionOffsets.push_back(functionOffset);
@@ -828,8 +692,7 @@ ModuleOp M::translateBEFToMLIR(ArrayRef<uint8_t> buffer, Location loc) {
          "Input buffer pointer must be 8-byte aligned for this logic to work");
 
   BEFToMLIRConverter converter(loc);
-
-  BEFReader reader(buffer, loc);
+  BEFReader reader = converter.getReaderFor(buffer);
   // Read/validate the header and section table.
   if (converter.parseHeader(reader) || converter.findSections(reader) ||
       // Parse sections in a specific order, unbound by their order in the file.
