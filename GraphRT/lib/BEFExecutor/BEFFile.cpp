@@ -11,6 +11,7 @@
 #include "GraphRT/BEFExecutor/BEFFile.h"
 #include "BEFFileImpl.h"
 #include "GraphRT/BEF/BEFEncoding.h"
+#include "GraphRT/BEF/BEFReader.h"
 #include "LLCL/Support/RCRef.h"
 #include "llvm/ADT/StringRef.h"
 using namespace M;
@@ -21,6 +22,114 @@ using namespace M;
 
 /// Home the vtable in a .cpp file.
 BEFFile::~BEFFile() {}
+
+//===----------------------------------------------------------------------===//
+// BEFFileReader
+//===----------------------------------------------------------------------===//
+
+namespace {
+/// This class decodes the key sections of the specified BEF file, capturing
+/// some of their ranges into BEFFileImpl and completely decoding others.
+///
+/// The convention here is that these functions return false on success and
+/// returns true and fill in `errorMessage` on failure.
+class BEFFileReader : public BEFReader {
+public:
+  BEFFileReader(ArrayRef<uint8_t> file, BEFFileImpl &befFile)
+      : BEFReader(file,
+                  [=](const char *message) { this->errorMessage = message; }),
+        befFile(befFile) {}
+
+  const char *getErrorMessage() const { return errorMessage; }
+
+  /// Decode the key sections of the specified BEF file, capturing some of their
+  /// ranges into BEFFileImpl and completely decoding others.
+  bool readFileContents();
+
+private:
+  /// Decode the next section and remember it if we care about it.
+  bool readNextSection();
+
+  /// This is filled in if an error occurs.  It always contains a static string
+  /// giving a sense of what went wrong.
+  const char *errorMessage = nullptr;
+
+  ArrayRef<uint8_t> primitiveNames, functionIndex;
+
+  // This is the file structure we're reading.
+  BEFFileImpl &befFile;
+};
+} // end anonymous namespace
+
+/// Decode the key sections of the specified BEF file, capturing some of their
+/// ranges into BEFFileImpl and completely decoding others.  Return true and
+/// fill in errorMessage on failure.
+bool BEFFileReader::readFileContents() {
+  // Start by reading all the sections, capturing the ones we care about in
+  // BEFFileInfo.
+  while (!empty()) {
+    if (readNextSection())
+      return true;
+  }
+
+  // TODO: Now that we have the sections, decode the primitive list and function
+  // index.
+
+  return false;
+}
+
+/// Decode the next section and remember it if we care about it.
+bool BEFFileReader::readNextSection() {
+  // Decode the section ID and find the section contents.
+  uint8_t sectionID;
+  ArrayRef<uint8_t> sectionContents;
+  if (readSection(sectionID, sectionContents))
+    return emitError("BEF file section header corrupted");
+
+  // Remember the sections we care about either in BEFFileInfo (if they get
+  // decoded lazily by the function executor) or in BEFFileReader (if they're
+  // decoded eagerly at file load time).  Ignore sections we don't care about.
+  switch (static_cast<BEF::SectionID>(sectionID)) {
+  default: // Ignore unknown section.
+    return false;
+
+  case BEF::SectionID::LOCATION_FILENAMES:
+    befFile.locationFilenames = sectionContents;
+    return false;
+
+  // We just remember the locations of the LocationPositions section - it is
+  // directly indexed with a byte offset.
+  case BEF::SectionID::LOCATION_POSITIONS:
+    befFile.locationPositions = sectionContents;
+    return false;
+
+  // We just remember the locations of the Strings section - it is directly
+  // indexed with a byte offset.
+  case BEF::SectionID::STRINGS:
+    befFile.strings = sectionContents;
+    return false;
+
+  // We just remember the locations of the Constants section - it is directly
+  // indexed with a byte offset.
+  case BEF::SectionID::ATTRIBUTES:
+    befFile.attributes = sectionContents;
+    return false;
+
+  case BEF::SectionID::PRIMITIVE_NAMES:
+    primitiveNames = sectionContents;
+    return false;
+
+  // We just remember the locations of the Functions section - it is directly
+  // indexed with a byte offset from the FunctionIndex section.
+  case BEF::SectionID::BEF_FUNCTIONS:
+    befFile.befFunctions = sectionContents;
+    return false;
+
+  case BEF::SectionID::BEF_FUNCTION_INDEX:
+    functionIndex = sectionContents;
+    return false;
+  }
+}
 
 //===----------------------------------------------------------------------===//
 // BEFFileImpl
@@ -35,10 +144,16 @@ BEFFileImpl::~BEFFileImpl() {}
 ErrorOr<RCRef<BEFFile>> BEFFile::open(StringRef file, Runtime &runtime) {
   if (!BEF::hasBEFMagicNumber(file))
     return Error("not a BEF file");
+  file = file.drop_front(2); // Drop the magic number.
+
+  auto befFilePtr = RCRef<BEFFileImpl>::create(runtime);
 
   ArrayRef<uint8_t> fileData((const uint8_t *)file.data(), file.size());
+  BEFFileReader reader(fileData, *befFilePtr);
+  if (reader.readFileContents()) {
+    assert(reader.getErrorMessage() && "Failed but didn't produce an error!");
+    return Error::getStaticString(reader.getErrorMessage());
+  }
 
-  auto impl = RCRef<BEFFileImpl>::create(runtime);
-  impl->file = fileData;
-  return std::move(impl);
+  return befFilePtr;
 }

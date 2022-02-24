@@ -25,7 +25,14 @@ public:
 
 public:
   Runtime &runtime;
-  ArrayRef<uint8_t> file;
+
+  // These are sections that we expect to be in the BEF file.  They are lazily
+  // decoded when executing functions.
+  ArrayRef<uint8_t> locationFilenames;
+  ArrayRef<uint8_t> locationPositions;
+  ArrayRef<uint8_t> strings;
+  ArrayRef<uint8_t> attributes;
+  ArrayRef<uint8_t> befFunctions;
 };
 
 } // namespace M
