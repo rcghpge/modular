@@ -160,6 +160,30 @@ public:
     return false;
   }
 
+  /// Parse a section header and the alignment metadata, returning the kind of
+  /// section in `sectionID` and the contents of the section in `sectionData`.
+  bool readSection(uint8_t &sectionID, ArrayRef<uint8_t> &sectionData) {
+    size_t length;
+    if (parseByte(sectionID) || parseVBR(length))
+      return true;
+    if (sectionID == (unsigned)BEF::SectionID::INVALID_SECTION)
+      return emitError("invalid section ID");
+
+    // The low bit of the size is a boolean indicating whether there is an
+    // alignment byte + padding present.
+    if ((length & 1) != 0) {
+      // If there is an alignment byte, read the alignment byte, and skip over
+      // padding bytes until we reach the desired alignment.
+      uint8_t alignment;
+      if (parseByte(alignment) || alignTo(alignment))
+        return true;
+    }
+
+    // Okay, the returned data is whatever is left now.  We shift by one to
+    // eliminate the alignment bit.
+    return parseBytes(length >> 1, sectionData);
+  }
+
 private:
   ArrayRef<uint8_t> contents;
   llvm::unique_function<void(const char *) const> errorFunction;

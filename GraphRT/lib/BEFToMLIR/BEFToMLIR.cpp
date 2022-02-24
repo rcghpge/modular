@@ -153,21 +153,9 @@ bool BEFToMLIRConverter::parseHeader(BEFReader &reader) {
 bool BEFToMLIRConverter::findSections(BEFReader &reader) {
   while (!reader.empty()) {
     uint8_t sectionID;
-    size_t length;
-    if (reader.parseByte(sectionID) || reader.parseVBR(length))
+    ArrayRef<uint8_t> sectionData;
+    if (reader.readSection(sectionID, sectionData))
       return true;
-    if (sectionID == (unsigned)BEF::SectionID::INVALID_SECTION)
-      return reader.emitError("invalid section ID");
-
-    // The low bit of the size is a boolean indicating whether there is an
-    // alignment byte + padding present.
-    if ((length & 1) != 0) {
-      // If there is an alignment byte, read the alignment byte, and skip over
-      // padding bytes until we reach the desired alignment.
-      uint8_t alignment;
-      if (reader.parseByte(alignment) || reader.alignTo(alignment))
-        return true;
-    }
 
     // Make sure we have space in the section table for this entry and haven't
     // already seen this section.
@@ -176,10 +164,7 @@ bool BEFToMLIRConverter::findSections(BEFReader &reader) {
     if (sections[sectionID].data())
       return reader.emitError("duplicate section found");
 
-    // Okay, the returned data is whatever is left now.  We shift by one to
-    // eliminate the alignment bit.
-    if (reader.parseBytes(length >> 1, sections[sectionID]))
-      return true;
+    sections[sectionID] = sectionData;
   }
 
   return false;
