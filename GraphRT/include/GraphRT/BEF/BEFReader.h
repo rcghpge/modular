@@ -34,6 +34,10 @@ public:
   ArrayRef<uint8_t> getContents() const { return contents; }
   const uint8_t *data() const { return contents.data(); }
 
+  /// Reset the contents that this reader will parse from to the specified
+  /// range.
+  void setContents(ArrayRef<uint8_t> data) { contents = data; }
+
   bool emitError(const char *message) const {
     errorFunction(message);
     return true;

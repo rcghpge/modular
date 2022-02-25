@@ -331,12 +331,12 @@ bool BEFToMLIRConverter::parsePrimitiveNames() {
 
   // Read until we run out of names.
   while (!reader.empty()) {
+    // Each primitive name is encoded as an offset into the string table.
     size_t stringOffset;
     StringAttr name;
     if (reader.parseVBR(stringOffset) ||
         parseNULTerminatedStringAt(stringOffset, stringReader, name))
       return true;
-
     primitiveNames.push_back(name);
   }
 

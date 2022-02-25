@@ -50,6 +50,11 @@ private:
   /// Decode the next section and remember it if we care about it.
   bool readNextSection();
 
+  /// Decode the primitive names section.
+  bool readPrimitivesSection(BEFReader &stringReader);
+  /// Decode the function index section.
+  bool readFunctionIndexSection(BEFReader &stringReader);
+
   /// This is filled in if an error occurs.  It always contains a static string
   /// giving a sense of what went wrong.
   const char *errorMessage = nullptr;
@@ -72,9 +77,57 @@ bool BEFFileReader::readFileContents() {
       return true;
   }
 
-  // TODO: Now that we have the sections, decode the primitive list and function
-  // index.
+  BEFReader stringReader(befFile.strings, [=](const char *message) {
+    this->errorMessage = message;
+  });
 
+  // Now that we've figured out the contents of the sections, resolve the
+  // things we parse ahead of time.
+  return readPrimitivesSection(stringReader) ||
+         readFunctionIndexSection(stringReader);
+}
+
+/// Decode the primitive names section.
+bool BEFFileReader::readPrimitivesSection(BEFReader &stringReader) {
+  setContents(primitiveNames);
+
+  // Read until we run out of names.
+  while (!empty()) {
+    // Each primitive name is encoded as an offset into the string table.
+    size_t stringOffset;
+    StringRef name;
+    if (parseVBR(stringOffset) ||
+        stringReader.parseNULTerminatedStringAt(stringOffset, name))
+      return true;
+
+      // TODO: Implement kernel registry + lookup.
+#if 0
+    auto *primitive = registry->getPrimitive(name);
+    if (!primitive)
+      return diagnoseUnknownPrimitive(name);
+    // Otherwise remember it.
+    befFile.primitives.push_back(primitive);
+#endif
+  }
+
+  return false;
+}
+
+/// Decode the function index section.
+bool BEFFileReader::readFunctionIndexSection(BEFReader &stringReader) {
+  setContents(functionIndex);
+
+  // Read until we run out of function descriptors.
+  while (!empty()) {
+    size_t functionOffset, nameOffset, locOffset, numArgs, numResults;
+    StringRef name;
+    if (parseVBR(functionOffset) || parseVBR(nameOffset) ||
+        parseVBR(locOffset) || parseVBR(numArgs) || parseVBR(numResults) ||
+        stringReader.parseNULTerminatedStringAt(nameOffset, name))
+      return true;
+
+    // TODO: Remember this function in a place we can look it up.
+  }
   return false;
 }
 
