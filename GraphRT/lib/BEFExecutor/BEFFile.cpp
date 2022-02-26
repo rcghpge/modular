@@ -42,7 +42,7 @@ public:
                   [=](Error message) { this->error = std::move(message); }),
         primitives(std::move(primitives)), befFile(befFile) {}
 
-  Error &getError() { return error; }
+  Optional<Error> &getError() { return error; }
 
   /// Decode the key sections of the specified BEF file, capturing some of their
   /// ranges into BEFFileImpl and completely decoding others.
@@ -57,9 +57,8 @@ private:
   /// Decode the function index section.
   bool readFunctionIndexSection(BEFReader &stringReader);
 
-  /// This is filled in if an error occurs.  It always contains a static string
-  /// giving a sense of what went wrong.
-  Error error;
+  /// This is filled in if an error occurs.
+  Optional<Error> error;
 
   ArrayRef<uint8_t> primitiveNames, functionIndex;
 
@@ -209,9 +208,8 @@ ErrorOr<RCRef<BEFFile>> BEFFile::open(StringRef file,
   ArrayRef<uint8_t> fileData((const uint8_t *)file.data(), file.size());
   BEFFileReader reader(fileData, std::move(primitives), *befFilePtr);
   if (reader.readFileContents()) {
-    assert(reader.getError().hasError() &&
-           "Failed but didn't produce an error!");
-    return std::move(reader.getError());
+    assert(reader.getError() && "Failed but didn't produce an error!");
+    return std::move(*reader.getError());
   }
 
   return befFilePtr;
