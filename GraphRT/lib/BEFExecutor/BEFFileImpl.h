@@ -88,7 +88,7 @@ public:
 private:
   const uint32_t functionOffset;
   const uint32_t locationOffset;
-  BEFFileImpl *const owner;
+  const BEFFileImpl *const owner;
 };
 
 } // namespace M

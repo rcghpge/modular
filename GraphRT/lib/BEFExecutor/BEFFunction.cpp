@@ -10,6 +10,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphRT/BEFExecutor/Function.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include "BEFFileImpl.h"
 using namespace M;
@@ -37,5 +38,6 @@ void BEFFunction::dropRef() const { owner->dropRef(); }
 /// AsyncValue for each result.
 void BEFFunction::execute(ArrayRef<AsyncValue *> arguments,
                           MutableArrayRef<RCRef<AsyncValue>> results) const {
-  printf("execute %d %d\n", functionOffset, locationOffset);
+  llvm::errs() << "execute " << getName() << functionOffset << locationOffset
+               << "\n";
 }
