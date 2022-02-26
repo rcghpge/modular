@@ -33,7 +33,7 @@ public:
   /// of the BEFFile is done, or have a reference counted abstraction for
   /// holding memory buffers.
   static ErrorOr<RCRef<BEFFile>>
-  open(StringRef file, RCRef<PrimitiveRegistry> primitives, Runtime &runtime);
+  open(StringRef file, const PrimitiveRegistry &primitives, Runtime &runtime);
 
 protected:
   BEFFile() {}

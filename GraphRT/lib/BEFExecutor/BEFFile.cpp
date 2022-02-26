@@ -37,11 +37,11 @@ namespace {
 /// returns true and fill in `errorMessage` on failure.
 class BEFFileReader : public BEFReader {
 public:
-  BEFFileReader(ArrayRef<uint8_t> file, RCRef<PrimitiveRegistry> primitives,
+  BEFFileReader(ArrayRef<uint8_t> file, const PrimitiveRegistry &primitives,
                 BEFFileImpl &befFile)
       : BEFReader(file,
                   [=](Error message) { this->error = std::move(message); }),
-        primitives(std::move(primitives)), befFile(befFile) {}
+        primitives(primitives), befFile(befFile) {}
 
   Optional<Error> &getError() { return error; }
 
@@ -64,7 +64,7 @@ private:
   ArrayRef<uint8_t> primitiveNames, functionIndex;
 
   /// This is a reference to the (primitive name -> impl) mapping table.
-  RCRef<PrimitiveRegistry> primitives;
+  const PrimitiveRegistry &primitives;
 
   // This is the file structure we're reading.
   BEFFileImpl &befFile;
@@ -110,7 +110,7 @@ bool BEFFileReader::readPrimitiveNamesSection(BEFReader &stringReader) {
         stringReader.parseNULTerminatedStringAt(stringOffset, name))
       return true;
 
-    auto *primitiveImpl = primitives->get(name);
+    auto *primitiveImpl = primitives.get(name);
     if (!primitiveImpl)
       return emitError("unknown primitive '" + name + "'");
 
@@ -233,7 +233,7 @@ BEFFileImpl::~BEFFileImpl() {
 /// message is emitted to the errorHandler and a null RCRef is returned.
 ///
 ErrorOr<RCRef<BEFFile>> BEFFile::open(StringRef file,
-                                      RCRef<PrimitiveRegistry> primitives,
+                                      const PrimitiveRegistry &primitives,
                                       Runtime &runtime) {
   if (!BEF::hasBEFMagicNumber(file))
     return Error("not a BEF file");
@@ -242,7 +242,7 @@ ErrorOr<RCRef<BEFFile>> BEFFile::open(StringRef file,
   auto befFilePtr = RCRef<BEFFileImpl>::create(runtime);
 
   ArrayRef<uint8_t> fileData((const uint8_t *)file.data(), file.size());
-  BEFFileReader reader(fileData, std::move(primitives), *befFilePtr);
+  BEFFileReader reader(fileData, primitives, *befFilePtr);
   if (reader.readFileContents()) {
     assert(reader.getError() && "Failed but didn't produce an error!");
     return std::move(*reader.getError());

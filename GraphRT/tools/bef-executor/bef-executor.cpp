@@ -169,8 +169,8 @@ int main(int argc, char **argv) {
   }
 
   // Set up all our primitives.
-  auto primitives = RCRef<PrimitiveRegistry>::create();
-  primitives->add("test.something", abort);
+  PrimitiveRegistry primitives;
+  primitives.add("test.something", abort);
 
   mlir::MLIRContext context;
   {
@@ -181,8 +181,7 @@ int main(int argc, char **argv) {
     test3(runtime);
 
     // Open the BEF file.
-    auto befFile =
-        BEFFile::open(fileBuffer->getBuffer(), std::move(primitives), runtime);
+    auto befFile = BEFFile::open(fileBuffer->getBuffer(), primitives, runtime);
     if (auto *error = befFile.getError()) {
       llvm::errs() << "error opening '" << inputFilename << "': " << error
                    << "\n";

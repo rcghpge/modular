@@ -14,8 +14,7 @@ namespace M {
 
 /// This represents a mapping between the names of the MLIR opcodes to the
 /// implementations of those functions, along with type mappings.
-class PrimitiveRegistry final
-    : public LLCL::ReferenceCounted<PrimitiveRegistry> {
+class PrimitiveRegistry final {
 public:
   PrimitiveRegistry();
   ~PrimitiveRegistry();
