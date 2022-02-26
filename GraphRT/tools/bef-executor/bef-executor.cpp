@@ -181,7 +181,7 @@ static void runFunctionTestcase(const Function *fn, Runtime &runtime) {
   fn->execute(/*arguments=*/{}, results);
 
   // Block until the function results are fully resolved.
-  // TODO: runtime.await(results);
+  runtime.await(results);
 
   // TODO: Print out the function results that we know about.
 
