@@ -41,10 +41,15 @@ public:
   bool parseFunctionBody(BEF::FuncOp func, BEFReader &funcReader,
                          BEFReader &attrNameReader, BEFReader &mlirTypesReader);
 
+  bool emitError(Error message) {
+    mlir::emitError(module->getLoc()) << message;
+    return true;
+  }
+
   bool resolveLocation(size_t locOffset, Location &loc) {
     auto it = locations.find(locOffset);
     if (it == locations.end())
-      return mlir::emitError(module->getLoc()) << "invalid location", true;
+      return emitError("invalid location");
     loc = it->second;
     return false;
   }
@@ -77,10 +82,9 @@ public:
     return false;
   }
 
-  BEFReader getReaderFor(ArrayRef<uint8_t> data) const {
-    return BEFReader(data, [=](Error message) {
-      mlir::emitError(this->getLoc()) << message;
-    });
+  BEFReader getReaderFor(ArrayRef<uint8_t> data) {
+    return BEFReader(data,
+                     [=](Error message) { emitError(std::move(message)); });
   }
 
 private:
@@ -98,7 +102,7 @@ private:
     return false;
   }
 
-  BEFReader getSectionReader(BEF::SectionID ID) const {
+  BEFReader getSectionReader(BEF::SectionID ID) {
     ArrayRef<uint8_t> data;
     if (unsigned(ID) < sections.size())
       data = sections[unsigned(ID)];
@@ -329,6 +333,12 @@ bool BEFToMLIRConverter::parsePrimitiveNames() {
   BEFReader reader = getSectionReader(BEF::SectionID::PRIMITIVE_NAMES);
   BEFReader stringReader = getSectionReader(BEF::SectionID::STRINGS);
 
+  // Read the count of primitive names, and verify it later.
+  size_t numPrimitives;
+  if (reader.parseVBR(numPrimitives))
+    return true;
+  primitiveNames.reserve(numPrimitives);
+
   // Read until we run out of names.
   while (!reader.empty()) {
     // Each primitive name is encoded as an offset into the string table.
@@ -340,6 +350,11 @@ bool BEFToMLIRConverter::parsePrimitiveNames() {
     primitiveNames.push_back(name);
   }
 
+  // Check that numPrimitives is right.
+  if (numPrimitives != primitiveNames.size())
+    return emitError("expected " + Twine(numPrimitives) +
+                     " primitives, but found " + Twine(primitiveNames.size()));
+
   return false;
 }
 
@@ -350,7 +365,13 @@ bool BEFToMLIRConverter::parseFunctions() {
       getSectionReader(BEF::SectionID::ATTRIBUTE_NAME_MD);
   BEFReader mlirTypesReader = getSectionReader(BEF::SectionID::MLIRTYPE_MD);
 
+  size_t numFunctions;
+  if (reader.parseVBR(numFunctions))
+    return true;
+
   SmallVector<size_t> functionOffsets;
+  functionOffsets.reserve(numFunctions);
+  functions.reserve(numFunctions);
 
   auto funcBuilder = OpBuilder::atBlockBegin(module->getBody());
 
@@ -382,9 +403,12 @@ bool BEFToMLIRConverter::parseFunctions() {
     resultTypes.clear();
   }
 
-  BEFReader funcReader = getSectionReader(BEF::SectionID::BEF_FUNCTIONS);
+  if (functions.size() != numFunctions)
+    return emitError("expected " + Twine(numFunctions) +
+                     " functions, but found " + Twine(functions.size()));
 
   // Decode each of the function bodies.
+  BEFReader funcReader = getSectionReader(BEF::SectionID::BEF_FUNCTIONS);
   for (auto fn : functions) {
     if (parseFunctionBody(fn, funcReader, attrNameReader, mlirTypesReader))
       return true;

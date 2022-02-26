@@ -53,7 +53,7 @@ private:
   bool readNextSection();
 
   /// Decode the primitive names section.
-  bool readPrimitivesSection(BEFReader &stringReader);
+  bool readPrimitiveNamesSection(BEFReader &stringReader);
   /// Decode the function index section.
   bool readFunctionIndexSection(BEFReader &stringReader);
 
@@ -87,13 +87,18 @@ bool BEFFileReader::readFileContents() {
 
   // Now that we've figured out the contents of the sections, resolve the
   // things we parse ahead of time.
-  return readPrimitivesSection(stringReader) ||
+  return readPrimitiveNamesSection(stringReader) ||
          readFunctionIndexSection(stringReader);
 }
 
 /// Decode the primitive names section.
-bool BEFFileReader::readPrimitivesSection(BEFReader &stringReader) {
+bool BEFFileReader::readPrimitiveNamesSection(BEFReader &stringReader) {
   setContents(primitiveNames);
+
+  size_t numPrimitives;
+  if (parseVBR(numPrimitives))
+    return true;
+  befFile.primitives.reserve(numPrimitives);
 
   // Read until we run out of names.
   while (!empty()) {
@@ -118,6 +123,11 @@ bool BEFFileReader::readPrimitivesSection(BEFReader &stringReader) {
 /// Decode the function index section.
 bool BEFFileReader::readFunctionIndexSection(BEFReader &stringReader) {
   setContents(functionIndex);
+
+  size_t numFunctions;
+  if (parseVBR(numFunctions))
+    return true;
+  // TODO: befFile.functions.reserve(numFunctions);
 
   // Read until we run out of function descriptors.
   while (!empty()) {

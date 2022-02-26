@@ -1104,6 +1104,7 @@ void BEFModuleEmitter::emitPrimitiveNames() {
   // The primitives are already in a stable order, so just emit them in the
   // order they were found.
   BEFEmitter primitivesNamesSection;
+  primitivesNamesSection.emitVBR(entities.primitives.size());
   for (auto op : entities.primitives)
     primitivesNamesSection.emitOffset(entities.getStringOffset(op));
 
@@ -1131,6 +1132,7 @@ void BEFModuleEmitter::emitBEFFunctions(BEFEmitter *attributeNamesSection,
 
 void BEFModuleEmitter::emitFunctionIndex() {
   BEFEmitter functionIndexSection;
+  functionIndexSection.emitVBR(entities.functionIndexEntries.size());
   for (const auto &entry : entities.functionIndexEntries) {
     functionIndexSection.emitOffset(entry.functionOffset);
     functionIndexSection.emitOffset(entry.nameOffset);

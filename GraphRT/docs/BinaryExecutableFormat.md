@@ -195,7 +195,8 @@ performance penalty.
 **Grammar**
 
 ```none
-  PRIMITIVE_NAMES_SECTION ::= OFFSET<"PrimitiveNameOffset">*
+  PRIMITIVE_NAMES_SECTION ::= VBR<NumPrimitiveNames>
+                              OFFSET<"PrimitiveNameOffset">*
 ```
 
 The Primitive names section defines a table of primitive names, directly
@@ -211,6 +212,9 @@ We want dense indexes from primitives in the BEF Functions section, and the
 GraphRT Executor wants to resolve names to primitive implementations at startup
 time anyway, as such, it makes sense for the GraphRT executor to build its own
 mutable array in memory for primitives.
+
+We encode the count of primitive names so the executor can allocate one block
+of memory up front, rather than use a vector-style resizing mechanism.
 
 ### BEFFunctionIndex Section
 
@@ -233,10 +237,13 @@ a count of argument and result types.
 
 This defines a symbol table for the BEF file, allowing clients to look up
 BEF functions by name.  While we could intersperse this information into the
-[BEF Functions section](#bef-functions-section) itself, doing so would require the
-reader to make a pass over all of the BEF functions ahead of time. We'd prefer to
-have a quick index that the reader can scan at load time, deferring processing
-of any individual function until it is needed.
+[BEF Functions section](#bef-functions-section) itself, doing so would require
+the reader to make a pass over all of the BEF functions ahead of time. We prefer
+to have a quick index that the reader can scan at load time, deferring
+processing of any individual function until it is needed.
+
+We encode the count of function names so the executor can allocate one block
+of memory up front, rather than use a vector-style resizing mechanism.
 
 ### BEF Functions Section
 
