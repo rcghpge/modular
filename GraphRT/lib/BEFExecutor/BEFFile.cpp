@@ -14,6 +14,7 @@
 #include "GraphRT/BEF/BEFReader.h"
 #include "LLCL/Support/RCRef.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/Twine.h"
 using namespace M;
 
 //===----------------------------------------------------------------------===//
@@ -35,16 +36,25 @@ namespace {
 /// returns true and fill in `errorMessage` on failure.
 class BEFFileReader : public BEFReader {
 public:
-  BEFFileReader(ArrayRef<uint8_t> file, BEFFileImpl &befFile)
+  BEFFileReader(ArrayRef<uint8_t> file, RCRef<PrimitiveRegistry> primitives,
+                BEFFileImpl &befFile)
       : BEFReader(file,
-                  [=](const char *message) { this->errorMessage = message; }),
-        befFile(befFile) {}
+                  [=](const char *message) {
+                    this->errorMessage = Error::getStaticString(message);
+                  }),
+        primitives(std::move(primitives)), befFile(befFile) {}
 
-  const char *getErrorMessage() const { return errorMessage; }
+  Error &getErrorMessage() { return errorMessage; }
 
   /// Decode the key sections of the specified BEF file, capturing some of their
   /// ranges into BEFFileImpl and completely decoding others.
   bool readFileContents();
+
+  using BEFReader::emitError;
+  bool emitError(Error error) {
+    errorMessage = std::move(error);
+    return true;
+  }
 
 private:
   /// Decode the next section and remember it if we care about it.
@@ -57,9 +67,12 @@ private:
 
   /// This is filled in if an error occurs.  It always contains a static string
   /// giving a sense of what went wrong.
-  const char *errorMessage = nullptr;
+  Error errorMessage;
 
   ArrayRef<uint8_t> primitiveNames, functionIndex;
+
+  /// This is a reference to the (primitive name -> impl) mapping table.
+  RCRef<PrimitiveRegistry> primitives;
 
   // This is the file structure we're reading.
   BEFFileImpl &befFile;
@@ -78,7 +91,7 @@ bool BEFFileReader::readFileContents() {
   }
 
   BEFReader stringReader(befFile.strings, [=](const char *message) {
-    this->errorMessage = message;
+    this->errorMessage = Error::getStaticString(message);
   });
 
   // Now that we've figured out the contents of the sections, resolve the
@@ -100,14 +113,12 @@ bool BEFFileReader::readPrimitivesSection(BEFReader &stringReader) {
         stringReader.parseNULTerminatedStringAt(stringOffset, name))
       return true;
 
-      // TODO: Implement kernel registry + lookup.
-#if 0
-    auto *primitive = registry->getPrimitive(name);
-    if (!primitive)
-      return diagnoseUnknownPrimitive(name);
+    auto *primitiveImpl = primitives->get(name);
+    if (!primitiveImpl)
+      return emitError("unknown primitive '" + name + "'");
+
     // Otherwise remember it.
-    befFile.primitives.push_back(primitive);
-#endif
+    befFile.primitives.push_back(primitiveImpl);
   }
 
   return false;
@@ -137,7 +148,7 @@ bool BEFFileReader::readNextSection() {
   uint8_t sectionID;
   ArrayRef<uint8_t> sectionContents;
   if (readSection(sectionID, sectionContents))
-    return emitError("BEF file section header corrupted");
+    return BEFReader::emitError("BEF file section header corrupted");
 
   // Remember the sections we care about either in BEFFileInfo (if they get
   // decoded lazily by the function executor) or in BEFFileReader (if they're
@@ -194,7 +205,9 @@ BEFFileImpl::~BEFFileImpl() {}
 /// pointer to our initialized object on success.  On failure, an error
 /// message is emitted to the errorHandler and a null RCRef is returned.
 ///
-ErrorOr<RCRef<BEFFile>> BEFFile::open(StringRef file, Runtime &runtime) {
+ErrorOr<RCRef<BEFFile>> BEFFile::open(StringRef file,
+                                      RCRef<PrimitiveRegistry> primitives,
+                                      Runtime &runtime) {
   if (!BEF::hasBEFMagicNumber(file))
     return Error("not a BEF file");
   file = file.drop_front(2); // Drop the magic number.
@@ -202,10 +215,11 @@ ErrorOr<RCRef<BEFFile>> BEFFile::open(StringRef file, Runtime &runtime) {
   auto befFilePtr = RCRef<BEFFileImpl>::create(runtime);
 
   ArrayRef<uint8_t> fileData((const uint8_t *)file.data(), file.size());
-  BEFFileReader reader(fileData, *befFilePtr);
+  BEFFileReader reader(fileData, std::move(primitives), *befFilePtr);
   if (reader.readFileContents()) {
-    assert(reader.getErrorMessage() && "Failed but didn't produce an error!");
-    return Error::getStaticString(reader.getErrorMessage());
+    assert(reader.getErrorMessage().hasError() &&
+           "Failed but didn't produce an error!");
+    return std::move(reader.getErrorMessage());
   }
 
   return befFilePtr;

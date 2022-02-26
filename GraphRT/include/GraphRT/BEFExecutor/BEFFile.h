@@ -32,7 +32,8 @@ public:
   /// passed in.  For example, we could take a closure to run when the lifetime
   /// of the BEFFile is done, or have a reference counted abstraction for
   /// holding memory buffers.
-  static ErrorOr<RCRef<BEFFile>> open(StringRef file, Runtime &runtime);
+  static ErrorOr<RCRef<BEFFile>>
+  open(StringRef file, RCRef<PrimitiveRegistry> primitives, Runtime &runtime);
 
 protected:
   BEFFile() {}

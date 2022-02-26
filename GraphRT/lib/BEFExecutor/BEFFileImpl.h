@@ -12,6 +12,7 @@
 #define BEFFILEIMPL_H
 
 #include "GraphRT/BEFExecutor/BEFFile.h"
+#include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
 #include "llvm/ADT/ArrayRef.h"
 
 namespace M {
@@ -33,6 +34,9 @@ public:
   ArrayRef<uint8_t> strings;
   ArrayRef<uint8_t> attributes;
   ArrayRef<uint8_t> befFunctions;
+
+  /// This is the list of primitive implementations arranged by their ID.
+  std::vector<PrimitiveRegistry::PrimitiveImplFn> primitives;
 };
 
 } // namespace M

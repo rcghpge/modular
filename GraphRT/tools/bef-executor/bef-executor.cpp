@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphRT/BEFExecutor/BEFFile.h"
+#include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
 #include "LLCL/Runtime/Allocator.h"
 #include "LLCL/Runtime/AsyncValueRef.h"
 #include "LLCL/Runtime/Runtime.h"
@@ -167,6 +168,10 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  // Set up all our primitives.
+  auto primitives = RCRef<PrimitiveRegistry>::create();
+  primitives->add("test.something", abort);
+
   mlir::MLIRContext context;
   {
     Runtime runtime(getAllocator(), getWorkQueue());
@@ -176,9 +181,11 @@ int main(int argc, char **argv) {
     test3(runtime);
 
     // Open the BEF file.
-    auto befFile = BEFFile::open(fileBuffer->getBuffer(), runtime);
+    auto befFile =
+        BEFFile::open(fileBuffer->getBuffer(), std::move(primitives), runtime);
     if (auto *error = befFile.getError()) {
-      puts(error);
+      llvm::errs() << "error opening '" << inputFilename << "': " << error
+                   << "\n";
       return 1;
     }
   }
