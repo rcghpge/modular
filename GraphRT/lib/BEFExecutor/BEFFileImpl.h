@@ -15,6 +15,7 @@
 #include "GraphRT/BEFExecutor/Function.h"
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringMap.h"
 
 namespace M {
 class BEFFunction;
@@ -50,10 +51,18 @@ public:
   /// This is the list of primitive implementations arranged by their ID.
   std::vector<PrimitiveRegistry::PrimitiveImplFn> primitives;
 
+  /// This map holds the index in `functions` of functions with the specified
+  /// name.
+  ///
+  /// TODO: This data structure is major overkill: it contributes significant
+  /// code size and each name inserted into this is a malloc. See:
+  /// https://github.com/modularml/modular/issues/11 for more info.
+  llvm::StringMap<size_t> functionSymbolTable;
+
   /// This contains all of the BEFFunction records inline in dense memory even
   /// though clients treat them like individual objects.  Their lifetime is
   /// completely bound to BEFFileImpl's.
-  BEFFunction *functions = nullptr;
+  const BEFFunction *functions = nullptr;
   size_t numFunctions = 0;
 };
 

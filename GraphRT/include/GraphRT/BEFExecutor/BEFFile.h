@@ -13,6 +13,7 @@
 #include "Support/LLVM.h"
 
 namespace M {
+class Function;
 class PrimitiveRegistry;
 
 /// Instances of this class represent opened an decoded BEF files, allowing
@@ -34,6 +35,12 @@ public:
   /// holding memory buffers.
   static ErrorOr<RCRef<BEFFile>>
   open(StringRef file, const PrimitiveRegistry &primitives, Runtime &runtime);
+
+  /// Get a list of functions out of the BEF file.
+  std::vector<const Function *> getAllFunctions() const;
+
+  /// Find a Function with the specified name, returning null if it isn't found.
+  const Function *getFunction(StringRef name) const;
 
 protected:
   BEFFile() {}

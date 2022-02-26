@@ -152,6 +152,10 @@ bool BEFFileReader::readFunctionIndexSection(BEFReader &stringReader) {
         stringReader.parseNULTerminatedStringAt(nameOffset, name))
       return true;
 
+    /// Remember this function in the symbol table if it isn't anonymous.
+    if (!name.empty())
+      befFile.functionSymbolTable[name] = fnNumber;
+
     /// Create the actual BEFFunction.
     new (&fnMemory[fnNumber++]) BEFFunction(
         name, numArgs, numResults, functionOffset, locOffset, &befFile);
@@ -225,7 +229,30 @@ bool BEFFileReader::readNextSection() {
 
 BEFFileImpl::~BEFFileImpl() {
   if (functions)
-    runtime.destroyAndDeallocate<BEFFunction>(functions, numFunctions);
+    runtime.destroyAndDeallocate<BEFFunction>(
+        const_cast<BEFFunction *>(functions), numFunctions);
+}
+
+/// Get a list of functions out of the BEF file.
+std::vector<const Function *> BEFFile::getAllFunctions() const {
+  auto befFile = static_cast<const BEFFileImpl *>(this);
+
+  // All of the result functions are stored in a dense array, but we want to
+  // project them as individual objects.
+  std::vector<const Function *> result;
+  result.reserve(befFile->numFunctions);
+  for (size_t i = 0, e = befFile->numFunctions; i != e; ++i)
+    result.push_back(befFile->functions + i);
+  return result;
+}
+
+/// Find a Function with the specified name, returning null if it isn't found.
+const Function *BEFFile::getFunction(StringRef name) const {
+  auto befFile = static_cast<const BEFFileImpl *>(this);
+  auto it = befFile->functionSymbolTable.find(name);
+  return it != befFile->functionSymbolTable.end()
+             ? &befFile->functions[it->second]
+             : nullptr;
 }
 
 /// Open and read a BEF file, setting up our internal state and returning a

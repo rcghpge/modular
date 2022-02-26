@@ -38,6 +38,6 @@ void BEFFunction::dropRef() const { owner->dropRef(); }
 /// AsyncValue for each result.
 void BEFFunction::execute(ArrayRef<AsyncValue *> arguments,
                           MutableArrayRef<RCRef<AsyncValue>> results) const {
-  llvm::errs() << "execute " << getName() << functionOffset << locationOffset
+  llvm::outs() << "execute " << getName() << functionOffset << locationOffset
                << "\n";
 }
