@@ -12,6 +12,7 @@
 #include "BEFFileImpl.h"
 #include "GraphRT/BEF/BEFEncoding.h"
 #include "GraphRT/BEF/BEFReader.h"
+#include "LLCL/Runtime/Runtime.h"
 #include "LLCL/Support/RCRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
@@ -127,10 +128,23 @@ bool BEFFileReader::readFunctionIndexSection(BEFReader &stringReader) {
   size_t numFunctions;
   if (parseVBR(numFunctions))
     return true;
-  // TODO: befFile.functions.reserve(numFunctions);
+
+  BEFFunction *fnMemory = befFile.runtime.allocate<BEFFunction>(numFunctions);
 
   // Read until we run out of function descriptors.
+  size_t fnNumber = 0;
+  auto reportIncorrectFunctionCount = [&]() -> bool {
+    // Destroy the partially constructed functions array.
+    while (fnNumber)
+      fnMemory[--fnNumber].~BEFFunction();
+    befFile.runtime.deallocate<BEFFunction>(fnMemory, numFunctions);
+    return emitError("function count is incorrect");
+  };
+
   while (!empty()) {
+    if (fnNumber > numFunctions)
+      return reportIncorrectFunctionCount();
+
     size_t functionOffset, nameOffset, locOffset, numArgs, numResults;
     StringRef name;
     if (parseVBR(functionOffset) || parseVBR(nameOffset) ||
@@ -138,8 +152,17 @@ bool BEFFileReader::readFunctionIndexSection(BEFReader &stringReader) {
         stringReader.parseNULTerminatedStringAt(nameOffset, name))
       return true;
 
-    // TODO: Remember this function in a place we can look it up.
+    /// Create the actual BEFFunction.
+    new (&fnMemory[fnNumber++]) BEFFunction(
+        name, numArgs, numResults, functionOffset, locOffset, &befFile);
   }
+
+  // Check that the correct number of functions was actually present.
+  if (fnNumber != numFunctions)
+    return reportIncorrectFunctionCount();
+  // Otherwise, we succeeded!
+  befFile.functions = fnMemory;
+  befFile.numFunctions = numFunctions;
   return false;
 }
 
@@ -200,7 +223,10 @@ bool BEFFileReader::readNextSection() {
 // BEFFileImpl
 //===----------------------------------------------------------------------===//
 
-BEFFileImpl::~BEFFileImpl() {}
+BEFFileImpl::~BEFFileImpl() {
+  if (functions)
+    runtime.destroyAndDeallocate<BEFFunction>(functions, numFunctions);
+}
 
 /// Open and read a BEF file, setting up our internal state and returning a
 /// pointer to our initialized object on success.  On failure, an error
