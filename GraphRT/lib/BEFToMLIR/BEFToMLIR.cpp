@@ -78,7 +78,7 @@ public:
   }
 
   BEFReader getReaderFor(ArrayRef<uint8_t> data) const {
-    return BEFReader(data, [=](const char *message) {
+    return BEFReader(data, [=](Error message) {
       mlir::emitError(this->getLoc()) << message;
     });
   }

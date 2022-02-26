@@ -11,6 +11,7 @@
 #ifndef GRAPHRT_BEF_BEFREADER_H
 #define GRAPHRT_BEF_BEFREADER_H
 
+#include "Support/Error.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/FunctionExtras.h"
 #include "llvm/Support/MathExtras.h"
@@ -23,9 +24,8 @@ namespace M {
 /// error to the `errorFunction` and return true.
 class BEFReader {
 public:
-  explicit BEFReader(
-      ArrayRef<uint8_t> contents,
-      llvm::unique_function<void(const char *) const> errorFunction)
+  explicit BEFReader(ArrayRef<uint8_t> contents,
+                     llvm::unique_function<void(Error) const> errorFunction)
       : contents(contents), errorFunction(std::move(errorFunction)) {}
 
   // Return true if we've read the entire file.
@@ -38,8 +38,8 @@ public:
   /// range.
   void setContents(ArrayRef<uint8_t> data) { contents = data; }
 
-  bool emitError(const char *message) const {
-    errorFunction(message);
+  bool emitError(Error message) const {
+    errorFunction(std::move(message));
     return true;
   }
 
@@ -190,7 +190,7 @@ public:
 
 private:
   ArrayRef<uint8_t> contents;
-  llvm::unique_function<void(const char *) const> errorFunction;
+  llvm::unique_function<void(Error) const> errorFunction;
 };
 
 } // namespace M
