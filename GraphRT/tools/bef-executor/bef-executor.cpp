@@ -155,6 +155,38 @@ static void test3(Runtime &runtime) {
   runtime.quiesce();
 }
 
+static void test4(Runtime &runtime) {
+  printf("test4: IndirectAsyncValueRef\n");
+  // Make some indirect asyncValue's.
+  auto av1 = AsyncValue::createIndirect(runtime);
+  auto av2 = AsyncValue::createIndirect(runtime);
+  auto av3 = AsyncValue::createIndirect(runtime);
+  auto av4 = AsyncValue::createIndirect(runtime);
+
+  // Whenever they get completed, we print.
+  av1->andThen([av1 = av1.copy()]() { printf("av1 = %d\n", av1->isError()); });
+  av2->andThen([av2 = av2.copy()]() { printf("av2 = %d\n", av2->get<int>()); });
+  av3->andThen([av3 = av3.copy()]() { printf("av3 = %d\n", av3->get<int>()); });
+  av4->andThen([av4 = av4.copy()]() { printf("av4 = %d\n", av4->get<int>()); });
+
+  // Add a task that completes the AV and drops its reference.
+  runtime.addTask([av1 = std::move(av1), av2 = std::move(av2),
+                   av3 = std::move(av3), av4 = av4.copy(), &runtime]() mutable {
+    av1->setToError("something expected actually");
+    av2->resolveIndirect(AsyncValueRef<int>::createReady(runtime, 1234));
+    // av3 is resolved to an unresolved indirect value.
+    av3->resolveIndirect(std::move(av4));
+  });
+
+  // Resolving av4 also resolves av3.
+  runtime.addTask([av4 = std::move(av4), &runtime]() {
+    av4->resolveIndirect(AsyncValueRef<int>::createReady(runtime, 42));
+  });
+
+  // Do all the work.
+  runtime.quiesce();
+}
+
 /// Run the specified BEF function as a testcase - this means passing in test
 /// input and printing results if we can.
 static void runFunctionTestcase(const Function *fn, Runtime &runtime) {
@@ -265,6 +297,7 @@ int main(int argc, char **argv) {
     test1(runtime);
     test2(runtime);
     test3(runtime);
+    test4(runtime);
     fflush(stdout); // Finish printf tests.
 
     // Open the BEF file.

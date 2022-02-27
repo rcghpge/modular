@@ -389,9 +389,6 @@ bool BEFToMLIRConverter::parseFunctions() {
       return true;
 
     functionOffsets.push_back(functionOffset);
-
-    // TODO: If we have type metadata, parse the types of the inputs and
-    // results.
     inputTypes.assign(numArgs, unknownType);
     resultTypes.assign(numResults, unknownType);
 
