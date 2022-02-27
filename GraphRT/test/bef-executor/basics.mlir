@@ -23,7 +23,7 @@ bef.func @args_results(%a: i32, %b: i8) -> (i8, i32) {
 
 // CHECK-LABEL: Running 'run_prim':
 bef.func @run_prim() {
-  // CHECK: execute run_prim406
+  // CHECK: execute run_prim
   "test.something"() : () -> ()
   bef.output
 }

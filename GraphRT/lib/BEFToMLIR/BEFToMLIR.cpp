@@ -9,7 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphRT/BEFToMLIR.h"
-#include "GraphRT/BEF/BEFEncoding.h"
 #include "GraphRT/BEF/BEFReader.h"
 #include "GraphRT/BEFDialect/BEFOps.h"
 #include "mlir/IR/Builders.h"

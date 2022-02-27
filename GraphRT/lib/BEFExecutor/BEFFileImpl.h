@@ -94,10 +94,9 @@ public:
   /// Drop a reference to this object, potentially deallocating it.
   virtual void dropRef() const override;
 
-private:
-  const uint32_t functionOffset;
-  const uint32_t locationOffset;
-  const BEFFileImpl *const owner;
+public:
+  const uint32_t functionOffset, locationOffset;
+  BEFFileImpl *const owner;
 };
 
 } // namespace M
