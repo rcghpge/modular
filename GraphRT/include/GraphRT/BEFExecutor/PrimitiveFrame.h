@@ -26,8 +26,6 @@ namespace M {
 /// invoked.
 class PrimitiveFrame {
 public:
-  PrimitiveFrame(Runtime &runtime) : runtime(runtime) {}
-
   Runtime &getRuntime() const { return runtime; }
 
   // TODO: Add location information for error reporting.
@@ -41,7 +39,7 @@ public:
   /// Get the argument at the given index as AsyncValue*.
   AsyncValue *getArg(size_t index) const {
     assert(index < getNumArgs() && "invalid argument number");
-    return argsResultsAndAttrs[index].value;
+    return argsAndResults[index];
   }
 
   /// Look through the argument AsyncValue to get the element as type T.
@@ -51,8 +49,7 @@ public:
   }
 
   ArrayRef<AsyncValue *> getArguments() const {
-    AsyncValue *const *firstArg = &argsResultsAndAttrs.data()[0].value;
-    return llvm::makeArrayRef(firstArg, getNumArgs());
+    return llvm::makeArrayRef(argsAndResults.data(), getNumArgs());
   }
 
   //===--------------------------------------------------------------------===//
@@ -60,19 +57,12 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Get the number of attributes.
-  size_t getNumAttrs() const {
-    return argsResultsAndAttrs.size() - (numArguments + numResults);
-  }
-
-  /// Get all the attributes.
-  ArrayRef<const void *> getAttributes() const {
-    const void *const *firstAttr =
-        &argsResultsAndAttrs.data()[numArguments + numResults].attr;
-    return llvm::makeArrayRef(firstAttr, getNumAttrs());
-  }
+  size_t getNumAttrs() const { return attrOffsets.size(); }
 
   /// Get the attribute at the given index.
-  const void *getRawAttr(size_t index) const { return getAttributes()[index]; }
+  const void *getRawAttr(size_t index) const {
+    return attrSection.data() + attrOffsets[index];
+  }
 
   // Get the attribute at the given index as type T.
   template <typename T>
@@ -91,14 +81,14 @@ public:
   }
 
   MutableArrayRef<AsyncValue *> getResults() {
-    AsyncValue **firstResult = &argsResultsAndAttrs.data()[numArguments].value;
+    AsyncValue **firstResult = argsAndResults.data() + numArguments;
     return llvm::makeMutableArrayRef(firstResult, getNumResults());
   }
 
   /// Set the result at the given index with the given AsyncValue.
   void setResult(size_t index, RCRef<AsyncValue> value) {
     assert(index < numResults && "invalid result number");
-    AsyncValue *&result = argsResultsAndAttrs[numArguments + index].value;
+    AsyncValue *&result = argsAndResults[numArguments + index];
     assert(!result && "result is already set");
     result = value.release();
   }
@@ -123,35 +113,31 @@ public:
   /// This fills in all remaining unspecified results with that error value.
   void fail(Error cause);
 
-private:
-  AsyncValue *&getResultEntry(size_t index) {
-    assert(index < numResults && "invalid result number");
-    AsyncValue *&result = argsResultsAndAttrs[numArguments + index].value;
-    assert(!result && "result is already set");
-    return result;
-  }
-
 protected:
+  PrimitiveFrame(Runtime &runtime, ArrayRef<uint8_t> attrSection)
+      : runtime(runtime), attrSection(attrSection) {}
+
   Runtime &runtime;
 
-  // numResults is set to ~0 so we can check that addAttribute() is called
-  // after setNumResults.
-  uint16_t numResults = uint16_t(~0U);
-  uint16_t numArguments = 0;
+  /// This is the overall attribute section in the BEF file.
+  ArrayRef<uint8_t> attrSection;
 
-  /// We store arguments, results, and attributes, and results in a single
-  /// SmallVector for efficiency.
-  union AsyncValueOrAttr {
-    AsyncValue *value;
-    const void *attr;
-  };
-  SmallVector<AsyncValueOrAttr, 8> argsResultsAndAttrs;
+  /// numResults is set to ~0 so we can check that addArgument() is called
+  /// before setNumResults.
+  uint16_t numArguments = 0, numResults = uint16_t(~0U);
+
+  /// We store arguments and results in a single SmallVector for efficiency:
+  /// one less vector to overflow.
+  SmallVector<AsyncValue *, 16> argsAndResults;
+
+  /// This keeps track of each attribute value into the attributeSection.
+  ArrayRef<uint32_t> attrOffsets;
 };
 
 /// This class is used to construct a PrimitiveFrame object without exposing the
 /// builder methods to the implementation functions.
 ///
-/// When initializing a KernelFrame, this class requires that the client
+/// When initializing a PrimitiveFrame, this class requires that the client
 /// performs the following actions in order:
 ///   1. Add argument values.
 ///   2. Set the number of results with `setNumResults`.
@@ -159,43 +145,41 @@ protected:
 ///
 class PrimitiveFrameBuilder : public PrimitiveFrame {
 public:
-  using PrimitiveFrame::PrimitiveFrame;
+  PrimitiveFrameBuilder(Runtime &runtime, ArrayRef<uint8_t> attrSection)
+      : PrimitiveFrame(runtime, attrSection) {}
 
   /// Clear all fields.
   void reset() {
-    argsResultsAndAttrs.clear();
+    argsAndResults.clear();
     numArguments = 0;
     numResults = uint16_t(~0U);
+    attrOffsets = {};
   }
 
-  // Add a new argument to the KernelFrame.
+  // Add a new argument.
   void addArg(AsyncValue *value) {
     assert(numResults == uint16_t(~0U) &&
            "Must call AddArg before calling SetNumResults");
-    argsResultsAndAttrs.push_back({value});
+    argsAndResults.push_back(value);
     ++numArguments;
   }
 
   // Set the number of results expected, and allocate space to capture them.
   void setNumResults(size_t n) {
-    assert(numArguments == argsResultsAndAttrs.size());
+    assert(numArguments == argsAndResults.size());
     assert(numResults == uint16_t(~0U));
     numResults = n;
-    argsResultsAndAttrs.resize(argsResultsAndAttrs.size() + n);
+    argsAndResults.resize(argsAndResults.size() + n);
   }
 
   AsyncValue *getResult(size_t index) const {
     assert(index < numResults && "invalid result #");
-    return argsResultsAndAttrs[numArguments + index].value;
+    return argsAndResults[numArguments + index];
   }
 
-  // Add a new attribute.
-  void addAttr(const void *attr) {
-    assert(numResults != uint16_t(~0U) &&
-           "Must call setNumResults before calling addAttr");
-    AsyncValueOrAttr elt;
-    elt.attr = attr;
-    argsResultsAndAttrs.push_back(elt);
+  /// Set the offsets to the attributes in the BEF attribute section.
+  void setAttrs(ArrayRef<uint32_t> attrOffsets) {
+    this->attrOffsets = attrOffsets;
   }
 };
 

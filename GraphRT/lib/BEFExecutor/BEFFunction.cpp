@@ -353,7 +353,7 @@ void BEFExecutor::processArgumentsPseudo(
 void BEFExecutor::decrementOperandsNotReadyCounts(
     SmallVectorImpl<uint32_t> &primitiveIDWorklist) {
 
-  PrimitiveFrameBuilder frame(befFile->runtime);
+  PrimitiveFrameBuilder frame(befFile->runtime, befFile->attributes);
 
   MutableArrayRef<RegisterInfo> registers = getRegisterInfoTable();
   MutableArrayRef<PrimitiveInfo> primitives = getPrimitiveInfoTable();
@@ -392,8 +392,6 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
     befPrimitiveEntry += numResults;
     auto operands = llvm::makeArrayRef(befPrimitiveEntry, numOperands);
     befPrimitiveEntry += numOperands;
-    auto attrOffsets = llvm::makeArrayRef(befPrimitiveEntry, numAttrs);
-    befPrimitiveEntry += numAttrs;
 
     // Keep track of whether we saw any error arguments. If so, we propagate the
     // error to the results automatically.
@@ -422,9 +420,9 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
     // Handle results.
     frame.setNumResults(numResults);
 
-    // Set up attributes.
-    for (uint32_t attrOffset : attrOffsets)
-      frame.addAttr(befFile->attributes.data() + attrOffset);
+    // Set up attributes, the frame object takes the offsets directly.
+    frame.setAttrs(llvm::makeArrayRef(befPrimitiveEntry, numAttrs));
+    befPrimitiveEntry += numAttrs;
 
     // Set up functions.
     assert(numFunctions == 0);
