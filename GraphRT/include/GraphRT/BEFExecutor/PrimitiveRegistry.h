@@ -9,6 +9,7 @@
 
 #include "LLCL/Support/ReferenceCounted.h"
 #include "Support/LLVM.h"
+#include "Support/StaticString.h"
 
 namespace M {
 class PrimitiveFrame;
@@ -24,7 +25,7 @@ public:
   /// in the argument frame, and returning results through it.
   using PrimitiveImplFn = void (*)(PrimitiveFrame &frame);
 
-  void add(StringRef name, PrimitiveImplFn fn);
+  void add(StaticString name, PrimitiveImplFn fn);
 
   PrimitiveImplFn get(StringRef name) const;
 
