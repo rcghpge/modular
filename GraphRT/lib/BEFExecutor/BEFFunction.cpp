@@ -16,7 +16,6 @@
 #include "GraphRT/BEFExecutor/PrimitiveFrame.h"
 #include "LLCL/Runtime/AsyncValue.h"
 #include "LLCL/Runtime/Runtime.h"
-#include "LLCL/Support/RCRef.h"
 #include "llvm/Support/TrailingObjects.h"
 using namespace M;
 
@@ -558,8 +557,8 @@ void BEFFunction::execute(ArrayRef<AsyncValue *> arguments,
     // Fill in error async value results if there are any present.
     if (results.empty())
       return;
-    results[0] = takeRCRef(AsyncValue::createError(
-        owner->runtime, std::move(decoder.befFormatError.getValue())));
+    results[0] = AsyncValue::createError(
+        owner->runtime, std::move(decoder.befFormatError.getValue()));
     // Fill in the rest with the same error.
     for (size_t i = 1; i != results.size(); ++i)
       results[i] = results[0].copy();

@@ -28,7 +28,7 @@ void Function::vtableAnchor() {}
 /// Create an AsyncValue with the specified cause, and our current location.
 /// This can be set into a result or used for other purposes.
 RCRef<AsyncValue> PrimitiveFrame::getError(Error cause) {
-  return takeRCRef(AsyncValue::createError(getRuntime(), std::move(cause)));
+  return AsyncValue::createError(getRuntime(), std::move(cause));
 }
 
 /// Mark that execution of the primitive failed with the specified reason.

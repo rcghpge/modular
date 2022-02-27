@@ -80,9 +80,9 @@ static std::unique_ptr<WorkQueue> getWorkQueue() {
 static void test1(Runtime &runtime) {
   printf("test1: raw\n");
   // Make an asyncValue
-  auto *av1 = AsyncValue::createUnconstructed<int>(runtime);
-  auto *av2 = AsyncValue::createConstructed<int>(runtime, 42);
-  auto *av3 = AsyncValue::createReady<char>(runtime, 'x');
+  auto *av1 = AsyncValue::createUnconstructed<int>(runtime).release();
+  auto *av2 = AsyncValue::createConstructed<int>(runtime, 42).release();
+  auto *av3 = AsyncValue::createReady<char>(runtime, 'x').release();
 
   // Whenever it gets completed, we print.
   av1->andThen([=]() {
@@ -108,9 +108,9 @@ static void test1(Runtime &runtime) {
 static void test2(Runtime &runtime) {
   printf("test2: RCRef\n");
   // Make an asyncValue
-  auto av1 = takeRCRef(AsyncValue::createUnconstructed<int>(runtime));
-  auto av2 = takeRCRef(AsyncValue::createConstructed<int>(runtime, 42));
-  auto av3 = takeRCRef(AsyncValue::createReady<char>(runtime, 'x'));
+  auto av1 = AsyncValue::createUnconstructed<int>(runtime);
+  auto av2 = AsyncValue::createConstructed<int>(runtime, 42);
+  auto av3 = AsyncValue::createReady<char>(runtime, 'x');
 
   // Whenever it gets completed, we print.
   av1->andThen([av1 = av1.copy(), av2 = av2.copy()]() {
