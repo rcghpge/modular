@@ -14,16 +14,15 @@
 #include "GraphRT/Primitives.h"
 #include "LLCL/ForwardDecls.h"
 #include "LLCL/Runtime/AsyncValueRef.h"
+#include "LLCL/Runtime/Runtime.h"
+#include "LLCL/Support/Chain.h"
 #include "llvm/ADT/StringRef.h"
 using namespace M;
-
-// TODO: These should be moved out to a test library when we have more infra.
-struct Chain {};
+using namespace LLCL;
 
 static void test_chain_new(PrimitiveFrame &frame) {
   assert(frame.getNumArgs() == 0 && frame.getNumResults() == 1);
-  frame.setResult(
-      0, AsyncValueRef<Chain>::createReady(frame.getRuntime(), Chain()));
+  frame.setResult(0, frame.getRuntime().getReadyChain());
 }
 
 static void test_print_hello(PrimitiveFrame &frame) {

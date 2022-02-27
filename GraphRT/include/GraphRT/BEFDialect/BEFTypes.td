@@ -4,9 +4,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This defines BEF::UnknownType.
+// This defines BEF dialect types, like !bef.chain and !bef.unknown
 //
 //===----------------------------------------------------------------------===//
+
+def ChainType : TypeDef<BEFDialect, "Chain"> {
+  let mnemonic = "chain";
+  let summary = "empty value used for control dependence tracking";
+  let description = [{
+    This type is used to model dependences between side-effecting operations,
+    by turning these side effects into explicitly modeled values.
+  }];
+}
 
 def UnknownType : TypeDef<BEFDialect, "Unknown"> {
   let mnemonic = "unknown";

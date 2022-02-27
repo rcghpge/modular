@@ -23,23 +23,23 @@ bef.func @args_results(%a: i32, %b: i8) -> (i8, i32) {
 // CHECK-LABEL: Running 'print_test':
 bef.func @print_test() {
   // CHECK: hello bef executor!
-  %ch0 = "test.chain.new"() : () -> !test.chain
-  "test.print_hello"(%ch0) : (!test.chain) -> !test.chain
+  %ch0 = "test.chain.new"() : () -> !bef.chain
+  "test.print_hello"(%ch0) : (!bef.chain) -> !bef.chain
   bef.output
 }
 
 // CHECK-LABEL: --- Running 'three_print_error'
 bef.func @three_print_error() {
-    %ch0 = "test.chain.new"() : () -> !test.chain
+  %ch0 = "test.chain.new"() : () -> !bef.chain
 
   // CHECK: hello bef executor!
-  %ch1 = "test.print_hello"(%ch0) : (!test.chain) -> !test.chain
+  %ch1 = "test.print_hello"(%ch0) : (!bef.chain) -> !bef.chain
 
   // CHECK: hello bef executor!
-  %ch2 = "test.print_hello"(%ch1) : (!test.chain) -> !test.chain
+  %ch2 = "test.print_hello"(%ch1) : (!bef.chain) -> !bef.chain
 
   // CHECK: hello bef executor!
-  %ch3 = "test.print_hello"(%ch2) : (!test.chain) -> !test.chain
+  %ch3 = "test.print_hello"(%ch2) : (!bef.chain) -> !bef.chain
 
   bef.output
 }
@@ -48,24 +48,25 @@ bef.func @three_print_error() {
 bef.func @basic.i32() {
   %x = "test.constant42.i32"() : () -> i32
 
-  %ch0 = "test.chain.new"() : () -> !test.chain
+  %ch0 = "test.chain.new"() : () -> !bef.chain
 
   // CHECK: int32 = 42
-  %ch1 = "test.print.i32"(%x, %ch0) : (i32, !test.chain) -> !test.chain
+  %ch1 = "test.print.i32"(%x, %ch0) : (i32, !bef.chain) -> !bef.chain
 
   %add = "test.add.i32"(%x, %x) : (i32, i32) -> i32
 
   // CHECK: int32 = 84
-  %ch2 = "test.print.i32"(%add, %ch1) : (i32, !test.chain) -> !test.chain
+  %ch2 = "test.print.i32"(%add, %ch1) : (i32, !bef.chain) -> !bef.chain
 
   bef.output
 }
 
 // CHECK-LABEL: --- Running 'test_result'
-bef.func @test_result() -> (i32, i32) {
+bef.func @test_result() -> (i32, i32, !bef.chain) {
+  %ch0 = "test.chain.new"() : () -> !bef.chain
   %x = "test.constant42.i32"() : () -> i32
   %add = "test.add.i32"(%x, %x) : (i32, i32) -> i32
-  bef.output %x, %add : i32, i32
+  bef.output %x, %add, %ch0 : i32, i32, !bef.chain
 }
 // CHECK: 'test_result' returned 42, 84
 

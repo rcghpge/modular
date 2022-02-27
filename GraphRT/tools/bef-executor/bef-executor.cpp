@@ -14,6 +14,7 @@
 #include "GraphRT/Primitives.h"
 #include "LLCL/Runtime/AsyncValueRef.h"
 #include "LLCL/Runtime/Runtime.h"
+#include "LLCL/Support/Chain.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/FileUtilities.h"
 #include "llvm/Support/CommandLine.h"
@@ -188,8 +189,26 @@ static void runFunctionTestcase(const Function *fn, Runtime &runtime) {
   if (!results.empty()) {
     os << "'" << fn->getName() << "' returned ";
     llvm::interleaveComma(results, os, [&](const RCRef<AsyncValue> &result) {
-      // FIXME: This hard codes the result type to int32_t.
-      os << result->get<int32_t>();
+#define HANDLE_TYPE(TYPE)                                                      \
+  if (result->isType<TYPE>()) {                                                \
+    os << result->get<TYPE>();                                                 \
+    return;                                                                    \
+  }
+      HANDLE_TYPE(bool)
+      HANDLE_TYPE(int8_t)
+      HANDLE_TYPE(int16_t)
+      HANDLE_TYPE(int32_t)
+      HANDLE_TYPE(int64_t)
+      HANDLE_TYPE(uint8_t)
+      HANDLE_TYPE(uint16_t)
+      HANDLE_TYPE(uint32_t)
+      HANDLE_TYPE(uint64_t)
+      HANDLE_TYPE(float)
+      HANDLE_TYPE(double)
+      if (result->isType<Chain>())
+        os << "chain";
+      else
+        os << "<unknown type>";
     });
     os << '\n';
     os.flush();
