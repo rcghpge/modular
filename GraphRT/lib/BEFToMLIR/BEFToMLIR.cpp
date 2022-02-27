@@ -431,7 +431,7 @@ public:
 
 private:
   bool parseRegisterTable();
-  bool parsePrimitiveTable();
+  bool parsePrimitiveTable(size_t numPrimitives);
   bool parseResultRegs();
   bool parsePrimitiveList();
 
@@ -453,7 +453,9 @@ private:
 
 /// Entrypoint to parse the function body.
 bool FunctionParser::parse() {
-  return parseRegisterTable() || parsePrimitiveTable() || parseResultRegs() ||
+  size_t numPrimitives;
+  return funcReader.parseVBR(numPrimitives) || parseRegisterTable() ||
+         parsePrimitiveTable(numPrimitives) || parseResultRegs() ||
          parsePrimitiveList();
 }
 
@@ -470,11 +472,7 @@ bool FunctionParser::parseRegisterTable() {
   return false;
 }
 
-bool FunctionParser::parsePrimitiveTable() {
-  size_t numPrimitives;
-  if (funcReader.parseVBR(numPrimitives))
-    return true;
-
+bool FunctionParser::parsePrimitiveTable(size_t numPrimitives) {
   while (numPrimitives--) {
     size_t offset, numOperandsBeforeExecuting;
     if (funcReader.parseVBR(offset) ||

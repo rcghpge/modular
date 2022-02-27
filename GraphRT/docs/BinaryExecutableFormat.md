@@ -275,13 +275,13 @@ concepts that occur with MLIR regions.
 **Grammar**
 
 ```none
-  BEF_FUNCTION    ::= REGISTER_TABLE PRIMITIVE_TABLE
+  BEF_FUNCTION    ::= VBR<"NumPrimitives"> REGISTER_TABLE PRIMITIVE_TABLE
                       RESULT_REGS BYTE<"AlignmentPadding">* PRIMITIVE+
 
   REGISTER_TABLE  ::= VBR<"NumRegs"> REGISTER_ENTRY*
   REGISTER_ENTRY  ::= VBR<"NumUses">
 
-  PRIMITIVE_TABLE ::= VBR<"NumPrimitives"> PRIMITIVE_ENTRY*
+  PRIMITIVE_TABLE ::= PRIMITIVE_ENTRY*
   PRIMITIVE_ENTRY ::= OFFSET<"PrimitiveOffset"> VBR<"NumOperands">
 
   RESULT_REGS     ::= INDEX<"Register">*

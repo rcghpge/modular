@@ -779,9 +779,6 @@ void BEFFunctionEmitter::emitFunction(Region *region) {
   assert(region->getBlocks().size() == 1 && "should have a single block");
   auto &block = region->getBlocks().front();
 
-  // Emit the register table.
-  emitRegisterTable(&block);
-
   // Get a dense numbering of primitives.
   unsigned numPrimitives = 0;
 
@@ -795,10 +792,14 @@ void BEFFunctionEmitter::emitFunction(Region *region) {
       primitiveIndices[&op] = numPrimitives++;
   }
 
-  // Emit a count of primitives, then the offset of each primitive (from the
-  // start of the primitive list) then each primitive is emitted in turn.
+  // Emit a count of primitives.
   emitVBR(numPrimitives);
 
+  // Emit the register table.
+  emitRegisterTable(&block);
+
+  // Next is an offset for each primitive (from the start of the primitive
+  // list) then each primitive is emitted in turn.
   BEFEmitter primitiveList;
 
   // If we have arguments, emit a pseudo op (with no opcode) that produces the
