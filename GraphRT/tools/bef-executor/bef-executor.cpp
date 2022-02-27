@@ -10,13 +10,10 @@
 
 #include "GraphRT/BEFExecutor/BEFFile.h"
 #include "GraphRT/BEFExecutor/Function.h"
-#include "GraphRT/BEFExecutor/PrimitiveFrame.h"
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
-#include "LLCL/Runtime/Allocator.h"
+#include "GraphRT/Primitives.h"
 #include "LLCL/Runtime/AsyncValueRef.h"
 #include "LLCL/Runtime/Runtime.h"
-#include "LLCL/Support/RCRef.h"
-#include "LLCL/Support/ReferenceCounted.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/FileUtilities.h"
 #include "llvm/Support/CommandLine.h"
@@ -196,45 +193,6 @@ static void runFunctionTestcase(const Function *fn, Runtime &runtime) {
 }
 
 //===----------------------------------------------------------------------===//
-// Test primitives
-//===----------------------------------------------------------------------===//
-
-// TODO: These should be moved out to a test library when we have more infra.
-struct Chain {};
-
-static void test_chain_new(PrimitiveFrame &frame) {
-  assert(frame.getNumArgs() == 0 && frame.getNumResults() == 1);
-  frame.setResult(
-      0, AsyncValueRef<Chain>::createReady(frame.getRuntime(), Chain()));
-}
-
-static void test_print_hello(PrimitiveFrame &frame) {
-  assert(frame.getNumArgs() == 1 && frame.getNumResults() == 1);
-  printf("hello bef executor!\n");
-  fflush(stdout);
-  frame.setResult(0, copyRCRef(frame.getArg(0)));
-}
-
-static void test_constant42_i32(PrimitiveFrame &frame) {
-  assert(frame.getNumArgs() == 0 && frame.getNumResults() == 1);
-  frame.setResult(
-      0, AsyncValueRef<int32_t>::createReady(frame.getRuntime(), 42));
-}
-
-static void test_print_i32(PrimitiveFrame &frame) {
-  assert(frame.getNumArgs() == 2 && frame.getNumResults() == 1);
-  printf("int32 = %d\n", frame.getArg<int32_t>(0));
-  frame.setResult(0, copyRCRef(frame.getArg(1)));
-}
-
-static void test_add_i32(PrimitiveFrame &frame) {
-  assert(frame.getNumArgs() == 2 && frame.getNumResults() == 1);
-  int32_t result = frame.getArg<int32_t>(0) + frame.getArg<int32_t>(1);
-  frame.setResult(
-      0, AsyncValueRef<int32_t>::createReady(frame.getRuntime(), result));
-}
-
-//===----------------------------------------------------------------------===//
 // Main driver
 //===----------------------------------------------------------------------===//
 
@@ -261,11 +219,7 @@ int main(int argc, char **argv) {
 
   // Set up all our primitives.
   PrimitiveRegistry primitives;
-  primitives.add("test.chain.new", test_chain_new);
-  primitives.add("test.print_hello", test_print_hello);
-  primitives.add("test.constant42.i32", test_constant42_i32);
-  primitives.add("test.print.i32", test_print_i32);
-  primitives.add("test.add.i32", test_add_i32);
+  registerAllGraphRTPrimitives(primitives);
 
   mlir::MLIRContext context;
   {
