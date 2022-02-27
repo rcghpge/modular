@@ -399,6 +399,9 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
     // execution has been canceled we'll stop running primitives.
     AsyncValue *anyErrorArgument = nullptr;
 
+    // Reserve space in the frame to avoid vector reallocation.
+    frame.reserveArgsAndResults(operands.size(), numResults);
+
     // Handle operands.
     for (auto registerIdx : operands) {
       RegisterInfo &reg = registers[registerIdx];
@@ -407,7 +410,7 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
       // that are started before all operands are available. In that case, we
       // use an IndirectAsyncValue so it can be resolved later.
       AsyncValue *value = reg.getOrCreateIndirectValue();
-      frame.addArg(value);
+      frame.addArg(takeRCRef(value));
 
       // If any operand is an error, we implicitly propagate it through to all
       // results and short-circuit execution of the primitive.
@@ -442,8 +445,8 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
     // Now that the primitive had a chance to look at the operand registers,
     // we're done with them.  Drop their reference so they can potentially be
     // deallocated if this was the last user of them.
-    for (auto *arg : frame.getArguments())
-      arg->dropRef();
+    for (RCRef<AsyncValue> &arg : frame.getArguments())
+      arg.reset();
 
     // Iterate over all results of the primitive.  If the primitive immediately
     // completed a result (its AsyncValue is "ready"), then we can add all users
@@ -456,8 +459,10 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
 
     for (size_t resultNo = 0, e = resultNos.size(); resultNo != e;
          ++resultNo) {
-      AsyncValue *result = frame.getResult(resultNo);
-      assert(result && "Primitive impl did not set a result!");
+      RCRef<AsyncValue> &resultRef = frame.getResult(resultNo);
+      assert(resultRef && "Primitive impl did not set a result!");
+      // Take the result's +1 refcount.
+      auto *result = resultRef.release();
 
       // Store the value in the register table, and get the final AsyncValue to
       // be used by the register. This could be an IndirectAsyncValue.

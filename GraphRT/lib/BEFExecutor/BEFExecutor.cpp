@@ -34,7 +34,7 @@ RCRef<AsyncValue> PrimitiveFrame::getError(Error cause) {
 /// Mark that execution of the primitive failed with the specified reason.
 /// This fills in all remaining unspecified results with that error value.
 void PrimitiveFrame::fail(Error cause) {
-  AsyncValue *errorOperand = nullptr;
+  RCRef<AsyncValue> *errorOperand = nullptr;
   for (auto &result : getResults()) {
     // Ignore results already specified.
     if (result)
@@ -42,12 +42,12 @@ void PrimitiveFrame::fail(Error cause) {
 
     // If this is our first error operand, allocate the error.
     if (!errorOperand) {
-      result = errorOperand = getError(std::move(cause)).release();
+      result = getError(std::move(cause));
+      errorOperand = &result;
       continue;
     }
 
     // Otherwise, reuse the previous error.
-    result = errorOperand;
-    result->addRef();
+    result = errorOperand->copy();
   }
 }

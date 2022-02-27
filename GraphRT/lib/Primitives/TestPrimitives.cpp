@@ -29,7 +29,7 @@ static void test_print_hello(PrimitiveFrame &frame) {
   assert(frame.getNumArgs() == 1 && frame.getNumResults() == 1);
   printf("hello bef executor!\n");
   fflush(stdout);
-  frame.setResult(0, copyRCRef(frame.getArg(0)));
+  frame.setResult(0, frame.getArg(0).copy());
 }
 
 static void test_constant_i32(PrimitiveFrame &frame) {
@@ -42,7 +42,7 @@ static void test_print_i32(PrimitiveFrame &frame) {
   assert(frame.getNumArgs() == 2 && frame.getNumResults() == 1);
   printf("int32 = %d\n", frame.getArg<int32_t>(0));
   fflush(stdout);
-  frame.setResult(0, copyRCRef(frame.getArg(1)));
+  frame.setResult(0, frame.getArg(1).copy());
 }
 
 static void test_add_i32(PrimitiveFrame &frame) {

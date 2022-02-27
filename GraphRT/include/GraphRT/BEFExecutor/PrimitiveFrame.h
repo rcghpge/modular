@@ -37,18 +37,18 @@ public:
   size_t getNumArgs() const { return numArguments; }
 
   /// Get the argument at the given index as AsyncValue*.
-  AsyncValue *getArg(size_t index) const {
+  RCRef<AsyncValue> &getArg(size_t index) {
     assert(index < getNumArgs() && "invalid argument number");
     return argsAndResults[index];
   }
 
   /// Look through the argument AsyncValue to get the element as type T.
   template <typename T>
-  T &getArg(size_t index) const {
+  T &getArg(size_t index) {
     return getArg(index)->get<T>();
   }
 
-  ArrayRef<AsyncValue *> getArguments() const {
+  ArrayRef<RCRef<AsyncValue>> getArguments() const {
     return llvm::makeArrayRef(argsAndResults.data(), getNumArgs());
   }
 
@@ -76,21 +76,21 @@ public:
 
   size_t getNumResults() const { return numResults; }
 
-  ArrayRef<AsyncValue *> getResults() const {
+  ArrayRef<RCRef<AsyncValue>> getResults() const {
     return const_cast<PrimitiveFrame *>(this)->getResults();
   }
 
-  MutableArrayRef<AsyncValue *> getResults() {
-    AsyncValue **firstResult = argsAndResults.data() + numArguments;
+  MutableArrayRef<RCRef<AsyncValue>> getResults() {
+    RCRef<AsyncValue> *firstResult = argsAndResults.data() + numArguments;
     return llvm::makeMutableArrayRef(firstResult, getNumResults());
   }
 
   /// Set the result at the given index with the given AsyncValue.
   void setResult(size_t index, RCRef<AsyncValue> value) {
     assert(index < numResults && "invalid result number");
-    AsyncValue *&result = argsAndResults[numArguments + index];
+    RCRef<AsyncValue> &result = argsAndResults[numArguments + index];
     assert(!result && "result is already set");
-    result = value.release();
+    result = std::move(value);
   }
 
   /// Set the result at the given index to a newly constructed T value with the
@@ -128,7 +128,7 @@ protected:
 
   /// We store arguments and results in a single SmallVector for efficiency:
   /// one less vector to overflow.
-  SmallVector<AsyncValue *, 16> argsAndResults;
+  SmallVector<RCRef<AsyncValue>, 16> argsAndResults;
 
   /// This keeps track of each attribute value into the attributeSection.
   ArrayRef<uint32_t> attrOffsets;
@@ -156,23 +156,33 @@ public:
     attrOffsets = {};
   }
 
-  // Add a new argument.
-  void addArg(AsyncValue *value) {
+  /// Reserve space in the arg/result vector to reduce allocations.
+  void reserveArgsAndResults(size_t numArgs, size_t numResults) {
+    argsAndResults.reserve(numArgs + numResults);
+  }
+
+ /// Get mutable access to the argument list.
+  MutableArrayRef<RCRef<AsyncValue>> getArguments() {
+    return llvm::makeMutableArrayRef(argsAndResults.data(), getNumArgs());
+  }
+
+  /// Add a new argument.
+  void addArg(RCRef<AsyncValue> value) {
     assert(numResults == uint16_t(~0U) &&
            "Must call AddArg before calling SetNumResults");
-    argsAndResults.push_back(value);
+    argsAndResults.push_back(std::move(value));
     ++numArguments;
   }
 
-  // Set the number of results expected, and allocate space to capture them.
+  /// Set the number of results expected, and allocate space to capture them.
   void setNumResults(size_t n) {
-    assert(numArguments == argsAndResults.size());
-    assert(numResults == uint16_t(~0U));
+    assert(numArguments == argsAndResults.size() &&
+           numResults == uint16_t(~0U));
     numResults = n;
     argsAndResults.resize(argsAndResults.size() + n);
   }
 
-  AsyncValue *getResult(size_t index) const {
+  RCRef<AsyncValue> &getResult(size_t index) {
     assert(index < numResults && "invalid result #");
     return argsAndResults[numArguments + index];
   }
