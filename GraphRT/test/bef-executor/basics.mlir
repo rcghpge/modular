@@ -15,7 +15,6 @@
 // CHECK: hello bef-executor 1
 // CHECK: bef barf: 42 x
 
-
 // CHECK-LABEL: Can not run 'args_results' because it has arguments
 bef.func @args_results(%a: i32, %b: i8) -> (i8, i32) {
   bef.output %b, %a : i8, i32
@@ -61,4 +60,12 @@ bef.func @basic.i32() {
 
   bef.output
 }
+
+// CHECK-LABEL: --- Running 'test_result'
+bef.func @test_result() -> (i32, i32) {
+  %x = "test.constant42.i32"() : () -> i32
+  %add = "test.add.i32"(%x, %x) : (i32, i32) -> i32
+  bef.output %x, %add : i32, i32
+}
+// CHECK: 'test_result' returned 42, 84
 

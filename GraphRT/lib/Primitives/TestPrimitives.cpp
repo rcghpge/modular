@@ -42,6 +42,7 @@ static void test_constant42_i32(PrimitiveFrame &frame) {
 static void test_print_i32(PrimitiveFrame &frame) {
   assert(frame.getNumArgs() == 2 && frame.getNumResults() == 1);
   printf("int32 = %d\n", frame.getArg<int32_t>(0));
+  fflush(stdout);
   frame.setResult(0, copyRCRef(frame.getArg(1)));
 }
 

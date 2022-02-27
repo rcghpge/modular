@@ -161,18 +161,20 @@ static void runFunctionTestcase(const Function *fn, Runtime &runtime) {
   if (fn->getName().empty())
     return;
 
+  auto &os = outs();
+
   // If the function takes arguments, then we can't run it from this driver.
   // TODO: Should eventually handle chain inputs.
   if (fn->getNumArguments() != 0) {
-    outs() << "--- Can not run '" << fn->getName()
-           << "' because it has arguments.\n";
-    outs().flush();
+    os << "--- Can not run '" << fn->getName()
+       << "' because it has arguments.\n";
+    os.flush();
     return;
   }
 
   // Actually run the function.
-  outs() << "--- Running '" << fn->getName() << "':\n";
-  outs().flush();
+  os << "--- Running '" << fn->getName() << "':\n";
+  os.flush();
 
   llvm::SmallVector<RCRef<AsyncValue>, 4> results;
   results.resize(fn->getNumResults());
@@ -181,7 +183,17 @@ static void runFunctionTestcase(const Function *fn, Runtime &runtime) {
   // Block until the function results are fully resolved.
   runtime.await(results);
 
-  // TODO: Print out the function results that we know about.
+  // Print out the function results that we know about.
+  // Go ahead and print out the function results that we know about.
+  if (!results.empty()) {
+    os << "'" << fn->getName() << "' returned ";
+    llvm::interleaveComma(results, os, [&](const RCRef<AsyncValue> &result) {
+      // FIXME: This hard codes the result type to int32_t.
+      os << result->get<int32_t>();
+    });
+    os << '\n';
+    os.flush();
+  }
 
   // In this test driver, we want to make sure that every function completes
   // all execution before moving on to the next one.  This makes the leak

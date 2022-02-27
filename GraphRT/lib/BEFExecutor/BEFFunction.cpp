@@ -233,6 +233,7 @@ private:
       SmallVectorImpl<uint32_t> &primitiveIDWorklist);
   void processUsedByRecords(AsyncValue *result, AsyncValue *registerVal,
                             ArrayRef<uint32_t> users,
+                            uint32_t totalUserRefCount,
                             SmallVectorImpl<uint32_t> &primitiveIDWorklist);
 
 private:
@@ -477,7 +478,8 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
       befPrimitiveEntry += numResultUsers;
 
       // Process users of this result, adding them to the worklist as needed.
-      processUsedByRecords(result, registerVal, users, primitiveIDWorklist);
+      processUsedByRecords(result, registerVal, users, resultReg.userCount,
+                           primitiveIDWorklist);
     }
   }
 }
@@ -488,9 +490,12 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
 /// `andThen` logic to process them when they become available.
 ///
 /// This function also adjusts the reference count of `result` and `registerVal`
-/// to prepare for the users, who will each drop a reference as they go.
+/// to prepare for the users, who will each drop a reference as they go.  This
+/// count of users is specified by `totalUserRefCount`.  It may be larger than
+/// `users.size()` because the later doesn't account for bef.output.
 void BEFExecutor::processUsedByRecords(
     AsyncValue *result, AsyncValue *registerVal, ArrayRef<uint32_t> users,
+    uint32_t totalUserRefCount,
     SmallVectorImpl<uint32_t> &primitiveIDWorklist) {
 
   // If the result is ready (typical case), then we can be efficient and avoid
@@ -503,13 +508,13 @@ void BEFExecutor::processUsedByRecords(
     // result value has a +1 for each user.  It already has a +1 reference, so
     // we add '#users - 1' references.  In the degenerate case of no users, this
     // drops the last reference to the AsyncValue and it is deallocated.
-    if (users.empty()) {
+    if (totalUserRefCount == 0) {
       assert(result == registerVal &&
              "cannot have an indirectvalue with no users");
       registerVal->dropRef();
     } else if (result == registerVal) { // IndirectValue RC already handled.
-      if (users.size() != 1)            // Don't atomic add 0.
-        registerVal->addRef(users.size() - 1);
+      if (totalUserRefCount != 1)            // Don't atomic add 0.
+        registerVal->addRef(totalUserRefCount - 1);
     }
     return;
   }
