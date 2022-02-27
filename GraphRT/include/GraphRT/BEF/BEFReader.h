@@ -11,6 +11,7 @@
 #ifndef GRAPHRT_BEF_BEFREADER_H
 #define GRAPHRT_BEF_BEFREADER_H
 
+#include "GraphRT/BEF/BEFEncoding.h"
 #include "Support/Error.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/FunctionExtras.h"

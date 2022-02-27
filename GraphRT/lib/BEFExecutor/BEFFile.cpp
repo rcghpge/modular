@@ -10,7 +10,6 @@
 
 #include "GraphRT/BEFExecutor/BEFFile.h"
 #include "BEFFileImpl.h"
-#include "GraphRT/BEF/BEFEncoding.h"
 #include "GraphRT/BEF/BEFReader.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "LLCL/Support/RCRef.h"
