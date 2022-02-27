@@ -131,6 +131,14 @@ public:
   /// Emit an offset within a known BEF section.
   void emitOffset(BEFOffset offset) { emitVBR(offset.value); }
 
+  /// Emit an offset to a primitive, which is known to be aligned, so we can
+  /// emit a smaller number.
+  void emitPrimitiveOffsetNumber(BEFOffset offset) {
+    assert((offset.value & (BEF::PRIMITIVE_ENTRY_ALIGNMENT - 1)) == 0 &&
+           "offset to primitive isn't correctly aligned");
+    emitVBR(offset.value / BEF::PRIMITIVE_ENTRY_ALIGNMENT);
+  }
+
   // Many parts of the emitter logic includes forward references into stuff
   // that hasn't been emitted and has variable size.  This is handled by making
   // nested emitters.  This helper function emits the subpieces once they are
@@ -806,7 +814,7 @@ void BEFFunctionEmitter::emitFunction(Region *region) {
   // registers on entry to the function.
   if (block.getNumArguments() != 0) {
     // Offset of the primitive in the list.
-    emitOffset(primitiveList.getOffset());
+    emitPrimitiveOffsetNumber(primitiveList.getOffset());
     // Pseudo has zero operands that need to be available.
     emitVBR(0);
     emitArgumentsPseudoOp(&block, primitiveList);
@@ -824,7 +832,7 @@ void BEFFunctionEmitter::emitFunction(Region *region) {
       isNonStrict = op.getAttr(BEF::kNonStrictAttrName) != Attribute();
 
     // Offset of the primitive in the list.
-    emitOffset(primitiveList.getOffset());
+    emitPrimitiveOffsetNumber(primitiveList.getOffset());
     // Number of operands that need to be available before it is ready to go.
     auto numOperandsBeforeRunning = op.getNumOperands();
 
