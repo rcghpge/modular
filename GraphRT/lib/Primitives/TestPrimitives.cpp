@@ -34,8 +34,7 @@ static void test_print_hello(PrimitiveFrame &frame) {
 
 static void test_constant42_i32(PrimitiveFrame &frame) {
   assert(frame.getNumArgs() == 0 && frame.getNumResults() == 1);
-  frame.setResult(0,
-                  AsyncValueRef<int32_t>::createReady(frame.getRuntime(), 42));
+  frame.emplaceResult<int32_t>(0, 42);
 }
 
 static void test_print_i32(PrimitiveFrame &frame) {
@@ -48,8 +47,23 @@ static void test_print_i32(PrimitiveFrame &frame) {
 static void test_add_i32(PrimitiveFrame &frame) {
   assert(frame.getNumArgs() == 2 && frame.getNumResults() == 1);
   int32_t result = frame.getArg<int32_t>(0) + frame.getArg<int32_t>(1);
-  frame.setResult(
-      0, AsyncValueRef<int32_t>::createReady(frame.getRuntime(), result));
+  frame.emplaceResult<int32_t>(0, result);
+}
+
+//===----------------------------------------------------------------------===//
+// Error handling
+//===----------------------------------------------------------------------===//
+
+// This kernel produces only failure/success as Error.
+static void test_fail(PrimitiveFrame &frame) {
+  frame.setResult(0, frame.getError("something bad happened"));
+}
+
+// This kernel produces a normal output and an error output.
+static void test_partial_fail(PrimitiveFrame &frame) {
+  assert(frame.getNumArgs() == 0 && frame.getNumResults() == 2);
+  frame.emplaceResult<int32_t>(0, 42);
+  frame.fail("something partially bad happened");
 }
 
 /// This registers the 'test' dialect primitives, intended for writing executor
@@ -60,4 +74,7 @@ void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
   registry.add("test.constant42.i32", test_constant42_i32);
   registry.add("test.print.i32", test_print_i32);
   registry.add("test.add.i32", test_add_i32);
+
+  registry.add("test.fail", test_fail);
+  registry.add("test.partial_fail", test_partial_fail);
 }

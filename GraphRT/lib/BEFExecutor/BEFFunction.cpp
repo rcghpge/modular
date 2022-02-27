@@ -21,14 +21,6 @@
 using namespace M;
 
 //===----------------------------------------------------------------------===//
-// Function implementation
-//===----------------------------------------------------------------------===//
-
-// NOTE: This could be moved out to somewhere non-BEF specific if there are
-// other kinds of functions someday.
-void Function::vtableAnchor() {}
-
-//===----------------------------------------------------------------------===//
 // RegisterInfo
 //===----------------------------------------------------------------------===//
 
@@ -444,7 +436,8 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
       fnImpl(frame);
     } else {
       // Otherwise, automatically propagate errors to the result values.
-      assert(0 && "Error propagation not implemented");
+      for (size_t i = 0; i != numResults; ++i)
+        frame.setResult(i, copyRCRef(anyErrorArgument));
     }
 
     // Now that the primitive had a chance to look at the operand registers,
@@ -558,7 +551,7 @@ void BEFFunction::execute(ArrayRef<AsyncValue *> arguments,
 
   // Parse the rest of the tables now that we allocated memory.
   if (headerParseFailure || executor->decodeTables(decoder)) {
-    // TODO: Fill in error async value results.
+    // Fill in error async value results.
     assert(0 && "FIXME: Errors not implemented yet");
     abort();
   }

@@ -84,7 +84,33 @@ public:
     result = value.release();
   }
 
-  // TODO: convenience methods for constructing results.
+  /// Set the result at the given index to a newly constructed T value with the
+  /// specified constructor arguments.
+  template <typename T, typename... Args>
+  void emplaceResult(size_t index, Args &&...args) {
+    setResult(index, AsyncValueRef<T>::createReady(
+                         runtime, std::forward<Args>(args)...));
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Error Results
+  //===--------------------------------------------------------------------===//
+
+  /// Create an AsyncValue with the specified cause, and our current location.
+  /// This can be set into a result or used for other purposes.
+  RCRef<AsyncValue> getError(Error cause);
+
+  /// Mark that execution of the primitive failed with the specified reason.
+  /// This fills in all remaining unspecified results with that error value.
+  void fail(Error cause);
+
+private:
+  AsyncValue *&getResultEntry(size_t index) {
+    assert(index < numResults && "invalid result number");
+    AsyncValue *&result = argsResultsAndAttrs[numArguments + index].value;
+    assert(!result && "result is already set");
+    return result;
+  }
 
 protected:
   Runtime &runtime;

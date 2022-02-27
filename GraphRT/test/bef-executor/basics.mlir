@@ -28,8 +28,8 @@ bef.func @print_test() {
   bef.output
 }
 
-// CHECK-LABEL: --- Running 'three_print_error'
-bef.func @three_print_error() {
+// CHECK-LABEL: --- Running 'three_print'
+bef.func @three_print() {
   %ch0 = "test.chain.new"() : () -> !bef.chain
 
   // CHECK: hello bef executor!
@@ -66,7 +66,19 @@ bef.func @test_result() -> (i32, i32, !bef.chain) {
   %ch0 = "test.chain.new"() : () -> !bef.chain
   %x = "test.constant42.i32"() : () -> i32
   %add = "test.add.i32"(%x, %x) : (i32, i32) -> i32
+  // CHECK: 'test_result' returned 42, 84
   bef.output %x, %add, %ch0 : i32, i32, !bef.chain
 }
-// CHECK: 'test_result' returned 42, 84
+
+
+// CHECK-LABEL: --- Running 'errors'
+bef.func @errors() -> (i32, i32, i32) {
+  %a = "test.fail"() : () -> i32
+  %b, %c = "test.partial_fail"() : () -> (i32, i32)
+
+  bef.output %a, %b, %c : i32, i32, i32
+  // CHECK: 'errors' returned <error: something bad happened>,
+  // CHECK: 42, <error: something partially bad happened>
+}
+
 

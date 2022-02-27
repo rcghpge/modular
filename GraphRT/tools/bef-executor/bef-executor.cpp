@@ -189,6 +189,12 @@ static void runFunctionTestcase(const Function *fn, Runtime &runtime) {
   if (!results.empty()) {
     os << "'" << fn->getName() << "' returned ";
     llvm::interleaveComma(results, os, [&](const RCRef<AsyncValue> &result) {
+      // Handle error value.
+      if (auto *error = result->getErrorIfPresent()) {
+        os << "<error: " << *error << '>';
+        return;
+      }
+
 #define HANDLE_TYPE(TYPE)                                                      \
   if (result->isType<TYPE>()) {                                                \
     os << result->get<TYPE>();                                                 \
