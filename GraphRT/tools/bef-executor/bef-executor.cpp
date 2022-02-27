@@ -194,6 +194,11 @@ static void runFunctionTestcase(const Function *fn, Runtime &runtime) {
   // TODO: Verify no leaked ReferenceCounted instances or AsyncValue's!
 }
 
+static void printHello() {
+  printf("hello bef executor!\n");
+  fflush(stdout);
+}
+
 int main(int argc, char **argv) {
   // Helper for printing errors below.
   auto emitToolError = [=](Twine message) -> int {
@@ -217,7 +222,7 @@ int main(int argc, char **argv) {
 
   // Set up all our primitives.
   PrimitiveRegistry primitives;
-  primitives.add("test.something", abort);
+  primitives.add("test.print_hello", printHello);
 
   mlir::MLIRContext context;
   {

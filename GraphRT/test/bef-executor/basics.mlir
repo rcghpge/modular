@@ -21,9 +21,24 @@ bef.func @args_results(%a: i32, %b: i8) -> (i8, i32) {
   bef.output %b, %a : i8, i32
 }
 
-// CHECK-LABEL: Running 'run_prim':
-bef.func @run_prim() {
-  // CHECK: execute run_prim
-  "test.something"() : () -> ()
+// CHECK-LABEL: Running 'print_test':
+bef.func @print_test() {
+  // CHECK: hello bef executor!
+  "test.print_hello"() : () -> ()
+  bef.output
+}
+
+// CHECK-LABEL: --- Running 'three_print_error'
+bef.func @three_print_error() {
+
+  // CHECK: hello bef executor!
+  "test.print_hello"() : () -> ()
+
+  // CHECK: hello bef executor!
+  "test.print_hello"() : () -> ()
+
+  // CHECK: hello bef executor!
+  "test.print_hello"() : () -> ()
+
   bef.output
 }
