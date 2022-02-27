@@ -46,7 +46,7 @@ bef.func @three_print() {
 
 // CHECK-LABEL: --- Running 'basic.i32'
 bef.func @basic.i32() {
-  %x = "test.constant42.i32"() : () -> i32
+  %x = "test.constant.i32"() { value = 42 : i32} : () -> i32
 
   %ch0 = "test.chain.new"() : () -> !bef.chain
 
@@ -64,9 +64,10 @@ bef.func @basic.i32() {
 // CHECK-LABEL: --- Running 'test_result'
 bef.func @test_result() -> (i32, i32, !bef.chain) {
   %ch0 = "test.chain.new"() : () -> !bef.chain
-  %x = "test.constant42.i32"() : () -> i32
-  %add = "test.add.i32"(%x, %x) : (i32, i32) -> i32
-  // CHECK: 'test_result' returned 42, 84
+  %x = "test.constant.i32"() { value = 42 : i32 } : () -> i32
+  %y = "test.constant.i32"() { value = 13 : i32 } : () -> i32
+  %add = "test.add.i32"(%x, %y) : (i32, i32) -> i32
+  // CHECK: 'test_result' returned 42, 55
   bef.output %x, %add, %ch0 : i32, i32, !bef.chain
 }
 

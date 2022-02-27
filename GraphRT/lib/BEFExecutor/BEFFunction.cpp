@@ -423,7 +423,8 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
     frame.setNumResults(numResults);
 
     // Set up attributes.
-    assert(attrOffsets.empty() && "attributes not supported yet");
+    for (uint32_t attrOffset : attrOffsets)
+      frame.addAttr(befFile->attributes.data() + attrOffset);
 
     // Set up functions.
     assert(numFunctions == 0);
@@ -551,9 +552,15 @@ void BEFFunction::execute(ArrayRef<AsyncValue *> arguments,
 
   // Parse the rest of the tables now that we allocated memory.
   if (headerParseFailure || executor->decodeTables(decoder)) {
-    // Fill in error async value results.
-    assert(0 && "FIXME: Errors not implemented yet");
-    abort();
+    // Fill in error async value results if there are any present.
+    if (results.empty())
+      return;
+    results[0] = takeRCRef(AsyncValue::createError(
+        owner->runtime, std::move(decoder.befFormatError.getValue())));
+    // Fill in the rest with the same error.
+    for (size_t i = 1; i != results.size(); ++i)
+      results[i] = results[0].copy();
+    return;
   }
 
   // Finally, start execution of any primitives that are ready to go.

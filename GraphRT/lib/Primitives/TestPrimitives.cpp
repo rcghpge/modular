@@ -32,9 +32,10 @@ static void test_print_hello(PrimitiveFrame &frame) {
   frame.setResult(0, copyRCRef(frame.getArg(0)));
 }
 
-static void test_constant42_i32(PrimitiveFrame &frame) {
-  assert(frame.getNumArgs() == 0 && frame.getNumResults() == 1);
-  frame.emplaceResult<int32_t>(0, 42);
+static void test_constant_i32(PrimitiveFrame &frame) {
+  assert(frame.getNumArgs() == 0 && frame.getNumResults() == 1 &&
+         frame.getNumAttrs() == 1);
+  frame.emplaceResult<int32_t>(0, frame.getAttr<int32_t>(0));
 }
 
 static void test_print_i32(PrimitiveFrame &frame) {
@@ -71,7 +72,7 @@ static void test_partial_fail(PrimitiveFrame &frame) {
 void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
   registry.add("test.chain.new", test_chain_new);
   registry.add("test.print_hello", test_print_hello);
-  registry.add("test.constant42.i32", test_constant42_i32);
+  registry.add("test.constant.i32", test_constant_i32);
   registry.add("test.print.i32", test_print_i32);
   registry.add("test.add.i32", test_add_i32);
 

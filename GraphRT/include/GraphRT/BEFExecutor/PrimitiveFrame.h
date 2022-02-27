@@ -59,7 +59,26 @@ public:
   // Attributes
   //===--------------------------------------------------------------------===//
 
-  // TODO: Attributes.
+  /// Get the number of attributes.
+  size_t getNumAttrs() const {
+    return argsResultsAndAttrs.size() - (numArguments + numResults);
+  }
+
+  /// Get all the attributes.
+  ArrayRef<const void *> getAttributes() const {
+    const void *const *firstAttr =
+        &argsResultsAndAttrs.data()[numArguments + numResults].attr;
+    return llvm::makeArrayRef(firstAttr, getNumAttrs());
+  }
+
+  /// Get the attribute at the given index.
+  const void *getRawAttr(size_t index) const { return getAttributes()[index]; }
+
+  // Get the attribute at the given index as type T.
+  template <typename T>
+  const T &getAttr(size_t index) const {
+    return *static_cast<const T *>(getRawAttr(index));
+  }
 
   //===--------------------------------------------------------------------===//
   // Results
@@ -168,6 +187,15 @@ public:
   AsyncValue *getResult(size_t index) const {
     assert(index < numResults && "invalid result #");
     return argsResultsAndAttrs[numArguments + index].value;
+  }
+
+  // Add a new attribute.
+  void addAttr(const void *attr) {
+    assert(numResults != uint16_t(~0U) &&
+           "Must call setNumResults before calling addAttr");
+    AsyncValueOrAttr elt;
+    elt.attr = attr;
+    argsResultsAndAttrs.push_back(elt);
   }
 };
 
