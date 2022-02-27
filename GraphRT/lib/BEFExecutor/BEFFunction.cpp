@@ -13,6 +13,7 @@
 
 #include "BEFFileImpl.h"
 #include "GraphRT/BEF/BEFReader.h"
+#include "GraphRT/BEFExecutor/PrimitiveFrame.h"
 #include "LLCL/Runtime/AsyncValue.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "LLCL/Support/RCRef.h"
@@ -49,6 +50,12 @@ struct RegisterInfo {
   /// necessary.
   AsyncValue *getOrCreateIndirectValue();
 
+  /// Set this register to the specified value when the primitive that
+  /// constructs it has completed.  This returns the actual value held by the
+  /// register file, which may be an IndirectAsyncValue if someone needed the
+  /// result register before it was computed.
+  AsyncValue *setRegister(AsyncValue *newValue);
+
 private:
   /// This is a pointer to the AsyncValue for a register as the function
   /// executes.  It is generally filled in when the primitive that generates it
@@ -69,6 +76,35 @@ AsyncValue *RegisterInfo::getOrCreateIndirectValue() {
   // be a bit careful though because a concurrent task could swap in the actual
   // result while we're working on this.
   assert(0 && "indirect value isn't implemented yet");
+  abort();
+}
+
+/// Set this register to the specified value when the primitive that
+/// constructs it has completed.  This returns the actual value held by the
+/// register file, which may be an IndirectAsyncValue if someone needed the
+/// result register before it was computed.
+AsyncValue *RegisterInfo::setRegister(AsyncValue *newValue) {
+  // If this result is unused, save some atomic operations by not storing the
+  // value in the register.
+  if (userCount == 0) {
+    // We know there must not have been an indirect reference to resolve.
+    assert(!getValue());
+    return newValue;
+  }
+
+  // Atomically set value to newValue.
+  AsyncValue *existing = nullptr;
+  if (value.compare_exchange_strong(existing, newValue,
+                                    std::memory_order_release,
+                                    std::memory_order_acquire)) {
+    // Success!
+    return newValue;
+  }
+
+  // If there was already a value in it, it must be a IndirectAsyncValue. We
+  // set the IndirectAsyncValue to point to the result.
+  // assert(getValue()->isUnresolvedIndirect());
+  assert(0 && "IndirectAsyncValue not implemented yet");
   abort();
 }
 
@@ -187,13 +223,17 @@ public:
 
 private:
   /// Set up registers for input arguments to a function.
-  void processArgumentsPseudo(SmallVectorImpl<unsigned> &primitiveIDs,
+  void processArgumentsPseudo(SmallVectorImpl<uint32_t> &primitiveIDWorklist,
                               ArrayRef<AsyncValue *> arguments);
 
   /// Decrement the `numOperandsNotReady` counters for the specified primitives
   /// by one, executing them if they are now ready to run. This processes the
   /// entries from the end of the vector to the start - worklist style.
-  void decrementOperandsNotReadyCounts(SmallVectorImpl<unsigned> &primitiveIDs);
+  void decrementOperandsNotReadyCounts(
+      SmallVectorImpl<uint32_t> &primitiveIDWorklist);
+  void processUsedByRecords(AsyncValue *result, AsyncValue *registerVal,
+                            ArrayRef<uint32_t> users,
+                            SmallVectorImpl<uint32_t> &primitiveIDWorklist);
 
 private:
   /// Make sure the BEF file doesn't get deallocated while we're
@@ -307,7 +347,8 @@ void BEFExecutor::execute(const BEFFunction &fn,
 
 /// Set up registers for input arguments to a function.
 void BEFExecutor::processArgumentsPseudo(
-    SmallVectorImpl<unsigned> &primitiveIDs, ArrayRef<AsyncValue *> arguments) {
+    SmallVectorImpl<uint32_t> &primitiveIDWorklist,
+    ArrayRef<AsyncValue *> arguments) {
   /// TODO: InitializeArgumentRegisters
   assert(0 && "arguments not implemented yet!");
   abort();
@@ -317,18 +358,25 @@ void BEFExecutor::processArgumentsPseudo(
 /// one, executing them if they are now ready to run. This processes the entries
 /// from the end of the vector to the start - worklist style.
 void BEFExecutor::decrementOperandsNotReadyCounts(
-    SmallVectorImpl<unsigned> &primitiveIDs) {
+    SmallVectorImpl<uint32_t> &primitiveIDWorklist) {
 
+  PrimitiveFrameBuilder frame(befFile->runtime);
+
+  MutableArrayRef<RegisterInfo> registers = getRegisterInfoTable();
   MutableArrayRef<PrimitiveInfo> primitives = getPrimitiveInfoTable();
 
-  while (!primitiveIDs.empty()) {
-    auto primitiveID = primitiveIDs.pop_back_val();
+  while (!primitiveIDWorklist.empty()) {
+    auto primitiveID = primitiveIDWorklist.pop_back_val();
     assert(primitiveID < primitives.size() && "invalid primitive ID");
 
     // Decrement the count and see if we're ready to run.  If not, then the
     // primitive isn't ready to run yet.
     if (primitives[primitiveID].numOperandsNotReady.fetch_sub(1) != 1)
       continue;
+
+    // Reset the frame back to its initial state so we can fill it in for this
+    // invocation.
+    frame.reset();
 
     const uint32_t *befPrimitiveEntry =
         &funcBody[primitives[primitiveID].offset];
@@ -346,7 +394,8 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
     auto fnImpl = befFile->primitives[opcode];
     assert(fnImpl != nullptr);
 
-    auto numResultUsers = llvm::makeArrayRef(befPrimitiveEntry, numResults);
+    auto perResultUsersCount =
+        llvm::makeArrayRef(befPrimitiveEntry, numResults);
     befPrimitiveEntry += numResults;
     auto operands = llvm::makeArrayRef(befPrimitiveEntry, numOperands);
     befPrimitiveEntry += numOperands;
@@ -360,7 +409,25 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
     AsyncValue *anyErrorArgument = nullptr;
 
     // Handle operands.
-    assert(operands.empty() && "operands not supported yet");
+    for (auto registerIdx : operands) {
+      RegisterInfo &reg = registers[registerIdx];
+
+      // The operand register may not be available for non-strict primitives
+      // that are started before all operands are available. In that case, we
+      // use an IndirectAsyncValue so it can be resolved later.
+      AsyncValue *value = reg.getOrCreateIndirectValue();
+      frame.addArg(value);
+
+      // If any operand is an error, we implicitly propagate it through to all
+      // results and short-circuit execution of the primitive.
+      if (value->isError()) {
+        anyErrorArgument = value;
+        break;
+      }
+    }
+
+    // Handle results.
+    frame.setNumResults(numResults);
 
     // Set up attributes.
     assert(attrOffsets.empty() && "attributes not supported yet");
@@ -373,29 +440,81 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
       // Set the location for the primitive so they can report errors.
       (void)locOffset;
       // Run it.
-      fnImpl();
+      fnImpl(frame);
     } else {
       // Otherwise, automatically propagate errors to the result values.
       assert(0 && "Error propagation not implemented");
     }
 
-    // Now that the primitive had a chance to look at the arguments, we're done
-    // with them, so they can potentially be deallocated if this was the last
-    // user of them.
-    assert(operands.empty() && "operands not supported yet");
+    // Now that the primitive had a chance to look at the operand registers,
+    // we're done with them.  Drop their reference so they can potentially be
+    // deallocated if this was the last user of them.
+    for (auto *arg : frame.getArguments())
+      arg->dropRef();
 
-    // Iterate over all results of the primitive. If a result has no users, it
-    // will be skipped. Otherwise, if the primitive immediately completed a
-    // result, then we can mark all users as ready to go.  If not, we need to
-    // enqueue them on their unavailable operands.
+    // Iterate over all results of the primitive.  If the primitive immediately
+    // completed a result (its AsyncValue is "ready"), then we can add all users
+    // to our worklist.  If not, we `andThen` on their unavailable result.
+    //
+    // TODO: It doesn't make sense to encode all result numbers in here since
+    // they are all consequtive: one should be enough.
     auto resultNos = llvm::makeArrayRef(befPrimitiveEntry, numResults);
     befPrimitiveEntry += numResults;
 
     for (size_t resultNo = 0, e = resultNos.size(); resultNo != e;
          ++resultNo) {
-      assert(0 && "results not implemented yet");
+      AsyncValue *result = frame.getResult(resultNo);
+      assert(result && "Primitive impl did not set a result!");
+
+      // Store the value in the register table, and get the final AsyncValue to
+      // be used by the register. This could be an IndirectAsyncValue.
+      RegisterInfo &resultReg = registers[resultNos[resultNo]];
+      auto *registerVal = resultReg.setRegister(result);
+
+      // Get the array of primitive ID's that use this result.
+      uint32_t numResultUsers = perResultUsersCount[resultNo];
+      auto users = llvm::makeArrayRef(befPrimitiveEntry, numResultUsers);
+      befPrimitiveEntry += numResultUsers;
+
+      // Process users of this result, adding them to the worklist as needed.
+      processUsedByRecords(result, registerVal, users, primitiveIDWorklist);
     }
   }
+}
+
+/// After setting a result into the register file, process all the "used by"
+/// records for this result.  If the result is 'ready' (typical in synchronous
+/// kernels) then we want to add users to the worklist.  If not, we have to do
+/// `andThen` logic to process them when they become available.
+///
+/// This function also adjusts the reference count of `result` and `registerVal`
+/// to prepare for the users, who will each drop a reference as they go.
+void BEFExecutor::processUsedByRecords(
+    AsyncValue *result, AsyncValue *registerVal, ArrayRef<uint32_t> users,
+    SmallVectorImpl<uint32_t> &primitiveIDWorklist) {
+
+  // If the result is ready (typical case), then we can be efficient and avoid
+  // "andThen" logic.
+  if (AsyncValue::isReady(result->getState())) {
+    primitiveIDWorklist.append(users.begin(), users.end());
+
+    // If we are fulfilling an IndirectValue, then the IndirectValue takes the
+    // +1 value from this AsyncValue.  Otherwise, we need to make sure the
+    // result value has a +1 for each user.  It already has a +1 reference, so
+    // we add '#users - 1' references.  In the degenerate case of no users, this
+    // drops the last reference to the AsyncValue and it is deallocated.
+    if (users.empty()) {
+      assert(result == registerVal &&
+             "cannot have an indirectvalue with no users");
+      registerVal->dropRef();
+    } else if (result == registerVal) { // IndirectValue RC already handled.
+      if (users.size() != 1)            // Don't atomic add 0.
+        registerVal->addRef(users.size() - 1);
+    }
+    return;
+  }
+
+  assert(0 && "async result case not handled yet!");
 }
 
 //===----------------------------------------------------------------------===//

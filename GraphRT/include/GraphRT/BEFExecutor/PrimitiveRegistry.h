@@ -11,6 +11,7 @@
 #include "Support/LLVM.h"
 
 namespace M {
+class PrimitiveFrame;
 
 /// This represents a mapping between the names of the MLIR opcodes to the
 /// implementations of those functions, along with type mappings.
@@ -19,8 +20,9 @@ public:
   PrimitiveRegistry();
   ~PrimitiveRegistry();
 
-  /// TODO: these functions should take and modify some state!
-  using PrimitiveImplFn = void (*)();
+  /// Primitive implementations use this signature, acting on the data provided
+  /// in the argument frame, and returning results through it.
+  using PrimitiveImplFn = void (*)(PrimitiveFrame &frame);
 
   void add(StringRef name, PrimitiveImplFn fn);
 
