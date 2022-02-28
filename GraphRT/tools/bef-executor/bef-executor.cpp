@@ -197,13 +197,17 @@ static void runFunctionTestcase(const Function *fn, Runtime &runtime) {
   auto &os = outs();
 
   // If the function takes arguments, then we can't run it from this driver.
-  // TODO: Should eventually handle chain inputs.
   if (fn->getNumArgs() != 0) {
     os << "--- Can not run '" << fn->getName()
        << "' because it has arguments.\n";
     os.flush();
     return;
   }
+
+  // If we are leak checking, remember how many AsyncValue's we started with.
+  ssize_t numStartingLiveAsyncValues;
+  if (AsyncValue::isAllocationTrackingEnabled())
+    numStartingLiveAsyncValues = AsyncValue::getNumAllocatedInstances();
 
   // Actually run the function.
   os << "--- Running '" << fn->getName() << "':\n";
@@ -250,6 +254,7 @@ static void runFunctionTestcase(const Function *fn, Runtime &runtime) {
     });
     os << '\n';
     os.flush();
+    results.clear();
   }
 
   // In this test driver, we want to make sure that every function completes
@@ -258,7 +263,17 @@ static void runFunctionTestcase(const Function *fn, Runtime &runtime) {
   // properly chained together (which is useful for testing).
   runtime.quiesce();
 
-  // TODO: Verify no leaked ReferenceCounted instances or AsyncValue's!
+  // Make sure we're not leaking AsyncValues.
+  if (AsyncValue::isAllocationTrackingEnabled()) {
+    auto numLiveAsyncValues = AsyncValue::getNumAllocatedInstances();
+    if (numLiveAsyncValues != numStartingLiveAsyncValues) {
+      os << "Evaluation of function '" << fn->getName() << "' leaked "
+         << (numLiveAsyncValues - numStartingLiveAsyncValues)
+         << " async values (before: " << numStartingLiveAsyncValues
+         << ", after: " << numLiveAsyncValues << ")!\n";
+      abort();
+    }
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -289,6 +304,9 @@ int main(int argc, char **argv) {
   // Set up all our primitives.
   PrimitiveRegistry primitives;
   registerAllGraphRTPrimitives(primitives);
+
+  assert(AsyncValue::getNumAllocatedInstances() == 0 &&
+         "We have async values allocated before we started to do anything");
 
   mlir::MLIRContext context;
   {
@@ -331,8 +349,11 @@ int main(int argc, char **argv) {
       runFunctionTestcase(fn, runtime);
   }
 
+  assert(AsyncValue::getNumAllocatedInstances() == 0 &&
+         "All async values should be cleaned up at the end");
+
   LLCL::verifyNoLiveReferenceCountedObjects(
-      "All objects should be deallocated");
+      "All refcounted objects should be deallocated");
 
   return 0;
 }
