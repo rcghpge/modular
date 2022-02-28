@@ -47,6 +47,10 @@ struct RegisterInfo {
   /// result register before it was computed.
   AsyncValue *setRegister(AsyncValue *newValue);
 
+  /// Set this register to the specified value when initializing arguments. This
+  /// is equivalent but slightly cheaper than setRegister.
+  void setArgumentRegister(AsyncValue *newValue);
+
 private:
   /// This is a pointer to the AsyncValue for a register as the function
   /// executes.  It is generally filled in when the primitive that generates it
@@ -94,9 +98,16 @@ AsyncValue *RegisterInfo::setRegister(AsyncValue *newValue) {
 
   // If there was already a value in it, it must be a IndirectAsyncValue. We
   // set the IndirectAsyncValue to point to the result.
-  // assert(getValue()->isUnresolvedIndirect());
-  assert(0 && "IndirectAsyncValue not implemented yet");
-  abort();
+  existing->resolveIndirect(copyRCRef(newValue));
+  return existing;
+}
+
+/// Set this register to the specified value when initializing arguments.
+void RegisterInfo::setArgumentRegister(AsyncValue *newValue) {
+  // If this result is unused, save some atomic operations by not storing the
+  // value in the register.
+  if (userCount != 0)
+    value = newValue;
 }
 
 //===----------------------------------------------------------------------===//
@@ -185,7 +196,8 @@ public:
   bool decodeTables(BEFFunctionDecoder &decoder);
 
   /// Execute the function once the tables are decoded.
-  void execute(const BEFFunction &fn, ArrayRef<RCRef<AsyncValue>> arguments,
+  void execute(const BEFFunction &fn,
+               MutableArrayRef<RCRef<AsyncValue>> arguments,
                MutableArrayRef<RCRef<AsyncValue>> results,
                ArrayRef<unsigned> resultRegIndex);
 
@@ -215,7 +227,7 @@ public:
 private:
   /// Set up registers for input arguments to a function.
   void processArgumentsPseudo(SmallVectorImpl<uint32_t> &primitiveIDWorklist,
-                              ArrayRef<RCRef<AsyncValue>> arguments);
+                              MutableArrayRef<RCRef<AsyncValue>> arguments);
 
   /// Decrement the `numOperandsNotReady` counters for the specified primitives
   /// by one, executing them if they are now ready to run. This processes the
@@ -286,7 +298,7 @@ bool BEFExecutor::decodeTables(BEFFunctionDecoder &decoder) {
 
  /// Execute the function once the tables are decoded.
 void BEFExecutor::execute(const BEFFunction &fn,
-                          ArrayRef<RCRef<AsyncValue>> arguments,
+                          MutableArrayRef<RCRef<AsyncValue>> arguments,
                           MutableArrayRef<RCRef<AsyncValue>> results,
                           ArrayRef<unsigned> resultRegIndex) {
   // Now that the executor is all set up and ready to go, kick off the ready
@@ -390,10 +402,36 @@ struct PrimitiveDecoder {
 /// Set up registers for input arguments to a function.
 void BEFExecutor::processArgumentsPseudo(
     SmallVectorImpl<uint32_t> &primitiveIDWorklist,
-    ArrayRef<RCRef<AsyncValue>> arguments) {
-  /// TODO: InitializeArgumentRegisters
-  assert(0 && "arguments not implemented yet!");
-  abort();
+    MutableArrayRef<RCRef<AsyncValue>> arguments) {
+  // We're handling the 0th primitive, so remove it from the worklist.
+  assert(primitiveIDWorklist.back() == 0);
+  primitiveIDWorklist.pop_back();
+
+  // Decode the first primitive, which is the pseudo-op for the argument
+  // block.
+  PrimitiveDecoder decoder(&funcBody[0]);
+  assert(decoder.numOperands == 0 && decoder.numAttrs == 0 &&
+         decoder.numFunctions == 0 && decoder.numResults == arguments.size() &&
+         "malformed argument record");
+
+  MutableArrayRef<RegisterInfo> registers = getRegisterInfoTable();
+
+  // Process each argument in turn, capturing its value into the register file,
+  // and (if the value is ready) adding all the users of it to the worklist for
+  // processing.
+  for (size_t i = 0, e = arguments.size(); i != e; ++i) {
+    AsyncValue *argPtr = arguments[i].getPointer();
+    registers[i].setArgumentRegister(argPtr);
+
+    // Get the array of primitive ID's that use this result.
+    uint32_t numResultUsers = decoder.perResultUsersCount[i];
+    auto users = decoder.getEncodedElements(numResultUsers);
+
+    // Process users of this result, adding them to the worklist as needed. This
+    // consumes the argument pointer's +1 value.
+    processUsedByRecords(std::move(arguments[i]), argPtr, users,
+                         registers[i].userCount, primitiveIDWorklist);
+  }
 }
 
 /// Decrement the `numOperandsNotReady` counters for the specified primitives by
@@ -575,7 +613,7 @@ void BEFFunction::dropRef() const { owner->dropRef(); }
 
 /// Execute this function, passing the specified arguments. This returns one
 /// AsyncValue for each result.
-void BEFFunction::execute(ArrayRef<RCRef<AsyncValue>> arguments,
+void BEFFunction::execute(MutableArrayRef<RCRef<AsyncValue>> arguments,
                           MutableArrayRef<RCRef<AsyncValue>> results) const {
   assert(arguments.size() == getNumArgs() &&
          "incorrect number of argument to a BEF function");

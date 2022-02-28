@@ -98,3 +98,34 @@ bef.func @simple_calls() -> (i32, i32) {
   bef.output %a, %b : i32, i32
   // CHECK: 'simple_calls' returned <error: something bad happened>, 42
 }
+
+// CHECK-LABEL: --- Can not run 'call_print.i32' because it has arguments
+bef.func @call_print.i32(%x: i32) -> !bef.chain {
+  %ch0 = "bef.chain.new"() : () -> !bef.chain
+  %ch1 = "test.print.i32"(%x, %ch0) : (i32, !bef.chain) -> !bef.chain
+  bef.output %ch1 : !bef.chain
+}
+
+// CHECK-LABEL: --- Can not run 'add_one' because it has arguments
+bef.func @add_one(%x: i32) -> i32 {
+  %c1 = "test.constant.i32"() { value = 1 : i32 } : () -> i32
+  %y = "test.add.i32"(%x, %c1) : (i32, i32) -> i32
+  bef.output %y : i32
+}
+
+// CHECK-LABEL: --- Running 'caller'
+bef.func @caller() -> !bef.chain {
+  %c1 = "test.constant.i32"() { value = 1 : i32 } : () -> i32
+
+  // CHECK-NEXT: int32 = 1
+  %ch0 = "bef.call"(%c1) { fn = @call_print.i32 } : (i32) -> (!bef.chain)
+
+  %x = "bef.call"(%c1) {fn = @add_one } : (i32) -> i32
+
+  // CHECK-NEXT: int32 = 2
+  %ch1 = "test.print.i32"(%x, %ch0) : (i32, !bef.chain) -> !bef.chain
+
+  bef.output %ch1 : !bef.chain
+
+  // CHECK-NEXT: 'caller' returned chain
+}

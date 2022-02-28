@@ -24,7 +24,7 @@ static void test_print_hello(PrimitiveFrame &frame) {
   assert(frame.getNumArgs() == 1 && frame.getNumResults() == 1);
   printf("hello bef executor!\n");
   fflush(stdout);
-  frame.setResult(0, frame.getArg(0).copy());
+  frame.setResult(0, std::move(frame.getArg(0)));
 }
 
 static void test_constant_i32(PrimitiveFrame &frame) {

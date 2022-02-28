@@ -52,6 +52,10 @@ public:
     return llvm::makeArrayRef(argsAndResults.data(), getNumArgs());
   }
 
+  MutableArrayRef<RCRef<AsyncValue>> getArguments() {
+    return llvm::makeMutableArrayRef(argsAndResults.data(), getNumArgs());
+  }
+
   //===--------------------------------------------------------------------===//
   // Attributes
   //===--------------------------------------------------------------------===//
