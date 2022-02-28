@@ -13,13 +13,13 @@
 #include "GraphRT/BEFExecutor/Function.h"
 #include "GraphRT/BEFExecutor/PrimitiveFrame.h"
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
+#include "LLCL/ForwardDecls.h"
 #include "LLCL/Runtime/AsyncValueRef.h"
 #include "LLCL/Runtime/Runtime.h"
 using namespace M;
 
-static void bef_chain_new(PrimitiveFrame &frame) {
-  assert(frame.getNumArgs() == 0 && frame.getNumResults() == 1);
-  frame.setResult(0, frame.getRuntime().getReadyChain());
+static AsyncValueRef<Chain> bef_chain_new(Runtime *runtime) {
+  return runtime->getReadyChain().copy();
 }
 
 static void bef_call(PrimitiveFrame &frame) {
@@ -37,6 +37,6 @@ static void bef_call(PrimitiveFrame &frame) {
 
 /// This registers primitives used for core control flow operations.
 void M::registerGraphRTControlFlowPrimitives(PrimitiveRegistry &registry) {
-  registry.add("bef.chain.new", bef_chain_new);
+  registry.add("bef.chain.new", M_PRIMITIVE(bef_chain_new));
   registry.add("bef.call", bef_call);
 }
