@@ -175,25 +175,27 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
 
   /// If this requires the PrimitiveFrame for any reason, pass it along.
   template <typename... Tail>
-  struct CallHelper<PrimitiveFrame *, Tail...> {
+  struct CallHelper<PrimitiveFrame &, Tail...> {
     template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
               bool hasErrorHandler, bool hasInChain, typename... PreviousArgs>
-    static void invoke(PrimitiveFrame &frame, const PreviousArgs &...pargs) {
+    static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
       CallHelper<Tail...>::template invoke<argIdx, resultIdx, attrIdx, funcIdx,
-                                           hasErrorHandler, hasInChain>(
-          frame, pargs..., &frame);
+                                           hasErrorHandler, hasInChain,
+                                           PreviousArgs..., PrimitiveFrame &>(
+          frame, pargs..., frame);
     }
   };
 
   /// If this requires a Runtime, pass it along.
   template <typename... Tail>
-  struct CallHelper<Runtime *, Tail...> {
+  struct CallHelper<Runtime &, Tail...> {
     template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
               bool hasErrorHandler, bool hasInChain, typename... PreviousArgs>
-    static void invoke(PrimitiveFrame &frame, const PreviousArgs &...pargs) {
+    static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
       CallHelper<Tail...>::template invoke<argIdx, resultIdx, attrIdx, funcIdx,
-                                           hasErrorHandler, hasInChain>(
-          frame, pargs..., &frame.getRuntime());
+                                           hasErrorHandler, hasInChain,
+                                           PreviousArgs..., Runtime &>(
+          frame, pargs..., frame.getRuntime());
     }
   };
 
@@ -204,7 +206,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
 
     template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
               bool hasErrorHandler, bool hasInChain, typename... PreviousArgs>
-    static void invoke(PrimitiveFrame &frame, const PreviousArgs &...pargs) {
+    static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
       static_assert(argIdx != -1,
                     "Do not place Arguments after RemainingArguments");
       static_assert(resultIdx == 0, "Arguments should appear before results");
@@ -247,7 +249,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
 
     template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
               bool hasErrorHandler, bool hasInChain, typename... PreviousArgs>
-    static void invoke(PrimitiveFrame &frame, const PreviousArgs &...pargs) {
+    static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
       AssertIndex<Return, resultIdx>::verify(frame);
 
       assert((argIdx == frame.getNumArgs() || argIdx == -1 ||

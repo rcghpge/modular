@@ -18,8 +18,8 @@
 #include "LLCL/Runtime/Runtime.h"
 using namespace M;
 
-static AsyncValueRef<Chain> bef_chain_new(Runtime *runtime) {
-  return runtime->getReadyChain().copy();
+static AsyncValueRef<Chain> bef_chain_new(Runtime &runtime) {
+  return runtime.getReadyChain().copy();
 }
 
 static void bef_call(PrimitiveFrame &frame) {

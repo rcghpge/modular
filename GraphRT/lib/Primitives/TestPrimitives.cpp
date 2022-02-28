@@ -61,11 +61,11 @@ static std::pair<ErrorOr<int32_t>, ErrorOr<int32_t>> test_partial_fail() {
 // Async Operations
 //===----------------------------------------------------------------------===//
 
-static AsyncValueRef<int32_t> test_async_add_i32(Runtime *runtime, int32_t lhs,
-                                                 int32_t rhs) {
+static AsyncValueRef<int32_t> test_async_add_i32(int32_t lhs, int32_t rhs,
+                                                 Runtime &runtime) {
   // Even though a single scalar add is trivial, we can do it on a background
   // thread if we'd like!
-  return addTask(*runtime, [lhs, rhs] { return lhs + rhs; });
+  return addTask(runtime, [lhs, rhs] { return lhs + rhs; });
 }
 
 /// This registers the 'test' dialect primitives, intended for writing executor
