@@ -337,6 +337,56 @@ void BEFExecutor::execute(const BEFFunction &fn,
   }
 }
 
+namespace {
+/// This struct holds the data decoded for a primitive in a BEF function.
+struct PrimitiveDecoder {
+  const uint32_t *dataPtr;
+
+  uint32_t opcode, locOffset;
+  uint16_t numOperands, numAttrs;
+  uint16_t numFunctions, numResults;
+  llvm::ArrayRef<uint32_t> perResultUsersCount;
+  llvm::ArrayRef<uint32_t> operandIndices;
+  llvm::ArrayRef<uint32_t> attrOffsets;
+  llvm::ArrayRef<uint32_t> functionIndices;
+  llvm::ArrayRef<uint32_t> resultRegNumbers;
+
+  explicit PrimitiveDecoder(const uint32_t *dataPtr) {
+    // Decode the fixed header.
+    opcode = *dataPtr++;
+    locOffset = *dataPtr++;
+    uint32_t numOperandsAndAttrs = *dataPtr++;
+    numOperands = uint16_t(numOperandsAndAttrs);
+    numAttrs = uint16_t(numOperandsAndAttrs >> 16);
+    uint32_t numFunctionsAndResults = *dataPtr++;
+    numFunctions = uint16_t(numFunctionsAndResults);
+    numResults = uint16_t(numFunctionsAndResults >> 16);
+
+    // Decode the variable size fields.
+    perResultUsersCount = llvm::makeArrayRef(dataPtr, numResults);
+    dataPtr += numResults;
+    operandIndices = llvm::makeArrayRef(dataPtr, numOperands);
+    dataPtr += numOperands;
+    attrOffsets = llvm::makeArrayRef(dataPtr, numAttrs);
+    dataPtr += numAttrs;
+    functionIndices = llvm::makeArrayRef(dataPtr, numFunctions);
+    dataPtr += numFunctions;
+
+    // TODO: It doesn't make sense to encode all result numbers in here since
+    // they are all consequtive: one should be enough.
+    resultRegNumbers = llvm::makeArrayRef(dataPtr, numResults);
+    dataPtr += numResults;
+    this->dataPtr = dataPtr;
+  }
+
+  llvm::ArrayRef<uint32_t> getEncodedElements(size_t numElements) {
+    auto result = llvm::makeArrayRef(dataPtr, numElements);
+    dataPtr += numElements;
+    return result;
+  }
+};
+} // end anonymous namespace
+
 /// Set up registers for input arguments to a function.
 void BEFExecutor::processArgumentsPseudo(
     SmallVectorImpl<uint32_t> &primitiveIDWorklist,
@@ -370,27 +420,12 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
     // invocation.
     frame.reset();
 
-    const uint32_t *befPrimitiveEntry =
-        &funcBody[primitives[primitiveID].offset];
-    uint32_t opcode = *befPrimitiveEntry++;
-    uint32_t locOffset = *befPrimitiveEntry++;
-    uint32_t numOperandsAndAttrs = *befPrimitiveEntry++;
-    uint16_t numOperands = uint16_t(numOperandsAndAttrs);
-    uint16_t numAttrs = uint16_t(numOperandsAndAttrs >> 16);
-
-    uint32_t numFunctionsAndResults = *befPrimitiveEntry++;
-    uint16_t numFunctions = uint16_t(numFunctionsAndResults);
-    uint16_t numResults = uint16_t(numFunctionsAndResults >> 16);
+    // Decode the primitive record.
+    PrimitiveDecoder decoder(&funcBody[primitives[primitiveID].offset]);
 
     // Find the implementation of this primitive.
-    auto fnImpl = befFile->primitives[opcode];
+    auto fnImpl = befFile->primitives[decoder.opcode];
     assert(fnImpl != nullptr);
-
-    auto perResultUsersCount =
-        llvm::makeArrayRef(befPrimitiveEntry, numResults);
-    befPrimitiveEntry += numResults;
-    auto operands = llvm::makeArrayRef(befPrimitiveEntry, numOperands);
-    befPrimitiveEntry += numOperands;
 
     // Keep track of whether we saw any error arguments. If so, we propagate the
     // error to the results automatically.
@@ -399,10 +434,10 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
     AsyncValue *anyErrorArgument = nullptr;
 
     // Reserve space in the frame to avoid vector reallocation.
-    frame.reserveArgsAndResults(operands.size(), numResults);
+    frame.reserveArgsAndResults(decoder.numOperands, decoder.numResults);
 
     // Handle operands.
-    for (auto registerIdx : operands) {
+    for (auto registerIdx : decoder.operandIndices) {
       RegisterInfo &reg = registers[registerIdx];
 
       // The operand register may not be available for non-strict primitives
@@ -420,26 +455,24 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
     }
 
     // Handle results.
-    frame.setNumResults(numResults);
+    frame.setNumResults(decoder.numResults);
 
     // Set up attributes, the frame object takes the offsets directly.
-    frame.setAttrs(llvm::makeArrayRef(befPrimitiveEntry, numAttrs));
-    befPrimitiveEntry += numAttrs;
+    frame.setAttrs(decoder.attrOffsets);
 
     // Set up functions.
-    for (size_t fnID : llvm::makeArrayRef(befPrimitiveEntry, numFunctions))
+    for (size_t fnID : decoder.functionIndices)
       frame.addFunction(befFile->getFunctionByID(fnID));
-    befPrimitiveEntry += numFunctions;
 
     // If all arguments are good then run the function.
     if (!anyErrorArgument) {
       // Set the location for the primitive so they can report errors.
-      (void)locOffset;
+      (void)decoder.locOffset;
       // Run it.
       fnImpl(frame);
     } else {
       // Otherwise, automatically propagate errors to the result values.
-      for (size_t i = 0; i != numResults; ++i)
+      for (size_t i = 0; i != decoder.numResults; ++i)
         frame.setResult(i, copyRCRef(anyErrorArgument));
     }
 
@@ -452,26 +485,19 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
     // Iterate over all results of the primitive.  If the primitive immediately
     // completed a result (its AsyncValue is "ready"), then we can add all users
     // to our worklist.  If not, we `andThen` on their unavailable result.
-    //
-    // TODO: It doesn't make sense to encode all result numbers in here since
-    // they are all consequtive: one should be enough.
-    auto resultNos = llvm::makeArrayRef(befPrimitiveEntry, numResults);
-    befPrimitiveEntry += numResults;
-
-    for (size_t resultNo = 0, e = resultNos.size(); resultNo != e;
-         ++resultNo) {
+    for (size_t resultNo = 0, e = decoder.resultRegNumbers.size();
+         resultNo != e; ++resultNo) {
       RCRef<AsyncValue> &result = frame.getResult(resultNo);
       assert(result && "Primitive impl did not set a result!");
 
       // Store the value in the register table, and get the final AsyncValue to
       // be used by the register. This could be an IndirectAsyncValue.
-      RegisterInfo &resultReg = registers[resultNos[resultNo]];
+      RegisterInfo &resultReg = registers[decoder.resultRegNumbers[resultNo]];
       auto *registerVal = resultReg.setRegister(result.getPointer());
 
       // Get the array of primitive ID's that use this result.
-      uint32_t numResultUsers = perResultUsersCount[resultNo];
-      auto users = llvm::makeArrayRef(befPrimitiveEntry, numResultUsers);
-      befPrimitiveEntry += numResultUsers;
+      uint32_t numResultUsers = decoder.perResultUsersCount[resultNo];
+      auto users = decoder.getEncodedElements(numResultUsers);
 
       // Process users of this result, adding them to the worklist as needed.
       processUsedByRecords(std::move(result), registerVal, users,
