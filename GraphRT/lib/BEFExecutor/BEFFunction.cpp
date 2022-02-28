@@ -222,7 +222,7 @@ private:
   /// entries from the end of the vector to the start - worklist style.
   void decrementOperandsNotReadyCounts(
       SmallVectorImpl<uint32_t> &primitiveIDWorklist);
-  void processUsedByRecords(AsyncValue *result, AsyncValue *registerVal,
+  void processUsedByRecords(RCRef<AsyncValue> result, AsyncValue *registerVal,
                             ArrayRef<uint32_t> users,
                             uint32_t totalUserRefCount,
                             SmallVectorImpl<uint32_t> &primitiveIDWorklist);
@@ -301,7 +301,7 @@ void BEFExecutor::execute(const BEFFunction &fn,
   // hops, clean top-down execution semantics (very cache friendly and good for
   // more predictable unit tests), and results in all the atomics staying in
   // that cores' cache.
-  SmallVector<unsigned, 16> primitiveIDToVisit;
+  SmallVector<uint32_t, 16> primitiveIDToVisit;
 
   // If a kernel's result has multiple uses, we will get multiple entries added
   // on the worklist. We reserve some extra space to accommodate this growth.
@@ -458,15 +458,13 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
 
     for (size_t resultNo = 0, e = resultNos.size(); resultNo != e;
          ++resultNo) {
-      RCRef<AsyncValue> &resultRef = frame.getResult(resultNo);
-      assert(resultRef && "Primitive impl did not set a result!");
-      // Take the result's +1 refcount.
-      auto *result = resultRef.release();
+      RCRef<AsyncValue> &result = frame.getResult(resultNo);
+      assert(result && "Primitive impl did not set a result!");
 
       // Store the value in the register table, and get the final AsyncValue to
       // be used by the register. This could be an IndirectAsyncValue.
       RegisterInfo &resultReg = registers[resultNos[resultNo]];
-      auto *registerVal = resultReg.setRegister(result);
+      auto *registerVal = resultReg.setRegister(result.getPointer());
 
       // Get the array of primitive ID's that use this result.
       uint32_t numResultUsers = perResultUsersCount[resultNo];
@@ -474,8 +472,8 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
       befPrimitiveEntry += numResultUsers;
 
       // Process users of this result, adding them to the worklist as needed.
-      processUsedByRecords(result, registerVal, users, resultReg.userCount,
-                           primitiveIDWorklist);
+      processUsedByRecords(std::move(result), registerVal, users,
+                           resultReg.userCount, primitiveIDWorklist);
     }
   }
 }
@@ -490,32 +488,50 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
 /// count of users is specified by `totalUserRefCount`.  It may be larger than
 /// `users.size()` because the later doesn't account for bef.output.
 void BEFExecutor::processUsedByRecords(
-    AsyncValue *result, AsyncValue *registerVal, ArrayRef<uint32_t> users,
+    RCRef<AsyncValue> result, AsyncValue *registerVal, ArrayRef<uint32_t> users,
     uint32_t totalUserRefCount,
     SmallVectorImpl<uint32_t> &primitiveIDWorklist) {
+
+  auto *resultPtr = result.getPointer();
 
   // If the result is ready (typical case), then we can be efficient and avoid
   // "andThen" logic.
   if (AsyncValue::isReady(result->getState())) {
     primitiveIDWorklist.append(users.begin(), users.end());
+  } else {
+    // Otherwise, the primitive is going to produce its result asynchronously -
+    // process the user whenever the value becomes available.
 
-    // If we are fulfilling an IndirectValue, then the IndirectValue takes the
-    // +1 value from this AsyncValue.  Otherwise, we need to make sure the
-    // result value has a +1 for each user.  It already has a +1 reference, so
-    // we add '#users - 1' references.  In the degenerate case of no users, this
-    // drops the last reference to the AsyncValue and it is deallocated.
-    if (totalUserRefCount == 0) {
-      assert(result == registerVal &&
-             "cannot have an indirectvalue with no users");
-      registerVal->dropRef();
-    } else if (result == registerVal) { // IndirectValue RC already handled.
-      if (totalUserRefCount != 1)            // Don't atomic add 0.
-        registerVal->addRef(totalUserRefCount - 1);
-    }
-    return;
+    // Keep this executor alive as long as the result is running, so all the
+    // state we maintain (e.g. attribute pointers) stay alive.
+    addRef();
+
+    // Process the whole batch of users when this result becomes available. Note
+    // that we capture `users` which is an ArrayRef instead of copying the
+    // content. This is fine because the underlying BEF file is alive when the
+    // BEF executor is.
+    resultPtr->andThen([this, users]() mutable {
+      SmallVector<uint32_t, 16> primitiveIDToVisit(users.begin(), users.end());
+      this->decrementOperandsNotReadyCounts(primitiveIDToVisit);
+      this->dropRef();
+    });
   }
 
-  assert(0 && "async result case not handled yet!");
+  // If we are fulfilling an IndirectValue, then the IndirectValue takes the
+  // +1 value from this AsyncValue.  Otherwise, we need to make sure the
+  // result value has a +1 for each user.  It already has a +1 reference, so
+  // we add '#users - 1' references.  In the degenerate case of no users, this
+  // drops the last reference to the AsyncValue and it is deallocated.
+  if (totalUserRefCount == 0) {
+    assert(resultPtr == registerVal &&
+           "cannot have an indirectvalue with no users");
+    registerVal->dropRef();
+  } else if (resultPtr == registerVal) { // IndirectValue RC already handled.
+    if (totalUserRefCount != 1)          // Don't atomic add 0.
+      registerVal->addRef(totalUserRefCount - 1);
+  }
+  // The reference count is handled manually, don't drop it.
+  result.release();
 }
 
 //===----------------------------------------------------------------------===//

@@ -13,12 +13,12 @@
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
 #include "GraphRT/Primitives.h"
 #include "LLCL/ForwardDecls.h"
+#include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/AsyncValueRef.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "LLCL/Support/Chain.h"
 #include "llvm/ADT/StringRef.h"
 using namespace M;
-using namespace LLCL;
 
 static void test_chain_new(PrimitiveFrame &frame) {
   assert(frame.getNumArgs() == 0 && frame.getNumResults() == 1);
@@ -67,6 +67,21 @@ static void test_partial_fail(PrimitiveFrame &frame) {
   frame.fail("something partially bad happened");
 }
 
+//===----------------------------------------------------------------------===//
+// Async Operations
+//===----------------------------------------------------------------------===//
+
+static void test_async_add_i32(PrimitiveFrame &frame) {
+  assert(frame.getNumArgs() == 2 && frame.getNumResults() == 1);
+  int32_t lhs = frame.getArg<int32_t>(0);
+  int32_t rhs = frame.getArg<int32_t>(1);
+
+  // Even though a single scalar add is trivial, we can do it on a background
+  // thread if we'd like!
+  frame.setResult(
+      0, addTask(frame.getRuntime(), [lhs, rhs] { return lhs + rhs; }));
+}
+
 /// This registers the 'test' dialect primitives, intended for writing executor
 /// testcases.
 void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
@@ -78,4 +93,6 @@ void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
 
   registry.add("test.fail", test_fail);
   registry.add("test.partial_fail", test_partial_fail);
+
+  registry.add("test.async.add.i32", test_async_add_i32);
 }
