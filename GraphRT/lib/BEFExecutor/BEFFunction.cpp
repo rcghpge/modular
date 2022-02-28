@@ -185,7 +185,7 @@ public:
   bool decodeTables(BEFFunctionDecoder &decoder);
 
   /// Execute the function once the tables are decoded.
-  void execute(const BEFFunction &fn, ArrayRef<AsyncValue *> arguments,
+  void execute(const BEFFunction &fn, ArrayRef<RCRef<AsyncValue>> arguments,
                MutableArrayRef<RCRef<AsyncValue>> results,
                ArrayRef<unsigned> resultRegIndex);
 
@@ -215,7 +215,7 @@ public:
 private:
   /// Set up registers for input arguments to a function.
   void processArgumentsPseudo(SmallVectorImpl<uint32_t> &primitiveIDWorklist,
-                              ArrayRef<AsyncValue *> arguments);
+                              ArrayRef<RCRef<AsyncValue>> arguments);
 
   /// Decrement the `numOperandsNotReady` counters for the specified primitives
   /// by one, executing them if they are now ready to run. This processes the
@@ -286,7 +286,7 @@ bool BEFExecutor::decodeTables(BEFFunctionDecoder &decoder) {
 
  /// Execute the function once the tables are decoded.
 void BEFExecutor::execute(const BEFFunction &fn,
-                          ArrayRef<AsyncValue *> arguments,
+                          ArrayRef<RCRef<AsyncValue>> arguments,
                           MutableArrayRef<RCRef<AsyncValue>> results,
                           ArrayRef<unsigned> resultRegIndex) {
   // Now that the executor is all set up and ready to go, kick off the ready
@@ -340,7 +340,7 @@ void BEFExecutor::execute(const BEFFunction &fn,
 /// Set up registers for input arguments to a function.
 void BEFExecutor::processArgumentsPseudo(
     SmallVectorImpl<uint32_t> &primitiveIDWorklist,
-    ArrayRef<AsyncValue *> arguments) {
+    ArrayRef<RCRef<AsyncValue>> arguments) {
   /// TODO: InitializeArgumentRegisters
   assert(0 && "arguments not implemented yet!");
   abort();
@@ -547,9 +547,9 @@ void BEFFunction::dropRef() const { owner->dropRef(); }
 
 /// Execute this function, passing the specified arguments. This returns one
 /// AsyncValue for each result.
-void BEFFunction::execute(ArrayRef<AsyncValue *> arguments,
+void BEFFunction::execute(ArrayRef<RCRef<AsyncValue>> arguments,
                           MutableArrayRef<RCRef<AsyncValue>> results) const {
-  assert(arguments.size() == getNumArguments() &&
+  assert(arguments.size() == getNumArgs() &&
          "incorrect number of argument to a BEF function");
   assert(results.size() == getNumResults() &&
          "incorrect number of results for a BEF function");

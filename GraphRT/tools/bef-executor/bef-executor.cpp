@@ -198,7 +198,7 @@ static void runFunctionTestcase(const Function *fn, Runtime &runtime) {
 
   // If the function takes arguments, then we can't run it from this driver.
   // TODO: Should eventually handle chain inputs.
-  if (fn->getNumArguments() != 0) {
+  if (fn->getNumArgs() != 0) {
     os << "--- Can not run '" << fn->getName()
        << "' because it has arguments.\n";
     os.flush();

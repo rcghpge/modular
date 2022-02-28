@@ -23,12 +23,12 @@ public:
   /// Return the name of this function or empty if anonymous.
   StringRef getName() const { return name; }
 
-  size_t getNumArguments() const { return numArguments; }
+  size_t getNumArgs() const { return numArgs; }
   size_t getNumResults() const { return numResults; }
 
   /// Execute this function, passing the specified arguments. This returns one
   /// AsyncValue for each result.
-  virtual void execute(ArrayRef<AsyncValue *> arguments,
+  virtual void execute(ArrayRef<RCRef<AsyncValue>> arguments,
                        MutableArrayRef<RCRef<AsyncValue>> results) const = 0;
 
   /// Add a new reference to this object.  The lifetime of functions are
@@ -42,12 +42,12 @@ public:
   virtual void dropRef() const = 0;
 
 protected:
-  Function(StringRef name, uint16_t numArguments, uint16_t numResults)
-      : name(name), numArguments(numArguments), numResults(numResults) {}
+  Function(StringRef name, uint16_t numArgs, uint16_t numResults)
+      : name(name), numArgs(numArgs), numResults(numResults) {}
 
 private:
   const StringRef name;
-  const uint16_t numArguments, numResults;
+  const uint16_t numArgs, numResults;
 
   Function(const Function &) = delete;
   Function &operator=(const Function &) = delete;

@@ -81,7 +81,7 @@ public:
   /// Execute this function, passing the specified arguments. This returns one
   /// AsyncValue for each result.
   virtual void
-  execute(ArrayRef<AsyncValue *> arguments,
+  execute(ArrayRef<RCRef<AsyncValue>> arguments,
           MutableArrayRef<RCRef<AsyncValue>> results) const override;
 
   /// Add a new reference to this object.  The lifetime of functions are
