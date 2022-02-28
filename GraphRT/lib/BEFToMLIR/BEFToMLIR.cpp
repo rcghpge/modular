@@ -510,6 +510,7 @@ bool FunctionParser::parsePrimitiveList() {
     uint32_t primitiveID, locOffset;
     uint16_t numOperands, numAttrs, numFunctions, numResults;
     StringAttr primitiveName;
+    uint32_t resultRegisterNo = ~0U;
     if (funcReader.parseInt4(primitiveID) || funcReader.parseInt4(locOffset) ||
         converter.resolveLocation(locOffset, loc) ||
         converter.resolvePrimitiveName(primitiveID, loc, primitiveName) ||
@@ -518,13 +519,18 @@ bool FunctionParser::parsePrimitiveList() {
       return true;
 
     // We read and ignore the # users for each result.
-    SmallVector<uint32_t> numResultUsers, operands, attrsOffsets, functions,
-        resultNos;
+    SmallVector<uint32_t> numResultUsers, operands, attrsOffsets, functions;
     if (funcReader.parseInt4Array(numResults, numResultUsers) ||
         funcReader.parseInt4Array(numOperands, operands) ||
-        funcReader.parseInt4Array(numAttrs, attrsOffsets) ||
-        funcReader.parseInt4Array(numResults, resultNos))
+        funcReader.parseInt4Array(numAttrs, attrsOffsets))
       return true;
+
+    // If the primitive had results, the register number for the first one is
+    // emitted.
+    if (numResults) {
+      if (funcReader.parseInt4(resultRegisterNo))
+        return true;
+    }
 
     // Resolve all the SSA values for the operands.
     SmallVector<Value> operandValues;
@@ -571,7 +577,7 @@ bool FunctionParser::parsePrimitiveList() {
       size_t argNo = 0;
       assert(block.getNumArguments() == numResults);
       for (auto arg : block.getArguments()) {
-        assert(resultNos[argNo] == registerValues.size() &&
+        assert(resultRegisterNo++ == registerValues.size() &&
                "result register mismatch");
         registerValues.push_back(arg);
         arg.setType(resultTypes[argNo++]);
@@ -638,9 +644,8 @@ bool FunctionParser::parsePrimitiveList() {
     }
 
     // Add all the results to the register table so subsequent ops may use it.
-    size_t elt = 0;
     for (auto result : resultOp->getResults()) {
-      assert(resultNos[elt++] == registerValues.size() &&
+      assert(resultRegisterNo++ == registerValues.size() &&
              "result register mismatch");
       registerValues.push_back(result);
     }

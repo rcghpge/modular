@@ -919,11 +919,15 @@ void BEFFunctionEmitter::emitArgumentsPseudoOp(
 
   for (auto arg : block->getArguments())
     primitiveList.emitInt4(getNumNonOutputUsers(arg));
-  for (auto arg : block->getArguments())
-    primitiveList.emitInt4(getRegisterNumber(arg));
+
+  // Only emit a single register number for the decoder for consistency.  It
+  // should always be zero since this is the first result of the first
+  // primitive.
+  assert(getRegisterNumber(block->getArguments().front()) == 0);
+  primitiveList.emitInt4(0);
+
   for (auto arg : block->getArguments()) {
     emitPrimitiveResultUsers(arg, primitiveList);
-
     // If extra metadata is enabled, remember the type for each result.
     if (mlirTypesSection)
       mlirTypesSection->emitVBR(entities.getTypeIndex(arg.getType()));
@@ -997,8 +1001,12 @@ void BEFFunctionEmitter::emitPrimitive(Operation *op,
     if (attributeNamesSection)
       attributeNamesSection->emitOffset(fnOffsetAndName.second);
   }
-  for (auto result : op->getResults())
-    primitiveList.emitInt4(getRegisterNumber(result));
+
+  // Emit a single result number of we have one or more results.  They are
+  // numbered consecutively, so we don't need to emit them all.
+  if (!op->getResults().empty())
+    primitiveList.emitInt4(getRegisterNumber(op->getResults()[0]));
+
   // Then results with the primitives that use them.
   for (auto result : op->getResults()) {
     emitPrimitiveResultUsers(result, primitiveList);

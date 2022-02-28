@@ -361,7 +361,7 @@ struct PrimitiveDecoder {
   llvm::ArrayRef<uint32_t> operandIndices;
   llvm::ArrayRef<uint32_t> attrOffsets;
   llvm::ArrayRef<uint32_t> functionIndices;
-  llvm::ArrayRef<uint32_t> resultRegNumbers;
+  uint32_t firstResultRegNumber;
 
   explicit PrimitiveDecoder(const uint32_t *dataPtr) {
     // Decode the fixed header.
@@ -383,11 +383,10 @@ struct PrimitiveDecoder {
     dataPtr += numAttrs;
     functionIndices = llvm::makeArrayRef(dataPtr, numFunctions);
     dataPtr += numFunctions;
-
-    // TODO: It doesn't make sense to encode all result numbers in here since
-    // they are all consequtive: one should be enough.
-    resultRegNumbers = llvm::makeArrayRef(dataPtr, numResults);
-    dataPtr += numResults;
+    if (numResults)
+      firstResultRegNumber = *dataPtr++;
+    else
+      firstResultRegNumber = ~0U;
     this->dataPtr = dataPtr;
   }
 
@@ -523,14 +522,15 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
     // Iterate over all results of the primitive.  If the primitive immediately
     // completed a result (its AsyncValue is "ready"), then we can add all users
     // to our worklist.  If not, we `andThen` on their unavailable result.
-    for (size_t resultNo = 0, e = decoder.resultRegNumbers.size();
-         resultNo != e; ++resultNo) {
+    for (size_t resultNo = 0, e = decoder.numResults; resultNo != e;
+         ++resultNo) {
       RCRef<AsyncValue> &result = frame.getResult(resultNo);
       assert(result && "Primitive impl did not set a result!");
 
       // Store the value in the register table, and get the final AsyncValue to
       // be used by the register. This could be an IndirectAsyncValue.
-      RegisterInfo &resultReg = registers[decoder.resultRegNumbers[resultNo]];
+      RegisterInfo &resultReg =
+          registers[decoder.firstResultRegNumber + resultNo];
       auto *registerVal = resultReg.setRegister(result.getPointer());
 
       // Get the array of primitive ID's that use this result.
