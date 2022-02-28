@@ -29,14 +29,14 @@ bef.func @args_results(%a: i32, %b: i8) -> (i8, i32) {
 // CHECK-LABEL: Running 'print_test':
 bef.func @print_test() {
   // CHECK: hello bef executor!
-  %ch0 = "test.chain.new"() : () -> !bef.chain
+  %ch0 = "bef.chain.new"() : () -> !bef.chain
   "test.print_hello"(%ch0) : (!bef.chain) -> !bef.chain
   bef.output
 }
 
 // CHECK-LABEL: --- Running 'three_print'
 bef.func @three_print() {
-  %ch0 = "test.chain.new"() : () -> !bef.chain
+  %ch0 = "bef.chain.new"() : () -> !bef.chain
 
   // CHECK: hello bef executor!
   %ch1 = "test.print_hello"(%ch0) : (!bef.chain) -> !bef.chain
@@ -54,7 +54,7 @@ bef.func @three_print() {
 bef.func @basic.i32() {
   %x = "test.constant.i32"() { value = 42 : i32} : () -> i32
 
-  %ch0 = "test.chain.new"() : () -> !bef.chain
+  %ch0 = "bef.chain.new"() : () -> !bef.chain
 
   // CHECK: int32 = 42
   %ch1 = "test.print.i32"(%x, %ch0) : (i32, !bef.chain) -> !bef.chain
@@ -69,7 +69,7 @@ bef.func @basic.i32() {
 
 // CHECK-LABEL: --- Running 'test_result'
 bef.func @test_result() -> (i32, i32, !bef.chain) {
-  %ch0 = "test.chain.new"() : () -> !bef.chain
+  %ch0 = "bef.chain.new"() : () -> !bef.chain
   %x = "test.constant.i32"() { value = 42 : i32 } : () -> i32
   %y = "test.constant.i32"() { value = 13 : i32 } : () -> i32
   %add = "test.add.i32"(%x, %y) : (i32, i32) -> i32
