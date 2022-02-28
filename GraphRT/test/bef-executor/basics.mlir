@@ -77,7 +77,6 @@ bef.func @test_result() -> (i32, i32, !bef.chain) {
   bef.output %x, %add, %ch0 : i32, i32, !bef.chain
 }
 
-
 // CHECK-LABEL: --- Running 'errors'
 bef.func @errors() -> (i32, i32, i32) {
   %a = "test.fail"() : () -> i32
@@ -88,4 +87,14 @@ bef.func @errors() -> (i32, i32, i32) {
   // CHECK: 42, <error: something partially bad happened>
 }
 
+// CHECK-LABEL: --- Running 'simple_calls'
+bef.func @simple_calls() -> (i32, i32) {
+  // CHECK: int32 = 42
+  // CHECK: int32 = 84
+  "bef.call"() { fn = @basic.i32 } : () -> ()
 
+  %a, %b, %c = "bef.call"() { fn = @errors } : () -> (i32, i32, i32)
+
+  bef.output %a, %b : i32, i32
+  // CHECK: 'simple_calls' returned <error: something bad happened>, 42
+}

@@ -8,9 +8,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GraphRT/Primitives.h"
+
+#include "GraphRT/BEFExecutor/Function.h"
 #include "GraphRT/BEFExecutor/PrimitiveFrame.h"
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
-#include "GraphRT/Primitives.h"
 #include "LLCL/Runtime/AsyncValueRef.h"
 #include "LLCL/Runtime/Runtime.h"
 using namespace M;
@@ -20,6 +22,15 @@ static void bef_chain_new(PrimitiveFrame &frame) {
   frame.setResult(0, frame.getRuntime().getReadyChain());
 }
 
+static void bef_call(PrimitiveFrame &frame) {
+  const Function *fn = frame.getFunction(0);
+  assert(fn->getNumArgs() == frame.getNumArgs() && "argument count mismatch");
+  assert(fn->getNumResults() == frame.getNumResults() &&
+         "result count mismatch");
+
+  fn->execute(frame.getArguments(), frame.getResults());
+}
+
 //===----------------------------------------------------------------------===//
 // Registration
 //===----------------------------------------------------------------------===//
@@ -27,4 +38,5 @@ static void bef_chain_new(PrimitiveFrame &frame) {
 /// This registers primitives used for core control flow operations.
 void M::registerGraphRTControlFlowPrimitives(PrimitiveRegistry &registry) {
   registry.add("bef.chain.new", bef_chain_new);
+  registry.add("bef.call", bef_call);
 }

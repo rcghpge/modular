@@ -27,6 +27,9 @@ public:
   explicit BEFFileImpl(Runtime &runtime) : runtime(runtime) {}
   ~BEFFileImpl() override;
 
+  /// Return the function with the specified BEF function ID.
+  const Function *getFunctionByID(size_t number) const;
+
   // Everything in this class is public because the entire class is private to
   // the BEFExecutor library implementation.
 public:

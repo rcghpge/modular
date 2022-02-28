@@ -427,7 +427,9 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
     befPrimitiveEntry += numAttrs;
 
     // Set up functions.
-    assert(numFunctions == 0);
+    for (size_t fnID : llvm::makeArrayRef(befPrimitiveEntry, numFunctions))
+      frame.addFunction(befFile->getFunctionByID(fnID));
+    befPrimitiveEntry += numFunctions;
 
     // If all arguments are good then run the function.
     if (!anyErrorArgument) {
@@ -585,4 +587,11 @@ void BEFFunction::execute(ArrayRef<RCRef<AsyncValue>> arguments,
   executor->execute(*this, arguments, results, decoder.resultRegs);
 
   // The RCRef drops the reference to `executor` since it is running.
+}
+
+/// Return the function with the specified BEF function ID.
+const Function *BEFFileImpl::getFunctionByID(size_t number) const {
+  assert(number < numFunctions && "invalid function");
+  // Functions are stored consequtively in memory.
+  return functions + number;
 }

@@ -14,6 +14,7 @@
 #include "llvm/ADT/SmallVector.h"
 
 namespace M {
+class Function;
 
 /// This class captures the states associated with an invocation of a primitive,
 /// including the input arguments, attributes, result values, location and
@@ -70,6 +71,18 @@ public:
   }
 
   //===--------------------------------------------------------------------===//
+  // Functions
+  //===--------------------------------------------------------------------===//
+
+  /// Get the number of attributes.
+  size_t getNumFunctions() const { return functions.size(); }
+
+  const Function *getFunction(size_t idx) const {
+    assert(idx < functions.size() && "invalid function number");
+    return functions[idx];
+  }
+
+  //===--------------------------------------------------------------------===//
   // Results
   //===--------------------------------------------------------------------===//
 
@@ -119,7 +132,7 @@ protected:
   Runtime &runtime;
 
   /// This is the overall attribute section in the BEF file.
-  ArrayRef<uint8_t> attrSection;
+  const ArrayRef<uint8_t> attrSection;
 
   /// numResults is set to ~0 so we can check that addArgument() is called
   /// before setNumResults.
@@ -128,6 +141,9 @@ protected:
   /// We store arguments and results in a single SmallVector for efficiency:
   /// one less vector to overflow.
   SmallVector<RCRef<AsyncValue>, 16> argsAndResults;
+
+  /// This is all of the function references used by the invocation.
+  SmallVector<const Function *, 2> functions;
 
   /// This keeps track of each attribute value into the attributeSection.
   ArrayRef<uint32_t> attrOffsets;
@@ -153,6 +169,7 @@ public:
     numArguments = 0;
     numResults = uint16_t(~0U);
     attrOffsets = {};
+    functions.clear();
   }
 
   /// Reserve space in the arg/result vector to reduce allocations.
@@ -190,6 +207,8 @@ public:
   void setAttrs(ArrayRef<uint32_t> attrOffsets) {
     this->attrOffsets = attrOffsets;
   }
+
+  void addFunction(const Function *fn) { functions.push_back(fn); }
 };
 
 } // namespace M
