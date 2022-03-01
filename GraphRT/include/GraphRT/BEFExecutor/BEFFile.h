@@ -16,7 +16,7 @@ namespace M {
 class Function;
 class PrimitiveRegistry;
 
-/// Instances of this class represent opened an decoded BEF files, allowing
+/// Instances of this class represent opened and decoded BEF files, allowing
 /// clients to interact with the function list, invoke functions to execute,
 /// etc.
 class BEFFile : public LLCL::ReferenceCounted<BEFFile> {

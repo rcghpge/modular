@@ -41,7 +41,7 @@ public:
                          BEFReader &attrNameReader, BEFReader &mlirTypesReader);
 
   bool emitError(Error message) {
-    mlir::emitError(module->getLoc()) << message;
+    module->emitError() << message;
     return true;
   }
 

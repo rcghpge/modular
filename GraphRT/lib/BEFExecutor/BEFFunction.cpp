@@ -24,11 +24,14 @@ using namespace M;
 //===----------------------------------------------------------------------===//
 
 namespace {
+/// Each instance of this struct is an entry in the register file for the BEF
+/// executor.  The executor keeps one of these for each SSA value in the .mlir
+/// file.
 struct RegisterInfo {
   /// This is the number of uses of the register in the function.  The
-  /// AsyncValue may be deallocated when this number of uses are complete.  This
-  /// field allows us to allocate the register with the correct reference count
-  /// up front.
+  /// AsyncValue may be deallocated when this number of users have completed
+  /// execution.  This field allows us to allocate the register with the correct
+  /// reference count up front.
   const size_t userCount;
 
   explicit RegisterInfo(unsigned userCount) : userCount(userCount) {}
@@ -258,7 +261,7 @@ bool BEFExecutor::decodeTables(BEFFunctionDecoder &decoder) {
 
   // Parse the register table.
   MutableArrayRef<RegisterInfo> regTable = getRegisterInfoTable();
-  for (size_t i = 0; i != regTable.size(); ++i) {
+  for (size_t i = 0, e = regTable.size(); i != e; ++i) {
     size_t numUses;
     if (funcReader.parseVBR(numUses))
       return true;
@@ -619,8 +622,6 @@ void BEFFunction::execute(MutableArrayRef<RCRef<AsyncValue>> arguments,
          "incorrect number of argument to a BEF function");
   assert(results.size() == getNumResults() &&
          "incorrect number of results for a BEF function");
-
-  // llvm::errs() << "Executing BEF function " << getName() << "\n";
 
   BEFFunctionDecoder decoder(*this);
   bool headerParseFailure = decoder.decodeHeader();

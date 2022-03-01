@@ -29,8 +29,12 @@ public:
   /// in the argument frame, and returning results through it.
   using PrimitiveImplFn = void (*)(PrimitiveFrame &frame);
 
+  /// Add an implementation of a primitive to the registry.  Consider using
+  /// the M_PRIMITIVE macro to enable various pretty forms for this.
   void add(StaticString name, PrimitiveImplFn fn);
 
+  /// Look up a primitive with a specified name out of the registry, returning
+  /// null if no match is found.
   PrimitiveImplFn get(StringRef name) const;
 
 private:

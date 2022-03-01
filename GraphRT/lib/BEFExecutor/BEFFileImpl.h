@@ -79,7 +79,7 @@ public:
         functionOffset(functionOffset), locationOffset(locationOffset),
         owner(owner) {}
 
-  virtual ~BEFFunction() {}
+  virtual ~BEFFunction() = default;
 
   /// Execute this function, passing the specified arguments. This returns one
   /// AsyncValue for each result.
