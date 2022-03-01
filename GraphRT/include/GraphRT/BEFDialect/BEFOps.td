@@ -1,4 +1,4 @@
-//===- BEFOps.td - BEF operators definition ----------------*- tablegen -*-===//
+//===- BEFOps.td -------------------------------------------*- tablegen -*-===//
 //
 // This file is Modular Inc proprietary.
 //

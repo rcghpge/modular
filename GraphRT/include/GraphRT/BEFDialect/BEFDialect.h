@@ -1,4 +1,4 @@
-//===- BEFDialect.h - BEF dialect declaration -------------------*- C++ -*-===//
+//===- BEFDialect.h ---------------------------------------------*- C++ -*-===//
 //
 // This file is Modular Inc proprietary.
 //

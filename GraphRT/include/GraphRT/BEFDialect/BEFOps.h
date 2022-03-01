@@ -1,4 +1,4 @@
-//===- BEFOps.h - Declare BEF dialect operations ----------------*- C++ -*-===//
+//===- BEFOps.h -------------------------------------------------*- C++ -*-===//
 //
 // This file is Modular Inc proprietary.
 //

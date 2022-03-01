@@ -1,4 +1,4 @@
-//===- BEFDialect.cpp - Implement the BEF dialect -------------------------===//
+//===- BEFDialect.cpp -----------------------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //

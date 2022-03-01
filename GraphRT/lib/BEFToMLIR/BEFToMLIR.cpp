@@ -1,4 +1,4 @@
-//===- BEFToMLIR.cpp - BEF to MLIR file format converter ------------------===//
+//===- BEFToMLIR.cpp ------------------------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //

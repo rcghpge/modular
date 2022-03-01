@@ -1,4 +1,4 @@
-//===- BEFDialect.td - BEF dialect definition --------------*- tablegen -*-===//
+//===- BEFDialect.td ---------------------------------------*- tablegen -*-===//
 //
 // This file is Modular Inc proprietary.
 //

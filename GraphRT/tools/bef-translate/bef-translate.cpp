@@ -1,4 +1,4 @@
-//===- bef-translate.cpp - BEF Translation Driver -------------------------===//
+//===- bef-translate.cpp --------------------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //

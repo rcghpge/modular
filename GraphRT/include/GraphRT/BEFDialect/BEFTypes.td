@@ -1,10 +1,10 @@
-//===- BEFTypes.td - BEF Type definitions ------------------*- tablegen -*-===//
+//===- BEFTypes.td -----------------------------------------*- tablegen -*-===//
 //
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
 //
-// This defines BEF dialect types, like !bef.chain and !bef.unknown
+// This defines BEF dialect types, like !bef.chain and !bef.unknown.
 //
 //===----------------------------------------------------------------------===//
 

@@ -1,4 +1,4 @@
-//===- Translation.cpp - MLIR to BEF translation registration -------------===//
+//===- MLIRToBEF/Translation.cpp ------------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //

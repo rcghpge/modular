@@ -1,10 +1,10 @@
-//===- BEFOps.cpp - Implement the BEF dialect operations ------------------===//
+//===- BEFOps.cpp ---------------------------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
 //
-// This file implement the BEF ops.
+// This file implements the BEF dialect operations.
 //
 //===----------------------------------------------------------------------===//
 

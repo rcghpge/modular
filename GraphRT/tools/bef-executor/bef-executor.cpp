@@ -1,4 +1,4 @@
-//===- bef-executor.cpp - BEF Executor Driver -----------------------------===//
+//===- bef-executor.cpp ---------------------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //
