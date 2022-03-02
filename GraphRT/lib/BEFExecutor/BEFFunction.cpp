@@ -42,7 +42,7 @@ struct RegisterInfo {
 
   /// Return the AsyncValue for this register, creating it on demand as
   /// necessary.
-  AsyncValue *getOrCreateIndirectValue();
+  AsyncValue *getOrCreateIndirectValue(Runtime &runtime);
 
   /// Set this register to the specified value when the primitive that
   /// constructs it has completed.  This returns the actual value held by the
@@ -64,17 +64,38 @@ private:
 
 /// Return the AsyncValue for this register, creating it on demand as
 /// necessary.
-AsyncValue *RegisterInfo::getOrCreateIndirectValue() {
+AsyncValue *RegisterInfo::getOrCreateIndirectValue(Runtime &runtime) {
   // In the normal case, just load the pointer and return it.
-  AsyncValue *value = getValue();
-  if (value)
-    return value;
+  AsyncValue *valuePtr = getValue();
+  if (valuePtr)
+    return valuePtr;
 
   // If it doesn't exist, we create an IndirectAsyncValue for this.  We have to
   // be a bit careful though because a concurrent task could swap in the actual
   // result while we're working on this.
-  assert(0 && "indirect value isn't implemented yet");
-  abort();
+  AsyncValue *indirect = AsyncValue::createIndirect(runtime).release();
+  AsyncValue *existing = nullptr;
+
+  // Speculatively set refcount to `userCount` refs with the expectation that
+  // the compare_exchange succeeds.  indirect starts with 1 reference for the
+  // RCRef, and setting this register will count as an additional use (+1), so
+  // bringing its refcount to (userCount + 1).
+  //
+  // We keep an extra +1 on IndirectAsyncValue's in the register file until they
+  // are resolved.  That way they don't get deallocated in the case when all
+  // the primitives using the register result get run (e.g. when nonstrict)
+  // ahead of the value being resolved.
+  assert(userCount && "shouldn't build an IndirectAsyncValue without users");
+  indirect->addRef(userCount);
+  if (value.compare_exchange_strong(existing, indirect,
+                                    std::memory_order_release,
+                                    std::memory_order_acquire))
+    return indirect; // Success: old value = nullptr!
+
+  // If someone beat us to setting a value then we don't need the
+  // IndirectAsyncValue after all. Decrease refcount back to 0 to free it.
+  indirect->dropRef(userCount + 1);
+  return existing;
 }
 
 /// Set this register to the specified value when the primitive that
@@ -94,10 +115,8 @@ AsyncValue *RegisterInfo::setRegister(AsyncValue *newValue) {
   AsyncValue *existing = nullptr;
   if (value.compare_exchange_strong(existing, newValue,
                                     std::memory_order_release,
-                                    std::memory_order_acquire)) {
-    // Success!
-    return newValue;
-  }
+                                    std::memory_order_acquire))
+    return newValue; // Success: old value = nullptr!
 
   // If there was already a value in it, it must be a IndirectAsyncValue. We
   // set the IndirectAsyncValue to point to the result.
@@ -342,13 +361,14 @@ void BEFExecutor::execute(const BEFFunction &fn,
   // that computes the register completes, the IndirectAsyncValue is resolved.
   assert(results.size() == resultRegIndex.size());
   MutableArrayRef<RegisterInfo> regTable = getRegisterInfoTable();
+  auto &runtime = befFile->runtime;
   for (size_t i = 0, e = results.size(); i != e; ++i) {
     assert(!results[i] && "result AsyncValue is not nullptr");
-    // We already checked the resultRegIndex numbers are inrange when parsing
+    // We already checked the resultRegIndex numbers are in-range when parsing
     // that array.  This 'takes' the reference because the refcount was
     // initialized to know that a reference from this result exists.
-    results[i] =
-        takeRCRef(regTable[resultRegIndex[i]].getOrCreateIndirectValue());
+    results[i] = takeRCRef(
+        regTable[resultRegIndex[i]].getOrCreateIndirectValue(runtime));
   }
 }
 
@@ -441,8 +461,8 @@ void BEFExecutor::processArgumentsPseudo(
 /// from the end of the vector to the start - worklist style.
 void BEFExecutor::decrementOperandsNotReadyCounts(
     SmallVectorImpl<uint32_t> &primitiveIDWorklist) {
-
-  PrimitiveFrameBuilder frame(befFile->runtime, befFile->attributes);
+  auto &runtime = befFile->runtime;
+  PrimitiveFrameBuilder frame(runtime, befFile->attributes);
 
   MutableArrayRef<RegisterInfo> registers = getRegisterInfoTable();
   MutableArrayRef<PrimitiveInfo> primitives = getPrimitiveInfoTable();
@@ -483,7 +503,7 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
       // The operand register may not be available for non-strict primitives
       // that are started before all operands are available. In that case, we
       // use an IndirectAsyncValue so it can be resolved later.
-      AsyncValue *value = reg.getOrCreateIndirectValue();
+      AsyncValue *value = reg.getOrCreateIndirectValue(runtime);
       frame.addArg(takeRCRef(value));
 
       // If any operand is an error, we implicitly propagate it through to all
@@ -560,14 +580,42 @@ void BEFExecutor::processUsedByRecords(
     RCRef<AsyncValue> result, AsyncValue *registerVal, ArrayRef<uint32_t> users,
     uint32_t totalUserRefCount,
     SmallVectorImpl<uint32_t> &primitiveIDWorklist) {
+  assert(users.size() <= totalUserRefCount &&
+         "totalUserRefCount is primitive users + bef.output");
 
   auto *resultPtr = result.getPointer();
 
+  // In the degenerate case of no users, this drops the last reference to the
+  // AsyncValue and it is deallocated.
+  if (totalUserRefCount == 0) {
+    assert(resultPtr == registerVal &&
+           "cannot have an indirectvalue with no users");
+    // Just allow `result` to go out of scope and drop its reference.
+    return;
+  }
+
+  // Make sure the result value has a +1 for each user.  It already has a +1
+  // reference from the `result` RCRef, so we add '#users - 1' references.
+  if (resultPtr == registerVal) { // IndirectValue RC already handled.
+    if (totalUserRefCount != 1)   // Don't atomic add 0.
+      resultPtr->addRef(totalUserRefCount - 1);
+    // The reference count is handled manually above, don't drop another RC.
+    result.release();
+  } else {
+    // If we are fulfilling an IndirectValue then the IndirectValue already took
+    // a +1 to this AsyncValue.  We don't need another reference, so let
+    // `result` do the dropRef when it goes out of scope.
+
+    // We are however done with the extra reference on the register
+    // IndirectAsyncValue itself, so we can drop it.
+    registerVal->dropRef();
+  }
+
   // If the result is ready (typical case), then we can be efficient and avoid
   // "andThen" logic.
-  if (AsyncValue::isReady(result->getState())) {
+  if (AsyncValue::isReady(resultPtr->getState())) {
     primitiveIDWorklist.append(users.begin(), users.end());
-  } else {
+  } else if (!users.empty()) {
     // Otherwise, the primitive is going to produce its result asynchronously -
     // process the user whenever the value becomes available.
 
@@ -585,22 +633,6 @@ void BEFExecutor::processUsedByRecords(
       this->dropRef();
     });
   }
-
-  // If we are fulfilling an IndirectValue, then the IndirectValue takes the
-  // +1 value from this AsyncValue.  Otherwise, we need to make sure the
-  // result value has a +1 for each user.  It already has a +1 reference, so
-  // we add '#users - 1' references.  In the degenerate case of no users, this
-  // drops the last reference to the AsyncValue and it is deallocated.
-  if (totalUserRefCount == 0) {
-    assert(resultPtr == registerVal &&
-           "cannot have an indirectvalue with no users");
-    registerVal->dropRef();
-  } else if (resultPtr == registerVal) { // IndirectValue RC already handled.
-    if (totalUserRefCount != 1)          // Don't atomic add 0.
-      registerVal->addRef(totalUserRefCount - 1);
-  }
-  // The reference count is handled manually, don't drop it.
-  result.release();
 }
 
 //===----------------------------------------------------------------------===//
