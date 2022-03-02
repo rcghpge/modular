@@ -56,8 +56,20 @@ struct RegisterInfo {
 
 private:
   /// This is a pointer to the AsyncValue for a register as the function
-  /// executes.  It is generally filled in when the primitive that generates it
   /// executes.
+  ///
+  /// It is set to a non-null AsyncValue in two cases:
+  ///   1) when the primitive that generates it executes, or
+  ///   2) when the result is demanded early (e.g. due to a non-strict primitive
+  ///      that uses the register as an operand, or due to the results of the
+  ///      function).  In this case it is filled with IndirectAsyncValue.
+  ///
+  /// Once filled in, we bias the reference count with the number of unexecuted
+  /// primitive operands left to execute (this is what is stored in userCount).
+  /// Each of these RC's get dropped when the using primitive executes.
+  ///
+  /// In the case of an IndirectAsyncValue (case #2 above), an extra +1 RC is
+  /// present which gets dropped when the indirect value is resolved.
   std::atomic<AsyncValue *> value{nullptr};
 };
 } // end anonymous namespace
