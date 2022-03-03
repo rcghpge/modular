@@ -12,24 +12,10 @@
 #include "GraphRT/BEFExecutor/PrimitiveFrame.h"
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
 #include "GraphRT/Primitives.h"
-#include "LLCL/ForwardDecls.h"
 #include "LLCL/Runtime/Algorithms.h"
-#include "LLCL/Runtime/AsyncValueRef.h"
 #include "LLCL/Runtime/Runtime.h"
-#include "LLCL/Support/Chain.h"
-#include "Support/ErrorOr.h"
 #include "llvm/ADT/StringRef.h"
 using namespace M;
-
-//===----------------------------------------------------------------------===//
-// Integer ops
-//===----------------------------------------------------------------------===//
-
-static void graphrt_constant_i32(PrimitiveFrame &frame) {
-  assert(frame.getNumArgs() == 0 && frame.getNumResults() == 1 &&
-         frame.getNumAttrs() == 1);
-  frame.emplaceResult<int32_t>(0, frame.getAttr<int32_t>(0));
-}
 
 //===----------------------------------------------------------------------===//
 // Misc
@@ -40,14 +26,6 @@ static Chain test_print_hello(Chain chain) {
   fflush(stdout);
   return chain;
 }
-
-static Chain test_print_i32(int32_t value, Chain chain) {
-  printf("int32 = %d\n", value);
-  fflush(stdout);
-  return chain;
-}
-
-static int32_t test_add_i32(int32_t lhs, int32_t rhs) { return lhs + rhs; }
 
 //===----------------------------------------------------------------------===//
 // Error handling
@@ -76,9 +54,6 @@ static AsyncValueRef<int32_t> test_async_add_i32(int32_t lhs, int32_t rhs,
 /// testcases.
 void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
   registry.add("test.print_hello", M_PRIMITIVE(test_print_hello));
-  registry.add("graphrt.constant.i32", graphrt_constant_i32);
-  registry.add("test.print.i32", M_PRIMITIVE(test_print_i32));
-  registry.add("test.add.i32", M_PRIMITIVE(test_add_i32));
 
   registry.add("test.fail", M_PRIMITIVE(test_fail));
   registry.add("test.partial_fail", M_PRIMITIVE(test_partial_fail));

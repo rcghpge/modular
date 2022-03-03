@@ -35,7 +35,7 @@ static void bef_call(PrimitiveFrame &frame) {
 // Registration
 //===----------------------------------------------------------------------===//
 
-/// This registers primitives used for core control flow operations.
+/// This registers the 'graphrt' dialect primitives for control flow.
 void M::registerGraphRTControlFlowPrimitives(PrimitiveRegistry &registry) {
   registry.add("graphrt.chain.new", M_PRIMITIVE(graphrt_chain_new));
   registry.add("test.call", bef_call);

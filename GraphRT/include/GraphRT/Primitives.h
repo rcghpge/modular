@@ -19,14 +19,16 @@ class PrimitiveRegistry;
 /// testcases.
 void registerGraphRTTestPrimitives(PrimitiveRegistry &registry);
 
-/// This registers primitives used for core control flow operations.
-void registerGraphRTControlFlowPrimitives(PrimitiveRegistry &registry);
+/// This registers the 'graphrt' dialect primitives for working with integers.
+void registerGraphRTIntegerPrimitives(PrimitiveRegistry &registry);
 
-/// TODO: Control flow, integer, etc primitives.
+/// This registers the 'graphrt' dialect primitives for control flow.
+void registerGraphRTControlFlowPrimitives(PrimitiveRegistry &registry);
 
 /// This registers all the primitive libraries in the GraphRT subsystem.
 inline void registerAllGraphRTPrimitives(PrimitiveRegistry &registry) {
   registerGraphRTTestPrimitives(registry);
+  registerGraphRTIntegerPrimitives(registry);
   registerGraphRTControlFlowPrimitives(registry);
 }
 
