@@ -304,6 +304,7 @@ int main(int argc, char **argv) {
   // Set up all our primitives.
   PrimitiveRegistry primitives;
   registerAllGraphRTPrimitives(primitives);
+  primitives.finalize();
 
   assert(AsyncValue::getNumAllocatedInstances() == 0 &&
          "We have async values allocated before we started to do anything");
