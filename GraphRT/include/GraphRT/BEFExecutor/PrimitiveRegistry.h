@@ -33,6 +33,10 @@ public:
   /// the M_PRIMITIVE macro to enable various pretty forms for this.
   void add(StaticString name, PrimitiveImplFn fn);
 
+  /// Finalize the registry. Calling `get()` before the registry is finalized
+  /// will result in undefined behavior.
+  void finalize();
+
   /// Look up a primitive with a specified name out of the registry, returning
   /// null if no match is found.
   PrimitiveImplFn get(StringRef name) const;
