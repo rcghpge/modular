@@ -44,7 +44,4 @@ void BEFDialect::initialize() {
 #define GET_TYPEDEF_LIST
 #include "GraphRT/BEFDialect/BEFTypes.cpp.inc"
       >();
-
-  // We are flexible with operations that exist in the bef namespace.
-  allowUnknownOperations(true);
 }

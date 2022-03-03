@@ -18,7 +18,7 @@
 #include "LLCL/Runtime/Runtime.h"
 using namespace M;
 
-static AsyncValueRef<Chain> bef_chain_new(Runtime &runtime) {
+static AsyncValueRef<Chain> graphrt_chain_new(Runtime &runtime) {
   return runtime.getReadyChain().copy();
 }
 
@@ -37,6 +37,6 @@ static void bef_call(PrimitiveFrame &frame) {
 
 /// This registers primitives used for core control flow operations.
 void M::registerGraphRTControlFlowPrimitives(PrimitiveRegistry &registry) {
-  registry.add("bef.chain.new", M_PRIMITIVE(bef_chain_new));
-  registry.add("bef.call", bef_call);
+  registry.add("graphrt.chain.new", M_PRIMITIVE(graphrt_chain_new));
+  registry.add("test.call", bef_call);
 }

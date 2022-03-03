@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This defines BEF dialect types, like !bef.chain and !bef.unknown.
+// This defines BEF dialect types, like !bef.unknown.
 //
 //===----------------------------------------------------------------------===//
 
@@ -12,19 +12,6 @@
 class BEFType<string mnemonic, list<Trait> traits = [],
               string baseCppClass = "::mlir::Type"> :
     TypeDef<BEFDialect, mnemonic, traits, baseCppClass>;
-
-//===----------------------------------------------------------------------===//
-// ChainType
-//===----------------------------------------------------------------------===//
-
-def ChainType : BEFType<"Chain"> {
-  let mnemonic = "chain";
-  let summary = "empty value used for control dependence tracking";
-  let description = [{
-    This type is used to model dependences between side-effecting operations,
-    by turning these side effects into explicitly modeled values.
-  }];
-}
 
 //===----------------------------------------------------------------------===//
 // UnknownType

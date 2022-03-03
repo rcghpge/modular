@@ -15,7 +15,14 @@
 #include "llvm/ADT/TypeSwitch.h"
 
 using namespace M;
-using namespace GraphRT;
+
+//===----------------------------------------------------------------------===//
+// Dialect Type Parsing and Printing
+//===----------------------------------------------------------------------===//
+
+// Pull in the dialect definition.
+#define GET_TYPEDEF_CLASSES
+#include "GraphRT/GraphRTDialect/GraphRTTypes.cpp.inc"
 
 //===----------------------------------------------------------------------===//
 // Dialect specification.
@@ -36,7 +43,4 @@ void GraphRTDialect::initialize() {
 #define GET_TYPEDEF_LIST
 #include "GraphRT/GraphRTDialect/GraphRTTypes.cpp.inc"
       >();
-
-  // We are flexible with operations that exist in the GraphRT namespace.
-  allowUnknownOperations(true);
 }

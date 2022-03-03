@@ -36,6 +36,6 @@ void M::registerMLIRToBEFTranslation() {
         registry.insert<BEF::BEFDialect>();
         // FIXME: This doesn't actually depend on GraphRT dialect, we need to
         // include it because mlir-translate isn't general enough.
-        registry.insert<GraphRT::GraphRTDialect>();
+        registry.insert<GraphRTDialect>();
       });
 }

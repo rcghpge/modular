@@ -18,4 +18,12 @@ def ConstantI32Op : GraphRTOp<"constant.i32"> {
   let arguments = (ins  I32Attr:$value);
   let results   = (outs I32:$result);
   let assemblyFormat = "$value attr-dict";
- }
+}
+
+def ChainNewOp : GraphRTOp<"chain.new"> {
+  let summary = "Return a new !graphrt.chain";
+
+  let arguments = (ins);
+  let results   = (outs ChainType:$result);
+  let assemblyFormat = "attr-dict";
+}

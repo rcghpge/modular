@@ -13,7 +13,6 @@
 #include "mlir/IR/FunctionImplementation.h"
 
 using namespace M;
-using namespace GraphRT;
 
 //===----------------------------------------------------------------------===//
 // TableGen generated logic.

@@ -16,13 +16,13 @@ bef.func @unused_nonstrict_arg() {
   %v3 = "test.async.add.i32"(%v2, %v2) : (i32, i32) -> i32
 
   // BEFExecutor will allocate an IndirectAsyncValue for %v3, but %v3 is unused.
-  %x = "bef.call"(%c1, %v3) { fn = @return_first_arg, bef.nonstrict } : (i32, i32) -> i32
+  %x = "test.call"(%c1, %v3) { fn = @return_first_arg, bef.nonstrict } : (i32, i32) -> i32
 
   // At this point %v3 is unused, but has not yet been forwarded. Setting %v3
   // must count as a use, otherwise the executor would immediately destroy %v3.
 
-  %ch0 = "bef.chain.new"() : () -> !bef.chain
+  %ch0 = graphrt.chain.new
   // CHECK-NEXT: int32 = 1
-  %ch1 = "test.print.i32"(%x, %ch0) : (i32, !bef.chain) -> !bef.chain
+  %ch1 = "test.print.i32"(%x, %ch0) : (i32, !graphrt.chain) -> !graphrt.chain
   bef.output
 }
