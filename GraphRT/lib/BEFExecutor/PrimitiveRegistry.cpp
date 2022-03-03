@@ -15,10 +15,7 @@ using namespace M;
 
 namespace M {
 struct PrimitiveRegistry::Impl {
-  // This pair holds a char * instead of a StaticString because the
-  // StaticString's const type makes the pair non-move-assignable. This is
-  // somewhat less than ideal, but at least it's hidden away.
-  std::vector<std::pair<char *, PrimitiveImplFn>> prims;
+  std::vector<std::pair<StaticString, PrimitiveImplFn>> prims;
 };
 } // namespace M
 
@@ -35,28 +32,29 @@ void PrimitiveRegistry::add(StaticString name, PrimitiveImplFn fn) {
   auto insertPt = std::lower_bound(
       impl->prims.begin(), impl->prims.end(), name,
       [](const auto &element, const StaticString &value) {
-        return StringRef(element.first) < StringRef(value.value);
+        return StringRef(element.first.value) < StringRef(value.value);
       });
   // std::lower_bound returns the first element >= to the searched element, so
   // we can see if we added something new by checking if we found an element
   // whose name is equal. Because it's a static string, we can just compare the
   // pointer values.
-  bool added = insertPt == impl->prims.end() || insertPt->first != name.value;
+  bool added =
+      insertPt == impl->prims.end() || insertPt->first.value != name.value;
   (void)added;
   assert(added && "re-registered existing name for a primitive");
   // Finally, we are registering a primitive, so insert it.
-  impl->prims.emplace(insertPt, const_cast<char *>(name.value), fn);
+  impl->prims.emplace(insertPt, name, fn);
 }
 
 auto PrimitiveRegistry::get(StringRef name) const -> PrimitiveImplFn {
   auto it = std::lower_bound(impl->prims.begin(), impl->prims.end(), name,
                              [](const auto &pair, StringRef name) {
-                               return StringRef(pair.first) < name;
+                               return StringRef(pair.first.value) < name;
                              });
 
   // std::lower_bound returns the first element that is >= the searched element.
   // Therefore, we have to check if the value is equal (which is what we want).
-  return it != impl->prims.end() && StringRef(it->first) == name
+  return it != impl->prims.end() && StringRef(it->first.value) == name
              ? it->second
              : PrimitiveImplFn();
 }
