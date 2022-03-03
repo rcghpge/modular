@@ -14,7 +14,6 @@
 #include "LLCL/Support/Chain.h"
 #include "LLCL/Support/ReferenceCounted.h"
 #include "Support/ErrorOr.h"
-#include "Support/StaticString.h"
 
 namespace M {
 
@@ -31,7 +30,7 @@ public:
 
   /// Add an implementation of a primitive to the registry.  Consider using
   /// the M_PRIMITIVE macro to enable various pretty forms for this.
-  void add(StaticString name, PrimitiveImplFn fn);
+  void add(StringLiteral name, PrimitiveImplFn fn);
 
   /// Finalize the registry. Calling `get()` before the registry is finalized
   /// will result in undefined behavior.
