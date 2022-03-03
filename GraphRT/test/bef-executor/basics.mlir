@@ -52,7 +52,7 @@ bef.func @three_print() {
 
 // CHECK-LABEL: --- Running 'basic.i32'
 bef.func @basic.i32() {
-  %x = "test.constant.i32"() { value = 42 : i32} : () -> i32
+  %x = graphrt.constant.i32 42
 
   %ch0 = "bef.chain.new"() : () -> !bef.chain
 
@@ -70,8 +70,8 @@ bef.func @basic.i32() {
 // CHECK-LABEL: --- Running 'test_result'
 bef.func @test_result() -> (i32, i32, !bef.chain) {
   %ch0 = "bef.chain.new"() : () -> !bef.chain
-  %x = "test.constant.i32"() { value = 42 : i32 } : () -> i32
-  %y = "test.constant.i32"() { value = 13 : i32 } : () -> i32
+  %x = graphrt.constant.i32 42
+  %y = graphrt.constant.i32 13
   %add = "test.add.i32"(%x, %y) : (i32, i32) -> i32
   // CHECK: 'test_result' returned 42, 55
   bef.output %x, %add, %ch0 : i32, i32, !bef.chain
@@ -108,14 +108,14 @@ bef.func @call_print.i32(%x: i32) -> !bef.chain {
 
 // CHECK-LABEL: --- Can not run 'add_one' because it has arguments
 bef.func @add_one(%x: i32) -> i32 {
-  %c1 = "test.constant.i32"() { value = 1 : i32 } : () -> i32
+  %c1 = graphrt.constant.i32 1
   %y = "test.add.i32"(%x, %c1) : (i32, i32) -> i32
   bef.output %y : i32
 }
 
 // CHECK-LABEL: --- Running 'caller'
 bef.func @caller() -> !bef.chain {
-  %c1 = "test.constant.i32"() { value = 1 : i32 } : () -> i32
+  %c1 = graphrt.constant.i32 1
 
   // CHECK-NEXT: int32 = 1
   %ch0 = "bef.call"(%c1) { fn = @call_print.i32 } : (i32) -> (!bef.chain)

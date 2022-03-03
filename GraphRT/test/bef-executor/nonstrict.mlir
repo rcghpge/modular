@@ -10,7 +10,7 @@ bef.func @return_first_arg(%x: i32, %y: i32) -> i32 {
 // Test a nonstrict call with an unused argument.
 // CHECK-LABEL: --- Running 'unused_nonstrict_arg'
 bef.func @unused_nonstrict_arg() {
-  %c1 = "test.constant.i32"() { value = 1 : i32} : () -> i32
+  %c1 = graphrt.constant.i32 1
 
   %v2 = "test.async.add.i32"(%c1, %c1) : (i32, i32) -> i32
   %v3 = "test.async.add.i32"(%v2, %v2) : (i32, i32) -> i32

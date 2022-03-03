@@ -22,6 +22,16 @@
 using namespace M;
 
 //===----------------------------------------------------------------------===//
+// Integer ops
+//===----------------------------------------------------------------------===//
+
+static void graphrt_constant_i32(PrimitiveFrame &frame) {
+  assert(frame.getNumArgs() == 0 && frame.getNumResults() == 1 &&
+         frame.getNumAttrs() == 1);
+  frame.emplaceResult<int32_t>(0, frame.getAttr<int32_t>(0));
+}
+
+//===----------------------------------------------------------------------===//
 // Misc
 //===----------------------------------------------------------------------===//
 
@@ -29,12 +39,6 @@ static Chain test_print_hello(Chain chain) {
   printf("hello bef executor!\n");
   fflush(stdout);
   return chain;
-}
-
-static void test_constant_i32(PrimitiveFrame &frame) {
-  assert(frame.getNumArgs() == 0 && frame.getNumResults() == 1 &&
-         frame.getNumAttrs() == 1);
-  frame.emplaceResult<int32_t>(0, frame.getAttr<int32_t>(0));
 }
 
 static Chain test_print_i32(int32_t value, Chain chain) {
@@ -72,7 +76,7 @@ static AsyncValueRef<int32_t> test_async_add_i32(int32_t lhs, int32_t rhs,
 /// testcases.
 void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
   registry.add("test.print_hello", M_PRIMITIVE(test_print_hello));
-  registry.add("test.constant.i32", test_constant_i32);
+  registry.add("graphrt.constant.i32", graphrt_constant_i32);
   registry.add("test.print.i32", M_PRIMITIVE(test_print_i32));
   registry.add("test.add.i32", M_PRIMITIVE(test_add_i32));
 
