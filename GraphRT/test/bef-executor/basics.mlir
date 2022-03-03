@@ -57,12 +57,12 @@ bef.func @basic.i32() {
   %ch0 = graphrt.chain.new
 
   // CHECK: int32 = 42
-  %ch1 = "test.print.i32"(%x, %ch0) : (i32, !graphrt.chain) -> !graphrt.chain
+  %ch1 = graphrt.print.i32 %x, %ch0
 
-  %add = "test.add.i32"(%x, %x) : (i32, i32) -> i32
+  %add = graphrt.add.i32 %x, %x
 
   // CHECK: int32 = 84
-  %ch2 = "test.print.i32"(%add, %ch1) : (i32, !graphrt.chain) -> !graphrt.chain
+  %ch2 = graphrt.print.i32 %add, %ch1
 
   bef.output
 }
@@ -72,7 +72,7 @@ bef.func @test_result() -> (i32, i32, !graphrt.chain) {
   %ch0 = graphrt.chain.new
   %x = graphrt.constant.i32 42
   %y = graphrt.constant.i32 13
-  %add = "test.add.i32"(%x, %y) : (i32, i32) -> i32
+  %add = graphrt.add.i32 %x, %y
   // CHECK: 'test_result' returned 42, 55
   bef.output %x, %add, %ch0 : i32, i32, !graphrt.chain
 }
@@ -102,14 +102,14 @@ bef.func @simple_calls() -> (i32, i32) {
 // CHECK-LABEL: --- Can not run 'call_print.i32' because it has arguments
 bef.func @call_print.i32(%x: i32) -> !graphrt.chain {
   %ch0 = graphrt.chain.new
-  %ch1 = "test.print.i32"(%x, %ch0) : (i32, !graphrt.chain) -> !graphrt.chain
+  %ch1 = graphrt.print.i32 %x, %ch0
   bef.output %ch1 : !graphrt.chain
 }
 
 // CHECK-LABEL: --- Can not run 'add_one' because it has arguments
 bef.func @add_one(%x: i32) -> i32 {
   %c1 = graphrt.constant.i32 1
-  %y = "test.add.i32"(%x, %c1) : (i32, i32) -> i32
+  %y = graphrt.add.i32 %x, %c1
   bef.output %y : i32
 }
 
@@ -123,7 +123,7 @@ bef.func @caller() -> !graphrt.chain {
   %x = "test.call"(%c1) {fn = @add_one } : (i32) -> i32
 
   // CHECK-NEXT: int32 = 2
-  %ch1 = "test.print.i32"(%x, %ch0) : (i32, !graphrt.chain) -> !graphrt.chain
+  %ch1 = graphrt.print.i32 %x, %ch0
 
   bef.output %ch1 : !graphrt.chain
 

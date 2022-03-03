@@ -1,10 +1,10 @@
-//===- GraphRTOps.td ---------------------------------------*- tablegen -*-===//
+//===- GraphRTIntegerOps.td --------------------------------*- tablegen -*-===//
 //
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
 //
-// This defines operations in GraphRT dialect.
+// This defines integer operations in GraphRT dialect.
 //
 //===----------------------------------------------------------------------===//
 
@@ -20,10 +20,18 @@ def ConstantI32Op : GraphRTOp<"constant.i32"> {
   let assemblyFormat = "$value attr-dict";
 }
 
-def ChainNewOp : GraphRTOp<"chain.new"> {
-  let summary = "Return a new !graphrt.chain";
+def AddI32Op : GraphRTOp<"add.i32"> {
+  let summary = "Add two 32-bit integers";
+ 
+  let arguments = (ins  I32:$lhs, I32:$rhs);
+  let results   = (outs I32:$result);
+  let assemblyFormat = "$lhs `,` $rhs attr-dict";
+}
 
-  let arguments = (ins);
+def PrintI32Op : GraphRTOp<"print.i32"> {
+  let summary = "Print a 32-bit integer";
+ 
+  let arguments = (ins  I32:$value, ChainType:$chain);
   let results   = (outs ChainType:$result);
-  let assemblyFormat = "attr-dict";
+  let assemblyFormat = "$value `,` $chain attr-dict";
 }

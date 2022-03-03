@@ -23,6 +23,6 @@ bef.func @unused_nonstrict_arg() {
 
   %ch0 = graphrt.chain.new
   // CHECK-NEXT: int32 = 1
-  %ch1 = "test.print.i32"(%x, %ch0) : (i32, !graphrt.chain) -> !graphrt.chain
+  %ch1 = graphrt.print.i32 %x, %ch0
   bef.output
 }
