@@ -103,8 +103,7 @@ public:
 
   /// Set the result at the given index with the given AsyncValue.
   void setResult(size_t index, RCRef<AsyncValue> value) {
-    assert(index < numResults && "invalid result number");
-    RCRef<AsyncValue> &result = argsAndResults[numArguments + index];
+    RCRef<AsyncValue> &result = getResults()[index];
     assert(!result && "result is already set");
     result = std::move(value);
   }
@@ -181,7 +180,7 @@ public:
     argsAndResults.reserve(numArgs + numResults);
   }
 
- /// Get mutable access to the argument list.
+  /// Get mutable access to the argument list.
   MutableArrayRef<RCRef<AsyncValue>> getArguments() {
     return llvm::makeMutableArrayRef(argsAndResults.data(), getNumArgs());
   }

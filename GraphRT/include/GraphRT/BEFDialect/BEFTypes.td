@@ -8,7 +8,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-def ChainType : TypeDef<BEFDialect, "Chain"> {
+// Base class for the types in this dialect.
+class BEFType<string mnemonic, list<Trait> traits = [],
+              string baseCppClass = "::mlir::Type"> :
+    TypeDef<BEFDialect, mnemonic, traits, baseCppClass>;
+
+//===----------------------------------------------------------------------===//
+// ChainType
+//===----------------------------------------------------------------------===//
+
+def ChainType : BEFType<"Chain"> {
   let mnemonic = "chain";
   let summary = "empty value used for control dependence tracking";
   let description = [{
@@ -17,7 +26,11 @@ def ChainType : TypeDef<BEFDialect, "Chain"> {
   }];
 }
 
-def UnknownType : TypeDef<BEFDialect, "Unknown"> {
+//===----------------------------------------------------------------------===//
+// UnknownType
+//===----------------------------------------------------------------------===//
+
+def UnknownType : BEFType<"Unknown"> {
   let mnemonic = "unknown";
   let summary = "an unknown type";
   let description = [{
