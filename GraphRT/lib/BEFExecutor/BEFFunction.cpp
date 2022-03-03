@@ -392,10 +392,10 @@ struct PrimitiveDecoder {
   uint32_t opcode, locOffset;
   uint16_t numOperands, numAttrs;
   uint16_t numFunctions, numResults;
-  llvm::ArrayRef<uint32_t> perResultUsersCount;
-  llvm::ArrayRef<uint32_t> operandIndices;
-  llvm::ArrayRef<uint32_t> attrOffsets;
-  llvm::ArrayRef<uint32_t> functionIndices;
+  ArrayRef<uint32_t> perResultUsersCount;
+  ArrayRef<uint32_t> operandIndices;
+  ArrayRef<uint32_t> attrOffsets;
+  ArrayRef<uint32_t> functionIndices;
   uint32_t firstResultRegNumber;
 
   explicit PrimitiveDecoder(const uint32_t *dataPtr) {
@@ -425,7 +425,7 @@ struct PrimitiveDecoder {
     this->dataPtr = dataPtr;
   }
 
-  llvm::ArrayRef<uint32_t> getEncodedElements(size_t numElements) {
+  ArrayRef<uint32_t> getEncodedElements(size_t numElements) {
     auto result = llvm::makeArrayRef(dataPtr, numElements);
     dataPtr += numElements;
     return result;
@@ -687,7 +687,7 @@ void BEFFunction::execute(MutableArrayRef<RCRef<AsyncValue>> arguments,
     results[0] = AsyncValue::createError(
         owner->runtime, std::move(decoder.befFormatError.getValue()));
     // Fill in the rest with the same error.
-    for (size_t i = 1; i != results.size(); ++i)
+    for (size_t i = 1, e = results.size(); i != e; ++i)
       results[i] = results[0].copy();
     return;
   }

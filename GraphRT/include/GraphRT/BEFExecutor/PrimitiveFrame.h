@@ -68,7 +68,7 @@ public:
     return attrSection.data() + attrOffsets[index];
   }
 
-  // Get the attribute at the given index as type T.
+  /// Get the attribute at the given index as type T.
   template <typename T>
   const T &getAttr(size_t index) const {
     return *static_cast<const T *>(getRawAttr(index));
@@ -78,7 +78,6 @@ public:
   // Functions
   //===--------------------------------------------------------------------===//
 
-  /// Get the number of attributes.
   size_t getNumFunctions() const { return functions.size(); }
 
   const Function *getFunction(size_t idx) const {
