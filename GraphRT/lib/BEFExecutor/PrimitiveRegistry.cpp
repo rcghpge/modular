@@ -15,6 +15,7 @@ using namespace M;
 
 namespace M {
 struct PrimitiveRegistry::Impl {
+  bool isFinalized = false;
   std::vector<std::pair<StaticString, PrimitiveImplFn>> prims;
 };
 } // namespace M
@@ -27,26 +28,33 @@ PrimitiveRegistry::PrimitiveRegistry() : impl(std::make_unique<Impl>()) {}
 PrimitiveRegistry::~PrimitiveRegistry() {}
 
 void PrimitiveRegistry::add(StaticString name, PrimitiveImplFn fn) {
-  // Use std::lower_bound to insert so the vector stays sorted as we insert
-  // items.
-  auto insertPt = std::lower_bound(
-      impl->prims.begin(), impl->prims.end(), name,
-      [](const auto &element, const StaticString &value) {
-        return StringRef(element.first.value) < StringRef(value.value);
-      });
-  // std::lower_bound returns the first element >= to the searched element, so
-  // we can see if we added something new by checking if we found an element
-  // whose name is equal. Because it's a static string, we can just compare the
-  // pointer values.
-  bool added =
-      insertPt == impl->prims.end() || insertPt->first.value != name.value;
-  (void)added;
-  assert(added && "re-registered existing name for a primitive");
-  // Finally, we are registering a primitive, so insert it.
-  impl->prims.emplace(insertPt, name, fn);
+  impl->prims.emplace_back(name, fn);
+}
+
+void PrimitiveRegistry::finalize() {
+  // Sort by name here so we can lookup using a binary search by name later.
+  llvm::sort(impl->prims, [](const auto &lhs, const auto &rhs) {
+    return StringRef(lhs.first.value) < StringRef(rhs.first.value);
+  });
+  auto duplicate =
+      std::adjacent_find(impl->prims.begin(), impl->prims.end(),
+                         [](const auto &lhs, const auto &rhs) {
+                           // To check if they're equal, we can compare the
+                           // pointers because they are both StaticStrings.
+                           return lhs.first.value == rhs.first.value;
+                         });
+  if (duplicate != impl->prims.end())
+    llvm::report_fatal_error("Found a duplicate in the primitive registry.");
+
+  impl->isFinalized = true;
 }
 
 auto PrimitiveRegistry::get(StringRef name) const -> PrimitiveImplFn {
+  if (!impl->isFinalized)
+    llvm::report_fatal_error(
+        "PrimitiveRegistry must be finalized before attempting to "
+        "`get` an impl from it.");
+
   auto it = std::lower_bound(impl->prims.begin(), impl->prims.end(), name,
                              [](const auto &pair, StringRef name) {
                                return StringRef(pair.first.value) < name;
