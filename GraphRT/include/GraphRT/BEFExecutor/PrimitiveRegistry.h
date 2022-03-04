@@ -165,23 +165,7 @@ private:
 //     return bytes;
 //   }
 //
-// PrimitiveErrorHandler may be used for sync primitives:
-//
-//   void ReadFile(Argument<std::string> path, Result<std::string> bytes,
-//                 PrimitiveErrorHandler handler) {
-//     auto* f = OpenFile(*path);
-//     if (!f) {
-//       handler.ReportError("Could not open file");
-//       return;
-//     }
-//     <Read file here>
-//   }
-//
-// WARNING: PrimitiveErrorHandler can't be used asynchronously because it holds
-// a pointer to the PrimitiveFrame, which is destroyed when the primitive
-// returns.
-//
-// Primitivess can also take the PrimitiveFrame or Runtime if they need access
+// Primitives can also take the PrimitiveFrame or Runtime if they need access
 // to anything else the above wrapper types don't provide.
 //
 // See the definitions of the wrapper types below for more details.
@@ -206,7 +190,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   static void invoke(PrimitiveFrame &frame) {
     CallHelper<Args..., TypeTag<int>>::template invoke<
         /*argIdx=*/0, /*resultIdx=*/0, /*attrIdx=*/0, /*funcIdx=*/0,
-        /*hasErrorHandler=*/false, /*hasInChain=*/false>(frame);
+        /*hasInChain=*/false>(frame);
   }
 
   /// Helper that introspects the arguments to derive the signature and
@@ -225,12 +209,12 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   template <typename... Tail>
   struct CallHelper<PrimitiveFrame &, Tail...> {
     template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
-              bool hasErrorHandler, bool hasInChain, typename... PreviousArgs>
+              bool hasInChain, typename... PreviousArgs>
     static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
       CallHelper<Tail...>::template invoke<argIdx, resultIdx, attrIdx, funcIdx,
-                                           hasErrorHandler, hasInChain,
-                                           PreviousArgs..., PrimitiveFrame &>(
-          frame, pargs..., frame);
+                                           hasInChain, PreviousArgs...,
+                                           PrimitiveFrame &>(frame, pargs...,
+                                                             frame);
     }
   };
 
@@ -238,12 +222,12 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   template <typename... Tail>
   struct CallHelper<Runtime &, Tail...> {
     template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
-              bool hasErrorHandler, bool hasInChain, typename... PreviousArgs>
+              bool hasInChain, typename... PreviousArgs>
     static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
       CallHelper<Tail...>::template invoke<argIdx, resultIdx, attrIdx, funcIdx,
-                                           hasErrorHandler, hasInChain,
-                                           PreviousArgs..., Runtime &>(
-          frame, pargs..., frame.getRuntime());
+                                           hasInChain, PreviousArgs...,
+                                           Runtime &>(frame, pargs...,
+                                                      frame.getRuntime());
     }
   };
 
@@ -252,7 +236,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   template <typename... Tail>
   struct CallHelper<RemainingArguments, Tail...> {
     template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
-              bool hasErrorHandler, bool hasInChain, typename... PreviousArgs>
+              bool hasInChain, typename... PreviousArgs>
     static void invoke(PrimitiveFrame &frame, const PreviousArgs &...pargs) {
       static_assert(
           argIdx != -1,
@@ -265,8 +249,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
       RemainingArguments args(frame.getArguments().drop_front(argIdx));
 
       CallHelper<Tail...>::template invoke<-1, resultIdx, attrIdx, funcIdx,
-                                           hasErrorHandler, hasInChain>(
-          frame, pargs..., args);
+                                           hasInChain>(frame, pargs..., args);
     }
   };
 
@@ -275,7 +258,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   template <typename... Tail>
   struct CallHelper<RemainingResults, Tail...> {
     template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
-              bool hasErrorHandler, bool hasInChain, typename... PreviousArgs>
+              bool hasInChain, typename... PreviousArgs>
     static void invoke(PrimitiveFrame &frame, const PreviousArgs &...pargs) {
       static_assert(resultIdx != -1,
                     "Do not use more than one RemainingResults");
@@ -286,8 +269,8 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
 
       RemainingResults results(frame.getResults().drop_front(resultIdx));
       CallHelper<Tail...>::template invoke<argIdx, -1, attrIdx, funcIdx,
-                                           hasErrorHandler, hasInChain>(
-          frame, pargs..., results);
+                                           hasInChain>(frame, pargs...,
+                                                       results);
     }
   };
 
@@ -295,11 +278,10 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   template <typename... Tail>
   struct CallHelper<const Function *, Tail...> {
     template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
-              bool hasErrorHandler, bool hasInChain, typename... PreviousArgs>
+              bool hasInChain, typename... PreviousArgs>
     static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
-      CallHelper<Tail...>::template invoke<argIdx, resultIdx, attrIdx,
-                                           funcIdx + 1, hasErrorHandler,
-                                           hasInChain, PreviousArgs...>(
+      CallHelper<Tail...>::template invoke<
+          argIdx, resultIdx, attrIdx, funcIdx + 1, hasInChain, PreviousArgs...>(
           frame, pargs..., frame.getFunction(funcIdx));
     }
   };
@@ -310,7 +292,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
     using ArgTy = std::decay_t<Head>;
 
     template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
-              bool hasErrorHandler, bool hasInChain, typename... PreviousArgs>
+              bool hasInChain, typename... PreviousArgs>
     static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
       static_assert(argIdx != -1,
                     "Do not place Arguments after RemainingArguments");
@@ -323,8 +305,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
 
       constexpr bool isArgChain = std::is_same<ArgTy, Chain>();
       CallHelper<Tail...>::template invoke<argIdx + 1, resultIdx, attrIdx,
-                                           funcIdx, hasErrorHandler,
-                                           (hasInChain || isArgChain)>(
+                                           funcIdx, (hasInChain || isArgChain)>(
           frame, pargs..., arg);
     }
   };
@@ -353,7 +334,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
     };
 
     template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
-              bool hasErrorHandler, bool hasInChain, typename... PreviousArgs>
+              bool hasInChain, typename... PreviousArgs>
     static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
       AssertIndex<Return, resultIdx>::verify(frame);
 
@@ -365,7 +346,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
              "Extra attributes passed to primitive");
       assert((funcIdx == frame.getNumFunctions() || funcIdx == -1) &&
              "Extra functions passed to primitive");
-      ReturnHelper<hasErrorHandler, Return>::invoke(frame, pargs...);
+      ReturnHelper<Return>::invoke(frame, pargs...);
     }
   };
 
@@ -375,21 +356,14 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
 
   // Handles the return value of the primitive with `handleReturn` if non-void.
   // Otherwise ignores the return value.
-  template <bool hasErrorHandler, typename T>
+  template <typename T>
   struct ReturnHelper {
     static void invoke(PrimitiveFrame &frame, const Args &...args) {
-      static_assert(
-          !hasErrorHandler,
-          "Do not return by value when using PrimitiveErrorHandler. Set the "
-          "return value with Result<> instead. "
-          "Bad: Chain myFunction(PrimitiveErrorHandler handler). "
-          "Good: void myFunction(Result<Chain> out, PrimitiveErrorHandler "
-          "handler).");
       handleReturn(frame, implFn(args...));
     }
   };
-  template <bool hasErrorHandler>
-  struct ReturnHelper<hasErrorHandler, void> {
+  template <>
+  struct ReturnHelper<void> {
     static void invoke(PrimitiveFrame &frame, const Args &...args) {
       implFn(args...);
     }
