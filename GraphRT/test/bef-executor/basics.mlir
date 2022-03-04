@@ -3,24 +3,6 @@
 
 // CHECK: Initializing leak check allocator
 
-// CHECK: test1: raw
-// CHECK: hello bef-executor 1
-// CHECK: bef barf: 42 x
-
-// CHECK: test2: RCRef
-// CHECK: hello bef-executor 1
-// CHECK: bef barf: 42 x
-
-// CHECK: test3: AsyncValueRef
-// CHECK: hello bef-executor 1
-// CHECK: bef barf: 42 x
-
-// CHECK: test4: IndirectAsyncValueRef
-// CHECK: av1 = 1
-// CHECK: av2 = 1234
-// CHECK: av3 = 42
-// CHECK: av4 = 42
-
 // CHECK-LABEL: Can not run 'args_results' because it has arguments
 bef.func @args_results(%a: i32, %b: i8) -> (i8, i32) {
   bef.output %b, %a : i8, i32

@@ -68,123 +68,16 @@ static std::unique_ptr<Allocator> getAllocator() {
     printf("Initializing profiling allocator.\n");
     break;
   }
+
+  fflush(stdout);
   return allocator;
 }
 
 /// Configure the appropriate work queue based on the command line option
 /// settings.
 static std::unique_ptr<WorkQueue> getWorkQueue() {
+  // TODO: Add other fancy workqueue implementations.
   return createSingleThreadWorkQueue();
-}
-
-static void test1(Runtime &runtime) {
-  printf("test1: raw\n");
-  // Make an asyncValue
-  auto *av1 = AsyncValue::createUnconstructed<int>(runtime).release();
-  auto *av2 = AsyncValue::createConstructed<int>(runtime, 42).release();
-  auto *av3 = AsyncValue::createReady<char>(runtime, 'x').release();
-
-  // Whenever it gets completed, we print.
-  av1->andThen([=]() {
-    printf("hello bef-executor %d\n", av1->get<int>());
-    av1->dropRef();
-    av2->markReady();
-  });
-
-  // Whenever it gets completed, we print.
-  av2->andThen([=]() {
-    printf("bef barf: %d %c\n", av2->get<int>(), av3->get<char>());
-    av2->dropRef();
-    av3->dropRef();
-  });
-
-  // Add a task that completes the AV and drops its reference.
-  runtime.addTask([=]() { av1->emplace<int>(1); });
-
-  // Do all the work.
-  runtime.quiesce();
-}
-
-static void test2(Runtime &runtime) {
-  printf("test2: RCRef\n");
-  // Make an asyncValue
-  auto av1 = AsyncValue::createUnconstructed<int>(runtime);
-  auto av2 = AsyncValue::createConstructed<int>(runtime, 42);
-  auto av3 = AsyncValue::createReady<char>(runtime, 'x');
-
-  // Whenever it gets completed, we print.
-  av1->andThen([av1 = av1.copy(), av2 = av2.copy()]() {
-    printf("hello bef-executor %d\n", av1->get<int>());
-    av2->markReady();
-  });
-
-  // Whenever it gets completed, we print.
-  av2->andThen([av2 = std::move(av2), av3 = std::move(av3)]() {
-    printf("bef barf: %d %c\n", av2->get<int>(), av3->get<char>());
-  });
-
-  // Add a task that completes the AV and drops its reference.
-  runtime.addTask([av1 = std::move(av1)]() { av1->emplace<int>(1); });
-
-  // Do all the work.
-  runtime.quiesce();
-}
-
-static void test3(Runtime &runtime) {
-  printf("test3: AsyncValueRef\n");
-  // Make an asyncValue
-  auto av1 = AsyncValueRef<int>::createUnconstructed(runtime);
-  auto av2 = AsyncValueRef<int>::createConstructed(runtime, 42);
-  auto av3 = AsyncValueRef<char>::createReady(runtime, 'x');
-
-  // Whenever it gets completed, we print.
-  av1->andThen([av1 = av1.copy(), av2 = av2.copy()]() {
-    printf("hello bef-executor %d\n", av1.get());
-    av2->markReady();
-  });
-
-  // Whenever it gets completed, we print.
-  av2->andThen([av2 = std::move(av2), av3 = std::move(av3)]() {
-    printf("bef barf: %d %c\n", av2.get(), av3.get());
-  });
-
-  // Add a task that completes the AV and drops its reference.
-  runtime.addTask([av1 = std::move(av1)]() { av1.emplace(1); });
-
-  // Do all the work.
-  runtime.quiesce();
-}
-
-static void test4(Runtime &runtime) {
-  printf("test4: IndirectAsyncValueRef\n");
-  // Make some indirect asyncValue's.
-  auto av1 = AsyncValue::createIndirect(runtime);
-  auto av2 = AsyncValue::createIndirect(runtime);
-  auto av3 = AsyncValue::createIndirect(runtime);
-  auto av4 = AsyncValue::createIndirect(runtime);
-
-  // Whenever they get completed, we print.
-  av1->andThen([av1 = av1.copy()]() { printf("av1 = %d\n", av1->isError()); });
-  av2->andThen([av2 = av2.copy()]() { printf("av2 = %d\n", av2->get<int>()); });
-  av3->andThen([av3 = av3.copy()]() { printf("av3 = %d\n", av3->get<int>()); });
-  av4->andThen([av4 = av4.copy()]() { printf("av4 = %d\n", av4->get<int>()); });
-
-  // Add a task that completes the AV and drops its reference.
-  runtime.addTask([av1 = std::move(av1), av2 = std::move(av2),
-                   av3 = std::move(av3), av4 = av4.copy(), &runtime]() mutable {
-    av1->setToError("something expected actually");
-    av2->resolveIndirect(AsyncValueRef<int>::createReady(runtime, 1234));
-    // av3 is resolved to an unresolved indirect value.
-    av3->resolveIndirect(std::move(av4));
-  });
-
-  // Resolving av4 also resolves av3.
-  runtime.addTask([av4 = std::move(av4), &runtime]() {
-    av4->resolveIndirect(AsyncValueRef<int>::createReady(runtime, 42));
-  });
-
-  // Do all the work.
-  runtime.quiesce();
 }
 
 /// Run the specified BEF function as a testcase - this means passing in test
@@ -219,6 +112,10 @@ static void runFunctionTestcase(const Function *fn, Runtime &runtime) {
 
   // Block until the function results are fully resolved.
   runtime.await(results);
+
+  // If anything printed to stdout, force it out to a stream, since we will be
+  // printing with raw_ostream.
+  fflush(stdout);
 
   // Print out the function results that we know about.
   // Go ahead and print out the function results that we know about.
@@ -317,12 +214,6 @@ int main(int argc, char **argv) {
   mlir::MLIRContext context;
   {
     Runtime runtime(getAllocator(), getWorkQueue());
-    // Hard coded tests until we can run BEF files.
-    test1(runtime);
-    test2(runtime);
-    test3(runtime);
-    test4(runtime);
-    fflush(stdout); // Finish printf tests.
 
     // Open the BEF file.
     auto befFileOrError =
