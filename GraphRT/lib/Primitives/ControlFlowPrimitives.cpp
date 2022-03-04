@@ -18,12 +18,12 @@
 #include "LLCL/Runtime/Runtime.h"
 using namespace M;
 
-static AsyncValueRef<Chain> graphrt_chain_new(Runtime &runtime) {
+static AsyncValueRef<Chain> chain_new(Runtime &runtime) {
   return runtime.getReadyChain().copy();
 }
 
-static void graphrt_call(RemainingArguments arguments, RemainingResults results,
-                         const Function *callee) {
+static void call(RemainingArguments arguments, RemainingResults results,
+                 const Function *callee) {
   assert(callee->getNumArgs() == arguments.size() && "argument count mismatch");
   assert(callee->getNumResults() == results.size() && "result count mismatch");
   callee->execute(arguments.get(), results.get());
@@ -35,6 +35,6 @@ static void graphrt_call(RemainingArguments arguments, RemainingResults results,
 
 /// This registers the 'graphrt' dialect primitives for control flow.
 void M::registerGraphRTControlFlowPrimitives(PrimitiveRegistry &registry) {
-  registry.add("grt.chain.new", M_PRIMITIVE(graphrt_chain_new));
-  registry.add("grt.call", M_PRIMITIVE(graphrt_call));
+  registry.add("grt.chain.new", M_PRIMITIVE(chain_new));
+  registry.add("grt.call", M_PRIMITIVE(call));
 }

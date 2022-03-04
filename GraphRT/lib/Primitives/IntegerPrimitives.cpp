@@ -20,21 +20,19 @@ using namespace M;
 // Integer ops
 //===----------------------------------------------------------------------===//
 
-static int32_t graphrt_constant_i32(BEFAttribute<int32_t> value) {
-  return *value;
-}
+static int32_t constant_i32(BEFAttribute<int32_t> value) { return *value; }
 
-static Chain graphrt_print_i32(int32_t value, Chain chain) {
+static Chain print_i32(int32_t value, Chain chain) {
   printf("int32 = %d\n", value);
   fflush(stdout);
   return chain;
 }
 
-static int32_t graphrt_add_i32(int32_t lhs, int32_t rhs) { return lhs + rhs; }
+static int32_t add_i32(int32_t lhs, int32_t rhs) { return lhs + rhs; }
 
 /// This registers the 'graphrt' dialect integer primitives.
 void M::registerGraphRTIntegerPrimitives(PrimitiveRegistry &registry) {
-  registry.add("grt.constant.i32", M_PRIMITIVE(graphrt_constant_i32));
-  registry.add("grt.add.i32", M_PRIMITIVE(graphrt_add_i32));
-  registry.add("grt.print.i32", M_PRIMITIVE(graphrt_print_i32));
+  registry.add("grt.constant.i32", M_PRIMITIVE(constant_i32));
+  registry.add("grt.add.i32", M_PRIMITIVE(add_i32));
+  registry.add("grt.print.i32", M_PRIMITIVE(print_i32));
 }
