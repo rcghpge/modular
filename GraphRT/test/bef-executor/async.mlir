@@ -12,9 +12,6 @@ bef.func @test_async_print_result() -> i32 {
 }
 // CHECK: 'test_async_print_result' returned 43
 
-
-
-
 // CHECK-LABEL: --- Running 'test_cancel'
 bef.func @test_cancel() -> i32 {
   %c1 = grt.constant.i32 1

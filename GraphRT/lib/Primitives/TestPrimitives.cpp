@@ -26,6 +26,10 @@ static Chain test_print_hello(Chain chain) {
   fflush(stdout);
   return chain;
 }
+static void test_memory_leak_one_int32(Runtime &runtime) {
+  // We allocate an integer to intentionally cause a memory leak for testing.
+  runtime.allocate<int32_t>();
+}
 
 //===----------------------------------------------------------------------===//
 // Error handling
@@ -66,6 +70,8 @@ static AsyncValueRef<int32_t> test_async_add_i32(int32_t lhs, int32_t rhs,
 /// testcases.
 void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
   registry.add("test.print_hello", M_PRIMITIVE(test_print_hello));
+  registry.add("test.memory_leak_one_int32",
+               M_PRIMITIVE(test_memory_leak_one_int32));
 
   // Error handling.
   registry.add("test.fail", M_PRIMITIVE(test_fail));
