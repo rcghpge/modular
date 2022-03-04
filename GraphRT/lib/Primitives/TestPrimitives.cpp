@@ -32,7 +32,7 @@ static void memory_leak_one_int32(Runtime &runtime) {
 }
 
 //===----------------------------------------------------------------------===//
-// String Tests
+// String and Array Tests
 //===----------------------------------------------------------------------===//
 
 static std::string get_string(BEFAttribute<StringRef> value) {
@@ -47,6 +47,19 @@ static std::string append_string(const std::string &lhs,
 static Chain print_string(const std::string &lhs, Chain chain) {
   printf("string = ");
   fwrite(lhs.data(), 1, lhs.size(), stdout);
+  fputc('\n', stdout);
+  fflush(stdout);
+  return chain;
+}
+
+static Chain print_array_i32(Chain chain,
+                             BEFAttribute<ArrayRef<int32_t>> values) {
+  printf("array = ");
+  for (size_t i = 0, e = values->size(); i != e; ++i) {
+    if (i != 0)
+      printf(", ");
+    printf("%d", values[i]);
+  }
   fputc('\n', stdout);
   fflush(stdout);
   return chain;
@@ -95,10 +108,11 @@ void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
   registry.add("test.memory_leak_one_int32",
                M_PRIMITIVE(memory_leak_one_int32));
 
-  // String Tests
+  // String and Array Tests
   registry.add("test.get_string", M_PRIMITIVE(get_string));
   registry.add("test.append_string", M_PRIMITIVE(append_string));
   registry.add("test.print_string", M_PRIMITIVE(print_string));
+  registry.add("test.print_array_i32", M_PRIMITIVE(print_array_i32));
 
   // Error handling.
   registry.add("test.fail", M_PRIMITIVE(fail));

@@ -131,6 +131,25 @@ private:
   StringRef value;
 };
 
+/// Array attributes have a special encoding that includes their length,
+/// allowing projection into a ArrayRef.
+template <typename T>
+class BEFAttribute<ArrayRef<T>> {
+public:
+  explicit BEFAttribute(const void *value)
+      : value(static_cast<const T *>(value), decodeBEFArrayLength(value)) {}
+
+  const ArrayRef<T> &get() const { return value; }
+  const ArrayRef<T> *operator->() const { return &value; }
+  const ArrayRef<T> &operator*() const { return value; }
+
+  size_t size() const { return value.size(); }
+  const T &operator[](size_t i) const { return value[i]; }
+
+private:
+  ArrayRef<T> value;
+};
+
 //===----------------------------------------------------------------------===//
 // Primitive Registration Wrapper Generator
 //===----------------------------------------------------------------------===//
