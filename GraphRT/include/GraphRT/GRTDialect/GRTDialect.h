@@ -1,4 +1,4 @@
-//===- GraphRTDialect.h -----------------------------------------*- C++ -*-===//
+//===- GraphRT/GRTDialect/GRTDialect.h --------------------------*- C++ -*-===//
 //
 // This file is Modular Inc proprietary.
 //
@@ -8,12 +8,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_GRAPHRTDIALECT_H
-#define GRAPHRT_GRAPHRTDIALECT_H
+#ifndef GRAPHRT_GRTDIALECT_GRTDIALECT_H
+#define GRAPHRT_GRTDIALECT_GRTDIALECT_H
 
 #include "mlir/IR/Dialect.h"
 
 // Pull in the dialect definition.
-#include "GraphRT/GraphRTDialect/GraphRTDialect.h.inc"
+#include "GraphRT/GRTDialect/GRTDialect.h.inc"
 
-#endif // GRAPHRT_GRAPHRTDIALECT_H
+#endif // GRAPHRT_GRTDIALECT_GRTDIALECT_H

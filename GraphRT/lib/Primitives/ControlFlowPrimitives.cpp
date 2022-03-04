@@ -37,6 +37,6 @@ static void graphrt_call(PrimitiveFrame &frame) {
 
 /// This registers the 'graphrt' dialect primitives for control flow.
 void M::registerGraphRTControlFlowPrimitives(PrimitiveRegistry &registry) {
-  registry.add("graphrt.chain.new", M_PRIMITIVE(graphrt_chain_new));
-  registry.add("graphrt.call", graphrt_call);
+  registry.add("grt.chain.new", M_PRIMITIVE(graphrt_chain_new));
+  registry.add("grt.call", graphrt_call);
 }

@@ -1,21 +1,21 @@
-//===- GraphRTDialect.cpp -------------------------------------------------===//
+//===- GRTDialect.cpp -----------------------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
 //
-// This file implements the GraphRT dialect.
+// This file implements the GRT dialect.
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphRT/GraphRTDialect/GraphRTDialect.h"
-#include "GraphRT/GraphRTDialect/GraphRTOps.h"
+#include "GraphRT/GRTDialect/GRTDialect.h"
+#include "GraphRT/GRTDialect/GRTOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "llvm/ADT/TypeSwitch.h"
 
 using namespace M;
-using namespace GraphRT;
+using namespace GRT;
 
 //===----------------------------------------------------------------------===//
 // Dialect Type Parsing and Printing
@@ -23,25 +23,25 @@ using namespace GraphRT;
 
 // Pull in the dialect definition.
 #define GET_TYPEDEF_CLASSES
-#include "GraphRT/GraphRTDialect/GraphRTTypes.cpp.inc"
+#include "GraphRT/GRTDialect/GRTTypes.cpp.inc"
 
 //===----------------------------------------------------------------------===//
 // Dialect specification.
 //===----------------------------------------------------------------------===//
 
 // Pull in the dialect definition.
-#include "GraphRT/GraphRTDialect/GraphRTDialect.cpp.inc"
+#include "GraphRT/GRTDialect/GRTDialect.cpp.inc"
 
-void GraphRTDialect::initialize() {
+void GRTDialect::initialize() {
   // Register operations.
   addOperations<
 #define GET_OP_LIST
-#include "GraphRT/GraphRTDialect/GraphRT.cpp.inc"
+#include "GraphRT/GRTDialect/GRT.cpp.inc"
       >();
 
   // Register types.
   addTypes<
 #define GET_TYPEDEF_LIST
-#include "GraphRT/GraphRTDialect/GraphRTTypes.cpp.inc"
+#include "GraphRT/GRTDialect/GRTTypes.cpp.inc"
       >();
 }

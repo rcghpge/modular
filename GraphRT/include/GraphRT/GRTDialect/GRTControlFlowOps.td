@@ -1,22 +1,22 @@
-//===- GraphRTControlFlowOps.td ----------------------------*- tablegen -*-===//
+//===- GraphRT/GRTDialect/GRTControlFlowOps.td -------------*- tablegen -*-===//
 //
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
 //
-// This defines the control flow operations in GraphRT dialect.
+// This defines the control flow operations in GRT dialect.
 //
 //===----------------------------------------------------------------------===//
 
-def ChainNewOp : GraphRTOp<"chain.new"> {
-  let summary = "Return a new !graphrt.chain";
+def ChainNewOp : GRTOp<"chain.new"> {
+  let summary = "Return a new !grt.chain";
 
   let arguments = (ins);
   let results   = (outs ChainType:$result);
   let assemblyFormat = "attr-dict";
 }
 
-def CallOp : GraphRTOp<"call"> {
+def CallOp : GRTOp<"call"> {
   let summary = "Call a BEF function";
 
   let arguments = (ins SymbolRefAttr:$fn, Variadic<AnyType>:$operands);

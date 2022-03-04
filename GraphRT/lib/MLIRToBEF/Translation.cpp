@@ -12,7 +12,7 @@
 #include "mlir/Translation.h"
 #include "GraphRT/BEFDialect/BEFDialect.h"
 // FIXME: This doesn't actually depend on GraphRT dialect!
-#include "GraphRT/GraphRTDialect/GraphRTDialect.h"
+#include "GraphRT/GRTDialect/GRTDialect.h"
 #include "GraphRT/MLIRToBEF.h"
 #include "mlir/IR/BuiltinOps.h"
 using namespace M;
@@ -34,8 +34,8 @@ void M::registerMLIRToBEFTranslation() {
       },
       [](mlir::DialectRegistry &registry) {
         registry.insert<BEF::BEFDialect>();
-        // FIXME: This doesn't actually depend on GraphRT dialect, we need to
+        // FIXME: This doesn't actually depend on GRT dialect, we need to
         // include it because mlir-translate isn't general enough.
-        registry.insert<GraphRT::GraphRTDialect>();
+        registry.insert<GRT::GRTDialect>();
       });
 }

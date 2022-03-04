@@ -5,8 +5,8 @@
 
 // CHECK-LABEL: --- Running 'test_async_print_result'
 bef.func @test_async_print_result() -> i32 {
-  %c1 = graphrt.constant.i32 1
-  %c42 = graphrt.constant.i32 42
+  %c1 = grt.constant.i32 1
+  %c42 = grt.constant.i32 42
   %a = "test.async.add.i32"(%c1, %c42) : (i32, i32) -> i32
   bef.output %a : i32
 }
