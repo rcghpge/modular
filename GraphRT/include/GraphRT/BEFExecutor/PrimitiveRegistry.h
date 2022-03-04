@@ -94,6 +94,22 @@ private:
   MutableArrayRef<RCRef<AsyncValue>> results;
 };
 
+/// Primitives use this to declare that they have an attribute input with the
+/// specified C++ type.
+template <typename T>
+class BEFAttribute {
+public:
+  explicit BEFAttribute(const void *value)
+      : value(*reinterpret_cast<const T *>(value)) {}
+
+  const T &get() const { return value; }
+  const T *operator->() const { return &value; }
+  const T &operator*() const { return value; }
+
+private:
+  const T &value;
+};
+
 //===----------------------------------------------------------------------===//
 // Primitive Registration Wrapper Generator
 //===----------------------------------------------------------------------===//
@@ -102,14 +118,14 @@ private:
 // For simple primitives with a few arguments and a single movable result,
 // you can define the function using the native C++ types directly:
 //
-//   int32_t Add(int32_t a, int32_t b) { return a + b; }
+//   int32_t add(int32_t a, int32_t b) { return a + b; }
 //
 // For non-strict primitives where one or more of the arguments are
 // asynchronous, you can use the "Argument" wrapper type as your function
 // arguments and return the result by value. The Argument<> internally wraps an
 // AsyncValue:
 //
-//   int32_t Add(Argument<int32_t> a, Argument<int32_t> b) { return *a + *b; }
+//   int32_t add(Argument<int32_t> a, Argument<int32_t> b) { return *a + *b; }
 //
 // These can be useful if you want to move() the async value itself out of the
 // argument instead of just getting access to the value it contains.
@@ -119,7 +135,7 @@ private:
 // this:
 //
 //   %c0 = bef.chain.new
-//   %z = "Add"(%x, %y, %c0) : (i32, i32, !bef.chain) -> i32
+//   %z = "test.add"(%x, %y, %c0) : (i32, i32, !bef.chain) -> i32
 //
 // For primitives with multiple results, you can return std::pair/tuple as the
 // result type:
@@ -145,7 +161,7 @@ private:
 // executable, as opposed to values that will be computed at runtime. Attributes
 // should appear after arguments and results:
 //
-//   int32_t make_int(Attribute<int32_t> value) {
+//   int32_t make_int(BEFAttribute<int32_t> value) {
 //     return *value;
 //   }
 //
@@ -232,7 +248,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   };
 
   /// RemainingArguments provides an ArrayRef containing all remaining
-  /// arguments. Useful for variadic kernels with heterogenous elements.
+  /// arguments. Useful for variadic primitives with heterogenous elements.
   template <typename... Tail>
   struct CallHelper<RemainingArguments, Tail...> {
     template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
@@ -254,7 +270,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   };
 
   /// RemainingResults provides an MutableArrayRef<AsyncValue*> containing all
-  /// remaining results. Useful for variadic kernels.
+  /// remaining results. Useful for variadic primitives.
   template <typename... Tail>
   struct CallHelper<RemainingResults, Tail...> {
     template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
@@ -283,6 +299,21 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
       CallHelper<Tail...>::template invoke<
           argIdx, resultIdx, attrIdx, funcIdx + 1, hasInChain, PreviousArgs...>(
           frame, pargs..., frame.getFunction(funcIdx));
+    }
+  };
+
+  // Specialization to cast a single attribute (Head).
+  template <typename Head, typename... Tail>
+  struct CallHelper<BEFAttribute<Head>, Tail...> {
+    template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
+              bool hasInChain, typename... PreviousArgs>
+    static void invoke(PrimitiveFrame &frame, const PreviousArgs &...pargs) {
+      static_assert(attrIdx != -1,
+                    "Do not place Attributes after RemainingAttributes");
+      BEFAttribute<Head> arg(frame.getRawAttr(attrIdx));
+      CallHelper<Tail...>::template invoke<argIdx, resultIdx, attrIdx + 1,
+                                           funcIdx, hasInChain>(frame, pargs...,
+                                                                arg);
     }
   };
 
