@@ -23,7 +23,6 @@ using namespace M;
 
 static Chain print_hello(Chain chain) {
   printf("hello bef executor!\n");
-  fflush(stdout);
   return chain;
 }
 static void memory_leak_one_int32(Runtime &runtime) {
@@ -48,7 +47,6 @@ static Chain print_string(const std::string &lhs, Chain chain) {
   printf("string = ");
   fwrite(lhs.data(), 1, lhs.size(), stdout);
   fputc('\n', stdout);
-  fflush(stdout);
   return chain;
 }
 
@@ -61,8 +59,55 @@ static Chain print_array_i32(Chain chain,
     printf("%d", values[i]);
   }
   fputc('\n', stdout);
-  fflush(stdout);
   return chain;
+}
+
+//===----------------------------------------------------------------------===//
+// Value Tracking
+//===----------------------------------------------------------------------===//
+
+/// This class is just an integer but it prints on construction and destruction
+/// so we can write tests showing that the values get created and destroyed at
+/// the right times.
+class VTValue {
+public:
+  explicit VTValue(int32_t v) : v(v) {
+    printf("constructed vt.value(%d)\n", v);
+  }
+
+  VTValue(const VTValue &rhs) : v(rhs.v) {
+    printf("copy constructed vt.value(%d)\n", v);
+  }
+
+  VTValue(VTValue &&rhs) : v(rhs.v) {
+    rhs.v = -1;
+    printf("move constructed vt.value(%d)\n", v);
+  }
+
+  ~VTValue() {
+    if (v == -1)
+      return;
+    printf("destroyed vt.value(%d)\n", v);
+  }
+
+  int32_t v;
+};
+
+static VTValue vt_constant(BEFAttribute<int32_t> v) { return VTValue(*v); }
+
+static VTValue vt_add(const VTValue &lhs, const VTValue &rhs) {
+  return VTValue(lhs.v + rhs.v);
+}
+
+static Chain vt_print(const VTValue &v) {
+  printf("print vt.value(%d)\n", v.v);
+  return Chain();
+}
+
+static void registerValueTracking(PrimitiveRegistry &registry) {
+  registry.add("test.vt.constant", M_PRIMITIVE(vt_constant));
+  registry.add("test.vt.add", M_PRIMITIVE(vt_add));
+  registry.add("test.vt.print", M_PRIMITIVE(vt_print));
 }
 
 //===----------------------------------------------------------------------===//
@@ -113,6 +158,8 @@ void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
   registry.add("test.append_string", M_PRIMITIVE(append_string));
   registry.add("test.print_string", M_PRIMITIVE(print_string));
   registry.add("test.print_array_i32", M_PRIMITIVE(print_array_i32));
+
+  registerValueTracking(registry);
 
   // Error handling.
   registry.add("test.fail", M_PRIMITIVE(fail));
