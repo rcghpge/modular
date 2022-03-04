@@ -15,6 +15,7 @@
 #include "llvm/ADT/TypeSwitch.h"
 
 using namespace M;
+using namespace GraphRT;
 
 //===----------------------------------------------------------------------===//
 // Dialect Type Parsing and Printing

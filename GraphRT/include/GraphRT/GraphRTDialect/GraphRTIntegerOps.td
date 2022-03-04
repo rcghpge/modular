@@ -15,7 +15,7 @@ def ConstantI32Op : GraphRTOp<"constant.i32"> {
     AsyncValue.
   }];
 
-  let arguments = (ins  I32Attr:$value);
+  let arguments = (ins I32Attr:$value);
   let results   = (outs I32:$result);
   let assemblyFormat = "$value attr-dict";
 }
@@ -23,7 +23,7 @@ def ConstantI32Op : GraphRTOp<"constant.i32"> {
 def AddI32Op : GraphRTOp<"add.i32"> {
   let summary = "Add two 32-bit integers";
  
-  let arguments = (ins  I32:$lhs, I32:$rhs);
+  let arguments = (ins I32:$lhs, I32:$rhs);
   let results   = (outs I32:$result);
   let assemblyFormat = "$lhs `,` $rhs attr-dict";
 }
@@ -31,7 +31,7 @@ def AddI32Op : GraphRTOp<"add.i32"> {
 def PrintI32Op : GraphRTOp<"print.i32"> {
   let summary = "Print a 32-bit integer";
  
-  let arguments = (ins  I32:$value, ChainType:$chain);
+  let arguments = (ins I32:$value, ChainType:$chain);
   let results   = (outs ChainType:$result);
   let assemblyFormat = "$value `,` $chain attr-dict";
 }
