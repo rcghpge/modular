@@ -15,3 +15,12 @@ def ChainNewOp : GraphRTOp<"chain.new"> {
   let results   = (outs ChainType:$result);
   let assemblyFormat = "attr-dict";
 }
+
+def CallOp : GraphRTOp<"call"> {
+  let summary = "Call a BEF function";
+
+  let arguments = (ins SymbolRefAttr:$fn, Variadic<AnyType>:$operands);
+  let results   = (outs Variadic<AnyType>:$results);
+  let assemblyFormat =
+    "$fn `(` $operands `)` attr-dict `:` functional-type(operands, results)";
+}

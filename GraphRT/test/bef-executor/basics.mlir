@@ -91,9 +91,9 @@ bef.func @errors() -> (i32, i32, i32) {
 bef.func @simple_calls() -> (i32, i32) {
   // CHECK: int32 = 42
   // CHECK: int32 = 84
-  "test.call"() { fn = @basic.i32 } : () -> ()
+  graphrt.call @basic.i32() : () -> ()
 
-  %a, %b, %c = "test.call"() { fn = @errors } : () -> (i32, i32, i32)
+  %a, %b, %c = graphrt.call @errors() : () -> (i32, i32, i32)
 
   bef.output %a, %b : i32, i32
   // CHECK: 'simple_calls' returned <error: something bad happened>, 42
@@ -118,9 +118,9 @@ bef.func @caller() -> !graphrt.chain {
   %c1 = graphrt.constant.i32 1
 
   // CHECK-NEXT: int32 = 1
-  %ch0 = "test.call"(%c1) { fn = @call_print.i32 } : (i32) -> (!graphrt.chain)
+  %ch0 = graphrt.call @call_print.i32(%c1) : (i32) -> (!graphrt.chain)
 
-  %x = "test.call"(%c1) {fn = @add_one } : (i32) -> i32
+  %x = graphrt.call @add_one(%c1) : (i32) -> i32
 
   // CHECK-NEXT: int32 = 2
   %ch1 = graphrt.print.i32 %x, %ch0

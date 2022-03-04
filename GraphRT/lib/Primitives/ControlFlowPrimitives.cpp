@@ -22,7 +22,7 @@ static AsyncValueRef<Chain> graphrt_chain_new(Runtime &runtime) {
   return runtime.getReadyChain().copy();
 }
 
-static void bef_call(PrimitiveFrame &frame) {
+static void graphrt_call(PrimitiveFrame &frame) {
   const Function *fn = frame.getFunction(0);
   assert(fn->getNumArgs() == frame.getNumArgs() && "argument count mismatch");
   assert(fn->getNumResults() == frame.getNumResults() &&
@@ -38,5 +38,5 @@ static void bef_call(PrimitiveFrame &frame) {
 /// This registers the 'graphrt' dialect primitives for control flow.
 void M::registerGraphRTControlFlowPrimitives(PrimitiveRegistry &registry) {
   registry.add("graphrt.chain.new", M_PRIMITIVE(graphrt_chain_new));
-  registry.add("test.call", bef_call);
+  registry.add("graphrt.call", graphrt_call);
 }
