@@ -160,18 +160,19 @@ private:
 //
 //   int32_t add(int32_t a, int32_t b) { return a + b; }
 //
-// For non-strict primitives where one or more of the arguments are
-// asynchronous, you can use the "Argument" wrapper type as your function
-// arguments and return the result by value. The Argument<> internally wraps an
-// AsyncValue:
+// For primitives where you want low-level access to AsyncValue's, you can
+// declare them with either AsyncValueRef (if you know the element type) or with
+// RCRef<AsyncValue> (if you are type generic):
 //
-//   int32_t add(Argument<int32_t> a, Argument<int32_t> b) { return *a + *b; }
+//   int32_t add(AsyncValueRef<int32_t> &a, RCRef<AsyncValue> &b) {
+//     return a.get() + b.get<int32_t>();
+//   }
 //
 // These can be useful if you want to move() the async value itself out of the
 // argument instead of just getting access to the value it contains.
 //
 // All primitives defined with M_PRIMITIVE accept an implicit Chain as their
-// last argument. For example, the Add primitive above could be called like
+// last argument. For example, the `add` primitive above could be called like
 // this:
 //
 //   %c0 = bef.chain.new
@@ -189,25 +190,28 @@ private:
 // arguments:
 //
 //   // q = (n / d), r = n % d;
-//   void div_rem(Argument<int32_t> n, Argument<int32_t> d,
+//   void div_rem(int32_t n, int32_t d,
 //                Result<int32_t> q, Result<int32_t> r) {
-//     q.emplace(*n / *d);
-//     r.emplace(*n % *d);
+//     q.emplace(n / d);
+//     r.emplace(n % d);
 //   }
 //
-// There is also an "Attribute" wrapper for primitives that need to consume
-// attribute values. Note that attribute values are essentially literals, so
-// these should generally only be used for things that never change for a given
-// executable, as opposed to values that will be computed at runtime. Attributes
-// should appear after arguments and results:
+// There is also a "BEFAttribute" wrapper for primitives that need to consume
+// attribute values.  Attribute values are essentially literals - they are used
+// for things that never change for a given BEF executable, as opposed to values
+// that will be computed at runtime. Attributes must be listed after arguments
+// and results:
 //
 //   int32_t make_int(BEFAttribute<int32_t> value) {
 //     return *value;
 //   }
 //
-// Similarly StringAttribute, ArrayAttribute<T> and AggregateAttr are also
-// provided. They work the same way as attribute but for arrays of T or
-// characters or nested arrays of heterogeneous types.
+// BEF supports character strings and arrays, which you can access with
+// StringRef and ArrayRef in BEFAttribute:
+//
+//   int32_t sum_ints(BEFAttribute<ArrayRef<int32_t>> value) {
+//     return std::accumulate(value->begin(), value->end(), 0);
+//   }
 //
 // For primitives that may fail at runtime, for sync primitives the preferred
 // way is to return ErrorOr<T> to report the error:
@@ -221,10 +225,13 @@ private:
 //     return bytes;
 //   }
 //
+// You can also return RCRef<AsyncValue> and AsyncValueRef<T> values, which
+// allow lazy completion of values and lazy production of error results.
+//
 // Primitives can also take the PrimitiveFrame or Runtime if they need access
 // to anything else the above wrapper types don't provide.
 //
-// See the definitions of the wrapper types below for more details.
+// See the definitions of the wrapper types above for more details.
 //
 
 // TODO(C++'17): Switch to template when we can use C++17 with 'auto' template
@@ -284,6 +291,39 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
                                            hasInChain, PreviousArgs...,
                                            Runtime &>(frame, pargs...,
                                                       frame.getRuntime());
+    }
+  };
+
+  /// If this wants an AsyncValueRef, then they want raw low-level access to an
+  /// argument, provide it.
+  template <typename T, typename... Tail>
+  struct CallHelper<AsyncValueRef<T> &, Tail...> {
+    template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
+              bool hasInChain, typename... PreviousArgs>
+    static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
+      AsyncValueRef<T> arg(std::move(frame.getArg(argIdx)));
+
+      constexpr bool isArgChain = std::is_same<T, Chain>();
+      CallHelper<Tail...>::template invoke<argIdx + 1, resultIdx, attrIdx,
+                                           funcIdx, (hasInChain || isArgChain),
+                                           PreviousArgs..., AsyncValueRef<T> &>(
+          frame, pargs..., arg);
+    }
+  };
+
+  /// If this wants an AsyncValueRef, then they want raw low-level access to an
+  /// argument, provide it.
+  template <typename... Tail>
+  struct CallHelper<RCRef<AsyncValue> &, Tail...> {
+    template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
+              bool hasInChain, typename... PreviousArgs>
+    static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
+      RCRef<AsyncValue> &arg = frame.getArg(argIdx);
+
+      CallHelper<Tail...>::template invoke<argIdx + 1, resultIdx, attrIdx,
+                                           funcIdx, hasInChain, PreviousArgs...,
+                                           RCRef<AsyncValue> &>(frame, pargs...,
+                                                                arg);
     }
   };
 
@@ -466,6 +506,12 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   /// stored in Runtime.
   static void processResult(PrimitiveFrame &frame, size_t index, Chain t) {
     frame.setResult(index, frame.getRuntime().getReadyChain());
+  }
+
+  /// Handle explicit RCRef<AsyncValue> results.
+  static void processResult(PrimitiveFrame &frame, size_t index,
+                            RCRef<AsyncValue> t) {
+    frame.setResult(index, std::move(t));
   }
 
   /// Handle explicit AsyncValueRef results.

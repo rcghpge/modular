@@ -104,10 +104,27 @@ static Chain vt_print(const VTValue &v) {
   return Chain();
 }
 
+/// Share input args with results without copying.
+static std::pair<AsyncValueRef<VTValue>, AsyncValueRef<VTValue>>
+vt_share_to_two(AsyncValueRef<VTValue> &in) {
+  auto result1 = in.copy();
+  return {std::move(result1), std::move(in)};
+}
+
+/// Share input args with results without copying.  This is the same as above,
+/// but uses RCRef<AsyncValue> instead of AsyncValueRef<>.
+static std::pair<RCRef<AsyncValue>, RCRef<AsyncValue>>
+vt_share_to_two_2(RCRef<AsyncValue> &in) {
+  auto result1 = in.copy();
+  return {std::move(result1), std::move(in)};
+}
+
 static void registerValueTracking(PrimitiveRegistry &registry) {
   registry.add("test.vt.constant", M_PRIMITIVE(vt_constant));
   registry.add("test.vt.add", M_PRIMITIVE(vt_add));
   registry.add("test.vt.print", M_PRIMITIVE(vt_print));
+  registry.add("test.vt_share_to_two", M_PRIMITIVE(vt_share_to_two));
+  registry.add("test.vt_share_to_two_2", M_PRIMITIVE(vt_share_to_two_2));
 }
 
 //===----------------------------------------------------------------------===//

@@ -103,3 +103,51 @@ bef.func @test_hello() {
   %ch1 = "test.print_hello"(%ch0) : (!grt.chain) -> !grt.chain
   bef.output
 }
+
+// CHECK-LABEL: --- Running 'share_to_two'
+bef.func @share_to_two() {
+  // CHECK-NEXT: constructed vt.value(1)
+  // CHECK-NEXT: move constructed vt.value(1)
+  %c1 = "test.vt.constant"() { value = 1 : i32 } : () -> !vt.value
+
+  %x1, %x2 = "test.vt_share_to_two"(%c1) : (!vt.value) -> (!vt.value, !vt.value)
+
+  %ch0 = grt.chain.new
+
+  // CHECK-NEXT: print vt.value(1)
+  "test.vt.print"(%x1, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+
+  // CHECK-NEXT: print vt.value(1)
+  "test.vt.print"(%x2, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+
+  // CHECK-NEXT: destroyed vt.value(1)
+  bef.output
+}
+
+// Testing calling a bef function that forwards its argument into two results.
+
+// CHECK-LABEL: 'call_share_to_two' because it has arguments
+bef.func @call_share_to_two(%x: !vt.value) -> (!vt.value, !vt.value) {
+  %x1, %x2 = "test.vt_share_to_two_2"(%x) : (!vt.value) -> (!vt.value, !vt.value)
+  bef.output %x1, %x2 : !vt.value, !vt.value
+}
+
+// CHECK-LABEL: --- Running 'share_to_two_caller'
+bef.func @share_to_two_caller() {
+  // CHECK-NEXT: constructed vt.value(1)
+  // CHECK-NEXT: move constructed vt.value(1)
+  %c1 = "test.vt.constant"() { value = 1 : i32 } : () -> !vt.value
+
+  %x1, %x2 = grt.call @call_share_to_two(%c1) : (!vt.value) -> (!vt.value, !vt.value)
+
+  %ch0 = grt.chain.new
+
+  // CHECK-NEXT: print vt.value(1)
+  "test.vt.print"(%x1, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+
+  // CHECK-NEXT: print vt.value(1)
+  "test.vt.print"(%x2, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+
+  // CHECK-NEXT: destroyed vt.value(1)
+  bef.output
+}
