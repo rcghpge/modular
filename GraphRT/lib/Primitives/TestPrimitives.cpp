@@ -32,6 +32,27 @@ static void memory_leak_one_int32(Runtime &runtime) {
 }
 
 //===----------------------------------------------------------------------===//
+// String Tests
+//===----------------------------------------------------------------------===//
+
+static std::string get_string(BEFAttribute<StringRef> value) {
+  return value->str();
+}
+
+static std::string append_string(const std::string &lhs,
+                                 const std::string &rhs) {
+  return lhs + rhs;
+}
+
+static Chain print_string(const std::string &lhs, Chain chain) {
+  printf("string = ");
+  fwrite(lhs.data(), 1, lhs.size(), stdout);
+  fputc('\n', stdout);
+  fflush(stdout);
+  return chain;
+}
+
+//===----------------------------------------------------------------------===//
 // Error handling
 //===----------------------------------------------------------------------===//
 
@@ -69,9 +90,15 @@ static AsyncValueRef<int32_t> async_add_i32(int32_t lhs, int32_t rhs,
 /// This registers the 'test' dialect primitives, intended for writing executor
 /// testcases.
 void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
+  // Misc.
   registry.add("test.print_hello", M_PRIMITIVE(print_hello));
   registry.add("test.memory_leak_one_int32",
                M_PRIMITIVE(memory_leak_one_int32));
+
+  // String Tests
+  registry.add("test.get_string", M_PRIMITIVE(get_string));
+  registry.add("test.append_string", M_PRIMITIVE(append_string));
+  registry.add("test.print_string", M_PRIMITIVE(print_string));
 
   // Error handling.
   registry.add("test.fail", M_PRIMITIVE(fail));

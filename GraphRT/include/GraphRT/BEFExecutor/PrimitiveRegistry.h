@@ -14,6 +14,7 @@
 #include "LLCL/Support/Chain.h"
 #include "LLCL/Support/ReferenceCounted.h"
 #include "Support/ErrorOr.h"
+#include "llvm/ADT/StringRef.h"
 
 namespace M {
 
@@ -51,6 +52,10 @@ private:
 //===----------------------------------------------------------------------===//
 // Helper Classes For Primitive Implementations
 //===----------------------------------------------------------------------===//
+
+/// Given a pointer to the start of a BEF array or string attribute, return the
+/// length of array or string by decoding the prefix encoded VBR.
+size_t decodeBEFArrayLength(const void *dataPtr);
 
 // Utility template for tag dispatching.
 template <typename T>
@@ -108,6 +113,22 @@ public:
 
 private:
   const T &value;
+};
+
+/// String attributes have a special encoding that includes their length,
+/// allowing projection into a StringRef.
+template <>
+class BEFAttribute<StringRef> {
+public:
+  explicit BEFAttribute(const void *value)
+      : value(static_cast<const char *>(value), decodeBEFArrayLength(value)) {}
+
+  const StringRef &get() const { return value; }
+  const StringRef *operator->() const { return &value; }
+  const StringRef &operator*() const { return value; }
+
+private:
+  StringRef value;
 };
 
 //===----------------------------------------------------------------------===//

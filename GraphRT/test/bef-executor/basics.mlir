@@ -129,3 +129,23 @@ bef.func @caller() -> !grt.chain {
 
   // CHECK-NEXT: 'caller' returned chain
 }
+
+// CHECK-LABEL: --- Running 'basic_strings'
+bef.func @basic_strings() {
+  %x = "test.get_string"() { value = "bark" } : () -> !test.string
+  %y = "test.get_string"() { value = "rarf" } : () -> !test.string
+  %ch0 = grt.chain.new
+
+  // CHECK: string = bark
+  %ch1 = "test.print_string"(%x, %ch0) : (!test.string, !grt.chain) -> (!grt.chain)
+
+  %z = "test.append_string"(%x, %y) : (!test.string, !test.string) -> !test.string
+
+  // CHECK: string = barkrarf
+  "test.print_string"(%z, %ch1) : (!test.string, !grt.chain) -> (!grt.chain)
+
+  bef.output
+}
+
+
+
