@@ -56,6 +56,44 @@ private:
 template <typename T>
 struct TypeTag {};
 
+/// RemainingArguments collects all remaining arguments in an ArrayRef. There
+/// can be at most one RemainingArguments/RepeatedArguments, and it must appear
+/// after all other Arguments.
+//
+/// This should only be used when argument types have potentially heterogenous
+/// types, for example GRT::CallOp.
+class RemainingArguments {
+public:
+  explicit RemainingArguments(MutableArrayRef<RCRef<AsyncValue>> arguments)
+      : arguments(arguments) {}
+
+  MutableArrayRef<RCRef<AsyncValue>> get() const { return arguments; }
+  size_t size() const { return arguments.size(); }
+  RCRef<AsyncValue> &operator[](size_t i) const { return arguments[i]; }
+
+private:
+  MutableArrayRef<RCRef<AsyncValue>> arguments;
+};
+
+/// RemainingResults collects all remaining results in a MutableArrayRef. There
+/// can be at most one RemainingResults, and it must appear after all other
+/// Results.
+///
+/// This should be used when a primitive has potentially heterogenous types, for
+/// example, GRT::CallOp.
+class RemainingResults {
+public:
+  explicit RemainingResults(MutableArrayRef<RCRef<AsyncValue>> results)
+      : results(results) {}
+
+  MutableArrayRef<RCRef<AsyncValue>> get() const { return results; }
+  size_t size() const { return results.size(); }
+  RCRef<AsyncValue> &operator[](size_t i) const { return results[i]; }
+
+private:
+  MutableArrayRef<RCRef<AsyncValue>> results;
+};
+
 //===----------------------------------------------------------------------===//
 // Primitive Registration Wrapper Generator
 //===----------------------------------------------------------------------===//
@@ -73,6 +111,9 @@ struct TypeTag {};
 //
 //   int32_t Add(Argument<int32_t> a, Argument<int32_t> b) { return *a + *b; }
 //
+// These can be useful if you want to move() the async value itself out of the
+// argument instead of just getting access to the value it contains.
+//
 // All primitives defined with M_PRIMITIVE accept an implicit Chain as their
 // last argument. For example, the Add primitive above could be called like
 // this:
@@ -84,7 +125,7 @@ struct TypeTag {};
 // result type:
 //
 //   // q = (n / d), r = n % d;
-//   std::pair<int32_t, int32_t> DivRem(int32_t n, int32_t d) {
+//   std::pair<int32_t, int32_t> div_rem(int32_t n, int32_t d) {
 //     return {n / d, n % d};
 //   }
 //
@@ -92,10 +133,10 @@ struct TypeTag {};
 // arguments:
 //
 //   // q = (n / d), r = n % d;
-//   void DivRem(Argument<int32_t> n, Argument<int32_t> d,
-//               Result<int32_t> q, Result<int32_t> r) {
-//     q.Emplace(*n / *d);
-//     r.Emplace(*n % *d);
+//   void div_rem(Argument<int32_t> n, Argument<int32_t> d,
+//                Result<int32_t> q, Result<int32_t> r) {
+//     q.emplace(*n / *d);
+//     r.emplace(*n % *d);
 //   }
 //
 // There is also an "Attribute" wrapper for primitives that need to consume
@@ -104,7 +145,7 @@ struct TypeTag {};
 // executable, as opposed to values that will be computed at runtime. Attributes
 // should appear after arguments and results:
 //
-//   int32_t MakeInt(Attribute<int32_t> value) {
+//   int32_t make_int(Attribute<int32_t> value) {
 //     return *value;
 //   }
 //
@@ -115,7 +156,7 @@ struct TypeTag {};
 // For primitives that may fail at runtime, for sync primitives the preferred
 // way is to return ErrorOr<T> to report the error:
 //
-//   ErrorOr<std::string> ReadFile(std::string path) {
+//   ErrorOr<std::string> read_file(std::string path) {
 //     auto* f = OpenFile(*path);
 //     if (!f) {
 //       return Error("Could not open file");
@@ -206,6 +247,63 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
     }
   };
 
+  /// RemainingArguments provides an ArrayRef containing all remaining
+  /// arguments. Useful for variadic kernels with heterogenous elements.
+  template <typename... Tail>
+  struct CallHelper<RemainingArguments, Tail...> {
+    template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
+              bool hasErrorHandler, bool hasInChain, typename... PreviousArgs>
+    static void invoke(PrimitiveFrame &frame, const PreviousArgs &...pargs) {
+      static_assert(
+          argIdx != -1,
+          "Do not use more than one RemainingArguments/RepeatedArguments");
+      static_assert(resultIdx == 0, "Arguments should appear before results.");
+      static_assert(attrIdx == 0,
+                    "Arguments and results should appear before attributes.");
+      static_assert(funcIdx == 0,
+                    "Arguments and results should appear before funtions.");
+      RemainingArguments args(frame.getArguments().drop_front(argIdx));
+
+      CallHelper<Tail...>::template invoke<-1, resultIdx, attrIdx, funcIdx,
+                                           hasErrorHandler, hasInChain>(
+          frame, pargs..., args);
+    }
+  };
+
+  /// RemainingResults provides an MutableArrayRef<AsyncValue*> containing all
+  /// remaining results. Useful for variadic kernels.
+  template <typename... Tail>
+  struct CallHelper<RemainingResults, Tail...> {
+    template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
+              bool hasErrorHandler, bool hasInChain, typename... PreviousArgs>
+    static void invoke(PrimitiveFrame &frame, const PreviousArgs &...pargs) {
+      static_assert(resultIdx != -1,
+                    "Do not use more than one RemainingResults");
+      static_assert(attrIdx == 0,
+                    "Arguments and results should appear before attributes.");
+      static_assert(funcIdx == 0,
+                    "Arguments and results should appear before funtions.");
+
+      RemainingResults results(frame.getResults().drop_front(resultIdx));
+      CallHelper<Tail...>::template invoke<argIdx, -1, attrIdx, funcIdx,
+                                           hasErrorHandler, hasInChain>(
+          frame, pargs..., results);
+    }
+  };
+
+  /// If this takes a `const Function *`, then pass it down.
+  template <typename... Tail>
+  struct CallHelper<const Function *, Tail...> {
+    template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
+              bool hasErrorHandler, bool hasInChain, typename... PreviousArgs>
+    static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
+      CallHelper<Tail...>::template invoke<argIdx, resultIdx, attrIdx,
+                                           funcIdx + 1, hasErrorHandler,
+                                           hasInChain, PreviousArgs...>(
+          frame, pargs..., frame.getFunction(funcIdx));
+    }
+  };
+
   // Treat any other type as an Argument.
   template <typename Head, typename... Tail>
   struct CallHelper<Head, Tail...> {
@@ -249,7 +347,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
     template <int resultIdx>
     struct AssertIndex<void, resultIdx> {
       static void verify(PrimitiveFrame &frame) {
-        assert((resultIdx == frame.getNumResults() || resultIdx == -1) &&
+        assert((resultIdx == (int)frame.getNumResults() || resultIdx == -1) &&
                "Extra results passed to primitive");
       }
     };
@@ -259,7 +357,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
     static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
       AssertIndex<Return, resultIdx>::verify(frame);
 
-      assert((argIdx == frame.getNumArgs() || argIdx == -1 ||
+      assert((argIdx == (int)frame.getNumArgs() || argIdx == -1 ||
               (!hasInChain && argIdx == frame.getNumArgs() - 1 &&
                frame.getArg(argIdx)->template isType<Chain>())) &&
              "Extra arguments passed to primitive");
