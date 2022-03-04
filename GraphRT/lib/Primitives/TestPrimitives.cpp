@@ -40,6 +40,18 @@ static std::pair<ErrorOr<int32_t>, ErrorOr<int32_t>> test_partial_fail() {
 }
 
 //===----------------------------------------------------------------------===//
+// Cancellation
+//===----------------------------------------------------------------------===//
+
+// Primitive for testing cancellation logic.
+static Chain test_cancel(Chain inChain, Runtime &runtime) {
+  // Do NOT do this in a normal primitive. Runtime::cancelExecution() should
+  // only be called by clients external to the BEFExecutor.
+  runtime.cancelExecution("Cancelled!");
+  return inChain;
+}
+
+//===----------------------------------------------------------------------===//
 // Async Operations
 //===----------------------------------------------------------------------===//
 
@@ -55,8 +67,12 @@ static AsyncValueRef<int32_t> test_async_add_i32(int32_t lhs, int32_t rhs,
 void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
   registry.add("test.print_hello", M_PRIMITIVE(test_print_hello));
 
+  // Error handling.
   registry.add("test.fail", M_PRIMITIVE(test_fail));
   registry.add("test.partial_fail", M_PRIMITIVE(test_partial_fail));
+
+  // Cancellation.
+  registry.add("test.cancel", M_PRIMITIVE(test_cancel));
 
   registry.add("test.async.add.i32", M_PRIMITIVE(test_async_add_i32));
 }

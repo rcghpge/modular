@@ -500,10 +500,9 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
     assert(fnImpl != nullptr);
 
     // Keep track of whether we saw any error arguments. If so, we propagate the
-    // error to the results automatically.
-    // TODO(cancelation): Initialize it with the cancel async value: if the
-    // execution has been canceled we'll stop running primitives.
-    AsyncValue *anyErrorArgument = nullptr;
+    // error to the results automatically.  We initialize with the runtime's
+    // cancelation setting so cancellation quashes primitive execution.
+    AsyncValue *anyErrorArgument = runtime.getCancelValue();
 
     // Reserve space in the frame to avoid vector reallocation.
     frame.reserveArgsAndResults(decoder.numOperands, decoder.numResults);

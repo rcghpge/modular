@@ -263,6 +263,11 @@ static void runFunctionTestcase(const Function *fn, Runtime &runtime) {
   // properly chained together (which is useful for testing).
   runtime.quiesce();
 
+  // Always restart from cancellation to clear the cancel async value. The
+  // execution of a BEF function may cause Runtime to enter the canceled
+  // state, and we don't want this to persist across tests.
+  runtime.restartFromCancellation();
+
   // Make sure we're not leaking AsyncValues.
   if (AsyncValue::isAllocationTrackingEnabled()) {
     auto numLiveAsyncValues = AsyncValue::getNumAllocatedInstances();

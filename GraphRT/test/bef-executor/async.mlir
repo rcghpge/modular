@@ -15,3 +15,18 @@ bef.func @test_async_print_result() -> i32 {
 
 
 
+// CHECK-LABEL: --- Running 'test_cancel'
+bef.func @test_cancel() -> i32 {
+  %c1 = grt.constant.i32 1
+  %c42 = grt.constant.i32 42
+  %a = "test.async.add.i32"(%c1, %c42) : (i32, i32) -> i32
+
+  %ch0 = grt.chain.new
+  %ch1 = "test.cancel"(%ch0) : (!grt.chain) -> (!grt.chain)
+
+  %b = "test.async.add.i32"(%c1, %a) : (i32, i32) -> i32
+
+  bef.output %b : i32
+}
+// CHECK-NEXT: returned <error: Cancelled!>
+
