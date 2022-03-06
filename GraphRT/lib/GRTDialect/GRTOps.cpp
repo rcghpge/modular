@@ -93,10 +93,10 @@ ParseResult RepeatI32Op::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 void RepeatI32Op::print(OpAsmPrinter &p) {
-  p << " " << tripCount() << '(';
+  p << ' ' << tripCount() << " (";
   llvm::interleaveComma(llvm::drop_begin(getOperands()), p,
                         [&](Value arg) { p << arg << ": " << arg.getType(); });
-  p << ')';
+  p << ") ";
   p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
 
   // Reuse the argument names provided to the op for the bbarg names within
