@@ -397,10 +397,8 @@ LogicalResult EntityTable::addBEFFunction(Region *region, StringAttr name) {
     addType(argTy);
 
   // Remember this function.
-  if (name) {
-    addString(name);
-    namedFunctionIDs[name] = functions.size();
-  }
+  addString(name);
+  namedFunctionIDs[name] = functions.size();
 
   regionFunctionIDs[region] = functions.size();
   functions.push_back(
@@ -531,7 +529,7 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
 
     // Keep add any regions used by this op as BEF functions.
     for (auto &region : op->getRegions()) {
-      if (failed(addBEFFunction(&region, StringAttr())))
+      if (failed(addBEFFunction(&region, StringAttr::get(op->getContext()))))
         return WalkResult::interrupt();
     }
     return WalkResult::advance();
@@ -1072,7 +1070,7 @@ void BEFModuleEmitter::emitStrings() {
   BEFEmitter stringSection;
   for (StringAttr string : entities.strings) {
     entities.stringOffsets[string] = stringSection.getOffset();
-    stringSection.emitNulTerminatedString(string);
+    stringSection.emitNulTerminatedString(string ? string.getValue() : "");
   }
 
   emitSection(BEF::SectionID::STRINGS, stringSection);
