@@ -70,8 +70,7 @@ def OpaqueOp : BEFOp<"opaque"> {
   }];
  }
 
-def OutputOp : BEFOp<"output",
-                     [Terminator, ReturnLike, HasParent<"BEF::FuncOp">]> {
+def OutputOp : BEFOp<"output", [Terminator, ReturnLike]> {
   let summary = "BEF output operation";
   let description = [{
     The "bef.output" operation specifies the returned values for a BEF function.
@@ -89,6 +88,11 @@ def OutputOp : BEFOp<"output",
 
   let arguments = (ins Variadic<AnyType>:$operands);
   let assemblyFormat = "attr-dict ($operands^ `:` type($operands))?";
-  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    /// Verify that the operands of this OutputOp match the specified set of
+    /// types.
+    mlir::LogicalResult checkArgumentTypes(TypeRange types);
+  }];
 }
 

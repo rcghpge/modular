@@ -105,29 +105,27 @@ LogicalResult FuncOp::verifyType() {
 }
 
 LogicalResult FuncOp::verify() {
-  if (!isa_and_nonnull<OutputOp>(getBodyBlock()->getTerminator()))
-    return emitOpError("expected bef.output terminator");
-  return success();
+  auto output = cast<OutputOp>(getBodyBlock()->getTerminator());
+  return output.checkArgumentTypes(getResultTypes());
 }
 
 //===----------------------------------------------------------------------===//
 // OutputOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult OutputOp::verify() {
-  // ODS checks the parent is a FuncOp.
-  auto func = cast<FuncOp>(getOperation()->getParentOp());
-
+/// Containers verify that the operands of this OutputOp match the specified set
+/// of types.
+mlir::LogicalResult OutputOp::checkArgumentTypes(TypeRange types) {
   // Verify our result types match up with the enclosing func result type.
-  if (getNumOperands() != func.getResultTypes().size())
-    return emitOpError("expected ") << func.getResultTypes().size()
-                                    << " operands for enclosing bef.func";
+  if (getNumOperands() != types.size())
+    return emitOpError("expected ")
+           << types.size() << " operands for enclosing op";
 
   for (size_t i = 0, e = getNumOperands(); i != e; ++i) {
-    if (getOperand(i).getType() != func.getResultTypes()[i])
+    if (getOperand(i).getType() != types[i])
       return emitOpError("operand #")
              << i << " has type " << getOperand(i).getType()
-             << " but should be " << func.getResultTypes()[i];
+             << " but should be " << types[i];
   }
   return success();
 }
