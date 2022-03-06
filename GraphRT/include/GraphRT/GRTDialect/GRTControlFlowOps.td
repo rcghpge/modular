@@ -10,6 +10,10 @@
 
 include "mlir/IR/SymbolInterfaces.td"
 
+//===----------------------------------------------------------------------===//
+// ChainNewOp
+//===----------------------------------------------------------------------===//
+
 def ChainNewOp : GRTOp<"chain.new"> {
   let summary = "Return a new !grt.chain";
 
@@ -17,6 +21,10 @@ def ChainNewOp : GRTOp<"chain.new"> {
   let results = (outs ChainType:$result);
   let assemblyFormat = "attr-dict";
 }
+
+//===----------------------------------------------------------------------===//
+// CallOp
+//===----------------------------------------------------------------------===//
 
 def CallOp : GRTOp<"call", [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "Call a BEF function";
@@ -33,6 +41,10 @@ def CallOp : GRTOp<"call", [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
     $callee `(` $operands `)` attr-dict `:` functional-type(operands, results)
   }];
 }
+
+//===----------------------------------------------------------------------===//
+// RepeatI32Op
+//===----------------------------------------------------------------------===//
 
 def RepeatI32Op : GRTOp<"repeat.i32",
          [IsolatedFromAbove, SingleBlockImplicitTerminator<"BEF::OutputOp">]> {
@@ -53,10 +65,12 @@ def RepeatI32Op : GRTOp<"repeat.i32",
 
     Example:
 
+    ```mlir
       %res1, %res2 = grt.repeat.i32 %i (%loopval1: i32, %loopval2: f32) {
         ...
         bef.output %loopval1, %loopval2 : i32, f32
       }
+    ```
   }];
 
   let arguments = (ins I32:$tripCount, Variadic<AnyType>);

@@ -12,6 +12,10 @@ include "mlir/IR/FunctionInterfaces.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 
+//===----------------------------------------------------------------------===//
+// FuncOp
+//===----------------------------------------------------------------------===//
+
 def FuncOp : BEFOp<"func", [HasParent<"mlir::ModuleOp">, FunctionOpInterface,
                             Symbol, IsolatedFromAbove,
                             SingleBlockImplicitTerminator<"OutputOp">]> {
@@ -50,6 +54,10 @@ def FuncOp : BEFOp<"func", [HasParent<"mlir::ModuleOp">, FunctionOpInterface,
   let hasVerifier = 1;
 }
 
+//===----------------------------------------------------------------------===//
+// OpaqueOp
+//===----------------------------------------------------------------------===//
+
 def OpaqueOp : BEFOp<"opaque"> {
   let summary = "opaque BEF operation";
   let description = [{
@@ -68,7 +76,11 @@ def OpaqueOp : BEFOp<"opaque"> {
     $opname (`nonstrict` $nonstrict^)? $attrs `(` $operands `)` attr-dict `:` 
             functional-type($operands, $results) $body
   }];
- }
+}
+
+//===----------------------------------------------------------------------===//
+// OutputOp
+//===----------------------------------------------------------------------===//
 
 def OutputOp : BEFOp<"output", [Terminator, ReturnLike]> {
   let summary = "BEF output operation";

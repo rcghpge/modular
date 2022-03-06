@@ -63,14 +63,13 @@ ParseResult RepeatI32Op::parse(OpAsmParser &parser, OperationState &result) {
   SmallVector<Location> operandLocs;
   SmallVector<Type> types;
   auto parseOperandFn = [&]() -> ParseResult {
-    operandLocs.push_back(
-        parser.getEncodedSourceLoc(parser.getCurrentLocation()));
     OpAsmParser::OperandType curOperand;
     Type type;
     if (parser.parseOperand(curOperand) || parser.parseColonType(type))
       return failure();
     operands.push_back(curOperand);
     types.push_back(type);
+    operandLocs.push_back(parser.getEncodedSourceLoc(curOperand.location));
     return success();
   };
 
@@ -94,22 +93,15 @@ ParseResult RepeatI32Op::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 void RepeatI32Op::print(OpAsmPrinter &p) {
-  p << " ";
-  p.printOperand(getOperands()[0]);
-
-  p << '(';
-  llvm::interleaveComma(llvm::drop_begin(getOperands()), p, [&](Value arg) {
-    p.printOperand(arg);
-    p << ": " << arg.getType();
-  });
-
-  if (!getOperation()->getAttrs().empty())
-    p.printOptionalAttrDict(getOperation()->getAttrs());
+  p << " " << tripCount() << '(';
+  llvm::interleaveComma(llvm::drop_begin(getOperands()), p,
+                        [&](Value arg) { p << arg << ": " << arg.getType(); });
+  p << ')';
+  p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
 
   // Reuse the argument names provided to the op for the bbarg names within
   // the region.
-  SmallVector<Value, 4> argNameValues(llvm::drop_begin(getOperands()));
-  p.shadowRegionArgs(region(), argNameValues);
+  p.shadowRegionArgs(region(), llvm::drop_begin(getOperands()));
   p.printRegion(region(), /*printEntryBlockArgs=*/false);
 }
 
