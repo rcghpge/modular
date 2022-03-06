@@ -151,3 +151,74 @@ bef.func @share_to_two_caller() {
   // CHECK-NEXT: destroyed vt.value(1)
   bef.output
 }
+
+// CHECK-LABEL: 'repeat_n_inc' because it has arguments
+bef.func @repeat_n_inc(%n: i32) -> () {
+  // Returns 1 + %n by initializing %x to 1 and incrementing in a loop.
+  %ch0 = grt.chain.new
+  %x = "test.vt.constant"() { value = 1 : i32 } : () -> !vt.value
+  %y = grt.repeat.i32 %n (%x: !vt.value) {
+    %v1 = "test.vt.constant"() { value = 1 : i32 } : () -> !vt.value
+    %r = "test.vt.add"(%v1, %x) : (!vt.value,  !vt.value) -> !vt.value
+    bef.output %r : !vt.value
+  }
+
+  "test.vt.print"(%y, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+
+  bef.output
+}
+
+// CHECK-LABEL: --- Running 'repeat_0_inc'
+bef.func @repeat_0_inc() {
+  %count = grt.constant.i32 0
+
+  // CHECK-NEXT: constructed vt.value(1)
+  // CHECK-NEXT: move constructed vt.value(1)
+  // CHECK-NEXT: print vt.value(1)
+  // CHECK-NEXT: destroyed vt.value(1)
+  grt.call @repeat_n_inc(%count) : (i32) -> ()
+
+  bef.output
+}
+
+// CHECK-LABEL: --- Running 'repeat_1_inc'
+bef.func @repeat_1_inc() {
+  %count = grt.constant.i32 1
+
+  // CHECK-NEXT: constructed vt.value(1)
+  // CHECK-NEXT: move constructed vt.value(1)
+  // CHECK-NEXT: constructed vt.value(1)
+  // CHECK-NEXT: move constructed vt.value(1)
+  // CHECK-NEXT: constructed vt.value(2)
+  // CHECK-NEXT: move constructed vt.value(2)
+  // CHECK-NEXT: destroyed vt.value(1)
+  // CHECK-NEXT: destroyed vt.value(1)
+  // CHECK-NEXT: print vt.value(2)
+  // CHECK-NEXT: destroyed vt.value(2)
+  grt.call @repeat_n_inc(%count) : (i32) -> ()
+  bef.output
+}
+
+// CHECK-LABEL: --- Running 'repeat_2_inc'
+bef.func @repeat_2_inc() {
+  %count = grt.constant.i32 2
+
+  // CHECK-NEXT: constructed vt.value(1)
+  // CHECK-NEXT: move constructed vt.value(1)
+  // CHECK-NEXT: constructed vt.value(1)
+  // CHECK-NEXT: move constructed vt.value(1)
+  // CHECK-NEXT: constructed vt.value(2)
+  // CHECK-NEXT: move constructed vt.value(2)
+  // CHECK-NEXT: destroyed vt.value(1)
+  // CHECK-NEXT: destroyed vt.value(1)
+  // CHECK-NEXT: constructed vt.value(1)
+  // CHECK-NEXT: move constructed vt.value(1)
+  // CHECK-NEXT: constructed vt.value(3)
+  // CHECK-NEXT: move constructed vt.value(3)
+  // CHECK-NEXT: destroyed vt.value(1)
+  // CHECK-NEXT: destroyed vt.value(2)
+  // CHECK-NEXT: print vt.value(3)
+  // CHECK-NEXT: destroyed vt.value(3)
+  grt.call @repeat_n_inc(%count) : (i32) -> ()
+  bef.output
+}

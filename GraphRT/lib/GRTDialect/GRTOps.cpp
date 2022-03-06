@@ -9,11 +9,85 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphRT/GRTDialect/GRTOps.h"
+#include "Support/LLVM.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/FunctionImplementation.h"
 
 using namespace M;
 using namespace GRT;
+
+//===----------------------------------------------------------------------===//
+// RepeatI32Op
+//===----------------------------------------------------------------------===//
+
+ParseResult RepeatI32Op::parse(OpAsmParser &parser, OperationState &result) {
+  OpAsmParser::OperandType countOperand;
+  SmallVector<OpAsmParser::OperandType, 4> operands;
+  SmallVector<Location> operandLocs;
+  SmallVector<Type> types;
+  auto parseOperandFn = [&]() -> ParseResult {
+    operandLocs.push_back(
+        parser.getEncodedSourceLoc(parser.getCurrentLocation()));
+    OpAsmParser::OperandType curOperand;
+    Type type;
+    if (parser.parseOperand(curOperand) || parser.parseColonType(type))
+      return failure();
+    operands.push_back(curOperand);
+    types.push_back(type);
+    return success();
+  };
+
+  llvm::SMLoc operandLoc;
+  if (parser.parseOperand(countOperand) ||
+      parser.getCurrentLocation(&operandLoc) ||
+      parser.resolveOperand(countOperand,
+                            IntegerType::get(result.getContext(), 32),
+                            result.operands) ||
+      parser.parseCommaSeparatedList(OpAsmParser::Delimiter::Paren,
+                                     parseOperandFn, "in operand list") ||
+      parser.resolveOperands(operands, types, operandLoc, result.operands) ||
+      parser.parseOptionalAttrDictWithKeyword(result.attributes) ||
+      parser.addTypesToList(types, result.types))
+    return failure();
+
+  // Parse the body region.
+  Region *body = result.addRegion();
+  return parser.parseRegion(*body, operands, types, operandLocs,
+                            /*enableNameShadowing=*/true);
+}
+
+void RepeatI32Op::print(OpAsmPrinter &p) {
+  p << " ";
+  p.printOperand(getOperands()[0]);
+
+  p << '(';
+  llvm::interleaveComma(llvm::drop_begin(getOperands()), p, [&](Value arg) {
+    p.printOperand(arg);
+    p << ": " << arg.getType();
+  });
+
+  if (!getOperation()->getAttrs().empty())
+    p.printOptionalAttrDict(getOperation()->getAttrs());
+
+  // Reuse the argument names provided to the op for the bbarg names within
+  // the region.
+  SmallVector<Value, 4> argNameValues(llvm::drop_begin(getOperands()));
+  p.shadowRegionArgs(region(), argNameValues);
+  p.printRegion(region(), /*printEntryBlockArgs=*/false);
+}
+
+LogicalResult RepeatI32Op::verify() {
+  // Verify that the operand and result types match.
+  if (getNumResults() != getNumOperands() - 1)
+    return emitOpError("incorrect number of operands");
+
+  for (unsigned i = 0, e = getNumResults(); i != e; ++i)
+    if (getOperand(i + 1).getType() != getResult(i).getType())
+      return emitOpError("operand/result type mismatch");
+
+  auto output = cast<BEF::OutputOp>(getBody()->getTerminator());
+  return output.checkArgumentTypes(getResultTypes());
+}
 
 //===----------------------------------------------------------------------===//
 // TableGen generated logic.

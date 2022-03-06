@@ -1,6 +1,5 @@
 // RUN: bef-translate -export-bef -allow-unregistered-dialect -split-input-file --verify-diagnostics  %s 
 
-
 bef.func @trivial() {  // expected-error {{must have exactly one block}}
 }
 
@@ -12,11 +11,10 @@ bef.func @need_output() {
   "unknown.term"() : () -> ()
 }
 
-
 // -----
 
 bef.func @need_output() -> i32 {
-  bef.output  // expected-error {{'bef.output' op expected 1 operands for enclosing bef.func}}
+  bef.output  // expected-error {{'bef.output' op expected 1 operands for enclosing op}}
 }
 
 // -----

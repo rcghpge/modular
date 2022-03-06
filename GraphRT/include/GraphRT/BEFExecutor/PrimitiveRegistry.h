@@ -95,6 +95,14 @@ public:
   size_t size() const { return results.size(); }
   RCRef<AsyncValue> &operator[](size_t i) const { return results[i]; }
 
+  /// Allocate all of the unset result values as IndirectAsyncValues.
+  void allocateIndirectResults(Runtime &runtime) {
+    for (auto &elt : results) {
+      if (!elt)
+        elt = AsyncValue::createIndirect(runtime);
+    }
+  }
+
 private:
   MutableArrayRef<RCRef<AsyncValue>> results;
 };
@@ -276,8 +284,8 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
     static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
       CallHelper<Tail...>::template invoke<argIdx, resultIdx, attrIdx, funcIdx,
                                            hasInChain, PreviousArgs...,
-                                           PrimitiveFrame &>(frame, pargs...,
-                                                             frame);
+                                           PrimitiveFrame &>(
+          frame, std::forward<PreviousArgs>(pargs)..., frame);
     }
   };
 
@@ -289,8 +297,8 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
     static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
       CallHelper<Tail...>::template invoke<argIdx, resultIdx, attrIdx, funcIdx,
                                            hasInChain, PreviousArgs...,
-                                           Runtime &>(frame, pargs...,
-                                                      frame.getRuntime());
+                                           Runtime &>(
+          frame, std::forward<PreviousArgs>(pargs)..., frame.getRuntime());
     }
   };
 
@@ -307,7 +315,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
       CallHelper<Tail...>::template invoke<argIdx + 1, resultIdx, attrIdx,
                                            funcIdx, (hasInChain || isArgChain),
                                            PreviousArgs..., AsyncValueRef<T> &>(
-          frame, pargs..., arg);
+          frame, std::forward<PreviousArgs>(pargs)..., arg);
     }
   };
 
@@ -322,8 +330,8 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
 
       CallHelper<Tail...>::template invoke<argIdx + 1, resultIdx, attrIdx,
                                            funcIdx, hasInChain, PreviousArgs...,
-                                           RCRef<AsyncValue> &>(frame, pargs...,
-                                                                arg);
+                                           RCRef<AsyncValue> &>(
+          frame, std::forward<PreviousArgs>(pargs)..., arg);
     }
   };
 
@@ -333,7 +341,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   struct CallHelper<RemainingArguments, Tail...> {
     template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
               bool hasInChain, typename... PreviousArgs>
-    static void invoke(PrimitiveFrame &frame, const PreviousArgs &...pargs) {
+    static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
       static_assert(
           argIdx != -1,
           "Do not use more than one RemainingArguments/RepeatedArguments");
@@ -345,7 +353,8 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
       RemainingArguments args(frame.getArguments().drop_front(argIdx));
 
       CallHelper<Tail...>::template invoke<-1, resultIdx, attrIdx, funcIdx,
-                                           hasInChain>(frame, pargs..., args);
+                                           hasInChain, PreviousArgs...>(
+          frame, std::forward<PreviousArgs>(pargs)..., args);
     }
   };
 
@@ -355,7 +364,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   struct CallHelper<RemainingResults, Tail...> {
     template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
               bool hasInChain, typename... PreviousArgs>
-    static void invoke(PrimitiveFrame &frame, const PreviousArgs &...pargs) {
+    static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
       static_assert(resultIdx != -1,
                     "Do not use more than one RemainingResults");
       static_assert(attrIdx == 0,
@@ -365,8 +374,8 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
 
       RemainingResults results(frame.getResults().drop_front(resultIdx));
       CallHelper<Tail...>::template invoke<argIdx, -1, attrIdx, funcIdx,
-                                           hasInChain>(frame, pargs...,
-                                                       results);
+                                           hasInChain, PreviousArgs...>(
+          frame, std::forward<PreviousArgs>(pargs)..., results);
     }
   };
 
@@ -376,9 +385,11 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
     template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
               bool hasInChain, typename... PreviousArgs>
     static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
-      CallHelper<Tail...>::template invoke<
-          argIdx, resultIdx, attrIdx, funcIdx + 1, hasInChain, PreviousArgs...>(
-          frame, pargs..., frame.getFunction(funcIdx));
+      CallHelper<Tail...>::template invoke<argIdx, resultIdx, attrIdx,
+                                           funcIdx + 1, hasInChain,
+                                           PreviousArgs..., const Function *>(
+          frame, std::forward<PreviousArgs>(pargs)...,
+          frame.getFunction(funcIdx));
     }
   };
 
@@ -387,13 +398,13 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   struct CallHelper<BEFAttribute<Head>, Tail...> {
     template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
               bool hasInChain, typename... PreviousArgs>
-    static void invoke(PrimitiveFrame &frame, const PreviousArgs &...pargs) {
+    static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
       static_assert(attrIdx != -1,
                     "Do not place Attributes after RemainingAttributes");
       BEFAttribute<Head> arg(frame.getRawAttr(attrIdx));
-      CallHelper<Tail...>::template invoke<argIdx, resultIdx, attrIdx + 1,
-                                           funcIdx, hasInChain>(frame, pargs...,
-                                                                arg);
+      CallHelper<Tail...>::template invoke<
+          argIdx, resultIdx, attrIdx + 1, funcIdx, hasInChain, PreviousArgs...>(
+          frame, std::forward<PreviousArgs>(pargs)..., arg);
     }
   };
 
@@ -416,8 +427,9 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
 
       constexpr bool isArgChain = std::is_same<ArgTy, Chain>();
       CallHelper<Tail...>::template invoke<argIdx + 1, resultIdx, attrIdx,
-                                           funcIdx, (hasInChain || isArgChain)>(
-          frame, pargs..., arg);
+                                           funcIdx, (hasInChain || isArgChain),
+                                           PreviousArgs...>(
+          frame, std::forward<PreviousArgs>(pargs)..., arg);
     }
   };
 
@@ -457,7 +469,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
              "Extra attributes passed to primitive");
       assert((funcIdx == frame.getNumFunctions() || funcIdx == -1) &&
              "Extra functions passed to primitive");
-      ReturnHelper<Return>::invoke(frame, pargs...);
+      ReturnHelper<Return>::invoke(frame, std::forward<PreviousArgs>(pargs)...);
     }
   };
 
@@ -469,14 +481,16 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   // Otherwise ignores the return value.
   template <typename T>
   struct ReturnHelper {
-    static void invoke(PrimitiveFrame &frame, const Args &...args) {
-      handleReturn(frame, implFn(args...));
+    template <typename... ActualArgs>
+    static void invoke(PrimitiveFrame &frame, ActualArgs &&...args) {
+      handleReturn(frame, implFn(std::forward<ActualArgs>(args)...));
     }
   };
   template <>
   struct ReturnHelper<void> {
-    static void invoke(PrimitiveFrame &frame, const Args &...args) {
-      implFn(args...);
+    template <typename... ActualArgs>
+    static void invoke(PrimitiveFrame &frame, ActualArgs &&...args) {
+      implFn(std::forward<ActualArgs>(args)...);
     }
   };
 

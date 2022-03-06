@@ -16,22 +16,22 @@ def ConstantI32Op : GRTOp<"constant.i32"> {
   }];
 
   let arguments = (ins I32Attr:$value);
-  let results   = (outs I32:$result);
+  let results = (outs I32:$result);
   let assemblyFormat = "$value attr-dict";
 }
 
 def AddI32Op : GRTOp<"add.i32"> {
-  let summary = "Add two 32-bit integers";
+  let summary = "Add two int32_t values";
  
   let arguments = (ins I32:$lhs, I32:$rhs);
-  let results   = (outs I32:$result);
+  let results = (outs I32:$result);
   let assemblyFormat = "$lhs `,` $rhs attr-dict";
 }
 
 def PrintI32Op : GRTOp<"print.i32"> {
-  let summary = "Print a 32-bit integer";
+  let summary = "Print an int32_t value";
  
   let arguments = (ins I32:$value, ChainType:$chain);
-  let results   = (outs ChainType:$result);
+  let results = (outs ChainType:$result);
   let assemblyFormat = "$value `,` $chain attr-dict";
 }
