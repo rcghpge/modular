@@ -106,7 +106,7 @@ static Chain vt_print(const VTValue &v) {
 
 /// Share input args with results without copying.
 static std::pair<AsyncValueRef<VTValue>, AsyncValueRef<VTValue>>
-vt_share_to_two(AsyncValueRef<VTValue> &in) {
+vt_share_to_two(AsyncValueRef<VTValue> in) {
   auto result1 = in.copy();
   return {std::move(result1), std::move(in)};
 }
@@ -114,7 +114,7 @@ vt_share_to_two(AsyncValueRef<VTValue> &in) {
 /// Share input args with results without copying.  This is the same as above,
 /// but uses RCRef<AsyncValue> instead of AsyncValueRef<>.
 static std::pair<RCRef<AsyncValue>, RCRef<AsyncValue>>
-vt_share_to_two_2(RCRef<AsyncValue> &in) {
+vt_share_to_two_2(RCRef<AsyncValue> in) {
   auto result1 = in.copy();
   return {std::move(result1), std::move(in)};
 }

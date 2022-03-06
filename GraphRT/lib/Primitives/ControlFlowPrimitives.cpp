@@ -34,7 +34,7 @@ static void call(RemainingArguments arguments, RemainingResults results,
 ///
 /// This takes the count as an AsyncValue because this is a nonstrict primitive,
 /// and the count may not be available yet.
-static void repeat_i32(AsyncValueRef<int32_t> &count, RemainingArguments args,
+static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
                        RemainingResults results, const Function *bodyFn,
                        Runtime &runtime) {
   assert(args.size() == results.size() && args.size() == bodyFn->getNumArgs() &&

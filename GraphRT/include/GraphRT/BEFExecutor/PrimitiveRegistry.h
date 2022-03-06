@@ -172,7 +172,7 @@ private:
 // declare them with either AsyncValueRef (if you know the element type) or with
 // RCRef<AsyncValue> (if you are type generic):
 //
-//   int32_t add(AsyncValueRef<int32_t> &a, RCRef<AsyncValue> &b) {
+//   int32_t add(AsyncValueRef<int32_t> a, RCRef<AsyncValue> b) {
 //     return a.get() + b.get<int32_t>();
 //   }
 //
@@ -305,7 +305,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   /// If this wants an AsyncValueRef, then they want raw low-level access to an
   /// argument, provide it.
   template <typename T, typename... Tail>
-  struct CallHelper<AsyncValueRef<T> &, Tail...> {
+  struct CallHelper<AsyncValueRef<T>, Tail...> {
     template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
               bool hasInChain, typename... PreviousArgs>
     static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
@@ -314,24 +314,23 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
       constexpr bool isArgChain = std::is_same<T, Chain>();
       CallHelper<Tail...>::template invoke<argIdx + 1, resultIdx, attrIdx,
                                            funcIdx, (hasInChain || isArgChain),
-                                           PreviousArgs..., AsyncValueRef<T> &>(
-          frame, std::forward<PreviousArgs>(pargs)..., arg);
+                                           PreviousArgs...>(
+          frame, std::forward<PreviousArgs>(pargs)..., std::move(arg));
     }
   };
 
   /// If this wants an AsyncValueRef, then they want raw low-level access to an
   /// argument, provide it.
   template <typename... Tail>
-  struct CallHelper<RCRef<AsyncValue> &, Tail...> {
+  struct CallHelper<RCRef<AsyncValue>, Tail...> {
     template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
               bool hasInChain, typename... PreviousArgs>
     static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
       RCRef<AsyncValue> &arg = frame.getArg(argIdx);
 
-      CallHelper<Tail...>::template invoke<argIdx + 1, resultIdx, attrIdx,
-                                           funcIdx, hasInChain, PreviousArgs...,
-                                           RCRef<AsyncValue> &>(
-          frame, std::forward<PreviousArgs>(pargs)..., arg);
+      CallHelper<Tail...>::template invoke<
+          argIdx + 1, resultIdx, attrIdx, funcIdx, hasInChain, PreviousArgs...>(
+          frame, std::forward<PreviousArgs>(pargs)..., std::move(arg));
     }
   };
 
@@ -358,8 +357,8 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
     }
   };
 
-  /// RemainingResults provides an MutableArrayRef<AsyncValue*> containing all
-  /// remaining results. Useful for variadic primitives.
+  /// RemainingResults provides a view containing all remaining results. Useful
+  /// for variadic primitives.
   template <typename... Tail>
   struct CallHelper<RemainingResults, Tail...> {
     template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
