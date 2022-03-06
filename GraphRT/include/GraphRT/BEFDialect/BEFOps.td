@@ -13,7 +13,7 @@ include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 
 def FuncOp : BEFOp<"func", [HasParent<"mlir::ModuleOp">, FunctionOpInterface,
-                            Symbol, SymbolTable, IsolatedFromAbove,
+                            Symbol, IsolatedFromAbove,
                             SingleBlockImplicitTerminator<"OutputOp">]> {
   let summary = "Named function in a BEF file";
   let arguments = (ins);
