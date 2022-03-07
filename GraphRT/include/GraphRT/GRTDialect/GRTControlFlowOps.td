@@ -43,6 +43,50 @@ def CallOp : GRTOp<"call", [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
 }
 
 //===----------------------------------------------------------------------===//
+// IfOp
+//===----------------------------------------------------------------------===//
+
+def IfOp : GRTOp<"if",
+          [IsolatedFromAbove, SingleBlockImplicitTerminator<"BEF::OutputOp">]> {
+  let summary = "if operation";
+  let description = [{
+    The "grt.if" operation takes an i1 condition, a 'then' body and an 'else'
+    body.  If the condition is true, the 'then' body is run and the "grt.if"
+    operation returns the results of that region, otherwise the "else" body is
+    run and its values are returned.
+
+    The body regions must have the same signature, but they may take an
+    arbitrary number of arguments and return values with the same types as the
+    op return types, using a 'bef.output' operation at the end of the
+    region.  The initial values are specified as operands of "bef.if" (along
+    with the condition).
+
+    This operation is safe to use as a 'nonstrict' op, which dispatches its body
+    whenever the condition and any dependent arguments are resolved.
+
+    Example:
+
+    ```mlir
+      %res = grt.if %cond (%x: i32, %y: f32) -> i32 {
+        %v1 = "use"(%x, %y) : (i32, f32) -> i32
+        bef.output %v1 : i32
+      } else {
+        %v2 = "abuse"(%x, %y) : (i32, f32) -> i32
+        bef.output %v2 : i32
+      }
+    ```
+  }];
+
+  let arguments = (ins I1:$cond, Variadic<AnyType>:$inputs);
+  let results = (outs Variadic<AnyType>:$results);
+  let regions = (region SizedRegion<1>:$thenRegion,
+                        SizedRegion<1>:$elseRegion);
+
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // RepeatI32Op
 //===----------------------------------------------------------------------===//
 
@@ -73,8 +117,8 @@ def RepeatI32Op : GRTOp<"repeat.i32",
     ```
   }];
 
-  let arguments = (ins I32:$tripCount, Variadic<AnyType>);
-  let results = (outs Variadic<AnyType>);
+  let arguments = (ins I32:$tripCount, Variadic<AnyType>:$inputs);
+  let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$region);
 
   let hasCustomAssemblyFormat = 1;

@@ -16,6 +16,27 @@
 using namespace M;
 using namespace GRT;
 
+/// Parse a parenthesized operand list with types included, e.g.
+/// `(%a: i32, %b: f32)`.
+static ParseResult
+parseParenOperandList(OpAsmParser &parser, OperationState &result,
+                      SmallVectorImpl<OpAsmParser::OperandType> &operandInfo,
+                      SmallVectorImpl<Location> &operandLocs) {
+  auto parseOperandFn = [&]() -> ParseResult {
+    OpAsmParser::OperandType curOperand;
+    Type type;
+    if (parser.parseOperand(curOperand) || parser.parseColonType(type) ||
+        parser.resolveOperand(curOperand, type, result.operands))
+      return failure();
+    operandInfo.push_back(curOperand);
+    operandLocs.push_back(parser.getEncodedSourceLoc(curOperand.location));
+    return success();
+  };
+
+  return parser.parseCommaSeparatedList(OpAsmParser::Delimiter::Paren,
+                                        parseOperandFn, "in operand list");
+}
+
 //===----------------------------------------------------------------------===//
 // CallOp
 //===----------------------------------------------------------------------===//
@@ -54,64 +75,132 @@ LogicalResult CallOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
 }
 
 //===----------------------------------------------------------------------===//
+// IfOp
+//===----------------------------------------------------------------------===//
+
+ParseResult IfOp::parse(OpAsmParser &parser, OperationState &result) {
+  SmallVector<OpAsmParser::OperandType> operandInfo;
+  SmallVector<Location> operandLocs;
+  llvm::SMLoc operandLoc;
+  OpAsmParser::OperandType condOperand;
+  if (parser.parseOperand(condOperand) ||
+      parser.getCurrentLocation(&operandLoc) ||
+      parser.resolveOperand(condOperand,
+                            IntegerType::get(result.getContext(), 1),
+                            result.operands) ||
+      parseParenOperandList(parser, result, operandInfo, operandLocs) ||
+      parser.parseArrowTypeList(result.types) ||
+      parser.parseOptionalAttrDictWithKeyword(result.attributes))
+    return failure();
+
+  SmallVector<Type> bodyTypes;
+  for (Value operand : llvm::drop_begin(result.operands))
+    bodyTypes.push_back(operand.getType());
+
+  // Parse the then region.
+  Region *thenRegion = result.addRegion();
+  if (parser.parseRegion(*thenRegion, operandInfo, bodyTypes, operandLocs,
+                         /*enableNameShadowing=*/true))
+    return failure();
+
+  Region *elseRegion = result.addRegion();
+  if (parser.parseKeyword("else") ||
+      parser.parseRegion(*elseRegion, operandInfo, bodyTypes, operandLocs,
+                         /*enableNameShadowing=*/true))
+    return failure();
+
+  return success();
+}
+
+void IfOp::print(OpAsmPrinter &p) {
+  p << " " << cond() << " (";
+  llvm::interleaveComma(inputs(), p,
+                        [&](Value arg) { p << arg << ": " << arg.getType(); });
+  p << ") ";
+  p.printArrowTypeList(getResultTypes());
+  p << ' ';
+  p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
+
+  // Reuse the argument names provided to the op for the bbarg names within
+  // the region.
+  p.shadowRegionArgs(thenRegion(), inputs());
+  p.printRegion(thenRegion(), /*printEntryBlockArgs=*/false);
+  p << " else ";
+  p.shadowRegionArgs(elseRegion(), inputs());
+  p.printRegion(elseRegion(), /*printEntryBlockArgs=*/false);
+}
+
+LogicalResult IfOp::verify() {
+  // Verify that the operands match the bb arguments.  The ODS verifier already
+  // checked the first argument to be present and i1.
+  auto *thenBlock = &thenRegion().front();
+  if (inputs().size() != thenBlock->getNumArguments())
+    return emitOpError("incorrect number of arguments to 'then' block");
+  auto *elseBlock = &elseRegion().front();
+  if (inputs().size() != elseBlock->getNumArguments())
+    return emitOpError("incorrect number of arguments to 'else' block");
+
+  for (unsigned i = 0, e = getNumOperands() - 1; i != e; ++i)
+    if (inputs()[i].getType() != thenBlock->getArgument(i).getType() ||
+        inputs()[i].getType() != elseBlock->getArgument(i).getType())
+      return emitOpError("operand/argument type mismatch");
+
+  auto thenOutput = cast<BEF::OutputOp>(thenBlock->getTerminator());
+  if (failed(thenOutput.checkArgumentTypes(getResultTypes())))
+    return failure();
+
+  auto elseOutput = cast<BEF::OutputOp>(elseBlock->getTerminator());
+  return elseOutput.checkArgumentTypes(getResultTypes());
+}
+
+//===----------------------------------------------------------------------===//
 // RepeatI32Op
 //===----------------------------------------------------------------------===//
 
 ParseResult RepeatI32Op::parse(OpAsmParser &parser, OperationState &result) {
-  OpAsmParser::OperandType countOperand;
-  SmallVector<OpAsmParser::OperandType, 4> operands;
+  SmallVector<OpAsmParser::OperandType> operandInfo;
   SmallVector<Location> operandLocs;
-  SmallVector<Type> types;
-  auto parseOperandFn = [&]() -> ParseResult {
-    OpAsmParser::OperandType curOperand;
-    Type type;
-    if (parser.parseOperand(curOperand) || parser.parseColonType(type))
-      return failure();
-    operands.push_back(curOperand);
-    types.push_back(type);
-    operandLocs.push_back(parser.getEncodedSourceLoc(curOperand.location));
-    return success();
-  };
-
   llvm::SMLoc operandLoc;
+  OpAsmParser::OperandType countOperand;
   if (parser.parseOperand(countOperand) ||
       parser.getCurrentLocation(&operandLoc) ||
       parser.resolveOperand(countOperand,
                             IntegerType::get(result.getContext(), 32),
                             result.operands) ||
-      parser.parseCommaSeparatedList(OpAsmParser::Delimiter::Paren,
-                                     parseOperandFn, "in operand list") ||
-      parser.resolveOperands(operands, types, operandLoc, result.operands) ||
-      parser.parseOptionalAttrDictWithKeyword(result.attributes) ||
-      parser.addTypesToList(types, result.types))
+      parseParenOperandList(parser, result, operandInfo, operandLocs) ||
+      parser.parseOptionalAttrDictWithKeyword(result.attributes))
     return failure();
+
+  // The result types are the same as the operands (ignoring count).
+  for (Value operand : llvm::drop_begin(result.operands))
+    result.types.push_back(operand.getType());
 
   // Parse the body region.
   Region *body = result.addRegion();
-  return parser.parseRegion(*body, operands, types, operandLocs,
+  return parser.parseRegion(*body, operandInfo, result.types, operandLocs,
                             /*enableNameShadowing=*/true);
 }
 
 void RepeatI32Op::print(OpAsmPrinter &p) {
   p << ' ' << tripCount() << " (";
-  llvm::interleaveComma(llvm::drop_begin(getOperands()), p,
+  llvm::interleaveComma(inputs(), p,
                         [&](Value arg) { p << arg << ": " << arg.getType(); });
   p << ") ";
   p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
 
   // Reuse the argument names provided to the op for the bbarg names within
   // the region.
-  p.shadowRegionArgs(region(), llvm::drop_begin(getOperands()));
+  p.shadowRegionArgs(region(), inputs());
   p.printRegion(region(), /*printEntryBlockArgs=*/false);
 }
 
 LogicalResult RepeatI32Op::verify() {
   // Verify that the operand and result types match.
-  if (getNumResults() != getNumOperands() - 1)
+  if (getNumResults() != inputs().size())
     return emitOpError("incorrect number of operands");
 
   for (unsigned i = 0, e = getNumResults(); i != e; ++i)
-    if (getOperand(i + 1).getType() != getResult(i).getType())
+    if (inputs()[i].getType() != getResult(i).getType())
       return emitOpError("operand/result type mismatch");
 
   auto output = cast<BEF::OutputOp>(getBody()->getTerminator());

@@ -29,6 +29,90 @@ static void call(RemainingArguments arguments, RemainingResults results,
   callee->execute(arguments.get(), results.get());
 }
 
+//===----------------------------------------------------------------------===//
+// grt.if
+//===----------------------------------------------------------------------===//
+
+/// This primtive dispatches to a 'true' or 'false' function based on a
+/// condition.
+///
+/// Arguments: The first argument is the condition, with type i1/bool, and any
+/// additional arguments are passed to the selected function.
+///
+/// trueFn/FalseFn:  The functions must have matching signatures, and their
+/// signatures must match grt.if's signature, exempting the extra i1 for the
+/// condition.
+static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
+                   RemainingResults results, const Function *trueFn,
+                   const Function *falseFn, Runtime &runtime) {
+  assert(trueFn->getNumArgs() == args.size() && "argument count mismatch");
+  assert(trueFn->getNumResults() == results.size() && "result count mismatch");
+  assert(trueFn->getNumArgs() == falseFn->getNumArgs() &&
+         trueFn->getNumResults() == falseFn->getNumResults() &&
+         "true and false function types need to line up");
+
+  // If the condition is already resolved and non-error, then avoid some
+  // overhead.
+  if (cond->isValueAvailable()) {
+    const Function *bodyFn = cond.get() ? trueFn : falseFn;
+    bodyFn->execute(args.get(), results.get());
+    return;
+  }
+
+  // Otherwise, go full async.  Define results as IndirectAsync values.
+  results.allocateIndirectResults(runtime);
+
+  struct IfState {
+    AsyncValueRef<bool> cond;
+    RCRef<const Function> trueFn, falseFn;
+    SmallVector<RCRef<AsyncValue>> operands;
+    SmallVector<RCRef<AsyncValue>> results;
+
+    /// This method is invoked when the AsyncValue for `cond` resolves.  The
+    /// rest of the operands may still be unavailable, but results are filled
+    /// in with the IndirectAsyncValue results to fill in.
+    void runWhenCondResolves() {
+      // If we have an error, then we can force propagate errors to all the
+      // results.
+      if (cond->isError()) {
+        for (RCRef<AsyncValue> &result : results)
+          result->resolveIndirect(cond.copy());
+        return;
+      }
+
+      // Otherwise, execute the correct function based on the cond.
+      const Function *bodyFn = (cond.get() ? trueFn : falseFn).getPointer();
+      SmallVector<RCRef<AsyncValue>> bodyResults;
+      bodyResults.resize(results.size());
+      bodyFn->execute(operands, bodyResults);
+
+      // We complete by passing the final result values to the output of the
+      // repeat loop overall.
+      for (size_t resNo = 0, e = bodyResults.size(); resNo != e; ++resNo)
+        results[resNo]->resolveIndirect(std::move(bodyResults[resNo]));
+    }
+  };
+
+  auto *condPtr = cond.getPointer();
+  IfState state = {
+      std::move(cond), copyRCRef(trueFn), copyRCRef(falseFn), {}, {}};
+
+  state.operands.reserve(args.size());
+  for (auto &arg : args.get())
+    state.operands.push_back(std::move(arg));
+
+  state.results.reserve(results.size());
+  for (auto &result : results.get())
+    state.results.push_back(result.copy());
+
+  condPtr->andThen(
+      [state = std::move(state)]() mutable { state.runWhenCondResolves(); });
+}
+
+//===----------------------------------------------------------------------===//
+// grt.repeat.i32
+//===----------------------------------------------------------------------===//
+
 /// "Repeat N times" loop.  This takes a single int32_T iteration count, plus
 /// arguments that are passed to the bodyFn and eventually returned.
 ///
@@ -40,11 +124,9 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
   assert(args.size() == results.size() && args.size() == bodyFn->getNumArgs() &&
          results.size() == bodyFn->getNumResults());
 
-  // Define results as IndirectAsync values.  The actual results is set in the
+  // Define results as IndirectAsync values.  The actual results are set in the
   // last iteration of the loop.
   results.allocateIndirectResults(runtime);
-
-  auto *countPtr = count.getPointer();
 
   /// Capture and add-ref each argument and result AsyncValue into a state we
   /// can manage.
@@ -89,19 +171,19 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
     }
   };
 
-  RepeatState repeatState = {std::move(count), LLCL::copyRCRef(bodyFn), {}, {}};
+  auto *countPtr = count.getPointer();
+  RepeatState state = {std::move(count), copyRCRef(bodyFn), {}, {}};
 
-  repeatState.operands.reserve(args.size());
-  repeatState.repeatResults.reserve(results.size());
+  state.operands.reserve(args.size());
   for (auto &arg : args.get())
-    repeatState.operands.push_back(std::move(arg));
+    state.operands.push_back(std::move(arg));
+  state.repeatResults.reserve(results.size());
   for (auto &result : results.get())
-    repeatState.repeatResults.push_back(result.copy());
+    state.repeatResults.push_back(result.copy());
 
   // Dispatch when the `count` becomes available (possibly immediately).
-  countPtr->andThen([repeatState = std::move(repeatState)]() mutable {
-    repeatState.runWhenCountResolves();
-  });
+  countPtr->andThen(
+      [state = std::move(state)]() mutable { state.runWhenCountResolves(); });
 }
 
 //===----------------------------------------------------------------------===//
@@ -112,5 +194,6 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
 void M::registerGraphRTControlFlowPrimitives(PrimitiveRegistry &registry) {
   registry.add("grt.chain.new", M_PRIMITIVE(chain_new));
   registry.add("grt.call", M_PRIMITIVE(call));
+  registry.add("grt.if", M_PRIMITIVE(grt_if));
   registry.add("grt.repeat.i32", M_PRIMITIVE(repeat_i32));
 }

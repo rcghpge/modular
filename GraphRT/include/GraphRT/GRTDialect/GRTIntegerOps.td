@@ -9,6 +9,22 @@
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
+// ConstantI1Op
+//===----------------------------------------------------------------------===//
+
+def ConstantI1Op : GRTOp<"constant.i1"> {
+  let summary = "constant 1-bit integer";
+  let description = [{
+    The "graphrt.constant.i1" operation produces a 1-bit result in a bool
+    AsyncValue.
+  }];
+
+  let arguments = (ins I1Attr:$value);
+  let results = (outs I1:$result);
+  let assemblyFormat = "$value attr-dict";
+}
+
+//===----------------------------------------------------------------------===//
 // ConstantI32Op
 //===----------------------------------------------------------------------===//
 
