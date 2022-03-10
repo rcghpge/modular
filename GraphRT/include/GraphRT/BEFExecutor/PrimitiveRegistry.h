@@ -461,14 +461,16 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
       AssertIndex<Return, resultIdx>::verify(frame);
 
       assert((argIdx == (int)frame.getNumArgs() || argIdx == -1 ||
-              (!hasInChain && argIdx == frame.getNumArgs() - 1 &&
+              (!hasInChain &&
+               static_cast<size_t>(argIdx) == frame.getNumArgs() - 1 &&
                frame.getArg(argIdx)->template isType<Chain>())) &&
              "Extra arguments passed to primitive");
       assert((attrIdx == frame.getNumAttrs() || attrIdx == -1) &&
              "Extra attributes passed to primitive");
       assert((funcIdx == frame.getNumFunctions() || funcIdx == -1) &&
              "Extra functions passed to primitive");
-      ReturnHelper<Return>::invoke(frame, std::forward<PreviousArgs>(pargs)...);
+      PrimitiveImpl::invoke<Return>(frame,
+                                    std::forward<PreviousArgs>(pargs)...);
     }
   };
 
@@ -478,20 +480,16 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
 
   // Handles the return value of the primitive with `handleReturn` if non-void.
   // Otherwise ignores the return value.
-  template <typename T>
-  struct ReturnHelper {
-    template <typename... ActualArgs>
-    static void invoke(PrimitiveFrame &frame, ActualArgs &&...args) {
-      handleReturn(frame, implFn(std::forward<ActualArgs>(args)...));
-    }
-  };
-  template <>
-  struct ReturnHelper<void> {
-    template <typename... ActualArgs>
-    static void invoke(PrimitiveFrame &frame, ActualArgs &&...args) {
-      implFn(std::forward<ActualArgs>(args)...);
-    }
-  };
+  template <typename ReturnT, typename... ActualArgs>
+  static std::enable_if_t<!std::is_same<ReturnT, void>::value>
+  invoke(PrimitiveFrame &frame, ActualArgs &&...args) {
+    handleReturn(frame, implFn(std::forward<ActualArgs>(args)...));
+  }
+  template <typename ReturnT, typename... ActualArgs>
+  static std::enable_if_t<std::is_same<ReturnT, void>::value>
+  invoke(PrimitiveFrame &frame, ActualArgs &&...args) {
+    implFn(std::forward<ActualArgs>(args)...);
+  }
 
   // These functions provide custom behavior for concrete result types that may
   // come up.
