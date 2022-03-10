@@ -58,7 +58,7 @@ private:
 size_t decodeBEFArrayLength(const void *dataPtr);
 
 // Utility template for tag dispatching.
-template <typename T>
+template <typename... T>
 struct TypeTag {};
 
 /// RemainingArguments collects all remaining arguments in an ArrayRef. There
@@ -259,227 +259,344 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   /// list, generating a function with the standard PrimitiveImpl signature that
   /// handles each part of the function signature as it goes.
   static void invoke(PrimitiveFrame &frame) {
-    CallHelper<Args..., TypeTag<int>>::template invoke<
-        /*argIdx=*/0, /*resultIdx=*/0, /*attrIdx=*/0, /*funcIdx=*/0,
-        /*hasInChain=*/false>(frame);
+    processArgsAndInvoke<
+        ValueIndices</*argIdx=*/0, /*resultIdx=*/0, /*attrIdx=*/0,
+                     /*funcIdx=*/0>,
+        /*hasInChain=*/false>(TypeTag<Args...>(), frame);
   }
-
-  /// Helper that introspects the arguments to derive the signature and
-  /// cast parts of the PrimitiveFrame to their appropriate type before passing
-  /// them to implFn. Works by recursively unpacking the arguments.
-  template <typename... RemainingArgs>
-  struct CallHelper;
 
   //===--------------------------------------------------------------------===//
   // Argument handling
   //===--------------------------------------------------------------------===//
 
-  // TODO: Handle Argument/Attribute/etc.
+  //===--------------------------------------------------------------------===//
+  // Argument handling: Value Type Definitions
+  //===--------------------------------------------------------------------===//
 
-  /// If this requires the PrimitiveFrame for any reason, pass it along.
-  template <typename... Tail>
-  struct CallHelper<PrimitiveFrame &, Tail...> {
-    template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
-              bool hasInChain, typename... PreviousArgs>
-    static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
-      CallHelper<Tail...>::template invoke<argIdx, resultIdx, attrIdx, funcIdx,
-                                           hasInChain, PreviousArgs...,
-                                           PrimitiveFrame &>(
-          frame, std::forward<PreviousArgs>(pargs)..., frame);
+  /// This enum represents the different types of values that may be passed as
+  /// arguments during the invocation of a primitive.
+  enum class ValueType {
+    kArgument,
+    kResult,
+    kAttribute,
+    kFunction,
+    kFramework,
+  };
+
+  /// This class represents a static container for the various indices used
+  /// during argument handling.
+  template <int argIdxVal, int resultIdxVal, int attrIdxVal, int funcIdxVal>
+  struct ValueIndices {
+    /// A set of indices that correspond to lists of various value types. When
+    /// each list has been fully consumed, the index is set to -1.
+    static constexpr int argIdx = argIdxVal;
+    static constexpr int resultIdx = resultIdxVal;
+    static constexpr int attrIdx = attrIdxVal;
+    static constexpr int funcIdx = funcIdxVal;
+  };
+
+  /// This class provides a common static abstraction of the different value
+  /// types.
+  template <ValueType valueTypeParam, bool valueIsTerminal = false>
+  struct ValueBase {
+    /// A flag indicating the type of the value.
+    static constexpr ValueType valueType = valueTypeParam;
+
+    /// A flag indicating whether the value is a terminal value, i.e. it
+    /// consumes the remaining values of this type.
+    static constexpr bool isTerminal = valueIsTerminal;
+
+    /// A flag indicating whether the value contains a chain.
+    static constexpr bool isChain = false;
+
+    /// Updates the given index if the type matches the one for this value,
+    /// otherwise returns the current index.
+    template <ValueType type, int idx>
+    static constexpr int updateIndex() {
+      return (valueType == type) ? (isTerminal ? -1 : (idx + 1)) : idx;
+    }
+    /// Updates the given indices for the current value.
+    template <typename IndicesT>
+    using UpdatedIndicesT =
+        ValueIndices<updateIndex<ValueType::kArgument, IndicesT::argIdx>(),
+                     updateIndex<ValueType::kResult, IndicesT::resultIdx>(),
+                     updateIndex<ValueType::kAttribute, IndicesT::attrIdx>(),
+                     updateIndex<ValueType::kFunction, IndicesT::funcIdx>()>;
+
+    /// Verify the given value indices based on the current value type. The
+    /// default implementation assumes all are valid, but derived value types
+    /// may override to provide additional checks and guarantees.
+    template <typename IndicesT>
+    static constexpr void verifyCurrentIndex() {}
+  };
+
+  //===--------------------------------------------------------------------===//
+  // Argument Values
+
+  /// This class defines an Argument value.
+  template <bool isTerminal = false>
+  struct ArgValue : public ValueBase<ValueType::kArgument, isTerminal> {
+    template <typename IndicesT>
+    static constexpr void verifyCurrentIndex() {
+      static_assert(isTerminal || IndicesT::argIdx != -1,
+                    "Do not place Arguments after RemainingArguments");
+      static_assert(
+          !isTerminal || IndicesT::argIdx != -1,
+          "Do not use more than one RemainingArguments/RepeatedArguments");
+
+      static_assert(IndicesT::resultIdx == 0,
+                    "Arguments should appear before results");
+      static_assert(IndicesT::attrIdx == 0,
+                    "Arguments and results should appear before attributes");
+      static_assert(IndicesT::funcIdx == 0,
+                    "Arguments and results should appear before functions");
+    }
+  };
+  /// This class defines an Argument value that terminates the argument list,
+  /// and consumes the remaining arguments.
+  struct TerminalArgValue : public ArgValue</*isTerminal=*/true> {};
+
+  //===--------------------------------------------------------------------===//
+  // Result Values
+
+  /// This class represents a Result value.
+  template <bool isTerminal>
+  struct ResultValue : public ValueBase<ValueType::kResult, isTerminal> {
+    template <typename IndicesT>
+    static constexpr void verifyCurrentIndex() {
+      static_assert(isTerminal || IndicesT::resultIdx != -1,
+                    "Do not place Results after RemainingResults");
+      static_assert(!isTerminal || IndicesT::resultIdx != -1,
+                    "Do not use more than one RemainingResults");
+      static_assert(IndicesT::attrIdx == 0,
+                    "Arguments and results should appear before attributes.");
+      static_assert(IndicesT::funcIdx == 0,
+                    "Arguments and results should appear before funtions.");
+    }
+  };
+  /// This class defines a Result value that terminates the result list,
+  /// and consumes the remaining results.
+  struct TerminalResultValue : public ResultValue</*isTerminal=*/true> {};
+
+  //===--------------------------------------------------------------------===//
+  // Attribute Values
+
+  /// This class defines an Attribute value.
+  struct AttrValue : public ValueBase<ValueType::kAttribute> {
+    template <typename IndicesT>
+    static void verifyCurrentIndex() {
+      static_assert(IndicesT::attrIdx != -1,
+                    "Do not place Attributes after RemainingAttributes");
     }
   };
 
-  /// If this requires a Runtime, pass it along.
-  template <typename... Tail>
-  struct CallHelper<Runtime &, Tail...> {
-    template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
-              bool hasInChain, typename... PreviousArgs>
-    static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
-      CallHelper<Tail...>::template invoke<argIdx, resultIdx, attrIdx, funcIdx,
-                                           hasInChain, PreviousArgs...,
-                                           Runtime &>(
-          frame, std::forward<PreviousArgs>(pargs)..., frame.getRuntime());
+  //===--------------------------------------------------------------------===//
+  // Function Values
+
+  /// This class defines a Function value.
+  struct FunctionValue : public ValueBase<ValueType::kFunction> {};
+
+  //===--------------------------------------------------------------------===//
+  // Framework Values
+
+  /// This class defines a Framework value, such as a PrimitiveFrame or
+  /// Runtime.
+  struct FrameworkValue : public ValueBase<ValueType::kFramework> {};
+
+  //===--------------------------------------------------------------------===//
+  // Argument handling: Value Definitions
+  //===--------------------------------------------------------------------===//
+
+  /// This class defines a concrete type of value, with `T` representing the
+  /// expected C++ class. Each specialization should derive from one of the
+  /// specific value types above, and also provide a `process` function that
+  /// computes the concrete value. This function should generally be of (or
+  /// similar to) the following form:
+  ///
+  ///   template <typename IndicesT>
+  ///   static T process(PrimitiveFrame &frame) {
+  ///     // Compute and return the value of `T` here.
+  ///     // `IndicesT` is an instance of ValueIndices containing the current
+  ///     // indices for each value type.
+  ///   }
+  ///
+  /// Note: The `Dummy` type is used to avoid GCC errors for defining struct
+  /// specializations outside of a namespace.
+  template <typename T, typename Dummy = void>
+  struct Value;
+
+  //===--------------------------------------------------------------------===//
+  // Argument Values
+
+  /// By default, treat any unknown type as an Argument.
+  template <typename T, typename Dummy>
+  struct Value : public ArgValue<> {
+    using ArgTy = std::decay_t<T>;
+
+    template <typename IndicesT>
+    static auto &&process(PrimitiveFrame &frame) {
+      return frame.getArg<ArgTy>(IndicesT::argIdx);
     }
+
+    /// Mark if the value is a chain.
+    static constexpr bool isChain = std::is_same<ArgTy, Chain>::value;
   };
 
   /// If this wants an AsyncValueRef, then they want raw low-level access to an
   /// argument, provide it.
-  template <typename T, typename... Tail>
-  struct CallHelper<AsyncValueRef<T>, Tail...> {
-    template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
-              bool hasInChain, typename... PreviousArgs>
-    static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
-      AsyncValueRef<T> arg(std::move(frame.getArg(argIdx)));
-
-      constexpr bool isArgChain = std::is_same<T, Chain>();
-      CallHelper<Tail...>::template invoke<argIdx + 1, resultIdx, attrIdx,
-                                           funcIdx, (hasInChain || isArgChain),
-                                           PreviousArgs...>(
-          frame, std::forward<PreviousArgs>(pargs)..., std::move(arg));
+  template <typename T, typename Dummy>
+  struct Value<AsyncValueRef<T>, Dummy> : public ArgValue<> {
+    template <typename IndicesT>
+    static AsyncValueRef<T> process(PrimitiveFrame &frame) {
+      return std::move(frame.getArg(IndicesT::argIdx));
     }
+
+    /// Mark if the value is a chain.
+    static constexpr bool isChain = std::is_same<T, Chain>::value;
   };
 
   /// If this wants an AsyncValueRef, then they want raw low-level access to an
   /// argument, provide it.
-  template <typename... Tail>
-  struct CallHelper<RCRef<AsyncValue>, Tail...> {
-    template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
-              bool hasInChain, typename... PreviousArgs>
-    static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
-      RCRef<AsyncValue> &arg = frame.getArg(argIdx);
-
-      CallHelper<Tail...>::template invoke<
-          argIdx + 1, resultIdx, attrIdx, funcIdx, hasInChain, PreviousArgs...>(
-          frame, std::forward<PreviousArgs>(pargs)..., std::move(arg));
+  template <typename Dummy>
+  struct Value<RCRef<AsyncValue>, Dummy> : public ArgValue<> {
+    template <typename IndicesT>
+    static RCRef<AsyncValue> process(PrimitiveFrame &frame) {
+      return std::move(frame.getArg(IndicesT::argIdx));
     }
   };
 
   /// RemainingArguments provides an ArrayRef containing all remaining
   /// arguments. Useful for variadic primitives with heterogenous elements.
-  template <typename... Tail>
-  struct CallHelper<RemainingArguments, Tail...> {
-    template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
-              bool hasInChain, typename... PreviousArgs>
-    static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
-      static_assert(
-          argIdx != -1,
-          "Do not use more than one RemainingArguments/RepeatedArguments");
-      static_assert(resultIdx == 0, "Arguments should appear before results.");
-      static_assert(attrIdx == 0,
-                    "Arguments and results should appear before attributes.");
-      static_assert(funcIdx == 0,
-                    "Arguments and results should appear before funtions.");
-      RemainingArguments args(frame.getArguments().drop_front(argIdx));
-
-      CallHelper<Tail...>::template invoke<-1, resultIdx, attrIdx, funcIdx,
-                                           hasInChain, PreviousArgs...>(
-          frame, std::forward<PreviousArgs>(pargs)..., args);
+  template <typename Dummy>
+  struct Value<RemainingArguments, Dummy> : public TerminalArgValue {
+    template <typename IndicesT>
+    static RemainingArguments process(PrimitiveFrame &frame) {
+      return RemainingArguments(
+          frame.getArguments().drop_front(IndicesT::argIdx));
     }
   };
+
+  //===--------------------------------------------------------------------===//
+  // Result Values
 
   /// RemainingResults provides a view containing all remaining results. Useful
   /// for variadic primitives.
-  template <typename... Tail>
-  struct CallHelper<RemainingResults, Tail...> {
-    template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
-              bool hasInChain, typename... PreviousArgs>
-    static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
-      static_assert(resultIdx != -1,
-                    "Do not use more than one RemainingResults");
-      static_assert(attrIdx == 0,
-                    "Arguments and results should appear before attributes.");
-      static_assert(funcIdx == 0,
-                    "Arguments and results should appear before funtions.");
-
-      RemainingResults results(frame.getResults().drop_front(resultIdx));
-      CallHelper<Tail...>::template invoke<argIdx, -1, attrIdx, funcIdx,
-                                           hasInChain, PreviousArgs...>(
-          frame, std::forward<PreviousArgs>(pargs)..., results);
+  template <typename Dummy>
+  struct Value<RemainingResults, Dummy> : public TerminalResultValue {
+    template <typename IndicesT>
+    static RemainingResults process(PrimitiveFrame &frame) {
+      return RemainingResults(
+          frame.getResults().drop_front(IndicesT::resultIdx));
     }
   };
+
+  //===--------------------------------------------------------------------===//
+  // Attribute Values
+
+  /// Specialization to cast a single attribute (T).
+  template <typename T, typename Dummy>
+  struct Value<BEFAttribute<T>, Dummy> : public AttrValue {
+    template <typename IndicesT>
+    static BEFAttribute<T> process(PrimitiveFrame &frame) {
+      return BEFAttribute<T>(frame.getRawAttr(IndicesT::attrIdx));
+    }
+  };
+
+  //===--------------------------------------------------------------------===//
+  // Function Values
 
   /// If this takes a `const Function *`, then pass it down.
-  template <typename... Tail>
-  struct CallHelper<const Function *, Tail...> {
-    template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
-              bool hasInChain, typename... PreviousArgs>
-    static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
-      CallHelper<Tail...>::template invoke<argIdx, resultIdx, attrIdx,
-                                           funcIdx + 1, hasInChain,
-                                           PreviousArgs..., const Function *>(
-          frame, std::forward<PreviousArgs>(pargs)...,
-          frame.getFunction(funcIdx));
+  template <typename Dummy>
+  struct Value<const Function *, Dummy> : public FunctionValue {
+    template <typename IndicesT>
+    static const Function *process(PrimitiveFrame &frame) {
+      return frame.getFunction(IndicesT::funcIdx);
     }
   };
 
-  // Specialization to cast a single attribute (Head).
-  template <typename Head, typename... Tail>
-  struct CallHelper<BEFAttribute<Head>, Tail...> {
-    template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
-              bool hasInChain, typename... PreviousArgs>
-    static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
-      static_assert(attrIdx != -1,
-                    "Do not place Attributes after RemainingAttributes");
-      BEFAttribute<Head> arg(frame.getRawAttr(attrIdx));
-      CallHelper<Tail...>::template invoke<
-          argIdx, resultIdx, attrIdx + 1, funcIdx, hasInChain, PreviousArgs...>(
-          frame, std::forward<PreviousArgs>(pargs)..., arg);
+  //===--------------------------------------------------------------------===//
+  // Framework Values
+
+  /// If this requires the PrimitiveFrame for any reason, pass it along.
+  template <typename Dummy>
+  struct Value<PrimitiveFrame &, Dummy> : public FrameworkValue {
+    template <typename IndicesT>
+    static PrimitiveFrame &process(PrimitiveFrame &frame) {
+      return frame;
     }
   };
 
-  // Treat any other type as an Argument.
-  template <typename Head, typename... Tail>
-  struct CallHelper<Head, Tail...> {
-    using ArgTy = std::decay_t<Head>;
-
-    template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
-              bool hasInChain, typename... PreviousArgs>
-    static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
-      static_assert(argIdx != -1,
-                    "Do not place Arguments after RemainingArguments");
-      static_assert(resultIdx == 0, "Arguments should appear before results");
-      static_assert(attrIdx == 0,
-                    "Arguments and results should appear before attributes");
-      static_assert(funcIdx == 0,
-                    "Arguments and results should appear before functions");
-      auto &&arg = frame.getArg<ArgTy>(argIdx);
-
-      constexpr bool isArgChain = std::is_same<ArgTy, Chain>();
-      CallHelper<Tail...>::template invoke<argIdx + 1, resultIdx, attrIdx,
-                                           funcIdx, (hasInChain || isArgChain),
-                                           PreviousArgs...>(
-          frame, std::forward<PreviousArgs>(pargs)..., arg);
+  /// If this requires a Runtime, pass it along.
+  template <typename Dummy>
+  struct Value<Runtime &, Dummy> : public FrameworkValue {
+    template <typename IndicesT>
+    static Runtime &process(PrimitiveFrame &frame) {
+      return frame.getRuntime();
     }
   };
 
-  // Base case: No arguments left.
-  // TypeTag<T> is a dummy template parameter to work around the restriction
-  // of GCC that fully specialized template is not allowed in a template class.
-  template <typename T>
-  struct CallHelper<TypeTag<T>> {
-    // Verify the result index for non-void Return type
-    template <typename ReturnT, int resultIdx>
-    struct AssertIndex {
-      static void verify(PrimitiveFrame &frame) {
-        static_assert(resultIdx == 0,
-                      "Don't mix return by value and Result<> syntax.");
-      }
-    };
+  //===--------------------------------------------------------------------===//
+  // Argument handling: Processing
+  //===--------------------------------------------------------------------===//
 
-    // Verify the result index for void Return type.
-    template <int resultIdx>
-    struct AssertIndex<void, resultIdx> {
-      static void verify(PrimitiveFrame &frame) {
-        assert((resultIdx == (int)frame.getNumResults() || resultIdx == -1) &&
-               "Extra results passed to primitive");
-      }
-    };
+  /// This function handles the nitty gritty processing of the arguments. We
+  /// recursively unwrap each argument, verify the current value indices,
+  /// process the argument, and append it to the working argument list.
+  template <typename IndicesT, bool hasInChain, typename ArgT,
+            typename... ArgsToProcessT, typename... ArgsT>
+  static void processArgsAndInvoke(TypeTag<ArgT, ArgsToProcessT...>,
+                                   PrimitiveFrame &frame, ArgsT &&...args) {
+    Value<ArgT>::template verifyCurrentIndex<IndicesT>();
+    processArgsAndInvoke<
+        typename Value<ArgT>::template UpdatedIndicesT<IndicesT>,
+        (hasInChain || Value<ArgT>::isChain)>(
+        TypeTag<ArgsToProcessT...>(), frame, std::forward<ArgsT>(args)...,
+        Value<ArgT>::template process<IndicesT>(frame));
+  }
 
-    template <int argIdx, int resultIdx, int attrIdx, int funcIdx,
-              bool hasInChain, typename... PreviousArgs>
-    static void invoke(PrimitiveFrame &frame, PreviousArgs &&...pargs) {
-      AssertIndex<Return, resultIdx>::verify(frame);
+  /// This function is the base case for argument processing function above. It
+  /// is invoked after all arguments have finished processing, and handles some
+  /// final validation before invoking the primitive.
+  template <typename IndicesT, bool hasInChain, typename... ArgsT>
+  static void processArgsAndInvoke(TypeTag<>, PrimitiveFrame &frame,
+                                   ArgsT &&...args) {
+    verifyResultIndex<IndicesT::resultIdx>(frame, TypeTag<Return>());
 
-      assert((argIdx == (int)frame.getNumArgs() || argIdx == -1 ||
-              (!hasInChain &&
-               static_cast<size_t>(argIdx) == frame.getNumArgs() - 1 &&
-               frame.getArg(argIdx)->template isType<Chain>())) &&
-             "Extra arguments passed to primitive");
-      assert((attrIdx == frame.getNumAttrs() || attrIdx == -1) &&
-             "Extra attributes passed to primitive");
-      assert((funcIdx == frame.getNumFunctions() || funcIdx == -1) &&
-             "Extra functions passed to primitive");
-      PrimitiveImpl::invoke<Return>(frame,
-                                    std::forward<PreviousArgs>(pargs)...);
-    }
-  };
+    assert((IndicesT::argIdx == (int)frame.getNumArgs() ||
+            IndicesT::argIdx == -1 ||
+            (!hasInChain &&
+             static_cast<size_t>(IndicesT::argIdx) == frame.getNumArgs() - 1 &&
+             frame.getArg(IndicesT::argIdx)->template isType<Chain>())) &&
+           "Extra arguments passed to primitive");
+    assert(
+        (IndicesT::attrIdx == frame.getNumAttrs() || IndicesT::attrIdx == -1) &&
+        "Extra attributes passed to primitive");
+    assert((IndicesT::funcIdx == frame.getNumFunctions() ||
+            IndicesT::funcIdx == -1) &&
+           "Extra functions passed to primitive");
+    invoke<Return>(frame, std::forward<ArgsT>(args)...);
+  }
+
+  // Verify the result index for non-void Return type
+  template <int resultIdx, typename T>
+  static void verifyResultIndex(PrimitiveFrame &frame, TypeTag<T>) {
+    static_assert(resultIdx == 0,
+                  "Don't mix return by value and Result<> syntax.");
+  }
+
+  // Verify the result index for void Return type.
+  template <int resultIdx>
+  static void verifyResultIndex(PrimitiveFrame &frame, TypeTag<void>) {
+    assert((resultIdx == (int)frame.getNumResults() || resultIdx == -1) &&
+           "Extra results passed to primitive");
+  }
 
   //===--------------------------------------------------------------------===//
   // Result handling
   //===--------------------------------------------------------------------===//
 
-  // Handles the return value of the primitive with `handleReturn` if non-void.
-  // Otherwise ignores the return value.
+  // Handles the return value of the primitive with `handleReturn` if
+  // non-void. Otherwise ignores the return value.
   template <typename ReturnT, typename... ActualArgs>
   static std::enable_if_t<!std::is_same<ReturnT, void>::value>
   invoke(PrimitiveFrame &frame, ActualArgs &&...args) {
@@ -491,8 +608,8 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
     implFn(std::forward<ActualArgs>(args)...);
   }
 
-  // These functions provide custom behavior for concrete result types that may
-  // come up.
+  // These functions provide custom behavior for concrete result types that
+  // may come up.
 
   /// Store result as an AsyncValue output in PrimitiveFrame by creating a
   /// ConcreteAsyncValue.
@@ -513,8 +630,8 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
       frame.fail(errorOr.takeErrorStorage());
   }
 
-  /// Don't allocate an async value for chain results, just use the one already
-  /// stored in Runtime.
+  /// Don't allocate an async value for chain results, just use the one
+  /// already stored in Runtime.
   static void processResult(PrimitiveFrame &frame, size_t index, Chain t) {
     frame.setResult(index, frame.getRuntime().getReadyChain());
   }
