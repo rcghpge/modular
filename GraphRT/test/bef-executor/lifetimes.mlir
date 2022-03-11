@@ -95,12 +95,11 @@ bef.func @caller() {
   // CHECK-NEXT: destroyed vt.value(4)
   bef.output
 }
+// COM: Because the order of the `Initializing` messages is different locally
+// COM: vs on CI, just check for the word `Initializing`.
+// CHECK-NEXT: Initializing
 
-// COM: We see this message once for each function because of the way the test
-// COM: driver is structured. It creates a new runtime object for each function
-// COM: and therefore a new allocator.
-// CHECK-NEXT: Initializing leak check allocator.
-// CHECK-NEXT: --- Running 'test_hello'
+// CHECK-LABEL: --- Running 'test_hello'
 bef.func @test_hello() {
  // CHECK: hello bef executor!
   %ch0 = grt.chain.new
