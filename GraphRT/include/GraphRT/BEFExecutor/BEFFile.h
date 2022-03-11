@@ -33,8 +33,8 @@ public:
   /// passed in.  For example, we could take a closure to run when the lifetime
   /// of the BEFFile is done, or have a reference counted abstraction for
   /// holding memory buffers.
-  static ErrorOr<RCRef<BEFFile>>
-  open(StringRef file, const PrimitiveRegistry &primitives, Runtime &runtime);
+  static ErrorOr<RCRef<BEFFile>> open(StringRef file,
+                                      const PrimitiveRegistry &primitives);
 
   /// Get a list of functions out of the BEF file.
   std::vector<const Function *> getAllFunctions() const;

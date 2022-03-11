@@ -24,7 +24,7 @@ class BEFFunction;
 /// which maintains all the state necessary for the BEFExecutor.
 class BEFFileImpl : public BEFFile {
 public:
-  explicit BEFFileImpl(Runtime &runtime) : runtime(runtime) {}
+  BEFFileImpl() {}
   ~BEFFileImpl() override;
 
   /// Return the function with the specified BEF function ID.
@@ -33,8 +33,6 @@ public:
   // Everything in this class is public because the entire class is private to
   // the BEFExecutor library implementation.
 public:
-  Runtime &runtime;
-
   // This struct describes one function in the FunctionIndex section.
   struct FunctionIndex {
     uint32_t offsetInFunctionSection;
@@ -81,10 +79,10 @@ public:
 
   virtual ~BEFFunction() = default;
 
-  /// Execute this function, passing the specified arguments. This returns one
-  /// AsyncValue for each result.
+  /// Execute this function using the specified runtime, passing the specified
+  /// arguments. This returns one AsyncValue for each result.
   virtual void
-  execute(MutableArrayRef<RCRef<AsyncValue>> arguments,
+  execute(Runtime &runtime, MutableArrayRef<RCRef<AsyncValue>> arguments,
           MutableArrayRef<RCRef<AsyncValue>> results) const override;
 
   /// Add a new reference to this object.  The lifetime of functions are

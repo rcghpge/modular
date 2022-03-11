@@ -22,11 +22,11 @@ static AsyncValueRef<Chain> chain_new(Runtime &runtime) {
   return runtime.getReadyChain().copy();
 }
 
-static void call(RemainingArguments arguments, RemainingResults results,
-                 const Function *callee) {
+static void call(Runtime &runtime, RemainingArguments arguments,
+                 RemainingResults results, const Function *callee) {
   assert(callee->getNumArgs() == arguments.size() && "argument count mismatch");
   assert(callee->getNumResults() == results.size() && "result count mismatch");
-  callee->execute(arguments.get(), results.get());
+  callee->execute(runtime, arguments.get(), results.get());
 }
 
 //===----------------------------------------------------------------------===//
@@ -55,7 +55,7 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
   // overhead.
   if (cond->isValueAvailable()) {
     const Function *bodyFn = cond.get() ? trueFn : falseFn;
-    bodyFn->execute(args.get(), results.get());
+    bodyFn->execute(runtime, args.get(), results.get());
     return;
   }
 
@@ -71,7 +71,7 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
     /// This method is invoked when the AsyncValue for `cond` resolves.  The
     /// rest of the operands may still be unavailable, but results are filled
     /// in with the IndirectAsyncValue results to fill in.
-    void runWhenCondResolves() {
+    void runWhenCondResolves(Runtime &runtime) {
       // If we have an error, then we can force propagate errors to all the
       // results.
       if (cond->isError()) {
@@ -84,7 +84,7 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
       const Function *bodyFn = (cond.get() ? trueFn : falseFn).getPointer();
       SmallVector<RCRef<AsyncValue>> bodyResults;
       bodyResults.resize(results.size());
-      bodyFn->execute(operands, bodyResults);
+      bodyFn->execute(runtime, operands, bodyResults);
 
       // We complete by passing the final result values to the output of the
       // repeat loop overall.
@@ -105,8 +105,9 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
   for (auto &result : results.get())
     state.results.push_back(result.copy());
 
-  condPtr->andThen(
-      [state = std::move(state)]() mutable { state.runWhenCondResolves(); });
+  condPtr->andThen([&runtime, state = std::move(state)]() mutable {
+    state.runWhenCondResolves(runtime);
+  });
 }
 
 //===----------------------------------------------------------------------===//
@@ -140,7 +141,7 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
     /// of the operands may still be unavailable, but repeatResults are filled
     /// in with the IndirectAsyncValue results returned from the repeat loop
     /// overall.
-    void runWhenCountResolves() {
+    void runWhenCountResolves(Runtime &runtime) {
       // If we have an error, then we can force propagate errors to all the
       // results.
       if (count->isError()) {
@@ -158,7 +159,7 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
       // cancellation quash computation faster.
       for (int32_t i = 0, e = count->get<int32_t>(); i != e; ++i) {
         bodyResults.resize(repeatResults.size());
-        function->execute(operands, bodyResults);
+        function->execute(runtime, operands, bodyResults);
         // bodyResults become the operands of the next iteration.
         operands = std::move(bodyResults);
         bodyResults.clear();
@@ -182,8 +183,9 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
     state.repeatResults.push_back(result.copy());
 
   // Dispatch when the `count` becomes available (possibly immediately).
-  countPtr->andThen(
-      [state = std::move(state)]() mutable { state.runWhenCountResolves(); });
+  countPtr->andThen([&runtime, state = std::move(state)]() mutable {
+    state.runWhenCountResolves(runtime);
+  });
 }
 
 //===----------------------------------------------------------------------===//

@@ -218,8 +218,9 @@ class BEFExecutor final
     : public ReferenceCounted<BEFExecutor>,
       public llvm::TrailingObjects<BEFExecutor, RegisterInfo, PrimitiveInfo> {
 public:
-  BEFExecutor(BEFFileImpl *file, BEFFunctionDecoder &decoder)
-      : befFile(copyRCRef(file)), numRegisters(decoder.numRegisters),
+  BEFExecutor(BEFFileImpl *file, Runtime &runtime, BEFFunctionDecoder &decoder)
+      : befFile(copyRCRef(file)), runtime(runtime),
+        numRegisters(decoder.numRegisters),
         numPrimitives(decoder.numPrimitives) {}
   ~BEFExecutor() {
     // NOTE: we don't bother destructing the ResultInfo/PrimitiveInfo records.
@@ -238,7 +239,6 @@ public:
   /// When the last reference to the BEFExecutor is dropped, we deallocate
   /// ourself.  The memory for this class is managed by the current Runtime.
   void destroy() const {
-    Runtime &runtime = befFile->runtime;
     this->~BEFExecutor();
     auto sizeInBytes = totalSizeToAlloc<RegisterInfo, PrimitiveInfo>(
         numRegisters, numPrimitives);
@@ -277,6 +277,7 @@ private:
   /// Make sure the BEF file doesn't get deallocated while we're
   /// asynchronously running stuff.
   RCRef<BEFFileImpl> befFile;
+  Runtime &runtime;
 
   const unsigned numRegisters, numPrimitives;
 
@@ -373,7 +374,6 @@ void BEFExecutor::execute(const BEFFunction &fn,
   // that computes the register completes, the IndirectAsyncValue is resolved.
   assert(results.size() == resultRegIndex.size());
   MutableArrayRef<RegisterInfo> regTable = getRegisterInfoTable();
-  auto &runtime = befFile->runtime;
   for (size_t i = 0, e = results.size(); i != e; ++i) {
     assert(!results[i] && "result AsyncValue is not nullptr");
     // We already checked the resultRegIndex numbers are in-range when parsing
@@ -473,7 +473,6 @@ void BEFExecutor::processArgumentsPseudo(
 /// from the end of the vector to the start - worklist style.
 void BEFExecutor::decrementOperandsNotReadyCounts(
     SmallVectorImpl<uint32_t> &primitiveIDWorklist) {
-  auto &runtime = befFile->runtime;
   PrimitiveFrameBuilder frame(runtime, befFile->attributes);
 
   MutableArrayRef<RegisterInfo> registers = getRegisterInfoTable();
@@ -659,7 +658,8 @@ void BEFFunction::dropRef() const { owner->dropRef(); }
 
 /// Execute this function, passing the specified arguments. This returns one
 /// AsyncValue for each result.
-void BEFFunction::execute(MutableArrayRef<RCRef<AsyncValue>> arguments,
+void BEFFunction::execute(Runtime &runtime,
+                          MutableArrayRef<RCRef<AsyncValue>> arguments,
                           MutableArrayRef<RCRef<AsyncValue>> results) const {
   assert(arguments.size() == getNumArgs() &&
          "incorrect number of argument to a BEF function");
@@ -674,9 +674,8 @@ void BEFFunction::execute(MutableArrayRef<RCRef<AsyncValue>> arguments,
   // well as reducing #allocations.
   auto sizeInBytes = BEFExecutor::totalSizeToAlloc<RegisterInfo, PrimitiveInfo>(
       decoder.numRegisters, decoder.numPrimitives);
-  void *rawPtr =
-      owner->runtime.allocateBytes(sizeInBytes, alignof(BEFExecutor));
-  auto executor = takeRCRef(new (rawPtr) BEFExecutor(owner, decoder));
+  void *rawPtr = runtime.allocateBytes(sizeInBytes, alignof(BEFExecutor));
+  auto executor = takeRCRef(new (rawPtr) BEFExecutor(owner, runtime, decoder));
 
   // Parse the rest of the tables now that we allocated memory.
   if (headerParseFailure || executor->decodeTables(decoder)) {
@@ -684,7 +683,7 @@ void BEFFunction::execute(MutableArrayRef<RCRef<AsyncValue>> arguments,
     if (results.empty())
       return;
     results[0] = AsyncValue::createError(
-        owner->runtime, std::move(decoder.befFormatError.getValue()));
+        runtime, std::move(decoder.befFormatError.getValue()));
     // Fill in the rest with the same error.
     for (size_t i = 1, e = results.size(); i != e; ++i)
       results[i] = results[0].copy();

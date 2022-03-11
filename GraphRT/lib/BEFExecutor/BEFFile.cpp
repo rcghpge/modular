@@ -11,7 +11,7 @@
 #include "GraphRT/BEFExecutor/BEFFile.h"
 #include "BEFFileImpl.h"
 #include "GraphRT/BEF/BEFReader.h"
-#include "LLCL/Runtime/Runtime.h"
+#include "LLCL/Runtime/Allocator.h"
 #include "LLCL/Support/RCRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
@@ -128,7 +128,7 @@ bool BEFFileReader::readFunctionIndexSection(BEFReader &stringReader) {
   if (parseVBR(numFunctions))
     return true;
 
-  BEFFunction *fnMemory = befFile.runtime.allocate<BEFFunction>(numFunctions);
+  auto *fnMemory = (BEFFunction *)calloc(numFunctions, sizeof(BEFFunction));
 
   // Read until we run out of function descriptors.
   size_t fnNumber = 0;
@@ -136,7 +136,7 @@ bool BEFFileReader::readFunctionIndexSection(BEFReader &stringReader) {
     // Destroy the partially constructed functions array.
     while (fnNumber)
       fnMemory[--fnNumber].~BEFFunction();
-    befFile.runtime.deallocate<BEFFunction>(fnMemory, numFunctions);
+    free(fnMemory);
     return emitError("function count is incorrect");
   };
 
@@ -226,11 +226,7 @@ bool BEFFileReader::readNextSection() {
 // BEFFileImpl
 //===----------------------------------------------------------------------===//
 
-BEFFileImpl::~BEFFileImpl() {
-  if (functions)
-    runtime.destroyAndDeallocate<BEFFunction>(
-        const_cast<BEFFunction *>(functions), numFunctions);
-}
+BEFFileImpl::~BEFFileImpl() { free((void *)functions); }
 
 /// Get a list of functions out of the BEF file.
 std::vector<const Function *> BEFFile::getAllFunctions() const {
@@ -259,13 +255,12 @@ const Function *BEFFile::getFunction(StringRef name) const {
 /// message is emitted to the errorHandler and a null RCRef is returned.
 ///
 ErrorOr<RCRef<BEFFile>> BEFFile::open(StringRef file,
-                                      const PrimitiveRegistry &primitives,
-                                      Runtime &runtime) {
+                                      const PrimitiveRegistry &primitives) {
   if (!BEF::hasBEFMagicNumber(file))
     return Error("not a BEF file");
   file = file.drop_front(2); // Drop the magic number.
 
-  auto befFilePtr = RCRef<BEFFileImpl>::create(runtime);
+  auto befFilePtr = RCRef<BEFFileImpl>::create();
 
   ArrayRef<uint8_t> fileData((const uint8_t *)file.data(), file.size());
   BEFFileReader reader(fileData, primitives, *befFilePtr);

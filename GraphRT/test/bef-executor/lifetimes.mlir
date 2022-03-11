@@ -96,6 +96,10 @@ bef.func @caller() {
   bef.output
 }
 
+// COM: We see this message once for each function because of the way the test
+// COM: driver is structured. It creates a new runtime object for each function
+// COM: and therefore a new allocator.
+// CHECK-NEXT: Initializing leak check allocator.
 // CHECK-NEXT: --- Running 'test_hello'
 bef.func @test_hello() {
  // CHECK: hello bef executor!

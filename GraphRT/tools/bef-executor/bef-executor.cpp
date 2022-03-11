@@ -82,7 +82,8 @@ static std::unique_ptr<WorkQueue> getWorkQueue() {
 
 /// Run the specified BEF function as a testcase - this means passing in test
 /// input and printing results if we can.
-static void runFunctionTestcase(const Function *fn, Runtime &runtime) {
+static void runFunctionTestcase(const Function *fn) {
+  Runtime runtime(getAllocator(), getWorkQueue());
   // Skip anonymous functions.  These are bodies of control flow operators etc.
   if (fn->getName().empty())
     return;
@@ -108,7 +109,7 @@ static void runFunctionTestcase(const Function *fn, Runtime &runtime) {
 
   llvm::SmallVector<RCRef<AsyncValue>, 4> results;
   results.resize(fn->getNumResults());
-  fn->execute(/*arguments=*/{}, results);
+  fn->execute(runtime, /*arguments=*/{}, results);
 
   // Block until the function results are fully resolved.
   runtime.await(results);
@@ -213,16 +214,12 @@ int main(int argc, char **argv) {
 
   mlir::MLIRContext context;
   {
-    Runtime runtime(getAllocator(), getWorkQueue());
-
     // Open the BEF file.
-    auto befFileOrError =
-        BEFFile::open(fileBuffer->getBuffer(), primitives, runtime);
-    if (auto *error = befFileOrError.getError()) {
+    auto befFileOrError = BEFFile::open(fileBuffer->getBuffer(), primitives);
+    if (auto *error = befFileOrError.getError())
       return emitToolError(" error opening '" + Twine(inputFilename) +
                            "': " + Twine(error));
-      return 1;
-    }
+
     auto befFile = std::move(befFileOrError.get());
 
     // Figure out which functions to execute for the test.
@@ -243,7 +240,7 @@ int main(int argc, char **argv) {
 
     // Run each requested function as a standalone testcase.
     for (auto *fn : functionsToExecute)
-      runFunctionTestcase(fn, runtime);
+      runFunctionTestcase(fn);
   }
 
   assert(AsyncValue::getNumAllocatedInstances() == 0 &&

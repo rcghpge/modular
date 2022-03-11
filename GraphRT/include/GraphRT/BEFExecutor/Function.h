@@ -26,10 +26,11 @@ public:
   size_t getNumArgs() const { return numArgs; }
   size_t getNumResults() const { return numResults; }
 
-  /// Execute this function, passing the specified arguments. This fills in one
-  /// AsyncValue for each result.  The caller is allowed to take from the
-  /// `arguments` async values.
-  virtual void execute(MutableArrayRef<RCRef<AsyncValue>> arguments,
+  /// Execute this function using the specified runtime, passing the specified
+  /// arguments. This fills in one AsyncValue for each result.  The caller is
+  /// allowed to take from the `arguments` async values.
+  virtual void execute(Runtime &runtime,
+                       MutableArrayRef<RCRef<AsyncValue>> arguments,
                        MutableArrayRef<RCRef<AsyncValue>> results) const = 0;
 
   /// Add a new reference to this object.  The lifetime of functions are
