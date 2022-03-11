@@ -83,7 +83,6 @@ static std::unique_ptr<WorkQueue> getWorkQueue() {
 /// Run the specified BEF function as a testcase - this means passing in test
 /// input and printing results if we can.
 static void runFunctionTestcase(const Function *fn) {
-  Runtime runtime(getAllocator(), getWorkQueue());
   // Skip anonymous functions.  These are bodies of control flow operators etc.
   if (fn->getName().empty())
     return;
@@ -103,68 +102,67 @@ static void runFunctionTestcase(const Function *fn) {
   if (AsyncValue::isAllocationTrackingEnabled())
     numStartingLiveAsyncValues = AsyncValue::getNumAllocatedInstances();
 
-  // Actually run the function.
-  os << "--- Running '" << fn->getName() << "':\n";
-  os.flush();
+  {
+    Runtime runtime(getAllocator(), getWorkQueue());
 
-  llvm::SmallVector<RCRef<AsyncValue>, 4> results;
-  results.resize(fn->getNumResults());
-  fn->execute(/*arguments=*/{}, results, runtime);
+    // Actually run the function.
+    os << "--- Running '" << fn->getName() << "':\n";
+    os.flush();
 
-  // Block until the function results are fully resolved.
-  runtime.await(results);
+    llvm::SmallVector<RCRef<AsyncValue>, 4> results;
+    results.resize(fn->getNumResults());
+    fn->execute(/*arguments=*/{}, results, runtime);
 
-  // If anything printed to stdout, force it out to a stream, since we will be
-  // printing with raw_ostream.
-  fflush(stdout);
+    // Block until the function results are fully resolved.
+    runtime.await(results);
 
-  // Print out the function results that we know about.
-  // Go ahead and print out the function results that we know about.
-  if (!results.empty()) {
-    os << "'" << fn->getName() << "' returned ";
-    llvm::interleaveComma(results, os, [&](const RCRef<AsyncValue> &result) {
-      // Handle error value.
-      if (auto *error = result->getErrorIfPresent()) {
-        os << "<error: " << *error << '>';
-        return;
-      }
+    // If anything printed to stdout, force it out to a stream, since we will be
+    // printing with raw_ostream.
+    fflush(stdout);
+
+    // Print out the function results that we know about.
+    // Go ahead and print out the function results that we know about.
+    if (!results.empty()) {
+      os << "'" << fn->getName() << "' returned ";
+      llvm::interleaveComma(results, os, [&](const RCRef<AsyncValue> &result) {
+        // Handle error value.
+        if (auto *error = result->getErrorIfPresent()) {
+          os << "<error: " << *error << '>';
+          return;
+        }
 
 #define HANDLE_TYPE(TYPE)                                                      \
   if (result->isType<TYPE>()) {                                                \
     os << result->get<TYPE>();                                                 \
     return;                                                                    \
   }
-      HANDLE_TYPE(bool)
-      HANDLE_TYPE(int8_t)
-      HANDLE_TYPE(int16_t)
-      HANDLE_TYPE(int32_t)
-      HANDLE_TYPE(int64_t)
-      HANDLE_TYPE(uint8_t)
-      HANDLE_TYPE(uint16_t)
-      HANDLE_TYPE(uint32_t)
-      HANDLE_TYPE(uint64_t)
-      HANDLE_TYPE(float)
-      HANDLE_TYPE(double)
-      if (result->isType<Chain>())
-        os << "chain";
-      else
-        os << "<unknown type>";
-    });
-    os << '\n';
-    os.flush();
-    results.clear();
+        HANDLE_TYPE(bool)
+        HANDLE_TYPE(int8_t)
+        HANDLE_TYPE(int16_t)
+        HANDLE_TYPE(int32_t)
+        HANDLE_TYPE(int64_t)
+        HANDLE_TYPE(uint8_t)
+        HANDLE_TYPE(uint16_t)
+        HANDLE_TYPE(uint32_t)
+        HANDLE_TYPE(uint64_t)
+        HANDLE_TYPE(float)
+        HANDLE_TYPE(double)
+        if (result->isType<Chain>())
+          os << "chain";
+        else
+          os << "<unknown type>";
+      });
+      os << '\n';
+      os.flush();
+      results.clear();
+    }
+
+    // In this test driver, we want to make sure that every function completes
+    // all execution before moving on to the next one.  This makes the leak
+    // checker work better in the face of side effecting kernels that aren't
+    // properly chained together (which is useful for testing), so we close a
+    // scope here so the Runtime object is destroyed.
   }
-
-  // In this test driver, we want to make sure that every function completes
-  // all execution before moving on to the next one.  This makes the leak
-  // checker work better in the face of side effecting kernels that aren't
-  // properly chained together (which is useful for testing).
-  runtime.quiesce();
-
-  // Always restart from cancellation to clear the cancel async value. The
-  // execution of a BEF function may cause Runtime to enter the canceled
-  // state, and we don't want this to persist across tests.
-  runtime.restartFromCancellation();
 
   // Make sure we're not leaking AsyncValues.
   if (AsyncValue::isAllocationTrackingEnabled()) {

@@ -1,12 +1,14 @@
 // RUN: bef-translate -export-bef -allow-unregistered-dialect %s > %t.bef
 // RUN: bef-executor %t.bef | FileCheck %s
 
-// CHECK: Initializing leak check allocator
-
 // CHECK-LABEL: Can not run 'args_results' because it has arguments
 bef.func @args_results(%a: i32, %b: i8) -> (i8, i32) {
   bef.output %b, %a : i8, i32
 }
+
+// COM: This will show up before every test function because we create a new
+// COM: Runtime instance for each Function in the test.
+// CHECK: Initializing leak check allocator
 
 // CHECK-LABEL: Running 'print_test':
 bef.func @print_test() {
