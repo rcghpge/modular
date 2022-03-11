@@ -26,7 +26,7 @@ static void call(Runtime &runtime, RemainingArguments arguments,
                  RemainingResults results, const Function *callee) {
   assert(callee->getNumArgs() == arguments.size() && "argument count mismatch");
   assert(callee->getNumResults() == results.size() && "result count mismatch");
-  callee->execute(runtime, arguments.get(), results.get());
+  callee->execute(arguments.get(), results.get(), runtime);
 }
 
 //===----------------------------------------------------------------------===//
@@ -55,7 +55,7 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
   // overhead.
   if (cond->isValueAvailable()) {
     const Function *bodyFn = cond.get() ? trueFn : falseFn;
-    bodyFn->execute(runtime, args.get(), results.get());
+    bodyFn->execute(args.get(), results.get(), runtime);
     return;
   }
 
@@ -84,7 +84,7 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
       const Function *bodyFn = (cond.get() ? trueFn : falseFn).getPointer();
       SmallVector<RCRef<AsyncValue>> bodyResults;
       bodyResults.resize(results.size());
-      bodyFn->execute(runtime, operands, bodyResults);
+      bodyFn->execute(operands, bodyResults, runtime);
 
       // We complete by passing the final result values to the output of the
       // repeat loop overall.
@@ -159,7 +159,7 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
       // cancellation quash computation faster.
       for (int32_t i = 0, e = count->get<int32_t>(); i != e; ++i) {
         bodyResults.resize(repeatResults.size());
-        function->execute(runtime, operands, bodyResults);
+        function->execute(operands, bodyResults, runtime);
         // bodyResults become the operands of the next iteration.
         operands = std::move(bodyResults);
         bodyResults.clear();
