@@ -546,12 +546,12 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
             typename... ArgsToProcessT, typename... ArgsT>
   static void processArgsAndInvoke(TypeTag<ArgT, ArgsToProcessT...>,
                                    PrimitiveFrame &frame, ArgsT &&...args) {
-    Value<ArgT>::template verifyCurrentIndex<IndicesT>();
+    Value<ArgT, void>::template verifyCurrentIndex<IndicesT>();
     processArgsAndInvoke<
-        typename Value<ArgT>::template UpdatedIndicesT<IndicesT>,
-        (hasInChain || Value<ArgT>::isChain)>(
+        typename Value<ArgT, void>::template UpdatedIndicesT<IndicesT>,
+        (hasInChain || Value<ArgT, void>::isChain)>(
         TypeTag<ArgsToProcessT...>(), frame, std::forward<ArgsT>(args)...,
-        Value<ArgT>::template process<IndicesT>(frame));
+        Value<ArgT, void>::template process<IndicesT>(frame));
   }
 
   /// This function is the base case for argument processing function above. It
