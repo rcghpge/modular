@@ -51,6 +51,22 @@ static cl::opt<AllocatorType> allocatorType( // NOLINT
                           "Allocator with profiling and leak checking")),
     cl::init(AllocatorType::kLeakChecker));
 
+enum class WorkQueueType {
+  /// WorkQueue that just uses a single thread and performs no synchronization.
+  kSingleThread,
+  /// WorkQueue that uses a configurable-size thread pool.
+  kThreadPool,
+};
+
+// Allow the command-line user to specify the type of work que to be used.
+static cl::opt<WorkQueueType> workqueueType( // NOLINT
+    "workqueue", cl::desc("Specify work queue type:"),
+    cl::values(clEnumValN(WorkQueueType::kSingleThread, "single",
+                          "Single thread, no synchronization"),
+               clEnumValN(WorkQueueType::kThreadPool, "threadpool",
+                          "Configurable size thread pool")),
+    cl::init(WorkQueueType::kSingleThread));
+
 /// Configure the memory allocator based on the command line option settings.
 static std::unique_ptr<Allocator> getAllocator() {
   std::unique_ptr<Allocator> allocator;
@@ -76,8 +92,20 @@ static std::unique_ptr<Allocator> getAllocator() {
 /// Configure the appropriate work queue based on the command line option
 /// settings.
 static std::unique_ptr<WorkQueue> getWorkQueue() {
-  // TODO: Add other fancy workqueue implementations.
-  return createSingleThreadWorkQueue();
+  std::unique_ptr<WorkQueue> queue;
+  switch (workqueueType) {
+  case WorkQueueType::kSingleThread:
+    queue = createSingleThreadWorkQueue();
+    printf("Initializing single thread work queue.\n");
+    break;
+  case WorkQueueType::kThreadPool:
+    queue = createThreadPoolWorkQueue();
+    printf("Initializing single thread work queue.\n");
+    break;
+  }
+
+  fflush(stdout);
+  return queue;
 }
 
 /// Run the specified BEF function as a testcase - this means passing in test
