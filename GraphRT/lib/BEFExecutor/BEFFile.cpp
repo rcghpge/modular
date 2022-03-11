@@ -128,7 +128,7 @@ bool BEFFileReader::readFunctionIndexSection(BEFReader &stringReader) {
   if (parseVBR(numFunctions))
     return true;
 
-  auto *fnMemory = (BEFFunction *)calloc(numFunctions, sizeof(BEFFunction));
+  auto *fnMemory = (BEFFunction *)malloc(numFunctions * sizeof(BEFFunction));
 
   // Read until we run out of function descriptors.
   size_t fnNumber = 0;

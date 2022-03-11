@@ -81,9 +81,9 @@ public:
 
   /// Execute this function using the specified runtime, passing the specified
   /// arguments. This returns one AsyncValue for each result.
-  virtual void
-  execute(Runtime &runtime, MutableArrayRef<RCRef<AsyncValue>> arguments,
-          MutableArrayRef<RCRef<AsyncValue>> results) const override;
+  virtual void execute(MutableArrayRef<RCRef<AsyncValue>> arguments,
+                       MutableArrayRef<RCRef<AsyncValue>> results,
+                       Runtime &runtime) const override;
 
   /// Add a new reference to this object.  The lifetime of functions are
   /// generally tied to the file they are loaded from (e.g. a BEFFile) so they

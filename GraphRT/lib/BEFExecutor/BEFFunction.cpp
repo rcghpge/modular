@@ -658,9 +658,9 @@ void BEFFunction::dropRef() const { owner->dropRef(); }
 
 /// Execute this function, passing the specified arguments. This returns one
 /// AsyncValue for each result.
-void BEFFunction::execute(Runtime &runtime,
-                          MutableArrayRef<RCRef<AsyncValue>> arguments,
-                          MutableArrayRef<RCRef<AsyncValue>> results) const {
+void BEFFunction::execute(MutableArrayRef<RCRef<AsyncValue>> arguments,
+                          MutableArrayRef<RCRef<AsyncValue>> results,
+                          Runtime &runtime) const {
   assert(arguments.size() == getNumArgs() &&
          "incorrect number of argument to a BEF function");
   assert(results.size() == getNumResults() &&
