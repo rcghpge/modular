@@ -24,7 +24,7 @@ class BEFFunction;
 /// which maintains all the state necessary for the BEFExecutor.
 class BEFFileImpl : public BEFFile {
 public:
-  BEFFileImpl() {}
+  BEFFileImpl() = default;
   ~BEFFileImpl() override;
 
   /// Return the function with the specified BEF function ID.
