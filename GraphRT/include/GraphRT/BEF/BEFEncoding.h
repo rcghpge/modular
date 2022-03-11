@@ -18,10 +18,6 @@ namespace M {
 
 namespace BEF {
 
-/// This dialect attribute can be added to arbitrary operations to make them
-/// execute in a non-strict way (before all their operands are resolved).
-constexpr const char kNonStrictAttrName[] = "bef.nonstrict";
-
 enum {
   // Defined by the BEF_FILE production.
   MAGIC1 = 0xBE,

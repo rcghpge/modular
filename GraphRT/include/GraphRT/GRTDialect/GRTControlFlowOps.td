@@ -26,7 +26,8 @@ def ChainNewOp : GRTOp<"chain.new"> {
 // CallOp
 //===----------------------------------------------------------------------===//
 
-def CallOp : GRTOp<"call", [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+def CallOp : GRTOp<"call", [DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+                            NonStrictOp]> {
   let summary = "Call a BEF function";
 
   let description = [{
@@ -47,7 +48,8 @@ def CallOp : GRTOp<"call", [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
 //===----------------------------------------------------------------------===//
 
 def IfOp : GRTOp<"if",
-          [IsolatedFromAbove, SingleBlockImplicitTerminator<"BEF::OutputOp">]> {
+          [IsolatedFromAbove, SingleBlockImplicitTerminator<"BEF::OutputOp">,
+           NonStrictOp]> {
   let summary = "if operation";
   let description = [{
     The "grt.if" operation takes an i1 condition, a 'then' body and an 'else'
@@ -91,7 +93,8 @@ def IfOp : GRTOp<"if",
 //===----------------------------------------------------------------------===//
 
 def RepeatI32Op : GRTOp<"repeat.i32",
-         [IsolatedFromAbove, SingleBlockImplicitTerminator<"BEF::OutputOp">]> {
+         [IsolatedFromAbove, SingleBlockImplicitTerminator<"BEF::OutputOp">,
+          NonStrictOp]> {
   let summary = "Repeat a body N times";
   let description = [{
     The "grt.repeat.i32" operation is a repeat loop that executes its body N

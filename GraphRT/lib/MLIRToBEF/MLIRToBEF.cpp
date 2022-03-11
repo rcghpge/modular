@@ -17,6 +17,7 @@
 
 #include "GraphRT/MLIRToBEF.h"
 #include "GraphRT/BEF/BEFEncoding.h"
+#include "GraphRT/BEFDialect/BEFNonStrict.h"
 #include "GraphRT/BEFDialect/BEFOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "llvm/ADT/StringSet.h"
@@ -489,10 +490,6 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
     }
 
     auto processAttr = [&](StringAttr name, Attribute attr) {
-      // If this is a special bef.nonstrict attribute, ignore it.
-      if (name.getValue() == BEF::kNonStrictAttrName)
-        return;
-
       // Add attribute names if requested.
       if (enableBEFMetadata)
         addMetadataString(name);
@@ -827,7 +824,7 @@ void BEFFunctionEmitter::emitFunction(Region *region) {
     if (auto opaque = dyn_cast<BEF::OpaqueOp>(op))
       isNonStrict = opaque.nonstrict();
     else
-      isNonStrict = op.getAttr(BEF::kNonStrictAttrName) != Attribute();
+      isNonStrict = op.hasTrait<BEF::detail::NonStrictOpTrait>();
 
     // Offset of the primitive in the list.
     emitPrimitiveOffsetNumber(primitiveList.getOffset());
@@ -960,12 +957,8 @@ void BEFFunctionEmitter::emitPrimitive(Operation *op,
     for (auto attr : opaque.attrs())
       processAttr(StringAttr::get(op->getContext()), attr);
   } else {
-    for (auto attrNamePair : op->getAttrs()) {
-      // Don't encode the bef.nonstrict attribute explicitly.
-      if (attrNamePair.getName().getValue() == BEF::kNonStrictAttrName)
-        continue;
+    for (auto attrNamePair : op->getAttrs())
       processAttr(attrNamePair.getName(), attrNamePair.getValue());
-    }
   }
 
   // Regions on the op are also considered to be BEF functions.

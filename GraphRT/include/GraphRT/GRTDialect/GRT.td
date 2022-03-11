@@ -13,6 +13,7 @@
 
 include "mlir/IR/OpBase.td"
 include "GraphRT/GRTDialect/GRTDialect.td"
+include "GraphRT/BEFDialect/BEFNonStrict.td"
 
 // Base class for the operation in this dialect.
 class GRTOp<string mnemonic, list<Trait> traits = []> :

@@ -74,6 +74,14 @@ public:
     return parseNULTerminatedStringAt(offset, stringReader, result);
   }
 
+  bool resolveFunction(size_t fnIndex, Location loc, BEF::FuncOp &funcOp) {
+    if (fnIndex >= functions.size())
+      return mlir::emitError(loc, "invalid function index"), true;
+
+    funcOp = functions[fnIndex];
+    return false;
+  }
+
   bool resolveType(size_t typeID, Location loc, Type &result) {
     if (typeID >= types.size())
       return mlir::emitError(loc) << "invalid type ID #" << typeID, true;
@@ -519,10 +527,11 @@ bool FunctionParser::parsePrimitiveList() {
       return true;
 
     // We read and ignore the # users for each result.
-    SmallVector<uint32_t> numResultUsers, operands, attrsOffsets, functions;
+    SmallVector<uint32_t> numResultUsers, operands, attrsOffsets, functionsIdxs;
     if (funcReader.parseInt4Array(numResults, numResultUsers) ||
         funcReader.parseInt4Array(numOperands, operands) ||
-        funcReader.parseInt4Array(numAttrs, attrsOffsets))
+        funcReader.parseInt4Array(numAttrs, attrsOffsets) ||
+        funcReader.parseInt4Array(numFunctions, functionsIdxs))
       return true;
 
     // If the primitive had results, the register number for the first one is
@@ -610,11 +619,43 @@ bool FunctionParser::parsePrimitiveList() {
       }
     }
 
-    // Otherwise we need to create a primitive for this.
-    if (numFunctions != 0) {
-      // TODO: read all the names from attrNameReader!
-      return mlir::emitError(loc, "FIXME: Don't support decoding regions yet!"),
-             true;
+    // If the function has references to symbols or regions, then decode them
+    // now.
+    SmallVector<Block *> regionsBlocksToTake;
+    for (uint32_t fnIdx : functionsIdxs) {
+      BEF::FuncOp funcOp;
+      if (converter.resolveFunction(fnIdx, loc, funcOp))
+        return true;
+
+      // If this is an anonymous function, then it is a region on the operation,
+      // otherwise there should be an attribute name.
+      bool isRegion = func->getName().getStringRef().empty();
+      if (isRegion) {
+        // Check to see if someone already used this function as an
+        // anonymous operation region.
+        if (funcOp.getBodyRegion().empty())
+          return mlir::emitError(loc, "anonymous function used multiple times"),
+                 true;
+
+        Block *block = &funcOp.getBodyRegion().back();
+        funcOp.getBodyRegion().getBlocks().remove(*block);
+        regionsBlocksToTake.push_back(block);
+      } else {
+        // If this is a symbol ref, check for a name.
+        if (!attrNameReader.empty()) {
+          size_t nameOffset;
+          StringAttr name;
+          if (attrNameReader.parseVBR(nameOffset) ||
+              converter.resolveMetadataString(nameOffset, loc, name))
+            return true;
+          attrNames.push_back(name);
+        }
+
+        // Regardless of wehther we have a name, rememer this as a
+        // FlatSymbolRef.
+        attrs.push_back(FlatSymbolRefAttr::get(funcOp));
+        --numFunctions;
+      }
     }
 
     // If this operation has more than one operand but only requires one to be
@@ -626,6 +667,8 @@ bool FunctionParser::parsePrimitiveList() {
 
     Operation *resultOp;
     if (!hasMLIRTypes || isOpaqueOp) {
+      assert(regionsBlocksToTake.empty() &&
+             "FIXME: cannot convert ops with regions to opaque yet!");
       // If we lack type information, create a bef.opaque operation.  We cannot
       // necessarily create the correct operation when we're lacking type info
       // and attribute names because we'll trip the op verifier.
@@ -637,8 +680,10 @@ bool FunctionParser::parsePrimitiveList() {
                            /*attrs*/ {});
       for (auto nameAndAttr : llvm::zip(attrNames, attrs))
         state.addAttribute(std::get<0>(nameAndAttr), std::get<1>(nameAndAttr));
-      if (nonStrict)
-        state.addAttribute(BEF::kNonStrictAttrName, nonStrict);
+
+      // Add all the regions.
+      for (Block *block : regionsBlocksToTake)
+        state.addRegion()->push_back(block);
 
       resultOp = bodyBuilder.createOperation(state);
     }

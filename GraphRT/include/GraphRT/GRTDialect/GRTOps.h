@@ -11,6 +11,7 @@
 #ifndef GRAPHRT_GRAPHRTDIALECT_GRTOPS_H
 #define GRAPHRT_GRAPHRTDIALECT_GRTOPS_H
 
+#include "GraphRT/BEFDialect/BEFNonStrict.h"
 #include "GraphRT/BEFDialect/BEFOps.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
 #include "mlir/IR/OpImplementation.h"

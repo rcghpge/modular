@@ -10,17 +10,17 @@
 
 // CHECK-LABEL: bef.func @trivial() {
 // CHECK-NEXT:    %0:2 = bef.opaque "simple.primitive" []() : () -> (!bef.unknown, !bef.unknown)
-// CHECK-NEXT:    bef.opaque "other.primitive" nonstrict [42 : i8](%0#1, %0#0) : (!bef.unknown, !bef.unknown) -> ()
+// CHECK-NEXT:    bef.opaque "grt.call" [@trivial]() : () -> ()  
 // CHECK-NEXT:    bef.output
 // CHECK-NEXT:  }
 // MD-LABEL: bef.func @trivial() {
 // MD-NEXT:    %0:2 = "simple.primitive"() : () -> (i8, i16)
-// MD-NEXT:    "other.primitive"(%0#1, %0#0) {bef.nonstrict, x = 42 : i8} : (i16, i8) -> ()
+// MD-NEXT:    "grt.call"() {callee = @trivial} : () -> ()
 // MD-NEXT:    bef.output
 // MD-NEXT:  }
 bef.func @trivial() {
   %a, %b = "simple.primitive"() : () -> (i8, i16)
-  "other.primitive"(%b, %a) { x = 42 : i8, bef.nonstrict }: (i16, i8) -> ()
+  grt.call @trivial() : () -> ()
   bef.output
 }
 
