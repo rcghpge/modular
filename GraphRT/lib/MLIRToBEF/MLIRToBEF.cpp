@@ -824,7 +824,7 @@ void BEFFunctionEmitter::emitFunction(Region *region) {
     if (auto opaque = dyn_cast<BEF::OpaqueOp>(op))
       isNonStrict = opaque.nonstrict();
     else
-      isNonStrict = op.hasTrait<BEF::detail::NonStrictOpTrait>();
+      isNonStrict = isa<BEF::NonStrictOp>(op);
 
     // Offset of the primitive in the list.
     emitPrimitiveOffsetNumber(primitiveList.getOffset());

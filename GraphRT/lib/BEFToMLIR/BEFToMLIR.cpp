@@ -527,11 +527,12 @@ bool FunctionParser::parsePrimitiveList() {
       return true;
 
     // We read and ignore the # users for each result.
-    SmallVector<uint32_t> numResultUsers, operands, attrsOffsets, functionsIdxs;
+    SmallVector<uint32_t> numResultUsers, operands, attrsOffsets,
+        functionsIndices;
     if (funcReader.parseInt4Array(numResults, numResultUsers) ||
         funcReader.parseInt4Array(numOperands, operands) ||
         funcReader.parseInt4Array(numAttrs, attrsOffsets) ||
-        funcReader.parseInt4Array(numFunctions, functionsIdxs))
+        funcReader.parseInt4Array(numFunctions, functionsIndices))
       return true;
 
     // If the primitive had results, the register number for the first one is
@@ -622,7 +623,7 @@ bool FunctionParser::parsePrimitiveList() {
     // If the function has references to symbols or regions, then decode them
     // now.
     SmallVector<Block *> regionsBlocksToTake;
-    for (uint32_t fnIdx : functionsIdxs) {
+    for (uint32_t fnIdx : functionsIndices) {
       BEF::FuncOp funcOp;
       if (converter.resolveFunction(fnIdx, loc, funcOp))
         return true;
