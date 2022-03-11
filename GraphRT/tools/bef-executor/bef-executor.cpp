@@ -100,7 +100,7 @@ static std::unique_ptr<WorkQueue> getWorkQueue() {
     break;
   case WorkQueueType::kThreadPool:
     queue = createThreadPoolWorkQueue();
-    printf("Initializing single thread work queue.\n");
+    printf("Initializing thread pool work queue.\n");
     break;
   }
 
