@@ -109,7 +109,7 @@ static void runFunctionTestcase(const Function *fn) {
 
   llvm::SmallVector<RCRef<AsyncValue>, 4> results;
   results.resize(fn->getNumResults());
-  fn->execute(runtime, /*arguments=*/{}, results);
+  fn->execute(/*arguments=*/{}, results, runtime);
 
   // Block until the function results are fully resolved.
   runtime.await(results);
