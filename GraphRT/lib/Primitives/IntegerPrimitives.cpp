@@ -34,8 +34,8 @@ static int32_t add_i32(int32_t lhs, int32_t rhs) { return lhs + rhs; }
 
 /// This registers the 'graphrt' dialect integer primitives.
 void M::registerGraphRTIntegerPrimitives(PrimitiveRegistry &registry) {
-  registry.add("grt.constant.i1", M_PRIMITIVE(constant_i1));
-  registry.add("grt.constant.i32", M_PRIMITIVE(constant_i32));
-  registry.add("grt.add.i32", M_PRIMITIVE(add_i32));
-  registry.add("grt.print.i32", M_PRIMITIVE(print_i32));
+  ADD_PRIMITIVE(registry, "grt.constant.i1", constant_i1);
+  ADD_PRIMITIVE(registry, "grt.constant.i32", constant_i32);
+  ADD_PRIMITIVE(registry, "grt.add.i32", add_i32);
+  ADD_PRIMITIVE(registry, "grt.print.i32", print_i32);
 }

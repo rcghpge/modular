@@ -60,7 +60,7 @@ auto PrimitiveRegistry::get(StringRef name) const -> PrimitiveImplFn {
 }
 
 //===----------------------------------------------------------------------===//
-// M_PRIMITIVE implementation logic
+// ADD_PRIMITIVE implementation logic
 //===----------------------------------------------------------------------===//
 
 /// Given a pointer to the start of a BEF array or string attribute, return the

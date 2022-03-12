@@ -30,7 +30,7 @@ public:
   using PrimitiveImplFn = void (*)(PrimitiveFrame &frame);
 
   /// Add an implementation of a primitive to the registry.  Consider using
-  /// the M_PRIMITIVE macro to enable various pretty forms for this.
+  /// the ADD_PRIMITIVE macro to enable various pretty forms for this.
   void add(StringLiteral name, PrimitiveImplFn fn);
 
   /// Finalize the registry. Calling `get()` before the registry is finalized
@@ -162,7 +162,7 @@ private:
 // Primitive Registration Wrapper Generator
 //===----------------------------------------------------------------------===//
 
-// M_PRIMITIVE is a macro that makes defining primitives more straightforward.
+// ADD_PRIMITIVE is a macro that makes defining primitives more straightforward.
 // For simple primitives with a few arguments and a single movable result,
 // you can define the function using the native C++ types directly:
 //
@@ -179,7 +179,7 @@ private:
 // These can be useful if you want to move() the async value itself out of the
 // argument instead of just getting access to the value it contains.
 //
-// All primitives defined with M_PRIMITIVE accept an implicit Chain as their
+// All primitives defined with ADD_PRIMITIVE accept an implicit Chain as their
 // last argument. For example, the `add` primitive above could be called like
 // this:
 //
@@ -242,13 +242,20 @@ private:
 // See the definitions of the wrapper types above for more details.
 //
 
-// TODO(C++'17): Switch to template when we can use C++17 with 'auto' template
-// requirements.
-#define M_PRIMITIVE(...)                                                       \
-  ::M::Detail::PrimitiveImpl<decltype(&__VA_ARGS__), &__VA_ARGS__>::invoke
+/// This macro is used to register an implementation function for a primitive
+/// with a specified PrimitiveRegistry.  It handles generating a wrapper thunk
+/// that makes it much easier (and less bug prone) to work with low-level
+/// `PrimitiveFrame`.
+///
+/// For example:
+///    ADD_PRIMITIVE(registery, "grt.call", grt_call_impl);
+///
+#define ADD_PRIMITIVE(registry, name, ...)                                     \
+  registry.add(name, ::M::Detail::PrimitiveImpl<decltype(&__VA_ARGS__),        \
+                                                &__VA_ARGS__>::invoke)
 
 namespace Detail {
-// This class implements the M_PRIMITIVE macro.
+// This class implements the ADD_PRIMITIVE macro.
 template <typename FnType, FnType implFn>
 struct PrimitiveImpl;
 

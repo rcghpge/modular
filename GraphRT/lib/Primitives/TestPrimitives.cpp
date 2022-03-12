@@ -120,11 +120,11 @@ vt_share_to_two_2(RCRef<AsyncValue> in) {
 }
 
 static void registerValueTracking(PrimitiveRegistry &registry) {
-  registry.add("test.vt.constant", M_PRIMITIVE(vt_constant));
-  registry.add("test.vt.add", M_PRIMITIVE(vt_add));
-  registry.add("test.vt.print", M_PRIMITIVE(vt_print));
-  registry.add("test.vt_share_to_two", M_PRIMITIVE(vt_share_to_two));
-  registry.add("test.vt_share_to_two_2", M_PRIMITIVE(vt_share_to_two_2));
+  ADD_PRIMITIVE(registry, "test.vt.constant", vt_constant);
+  ADD_PRIMITIVE(registry, "test.vt.add", vt_add);
+  ADD_PRIMITIVE(registry, "test.vt.print", vt_print);
+  ADD_PRIMITIVE(registry, "test.vt_share_to_two", vt_share_to_two);
+  ADD_PRIMITIVE(registry, "test.vt_share_to_two_2", vt_share_to_two_2);
 }
 
 //===----------------------------------------------------------------------===//
@@ -166,24 +166,23 @@ static AsyncValueRef<int32_t> async_add_i32(int32_t lhs, int32_t rhs,
 /// testcases.
 void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
   // Misc.
-  registry.add("test.print_hello", M_PRIMITIVE(print_hello));
-  registry.add("test.memory_leak_one_int32",
-               M_PRIMITIVE(memory_leak_one_int32));
+  ADD_PRIMITIVE(registry, "test.print_hello", print_hello);
+  ADD_PRIMITIVE(registry, "test.memory_leak_one_int32", memory_leak_one_int32);
 
   // String and Array Tests
-  registry.add("test.get_string", M_PRIMITIVE(get_string));
-  registry.add("test.append_string", M_PRIMITIVE(append_string));
-  registry.add("test.print_string", M_PRIMITIVE(print_string));
-  registry.add("test.print_array_i32", M_PRIMITIVE(print_array_i32));
+  ADD_PRIMITIVE(registry, "test.get_string", get_string);
+  ADD_PRIMITIVE(registry, "test.append_string", append_string);
+  ADD_PRIMITIVE(registry, "test.print_string", print_string);
+  ADD_PRIMITIVE(registry, "test.print_array_i32", print_array_i32);
 
   registerValueTracking(registry);
 
   // Error handling.
-  registry.add("test.fail", M_PRIMITIVE(fail));
-  registry.add("test.partial_fail", M_PRIMITIVE(partial_fail));
+  ADD_PRIMITIVE(registry, "test.fail", fail);
+  ADD_PRIMITIVE(registry, "test.partial_fail", partial_fail);
 
   // Cancellation.
-  registry.add("test.cancel", M_PRIMITIVE(cancel));
+  ADD_PRIMITIVE(registry, "test.cancel", cancel);
 
-  registry.add("test.async.add.i32", M_PRIMITIVE(async_add_i32));
+  ADD_PRIMITIVE(registry, "test.async.add.i32", async_add_i32);
 }

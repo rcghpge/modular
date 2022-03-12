@@ -194,8 +194,8 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
 
 /// This registers the 'graphrt' dialect primitives for control flow.
 void M::registerGraphRTControlFlowPrimitives(PrimitiveRegistry &registry) {
-  registry.add("grt.chain.new", M_PRIMITIVE(chain_new));
-  registry.add("grt.call", M_PRIMITIVE(call));
-  registry.add("grt.if", M_PRIMITIVE(grt_if));
-  registry.add("grt.repeat.i32", M_PRIMITIVE(repeat_i32));
+  ADD_PRIMITIVE(registry, "grt.chain.new", chain_new);
+  ADD_PRIMITIVE(registry, "grt.call", call);
+  ADD_PRIMITIVE(registry, "grt.if", grt_if);
+  ADD_PRIMITIVE(registry, "grt.repeat.i32", repeat_i32);
 }
