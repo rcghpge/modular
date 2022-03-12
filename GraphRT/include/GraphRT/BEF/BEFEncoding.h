@@ -1,4 +1,4 @@
-//===- GraphRT/BEF/BEFEncoding.h --------------------------------*- C++ -*-===//
+//===- GraphRT/BEF/BEFEncoding.h ------------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //

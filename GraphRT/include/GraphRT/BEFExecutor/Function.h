@@ -1,4 +1,4 @@
-//===- GraphRT/BEFExecutor/Function.h ---------------------------*- C++ -*-===//
+//===- GraphRT/BEFExecutor/Function.h -------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //

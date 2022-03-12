@@ -1,4 +1,4 @@
-//===- GraphRT/MLIRToBEF.h --------------------------------------*- C++ -*-===//
+//===- GraphRT/MLIRToBEF.h ------------------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //

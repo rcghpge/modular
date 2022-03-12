@@ -1,4 +1,4 @@
-//===- GraphRT/BEF/BEFReader.h ----------------------------------*- C++ -*-===//
+//===- GraphRT/BEF/BEFReader.h --------------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //

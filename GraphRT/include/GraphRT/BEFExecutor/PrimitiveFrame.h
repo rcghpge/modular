@@ -1,4 +1,4 @@
-//===- GraphRT/BEFExecutor/PrimitiveFrame.h ---------------------*- C++ -*-===//
+//===- GraphRT/BEFExecutor/PrimitiveFrame.h -------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //

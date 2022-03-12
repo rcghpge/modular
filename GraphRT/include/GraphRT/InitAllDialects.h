@@ -1,4 +1,4 @@
-//===- GraphRT/InitAllDialects.h --------------------------------*- C++ -*-===//
+//===- GraphRT/InitAllDialects.h ------------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //

@@ -1,4 +1,4 @@
-//===- GraphRT/BEFToMLIR.h --------------------------------------*- C++ -*-===//
+//===- GraphRT/BEFToMLIR.h ------------------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //

@@ -1,4 +1,4 @@
-//===- GraphRT/Primitives.h -------------------------------------*- C++ -*-===//
+//===- GraphRT/Primitives.h -----------------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //

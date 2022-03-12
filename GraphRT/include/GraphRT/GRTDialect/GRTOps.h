@@ -1,4 +1,4 @@
-//===- GraphRT/GRTDialect/GRTOps.h ------------------------------*- C++ -*-===//
+//===- GraphRT/GRTDialect/GRTOps.h ----------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //
