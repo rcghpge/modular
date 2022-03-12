@@ -120,6 +120,11 @@ vt_share_to_two_2(RCRef<AsyncValue> in) {
 }
 
 static void registerValueTracking(PrimitiveRegistry &registry) {
+  // TODO: Registration of these types should get folded into auto-magic as part
+  // of the ADD_PRIMITIVE macro.  Issue #33.
+  AsyncValue::registerType<VTValue>();
+  AsyncValue::registerType<Chain>();
+
   ADD_PRIMITIVE(registry, "test.vt.constant", vt_constant);
   ADD_PRIMITIVE(registry, "test.vt.add", vt_add);
   ADD_PRIMITIVE(registry, "test.vt.print", vt_print);
@@ -165,11 +170,17 @@ static AsyncValueRef<int32_t> async_add_i32(int32_t lhs, int32_t rhs,
 /// This registers the 'test' dialect primitives, intended for writing executor
 /// testcases.
 void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
+  // TODO: Registration of these types should get folded into auto-magic as part
+  // of the ADD_PRIMITIVE macro.  Issue #33.
+
   // Misc.
+  AsyncValue::registerType<Chain>();
+  AsyncValue::registerType<int32_t>();
   ADD_PRIMITIVE(registry, "test.print_hello", print_hello);
   ADD_PRIMITIVE(registry, "test.memory_leak_one_int32", memory_leak_one_int32);
 
   // String and Array Tests
+  AsyncValue::registerType<std::string>();
   ADD_PRIMITIVE(registry, "test.get_string", get_string);
   ADD_PRIMITIVE(registry, "test.append_string", append_string);
   ADD_PRIMITIVE(registry, "test.print_string", print_string);
