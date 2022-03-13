@@ -98,7 +98,7 @@ AsyncValue *RegisterInfo::getOrCreateIndirectValue(Runtime &runtime) {
   // the primitives using the register result get run (e.g. when nonstrict)
   // ahead of the value being resolved.
   assert(userCount && "shouldn't build an IndirectAsyncValue without users");
-  indirect->addRef(userCount);
+  RCRef<AsyncValue>::lowLevelAddRef(indirect, userCount);
   if (value.compare_exchange_strong(existing, indirect,
                                     std::memory_order_release,
                                     std::memory_order_acquire))
@@ -106,7 +106,7 @@ AsyncValue *RegisterInfo::getOrCreateIndirectValue(Runtime &runtime) {
 
   // If someone beat us to setting a value then we don't need the
   // IndirectAsyncValue after all. Decrease refcount back to 0 to free it.
-  indirect->dropRef(userCount + 1);
+  RCRef<AsyncValue>::lowLevelDropRef(indirect, userCount + 1);
   return existing;
 }
 
@@ -608,7 +608,7 @@ void BEFExecutor::processUsedByRecords(
   // reference from the `result` RCRef, so we add '#users - 1' references.
   if (resultPtr == registerVal) { // IndirectValue RC already handled.
     if (totalUserRefCount != 1)   // Don't atomic add 0.
-      resultPtr->addRef(totalUserRefCount - 1);
+      RCRef<AsyncValue>::lowLevelAddRef(resultPtr, totalUserRefCount - 1);
     // The reference count is handled manually above, don't drop another RC.
     result.release();
   } else {
@@ -618,7 +618,7 @@ void BEFExecutor::processUsedByRecords(
 
     // We are however done with the extra reference on the register
     // IndirectAsyncValue itself, so we can drop it.
-    registerVal->dropRef();
+    (void)takeRCRef(registerVal);
   }
 
   // If the result is ready (typical case), then we can be efficient and avoid
@@ -631,16 +631,15 @@ void BEFExecutor::processUsedByRecords(
 
     // Keep this executor alive as long as the result is running, so all the
     // state we maintain (e.g. attribute pointers) stay alive.
-    addRef();
+    RCRef<BEFExecutor> thisRef = copyRCRef(this);
 
     // Process the whole batch of users when this result becomes available. Note
     // that we capture `users` which is an ArrayRef instead of copying the
     // content. This is fine because the underlying BEF file is alive when the
     // BEF executor is.
-    resultPtr->andThen([this, users]() mutable {
+    resultPtr->andThen([thisRef = std::move(thisRef), users]() {
       SmallVector<uint32_t, 16> primitiveIDToVisit(users.begin(), users.end());
-      this->decrementOperandsNotReadyCounts(primitiveIDToVisit);
-      this->dropRef();
+      thisRef->decrementOperandsNotReadyCounts(primitiveIDToVisit);
     });
   }
 }
@@ -651,10 +650,12 @@ void BEFExecutor::processUsedByRecords(
 
 /// Add a new reference to this object.  The lifetime of BEF functions are
 /// completely tied to BEFFileImpl, so just extend its reference count.
-void BEFFunction::addRef() const { owner->addRef(); }
+void BEFFunction::addRef() const { RCRef<BEFFileImpl>::lowLevelAddRef(owner); }
 
 /// Drop a reference to this object, potentially deallocating it.
-void BEFFunction::dropRef() const { owner->dropRef(); }
+void BEFFunction::dropRef() const {
+  RCRef<BEFFileImpl>::lowLevelDropRef(owner);
+}
 
 /// Execute this function, passing the specified arguments. This returns one
 /// AsyncValue for each result.

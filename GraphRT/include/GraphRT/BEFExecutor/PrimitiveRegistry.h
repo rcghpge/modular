@@ -640,7 +640,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   /// Don't allocate an async value for chain results, just use the one
   /// already stored in Runtime.
   static void processResult(PrimitiveFrame &frame, size_t index, Chain t) {
-    frame.setResult(index, frame.getRuntime().getReadyChain());
+    frame.setResult(index, frame.getRuntime().getReadyChain().copy());
   }
 
   /// Handle explicit RCRef<AsyncValue> results.
