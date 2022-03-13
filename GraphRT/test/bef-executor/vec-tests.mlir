@@ -26,7 +26,7 @@ bef.func @basic_test() -> !grt.chain {
   %v5 = "test.vec.constant"() { size = 3 : i32, value = 3 : i32 } : () -> !test.vec
   %v6 = "test.vec.add"(%v5, %v1) : (!test.vec, !test.vec) -> !test.vec
   %ch5 = "test.vec.print" (%v6, %ch4) : (!test.vec, !grt.chain) -> !grt.chain
-  // CHECK-NEXT: 'basic_test' returned <error: test.vec.add length mismatch> 
+  // CHECK-NEXT: 'basic_test' returned <error: vector length mismatch> 
 
   bef.output %ch5 : !grt.chain
 }
@@ -54,7 +54,35 @@ bef.func @async_add_test() -> !grt.chain {
   %v5 = "test.vec.constant"() { size = 3 : i32, value = 3 : i32 } : () -> !test.vec
   %v6 = "test.vec.add.async"(%v5, %v1) : (!test.vec, !test.vec) -> !test.vec
   %ch5 = "test.vec.print" (%v6, %ch4) : (!test.vec, !grt.chain) -> !grt.chain
-  // CHECK-NEXT: 'async_add_test' returned <error: test.vec.add length mismatch> 
+  // CHECK-NEXT: 'async_add_test' returned <error: vector length mismatch> 
+
+  bef.output %ch5 : !grt.chain
+}
+
+// CHECK-LABEL: --- Running 'async_add_test2'
+bef.func @async_add_test2() -> !grt.chain {
+  %ch0 = grt.chain.new
+  %v1 = "test.vec.atoi"() { size = 5 : i32 } : () -> !test.vec
+  %ch1 = "test.vec.print" (%v1, %ch0) : (!test.vec, !grt.chain) -> !grt.chain
+  // CHECK-NEXT: vec = 0, 1, 2, 3, 4 
+
+  %v2 = "test.vec.constant"() { size = 5 : i32, value = 3 : i32 } : () -> !test.vec
+  %ch2 = "test.vec.print" (%v2, %ch1) : (!test.vec, !grt.chain) -> !grt.chain
+  // CHECK-NEXT: vec = 3, 3, 3, 3, 3 
+
+  %v3 = "test.vec.add.async2"(%v1, %v2) : (!test.vec, !test.vec) -> !test.vec
+  %ch3 = "test.vec.print" (%v3, %ch2) : (!test.vec, !grt.chain) -> !grt.chain
+  // CHECK-NEXT: vec = 3, 4, 5, 6, 7
+
+  %v4 = "test.vec.add.async2"(%v3, %v1) : (!test.vec, !test.vec) -> !test.vec
+  %ch4 = "test.vec.print" (%v4, %ch3) : (!test.vec, !grt.chain) -> !grt.chain
+  // CHECK-NEXT: vec = 3, 5, 7, 9, 11
+
+  // This will produce an error due to mismatched lengths.
+  %v5 = "test.vec.constant"() { size = 3 : i32, value = 3 : i32 } : () -> !test.vec
+  %v6 = "test.vec.add.async2"(%v5, %v1) : (!test.vec, !test.vec) -> !test.vec
+  %ch5 = "test.vec.print" (%v6, %ch4) : (!test.vec, !grt.chain) -> !grt.chain
+  // CHECK-NEXT: 'async_add_test2' returned <error: vector length mismatch> 
 
   bef.output %ch5 : !grt.chain
 }

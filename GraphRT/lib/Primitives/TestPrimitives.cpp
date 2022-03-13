@@ -221,7 +221,7 @@ static TestVector vec_constant(BEFAttribute<int32_t> size,
 static ErrorOr<TestVector> vec_add(const TestVector &lhs,
                                    const TestVector &rhs) {
   if (lhs.values.size() != rhs.values.size())
-    return Error("test.vec.add length mismatch");
+    return Error("vector length mismatch");
 
   TestVector result;
   result.values.reserve(lhs.values.size());
@@ -230,11 +230,13 @@ static ErrorOr<TestVector> vec_add(const TestVector &lhs,
   return result;
 }
 
+/// This version of vector addition does the entire add of the data on one
+/// background task.
 static AsyncValueRef<TestVector> vec_add_async(AsyncValueRef<TestVector> lhs,
                                                AsyncValueRef<TestVector> rhs,
                                                Runtime &runtime) {
   if (lhs.get().values.size() != rhs.get().values.size())
-    return AsyncValue::createError(runtime, "test.vec.add length mismatch");
+    return AsyncValue::createError(runtime, "vector length mismatch");
 
   auto result = AsyncValueRef<TestVector>::createConstructed(runtime);
   addTask(runtime, [lhs = std::move(lhs), rhs = std::move(rhs),
@@ -246,6 +248,32 @@ static AsyncValueRef<TestVector> vec_add_async(AsyncValueRef<TestVector> lhs,
     // After we've populated the map, we can return it.
     result->markReady();
   });
+
+  return result;
+}
+
+/// This version of vector addition does the addition with each element in
+/// parallel as separate tasks.
+static AsyncValueRef<TestVector> vec_add_async2(AsyncValueRef<TestVector> lhs,
+                                                AsyncValueRef<TestVector> rhs,
+                                                Runtime &runtime) {
+  if (lhs.get().values.size() != rhs.get().values.size())
+    return AsyncValue::createError(runtime, "vector length mismatch");
+
+  auto result = AsyncValueRef<TestVector>::createConstructed(runtime);
+  result.get().values.resize(lhs.get().values.size());
+
+  // Process each element in parallel.
+  parallelForEachN(
+      runtime, lhs.get().values.size(),
+      [](size_t n, AsyncValueRef<TestVector> &result,
+         AsyncValueRef<TestVector> &lhs, AsyncValueRef<TestVector> &rhs) {
+        result.get().values[n] = lhs.get().values[n] + rhs.get().values[n];
+      },
+      [](AsyncValueRef<TestVector> &result, AsyncValueRef<TestVector> &lhs,
+         AsyncValueRef<TestVector> &rhs) { result->markReady(); },
+      // This is the state we capture, which is passed into each closure.
+      result.copy(), std::move(lhs), std::move(rhs));
 
   return result;
 }
@@ -270,6 +298,7 @@ static void registerTestVecPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "test.vec.constant", vec_constant);
   ADD_PRIMITIVE(registry, "test.vec.add", vec_add);
   ADD_PRIMITIVE(registry, "test.vec.add.async", vec_add_async);
+  ADD_PRIMITIVE(registry, "test.vec.add.async2", vec_add_async2);
   ADD_PRIMITIVE(registry, "test.vec.print", vec_print);
 }
 
