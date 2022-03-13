@@ -12,6 +12,7 @@
 #include "GraphRT/BEFExecutor/Function.h"
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
 #include "GraphRT/Primitives.h"
+#include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/AsyncValueRef.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "LLCL/Support/Chain.h"
@@ -116,7 +117,7 @@ static void runFunctionTestcase(const Function *fn, AllocatorType allocatorType,
     fn->execute(/*arguments=*/{}, results, runtime);
 
     // Block until the function results are fully resolved.
-    runtime.await(results);
+    await(runtime, results);
 
     // If anything printed to stdout, force it out to a stream, since we will be
     // printing with raw_ostream.
