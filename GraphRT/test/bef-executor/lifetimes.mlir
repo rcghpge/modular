@@ -155,6 +155,66 @@ bef.func @share_to_two_caller() {
   bef.output
 }
 
+// CHECK-LABEL: --- Running 'share_to_four'
+bef.func @share_to_four() {
+  // CHECK-NEXT: constructed vt.value(1)
+  // CHECK-NEXT: move constructed vt.value(1)
+  %c1 = "test.vt.constant"() { value = 1 : i32 } : () -> !vt.value
+
+  %results:4 = "test.vt_share_to_four"(%c1) : (!vt.value) -> (!vt.value, !vt.value, !vt.value, !vt.value)
+
+  %ch0 = grt.chain.new
+
+  // CHECK-NEXT: print vt.value(1)
+  "test.vt.print"(%results#0, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+
+  // CHECK-NEXT: print vt.value(1)
+  "test.vt.print"(%results#1, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+
+  // CHECK-NEXT: print vt.value(1)
+  "test.vt.print"(%results#2, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+
+  // CHECK-NEXT: print vt.value(1)
+  "test.vt.print"(%results#3, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+
+  // CHECK-NEXT: destroyed vt.value(1)
+  bef.output
+}
+
+// Testing calling a bef function that forwards its argument into four results.
+
+// CHECK-LABEL: 'call_share_to_four' because it has arguments
+bef.func @call_share_to_four(%x: !vt.value) -> (!vt.value, !vt.value, !vt.value, !vt.value) {
+  %results:4 = "test.vt_share_to_four_2"(%x) : (!vt.value) -> (!vt.value, !vt.value, !vt.value, !vt.value)
+  bef.output %results#0, %results#1, %results#2, %results#3 : !vt.value, !vt.value, !vt.value, !vt.value
+}
+
+// CHECK-LABEL: --- Running 'share_to_four_caller'
+bef.func @share_to_four_caller() {
+  // CHECK-NEXT: constructed vt.value(1)
+  // CHECK-NEXT: move constructed vt.value(1)
+  %c1 = "test.vt.constant"() { value = 1 : i32 } : () -> !vt.value
+
+  %results:4 = grt.call @call_share_to_four(%c1) : (!vt.value) -> (!vt.value, !vt.value, !vt.value, !vt.value)
+
+  %ch0 = grt.chain.new
+
+  // CHECK-NEXT: print vt.value(1)
+  "test.vt.print"(%results#0, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+
+  // CHECK-NEXT: print vt.value(1)
+  "test.vt.print"(%results#1, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+
+  // CHECK-NEXT: print vt.value(1)
+  "test.vt.print"(%results#2, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+
+  // CHECK-NEXT: print vt.value(1)
+  "test.vt.print"(%results#3, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+
+  // CHECK-NEXT: destroyed vt.value(1)
+  bef.output
+}
+
 // CHECK-LABEL: 'repeat_n_inc' because it has arguments
 bef.func @repeat_n_inc(%n: i32) -> () {
   // Returns 1 + %n by initializing %x to 1 and incrementing in a loop.

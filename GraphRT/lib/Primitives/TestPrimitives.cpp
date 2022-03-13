@@ -119,6 +119,25 @@ vt_share_to_two_2(RCRef<AsyncValue> in) {
   return {std::move(result1), std::move(in)};
 }
 
+/// Share input args with results without copying.
+static std::tuple<AsyncValueRef<VTValue>, AsyncValueRef<VTValue>,
+                  AsyncValueRef<VTValue>, AsyncValueRef<VTValue>>
+vt_share_to_four(AsyncValueRef<VTValue> in) {
+  auto result1 = in.copy(), result2 = in.copy(), result3 = in.copy();
+  return {std::move(result1), std::move(result2), std::move(result3),
+          std::move(in)};
+}
+
+/// Share input args with results without copying.  This is the same as above,
+/// but uses RCRef<AsyncValue> instead of AsyncValueRef<>.
+static std::tuple<RCRef<AsyncValue>, RCRef<AsyncValue>, RCRef<AsyncValue>,
+                  RCRef<AsyncValue>>
+vt_share_to_four_2(RCRef<AsyncValue> in) {
+  auto result1 = in.copy(), result2 = in.copy(), result3 = in.copy();
+  return {std::move(result1), std::move(result2), std::move(result3),
+          std::move(in)};
+}
+
 static void registerValueTracking(PrimitiveRegistry &registry) {
   // TODO: Registration of these types should get folded into auto-magic as part
   // of the ADD_PRIMITIVE macro.  Issue #33.
@@ -130,6 +149,8 @@ static void registerValueTracking(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "test.vt.print", vt_print);
   ADD_PRIMITIVE(registry, "test.vt_share_to_two", vt_share_to_two);
   ADD_PRIMITIVE(registry, "test.vt_share_to_two_2", vt_share_to_two_2);
+  ADD_PRIMITIVE(registry, "test.vt_share_to_four", vt_share_to_four);
+  ADD_PRIMITIVE(registry, "test.vt_share_to_four_2", vt_share_to_four_2);
 }
 
 //===----------------------------------------------------------------------===//

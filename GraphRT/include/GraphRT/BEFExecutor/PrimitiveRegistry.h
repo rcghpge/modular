@@ -673,7 +673,23 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
     processResult(frame, 1, std::move(pair.second));
   }
 
-  /// TODO: Support std::tuple results.
+  /// Support functions that return std::tuple<>, storing each element in
+  /// separate output results.
+  template <typename... Ts>
+  static void handleReturn(PrimitiveFrame &frame, std::tuple<Ts...> &&tuple) {
+    assert(frame.getNumResults() == sizeof...(Ts) &&
+           "Incorrect number of results");
+
+    auto applyFn = [&](auto &&...args) {
+      // Process each result in-order.
+      // Note: In C++17, this can be updated to use proper fold expressions, and
+      // remove the initializer_list.
+      int resultIdx = 0;
+      (void)std::initializer_list<int>{
+          0, (processResult(frame, resultIdx++, std::move(args)), 0)...};
+    };
+    llvm::apply_tuple(applyFn, std::move(tuple));
+  }
 };
 } // end namespace Detail
 
