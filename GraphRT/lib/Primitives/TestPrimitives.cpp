@@ -254,6 +254,8 @@ static AsyncValueRef<TestVector> vec_add_async(AsyncValueRef<TestVector> lhs,
 
 /// This version of vector addition does the addition with each element in
 /// parallel as separate tasks.
+///
+/// This is similar to vec_add_async, but uses `parallelForEachNCompletion`.
 static AsyncValueRef<TestVector> vec_add_async2(AsyncValueRef<TestVector> lhs,
                                                 AsyncValueRef<TestVector> rhs,
                                                 Runtime &runtime) {
@@ -264,16 +266,69 @@ static AsyncValueRef<TestVector> vec_add_async2(AsyncValueRef<TestVector> lhs,
   result.get().values.resize(lhs.get().values.size());
 
   // Process each element in parallel.
-  parallelForEachN(
+  parallelForEachNCustomCompletion(
       runtime, lhs.get().values.size(),
-      [](size_t n, AsyncValueRef<TestVector> &result,
-         AsyncValueRef<TestVector> &lhs, AsyncValueRef<TestVector> &rhs) {
+      [lhs = std::move(lhs),
+       rhs = std::move(rhs)](size_t n, AsyncValueRef<TestVector> &result) {
         result.get().values[n] = lhs.get().values[n] + rhs.get().values[n];
       },
-      [](AsyncValueRef<TestVector> &result, AsyncValueRef<TestVector> &lhs,
-         AsyncValueRef<TestVector> &rhs) { result->markReady(); },
+      [](AsyncValueRef<TestVector> &result) { result->markReady(); },
       // This is the state we capture, which is passed into each closure.
-      result.copy(), std::move(lhs), std::move(rhs));
+      result.copy());
+
+  return result;
+}
+
+/// This version of vector addition does the addition with each element in
+/// parallel as separate tasks.
+///
+/// This is the same as vec_add_async2, but captures the result vector in a
+/// slightly different way that doesn't need the for loop itself to capture
+/// state, simplifying signatures.
+static AsyncValueRef<TestVector> vec_add_async3(AsyncValueRef<TestVector> lhs,
+                                                AsyncValueRef<TestVector> rhs,
+                                                Runtime &runtime) {
+  if (lhs.get().values.size() != rhs.get().values.size())
+    return AsyncValue::createError(runtime, "vector length mismatch");
+
+  auto result = AsyncValueRef<TestVector>::createConstructed(runtime);
+  result.get().values.resize(lhs.get().values.size());
+
+  // Process each element in parallel.
+  parallelForEachNCustomCompletion(
+      runtime, lhs.get().values.size(),
+      // Capturing result by reference here is safe since the completion handler
+      // guarantees it stays alive across execution of all elements.
+      [&result = result.get(), lhs = std::move(lhs),
+       rhs = std::move(rhs)](size_t n) {
+        result.values[n] = lhs.get().values[n] + rhs.get().values[n];
+      },
+      [result = result.copy()]() { result->markReady(); });
+
+  return result;
+}
+
+/// This version of vector addition does the addition with each element in
+/// parallel as separate tasks.
+///
+/// This is the same as vec_add_async3, but uses a convenience method to mark
+/// the resulting values as ready.
+static AsyncValueRef<TestVector> vec_add_async4(AsyncValueRef<TestVector> lhs,
+                                                AsyncValueRef<TestVector> rhs,
+                                                Runtime &runtime) {
+  if (lhs.get().values.size() != rhs.get().values.size())
+    return AsyncValue::createError(runtime, "vector length mismatch");
+
+  auto result = AsyncValueRef<TestVector>::createConstructed(runtime);
+  result.get().values.resize(lhs.get().values.size());
+
+  // Process each element in parallel.
+  parallelForEachNMarkReady(runtime, lhs.get().values.size(), result.copy(),
+                            [result = result.copy(), lhs = std::move(lhs),
+                             rhs = std::move(rhs)](size_t n) {
+                              result.get().values[n] =
+                                  lhs.get().values[n] + rhs.get().values[n];
+                            });
 
   return result;
 }
@@ -299,6 +354,8 @@ static void registerTestVecPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "test.vec.add", vec_add);
   ADD_PRIMITIVE(registry, "test.vec.add.async", vec_add_async);
   ADD_PRIMITIVE(registry, "test.vec.add.async2", vec_add_async2);
+  ADD_PRIMITIVE(registry, "test.vec.add.async3", vec_add_async3);
+  ADD_PRIMITIVE(registry, "test.vec.add.async4", vec_add_async4);
   ADD_PRIMITIVE(registry, "test.vec.print", vec_print);
 }
 
