@@ -24,13 +24,6 @@ using namespace LLCL;
 using namespace M;
 using namespace llvm;
 
-static cl::opt<std::string> inputFilename( // NOLINT
-    cl::Positional, cl::desc("<input file>"), cl::init("-"));
-
-static cl::list<std::string> functions( // NOLINT
-    "functions", cl::desc("Specify functions to run, defaults to all of them"),
-    cl::ZeroOrMore, cl::MiscFlags::CommaSeparated);
-
 enum class AllocatorType {
   // Allocator that just calls malloc/free.
   kMalloc,
@@ -40,17 +33,6 @@ enum class AllocatorType {
   kProfiler,
 };
 
-// Enable HostAllocator types to be specified on the command line.
-static cl::opt<AllocatorType> allocatorType( // NOLINT
-    "allocator", cl::desc("Specify allocator type:"),
-    cl::values(clEnumValN(AllocatorType::kMalloc, "malloc",
-                          "System malloc/free"),
-               clEnumValN(AllocatorType::kLeakChecker, "leak-checker",
-                          "Allocator with leak checking"),
-               clEnumValN(AllocatorType::kProfiler, "profiler",
-                          "Allocator with profiling and leak checking")),
-    cl::init(AllocatorType::kLeakChecker));
-
 enum class WorkQueueType {
   /// WorkQueue that just uses a single thread and performs no synchronization.
   kSingleThread,
@@ -58,17 +40,8 @@ enum class WorkQueueType {
   kThreadPool,
 };
 
-// Allow the command-line user to specify the type of work que to be used.
-static cl::opt<WorkQueueType> workqueueType( // NOLINT
-    "workqueue", cl::desc("Specify work queue type:"),
-    cl::values(clEnumValN(WorkQueueType::kSingleThread, "single",
-                          "Single thread, no synchronization"),
-               clEnumValN(WorkQueueType::kThreadPool, "threadpool",
-                          "Configurable size thread pool")),
-    cl::init(WorkQueueType::kSingleThread));
-
 /// Configure the memory allocator based on the command line option settings.
-static std::unique_ptr<Allocator> getAllocator() {
+static std::unique_ptr<Allocator> getAllocator(AllocatorType allocatorType) {
   std::unique_ptr<Allocator> allocator;
   switch (allocatorType) {
   case AllocatorType::kMalloc:
@@ -91,7 +64,7 @@ static std::unique_ptr<Allocator> getAllocator() {
 
 /// Configure the appropriate work queue based on the command line option
 /// settings.
-static std::unique_ptr<WorkQueue> getWorkQueue() {
+static std::unique_ptr<WorkQueue> getWorkQueue(WorkQueueType workqueueType) {
   std::unique_ptr<WorkQueue> queue;
   switch (workqueueType) {
   case WorkQueueType::kSingleThread:
@@ -110,7 +83,8 @@ static std::unique_ptr<WorkQueue> getWorkQueue() {
 
 /// Run the specified BEF function as a testcase - this means passing in test
 /// input and printing results if we can.
-static void runFunctionTestcase(const Function *fn) {
+static void runFunctionTestcase(const Function *fn, AllocatorType allocatorType,
+                                WorkQueueType workqueueType) {
   // Skip anonymous functions.  These are bodies of control flow operators etc.
   if (fn->getName().empty())
     return;
@@ -131,7 +105,7 @@ static void runFunctionTestcase(const Function *fn) {
     numStartingLiveAsyncValues = AsyncValue::getNumAllocatedInstances();
 
   {
-    Runtime runtime(getAllocator(), getWorkQueue());
+    Runtime runtime(getAllocator(allocatorType), getWorkQueue(workqueueType));
 
     // Actually run the function.
     os << "--- Running '" << fn->getName() << "':\n";
@@ -210,16 +184,41 @@ static void runFunctionTestcase(const Function *fn) {
 //===----------------------------------------------------------------------===//
 
 int main(int argc, char **argv) {
-  // Helper for printing errors below.
-  auto emitToolError = [=](Twine message) -> int {
-    errs() << argv[0] << ": " << message << "\n";
-    return 1;
-  };
+  cl::opt<std::string> inputFilename(cl::Positional, cl::desc("<input file>"),
+                                     cl::init("-"));
+  cl::list<std::string> functions(
+      "functions",
+      cl::desc("Specify functions to run, defaults to all of them"),
+      cl::ZeroOrMore, cl::MiscFlags::CommaSeparated);
+  // Enable HostAllocator types to be specified on the command line.
+  cl::opt<AllocatorType> allocatorType(
+      "allocator", cl::desc("Specify allocator type:"),
+      cl::values(
+          clEnumValN(AllocatorType::kMalloc, "malloc", "System malloc/free"),
+          clEnumValN(AllocatorType::kLeakChecker, "leak-checker",
+                     "Allocator with leak checking"),
+          clEnumValN(AllocatorType::kProfiler, "profiler",
+                     "Allocator with profiling and leak checking")),
+      cl::init(AllocatorType::kLeakChecker));
+  // Allow the command-line user to specify the type of work que to be used.
+  cl::opt<WorkQueueType> workqueueType(
+      "workqueue", cl::desc("Specify work queue type:"),
+      cl::values(clEnumValN(WorkQueueType::kSingleThread, "single",
+                            "Single thread, no synchronization"),
+                 clEnumValN(WorkQueueType::kThreadPool, "threadpool",
+                            "Configurable size thread pool")),
+      cl::init(WorkQueueType::kSingleThread));
 
   cl::ParseCommandLineOptions(argc, argv, "bef-executor test driver\n");
 
   LLCL::verifyNoLiveReferenceCountedObjects(
       "No objects should start allocated");
+
+  // Helper for printing errors below.
+  auto emitToolError = [=](Twine message) -> int {
+    errs() << argv[0] << ": " << message << "\n";
+    return 1;
+  };
 
   // TODO: Autodetect and translate source forms like firtool does for
   // convenience.
@@ -266,7 +265,7 @@ int main(int argc, char **argv) {
 
     // Run each requested function as a standalone testcase.
     for (auto *fn : functionsToExecute)
-      runFunctionTestcase(fn);
+      runFunctionTestcase(fn, allocatorType, workqueueType);
   }
 
   assert(AsyncValue::getNumAllocatedInstances() == 0 &&
