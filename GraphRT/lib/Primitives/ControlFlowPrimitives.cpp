@@ -63,7 +63,6 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
   results.allocateIndirectResults(runtime);
 
   struct IfState {
-    AsyncValueRef<bool> cond;
     RCRef<const Function> trueFn, falseFn;
     SmallVector<RCRef<AsyncValue>> operands;
     SmallVector<RCRef<AsyncValue>> results;
@@ -71,7 +70,7 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
     /// This method is invoked when the AsyncValue for `cond` resolves.  The
     /// rest of the operands may still be unavailable, but results are filled
     /// in with the IndirectAsyncValue results to fill in.
-    void runWhenCondResolves(Runtime &runtime) {
+    void runWhenCondResolves(const AsyncValueRef<bool> &cond) {
       // If we have an error, then we can force propagate errors to all the
       // results.
       if (cond->isError()) {
@@ -84,7 +83,7 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
       const Function *bodyFn = (cond.get() ? trueFn : falseFn).getPointer();
       SmallVector<RCRef<AsyncValue>> bodyResults;
       bodyResults.resize(results.size());
-      bodyFn->execute(operands, bodyResults, runtime);
+      bodyFn->execute(operands, bodyResults, cond->getRuntime());
 
       // We complete by passing the final result values to the output of the
       // repeat loop overall.
@@ -93,9 +92,7 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
     }
   };
 
-  auto *condPtr = cond.getPointer();
-  IfState state = {
-      std::move(cond), copyRCRef(trueFn), copyRCRef(falseFn), {}, {}};
+  IfState state = {copyRCRef(trueFn), copyRCRef(falseFn), {}, {}};
 
   state.operands.reserve(args.size());
   for (auto &arg : args.get())
@@ -105,9 +102,10 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
   for (auto &result : results.get())
     state.results.push_back(result.copy());
 
-  condPtr->andThen([&runtime, state = std::move(state)]() mutable {
-    state.runWhenCondResolves(runtime);
-  });
+  cond.andThen(
+      [state = std::move(state)](const AsyncValueRef<bool> &cond) mutable {
+        state.runWhenCondResolves(cond);
+      });
 }
 
 //===----------------------------------------------------------------------===//
@@ -132,7 +130,6 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
   /// Capture and add-ref each argument and result AsyncValue into a state we
   /// can manage.
   struct RepeatState {
-    AsyncValueRef<int32_t> count;
     RCRef<const Function> function;
     SmallVector<RCRef<AsyncValue>> operands;
     SmallVector<RCRef<AsyncValue>> repeatResults;
@@ -141,7 +138,7 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
     /// of the operands may still be unavailable, but repeatResults are filled
     /// in with the IndirectAsyncValue results returned from the repeat loop
     /// overall.
-    void runWhenCountResolves(Runtime &runtime) {
+    void runWhenCountResolves(const AsyncValueRef<int32_t> &count) {
       // If we have an error, then we can force propagate errors to all the
       // results.
       if (count->isError()) {
@@ -157,9 +154,9 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
       // when at least one result from the previous iteration is available.  We
       // could also look for cancellation state in `Runtime` which would make
       // cancellation quash computation faster.
-      for (int32_t i = 0, e = count->get<int32_t>(); i != e; ++i) {
+      for (int32_t i = 0, e = count.get(); i != e; ++i) {
         bodyResults.resize(repeatResults.size());
-        function->execute(operands, bodyResults, runtime);
+        function->execute(operands, bodyResults, count->getRuntime());
         // bodyResults become the operands of the next iteration.
         operands = std::move(bodyResults);
         bodyResults.clear();
@@ -172,8 +169,7 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
     }
   };
 
-  auto *countPtr = count.getPointer();
-  RepeatState state = {std::move(count), copyRCRef(bodyFn), {}, {}};
+  RepeatState state = {copyRCRef(bodyFn), {}, {}};
 
   state.operands.reserve(args.size());
   for (auto &arg : args.get())
@@ -183,9 +179,10 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
     state.repeatResults.push_back(result.copy());
 
   // Dispatch when the `count` becomes available (possibly immediately).
-  countPtr->andThen([&runtime, state = std::move(state)]() mutable {
-    state.runWhenCountResolves(runtime);
-  });
+  count.andThen(
+      [state = std::move(state)](const AsyncValueRef<int32_t> &count) mutable {
+        state.runWhenCountResolves(count);
+      });
 }
 
 //===----------------------------------------------------------------------===//
