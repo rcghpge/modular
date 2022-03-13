@@ -188,8 +188,97 @@ static AsyncValueRef<int32_t> async_add_i32(int32_t lhs, int32_t rhs,
   return addTask(runtime, [lhs, rhs] { return lhs + rhs; });
 }
 
-/// This registers the 'test' dialect primitives, intended for writing executor
-/// testcases.
+//===----------------------------------------------------------------------===//
+// TestVector Primitives
+//===----------------------------------------------------------------------===//
+
+// This is intended to test parallel operations and other "advanced" use-cases.
+namespace {
+/// This class is a designed-to-be-simple data type that we can pass around to
+/// illustrate some more advanced usecases for async value and related types.
+struct TestVector {
+  SmallVector<int32_t> values;
+};
+} // end anonymous namespace.
+
+static TestVector vec_atoi(BEFAttribute<int32_t> number) {
+  TestVector result;
+  result.values.reserve(*number);
+  for (int32_t i = 0, e = *number; i != e; ++i)
+    result.values.push_back(i);
+  return result;
+}
+
+static TestVector vec_constant(BEFAttribute<int32_t> size,
+                               BEFAttribute<int32_t> value) {
+  TestVector result;
+  result.values.reserve(*size);
+  for (int32_t i = 0, e = *size; i != e; ++i)
+    result.values.push_back(*value);
+  return result;
+}
+
+static ErrorOr<TestVector> vec_add(const TestVector &lhs,
+                                   const TestVector &rhs) {
+  if (lhs.values.size() != rhs.values.size())
+    return Error("test.vec.add length mismatch");
+
+  TestVector result;
+  result.values.reserve(lhs.values.size());
+  for (int32_t i = 0, e = lhs.values.size(); i != e; ++i)
+    result.values.push_back(lhs.values[i] + rhs.values[i]);
+  return result;
+}
+
+static AsyncValueRef<TestVector> vec_add_async(AsyncValueRef<TestVector> lhs,
+                                               AsyncValueRef<TestVector> rhs,
+                                               Runtime &runtime) {
+  if (lhs.get().values.size() != rhs.get().values.size())
+    return AsyncValue::createError(runtime, "test.vec.add length mismatch");
+
+  auto result = AsyncValueRef<TestVector>::createConstructed(runtime);
+  addTask(runtime, [lhs = std::move(lhs), rhs = std::move(rhs),
+                    result = result.copy()]() {
+    auto &lhsValues = lhs.get().values, &rhsValues = rhs.get().values;
+    auto &resultValues = result.get().values;
+    for (int32_t i = 0, e = lhsValues.size(); i != e; ++i)
+      resultValues.push_back(lhsValues[i] + rhsValues[i]);
+    // After we've populated the map, we can return it.
+    result->markReady();
+  });
+
+  return result;
+}
+
+static Chain vec_print(const TestVector &vec, Chain chain) {
+  printf("vec = ");
+  for (size_t i = 0, e = vec.values.size(); i != e; ++i) {
+    if (i != 0)
+      printf(", ");
+    printf("%d", vec.values[i]);
+  }
+  fputc('\n', stdout);
+  return chain;
+}
+
+static void registerTestVecPrimitives(PrimitiveRegistry &registry) {
+  // TODO: Registration of these types should get folded into auto-magic as part
+  // of the ADD_PRIMITIVE macro.  Issue #33.
+  AsyncValue::registerType<TestVector>();
+
+  ADD_PRIMITIVE(registry, "test.vec.atoi", vec_atoi);
+  ADD_PRIMITIVE(registry, "test.vec.constant", vec_constant);
+  ADD_PRIMITIVE(registry, "test.vec.add", vec_add);
+  ADD_PRIMITIVE(registry, "test.vec.add.async", vec_add_async);
+  ADD_PRIMITIVE(registry, "test.vec.print", vec_print);
+}
+
+//===----------------------------------------------------------------------===//
+// Registration
+//===----------------------------------------------------------------------===//
+
+/// This registers the 'test' dialect primitives, intended for writing
+/// executor testcases.
 void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
   // TODO: Registration of these types should get folded into auto-magic as part
   // of the ADD_PRIMITIVE macro.  Issue #33.
@@ -208,6 +297,7 @@ void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "test.print_array_i32", print_array_i32);
 
   registerValueTracking(registry);
+  registerTestVecPrimitives(registry);
 
   // Error handling.
   ADD_PRIMITIVE(registry, "test.fail", fail);

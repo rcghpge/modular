@@ -517,11 +517,11 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
       frame.addArg(takeRCRef(value));
 
       // If any operand is an error, we implicitly propagate it through to all
-      // results and short-circuit execution of the primitive.
-      if (value->isError()) {
+      // results and short-circuit execution of the primitive.  Note that we
+      // still process all the operands here, even if we find an error, because
+      // we need to decrement the use count of each register to avoid leaks.
+      if (value->isError())
         anyErrorArgument = value;
-        break;
-      }
     }
 
     // Handle results.
