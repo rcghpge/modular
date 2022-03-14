@@ -1,9 +1,7 @@
-# Binary Executable Format
-
-<!-- TOC -->
+# Binary Executor Format (BEF) File Format
 
 This document describes the goals and rationale for the in-memory representation
-the GraphRT executor uses to run primitives, known as the Binary Executable
+the GraphRT executor uses to run primitives, known as the Binary Executor
 Format "BEF".
 
 We have the following goals:
