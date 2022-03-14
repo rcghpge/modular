@@ -32,6 +32,8 @@ static Chain print_i32(int32_t value, Chain chain) {
 
 static int32_t add_i32(int32_t lhs, int32_t rhs) { return lhs + rhs; }
 
+static bool lessequal_i32(int32_t lhs, int32_t rhs) { return lhs <= rhs; }
+
 /// This registers the 'graphrt' dialect integer primitives.
 void M::registerGraphRTIntegerPrimitives(PrimitiveRegistry &registry) {
   // TODO: Registration of these types should get folded into auto-magic as part
@@ -43,5 +45,6 @@ void M::registerGraphRTIntegerPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "grt.constant.i1", constant_i1);
   ADD_PRIMITIVE(registry, "grt.constant.i32", constant_i32);
   ADD_PRIMITIVE(registry, "grt.add.i32", add_i32);
+  ADD_PRIMITIVE(registry, "grt.lessequal.i32", lessequal_i32);
   ADD_PRIMITIVE(registry, "grt.print.i32", print_i32);
 }

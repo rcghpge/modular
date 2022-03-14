@@ -53,6 +53,18 @@ def AddI32Op : GRTOp<"add.i32"> {
 }
 
 //===----------------------------------------------------------------------===//
+// LessEqualI32Op
+//===----------------------------------------------------------------------===//
+
+def LessEqualI32Op : GRTOp<"lessequal.i32"> {
+  let summary = "Compare two int32_t values for `<=` and return a bool";
+ 
+  let arguments = (ins I32:$lhs, I32:$rhs);
+  let results = (outs I1:$result);
+  let assemblyFormat = "$lhs `,` $rhs attr-dict";
+}
+
+//===----------------------------------------------------------------------===//
 // PrintI32Op
 //===----------------------------------------------------------------------===//
 
