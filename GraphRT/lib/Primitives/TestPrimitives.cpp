@@ -259,15 +259,16 @@ static AsyncValueRef<TestVector> vec_add_async(AsyncValueRef<TestVector> lhs,
 static AsyncValueRef<TestVector> vec_add_async2(AsyncValueRef<TestVector> lhs,
                                                 AsyncValueRef<TestVector> rhs,
                                                 Runtime &runtime) {
-  if (lhs.get().values.size() != rhs.get().values.size())
+  size_t lhsValueSize = lhs.get().values.size();
+  if (lhsValueSize != rhs.get().values.size())
     return AsyncValue::createError(runtime, "vector length mismatch");
 
   auto result = AsyncValueRef<TestVector>::createConstructed(runtime);
-  result.get().values.resize(lhs.get().values.size());
+  result.get().values.resize(lhsValueSize);
 
   // Process each element in parallel.
   parallelForEachNCustomCompletion(
-      runtime, lhs.get().values.size(),
+      runtime, lhsValueSize,
       [lhs = std::move(lhs),
        rhs = std::move(rhs)](size_t n, AsyncValueRef<TestVector> &result) {
         result.get().values[n] = lhs.get().values[n] + rhs.get().values[n];
@@ -288,15 +289,16 @@ static AsyncValueRef<TestVector> vec_add_async2(AsyncValueRef<TestVector> lhs,
 static AsyncValueRef<TestVector> vec_add_async3(AsyncValueRef<TestVector> lhs,
                                                 AsyncValueRef<TestVector> rhs,
                                                 Runtime &runtime) {
-  if (lhs.get().values.size() != rhs.get().values.size())
+  size_t lhsValueSize = lhs.get().values.size();
+  if (lhsValueSize != rhs.get().values.size())
     return AsyncValue::createError(runtime, "vector length mismatch");
 
   auto result = AsyncValueRef<TestVector>::createConstructed(runtime);
-  result.get().values.resize(lhs.get().values.size());
+  result.get().values.resize(lhsValueSize);
 
   // Process each element in parallel.
   parallelForEachNCustomCompletion(
-      runtime, lhs.get().values.size(),
+      runtime, lhsValueSize,
       // Capturing result by reference here is safe since the completion handler
       // guarantees it stays alive across execution of all elements.
       [&result = result.get(), lhs = std::move(lhs),
@@ -316,14 +318,15 @@ static AsyncValueRef<TestVector> vec_add_async3(AsyncValueRef<TestVector> lhs,
 static AsyncValueRef<TestVector> vec_add_async4(AsyncValueRef<TestVector> lhs,
                                                 AsyncValueRef<TestVector> rhs,
                                                 Runtime &runtime) {
-  if (lhs.get().values.size() != rhs.get().values.size())
+  size_t lhsValueSize = lhs.get().values.size();
+  if (lhsValueSize != rhs.get().values.size())
     return AsyncValue::createError(runtime, "vector length mismatch");
 
   auto result = AsyncValueRef<TestVector>::createConstructed(runtime);
-  result.get().values.resize(lhs.get().values.size());
+  result.get().values.resize(lhsValueSize);
 
   // Process each element in parallel.
-  parallelForEachNMarkReady(runtime, lhs.get().values.size(), result.copy(),
+  parallelForEachNMarkReady(runtime, lhsValueSize, result.copy(),
                             [result = result.copy(), lhs = std::move(lhs),
                              rhs = std::move(rhs)](size_t n) {
                               result.get().values[n] =
