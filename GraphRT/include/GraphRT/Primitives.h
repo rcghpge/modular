@@ -25,11 +25,15 @@ void registerGraphRTIntegerPrimitives(PrimitiveRegistry &registry);
 /// This registers the 'graphrt' dialect primitives for control flow.
 void registerGraphRTControlFlowPrimitives(PrimitiveRegistry &registry);
 
+/// This registers the 'grt' dialect primitives for analytics.
+void registerGraphRTAnalyticsPrimitives(PrimitiveRegistry &registry);
+
 /// This registers all the primitive libraries in the GraphRT subsystem.
 inline void registerAllGraphRTPrimitives(PrimitiveRegistry &registry) {
   registerGraphRTTestPrimitives(registry);
   registerGraphRTIntegerPrimitives(registry);
   registerGraphRTControlFlowPrimitives(registry);
+  registerGraphRTAnalyticsPrimitives(registry);
 }
 
 } // namespace M
