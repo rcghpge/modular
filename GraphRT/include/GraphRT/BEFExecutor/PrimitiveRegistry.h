@@ -251,8 +251,12 @@ private:
 ///    ADD_PRIMITIVE(registery, "grt.call", grt_call_impl);
 ///
 #define ADD_PRIMITIVE(registry, name, ...)                                     \
-  registry.add(name, ::M::Detail::PrimitiveImpl<decltype(&__VA_ARGS__),        \
-                                                &__VA_ARGS__>::invoke)
+  do {                                                                         \
+    registry.add(name, ::M::Detail::PrimitiveImpl<decltype(&__VA_ARGS__),      \
+                                                  &__VA_ARGS__>::invoke);      \
+    ::M::Detail::PrimitiveImpl<decltype(&__VA_ARGS__),                         \
+                               &__VA_ARGS__>::registerTypes();                 \
+  } while (0)
 
 namespace Detail {
 // This class implements the ADD_PRIMITIVE macro.
@@ -261,6 +265,61 @@ struct PrimitiveImpl;
 
 template <typename Return, typename... Args, Return (*implFn)(Args...)>
 struct PrimitiveImpl<Return (*)(Args...), implFn> {
+  //===--------------------------------------------------------------------===//
+  // Type Registration
+  //===--------------------------------------------------------------------===//
+
+  /// This class defines a helper for registering a type to enable use within
+  /// AsyncValue.
+  ///
+  /// Note: The `Dummy` type is used to avoid GCC errors for defining struct
+  /// specializations outside of a namespace.
+  template <typename T, typename Dummy = void>
+  struct TypeRegistration {
+    static void registerType() { AsyncValue::registerType<T>(); }
+  };
+  template <typename Dummy>
+  struct TypeRegistration<void, Dummy> {
+    static void registerType() {}
+  };
+
+  /// A utility registration base class that recursively invokes registration on
+  /// the given set of types.
+  template <typename... Ts>
+  struct ForwardingTypeRegistration {
+    static void registerType() {
+      // FIXME-C++17: Use a proper fold expression here.
+      (void)std::initializer_list<int>{
+          0, (TypeRegistration<Ts>::registerType(), 0)...};
+    }
+  };
+  template <typename T1, typename T2>
+  struct TypeRegistration<std::pair<T1, T2>>
+      : public ForwardingTypeRegistration<T1, T2> {};
+  template <typename... Ts>
+  struct TypeRegistration<std::tuple<Ts...>>
+      : public ForwardingTypeRegistration<Ts...> {};
+  template <typename T>
+  struct TypeRegistration<AsyncValueRef<T>>
+      : public ForwardingTypeRegistration<T> {};
+  template <typename T>
+  struct TypeRegistration<ErrorOr<T>> : public ForwardingTypeRegistration<T> {};
+
+  //===--------------------------------------------------------------------===//
+  // Entry Point
+
+  /// This method is an entry point used to register the necessary types with
+  /// AsyncValue needed to properly invoke this primitive.
+  static void registerTypes() {
+    // We only need to register result types here, given that the argument types
+    // require a valid producer.
+    TypeRegistration<std::decay_t<Return>>::registerType();
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Invocation
+  //===--------------------------------------------------------------------===//
+
   /// This is the main entry point that gets registered as an impl.  This works
   /// by recursively processing the argument list, then handling the result
   /// list, generating a function with the standard PrimitiveImpl signature that

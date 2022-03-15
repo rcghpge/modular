@@ -191,12 +191,6 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
 
 /// This registers the 'graphrt' dialect primitives for control flow.
 void M::registerGraphRTControlFlowPrimitives(PrimitiveRegistry &registry) {
-  // TODO: Registration of these types should get folded into auto-magic as part
-  // of the ADD_PRIMITIVE macro.  Issue #33.
-  AsyncValue::registerType<Chain>();
-  AsyncValue::registerType<bool>();
-  AsyncValue::registerType<int32_t>();
-
   ADD_PRIMITIVE(registry, "grt.chain.new", chain_new);
   ADD_PRIMITIVE(registry, "grt.call", call);
   ADD_PRIMITIVE(registry, "grt.if", grt_if);

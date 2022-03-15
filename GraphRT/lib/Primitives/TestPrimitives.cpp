@@ -139,11 +139,6 @@ vt_share_to_four_2(RCRef<AsyncValue> in) {
 }
 
 static void registerValueTracking(PrimitiveRegistry &registry) {
-  // TODO: Registration of these types should get folded into auto-magic as part
-  // of the ADD_PRIMITIVE macro.  Issue #33.
-  AsyncValue::registerType<VTValue>();
-  AsyncValue::registerType<Chain>();
-
   ADD_PRIMITIVE(registry, "test.vt.constant", vt_constant);
   ADD_PRIMITIVE(registry, "test.vt.add", vt_add);
   ADD_PRIMITIVE(registry, "test.vt.print", vt_print);
@@ -348,10 +343,6 @@ static Chain vec_print(const TestVector &vec, Chain chain) {
 }
 
 static void registerTestVecPrimitives(PrimitiveRegistry &registry) {
-  // TODO: Registration of these types should get folded into auto-magic as part
-  // of the ADD_PRIMITIVE macro.  Issue #33.
-  AsyncValue::registerType<TestVector>();
-
   ADD_PRIMITIVE(registry, "test.vec.atoi", vec_atoi);
   ADD_PRIMITIVE(registry, "test.vec.constant", vec_constant);
   ADD_PRIMITIVE(registry, "test.vec.add", vec_add);
@@ -369,17 +360,11 @@ static void registerTestVecPrimitives(PrimitiveRegistry &registry) {
 /// This registers the 'test' dialect primitives, intended for writing
 /// executor testcases.
 void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
-  // TODO: Registration of these types should get folded into auto-magic as part
-  // of the ADD_PRIMITIVE macro.  Issue #33.
-
   // Misc.
-  AsyncValue::registerType<Chain>();
-  AsyncValue::registerType<int32_t>();
   ADD_PRIMITIVE(registry, "test.print_hello", print_hello);
   ADD_PRIMITIVE(registry, "test.memory_leak_one_int32", memory_leak_one_int32);
 
   // String and Array Tests
-  AsyncValue::registerType<std::string>();
   ADD_PRIMITIVE(registry, "test.get_string", get_string);
   ADD_PRIMITIVE(registry, "test.append_string", append_string);
   ADD_PRIMITIVE(registry, "test.print_string", print_string);
