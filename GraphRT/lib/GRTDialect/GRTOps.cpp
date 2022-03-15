@@ -208,6 +208,59 @@ LogicalResult RepeatI32Op::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// BenchmarkOp
+//===----------------------------------------------------------------------===//
+
+ParseResult BenchmarkOp::parse(OpAsmParser &parser, OperationState &result) {
+  SmallVector<OpAsmParser::OperandType> operandInfo;
+  SmallVector<Location> operandLocs;
+  OpAsmParser::OperandType chainOperand;
+  if (parser.parseOperand(chainOperand) ||
+      parser.resolveOperand(chainOperand,
+                            parser.getBuilder().getType<ChainType>(),
+                            result.operands) ||
+      parseParenOperandList(parser, result, operandInfo, operandLocs))
+    return failure();
+
+  FloatAttr convergenceThreshold;
+  if (parser.parseKeyword("convergenceThreshold") || parser.parseEqual() ||
+      parser.parseAttribute(convergenceThreshold, "convergenceThreshold",
+                            result.attributes))
+    return failure();
+
+  SmallVector<Type> operandTypes;
+  // Drop the threshold operand.
+  for (auto v : llvm::drop_begin(result.operands))
+    operandTypes.push_back(v.getType());
+
+  // Parse the body region.
+  Region *body = result.addRegion();
+  if (parser.parseRegion(*body, operandInfo, operandTypes, operandLocs,
+                         /*enableNameShadowing=*/true))
+    return failure();
+
+  // Infer the return types from the terminator's operands.
+  Operation *bodyTerminator = body->front().getTerminator();
+  result.types.assign(bodyTerminator->operand_type_begin(),
+                      bodyTerminator->operand_type_end());
+
+  return success();
+}
+
+void BenchmarkOp::print(OpAsmPrinter &p) {
+  p << ' ' << chain() << " (";
+  llvm::interleaveComma(operands(), p,
+                        [&](Value arg) { p << arg << ": " << arg.getType(); });
+  p << ") convergenceThreshold = ";
+  p.printAttribute(convergenceThresholdAttr());
+
+  // Reuse the argument names provided to the op for the bbarg names within
+  // the region.
+  p.shadowRegionArgs(codeUnderTest(), operands());
+  p.printRegion(codeUnderTest(), /*printEntryBlockArgs=*/false);
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen generated logic.
 //===----------------------------------------------------------------------===//
 
