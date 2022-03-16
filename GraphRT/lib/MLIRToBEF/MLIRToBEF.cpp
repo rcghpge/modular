@@ -578,13 +578,7 @@ private:
   OffsetAndAttrKind emitStringAttribute(StringRef value);
   /// Provide the ability to write any array of attributes to the BEF file.
   template <typename Container>
-  std::enable_if_t<
-      std::is_member_function_pointer<decltype(&Container::begin)>::value &&
-          std::is_member_function_pointer<decltype(&Container::end)>::value &&
-          std::is_member_function_pointer<decltype(&Container::size)>::value &&
-          std::is_member_function_pointer<decltype(&Container::empty)>::value,
-      OffsetAndAttrKind>
-  emitArrayOfAttrs(Container elts, Location loc);
+  OffsetAndAttrKind emitArrayOfAttrs(Container elts, Location loc);
   OffsetAndAttrKind emitArrayAttribute(ArrayAttr value, Location loc);
   OffsetAndAttrKind emitDenseElementsAttribute(DenseElementsAttr value,
                                                Location loc);
@@ -643,13 +637,8 @@ OffsetAndAttrKind AttributesEmitter::emitStringAttribute(StringRef value) {
 }
 
 template <typename Container>
-std::enable_if_t<
-    std::is_member_function_pointer<decltype(&Container::begin)>::value &&
-        std::is_member_function_pointer<decltype(&Container::end)>::value &&
-        std::is_member_function_pointer<decltype(&Container::size)>::value &&
-        std::is_member_function_pointer<decltype(&Container::empty)>::value,
-    OffsetAndAttrKind>
-AttributesEmitter::emitArrayOfAttrs(Container elts, Location loc) {
+OffsetAndAttrKind AttributesEmitter::emitArrayOfAttrs(Container elts,
+                                                      Location loc) {
   BEFOffset sizeStart = getOffset();
 
   // Emit the number of elements first and then emit all of the attributes
