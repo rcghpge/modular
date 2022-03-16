@@ -586,7 +586,8 @@ private:
       OffsetAndAttrKind>
   emitArrayOfAttrs(Container elts, Location loc);
   OffsetAndAttrKind emitArrayAttribute(ArrayAttr value, Location loc);
-  OffsetAndAttrKind emitDenseElementsAttribute(DenseElementsAttr value, Location loc);
+  OffsetAndAttrKind emitDenseElementsAttribute(DenseElementsAttr value,
+                                               Location loc);
   EntityTable &entities;
 };
 } // end anonymous namespace.
@@ -715,8 +716,9 @@ OffsetAndAttrKind AttributesEmitter::emitArrayAttribute(ArrayAttr array,
   return emitArrayOfAttrs(array.getValue(), loc);
 }
 
-OffsetAndAttrKind AttributesEmitter::emitDenseElementsAttribute(DenseElementsAttr value,
-                                                      Location loc) {
+OffsetAndAttrKind
+AttributesEmitter::emitDenseElementsAttribute(DenseElementsAttr value,
+                                              Location loc) {
   return emitArrayOfAttrs(value.getValues<Attribute>(), loc);
 }
 
