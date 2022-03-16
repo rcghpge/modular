@@ -576,7 +576,17 @@ private:
   OffsetAndAttrKind emitAttributeInternal(Attribute attr, Location loc);
   OffsetAndAttrKind emitIntegerAttribute(const APInt &value, Location loc);
   OffsetAndAttrKind emitStringAttribute(StringRef value);
+  /// Provide the ability to write any array of attributes to the BEF file.
+  template <typename Container>
+  std::enable_if_t<
+      std::is_member_function_pointer<decltype(&Container::begin)>::value &&
+          std::is_member_function_pointer<decltype(&Container::end)>::value &&
+          std::is_member_function_pointer<decltype(&Container::size)>::value &&
+          std::is_member_function_pointer<decltype(&Container::empty)>::value,
+      OffsetAndAttrKind>
+  emitArrayOfAttrs(Container elts, Location loc);
   OffsetAndAttrKind emitArrayAttribute(ArrayAttr value, Location loc);
+  OffsetAndAttrKind emitDenseElementsAttribute(DenseElementsAttr value, Location loc);
   EntityTable &entities;
 };
 } // end anonymous namespace.
@@ -631,17 +641,20 @@ OffsetAndAttrKind AttributesEmitter::emitStringAttribute(StringRef value) {
   return {offset, BEF::AttributeKind::kString};
 }
 
-OffsetAndAttrKind AttributesEmitter::emitArrayAttribute(ArrayAttr array,
-                                                        Location loc) {
-  // We emit dense arrays of integers and floating point values.
-  auto elts = array.getValue();
-
+template <typename Container>
+std::enable_if_t<
+    std::is_member_function_pointer<decltype(&Container::begin)>::value &&
+        std::is_member_function_pointer<decltype(&Container::end)>::value &&
+        std::is_member_function_pointer<decltype(&Container::size)>::value &&
+        std::is_member_function_pointer<decltype(&Container::empty)>::value,
+    OffsetAndAttrKind>
+AttributesEmitter::emitArrayOfAttrs(Container elts, Location loc) {
   BEFOffset sizeStart = getOffset();
 
   // Emit the number of elements first and then emit all of the attributes
   // consecutively, returning the offset of the first element in the attribute
   // array.
-  emitInvertedVBR(array.size());
+  emitInvertedVBR(elts.size());
 
   BEFOffset sizeEnd = getOffset();
 
@@ -651,13 +664,13 @@ OffsetAndAttrKind AttributesEmitter::emitArrayAttribute(ArrayAttr array,
 
   // Emit the first element of the array, this could insert padding if it needs
   // larger alignment then the current offset.
-  auto firstEltOffsetAndKind = emitAttributeInternal(elts.front(), loc);
+  auto firstEltOffsetAndKind = emitAttributeInternal(*elts.begin(), loc);
 
   // Reject unsupported elements of an array.
   switch (firstEltOffsetAndKind.attrKind) {
   default:
     entities.emitError(loc)
-        << "unsupported array element attribute " << elts.front();
+        << "unsupported array element attribute " << *elts.begin();
     return {sizeEnd, BEF::AttributeKind::kInvalid};
   case BEF::AttributeKind::kI1:
   case BEF::AttributeKind::kI8:
@@ -669,7 +682,7 @@ OffsetAndAttrKind AttributesEmitter::emitArrayAttribute(ArrayAttr array,
     break;
   }
 
-  for (auto elt : elts.drop_front()) {
+  for (auto elt : llvm::drop_begin(elts)) {
     auto nextEltKind = emitAttributeInternal(elt, loc).attrKind;
     if (nextEltKind != firstEltOffsetAndKind.attrKind) {
       entities.emitError(loc)
@@ -695,6 +708,16 @@ OffsetAndAttrKind AttributesEmitter::emitArrayAttribute(ArrayAttr array,
   unsigned kindValue = (unsigned)firstEltOffsetAndKind.attrKind |
                        (unsigned)BEF::AttributeKind::kArrayType;
   return {startOffset, BEF::AttributeKind(kindValue)};
+}
+
+OffsetAndAttrKind AttributesEmitter::emitArrayAttribute(ArrayAttr array,
+                                                        Location loc) {
+  return emitArrayOfAttrs(array.getValue(), loc);
+}
+
+OffsetAndAttrKind AttributesEmitter::emitDenseElementsAttribute(DenseElementsAttr value,
+                                                      Location loc) {
+  return emitArrayOfAttrs(value.getValues<Attribute>(), loc);
 }
 
 OffsetAndAttrKind AttributesEmitter::emitAttributeInternal(Attribute attr,
@@ -723,6 +746,9 @@ OffsetAndAttrKind AttributesEmitter::emitAttributeInternal(Attribute attr,
 
   if (auto array = attr.dyn_cast<ArrayAttr>())
     return emitArrayAttribute(array, loc);
+
+  if (auto denseElements = attr.dyn_cast<DenseElementsAttr>())
+    return emitDenseElementsAttribute(denseElements, loc);
 
   entities.emitError(loc) << "unsupported attribute " << attr;
   return {{0}, BEF::AttributeKind::kInvalid};
