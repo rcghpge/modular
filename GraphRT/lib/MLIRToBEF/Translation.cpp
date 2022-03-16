@@ -11,13 +11,11 @@
 
 #include "mlir/Tools/mlir-translate/Translation.h"
 #include "GraphRT/BEFDialect/BEFDialect.h"
-// FIXME: This doesn't actually depend on GraphRT dialect!
-#include "GraphRT/GRTDialect/GRTDialect.h"
 #include "GraphRT/MLIRToBEF.h"
 #include "mlir/IR/BuiltinOps.h"
 using namespace M;
 
-void M::registerMLIRToBEFTranslation() {
+void M::registerMLIRToBEFTranslation(mlir::DialectRegistry &otherDialects) {
   static llvm::cl::opt<bool> enableBEFMetadata(
       "enable-bef-metadata",
       llvm::cl::desc("Enable metadata sections for better BEF2MLIR"),
@@ -32,10 +30,9 @@ void M::registerMLIRToBEFTranslation() {
         os.write(reinterpret_cast<const char *>(data.data()), data.size());
         return success();
       },
-      [](mlir::DialectRegistry &registry) {
+      [otherDialects](mlir::DialectRegistry &registry) {
         registry.insert<BEF::BEFDialect>();
-        // FIXME: This doesn't actually depend on GRT dialect, we need to
-        // include it because mlir-translate isn't general enough.
-        registry.insert<GRT::GRTDialect>();
+        // If the caller provided any other dialects, add them.
+        otherDialects.appendTo(registry);
       });
 }

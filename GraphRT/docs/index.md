@@ -9,7 +9,9 @@ Instead, GraphRT aims to be the "MLIR of runtimes" -  an openly extensible
 compilation target that serves many domains.  The GraphRT approach is to allow
 clients to define their own set of operators (which it calls "primitives") that
 are implemented in (e.g.) C++, and allows them to take and produce arbitrary C++
-data values as edges of the dataflow graph.  Being fully MLIR native, GraphRT
+data values as edges of the dataflow graph.
+
+Being fully MLIR native, GraphRT
 supports regions which allow natural control flow constructs to be implemented
 as primitives, instead of being special cases.  Another advantage of being MLIR
 native is that it is an ideal compilation target for domain specific compilers.

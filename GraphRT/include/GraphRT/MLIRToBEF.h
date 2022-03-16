@@ -13,6 +13,10 @@
 
 #include "Support/LLVM.h"
 
+namespace mlir {
+class DialectRegistry;
+}
+
 namespace M {
 
 /// This function converts the specified MLIR module containing a executor
@@ -27,7 +31,7 @@ std::vector<uint8_t> translateMLIRToBEF(ModuleOp module,
                                         bool enableBEFMetadata = false);
 
 // Register this translation for GraphRTTranslate.
-void registerMLIRToBEFTranslation();
+void registerMLIRToBEFTranslation(mlir::DialectRegistry &otherDialects);
 
 } // namespace M
 
