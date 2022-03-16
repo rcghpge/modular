@@ -9,7 +9,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Translation.h"
+#include "mlir/Tools/mlir-translate/Translation.h"
 #include "GraphRT/BEFDialect/BEFDialect.h"
 // FIXME: This doesn't actually depend on GraphRT dialect!
 #include "GraphRT/GRTDialect/GRTDialect.h"

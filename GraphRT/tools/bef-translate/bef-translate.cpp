@@ -12,7 +12,7 @@
 #include "GraphRT/BEFToMLIR.h"
 #include "GraphRT/MLIRToBEF.h"
 #include "mlir/Support/LogicalResult.h"
-#include "mlir/Translation.h"
+#include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 using namespace M;
 
 int main(int argc, char **argv) {

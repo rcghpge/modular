@@ -20,7 +20,7 @@ def FuncOp : BEFOp<"func", [HasParent<"mlir::ModuleOp">, FunctionOpInterface,
                             Symbol, IsolatedFromAbove,
                             SingleBlockImplicitTerminator<"OutputOp">]> {
   let summary = "Named function in a BEF file";
-  let arguments = (ins);
+  let arguments = (ins TypeAttrOf<FunctionType>:$type);
   let regions = (region SizedRegion<1>:$body);
 
   let extraClassDeclaration = [{
@@ -30,17 +30,13 @@ def FuncOp : BEFOp<"func", [HasParent<"mlir::ModuleOp">, FunctionOpInterface,
       return &getBody().front();
     }
 
-    mlir::FunctionType getType() {
-      return getTypeAttr().getValue().cast<mlir::FunctionType>();
-    }
+    mlir::FunctionType getType() { return type(); }
 
     /// Returns the argument types of this function.
     ArrayRef<Type> getArgumentTypes() { return getType().getInputs(); }
 
     /// Returns the result types of this function.
     ArrayRef<Type> getResultTypes() { return getType().getResults(); }
-
-    LogicalResult verifyType();
   }];
 
   let builders = [
@@ -51,7 +47,7 @@ def FuncOp : BEFOp<"func", [HasParent<"mlir::ModuleOp">, FunctionOpInterface,
   ];
 
   let hasCustomAssemblyFormat = 1;
-  let hasVerifier = 1;
+  let hasRegionVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

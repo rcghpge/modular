@@ -1,6 +1,6 @@
 // RUN: bef-translate -export-bef -allow-unregistered-dialect -split-input-file --verify-diagnostics  %s 
 
-bef.func @trivial() {  // expected-error {{region with 1 blocks}}
+bef.func @trivial() {  // expected-error {{expected non-empty function body}}
 }
 
 // -----
