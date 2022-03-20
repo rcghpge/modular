@@ -98,7 +98,17 @@ public:
   /// when copying into a closure.
   AsyncValueRef<T> copy() const { return AsyncValueRef<T>(result.copy()); }
 
-  // Construct the result in place.
+  /// Return a reference to the underlying element in the AsyncValue if it is
+  /// constructed.
+  T &get() const { return result->get<T>(); }
+
+  /// Construct the result, but do not mark it ready.
+  template <typename... Args>
+  void construct(Args &&...args) {
+    result->construct<T, Args...>(std::forward<Args>(args)...);
+  }
+
+  /// Construct the result in place and mark it as ready.
   template <typename... Args>
   void emplace(Args &&...args) {
     result->emplace<T, Args...>(std::forward<Args>(args)...);

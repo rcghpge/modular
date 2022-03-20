@@ -210,6 +210,9 @@ namespace {
 /// This class is a designed-to-be-simple data type that we can pass around to
 /// illustrate some more advanced usecases for async value and related types.
 struct TestVector {
+  TestVector() = default;
+  TestVector(const TestVector &) = default;
+  TestVector(size_t n) { values.resize(n); }
   SmallVector<int32_t> values;
 };
 } // end anonymous namespace.
@@ -245,39 +248,40 @@ static ErrorOr<TestVector> vec_add(const TestVector &lhs,
 
 /// This version of vector addition does the entire add of the data on one
 /// background task.
-static AsyncValueRef<TestVector> vec_add_async(AsyncValueRef<TestVector> lhs,
-                                               AsyncValueRef<TestVector> rhs,
-                                               Runtime &runtime) {
-  if (lhs.get().values.size() != rhs.get().values.size())
-    return AsyncValue::createError(runtime, "vector length mismatch");
+static void vec_add_async(AsyncValueRef<TestVector> lhs,
+                          AsyncValueRef<TestVector> rhs,
+                          Result<TestVector> result, Runtime &runtime) {
+  if (lhs.get().values.size() != rhs.get().values.size()) {
+    result->setToError("vector length mismatch");
+    return;
+  }
 
-  auto result = AsyncValueRef<TestVector>::createConstructed(runtime);
   addTask(runtime, [lhs = std::move(lhs), rhs = std::move(rhs),
                     result = result.copy()]() {
     auto &lhsValues = lhs.get().values, &rhsValues = rhs.get().values;
-    auto &resultValues = result.get().values;
+    TestVector resultValues;
     for (int32_t i = 0, e = lhsValues.size(); i != e; ++i)
-      resultValues.push_back(lhsValues[i] + rhsValues[i]);
-    // After we've populated the vector, mark it ready.
-    result->markReady();
+      resultValues.values.push_back(lhsValues[i] + rhsValues[i]);
+    // After we've populated the vector, set it into the result value.
+    result.emplace(std::move(resultValues));
   });
-
-  return result;
 }
 
 /// This version of vector addition does the addition with each element in
 /// parallel as separate tasks.
 ///
 /// This is similar to vec_add_async, but uses `parallelForEachNCompletion`.
-static AsyncValueRef<TestVector> vec_add_async2(AsyncValueRef<TestVector> lhs,
-                                                AsyncValueRef<TestVector> rhs,
-                                                Runtime &runtime) {
+static void vec_add_async2(AsyncValueRef<TestVector> lhs,
+                           AsyncValueRef<TestVector> rhs,
+                           Result<TestVector> result, Runtime &runtime) {
   size_t lhsValueSize = lhs.get().values.size();
-  if (lhsValueSize != rhs.get().values.size())
-    return AsyncValue::createError(runtime, "vector length mismatch");
+  if (lhsValueSize != rhs.get().values.size()) {
+    result->setToError("vector length mismatch");
+    return;
+  }
 
-  auto result = AsyncValueRef<TestVector>::createConstructed(runtime);
-  result.get().values.resize(lhsValueSize);
+  // Move the AsyncValue to "constructed" state with the specified # elements.
+  result.construct(lhsValueSize);
 
   // Process each element in parallel.
   parallelForEachNCustomCompletion(
@@ -289,8 +293,6 @@ static AsyncValueRef<TestVector> vec_add_async2(AsyncValueRef<TestVector> lhs,
       [](AsyncValueRef<TestVector> &result) { result->markReady(); },
       // This is the state we capture, which is passed into each closure.
       result.copy());
-
-  return result;
 }
 
 /// This version of vector addition does the addition with each element in
@@ -299,15 +301,17 @@ static AsyncValueRef<TestVector> vec_add_async2(AsyncValueRef<TestVector> lhs,
 /// This is the same as vec_add_async2, but captures the result vector in a
 /// slightly different way that doesn't need the for loop itself to capture
 /// state, simplifying signatures.
-static AsyncValueRef<TestVector> vec_add_async3(AsyncValueRef<TestVector> lhs,
-                                                AsyncValueRef<TestVector> rhs,
-                                                Runtime &runtime) {
+static void vec_add_async3(AsyncValueRef<TestVector> lhs,
+                           AsyncValueRef<TestVector> rhs,
+                           Result<TestVector> result, Runtime &runtime) {
   size_t lhsValueSize = lhs.get().values.size();
-  if (lhsValueSize != rhs.get().values.size())
-    return AsyncValue::createError(runtime, "vector length mismatch");
+  if (lhsValueSize != rhs.get().values.size()) {
+    result->setToError("vector length mismatch");
+    return;
+  }
 
-  auto result = AsyncValueRef<TestVector>::createConstructed(runtime);
-  result.get().values.resize(lhsValueSize);
+  // Move the AsyncValue to "constructed" state with the specified # elements.
+  result.construct(lhsValueSize);
 
   // Process each element in parallel.
   parallelForEachNCustomCompletion(
@@ -319,8 +323,6 @@ static AsyncValueRef<TestVector> vec_add_async3(AsyncValueRef<TestVector> lhs,
         result.values[n] = lhs.get().values[n] + rhs.get().values[n];
       },
       [result = result.copy()]() { result->markReady(); });
-
-  return result;
 }
 
 /// This version of vector addition does the addition with each element in
@@ -328,15 +330,17 @@ static AsyncValueRef<TestVector> vec_add_async3(AsyncValueRef<TestVector> lhs,
 ///
 /// This is the same as vec_add_async3, but uses a convenience method to mark
 /// the resulting values as ready.
-static AsyncValueRef<TestVector> vec_add_async4(AsyncValueRef<TestVector> lhs,
-                                                AsyncValueRef<TestVector> rhs,
-                                                Runtime &runtime) {
+static void vec_add_async4(AsyncValueRef<TestVector> lhs,
+                           AsyncValueRef<TestVector> rhs,
+                           Result<TestVector> result, Runtime &runtime) {
   size_t lhsValueSize = lhs.get().values.size();
-  if (lhsValueSize != rhs.get().values.size())
-    return AsyncValue::createError(runtime, "vector length mismatch");
+  if (lhsValueSize != rhs.get().values.size()) {
+    result->setToError("vector length mismatch");
+    return;
+  }
 
-  auto result = AsyncValueRef<TestVector>::createConstructed(runtime);
-  result.get().values.resize(lhsValueSize);
+  // Move the AsyncValue to "constructed" state with the specified # elements.
+  result.construct(lhsValueSize);
 
   // Process each element in parallel.
   parallelForEachNMarkReady(runtime, lhsValueSize, result.copy(),
@@ -345,8 +349,6 @@ static AsyncValueRef<TestVector> vec_add_async4(AsyncValueRef<TestVector> lhs,
                               result.get().values[n] =
                                   lhs.get().values[n] + rhs.get().values[n];
                             });
-
-  return result;
 }
 
 static Chain vec_print(const TestVector &vec, Chain chain) {
