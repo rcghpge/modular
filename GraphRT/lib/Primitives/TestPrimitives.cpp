@@ -189,7 +189,7 @@ AsyncValueRef<int32_t> async_add2_i32(AsyncValueRef<int32_t> lhs,
                                       Runtime &runtime) {
   // This may get invoked before lhs/rhs are resolved, and either or both may
   // resolve to an error, so we need to handle that.
-  auto result = AsyncValueRef<int32_t>::createUnconstructed(runtime);
+  auto result = AsyncValueRef<int32_t>::allocate(runtime);
   andThen(
       [result = result.copy()](AsyncValueRef<int32_t> lhs,
                                AsyncValueRef<int32_t> rhs) {

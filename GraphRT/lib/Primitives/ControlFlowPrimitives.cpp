@@ -60,7 +60,7 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
   }
 
   // Otherwise, go full async.  Define results as IndirectAsync values.
-  results.allocateIndirectResults(runtime);
+  results.allocateIndirectResults();
 
   struct IfState {
     RCRef<const Function> trueFn, falseFn;
@@ -125,7 +125,7 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
 
   // Define results as IndirectAsync values.  The actual results are set in the
   // last iteration of the loop.
-  results.allocateIndirectResults(runtime);
+  results.allocateIndirectResults();
 
   /// Capture and add-ref each argument and result AsyncValue into a state we
   /// can manage.

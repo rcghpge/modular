@@ -88,15 +88,16 @@ private:
 /// example, GRT::CallOp.
 class RemainingResults {
 public:
-  explicit RemainingResults(MutableArrayRef<RCRef<AsyncValue>> results)
-      : results(results) {}
+  explicit RemainingResults(MutableArrayRef<RCRef<AsyncValue>> results,
+                            Runtime &runtime)
+      : runtime(runtime), results(results) {}
 
   MutableArrayRef<RCRef<AsyncValue>> get() const { return results; }
   size_t size() const { return results.size(); }
   RCRef<AsyncValue> &operator[](size_t i) const { return results[i]; }
 
   /// Allocate all of the unset result values as IndirectAsyncValues.
-  void allocateIndirectResults(Runtime &runtime) {
+  void allocateIndirectResults() {
     for (auto &elt : results) {
       if (!elt)
         elt = AsyncValue::createIndirect(runtime);
@@ -104,6 +105,7 @@ public:
   }
 
 private:
+  Runtime &runtime;
   MutableArrayRef<RCRef<AsyncValue>> results;
 };
 
@@ -552,7 +554,8 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
     template <typename IndicesT>
     static RemainingResults process(PrimitiveFrame &frame) {
       return RemainingResults(
-          frame.getResults().drop_front(IndicesT::resultIdx));
+          frame.getResults().drop_front(IndicesT::resultIdx),
+          frame.getRuntime());
     }
   };
 
