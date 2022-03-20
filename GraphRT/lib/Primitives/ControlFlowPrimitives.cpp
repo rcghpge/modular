@@ -22,8 +22,8 @@ static AsyncValueRef<Chain> chain_new(Runtime &runtime) {
   return runtime.getReadyChain().copy();
 }
 
-static void call(Runtime &runtime, RemainingArguments arguments,
-                 RemainingResults results, const Function *callee) {
+static void call(RemainingArguments arguments, RemainingResults results,
+                 const Function *callee, Runtime &runtime) {
   assert(callee->getNumArgs() == arguments.size() && "argument count mismatch");
   assert(callee->getNumResults() == results.size() && "result count mismatch");
   callee->execute(arguments.get(), results.get(), runtime);

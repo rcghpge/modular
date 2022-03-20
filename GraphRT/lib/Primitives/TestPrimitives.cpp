@@ -183,6 +183,27 @@ static AsyncValueRef<int32_t> async_add_i32(int32_t lhs, int32_t rhs,
   return addTask(runtime, [lhs, rhs] { return lhs + rhs; });
 }
 
+// It is silly to do this for add of course, but this shows how to handle this.
+AsyncValueRef<int32_t> async_add2_i32(AsyncValueRef<int32_t> lhs,
+                                      AsyncValueRef<int32_t> rhs,
+                                      Runtime &runtime) {
+  // This may get invoked before lhs/rhs are resolved, and either or both may
+  // resolve to an error, so we need to handle that.
+  auto result = AsyncValueRef<int32_t>::createUnconstructed(runtime);
+  andThen(
+      [result = result.copy()](AsyncValueRef<int32_t> lhs,
+                               AsyncValueRef<int32_t> rhs) {
+        if (lhs->isError())
+          result->setToError(lhs->getError().copy());
+        else if (rhs->isError())
+          result->setToError(rhs->getError().copy());
+        else
+          result.emplace(lhs.get() + rhs.get());
+      },
+      std::move(lhs), std::move(rhs));
+  return result;
+}
+
 //===----------------------------------------------------------------------===//
 // TestVector Primitives
 //===----------------------------------------------------------------------===//
@@ -240,7 +261,7 @@ static AsyncValueRef<TestVector> vec_add_async(AsyncValueRef<TestVector> lhs,
     auto &resultValues = result.get().values;
     for (int32_t i = 0, e = lhsValues.size(); i != e; ++i)
       resultValues.push_back(lhsValues[i] + rhsValues[i]);
-    // After we've populated the map, we can return it.
+    // After we've populated the vector, mark it ready.
     result->markReady();
   });
 
@@ -381,4 +402,5 @@ void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "test.cancel", cancel);
 
   ADD_PRIMITIVE(registry, "test.async.add.i32", async_add_i32);
+  ADD_PRIMITIVE(registry, "test.async.add2.i32", async_add2_i32);
 }

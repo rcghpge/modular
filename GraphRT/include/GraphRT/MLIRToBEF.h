@@ -15,7 +15,7 @@
 
 namespace mlir {
 class DialectRegistry;
-}
+} // end namespace mlir
 
 namespace M {
 
