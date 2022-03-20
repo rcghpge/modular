@@ -184,12 +184,10 @@ static AsyncValueRef<int32_t> async_add_i32(int32_t lhs, int32_t rhs,
 }
 
 // It is silly to do this for add of course, but this shows how to handle this.
-AsyncValueRef<int32_t> async_add2_i32(AsyncValueRef<int32_t> lhs,
-                                      AsyncValueRef<int32_t> rhs,
-                                      Runtime &runtime) {
+void async_add2_i32(AsyncValueRef<int32_t> lhs, AsyncValueRef<int32_t> rhs,
+                    Result<int32_t> result) {
   // This may get invoked before lhs/rhs are resolved, and either or both may
   // resolve to an error, so we need to handle that.
-  auto result = AsyncValueRef<int32_t>::allocate(runtime);
   andThen(
       [result = result.copy()](AsyncValueRef<int32_t> lhs,
                                AsyncValueRef<int32_t> rhs) {
@@ -201,7 +199,6 @@ AsyncValueRef<int32_t> async_add2_i32(AsyncValueRef<int32_t> lhs,
           result.emplace(lhs.get() + rhs.get());
       },
       std::move(lhs), std::move(rhs));
-  return result;
 }
 
 //===----------------------------------------------------------------------===//

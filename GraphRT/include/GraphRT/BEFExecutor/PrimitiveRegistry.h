@@ -80,6 +80,45 @@ private:
   MutableArrayRef<RCRef<AsyncValue>> arguments;
 };
 
+/// The Result class is used by primitive implementations for typed asynchronous
+/// results.
+template <typename T>
+class Result {
+public:
+  /// On construction, the result is initialized with an AsyncValue of the
+  /// correct type.
+  explicit Result(RCRef<AsyncValue> &result, Runtime &runtime)
+      : result(result) {
+    assert(!result && "result already initialized?");
+    result = AsyncValue::allocate<T>(runtime);
+  }
+  Result(const Result &&other) : result(other.result) {}
+
+  /// Return an owning reference to the AsyncValueRef.  This is typically used
+  /// when copying into a closure.
+  AsyncValueRef<T> copy() const { return AsyncValueRef<T>(result.copy()); }
+
+  // Construct the result in place.
+  template <typename... Args>
+  void emplace(Args &&...args) {
+    result->emplace<T, Args...>(std::forward<Args>(args)...);
+  }
+
+  /// Return a raw pointer to the AsyncValue.
+  AsyncValue *getPointer() const { return result.getPointer(); }
+  /// Return a reference to the low-level async value without copying it.
+  RCRef<AsyncValue> &getAsyncValue() { return result; }
+
+  /// Allow dereferencing this to get access to setError().
+  AsyncValue &operator*() const { return *getPointer(); }
+  AsyncValue *operator->() const { return getPointer(); }
+
+private:
+  Result(const Result &) = delete;
+  void operator=(const Result &) = delete;
+  RCRef<AsyncValue> &result;
+};
+
 /// RemainingResults collects all remaining results in a MutableArrayRef. There
 /// can be at most one RemainingResults, and it must appear after all other
 /// Results.
@@ -428,7 +467,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   // Result Values
 
   /// This class represents a Result value.
-  template <bool isTerminal>
+  template <bool isTerminal = false>
   struct ResultValue : public ValueBase<ValueType::kResult, isTerminal> {
     template <typename IndicesT>
     static constexpr void verifyCurrentIndex() {
@@ -437,9 +476,9 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
       static_assert(!isTerminal || IndicesT::resultIdx != -1,
                     "Do not use more than one RemainingResults");
       static_assert(IndicesT::attrIdx == 0,
-                    "Arguments and results should appear before attributes.");
+                    "Arguments and results should appear before attributes");
       static_assert(IndicesT::funcIdx == 0,
-                    "Arguments and results should appear before funtions.");
+                    "Arguments and results should appear before functions");
     }
   };
   /// This class defines a Result value that terminates the result list,
@@ -546,6 +585,16 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
 
   //===--------------------------------------------------------------------===//
   // Result Values
+
+  /// Result<T> provides an initialized AsyncValue with a specific type.
+  template <typename T, typename Dummy>
+  struct Value<Result<T>, Dummy> : public ResultValue<> {
+    template <typename IndicesT>
+    static Result<T> process(PrimitiveFrame &frame) {
+      return Result<T>(frame.getResults()[IndicesT::resultIdx],
+                       frame.getRuntime());
+    }
+  };
 
   /// RemainingResults provides a view containing all remaining results. Useful
   /// for variadic primitives.
