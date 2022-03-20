@@ -206,9 +206,9 @@ private:
 /// Primitives use this to declare that they have an attribute input with the
 /// specified C++ type.
 template <typename T>
-class BEFAttribute {
+class BEFAttr {
 public:
-  explicit BEFAttribute(const void *value)
+  explicit BEFAttr(const void *value)
       : value(*reinterpret_cast<const T *>(value)) {}
 
   const T &get() const { return value; }
@@ -222,9 +222,9 @@ private:
 /// String attributes have a special encoding that includes their length,
 /// allowing projection into a StringRef.
 template <>
-class BEFAttribute<StringRef> {
+class BEFAttr<StringRef> {
 public:
-  explicit BEFAttribute(const void *value)
+  explicit BEFAttr(const void *value)
       : value(static_cast<const char *>(value), decodeBEFArrayLength(value)) {}
 
   const StringRef &get() const { return value; }
@@ -238,9 +238,9 @@ private:
 /// Array attributes have a special encoding that includes their length,
 /// allowing projection into a ArrayRef.
 template <typename T>
-class BEFAttribute<ArrayRef<T>> {
+class BEFAttr<ArrayRef<T>> {
 public:
-  explicit BEFAttribute(const void *value)
+  explicit BEFAttr(const void *value)
       : value(static_cast<const T *>(value), decodeBEFArrayLength(value)) {}
 
   const ArrayRef<T> &get() const { return value; }
@@ -598,10 +598,10 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
 
   /// Specialization to cast a single attribute (T).
   template <typename T, typename Dummy>
-  struct Value<BEFAttribute<T>, Dummy> : public AttrValue {
+  struct Value<BEFAttr<T>, Dummy> : public AttrValue {
     template <typename IndicesT>
-    static BEFAttribute<T> process(PrimitiveFrame &frame) {
-      return BEFAttribute<T>(frame.getRawAttr(IndicesT::attrIdx));
+    static BEFAttr<T> process(PrimitiveFrame &frame) {
+      return BEFAttr<T>(frame.getRawAttr(IndicesT::attrIdx));
     }
   };
 

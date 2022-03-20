@@ -267,16 +267,16 @@ by their key (i.e., if you move the string value before the `i64` in the last
 example, they will still be emitted as "a" and then "b", so the `i64` will be
 first), and BEF files don't encode the attribute names ("a" and "b" in that
 last example).  To handle these, you can implement the primitives using
-the `BEFAttribute<>` C++ class, and access the attribute with `*` or `->`:
+the `BEFAttr<>` C++ class, and access the attribute with `*` or `->`:
 
 ```c++
-static int32_t constant_i32(BEFAttribute<int32_t> value) {
+static int32_t constant_i32(BEFAttr<int32_t> value) {
   return *value;  // Turns the attribute value into an AsyncValue result.
 }
-static int32_t add_ints(BEFAttribute<ArrayRef<int32_t>> value) {
+static int32_t add_ints(BEFAttr<ArrayRef<int32_t>> value) {
   return std::accumulate(value->begin(), value->end(), 0);
 }
-static void some_thing(BEFAttribute<int64_t> a, BEFAttribute<StringRef> b) {
+static void some_thing(BEFAttr<int64_t> a, BEFAttr<StringRef> b) {
   llvm::outs() << *a << " == " << b->str();
 }
 ```

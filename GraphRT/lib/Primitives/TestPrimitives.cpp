@@ -34,9 +34,7 @@ static void memory_leak_one_int32(Runtime &runtime) {
 // String and Array Tests
 //===----------------------------------------------------------------------===//
 
-static std::string get_string(BEFAttribute<StringRef> value) {
-  return value->str();
-}
+static std::string get_string(BEFAttr<StringRef> value) { return value->str(); }
 
 static std::string append_string(const std::string &lhs,
                                  const std::string &rhs) {
@@ -50,8 +48,7 @@ static Chain print_string(const std::string &lhs, Chain chain) {
   return chain;
 }
 
-static Chain print_array_i32(Chain chain,
-                             BEFAttribute<ArrayRef<int32_t>> values) {
+static Chain print_array_i32(Chain chain, BEFAttr<ArrayRef<int32_t>> values) {
   printf("array = ");
   for (size_t i = 0, e = values->size(); i != e; ++i) {
     if (i != 0)
@@ -93,7 +90,7 @@ public:
   int32_t v;
 };
 
-static VTValue vt_constant(BEFAttribute<int32_t> v) { return VTValue(*v); }
+static VTValue vt_constant(BEFAttr<int32_t> v) { return VTValue(*v); }
 
 static VTValue vt_add(const VTValue &lhs, const VTValue &rhs) {
   return VTValue(lhs.v + rhs.v);
@@ -234,7 +231,7 @@ struct TestVector {
 };
 } // end anonymous namespace.
 
-static TestVector vec_atoi(BEFAttribute<int32_t> number) {
+static TestVector vec_atoi(BEFAttr<int32_t> number) {
   TestVector result;
   result.values.reserve(*number);
   for (int32_t i = 0, e = *number; i != e; ++i)
@@ -242,8 +239,7 @@ static TestVector vec_atoi(BEFAttribute<int32_t> number) {
   return result;
 }
 
-static TestVector vec_constant(BEFAttribute<int32_t> size,
-                               BEFAttribute<int32_t> value) {
+static TestVector vec_constant(BEFAttr<int32_t> size, BEFAttr<int32_t> value) {
   TestVector result;
   result.values.reserve(*size);
   for (int32_t i = 0, e = *size; i != e; ++i)

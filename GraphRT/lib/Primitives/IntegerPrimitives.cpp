@@ -20,9 +20,9 @@ using namespace M;
 // Integer ops
 //===----------------------------------------------------------------------===//
 
-static bool constant_i1(BEFAttribute<int8_t> value) { return *value != 0; }
+static bool constant_i1(BEFAttr<int8_t> value) { return *value != 0; }
 
-static int32_t constant_i32(BEFAttribute<int32_t> value) { return *value; }
+static int32_t constant_i32(BEFAttr<int32_t> value) { return *value; }
 
 static Chain print_i32(int32_t value, Chain chain) {
   printf("int32 = %d\n", value);
