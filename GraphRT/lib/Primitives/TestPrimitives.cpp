@@ -292,10 +292,8 @@ static void vec_add_async2(AsyncValueRef<TestVector> lhs,
                            AsyncValueRef<TestVector> rhs,
                            Result<TestVector> result, Runtime &runtime) {
   size_t lhsValueSize = lhs.get().values.size();
-  if (lhsValueSize != rhs.get().values.size()) {
-    result->setToError("vector length mismatch");
-    return;
-  }
+  if (lhsValueSize != rhs.get().values.size())
+    return result->setToError("vector length mismatch");
 
   // Move the AsyncValue to "constructed" state with the specified # elements.
   result.construct(lhsValueSize);
@@ -322,10 +320,8 @@ static void vec_add_async3(AsyncValueRef<TestVector> lhs,
                            AsyncValueRef<TestVector> rhs,
                            Result<TestVector> result, Runtime &runtime) {
   size_t lhsValueSize = lhs.get().values.size();
-  if (lhsValueSize != rhs.get().values.size()) {
-    result->setToError("vector length mismatch");
-    return;
-  }
+  if (lhsValueSize != rhs.get().values.size())
+    return result->setToError("vector length mismatch");
 
   // Move the AsyncValue to "constructed" state with the specified # elements.
   result.construct(lhsValueSize);
@@ -351,10 +347,8 @@ static void vec_add_async4(AsyncValueRef<TestVector> lhs,
                            AsyncValueRef<TestVector> rhs,
                            Result<TestVector> result, Runtime &runtime) {
   size_t lhsValueSize = lhs.get().values.size();
-  if (lhsValueSize != rhs.get().values.size()) {
-    result->setToError("vector length mismatch");
-    return;
-  }
+  if (lhsValueSize != rhs.get().values.size())
+    return result->setToError("vector length mismatch");
 
   // Move the AsyncValue to "constructed" state with the specified # elements.
   result.construct(lhsValueSize);
