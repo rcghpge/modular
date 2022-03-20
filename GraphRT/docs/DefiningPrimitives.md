@@ -59,7 +59,7 @@ done, it is a very low-level and not-very-type-safe approach.
 # Registering primitives with the `ADD_PRIMITIVE` macro
 
 Because the `PrimitiveFrame` class is so level and error prone, GraphRT provides
-an `ADD_PRIMITIVE` macro to help - and you should effectively always use the
+an `ADD_PRIMITIVE` macro to help - you should effectively always use the
 `ADD_PRIMITIVE` macro to register primitives instead of directly poking at
 `PrimitiveFrame`.
 
@@ -105,7 +105,7 @@ function to generate something like this for the `lessequal_i32` example:
   registry.add("grt.lessequal.i32", [](PrimitiveFrame &frame) {
     assert(frame.getNumArgs() == 2 && frame.getNumResults() == 1 &&
            frame.getNumAttrs() == 0 && frame.getNumFunctions() == 0);
-    frame.emplaceResult<int32_t>(0, 
+    frame.emplaceResult<bool>(0, 
        lessequal_i32(frame.getArg<int32_t>(0), frame.getArg<int32_t>(1)));
   });
 ```
@@ -208,7 +208,7 @@ vec_fill_non_prime_async_vector(int32_t size,
     return result->setToError("only prime length vectors supported");
 
   // Fill in the value on a background task.
-  addTask(runtime, [size, result = result.copy()]() {
+  addTask(result->getRuntime(), [size, result = result.copy()]() {
     std::vector<int32_t> resultData;
     // ... do something to fill in result in the background ...
     if (bad thing happened) {
@@ -304,15 +304,15 @@ typically a significant amount of parallelism within an operation kernel
 (intra-op), but also a significant amount of graph-level parallelism as well
 (inter-op).
 
-Given these sorts of use-cases, here are some things to think about.
+With these use-cases in mind, here are some things to think about.
 
 ## Minimize "synchronous" work, prefer "asynchronous" work
 
 The primitive is invoked by the BEF executor when its arguments become ready,
-and because it is C++, they could do pretty much anything.  To help frame this,
-it is useful to think about the work done by a primitive in two categories:
-"synchronous" work done by the primitive itself on the invokers thread, and
-"asynchronous" work done on background threads.
+and because it is arbitrary C++ logic, they can do pretty much anything.  We
+break the behavior of a primitive in two major categories:
+"synchronous" work done by the primitive itself on the invoker's thread, and
+"asynchronous" work done on background threads (managed by the WorkQueue).
 
 The *synchronous* work done by the primitive itself is sensitive: it is often
 invoked from the thread that is dispatching the primitives, so taking an undue
@@ -327,17 +327,18 @@ bites of computation to keep all those cores busy.  There are a few things
 to keep in mind for an efficient and well balanced system:
 
 1) Most important: all computation needs to be thread safe, and should not
-   block.  This is core to the LLCL computation model.
+   block.  This is core to the LLCL computation model.  Do not use things like
+   `llvm::outs()` because it is not thread safe.
 2) Don't do synchronous work that can take unbounded time (e.g. it is dependent
    on the input sizes).  Fork/join parallelism is an extremely common pattern,
-   which induces patterns where there are a lot of single-threaded regions in
-   between the very parallel forked regions.  These single threaded regions
+   which induces patterns with a lot of single-threaded regions in
+   between the very-parallel forked regions.  These single-threaded regions
    easily end up dominating execution time due to [Amdahl's
-   Law](https://en.wikipedia.org/wiki/Amdahl%27s_law).
+   Law](https://en.wikipedia.org/wiki/Amdahl%27s_law).  As such, keep the
+   synchronous work small.
 3) Least important: there is a (very) small amount of cost to creating a task
-   and doing asynchronous work, doing extremely small computations (like adding
-   two integers) on the executor thread does make sense.  (TODO: We should
-   quantify this and develop a better sense for the tradeoff point).
+   and doing asynchronous work, so doing extremely small computations (like
+   adding two integers) on the executor thread does make sense.
 
 If you want to get really fancy, you can take advantage of the fact that GraphRT
 allows primitives to include arbitrarily dynamic logic.  For example, you could
@@ -358,11 +359,13 @@ static void vec_fill_vector(int32_t size, Result<std::vector<int32_t>> result) {
   }
 
   // Otherwise, do it on a background task.
-  addTask(runtime, [size, result = result.copy()]() {
+  addTask(result->getRuntime(), [size, result = result.copy()]() {
     result.emplace(generateElements(size));
   });
 }
 ```
+
+TODO: We should quantify this and develop a better sense for the tradeoff point.
 
 ## Correctly managing resource lifetimes
 
@@ -487,11 +490,12 @@ For example, a binary operation should be implemented like this:
 
 ```C++
 // It is silly to do this for add of course, but this shows how to handle this.
-AsyncValueRef<int32_t> nonstrict_add_i32(AsyncValueRef<int32_t> lhs,
-                                         AsyncValueRef<int32_t> rhs) {
+static void nonstrict_add_i32(AsyncValueRef<int32_t> lhs,
+                              AsyncValueRef<int32_t> rhs,
+                              Result<int32_t> result) {
   // This may get invoked before lhs/rhs are resolved, and either or both may
   // resolve to an error, so we need to handle that.
-  auto result = AsyncValueRef<int32_t>::createUnconstructed(runtime);
+  
   // Invoke the lambda when both AsyncValue's resolve.
   andThen(
       [result = result.copy()](AsyncValueRef<int32_t> lhs,
@@ -506,7 +510,6 @@ AsyncValueRef<int32_t> nonstrict_add_i32(AsyncValueRef<int32_t> lhs,
           result.emplace(lhs.get() + rhs.get());
       },
       std::move(lhs), std::move(rhs));
-  return result;
 }
 ```
 
