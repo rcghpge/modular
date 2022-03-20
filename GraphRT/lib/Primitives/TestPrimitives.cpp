@@ -184,13 +184,16 @@ static AsyncValueRef<int32_t> async_add_i32(int32_t lhs, int32_t rhs,
 }
 
 // It is silly to do this for add of course, but this shows how to handle this.
-void async_add2_i32(AsyncValueRef<int32_t> lhs, AsyncValueRef<int32_t> rhs,
-                    Result<int32_t> result) {
-  // This may get invoked before lhs/rhs are resolved, and either or both may
-  // resolve to an error, so we need to handle that.
+static void async_add2_i32(AsyncValueRef<int32_t> lhs,
+                           AsyncValueRef<int32_t> rhs, Result<int32_t> result) {
+  // If this were a non-strict primitive, this could get invoked before lhs/rhs
+  // are resolved, and either or both may resolve to an error, so we need to
+  // handle that.
   andThen(
       [result = result.copy()](AsyncValueRef<int32_t> lhs,
                                AsyncValueRef<int32_t> rhs) {
+        // This actually only needs to check for error if this is defined as
+        // non-strict.
         if (lhs->isError())
           result->setToError(lhs->getError().copy());
         else if (rhs->isError())
@@ -199,6 +202,20 @@ void async_add2_i32(AsyncValueRef<int32_t> lhs, AsyncValueRef<int32_t> rhs,
           result.emplace(lhs.get() + rhs.get());
       },
       std::move(lhs), std::move(rhs));
+}
+
+/// Example that returns an indirect value with IndirectResult, nominally
+/// because this is implemented in async style and returns different types
+/// depending on the resolved types of lhs/rhs
+static void async_add_any(RCRef<AsyncValue> lhs, RCRef<AsyncValue> rhs,
+                          IndirectResult result) {
+  if (lhs->isType<int32_t>() && rhs->isType<int32_t>())
+    result.emplace<int32_t>(lhs->get<int32_t>() + rhs->get<int32_t>());
+  else if (lhs->isType<std::string>() && rhs->isType<std::string>())
+    result.emplace<std::string>(lhs->get<std::string>() +
+                                rhs->get<std::string>());
+  else
+    result->setToError("invalid operands to async_add_any");
 }
 
 //===----------------------------------------------------------------------===//
@@ -402,4 +419,5 @@ void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
 
   ADD_PRIMITIVE(registry, "test.async.add.i32", async_add_i32);
   ADD_PRIMITIVE(registry, "test.async.add2.i32", async_add2_i32);
+  ADD_PRIMITIVE(registry, "test.async.add.any", async_add_any);
 }

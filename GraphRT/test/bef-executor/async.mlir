@@ -27,3 +27,21 @@ bef.func @test_cancel() -> i32 {
 }
 // CHECK-NEXT: returned <error: Cancelled!>
 
+// CHECK-LABEL: --- Running 'test_add_any'
+bef.func @test_add_any() -> (i32, !test.string, i32) {
+  %c1 = grt.constant.i32 1
+  %c42 = grt.constant.i32 42
+  %a = "test.async.add.any"(%c1, %c42) : (i32, i32) -> i32
+
+  %x = "test.get_string"() { value = "bark" } : () -> !test.string
+  %y = "test.get_string"() { value = "rarf" } : () -> !test.string
+  %b = "test.async.add.any"(%x, %y) : (!test.string, !test.string) -> !test.string
+
+  %c = "test.async.add.any"(%c1, %y) : (i32, !test.string) -> i32
+
+  bef.output %a, %b, %c : i32, !test.string, i32
+}
+// CHECK: 'test_add_any' returned 43, barkrarf, <error: invalid operands to async_add_any> 
+
+
+

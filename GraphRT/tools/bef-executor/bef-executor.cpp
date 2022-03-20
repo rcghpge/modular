@@ -150,6 +150,7 @@ static void runFunctionTestcase(const Function *fn, AllocatorType allocatorType,
         HANDLE_TYPE(uint64_t)
         HANDLE_TYPE(float)
         HANDLE_TYPE(double)
+        HANDLE_TYPE(std::string)
         if (result->isType<Chain>())
           os << "chain";
         else

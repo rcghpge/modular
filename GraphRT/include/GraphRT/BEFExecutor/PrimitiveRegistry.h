@@ -129,6 +129,51 @@ private:
   RCRef<AsyncValue> &result;
 };
 
+/// The IndirectResult class is used for primitives that need a result but don't
+/// know its static type.  It will be initialized to an AsyncValue that is in
+/// indirect state, allowing it to be late-bound, e.g. asynchronously.
+class IndirectResult {
+public:
+  /// On construction, this is initialized with an indirect AsyncValue.
+  explicit IndirectResult(RCRef<AsyncValue> &result, Runtime &runtime)
+      : result(result) {
+    assert(!result && "result already initialized?");
+    result = AsyncValue::createIndirect(runtime);
+  }
+  IndirectResult(const IndirectResult &&other) : result(other.result) {}
+
+  /// Return an owning reference to the AsyncValueRef.  This is typically used
+  /// when copying into a closure.
+  RCRef<AsyncValue> copy() const { return result.copy(); }
+
+  /// Resolve an IndirectAsyncValue to point to the specified new value,
+  /// resolving any waiters whenever newValue becomes ready.
+  void resolve(RCRef<AsyncValue> newValue) {
+    result->resolveIndirect(std::move(newValue));
+  }
+
+  /// Construct an AsyncValue for the result and resolve the indirect result.
+  template <typename T, typename... Args>
+  void emplace(Args &&...args) {
+    resolve(AsyncValue::createReady<T, Args...>(result->getRuntime(),
+                                                std::forward<Args>(args)...));
+  }
+
+  /// Return a raw pointer to the AsyncValue.
+  AsyncValue *getPointer() const { return result.getPointer(); }
+  /// Return a reference to the low-level async value without copying it.
+  RCRef<AsyncValue> &getAsyncValue() { return result; }
+
+  /// Allow dereferencing this to get access to setError().
+  AsyncValue &operator*() const { return *getPointer(); }
+  AsyncValue *operator->() const { return getPointer(); }
+
+private:
+  IndirectResult(const IndirectResult &) = delete;
+  void operator=(const IndirectResult &) = delete;
+  RCRef<AsyncValue> &result;
+};
+
 /// RemainingResults collects all remaining results in a MutableArrayRef. There
 /// can be at most one RemainingResults, and it must appear after all other
 /// Results.
@@ -606,8 +651,18 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
     }
   };
 
-  /// RemainingResults provides a view containing all remaining results. Useful
-  /// for variadic primitives.
+  /// IndirectResult provides an initialized indirect AsyncValue.
+  template <typename Dummy>
+  struct Value<IndirectResult, Dummy> : public ResultValue<> {
+    template <typename IndicesT>
+    static IndirectResult process(PrimitiveFrame &frame) {
+      return IndirectResult(frame.getResults()[IndicesT::resultIdx],
+                            frame.getRuntime());
+    }
+  };
+
+  /// RemainingResults provides a view containing all remaining results.
+  /// Useful for variadic primitives.
   template <typename Dummy>
   struct Value<RemainingResults, Dummy> : public TerminalResultValue {
     template <typename IndicesT>
