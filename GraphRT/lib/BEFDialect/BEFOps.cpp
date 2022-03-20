@@ -27,6 +27,12 @@ void FuncOp::build(OpBuilder &builder, OperationState &state, StringAttr name,
                       inputTypes);
 }
 
+void FuncOp::build(OpBuilder &builder, OperationState &state,
+                   ArrayRef<NamedAttribute> attrs) {
+  state.addAttributes(attrs);
+  state.addRegion();
+}
+
 // Parses a BEF Function.
 //
 // operation ::= `func` function-signature function-attributes? function-body

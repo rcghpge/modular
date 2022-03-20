@@ -43,7 +43,8 @@ def FuncOp : BEFOp<"func", [HasParent<"mlir::ModuleOp">, FunctionOpInterface,
     /// Create a new bef.func with an empty body.
     OpBuilder<(ins "StringAttr":$name, "ArrayRef<Type>":$inputTypes,
                    "ArrayRef<Type>":$resultTypes,
-                   CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>
+                   CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>,
+    OpBuilder<(ins CArg<"ArrayRef<NamedAttribute>">:$attrs)>,
   ];
 
   let hasCustomAssemblyFormat = 1;
