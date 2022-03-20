@@ -117,7 +117,7 @@ static void runFunctionTestcase(const Function *fn, AllocatorType allocatorType,
     fn->execute(/*arguments=*/{}, results, runtime);
 
     // Block until the function results are fully resolved.
-    await(runtime, results);
+    await(results);
 
     // If anything printed to stdout, force it out to a stream, since we will be
     // printing with raw_ostream.
