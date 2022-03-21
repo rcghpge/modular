@@ -126,7 +126,7 @@ SECTION_BODY_ALIGNMENT follows.
   SECTION_DATA ::= BEF_FUNCTIONS_SECTION
   SECTION_DATA ::= LOCATION_FILENAMES_SECTION
   SECTION_DATA ::= LOCATIONS_SECTION
-  SECTION_DATA ::= ATTRIBUTE_KIND_MD_SECTION
+  SECTION_DATA ::= ATTRIBUTE_INDEX_MD_SECTION
   SECTION_DATA ::= ATTRIBUTE_NAMES_MD_SECTION
   SECTION_DATA ::= MLIRTYPE_STRINGS_MD_SECTION
   SECTION_DATA ::= MLIRTYPE_MD_SECTION
@@ -179,6 +179,9 @@ BEF files only support a subset of MLIR attributes, currently including:
 *   strings: stored as arrays of bytes, not necessarily NUL terminated.
 *   arrays: all elements of which are of the same type and fixed in width (eg.
     i32, f32, type).
+
+The kind is specified by a one-byte enum defined in 
+[`BEFEncoding.h`](../include/GraphRT/BEF/BEFEncoding.h).
 
 ***Rationale***
 
@@ -400,19 +403,18 @@ strings.
 This section contains a list of "locations", which are a VBR offset into the
 LocationFilenames section, and VBRs for the line and column of the position.
 
-### ATTRIBUTE_KIND_MD Section
+### ATTRIBUTE_INDEX_MD Section
 
 **Grammar**
 
 ```none
-  ATTRIBUTE_KIND_MD_SECTION ::= VBR<"NumAttributes"> ATTRIBUTE_KIND_ENTRY*
-  ATTRIBUTE_KIND_ENTRY      ::= OFFSET<"Attributes"> BYTE<"AttributeKind">
+  ATTRIBUTE_INDEX_MD_SECTION ::= VBR<"NumAttributes"> ATTRIBUTE_INDEX_ENTRY*
+  ATTRIBUTE_INDEX_MD_ENTRY   ::= OFFSET<"Attributes">
 ```
 
-The ATTRIBUTE_KIND section specifies the kind of each attribute emitted to the
-attribute section, allowing BEFToMLIR conversion (e.g allowing us to know the
-difference between an i1/i8 attribute or an i32/f32). The kind is specified by a
-one-byte enum defined in [`BEFEncoding.h`](../include/GraphRT/BEF/BEFEncoding.h).
+The ATTRIBUTE_INDEX_MD section specifies the kind of each attribute emitted to the
+attribute section, allowing BEFToMLIR conversion by allowing us to know the
+starting offset for each attribute in the file.
 
 ### ATTRIBUTE_NAMES_MD Section
 

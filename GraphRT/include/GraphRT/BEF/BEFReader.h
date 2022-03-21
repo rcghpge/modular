@@ -53,6 +53,16 @@ public:
     return false;
   }
 
+  /// Parse the byte ending at the specified offset.
+  bool parseByteAt(size_t offset, uint8_t &value) const {
+    if (contents.empty())
+      return emitError("ran out of bytes");
+    if (offset >= contents.size())
+      return emitError("offset out of range");
+    value = contents[offset];
+    return false;
+  }
+
   /// Parse two bytes in little endian format from the stream.
   bool parseInt2(uint16_t &value) {
     uint8_t a, b;

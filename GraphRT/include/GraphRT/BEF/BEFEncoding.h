@@ -38,14 +38,19 @@ enum {
 /// emitted attributes.
 enum class AttributeKind {
   kInvalid = 0,
-  kI1,
-  kI8,
-  kI16,
-  kI32,
-  kI64,
-  kF32,
-  kF64,
-  kString,
+  /// The primitive types store their types as a simple function of their
+  /// bitwidth for simplicity in getting the AttributeKind from a type. Floats
+  /// have the low bit set to indicate that they're floats.
+  kI1 = 1,
+  kI8 = 8,
+  kI16 = 16,
+  kI32 = 32,
+  kI64 = 64,
+  kF32 = 33,
+  kF64 = 65,
+  /// There is no special meaning to this value, it's 66 because kF64 is 65.
+  kString = 66,
+  /// This is a bitmask, meant to be applied to one of the basic types (I*, F*)
   kArrayType = 0x80
 };
 
@@ -61,7 +66,7 @@ enum class SectionID {
   BEF_FUNCTIONS = 6,
   BEF_FUNCTION_INDEX = 7,
 
-  ATTRIBUTE_KIND_MD = 8,
+  ATTRIBUTE_INDEX_MD = 8,
   STRINGS_MD = 9,           // Strings for metadata
   ATTRIBUTE_NAME_MD = 10,   // Table of primitive attribute names.
   MLIRTYPE_STRINGS_MD = 11, // String table of MLIR types.

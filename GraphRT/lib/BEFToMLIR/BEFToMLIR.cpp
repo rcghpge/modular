@@ -116,8 +116,8 @@ private:
     return getReaderFor(data);
   }
 
-  bool parseAttributeAt(size_t offset, uint8_t attrKind,
-                        const BEFReader &attrSection, Attribute &resultAttr);
+  bool parseAttribute(size_t offset, const BEFReader &attrSection,
+                      Attribute &resultAttr);
 
   mlir::OwningOpRef<ModuleOp> module;
 
@@ -210,10 +210,10 @@ bool BEFToMLIRConverter::parseLocationPositions() {
   return false;
 }
 
-/// Parse an attribute at the specified
-bool BEFToMLIRConverter::parseAttributeAt(size_t offset, uint8_t attrKind,
-                                          const BEFReader &attrSection,
-                                          Attribute &resultAttr) {
+/// Parse an attribute at the specified offset.
+bool BEFToMLIRConverter::parseAttribute(size_t offset,
+                                        const BEFReader &attrSection,
+                                        Attribute &resultAttr) {
   // Copy the BEFReader (a cheap operation) so we can slice out of its body.
   BEFReader attrReader = getReaderFor(attrSection.getContents());
   if (attrReader.dropBytes(offset))
@@ -221,76 +221,87 @@ bool BEFToMLIRConverter::parseAttributeAt(size_t offset, uint8_t attrKind,
 
   // Parse a single attribute value from attrReader and return it, or null on
   // an error.
-  auto parseAttribute = [&]() -> Attribute {
-    unsigned size = 1;
-    uint8_t byte;
-    switch ((BEF::AttributeKind)attrKind) {
-    default:
-      return attrSection.emitError("unknown attribute"), Attribute();
-    case BEF::AttributeKind::kI1:
-      if (attrReader.parseByte(byte))
-        return {};
-      return BoolAttr::get(getContext(), byte);
-    case BEF::AttributeKind::kI64:
-    case BEF::AttributeKind::kF64:
-      size <<= 1;
-      LLVM_FALLTHROUGH;
-    case BEF::AttributeKind::kI32:
-    case BEF::AttributeKind::kF32:
-      size <<= 1;
-      LLVM_FALLTHROUGH;
-    case BEF::AttributeKind::kI16:
-      size <<= 1;
-      LLVM_FALLTHROUGH;
-    case BEF::AttributeKind::kI8: {
-      // Parse integers of various sizes.
-      uint64_t result = 0;
-      for (unsigned i = 0; i != size; ++i) {
-        if (attrReader.parseByte(byte))
-          return {};
-        result |= uint64_t(byte) << (i * 8);
-      }
-      auto resultInt = APInt(size * 8, result);
-
-      if (attrKind == (unsigned)BEF::AttributeKind::kF32)
-        return FloatAttr::get(mlir::Float32Type::get(getContext()),
-                              APFloat(resultInt.bitsToFloat()));
-
-      if (attrKind == (unsigned)BEF::AttributeKind::kF64)
-        return FloatAttr::get(mlir::Float64Type::get(getContext()),
-                              APFloat(resultInt.bitsToDouble()));
-
-      return IntegerAttr::get(IntegerType::get(getContext(), size * 8),
-                              resultInt);
-    }
-    case BEF::AttributeKind::kString: {
+  auto parseAttribute = [&](BEF::AttributeKind attrKind) -> Attribute {
+    // Handle strings here. They aren't bitwidth-encoded, so we can just deal
+    // with them up front.
+    if (attrKind == BEF::AttributeKind::kString) {
       size_t length;
       ArrayRef<uint8_t> result;
-      if (attrSection.parseInvertedVBRAt(offset, length) ||
+      if (attrSection.parseInvertedVBRAt(offset - 1, length) ||
           attrReader.parseBytes(length, result))
         return {};
       return StringAttr::get(
           getContext(), StringRef((const char *)result.data(), result.size()));
     }
+
+    uint8_t byte;
+    // I1 attrs are a single byte in the BEF format, but are also a separate
+    // attribute type, and so are special-cased here.
+    if (attrKind == BEF::AttributeKind::kI1) {
+      if (attrReader.parseByte(byte))
+        return {};
+      return BoolAttr::get(getContext(), byte);
     }
+
+    // Compute the size of the integer by taking the attribute kind. The
+    // encoding of the attrKind means that we can get the bitwidth by simply
+    // masking off the last bit.
+    unsigned sizeInBits = ((uint8_t)attrKind & (~(uint8_t)0b1));
+
+    // If the bitwidth is not a power of 2 and it's not less than 8, then it's
+    // not a valid size. This is very unlikely to happen unless there's a logic
+    // flaw elsewhere, i.e. a string that wasn't caught above.
+    if (!llvm::isPowerOf2_64(sizeInBits) || sizeInBits > 64) {
+      emitError(Twine("Invalid bitwidth ") + Twine(sizeInBits));
+      return {};
+    }
+
+    unsigned sizeInBytes = sizeInBits / 8;
+
+    // Parse integers of various sizes.
+    uint64_t result = 0;
+    for (unsigned i = 0; i != sizeInBytes; ++i) {
+      if (attrReader.parseByte(byte))
+        return {};
+      result |= uint64_t(byte) << (i * 8);
+    }
+    auto resultInt = APInt(sizeInBytes * 8, result);
+
+    if (attrKind == BEF::AttributeKind::kF32)
+      return FloatAttr::get(mlir::Float32Type::get(getContext()),
+                            APFloat(resultInt.bitsToFloat()));
+
+    if (attrKind == BEF::AttributeKind::kF64)
+      return FloatAttr::get(mlir::Float64Type::get(getContext()),
+                            APFloat(resultInt.bitsToDouble()));
+
+    return IntegerAttr::get(IntegerType::get(getContext(), sizeInBytes * 8),
+                            resultInt);
   };
+
+  // The attribute kind always precedes the attribute value in a BEF file. In
+  // the case of length-delimited types (like string and array) the layout is
+  // [length, kind byte, values].
+  uint8_t attrKind;
+  if (attrSection.parseByteAt(offset - 1, attrKind))
+    return true;
 
   // If this is a scalar attribute value, just parse the single attribute.
   if ((attrKind & (uint8_t)BEF::AttributeKind::kArrayType) == 0) {
-    resultAttr = parseAttribute();
+    resultAttr = parseAttribute(BEF::AttributeKind(attrKind));
     return resultAttr == Attribute();
   }
 
   // Otherwise, if this is an array of attributes, decode each of them and then
   // assemble the array.
   size_t length;
-  if (attrSection.parseInvertedVBRAt(offset, length))
+  if (attrSection.parseInvertedVBRAt(offset - 1, length))
     return true;
   attrKind &= ~(uint8_t)BEF::AttributeKind::kArrayType;
 
   SmallVector<Attribute> elements;
   while (length--) {
-    elements.push_back(parseAttribute());
+    elements.push_back(parseAttribute(BEF::AttributeKind(attrKind)));
     if (!elements.back())
       return true;
   }
@@ -301,16 +312,15 @@ bool BEFToMLIRConverter::parseAttributeAt(size_t offset, uint8_t attrKind,
 
 bool BEFToMLIRConverter::parseAttributes() {
   BEFReader attrReader = getSectionReader(BEF::SectionID::ATTRIBUTES);
-  BEFReader attrKindReader =
-      getSectionReader(BEF::SectionID::ATTRIBUTE_KIND_MD);
+  BEFReader attrIndexMDReader =
+      getSectionReader(BEF::SectionID::ATTRIBUTE_INDEX_MD);
 
-  // Read until we run out of attribute kind descriptors.
-  while (!attrKindReader.empty()) {
+  // Read until we run out of attribute offsets.
+  while (!attrIndexMDReader.empty()) {
     size_t offset;
-    uint8_t attrKind;
     Attribute resultAttr;
-    if (attrKindReader.parseVBR(offset) || attrKindReader.parseByte(attrKind) ||
-        parseAttributeAt(offset, attrKind, attrReader, resultAttr))
+    if (attrIndexMDReader.parseVBR(offset) ||
+        parseAttribute(offset, attrReader, resultAttr))
       return true;
     attributeAtOffset[offset] = resultAttr;
   }
