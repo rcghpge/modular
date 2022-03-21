@@ -13,12 +13,11 @@
 #include "Support/LLVM.h"
 
 namespace M {
-class Function;
+class Invokable;
 class PrimitiveRegistry;
 
 /// Instances of this class represent opened and decoded BEF files, allowing
-/// clients to interact with the function list, invoke functions to execute,
-/// etc.
+/// clients to interact with the invokable list, etc.
 class BEFFile : public LLCL::ReferenceCounted<BEFFile> {
 public:
   virtual ~BEFFile();
@@ -26,8 +25,8 @@ public:
   /// Open and read a BEF file, setting up our internal state and returning a
   /// pointer to our initialized object on success.  On an initial parse
   /// failure, an error message is returned in the `ErrorOr`.  BEF file format
-  /// errors discovered lazily when running functions, so they are returned
-  /// through the function's result AsyncValue's.
+  /// errors discovered lazily when running invokables, so they are returned
+  /// through the invokable's result AsyncValue's.
   ///
   /// TODO: This should (optionally) manage ownership of the underlying data
   /// passed in.  For example, we could take a closure to run when the lifetime
@@ -36,11 +35,12 @@ public:
   static ErrorOr<RCRef<BEFFile>> open(StringRef file,
                                       const PrimitiveRegistry &primitives);
 
-  /// Get a list of functions out of the BEF file.
-  std::vector<const Function *> getAllFunctions() const;
+  /// Get a list of invokables out of the BEF file.
+  std::vector<const Invokable *> getAllInvokables() const;
 
-  /// Find a Function with the specified name, returning null if it isn't found.
-  const Function *getFunction(StringRef name) const;
+  /// Find an invokable with the specified name, returning null if it isn't
+  /// found.
+  const Invokable *getInvokable(StringRef name) const;
 
 protected:
   BEFFile() {}

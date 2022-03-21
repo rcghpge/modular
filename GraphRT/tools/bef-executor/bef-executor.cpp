@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphRT/BEFExecutor/BEFFile.h"
-#include "GraphRT/BEFExecutor/Function.h"
+#include "GraphRT/BEFExecutor/Invokable.h"
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
 #include "GraphRT/Primitives.h"
 #include "LLCL/Runtime/Algorithms.h"
@@ -82,19 +82,20 @@ static std::unique_ptr<WorkQueue> getWorkQueue(WorkQueueType workqueueType) {
   return queue;
 }
 
-/// Run the specified BEF function as a testcase - this means passing in test
+/// Run the specified bef.invokable as a testcase - this means passing in test
 /// input and printing results if we can.
-static void runFunctionTestcase(const Function *fn, AllocatorType allocatorType,
-                                WorkQueueType workqueueType) {
-  // Skip anonymous functions.  These are bodies of control flow operators etc.
-  if (fn->getName().empty())
+static void runInvokableTestcase(const Invokable *invokable,
+                                 AllocatorType allocatorType,
+                                 WorkQueueType workqueueType) {
+  // Skip anonymous invokables.  These are bodies of control flow operators etc.
+  if (invokable->getName().empty())
     return;
 
   auto &os = outs();
 
-  // If the function takes arguments, then we can't run it from this driver.
-  if (fn->getNumArgs() != 0) {
-    os << "--- Can not run '" << fn->getName()
+  // If the invokable takes arguments, then we can't run it from this driver.
+  if (invokable->getNumArgs() != 0) {
+    os << "--- Can not run '" << invokable->getName()
        << "' because it has arguments.\n";
     os.flush();
     return;
@@ -108,25 +109,25 @@ static void runFunctionTestcase(const Function *fn, AllocatorType allocatorType,
   {
     Runtime runtime(getAllocator(allocatorType), getWorkQueue(workqueueType));
 
-    // Actually run the function.
-    os << "--- Running '" << fn->getName() << "':\n";
+    // Actually run the invokable.
+    os << "--- Running '" << invokable->getName() << "':\n";
     os.flush();
 
     llvm::SmallVector<RCRef<AsyncValue>, 4> results;
-    results.resize(fn->getNumResults());
-    fn->execute(/*arguments=*/{}, results, runtime);
+    results.resize(invokable->getNumResults());
+    invokable->invoke(/*arguments=*/{}, results, runtime);
 
-    // Block until the function results are fully resolved.
+    // Block until the invokable results are fully resolved.
     await(results);
 
     // If anything printed to stdout, force it out to a stream, since we will be
     // printing with raw_ostream.
     fflush(stdout);
 
-    // Print out the function results that we know about.
-    // Go ahead and print out the function results that we know about.
+    // Print out the invokable results that we know about.
+    // Go ahead and print out the invokable results that we know about.
     if (!results.empty()) {
-      os << "'" << fn->getName() << "' returned ";
+      os << "'" << invokable->getName() << "' returned ";
       llvm::interleaveComma(results, os, [&](const RCRef<AsyncValue> &result) {
         // Handle error value.
         if (auto *error = result->getErrorIfPresent()) {
@@ -161,7 +162,7 @@ static void runFunctionTestcase(const Function *fn, AllocatorType allocatorType,
       results.clear();
     }
 
-    // In this test driver, we want to make sure that every function completes
+    // In this test driver, we want to make sure that every invokable completes
     // all execution before moving on to the next one.  This makes the leak
     // checker work better in the face of side effecting kernels that aren't
     // properly chained together (which is useful for testing), so we close a
@@ -172,7 +173,7 @@ static void runFunctionTestcase(const Function *fn, AllocatorType allocatorType,
   if (AsyncValue::isAllocationTrackingEnabled()) {
     auto numLiveAsyncValues = AsyncValue::getNumAllocatedInstances();
     if (numLiveAsyncValues != numStartingLiveAsyncValues) {
-      os << "Evaluation of function '" << fn->getName() << "' leaked "
+      os << "Evaluation of invokable '" << invokable->getName() << "' leaked "
          << (numLiveAsyncValues - numStartingLiveAsyncValues)
          << " async values (before: " << numStartingLiveAsyncValues
          << ", after: " << numLiveAsyncValues << ")!\n";
@@ -188,9 +189,9 @@ static void runFunctionTestcase(const Function *fn, AllocatorType allocatorType,
 int main(int argc, char **argv) {
   cl::opt<std::string> inputFilename(cl::Positional, cl::desc("<input file>"),
                                      cl::init("-"));
-  cl::list<std::string> functions(
-      "functions",
-      cl::desc("Specify functions to run, defaults to all of them"),
+  cl::list<std::string> invokables(
+      "invokables",
+      cl::desc("Specify invokables to run, defaults to all of them"),
       cl::ZeroOrMore, cl::MiscFlags::CommaSeparated);
   // Enable HostAllocator types to be specified on the command line.
   cl::opt<AllocatorType> allocatorType(
@@ -249,25 +250,25 @@ int main(int argc, char **argv) {
 
     auto befFile = std::move(befFileOrError.get());
 
-    // Figure out which functions to execute for the test.
-    std::vector<const Function *> functionsToExecute;
-    // If no functions are specified on the command line. Try to run them all.
-    if (functions.empty()) {
-      functionsToExecute = befFile->getAllFunctions();
+    // Figure out which invokables to execute for the test.
+    std::vector<const Invokable *> invokablesToExecute;
+    // If no invokables are specified on the command line. Try to run them all.
+    if (invokables.empty()) {
+      invokablesToExecute = befFile->getAllInvokables();
     } else {
-      // Otherwise, run the named functions in order.
-      for (auto &fnName : functions) {
-        const Function *fn = befFile->getFunction(fnName);
-        if (!fn)
-          return emitToolError("couldn't find function '" + fnName +
+      // Otherwise, run the named invokables in order.
+      for (auto &fnName : invokables) {
+        const Invokable *invokable = befFile->getInvokable(fnName);
+        if (!invokable)
+          return emitToolError("couldn't find invokable '" + fnName +
                                "' to execute");
-        functionsToExecute.push_back(fn);
+        invokablesToExecute.push_back(invokable);
       }
     }
 
-    // Run each requested function as a standalone testcase.
-    for (auto *fn : functionsToExecute)
-      runFunctionTestcase(fn, allocatorType, workqueueType);
+    // Run each requested invokable as a standalone testcase.
+    for (auto *fn : invokablesToExecute)
+      runInvokableTestcase(fn, allocatorType, workqueueType);
   }
 
   assert(AsyncValue::getNumAllocatedInstances() == 0 &&

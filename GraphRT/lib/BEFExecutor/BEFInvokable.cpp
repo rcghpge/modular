@@ -4,12 +4,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file implements logic required to execute a function.  This is the core
+// This file implements logic required to execute a invokable.  This is the core
 // execution logic for the BEF executor runtime.
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphRT/BEFExecutor/Function.h"
+#include "GraphRT/BEFExecutor/Invokable.h"
 
 #include "BEFFileImpl.h"
 #include "GraphRT/BEF/BEFReader.h"
@@ -28,7 +28,7 @@ namespace {
 /// executor.  The executor keeps one of these for each SSA value in the .mlir
 /// file.
 struct RegisterInfo {
-  /// This is the number of uses of the register in the function.  The
+  /// This is the number of uses of the register in the invokable.  The
   /// AsyncValue may be deallocated when this number of users have completed
   /// execution.  This field allows us to allocate the register with the correct
   /// reference count up front.
@@ -55,14 +55,14 @@ struct RegisterInfo {
   void setArgumentRegister(AsyncValue *newValue);
 
 private:
-  /// This is a pointer to the AsyncValue for a register as the function
+  /// This is a pointer to the AsyncValue for a register as the invokable
   /// executes.
   ///
   /// It is set to a non-null AsyncValue in two cases:
   ///   1) when the primitive that generates it executes, or
   ///   2) when the result is demanded early (e.g. due to a non-strict primitive
   ///      that uses the register as an operand, or due to the results of the
-  ///      function).  In this case it is filled with IndirectAsyncValue.
+  ///      invokable).  In this case it is filled with IndirectAsyncValue.
   ///
   /// Once filled in, we bias the reference count with the number of unexecuted
   /// primitive operands left to execute (this is what is stored in userCount).
@@ -149,14 +149,14 @@ void RegisterInfo::setArgumentRegister(AsyncValue *newValue) {
 //===----------------------------------------------------------------------===//
 
 namespace {
-/// One entry of this record is kept for each primitive in a BEFFunction.  This
+/// One entry of this record is kept for each primitive in a BEFInvokable.  This
 /// allows us to efficiently map from a primitive index to a primitive offset.
 struct PrimitiveInfo {
   /// This is the number of operands that still need to be resolved before the
   /// primitive can be executed.
   std::atomic<int> numOperandsNotReady;
 
-  /// This is the offset of the primitive from the start of the function body.
+  /// This is the offset of the primitive from the start of the invokable body.
   /// It is stored in units of 32-bit entries, not bytes.
   unsigned offset;
 
@@ -168,35 +168,35 @@ struct PrimitiveInfo {
 } // end anonymous namespace
 
 //===----------------------------------------------------------------------===//
-// BEFFunctionDecoder
+// BEFInvokableDecoder
 //===----------------------------------------------------------------------===//
 
 namespace {
-/// This class is a helper used to handle initial function decoding before the
+/// This class is a helper used to handle initial invokable decoding before the
 /// BEFExecutor can be allocated.
-struct BEFFunctionDecoder {
+struct BEFInvokableDecoder {
 public:
-  BEFFunctionDecoder(const BEFFunction &fn)
-      : fn(fn), funcReader(fn.owner->invokableBodies, [&](Error message) {
+  BEFInvokableDecoder(const BEFInvokable &inv)
+      : inv(inv), bodyReader(inv.owner->invokableBodies, [&](Error message) {
           befFormatError = std::move(message);
         }) {}
 
-  /// Decoding the function record.
+  /// Decoding the invokable record.
   bool decodeHeader() {
-    return funcReader.dropBytes(fn.functionOffset) ||
-           funcReader.parseVBR(numPrimitives) ||
-           funcReader.parseVBR(numRegisters);
+    return bodyReader.dropBytes(inv.bodyOffset) ||
+           bodyReader.parseVBR(numPrimitives) ||
+           bodyReader.parseVBR(numRegisters);
   }
 
 public:
-  const BEFFunction &fn;
+  const BEFInvokable &inv;
   Optional<Error> befFormatError;
-  BEFReader funcReader;
+  BEFReader bodyReader;
 
   /// These are the fields we decode.
   size_t numPrimitives = 0, numRegisters = 0;
 
-  /// These are the indices of the result registers for the function.
+  /// These are the indices of the result registers for the invokable.
   SmallVector<unsigned, 8> resultRegs;
 };
 
@@ -207,18 +207,18 @@ public:
 //===----------------------------------------------------------------------===//
 
 namespace {
-/// A BEFExecutor runs a BEF function containing a stream of asynchronous
+/// A BEFExecutor runs an invokable containing a stream of asynchronous
 /// primitives.  Multiple executors can be active at one time, even for the same
-/// function on disk.
+/// invokable on disk.
 ///
 /// The layout of this class is the BEFExecutor itself, following by a trailing
 /// array of "N" RegisterInfo records, following by "M" PrimitiveInfo records,
-/// where N and M are encoded into the BEF function header.
+/// where N and M are encoded into the invokable header.
 class BEFExecutor final
     : public ReferenceCounted<BEFExecutor>,
       public llvm::TrailingObjects<BEFExecutor, RegisterInfo, PrimitiveInfo> {
 public:
-  BEFExecutor(BEFFileImpl *file, Runtime &runtime, BEFFunctionDecoder &decoder)
+  BEFExecutor(BEFFileImpl *file, Runtime &runtime, BEFInvokableDecoder &decoder)
       : befFile(copyRCRef(file)), runtime(runtime),
         numRegisters(decoder.numRegisters),
         numPrimitives(decoder.numPrimitives) {}
@@ -228,10 +228,10 @@ public:
 
   /// Decode the register info and primitive info tables.  This returns true on
   /// failure.
-  bool decodeTables(BEFFunctionDecoder &decoder);
+  bool decodeTables(BEFInvokableDecoder &decoder);
 
-  /// Execute the function once the tables are decoded.
-  void execute(const BEFFunction &fn,
+  /// Execute the invokable once the tables are decoded.
+  void execute(const BEFInvokable &invokable,
                MutableArrayRef<RCRef<AsyncValue>> arguments,
                MutableArrayRef<RCRef<AsyncValue>> results,
                ArrayRef<unsigned> resultRegIndex);
@@ -259,7 +259,7 @@ public:
   }
 
 private:
-  /// Set up registers for input arguments to a function.
+  /// Set up registers for input arguments to a invokable.
   void processArgumentsPseudo(SmallVectorImpl<uint32_t> &primitiveIDWorklist,
                               MutableArrayRef<RCRef<AsyncValue>> arguments);
 
@@ -281,21 +281,21 @@ private:
 
   const unsigned numRegisters, numPrimitives;
 
-  // All of the primitive entry records for this function.
+  // All of the primitive entry records for this invokable.
   ArrayRef<uint32_t> funcBody;
 };
 } // end anonymous namespace
 
 /// Decode the register info and primitive info tables.  This returns true on
 /// failure.
-bool BEFExecutor::decodeTables(BEFFunctionDecoder &decoder) {
-  auto &funcReader = decoder.funcReader;
+bool BEFExecutor::decodeTables(BEFInvokableDecoder &decoder) {
+  auto &bodyReader = decoder.bodyReader;
 
   // Parse the register table.
   MutableArrayRef<RegisterInfo> regTable = getRegisterInfoTable();
   for (size_t i = 0, e = regTable.size(); i != e; ++i) {
     size_t numUses;
-    if (funcReader.parseVBR(numUses))
+    if (bodyReader.parseVBR(numUses))
       return true;
     new (&regTable[i]) RegisterInfo(numUses);
   }
@@ -304,35 +304,35 @@ bool BEFExecutor::decodeTables(BEFFunctionDecoder &decoder) {
   MutableArrayRef<PrimitiveInfo> primTable = getPrimitiveInfoTable();
   for (size_t i = 0; i != primTable.size(); ++i) {
     size_t offset, numOperandsBeforeExecuting;
-    if (funcReader.parseVBR(offset) ||
-        funcReader.parseVBR(numOperandsBeforeExecuting))
+    if (bodyReader.parseVBR(offset) ||
+        bodyReader.parseVBR(numOperandsBeforeExecuting))
       return true;
     new (&primTable[i]) PrimitiveInfo(offset, numOperandsBeforeExecuting);
   }
 
   // Parse the ResultRegs
-  auto numResults = decoder.fn.getNumResults();
+  auto numResults = decoder.inv.getNumResults();
   decoder.resultRegs.reserve(numResults);
   for (size_t i = 0; i != numResults; ++i) {
     size_t registerIndex;
-    if (funcReader.parseVBR(registerIndex))
+    if (bodyReader.parseVBR(registerIndex))
       return true;
     if (registerIndex >= regTable.size())
-      return funcReader.emitError("invalid result register #");
+      return bodyReader.emitError("invalid result register #");
     decoder.resultRegs.push_back(registerIndex);
   }
 
-  // Align to where the function body is.
-  if (funcReader.alignTo(BEF::PRIMITIVE_ENTRY_ALIGNMENT))
+  // Align to where the invokable body is.
+  if (bodyReader.alignTo(BEF::PRIMITIVE_ENTRY_ALIGNMENT))
     return true;
 
-  funcBody = llvm::makeArrayRef((const uint32_t *)funcReader.data(),
-                                funcReader.getContents().size() / 4);
+  funcBody = llvm::makeArrayRef((const uint32_t *)bodyReader.data(),
+                                bodyReader.getContents().size() / 4);
   return false;
 }
 
- /// Execute the function once the tables are decoded.
-void BEFExecutor::execute(const BEFFunction &fn,
+/// Execute the invokable once the tables are decoded.
+void BEFExecutor::execute(const BEFInvokable &invokable,
                           MutableArrayRef<RCRef<AsyncValue>> arguments,
                           MutableArrayRef<RCRef<AsyncValue>> results,
                           ArrayRef<unsigned> resultRegIndex) {
@@ -366,7 +366,7 @@ void BEFExecutor::execute(const BEFFunction &fn,
   // Burn through the worklist of primitives to execute.
   decrementOperandsNotReadyCounts(primitiveIDToVisit);
 
-  // Populate the function result AsyncValues.
+  // Populate the invokable result AsyncValues.
   //
   // The primitives may have resolved some of the register values (e.g. if you
   // return an argument register) but typically they are not yet available.
@@ -385,17 +385,17 @@ void BEFExecutor::execute(const BEFFunction &fn,
 }
 
 namespace {
-/// This struct holds the data decoded for a primitive in a BEF function.
+/// This struct holds the data decoded for a primitive in an invokable.
 struct PrimitiveDecoder {
   const uint32_t *dataPtr;
 
   uint32_t opcode, locOffset;
   uint16_t numOperands, numAttrs;
-  uint16_t numFunctions, numResults;
+  uint16_t numInvokables, numResults;
   ArrayRef<uint32_t> perResultUsersCount;
   ArrayRef<uint32_t> operandIndices;
   ArrayRef<uint32_t> attrOffsets;
-  ArrayRef<uint32_t> functionIndices;
+  ArrayRef<uint32_t> invokableRefIndices;
   uint32_t firstResultRegNumber;
 
   explicit PrimitiveDecoder(const uint32_t *dataPtr) {
@@ -405,9 +405,9 @@ struct PrimitiveDecoder {
     uint32_t numOperandsAndAttrs = *dataPtr++;
     numOperands = uint16_t(numOperandsAndAttrs);
     numAttrs = uint16_t(numOperandsAndAttrs >> 16);
-    uint32_t numFunctionsAndResults = *dataPtr++;
-    numFunctions = uint16_t(numFunctionsAndResults);
-    numResults = uint16_t(numFunctionsAndResults >> 16);
+    uint32_t numInvokablesAndResults = *dataPtr++;
+    numInvokables = uint16_t(numInvokablesAndResults);
+    numResults = uint16_t(numInvokablesAndResults >> 16);
 
     // Decode the variable size fields.
     perResultUsersCount = llvm::makeArrayRef(dataPtr, numResults);
@@ -416,8 +416,8 @@ struct PrimitiveDecoder {
     dataPtr += numOperands;
     attrOffsets = llvm::makeArrayRef(dataPtr, numAttrs);
     dataPtr += numAttrs;
-    functionIndices = llvm::makeArrayRef(dataPtr, numFunctions);
-    dataPtr += numFunctions;
+    invokableRefIndices = llvm::makeArrayRef(dataPtr, numInvokables);
+    dataPtr += numInvokables;
     if (numResults)
       firstResultRegNumber = *dataPtr++;
     else
@@ -433,7 +433,7 @@ struct PrimitiveDecoder {
 };
 } // end anonymous namespace
 
-/// Set up registers for input arguments to a function.
+/// Set up registers for input arguments to an invokable.
 void BEFExecutor::processArgumentsPseudo(
     SmallVectorImpl<uint32_t> &primitiveIDWorklist,
     MutableArrayRef<RCRef<AsyncValue>> arguments) {
@@ -445,7 +445,7 @@ void BEFExecutor::processArgumentsPseudo(
   // block.
   PrimitiveDecoder decoder(&funcBody[0]);
   assert(decoder.numOperands == 0 && decoder.numAttrs == 0 &&
-         decoder.numFunctions == 0 && decoder.numResults == arguments.size() &&
+         decoder.numInvokables == 0 && decoder.numResults == arguments.size() &&
          "malformed argument record");
 
   MutableArrayRef<RegisterInfo> registers = getRegisterInfoTable();
@@ -495,8 +495,8 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
     PrimitiveDecoder decoder(&funcBody[primitives[primitiveID].offset]);
 
     // Find the implementation of this primitive.
-    auto fnImpl = befFile->primitives[decoder.opcode];
-    assert(fnImpl != nullptr);
+    auto invokableImpl = befFile->primitives[decoder.opcode];
+    assert(invokableImpl != nullptr);
 
     // Keep track of whether we saw any error arguments. If so, we propagate the
     // error to the results automatically.  We initialize with the runtime's
@@ -530,16 +530,16 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
     // Set up attributes, the frame object takes the offsets directly.
     frame.setAttrs(decoder.attrOffsets);
 
-    // Set up functions.
-    for (size_t fnID : decoder.functionIndices)
-      frame.addFunction(befFile->getFunctionByID(fnID));
+    // Set up invokables.
+    for (size_t invokableID : decoder.invokableRefIndices)
+      frame.addInvokable(befFile->getInvokableByID(invokableID));
 
-    // If all arguments are good then run the function.
+    // If all arguments are good then run the invokable.
     if (!anyErrorArgument) {
       // Set the location for the primitive so they can report errors.
       (void)decoder.locOffset;
       // Run it.
-      fnImpl(frame);
+      invokableImpl(frame);
     } else {
       // Otherwise, automatically propagate errors to the result values.
       for (size_t i = 0; i != decoder.numResults; ++i)
@@ -582,7 +582,7 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
 /// kernels) then we want to add users to the worklist.  If not, we have to do
 /// `andThen` logic to process them when they become available.
 ///
-/// This function also adjusts the reference count of `result` and `registerVal`
+/// This method also adjusts the reference count of `result` and `registerVal`
 /// to prepare for the users, who will each drop a reference as they go.  This
 /// count of users is specified by `totalUserRefCount`.  It may be larger than
 /// `users.size()` because the later doesn't account for bef.output.
@@ -645,29 +645,29 @@ void BEFExecutor::processUsedByRecords(
 }
 
 //===----------------------------------------------------------------------===//
-// BEFFunction
+// BEFInvokable
 //===----------------------------------------------------------------------===//
 
-/// Add a new reference to this object.  The lifetime of BEF functions are
+/// Add a new reference to this object.  The lifetime of BEFInvokables are
 /// completely tied to BEFFileImpl, so just extend its reference count.
-void BEFFunction::addRef() const { RCRef<BEFFileImpl>::lowLevelAddRef(owner); }
+void BEFInvokable::addRef() const { RCRef<BEFFileImpl>::lowLevelAddRef(owner); }
 
 /// Drop a reference to this object, potentially deallocating it.
-void BEFFunction::dropRef() const {
+void BEFInvokable::dropRef() const {
   RCRef<BEFFileImpl>::lowLevelDropRef(owner);
 }
 
-/// Execute this function, passing the specified arguments. This returns one
-/// AsyncValue for each result.
-void BEFFunction::execute(MutableArrayRef<RCRef<AsyncValue>> arguments,
+/// Invoke this, passing the specified arguments. This returns one AsyncValue
+/// for each result.
+void BEFInvokable::invoke(MutableArrayRef<RCRef<AsyncValue>> arguments,
                           MutableArrayRef<RCRef<AsyncValue>> results,
                           Runtime &runtime) const {
   assert(arguments.size() == getNumArgs() &&
-         "incorrect number of argument to a BEF function");
+         "incorrect number of argument to an invokable");
   assert(results.size() == getNumResults() &&
-         "incorrect number of results for a BEF function");
+         "incorrect number of results for an invokable");
 
-  BEFFunctionDecoder decoder(*this);
+  BEFInvokableDecoder decoder(*this);
   bool headerParseFailure = decoder.decodeHeader();
 
   // We allocate a single slab of memory for the BEFExecutor object itself,
@@ -697,9 +697,9 @@ void BEFFunction::execute(MutableArrayRef<RCRef<AsyncValue>> arguments,
   // The RCRef drops the reference to `executor` since it is running.
 }
 
-/// Return the function with the specified BEF function ID.
-const Function *BEFFileImpl::getFunctionByID(size_t number) const {
-  assert(number < numFunctions && "invalid function");
-  // Functions are stored consequtively in memory.
-  return functions + number;
+/// Return the invokable with the specified Invokable ID.
+const Invokable *BEFFileImpl::getInvokableByID(size_t number) const {
+  assert(number < numInvokables && "invalid invokable");
+  // invokables are stored consequtively in memory.
+  return invokables + number;
 }

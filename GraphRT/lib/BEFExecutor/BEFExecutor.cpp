@@ -9,17 +9,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphRT/BEFExecutor/Function.h"
+#include "GraphRT/BEFExecutor/Invokable.h"
 #include "GraphRT/BEFExecutor/PrimitiveFrame.h"
 using namespace M;
 
 //===----------------------------------------------------------------------===//
-// Function implementation
+// Invokable implementation
 //===----------------------------------------------------------------------===//
 
 // NOTE: This could be moved out to somewhere non-BEF specific if there are
-// other kinds of functions someday.
-void Function::vtableAnchor() {}
+// other kinds of invokables someday.
+void Invokable::vtableAnchor() {}
 
 //===----------------------------------------------------------------------===//
 // PrimitiveFrame implementation

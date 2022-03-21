@@ -636,10 +636,10 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
 
   /// If this takes a `const Function *`, then pass it down.
   template <typename Dummy>
-  struct Value<const Function *, Dummy> : public FunctionValue {
+  struct Value<const Invokable *, Dummy> : public FunctionValue {
     template <typename IndicesT>
-    static const Function *process(PrimitiveFrame &frame) {
-      return frame.getFunction(IndicesT::funcIdx);
+    static const Invokable *process(PrimitiveFrame &frame) {
+      return frame.getInvokable(IndicesT::funcIdx);
     }
   };
 
@@ -700,7 +700,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
     assert(
         (IndicesT::attrIdx == frame.getNumAttrs() || IndicesT::attrIdx == -1) &&
         "Extra attributes passed to primitive");
-    assert((IndicesT::funcIdx == frame.getNumFunctions() ||
+    assert((IndicesT::funcIdx == frame.getNumInvokables() ||
             IndicesT::funcIdx == -1) &&
            "Extra functions passed to primitive");
     invoke<Return>(frame, std::forward<ArgsT>(args)...);

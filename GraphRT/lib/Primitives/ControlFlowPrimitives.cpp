@@ -10,7 +10,7 @@
 
 #include "GraphRT/Primitives.h"
 
-#include "GraphRT/BEFExecutor/Function.h"
+#include "GraphRT/BEFExecutor/Invokable.h"
 #include "GraphRT/BEFExecutor/PrimitiveFrame.h"
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
 #include "LLCL/ForwardDecls.h"
@@ -23,39 +23,39 @@ static AsyncValueRef<Chain> chain_new(Runtime &runtime) {
 }
 
 static void call(RemainingArguments arguments, RemainingResults results,
-                 const Function *callee, Runtime &runtime) {
+                 const Invokable *callee, Runtime &runtime) {
   assert(callee->getNumArgs() == arguments.size() && "argument count mismatch");
   assert(callee->getNumResults() == results.size() && "result count mismatch");
-  callee->execute(arguments.get(), results.get(), runtime);
+  callee->invoke(arguments.get(), results.get(), runtime);
 }
 
 //===----------------------------------------------------------------------===//
 // grt.if
 //===----------------------------------------------------------------------===//
 
-/// This primtive dispatches to a 'true' or 'false' function based on a
+/// This primtive dispatches to a 'true' or 'false' invokable based on a
 /// condition.
 ///
 /// Arguments: The first argument is the condition, with type i1/bool, and any
-/// additional arguments are passed to the selected function.
+/// additional arguments are passed to the selected invokable.
 ///
-/// trueFn/FalseFn:  The functions must have matching signatures, and their
+/// trueInv/FalseInv:  The invokables must have matching signatures, and their
 /// signatures must match grt.if's signature, exempting the extra i1 for the
 /// condition.
 static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
-                   RemainingResults results, const Function *trueFn,
-                   const Function *falseFn, Runtime &runtime) {
-  assert(trueFn->getNumArgs() == args.size() && "argument count mismatch");
-  assert(trueFn->getNumResults() == results.size() && "result count mismatch");
-  assert(trueFn->getNumArgs() == falseFn->getNumArgs() &&
-         trueFn->getNumResults() == falseFn->getNumResults() &&
-         "true and false function types need to line up");
+                   RemainingResults results, const Invokable *trueInv,
+                   const Invokable *falseInv, Runtime &runtime) {
+  assert(trueInv->getNumArgs() == args.size() && "argument count mismatch");
+  assert(trueInv->getNumResults() == results.size() && "result count mismatch");
+  assert(trueInv->getNumArgs() == falseInv->getNumArgs() &&
+         trueInv->getNumResults() == falseInv->getNumResults() &&
+         "true and false invokable types need to line up");
 
   // If the condition is already resolved and non-error, then avoid some
   // overhead.
   if (cond->isValueAvailable()) {
-    const Function *bodyFn = cond.get() ? trueFn : falseFn;
-    bodyFn->execute(args.get(), results.get(), runtime);
+    const Invokable *bodyInv = cond.get() ? trueInv : falseInv;
+    bodyInv->invoke(args.get(), results.get(), runtime);
     return;
   }
 
@@ -63,7 +63,7 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
   results.allocateIndirectResults();
 
   struct IfState {
-    RCRef<const Function> trueFn, falseFn;
+    RCRef<const Invokable> trueInv, falseInv;
     SmallVector<RCRef<AsyncValue>> operands;
     SmallVector<RCRef<AsyncValue>> results;
 
@@ -79,11 +79,11 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
         return;
       }
 
-      // Otherwise, execute the correct function based on the cond.
-      const Function *bodyFn = (cond.get() ? trueFn : falseFn).getPointer();
+      // Otherwise, execute the correct invokable based on the cond.
+      const Invokable *bodyInv = (cond.get() ? trueInv : falseInv).getPointer();
       SmallVector<RCRef<AsyncValue>> bodyResults;
       bodyResults.resize(results.size());
-      bodyFn->execute(operands, bodyResults, cond->getRuntime());
+      bodyInv->invoke(operands, bodyResults, cond->getRuntime());
 
       // We complete by passing the final result values to the output of the
       // repeat loop overall.
@@ -92,7 +92,7 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
     }
   };
 
-  IfState state = {copyRCRef(trueFn), copyRCRef(falseFn), {}, {}};
+  IfState state = {copyRCRef(trueInv), copyRCRef(falseInv), {}, {}};
 
   state.operands.reserve(args.size());
   for (auto &arg : args.get())
@@ -113,15 +113,15 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
 //===----------------------------------------------------------------------===//
 
 /// "Repeat N times" loop.  This takes a single int32_T iteration count, plus
-/// arguments that are passed to the bodyFn and eventually returned.
+/// arguments that are passed to the body and eventually returned.
 ///
 /// This takes the count as an AsyncValue because this is a nonstrict primitive,
 /// and the count may not be available yet.
 static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
-                       RemainingResults results, const Function *bodyFn,
+                       RemainingResults results, const Invokable *body,
                        Runtime &runtime) {
-  assert(args.size() == results.size() && args.size() == bodyFn->getNumArgs() &&
-         results.size() == bodyFn->getNumResults());
+  assert(args.size() == results.size() && args.size() == body->getNumArgs() &&
+         results.size() == body->getNumResults());
 
   // Define results as IndirectAsync values.  The actual results are set in the
   // last iteration of the loop.
@@ -130,7 +130,7 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
   /// Capture and add-ref each argument and result AsyncValue into a state we
   /// can manage.
   struct RepeatState {
-    RCRef<const Function> function;
+    RCRef<const Invokable> invokable;
     SmallVector<RCRef<AsyncValue>> operands;
     SmallVector<RCRef<AsyncValue>> repeatResults;
 
@@ -156,7 +156,7 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
       // cancellation quash computation faster.
       for (int32_t i = 0, e = count.get(); i != e; ++i) {
         bodyResults.resize(repeatResults.size());
-        function->execute(operands, bodyResults, count->getRuntime());
+        invokable->invoke(operands, bodyResults, count->getRuntime());
         // bodyResults become the operands of the next iteration.
         operands = std::move(bodyResults);
         bodyResults.clear();
@@ -169,7 +169,7 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
     }
   };
 
-  RepeatState state = {copyRCRef(bodyFn), {}, {}};
+  RepeatState state = {copyRCRef(body), {}, {}};
 
   state.operands.reserve(args.size());
   for (auto &arg : args.get())

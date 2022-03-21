@@ -32,7 +32,7 @@ namespace {
 /// This class decodes the key sections of the specified BEF file, capturing
 /// some of their ranges into BEFFileImpl and completely decoding others.
 ///
-/// The convention here is that these functions return false on success and
+/// The convention here is that these methods return false on success and
 /// returns true and fill in `errorMessage` on failure.
 class BEFFileReader : public BEFReader {
 public:
@@ -54,13 +54,13 @@ private:
 
   /// Decode the primitive names section.
   bool readPrimitiveNamesSection(BEFReader &stringReader);
-  /// Decode the function index section.
-  bool readFunctionIndexSection(BEFReader &stringReader);
+  /// Decode the invokable index section.
+  bool readInvokableIndexSection(BEFReader &stringReader);
 
   /// This is filled in if an error occurs.
   Optional<Error> error;
 
-  ArrayRef<uint8_t> primitiveNames, functionIndex;
+  ArrayRef<uint8_t> primitiveNames, invokableIndex;
 
   /// This is a reference to the (primitive name -> impl) mapping table.
   const PrimitiveRegistry &primitives;
@@ -88,7 +88,7 @@ bool BEFFileReader::readFileContents() {
   // Now that we've figured out the contents of the sections, resolve the
   // things we parse ahead of time.
   return readPrimitiveNamesSection(stringReader) ||
-         readFunctionIndexSection(stringReader);
+         readInvokableIndexSection(stringReader);
 }
 
 /// Decode the primitive names section.
@@ -120,52 +120,52 @@ bool BEFFileReader::readPrimitiveNamesSection(BEFReader &stringReader) {
   return false;
 }
 
-/// Decode the function index section.
-bool BEFFileReader::readFunctionIndexSection(BEFReader &stringReader) {
-  setContents(functionIndex);
+/// Decode the invokable index section.
+bool BEFFileReader::readInvokableIndexSection(BEFReader &stringReader) {
+  setContents(invokableIndex);
 
-  size_t numFunctions;
-  if (parseVBR(numFunctions))
+  size_t numInvokables;
+  if (parseVBR(numInvokables))
     return true;
 
-  auto *fnMemory = (BEFFunction *)malloc(numFunctions * sizeof(BEFFunction));
+  auto *fnMemory = (BEFInvokable *)malloc(numInvokables * sizeof(BEFInvokable));
 
-  // Read until we run out of function descriptors.
+  // Read until we run out of invokable descriptors.
   size_t fnNumber = 0;
-  auto reportIncorrectFunctionCount = [&]() -> bool {
-    // Destroy the partially constructed functions array.
+  auto reportIncorrectInvokableCount = [&]() -> bool {
+    // Destroy the partially constructed invokables array.
     while (fnNumber)
-      fnMemory[--fnNumber].~BEFFunction();
+      fnMemory[--fnNumber].~BEFInvokable();
     free(fnMemory);
-    return emitError("function count is incorrect");
+    return emitError("invokable count is incorrect");
   };
 
   while (!empty()) {
-    if (fnNumber > numFunctions)
-      return reportIncorrectFunctionCount();
+    if (fnNumber > numInvokables)
+      return reportIncorrectInvokableCount();
 
-    size_t functionOffset, nameOffset, locOffset, numArgs, numResults;
+    size_t bodyOffset, nameOffset, locOffset, numArgs, numResults;
     StringRef name;
-    if (parseVBR(functionOffset) || parseVBR(nameOffset) ||
-        parseVBR(locOffset) || parseVBR(numArgs) || parseVBR(numResults) ||
+    if (parseVBR(bodyOffset) || parseVBR(nameOffset) || parseVBR(locOffset) ||
+        parseVBR(numArgs) || parseVBR(numResults) ||
         stringReader.parseNULTerminatedStringAt(nameOffset, name))
       return true;
 
-    /// Remember this function in the symbol table if it isn't anonymous.
+    /// Remember this invokable in the symbol table if it isn't anonymous.
     if (!name.empty())
-      befFile.functionSymbolTable[name] = fnNumber;
+      befFile.invokableSymbolTable[name] = fnNumber;
 
-    /// Create the actual BEFFunction.
-    new (&fnMemory[fnNumber++]) BEFFunction(
-        name, numArgs, numResults, functionOffset, locOffset, &befFile);
+    /// Create the actual BEFInvokable.
+    new (&fnMemory[fnNumber++]) BEFInvokable(name, numArgs, numResults,
+                                             bodyOffset, locOffset, &befFile);
   }
 
-  // Check that the correct number of functions was actually present.
-  if (fnNumber != numFunctions)
-    return reportIncorrectFunctionCount();
+  // Check that the correct number of invokables was actually present.
+  if (fnNumber != numInvokables)
+    return reportIncorrectInvokableCount();
   // Otherwise, we succeeded!
-  befFile.functions = fnMemory;
-  befFile.numFunctions = numFunctions;
+  befFile.invokables = fnMemory;
+  befFile.numInvokables = numInvokables;
   return false;
 }
 
@@ -178,7 +178,7 @@ bool BEFFileReader::readNextSection() {
     return emitError("BEF file section header corrupted");
 
   // Remember the sections we care about either in BEFFileInfo (if they get
-  // decoded lazily by the function executor) or in BEFFileReader (if they're
+  // decoded lazily by the invokable executor) or in BEFFileReader (if they're
   // decoded eagerly at file load time).  Ignore sections we don't care about.
   switch (static_cast<BEF::SectionID>(sectionID)) {
   default: // Ignore unknown section.
@@ -217,7 +217,7 @@ bool BEFFileReader::readNextSection() {
     return false;
 
   case BEF::SectionID::INVOKABLES_INDEX:
-    functionIndex = sectionContents;
+    invokableIndex = sectionContents;
     return false;
   }
 }
@@ -226,27 +226,27 @@ bool BEFFileReader::readNextSection() {
 // BEFFileImpl
 //===----------------------------------------------------------------------===//
 
-BEFFileImpl::~BEFFileImpl() { free((void *)functions); }
+BEFFileImpl::~BEFFileImpl() { free((void *)invokables); }
 
-/// Get a list of functions out of the BEF file.
-std::vector<const Function *> BEFFile::getAllFunctions() const {
+/// Get a list of invokables out of the BEF file.
+std::vector<const Invokable *> BEFFile::getAllInvokables() const {
   auto befFile = static_cast<const BEFFileImpl *>(this);
 
-  // All of the result functions are stored in a dense array, but we want to
+  // All of the result invokables are stored in a dense array, but we want to
   // project them as individual objects.
-  std::vector<const Function *> result;
-  result.reserve(befFile->numFunctions);
-  for (size_t i = 0, e = befFile->numFunctions; i != e; ++i)
-    result.push_back(befFile->functions + i);
+  std::vector<const Invokable *> result;
+  result.reserve(befFile->numInvokables);
+  for (size_t i = 0, e = befFile->numInvokables; i != e; ++i)
+    result.push_back(befFile->invokables + i);
   return result;
 }
 
-/// Find a Function with the specified name, returning null if it isn't found.
-const Function *BEFFile::getFunction(StringRef name) const {
+/// Find an invokable with the specified name, returning null if it isn't found.
+const Invokable *BEFFile::getInvokable(StringRef name) const {
   auto befFile = static_cast<const BEFFileImpl *>(this);
-  auto it = befFile->functionSymbolTable.find(name);
-  return it != befFile->functionSymbolTable.end()
-             ? &befFile->functions[it->second]
+  auto it = befFile->invokableSymbolTable.find(name);
+  return it != befFile->invokableSymbolTable.end()
+             ? &befFile->invokables[it->second]
              : nullptr;
 }
 

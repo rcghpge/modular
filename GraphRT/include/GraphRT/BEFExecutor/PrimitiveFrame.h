@@ -14,7 +14,7 @@
 #include "llvm/ADT/SmallVector.h"
 
 namespace M {
-class Function;
+class Invokable;
 
 /// This class captures the states associated with an invocation of a primitive,
 /// including the input arguments, attributes, result values, location and
@@ -75,14 +75,14 @@ public:
   }
 
   //===--------------------------------------------------------------------===//
-  // Functions
+  // Invokables
   //===--------------------------------------------------------------------===//
 
-  size_t getNumFunctions() const { return functions.size(); }
+  size_t getNumInvokables() const { return invokables.size(); }
 
-  const Function *getFunction(size_t idx) const {
-    assert(idx < functions.size() && "invalid function number");
-    return functions[idx];
+  const Invokable *getInvokable(size_t idx) const {
+    assert(idx < invokables.size() && "invalid invokable number");
+    return invokables[idx];
   }
 
   //===--------------------------------------------------------------------===//
@@ -144,8 +144,8 @@ protected:
   /// one less vector to overflow.
   SmallVector<RCRef<AsyncValue>, 16> argsAndResults;
 
-  /// This is all of the function references used by the invocation.
-  SmallVector<const Function *, 2> functions;
+  /// This is all of the invokable references used by the invocation.
+  SmallVector<const Invokable *, 2> invokables;
 
   /// This keeps track of each attribute value into the attributeSection.
   ArrayRef<uint32_t> attrOffsets;
@@ -171,7 +171,7 @@ public:
     numArguments = 0;
     numResults = uint16_t(~0U);
     attrOffsets = {};
-    functions.clear();
+    invokables.clear();
   }
 
   /// Reserve space in the arg/result vector to reduce allocations.
@@ -210,7 +210,7 @@ public:
     this->attrOffsets = attrOffsets;
   }
 
-  void addFunction(const Function *fn) { functions.push_back(fn); }
+  void addInvokable(const Invokable *inv) { invokables.push_back(inv); }
 };
 
 } // namespace M
