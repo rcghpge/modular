@@ -36,8 +36,8 @@ bef.invokable @fib(%arg: i32) -> i32 {
     %min_one = grt.constant.i32 -1
     %n_min_one = grt.add.i32 %arg, %min_one
     %n_min_two = grt.add.i32 %n_min_one, %min_one
-    %fib_n_min_one = grt.call @fib(%n_min_one) : (i32) -> (i32)
-    %fib_n_min_two = grt.call @fib(%n_min_two) : (i32) -> (i32)
+    %fib_n_min_one = grt.invoke @fib(%n_min_one) : (i32) -> (i32)
+    %fib_n_min_two = grt.invoke @fib(%n_min_two) : (i32) -> (i32)
     %sum = grt.add.i32 %fib_n_min_one, %fib_n_min_two
     bef.output %sum : i32
   }
@@ -54,7 +54,7 @@ actual computation.
 This example is using the ["grt" dialect](../include/GraphRT/GRTDialect/), which
 is just one of many MLIR dialects that provide GraphRT primitives.  In the case
 of the `grt` dialect, this includes simple integer and control flow operations
-like `grt.if` and `grt.call`.
+like `grt.if` and `grt.invoke`.
 
 GraphRT benefits from MLIR's ability to compose and intermix dialects together.
 In this case, it allows primitives from "grt" to intermix with the runtime APIs
@@ -99,7 +99,7 @@ itself: it is fully dynamically typed, taking and passing around `AsyncValue`s
 to primitives.  Each `AsyncValue` carries around a lightweight C++ type
 descriptor (queryable with `->isType<T>()`), which allows the primitives to
 be completely dynamically typed if they want.  For example, you don't want a
-different "call" primitive for each signature you want to support. 
+different "invoke" primitive for each signature you want to support. 
 
 On the other hand, many primitives do have static types they work with, e.g.
 `grt.add.i32` takes and returns `int32_t` values.  We do all type checking at
@@ -258,7 +258,7 @@ As a concrete example, consider an invocable invocation:
 bef.invokable @dataflow_example(%a: i32, %b: i32) -> i32 {
   %a2 = grt.add.i32 %a, %a
   %b2 = "some long latency operation"(%b) : (i32) -> i32
-  %result = grt.call @other_invokable(%a2, %b2) : (i32, i32) -> i32
+  %result = grt.invoke @other_invokable(%a2, %b2) : (i32, i32) -> i32
   bef.output %a2b2 : i32
 }
 ```
@@ -275,10 +275,10 @@ the other argument to it.  We'd really like to kick off that logic as soon as we
 can, to make sure we keep the CPU thread pool and accelerators as loaded up as
 we can.
 
-For this reason, we don't want `grt.call` to be a strict primitive that waits
+For this reason, we don't want `grt.invoke` to be a strict primitive that waits
 for both arguments to become available before dispatching the async call to
 `@other_invokable`.  Instead, we want to start the execution as soon as *either*
-argument is available.  As such, we mark `grt.call` as a non-strict primitive.
+argument is available.  As such, we mark `grt.invoke` as a non-strict primitive.
 
 Non-strict primitives are generally useful for control flow operations (e.g.
 `grt.if` can start execution of its body as soon as the condition resolves (it

@@ -128,24 +128,24 @@ static AsyncValueRef<int32_t> test_noop(AsyncValueRef<int32_t> input) {
 ## Variadic operands/results, invokables, and magic references
 
 In some cases you may want to capture "all the rest" of the operands or results
-in an operation.  For example, consider the `grt.call` operation, which is
+in an operation.  For example, consider the `grt.invoke` operation, which is
 used like this in a .mlir file:
 
 ```mlir
-   %y = grt.call @some_thing(%false, %a, %b) : (i1, i32, i32) -> (i32)
+   %y = grt.invoke @some_thing(%false, %a, %b) : (i1, i32, i32) -> (i32)
 
-   %a, %b = grt.call @other_thing(%c1) : (i32) -> (f32, i1)
+   %a, %b = grt.invoke @other_thing(%c1) : (i32) -> (f32, i1)
 ```
 
 You can implement this using the `RemainingArguments` and `RemainingResults`
 classes, which capture all of them as an `ArrayRef` of `AsyncValue`'s.  For
-example, the fully variadic `grt.call` operation is defined like this:
+example, the fully variadic `grt.invoke` operation is defined like this:
 
 ```C++
 static void invoke(RemainingArguments arguments, RemainingResults results,
                    const Invokable *target, Runtime &runtime) {
-  assert(callee->getNumArgs() == arguments.size() && "argument count mismatch");
-  assert(callee->getNumResults() == results.size() && "result count mismatch");
+  assert(target->getNumArgs() == arguments.size() && "argument count mismatch");
+  assert(target->getNumResults() == results.size() && "result count mismatch");
   target->invoke(arguments.get(), results.get(), runtime);
 }
 ```
@@ -446,7 +446,7 @@ primitive.
 
 The defining feature of a GraphRT "non-strict" primitive is that it is invoked
 when *any* argument (SSA value) becomes ready, instead of when *all* arguments
-become available.  Consider the `grt.call` operation for example, which invokes
+become available.  Consider the `grt.invoke` operation for example, which invokes
 a invokable passing a bunch of arguments:
 
 ```mlir
@@ -460,23 +460,23 @@ bef.invokable @example() {
   %a_val = "some_unpredictable_length_op"() : () -> i32
   %b_val = "other_unpredictable_length_op"() : () -> i32
 
-  %res_0, %res_1 = grt.call @process(%a_val, %b_val) : (i32, i32) -> (i32, i32)
+  %res_0, %res_1 = grt.invoke @process(%a_val, %b_val) : (i32, i32) -> (i32, i32)
   ...
 }
 ```
 
 Notice the structure of this program: the `@process` invokable takes two
 arguments, but has two different computation patterns depending on each of them.
-The `grt.call` operation is defined as non-strict, which allows it to kick off
+The `grt.invoke` operation is defined as non-strict, which allows it to kick off
 execution of its body as soon as *either* `%a_val` or `%b_val` are ready,
 allowing the expensive compute to start as soon as possible.
 
-This is really important for control flow-like operations (e.g. `grt.call`,
+This is really important for control flow-like operations (e.g. `grt.invoke`,
 `grt.if`, etc) because they can end up taking lots of operands, those operands
 can all have different computational chains that produce them, and we don't want
 to block execution of the body for all of them to be available.  Doing so would
 destroy composability of these control flow operators - e.g. not inlining a
-grt.call could have devastating and unpredictable performance effects.
+grt.invoke could have devastating and unpredictable performance effects.
 
 ## Implementing a non-strict primitive
 
@@ -530,7 +530,7 @@ operation).  You then adopt the `NonStrictOp` trait.
 For example:
 
 ```tablegen
-def CallOp : GRTOp<"call", [NonStrictOp, ...]> {
+def InvokeOp : GRTOp<"invoke", [NonStrictOp, ...]> {
 def IfOp : GRTOp<"if", [NonStrictOp...]> {
 ```
 

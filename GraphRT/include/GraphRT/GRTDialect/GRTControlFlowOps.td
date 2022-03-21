@@ -23,17 +23,17 @@ def ChainNewOp : GRTOp<"chain.new"> {
 }
 
 //===----------------------------------------------------------------------===//
-// CallOp
+// InvokeOp
 //===----------------------------------------------------------------------===//
 
-def CallOp : GRTOp<"call", [DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+def InvokeOp : GRTOp<"invoke", [DeclareOpInterfaceMethods<SymbolUserOpInterface>,
                             NonStrictOp]> {
   let summary = "Invoke an invokable (non-strictly).";
     
-  let arguments = (ins FlatSymbolRefAttr:$callee, Variadic<AnyType>:$operands);
+  let arguments = (ins FlatSymbolRefAttr:$target, Variadic<AnyType>:$operands);
   let results = (outs Variadic<AnyType>:$results);
   let assemblyFormat = [{
-    $callee `(` $operands `)` attr-dict `:` functional-type(operands, results)
+    $target `(` $operands `)` attr-dict `:` functional-type(operands, results)
   }];
 }
 

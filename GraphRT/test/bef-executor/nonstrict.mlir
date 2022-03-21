@@ -16,7 +16,7 @@ bef.invokable @unused_nonstrict_arg() {
   %v3 = "test.async.add.i32"(%v2, %v2) : (i32, i32) -> i32
 
   // BEFExecutor will allocate an IndirectAsyncValue for %v3, but %v3 is unused.
-  %x = grt.call @return_first_arg(%c1, %v3) : (i32, i32) -> i32
+  %x = grt.invoke @return_first_arg(%c1, %v3) : (i32, i32) -> i32
 
   // At this point %v3 is unused, but has not yet been forwarded. Setting %v3
   // must count as a use, otherwise the executor would immediately destroy %v3.

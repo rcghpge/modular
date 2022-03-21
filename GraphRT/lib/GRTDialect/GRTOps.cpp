@@ -38,21 +38,21 @@ parseParenOperandList(OpAsmParser &parser, OperationState &result,
 }
 
 //===----------------------------------------------------------------------===//
-// CallOp
+// InvokeOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult CallOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
-  // Check that the callee attribute was specified.
+LogicalResult InvokeOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  // Check that the target attribute was specified.
   BEF::InvokableOp fn = symbolTable.lookupNearestSymbolFrom<BEF::InvokableOp>(
-      *this, calleeAttr());
+      *this, targetAttr());
   if (!fn)
-    return emitOpError() << "'" << calleeAttr()
+    return emitOpError() << "'" << targetAttr()
                          << "' does not reference a valid invokable";
 
-  // Verify that the operand and result types match the callee.
+  // Verify that the operand and result types match the target.
   auto fnType = fn.getType();
   if (fnType.getNumInputs() != getNumOperands())
-    return emitOpError("incorrect number of operands for callee");
+    return emitOpError("incorrect number of operands for target");
 
   for (unsigned i = 0, e = fnType.getNumInputs(); i != e; ++i)
     if (getOperand(i).getType() != fnType.getInput(i))
@@ -61,7 +61,7 @@ LogicalResult CallOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
              << getOperand(i).getType() << " for operand number " << i;
 
   if (fnType.getNumResults() != getNumResults())
-    return emitOpError("incorrect number of results for callee");
+    return emitOpError("incorrect number of results for target");
 
   for (unsigned i = 0, e = fnType.getNumResults(); i != e; ++i)
     if (getResult(i).getType() != fnType.getResult(i)) {

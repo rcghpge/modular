@@ -64,7 +64,7 @@ struct TypeTag {};
 /// after all other Arguments.
 //
 /// This should only be used when argument types have potentially heterogenous
-/// types, for example GRT::CallOp.
+/// types, for example GRT::InvokeOp.
 class RemainingArguments {
 public:
   explicit RemainingArguments(MutableArrayRef<RCRef<AsyncValue>> arguments)
@@ -177,7 +177,7 @@ private:
 /// Results.
 ///
 /// This should be used when a primitive has potentially heterogenous types, for
-/// example, GRT::CallOp.
+/// example, GRT::InvokeOp.
 class RemainingResults {
 public:
   explicit RemainingResults(MutableArrayRef<RCRef<AsyncValue>> results,
@@ -291,7 +291,7 @@ private:
 /// `PrimitiveFrame`.
 ///
 /// For example:
-///    ADD_PRIMITIVE(registery, "grt.call", grt_call_impl);
+///    ADD_PRIMITIVE(registery, "grt.invoke", grt_invoke_impl);
 ///
 #define ADD_PRIMITIVE(registry, name, ...)                                     \
   do {                                                                         \

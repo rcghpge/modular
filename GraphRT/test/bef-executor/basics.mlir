@@ -75,9 +75,9 @@ bef.invokable @errors() -> (i32, i32, i32) {
 bef.invokable @simple_calls() -> (i32, i32) {
   // CHECK: int32 = 42
   // CHECK: int32 = 84
-  grt.call @basic.i32() : () -> ()
+  grt.invoke @basic.i32() : () -> ()
 
-  %a, %b, %c = grt.call @errors() : () -> (i32, i32, i32)
+  %a, %b, %c = grt.invoke @errors() : () -> (i32, i32, i32)
 
   bef.output %a, %b : i32, i32
   // CHECK: 'simple_calls' returned <error: something bad happened>, 42
@@ -102,9 +102,9 @@ bef.invokable @caller() -> !grt.chain {
   %c1 = grt.constant.i32 1
 
   // CHECK-NEXT: int32 = 1
-  %ch0 = grt.call @call_print.i32(%c1) : (i32) -> (!grt.chain)
+  %ch0 = grt.invoke @call_print.i32(%c1) : (i32) -> (!grt.chain)
 
-  %x = grt.call @add_one(%c1) : (i32) -> i32
+  %x = grt.invoke @add_one(%c1) : (i32) -> i32
 
   // CHECK-NEXT: int32 = 2
   %ch1 = grt.print.i32 %x, %ch0

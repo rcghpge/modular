@@ -22,11 +22,11 @@ static AsyncValueRef<Chain> chain_new(Runtime &runtime) {
   return runtime.getReadyChain().copy();
 }
 
-static void call(RemainingArguments arguments, RemainingResults results,
-                 const Invokable *callee, Runtime &runtime) {
-  assert(callee->getNumArgs() == arguments.size() && "argument count mismatch");
-  assert(callee->getNumResults() == results.size() && "result count mismatch");
-  callee->invoke(arguments.get(), results.get(), runtime);
+static void invoke(RemainingArguments arguments, RemainingResults results,
+                   const Invokable *target, Runtime &runtime) {
+  assert(target->getNumArgs() == arguments.size() && "argument count mismatch");
+  assert(target->getNumResults() == results.size() && "result count mismatch");
+  target->invoke(arguments.get(), results.get(), runtime);
 }
 
 //===----------------------------------------------------------------------===//
@@ -192,7 +192,7 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
 /// This registers the 'graphrt' dialect primitives for control flow.
 void M::registerGraphRTControlFlowPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "grt.chain.new", chain_new);
-  ADD_PRIMITIVE(registry, "grt.call", call);
+  ADD_PRIMITIVE(registry, "grt.invoke", invoke);
   ADD_PRIMITIVE(registry, "grt.if", grt_if);
   ADD_PRIMITIVE(registry, "grt.repeat.i32", repeat_i32);
 }

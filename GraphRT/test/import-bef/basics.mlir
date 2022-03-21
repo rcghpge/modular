@@ -10,17 +10,17 @@
 
 // CHECK-LABEL: bef.invokable @trivial() {
 // CHECK-NEXT:    %0:2 = bef.opaque "simple.primitive" []() : () -> (!bef.unknown, !bef.unknown)
-// CHECK-NEXT:    bef.opaque "grt.call" [@trivial]() : () -> ()  
+// CHECK-NEXT:    bef.opaque "grt.invoke" [@trivial]() : () -> ()  
 // CHECK-NEXT:    bef.output
 // CHECK-NEXT:  }
 // MD-LABEL: bef.invokable @trivial() {
 // MD-NEXT:    %0:2 = "simple.primitive"() : () -> (i8, i16)
-// MD-NEXT:    "grt.call"() {callee = @trivial} : () -> ()
+// MD-NEXT:    "grt.invoke"() {target = @trivial} : () -> ()
 // MD-NEXT:    bef.output
 // MD-NEXT:  }
 bef.invokable @trivial() {
   %a, %b = "simple.primitive"() : () -> (i8, i16)
-  grt.call @trivial() : () -> ()
+  grt.invoke @trivial() : () -> ()
   bef.output
 }
 
