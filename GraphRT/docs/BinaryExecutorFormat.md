@@ -69,7 +69,7 @@ A BEF file is formed as a byte stream whose top-level structure is a list of
     pervasively in BEF files, offsets are very common.
 
 *   *Indexes* are VBRs that demarcate an entry in a table, e.g. a register
-    or primitives in a BEFFunction. These are typically used when indexing into
+    or primitives in an invokable. These are typically used when indexing into
     a table where the structure is expected to be decoded and held in memory by
     the reader, e.g. as is the case with the primitives and types tables.
 
@@ -122,8 +122,8 @@ SECTION_BODY_ALIGNMENT follows.
   SECTION_DATA ::= STRINGS_SECTION
   SECTION_DATA ::= ATTRIBUTES_SECTION
   SECTION_DATA ::= PRIMITIVES_SECTION
-  SECTION_DATA ::= BEF_FUNCTION_INDEX_SECTION
-  SECTION_DATA ::= BEF_FUNCTIONS_SECTION
+  SECTION_DATA ::= INVOKABLES_INDEX_SECTION
+  SECTION_DATA ::= INVOKABLES_BODIES_SECTION
   SECTION_DATA ::= LOCATION_FILENAMES_SECTION
   SECTION_DATA ::= LOCATIONS_SECTION
   SECTION_DATA ::= ATTRIBUTE_INDEX_MD_SECTION
@@ -175,13 +175,22 @@ BEF files only support a subset of MLIR attributes, currently including:
 *   i16/i32/i64 integers: stored as 2/4/8-byte little endian integers.
 *   f32 floats: stored as IEEE single precision floats.
 *   f64 floats: stored as IEEE double precision floats.
-*   type enums: stored as 1-byte integers.
 *   strings: stored as arrays of bytes, not necessarily NUL terminated.
 *   arrays: all elements of which are of the same type and fixed in width (eg.
     i32, f32, type).
 
-The kind is specified by a one-byte enum defined in 
-[`BEFEncoding.h`](../include/GraphRT/BEF/BEFEncoding.h).
+The encoding of an attribute has three pieces:
+
+1) For arrays and strings, the length of the object (in units) is encoded as a
+   reverse VBR byte sequence, allowing readers to understand how long the array
+   or string is.
+2) All attributes have a one-byte encoding of the "kind" of attribute it is,
+   which is described by the `AttributeKind` enum in
+   [`BEFEncoding.h`](../include/GraphRT/BEF/BEFEncoding.h).
+3) The value of the attribute is stored in little-endian byte order.
+
+Note that emission of the attribute is always done so that the attribute value
+is naturally aligned, e.g. that a `i32` value is emitted on a 4-byte alignment.
 
 ***Rationale***
 
@@ -202,14 +211,15 @@ performance penalty.
 
 The Primitive names section defines a table of primitive names, directly
 corresponding to the names in the MLIR GraphRT executor program. This allows
-references from the BEF Functions section to use dense indexes into the table.
+references from the INVOKABLES_BODIES section to use dense indexes into the
+table.
 
 This section contains one VBR value for each primitive, which is an offset into
 the string table for the primitive name.
 
 ***Rationale***
 
-We want dense indexes from primitives in the BEF Functions section, and the
+We want dense indexes from primitives in the INVOKABLES_BODIES section, and the
 GraphRT Executor wants to resolve names to primitive implementations at startup
 time anyway, as such, it makes sense for the GraphRT executor to build its own
 mutable array in memory for primitives.
@@ -217,46 +227,46 @@ mutable array in memory for primitives.
 We encode the count of primitive names so the executor can allocate one block
 of memory up front, rather than use a vector-style resizing mechanism.
 
-### BEFFunctionIndex Section
+### INVOKABLES_INDEX Section
 
 **Grammar**
 
 ```none
-  BEF_FUNCTION_INDEX_SECTION ::= VBR<"NumBEFFunctions"> BEF_FUNCTION_ENTRY*
-  BEF_FUNCTION_ENTRY         ::= OFFSET<"BEFFunction"> OFFSET<"Name">
-                                 OFFSET<"Location"> 
-                                 VBR<"NumArguments"> VBR<"NumResults"> 
+  INVOKABLES_INDEX_SECTION ::= VBR<"NumInvokables"> INVOKABLE_ENTRY*
+  INVOKABLE_ENTRY          ::= OFFSET<"Invokable"> OFFSET<"Name">
+                               OFFSET<"Location"> 
+                               VBR<"NumArguments"> VBR<"NumResults"> 
 ```
 
-The BEFFunctionIndex section defines a table of "functions" in the BEF file, 
-including an Offset into the [BEF Functions Section](#bef-functions-section), a
-name (an Offset
+The INVOKABLES_INDEX section defines a table of "invokables" in the BEF file, 
+including an Offset into the [INVOKABLES_BODIES
+Section](#INVOKABLES_BODIES-section), a name (an Offset
 into the [Strings section](#strings-section), which may be an empty string), and
 a count of argument and result types.
 
 ***Rationale***
 
 This defines a symbol table for the BEF file, allowing clients to look up
-BEF functions by name.  While we could intersperse this information into the
-[BEF Functions section](#bef-functions-section) itself, doing so would require
-the reader to make a pass over all of the BEF functions ahead of time. We prefer
-to have a quick index that the reader can scan at load time, deferring
-processing of any individual function until it is needed.
+invokables by name.  While we could intersperse this information into the
+[INVOKABLES_BODIES section](#INVOKABLES_BODIES-section) itself, doing so would
+require the reader to make a pass over all of the INVOKABLES_BODIES ahead of
+time. We prefer to have a quick index that the reader can scan at load time,
+deferring processing of any individual invokable until it is needed.
 
-We encode the count of function names so the executor can allocate one block
+We encode the count of invokables so the executor can allocate one block
 of memory up front, rather than use a vector-style resizing mechanism.
 
-### BEF Functions Section
+### INVOKABLES_BODIES Section
 
 **Grammar**
 
 ```none
-  BEF_FUNCTIONS_SECTION ::= BEF_FUNCTION*
+  INVOKABLES_BODIES_SECTION ::= INVOKABLE_BODY*
 ```
 
-The BEF Functions section is a list of BEF Function records emitted to the byte
-stream and then addressed by an Offset indicated by the
-[BEFFunctionIndex section](#bef-functionindex-section). This section is 4-byte
+The INVOKABLES_BODIES section is a series of bodies emitted to the byte stream
+and then addressed by an Offset indicated by the
+[INVOKABLES_INDEX section](#INVOKABLES_INDEX-section). This section is 4-byte
 aligned.
 
 ***Rationale***
@@ -264,19 +274,19 @@ aligned.
 Regions in MLIR are a generalization of a unit of computation. The BEF format
 and GraphRT executor support a subset of MLIR region features that are core to
 the abstractions we need to model - in particular, while MLIR regions can have
-multiple basic blocks in them, BEF Functions only support a single block - this
+multiple basic blocks in them, invokables only support a single block - this
 guarantees that they are always be a DAG of computation.
 
-BEF Functions are used for top-level MLIR `bef.invokable` operations (indexed
+Invokables are used for top-level MLIR `bef.invokable` operations (indexed
 by the invokable name table) as well as in nested positions for control flow
 and other concepts that occur with MLIR regions.
 
-### BEF Function Definition
+### Invokable Body Definition
 
 **Grammar**
 
 ```none
-  BEF_FUNCTION    ::= VBR<"NumPrimitives"> REGISTER_TABLE PRIMITIVE_TABLE
+  INVOKABLE_BODY  ::= VBR<"NumPrimitives"> REGISTER_TABLE PRIMITIVE_TABLE
                       RESULT_REGS BYTE<"AlignmentPadding">* PRIMITIVE+
 
   REGISTER_TABLE  ::= VBR<"NumRegs"> REGISTER_ENTRY*
@@ -288,7 +298,7 @@ and other concepts that occur with MLIR regions.
   RESULT_REGS     ::= INDEX<"Register">*
 ```
 
-Each BEF Function is defined by a location (an offset into the
+Each invokable is defined by a location (an offset into the
 [LocationPositions section](#locationpositions-section)), a register table, a
 primitive table, a list of result registers, a list of primitives with 4-byte
 alignment, and ends with a FIXED32 integer of value zero.
@@ -296,19 +306,19 @@ alignment, and ends with a FIXED32 integer of value zero.
 The Register Table is a count of registers, and an entry for each register -
 indicating the number of primitives in this section that use the register.
 
-The Primitive Table for a BEF Function is a count of primitives, an offset
+The Primitive Table for an invokable is a count of primitives, an offset
 (from the end of the Primitive Table) of the start of the primitive and the
 number of operands that the primitive has.
 
 The primitive list that is following the Primitive Table contains all the
-primitives used in this BEF function. Note that every BEF function has a
+primitives used in this invokable. Note that every invokable has a
 pseudo-primitive that is the single entry point to the rest of the primitives.
-Specifially, a pseudo-primitive defines registers for BEF function arguments and a
+Specifially, a pseudo-primitive defines registers for invokable arguments and a
 pseudo-register that is conceptually used by primitives that takes no arguments.
 
 The result registers specify the register values to return, and must align with
-the function result types from the
-[BEF FunctionIndex section](#bef-functionindex-section).
+the invokable result types from the [INVOKABLES_INDEX
+section](#INVOKABLES_INDEX-section).
 
 ***Rationale***
 
@@ -331,14 +341,14 @@ table of primitives allows the use of primitive indexes.
                              FIXED32<"PrimitiveLocation">
                              FIXED16<"NumOperands">
                              FIXED16<"NumAttributes">
-                             FIXED16<"NumFunctions">
+                             FIXED16<"NumInvokables">
                              FIXED16<"NumResults">
                              
   PRIMITIVE_RESULT_TABLE ::= FIXED32<"NumUsedBys">*
 
   PRIMITIVE_BODY         ::= FIXED32<PrimitiveOperand>*
                              FIXED32<PrimitiveAttribute>*
-                             FIXED32<PrimitiveFunction>*
+                             FIXED32<PrimitiveInvokable>*
                              FIXED32<PrimitiveResult>*
                              FIXED32<PrimitiveUsedBy>*
 ```
@@ -347,16 +357,18 @@ Each instance of a primitive includes a primitive header, a result table and a
 primitive body. The primitive header consists of a opcode (an index into the
 Primitives table, defined by the Primitives names section), a location (an offset into
 the [LocationPositions section](#locationpositions-section)) the numbers of
-operands, attributes, functions and results in the primitive body.
+operands, attributes, invokables and results in the primitive body.
 
 The result table contains NumResults FIXED32 integers, indicating the number of
 users for each corresponding result. The primitive body consists of zero or more
-inputs (indexes into the Register Table for the enclosing BEF Function), zero or more
-constants (offsets into the [Attributes section](#attributes-section)), zero or
-more functions (these are regions to the primitive, stored as indexes into the
-[FunctionIndex section](#bef-functionindex-section)), zero or more results (indexes into the
-Register table for the enclosing BEF function), and zero or more 'used by' records (which are
-indexes into the Primitive Table for this function). 'used by' records for the
+inputs (indexes into the Register Table for the enclosing invokable), zero or 
+more constants (offsets into the [Attributes section](#attributes-section)),
+zero or more invokables (these are regions or `@foo` references in the primitive
+instance, stored as indexes into the [INVOKABLES_INDEX
+section](#INVOKABLES_INDEX-section)), zero or more results (indexes into the
+Register table for the enclosing invokable), and zero or more 'used by' records
+(which are
+indexes into the Primitive Table for this invokable). 'used by' records for the
 same result are grouped together and these groups are in the same order of
 'result' records. For example, if there are two results, A and B, and A has one
 user (a0) and B has two users (b0, b1), then FIXED32<"NumResults"> will be
@@ -428,8 +440,8 @@ starting offset for each attribute in the file.
 The AttributeNames sections is an optional section which is not needed for BEF
 execution, but which makes BEFToMLIR conversion much nicer. This
 section describes the attribute names used by each primitive. There is a 1:1
-mapping between Primitive Table in this section and BEF Function Entries in
-[BEF FunctionIndex section](#bef-functionindex-section). Each attribute and
+mapping between Primitive Table in this section and entries in
+[INVOKABLES_INDEX section](#INVOKABLES_INDEX-section). Each attribute and
 region for a primitive has an entry here specifying the name.  The offset is
 into the STRINGS_MD section (not the STRINGS section).
 
@@ -466,8 +478,8 @@ pass up-front in BEF2MLIR.  As such, they are referenced by index (not offset).
 
 The MLIRTYPE_MD section is an optional section which is not needed for BEF
 execution, but allows BEF2MLIR conversion to regenerate the correct types for
-BEF function arguments and the result types of primitives.  This section
+invokable arguments and the result types of primitives.  This section
 contains a list of VBR encoded indexes into the 
 [MLIRTYPE_STRINGS_MD section](#TYPE_STRINGS_MD-section), and is encoded in
-the same order as the function table.  Each function has a list of argument
+the same order as the invokable table.  Each invokable has a list of argument
 types and a type for each primitive result.
