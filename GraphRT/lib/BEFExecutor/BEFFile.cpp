@@ -210,13 +210,13 @@ bool BEFFileReader::readNextSection() {
     primitiveNames = sectionContents;
     return false;
 
-  // We just remember the locations of the Functions section - it is directly
-  // indexed with a byte offset from the FunctionIndex section.
-  case BEF::SectionID::BEF_FUNCTIONS:
-    befFile.befFunctions = sectionContents;
+  // We just remember the locations of the INVOKABLES_BODIES section - it is
+  // directly indexed with a byte offset from the INVOKABLES_INDEX section.
+  case BEF::SectionID::INVOKABLES_BODIES:
+    befFile.invokableBodies = sectionContents;
     return false;
 
-  case BEF::SectionID::BEF_FUNCTION_INDEX:
+  case BEF::SectionID::INVOKABLES_INDEX:
     functionIndex = sectionContents;
     return false;
   }

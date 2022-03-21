@@ -377,7 +377,7 @@ bool BEFToMLIRConverter::parsePrimitiveNames() {
 }
 
 bool BEFToMLIRConverter::parseFunctions() {
-  BEFReader reader = getSectionReader(BEF::SectionID::BEF_FUNCTION_INDEX);
+  BEFReader reader = getSectionReader(BEF::SectionID::INVOKABLES_INDEX);
   BEFReader stringReader = getSectionReader(BEF::SectionID::STRINGS);
   BEFReader attrNameReader =
       getSectionReader(BEF::SectionID::ATTRIBUTE_NAME_MD);
@@ -422,10 +422,10 @@ bool BEFToMLIRConverter::parseFunctions() {
     return emitError("expected " + Twine(numFunctions) +
                      " functions, but found " + Twine(functions.size()));
 
-  // Decode each of the function bodies.
-  BEFReader funcReader = getSectionReader(BEF::SectionID::BEF_FUNCTIONS);
+  // Decode each of the invokable bodies.
+  BEFReader bodyReader = getSectionReader(BEF::SectionID::INVOKABLES_BODIES);
   for (auto fn : functions) {
-    if (parseFunctionBody(fn, funcReader, attrNameReader, mlirTypesReader))
+    if (parseFunctionBody(fn, bodyReader, attrNameReader, mlirTypesReader))
       return true;
   }
 

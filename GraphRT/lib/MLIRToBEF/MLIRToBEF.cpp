@@ -135,7 +135,7 @@ public:
 
   // Many parts of the emitter logic includes forward references into stuff
   // that hasn't been emitted and has variable size.  This is handled by making
-  // nested emitters.  This helper function emits the subpieces once they are
+  // nested emitters.  This helper emits the subpieces once they are
   // constructed, ensuring that alignment requirements of the nested emitter
   // are maintained correctly.
   void emitEmitter(const BEFEmitter &emitter) {
@@ -222,7 +222,7 @@ class EntityTable {
 public:
   /// Walk the IR to build the symbol tables, this returns true on failure.
   bool collect(ModuleOp module, bool enableBEFMetadata);
-  ssize_t getFunctionNamed(StringAttr name) const;
+  ssize_t getInvokableNamed(StringAttr name) const;
 
   unsigned getTypeIndex(Type type) const {
     auto it = typeIDs.find(type);
@@ -230,9 +230,10 @@ public:
     return it->second;
   }
 
-  unsigned getFunctionID(const Region &region) const {
-    auto it = regionFunctionIDs.find(&region);
-    assert(it != regionFunctionIDs.end() && "region not added to entity table");
+  unsigned getInvokableID(const Region &region) const {
+    auto it = invokableRegionIDs.find(&region);
+    assert(it != invokableRegionIDs.end() &&
+           "region not added to entity table");
     return it->second;
   }
 
@@ -266,9 +267,9 @@ public:
     return it->second;
   }
 
-  void addBEFFunctionOffset(StringAttr name, BEFOffset offset, Location loc,
-                            InvokableSignature signature) {
-    functionIndexEntries.push_back(
+  void addInvokableOffset(StringAttr name, BEFOffset offset, Location loc,
+                          InvokableSignature signature) {
+    invokableIndexEntries.push_back(
         {getStringOffset(name), offset, getLocationOffset(loc), signature});
   }
 
@@ -291,7 +292,7 @@ private:
   void addString(StringAttr string) { strings.insert(string); }
   void addMetadataString(StringAttr string) { metadataStrings.insert(string); }
   void addType(Type type);
-  LogicalResult addBEFFunction(Region *region, StringAttr name);
+  LogicalResult addInvokable(Region *region, StringAttr name);
   void addPrimitiveOpcode(StringAttr opcode);
   void addLocation(Location loc);
 
@@ -326,21 +327,21 @@ public:
     Region *region;
   };
 
-  // List of functions that we need to emit, along with a name if they came
-  // from a top level function.
-  std::vector<InvokableEntry> functions;
-  DenseMap<Region *, unsigned> regionFunctionIDs;
-  DenseMap<StringAttr, unsigned> namedFunctionIDs;
+  // List of invokables that we need to emit, along with a name if they came
+  // from a bef.invokable.
+  std::vector<InvokableEntry> invokables;
+  DenseMap<Region *, unsigned> invokableRegionIDs;
+  DenseMap<StringAttr, unsigned> namedInvokableIDs;
 
-  struct FunctionIndexEntry {
+  struct InvokableIndexEntry {
     BEFOffset nameOffset;
-    BEFOffset functionOffset;
+    BEFOffset invokableOffset;
     BEFOffset locationOffset;
     InvokableSignature signature;
   };
 
-  // This follows the format of the FunctionIndex section.
-  std::vector<FunctionIndexEntry> functionIndexEntries;
+  // This follows the format of the InvokableIndex section.
+  std::vector<InvokableIndexEntry> invokableIndexEntries;
 
   // All of the strings we need to emit the BEF file.
   llvm::SetVector<StringAttr> strings;
@@ -380,7 +381,7 @@ void EntityTable::addType(Type type) {
 }
 
 static InvokableSignature getInvokableSignature(Region *region) {
-  // Emit information about the type of the function.
+  // Emit information about the type of the invokable.
   auto *block = &region->getBlocks().front();
 
   // BEF regions produce results with the "bef.output" operation.
@@ -389,7 +390,7 @@ static InvokableSignature getInvokableSignature(Region *region) {
   return InvokableSignature{block->getNumArguments(), numResults};
 }
 
-LogicalResult EntityTable::addBEFFunction(Region *region, StringAttr name) {
+LogicalResult EntityTable::addInvokable(Region *region, StringAttr name) {
   // Check to see if we support this region kind.
   if (region->getBlocks().size() != 1) {
     mlir::emitError(region->getLoc())
@@ -400,21 +401,21 @@ LogicalResult EntityTable::addBEFFunction(Region *region, StringAttr name) {
   for (auto argTy : region->front().getArgumentTypes())
     addType(argTy);
 
-  // Remember this function.
+  // Remember this invokable.
   addString(name);
-  namedFunctionIDs[name] = functions.size();
+  namedInvokableIDs[name] = invokables.size();
 
-  regionFunctionIDs[region] = functions.size();
-  functions.push_back(
+  invokableRegionIDs[region] = invokables.size();
+  invokables.push_back(
       InvokableEntry(name, getInvokableSignature(region), region));
   return success();
 }
 
-// Return the index of the specified function name, returning -1 if the
-// function name cannot be found.
-ssize_t EntityTable::getFunctionNamed(StringAttr name) const {
-  auto iter = namedFunctionIDs.find(name);
-  if (iter == namedFunctionIDs.end())
+/// Return the index of the specified invokable name, returning -1 if the
+/// invokable name cannot be found.
+ssize_t EntityTable::getInvokableNamed(StringAttr name) const {
+  auto iter = namedInvokableIDs.find(name);
+  if (iter == namedInvokableIDs.end())
     return -1;
   return iter->second;
 }
@@ -471,7 +472,7 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
     auto *curBlock = op->getBlock();
 
     // Notice the result types of the ops.  Argument types can only be arguments
-    // to the functions and results of other ops.
+    // to the invokables and results of other ops.
     for (auto result : op->getResults())
       addType(result.getType());
 
@@ -484,10 +485,10 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
                << " the current region";
     }
 
-    // We treat functions specially, putting them into the symbol table and
+    // We treat invokables specially, putting them into the symbol table and
     // ignoring their attributes.
     if (auto fn = dyn_cast<BEF::InvokableOp>(op)) {
-      if (failed(addBEFFunction(&fn.getBody(), fn.getNameAttr())))
+      if (failed(addInvokable(&fn.getBody(), fn.getNameAttr())))
         return WalkResult::interrupt();
       return WalkResult::advance();
     }
@@ -498,8 +499,7 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
         addMetadataString(name);
 
       if (auto fn_attr = attr.dyn_cast<SymbolRefAttr>()) {
-        // Keep track of function attributes specially so we can diagnose
-        // them.
+        // Keep track of invokable references specially so we can diagnose them.
         symbolRefAttrs.push_back({fn_attr, op->getLoc()});
       } else {
         // We just keep track of the top level attributes in the "attributes"
@@ -527,9 +527,9 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
         processAttr(attr.getName(), attr.getValue());
     }
 
-    // Keep add any regions used by this op as BEF functions.
+    // Keep add any regions used by this op as BEF invokables.
     for (auto &region : op->getRegions()) {
-      if (failed(addBEFFunction(&region, StringAttr::get(op->getContext()))))
+      if (failed(addInvokable(&region, StringAttr::get(op->getContext()))))
         return WalkResult::interrupt();
     }
     return WalkResult::advance();
@@ -539,12 +539,12 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
   if (module.walk(opWalker).wasInterrupted())
     return true;
 
-  // If we're successful, check to make sure that all functions can be
+  // If we're successful, check to make sure that all invokables can be
   // resolved.
   for (auto attrAndLoc : symbolRefAttrs) {
-    if (getFunctionNamed(attrAndLoc.first.getRootReference()) == -1) {
+    if (getInvokableNamed(attrAndLoc.first.getRootReference()) == -1) {
       mlir::emitError(attrAndLoc.second)
-          << "function " << attrAndLoc.first << " not defined";
+          << "invokable " << attrAndLoc.first << " not defined";
       return true;
     }
   }
@@ -805,19 +805,19 @@ FailureOr<BEFOffset> AttributesEmitter::emitAttribute(Attribute attr,
 }
 
 //===----------------------------------------------------------------------===//
-// BEFFunctionEmitter
+// InvokableBodyEmitter
 //===----------------------------------------------------------------------===//
 
 namespace {
-// This is the emitter that builds the function entry of a BEF.
-class BEFFunctionEmitter : public BEFEmitter {
+// This is the emitter that builds the invokable body of a BEF.
+class InvokableBodyEmitter : public BEFEmitter {
 public:
-  BEFFunctionEmitter(EntityTable &entities, BEFEmitter *attributeNamesSection,
-                     BEFEmitter *mlirTypesSection)
+  InvokableBodyEmitter(EntityTable &entities, BEFEmitter *attributeNamesSection,
+                       BEFEmitter *mlirTypesSection)
       : entities(entities), attributeNamesSection(attributeNamesSection),
         mlirTypesSection(mlirTypesSection) {}
 
-  void emitFunction(Region *region);
+  void emitInvokable(Region *region);
 
 private:
   void emitRegisterTable(Block *block);
@@ -846,14 +846,14 @@ private:
 };
 } // end anonymous namespace.
 
-void BEFFunctionEmitter::emitFunction(Region *region) {
+void InvokableBodyEmitter::emitInvokable(Region *region) {
   assert(region->getBlocks().size() == 1 && "should have a single block");
   auto &block = region->getBlocks().front();
 
   // Get a dense numbering of primitives.
   unsigned numPrimitives = 0;
 
-  // If the function has arguments, we emit a pseudo-op that provides the
+  // If the invokable has arguments, we emit a pseudo-op that provides the
   // argument values.
   if (block.getNumArguments() != 0)
     ++numPrimitives;
@@ -874,7 +874,7 @@ void BEFFunctionEmitter::emitFunction(Region *region) {
   BEFEmitter primitiveList;
 
   // If we have arguments, emit a pseudo op (with no opcode) that produces the
-  // registers on entry to the function.
+  // registers on entry to the invokable.
   if (block.getNumArguments() != 0) {
     // Offset of the primitive in the list.
     emitPrimitiveOffsetNumber(primitiveList.getOffset());
@@ -924,7 +924,7 @@ void BEFFunctionEmitter::emitFunction(Region *region) {
   primitiveIndices.clear();
 }
 
-void BEFFunctionEmitter::emitRegisterTable(Block *block) {
+void InvokableBodyEmitter::emitRegisterTable(Block *block) {
   BEFEmitter regTable;
   unsigned numRegisters = 0;
 
@@ -946,7 +946,7 @@ void BEFFunctionEmitter::emitRegisterTable(Block *block) {
   emitEmitter(regTable);
 }
 
-unsigned BEFFunctionEmitter::getNumNonOutputUsers(Value result) const {
+unsigned InvokableBodyEmitter::getNumNonOutputUsers(Value result) const {
   int numUsers = 0;
   for (auto *user : result.getUsers()) {
     // Ignore the 'bef.output' op, it gets special handling.
@@ -956,7 +956,7 @@ unsigned BEFFunctionEmitter::getNumNonOutputUsers(Value result) const {
   return numUsers;
 }
 
-void BEFFunctionEmitter::emitPrimitiveResultUsers(
+void InvokableBodyEmitter::emitPrimitiveResultUsers(
     Value result, BEFEmitter &primitiveBody) const {
   for (auto *user : result.getUsers()) {
     // Ignore the 'bef.output' op, it gets special handling.
@@ -969,7 +969,7 @@ void BEFFunctionEmitter::emitPrimitiveResultUsers(
   }
 }
 
-void BEFFunctionEmitter::emitArgumentsPseudoOp(
+void InvokableBodyEmitter::emitArgumentsPseudoOp(
     Block *block, BEFEmitter &primitiveList) const {
   // This primitive starts with a dummy code and a dummy location. And this
   // primitive only has results and UsedBys in its body.
@@ -977,7 +977,7 @@ void BEFFunctionEmitter::emitArgumentsPseudoOp(
   primitiveList.emitInt4(0);                        // location
   primitiveList.emitInt2(0);                        // # operands
   primitiveList.emitInt2(0);                        // # attributes
-  primitiveList.emitInt2(0);                        // # functions
+  primitiveList.emitInt2(0);                        // # invokables
   primitiveList.emitInt2(block->getNumArguments()); // # results
 
   for (auto arg : block->getArguments())
@@ -997,19 +997,19 @@ void BEFFunctionEmitter::emitArgumentsPseudoOp(
   }
 }
 
-void BEFFunctionEmitter::emitPrimitive(Operation *op,
-                                       BEFEmitter &primitiveList) const {
+void InvokableBodyEmitter::emitPrimitive(Operation *op,
+                                         BEFEmitter &primitiveList) const {
   // Collect the regions and attributes to emit.
-  SmallVector<std::pair<uint32_t, BEFOffset>> functionsToEmit;
+  SmallVector<std::pair<uint32_t, BEFOffset>> invokablesToEmit;
   SmallVector<uint32_t> attributesToEmit;
   auto processAttr = [&](StringAttr name, Attribute value) {
     if (auto fnAttr = value.dyn_cast<FlatSymbolRefAttr>()) {
-      // Function references are emitted as regions.
+      // bef.invokable references are emitted as invokable.
       BEFOffset nameIdx = {0};
       if (attributeNamesSection)
         nameIdx = entities.getMetadataStringOffset(name);
-      functionsToEmit.push_back(
-          {entities.getFunctionNamed(fnAttr.getAttr()), nameIdx});
+      invokablesToEmit.push_back(
+          {entities.getInvokableNamed(fnAttr.getAttr()), nameIdx});
     } else {
       attributesToEmit.push_back(entities.getAttributeOffset(value).value);
       if (attributeNamesSection)
@@ -1029,13 +1029,13 @@ void BEFFunctionEmitter::emitPrimitive(Operation *op,
       processAttr(attrNamePair.getName(), attrNamePair.getValue());
   }
 
-  // Regions on the op are also considered to be BEF functions.
+  // Regions on the op are also considered to be BEF invokables.
   for (auto &region : op->getRegions())
-    functionsToEmit.push_back({entities.getFunctionID(region), BEFOffset{0}});
+    invokablesToEmit.push_back({entities.getInvokableID(region), BEFOffset{0}});
 
   // Ensure this primitive isn't too big to encode.
   if (op->getNumOperands() > 65535 || attributesToEmit.size() > 65535 ||
-      functionsToEmit.size() > 65535 || op->getNumResults() > 65535)
+      invokablesToEmit.size() > 65535 || op->getNumResults() > 65535)
     entities.emitError(op->getLoc()) << "operation too large to encode in BEF";
 
   // Emit the PRIMITIVE_HEADER records.
@@ -1043,7 +1043,7 @@ void BEFFunctionEmitter::emitPrimitive(Operation *op,
   primitiveList.emitInt4(entities.getLocationOffset(op->getLoc()).value);
   primitiveList.emitInt2(op->getNumOperands());
   primitiveList.emitInt2(attributesToEmit.size());
-  primitiveList.emitInt2(functionsToEmit.size());
+  primitiveList.emitInt2(invokablesToEmit.size());
   primitiveList.emitInt2(op->getNumResults());
 
   // Emit PRIMITIVE_RESULT_TABLE, results with the primitives that use them.
@@ -1055,7 +1055,7 @@ void BEFFunctionEmitter::emitPrimitive(Operation *op,
     primitiveList.emitInt4(getRegisterNumber(operand));
   for (auto attrOffset : attributesToEmit)
     primitiveList.emitInt4(attrOffset);
-  for (auto fnOffsetAndName : functionsToEmit) {
+  for (auto fnOffsetAndName : invokablesToEmit) {
     primitiveList.emitInt4(fnOffsetAndName.first);
     if (attributeNamesSection)
       attributeNamesSection->emitOffset(fnOffsetAndName.second);
@@ -1097,9 +1097,9 @@ public:
   void emitTypesMD(BEFEmitter &typeStringsMDSection);
   void emitAttributes(BEFEmitter &attrMDSection);
   void emitPrimitiveNames();
-  void emitBEFFunctions(BEFEmitter *attributeNamesSection,
-                        BEFEmitter *mlirTypesSection);
-  void emitFunctionIndex();
+  void emitInvokables(BEFEmitter *attributeNamesSection,
+                      BEFEmitter *mlirTypesSection);
+  void emitInvokableIndex();
 
   bool hadError() const { return entities.hadError; }
 
@@ -1186,37 +1186,37 @@ void BEFModuleEmitter::emitPrimitiveNames() {
   emitSection(BEF::SectionID::PRIMITIVE_NAMES, primitivesNamesSection);
 }
 
-/// Emit the BEF_FUNCTIONS section.  If optional metadata is enabled, the
-/// attributeNamesSection/mlirTypesSection will be non-null and should be
+/// Emit the INVOKABLES_BODIES section.  If optional metadata is enabled,
+/// the attributeNamesSection/mlirTypesSection will be non-null and should be
 /// filled in.
-void BEFModuleEmitter::emitBEFFunctions(BEFEmitter *attributeNamesSection,
-                                        BEFEmitter *mlirTypesSection) {
-  BEFFunctionEmitter functionsSection(entities, attributeNamesSection,
-                                      mlirTypesSection);
+void BEFModuleEmitter::emitInvokables(BEFEmitter *attributeNamesSection,
+                                      BEFEmitter *mlirTypesSection) {
+  InvokableBodyEmitter invokablesSection(entities, attributeNamesSection,
+                                         mlirTypesSection);
 
-  for (auto function : entities.functions) {
+  for (auto invokable : entities.invokables) {
     // Remember that we emitted this region to this offset.
-    entities.addBEFFunctionOffset(function.name, functionsSection.getOffset(),
-                                  function.region->getLoc(),
-                                  function.signature);
-    functionsSection.emitFunction(function.region);
+    entities.addInvokableOffset(invokable.name, invokablesSection.getOffset(),
+                                invokable.region->getLoc(),
+                                invokable.signature);
+    invokablesSection.emitInvokable(invokable.region);
   }
 
-  emitSection(BEF::SectionID::BEF_FUNCTIONS, functionsSection);
+  emitSection(BEF::SectionID::INVOKABLES_BODIES, invokablesSection);
 }
 
-void BEFModuleEmitter::emitFunctionIndex() {
-  BEFEmitter functionIndexSection;
-  functionIndexSection.emitVBR(entities.functionIndexEntries.size());
-  for (const auto &entry : entities.functionIndexEntries) {
-    functionIndexSection.emitOffset(entry.functionOffset);
-    functionIndexSection.emitOffset(entry.nameOffset);
-    functionIndexSection.emitOffset(entry.locationOffset);
-    functionIndexSection.emitVBR(entry.signature.numArguments);
-    functionIndexSection.emitVBR(entry.signature.numResults);
+void BEFModuleEmitter::emitInvokableIndex() {
+  BEFEmitter invokableIndexSection;
+  invokableIndexSection.emitVBR(entities.invokableIndexEntries.size());
+  for (const auto &entry : entities.invokableIndexEntries) {
+    invokableIndexSection.emitOffset(entry.invokableOffset);
+    invokableIndexSection.emitOffset(entry.nameOffset);
+    invokableIndexSection.emitOffset(entry.locationOffset);
+    invokableIndexSection.emitVBR(entry.signature.numArguments);
+    invokableIndexSection.emitVBR(entry.signature.numResults);
   }
 
-  emitSection(BEF::SectionID::BEF_FUNCTION_INDEX, functionIndexSection);
+  emitSection(BEF::SectionID::INVOKABLES_INDEX, invokableIndexSection);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1263,9 +1263,9 @@ std::vector<uint8_t> M::translateMLIRToBEF(ModuleOp module,
   emitter.emitAttributes(attrIndexMDSection);
 
   emitter.emitPrimitiveNames();
-  emitter.emitBEFFunctions(enableBEFMetadata ? &attrNamesSection : nullptr,
+  emitter.emitInvokables(enableBEFMetadata ? &attrNamesSection : nullptr,
                            enableBEFMetadata ? &mlirTypesSection : nullptr);
-  emitter.emitFunctionIndex();
+  emitter.emitInvokableIndex();
 
   // Now that we've emitted all of the critical sections used in the common case
   // of the BEF emitter, emit metadata sections.

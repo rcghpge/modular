@@ -47,7 +47,7 @@ public:
   ArrayRef<uint8_t> locationPositions;
   ArrayRef<uint8_t> strings;
   ArrayRef<uint8_t> attributes;
-  ArrayRef<uint8_t> befFunctions;
+  ArrayRef<uint8_t> invokableBodies;
 
   /// This is the list of primitive implementations arranged by their ID.
   std::vector<PrimitiveRegistry::PrimitiveImplFn> primitives;

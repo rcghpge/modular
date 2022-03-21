@@ -73,8 +73,8 @@ enum class SectionID {
   STRINGS = 3, // All of the string data.
   ATTRIBUTES = 4,
   PRIMITIVE_NAMES = 5,
-  BEF_FUNCTIONS = 6,
-  BEF_FUNCTION_INDEX = 7,
+  INVOKABLES_BODIES = 6,
+  INVOKABLES_INDEX = 7,
 
   ATTRIBUTE_INDEX_MD = 8,
   STRINGS_MD = 9,           // Strings for metadata

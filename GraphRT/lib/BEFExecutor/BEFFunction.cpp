@@ -177,7 +177,7 @@ namespace {
 struct BEFFunctionDecoder {
 public:
   BEFFunctionDecoder(const BEFFunction &fn)
-      : fn(fn), funcReader(fn.owner->befFunctions, [&](Error message) {
+      : fn(fn), funcReader(fn.owner->invokableBodies, [&](Error message) {
           befFormatError = std::move(message);
         }) {}
 
