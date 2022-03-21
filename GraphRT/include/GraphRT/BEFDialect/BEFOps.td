@@ -30,6 +30,8 @@ def FuncOp : BEFOp<"func", [HasParent<"mlir::ModuleOp">, FunctionOpInterface,
       return &getBody().front();
     }
 
+    OutputOp getOutputOp();
+
     mlir::FunctionType getType() { return type(); }
 
     /// Returns the argument types of this function.

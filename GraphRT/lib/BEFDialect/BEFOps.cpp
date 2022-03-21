@@ -33,6 +33,10 @@ void FuncOp::build(OpBuilder &builder, OperationState &state,
   state.addRegion();
 }
 
+OutputOp FuncOp::getOutputOp() {
+  return cast<OutputOp>(getBodyBlock()->getTerminator());
+}
+
 // Parses a BEF Function.
 //
 // operation ::= `func` function-signature function-attributes? function-body
