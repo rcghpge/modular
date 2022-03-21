@@ -20,7 +20,7 @@ def InvokableOp
   : BEFOp<"invokable", [HasParent<"mlir::ModuleOp">, FunctionOpInterface,
                         Symbol, IsolatedFromAbove,
                         SingleBlockImplicitTerminator<"OutputOp">]> {
-  let summary = "Named function in a BEF file";
+  let summary = "Named invokable in a BEF file";
   let arguments = (ins TypeAttrOf<FunctionType>:$type);
   let regions = (region SizedRegion<1>:$body);
 
@@ -35,10 +35,10 @@ def InvokableOp
 
     mlir::FunctionType getType() { return type(); }
 
-    /// Returns the argument types of this function.
+    /// Returns the argument types of this invokable.
     ArrayRef<Type> getArgumentTypes() { return getType().getInputs(); }
 
-    /// Returns the result types of this function.
+    /// Returns the result types of this invokable.
     ArrayRef<Type> getResultTypes() { return getType().getResults(); }
   }];
 
@@ -85,10 +85,11 @@ def OpaqueOp : BEFOp<"opaque"> {
 def OutputOp : BEFOp<"output", [Terminator, ReturnLike]> {
   let summary = "BEF output operation";
   let description = [{
-    The "bef.output" operation specifies the returned values for a BEF function.
+    The `bef.output` operation specifies the returned values for invokables in
+    a BEF MLIR file.
     The operation takes variable number of operands and produces no results.
-    The operand number and types must match the signature of the bef.invokable
-    that contains the operation. For example:
+    The operand number and types must match the signature of the `bef.invokable`
+    (or enclosing region) that contains the operation. For example:
 
     ```mlir
       bef.invokable @foo() : i32, f8 {

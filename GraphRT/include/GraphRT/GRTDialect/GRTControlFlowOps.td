@@ -28,13 +28,7 @@ def ChainNewOp : GRTOp<"chain.new"> {
 
 def CallOp : GRTOp<"call", [DeclareOpInterfaceMethods<SymbolUserOpInterface>,
                             NonStrictOp]> {
-  let summary = "Call a BEF function";
-
-  let description = [{
-     This operation is safe to use as a 'nonstrict' op, allowing the function
-     executor to dispatch computation that isn't dependent on the unavailable
-     operands to the call.
-  }];
+  let summary = "Invoke an invokable (non-strictly).";
     
   let arguments = (ins FlatSymbolRefAttr:$callee, Variadic<AnyType>:$operands);
   let results = (outs Variadic<AnyType>:$results);

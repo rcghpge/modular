@@ -41,8 +41,8 @@ bef.invokable @no_op(%x: !vt.value) -> !vt.value {
 // CHECK-LABEL: --- Running 'call_no_op'
 bef.invokable @call_no_op() {
   // This test uses one vt.value(2) that is all of these:
-  // - Function argument: passed to no_op.
-  // - Function result: returned by no_op.
+  // - invoke argument: passed to no_op.
+  // - invoke result: returned by no_op.
   // - Op input: passed to grt.call.
   // - Op output: returned by grt.call.
 
@@ -127,7 +127,7 @@ bef.invokable @share_to_two() {
   bef.output
 }
 
-// Testing calling a bef function that forwards its argument into two results.
+// Testing calling a invokable that forwards its argument into two results.
 
 // CHECK-LABEL: 'call_share_to_two' because it has arguments
 bef.invokable @call_share_to_two(%x: !vt.value) -> (!vt.value, !vt.value) {
@@ -181,7 +181,7 @@ bef.invokable @share_to_four() {
   bef.output
 }
 
-// Testing calling a bef function that forwards its argument into four results.
+// Testing calling a invokable that forwards its argument into four results.
 
 // CHECK-LABEL: 'call_share_to_four' because it has arguments
 bef.invokable @call_share_to_four(%x: !vt.value) -> (!vt.value, !vt.value, !vt.value, !vt.value) {

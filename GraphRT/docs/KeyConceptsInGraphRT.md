@@ -24,7 +24,7 @@ situations that don't benefit from asyncronous designs.
 ## Primitives: the ingredients of a GraphRT program
 
 A GraphRT program is usually described in MLIR form.  For example, here is an
-example of a Fibonacci function:
+example of a Fibonacci computation:
 
 ```mlir
 bef.invokable @fib(%arg: i32) -> i32 {
@@ -47,7 +47,7 @@ bef.invokable @fib(%arg: i32) -> i32 {
 ```
 
 While the BEF format and BEF dialect has hard coded primitives for defining
-and returning from functions and regions (`bef.invokable` and `bef.output`)
+invokables and returning from regions (`bef.invokable` and `bef.output`)
 respectively, it does not otherwise hard code any other operations that do
 actual computation.
 
@@ -70,7 +70,7 @@ carry dependencies on various bits of hardware or heavy software libraries, not
 the GraphRT implementation itself.
 
 Primitive implementation functions take and return some number of `AsyncValue`
-objects, some number of MLIR attributes, and optionally regions and function
+objects, some number of MLIR attributes, and optionally regions and invokable
 references.  You can optionally use the [MLIR ODS 
 framework](https://mlir.llvm.org/docs/OpDefinitions/) to define these primitives
 in a way understood by MLIR, which gives access to pretty syntax, verification
@@ -122,20 +122,20 @@ File Format](BinaryExecutorFormat.md) documentation.
 
 ## BEF executor: why not call it an "interpreter"?
 
-The `BEFExecutor` is the library that reads a BEF file and executes functions 
+The `BEFExecutor` is the library that reads a BEF file and executes invokables 
 on demand.  It is designed to be low-dependency (and thus low code size) and
 efficient.
 
 A key design point of the BEF executor is that it executes primitives "strictly"
 when their dataflow graph inputs are available, not according to their lexical
-order in the function.  Recall that each primitive takes and returns
+order in the invokable.  Recall that each primitive takes and returns
 asynchronous values and may have unpredictable latency.  Because we cannot (in
 general) know how long each operation in the program will take, the compiler
-cannot produce a reasonable static schedule for a function.
+cannot produce a reasonable static schedule for a invokable.
 
 Instead, GraphRT uses a dataflow executor that trigger execution of strict
 primitives once all their inputs are available.  For example, consider
-invocation of this BEF function that computes `(a+a)+(b+b)`:
+execution of this invokable that computes `(a+a)+(b+b)`:
 
 ```mlir
 bef.invokable @dataflow_example(%a: i32, %b: i32) -> i32 {
@@ -147,7 +147,7 @@ bef.invokable @dataflow_example(%a: i32, %b: i32) -> i32 {
 ```
 
 In GraphRT, each input and output SSA value is implicitly held in an
-`AsyncValue` - this means that the function is invoked with two `AsyncValues`,
+`AsyncValue` - this means that the invokable is run with two `AsyncValues`,
 and those values may not be "ready".  Consider if the first operand (`%a`) is
 not ready but the second operand (`%b`) is: in this case, the `grt.add.i32` that
 produces `%a2` value cannot be run (its operands are not available yet).
@@ -205,7 +205,7 @@ bef.invokable @dataflow_example(%a: i32, %b: i32, %ch0: !grt.chain) -> !grt.chai
 }
 ```
 
-In this function there is no dependence between the two add operations, so they
+In this invokable there is no dependence between the two add operations, so they
 can run in any order (or, indeed, in parallel) but the prints have a data
 dependence between them, so the first runs before the second one.
 
@@ -252,13 +252,13 @@ primitives by the BEF executor: instead of triggering the primitive when *all*
 operands becomes available, it triggers the primitive when *any* operands are
 available.
 
-As a concrete example, consider a function call:
+As a concrete example, consider an invocable invocation:
 
 ```mlir
 bef.invokable @dataflow_example(%a: i32, %b: i32) -> i32 {
   %a2 = grt.add.i32 %a, %a
   %b2 = "some long latency operation"(%b) : (i32) -> i32
-  %result = grt.call @other_function(%a2, %b2) : (i32, i32) -> i32
+  %result = grt.call @other_invokable(%a2, %b2) : (i32, i32) -> i32
   bef.output %a2b2 : i32
 }
 ```
@@ -269,7 +269,7 @@ to take longer to execute than "some long latency operation".  In higher level
 machine learning graphs, some operators take a lot less time to execute than
 others - e.g. some might be accelerated and some might not.
 
-On the other side of the call, the code embodied by "other_function" may include
+On the other side of the call, the code embodied by "other_invokable" may include
 arbitrarily complicated logic, and some of that logic may only depend on one or
 the other argument to it.  We'd really like to kick off that logic as soon as we
 can, to make sure we keep the CPU thread pool and accelerators as loaded up as
@@ -277,7 +277,7 @@ we can.
 
 For this reason, we don't want `grt.call` to be a strict primitive that waits
 for both arguments to become available before dispatching the async call to
-`@other_function`.  Instead, we want to start the execution as soon as *either*
+`@other_invokable`.  Instead, we want to start the execution as soon as *either*
 argument is available.  As such, we mark `grt.call` as a non-strict primitive.
 
 Non-strict primitives are generally useful for control flow operations (e.g.

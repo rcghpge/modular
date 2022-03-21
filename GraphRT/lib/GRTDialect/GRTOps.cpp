@@ -47,7 +47,7 @@ LogicalResult CallOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
       *this, calleeAttr());
   if (!fn)
     return emitOpError() << "'" << calleeAttr()
-                         << "' does not reference a valid function";
+                         << "' does not reference a valid invokable";
 
   // Verify that the operand and result types match the callee.
   auto fnType = fn.getType();

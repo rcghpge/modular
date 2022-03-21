@@ -47,7 +47,7 @@ syntax for the primitive has a directly corresponding runtime behavior:
    These are passed in alphabetical order by attribute name, not in lexical
    order in the .mlir file.  The attribute names are not encoded by default.
 3) Symbol references like `@foo` and region bodies `{ ... }` in MLIR turn into
-   BEF function references that may be invoked in the executor.
+   "invokable" references that may be invoked in the executor.
 
 The [`PrimitiveFrame class`](../include/GraphRT/BEFExecutor/PrimitiveFrame.h) is
 the C++ class the BEF executor uses to wrap up all the runtime representation
@@ -104,7 +104,7 @@ function to generate something like this for the `lessequal_i32` example:
 ```C++
   registry.add("grt.lessequal.i32", [](PrimitiveFrame &frame) {
     assert(frame.getNumArgs() == 2 && frame.getNumResults() == 1 &&
-           frame.getNumAttrs() == 0 && frame.getNumFunctions() == 0);
+           frame.getNumAttrs() == 0 && frame.getNumInvokables() == 0);
     frame.emplaceResult<bool>(0, 
        lessequal_i32(frame.getArg<int32_t>(0), frame.getArg<int32_t>(1)));
   });
@@ -125,16 +125,16 @@ static AsyncValueRef<int32_t> test_noop(AsyncValueRef<int32_t> input) {
 }
 ```
 
-## Variadic operands/results, functions, and magic references
+## Variadic operands/results, invokables, and magic references
 
 In some cases you may want to capture "all the rest" of the operands or results
 in an operation.  For example, consider the `grt.call` operation, which is
 used like this in a .mlir file:
 
 ```mlir
-   %y = grt.call @some_function(%false, %a, %b) : (i1, i32, i32) -> (i32)
+   %y = grt.call @some_thing(%false, %a, %b) : (i1, i32, i32) -> (i32)
 
-   %a, %b = grt.call @other_function(%c1) : (i32) -> (f32, i1)
+   %a, %b = grt.call @other_thing(%c1) : (i32) -> (f32, i1)
 ```
 
 You can implement this using the `RemainingArguments` and `RemainingResults`
@@ -142,11 +142,11 @@ classes, which capture all of them as an `ArrayRef` of `AsyncValue`'s.  For
 example, the fully variadic `grt.call` operation is defined like this:
 
 ```C++
-static void call(RemainingArguments arguments, RemainingResults results,
-                 const Function *callee, Runtime &runtime) {
+static void invoke(RemainingArguments arguments, RemainingResults results,
+                   const Invokable *target, Runtime &runtime) {
   assert(callee->getNumArgs() == arguments.size() && "argument count mismatch");
   assert(callee->getNumResults() == results.size() && "result count mismatch");
-  callee->execute(arguments.get(), results.get(), runtime);
+  target->invoke(arguments.get(), results.get(), runtime);
 }
 ```
 
@@ -154,9 +154,9 @@ These also mix naturally with normal arguments and results, but
 `RemainingArguments` must be listed before other operands, and any declared
 results bind before `RemainingResults`.
 
-This example also shows how to bind to symbol references like `@some_function`
-and region bodies: these are declared as `const Function *` and `ADD_PRIMITIVE`
-resolves them to the related function in the BEF file.
+This example also shows how to bind to symbol references like `@some_thing`
+and region bodies: these are declared as `const Invokable *` and `ADD_PRIMITIVE`
+resolves them to the related invokable in the BEF file.
 
 Finally, note that we also took a `Runtime &`.  `ADD_PRIMITIVE` has direct
 support for passing in a `Runtime &` or even a `PrimitiveFrame &` for advanced
@@ -447,7 +447,7 @@ primitive.
 The defining feature of a GraphRT "non-strict" primitive is that it is invoked
 when *any* argument (SSA value) becomes ready, instead of when *all* arguments
 become available.  Consider the `grt.call` operation for example, which invokes
-a BEF function passing a bunch of arguments:
+a invokable passing a bunch of arguments:
 
 ```mlir
 bef.invokable @process(%a: i32, %b: i32) -> (i32, i32) {
@@ -465,7 +465,7 @@ bef.invokable @example() {
 }
 ```
 
-Notice the structure of this program: the `@process` function takes two
+Notice the structure of this program: the `@process` invokable takes two
 arguments, but has two different computation patterns depending on each of them.
 The `grt.call` operation is defined as non-strict, which allows it to kick off
 execution of its body as soon as *either* `%a_val` or `%b_val` are ready,

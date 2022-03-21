@@ -370,7 +370,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   static void invoke(PrimitiveFrame &frame) {
     processArgsAndInvoke<
         ValueIndices</*argIdx=*/0, /*resultIdx=*/0, /*attrIdx=*/0,
-                     /*funcIdx=*/0>,
+                     /*invIdx=*/0>,
         /*hasInChain=*/false>(TypeTag<Args...>(), frame);
   }
 
@@ -387,20 +387,20 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
     kArgument,
     kResult,
     kAttribute,
-    kFunction,
+    kInvokable,
     kFramework,
   };
 
   /// This class represents a static container for the various indices used
   /// during argument handling.
-  template <int argIdxVal, int resultIdxVal, int attrIdxVal, int funcIdxVal>
+  template <int argIdxVal, int resultIdxVal, int attrIdxVal, int invIdxVal>
   struct ValueIndices {
     /// A set of indices that correspond to lists of various value types. When
     /// each list has been fully consumed, the index is set to -1.
     static constexpr int argIdx = argIdxVal;
     static constexpr int resultIdx = resultIdxVal;
     static constexpr int attrIdx = attrIdxVal;
-    static constexpr int funcIdx = funcIdxVal;
+    static constexpr int invIdx = invIdxVal;
   };
 
   /// This class provides a common static abstraction of the different value
@@ -429,7 +429,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
         ValueIndices<updateIndex<ValueType::kArgument, IndicesT::argIdx>(),
                      updateIndex<ValueType::kResult, IndicesT::resultIdx>(),
                      updateIndex<ValueType::kAttribute, IndicesT::attrIdx>(),
-                     updateIndex<ValueType::kFunction, IndicesT::funcIdx>()>;
+                     updateIndex<ValueType::kInvokable, IndicesT::invIdx>()>;
 
     /// Verify the given value indices based on the current value type. The
     /// default implementation assumes all are valid, but derived value types
@@ -456,8 +456,8 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
                     "Arguments should appear before results");
       static_assert(IndicesT::attrIdx == 0,
                     "Arguments and results should appear before attributes");
-      static_assert(IndicesT::funcIdx == 0,
-                    "Arguments and results should appear before functions");
+      static_assert(IndicesT::invIdx == 0,
+                    "Arguments and results should appear before invokables");
     }
   };
   /// This class defines an Argument value that terminates the argument list,
@@ -478,8 +478,8 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
                     "Do not use more than one RemainingResults");
       static_assert(IndicesT::attrIdx == 0,
                     "Arguments and results should appear before attributes");
-      static_assert(IndicesT::funcIdx == 0,
-                    "Arguments and results should appear before functions");
+      static_assert(IndicesT::invIdx == 0,
+                    "Arguments and results should appear before invokables");
     }
   };
   /// This class defines a Result value that terminates the result list,
@@ -499,10 +499,10 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   };
 
   //===--------------------------------------------------------------------===//
-  // Function Values
+  // Invokable Values
 
-  /// This class defines a Function value.
-  struct FunctionValue : public ValueBase<ValueType::kFunction> {};
+  /// This class defines a Invokable value.
+  struct InvokableValue : public ValueBase<ValueType::kInvokable> {};
 
   //===--------------------------------------------------------------------===//
   // Framework Values
@@ -632,14 +632,14 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   };
 
   //===--------------------------------------------------------------------===//
-  // Function Values
+  // Invokable Values
 
-  /// If this takes a `const Function *`, then pass it down.
+  /// If this takes a `const Invokable *`, then pass it down.
   template <typename Dummy>
-  struct Value<const Invokable *, Dummy> : public FunctionValue {
+  struct Value<const Invokable *, Dummy> : public InvokableValue {
     template <typename IndicesT>
     static const Invokable *process(PrimitiveFrame &frame) {
-      return frame.getInvokable(IndicesT::funcIdx);
+      return frame.getInvokable(IndicesT::invIdx);
     }
   };
 
@@ -700,9 +700,9 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
     assert(
         (IndicesT::attrIdx == frame.getNumAttrs() || IndicesT::attrIdx == -1) &&
         "Extra attributes passed to primitive");
-    assert((IndicesT::funcIdx == frame.getNumInvokables() ||
-            IndicesT::funcIdx == -1) &&
-           "Extra functions passed to primitive");
+    assert((IndicesT::invIdx == frame.getNumInvokables() ||
+            IndicesT::invIdx == -1) &&
+           "Extra invokables passed to primitive");
     invoke<Return>(frame, std::forward<ArgsT>(args)...);
   }
 
@@ -778,7 +778,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
     frame.setResult(index, std::move(t));
   }
 
-  /// Store the function result back to the output AsyncValue in the
+  /// Store the primitive result back to the output AsyncValue in the
   /// PrimitiveFrame.
   template <typename T>
   static void handleReturn(PrimitiveFrame &frame, T &&t) {
@@ -786,8 +786,8 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
     processResult(frame, 0, std::forward<T>(t));
   }
 
-  /// Support functions that return std::pair<>, storing the two results in
-  /// separate output results.
+  /// Support implementations that return std::pair<>, storing the two results
+  /// in separate output results.
   template <typename T1, typename T2>
   static void handleReturn(PrimitiveFrame &frame, std::pair<T1, T2> &&pair) {
     assert(frame.getNumResults() == 2 && "Incorrect number of results");
@@ -795,7 +795,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
     processResult(frame, 1, std::move(pair.second));
   }
 
-  /// Support functions that return std::tuple<>, storing each element in
+  /// Support implementations that return std::tuple<>, storing each element in
   /// separate output results.
   template <typename... Ts>
   static void handleReturn(PrimitiveFrame &frame, std::tuple<Ts...> &&tuple) {
