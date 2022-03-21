@@ -76,11 +76,11 @@ public:
   }
 
   bool resolveInvokable(size_t invokableIndex, Location loc,
-                        BEF::InvokableOp &InvokableOp) {
+                        BEF::InvokableOp &invokableOp) {
     if (invokableIndex >= invokables.size())
       return mlir::emitError(loc, "invalid invokable index"), true;
 
-    InvokableOp = invokables[invokableIndex];
+    invokableOp = invokables[invokableIndex];
     return false;
   }
 

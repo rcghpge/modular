@@ -207,7 +207,7 @@ namespace Detail {
 static inline void checkAttributeKind(const void *value,
                                       BEF::AttributeKind expectedKind) {
   // The attribute kind is encoded in the byte before the attribute value.
-  uint8_t kind = static_cast<const uint8_t *>(value)[-1];
+  uint8_t kind = *(static_cast<const uint8_t *>(value) - 1);
   assert(kind == uint8_t(expectedKind) &&
          "attribute passed to primitive has unexpected order;"
          " mismatch between mlir syntax and primitive definition");
