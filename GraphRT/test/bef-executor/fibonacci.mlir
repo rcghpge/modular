@@ -1,7 +1,7 @@
 // RUN: bef-translate -export-bef -allow-unregistered-dialect %s > %t.bef
 // RUN: bef-executor %t.bef | FileCheck %s
 
-bef.func @fib(%arg: i32) -> i32 {
+bef.invokable @fib(%arg: i32) -> i32 {
   %one = grt.constant.i32 1
   %cond = grt.lessequal.i32 %arg, %one
   %res = grt.if %cond (%arg: i32) -> i32 {
@@ -20,7 +20,7 @@ bef.func @fib(%arg: i32) -> i32 {
 }
 
 // CHECK-LABEL: --- Running 'fib_driver'
-bef.func @fib_driver() {
+bef.invokable @fib_driver() {
   %zero = grt.constant.i32 0
   %fib0 = grt.call @fib(%zero) : (i32) -> (i32)
 

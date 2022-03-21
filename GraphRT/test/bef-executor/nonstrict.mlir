@@ -3,13 +3,13 @@
 
 // CHECK: Initializing leak check allocator
 
-bef.func @return_first_arg(%x: i32, %y: i32) -> i32 {
+bef.invokable @return_first_arg(%x: i32, %y: i32) -> i32 {
   bef.output %x : i32
 }
 
 // Test a nonstrict call with an unused argument.
 // CHECK-LABEL: --- Running 'unused_nonstrict_arg'
-bef.func @unused_nonstrict_arg() {
+bef.invokable @unused_nonstrict_arg() {
   %c1 = grt.constant.i32 1
 
   %v2 = "test.async.add.i32"(%c1, %c1) : (i32, i32) -> i32

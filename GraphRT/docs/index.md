@@ -70,7 +70,7 @@ Beyond documentation, it can be helpful to browse the code.  The major
 components of the GraphRT module are:
 
 1) a set of MLIR components for representing GraphRT programs, notably the
-   [BEF Dialect](../include/GraphRT/BEFDialect) which defines `bef.func`.
+   [BEF Dialect](../include/GraphRT/BEFDialect) which defines `bef.invokable`.
 1) a binary file format named the ["Binary Executor Format"
    (BEF)](BinaryExecutorFormat.md) which is designed to be compact and
    efficiently executable by a low-dependency interpreter.

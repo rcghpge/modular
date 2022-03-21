@@ -8,35 +8,35 @@
 
 // CHECK: module {
 
-// CHECK-LABEL: bef.func @trivial() {
+// CHECK-LABEL: bef.invokable @trivial() {
 // CHECK-NEXT:    %0:2 = bef.opaque "simple.primitive" []() : () -> (!bef.unknown, !bef.unknown)
 // CHECK-NEXT:    bef.opaque "grt.call" [@trivial]() : () -> ()  
 // CHECK-NEXT:    bef.output
 // CHECK-NEXT:  }
-// MD-LABEL: bef.func @trivial() {
+// MD-LABEL: bef.invokable @trivial() {
 // MD-NEXT:    %0:2 = "simple.primitive"() : () -> (i8, i16)
 // MD-NEXT:    "grt.call"() {callee = @trivial} : () -> ()
 // MD-NEXT:    bef.output
 // MD-NEXT:  }
-bef.func @trivial() {
+bef.invokable @trivial() {
   %a, %b = "simple.primitive"() : () -> (i8, i16)
   grt.call @trivial() : () -> ()
   bef.output
 }
 
-// CHECK-LABEL:  bef.func @args_results(%arg0: !bef.unknown, %arg1: !bef.unknown) -> (!bef.unknown, !bef.unknown) {
+// CHECK-LABEL:  bef.invokable @args_results(%arg0: !bef.unknown, %arg1: !bef.unknown) -> (!bef.unknown, !bef.unknown) {
 // CHECK-NEXT:     bef.output %arg1, %arg0 : !bef.unknown, !bef.unknown
 // CHECK-NEXT:   }
-// MD-LABEL:  bef.func @args_results(%arg0: i32, %arg1: i8) -> (i8, i32) {
+// MD-LABEL:  bef.invokable @args_results(%arg0: i32, %arg1: i8) -> (i8, i32) {
 // MD-NEXT:     bef.output %arg1, %arg0 : i8, i32
 // MD-NEXT:   }
-bef.func @args_results(%a: i32, %b: i8) -> (i8, i32) {
+bef.invokable @args_results(%a: i32, %b: i8) -> (i8, i32) {
   bef.output %b, %a : i8, i32
 }
 
-// CHECK-LABEL:  bef.func @attributes() {
-// MD-LABEL:  bef.func @attributes() {
-bef.func @attributes() {
+// CHECK-LABEL:  bef.invokable @attributes() {
+// MD-LABEL:  bef.invokable @attributes() {
+bef.invokable @attributes() {
   // CHECK-NEXT: "a.b" [true]
   // MD-NEXT: "a.b"() {a = true}
   "a.b"() { a = 1 : i1 }: () -> ()
@@ -74,12 +74,12 @@ bef.func @attributes() {
    // CHECK-NEXT:     bef.output
 }  // CHECK-NEXT:   }
 
-// CHECK-LABEL: bef.func @opaque_round_trip() {
+// CHECK-LABEL: bef.invokable @opaque_round_trip() {
 // CHECK-NEXT:    %0:2 = bef.opaque "simple.primitive" []() : () -> (!bef.unknown, !bef.unknown)
 // CHECK-NEXT:    bef.opaque "other.primitive" [42 : i8](%0#1, %0#0) : (!bef.unknown, !bef.unknown) -> ()
 // CHECK-NEXT:    bef.output
 // CHECK-NEXT:  }
-bef.func @opaque_round_trip() {
+bef.invokable @opaque_round_trip() {
   %0:2 = "bef.opaque"() {attrs = [], opname = "simple.primitive"} : () -> (!bef.unknown, !bef.unknown)
   "bef.opaque"(%0#1, %0#0) {attrs = [42 : i8], opname = "other.primitive"} : (!bef.unknown, !bef.unknown) -> ()
   bef.output

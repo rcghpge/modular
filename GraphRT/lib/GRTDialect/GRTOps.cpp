@@ -43,8 +43,8 @@ parseParenOperandList(OpAsmParser &parser, OperationState &result,
 
 LogicalResult CallOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   // Check that the callee attribute was specified.
-  BEF::FuncOp fn =
-      symbolTable.lookupNearestSymbolFrom<BEF::FuncOp>(*this, calleeAttr());
+  BEF::InvokableOp fn = symbolTable.lookupNearestSymbolFrom<BEF::InvokableOp>(
+      *this, calleeAttr());
   if (!fn)
     return emitOpError() << "'" << calleeAttr()
                          << "' does not reference a valid function";

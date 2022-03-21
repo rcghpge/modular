@@ -376,7 +376,7 @@ deallocate) the resources in the program when they are destroyed.  For example
 consider this BEF program:
 
 ```mlir
-bef.func @bad_design(%ch0: !grt.chain) -> !grt.chain {
+bef.invokable @bad_design(%ch0: !grt.chain) -> !grt.chain {
   %x = accel.allocate_thing : !accel.thing
 
   %ch1 = accel.process_thing %x, %ch0
@@ -450,13 +450,13 @@ become available.  Consider the `grt.call` operation for example, which invokes
 a BEF function passing a bunch of arguments:
 
 ```mlir
-bef.func @process(%a: i32, %b: i32) -> (i32, i32) {
+bef.invokable @process(%a: i32, %b: i32) -> (i32, i32) {
   %x = "some_expensive_multithreaded_compute"(%a) : (i32) -> i32
   %y = "independent_expensive_multithreaded_compute"(%b) : (i32) -> i32
   bef.output %x, %y : i32, i32
 }
 
-bef.func @example() {
+bef.invokable @example() {
   %a_val = "some_unpredictable_length_op"() : () -> i32
   %b_val = "other_unpredictable_length_op"() : () -> i32
 

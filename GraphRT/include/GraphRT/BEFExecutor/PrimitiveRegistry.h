@@ -380,7 +380,6 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
 
   //===--------------------------------------------------------------------===//
   // Argument handling: Value Type Definitions
-  //===--------------------------------------------------------------------===//
 
   /// This enum represents the different types of values that may be passed as
   /// arguments during the invocation of a primitive.

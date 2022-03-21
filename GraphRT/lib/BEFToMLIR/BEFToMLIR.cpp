@@ -37,7 +37,7 @@ public:
   bool parseTypes();
   bool parsePrimitiveNames();
   bool parseFunctions();
-  bool parseFunctionBody(BEF::FuncOp func, BEFReader &funcReader,
+  bool parseFunctionBody(BEF::InvokableOp func, BEFReader &funcReader,
                          BEFReader &attrNameReader, BEFReader &mlirTypesReader);
 
   bool emitError(Error message) {
@@ -74,11 +74,12 @@ public:
     return parseNULTerminatedStringAt(offset, stringReader, result);
   }
 
-  bool resolveFunction(size_t fnIndex, Location loc, BEF::FuncOp &funcOp) {
+  bool resolveFunction(size_t fnIndex, Location loc,
+                       BEF::InvokableOp &InvokableOp) {
     if (fnIndex >= functions.size())
       return mlir::emitError(loc, "invalid function index"), true;
 
-    funcOp = functions[fnIndex];
+    InvokableOp = functions[fnIndex];
     return false;
   }
 
@@ -139,7 +140,7 @@ private:
   SmallVector<StringAttr> primitiveNames;
 
   /// This is the set of parsed functions indexed by function ID.
-  SmallVector<BEF::FuncOp> functions;
+  SmallVector<BEF::InvokableOp> functions;
 
   /// The is the parsed version of the type list when metadata is enabled.
   std::vector<Type> types;
@@ -410,8 +411,8 @@ bool BEFToMLIRConverter::parseFunctions() {
     inputTypes.assign(numArgs, unknownType);
     resultTypes.assign(numResults, unknownType);
 
-    auto func =
-        funcBuilder.create<BEF::FuncOp>(loc, name, inputTypes, resultTypes);
+    auto func = funcBuilder.create<BEF::InvokableOp>(loc, name, inputTypes,
+                                                     resultTypes);
     functions.push_back(func);
     inputTypes.clear();
     resultTypes.clear();
@@ -434,7 +435,7 @@ bool BEFToMLIRConverter::parseFunctions() {
 namespace {
 class FunctionParser {
 public:
-  FunctionParser(BEF::FuncOp func, BEFReader &funcReader,
+  FunctionParser(BEF::InvokableOp func, BEFReader &funcReader,
                  BEFReader &attrNameReader, BEFReader &mlirTypesReader,
                  BEFToMLIRConverter &converter)
       : func(func), funcReader(funcReader), attrNameReader(attrNameReader),
@@ -449,7 +450,7 @@ private:
   bool parseResultRegs();
   bool parsePrimitiveList();
 
-  BEF::FuncOp func;
+  BEF::InvokableOp func;
   BEFReader &funcReader;
 
   BEFReader &attrNameReader;  // A (possibly empty) ATTRIBUTE_NAMES_MD section.
@@ -634,8 +635,8 @@ bool FunctionParser::parsePrimitiveList() {
     // now.
     SmallVector<Block *> regionsBlocksToTake;
     for (uint32_t fnIdx : functionsIndices) {
-      BEF::FuncOp funcOp;
-      if (converter.resolveFunction(fnIdx, loc, funcOp))
+      BEF::InvokableOp InvokableOp;
+      if (converter.resolveFunction(fnIdx, loc, InvokableOp))
         return true;
 
       // If this is an anonymous function, then it is a region on the operation,
@@ -644,12 +645,12 @@ bool FunctionParser::parsePrimitiveList() {
       if (isRegion) {
         // Check to see if someone already used this function as an
         // anonymous operation region.
-        if (funcOp.getBodyRegion().empty())
+        if (InvokableOp.getBodyRegion().empty())
           return mlir::emitError(loc, "anonymous function used multiple times"),
                  true;
 
-        Block *block = &funcOp.getBodyRegion().back();
-        funcOp.getBodyRegion().getBlocks().remove(*block);
+        Block *block = &InvokableOp.getBodyRegion().back();
+        InvokableOp.getBodyRegion().getBlocks().remove(*block);
         regionsBlocksToTake.push_back(block);
       } else {
         // If this is a symbol ref, check for a name.
@@ -664,7 +665,7 @@ bool FunctionParser::parsePrimitiveList() {
 
         // Regardless of wehther we have a name, rememer this as a
         // FlatSymbolRef.
-        attrs.push_back(FlatSymbolRefAttr::get(funcOp));
+        attrs.push_back(FlatSymbolRefAttr::get(InvokableOp));
         --numFunctions;
       }
     }
@@ -728,7 +729,7 @@ bool FunctionParser::parsePrimitiveList() {
   return false;
 }
 
-bool BEFToMLIRConverter::parseFunctionBody(BEF::FuncOp func,
+bool BEFToMLIRConverter::parseFunctionBody(BEF::InvokableOp func,
                                            BEFReader &funcReader,
                                            BEFReader &attrNameReader,
                                            BEFReader &mlirTypesReader) {

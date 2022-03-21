@@ -4,7 +4,7 @@
 // CHECK: Initializing leak check allocator
 
 // CHECK-LABEL: --- Running 'test_async_print_result'
-bef.func @test_async_print_result() -> i32 {
+bef.invokable @test_async_print_result() -> i32 {
   %c1 = grt.constant.i32 1
   %c42 = grt.constant.i32 42
   %a = "test.async.add.i32"(%c1, %c42) : (i32, i32) -> i32
@@ -13,7 +13,7 @@ bef.func @test_async_print_result() -> i32 {
 // CHECK: 'test_async_print_result' returned 43
 
 // CHECK-LABEL: --- Running 'test_cancel'
-bef.func @test_cancel() -> i32 {
+bef.invokable @test_cancel() -> i32 {
   %c1 = grt.constant.i32 1
   %c42 = grt.constant.i32 42
   %a = "test.async.add.i32"(%c1, %c42) : (i32, i32) -> i32
@@ -28,7 +28,7 @@ bef.func @test_cancel() -> i32 {
 // CHECK-NEXT: returned <error: Cancelled!>
 
 // CHECK-LABEL: --- Running 'test_add_any'
-bef.func @test_add_any() -> (i32, !test.string, i32) {
+bef.invokable @test_add_any() -> (i32, !test.string, i32) {
   %c1 = grt.constant.i32 1
   %c42 = grt.constant.i32 42
   %a = "test.async.add.any"(%c1, %c42) : (i32, i32) -> i32

@@ -267,9 +267,9 @@ the abstractions we need to model - in particular, while MLIR regions can have
 multiple basic blocks in them, BEF Functions only support a single block - this
 guarantees that they are always be a DAG of computation.
 
-BEF Functions are used for top-level MLIR `func` operations (indexed by the
-function name table) as well as in nested positions for control flow and other
-concepts that occur with MLIR regions.
+BEF Functions are used for top-level MLIR `bef.invokable` operations (indexed
+by the invokable name table) as well as in nested positions for control flow
+and other concepts that occur with MLIR regions.
 
 ### BEF Function Definition
 

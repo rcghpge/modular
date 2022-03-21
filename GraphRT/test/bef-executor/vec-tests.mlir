@@ -4,7 +4,7 @@
 // CHECK: Initializing leak check allocator
 
 // CHECK-LABEL: --- Running 'basic_test'
-bef.func @basic_test() -> !grt.chain {
+bef.invokable @basic_test() -> !grt.chain {
   %ch0 = grt.chain.new
   %v1 = "test.vec.atoi"() { size = 5 : i32 } : () -> !test.vec
   %ch1 = "test.vec.print" (%v1, %ch0) : (!test.vec, !grt.chain) -> !grt.chain
@@ -32,7 +32,7 @@ bef.func @basic_test() -> !grt.chain {
 }
 
 // CHECK-LABEL: --- Running 'async_add_test'
-bef.func @async_add_test() -> !grt.chain {
+bef.invokable @async_add_test() -> !grt.chain {
   %ch0 = grt.chain.new
   %v1 = "test.vec.atoi"() { size = 5 : i32 } : () -> !test.vec
   %ch1 = "test.vec.print" (%v1, %ch0) : (!test.vec, !grt.chain) -> !grt.chain
@@ -60,7 +60,7 @@ bef.func @async_add_test() -> !grt.chain {
 }
 
 // CHECK-LABEL: --- Running 'async_add_test_par_foreach'
-bef.func @async_add_test_par_foreach() -> !grt.chain {
+bef.invokable @async_add_test_par_foreach() -> !grt.chain {
   %ch0 = grt.chain.new
   %v1 = "test.vec.atoi"() { size = 5 : i32 } : () -> !test.vec
   %ch1 = "test.vec.print" (%v1, %ch0) : (!test.vec, !grt.chain) -> !grt.chain

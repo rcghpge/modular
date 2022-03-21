@@ -16,32 +16,34 @@ using namespace M;
 using namespace BEF;
 
 //===----------------------------------------------------------------------===//
-// FuncOp
+// InvokableOp
 //===----------------------------------------------------------------------===//
 
-void FuncOp::build(OpBuilder &builder, OperationState &state, StringAttr name,
-                   ArrayRef<Type> inputTypes, ArrayRef<Type> resultTypes,
-                   ArrayRef<NamedAttribute> attrs) {
+void InvokableOp::build(OpBuilder &builder, OperationState &state,
+                        StringAttr name, ArrayRef<Type> inputTypes,
+                        ArrayRef<Type> resultTypes,
+                        ArrayRef<NamedAttribute> attrs) {
   buildWithEntryBlock(builder, state, name,
                       builder.getFunctionType(inputTypes, resultTypes), attrs,
                       inputTypes);
 }
 
-void FuncOp::build(OpBuilder &builder, OperationState &state,
-                   ArrayRef<NamedAttribute> attrs) {
+void InvokableOp::build(OpBuilder &builder, OperationState &state,
+                        ArrayRef<NamedAttribute> attrs) {
   state.addAttributes(attrs);
   state.addRegion();
 }
 
-OutputOp FuncOp::getOutputOp() {
+OutputOp InvokableOp::getOutputOp() {
   return cast<OutputOp>(getBodyBlock()->getTerminator());
 }
 
-// Parses a BEF Function.
-//
-// operation ::= `func` function-signature function-attributes? function-body
-//
-ParseResult FuncOp::parse(OpAsmParser &parser, OperationState &result) {
+/// Parses a BEF invokable.
+///
+// operation ::=
+/// `bef.invokable` function-signature function-attributes? function-body
+///
+ParseResult InvokableOp::parse(OpAsmParser &parser, OperationState &result) {
   auto buildFuncType =
       [](Builder &builder, ArrayRef<Type> argTypes, ArrayRef<Type> results,
          mlir::function_interface_impl::VariadicFlag,
@@ -51,14 +53,14 @@ ParseResult FuncOp::parse(OpAsmParser &parser, OperationState &result) {
       parser, result, /*allowVariadic=*/false, buildFuncType);
 }
 
-// Print the FuncOp. Collects argument and result types and passes them to
+// Print the InvokableOp. Collects argument and result types and passes them to
 // helper functions. Drops "void" result since it cannot be parsed back.
-void FuncOp::print(OpAsmPrinter &p) {
+void InvokableOp::print(OpAsmPrinter &p) {
   mlir::function_interface_impl::printFunctionOp(p, *this,
                                                  /*isVariadic=*/false);
 }
 
-LogicalResult FuncOp::verifyRegions() {
+LogicalResult InvokableOp::verifyRegions() {
   auto output = cast<OutputOp>(getBodyBlock()->getTerminator());
   return output.checkArgumentTypes(getResultTypes());
 }
@@ -70,7 +72,7 @@ LogicalResult FuncOp::verifyRegions() {
 /// Containers verify that the operands of this OutputOp match the specified set
 /// of types.
 mlir::LogicalResult OutputOp::checkArgumentTypes(TypeRange types) {
-  // Verify our result types match up with the enclosing func result type.
+  // Verify our result types match up with the enclosing result type.
   if (getNumOperands() != types.size())
     return emitOpError("expected ")
            << types.size() << " operands for enclosing op";

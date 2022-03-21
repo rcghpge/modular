@@ -27,7 +27,7 @@ A GraphRT program is usually described in MLIR form.  For example, here is an
 example of a Fibonacci function:
 
 ```mlir
-bef.func @fib(%arg: i32) -> i32 {
+bef.invokable @fib(%arg: i32) -> i32 {
   %one = grt.constant.i32 1
   %cond = grt.lessequal.i32 %arg, %one
   %res = grt.if %cond (%arg: i32) -> i32 {
@@ -47,7 +47,7 @@ bef.func @fib(%arg: i32) -> i32 {
 ```
 
 While the BEF format and BEF dialect has hard coded primitives for defining
-and returning from functions and regions (`bef.func` and `bef.output`)
+and returning from functions and regions (`bef.invokable` and `bef.output`)
 respectively, it does not otherwise hard code any other operations that do
 actual computation.
 
@@ -138,7 +138,7 @@ primitives once all their inputs are available.  For example, consider
 invocation of this BEF function that computes `(a+a)+(b+b)`:
 
 ```mlir
-bef.func @dataflow_example(%a: i32, %b: i32) -> i32 {
+bef.invokable @dataflow_example(%a: i32, %b: i32) -> i32 {
   %a2 = grt.add.i32 %a, %a
   %b2 = grt.add.i32 %b, %b
   %a2b2 = grt.add.i32 %a2, %b2
@@ -175,7 +175,7 @@ read or write mutable buffers, or need other synchronization constructs that we
 haven't dreamed of yet.  Consider the following pseudo-code program:
 
 ```mlir
-bef.func @dataflow_example(%a: i32, %b: i32) {
+bef.invokable @dataflow_example(%a: i32, %b: i32) {
   %a2 = grt.add.i32 %a, %a
   %b2 = grt.add.i32 %b, %b
   "print" %a2
@@ -196,7 +196,7 @@ with a `LLCL::Chain` type, which is threaded through the operations.  This is a
 legal BEF dialect program:
 
 ```mlir
-bef.func @dataflow_example(%a: i32, %b: i32, %ch0: !grt.chain) -> !grt.chain {
+bef.invokable @dataflow_example(%a: i32, %b: i32, %ch0: !grt.chain) -> !grt.chain {
   %a2 = grt.add.i32 %a, %a
   %b2 = grt.add.i32 %b, %b
   %ch1 = grt.print.i32 %a2, %ch0
@@ -255,7 +255,7 @@ available.
 As a concrete example, consider a function call:
 
 ```mlir
-bef.func @dataflow_example(%a: i32, %b: i32) -> i32 {
+bef.invokable @dataflow_example(%a: i32, %b: i32) -> i32 {
   %a2 = grt.add.i32 %a, %a
   %b2 = "some long latency operation"(%b) : (i32) -> i32
   %result = grt.call @other_function(%a2, %b2) : (i32, i32) -> i32

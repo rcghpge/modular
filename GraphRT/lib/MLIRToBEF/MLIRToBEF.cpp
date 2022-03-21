@@ -29,19 +29,11 @@ struct BEFOffset {
   size_t value;
 };
 
-struct BEFFunctionSignature {
+/// This keeps track of the signature for an invokable (a bef.invokable or
+/// region in the MLIR file).
+struct InvokableSignature {
   size_t numArguments, numResults;
 };
-
-static BEFFunctionSignature getBEFFunctionSignature(Region *region) {
-  // Emit information about the type of the function.
-  auto *block = &region->getBlocks().front();
-
-  // BEF functions produce results with the "bef.output" operation.
-  auto output = dyn_cast<BEF::OutputOp>(&block->back());
-  size_t numResults = output ? output->getNumOperands() : 0;
-  return BEFFunctionSignature{block->getNumArguments(), numResults};
-}
 
 //===----------------------------------------------------------------------===//
 // BEFEmitter
@@ -275,7 +267,7 @@ public:
   }
 
   void addBEFFunctionOffset(StringAttr name, BEFOffset offset, Location loc,
-                            BEFFunctionSignature signature) {
+                            InvokableSignature signature) {
     functionIndexEntries.push_back(
         {getStringOffset(name), offset, getLocationOffset(loc), signature});
   }
@@ -321,22 +313,22 @@ public:
   std::vector<StringAttr> primitives;
   DenseMap<StringAttr, unsigned> primitiveIDs;
 
-  /// BEFFunctionEntry keeps track of each of the top level `func`'s and the
-  /// regions attached to control flow statements.  These all turn into BEF
-  /// functions.
-  struct BEFFunctionEntry {
-    BEFFunctionEntry(StringAttr name, BEFFunctionSignature signature,
-                     Region *region)
+  /// InvokableEntry keeps track of each of the top level `bef.invokable`'s
+  /// and the regions attached to control flow statements.  These all turn into
+  /// invokables in the BEF file.
+  struct InvokableEntry {
+    InvokableEntry(StringAttr name, InvokableSignature signature,
+                   Region *region)
         : name(name), signature(signature), region(region) {}
 
     StringAttr name;
-    BEFFunctionSignature signature;
+    InvokableSignature signature;
     Region *region;
   };
 
   // List of functions that we need to emit, along with a name if they came
   // from a top level function.
-  std::vector<BEFFunctionEntry> functions;
+  std::vector<InvokableEntry> functions;
   DenseMap<Region *, unsigned> regionFunctionIDs;
   DenseMap<StringAttr, unsigned> namedFunctionIDs;
 
@@ -344,7 +336,7 @@ public:
     BEFOffset nameOffset;
     BEFOffset functionOffset;
     BEFOffset locationOffset;
-    BEFFunctionSignature signature;
+    InvokableSignature signature;
   };
 
   // This follows the format of the FunctionIndex section.
@@ -387,6 +379,16 @@ void EntityTable::addType(Type type) {
   types.push_back(type);
 }
 
+static InvokableSignature getInvokableSignature(Region *region) {
+  // Emit information about the type of the function.
+  auto *block = &region->getBlocks().front();
+
+  // BEF regions produce results with the "bef.output" operation.
+  auto output = dyn_cast<BEF::OutputOp>(&block->back());
+  size_t numResults = output ? output->getNumOperands() : 0;
+  return InvokableSignature{block->getNumArguments(), numResults};
+}
+
 LogicalResult EntityTable::addBEFFunction(Region *region, StringAttr name) {
   // Check to see if we support this region kind.
   if (region->getBlocks().size() != 1) {
@@ -404,7 +406,7 @@ LogicalResult EntityTable::addBEFFunction(Region *region, StringAttr name) {
 
   regionFunctionIDs[region] = functions.size();
   functions.push_back(
-      BEFFunctionEntry(name, getBEFFunctionSignature(region), region));
+      InvokableEntry(name, getInvokableSignature(region), region));
   return success();
 }
 
@@ -484,7 +486,7 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
 
     // We treat functions specially, putting them into the symbol table and
     // ignoring their attributes.
-    if (auto fn = dyn_cast<BEF::FuncOp>(op)) {
+    if (auto fn = dyn_cast<BEF::InvokableOp>(op)) {
       if (failed(addBEFFunction(&fn.getBody(), fn.getNameAttr())))
         return WalkResult::interrupt();
       return WalkResult::advance();

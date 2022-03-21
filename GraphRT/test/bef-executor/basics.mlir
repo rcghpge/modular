@@ -2,7 +2,7 @@
 // RUN: bef-executor %t.bef | FileCheck %s
 
 // CHECK-LABEL: Can not run 'args_results' because it has arguments
-bef.func @args_results(%a: i32, %b: i8) -> (i8, i32) {
+bef.invokable @args_results(%a: i32, %b: i8) -> (i8, i32) {
   bef.output %b, %a : i8, i32
 }
 
@@ -11,7 +11,7 @@ bef.func @args_results(%a: i32, %b: i8) -> (i8, i32) {
 // CHECK: Initializing leak check allocator
 
 // CHECK-LABEL: Running 'print_test':
-bef.func @print_test() {
+bef.invokable @print_test() {
   // CHECK: hello bef executor!
   %ch0 = grt.chain.new
   "test.print_hello"(%ch0) : (!grt.chain) -> !grt.chain
@@ -19,7 +19,7 @@ bef.func @print_test() {
 }
 
 // CHECK-LABEL: --- Running 'three_print'
-bef.func @three_print() {
+bef.invokable @three_print() {
   %ch0 = grt.chain.new
 
   // CHECK: hello bef executor!
@@ -35,7 +35,7 @@ bef.func @three_print() {
 }
 
 // CHECK-LABEL: --- Running 'basic.i32'
-bef.func @basic.i32() {
+bef.invokable @basic.i32() {
   %x = grt.constant.i32 42
 
   %ch0 = grt.chain.new
@@ -52,7 +52,7 @@ bef.func @basic.i32() {
 }
 
 // CHECK-LABEL: --- Running 'test_result'
-bef.func @test_result() -> (i32, i32, !grt.chain) {
+bef.invokable @test_result() -> (i32, i32, !grt.chain) {
   %ch0 = grt.chain.new
   %x = grt.constant.i32 42
   %y = grt.constant.i32 13
@@ -62,7 +62,7 @@ bef.func @test_result() -> (i32, i32, !grt.chain) {
 }
 
 // CHECK-LABEL: --- Running 'errors'
-bef.func @errors() -> (i32, i32, i32) {
+bef.invokable @errors() -> (i32, i32, i32) {
   %a = "test.fail"() : () -> i32
   %b, %c = "test.partial_fail"() : () -> (i32, i32)
 
@@ -72,7 +72,7 @@ bef.func @errors() -> (i32, i32, i32) {
 }
 
 // CHECK-LABEL: --- Running 'simple_calls'
-bef.func @simple_calls() -> (i32, i32) {
+bef.invokable @simple_calls() -> (i32, i32) {
   // CHECK: int32 = 42
   // CHECK: int32 = 84
   grt.call @basic.i32() : () -> ()
@@ -84,21 +84,21 @@ bef.func @simple_calls() -> (i32, i32) {
 }
 
 // CHECK-LABEL: --- Can not run 'call_print.i32' because it has arguments
-bef.func @call_print.i32(%x: i32) -> !grt.chain {
+bef.invokable @call_print.i32(%x: i32) -> !grt.chain {
   %ch0 = grt.chain.new
   %ch1 = grt.print.i32 %x, %ch0
   bef.output %ch1 : !grt.chain
 }
 
 // CHECK-LABEL: --- Can not run 'add_one' because it has arguments
-bef.func @add_one(%x: i32) -> i32 {
+bef.invokable @add_one(%x: i32) -> i32 {
   %c1 = grt.constant.i32 1
   %y = grt.add.i32 %x, %c1
   bef.output %y : i32
 }
 
 // CHECK-LABEL: --- Running 'caller'
-bef.func @caller() -> !grt.chain {
+bef.invokable @caller() -> !grt.chain {
   %c1 = grt.constant.i32 1
 
   // CHECK-NEXT: int32 = 1
@@ -115,7 +115,7 @@ bef.func @caller() -> !grt.chain {
 }
 
 // CHECK-LABEL: --- Running 'basic_string_and_arrays'
-bef.func @basic_string_and_arrays() {
+bef.invokable @basic_string_and_arrays() {
   %x = "test.get_string"() { value = "bark" } : () -> !test.string
   %y = "test.get_string"() { value = "rarf" } : () -> !test.string
   %ch0 = grt.chain.new

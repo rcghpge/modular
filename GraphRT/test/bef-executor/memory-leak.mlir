@@ -2,7 +2,7 @@
 // RUN: not --crash bef-executor %t.bef 2>&1 | FileCheck %s
 
 // CHECK: --- Running 'test_leak_one_int32'
-bef.func @test_leak_one_int32() -> () {
+bef.invokable @test_leak_one_int32() -> () {
   "test.memory_leak_one_int32"() : () -> ()
   bef.output
 }

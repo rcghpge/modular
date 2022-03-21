@@ -13,12 +13,13 @@ include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 
 //===----------------------------------------------------------------------===//
-// FuncOp
+// InvokableOp
 //===----------------------------------------------------------------------===//
 
-def FuncOp : BEFOp<"func", [HasParent<"mlir::ModuleOp">, FunctionOpInterface,
-                            Symbol, IsolatedFromAbove,
-                            SingleBlockImplicitTerminator<"OutputOp">]> {
+def InvokableOp
+  : BEFOp<"invokable", [HasParent<"mlir::ModuleOp">, FunctionOpInterface,
+                        Symbol, IsolatedFromAbove,
+                        SingleBlockImplicitTerminator<"OutputOp">]> {
   let summary = "Named function in a BEF file";
   let arguments = (ins TypeAttrOf<FunctionType>:$type);
   let regions = (region SizedRegion<1>:$body);
@@ -42,7 +43,7 @@ def FuncOp : BEFOp<"func", [HasParent<"mlir::ModuleOp">, FunctionOpInterface,
   }];
 
   let builders = [
-    /// Create a new bef.func with an empty body.
+    /// Create a new bef.invokable with an empty body.
     OpBuilder<(ins "StringAttr":$name, "ArrayRef<Type>":$inputTypes,
                    "ArrayRef<Type>":$resultTypes,
                    CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>,
@@ -86,11 +87,11 @@ def OutputOp : BEFOp<"output", [Terminator, ReturnLike]> {
   let description = [{
     The "bef.output" operation specifies the returned values for a BEF function.
     The operation takes variable number of operands and produces no results.
-    The operand number and types must match the signature of the bef.func
+    The operand number and types must match the signature of the bef.invokable
     that contains the operation. For example:
 
     ```mlir
-      bef.func @foo() : i32, f8 {
+      bef.invokable @foo() : i32, f8 {
         ...
         bef.output %0, %1 : i32, f8
       }
