@@ -36,7 +36,7 @@ enum {
 
 /// This bitfield encodes into a single byte metadata about the format of
 /// emitted attributes.
-enum class AttributeKind {
+enum class AttributeKind : uint8_t {
   kInvalid = 0,
   /// The primitive types store their types as a simple function of their
   /// bitwidth for simplicity in getting the AttributeKind from a type. Floats
@@ -53,6 +53,16 @@ enum class AttributeKind {
   /// This is a bitmask, meant to be applied to one of the basic types (I*, F*)
   kArrayType = 0x80
 };
+
+/// Given an AttributeKind for an element, return the AttributeKind for an array
+/// of that element.
+static inline AttributeKind getArrayOf(AttributeKind elementKind) {
+  assert(elementKind != AttributeKind::kString &&
+         elementKind != AttributeKind::kArrayType &&
+         "Cannot make arrays of arrays or arrays of strings");
+  return AttributeKind(uint8_t(elementKind) |
+                       uint8_t(AttributeKind::kArrayType));
+}
 
 enum class SectionID {
   INVALID_SECTION = 0,
@@ -74,10 +84,36 @@ enum class SectionID {
 };
 
 /// Return true if the magic number makes this look like a BEF file.
-inline bool hasBEFMagicNumber(StringRef contents) {
+inline bool hasBEFMagicNumber(llvm::StringRef contents) {
   return contents.size() > 2 && uint8_t(contents[0]) == MAGIC1 &&
          uint8_t(contents[1]) == MAGIC2;
 }
+
+/// Provide a mapping from C++ types to the corresponding attribute kinds.
+template <typename CXXType>
+struct AttrKindForCXXType {
+  // Default mapping allows a static_assert instead of template substitution
+  // failure to catch invalid cases.
+  static constexpr AttributeKind kind = AttributeKind::kInvalid;
+};
+
+#define DECLARE_ATTR_MAPPING(KIND, CXXTYPE)                                    \
+  template <>                                                                  \
+  struct AttrKindForCXXType<CXXTYPE> {                                         \
+    static constexpr AttributeKind kind = AttributeKind::KIND;                 \
+  };
+DECLARE_ATTR_MAPPING(kI1, bool);
+DECLARE_ATTR_MAPPING(kI8, int8_t);
+DECLARE_ATTR_MAPPING(kI8, uint8_t);
+DECLARE_ATTR_MAPPING(kI16, int16_t);
+DECLARE_ATTR_MAPPING(kI16, uint16_t);
+DECLARE_ATTR_MAPPING(kI32, int32_t);
+DECLARE_ATTR_MAPPING(kI32, uint32_t);
+DECLARE_ATTR_MAPPING(kI64, int64_t);
+DECLARE_ATTR_MAPPING(kI64, uint64_t);
+DECLARE_ATTR_MAPPING(kF32, float);
+DECLARE_ATTR_MAPPING(kF64, double);
+#undef DECLARE_ATTR_MAPPING
 
 } // namespace BEF
 } // namespace M

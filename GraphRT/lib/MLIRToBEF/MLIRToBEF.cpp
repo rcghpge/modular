@@ -735,9 +735,8 @@ FailureOr<BEFOffset> AttributesEmitter::emitArrayAttribute(ArrayAttr array,
   if (failed(kindOr))
     return failure();
 
-  return emitArrayOfAttrs((uint8_t)BEF::AttributeKind::kArrayType |
-                              (uint8_t)*kindOr,
-                          array.getValue(), loc);
+  return emitArrayOfAttrs((uint8_t)BEF::getArrayOf(*kindOr), array.getValue(),
+                          loc);
 }
 
 FailureOr<BEFOffset>
@@ -757,8 +756,7 @@ AttributesEmitter::emitDenseElementsAttribute(DenseElementsAttr value,
   if (failed(kindOr))
     return failure();
 
-  return emitArrayOfAttrs((uint8_t)BEF::AttributeKind::kArrayType |
-                              (uint8_t)*kindOr,
+  return emitArrayOfAttrs((uint8_t)BEF::getArrayOf(*kindOr),
                           value.getValues<Attribute>(), loc);
 }
 

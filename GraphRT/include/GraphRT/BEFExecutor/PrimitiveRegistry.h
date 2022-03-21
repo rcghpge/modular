@@ -7,14 +7,12 @@
 #ifndef GRAPHRT_BEFEXECUTOR_PRIMITIVE_REGISTRY_H
 #define GRAPHRT_BEFEXECUTOR_PRIMITIVE_REGISTRY_H
 
+#include "GraphRT/BEF/BEFEncoding.h"
 #include "GraphRT/BEFExecutor/PrimitiveFrame.h"
-#include "LLCL/ForwardDecls.h"
-#include "LLCL/Runtime/AsyncValueRef.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "LLCL/Support/Chain.h"
 #include "LLCL/Support/ReferenceCounted.h"
 #include "Support/ErrorOr.h"
-#include "llvm/ADT/StringRef.h"
 
 namespace M {
 
@@ -203,13 +201,32 @@ private:
   MutableArrayRef<RCRef<AsyncValue>> results;
 };
 
+namespace Detail {
+/// Check that the dynamic attribute kind encoded into the BEF file matches
+/// the C++ type for this.
+static inline void checkAttributeKind(const void *value,
+                                      BEF::AttributeKind expectedKind) {
+  // The attribute kind is encoded in the byte before the attribute value.
+  uint8_t kind = static_cast<const uint8_t *>(value)[-1];
+  assert(kind == uint8_t(expectedKind) &&
+         "attribute passed to primitive has unexpected order;"
+         " mismatch between mlir syntax and primitive definition");
+}
+} // namespace Detail
+
 /// Primitives use this to declare that they have an attribute input with the
 /// specified C++ type.
 template <typename T>
 class BEFAttr {
 public:
   explicit BEFAttr(const void *value)
-      : value(*reinterpret_cast<const T *>(value)) {}
+      : value(*reinterpret_cast<const T *>(value)) {
+    // Check that the C++ type matches the encoded type for the attribute.
+    static_assert(BEF::AttrKindForCXXType<T>::kind !=
+                      BEF::AttributeKind::kInvalid &&
+                  "C++ type passed to BEFAttr isn't supported");
+    Detail::checkAttributeKind(value, BEF::AttrKindForCXXType<T>::kind);
+  }
 
   const T &get() const { return value; }
   const T *operator->() const { return &value; }
@@ -224,8 +241,12 @@ private:
 template <>
 class BEFAttr<StringRef> {
 public:
-  explicit BEFAttr(const void *value)
-      : value(static_cast<const char *>(value), decodeBEFArrayLength(value)) {}
+  explicit BEFAttr(const void *pointer)
+      : value(static_cast<const char *>(pointer),
+              decodeBEFArrayLength(pointer)) {
+    // Check the value passed is actually a string.
+    Detail::checkAttributeKind(pointer, BEF::AttributeKind::kString);
+  }
 
   const StringRef &get() const { return value; }
   const StringRef *operator->() const { return &value; }
@@ -240,8 +261,14 @@ private:
 template <typename T>
 class BEFAttr<ArrayRef<T>> {
 public:
-  explicit BEFAttr(const void *value)
-      : value(static_cast<const T *>(value), decodeBEFArrayLength(value)) {}
+  explicit BEFAttr(const void *pointer)
+      : value(static_cast<const T *>(pointer), decodeBEFArrayLength(pointer)) {
+    // Check the value passed is an array of the right type.  Be a bit careful
+    // here because the element type isn't set for empty arrays.
+    auto elementKind = value.empty() ? BEF::AttributeKind::kInvalid
+                                     : BEF::AttrKindForCXXType<T>::kind;
+    Detail::checkAttributeKind(pointer, BEF::getArrayOf(elementKind));
+  }
 
   const ArrayRef<T> &get() const { return value; }
   const ArrayRef<T> *operator->() const { return &value; }
