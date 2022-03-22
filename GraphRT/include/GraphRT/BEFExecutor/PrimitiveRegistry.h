@@ -201,19 +201,6 @@ private:
   MutableArrayRef<RCRef<AsyncValue>> results;
 };
 
-namespace Detail {
-/// Check that the dynamic attribute kind encoded into the BEF file matches
-/// the C++ type for this.
-static inline void checkAttributeKind(const void *value,
-                                      BEF::AttributeKind expectedKind) {
-  // The attribute kind is encoded in the byte before the attribute value.
-  uint8_t kind = *(static_cast<const uint8_t *>(value) - 1);
-  assert(kind == uint8_t(expectedKind) &&
-         "attribute passed to primitive has unexpected order;"
-         " mismatch between mlir syntax and primitive definition");
-}
-} // namespace Detail
-
 template <typename StoredType>
 class BEFAttrCommon {
 public:
@@ -224,6 +211,23 @@ public:
   const StoredType &get() const { return value; }
   const ValueType *operator->() const { return &value; }
   const StoredType &operator*() const { return value; }
+
+  /// Given a pointer to the start of attribute value, return the attribute
+  /// kind.
+  static BEF::AttributeKind getAttrKind(const void *value) {
+    // The attribute kind is encoded in the byte before the attribute value.
+    return static_cast<BEF::AttributeKind>(
+        *(static_cast<const uint8_t *>(value) - 1));
+  }
+
+  /// Check that the dynamic attribute kind encoded into the BEF file matches
+  /// the C++ type for this.
+  static inline void checkAttributeKind(const void *value,
+                                        BEF::AttributeKind expectedKind) {
+    assert(getAttrKind(value) == expectedKind &&
+           "attribute passed to primitive has unexpected order;"
+           " mismatch between mlir syntax and primitive definition");
+  }
 
 private:
   StoredType value;
@@ -240,7 +244,7 @@ public:
     static_assert(BEF::AttrKindForCXXType<T>::kind !=
                       BEF::AttributeKind::kInvalid &&
                   "C++ type passed to BEFAttr isn't supported");
-    Detail::checkAttributeKind(value, BEF::AttrKindForCXXType<T>::kind);
+    this->checkAttributeKind(value, BEF::AttrKindForCXXType<T>::kind);
   }
 };
 
@@ -253,7 +257,7 @@ public:
       : BEFAttrCommon<StringRef>(StringRef(static_cast<const char *>(pointer),
                                            decodeBEFArrayLength(pointer))) {
     // Check the value passed is actually a string.
-    Detail::checkAttributeKind(pointer, BEF::AttributeKind::kString);
+    this->checkAttributeKind(pointer, BEF::AttributeKind::kString);
   }
 };
 
@@ -269,12 +273,58 @@ public:
     // here because the element type isn't set for empty arrays.
     auto elementKind = size() == 0 ? BEF::AttributeKind::kInvalid
                                    : BEF::AttrKindForCXXType<T>::kind;
-    Detail::checkAttributeKind(pointer, BEF::getArrayOf(elementKind));
+    this->checkAttributeKind(pointer, BEF::getArrayOf(elementKind));
   }
 
   size_t size() const { return this->get().size(); }
   const T &operator[](size_t i) const { return this->get()[i]; }
 };
+
+namespace Detail {
+class Dynamic {};
+} // namespace Detail
+
+/// Dynamic attributes allow checked casting to other attribute kinds.
+template <>
+class BEFAttr<Detail::Dynamic> : public BEFAttrCommon<const void *> {
+public:
+  explicit BEFAttr(const void *pointer)
+      : BEFAttrCommon<const void *>(pointer) {}
+
+  /// Return the AttributeKind for this attribute.
+  BEF::AttributeKind getAttrKind() const {
+    return BEFAttrCommon::getAttrKind(get());
+  }
+
+  /// Do a checked conversion to the specified attribute kind.
+  template <typename T>
+  Optional<BEFAttr<T>> dyn_cast() const {
+    // Test to see if this has the right attribute kind.
+    if (getAttrKind() != BEF::AttrKindForCXXType<T>::kind)
+      return {};
+    return BEFAttr<T>(get());
+  }
+
+  /// Do a checked conversion to the specified attribute kind.
+  template <typename T>
+  Optional<BEFAttr<ArrayRef<T>>> dyn_cast_array() const {
+    // Test to see if this has the right attribute kind.
+    auto kind = getAttrKind();
+    if (kind != BEF::getArrayOf(BEF::AttrKindForCXXType<T>::kind) &&
+        kind != BEF::getArrayOf(BEF::AttributeKind::kInvalid))
+      return {};
+    return BEFAttr<ArrayRef<T>>(get());
+  }
+
+  template <typename T>
+  BEFAttr<T> cast() const {
+    auto result = this->dyn_cast<T>();
+    assert(result && "dynamic attribute is not of this kind");
+    return *result;
+  }
+};
+
+using BEFDynamicAttr = BEFAttr<Detail::Dynamic>;
 
 //===----------------------------------------------------------------------===//
 // Primitive Registration Wrapper Generator

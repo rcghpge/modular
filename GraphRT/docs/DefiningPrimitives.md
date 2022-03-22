@@ -285,6 +285,24 @@ When receiving attributes, you need to use a well-known C++ type that matches
 the datatype in question, e.g. `int32_t` or `uint32_t` for 32-bit attributes,
 and `StringRef` or `ArrayRef` for strings and arrays.
 
+**Dynamic Attributes**
+
+Some primitives might want to accept dynamic attributes and use reflection over
+them to figure out what they are.  You can do this with the `BEFDynamicAttr`
+type like this:
+
+```c++
+static void takes_any_attribute(BEFDynamicAttr value) {
+  if (auto intVal = value.dyn_cast<int32_t>()) {
+    ...
+  else if (auto stringVal = value.dyn_cast<StringRef>()) {
+    ...
+  }
+}
+```
+
+Note that the BEF format doesn't keep track of signedness, so an `i32` in MLIR
+will successfully convert to both `int32_t` and `uint32_t`.
 
 # Guidelines for Implementing Primitives
 

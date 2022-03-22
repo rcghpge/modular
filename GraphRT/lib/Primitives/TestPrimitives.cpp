@@ -60,6 +60,25 @@ static Chain print_array_i32(Chain chain, BEFAttr<ArrayRef<int32_t>> values) {
 }
 
 //===----------------------------------------------------------------------===//
+// Dynamic attributes
+//===----------------------------------------------------------------------===//
+
+static Chain print_dynamic_attr(Chain chain, BEFDynamicAttr value) {
+  if (auto intAttr = value.dyn_cast<int32_t>())
+    printf("int32 = %d\n", intAttr->get());
+  else if (auto strAttr = value.dyn_cast<StringRef>()) {
+    printf("string = ");
+    fwrite(strAttr.getValue()->data(), 1, strAttr.getValue()->size(), stdout);
+    fputc('\n', stdout);
+  } else if (auto intArray = value.dyn_cast_array<int32_t>()) {
+    print_array_i32(chain, *intArray);
+  } else {
+    printf("unsupported attribute kind\n");
+  }
+  return chain;
+}
+
+//===----------------------------------------------------------------------===//
 // Value Tracking
 //===----------------------------------------------------------------------===//
 
@@ -396,6 +415,8 @@ void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "test.append_string", append_string);
   ADD_PRIMITIVE(registry, "test.print_string", print_string);
   ADD_PRIMITIVE(registry, "test.print_array_i32", print_array_i32);
+
+  ADD_PRIMITIVE(registry, "test.print.dynamic.attr", print_dynamic_attr);
 
   registerValueTracking(registry);
   registerTestVecPrimitives(registry);
