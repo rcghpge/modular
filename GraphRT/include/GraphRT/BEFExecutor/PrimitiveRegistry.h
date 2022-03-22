@@ -214,71 +214,66 @@ static inline void checkAttributeKind(const void *value,
 }
 } // namespace Detail
 
+template <typename StoredType>
+class BEFAttrCommon {
+public:
+  BEFAttrCommon(StoredType init) : value(init) {}
+
+  using ValueType = typename std::remove_reference<StoredType>::type;
+
+  const StoredType &get() const { return value; }
+  const ValueType *operator->() const { return &value; }
+  const StoredType &operator*() const { return value; }
+
+private:
+  StoredType value;
+};
+
 /// Primitives use this to declare that they have an attribute input with the
 /// specified C++ type.
 template <typename T>
-class BEFAttr {
+class BEFAttr : public BEFAttrCommon<const T &> {
 public:
   explicit BEFAttr(const void *value)
-      : value(*reinterpret_cast<const T *>(value)) {
+      : BEFAttrCommon<const T &>(*reinterpret_cast<const T *>(value)) {
     // Check that the C++ type matches the encoded type for the attribute.
     static_assert(BEF::AttrKindForCXXType<T>::kind !=
                       BEF::AttributeKind::kInvalid &&
                   "C++ type passed to BEFAttr isn't supported");
     Detail::checkAttributeKind(value, BEF::AttrKindForCXXType<T>::kind);
   }
-
-  const T &get() const { return value; }
-  const T *operator->() const { return &value; }
-  const T &operator*() const { return value; }
-
-private:
-  const T &value;
 };
 
 /// String attributes have a special encoding that includes their length,
 /// allowing projection into a StringRef.
 template <>
-class BEFAttr<StringRef> {
+class BEFAttr<StringRef> : public BEFAttrCommon<StringRef> {
 public:
   explicit BEFAttr(const void *pointer)
-      : value(static_cast<const char *>(pointer),
-              decodeBEFArrayLength(pointer)) {
+      : BEFAttrCommon<StringRef>(StringRef(static_cast<const char *>(pointer),
+                                           decodeBEFArrayLength(pointer))) {
     // Check the value passed is actually a string.
     Detail::checkAttributeKind(pointer, BEF::AttributeKind::kString);
   }
-
-  const StringRef &get() const { return value; }
-  const StringRef *operator->() const { return &value; }
-  const StringRef &operator*() const { return value; }
-
-private:
-  StringRef value;
 };
 
 /// Array attributes have a special encoding that includes their length,
 /// allowing projection into a ArrayRef.
 template <typename T>
-class BEFAttr<ArrayRef<T>> {
+class BEFAttr<ArrayRef<T>> : public BEFAttrCommon<ArrayRef<T>> {
 public:
   explicit BEFAttr(const void *pointer)
-      : value(static_cast<const T *>(pointer), decodeBEFArrayLength(pointer)) {
+      : BEFAttrCommon<ArrayRef<T>>(ArrayRef<T>(static_cast<const T *>(pointer),
+                                               decodeBEFArrayLength(pointer))) {
     // Check the value passed is an array of the right type.  Be a bit careful
     // here because the element type isn't set for empty arrays.
-    auto elementKind = value.empty() ? BEF::AttributeKind::kInvalid
-                                     : BEF::AttrKindForCXXType<T>::kind;
+    auto elementKind = size() == 0 ? BEF::AttributeKind::kInvalid
+                                   : BEF::AttrKindForCXXType<T>::kind;
     Detail::checkAttributeKind(pointer, BEF::getArrayOf(elementKind));
   }
 
-  const ArrayRef<T> &get() const { return value; }
-  const ArrayRef<T> *operator->() const { return &value; }
-  const ArrayRef<T> &operator*() const { return value; }
-
-  size_t size() const { return value.size(); }
-  const T &operator[](size_t i) const { return value[i]; }
-
-private:
-  ArrayRef<T> value;
+  size_t size() const { return this->get().size(); }
+  const T &operator[](size_t i) const { return this->get()[i]; }
 };
 
 //===----------------------------------------------------------------------===//
