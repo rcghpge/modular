@@ -131,6 +131,15 @@ bef.invokable @basic_string_and_arrays() {
   // CHECK: array = [4, 1, 5712321]
   %ch3 = "test.print_array_i32"(%ch2) { value = [4: i32, 1: i32, 5712321:i32] } : (!grt.chain) -> (!grt.chain)
 
+  // CHECK: dictionary[theNumber3] = 3
+  %ch4 = "test.print_dict_i32"(%ch3) { key = "theNumber3", value = { theNumber3 = 3 : i32, foo = "bar" } } : (!grt.chain) -> (!grt.chain)
+
+  // CHECK: dictionary[theNumber4] = NOTFOUND
+  %ch5 = "test.print_dict_i32"(%ch4) { key = "theNumber4", value = { theNumber3 = 3 : i32, foo = "bar" } } : (!grt.chain) -> (!grt.chain)
+
+  // CHECK: dictionary = aString : stringAttr, theNumber3 : 3, theNumber5 : 5
+  %ch6 = "test.print_all_dict"(%ch5) { value = { theNumber3 = 3 : i32, theNumber5 = 5 : i32, aString = "stringAttr" } } : (!grt.chain) -> (!grt.chain)
+
   bef.output
 }
 
@@ -148,6 +157,8 @@ bef.invokable @test_dynamic_attr() {
   %ch4 = "test.print.dynamic.attr"(%ch3) {value = []} : (!grt.chain) -> !grt.chain
   // CHECK: unsupported attribute kind
   %ch5 = "test.print.dynamic.attr"(%ch4) {value = 1: i1} : (!grt.chain) -> !grt.chain
+  // CHECK: dictionary = aString : this is a string, anInt : 3125
+  %ch6 = "test.print.dynamic.attr"(%ch5) {value = {aString = "this is a string", anInt = 3125 : i32}} : (!grt.chain) -> !grt.chain
 
   bef.output
 }

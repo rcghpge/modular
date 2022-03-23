@@ -221,6 +221,29 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
   if (attrReader.dropBytes(offset))
     return true;
 
+  auto parseDictionaryAttr = [&]() -> Attribute {
+    size_t length;
+    if (attrSection.parseInvertedVBRAt(offset - 1, length))
+      return {};
+
+    NamedAttrList outAttrList;
+    for (size_t i = 0; i < length; ++i) {
+      size_t nameOffset;
+      size_t attrOffset;
+      Attribute name;
+      Attribute value;
+      if (attrReader.parseVBR(nameOffset) || attrReader.parseVBR(attrOffset) ||
+          parseAttribute(offset - nameOffset, attrSection, name) ||
+          parseAttribute(offset - attrOffset, attrSection, value))
+        return {};
+
+      // Construct the NamedAttribute
+      outAttrList.push_back(NamedAttribute(name.cast<StringAttr>(), value));
+    }
+    // Produce a DictionaryAttr for the converter.
+    return outAttrList.getDictionary(getContext());
+  };
+
   // Parse a single attribute value from attrReader and return it, or null on
   // an error.
   auto parseAttribute = [&](BEF::AttributeKind attrKind) -> Attribute {
@@ -235,6 +258,9 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
       return StringAttr::get(
           getContext(), StringRef((const char *)result.data(), result.size()));
     }
+
+    if (attrKind == BEF::AttributeKind::kDictionary)
+      return parseDictionaryAttr();
 
     uint8_t byte;
     // I1 attrs are a single byte in the BEF format, but are also a separate
@@ -254,7 +280,7 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
     // not a valid size. This is very unlikely to happen unless there's a logic
     // flaw elsewhere, i.e. a string that wasn't caught above.
     if (!llvm::isPowerOf2_64(sizeInBits) || sizeInBits > 64) {
-      emitError(Twine("Invalid bitwidth ") + Twine(sizeInBits));
+      emitError(Twine("invalid bitwidth ") + Twine(sizeInBits));
       return {};
     }
 

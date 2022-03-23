@@ -1,0 +1,19 @@
+// RUN: bef-translate -export-bef -allow-unregistered-dialect %s > %t
+// RUN: bef-translate -import-bef %t | FileCheck %s
+
+// CHECK-LABEL: bef.invokable @dict()
+bef.invokable @dict() {
+  %ch5 = grt.chain.new
+  // CHECK: "test.print_all_dict" [{aString = "stringAttr", theNumber3 = 3 : i32, theNumber5 = 5 : i32}]
+  %ch6 = "test.print_all_dict"(%ch5) { value = { theNumber3 = 3 : i32, theNumber5 = 5 : i32, aString = "stringAttr" } } : (!grt.chain) -> (!grt.chain)
+
+  bef.output
+}
+
+// CHECK-LABEL: bef.invokable @nested_dict()
+bef.invokable @nested_dict() {
+  %ch5 = grt.chain.new
+  // CHECK: "test.print_all_dict" [{aDict = {aString = "stringAttr"}, theNumber3 = 3 : i32, theNumber5 = 5 : i32}]
+  %ch6 = "test.print_all_dict"(%ch5) { value = { theNumber3 = 3 : i32, theNumber5 = 5 : i32, aDict = { aString = "stringAttr" } } } : (!grt.chain) -> (!grt.chain)
+  bef.output
+}

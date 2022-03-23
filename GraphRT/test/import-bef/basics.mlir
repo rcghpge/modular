@@ -70,6 +70,9 @@ bef.invokable @attributes() {
   // CHECK-NEXT: "a.b" [3.000000e+00]
   "a.b"() { a = 3.0 : f64 }: () -> ()
 
+  // CHECK-NEXT: "a.b" [{b = 1 : i8, c = [true, false, false]}]
+  "a.b"() { a = { b = 1 : i8, c = [true, false, false] } }: () -> ()
+
   bef.output
    // CHECK-NEXT:     bef.output
 }  // CHECK-NEXT:   }

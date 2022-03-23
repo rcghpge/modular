@@ -493,24 +493,38 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
       return WalkResult::advance();
     }
 
-    auto processAttr = [&](StringAttr name, Attribute attr) {
-      // Add attribute names if requested.
-      if (enableBEFMetadata)
-        addMetadataString(name);
+    llvm::unique_function<void(StringAttr, Attribute, bool)> processAttr =
+        [&](StringAttr name, Attribute attr, bool insideDict) {
+          // Add attribute names if requested.
+          if (enableBEFMetadata && !insideDict)
+            addMetadataString(name);
 
-      if (auto fn_attr = attr.dyn_cast<SymbolRefAttr>()) {
-        // Keep track of invokable references specially so we can diagnose them.
-        symbolRefAttrs.push_back({fn_attr, op->getLoc()});
-      } else {
-        // We just keep track of the top level attributes in the "attributes"
-        // list: do not recursively process them.  This is because we want to
-        // emit arrays of scalars as "flat" attributes where all the values are
-        // inline.
-        if (attributes.insert(attr))
-          // If this attribute is new, remember what used it.
-          attributeLocs.push_back(op->getLoc());
-      }
-    };
+          if (auto fn_attr = attr.dyn_cast<SymbolRefAttr>()) {
+            // Keep track of invokable references specially so we can diagnose
+            // them.
+            symbolRefAttrs.emplace_back(fn_attr, op->getLoc());
+          } else {
+            // Recurse into a DictionaryAttr only. Perform a post-order
+            // traversal so that we can use the offsets from the values inside
+            // the dictionary when emitting the dictionary.
+            if (auto dictAttr = attr.dyn_cast<DictionaryAttr>())
+              for (NamedAttribute namedAttr : dictAttr)
+                processAttr(namedAttr.getName(), namedAttr.getValue(), true);
+
+            // If we're handling a dictionary, then insert the name into the
+            // attributes list.
+            if (insideDict && attributes.insert(name))
+              attributeLocs.push_back(op->getLoc());
+
+            // We just keep track of the top level attributes in the
+            // "attributes" list: do not recursively process them.  This is
+            // because we want to emit arrays of scalars as "flat" attributes
+            // where all the values are inline.
+            if (attributes.insert(attr))
+              // If this attribute is new, remember what used it.
+              attributeLocs.push_back(op->getLoc());
+          }
+        };
 
     // Opaque BEF operations encode some fields in a special way.
     if (auto opaque = dyn_cast<BEF::OpaqueOp>(op)) {
@@ -519,12 +533,12 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
       // Encode the attributes in the attrs array, not all the attributes on the
       // OpaqueOp itself.
       for (auto attr : opaque.attrs())
-        processAttr(StringAttr::get(op->getContext()), attr);
+        processAttr(StringAttr::get(op->getContext()), attr, false);
     } else {
       addPrimitiveOpcode(op->getName().getIdentifier());
       // Keep track of any attributes used by this op.
       for (auto attr : op->getAttrs())
-        processAttr(attr.getName(), attr.getValue());
+        processAttr(attr.getName(), attr.getValue(), false);
     }
 
     // Keep add any regions used by this op as BEF invokables.
@@ -586,6 +600,8 @@ private:
   FailureOr<BEFOffset> emitArrayAttribute(ArrayAttr value, Location loc);
   FailureOr<BEFOffset> emitDenseElementsAttribute(DenseElementsAttr value,
                                                   Location loc);
+  FailureOr<BEFOffset> emitDictionaryAttribute(DictionaryAttr value,
+                                               Location loc);
   EntityTable &entities;
 };
 } // end anonymous namespace.
@@ -763,6 +779,40 @@ AttributesEmitter::emitDenseElementsAttribute(DenseElementsAttr value,
 }
 
 FailureOr<BEFOffset>
+AttributesEmitter::emitDictionaryAttribute(DictionaryAttr value, Location loc) {
+  if (value.empty()) {
+    emitInvertedVBR(value.size());
+    emitByte((uint8_t)BEF::AttributeKind::kDictionary);
+    return getOffset();
+  }
+
+  // Emit the size of the dict and the attribute kind.
+  emitInvertedVBR(value.size());
+  emitByte((uint8_t)BEF::AttributeKind::kDictionary);
+
+  // This is the offset into the dict we want to provide - essentially a table
+  // of name:offset pairs that we can use when parsing.
+  BEFOffset nameAndOffsetStart = getOffset();
+
+  for (NamedAttribute namedAttr : value) {
+    // Emit the offsets to the name and data as an offset relative to the
+    // dictionary offset. They are therefore implicitly negative!
+    size_t relativeNameOffset =
+        nameAndOffsetStart.value -
+        entities.getAttributeOffset(namedAttr.getName()).value;
+
+    size_t relativeAttrOffset =
+        nameAndOffsetStart.value -
+        entities.getAttributeOffset(namedAttr.getValue()).value;
+
+    emitOffset(BEFOffset{relativeNameOffset});
+    emitOffset(BEFOffset{relativeAttrOffset});
+  }
+
+  return nameAndOffsetStart;
+}
+
+FailureOr<BEFOffset>
 AttributesEmitter::emitAttributeInternal(Attribute attr, Location loc,
                                          bool emitAsArrayElement) {
   if (auto intAttr = attr.dyn_cast<IntegerAttr>())
@@ -788,6 +838,9 @@ AttributesEmitter::emitAttributeInternal(Attribute attr, Location loc,
 
   if (auto denseElements = attr.dyn_cast<DenseElementsAttr>())
     return emitDenseElementsAttribute(denseElements, loc);
+
+  if (auto dict = attr.dyn_cast<DictionaryAttr>())
+    return emitDictionaryAttribute(dict, loc);
 
   return LogicalResult(entities.emitError(loc)
                        << "unsupported attribute " << attr);
@@ -1264,7 +1317,7 @@ std::vector<uint8_t> M::translateMLIRToBEF(ModuleOp module,
 
   emitter.emitPrimitiveNames();
   emitter.emitInvokables(enableBEFMetadata ? &attrNamesSection : nullptr,
-                           enableBEFMetadata ? &mlirTypesSection : nullptr);
+                         enableBEFMetadata ? &mlirTypesSection : nullptr);
   emitter.emitInvokableIndex();
 
   // Now that we've emitted all of the critical sections used in the common case

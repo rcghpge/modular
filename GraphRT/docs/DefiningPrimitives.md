@@ -247,9 +247,10 @@ These cases should be exceedingly rare.
 
 The BEF file format supports encoding a number of MLIR attributes (including
 string attributes, standard integer and floating point values, arrays of
-integers and floats, and `DenseElementAttr`s) into the BEF file.  At runtime,
-the BEF file is mapped into memory, so your primitive can get a raw pointer to
-the data in question.  For example, consider a few simple cases:
+integers and floats, `DenseElementAttr`s, and `DictionaryAttr`s) into the BEF 
+file. At runtime, the BEF file is mapped into memory, so your primitive can 
+get a raw pointer to the data in question.  For example, consider a few simple
+cases:
 
 ```mlir
   %x = grt.constant.i32 42
@@ -283,7 +284,33 @@ static void some_thing(BEFAttr<int64_t> a, BEFAttr<StringRef> b) {
 
 When receiving attributes, you need to use a well-known C++ type that matches
 the datatype in question, e.g. `int32_t` or `uint32_t` for 32-bit attributes,
-and `StringRef` or `ArrayRef` for strings and arrays.
+and `StringRef` or `ArrayRef` for strings and arrays. Dictionaries are lists
+of name, value pairs. A `BEFDictionaryAttr` is an alias for 
+`BEFAttr<BEF::Detail::Dictionary>`. It supports iteration and finding 
+individual elements. It is not as efficient as the other attributes and should
+be used sparingly. Accessing elements is done in the following simple examples:
+
+```c++
+static int32_t findInt32Element(BEFDictionary dict) {
+  Optional<BEFAttr<int32_t>> value = dict.find<int32_t>("myKey");
+  if (!value)
+    // Handle the error gracefully
+  
+  return *value;
+}
+
+static void handleAllElements(BEFDictionary dict) {
+  for (auto element : dict) {
+    if (element.getName() == "string") {
+      auto value = iter.getValue<StringRef>();
+      // handle `value`
+    } else {
+      BEFAttr<int32_t> value = element.getValue<int32_t>();
+      // handle `value`
+    }
+  }
+}
+```
 
 **Dynamic Attributes**
 

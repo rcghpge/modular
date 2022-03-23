@@ -31,7 +31,7 @@ static void memory_leak_one_int32(Runtime &runtime) {
 }
 
 //===----------------------------------------------------------------------===//
-// String and Array Tests
+// String, Array, and Dict Tests
 //===----------------------------------------------------------------------===//
 
 static std::string get_string(BEFAttr<StringRef> value) { return value->str(); }
@@ -59,6 +59,37 @@ static Chain print_array_i32(Chain chain, BEFAttr<ArrayRef<int32_t>> values) {
   return chain;
 }
 
+static Chain print_dict_i32(Chain chain, BEFAttr<StringRef> key,
+                            BEFDictionaryAttr dict) {
+  printf("dictionary[%.*s] = ", (int)key->size(), key->begin());
+  auto value = dict.find<int32_t>(*key);
+  if (!value)
+    printf("NOTFOUND\n");
+  else
+    printf("%d\n", value->get());
+
+  return chain;
+}
+
+static Chain print_all_dict(Chain chain, BEFDictionaryAttr dict) {
+  printf("dictionary = ");
+  llvm::interleave(
+      dict,
+      [](const BEFDictionaryAttr::Element &elt) {
+        if (elt.getName() == "aString") {
+          auto value = *(elt.getValue<StringRef>());
+          printf("aString : %.*s", (int)value.size(), value.data());
+        } else {
+          printf("%.*s : %d", (int)elt.getName().size(), elt.getName().data(),
+                 *(elt.getValue<int32_t>()));
+        }
+      },
+      []() { printf(", "); });
+
+  fputc('\n', stdout);
+  return chain;
+}
+
 //===----------------------------------------------------------------------===//
 // Dynamic attributes
 //===----------------------------------------------------------------------===//
@@ -72,6 +103,8 @@ static Chain print_dynamic_attr(Chain chain, BEFDynamicAttr value) {
     fputc('\n', stdout);
   } else if (auto intArray = value.dyn_cast<ArrayRef<int32_t>>()) {
     print_array_i32(chain, *intArray);
+  } else if (auto dict = value.dyn_cast<Detail::Dictionary>()) {
+    print_all_dict(chain, *dict);
   } else {
     printf("unsupported attribute kind\n");
   }
@@ -415,6 +448,8 @@ void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "test.append_string", append_string);
   ADD_PRIMITIVE(registry, "test.print_string", print_string);
   ADD_PRIMITIVE(registry, "test.print_array_i32", print_array_i32);
+  ADD_PRIMITIVE(registry, "test.print_dict_i32", print_dict_i32);
+  ADD_PRIMITIVE(registry, "test.print_all_dict", print_all_dict);
 
   ADD_PRIMITIVE(registry, "test.print.dynamic.attr", print_dynamic_attr);
 

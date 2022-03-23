@@ -344,6 +344,128 @@ public:
 
 using BEFDynamicAttr = BEFAttr<Detail::Dynamic>;
 
+namespace Detail {
+class Dictionary {};
+} // namespace Detail
+
+/// Dictionaries are lists of name, value pairs.
+template <>
+class BEFAttr<Detail::Dictionary>
+    : public BEFAttrCommon<BEFAttr<Detail::Dictionary>, Detail::Dictionary> {
+public:
+  using BaseClass =
+      BEFAttrCommon<BEFAttr<Detail::Dictionary>, Detail::Dictionary>;
+  explicit BEFAttr(const void *pointer)
+      : BEFAttrCommon<BEFAttr<Detail::Dictionary>, Detail::Dictionary>(
+            Detail::Dictionary{}),
+        pointer(pointer), length(decodeBEFArrayLength(pointer)) {
+    this->checkAttributeKind(pointer);
+  }
+
+  static bool matchesAttrKind(const void *pointer) {
+    return BaseClass::getAttrKind(pointer) == BEF::AttributeKind::kDictionary;
+  }
+
+  /// Provides something for the Iterator to dereference. Conceptually, this is
+  /// a single element in the BEF Dictionary attribute - it consists of a base
+  /// pointer and offsets to both the name and value of this element.
+  class Element {
+  public:
+    Element(const void *basePtr, size_t nameOffset, size_t attrOffset)
+        : basePtr((const uint8_t *)basePtr), nameOffset(nameOffset),
+          attrOffset(attrOffset) {}
+
+    /// Get just the name of this element.
+    StringRef getName() const {
+      return *BEFAttr<StringRef>((const uint8_t *)basePtr - nameOffset);
+    }
+
+    /// Get just the value of this element.
+    BEFDynamicAttr getValue() const {
+      return BEFDynamicAttr((const uint8_t *)basePtr - attrOffset);
+    }
+
+    /// Templated convenience function to allow the user to get the value as a
+    /// certain type. Asserts that T matches the actual attribute stored.
+    template <typename T>
+    BEFAttr<T> getValue() const {
+      return BEFAttr<T>((const uint8_t *)basePtr - attrOffset);
+    }
+
+  private:
+    const uint8_t *basePtr;
+    const size_t nameOffset;
+    const size_t attrOffset;
+  };
+
+  /// Provides an iterator on the Dictionary. Because we don't want to allocate
+  /// in this data structure, we parse each attribute's name and value every
+  /// time the iterator is accessed.
+  class Iterator
+      : public llvm::iterator_facade_base<Iterator, std::input_iterator_tag,
+                                          Element> {
+  public:
+    using Base =
+        llvm::iterator_facade_base<Iterator, std::input_iterator_tag, Element>;
+
+    Iterator(const void *ptr, size_t dictLen, size_t iterIdx)
+        : basePtr(const_cast<void *>(ptr)),
+          ptr(static_cast<uint8_t *>(basePtr)), dictLen(dictLen),
+          iterIdx(iterIdx) {}
+
+    /// Increment the iterator. Decrementing is sufficiently difficult that it's
+    /// left as an exercise to the person who wants to use it.
+    Iterator &operator+=(Base::difference_type n);
+
+    /// Compare Iterator objects.
+    bool operator==(const Iterator &rhs) const;
+
+    /// Parse out and return the name and value contained in this iterator.
+    Element operator*() const;
+
+  private:
+    void *basePtr;
+    uint8_t *ptr;
+    size_t dictLen;
+    size_t iterIdx;
+  };
+
+  /// Range access into the Dictionary object.
+  Iterator begin() const { return {pointer, length, 0}; }
+  Iterator end() const { return Iterator{pointer, length, length}; }
+
+  /// Return the size of the Dictionary in number of elements.
+  size_t size() const { return length; }
+
+  /// Find an element in the dictionary by name. Parses every name in sequence
+  /// until it finds the right one and returns that attribute. If the name is
+  /// not found, return None.
+  Optional<BEFDynamicAttr> find(StringRef name) const;
+
+  /// Templated access to the value in find. If nothing is found *or* the type
+  /// provided is incorrect, then None is returned.
+  template <typename T>
+  Optional<BEFAttr<T>> find(StringRef name) const {
+    auto found = find(name);
+    if (!found)
+      return None;
+
+    return found->template dyn_cast<T>();
+  }
+
+private:
+  /// Parse a VBR and increment `workptr` in the process, so we can skip over
+  /// the VBR values. This is a little weird, being a reference to a pointer,
+  /// but it's to simplify the parsing use cases above by allowing us to
+  /// increment the pointer that's been passed-in.
+  static size_t parseVBR(uint8_t *&workptr);
+
+  const void *pointer;
+  const size_t length;
+};
+
+using BEFDictionaryAttr = BEFAttr<Detail::Dictionary>;
+
 //===----------------------------------------------------------------------===//
 // Primitive Registration Wrapper Generator
 //===----------------------------------------------------------------------===//

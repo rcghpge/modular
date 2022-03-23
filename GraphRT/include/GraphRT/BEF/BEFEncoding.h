@@ -51,6 +51,8 @@ enum class AttributeKind : uint8_t {
   kF64 = 65,
   /// There is no special meaning to this value, it's 66 because kF64 is 65.
   kString = 66,
+  /// Also no special meaning to this value.
+  kDictionary = 67,
   /// This is a bitmask, meant to be applied to one of the basic types (I*, F*)
   kArrayType = 0x80
 };
