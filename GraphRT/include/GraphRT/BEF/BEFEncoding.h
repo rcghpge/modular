@@ -12,6 +12,7 @@
 #ifndef GRAPHRT_BEF_BEFENCODING_H
 #define GRAPHRT_BEF_BEFENCODING_H
 
+#include "Support/LLVM.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace M {
@@ -56,7 +57,7 @@ enum class AttributeKind : uint8_t {
 
 /// Given an AttributeKind for an element, return the AttributeKind for an array
 /// of that element.
-static inline AttributeKind getArrayOf(AttributeKind elementKind) {
+static inline constexpr AttributeKind getArrayOf(AttributeKind elementKind) {
   assert(elementKind != AttributeKind::kString &&
          elementKind != AttributeKind::kArrayType &&
          "Cannot make arrays of arrays or arrays of strings");
@@ -115,6 +116,12 @@ DECLARE_ATTR_MAPPING(kF32, float);
 DECLARE_ATTR_MAPPING(kF64, double);
 DECLARE_ATTR_MAPPING(kString, llvm::StringRef);
 #undef DECLARE_ATTR_MAPPING
+
+template <typename EltType>
+struct AttrKindForCXXType<llvm::ArrayRef<EltType>> {
+  static constexpr AttributeKind kind =
+      getArrayOf(AttrKindForCXXType<EltType>::kind);
+};
 
 } // namespace BEF
 } // namespace M

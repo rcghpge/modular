@@ -305,22 +305,18 @@ public:
     return BEFAttr<T>(get());
   }
 
-  /// Do a checked conversion to the specified attribute kind.
-  template <typename T>
-  Optional<BEFAttr<ArrayRef<T>>> dyn_cast_array() const {
-    // Test to see if this has the right attribute kind.
-    auto kind = getAttrKind();
-    if (kind != BEF::getArrayOf(BEF::AttrKindForCXXType<T>::kind) &&
-        kind != BEF::getArrayOf(BEF::AttributeKind::kInvalid))
-      return {};
-    return BEFAttr<ArrayRef<T>>(get());
-  }
-
   template <typename T>
   BEFAttr<T> cast() const {
     auto result = this->dyn_cast<T>();
     assert(result && "dynamic attribute is not of this kind");
     return *result;
+  }
+
+  /// Return true if this is an empty array value.  In this case, we don't know
+  /// what the element type is, so casting to a concrete ArrayRef type won't
+  /// work.
+  bool isEmptyArray() const {
+    return getAttrKind() == BEF::getArrayOf(BEF::AttributeKind::kInvalid);
   }
 };
 

@@ -293,16 +293,21 @@ type like this:
 
 ```c++
 static void takes_any_attribute(BEFDynamicAttr value) {
-  if (auto intVal = value.dyn_cast<int32_t>()) {
+  if (auto intVal = value.dyn_cast<int32_t>())
     ...
-  else if (auto stringVal = value.dyn_cast<StringRef>()) {
+  else if (auto stringVal = value.dyn_cast<StringRef>())
     ...
-  }
+  else if (auto arrayVal = value.dyn_cast<ArrayRef<int32_t>())
+    ...
+  else if (value.isEmptyArray())
+    ...
 }
 ```
 
 Note that the BEF format doesn't keep track of signedness, so an `i32` in MLIR
-will successfully convert to both `int32_t` and `uint32_t`.
+will successfully convert to both `int32_t` and `uint32_t`.  Also, the BEF
+format does not keep track of the element types for empty arrays, so they need
+to be tested explicitly with `isEmptyArray()`.
 
 # Guidelines for Implementing Primitives
 

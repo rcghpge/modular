@@ -70,8 +70,10 @@ static Chain print_dynamic_attr(Chain chain, BEFDynamicAttr value) {
     printf("string = ");
     fwrite(strAttr.getValue()->data(), 1, strAttr.getValue()->size(), stdout);
     fputc('\n', stdout);
-  } else if (auto intArray = value.dyn_cast_array<int32_t>()) {
+  } else if (auto intArray = value.dyn_cast<ArrayRef<int32_t>>()) {
     print_array_i32(chain, *intArray);
+  } else if (value.isEmptyArray()) {
+    printf("empty array!\n");
   } else {
     printf("unsupported attribute kind\n");
   }

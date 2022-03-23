@@ -144,8 +144,10 @@ bef.invokable @test_dynamic_attr() {
   %ch2 = "test.print.dynamic.attr"(%ch1) {value = "foo string"} : (!grt.chain) -> !grt.chain
   // CHECK: array = 4, 6, 17
   %ch3 = "test.print.dynamic.attr"(%ch2) {value = [4: i32, 6: i32, 17: i32]} : (!grt.chain) -> !grt.chain
+  // CHECK: empty array!
+  %ch4 = "test.print.dynamic.attr"(%ch3) {value = []} : (!grt.chain) -> !grt.chain
   // CHECK: unsupported attribute kind
-  %ch4 = "test.print.dynamic.attr"(%ch3) {value = 1: i1} : (!grt.chain) -> !grt.chain
+  %ch5 = "test.print.dynamic.attr"(%ch4) {value = 1: i1} : (!grt.chain) -> !grt.chain
 
   bef.output
 }
