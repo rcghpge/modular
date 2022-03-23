@@ -201,7 +201,9 @@ private:
   MutableArrayRef<RCRef<AsyncValue>> results;
 };
 
-template <typename StoredType>
+/// This CRTP class is used to provide common interfaces across the various
+/// BEFAttr implementations.
+template <typename ConcreteType, typename StoredType>
 class BEFAttrCommon {
 public:
   BEFAttrCommon(StoredType init) : value(init) {}
@@ -222,9 +224,8 @@ public:
 
   /// Check that the dynamic attribute kind encoded into the BEF file matches
   /// the C++ type for this.
-  static inline void checkAttributeKind(const void *value,
-                                        BEF::AttributeKind expectedKind) {
-    assert(getAttrKind(value) == expectedKind &&
+  static inline void checkAttributeKind(const void *value) {
+    assert(ConcreteType::matchesAttrKind(value) &&
            "attribute passed to primitive has unexpected order;"
            " mismatch between mlir syntax and primitive definition");
   }
@@ -236,44 +237,67 @@ private:
 /// Primitives use this to declare that they have an attribute input with the
 /// specified C++ type.
 template <typename T>
-class BEFAttr : public BEFAttrCommon<const T &> {
+class BEFAttr : public BEFAttrCommon<BEFAttr<T>, const T &> {
 public:
+  using BaseClass = BEFAttrCommon<BEFAttr<T>, const T &>;
+
   explicit BEFAttr(const void *value)
-      : BEFAttrCommon<const T &>(*reinterpret_cast<const T *>(value)) {
+      : BaseClass(*reinterpret_cast<const T *>(value)) {
     // Check that the C++ type matches the encoded type for the attribute.
     static_assert(BEF::AttrKindForCXXType<T>::kind !=
                       BEF::AttributeKind::kInvalid &&
                   "C++ type passed to BEFAttr isn't supported");
-    this->checkAttributeKind(value, BEF::AttrKindForCXXType<T>::kind);
+    this->checkAttributeKind(value);
+  }
+
+  static bool matchesAttrKind(const void *pointer) {
+    return BaseClass::getAttrKind(pointer) == BEF::AttrKindForCXXType<T>::kind;
   }
 };
 
 /// String attributes have a special encoding that includes their length,
 /// allowing projection into a StringRef.
 template <>
-class BEFAttr<StringRef> : public BEFAttrCommon<StringRef> {
+class BEFAttr<StringRef> : public BEFAttrCommon<BEFAttr<StringRef>, StringRef> {
 public:
+  using BaseClass = BEFAttrCommon<BEFAttr<StringRef>, StringRef>;
+
   explicit BEFAttr(const void *pointer)
-      : BEFAttrCommon<StringRef>(StringRef(static_cast<const char *>(pointer),
-                                           decodeBEFArrayLength(pointer))) {
-    // Check the value passed is actually a string.
-    this->checkAttributeKind(pointer, BEF::AttributeKind::kString);
+      : BaseClass(StringRef(static_cast<const char *>(pointer),
+                            decodeBEFArrayLength(pointer))) {
+    this->checkAttributeKind(pointer);
+  }
+
+  static bool matchesAttrKind(const void *pointer) {
+    return BaseClass::getAttrKind(pointer) == BEF::AttributeKind::kString;
   }
 };
 
 /// Array attributes have a special encoding that includes their length,
 /// allowing projection into a ArrayRef.
 template <typename T>
-class BEFAttr<ArrayRef<T>> : public BEFAttrCommon<ArrayRef<T>> {
+class BEFAttr<ArrayRef<T>>
+    : public BEFAttrCommon<BEFAttr<ArrayRef<T>>, ArrayRef<T>> {
 public:
+  using BaseClass = BEFAttrCommon<BEFAttr<ArrayRef<T>>, ArrayRef<T>>;
+
   explicit BEFAttr(const void *pointer)
-      : BEFAttrCommon<ArrayRef<T>>(ArrayRef<T>(static_cast<const T *>(pointer),
-                                               decodeBEFArrayLength(pointer))) {
-    // Check the value passed is an array of the right type.  Be a bit careful
-    // here because the element type isn't set for empty arrays.
-    auto elementKind = size() == 0 ? BEF::AttributeKind::kInvalid
-                                   : BEF::AttrKindForCXXType<T>::kind;
-    this->checkAttributeKind(pointer, BEF::getArrayOf(elementKind));
+      : BaseClass(ArrayRef<T>(static_cast<const T *>(pointer),
+                              decodeBEFArrayLength(pointer))) {
+    this->checkAttributeKind(pointer);
+  }
+
+  static bool matchesAttrKind(const void *pointer) {
+    // If the element type matches, this matches.
+    BEF::AttributeKind kind = BaseClass::getAttrKind(pointer);
+    if (kind == BEF::getArrayOf(BEF::AttrKindForCXXType<T>::kind))
+      return true;
+    // If the element type is invalid and the length is zero this matches.
+    // This is because MLIR2BEF doesn't know the element type for empty arrays.
+    if (kind == BEF::getArrayOf(BEF::AttributeKind::kInvalid) &&
+        decodeBEFArrayLength(pointer) == 0)
+      return true;
+    return false;
   }
 
   size_t size() const { return this->get().size(); }
@@ -286,10 +310,12 @@ class Dynamic {};
 
 /// Dynamic attributes allow checked casting to other attribute kinds.
 template <>
-class BEFAttr<Detail::Dynamic> : public BEFAttrCommon<const void *> {
+class BEFAttr<Detail::Dynamic>
+    : public BEFAttrCommon<BEFAttr<Detail::Dynamic>, const void *> {
 public:
-  explicit BEFAttr(const void *pointer)
-      : BEFAttrCommon<const void *>(pointer) {}
+  using BaseClass = BEFAttrCommon<BEFAttr<Detail::Dynamic>, const void *>;
+
+  explicit BEFAttr(const void *pointer) : BaseClass(pointer) {}
 
   /// Return the AttributeKind for this attribute.
   BEF::AttributeKind getAttrKind() const {
@@ -300,7 +326,7 @@ public:
   template <typename T>
   Optional<BEFAttr<T>> dyn_cast() const {
     // Test to see if this has the right attribute kind.
-    if (getAttrKind() != BEF::AttrKindForCXXType<T>::kind)
+    if (!BEFAttr<T>::matchesAttrKind(get()))
       return {};
     return BEFAttr<T>(get());
   }
@@ -312,12 +338,8 @@ public:
     return *result;
   }
 
-  /// Return true if this is an empty array value.  In this case, we don't know
-  /// what the element type is, so casting to a concrete ArrayRef type won't
-  /// work.
-  bool isEmptyArray() const {
-    return getAttrKind() == BEF::getArrayOf(BEF::AttributeKind::kInvalid);
-  }
+  /// Dynamic attributes are compatible with everything.
+  static bool matchesAttrKind(const void *pointer) { return true; }
 };
 
 using BEFDynamicAttr = BEFAttr<Detail::Dynamic>;

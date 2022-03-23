@@ -117,12 +117,6 @@ DECLARE_ATTR_MAPPING(kF64, double);
 DECLARE_ATTR_MAPPING(kString, llvm::StringRef);
 #undef DECLARE_ATTR_MAPPING
 
-template <typename EltType>
-struct AttrKindForCXXType<llvm::ArrayRef<EltType>> {
-  static constexpr AttributeKind kind =
-      getArrayOf(AttrKindForCXXType<EltType>::kind);
-};
-
 } // namespace BEF
 } // namespace M
 

@@ -49,13 +49,13 @@ static Chain print_string(const std::string &lhs, Chain chain) {
 }
 
 static Chain print_array_i32(Chain chain, BEFAttr<ArrayRef<int32_t>> values) {
-  printf("array = ");
+  printf("array = [");
   for (size_t i = 0, e = values->size(); i != e; ++i) {
     if (i != 0)
       printf(", ");
     printf("%d", values[i]);
   }
-  fputc('\n', stdout);
+  printf("]\n");
   return chain;
 }
 
@@ -72,8 +72,6 @@ static Chain print_dynamic_attr(Chain chain, BEFDynamicAttr value) {
     fputc('\n', stdout);
   } else if (auto intArray = value.dyn_cast<ArrayRef<int32_t>>()) {
     print_array_i32(chain, *intArray);
-  } else if (value.isEmptyArray()) {
-    printf("empty array!\n");
   } else {
     printf("unsupported attribute kind\n");
   }
