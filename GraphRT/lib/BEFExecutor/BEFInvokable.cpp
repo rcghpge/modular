@@ -216,6 +216,7 @@ namespace {
 /// where N and M are encoded into the invokable header.
 class BEFExecutor final
     : public ReferenceCounted<BEFExecutor>,
+      public LocationDecoder,
       public llvm::TrailingObjects<BEFExecutor, RegisterInfo, PrimitiveInfo> {
 public:
   BEFExecutor(BEFFileImpl *file, Runtime &runtime, BEFInvokableDecoder &decoder)
@@ -258,6 +259,16 @@ public:
     return numRegisters;
   }
 
+  // Implement LocationDecoder hooks.
+  Runtime &getRuntime() const override { return runtime; }
+  void addRef() override {
+    RCRef<ReferenceCounted<BEFExecutor>>::lowLevelAddRef(this);
+  }
+  void dropRef() override {
+    RCRef<ReferenceCounted<BEFExecutor>>::lowLevelDropRef(this);
+  }
+  LLCL::DecodedLocation decode(const EncodedLocation &loc) const override;
+
 private:
   /// Set up registers for input arguments to a invokable.
   void processArgumentsPseudo(SmallVectorImpl<uint32_t> &primitiveIDWorklist,
@@ -285,6 +296,24 @@ private:
   ArrayRef<uint32_t> funcBody;
 };
 } // end anonymous namespace
+
+/// This is the core method that implements the `LocationDecoder` abstract base
+/// class.  This turns the data payload in EncodedLocation (which, in our case,
+/// is an offset into the locations section) into a decoded location.
+LLCL::DecodedLocation BEFExecutor::decode(const EncodedLocation &loc) const {
+  BEFReader reader(befFile->locationPositions, [&](Error message) {});
+
+  size_t filenameOffset, lineNo, colNo;
+  if (reader.dropBytes(loc.data) || reader.parseVBR(filenameOffset) ||
+      reader.parseVBR(lineNo) || reader.parseVBR(colNo))
+    return LLCL::DecodedLocation{"<<BEF file encoding error>>", 0, -1};
+
+  reader.setContents(befFile->locationFilenames);
+  StringRef filename;
+  if (reader.parseNULTerminatedStringAt(filenameOffset, filename))
+    return LLCL::DecodedLocation{"<<BEF file encoding error>>", 0, -1};
+  return {filename.str(), (int)lineNo, (int)colNo};
+}
 
 /// Decode the register info and primitive info tables.  This returns true on
 /// failure.
@@ -473,7 +502,7 @@ void BEFExecutor::processArgumentsPseudo(
 /// from the end of the vector to the start - worklist style.
 void BEFExecutor::decrementOperandsNotReadyCounts(
     SmallVectorImpl<uint32_t> &primitiveIDWorklist) {
-  PrimitiveFrameBuilder frame(runtime, befFile->attributes);
+  PrimitiveFrameBuilder frame(runtime, befFile->attributes, *this);
 
   MutableArrayRef<RegisterInfo> registers = getRegisterInfoTable();
   MutableArrayRef<PrimitiveInfo> primitives = getPrimitiveInfoTable();
@@ -527,17 +556,19 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
     // Handle results.
     frame.setNumResults(decoder.numResults);
 
-    // Set up attributes, the frame object takes the offsets directly.
-    frame.setAttrs(decoder.attrOffsets);
-
-    // Set up invokables.
-    for (size_t invokableID : decoder.invokableRefIndices)
-      frame.addInvokable(befFile->getInvokableByID(invokableID));
-
     // If all arguments are good then run the invokable.
     if (!anyErrorArgument) {
+
+      // Set up attributes, the frame object takes the offsets directly.
+      frame.setAttrs(decoder.attrOffsets);
+
+      // Set up invokables.
+      for (size_t invokableID : decoder.invokableRefIndices)
+        frame.addInvokable(befFile->getInvokableByID(invokableID));
+
       // Set the location for the primitive so they can report errors.
-      (void)decoder.locOffset;
+      frame.setLocationData(decoder.locOffset);
+
       // Run it.
       invokableImpl(frame);
     } else {
@@ -683,8 +714,14 @@ void BEFInvokable::invoke(MutableArrayRef<RCRef<AsyncValue>> arguments,
     // Fill in error async value results if there are any present.
     if (results.empty())
       return;
-    results[0] = AsyncValue::createError(
-        runtime, std::move(decoder.befFormatError.getValue()));
+
+    // For our location, we can use anything in the file.  There isn't really a
+    // good way to handle this.  We could encoded a location for each function
+    // into the function index section, but it would be a shame to bloat out our
+    // memory representation for this case.
+    auto curLocation = EncodedLocation(/*some location=*/0, executor.copy());
+    results[0] = AsyncValue::createError(EncodedDiagnostic{
+        std::move(decoder.befFormatError.getValue()), std::move(curLocation)});
     // Fill in the rest with the same error.
     for (size_t i = 1, e = results.size(); i != e; ++i)
       results[i] = results[0].copy();

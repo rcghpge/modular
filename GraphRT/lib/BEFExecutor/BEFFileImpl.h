@@ -22,7 +22,7 @@ class BEFInvokable;
 
 /// This class is the implementation details behind the BEFFile::Open method,
 /// which maintains all the state necessary for the BEFExecutor.
-class BEFFileImpl : public BEFFile {
+class BEFFileImpl final : public BEFFile {
 public:
   BEFFileImpl() = default;
   ~BEFFileImpl() override;

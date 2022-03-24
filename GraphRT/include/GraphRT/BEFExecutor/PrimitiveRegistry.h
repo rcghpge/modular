@@ -849,6 +849,15 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
     }
   };
 
+  /// If this requires an EncodedLocation for the frame, pass it along.
+  template <typename Dummy>
+  struct Value<EncodedLocation, Dummy> : public FrameworkValue {
+    template <typename IndicesT>
+    static EncodedLocation process(PrimitiveFrame &frame) {
+      return frame.getLocation();
+    }
+  };
+
   //===--------------------------------------------------------------------===//
   // Argument handling: Processing
   //===--------------------------------------------------------------------===//

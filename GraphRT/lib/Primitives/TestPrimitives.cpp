@@ -214,10 +214,10 @@ static std::pair<ErrorOr<int32_t>, ErrorOr<int32_t>> partial_fail() {
 //===----------------------------------------------------------------------===//
 
 // Primitive for testing cancellation logic.
-static Chain cancel(Chain inChain, Runtime &runtime) {
+static Chain cancel(Chain inChain, EncodedLocation location, Runtime &runtime) {
   // Do NOT do this in a normal primitive. Runtime::cancelExecution() should
   // only be called by clients external to the BEFExecutor.
-  runtime.cancelExecution("Cancelled!");
+  runtime.cancelExecution(EncodedDiagnostic{"Cancelled!", std::move(location)});
   return inChain;
 }
 
@@ -244,9 +244,9 @@ static void async_add2_i32(AsyncValueRef<int32_t> lhs,
         // This actually only needs to check for error if this is defined as
         // non-strict.
         if (lhs->isError())
-          result->setToError(lhs->getError().copy());
+          result->setToError(lhs->takeDiagnostic());
         else if (rhs->isError())
-          result->setToError(rhs->getError().copy());
+          result->setToError(rhs->takeDiagnostic());
         else
           result.emplace(lhs.get() + rhs.get());
       },
@@ -257,14 +257,15 @@ static void async_add2_i32(AsyncValueRef<int32_t> lhs,
 /// because this is implemented in async style and returns different types
 /// depending on the resolved types of lhs/rhs
 static void async_add_any(RCRef<AsyncValue> lhs, RCRef<AsyncValue> rhs,
-                          IndirectResult result) {
+                          IndirectResult result, EncodedLocation location) {
   if (lhs->isType<int32_t>() && rhs->isType<int32_t>())
     result.emplace<int32_t>(lhs->get<int32_t>() + rhs->get<int32_t>());
   else if (lhs->isType<std::string>() && rhs->isType<std::string>())
     result.emplace<std::string>(lhs->get<std::string>() +
                                 rhs->get<std::string>());
   else
-    result->setToError("invalid operands to async_add_any");
+    result->setToError(
+        {"invalid operands to async_add_any", std::move(location)});
 }
 
 //===----------------------------------------------------------------------===//
@@ -315,9 +316,10 @@ static ErrorOr<TestVector> vec_add(const TestVector &lhs,
 /// background task.
 static void vec_add_async(AsyncValueRef<TestVector> lhs,
                           AsyncValueRef<TestVector> rhs,
-                          Result<TestVector> result, Runtime &runtime) {
+                          Result<TestVector> result, EncodedLocation location,
+                          Runtime &runtime) {
   if (lhs.get().values.size() != rhs.get().values.size()) {
-    result->setToError("vector length mismatch");
+    result->setToError({"vector length mismatch", std::move(location)});
     return;
   }
 
@@ -338,10 +340,11 @@ static void vec_add_async(AsyncValueRef<TestVector> lhs,
 /// This is similar to vec_add_async, but uses `parallelForEachNCompletion`.
 static void vec_add_async2(AsyncValueRef<TestVector> lhs,
                            AsyncValueRef<TestVector> rhs,
-                           Result<TestVector> result, Runtime &runtime) {
+                           Result<TestVector> result, EncodedLocation location,
+                           Runtime &runtime) {
   size_t lhsValueSize = lhs.get().values.size();
   if (lhsValueSize != rhs.get().values.size())
-    return result->setToError("vector length mismatch");
+    return result->setToError({"vector length mismatch", std::move(location)});
 
   // Move the AsyncValue to "constructed" state with the specified # elements.
   result.construct(lhsValueSize);
@@ -366,10 +369,11 @@ static void vec_add_async2(AsyncValueRef<TestVector> lhs,
 /// state, simplifying signatures.
 static void vec_add_async3(AsyncValueRef<TestVector> lhs,
                            AsyncValueRef<TestVector> rhs,
-                           Result<TestVector> result, Runtime &runtime) {
+                           Result<TestVector> result, EncodedLocation location,
+                           Runtime &runtime) {
   size_t lhsValueSize = lhs.get().values.size();
   if (lhsValueSize != rhs.get().values.size())
-    return result->setToError("vector length mismatch");
+    return result->setToError({"vector length mismatch", std::move(location)});
 
   // Move the AsyncValue to "constructed" state with the specified # elements.
   result.construct(lhsValueSize);
@@ -393,10 +397,11 @@ static void vec_add_async3(AsyncValueRef<TestVector> lhs,
 /// the resulting values as ready.
 static void vec_add_async4(AsyncValueRef<TestVector> lhs,
                            AsyncValueRef<TestVector> rhs,
-                           Result<TestVector> result, Runtime &runtime) {
+                           Result<TestVector> result, EncodedLocation location,
+                           Runtime &runtime) {
   size_t lhsValueSize = lhs.get().values.size();
   if (lhsValueSize != rhs.get().values.size())
-    return result->setToError("vector length mismatch");
+    return result->setToError({"vector length mismatch", std::move(location)});
 
   // Move the AsyncValue to "constructed" state with the specified # elements.
   result.construct(lhsValueSize);

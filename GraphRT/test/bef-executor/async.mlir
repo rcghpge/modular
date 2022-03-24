@@ -25,7 +25,7 @@ bef.invokable @test_cancel() -> i32 {
 
   bef.output %b : i32
 }
-// CHECK-NEXT: returned <error: Cancelled!>
+// CHECK-NEXT: returned <{{.*}}async.mlir:22:10: error: Cancelled!>
 
 // CHECK-LABEL: --- Running 'test_add_any'
 bef.invokable @test_add_any() -> (i32, !test.string, i32) {
@@ -41,7 +41,7 @@ bef.invokable @test_add_any() -> (i32, !test.string, i32) {
 
   bef.output %a, %b, %c : i32, !test.string, i32
 }
-// CHECK: 'test_add_any' returned 43, barkrarf, <error: invalid operands to async_add_any> 
+// CHECK: 'test_add_any' returned 43, barkrarf, <{{.*}}async.mlir:40:8: error: invalid operands to async_add_any> 
 
 
 

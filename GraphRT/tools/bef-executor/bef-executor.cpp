@@ -130,8 +130,12 @@ static void runInvokableTestcase(const Invokable *invokable,
       os << "'" << invokable->getName() << "' returned ";
       llvm::interleaveComma(results, os, [&](const RCRef<AsyncValue> &result) {
         // Handle error value.
-        if (auto *error = result->getErrorIfPresent()) {
-          os << "<error: " << *error << '>';
+        if (auto *diag = result->getDiagnosticIfPresent()) {
+          auto loc = diag->decode().location;
+          os << '<' << loc.filename << ':' << loc.line;
+          if (loc.column != -1)
+            os << ':' << loc.column;
+          os << ": error: " << diag->message << '>';
           return;
         }
 

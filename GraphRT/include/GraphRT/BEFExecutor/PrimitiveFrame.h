@@ -28,7 +28,10 @@ class PrimitiveFrame {
 public:
   Runtime &getRuntime() const { return runtime; }
 
-  // TODO: Add location information for error reporting.
+  /// Return an EncodedLocation for this specified frame invocation.
+  EncodedLocation getLocation() const {
+    return EncodedLocation(locationData, copyRCRef(&locationDecoder));
+  }
 
   //===--------------------------------------------------------------------===//
   // Arguments
@@ -128,13 +131,21 @@ public:
   void fail(Error cause);
 
 protected:
-  PrimitiveFrame(Runtime &runtime, ArrayRef<uint8_t> attrSection)
-      : runtime(runtime), attrSection(attrSection) {}
+  PrimitiveFrame(Runtime &runtime, ArrayRef<uint8_t> attrSection,
+                 LocationDecoder &locationDecoder)
+      : runtime(runtime), locationDecoder(locationDecoder),
+        attrSection(attrSection) {}
 
   Runtime &runtime;
+  LocationDecoder &locationDecoder;
 
   /// This is the overall attribute section in the BEF file.
   const ArrayRef<uint8_t> attrSection;
+
+  /// This is the location information for the current frame, which (when
+  /// combined with the location decoder) can be turned into an
+  /// `EncodedLocation`.
+  intptr_t locationData = ~intptr_t(0);
 
   /// numResults is set to ~0 so we can check that addArgument() is called
   /// before setNumResults.
@@ -162,16 +173,22 @@ protected:
 ///
 class PrimitiveFrameBuilder : public PrimitiveFrame {
 public:
-  PrimitiveFrameBuilder(Runtime &runtime, ArrayRef<uint8_t> attrSection)
-      : PrimitiveFrame(runtime, attrSection) {}
+  PrimitiveFrameBuilder(Runtime &runtime, ArrayRef<uint8_t> attrSection,
+                        LocationDecoder &locationDecoder)
+      : PrimitiveFrame(runtime, attrSection, locationDecoder) {}
 
   /// Clear all fields.
   void reset() {
-    argsAndResults.clear();
+    locationData = ~intptr_t(0);
     numArguments = 0;
     numResults = uint16_t(~0U);
+    argsAndResults.clear();
     attrOffsets = {};
     invokables.clear();
+  }
+
+  void setLocationData(intptr_t locationData) {
+    this->locationData = locationData;
   }
 
   /// Reserve space in the arg/result vector to reduce allocations.

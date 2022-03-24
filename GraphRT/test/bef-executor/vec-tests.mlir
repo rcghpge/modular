@@ -26,7 +26,7 @@ bef.invokable @basic_test() -> !grt.chain {
   %v5 = "test.vec.constant"() { size = 3 : i32, value = 3 : i32 } : () -> !test.vec
   %v6 = "test.vec.add"(%v5, %v1) : (!test.vec, !test.vec) -> !test.vec
   %ch5 = "test.vec.print" (%v6, %ch4) : (!test.vec, !grt.chain) -> !grt.chain
-  // CHECK-NEXT: 'basic_test' returned <error: vector length mismatch> 
+  // CHECK-NEXT: 'basic_test' returned <{{.*}}vec-tests.mlir:27:9: error: vector length mismatch> 
 
   bef.output %ch5 : !grt.chain
 }
@@ -54,7 +54,7 @@ bef.invokable @async_add_test() -> !grt.chain {
   %v5 = "test.vec.constant"() { size = 3 : i32, value = 3 : i32 } : () -> !test.vec
   %v6 = "test.vec.add.async"(%v5, %v1) : (!test.vec, !test.vec) -> !test.vec
   %ch5 = "test.vec.print" (%v6, %ch4) : (!test.vec, !grt.chain) -> !grt.chain
-  // CHECK-NEXT: 'async_add_test' returned <error: vector length mismatch> 
+  // CHECK-NEXT: 'async_add_test' returned <{{.*}}vec-tests.mlir:55:9: error: vector length mismatch> 
 
   bef.output %ch5 : !grt.chain
 }
