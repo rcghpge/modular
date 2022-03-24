@@ -133,7 +133,7 @@ static void runInvokableTestcase(const Invokable *invokable,
     // so the diagnostics and result printing don't get intermixed.
     for (auto &result : results) {
       if (auto *diag = result->getDiagnosticIfPresent()) {
-        auto loc = diag->decode().location;
+        auto loc = diag->decodeLocation();
         auto mlirLoc = mlir::FileLineColLoc::get(context, loc.filename,
                                                  loc.line, loc.column);
         mlir::emitError(mlirLoc) << diag->message.get();
