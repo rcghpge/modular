@@ -291,7 +291,7 @@ individual elements. It is not as efficient as the other attributes and should
 be used sparingly. Accessing elements is done in the following simple examples:
 
 ```c++
-static int32_t findInt32Element(BEFDictionary dict) {
+static int32_t findInt32Element(BEFDictionaryAttr dict) {
   Optional<BEFAttr<int32_t>> value = dict.find<int32_t>("myKey");
   if (!value)
     // Handle the error gracefully
@@ -299,11 +299,10 @@ static int32_t findInt32Element(BEFDictionary dict) {
   return *value;
 }
 
-static void handleAllElements(BEFDictionary dict) {
+static void handleAllElements(BEFDictionaryAttr dict) {
   for (auto element : dict) {
-    if (element.getName() == "string") {
-      auto value = iter.getValue<StringRef>();
-      // handle `value`
+    if (BEFAttr<StringRef> str = element.getValue().dyn_cast<StringRef>())
+      // handle `str`
     } else {
       BEFAttr<int32_t> value = element.getValue<int32_t>();
       // handle `value`
