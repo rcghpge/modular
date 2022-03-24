@@ -426,10 +426,9 @@ bool BEFToMLIRConverter::parseInvokables() {
   // Read until we run out of invokable descriptors.
   Location loc = UnknownLoc::get(builder.getContext());
   while (!reader.empty()) {
-    size_t bodyOffset, nameOffset, locOffset, numArgs, numResults;
+    size_t bodyOffset, nameOffset, numArgs, numResults;
     StringAttr name;
     if (reader.parseVBR(bodyOffset) || reader.parseVBR(nameOffset) ||
-        reader.parseVBR(locOffset) || resolveLocation(locOffset, loc) ||
         reader.parseVBR(numArgs) || reader.parseVBR(numResults) ||
         parseNULTerminatedStringAt(nameOffset, stringReader, name))
       return true;

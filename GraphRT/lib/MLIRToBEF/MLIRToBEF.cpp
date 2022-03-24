@@ -267,10 +267,9 @@ public:
     return it->second;
   }
 
-  void addInvokableOffset(StringAttr name, BEFOffset offset, Location loc,
+  void addInvokableOffset(StringAttr name, BEFOffset offset,
                           InvokableSignature signature) {
-    invokableIndexEntries.push_back(
-        {getStringOffset(name), offset, getLocationOffset(loc), signature});
+    invokableIndexEntries.push_back({getStringOffset(name), offset, signature});
   }
 
   /// Return the BEFOffset for the specified location entry.
@@ -336,7 +335,6 @@ public:
   struct InvokableIndexEntry {
     BEFOffset nameOffset;
     BEFOffset invokableOffset;
-    BEFOffset locationOffset;
     InvokableSignature signature;
   };
 
@@ -463,7 +461,7 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
       return WalkResult::advance();
 
     // Ignore the OutputOp: it gets special handling, instead of being treated
-    // like a primitive.
+    // like a primitive.  Similarly, ignore bef.invokable.
     if (isa<BEF::OutputOp>(op))
       return WalkResult::advance();
 
@@ -1250,7 +1248,6 @@ void BEFModuleEmitter::emitInvokables(BEFEmitter *attributeNamesSection,
   for (auto invokable : entities.invokables) {
     // Remember that we emitted this region to this offset.
     entities.addInvokableOffset(invokable.name, invokablesSection.getOffset(),
-                                invokable.region->getLoc(),
                                 invokable.signature);
     invokablesSection.emitInvokable(invokable.region);
   }
@@ -1264,7 +1261,6 @@ void BEFModuleEmitter::emitInvokableIndex() {
   for (const auto &entry : entities.invokableIndexEntries) {
     invokableIndexSection.emitOffset(entry.invokableOffset);
     invokableIndexSection.emitOffset(entry.nameOffset);
-    invokableIndexSection.emitOffset(entry.locationOffset);
     invokableIndexSection.emitVBR(entry.signature.numArguments);
     invokableIndexSection.emitVBR(entry.signature.numResults);
   }

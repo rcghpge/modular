@@ -144,10 +144,10 @@ bool BEFFileReader::readInvokableIndexSection(BEFReader &stringReader) {
     if (fnNumber > numInvokables)
       return reportIncorrectInvokableCount();
 
-    size_t bodyOffset, nameOffset, locOffset, numArgs, numResults;
+    size_t bodyOffset, nameOffset, numArgs, numResults;
     StringRef name;
-    if (parseVBR(bodyOffset) || parseVBR(nameOffset) || parseVBR(locOffset) ||
-        parseVBR(numArgs) || parseVBR(numResults) ||
+    if (parseVBR(bodyOffset) || parseVBR(nameOffset) || parseVBR(numArgs) ||
+        parseVBR(numResults) ||
         stringReader.parseNULTerminatedStringAt(nameOffset, name))
       return true;
 
@@ -156,8 +156,8 @@ bool BEFFileReader::readInvokableIndexSection(BEFReader &stringReader) {
       befFile.invokableSymbolTable[name] = fnNumber;
 
     /// Create the actual BEFInvokable.
-    new (&fnMemory[fnNumber++]) BEFInvokable(name, numArgs, numResults,
-                                             bodyOffset, locOffset, &befFile);
+    new (&fnMemory[fnNumber++])
+        BEFInvokable(name, numArgs, numResults, bodyOffset, &befFile);
   }
 
   // Check that the correct number of invokables was actually present.

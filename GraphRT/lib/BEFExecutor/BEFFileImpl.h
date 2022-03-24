@@ -71,9 +71,9 @@ public:
 class BEFInvokable final : public Invokable {
 public:
   BEFInvokable(StringRef name, uint16_t numArguments, uint16_t numResults,
-               uint32_t bodyOffset, uint32_t locationOffset, BEFFileImpl *owner)
+               uint32_t bodyOffset, BEFFileImpl *owner)
       : Invokable(name, numArguments, numResults), bodyOffset(bodyOffset),
-        locationOffset(locationOffset), owner(owner) {}
+        owner(owner) {}
 
   virtual ~BEFInvokable() = default;
 
@@ -94,7 +94,7 @@ public:
   virtual void dropRef() const override;
 
 public:
-  const uint32_t bodyOffset, locationOffset;
+  const uint32_t bodyOffset;
   BEFFileImpl *const owner;
 };
 

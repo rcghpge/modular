@@ -234,7 +234,6 @@ of memory up front, rather than use a vector-style resizing mechanism.
 ```none
   INVOKABLES_INDEX_SECTION ::= VBR<"NumInvokables"> INVOKABLE_ENTRY*
   INVOKABLE_ENTRY          ::= OFFSET<"Invokable"> OFFSET<"Name">
-                               OFFSET<"Location"> 
                                VBR<"NumArguments"> VBR<"NumResults"> 
 ```
 
