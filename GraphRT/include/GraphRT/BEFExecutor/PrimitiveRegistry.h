@@ -85,12 +85,12 @@ class Result {
 public:
   /// On construction, the result is initialized with an AsyncValue of the
   /// correct type.
-  explicit Result(RCRef<AsyncValue> &result, Runtime &runtime)
-      : result(result) {
+  explicit Result(RCRef<AsyncValue> &result, PrimitiveFrame &frame)
+      : result(result), frame(frame) {
     assert(!result && "result already initialized?");
-    result = AsyncValue::allocate<T>(runtime);
+    result = AsyncValue::allocate<T>(frame.getRuntime());
   }
-  Result(const Result &&other) : result(other.result) {}
+  Result(const Result &&other) : result(other.result), frame(other.frame) {}
 
   /// Return an owning reference to the AsyncValueRef.  This is typically used
   /// when copying into a closure.
@@ -112,6 +112,11 @@ public:
     result->emplace<T, Args...>(std::forward<Args>(args)...);
   }
 
+  /// Fill this AsyncValue with an error that has the specified message.
+  void setToError(Error message) {
+    result->setToError({std::move(message), frame.getLocation()});
+  }
+
   /// Return a raw pointer to the AsyncValue.
   AsyncValue *getPointer() const { return result.getPointer(); }
   /// Return a reference to the low-level async value without copying it.
@@ -125,6 +130,7 @@ private:
   Result(const Result &) = delete;
   void operator=(const Result &) = delete;
   RCRef<AsyncValue> &result;
+  PrimitiveFrame &frame;
 };
 
 /// The IndirectResult class is used for primitives that need a result but don't
@@ -133,12 +139,13 @@ private:
 class IndirectResult {
 public:
   /// On construction, this is initialized with an indirect AsyncValue.
-  explicit IndirectResult(RCRef<AsyncValue> &result, Runtime &runtime)
-      : result(result) {
+  explicit IndirectResult(RCRef<AsyncValue> &result, PrimitiveFrame &frame)
+      : result(result), frame(frame) {
     assert(!result && "result already initialized?");
-    result = AsyncValue::createIndirect(runtime);
+    result = AsyncValue::createIndirect(frame.getRuntime());
   }
-  IndirectResult(const IndirectResult &&other) : result(other.result) {}
+  IndirectResult(const IndirectResult &&other)
+      : result(other.result), frame(other.frame) {}
 
   /// Return an owning reference to the AsyncValueRef.  This is typically used
   /// when copying into a closure.
@@ -157,6 +164,11 @@ public:
                                                 std::forward<Args>(args)...));
   }
 
+  /// Fill this AsyncValue with an error that has the specified message.
+  void setToError(Error message) {
+    result->setToError({std::move(message), frame.getLocation()});
+  }
+
   /// Return a raw pointer to the AsyncValue.
   AsyncValue *getPointer() const { return result.getPointer(); }
   /// Return a reference to the low-level async value without copying it.
@@ -170,6 +182,7 @@ private:
   IndirectResult(const IndirectResult &) = delete;
   void operator=(const IndirectResult &) = delete;
   RCRef<AsyncValue> &result;
+  PrimitiveFrame &frame;
 };
 
 /// RemainingResults collects all remaining results in a MutableArrayRef. There
@@ -195,6 +208,8 @@ public:
         elt = AsyncValue::createIndirect(runtime);
     }
   }
+
+  // TODO: Add a copy() method.
 
 private:
   Runtime &runtime;
@@ -777,8 +792,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   struct Value<Result<T>, Dummy> : public ResultValue<> {
     template <typename IndicesT>
     static Result<T> process(PrimitiveFrame &frame) {
-      return Result<T>(frame.getResults()[IndicesT::resultIdx],
-                       frame.getRuntime());
+      return Result<T>(frame.getResults()[IndicesT::resultIdx], frame);
     }
   };
 
@@ -787,8 +801,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   struct Value<IndirectResult, Dummy> : public ResultValue<> {
     template <typename IndicesT>
     static IndirectResult process(PrimitiveFrame &frame) {
-      return IndirectResult(frame.getResults()[IndicesT::resultIdx],
-                            frame.getRuntime());
+      return IndirectResult(frame.getResults()[IndicesT::resultIdx], frame);
     }
   };
 
