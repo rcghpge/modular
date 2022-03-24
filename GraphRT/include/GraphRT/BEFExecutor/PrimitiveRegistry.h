@@ -78,92 +78,23 @@ private:
   MutableArrayRef<RCRef<AsyncValue>> arguments;
 };
 
-/// The Result class is used by primitive implementations for typed asynchronous
-/// results.
-template <typename T>
-class Result {
+/// This is a common base class between Result and IndirectResult, to reduce
+/// code duplication.
+class AnySingleResult {
 public:
   /// On construction, the result is initialized with an AsyncValue of the
   /// correct type.
-  explicit Result(RCRef<AsyncValue> &result, PrimitiveFrame &frame)
+  explicit AnySingleResult(RCRef<AsyncValue> &result, PrimitiveFrame &frame)
       : result(result), frame(frame) {
     assert(!result && "result already initialized?");
-    result = AsyncValue::allocate<T>(frame.getRuntime());
   }
-  Result(const Result &&other) : result(other.result), frame(other.frame) {}
-
-  /// Return an owning reference to the AsyncValueRef.  This is typically used
-  /// when copying into a closure.
-  AsyncValueRef<T> copy() const { return AsyncValueRef<T>(result.copy()); }
-
-  /// Return a reference to the underlying element in the AsyncValue if it is
-  /// constructed.
-  T &get() const { return result->get<T>(); }
-
-  /// Construct the result, but do not mark it ready.
-  template <typename... Args>
-  void construct(Args &&...args) {
-    result->construct<T, Args...>(std::forward<Args>(args)...);
-  }
-
-  /// Construct the result in place and mark it as ready.
-  template <typename... Args>
-  void emplace(Args &&...args) {
-    result->emplace<T, Args...>(std::forward<Args>(args)...);
-  }
-
-  /// Fill this AsyncValue with an error that has the specified message.
-  void setToError(Error message) {
-    result->setToError({std::move(message), frame.getLocation()});
-  }
-
-  /// Return a raw pointer to the AsyncValue.
-  AsyncValue *getPointer() const { return result.getPointer(); }
-  /// Return a reference to the low-level async value without copying it.
-  RCRef<AsyncValue> &getAsyncValue() { return result; }
-
-  /// Allow dereferencing this to get access to setError().
-  AsyncValue &operator*() const { return *getPointer(); }
-  AsyncValue *operator->() const { return getPointer(); }
-
-private:
-  Result(const Result &) = delete;
-  void operator=(const Result &) = delete;
-  RCRef<AsyncValue> &result;
-  PrimitiveFrame &frame;
-};
-
-/// The IndirectResult class is used for primitives that need a result but don't
-/// know its static type.  It will be initialized to an AsyncValue that is in
-/// indirect state, allowing it to be late-bound, e.g. asynchronously.
-class IndirectResult {
-public:
-  /// On construction, this is initialized with an indirect AsyncValue.
-  explicit IndirectResult(RCRef<AsyncValue> &result, PrimitiveFrame &frame)
-      : result(result), frame(frame) {
-    assert(!result && "result already initialized?");
-    result = AsyncValue::createIndirect(frame.getRuntime());
-  }
-  IndirectResult(const IndirectResult &&other)
+  AnySingleResult(const AnySingleResult &&other)
       : result(other.result), frame(other.frame) {}
 
   /// Return an owning reference to the AsyncValueRef.  This is typically used
   /// when copying into a closure.
   RCRef<AsyncValue> copy() const { return result.copy(); }
 
-  /// Resolve an IndirectAsyncValue to point to the specified new value,
-  /// resolving any waiters whenever newValue becomes ready.
-  void resolve(RCRef<AsyncValue> newValue) {
-    result->resolveIndirect(std::move(newValue));
-  }
-
-  /// Construct an AsyncValue for the result and resolve the indirect result.
-  template <typename T, typename... Args>
-  void emplace(Args &&...args) {
-    resolve(AsyncValue::createReady<T, Args...>(result->getRuntime(),
-                                                std::forward<Args>(args)...));
-  }
-
   /// Fill this AsyncValue with an error that has the specified message.
   void setToError(Error message) {
     result->setToError({std::move(message), frame.getLocation()});
@@ -172,17 +103,77 @@ public:
   /// Return a raw pointer to the AsyncValue.
   AsyncValue *getPointer() const { return result.getPointer(); }
   /// Return a reference to the low-level async value without copying it.
-  RCRef<AsyncValue> &getAsyncValue() { return result; }
+  RCRef<AsyncValue> &getAsyncValue() const { return result; }
 
   /// Allow dereferencing this to get access to setError().
   AsyncValue &operator*() const { return *getPointer(); }
   AsyncValue *operator->() const { return getPointer(); }
 
 private:
-  IndirectResult(const IndirectResult &) = delete;
-  void operator=(const IndirectResult &) = delete;
+  AnySingleResult(const AnySingleResult &) = delete;
+  void operator=(const AnySingleResult &) = delete;
   RCRef<AsyncValue> &result;
   PrimitiveFrame &frame;
+};
+
+/// The Result class is used by primitive implementations for typed asynchronous
+/// results.
+template <typename T>
+class Result : public AnySingleResult {
+public:
+  explicit Result(RCRef<AsyncValue> &result, PrimitiveFrame &frame)
+      : AnySingleResult(result, frame) {
+    result = AsyncValue::allocate<T>(frame.getRuntime());
+  }
+  using AnySingleResult::AnySingleResult;
+
+  /// Return an owning reference to the AsyncValueRef.  This is typically used
+  /// when copying into a closure.
+  AsyncValueRef<T> copy() const {
+    return AsyncValueRef<T>(AnySingleResult::copy());
+  }
+
+  /// Return a reference to the underlying element in the AsyncValue if it is
+  /// constructed.
+  T &get() const { return getPointer()->template get<T>(); }
+
+  /// Construct the result, but do not mark it ready.
+  template <typename... Args>
+  void construct(Args &&...args) {
+    getPointer()->template construct<T, Args...>(std::forward<Args>(args)...);
+  }
+
+  /// Construct the result in place and mark it as ready.
+  template <typename... Args>
+  void emplace(Args &&...args) {
+    getPointer()->template emplace<T, Args...>(std::forward<Args>(args)...);
+  }
+};
+
+/// The IndirectResult class is used for primitives that need a result but don't
+/// know its static type.  It will be initialized to an AsyncValue that is in
+/// indirect state, allowing it to be late-bound, e.g. asynchronously.
+class IndirectResult : public AnySingleResult {
+public:
+  /// On construction, this is initialized with an indirect AsyncValue.
+  explicit IndirectResult(RCRef<AsyncValue> &result, PrimitiveFrame &frame)
+      : AnySingleResult(result, frame) {
+    result = AsyncValue::createIndirect(frame.getRuntime());
+  }
+  using AnySingleResult::AnySingleResult;
+
+  /// Resolve an IndirectAsyncValue to point to the specified new value,
+  /// resolving any waiters whenever newValue becomes ready.
+  void resolve(RCRef<AsyncValue> newValue) {
+    getPointer()->resolveIndirect(std::move(newValue));
+  }
+
+  /// Construct an AsyncValue for the result and resolve the indirect result.
+  template <typename T, typename... Args>
+  void emplace(Args &&...args) {
+    resolve(AsyncValue::createReady<T, Args...>(getPointer()->getRuntime(),
+                                                std::forward<Args>(args)...));
+  }
 };
 
 /// RemainingResults collects all remaining results in a MutableArrayRef. There
