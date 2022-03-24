@@ -16,10 +16,12 @@
 #include "LLCL/Runtime/AsyncValueRef.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "LLCL/Support/Chain.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/FileUtilities.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/SourceMgr.h"
 
 using namespace LLCL;
 using namespace M;
@@ -86,7 +88,8 @@ static std::unique_ptr<WorkQueue> getWorkQueue(WorkQueueType workqueueType) {
 /// input and printing results if we can.
 static void runInvokableTestcase(const Invokable *invokable,
                                  AllocatorType allocatorType,
-                                 WorkQueueType workqueueType) {
+                                 WorkQueueType workqueueType,
+                                 MLIRContext *context) {
   // Skip anonymous invokables.  These are bodies of control flow operators etc.
   if (invokable->getName().empty())
     return;
@@ -124,18 +127,28 @@ static void runInvokableTestcase(const Invokable *invokable,
     // printing with raw_ostream.
     fflush(stdout);
 
+    // Check all the results for errors, and if we find any of them, emit them
+    // through MLIR error handling.  We use MLIR here just because it makes
+    // diagnostic verification easy.  We do this before printing the results
+    // so the diagnostics and result printing don't get intermixed.
+    for (auto &result : results) {
+      if (auto *diag = result->getDiagnosticIfPresent()) {
+        auto loc = diag->decode().location;
+        auto mlirLoc = mlir::FileLineColLoc::get(context, loc.filename,
+                                                 loc.line, loc.column);
+        mlir::emitError(mlirLoc) << diag->message.get();
+      }
+    }
+
     // Print out the invokable results that we know about.
     // Go ahead and print out the invokable results that we know about.
     if (!results.empty()) {
       os << "'" << invokable->getName() << "' returned ";
       llvm::interleaveComma(results, os, [&](const RCRef<AsyncValue> &result) {
-        // Handle error value.
+        // Handle error value by printing it inline, and emitting it as an error
+        // through SourceMgr so we can validate it.
         if (auto *diag = result->getDiagnosticIfPresent()) {
-          auto loc = diag->decode().location;
-          os << '<' << loc.filename << ':' << loc.line;
-          if (loc.column != -1)
-            os << ':' << loc.column;
-          os << ": error: " << diag->message << '>';
+          os << "<error: " << diag->message << '>';
           return;
         }
 
@@ -215,6 +228,11 @@ int main(int argc, char **argv) {
                  clEnumValN(WorkQueueType::kThreadPool, "threadpool",
                             "Configurable size thread pool")),
       cl::init(WorkQueueType::kSingleThread));
+  static cl::opt<bool> verifyDiagnostics(
+      "verify-diagnostics",
+      cl::desc("Check that emitted diagnostics match "
+               "expected-* lines on the corresponding line"),
+      cl::init(false));
 
   cl::ParseCommandLineOptions(argc, argv, "bef-executor test driver\n");
 
@@ -244,10 +262,18 @@ int main(int argc, char **argv) {
   assert(AsyncValue::getNumAllocatedInstances() == 0 &&
          "We have async values allocated before we started to do anything");
 
+  // Use an LLVM SourceMgr so we can emit caret diagnostics, and support
+  // diagnostic verification.
+  auto bufferText = fileBuffer->getBuffer();
+  llvm::SourceMgr sourceMgr;
+  sourceMgr.AddNewSourceBuffer(std::move(fileBuffer), llvm::SMLoc());
+
+  bool hadToolError = false;
+
   mlir::MLIRContext context;
   {
     // Open the BEF file.
-    auto befFileOrError = BEFFile::open(fileBuffer->getBuffer(), primitives);
+    auto befFileOrError = BEFFile::open(bufferText, primitives);
     if (auto *error = befFileOrError.getError())
       return emitToolError(" error opening '" + Twine(inputFilename) +
                            "': " + Twine(error));
@@ -270,9 +296,21 @@ int main(int argc, char **argv) {
       }
     }
 
-    // Run each requested invokable as a standalone testcase.
-    for (auto *fn : invokablesToExecute)
-      runInvokableTestcase(fn, allocatorType, workqueueType);
+    // Run each requested invokable as a standalone testcase.  We register
+    // different diagnostic handlers with MLIR depending on whether we're in
+    // -verify-diagnostics mode or not.
+    if (verifyDiagnostics) {
+      mlir::SourceMgrDiagnosticVerifierHandler sourceMgrHandler(sourceMgr,
+                                                                &context);
+      for (auto *fn : invokablesToExecute)
+        runInvokableTestcase(fn, allocatorType, workqueueType, &context);
+
+      hadToolError = failed(sourceMgrHandler.verify());
+    } else {
+      mlir::SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, &context);
+      for (auto *fn : invokablesToExecute)
+        runInvokableTestcase(fn, allocatorType, workqueueType, &context);
+    }
   }
 
   assert(AsyncValue::getNumAllocatedInstances() == 0 &&
@@ -281,5 +319,5 @@ int main(int argc, char **argv) {
   LLCL::verifyNoLiveReferenceCountedObjects(
       "All refcounted objects should be deallocated");
 
-  return 0;
+  return hadToolError;
 }

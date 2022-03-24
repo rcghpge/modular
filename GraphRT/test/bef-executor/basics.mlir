@@ -1,5 +1,5 @@
 // RUN: bef-translate -export-bef -allow-unregistered-dialect %s > %t.bef
-// RUN: bef-executor %t.bef | FileCheck %s
+// RUN: bef-executor -verify-diagnostics %t.bef | FileCheck %s
 
 // CHECK-LABEL: Can not run 'args_results' because it has arguments
 bef.invokable @args_results(%a: i32, %b: i8) -> (i8, i32) {
@@ -63,12 +63,14 @@ bef.invokable @test_result() -> (i32, i32, !grt.chain) {
 
 // CHECK-LABEL: --- Running 'errors'
 bef.invokable @errors() -> (i32, i32, i32) {
+  // expected-error @+1 {{something bad happened}}
   %a = "test.fail"() : () -> i32
+  // expected-error @+1 {{something partially bad happened}}
   %b, %c = "test.partial_fail"() : () -> (i32, i32)
 
   bef.output %a, %b, %c : i32, i32, i32
-  // CHECK: 'errors' returned <{{.*}}basics.mlir:66:8: error: something bad happened>,
-  // CHECK: 42, <{{.*}}basics.mlir:67:12: error: something partially bad happened>
+  // CHECK: 'errors' returned <error: something bad happened>,
+  // CHECK: 42, <error: something partially bad happened>
 }
 
 // CHECK-LABEL: --- Running 'simple_calls'
@@ -80,7 +82,7 @@ bef.invokable @simple_calls() -> (i32, i32) {
   %a, %b, %c = grt.invoke @errors() : () -> (i32, i32, i32)
 
   bef.output %a, %b : i32, i32
-  // CHECK: 'simple_calls' returned <{{.*}}basics.mlir:66:8: error: something bad happened>, 42
+  // CHECK: 'simple_calls' returned <error: something bad happened>, 42
 }
 
 // CHECK-LABEL: --- Can not run 'call_print.i32' because it has arguments
