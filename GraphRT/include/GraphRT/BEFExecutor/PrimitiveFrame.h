@@ -29,7 +29,7 @@ public:
   Runtime &getRuntime() const { return runtime; }
 
   /// Return an EncodedLocation for this specified frame invocation.
-  EncodedLocation getLocation() const {
+  EncodedLocation copyLocation() const {
     return EncodedLocation(locationData, copyRCRef(&locationDecoder));
   }
 

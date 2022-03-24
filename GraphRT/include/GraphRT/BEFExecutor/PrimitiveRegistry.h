@@ -78,6 +78,34 @@ private:
   MutableArrayRef<RCRef<AsyncValue>> arguments;
 };
 
+/// This template may be used where it is useful to bundle together a reference
+/// to an AsyncValue (either RCRef<AsyncValue> or AsyncValueRef<T>) with an
+/// EncodedLocation.
+///
+/// This value is larger than an AsyncValue reference (3 words instead of 1) and
+/// involves more reference counting (EncodedLocations need to keep their
+/// decoder alive), so it should only be used where needed.
+template <typename AVRefType>
+class AsyncValueRefWithEncodedLocation : public AVRefType {
+public:
+  AsyncValueRefWithEncodedLocation(AVRefType refValue, EncodedLocation loc)
+      : AVRefType(std::move(refValue)), loc(std::move(loc)) {}
+
+  AsyncValueRefWithEncodedLocation(AsyncValueRefWithEncodedLocation &&) =
+      default;
+
+  /// Fill this AsyncValue with an error that has the specified message.
+  void setToError(Error message) const {
+    this->getPointer()->setToError({std::move(message), loc.copy()});
+  }
+
+  /// Provide access to the location.
+  const EncodedLocation &getLocation() const { return loc; }
+
+private:
+  EncodedLocation loc;
+};
+
 /// This is a common base class between Result and IndirectResult, to reduce
 /// code duplication.
 class AnySingleResult {
@@ -96,8 +124,8 @@ public:
   RCRef<AsyncValue> copy() const { return result.copy(); }
 
   /// Fill this AsyncValue with an error that has the specified message.
-  void setToError(Error message) {
-    result->setToError({std::move(message), frame.getLocation()});
+  void setToError(Error message) const {
+    result->setToError({std::move(message), frame.copyLocation()});
   }
 
   /// Return a raw pointer to the AsyncValue.
@@ -108,6 +136,8 @@ public:
   /// Allow dereferencing this to get access to setError().
   AsyncValue &operator*() const { return *getPointer(); }
   AsyncValue *operator->() const { return getPointer(); }
+
+  PrimitiveFrame &getFrame() const { return frame; }
 
 private:
   AnySingleResult(const AnySingleResult &) = delete;
@@ -133,7 +163,14 @@ public:
     return AsyncValueRef<T>(AnySingleResult::copy());
   }
 
-  /// Return a reference to the underlying element in the AsyncValue if it is
+  /// Return an owning reference to the AsyncValueRef for this result, along
+  /// with an EncodedLocation that allows for elegant async error reporting.
+  AsyncValueRefWithEncodedLocation<AsyncValueRef<T>> copyWithLocation() const {
+    return {copy(), getFrame().copyLocation()};
+  }
+
+  /// Return a reference to the underlying element in the AsyncValue if it
+  /// is
   /// constructed.
   T &get() const { return getPointer()->template get<T>(); }
 
@@ -161,6 +198,12 @@ public:
     result = AsyncValue::createIndirect(frame.getRuntime());
   }
   using AnySingleResult::AnySingleResult;
+
+  /// Return an owning reference to the AsyncValueRef for this result, along
+  /// with an EncodedLocation that allows for elegant async error reporting.
+  AsyncValueRefWithEncodedLocation<RCRef<AsyncValue>> copyWithLocation() const {
+    return {copy(), getFrame().copyLocation()};
+  }
 
   /// Resolve an IndirectAsyncValue to point to the specified new value,
   /// resolving any waiters whenever newValue becomes ready.
@@ -858,7 +901,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   struct Value<EncodedLocation, Dummy> : public FrameworkValue {
     template <typename IndicesT>
     static EncodedLocation process(PrimitiveFrame &frame) {
-      return frame.getLocation();
+      return frame.copyLocation();
     }
   };
 

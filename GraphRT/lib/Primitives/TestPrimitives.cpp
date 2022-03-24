@@ -267,6 +267,26 @@ static void async_add_any(RCRef<AsyncValue> lhs, RCRef<AsyncValue> rhs,
     result.setToError("invalid operands to async_add_any");
 }
 
+/// Example that shows an example that produces an error on a background thread,
+/// requiring use of fancy IndirectResult APIs.
+static void async_error(IndirectResult result1, IndirectResult result2,
+                        EncodedLocation manualLoc, Runtime &runtime) {
+  // Setting an AsyncValue to an error requires an EncodedLocation, which can be
+  // copied/moved into the task manually and painfully as in this example...
+  addTask(runtime,
+          [result1 = result1.copy(), loc = std::move(manualLoc)]() mutable {
+            result1->setToError(
+                {"error generated on a background thread!", std::move(loc)});
+          });
+
+  // ... but please don't!  It is more convenient to use the `copyWithLocation`
+  // method on [Indirect]Result, which brings it forward for you and has a
+  // convenience method to set the error.
+  addTask(runtime, [result2 = result2.copyWithLocation()]() {
+    result2.setToError("error generated on a background thread #2!");
+  });
+}
+
 //===----------------------------------------------------------------------===//
 // TestVector Primitives
 //===----------------------------------------------------------------------===//
@@ -466,4 +486,5 @@ void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "test.async.add.i32", async_add_i32);
   ADD_PRIMITIVE(registry, "test.async.add2.i32", async_add2_i32);
   ADD_PRIMITIVE(registry, "test.async.add.any", async_add_any);
+  ADD_PRIMITIVE(registry, "test.async.error", async_error);
 }

@@ -46,4 +46,15 @@ bef.invokable @test_add_any() -> (i32, !test.string, i32) {
 // CHECK: 'test_add_any' returned 43, barkrarf, <error: invalid operands to async_add_any> 
 
 
+// CHECK-LABEL: --- Running 'test_async_errors'
+bef.invokable @test_async_errors() -> (i32, !test.string) {
+  // expected-error @+2 {{error generated on a background thread!}}
+  // expected-error @+1 {{error generated on a background thread #2!}}
+  %a, %b = "test.async.error"() : () -> (i32, !test.string)
+
+  bef.output %a, %b : i32, !test.string
+}
+// CHECK: 'test_async_errors' returned
+// CHECK: <error: error generated on a background thread!>,
+// CHECK: <error: error generated on a background thread #2!>
 
