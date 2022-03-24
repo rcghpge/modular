@@ -162,11 +162,13 @@ Finally, note that we also took a `Runtime &`.  `ADD_PRIMITIVE` has direct
 support for passing in a `Runtime &` or even a `PrimitiveFrame &` for advanced
 cases: just ask and you will receive.
 
-## Producing errors and multiple results
+## Producing errors and multiple results in synchronous primitives
 
 Primitives in BEF may return multiple results, and both LLCL/GraphRT support
-full error propagation with `AsyncValue`s.  To support this, `ADD_PRIMITIVE`
-allows you to use `std::pair` and `std::tuple` in the result, and you may
+full error propagation with `AsyncValue`s.  `ADD_PRIMITIVE` makes this extremely
+simple and direct for synchronous primitives (ones that compute their values on
+the calling thread, as opposed to using `addTask` to do it in the background).
+You can use `std::pair` and `std::tuple` in the C++ result type, and you may
 use the `ErrorOr<T>` template in arbitrary ways (even mixing them):
 
 ```C++
@@ -204,19 +206,40 @@ background task like this:
 static void
 vec_fill_non_prime_async_vector(int32_t size,
                                 Result<std::vector<int32_t>> result) {
+  // Invariants are typically checked before spawning background work.
   if (!isPrime(size))
-    return result->setToError("only prime length vectors supported");
+    return result.setToError("only prime length vectors supported");
 
   // Fill in the value on a background task.
   addTask(result->getRuntime(), [size, result = result.copy()]() {
     std::vector<int32_t> resultData;
     // ... do something to fill in result in the background ...
-    if (bad thing happened) {
-      result->setToError("some other bad thing!");
-      return;
-    }
 
     // After we've populated it, mark it ready with the value we built.
+    result.emplace(std::move(resultData));
+  });
+}
+```
+
+While machine learning frameworks typically want to report errors synchronously,
+there are some rare cases where you only realize on the background task that
+there is a problem (e.g. maybe you want to treat divide by zero as an error,
+which is dependent on the element data).  AsyncValue's need location information
+to propagate their errors, and we don't copy that around by default.  To get it
+into your closure, use the `copyWithLocation()` method on `Result`:
+
+```C++
+static void
+vec_fill_non_prime_async_vector(int32_t size,
+                                Result<std::vector<int32_t>> result) {
+  // Notice the `copyWithLocation` call here.
+  addTask(result->getRuntime(), [size, result = result.copyWithLocation()]() {
+    std::vector<int32_t> resultData;
+    // ... do something to fill in result in the background ...
+    if (data dependent bad thing happened) {
+      result.setToError("some data dependent bad thing!");
+      return;
+    }
     result.emplace(std::move(resultData));
   });
 }
@@ -226,7 +249,8 @@ The `Result<T>` type is used when you know the static C++ type of a specific
 result, but sometimes, the result type is dynamic depending on the input values
 or input attributes.  In this case, the `IndirectResult` class will initialize
 the result with an indirect `AsyncValue` that can be resolved to an arbitrary
-type later (see tests for an example).
+type later (see [test primitives](../lib/Primitives/TestPrimitives.cpp) for
+examples).
 
 There are rare cases where you might want even more control over the AsyncValue
 for a result.  In these cases, you can declare your primitive to return an
@@ -550,9 +574,9 @@ static void nonstrict_add_i32(AsyncValueRef<int32_t> lhs,
         // Okay, both are "ready" but either may be an error.  We must
         // explicitly handle this.
         if (lhs->isError())
-          result->setToError(lhs->getError().copy());
+          result->setToError(lhs->takeDiagnostic());
         else if (rhs->isError())
-          result->setToError(rhs->getError().copy());
+          result->setToError(rhs->takeDiagnostic());
         else
           result.emplace(lhs.get() + rhs.get());
       },
