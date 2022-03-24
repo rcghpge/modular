@@ -98,7 +98,7 @@ AsyncValue *RegisterInfo::getOrCreateIndirectValue(Runtime &runtime) {
   // the primitives using the register result get run (e.g. when nonstrict)
   // ahead of the value being resolved.
   assert(userCount && "shouldn't build an IndirectAsyncValue without users");
-  RCRef<AsyncValue>::lowLevelAddRef(indirect, userCount);
+  AnyAsyncValueRef::lowLevelAddRef(indirect, userCount);
   if (value.compare_exchange_strong(existing, indirect,
                                     std::memory_order_release,
                                     std::memory_order_acquire))
@@ -106,7 +106,7 @@ AsyncValue *RegisterInfo::getOrCreateIndirectValue(Runtime &runtime) {
 
   // If someone beat us to setting a value then we don't need the
   // IndirectAsyncValue after all. Decrease refcount back to 0 to free it.
-  RCRef<AsyncValue>::lowLevelDropRef(indirect, userCount + 1);
+  AnyAsyncValueRef::lowLevelDropRef(indirect, userCount + 1);
   return existing;
 }
 
@@ -233,8 +233,8 @@ public:
 
   /// Execute the invokable once the tables are decoded.
   void execute(const BEFInvokable &invokable,
-               MutableArrayRef<RCRef<AsyncValue>> arguments,
-               MutableArrayRef<RCRef<AsyncValue>> results,
+               MutableArrayRef<AnyAsyncValueRef> arguments,
+               MutableArrayRef<AnyAsyncValueRef> results,
                ArrayRef<unsigned> resultRegIndex);
 
   /// When the last reference to the BEFExecutor is dropped, we deallocate
@@ -272,14 +272,14 @@ public:
 private:
   /// Set up registers for input arguments to a invokable.
   void processArgumentsPseudo(SmallVectorImpl<uint32_t> &primitiveIDWorklist,
-                              MutableArrayRef<RCRef<AsyncValue>> arguments);
+                              MutableArrayRef<AnyAsyncValueRef> arguments);
 
   /// Decrement the `numOperandsNotReady` counters for the specified primitives
   /// by one, executing them if they are now ready to run. This processes the
   /// entries from the end of the vector to the start - worklist style.
   void decrementOperandsNotReadyCounts(
       SmallVectorImpl<uint32_t> &primitiveIDWorklist);
-  void processUsedByRecords(RCRef<AsyncValue> result, AsyncValue *registerVal,
+  void processUsedByRecords(AnyAsyncValueRef result, AsyncValue *registerVal,
                             ArrayRef<uint32_t> users,
                             uint32_t totalUserRefCount,
                             SmallVectorImpl<uint32_t> &primitiveIDWorklist);
@@ -362,8 +362,8 @@ bool BEFExecutor::decodeTables(BEFInvokableDecoder &decoder) {
 
 /// Execute the invokable once the tables are decoded.
 void BEFExecutor::execute(const BEFInvokable &invokable,
-                          MutableArrayRef<RCRef<AsyncValue>> arguments,
-                          MutableArrayRef<RCRef<AsyncValue>> results,
+                          MutableArrayRef<AnyAsyncValueRef> arguments,
+                          MutableArrayRef<AnyAsyncValueRef> results,
                           ArrayRef<unsigned> resultRegIndex) {
   // Now that the executor is all set up and ready to go, kick off the ready
   // primitives.
@@ -465,7 +465,7 @@ struct PrimitiveDecoder {
 /// Set up registers for input arguments to an invokable.
 void BEFExecutor::processArgumentsPseudo(
     SmallVectorImpl<uint32_t> &primitiveIDWorklist,
-    MutableArrayRef<RCRef<AsyncValue>> arguments) {
+    MutableArrayRef<AnyAsyncValueRef> arguments) {
   // We're handling the 0th primitive, so remove it from the worklist.
   assert(primitiveIDWorklist.back() == 0);
   primitiveIDWorklist.pop_back();
@@ -580,7 +580,7 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
     // Now that the primitive had a chance to look at the operand registers,
     // we're done with them.  Drop their reference so they can potentially be
     // deallocated if this was the last user of them.
-    for (RCRef<AsyncValue> &arg : frame.getArguments())
+    for (AnyAsyncValueRef &arg : frame.getArguments())
       arg.reset();
 
     // Iterate over all results of the primitive.  If the primitive immediately
@@ -588,7 +588,7 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
     // to our worklist.  If not, we `andThen` on their unavailable result.
     for (size_t resultNo = 0, e = decoder.numResults; resultNo != e;
          ++resultNo) {
-      RCRef<AsyncValue> &result = frame.getResult(resultNo);
+      AnyAsyncValueRef &result = frame.getResult(resultNo);
       assert(result && "Primitive impl did not set a result!");
 
       // Store the value in the register table, and get the final AsyncValue to
@@ -618,7 +618,7 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
 /// count of users is specified by `totalUserRefCount`.  It may be larger than
 /// `users.size()` because the later doesn't account for bef.output.
 void BEFExecutor::processUsedByRecords(
-    RCRef<AsyncValue> result, AsyncValue *registerVal, ArrayRef<uint32_t> users,
+    AnyAsyncValueRef result, AsyncValue *registerVal, ArrayRef<uint32_t> users,
     uint32_t totalUserRefCount,
     SmallVectorImpl<uint32_t> &primitiveIDWorklist) {
   assert(users.size() <= totalUserRefCount &&
@@ -639,7 +639,7 @@ void BEFExecutor::processUsedByRecords(
   // reference from the `result` RCRef, so we add '#users - 1' references.
   if (resultPtr == registerVal) { // IndirectValue RC already handled.
     if (totalUserRefCount != 1)   // Don't atomic add 0.
-      RCRef<AsyncValue>::lowLevelAddRef(resultPtr, totalUserRefCount - 1);
+      AnyAsyncValueRef::lowLevelAddRef(resultPtr, totalUserRefCount - 1);
     // The reference count is handled manually above, don't drop another RC.
     result.release();
   } else {
@@ -690,8 +690,8 @@ void BEFInvokable::dropRef() const {
 
 /// Invoke this, passing the specified arguments. This returns one AsyncValue
 /// for each result.
-void BEFInvokable::invoke(MutableArrayRef<RCRef<AsyncValue>> arguments,
-                          MutableArrayRef<RCRef<AsyncValue>> results,
+void BEFInvokable::invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
+                          MutableArrayRef<AnyAsyncValueRef> results,
                           Runtime &runtime) const {
   assert(arguments.size() == getNumArgs() &&
          "incorrect number of argument to an invokable");

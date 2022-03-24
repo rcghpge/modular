@@ -33,8 +33,8 @@ public:
   /// Invoke this using the specified runtime, passing the specified
   /// arguments. This fills in one AsyncValue for each result.  The caller is
   /// allowed to take from the `arguments` async values.
-  virtual void invoke(MutableArrayRef<RCRef<AsyncValue>> arguments,
-                      MutableArrayRef<RCRef<AsyncValue>> results,
+  virtual void invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
+                      MutableArrayRef<AnyAsyncValueRef> results,
                       Runtime &runtime) const = 0;
 
   /// Add a new reference to this object.  The lifetime of invokables are

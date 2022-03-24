@@ -161,9 +161,9 @@ vt_share_to_two(AsyncValueRef<VTValue> in) {
 }
 
 /// Share input args with results without copying.  This is the same as above,
-/// but uses RCRef<AsyncValue> instead of AsyncValueRef<>.
-static std::pair<RCRef<AsyncValue>, RCRef<AsyncValue>>
-vt_share_to_two_2(RCRef<AsyncValue> in) {
+/// but uses AnyAsyncValueRef instead of AsyncValueRef<>.
+static std::pair<AnyAsyncValueRef, AnyAsyncValueRef>
+vt_share_to_two_2(AnyAsyncValueRef in) {
   auto result1 = in.copy();
   return {std::move(result1), std::move(in)};
 }
@@ -178,10 +178,10 @@ vt_share_to_four(AsyncValueRef<VTValue> in) {
 }
 
 /// Share input args with results without copying.  This is the same as above,
-/// but uses RCRef<AsyncValue> instead of AsyncValueRef<>.
-static std::tuple<RCRef<AsyncValue>, RCRef<AsyncValue>, RCRef<AsyncValue>,
-                  RCRef<AsyncValue>>
-vt_share_to_four_2(RCRef<AsyncValue> in) {
+/// but uses AnyAsyncValueRef instead of AsyncValueRef<>.
+static std::tuple<AnyAsyncValueRef, AnyAsyncValueRef, AnyAsyncValueRef,
+                  AnyAsyncValueRef>
+vt_share_to_four_2(AnyAsyncValueRef in) {
   auto result1 = in.copy(), result2 = in.copy(), result3 = in.copy();
   return {std::move(result1), std::move(result2), std::move(result3),
           std::move(in)};
@@ -256,7 +256,7 @@ static void async_add2_i32(AsyncValueRef<int32_t> lhs,
 /// Example that returns an indirect value with IndirectResult, nominally
 /// because this is implemented in async style and returns different types
 /// depending on the resolved types of lhs/rhs
-static void async_add_any(RCRef<AsyncValue> lhs, RCRef<AsyncValue> rhs,
+static void async_add_any(AnyAsyncValueRef lhs, AnyAsyncValueRef rhs,
                           IndirectResult result) {
   if (lhs->isType<int32_t>() && rhs->isType<int32_t>())
     result.emplace<int32_t>(lhs->get<int32_t>() + rhs->get<int32_t>());

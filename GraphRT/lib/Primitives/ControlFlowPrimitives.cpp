@@ -64,8 +64,8 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
 
   struct IfState {
     RCRef<const Invokable> trueInv, falseInv;
-    SmallVector<RCRef<AsyncValue>> operands;
-    SmallVector<RCRef<AsyncValue>> results;
+    SmallVector<AnyAsyncValueRef> operands;
+    SmallVector<AnyAsyncValueRef> results;
 
     /// This method is invoked when the AsyncValue for `cond` resolves.  The
     /// rest of the operands may still be unavailable, but results are filled
@@ -74,14 +74,14 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
       // If we have an error, then we can force propagate errors to all the
       // results.
       if (cond->isError()) {
-        for (RCRef<AsyncValue> &result : results)
+        for (AnyAsyncValueRef &result : results)
           result->resolveIndirect(cond.copy());
         return;
       }
 
       // Otherwise, execute the correct invokable based on the cond.
       const Invokable *bodyInv = (cond.get() ? trueInv : falseInv).getPointer();
-      SmallVector<RCRef<AsyncValue>> bodyResults;
+      SmallVector<AnyAsyncValueRef> bodyResults;
       bodyResults.resize(results.size());
       bodyInv->invoke(operands, bodyResults, cond->getRuntime());
 
@@ -131,8 +131,8 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
   /// can manage.
   struct RepeatState {
     RCRef<const Invokable> invokable;
-    SmallVector<RCRef<AsyncValue>> operands;
-    SmallVector<RCRef<AsyncValue>> repeatResults;
+    SmallVector<AnyAsyncValueRef> operands;
+    SmallVector<AnyAsyncValueRef> repeatResults;
 
     /// This method is invoked when the AsyncValue for count resolves.  The rest
     /// of the operands may still be unavailable, but repeatResults are filled
@@ -142,13 +142,13 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
       // If we have an error, then we can force propagate errors to all the
       // results.
       if (count->isError()) {
-        for (RCRef<AsyncValue> &result : repeatResults)
+        for (AnyAsyncValueRef &result : repeatResults)
           result->resolveIndirect(count.copy());
         return;
       }
 
       // Otherwise, we kick off all of the iterations at once!
-      SmallVector<RCRef<AsyncValue>> bodyResults;
+      SmallVector<AnyAsyncValueRef> bodyResults;
 
       // TODO: We could be smarter about this, and only kick off an iteration
       // when at least one result from the previous iteration is available.  We

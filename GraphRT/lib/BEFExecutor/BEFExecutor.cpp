@@ -27,14 +27,14 @@ void Invokable::vtableAnchor() {}
 
 /// Create an AsyncValue with the specified cause, and our current location.
 /// This can be set into a result or used for other purposes.
-RCRef<AsyncValue> PrimitiveFrame::getError(Error cause) {
+AnyAsyncValueRef PrimitiveFrame::getError(Error cause) {
   return copyLocation().createErrorValue(std::move(cause));
 }
 
 /// Mark that execution of the primitive failed with the specified reason.
 /// This fills in all remaining unspecified results with that error value.
 void PrimitiveFrame::fail(Error cause) {
-  RCRef<AsyncValue> *errorOperand = nullptr;
+  AnyAsyncValueRef *errorOperand = nullptr;
   for (auto &result : getResults()) {
     // Ignore results already specified.
     if (result)

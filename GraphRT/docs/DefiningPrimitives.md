@@ -116,7 +116,7 @@ and generates the result `AsyncValue` as needed.
 There are rare cases where you might want to directly access the AsyncValue for
 an argument (e.g. maybe you want to `std::move` the reference to micro-optimize
 some reference counts.  In this case, you can take an `AsyncValueRef` or
-`RCRef<AsyncValue>` directly:
+`AnyAsyncValueRef` directly:
 
 ```C++
 static AsyncValueRef<int32_t> test_noop(AsyncValueRef<int32_t> input) {
@@ -254,7 +254,7 @@ examples).
 
 There are rare cases where you might want even more control over the AsyncValue
 for a result.  In these cases, you can declare your primitive to return an
-`RCRef<AsyncValue>` (for an untyped result) or `AsyncValueRef<T>` explicitly:
+`AnyAsyncValueRef` (for an untyped result) or `AsyncValueRef<T>` explicitly:
 
 ```C++
 static AsyncValueRef<std::string>

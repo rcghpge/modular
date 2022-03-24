@@ -116,7 +116,7 @@ static void runInvokableTestcase(const Invokable *invokable,
     os << "--- Running '" << invokable->getName() << "':\n";
     os.flush();
 
-    llvm::SmallVector<RCRef<AsyncValue>, 4> results;
+    llvm::SmallVector<AnyAsyncValueRef, 4> results;
     results.resize(invokable->getNumResults());
     invokable->invoke(/*arguments=*/{}, results, runtime);
 
@@ -144,7 +144,7 @@ static void runInvokableTestcase(const Invokable *invokable,
     // Go ahead and print out the invokable results that we know about.
     if (!results.empty()) {
       os << "'" << invokable->getName() << "' returned ";
-      llvm::interleaveComma(results, os, [&](const RCRef<AsyncValue> &result) {
+      llvm::interleaveComma(results, os, [&](const AnyAsyncValueRef &result) {
         // Handle error value by printing it inline, and emitting it as an error
         // through SourceMgr so we can validate it.
         if (auto *diag = result->getDiagnosticIfPresent()) {

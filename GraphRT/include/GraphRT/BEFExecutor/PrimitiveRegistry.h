@@ -67,43 +67,15 @@ struct TypeTag {};
 /// types, for example GRT::InvokeOp.
 class RemainingArguments {
 public:
-  explicit RemainingArguments(MutableArrayRef<RCRef<AsyncValue>> arguments)
+  explicit RemainingArguments(MutableArrayRef<AnyAsyncValueRef> arguments)
       : arguments(arguments) {}
 
-  MutableArrayRef<RCRef<AsyncValue>> get() const { return arguments; }
+  MutableArrayRef<AnyAsyncValueRef> get() const { return arguments; }
   size_t size() const { return arguments.size(); }
-  RCRef<AsyncValue> &operator[](size_t i) const { return arguments[i]; }
+  AnyAsyncValueRef &operator[](size_t i) const { return arguments[i]; }
 
 private:
-  MutableArrayRef<RCRef<AsyncValue>> arguments;
-};
-
-/// This template may be used where it is useful to bundle together a reference
-/// to an AsyncValue (either RCRef<AsyncValue> or AsyncValueRef<T>) with an
-/// EncodedLocation.
-///
-/// This value is larger than an AsyncValue reference (3 words instead of 1) and
-/// involves more reference counting (EncodedLocations need to keep their
-/// decoder alive), so it should only be used where needed.
-template <typename AVRefType>
-class AsyncValueRefWithEncodedLocation : public AVRefType {
-public:
-  AsyncValueRefWithEncodedLocation(AVRefType refValue, EncodedLocation loc)
-      : AVRefType(std::move(refValue)), loc(std::move(loc)) {}
-
-  AsyncValueRefWithEncodedLocation(AsyncValueRefWithEncodedLocation &&) =
-      default;
-
-  /// Fill this AsyncValue with an error that has the specified message.
-  void setToError(Error message) const {
-    this->getPointer()->setToError({std::move(message), loc.copy()});
-  }
-
-  /// Provide access to the location.
-  const EncodedLocation &getLocation() const { return loc; }
-
-private:
-  EncodedLocation loc;
+  MutableArrayRef<AnyAsyncValueRef> arguments;
 };
 
 /// This is a common base class between Result and IndirectResult, to reduce
@@ -112,7 +84,7 @@ class AnySingleResult {
 public:
   /// On construction, the result is initialized with an AsyncValue of the
   /// correct type.
-  explicit AnySingleResult(RCRef<AsyncValue> &result, PrimitiveFrame &frame)
+  explicit AnySingleResult(AnyAsyncValueRef &result, PrimitiveFrame &frame)
       : result(result), frame(frame) {
     assert(!result && "result already initialized?");
   }
@@ -121,7 +93,7 @@ public:
 
   /// Return an owning reference to the AsyncValueRef.  This is typically used
   /// when copying into a closure.
-  RCRef<AsyncValue> copy() const { return result.copy(); }
+  AnyAsyncValueRef copy() const { return result.copy(); }
 
   /// Fill this AsyncValue with an error that has the specified message.
   void setToError(Error message) const {
@@ -131,7 +103,7 @@ public:
   /// Return a raw pointer to the AsyncValue.
   AsyncValue *getPointer() const { return result.getPointer(); }
   /// Return a reference to the low-level async value without copying it.
-  RCRef<AsyncValue> &getAsyncValue() const { return result; }
+  AnyAsyncValueRef &getAsyncValue() const { return result; }
 
   /// Allow dereferencing this to get access to setError().
   AsyncValue &operator*() const { return *getPointer(); }
@@ -142,7 +114,7 @@ public:
 private:
   AnySingleResult(const AnySingleResult &) = delete;
   void operator=(const AnySingleResult &) = delete;
-  RCRef<AsyncValue> &result;
+  AnyAsyncValueRef &result;
   PrimitiveFrame &frame;
 };
 
@@ -151,7 +123,7 @@ private:
 template <typename T>
 class Result : public AnySingleResult {
 public:
-  explicit Result(RCRef<AsyncValue> &result, PrimitiveFrame &frame)
+  explicit Result(AnyAsyncValueRef &result, PrimitiveFrame &frame)
       : AnySingleResult(result, frame) {
     result = AsyncValue::allocate<T>(frame.getRuntime());
   }
@@ -165,7 +137,8 @@ public:
 
   /// Return an owning reference to the AsyncValueRef for this result, along
   /// with an EncodedLocation that allows for elegant async error reporting.
-  AsyncValueRefWithEncodedLocation<AsyncValueRef<T>> copyWithLocation() const {
+  LLCL::AsyncValueRefWithEncodedLocation<AsyncValueRef<T>>
+  copyWithLocation() const {
     return {copy(), getFrame().copyLocation()};
   }
 
@@ -193,7 +166,7 @@ public:
 class IndirectResult : public AnySingleResult {
 public:
   /// On construction, this is initialized with an indirect AsyncValue.
-  explicit IndirectResult(RCRef<AsyncValue> &result, PrimitiveFrame &frame)
+  explicit IndirectResult(AnyAsyncValueRef &result, PrimitiveFrame &frame)
       : AnySingleResult(result, frame) {
     result = AsyncValue::createIndirect(frame.getRuntime());
   }
@@ -201,13 +174,14 @@ public:
 
   /// Return an owning reference to the AsyncValueRef for this result, along
   /// with an EncodedLocation that allows for elegant async error reporting.
-  AsyncValueRefWithEncodedLocation<RCRef<AsyncValue>> copyWithLocation() const {
+  LLCL::AsyncValueRefWithEncodedLocation<AnyAsyncValueRef>
+  copyWithLocation() const {
     return {copy(), getFrame().copyLocation()};
   }
 
   /// Resolve an IndirectAsyncValue to point to the specified new value,
   /// resolving any waiters whenever newValue becomes ready.
-  void resolve(RCRef<AsyncValue> newValue) {
+  void resolve(AnyAsyncValueRef newValue) {
     getPointer()->resolveIndirect(std::move(newValue));
   }
 
@@ -227,13 +201,13 @@ public:
 /// example, GRT::InvokeOp.
 class RemainingResults {
 public:
-  explicit RemainingResults(MutableArrayRef<RCRef<AsyncValue>> results,
+  explicit RemainingResults(MutableArrayRef<AnyAsyncValueRef> results,
                             Runtime &runtime)
       : runtime(runtime), results(results) {}
 
-  MutableArrayRef<RCRef<AsyncValue>> get() const { return results; }
+  MutableArrayRef<AnyAsyncValueRef> get() const { return results; }
   size_t size() const { return results.size(); }
-  RCRef<AsyncValue> &operator[](size_t i) const { return results[i]; }
+  AnyAsyncValueRef &operator[](size_t i) const { return results[i]; }
 
   /// Allocate all of the unset result values as IndirectAsyncValues.
   void allocateIndirectResults() {
@@ -247,7 +221,7 @@ public:
 
 private:
   Runtime &runtime;
-  MutableArrayRef<RCRef<AsyncValue>> results;
+  MutableArrayRef<AnyAsyncValueRef> results;
 };
 
 /// This CRTP class is used to provide common interfaces across the various
@@ -800,9 +774,9 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   /// If this wants an AsyncValueRef, then they want raw low-level access to an
   /// argument, provide it.
   template <typename Dummy>
-  struct Value<RCRef<AsyncValue>, Dummy> : public ArgValue<> {
+  struct Value<AnyAsyncValueRef, Dummy> : public ArgValue<> {
     template <typename IndicesT>
-    static RCRef<AsyncValue> process(PrimitiveFrame &frame) {
+    static AnyAsyncValueRef process(PrimitiveFrame &frame) {
       return std::move(frame.getArg(IndicesT::argIdx));
     }
   };
@@ -1006,9 +980,9 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
     frame.setResult(index, frame.getRuntime().getReadyChain().copy());
   }
 
-  /// Handle explicit RCRef<AsyncValue> results.
+  /// Handle explicit AnyAsyncValueRef results.
   static void processResult(PrimitiveFrame &frame, size_t index,
-                            RCRef<AsyncValue> t) {
+                            AnyAsyncValueRef t) {
     frame.setResult(index, std::move(t));
   }
 

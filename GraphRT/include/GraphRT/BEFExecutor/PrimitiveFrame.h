@@ -40,7 +40,7 @@ public:
   size_t getNumArgs() const { return numArguments; }
 
   /// Get the argument at the given index as AsyncValue*.
-  RCRef<AsyncValue> &getArg(size_t index) {
+  AnyAsyncValueRef &getArg(size_t index) {
     assert(index < getNumArgs() && "invalid argument number");
     return argsAndResults[index];
   }
@@ -51,11 +51,11 @@ public:
     return getArg(index)->get<T>();
   }
 
-  ArrayRef<RCRef<AsyncValue>> getArguments() const {
+  ArrayRef<AnyAsyncValueRef> getArguments() const {
     return llvm::makeArrayRef(argsAndResults.data(), getNumArgs());
   }
 
-  MutableArrayRef<RCRef<AsyncValue>> getArguments() {
+  MutableArrayRef<AnyAsyncValueRef> getArguments() {
     return llvm::makeMutableArrayRef(argsAndResults.data(), getNumArgs());
   }
 
@@ -94,18 +94,18 @@ public:
 
   size_t getNumResults() const { return numResults; }
 
-  ArrayRef<RCRef<AsyncValue>> getResults() const {
+  ArrayRef<AnyAsyncValueRef> getResults() const {
     return const_cast<PrimitiveFrame *>(this)->getResults();
   }
 
-  MutableArrayRef<RCRef<AsyncValue>> getResults() {
-    RCRef<AsyncValue> *firstResult = argsAndResults.data() + numArguments;
+  MutableArrayRef<AnyAsyncValueRef> getResults() {
+    AnyAsyncValueRef *firstResult = argsAndResults.data() + numArguments;
     return llvm::makeMutableArrayRef(firstResult, getNumResults());
   }
 
   /// Set the result at the given index with the given AsyncValue.
-  void setResult(size_t index, RCRef<AsyncValue> value) {
-    RCRef<AsyncValue> &result = getResults()[index];
+  void setResult(size_t index, AnyAsyncValueRef value) {
+    AnyAsyncValueRef &result = getResults()[index];
     assert(!result && "result is already set");
     result = std::move(value);
   }
@@ -124,7 +124,7 @@ public:
 
   /// Create an AsyncValue with the specified cause, and our current location.
   /// This can be set into a result or used for other purposes.
-  RCRef<AsyncValue> getError(Error cause);
+  AnyAsyncValueRef getError(Error cause);
 
   /// Mark that execution of the primitive failed with the specified reason.
   /// This fills in all remaining unspecified results with that error value.
@@ -153,7 +153,7 @@ protected:
 
   /// We store arguments and results in a single SmallVector for efficiency:
   /// one less vector to overflow.
-  SmallVector<RCRef<AsyncValue>, 16> argsAndResults;
+  SmallVector<AnyAsyncValueRef, 16> argsAndResults;
 
   /// This is all of the invokable references used by the invocation.
   SmallVector<const Invokable *, 2> invokables;
@@ -197,12 +197,12 @@ public:
   }
 
   /// Get mutable access to the argument list.
-  MutableArrayRef<RCRef<AsyncValue>> getArguments() {
+  MutableArrayRef<AnyAsyncValueRef> getArguments() {
     return llvm::makeMutableArrayRef(argsAndResults.data(), getNumArgs());
   }
 
   /// Add a new argument.
-  void addArg(RCRef<AsyncValue> value) {
+  void addArg(AnyAsyncValueRef value) {
     assert(numResults == uint16_t(~0U) &&
            "Must call AddArg before calling SetNumResults");
     argsAndResults.push_back(std::move(value));
@@ -217,7 +217,7 @@ public:
     argsAndResults.resize(argsAndResults.size() + n);
   }
 
-  RCRef<AsyncValue> &getResult(size_t index) {
+  AnyAsyncValueRef &getResult(size_t index) {
     assert(index < numResults && "invalid result #");
     return argsAndResults[numArguments + index];
   }
