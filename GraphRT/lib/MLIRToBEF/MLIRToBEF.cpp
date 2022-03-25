@@ -465,6 +465,14 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
     if (isa<BEF::OutputOp>(op))
       return WalkResult::advance();
 
+    // We treat invokables specially, putting them into the symbol table and
+    // ignoring their attributes and location.
+    if (auto fn = dyn_cast<BEF::InvokableOp>(op)) {
+      if (failed(addInvokable(&fn.getBody(), fn.getNameAttr())))
+        return WalkResult::interrupt();
+      return WalkResult::advance();
+    }
+
     addLocation(op->getLoc());
 
     auto *curBlock = op->getBlock();
@@ -481,14 +489,6 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
         return op->emitError()
                << "BEF executor only supports references to primitives within"
                << " the current region";
-    }
-
-    // We treat invokables specially, putting them into the symbol table and
-    // ignoring their attributes.
-    if (auto fn = dyn_cast<BEF::InvokableOp>(op)) {
-      if (failed(addInvokable(&fn.getBody(), fn.getNameAttr())))
-        return WalkResult::interrupt();
-      return WalkResult::advance();
     }
 
     llvm::unique_function<void(StringAttr, Attribute, bool)> processAttr =
