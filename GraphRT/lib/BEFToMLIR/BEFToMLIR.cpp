@@ -276,7 +276,7 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
     // masking off the last bit.
     unsigned sizeInBits = ((uint8_t)attrKind & (~(uint8_t)0b1));
 
-    // If the bitwidth is not a power of 2 and it's not less than 8, then it's
+    // If the bitwidth is not a power of 2 and it's not less than 64, then it's
     // not a valid size. This is very unlikely to happen unless there's a logic
     // flaw elsewhere, i.e. a string that wasn't caught above.
     if (!llvm::isPowerOf2_64(sizeInBits) || sizeInBits > 64) {

@@ -618,23 +618,14 @@ AttributesEmitter::deriveAttributeKind(unsigned bitwidth, bool isFloat,
 
 FailureOr<BEF::AttributeKind>
 AttributesEmitter::getAttributeKind(Attribute attr, Location loc) const {
-  if (auto intAttr = attr.dyn_cast<IntegerAttr>()) {
-    auto kindOr =
-        deriveAttributeKind(intAttr.getValue().getBitWidth(), false, loc);
-    if (failed(kindOr))
-      return failure();
+  if (auto intAttr = attr.dyn_cast<IntegerAttr>())
+    return deriveAttributeKind(intAttr.getValue().getBitWidth(),
+                               /*isFloat=*/false, loc);
 
-    return *kindOr;
-  }
-
-  if (auto floatAttr = attr.dyn_cast<FloatAttr>()) {
-    auto kindOr = deriveAttributeKind(
-        floatAttr.getValue().bitcastToAPInt().getBitWidth(), true, loc);
-    if (failed(kindOr))
-      return failure();
-
-    return *kindOr;
-  }
+  if (auto floatAttr = attr.dyn_cast<FloatAttr>())
+    return deriveAttributeKind(
+        floatAttr.getValue().bitcastToAPInt().getBitWidth(), /*isFloat=*/true,
+        loc);
 
   return LogicalResult(entities.emitError(loc)
                        << "Unknown attribute in getAttributeKind " << attr);
@@ -708,8 +699,7 @@ FailureOr<BEFOffset> AttributesEmitter::emitArrayOfAttrs(uint8_t kindByte,
     return failure();
 
   for (auto elt : llvm::drop_begin(elts)) {
-    auto nextEltOffset = emitAttributeInternal(elt, loc, true);
-    if (failed(nextEltOffset))
+    if (failed(emitAttributeInternal(elt, loc, true)))
       return failure();
   }
 
