@@ -136,7 +136,7 @@ static void runInvokableTestcase(const Invokable *invokable,
         auto loc = diag->decodeLocation();
         auto mlirLoc = mlir::FileLineColLoc::get(context, loc.filename,
                                                  loc.line, loc.column);
-        mlir::emitError(mlirLoc) << diag->message.get();
+        mlir::emitError(mlirLoc) << diag->getMessage();
       }
     }
 
@@ -148,7 +148,7 @@ static void runInvokableTestcase(const Invokable *invokable,
         // Handle error value by printing it inline, and emitting it as an error
         // through SourceMgr so we can validate it.
         if (auto *diag = result->getDiagnosticIfPresent()) {
-          os << "<error: " << diag->message << '>';
+          os << "<error: " << diag->getMessage() << '>';
           return;
         }
 

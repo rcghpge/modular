@@ -558,7 +558,6 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
 
     // If all arguments are good then run the invokable.
     if (!anyErrorArgument) {
-
       // Set up attributes, the frame object takes the offsets directly.
       frame.setAttrs(decoder.attrOffsets);
 

@@ -95,9 +95,9 @@ static Chain print_all_dict(Chain chain, BEFDictionaryAttr dict) {
 //===----------------------------------------------------------------------===//
 
 static Chain print_dynamic_attr(Chain chain, BEFDynamicAttr value) {
-  if (auto intAttr = value.dyn_cast<int32_t>())
+  if (auto intAttr = value.dyn_cast<int32_t>()) {
     printf("int32 = %d\n", intAttr->get());
-  else if (auto strAttr = value.dyn_cast<StringRef>()) {
+  } else if (auto strAttr = value.dyn_cast<StringRef>()) {
     printf("string = ");
     fwrite(strAttr.getValue()->data(), 1, strAttr.getValue()->size(), stdout);
     fputc('\n', stdout);

@@ -143,8 +143,7 @@ public:
   }
 
   /// Return a reference to the underlying element in the AsyncValue if it
-  /// is
-  /// constructed.
+  /// is constructed.
   T &get() const { return getPointer()->template get<T>(); }
 
   /// Construct the result, but do not mark it ready.
