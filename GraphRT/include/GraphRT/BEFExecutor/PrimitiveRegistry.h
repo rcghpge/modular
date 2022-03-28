@@ -397,12 +397,12 @@ public:
         : basePtr((const uint8_t *)basePtr), nameOffset(nameOffset),
           attrOffset(attrOffset) {}
 
-    /// Get just the name of this element.
+    /// Get the name of this element.
     StringRef getName() const {
       return *BEFAttr<StringRef>((const uint8_t *)basePtr - nameOffset);
     }
 
-    /// Get just the value of this element.
+    /// Get the value of this element.
     BEFDynamicAttr getValue() const {
       return BEFDynamicAttr((const uint8_t *)basePtr - attrOffset);
     }
@@ -468,7 +468,7 @@ public:
   /// provided is incorrect, then None is returned.
   template <typename T>
   Optional<BEFAttr<T>> find(StringRef name) const {
-    auto found = find(name);
+    Optional<BEFDynamicAttr> found = find(name);
     if (!found)
       return None;
 

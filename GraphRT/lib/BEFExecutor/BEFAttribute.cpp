@@ -55,7 +55,10 @@ Optional<BEFDynamicAttr> BEFAttr<Dictionary>::find(StringRef name) const {
 size_t BEFAttr<Dictionary>::parseVBR(uint8_t *&workptr) {
   size_t result;
   uint8_t nextByte = *workptr++;
+  // Mask just the low 7 bits of the first byte to start the integer
   result = nextByte & 127;
+  // While the high bit is non-zero, get the next byte, increment the work
+  // pointer, and pack the 7 data bits into the result integer.
   while ((nextByte & 128) != 0) {
     nextByte = *workptr++;
 

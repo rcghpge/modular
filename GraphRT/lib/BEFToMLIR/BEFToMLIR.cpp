@@ -228,8 +228,7 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
 
     NamedAttrList outAttrList;
     for (size_t i = 0; i < length; ++i) {
-      size_t nameOffset;
-      size_t attrOffset;
+      size_t attrOffset, nameOffset;
       Attribute name;
       Attribute value;
       if (attrReader.parseVBR(nameOffset) || attrReader.parseVBR(attrOffset) ||
