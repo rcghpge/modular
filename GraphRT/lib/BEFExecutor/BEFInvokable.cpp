@@ -352,7 +352,7 @@ bool BEFExecutor::decodeTables(BEFInvokableDecoder &decoder) {
   }
 
   // Align to where the invokable body is.
-  if (bodyReader.alignTo(BEF::PRIMITIVE_ENTRY_ALIGNMENT))
+  if (bodyReader.alignTo(BEF::kPrimitiveEntryAlignment))
     return true;
 
   funcBody = llvm::makeArrayRef((const uint32_t *)bodyReader.data(),

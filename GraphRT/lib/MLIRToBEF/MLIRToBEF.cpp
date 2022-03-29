@@ -94,7 +94,7 @@ public:
 
     // Emit dummy padding bytes to get up to the right offset.
     while (neededPadding--)
-      emitByte(BEF::ALIGNMENT_BYTE);
+      emitByte(BEF::kAlignmentByte);
 
     // Keep track of the maximum required alignment.
     requiredAlignment = std::max(requiredAlignment, alignment);
@@ -128,9 +128,9 @@ public:
   /// Emit an offset to a primitive, which is known to be aligned, so we can
   /// emit a smaller number.
   void emitPrimitiveOffsetNumber(BEFOffset offset) {
-    assert((offset.value & (BEF::PRIMITIVE_ENTRY_ALIGNMENT - 1)) == 0 &&
+    assert((offset.value & (BEF::kPrimitiveEntryAlignment - 1)) == 0 &&
            "offset to primitive isn't correctly aligned");
-    emitVBR(offset.value / BEF::PRIMITIVE_ENTRY_ALIGNMENT);
+    emitVBR(offset.value / BEF::kPrimitiveEntryAlignment);
   }
 
   // Many parts of the emitter logic includes forward references into stuff
@@ -713,7 +713,7 @@ FailureOr<BEFOffset> AttributesEmitter::emitArrayOfAttrs(uint8_t kindByte,
     memmove(getRawPointer(startOffset) - sizeOfArraySizeInBytes,
             getRawPointer(sizeStart), sizeOfArraySizeInBytes);
     // Set the unused bytes to the alignment filler.
-    memset(getRawPointer(sizeStart), BEF::ALIGNMENT_BYTE,
+    memset(getRawPointer(sizeStart), BEF::kAlignmentByte,
            startOffset.value - sizeAndKindEnd.value);
   }
 
@@ -959,7 +959,7 @@ void InvokableBodyEmitter::emitInvokable(Region *region) {
   // Once we're done, we can emit the primitive data after the primitive index
   // list. Note that primitive entries are fixed32 integers with 4-byte
   // alignment.
-  alignTo(BEF::PRIMITIVE_ENTRY_ALIGNMENT);
+  alignTo(BEF::kPrimitiveEntryAlignment);
   emitEmitter(primitiveList);
 
   primitiveIndices.clear();
@@ -1175,7 +1175,7 @@ void BEFModuleEmitter::emitStrings() {
     stringSection.emitNulTerminatedString(string ? string.getValue() : "");
   }
 
-  emitSection(BEF::SectionID::STRINGS, stringSection);
+  emitSection(BEF::SectionID::kStrings, stringSection);
 }
 
 void BEFModuleEmitter::emitStringsMD(BEFEmitter &stringsMDSection) {
@@ -1213,7 +1213,7 @@ void BEFModuleEmitter::emitAttributes(BEFEmitter &attrMDSection) {
       attrMDSection.emitOffset(*offsetOr);
   }
 
-  emitSection(BEF::SectionID::ATTRIBUTES, attributesSection);
+  emitSection(BEF::SectionID::kAttributes, attributesSection);
 }
 
 void BEFModuleEmitter::emitPrimitiveNames() {
@@ -1224,7 +1224,7 @@ void BEFModuleEmitter::emitPrimitiveNames() {
   for (auto op : entities.primitives)
     primitivesNamesSection.emitOffset(entities.getStringOffset(op));
 
-  emitSection(BEF::SectionID::PRIMITIVE_NAMES, primitivesNamesSection);
+  emitSection(BEF::SectionID::kPrimitiveNames, primitivesNamesSection);
 }
 
 /// Emit the INVOKABLES_BODIES section.  If optional metadata is enabled,
@@ -1242,7 +1242,7 @@ void BEFModuleEmitter::emitInvokables(BEFEmitter *attributeNamesSection,
     invokablesSection.emitInvokable(invokable.region);
   }
 
-  emitSection(BEF::SectionID::INVOKABLES_BODIES, invokablesSection);
+  emitSection(BEF::SectionID::kInvokablesBodies, invokablesSection);
 }
 
 void BEFModuleEmitter::emitInvokableIndex() {
@@ -1255,7 +1255,7 @@ void BEFModuleEmitter::emitInvokableIndex() {
     invokableIndexSection.emitVBR(entry.signature.numResults);
   }
 
-  emitSection(BEF::SectionID::INVOKABLES_INDEX, invokableIndexSection);
+  emitSection(BEF::SectionID::kInvokablesIndex, invokableIndexSection);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1290,7 +1290,7 @@ std::vector<uint8_t> M::translateMLIRToBEF(ModuleOp module,
       mlirTypesSection;
 
   // Emit magic numbers and format version.
-  emitter.emitBytes({BEF::MAGIC1, BEF::MAGIC2 + BEF::VERSION0});
+  emitter.emitBytes({BEF::kMagic1, BEF::kMagic2 + BEF::kVersion0});
   emitter.emitLocationInfo(locationFilenames, locationPositions);
   emitter.emitStrings();
   if (enableBEFMetadata) {
@@ -1308,19 +1308,19 @@ std::vector<uint8_t> M::translateMLIRToBEF(ModuleOp module,
 
   // Now that we've emitted all of the critical sections used in the common case
   // of the BEF emitter, emit metadata sections.
-  emitter.emitSection(BEF::SectionID::LOCATION_FILENAMES, locationFilenames);
-  emitter.emitSection(BEF::SectionID::LOCATION_POSITIONS, locationPositions);
+  emitter.emitSection(BEF::SectionID::kLocationFilenames, locationFilenames);
+  emitter.emitSection(BEF::SectionID::kLocationPositions, locationPositions);
 
   // Unconditionally emit metadata that describes the attribute section, this
   // is the minimal metadata needed by BEF2MLIR.
-  emitter.emitSection(BEF::SectionID::ATTRIBUTE_INDEX_MD, attrIndexMDSection);
+  emitter.emitSection(BEF::SectionID::kAttributeIndexMD, attrIndexMDSection);
 
   // Emit all the optional sections at the end if they're requested.
   if (enableBEFMetadata) {
-    emitter.emitSection(BEF::SectionID::MLIRTYPE_MD, mlirTypesSection);
-    emitter.emitSection(BEF::SectionID::STRINGS_MD, stringsMDSection);
-    emitter.emitSection(BEF::SectionID::ATTRIBUTE_NAME_MD, attrNamesSection);
-    emitter.emitSection(BEF::SectionID::MLIRTYPE_STRINGS_MD,
+    emitter.emitSection(BEF::SectionID::kMLIRTypeMD, mlirTypesSection);
+    emitter.emitSection(BEF::SectionID::kStringsMD, stringsMDSection);
+    emitter.emitSection(BEF::SectionID::kAttributeNamesMD, attrNamesSection);
+    emitter.emitSection(BEF::SectionID::kMLIRTypeStringsMD,
                         typeStringsMDSection);
   }
 

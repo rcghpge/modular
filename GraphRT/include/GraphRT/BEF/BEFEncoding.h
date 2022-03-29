@@ -19,21 +19,58 @@ namespace M {
 
 namespace BEF {
 
+//===----------------------------------------------------------------------===//
+// General BEF constants
+//===----------------------------------------------------------------------===//
+
 enum {
   // Defined by the BEF_FILE production.
-  MAGIC1 = 0xBE,
-  MAGIC2 = 0xF0,
-  VERSION0 = 0,
+  kMagic1 = 0xBE,
+  kMagic2 = 0xF0,
+  kVersion0 = 0,
 
   // This is an arbitrary value used to fill out alignment padding.
-  ALIGNMENT_BYTE = 0xCB,
+  kAlignmentByte = 0xCB,
 
   // This indicates whether a section has an explicit alignment.
-  SECTION_ALIGNMENT_FLAG = 0x01,
+  kSectionAlignmentFlag = 0x01,
 
   // Primitives in BEF are 4-byte aligned.
-  PRIMITIVE_ENTRY_ALIGNMENT = 4,
+  kPrimitiveEntryAlignment = 4,
 }; // anonymous enum
+
+/// Return true if the magic number makes this look like a BEF file.
+inline bool hasBEFMagicNumber(llvm::StringRef contents) {
+  return contents.size() > 2 && uint8_t(contents[0]) == kMagic1 &&
+         uint8_t(contents[1]) == kMagic2;
+}
+
+//===----------------------------------------------------------------------===//
+// BEF section constants
+//===----------------------------------------------------------------------===//
+
+enum class SectionID {
+  kInvalid = 0,
+
+  kLocationFilenames = 1, // Strings for each filename used by a location.
+  kLocationPositions = 2, // Detailed information for locations
+
+  kStrings = 3, // All of the string data.
+  kAttributes = 4,
+  kPrimitiveNames = 5,
+  kInvokablesBodies = 6,
+  kInvokablesIndex = 7,
+
+  kAttributeIndexMD = 8,
+  kStringsMD = 9,          // Strings for metadata
+  kAttributeNamesMD = 10,  // Table of primitive attribute names.
+  kMLIRTypeStringsMD = 11, // String table of MLIR types.
+  kMLIRTypeMD = 12,
+};
+
+//===----------------------------------------------------------------------===//
+// BEF attribute constants and helpers
+//===----------------------------------------------------------------------===//
 
 /// This bitfield encodes into a single byte metadata about the format of
 /// emitted attributes.
@@ -65,31 +102,6 @@ static inline constexpr AttributeKind getArrayOf(AttributeKind elementKind) {
          "Cannot make arrays of arrays or arrays of strings");
   return AttributeKind(uint8_t(elementKind) |
                        uint8_t(AttributeKind::kArrayType));
-}
-
-enum class SectionID {
-  INVALID_SECTION = 0,
-
-  LOCATION_FILENAMES = 1, // Strings for each filename used by a location.
-  LOCATION_POSITIONS = 2, // Detailed information for locations
-
-  STRINGS = 3, // All of the string data.
-  ATTRIBUTES = 4,
-  PRIMITIVE_NAMES = 5,
-  INVOKABLES_BODIES = 6,
-  INVOKABLES_INDEX = 7,
-
-  ATTRIBUTE_INDEX_MD = 8,
-  STRINGS_MD = 9,           // Strings for metadata
-  ATTRIBUTE_NAME_MD = 10,   // Table of primitive attribute names.
-  MLIRTYPE_STRINGS_MD = 11, // String table of MLIR types.
-  MLIRTYPE_MD = 12,
-};
-
-/// Return true if the magic number makes this look like a BEF file.
-inline bool hasBEFMagicNumber(llvm::StringRef contents) {
-  return contents.size() > 2 && uint8_t(contents[0]) == MAGIC1 &&
-         uint8_t(contents[1]) == MAGIC2;
 }
 
 /// Provide a mapping from C++ types to the corresponding attribute kinds.

@@ -184,39 +184,39 @@ bool BEFFileReader::readNextSection() {
   default: // Ignore unknown section.
     return false;
 
-  case BEF::SectionID::LOCATION_FILENAMES:
+  case BEF::SectionID::kLocationFilenames:
     befFile.locationFilenames = sectionContents;
     return false;
 
-  // We just remember the locations of the LocationPositions section - it is
+  // We just remember the locations of the kLocationPositions section - it is
   // directly indexed with a byte offset.
-  case BEF::SectionID::LOCATION_POSITIONS:
+  case BEF::SectionID::kLocationPositions:
     befFile.locationPositions = sectionContents;
     return false;
 
-  // We just remember the locations of the Strings section - it is directly
+  // We just remember the locations of the kStrings section - it is directly
   // indexed with a byte offset.
-  case BEF::SectionID::STRINGS:
+  case BEF::SectionID::kStrings:
     befFile.strings = sectionContents;
     return false;
 
-  // We just remember the locations of the Constants section - it is directly
+  // We just remember the locations of the kAttributes section - it is directly
   // indexed with a byte offset.
-  case BEF::SectionID::ATTRIBUTES:
+  case BEF::SectionID::kAttributes:
     befFile.attributes = sectionContents;
     return false;
 
-  case BEF::SectionID::PRIMITIVE_NAMES:
+  case BEF::SectionID::kPrimitiveNames:
     primitiveNames = sectionContents;
     return false;
 
-  // We just remember the locations of the INVOKABLES_BODIES section - it is
-  // directly indexed with a byte offset from the INVOKABLES_INDEX section.
-  case BEF::SectionID::INVOKABLES_BODIES:
+  // We just remember the locations of the kInvokablesBodies section - it is
+  // directly indexed with a byte offset from the kinvokablesIndex section.
+  case BEF::SectionID::kInvokablesBodies:
     befFile.invokableBodies = sectionContents;
     return false;
 
-  case BEF::SectionID::INVOKABLES_INDEX:
+  case BEF::SectionID::kInvokablesIndex:
     invokableIndex = sectionContents;
     return false;
   }

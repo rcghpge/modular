@@ -71,7 +71,7 @@ public:
   }
 
   bool resolveMetadataString(size_t offset, Location loc, StringAttr &result) {
-    BEFReader stringReader = getSectionReader(BEF::SectionID::STRINGS_MD);
+    BEFReader stringReader = getSectionReader(BEF::SectionID::kStringsMD);
     return parseNULTerminatedStringAt(offset, stringReader, result);
   }
 
@@ -126,12 +126,12 @@ private:
   /// This is a list of sections indexed by the BEF section ID.
   SmallVector<ArrayRef<uint8_t>, 12> sections;
 
-  /// This is list of filenames indexed by occurrence in the LOCATION_FILENAMES
+  /// This is list of filenames indexed by occurrence in the kLocationFilenames
   /// section.
   SmallVector<StringRef> locationFilenames;
 
   /// This is a list of locations identified by their offset in
-  /// LOCATION_POSITIONS.
+  /// kLocationPositions.
   DenseMap<size_t, Location> locations;
 
   /// This captures the parsed attribute at an offset in the ATTRIBUTES section.
@@ -155,7 +155,7 @@ bool BEFToMLIRConverter::parseHeader(BEFReader &reader) {
   if (reader.parseByte(byte1) || reader.parseByte(byte2))
     return true;
 
-  if (byte1 != BEF::MAGIC1 || byte2 != BEF::MAGIC2 + BEF::VERSION0)
+  if (byte1 != BEF::kMagic1 || byte2 != BEF::kMagic2 + BEF::kVersion0)
     return reader.emitError("missing BEF magic number");
 
   return false;
@@ -185,8 +185,8 @@ bool BEFToMLIRConverter::findSections(BEFReader &reader) {
 
 bool BEFToMLIRConverter::parseLocationPositions() {
   BEFReader filenameReader =
-      getSectionReader(BEF::SectionID::LOCATION_FILENAMES);
-  BEFReader reader = getSectionReader(BEF::SectionID::LOCATION_POSITIONS);
+      getSectionReader(BEF::SectionID::kLocationFilenames);
+  BEFReader reader = getSectionReader(BEF::SectionID::kLocationPositions);
 
   const uint8_t *sectionStart = reader.data();
 
@@ -338,9 +338,9 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
 }
 
 bool BEFToMLIRConverter::parseAttributes() {
-  BEFReader attrReader = getSectionReader(BEF::SectionID::ATTRIBUTES);
+  BEFReader attrReader = getSectionReader(BEF::SectionID::kAttributes);
   BEFReader attrIndexMDReader =
-      getSectionReader(BEF::SectionID::ATTRIBUTE_INDEX_MD);
+      getSectionReader(BEF::SectionID::kAttributeIndexMD);
 
   // Read until we run out of attribute offsets.
   while (!attrIndexMDReader.empty()) {
@@ -356,7 +356,7 @@ bool BEFToMLIRConverter::parseAttributes() {
 }
 
 bool BEFToMLIRConverter::parseTypes() {
-  BEFReader section = getSectionReader(BEF::SectionID::MLIRTYPE_STRINGS_MD);
+  BEFReader section = getSectionReader(BEF::SectionID::kMLIRTypeStringsMD);
 
   // Read until we run out of type strings.
   while (!section.empty()) {
@@ -371,11 +371,11 @@ bool BEFToMLIRConverter::parseTypes() {
   return false;
 }
 
-/// Build the "primitiveNames" array by parsing the PRIMITIVE_NAMES section,
+/// Build the "primitiveNames" array by parsing the kPrimitiveNames section,
 /// resolving them all to StringAttr's.
 bool BEFToMLIRConverter::parsePrimitiveNames() {
-  BEFReader reader = getSectionReader(BEF::SectionID::PRIMITIVE_NAMES);
-  BEFReader stringReader = getSectionReader(BEF::SectionID::STRINGS);
+  BEFReader reader = getSectionReader(BEF::SectionID::kPrimitiveNames);
+  BEFReader stringReader = getSectionReader(BEF::SectionID::kStrings);
 
   // Read the count of primitive names, and verify it later.
   size_t numPrimitives;
@@ -403,11 +403,11 @@ bool BEFToMLIRConverter::parsePrimitiveNames() {
 }
 
 bool BEFToMLIRConverter::parseInvokables() {
-  BEFReader reader = getSectionReader(BEF::SectionID::INVOKABLES_INDEX);
-  BEFReader stringReader = getSectionReader(BEF::SectionID::STRINGS);
+  BEFReader reader = getSectionReader(BEF::SectionID::kInvokablesIndex);
+  BEFReader stringReader = getSectionReader(BEF::SectionID::kStrings);
   BEFReader attrNameReader =
-      getSectionReader(BEF::SectionID::ATTRIBUTE_NAME_MD);
-  BEFReader mlirTypesReader = getSectionReader(BEF::SectionID::MLIRTYPE_MD);
+      getSectionReader(BEF::SectionID::kAttributeNamesMD);
+  BEFReader mlirTypesReader = getSectionReader(BEF::SectionID::kMLIRTypeMD);
 
   size_t numInvokables;
   if (reader.parseVBR(numInvokables))
@@ -448,7 +448,7 @@ bool BEFToMLIRConverter::parseInvokables() {
                      " invokables, but found " + Twine(invokables.size()));
 
   // Decode each of the invokable bodies.
-  BEFReader bodyReader = getSectionReader(BEF::SectionID::INVOKABLES_BODIES);
+  BEFReader bodyReader = getSectionReader(BEF::SectionID::kInvokablesBodies);
   for (auto inv : invokables) {
     if (parseInvokableBody(inv, bodyReader, attrNameReader, mlirTypesReader))
       return true;
@@ -536,7 +536,7 @@ bool InvokableBodyParser::parseResultRegs() {
 }
 
 bool InvokableBodyParser::parsePrimitiveList() {
-  if (bodyReader.alignTo(BEF::PRIMITIVE_ENTRY_ALIGNMENT))
+  if (bodyReader.alignTo(BEF::kPrimitiveEntryAlignment))
     return true;
 
   Block &block = *invokable.getBodyBlock();

@@ -181,7 +181,7 @@ public:
     size_t length;
     if (parseByte(sectionID) || parseVBR(length))
       return true;
-    if (sectionID == (unsigned)BEF::SectionID::INVALID_SECTION)
+    if (sectionID == (unsigned)BEF::SectionID::kInvalid)
       return emitError("invalid section ID");
 
     // The low bit of the size is a boolean indicating whether there is an
