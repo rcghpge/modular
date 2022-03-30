@@ -58,7 +58,7 @@ done, it is a very low-level and not-very-type-safe approach.
 
 # Registering primitives with the `ADD_PRIMITIVE` macro
 
-Because the `PrimitiveFrame` class is so level and error prone, GraphRT provides
+Because the `PrimitiveFrame` class is so low-level and error prone, GraphRT provides
 an `ADD_PRIMITIVE` macro to help - you should effectively always use the
 `ADD_PRIMITIVE` macro to register primitives instead of directly poking at
 `PrimitiveFrame`.
