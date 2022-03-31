@@ -92,15 +92,8 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
     }
   };
 
-  IfState state = {copyRCRef(trueInv), copyRCRef(falseInv), {}, {}};
-
-  state.operands.reserve(args.size());
-  for (auto &arg : args.get())
-    state.operands.push_back(std::move(arg));
-
-  state.results.reserve(results.size());
-  for (auto &result : results.get())
-    state.results.push_back(result.copy());
+  IfState state = {copyRCRef(trueInv), copyRCRef(falseInv), args.takeAsVector(),
+                   results.copyAsVector()};
 
   cond.andThen(
       [state = std::move(state)](const AsyncValueRef<bool> &cond) mutable {
@@ -169,14 +162,8 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
     }
   };
 
-  RepeatState state = {copyRCRef(body), {}, {}};
-
-  state.operands.reserve(args.size());
-  for (auto &arg : args.get())
-    state.operands.push_back(std::move(arg));
-  state.repeatResults.reserve(results.size());
-  for (auto &result : results.get())
-    state.repeatResults.push_back(result.copy());
+  RepeatState state = {copyRCRef(body), args.takeAsVector(),
+                       results.copyAsVector()};
 
   // Dispatch when the `count` becomes available (possibly immediately).
   count.andThen(

@@ -74,6 +74,24 @@ public:
   size_t size() const { return arguments.size(); }
   AnyAsyncValueRef &operator[](size_t i) const { return arguments[i]; }
 
+  /// Return the AsyncValues as a SmallVector where every element is moved out.
+  SmallVector<AnyAsyncValueRef> takeAsVector() {
+    SmallVector<AnyAsyncValueRef> result;
+    result.reserve(arguments.size());
+    for (auto &a : arguments)
+      result.push_back(std::move(a));
+    return result;
+  }
+
+  /// Return the AsyncValues as a SmallVector where every element is copied out.
+  SmallVector<AnyAsyncValueRef> copyAsVector() {
+    SmallVector<AnyAsyncValueRef> result;
+    result.reserve(arguments.size());
+    for (auto &a : arguments)
+      result.push_back(a.copy());
+    return result;
+  }
+
 private:
   MutableArrayRef<AnyAsyncValueRef> arguments;
 };
@@ -216,7 +234,14 @@ public:
     }
   }
 
-  // TODO: Add a copy() method.
+  /// Return the AsyncValues as a SmallVector where every element is copied out.
+  SmallVector<AnyAsyncValueRef> copyAsVector() {
+    SmallVector<AnyAsyncValueRef> result;
+    result.reserve(results.size());
+    for (auto &r : results)
+      result.push_back(r.copy());
+    return result;
+  }
 
 private:
   Runtime &runtime;
