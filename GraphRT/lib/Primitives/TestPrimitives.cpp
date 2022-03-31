@@ -238,18 +238,18 @@ static void async_add2_i32(AsyncValueRef<int32_t> lhs,
   // If this were a non-strict primitive, this could get invoked before lhs/rhs
   // are resolved, and either or both may resolve to an error, so we need to
   // handle that.
-   andThen(std::make_tuple(std::move(lhs), std::move(rhs)),
-           [result = result.copy()](AsyncValueRef<int32_t> lhs,
-                                    AsyncValueRef<int32_t> rhs) {
-             // This actually only needs to check for error if this is
-             // defined as non-strict.
-             if (lhs->isError())
-               result->setToError(lhs->takeDiagnostic());
-             else if (rhs->isError())
-               result->setToError(rhs->takeDiagnostic());
-             else
-               result.emplace(lhs.get() + rhs.get());
-           });
+  andThen(std::make_tuple(std::move(lhs), std::move(rhs)),
+          [result = result.copy()](AsyncValueRef<int32_t> lhs,
+                                   AsyncValueRef<int32_t> rhs) {
+            // This actually only needs to check for error if this is
+            // defined as non-strict.
+            if (lhs->isError())
+              result->setToError(lhs->takeDiagnostic());
+            else if (rhs->isError())
+              result->setToError(rhs->takeDiagnostic());
+            else
+              result.emplace(lhs.get() + rhs.get());
+          });
 }
 
 /// Example that returns an indirect value with IndirectResult, nominally
