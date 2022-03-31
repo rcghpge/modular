@@ -484,6 +484,9 @@ public:
   /// Return the size of the Dictionary in number of elements.
   size_t size() const { return length; }
 
+  /// Return true if there are no attributes in this dictionary.
+  bool empty() const { return length == 0; }
+
   /// Find an element in the dictionary by name. Parses every name in sequence
   /// until it finds the right one and returns that attribute. If the name is
   /// not found, return None.
