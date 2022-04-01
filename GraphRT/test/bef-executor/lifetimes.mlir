@@ -69,7 +69,6 @@ bef.invokable @add_one(%x: !vt.value) -> !vt.value {
 }
 
 // CHECK-LABEL: --- Running 'caller'
-
 bef.invokable @caller() {
   // CHECK-NEXT: constructed vt.value(3)
   // CHECK-NEXT: move constructed vt.value(3)
@@ -95,9 +94,6 @@ bef.invokable @caller() {
   // CHECK-NEXT: destroyed vt.value(4)
   bef.output
 }
-// COM: Because the order of the `Initializing` messages is different locally
-// COM: vs on CI, just check for the word `Initializing`.
-// CHECK-NEXT: Initializing
 
 // CHECK-LABEL: --- Running 'test_hello'
 bef.invokable @test_hello() {

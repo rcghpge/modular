@@ -1,8 +1,6 @@
 // RUN: bef-translate -export-bef -allow-unregistered-dialect %s > %t.bef
 // RUN: bef-executor -verify-diagnostics %t.bef | FileCheck %s
 
-// CHECK: Initializing leak check allocator
-
 // CHECK-LABEL: --- Running 'test_async_print_result'
 bef.invokable @test_async_print_result() -> i32 {
   %c1 = grt.constant.i32 1

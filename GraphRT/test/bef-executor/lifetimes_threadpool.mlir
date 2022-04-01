@@ -1,7 +1,7 @@
 // RUN: bef-translate -export-bef -allow-unregistered-dialect %s > %t.bef
-// RUN: bef-executor --workqueue=threadpool %t.bef | FileCheck %s
+// RUN: bef-executor -verbose --workqueue=threadpool %t.bef | FileCheck %s
 
-// CHECK: Initializing thread pool work queue.
+// CHECK: Using thread pool work queue.
 // CHECK-LABEL: --- Running 'test_linear'
 bef.invokable @test_linear() {
   %ch0 = grt.chain.new
@@ -98,7 +98,6 @@ bef.invokable @caller() {
 }
 // COM: Because the order of the `Initializing` messages is different locally
 // COM: vs on CI, just check for the word `Initializing`.
-// CHECK-NEXT: Initializing
 
 // CHECK-LABEL: --- Running 'test_hello'
 bef.invokable @test_hello() {

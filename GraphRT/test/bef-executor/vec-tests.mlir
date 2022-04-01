@@ -1,8 +1,6 @@
 // RUN: bef-translate -export-bef -allow-unregistered-dialect %s > %t.bef
 // RUN: bef-executor -verify-diagnostics %t.bef | FileCheck %s
 
-// CHECK: Initializing leak check allocator
-
 // CHECK-LABEL: --- Running 'basic_test'
 bef.invokable @basic_test() -> !grt.chain {
   %ch0 = grt.chain.new

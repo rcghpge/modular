@@ -1,8 +1,6 @@
 // RUN: bef-translate -export-bef -allow-unregistered-dialect %s > %t.bef
 // RUN: bef-executor %t.bef | FileCheck %s
 
-// CHECK: Initializing leak check allocator
-
 bef.invokable @return_first_arg(%x: i32, %y: i32) -> i32 {
   bef.output %x : i32
 }

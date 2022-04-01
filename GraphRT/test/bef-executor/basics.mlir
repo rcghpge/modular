@@ -6,10 +6,6 @@ bef.invokable @args_results(%a: i32, %b: i8) -> (i8, i32) {
   bef.output %b, %a : i8, i32
 }
 
-// COM: This will show up before every test function because we create a new
-// COM: Runtime instance for each Function in the test.
-// CHECK: Initializing leak check allocator
-
 // CHECK-LABEL: Running 'print_test':
 bef.invokable @print_test() {
   // CHECK: hello bef executor!
