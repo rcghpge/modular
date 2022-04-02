@@ -260,19 +260,22 @@ static AsyncValueRef<int32_t> async_add_i32(int32_t lhs, int32_t rhs,
 static void async_add2_i32(AsyncValueRef<int32_t> lhs,
                            AsyncValueRef<int32_t> rhs, Result<int32_t> result) {
   // If this were a non-strict primitive, this could get invoked before lhs/rhs
-  // are resolved, and either or both may resolve to an error, so we need to
-  // handle that.
+  // are resolved, and either or both may resolve to an error, so we would need
+  // to handle that.
+  //
+  // This isn't actually declared that way, so this is just for illustration
+  // purposes.
   andThen(std::make_tuple(std::move(lhs), std::move(rhs)),
           [result = result.copy()](AsyncValueRef<int32_t> lhs,
                                    AsyncValueRef<int32_t> rhs) {
             // This actually only needs to check for error if this is
             // defined as non-strict.
-            if (lhs->isError())
-              result->setToError(lhs->takeDiagnostic());
-            else if (rhs->isError())
-              result->setToError(rhs->takeDiagnostic());
+            if (lhs.isError())
+              result.setToError(lhs.getPointer()->takeDiagnostic());
+            else if (rhs.isError())
+              result.setToError(rhs.getPointer()->takeDiagnostic());
             else
-              result.emplace(lhs.get() + rhs.get());
+              result.emplace(*lhs + *rhs);
           });
 }
 
@@ -359,14 +362,14 @@ static ErrorOr<TestVector> vec_add(const TestVector &lhs,
 static void vec_add_async(AsyncValueRef<TestVector> lhs,
                           AsyncValueRef<TestVector> rhs,
                           Result<TestVector> result, Runtime &runtime) {
-  if (lhs.get().values.size() != rhs.get().values.size()) {
+  if (lhs->values.size() != rhs->values.size()) {
     result.setToError("vector length mismatch");
     return;
   }
 
   addTask(runtime, [lhs = std::move(lhs), rhs = std::move(rhs),
                     result = result.copy()]() {
-    auto &lhsValues = lhs.get().values, &rhsValues = rhs.get().values;
+    auto &lhsValues = lhs->values, &rhsValues = rhs->values;
     TestVector resultValues;
     for (int32_t i = 0, e = lhsValues.size(); i != e; ++i)
       resultValues.values.push_back(lhsValues[i] + rhsValues[i]);
@@ -382,8 +385,8 @@ static void vec_add_async(AsyncValueRef<TestVector> lhs,
 static void vec_add_async2(AsyncValueRef<TestVector> lhs,
                            AsyncValueRef<TestVector> rhs,
                            Result<TestVector> result, Runtime &runtime) {
-  size_t lhsValueSize = lhs.get().values.size();
-  if (lhsValueSize != rhs.get().values.size())
+  size_t lhsValueSize = lhs->values.size();
+  if (lhsValueSize != rhs->values.size())
     return result.setToError("vector length mismatch");
 
   // Move the AsyncValue to "constructed" state with the specified # elements.
@@ -394,9 +397,11 @@ static void vec_add_async2(AsyncValueRef<TestVector> lhs,
       runtime, lhsValueSize,
       [lhs = std::move(lhs),
        rhs = std::move(rhs)](size_t n, AsyncValueRef<TestVector> &result) {
-        result.get().values[n] = lhs.get().values[n] + rhs.get().values[n];
+        result->values[n] = lhs->values[n] + rhs->values[n];
       },
-      [](AsyncValueRef<TestVector> &result) { result->markReady(); },
+      [](AsyncValueRef<TestVector> &result) {
+        result.getPointer()->markReady();
+      },
       // This is the state we capture, which is passed into each closure.
       result.copy());
 }
@@ -410,8 +415,8 @@ static void vec_add_async2(AsyncValueRef<TestVector> lhs,
 static void vec_add_async3(AsyncValueRef<TestVector> lhs,
                            AsyncValueRef<TestVector> rhs,
                            Result<TestVector> result, Runtime &runtime) {
-  size_t lhsValueSize = lhs.get().values.size();
-  if (lhsValueSize != rhs.get().values.size())
+  size_t lhsValueSize = lhs->values.size();
+  if (lhsValueSize != rhs->values.size())
     return result.setToError("vector length mismatch");
 
   // Move the AsyncValue to "constructed" state with the specified # elements.
@@ -422,11 +427,9 @@ static void vec_add_async3(AsyncValueRef<TestVector> lhs,
       runtime, lhsValueSize,
       // Capturing result by reference here is safe since the completion handler
       // guarantees it stays alive across execution of all elements.
-      [&result = result.get(), lhs = std::move(lhs),
-       rhs = std::move(rhs)](size_t n) {
-        result.values[n] = lhs.get().values[n] + rhs.get().values[n];
-      },
-      [result = result.copy()]() { result->markReady(); });
+      [&result = result.get(), lhs = std::move(lhs), rhs = std::move(rhs)](
+          size_t n) { result.values[n] = lhs->values[n] + rhs->values[n]; },
+      [result = result.copy()]() { result.getPointer()->markReady(); });
 }
 
 /// This version of vector addition does the addition with each element in
@@ -437,20 +440,18 @@ static void vec_add_async3(AsyncValueRef<TestVector> lhs,
 static void vec_add_async4(AsyncValueRef<TestVector> lhs,
                            AsyncValueRef<TestVector> rhs,
                            Result<TestVector> result, Runtime &runtime) {
-  size_t lhsValueSize = lhs.get().values.size();
-  if (lhsValueSize != rhs.get().values.size())
+  size_t lhsValueSize = lhs->values.size();
+  if (lhsValueSize != rhs->values.size())
     return result.setToError("vector length mismatch");
 
   // Move the AsyncValue to "constructed" state with the specified # elements.
   result.construct(lhsValueSize);
 
   // Process each element in parallel.
-  parallelForEachNMarkReady(runtime, lhsValueSize, result.copy(),
-                            [result = result.copy(), lhs = std::move(lhs),
-                             rhs = std::move(rhs)](size_t n) {
-                              result.get().values[n] =
-                                  lhs.get().values[n] + rhs.get().values[n];
-                            });
+  parallelForEachNMarkReady(
+      runtime, lhsValueSize, result.copy(),
+      [result = result.copy(), lhs = std::move(lhs), rhs = std::move(rhs)](
+          size_t n) { result->values[n] = lhs->values[n] + rhs->values[n]; });
 }
 
 static Chain vec_print(const TestVector &vec, Chain chain) {

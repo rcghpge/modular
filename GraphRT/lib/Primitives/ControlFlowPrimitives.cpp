@@ -53,8 +53,8 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
 
   // If the condition is already resolved and non-error, then avoid some
   // overhead.
-  if (cond->isValueAvailable()) {
-    const Invokable *bodyInv = cond.get() ? trueInv : falseInv;
+  if (cond.getPointer()->isValueAvailable()) {
+    const Invokable *bodyInv = *cond ? trueInv : falseInv;
     bodyInv->invoke(args.get(), results.get(), runtime);
     return;
   }
@@ -73,17 +73,17 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
     void runWhenCondResolves(const AsyncValueRef<bool> &cond) {
       // If we have an error, then we can force propagate errors to all the
       // results.
-      if (cond->isError()) {
+      if (cond.isError()) {
         for (AnyAsyncValueRef &result : results)
           result->resolveIndirect(cond.copy());
         return;
       }
 
       // Otherwise, execute the correct invokable based on the cond.
-      const Invokable *bodyInv = (cond.get() ? trueInv : falseInv).getPointer();
+      const Invokable *bodyInv = (*cond ? trueInv : falseInv).getPointer();
       SmallVector<AnyAsyncValueRef> bodyResults;
       bodyResults.resize(results.size());
-      bodyInv->invoke(operands, bodyResults, cond->getRuntime());
+      bodyInv->invoke(operands, bodyResults, cond.getRuntime());
 
       // We complete by passing the final result values to the output of the
       // repeat loop overall.
@@ -134,7 +134,7 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
     void runWhenCountResolves(const AsyncValueRef<int32_t> &count) {
       // If we have an error, then we can force propagate errors to all the
       // results.
-      if (count->isError()) {
+      if (count.isError()) {
         for (AnyAsyncValueRef &result : repeatResults)
           result->resolveIndirect(count.copy());
         return;
@@ -149,7 +149,7 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
       // cancellation quash computation faster.
       for (int32_t i = 0, e = count.get(); i != e; ++i) {
         bodyResults.resize(repeatResults.size());
-        invokable->invoke(operands, bodyResults, count->getRuntime());
+        invokable->invoke(operands, bodyResults, count.getRuntime());
         // bodyResults become the operands of the next iteration.
         operands = std::move(bodyResults);
         bodyResults.clear();
