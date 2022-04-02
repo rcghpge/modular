@@ -502,9 +502,12 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
             // them.
             symbolRefAttrs.emplace_back(fn_attr, op->getLoc());
           } else {
-            // Recurse into a DictionaryAttr only. Perform a post-order
+            // Recurse into ArrayAttr/DictionaryAttr. Perform a post-order
             // traversal so that we can use the offsets from the values inside
-            // the dictionary when emitting the dictionary.
+            // the collection when emitting the collection.
+            if (auto arrayAttr = attr.dyn_cast<ArrayAttr>())
+              for (Attribute element : arrayAttr)
+                processAttr(StringAttr::get(op->getContext()), element, true);
             if (auto dictAttr = attr.dyn_cast<DictionaryAttr>())
               for (NamedAttribute namedAttr : dictAttr)
                 processAttr(namedAttr.getName(), namedAttr.getValue(), true);
@@ -591,6 +594,7 @@ private:
                                  bool isFloat, Location loc);
   BEFOffset emitStringAttribute(StringRef value);
   BEFOffset emitDenseElementsAttribute(DenseElementsAttr value, Location loc);
+  BEFOffset emitArrayAttribute(ArrayAttr value, Location loc);
   BEFOffset emitDictionaryAttribute(DictionaryAttr value, Location loc);
   EntityTable &entities;
 };
@@ -723,14 +727,26 @@ BEFOffset AttributesEmitter::emitDenseElementsAttribute(DenseElementsAttr value,
   return startOffset;
 }
 
-BEFOffset AttributesEmitter::emitDictionaryAttribute(DictionaryAttr value,
-                                                     Location loc) {
-  if (value.empty()) {
-    emitInvertedVBR(value.size());
-    emitByte((uint8_t)BEF::AttributeKind::kDictionary);
-    return getOffset();
+BEFOffset AttributesEmitter::emitArrayAttribute(ArrayAttr value, Location loc) {
+  // Emit the size of the array and the attribute kind.
+  emitInvertedVBR(value.size());
+  emitByte((uint8_t)BEF::AttributeKind::kList);
+
+  BEFOffset startOffset = getOffset();
+
+  for (Attribute element : value) {
+    // Emit the offsets to the name and data as an offset relative to the
+    // dictionary offset. They are therefore implicitly negative!
+    size_t elementOffset =
+        startOffset.value - entities.getAttributeOffset(element).value;
+    emitOffset(BEFOffset{elementOffset});
   }
 
+  return startOffset;
+}
+
+BEFOffset AttributesEmitter::emitDictionaryAttribute(DictionaryAttr value,
+                                                     Location loc) {
   // Emit the size of the dict and the attribute kind.
   emitInvertedVBR(value.size());
   emitByte((uint8_t)BEF::AttributeKind::kDictionary);
@@ -780,6 +796,9 @@ BEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr, Location loc,
 
   if (auto denseElements = attr.dyn_cast<DenseElementsAttr>())
     return emitDenseElementsAttribute(denseElements, loc);
+
+  if (auto array = attr.dyn_cast<ArrayAttr>())
+    return emitArrayAttribute(array, loc);
 
   if (auto dict = attr.dyn_cast<DictionaryAttr>())
     return emitDictionaryAttribute(dict, loc);

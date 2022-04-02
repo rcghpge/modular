@@ -58,24 +58,3 @@ auto PrimitiveRegistry::get(StringRef name) const -> PrimitiveImplFn {
   return it != impl->prims.end() && it->first == name ? it->second
                                                       : PrimitiveImplFn();
 }
-
-//===----------------------------------------------------------------------===//
-// ADD_PRIMITIVE implementation logic
-//===----------------------------------------------------------------------===//
-
-/// Given a pointer to the start of a BEF array or string attribute, return the
-/// length of array or string by decoding the prefix encoded VBR.
-size_t M::decodeBEFArrayLength(const void *dataPtr) {
-  // The attribute's kind is between the VBR and the actual value, so we have to
-  // make sure to subtract that offset (hence the -2).
-  const uint8_t *lenPtr = static_cast<const uint8_t *>(dataPtr) - 2;
-  size_t size = 0;
-  bool hasMoreBytes;
-  do {
-    hasMoreBytes = (lenPtr[0] & 0x80) != 0;
-    size <<= 7;
-    size |= lenPtr[0] & 0x7F;
-    --lenPtr;
-  } while (hasMoreBytes);
-  return size;
-}

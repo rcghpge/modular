@@ -70,8 +70,14 @@ bef.invokable @attributes() {
   // CHECK-NEXT: "a.b" [3.000000e+00]
   "a.b"() { a = 3.0 : f64 }: () -> ()
 
-  // CHECK-NEXT: "a.b" [{b = 1 : i8, c = dense<[true, false, false]> : tensor<3xi1>}]
-  "a.b"() { a = { b = 1 : i8, c = dense<[true, false, false]> : tensor<3xi1> } }: () -> ()
+  // Dictionary attribute.
+  // CHECK-NEXT: bef.opaque "a.b" [{b = 1 : i8, c = [true, false, false]}]
+  "a.b"() { a = { b = 1 : i8, c = [true, false, false] } }: () -> ()
+
+  // List Attribute.
+  // CHECK-NEXT: bef.opaque "a.b"  [1 : i8, [1 : i32, 2 : i8]]
+  // MD: "a.b"() {a = 1 : i8, b = [1 : i32, 2 : i8]} : () -> ()
+  "a.b"() {a = 1:i8, b = [1: i32, 2: i8] } : () -> ()
 
   bef.output
    // CHECK-NEXT:     bef.output

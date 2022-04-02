@@ -310,14 +310,17 @@ When receiving attributes, you need to use a well-known C++ type that matches
 the datatype in question, e.g. `int32_t` or `uint32_t` for 32-bit attributes,
 and `StringRef` or `ArrayRef` for strings and `dense` elements.  
 
-In addition to low-level constant data access, you can also use MLIR
-dictionaries (list of name, value pairs) which are accessed with a
-`BEFDictionaryAttr`. It supports iteration and finding 
-individual elements. It is not as efficient as the other attributes and should
-be used sparingly. Accessing elements is done in the following simple examples:
+In addition to low-level constant data access, you can also use MLIR array and
+dictionary attributes (list of name, value pairs) which are accessed with the
+`BEFListAttr` and `BEFDictionaryAttr` types in primitives. These supports
+iteration, and returns the elements as a dynamic attribute (so you can cast to
+access them as a concrete type).  Dictionaries support finding individual
+elements. These are not as efficient as the other attributes because they are
+accessed indirectly through iterators, and the dictionary stores the names of
+the keys.  Accessing elements is done in the following simple examples:
 
 ```c++
-static int32_t findInt32Element(BEFDictionaryAttr dict) {
+static int32_t findNamedElement(BEFDictionaryAttr dict) {
   Optional<BEFAttr<int32_t>> value = dict.find<int32_t>("myKey");
   if (!value)
     // Handle the error gracefully
@@ -332,6 +335,14 @@ static void handleAllElements(BEFDictionaryAttr dict) {
     } else {
       BEFAttr<int32_t> value = element.getValue<int32_t>();
       // handle `value`
+    }
+  }
+}
+
+static void handleAllListElements(BEFListAttr list) {
+  for (auto element : list) {
+    if (BEFAttr<StringRef> str = element.dyn_cast<StringRef>())
+      // handle `str`
     }
   }
 }

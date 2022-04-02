@@ -90,11 +90,12 @@ static Chain print_all_dict(Chain chain, BEFDictionaryAttr dict) {
   return chain;
 }
 
-//===----------------------------------------------------------------------===//
-// Dynamic attributes
-//===----------------------------------------------------------------------===//
+static void printIndent(unsigned indent) {
+  for (unsigned i = 0; i != indent; ++i)
+    printf("  ");
+}
 
-static Chain print_dynamic_attr(Chain chain, BEFDynamicAttr value) {
+static void print_attr(BEFDynamicAttr value, unsigned indent) {
   if (auto intAttr = value.dyn_cast<int32_t>()) {
     printf("int32 = %d\n", intAttr->get());
   } else if (auto strAttr = value.dyn_cast<StringRef>()) {
@@ -102,12 +103,35 @@ static Chain print_dynamic_attr(Chain chain, BEFDynamicAttr value) {
     fwrite(strAttr.getValue()->data(), 1, strAttr.getValue()->size(), stdout);
     fputc('\n', stdout);
   } else if (auto intArray = value.dyn_cast<ArrayRef<int32_t>>()) {
-    print_array_i32(chain, *intArray);
+    print_array_i32(Chain(), *intArray);
   } else if (auto dict = value.dyn_cast<Detail::Dictionary>()) {
-    print_all_dict(chain, *dict);
+    printf("dictionary {\n");
+    for (const BEFDictionaryAttr::Element &elt : *dict) {
+      printIndent(indent + 1);
+      printf("'%.*s': ", (int)elt.getName().size(), elt.getName().data());
+      print_attr(elt.getValue(), indent + 1);
+    }
+    printIndent(indent);
+    printf("}\n");
+  } else if (auto list = value.dyn_cast<Detail::List>()) {
+    printf("list [\n");
+    for (BEFDynamicAttr elt : *list) {
+      printIndent(indent + 1);
+      print_attr(elt, indent + 1);
+    }
+    printIndent(indent);
+    printf("]\n");
   } else {
     printf("unsupported attribute kind\n");
   }
+}
+
+//===----------------------------------------------------------------------===//
+// Dynamic attributes
+//===----------------------------------------------------------------------===//
+
+static Chain print_dynamic_attr(Chain chain, BEFDynamicAttr value) {
+  print_attr(value, 0);
   return chain;
 }
 

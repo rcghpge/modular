@@ -239,6 +239,23 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
   if (attrReader.dropBytes(offset))
     return true;
 
+  auto parseListAttr = [&]() -> Attribute {
+    size_t length;
+    if (attrSection.parseInvertedVBRAt(offset - 1, length))
+      return {};
+
+    SmallVector<Attribute> elements;
+    for (size_t i = 0; i < length; ++i) {
+      size_t elementOffset;
+      elements.push_back(Attribute());
+      if (attrReader.parseVBR(elementOffset) ||
+          parseAttribute(offset - elementOffset, attrSection, elements.back()))
+        return {};
+    }
+    // Produce a DictionaryAttr for the converter.
+    return ArrayAttr::get(getContext(), elements);
+  };
+
   auto parseDictionaryAttr = [&]() -> Attribute {
     size_t length;
     if (attrSection.parseInvertedVBRAt(offset - 1, length))
@@ -278,6 +295,9 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
 
     if (attrKind == BEF::AttributeKind::kDictionary)
       return parseDictionaryAttr();
+
+    if (attrKind == BEF::AttributeKind::kList)
+      return parseListAttr();
 
     uint8_t byte;
     // I1 attrs are a single byte in the BEF format, but are also a separate

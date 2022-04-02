@@ -155,8 +155,27 @@ bef.invokable @test_dynamic_attr() {
   %ch4 = "test.print.dynamic.attr"(%ch3) {value = dense<[]> : tensor<0xi32>} : (!grt.chain) -> !grt.chain
   // CHECK: unsupported attribute kind
   %ch5 = "test.print.dynamic.attr"(%ch4) {value = 1: i1} : (!grt.chain) -> !grt.chain
-  // CHECK: dictionary = aString : this is a string, anInt : 3125
-  %ch6 = "test.print.dynamic.attr"(%ch5) {value = {aString = "this is a string", anInt = 3125 : i32}} : (!grt.chain) -> !grt.chain
+  // CHECK: dictionary {
+  // CHECK-NEXT: 'aString': string = this is a string
+  // CHECK-NEXT: 'anInt': int32 = 3125
+  // CHECK-NEXT: }
+  %ch6 = "test.print.dynamic.attr"(%ch5) {value =
+     {aString = "this is a string", anInt = 3125 : i32}
+  } : (!grt.chain) -> !grt.chain
+
+  // CHECK:     list [ 
+  // CHECK-NEXT:  string = this is a string 
+  // CHECK-NEXT:  int32 = 3125 
+  // CHECK-NEXT:  list [
+  // CHECK-NEXT:  ]
+  // CHECK-NEXT:  dictionary {
+  // CHECK-NEXT:    'a': int32 = 42
+  // CHECK-NEXT:    'b': string = foo
+  // CHECK-NEXT:   }
+  // CHECK-NEXT: ] 
+  %ch7 = "test.print.dynamic.attr"(%ch6) {value = 
+     ["this is a string", 3125 : i32, [], {a = 42: i32, b = "foo"}]
+  } : (!grt.chain) -> !grt.chain
 
   bef.output
 }

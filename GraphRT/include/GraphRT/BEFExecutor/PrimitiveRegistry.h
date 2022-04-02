@@ -55,6 +55,12 @@ private:
 /// length of array or string by decoding the prefix encoded VBR.
 size_t decodeBEFArrayLength(const void *dataPtr);
 
+/// Parse a VBR and increment `workptr` in the process, so we can skip over
+/// the VBR values. This is a little weird, being a reference to a pointer,
+/// but it's to simplify the parsing use cases above by allowing us to
+/// increment the pointer that's been passed-in.
+size_t parseVBR(uint8_t *&workptr);
+
 // Utility template for tag dispatching.
 template <typename... T>
 struct TypeTag {};
@@ -248,6 +254,10 @@ private:
   MutableArrayRef<AnyAsyncValueRef> results;
 };
 
+//===----------------------------------------------------------------------===//
+// BEFAttr and specializations
+//===----------------------------------------------------------------------===//
+
 /// This CRTP class is used to provide common interfaces across the various
 /// BEFAttr implementations.
 template <typename ConcreteType, typename StoredType>
@@ -344,6 +354,10 @@ public:
   const T &operator[](size_t i) const { return this->get()[i]; }
 };
 
+//===----------------------------------------------------------------------===//
+// BEFDynamicAttr
+//===----------------------------------------------------------------------===//
+
 namespace Detail {
 class Dynamic {};
 } // namespace Detail
@@ -383,6 +397,85 @@ public:
 };
 
 using BEFDynamicAttr = BEFAttr<Detail::Dynamic>;
+
+//===----------------------------------------------------------------------===//
+// BEFListAttr
+//===----------------------------------------------------------------------===//
+
+namespace Detail {
+class List {};
+} // namespace Detail
+
+/// List of attributes.
+template <>
+class BEFAttr<Detail::List>
+    : public BEFAttrCommon<BEFAttr<Detail::List>, Detail::List> {
+public:
+  using BaseClass = BEFAttrCommon<BEFAttr<Detail::List>, Detail::List>;
+  explicit BEFAttr(const void *pointer)
+      : BEFAttrCommon<BEFAttr<Detail::List>, Detail::List>(Detail::List{}),
+        pointer(pointer), length(decodeBEFArrayLength(pointer)) {
+    this->checkAttributeKind(pointer);
+  }
+
+  static bool matchesAttrKind(const void *pointer) {
+    return BaseClass::getAttrKind(pointer) == BEF::AttributeKind::kList;
+  }
+
+  /// Provides an iterator on the List. Because we don't want to allocate
+  /// in this data structure, we parse each attribute's name and value every
+  /// time the iterator is accessed.
+  class Iterator
+      : public llvm::iterator_facade_base<Iterator, std::input_iterator_tag,
+                                          BEFDynamicAttr> {
+  public:
+    using Base = llvm::iterator_facade_base<Iterator, std::input_iterator_tag,
+                                            BEFDynamicAttr>;
+
+    Iterator(const void *ptr, size_t iterIdx)
+        : basePtr(const_cast<void *>(ptr)),
+          ptr(static_cast<uint8_t *>(basePtr)), iterIdx(iterIdx) {}
+
+    /// Increment the iterator. Decrementing is sufficiently difficult that it's
+    /// left as an exercise to the person who wants to use it.
+    Iterator &operator+=(Base::difference_type n);
+
+    /// Compare Iterator objects.
+    bool operator==(const Iterator &rhs) const {
+      assert(basePtr == rhs.basePtr &&
+             "Comparing iterators from different lists!");
+      return iterIdx == rhs.iterIdx;
+    }
+
+    /// Parse out and return the name and value contained in this iterator.
+    BEFDynamicAttr operator*() const;
+
+  private:
+    void *basePtr;
+    uint8_t *ptr;
+    size_t iterIdx;
+  };
+
+  /// Range access into the List object.
+  Iterator begin() const { return {pointer, 0}; }
+  Iterator end() const { return Iterator{pointer, length}; }
+
+  /// Return the size of the List in number of elements.
+  size_t size() const { return length; }
+
+  /// Return true if there are no attributes in this list.
+  bool empty() const { return length == 0; }
+
+private:
+  const void *pointer;
+  const size_t length;
+};
+
+using BEFListAttr = BEFAttr<Detail::List>;
+
+//===----------------------------------------------------------------------===//
+// BEFDictionaryAttr
+//===----------------------------------------------------------------------===//
 
 namespace Detail {
 class Dictionary {};
@@ -448,17 +541,20 @@ public:
     using Base =
         llvm::iterator_facade_base<Iterator, std::input_iterator_tag, Element>;
 
-    Iterator(const void *ptr, size_t dictLen, size_t iterIdx)
+    Iterator(const void *ptr, size_t iterIdx)
         : basePtr(const_cast<void *>(ptr)),
-          ptr(static_cast<uint8_t *>(basePtr)), dictLen(dictLen),
-          iterIdx(iterIdx) {}
+          ptr(static_cast<uint8_t *>(basePtr)), iterIdx(iterIdx) {}
 
     /// Increment the iterator. Decrementing is sufficiently difficult that it's
     /// left as an exercise to the person who wants to use it.
     Iterator &operator+=(Base::difference_type n);
 
     /// Compare Iterator objects.
-    bool operator==(const Iterator &rhs) const;
+    bool operator==(const Iterator &rhs) const {
+      assert(basePtr == rhs.basePtr &&
+             "Comparing iterators from different dictionaries!");
+      return iterIdx == rhs.iterIdx;
+    }
 
     /// Parse out and return the name and value contained in this iterator.
     Element operator*() const;
@@ -466,13 +562,12 @@ public:
   private:
     void *basePtr;
     uint8_t *ptr;
-    size_t dictLen;
     size_t iterIdx;
   };
 
   /// Range access into the Dictionary object.
-  Iterator begin() const { return {pointer, length, 0}; }
-  Iterator end() const { return Iterator{pointer, length, length}; }
+  Iterator begin() const { return {pointer, 0}; }
+  Iterator end() const { return Iterator{pointer, length}; }
 
   /// Return the size of the Dictionary in number of elements.
   size_t size() const { return length; }
@@ -497,12 +592,6 @@ public:
   }
 
 private:
-  /// Parse a VBR and increment `workptr` in the process, so we can skip over
-  /// the VBR values. This is a little weird, being a reference to a pointer,
-  /// but it's to simplify the parsing use cases above by allowing us to
-  /// increment the pointer that's been passed-in.
-  static size_t parseVBR(uint8_t *&workptr);
-
   const void *pointer;
   const size_t length;
 };
