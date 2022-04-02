@@ -212,6 +212,24 @@ bool BEFToMLIRConverter::parseLocationPositions() {
   return false;
 }
 
+/// Return the MLIR type for the specified attribute or null if invalid.
+static Type getTypeForAttributeKind(BEF::AttributeKind kind, MLIRContext *ctx) {
+  switch (kind) {
+  default:
+    return Type();
+  case BEF::AttributeKind::kI1:
+  case BEF::AttributeKind::kI8:
+  case BEF::AttributeKind::kI16:
+  case BEF::AttributeKind::kI32:
+  case BEF::AttributeKind::kI64:
+    return IntegerType::get(ctx, (int)kind);
+  case BEF::AttributeKind::kF32:
+    return mlir::Float32Type::get(ctx);
+  case BEF::AttributeKind::kF64:
+    return mlir::Float64Type::get(ctx);
+  }
+}
+
 /// Parse an attribute at the specified offset.
 bool BEFToMLIRConverter::parseAttribute(size_t offset,
                                         const BEFReader &attrSection,
@@ -279,7 +297,7 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
     // not a valid size. This is very unlikely to happen unless there's a logic
     // flaw elsewhere, i.e. a string that wasn't caught above.
     if (!llvm::isPowerOf2_64(sizeInBits) || sizeInBits > 64) {
-      emitError(Twine("invalid bitwidth ") + Twine(sizeInBits));
+      emitError("invalid bitwidth " + Twine(sizeInBits));
       return {};
     }
 
@@ -302,7 +320,7 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
       return FloatAttr::get(mlir::Float64Type::get(getContext()),
                             APFloat(resultInt.bitsToDouble()));
 
-    return IntegerAttr::get(IntegerType::get(getContext(), sizeInBytes * 8),
+    return IntegerAttr::get(getTypeForAttributeKind(attrKind, getContext()),
                             resultInt);
   };
 
@@ -333,7 +351,16 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
       return true;
   }
 
-  resultAttr = ArrayAttr::get(getContext(), elements);
+  int64_t numElements = elements.size();
+  Type eltType =
+      getTypeForAttributeKind(BEF::AttributeKind(attrKind), getContext());
+  if (!eltType) {
+    emitError("invalid array element type");
+    return {};
+  }
+
+  auto type = mlir::RankedTensorType::get(numElements, eltType);
+  resultAttr = DenseElementsAttr::get(type, elements);
   return false;
 }
 

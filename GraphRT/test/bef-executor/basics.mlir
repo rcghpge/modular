@@ -127,7 +127,7 @@ bef.invokable @basic_string_and_arrays() {
   %ch2 = "test.print_string"(%z, %ch1) : (!test.string, !grt.chain) -> (!grt.chain)
 
   // CHECK: array = [4, 1, 5712321]
-  %ch3 = "test.print_array_i32"(%ch2) { value = [4: i32, 1: i32, 5712321:i32] } : (!grt.chain) -> (!grt.chain)
+  %ch3 = "test.print_array_i32"(%ch2) { value = dense<[4, 1, 5712321]> : tensor<3xi32> } : (!grt.chain) -> (!grt.chain)
 
   // CHECK: dictionary[theNumber3] = 3
   %ch4 = "test.print_dict_i32"(%ch3) { key = "theNumber3", value = { theNumber3 = 3 : i32, foo = "bar" } } : (!grt.chain) -> (!grt.chain)
@@ -150,9 +150,9 @@ bef.invokable @test_dynamic_attr() {
   // CHECK: string = foo string
   %ch2 = "test.print.dynamic.attr"(%ch1) {value = "foo string"} : (!grt.chain) -> !grt.chain
   // CHECK: array = [4, 6, 17]
-  %ch3 = "test.print.dynamic.attr"(%ch2) {value = [4: i32, 6: i32, 17: i32]} : (!grt.chain) -> !grt.chain
+  %ch3 = "test.print.dynamic.attr"(%ch2) {value = dense<[4, 6, 17]> : tensor<3xi32>} : (!grt.chain) -> !grt.chain
   // CHECK: array = []
-  %ch4 = "test.print.dynamic.attr"(%ch3) {value = []} : (!grt.chain) -> !grt.chain
+  %ch4 = "test.print.dynamic.attr"(%ch3) {value = dense<[]> : tensor<0xi32>} : (!grt.chain) -> !grt.chain
   // CHECK: unsupported attribute kind
   %ch5 = "test.print.dynamic.attr"(%ch4) {value = 1: i1} : (!grt.chain) -> !grt.chain
   // CHECK: dictionary = aString : this is a string, anInt : 3125

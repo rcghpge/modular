@@ -590,10 +590,6 @@ private:
   BEFOffset emitIntegerAttribute(bool emitAsArrayElement, const APInt &value,
                                  bool isFloat, Location loc);
   BEFOffset emitStringAttribute(StringRef value);
-  /// Provide the ability to write any array of attributes to the BEF file.
-  template <typename Container>
-  BEFOffset emitArrayOfAttrs(uint8_t kindByte, Container elts, Location loc);
-  BEFOffset emitArrayAttribute(ArrayAttr value, Location loc);
   BEFOffset emitDenseElementsAttribute(DenseElementsAttr value, Location loc);
   BEFOffset emitDictionaryAttribute(DictionaryAttr value, Location loc);
   EntityTable &entities;
@@ -607,7 +603,7 @@ AttributesEmitter::deriveAttributeKind(unsigned bitwidth, bool isFloat,
                                        Location loc) const {
   if (!llvm::isPowerOf2_64(bitwidth) || bitwidth > 64)
     return LogicalResult(entities.emitError(loc)
-                         << "Invalid bitwidth " << bitwidth);
+                         << "invalid bitwidth " << bitwidth);
 
   return BEF::AttributeKind((bitwidth & 0xff) | (isFloat & 0b1));
 }
@@ -671,31 +667,46 @@ BEFOffset AttributesEmitter::emitStringAttribute(StringRef value) {
   return offset;
 }
 
-template <typename Container>
-BEFOffset AttributesEmitter::emitArrayOfAttrs(uint8_t kindByte, Container elts,
-                                              Location loc) {
+BEFOffset AttributesEmitter::emitDenseElementsAttribute(DenseElementsAttr value,
+                                                        Location loc) {
+  Type elementType = value.getElementType();
+
+  // We only support integer and FP element types.
+  if (!elementType.isIntOrFloat()) {
+    entities.emitError(loc) << "unsupported element type";
+    return {0};
+  }
+
+  // Get the attribute kind for the elements of the array.
+  auto kindOr = deriveAttributeKind(elementType.getIntOrFloatBitWidth(),
+                                    !elementType.isIntOrIndex(), loc);
+  if (failed(kindOr))
+    return {0};
+
+  auto elements = value.getValues<Attribute>();
+
   BEFOffset sizeStart = getOffset();
 
   // Emit the number of elements first and then emit all of the attributes
   // consecutively, returning the offset of the first element in the attribute
   // array.
-  emitInvertedVBR(elts.size());
+  emitInvertedVBR(elements.size());
+
   // Emit the byte for the attribute kind just after the inverted VBR for the
   // elements.
-  emitByte(kindByte);
+  emitByte((uint8_t)BEF::getArrayOf(*kindOr));
 
   BEFOffset sizeAndKindEnd = getOffset();
 
   // The attribute array is empty. We just return the offset past the size.
-  if (elts.empty())
+  if (elements.empty())
     return sizeAndKindEnd;
 
   // Emit the first element of the array, this could insert padding if it needs
   // larger alignment then the current offset.
-  auto startOffset = emitAttributeInternal(*elts.begin(), loc, true);
-  for (auto elt : llvm::drop_begin(elts)) {
+  auto startOffset = emitAttributeInternal(*elements.begin(), loc, true);
+  for (auto elt : llvm::drop_begin(elements))
     (void)emitAttributeInternal(elt, loc, true);
-  }
 
   // If there is a gap between the size and the first attribute value, we
   // move the size to be immediately before the first attribute value to
@@ -710,51 +721,6 @@ BEFOffset AttributesEmitter::emitArrayOfAttrs(uint8_t kindByte, Container elts,
   }
 
   return startOffset;
-}
-
-BEFOffset AttributesEmitter::emitArrayAttribute(ArrayAttr array, Location loc) {
-  // If the array attr is non-empty, then we have to get its type.
-  if (array.empty())
-    return emitArrayOfAttrs((uint8_t)BEF::AttributeKind::kArrayType,
-                            array.getValue(), loc);
-
-  Attribute firstElement = array.getValue().front();
-  // And, all of its elements must be homogenous.
-  if (!llvm::all_of(llvm::drop_begin(array.getValue()), [&](Attribute attr) {
-        return attr.getTypeID() == firstElement.getTypeID();
-      })) {
-    entities.emitError(loc) << "ArrayAttrs must be homogenous " << array;
-    return {0};
-  }
-
-  // Get the attribute kind for the first element in the array so we can emit
-  // the correct type.
-  auto kindOr = getAttributeKind(firstElement, loc);
-  if (failed(kindOr))
-    return {0};
-
-  return emitArrayOfAttrs((uint8_t)BEF::getArrayOf(*kindOr), array.getValue(),
-                          loc);
-}
-
-BEFOffset AttributesEmitter::emitDenseElementsAttribute(DenseElementsAttr value,
-                                                        Location loc) {
-  if (value.empty())
-    return emitArrayOfAttrs((uint8_t)BEF::AttributeKind::kArrayType,
-                            value.getValues<Attribute>(), loc);
-
-  // We don't have to worry about homogeneity for DenseElementsAttr - they
-  // don't allow heterogeneous elements.
-  Attribute firstElement = *value.getValues<Attribute>().begin();
-
-  // Get the attribute kind for the first element in the array so we can emit
-  // the correct type.
-  auto kindOr = getAttributeKind(firstElement, loc);
-  if (failed(kindOr))
-    return {0};
-
-  return emitArrayOfAttrs((uint8_t)BEF::getArrayOf(*kindOr),
-                          value.getValues<Attribute>(), loc);
 }
 
 BEFOffset AttributesEmitter::emitDictionaryAttribute(DictionaryAttr value,
@@ -811,9 +777,6 @@ BEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr, Location loc,
 
   if (auto string = attr.dyn_cast<StringAttr>())
     return emitStringAttribute(string.getValue());
-
-  if (auto array = attr.dyn_cast<ArrayAttr>())
-    return emitArrayAttribute(array, loc);
 
   if (auto denseElements = attr.dyn_cast<DenseElementsAttr>())
     return emitDenseElementsAttribute(denseElements, loc);

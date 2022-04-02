@@ -282,7 +282,7 @@ cases:
   // Same thing in verbose syntax:
   %x2 = "grt.constant.i32"() {value = 42 : i32} : () -> () 
 
-  %z = "add.ints"() { value = [1: i32, 2: i32, 3: i32] } : () -> ()
+  %z = "add.ints"() { value = dense<[1, 2, 3]> : tensor<3xi32> } : () -> ()
 
   "some.thing"() { a = 3275124123121 : i64, b = "string value" } : () -> ()
 ```
@@ -308,9 +308,11 @@ static void some_thing(BEFAttr<int64_t> a, BEFAttr<StringRef> b) {
 
 When receiving attributes, you need to use a well-known C++ type that matches
 the datatype in question, e.g. `int32_t` or `uint32_t` for 32-bit attributes,
-and `StringRef` or `ArrayRef` for strings and arrays. Dictionaries are lists
-of name, value pairs. A `BEFDictionaryAttr` is an alias for 
-`BEFAttr<BEF::Detail::Dictionary>`. It supports iteration and finding 
+and `StringRef` or `ArrayRef` for strings and `dense` elements.  
+
+In addition to low-level constant data access, you can also use MLIR
+dictionaries (list of name, value pairs) which are accessed with a
+`BEFDictionaryAttr`. It supports iteration and finding 
 individual elements. It is not as efficient as the other attributes and should
 be used sparingly. Accessing elements is done in the following simple examples:
 

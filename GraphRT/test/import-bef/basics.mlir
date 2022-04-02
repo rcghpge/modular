@@ -58,11 +58,11 @@ bef.invokable @attributes() {
   // CHECK-NEXT: "a.b" ["foo\00bar"]
   "a.b"() { a = "foo\00bar" : i64 }: () -> ()
 
-  // CHECK-NEXT: "a.b" {{.}}[]]
-  "a.b"() { a = [] }: () -> ()
+  // CHECK-NEXT: "a.b" [dense<> : tensor<0xi32>]
+  "a.b"() { a = dense<[]> : tensor<0xi32> }: () -> ()
 
-  // CHECK-NEXT: "a.b" {{.}}[true, false, true]]
-  "a.b"() { a = [true, false, true] }: () -> ()
+  // CHECK-NEXT: "a.b" [dense<[true, false, true]> : tensor<3xi1>]
+  "a.b"() { a = dense<[true, false, true]> : tensor<3xi1> }: () -> ()
 
   // CHECK-NEXT: "a.b" [2.000000e+00 : f32]
   "a.b"() { a = 2.0 : f32 }: () -> ()
@@ -70,8 +70,8 @@ bef.invokable @attributes() {
   // CHECK-NEXT: "a.b" [3.000000e+00]
   "a.b"() { a = 3.0 : f64 }: () -> ()
 
-  // CHECK-NEXT: "a.b" [{b = 1 : i8, c = [true, false, false]}]
-  "a.b"() { a = { b = 1 : i8, c = [true, false, false] } }: () -> ()
+  // CHECK-NEXT: "a.b" [{b = 1 : i8, c = dense<[true, false, false]> : tensor<3xi1>}]
+  "a.b"() { a = { b = 1 : i8, c = dense<[true, false, false]> : tensor<3xi1> } }: () -> ()
 
   bef.output
    // CHECK-NEXT:     bef.output

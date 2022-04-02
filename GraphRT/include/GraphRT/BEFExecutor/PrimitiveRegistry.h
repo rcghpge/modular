@@ -337,14 +337,7 @@ public:
   static bool matchesAttrKind(const void *pointer) {
     // If the element type matches, this matches.
     BEF::AttributeKind kind = BaseClass::getAttrKind(pointer);
-    if (kind == BEF::getArrayOf(BEF::AttrKindForCXXType<T>::kind))
-      return true;
-    // If the element type is invalid and the length is zero this matches.
-    // This is because MLIR2BEF doesn't know the element type for empty arrays.
-    if (kind == BEF::getArrayOf(BEF::AttributeKind::kInvalid) &&
-        decodeBEFArrayLength(pointer) == 0)
-      return true;
-    return false;
+    return kind == BEF::getArrayOf(BEF::AttrKindForCXXType<T>::kind);
   }
 
   size_t size() const { return this->get().size(); }
