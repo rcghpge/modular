@@ -2,6 +2,8 @@
 
 [TOC]
 
+# Introduction
+
 Primitives are defined as C++ functions and registered dynamically with the
 BEF executor's primitive registry at runtime by their registered string name.
 This allows GraphRT to be an easily hackable system that is modular, low
