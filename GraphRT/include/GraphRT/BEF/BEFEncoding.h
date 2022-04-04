@@ -86,8 +86,8 @@ enum class AttributeKind : uint8_t {
   kI64 = 64,
   kF32 = 33,
   kF64 = 65,
-  /// There is no special meaning to remaining enum values, it's 66 because kF64
-  /// is 65.
+  /// There is no special meaning to remaining enum values, they start at 66
+  /// because kF64 is 65.
   kString = 66,
   kDictionary = 67,
   kList = 68,
