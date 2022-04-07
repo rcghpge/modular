@@ -3,13 +3,13 @@
 [TOC]
 
 This document describes the goals and rationale for the in-memory representation
-the GraphRT executor uses to run primitives, known as the Binary Executor
+the [GraphRT](index.md) executor uses to run primitives, known as the Binary Executor
 Format "BEF".
 
 We have the following goals:
 
 -   We want this to be simple and relatively stable - though it is versioned
-    just in case (tm). We don't want this to contain domain specific
+    just in case (tm). We don't want BEF to contain domain specific
     abstractions that will require changing it frequently over time.
 
 -   This format is designed to be usable as an immutable region in memory,
@@ -52,7 +52,7 @@ rationale for the design decisions.
 A BEF file is formed as a byte stream whose top-level structure is a list of
 "sections" that hold various sorts of data. It uses a few fundamental concepts:
 
-*   *VBRs* are encoded in a "Variable Byte Rate" (VBR) encoding, allowing
+*   *VBRs* are encoded in a "Variable Byte Rate" (`VBR`) encoding, allowing
     small integers (less than 2^7) to be stored in one byte, integers up to 2^14
     to be stored in two bytes, etc. This is done by using the high bit of each
     byte in the stream to indicate "more bytes are coming".
@@ -108,11 +108,11 @@ and utilities for decoding the basic file structures like VBR integers are
 defined in
 [`BEFReader.h`](../include/GraphRT/BEF/BEFReader.h).
 
-The LENGTH_AND_ALIGNMENT contains SECTION_LENGTH and SECTION_ALIGNMENT_FLAG. The
-SECTION_LENGTH contains one bit shifted value of the section length and the
-SECTION_ALIGNMENT_FLAG (0 bit) indicates if SECTION_BODY_ALIGNMENT exists or
+The `LENGTH_AND_ALIGNMENT` contains `SECTION_LENGTH` and `SECTION_ALIGNMENT_FLAG`. The
+`SECTION_LENGTH` contains one bit shifted value of the section length and the
+`SECTION_ALIGNMENT_FLAG` (0 bit) indicates if `SECTION_BODY_ALIGNMENT` exists or
 not; 0 means the section body starts immediately and 1 means
-SECTION_BODY_ALIGNMENT follows.
+`SECTION_BODY_ALIGNMENT` follows.
 
 ## Top Level Structure
 
@@ -141,7 +141,7 @@ The top level structure of the file is a two-byte "magic number" of `0xBEF0`
 and a list of sections.  The `0xBEF0` magic number allows us to encode version
 numbers, e.g. the following would be `0xBEF1`.
 
-The reader skips over unknown sections, which could be useful for future
+The BEF reader skips over unknown sections, which could be useful for future
 evolution of the format, e.g. if we want to store extra metadata in the BEF
 format for some purpose, or store binary tensor blobs.
 
@@ -158,7 +158,7 @@ program (e.g. for type and primitive names). Entries in this section are
 referenced by an Offset from the start of the section.  This section does not
 support embedded `NUL` in strings.
 
-### Attributes Section
+### `ATTRIBUTES` Section
 
 **Grammar**
 
@@ -166,20 +166,20 @@ support embedded `NUL` in strings.
   ATTRIBUTES_SECTION ::= BYTE*
 ```
 
-The Attributes section contains the value of attributes used by primitives in
+The `ATTRIBUTES_SECTION` contains the value of attributes used by primitives in
 the BEF program. They are stored on the natural alignment boundary of the type,
 and the address of the attribute is directly passed into the primitive
 implementation C/C++ function as an const pointer.
 
 BEF files only support a subset of MLIR attributes, currently including:
 
-*   i1/i8 integers: stored as 1-byte integers.
-*   i16/i32/i64 integers: stored as 2/4/8-byte little endian integers.
-*   f32 floats: stored as IEEE single precision floats.
-*   f64 floats: stored as IEEE double precision floats.
-*   strings: stored as arrays of bytes, not necessarily NUL terminated.
-*   arrays: all elements of which are of the same type and fixed in width (eg.
-    i32, f32, type).
+*   `i1`/`i8` integers: stored as 1-byte integers.
+*   `i16`/`i32`/`i64` integers: stored as 2/4/8-byte little endian integers.
+*   `f32` floats: stored as IEEE single precision floats.
+*   `f64` floats: stored as IEEE double precision floats.
+*   `strings`: stored as arrays of bytes, not necessarily NUL terminated.
+*   `arrays`: all elements of which are of the same type and fixed in width (eg.
+    `i32`, `f32`, `type`).
 
 The encoding of an attribute has three pieces:
 
@@ -198,11 +198,11 @@ is naturally aligned, e.g. that a `i32` value is emitted on a 4-byte alignment.
 
 The GraphRT executor needs to refer to attribute values, and since the BEF file
 is designed to be memory mapped in, we can directly use the encoding in memory.
-This means that primitives will need to bswap attributes for big-endian systems,
-but they generally have bswap'ing loads anyway so this shouldn't impose a
+This means that primitives will need to `bswap` attributes for big-endian systems,
+but they generally have `bswap`'ing loads anyway so this shouldn't impose a
 performance penalty.
 
-### Primitive Names Section
+### `PRIMITIVE_NAMES` Section
 
 **Grammar**
 
@@ -211,9 +211,9 @@ performance penalty.
                               OFFSET<"PrimitiveNameOffset">*
 ```
 
-The Primitive names section defines a table of primitive names, directly
+The `PRIMITIVE_NAMES_SECTION` defines a table of primitive names, directly
 corresponding to the names in the MLIR GraphRT executor program. This allows
-references from the INVOKABLES_BODIES section to use dense indexes into the
+references from the `INVOKABLES_BODIES` section to use dense indexes into the
 table.
 
 This section contains one VBR value for each primitive, which is an offset into
@@ -221,7 +221,7 @@ the string table for the primitive name.
 
 ***Rationale***
 
-We want dense indexes from primitives in the INVOKABLES_BODIES section, and the
+We want dense indexes from primitives in the `INVOKABLES_BODIES` section, and the
 GraphRT Executor wants to resolve names to primitive implementations at startup
 time anyway, as such, it makes sense for the GraphRT executor to build its own
 mutable array in memory for primitives.
@@ -229,7 +229,7 @@ mutable array in memory for primitives.
 We encode the count of primitive names so the executor can allocate one block
 of memory up front, rather than use a vector-style resizing mechanism.
 
-### INVOKABLES_INDEX Section
+### `INVOKABLES_INDEX` Section
 
 **Grammar**
 
@@ -239,25 +239,24 @@ of memory up front, rather than use a vector-style resizing mechanism.
                                VBR<"NumArguments"> VBR<"NumResults"> 
 ```
 
-The INVOKABLES_INDEX section defines a table of "invokables" in the BEF file, 
-including an Offset into the [INVOKABLES_BODIES
-Section](#INVOKABLES_BODIES-section), a name (an Offset
-into the [Strings section](#strings-section), which may be an empty string), and
-a count of argument and result types.
+The `INVOKABLES_INDEX` section defines a table of "invokables" in the BEF file, 
+including an Offset into the [`INVOKABLES_BODIES_SECTION`](#INVOKABLES_BODIES-section),
+a name (an Offset into the [`STRINGS_SECTION`](#strings-section), which may be an 
+empty string), and a count of argument and result types.
 
 ***Rationale***
 
 This defines a symbol table for the BEF file, allowing clients to look up
 invokables by name.  While we could intersperse this information into the
-[INVOKABLES_BODIES section](#INVOKABLES_BODIES-section) itself, doing so would
-require the reader to make a pass over all of the INVOKABLES_BODIES ahead of
+[`INVOKABLES_BODIES_SECTION`](#INVOKABLES_BODIES-section) itself, doing so would
+require the reader to make a pass over all of the `INVOKABLES_BODIES` ahead of
 time. We prefer to have a quick index that the reader can scan at load time,
 deferring processing of any individual invokable until it is needed.
 
 We encode the count of invokables so the executor can allocate one block
 of memory up front, rather than use a vector-style resizing mechanism.
 
-### INVOKABLES_BODIES Section
+### `INVOKABLES_BODIES` Section
 
 **Grammar**
 
@@ -265,9 +264,9 @@ of memory up front, rather than use a vector-style resizing mechanism.
   INVOKABLES_BODIES_SECTION ::= INVOKABLE_BODY*
 ```
 
-The INVOKABLES_BODIES section is a series of bodies emitted to the byte stream
+The `INVOKABLES_BODIES` section is a series of bodies emitted to the byte stream
 and then addressed by an Offset indicated by the
-[INVOKABLES_INDEX section](#INVOKABLES_INDEX-section). This section is 4-byte
+[`INVOKABLES_INDEX` section](#INVOKABLES_INDEX-section). This section is 4-byte
 aligned.
 
 ***Rationale***
@@ -318,7 +317,7 @@ Specifially, a pseudo-primitive defines registers for invokable arguments and a
 pseudo-register that is conceptually used by primitives that takes no arguments.
 
 The result registers specify the register values to return, and must align with
-the invokable result types from the [INVOKABLES_INDEX
+the invokable result types from the [`INVOKABLES_INDEX`
 section](#INVOKABLES_INDEX-section).
 
 ***Rationale***
@@ -360,20 +359,20 @@ Primitives table, defined by the Primitives names section), a location (an offse
 the [LocationPositions section](#locationpositions-section)) the numbers of
 operands, attributes, invokables and results in the primitive body.
 
-The result table contains NumResults FIXED32 integers, indicating the number of
+The result table contains NumResults `FIXED32` integers, indicating the number of
 users for each corresponding result. The primitive body consists of zero or more
 inputs (indexes into the Register Table for the enclosing invokable), zero or 
 more constants (offsets into the [Attributes section](#attributes-section)),
 zero or more invokables (these are regions or `@foo` references in the primitive
-instance, stored as indexes into the [INVOKABLES_INDEX
+instance, stored as indexes into the [`INVOKABLES_INDEX`
 section](#INVOKABLES_INDEX-section)), zero or more results (indexes into the
 Register table for the enclosing invokable), and zero or more 'used by' records
 (which are
 indexes into the Primitive Table for this invokable). 'used by' records for the
 same result are grouped together and these groups are in the same order of
 'result' records. For example, if there are two results, A and B, and A has one
-user (a0) and B has two users (b0, b1), then FIXED32<"NumResults"> will be
-`0x00000002`, followed by two FIXED32<"NumUsedBys">, `0x00000001` `0x00000002`;
+user (a0) and B has two users (b0, b1), then `FIXED32<"NumResults">` will be
+`0x00000002`, followed by two `FIXED32<"NumUsedBys">`, `0x00000001` `0x00000002`;
 and in the primitive body there will be three "used by" records, a0, b0 and b1,
 consecutively.
 
@@ -393,8 +392,8 @@ for the primitive.
   LOCATION_FILENAMES_SECTION ::= NUL_TERMINATED_STRING*
 ```
 
-This section contains a list of NUL terminated strings used by locations
-section. A filename field of FileLineCol location and name field of Name
+This section contains a list of `NUL` terminated strings used by locations
+section. A filename field of `FileLineCol` location and name field of Name
 location are stored in this section.
 
 ***Rationale***
@@ -416,7 +415,7 @@ strings.
 This section contains a list of "locations", which are a VBR offset into the
 LocationFilenames section, and VBRs for the line and column of the position.
 
-### ATTRIBUTE_INDEX_MD Section
+### `ATTRIBUTE_INDEX_MD` Section
 
 **Grammar**
 
@@ -425,11 +424,11 @@ LocationFilenames section, and VBRs for the line and column of the position.
   ATTRIBUTE_INDEX_MD_ENTRY   ::= OFFSET<"Attributes">
 ```
 
-The ATTRIBUTE_INDEX_MD section specifies the kind of each attribute emitted to the
-attribute section, allowing BEFToMLIR conversion by allowing us to know the
+The `ATTRIBUTE_INDEX_MD` section specifies the kind of each attribute emitted to the
+attribute section, allowing `BEFToMLIR` conversion by allowing us to know the
 starting offset for each attribute in the file.
 
-### ATTRIBUTE_NAMES_MD Section
+### `ATTRIBUTE_NAMES_MD` Section
 
 **Grammar**
 
@@ -439,12 +438,12 @@ starting offset for each attribute in the file.
 ```
 
 The AttributeNames sections is an optional section which is not needed for BEF
-execution, but which makes BEFToMLIR conversion much nicer. This
+execution, but which makes `BEFToMLIR` conversion much nicer. This
 section describes the attribute names used by each primitive. There is a 1:1
 mapping between Primitive Table in this section and entries in
-[INVOKABLES_INDEX section](#INVOKABLES_INDEX-section). Each attribute and
+[`INVOKABLES_INDEX` section](#INVOKABLES_INDEX-section). Each attribute and
 region for a primitive has an entry here specifying the name.  The offset is
-into the STRINGS_MD section (not the STRINGS section).
+into the `STRINGS_MD` section (not the `STRINGS` section).
 
 ***Rationale***
 
@@ -452,7 +451,7 @@ Attribute names are strings that are not needed by the BEF Executor and have
 nothing to do with types or other metadata so we put them in their own section
 looked up lazily by offset.
 
-### MLIRTYPE_STRINGS_MD Section
+### `MLIRTYPE_STRINGS_MD` Section
 
 **Grammar**
 
@@ -460,16 +459,16 @@ looked up lazily by offset.
   MLIRTYPE_STRINGS_MD_SECTION ::= NUL_TERMINATED_STRING*
 ```
 
-The MLIRTYPE_STRINGS_MD section defines a table of MLIR type names used by the
-program, in a format that can be parsed by BEF2MLIR.  These are referenced by
+The `MLIRTYPE_STRINGS_MD` section defines a table of MLIR type names used by the
+program, in a format that can be parsed by `BEF2MLIR`.  These are referenced by
 index into the section, not offset.
 
 ***Rationale***
 
 Type names are not needed by the BEF executor, and are decoded in a single dense
-pass up-front in BEF2MLIR.  As such, they are referenced by index (not offset).
+pass up-front in `BEF2MLIR`.  As such, they are referenced by index (not offset).
 
-### MLIRTYPE_MD Section
+### `MLIRTYPE_MD` Section
 
 **Grammar**
 
@@ -477,10 +476,10 @@ pass up-front in BEF2MLIR.  As such, they are referenced by index (not offset).
   MLIRTYPE_MD_SECTION ::= INDEX<"MLIRTYPE_STRINGS_MD">*
 ```
 
-The MLIRTYPE_MD section is an optional section which is not needed for BEF
-execution, but allows BEF2MLIR conversion to regenerate the correct types for
+The `MLIRTYPE_MD` section is an optional section which is not needed for BEF
+execution, but allows `BEF2MLIR` conversion to regenerate the correct types for
 invokable arguments and the result types of primitives.  This section
 contains a list of VBR encoded indexes into the 
-[MLIRTYPE_STRINGS_MD section](#TYPE_STRINGS_MD-section), and is encoded in
+[`MLIRTYPE_STRINGS_MD` section](#TYPE_STRINGS_MD-section), and is encoded in
 the same order as the invokable table.  Each invokable has a list of argument
 types and a type for each primitive result.

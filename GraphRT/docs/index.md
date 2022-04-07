@@ -10,7 +10,7 @@ specialize the types of values passed between operations to "tensor".
 Instead, GraphRT aims to be the "MLIR of runtimes" -  an openly extensible
 compilation target that serves many domains.  The GraphRT approach is to allow
 clients to define their own set of operators (which it calls "primitives") that
-are implemented in (e.g.) C++, and allows them to take and produce arbitrary C++
+are implemented in C++, and allows them to take and produce arbitrary C++
 data values as edges of the dataflow graph.
 
 Being fully MLIR native, GraphRT
@@ -82,7 +82,7 @@ components of the GraphRT module are:
    part of the typical compilation flow), and from [BEF to
    MLIR](../lib/BEFToMLIR/) (more of a debugging/introspection/testing
    aid).
-1) a [set of example primitives](../lib//Primitives/) implementing integer
+1) a [set of example primitives](../lib/Primitives/) implementing integer
    arithmetic, common control flow operations, and for writing tests.  This
    library is fully generic and can be used without these, but they are
    nonetheless useful for writing tests, as examples, and even for some

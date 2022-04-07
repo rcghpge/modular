@@ -47,7 +47,7 @@ syntax for the primitive has a directly corresponding runtime behavior:
    corresponding C++ type.  For example an MLIR `4 : i32` attribute will turn
    into a pointer to 32-bits of data containing a 4 (in little endian format).
    These are passed in alphabetical order by attribute name, not in lexical
-   order in the .mlir file.  The attribute names are not encoded by default.
+   order in the `.mlir` file.  The attribute names are not encoded by default.
 3) Symbol references like `@foo` and region bodies `{ ... }` in MLIR turn into
    "invokable" references that may be invoked in the executor.
 
@@ -73,7 +73,7 @@ gives an overview of the key concepts.
 ## Registering simple primitives with operands and results
 
 To see this in action, consider some simple primitives that take and return
-values as SSA operands, e.g. with an .mlir syntax like this:
+values as SSA operands, e.g. with an `.mlir` syntax like this:
 
 ```mlir
   %add = grt.add.i32 %x, %x
@@ -131,7 +131,7 @@ static AsyncValueRef<int32_t> test_noop(AsyncValueRef<int32_t> input) {
 
 In some cases you may want to capture "all the rest" of the operands or results
 in an operation.  For example, consider the `grt.invoke` operation, which is
-used like this in a .mlir file:
+used like this in a `.mlir` file:
 
 ```mlir
    %y = grt.invoke @some_thing(%false, %a, %b) : (i1, i32, i32) -> (i32)
@@ -188,7 +188,7 @@ static std::pair<ErrorOr<int32_t>, int32_t> divrem(int32_t lhs, int32_t rhs) {
 ```
 
 This is mostly useful for simple primitives like this that don't involve
-asynchronous processing on a WorkQueue.  For asynchronous cases, you need more
+asynchronous processing on a `WorkQueue`.  For asynchronous cases, you need more
 advanced patterns.
 
 ## Asynchronous results and custom result handling
@@ -197,7 +197,7 @@ While directly returning a simple type like `int32_t` is useful for trivial
 cases, many primitives use the work queue in the runtime to parallelize the
 computation of a result.  As such, the primitive has to return back to the
 executor before the result is ready.  This means it needs to explicitly work
-with the AsyncValue for the result.
+with the `AsyncValue` for the result.
 
 To make this simpler and reduce boilerplate, you can declare these with the
 `Result<T>` class.  For example, it is a bad idea to perform unbounded amounts
@@ -226,7 +226,7 @@ vec_fill_non_prime_async_vector(int32_t size,
 While machine learning frameworks typically want to report errors synchronously,
 there are some rare cases where you only realize on the background task that
 there is a problem (e.g. maybe you want to treat divide by zero as an error,
-which is dependent on the element data).  AsyncValue's need location information
+which is dependent on the element data).  `AsyncValue`'s need location information
 to propagate their errors, and we don't copy that around by default.  To get it
 into your closure, use the `copyWithLocation()` method on `Result`:
 
@@ -520,7 +520,7 @@ the wrong thing.  TODO: Should we completely ban pointers (and things like
 # Non-strict primitives
 
 By default, the BEF executor only invokes a primitive implementation function
-when all of the arguments (SSA values in MLIR syntax) are "ready" AsyncValue's.
+when all of the arguments (SSA values in MLIR syntax) are "ready" `AsyncValue`'s.
 When they become ready, it checks to see if any of them are errors.  If so, the
 error value is automatically propagated to the result value of the primitive
 (so primitives don't have to handle errors explicitly).  This is the right

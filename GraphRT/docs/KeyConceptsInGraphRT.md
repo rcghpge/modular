@@ -271,7 +271,7 @@ to take longer to execute than "some long latency operation".  In higher level
 machine learning graphs, some operators take a lot less time to execute than
 others - e.g. some might be accelerated and some might not.
 
-On the other side of the call, the code embodied by "other_invokable" may include
+On the other side of the call, the code embodied by `other_invokable` may include
 arbitrarily complicated logic, and some of that logic may only depend on one or
 the other argument to it.  We'd really like to kick off that logic as soon as we
 can, to make sure we keep the CPU thread pool and accelerators as loaded up as
@@ -287,7 +287,7 @@ Non-strict primitives are generally useful for control flow operations (e.g.
 doesn't need all inputs to be available) and `grt.repeat` can start execution
 when the iteration count is known.  It is also useful for some primitives that
 do not use all their operands, for example, consider a [ternary
-operator](https://en.wikipedia.org/wiki/%3F:) like the `cond ? a : b`: there is
+operator](https://en.wikipedia.org/wiki/Ternary_operation) like the `cond ? a : b`: there is
 no reason to block on availability of `a` or `b`: as soon as the condition is
 known, the `AsyncValue` for the right side can be forwarded on as the result.
 
