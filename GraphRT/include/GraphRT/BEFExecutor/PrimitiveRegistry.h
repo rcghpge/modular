@@ -283,7 +283,7 @@ public:
   /// the C++ type for this.
   static inline void checkAttributeKind(const void *value) {
     assert(ConcreteType::matchesAttrKind(value) &&
-           "attribute passed to primitive has unexpected order;"
+           "attribute passed to primitive has unexpected type;"
            " mismatch between mlir syntax and primitive definition");
   }
 

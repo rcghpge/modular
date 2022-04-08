@@ -173,13 +173,16 @@ implementation C/C++ function as an const pointer.
 
 BEF files only support a subset of MLIR attributes, currently including:
 
-*   `i1`/`i8` integers: stored as 1-byte integers.
-*   `i16`/`i32`/`i64` integers: stored as 2/4/8-byte little endian integers.
+*   `i1` integers: stored as 1-byte integers.
+*   `si8`/`si16`/`si32`/`si64` integers: stored as 1/2/4/8-byte little endian
+     integers.
+*   `ui8`/`ui16`/`ui32`/`ui64` integers: stored as 1/2/4/8-byte little endian
+     integers.
 *   `f32` floats: stored as IEEE single precision floats.
 *   `f64` floats: stored as IEEE double precision floats.
 *   `strings`: stored as arrays of bytes, not necessarily NUL terminated.
 *   `arrays`: all elements of which are of the same type and fixed in width (eg.
-    `i32`, `f32`, `type`).
+    `si32`, `f32`, etc).
 
 The encoding of an attribute has three pieces:
 
@@ -192,7 +195,7 @@ The encoding of an attribute has three pieces:
 3) The value of the attribute is stored in little-endian byte order.
 
 Note that emission of the attribute is always done so that the attribute value
-is naturally aligned, e.g. that a `i32` value is emitted on a 4-byte alignment.
+is naturally aligned, e.g. that a `si32` value is emitted on a 4-byte alignment.
 
 ***Rationale***
 

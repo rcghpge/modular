@@ -217,12 +217,23 @@ static Type getTypeForAttributeKind(BEF::AttributeKind kind, MLIRContext *ctx) {
   switch (kind) {
   default:
     return Type();
-  case BEF::AttributeKind::kI1:
-  case BEF::AttributeKind::kI8:
-  case BEF::AttributeKind::kI16:
-  case BEF::AttributeKind::kI32:
-  case BEF::AttributeKind::kI64:
-    return IntegerType::get(ctx, (int)kind);
+  case BEF::AttributeKind::kBool:
+    return IntegerType::get(ctx, 1);
+  case BEF::AttributeKind::kS8:
+  case BEF::AttributeKind::kU8:
+  case BEF::AttributeKind::kS16:
+  case BEF::AttributeKind::kU16:
+  case BEF::AttributeKind::kS32:
+  case BEF::AttributeKind::kU32:
+  case BEF::AttributeKind::kS64:
+  case BEF::AttributeKind::kU64: {
+    IntegerType::SignednessSemantics signedness;
+    if (BEF::getCategory(kind) == BEF::AttrCategory::Signed)
+      signedness = IntegerType::Signed;
+    else
+      signedness = IntegerType::Unsigned;
+    return IntegerType::get(ctx, BEF::getWidthInBits(kind), signedness);
+  }
   case BEF::AttributeKind::kF32:
     return mlir::Float32Type::get(ctx);
   case BEF::AttributeKind::kF64:
@@ -302,16 +313,15 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
     uint8_t byte;
     // I1 attrs are a single byte in the BEF format, but are also a separate
     // attribute type, and so are special-cased here.
-    if (attrKind == BEF::AttributeKind::kI1) {
+    if (attrKind == BEF::AttributeKind::kBool) {
       if (attrReader.parseByte(byte))
         return {};
       return BoolAttr::get(getContext(), byte);
     }
 
-    // Compute the size of the integer by taking the attribute kind. The
-    // encoding of the attrKind means that we can get the bitwidth by simply
-    // masking off the last bit.
-    unsigned sizeInBits = ((uint8_t)attrKind & (~(uint8_t)0b1));
+    // Get the signedness and width.
+    auto category = BEF::getCategory(attrKind);
+    auto sizeInBits = BEF::getWidthInBits(attrKind);
 
     // If the bitwidth is not a power of 2 and it's not less than 64, then it's
     // not a valid size. This is very unlikely to happen unless there's a logic

@@ -35,8 +35,8 @@ def ConstantI32Op : GRTOp<"constant.i32"> {
     AsyncValue.
   }];
 
-  let arguments = (ins I32Attr:$value);
-  let results = (outs I32:$result);
+  let arguments = (ins SI32Attr:$value);
+  let results = (outs SI32:$result);
   let assemblyFormat = "$value attr-dict";
 }
 
@@ -47,8 +47,8 @@ def ConstantI32Op : GRTOp<"constant.i32"> {
 def AddI32Op : GRTOp<"add.i32"> {
   let summary = "Add two int32_t values";
  
-  let arguments = (ins I32:$lhs, I32:$rhs);
-  let results = (outs I32:$result);
+  let arguments = (ins SI32:$lhs, SI32:$rhs);
+  let results = (outs SI32:$result);
   let assemblyFormat = "$lhs `,` $rhs attr-dict";
 }
 
@@ -59,7 +59,7 @@ def AddI32Op : GRTOp<"add.i32"> {
 def LessEqualI32Op : GRTOp<"lessequal.i32"> {
   let summary = "Compare two int32_t values for `<=` and return a bool";
  
-  let arguments = (ins I32:$lhs, I32:$rhs);
+  let arguments = (ins SI32:$lhs, SI32:$rhs);
   let results = (outs I1:$result);
   let assemblyFormat = "$lhs `,` $rhs attr-dict";
 }
@@ -71,7 +71,7 @@ def LessEqualI32Op : GRTOp<"lessequal.i32"> {
 def PrintI32Op : GRTOp<"print.i32"> {
   let summary = "Print an int32_t value";
  
-  let arguments = (ins I32:$value, ChainType:$chain);
+  let arguments = (ins SI32:$value, ChainType:$chain);
   let results = (outs ChainType:$result);
   let assemblyFormat = "$value `,` $chain attr-dict";
 }

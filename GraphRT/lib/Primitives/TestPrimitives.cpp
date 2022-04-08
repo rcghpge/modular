@@ -97,7 +97,9 @@ static void printIndent(unsigned indent) {
 
 static void print_attr(BEFDynamicAttr value, unsigned indent) {
   if (auto intAttr = value.dyn_cast<int32_t>()) {
-    printf("int32 = %d\n", intAttr->get());
+    printf("sint32 = %d\n", intAttr->get());
+  } else if (auto intAttr = value.dyn_cast<uint32_t>()) {
+    printf("uint32 = %u\n", intAttr->get());
   } else if (auto strAttr = value.dyn_cast<StringRef>()) {
     printf("string = ");
     fwrite(strAttr.getValue()->data(), 1, strAttr.getValue()->size(), stdout);

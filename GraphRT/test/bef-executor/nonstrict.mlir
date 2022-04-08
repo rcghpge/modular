@@ -1,8 +1,8 @@
 // RUN: bef-translate -export-bef -allow-unregistered-dialect %s > %t.bef
 // RUN: bef-executor %t.bef | FileCheck %s
 
-bef.invokable @return_first_arg(%x: i32, %y: i32) -> i32 {
-  bef.output %x : i32
+bef.invokable @return_first_arg(%x: si32, %y: si32) -> si32 {
+  bef.output %x : si32
 }
 
 // Test a nonstrict call with an unused argument.
@@ -10,11 +10,11 @@ bef.invokable @return_first_arg(%x: i32, %y: i32) -> i32 {
 bef.invokable @unused_nonstrict_arg() {
   %c1 = grt.constant.i32 1
 
-  %v2 = "test.async.add.i32"(%c1, %c1) : (i32, i32) -> i32
-  %v3 = "test.async.add.i32"(%v2, %v2) : (i32, i32) -> i32
+  %v2 = "test.async.add.i32"(%c1, %c1) : (si32, si32) -> si32
+  %v3 = "test.async.add.i32"(%v2, %v2) : (si32, si32) -> si32
 
   // BEFExecutor will allocate an IndirectAsyncValue for %v3, but %v3 is unused.
-  %x = grt.invoke @return_first_arg(%c1, %v3) : (i32, i32) -> i32
+  %x = grt.invoke @return_first_arg(%c1, %v3) : (si32, si32) -> si32
 
   // At this point %v3 is unused, but has not yet been forwarded. Setting %v3
   // must count as a use, otherwise the executor would immediately destroy %v3.

@@ -24,12 +24,12 @@ bef.invokable @test_linear() {
   // CHECK-NEXT: move constructed vt.value(5)
   // CHECK-NEXT: destroyed vt.value(5)
 
-  %v1 = "test.vt.constant"() { value = 1 : i32 } : () -> !vt.value
-  %v2 = "test.vt.constant"() { value = 2 : i32 } : () -> !vt.value
+  %v1 = "test.vt.constant"() { value = 1 : si32 } : () -> !vt.value
+  %v2 = "test.vt.constant"() { value = 2 : si32 } : () -> !vt.value
   %r = "test.vt.add"(%v1, %v2) : (!vt.value,  !vt.value) -> !vt.value
   "test.vt.print"(%r, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
-  "test.vt.constant"() { value = 4 : i32 } : () -> !vt.value
-  "test.vt.constant"() { value = 5 : i32 } : () -> !vt.value
+  "test.vt.constant"() { value = 4 : si32 } : () -> !vt.value
+  "test.vt.constant"() { value = 5 : si32 } : () -> !vt.value
 
   bef.output
 }
@@ -49,7 +49,7 @@ bef.invokable @call_no_op() {
 
   // CHECK-NEXT: constructed vt.value(2)
   // CHECK-NEXT: move constructed vt.value(2)
-  %c1 = "test.vt.constant"() { value = 2 : i32 } : () -> !vt.value
+  %c1 = "test.vt.constant"() { value = 2 : si32 } : () -> !vt.value
 
   // no_op returns its argument, which extends vt.value(2)'s lifetime.
   %x = grt.invoke @no_op(%c1) : (!vt.value) -> !vt.value
@@ -64,7 +64,7 @@ bef.invokable @call_no_op() {
 
 // CHECK-LABEL: 'add_one' because it has arguments
 bef.invokable @add_one(%x: !vt.value) -> !vt.value {
-  %v1 = "test.vt.constant"() { value = 1 : i32 } : () -> !vt.value
+  %v1 = "test.vt.constant"() { value = 1 : si32 } : () -> !vt.value
   %r = "test.vt.add"(%v1, %x) : (!vt.value,  !vt.value) -> !vt.value
   bef.output %r : !vt.value
 }
@@ -74,7 +74,7 @@ bef.invokable @add_one(%x: !vt.value) -> !vt.value {
 bef.invokable @caller() {
   // CHECK-NEXT: constructed vt.value(3)
   // CHECK-NEXT: move constructed vt.value(3)
-  %c1 = "test.vt.constant"() { value = 3 : i32 } : () -> !vt.value
+  %c1 = "test.vt.constant"() { value = 3 : si32 } : () -> !vt.value
 
   // CHECK-NEXT: constructed vt.value(1)
   // CHECK-NEXT: move constructed vt.value(1)
@@ -111,7 +111,7 @@ bef.invokable @test_hello() {
 bef.invokable @share_to_two() {
   // CHECK-NEXT: constructed vt.value(1)
   // CHECK-NEXT: move constructed vt.value(1)
-  %c1 = "test.vt.constant"() { value = 1 : i32 } : () -> !vt.value
+  %c1 = "test.vt.constant"() { value = 1 : si32 } : () -> !vt.value
 
   %x1, %x2 = "test.vt_share_to_two"(%c1) : (!vt.value) -> (!vt.value, !vt.value)
 
@@ -139,7 +139,7 @@ bef.invokable @call_share_to_two(%x: !vt.value) -> (!vt.value, !vt.value) {
 bef.invokable @share_to_two_caller() {
   // CHECK-NEXT: constructed vt.value(1)
   // CHECK-NEXT: move constructed vt.value(1)
-  %c1 = "test.vt.constant"() { value = 1 : i32 } : () -> !vt.value
+  %c1 = "test.vt.constant"() { value = 1 : si32 } : () -> !vt.value
 
   %x1, %x2 = grt.invoke @call_share_to_two(%c1) : (!vt.value) -> (!vt.value, !vt.value)
 
@@ -156,12 +156,12 @@ bef.invokable @share_to_two_caller() {
 }
 
 // CHECK-LABEL: 'repeat_n_inc' because it has arguments
-bef.invokable @repeat_n_inc(%n: i32) -> () {
+bef.invokable @repeat_n_inc(%n: si32) -> () {
   // Returns 1 + %n by initializing %x to 1 and incrementing in a loop.
   %ch0 = grt.chain.new
-  %x = "test.vt.constant"() { value = 1 : i32 } : () -> !vt.value
+  %x = "test.vt.constant"() { value = 1 : si32 } : () -> !vt.value
   %y = grt.repeat.i32 %n (%x: !vt.value) {
-    %v1 = "test.vt.constant"() { value = 1 : i32 } : () -> !vt.value
+    %v1 = "test.vt.constant"() { value = 1 : si32 } : () -> !vt.value
     %r = "test.vt.add"(%v1, %x) : (!vt.value,  !vt.value) -> !vt.value
     bef.output %r : !vt.value
   }
@@ -179,7 +179,7 @@ bef.invokable @repeat_0_inc() {
   // CHECK-NEXT: move constructed vt.value(1)
   // CHECK-NEXT: print vt.value(1)
   // CHECK-NEXT: destroyed vt.value(1)
-  grt.invoke @repeat_n_inc(%count) : (i32) -> ()
+  grt.invoke @repeat_n_inc(%count) : (si32) -> ()
 
   bef.output
 }
@@ -198,7 +198,7 @@ bef.invokable @repeat_1_inc() {
   // CHECK-NEXT: destroyed vt.value(1)
   // CHECK-NEXT: print vt.value(2)
   // CHECK-NEXT: destroyed vt.value(2)
-  grt.invoke @repeat_n_inc(%count) : (i32) -> ()
+  grt.invoke @repeat_n_inc(%count) : (si32) -> ()
   bef.output
 }
 
@@ -222,6 +222,6 @@ bef.invokable @repeat_2_inc() {
   // CHECK-NEXT: destroyed vt.value(2)
   // CHECK-NEXT: print vt.value(3)
   // CHECK-NEXT: destroyed vt.value(3)
-  grt.invoke @repeat_n_inc(%count) : (i32) -> ()
+  grt.invoke @repeat_n_inc(%count) : (si32) -> ()
   bef.output
 }

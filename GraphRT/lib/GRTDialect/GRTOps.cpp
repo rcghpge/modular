@@ -164,9 +164,10 @@ ParseResult RepeatI32Op::parse(OpAsmParser &parser, OperationState &result) {
   OpAsmParser::OperandType countOperand;
   if (parser.parseOperand(countOperand) ||
       parser.getCurrentLocation(&operandLoc) ||
-      parser.resolveOperand(countOperand,
-                            IntegerType::get(result.getContext(), 32),
-                            result.operands) ||
+      parser.resolveOperand(
+          countOperand,
+          IntegerType::get(result.getContext(), 32, IntegerType::Signed),
+          result.operands) ||
       parseParenOperandList(parser, result, operandInfo, operandLocs) ||
       parser.parseOptionalAttrDictWithKeyword(result.attributes))
     return failure();

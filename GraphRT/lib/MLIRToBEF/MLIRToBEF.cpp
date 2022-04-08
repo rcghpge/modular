@@ -584,14 +584,14 @@ public:
   BEFOffset emitAttribute(Attribute attr, Location loc);
 
 private:
-  FailureOr<BEF::AttributeKind>
-  deriveAttributeKind(unsigned bitwidth, bool isFloat, Location loc) const;
+  FailureOr<BEF::AttributeKind> deriveAttributeKind(Type eltType,
+                                                    Location loc) const;
   FailureOr<BEF::AttributeKind> getAttributeKind(Attribute attr,
                                                  Location loc) const;
   BEFOffset emitAttributeInternal(Attribute attr, Location loc,
                                   bool emitAsArrayElement = false);
-  BEFOffset emitIntegerAttribute(bool emitAsArrayElement, const APInt &value,
-                                 bool isFloat, Location loc);
+  BEFOffset emitIntegerValue(bool emitAsArrayElement, const APInt &value,
+                             Type eltType, Location loc);
   BEFOffset emitStringAttribute(StringRef value);
   BEFOffset emitDenseElementsAttribute(DenseElementsAttr value, Location loc);
   BEFOffset emitArrayAttribute(ArrayAttr value, Location loc);
@@ -603,33 +603,63 @@ private:
 /// Given a valid bitwidth and a boolean that tells us if this attribute is a
 /// float or not, construct the correct attribute kind.
 FailureOr<BEF::AttributeKind>
-AttributesEmitter::deriveAttributeKind(unsigned bitwidth, bool isFloat,
-                                       Location loc) const {
-  if (!llvm::isPowerOf2_64(bitwidth) || bitwidth > 64)
-    return LogicalResult(entities.emitError(loc)
-                         << "invalid bitwidth " << bitwidth);
+AttributesEmitter::deriveAttributeKind(Type eltType, Location loc) const {
+  BEF::AttrCategory category;
+  if (eltType.isSignlessInteger(1))
+    return BEF::AttributeKind::kBool;
 
-  return BEF::AttributeKind((bitwidth & 0xff) | (isFloat & 0b1));
+  if (eltType.isSignedInteger())
+    category = BEF::AttrCategory::Signed;
+  else if (eltType.isUnsignedInteger())
+    category = BEF::AttrCategory::Unsigned;
+  else if (eltType.isSignlessInteger())
+    return LogicalResult(entities.emitError(loc)
+                         << "signless integer attributes not supported");
+  else if (eltType.isF32() || eltType.isF64())
+    category = BEF::AttrCategory::Float;
+  else
+    return LogicalResult(entities.emitError(loc) << "unknown type " << eltType);
+
+  unsigned width = ~0U;
+  switch (eltType.getIntOrFloatBitWidth()) {
+  case 1:
+    if (eltType.isSignlessInteger(1))
+      return BEF::AttributeKind::kBool;
+    break;
+  case 8:
+    width = 0;
+    break;
+  case 16:
+    width = 1;
+    break;
+  case 32:
+    width = 2;
+    break;
+  case 64:
+    width = 3;
+    break;
+  }
+
+  if (width == ~0U)
+    return LogicalResult(entities.emitError(loc)
+                         << "invalid bitwidth "
+                         << eltType.getIntOrFloatBitWidth());
+
+  return BEF::AttributeKind(width << 3 | uint8_t(category) << 1);
 }
 
 FailureOr<BEF::AttributeKind>
 AttributesEmitter::getAttributeKind(Attribute attr, Location loc) const {
-  if (auto intAttr = attr.dyn_cast<IntegerAttr>())
-    return deriveAttributeKind(intAttr.getValue().getBitWidth(),
-                               /*isFloat=*/false, loc);
-
-  if (auto floatAttr = attr.dyn_cast<FloatAttr>())
-    return deriveAttributeKind(
-        floatAttr.getValue().bitcastToAPInt().getBitWidth(), /*isFloat=*/true,
-        loc);
+  if (attr.isa<IntegerAttr, FloatAttr>())
+    return deriveAttributeKind(attr.getType(), loc);
 
   return LogicalResult(entities.emitError(loc)
                        << "Unknown attribute in getAttributeKind " << attr);
 }
 
-BEFOffset AttributesEmitter::emitIntegerAttribute(bool emitAsArrayElement,
-                                                  const APInt &value,
-                                                  bool isFloat, Location loc) {
+BEFOffset AttributesEmitter::emitIntegerValue(bool emitAsArrayElement,
+                                              const APInt &value, Type eltType,
+                                              Location loc) {
   if (!llvm::isPowerOf2_64(value.getBitWidth()) || value.getBitWidth() > 64) {
     entities.emitError(loc)
         << "unsupported integer width " << value.getBitWidth();
@@ -641,7 +671,7 @@ BEFOffset AttributesEmitter::emitIntegerAttribute(bool emitAsArrayElement,
 
   // If we are not being emitted as an array element, we should emit our kind.
   if (!emitAsArrayElement) {
-    auto kindOr = deriveAttributeKind(value.getBitWidth(), isFloat, loc);
+    auto kindOr = deriveAttributeKind(eltType, loc);
     if (failed(kindOr))
       return {0};
     emitByte((uint8_t)*kindOr);
@@ -682,8 +712,7 @@ BEFOffset AttributesEmitter::emitDenseElementsAttribute(DenseElementsAttr value,
   }
 
   // Get the attribute kind for the elements of the array.
-  auto kindOr = deriveAttributeKind(elementType.getIntOrFloatBitWidth(),
-                                    !elementType.isIntOrIndex(), loc);
+  auto kindOr = deriveAttributeKind(elementType, loc);
   if (failed(kindOr))
     return {0};
 
@@ -776,12 +805,13 @@ BEFOffset AttributesEmitter::emitDictionaryAttribute(DictionaryAttr value,
 BEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr, Location loc,
                                                    bool emitAsArrayElement) {
   if (auto intAttr = attr.dyn_cast<IntegerAttr>())
-    return emitIntegerAttribute(emitAsArrayElement, intAttr.getValue(), false,
-                                loc);
+    return emitIntegerValue(emitAsArrayElement, intAttr.getValue(),
+                            attr.getType(), loc);
 
   if (auto fpAttr = attr.dyn_cast<FloatAttr>())
-    return emitIntegerAttribute(emitAsArrayElement,
-                                fpAttr.getValue().bitcastToAPInt(), true, loc);
+    return emitIntegerValue(emitAsArrayElement,
+                            fpAttr.getValue().bitcastToAPInt(), attr.getType(),
+                            loc);
 
   // Non-primitive (i.e. non-int or non-float) elements cannot be emitted as
   // arrays, so if this function proceeds past here there has been an error.

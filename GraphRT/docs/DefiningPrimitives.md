@@ -134,9 +134,9 @@ in an operation.  For example, consider the `grt.invoke` operation, which is
 used like this in a `.mlir` file:
 
 ```mlir
-   %y = grt.invoke @some_thing(%false, %a, %b) : (i1, i32, i32) -> (i32)
+   %y = grt.invoke @some_thing(%false, %a, %b) : (i1, si32, si32) -> (si32)
 
-   %a, %b = grt.invoke @other_thing(%c1) : (i32) -> (f32, i1)
+   %a, %b = grt.invoke @other_thing(%c1) : (si32) -> (f32, i1)
 ```
 
 You can implement this using the `RemainingArguments` and `RemainingResults`
@@ -282,15 +282,15 @@ cases:
   %x = grt.constant.i32 42
 
   // Same thing in verbose syntax:
-  %x2 = "grt.constant.i32"() {value = 42 : i32} : () -> () 
+  %x2 = "grt.constant.i32"() {value = 42 : si32} : () -> () 
 
-  %z = "add.ints"() { value = dense<[1, 2, 3]> : tensor<3xi32> } : () -> ()
+  %z = "add.ints"() { value = dense<[1, 2, 3]> : tensor<3xsi32> } : () -> ()
 
-  "some.thing"() { a = 3275124123121 : i64, b = "string value" } : () -> ()
+  "some.thing"() { a = 3275124123121 : si64, b = "string value" } : () -> ()
 ```
 
 Attributes in MLIR files are always canonicalized to be in alphabetical order
-by their key (i.e., if you move the string value before the `i64` in the last
+by their key (i.e., if you move the string value before the `si64` in the last
 example, they will still be emitted as "a" and then "b", so the `i64` will be
 first), and BEF files don't encode the attribute names ("a" and "b" in that
 last example).  To handle these, you can implement the primitives using
@@ -309,7 +309,7 @@ static void some_thing(BEFAttr<int64_t> a, BEFAttr<StringRef> b) {
 ```
 
 When receiving attributes, you need to use a well-known C++ type that matches
-the datatype in question, e.g. `int32_t` or `uint32_t` for 32-bit attributes,
+the datatype in question, e.g. `uint32_t` for `ui32` attributes,
 and `StringRef` or `ArrayRef` for strings and `dense` elements.  
 
 In addition to low-level constant data access, you can also use MLIR array and
@@ -366,11 +366,6 @@ static void takes_any_attribute(BEFDynamicAttr value) {
     ...
 }
 ```
-
-Note that the BEF format doesn't keep track of signedness, so an `i32` in MLIR
-will successfully convert to both `int32_t` and `uint32_t`.  Also, the BEF
-format does not keep track of the element types for empty arrays, so an empty
-array will `dyn_cast` to any array type.
 
 # Guidelines for Implementing Primitives
 
@@ -536,17 +531,17 @@ become available.  Consider the `grt.invoke` operation for example, which invoke
 a invokable passing a bunch of arguments:
 
 ```mlir
-bef.invokable @process(%a: i32, %b: i32) -> (i32, i32) {
-  %x = "some_expensive_multithreaded_compute"(%a) : (i32) -> i32
-  %y = "independent_expensive_multithreaded_compute"(%b) : (i32) -> i32
-  bef.output %x, %y : i32, i32
+bef.invokable @process(%a: si32, %b: si32) -> (si32, si32) {
+  %x = "some_expensive_multithreaded_compute"(%a) : (si32) -> si32
+  %y = "independent_expensive_multithreaded_compute"(%b) : (si32) -> si32
+  bef.output %x, %y : si32, si32
 }
 
 bef.invokable @example() {
-  %a_val = "some_unpredictable_length_op"() : () -> i32
-  %b_val = "other_unpredictable_length_op"() : () -> i32
+  %a_val = "some_unpredictable_length_op"() : () -> si32
+  %b_val = "other_unpredictable_length_op"() : () -> si32
 
-  %res_0, %res_1 = grt.invoke @process(%a_val, %b_val) : (i32, i32) -> (i32, i32)
+  %res_0, %res_1 = grt.invoke @process(%a_val, %b_val) : (si32, si32) -> (si32, si32)
   ...
 }
 ```

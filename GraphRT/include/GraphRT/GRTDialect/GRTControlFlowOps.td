@@ -107,14 +107,14 @@ def RepeatI32Op : GRTOp<"repeat.i32",
     Example:
 
     ```mlir
-      %res1, %res2 = grt.repeat.i32 %i (%loopval1: i32, %loopval2: f32) {
+      %res1, %res2 = grt.repeat.i32 %i (%loopval1: si32, %loopval2: f32) {
         ...
-        bef.output %loopval1, %loopval2 : i32, f32
+        bef.output %loopval1, %loopval2 : si32, f32
       }
     ```
   }];
 
-  let arguments = (ins I32:$tripCount, Variadic<AnyType>:$inputs);
+  let arguments = (ins SI32:$tripCount, Variadic<AnyType>:$inputs);
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$region);
 

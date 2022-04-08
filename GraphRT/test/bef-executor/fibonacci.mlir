@@ -1,37 +1,37 @@
 // RUN: bef-translate -export-bef -allow-unregistered-dialect %s > %t.bef
 // RUN: bef-executor %t.bef | FileCheck %s
 
-bef.invokable @fib(%arg: i32) -> i32 {
+bef.invokable @fib(%arg: si32) -> si32 {
   %one = grt.constant.i32 1
   %cond = grt.lessequal.i32 %arg, %one
-  %res = grt.if %cond (%arg: i32) -> i32 {
-    bef.output %arg : i32
+  %res = grt.if %cond (%arg: si32) -> si32 {
+    bef.output %arg : si32
   } else {
     %min_one = grt.constant.i32 -1
     %n_min_one = grt.add.i32 %arg, %min_one
     %n_min_two = grt.add.i32 %n_min_one, %min_one
-    %fib_n_min_one = grt.invoke @fib(%n_min_one) : (i32) -> (i32)
-    %fib_n_min_two = grt.invoke @fib(%n_min_two) : (i32) -> (i32)
+    %fib_n_min_one = grt.invoke @fib(%n_min_one) : (si32) -> (si32)
+    %fib_n_min_two = grt.invoke @fib(%n_min_two) : (si32) -> (si32)
     %sum = grt.add.i32 %fib_n_min_one, %fib_n_min_two
-    bef.output %sum : i32
+    bef.output %sum : si32
   }
 
-  bef.output %res : i32
+  bef.output %res : si32
 }
 
 // CHECK-LABEL: --- Running 'fib_driver'
 bef.invokable @fib_driver() {
   %zero = grt.constant.i32 0
-  %fib0 = grt.invoke @fib(%zero) : (i32) -> (i32)
+  %fib0 = grt.invoke @fib(%zero) : (si32) -> (si32)
 
   %four = grt.constant.i32 4
-  %fib4 = grt.invoke @fib(%four) : (i32) -> (i32)
+  %fib4 = grt.invoke @fib(%four) : (si32) -> (si32)
 
   %eight = grt.constant.i32 8
-  %fib8 = grt.invoke @fib(%eight) : (i32) -> (i32)
+  %fib8 = grt.invoke @fib(%eight) : (si32) -> (si32)
 
   %sixteen = grt.constant.i32 16
-  %fib16 = grt.invoke @fib(%sixteen) : (i32) -> (i32)
+  %fib16 = grt.invoke @fib(%sixteen) : (si32) -> (si32)
 
   %ch0 = grt.chain.new
 

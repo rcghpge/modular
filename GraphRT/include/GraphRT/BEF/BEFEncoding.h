@@ -72,35 +72,51 @@ enum class SectionID {
 // BEF attribute constants and helpers
 //===----------------------------------------------------------------------===//
 
+/// A two-bit classification.
+enum class AttrCategory : uint8_t { Float, Signed, Unsigned };
+
 /// This bitfield encodes into a single byte metadata about the format of
 /// emitted attributes.
 enum class AttributeKind : uint8_t {
   kInvalid = 0,
-  /// The primitive types store their types as a simple function of their
-  /// bitwidth for simplicity in getting the AttributeKind from a type. Floats
-  /// have the low bit set to indicate that they're floats.
-  kI1 = 1,
-  kI8 = 8,
-  kI16 = 16,
-  kI32 = 32,
-  kI64 = 64,
-  kF32 = 33,
-  kF64 = 65,
-  /// There is no special meaning to remaining enum values, they start at 66
-  /// because kF64 is 65.
-  kString = 66,
-  kDictionary = 67,
-  kList = 68,
 
-  /// This is a bitmask, meant to be applied to one of the basic types (I*, F*)
-  kArrayType = 0x80
+  /// This is a bitmask, when combined with one of the basic types, indicates
+  /// an array of that type.
+  kArrayType = 1,
+
+  /// The primitive types are encoded with the low two bits being their category
+  /// and the next 2 bits being the number of bytes (in log form).
+  kS8 = (0 << 3) | uint8_t(AttrCategory::Signed) << 1,
+  kU8 = (0 << 3) | uint8_t(AttrCategory::Unsigned) << 1,
+  kS16 = (1 << 3) | uint8_t(AttrCategory::Signed) << 1,
+  kU16 = (1 << 3) | uint8_t(AttrCategory::Unsigned) << 1,
+  kS32 = (2 << 3) | uint8_t(AttrCategory::Signed) << 1,
+  kU32 = (2 << 3) | uint8_t(AttrCategory::Unsigned) << 1,
+  kF32 = (2 << 3) | uint8_t(AttrCategory::Float) << 1,
+  kS64 = (3 << 3) | uint8_t(AttrCategory::Signed) << 1,
+  kU64 = (3 << 3) | uint8_t(AttrCategory::Unsigned) << 1,
+  kF64 = (3 << 3) | uint8_t(AttrCategory::Float) << 1,
+
+  // There is no special encoding to remaining enum values, they are just
+  // numbered to be out of the way of the others.
+  kBool = 1 << 5,
+  kString = 2 << 5,
+  kDictionary = 3 << 5,
+  kList = 5 << 5,
 };
+
+static inline AttrCategory getCategory(AttributeKind kind) {
+  return (AttrCategory)((uint8_t(kind) >> 1) & 3);
+}
+
+static inline unsigned getWidthInBits(AttributeKind kind) {
+  return (1 << ((uint8_t)kind >> 3)) * 8;
+}
 
 /// Given an AttributeKind for an element, return the AttributeKind for an array
 /// of that element.
 static inline constexpr AttributeKind getArrayOf(AttributeKind elementKind) {
-  assert(elementKind != AttributeKind::kString &&
-         elementKind != AttributeKind::kArrayType &&
+  assert(elementKind <= AttributeKind::kBool &&
          "Cannot make arrays of arrays or arrays of strings");
   return AttributeKind(uint8_t(elementKind) |
                        uint8_t(AttributeKind::kArrayType));
@@ -119,15 +135,15 @@ struct AttrKindForCXXType {
   struct AttrKindForCXXType<CXXTYPE> {                                         \
     static constexpr AttributeKind kind = AttributeKind::KIND;                 \
   };
-DECLARE_ATTR_MAPPING(kI1, bool);
-DECLARE_ATTR_MAPPING(kI8, int8_t);
-DECLARE_ATTR_MAPPING(kI8, uint8_t);
-DECLARE_ATTR_MAPPING(kI16, int16_t);
-DECLARE_ATTR_MAPPING(kI16, uint16_t);
-DECLARE_ATTR_MAPPING(kI32, int32_t);
-DECLARE_ATTR_MAPPING(kI32, uint32_t);
-DECLARE_ATTR_MAPPING(kI64, int64_t);
-DECLARE_ATTR_MAPPING(kI64, uint64_t);
+DECLARE_ATTR_MAPPING(kBool, bool);
+DECLARE_ATTR_MAPPING(kS8, int8_t);
+DECLARE_ATTR_MAPPING(kU8, uint8_t);
+DECLARE_ATTR_MAPPING(kS16, int16_t);
+DECLARE_ATTR_MAPPING(kU16, uint16_t);
+DECLARE_ATTR_MAPPING(kS32, int32_t);
+DECLARE_ATTR_MAPPING(kU32, uint32_t);
+DECLARE_ATTR_MAPPING(kS64, int64_t);
+DECLARE_ATTR_MAPPING(kU64, uint64_t);
 DECLARE_ATTR_MAPPING(kF32, float);
 DECLARE_ATTR_MAPPING(kF64, double);
 DECLARE_ATTR_MAPPING(kString, llvm::StringRef);

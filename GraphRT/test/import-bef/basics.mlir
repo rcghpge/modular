@@ -27,11 +27,11 @@ bef.invokable @trivial() {
 // CHECK-LABEL:  bef.invokable @args_results(%arg0: !bef.unknown, %arg1: !bef.unknown) -> (!bef.unknown, !bef.unknown) {
 // CHECK-NEXT:     bef.output %arg1, %arg0 : !bef.unknown, !bef.unknown
 // CHECK-NEXT:   }
-// MD-LABEL:  bef.invokable @args_results(%arg0: i32, %arg1: i8) -> (i8, i32) {
-// MD-NEXT:     bef.output %arg1, %arg0 : i8, i32
+// MD-LABEL:  bef.invokable @args_results(%arg0: si32, %arg1: si8) -> (si8, si32) {
+// MD-NEXT:     bef.output %arg1, %arg0 : si8, si32
 // MD-NEXT:   }
-bef.invokable @args_results(%a: i32, %b: i8) -> (i8, i32) {
-  bef.output %b, %a : i8, i32
+bef.invokable @args_results(%a: si32, %b: si8) -> (si8, si32) {
+  bef.output %b, %a : si8, si32
 }
 
 // CHECK-LABEL:  bef.invokable @attributes() {
@@ -41,25 +41,25 @@ bef.invokable @attributes() {
   // MD-NEXT: "a.b"() {a = true}
   "a.b"() { a = 1 : i1 }: () -> ()
 
-  // CHECK-NEXT: "a.b" [42 : i8, 17 : i8]
-  // MD-NEXT: "a.b"() {b = 42 : i8, x = 17 : i8}
-  "a.b"() { b = 42 : i8, x = 17 : i8 }: () -> ()
+  // CHECK-NEXT: "a.b" [42 : si8, 17 : si8]
+  // MD-NEXT: "a.b"() {b = 42 : si8, x = 17 : si8}
+  "a.b"() { b = 42 : si8, x = 17 : si8 }: () -> ()
 
-  // CHECK-NEXT: "a.b" [258 : i16]
-  // MD-NEXT: "a.b"() {c = 258 : i16}
-  "a.b"() { c = 0x0102 : i16 }: () -> ()
+  // CHECK-NEXT: "a.b" [258 : si16]
+  // MD-NEXT: "a.b"() {c = 258 : si16}
+  "a.b"() { c = 0x0102 : si16 }: () -> ()
 
-  // CHECK-NEXT: "a.b" [32751241 : i32]
-  "a.b"() { d = 32751241 : i32 }: () -> ()
+  // CHECK-NEXT: "a.b" [32751241 : si32]
+  "a.b"() { d = 32751241 : si32 }: () -> ()
 
-   // CHECK-NEXT: "a.b" [3275124123121]
-  "a.b"() { a = 3275124123121 : i64 }: () -> ()
+   // CHECK-NEXT: "a.b" [3275124123121 : si64]
+  "a.b"() { a = 3275124123121 : si64 }: () -> ()
 
   // CHECK-NEXT: "a.b" ["foo\00bar"]
-  "a.b"() { a = "foo\00bar" : i64 }: () -> ()
+  "a.b"() { a = "foo\00bar" : si64 }: () -> ()
 
-  // CHECK-NEXT: "a.b" [dense<> : tensor<0xi32>]
-  "a.b"() { a = dense<[]> : tensor<0xi32> }: () -> ()
+  // CHECK-NEXT: "a.b" [dense<> : tensor<0xsi32>]
+  "a.b"() { a = dense<[]> : tensor<0xsi32> }: () -> ()
 
   // CHECK-NEXT: "a.b" [dense<[true, false, true]> : tensor<3xi1>]
   "a.b"() { a = dense<[true, false, true]> : tensor<3xi1> }: () -> ()
@@ -71,13 +71,13 @@ bef.invokable @attributes() {
   "a.b"() { a = 3.0 : f64 }: () -> ()
 
   // Dictionary attribute.
-  // CHECK-NEXT: bef.opaque "a.b" [{b = 1 : i8, c = [true, false, false]}]
-  "a.b"() { a = { b = 1 : i8, c = [true, false, false] } }: () -> ()
+  // CHECK-NEXT: bef.opaque "a.b" [{b = 1 : si8, c = [true, false, false]}]
+  "a.b"() { a = { b = 1 : si8, c = [true, false, false] } }: () -> ()
 
   // List Attribute.
-  // CHECK-NEXT: bef.opaque "a.b"  [1 : i8, [1 : i32, 2 : i8]]
-  // MD: "a.b"() {a = 1 : i8, b = [1 : i32, 2 : i8]} : () -> ()
-  "a.b"() {a = 1:i8, b = [1: i32, 2: i8] } : () -> ()
+  // CHECK-NEXT: bef.opaque "a.b"  [1 : si8, [1 : ui32, 2 : si8]]
+  // MD: "a.b"() {a = 1 : si8, b = [1 : ui32, 2 : si8]} : () -> ()
+  "a.b"() {a = 1: si8, b = [1: ui32, 2: si8] } : () -> ()
 
   bef.output
    // CHECK-NEXT:     bef.output
@@ -85,12 +85,12 @@ bef.invokable @attributes() {
 
 // CHECK-LABEL: bef.invokable @opaque_round_trip() {
 // CHECK-NEXT:    %0:2 = bef.opaque "simple.primitive" []() : () -> (!bef.unknown, !bef.unknown)
-// CHECK-NEXT:    bef.opaque "other.primitive" [42 : i8](%0#1, %0#0) : (!bef.unknown, !bef.unknown) -> ()
+// CHECK-NEXT:    bef.opaque "other.primitive" [42 : si8](%0#1, %0#0) : (!bef.unknown, !bef.unknown) -> ()
 // CHECK-NEXT:    bef.output
 // CHECK-NEXT:  }
 bef.invokable @opaque_round_trip() {
   %0:2 = "bef.opaque"() {attrs = [], opname = "simple.primitive"} : () -> (!bef.unknown, !bef.unknown)
-  "bef.opaque"(%0#1, %0#0) {attrs = [42 : i8], opname = "other.primitive"} : (!bef.unknown, !bef.unknown) -> ()
+  "bef.opaque"(%0#1, %0#0) {attrs = [42 : si8], opname = "other.primitive"} : (!bef.unknown, !bef.unknown) -> ()
   bef.output
 }
 
