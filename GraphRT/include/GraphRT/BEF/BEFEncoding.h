@@ -84,8 +84,9 @@ enum class AttributeKind : uint8_t {
   /// an array of that type.
   kArrayType = 1,
 
-  /// The primitive types are encoded with the low two bits being their category
-  /// and the next 2 bits being the number of bytes (in log form).
+  /// The primitive types are encoded with the low bit reserved for "is array",
+  /// the next two bits being their category, and the next 2 bits being the
+  /// number of bytes (in log form).
   kS8 = (0 << 3) | uint8_t(AttrCategory::Signed) << 1,
   kU8 = (0 << 3) | uint8_t(AttrCategory::Unsigned) << 1,
   kS16 = (1 << 3) | uint8_t(AttrCategory::Signed) << 1,

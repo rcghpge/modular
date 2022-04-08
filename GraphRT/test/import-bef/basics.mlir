@@ -41,9 +41,9 @@ bef.invokable @attributes() {
   // MD-NEXT: "a.b"() {a = true}
   "a.b"() { a = 1 : i1 }: () -> ()
 
-  // CHECK-NEXT: "a.b" [42 : si8, 17 : si8]
-  // MD-NEXT: "a.b"() {b = 42 : si8, x = 17 : si8}
-  "a.b"() { b = 42 : si8, x = 17 : si8 }: () -> ()
+  // CHECK-NEXT: "a.b" [42 : si8, 17 : ui8]
+  // MD-NEXT: "a.b"() {b = 42 : si8, x = 17 : ui8}
+  "a.b"() { b = 42 : si8, x = 17 : ui8 }: () -> ()
 
   // CHECK-NEXT: "a.b" [258 : si16]
   // MD-NEXT: "a.b"() {c = 258 : si16}

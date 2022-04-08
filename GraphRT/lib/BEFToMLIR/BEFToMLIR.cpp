@@ -319,8 +319,7 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
       return BoolAttr::get(getContext(), byte);
     }
 
-    // Get the signedness and width.
-    auto category = BEF::getCategory(attrKind);
+    // Calculate the number of bytes the read.
     auto sizeInBits = BEF::getWidthInBits(attrKind);
 
     // If the bitwidth is not a power of 2 and it's not less than 64, then it's
