@@ -58,3 +58,20 @@ auto PrimitiveRegistry::get(StringRef name) const -> PrimitiveImplFn {
   return it != impl->prims.end() && it->first == name ? it->second
                                                       : PrimitiveImplFn();
 }
+
+//===----------------------------------------------------------------------===//
+// BEFDictionaryAttr
+//===----------------------------------------------------------------------===//
+
+/// Print the contents of this dictionary to stderr for debugging.
+void BEFDictionaryAttr::dump() const {
+  // This isn't doing a very full fidelty print because we don't want a bunch
+  // of code size that is difficult to strip out.  Just do something simple for
+  // debugging.
+  fprintf(stderr, "BEFDictionaryAttr {\n");
+  for (const auto &elt : *this) {
+    fprintf(stderr, "  %.*s = %d\n", (int)elt.getName().size(),
+            elt.getName().data(), (int)elt.getValue().getAttrKind());
+  }
+  fprintf(stderr, "}\n");
+}

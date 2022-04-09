@@ -376,11 +376,18 @@ public:
     return BEFAttrCommon::getAttrKind(get());
   }
 
+  /// Return true if this dynamic attribute actually holds the specified
+  /// underlying type.
+  template <typename T>
+  bool isa() const {
+    return BEFAttr<T>::matchesAttrKind(get());
+  }
+
   /// Do a checked conversion to the specified attribute kind.
   template <typename T>
   Optional<BEFAttr<T>> dyn_cast() const {
     // Test to see if this has the right attribute kind.
-    if (!BEFAttr<T>::matchesAttrKind(get()))
+    if (!this->template isa<T>())
       return {};
     return BEFAttr<T>(get());
   }
@@ -590,6 +597,9 @@ public:
 
     return found->template dyn_cast<T>();
   }
+
+  // Print the contents of this dictionary to stderr for debugging.
+  void dump() const;
 
 private:
   const void *pointer;
