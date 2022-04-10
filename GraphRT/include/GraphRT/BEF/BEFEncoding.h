@@ -118,7 +118,7 @@ static inline unsigned getWidthInBits(AttributeKind kind) {
 /// of that element.
 static inline constexpr AttributeKind getArrayOf(AttributeKind elementKind) {
   assert(elementKind <= AttributeKind::kBool &&
-         "Cannot make arrays of arrays or arrays of strings");
+         "cannot make arrays of arrays or arrays of strings");
   return AttributeKind(uint8_t(elementKind) |
                        uint8_t(AttributeKind::kArrayType));
 }
