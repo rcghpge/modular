@@ -44,9 +44,9 @@ parseParenOperandList(OpAsmParser &parser, OperationState &result,
 LogicalResult InvokeOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   // Check that the target attribute was specified.
   BEF::InvokableOp fn = symbolTable.lookupNearestSymbolFrom<BEF::InvokableOp>(
-      *this, targetAttr());
+      *this, getTargetAttr());
   if (!fn)
-    return emitOpError() << "'" << targetAttr()
+    return emitOpError() << "'" << getTargetAttr()
                          << "' does not reference a valid invokable";
 
   // Verify that the operand and result types match the target.
@@ -113,8 +113,8 @@ ParseResult IfOp::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 void IfOp::print(OpAsmPrinter &p) {
-  p << " " << cond() << " (";
-  llvm::interleaveComma(inputs(), p,
+  p << " " << getCond() << " (";
+  llvm::interleaveComma(getInputs(), p,
                         [&](Value arg) { p << arg << ": " << arg.getType(); });
   p << ") ";
   p.printArrowTypeList(getResultTypes());
@@ -123,26 +123,26 @@ void IfOp::print(OpAsmPrinter &p) {
 
   // Reuse the argument names provided to the op for the bbarg names within
   // the region.
-  p.shadowRegionArgs(thenRegion(), inputs());
-  p.printRegion(thenRegion(), /*printEntryBlockArgs=*/false);
+  p.shadowRegionArgs(getThenRegion(), getInputs());
+  p.printRegion(getThenRegion(), /*printEntryBlockArgs=*/false);
   p << " else ";
-  p.shadowRegionArgs(elseRegion(), inputs());
-  p.printRegion(elseRegion(), /*printEntryBlockArgs=*/false);
+  p.shadowRegionArgs(getElseRegion(), getInputs());
+  p.printRegion(getElseRegion(), /*printEntryBlockArgs=*/false);
 }
 
 LogicalResult IfOp::verify() {
   // Verify that the operands match the bb arguments.  The ODS verifier already
   // checked the first argument to be present and i1.
-  auto *thenBlock = &thenRegion().front();
-  if (inputs().size() != thenBlock->getNumArguments())
+  auto *thenBlock = &getThenRegion().front();
+  if (getInputs().size() != thenBlock->getNumArguments())
     return emitOpError("incorrect number of arguments to 'then' block");
-  auto *elseBlock = &elseRegion().front();
-  if (inputs().size() != elseBlock->getNumArguments())
+  auto *elseBlock = &getElseRegion().front();
+  if (getInputs().size() != elseBlock->getNumArguments())
     return emitOpError("incorrect number of arguments to 'else' block");
 
   for (unsigned i = 0, e = getNumOperands() - 1; i != e; ++i)
-    if (inputs()[i].getType() != thenBlock->getArgument(i).getType() ||
-        inputs()[i].getType() != elseBlock->getArgument(i).getType())
+    if (getInputs()[i].getType() != thenBlock->getArgument(i).getType() ||
+        getInputs()[i].getType() != elseBlock->getArgument(i).getType())
       return emitOpError("operand/argument type mismatch");
 
   auto thenOutput = cast<BEF::OutputOp>(thenBlock->getTerminator());
@@ -183,25 +183,25 @@ ParseResult RepeatI32Op::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 void RepeatI32Op::print(OpAsmPrinter &p) {
-  p << ' ' << tripCount() << " (";
-  llvm::interleaveComma(inputs(), p,
+  p << ' ' << getTripCount() << " (";
+  llvm::interleaveComma(getInputs(), p,
                         [&](Value arg) { p << arg << ": " << arg.getType(); });
   p << ") ";
   p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
 
   // Reuse the argument names provided to the op for the bbarg names within
   // the region.
-  p.shadowRegionArgs(region(), inputs());
-  p.printRegion(region(), /*printEntryBlockArgs=*/false);
+  p.shadowRegionArgs(getRegion(), getInputs());
+  p.printRegion(getRegion(), /*printEntryBlockArgs=*/false);
 }
 
 LogicalResult RepeatI32Op::verify() {
   // Verify that the operand and result types match.
-  if (getNumResults() != inputs().size())
+  if (getNumResults() != getInputs().size())
     return emitOpError("incorrect number of operands");
 
   for (unsigned i = 0, e = getNumResults(); i != e; ++i)
-    if (inputs()[i].getType() != getResult(i).getType())
+    if (getInputs()[i].getType() != getResult(i).getType())
       return emitOpError("operand/result type mismatch");
 
   auto output = cast<BEF::OutputOp>(getBody()->getTerminator());
@@ -249,16 +249,16 @@ ParseResult BenchmarkOp::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 void BenchmarkOp::print(OpAsmPrinter &p) {
-  p << ' ' << chain() << " (";
-  llvm::interleaveComma(operands(), p,
+  p << ' ' << getChain() << " (";
+  llvm::interleaveComma(getInputs(), p,
                         [&](Value arg) { p << arg << ": " << arg.getType(); });
   p << ") convergenceThreshold = ";
-  p.printAttribute(convergenceThresholdAttr());
+  p.printAttribute(getConvergenceThresholdAttr());
 
   // Reuse the argument names provided to the op for the bbarg names within
   // the region.
-  p.shadowRegionArgs(codeUnderTest(), operands());
-  p.printRegion(codeUnderTest(), /*printEntryBlockArgs=*/false);
+  p.shadowRegionArgs(getCodeUnderTest(), getOperands());
+  p.printRegion(getCodeUnderTest(), /*printEntryBlockArgs=*/false);
 }
 
 //===----------------------------------------------------------------------===//

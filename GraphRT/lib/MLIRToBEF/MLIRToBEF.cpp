@@ -240,7 +240,7 @@ public:
   unsigned getPrimitiveID(Operation *primitive) const {
     StringAttr name;
     if (auto opaque = dyn_cast<BEF::OpaqueOp>(primitive))
-      name = opaque.opnameAttr();
+      name = opaque.getOpNameAttr();
     else
       name = primitive->getName().getIdentifier();
 
@@ -529,11 +529,11 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
 
     // Opaque BEF operations encode some fields in a special way.
     if (auto opaque = dyn_cast<BEF::OpaqueOp>(op)) {
-      addPrimitiveOpcode(opaque.opnameAttr());
+      addPrimitiveOpcode(opaque.getOpNameAttr());
 
       // Encode the attributes in the attrs array, not all the attributes on the
       // OpaqueOp itself.
-      for (auto attr : opaque.attrs())
+      for (auto attr : opaque.getAttrs())
         processAttr(StringAttr::get(op->getContext()), attr, false);
     } else {
       addPrimitiveOpcode(op->getName().getIdentifier());
@@ -930,7 +930,7 @@ void InvokableBodyEmitter::emitInvokable(Region *region) {
 
     bool isNonStrict = false;
     if (auto opaque = dyn_cast<BEF::OpaqueOp>(op))
-      isNonStrict = opaque.nonstrict();
+      isNonStrict = opaque.getNonstrict();
     else
       isNonStrict = isa<BEF::NonStrictOp>(op);
 
@@ -1062,7 +1062,7 @@ void InvokableBodyEmitter::emitPrimitive(Operation *op,
   // the attribute names.
   if (auto opaque = dyn_cast<BEF::OpaqueOp>(op)) {
     // All encoded attributes are stored in a single array.
-    for (auto attr : opaque.attrs())
+    for (auto attr : opaque.getAttrs())
       processAttr(StringAttr::get(op->getContext()), attr);
   } else {
     for (auto attrNamePair : op->getAttrs())

@@ -22,6 +22,9 @@ def GRTDialect : Dialect {
   }];
 
   let cppNamespace = "::M::GRT";
+
+  // Use LLVM-style accessor prefixes.
+  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 #endif // GRAPHRT_GRTDIALECT_GRTDIALECT_TD

@@ -89,8 +89,8 @@ bef.invokable @attributes() {
 // CHECK-NEXT:    bef.output
 // CHECK-NEXT:  }
 bef.invokable @opaque_round_trip() {
-  %0:2 = "bef.opaque"() {attrs = [], opname = "simple.primitive"} : () -> (!bef.unknown, !bef.unknown)
-  "bef.opaque"(%0#1, %0#0) {attrs = [42 : si8], opname = "other.primitive"} : (!bef.unknown, !bef.unknown) -> ()
+  %0:2 = "bef.opaque"() {attrs = [], opName = "simple.primitive"} : () -> (!bef.unknown, !bef.unknown)
+  "bef.opaque"(%0#1, %0#0) {attrs = [42 : si8], opName = "other.primitive"} : (!bef.unknown, !bef.unknown) -> ()
   bef.output
 }
 

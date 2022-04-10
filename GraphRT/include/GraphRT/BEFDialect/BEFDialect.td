@@ -21,6 +21,8 @@ def BEFDialect : Dialect {
   }];
 
   let cppNamespace = "::M::BEF";
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 #endif // GRAPHRT_BEFDIALECT_BEFDIALECT_TD

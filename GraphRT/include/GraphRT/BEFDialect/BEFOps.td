@@ -33,8 +33,6 @@ def InvokableOp
 
     OutputOp getOutputOp();
 
-    mlir::FunctionType getType() { return type(); }
-
     /// Returns the argument types of this invokable.
     ArrayRef<Type> getArgumentTypes() { return getType().getInputs(); }
 
@@ -68,12 +66,12 @@ def OpaqueOp : BEFOp<"opaque"> {
     properly form original operations.
   }];
 
-  let arguments = (ins StrAttr:$opname, ArrayAttr:$attrs, UnitAttr:$nonstrict,
+  let arguments = (ins StrAttr:$opName, ArrayAttr:$attrs, UnitAttr:$nonstrict,
                        Variadic<AnyType>:$operands);
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region VariadicRegion<SizedRegion<1>>:$body);
   let assemblyFormat = [{
-    $opname (`nonstrict` $nonstrict^)? $attrs `(` $operands `)` attr-dict `:` 
+    $opName (`nonstrict` $nonstrict^)? $attrs `(` $operands `)` attr-dict `:` 
             functional-type($operands, $results) $body
   }];
 }
