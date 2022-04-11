@@ -598,7 +598,7 @@ public:
     return found->template dyn_cast<T>();
   }
 
-  // Print the contents of this dictionary to stderr for debugging.
+  /// Print the contents of this dictionary to stderr for debugging.
   void dump() const;
 
 private:
