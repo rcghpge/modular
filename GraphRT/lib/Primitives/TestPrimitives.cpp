@@ -106,7 +106,7 @@ static void print_attr(BEFDynamicAttr value, unsigned indent) {
     fputc('\n', stdout);
   } else if (auto intArray = value.dyn_cast<ArrayRef<int32_t>>()) {
     print_array_i32(Chain(), *intArray);
-  } else if (auto dict = value.dyn_cast<Detail::Dictionary>()) {
+  } else if (auto dict = value.dyn_cast<BEFDictionaryAttr>()) {
     printf("dictionary {\n");
     for (const BEFDictionaryAttr::Element &elt : *dict) {
       printIndent(indent + 1);
@@ -115,7 +115,7 @@ static void print_attr(BEFDynamicAttr value, unsigned indent) {
     }
     printIndent(indent);
     printf("}\n");
-  } else if (auto list = value.dyn_cast<Detail::List>()) {
+  } else if (auto list = value.dyn_cast<BEFListAttr>()) {
     printf("list [\n");
     for (BEFDynamicAttr elt : *list) {
       printIndent(indent + 1);

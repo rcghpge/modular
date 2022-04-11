@@ -360,6 +360,26 @@ public:
 
 namespace Detail {
 class Dynamic {};
+
+/// This pair of structs provides a check to see if a class T is a type wrapped
+/// in a BEFAttr. If T is already a BEFAttr, it exposes the inner type, and
+/// unconditionally provides a return type that can be used by dyn_cast and
+/// family.
+template <class T>
+struct BEFAttrDynCastRet {
+  using InnerType = T;
+  using Type = BEFAttr<T>;
+};
+
+template <class T>
+struct BEFAttrDynCastRet<BEFAttr<T>> {
+  using InnerType = T;
+  using Type = BEFAttr<T>;
+};
+
+/// Convenience typedef to simplify declarations.
+template <class T>
+using BEFAttrDynCastRetType = typename BEFAttrDynCastRet<T>::Type;
 } // namespace Detail
 
 /// Dynamic attributes allow checked casting to other attribute kinds.
@@ -385,15 +405,16 @@ public:
 
   /// Do a checked conversion to the specified attribute kind.
   template <typename T>
-  Optional<BEFAttr<T>> dyn_cast() const {
+  Optional<Detail::BEFAttrDynCastRetType<T>> dyn_cast() const {
+    using InnerType = typename Detail::BEFAttrDynCastRet<T>::InnerType;
     // Test to see if this has the right attribute kind.
-    if (!this->template isa<T>())
+    if (!this->template isa<InnerType>())
       return {};
-    return BEFAttr<T>(get());
+    return BEFAttr<InnerType>(get());
   }
 
   template <typename T>
-  BEFAttr<T> cast() const {
+  auto cast() const {
     auto result = this->dyn_cast<T>();
     assert(result && "dynamic attribute is not of this kind");
     return *result;
@@ -590,7 +611,7 @@ public:
   /// Templated access to the value in find. If nothing is found *or* the type
   /// provided is incorrect, then None is returned.
   template <typename T>
-  Optional<BEFAttr<T>> find(StringRef name) const {
+  Optional<Detail::BEFAttrDynCastRetType<T>> find(StringRef name) const {
     Optional<BEFDynamicAttr> found = find(name);
     if (!found)
       return None;
