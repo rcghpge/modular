@@ -77,6 +77,8 @@ public:
       : arguments(arguments) {}
 
   MutableArrayRef<AnyAsyncValueRef> get() const { return arguments; }
+
+  bool empty() const { return arguments.empty(); }
   size_t size() const { return arguments.size(); }
   AnyAsyncValueRef &operator[](size_t i) const { return arguments[i]; }
 

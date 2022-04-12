@@ -18,7 +18,16 @@
 #include "LLCL/Runtime/Runtime.h"
 using namespace M;
 
+/// Return a new chain that is ready.
 static AsyncValueRef<Chain> chain_new(Runtime &runtime) {
+  return runtime.getReadyChain().copy();
+}
+
+/// Strictly wait for all the chain operands, and return one when they're ready.
+static AsyncValueRef<Chain> chain_merge(Runtime &runtime,
+                                        RemainingArguments arguments) {
+  if (!arguments.empty())
+    return std::move(arguments[0]);
   return runtime.getReadyChain().copy();
 }
 
@@ -179,6 +188,7 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
 /// This registers the 'graphrt' dialect primitives for control flow.
 void M::registerGraphRTControlFlowPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "grt.chain.new", chain_new);
+  ADD_PRIMITIVE(registry, "grt.chain.merge", chain_merge);
   ADD_PRIMITIVE(registry, "grt.invoke", invoke);
   ADD_PRIMITIVE(registry, "grt.if", grt_if);
   ADD_PRIMITIVE(registry, "grt.repeat.i32", repeat_i32);

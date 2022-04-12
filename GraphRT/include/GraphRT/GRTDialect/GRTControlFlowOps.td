@@ -23,6 +23,18 @@ def ChainNewOp : GRTOp<"chain.new"> {
 }
 
 //===----------------------------------------------------------------------===//
+// ChainMergeOp
+//===----------------------------------------------------------------------===//
+
+def ChainMergeOp : GRTOp<"chain.merge"> {
+  let summary = "Return a !grt.chain when all inputs are ready";
+
+  let arguments = (ins Variadic<ChainType>:$operands);
+  let results = (outs ChainType:$result);
+  let assemblyFormat = "$operands attr-dict";
+}
+
+//===----------------------------------------------------------------------===//
 // InvokeOp
 //===----------------------------------------------------------------------===//
 
