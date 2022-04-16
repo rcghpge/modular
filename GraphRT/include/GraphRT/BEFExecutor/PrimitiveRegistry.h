@@ -680,11 +680,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   /// the given set of types.
   template <typename... Ts>
   struct ForwardingTypeRegistration {
-    static void registerType() {
-      // FIXME-C++17: Use a proper fold expression here.
-      (void)std::initializer_list<int>{
-          0, (TypeRegistration<Ts>::registerType(), 0)...};
-    }
+    static void registerType() { (TypeRegistration<Ts>::registerType(), ...); }
   };
   template <typename T1, typename T2>
   struct TypeRegistration<std::pair<T1, T2>>
