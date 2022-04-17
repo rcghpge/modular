@@ -586,8 +586,6 @@ public:
 private:
   FailureOr<BEF::AttributeKind> deriveAttributeKind(Type eltType,
                                                     Location loc) const;
-  FailureOr<BEF::AttributeKind> getAttributeKind(Attribute attr,
-                                                 Location loc) const;
   BEFOffset emitAttributeInternal(Attribute attr, Location loc,
                                   bool emitAsArrayElement = false);
   BEFOffset emitIntegerValue(bool emitAsArrayElement, const APInt &value,
@@ -646,15 +644,6 @@ AttributesEmitter::deriveAttributeKind(Type eltType, Location loc) const {
                          << eltType.getIntOrFloatBitWidth());
 
   return BEF::AttributeKind(width << 3 | uint8_t(category) << 1);
-}
-
-FailureOr<BEF::AttributeKind>
-AttributesEmitter::getAttributeKind(Attribute attr, Location loc) const {
-  if (attr.isa<IntegerAttr, FloatAttr>())
-    return deriveAttributeKind(attr.getType(), loc);
-
-  return LogicalResult(entities.emitError(loc)
-                       << "Unknown attribute in getAttributeKind " << attr);
 }
 
 BEFOffset AttributesEmitter::emitIntegerValue(bool emitAsArrayElement,

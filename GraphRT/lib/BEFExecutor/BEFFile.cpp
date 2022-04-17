@@ -226,7 +226,9 @@ bool BEFFileReader::readNextSection() {
 // BEFFileImpl
 //===----------------------------------------------------------------------===//
 
-BEFFileImpl::~BEFFileImpl() { free((void *)invokables); }
+BEFFileImpl::~BEFFileImpl() {
+  free(const_cast<void *>(static_cast<const void *>(invokables)));
+}
 
 /// Get a list of invokables out of the BEF file.
 std::vector<const Invokable *> BEFFile::getAllInvokables() const {
