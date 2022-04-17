@@ -48,6 +48,46 @@ private:
 };
 
 //===----------------------------------------------------------------------===//
+// BEFDecoder
+//===----------------------------------------------------------------------===//
+
+/// The BEFDecoder class provides a simple deserialization mechanism for
+/// specifying how non-trivial types can be decoded from BEF attributes.  It may
+/// be specialized for user-defined types that are encoded into a BEF file.
+///
+/// To implement this, provide a static `decode` method, which is invoked on a
+/// low-level BEF encoded type (like int8_t) into a user type (or fail if the
+/// encoded value is invalid).
+///
+/// This can be used to provide checking for serialized enums and other similar
+/// values.
+///
+template <typename UserType>
+struct BEFDecoder; // {
+//   static Optional<UserType> decode(NativeBEFType value);
+// };
+
+/// Define trivial decoders for all our native types.
+#define DEFINE_BUILTIN_TYPE_DECODER(TYPE)                                      \
+  template <>                                                                  \
+  struct BEFDecoder<TYPE> {                                                    \
+    static Optional<TYPE> decode(TYPE value) { return value; }                 \
+  }
+
+DEFINE_BUILTIN_TYPE_DECODER(bool);
+DEFINE_BUILTIN_TYPE_DECODER(int8_t);
+DEFINE_BUILTIN_TYPE_DECODER(uint8_t);
+DEFINE_BUILTIN_TYPE_DECODER(int16_t);
+DEFINE_BUILTIN_TYPE_DECODER(uint16_t);
+DEFINE_BUILTIN_TYPE_DECODER(int32_t);
+DEFINE_BUILTIN_TYPE_DECODER(uint32_t);
+DEFINE_BUILTIN_TYPE_DECODER(int64_t);
+DEFINE_BUILTIN_TYPE_DECODER(uint64_t);
+DEFINE_BUILTIN_TYPE_DECODER(float);
+DEFINE_BUILTIN_TYPE_DECODER(double);
+#undef DEFINE_BUILTIN_TYPE_DECODER
+
+//===----------------------------------------------------------------------===//
 // Helper Classes For Primitive Implementations
 //===----------------------------------------------------------------------===//
 
@@ -422,6 +462,40 @@ public:
     return *result;
   }
 
+  /// Parse the BEFDynamicAttr as a specified enum type, rejecting it with an
+  /// error if not present or the wrong type.
+  template <typename ValueType>
+  ParseResult decode(ValueType *result) const {
+    using EncodedType = typename llvm::function_traits<
+        decltype(&BEFDecoder<ValueType>::decode)>::template arg_t<0>;
+
+    if (auto rawAttrValue = this->dyn_cast<EncodedType>()) {
+      if (auto decodedEnum = BEFDecoder<ValueType>::decode(rawAttrValue->get()))
+        return *result = *decodedEnum, success();
+      else
+        return failure();
+    }
+    return failure();
+  }
+
+  /// Parse the BEFDynamicAttr as the specified enum type, ignoring it if not
+  /// present or the wrong type.
+  template <typename ValueType>
+  ParseResult decodeIfPresent(StringRef name, ValueType *result) const {
+    using EncodedType = typename llvm::function_traits<
+        decltype(&BEFDecoder<ValueType>::decode)>::template arg_t<0>;
+    // See if the attribute value is present with it's underlying type, e.g.
+    // int8_t.
+    if (auto rawAttrValue = this->dyn_cast<EncodedType>()) {
+      // If so, try to decode it to an enum type.
+      if (auto decodedEnum = BEFDecoder<ValueType>::decode(rawAttrValue->get()))
+        *result = *decodedEnum;
+      else // If the enum is present but invalid, reject it.
+        return failure();
+    }
+    return success();
+  }
+
   /// Dynamic attributes are compatible with everything.
   static bool matchesAttrKind(const void *pointer) { return true; }
 };
@@ -619,6 +693,29 @@ public:
       return None;
 
     return found->template dyn_cast<T>();
+  }
+
+  /// Parse a named field of the specified attribute dictionary as the specified
+  /// type, rejecting it with an error if not present or the wrong type.
+  template <typename ValueType>
+  ParseResult decode(StringRef name, ValueType *result) const {
+    auto dynAttrValue = this->find(name);
+    if (!dynAttrValue)
+      return failure();
+    return dynAttrValue->decode<ValueType>(result);
+  }
+
+  /// Parse a named field of the specified attribute dictionary as the
+  /// specified type, ignoring it if not present or the wrong type.
+  template <typename ValueType>
+  ParseResult decodeIfPresent(StringRef name, ValueType *result) {
+    // The attribute doesn't have to be present.
+    auto dynAttrValue = this->find(name);
+    if (!dynAttrValue)
+      return success();
+
+    // ... but if it is, it must have the expected type.
+    return dynAttrValue->decode<ValueType>(result);
   }
 
   /// Print the contents of this dictionary to stderr for debugging.
