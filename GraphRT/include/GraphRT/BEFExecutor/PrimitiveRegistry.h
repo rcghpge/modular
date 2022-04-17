@@ -1157,13 +1157,10 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
 
     auto applyFn = [&](auto &&...args) {
       // Process each result in-order.
-      // Note: In C++17, this can be updated to use proper fold expressions, and
-      // remove the initializer_list.
       int resultIdx = 0;
-      (void)std::initializer_list<int>{
-          0, (processResult(frame, resultIdx++, std::move(args)), 0)...};
+      (processResult(frame, resultIdx++, std::move(args)), ...);
     };
-    llvm::apply_tuple(applyFn, std::move(tuple));
+    std::apply(applyFn, std::move(tuple));
   }
 };
 } // end namespace Detail
