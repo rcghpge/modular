@@ -22,6 +22,7 @@ def BEFDialect : Dialect {
 
   let cppNamespace = "::M::BEF";
 
+  // Use LLVM-style accessor prefixes.
   let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
