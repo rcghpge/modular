@@ -694,15 +694,31 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   template <typename T>
   struct TypeRegistration<ErrorOr<T>> : public ForwardingTypeRegistration<T> {};
 
+  /// This class defines a helper for registering types for components provided
+  /// via the primitive parameter list.
+  ///
+  /// Note: The `Dummy` type is used to avoid GCC errors for defining struct
+  /// specializations outside of a namespace.
+  template <typename T, typename Dummy = void>
+  struct ParamTypeRegistration {
+    static void registerType() {}
+  };
+  template <typename T>
+  struct ParamTypeRegistration<Result<T>> {
+    static void registerType() { TypeRegistration<T>::registerType(); }
+  };
+
   //===--------------------------------------------------------------------===//
   // Entry Point
 
   /// This method is an entry point used to register the necessary types with
   /// AsyncValue needed to properly invoke this primitive.
   static void registerTypes() {
-    // We only need to register result types here, given that the argument types
-    // require a valid producer.
+    // We only really need to register result types here, given that the
+    // argument types require a valid producer. The `ParamTypeRegistration`
+    // below handles registering types for results passed as parameters.
     TypeRegistration<std::decay_t<Return>>::registerType();
+    (ParamTypeRegistration<std::decay_t<Args>>::registerType(), ...);
   }
 
   //===--------------------------------------------------------------------===//
