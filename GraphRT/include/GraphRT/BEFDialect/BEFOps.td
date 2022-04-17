@@ -21,7 +21,7 @@ def InvokableOp
                         Symbol, IsolatedFromAbove,
                         SingleBlockImplicitTerminator<"OutputOp">]> {
   let summary = "Named invokable in a BEF file";
-  let arguments = (ins TypeAttrOf<FunctionType>:$type);
+  let arguments = (ins TypeAttrOf<FunctionType>:$function_type);
   let regions = (region SizedRegion<1>:$body);
 
   let extraClassDeclaration = [{
@@ -34,10 +34,10 @@ def InvokableOp
     OutputOp getOutputOp();
 
     /// Returns the argument types of this invokable.
-    ArrayRef<Type> getArgumentTypes() { return getType().getInputs(); }
+    ArrayRef<Type> getArgumentTypes() { return getFunctionType().getInputs(); }
 
     /// Returns the result types of this invokable.
-    ArrayRef<Type> getResultTypes() { return getType().getResults(); }
+    ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
   }];
 
   let builders = [

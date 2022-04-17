@@ -18,12 +18,12 @@ using namespace GRT;
 
 /// Parse a parenthesized operand list with types included, e.g.
 /// `(%a: i32, %b: f32)`.
-static ParseResult
-parseParenOperandList(OpAsmParser &parser, OperationState &result,
-                      SmallVectorImpl<OpAsmParser::OperandType> &operandInfo,
-                      SmallVectorImpl<Location> &operandLocs) {
+static ParseResult parseParenOperandList(
+    OpAsmParser &parser, OperationState &result,
+    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &operandInfo,
+    SmallVectorImpl<Location> &operandLocs) {
   auto parseOperandFn = [&]() -> ParseResult {
-    OpAsmParser::OperandType curOperand;
+    OpAsmParser::UnresolvedOperand curOperand;
     Type type;
     if (parser.parseOperand(curOperand) || parser.parseColonType(type) ||
         parser.resolveOperand(curOperand, type, result.operands))
@@ -50,7 +50,7 @@ LogicalResult InvokeOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
                          << "' does not reference a valid invokable";
 
   // Verify that the operand and result types match the target.
-  auto fnType = fn.getType();
+  auto fnType = fn.getFunctionType();
   if (fnType.getNumInputs() != getNumOperands())
     return emitOpError("incorrect number of operands for target");
 
@@ -79,10 +79,10 @@ LogicalResult InvokeOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
 //===----------------------------------------------------------------------===//
 
 ParseResult IfOp::parse(OpAsmParser &parser, OperationState &result) {
-  SmallVector<OpAsmParser::OperandType> operandInfo;
+  SmallVector<OpAsmParser::UnresolvedOperand> operandInfo;
   SmallVector<Location> operandLocs;
   llvm::SMLoc operandLoc;
-  OpAsmParser::OperandType condOperand;
+  OpAsmParser::UnresolvedOperand condOperand;
   if (parser.parseOperand(condOperand) ||
       parser.getCurrentLocation(&operandLoc) ||
       parser.resolveOperand(condOperand,
@@ -158,10 +158,10 @@ LogicalResult IfOp::verify() {
 //===----------------------------------------------------------------------===//
 
 ParseResult RepeatI32Op::parse(OpAsmParser &parser, OperationState &result) {
-  SmallVector<OpAsmParser::OperandType> operandInfo;
+  SmallVector<OpAsmParser::UnresolvedOperand> operandInfo;
   SmallVector<Location> operandLocs;
   llvm::SMLoc operandLoc;
-  OpAsmParser::OperandType countOperand;
+  OpAsmParser::UnresolvedOperand countOperand;
   if (parser.parseOperand(countOperand) ||
       parser.getCurrentLocation(&operandLoc) ||
       parser.resolveOperand(
@@ -213,9 +213,9 @@ LogicalResult RepeatI32Op::verify() {
 //===----------------------------------------------------------------------===//
 
 ParseResult BenchmarkOp::parse(OpAsmParser &parser, OperationState &result) {
-  SmallVector<OpAsmParser::OperandType> operandInfo;
+  SmallVector<OpAsmParser::UnresolvedOperand> operandInfo;
   SmallVector<Location> operandLocs;
-  OpAsmParser::OperandType chainOperand;
+  OpAsmParser::UnresolvedOperand chainOperand;
   if (parser.parseOperand(chainOperand) ||
       parser.resolveOperand(chainOperand,
                             parser.getBuilder().getType<ChainType>(),

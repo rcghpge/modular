@@ -30,7 +30,7 @@ void M::registerMLIRToBEFTranslation(mlir::DialectRegistry &otherDialects) {
         os.write(reinterpret_cast<const char *>(data.data()), data.size());
         return success();
       },
-      [otherDialects](mlir::DialectRegistry &registry) {
+      [&](mlir::DialectRegistry &registry) {
         registry.insert<BEF::BEFDialect>();
         // If the caller provided any other dialects, add them.
         otherDialects.appendTo(registry);

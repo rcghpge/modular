@@ -611,12 +611,12 @@ AttributesEmitter::deriveAttributeKind(Type eltType, Location loc) const {
   else if (eltType.isUnsignedInteger())
     category = BEF::AttrCategory::Unsigned;
   else if (eltType.isSignlessInteger())
-    return LogicalResult(entities.emitError(loc)
-                         << "signless integer attributes not supported");
+    return entities.emitError(loc)
+           << "signless integer attributes not supported";
   else if (eltType.isF32() || eltType.isF64())
     category = BEF::AttrCategory::Float;
   else
-    return LogicalResult(entities.emitError(loc) << "unknown type " << eltType);
+    return entities.emitError(loc) << "unknown type " << eltType;
 
   unsigned width = ~0U;
   switch (eltType.getIntOrFloatBitWidth()) {
@@ -639,9 +639,8 @@ AttributesEmitter::deriveAttributeKind(Type eltType, Location loc) const {
   }
 
   if (width == ~0U)
-    return LogicalResult(entities.emitError(loc)
-                         << "invalid bitwidth "
-                         << eltType.getIntOrFloatBitWidth());
+    return entities.emitError(loc)
+           << "invalid bitwidth " << eltType.getIntOrFloatBitWidth();
 
   return BEF::AttributeKind(width << 3 | uint8_t(category) << 1);
 }

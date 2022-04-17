@@ -780,7 +780,7 @@ bool InvokableBodyParser::parsePrimitiveList() {
       for (Block *block : regionsBlocksToTake)
         state.addRegion()->push_back(block);
 
-      resultOp = bodyBuilder.createOperation(state);
+      resultOp = bodyBuilder.create(state);
     }
 
     // Add all the results to the register table so subsequent ops may use it.
