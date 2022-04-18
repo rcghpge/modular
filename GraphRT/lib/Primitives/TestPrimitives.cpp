@@ -14,7 +14,9 @@
 #include "GraphRT/Primitives.h"
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/Runtime.h"
-#include "llvm/ADT/StringRef.h"
+
+#include <atomic>
+#include <numeric>
 using namespace M;
 
 //===----------------------------------------------------------------------===//
@@ -324,10 +326,12 @@ namespace {
 /// This class is a designed-to-be-simple data type that we can pass around to
 /// illustrate some more advanced usecases for async value and related types.
 struct TestVector {
+  using ValueType = int32_t;
+
   TestVector() = default;
   TestVector(const TestVector &) = default;
   TestVector(size_t n) { values.resize(n); }
-  SmallVector<int32_t> values;
+  SmallVector<ValueType> values;
 };
 } // end anonymous namespace.
 
@@ -456,6 +460,80 @@ static void vec_add_async4(AsyncValueRef<TestVector> lhs,
           size_t n) { result->values[n] = lhs->values[n] + rhs->values[n]; });
 }
 
+/// Accumulates the values in the input vector and produces a scalar.
+static TestVector::ValueType vec_accumulate(const TestVector &vec) {
+  return std::accumulate(vec.values.begin(), vec.values.end(), 0);
+}
+
+/// This version of vector accumulation does the entire accumulate of the vector
+/// using one background task.
+static void vec_accumulate_async(AsyncValueRef<TestVector> vec,
+                                 Result<TestVector::ValueType> result,
+                                 Runtime &runtime) {
+  addTask(runtime, [vec = std::move(vec), result = result.copy()]() {
+    auto accum = std::accumulate(vec->values.begin(), vec->values.end(), 0);
+    // After we've computed the sum, set it into the result value.
+    result.emplace(accum);
+  });
+}
+
+/// This version of vector accumulate does the accumulation with each batch in
+/// parallel as separate tasks.
+///
+/// This version uses atomics to perform the global accumulation.
+static void vec_accumulate_async2(AsyncValueRef<TestVector> vec,
+                                  Result<TestVector::ValueType> result,
+                                  Runtime &runtime) {
+  // Get the number of elements in the input vector
+  size_t vecLen = vec->values.size();
+  // Get the number of tasks to spawn in parallel from the runtime
+  //
+  // NOTE: In practice you want to use a batch size that is a multiple of the
+  // of the size of the workqueue. This would remove blocking on a big/little
+  // system
+  size_t numBatches = runtime.getWorkQueue()->getParallelismLevel();
+  // The batchSize is the number of elements each thread will process
+  // we round up the division so that the numBatches*batchSize
+  // is at least equal to vecLen.
+  //
+  // For example, if the vecLen = 100, numBatches=48, then we want
+  // the batchSize = 3
+  size_t batchSize = (vecLen + numBatches - 1) / numBatches;
+
+  // Process each batch in parallel. The completion function will be called
+  // when all threads have completed.
+  parallelForEachNCustomCompletion(
+      runtime, numBatches,
+      [vec = std::move(vec),
+       batchSize](size_t n, std::atomic<TestVector::ValueType> &accumResult) {
+        ArrayRef<TestVector::ValueType> vecValues = vec->values;
+        size_t startPos = n * batchSize;
+        // If we exceeded the range of the vector, then there is
+        // nothing to do
+        if (startPos >= vecValues.size())
+          return;
+        // The end position is either the end position of the
+        // current batch, or the end of the vector whichever is
+        // smaller
+        size_t endPos = std::min(vecValues.size(), (n + 1) * batchSize);
+        // Accumulate the vector values in the range [startPos,
+        // endPos), then add it to the global accumResult atomic
+        accumResult += std::accumulate(vecValues.begin() + startPos,
+                                       vecValues.begin() + endPos, 0);
+      },
+      // The completion function is called by a single thread when all prior
+      // tasks are complete
+      [result =
+           result.copy()](std::atomic<TestVector::ValueType> &accumResult) {
+        // marks the result asyncvalue ready when all the subtasks are
+        // completed.
+        result.emplace(accumResult.load());
+      },
+      // pass the initial accum to each function. It will be converted to an
+      // atomic in the parallelForEachNCustomCompletion function
+      0);
+}
+
 static Chain vec_print(const TestVector &vec, Chain chain) {
   printf("vec = ");
   for (size_t i = 0, e = vec.values.size(); i != e; ++i) {
@@ -475,6 +553,9 @@ static void registerTestVecPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "test.vec.add.async2", vec_add_async2);
   ADD_PRIMITIVE(registry, "test.vec.add.async3", vec_add_async3);
   ADD_PRIMITIVE(registry, "test.vec.add.async4", vec_add_async4);
+  ADD_PRIMITIVE(registry, "test.vec.accumulate", vec_accumulate);
+  ADD_PRIMITIVE(registry, "test.vec.accumulate.async", vec_accumulate_async);
+  ADD_PRIMITIVE(registry, "test.vec.accumulate.async2", vec_accumulate_async2);
   ADD_PRIMITIVE(registry, "test.vec.print", vec_print);
 }
 
