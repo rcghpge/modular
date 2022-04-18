@@ -1148,9 +1148,10 @@ void BEFModuleEmitter::emitLocationInfo(BEFEmitter &locationFilenames,
   // Emit each of the positions and remember the offsets within the section.
   for (auto position : entities.locations) {
     entities.locationOffsets[position] = locationPositions.getOffset();
-    locationPositions.emitOffset(filenameOffsets[std::get<0>(position)]);
-    locationPositions.emitVBR(std::get<1>(position));
-    locationPositions.emitVBR(std::get<2>(position));
+    const auto &[fname, line, col] = position;
+    locationPositions.emitOffset(filenameOffsets[fname]);
+    locationPositions.emitVBR(line);
+    locationPositions.emitVBR(col);
   }
 }
 
@@ -1190,10 +1191,9 @@ void BEFModuleEmitter::emitAttributes(BEFEmitter &attrMDSection) {
   // will be traversed recursively and their elements will be emitted and
   // recorded before the top level offsets array is emitted.
   AttributesEmitter attributesSection(entities);
-  for (auto attrAndLoc :
+  for (const auto &[attr, attrLoc] :
        llvm::zip(entities.attributes, entities.attributeLocs)) {
-    auto offset = attributesSection.emitAttribute(std::get<0>(attrAndLoc),
-                                                  std::get<1>(attrAndLoc));
+    auto offset = attributesSection.emitAttribute(attr, attrLoc);
     // Emit metadata for each attribute we put out so BEF2MLIR can interpret the
     // data correctly.
     attrMDSection.emitOffset(offset);

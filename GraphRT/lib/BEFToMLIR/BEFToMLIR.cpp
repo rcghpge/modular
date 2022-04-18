@@ -773,8 +773,8 @@ bool InvokableBodyParser::parsePrimitiveList() {
     } else {
       OperationState state(loc, primitiveName, operandValues, resultTypes,
                            /*attrs*/ {});
-      for (auto nameAndAttr : llvm::zip(attrNames, attrs))
-        state.addAttribute(std::get<0>(nameAndAttr), std::get<1>(nameAndAttr));
+      for (const auto &[attrName, attr] : llvm::zip(attrNames, attrs))
+        state.addAttribute(attrName, attr);
 
       // Add all the regions.
       for (Block *block : regionsBlocksToTake)
