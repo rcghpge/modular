@@ -85,7 +85,16 @@ DEFINE_BUILTIN_TYPE_DECODER(int64_t);
 DEFINE_BUILTIN_TYPE_DECODER(uint64_t);
 DEFINE_BUILTIN_TYPE_DECODER(float);
 DEFINE_BUILTIN_TYPE_DECODER(double);
+DEFINE_BUILTIN_TYPE_DECODER(StringRef);
 #undef DEFINE_BUILTIN_TYPE_DECODER
+
+/// ArrayRef's are generic over element type, but are also noop conversions.
+template <typename EltType>
+struct BEFDecoder<ArrayRef<EltType>> {
+  static Optional<ArrayRef<EltType>> decode(ArrayRef<EltType> value) {
+    return value;
+  }
+};
 
 //===----------------------------------------------------------------------===//
 // Helper Classes For Primitive Implementations
@@ -411,16 +420,20 @@ template <class T>
 struct BEFAttrDynCastRet {
   using InnerType = T;
   using Type = BEFAttr<T>;
+
+  static InnerType getValue(const Type &value) { return value.get(); }
 };
 
 template <class T>
 struct BEFAttrDynCastRet<BEFAttr<T>> {
   using InnerType = T;
   using Type = BEFAttr<T>;
+
+  static Type getValue(BEFAttr<T> value) { return value; }
 };
 
 /// Convenience typedef to simplify declarations.
-template <class T>
+template <typename T>
 using BEFAttrDynCastRetType = typename BEFAttrDynCastRet<T>::Type;
 } // namespace Detail
 
@@ -470,30 +483,16 @@ public:
         decltype(&BEFDecoder<ValueType>::decode)>::template arg_t<0>;
 
     if (auto rawAttrValue = this->dyn_cast<EncodedType>()) {
-      if (auto decodedEnum = BEFDecoder<ValueType>::decode(rawAttrValue->get()))
+      // If this is a C type like int8_t then look through the attr, otherwise
+      // leave it intact.
+      auto valueToDecode =
+          Detail::BEFAttrDynCastRet<EncodedType>::getValue(*rawAttrValue);
+      if (auto decodedEnum = BEFDecoder<ValueType>::decode(valueToDecode))
         return *result = *decodedEnum, success();
       else
         return failure();
     }
     return failure();
-  }
-
-  /// Parse the BEFDynamicAttr as the specified enum type, ignoring it if not
-  /// present or the wrong type.
-  template <typename ValueType>
-  ParseResult decodeIfPresent(StringRef name, ValueType *result) const {
-    using EncodedType = typename llvm::function_traits<
-        decltype(&BEFDecoder<ValueType>::decode)>::template arg_t<0>;
-    // See if the attribute value is present with it's underlying type, e.g.
-    // int8_t.
-    if (auto rawAttrValue = this->dyn_cast<EncodedType>()) {
-      // If so, try to decode it to an enum type.
-      if (auto decodedEnum = BEFDecoder<ValueType>::decode(rawAttrValue->get()))
-        *result = *decodedEnum;
-      else // If the enum is present but invalid, reject it.
-        return failure();
-    }
-    return success();
   }
 
   /// Dynamic attributes are compatible with everything.
@@ -576,6 +575,22 @@ private:
 };
 
 using BEFListAttr = BEFAttr<Detail::List>;
+
+// Allow decoding BEFListAttr into a SmallVector.
+template <typename EltType, size_t Size>
+struct BEFDecoder<SmallVector<EltType, Size>> {
+  static Optional<SmallVector<EltType, Size>> decode(BEFListAttr value) {
+    SmallVector<EltType, Size> result;
+    result.reserve(value.size());
+    for (auto element : value) {
+      EltType resultElt;
+      if (element.decode(&resultElt))
+        return None;
+      result.push_back(resultElt);
+    }
+    return result;
+  }
+};
 
 //===----------------------------------------------------------------------===//
 // BEFDictionaryAttr
