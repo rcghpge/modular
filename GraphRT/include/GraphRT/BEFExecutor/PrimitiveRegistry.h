@@ -13,6 +13,7 @@
 #include "LLCL/Support/Chain.h"
 #include "LLCL/Support/ReferenceCounted.h"
 #include "Support/ErrorOr.h"
+#include "llvm/ADT/Twine.h"
 
 namespace M {
 
@@ -56,22 +57,22 @@ private:
 /// be specialized for user-defined types that are encoded into a BEF file.
 ///
 /// To implement this, provide a static `decode` method, which is invoked on a
-/// low-level BEF encoded type (like int8_t) into a user type (or fail if the
-/// encoded value is invalid).
+/// low-level BEF encoded type (like int8_t) into a user type (or fail with an
+/// error if the encoded value is invalid).
 ///
 /// This can be used to provide checking for serialized enums and other similar
 /// values.
 ///
 template <typename UserType>
 struct BEFDecoder; // {
-//   static Optional<UserType> decode(NativeBEFType value);
+//   static ErrorOr<UserType> decode(NativeBEFType value);
 // };
 
 /// Define trivial decoders for all our native types.
 #define DEFINE_BUILTIN_TYPE_DECODER(TYPE)                                      \
   template <>                                                                  \
   struct BEFDecoder<TYPE> {                                                    \
-    static Optional<TYPE> decode(TYPE value) { return value; }                 \
+    static ErrorOr<TYPE> decode(TYPE value) { return value; }                  \
   }
 
 DEFINE_BUILTIN_TYPE_DECODER(bool);
@@ -91,7 +92,7 @@ DEFINE_BUILTIN_TYPE_DECODER(StringRef);
 /// ArrayRef's are generic over element type, but are also noop conversions.
 template <typename EltType>
 struct BEFDecoder<ArrayRef<EltType>> {
-  static Optional<ArrayRef<EltType>> decode(ArrayRef<EltType> value) {
+  static ErrorOr<ArrayRef<EltType>> decode(ArrayRef<EltType> value) {
     return value;
   }
 };
@@ -475,24 +476,25 @@ public:
     return *result;
   }
 
-  /// Parse the BEFDynamicAttr as a specified enum type, rejecting it with an
+  /// Parse the BEFDynamicAttr as a specified C++ type, rejecting it with an
   /// error if not present or the wrong type.
   template <typename ValueType>
-  ParseResult decode(ValueType *result) const {
+  ParseResult decode(ValueType *result, Error &error) const {
     using EncodedType = typename llvm::function_traits<
         decltype(&M::BEFDecoder<ValueType>::decode)>::template arg_t<0>;
 
-    if (auto rawAttrValue = this->dyn_cast<EncodedType>()) {
-      // If this is a C type like int8_t then look through the attr, otherwise
-      // leave it intact.
-      auto valueToDecode =
-          Detail::BEFAttrDynCastRet<EncodedType>::getValue(*rawAttrValue);
-      if (auto decodedEnum = BEFDecoder<ValueType>::decode(valueToDecode))
-        return *result = *decodedEnum, success();
-      else
-        return failure();
-    }
-    return failure();
+    auto rawAttrValue = this->dyn_cast<EncodedType>();
+    if (!rawAttrValue)
+      return error = "incorrect encoded type", failure();
+
+    // If this is a C type like int8_t then look through the attr, otherwise
+    // leave it intact.
+    auto valueToDecode =
+        Detail::BEFAttrDynCastRet<EncodedType>::getValue(*rawAttrValue);
+    auto decodedValue = BEFDecoder<ValueType>::decode(valueToDecode);
+    if (!decodedValue)
+      return error = decodedValue.takeErrorStorage(), failure();
+    return *result = *decodedValue, success();
   }
 
   /// Dynamic attributes are compatible with everything.
@@ -579,13 +581,14 @@ using BEFListAttr = BEFAttr<Detail::List>;
 // Allow decoding BEFListAttr into a SmallVector.
 template <typename EltType, size_t Size>
 struct BEFDecoder<SmallVector<EltType, Size>> {
-  static Optional<SmallVector<EltType, Size>> decode(BEFListAttr value) {
+  static ErrorOr<SmallVector<EltType, Size>> decode(BEFListAttr value) {
     SmallVector<EltType, Size> result;
     result.reserve(value.size());
+    Error error("");
     for (auto element : value) {
       EltType resultElt;
-      if (element.decode(&resultElt))
-        return None;
+      if (element.decode(&resultElt, error))
+        return std::move(error);
       result.push_back(resultElt);
     }
     return result;
@@ -600,13 +603,14 @@ struct BEFDecoder<SmallVector<EltType, Size>> {
 /// BEFDecoder<SmallVector<EltType, Size>>?
 template <typename EltType>
 struct BEFDecoder<SmallVector<EltType>> {
-  static Optional<SmallVector<EltType>> decode(BEFListAttr value) {
+  static ErrorOr<SmallVector<EltType>> decode(BEFListAttr value) {
     SmallVector<EltType> result;
     result.reserve(value.size());
+    Error error("");
     for (auto element : value) {
       EltType resultElt;
-      if (element.decode(&resultElt))
-        return None;
+      if (element.decode(&resultElt, error))
+        return std::move(error);
       result.push_back(resultElt);
     }
     return result;
@@ -735,24 +739,26 @@ public:
   /// Parse a named field of the specified attribute dictionary as the specified
   /// type, rejecting it with an error if not present or the wrong type.
   template <typename ValueType>
-  ParseResult decode(StringRef name, ValueType *result) const {
+  ParseResult decode(StringRef name, ValueType *result, Error &error) const {
     auto dynAttrValue = this->find(name);
-    if (!dynAttrValue)
-      return failure();
-    return dynAttrValue->decode<ValueType>(result);
+    if (dynAttrValue)
+      return dynAttrValue->decode<ValueType>(result, error);
+    error = Error(Twine("missing attribute '") + name + "'");
+    return failure();
   }
 
   /// Parse a named field of the specified attribute dictionary as the
   /// specified type, ignoring it if not present or the wrong type.
   template <typename ValueType>
-  ParseResult decodeIfPresent(StringRef name, ValueType *result) {
+  ParseResult decodeIfPresent(StringRef name, ValueType *result,
+                              Error &error) const {
     // The attribute doesn't have to be present.
     auto dynAttrValue = this->find(name);
     if (!dynAttrValue)
       return success();
 
     // ... but if it is, it must have the expected type.
-    return dynAttrValue->decode<ValueType>(result);
+    return dynAttrValue->decode<ValueType>(result, error);
   }
 
   /// Print the contents of this dictionary to stderr for debugging.
