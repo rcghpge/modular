@@ -32,17 +32,17 @@ bef.invokable @three_print() {
 
 // CHECK-LABEL: --- Running 'basic.i32'
 bef.invokable @basic.i32() {
-  %x = grt.constant.i32 42
+  %x = grt.constant.si32 42
 
   %ch0 = grt.chain.new
 
   // CHECK: int32 = 42
-  %ch1 = grt.print.i32 %x, %ch0
+  %ch1 = grt.print.si32 %x, %ch0
 
-  %add = grt.add.i32 %x, %x
+  %add = grt.add.si32 %x, %x
 
   // CHECK: int32 = 84
-  %ch2 = grt.print.i32 %add, %ch1
+  %ch2 = grt.print.si32 %add, %ch1
 
   bef.output
 }
@@ -50,9 +50,9 @@ bef.invokable @basic.i32() {
 // CHECK-LABEL: --- Running 'test_result'
 bef.invokable @test_result() -> (si32, si32, !grt.chain) {
   %ch0 = grt.chain.new
-  %x = grt.constant.i32 42
-  %y = grt.constant.i32 13
-  %add = grt.add.i32 %x, %y
+  %x = grt.constant.si32 42
+  %y = grt.constant.si32 13
+  %add = grt.add.si32 %x, %y
   // CHECK: 'test_result' returned 42, 55
   bef.output %x, %add, %ch0 : si32, si32, !grt.chain
 }
@@ -84,20 +84,20 @@ bef.invokable @simple_calls() -> (si32, si32) {
 // CHECK-LABEL: --- Can not run 'call_print.i32' because it has arguments
 bef.invokable @call_print.i32(%x: si32) -> !grt.chain {
   %ch0 = grt.chain.new
-  %ch1 = grt.print.i32 %x, %ch0
+  %ch1 = grt.print.si32 %x, %ch0
   bef.output %ch1 : !grt.chain
 }
 
 // CHECK-LABEL: --- Can not run 'add_one' because it has arguments
 bef.invokable @add_one(%x: si32) -> si32 {
-  %c1 = grt.constant.i32 1
-  %y = grt.add.i32 %x, %c1
+  %c1 = grt.constant.si32 1
+  %y = grt.add.si32 %x, %c1
   bef.output %y : si32
 }
 
 // CHECK-LABEL: --- Running 'caller'
 bef.invokable @caller() -> !grt.chain {
-  %c1 = grt.constant.i32 1
+  %c1 = grt.constant.si32 1
 
   // CHECK-NEXT: int32 = 1
   %ch0 = grt.invoke @call_print.i32(%c1) : (si32) -> (!grt.chain)
@@ -105,7 +105,7 @@ bef.invokable @caller() -> !grt.chain {
   %x = grt.invoke @add_one(%c1) : (si32) -> si32
 
   // CHECK-NEXT: int32 = 2
-  %ch1 = grt.print.i32 %x, %ch0
+  %ch1 = grt.print.si32 %x, %ch0
 
   bef.output %ch1 : !grt.chain
 

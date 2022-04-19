@@ -96,15 +96,15 @@ bef.invokable @async_accumulate() -> !grt.chain {
   %v1 = "test.vec.atoi"() { size = 100 : si32 } : () -> !test.vec
 
   %i1 = "test.vec.accumulate"(%v1) : (!test.vec) -> si32
-  %ch1 = "grt.print.i32" (%i1, %ch0) : (si32, !grt.chain) -> !grt.chain
+  %ch1 = "grt.print.si32" (%i1, %ch0) : (si32, !grt.chain) -> !grt.chain
   // CHECK-NEXT: int32 = 4950
 
   %i2 = "test.vec.accumulate.async"(%v1) : (!test.vec) -> si32
-  %ch2 = "grt.print.i32" (%i2, %ch1) : (si32, !grt.chain) -> !grt.chain
+  %ch2 = "grt.print.si32" (%i2, %ch1) : (si32, !grt.chain) -> !grt.chain
   // CHECK-NEXT: int32 = 4950
 
   %i3 = "test.vec.accumulate.async2"(%v1) : (!test.vec) -> si32
-  %ch3 = "grt.print.i32" (%i3, %ch2) : (si32, !grt.chain) -> !grt.chain
+  %ch3 = "grt.print.si32" (%i3, %ch2) : (si32, !grt.chain) -> !grt.chain
   // CHECK-NEXT: int32 = 4950
 
   // CHECK-NEXT: 'async_accumulate' returned chain

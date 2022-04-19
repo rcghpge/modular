@@ -76,9 +76,9 @@ To see this in action, consider some simple primitives that take and return
 values as SSA operands, e.g. with an `.mlir` syntax like this:
 
 ```mlir
-  %add = grt.add.i32 %x, %x
-  %cond = grt.lessequal.i32 %add, %one
-  %ch2 = grt.print.i32 %add, %ch1
+  %add = grt.add.si32 %x, %x
+  %cond = grt.lessequal.si32 %add, %one
+  %ch2 = grt.print.si32 %add, %ch1
 ```
 
 The `ADD_PRIMITIVE` macro allows primitives for these to be implemented and
@@ -94,9 +94,9 @@ static Chain print_i32(int32_t value, Chain chain) {
 }
 // ...
 void M::registerGraphRTIntegerPrimitives(PrimitiveRegistry &registry) {
-  ADD_PRIMITIVE(registry, "grt.add.i32", add_i32);
-  ADD_PRIMITIVE(registry, "grt.lessequal.i32", lessequal_i32);
-  ADD_PRIMITIVE(registry, "grt.print.i32", print_i32);
+  ADD_PRIMITIVE(registry, "grt.add.si32", add_i32);
+  ADD_PRIMITIVE(registry, "grt.lessequal.si32", lessequal_i32);
+  ADD_PRIMITIVE(registry, "grt.print.si32", print_i32);
 }
 ```
 
@@ -104,7 +104,7 @@ The `ADD_PRIMITIVE` macro uses static reflection over the signature of the
 function to generate something like this for the `lessequal_i32` example:
 
 ```C++
-  registry.add("grt.lessequal.i32", [](PrimitiveFrame &frame) {
+  registry.add("grt.lessequal.si32", [](PrimitiveFrame &frame) {
     assert(frame.getNumArgs() == 2 && frame.getNumResults() == 1 &&
            frame.getNumAttrs() == 0 && frame.getNumInvokables() == 0);
     frame.emplaceResult<bool>(0, 
@@ -279,10 +279,10 @@ get a raw pointer to the data in question.  For example, consider a few simple
 cases:
 
 ```mlir
-  %x = grt.constant.i32 42
+  %x = grt.constant.si32 42
 
   // Same thing in verbose syntax:
-  %x2 = "grt.constant.i32"() {value = 42 : si32} : () -> () 
+  %x2 = "grt.constant.si32"() {value = 42 : si32} : () -> () 
 
   %z = "add.ints"() { value = dense<[1, 2, 3]> : tensor<3xsi32> } : () -> ()
 

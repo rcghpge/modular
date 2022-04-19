@@ -229,7 +229,7 @@ bef.invokable @repeat_n_inc(%n: si32) -> () {
 
 // CHECK-LABEL: --- Running 'repeat_0_inc'
 bef.invokable @repeat_0_inc() {
-  %count = grt.constant.i32 0
+  %count = grt.constant.si32 0
 
   // CHECK-NEXT: constructed vt.value(1)
   // CHECK-NEXT: move constructed vt.value(1)
@@ -242,7 +242,7 @@ bef.invokable @repeat_0_inc() {
 
 // CHECK-LABEL: --- Running 'repeat_1_inc'
 bef.invokable @repeat_1_inc() {
-  %count = grt.constant.i32 1
+  %count = grt.constant.si32 1
 
   // CHECK-NEXT: constructed vt.value(1)
   // CHECK-NEXT: move constructed vt.value(1)
@@ -260,7 +260,7 @@ bef.invokable @repeat_1_inc() {
 
 // CHECK-LABEL: --- Running 'repeat_2_inc'
 bef.invokable @repeat_2_inc() {
-  %count = grt.constant.i32 2
+  %count = grt.constant.si32 2
 
   // CHECK-NEXT: constructed vt.value(1)
   // CHECK-NEXT: move constructed vt.value(1)

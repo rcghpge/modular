@@ -30,17 +30,17 @@ example of a Fibonacci computation:
 
 ```mlir
 bef.invokable @fib(%arg: i32) -> i32 {
-  %one = grt.constant.i32 1
-  %cond = grt.lessequal.i32 %arg, %one
+  %one = grt.constant.si32 1
+  %cond = grt.lessequal.si32 %arg, %one
   %res = grt.if %cond (%arg: i32) -> i32 {
     bef.output %arg : i32
   } else {
-    %min_one = grt.constant.i32 -1
-    %n_min_one = grt.add.i32 %arg, %min_one
-    %n_min_two = grt.add.i32 %n_min_one, %min_one
+    %min_one = grt.constant.si32 -1
+    %n_min_one = grt.add.si32 %arg, %min_one
+    %n_min_two = grt.add.si32 %n_min_one, %min_one
     %fib_n_min_one = grt.invoke @fib(%n_min_one) : (i32) -> (i32)
     %fib_n_min_two = grt.invoke @fib(%n_min_two) : (i32) -> (i32)
-    %sum = grt.add.i32 %fib_n_min_one, %fib_n_min_two
+    %sum = grt.add.si32 %fib_n_min_one, %fib_n_min_two
     bef.output %sum : i32
   }
 
@@ -104,7 +104,7 @@ be completely dynamically typed if they want.  For example, you don't want a
 different "invoke" primitive for each signature you want to support. 
 
 On the other hand, many primitives do have static types they work with, e.g.
-`grt.add.i32` takes and returns `int32_t` values.  We do all type checking at
+`grt.add.si32` takes and returns `int32_t` values.  We do all type checking at
 the MLIR level, by defining primitives in ODS and checking their type
 constraints in the verifier.  This shifts the checking burden from runtime to
 compiler, but it also means that BEF is **not** and will never be a memory safe
@@ -141,9 +141,9 @@ execution of this invokable that computes `(a+a)+(b+b)`:
 
 ```mlir
 bef.invokable @dataflow_example(%a: i32, %b: i32) -> i32 {
-  %a2 = grt.add.i32 %a, %a
-  %b2 = grt.add.i32 %b, %b
-  %a2b2 = grt.add.i32 %a2, %b2
+  %a2 = grt.add.si32 %a, %a
+  %b2 = grt.add.si32 %b, %b
+  %a2b2 = grt.add.si32 %a2, %b2
   bef.output %a2b2 : i32
 }
 ```
@@ -151,9 +151,9 @@ bef.invokable @dataflow_example(%a: i32, %b: i32) -> i32 {
 In GraphRT, each input and output SSA value is implicitly held in an
 `AsyncValue` - this means that the invokable is run with two `AsyncValues`,
 and those values may not be "ready".  Consider if the first operand (`%a`) is
-not ready but the second operand (`%b`) is: in this case, the `grt.add.i32` that
+not ready but the second operand (`%b`) is: in this case, the `grt.add.si32` that
 produces `%a2` value cannot be run (its operands are not available yet).
-However, the `grt.add.i32` that produces `%b2` value does have all its operands
+However, the `grt.add.si32` that produces `%b2` value does have all its operands
 available, so it is ready to go and it executes - ahead of the first add.
 
 Executing the primitives in dataflow order is a powerful feature that allows us
@@ -178,8 +178,8 @@ haven't dreamed of yet.  Consider the following pseudo-code program:
 
 ```mlir
 bef.invokable @dataflow_example(%a: i32, %b: i32) {
-  %a2 = grt.add.i32 %a, %a
-  %b2 = grt.add.i32 %b, %b
+  %a2 = grt.add.si32 %a, %a
+  %b2 = grt.add.si32 %b, %b
   "print" %a2
   "print" %b2
   bef.output 
@@ -199,10 +199,10 @@ legal BEF dialect program:
 
 ```mlir
 bef.invokable @dataflow_example(%a: i32, %b: i32, %ch0: !grt.chain) -> !grt.chain {
-  %a2 = grt.add.i32 %a, %a
-  %b2 = grt.add.i32 %b, %b
-  %ch1 = grt.print.i32 %a2, %ch0
-  %ch2 = grt.print.i32 %b2, %ch1
+  %a2 = grt.add.si32 %a, %a
+  %b2 = grt.add.si32 %b, %b
+  %ch1 = grt.print.si32 %a2, %ch0
+  %ch2 = grt.print.si32 %b2, %ch1
   bef.output %ch2 : !grt.chain
 }
 ```
@@ -258,7 +258,7 @@ As a concrete example, consider an invocable invocation:
 
 ```mlir
 bef.invokable @dataflow_example(%a: i32, %b: i32) -> i32 {
-  %a2 = grt.add.i32 %a, %a
+  %a2 = grt.add.si32 %a, %a
   %b2 = "some long latency operation"(%b) : (i32) -> i32
   %result = grt.invoke @other_invokable(%a2, %b2) : (i32, i32) -> i32
   bef.output %a2b2 : i32

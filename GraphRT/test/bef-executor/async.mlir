@@ -3,8 +3,8 @@
 
 // CHECK-LABEL: --- Running 'test_async_print_result'
 bef.invokable @test_async_print_result() -> si32 {
-  %c1 = grt.constant.i32 1
-  %c42 = grt.constant.i32 42
+  %c1 = grt.constant.si32 1
+  %c42 = grt.constant.si32 42
   %a = "test.async.add.i32"(%c1, %c42) : (si32, si32) -> si32
   bef.output %a : si32
 }
@@ -12,8 +12,8 @@ bef.invokable @test_async_print_result() -> si32 {
 
 // CHECK-LABEL: --- Running 'test_cancel'
 bef.invokable @test_cancel() -> si32 {
-  %c1 = grt.constant.i32 1
-  %c42 = grt.constant.i32 42
+  %c1 = grt.constant.si32 1
+  %c42 = grt.constant.si32 42
   %a = "test.async.add.i32"(%c1, %c42) : (si32, si32) -> si32
 
   %ch0 = grt.chain.new
@@ -28,8 +28,8 @@ bef.invokable @test_cancel() -> si32 {
 
 // CHECK-LABEL: --- Running 'test_add_any'
 bef.invokable @test_add_any() -> (si32, !test.string, si32) {
-  %c1 = grt.constant.i32 1
-  %c42 = grt.constant.i32 42
+  %c1 = grt.constant.si32 1
+  %c42 = grt.constant.si32 42
   %a = "test.async.add.any"(%c1, %c42) : (si32, si32) -> si32
 
   %x = "test.get_string"() { value = "bark" } : () -> !test.string

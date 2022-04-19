@@ -25,13 +25,13 @@ def ConstantI1Op : GRTOp<"constant.i1"> {
 }
 
 //===----------------------------------------------------------------------===//
-// ConstantI32Op
+// ConstantSI32Op
 //===----------------------------------------------------------------------===//
 
-def ConstantI32Op : GRTOp<"constant.i32"> {
-  let summary = "constant 32-bit integer";
+def ConstantSI32Op : GRTOp<"constant.si32"> {
+  let summary = "constant 32-bit signed integer";
   let description = [{
-    The "graphrt.constant.i32" operation produces a 32-bit result in an int32_t
+    The "graphrt.constant.si32" operation produces a 32-bit result in an int32_t
     AsyncValue.
   }];
 
@@ -41,10 +41,10 @@ def ConstantI32Op : GRTOp<"constant.i32"> {
 }
 
 //===----------------------------------------------------------------------===//
-// AddI32Op
+// AddSI32Op
 //===----------------------------------------------------------------------===//
 
-def AddI32Op : GRTOp<"add.i32"> {
+def AddSI32Op : GRTOp<"add.si32"> {
   let summary = "Add two int32_t values";
  
   let arguments = (ins SI32:$lhs, SI32:$rhs);
@@ -53,10 +53,10 @@ def AddI32Op : GRTOp<"add.i32"> {
 }
 
 //===----------------------------------------------------------------------===//
-// LessEqualI32Op
+// LessEqualSI32Op
 //===----------------------------------------------------------------------===//
 
-def LessEqualI32Op : GRTOp<"lessequal.i32"> {
+def LessEqualSI32Op : GRTOp<"lessequal.si32"> {
   let summary = "Compare two int32_t values for `<=` and return a bool";
  
   let arguments = (ins SI32:$lhs, SI32:$rhs);
@@ -65,10 +65,10 @@ def LessEqualI32Op : GRTOp<"lessequal.i32"> {
 }
 
 //===----------------------------------------------------------------------===//
-// PrintI32Op
+// PrintSI32Op
 //===----------------------------------------------------------------------===//
 
-def PrintI32Op : GRTOp<"print.i32"> {
+def PrintSI32Op : GRTOp<"print.si32"> {
   let summary = "Print an int32_t value";
  
   let arguments = (ins SI32:$value, ChainType:$chain);

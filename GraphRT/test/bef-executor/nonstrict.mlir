@@ -8,7 +8,7 @@ bef.invokable @return_first_arg(%x: si32, %y: si32) -> si32 {
 // Test a nonstrict call with an unused argument.
 // CHECK-LABEL: --- Running 'unused_nonstrict_arg'
 bef.invokable @unused_nonstrict_arg() {
-  %c1 = grt.constant.i32 1
+  %c1 = grt.constant.si32 1
 
   %v2 = "test.async.add.i32"(%c1, %c1) : (si32, si32) -> si32
   %v3 = "test.async.add.i32"(%v2, %v2) : (si32, si32) -> si32
@@ -21,6 +21,6 @@ bef.invokable @unused_nonstrict_arg() {
 
   %ch0 = grt.chain.new
   // CHECK-NEXT: int32 = 1
-  %ch1 = grt.print.i32 %x, %ch0
+  %ch1 = grt.print.si32 %x, %ch0
   bef.output
 }
