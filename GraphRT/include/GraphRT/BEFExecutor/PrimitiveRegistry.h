@@ -480,7 +480,7 @@ public:
   template <typename ValueType>
   ParseResult decode(ValueType *result) const {
     using EncodedType = typename llvm::function_traits<
-        decltype(&BEFDecoder<ValueType>::decode)>::template arg_t<0>;
+        decltype(&M::BEFDecoder<ValueType>::decode)>::template arg_t<0>;
 
     if (auto rawAttrValue = this->dyn_cast<EncodedType>()) {
       // If this is a C type like int8_t then look through the attr, otherwise
@@ -591,6 +591,28 @@ struct BEFDecoder<SmallVector<EltType, Size>> {
     return result;
   }
 };
+
+#ifndef __clang__
+/// GCC complains about matching SmallVector without the Size template
+/// parameter, and CLANG complaines about ambiguous partial specialization.
+///
+/// TODO: Can we implement this function in terms of
+/// BEFDecoder<SmallVector<EltType, Size>>?
+template <typename EltType>
+struct BEFDecoder<SmallVector<EltType>> {
+  static Optional<SmallVector<EltType>> decode(BEFListAttr value) {
+    SmallVector<EltType> result;
+    result.reserve(value.size());
+    for (auto element : value) {
+      EltType resultElt;
+      if (element.decode(&resultElt))
+        return None;
+      result.push_back(resultElt);
+    }
+    return result;
+  }
+};
+#endif // __clang__
 
 //===----------------------------------------------------------------------===//
 // BEFDictionaryAttr
