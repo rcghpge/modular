@@ -31,7 +31,7 @@ std::vector<uint8_t> translateMLIRToBEF(ModuleOp module,
                                         bool enableBEFMetadata = false);
 
 // Register this translation for GraphRTTranslate.
-void registerMLIRToBEFTranslation(mlir::DialectRegistry &otherDialects);
+void registerMLIRToBEFTranslation(DialectRegistry &otherDialects);
 
 } // namespace M
 

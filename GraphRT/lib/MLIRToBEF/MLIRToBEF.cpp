@@ -280,7 +280,7 @@ public:
     return it->second;
   }
 
-  mlir::InFlightDiagnostic emitError(Location loc) {
+  InFlightDiagnostic emitError(Location loc) {
     hadError = true;
     return mlir::emitError(loc);
   }

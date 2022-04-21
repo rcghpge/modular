@@ -15,7 +15,7 @@
 #include "mlir/IR/BuiltinOps.h"
 using namespace M;
 
-void M::registerMLIRToBEFTranslation(mlir::DialectRegistry &otherDialects) {
+void M::registerMLIRToBEFTranslation(DialectRegistry &otherDialects) {
   static llvm::cl::opt<bool> enableBEFMetadata(
       "enable-bef-metadata",
       llvm::cl::desc("Enable metadata sections for better BEF2MLIR"),
@@ -30,7 +30,7 @@ void M::registerMLIRToBEFTranslation(mlir::DialectRegistry &otherDialects) {
         os.write(reinterpret_cast<const char *>(data.data()), data.size());
         return success();
       },
-      [&](mlir::DialectRegistry &registry) {
+      [&](DialectRegistry &registry) {
         registry.insert<BEF::BEFDialect>();
         // If the caller provided any other dialects, add them.
         otherDialects.appendTo(registry);

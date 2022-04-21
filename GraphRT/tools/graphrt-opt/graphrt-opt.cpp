@@ -9,11 +9,13 @@
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "mlir/Transforms/Passes.h"
 
+using namespace M;
+
 int main(int argc, char **argv) {
-  mlir::DialectRegistry registry;
+  DialectRegistry registry;
 
   // Register MLIR stuff
-  M::registerAllGraphRTDialects(registry);
+  registerAllGraphRTDialects(registry);
   // M::registerAllPasses();
 
   // Register the standard passes we want.
@@ -22,7 +24,7 @@ int main(int argc, char **argv) {
   mlir::registerInlinerPass();
   mlir::registerCanonicalizerPass();
 
-  return mlir::failed(mlir::MlirOptMain(argc, argv, "graphrt optimizer driver",
-                                        registry,
-                                        /*preloadDialectsInContext=*/false));
+  return failed(mlir::MlirOptMain(argc, argv, "graphrt optimizer driver",
+                                  registry,
+                                  /*preloadDialectsInContext=*/false));
 }

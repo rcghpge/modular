@@ -18,7 +18,7 @@
 using namespace M;
 
 int main(int argc, char **argv) {
-  mlir::DialectRegistry extraDialectsForMLIRToBEF;
+  DialectRegistry extraDialectsForMLIRToBEF;
   extraDialectsForMLIRToBEF.insert<GRT::GRTDialect>();
   registerMLIRToBEFTranslation(extraDialectsForMLIRToBEF);
 

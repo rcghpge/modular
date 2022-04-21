@@ -121,7 +121,7 @@ private:
   bool parseAttribute(size_t offset, const BEFReader &attrSection,
                       Attribute &resultAttr);
 
-  mlir::OwningOpRef<ModuleOp> module;
+  OwningOpRef<ModuleOp> module;
 
   /// This is a list of sections indexed by the BEF section ID.
   SmallVector<ArrayRef<uint8_t>, 12> sections;
@@ -207,7 +207,7 @@ bool BEFToMLIRConverter::parseLocationPositions() {
         return true;
     }
     locations.insert(
-        {offset, mlir::FileLineColLoc::get(filenameEntry, lineNo, colNo)});
+        {offset, FileLineColLoc::get(filenameEntry, lineNo, colNo)});
   }
   return false;
 }
@@ -388,7 +388,7 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
     return {};
   }
 
-  auto type = mlir::RankedTensorType::get(numElements, eltType);
+  auto type = RankedTensorType::get(numElements, eltType);
   resultAttr = DenseElementsAttr::get(type, elements);
   return false;
 }

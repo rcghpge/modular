@@ -71,7 +71,7 @@ LogicalResult InvokableOp::verifyRegions() {
 
 /// Containers verify that the operands of this OutputOp match the specified set
 /// of types.
-mlir::LogicalResult OutputOp::checkArgumentTypes(TypeRange types) {
+LogicalResult OutputOp::checkArgumentTypes(TypeRange types) {
   // Verify our result types match up with the enclosing result type.
   if (getNumOperands() != types.size())
     return emitOpError("expected ")
