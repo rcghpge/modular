@@ -17,7 +17,7 @@ include "mlir/Interfaces/ControlFlowInterfaces.td"
 //===----------------------------------------------------------------------===//
 
 def InvokableOp
-  : BEFOp<"invokable", [HasParent<"mlir::ModuleOp">, FunctionOpInterface,
+  : BEFOp<"invokable", [HasParent<"ModuleOp">, FunctionOpInterface,
                         Symbol, IsolatedFromAbove,
                         SingleBlockImplicitTerminator<"OutputOp">]> {
   let summary = "Named invokable in a BEF file";
@@ -103,7 +103,7 @@ def OutputOp : BEFOp<"output", [Terminator, ReturnLike]> {
   let extraClassDeclaration = [{
     /// Verify that the operands of this OutputOp match the specified set of
     /// types.
-    mlir::LogicalResult checkArgumentTypes(TypeRange types);
+    LogicalResult checkArgumentTypes(TypeRange types);
   }];
 }
 

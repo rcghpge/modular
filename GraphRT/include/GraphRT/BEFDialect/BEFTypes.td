@@ -12,7 +12,7 @@ include "mlir/IR/AttrTypeBase.td"
 
 // Base class for the types in this dialect.
 class BEFType<string mnemonic, list<Trait> traits = [],
-              string baseCppClass = "::mlir::Type"> :
+              string baseCppClass = "Type"> :
     TypeDef<BEFDialect, mnemonic, traits, baseCppClass>;
 
 //===----------------------------------------------------------------------===//
