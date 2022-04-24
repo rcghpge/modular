@@ -20,16 +20,15 @@ using namespace GRT;
 /// `(%a: i32, %b: f32)`.
 static ParseResult parseParenOperandList(
     OpAsmParser &parser, OperationState &result,
-    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &operandInfo,
-    SmallVectorImpl<Location> &operandLocs) {
+    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &operandInfo) {
   auto parseOperandFn = [&]() -> ParseResult {
     OpAsmParser::UnresolvedOperand curOperand;
     Type type;
     if (parser.parseOperand(curOperand) || parser.parseColonType(type) ||
+        parser.parseOptionalLocationSpecifier(curOperand.sourceLoc) ||
         parser.resolveOperand(curOperand, type, result.operands))
       return failure();
     operandInfo.push_back(curOperand);
-    operandLocs.push_back(parser.getEncodedSourceLoc(curOperand.location));
     return success();
   };
 
@@ -80,7 +79,6 @@ LogicalResult InvokeOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
 
 ParseResult IfOp::parse(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::UnresolvedOperand> operandInfo;
-  SmallVector<Location> operandLocs;
   llvm::SMLoc operandLoc;
   OpAsmParser::UnresolvedOperand condOperand;
   if (parser.parseOperand(condOperand) ||
@@ -88,7 +86,7 @@ ParseResult IfOp::parse(OpAsmParser &parser, OperationState &result) {
       parser.resolveOperand(condOperand,
                             IntegerType::get(result.getContext(), 1),
                             result.operands) ||
-      parseParenOperandList(parser, result, operandInfo, operandLocs) ||
+      parseParenOperandList(parser, result, operandInfo) ||
       parser.parseArrowTypeList(result.types) ||
       parser.parseOptionalAttrDictWithKeyword(result.attributes))
     return failure();
@@ -99,13 +97,13 @@ ParseResult IfOp::parse(OpAsmParser &parser, OperationState &result) {
 
   // Parse the then region.
   Region *thenRegion = result.addRegion();
-  if (parser.parseRegion(*thenRegion, operandInfo, bodyTypes, operandLocs,
+  if (parser.parseRegion(*thenRegion, operandInfo, bodyTypes,
                          /*enableNameShadowing=*/true))
     return failure();
 
   Region *elseRegion = result.addRegion();
   if (parser.parseKeyword("else") ||
-      parser.parseRegion(*elseRegion, operandInfo, bodyTypes, operandLocs,
+      parser.parseRegion(*elseRegion, operandInfo, bodyTypes,
                          /*enableNameShadowing=*/true))
     return failure();
 
@@ -159,7 +157,6 @@ LogicalResult IfOp::verify() {
 
 ParseResult RepeatI32Op::parse(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::UnresolvedOperand> operandInfo;
-  SmallVector<Location> operandLocs;
   llvm::SMLoc operandLoc;
   OpAsmParser::UnresolvedOperand countOperand;
   if (parser.parseOperand(countOperand) ||
@@ -168,7 +165,7 @@ ParseResult RepeatI32Op::parse(OpAsmParser &parser, OperationState &result) {
           countOperand,
           IntegerType::get(result.getContext(), 32, IntegerType::Signed),
           result.operands) ||
-      parseParenOperandList(parser, result, operandInfo, operandLocs) ||
+      parseParenOperandList(parser, result, operandInfo) ||
       parser.parseOptionalAttrDictWithKeyword(result.attributes))
     return failure();
 
@@ -178,7 +175,7 @@ ParseResult RepeatI32Op::parse(OpAsmParser &parser, OperationState &result) {
 
   // Parse the body region.
   Region *body = result.addRegion();
-  return parser.parseRegion(*body, operandInfo, result.types, operandLocs,
+  return parser.parseRegion(*body, operandInfo, result.types,
                             /*enableNameShadowing=*/true);
 }
 
@@ -214,13 +211,13 @@ LogicalResult RepeatI32Op::verify() {
 
 ParseResult BenchmarkOp::parse(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::UnresolvedOperand> operandInfo;
-  SmallVector<Location> operandLocs;
+
   OpAsmParser::UnresolvedOperand chainOperand;
   if (parser.parseOperand(chainOperand) ||
       parser.resolveOperand(chainOperand,
                             parser.getBuilder().getType<ChainType>(),
                             result.operands) ||
-      parseParenOperandList(parser, result, operandInfo, operandLocs))
+      parseParenOperandList(parser, result, operandInfo))
     return failure();
 
   FloatAttr convergenceThreshold;
@@ -236,7 +233,7 @@ ParseResult BenchmarkOp::parse(OpAsmParser &parser, OperationState &result) {
 
   // Parse the body region.
   Region *body = result.addRegion();
-  if (parser.parseRegion(*body, operandInfo, operandTypes, operandLocs,
+  if (parser.parseRegion(*body, operandInfo, operandTypes,
                          /*enableNameShadowing=*/true))
     return failure();
 
