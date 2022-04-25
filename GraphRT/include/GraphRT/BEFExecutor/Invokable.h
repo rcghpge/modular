@@ -55,8 +55,8 @@ private:
   const StringRef name;
   const uint16_t numArgs, numResults;
 
-  Invokable(const Invokable &) = delete;
-  Invokable &operator=(const Invokable &) = delete;
+  Invokable(Invokable &) = delete;
+  Invokable &operator=(Invokable &) = delete;
   virtual void vtableAnchor();
 };
 

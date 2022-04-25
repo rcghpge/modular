@@ -1134,11 +1134,11 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   //===--------------------------------------------------------------------===//
   // Invokable Values
 
-  /// If this takes a `const Invokable *`, then pass it down.
+  /// If this takes a `Invokable *`, then pass it down.
   template <typename Dummy>
-  struct Value<const Invokable *, Dummy> : public InvokableValue {
+  struct Value<Invokable *, Dummy> : public InvokableValue {
     template <typename IndicesT>
-    static const Invokable *process(PrimitiveFrame &frame) {
+    static Invokable *process(PrimitiveFrame &frame) {
       return frame.getInvokable(IndicesT::invIdx);
     }
   };

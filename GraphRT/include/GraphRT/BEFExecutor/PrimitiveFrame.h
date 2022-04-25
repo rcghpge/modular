@@ -83,7 +83,7 @@ public:
 
   size_t getNumInvokables() const { return invokables.size(); }
 
-  const Invokable *getInvokable(size_t idx) const {
+  Invokable *getInvokable(size_t idx) const {
     assert(idx < invokables.size() && "invalid invokable number");
     return invokables[idx];
   }
@@ -156,7 +156,7 @@ protected:
   SmallVector<AnyAsyncValueRef, 16> argsAndResults;
 
   /// This is all of the invokable references used by the invocation.
-  SmallVector<const Invokable *, 2> invokables;
+  SmallVector<Invokable *, 2> invokables;
 
   /// This keeps track of each attribute value into the attributeSection.
   ArrayRef<uint32_t> attrOffsets;
@@ -227,7 +227,7 @@ public:
     this->attrOffsets = attrOffsets;
   }
 
-  void addInvokable(const Invokable *inv) { invokables.push_back(inv); }
+  void addInvokable(Invokable *inv) { invokables.push_back(inv); }
 };
 
 } // namespace M

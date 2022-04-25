@@ -231,12 +231,12 @@ BEFFileImpl::~BEFFileImpl() {
 }
 
 /// Get a list of invokables out of the BEF file.
-std::vector<const Invokable *> BEFFile::getAllInvokables() const {
+std::vector<Invokable *> BEFFile::getAllInvokables() const {
   auto befFile = static_cast<const BEFFileImpl *>(this);
 
   // All of the result invokables are stored in a dense array, but we want to
   // project them as individual objects.
-  std::vector<const Invokable *> result;
+  std::vector<Invokable *> result;
   result.reserve(befFile->numInvokables);
   for (size_t i = 0, e = befFile->numInvokables; i != e; ++i)
     result.push_back(befFile->invokables + i);
@@ -244,7 +244,7 @@ std::vector<const Invokable *> BEFFile::getAllInvokables() const {
 }
 
 /// Find an invokable with the specified name, returning null if it isn't found.
-const Invokable *BEFFile::getInvokable(StringRef name) const {
+Invokable *BEFFile::getInvokable(StringRef name) const {
   auto befFile = static_cast<const BEFFileImpl *>(this);
   auto it = befFile->invokableSymbolTable.find(name);
   return it != befFile->invokableSymbolTable.end()

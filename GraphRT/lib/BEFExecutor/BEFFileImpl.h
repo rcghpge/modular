@@ -28,7 +28,7 @@ public:
   ~BEFFileImpl() override;
 
   /// Return the invokable with the specified invokable ID.
-  const Invokable *getInvokableByID(size_t number) const;
+  Invokable *getInvokableByID(size_t number) const;
 
   // Everything in this class is public because the entire class is private to
   // the BEFExecutor library implementation.
@@ -63,7 +63,7 @@ public:
   /// This contains all of the BEFInvokable records inline in dense memory even
   /// though clients treat them like individual objects.  Their lifetime is
   /// completely bound to BEFFileImpl's.
-  const BEFInvokable *invokables = nullptr;
+  BEFInvokable *invokables = nullptr;
   size_t numInvokables = 0;
 };
 

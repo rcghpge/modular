@@ -36,11 +36,11 @@ public:
                                       const PrimitiveRegistry &primitives);
 
   /// Get a list of invokables out of the BEF file.
-  std::vector<const Invokable *> getAllInvokables() const;
+  std::vector<Invokable *> getAllInvokables() const;
 
   /// Find an invokable with the specified name, returning null if it isn't
   /// found.
-  const Invokable *getInvokable(StringRef name) const;
+  Invokable *getInvokable(StringRef name) const;
 
 protected:
   BEFFile() {}

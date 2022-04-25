@@ -734,7 +734,7 @@ void BEFInvokable::invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
 }
 
 /// Return the invokable with the specified Invokable ID.
-const Invokable *BEFFileImpl::getInvokableByID(size_t number) const {
+Invokable *BEFFileImpl::getInvokableByID(size_t number) const {
   assert(number < numInvokables && "invalid invokable");
   // invokables are stored consequtively in memory.
   return invokables + number;

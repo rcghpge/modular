@@ -145,7 +145,7 @@ example, the fully variadic `grt.invoke` operation is defined like this:
 
 ```C++
 static void invoke(RemainingArguments arguments, RemainingResults results,
-                   const Invokable *target, Runtime &runtime) {
+                   Invokable *target, Runtime &runtime) {
   assert(target->getNumArgs() == arguments.size() && "argument count mismatch");
   assert(target->getNumResults() == results.size() && "result count mismatch");
   target->invoke(arguments.get(), results.get(), runtime);
@@ -157,7 +157,7 @@ These also mix naturally with normal arguments and results, but
 results bind before `RemainingResults`.
 
 This example also shows how to bind to symbol references like `@some_thing`
-and region bodies: these are declared as `const Invokable *` and `ADD_PRIMITIVE`
+and region bodies: these are declared as `Invokable *` and `ADD_PRIMITIVE`
 resolves them to the related invokable in the BEF file.
 
 Finally, note that we also took a `Runtime &`.  `ADD_PRIMITIVE` has direct
