@@ -301,6 +301,13 @@ public:
     return result;
   }
 
+  /// Set all results in this container to error with message `error` and
+  /// location `loc`.
+  void setAllToError(Error error, EncodedLocation &loc) {
+    for (auto &r : results)
+      r->setToError(EncodedDiagnostic(error.copy(), loc.copy()));
+  }
+
 private:
   Runtime &runtime;
   MutableArrayRef<AnyAsyncValueRef> results;
