@@ -257,7 +257,7 @@ static AsyncValueRef<int32_t> async_add_i32(int32_t lhs, int32_t rhs,
                                             Runtime &runtime) {
   // Even though a single scalar add is trivial, we can do it on a background
   // thread if we'd like!
-  return addTask(runtime, [lhs, rhs] { return lhs + rhs; });
+  return addTaskFunc(runtime, [lhs, rhs] { return lhs + rhs; });
 }
 
 // It is silly to do this for add of course, but this shows how to handle this.
