@@ -18,17 +18,15 @@ using namespace GRT;
 
 /// Parse a parenthesized operand list with types included, e.g.
 /// `(%a: i32, %b: f32)`.
-static ParseResult parseParenOperandList(
-    OpAsmParser &parser, OperationState &result,
-    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &operandInfo) {
+static ParseResult
+parseParenOperandList(OpAsmParser &parser, OperationState &result,
+                      SmallVectorImpl<OpAsmParser::Argument> &argumentInfo) {
   auto parseOperandFn = [&]() -> ParseResult {
-    OpAsmParser::UnresolvedOperand curOperand;
-    Type type;
-    if (parser.parseOperand(curOperand) || parser.parseColonType(type) ||
-        parser.parseOptionalLocationSpecifier(curOperand.sourceLoc) ||
-        parser.resolveOperand(curOperand, type, result.operands))
+    OpAsmParser::Argument arg;
+    if (parser.parseArgument(arg, /*allowType=*/true) ||
+        parser.resolveOperand(arg.ssaName, arg.type, result.operands))
       return failure();
-    operandInfo.push_back(curOperand);
+    argumentInfo.push_back(arg);
     return success();
   };
 
@@ -78,7 +76,7 @@ LogicalResult InvokeOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
 //===----------------------------------------------------------------------===//
 
 ParseResult IfOp::parse(OpAsmParser &parser, OperationState &result) {
-  SmallVector<OpAsmParser::UnresolvedOperand> operandInfo;
+  SmallVector<OpAsmParser::Argument> operandInfo;
   llvm::SMLoc operandLoc;
   OpAsmParser::UnresolvedOperand condOperand;
   if (parser.parseOperand(condOperand) ||
@@ -91,19 +89,15 @@ ParseResult IfOp::parse(OpAsmParser &parser, OperationState &result) {
       parser.parseOptionalAttrDictWithKeyword(result.attributes))
     return failure();
 
-  SmallVector<Type> bodyTypes;
-  for (Value operand : llvm::drop_begin(result.operands))
-    bodyTypes.push_back(operand.getType());
-
   // Parse the then region.
   Region *thenRegion = result.addRegion();
-  if (parser.parseRegion(*thenRegion, operandInfo, bodyTypes,
+  if (parser.parseRegion(*thenRegion, operandInfo,
                          /*enableNameShadowing=*/true))
     return failure();
 
   Region *elseRegion = result.addRegion();
   if (parser.parseKeyword("else") ||
-      parser.parseRegion(*elseRegion, operandInfo, bodyTypes,
+      parser.parseRegion(*elseRegion, operandInfo,
                          /*enableNameShadowing=*/true))
     return failure();
 
@@ -156,7 +150,7 @@ LogicalResult IfOp::verify() {
 //===----------------------------------------------------------------------===//
 
 ParseResult RepeatI32Op::parse(OpAsmParser &parser, OperationState &result) {
-  SmallVector<OpAsmParser::UnresolvedOperand> operandInfo;
+  SmallVector<OpAsmParser::Argument> operandInfo;
   llvm::SMLoc operandLoc;
   OpAsmParser::UnresolvedOperand countOperand;
   if (parser.parseOperand(countOperand) ||
@@ -175,7 +169,7 @@ ParseResult RepeatI32Op::parse(OpAsmParser &parser, OperationState &result) {
 
   // Parse the body region.
   Region *body = result.addRegion();
-  return parser.parseRegion(*body, operandInfo, result.types,
+  return parser.parseRegion(*body, operandInfo,
                             /*enableNameShadowing=*/true);
 }
 
@@ -210,7 +204,7 @@ LogicalResult RepeatI32Op::verify() {
 //===----------------------------------------------------------------------===//
 
 ParseResult BenchmarkOp::parse(OpAsmParser &parser, OperationState &result) {
-  SmallVector<OpAsmParser::UnresolvedOperand> operandInfo;
+  SmallVector<OpAsmParser::Argument> operandInfo;
 
   OpAsmParser::UnresolvedOperand chainOperand;
   if (parser.parseOperand(chainOperand) ||
@@ -226,14 +220,9 @@ ParseResult BenchmarkOp::parse(OpAsmParser &parser, OperationState &result) {
                             result.attributes))
     return failure();
 
-  SmallVector<Type> operandTypes;
-  // Drop the threshold operand.
-  for (auto v : llvm::drop_begin(result.operands))
-    operandTypes.push_back(v.getType());
-
   // Parse the body region.
   Region *body = result.addRegion();
-  if (parser.parseRegion(*body, operandInfo, operandTypes,
+  if (parser.parseRegion(*body, operandInfo,
                          /*enableNameShadowing=*/true))
     return failure();
 
