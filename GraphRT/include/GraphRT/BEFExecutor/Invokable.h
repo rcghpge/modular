@@ -13,7 +13,7 @@
 
 namespace M {
 
-/// This exposes an abstract interface that describes an "invocable", which is a
+/// This exposes an abstract interface that describes an "invokable", which is a
 /// unit of computation with inputs and results.  It may be "invoked" which
 /// triggers its bodies to start processing available dataflow values
 /// asynchronously.
