@@ -34,7 +34,7 @@ bef.invokable @test_linear() {
   bef.output
 }
 
-// CHECK-LABEL: 'no_op' because it has arguments
+// CHECK-LABEL: 'no_op' because it has 1 argument
 bef.invokable @no_op(%x: !vt.value) -> !vt.value {
   bef.output %x : !vt.value
 }
@@ -62,7 +62,7 @@ bef.invokable @call_no_op() {
   bef.output
 }
 
-// CHECK-LABEL: 'add_one' because it has arguments
+// CHECK-LABEL: 'add_one' because it has 1 argument
 bef.invokable @add_one(%x: !vt.value) -> !vt.value {
   %v1 = "test.vt.constant"() { value = 1 : si32 } : () -> !vt.value
   %r = "test.vt.add"(%v1, %x) : (!vt.value,  !vt.value) -> !vt.value
@@ -129,7 +129,7 @@ bef.invokable @share_to_two() {
 
 // Testing calling a bef function that forwards its argument into two results.
 
-// CHECK-LABEL: 'call_share_to_two' because it has arguments
+// CHECK-LABEL: 'call_share_to_two' because it has 1 argument
 bef.invokable @call_share_to_two(%x: !vt.value) -> (!vt.value, !vt.value) {
   %x1, %x2 = "test.vt_share_to_two_2"(%x) : (!vt.value) -> (!vt.value, !vt.value)
   bef.output %x1, %x2 : !vt.value, !vt.value
@@ -155,7 +155,7 @@ bef.invokable @share_to_two_caller() {
   bef.output
 }
 
-// CHECK-LABEL: 'repeat_n_inc' because it has arguments
+// CHECK-LABEL: 'repeat_n_inc' because it has 1 argument
 bef.invokable @repeat_n_inc(%n: si32) -> () {
   // Returns 1 + %n by initializing %x to 1 and incrementing in a loop.
   %ch0 = grt.chain.new
