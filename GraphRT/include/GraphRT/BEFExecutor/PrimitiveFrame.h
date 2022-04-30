@@ -77,6 +77,10 @@ public:
     return *static_cast<const T *>(getRawAttr(index));
   }
 
+  /// Return all the offsets for all attributes in this primitive frame.
+  ArrayRef<uint32_t> getAttrOffsets() const { return attrOffsets; }
+  const uint8_t *getAttrBase() const { return attrSection.data(); }
+
   //===--------------------------------------------------------------------===//
   // Invokables
   //===--------------------------------------------------------------------===//

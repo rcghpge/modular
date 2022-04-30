@@ -132,6 +132,10 @@ public:
   size_t size() const { return arguments.size(); }
   AnyAsyncValueRef &operator[](size_t i) const { return arguments[i]; }
 
+  using iterator = MutableArrayRef<AnyAsyncValueRef>::iterator;
+  iterator begin() const { return arguments.begin(); }
+  iterator end() const { return arguments.end(); }
+
   /// Return the AsyncValues as a SmallVector where every element is moved out.
   SmallVector<AnyAsyncValueRef> takeAsVector() {
     SmallVector<AnyAsyncValueRef> result;
@@ -281,8 +285,13 @@ public:
       : runtime(runtime), results(results) {}
 
   MutableArrayRef<AnyAsyncValueRef> get() const { return results; }
+  bool empty() const { return results.empty(); }
   size_t size() const { return results.size(); }
   AnyAsyncValueRef &operator[](size_t i) const { return results[i]; }
+
+  using iterator = MutableArrayRef<AnyAsyncValueRef>::iterator;
+  iterator begin() const { return results.begin(); }
+  iterator end() const { return results.end(); }
 
   /// Allocate all of the unset result values as IndirectAsyncValues.
   void allocateIndirectResults() {
@@ -778,6 +787,25 @@ private:
 
 using BEFDictionaryAttr = BEFAttr<Detail::Dictionary>;
 
+/// RemainingBEFAttrs collects all remaining attributes for the primitive that
+/// were not explicitly handled. There can be at most one RemainingBEFAttrs,
+/// and it must appear after all other attributes.
+class RemainingBEFAttrs {
+public:
+  explicit RemainingBEFAttrs(const uint8_t *basePtr, ArrayRef<uint32_t> attrs)
+      : basePtr(basePtr), attrs(attrs) {}
+
+  bool empty() const { return attrs.empty(); }
+  size_t size() const { return attrs.size(); }
+  BEFDynamicAttr operator[](size_t i) const {
+    return BEFDynamicAttr(basePtr + attrs[i]);
+  }
+
+private:
+  const uint8_t *basePtr;
+  ArrayRef<uint32_t> attrs;
+};
+
 //===----------------------------------------------------------------------===//
 // Primitive Registration Wrapper Generator
 //===----------------------------------------------------------------------===//
@@ -999,13 +1027,20 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   // Attribute Values
 
   /// This class defines an Attribute value.
-  struct AttrValue : public ValueBase<ValueType::kAttribute> {
+  template <bool isTerminal = false>
+  struct AttrValue : public ValueBase<ValueType::kAttribute, isTerminal> {
     template <typename IndicesT>
     static void verifyCurrentIndex() {
       static_assert(IndicesT::attrIdx != -1,
-                    "Do not place Attributes after RemainingAttributes");
+                    "Do not place Attributes after RemainingBEFAttrs");
+      static_assert(!isTerminal || IndicesT::attrIdx != -1,
+                    "Do not use more than one RemainingBEFAttrs");
     }
   };
+
+  /// This class defines an Attribute value that terminates the attribute list,
+  /// and consumes the remaining attributes.
+  struct TerminalAttrValue : public AttrValue</*isTerminal=*/true> {};
 
   //===--------------------------------------------------------------------===//
   // Invokable Values
@@ -1131,10 +1166,22 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
 
   /// Specialization to cast a single attribute (T).
   template <typename T, typename Dummy>
-  struct Value<BEFAttr<T>, Dummy> : public AttrValue {
+  struct Value<BEFAttr<T>, Dummy> : public AttrValue<> {
     template <typename IndicesT>
     static BEFAttr<T> process(PrimitiveFrame &frame) {
       return BEFAttr<T>(frame.getRawAttr(IndicesT::attrIdx));
+    }
+  };
+
+  /// RemainingBEFAttrs provides an ArrayRef containing all remaining
+  /// attributes. Useful for primitives with unknown dynamic attributes.
+  template <typename Dummy>
+  struct Value<RemainingBEFAttrs, Dummy> : public TerminalAttrValue {
+    template <typename IndicesT>
+    static RemainingBEFAttrs process(PrimitiveFrame &frame) {
+      return RemainingBEFAttrs(
+          frame.getAttrBase(),
+          frame.getAttrOffsets().drop_front(IndicesT::attrIdx));
     }
   };
 
@@ -1213,9 +1260,9 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
              static_cast<size_t>(IndicesT::argIdx) == frame.getNumArgs() - 1 &&
              frame.getArg(IndicesT::argIdx)->template isType<Chain>())) &&
            "Extra arguments passed to primitive");
-    assert(
-        (IndicesT::attrIdx == frame.getNumAttrs() || IndicesT::attrIdx == -1) &&
-        "Extra attributes passed to primitive");
+    assert((IndicesT::attrIdx == (int)frame.getNumAttrs() ||
+            IndicesT::attrIdx == -1) &&
+           "Extra attributes passed to primitive");
     assert((IndicesT::invIdx == frame.getNumInvokables() ||
             IndicesT::invIdx == -1) &&
            "Extra invokables passed to primitive");
