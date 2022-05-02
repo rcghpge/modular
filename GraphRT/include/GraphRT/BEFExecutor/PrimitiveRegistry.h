@@ -510,7 +510,8 @@ public:
     auto decodedValue = BEFDecoder<ValueType>::decode(valueToDecode);
     if (!decodedValue)
       return error = decodedValue.takeErrorStorage(), failure();
-    return *result = *decodedValue, success();
+    *result = std::move(*decodedValue);
+    return success();
   }
 
   /// Dynamic attributes are compatible with everything.
@@ -586,6 +587,13 @@ public:
 
   /// Return true if there are no attributes in this list.
   bool empty() const { return length == 0; }
+
+  /// Parse this list attribute into the specified type (typically a
+  /// SmallVector), rejecting it with an error if not present or the wrong type.
+  template <typename ValueType>
+  ParseResult decode(ValueType *result, Error &error) const {
+    return BEFDynamicAttr(pointer).decode<ValueType>(result, error);
+  }
 
 private:
   const void *pointer;
