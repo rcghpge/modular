@@ -10,7 +10,7 @@
 #include "LLCL/ForwardDecls.h"
 #include "LLCL/Support/ReferenceCounted.h"
 #include "Support/ErrorOr.h"
-#include "Support/LLVM.h"
+#include "Support/LLVMForwardDecls.h"
 
 namespace M {
 class Invokable;

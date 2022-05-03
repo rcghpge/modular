@@ -11,7 +11,7 @@
 #ifndef GRAPHRT_MLIR_TO_BEF_H
 #define GRAPHRT_MLIR_TO_BEF_H
 
-#include "Support/LLVM.h"
+#include "Support/LLVMCompilerForwardDecls.h"
 
 namespace mlir {
 class DialectRegistry;

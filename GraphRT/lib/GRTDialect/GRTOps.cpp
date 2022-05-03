@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphRT/GRTDialect/GRTOps.h"
-#include "Support/LLVM.h"
+#include "Support/LLVMForwardDecls.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/FunctionImplementation.h"
 

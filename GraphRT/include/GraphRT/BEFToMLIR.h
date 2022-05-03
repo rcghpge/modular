@@ -11,7 +11,7 @@
 #ifndef GRAPHRT_BEF_TO_MLIR_H
 #define GRAPHRT_BEF_TO_MLIR_H
 
-#include "Support/LLVM.h"
+#include "Support/LLVMCompilerForwardDecls.h"
 
 namespace M {
 

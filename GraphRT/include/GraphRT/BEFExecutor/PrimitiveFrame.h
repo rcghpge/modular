@@ -9,7 +9,7 @@
 
 #include "LLCL/ForwardDecls.h"
 #include "LLCL/Runtime/AsyncValue.h"
-#include "Support/LLVM.h"
+#include "Support/LLVMForwardDecls.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 

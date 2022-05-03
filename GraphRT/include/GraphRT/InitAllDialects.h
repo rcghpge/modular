@@ -13,7 +13,7 @@
 
 #include "GraphRT/BEFDialect/BEFDialect.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
-#include "Support/LLVM.h"
+#include "Support/LLVMCompilerForwardDecls.h"
 
 namespace M {
 // Add all the MLIR dialects to the provided registry.

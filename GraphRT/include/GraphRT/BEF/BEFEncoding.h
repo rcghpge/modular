@@ -12,7 +12,7 @@
 #ifndef GRAPHRT_BEF_BEFENCODING_H
 #define GRAPHRT_BEF_BEFENCODING_H
 
-#include "Support/LLVM.h"
+#include "Support/LLVMForwardDecls.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace M {

@@ -8,7 +8,7 @@
 #define GRAPHRT_BEFEXECUTOR_INVOKABLE_H
 
 #include "LLCL/ForwardDecls.h"
-#include "Support/LLVM.h"
+#include "Support/LLVMForwardDecls.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace M {
