@@ -149,7 +149,6 @@ DECLARE_ATTR_MAPPING(kU64, uint64_t);
 DECLARE_ATTR_MAPPING(kF32, float);
 DECLARE_ATTR_MAPPING(kF64, double);
 DECLARE_ATTR_MAPPING(kString, StringRef);
-DECLARE_ATTR_MAPPING(kType, Type);
 #undef DECLARE_ATTR_MAPPING
 
 //===----------------------------------------------------------------------===//
@@ -157,58 +156,52 @@ DECLARE_ATTR_MAPPING(kType, Type);
 //===----------------------------------------------------------------------===//
 
 enum class TypeKind : uint8_t {
-  // Note that almost all of these can and should be interpreted as type
-  // classes, i.e. the enum represents a mask
-
+  /// Note that many of these should be interpreted as type classes, i.e. the
+  /// enum represents a mask, not a concrete enumerator.  These enum values are
+  /// prefixed with `m` to designate this.
   kInvalid = 0,
-
-  // Bit 0 indicates if type is special, for example composite types like
-  // tensors and quantized types, but also things like None.
-  kSpecial = 1, // only use it as mask
 
   //------ encoding for ordinary primitives ----------------------------------//
 
-  // bit 1 indicates if type is complex
-  kComplex = 2, // only use it as mask
+  /// bit 0 indicates if type is complex
+  mComplex = 1,
 
-  // bits 2 and 3 encode primitive category
-  kOther = 0 << 2,    // only use it as mask
-  kSigned = 1 << 2,   // only use it as mask
-  kUnsigned = 2 << 2, // only use it as mask
-  kFloat = 3 << 2,    // only use it as mask
+  /// bits 1 and 2 encode primitive category.
+  mOther = 0 << 1,
+  mSigned = 1 << 1,
+  mUnsigned = 2 << 1,
+  mFloat = 3 << 1,
 
-  // kOther includes other special types
-  kBool = (1 << 4) | kOther,
+  /// Integer and floating point types.  The upper four bits for
+  /// float/signed/unsigned are the # of bytes - 1.
+  kS8 = mSigned,
+  kU8 = mUnsigned,
+  kS16 = (1 << 3) | mSigned,
+  kU16 = (1 << 3) | mUnsigned,
+  kS32 = (3 << 3) | mSigned,
+  kU32 = (3 << 3) | mUnsigned,
+  kS64 = (7 << 3) | mSigned,
+  kU64 = (7 << 3) | mUnsigned,
+  kS128 = (15 << 3) | mSigned,
+  kU128 = (15 << 3) | mUnsigned,
 
-  // The upper four bits for float/signed/unsigned are the # of bytes - 1
-  kS8 = kSigned,
-  kU8 = kUnsigned,
-  kS16 = (1 << 4) | kSigned,
-  kU16 = (1 << 4) | kUnsigned,
-  kS32 = (3 << 4) | kSigned,
-  kU32 = (3 << 4) | kUnsigned,
-  kS64 = (7 << 4) | kSigned,
-  kU64 = (7 << 4) | kUnsigned,
-  kS128 = (15 << 4) | kSigned,
-  kU128 = (15 << 4) | kUnsigned,
+  // bit 3 encodes the float category, for now only if IEEE or not.
+  mIEEEFloat = (1 << 3) | mFloat, // only use it as mask
 
-  // bits 4 and 5 encode the float category, for now only if IEEE or not
-  kIEEEFloat = (1 << 4) | kFloat, // only use it as mask
+  kF16 = mIEEEFloat,
+  kF32 = (1 << 4) | mIEEEFloat,
+  kF64 = (2 << 4) | mIEEEFloat,
+  kF128 = (3 << 4) | mIEEEFloat,
 
-  kF16 = kIEEEFloat,
-  kF32 = (1 << 6) | kIEEEFloat,
-  kF64 = (2 << 6) | kIEEEFloat,
-  kF128 = (3 << 6) | kIEEEFloat,
+  kBF16 = mFloat,
+  kF24 = (1 << 4) | mFloat,
+  kF80 = (2 << 4) | mFloat,
+  kTF32 = (3 << 4) | mFloat,
 
-  kBF16 = kFloat,
-  kF24 = (1 << 6) | kFloat,
-  kF80 = (2 << 6) | kFloat,
-  kTF32 = (3 << 6) | kFloat,
-
-  //------ encodings for non-ordinary types ----------------------------------//
-  // these will usually require extra bytes to be parsed
-  kTensor = 2 | kSpecial,
-  kQuantized = 4 | kSpecial,
+  //------ encodings for other types ----------------------------------//
+  kBool = (1 << 3) | mOther,
+  kTensor = (2 << 3) | mOther,    // Has following bytes.
+  kQuantized = (3 << 3) | mOther, // Has following bytes.
 };
 
 inline TypeKind operator|(TypeKind a, TypeKind b) {

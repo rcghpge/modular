@@ -814,7 +814,7 @@ FailureOr<uint8_t> TypeEmitter::getNumBytesEncoded(unsigned bitWidth) const {
   unsigned numBytes = bitWidth / 8;
   if (numBytes > 16)
     return failure();
-  return (numBytes - 1) << 4;
+  return (numBytes - 1) << 3;
 }
 
 LogicalResult TypeEmitter::emitFloatType(FloatType type) {
@@ -858,7 +858,7 @@ LogicalResult TypeEmitter::emitIntegerType(IntegerType type) {
     return failure();
 
   auto kind =
-      type.isSigned() ? BEF::TypeKind::kSigned : BEF::TypeKind::kUnsigned;
+      type.isSigned() ? BEF::TypeKind::mSigned : BEF::TypeKind::mUnsigned;
   emitTypeKind(BEF::TypeKind(*encOr) | kind);
   return success();
 }
