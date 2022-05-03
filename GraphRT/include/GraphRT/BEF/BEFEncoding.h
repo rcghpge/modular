@@ -103,7 +103,8 @@ enum class AttributeKind : uint8_t {
   kBool = 1 << 5,
   kString = 2 << 5,
   kDictionary = 3 << 5,
-  kList = 5 << 5,
+  kList = 4 << 5,
+  kType = 5 << 5,
 };
 
 static inline AttrCategory getCategory(AttributeKind kind) {
@@ -147,8 +148,99 @@ DECLARE_ATTR_MAPPING(kS64, int64_t);
 DECLARE_ATTR_MAPPING(kU64, uint64_t);
 DECLARE_ATTR_MAPPING(kF32, float);
 DECLARE_ATTR_MAPPING(kF64, double);
-DECLARE_ATTR_MAPPING(kString, llvm::StringRef);
+DECLARE_ATTR_MAPPING(kString, StringRef);
+DECLARE_ATTR_MAPPING(kType, Type);
 #undef DECLARE_ATTR_MAPPING
+
+//===----------------------------------------------------------------------===//
+// BEF type constants and helpers
+//===----------------------------------------------------------------------===//
+
+enum class TypeKind : uint8_t {
+  // Note that almost all of these can and should be interpreted as type
+  // classes, i.e. the enum represents a mask
+
+  kInvalid = 0,
+
+  // Bit 0 indicates if type is special, for example composite types like
+  // tensors and quantized types, but also things like None.
+  kSpecial = 1, // only use it as mask
+
+  //------ encoding for ordinary primitives ----------------------------------//
+
+  // bit 1 indicates if type is complex
+  kComplex = 2, // only use it as mask
+
+  // bits 2 and 3 encode primitive category
+  kOther = 0 << 2,    // only use it as mask
+  kSigned = 1 << 2,   // only use it as mask
+  kUnsigned = 2 << 2, // only use it as mask
+  kFloat = 3 << 2,    // only use it as mask
+
+  // kOther includes other special types
+  kBool = (1 << 4) | kOther,
+
+  // The upper four bits for float/signed/unsigned are the # of bytes - 1
+  kS8 = kSigned,
+  kU8 = kUnsigned,
+  kS16 = (1 << 4) | kSigned,
+  kU16 = (1 << 4) | kUnsigned,
+  kS32 = (3 << 4) | kSigned,
+  kU32 = (3 << 4) | kUnsigned,
+  kS64 = (7 << 4) | kSigned,
+  kU64 = (7 << 4) | kUnsigned,
+  kS128 = (15 << 4) | kSigned,
+  kU128 = (15 << 4) | kUnsigned,
+
+  // bits 4 and 5 encode the float category, for now only if IEEE or not
+  kIEEEFloat = (1 << 4) | kFloat, // only use it as mask
+
+  kF16 = kIEEEFloat,
+  kF32 = (1 << 6) | kIEEEFloat,
+  kF64 = (2 << 6) | kIEEEFloat,
+  kF128 = (3 << 6) | kIEEEFloat,
+
+  kBF16 = kFloat,
+  kF24 = (1 << 6) | kFloat,
+  kF80 = (2 << 6) | kFloat,
+  kTF32 = (3 << 6) | kFloat,
+
+  //------ encodings for non-ordinary types ----------------------------------//
+  // these will usually require extra bytes to be parsed
+  kTensor = 2 | kSpecial,
+  kQuantized = 4 | kSpecial,
+};
+
+inline TypeKind operator|(TypeKind a, TypeKind b) {
+  return static_cast<TypeKind>(static_cast<uint8_t>(a) |
+                               static_cast<uint8_t>(b));
+}
+
+/// Provide a mapping from C++ types to the corresponding type kinds.
+template <typename CXXType>
+struct TypeKindForCXXType {
+  // Default mapping allows a static_assert instead of template substitution
+  // failure to catch invalid cases.
+  static constexpr TypeKind kind = TypeKind::kInvalid;
+};
+
+#define DECLARE_TYPE_MAPPING(KIND, CXXTYPE)                                    \
+  template <>                                                                  \
+  struct TypeKindForCXXType<CXXTYPE> {                                         \
+    static constexpr TypeKind kind = TypeKind::KIND;                           \
+  };
+DECLARE_TYPE_MAPPING(kBool, bool);
+DECLARE_TYPE_MAPPING(kS8, int8_t);
+DECLARE_TYPE_MAPPING(kU8, uint8_t);
+DECLARE_TYPE_MAPPING(kS16, int16_t);
+DECLARE_TYPE_MAPPING(kU16, uint16_t);
+DECLARE_TYPE_MAPPING(kS32, int32_t);
+DECLARE_TYPE_MAPPING(kU32, uint32_t);
+DECLARE_TYPE_MAPPING(kS64, int64_t);
+DECLARE_TYPE_MAPPING(kU64, uint64_t);
+DECLARE_TYPE_MAPPING(kF32, float);
+DECLARE_TYPE_MAPPING(kF64, double);
+#undef DECLARE_TYPE_MAPPING
 
 } // namespace BEF
 } // namespace M

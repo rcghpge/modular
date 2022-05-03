@@ -584,6 +584,7 @@ public:
   BEFOffset emitAttribute(Attribute attr, Location loc);
 
 private:
+  void emitAttributeKind(BEF::AttributeKind kind) { emitByte((uint8_t)kind); };
   FailureOr<BEF::AttributeKind> deriveAttributeKind(Type eltType,
                                                     Location loc) const;
   BEFOffset emitAttributeInternal(Attribute attr, Location loc,
@@ -594,6 +595,7 @@ private:
   BEFOffset emitDenseElementsAttribute(DenseElementsAttr value, Location loc);
   BEFOffset emitArrayAttribute(ArrayAttr value, Location loc);
   BEFOffset emitDictionaryAttribute(DictionaryAttr value, Location loc);
+  BEFOffset emitTypeAttribute(Type type, Location loc);
   EntityTable &entities;
 };
 } // end anonymous namespace.
@@ -662,7 +664,7 @@ BEFOffset AttributesEmitter::emitIntegerValue(bool emitAsArrayElement,
     auto kindOr = deriveAttributeKind(eltType, loc);
     if (failed(kindOr))
       return {0};
-    emitByte((uint8_t)*kindOr);
+    emitAttributeKind(*kindOr);
   }
 
   auto offset = getOffset();
@@ -683,7 +685,7 @@ BEFOffset AttributesEmitter::emitStringAttribute(StringRef value) {
   // bytes before it specify how long the string is.  To enforce this notion, we
   // don't emit a zero byte at the end of the string data.
   emitInvertedVBR(value.size());
-  emitByte((uint8_t)BEF::AttributeKind::kString);
+  emitAttributeKind(BEF::AttributeKind::kString);
   auto offset = getOffset();
   emitStringData(value);
   return offset;
@@ -715,7 +717,7 @@ BEFOffset AttributesEmitter::emitDenseElementsAttribute(DenseElementsAttr value,
 
   // Emit the byte for the attribute kind just after the inverted VBR for the
   // elements.
-  emitByte((uint8_t)BEF::getArrayOf(*kindOr));
+  emitAttributeKind(BEF::getArrayOf(*kindOr));
 
   BEFOffset sizeAndKindEnd = getOffset();
 
@@ -747,7 +749,7 @@ BEFOffset AttributesEmitter::emitDenseElementsAttribute(DenseElementsAttr value,
 BEFOffset AttributesEmitter::emitArrayAttribute(ArrayAttr value, Location loc) {
   // Emit the size of the array and the attribute kind.
   emitInvertedVBR(value.size());
-  emitByte((uint8_t)BEF::AttributeKind::kList);
+  emitAttributeKind(BEF::AttributeKind::kList);
 
   BEFOffset startOffset = getOffset();
 
@@ -766,7 +768,7 @@ BEFOffset AttributesEmitter::emitDictionaryAttribute(DictionaryAttr value,
                                                      Location loc) {
   // Emit the size of the dict and the attribute kind.
   emitInvertedVBR(value.size());
-  emitByte((uint8_t)BEF::AttributeKind::kDictionary);
+  emitAttributeKind(BEF::AttributeKind::kDictionary);
 
   // This is the offset into the dict we want to provide - essentially a table
   // of name:offset pairs that we can use when parsing.
@@ -788,6 +790,98 @@ BEFOffset AttributesEmitter::emitDictionaryAttribute(DictionaryAttr value,
   }
 
   return nameAndOffsetStart;
+}
+
+namespace {
+class TypeEmitter {
+public:
+  TypeEmitter(AttributesEmitter *emitter) : emitter(emitter) {}
+  LogicalResult emitFloatType(FloatType type);
+  LogicalResult emitIntegerType(IntegerType type);
+
+private:
+  AttributesEmitter *emitter;
+  FailureOr<uint8_t> getNumBytesEncoded(unsigned bitWidth) const;
+  inline void emitTypeKind(BEF::TypeKind kind) const {
+    emitter->emitByte((uint8_t)kind);
+  }
+};
+
+// Encodes the number of bytes as needed by primitive types in BEF::TypeKind
+FailureOr<uint8_t> TypeEmitter::getNumBytesEncoded(unsigned bitWidth) const {
+  if (bitWidth % 8)
+    return failure();
+  unsigned numBytes = bitWidth / 8;
+  if (numBytes > 16)
+    return failure();
+  return (numBytes - 1) << 4;
+}
+
+LogicalResult TypeEmitter::emitFloatType(FloatType type) {
+  unsigned bitWidth = type.getWidth();
+  switch (bitWidth) {
+  case 16:
+    if (auto bFloatType = type.dyn_cast<BFloat16Type>())
+      emitTypeKind(BEF::TypeKind::kBF16); // TODO: test when we have cpp type
+    else
+      emitTypeKind(BEF::TypeKind::kF16);
+    return success();
+  case 32:
+    emitTypeKind(BEF::TypeKind::kF32);
+    return success();
+  case 64:
+    emitTypeKind(BEF::TypeKind::kF64);
+    return success();
+  case 80:
+    emitTypeKind(BEF::TypeKind::kF80);
+    return success();
+  case 128:
+    emitTypeKind(BEF::TypeKind::kF128);
+    return success();
+  default:
+    llvm_unreachable("unknown float type");
+  }
+}
+
+LogicalResult TypeEmitter::emitIntegerType(IntegerType type) {
+  unsigned bitWidth = type.getWidth();
+
+  if (bitWidth == 1) {
+    emitTypeKind(BEF::TypeKind::kBool);
+    return success();
+  }
+  if (type.isSignless())
+    return failure();
+
+  auto encOr = getNumBytesEncoded(bitWidth);
+  if (failed(encOr))
+    return failure();
+
+  auto kind =
+      type.isSigned() ? BEF::TypeKind::kSigned : BEF::TypeKind::kUnsigned;
+  emitTypeKind(BEF::TypeKind(*encOr) | kind);
+  return success();
+}
+
+} // namespace
+
+BEFOffset AttributesEmitter::emitTypeAttribute(Type type, Location loc) {
+  emitAttributeKind(BEF::AttributeKind::kType);
+  BEFOffset startOffset = getOffset();
+
+  TypeEmitter typeEmitter(this);
+  if (auto floatType = type.dyn_cast<FloatType>()) {
+    if (succeeded(typeEmitter.emitFloatType(floatType)))
+      return startOffset;
+  } else if (auto intType = type.dyn_cast<IntegerType>()) {
+    if (succeeded(typeEmitter.emitIntegerType(intType)))
+      return startOffset;
+    entities.emitError(loc)
+        << "signless and arbitrary length integers not supported yet: " << type;
+  } else {
+    entities.emitError(loc) << "type attribute not supported: " << type;
+  }
+  return {0};
 }
 
 BEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr, Location loc,
@@ -820,6 +914,9 @@ BEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr, Location loc,
 
   if (auto dict = attr.dyn_cast<DictionaryAttr>())
     return emitDictionaryAttribute(dict, loc);
+
+  if (auto typeAttr = attr.dyn_cast<TypeAttr>())
+    return emitTypeAttribute(typeAttr.getValue(), loc);
 
   entities.emitError(loc) << "unsupported attribute " << attr;
   return {0};

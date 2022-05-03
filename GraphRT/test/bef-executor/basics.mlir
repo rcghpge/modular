@@ -141,6 +141,41 @@ bef.invokable @basic_string_and_arrays() {
   bef.output
 }
 
+// CHECK-LABEL: --- Running 'test_types'
+bef.invokable @test_types() {
+  %ch0 = grt.chain.new
+
+  // CHECK-NEXT: Type attribute: bool
+  %ch1 = "test.print_type"(%ch0) {t = i1} : (!grt.chain) -> (!grt.chain)
+  // CHECK-NEXT: Type attribute: bool
+  %ch2 = "test.print_type"(%ch1) {t = si1} : (!grt.chain) -> (!grt.chain)
+  // CHECK-NEXT: Type attribute: bool
+  %ch3 = "test.print_type"(%ch2) {t = ui1} : (!grt.chain) -> (!grt.chain)
+  // CHECK-NEXT: Type attribute: float
+  %ch4 = "test.print_type"(%ch3) {t = f32} : (!grt.chain) -> (!grt.chain)
+  // CHECK-NEXT: Type attribute: double
+  %ch5 = "test.print_type"(%ch4) {t = f64} : (!grt.chain) -> (!grt.chain)
+
+  // CHECK-NEXT: Type attribute: uint8_t
+  %ch6 = "test.print_type"(%ch5) {t = ui8} : (!grt.chain) -> (!grt.chain)
+  // CHECK-NEXT: Type attribute: int8_t
+  %ch7 = "test.print_type"(%ch6) {t = si8} : (!grt.chain) -> (!grt.chain)
+  // CHECK-NEXT: Type attribute: uint16_t
+  %ch8 = "test.print_type"(%ch7) {t = ui16} : (!grt.chain) -> (!grt.chain)
+  // CHECK-NEXT: Type attribute: int16_t
+  %ch9 = "test.print_type"(%ch8) {t = si16} : (!grt.chain) -> (!grt.chain)
+  // CHECK-NEXT: Type attribute: uint32_t
+  %ch10 = "test.print_type"(%ch9) {t = ui32} : (!grt.chain) -> (!grt.chain)
+  // CHECK-NEXT: Type attribute: int32_t
+  %ch11 = "test.print_type"(%ch10) {t = si32} : (!grt.chain) -> (!grt.chain)
+  // CHECK-NEXT: Type attribute: uint64_t
+  %ch12 = "test.print_type"(%ch11) {t = ui64} : (!grt.chain) -> (!grt.chain)
+  // CHECK-NEXT: Type attribute: int64_t
+  %ch13 = "test.print_type"(%ch12) {t = si64} : (!grt.chain) -> (!grt.chain)
+
+  bef.output
+}
+
 // CHECK-LABEL: --- Running 'test_dynamic_attr'
 bef.invokable @test_dynamic_attr() {
   %ch0 = grt.chain.new
@@ -163,20 +198,22 @@ bef.invokable @test_dynamic_attr() {
      {aString = "this is a string", anInt = 3125 : si32}
   } : (!grt.chain) -> !grt.chain
 
-  // CHECK:     list [ 
-  // CHECK-NEXT:  string = this is a string 
-  // CHECK-NEXT:  sint32 = 3125 
+  // CHECK:     list [
+  // CHECK-NEXT:  string = this is a string
+  // CHECK-NEXT:  sint32 = 3125
   // CHECK-NEXT:  list [
   // CHECK-NEXT:  ]
   // CHECK-NEXT:  dictionary {
   // CHECK-NEXT:    'a': uint32 = 42
   // CHECK-NEXT:    'b': string = foo
   // CHECK-NEXT:   }
-  // CHECK-NEXT: ] 
-  %ch7 = "test.print.dynamic.attr"(%ch6) {value = 
+  // CHECK-NEXT: ]
+  %ch7 = "test.print.dynamic.attr"(%ch6) {value =
      ["this is a string", 3125 : si32, [], {a = 42: ui32, b = "foo"}]
   } : (!grt.chain) -> !grt.chain
 
+  // CHECK-NEXT: Type attribute: float
+  %ch8 = "test.print.dynamic.attr"(%ch7) {t = f32} : (!grt.chain) -> !grt.chain
+
   bef.output
 }
-

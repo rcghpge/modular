@@ -423,6 +423,50 @@ public:
 };
 
 //===----------------------------------------------------------------------===//
+// BEFTypeAttr
+//===----------------------------------------------------------------------===//
+
+namespace Detail {
+class BEFType {}; // avoid ambiguity with mlir::Type
+} // namespace Detail
+
+template <>
+class BEFAttr<Detail::BEFType>
+    : public BEFAttrCommon<BEFAttr<Detail::BEFType>, Detail::BEFType> {
+public:
+  using BaseClass = BEFAttrCommon<BEFAttr<Detail::BEFType>, Detail::BEFType>;
+
+  explicit BEFAttr(const void *pointer)
+      : BaseClass(Detail::BEFType{}),
+        encodedTypePtr(static_cast<const uint8_t *>(pointer)) {
+    this->checkAttributeKind(pointer);
+    assert(getHeadType() != BEF::TypeKind::kInvalid &&
+           "Invalid type attribute");
+  }
+
+  static bool matchesAttrKind(const void *pointer) {
+    return BaseClass::getAttrKind(pointer) == BEF::AttributeKind::kType;
+  }
+
+  template <typename T>
+  bool matches() const {
+    constexpr auto kThisKind = BEF::TypeKindForCXXType<T>::kind;
+    static_assert(kThisKind != BEF::TypeKind::kInvalid &&
+                  "C++ type passed to BEFTypeAttr::matches isn't supported");
+    return getHeadType() == kThisKind;
+  }
+
+private:
+  const uint8_t *encodedTypePtr;
+
+  BEF::TypeKind getHeadType() const {
+    return static_cast<BEF::TypeKind>(*encodedTypePtr);
+  }
+};
+
+using BEFTypeAttr = BEFAttr<Detail::BEFType>;
+
+//===----------------------------------------------------------------------===//
 // BEFDynamicAttr
 //===----------------------------------------------------------------------===//
 
@@ -535,8 +579,8 @@ class BEFAttr<Detail::List>
 public:
   using BaseClass = BEFAttrCommon<BEFAttr<Detail::List>, Detail::List>;
   explicit BEFAttr(const void *pointer)
-      : BEFAttrCommon<BEFAttr<Detail::List>, Detail::List>(Detail::List{}),
-        pointer(pointer), length(decodeBEFArrayLength(pointer)) {
+      : BaseClass(Detail::List{}), pointer(pointer),
+        length(decodeBEFArrayLength(pointer)) {
     this->checkAttributeKind(pointer);
   }
 
@@ -658,9 +702,8 @@ public:
   using BaseClass =
       BEFAttrCommon<BEFAttr<Detail::Dictionary>, Detail::Dictionary>;
   explicit BEFAttr(const void *pointer)
-      : BEFAttrCommon<BEFAttr<Detail::Dictionary>, Detail::Dictionary>(
-            Detail::Dictionary{}),
-        pointer(pointer), length(decodeBEFArrayLength(pointer)) {
+      : BaseClass(Detail::Dictionary{}), pointer(pointer),
+        length(decodeBEFArrayLength(pointer)) {
     this->checkAttributeKind(pointer);
   }
 

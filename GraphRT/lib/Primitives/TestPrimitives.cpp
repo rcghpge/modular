@@ -92,6 +92,35 @@ static Chain print_all_dict(Chain chain, BEFDictionaryAttr dict) {
   return chain;
 }
 
+static Chain print_type(Chain chain, BEFTypeAttr type) {
+  // intentionally fall through so that we catch if more than type matches
+  printf("Type attribute: ");
+  if (type.matches<float>())
+    printf("float");
+  if (type.matches<double>())
+    printf("double");
+  if (type.matches<uint8_t>())
+    printf("uint8_t");
+  if (type.matches<int8_t>())
+    printf("int8_t");
+  if (type.matches<uint16_t>())
+    printf("uint16_t");
+  if (type.matches<int16_t>())
+    printf("int16_t");
+  if (type.matches<int32_t>())
+    printf("int32_t");
+  if (type.matches<uint32_t>())
+    printf("uint32_t");
+  if (type.matches<int64_t>())
+    printf("int64_t");
+  if (type.matches<uint64_t>())
+    printf("uint64_t");
+  if (type.matches<bool>())
+    printf("bool");
+  printf("\n");
+  return chain;
+}
+
 static void printIndent(unsigned indent) {
   for (unsigned i = 0; i != indent; ++i)
     printf("  ");
@@ -125,6 +154,8 @@ static void print_attr(BEFDynamicAttr value, unsigned indent) {
     }
     printIndent(indent);
     printf("]\n");
+  } else if (auto type = value.dyn_cast<BEFTypeAttr>()) {
+    print_type(Chain(), type.getValue());
   } else {
     printf("unsupported attribute kind\n");
   }
@@ -577,6 +608,7 @@ void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "test.print_array_i32", print_array_i32);
   ADD_PRIMITIVE(registry, "test.print_dict_i32", print_dict_i32);
   ADD_PRIMITIVE(registry, "test.print_all_dict", print_all_dict);
+  ADD_PRIMITIVE(registry, "test.print_type", print_type);
 
   ADD_PRIMITIVE(registry, "test.print.dynamic.attr", print_dynamic_attr);
 
