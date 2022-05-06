@@ -163,10 +163,10 @@ enum class TypeKind : uint8_t {
 
   //------ encoding for ordinary primitives ----------------------------------//
 
-  /// bit 0 indicates if type is complex
+  /// Bit 0 indicates if type is complex.
   mComplex = 1,
 
-  /// bits 1 and 2 encode primitive category.
+  /// Bits 1 and 2 encode primitive category.
   mOther = 0 << 1,
   mSigned = 1 << 1,
   mUnsigned = 2 << 1,

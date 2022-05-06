@@ -427,7 +427,10 @@ public:
 //===----------------------------------------------------------------------===//
 
 namespace Detail {
-class BEFType {}; // avoid ambiguity with mlir::Type
+/// Implementation detail of the BEFTypeAttr using declaration.  We name it
+/// `BEFType` instead of `Type` to avoid polluting the `M::Detail` namespace
+/// with a generic name like `Type`.
+class BEFType {};
 } // namespace Detail
 
 template <>
@@ -457,6 +460,7 @@ public:
   }
 
 private:
+  /// This is the raw pointer to the start of the type attribute.
   const uint8_t *encodedTypePtr;
 
   BEF::TypeKind getHeadType() const {

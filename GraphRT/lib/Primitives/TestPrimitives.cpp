@@ -93,7 +93,7 @@ static Chain print_all_dict(Chain chain, BEFDictionaryAttr dict) {
 }
 
 static Chain print_type(Chain chain, BEFTypeAttr type) {
-  // intentionally fall through so that we catch if more than type matches
+  // Intentionally fall through so that we catch if more than type matches.
   printf("Type attribute: ");
   if (type.matches<float>())
     printf("float");

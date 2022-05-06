@@ -801,18 +801,21 @@ public:
 
 private:
   AttributesEmitter *emitter;
+
+  /// Encodes the number of bytes as needed by primitive types in BEF::TypeKind.
   FailureOr<uint8_t> getNumBytesEncoded(unsigned bitWidth) const;
-  inline void emitTypeKind(BEF::TypeKind kind) const {
+
+  void emitTypeKind(BEF::TypeKind kind) const {
     emitter->emitByte((uint8_t)kind);
   }
 };
 
-// Encodes the number of bytes as needed by primitive types in BEF::TypeKind
+/// Encodes the number of bytes as needed by primitive types in BEF::TypeKind.
 FailureOr<uint8_t> TypeEmitter::getNumBytesEncoded(unsigned bitWidth) const {
   if (bitWidth % 8)
     return failure();
   unsigned numBytes = bitWidth / 8;
-  if (numBytes > 16)
+  if (numBytes > 16) // No BEF emittable types are this large.
     return failure();
   return (numBytes - 1) << 3;
 }
@@ -843,6 +846,7 @@ LogicalResult TypeEmitter::emitFloatType(FloatType type) {
   }
 }
 
+/// Emit an integer type we know how to encode into a BEF file.
 LogicalResult TypeEmitter::emitIntegerType(IntegerType type) {
   unsigned bitWidth = type.getWidth();
 
