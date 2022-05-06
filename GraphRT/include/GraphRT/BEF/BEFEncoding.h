@@ -82,7 +82,7 @@ enum class AttributeKind : uint8_t {
 
   /// This is a bitmask, when combined with one of the basic types, indicates
   /// an array of that type.
-  kArrayType = 1,
+  mArrayType = 1,
 
   /// The primitive types are encoded with the low bit reserved for "is array",
   /// the next two bits being their category, and the next 2 bits being the
@@ -121,7 +121,7 @@ static inline constexpr AttributeKind getArrayOf(AttributeKind elementKind) {
   assert(elementKind <= AttributeKind::kBool &&
          "cannot make arrays of arrays or arrays of strings");
   return AttributeKind(uint8_t(elementKind) |
-                       uint8_t(AttributeKind::kArrayType));
+                       uint8_t(AttributeKind::mArrayType));
 }
 
 /// Provide a mapping from C++ types to the corresponding attribute kinds.
@@ -185,7 +185,7 @@ enum class TypeKind : uint8_t {
   kS128 = (15 << 3) | mSigned,
   kU128 = (15 << 3) | mUnsigned,
 
-  // bit 3 encodes the float category, for now only if IEEE or not.
+  // bit 3 encodes whether the float is IEEE or not.
   mIEEEFloat = (1 << 3) | mFloat, // only use it as mask
 
   kF16 = mIEEEFloat,
