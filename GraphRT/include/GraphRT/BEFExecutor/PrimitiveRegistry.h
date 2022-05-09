@@ -463,9 +463,7 @@ private:
   /// This is the raw pointer to the start of the type attribute.
   const uint8_t *encodedTypePtr;
 
-  BEF::TypeKind getHeadType() const {
-    return static_cast<BEF::TypeKind>(*encodedTypePtr);
-  }
+  BEF::TypeKind getHeadType() const { return BEF::TypeKind(*encodedTypePtr); }
 };
 
 using BEFTypeAttr = BEFAttr<Detail::BEFType>;

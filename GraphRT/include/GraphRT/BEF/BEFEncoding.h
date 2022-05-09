@@ -13,6 +13,7 @@
 #define GRAPHRT_BEF_BEFENCODING_H
 
 #include "Support/LLVMForwardDecls.h"
+#include "llvm/ADT/BitmaskEnum.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace M {
@@ -161,7 +162,7 @@ enum class TypeKind : uint8_t {
   /// prefixed with `m` to designate this.
   kInvalid = 0,
 
-  //------ encoding for ordinary primitives ----------------------------------//
+  //------ Encoding for ordinary primitives ----------------------------------//
 
   /// Bit 0 indicates if type is complex.
   mComplex = 1,
@@ -172,8 +173,8 @@ enum class TypeKind : uint8_t {
   mUnsigned = 2 << 1,
   mFloat = 3 << 1,
 
-  /// Integer and floating point types.  The upper four bits for
-  /// float/signed/unsigned are the # of bytes - 1.
+  /// Integer and floating point types.  The upper four bits for signed/unsigned
+  /// are the # of bytes - 1.
   kS8 = mSigned,
   kU8 = mUnsigned,
   kS16 = (1 << 3) | mSigned,
@@ -185,8 +186,8 @@ enum class TypeKind : uint8_t {
   kS128 = (15 << 3) | mSigned,
   kU128 = (15 << 3) | mUnsigned,
 
-  // bit 3 encodes whether the float is IEEE or not.
-  mIEEEFloat = (1 << 3) | mFloat, // only use it as mask
+  /// Bit 3 encodes whether the float is IEEE or not.
+  mIEEEFloat = (1 << 3) | mFloat,
 
   kF16 = mIEEEFloat,
   kF32 = (1 << 4) | mIEEEFloat,
@@ -198,16 +199,15 @@ enum class TypeKind : uint8_t {
   kF80 = (2 << 4) | mFloat,
   kTF32 = (3 << 4) | mFloat,
 
-  //------ encodings for other types ----------------------------------//
+  //------ Encodings for other types -----------------------------------------//
   kBool = (1 << 3) | mOther,
   kTensor = (2 << 3) | mOther,    // Has following bytes.
   kQuantized = (3 << 3) | mOther, // Has following bytes.
-};
 
-inline TypeKind operator|(TypeKind a, TypeKind b) {
-  return static_cast<TypeKind>(static_cast<uint8_t>(a) |
-                               static_cast<uint8_t>(b));
-}
+  //------ Enable bitmask usage ----------------------------------------------//
+  mFF = 0xff, // DO NOT USE.
+  LLVM_MARK_AS_BITMASK_ENUM(/* LargestValue = */ mFF)
+};
 
 /// Provide a mapping from C++ types to the corresponding type kinds.
 template <typename CXXType>

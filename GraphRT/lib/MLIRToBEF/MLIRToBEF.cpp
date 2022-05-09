@@ -793,6 +793,8 @@ BEFOffset AttributesEmitter::emitDictionaryAttribute(DictionaryAttr value,
 }
 
 namespace {
+LLVM_ENABLE_BITMASK_ENUMS_IN_NAMESPACE();
+
 class TypeEmitter {
 public:
   TypeEmitter(AttributesEmitter *emitter) : emitter(emitter) {}
