@@ -46,8 +46,9 @@ syntax for the primitive has a directly corresponding runtime behavior:
 2) Each MLIR attribute turns into a runtime pointer to static data of a
    corresponding C++ type.  For example an MLIR `4 : i32` attribute will turn
    into a pointer to 32-bits of data containing a 4 (in little endian format).
-   These are passed in alphabetical order by attribute name, not in lexical
-   order in the `.mlir` file.  The attribute names are not encoded by default.
+   **These are passed in [ASCIIbetical order](https://en.wikipedia.org/wiki/ASCII#Character_order)
+   by attribute name, not in lexical order in the `.mlir` file.** The attribute
+   names are not encoded by default.
 3) Symbol references like `@foo` and region bodies `{ ... }` in MLIR turn into
    "invokable" references that may be invoked in the executor.
 
