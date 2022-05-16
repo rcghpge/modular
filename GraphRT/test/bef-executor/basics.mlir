@@ -1,5 +1,5 @@
 // RUN: bef-translate -export-bef -allow-unregistered-dialect %s > %t.bef
-// RUN: bef-executor -verify-diagnostics %t.bef | FileCheck %s
+// RUN: bef-executor %t.bef | FileCheck %s
 
 // CHECK-LABEL: Can not run 'args_results' because it has 2 arguments
 bef.invokable @args_results(%a: si32, %b: ui8) -> (ui8, si32) {

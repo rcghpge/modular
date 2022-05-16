@@ -1,6 +1,7 @@
 // RUN: bef-translate -export-bef -allow-unregistered-dialect -split-input-file --verify-diagnostics  %s
 
-bef.invokable @trivial() {  // expected-error {{expected non-empty function body}}
+// expected-error @+1 {{expected non-empty function body}}
+bef.invokable @trivial() {
 }
 
 // -----
@@ -14,7 +15,8 @@ bef.invokable @need_output() {
 // -----
 
 bef.invokable @need_output() -> i32 {
-  bef.output  // expected-error {{'bef.output' op expected 1 operands for enclosing op}}
+  // expected-error @+1 {{'bef.output' op expected 1 operands for enclosing op}}
+  bef.output
 }
 
 // -----
