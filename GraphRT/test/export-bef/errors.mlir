@@ -51,9 +51,3 @@ bef.invokable @type_attr_too_long_int() {
 }
 
 // -----
-
-bef.invokable @type_attr_tensor() {
-  // expected-error @+1 {{type attribute not supported: 'tensor<1x3xf32>'}}
-  "foo"() {t = tensor<1x3xf32>} : () -> ()
-  bef.output
-}

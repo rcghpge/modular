@@ -17,3 +17,8 @@ bef.invokable @args_results(%a: si32, %b: si8) -> (si8, si32) {
 bef.invokable @unknown_args(%a: !bef.unknown, %b: !bef.unknown) -> !bef.unknown {
   bef.output %b : !bef.unknown
 }
+
+bef.invokable @type_attr_tensor() {
+  "foo"() {t = tensor<1x3xf32>} : () -> ()
+  bef.output
+}

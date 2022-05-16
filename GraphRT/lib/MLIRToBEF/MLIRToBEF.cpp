@@ -800,6 +800,9 @@ public:
   TypeEmitter(AttributesEmitter *emitter) : emitter(emitter) {}
   LogicalResult emitFloatType(FloatType type);
   LogicalResult emitIntegerType(IntegerType type);
+  LogicalResult emitRankedTensorType(RankedTensorType type, Location loc,
+                                     EntityTable &entities);
+  LogicalResult emitType(Type type, Location loc, EntityTable &entities);
 
 private:
   AttributesEmitter *emitter;
@@ -869,24 +872,63 @@ LogicalResult TypeEmitter::emitIntegerType(IntegerType type) {
   return success();
 }
 
-} // namespace
+/// emitRankedTensorType emits a ranked tensor type of the form
+/// `tensor<1x3xf32>` into BEF. The tensor is encoded in the following form:
+///   TypeKind::kTensor | element TypeKind | shape size | shape elements in VBR
+///   encoded shape elements
+/// For the example tensor above, the output format would look like the
+/// following:
+///   TypeKind::kTensor | TypeKind::kF32 | 2 | 1, 3
+LogicalResult TypeEmitter::emitRankedTensorType(RankedTensorType type,
+                                                Location loc,
+                                                EntityTable &entities) {
+  emitTypeKind(BEF::TypeKind::kTensor);
+  Type elementType = type.getElementType();
 
-BEFOffset AttributesEmitter::emitTypeAttribute(Type type, Location loc) {
-  emitAttributeKind(BEF::AttributeKind::kType);
-  BEFOffset startOffset = getOffset();
+  if (failed(emitType(elementType, loc, entities)))
+    return failure();
 
-  TypeEmitter typeEmitter(this);
-  if (auto floatType = type.dyn_cast<FloatType>()) {
-    if (succeeded(typeEmitter.emitFloatType(floatType)))
-      return startOffset;
-  } else if (auto intType = type.dyn_cast<IntegerType>()) {
-    if (succeeded(typeEmitter.emitIntegerType(intType)))
-      return startOffset;
+  ArrayRef<int64_t> shape = type.getShape();
+  emitter->emitByte((uint8_t)shape.size());
+
+  for (int64_t value : shape)
+    emitter->emitVBR((size_t)value);
+
+  return success();
+}
+
+/// emitType emits a float or integer type.
+LogicalResult TypeEmitter::emitType(Type type, Location loc,
+                                    EntityTable &entities) {
+  if (auto floatType = type.dyn_cast<FloatType>())
+    return emitFloatType(floatType);
+  if (auto intType = type.dyn_cast<IntegerType>()) {
+    if (succeeded(emitIntegerType(intType)))
+      return success();
     entities.emitError(loc)
         << "signless and arbitrary length integers not supported yet: " << type;
   } else {
     entities.emitError(loc) << "type attribute not supported: " << type;
   }
+  return failure();
+}
+
+} // namespace
+
+/// emitTypeAttribute handles type emission for floats, integers, and ranked
+/// tensor types and returns the start offset for the attribute in question.
+BEFOffset AttributesEmitter::emitTypeAttribute(Type type, Location loc) {
+  emitAttributeKind(BEF::AttributeKind::kType);
+  BEFOffset startOffset = getOffset();
+
+  TypeEmitter typeEmitter(this);
+  if (auto tensorType = type.dyn_cast<RankedTensorType>()) {
+    if (succeeded(typeEmitter.emitRankedTensorType(tensorType, loc, entities)))
+      return startOffset;
+  }
+  if (succeeded(typeEmitter.emitType(type, loc, entities)))
+    return startOffset;
+
   return {0};
 }
 
