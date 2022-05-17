@@ -1,7 +1,7 @@
 // RUN: bef-translate -export-bef -allow-unregistered-dialect %s > %t.bef
 // RUN: bef-executor %t.bef | FileCheck %s
 
-// CHECK-LABEL: Can not run 'args_results' because it has 2 arguments
+// CHECK-LABEL: Cannot run 'args_results' because it has 2 arguments
 bef.invokable @args_results(%a: si32, %b: ui8) -> (ui8, si32) {
   bef.output %b, %a : ui8, si32
 }
@@ -81,14 +81,14 @@ bef.invokable @simple_calls() -> (si32, si32) {
   // CHECK: 'simple_calls' returned <error: something bad happened>, 42
 }
 
-// CHECK-LABEL: --- Can not run 'call_print.i32' because it has 1 argument
+// CHECK-LABEL: --- Cannot run 'call_print.i32' because it has 1 argument
 bef.invokable @call_print.i32(%x: si32) -> !grt.chain {
   %ch0 = grt.chain.new
   %ch1 = grt.print.si32 %x, %ch0
   bef.output %ch1 : !grt.chain
 }
 
-// CHECK-LABEL: --- Can not run 'add_one' because it has 1 argument
+// CHECK-LABEL: --- Cannot run 'add_one' because it has 1 argument
 bef.invokable @add_one(%x: si32) -> si32 {
   %c1 = grt.constant.si32 1
   %y = grt.add.si32 %x, %c1
