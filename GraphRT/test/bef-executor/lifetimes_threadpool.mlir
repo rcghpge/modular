@@ -1,6 +1,9 @@
 // RUN: bef-translate -export-bef -allow-unregistered-dialect %s > %t.bef
 // RUN: bef-executor -verbose --workqueue=threadpool %t.bef | FileCheck %s
 
+// Ensure threadpool count can be set.
+// RUN: bef-executor -verbose --workqueue=threadpool --num-threads=2 %t.bef | FileCheck %s
+
 // CHECK: Using thread pool work queue.
 // CHECK-LABEL: --- Running 'test_linear'
 bef.invokable @test_linear() {
