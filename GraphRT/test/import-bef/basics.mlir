@@ -79,6 +79,19 @@ bef.invokable @attributes() {
   // MD: "a.b"() {a = 1 : si8, b = [1 : ui32, 2 : si8]} : () -> ()
   "a.b"() {a = 1: si8, b = [1: ui32, 2: si8] } : () -> ()
 
+  // Type attribute.
+  // CHECK-NEXT: bef.opaque "type.i32" [si32]() 
+  // MD: "type.i32"() {t = si32}
+  "type.i32"() {t = si32} : () -> ()
+ 
+  // CHECK-NEXT: bef.opaque "type.f32" [f32]() 
+  // MD:  "type.f32"() {t = f32}
+  "type.f32"() {t = f32} : () -> ()
+ 
+  // CHECK-NEXT: bef.opaque "type.f128" [f128]()
+  // MD: "type.f128"() {t = f128}
+  "type.f128"() {t = f128} : () -> ()
+
   bef.output
    // CHECK-NEXT:     bef.output
 }  // CHECK-NEXT:   }

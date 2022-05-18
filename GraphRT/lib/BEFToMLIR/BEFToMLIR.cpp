@@ -289,6 +289,64 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
     return outAttrList.getDictionary(getContext());
   };
 
+  auto parseTypeAttr = [&]() -> Attribute {
+    uint8_t typeValue;
+    if (attrReader.parseByte(typeValue))
+      return {};
+    BEF::TypeKind typeKind = BEF::TypeKind(typeValue);
+
+    bool isComplex = false;
+    if ((typeKind & BEF::TypeKind::mComplex) == BEF::TypeKind::mComplex) {
+      isComplex = true;
+      typeKind &= ~BEF::TypeKind::mComplex;
+    }
+
+    Type resultType;
+    switch (typeKind) {
+    case BEF::TypeKind::kF16:
+      resultType = FloatType::getF16(getContext());
+      break;
+    case BEF::TypeKind::kBF16:
+      resultType = FloatType::getBF16(getContext());
+      break;
+    case BEF::TypeKind::kF32:
+      resultType = FloatType::getF32(getContext());
+      break;
+    case BEF::TypeKind::kF64:
+      resultType = FloatType::getF64(getContext());
+      break;
+    case BEF::TypeKind::kF80:
+      resultType = FloatType::getF80(getContext());
+      break;
+    case BEF::TypeKind::kF128:
+      resultType = FloatType::getF128(getContext());
+      break;
+    case BEF::TypeKind::kBool:
+      resultType = IntegerType::get(getContext(), 1);
+      break;
+    default:
+      // Check for signed/unsigned integer.
+      if ((typeKind & BEF::TypeKind::mSigned) == BEF::TypeKind::mSigned) {
+        unsigned width = BEF::getIntegerWidthInBits(typeKind);
+        resultType = IntegerType::get(getContext(), width, IntegerType::Signed);
+        break;
+      }
+      if ((typeKind & BEF::TypeKind::mUnsigned) == BEF::TypeKind::mUnsigned) {
+        unsigned width = BEF::getIntegerWidthInBits(typeKind);
+        resultType =
+            IntegerType::get(getContext(), width, IntegerType::Unsigned);
+        break;
+      }
+      // Otherwise unknown type.
+      return {};
+    }
+
+    assert(resultType && "Should have found a type");
+    if (isComplex)
+      resultType = mlir::ComplexType::get(resultType);
+    return TypeAttr::get(resultType);
+  };
+
   // Parse a single attribute value from attrReader and return it, or null on
   // an error.
   auto parseAttribute = [&](BEF::AttributeKind attrKind) -> Attribute {
@@ -309,6 +367,9 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
 
     if (attrKind == BEF::AttributeKind::kList)
       return parseListAttr();
+
+    if (attrKind == BEF::AttributeKind::kType)
+      return parseTypeAttr();
 
     uint8_t byte;
     // I1 attrs are a single byte in the BEF format, but are also a separate

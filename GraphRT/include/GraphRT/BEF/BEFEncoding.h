@@ -156,6 +156,10 @@ DECLARE_ATTR_MAPPING(kString, StringRef);
 // BEF type constants and helpers
 //===----------------------------------------------------------------------===//
 
+// Import bitwise operators for TypeKind into this namespace so ADL can find
+// them.
+LLVM_ENABLE_BITMASK_ENUMS_IN_NAMESPACE();
+
 enum class TypeKind : uint8_t {
   /// Note that many of these should be interpreted as type classes, i.e. the
   /// enum represents a mask, not a concrete enumerator.  These enum values are
@@ -208,6 +212,12 @@ enum class TypeKind : uint8_t {
   mFF = 0xff, // DO NOT USE.
   LLVM_MARK_AS_BITMASK_ENUM(/* LargestValue = */ mFF)
 };
+
+static inline size_t getIntegerWidthInBits(TypeKind kind) {
+  assert((kind & TypeKind::mSigned) != TypeKind::kInvalid ||
+         (kind & TypeKind::mUnsigned) != TypeKind::kInvalid);
+  return ((uint8_t(kind) >> 3) + 1) * 8;
+}
 
 /// Provide a mapping from C++ types to the corresponding type kinds.
 template <typename CXXType>
