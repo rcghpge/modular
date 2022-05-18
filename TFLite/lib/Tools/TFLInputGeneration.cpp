@@ -7,6 +7,8 @@
 #include "TFLite/Tools/TFLInputGeneration.h"
 #include "Support/Error.h"
 #include "TFLite/Support/TFLiteType.h"
+#include "TFLite/TFLRuntimeModel.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -98,4 +100,29 @@ Error M::fillWithElements(InputGenerationKind inputGenKind, void *ptr,
   }
 
   return {""};
+}
+
+ErrorOr<SmallVector<void *, 3>>
+M::initializeInputMemory(InputGenerationKind inputGenKind,
+                         const TFLRuntimeModel &model) {
+  SmallVector<void *, 3> inputTensorData;
+  for (const auto &[shape, elType] :
+       llvm::zip(model.getInputShapes(), model.getInputElementTypes())) {
+    // Do the malloc.
+    inputTensorData.push_back(
+        malloc(elType.getSizeInBytes() * shape.getNumElements()));
+
+    // Do the fill
+    size_t numElements = shape.getNumElements();
+    M::Error err = fillWithElements(inputGenKind, inputTensorData.back(),
+                                    numElements, elType);
+
+    if (failed(err)) {
+      for (auto t : inputTensorData)
+        free(t);
+
+      return err;
+    }
+  }
+  return inputTensorData;
 }
