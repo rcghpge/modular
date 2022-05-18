@@ -20,6 +20,7 @@
 #include "GraphRT/BEFDialect/BEFNonStrict.h"
 #include "GraphRT/BEFDialect/BEFOps.h"
 #include "Support/ErrorOr.h"
+#include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/StringSet.h"
@@ -598,6 +599,8 @@ private:
   BEFOffset emitDictionaryAttribute(DictionaryAttr value, Location loc);
   BEFOffset emitTypeAttribute(Type type, Location loc);
   EntityTable &entities;
+
+  friend class TypeEmitter;
 };
 } // end anonymous namespace.
 
@@ -648,6 +651,7 @@ AttributesEmitter::deriveAttributeKind(Type eltType, Location loc) const {
   return BEF::AttributeKind(width << 3 | uint8_t(category) << 1);
 }
 
+/// Emit a single integer value of supported type, optionally as array element.
 BEFOffset AttributesEmitter::emitIntegerValue(bool emitAsArrayElement,
                                               const APInt &value, Type eltType,
                                               Location loc) {
@@ -796,12 +800,14 @@ BEFOffset AttributesEmitter::emitDictionaryAttribute(DictionaryAttr value,
 namespace {
 class TypeEmitter {
 public:
-  TypeEmitter(AttributesEmitter *emitter) : emitter(emitter) {}
+  TypeEmitter(AttributesEmitter *emitter, Location loc)
+      : emitter(emitter), loc(loc) {}
   ErrorOr<BEF::TypeKind> getFloatTypeEncoding(FloatType type);
   ErrorOr<BEF::TypeKind> getIntegerTypeEncoding(IntegerType type);
   ErrorOr<BEF::TypeKind> getIntFPComplexTypeEncoding(Type type);
-  LogicalResult emitRankedTensorType(RankedTensorType type, Location loc,
-                                     EntityTable &entities);
+  LogicalResult emitIntFPComplexType(Type type);
+  LogicalResult emitRankedTensorType(RankedTensorType type);
+  LogicalResult emitUniformQuantizedType(UniformQuantizedType type);
 
   void emitTypeKind(BEF::TypeKind kind) const {
     emitter->emitByte((uint8_t)kind);
@@ -809,6 +815,7 @@ public:
 
 private:
   AttributesEmitter *emitter;
+  Location loc;
 
   /// Encodes the number of bytes as needed by primitive types in BEF::TypeKind.
   ErrorOr<uint8_t> getNumBytesEncoded(unsigned bitWidth) const;
@@ -864,7 +871,7 @@ ErrorOr<BEF::TypeKind> TypeEmitter::getIntegerTypeEncoding(IntegerType type) {
   return BEF::TypeKind(*encOr) | kind;
 }
 
-/// emitType emits a float or integer type.
+/// Helper to get int, float or complex encoding.
 ErrorOr<BEF::TypeKind> TypeEmitter::getIntFPComplexTypeEncoding(Type type) {
   if (auto floatType = type.dyn_cast<FloatType>())
     return getFloatTypeEncoding(floatType);
@@ -880,25 +887,29 @@ ErrorOr<BEF::TypeKind> TypeEmitter::getIntFPComplexTypeEncoding(Type type) {
   return Error("type cannot be encoded in BEF");
 }
 
+/// Emit an int, float, or complex type.
+LogicalResult TypeEmitter::emitIntFPComplexType(Type type) {
+  auto eltEncoding = getIntFPComplexTypeEncoding(type);
+  if (eltEncoding.isError()) {
+    emitter->entities.emitError(loc) << eltEncoding.getError() << ": " << type;
+    return failure();
+  }
+  emitTypeKind(eltEncoding.get());
+  return success();
+}
+
 /// emitRankedTensorType emits a ranked tensor type of the form
 /// `tensor<1x3xf32>` into BEF. The tensor is encoded in the following form:
 ///   TypeKind::kTensor | element TypeKind | shape size | shape elements in
 ///   VBR encoded shape elements
-/// For the example tensor above, the output format would look like the
-/// following:
+/// For the example tensor above, the output format would look like this:
 ///   TypeKind::kTensor | TypeKind::kF32 | 2 | 1, 3
-LogicalResult TypeEmitter::emitRankedTensorType(RankedTensorType type,
-                                                Location loc,
-                                                EntityTable &entities) {
+LogicalResult TypeEmitter::emitRankedTensorType(RankedTensorType type) {
   emitTypeKind(BEF::TypeKind::kTensor);
   Type elementType = type.getElementType();
 
-  auto eltEncoding = getIntFPComplexTypeEncoding(elementType);
-  if (eltEncoding.isError()) {
-    entities.emitError(loc) << eltEncoding.getError() << ": " << elementType;
+  if (failed(emitIntFPComplexType(elementType)))
     return failure();
-  }
-  emitTypeKind(eltEncoding.get());
 
   ArrayRef<int64_t> shape = type.getShape();
   emitter->emitByte((uint8_t)shape.size());
@@ -909,24 +920,68 @@ LogicalResult TypeEmitter::emitRankedTensorType(RankedTensorType type,
   return success();
 }
 
+/// emitUniformQuantizedType emits a uniform, not per-axis quantized type such
+/// as `!quant.uniform<i8:f32, 0.1:-128>` into BEF. The type is encoded in the
+/// following form:
+///   TypeKind::kQuantized | storage TypeKind | expressed TypeKind | scale |
+///   zero point in VBR
+/// For the example type above, the output format would look like this:
+///   TypeKind::kQuantized | TypeKind::kS8 | TypeKind::kF32 | 0.1 | -128
+LogicalResult TypeEmitter::emitUniformQuantizedType(UniformQuantizedType type) {
+  emitTypeKind(BEF::TypeKind::kQuantized);
+
+  // UniformQuantizedType stores the signedness information in a flag, but it is
+  // easier to emit a signed or unsigned type.
+  auto intType = type.getStorageType().cast<IntegerType>();
+  auto storageType = IntegerType::get(
+      intType.getContext(), intType.getWidth(),
+      type.isSigned() ? IntegerType::SignednessSemantics::Signed
+                      : IntegerType::SignednessSemantics::Unsigned);
+  if (failed(emitIntFPComplexType(storageType)))
+    return failure();
+
+  // In practice these are floats, but we could emit other expressed types too.
+  if (failed(emitIntFPComplexType(type.getExpressedType())))
+    return failure();
+
+  // We emit the scale as is.
+  double scale = type.getScale();
+  emitter->emitBytes(ArrayRef<uint8_t>((uint8_t *)&scale, sizeof(double)));
+
+  // The zero point is emitted in VBR.
+  // FIXME: this won't be an efficient encoding for negative zero points
+  emitter->emitVBR((size_t)type.getZeroPoint());
+
+  // FIXME: need to handle non-default storageTypeMin/Max
+
+  return success();
+}
+
 /// emitTypeAttribute handles type emission for floats, integers, and ranked
 /// tensor types and returns the start offset for the attribute in question.
 BEFOffset AttributesEmitter::emitTypeAttribute(Type type, Location loc) {
   emitAttributeKind(BEF::AttributeKind::kType);
   BEFOffset startOffset = getOffset();
 
-  TypeEmitter typeEmitter(this);
+  TypeEmitter typeEmitter(this, loc);
   if (auto tensorType = type.dyn_cast<RankedTensorType>()) {
-    if (succeeded(typeEmitter.emitRankedTensorType(tensorType, loc, entities)))
+    if (succeeded(typeEmitter.emitRankedTensorType(tensorType)))
       return startOffset;
   }
 
-  auto eltEncoding = typeEmitter.getIntFPComplexTypeEncoding(type);
-  if (eltEncoding.isError()) {
-    entities.emitError(loc) << eltEncoding.getError() << ": " << type;
+  if (auto qType = type.dyn_cast<UniformQuantizedType>()) {
+    if (succeeded(typeEmitter.emitUniformQuantizedType(qType)))
+      return startOffset;
+  }
+
+  if (auto qType = type.dyn_cast<UniformQuantizedPerAxisType>()) {
+    entities.emitError(loc)
+        << "per-axis quantized type not supported: " << type;
     return {0};
   }
-  typeEmitter.emitTypeKind(eltEncoding.get());
+
+  if (failed(typeEmitter.emitIntFPComplexType(type)))
+    return {0};
   return startOffset;
 }
 

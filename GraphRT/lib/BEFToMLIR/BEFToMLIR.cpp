@@ -11,6 +11,7 @@
 #include "GraphRT/BEFToMLIR.h"
 #include "GraphRT/BEF/BEFReader.h"
 #include "GraphRT/BEFDialect/BEFOps.h"
+#include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -339,6 +340,38 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
       }
       return RankedTensorType::get(shape, eltType);
     }
+
+    case BEF::TypeKind::kQuantized: {
+      auto storageType = parseTypeAttr();
+      if (!storageType)
+        return {};
+
+      auto expressedType = parseTypeAttr();
+      if (!expressedType)
+        return {};
+
+      ArrayRef<uint8_t> scale;
+      if (attrReader.parseBytes(8, scale))
+        return {};
+
+      size_t zeroPoint;
+      if (attrReader.parseVBR(zeroPoint))
+        return {};
+
+      auto intType = storageType.cast<IntegerType>();
+      auto isSigned = intType.isSigned();
+      unsigned storageBitWidth = intType.getWidth();
+      int64_t storageTypeMin =
+          QuantizedType::getDefaultMinimumForInteger(isSigned, storageBitWidth);
+      int64_t storageTypeMax =
+          QuantizedType::getDefaultMaximumForInteger(isSigned, storageBitWidth);
+      unsigned flags = isSigned ? mlir::quant::QuantizationFlags::Signed : 0;
+
+      return UniformQuantizedType::get(
+          flags, storageType, expressedType, *(const double *)scale.data(),
+          (int64_t)zeroPoint, storageTypeMin, storageTypeMax);
+    }
+
     default:
       // Check for signed/unsigned integer.
       if ((typeKind & BEF::TypeKind::mSigned) == BEF::TypeKind::mSigned) {

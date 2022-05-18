@@ -10,7 +10,7 @@
 
 // CHECK-LABEL: bef.invokable @trivial() {
 // CHECK-NEXT:    %0:2 = bef.opaque "simple.primitive" []() : () -> (!bef.unknown, !bef.unknown)
-// CHECK-NEXT:    bef.opaque "grt.invoke" [@trivial]() : () -> ()  
+// CHECK-NEXT:    bef.opaque "grt.invoke" [@trivial]() : () -> ()
 // CHECK-NEXT:    bef.output
 // CHECK-NEXT:  }
 // MD-LABEL: bef.invokable @trivial() {
@@ -80,14 +80,14 @@ bef.invokable @attributes() {
   "a.b"() {a = 1: si8, b = [1: ui32, 2: si8] } : () -> ()
 
   // Type attribute.
-  // CHECK-NEXT: bef.opaque "type.i32" [si32]() 
+  // CHECK-NEXT: bef.opaque "type.i32" [si32]()
   // MD: "type.i32"() {t = si32}
   "type.i32"() {t = si32} : () -> ()
- 
-  // CHECK-NEXT: bef.opaque "type.f32" [f32]() 
+
+  // CHECK-NEXT: bef.opaque "type.f32" [f32]()
   // MD:  "type.f32"() {t = f32}
   "type.f32"() {t = f32} : () -> ()
- 
+
   // CHECK-NEXT: bef.opaque "type.f128" [f128]()
   // MD: "type.f128"() {t = f128}
   "type.f128"() {t = f128} : () -> ()
@@ -99,6 +99,14 @@ bef.invokable @attributes() {
   // CHECK-NEXT: bef.opaque "type.tensor" [tensor<0x1x0xcomplex<si32>>]()
   // MD: "type.tensor"() {t = tensor<0x1x0xcomplex<si32>>
   "type.tensor"() {t = tensor<0x1x0xcomplex<si32>>} : () -> ()
+
+  // CHECK-NEXT: bef.opaque "type.quant" [!quant.uniform<u8:f32, 0.0078119998797774315:128>]()
+  // MD: "type.quant"() {t = !quant.uniform<u8:f32, 0.0078119998797774315:128>
+  "type.quant"() {t = !quant.uniform<u8:f32, 0.0078119998797774315:128>} : () -> ()
+
+  // CHECK-NEXT: bef.opaque "type.quant" [!quant.uniform<i8:f32, 0.0078119998797774315:-128>]()
+  // MD: "type.quant"() {t = !quant.uniform<i8:f32, 0.0078119998797774315:-128>
+  "type.quant"() {t = !quant.uniform<i8:f32, 0.0078119998797774315:-128>} : () -> ()
 
   bef.output
    // CHECK-NEXT:     bef.output
