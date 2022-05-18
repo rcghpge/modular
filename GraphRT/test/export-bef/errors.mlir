@@ -29,7 +29,7 @@ bef.invokable @type_mismatch(%a: f32) -> i32 {
 // -----
 
 bef.invokable @type_attr_signless() {
-  // expected-error @+1 {{signless and arbitrary length integers not supported yet: 'i32'}}
+  // expected-error @+1 {{signless integers not supported: 'i32'}}
   "foo"() {t = i32} : () -> ()
   bef.output
 }
@@ -37,7 +37,7 @@ bef.invokable @type_attr_signless() {
 // -----
 
 bef.invokable @type_attr_non_whole_bytes_int() {
-  // expected-error @+1 {{signless and arbitrary length integers not supported yet: 'si13'}}
+  // expected-error @+1 {{arbitary bitwidth integers not supported: 'si13'}}
   "foo"() {t = si13} : () -> ()
   bef.output
 }
@@ -45,7 +45,7 @@ bef.invokable @type_attr_non_whole_bytes_int() {
 // -----
 
 bef.invokable @type_attr_too_long_int() {
-  // expected-error @+1 {{signless and arbitrary length integers not supported yet: 'si256'}}
+  // expected-error @+1 {{large integer types not supported: 'si256'}}
   "foo"() {t = si256} : () -> ()
   bef.output
 }

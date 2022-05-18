@@ -19,6 +19,7 @@
 #include "GraphRT/BEF/BEFEncoding.h"
 #include "GraphRT/BEFDialect/BEFNonStrict.h"
 #include "GraphRT/BEFDialect/BEFOps.h"
+#include "Support/ErrorOr.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/StringSet.h"
@@ -793,89 +794,96 @@ BEFOffset AttributesEmitter::emitDictionaryAttribute(DictionaryAttr value,
 }
 
 namespace {
-LLVM_ENABLE_BITMASK_ENUMS_IN_NAMESPACE();
-
 class TypeEmitter {
 public:
   TypeEmitter(AttributesEmitter *emitter) : emitter(emitter) {}
-  LogicalResult emitFloatType(FloatType type);
-  LogicalResult emitIntegerType(IntegerType type);
+  ErrorOr<BEF::TypeKind> getFloatTypeEncoding(FloatType type);
+  ErrorOr<BEF::TypeKind> getIntegerTypeEncoding(IntegerType type);
+  ErrorOr<BEF::TypeKind> getIntFPComplexTypeEncoding(Type type);
   LogicalResult emitRankedTensorType(RankedTensorType type, Location loc,
                                      EntityTable &entities);
-  LogicalResult emitType(Type type, Location loc, EntityTable &entities);
+
+  void emitTypeKind(BEF::TypeKind kind) const {
+    emitter->emitByte((uint8_t)kind);
+  }
 
 private:
   AttributesEmitter *emitter;
 
   /// Encodes the number of bytes as needed by primitive types in BEF::TypeKind.
-  FailureOr<uint8_t> getNumBytesEncoded(unsigned bitWidth) const;
-
-  void emitTypeKind(BEF::TypeKind kind) const {
-    emitter->emitByte((uint8_t)kind);
-  }
+  ErrorOr<uint8_t> getNumBytesEncoded(unsigned bitWidth) const;
 };
+} // namespace
 
 /// Encodes the number of bytes as needed by primitive types in BEF::TypeKind.
-FailureOr<uint8_t> TypeEmitter::getNumBytesEncoded(unsigned bitWidth) const {
+ErrorOr<uint8_t> TypeEmitter::getNumBytesEncoded(unsigned bitWidth) const {
   if (bitWidth % 8)
-    return failure();
+    return Error("arbitary bitwidth integers not supported");
   unsigned numBytes = bitWidth / 8;
   if (numBytes > 16) // No BEF emittable types are this large.
-    return failure();
+    return Error("large integer types not supported");
   return (numBytes - 1) << 3;
 }
 
-LogicalResult TypeEmitter::emitFloatType(FloatType type) {
+ErrorOr<BEF::TypeKind> TypeEmitter::getFloatTypeEncoding(FloatType type) {
   unsigned bitWidth = type.getWidth();
   switch (bitWidth) {
   case 16:
     if (auto bFloatType = type.dyn_cast<BFloat16Type>())
-      emitTypeKind(BEF::TypeKind::kBF16); // TODO: test when we have cpp type
-    else
-      emitTypeKind(BEF::TypeKind::kF16);
-    return success();
+      return BEF::TypeKind::kBF16; // TODO: test when we have cpp type
+    return BEF::TypeKind::kF16;
   case 32:
-    emitTypeKind(BEF::TypeKind::kF32);
-    return success();
+    return BEF::TypeKind::kF32;
   case 64:
-    emitTypeKind(BEF::TypeKind::kF64);
-    return success();
+    return BEF::TypeKind::kF64;
   case 80:
-    emitTypeKind(BEF::TypeKind::kF80);
-    return success();
+    return BEF::TypeKind::kF80;
   case 128:
-    emitTypeKind(BEF::TypeKind::kF128);
-    return success();
+    return BEF::TypeKind::kF128;
   default:
-    llvm_unreachable("unknown float type");
+    return Error("unknown float type");
   }
 }
 
 /// Emit an integer type we know how to encode into a BEF file.
-LogicalResult TypeEmitter::emitIntegerType(IntegerType type) {
+ErrorOr<BEF::TypeKind> TypeEmitter::getIntegerTypeEncoding(IntegerType type) {
   unsigned bitWidth = type.getWidth();
 
-  if (bitWidth == 1) {
-    emitTypeKind(BEF::TypeKind::kBool);
-    return success();
-  }
+  if (bitWidth == 1)
+    return BEF::TypeKind::kBool;
+
   if (type.isSignless())
-    return failure();
+    return Error("signless integers not supported");
 
   auto encOr = getNumBytesEncoded(bitWidth);
   if (failed(encOr))
-    return failure();
+    return encOr.takeError();
 
   auto kind =
       type.isSigned() ? BEF::TypeKind::mSigned : BEF::TypeKind::mUnsigned;
-  emitTypeKind(BEF::TypeKind(*encOr) | kind);
-  return success();
+  return BEF::TypeKind(*encOr) | kind;
+}
+
+/// emitType emits a float or integer type.
+ErrorOr<BEF::TypeKind> TypeEmitter::getIntFPComplexTypeEncoding(Type type) {
+  if (auto floatType = type.dyn_cast<FloatType>())
+    return getFloatTypeEncoding(floatType);
+  if (auto intType = type.dyn_cast<IntegerType>())
+    return getIntegerTypeEncoding(intType);
+  if (auto complexType = type.dyn_cast<mlir::ComplexType>()) {
+    auto eltTypeOr = getIntFPComplexTypeEncoding(complexType.getElementType());
+    if (eltTypeOr.isError())
+      return eltTypeOr.takeError();
+    return eltTypeOr.get() | BEF::TypeKind::mComplex;
+  }
+
+  return Error("type cannot be encoded in BEF");
 }
 
 /// emitRankedTensorType emits a ranked tensor type of the form
 /// `tensor<1x3xf32>` into BEF. The tensor is encoded in the following form:
-///   TypeKind::kTensor | element TypeKind | shape size | shape elements in VBR
-///   encoded shape elements
+///   TypeKind::kTensor | element TypeKind | shape size | shape elements in
+///   VBR encoded shape elements
 /// For the example tensor above, the output format would look like the
 /// following:
 ///   TypeKind::kTensor | TypeKind::kF32 | 2 | 1, 3
@@ -885,8 +893,12 @@ LogicalResult TypeEmitter::emitRankedTensorType(RankedTensorType type,
   emitTypeKind(BEF::TypeKind::kTensor);
   Type elementType = type.getElementType();
 
-  if (failed(emitType(elementType, loc, entities)))
+  auto eltEncoding = getIntFPComplexTypeEncoding(elementType);
+  if (eltEncoding.isError()) {
+    entities.emitError(loc) << eltEncoding.getError() << ": " << elementType;
     return failure();
+  }
+  emitTypeKind(eltEncoding.get());
 
   ArrayRef<int64_t> shape = type.getShape();
   emitter->emitByte((uint8_t)shape.size());
@@ -896,24 +908,6 @@ LogicalResult TypeEmitter::emitRankedTensorType(RankedTensorType type,
 
   return success();
 }
-
-/// emitType emits a float or integer type.
-LogicalResult TypeEmitter::emitType(Type type, Location loc,
-                                    EntityTable &entities) {
-  if (auto floatType = type.dyn_cast<FloatType>())
-    return emitFloatType(floatType);
-  if (auto intType = type.dyn_cast<IntegerType>()) {
-    if (succeeded(emitIntegerType(intType)))
-      return success();
-    entities.emitError(loc)
-        << "signless and arbitrary length integers not supported yet: " << type;
-  } else {
-    entities.emitError(loc) << "type attribute not supported: " << type;
-  }
-  return failure();
-}
-
-} // namespace
 
 /// emitTypeAttribute handles type emission for floats, integers, and ranked
 /// tensor types and returns the start offset for the attribute in question.
@@ -926,10 +920,14 @@ BEFOffset AttributesEmitter::emitTypeAttribute(Type type, Location loc) {
     if (succeeded(typeEmitter.emitRankedTensorType(tensorType, loc, entities)))
       return startOffset;
   }
-  if (succeeded(typeEmitter.emitType(type, loc, entities)))
-    return startOffset;
 
-  return {0};
+  auto eltEncoding = typeEmitter.getIntFPComplexTypeEncoding(type);
+  if (eltEncoding.isError()) {
+    entities.emitError(loc) << eltEncoding.getError() << ": " << type;
+    return {0};
+  }
+  typeEmitter.emitTypeKind(eltEncoding.get());
+  return startOffset;
 }
 
 BEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr, Location loc,

@@ -92,6 +92,14 @@ bef.invokable @attributes() {
   // MD: "type.f128"() {t = f128}
   "type.f128"() {t = f128} : () -> ()
 
+  // CHECK-NEXT: bef.opaque "type.tensor" [tensor<4x1xf32>]()
+  // MD: "type.tensor"() {t = tensor<4x1xf32>}
+  "type.tensor"() {t = tensor<4x1xf32>} : () -> ()
+
+  // CHECK-NEXT: bef.opaque "type.tensor" [tensor<0x1x0xcomplex<si32>>]()
+  // MD: "type.tensor"() {t = tensor<0x1x0xcomplex<si32>>
+  "type.tensor"() {t = tensor<0x1x0xcomplex<si32>>} : () -> ()
+
   bef.output
    // CHECK-NEXT:     bef.output
 }  // CHECK-NEXT:   }

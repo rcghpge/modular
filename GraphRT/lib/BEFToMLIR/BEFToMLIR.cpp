@@ -289,7 +289,7 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
     return outAttrList.getDictionary(getContext());
   };
 
-  auto parseTypeAttr = [&]() -> Attribute {
+  std::function<Type()> parseTypeAttr = [&]() -> Type {
     uint8_t typeValue;
     if (attrReader.parseByte(typeValue))
       return {};
@@ -324,6 +324,21 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
     case BEF::TypeKind::kBool:
       resultType = IntegerType::get(getContext(), 1);
       break;
+
+    case BEF::TypeKind::kTensor: {
+      auto eltType = parseTypeAttr();
+      uint8_t rank;
+      if (!eltType || attrReader.parseByte(rank))
+        return {};
+      SmallVector<int64_t> shape;
+      while (rank--) {
+        size_t dim;
+        if (attrReader.parseVBR(dim))
+          return {};
+        shape.push_back(int64_t(dim));
+      }
+      return RankedTensorType::get(shape, eltType);
+    }
     default:
       // Check for signed/unsigned integer.
       if ((typeKind & BEF::TypeKind::mSigned) == BEF::TypeKind::mSigned) {
@@ -338,13 +353,14 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
         break;
       }
       // Otherwise unknown type.
+      attrReader.emitError("unknown type attribute");
       return {};
     }
 
     assert(resultType && "Should have found a type");
     if (isComplex)
       resultType = mlir::ComplexType::get(resultType);
-    return TypeAttr::get(resultType);
+    return resultType;
   };
 
   // Parse a single attribute value from attrReader and return it, or null on
@@ -368,8 +384,12 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
     if (attrKind == BEF::AttributeKind::kList)
       return parseListAttr();
 
-    if (attrKind == BEF::AttributeKind::kType)
-      return parseTypeAttr();
+    if (attrKind == BEF::AttributeKind::kType) {
+      auto type = parseTypeAttr();
+      if (!type)
+        return {};
+      return TypeAttr::get(type);
+    }
 
     uint8_t byte;
     // I1 attrs are a single byte in the BEF format, but are also a separate
