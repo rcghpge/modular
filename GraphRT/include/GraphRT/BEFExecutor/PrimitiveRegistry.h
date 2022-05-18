@@ -555,7 +555,7 @@ public:
         Detail::BEFAttrDynCastRet<EncodedType>::getValue(*rawAttrValue);
     auto decodedValue = BEFDecoder<ValueType>::decode(valueToDecode);
     if (!decodedValue)
-      return error = decodedValue.takeErrorStorage(), failure();
+      return error = decodedValue.takeError(), failure();
     *result = std::move(*decodedValue);
     return success();
   }
@@ -1372,7 +1372,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
     if (errorOr)
       processResult(frame, index, std::move(errorOr.get()));
     else
-      frame.fail(errorOr.takeErrorStorage());
+      frame.fail(errorOr.takeError());
   }
 
   /// Don't allocate an async value for chain results, just use the one
