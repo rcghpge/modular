@@ -10,7 +10,7 @@
 #include "GraphRT/Primitives.h"
 #include "LLCL/Runtime/Algorithms.h"
 #include "TFLite/Primitives.h"
-#include "TFLite/TFLRuntimeModel.h"
+#include "TFLite/TFLModelFile.h"
 #include "TFLite/TFLTensor.h"
 #include "TFLite/Tools/TFLInputGeneration.h"
 #include "mlir/IR/Diagnostics.h"
@@ -131,81 +131,80 @@ M::runOneInference(const TFLRuntimeModel &model,
   return results;
 }
 
-LogicalResult M::runModel(const TFLRuntimeModel &model, LLCL::Runtime &runtime,
-                          const InputGenerationKind &inputGenKind,
-                          unsigned numRuns, bool benchmarkMode) {
-  auto results = model.setup(runtime);
-  assert(results.size() == 2 && "init phase returns chain+context");
-
-  auto chain = std::move(results[0]);
-  auto tflpContext = std::move(results[1]);
-  const auto &name = model.getName();
-
-  MLIRContext context;
-
-  auto numInputArgs = model.getExecuteFn()->getNumArgs();
-  auto inputShapes = model.getInputShapes();
-
-  if (inputGenKind == InputGenerationKind::kNone &&
-      numInputArgs != kExecuteFnNumMinInputs) {
-    errs() << "Cannot execute a model with input tensors (sizes: ";
-    llvm::interleaveComma(inputShapes, errs());
-    errs() << ") without input initialization yet! Hint: try setting "
-              "`-generate-inputs`.\n";
-    errs().flush();
+LogicalResult M::runModelFile(const TFLModelFile &modelFile, Runtime &runtime,
+                              const InputGenerationKind &inputGenKind,
+                              unsigned int numRuns, bool benchmarkMode) {
+  SmallVector<AnyAsyncValueRef, 0> chains, contexts;
+  M::Error err = modelFile.setupAllModels(runtime, chains, contexts);
+  if (failed(err)) {
+    outs() << err;
     return failure();
   }
 
-  outs() << "--- Running '" << name << "':\n";
-  outs().flush();
+  SmallVector<void *, 0> inputData;
+  auto fail = [&](M::Error e) {
+    for (auto d : inputData)
+      free(d);
+    outs() << e;
+    return failure();
+  };
 
-  // Set up a vector of input tensor data we can keep around.
-  auto dataOr = initializeInputMemory(inputGenKind, model);
-  if (failed(dataOr)) {
-    outs() << dataOr.takeError();
+  err = modelFile.initializeInputMemoryForAllModels(inputGenKind, inputData);
+  if (failed(err))
+    return fail(std::move(err));
+
+  auto beforeRun = [&](const TFLRuntimeModel &model) {
+    auto numInputArgs = model.getExecuteFn()->getNumArgs();
+    auto inputShapes = model.getInputShapes();
+
+    if (inputGenKind == InputGenerationKind::kNone &&
+        numInputArgs != kExecuteFnNumMinInputs) {
+      errs() << "Cannot execute a model with input tensors (sizes: ";
+      llvm::interleaveComma(inputShapes, errs());
+      errs() << ") without input initialization yet! Hint: try setting "
+                "`-generate-inputs`.\n";
+      errs().flush();
+      return failure();
+    }
+
+    outs() << "--- Running '" << model.getName() << "':\n";
     outs().flush();
-    return failure();
-  }
+    return success();
+  };
 
-  SmallVector<void *, 3> inputTensorData = *dataOr;
-  // Construct the list of arguments and size it correctly.
-  SmallVector<AnyAsyncValueRef> args;
-  args.reserve(model.getExecuteFn()->getNumArgs());
+  MLIRContext ctx;
+  auto afterRun = [&](const TFLRuntimeModel &model,
+                      ArrayRef<AnyAsyncValueRef> results) {
+    // Wait for the model to finish execution.
+    await(results);
+
+    // Print the result tensors with the default printer.
+    if (!benchmarkMode)
+      printResults(model.getName(), results, &ctx, outs());
+  };
 
   // Run the number of inferences asked for.
   // TODO: Generalize `benchmarkMode` into a more flexible policy around how
   // we control execution of the model.
   if (!benchmarkMode) {
     for (unsigned i = 0, e = numRuns; i != e; ++i) {
-      // Fill the inputs, starting with the chain.
-      args.push_back(chain.copy());
-      args.push_back(tflpContext.copy());
-      auto inferenceResults =
-          runOneInference(model, args, runtime, &context, inputTensorData,
-                          /* print = */ true);
-      // Update chain
-      chain = std::move(inferenceResults[0]);
-      args.clear();
+      err = modelFile.executeAllModels(runtime, chains, contexts, inputData,
+                                       beforeRun, afterRun);
+      if (failed(err))
+        return fail(std::move(err));
     }
   } else {
     // Measure the time taken for each inference.
     std::vector<double> cpuTimesMillis;
     for (unsigned i = 0, e = numRuns; i != e; ++i) {
-      // Fill the inputs, starting with the chain.
-      args.push_back(chain.copy());
-      args.push_back(tflpContext.copy());
-
       auto start = std::chrono::steady_clock::now();
-      auto inferenceResults =
-          runOneInference(model, args, runtime, &context, inputTensorData,
-                          /* print = */ true);
+      err = modelFile.executeAllModels(runtime, chains, contexts, inputData,
+                                       beforeRun, afterRun);
       auto end = std::chrono::steady_clock::now();
       std::chrono::duration<double, std::milli> time = end - start;
       cpuTimesMillis.push_back(time.count());
-
-      // Update chain and tflpContext
-      chain = std::move(inferenceResults[0]);
-      args.clear();
+      if (failed(err))
+        return fail(std::move(err));
     }
 
     outs() << "Model inference times: ";
@@ -214,10 +213,8 @@ LogicalResult M::runModel(const TFLRuntimeModel &model, LLCL::Runtime &runtime,
     outs().flush();
   }
 
-  // Clean up the input tensors. The shape is freed by the TFLExecutorContext
-  // destructor, so all we have to do is free the data.
-  for (auto t : inputTensorData)
-    free(t);
+  for (auto d : inputData)
+    free(d);
 
   return success();
 }
