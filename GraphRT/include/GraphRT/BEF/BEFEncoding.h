@@ -207,6 +207,7 @@ enum class TypeKind : uint8_t {
   kBool = (1 << 3) | mOther,
   kTensor = (2 << 3) | mOther,    // Has following bytes.
   kQuantized = (3 << 3) | mOther, // Has following bytes.
+  kFunction = (4 << 3) | mOther,  // Has following bytes.
 
   //------ Enable bitmask usage ----------------------------------------------//
   mFF = 0xff, // DO NOT USE.

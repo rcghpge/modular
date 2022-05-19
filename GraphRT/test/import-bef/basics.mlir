@@ -108,6 +108,14 @@ bef.invokable @attributes() {
   // MD: "type.quant"() {t = !quant.uniform<i8:f32, 0.0078119998797774315:-128>
   "type.quant"() {t = !quant.uniform<i8:f32, 0.0078119998797774315:-128>} : () -> ()
 
+  // CHECK-NEXT: bef.opaque "type.fn" [(si32, !quant.uniform<i8:f32, 0.0078119998797774315:-128>) -> tensor<4x100xf32>]()
+  // MD: "type.fn"() {t = (si32, !quant.uniform<i8:f32, 0.0078119998797774315:-128>) -> tensor<4x100xf32>
+  "type.fn"() {t = (si32, !quant.uniform<i8:f32, 0.0078119998797774315:-128>) -> tensor<4x100xf32>} : () -> ()
+ 
+ // CHECK-NEXT: bef.opaque "type.fn" [() -> (si8, i1)]()
+  // MD: "type.fn"() {t = () -> (si8, i1)
+  "type.fn"() {t = () -> (si8, i1)} : () -> ()
+
   bef.output
    // CHECK-NEXT:     bef.output
 }  // CHECK-NEXT:   }

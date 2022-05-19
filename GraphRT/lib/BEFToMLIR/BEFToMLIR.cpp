@@ -341,6 +341,24 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
       return RankedTensorType::get(shape, eltType);
     }
 
+    case BEF::TypeKind::kFunction: {
+      uint8_t numInputs, numResults;
+      if (attrReader.parseByte(numInputs) || attrReader.parseByte(numResults))
+        return {};
+
+      SmallVector<Type> inputs, results;
+      while (numInputs--) {
+        inputs.emplace_back() = parseTypeAttr();
+        if (!inputs.back())
+          return {};
+      }
+      while (numResults--) {
+        results.emplace_back() = parseTypeAttr();
+        if (!results.back())
+          return {};
+      }
+      return FunctionType::get(getContext(), inputs, results);
+    }
     case BEF::TypeKind::kQuantized: {
       auto storageType = parseTypeAttr();
       if (!storageType)
@@ -351,11 +369,8 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
         return {};
 
       ArrayRef<uint8_t> scale;
-      if (attrReader.parseBytes(8, scale))
-        return {};
-
       size_t zeroPoint;
-      if (attrReader.parseVBR(zeroPoint))
+      if (attrReader.parseBytes(8, scale) || attrReader.parseVBR(zeroPoint))
         return {};
 
       auto intType = storageType.cast<IntegerType>();

@@ -805,8 +805,10 @@ public:
   ErrorOr<BEF::TypeKind> getFloatTypeEncoding(FloatType type);
   ErrorOr<BEF::TypeKind> getIntegerTypeEncoding(IntegerType type);
   ErrorOr<BEF::TypeKind> getIntFPComplexTypeEncoding(Type type);
+  LogicalResult emitType(Type type);
   LogicalResult emitIntFPComplexType(Type type);
   LogicalResult emitRankedTensorType(RankedTensorType type);
+  LogicalResult emitFunctionType(FunctionType type);
   LogicalResult emitUniformQuantizedType(UniformQuantizedType type);
 
   void emitTypeKind(BEF::TypeKind kind) const {
@@ -953,8 +955,38 @@ LogicalResult TypeEmitter::emitUniformQuantizedType(UniformQuantizedType type) {
   emitter->emitVBR((size_t)type.getZeroPoint());
 
   // FIXME: need to handle non-default storageTypeMin/Max
-
   return success();
+}
+
+LogicalResult TypeEmitter::emitFunctionType(FunctionType type) {
+  emitTypeKind(BEF::TypeKind::kFunction);
+  emitter->emitByte(type.getNumInputs());
+  emitter->emitByte(type.getNumResults());
+  for (auto input : type.getInputs())
+    if (failed(emitType(input)))
+      return failure();
+
+  for (auto result : type.getResults())
+    if (failed(emitType(result)))
+      return failure();
+  return success();
+}
+
+LogicalResult TypeEmitter::emitType(Type type) {
+  if (auto tensorType = type.dyn_cast<RankedTensorType>())
+    return emitRankedTensorType(tensorType);
+
+  if (auto qType = type.dyn_cast<UniformQuantizedType>())
+    return emitUniformQuantizedType(qType);
+
+  if (auto fnType = type.dyn_cast<FunctionType>())
+    return emitFunctionType(fnType);
+
+  if (auto qType = type.dyn_cast<UniformQuantizedPerAxisType>())
+    return emitter->entities.emitError(loc)
+           << "per-axis quantized type not supported: " << type;
+
+  return emitIntFPComplexType(type);
 }
 
 /// emitTypeAttribute handles type emission for floats, integers, and ranked
@@ -964,23 +996,7 @@ BEFOffset AttributesEmitter::emitTypeAttribute(Type type, Location loc) {
   BEFOffset startOffset = getOffset();
 
   TypeEmitter typeEmitter(this, loc);
-  if (auto tensorType = type.dyn_cast<RankedTensorType>()) {
-    if (succeeded(typeEmitter.emitRankedTensorType(tensorType)))
-      return startOffset;
-  }
-
-  if (auto qType = type.dyn_cast<UniformQuantizedType>()) {
-    if (succeeded(typeEmitter.emitUniformQuantizedType(qType)))
-      return startOffset;
-  }
-
-  if (auto qType = type.dyn_cast<UniformQuantizedPerAxisType>()) {
-    entities.emitError(loc)
-        << "per-axis quantized type not supported: " << type;
-    return {0};
-  }
-
-  if (failed(typeEmitter.emitIntFPComplexType(type)))
+  if (failed(typeEmitter.emitType(type)))
     return {0};
   return startOffset;
 }
