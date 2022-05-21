@@ -44,14 +44,6 @@ bef.invokable @type_attr_non_whole_bytes_int() {
 
 // -----
 
-bef.invokable @type_attr_too_long_int() {
-  // expected-error @+1 {{integer cannot be converted to BEF type: 'si256'}}
-  "foo"() {t = si256} : () -> ()
-  bef.output
-}
-
-// -----
-
 bef.invokable @type_quantized_per_axis() {
   // FIXME: We currently have a hack for this.
   // xpected-error @+1 {{per-axis quantized type not supported: '!quant.uniform<i8:f32:0, {1.000000e-01:-128}>'}}

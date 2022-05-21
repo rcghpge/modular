@@ -97,25 +97,12 @@ static void printType(BEFType type) {
     printf("float");
   else if (type.isa<BEFScalarType<double>>())
     printf("double");
-  else if (type.isa<BEFScalarType<uint8_t>>())
-    printf("uint8_t");
-  else if (type.isa<BEFScalarType<int8_t>>())
-    printf("int8_t");
-  else if (type.isa<BEFScalarType<uint16_t>>())
-    printf("uint16_t");
-  else if (type.isa<BEFScalarType<int16_t>>())
-    printf("int16_t");
-  else if (type.isa<BEFScalarType<int32_t>>())
-    printf("int32_t");
-  else if (type.isa<BEFScalarType<uint32_t>>())
-    printf("uint32_t");
-  else if (type.isa<BEFScalarType<int64_t>>())
-    printf("int64_t");
-  else if (type.isa<BEFScalarType<uint64_t>>())
-    printf("uint64_t");
   else if (type.isa<BEFScalarType<bool>>())
     printf("bool");
-  else if (auto fnType = type.dyn_cast<BEFFunctionType>()) {
+  else if (auto intType = type.dyn_cast<BEFIntegerType>()) {
+    printf("%sint%d_t", &"u"[intType->isSigned()],
+           (int)intType -> getWidthInBits());
+  } else if (auto fnType = type.dyn_cast<BEFFunctionType>()) {
     SmallVector<BEFType> inputs, results;
     fnType->decode(inputs, results);
     printf("(");
