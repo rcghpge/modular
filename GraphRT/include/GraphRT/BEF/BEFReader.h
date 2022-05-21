@@ -107,6 +107,18 @@ public:
     return false;
   }
 
+  /// A SignedVBR is emitted with the sign bit as the low bit and negates
+  /// negative numbers so we can emit things like "-2" into a single byte.
+  bool parseSignedVBR(ssize_t &result) {
+    size_t encoded;
+    if (parseVBR(encoded))
+      return true;
+    result = encoded >> 1;
+    if (encoded & 1)
+      result = -result;
+    return false;
+  }
+
   /// Parse an inverted VBR that ends at the specified offset.
   bool parseInvertedVBRAt(size_t offset, size_t &result) const {
     result = 0;

@@ -120,8 +120,16 @@ public:
     emitBytes(data);
   }
 
-  // Emit a vbr encoded integer of arbitrary width.
+  // Emit a VBR encoded integer of arbitrary width.
   void emitVBR(size_t value) { emitVBRImpl(value, false); }
+
+  // Emit a VBR for a signed value.  We emit the sign bit as the low bit and
+  // negate negative numbers so we can emit things like "-2" into a single byte.
+  void emitSignedVBR(ssize_t value) {
+    if (value >= 0)
+      return emitVBR(value << 1);
+    return emitVBR(((-value) << 1) | 1);
+  }
   void emitInvertedVBR(size_t value);
 
   /// Emit an offset within a known BEF section.
@@ -947,12 +955,11 @@ LogicalResult TypeEmitter::emitUniformQuantizedType(UniformQuantizedType type) {
     return failure();
 
   // We emit the scale as is.
-  double scale = type.getScale();
-  emitter->emitBytes(ArrayRef<uint8_t>((uint8_t *)&scale, sizeof(double)));
+  float scale = (float)type.getScale();
+  emitter->emitBytes(ArrayRef<uint8_t>((uint8_t *)&scale, sizeof(float)));
 
   // The zero point is emitted in VBR.
-  // FIXME: this won't be an efficient encoding for negative zero points
-  emitter->emitVBR((size_t)type.getZeroPoint());
+  emitter->emitSignedVBR(type.getZeroPoint());
 
   // FIXME: need to handle non-default storageTypeMin/Max
   return success();

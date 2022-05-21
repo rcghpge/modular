@@ -369,8 +369,9 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
         return {};
 
       ArrayRef<uint8_t> scale;
-      size_t zeroPoint;
-      if (attrReader.parseBytes(8, scale) || attrReader.parseVBR(zeroPoint))
+      ssize_t zeroPoint;
+      if (attrReader.parseBytes(sizeof(float), scale) ||
+          attrReader.parseSignedVBR(zeroPoint))
         return {};
 
       auto intType = storageType.cast<IntegerType>();
@@ -383,7 +384,7 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
       unsigned flags = isSigned ? mlir::quant::QuantizationFlags::Signed : 0;
 
       return UniformQuantizedType::get(
-          flags, storageType, expressedType, *(const double *)scale.data(),
+          flags, storageType, expressedType, *(const float *)scale.data(),
           (int64_t)zeroPoint, storageTypeMin, storageTypeMax);
     }
 

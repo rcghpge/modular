@@ -137,14 +137,14 @@ static void printType(BEFType type) {
     printType(elementType);
     printf(">");
   } else if (auto qType = type.dyn_cast<BEFQuantizedType>()) {
-    double scale;
+    float scale;
     int64_t zeroPoint;
     auto [storageType, expressedType] = qType->decode(scale, zeroPoint);
     printf("quant<");
     printType(storageType);
     printf(":");
     printType(expressedType);
-    printf(" %f:%lld>", scale, (long long)zeroPoint);
+    printf(" %f:%lld>", (double)scale, (long long)zeroPoint);
   } else {
     printf("<unknown type>");
   }

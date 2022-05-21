@@ -116,7 +116,7 @@ size_t BEFTensorType::getEncodedSizeInBytes() const {
 /// Decode the inputs and results of a BEFQuantizedType into the specified
 /// arguments and return the encoded size of the type.
 static size_t decodeQuantizedType(const uint8_t *pointer, BEFType &storageType,
-                                  BEFType &expressedType, double &scale,
+                                  BEFType &expressedType, float &scale,
                                   int64_t &zeroPoint) {
   auto *dataPtr = pointer;
   assert(BEF::TypeKind(dataPtr[0]) == BEF::TypeKind::kQuantized);
@@ -125,13 +125,13 @@ static size_t decodeQuantizedType(const uint8_t *pointer, BEFType &storageType,
   expressedType = BEFType(dataPtr);
   dataPtr += expressedType.getEncodedSizeInBytes();
 
-  scale = *(const double *)dataPtr;
-  dataPtr += sizeof(double);
-  zeroPoint = BEF::parseVBR(dataPtr);
+  scale = *(const float *)dataPtr;
+  dataPtr += sizeof(float);
+  zeroPoint = BEF::parseSignedVBR(dataPtr);
   return dataPtr - pointer;
 }
 
-std::pair<BEFType, BEFType> BEFQuantizedType::decode(double &scale,
+std::pair<BEFType, BEFType> BEFQuantizedType::decode(float &scale,
                                                      int64_t &zeroPoint) const {
   std::pair<BEFType, BEFType> storageExpressedTypes{nullptr, nullptr};
   (void)decodeQuantizedType(pointer, storageExpressedTypes.first,
@@ -142,7 +142,7 @@ std::pair<BEFType, BEFType> BEFQuantizedType::decode(double &scale,
 /// Return the encoded size of this type in the BEF file, in bytes.
 size_t BEFQuantizedType::getEncodedSizeInBytes() const {
   BEFType ignored(nullptr);
-  double scale;
+  float scale;
   int64_t zeroPoint;
   return decodeQuantizedType(pointer, ignored, ignored, scale, zeroPoint);
 }

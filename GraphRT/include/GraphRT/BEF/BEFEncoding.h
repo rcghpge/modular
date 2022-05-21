@@ -58,6 +58,15 @@ inline size_t parseVBR(const uint8_t *&pointer) {
   return result;
 }
 
+/// A SignedVBR is emitted with the sign bit as the low bit and negates
+/// negative numbers so we can emit things like "-2" into a single byte.
+inline ssize_t parseSignedVBR(const uint8_t *&pointer) {
+  size_t encoded = parseVBR(pointer);
+  if (encoded & 1)
+    return -(encoded >> 1);
+  return encoded >> 1;
+}
+
 //===----------------------------------------------------------------------===//
 // BEF section constants
 //===----------------------------------------------------------------------===//
