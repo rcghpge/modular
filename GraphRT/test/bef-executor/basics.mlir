@@ -173,6 +173,13 @@ bef.invokable @test_types() {
   // CHECK-NEXT: Type attribute: int64_t
   %ch13 = "test.print_type"(%ch12) {t = si64} : (!grt.chain) -> (!grt.chain)
 
+  // CHECK-NEXT: Type attribute: (int64_t, uint8_t) -> bool
+  %ch14 = "test.print_type"(%ch13) {t = (si64, ui8) -> i1} : (!grt.chain) -> (!grt.chain)
+
+ // CHECK-NEXT: Type attribute: (int64_t, (uint8_t) -> (float, double)) -> bool
+  %ch15 = "test.print_type"(%ch14) {t = (si64, (ui8)->(f32, f64)) -> i1} : (!grt.chain) -> (!grt.chain)
+
+
   bef.output
 }
 

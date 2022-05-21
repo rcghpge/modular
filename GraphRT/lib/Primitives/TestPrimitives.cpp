@@ -92,31 +92,49 @@ static Chain print_all_dict(Chain chain, BEFDictionaryAttr dict) {
   return chain;
 }
 
-static Chain print_type(Chain chain, BEFTypeAttr type) {
-  // Intentionally fall through so that we catch if more than type matches.
-  printf("Type attribute: ");
-  if (type.matches<float>())
+static void printType(BEFType type) {
+  if (type.isa<BEFScalarType<float>>())
     printf("float");
-  if (type.matches<double>())
+  else if (type.isa<BEFScalarType<double>>())
     printf("double");
-  if (type.matches<uint8_t>())
+  else if (type.isa<BEFScalarType<uint8_t>>())
     printf("uint8_t");
-  if (type.matches<int8_t>())
+  else if (type.isa<BEFScalarType<int8_t>>())
     printf("int8_t");
-  if (type.matches<uint16_t>())
+  else if (type.isa<BEFScalarType<uint16_t>>())
     printf("uint16_t");
-  if (type.matches<int16_t>())
+  else if (type.isa<BEFScalarType<int16_t>>())
     printf("int16_t");
-  if (type.matches<int32_t>())
+  else if (type.isa<BEFScalarType<int32_t>>())
     printf("int32_t");
-  if (type.matches<uint32_t>())
+  else if (type.isa<BEFScalarType<uint32_t>>())
     printf("uint32_t");
-  if (type.matches<int64_t>())
+  else if (type.isa<BEFScalarType<int64_t>>())
     printf("int64_t");
-  if (type.matches<uint64_t>())
+  else if (type.isa<BEFScalarType<uint64_t>>())
     printf("uint64_t");
-  if (type.matches<bool>())
+  else if (type.isa<BEFScalarType<bool>>())
     printf("bool");
+  else if (auto fnType = type.dyn_cast<BEFFunctionType>()) {
+    SmallVector<BEFType> inputs, results;
+    fnType->decode(inputs, results);
+    printf("(");
+    llvm::interleave(
+        inputs, [](BEFType type) { printType(type); }, []() { printf(", "); });
+    printf(") -> ");
+    if (results.size() != 1)
+      printf("(");
+    llvm::interleave(
+        results, [](BEFType type) { printType(type); }, []() { printf(", "); });
+    if (results.size() != 1)
+      printf(")");
+  } else
+    printf("<unknown type>");
+}
+
+static Chain print_type(Chain chain, BEFTypeAttr type) {
+  printf("Type attribute: ");
+  printType(type);
   printf("\n");
   return chain;
 }

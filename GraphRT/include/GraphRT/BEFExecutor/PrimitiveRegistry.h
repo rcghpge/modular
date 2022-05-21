@@ -8,6 +8,7 @@
 #define GRAPHRT_BEFEXECUTOR_PRIMITIVE_REGISTRY_H
 
 #include "GraphRT/BEF/BEFEncoding.h"
+#include "GraphRT/BEF/BEFTypes.h"
 #include "GraphRT/BEFExecutor/PrimitiveFrame.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "LLCL/Support/Chain.h"
@@ -435,38 +436,59 @@ class BEFType {};
 
 template <>
 class BEFAttr<Detail::BEFType>
-    : public BEFAttrCommon<BEFAttr<Detail::BEFType>, Detail::BEFType> {
+    : public BEFAttrCommon<BEFAttr<Detail::BEFType>, Detail::BEFType>,
+      public BEFType {
 public:
   using BaseClass = BEFAttrCommon<BEFAttr<Detail::BEFType>, Detail::BEFType>;
 
   explicit BEFAttr(const void *pointer)
       : BaseClass(Detail::BEFType{}),
-        encodedTypePtr(static_cast<const uint8_t *>(pointer)) {
+        BEFType(static_cast<const uint8_t *>(pointer)) {
     this->checkAttributeKind(pointer);
-    assert(getHeadType() != BEF::TypeKind::kInvalid &&
-           "Invalid type attribute");
+    assert(getKind() != BEF::TypeKind::kInvalid && "Invalid type attribute");
   }
 
   static bool matchesAttrKind(const void *pointer) {
     return BaseClass::getAttrKind(pointer) == BEF::AttributeKind::kType;
   }
-
-  template <typename T>
-  bool matches() const {
-    constexpr auto kThisKind = BEF::TypeKindForCXXType<T>::kind;
-    static_assert(kThisKind != BEF::TypeKind::kInvalid &&
-                  "C++ type passed to BEFTypeAttr::matches isn't supported");
-    return getHeadType() == kThisKind;
-  }
-
-private:
-  /// This is the raw pointer to the start of the type attribute.
-  const uint8_t *encodedTypePtr;
-
-  BEF::TypeKind getHeadType() const { return BEF::TypeKind(*encodedTypePtr); }
 };
 
 using BEFTypeAttr = BEFAttr<Detail::BEFType>;
+
+//===----------------------------------------------------------------------===//
+// BEFFunctionTypeAttr
+//===----------------------------------------------------------------------===//
+
+namespace Detail {
+/// Implementation detail of the BEFFunctionTypeAttr using declaration.  We name
+/// it `BEFFunctionType` instead of `FunctionType` to avoid polluting the
+/// `M::Detail` namespace with a generic name.
+class BEFFunctionType {};
+} // namespace Detail
+
+template <>
+class BEFAttr<Detail::BEFFunctionType>
+    : public BEFAttrCommon<BEFAttr<Detail::BEFFunctionType>,
+                           Detail::BEFFunctionType>,
+      public BEFFunctionType {
+public:
+  using BaseClass =
+      BEFAttrCommon<BEFAttr<Detail::BEFFunctionType>, Detail::BEFFunctionType>;
+
+  explicit BEFAttr(const void *pointer)
+      : BaseClass(Detail::BEFFunctionType{}),
+        BEFFunctionType(static_cast<const uint8_t *>(pointer)) {
+    this->checkAttributeKind(pointer);
+  }
+
+  static bool matchesAttrKind(const void *pointer) {
+    auto dynType = BEFType(static_cast<const uint8_t *>(pointer));
+    return BaseClass::getAttrKind(pointer) == BEF::AttributeKind::kType &&
+           BEFFunctionType::matchesTypeKind(dynType.getKind());
+  }
+};
+
+using BEFFunctionTypeAttr = BEFAttr<Detail::BEFFunctionType>;
 
 //===----------------------------------------------------------------------===//
 // BEFDynamicAttr
