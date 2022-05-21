@@ -176,10 +176,15 @@ bef.invokable @test_types() {
   // CHECK-NEXT: Type attribute: (int64_t, uint8_t) -> bool
   %ch14 = "test.print_type"(%ch13) {t = (si64, ui8) -> i1} : (!grt.chain) -> (!grt.chain)
 
- // CHECK-NEXT: Type attribute: (int64_t, (uint8_t) -> (float, double)) -> bool
+  // Nested function type.
+  // CHECK-NEXT: Type attribute: (int64_t, (uint8_t) -> (float, double)) -> bool
   %ch15 = "test.print_type"(%ch14) {t = (si64, (ui8)->(f32, f64)) -> i1} : (!grt.chain) -> (!grt.chain)
 
+  // CHECK-NEXT: Type attribute: tensor<4x0x123xfloat>
+  %ch16 = "test.print_type"(%ch15) {t = tensor<4x0x123xf32>} : (!grt.chain) -> (!grt.chain)
 
+  // CHECK-NEXT: Type attribute: quant<int8_t:float 0.100000:-128>
+  %ch17 = "test.print_type"(%ch16) {t = !quant.uniform<i8:f32, 0.1:-128>} : (!grt.chain) -> (!grt.chain)
   bef.output
 }
 

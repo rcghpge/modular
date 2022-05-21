@@ -128,8 +128,26 @@ static void printType(BEFType type) {
         results, [](BEFType type) { printType(type); }, []() { printf(", "); });
     if (results.size() != 1)
       printf(")");
-  } else
+  } else if (auto tensorType = type.dyn_cast<BEFTensorType>()) {
+    SmallVector<int64_t> dims;
+    BEFType elementType = tensorType->decode(dims);
+    printf("tensor<");
+    for (int64_t dim : dims)
+      printf("%lldx", (long long)dim);
+    printType(elementType);
+    printf(">");
+  } else if (auto qType = type.dyn_cast<BEFQuantizedType>()) {
+    double scale;
+    int64_t zeroPoint;
+    auto [storageType, expressedType] = qType->decode(scale, zeroPoint);
+    printf("quant<");
+    printType(storageType);
+    printf(":");
+    printType(expressedType);
+    printf(" %f:%lld>", scale, (long long)zeroPoint);
+  } else {
     printf("<unknown type>");
+  }
 }
 
 static Chain print_type(Chain chain, BEFTypeAttr type) {

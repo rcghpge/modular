@@ -46,6 +46,18 @@ inline bool hasBEFMagicNumber(llvm::StringRef contents) {
          uint8_t(contents[1]) == kMagic2;
 }
 
+/// Parse a VBR encoded integer from the byte stream, moving the pointer for
+/// the number of bytes consumed.
+inline size_t parseVBR(const uint8_t *&pointer) {
+  uint8_t nextByte = *pointer++;
+  size_t result = nextByte & 127;
+  while ((nextByte & 128) != 0) {
+    nextByte = *pointer++;
+    result = (result << 7) | size_t(nextByte & 127);
+  }
+  return result;
+}
+
 //===----------------------------------------------------------------------===//
 // BEF section constants
 //===----------------------------------------------------------------------===//
