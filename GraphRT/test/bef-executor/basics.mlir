@@ -185,6 +185,10 @@ bef.invokable @test_types() {
 
   // CHECK-NEXT: Type attribute: quant<int8_t:float 0.100000:-128>
   %ch17 = "test.print_type"(%ch16) {t = !quant.uniform<i8:f32, 0.1:-128>} : (!grt.chain) -> (!grt.chain)
+
+  // CHECK-NEXT: Type attribute: tensor<1x2xint8_t>
+  %ch18 = "test.print_type"(%ch17) {t = tensor<1x2x!quant.uniform<i8:f32:0, {1.000000e-01:-128}>>} : (!grt.chain) -> (!grt.chain)
+
   bef.output
 }
 

@@ -910,7 +910,7 @@ LogicalResult TypeEmitter::emitRankedTensorType(RankedTensorType type) {
   emitTypeKind(BEF::TypeKind::kTensor);
   Type elementType = type.getElementType();
 
-  if (failed(emitIntFPComplexType(elementType)))
+  if (failed(emitType(elementType)))
     return failure();
 
   ArrayRef<int64_t> shape = type.getShape();
@@ -982,9 +982,14 @@ LogicalResult TypeEmitter::emitType(Type type) {
   if (auto fnType = type.dyn_cast<FunctionType>())
     return emitFunctionType(fnType);
 
-  if (auto qType = type.dyn_cast<UniformQuantizedPerAxisType>())
-    return emitter->entities.emitError(loc)
-           << "per-axis quantized type not supported: " << type;
+  if (auto qType = type.dyn_cast<UniformQuantizedPerAxisType>()) {
+    // FIXME: We're currently just encoding this as the storage type, which
+    // loses quantization information.
+    auto intStorageType = IntegerType::get(
+        qType.getContext(), qType.getStorageTypeIntegralWidth(),
+        qType.isSigned() ? IntegerType::Signed : IntegerType::Unsigned);
+    return emitType(intStorageType);
+  }
 
   return emitIntFPComplexType(type);
 }

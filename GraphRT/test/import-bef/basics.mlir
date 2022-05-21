@@ -100,6 +100,10 @@ bef.invokable @attributes() {
   // MD: "type.tensor"() {t = tensor<0x1x0xcomplex<si32>>
   "type.tensor"() {t = tensor<0x1x0xcomplex<si32>>} : () -> ()
 
+  // CHECK-NEXT: bef.opaque "type.quanttensor" [tensor<2xsi16>]()
+  // MD: "type.quanttensor"() {t = tensor<2xsi16>}
+  "type.quanttensor"() {t = tensor<2x!quant.uniform<i16:f32:0, {2.000000e-03}>>} : () -> ()
+
   // CHECK-NEXT: bef.opaque "type.quant" [!quant.uniform<u8:f32, 0.0078119998797774315:128>]()
   // MD: "type.quant"() {t = !quant.uniform<u8:f32, 0.0078119998797774315:128>
   "type.quant"() {t = !quant.uniform<u8:f32, 0.0078119998797774315:128>} : () -> ()
