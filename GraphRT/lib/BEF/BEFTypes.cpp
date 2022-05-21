@@ -10,11 +10,10 @@ using namespace M;
 
 /// Return the encoded size of this type in bytes.
 size_t BEFType::getEncodedSizeInBytes() const {
-  auto typeID = getKind();
   // The 'isComplex' bit doesn't affect the length.
-  typeID &= ~BEF::TypeKind::mComplex;
+  auto typeID = getKind().stripComplex();
 
-  switch (typeID) {
+  switch (typeID.getValue()) {
   case BEF::TypeKind::kF16:
   case BEF::TypeKind::kBF16:
   case BEF::TypeKind::kF32:
@@ -32,8 +31,7 @@ size_t BEFType::getEncodedSizeInBytes() const {
     return this->cast<BEFQuantizedType>().getEncodedSizeInBytes();
   default:
     // All signed/unsigned integers are single-byte encoding.
-    if (((typeID & BEF::TypeKind::mSigned) == BEF::TypeKind::mSigned) ||
-        ((typeID & BEF::TypeKind::mUnsigned) == BEF::TypeKind::mUnsigned))
+    if (typeID.isInt())
       return 1;
     // Unknown types don't have a known length, just don't advance.
     return 0;

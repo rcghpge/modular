@@ -819,28 +819,11 @@ public:
   LogicalResult emitFunctionType(FunctionType type);
   LogicalResult emitUniformQuantizedType(UniformQuantizedType type);
 
-  void emitTypeKind(BEF::TypeKind kind) const {
-    emitter->emitByte((uint8_t)kind);
-  }
-
 private:
   AttributesEmitter *emitter;
   Location loc;
-
-  /// Encodes the number of bytes as needed by primitive types in BEF::TypeKind.
-  ErrorOr<uint8_t> getNumBytesEncoded(unsigned bitWidth) const;
 };
 } // namespace
-
-/// Encodes the number of bytes as needed by primitive types in BEF::TypeKind.
-ErrorOr<uint8_t> TypeEmitter::getNumBytesEncoded(unsigned bitWidth) const {
-  if (bitWidth % 8)
-    return Error("arbitary bitwidth integers not supported");
-  unsigned numBytes = bitWidth / 8;
-  if (numBytes > 16) // No BEF emittable types are this large.
-    return Error("large integer types not supported");
-  return (numBytes - 1) << 3;
-}
 
 ErrorOr<BEF::TypeKind> TypeEmitter::getFloatTypeEncoding(FloatType type) {
   unsigned bitWidth = type.getWidth();
@@ -872,13 +855,11 @@ ErrorOr<BEF::TypeKind> TypeEmitter::getIntegerTypeEncoding(IntegerType type) {
   if (type.isSignless())
     return Error("signless integers not supported");
 
-  auto encOr = getNumBytesEncoded(bitWidth);
-  if (failed(encOr))
-    return encOr.takeError();
+  auto dtype = TensorDType::getInt(bitWidth, type.isSigned());
+  if (dtype.isInvalid())
+    return Error("integer cannot be converted to BEF type");
 
-  auto kind =
-      type.isSigned() ? BEF::TypeKind::mSigned : BEF::TypeKind::mUnsigned;
-  return BEF::TypeKind(*encOr) | kind;
+  return BEF::TypeKind(dtype.getValue());
 }
 
 /// Helper to get int, float or complex encoding.
@@ -891,7 +872,7 @@ ErrorOr<BEF::TypeKind> TypeEmitter::getIntFPComplexTypeEncoding(Type type) {
     auto eltTypeOr = getIntFPComplexTypeEncoding(complexType.getElementType());
     if (eltTypeOr.isError())
       return eltTypeOr.takeError();
-    return eltTypeOr.get() | BEF::TypeKind::mComplex;
+    return BEF::TypeKind(eltTypeOr->addComplex().getValue());
   }
 
   return Error("type cannot be encoded in BEF");
@@ -904,7 +885,7 @@ LogicalResult TypeEmitter::emitIntFPComplexType(Type type) {
     emitter->entities.emitError(loc) << eltEncoding.getError() << ": " << type;
     return failure();
   }
-  emitTypeKind(eltEncoding.get());
+  emitter->emitByte(eltEncoding->getValue());
   return success();
 }
 
@@ -915,7 +896,7 @@ LogicalResult TypeEmitter::emitIntFPComplexType(Type type) {
 /// For the example tensor above, the output format would look like this:
 ///   TypeKind::kTensor | TypeKind::kF32 | 2 | 1, 3
 LogicalResult TypeEmitter::emitRankedTensorType(RankedTensorType type) {
-  emitTypeKind(BEF::TypeKind::kTensor);
+  emitter->emitByte(BEF::TypeKind::kTensor);
   Type elementType = type.getElementType();
 
   if (failed(emitType(elementType)))
@@ -938,7 +919,7 @@ LogicalResult TypeEmitter::emitRankedTensorType(RankedTensorType type) {
 /// For the example type above, the output format would look like this:
 ///   TypeKind::kQuantized | TypeKind::kS8 | TypeKind::kF32 | 0.1 | -128
 LogicalResult TypeEmitter::emitUniformQuantizedType(UniformQuantizedType type) {
-  emitTypeKind(BEF::TypeKind::kQuantized);
+  emitter->emitByte(BEF::TypeKind::kQuantized);
 
   // UniformQuantizedType stores the signedness information in a flag, but it is
   // easier to emit a signed or unsigned type.
@@ -966,7 +947,7 @@ LogicalResult TypeEmitter::emitUniformQuantizedType(UniformQuantizedType type) {
 }
 
 LogicalResult TypeEmitter::emitFunctionType(FunctionType type) {
-  emitTypeKind(BEF::TypeKind::kFunction);
+  emitter->emitByte(BEF::TypeKind::kFunction);
   emitter->emitByte(type.getNumInputs());
   emitter->emitByte(type.getNumResults());
   for (auto input : type.getInputs())

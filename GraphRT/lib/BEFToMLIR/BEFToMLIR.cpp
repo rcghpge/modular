@@ -296,14 +296,10 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
       return {};
     BEF::TypeKind typeKind = BEF::TypeKind(typeValue);
 
-    bool isComplex = false;
-    if ((typeKind & BEF::TypeKind::mComplex) == BEF::TypeKind::mComplex) {
-      isComplex = true;
-      typeKind &= ~BEF::TypeKind::mComplex;
-    }
+    bool isComplex = typeKind.isComplex();
 
     Type resultType;
-    switch (typeKind) {
+    switch (typeKind.stripComplex().getValue()) {
     case BEF::TypeKind::kF16:
       resultType = FloatType::getF16(getContext());
       break;
@@ -390,13 +386,13 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
 
     default:
       // Check for signed/unsigned integer.
-      if ((typeKind & BEF::TypeKind::mSigned) == BEF::TypeKind::mSigned) {
-        unsigned width = BEF::getIntegerWidthInBits(typeKind);
+      if (typeKind.isSInt()) {
+        unsigned width = typeKind.getIntegerWidthInBits();
         resultType = IntegerType::get(getContext(), width, IntegerType::Signed);
         break;
       }
-      if ((typeKind & BEF::TypeKind::mUnsigned) == BEF::TypeKind::mUnsigned) {
-        unsigned width = BEF::getIntegerWidthInBits(typeKind);
+      if (typeKind.isUInt()) {
+        unsigned width = typeKind.getIntegerWidthInBits();
         resultType =
             IntegerType::get(getContext(), width, IntegerType::Unsigned);
         break;

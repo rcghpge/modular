@@ -12,6 +12,7 @@
 #ifndef GRAPHRT_BEF_BEFENCODING_H
 #define GRAPHRT_BEF_BEFENCODING_H
 
+#include "GenericML/Support/TensorDType.h"
 #include "Support/LLVMForwardDecls.h"
 #include "llvm/ADT/BitmaskEnum.h"
 #include "llvm/ADT/StringRef.h"
@@ -177,95 +178,17 @@ DECLARE_ATTR_MAPPING(kString, StringRef);
 // BEF type constants and helpers
 //===----------------------------------------------------------------------===//
 
-// Import bitwise operators for TypeKind into this namespace so ADL can find
-// them.
-LLVM_ENABLE_BITMASK_ENUMS_IN_NAMESPACE();
-
-enum class TypeKind : uint8_t {
-  /// Note that many of these should be interpreted as type classes, i.e. the
-  /// enum represents a mask, not a concrete enumerator.  These enum values are
-  /// prefixed with `m` to designate this.
-  kInvalid = 0,
-
-  //------ Encoding for ordinary primitives ----------------------------------//
-
-  /// Bit 0 indicates if type is complex.
-  mComplex = 1,
-
-  /// Bits 1 and 2 encode primitive category.
-  mOther = 0 << 1,
-  mSigned = 1 << 1,
-  mUnsigned = 2 << 1,
-  mFloat = 3 << 1,
-
-  /// Integer and floating point types.  The upper four bits for signed/unsigned
-  /// are the # of bytes - 1.
-  kS8 = mSigned,
-  kU8 = mUnsigned,
-  kS16 = (1 << 3) | mSigned,
-  kU16 = (1 << 3) | mUnsigned,
-  kS32 = (3 << 3) | mSigned,
-  kU32 = (3 << 3) | mUnsigned,
-  kS64 = (7 << 3) | mSigned,
-  kU64 = (7 << 3) | mUnsigned,
-  kS128 = (15 << 3) | mSigned,
-  kU128 = (15 << 3) | mUnsigned,
-
-  /// Bit 3 encodes whether the float is IEEE or not.
-  mIEEEFloat = (1 << 3) | mFloat,
-
-  kF16 = mIEEEFloat,
-  kF32 = (1 << 4) | mIEEEFloat,
-  kF64 = (2 << 4) | mIEEEFloat,
-  kF128 = (3 << 4) | mIEEEFloat,
-
-  kBF16 = mFloat,
-  kF24 = (1 << 4) | mFloat,
-  kF80 = (2 << 4) | mFloat,
-  kTF32 = (3 << 4) | mFloat,
-
-  //------ Encodings for other types -----------------------------------------//
-  kBool = (1 << 3) | mOther,
-  kTensor = (2 << 3) | mOther,    // Has following bytes.
-  kQuantized = (3 << 3) | mOther, // Has following bytes.
-  kFunction = (4 << 3) | mOther,  // Has following bytes.
-
-  //------ Enable bitmask usage ----------------------------------------------//
-  mFF = 0xff, // DO NOT USE.
-  LLVM_MARK_AS_BITMASK_ENUM(/* LargestValue = */ mFF)
-};
-
-static inline size_t getIntegerWidthInBits(TypeKind kind) {
-  assert((kind & TypeKind::mSigned) != TypeKind::kInvalid ||
-         (kind & TypeKind::mUnsigned) != TypeKind::kInvalid);
-  return ((uint8_t(kind) >> 3) + 1) * 8;
-}
-
-/// Provide a mapping from C++ types to the corresponding type kinds.
-template <typename CXXType>
-struct TypeKindForCXXType {
-  // Default mapping allows a static_assert instead of template substitution
-  // failure to catch invalid cases.
-  static constexpr TypeKind kind = TypeKind::kInvalid;
-};
-
-#define DECLARE_TYPE_MAPPING(KIND, CXXTYPE)                                    \
-  template <>                                                                  \
-  struct TypeKindForCXXType<CXXTYPE> {                                         \
-    static constexpr TypeKind kind = TypeKind::KIND;                           \
+/// BEF Types are always compatible with GenericML's TensorDType but have some
+/// additional types for good measure.
+class TypeKind : public TensorDType {
+public:
+  using TensorDType::TensorDType;
+  enum ExtraCases : uint8_t {
+    kTensor = (2 << sOther) | mOther,    // Has following bytes.
+    kQuantized = (3 << sOther) | mOther, // Has following bytes.
+    kFunction = (4 << sOther) | mOther,  // Has following bytes.
   };
-DECLARE_TYPE_MAPPING(kBool, bool);
-DECLARE_TYPE_MAPPING(kS8, int8_t);
-DECLARE_TYPE_MAPPING(kU8, uint8_t);
-DECLARE_TYPE_MAPPING(kS16, int16_t);
-DECLARE_TYPE_MAPPING(kU16, uint16_t);
-DECLARE_TYPE_MAPPING(kS32, int32_t);
-DECLARE_TYPE_MAPPING(kU32, uint32_t);
-DECLARE_TYPE_MAPPING(kS64, int64_t);
-DECLARE_TYPE_MAPPING(kU64, uint64_t);
-DECLARE_TYPE_MAPPING(kF32, float);
-DECLARE_TYPE_MAPPING(kF64, double);
-#undef DECLARE_TYPE_MAPPING
+};
 
 } // namespace BEF
 } // namespace M

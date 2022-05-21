@@ -37,7 +37,7 @@ bef.invokable @type_attr_signless() {
 // -----
 
 bef.invokable @type_attr_non_whole_bytes_int() {
-  // expected-error @+1 {{arbitary bitwidth integers not supported: 'si13'}}
+  // expected-error @+1 {{integer cannot be converted to BEF type: 'si13'}}
   "foo"() {t = si13} : () -> ()
   bef.output
 }
@@ -45,7 +45,7 @@ bef.invokable @type_attr_non_whole_bytes_int() {
 // -----
 
 bef.invokable @type_attr_too_long_int() {
-  // expected-error @+1 {{large integer types not supported: 'si256'}}
+  // expected-error @+1 {{integer cannot be converted to BEF type: 'si256'}}
   "foo"() {t = si256} : () -> ()
   bef.output
 }
