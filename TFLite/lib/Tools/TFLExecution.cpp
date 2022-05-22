@@ -11,6 +11,7 @@
 #include "LLCL/Runtime/Algorithms.h"
 #include "Support/Error.h"
 #include "TFLite/Primitives.h"
+#include "TFLite/Support/TFLiteType.h"
 #include "TFLite/TFLModelFile.h"
 #include "TFLite/TFLTensor.h"
 #include "TFLite/Tools/TFLInputGeneration.h"
@@ -185,10 +186,10 @@ M::Error M::executeAllModels(const TFLModelFile &models, Runtime &runtime,
     setupArgVector(args, model, chain, ctx);
 
     for (size_t i = 0, e = getNumTensorArgs(model); i < e; ++i) {
+      TFLiteType eltType(model.getInputElementType(i));
       args.push_back(AsyncValueRef<TfLiteTensorRef>::createReady(
           runtime, TfLiteTensorRef::getWithExternalData(
-                       model.getInputShape(i), model.getInputElementType(i),
-                       *dataPtrStart++)));
+                       model.getInputShape(i), eltType, *dataPtrStart++)));
     }
 
     // Execute the model and insert its results into the results vec.
@@ -225,10 +226,10 @@ M::Error M::executeAllModels(
     setupArgVector(args, model, chain, ctx);
 
     for (size_t i = 0, e = getNumTensorArgs(model); i < e; ++i) {
+      TFLiteType eltType(model.getInputElementType(i));
       args.push_back(AsyncValueRef<TfLiteTensorRef>::createReady(
           runtime, TfLiteTensorRef::getWithExternalData(
-                       model.getInputShape(i), model.getInputElementType(i),
-                       *dataPtrStart++)));
+                       model.getInputShape(i), eltType, *dataPtrStart++)));
     }
 
     if (beforeExec)

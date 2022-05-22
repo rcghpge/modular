@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "TFLite/Tools/TFLInputGeneration.h"
+#include "GenericML/Support/TensorDType.h"
 #include "Support/Error.h"
 #include "TFLite/Support/TFLiteType.h"
 #include "TFLite/TFLRuntimeModel.h"
@@ -57,28 +58,28 @@ static LogicalResult doFill(InputGenerationKind inputGenKind, T *ptr,
   return failure();
 }
 
-Error M::fillWithElements(InputGenerationKind inputGenKind, void *ptr,
-                          size_t numElements, const TFLiteType &elementType) {
+static Error fillWithElements(InputGenerationKind inputGenKind, void *ptr,
+                              size_t numElements, TensorDType elementType) {
   LogicalResult fillResult = failure();
-  if (elementType == TFLiteType::f32)
+  if (elementType == TensorDType::f32)
     fillResult = doFill(inputGenKind, (float *)ptr, numElements);
-  if (elementType == TFLiteType::kBool)
+  if (elementType == TensorDType::kBool)
     fillResult = doFill(inputGenKind, (bool *)ptr, numElements);
-  if (elementType == TFLiteType::si8)
+  if (elementType == TensorDType::si8)
     fillResult = doFill(inputGenKind, (int8_t *)ptr, numElements);
-  if (elementType == TFLiteType::ui8)
+  if (elementType == TensorDType::ui8)
     fillResult = doFill(inputGenKind, (uint8_t *)ptr, numElements);
-  if (elementType == TFLiteType::si16)
+  if (elementType == TensorDType::si16)
     fillResult = doFill(inputGenKind, (int16_t *)ptr, numElements);
-  if (elementType == TFLiteType::ui16)
+  if (elementType == TensorDType::ui16)
     fillResult = doFill(inputGenKind, (uint16_t *)ptr, numElements);
-  if (elementType == TFLiteType::si32)
+  if (elementType == TensorDType::si32)
     fillResult = doFill(inputGenKind, (int32_t *)ptr, numElements);
-  if (elementType == TFLiteType::ui32)
+  if (elementType == TensorDType::ui32)
     fillResult = doFill(inputGenKind, (uint32_t *)ptr, numElements);
-  if (elementType == TFLiteType::si64)
+  if (elementType == TensorDType::si64)
     fillResult = doFill(inputGenKind, (int64_t *)ptr, numElements);
-  if (elementType == TFLiteType::ui64)
+  if (elementType == TensorDType::ui64)
     fillResult = doFill(inputGenKind, (uint64_t *)ptr, numElements);
 
   if (failed(fillResult)) {
@@ -106,21 +107,21 @@ ErrorOr<SmallVector<void *, 3>>
 M::initializeInputMemory(InputGenerationKind inputGenKind,
                          const TFLRuntimeModel &model) {
   SmallVector<void *, 3> inputTensorData;
-  for (const auto &[shape, elType] :
+  for (const auto &[shape, eltType] :
        llvm::zip(model.getInputShapes(), model.getInputElementTypes())) {
+
     // Do the malloc.
     inputTensorData.push_back(
-        malloc(elType.getSizeInBytes() * shape.getNumElements()));
+        malloc(eltType.getSizeInBytes() * shape.getNumElements()));
 
     // Do the fill
     size_t numElements = shape.getNumElements();
     M::Error err = fillWithElements(inputGenKind, inputTensorData.back(),
-                                    numElements, elType);
+                                    numElements, eltType);
 
     if (failed(err)) {
       for (auto t : inputTensorData)
         free(t);
-
       return err;
     }
   }

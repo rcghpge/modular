@@ -24,11 +24,6 @@ enum class InputGenerationKind {
   kNegOnes, // generate inputs filled with negative ones
 };
 
-/// This function fills `ptr` with the number of elements of the correct element
-/// type.
-Error fillWithElements(InputGenerationKind inputGenKind, void *ptr,
-                       size_t numElements, const TFLiteType &elementType);
-
 /// Initialize raw pointers for each model input with the correct data fill.
 /// This allocates the pointer, fills in the data, and returns ownership to the
 /// caller.
