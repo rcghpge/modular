@@ -830,16 +830,16 @@ ErrorOr<BEF::TypeKind> TypeEmitter::getFloatTypeEncoding(FloatType type) {
   switch (bitWidth) {
   case 16:
     if (auto bFloatType = type.dyn_cast<BFloat16Type>())
-      return BEF::TypeKind::kBF16; // TODO: test when we have cpp type
-    return BEF::TypeKind::kF16;
+      return BEF::TypeKind::bf16; // TODO: test when we have cpp type
+    return BEF::TypeKind::f16;
   case 32:
-    return BEF::TypeKind::kF32;
+    return BEF::TypeKind::f32;
   case 64:
-    return BEF::TypeKind::kF64;
+    return BEF::TypeKind::f64;
   case 80:
-    return BEF::TypeKind::kF80;
+    return BEF::TypeKind::f80;
   case 128:
-    return BEF::TypeKind::kF128;
+    return BEF::TypeKind::f128;
   default:
     return Error("unknown float type");
   }
@@ -891,12 +891,12 @@ LogicalResult TypeEmitter::emitIntFPComplexType(Type type) {
 
 /// emitRankedTensorType emits a ranked tensor type of the form
 /// `tensor<1x3xf32>` into BEF. The tensor is encoded in the following form:
-///   TypeKind::kTensor | element TypeKind | shape size | shape elements in
+///   TypeKind::tensor | element TypeKind | shape size | shape elements in
 ///   VBR encoded shape elements
 /// For the example tensor above, the output format would look like this:
-///   TypeKind::kTensor | TypeKind::kF32 | 2 | 1, 3
+///   TypeKind::tensor | TypeKind::f32 | 2 | 1, 3
 LogicalResult TypeEmitter::emitRankedTensorType(RankedTensorType type) {
-  emitter->emitByte(BEF::TypeKind::kTensor);
+  emitter->emitByte(BEF::TypeKind::tensor);
   Type elementType = type.getElementType();
 
   if (failed(emitType(elementType)))
@@ -914,12 +914,12 @@ LogicalResult TypeEmitter::emitRankedTensorType(RankedTensorType type) {
 /// emitUniformQuantizedType emits a uniform, not per-axis quantized type such
 /// as `!quant.uniform<i8:f32, 0.1:-128>` into BEF. The type is encoded in the
 /// following form:
-///   TypeKind::kQuantized | storage TypeKind | expressed TypeKind | scale |
+///   TypeKind::quantized | storage TypeKind | expressed TypeKind | scale |
 ///   zero point in VBR
 /// For the example type above, the output format would look like this:
-///   TypeKind::kQuantized | TypeKind::kS8 | TypeKind::kF32 | 0.1 | -128
+///   TypeKind::quantized | TypeKind::si8 | TypeKind::f32 | 0.1 | -128
 LogicalResult TypeEmitter::emitUniformQuantizedType(UniformQuantizedType type) {
-  emitter->emitByte(BEF::TypeKind::kQuantized);
+  emitter->emitByte(BEF::TypeKind::quantized);
 
   // UniformQuantizedType stores the signedness information in a flag, but it is
   // easier to emit a signed or unsigned type.
@@ -947,7 +947,7 @@ LogicalResult TypeEmitter::emitUniformQuantizedType(UniformQuantizedType type) {
 }
 
 LogicalResult TypeEmitter::emitFunctionType(FunctionType type) {
-  emitter->emitByte(BEF::TypeKind::kFunction);
+  emitter->emitByte(BEF::TypeKind::function);
   emitter->emitByte(type.getNumInputs());
   emitter->emitByte(type.getNumResults());
   for (auto input : type.getInputs())

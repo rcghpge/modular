@@ -300,29 +300,29 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
 
     Type resultType;
     switch (typeKind.stripComplex().getValue()) {
-    case BEF::TypeKind::kF16:
+    case BEF::TypeKind::f16:
       resultType = FloatType::getF16(getContext());
       break;
-    case BEF::TypeKind::kBF16:
+    case BEF::TypeKind::bf16:
       resultType = FloatType::getBF16(getContext());
       break;
-    case BEF::TypeKind::kF32:
+    case BEF::TypeKind::f32:
       resultType = FloatType::getF32(getContext());
       break;
-    case BEF::TypeKind::kF64:
+    case BEF::TypeKind::f64:
       resultType = FloatType::getF64(getContext());
       break;
-    case BEF::TypeKind::kF80:
+    case BEF::TypeKind::f80:
       resultType = FloatType::getF80(getContext());
       break;
-    case BEF::TypeKind::kF128:
+    case BEF::TypeKind::f128:
       resultType = FloatType::getF128(getContext());
       break;
     case BEF::TypeKind::kBool:
       resultType = IntegerType::get(getContext(), 1);
       break;
 
-    case BEF::TypeKind::kTensor: {
+    case BEF::TypeKind::tensor: {
       auto eltType = parseTypeAttr();
       uint8_t rank;
       if (!eltType || attrReader.parseByte(rank))
@@ -337,7 +337,7 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
       return RankedTensorType::get(shape, eltType);
     }
 
-    case BEF::TypeKind::kFunction: {
+    case BEF::TypeKind::function: {
       uint8_t numInputs, numResults;
       if (attrReader.parseByte(numInputs) || attrReader.parseByte(numResults))
         return {};
@@ -355,7 +355,7 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
       }
       return FunctionType::get(getContext(), inputs, results);
     }
-    case BEF::TypeKind::kQuantized: {
+    case BEF::TypeKind::quantized: {
       auto storageType = parseTypeAttr();
       if (!storageType)
         return {};

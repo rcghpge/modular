@@ -445,7 +445,7 @@ public:
       : BaseClass(Detail::BEFType{}),
         BEFType(static_cast<const uint8_t *>(pointer)) {
     this->checkAttributeKind(pointer);
-    assert(getKind() != BEF::TypeKind::kInvalid && "Invalid type attribute");
+    assert(!getKind().isInvalid() && "Invalid type attribute");
   }
 
   static bool matchesAttrKind(const void *pointer) {

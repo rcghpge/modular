@@ -14,20 +14,20 @@ size_t BEFType::getEncodedSizeInBytes() const {
   auto typeID = getKind().stripComplex();
 
   switch (typeID.getValue()) {
-  case BEF::TypeKind::kF16:
-  case BEF::TypeKind::kBF16:
-  case BEF::TypeKind::kF32:
-  case BEF::TypeKind::kF64:
-  case BEF::TypeKind::kF80:
-  case BEF::TypeKind::kF128:
+  case BEF::TypeKind::f16:
+  case BEF::TypeKind::bf16:
+  case BEF::TypeKind::f32:
+  case BEF::TypeKind::f64:
+  case BEF::TypeKind::f80:
+  case BEF::TypeKind::f128:
   case BEF::TypeKind::kBool:
     // Primitive types all have a single-byte encoding.
     return 1;
-  case BEF::TypeKind::kFunction:
+  case BEF::TypeKind::function:
     return this->cast<BEFFunctionType>().getEncodedSizeInBytes();
-  case BEF::TypeKind::kTensor:
+  case BEF::TypeKind::tensor:
     return this->cast<BEFTensorType>().getEncodedSizeInBytes();
-  case BEF::TypeKind::kQuantized:
+  case BEF::TypeKind::quantized:
     return this->cast<BEFQuantizedType>().getEncodedSizeInBytes();
   default:
     // All signed/unsigned integers are single-byte encoding.
@@ -48,7 +48,7 @@ static size_t decodeFunctionType(const uint8_t *pointer,
                                  SmallVectorImpl<BEFType> &inputs,
                                  SmallVectorImpl<BEFType> &results) {
   auto *dataPtr = pointer;
-  assert(BEF::TypeKind(dataPtr[0]) == BEF::TypeKind::kFunction);
+  assert(BEF::TypeKind(dataPtr[0]) == BEF::TypeKind::function);
   uint8_t numInputs = dataPtr[1];
   uint8_t numResults = dataPtr[2];
   dataPtr += 3;
@@ -84,7 +84,7 @@ void BEFFunctionType::decode(SmallVectorImpl<BEFType> &inputs,
 static size_t decodeTensorType(const uint8_t *pointer, BEFType &elementType,
                                SmallVectorImpl<int64_t> &dims) {
   auto *dataPtr = pointer;
-  assert(BEF::TypeKind(dataPtr[0]) == BEF::TypeKind::kTensor);
+  assert(BEF::TypeKind(dataPtr[0]) == BEF::TypeKind::tensor);
   elementType = BEFType(++dataPtr);
   dataPtr += elementType.getEncodedSizeInBytes();
   uint8_t rank = *dataPtr++;
@@ -117,7 +117,7 @@ static size_t decodeQuantizedType(const uint8_t *pointer, BEFType &storageType,
                                   BEFType &expressedType, float &scale,
                                   int64_t &zeroPoint) {
   auto *dataPtr = pointer;
-  assert(BEF::TypeKind(dataPtr[0]) == BEF::TypeKind::kQuantized);
+  assert(BEF::TypeKind(dataPtr[0]) == BEF::TypeKind::quantized);
   storageType = BEFType(++dataPtr);
   dataPtr += storageType.getEncodedSizeInBytes();
   expressedType = BEFType(dataPtr);
