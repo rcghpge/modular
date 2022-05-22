@@ -872,7 +872,7 @@ ErrorOr<BEF::TypeKind> TypeEmitter::getIntFPComplexTypeEncoding(Type type) {
     auto eltTypeOr = getIntFPComplexTypeEncoding(complexType.getElementType());
     if (eltTypeOr.isError())
       return eltTypeOr.takeError();
-    return BEF::TypeKind(eltTypeOr->addComplex().getValue());
+    return BEF::TypeKind(TensorDType::getComplex(*eltTypeOr).getValue());
   }
 
   return Error("type cannot be encoded in BEF");
