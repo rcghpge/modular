@@ -111,8 +111,9 @@ M::initializeInputMemory(InputGenerationKind inputGenKind,
        llvm::zip(model.getInputShapes(), model.getInputElementTypes())) {
 
     // Do the malloc.
-    inputTensorData.push_back(
-        malloc(eltType.getSizeInBytes() * shape.getNumElements()));
+    ssize_t size = eltType.getSizeInBytes(shape.getNumElements());
+    assert(size != -1);
+    inputTensorData.push_back(malloc(size));
 
     // Do the fill
     size_t numElements = shape.getNumElements();
