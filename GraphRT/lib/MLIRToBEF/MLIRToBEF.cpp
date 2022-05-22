@@ -979,6 +979,11 @@ LogicalResult TypeEmitter::emitType(Type type) {
     return emitType(intStorageType);
   }
 
+  // FIXME: We're ignoring CalibratedQuantizedType.  Nothing in the compiler
+  // uses this, why are we generating it in the first place?
+  if (auto qType = type.dyn_cast<CalibratedQuantizedType>())
+    return emitType(qType.getExpressedType());
+
   return emitIntFPComplexType(type);
 }
 

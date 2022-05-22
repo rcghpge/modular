@@ -116,9 +116,14 @@ bef.invokable @attributes() {
   // MD: "type.fn"() {t = (si32, !quant.uniform<i8:f32, 0.0078119998797774315:-128>) -> tensor<4x100xf32>
   "type.fn"() {t = (si32, !quant.uniform<i8:f32, 0.0078119998797774315:-128>) -> tensor<4x100xf32>} : () -> ()
  
- // CHECK-NEXT: bef.opaque "type.fn" [() -> (si8, i1)]()
+  // CHECK-NEXT: bef.opaque "type.fn" [() -> (si8, i1)]()
   // MD: "type.fn"() {t = () -> (si8, i1)
   "type.fn"() {t = () -> (si8, i1)} : () -> ()
+
+  // We're dropping the quantization information here.
+  // CHECK-NEXT: bef.opaque "type.calibrated" [tensor<1x28x28xf32>]()
+  // MD: "type.calibrated"() {t = tensor<1x28x28xf32>
+  "type.calibrated"() {t = tensor<1x28x28x!quant.calibrated<f32<0.000000e+00:2.550000e+02>>>} : () -> ()
 
   bef.output
    // CHECK-NEXT:     bef.output
