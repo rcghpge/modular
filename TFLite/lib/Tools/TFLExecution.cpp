@@ -22,8 +22,9 @@
 #include <numeric>
 
 using namespace M;
-using namespace llvm;
-using namespace mlir;
+using llvm::errs;
+using llvm::outs;
+using mlir::MLIRContext;
 
 static constexpr size_t kExecuteFnNumMinInputs = 2; // chain and context
 
@@ -58,8 +59,8 @@ static void printResults(StringRef invokableName,
   for (auto &result : results) {
     if (auto *diag = result->getDiagnosticIfPresent()) {
       auto loc = diag->decodeLocation();
-      auto mlirLoc =
-          FileLineColLoc::get(context, loc.filename, loc.line, loc.column);
+      auto mlirLoc = mlir::FileLineColLoc::get(context, loc.filename, loc.line,
+                                               loc.column);
       mlir::emitError(mlirLoc) << diag->getMessage();
     }
   }
@@ -108,9 +109,12 @@ static void printResults(StringRef invokableName,
   }
 }
 
-M::Error M::setupAllModels(const TFLModelFile &models, Runtime &runtime,
-                           SmallVectorImpl<AnyAsyncValueRef> &chains,
-                           SmallVectorImpl<AnyAsyncValueRef> &contexts) {
+/// Run the setup for every model. Puts all the chain outputs into `chains`
+/// and all the context outputs into `contexts`. The models are sorted by
+/// name, and so the chains and contexts will be too.
+Error setupAllModels(const TFLModelFile &models, Runtime &runtime,
+                     SmallVectorImpl<AnyAsyncValueRef> &chains,
+                     SmallVectorImpl<AnyAsyncValueRef> &contexts) {
   for (const auto &m : models) {
     auto resultsOr = m.setup(runtime);
     if (failed(resultsOr))
@@ -127,9 +131,9 @@ static size_t getNumTensorArgs(const TFLRuntimeModel &model) {
   return model.getExecuteFn()->getNumArgs() - kExecuteFnNumMinInputs;
 }
 
-M::Error M::initializeInputMemoryForAllModels(const TFLModelFile &models,
-                                              InputGenerationKind inputGenKind,
-                                              SmallVectorImpl<void *> &ptrVec) {
+Error M::initializeInputMemoryForAllModels(const TFLModelFile &models,
+                                           InputGenerationKind inputGenKind,
+                                           SmallVectorImpl<void *> &ptrVec) {
   for (const auto &model : models) {
     auto dataOr = initializeInputMemory(inputGenKind, model);
     if (failed(dataOr))
@@ -141,8 +145,8 @@ M::Error M::initializeInputMemoryForAllModels(const TFLModelFile &models,
   return {""};
 }
 
-static M::Error checkDataPointers(ArrayRef<TFLRuntimeModel> models,
-                                  ArrayRef<void *> dataPtrs) {
+static Error checkDataPointers(ArrayRef<TFLRuntimeModel> models,
+                               ArrayRef<void *> dataPtrs) {
   size_t totalNumDataPtrsExpected = std::accumulate(
       models.begin(), models.end(), 0,
       [](size_t i, const auto &m) { return i + getNumTensorArgs(m); });
@@ -159,54 +163,13 @@ static M::Error checkDataPointers(ArrayRef<TFLRuntimeModel> models,
   return {""};
 }
 
-static void setupArgVector(SmallVectorImpl<AnyAsyncValueRef> &args,
-                           const TFLRuntimeModel &model,
-                           AnyAsyncValueRef &chain,
-                           const AnyAsyncValueRef &context) {
-  args.clear();
-  args.reserve(model.getExecuteFn()->getNumArgs());
-  args.push_back(chain.copy());
-  args.push_back(context.copy());
-}
-
-M::Error M::executeAllModels(const TFLModelFile &models, Runtime &runtime,
-                             MutableArrayRef<AnyAsyncValueRef> chains,
-                             ArrayRef<AnyAsyncValueRef> contexts,
-                             ArrayRef<void *> dataPtrs,
-                             SmallVectorImpl<AnyAsyncValueRef> &results) {
-  auto dataPtrStart = dataPtrs.begin();
-
-  Error err = checkDataPointers(models, dataPtrs);
-  if (failed(err))
-    return err;
-
-  // Fill the arguments
-  SmallVector<AnyAsyncValueRef> args;
-  for (auto [model, chain, ctx] : llvm::zip(models, chains, contexts)) {
-    setupArgVector(args, model, chain, ctx);
-
-    for (size_t i = 0, e = getNumTensorArgs(model); i < e; ++i) {
-      TFLiteType eltType(model.getInputElementType(i));
-      args.push_back(AsyncValueRef<TfLiteTensorRef>::createReady(
-          runtime, TfLiteTensorRef::getWithExternalData(
-                       model.getInputShape(i), eltType, *dataPtrStart++)));
-    }
-
-    // Execute the model and insert its results into the results vec.
-    auto execResults = model.execute(args, runtime);
-
-    // The chain is the first result.
-    chain = std::move(results.front());
-
-    // Only copy over the tensor results.
-    for (auto &r : llvm::drop_begin(execResults))
-      results.push_back(std::move(r));
-  }
-
-  return {""};
-}
-
-M::Error M::executeAllModels(
+/// Execute every model, calling `beforeExec` before, and then `afterExec`
+/// afterwards. `beforeExec` can abort execution of that model by returning
+/// `failure()`. Does not save the outputs of any model. `afterExec` is
+/// responsible for awaiting the AsyncValues passed in. Updates `chains` with
+/// the chain returned from the last execution and does not pass them to
+/// `afterExec`.
+static Error executeAllModels(
     const TFLModelFile &models, Runtime &runtime,
     MutableArrayRef<AnyAsyncValueRef> chains,
     ArrayRef<AnyAsyncValueRef> contexts, ArrayRef<void *> dataPtrs,
@@ -216,14 +179,17 @@ M::Error M::executeAllModels(
         afterExec) {
   auto dataPtrStart = dataPtrs.begin();
 
-  M::Error err = checkDataPointers(models, dataPtrs);
+  Error err = checkDataPointers(models, dataPtrs);
   if (failed(err))
     return err;
 
   // Fill the arguments
   SmallVector<AnyAsyncValueRef> args;
   for (auto [model, chain, ctx] : llvm::zip(models, chains, contexts)) {
-    setupArgVector(args, model, chain, ctx);
+    args.clear();
+    args.reserve(model.getExecuteFn()->getNumArgs());
+    args.push_back(chain.copy());
+    args.push_back(ctx.copy());
 
     for (size_t i = 0, e = getNumTensorArgs(model); i < e; ++i) {
       TFLiteType eltType(model.getInputElementType(i));
@@ -239,29 +205,30 @@ M::Error M::executeAllModels(
     // Execute the model and insert its results into the results vec.
     auto results = model.execute(args, runtime);
 
-    // The chain is the first result.
-    chain = std::move(results.front());
-
     // Pass in the tensor results to `afterExec`.
     if (afterExec)
-      afterExec(model, makeArrayRef(results).drop_front());
+      afterExec(model, results);
+
+    // The chain is the first result.
+    chain = std::move(results.front());
   }
 
   return {""};
 }
 
 LogicalResult M::runModelFile(const TFLModelFile &modelFile, Runtime &runtime,
-                              const InputGenerationKind &inputGenKind,
-                              unsigned int numRuns, bool benchmarkMode) {
-  SmallVector<AnyAsyncValueRef, 0> chains, contexts;
-  M::Error err = setupAllModels(modelFile, runtime, chains, contexts);
+                              InputGenerationKind inputGenKind,
+                              unsigned numRuns, bool benchmarkMode) {
+
+  SmallVector<AnyAsyncValueRef, 4> chains, contexts;
+  Error err = setupAllModels(modelFile, runtime, chains, contexts);
   if (failed(err)) {
     outs() << err;
     return failure();
   }
 
   SmallVector<void *, 0> inputData;
-  auto fail = [&](M::Error e) {
+  auto fail = [&](Error e) {
     for (auto d : inputData)
       free(d);
     outs() << e;
@@ -274,12 +241,11 @@ LogicalResult M::runModelFile(const TFLModelFile &modelFile, Runtime &runtime,
 
   auto beforeRun = [&](const TFLRuntimeModel &model) {
     auto numInputArgs = model.getExecuteFn()->getNumArgs();
-    auto inputShapes = model.getInputShapes();
 
     if (inputGenKind == InputGenerationKind::kNone &&
         numInputArgs != kExecuteFnNumMinInputs) {
       errs() << "Cannot execute a model with input tensors (sizes: ";
-      llvm::interleaveComma(inputShapes, errs());
+      llvm::interleaveComma(model.getInputShapes(), errs());
       errs() << ") without input initialization yet! Hint: try setting "
                 "`-generate-inputs`.\n";
       errs().flush();
@@ -299,33 +265,27 @@ LogicalResult M::runModelFile(const TFLModelFile &modelFile, Runtime &runtime,
 
     // Print the result tensors with the default printer.
     if (!benchmarkMode)
-      printResults(model.getName(), results, &ctx, outs());
+      printResults(model.getName(), makeArrayRef(results).drop_front(), &ctx,
+                   outs());
   };
+
+  // Measure the time taken for each inference.
+  std::vector<double> cpuTimesMillis;
+  for (unsigned i = 0, e = numRuns; i != e; ++i) {
+    auto start = std::chrono::steady_clock::now();
+    err = executeAllModels(modelFile, runtime, chains, contexts, inputData,
+                           beforeRun, afterRun);
+    auto end = std::chrono::steady_clock::now();
+    std::chrono::duration<double, std::milli> time = end - start;
+    cpuTimesMillis.push_back(time.count());
+    if (failed(err))
+      return fail(std::move(err));
+  }
 
   // Run the number of inferences asked for.
   // TODO: Generalize `benchmarkMode` into a more flexible policy around how
   // we control execution of the model.
-  if (!benchmarkMode) {
-    for (unsigned i = 0, e = numRuns; i != e; ++i) {
-      err = executeAllModels(modelFile, runtime, chains, contexts, inputData,
-                             beforeRun, afterRun);
-      if (failed(err))
-        return fail(std::move(err));
-    }
-  } else {
-    // Measure the time taken for each inference.
-    std::vector<double> cpuTimesMillis;
-    for (unsigned i = 0, e = numRuns; i != e; ++i) {
-      auto start = std::chrono::steady_clock::now();
-      err = executeAllModels(modelFile, runtime, chains, contexts, inputData,
-                             beforeRun, afterRun);
-      auto end = std::chrono::steady_clock::now();
-      std::chrono::duration<double, std::milli> time = end - start;
-      cpuTimesMillis.push_back(time.count());
-      if (failed(err))
-        return fail(std::move(err));
-    }
-
+  if (benchmarkMode) {
     outs() << "Model inference times: ";
     llvm::interleaveComma(cpuTimesMillis, outs());
     outs() << '\n';
