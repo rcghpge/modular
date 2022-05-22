@@ -184,9 +184,9 @@ class TypeKind : public TensorDType {
 public:
   using TensorDType::TensorDType;
   enum ExtraCases : uint8_t {
-    tensor = (1 << sOther) | mOther,    // Has following bytes.
-    quantized = (2 << sOther) | mOther, // Has following bytes.
-    function = (3 << sOther) | mOther,  // Has following bytes.
+    tensor = (2 << sOther) | mOther,    // Has following bytes.
+    quantized = (3 << sOther) | mOther, // Has following bytes.
+    function = (4 << sOther) | mOther,  // Has following bytes.
   };
 };
 
