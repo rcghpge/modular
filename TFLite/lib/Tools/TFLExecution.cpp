@@ -112,9 +112,9 @@ static void printResults(StringRef invokableName,
 /// Run the setup for every model. Puts all the chain outputs into `chains`
 /// and all the context outputs into `contexts`. The models are sorted by
 /// name, and so the chains and contexts will be too.
-Error setupAllModels(const TFLModelFile &models, Runtime &runtime,
-                     SmallVectorImpl<AnyAsyncValueRef> &chains,
-                     SmallVectorImpl<AnyAsyncValueRef> &contexts) {
+static Error setupAllModels(const TFLModelFile &models, Runtime &runtime,
+                            SmallVectorImpl<AnyAsyncValueRef> &chains,
+                            SmallVectorImpl<AnyAsyncValueRef> &contexts) {
   for (const auto &m : models) {
     auto resultsOr = m.setup(runtime);
     if (failed(resultsOr))

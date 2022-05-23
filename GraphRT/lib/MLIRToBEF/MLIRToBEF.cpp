@@ -856,10 +856,10 @@ ErrorOr<BEF::TypeKind> TypeEmitter::getIntegerTypeEncoding(IntegerType type) {
     return Error("signless integers not supported");
 
   auto dtype = TensorDType::getInt(bitWidth, type.isSigned());
-  if (dtype.isInvalid())
+  if (failed(dtype))
     return Error("integer cannot be converted to BEF type");
 
-  return BEF::TypeKind(dtype.getValue());
+  return BEF::TypeKind(dtype->getValue());
 }
 
 /// Helper to get int, float or complex encoding.
