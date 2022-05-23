@@ -239,8 +239,8 @@ LogicalResult M::runModelFile(const TFLModelFile &modelFile, Runtime &runtime,
     return failure();
   };
 
-  error = initializeInputMemoryForAllModels(modelFile, inputGenKind, inputData);
-  if (failed(error))
+  if ((error = initializeInputMemoryForAllModels(modelFile, inputGenKind,
+                                                 inputData)))
     return handleFailure();
 
   auto beforeRun = [&](const TFLRuntimeModel &model) -> LogicalResult {

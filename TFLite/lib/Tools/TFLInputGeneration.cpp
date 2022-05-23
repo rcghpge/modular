@@ -27,7 +27,8 @@ static ErrorOrSuccess fillWithElements(InputGenerationKind inputGenKind,
 
   switch (inputGenKind) {
   case InputGenerationKind::kNone:
-    return Error("");
+    return success();
+
   case InputGenerationKind::kRandom:
     return Kernel::fillRandom(ptr, numElements, dtype);
 

@@ -563,13 +563,13 @@ public:
   /// Parse the BEFDynamicAttr as a specified C++ type, rejecting it with an
   /// error if not present or the wrong type.
   template <typename ValueType>
-  ParseResult decode(ValueType *result, Error &error) const {
+  ErrorOrSuccess decode(ValueType *result) const {
     using EncodedType = typename llvm::function_traits<
         decltype(&M::BEFDecoder<ValueType>::decode)>::template arg_t<0>;
 
     auto rawAttrValue = this->dyn_cast<EncodedType>();
     if (!rawAttrValue)
-      return error = "incorrect encoded type", failure();
+      return Error("incorrect encoded type");
 
     // If this is a C type like int8_t then look through the attr, otherwise
     // leave it intact.
@@ -577,7 +577,7 @@ public:
         Detail::BEFAttrDynCastRet<EncodedType>::getValue(*rawAttrValue);
     auto decodedValue = BEFDecoder<ValueType>::decode(valueToDecode);
     if (failed(decodedValue))
-      return error = decodedValue.takeError(), failure();
+      return Error(decodedValue.takeError());
     *result = std::move(*decodedValue);
     return success();
   }
@@ -659,8 +659,8 @@ public:
   /// Parse this list attribute into the specified type (typically a
   /// SmallVector), rejecting it with an error if not present or the wrong type.
   template <typename ValueType>
-  ParseResult decode(ValueType *result, Error &error) const {
-    return BEFDynamicAttr(pointer).decode<ValueType>(result, error);
+  ErrorOrSuccess decode(ValueType *result) const {
+    return BEFDynamicAttr(pointer).decode<ValueType>(result);
   }
 
 private:
@@ -676,11 +676,10 @@ struct BEFDecoder<SmallVector<EltType, Size>> {
   static ErrorOr<SmallVector<EltType, Size>> decode(BEFListAttr value) {
     SmallVector<EltType, Size> result;
     result.reserve(value.size());
-    Error error("");
     for (auto element : value) {
       EltType resultElt;
-      if (element.decode(&resultElt, error))
-        return std::move(error);
+      if (auto error = element.decode(&resultElt))
+        return error.takeError();
       result.push_back(resultElt);
     }
     return result;
@@ -698,11 +697,10 @@ struct BEFDecoder<SmallVector<EltType>> {
   static ErrorOr<SmallVector<EltType>> decode(BEFListAttr value) {
     SmallVector<EltType> result;
     result.reserve(value.size());
-    Error error("");
     for (auto element : value) {
       EltType resultElt;
-      if (element.decode(&resultElt, error))
-        return std::move(error);
+      if (auto error = element.decode(&resultElt))
+        return error.takeError();
       result.push_back(resultElt);
     }
     return result;
@@ -830,26 +828,24 @@ public:
   /// Parse a named field of the specified attribute dictionary as the specified
   /// type, rejecting it with an error if not present or the wrong type.
   template <typename ValueType>
-  ParseResult decode(StringRef name, ValueType *result, Error &error) const {
+  ErrorOrSuccess decode(StringRef name, ValueType *result) const {
     auto dynAttrValue = this->find(name);
     if (dynAttrValue)
-      return dynAttrValue->decode<ValueType>(result, error);
-    error = Error(Twine("missing attribute '") + name + "'");
-    return failure();
+      return dynAttrValue->decode<ValueType>(result);
+    return Error(Twine("missing attribute '") + name + "'");
   }
 
   /// Parse a named field of the specified attribute dictionary as the
   /// specified type, ignoring it if not present or the wrong type.
   template <typename ValueType>
-  ParseResult decodeIfPresent(StringRef name, ValueType *result,
-                              Error &error) const {
+  ErrorOrSuccess decodeIfPresent(StringRef name, ValueType *result) const {
     // The attribute doesn't have to be present.
     auto dynAttrValue = this->find(name);
     if (!dynAttrValue)
       return success();
 
     // ... but if it is, it must have the expected type.
-    return dynAttrValue->decode<ValueType>(result, error);
+    return dynAttrValue->decode<ValueType>(result);
   }
 
   /// Print the contents of this dictionary to stderr for debugging.
