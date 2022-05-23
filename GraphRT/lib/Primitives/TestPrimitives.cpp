@@ -93,16 +93,7 @@ static Chain print_all_dict(Chain chain, BEFDictionaryAttr dict) {
 }
 
 static void printType(BEFType type) {
-  if (type.isa<BEFScalarType<float>>())
-    printf("float");
-  else if (type.isa<BEFScalarType<double>>())
-    printf("double");
-  else if (type.isa<BEFScalarType<bool>>())
-    printf("bool");
-  else if (auto intType = type.dyn_cast<BEFIntegerType>()) {
-    printf("%sint%d_t", &"u"[intType->isSigned()],
-           (int)intType -> getWidthInBits());
-  } else if (auto fnType = type.dyn_cast<BEFFunctionType>()) {
+  if (auto fnType = type.dyn_cast<BEFFunctionType>()) {
     SmallVector<BEFType> inputs, results;
     fnType->decode(inputs, results);
     printf("(");
@@ -133,7 +124,8 @@ static void printType(BEFType type) {
     printType(expressedType);
     printf(" %f:%lld>", (double)scale, (long long)zeroPoint);
   } else {
-    printf("<unknown type>");
+    std::string str = type.getKind().getAsString();
+    printf("%.*s", (int)str.size(), str.data());
   }
 }
 

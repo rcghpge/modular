@@ -849,7 +849,7 @@ ErrorOr<BEF::TypeKind> TypeEmitter::getFloatTypeEncoding(FloatType type) {
 ErrorOr<BEF::TypeKind> TypeEmitter::getIntegerTypeEncoding(IntegerType type) {
   unsigned bitWidth = type.getWidth();
 
-  if (bitWidth == 1)
+  if (bitWidth == 1 && type.isSignless())
     return BEF::TypeKind::kBool;
 
   if (type.isSignless())

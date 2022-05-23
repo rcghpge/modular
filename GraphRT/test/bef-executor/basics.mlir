@@ -1,5 +1,5 @@
 // RUN: bef-translate -export-bef -allow-unregistered-dialect %s > %t.bef
-// RUN: bef-executor %t.bef | FileCheck %s
+// RUN: bef-executor %t.bef -verify-diagnostics | FileCheck %s
 
 // CHECK-LABEL: Cannot run 'args_results' because it has 2 arguments
 bef.invokable @args_results(%a: si32, %b: ui8) -> (ui8, si32) {
@@ -147,54 +147,56 @@ bef.invokable @test_types() {
 
   // CHECK-NEXT: Type attribute: bool
   %ch1 = "test.print_type"(%ch0) {t = i1} : (!grt.chain) -> (!grt.chain)
-  // CHECK-NEXT: Type attribute: bool
+  // CHECK-NEXT: Type attribute: si1
   %ch2 = "test.print_type"(%ch1) {t = si1} : (!grt.chain) -> (!grt.chain)
-  // CHECK-NEXT: Type attribute: bool
+  // CHECK-NEXT: Type attribute: ui1
   %ch3 = "test.print_type"(%ch2) {t = ui1} : (!grt.chain) -> (!grt.chain)
-  // CHECK-NEXT: Type attribute: float
+  // CHECK-NEXT: Type attribute: f32
   %ch4 = "test.print_type"(%ch3) {t = f32} : (!grt.chain) -> (!grt.chain)
-  // CHECK-NEXT: Type attribute: double
+  // CHECK-NEXT: Type attribute: f64
   %ch5 = "test.print_type"(%ch4) {t = f64} : (!grt.chain) -> (!grt.chain)
 
-  // CHECK-NEXT: Type attribute: uint8_t
+  // CHECK-NEXT: Type attribute: ui8
   %ch6 = "test.print_type"(%ch5) {t = ui8} : (!grt.chain) -> (!grt.chain)
-  // CHECK-NEXT: Type attribute: int8_t
+  // CHECK-NEXT: Type attribute: si8
   %ch7 = "test.print_type"(%ch6) {t = si8} : (!grt.chain) -> (!grt.chain)
-  // CHECK-NEXT: Type attribute: uint16_t
+  // CHECK-NEXT: Type attribute: ui16
   %ch8 = "test.print_type"(%ch7) {t = ui16} : (!grt.chain) -> (!grt.chain)
-  // CHECK-NEXT: Type attribute: int16_t
+  // CHECK-NEXT: Type attribute: si16
   %ch9 = "test.print_type"(%ch8) {t = si16} : (!grt.chain) -> (!grt.chain)
-  // CHECK-NEXT: Type attribute: uint32_t
+  // CHECK-NEXT: Type attribute: ui32
   %ch10 = "test.print_type"(%ch9) {t = ui32} : (!grt.chain) -> (!grt.chain)
-  // CHECK-NEXT: Type attribute: int32_t
+  // CHECK-NEXT: Type attribute: si32
   %ch11 = "test.print_type"(%ch10) {t = si32} : (!grt.chain) -> (!grt.chain)
-  // CHECK-NEXT: Type attribute: uint64_t
+  // CHECK-NEXT: Type attribute: ui64
   %ch12 = "test.print_type"(%ch11) {t = ui64} : (!grt.chain) -> (!grt.chain)
-  // CHECK-NEXT: Type attribute: int64_t
+  // CHECK-NEXT: Type attribute: si64
   %ch13 = "test.print_type"(%ch12) {t = si64} : (!grt.chain) -> (!grt.chain)
 
-  // CHECK-NEXT: Type attribute: (int64_t, uint8_t) -> bool
+  // CHECK-NEXT: Type attribute: (si64, ui8) -> bool
   %ch14 = "test.print_type"(%ch13) {t = (si64, ui8) -> i1} : (!grt.chain) -> (!grt.chain)
 
   // Nested function type.
-  // CHECK-NEXT: Type attribute: (int64_t, (uint8_t) -> (float, double)) -> bool
+  // CHECK-NEXT: Type attribute: (si64, (ui8) -> (f32, f64)) -> bool
   %ch15 = "test.print_type"(%ch14) {t = (si64, (ui8)->(f32, f64)) -> i1} : (!grt.chain) -> (!grt.chain)
 
-  // CHECK-NEXT: Type attribute: tensor<4x0x123xfloat>
+  // CHECK-NEXT: Type attribute: tensor<4x0x123xf32>
   %ch16 = "test.print_type"(%ch15) {t = tensor<4x0x123xf32>} : (!grt.chain) -> (!grt.chain)
 
-  // CHECK-NEXT: Type attribute: quant<int8_t:float 0.100000:-128>
+  // CHECK-NEXT: Type attribute: quant<si8:f32 0.100000:-128>
   %ch17 = "test.print_type"(%ch16) {t = !quant.uniform<i8:f32, 0.1:-128>} : (!grt.chain) -> (!grt.chain)
 
-  // CHECK-NEXT: Type attribute: tensor<1x2xint8_t>
+  // CHECK-NEXT: Type attribute: tensor<1x2xsi8>
   %ch18 = "test.print_type"(%ch17) {t = tensor<1x2x!quant.uniform<i8:f32:0, {1.000000e-01:-128}>>} : (!grt.chain) -> (!grt.chain)
 
- // CHECK-NEXT: Type attribute: int2_t
+ // CHECK-NEXT: Type attribute: si2
   %ch19 = "test.print_type"(%ch18) {t = si2} : (!grt.chain) -> (!grt.chain)
 
- // CHECK-NEXT: Type attribute: uint128_t
+  // CHECK-NEXT: Type attribute: ui128
   %ch20 = "test.print_type"(%ch19) {t = ui128} : (!grt.chain) -> (!grt.chain)
 
+  // CHECK-NEXT: Type attribute: complex<ui128>
+  %ch21 = "test.print_type"(%ch20) {t = complex<ui128>} : (!grt.chain) -> (!grt.chain)
   bef.output
 }
 
@@ -234,7 +236,7 @@ bef.invokable @test_dynamic_attr() {
      ["this is a string", 3125 : si32, [], {a = 42: ui32, b = "foo"}]
   } : (!grt.chain) -> !grt.chain
 
-  // CHECK-NEXT: Type attribute: float
+  // CHECK-NEXT: Type attribute: f32
   %ch8 = "test.print.dynamic.attr"(%ch7) {t = f32} : (!grt.chain) -> !grt.chain
 
   bef.output
