@@ -192,8 +192,8 @@ bef.invokable @test_types() {
  // CHECK-NEXT: Type attribute: int2_t
   %ch19 = "test.print_type"(%ch18) {t = si2} : (!grt.chain) -> (!grt.chain)
 
- // CHECK-NEXT: Type attribute: uint8388608_t
-  %ch20 = "test.print_type"(%ch19) {t = ui8388608} : (!grt.chain) -> (!grt.chain)
+ // CHECK-NEXT: Type attribute: uint128_t
+  %ch20 = "test.print_type"(%ch19) {t = ui128} : (!grt.chain) -> (!grt.chain)
 
   bef.output
 }
