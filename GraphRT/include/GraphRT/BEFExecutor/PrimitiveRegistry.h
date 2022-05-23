@@ -576,7 +576,7 @@ public:
     auto valueToDecode =
         Detail::BEFAttrDynCastRet<EncodedType>::getValue(*rawAttrValue);
     auto decodedValue = BEFDecoder<ValueType>::decode(valueToDecode);
-    if (!decodedValue)
+    if (failed(decodedValue))
       return error = decodedValue.takeError(), failure();
     *result = std::move(*decodedValue);
     return success();
@@ -1391,7 +1391,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   template <typename T>
   static void processResult(PrimitiveFrame &frame, size_t index,
                             ErrorOr<T> &&errorOr) {
-    if (errorOr)
+    if (succeeded(errorOr))
       processResult(frame, index, std::move(errorOr.get()));
     else
       frame.fail(errorOr.takeError());
