@@ -231,7 +231,7 @@ LogicalResult M::runModelFile(const TFLModelFile &modelFile, Runtime &runtime,
   auto fail = [&](Error e) {
     for (auto d : inputData)
       free(d);
-    outs() << e;
+    outs() << e << "\n";
     return failure();
   };
 
