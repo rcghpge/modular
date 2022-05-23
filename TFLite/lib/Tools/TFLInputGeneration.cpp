@@ -16,11 +16,12 @@
 
 using namespace M;
 
-static Error fillWithElements(InputGenerationKind inputGenKind, void *ptr,
-                              size_t numElements, TensorDType dtype) {
+static ErrorOrSuccess fillWithElements(InputGenerationKind inputGenKind,
+                                       void *ptr, size_t numElements,
+                                       TensorDType dtype) {
 
   if (dtype.isInvalid())
-    return "unspecified element type to initialize";
+    return Error("unspecified element type to initialize");
 
   uint8_t elementBuffer[TensorDType::kMaxElementSizeInBytes];
 
@@ -31,13 +32,13 @@ static Error fillWithElements(InputGenerationKind inputGenKind, void *ptr,
     return Kernel::fillRandom(ptr, numElements, dtype);
 
   case InputGenerationKind::kOnes: {
-    Error result = Kernel::getScalarOne(elementBuffer, dtype);
+    ErrorOrSuccess result = Kernel::getScalarOne(elementBuffer, dtype);
     if (failed(result))
       return result;
     break;
   }
   case InputGenerationKind::kNegOnes: {
-    Error result = Kernel::getScalarNegativeOne(elementBuffer, dtype);
+    ErrorOrSuccess result = Kernel::getScalarNegativeOne(elementBuffer, dtype);
     if (failed(result))
       return result;
     break;
@@ -65,13 +66,13 @@ M::initializeInputMemory(InputGenerationKind inputGenKind,
 
     // Do the fill
     size_t numElements = shape.getNumElements();
-    M::Error err = fillWithElements(inputGenKind, inputTensorData.back(),
-                                    numElements, eltType);
+    auto err = fillWithElements(inputGenKind, inputTensorData.back(),
+                                numElements, eltType);
 
     if (failed(err)) {
       for (auto t : inputTensorData)
         free(t);
-      return err;
+      return err.takeError();
     }
   }
   return inputTensorData;
