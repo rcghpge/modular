@@ -111,3 +111,32 @@ bef.invokable @async_accumulate() -> !grt.chain {
 
   bef.output %ch3 : !grt.chain
 }
+
+// CHECK-LABEL: --- Running 'async_softmax'
+bef.invokable @async_softmax() -> !grt.chain {
+  %ch0 = grt.chain.new
+  %v1 = "test.vec.f32.iota"() { size = 10 : si32, step = 0.1 : f32 } : () -> !test.vec
+  %v2 = "test.vec.f32.softmax.async"(%v1) : (!test.vec) -> !test.vec
+  %ch1 = "test.vec.f32.print" (%v2, %ch0) : (!test.vec, !grt.chain) -> !grt.chain
+  // CHECK-NEXT: vec.f32 = 0.061{{[0-9]+}}, 0.067{{[0-9]+}}, 0.074{{[0-9]+}}, 0.082{{[0-9]+}}, 0.091{{[0-9]+}}, 0.100{{[0-9]+}}, 0.111{{[0-9]+}}, 0.123{{[0-9]+}}, 0.136{{[0-9]+}}, 0.150{{[0-9]+}}
+
+  %v3 = "test.vec.f32.constant"() { size = 100 : si32, value = 1.0 : f32 } : () -> !test.vec
+  %v4 = "test.vec.f32.softmax.async"(%v3) : (!test.vec) -> !test.vec
+  %ch2 = "test.vec.f32.print" (%v4, %ch1) : (!test.vec, !grt.chain) -> !grt.chain
+  // The exact output is 0.01 repeated 100 times. We test that the output contains
+  // exactly 100 elements all of which are 0.01.
+  // CHECK-NEXT: vec.f32 = {{((0.01[0-9]+, ){99})}}0.01{{[0-9]+}}
+
+  %v5 = "test.vec.f32.constant"() { size = 10000 : si32, value = 1.0 : f32 } : () -> !test.vec
+  %v6 = "test.vec.f32.softmax.async"(%v5) : (!test.vec) -> !test.vec
+  %ch3 = "test.vec.f32.print" (%v6, %ch2) : (!test.vec, !grt.chain) -> !grt.chain
+  // The exact output is 0.0001 repeated 10000 times. We cannot test the output
+  // contains exactly 10000 elements, as there is a 255 POSIX limit on the
+  // repeated regular expression. So, we just test that the output starts with
+  // 0.0001 and ends with 0.0001
+  // CHECK-NEXT: vec.f32 = 0.0001{{[0-9]+}}, {{.*}}, 0.0001{{[0-9]+}}
+
+  // CHECK-NEXT: 'async_softmax' returned chain
+
+  bef.output %ch3 : !grt.chain
+}

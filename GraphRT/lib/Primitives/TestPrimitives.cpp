@@ -14,9 +14,11 @@
 #include "GraphRT/Primitives.h"
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/Runtime.h"
+#include "LLCL/Support/Atomics.h"
 
-#include <atomic>
+#include <limits>
 #include <numeric>
+
 using namespace M;
 
 //===----------------------------------------------------------------------===//
@@ -379,6 +381,15 @@ struct TestVector {
   TestVector(size_t n) { values.resize(n); }
   SmallVector<ValueType> values;
 };
+/// This class is used for examples that require float32 values.
+struct TestFloat32Vector {
+  using ValueType = float;
+
+  TestFloat32Vector() = default;
+  TestFloat32Vector(const TestFloat32Vector &) = default;
+  TestFloat32Vector(size_t n) { values.resize(n); }
+  SmallVector<ValueType> values;
+};
 } // end anonymous namespace.
 
 static TestVector vec_iota(BEFAttr<int32_t> number) {
@@ -389,8 +400,26 @@ static TestVector vec_iota(BEFAttr<int32_t> number) {
   return result;
 }
 
+static TestFloat32Vector vec_float32_iota(BEFAttr<int32_t> size,
+                                          BEFAttr<float> step) {
+  TestFloat32Vector result;
+  result.values.reserve(*size);
+  for (int32_t i = 0, e = *size; i != e; ++i)
+    result.values.push_back(*step * i);
+  return result;
+}
+
 static TestVector vec_constant(BEFAttr<int32_t> size, BEFAttr<int32_t> value) {
   TestVector result;
+  result.values.reserve(*size);
+  for (int32_t i = 0, e = *size; i != e; ++i)
+    result.values.push_back(*value);
+  return result;
+}
+
+static TestFloat32Vector vec_float32_constant(BEFAttr<int32_t> size,
+                                              BEFAttr<float> value) {
+  TestFloat32Vector result;
   result.values.reserve(*size);
   for (int32_t i = 0, e = *size; i != e; ++i)
     result.values.push_back(*value);
@@ -554,16 +583,14 @@ static void vec_accumulate_async2(AsyncValueRef<TestVector> vec,
        batchSize](size_t n, std::atomic<TestVector::ValueType> &accumResult) {
         ArrayRef<TestVector::ValueType> vecValues = vec->values;
         size_t startPos = n * batchSize;
-        // If we exceeded the range of the vector, then there is
-        // nothing to do
+        // If we exceeded the range of the vector, then there is nothing to do
         if (startPos >= vecValues.size())
           return;
-        // The end position is either the end position of the
-        // current batch, or the end of the vector whichever is
-        // smaller
+        // The end position is either the end position of the current batch, or
+        // the end of the vector whichever is smaller
         size_t endPos = std::min(vecValues.size(), (n + 1) * batchSize);
-        // Accumulate the vector values in the range [startPos,
-        // endPos), then add it to the global accumResult atomic
+        // Accumulate the vector values in the range [startPos, endPos), then
+        // add it to the global accumResult atomic
         accumResult += std::accumulate(vecValues.begin() + startPos,
                                        vecValues.begin() + endPos, 0);
       },
@@ -580,12 +607,161 @@ static void vec_accumulate_async2(AsyncValueRef<TestVector> vec,
       0);
 }
 
+/// A parallel [Softmax](https://en.wikipedia.org/wiki/Softmax_function)
+/// implementation
+///
+/// The Softmax of a given a vector $V = \left [ a_{0}, a_{1}, \cdots, a_{n}
+/// \right ]$ is defined by $\displaystyle \frac{e^{a_i}}{\sum_{i =0}^n
+/// e^{a_i}}$. For numerical stability, however, we define Softmax as
+/// $\displaystyle \frac{e^{a_i - max(V)}}{\sum_{i =0}^n e^{a_i - max(V)}}$.
+///
+/// The implementation pseudocode is:
+///
+/// def softmax(Input):
+///   N = len(Input)
+///   Output = [0]*N
+///   maxVal = -inf
+///   denom = 0
+///   # STAGE 1: Find the max value in the input vector
+///   for i in range(N):
+///     maxVal = max(maxVal, Input[i])
+///   # STAGE 2: Compute the exponential and denominator
+///   for i in range(N):
+///     Output[i] = exp(Input[i] - maxVal)
+///     denom += Output[i]
+///   # STAGE 3: Normalize the output
+///   for i in range(N):
+///     Output[i] /= denom
+///   return Output
+///
+/// The implementation uses the same ideas in vec_accumulate_async2.
+static void vec_softmax_async(AsyncValueRef<TestFloat32Vector> input,
+                              Result<TestFloat32Vector> output,
+                              Runtime &runtime) {
+  using LLCL::atomicMax;
+  using ElementType = TestFloat32Vector::ValueType;
+
+  // Get the number of elements in the input vector
+  size_t vecLen = input->values.size();
+  // The batchSize is the number of elements each work item will process.We want
+  // the number of batchSize to be large enough to fully utilize the processor's
+  // capabilities.
+  size_t batchSize = 1024;
+  // The number of tasks to spawn in parallel from the runtime.
+  // We round up the division so that the numBatches*batchSize
+  // is at least equal to vecLen.
+  size_t numBatches = (vecLen + batchSize - 1) / batchSize;
+
+  auto maxVal = AsyncValue::allocate<ElementType>(runtime);
+  auto denom = AsyncValue::allocate<ElementType>(runtime);
+
+  // Move the AsyncValue to "constructed" state with the specified # elements.
+  output.construct(vecLen);
+
+  // STAGE 1: Find the max value in the input vector
+  parallelForEachNCustomCompletion(
+      runtime, numBatches,
+      [input = input.copy(), vecLen,
+       batchSize](size_t n, std::atomic<ElementType> &maxValueResult) {
+        ArrayRef<ElementType> inputValues = input->values;
+        size_t startPos = n * batchSize;
+        // If we exceeded the range of the vector, then there is nothing to do
+        if (startPos >= vecLen)
+          return;
+        // The end position is either the end position of the current batch, or
+        // the end of the vector whichever is smaller
+        size_t endPos = std::min(vecLen, (n + 1) * batchSize);
+        // Accumulate the vector values in the range [startPos, endPos), then
+        // add it to the global accumResult atomic
+        atomicMax(maxValueResult,
+                  *std::max_element(inputValues.begin() + startPos,
+                                    inputValues.begin() + endPos));
+      },
+      // The completion function is called by a single thread when all prior
+      // tasks are complete
+      [maxVal = maxVal.copy()](std::atomic<ElementType> &maxValueResult) {
+        // marks the result asyncvalue ready when all the subtasks are
+        // completed.
+        maxVal->emplace<ElementType>(maxValueResult);
+      },
+      // pass the initial value to each function. It will be converted to an
+      // atomic in the parallelForEachNCustomCompletion function
+      std::numeric_limits<float>::min());
+
+  // STAGE 2: Compute the exponential and denominator.
+  // STAGE 2 is only executed when maxVal is ready (i.e. STAGE 1 is complete)
+  //
+  // Note: we do not mark the output as ready until STAGE 3 is complete.
+  maxVal->andThen([input = input.copy(), output = output.copy(),
+                   denom = denom.copy(), maxVal = maxVal.copy(), batchSize,
+                   &runtime, vecLen, numBatches]() {
+    parallelForEachNCustomCompletion(
+        runtime, numBatches,
+        [input = input.copy(), output = output.copy(),
+         maxVal = maxVal->get<ElementType>(), vecLen,
+         batchSize](size_t n, std::atomic<ElementType> &denomResult) {
+          ArrayRef<ElementType> inputValues = input->values;
+          size_t startPos = n * batchSize;
+          if (startPos >= vecLen)
+            return;
+          size_t endPos = std::min(vecLen, (n + 1) * batchSize);
+          ElementType denomAccumLocal = 0;
+          for (size_t i = startPos; i < endPos; ++i) {
+            ElementType val = std::exp(inputValues[i] - maxVal);
+            output->values[i] = val;
+            denomAccumLocal += val; // locally accumulate the denominator
+          }
+          // atomic add the floating point values
+          denomResult.store(denomResult.load(std::memory_order_relaxed) +
+                                denomAccumLocal,
+                            std::memory_order_relaxed);
+        },
+        [denom = denom.copy()](std::atomic<ElementType> &denomValue) {
+          // store the denomValue in the denom asyncvalue and mark as ready
+          denom->emplace<ElementType>(denomValue);
+        },
+        0);
+  });
+
+  // STAGE 3: Normalize the output
+  // STAGE 3 is only executed when denom is ready (i.e. STAGE 2 is complete)
+  denom->andThen([output = output.copy(), denom = denom.copy(), batchSize,
+                  &runtime, vecLen, numBatches]() {
+    // compute STAGE 3 in parallel and mark the output is ready when all work is
+    // done
+    parallelForEachNMarkReady(
+        runtime, numBatches, output.copy(),
+        [output = output.copy(), denom = denom->get<ElementType>(), vecLen,
+         batchSize](size_t n) {
+          size_t startPos = n * batchSize;
+          if (startPos >= vecLen)
+            return;
+          size_t endPos = std::min(vecLen, (n + 1) * batchSize);
+          for (size_t i = startPos; i < endPos; ++i)
+            output->values[i] /= denom;
+        });
+  });
+}
+
+/// Print an integer vector to the console.
 static Chain vec_print(const TestVector &vec, Chain chain) {
   printf("vec = ");
   for (size_t i = 0, e = vec.values.size(); i != e; ++i) {
     if (i != 0)
       printf(", ");
     printf("%d", vec.values[i]);
+  }
+  fputc('\n', stdout);
+  return chain;
+}
+
+/// Print a floating point vector to the console.
+static Chain vec_float32_print(const TestFloat32Vector &vec, Chain chain) {
+  printf("vec.f32 = ");
+  for (size_t i = 0, e = vec.values.size(); i != e; ++i) {
+    if (i != 0)
+      printf(", ");
+    printf("%f", vec.values[i]);
   }
   fputc('\n', stdout);
   return chain;
@@ -603,6 +779,12 @@ static void registerTestVecPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "test.vec.accumulate.async", vec_accumulate_async);
   ADD_PRIMITIVE(registry, "test.vec.accumulate.async2", vec_accumulate_async2);
   ADD_PRIMITIVE(registry, "test.vec.print", vec_print);
+
+  // primtivies that operating on floating point vectors
+  ADD_PRIMITIVE(registry, "test.vec.f32.iota", vec_float32_iota);
+  ADD_PRIMITIVE(registry, "test.vec.f32.constant", vec_float32_constant);
+  ADD_PRIMITIVE(registry, "test.vec.f32.softmax.async", vec_softmax_async);
+  ADD_PRIMITIVE(registry, "test.vec.f32.print", vec_float32_print);
 }
 
 //===----------------------------------------------------------------------===//
@@ -626,6 +808,9 @@ void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "test.print_type", print_type);
 
   ADD_PRIMITIVE(registry, "test.print.dynamic.attr", print_dynamic_attr);
+
+  // register the floating point data type
+  AsyncValue::registerType<TestFloat32Vector::ValueType>();
 
   registerValueTracking(registry);
   registerTestVecPrimitives(registry);
