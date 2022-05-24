@@ -381,7 +381,7 @@ struct TestVector {
 };
 } // end anonymous namespace.
 
-static TestVector vec_atoi(BEFAttr<int32_t> number) {
+static TestVector vec_iota(BEFAttr<int32_t> number) {
   TestVector result;
   result.values.reserve(*number);
   for (int32_t i = 0, e = *number; i != e; ++i)
@@ -592,7 +592,7 @@ static Chain vec_print(const TestVector &vec, Chain chain) {
 }
 
 static void registerTestVecPrimitives(PrimitiveRegistry &registry) {
-  ADD_PRIMITIVE(registry, "test.vec.atoi", vec_atoi);
+  ADD_PRIMITIVE(registry, "test.vec.iota", vec_iota);
   ADD_PRIMITIVE(registry, "test.vec.constant", vec_constant);
   ADD_PRIMITIVE(registry, "test.vec.add", vec_add);
   ADD_PRIMITIVE(registry, "test.vec.add.async", vec_add_async);

@@ -4,13 +4,13 @@
 // CHECK-LABEL: --- Running 'basic_test'
 bef.invokable @basic_test() -> !grt.chain {
   %ch0 = grt.chain.new
-  %v1 = "test.vec.atoi"() { size = 5 : si32 } : () -> !test.vec
+  %v1 = "test.vec.iota"() { size = 5 : si32 } : () -> !test.vec
   %ch1 = "test.vec.print" (%v1, %ch0) : (!test.vec, !grt.chain) -> !grt.chain
-  // CHECK-NEXT: vec = 0, 1, 2, 3, 4 
+  // CHECK-NEXT: vec = 0, 1, 2, 3, 4
 
   %v2 = "test.vec.constant"() { size = 5 : si32, value = 3 : si32 } : () -> !test.vec
   %ch2 = "test.vec.print" (%v2, %ch1) : (!test.vec, !grt.chain) -> !grt.chain
-  // CHECK-NEXT: vec = 3, 3, 3, 3, 3 
+  // CHECK-NEXT: vec = 3, 3, 3, 3, 3
 
   %v3 = "test.vec.add"(%v1, %v2) : (!test.vec, !test.vec) -> !test.vec
   %ch3 = "test.vec.print" (%v3, %ch2) : (!test.vec, !grt.chain) -> !grt.chain
@@ -26,7 +26,7 @@ bef.invokable @basic_test() -> !grt.chain {
   // expected-error @+1 {{vector length mismatch}}
   %v6 = "test.vec.add"(%v5, %v1) : (!test.vec, !test.vec) -> !test.vec
   %ch5 = "test.vec.print" (%v6, %ch4) : (!test.vec, !grt.chain) -> !grt.chain
-  // CHECK-NEXT: 'basic_test' returned <error: vector length mismatch> 
+  // CHECK-NEXT: 'basic_test' returned <error: vector length mismatch>
 
   bef.output %ch5 : !grt.chain
 }
@@ -34,13 +34,13 @@ bef.invokable @basic_test() -> !grt.chain {
 // CHECK-LABEL: --- Running 'async_add_test'
 bef.invokable @async_add_test() -> !grt.chain {
   %ch0 = grt.chain.new
-  %v1 = "test.vec.atoi"() { size = 5 : si32 } : () -> !test.vec
+  %v1 = "test.vec.iota"() { size = 5 : si32 } : () -> !test.vec
   %ch1 = "test.vec.print" (%v1, %ch0) : (!test.vec, !grt.chain) -> !grt.chain
-  // CHECK-NEXT: vec = 0, 1, 2, 3, 4 
+  // CHECK-NEXT: vec = 0, 1, 2, 3, 4
 
   %v2 = "test.vec.constant"() { size = 5 : si32, value = 3 : si32 } : () -> !test.vec
   %ch2 = "test.vec.print" (%v2, %ch1) : (!test.vec, !grt.chain) -> !grt.chain
-  // CHECK-NEXT: vec = 3, 3, 3, 3, 3 
+  // CHECK-NEXT: vec = 3, 3, 3, 3, 3
 
   %v3 = "test.vec.add.async"(%v1, %v2) : (!test.vec, !test.vec) -> !test.vec
   %ch3 = "test.vec.print" (%v3, %ch2) : (!test.vec, !grt.chain) -> !grt.chain
@@ -56,7 +56,7 @@ bef.invokable @async_add_test() -> !grt.chain {
   // expected-error @+1 {{vector length mismatch}}
   %v6 = "test.vec.add.async"(%v5, %v1) : (!test.vec, !test.vec) -> !test.vec
   %ch5 = "test.vec.print" (%v6, %ch4) : (!test.vec, !grt.chain) -> !grt.chain
-  // CHECK-NEXT: 'async_add_test' returned <error: vector length mismatch> 
+  // CHECK-NEXT: 'async_add_test' returned <error: vector length mismatch>
 
   bef.output %ch5 : !grt.chain
 }
@@ -64,13 +64,13 @@ bef.invokable @async_add_test() -> !grt.chain {
 // CHECK-LABEL: --- Running 'async_add_test_par_foreach'
 bef.invokable @async_add_test_par_foreach() -> !grt.chain {
   %ch0 = grt.chain.new
-  %v1 = "test.vec.atoi"() { size = 5 : si32 } : () -> !test.vec
+  %v1 = "test.vec.iota"() { size = 5 : si32 } : () -> !test.vec
   %ch1 = "test.vec.print" (%v1, %ch0) : (!test.vec, !grt.chain) -> !grt.chain
-  // CHECK-NEXT: vec = 0, 1, 2, 3, 4 
+  // CHECK-NEXT: vec = 0, 1, 2, 3, 4
 
   %v2 = "test.vec.constant"() { size = 5 : si32, value = 3 : si32 } : () -> !test.vec
   %ch2 = "test.vec.print" (%v2, %ch1) : (!test.vec, !grt.chain) -> !grt.chain
-  // CHECK-NEXT: vec = 3, 3, 3, 3, 3 
+  // CHECK-NEXT: vec = 3, 3, 3, 3, 3
 
   %v3 = "test.vec.add.async2"(%v1, %v2) : (!test.vec, !test.vec) -> !test.vec
   %ch3 = "test.vec.print" (%v3, %ch2) : (!test.vec, !grt.chain) -> !grt.chain
@@ -93,7 +93,7 @@ bef.invokable @async_add_test_par_foreach() -> !grt.chain {
 // CHECK-LABEL: --- Running 'async_accumulate'
 bef.invokable @async_accumulate() -> !grt.chain {
   %ch0 = grt.chain.new
-  %v1 = "test.vec.atoi"() { size = 100 : si32 } : () -> !test.vec
+  %v1 = "test.vec.iota"() { size = 100 : si32 } : () -> !test.vec
 
   %i1 = "test.vec.accumulate"(%v1) : (!test.vec) -> si32
   %ch1 = "grt.print.si32" (%i1, %ch0) : (si32, !grt.chain) -> !grt.chain
@@ -110,4 +110,4 @@ bef.invokable @async_accumulate() -> !grt.chain {
   // CHECK-NEXT: 'async_accumulate' returned chain
 
   bef.output %ch3 : !grt.chain
-} 
+}
