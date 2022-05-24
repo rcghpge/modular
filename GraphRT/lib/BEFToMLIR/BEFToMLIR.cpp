@@ -297,9 +297,10 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
     BEF::TypeKind typeKind = BEF::TypeKind(typeValue);
 
     bool isComplex = typeKind.isComplex();
+    typeKind = BEF::TypeKind(typeKind.stripComplex().getValue());
 
     Type resultType;
-    switch (typeKind.stripComplex().getValue()) {
+    switch (typeKind.getValue()) {
     case BEF::TypeKind::f16:
       resultType = FloatType::getF16(getContext());
       break;

@@ -184,9 +184,10 @@ class TypeKind : public TensorDType {
 public:
   using TensorDType::TensorDType;
   enum ExtraCases : uint8_t {
-    tensor = (2 << kOtherShift) | mOther,    // Has following bytes.
-    quantized = (3 << kOtherShift) | mOther, // Has following bytes.
-    function = (4 << kOtherShift) | mOther,  // Has following bytes.
+    // In the BEF encoding of these types, they all have following bytes.
+    tensor = kFirstExtendedOption,
+    quantized,
+    function,
   };
 };
 
