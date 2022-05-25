@@ -653,7 +653,7 @@ void BEFExecutor::processUsedByRecords(
 
   // If the result is ready (typical case), then we can be efficient and avoid
   // "andThen" logic.
-  if (AsyncValue::isReady(resultPtr->getState())) {
+  if (resultPtr->isReady()) {
     primitiveIDWorklist.append(users.begin(), users.end());
   } else if (!users.empty()) {
     // Otherwise, the primitive is going to produce its result asynchronously -
