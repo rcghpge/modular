@@ -483,7 +483,7 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
   // The attribute kind always precedes the attribute value in a BEF file. In
   // the case of length-delimited types (like string and array) the layout is
   // [length, kind byte, values].
-  uint8_t attrKind;
+  uint8_t attrKind = 0;
   if (attrSection.parseByteAt(offset - 1, attrKind))
     return true;
 
