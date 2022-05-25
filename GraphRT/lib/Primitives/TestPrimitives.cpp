@@ -809,9 +809,6 @@ void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
 
   ADD_PRIMITIVE(registry, "test.print.dynamic.attr", print_dynamic_attr);
 
-  // register the floating point data type
-  AsyncValue::registerType<TestFloat32Vector::ValueType>();
-
   registerValueTracking(registry);
   registerTestVecPrimitives(registry);
 
