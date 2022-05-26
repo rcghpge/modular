@@ -8,7 +8,6 @@
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/AllocatorType.h"
 #include "Support/Error.h"
-#include "TFLite/Primitives.h"
 #include "TFLite/Support/TFLiteType.h"
 #include "TFLite/TFLModelFile.h"
 #include "TFLite/TFLTensor.h"
