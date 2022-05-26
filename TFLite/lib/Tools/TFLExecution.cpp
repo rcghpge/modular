@@ -5,10 +5,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "TFLite/Tools/TFLExecution.h"
-#include "GraphRT/BEFExecutor/BEFFile.h"
-#include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
-#include "GraphRT/Primitives.h"
 #include "LLCL/Runtime/Algorithms.h"
+#include "LLCL/Runtime/AllocatorType.h"
 #include "Support/Error.h"
 #include "TFLite/Primitives.h"
 #include "TFLite/Support/TFLiteType.h"
@@ -128,10 +126,6 @@ setupAllModels(const TFLModelFile &models, Runtime &runtime,
   return success();
 }
 
-static size_t getNumTensorArgs(const TFLRuntimeModel &model) {
-  return model.getExecuteFn()->getNumArgs() - kExecuteFnNumMinInputs;
-}
-
 ErrorOrSuccess
 M::initializeInputMemoryForAllModels(const TFLModelFile &models,
                                      InputGenerationKind inputGenKind,
@@ -151,7 +145,7 @@ static ErrorOrSuccess checkDataPointers(ArrayRef<TFLRuntimeModel> models,
                                         ArrayRef<void *> dataPtrs) {
   size_t totalNumDataPtrsExpected = std::accumulate(
       models.begin(), models.end(), 0,
-      [](size_t i, const auto &m) { return i + getNumTensorArgs(m); });
+      [](size_t i, const auto &m) { return i + m.getNumModelInputs(); });
 
   if (dataPtrs.empty() && totalNumDataPtrsExpected != 0)
     return {Twine("no data pointers were supplied, but expected " +
@@ -193,11 +187,12 @@ static ErrorOrSuccess executeAllModels(
     args.push_back(chain.copy());
     args.push_back(ctx.copy());
 
-    for (size_t i = 0, e = getNumTensorArgs(model); i < e; ++i) {
-      TFLiteType eltType(model.getInputElementType(i));
+    for (auto [inputType, inputShape] :
+         llvm::zip(model.getInputElementTypes(), model.getInputShapes())) {
+      TFLiteType eltType(inputType);
       args.push_back(AsyncValueRef<TfLiteTensorRef>::createReady(
-          runtime, TfLiteTensorRef::getWithExternalData(
-                       model.getInputShape(i), eltType, *dataPtrStart++)));
+          runtime, TfLiteTensorRef::getWithExternalData(inputShape, eltType,
+                                                        *dataPtrStart++)));
     }
 
     if (beforeExec)
@@ -300,14 +295,4 @@ LogicalResult M::runModelFile(const TFLModelFile &modelFile, Runtime &runtime,
     free(d);
 
   return success();
-}
-
-ErrorOr<RCRef<BEFFile>> M::openTFLBEF(StringRef file) {
-  // Set up all our primitives.
-  PrimitiveRegistry primitives;
-  registerGraphRTControlFlowPrimitives(primitives);
-  registerTFLitePrimitives(primitives);
-  primitives.finalize();
-
-  return BEFFile::open(file, primitives);
 }
