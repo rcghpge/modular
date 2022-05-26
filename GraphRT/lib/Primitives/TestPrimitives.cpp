@@ -671,8 +671,8 @@ static void vec_softmax_async(AsyncValueRef<TestFloat32Vector> input,
         // The end position is either the end position of the current batch, or
         // the end of the vector whichever is smaller
         size_t endPos = std::min(vecLen, (n + 1) * batchSize);
-        // Accumulate the vector values in the range [startPos, endPos), then
-        // add it to the global accumResult atomic
+        // Find the max element of the vector values in the range [startPos,
+        // endPos), then add it to the global accumResult atomic
         atomicMax(maxValueResult,
                   *std::max_element(inputValues.begin() + startPos,
                                     inputValues.begin() + endPos));
@@ -686,7 +686,7 @@ static void vec_softmax_async(AsyncValueRef<TestFloat32Vector> input,
       },
       // pass the initial value to each function. It will be converted to an
       // atomic in the parallelForEachNCustomCompletion function
-      std::numeric_limits<float>::min());
+      std::numeric_limits<float>::lowest());
 
   // STAGE 2: Compute the exponential and denominator.
   // STAGE 2 is only executed when maxVal is ready (i.e. STAGE 1 is complete)
