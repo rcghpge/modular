@@ -889,12 +889,11 @@ private:
 /// For example:
 ///    ADD_PRIMITIVE(registery, "grt.invoke", grt_invoke_impl);
 ///
-#define ADD_PRIMITIVE(registry, name, ...)                                     \
+#define ADD_PRIMITIVE(registry, name, fn)                                      \
   do {                                                                         \
-    registry.add(name, ::M::Detail::PrimitiveImpl<decltype(&__VA_ARGS__),      \
-                                                  &__VA_ARGS__>::invoke);      \
-    ::M::Detail::PrimitiveImpl<decltype(&__VA_ARGS__),                         \
-                               &__VA_ARGS__>::registerTypes();                 \
+    registry.add(name,                                                         \
+                 ::M::Detail::PrimitiveImpl<decltype(&fn), &fn>::invoke);      \
+    ::M::Detail::PrimitiveImpl<decltype(&fn), &fn>::registerTypes();           \
   } while (0)
 
 namespace Detail {
