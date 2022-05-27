@@ -20,6 +20,11 @@ def ChainNewOp : GRTOp<"chain.new"> {
   let arguments = (ins);
   let results = (outs ChainType:$result);
   let assemblyFormat = "attr-dict";
+
+  let builders = [
+    OpBuilder<(ins)>
+  ];
+
 }
 
 //===----------------------------------------------------------------------===//
