@@ -1387,7 +1387,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   static void processResult(PrimitiveFrame &frame, size_t index,
                             ErrorOr<T> &&errorOr) {
     if (succeeded(errorOr))
-      processResult(frame, index, std::move(errorOr.get()));
+      processResult(frame, index, errorOr.takeValue());
     else
       frame.fail(errorOr.takeError());
   }
