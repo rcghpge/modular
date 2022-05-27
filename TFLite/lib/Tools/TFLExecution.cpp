@@ -119,21 +119,6 @@ M::initializeInputMemoryForModel(const TFLRuntimeModel &model,
   return success();
 }
 
-ErrorOrSuccess
-M::initializeInputMemoryForAllModels(const TFLModelFile &models,
-                                     InputGenerationKind inputGenKind,
-                                     SmallVectorImpl<void *> &ptrVec) {
-  for (const auto &model : models) {
-    auto dataOr = initializeInputMemory(inputGenKind, model);
-    if (failed(dataOr))
-      return dataOr.takeError();
-
-    ptrVec.append(*dataOr);
-  }
-
-  return success();
-}
-
 /// Execute given model, calling `beforeExec` before, and then `afterExec`
 /// afterwards. `beforeExec` can abort execution of that model by returning
 /// `failure()`. Saves the outputs of `model` into `results`. `afterExec` is
