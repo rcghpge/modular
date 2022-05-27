@@ -8,29 +8,29 @@ Format "BEF".
 
 We have the following goals:
 
--   We want this to be simple and relatively stable - though it is versioned
-    just in case (tm). We don't want BEF to contain domain specific
-    abstractions that will require changing it frequently over time.
+- We want this to be simple and relatively stable - though it is versioned
+  just in case (tm). We don't want BEF to contain domain specific
+  abstractions that will require changing it frequently over time.
 
--   This format is designed to be usable as an immutable region in memory,
-    allowing it to be built offline and conveniently `mmap`'d in (or stored in
-    the `.rodata` segment of an executable, etc).
+- This format is designed to be usable as an immutable region in memory,
+  allowing it to be built offline and conveniently `mmap`'d in (or stored in
+  the `.rodata` segment of an executable, etc).
 
--   This is aligned with the abstractions used by the GraphRT executor and
-    includes key abstractions that it can directly use to make it speedy and
-    memory efficient. The design puts more burden on the encoder of a BEF file
-    (e.g. requiring multiple passes) to make the decoder fast.
+- This is aligned with the abstractions used by the GraphRT executor and
+  includes key abstractions that it can directly use to make it speedy and
+  memory efficient. The design puts more burden on the encoder of a BEF file
+  (e.g. requiring multiple passes) to make the decoder fast.
 
--   This needs to be producible online e.g. in training or interactive use
-    cases.
+- This needs to be producible online e.g. in training or interactive use
+  cases.
 
--   We need to represent location information in order to reflect runtime errors
-    (e.g. shape errors) back to the user source program.
+- We need to represent location information in order to reflect runtime errors
+  (e.g. shape errors) back to the user source program.
 
--   We should follow normal best practices for binary encodings, e.g. having
-    tools to round trip them to a textual form (MLIR in our case), support
-    arbitrary sized files (not limited to 4GB), be efficient to read, make
-    reasonable attempts to be dense, etc.
+- We should follow normal best practices for binary encodings, e.g. having
+  tools to round trip them to a textual form (MLIR in our case), support
+  arbitrary sized files (not limited to 4GB), be efficient to read, make
+  reasonable attempts to be dense, etc.
 
 In addition to describing the format, this document describes some of the
 rationale for the design decisions.
@@ -52,28 +52,28 @@ rationale for the design decisions.
 A BEF file is formed as a byte stream whose top-level structure is a list of
 "sections" that hold various sorts of data. It uses a few fundamental concepts:
 
-*   *VBRs* are encoded in a "Variable Byte Rate" (`VBR`) encoding, allowing
-    small integers (less than 2^7) to be stored in one byte, integers up to 2^14
-    to be stored in two bytes, etc. This is done by using the high bit of each
-    byte in the stream to indicate "more bytes are coming".
+* *VBRs* are encoded in a "Variable Byte Rate" (`VBR`) encoding, allowing
+  small integers (less than 2^7) to be stored in one byte, integers up to 2^14
+  to be stored in two bytes, etc. This is done by using the high bit of each
+  byte in the stream to indicate "more bytes are coming".
 
-*   *Fixed Integers* are unsigned integers with fixed bit width. The values are
-    stored in little-endian byte order.
+* *Fixed Integers* are unsigned integers with fixed bit width. The values are
+  stored in little-endian byte order.
 
-*   *NUL Terminated Strings* are terminated with the ASCII `NUL` character
-    (whose byte value is zero).  These are not used in cases where a string may
-    contain an embedded `NUL` character. 
+* *NUL Terminated Strings* are terminated with the ASCII `NUL` character
+  (whose byte value is zero). These are not used in cases where a string may
+  contain an embedded `NUL` character.
 
-*   *Offsets* are VBRs that demarcate a byte offset in the stream from a
-    fixed position (typically the start of a section). These are useful when the
-    section contains a bunch of variable length things, e.g. when referring to a
-    string in the string table. Because variable sized integers are used
-    pervasively in BEF files, offsets are very common.
+* *Offsets* are VBRs that demarcate a byte offset in the stream from a
+  fixed position (typically the start of a section). These are useful when the
+  section contains a bunch of variable length things, e.g. when referring to a
+  string in the string table. Because variable sized integers are used
+  pervasively in BEF files, offsets are very common.
 
-*   *Indexes* are VBRs that demarcate an entry in a table, e.g. a register
-    or primitives in an invokable. These are typically used when indexing into
-    a table where the structure is expected to be decoded and held in memory by
-    the reader, e.g. as is the case with the primitives and types tables.
+* *Indexes* are VBRs that demarcate an entry in a table, e.g. a register
+  or primitives in an invokable. These are typically used when indexing into
+  a table where the structure is expected to be decoded and held in memory by
+  the reader, e.g. as is the case with the primitives and types tables.
 
 BEF files can be created by an arbitrary producer, but the standard ways is to
 use the [MLIRToBEF](../lib/MLIRToBEF)
@@ -138,7 +138,7 @@ not; 0 means the section body starts immediately and 1 means
 ```
 
 The top level structure of the file is a two-byte "magic number" of `0xBEF0`
-and a list of sections.  The `0xBEF0` magic number allows us to encode version
+and a list of sections. The `0xBEF0` magic number allows us to encode version
 numbers, e.g. the following would be `0xBEF1`.
 
 The BEF reader skips over unknown sections, which could be useful for future
@@ -155,7 +155,7 @@ format for some purpose, or store binary tensor blobs.
 
 The Strings section contains a list of `NUL` terminated strings used by the
 program (e.g. for type and primitive names). Entries in this section are
-referenced by an Offset from the start of the section.  This section does not
+referenced by an Offset from the start of the section. This section does not
 support embedded `NUL` in strings.
 
 ### `ATTRIBUTES` Section
@@ -173,16 +173,16 @@ implementation C/C++ function as an const pointer.
 
 BEF files only support a subset of MLIR attributes, currently including:
 
-*   `i1` integers: stored as 1-byte integers.
-*   `si8`/`si16`/`si32`/`si64` integers: stored as 1/2/4/8-byte little endian
-     integers.
-*   `ui8`/`ui16`/`ui32`/`ui64` integers: stored as 1/2/4/8-byte little endian
-     integers.
-*   `f32` floats: stored as IEEE single precision floats.
-*   `f64` floats: stored as IEEE double precision floats.
-*   `strings`: stored as arrays of bytes, not necessarily NUL terminated.
-*   `arrays`: all elements of which are of the same type and fixed in width (eg.
-    `si32`, `f32`, etc).
+* `i1` integers: stored as 1-byte integers.
+* `si8`/`si16`/`si32`/`si64` integers: stored as 1/2/4/8-byte little endian
+  integers.
+* `ui8`/`ui16`/`ui32`/`ui64` integers: stored as 1/2/4/8-byte little endian
+  integers.
+* `f32` floats: stored as IEEE single precision floats.
+* `f64` floats: stored as IEEE double precision floats.
+* `strings`: stored as arrays of bytes, not necessarily NUL terminated.
+* `arrays`: all elements of which are of the same type and fixed in width (eg.
+  `si32`, `f32`, etc).
 
 The encoding of an attribute has three pieces:
 
@@ -238,19 +238,21 @@ of memory up front, rather than use a vector-style resizing mechanism.
 
 ```none
   INVOKABLES_INDEX_SECTION ::= VBR<"NumInvokables"> INVOKABLE_ENTRY*
-  INVOKABLE_ENTRY          ::= OFFSET<"Invokable"> OFFSET<"Name">
-                               VBR<"NumArguments"> VBR<"NumResults"> 
+  INVOKABLE_ENTRY          ::= OFFSET<"Primitive"> OFFSET<"Symbol">
+                               OFFSET<"Body"> VBR<"NumArguments"> 
+                               VBR<"NumResults"> 
 ```
 
-The `INVOKABLES_INDEX` section defines a table of "invokables" in the BEF file, 
+The `INVOKABLES_INDEX` section defines a table of "invokables" in the BEF file,
 including an Offset into the [`INVOKABLES_BODIES_SECTION`](#INVOKABLES_BODIES-section),
-a name (an Offset into the [`STRINGS_SECTION`](#strings-section), which may be an 
-empty string), and a count of argument and result types.
+a primitive name (an Offset into the [`STRINGS_SECTION`](#strings-section), may be empty),
+a symbol name (an Offset into the [`STRINGS_SECTION`](#strings-section), may be empty),
+an offset to the body, and the number of arguments and results.
 
 ***Rationale***
 
 This defines a symbol table for the BEF file, allowing clients to look up
-invokables by name.  While we could intersperse this information into the
+invokables by name. While we could intersperse this information into the
 [`INVOKABLES_BODIES_SECTION`](#INVOKABLES_BODIES-section) itself, doing so would
 require the reader to make a pass over all of the `INVOKABLES_BODIES` ahead of
 time. We prefer to have a quick index that the reader can scan at load time,
@@ -364,7 +366,7 @@ operands, attributes, invokables and results in the primitive body.
 
 The result table contains NumResults `FIXED32` integers, indicating the number of
 users for each corresponding result. The primitive body consists of zero or more
-inputs (indexes into the Register Table for the enclosing invokable), zero or 
+inputs (indexes into the Register Table for the enclosing invokable), zero or
 more constants (offsets into the [Attributes section](#attributes-section)),
 zero or more invokables (these are regions or `@foo` references in the primitive
 instance, stored as indexes into the [`INVOKABLES_INDEX`
@@ -445,7 +447,7 @@ execution, but which makes `BEFToMLIR` conversion much nicer. This
 section describes the attribute names used by each primitive. There is a 1:1
 mapping between Primitive Table in this section and entries in
 [`INVOKABLES_INDEX` section](#INVOKABLES_INDEX-section). Each attribute and
-region for a primitive has an entry here specifying the name.  The offset is
+region for a primitive has an entry here specifying the name. The offset is
 into the `STRINGS_MD` section (not the `STRINGS` section).
 
 ***Rationale***
@@ -463,13 +465,13 @@ looked up lazily by offset.
 ```
 
 The `MLIRTYPE_STRINGS_MD` section defines a table of MLIR type names used by the
-program, in a format that can be parsed by `BEF2MLIR`.  These are referenced by
+program, in a format that can be parsed by `BEF2MLIR`. These are referenced by
 index into the section, not offset.
 
 ***Rationale***
 
 Type names are not needed by the BEF executor, and are decoded in a single dense
-pass up-front in `BEF2MLIR`.  As such, they are referenced by index (not offset).
+pass up-front in `BEF2MLIR`. As such, they are referenced by index (not offset).
 
 ### `MLIRTYPE_MD` Section
 
@@ -481,8 +483,8 @@ pass up-front in `BEF2MLIR`.  As such, they are referenced by index (not offset)
 
 The `MLIRTYPE_MD` section is an optional section which is not needed for BEF
 execution, but allows `BEF2MLIR` conversion to regenerate the correct types for
-invokable arguments and the result types of primitives.  This section
-contains a list of VBR encoded indexes into the 
+invokable arguments and the result types of primitives. This section
+contains a list of VBR encoded indexes into the
 [`MLIRTYPE_STRINGS_MD` section](#TYPE_STRINGS_MD-section), and is encoded in
-the same order as the invokable table.  Each invokable has a list of argument
+the same order as the invokable table. Each invokable has a list of argument
 types and a type for each primitive result.

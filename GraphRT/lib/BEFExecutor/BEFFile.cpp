@@ -131,37 +131,38 @@ bool BEFFileReader::readInvokableIndexSection(BEFReader &stringReader) {
   auto *fnMemory = (BEFInvokable *)malloc(numInvokables * sizeof(BEFInvokable));
 
   // Read until we run out of invokable descriptors.
-  size_t fnNumber = 0;
+  size_t regionNumber = 0;
   auto reportIncorrectInvokableCount = [&]() -> bool {
     // Destroy the partially constructed invokables array.
-    while (fnNumber)
-      fnMemory[--fnNumber].~BEFInvokable();
+    while (regionNumber)
+      fnMemory[--regionNumber].~BEFInvokable();
     free(fnMemory);
     return emitError("invokable count is incorrect");
   };
 
   while (!empty()) {
-    if (fnNumber > numInvokables)
+    if (regionNumber > numInvokables)
       return reportIncorrectInvokableCount();
 
-    size_t bodyOffset, nameOffset, numArgs, numResults;
-    StringRef name;
-    if (parseVBR(bodyOffset) || parseVBR(nameOffset) || parseVBR(numArgs) ||
-        parseVBR(numResults) ||
-        stringReader.parseNULTerminatedStringAt(nameOffset, name))
+    size_t bodyOffset, primitiveOffset, symbolOffset, numArgs, numResults;
+    StringRef primitive, symbol;
+    if (parseVBR(primitiveOffset) || parseVBR(symbolOffset) ||
+        parseVBR(bodyOffset) || parseVBR(numArgs) || parseVBR(numResults) ||
+        stringReader.parseNULTerminatedStringAt(primitiveOffset, primitive) ||
+        stringReader.parseNULTerminatedStringAt(symbolOffset, symbol))
       return true;
 
     /// Remember this invokable in the symbol table if it isn't anonymous.
-    if (!name.empty())
-      befFile.invokableSymbolTable[name] = fnNumber;
+    if (!symbol.empty())
+      befFile.invokableSymbolTable[symbol] = regionNumber;
 
     /// Create the actual BEFInvokable.
-    new (&fnMemory[fnNumber++])
-        BEFInvokable(name, numArgs, numResults, bodyOffset, &befFile);
+    new (&fnMemory[regionNumber++]) BEFInvokable(
+        primitive, symbol, numArgs, numResults, bodyOffset, &befFile);
   }
 
   // Check that the correct number of invokables was actually present.
-  if (fnNumber != numInvokables)
+  if (regionNumber != numInvokables)
     return reportIncorrectInvokableCount();
   // Otherwise, we succeeded!
   befFile.invokables = fnMemory;
@@ -212,11 +213,11 @@ bool BEFFileReader::readNextSection() {
 
   // We just remember the locations of the kInvokablesBodies section - it is
   // directly indexed with a byte offset from the kinvokablesIndex section.
-  case BEF::SectionID::kInvokablesBodies:
+  case BEF::SectionID::kTopLevelOpBodies:
     befFile.invokableBodies = sectionContents;
     return false;
 
-  case BEF::SectionID::kInvokablesIndex:
+  case BEF::SectionID::kTopLevelOpIndex:
     invokableIndex = sectionContents;
     return false;
   }

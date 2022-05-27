@@ -81,8 +81,8 @@ enum class SectionID {
   kStrings = 3, // All of the string data.
   kAttributes = 4,
   kPrimitiveNames = 5,
-  kInvokablesBodies = 6,
-  kInvokablesIndex = 7,
+  kTopLevelOpBodies = 6,
+  kTopLevelOpIndex = 7,
 
   kAttributeIndexMD = 8,
   kStringsMD = 9,          // Strings for metadata

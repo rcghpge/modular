@@ -70,10 +70,10 @@ public:
 /// BEF specific implementation of the Invokable interface.
 class BEFInvokable final : public Invokable {
 public:
-  BEFInvokable(StringRef name, uint16_t numArguments, uint16_t numResults,
-               uint32_t bodyOffset, BEFFileImpl *owner)
-      : Invokable(name, numArguments, numResults), bodyOffset(bodyOffset),
-        owner(owner) {}
+  BEFInvokable(StringRef primitive, StringRef symbol, uint16_t numArguments,
+               uint16_t numResults, uint32_t bodyOffset, BEFFileImpl *owner)
+      : Invokable(primitive, symbol, numArguments, numResults),
+        bodyOffset(bodyOffset), owner(owner) {}
 
   virtual ~BEFInvokable() = default;
 

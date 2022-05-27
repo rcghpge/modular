@@ -37,10 +37,9 @@ public:
   bool parseAttributes();
   bool parseTypes();
   bool parsePrimitiveNames();
-  bool parseInvokables();
-  bool parseInvokableBody(BEF::InvokableOp invokable, BEFReader &bodyReader,
-                          BEFReader &attrNameReader,
-                          BEFReader &mlirTypesReader);
+  bool parseTopLevelOps();
+  bool parseRegionBody(bool isAnonymous, Region *region, BEFReader &bodyReader,
+                       BEFReader &attrNameReader, BEFReader &mlirTypesReader);
 
   bool emitError(Error message) {
     module->emitError() << message;
@@ -76,12 +75,11 @@ public:
     return parseNULTerminatedStringAt(offset, stringReader, result);
   }
 
-  bool resolveInvokable(size_t invokableIndex, Location loc,
-                        BEF::InvokableOp &invokableOp) {
-    if (invokableIndex >= invokables.size())
+  bool resolveRegion(size_t invokableIndex, Location loc, Region *&region) {
+    if (invokableIndex >= topLevelOps.size())
       return mlir::emitError(loc, "invalid invokable index"), true;
 
-    invokableOp = invokables[invokableIndex];
+    region = topLevelOps[invokableIndex].region;
     return false;
   }
 
@@ -141,8 +139,14 @@ private:
   /// This is the name for each primitive, indexed by primitive ID.
   SmallVector<StringAttr> primitiveNames;
 
+  /// This struct represents an invokable region.
+  struct TopLevelOp {
+    StringRef primitive, symbol;
+    Region *region;
+  };
+
   /// This is the set of parsed invokables indexed by invokable ID.
-  SmallVector<BEF::InvokableOp> invokables;
+  SmallVector<TopLevelOp> topLevelOps;
 
   /// The is the parsed version of the type list when metadata is enabled.
   std::vector<Type> types;
@@ -585,68 +589,88 @@ bool BEFToMLIRConverter::parsePrimitiveNames() {
   return false;
 }
 
-bool BEFToMLIRConverter::parseInvokables() {
-  BEFReader reader = getSectionReader(BEF::SectionID::kInvokablesIndex);
+bool BEFToMLIRConverter::parseTopLevelOps() {
+  BEFReader reader = getSectionReader(BEF::SectionID::kTopLevelOpIndex);
   BEFReader stringReader = getSectionReader(BEF::SectionID::kStrings);
   BEFReader attrNameReader =
       getSectionReader(BEF::SectionID::kAttributeNamesMD);
   BEFReader mlirTypesReader = getSectionReader(BEF::SectionID::kMLIRTypeMD);
+  BEFReader bodyReader = getSectionReader(BEF::SectionID::kTopLevelOpBodies);
 
-  size_t numInvokables;
-  if (reader.parseVBR(numInvokables))
+  size_t numTopLevelOps;
+  if (reader.parseVBR(numTopLevelOps))
     return true;
 
   SmallVector<size_t> invokableOffsets;
-  invokableOffsets.reserve(numInvokables);
-  invokables.reserve(numInvokables);
+  invokableOffsets.reserve(numTopLevelOps);
+  topLevelOps.reserve(numTopLevelOps);
 
+  SmallVector<Type> inputTypes;
   auto builder = OpBuilder::atBlockBegin(module->getBody());
-
-  SmallVector<Type> inputTypes, resultTypes;
-  Type unknownType = BEF::UnknownType::get(builder.getContext());
-
+  Location loc = builder.getUnknownLoc();
+  Type unknownType = builder.getType<BEF::UnknownType>();
   // Read until we run out of invokable descriptors.
-  Location loc = UnknownLoc::get(builder.getContext());
   while (!reader.empty()) {
-    size_t bodyOffset, nameOffset, numArgs, numResults;
-    StringAttr name;
-    if (reader.parseVBR(bodyOffset) || reader.parseVBR(nameOffset) ||
-        reader.parseVBR(numArgs) || reader.parseVBR(numResults) ||
-        parseNULTerminatedStringAt(nameOffset, stringReader, name))
+    size_t primitiveOffset, symbolOffset, bodyOffset, numArgs, numResults;
+    StringAttr primitive, symbol;
+    if (reader.parseVBR(primitiveOffset) || reader.parseVBR(symbolOffset) ||
+        reader.parseVBR(bodyOffset) || reader.parseVBR(numArgs) ||
+        reader.parseVBR(numResults) ||
+        parseNULTerminatedStringAt(primitiveOffset, stringReader, primitive) ||
+        parseNULTerminatedStringAt(symbolOffset, stringReader, symbol))
       return true;
 
+    // Store the offset to the invokable's body.
     invokableOffsets.push_back(bodyOffset);
+
+    OperationState state(loc, primitive);
+    state.addAttribute(mlir::SymbolTable::getSymbolAttrName(), symbol);
+    // And add the region.
+    state.addRegion();
+    // Create the operation. This object will likely not verify yet, as we don't
+    // yet have the function type on the op.
+    Operation *theOp = builder.create(state);
+    Region *region = &theOp->getRegion(0);
+
+    // Set up the body block.
+    Block &body = region->emplaceBlock();
     inputTypes.assign(numArgs, unknownType);
-    resultTypes.assign(numResults, unknownType);
-
-    auto invokable =
-        builder.create<BEF::InvokableOp>(loc, name, inputTypes, resultTypes);
-    invokables.push_back(invokable);
+    body.addArguments(inputTypes, SmallVector<Location, 3>(numArgs, loc));
     inputTypes.clear();
-    resultTypes.clear();
-  }
 
-  if (invokables.size() != numInvokables)
-    return emitError("expected " + Twine(numInvokables) +
-                     " invokables, but found " + Twine(invokables.size()));
+    // Add it to the vector now.
+    topLevelOps.push_back({primitive, symbol, region});
 
-  // Decode each of the invokable bodies.
-  BEFReader bodyReader = getSectionReader(BEF::SectionID::kInvokablesBodies);
-  for (auto inv : invokables) {
-    if (parseInvokableBody(inv, bodyReader, attrNameReader, mlirTypesReader))
+    // Parse the invokable body now.
+    if (parseRegionBody(primitive.getValue().empty() &&
+                            symbol.getValue().empty(),
+                        region, bodyReader, attrNameReader, mlirTypesReader))
       return true;
+
+    // Get the function type from the parsed region. Use this so if we had the
+    // types we get those for free.
+    auto functionType = builder.getType<FunctionType>(
+        region->getArgumentTypes(),
+        region->front().getTerminator()->getOperandTypes());
+    // And add it to the invokable.
+    theOp->setAttr(mlir::FunctionOpInterface::getTypeAttrName(),
+                   TypeAttr::get(functionType));
   }
+
+  if (topLevelOps.size() != numTopLevelOps)
+    return emitError("expected " + Twine(numTopLevelOps) +
+                     " invokables, but found " + Twine(topLevelOps.size()));
 
   return false;
 }
 
 namespace {
-class InvokableBodyParser {
+class RegionParser {
 public:
-  InvokableBodyParser(BEF::InvokableOp invokable, BEFReader &bodyReader,
-                      BEFReader &attrNameReader, BEFReader &mlirTypesReader,
-                      BEFToMLIRConverter &converter)
-      : invokable(invokable), bodyReader(bodyReader),
+  RegionParser(bool isAnonymous, Region *region, BEFReader &bodyReader,
+               BEFReader &attrNameReader, BEFReader &mlirTypesReader,
+               BEFToMLIRConverter &converter)
+      : isAnonymous(isAnonymous), region(region), bodyReader(bodyReader),
         attrNameReader(attrNameReader), mlirTypesReader(mlirTypesReader),
         converter(converter) {}
 
@@ -659,7 +683,8 @@ private:
   bool parseResultRegs();
   bool parsePrimitiveList();
 
-  BEF::InvokableOp invokable;
+  bool isAnonymous;
+  Region *region;
   BEFReader &bodyReader;
 
   BEFReader &attrNameReader;  // A (possibly empty) ATTRIBUTE_NAMES_MD section.
@@ -676,7 +701,7 @@ private:
 } // end anonymous namespace
 
 /// Entrypoint to parse the invokable body.
-bool InvokableBodyParser::parse() {
+bool RegionParser::parse() {
   size_t numPrimitives;
   return bodyReader.parseVBR(numPrimitives) || parseRegisterTable() ||
          parsePrimitiveTable(numPrimitives) || parseResultRegs() ||
@@ -684,7 +709,7 @@ bool InvokableBodyParser::parse() {
 }
 
 /// Parse and ignore the "NumUses" register table.
-bool InvokableBodyParser::parseRegisterTable() {
+bool RegionParser::parseRegisterTable() {
   size_t numRegisters;
   if (bodyReader.parseVBR(numRegisters))
     return true;
@@ -696,7 +721,7 @@ bool InvokableBodyParser::parseRegisterTable() {
   return false;
 }
 
-bool InvokableBodyParser::parsePrimitiveTable(size_t numPrimitives) {
+bool RegionParser::parsePrimitiveTable(size_t numPrimitives) {
   while (numPrimitives--) {
     size_t offset, numOperandsBeforeExecuting;
     if (bodyReader.parseVBR(offset) ||
@@ -708,8 +733,8 @@ bool InvokableBodyParser::parsePrimitiveTable(size_t numPrimitives) {
   return false;
 }
 
-bool InvokableBodyParser::parseResultRegs() {
-  for (size_t i = 0, e = invokable.getResultTypes().size(); i != e; ++i) {
+bool RegionParser::parseResultRegs() {
+  for (size_t i = 0, e = region->front().getNumArguments(); i != e; ++i) {
     size_t registerIndex;
     if (bodyReader.parseVBR(registerIndex))
       return true;
@@ -718,13 +743,13 @@ bool InvokableBodyParser::parseResultRegs() {
   return false;
 }
 
-bool InvokableBodyParser::parsePrimitiveList() {
+bool RegionParser::parsePrimitiveList() {
   if (bodyReader.alignTo(BEF::kPrimitiveEntryAlignment))
     return true;
 
-  Block &block = *invokable.getBodyBlock();
+  Block &block = region->front();
   auto bodyBuilder = OpBuilder::atBlockBegin(&block);
-  Location loc = invokable.getLoc();
+  Location loc = region->getLoc();
   Type unknownType = BEF::UnknownType::get(bodyBuilder.getContext());
   bool hasMLIRTypes = !mlirTypesReader.empty();
 
@@ -736,14 +761,15 @@ bool InvokableBodyParser::parsePrimitiveList() {
   for (size_t i = 0, e = primitiveTable.size(); i != e; ++i) {
     bool isOpaqueOp = false;
     uint32_t primitiveID, locOffset;
-    uint16_t numOperands, numAttrs, numInvokables, numResults;
+    uint16_t numOperands, numAttrs, numTopLevelOps, numResults;
     StringAttr primitiveName;
     uint32_t resultRegisterNo = ~0U;
     if (bodyReader.parseInt4(primitiveID) || bodyReader.parseInt4(locOffset) ||
         converter.resolveLocation(locOffset, loc) ||
         converter.resolvePrimitiveName(primitiveID, loc, primitiveName) ||
         bodyReader.parseInt2(numOperands) || bodyReader.parseInt2(numAttrs) ||
-        bodyReader.parseInt2(numInvokables) || bodyReader.parseInt2(numResults))
+        bodyReader.parseInt2(numTopLevelOps) ||
+        bodyReader.parseInt2(numResults))
       return true;
 
     // We read and ignore the # users for each result.
@@ -752,7 +778,7 @@ bool InvokableBodyParser::parsePrimitiveList() {
     if (bodyReader.parseInt4Array(numResults, numResultUsers) ||
         bodyReader.parseInt4Array(numOperands, operands) ||
         bodyReader.parseInt4Array(numAttrs, attrsOffsets) ||
-        bodyReader.parseInt4Array(numInvokables, invokablesIndices))
+        bodyReader.parseInt4Array(numTopLevelOps, invokablesIndices))
       return true;
 
     // If the primitive had results, the register number for the first one is
@@ -799,9 +825,9 @@ bool InvokableBodyParser::parsePrimitiveList() {
 
     // The first primitive is a pseudo op which only defines the argument
     // registers.
-    if (i == 0 && !invokable.getArgumentTypes().empty()) {
-      if (numOperands != 0 || numAttrs != 0 || numInvokables != 0 ||
-          numResults != invokable.getArgumentTypes().size())
+    if (i == 0 && region->getNumArguments() != 0) {
+      if (numOperands != 0 || numAttrs != 0 || numTopLevelOps != 0 ||
+          numResults != region->getNumArguments())
         return bodyReader.emitError("malformed argument pseudo op");
 
       size_t argNo = 0;
@@ -844,23 +870,22 @@ bool InvokableBodyParser::parsePrimitiveList() {
     // now.
     SmallVector<Block *> regionsBlocksToTake;
     for (uint32_t invokableIdx : invokablesIndices) {
-      BEF::InvokableOp InvokableOp;
-      if (converter.resolveInvokable(invokableIdx, loc, InvokableOp))
+      Region *invokableRegion;
+      if (converter.resolveRegion(invokableIdx, loc, invokableRegion))
         return true;
 
       // If this is an anonymous invokable, then it is a region on the
       // operation, otherwise there should be an attribute name.
-      bool isRegion = invokable->getName().getStringRef().empty();
-      if (isRegion) {
+      if (isAnonymous) {
         // Check to see if someone already used this invokable as an
         // anonymous operation region.
-        if (InvokableOp.getBodyRegion().empty())
+        if (invokableRegion->empty())
           return mlir::emitError(loc,
                                  "anonymous invokable used multiple times"),
                  true;
 
-        Block *block = &InvokableOp.getBodyRegion().back();
-        InvokableOp.getBodyRegion().getBlocks().remove(*block);
+        Block *block = &invokableRegion->back();
+        invokableRegion->getBlocks().remove(*block);
         regionsBlocksToTake.push_back(block);
       } else {
         // If this is a symbol ref, check for a name.
@@ -873,10 +898,10 @@ bool InvokableBodyParser::parsePrimitiveList() {
           attrNames.push_back(name);
         }
 
-        // Regardless of wehther we have a name, rememer this as a
+        // Regardless of whether we have a name, remember this as a
         // FlatSymbolRef.
-        attrs.push_back(FlatSymbolRefAttr::get(InvokableOp));
-        --numInvokables;
+        attrs.push_back(FlatSymbolRefAttr::get(region->getParentOp()));
+        --numTopLevelOps;
       }
     }
 
@@ -896,7 +921,7 @@ bool InvokableBodyParser::parsePrimitiveList() {
       // and attribute names because we'll trip the op verifier.
       resultOp = bodyBuilder.create<BEF::OpaqueOp>(
           loc, resultTypes, primitiveName, bodyBuilder.getArrayAttr(attrs),
-          nonStrict, operandValues, numInvokables);
+          nonStrict, operandValues, numTopLevelOps);
     } else {
       OperationState state(loc, primitiveName, operandValues, resultTypes,
                            /*attrs*/ {});
@@ -925,27 +950,18 @@ bool InvokableBodyParser::parsePrimitiveList() {
       return bodyReader.emitError("invalid result register #");
     operandValues.push_back(registerValues[resultReg]);
   }
-  auto outputOp = bodyBuilder.create<BEF::OutputOp>(loc, operandValues);
-
-  // If we have MLIR type metadata, we can update our invokable signature to
-  // have the correct types now that we know them.
-  if (hasMLIRTypes) {
-    auto type =
-        FunctionType::get(invokable.getContext(), block.getArgumentTypes(),
-                          outputOp.getOperandTypes());
-    invokable->setAttr(mlir::FunctionOpInterface::getTypeAttrName(),
-                       TypeAttr::get(type));
-  }
+  bodyBuilder.create<BEF::OutputOp>(loc, operandValues);
 
   return false;
 }
 
-bool BEFToMLIRConverter::parseInvokableBody(BEF::InvokableOp invokable,
-                                            BEFReader &bodyReader,
-                                            BEFReader &attrNameReader,
-                                            BEFReader &mlirTypesReader) {
-  return InvokableBodyParser(invokable, bodyReader, attrNameReader,
-                             mlirTypesReader, *this)
+bool BEFToMLIRConverter::parseRegionBody(bool isAnonymous, Region *region,
+                                         BEFReader &bodyReader,
+                                         BEFReader &attrNameReader,
+                                         BEFReader &mlirTypesReader) {
+
+  return RegionParser(isAnonymous, region, bodyReader, attrNameReader,
+                      mlirTypesReader, *this)
       .parse();
 }
 
@@ -974,7 +990,7 @@ ModuleOp M::translateBEFToMLIR(ArrayRef<uint8_t> buffer, Location loc) {
       // Parse sections in a specific order, unbound by their order in the file.
       converter.parseLocationPositions() || converter.parseAttributes() ||
       converter.parseTypes() || converter.parsePrimitiveNames() ||
-      converter.parseInvokables())
+      converter.parseTopLevelOps())
     return {};
 
   return converter.takeModule();
