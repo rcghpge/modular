@@ -106,20 +106,6 @@ static void printResults(StringRef invokableName,
   }
 }
 
-/// Run the setup for a given model. Puts the chain output into `chain`
-/// and the context output into `context`.
-static ErrorOrSuccess setupModel(const TFLRuntimeModel &model, Runtime &runtime,
-                                 AnyAsyncValueRef &chain,
-                                 AnyAsyncValueRef &context) {
-  auto resultsOr = model.setup(runtime);
-  if (failed(resultsOr))
-    return resultsOr.takeError();
-
-  chain = std::move(resultsOr->first);
-  context = std::move(resultsOr->second);
-  return success();
-}
-
 ErrorOrSuccess
 M::initializeInputMemoryForModel(const TFLRuntimeModel &model,
                                  InputGenerationKind inputGenKind,
@@ -153,29 +139,23 @@ M::initializeInputMemoryForAllModels(const TFLModelFile &models,
 /// `failure()`. Saves the outputs of `model` into `results`. `afterExec` is
 /// responsible for awaiting the AsyncValues passed in.
 static ErrorOrSuccess
-executeModel(const TFLRuntimeModel &model, Runtime &runtime,
-             AnyAsyncValueRef chain, AnyAsyncValueRef context,
-             ArrayRef<void *> dataPtrs, AnyAsyncValueRef &resultChain,
+executeModel(const TFLExecutableModel &executableModel,
+             ArrayRef<void *> dataPtrs,
              std::function<LogicalResult()> beforeExec,
              std::function<void(ArrayRef<AnyAsyncValueRef>)> afterExec) {
+
+  const TFLRuntimeModel &model = executableModel.getModel();
+  Runtime &runtime = executableModel.getRuntime();
+
   auto dataPtrStart = dataPtrs.begin();
 
   size_t totalNumDataPtrsExpected = model.getNumModelInputs();
-  if (dataPtrs.empty() && totalNumDataPtrsExpected != 0)
-    return {Twine("no data pointers were supplied, but expected ") +
-            Twine(totalNumDataPtrsExpected)};
-
-  if (dataPtrs.size() < totalNumDataPtrsExpected)
-    return {Twine(dataPtrs.size()) +
-            Twine(" data pointers were supplied, but expected ") +
-            Twine(totalNumDataPtrsExpected)};
+  if (dataPtrs.size() != totalNumDataPtrsExpected)
+    return Error("incorrect number of data pointers supplied, but expected ");
 
   // Fill the arguments
   SmallVector<AnyAsyncValueRef> args;
-  args.reserve(model.getExecuteFn()->getNumArgs());
-  args.push_back(chain.copy());
-  args.push_back(context.copy());
-
+  args.reserve(totalNumDataPtrsExpected);
   for (auto [inputType, inputShape] :
        llvm::zip(model.getInputElementTypes(), model.getInputShapes())) {
     TFLiteType eltType(inputType);
@@ -189,28 +169,29 @@ executeModel(const TFLRuntimeModel &model, Runtime &runtime,
       return {Twine("Unable to run model: '") + model.getName() + Twine("'.")};
 
   // Execute the model and insert its results into the results vec.
-  auto results = model.execute(args, runtime);
+  auto results = executableModel.execute(args);
 
   // Pass in the tensor results to `afterExec`.
   if (afterExec)
     afterExec(results);
 
-  // The chain is the first result.
-  resultChain = std::move(results.front());
   return success();
 }
 
 LogicalResult M::runModel(const TFLRuntimeModel &model, Runtime &runtime,
                           InputGenerationKind inputGenKind, size_t numRuns,
                           bool benchmarkMode) {
-  AnyAsyncValueRef chain, context;
-  ErrorOrSuccess error = setupModel(model, runtime, chain, context);
-  if (failed(error)) {
-    outs() << error.takeError();
+  auto errorOrExecutableModel = model.setup(runtime);
+  if (failed(errorOrExecutableModel)) {
+    outs() << errorOrExecutableModel.takeError();
     return failure();
   }
 
+  auto executableModel = errorOrExecutableModel.takeValue();
+
   SmallVector<void *, 0> inputData;
+  ErrorOrSuccess error;
+
   /// This cleans up after a failure and prints the error message in the error
   /// variable.
   auto handleFailure = [&]() {
@@ -256,9 +237,7 @@ LogicalResult M::runModel(const TFLRuntimeModel &model, Runtime &runtime,
   std::vector<double> cpuTimesMillis;
   for (unsigned i = 0, e = numRuns; i != e; ++i) {
     auto start = std::chrono::steady_clock::now();
-    AnyAsyncValueRef resultChain;
-    if (failed(executeModel(model, runtime, chain.copy(), context.copy(),
-                            inputData, resultChain, beforeRun, afterRun)))
+    if (failed(executeModel(executableModel, inputData, beforeRun, afterRun)))
       return handleFailure();
     auto end = std::chrono::steady_clock::now();
     std::chrono::duration<double, std::milli> time = end - start;
