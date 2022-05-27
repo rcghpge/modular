@@ -25,6 +25,7 @@ def GRTDialect : Dialect {
 
   // Use LLVM-style accessor prefixes.
   let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
+  let useDefaultTypePrinterParser = 1;
 }
 
 #endif // GRAPHRT_GRTDIALECT_GRTDIALECT_TD

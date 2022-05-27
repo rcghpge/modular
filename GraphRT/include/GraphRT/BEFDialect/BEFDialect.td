@@ -24,6 +24,7 @@ def BEFDialect : Dialect {
 
   // Use LLVM-style accessor prefixes.
   let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
+  let useDefaultTypePrinterParser = 1;
 }
 
 #endif // GRAPHRT_BEFDIALECT_BEFDIALECT_TD
