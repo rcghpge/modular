@@ -120,25 +120,6 @@ static ErrorOrSuccess setupModel(const TFLRuntimeModel &model, Runtime &runtime,
   return success();
 }
 
-/// Run the setup for every model. Puts all the chain outputs into `chains`
-/// and all the context outputs into `contexts`. The models are sorted by
-/// name, and so the chains and contexts will be too.
-static ErrorOrSuccess
-setupAllModels(const TFLModelFile &models, Runtime &runtime,
-               SmallVectorImpl<AnyAsyncValueRef> &chains,
-               SmallVectorImpl<AnyAsyncValueRef> &contexts) {
-  for (const auto &m : models) {
-    auto resultsOr = m.setup(runtime);
-    if (failed(resultsOr))
-      return resultsOr.takeError();
-
-    chains.push_back(std::move(resultsOr->first));
-    contexts.push_back(std::move(resultsOr->second));
-  }
-
-  return success();
-}
-
 ErrorOrSuccess
 M::initializeInputMemoryForModel(const TFLRuntimeModel &model,
                                  InputGenerationKind inputGenKind,
@@ -163,24 +144,6 @@ M::initializeInputMemoryForAllModels(const TFLModelFile &models,
 
     ptrVec.append(*dataOr);
   }
-
-  return success();
-}
-
-static ErrorOrSuccess checkDataPointers(ArrayRef<TFLRuntimeModel> models,
-                                        ArrayRef<void *> dataPtrs) {
-  size_t totalNumDataPtrsExpected = std::accumulate(
-      models.begin(), models.end(), 0,
-      [](size_t i, const auto &m) { return i + m.getNumModelInputs(); });
-
-  if (dataPtrs.empty() && totalNumDataPtrsExpected != 0)
-    return {Twine("no data pointers were supplied, but expected ") +
-            Twine(totalNumDataPtrsExpected)};
-
-  if (dataPtrs.size() < totalNumDataPtrsExpected)
-    return {Twine(dataPtrs.size()) +
-            Twine(" data pointers were supplied, but expected ") +
-            Twine(totalNumDataPtrsExpected)};
 
   return success();
 }
@@ -234,60 +197,6 @@ executeModel(const TFLRuntimeModel &model, Runtime &runtime,
 
   // The chain is the first result.
   resultChain = std::move(results.front());
-  return success();
-}
-
-/// Execute every model, calling `beforeExec` before, and then `afterExec`
-/// afterwards. `beforeExec` can abort execution of that model by returning
-/// `failure()`. Does not save the outputs of any model. `afterExec` is
-/// responsible for awaiting the AsyncValues passed in. Updates `chains` with
-/// the chain returned from the last execution and does not pass them to
-/// `afterExec`.
-static ErrorOrSuccess executeAllModels(
-    const TFLModelFile &models, Runtime &runtime,
-    MutableArrayRef<AnyAsyncValueRef> chains,
-    ArrayRef<AnyAsyncValueRef> contexts, ArrayRef<void *> dataPtrs,
-    std::function<LogicalResult(const TFLRuntimeModel &)> beforeExec,
-    std::function<void(const TFLRuntimeModel &model,
-                       ArrayRef<AnyAsyncValueRef>)>
-        afterExec) {
-  auto dataPtrStart = dataPtrs.begin();
-
-  ErrorOrSuccess err = checkDataPointers(models, dataPtrs);
-  if (failed(err))
-    return err;
-
-  // Fill the arguments
-  SmallVector<AnyAsyncValueRef> args;
-  for (auto [model, chain, ctx] : llvm::zip(models, chains, contexts)) {
-    args.clear();
-    args.reserve(model.getExecuteFn()->getNumArgs());
-    args.push_back(chain.copy());
-    args.push_back(ctx.copy());
-
-    for (auto [inputType, inputShape] :
-         llvm::zip(model.getInputElementTypes(), model.getInputShapes())) {
-      TFLiteType eltType(inputType);
-      args.push_back(AsyncValueRef<TfLiteTensorRef>::createReady(
-          runtime, TfLiteTensorRef::getWithExternalData(inputShape, eltType,
-                                                        *dataPtrStart++)));
-    }
-
-    if (beforeExec)
-      if (failed(beforeExec(model)))
-        continue; // Go to the next model.
-
-    // Execute the model and insert its results into the results vec.
-    auto results = model.execute(args, runtime);
-
-    // Pass in the tensor results to `afterExec`.
-    if (afterExec)
-      afterExec(model, results);
-
-    // The chain is the first result.
-    chain = std::move(results.front());
-  }
-
   return success();
 }
 
@@ -354,89 +263,6 @@ LogicalResult M::runModel(const TFLRuntimeModel &model, Runtime &runtime,
     auto end = std::chrono::steady_clock::now();
     std::chrono::duration<double, std::milli> time = end - start;
     cpuTimesMillis.push_back(time.count());
-  }
-
-  // TODO: Generalize `benchmarkMode` into a more flexible policy around how
-  // we control execution of the model.
-  if (benchmarkMode) {
-    outs() << "Model inference times: ";
-    llvm::interleaveComma(cpuTimesMillis, outs());
-    outs() << '\n';
-    outs().flush();
-  }
-
-  for (auto d : inputData)
-    free(d);
-
-  return success();
-}
-
-LogicalResult M::runModelFile(const TFLModelFile &modelFile, Runtime &runtime,
-                              InputGenerationKind inputGenKind,
-                              unsigned numRuns, bool benchmarkMode) {
-
-  SmallVector<AnyAsyncValueRef, 4> chains, contexts;
-  ErrorOrSuccess error = setupAllModels(modelFile, runtime, chains, contexts);
-  if (failed(error)) {
-    outs() << error.takeError();
-    return failure();
-  }
-
-  SmallVector<void *, 0> inputData;
-  /// This cleans up after a failure and prints the error message in the error
-  /// variable.
-  auto handleFailure = [&]() {
-    for (auto d : inputData)
-      free(d);
-    outs() << error.takeError() << "\n";
-    return failure();
-  };
-
-  if ((error = initializeInputMemoryForAllModels(modelFile, inputGenKind,
-                                                 inputData)))
-    return handleFailure();
-
-  auto beforeRun = [&](const TFLRuntimeModel &model) -> LogicalResult {
-    auto numInputArgs = model.getExecuteFn()->getNumArgs();
-
-    if (inputGenKind == InputGenerationKind::kNone &&
-        numInputArgs != kExecuteFnNumMinInputs) {
-      errs() << "Cannot execute a model with input tensors (sizes: ";
-      llvm::interleaveComma(model.getInputShapes(), errs());
-      errs() << ") without input initialization yet! Hint: try setting "
-                "`-generate-inputs`.\n";
-      errs().flush();
-      return failure();
-    }
-
-    outs() << "--- Running '" << model.getName() << "':\n";
-    outs().flush();
-    return success();
-  };
-
-  MLIRContext ctx;
-  auto afterRun = [&](const TFLRuntimeModel &model,
-                      ArrayRef<AnyAsyncValueRef> results) {
-    // Wait for the model to finish execution.
-    await(results);
-
-    // Print the result tensors with the default printer.
-    if (!benchmarkMode)
-      printResults(model.getName(), makeArrayRef(results).drop_front(), &ctx,
-                   outs());
-  };
-
-  // Measure the time taken for each inference.
-  std::vector<double> cpuTimesMillis;
-  for (unsigned i = 0, e = numRuns; i != e; ++i) {
-    auto start = std::chrono::steady_clock::now();
-    error = executeAllModels(modelFile, runtime, chains, contexts, inputData,
-                             beforeRun, afterRun);
-    auto end = std::chrono::steady_clock::now();
-    std::chrono::duration<double, std::milli> time = end - start;
-    cpuTimesMillis.push_back(time.count());
-    if (failed(error))
-      return handleFailure();
   }
 
   // TODO: Generalize `benchmarkMode` into a more flexible policy around how
