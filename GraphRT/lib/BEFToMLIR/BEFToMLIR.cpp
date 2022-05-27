@@ -609,6 +609,17 @@ bool BEFToMLIRConverter::parseTopLevelOps() {
   auto builder = OpBuilder::atBlockBegin(module->getBody());
   Location loc = builder.getUnknownLoc();
   Type unknownType = builder.getType<BEF::UnknownType>();
+
+  // Provides everything we need to create a symbol-having op. Since we want to
+  // allow multiple regions per symbol, we have to go through the index section
+  // and find all the symbols' bodies and then we can create the ops.
+  struct ParsedSymbol {
+    size_t numArgs, numResults;
+    StringAttr primitive, symbol;
+    SmallVector<size_t, 1> bodyOffsets;
+  };
+
+  SmallVector<ParsedSymbol> symbols;
   // Read until we run out of invokable descriptors.
   while (!reader.empty()) {
     size_t primitiveOffset, symbolOffset, bodyOffset, numArgs, numResults;
@@ -620,41 +631,55 @@ bool BEFToMLIRConverter::parseTopLevelOps() {
         parseNULTerminatedStringAt(symbolOffset, stringReader, symbol))
       return true;
 
-    // Store the offset to the invokable's body.
-    invokableOffsets.push_back(bodyOffset);
+    auto found = llvm::find_if(
+        symbols, [&](const auto &sym) { return sym.symbol == symbol; });
+    if (found != symbols.end()) {
+      found->bodyOffsets.push_back(bodyOffset);
+      continue;
+    }
 
-    OperationState state(loc, primitive);
-    state.addAttribute(mlir::SymbolTable::getSymbolAttrName(), symbol);
-    // And add the region.
-    state.addRegion();
+    symbols.push_back(
+        ParsedSymbol{numArgs, numResults, primitive, symbol, {bodyOffset}});
+  }
+
+  for (const auto &s : symbols) {
+    OperationState state(loc, s.primitive);
+    state.addAttribute(mlir::SymbolTable::getSymbolAttrName(), s.symbol);
+    // Add as many regions as there are regions for the symbol.
+    for (size_t i = 0, e = s.bodyOffsets.size(); i < e; ++i)
+      state.addRegion();
     // Create the operation. This object will likely not verify yet, as we don't
     // yet have the function type on the op.
     Operation *theOp = builder.create(state);
-    Region *region = &theOp->getRegion(0);
 
-    // Set up the body block.
-    Block &body = region->emplaceBlock();
-    inputTypes.assign(numArgs, unknownType);
-    body.addArguments(inputTypes, SmallVector<Location, 3>(numArgs, loc));
-    inputTypes.clear();
+    // Set up the body block and parse each region.
+    for (auto &region : theOp->getRegions()) {
+      Block &body = region.emplaceBlock();
+      inputTypes.assign(s.numArgs, unknownType);
+      body.addArguments(inputTypes, SmallVector<Location, 3>(s.numArgs, loc));
+      inputTypes.clear();
 
-    // Add it to the vector now.
-    topLevelOps.push_back({primitive, symbol, region});
+      // Add it to the vector now.
+      topLevelOps.push_back({s.primitive, s.symbol, &region});
 
-    // Parse the invokable body now.
-    if (parseRegionBody(primitive.getValue().empty() &&
-                            symbol.getValue().empty(),
-                        region, bodyReader, attrNameReader, mlirTypesReader))
-      return true;
+      // Parse the invokable body now.
+      if (parseRegionBody(s.primitive.getValue().empty() &&
+                              s.symbol.getValue().empty(),
+                          &region, bodyReader, attrNameReader, mlirTypesReader))
+        return true;
+    }
 
-    // Get the function type from the parsed region. Use this so if we had the
-    // types we get those for free.
-    auto functionType = builder.getType<FunctionType>(
-        region->getArgumentTypes(),
-        region->front().getTerminator()->getOperandTypes());
-    // And add it to the invokable.
-    theOp->setAttr(mlir::FunctionOpInterface::getTypeAttrName(),
-                   TypeAttr::get(functionType));
+    // If we have a function-like op we have to provide a function type attr.
+    if (isa<mlir::FunctionOpInterface>(theOp)) {
+      // Get the function type from the parsed region. Use this so if we had the
+      // types we get those for free.
+      auto functionType = builder.getType<FunctionType>(
+          theOp->getRegion(0).getArgumentTypes(),
+          theOp->getRegion(0).front().getTerminator()->getOperandTypes());
+      // And add it to the invokable.
+      theOp->setAttr(mlir::FunctionOpInterface::getTypeAttrName(),
+                     TypeAttr::get(functionType));
+    }
   }
 
   if (topLevelOps.size() != numTopLevelOps)

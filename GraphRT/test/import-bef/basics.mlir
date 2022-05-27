@@ -1,5 +1,5 @@
 // RUN: bef-translate -export-bef -allow-unregistered-dialect %s > %t
-// RUN: bef-translate -import-bef %t | FileCheck %s
+// RUN: bef-translate -import-bef -allow-unregistered-dialect %t | FileCheck %s
 
 // RUN: bef-translate -export-bef -allow-unregistered-dialect -enable-bef-metadata %s > %t2
 // RUN: bef-translate -import-bef -allow-unregistered-dialect %t2 | FileCheck %s --check-prefix=MD
@@ -139,5 +139,18 @@ bef.invokable @opaque_round_trip() {
   "bef.opaque"(%0#1, %0#0) {attrs = [42 : si8], opName = "other.primitive"} : (!bef.unknown, !bef.unknown) -> ()
   bef.output
 }
+
+// CHECK-LABEL: "some.container"() ({
+// CHECK-NEXT:   bef.opaque "a.firstregion" []() : () -> ()
+// CHECK-NEXT:   bef.output
+// CHECK-NEXT: }, {
+// CHECK-NEXT:   bef.opaque "a.secondregion" []() : () -> ()
+// CHECK-NEXT:   bef.output
+// CHECK-NEXT: }) {sym_name = "multi_region"} : () -> ()
+"some.container"() ({
+  "a.firstregion"() : () -> ()
+}, {
+  "a.secondregion"() : () -> ()
+}) {sym_name = "multi_region"} : () -> ()
 
 // CHECK-NEXT: }

@@ -515,9 +515,10 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
       // If an op is a symbol, we also have to add the symbol name string.
       // Furthermore, if it's a symbol then don't register it with the rest of
       // the primitives, just register the op's name as a string.
-      if (auto symbolOp = dyn_cast<mlir::SymbolOpInterface>(op)) {
+      if (auto symbolName = op->getAttrOfType<StringAttr>(
+              mlir::SymbolTable::getSymbolAttrName())) {
         addString(op->getName().getIdentifier());
-        addString(symbolOp.getNameAttr());
+        addString(symbolName);
       } else {
         addPrimitiveOpcode(op->getName().getIdentifier());
       }
@@ -547,7 +548,7 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
   // If we're successful, check to make sure that all regions can be resolved.
   for (auto attrAndLoc : symbolRefAttrs) {
     Operation *symbolOp =
-        module.lookupSymbol(attrAndLoc.first.getLeafReference().getValue());
+        module.lookupSymbol(attrAndLoc.first.getLeafReference());
     for (auto &r : symbolOp->getRegions()) {
       if (getRegionID(r) == -1) {
         mlir::emitError(attrAndLoc.second)
@@ -1429,9 +1430,11 @@ void BEFModuleEmitter::emitInvokables(BEFEmitter *attributeNamesSection,
 
     // If the region belongs to a symbol, then fill in the primitive opcode and
     // symbol names.
-    if (auto sym = region->getParentOfType<mlir::SymbolOpInterface>()) {
-      opcode = sym->getName().getIdentifier();
-      symbol = sym.getNameAttr();
+    Operation *parent = region->getParentOp();
+    if (auto sym = parent->getAttrOfType<StringAttr>(
+            mlir::SymbolTable::getSymbolAttrName())) {
+      opcode = parent->getName().getIdentifier();
+      symbol = sym;
     }
 
     // Remember that we emitted this region to this offset.
