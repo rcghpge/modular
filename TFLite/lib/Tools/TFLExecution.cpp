@@ -70,15 +70,6 @@ static void printTensorResults(StringRef invokableName,
 void M::runModel(const TFLRuntimeModel &model, Runtime &runtime,
                  InputGenerationKind inputGenKind, size_t numRuns,
                  bool benchmarkMode) {
-  if (inputGenKind == InputGenerationKind::kNone &&
-      model.getNumModelInputs() != 0) {
-    llvm::interleaveComma(model.getInputShapes(), errs());
-    errs() << ") without input initialization yet! Hint: try setting "
-              "`-generate-inputs`.\n";
-    errs().flush();
-    return;
-  }
-
   auto errorOrExecutableModel = model.setup(runtime);
   if (failed(errorOrExecutableModel)) {
     outs() << errorOrExecutableModel.takeError();

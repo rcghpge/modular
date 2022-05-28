@@ -26,9 +26,6 @@ static ErrorOrSuccess fillWithElements(InputGenerationKind inputGenKind,
   uint8_t elementBuffer[TensorDType::kMaxElementSizeInBytes];
 
   switch (inputGenKind) {
-  case InputGenerationKind::kNone:
-    return success();
-
   case InputGenerationKind::kRandom:
     return Kernel::fillRandom(ptr, numElements, dtype);
 

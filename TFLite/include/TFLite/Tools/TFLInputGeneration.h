@@ -10,14 +10,11 @@
 #include "Support/LLVMForwardDecls.h"
 
 namespace M {
-class Error;
 template <typename T>
 class ErrorOr;
-class TFLiteType;
 class TFLRuntimeModel;
 
 enum class InputGenerationKind {
-  kNone,   // inputs are not generated
   kRandom, // generate inputs with random elements, distribution depends on type
   kZeros,  // generate inputs filled with zeros
   kOnes,   // generate inputs filled with ones
