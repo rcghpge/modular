@@ -65,10 +65,10 @@ static void printTensorResults(StringRef invokableName,
   }
 }
 
-void M::runModel(const TFLRuntimeModel &model, Runtime &runtime,
+void M::runModel(const Model *model, Runtime &runtime,
                  InputGenerationKind inputGenKind, size_t numRuns,
                  bool benchmarkMode) {
-  auto errorOrExecutableModel = model.setup(runtime);
+  auto errorOrExecutableModel = model->setup(runtime);
   if (failed(errorOrExecutableModel)) {
     outs() << errorOrExecutableModel.takeError();
     return;
@@ -92,7 +92,7 @@ void M::runModel(const TFLRuntimeModel &model, Runtime &runtime,
 
     // Fill the arguments
     SmallVector<AnyAsyncValueRef> args;
-    args.reserve(model.getNumModelInputs());
+    args.reserve(model->getNumModelInputs());
     for (auto &inputTensor : inputTensors) {
       TFLiteType eltType(inputTensor.getEltType());
       assert(eltType != TFLiteType::invalid &&
@@ -103,18 +103,18 @@ void M::runModel(const TFLRuntimeModel &model, Runtime &runtime,
                                                inputTensor.getPointer())));
     }
 
-    outs() << "--- Running '" << model.getName() << "':\n";
+    outs() << "--- Running '" << model->getName() << "':\n";
     outs().flush();
 
     // Execute the model and insert its results into the results vec.
-    auto results = executableModel.execute(args);
+    auto results = executableModel->execute(args);
 
     // Wait for the model to finish execution, forcing synchrony.
     await(results);
 
     // Print the result tensors with the default printer.
     if (!benchmarkMode)
-      printTensorResults(model.getName(), makeArrayRef(results).drop_front(),
+      printTensorResults(model->getName(), makeArrayRef(results).drop_front(),
                          &ctx, outs());
 
     auto end = std::chrono::steady_clock::now();

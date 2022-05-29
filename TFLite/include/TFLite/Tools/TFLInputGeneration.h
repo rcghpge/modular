@@ -9,13 +9,11 @@
 
 #include "GenericML/Support/Tensor.h"
 #include "LLCL/ForwardDecls.h"
-#include "Support/LLVMForwardDecls.h"
-#include "llvm/ADT/SmallVector.h"
 
 namespace M {
 template <typename T>
 class ErrorOr;
-class TFLRuntimeModel;
+class Model;
 class Tensor;
 
 enum class InputGenerationKind {
@@ -29,8 +27,8 @@ enum class InputGenerationKind {
 /// This allocates the pointer, fills in the data, and returns ownership to the
 /// caller.
 ErrorOr<SmallVector<Tensor, 3>>
-initializeInputMemory(InputGenerationKind inputGenKind,
-                      const TFLRuntimeModel &model, Runtime &runtime);
+initializeInputMemory(InputGenerationKind inputGenKind, const Model *model,
+                      Runtime &runtime);
 
 } // namespace M
 

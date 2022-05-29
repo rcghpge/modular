@@ -6,9 +6,9 @@
 
 #include "TFLite/Tools/TFLInputGeneration.h"
 #include "GenericML/Kernels.h"
+#include "GenericML/Support/Model.h"
 #include "GenericML/Support/Tensor.h"
 #include "Support/ErrorOr.h"
-#include "TFLite/TFLModel/TFLModel.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/raw_ostream.h"
@@ -50,12 +50,12 @@ static ErrorOrSuccess fillWithElements(Tensor &tensor,
 }
 
 ErrorOr<SmallVector<Tensor, 3>>
-M::initializeInputMemory(InputGenerationKind inputGenKind,
-                         const TFLRuntimeModel &model, Runtime &runtime) {
+M::initializeInputMemory(InputGenerationKind inputGenKind, const Model *model,
+                         Runtime &runtime) {
   SmallVector<Tensor, 3> inputTensors;
 
   for (const auto &[shape, eltType] :
-       llvm::zip(model.getInputShapes(), model.getInputElementTypes())) {
+       llvm::zip(model->getInputShapes(), model->getInputElementTypes())) {
 
     // Allocate the tensor.
     Tensor input = Tensor::getUninit(shape, eltType, runtime);
