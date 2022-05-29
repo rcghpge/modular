@@ -839,11 +839,11 @@ ErrorOr<BEF::TypeKind> TypeEmitter::getIntegerTypeEncoding(IntegerType type) {
   if (type.isSignless())
     return Error("signless integers not supported");
 
-  auto dtype = TensorDType::getInt(bitWidth, type.isSigned());
-  if (failed(dtype))
+  auto eltType = TensorEltType::getInt(bitWidth, type.isSigned());
+  if (failed(eltType))
     return Error("integer cannot be converted to BEF type");
 
-  return BEF::TypeKind(dtype->getValue());
+  return BEF::TypeKind(eltType->getValue());
 }
 
 /// Helper to get int, float or complex encoding.
@@ -856,7 +856,7 @@ ErrorOr<BEF::TypeKind> TypeEmitter::getIntFPComplexTypeEncoding(Type type) {
     auto eltTypeOr = getIntFPComplexTypeEncoding(complexType.getElementType());
     if (eltTypeOr.isError())
       return eltTypeOr.takeError();
-    return BEF::TypeKind(TensorDType::getComplex(*eltTypeOr).getValue());
+    return BEF::TypeKind(TensorEltType::getComplex(*eltTypeOr).getValue());
   }
 
   return Error("type cannot be encoded in BEF");

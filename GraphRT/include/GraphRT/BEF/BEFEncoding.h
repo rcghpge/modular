@@ -12,7 +12,7 @@
 #ifndef GRAPHRT_BEF_BEFENCODING_H
 #define GRAPHRT_BEF_BEFENCODING_H
 
-#include "GenericML/Support/TensorDType.h"
+#include "GenericML/Support/TensorEltType.h"
 #include "Support/LLVMForwardDecls.h"
 #include "llvm/ADT/BitmaskEnum.h"
 #include "llvm/ADT/StringRef.h"
@@ -178,11 +178,11 @@ DECLARE_ATTR_MAPPING(kString, StringRef);
 // BEF type constants and helpers
 //===----------------------------------------------------------------------===//
 
-/// BEF Types are always compatible with GenericML's TensorDType but have some
+/// BEF Types are always compatible with GenericML's TensorEltType but have some
 /// additional types for good measure.
-class TypeKind : public TensorDType {
+class TypeKind : public TensorEltType {
 public:
-  using TensorDType::TensorDType;
+  using TensorEltType::TensorEltType;
   enum ExtraCases : uint8_t {
     // In the BEF encoding of these types, they all have following bytes.
     tensor = kFirstExtendedOption,

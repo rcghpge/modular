@@ -6,7 +6,7 @@
 
 #include "TFLite/Tools/TFLInputGeneration.h"
 #include "GenericML/Kernels.h"
-#include "GenericML/Support/TensorDType.h"
+#include "GenericML/Support/TensorEltType.h"
 #include "Support/Error.h"
 #include "TFLite/Support/TFLiteType.h"
 #include "TFLite/TFLRuntimeModel.h"
@@ -18,25 +18,26 @@ using namespace M;
 
 static ErrorOrSuccess fillWithElements(InputGenerationKind inputGenKind,
                                        void *ptr, size_t numElements,
-                                       TensorDType dtype) {
+                                       TensorEltType eltType) {
 
-  if (dtype.isInvalid())
+  if (eltType.isInvalid())
     return Error("unspecified element type to initialize");
 
-  uint8_t elementBuffer[TensorDType::kMaxElementSizeInBytes];
+  uint8_t elementBuffer[TensorEltType::kMaxElementSizeInBytes];
 
   switch (inputGenKind) {
   case InputGenerationKind::kRandom:
-    return Kernel::fillRandom(ptr, numElements, dtype);
+    return Kernel::fillRandom(ptr, numElements, eltType);
 
   case InputGenerationKind::kOnes: {
-    ErrorOrSuccess result = Kernel::getScalarOne(elementBuffer, dtype);
+    ErrorOrSuccess result = Kernel::getScalarOne(elementBuffer, eltType);
     if (failed(result))
       return result;
     break;
   }
   case InputGenerationKind::kNegOnes: {
-    ErrorOrSuccess result = Kernel::getScalarNegativeOne(elementBuffer, dtype);
+    ErrorOrSuccess result =
+        Kernel::getScalarNegativeOne(elementBuffer, eltType);
     if (failed(result))
       return result;
     break;
@@ -47,7 +48,7 @@ static ErrorOrSuccess fillWithElements(InputGenerationKind inputGenKind,
   }
 
   // Fill the tensor with the 0, 1, -1 value.
-  return Kernel::fillHomogeneous(ptr, numElements, dtype, elementBuffer);
+  return Kernel::fillHomogeneous(ptr, numElements, eltType, elementBuffer);
 }
 
 ErrorOr<SmallVector<void *, 3>>
