@@ -9,14 +9,12 @@
 #include "LLCL/Runtime/AllocatorType.h"
 #include "Support/Error.h"
 #include "TFLite/Support/TFLiteType.h"
-#include "TFLite/TFLModelFile.h"
+#include "TFLite/TFLModel/TFLModel.h"
 #include "TFLite/TFLTensor.h"
 #include "TFLite/Tools/TFLInputGeneration.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
-
 #include <chrono>
-#include <numeric>
 
 using namespace M;
 using llvm::errs;

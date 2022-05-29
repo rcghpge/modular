@@ -8,7 +8,7 @@
 #include "GenericML/Kernels.h"
 #include "GenericML/Support/Tensor.h"
 #include "Support/ErrorOr.h"
-#include "TFLite/TFLRuntimeModel.h"
+#include "TFLite/TFLModel/TFLModel.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/raw_ostream.h"
