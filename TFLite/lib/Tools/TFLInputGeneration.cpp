@@ -6,9 +6,8 @@
 
 #include "TFLite/Tools/TFLInputGeneration.h"
 #include "GenericML/Kernels.h"
-#include "GenericML/Support/TensorEltType.h"
-#include "Support/Error.h"
-#include "TFLite/Support/TFLiteType.h"
+#include "GenericML/Support/Tensor.h"
+#include "Support/ErrorOr.h"
 #include "TFLite/TFLRuntimeModel.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Twine.h"
@@ -16,18 +15,15 @@
 
 using namespace M;
 
-static ErrorOrSuccess fillWithElements(InputGenerationKind inputGenKind,
-                                       void *ptr, size_t numElements,
-                                       TensorEltType eltType) {
-
-  if (eltType.isInvalid())
-    return Error("unspecified element type to initialize");
-
+static ErrorOrSuccess fillWithElements(Tensor &tensor,
+                                       InputGenerationKind inputGenKind) {
   uint8_t elementBuffer[TensorEltType::kMaxElementSizeInBytes];
+  auto eltType = tensor.getEltType();
 
   switch (inputGenKind) {
   case InputGenerationKind::kRandom:
-    return Kernel::fillRandom(ptr, numElements, eltType);
+    return Kernel::fillRandom(tensor.getPointer(),
+                              tensor.getShape().getNumElements(), eltType);
 
   case InputGenerationKind::kOnes: {
     ErrorOrSuccess result = Kernel::getScalarOne(elementBuffer, eltType);
@@ -48,31 +44,25 @@ static ErrorOrSuccess fillWithElements(InputGenerationKind inputGenKind,
   }
 
   // Fill the tensor with the 0, 1, -1 value.
-  return Kernel::fillHomogeneous(ptr, numElements, eltType, elementBuffer);
+  return Kernel::fillHomogeneous(tensor.getPointer(),
+                                 tensor.getShape().getNumElements(), eltType,
+                                 elementBuffer);
 }
 
-ErrorOr<SmallVector<void *, 3>>
+ErrorOr<SmallVector<Tensor, 3>>
 M::initializeInputMemory(InputGenerationKind inputGenKind,
-                         const TFLRuntimeModel &model) {
-  SmallVector<void *, 3> inputTensorData;
+                         const TFLRuntimeModel &model, Runtime &runtime) {
+  SmallVector<Tensor, 3> inputTensors;
+
   for (const auto &[shape, eltType] :
        llvm::zip(model.getInputShapes(), model.getInputElementTypes())) {
 
-    // Do the malloc.
-    ssize_t size = eltType.getSizeInBytes(shape.getNumElements());
-    assert(size != -1);
-    inputTensorData.push_back(malloc(size));
-
-    // Do the fill
-    size_t numElements = shape.getNumElements();
-    auto err = fillWithElements(inputGenKind, inputTensorData.back(),
-                                numElements, eltType);
-
-    if (failed(err)) {
-      for (auto t : inputTensorData)
-        free(t);
+    // Allocate the tensor.
+    Tensor input = Tensor::getUninit(shape, eltType, runtime);
+    if (auto err = fillWithElements(input, inputGenKind))
       return err.takeError();
-    }
+
+    inputTensors.push_back(std::move(input));
   }
-  return inputTensorData;
+  return inputTensors;
 }

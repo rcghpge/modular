@@ -78,43 +78,31 @@ void M::runModel(const TFLRuntimeModel &model, Runtime &runtime,
 
   auto executableModel = errorOrExecutableModel.takeValue();
 
-  SmallVector<void *> inputData;
-  ErrorOrSuccess error;
-
-  /// This cleans up after a failure and prints the error message in the error
-  /// variable.
-  auto handleFailure = [&]() {
-    for (auto d : inputData)
-      free(d);
-    outs() << error.takeError() << "\n";
-  };
-
-  auto dataOr = initializeInputMemory(inputGenKind, model);
-  if (failed(dataOr)) {
-    error = dataOr.takeError();
-    return handleFailure();
+  auto inputTensorsOr = initializeInputMemory(inputGenKind, model, runtime);
+  if (failed(inputTensorsOr)) {
+    outs() << inputTensorsOr.takeError() << "\n";
+    return;
   }
-  inputData = std::move(dataOr.takeValue());
 
+  SmallVector<Tensor, 3> &inputTensors = inputTensorsOr.get();
   MLIRContext ctx;
 
   // Measure the time taken for each inference.
   std::vector<double> cpuTimesMillis;
   for (unsigned i = 0, e = numRuns; i != e; ++i) {
     auto start = std::chrono::steady_clock::now();
-    auto dataPtrStart = inputData.begin();
 
     // Fill the arguments
     SmallVector<AnyAsyncValueRef> args;
     args.reserve(model.getNumModelInputs());
-    for (auto [inputType, inputShape] :
-         llvm::zip(model.getInputElementTypes(), model.getInputShapes())) {
-      TFLiteType eltType(inputType);
+    for (auto &inputTensor : inputTensors) {
+      TFLiteType eltType(inputTensor.getEltType());
       assert(eltType != TFLiteType::invalid &&
              "invalid input format for model?");
       args.push_back(AsyncValueRef<TfLiteTensorRef>::createReady(
-          runtime, TfLiteTensorRef::getWithExternalData(inputShape, eltType,
-                                                        *dataPtrStart++)));
+          runtime,
+          TfLiteTensorRef::getWithExternalData(inputTensor.getShape(), eltType,
+                                               inputTensor.getPointer())));
     }
 
     outs() << "--- Running '" << model.getName() << "':\n";
@@ -144,7 +132,4 @@ void M::runModel(const TFLRuntimeModel &model, Runtime &runtime,
     outs() << '\n';
     outs().flush();
   }
-
-  for (auto d : inputData)
-    free(d);
 }
