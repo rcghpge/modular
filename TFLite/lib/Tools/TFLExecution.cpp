@@ -5,11 +5,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "TFLite/Tools/TFLExecution.h"
+#include "GenericML/Support/Model.h"
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/AllocatorType.h"
 #include "Support/Error.h"
 #include "TFLite/Support/TFLiteType.h"
-#include "TFLite/TFLModel/TFLModel.h"
 #include "TFLite/TFLTensor.h"
 #include "TFLite/Tools/TFLInputGeneration.h"
 #include "mlir/IR/Diagnostics.h"
@@ -92,7 +92,7 @@ void M::runModel(const Model *model, Runtime &runtime,
 
     // Fill the arguments
     SmallVector<AnyAsyncValueRef> args;
-    args.reserve(model->getNumModelInputs());
+    args.reserve(model->getNumInputs());
     for (auto &inputTensor : inputTensors) {
       TFLiteType eltType(inputTensor.getEltType());
       assert(eltType != TFLiteType::invalid &&

@@ -9,7 +9,6 @@
 #include "GenericML/Support/Model.h"
 #include "GenericML/Support/Tensor.h"
 #include "Support/ErrorOr.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -54,11 +53,9 @@ M::initializeInputMemory(InputGenerationKind inputGenKind, const Model *model,
                          Runtime &runtime) {
   SmallVector<Tensor, 3> inputTensors;
 
-  for (const auto &[shape, eltType] :
-       llvm::zip(model->getInputShapes(), model->getInputElementTypes())) {
-
+  for (const auto &spec : model->getInputSpecs()) {
     // Allocate the tensor.
-    Tensor input = Tensor::getUninit(shape, eltType, runtime);
+    Tensor input = Tensor::getUninit(spec, runtime);
     if (auto err = fillWithElements(input, inputGenKind))
       return err.takeError();
 
