@@ -304,7 +304,7 @@ LLCL::DecodedLocation BEFExecutor::decode(const EncodedLocation &loc) const {
   BEFReader reader(befFile->locationPositions, [&](Error message) {});
 
   size_t filenameOffset, lineNo, colNo;
-  if (reader.dropBytes(loc.data) || reader.parseVBR(filenameOffset) ||
+  if (reader.dropBytes(loc.getData()) || reader.parseVBR(filenameOffset) ||
       reader.parseVBR(lineNo) || reader.parseVBR(colNo))
     return LLCL::DecodedLocation{"<<BEF file encoding error>>", 0, -1};
 
