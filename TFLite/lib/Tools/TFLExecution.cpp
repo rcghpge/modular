@@ -90,17 +90,15 @@ void M::runModel(const Model *model, Runtime &runtime,
   for (unsigned i = 0, e = numRuns; i != e; ++i) {
     auto start = std::chrono::steady_clock::now();
 
-    // Fill the arguments
+    // Fill the arguments.  If we are running the model once, we pass in the
+    // input tensors directly (the model will deallocate them when it is done
+    // with them).  If not, we pass in an immortal reference to the tensor data
+    // so the input buffers live across all executions.
     SmallVector<AnyAsyncValueRef> args;
     args.reserve(model->getNumInputs());
-    for (auto &inputTensor : inputTensors) {
-      TFLiteType eltType(inputTensor.getEltType());
-      assert(eltType != TFLiteType::invalid &&
-             "invalid input format for model?");
-      args.push_back(AsyncValueRef<TfLiteTensorRef>::createReady(
-          runtime,
-          TfLiteTensorRef::getWithExternalData(inputTensor.getShape(), eltType,
-                                               inputTensor.getPointer())));
+    for (auto &input : inputTensors) {
+      Tensor t = numRuns == 1 ? std::move(input) : input.getImmortal();
+      args.push_back(AsyncValueRef<Tensor>::createReady(runtime, std::move(t)));
     }
 
     outs() << "--- Running '" << model->getName() << "':\n";
