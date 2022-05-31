@@ -9,7 +9,6 @@
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/AllocatorType.h"
 #include "Support/Error.h"
-#include "TFLite/Support/TFLiteType.h"
 #include "TFLite/TFLTensor.h"
 #include "TFLite/Tools/TFLInputGeneration.h"
 #include "mlir/IR/Diagnostics.h"
@@ -54,7 +53,10 @@ static void printTensorResults(StringRef invokableName,
 
       // Handle TFLite tensor types.
       if (auto *tensor = result->dyn_cast<TfLiteTensor>()) {
-        os << *tensor;
+        // Use a temporary TfLiteTensorRef to print this.
+        auto ref = TfLiteTensorRef::take(tensor);
+        os << ref;
+        *tensor = ref.release();
         return;
       }
 
