@@ -9,7 +9,6 @@
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/AllocatorType.h"
 #include "Support/Error.h"
-#include "TFLite/TFLTensor.h"
 #include "TFLite/Tools/TFLInputGeneration.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
@@ -20,12 +19,82 @@ using llvm::errs;
 using llvm::outs;
 using mlir::MLIRContext;
 
+template <typename T, typename PrintedType>
+static void printElements(const void *ptr, size_t numElements,
+                          raw_ostream &os) {
+  auto elts = llvm::makeArrayRef(static_cast<const T *>(ptr), numElements);
+  llvm::interleaveComma(elts, os,
+                        [&](T element) { os << (PrintedType)element; });
+}
+
+// TODO: move to kernels.
+static void printTensor(const Tensor &tensor, raw_ostream &os) {
+  os << "tensor<";
+  for (auto elt : tensor.getShape())
+    os << elt << "x";
+
+  // TODO: Add print support for quantization.
+  os << tensor.getEltType().getAsString() << "> ";
+
+  const void *data = tensor.getPointer();
+  size_t numElements = tensor.getShape().getNumElements();
+
+  os << '[';
+  switch (tensor.getEltType().getValue()) {
+  default:
+    os << "unsupported tensor type for printing";
+    break;
+  case TensorEltType::f32:
+    printElements<float, float>(data, numElements, os);
+    break;
+  case TensorEltType::ui16:
+    printElements<uint16_t, unsigned>(data, numElements, os);
+    break;
+  case TensorEltType::si16:
+    printElements<int16_t, int>(data, numElements, os);
+    break;
+  case TensorEltType::ui8:
+    printElements<uint8_t, unsigned>(data, numElements, os);
+    break;
+  case TensorEltType::si8:
+    printElements<int8_t, int>(data, numElements, os);
+    break;
+  case TensorEltType::ui32:
+    printElements<uint32_t, unsigned>(data, numElements, os);
+    break;
+  case TensorEltType::si32:
+    printElements<int32_t, int>(data, numElements, os);
+    break;
+  case TensorEltType::kBool:
+    printElements<bool, bool>(data, numElements, os);
+    break;
+  }
+
+  os << "]\n";
+}
+
 /// This method can be used to print the results of `invokable` in the
 /// standard format.  It delegates to printAsyncValueResult and handles
 /// standard data types.
-static void printTensorResults(StringRef invokableName,
-                               ArrayRef<AnyAsyncValueRef> results,
+static void printTensorResults(const ExecutableModel *model,
+                               MutableArrayRef<AnyAsyncValueRef> results,
                                MLIRContext *context, raw_ostream &os) {
+  StringRef name = model->getModel()->getName();
+
+  // Check that any tensors we get are generic tensors, not framework
+  // specific tensors.  We know that all tensors have been awaited here.
+  for (auto &result : results) {
+    assert(result->isReady() && "We awaited this, it should be ready");
+    // If we have an error or Tensor result, then we're good.
+    if (result->isError() || result->isType<Tensor>())
+      continue;
+
+    // Otherwise, we must have a framework specific tensor, convert it to a
+    // generic one (or get an error).
+    result = model->convertToGenericTensor(result);
+    await(result);
+  }
+
   // Check all the results for errors, and if we find any of them, emit them
   // through MLIR error handling.  We use MLIR here just because it makes
   // diagnostic verification easy.  We do this before printing the results
@@ -42,7 +111,7 @@ static void printTensorResults(StringRef invokableName,
   // Print out the invokable results that we know about.
   // Go ahead and print out the invokable results that we know about.
   if (!results.empty()) {
-    os << "'" << invokableName << "' returned ";
+    os << "'" << name << "' returned ";
     llvm::interleaveComma(results, os, [&](const AnyAsyncValueRef &result) {
       // Handle error value by printing it inline, and emitting it as an error
       // through SourceMgr so we can validate it.
@@ -51,12 +120,9 @@ static void printTensorResults(StringRef invokableName,
         return;
       }
 
-      // Handle TFLite tensor types.
-      if (auto *tensor = result->dyn_cast<TfLiteTensor>()) {
-        // Use a temporary TfLiteTensorRef to print this.
-        auto ref = TfLiteTensorRef::take(tensor);
-        os << ref;
-        *tensor = ref.release();
+      // Handle tensor types.
+      if (auto *tensor = result->dyn_cast<Tensor>()) {
+        printTensor(*tensor, os);
         return;
       }
 
@@ -113,9 +179,11 @@ void M::runModel(const Model *model, Runtime &runtime,
     await(results);
 
     // Print the result tensors with the default printer.
-    if (!benchmarkMode)
-      printTensorResults(model->getName(), makeArrayRef(results).drop_front(),
-                         &ctx, outs());
+    if (!benchmarkMode) {
+      MutableArrayRef resultRef(results.data(), results.size());
+      printTensorResults(executableModel.get(), resultRef.drop_front(), &ctx,
+                         outs());
+    }
 
     auto end = std::chrono::steady_clock::now();
     std::chrono::duration<double, std::milli> time = end - start;
