@@ -1,16 +1,16 @@
-//===- TFLExecution.cpp ---------------------------------------------------===//
+//===- ExecutionDriver.cpp ------------------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
 
-#include "TFLite/Tools/TFLExecution.h"
+#include "GenericML/ExecutionDriver.h"
 #include "GenericML/Kernels.h"
 #include "GenericML/Support/Model.h"
+#include "GenericML/Support/Tensor.h"
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/AllocatorType.h"
 #include "Support/Error.h"
-#include "TFLite/Tools/TFLInputGeneration.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
 #include <chrono>
@@ -20,9 +20,11 @@ using llvm::errs;
 using llvm::outs;
 using mlir::MLIRContext;
 
-/// This method can be used to print the results of `invokable` in the
-/// standard format.  It delegates to printAsyncValueResult and handles
-/// standard data types.
+/// This method can be used to print the results of a model in the standard
+/// format for an executor tool.  It handles converting framework specific
+/// tensor types into something we can print if needed, and handles
+/// printing/reporting of errors in a way that works with diagnostic
+/// verification.
 static void printTensorResults(const ExecutableModel *model,
                                MutableArrayRef<AnyAsyncValueRef> results,
                                MLIRContext *context, raw_ostream &os) {

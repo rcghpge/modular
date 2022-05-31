@@ -1,10 +1,10 @@
-//===- TFLInputGeneration.cpp ---------------------------------------------===//
+//===- InputGeneration.cpp ------------------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
 
-#include "TFLite/Tools/TFLInputGeneration.h"
+#include "GenericML/ExecutionDriver.h"
 #include "GenericML/Kernels.h"
 #include "GenericML/Support/Model.h"
 #include "GenericML/Support/Tensor.h"

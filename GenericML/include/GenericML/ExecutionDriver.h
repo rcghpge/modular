@@ -1,18 +1,23 @@
-//===- TFLInputGeneration.h -----------------------------------------------===//
+//===- GenericML/ExecutionDriver.h ----------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
+//
+// This file provides an interface to the standardized "frwk-execute" command
+// line tools.
+//
+//===----------------------------------------------------------------------===//
 
-#ifndef TFLITE_TOOLS_TFLINPUTGENERATION_H
-#define TFLITE_TOOLS_TFLINPUTGENERATION_H
+#ifndef GENERICML_EXECUTIONDRIVER_H
+#define GENERICML_EXECUTIONDRIVER_H
 
-#include "GenericML/Support/Tensor.h"
 #include "LLCL/ForwardDecls.h"
+#include "Support/ErrorOr.h"
+#include "Support/LLVMForwardDecls.h"
+#include <cstddef>
 
 namespace M {
-template <typename T>
-class ErrorOr;
 class Model;
 class Tensor;
 
@@ -30,6 +35,11 @@ ErrorOr<SmallVector<Tensor, 3>>
 initializeInputMemory(InputGenerationKind inputGenKind, const Model *model,
                       Runtime &runtime);
 
+/// Run `model` using `runtime` `numRuns` times.
+void runModel(const Model *model, LLCL::Runtime &runtime,
+              InputGenerationKind inputGenKind, size_t numRuns = 1,
+              bool benchmarkMode = false);
+
 } // namespace M
 
-#endif // TFLITE_TOOLS_TFLINPUTGENERATION_H
+#endif // GENERICML_EXECUTIONDRIVER_H
