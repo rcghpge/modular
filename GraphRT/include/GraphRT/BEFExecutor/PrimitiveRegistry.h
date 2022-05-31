@@ -891,8 +891,8 @@ private:
 ///
 #define ADD_PRIMITIVE(registry, name, fn)                                      \
   do {                                                                         \
-    registry.add(name,                                                         \
-                 ::M::Detail::PrimitiveImpl<decltype(&fn), &fn>::invoke);      \
+    (registry).add(name,                                                       \
+                   ::M::Detail::PrimitiveImpl<decltype(&fn), &fn>::invoke);    \
     ::M::Detail::PrimitiveImpl<decltype(&fn), &fn>::registerTypes();           \
   } while (0)
 

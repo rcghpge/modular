@@ -14,6 +14,7 @@
 #include "GraphRT/BEFExecutor/BEFFile.h"
 #include "GraphRT/BEFExecutor/Invokable.h"
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
+#include "GraphRT/BEFExecutor/TopLevelOp.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringMap.h"
 
@@ -52,19 +53,14 @@ public:
   /// This is the list of primitive implementations arranged by their ID.
   std::vector<PrimitiveRegistry::PrimitiveImplFn> primitives;
 
-  /// This map holds the index in `invokables` of invokables with the specified
-  /// name.
-  ///
-  /// TODO: This data structure is major overkill: it contributes significant
-  /// code size and each name inserted into this is a malloc. See:
-  /// https://github.com/modularml/modular/issues/11 for more info.
-  llvm::StringMap<size_t> invokableSymbolTable;
-
   /// This contains all of the BEFInvokable records inline in dense memory even
   /// though clients treat them like individual objects.  Their lifetime is
   /// completely bound to BEFFileImpl's.
   BEFInvokable *invokables = nullptr;
   size_t numInvokables = 0;
+
+  /// This contains a list of the top level ops in the BEF file.
+  SmallVector<TopLevelOp, 1> topLevelOps;
 };
 
 /// BEF specific implementation of the Invokable interface.

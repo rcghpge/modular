@@ -512,16 +512,11 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
       for (auto attr : opaque.getAttrs())
         processAttr(StringAttr::get(op->getContext()), attr, false);
     } else {
+      addPrimitiveOpcode(op->getName().getIdentifier());
       // If an op is a symbol, we also have to add the symbol name string.
-      // Furthermore, if it's a symbol then don't register it with the rest of
-      // the primitives, just register the op's name as a string.
       if (auto symbolName = op->getAttrOfType<StringAttr>(
-              mlir::SymbolTable::getSymbolAttrName())) {
-        addString(op->getName().getIdentifier());
+              mlir::SymbolTable::getSymbolAttrName()))
         addString(symbolName);
-      } else {
-        addPrimitiveOpcode(op->getName().getIdentifier());
-      }
 
       // Keep track of any attributes used by this op. If the attr is the
       // function type attr that symbols have, then don't write that.

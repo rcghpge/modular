@@ -13,6 +13,8 @@
 #include "GraphRT/BEF/BEFReader.h"
 #include "LLCL/Runtime/Allocator.h"
 #include "LLCL/Support/RCRef.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 using namespace M;
@@ -140,6 +142,9 @@ bool BEFFileReader::readInvokableIndexSection(BEFReader &stringReader) {
     return emitError("invokable count is incorrect");
   };
 
+  // Use a MapVector here to preserve input ordering.
+  llvm::MapVector<std::pair<StringRef, StringRef>, SmallVector<Invokable *, 1>>
+      invokableMap;
   while (!empty()) {
     if (regionNumber > numInvokables)
       return reportIncorrectInvokableCount();
@@ -152,13 +157,25 @@ bool BEFFileReader::readInvokableIndexSection(BEFReader &stringReader) {
         stringReader.parseNULTerminatedStringAt(symbolOffset, symbol))
       return true;
 
-    /// Remember this invokable in the symbol table if it isn't anonymous.
-    if (!symbol.empty())
-      befFile.invokableSymbolTable[symbol] = regionNumber;
-
     /// Create the actual BEFInvokable.
-    new (&fnMemory[regionNumber++]) BEFInvokable(
+    Invokable *inv = new (&fnMemory[regionNumber++]) BEFInvokable(
         primitive, symbol, numArgs, numResults, bodyOffset, &befFile);
+
+    /// Remember this invokable in the symbol table if it isn't anonymous by
+    /// attaching it to the appropriate top level op.
+    if (!symbol.empty()) {
+      auto didEmplace = invokableMap.insert(
+          {std::pair<StringRef, StringRef>{primitive, symbol},
+           SmallVector<Invokable *, 1>{inv}});
+      if (!didEmplace.second)
+        didEmplace.first->second.push_back(inv);
+    }
+  }
+
+  // Populate the list of top level ops.
+  for (auto &entry : invokableMap) {
+    befFile.topLevelOps.emplace_back(entry.first.first, entry.first.second,
+                                     entry.second);
   }
 
   // Check that the correct number of invokables was actually present.
@@ -232,25 +249,24 @@ BEFFileImpl::~BEFFileImpl() {
 }
 
 /// Get a list of invokables out of the BEF file.
-std::vector<Invokable *> BEFFile::getAllInvokables() const {
+ArrayRef<TopLevelOp> BEFFile::getAllTopLevelOps() const {
   auto befFile = static_cast<const BEFFileImpl *>(this);
-
-  // All of the result invokables are stored in a dense array, but we want to
-  // project them as individual objects.
-  std::vector<Invokable *> result;
-  result.reserve(befFile->numInvokables);
-  for (size_t i = 0, e = befFile->numInvokables; i != e; ++i)
-    result.push_back(befFile->invokables + i);
-  return result;
+  return befFile->topLevelOps;
 }
 
 /// Find an invokable with the specified name, returning null if it isn't found.
-Invokable *BEFFile::getInvokable(StringRef name) const {
+Optional<const TopLevelOp> BEFFile::getTopLevelOp(StringRef primitive,
+                                                  StringRef symbol) const {
   auto befFile = static_cast<const BEFFileImpl *>(this);
-  auto it = befFile->invokableSymbolTable.find(name);
-  return it != befFile->invokableSymbolTable.end()
-             ? &befFile->invokables[it->second]
-             : nullptr;
+  auto found =
+      llvm::find_if(befFile->topLevelOps, [&](const TopLevelOp &topLevelOp) {
+        return topLevelOp.getPrimitiveName() == primitive &&
+               topLevelOp.getSymbolName() == symbol;
+      });
+  if (found == befFile->topLevelOps.end())
+    return {};
+
+  return *found;
 }
 
 /// Open and read a BEF file, setting up our internal state and returning a

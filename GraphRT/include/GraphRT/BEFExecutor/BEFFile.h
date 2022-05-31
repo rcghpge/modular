@@ -7,10 +7,12 @@
 #ifndef GRAPHRT_BEFEXECUTOR_BEFFILE_H
 #define GRAPHRT_BEFEXECUTOR_BEFFILE_H
 
+#include "GraphRT/BEFExecutor/TopLevelOp.h"
 #include "LLCL/ForwardDecls.h"
 #include "LLCL/Support/ReferenceCounted.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"
+#include "llvm/ADT/ArrayRef.h"
 
 namespace M {
 class Invokable;
@@ -35,12 +37,32 @@ public:
   static ErrorOr<RCRef<BEFFile>> open(StringRef file,
                                       const PrimitiveRegistry &primitives);
 
-  /// Get a list of invokables out of the BEF file.
-  std::vector<Invokable *> getAllInvokables() const;
+  /// Get a list of top level ops out of the BEF file.
+  ArrayRef<TopLevelOp> getAllTopLevelOps() const;
 
-  /// Find an invokable with the specified name, returning null if it isn't
+  /// Get a list of all the top level ops in a BEF file of the specified type
+  /// `T`
+  template <typename T>
+  SmallVector<T, 1> getAllTopLevelOps() const {
+    SmallVector<T, 1> out;
+    for (const auto &op : getAllTopLevelOps())
+      if (const auto &t = dyn_cast<T>(op))
+        out.push_back(*t);
+
+    return out;
+  }
+
+  /// Find a top level op with the specified name, returning null if it isn't
   /// found.
-  Invokable *getInvokable(StringRef name) const;
+  Optional<const TopLevelOp> getTopLevelOp(StringRef primitive,
+                                           StringRef symbol) const;
+
+  /// Find a top level op with some nice sugar to avoid having to pass in a
+  /// string directly.
+  template <typename T>
+  Optional<const T> getTopLevelOp(StringRef symbol) const {
+    return llvm::dyn_cast_if_present<T>(getTopLevelOp(T::getName(), symbol));
+  }
 
 protected:
   BEFFile() {}

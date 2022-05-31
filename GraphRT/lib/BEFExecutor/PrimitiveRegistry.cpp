@@ -24,7 +24,13 @@ struct PrimitiveRegistry::Impl {
 // PrimitiveRegistry
 //===----------------------------------------------------------------------===//
 
-PrimitiveRegistry::PrimitiveRegistry() : impl(std::make_unique<Impl>()) {}
+void bef_invokable() {}
+
+PrimitiveRegistry::PrimitiveRegistry() : impl(std::make_unique<Impl>()) {
+  // FIXME: remove this and the bef_invokable primitive impl above
+  ADD_PRIMITIVE(*this, "bef.invokable", bef_invokable);
+}
+
 PrimitiveRegistry::~PrimitiveRegistry() {}
 
 void PrimitiveRegistry::add(StringLiteral name, PrimitiveImplFn fn) {
