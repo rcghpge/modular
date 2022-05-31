@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "TFLite/Tools/TFLExecution.h"
+#include "GenericML/Kernels.h"
 #include "GenericML/Support/Model.h"
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/AllocatorType.h"
@@ -18,60 +19,6 @@ using namespace M;
 using llvm::errs;
 using llvm::outs;
 using mlir::MLIRContext;
-
-template <typename T, typename PrintedType>
-static void printElements(const void *ptr, size_t numElements,
-                          raw_ostream &os) {
-  auto elts = llvm::makeArrayRef(static_cast<const T *>(ptr), numElements);
-  llvm::interleaveComma(elts, os,
-                        [&](T element) { os << (PrintedType)element; });
-}
-
-// TODO: move to kernels.
-static void printTensor(const Tensor &tensor, raw_ostream &os) {
-  os << "tensor<";
-  for (auto elt : tensor.getShape())
-    os << elt << "x";
-
-  // TODO: Add print support for quantization.
-  os << tensor.getEltType().getAsString() << "> ";
-
-  const void *data = tensor.getPointer();
-  size_t numElements = tensor.getShape().getNumElements();
-
-  os << '[';
-  switch (tensor.getEltType().getValue()) {
-  default:
-    os << "unsupported tensor type for printing";
-    break;
-  case TensorEltType::f32:
-    printElements<float, float>(data, numElements, os);
-    break;
-  case TensorEltType::ui16:
-    printElements<uint16_t, unsigned>(data, numElements, os);
-    break;
-  case TensorEltType::si16:
-    printElements<int16_t, int>(data, numElements, os);
-    break;
-  case TensorEltType::ui8:
-    printElements<uint8_t, unsigned>(data, numElements, os);
-    break;
-  case TensorEltType::si8:
-    printElements<int8_t, int>(data, numElements, os);
-    break;
-  case TensorEltType::ui32:
-    printElements<uint32_t, unsigned>(data, numElements, os);
-    break;
-  case TensorEltType::si32:
-    printElements<int32_t, int>(data, numElements, os);
-    break;
-  case TensorEltType::kBool:
-    printElements<bool, bool>(data, numElements, os);
-    break;
-  }
-
-  os << "]\n";
-}
 
 /// This method can be used to print the results of `invokable` in the
 /// standard format.  It delegates to printAsyncValueResult and handles
@@ -122,7 +69,10 @@ static void printTensorResults(const ExecutableModel *model,
 
       // Handle tensor types.
       if (auto *tensor = result->dyn_cast<Tensor>()) {
-        printTensor(*tensor, os);
+        os.flush();
+        if (auto err =
+                Kernel::printTensor(tensor->getPointer(), tensor->getSpec()))
+          os << "<error: " << err.getError() << '>';
         return;
       }
 
