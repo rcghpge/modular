@@ -427,22 +427,14 @@ public:
 // BEFTypeAttr
 //===----------------------------------------------------------------------===//
 
-namespace Detail {
-/// Implementation detail of the BEFTypeAttr using declaration.  We name it
-/// `BEFType` instead of `Type` to avoid polluting the `M::Detail` namespace
-/// with a generic name like `Type`.
-class BEFType {};
-} // namespace Detail
-
 template <>
-class BEFAttr<Detail::BEFType>
-    : public BEFAttrCommon<BEFAttr<Detail::BEFType>, Detail::BEFType>,
-      public BEFType {
+class BEFAttr<BEFType> : public BEFAttrCommon<BEFAttr<BEFType>, char>,
+                         public BEFType {
 public:
-  using BaseClass = BEFAttrCommon<BEFAttr<Detail::BEFType>, Detail::BEFType>;
+  using BaseClass = BEFAttrCommon<BEFAttr<BEFType>, char>;
 
   explicit BEFAttr(const void *pointer)
-      : BaseClass(Detail::BEFType{}),
+      : BaseClass(/*storage unused*/ 'x'),
         BEFType(static_cast<const uint8_t *>(pointer)) {
     this->checkAttributeKind(pointer);
     assert(!getKind().isInvalid() && "Invalid type attribute");
@@ -453,30 +445,21 @@ public:
   }
 };
 
-using BEFTypeAttr = BEFAttr<Detail::BEFType>;
+using BEFTypeAttr = BEFAttr<BEFType>;
 
 //===----------------------------------------------------------------------===//
 // BEFFunctionTypeAttr
 //===----------------------------------------------------------------------===//
 
-namespace Detail {
-/// Implementation detail of the BEFFunctionTypeAttr using declaration.  We name
-/// it `BEFFunctionType` instead of `FunctionType` to avoid polluting the
-/// `M::Detail` namespace with a generic name.
-class BEFFunctionType {};
-} // namespace Detail
-
 template <>
-class BEFAttr<Detail::BEFFunctionType>
-    : public BEFAttrCommon<BEFAttr<Detail::BEFFunctionType>,
-                           Detail::BEFFunctionType>,
+class BEFAttr<BEFFunctionType>
+    : public BEFAttrCommon<BEFAttr<BEFFunctionType>, char>,
       public BEFFunctionType {
 public:
-  using BaseClass =
-      BEFAttrCommon<BEFAttr<Detail::BEFFunctionType>, Detail::BEFFunctionType>;
+  using BaseClass = BEFAttrCommon<BEFAttr<BEFFunctionType>, char>;
 
   explicit BEFAttr(const void *pointer)
-      : BaseClass(Detail::BEFFunctionType{}),
+      : BaseClass(/*storage unused*/ 'x'),
         BEFFunctionType(static_cast<const uint8_t *>(pointer)) {
     this->checkAttributeKind(pointer);
   }
@@ -488,7 +471,7 @@ public:
   }
 };
 
-using BEFFunctionTypeAttr = BEFAttr<Detail::BEFFunctionType>;
+using BEFFunctionTypeAttr = BEFAttr<BEFFunctionType>;
 
 //===----------------------------------------------------------------------===//
 // BEFDynamicAttr
