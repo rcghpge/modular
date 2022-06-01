@@ -2,7 +2,7 @@
 // RUN: bef-executor -verify-diagnostics %t.bef | FileCheck %s
 
 // CHECK-LABEL: --- Running 'test_async_print_result'
-bef.invokable @test_async_print_result() -> si32 {
+grt.testcase @test_async_print_result {
   %c1 = grt.constant.si32 1
   %c42 = grt.constant.si32 42
   %a = "test.async.add.i32"(%c1, %c42) : (si32, si32) -> si32
@@ -11,7 +11,7 @@ bef.invokable @test_async_print_result() -> si32 {
 // CHECK: 'test_async_print_result' returned 43
 
 // CHECK-LABEL: --- Running 'test_cancel'
-bef.invokable @test_cancel() -> si32 {
+grt.testcase @test_cancel {
   %c1 = grt.constant.si32 1
   %c42 = grt.constant.si32 42
   %a = "test.async.add.i32"(%c1, %c42) : (si32, si32) -> si32
@@ -27,7 +27,7 @@ bef.invokable @test_cancel() -> si32 {
 // CHECK-NEXT: returned <error: Cancelled!>
 
 // CHECK-LABEL: --- Running 'test_add_any'
-bef.invokable @test_add_any() -> (si32, !test.string, si32) {
+grt.testcase @test_add_any {
   %c1 = grt.constant.si32 1
   %c42 = grt.constant.si32 42
   %a = "test.async.add.any"(%c1, %c42) : (si32, si32) -> si32
@@ -45,7 +45,7 @@ bef.invokable @test_add_any() -> (si32, !test.string, si32) {
 
 
 // CHECK-LABEL: --- Running 'test_async_errors'
-bef.invokable @test_async_errors() -> (si32, !test.string) {
+grt.testcase @test_async_errors {
   // expected-error @+2 {{error generated on a background thread!}}
   // expected-error @+1 {{error generated on a background thread #2!}}
   %a, %b = "test.async.error"() : () -> (si32, !test.string)

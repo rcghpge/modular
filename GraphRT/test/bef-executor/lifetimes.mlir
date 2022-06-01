@@ -2,7 +2,7 @@
 // RUN: bef-executor %t.bef | FileCheck %s
 
 // CHECK-LABEL: --- Running 'test_linear'
-bef.invokable @test_linear() {
+grt.testcase @test_linear {
   %ch0 = grt.chain.new
 
   // executed immediately.
@@ -33,13 +33,12 @@ bef.invokable @test_linear() {
   bef.output
 }
 
-// CHECK-LABEL: 'no_op' because it has 1 argument
 bef.invokable @no_op(%x: !vt.value) -> !vt.value {
   bef.output %x : !vt.value
 }
 
 // CHECK-LABEL: --- Running 'call_no_op'
-bef.invokable @call_no_op() {
+grt.testcase @call_no_op {
   // This test uses one vt.value(2) that is all of these:
   // - invoke argument: passed to no_op.
   // - invoke result: returned by no_op.
@@ -61,7 +60,6 @@ bef.invokable @call_no_op() {
   bef.output
 }
 
-// CHECK-LABEL: 'add_one' because it has 1 argument
 bef.invokable @add_one(%x: !vt.value) -> !vt.value {
   %v1 = "test.vt.constant"() { value = 1 : si32 } : () -> !vt.value
   %r = "test.vt.add"(%v1, %x) : (!vt.value,  !vt.value) -> !vt.value
@@ -69,7 +67,7 @@ bef.invokable @add_one(%x: !vt.value) -> !vt.value {
 }
 
 // CHECK-LABEL: --- Running 'caller'
-bef.invokable @caller() {
+grt.testcase @caller {
   // CHECK-NEXT: constructed vt.value(3)
   // CHECK-NEXT: move constructed vt.value(3)
   %c1 = "test.vt.constant"() { value = 3 : si32 } : () -> !vt.value
@@ -96,7 +94,7 @@ bef.invokable @caller() {
 }
 
 // CHECK-LABEL: --- Running 'test_hello'
-bef.invokable @test_hello() {
+grt.testcase @test_hello {
  // CHECK: hello bef executor!
   %ch0 = grt.chain.new
   %ch1 = "test.print_hello"(%ch0) : (!grt.chain) -> !grt.chain
@@ -104,7 +102,7 @@ bef.invokable @test_hello() {
 }
 
 // CHECK-LABEL: --- Running 'share_to_two'
-bef.invokable @share_to_two() {
+grt.testcase @share_to_two {
   // CHECK-NEXT: constructed vt.value(1)
   // CHECK-NEXT: move constructed vt.value(1)
   %c1 = "test.vt.constant"() { value = 1 : si32 } : () -> !vt.value
@@ -125,14 +123,13 @@ bef.invokable @share_to_two() {
 
 // Testing calling a invokable that forwards its argument into two results.
 
-// CHECK-LABEL: 'call_share_to_two' because it has 1 argument
 bef.invokable @call_share_to_two(%x: !vt.value) -> (!vt.value, !vt.value) {
   %x1, %x2 = "test.vt_share_to_two_2"(%x) : (!vt.value) -> (!vt.value, !vt.value)
   bef.output %x1, %x2 : !vt.value, !vt.value
 }
 
 // CHECK-LABEL: --- Running 'share_to_two_caller'
-bef.invokable @share_to_two_caller() {
+grt.testcase @share_to_two_caller {
   // CHECK-NEXT: constructed vt.value(1)
   // CHECK-NEXT: move constructed vt.value(1)
   %c1 = "test.vt.constant"() { value = 1 : si32 } : () -> !vt.value
@@ -152,7 +149,7 @@ bef.invokable @share_to_two_caller() {
 }
 
 // CHECK-LABEL: --- Running 'share_to_four'
-bef.invokable @share_to_four() {
+grt.testcase @share_to_four {
   // CHECK-NEXT: constructed vt.value(1)
   // CHECK-NEXT: move constructed vt.value(1)
   %c1 = "test.vt.constant"() { value = 1 : si32 } : () -> !vt.value
@@ -179,14 +176,13 @@ bef.invokable @share_to_four() {
 
 // Testing calling a invokable that forwards its argument into four results.
 
-// CHECK-LABEL: 'call_share_to_four' because it has 1 argument
 bef.invokable @call_share_to_four(%x: !vt.value) -> (!vt.value, !vt.value, !vt.value, !vt.value) {
   %results:4 = "test.vt_share_to_four_2"(%x) : (!vt.value) -> (!vt.value, !vt.value, !vt.value, !vt.value)
   bef.output %results#0, %results#1, %results#2, %results#3 : !vt.value, !vt.value, !vt.value, !vt.value
 }
 
 // CHECK-LABEL: --- Running 'share_to_four_caller'
-bef.invokable @share_to_four_caller() {
+grt.testcase @share_to_four_caller {
   // CHECK-NEXT: constructed vt.value(1)
   // CHECK-NEXT: move constructed vt.value(1)
   %c1 = "test.vt.constant"() { value = 1 : si32 } : () -> !vt.value
@@ -211,7 +207,6 @@ bef.invokable @share_to_four_caller() {
   bef.output
 }
 
-// CHECK-LABEL: 'repeat_n_inc' because it has 1 argument
 bef.invokable @repeat_n_inc(%n: si32) -> () {
   // Returns 1 + %n by initializing %x to 1 and incrementing in a loop.
   %ch0 = grt.chain.new
@@ -228,7 +223,7 @@ bef.invokable @repeat_n_inc(%n: si32) -> () {
 }
 
 // CHECK-LABEL: --- Running 'repeat_0_inc'
-bef.invokable @repeat_0_inc() {
+grt.testcase @repeat_0_inc {
   %count = grt.constant.si32 0
 
   // CHECK-NEXT: constructed vt.value(1)
@@ -241,7 +236,7 @@ bef.invokable @repeat_0_inc() {
 }
 
 // CHECK-LABEL: --- Running 'repeat_1_inc'
-bef.invokable @repeat_1_inc() {
+grt.testcase @repeat_1_inc {
   %count = grt.constant.si32 1
 
   // CHECK-NEXT: constructed vt.value(1)
@@ -259,7 +254,7 @@ bef.invokable @repeat_1_inc() {
 }
 
 // CHECK-LABEL: --- Running 'repeat_2_inc'
-bef.invokable @repeat_2_inc() {
+grt.testcase @repeat_2_inc {
   %count = grt.constant.si32 2
 
   // CHECK-NEXT: constructed vt.value(1)

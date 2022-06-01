@@ -1,13 +1,12 @@
 // RUN: bef-translate -export-bef -allow-unregistered-dialect %s > %t.bef
 // RUN: bef-executor %t.bef -verify-diagnostics | FileCheck %s
 
-// CHECK-LABEL: Cannot run 'args_results' because it has 2 arguments
 bef.invokable @args_results(%a: si32, %b: ui8) -> (ui8, si32) {
   bef.output %b, %a : ui8, si32
 }
 
 // CHECK-LABEL: Running 'print_test':
-bef.invokable @print_test() {
+grt.testcase @print_test {
   // CHECK: hello bef executor!
   %ch0 = grt.chain.new
   "test.print_hello"(%ch0) : (!grt.chain) -> !grt.chain
@@ -15,7 +14,7 @@ bef.invokable @print_test() {
 }
 
 // CHECK-LABEL: --- Running 'three_print'
-bef.invokable @three_print() {
+grt.testcase @three_print {
   %ch0 = grt.chain.new
 
   // CHECK: hello bef executor!
@@ -30,7 +29,7 @@ bef.invokable @three_print() {
   bef.output
 }
 
-// CHECK-LABEL: --- Running 'basic.i32'
+// CHECK-LABEL: --- Running 'basic.i32_driver'
 bef.invokable @basic.i32() {
   %x = grt.constant.si32 42
 
@@ -47,8 +46,13 @@ bef.invokable @basic.i32() {
   bef.output
 }
 
+grt.testcase @basic.i32_driver {
+  grt.invoke @basic.i32() : () -> ()
+  bef.output
+}
+
 // CHECK-LABEL: --- Running 'test_result'
-bef.invokable @test_result() -> (si32, si32, !grt.chain) {
+grt.testcase @test_result {
   %ch0 = grt.chain.new
   %x = grt.constant.si32 42
   %y = grt.constant.si32 13
@@ -57,7 +61,7 @@ bef.invokable @test_result() -> (si32, si32, !grt.chain) {
   bef.output %x, %add, %ch0 : si32, si32, !grt.chain
 }
 
-// CHECK-LABEL: --- Running 'errors'
+// CHECK-LABEL: --- Running 'errors_driver'
 bef.invokable @errors() -> (si32, si32, si32) {
   // expected-error @+1 {{something bad happened}}
   %a = "test.fail"() : () -> si32
@@ -65,12 +69,17 @@ bef.invokable @errors() -> (si32, si32, si32) {
   %b, %c = "test.partial_fail"() : () -> (si32, si32)
 
   bef.output %a, %b, %c : si32, si32, si32
-  // CHECK: 'errors' returned <error: something bad happened>,
+  // CHECK: 'errors_driver' returned <error: something bad happened>,
   // CHECK: 42, <error: something partially bad happened>
 }
 
+grt.testcase @errors_driver {
+  %a, %b, %c = grt.invoke @errors() : () -> (si32, si32, si32)
+  bef.output %a, %b, %c : si32, si32, si32
+}
+
 // CHECK-LABEL: --- Running 'simple_calls'
-bef.invokable @simple_calls() -> (si32, si32) {
+grt.testcase @simple_calls {
   // CHECK: int32 = 42
   // CHECK: int32 = 84
   grt.invoke @basic.i32() : () -> ()
@@ -81,14 +90,12 @@ bef.invokable @simple_calls() -> (si32, si32) {
   // CHECK: 'simple_calls' returned <error: something bad happened>, 42
 }
 
-// CHECK-LABEL: --- Cannot run 'call_print.i32' because it has 1 argument
 bef.invokable @call_print.i32(%x: si32) -> !grt.chain {
   %ch0 = grt.chain.new
   %ch1 = grt.print.si32 %x, %ch0
   bef.output %ch1 : !grt.chain
 }
 
-// CHECK-LABEL: --- Cannot run 'add_one' because it has 1 argument
 bef.invokable @add_one(%x: si32) -> si32 {
   %c1 = grt.constant.si32 1
   %y = grt.add.si32 %x, %c1
@@ -96,7 +103,7 @@ bef.invokable @add_one(%x: si32) -> si32 {
 }
 
 // CHECK-LABEL: --- Running 'caller'
-bef.invokable @caller() -> !grt.chain {
+grt.testcase @caller {
   %c1 = grt.constant.si32 1
 
   // CHECK-NEXT: int32 = 1
@@ -113,7 +120,7 @@ bef.invokable @caller() -> !grt.chain {
 }
 
 // CHECK-LABEL: --- Running 'basic_string_and_arrays'
-bef.invokable @basic_string_and_arrays() {
+grt.testcase @basic_string_and_arrays {
   %x = "test.get_string"() { value = "bark" } : () -> !test.string
   %y = "test.get_string"() { value = "rarf" } : () -> !test.string
   %ch0 = grt.chain.new
@@ -142,7 +149,7 @@ bef.invokable @basic_string_and_arrays() {
 }
 
 // CHECK-LABEL: --- Running 'test_types'
-bef.invokable @test_types() {
+grt.testcase @test_types {
   %ch0 = grt.chain.new
 
   // CHECK-NEXT: Type attribute: bool
@@ -201,7 +208,7 @@ bef.invokable @test_types() {
 }
 
 // CHECK-LABEL: --- Running 'test_dynamic_attr'
-bef.invokable @test_dynamic_attr() {
+grt.testcase @test_dynamic_attr {
   %ch0 = grt.chain.new
 
   // CHECK: int32 = 4

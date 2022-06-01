@@ -20,7 +20,7 @@ bef.invokable @fib(%arg: si32) -> si32 {
 }
 
 // CHECK-LABEL: --- Running 'fib_driver'
-bef.invokable @fib_driver() {
+grt.testcase @fib_driver {
   %zero = grt.constant.si32 0
   %fib0 = grt.invoke @fib(%zero) : (si32) -> (si32)
 

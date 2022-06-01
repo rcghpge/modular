@@ -256,6 +256,32 @@ void BenchmarkOp::print(OpAsmPrinter &p) {
 }
 
 //===----------------------------------------------------------------------===//
+// TestcaseOp
+//===----------------------------------------------------------------------===//
+
+ParseResult TestcaseOp::parse(OpAsmParser &parser, OperationState &result) {
+  // Parse just the symbol name first.
+  StringAttr symbol;
+  if (parser.parseSymbolName(symbol, mlir::SymbolTable::getSymbolAttrName(),
+                             result.attributes))
+    return failure();
+
+  // Parse the body region. It has no arguments whatsoever.
+  Region *body = result.addRegion();
+  if (parser.parseRegion(*body, {}, false))
+    return failure();
+
+  // Infer the return types from the terminator's operands.
+  Operation *bodyTerminator = body->front().getTerminator();
+  result.types.assign(bodyTerminator->operand_type_begin(),
+                      bodyTerminator->operand_type_end());
+
+  return success();
+}
+
+void TestcaseOp::print(OpAsmPrinter &p) { p.printRegion(getBody()); }
+
+//===----------------------------------------------------------------------===//
 // TableGen generated logic.
 //===----------------------------------------------------------------------===//
 

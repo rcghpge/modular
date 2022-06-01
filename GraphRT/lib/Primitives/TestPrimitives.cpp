@@ -791,9 +791,14 @@ static void registerTestVecPrimitives(PrimitiveRegistry &registry) {
 // Registration
 //===----------------------------------------------------------------------===//
 
+void grt_testcase() {}
+
 /// This registers the 'test' dialect primitives, intended for writing
 /// executor testcases.
 void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
+  // grt.testcase
+  ADD_PRIMITIVE(registry, "grt.testcase", grt_testcase);
+
   // Misc.
   ADD_PRIMITIVE(registry, "test.print_hello", print_hello);
   ADD_PRIMITIVE(registry, "test.memory_leak_one_int32", memory_leak_one_int32);

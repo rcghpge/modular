@@ -8,7 +8,7 @@
 // RUN:  not --crash bef-executor -allocator=profiler %t.bef
 
 // CHECK: --- Running 'test_leak_one_int32'
-bef.invokable @test_leak_one_int32() -> () {
+grt.testcase @test_leak_one_int32 {
   "test.memory_leak_one_int32"() : () -> ()
   bef.output
 }

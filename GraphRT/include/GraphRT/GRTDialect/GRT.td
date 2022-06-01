@@ -23,5 +23,6 @@ include "GraphRT/GRTDialect/GRTTypes.td"
 include "GraphRT/GRTDialect/GRTAnalyticsOps.td"
 include "GraphRT/GRTDialect/GRTIntegerOps.td"
 include "GraphRT/GRTDialect/GRTControlFlowOps.td"
+include "GraphRT/GRTDialect/GRTTestOps.td"
 
 #endif // GRT_TD
