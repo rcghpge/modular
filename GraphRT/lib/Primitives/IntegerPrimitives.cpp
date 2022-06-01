@@ -1,4 +1,4 @@
-//===- TestPrimitives.cpp -------------------------------------------------===//
+//===- IntegerPrimitives.cpp ----------------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //
