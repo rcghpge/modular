@@ -249,17 +249,17 @@ BEFFileImpl::~BEFFileImpl() {
 }
 
 /// Get a list of invokables out of the BEF file.
-ArrayRef<TopLevelOp> BEFFile::getAllTopLevelOps() const {
+ArrayRef<TopLevelEntity> BEFFile::getAllTopLevelEntities() const {
   auto befFile = static_cast<const BEFFileImpl *>(this);
   return befFile->topLevelOps;
 }
 
 /// Find an invokable with the specified name, returning null if it isn't found.
-Optional<const TopLevelOp> BEFFile::getTopLevelOp(StringRef primitive,
-                                                  StringRef symbol) const {
+Optional<const TopLevelEntity> BEFFile::getTopLevelEntity(StringRef primitive,
+                                                      StringRef symbol) const {
   auto befFile = static_cast<const BEFFileImpl *>(this);
-  auto found =
-      llvm::find_if(befFile->topLevelOps, [&](const TopLevelOp &topLevelOp) {
+  auto found = llvm::find_if(
+      befFile->topLevelOps, [&](const TopLevelEntity &topLevelOp) {
         return topLevelOp.getPrimitiveName() == primitive &&
                topLevelOp.getSymbolName() == symbol;
       });

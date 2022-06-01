@@ -7,7 +7,7 @@
 #ifndef GRAPHRT_BEFEXECUTOR_BEFFILE_H
 #define GRAPHRT_BEFEXECUTOR_BEFFILE_H
 
-#include "GraphRT/BEFExecutor/TopLevelOp.h"
+#include "GraphRT/BEFExecutor/TopLevelEntity.h"
 #include "LLCL/ForwardDecls.h"
 #include "LLCL/Support/ReferenceCounted.h"
 #include "Support/ErrorOr.h"
@@ -38,14 +38,14 @@ public:
                                       const PrimitiveRegistry &primitives);
 
   /// Get a list of top level ops out of the BEF file.
-  ArrayRef<TopLevelOp> getAllTopLevelOps() const;
+  ArrayRef<TopLevelEntity> getAllTopLevelEntities() const;
 
   /// Get a list of all the top level ops in a BEF file of the specified type
   /// `T`
   template <typename T>
-  SmallVector<T, 1> getAllTopLevelOps() const {
+  SmallVector<T, 1> getAllTopLevelEntities() const {
     SmallVector<T, 1> out;
-    for (const auto &op : getAllTopLevelOps())
+    for (const auto &op : getAllTopLevelEntities())
       if (const auto &t = dyn_cast<T>(op))
         out.push_back(*t);
 
@@ -54,14 +54,15 @@ public:
 
   /// Find a top level op with the specified name, returning null if it isn't
   /// found.
-  Optional<const TopLevelOp> getTopLevelOp(StringRef primitive,
-                                           StringRef symbol) const;
+  Optional<const TopLevelEntity> getTopLevelEntity(StringRef primitive,
+                                               StringRef symbol) const;
 
   /// Find a top level op with some nice sugar to avoid having to pass in a
   /// string directly.
   template <typename T>
-  Optional<const T> getTopLevelOp(StringRef symbol) const {
-    return llvm::dyn_cast_if_present<T>(getTopLevelOp(T::getName(), symbol));
+  Optional<const T> getTopLevelEntity(StringRef symbol) const {
+    return llvm::dyn_cast_if_present<T>(
+        getTopLevelEntity(T::getName(), symbol));
   }
 
 protected:

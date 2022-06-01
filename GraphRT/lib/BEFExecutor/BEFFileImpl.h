@@ -14,7 +14,7 @@
 #include "GraphRT/BEFExecutor/BEFFile.h"
 #include "GraphRT/BEFExecutor/Invokable.h"
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
-#include "GraphRT/BEFExecutor/TopLevelOp.h"
+#include "GraphRT/BEFExecutor/TopLevelEntity.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringMap.h"
 
@@ -60,7 +60,7 @@ public:
   size_t numInvokables = 0;
 
   /// This contains a list of the top level ops in the BEF file.
-  SmallVector<TopLevelOp, 1> topLevelOps;
+  SmallVector<TopLevelEntity, 1> topLevelOps;
 };
 
 /// BEF specific implementation of the Invokable interface.
