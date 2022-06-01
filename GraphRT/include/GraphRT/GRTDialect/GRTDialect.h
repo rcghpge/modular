@@ -12,6 +12,7 @@
 #define GRAPHRT_GRTDIALECT_GRTDIALECT_H
 
 #include "mlir/IR/Dialect.h"
+#include "mlir/Interfaces/InferTypeOpInterface.h"
 
 // Pull in the dialect definition.
 #include "GraphRT/GRTDialect/GRTDialect.h.inc"

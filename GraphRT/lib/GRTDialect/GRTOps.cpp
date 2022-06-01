@@ -35,14 +35,6 @@ parseParenOperandList(OpAsmParser &parser, OperationState &result,
 }
 
 //===----------------------------------------------------------------------===//
-// ChainNewOp
-//===----------------------------------------------------------------------===//
-
-void ChainNewOp::build(OpBuilder &builder, OperationState &state) {
-  build(builder, state, builder.getType<ChainType>());
-}
-
-//===----------------------------------------------------------------------===//
 // InvokeOp
 //===----------------------------------------------------------------------===//
 
