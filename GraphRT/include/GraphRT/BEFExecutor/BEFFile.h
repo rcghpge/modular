@@ -45,9 +45,9 @@ public:
   template <typename T>
   SmallVector<T, 1> getAllTopLevelEntities() const {
     SmallVector<T, 1> out;
-    for (const auto &op : getAllTopLevelEntities())
+    for (const TopLevelEntity &op : getAllTopLevelEntities())
       if (const auto &t = dyn_cast<T>(op))
-        out.push_back(*t);
+        out.push_back(std::move(*t));
 
     return out;
   }

@@ -266,7 +266,7 @@ BEFFile::getTopLevelEntity(StringRef primitive, StringRef symbol) const {
   if (found == befFile->topLevelOps.end())
     return {};
 
-  return *found;
+  return std::move(*found);
 }
 
 /// Open and read a BEF file, setting up our internal state and returning a
