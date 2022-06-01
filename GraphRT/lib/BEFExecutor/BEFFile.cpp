@@ -255,8 +255,8 @@ ArrayRef<TopLevelEntity> BEFFile::getAllTopLevelEntities() const {
 }
 
 /// Find an invokable with the specified name, returning null if it isn't found.
-Optional<const TopLevelEntity> BEFFile::getTopLevelEntity(StringRef primitive,
-                                                      StringRef symbol) const {
+Optional<const TopLevelEntity>
+BEFFile::getTopLevelEntity(StringRef primitive, StringRef symbol) const {
   auto befFile = static_cast<const BEFFileImpl *>(this);
   auto found = llvm::find_if(
       befFile->topLevelOps, [&](const TopLevelEntity &topLevelOp) {

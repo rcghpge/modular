@@ -55,7 +55,7 @@ public:
   /// Find a top level op with the specified name, returning null if it isn't
   /// found.
   Optional<const TopLevelEntity> getTopLevelEntity(StringRef primitive,
-                                               StringRef symbol) const;
+                                                   StringRef symbol) const;
 
   /// Find a top level op with some nice sugar to avoid having to pass in a
   /// string directly.
