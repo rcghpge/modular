@@ -62,7 +62,7 @@ public:
   template <typename T>
   Optional<const T> getTopLevelEntity(StringRef symbol) const {
     return llvm::dyn_cast_if_present<T>(
-        getTopLevelEntity(T::getName(), symbol));
+        getTopLevelEntity(T::getEntityName(), symbol));
   }
 
 protected:
