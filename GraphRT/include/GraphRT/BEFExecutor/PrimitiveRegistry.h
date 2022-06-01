@@ -424,7 +424,7 @@ public:
 };
 
 //===----------------------------------------------------------------------===//
-// BEFTypeAttr
+// BEFAttr<BEFType>
 //===----------------------------------------------------------------------===//
 
 template <>
@@ -445,10 +445,8 @@ public:
   }
 };
 
-using BEFTypeAttr = BEFAttr<BEFType>;
-
 //===----------------------------------------------------------------------===//
-// BEFFunctionTypeAttr
+// BEFAttr<BEFFunctionType>
 //===----------------------------------------------------------------------===//
 
 template <>
@@ -470,8 +468,6 @@ public:
            BEFFunctionType::matchesTypeKind(dynType.getKind());
   }
 };
-
-using BEFFunctionTypeAttr = BEFAttr<BEFFunctionType>;
 
 //===----------------------------------------------------------------------===//
 // BEFDynamicAttr

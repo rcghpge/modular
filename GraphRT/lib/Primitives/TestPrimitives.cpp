@@ -131,7 +131,7 @@ static void printType(BEFType type) {
   }
 }
 
-static Chain print_type(Chain chain, BEFTypeAttr type) {
+static Chain print_type(Chain chain, BEFAttr<BEFType> type) {
   printf("Type attribute: ");
   printType(type);
   printf("\n");
@@ -171,7 +171,7 @@ static void print_attr(BEFDynamicAttr value, unsigned indent) {
     }
     printIndent(indent);
     printf("]\n");
-  } else if (auto type = value.dyn_cast<BEFTypeAttr>()) {
+  } else if (auto type = value.dyn_cast<BEFAttr<BEFType>>()) {
     print_type(Chain(), type.getValue());
   } else {
     printf("unsupported attribute kind\n");
