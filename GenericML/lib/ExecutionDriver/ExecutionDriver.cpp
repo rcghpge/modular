@@ -86,8 +86,7 @@ static void printTensorResults(const ExecutableModel *model,
 }
 
 void M::runModel(const Model *model, Runtime &runtime,
-                 InputGenerationKind inputGenKind, size_t numRuns,
-                 bool benchmarkMode) {
+                 InputGenerationKind inputGenKind, size_t numRuns) {
   auto errorOrExecutableModel = model->setup(runtime);
   if (failed(errorOrExecutableModel)) {
     outs() << errorOrExecutableModel.takeError();
@@ -131,23 +130,12 @@ void M::runModel(const Model *model, Runtime &runtime,
     await(results);
 
     // Print the result tensors with the default printer.
-    if (!benchmarkMode) {
-      MutableArrayRef resultRef(results.data(), results.size());
-      printTensorResults(executableModel.get(), resultRef.drop_front(), &ctx,
-                         outs());
-    }
+    MutableArrayRef resultRef(results.data(), results.size());
+    printTensorResults(executableModel.get(), resultRef.drop_front(), &ctx,
+                       outs());
 
     auto end = std::chrono::steady_clock::now();
     std::chrono::duration<double, std::milli> time = end - start;
     cpuTimesMillis.push_back(time.count());
-  }
-
-  // TODO: Generalize `benchmarkMode` into a more flexible policy around how
-  // we control execution of the model.
-  if (benchmarkMode) {
-    outs() << "Model inference times: ";
-    llvm::interleaveComma(cpuTimesMillis, outs());
-    outs() << '\n';
-    outs().flush();
   }
 }

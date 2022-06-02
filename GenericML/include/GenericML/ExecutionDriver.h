@@ -37,8 +37,7 @@ initializeInputMemory(InputGenerationKind inputGenKind, const Model *model,
 
 /// Run `model` using `runtime` `numRuns` times.
 void runModel(const Model *model, LLCL::Runtime &runtime,
-              InputGenerationKind inputGenKind, size_t numRuns = 1,
-              bool benchmarkMode = false);
+              InputGenerationKind inputGenKind, size_t numRuns = 1);
 
 } // namespace M
 
