@@ -789,18 +789,22 @@ class TypeEmitter {
 public:
   TypeEmitter(AttributesEmitter *emitter, Location loc)
       : emitter(emitter), loc(loc) {}
-  ErrorOr<BEF::TypeKind> getFloatTypeEncoding(FloatType type);
-  ErrorOr<BEF::TypeKind> getIntegerTypeEncoding(IntegerType type);
-  ErrorOr<BEF::TypeKind> getIntFPComplexTypeEncoding(Type type);
   LogicalResult emitType(Type type);
-  LogicalResult emitIntFPComplexType(Type type);
-  LogicalResult emitRankedTensorType(RankedTensorType type);
-  LogicalResult emitFunctionType(FunctionType type);
-  LogicalResult emitUniformQuantizedType(UniformQuantizedType type);
 
 private:
   AttributesEmitter *emitter;
   Location loc;
+
+  ErrorOr<BEF::TypeKind> getFloatTypeEncoding(FloatType type);
+  ErrorOr<BEF::TypeKind> getIntegerTypeEncoding(IntegerType type);
+  ErrorOr<BEF::TypeKind> getIntFPComplexTypeEncoding(Type type);
+  LogicalResult emitIntFPComplexType(Type type);
+  LogicalResult emitRankedTensorType(RankedTensorType type);
+  LogicalResult emitFunctionType(FunctionType type);
+  LogicalResult emitUniformQuantizedType(UniformQuantizedType type);
+  LogicalResult
+  emitUniformQuantizedPerAxisType(UniformQuantizedPerAxisType type);
+  LogicalResult emitStorageExpressedTypes(QuantizedType type);
 };
 } // namespace
 
@@ -890,6 +894,22 @@ LogicalResult TypeEmitter::emitRankedTensorType(RankedTensorType type) {
   return success();
 }
 
+LogicalResult TypeEmitter::emitStorageExpressedTypes(QuantizedType type) {
+  // QuantizedType stores the signedness information in a flag, but it is easier
+  // to emit a signed or unsigned type.
+  auto storageType = IntegerType::get(
+      type.getContext(), type.getStorageTypeIntegralWidth(),
+      type.isSigned() ? IntegerType::Signed : IntegerType::Unsigned);
+  if (failed(emitIntFPComplexType(storageType)))
+    return failure();
+
+  // In practice these are floats, but we could emit other expressed types too.
+  if (failed(emitIntFPComplexType(type.getExpressedType())))
+    return failure();
+
+  return success();
+}
+
 /// emitUniformQuantizedType emits a uniform, not per-axis quantized type such
 /// as `!quant.uniform<i8:f32, 0.1:-128>` into BEF. The type is encoded in the
 /// following form:
@@ -900,18 +920,7 @@ LogicalResult TypeEmitter::emitRankedTensorType(RankedTensorType type) {
 LogicalResult TypeEmitter::emitUniformQuantizedType(UniformQuantizedType type) {
   emitter->emitByte(BEF::TypeKind::quantized);
 
-  // UniformQuantizedType stores the signedness information in a flag, but it is
-  // easier to emit a signed or unsigned type.
-  auto intType = type.getStorageType().cast<IntegerType>();
-  auto storageType = IntegerType::get(
-      intType.getContext(), intType.getWidth(),
-      type.isSigned() ? IntegerType::SignednessSemantics::Signed
-                      : IntegerType::SignednessSemantics::Unsigned);
-  if (failed(emitIntFPComplexType(storageType)))
-    return failure();
-
-  // In practice these are floats, but we could emit other expressed types too.
-  if (failed(emitIntFPComplexType(type.getExpressedType())))
+  if (failed(emitStorageExpressedTypes(type)))
     return failure();
 
   // We emit the scale as is.
@@ -923,6 +932,26 @@ LogicalResult TypeEmitter::emitUniformQuantizedType(UniformQuantizedType type) {
 
   // FIXME: need to handle non-default storageTypeMin/Max
   return success();
+}
+
+/// emitUniformQuantizedPerAxisType emits a uniform, per-axis quantized type
+/// such as `!quant.uniform<i16:f32:0, {0.2:128, 0.1:-128}>` into BEF. The type
+/// is encoded in the following form:
+///   TypeKind::quantizedPerAxis | storage TypeKind | expressed TypeKind |
+///   quantized dim | number of scales (or zero points) in VBR |
+///   scales | zero points (each in VBR)
+/// The number of scales is always equal to the number of zero points.
+/// For the example type above, the output format would look like this:
+///   TypeKind::quantizedPerAxis | TypeKind::si16 | TypeKind::f32 |
+///   0 | 2 | 0.2 | 0.1 | 128 | -128
+LogicalResult
+TypeEmitter::emitUniformQuantizedPerAxisType(UniformQuantizedPerAxisType type) {
+  // FIXME: We're currently just encoding this as the storage type, which
+  // loses quantization information.
+  auto intStorageType = IntegerType::get(
+      type.getContext(), type.getStorageTypeIntegralWidth(),
+      type.isSigned() ? IntegerType::Signed : IntegerType::Unsigned);
+  return emitType(intStorageType);
 }
 
 LogicalResult TypeEmitter::emitFunctionType(FunctionType type) {
@@ -949,14 +978,8 @@ LogicalResult TypeEmitter::emitType(Type type) {
   if (auto fnType = type.dyn_cast<FunctionType>())
     return emitFunctionType(fnType);
 
-  if (auto qType = type.dyn_cast<UniformQuantizedPerAxisType>()) {
-    // FIXME: We're currently just encoding this as the storage type, which
-    // loses quantization information.
-    auto intStorageType = IntegerType::get(
-        qType.getContext(), qType.getStorageTypeIntegralWidth(),
-        qType.isSigned() ? IntegerType::Signed : IntegerType::Unsigned);
-    return emitType(intStorageType);
-  }
+  if (auto qType = type.dyn_cast<UniformQuantizedPerAxisType>())
+    return emitUniformQuantizedPerAxisType(qType);
 
   // FIXME: We're ignoring CalibratedQuantizedType.  Nothing in the compiler
   // uses this, why are we generating it in the first place?

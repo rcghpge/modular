@@ -102,7 +102,7 @@ bef.invokable @attributes() {
 
   // CHECK-NEXT: bef.opaque "type.quanttensor" [tensor<2xsi16>]()
   // MD: "type.quanttensor"() {t = tensor<2xsi16>}
-  "type.quanttensor"() {t = tensor<2x!quant.uniform<i16:f32:0, {2.000000e-03}>>} : () -> ()
+  "type.quanttensor"() {t = tensor<2x!quant.uniform<i16:f32:0, {0.2:128, 0.1:-128}>>} : () -> ()
 
   // CHECK-NEXT: bef.opaque "type.quant" [!quant.uniform<u8:f32, 0.0078119998797774315:128>]()
   // MD: "type.quant"() {t = !quant.uniform<u8:f32, 0.0078119998797774315:128>
@@ -115,7 +115,7 @@ bef.invokable @attributes() {
   // CHECK-NEXT: bef.opaque "type.fn" [(si32, !quant.uniform<i8:f32, 0.0078119998797774315:-128>) -> tensor<4x100xf32>]()
   // MD: "type.fn"() {t = (si32, !quant.uniform<i8:f32, 0.0078119998797774315:-128>) -> tensor<4x100xf32>
   "type.fn"() {t = (si32, !quant.uniform<i8:f32, 0.0078119998797774315:-128>) -> tensor<4x100xf32>} : () -> ()
- 
+
   // CHECK-NEXT: bef.opaque "type.fn" [() -> (si8, i1)]()
   // MD: "type.fn"() {t = () -> (si8, i1)
   "type.fn"() {t = () -> (si8, i1)} : () -> ()
