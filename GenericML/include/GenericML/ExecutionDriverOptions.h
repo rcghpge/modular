@@ -32,7 +32,7 @@ struct ExecutorDriverCLOptions : public BEFCLOptionsCore, public CLOptionsCore {
 
   /// This tells the execution driver how to initialize model inputs.
   cl::opt<InputGenerationKind> inputGenKind{
-      "generate-inputs", cl::desc("Specify input tensor generation:"),
+      "model-inputs", cl::desc("Specify input tensor generation:"),
       cl::values(
           clEnumValN(
               InputGenerationKind::kRandom, "random",
