@@ -9,7 +9,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphRT/BEFExecutor/Invokable.h"
+#include "GraphRT/BEFExecutor/BEFInvokable.h"
 #include "GraphRT/BEFExecutor/PrimitiveFrame.h"
 using namespace M;
 
@@ -19,14 +19,14 @@ using namespace M;
 
 // NOTE: This could be moved out to somewhere non-BEF specific if there are
 // other kinds of invokables someday.
-void Invokable::vtableAnchor() {}
+void BEFInvokable::vtableAnchor() {}
 
 /// Invoke this using the specified runtime, passing the specified
 /// arguments. This fills in one AsyncValue for each result.  The caller is
 /// allowed to take from the `arguments` async values.
 SmallVector<AnyAsyncValueRef, 1>
-Invokable::invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
-                  Runtime &runtime) const {
+BEFInvokable::invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
+                     Runtime &runtime) const {
   SmallVector<AnyAsyncValueRef, 1> results;
   results.resize(getNumResults());
   invoke(arguments, results, runtime);

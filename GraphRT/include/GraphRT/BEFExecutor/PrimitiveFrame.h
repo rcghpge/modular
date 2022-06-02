@@ -14,7 +14,7 @@
 #include "llvm/ADT/SmallVector.h"
 
 namespace M {
-class Invokable;
+class BEFInvokable;
 
 /// This class captures the states associated with an invocation of a primitive,
 /// including the input arguments, attributes, result values, location and
@@ -24,6 +24,9 @@ class Invokable;
 /// objects and setting them into the frame.  The correct number of results are
 /// present, but each AsyncValue pointers is null when the implementation is
 /// invoked.
+// remove runtime and argsAndResults, rename to PrimitiveDescriptor
+// move runtime and argsAndResults to subclass called
+// RunnablePrimitiveDescriptor
 class PrimitiveFrame {
 public:
   Runtime &getRuntime() const { return runtime; }
@@ -87,7 +90,7 @@ public:
 
   size_t getNumInvokables() const { return invokables.size(); }
 
-  Invokable *getInvokable(size_t idx) const {
+  BEFInvokable *getInvokable(size_t idx) const {
     assert(idx < invokables.size() && "invalid invokable number");
     return invokables[idx];
   }
@@ -160,7 +163,7 @@ protected:
   SmallVector<AnyAsyncValueRef, 16> argsAndResults;
 
   /// This is all of the invokable references used by the invocation.
-  SmallVector<Invokable *, 2> invokables;
+  SmallVector<BEFInvokable *, 2> invokables;
 
   /// This keeps track of each attribute value into the attributeSection.
   ArrayRef<uint32_t> attrOffsets;
@@ -231,7 +234,7 @@ public:
     this->attrOffsets = attrOffsets;
   }
 
-  void addInvokable(Invokable *inv) { invokables.push_back(inv); }
+  void addInvokable(BEFInvokable *inv) { invokables.push_back(inv); }
 };
 
 } // namespace M

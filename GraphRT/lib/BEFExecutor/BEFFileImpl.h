@@ -12,14 +12,14 @@
 #define BEFFILEIMPL_H
 
 #include "GraphRT/BEFExecutor/BEFFile.h"
-#include "GraphRT/BEFExecutor/Invokable.h"
+#include "GraphRT/BEFExecutor/BEFInvokable.h"
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
 #include "GraphRT/BEFExecutor/TopLevelEntity.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringMap.h"
 
 namespace M {
-class BEFInvokable;
+class BEFInvokableImpl;
 
 /// This class is the implementation details behind the BEFFile::Open method,
 /// which maintains all the state necessary for the BEFExecutor.
@@ -29,7 +29,7 @@ public:
   ~BEFFileImpl() override;
 
   /// Return the invokable with the specified invokable ID.
-  Invokable *getInvokableByID(size_t number) const;
+  BEFInvokable *getInvokableByID(size_t number) const;
 
   // Everything in this class is public because the entire class is private to
   // the BEFExecutor library implementation.
@@ -56,7 +56,7 @@ public:
   /// This contains all of the BEFInvokable records inline in dense memory even
   /// though clients treat them like individual objects.  Their lifetime is
   /// completely bound to BEFFileImpl's.
-  BEFInvokable *invokables = nullptr;
+  BEFInvokableImpl *invokables = nullptr;
   size_t numInvokables = 0;
 
   /// This contains a list of the top level ops in the BEF file.
@@ -64,14 +64,14 @@ public:
 };
 
 /// BEF specific implementation of the Invokable interface.
-class BEFInvokable final : public Invokable {
+class BEFInvokableImpl final : public BEFInvokable {
 public:
-  BEFInvokable(StringRef primitive, StringRef symbol, uint16_t numArguments,
-               uint16_t numResults, uint32_t bodyOffset, BEFFileImpl *owner)
-      : Invokable(primitive, symbol, numArguments, numResults),
+  BEFInvokableImpl(StringRef primitive, StringRef symbol, uint16_t numArguments,
+                   uint16_t numResults, uint32_t bodyOffset, BEFFileImpl *owner)
+      : BEFInvokable(primitive, symbol, numArguments, numResults),
         bodyOffset(bodyOffset), owner(owner) {}
 
-  virtual ~BEFInvokable() = default;
+  virtual ~BEFInvokableImpl() = default;
 
   /// Invokable this using the specified runtime, passing the specified
   /// arguments. This returns one AsyncValue for each result.

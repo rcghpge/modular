@@ -1242,9 +1242,9 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
 
   /// If this takes a `Invokable *`, then pass it down.
   template <typename Dummy>
-  struct Value<Invokable *, Dummy> : public InvokableValue {
+  struct Value<BEFInvokable *, Dummy> : public InvokableValue {
     template <typename IndicesT>
-    static Invokable *process(PrimitiveFrame &frame) {
+    static BEFInvokable *process(PrimitiveFrame &frame) {
       return frame.getInvokable(IndicesT::invIdx);
     }
   };

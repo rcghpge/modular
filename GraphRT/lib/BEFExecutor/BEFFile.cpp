@@ -130,20 +130,22 @@ bool BEFFileReader::readInvokableIndexSection(BEFReader &stringReader) {
   if (parseVBR(numInvokables))
     return true;
 
-  auto *fnMemory = (BEFInvokable *)malloc(numInvokables * sizeof(BEFInvokable));
+  auto *fnMemory =
+      (BEFInvokableImpl *)malloc(numInvokables * sizeof(BEFInvokableImpl));
 
   // Read until we run out of invokable descriptors.
   size_t regionNumber = 0;
   auto reportIncorrectInvokableCount = [&]() -> bool {
     // Destroy the partially constructed invokables array.
     while (regionNumber)
-      fnMemory[--regionNumber].~BEFInvokable();
+      fnMemory[--regionNumber].~BEFInvokableImpl();
     free(fnMemory);
     return emitError("invokable count is incorrect");
   };
 
   // Use a MapVector here to preserve input ordering.
-  llvm::MapVector<std::pair<StringRef, StringRef>, SmallVector<Invokable *, 1>>
+  llvm::MapVector<std::pair<StringRef, StringRef>,
+                  SmallVector<BEFInvokable *, 1>>
       invokableMap;
   while (!empty()) {
     if (regionNumber > numInvokables)
@@ -158,7 +160,7 @@ bool BEFFileReader::readInvokableIndexSection(BEFReader &stringReader) {
       return true;
 
     /// Create the actual BEFInvokable.
-    Invokable *inv = new (&fnMemory[regionNumber++]) BEFInvokable(
+    BEFInvokable *inv = new (&fnMemory[regionNumber++]) BEFInvokableImpl(
         primitive, symbol, numArgs, numResults, bodyOffset, &befFile);
 
     /// Remember this invokable in the symbol table if it isn't anonymous by
@@ -166,7 +168,7 @@ bool BEFFileReader::readInvokableIndexSection(BEFReader &stringReader) {
     if (!symbol.empty()) {
       auto didEmplace = invokableMap.insert(
           {std::pair<StringRef, StringRef>{primitive, symbol},
-           SmallVector<Invokable *, 1>{inv}});
+           SmallVector<BEFInvokable *, 1>{inv}});
       if (!didEmplace.second)
         didEmplace.first->second.push_back(inv);
     }

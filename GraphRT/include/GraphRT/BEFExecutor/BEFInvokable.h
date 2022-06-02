@@ -1,4 +1,4 @@
-//===- GraphRT/BEFExecutor/Invokable.h ------------------------------------===//
+//===- GraphRT/BEFExecutor/BEFInvokable.h ---------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //
@@ -20,9 +20,9 @@ namespace M {
 ///
 /// Invokables may be shared across many different runtimes.
 ///
-class Invokable {
+class BEFInvokable {
 public:
-  virtual ~Invokable() {}
+  virtual ~BEFInvokable() {}
 
   /// Return the name of the primitive for this invokable, or empty if
   /// anonymous.
@@ -58,8 +58,8 @@ public:
   virtual void dropRef() const = 0;
 
 protected:
-  Invokable(StringRef primitiveName, StringRef symbolName, uint16_t numArgs,
-            uint16_t numResults)
+  BEFInvokable(StringRef primitiveName, StringRef symbolName, uint16_t numArgs,
+               uint16_t numResults)
       : primitiveName(primitiveName), symbolName(symbolName), numArgs(numArgs),
         numResults(numResults) {}
 
@@ -67,8 +67,8 @@ private:
   const StringRef primitiveName, symbolName;
   const uint16_t numArgs, numResults;
 
-  Invokable(Invokable &) = delete;
-  Invokable &operator=(Invokable &) = delete;
+  BEFInvokable(BEFInvokable &) = delete;
+  BEFInvokable &operator=(BEFInvokable &) = delete;
   virtual void vtableAnchor();
 };
 

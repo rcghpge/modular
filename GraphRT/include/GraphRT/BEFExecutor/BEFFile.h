@@ -15,7 +15,7 @@
 #include "llvm/ADT/ArrayRef.h"
 
 namespace M {
-class Invokable;
+class BEFInvokable;
 class PrimitiveRegistry;
 
 /// Instances of this class represent opened and decoded BEF files, allowing

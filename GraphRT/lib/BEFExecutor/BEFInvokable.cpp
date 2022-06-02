@@ -9,7 +9,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphRT/BEFExecutor/Invokable.h"
+#include "GraphRT/BEFExecutor/BEFInvokable.h"
 
 #include "BEFFileImpl.h"
 #include "GraphRT/BEF/BEFReader.h"
@@ -176,7 +176,7 @@ namespace {
 /// BEFExecutor can be allocated.
 struct BEFInvokableDecoder {
 public:
-  BEFInvokableDecoder(const BEFInvokable &inv)
+  BEFInvokableDecoder(const BEFInvokableImpl &inv)
       : inv(inv), bodyReader(inv.owner->invokableBodies, [&](Error message) {
           befFormatError = std::move(message);
         }) {}
@@ -189,7 +189,7 @@ public:
   }
 
 public:
-  const BEFInvokable &inv;
+  const BEFInvokableImpl &inv;
   Optional<Error> befFormatError;
   BEFReader bodyReader;
 
@@ -232,7 +232,7 @@ public:
   bool decodeTables(BEFInvokableDecoder &decoder);
 
   /// Execute the invokable once the tables are decoded.
-  void execute(const BEFInvokable &invokable,
+  void execute(const BEFInvokableImpl &invokable,
                MutableArrayRef<AnyAsyncValueRef> arguments,
                MutableArrayRef<AnyAsyncValueRef> results,
                ArrayRef<unsigned> resultRegIndex);
@@ -361,7 +361,7 @@ bool BEFExecutor::decodeTables(BEFInvokableDecoder &decoder) {
 }
 
 /// Execute the invokable once the tables are decoded.
-void BEFExecutor::execute(const BEFInvokable &invokable,
+void BEFExecutor::execute(const BEFInvokableImpl &invokable,
                           MutableArrayRef<AnyAsyncValueRef> arguments,
                           MutableArrayRef<AnyAsyncValueRef> results,
                           ArrayRef<unsigned> resultRegIndex) {
@@ -680,18 +680,20 @@ void BEFExecutor::processUsedByRecords(
 
 /// Add a new reference to this object.  The lifetime of BEFInvokables are
 /// completely tied to BEFFileImpl, so just extend its reference count.
-void BEFInvokable::addRef() const { RCRef<BEFFileImpl>::lowLevelAddRef(owner); }
+void BEFInvokableImpl::addRef() const {
+  RCRef<BEFFileImpl>::lowLevelAddRef(owner);
+}
 
 /// Drop a reference to this object, potentially deallocating it.
-void BEFInvokable::dropRef() const {
+void BEFInvokableImpl::dropRef() const {
   RCRef<BEFFileImpl>::lowLevelDropRef(owner);
 }
 
 /// Invoke this, passing the specified arguments. This returns one AsyncValue
 /// for each result.
-void BEFInvokable::invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
-                          MutableArrayRef<AnyAsyncValueRef> results,
-                          Runtime &runtime) const {
+void BEFInvokableImpl::invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
+                              MutableArrayRef<AnyAsyncValueRef> results,
+                              Runtime &runtime) const {
   assert(arguments.size() == getNumArgs() &&
          "incorrect number of argument to an invokable");
   assert(results.size() == getNumResults() &&
@@ -734,7 +736,7 @@ void BEFInvokable::invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
 }
 
 /// Return the invokable with the specified Invokable ID.
-Invokable *BEFFileImpl::getInvokableByID(size_t number) const {
+BEFInvokable *BEFFileImpl::getInvokableByID(size_t number) const {
   assert(number < numInvokables && "invalid invokable");
   // invokables are stored consequtively in memory.
   return invokables + number;

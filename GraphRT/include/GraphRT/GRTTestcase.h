@@ -11,7 +11,7 @@
 #include "llvm/ADT/StringRef.h"
 
 namespace M {
-class Invokable;
+class BEFInvokable;
 class TopLevelEntity;
 
 class GRTTestcase {
@@ -26,13 +26,13 @@ public:
   StringRef getSymbolName() const { return symbolName; }
 
   /// Get the body for this op - a single Invokable.
-  Invokable *getBody() const { return body; }
+  BEFInvokable *getBody() const { return body; }
 
 private:
-  GRTTestcase(StringRef symbolName, Invokable *body)
+  GRTTestcase(StringRef symbolName, BEFInvokable *body)
       : symbolName(symbolName), body(body) {}
   StringRef symbolName;
-  Invokable *body;
+  BEFInvokable *body;
 };
 } // namespace M
 
