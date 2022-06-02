@@ -40,7 +40,8 @@ BEFInvokable::invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
 /// Create an AsyncValue with the specified cause, and our current location.
 /// This can be set into a result or used for other purposes.
 AnyAsyncValueRef RunnablePrimitiveDescriptor::getError(Error cause) {
-  return copyLocation().createErrorValue(runtime, std::move(cause));
+  return AsyncValue::createError(
+      runtime, EncodedDiagnostic(std::move(cause), copyLocation()));
 }
 
 /// Mark that execution of the primitive failed with the specified reason.
