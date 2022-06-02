@@ -11,7 +11,6 @@
 #include "GraphRT/Primitives.h"
 
 #include "GraphRT/BEFExecutor/Invokable.h"
-#include "GraphRT/BEFExecutor/PrimitiveFrame.h"
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
 #include "LLCL/ForwardDecls.h"
 #include "LLCL/Runtime/AsyncValueRef.h"

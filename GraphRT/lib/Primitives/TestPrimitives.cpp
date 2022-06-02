@@ -9,7 +9,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphRT/BEFExecutor/PrimitiveFrame.h"
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
 #include "GraphRT/Primitives.h"
 #include "LLCL/Runtime/Algorithms.h"
