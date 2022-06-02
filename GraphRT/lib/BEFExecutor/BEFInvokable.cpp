@@ -13,7 +13,7 @@
 
 #include "BEFFileImpl.h"
 #include "GraphRT/BEF/BEFReader.h"
-#include "GraphRT/BEFExecutor/PrimitiveFrame.h"
+#include "GraphRT/BEFExecutor/PrimitiveDescriptor.h"
 #include "LLCL/Runtime/AsyncValue.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "llvm/Support/TrailingObjects.h"
@@ -502,7 +502,7 @@ void BEFExecutor::processArgumentsPseudo(
 /// from the end of the vector to the start - worklist style.
 void BEFExecutor::decrementOperandsNotReadyCounts(
     SmallVectorImpl<uint32_t> &primitiveIDWorklist) {
-  PrimitiveFrameBuilder frame(runtime, befFile->attributes, *this);
+  RunnablePrimitiveDescriptorBuilder frame(runtime, befFile->attributes, *this);
 
   MutableArrayRef<RegisterInfo> registers = getRegisterInfoTable();
   MutableArrayRef<PrimitiveInfo> primitives = getPrimitiveInfoTable();

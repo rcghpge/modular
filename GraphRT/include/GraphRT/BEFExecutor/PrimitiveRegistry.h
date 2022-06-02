@@ -9,7 +9,7 @@
 
 #include "GraphRT/BEF/BEFEncoding.h"
 #include "GraphRT/BEF/BEFTypes.h"
-#include "GraphRT/BEFExecutor/PrimitiveFrame.h"
+#include "GraphRT/BEFExecutor/PrimitiveDescriptor.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "LLCL/Support/Chain.h"
 #include "LLCL/Support/ReferenceCounted.h"
@@ -27,7 +27,7 @@ public:
 
   /// Primitive implementations use this signature, acting on the data provided
   /// in the argument frame, and returning results through it.
-  using PrimitiveImplFn = void (*)(PrimitiveFrame &frame);
+  using PrimitiveImplFn = void (*)(RunnablePrimitiveDescriptor &frame);
 
   /// Add an implementation of a primitive to the registry.  Consider using
   /// the ADD_PRIMITIVE macro to enable various pretty forms for this.
@@ -165,7 +165,8 @@ class AnySingleResult {
 public:
   /// On construction, the result is initialized with an AsyncValue of the
   /// correct type.
-  explicit AnySingleResult(AnyAsyncValueRef &result, PrimitiveFrame &frame)
+  explicit AnySingleResult(AnyAsyncValueRef &result,
+                           RunnablePrimitiveDescriptor &frame)
       : result(result), frame(frame) {
     assert(!result && "result already initialized?");
   }
@@ -190,13 +191,13 @@ public:
   AsyncValue &operator*() const { return *getPointer(); }
   AsyncValue *operator->() const { return getPointer(); }
 
-  PrimitiveFrame &getFrame() const { return frame; }
+  RunnablePrimitiveDescriptor &getFrame() const { return frame; }
 
 private:
   AnySingleResult(const AnySingleResult &) = delete;
   void operator=(const AnySingleResult &) = delete;
   AnyAsyncValueRef &result;
-  PrimitiveFrame &frame;
+  RunnablePrimitiveDescriptor &frame;
 };
 
 /// The Result class is used by primitive implementations for typed asynchronous
@@ -204,7 +205,7 @@ private:
 template <typename T>
 class Result : public AnySingleResult {
 public:
-  explicit Result(AnyAsyncValueRef &result, PrimitiveFrame &frame)
+  explicit Result(AnyAsyncValueRef &result, RunnablePrimitiveDescriptor &frame)
       : AnySingleResult(result, frame) {
     result = AsyncValue::allocate<T>(frame.getRuntime());
   }
@@ -246,7 +247,8 @@ public:
 class IndirectResult : public AnySingleResult {
 public:
   /// On construction, this is initialized with an indirect AsyncValue.
-  explicit IndirectResult(AnyAsyncValueRef &result, PrimitiveFrame &frame)
+  explicit IndirectResult(AnyAsyncValueRef &result,
+                          RunnablePrimitiveDescriptor &frame)
       : AnySingleResult(result, frame) {
     result = AsyncValue::createIndirect(frame.getRuntime());
   }
@@ -866,7 +868,7 @@ private:
 /// This macro is used to register an implementation function for a primitive
 /// with a specified PrimitiveRegistry.  It handles generating a wrapper thunk
 /// that makes it much easier (and less bug prone) to work with low-level
-/// `PrimitiveFrame`.
+/// `RunnablePrimitiveDescriptor`.
 ///
 /// For example:
 ///    ADD_PRIMITIVE(registery, "grt.invoke", grt_invoke_impl);
@@ -956,7 +958,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   /// by recursively processing the argument list, then handling the result
   /// list, generating a function with the standard PrimitiveImpl signature that
   /// handles each part of the function signature as it goes.
-  static void invoke(PrimitiveFrame &frame) {
+  static void invoke(RunnablePrimitiveDescriptor &frame) {
     processArgsAndInvoke<
         ValueIndices</*argIdx=*/0, /*resultIdx=*/0, /*attrIdx=*/0,
                      /*invIdx=*/0>,
@@ -1103,8 +1105,8 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   //===--------------------------------------------------------------------===//
   // Framework Values
 
-  /// This class defines a Framework value, such as a PrimitiveFrame or
-  /// Runtime.
+  /// This class defines a Framework value, such as a
+  /// RunnablePrimitiveDescriptor or Runtime.
   struct FrameworkValue : public ValueBase<ValueType::kFramework> {};
 
   //===--------------------------------------------------------------------===//
@@ -1118,7 +1120,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   /// similar to) the following form:
   ///
   ///   template <typename IndicesT>
-  ///   static T process(PrimitiveFrame &frame) {
+  ///   static T process(RunnablePrimitiveDescriptor &frame) {
   ///     // Compute and return the value of `T` here.
   ///     // `IndicesT` is an instance of ValueIndices containing the current
   ///     // indices for each value type.
@@ -1138,7 +1140,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
     using ArgTy = std::decay_t<T>;
 
     template <typename IndicesT>
-    static auto &&process(PrimitiveFrame &frame) {
+    static auto &&process(RunnablePrimitiveDescriptor &frame) {
       return frame.getArg<ArgTy>(IndicesT::argIdx);
     }
 
@@ -1151,7 +1153,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   template <typename T, typename Dummy>
   struct Value<AsyncValueRef<T>, Dummy> : public ArgValue<> {
     template <typename IndicesT>
-    static AsyncValueRef<T> process(PrimitiveFrame &frame) {
+    static AsyncValueRef<T> process(RunnablePrimitiveDescriptor &frame) {
       return std::move(frame.getArg(IndicesT::argIdx));
     }
 
@@ -1164,7 +1166,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   template <typename Dummy>
   struct Value<AnyAsyncValueRef, Dummy> : public ArgValue<> {
     template <typename IndicesT>
-    static AnyAsyncValueRef process(PrimitiveFrame &frame) {
+    static AnyAsyncValueRef process(RunnablePrimitiveDescriptor &frame) {
       return std::move(frame.getArg(IndicesT::argIdx));
     }
   };
@@ -1174,7 +1176,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   template <typename Dummy>
   struct Value<RemainingArguments, Dummy> : public TerminalArgValue {
     template <typename IndicesT>
-    static RemainingArguments process(PrimitiveFrame &frame) {
+    static RemainingArguments process(RunnablePrimitiveDescriptor &frame) {
       return RemainingArguments(
           frame.getArguments().drop_front(IndicesT::argIdx));
     }
@@ -1187,7 +1189,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   template <typename T, typename Dummy>
   struct Value<Result<T>, Dummy> : public ResultValue<> {
     template <typename IndicesT>
-    static Result<T> process(PrimitiveFrame &frame) {
+    static Result<T> process(RunnablePrimitiveDescriptor &frame) {
       return Result<T>(frame.getResults()[IndicesT::resultIdx], frame);
     }
   };
@@ -1196,7 +1198,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   template <typename Dummy>
   struct Value<IndirectResult, Dummy> : public ResultValue<> {
     template <typename IndicesT>
-    static IndirectResult process(PrimitiveFrame &frame) {
+    static IndirectResult process(RunnablePrimitiveDescriptor &frame) {
       return IndirectResult(frame.getResults()[IndicesT::resultIdx], frame);
     }
   };
@@ -1206,7 +1208,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   template <typename Dummy>
   struct Value<RemainingResults, Dummy> : public TerminalResultValue {
     template <typename IndicesT>
-    static RemainingResults process(PrimitiveFrame &frame) {
+    static RemainingResults process(RunnablePrimitiveDescriptor &frame) {
       return RemainingResults(
           frame.getResults().drop_front(IndicesT::resultIdx),
           frame.getRuntime());
@@ -1220,7 +1222,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   template <typename T, typename Dummy>
   struct Value<BEFAttr<T>, Dummy> : public AttrValue<> {
     template <typename IndicesT>
-    static BEFAttr<T> process(PrimitiveFrame &frame) {
+    static BEFAttr<T> process(RunnablePrimitiveDescriptor &frame) {
       return BEFAttr<T>(frame.getRawAttr(IndicesT::attrIdx));
     }
   };
@@ -1230,7 +1232,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   template <typename Dummy>
   struct Value<RemainingBEFAttrs, Dummy> : public TerminalAttrValue {
     template <typename IndicesT>
-    static RemainingBEFAttrs process(PrimitiveFrame &frame) {
+    static RemainingBEFAttrs process(RunnablePrimitiveDescriptor &frame) {
       return RemainingBEFAttrs(
           frame.getAttrBase(),
           frame.getAttrOffsets().drop_front(IndicesT::attrIdx));
@@ -1244,7 +1246,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   template <typename Dummy>
   struct Value<BEFInvokable *, Dummy> : public InvokableValue {
     template <typename IndicesT>
-    static BEFInvokable *process(PrimitiveFrame &frame) {
+    static BEFInvokable *process(RunnablePrimitiveDescriptor &frame) {
       return frame.getInvokable(IndicesT::invIdx);
     }
   };
@@ -1252,11 +1254,13 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   //===--------------------------------------------------------------------===//
   // Framework Values
 
-  /// If this requires the PrimitiveFrame for any reason, pass it along.
+  /// If this requires the RunnablePrimitiveDescriptor for any reason, pass it
+  /// along.
   template <typename Dummy>
-  struct Value<PrimitiveFrame &, Dummy> : public FrameworkValue {
+  struct Value<RunnablePrimitiveDescriptor &, Dummy> : public FrameworkValue {
     template <typename IndicesT>
-    static PrimitiveFrame &process(PrimitiveFrame &frame) {
+    static RunnablePrimitiveDescriptor &
+    process(RunnablePrimitiveDescriptor &frame) {
       return frame;
     }
   };
@@ -1265,7 +1269,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   template <typename Dummy>
   struct Value<Runtime &, Dummy> : public FrameworkValue {
     template <typename IndicesT>
-    static Runtime &process(PrimitiveFrame &frame) {
+    static Runtime &process(RunnablePrimitiveDescriptor &frame) {
       return frame.getRuntime();
     }
   };
@@ -1274,7 +1278,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   template <typename Dummy>
   struct Value<EncodedLocation, Dummy> : public FrameworkValue {
     template <typename IndicesT>
-    static EncodedLocation process(PrimitiveFrame &frame) {
+    static EncodedLocation process(RunnablePrimitiveDescriptor &frame) {
       return frame.copyLocation();
     }
   };
@@ -1289,7 +1293,8 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   template <typename IndicesT, bool hasInChain, typename ArgT,
             typename... ArgsToProcessT, typename... ArgsT>
   static void processArgsAndInvoke(TypeTag<ArgT, ArgsToProcessT...>,
-                                   PrimitiveFrame &frame, ArgsT &&...args) {
+                                   RunnablePrimitiveDescriptor &frame,
+                                   ArgsT &&...args) {
     Value<ArgT, void>::template verifyCurrentIndex<IndicesT>();
     processArgsAndInvoke<
         typename Value<ArgT, void>::template UpdatedIndicesT<IndicesT>,
@@ -1302,7 +1307,8 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   /// is invoked after all arguments have finished processing, and handles some
   /// final validation before invoking the primitive.
   template <typename IndicesT, bool hasInChain, typename... ArgsT>
-  static void processArgsAndInvoke(TypeTag<>, PrimitiveFrame &frame,
+  static void processArgsAndInvoke(TypeTag<>,
+                                   RunnablePrimitiveDescriptor &frame,
                                    ArgsT &&...args) {
     verifyResultIndex<IndicesT::resultIdx>(frame, TypeTag<Return>());
 
@@ -1323,14 +1329,16 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
 
   // Verify the result index for non-void Return type
   template <int resultIdx, typename T>
-  static void verifyResultIndex(PrimitiveFrame &frame, TypeTag<T>) {
+  static void verifyResultIndex(RunnablePrimitiveDescriptor &frame,
+                                TypeTag<T>) {
     static_assert(resultIdx == 0,
                   "Don't mix return by value and Result<> syntax.");
   }
 
   // Verify the result index for void Return type.
   template <int resultIdx>
-  static void verifyResultIndex(PrimitiveFrame &frame, TypeTag<void>) {
+  static void verifyResultIndex(RunnablePrimitiveDescriptor &frame,
+                                TypeTag<void>) {
     assert((resultIdx == (int)frame.getNumResults() || resultIdx == -1) &&
            "Extra results passed to primitive");
   }
@@ -1343,22 +1351,23 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   // non-void. Otherwise ignores the return value.
   template <typename ReturnT, typename... ActualArgs>
   static std::enable_if_t<!std::is_same<ReturnT, void>::value>
-  invoke(PrimitiveFrame &frame, ActualArgs &&...args) {
+  invoke(RunnablePrimitiveDescriptor &frame, ActualArgs &&...args) {
     handleReturn(frame, implFn(std::forward<ActualArgs>(args)...));
   }
   template <typename ReturnT, typename... ActualArgs>
   static std::enable_if_t<std::is_same<ReturnT, void>::value>
-  invoke(PrimitiveFrame &frame, ActualArgs &&...args) {
+  invoke(RunnablePrimitiveDescriptor &frame, ActualArgs &&...args) {
     implFn(std::forward<ActualArgs>(args)...);
   }
 
   // These functions provide custom behavior for concrete result types that
   // may come up.
 
-  /// Store result as an AsyncValue output in PrimitiveFrame by creating a
-  /// ConcreteAsyncValue.
+  /// Store result as an AsyncValue output in RunnablePrimitiveDescriptor by
+  /// creating a ConcreteAsyncValue.
   template <typename T>
-  static void processResult(PrimitiveFrame &frame, size_t index, T &&t) {
+  static void processResult(RunnablePrimitiveDescriptor &frame, size_t index,
+                            T &&t) {
     frame.emplaceResult<std::decay_t<T>>(index, std::forward<T>(t));
   }
 
@@ -1366,7 +1375,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   /// frame.fail() to report the error message and set an error in the output
   /// AsyncValue. Otherwise, store the return value as normal.
   template <typename T>
-  static void processResult(PrimitiveFrame &frame, size_t index,
+  static void processResult(RunnablePrimitiveDescriptor &frame, size_t index,
                             ErrorOr<T> &&errorOr) {
     if (succeeded(errorOr))
       processResult(frame, index, errorOr.takeValue());
@@ -1376,27 +1385,28 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
 
   /// Don't allocate an async value for chain results, just use the one
   /// already stored in Runtime.
-  static void processResult(PrimitiveFrame &frame, size_t index, Chain t) {
+  static void processResult(RunnablePrimitiveDescriptor &frame, size_t index,
+                            Chain t) {
     frame.setResult(index, frame.getRuntime().getReadyChain().copy());
   }
 
   /// Handle explicit AnyAsyncValueRef results.
-  static void processResult(PrimitiveFrame &frame, size_t index,
+  static void processResult(RunnablePrimitiveDescriptor &frame, size_t index,
                             AnyAsyncValueRef t) {
     frame.setResult(index, std::move(t));
   }
 
   /// Handle explicit AsyncValueRef results.
   template <typename T>
-  static void processResult(PrimitiveFrame &frame, size_t index,
+  static void processResult(RunnablePrimitiveDescriptor &frame, size_t index,
                             AsyncValueRef<T> t) {
     frame.setResult(index, std::move(t));
   }
 
   /// Store the primitive result back to the output AsyncValue in the
-  /// PrimitiveFrame.
+  /// RunnablePrimitiveDescriptor.
   template <typename T>
-  static void handleReturn(PrimitiveFrame &frame, T &&t) {
+  static void handleReturn(RunnablePrimitiveDescriptor &frame, T &&t) {
     assert(frame.getNumResults() == 1 && "Incorrect number of results");
     processResult(frame, 0, std::forward<T>(t));
   }
@@ -1404,7 +1414,8 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   /// Support implementations that return std::pair<>, storing the two results
   /// in separate output results.
   template <typename T1, typename T2>
-  static void handleReturn(PrimitiveFrame &frame, std::pair<T1, T2> &&pair) {
+  static void handleReturn(RunnablePrimitiveDescriptor &frame,
+                           std::pair<T1, T2> &&pair) {
     assert(frame.getNumResults() == 2 && "Incorrect number of results");
     processResult(frame, 0, std::move(pair.first));
     processResult(frame, 1, std::move(pair.second));
@@ -1413,7 +1424,8 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   /// Support implementations that return std::tuple<>, storing each element in
   /// separate output results.
   template <typename... Ts>
-  static void handleReturn(PrimitiveFrame &frame, std::tuple<Ts...> &&tuple) {
+  static void handleReturn(RunnablePrimitiveDescriptor &frame,
+                           std::tuple<Ts...> &&tuple) {
     assert(frame.getNumResults() == sizeof...(Ts) &&
            "Incorrect number of results");
 

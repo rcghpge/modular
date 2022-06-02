@@ -1,11 +1,11 @@
-//===- GraphRT/BEFExecutor/PrimitiveFrame.h -------------------------------===//
+//===- GraphRT/BEFExecutor/PrimitiveDescriptor.h --------------------------===//
 //
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_BEFEXECUTOR_PRIMITIVE_FRAME_H
-#define GRAPHRT_BEFEXECUTOR_PRIMITIVE_FRAME_H
+#ifndef GRAPHRT_BEFEXECUTOR_PRIMITIVE_DESCRIPTOR_H
+#define GRAPHRT_BEFEXECUTOR_PRIMITIVE_DESCRIPTOR_H
 
 #include "LLCL/ForwardDecls.h"
 #include "LLCL/Runtime/AsyncValue.h"
@@ -24,13 +24,8 @@ class BEFInvokable;
 /// objects and setting them into the frame.  The correct number of results are
 /// present, but each AsyncValue pointers is null when the implementation is
 /// invoked.
-// remove runtime and argsAndResults, rename to PrimitiveDescriptor
-// move runtime and argsAndResults to subclass called
-// RunnablePrimitiveDescriptor
-class PrimitiveFrame {
+class PrimitiveDescriptor {
 public:
-  Runtime &getRuntime() const { return runtime; }
-
   /// Return an EncodedLocation for this specified frame invocation.
   EncodedLocation copyLocation() const {
     return EncodedLocation(locationData, copyRCRef(&locationDecoder));
@@ -41,26 +36,6 @@ public:
   //===--------------------------------------------------------------------===//
 
   size_t getNumArgs() const { return numArguments; }
-
-  /// Get the argument at the given index as AsyncValue*.
-  AnyAsyncValueRef &getArg(size_t index) {
-    assert(index < getNumArgs() && "invalid argument number");
-    return argsAndResults[index];
-  }
-
-  /// Look through the argument AsyncValue to get the element as type T.
-  template <typename T>
-  T &getArg(size_t index) {
-    return getArg(index)->get<T>();
-  }
-
-  ArrayRef<AnyAsyncValueRef> getArguments() const {
-    return llvm::makeArrayRef(argsAndResults.data(), getNumArgs());
-  }
-
-  MutableArrayRef<AnyAsyncValueRef> getArguments() {
-    return llvm::makeMutableArrayRef(argsAndResults.data(), getNumArgs());
-  }
 
   //===--------------------------------------------------------------------===//
   // Attributes
@@ -101,8 +76,97 @@ public:
 
   size_t getNumResults() const { return numResults; }
 
+protected:
+  PrimitiveDescriptor(ArrayRef<uint8_t> attrSection,
+                      LocationDecoder &locationDecoder)
+      : locationDecoder(locationDecoder), attrSection(attrSection) {}
+
+  LocationDecoder &locationDecoder;
+
+  /// This is the overall attribute section in the BEF file.
+  const ArrayRef<uint8_t> attrSection;
+
+  /// This is the location information for the current frame, which (when
+  /// combined with the location decoder) can be turned into an
+  /// `EncodedLocation`.
+  intptr_t locationData = ~intptr_t(0);
+
+  /// numResults is set to ~0 so we can check that addArgument() is called
+  /// before setNumResults.
+  uint16_t numArguments = 0, numResults = uint16_t(~0U);
+
+  /// This is all of the invokable references used by the invocation.
+  SmallVector<BEFInvokable *, 2> invokables;
+
+  /// This keeps track of each attribute value into the attributeSection.
+  ArrayRef<uint32_t> attrOffsets;
+};
+
+/// This class is used to construct a PrimitiveDescriptor object without
+/// exposing the builder methods to the implementation functions.
+///
+class PrimitiveDescriptorBuilder : public PrimitiveDescriptor {
+public:
+  PrimitiveDescriptorBuilder(ArrayRef<uint8_t> attrSection,
+                             LocationDecoder &locationDecoder)
+      : PrimitiveDescriptor(attrSection, locationDecoder) {}
+
+  void reset() {
+    locationData = ~intptr_t(0);
+    numArguments = 0;
+    numResults = uint16_t(~0U);
+    attrOffsets = {};
+    invokables.clear();
+  }
+
+  void setLocationData(intptr_t locationData) {
+    this->locationData = locationData;
+  }
+
+  /// Set the offsets to the attributes in the BEF attribute section.
+  void setAttrs(ArrayRef<uint32_t> attrOffsets) {
+    this->attrOffsets = attrOffsets;
+  }
+
+  void addInvokable(BEFInvokable *inv) { invokables.push_back(inv); }
+};
+
+/// This is the primitive descriptor you can actually run - it holds the
+/// AsyncValue objects that are needed to run a primitive.
+class RunnablePrimitiveDescriptor : public PrimitiveDescriptor {
+public:
+  Runtime &getRuntime() const { return runtime; }
+
+  //===--------------------------------------------------------------------===//
+  // Arguments
+  //===--------------------------------------------------------------------===//
+
+  /// Get the argument at the given index as AsyncValue*.
+  AnyAsyncValueRef &getArg(size_t index) {
+    assert(index < getNumArgs() && "invalid argument number");
+    return argsAndResults[index];
+  }
+
+  /// Look through the argument AsyncValue to get the element as type T.
+  template <typename T>
+  T &getArg(size_t index) {
+    return getArg(index)->get<T>();
+  }
+
+  ArrayRef<AnyAsyncValueRef> getArguments() const {
+    return llvm::makeArrayRef(argsAndResults.data(), getNumArgs());
+  }
+
+  MutableArrayRef<AnyAsyncValueRef> getArguments() {
+    return llvm::makeMutableArrayRef(argsAndResults.data(), getNumArgs());
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Results
+  //===--------------------------------------------------------------------===//
+
   ArrayRef<AnyAsyncValueRef> getResults() const {
-    return const_cast<PrimitiveFrame *>(this)->getResults();
+    return const_cast<RunnablePrimitiveDescriptor *>(this)->getResults();
   }
 
   MutableArrayRef<AnyAsyncValueRef> getResults() {
@@ -138,60 +202,41 @@ public:
   void fail(Error cause);
 
 protected:
-  PrimitiveFrame(Runtime &runtime, ArrayRef<uint8_t> attrSection,
-                 LocationDecoder &locationDecoder)
-      : runtime(runtime), locationDecoder(locationDecoder),
-        attrSection(attrSection) {}
+  RunnablePrimitiveDescriptor(Runtime &runtime, ArrayRef<uint8_t> attrSection,
+                              LocationDecoder &locationDecoder)
+      : PrimitiveDescriptor(attrSection, locationDecoder), runtime(runtime) {}
 
   Runtime &runtime;
-  LocationDecoder &locationDecoder;
-
-  /// This is the overall attribute section in the BEF file.
-  const ArrayRef<uint8_t> attrSection;
-
-  /// This is the location information for the current frame, which (when
-  /// combined with the location decoder) can be turned into an
-  /// `EncodedLocation`.
-  intptr_t locationData = ~intptr_t(0);
-
-  /// numResults is set to ~0 so we can check that addArgument() is called
-  /// before setNumResults.
-  uint16_t numArguments = 0, numResults = uint16_t(~0U);
 
   /// We store arguments and results in a single SmallVector for efficiency:
   /// one less vector to overflow.
   SmallVector<AnyAsyncValueRef, 16> argsAndResults;
-
-  /// This is all of the invokable references used by the invocation.
-  SmallVector<BEFInvokable *, 2> invokables;
-
-  /// This keeps track of each attribute value into the attributeSection.
-  ArrayRef<uint32_t> attrOffsets;
 };
 
-/// This class is used to construct a PrimitiveFrame object without exposing the
-/// builder methods to the implementation functions.
+/// This class is used to construct a RunnablePrimitiveDescriptor object without
+/// exposing the builder methods to the implementation functions.
 ///
-/// When initializing a PrimitiveFrame, this class requires that the client
-/// performs the following actions in order:
+/// When initializing a RunnablePrimitiveDescriptor, this class requires that
+/// the client performs the following actions in order:
 ///   1. Add argument values.
 ///   2. Set the number of results with `setNumResults`.
 ///   3. Add attributes values.
 ///
-class PrimitiveFrameBuilder : public PrimitiveFrame {
+class RunnablePrimitiveDescriptorBuilder : public RunnablePrimitiveDescriptor {
 public:
-  PrimitiveFrameBuilder(Runtime &runtime, ArrayRef<uint8_t> attrSection,
-                        LocationDecoder &locationDecoder)
-      : PrimitiveFrame(runtime, attrSection, locationDecoder) {}
+  RunnablePrimitiveDescriptorBuilder(Runtime &runtime,
+                                     ArrayRef<uint8_t> attrSection,
+                                     LocationDecoder &locationDecoder)
+      : RunnablePrimitiveDescriptor(runtime, attrSection, locationDecoder) {}
 
   /// Clear all fields.
   void reset() {
     locationData = ~intptr_t(0);
     numArguments = 0;
     numResults = uint16_t(~0U);
-    argsAndResults.clear();
     attrOffsets = {};
     invokables.clear();
+    argsAndResults.clear();
   }
 
   void setLocationData(intptr_t locationData) {
@@ -239,4 +284,4 @@ public:
 
 } // namespace M
 
-#endif // GRAPHRT_BEFEXECUTOR_PRIMITIVE_FRAME_H
+#endif // GRAPHRT_BEFEXECUTOR_PRIMITIVE_DESCRIPTOR_H

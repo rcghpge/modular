@@ -27,7 +27,7 @@ public:
 ..
   /// Primitive implementations use this signature, acting on the data provided
   /// in the argument frame, and returning results through it.
-  using PrimitiveImplFn = void (*)(PrimitiveFrame &frame);
+  using PrimitiveImplFn = void (*)(RunnablePrimitiveDescriptor &frame);
 
   /// Add an implementation of a primitive to the registry.  Consider using
   /// the ADD_PRIMITIVE macro to enable various pretty forms for this.
@@ -52,24 +52,23 @@ syntax for the primitive has a directly corresponding runtime behavior:
 3) Symbol references like `@foo` and region bodies `{ ... }` in MLIR turn into
    "invokable" references that may be invoked in the executor.
 
-The [`PrimitiveFrame class`](../include/GraphRT/BEFExecutor/PrimitiveFrame.h) is
+The [`RunnablePrimitiveDescriptor class`](../include/GraphRT/BEFExecutor/PrimitiveDescriptor.h) is
 the C++ class the BEF executor uses to wrap up all the runtime representation
-needed to invoke and get the results from a primitive.  While fundamentally all
-primitive implementations poke the `PrimitiveFrame` class to get their work
-done, it is a very low-level and not-very-type-safe approach.  
-
+needed to invoke and get the results from a primitive. While fundamentally all
+primitive implementations poke the `RunnablePrimitiveDescriptor` class to get
+their work done, it is a very low-level and not-very-type-safe approach.
 
 # Registering primitives with the `ADD_PRIMITIVE` macro
 
-Because the `PrimitiveFrame` class is so low-level and error prone, GraphRT provides
-an `ADD_PRIMITIVE` macro to help - you should effectively always use the
-`ADD_PRIMITIVE` macro to register primitives instead of directly poking at
-`PrimitiveFrame`.
+Because the `RunnablePrimitiveDescriptor` class is so low-level and
+error-prone, GraphRT provides an `ADD_PRIMITIVE` macro to help - you
+should effectively always use the `ADD_PRIMITIVE` macro to register
+primitives instead of directly poking at `RunnablePrimitiveDescriptor`.
 
 This macro uses template metaprogramming magic to generate accessors for
-`PrimitiveFrame` based on the signature for a C++ function.  There are lots of
-examples in the [`lib/Primitives` library](../lib/Primitives/) but this section
-gives an overview of the key concepts.
+`RunnablePrimitiveDescriptor` based on the signature for a C++ function.  
+There are lots of examples in the [`lib/Primitives` library](../lib/Primitives/)
+but this section gives an overview of the key concepts.
 
 ## Registering simple primitives with operands and results
 
@@ -105,7 +104,7 @@ The `ADD_PRIMITIVE` macro uses static reflection over the signature of the
 function to generate something like this for the `lessequal_i32` example:
 
 ```C++
-  registry.add("grt.lessequal.si32", [](PrimitiveFrame &frame) {
+  registry.add("grt.lessequal.si32", [](RunnablePrimitiveDescriptor &frame) {
     assert(frame.getNumArgs() == 2 && frame.getNumResults() == 1 &&
            frame.getNumAttrs() == 0 && frame.getNumInvokables() == 0);
     frame.emplaceResult<bool>(0, 
@@ -162,8 +161,9 @@ and region bodies: these are declared as `Invokable *` and `ADD_PRIMITIVE`
 resolves them to the related invokable in the BEF file.
 
 Finally, note that we also took a `Runtime &`.  `ADD_PRIMITIVE` has direct
-support for passing in a `Runtime &` or even a `PrimitiveFrame &` for advanced
-cases: just ask and you will receive.
+support for passing in a `Runtime &` or even a
+`RunnablePrimitiveDescriptor &` for advanced cases: just ask and you will
+receive.
 
 ## Producing errors and multiple results in synchronous primitives
 
