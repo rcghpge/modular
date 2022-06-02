@@ -260,7 +260,6 @@ public:
   }
 
   // Implement LocationDecoder hooks.
-  Runtime &getRuntime() const override { return runtime; }
   void addRef() override {
     RCRef<ReferenceCounted<BEFExecutor>>::lowLevelAddRef(this);
   }
@@ -721,8 +720,9 @@ void BEFInvokableImpl::invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
     // into the function index section, but it would be a shame to bloat out our
     // memory representation for this case.
     auto curLocation = EncodedLocation(/*some location=*/0, executor.copy());
-    results[0] = AsyncValue::createError(EncodedDiagnostic{
-        std::move(decoder.befFormatError.getValue()), std::move(curLocation)});
+    results[0] = AsyncValue::createError(
+        runtime, EncodedDiagnostic{std::move(decoder.befFormatError.getValue()),
+                                   std::move(curLocation)});
     // Fill in the rest with the same error.
     for (size_t i = 1, e = results.size(); i != e; ++i)
       results[i] = results[0].copy();
