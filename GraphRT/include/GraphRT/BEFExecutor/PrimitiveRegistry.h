@@ -424,49 +424,46 @@ public:
 };
 
 //===----------------------------------------------------------------------===//
-// BEFAttr<BEFType>
+// BEFAttr<*BEFType> support
 //===----------------------------------------------------------------------===//
 
-template <>
-class BEFAttr<BEFType> : public BEFAttrCommon<BEFAttr<BEFType>, char>,
-                         public BEFType {
+template <typename BEFTypeClass>
+class BEFTypeAttrCommon : public BEFAttrCommon<BEFAttr<BEFTypeClass>, char>,
+                          public BEFTypeClass {
 public:
-  using BaseClass = BEFAttrCommon<BEFAttr<BEFType>, char>;
+  using BaseClass = BEFAttrCommon<BEFAttr<BEFTypeClass>, char>;
 
-  explicit BEFAttr(const void *pointer)
+  explicit BEFTypeAttrCommon(const void *pointer)
       : BaseClass(/*storage unused*/ 'x'),
-        BEFType(static_cast<const uint8_t *>(pointer)) {
-    this->checkAttributeKind(pointer);
-    assert(!getKind().isInvalid() && "Invalid type attribute");
-  }
-
-  static bool matchesAttrKind(const void *pointer) {
-    return BaseClass::getAttrKind(pointer) == BEF::AttributeKind::kType;
-  }
-};
-
-//===----------------------------------------------------------------------===//
-// BEFAttr<BEFFunctionType>
-//===----------------------------------------------------------------------===//
-
-template <>
-class BEFAttr<BEFFunctionType>
-    : public BEFAttrCommon<BEFAttr<BEFFunctionType>, char>,
-      public BEFFunctionType {
-public:
-  using BaseClass = BEFAttrCommon<BEFAttr<BEFFunctionType>, char>;
-
-  explicit BEFAttr(const void *pointer)
-      : BaseClass(/*storage unused*/ 'x'),
-        BEFFunctionType(static_cast<const uint8_t *>(pointer)) {
+        BEFTypeClass(static_cast<const uint8_t *>(pointer)) {
     this->checkAttributeKind(pointer);
   }
 
   static bool matchesAttrKind(const void *pointer) {
     auto dynType = BEFType(static_cast<const uint8_t *>(pointer));
     return BaseClass::getAttrKind(pointer) == BEF::AttributeKind::kType &&
-           BEFFunctionType::matchesTypeKind(dynType.getKind());
+           BEFTypeClass::matchesTypeKind(dynType.getKind());
   }
+};
+
+template <>
+class BEFAttr<BEFType> : public BEFTypeAttrCommon<BEFType> {
+  using BEFTypeAttrCommon::BEFTypeAttrCommon;
+};
+
+template <>
+class BEFAttr<BEFFunctionType> : public BEFTypeAttrCommon<BEFFunctionType> {
+  using BEFTypeAttrCommon::BEFTypeAttrCommon;
+};
+
+template <>
+class BEFAttr<BEFTensorType> : public BEFTypeAttrCommon<BEFTensorType> {
+  using BEFTypeAttrCommon::BEFTypeAttrCommon;
+};
+
+template <>
+class BEFAttr<BEFQuantizedType> : public BEFTypeAttrCommon<BEFQuantizedType> {
+  using BEFTypeAttrCommon::BEFTypeAttrCommon;
 };
 
 //===----------------------------------------------------------------------===//
