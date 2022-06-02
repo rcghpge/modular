@@ -427,14 +427,20 @@ public:
 // BEFAttr<*BEFType> support
 //===----------------------------------------------------------------------===//
 
+namespace Detail {
+struct TypeAttrEmptyStruct {};
+}; // namespace Detail
+
 template <typename BEFTypeClass>
-class BEFTypeAttrCommon : public BEFAttrCommon<BEFAttr<BEFTypeClass>, char>,
-                          public BEFTypeClass {
+class BEFTypeAttrCommon
+    : public BEFAttrCommon<BEFAttr<BEFTypeClass>, Detail::TypeAttrEmptyStruct>,
+      public BEFTypeClass {
 public:
-  using BaseClass = BEFAttrCommon<BEFAttr<BEFTypeClass>, char>;
+  using BaseClass =
+      BEFAttrCommon<BEFAttr<BEFTypeClass>, Detail::TypeAttrEmptyStruct>;
 
   explicit BEFTypeAttrCommon(const void *pointer)
-      : BaseClass(/*storage unused*/ 'x'),
+      : BaseClass(Detail::TypeAttrEmptyStruct()),
         BEFTypeClass(static_cast<const uint8_t *>(pointer)) {
     this->checkAttributeKind(pointer);
   }
