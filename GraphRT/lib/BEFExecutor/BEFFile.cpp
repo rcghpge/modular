@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphRT/BEFExecutor/BEFFile.h"
+
 #include "BEFFileImpl.h"
 #include "GraphRT/BEF/BEFReader.h"
 #include "LLCL/Runtime/Allocator.h"
@@ -17,6 +18,7 @@
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
+#include <utility>
 using namespace M;
 
 //===----------------------------------------------------------------------===//
@@ -62,7 +64,7 @@ private:
   /// This is filled in if an error occurs.
   Optional<Error> error;
 
-  ArrayRef<uint8_t> primitiveNames, invokableIndex;
+  ArrayRef<uint8_t> invokableIndex;
 
   /// This is a reference to the (primitive name -> impl) mapping table.
   const PrimitiveRegistry &primitives;
@@ -95,7 +97,7 @@ bool BEFFileReader::readFileContents() {
 
 /// Decode the primitive names section.
 bool BEFFileReader::readPrimitiveNamesSection(BEFReader &stringReader) {
-  setContents(primitiveNames);
+  setContents(befFile.primitiveNames);
 
   size_t numPrimitives;
   if (parseVBR(numPrimitives))
@@ -227,7 +229,7 @@ bool BEFFileReader::readNextSection() {
     return false;
 
   case BEF::SectionID::kPrimitiveNames:
-    primitiveNames = sectionContents;
+    befFile.primitiveNames = sectionContents;
     return false;
 
   // We just remember the locations of the kInvokablesBodies section - it is

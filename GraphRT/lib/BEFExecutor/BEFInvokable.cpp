@@ -314,49 +314,83 @@ LLCL::DecodedLocation BEFExecutor::decode(const EncodedLocation &loc) const {
   return {filename.str(), (int)lineNo, (int)colNo};
 }
 
-/// Decode the register info and primitive info tables.  This returns true on
-/// failure.
-bool BEFExecutor::decodeTables(BEFInvokableDecoder &decoder) {
-  auto &bodyReader = decoder.bodyReader;
-
-  // Parse the register table.
-  MutableArrayRef<RegisterInfo> regTable = getRegisterInfoTable();
-  for (size_t i = 0, e = regTable.size(); i != e; ++i) {
+/// This decodes the primitive header tables. It's used by BEFExecutor and by
+/// the BEFInvokable's walk functionality.
+static ErrorOrSuccess decodePrimitiveTables(
+    BEFInvokableDecoder &decoder, ArrayRef<uint32_t> &body,
+    std::function<ErrorOrSuccess(size_t)> registerInfo,
+    std::function<ErrorOrSuccess(size_t, size_t)> primitiveInfo,
+    std::function<ErrorOrSuccess(size_t)> resultRegs) {
+  for (size_t i = 0, e = decoder.numRegisters; i != e; ++i) {
     size_t numUses;
-    if (bodyReader.parseVBR(numUses))
-      return true;
-    new (&regTable[i]) RegisterInfo(numUses);
+    if (decoder.bodyReader.parseVBR(numUses))
+      return std::move(*decoder.befFormatError);
+    if (!registerInfo)
+      continue;
+    if (auto err = registerInfo(numUses))
+      return err.takeError();
   }
 
-  // Parse the primitive table.
-  MutableArrayRef<PrimitiveInfo> primTable = getPrimitiveInfoTable();
-  for (size_t i = 0; i != primTable.size(); ++i) {
+  for (size_t i = 0; i != decoder.numPrimitives; ++i) {
     size_t offset, numOperandsBeforeExecuting;
-    if (bodyReader.parseVBR(offset) ||
-        bodyReader.parseVBR(numOperandsBeforeExecuting))
-      return true;
-    new (&primTable[i]) PrimitiveInfo(offset, numOperandsBeforeExecuting);
+    if (decoder.bodyReader.parseVBR(offset) ||
+        decoder.bodyReader.parseVBR(numOperandsBeforeExecuting))
+      return std::move(*decoder.befFormatError);
+    if (!primitiveInfo)
+      continue;
+    if (auto err = primitiveInfo(offset, numOperandsBeforeExecuting))
+      return err.takeError();
   }
 
-  // Parse the ResultRegs
   auto numResults = decoder.inv.getNumResults();
-  decoder.resultRegs.reserve(numResults);
   for (size_t i = 0; i != numResults; ++i) {
     size_t registerIndex;
-    if (bodyReader.parseVBR(registerIndex))
-      return true;
-    if (registerIndex >= regTable.size())
-      return bodyReader.emitError("invalid result register #");
-    decoder.resultRegs.push_back(registerIndex);
+    if (decoder.bodyReader.parseVBR(registerIndex))
+      return std::move(*decoder.befFormatError);
+    if (registerIndex >= decoder.numRegisters)
+      return Error("invalid result register #");
+    if (!resultRegs)
+      continue;
+    if (auto err = resultRegs(registerIndex))
+      return err.takeError();
   }
 
   // Align to where the invokable body is.
-  if (bodyReader.alignTo(BEF::kPrimitiveEntryAlignment))
-    return true;
+  if (decoder.bodyReader.alignTo(BEF::kPrimitiveEntryAlignment))
+    return std::move(*decoder.befFormatError);
 
-  funcBody = llvm::makeArrayRef((const uint32_t *)bodyReader.data(),
-                                bodyReader.getContents().size() / 4);
-  return false;
+  body = llvm::makeArrayRef((const uint32_t *)decoder.bodyReader.data(),
+                            decoder.bodyReader.getContents().size() / 4);
+
+  return success();
+}
+
+/// Decode the register info and primitive info tables.  This returns true on
+/// failure.
+bool BEFExecutor::decodeTables(BEFInvokableDecoder &decoder) {
+  MutableArrayRef<RegisterInfo> regTable = getRegisterInfoTable();
+  auto regTableIter = regTable.begin();
+  MutableArrayRef<PrimitiveInfo> primTable = getPrimitiveInfoTable();
+  auto primTableIter = primTable.begin();
+
+  auto numResults = decoder.inv.getNumResults();
+  decoder.resultRegs.reserve(numResults);
+
+  auto err = decodePrimitiveTables(
+      decoder, funcBody,
+      [&](size_t numUses) {
+        new (&*regTableIter++) RegisterInfo(numUses);
+        return success();
+      },
+      [&](size_t offset, size_t numOperands) {
+        new (&*primTableIter++) PrimitiveInfo(offset, numOperands);
+        return success();
+      },
+      [&](size_t registerIndex) {
+        decoder.resultRegs.push_back(registerIndex);
+        return success();
+      });
+  return bool(err);
 }
 
 /// Execute the invokable once the tables are decoded.
@@ -738,7 +772,8 @@ void BEFInvokableImpl::invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
     // good way to handle this.  We could encoded a location for each function
     // into the function index section, but it would be a shame to bloat out our
     // memory representation for this case.
-    auto curLocation = EncodedLocation(/*some location=*/0, executor.copy());
+    auto curLocation = EncodedLocation(
+        /*some location=*/0, takeRCRef(const_cast<BEFInvokableImpl *>(this)));
     results[0] = AsyncValue::createError(
         runtime, EncodedDiagnostic{std::move(decoder.befFormatError.getValue()),
                                    std::move(curLocation)});
@@ -752,6 +787,79 @@ void BEFInvokableImpl::invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
   executor->execute(*this, arguments, results, decoder.resultRegs);
 
   // The RCRef drops the reference to `executor` since it is running.
+}
+
+ErrorOrSuccess BEFInvokableImpl::walkPrimitives(
+    std::function<ErrorOrSuccess(StringRef, const PrimitiveDescriptor &)>
+        visitor) const {
+  // Decode the header and get the body reader.
+  BEFInvokableDecoder decoder(*this);
+  if (decoder.decodeHeader())
+    return std::move(*decoder.befFormatError);
+
+  // Decode the primitive tables.
+  ArrayRef<uint32_t> funcBody;
+  SmallVector<size_t> primitiveOffsets;
+  auto err = decodePrimitiveTables(
+      decoder, funcBody, nullptr,
+      [&](size_t offset, size_t numOperands) {
+        primitiveOffsets.push_back(offset);
+        return success();
+      },
+      nullptr);
+  if (err)
+    return err.takeError();
+
+  // Now we have to parse the primitive names.
+  Optional<Error> befReaderError;
+  BEFReader reader(owner->primitiveNames,
+                   [&](Error msg) { befReaderError = std::move(msg); });
+
+  size_t numPrimitives;
+  if (reader.parseVBR(numPrimitives))
+    return std::move(*befReaderError);
+
+  // Parse all the name offsets
+  SmallVector<size_t> nameOffsets;
+  for (size_t i = 0; i != numPrimitives; ++i) {
+    size_t nameOffset;
+    if (reader.parseVBR(nameOffset))
+      return std::move(*befReaderError);
+
+    nameOffsets.push_back(nameOffset);
+  }
+
+  SmallVector<std::pair<StringRef, PrimitiveDescriptor>, 1> out;
+  reader.setContents(owner->strings);
+
+  // Now that we have the offsets, we can parse the primitives directly because
+  // the offset is an offset from the end of the primitive table.
+  PrimitiveDescriptorBuilder descriptorBuilder(
+      owner->attributes, const_cast<BEFInvokableImpl &>(*this));
+  for (auto offset : primitiveOffsets) {
+    PrimitiveDecoder primDecoder(&funcBody[offset]);
+
+    // Pull out the primitive name.
+    StringRef primitiveName;
+    if (reader.parseNULTerminatedStringAt(nameOffsets[primDecoder.opcode],
+                                          primitiveName))
+      return std::move(*befReaderError);
+
+    // Reset the descriptor builder.
+    descriptorBuilder.reset();
+
+    // And get the descriptor.
+    descriptorBuilder.setLocationData(primDecoder.locOffset);
+    descriptorBuilder.setAttrs(primDecoder.attrOffsets);
+
+    for (auto invokableIndex : primDecoder.invokableRefIndices)
+      descriptorBuilder.addInvokable(owner->getInvokableByID(invokableIndex));
+
+    if (auto err = visitor(primitiveName, descriptorBuilder))
+      return err.takeError();
+  }
+
+  return success();
 }
 
 /// Return the invokable with the specified Invokable ID.

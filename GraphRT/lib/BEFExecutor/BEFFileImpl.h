@@ -44,6 +44,7 @@ public:
 
   // These are sections that we expect to be in the BEF file.  They are lazily
   // decoded when executing invokables.
+  ArrayRef<uint8_t> primitiveNames;
   ArrayRef<uint8_t> locationFilenames;
   ArrayRef<uint8_t> locationPositions;
   ArrayRef<uint8_t> strings;
@@ -72,6 +73,11 @@ public:
         bodyOffset(bodyOffset), owner(owner) {}
 
   virtual ~BEFInvokableImpl() = default;
+
+  /// Visit each primitive in this invokable.
+  ErrorOrSuccess walkPrimitives(
+      std::function<ErrorOrSuccess(StringRef, const PrimitiveDescriptor &)>
+          visitor) const override;
 
   /// Invokable this using the specified runtime, passing the specified
   /// arguments. This returns one AsyncValue for each result.
