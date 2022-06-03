@@ -674,7 +674,7 @@ void BEFExecutor::processUsedByRecords(
 }
 
 //===----------------------------------------------------------------------===//
-// BEFInvokable
+// BEFInvokableImpl
 //===----------------------------------------------------------------------===//
 
 /// Add a new reference to this object.  The lifetime of BEFInvokables are
@@ -686,6 +686,25 @@ void BEFInvokableImpl::addRef() const {
 /// Drop a reference to this object, potentially deallocating it.
 void BEFInvokableImpl::dropRef() const {
   RCRef<BEFFileImpl>::lowLevelDropRef(owner);
+}
+
+/// This is the core method that implements the `LocationDecoder` abstract base
+/// class.  This turns the data payload in EncodedLocation (which, in our case,
+/// is an offset into the locations section) into a decoded location.
+LLCL::DecodedLocation
+BEFInvokableImpl::decode(const EncodedLocation &loc) const {
+  BEFReader reader(owner->locationPositions, [&](Error message) {});
+
+  size_t filenameOffset, lineNo, colNo;
+  if (reader.dropBytes(loc.getData()) || reader.parseVBR(filenameOffset) ||
+      reader.parseVBR(lineNo) || reader.parseVBR(colNo))
+    return LLCL::DecodedLocation{"<<BEF file encoding error>>", 0, -1};
+
+  reader.setContents(owner->locationFilenames);
+  StringRef filename;
+  if (reader.parseNULTerminatedStringAt(filenameOffset, filename))
+    return LLCL::DecodedLocation{"<<BEF file encoding error>>", 0, -1};
+  return {filename.str(), (int)lineNo, (int)colNo};
 }
 
 /// Invoke this, passing the specified arguments. This returns one AsyncValue
