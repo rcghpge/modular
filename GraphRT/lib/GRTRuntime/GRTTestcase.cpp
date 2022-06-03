@@ -10,7 +10,7 @@
 using namespace M;
 
 GRTTestcase::GRTTestcase(const PrimitiveDescriptor &op)
-    : name(*BEFAttr<StringRef>(op.getRawAttr(0))), body(op.getInvokable(0)) {
+    : name(*op.getAttr<StringRef>(0)), body(op.getInvokable(0)) {
   assert(op.getNumInvokables() == 1 &&
          "cannot construct a BEFInvokablePrimitive from a TopLevelOp that has "
          "more than one primitive");

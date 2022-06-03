@@ -1229,7 +1229,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   struct Value<BEFAttr<T>, Dummy> : public AttrValue<> {
     template <typename IndicesT>
     static BEFAttr<T> process(RunnablePrimitiveDescriptor &frame) {
-      return BEFAttr<T>(frame.getRawAttr(IndicesT::attrIdx));
+      return frame.getAttr<T>(IndicesT::attrIdx);
     }
   };
 

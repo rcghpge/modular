@@ -15,6 +15,8 @@
 
 namespace M {
 class BEFInvokable;
+template <typename T>
+class BEFAttr;
 
 /// This class captures the states associated with an invocation of a primitive,
 /// including the input arguments, attributes, result values, location and
@@ -49,10 +51,10 @@ public:
     return attrSection.data() + attrOffsets[index];
   }
 
-  /// Get the attribute at the given index as type T.
+  /// Get a BEFAttr<T> at the given index.
   template <typename T>
-  const T &getAttr(size_t index) const {
-    return *static_cast<const T *>(getRawAttr(index));
+  BEFAttr<T> getAttr(size_t index) const {
+    return BEFAttr<T>(getRawAttr(index));
   }
 
   /// Return all the offsets for all attributes in this primitive frame.
