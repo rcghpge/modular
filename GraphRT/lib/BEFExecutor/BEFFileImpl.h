@@ -64,7 +64,7 @@ public:
 };
 
 /// BEF specific implementation of the Invokable interface.
-class BEFInvokableImpl final : public BEFInvokable {
+class BEFInvokableImpl final : public BEFInvokable, public LocationDecoder {
 public:
   BEFInvokableImpl(StringRef primitive, StringRef symbol, uint16_t numArguments,
                    uint16_t numResults, uint32_t bodyOffset, BEFFileImpl *owner)
