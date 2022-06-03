@@ -13,6 +13,7 @@
 #include "Support/Error.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
+#include "llvm/Support/raw_ostream.h"
 #include <chrono>
 
 using namespace M;
