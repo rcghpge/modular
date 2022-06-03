@@ -421,8 +421,11 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
 
       SmallVector<int64_t> zeroPoints(numParams);
       for (auto &zeroPoint : zeroPoints) {
-        if (attrReader.parseSignedVBR(zeroPoint))
+        ssize_t zp;
+        if (attrReader.parseSignedVBR(zp))
           return {};
+
+        zeroPoint = zp;
       }
 
       auto [flags, sTypeMin, sTypeMax] = getFlagsStorageTypeMinMax(storageType);
