@@ -14,6 +14,7 @@
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "LLCL/Support/Atomics.h"
+#include "llvm/ADT/STLExtras.h"
 
 #include <limits>
 #include <numeric>
@@ -123,7 +124,26 @@ static void printType(BEFType type) {
     printType(storageType);
     printf(":");
     printType(expressedType);
-    printf(" %f:%lld>", (double)scale, (long long)zeroPoint);
+    printf(", %f:%lld>", (double)scale, (long long)zeroPoint);
+  } else if (auto qType = type.dyn_cast<BEFQuantizedPerAxisType>()) {
+    SmallVector<float> scales;
+    SmallVector<int64_t> zeroPoints;
+    uint8_t quantizedDim;
+    auto [storageType, expressedType] =
+        qType->decode(scales, zeroPoints, quantizedDim);
+    printf("quantPerAxis<");
+    printType(storageType);
+    printf(":");
+    printType(expressedType);
+    printf(":%d, {", (int)quantizedDim);
+    llvm::interleave(
+        llvm::zip(scales, zeroPoints),
+        [](const auto paramPair) {
+          auto [scale, zeroPoint] = paramPair;
+          printf("%f:%lld", (double)scale, (long long)zeroPoint);
+        },
+        []() { printf(", "); });
+    printf("}>");
   } else {
     std::string str = type.getKind().getAsString();
     printf("%.*s", (int)str.size(), str.data());

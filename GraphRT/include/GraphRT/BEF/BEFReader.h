@@ -155,6 +155,15 @@ public:
     return false;
   }
 
+  // Parse a single float value and put it into result.
+  bool parseFloat(float &result) {
+    ArrayRef<uint8_t> scale;
+    if (parseBytes(sizeof(float), scale))
+      return emitError("couldn't parse float");
+    result = *(const float *)scale.data();
+    return false;
+  }
+
   /// Ignore the first `length` bytes in this reader.
   bool dropBytes(size_t length) {
     ArrayRef<uint8_t> unused;

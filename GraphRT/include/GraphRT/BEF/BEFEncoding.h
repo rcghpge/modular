@@ -59,6 +59,13 @@ inline size_t parseVBR(const uint8_t *&pointer) {
   return result;
 }
 
+/// Parse a single float from the byte stream and move the pointer accordingly.
+inline float parseFloat(const uint8_t *&pointer) {
+  float result = *(const float *)pointer;
+  pointer += sizeof(float);
+  return result;
+}
+
 /// A SignedVBR is emitted with the sign bit as the low bit and negates
 /// negative numbers so we can emit things like "-2" into a single byte.
 inline ssize_t parseSignedVBR(const uint8_t *&pointer) {
@@ -187,6 +194,7 @@ public:
     // In the BEF encoding of these types, they all have following bytes.
     tensor = kFirstExtendedOption,
     quantized,
+    quantizedPerAxis,
     function,
   };
 };

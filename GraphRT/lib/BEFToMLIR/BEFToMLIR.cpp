@@ -303,6 +303,29 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
     bool isComplex = typeKind.isComplex();
     typeKind = BEF::TypeKind(typeKind.stripComplex().getValue());
 
+    // Helper for quantized type parsing.
+    auto parseStorageAndExpressedType =
+        [&]() -> Optional<std::tuple<Type, Type>> {
+      if (auto storageType = parseTypeAttr()) {
+        if (auto expressedType = parseTypeAttr())
+          return std::make_tuple(storageType, expressedType);
+      }
+      return None;
+    };
+
+    // Helper for determining quantized type storage parameters.
+    auto getFlagsStorageTypeMinMax = [](Type storageType) {
+      auto intType = storageType.cast<IntegerType>();
+      auto isSigned = intType.isSigned();
+      unsigned storageBitWidth = intType.getWidth();
+      int64_t storageTypeMin =
+          QuantizedType::getDefaultMinimumForInteger(isSigned, storageBitWidth);
+      int64_t storageTypeMax =
+          QuantizedType::getDefaultMaximumForInteger(isSigned, storageBitWidth);
+      unsigned flags = isSigned ? mlir::quant::QuantizationFlags::Signed : 0;
+      return std::make_tuple(flags, storageTypeMin, storageTypeMax);
+    };
+
     Type resultType;
     switch (typeKind.getValue()) {
     case BEF::TypeKind::f16:
@@ -360,33 +383,52 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
       }
       return FunctionType::get(getContext(), inputs, results);
     }
+
     case BEF::TypeKind::quantized: {
-      auto storageType = parseTypeAttr();
-      if (!storageType)
+      auto storageAndExpressedTypeOr = parseStorageAndExpressedType();
+      if (!storageAndExpressedTypeOr)
         return {};
+      auto [storageType, expressedType] = storageAndExpressedTypeOr.getValue();
 
-      auto expressedType = parseTypeAttr();
-      if (!expressedType)
-        return {};
-
-      ArrayRef<uint8_t> scale;
+      float scale;
       ssize_t zeroPoint;
-      if (attrReader.parseBytes(sizeof(float), scale) ||
-          attrReader.parseSignedVBR(zeroPoint))
+      if (attrReader.parseFloat(scale) || attrReader.parseSignedVBR(zeroPoint))
         return {};
 
-      auto intType = storageType.cast<IntegerType>();
-      auto isSigned = intType.isSigned();
-      unsigned storageBitWidth = intType.getWidth();
-      int64_t storageTypeMin =
-          QuantizedType::getDefaultMinimumForInteger(isSigned, storageBitWidth);
-      int64_t storageTypeMax =
-          QuantizedType::getDefaultMaximumForInteger(isSigned, storageBitWidth);
-      unsigned flags = isSigned ? mlir::quant::QuantizationFlags::Signed : 0;
+      auto [flags, sTypeMin, sTypeMax] = getFlagsStorageTypeMinMax(storageType);
+      return UniformQuantizedType::get(flags, storageType, expressedType, scale,
+                                       (int64_t)zeroPoint, sTypeMin, sTypeMax);
+    }
 
-      return UniformQuantizedType::get(
-          flags, storageType, expressedType, *(const float *)scale.data(),
-          (int64_t)zeroPoint, storageTypeMin, storageTypeMax);
+    case BEF::TypeKind::quantizedPerAxis: {
+      auto storageAndExpressedTypeOr = parseStorageAndExpressedType();
+      if (!storageAndExpressedTypeOr)
+        return {};
+      auto [storageType, expressedType] = storageAndExpressedTypeOr.getValue();
+
+      uint8_t quantizedDim;
+      size_t numParams;
+      if (attrReader.parseByte(quantizedDim) || attrReader.parseVBR(numParams))
+        return {};
+
+      SmallVector<double> scales(numParams);
+      for (auto &scale : scales) {
+        float value;
+        if (attrReader.parseFloat(value))
+          return {};
+        scale = value;
+      }
+
+      SmallVector<int64_t> zeroPoints(numParams);
+      for (auto &zeroPoint : zeroPoints) {
+        if (attrReader.parseSignedVBR(zeroPoint))
+          return {};
+      }
+
+      auto [flags, sTypeMin, sTypeMax] = getFlagsStorageTypeMinMax(storageType);
+      return UniformQuantizedPerAxisType::get(
+          flags, storageType, expressedType, scales, zeroPoints,
+          (int32_t)quantizedDim, sTypeMin, sTypeMax);
     }
 
     default:

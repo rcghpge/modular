@@ -474,6 +474,12 @@ class BEFAttr<BEFQuantizedType> : public BEFTypeAttrCommon<BEFQuantizedType> {
   using BEFTypeAttrCommon::BEFTypeAttrCommon;
 };
 
+template <>
+class BEFAttr<BEFQuantizedPerAxisType>
+    : public BEFTypeAttrCommon<BEFQuantizedPerAxisType> {
+  using BEFTypeAttrCommon::BEFTypeAttrCommon;
+};
+
 //===----------------------------------------------------------------------===//
 // BEFDynamicAttr
 //===----------------------------------------------------------------------===//

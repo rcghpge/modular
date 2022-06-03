@@ -76,6 +76,10 @@ public:
     emitBytes({reinterpret_cast<const uint8_t *>(str.data()), str.size()});
   }
 
+  void emitFloat(float value) {
+    emitBytes(ArrayRef<uint8_t>((uint8_t *)&value, sizeof(float)));
+  }
+
   void emitNulTerminatedString(StringRef str) {
     emitStringData(str);
     emitByte(0);
@@ -792,9 +796,6 @@ public:
   LogicalResult emitType(Type type);
 
 private:
-  AttributesEmitter *emitter;
-  Location loc;
-
   ErrorOr<BEF::TypeKind> getFloatTypeEncoding(FloatType type);
   ErrorOr<BEF::TypeKind> getIntegerTypeEncoding(IntegerType type);
   ErrorOr<BEF::TypeKind> getIntFPComplexTypeEncoding(Type type);
@@ -804,7 +805,10 @@ private:
   LogicalResult emitUniformQuantizedType(UniformQuantizedType type);
   LogicalResult
   emitUniformQuantizedPerAxisType(UniformQuantizedPerAxisType type);
-  LogicalResult emitStorageExpressedTypes(QuantizedType type);
+  LogicalResult emitStorageAndExpressedTypes(QuantizedType type);
+
+  AttributesEmitter *emitter;
+  Location loc;
 };
 } // namespace
 
@@ -894,7 +898,7 @@ LogicalResult TypeEmitter::emitRankedTensorType(RankedTensorType type) {
   return success();
 }
 
-LogicalResult TypeEmitter::emitStorageExpressedTypes(QuantizedType type) {
+LogicalResult TypeEmitter::emitStorageAndExpressedTypes(QuantizedType type) {
   // QuantizedType stores the signedness information in a flag, but it is easier
   // to emit a signed or unsigned type.
   auto storageType = IntegerType::get(
@@ -904,28 +908,24 @@ LogicalResult TypeEmitter::emitStorageExpressedTypes(QuantizedType type) {
     return failure();
 
   // In practice these are floats, but we could emit other expressed types too.
-  if (failed(emitIntFPComplexType(type.getExpressedType())))
-    return failure();
-
-  return success();
+  return emitIntFPComplexType(type.getExpressedType());
 }
 
 /// emitUniformQuantizedType emits a uniform, not per-axis quantized type such
 /// as `!quant.uniform<i8:f32, 0.1:-128>` into BEF. The type is encoded in the
 /// following form:
-///   TypeKind::quantized | storage TypeKind | expressed TypeKind | scale |
-///   zero point in VBR
+///   TypeKind::quantized | storage TypeKind | expressed TypeKind |
+///   scale as float | zero point in VBR
 /// For the example type above, the output format would look like this:
 ///   TypeKind::quantized | TypeKind::si8 | TypeKind::f32 | 0.1 | -128
 LogicalResult TypeEmitter::emitUniformQuantizedType(UniformQuantizedType type) {
   emitter->emitByte(BEF::TypeKind::quantized);
 
-  if (failed(emitStorageExpressedTypes(type)))
+  if (failed(emitStorageAndExpressedTypes(type)))
     return failure();
 
   // We emit the scale as is.
-  float scale = (float)type.getScale();
-  emitter->emitBytes(ArrayRef<uint8_t>((uint8_t *)&scale, sizeof(float)));
+  emitter->emitFloat((float)type.getScale());
 
   // The zero point is emitted in VBR.
   emitter->emitSignedVBR(type.getZeroPoint());
@@ -935,23 +935,38 @@ LogicalResult TypeEmitter::emitUniformQuantizedType(UniformQuantizedType type) {
 }
 
 /// emitUniformQuantizedPerAxisType emits a uniform, per-axis quantized type
-/// such as `!quant.uniform<i16:f32:0, {0.2:128, 0.1:-128}>` into BEF. The type
+/// such as `!quant.uniform<i16:f32:1, {0.2:128, 0.1:-128}>` into BEF. The type
 /// is encoded in the following form:
 ///   TypeKind::quantizedPerAxis | storage TypeKind | expressed TypeKind |
 ///   quantized dim | number of scales (or zero points) in VBR |
-///   scales | zero points (each in VBR)
+///   scales (each as float) | zero points (each in VBR)
 /// The number of scales is always equal to the number of zero points.
 /// For the example type above, the output format would look like this:
 ///   TypeKind::quantizedPerAxis | TypeKind::si16 | TypeKind::f32 |
-///   0 | 2 | 0.2 | 0.1 | 128 | -128
+///   1 | 2 | 0.2 | 0.1 | 128 | -128
 LogicalResult
 TypeEmitter::emitUniformQuantizedPerAxisType(UniformQuantizedPerAxisType type) {
-  // FIXME: We're currently just encoding this as the storage type, which
-  // loses quantization information.
-  auto intStorageType = IntegerType::get(
-      type.getContext(), type.getStorageTypeIntegralWidth(),
-      type.isSigned() ? IntegerType::Signed : IntegerType::Unsigned);
-  return emitType(intStorageType);
+  emitter->emitByte(BEF::TypeKind::quantizedPerAxis);
+
+  if (failed(emitStorageAndExpressedTypes(type)))
+    return failure();
+
+  // We first emit the index of the quantized dimension.
+  emitter->emitByte((uint8_t)type.getQuantizedDimension());
+
+  // Then we emit the number of scales (or zero points) in VBR.
+  auto scales = type.getScales();
+  emitter->emitVBR(scales.size());
+
+  // Scales are emitted directly, in order.
+  for (auto const scale : scales)
+    emitter->emitFloat(float(scale));
+
+  // Zero points are emitted in VBR, in order.
+  for (auto const zeroPoint : type.getZeroPoints())
+    emitter->emitSignedVBR(zeroPoint);
+
+  return success();
 }
 
 LogicalResult TypeEmitter::emitFunctionType(FunctionType type) {

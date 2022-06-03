@@ -190,11 +190,11 @@ grt.testcase @test_types {
   // CHECK-NEXT: Type attribute: tensor<4x0x123xf32>
   %ch16 = "test.print_type"(%ch15) {t = tensor<4x0x123xf32>} : (!grt.chain) -> (!grt.chain)
 
-  // CHECK-NEXT: Type attribute: quant<si8:f32 0.100000:-128>
+  // CHECK-NEXT: Type attribute: quant<si8:f32, 0.100000:-128>
   %ch17 = "test.print_type"(%ch16) {t = !quant.uniform<i8:f32, 0.1:-128>} : (!grt.chain) -> (!grt.chain)
 
-  // CHECK-NEXT: Type attribute: tensor<1x2xsi8>
-  %ch18 = "test.print_type"(%ch17) {t = tensor<1x2x!quant.uniform<i8:f32:0, {1.000000e-01:-128}>>} : (!grt.chain) -> (!grt.chain)
+  // CHECK-NEXT: Type attribute: quantPerAxis<si16:f32:1, {0.200000:128, 0.100000:-128}>
+  %ch18 = "test.print_type"(%ch17) {t = !quant.uniform<i16:f32:1, {0.2:128, 0.1:-128}>} : (!grt.chain) -> (!grt.chain)
 
  // CHECK-NEXT: Type attribute: si2
   %ch19 = "test.print_type"(%ch18) {t = si2} : (!grt.chain) -> (!grt.chain)
