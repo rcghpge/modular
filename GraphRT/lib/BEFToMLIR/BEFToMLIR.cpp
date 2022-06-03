@@ -687,6 +687,9 @@ bool BEFToMLIRConverter::parseTopLevelOps() {
         ParsedSymbol{numArgs, numResults, primitive, symbol, {bodyOffset}});
   }
 
+  // Drop the last symbol - it's the module which we've already created.
+  symbols.erase(symbols.end() - 1);
+
   for (const auto &s : symbols) {
     OperationState state(loc, s.primitive);
     state.addAttribute(mlir::SymbolTable::getSymbolAttrName(), s.symbol);
@@ -727,8 +730,9 @@ bool BEFToMLIRConverter::parseTopLevelOps() {
     }
   }
 
-  if (topLevelOps.size() != numTopLevelOps)
-    return emitError("expected " + Twine(numTopLevelOps) +
+  // We drop the top level module, which is the last top level op.
+  if (topLevelOps.size() != numTopLevelOps - 1)
+    return emitError("expected " + Twine(numTopLevelOps - 1) +
                      " invokables, but found " + Twine(topLevelOps.size()));
 
   return false;
@@ -984,14 +988,18 @@ bool RegionParser::parsePrimitiveList() {
 
     Operation *resultOp;
     if (!hasMLIRTypes || isOpaqueOp) {
-      assert(regionsBlocksToTake.empty() &&
-             "FIXME: cannot convert ops with regions to opaque yet!");
+      assert(regionsBlocksToTake.size() == numTopLevelOps);
       // If we lack type information, create a bef.opaque operation.  We cannot
       // necessarily create the correct operation when we're lacking type info
       // and attribute names because we'll trip the op verifier.
       resultOp = bodyBuilder.create<BEF::OpaqueOp>(
           loc, resultTypes, primitiveName, bodyBuilder.getArrayAttr(attrs),
           nonStrict, operandValues, numTopLevelOps);
+      for (size_t i = 0, e = regionsBlocksToTake.size(); i != e; ++i) {
+        Region fake;
+        fake.push_back(regionsBlocksToTake[i]);
+        cast<BEF::OpaqueOp>(resultOp).getBody()[i].takeBody(fake);
+      }
     } else {
       OperationState state(loc, primitiveName, operandValues, resultTypes,
                            /*attrs*/ {});

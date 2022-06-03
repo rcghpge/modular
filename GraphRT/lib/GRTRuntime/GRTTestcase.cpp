@@ -5,14 +5,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphRT/GRTTestcase.h"
-#include "GraphRT/BEFExecutor/TopLevelEntity.h"
+#include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
 
 using namespace M;
 
-GRTTestcase::GRTTestcase(const M::TopLevelEntity &op)
-    : GRTTestcase(op.getSymbolName(), op.getInvokable(0)) {
-  assert(op.getPrimitiveName() == getEntityName() &&
-         "wrong kind of top level op");
+GRTTestcase::GRTTestcase(const PrimitiveDescriptor &op)
+    : name(*BEFAttr<StringRef>(op.getRawAttr(0))), body(op.getInvokable(0)) {
   assert(op.getNumInvokables() == 1 &&
          "cannot construct a BEFInvokablePrimitive from a TopLevelOp that has "
          "more than one primitive");

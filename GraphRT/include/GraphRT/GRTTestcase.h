@@ -12,26 +12,25 @@
 
 namespace M {
 class BEFInvokable;
-class TopLevelEntity;
+class PrimitiveDescriptor;
 
 class GRTTestcase {
 public:
   /// Provide a constructor from TopLevelOp.
-  GRTTestcase(const TopLevelEntity &op);
+  GRTTestcase(const PrimitiveDescriptor &desc);
 
   /// Enables dyn_cast/cast/isa on this TopLevelOp by providing the name of this
   /// primitive.
   static StringLiteral getEntityName();
 
-  StringRef getSymbolName() const { return symbolName; }
+  StringRef getName() const { return name; }
 
   /// Get the body for this op - a single Invokable.
   BEFInvokable *getBody() const { return body; }
 
 private:
-  GRTTestcase(StringRef symbolName, BEFInvokable *body)
-      : symbolName(symbolName), body(body) {}
-  StringRef symbolName;
+  GRTTestcase(StringRef name, BEFInvokable *body) : name(name), body(body) {}
+  StringRef name;
   BEFInvokable *body;
 };
 } // namespace M

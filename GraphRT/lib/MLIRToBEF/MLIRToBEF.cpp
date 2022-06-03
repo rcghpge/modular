@@ -380,6 +380,8 @@ void EntityTable::addType(Type type) {
 static RegionSignature getRegionSignature(Region *region) {
   // Emit information about the type of the invokable.
   auto *block = &region->getBlocks().front();
+  if (block->empty())
+    return RegionSignature{0, 0};
 
   // BEF regions produce results with the "bef.output" operation.
   auto output = dyn_cast<BEF::OutputOp>(&block->back());
@@ -444,10 +446,6 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
   std::vector<std::pair<SymbolRefAttr, Location>> symbolRefAttrs;
 
   auto opWalker = [&](Operation *op) -> WalkResult {
-    // Ignore the module itself.
-    if (op == module.getOperation())
-      return WalkResult::advance();
-
     // Ignore the OutputOp: it gets special handling, instead of being treated
     // like a primitive.  Similarly, ignore bef.invokable.
     if (isa<BEF::OutputOp>(op))
@@ -540,7 +538,8 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
     return WalkResult::advance();
   };
 
-  // Walk the whole module finding all the things.
+  // Walk the whole module finding all the things. Walk in pre-order so the
+  // first primitive stored is the module itself.
   if (module.walk(opWalker).wasInterrupted())
     return true;
 
@@ -1166,10 +1165,13 @@ void RegionEmitter::emitRegion(Region *region) {
     emitPrimitive(&op, primitiveList);
   }
 
-  // Emit the result registers list at the end, if present.
-  if (auto outputOp = dyn_cast<BEF::OutputOp>(block.getTerminator())) {
-    for (auto operand : outputOp.getOperands())
-      emitVBR(getRegisterNumber(operand));
+  // Emit the result registers list at the end, if present. If the top level
+  // region is a graph region, then it's not necessary to have a terminator at
+  // all, and block.getTerminator() fails.
+  if (!region->getParentOp()->hasTrait<OpTrait::HasOnlyGraphRegion>()) {
+    if (auto outputOp = dyn_cast<BEF::OutputOp>(block.getTerminator()))
+      for (auto operand : outputOp.getOperands())
+        emitVBR(getRegisterNumber(operand));
   }
 
   // Once we're done, we can emit the primitive data after the primitive index
@@ -1288,8 +1290,14 @@ void RegionEmitter::emitPrimitive(Operation *op,
     for (auto attr : opaque.getAttrs())
       processAttr(StringAttr::get(op->getContext()), attr);
   } else {
-    for (auto attrNamePair : op->getAttrs())
+    for (auto attrNamePair : op->getAttrs()) {
+      // Don't emit the function type attr.
+      if (attrNamePair.getName() ==
+          mlir::FunctionOpInterface::getTypeAttrName())
+        continue;
+
       processAttr(attrNamePair.getName(), attrNamePair.getValue());
+    }
   }
 
   // Regions on the op are also considered to be BEF invokables.

@@ -7,16 +7,17 @@
 #ifndef GRAPHRT_BEFEXECUTOR_BEFFILE_H
 #define GRAPHRT_BEFEXECUTOR_BEFFILE_H
 
-#include "GraphRT/BEFExecutor/TopLevelEntity.h"
 #include "LLCL/ForwardDecls.h"
 #include "LLCL/Support/ReferenceCounted.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
 
 namespace M {
 class BEFInvokable;
 class PrimitiveRegistry;
+class PrimitiveDescriptor;
 
 /// Instances of this class represent opened and decoded BEF files, allowing
 /// clients to interact with the invokable list, etc.
@@ -37,32 +38,26 @@ public:
   static ErrorOr<RCRef<BEFFile>> open(StringRef file,
                                       const PrimitiveRegistry &primitives);
 
-  /// Get a list of top level ops out of the BEF file.
-  ArrayRef<TopLevelEntity> getAllTopLevelEntities() const;
+  /// Walk the top level primitives in the BEF file.
+  ErrorOrSuccess walkTopLevelPrimitives(
+      std::function<ErrorOrSuccess(StringRef, const PrimitiveDescriptor &)>
+          visitor) const;
 
-  /// Get a list of all the top level ops in a BEF file of the specified type
-  /// `T`
+  /// Walk all the top level primitives in the BEF file and call the visitor
+  /// callback for all ops with type T.
   template <typename T>
-  SmallVector<T, 1> getAllTopLevelEntities() const {
-    SmallVector<T, 1> out;
-    for (const TopLevelEntity &op : getAllTopLevelEntities())
-      if (const auto &t = dyn_cast<T>(op))
-        out.push_back(std::move(*t));
+  ErrorOrSuccess
+  walkTopLevelPrimitives(std::function<ErrorOrSuccess(T)> visitor) const {
+    return walkTopLevelPrimitives(
+        [&](StringRef primitiveName,
+            const PrimitiveDescriptor &descriptor) -> ErrorOrSuccess {
+          // If the primitive name doesn't match the desired entity name, then
+          // do nothing.
+          if (primitiveName != T::getEntityName())
+            return success();
 
-    return out;
-  }
-
-  /// Find a top level op with the specified name, returning null if it isn't
-  /// found.
-  Optional<const TopLevelEntity> getTopLevelEntity(StringRef primitive,
-                                                   StringRef symbol) const;
-
-  /// Find a top level op with some nice sugar to avoid having to pass in a
-  /// string directly.
-  template <typename T>
-  Optional<const T> getTopLevelEntity(StringRef symbol) const {
-    return llvm::dyn_cast_if_present<T>(
-        getTopLevelEntity(T::getEntityName(), symbol));
+          return visitor(T(descriptor));
+        });
   }
 
 protected:

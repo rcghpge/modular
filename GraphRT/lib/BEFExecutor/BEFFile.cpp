@@ -253,24 +253,13 @@ BEFFileImpl::~BEFFileImpl() {
 }
 
 /// Get a list of invokables out of the BEF file.
-ArrayRef<TopLevelEntity> BEFFile::getAllTopLevelEntities() const {
+ErrorOrSuccess BEFFile::walkTopLevelPrimitives(
+    std::function<ErrorOrSuccess(StringRef, const PrimitiveDescriptor &)>
+        visitor) const {
   auto befFile = static_cast<const BEFFileImpl *>(this);
-  return befFile->topLevelOps;
-}
-
-/// Find an invokable with the specified name, returning null if it isn't found.
-Optional<const TopLevelEntity>
-BEFFile::getTopLevelEntity(StringRef primitive, StringRef symbol) const {
-  auto befFile = static_cast<const BEFFileImpl *>(this);
-  auto found = llvm::find_if(
-      befFile->topLevelOps, [&](const TopLevelEntity &topLevelOp) {
-        return topLevelOp.getPrimitiveName() == primitive &&
-               topLevelOp.getSymbolName() == symbol;
-      });
-  if (found == befFile->topLevelOps.end())
-    return {};
-
-  return std::move(*found);
+  // The last invokable is the module.
+  return befFile->invokables[befFile->numInvokables - 1].walkPrimitives(
+      std::move(visitor));
 }
 
 /// Open and read a BEF file, setting up our internal state and returning a
