@@ -24,13 +24,13 @@ size_t BEFType::getEncodedSizeInBytes() const {
     // Primitive types all have a single-byte encoding.
     return 1;
   case BEF::TypeKind::function:
-    return this->cast<BEFFunctionType>().getEncodedSizeInBytes();
+    return cast<BEFFunctionType>(this)->getEncodedSizeInBytes();
   case BEF::TypeKind::tensor:
-    return this->cast<BEFTensorType>().getEncodedSizeInBytes();
+    return cast<BEFTensorType>(this)->getEncodedSizeInBytes();
   case BEF::TypeKind::quantized:
-    return this->cast<BEFQuantizedType>().getEncodedSizeInBytes();
+    return cast<BEFQuantizedType>(this)->getEncodedSizeInBytes();
   case BEF::TypeKind::quantizedPerAxis:
-    return this->cast<BEFQuantizedPerAxisType>().getEncodedSizeInBytes();
+    return cast<BEFQuantizedPerAxisType>(this)->getEncodedSizeInBytes();
   default:
     // All signed/unsigned integers are single-byte encoding.
     if (typeID.isInt())

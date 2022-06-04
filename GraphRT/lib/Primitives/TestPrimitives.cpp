@@ -95,7 +95,7 @@ static Chain print_all_dict(Chain chain, BEFDictionaryAttr dict) {
 }
 
 static void printType(BEFType type) {
-  if (auto fnType = type.dyn_cast<BEFFunctionType>()) {
+  if (auto fnType = dyn_cast<BEFFunctionType>(type)) {
     SmallVector<BEFType> inputs, results;
     fnType->decode(inputs, results);
     printf("(");
@@ -108,7 +108,7 @@ static void printType(BEFType type) {
         results, [](BEFType type) { printType(type); }, []() { printf(", "); });
     if (results.size() != 1)
       printf(")");
-  } else if (auto tensorType = type.dyn_cast<BEFTensorType>()) {
+  } else if (auto tensorType = dyn_cast<BEFTensorType>(type)) {
     SmallVector<int64_t> dims;
     BEFType elementType = tensorType->decode(dims);
     printf("tensor<");
@@ -116,7 +116,7 @@ static void printType(BEFType type) {
       printf("%lldx", (long long)dim);
     printType(elementType);
     printf(">");
-  } else if (auto qType = type.dyn_cast<BEFQuantizedType>()) {
+  } else if (auto qType = dyn_cast<BEFQuantizedType>(type)) {
     float scale;
     int64_t zeroPoint;
     auto [storageType, expressedType] = qType->decode(scale, zeroPoint);
@@ -125,7 +125,7 @@ static void printType(BEFType type) {
     printf(":");
     printType(expressedType);
     printf(", %f:%lld>", (double)scale, (long long)zeroPoint);
-  } else if (auto qType = type.dyn_cast<BEFQuantizedPerAxisType>()) {
+  } else if (auto qType = dyn_cast<BEFQuantizedPerAxisType>(type)) {
     SmallVector<float> scales;
     SmallVector<int64_t> zeroPoints;
     uint8_t quantizedDim;

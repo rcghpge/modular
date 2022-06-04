@@ -450,7 +450,7 @@ public:
   static bool matchesAttrKind(const void *pointer) {
     auto dynType = BEFType(static_cast<const uint8_t *>(pointer));
     return BaseClass::getAttrKind(pointer) == BEF::AttributeKind::kType &&
-           BEFTypeClass::matchesTypeKind(dynType.getKind());
+           BEFTypeClass::classof(&dynType);
   }
 };
 
