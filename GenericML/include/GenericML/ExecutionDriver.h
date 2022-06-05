@@ -14,7 +14,7 @@
 
 #include "LLCL/ForwardDecls.h"
 #include "Support/ErrorOr.h"
-#include "Support/LLVMForwardDecls.h"
+#include "Support/LLVMCompilerForwardDecls.h"
 #include <cstddef>
 
 namespace M {
@@ -32,7 +32,7 @@ enum class InputGenerationKind {
 enum class BenchmarkScenario { kOnline, kBatched };
 
 /// Run `model` using the command line options flags configured by the user.
-void runModel(const Model *model, LLCL::Runtime &runtime,
+void runModel(MLIRContext *ctx, const Model *model, LLCL::Runtime &runtime,
               const ExecutorDriverCLOptions &options);
 
 } // namespace M

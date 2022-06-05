@@ -12,8 +12,6 @@
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/AllocatorType.h"
 #include "Support/Error.h"
-#include "mlir/IR/Diagnostics.h"
-#include "mlir/IR/MLIRContext.h"
 #include "llvm/Support/raw_ostream.h"
 #include <chrono>
 
@@ -87,8 +85,9 @@ static void printTensorResults(const ExecutableModel *model,
   }
 }
 
-static void executeModel(const Model *model, Runtime &runtime,
-                         InputGenerationKind inputGenKind, size_t numRuns) {
+static void executeModel(MLIRContext *ctx, const Model *model, Runtime &runtime,
+                         const ExecutorDriverCLOptions &options) {
+
   auto errorOrExecutableModel = model->setup(runtime);
   if (failed(errorOrExecutableModel)) {
     outs() << errorOrExecutableModel.takeError();
@@ -97,18 +96,18 @@ static void executeModel(const Model *model, Runtime &runtime,
 
   auto executableModel = errorOrExecutableModel.takeValue();
 
-  auto inputTensorsOr = initializeInputMemory(inputGenKind, model, runtime);
+  auto inputTensorsOr =
+      initializeInputMemory(options.inputGenKind, model, runtime);
   if (failed(inputTensorsOr)) {
     outs() << inputTensorsOr.takeError() << "\n";
     return;
   }
 
-  SmallVector<Tensor, 3> &inputTensors = inputTensorsOr.get();
-  MLIRContext ctx;
+  SmallVector<Tensor, 3> inputTensors = inputTensorsOr.takeValue();
 
   // Measure the time taken for each inference.
   std::vector<double> cpuTimesMillis;
-  for (unsigned i = 0, e = numRuns; i != e; ++i) {
+  for (unsigned i = 0, e = options.numRuns; i != e; ++i) {
     auto start = std::chrono::steady_clock::now();
 
     // Fill the arguments.  If we are running the model once, we pass in the
@@ -118,7 +117,7 @@ static void executeModel(const Model *model, Runtime &runtime,
     SmallVector<AnyAsyncValueRef> args;
     args.reserve(model->getNumInputs());
     for (auto &input : inputTensors) {
-      Tensor t = numRuns == 1 ? std::move(input) : input.getImmortal();
+      Tensor t = options.numRuns == 1 ? std::move(input) : input.getImmortal();
       args.push_back(AsyncValueRef<Tensor>::createReady(runtime, std::move(t)));
     }
 
@@ -133,7 +132,7 @@ static void executeModel(const Model *model, Runtime &runtime,
 
     // Print the result tensors with the default printer.
     MutableArrayRef resultRef(results.data(), results.size());
-    printTensorResults(executableModel.get(), resultRef.drop_front(), &ctx,
+    printTensorResults(executableModel.get(), resultRef.drop_front(), ctx,
                        outs());
 
     auto end = std::chrono::steady_clock::now();
@@ -143,10 +142,10 @@ static void executeModel(const Model *model, Runtime &runtime,
 }
 
 /// Run `model` using the command line options flags configured by the user.
-void M::runModel(const Model *model, LLCL::Runtime &runtime,
+void M::runModel(MLIRContext *ctx, const Model *model, LLCL::Runtime &runtime,
                  const ExecutorDriverCLOptions &options) {
   if (!options.benchmarkMode)
-    return executeModel(model, runtime, options.inputGenKind, options.numRuns);
+    return executeModel(ctx, model, runtime, options);
 
   benchmarkModel(model, runtime, options.benchmarkName, options.inputGenKind,
                  options.benchmarkScenario, options.benchmarkOutputDir,
