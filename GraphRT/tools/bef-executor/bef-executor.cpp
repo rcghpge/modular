@@ -91,49 +91,31 @@ static void printResults(BEFInvokable *invokable,
 static void runTestcase(const GRTTestcase &test,
                         const RuntimeCLOptions &runtimeConfig,
                         MLIRContext *context) {
-  // If we are leak checking, remember how many AsyncValue's we started with.
-  ssize_t numStartingLiveAsyncValues;
-  if (AsyncValue::isAllocationTrackingEnabled())
-    numStartingLiveAsyncValues = AsyncValue::getNumAllocatedInstances();
 
-  {
-    Runtime runtime = runtimeConfig.createRuntime();
-    auto &os = llvm::outs();
+  // In this test driver, we want to make sure that every invokable completes
+  // all execution before moving on to the next one.  This makes the leak
+  // checker work better in the face of side effecting kernels that aren't
+  // properly chained together (which is useful for testing).  As such, we run
+  // each testcase with its own runtime instance and own leak checker.
+  runtimeConfig.runWithLeakCheckedRuntime(
+      test.getName().str().c_str(), [&](Runtime runtime) {
+        auto &os = llvm::outs();
 
-    // Actually run the invokable.
-    os << "--- Running '" << test.getName() << "':\n";
-    os.flush();
+        // Actually run the invokable.
+        os << "--- Running '" << test.getName() << "':\n";
+        os.flush();
 
-    auto results = test.getBody()->invoke(/*arguments=*/{}, runtime);
+        auto results = test.getBody()->invoke(/*arguments=*/{}, runtime);
 
-    // Block until the invokable results are fully resolved.
-    await(results);
+        // Block until the invokable results are fully resolved.
+        await(results);
 
-    // If anything printed to stdout, force it out to a stream, since we will be
-    // printing with raw_ostream.
-    fflush(stdout);
+        // If anything printed to stdout, force it out to a stream, since we
+        // will be printing with raw_ostream.
+        fflush(stdout);
 
-    printResults(test.getBody(), results, context, os);
-
-    // In this test driver, we want to make sure that every invokable completes
-    // all execution before moving on to the next one.  This makes the leak
-    // checker work better in the face of side effecting kernels that aren't
-    // properly chained together (which is useful for testing), so we close a
-    // scope here so the Runtime object is destroyed.
-  }
-
-  // Make sure we're not leaking AsyncValues.
-  if (AsyncValue::isAllocationTrackingEnabled()) {
-    auto numLiveAsyncValues = AsyncValue::getNumAllocatedInstances();
-    if (numLiveAsyncValues != numStartingLiveAsyncValues) {
-      auto &os = llvm::outs();
-      os << "Evaluation of testcase '" << test.getName() << "' leaked "
-         << (numLiveAsyncValues - numStartingLiveAsyncValues)
-         << " async values (before: " << numStartingLiveAsyncValues
-         << ", after: " << numLiveAsyncValues << ")!\n";
-      abort();
-    }
-  }
+        printResults(test.getBody(), results, context, os);
+      });
 }
 
 namespace {
