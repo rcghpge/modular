@@ -8,9 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "BEFExecutorMain.h"
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
 #include "GraphRT/Primitives.h"
-#include "GraphRT/Tools/bef-executor/BEFExecutorMain.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "llvm/Support/CommandLine.h"
 
