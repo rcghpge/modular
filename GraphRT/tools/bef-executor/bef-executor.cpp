@@ -11,8 +11,8 @@
 #include "BEFExecutorMain.h"
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
 #include "GraphRT/Primitives.h"
+#include "Support/CommandLine.h"
 #include "Support/LLVMCompilerForwardDecls.h"
-#include "llvm/Support/CommandLine.h"
 
 using namespace M;
 
