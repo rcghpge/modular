@@ -20,6 +20,7 @@
 namespace M {
 class Model;
 class Tensor;
+class ExecutorDriverCLOptions;
 
 enum class InputGenerationKind {
   kRandom, // generate inputs with random elements, distribution depends on type
@@ -30,22 +31,9 @@ enum class InputGenerationKind {
 
 enum class BenchmarkScenario { kOnline, kBatched };
 
-/// Initialize raw pointers for each model input with the correct data fill.
-/// This allocates the pointer, fills in the data, and returns ownership to the
-/// caller.
-ErrorOr<SmallVector<Tensor, 3>>
-initializeInputMemory(InputGenerationKind inputGenKind, const Model *model,
-                      Runtime &runtime);
-
-/// Run `model` using `runtime` `numRuns` times.
+/// Run `model` using the command line options flags configured by the user.
 void runModel(const Model *model, LLCL::Runtime &runtime,
-              InputGenerationKind inputGenKind, size_t numRuns = 1);
-
-LogicalResult benchmarkModel(const Model *model, Runtime &runtime,
-                             StringRef benchmarkName,
-                             InputGenerationKind inputGenKind,
-                             BenchmarkScenario scenario, StringRef outputDir,
-                             bool benchmarkNoLogPrefix);
+              const ExecutorDriverCLOptions &options);
 
 } // namespace M
 

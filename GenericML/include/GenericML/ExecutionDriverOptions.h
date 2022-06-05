@@ -17,7 +17,8 @@ namespace M {
 
 /// Contains the core CLI options for *-executor, so that other executables
 /// can use these without duplicating them.
-struct ExecutorDriverCLOptions : public BEFCLOptionsCore, public CLOptionsCore {
+class ExecutorDriverCLOptions : public BEFCLOptionsCore, public CLOptionsCore {
+public:
   /// This specifies the number of times we should execute the model.  If run
   /// more than one time, we enter "benchmarking" mode.
   cl::opt<unsigned> numRuns{

@@ -4,7 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/ExecutionDriver.h"
+#include "DriverInternals.h"
+
 #include "GenericML/Kernels.h"
 #include "GenericML/Support/Model.h"
 #include "GenericML/Support/Tensor.h"

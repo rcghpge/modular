@@ -4,7 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/ExecutionDriver.h"
+#include "DriverInternals.h"
+
 #include "GenericML/Kernels.h"
 #include "GenericML/Support/Model.h"
 #include "GenericML/Support/Tensor.h"
@@ -86,8 +87,8 @@ static void printTensorResults(const ExecutableModel *model,
   }
 }
 
-void M::runModel(const Model *model, Runtime &runtime,
-                 InputGenerationKind inputGenKind, size_t numRuns) {
+static void executeModel(const Model *model, Runtime &runtime,
+                         InputGenerationKind inputGenKind, size_t numRuns) {
   auto errorOrExecutableModel = model->setup(runtime);
   if (failed(errorOrExecutableModel)) {
     outs() << errorOrExecutableModel.takeError();
@@ -139,4 +140,15 @@ void M::runModel(const Model *model, Runtime &runtime,
     std::chrono::duration<double, std::milli> time = end - start;
     cpuTimesMillis.push_back(time.count());
   }
+}
+
+/// Run `model` using the command line options flags configured by the user.
+void M::runModel(const Model *model, LLCL::Runtime &runtime,
+                 const ExecutorDriverCLOptions &options) {
+  if (!options.benchmarkMode)
+    return executeModel(model, runtime, options.inputGenKind, options.numRuns);
+
+  benchmarkModel(model, runtime, options.benchmarkName, options.inputGenKind,
+                 options.benchmarkScenario, options.benchmarkOutputDir,
+                 options.benchmarkNoLogPrefix);
 }
