@@ -39,6 +39,13 @@ initializeInputMemory(InputGenerationKind inputGenKind, const Model *model,
 void runModel(const Model *model, LLCL::Runtime &runtime,
               InputGenerationKind inputGenKind, size_t numRuns = 1);
 
+LogicalResult benchmarkModel(const std::string &benchmarkName,
+                             const Model *model, Runtime &runtime,
+                             InputGenerationKind inputGenKind,
+                             const std::string &benchmarkScenario,
+                             const std::string &benchmarkOutputDir,
+                             bool benchmarkNoLogPrefix);
+
 } // namespace M
 
 #endif // GENERICML_EXECUTIONDRIVER_H
