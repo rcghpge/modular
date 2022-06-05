@@ -1,23 +1,22 @@
-//===- GenericML/ExecutionDriverOptions.h ---------------------------------===//
+//===- GenericML/ExecutionDriverCLOptions.h -------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_EXECUTIONDRIVEROPTIONS_H
-#define GENERICML_EXECUTIONDRIVEROPTIONS_H
+#ifndef GENERICML_EXECUTIONDRIVERCLOPTIONS_H
+#define GENERICML_EXECUTIONDRIVERCLOPTIONS_H
 
 #include "GenericML/ExecutionDriver.h"
-#include "GraphRT/Tools/CLOptions.h"
-#include "llvm/Support/CommandLine.h"
-
-using namespace llvm;
+#include "LLCL/Runtime/RuntimeCLOptions.h"
+#include "Support/CommonCLOptions.h"
 
 namespace M {
 
 /// Contains the core CLI options for *-executor, so that other executables
 /// can use these without duplicating them.
-class ExecutorDriverCLOptions : public BEFCLOptionsCore, public CLOptionsCore {
+class ExecutorDriverCLOptions : public LLCL::RuntimeCLOptions,
+                                public CommonCLOptions {
 public:
   /// This specifies the number of times we should execute the model.  If run
   /// more than one time, we enter "benchmarking" mode.
@@ -82,4 +81,4 @@ public:
 
 } // namespace M
 
-#endif // GENERICML_EXECUTIONDRIVEROPTIONS_H
+#endif // GENERICML_EXECUTIONDRIVERCLOPTIONS_H
