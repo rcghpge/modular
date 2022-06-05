@@ -260,11 +260,13 @@ public:
   }
 
   // Implement LocationDecoder hooks.
-  void addRef() override {
-    RCRef<ReferenceCounted<BEFExecutor>>::lowLevelAddRef(this);
+  void addRef() const override {
+    RCRef<ReferenceCounted<BEFExecutor>>::lowLevelAddRef(
+        const_cast<BEFExecutor *>(this));
   }
-  void dropRef() override {
-    RCRef<ReferenceCounted<BEFExecutor>>::lowLevelDropRef(this);
+  void dropRef() const override {
+    RCRef<ReferenceCounted<BEFExecutor>>::lowLevelDropRef(
+        const_cast<BEFExecutor *>(this));
   }
   LLCL::DecodedLocation decode(const EncodedLocation &loc) const override;
 

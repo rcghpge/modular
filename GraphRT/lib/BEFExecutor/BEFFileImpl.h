@@ -95,10 +95,6 @@ public:
   /// Drop a reference to this object, potentially deallocating it.
   virtual void dropRef() const override;
 
-  /// Non-const addRef/dropRef for LocationDecoder.
-  void addRef() override { const_cast<BEFInvokableImpl *>(this)->addRef(); }
-  void dropRef() override { const_cast<BEFInvokableImpl *>(this)->dropRef(); }
-
   /// Implement the only remaining LocationDecoder hook. Since we have a pointer
   /// to the BEFFileImpl we can easily decode a location provided to us.
   LLCL::DecodedLocation decode(const EncodedLocation &loc) const override;
