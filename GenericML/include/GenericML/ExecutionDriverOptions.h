@@ -38,9 +38,13 @@ struct ExecutorDriverCLOptions : public BEFCLOptionsCore, public CLOptionsCore {
 
   /// This specifies the benchmarking workload scenario during benchmarking.
   /// The valid options are "online" and "batched"
-  cl::opt<std::string> benchmarkScenario{
+  cl::opt<BenchmarkScenario> benchmarkScenario{
       "benchmark-scenario", cl::desc("The benchmarking scenario used."),
-      cl::init("online")};
+      cl::values(clEnumValN(BenchmarkScenario::kOnline, "online",
+                            "Online / streamed input generation"),
+                 clEnumValN(BenchmarkScenario::kBatched, "batched",
+                            "Batched generation")),
+      cl::init(BenchmarkScenario::kOnline)};
 
   /// This specifies the output directory which will contain the benchmarking
   /// logs

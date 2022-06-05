@@ -28,6 +28,8 @@ enum class InputGenerationKind {
   kNegOnes, // generate inputs filled with negative ones
 };
 
+enum class BenchmarkScenario { kOnline, kBatched };
+
 /// Initialize raw pointers for each model input with the correct data fill.
 /// This allocates the pointer, fills in the data, and returns ownership to the
 /// caller.
@@ -39,11 +41,10 @@ initializeInputMemory(InputGenerationKind inputGenKind, const Model *model,
 void runModel(const Model *model, LLCL::Runtime &runtime,
               InputGenerationKind inputGenKind, size_t numRuns = 1);
 
-LogicalResult benchmarkModel(const std::string &benchmarkName,
-                             const Model *model, Runtime &runtime,
+LogicalResult benchmarkModel(const Model *model, Runtime &runtime,
+                             StringRef benchmarkName,
                              InputGenerationKind inputGenKind,
-                             const std::string &benchmarkScenario,
-                             const std::string &benchmarkOutputDir,
+                             BenchmarkScenario scenario, StringRef outputDir,
                              bool benchmarkNoLogPrefix);
 
 } // namespace M
