@@ -8,12 +8,12 @@
 
 // CHECK: module {
 
-// CHECK-LABEL: bef.invokable @trivial() {
+// CHECK-LABEL: "bef.invokable" ["trivial"]
 // CHECK-NEXT:    %0:2 = bef.opaque "simple.primitive" []() : () -> (!bef.unknown, !bef.unknown)
 // CHECK-NEXT:    bef.opaque "grt.invoke" ["trivial"]() : () -> ()
 // CHECK-NEXT:    bef.output
 // CHECK-NEXT:  }
-// MD-LABEL: bef.invokable @trivial() {
+// MD-LABEL: "bef.invokable" ["trivial"]
 // MD-NEXT:    %0:2 = "simple.primitive"() : () -> (i8, i16)
 // MD-NEXT:    "grt.invoke"() {target = "trivial"} : () -> ()
 // MD-NEXT:    bef.output
@@ -24,18 +24,20 @@ bef.invokable @trivial() {
   bef.output
 }
 
-// CHECK-LABEL:  bef.invokable @args_results(%arg0: !bef.unknown, %arg1: !bef.unknown) -> (!bef.unknown, !bef.unknown) {
+// CHECK-LABEL:  "bef.invokable" ["args_results"]
+// CHECK-NEXT:   ^bb0(%arg0: !bef.unknown, %arg1: !bef.unknown):
 // CHECK-NEXT:     bef.output %arg1, %arg0 : !bef.unknown, !bef.unknown
 // CHECK-NEXT:   }
-// MD-LABEL:  bef.invokable @args_results(%arg0: si32, %arg1: si8) -> (si8, si32) {
+// MD-LABEL:  "bef.invokable" ["args_results"]
+// MD-NEXT:   ^bb0(%arg0: si32, %arg1: si8):
 // MD-NEXT:     bef.output %arg1, %arg0 : si8, si32
 // MD-NEXT:   }
 bef.invokable @args_results(%a: si32, %b: si8) -> (si8, si32) {
   bef.output %b, %a : si8, si32
 }
 
-// CHECK-LABEL:  bef.invokable @attributes() {
-// MD-LABEL:  bef.invokable @attributes() {
+// CHECK-LABEL:  "bef.invokable" ["attributes"]
+// MD-LABEL:  "bef.invokable" ["attributes"]
 bef.invokable @attributes() {
   // CHECK-NEXT: "a.b" [true]
   // MD-NEXT: "a.b"() {a = true}
@@ -129,7 +131,7 @@ bef.invokable @attributes() {
    // CHECK-NEXT:     bef.output
 }  // CHECK-NEXT:   }
 
-// CHECK-LABEL: bef.invokable @opaque_round_trip() {
+// CHECK-LABEL: "bef.invokable" ["opaque_round_trip"]
 // CHECK-NEXT:    %0:2 = bef.opaque "simple.primitive" []() : () -> (!bef.unknown, !bef.unknown)
 // CHECK-NEXT:    bef.opaque "other.primitive" [42 : si8](%0#1, %0#0) : (!bef.unknown, !bef.unknown) -> ()
 // CHECK-NEXT:    bef.output
@@ -140,13 +142,13 @@ bef.invokable @opaque_round_trip() {
   bef.output
 }
 
-// CHECK-LABEL: "some.container"() ({
+// CHECK-LABEL: bef.opaque "some.container" ["multi_region"]() : () -> () {
 // CHECK-NEXT:   bef.opaque "a.firstregion" []() : () -> ()
 // CHECK-NEXT:   bef.output
 // CHECK-NEXT: }, {
 // CHECK-NEXT:   bef.opaque "a.secondregion" []() : () -> ()
 // CHECK-NEXT:   bef.output
-// CHECK-NEXT: }) {sym_name = "multi_region"} : () -> ()
+// CHECK-NEXT: }
 "some.container"() ({
   "a.firstregion"() : () -> ()
 }, {

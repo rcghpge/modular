@@ -12,6 +12,7 @@
 #include "GraphRT/BEF/BEFReader.h"
 #include "GraphRT/BEFDialect/BEFOps.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"
+#include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -38,7 +39,7 @@ public:
   bool parseTypes();
   bool parsePrimitiveNames();
   bool parseTopLevelOps();
-  bool parseRegionBody(bool isAnonymous, Region *region, BEFReader &bodyReader,
+  bool parseRegionBody(Region *region, BEFReader &bodyReader,
                        BEFReader &attrNameReader, BEFReader &mlirTypesReader);
 
   bool emitError(Error message) {
@@ -76,10 +77,10 @@ public:
   }
 
   bool resolveRegion(size_t invokableIndex, Location loc, Region *&region) {
-    if (invokableIndex >= topLevelOps.size())
+    if (invokableIndex >= regions.size())
       return mlir::emitError(loc, "invalid invokable index"), true;
 
-    region = topLevelOps[invokableIndex].region;
+    region = regions[invokableIndex];
     return false;
   }
 
@@ -139,14 +140,8 @@ private:
   /// This is the name for each primitive, indexed by primitive ID.
   SmallVector<StringAttr> primitiveNames;
 
-  /// This struct represents an invokable region.
-  struct TopLevelOp {
-    StringRef primitive, symbol;
-    Region *region;
-  };
-
-  /// This is the set of parsed invokables indexed by invokable ID.
-  SmallVector<TopLevelOp> topLevelOps;
+  /// This is the set of parsed regions indexed by invokable ID.
+  SmallVector<Region *> regions;
 
   /// The is the parsed version of the type list when metadata is enabled.
   std::vector<Type> types;
@@ -642,13 +637,13 @@ bool BEFToMLIRConverter::parseTopLevelOps() {
   BEFReader mlirTypesReader = getSectionReader(BEF::SectionID::kMLIRTypeMD);
   BEFReader bodyReader = getSectionReader(BEF::SectionID::kTopLevelOpBodies);
 
-  size_t numTopLevelOps;
-  if (reader.parseVBR(numTopLevelOps))
+  size_t numRegions;
+  if (reader.parseVBR(numRegions))
     return true;
 
   SmallVector<size_t> invokableOffsets;
-  invokableOffsets.reserve(numTopLevelOps);
-  topLevelOps.reserve(numTopLevelOps);
+  invokableOffsets.reserve(numRegions);
+  regions.reserve(numRegions);
 
   SmallVector<Type> inputTypes;
   auto builder = OpBuilder::atBlockBegin(module->getBody());
@@ -687,12 +682,9 @@ bool BEFToMLIRConverter::parseTopLevelOps() {
         ParsedSymbol{numArgs, numResults, primitive, symbol, {bodyOffset}});
   }
 
-  // Drop the last symbol - it's the module which we've already created.
-  symbols.erase(symbols.end() - 1);
-
-  for (const auto &s : symbols) {
-    OperationState state(loc, s.primitive);
-    state.addAttribute(mlir::SymbolTable::getSymbolAttrName(), s.symbol);
+  // Don't parse the module this way, it already exists!
+  for (const auto &s : llvm::drop_end(symbols)) {
+    OperationState state(loc, "bef.opaque.region");
     // Add as many regions as there are regions for the symbol.
     for (size_t i = 0, e = s.bodyOffsets.size(); i < e; ++i)
       state.addRegion();
@@ -708,12 +700,10 @@ bool BEFToMLIRConverter::parseTopLevelOps() {
       inputTypes.clear();
 
       // Add it to the vector now.
-      topLevelOps.push_back({s.primitive, s.symbol, &region});
+      regions.push_back(&region);
 
       // Parse the invokable body now.
-      if (parseRegionBody(s.primitive.getValue().empty() &&
-                              s.symbol.getValue().empty(),
-                          &region, bodyReader, attrNameReader, mlirTypesReader))
+      if (parseRegionBody(&region, bodyReader, attrNameReader, mlirTypesReader))
         return true;
     }
 
@@ -730,23 +720,28 @@ bool BEFToMLIRConverter::parseTopLevelOps() {
     }
   }
 
-  // We drop the top level module, which is the last top level op.
-  if (topLevelOps.size() != numTopLevelOps - 1)
-    return emitError("expected " + Twine(numTopLevelOps - 1) +
-                     " invokables, but found " + Twine(topLevelOps.size()));
+  // The module is special - it's the last one so parse it out.
+  if (parseRegionBody(&module->getBodyRegion(), bodyReader, attrNameReader,
+                      mlirTypesReader))
+    return true;
 
+  // Erase all the temporary placeholder ops.
+  for (auto &op : llvm::make_early_inc_range(module->getBodyRegion().front()))
+    if (op.getName().getIdentifier() == "bef.opaque.region")
+      op.erase();
+
+  // Erase the module's output op, it's not needed.
+  module->getBody()->getTerminator()->erase();
   return false;
 }
 
 namespace {
 class RegionParser {
 public:
-  RegionParser(bool isAnonymous, Region *region, BEFReader &bodyReader,
-               BEFReader &attrNameReader, BEFReader &mlirTypesReader,
-               BEFToMLIRConverter &converter)
-      : isAnonymous(isAnonymous), region(region), bodyReader(bodyReader),
-        attrNameReader(attrNameReader), mlirTypesReader(mlirTypesReader),
-        converter(converter) {}
+  RegionParser(Region *region, BEFReader &bodyReader, BEFReader &attrNameReader,
+               BEFReader &mlirTypesReader, BEFToMLIRConverter &converter)
+      : region(region), bodyReader(bodyReader), attrNameReader(attrNameReader),
+        mlirTypesReader(mlirTypesReader), converter(converter) {}
 
   /// Entrypoint to parse the invokable body.
   bool parse();
@@ -757,7 +752,6 @@ private:
   bool parseResultRegs();
   bool parsePrimitiveList();
 
-  bool isAnonymous;
   Region *region;
   BEFReader &bodyReader;
 
@@ -941,29 +935,15 @@ bool RegionParser::parsePrimitiveList() {
     }
 
     // If the invokable has references to symbols or regions, then decode them
-    // now.
-    SmallVector<Block *> regionsBlocksToTake;
+    // now. This is safe because we do a post-order traversal of Regions in the
+    // tree.
+    SmallVector<Region *> regions;
     for (uint32_t invokableIdx : invokablesIndices) {
       Region *invokableRegion;
       if (converter.resolveRegion(invokableIdx, loc, invokableRegion))
         return true;
 
-      // If this is an anonymous invokable, then it is a region on the
-      // operation, otherwise there should be an attribute name.
-      if (isAnonymous) {
-        // Check to see if someone already used this invokable as an
-        // anonymous operation region.
-        if (invokableRegion->empty())
-          return mlir::emitError(loc,
-                                 "anonymous invokable used multiple times"),
-                 true;
-
-        Block *block = &invokableRegion->back();
-        invokableRegion->getBlocks().remove(*block);
-        regionsBlocksToTake.push_back(block);
-      } else {
-        --numTopLevelOps;
-      }
+      regions.push_back(invokableRegion);
     }
 
     // If this operation has more than one operand but only requires one to be
@@ -973,20 +953,24 @@ bool RegionParser::parsePrimitiveList() {
     if (operands.size() > 1 && primitiveTable[i] == 1)
       nonStrict = mlir::UnitAttr::get(loc.getContext());
 
+    // Erase any regions that contain themselves so that we don't end up in
+    // infinite recursion.
+    llvm::erase_if(regions, [&](Region *r) {
+      return r == bodyBuilder.getInsertionBlock()->getParent();
+    });
+
     Operation *resultOp;
+    BlockAndValueMapping map;
     if (!hasMLIRTypes || isOpaqueOp) {
-      assert(regionsBlocksToTake.size() == numTopLevelOps);
-      // If we lack type information, create a bef.opaque operation.  We cannot
-      // necessarily create the correct operation when we're lacking type info
-      // and attribute names because we'll trip the op verifier.
+      // If we lack type information, create a bef.opaque operation.  We
+      // cannot necessarily create the correct operation when we're lacking
+      // type info and attribute names because we'll trip the op verifier.
       resultOp = bodyBuilder.create<BEF::OpaqueOp>(
           loc, resultTypes, primitiveName, bodyBuilder.getArrayAttr(attrs),
-          nonStrict, operandValues, numTopLevelOps);
-      for (size_t i = 0, e = regionsBlocksToTake.size(); i != e; ++i) {
-        Region fake;
-        fake.push_back(regionsBlocksToTake[i]);
-        cast<BEF::OpaqueOp>(resultOp).getBody()[i].takeBody(fake);
-      }
+          nonStrict, operandValues, regions.size());
+      // Clone all the region bodies.
+      for (auto &r : llvm::enumerate(regions))
+        r.value()->cloneInto(&resultOp->getRegion(r.index()), map);
     } else {
       OperationState state(loc, primitiveName, operandValues, resultTypes,
                            /*attrs*/ {});
@@ -994,8 +978,8 @@ bool RegionParser::parsePrimitiveList() {
         state.addAttribute(attrName, attr);
 
       // Add all the regions.
-      for (Block *block : regionsBlocksToTake)
-        state.addRegion()->push_back(block);
+      for (Region *r : regions)
+        r->cloneInto(state.addRegion(), map);
 
       resultOp = bodyBuilder.create(state);
     }
@@ -1020,13 +1004,12 @@ bool RegionParser::parsePrimitiveList() {
   return false;
 }
 
-bool BEFToMLIRConverter::parseRegionBody(bool isAnonymous, Region *region,
-                                         BEFReader &bodyReader,
+bool BEFToMLIRConverter::parseRegionBody(Region *region, BEFReader &bodyReader,
                                          BEFReader &attrNameReader,
                                          BEFReader &mlirTypesReader) {
 
-  return RegionParser(isAnonymous, region, bodyReader, attrNameReader,
-                      mlirTypesReader, *this)
+  return RegionParser(region, bodyReader, attrNameReader, mlirTypesReader,
+                      *this)
       .parse();
 }
 
