@@ -475,34 +475,33 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
           if (enableBEFMetadata && !insideDict)
             addMetadataString(name);
 
-          if (auto fn_attr = attr.dyn_cast<SymbolRefAttr>()) {
-            // Keep track of invokable references specially so we can diagnose
-            // them.
+          // Keep track of invokable references specially so we can diagnose
+          // them.
+          if (auto fn_attr = attr.dyn_cast<SymbolRefAttr>())
             symbolRefAttrs.emplace_back(fn_attr, op->getLoc());
-          } else {
-            // Recurse into ArrayAttr/DictionaryAttr. Perform a post-order
-            // traversal so that we can use the offsets from the values inside
-            // the collection when emitting the collection.
-            if (auto arrayAttr = attr.dyn_cast<ArrayAttr>())
-              for (Attribute element : arrayAttr)
-                processAttr(StringAttr::get(op->getContext()), element, true);
-            if (auto dictAttr = attr.dyn_cast<DictionaryAttr>())
-              for (NamedAttribute namedAttr : dictAttr)
-                processAttr(namedAttr.getName(), namedAttr.getValue(), true);
 
-            // If we're handling a dictionary, then insert the name into the
-            // attributes list.
-            if (insideDict && attributes.insert(name))
-              attributeLocs.push_back(op->getLoc());
+          // Recurse into ArrayAttr/DictionaryAttr. Perform a post-order
+          // traversal so that we can use the offsets from the values inside
+          // the collection when emitting the collection.
+          if (auto arrayAttr = attr.dyn_cast<ArrayAttr>())
+            for (Attribute element : arrayAttr)
+              processAttr(StringAttr::get(op->getContext()), element, true);
+          if (auto dictAttr = attr.dyn_cast<DictionaryAttr>())
+            for (NamedAttribute namedAttr : dictAttr)
+              processAttr(namedAttr.getName(), namedAttr.getValue(), true);
 
-            // We just keep track of the top level attributes in the
-            // "attributes" list: do not recursively process them.  This is
-            // because we want to emit arrays of scalars as "flat" attributes
-            // where all the values are inline.
-            if (attributes.insert(attr))
-              // If this attribute is new, remember what used it.
-              attributeLocs.push_back(op->getLoc());
-          }
+          // If we're handling a dictionary, then insert the name into the
+          // attributes list.
+          if (insideDict && attributes.insert(name))
+            attributeLocs.push_back(op->getLoc());
+
+          // We just keep track of the top level attributes in the
+          // "attributes" list: do not recursively process them.  This is
+          // because we want to emit arrays of scalars as "flat" attributes
+          // where all the values are inline.
+          if (attributes.insert(attr))
+            // If this attribute is new, remember what used it.
+            attributeLocs.push_back(op->getLoc());
         };
 
     // Opaque BEF operations encode some fields in a special way.
@@ -1037,6 +1036,9 @@ BEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr, Location loc,
   if (auto string = attr.dyn_cast<StringAttr>())
     return emitStringAttribute(string.getValue());
 
+  if (auto symRef = attr.dyn_cast<SymbolRefAttr>())
+    return emitStringAttribute(symRef.getLeafReference());
+
   if (auto denseElements = attr.dyn_cast<DenseElementsAttr>())
     return emitDenseElementsAttribute(denseElements, loc);
 
@@ -1259,28 +1261,24 @@ void RegionEmitter::emitArgumentsPseudoOp(Block *block,
 void RegionEmitter::emitPrimitive(Operation *op,
                                   BEFEmitter &primitiveList) const {
   // Collect the regions and attributes to emit.
-  SmallVector<std::pair<uint32_t, BEFOffset>> regionsToEmit;
+  SmallVector<uint32_t> regionsToEmit;
   SmallVector<uint32_t> attributesToEmit;
 
   // Grab the module so we can use it to lookup symbols when necessary.
   ModuleOp theModule = op->getParentOfType<ModuleOp>();
 
   auto processAttr = [&](StringAttr name, Attribute value) {
+    // Symbol ref attrs are emitted as invokables.
     if (auto fnAttr = value.dyn_cast<FlatSymbolRefAttr>()) {
-      // Symbol ref attrs are emitted as invokables.
-      BEFOffset nameIdx = {0};
-      if (attributeNamesSection)
-        nameIdx = entities.getMetadataStringOffset(name);
       // Make sure we emit every region in the callee.
       Operation *callee = theModule.lookupSymbol(fnAttr.getAttr());
       for (auto &r : callee->getRegions())
-        regionsToEmit.emplace_back(entities.getRegionID(r), nameIdx);
-    } else {
-      attributesToEmit.push_back(entities.getAttributeOffset(value).value);
-      if (attributeNamesSection)
-        attributeNamesSection->emitOffset(
-            entities.getMetadataStringOffset(name));
+        regionsToEmit.emplace_back(entities.getRegionID(r));
     }
+
+    attributesToEmit.push_back(entities.getAttributeOffset(value).value);
+    if (attributeNamesSection)
+      attributeNamesSection->emitOffset(entities.getMetadataStringOffset(name));
   };
 
   // bef.opaque operands store attributes in an explicit way since we don't know
@@ -1302,7 +1300,7 @@ void RegionEmitter::emitPrimitive(Operation *op,
 
   // Regions on the op are also considered to be BEF invokables.
   for (auto &region : op->getRegions())
-    regionsToEmit.push_back({entities.getRegionID(region), BEFOffset{0}});
+    regionsToEmit.push_back(entities.getRegionID(region));
 
   // Ensure this primitive isn't too big to encode.
   if (op->getNumOperands() > 65535 || attributesToEmit.size() > 65535 ||
@@ -1326,11 +1324,8 @@ void RegionEmitter::emitPrimitive(Operation *op,
     primitiveList.emitInt4(getRegisterNumber(operand));
   for (auto attrOffset : attributesToEmit)
     primitiveList.emitInt4(attrOffset);
-  for (auto fnOffsetAndName : regionsToEmit) {
-    primitiveList.emitInt4(fnOffsetAndName.first);
-    if (attributeNamesSection)
-      attributeNamesSection->emitOffset(fnOffsetAndName.second);
-  }
+  for (auto fnOffset : regionsToEmit)
+    primitiveList.emitInt4(fnOffset);
 
   // Emit a single result number of we have one or more results.  They are
   // numbered consecutively, so we don't need to emit them all.

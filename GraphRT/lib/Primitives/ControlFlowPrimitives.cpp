@@ -31,7 +31,9 @@ static AsyncValueRef<Chain> chain_merge(Runtime &runtime,
 }
 
 static void invoke(RemainingArguments arguments, RemainingResults results,
-                   BEFInvokable *target, Runtime &runtime) {
+                   BEFAttr<StringRef> targetName, BEFInvokable *target,
+                   Runtime &runtime) {
+  // We don't use the attrs passed in - it's just the symbol name.
   assert(target->getNumArgs() == arguments.size() && "argument count mismatch");
   assert(target->getNumResults() == results.size() && "result count mismatch");
   target->invoke(arguments.get(), results.get(), runtime);

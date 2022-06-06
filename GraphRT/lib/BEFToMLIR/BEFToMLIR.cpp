@@ -962,19 +962,6 @@ bool RegionParser::parsePrimitiveList() {
         invokableRegion->getBlocks().remove(*block);
         regionsBlocksToTake.push_back(block);
       } else {
-        // If this is a symbol ref, check for a name.
-        if (!attrNameReader.empty()) {
-          size_t nameOffset;
-          StringAttr name;
-          if (attrNameReader.parseVBR(nameOffset) ||
-              converter.resolveMetadataString(nameOffset, loc, name))
-            return true;
-          attrNames.push_back(name);
-        }
-
-        // Regardless of whether we have a name, remember this as a
-        // FlatSymbolRef.
-        attrs.push_back(FlatSymbolRefAttr::get(region->getParentOp()));
         --numTopLevelOps;
       }
     }
