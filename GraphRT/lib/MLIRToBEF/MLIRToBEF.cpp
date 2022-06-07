@@ -278,11 +278,8 @@ public:
     return it->second;
   }
 
-  void addRegionOffset(StringAttr opcode, StringAttr symbol,
-                       BEFOffset bodyOffset, RegionSignature signature) {
-    regionIndexEntries.push_back({getStringOffset(opcode),
-                                  getStringOffset(symbol), bodyOffset,
-                                  signature});
+  void addRegionOffset(BEFOffset bodyOffset, RegionSignature signature) {
+    regionIndexEntries.push_back({bodyOffset, signature});
   }
 
   /// Return the BEFOffset for the specified location entry.
@@ -331,8 +328,6 @@ public:
   DenseMap<Region *, unsigned> regionIDs;
 
   struct InvokableIndexEntry {
-    BEFOffset primtiveOffset;
-    BEFOffset symbolOffset;
     BEFOffset bodyOffset;
     RegionSignature signature;
   };
@@ -1474,7 +1469,7 @@ void BEFModuleEmitter::emitInvokables(BEFEmitter *attributeNamesSection,
     }
 
     // Remember that we emitted this region to this offset.
-    entities.addRegionOffset(opcode, symbol, invokablesSection.getOffset(),
+    entities.addRegionOffset(invokablesSection.getOffset(),
                              getRegionSignature(region));
     invokablesSection.emitRegion(region);
   }
@@ -1486,8 +1481,6 @@ void BEFModuleEmitter::emitInvokableIndex() {
   BEFEmitter invokableIndexSection;
   invokableIndexSection.emitVBR(entities.regionIndexEntries.size());
   for (const auto &entry : entities.regionIndexEntries) {
-    invokableIndexSection.emitOffset(entry.primtiveOffset);
-    invokableIndexSection.emitOffset(entry.symbolOffset);
     invokableIndexSection.emitOffset(entry.bodyOffset);
     invokableIndexSection.emitVBR(entry.signature.numArguments);
     invokableIndexSection.emitVBR(entry.signature.numResults);

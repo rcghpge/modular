@@ -28,13 +28,6 @@ class BEFInvokable {
 public:
   virtual ~BEFInvokable() {}
 
-  /// Return the name of the primitive for this invokable, or empty if
-  /// anonymous.
-  StringRef getPrimitiveName() const { return primitiveName; }
-
-  /// Return the name of the symbol for this invokable, or empty if anonymous.
-  StringRef getSymbolName() const { return symbolName; }
-
   size_t getNumArgs() const { return numArgs; }
   size_t getNumResults() const { return numResults; }
 
@@ -75,13 +68,10 @@ public:
   virtual void dropRef() const = 0;
 
 protected:
-  BEFInvokable(StringRef primitiveName, StringRef symbolName, uint16_t numArgs,
-               uint16_t numResults)
-      : primitiveName(primitiveName), symbolName(symbolName), numArgs(numArgs),
-        numResults(numResults) {}
+  BEFInvokable(uint16_t numArgs, uint16_t numResults)
+      : numArgs(numArgs), numResults(numResults) {}
 
 private:
-  const StringRef primitiveName, symbolName;
   const uint16_t numArgs, numResults;
 
   BEFInvokable(BEFInvokable &) = delete;

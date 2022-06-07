@@ -145,41 +145,17 @@ bool BEFFileReader::readInvokableIndexSection(BEFReader &stringReader) {
     return emitError("invokable count is incorrect");
   };
 
-  // Use a MapVector here to preserve input ordering.
-  llvm::MapVector<std::pair<StringRef, StringRef>,
-                  SmallVector<BEFInvokable *, 1>>
-      invokableMap;
   while (!empty()) {
     if (regionNumber > numInvokables)
       return reportIncorrectInvokableCount();
 
-    size_t bodyOffset, primitiveOffset, symbolOffset, numArgs, numResults;
-    StringRef primitive, symbol;
-    if (parseVBR(primitiveOffset) || parseVBR(symbolOffset) ||
-        parseVBR(bodyOffset) || parseVBR(numArgs) || parseVBR(numResults) ||
-        stringReader.parseNULTerminatedStringAt(primitiveOffset, primitive) ||
-        stringReader.parseNULTerminatedStringAt(symbolOffset, symbol))
+    size_t bodyOffset, numArgs, numResults;
+    if (parseVBR(bodyOffset) || parseVBR(numArgs) || parseVBR(numResults))
       return true;
 
     /// Create the actual BEFInvokable.
-    BEFInvokable *inv = new (&fnMemory[regionNumber++]) BEFInvokableImpl(
-        primitive, symbol, numArgs, numResults, bodyOffset, &befFile);
-
-    /// Remember this invokable in the symbol table if it isn't anonymous by
-    /// attaching it to the appropriate top level op.
-    if (!symbol.empty()) {
-      auto didEmplace = invokableMap.insert(
-          {std::pair<StringRef, StringRef>{primitive, symbol},
-           SmallVector<BEFInvokable *, 1>{inv}});
-      if (!didEmplace.second)
-        didEmplace.first->second.push_back(inv);
-    }
-  }
-
-  // Populate the list of top level ops.
-  for (auto &entry : invokableMap) {
-    befFile.topLevelOps.emplace_back(entry.first.first, entry.first.second,
-                                     entry.second);
+    (void)new (&fnMemory[regionNumber++])
+        BEFInvokableImpl(numArgs, numResults, bodyOffset, &befFile);
   }
 
   // Check that the correct number of invokables was actually present.

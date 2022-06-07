@@ -653,41 +653,26 @@ bool BEFToMLIRConverter::parseTopLevelOps() {
   // Provides everything we need to create a symbol-having op. Since we want to
   // allow multiple regions per symbol, we have to go through the index section
   // and find all the symbols' bodies and then we can create the ops.
-  struct ParsedSymbol {
-    size_t numArgs, numResults;
-    StringAttr primitive, symbol;
-    SmallVector<size_t, 1> bodyOffsets;
+  struct ParsedRegion {
+    size_t numArgs, numResults, bodyOffset;
   };
 
-  SmallVector<ParsedSymbol> symbols;
+  SmallVector<ParsedRegion> parsedRegions;
   // Read until we run out of invokable descriptors.
   while (!reader.empty()) {
-    size_t primitiveOffset, symbolOffset, bodyOffset, numArgs, numResults;
-    StringAttr primitive, symbol;
-    if (reader.parseVBR(primitiveOffset) || reader.parseVBR(symbolOffset) ||
-        reader.parseVBR(bodyOffset) || reader.parseVBR(numArgs) ||
-        reader.parseVBR(numResults) ||
-        parseNULTerminatedStringAt(primitiveOffset, stringReader, primitive) ||
-        parseNULTerminatedStringAt(symbolOffset, stringReader, symbol))
+    size_t bodyOffset, numArgs, numResults;
+    if (reader.parseVBR(bodyOffset) || reader.parseVBR(numArgs) ||
+        reader.parseVBR(numResults))
       return true;
 
-    auto found = llvm::find_if(
-        symbols, [&](const auto &sym) { return sym.symbol == symbol; });
-    if (found != symbols.end()) {
-      found->bodyOffsets.push_back(bodyOffset);
-      continue;
-    }
-
-    symbols.push_back(
-        ParsedSymbol{numArgs, numResults, primitive, symbol, {bodyOffset}});
+    parsedRegions.push_back(ParsedRegion{numArgs, numResults, bodyOffset});
   }
 
   // Don't parse the module this way, it already exists!
-  for (const auto &s : llvm::drop_end(symbols)) {
+  for (const auto &s : llvm::drop_end(parsedRegions)) {
     OperationState state(loc, "bef.opaque.region");
-    // Add as many regions as there are regions for the symbol.
-    for (size_t i = 0, e = s.bodyOffsets.size(); i < e; ++i)
-      state.addRegion();
+    // Single region here, add the offset.
+    state.addRegion();
     // Create the operation. This object will likely not verify yet, as we don't
     // yet have the function type on the op.
     Operation *theOp = builder.create(state);

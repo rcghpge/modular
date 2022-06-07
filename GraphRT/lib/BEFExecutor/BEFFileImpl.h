@@ -59,18 +59,15 @@ public:
   /// completely bound to BEFFileImpl's.
   BEFInvokableImpl *invokables = nullptr;
   size_t numInvokables = 0;
-
-  /// This contains a list of the top level ops in the BEF file.
-  SmallVector<TopLevelEntity, 1> topLevelOps;
 };
 
 /// BEF specific implementation of the Invokable interface.
 class BEFInvokableImpl final : public BEFInvokable, public LocationDecoder {
 public:
-  BEFInvokableImpl(StringRef primitive, StringRef symbol, uint16_t numArguments,
-                   uint16_t numResults, uint32_t bodyOffset, BEFFileImpl *owner)
-      : BEFInvokable(primitive, symbol, numArguments, numResults),
-        bodyOffset(bodyOffset), owner(owner) {}
+  BEFInvokableImpl(uint16_t numArguments, uint16_t numResults,
+                   uint32_t bodyOffset, BEFFileImpl *owner)
+      : BEFInvokable(numArguments, numResults), bodyOffset(bodyOffset),
+        owner(owner) {}
 
   virtual ~BEFInvokableImpl() = default;
 

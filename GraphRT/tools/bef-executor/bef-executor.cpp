@@ -13,12 +13,12 @@
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
 #include "GraphRT/GRTTestcase.h"
 #include "GraphRT/Primitives.h"
+#include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/RuntimeCLOptions.h"
 #include "Support/CommandLine.h"
 #include "Support/CommonCLOptions.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "llvm/Support/SourceMgr.h"
-#include "LLCL/Runtime/Algorithms.h"
 
 using namespace LLCL;
 using namespace M;
@@ -45,7 +45,6 @@ static void printResults(BEFInvokable *invokable,
   // Print out the invokable results that we know about.
   // Go ahead and print out the invokable results that we know about.
   if (!results.empty()) {
-    os << "'" << invokable->getSymbolName() << "' returned ";
     llvm::interleaveComma(results, os, [&](const AnyAsyncValueRef &result) {
       // Handle error value by printing it inline, and emitting it as an error
       // through SourceMgr so we can validate it.
@@ -113,6 +112,9 @@ static void runTestcase(const GRTTestcase &test,
         // If anything printed to stdout, force it out to a stream, since we
         // will be printing with raw_ostream.
         fflush(stdout);
+
+        if (!results.empty())
+          os << "'" << test.getName() << "' returned ";
 
         printResults(test.getBody(), results, context, os);
       });
