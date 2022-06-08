@@ -31,6 +31,12 @@ public:
   /// Return the invokable with the specified invokable ID.
   BEFInvokable *getInvokableByID(size_t number) const;
 
+  /// This method enumerates the primitive name table, calling the specified
+  /// callable on each entry.  The callable function may return an error to stop
+  /// iteration and diagnose problems, if it does, it is propagated out.
+  template <typename Callable>
+  ErrorOrSuccess enumeratePrimitiveNames(Callable &&callbackFn);
+
   // Everything in this class is public because the entire class is private to
   // the BEFExecutor library implementation.
 public:

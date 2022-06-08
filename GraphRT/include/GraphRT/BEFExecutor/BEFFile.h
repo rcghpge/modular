@@ -31,12 +31,41 @@ public:
   /// errors discovered lazily when running invokables, so they are returned
   /// through the invokable's result AsyncValue's.
   ///
+  /// Note that this doesn't set up the primitive table, it requires an explicit
+  /// call to `installPrimitives` to do so.
+  ///
+  /// TODO: This should (optionally) manage ownership of the underlying data
+  /// passed in.  For example, we could take a closure to run when the lifetime
+  /// of the BEFFile is done, or have a reference counted abstraction for
+  /// holding memory buffers.
+  static ErrorOr<RCRef<BEFFile>> open(StringRef file);
+
+  /// Check that the primitives name table is valid and can be resolved to
+  /// entries in the specified registry.
+  ErrorOrSuccess installPrimitives(const PrimitiveRegistry &registry);
+
+  /// This method allows clients to enumerate the primitive name table of a BEF
+  /// file, a simple form of reflection to see what is in it.  The callable
+  /// function may return an error to stop iteration and diagnose problems, if
+  /// it does, it is propagated out.
+  ErrorOrSuccess
+  enumeratePrimitiveNames(std::function<ErrorOrSuccess(StringRef)> callback);
+
+  /// Open and read a BEF file, setting up our internal state and returning a
+  /// pointer to our initialized object on success.  On an initial parse
+  /// failure, an error message is returned in the `ErrorOr`.  BEF file format
+  /// errors discovered lazily when running invokables, so they are returned
+  /// through the invokable's result AsyncValue's.
+  ///
+  /// Note that this doesn't set up the primitive table, it requires an explicit
+  /// call to `installPrimitives` to do so.
+  ///
   /// TODO: This should (optionally) manage ownership of the underlying data
   /// passed in.  For example, we could take a closure to run when the lifetime
   /// of the BEFFile is done, or have a reference counted abstraction for
   /// holding memory buffers.
   static ErrorOr<RCRef<BEFFile>> open(StringRef file,
-                                      const PrimitiveRegistry &primitives);
+                                      const PrimitiveRegistry &registry);
 
   /// Walk the top level primitives in the BEF file.
   ErrorOrSuccess walkTopLevelPrimitives(

@@ -40,11 +40,10 @@ namespace {
 /// returns true and fill in `errorMessage` on failure.
 class BEFFileReader : public BEFReader {
 public:
-  BEFFileReader(ArrayRef<uint8_t> file, const PrimitiveRegistry &primitives,
-                BEFFileImpl &befFile)
+  BEFFileReader(ArrayRef<uint8_t> file, BEFFileImpl &befFile)
       : BEFReader(file,
                   [=](Error message) { this->error = std::move(message); }),
-        primitives(primitives), befFile(befFile) {}
+        befFile(befFile) {}
 
   Optional<Error> &getError() { return error; }
 
@@ -56,8 +55,6 @@ private:
   /// Decode the next section and remember it if we care about it.
   bool readNextSection();
 
-  /// Decode the primitive names section.
-  bool readPrimitiveNamesSection(BEFReader &stringReader);
   /// Decode the invokable index section.
   bool readInvokableIndexSection(BEFReader &stringReader);
 
@@ -65,9 +62,6 @@ private:
   Optional<Error> error;
 
   ArrayRef<uint8_t> invokableIndex;
-
-  /// This is a reference to the (primitive name -> impl) mapping table.
-  const PrimitiveRegistry &primitives;
 
   // This is the file structure we're reading.
   BEFFileImpl &befFile;
@@ -91,37 +85,7 @@ bool BEFFileReader::readFileContents() {
 
   // Now that we've figured out the contents of the sections, resolve the
   // things we parse ahead of time.
-  return readPrimitiveNamesSection(stringReader) ||
-         readInvokableIndexSection(stringReader);
-}
-
-/// Decode the primitive names section.
-bool BEFFileReader::readPrimitiveNamesSection(BEFReader &stringReader) {
-  setContents(befFile.primitiveNames);
-
-  size_t numPrimitives;
-  if (parseVBR(numPrimitives))
-    return true;
-  befFile.primitives.reserve(numPrimitives);
-
-  // Read until we run out of names.
-  while (!empty()) {
-    // Each primitive name is encoded as an offset into the string table.
-    size_t stringOffset;
-    StringRef name;
-    if (parseVBR(stringOffset) ||
-        stringReader.parseNULTerminatedStringAt(stringOffset, name))
-      return true;
-
-    auto *primitiveImpl = primitives.get(name);
-    if (!primitiveImpl)
-      return emitError("unknown primitive '" + name + "'");
-
-    // Otherwise remember it.
-    befFile.primitives.push_back(primitiveImpl);
-  }
-
-  return false;
+  return readInvokableIndexSection(stringReader);
 }
 
 /// Decode the invokable index section.
@@ -228,11 +192,48 @@ BEFFileImpl::~BEFFileImpl() {
   free(const_cast<void *>(static_cast<const void *>(invokables)));
 }
 
+/// This method enumerates the primitive name table, calling the specified
+/// callable on each entry.  The callable function should return a bool, and
+/// a `true` result indicates that iteration should stop or `false` to
+/// continue.
+template <typename Callable>
+ErrorOrSuccess BEFFileImpl::enumeratePrimitiveNames(Callable &&callbackFn) {
+  ErrorOrSuccess errorResult;
+  BEFReader primNameReader(primitiveNames,
+                           [&](Error err) { errorResult = std::move(err); });
+  BEFReader stringReader(strings,
+                         [&](Error err) { errorResult = std::move(err); });
+
+  size_t numPrimitives;
+  if (primNameReader.parseVBR(numPrimitives))
+    return errorResult;
+  primitives.reserve(numPrimitives);
+
+  // Read until we run out of names.
+  while (!primNameReader.empty()) {
+    // Each primitive name is encoded as an offset into the string table.
+    size_t stringOffset;
+    StringRef name;
+    if (primNameReader.parseVBR(stringOffset) ||
+        stringReader.parseNULTerminatedStringAt(stringOffset, name))
+      return errorResult;
+
+    // Invoke the callback, propagating an error if needed.
+    if (auto err = callbackFn(name))
+      return err;
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// BEFFile implementation
+//===----------------------------------------------------------------------===//
+
 /// Get a list of invokables out of the BEF file.
 ErrorOrSuccess BEFFile::walkTopLevelPrimitives(
     std::function<ErrorOrSuccess(StringRef, const PrimitiveDescriptor &)>
         visitor) const {
-  auto befFile = static_cast<const BEFFileImpl *>(this);
+  auto *befFile = static_cast<const BEFFileImpl *>(this);
   // The last invokable is the module.
   return befFile->invokables[befFile->numInvokables - 1].walkPrimitives(
       std::move(visitor));
@@ -242,8 +243,7 @@ ErrorOrSuccess BEFFile::walkTopLevelPrimitives(
 /// pointer to our initialized object on success.  On failure, an error
 /// message is emitted to the errorHandler and a null RCRef is returned.
 ///
-ErrorOr<RCRef<BEFFile>> BEFFile::open(StringRef file,
-                                      const PrimitiveRegistry &primitives) {
+ErrorOr<RCRef<BEFFile>> BEFFile::open(StringRef file) {
   if (!BEF::hasBEFMagicNumber(file))
     return Error("not a BEF file");
   file = file.drop_front(2); // Drop the magic number.
@@ -251,11 +251,61 @@ ErrorOr<RCRef<BEFFile>> BEFFile::open(StringRef file,
   auto befFilePtr = RCRef<BEFFileImpl>::create();
 
   ArrayRef<uint8_t> fileData((const uint8_t *)file.data(), file.size());
-  BEFFileReader reader(fileData, primitives, *befFilePtr);
+  BEFFileReader reader(fileData, *befFilePtr);
   if (reader.readFileContents()) {
     assert(reader.getError() && "Failed but didn't produce an error!");
     return std::move(*reader.getError());
   }
 
   return befFilePtr;
+}
+
+/// Check that the primitives name table is valid and can be resolved to
+/// entries in the specified registry.
+ErrorOrSuccess BEFFile::installPrimitives(const PrimitiveRegistry &registry) {
+  auto *befFile = static_cast<BEFFileImpl *>(this);
+  return befFile->enumeratePrimitiveNames(
+      [&](StringRef primitiveName) -> ErrorOrSuccess {
+        auto *primitiveImpl = registry.get(primitiveName);
+        if (!primitiveImpl)
+          return Error("unknown primitive '" + primitiveName + "'");
+
+        // Otherwise remember it.
+        befFile->primitives.push_back(primitiveImpl);
+        return success();
+      });
+}
+
+/// This method allows clients to enumerate the primitive name table of a BEF
+/// file, a simple form of reflection to see what is in it.  The callable
+/// function may return an error to stop iteration and diagnose problems, if
+/// it does, this is propagated out.
+ErrorOrSuccess BEFFile::enumeratePrimitiveNames(
+    std::function<ErrorOrSuccess(StringRef)> callback) {
+  auto *befFile = static_cast<BEFFileImpl *>(this);
+  return befFile->enumeratePrimitiveNames(std::move(callback));
+}
+
+/// Open and read a BEF file, setting up our internal state and returning a
+/// pointer to our initialized object on success.  On an initial parse
+/// failure, an error message is returned in the `ErrorOr`.  BEF file format
+/// errors discovered lazily when running invokables, so they are returned
+/// through the invokable's result AsyncValue's.
+///
+/// Note that this doesn't set up the primitive table, it requires an explicit
+/// call to `installPrimitives` to do so.
+///
+/// TODO: This should (optionally) manage ownership of the underlying data
+/// passed in.  For example, we could take a closure to run when the lifetime
+/// of the BEFFile is done, or have a reference counted abstraction for
+/// holding memory buffers.
+ErrorOr<RCRef<BEFFile>> BEFFile::open(StringRef file,
+                                      const PrimitiveRegistry &registry) {
+  auto resultOr = open(file);
+  if (failed(resultOr))
+    return resultOr;
+  auto result = resultOr.takeValue();
+  if (auto err = result->installPrimitives(registry))
+    return err.takeError();
+  return result;
 }
