@@ -458,14 +458,20 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
   auto parseAttribute = [&](BEF::AttributeKind attrKind) -> Attribute {
     // Handle strings here. They aren't bitwidth-encoded, so we can just deal
     // with them up front.
-    if (attrKind == BEF::AttributeKind::kString) {
+    if (attrKind == BEF::AttributeKind::kString ||
+        attrKind == BEF::AttributeKind::kSymbolRef) {
       size_t length;
       ArrayRef<uint8_t> result;
       if (attrSection.parseInvertedVBRAt(offset - 1, length) ||
           attrReader.parseBytes(length, result))
         return {};
-      return StringAttr::get(
+
+      StringAttr out = StringAttr::get(
           getContext(), StringRef((const char *)result.data(), result.size()));
+      if (attrKind == BEF::AttributeKind::kSymbolRef)
+        return FlatSymbolRefAttr::get(out);
+
+      return out;
     }
 
     if (attrKind == BEF::AttributeKind::kDictionary)
@@ -668,7 +674,12 @@ bool BEFToMLIRConverter::parseTopLevelOps() {
     parsedRegions.push_back(ParsedRegion{numArgs, numResults, bodyOffset});
   }
 
-  // Don't parse the module this way, it already exists!
+  // Don't parse the module this way, it already exists! We create these opaque
+  // ops here so we can hold onto all the regions we're about to create, then,
+  // since the regions are stored in a post-order tree traversal, we will end up
+  // resolving the proper parents in the process of parsing parent invokables.
+  // This allows us to re-home all the regions and then finally erase the
+  // bef.opaque.region ops.
   for (const auto &s : llvm::drop_end(parsedRegions)) {
     OperationState state(loc, "bef.opaque.region");
     // Single region here, add the offset.

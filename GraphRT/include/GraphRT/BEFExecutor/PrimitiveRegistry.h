@@ -425,6 +425,31 @@ public:
   const T &operator[](size_t i) const { return this->get()[i]; }
 };
 
+/// Symbols are essentially strings, but we just can't call them strings.
+class BEFSymbolRef {
+public:
+  BEFSymbolRef(StringRef value) : name(value) {}
+
+  StringRef name;
+};
+
+template <>
+class BEFAttr<BEFSymbolRef>
+    : public BEFAttrCommon<BEFAttr<BEFSymbolRef>, BEFSymbolRef> {
+public:
+  using BaseClass = BEFAttrCommon<BEFAttr<BEFSymbolRef>, BEFSymbolRef>;
+
+  explicit BEFAttr(const void *pointer)
+      : BaseClass(StringRef(static_cast<const char *>(pointer),
+                            decodeBEFArrayLength(pointer))) {
+    this->checkAttributeKind(pointer);
+  }
+
+  static bool matchesAttrKind(const void *pointer) {
+    return BaseClass::getAttrKind(pointer) == BEF::AttributeKind::kSymbolRef;
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // BEFAttr<*BEFType> support
 //===----------------------------------------------------------------------===//

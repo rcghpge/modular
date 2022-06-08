@@ -578,6 +578,7 @@ private:
   BEFOffset emitIntegerValue(bool emitAsArrayElement, const APInt &value,
                              Type eltType, Location loc);
   BEFOffset emitStringAttribute(StringRef value);
+  BEFOffset emitSymbolAttribute(StringRef value);
   BEFOffset emitDenseElementsAttribute(DenseElementsAttr value, Location loc);
   BEFOffset emitArrayAttribute(ArrayAttr value, Location loc);
   BEFOffset emitDictionaryAttribute(DictionaryAttr value, Location loc);
@@ -675,6 +676,19 @@ BEFOffset AttributesEmitter::emitStringAttribute(StringRef value) {
   // don't emit a zero byte at the end of the string data.
   emitInvertedVBR(value.size());
   emitAttributeKind(BEF::AttributeKind::kString);
+  auto offset = getOffset();
+  emitStringData(value);
+  return offset;
+}
+
+BEFOffset AttributesEmitter::emitSymbolAttribute(StringRef value) {
+  // In order to support strings of data with NUL characters in them, we emit
+  // strings as modified Pascal-style strings, that start with a VBR length. The
+  // string passed to the function points to the start of the data, but the
+  // bytes before it specify how long the string is.  To enforce this notion, we
+  // don't emit a zero byte at the end of the string data.
+  emitInvertedVBR(value.size());
+  emitAttributeKind(BEF::AttributeKind::kSymbolRef);
   auto offset = getOffset();
   emitStringData(value);
   return offset;
@@ -1032,7 +1046,7 @@ BEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr, Location loc,
     return emitStringAttribute(string.getValue());
 
   if (auto symRef = attr.dyn_cast<SymbolRefAttr>())
-    return emitStringAttribute(symRef.getLeafReference());
+    return emitSymbolAttribute(symRef.getLeafReference());
 
   if (auto denseElements = attr.dyn_cast<DenseElementsAttr>())
     return emitDenseElementsAttribute(denseElements, loc);

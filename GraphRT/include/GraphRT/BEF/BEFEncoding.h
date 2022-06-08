@@ -135,6 +135,7 @@ enum class AttributeKind : uint8_t {
   kDictionary = 3 << 5,
   kList = 4 << 5,
   kType = 5 << 5,
+  kSymbolRef = 6 << 5,
 };
 
 static inline AttrCategory getCategory(AttributeKind kind) {
