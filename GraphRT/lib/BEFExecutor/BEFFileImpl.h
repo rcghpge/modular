@@ -34,8 +34,8 @@ public:
   /// This method enumerates the primitive name table, calling the specified
   /// callable on each entry.  The callable function may return an error to stop
   /// iteration and diagnose problems, if it does, it is propagated out.
-  template <typename Callable>
-  ErrorOrSuccess enumeratePrimitiveNames(Callable &&callbackFn);
+  ErrorOrSuccess
+  enumeratePrimitiveNames(std::function<ErrorOrSuccess(StringRef)> callbackFn);
 
   // Everything in this class is public because the entire class is private to
   // the BEFExecutor library implementation.

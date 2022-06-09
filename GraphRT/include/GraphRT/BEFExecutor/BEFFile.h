@@ -7,6 +7,7 @@
 #ifndef GRAPHRT_BEFEXECUTOR_BEFFILE_H
 #define GRAPHRT_BEFEXECUTOR_BEFFILE_H
 
+#include "GraphRT/BEF/BEFContents.h"
 #include "LLCL/ForwardDecls.h"
 #include "LLCL/Support/ReferenceCounted.h"
 #include "Support/ErrorOr.h"
@@ -44,12 +45,9 @@ public:
   /// entries in the specified registry.
   ErrorOrSuccess installPrimitives(const PrimitiveRegistry &registry);
 
-  /// This method allows clients to enumerate the primitive name table of a BEF
-  /// file, a simple form of reflection to see what is in it.  The callable
-  /// function may return an error to stop iteration and diagnose problems, if
-  /// it does, it is propagated out.
-  ErrorOrSuccess
-  enumeratePrimitiveNames(std::function<ErrorOrSuccess(StringRef)> callback);
+  /// This method inspects the contents of the BEF file to make an educated
+  /// guess of what it contains, allowing for better QoI and usability of tools.
+  BEFContents sniffFileContents() const;
 
   /// Open and read a BEF file, setting up our internal state and returning a
   /// pointer to our initialized object on success.  On an initial parse
@@ -92,6 +90,10 @@ public:
 protected:
   BEFFile() {}
 };
+
+/// Return true if the specified file contents look like it is a BEF file, by
+/// checking the magic number.
+bool isBEFFile(llvm::StringRef contents);
 
 } // namespace M
 

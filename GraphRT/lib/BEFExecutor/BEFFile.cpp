@@ -22,13 +22,6 @@
 using namespace M;
 
 //===----------------------------------------------------------------------===//
-// BEFFile
-//===----------------------------------------------------------------------===//
-
-/// Home the vtable in a .cpp file.
-BEFFile::~BEFFile() {}
-
-//===----------------------------------------------------------------------===//
 // BEFFileReader
 //===----------------------------------------------------------------------===//
 
@@ -196,8 +189,8 @@ BEFFileImpl::~BEFFileImpl() {
 /// callable on each entry.  The callable function should return a bool, and
 /// a `true` result indicates that iteration should stop or `false` to
 /// continue.
-template <typename Callable>
-ErrorOrSuccess BEFFileImpl::enumeratePrimitiveNames(Callable &&callbackFn) {
+ErrorOrSuccess BEFFileImpl::enumeratePrimitiveNames(
+    std::function<ErrorOrSuccess(StringRef)> callbackFn) {
   ErrorOrSuccess errorResult;
   BEFReader primNameReader(primitiveNames,
                            [&](Error err) { errorResult = std::move(err); });
@@ -228,6 +221,36 @@ ErrorOrSuccess BEFFileImpl::enumeratePrimitiveNames(Callable &&callbackFn) {
 //===----------------------------------------------------------------------===//
 // BEFFile implementation
 //===----------------------------------------------------------------------===//
+
+/// Return true if the specified file contents look like it is a BEF file, by
+/// checking the magic number.
+bool M::isBEFFile(llvm::StringRef contents) {
+  return BEF::hasBEFMagicNumber(contents);
+}
+
+/// Home the vtable in a .cpp file.
+BEFFile::~BEFFile() {}
+
+/// This method inspects the contents of the BEF file to make an educated
+/// guess of what it contains, allowing for better QoI and usability of tools.
+BEFContents BEFFile::sniffFileContents() const {
+  BEFContents result{BEFContents::kUnknown};
+  (void)((BEFFileImpl *)const_cast<BEFFile *>(this))
+      ->enumeratePrimitiveNames([&](StringRef primitiveName) -> ErrorOrSuccess {
+        if (primitiveName == "tflp.model") {
+          result = BEFContents{BEFContents::kTFLiteModel};
+          return Error("done"); // stop iteration early.
+        }
+
+        if (primitiveName == "faux.testcase") {
+          result = BEFContents{BEFContents::kFauxModel};
+          return Error("done"); // stop iteration early.
+        }
+        return success();
+      });
+
+  return result;
+}
 
 /// Get a list of invokables out of the BEF file.
 ErrorOrSuccess BEFFile::walkTopLevelPrimitives(
@@ -274,16 +297,6 @@ ErrorOrSuccess BEFFile::installPrimitives(const PrimitiveRegistry &registry) {
         befFile->primitives.push_back(primitiveImpl);
         return success();
       });
-}
-
-/// This method allows clients to enumerate the primitive name table of a BEF
-/// file, a simple form of reflection to see what is in it.  The callable
-/// function may return an error to stop iteration and diagnose problems, if
-/// it does, this is propagated out.
-ErrorOrSuccess BEFFile::enumeratePrimitiveNames(
-    std::function<ErrorOrSuccess(StringRef)> callback) {
-  auto *befFile = static_cast<BEFFileImpl *>(this);
-  return befFile->enumeratePrimitiveNames(std::move(callback));
 }
 
 /// Open and read a BEF file, setting up our internal state and returning a
