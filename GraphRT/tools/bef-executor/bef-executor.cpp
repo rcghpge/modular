@@ -195,7 +195,13 @@ int main(int argc, char **argv) {
   // Figure out which testcases we want to execute.
   SmallVector<GRTTestcase, 1> testcasesToExecute;
 
-  if (auto err = befFile->walkTopLevelPrimitives<GRTTestcase>(
+  auto *moduleInv = befFile->getTopLevelInvokable();
+  if (!moduleInv) {
+    llvm::errs() << "BEF file was empty";
+    return 1;
+  }
+
+  if (auto err = moduleInv->walkPrimitives<GRTTestcase>(
           [&](GRTTestcase test) -> ErrorOrSuccess {
             // If no testcases are specified, run them all.
             if (clOptions.testcases.empty() ||

@@ -8,6 +8,7 @@
 #define GRAPHRT_BEFEXECUTOR_INVOKABLE_H
 
 #include "LLCL/ForwardDecls.h"
+#include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -43,6 +44,32 @@ public:
   virtual ErrorOrSuccess walkPrimitives(
       std::function<ErrorOrSuccess(StringRef, const PrimitiveDescriptor &)>
           visitor) const = 0;
+
+  /// Reflect over the body of the invokable, calling the visitor callback for
+  /// every object that has the same entity name as `T`. The entity must have 2
+  /// static methods, one is a method called `getEntityName` that should return
+  /// the primitive name that can be used for string matching. The second is
+  /// called `getFromDescriptor`, which is a fallible static constructor. This
+  /// static constructor should return `ErrorOr<T>`.
+  template <typename T>
+  ErrorOrSuccess
+  walkPrimitives(std::function<ErrorOrSuccess(T)> visitor) const {
+    return walkPrimitives(
+        [&](StringRef primitiveName,
+            const PrimitiveDescriptor &descriptor) -> ErrorOrSuccess {
+          // If the primitive name doesn't match the desired entity name, then
+          // do nothing.
+          if (primitiveName != T::getEntityName())
+            return success();
+
+          // Attempt to construct the object.
+          ErrorOr<T> objectOr = T::getFromDescriptor(descriptor);
+          if (failed(objectOr))
+            return objectOr.takeError();
+
+          return visitor(*objectOr);
+        });
+  }
 
   /// Invoke this using the specified runtime, passing the specified
   /// arguments. This fills in one AsyncValue for each result.  The caller

@@ -252,16 +252,6 @@ BEFContents BEFFile::sniffFileContents() const {
   return result;
 }
 
-/// Get a list of invokables out of the BEF file.
-ErrorOrSuccess BEFFile::walkTopLevelPrimitives(
-    std::function<ErrorOrSuccess(StringRef, const PrimitiveDescriptor &)>
-        visitor) const {
-  auto *befFile = static_cast<const BEFFileImpl *>(this);
-  // The last invokable is the module.
-  return befFile->invokables[befFile->numInvokables - 1].walkPrimitives(
-      std::move(visitor));
-}
-
 /// Open and read a BEF file, setting up our internal state and returning a
 /// pointer to our initialized object on success.  On failure, an error
 /// message is emitted to the errorHandler and a null RCRef is returned.
@@ -321,4 +311,14 @@ ErrorOr<RCRef<BEFFile>> BEFFile::open(StringRef file,
   if (auto err = result->installPrimitives(registry))
     return err.takeError();
   return result;
+}
+
+const BEFInvokable *BEFFile::getTopLevelInvokable() const {
+  auto befFile = static_cast<const BEFFileImpl *>(this);
+  // If we have no invokables, then there's nothing here.
+  if (befFile->numInvokables == 0)
+    return nullptr;
+
+  // The last invokable is the module.
+  return &befFile->invokables[befFile->numInvokables - 1];
 }

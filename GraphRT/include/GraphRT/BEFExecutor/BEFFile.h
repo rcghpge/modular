@@ -65,27 +65,10 @@ public:
   static ErrorOr<RCRef<BEFFile>> open(StringRef file,
                                       const PrimitiveRegistry &registry);
 
-  /// Walk the top level primitives in the BEF file.
-  ErrorOrSuccess walkTopLevelPrimitives(
-      std::function<ErrorOrSuccess(StringRef, const PrimitiveDescriptor &)>
-          visitor) const;
-
-  /// Walk all the top level primitives in the BEF file and call the visitor
-  /// callback for all ops with type T.
-  template <typename T>
-  ErrorOrSuccess
-  walkTopLevelPrimitives(std::function<ErrorOrSuccess(T)> visitor) const {
-    return walkTopLevelPrimitives(
-        [&](StringRef primitiveName,
-            const PrimitiveDescriptor &descriptor) -> ErrorOrSuccess {
-          // If the primitive name doesn't match the desired entity name, then
-          // do nothing.
-          if (primitiveName != T::getEntityName())
-            return success();
-
-          return visitor(T(descriptor));
-        });
-  }
+  /// Return the top level invokable in the file. This object corresponds to the
+  /// MLIR module in the file used to create the BEF. Returns nullptr if the BEF
+  /// file is fully empty (unlikely, but technically possible).
+  const BEFInvokable *getTopLevelInvokable() const;
 
 protected:
   BEFFile() {}
