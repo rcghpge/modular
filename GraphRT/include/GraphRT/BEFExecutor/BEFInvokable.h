@@ -52,8 +52,7 @@ public:
   /// called `getFromDescriptor`, which is a fallible static constructor. This
   /// static constructor should return `ErrorOr<T>`.
   template <typename T, typename Callable>
-  ErrorOrSuccess
-  walkPrimitives(Callable visitor) const {
+  ErrorOrSuccess walkPrimitives(Callable visitor) const {
     return walkPrimitives(
         [&](StringRef primitiveName,
             const PrimitiveDescriptor &descriptor) -> ErrorOrSuccess {
