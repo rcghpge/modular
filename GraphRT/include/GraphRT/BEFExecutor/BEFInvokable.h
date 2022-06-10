@@ -51,9 +51,9 @@ public:
   /// the primitive name that can be used for string matching. The second is
   /// called `getFromDescriptor`, which is a fallible static constructor. This
   /// static constructor should return `ErrorOr<T>`.
-  template <typename T>
+  template <typename T, typename Callable>
   ErrorOrSuccess
-  walkPrimitives(std::function<ErrorOrSuccess(T)> visitor) const {
+  walkPrimitives(Callable visitor) const {
     return walkPrimitives(
         [&](StringRef primitiveName,
             const PrimitiveDescriptor &descriptor) -> ErrorOrSuccess {
@@ -63,7 +63,7 @@ public:
             return success();
 
           // Attempt to construct the object.
-          ErrorOr<T> objectOr = T::getFromDescriptor(descriptor);
+          auto objectOr = T::getFromDescriptor(descriptor);
           if (failed(objectOr))
             return objectOr.takeError();
 
