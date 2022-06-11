@@ -61,8 +61,7 @@ void InvokableOp::print(OpAsmPrinter &p) {
 }
 
 LogicalResult InvokableOp::verifyRegions() {
-  auto output = cast<OutputOp>(getBodyBlock()->getTerminator());
-  return output.checkArgumentTypes(getResultTypes());
+  return getOutputOp().checkArgumentTypes(getResultTypes());
 }
 
 //===----------------------------------------------------------------------===//
