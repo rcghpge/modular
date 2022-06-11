@@ -30,3 +30,11 @@ This is meant to be well considered and actively curated, not a playground with
 lots of experimental toys (for that, use the Faux framework) and not specific
 to any one framework (put these inside the framework).
 
+## GenericML/tools/model
+
+The model tool provides a framework-agnostic way for working with models.
+It is meant to be a wrapper around existing tools within the modular code base
+(e.g. TFLC, StockTFLite etc). It also provides a way to download models, perform
+competitive analysis, and more. Usage of the tool is meant to be as simple as
+possible. Usage information is available in the [Model documentation](Model.md)
+and developer information is available in the [Model developer documentation](ModelDeveloperGuide.md).
