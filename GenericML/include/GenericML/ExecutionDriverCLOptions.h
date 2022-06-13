@@ -34,7 +34,7 @@ public:
   /// the same as the model name.
   cl::opt<std::string> benchmarkName{"benchmark-name",
                                      cl::desc("The name of the benchmark."),
-                                     cl::init("modular")};
+                                     cl::init("benchmark")};
 
   /// This specifies the benchmarking workload scenario during benchmarking.
   /// The valid options are "online" and "batched"
