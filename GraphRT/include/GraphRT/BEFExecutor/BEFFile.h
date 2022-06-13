@@ -66,8 +66,7 @@ public:
                                       const PrimitiveRegistry &registry);
 
   /// Return the top level invokable in the file. This object corresponds to the
-  /// MLIR module in the file used to create the BEF. Returns nullptr if the BEF
-  /// file is fully empty (unlikely, but technically possible).
+  /// MLIR module in the file used to create the BEF.
   const BEFInvokable *getTopLevelInvokable() const;
 
 protected:

@@ -89,6 +89,9 @@ bool BEFFileReader::readInvokableIndexSection(BEFReader &stringReader) {
   if (parseVBR(numInvokables))
     return true;
 
+  if (numInvokables < 1)
+    return emitError("BEF file must have at least one invokable");
+
   auto *fnMemory =
       (BEFInvokableImpl *)malloc(numInvokables * sizeof(BEFInvokableImpl));
 
@@ -315,10 +318,8 @@ ErrorOr<RCRef<BEFFile>> BEFFile::open(StringRef file,
 
 const BEFInvokable *BEFFile::getTopLevelInvokable() const {
   auto befFile = static_cast<const BEFFileImpl *>(this);
-  // If we have no invokables, then there's nothing here.
-  if (befFile->numInvokables == 0)
-    return nullptr;
-
-  // The last invokable is the module.
+  assert(befFile->numInvokables > 0 && "Expected at least 1 invokable");
+  // The last invokable is the module. We are guaranteed to have at least one
+  // invokable, because parsing the file will fail if we don't.
   return &befFile->invokables[befFile->numInvokables - 1];
 }

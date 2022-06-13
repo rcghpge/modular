@@ -196,11 +196,6 @@ int main(int argc, char **argv) {
   SmallVector<GRTTestcase, 1> testcasesToExecute;
 
   auto *moduleInv = befFile->getTopLevelInvokable();
-  if (!moduleInv) {
-    llvm::errs() << "BEF file was empty";
-    return 1;
-  }
-
   if (auto err = moduleInv->walkPrimitives<GRTTestcase>(
           [&](GRTTestcase test) -> ErrorOrSuccess {
             // If no testcases are specified, run them all.
