@@ -14,8 +14,8 @@ using namespace M;
 
 Optional<Error>
 M::decodeQuantizedSignature(BEFFunctionType signature,
-                            SmallVectorImpl<TensorSpec> &inputSpecs,
-                            SmallVectorImpl<TensorSpec> &outputSpecs) {
+                            SmallVectorImpl<QuantTensorSpec> &inputSpecs,
+                            SmallVectorImpl<QuantTensorSpec> &outputSpecs) {
   // TODO: we should extract quantization information and store it for the
   // model signature
 
@@ -25,10 +25,10 @@ M::decodeQuantizedSignature(BEFFunctionType signature,
   auto fillArgSpecs = [](ArrayRef<BEFType> argTypes,
                          auto &argSpecs) -> Optional<Error> {
     for (auto type : argTypes) {
-      auto tSpecOr = TensorSpec::get(type);
-      if (tSpecOr.isError())
-        return tSpecOr.takeError();
-      argSpecs.push_back(tSpecOr.get());
+      auto specOr = QuantTensorSpec::get(type);
+      if (specOr.isError())
+        return specOr.takeError();
+      argSpecs.push_back(specOr.get());
     }
     return None;
   };

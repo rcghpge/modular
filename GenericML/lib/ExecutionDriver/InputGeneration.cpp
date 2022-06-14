@@ -17,7 +17,8 @@
 using namespace M;
 
 static ErrorOrSuccess fillWithElements(Tensor &tensor,
-                                       InputGenerationKind inputGenKind) {
+                                       InputGenerationKind inputGenKind,
+                                       const QuantSpec &quantSpec) {
   uint8_t elementBuffer[TensorEltType::kMaxElementSizeInBytes];
   auto eltType = tensor.getEltType();
 
@@ -40,7 +41,21 @@ static ErrorOrSuccess fillWithElements(Tensor &tensor,
     break;
   }
   case InputGenerationKind::kZeros:
-    memset(elementBuffer, 0, sizeof(elementBuffer));
+    if (quantSpec.isQuantized()) {
+      // FIXME: we need to handle all types, and refactor this into a kernel
+      if (tensor.getEltType() != TensorEltType::ui8 &&
+          tensor.getEltType() != TensorEltType::si8)
+        return Error("when filling quantized tensors with zeros, only 8 bit "
+                     "storage types are supported");
+      auto params = quantSpec.getParams();
+      if (quantSpec.getKind() == QuantSpec::Kind::uniformPerAxis &&
+          params.size() != 1)
+        return Error("when filling quantized tensors with zeros, only a single "
+                     "scale/zeroPoint is supported");
+      memset(elementBuffer, (uint8_t)params[0].zeroPoint,
+             sizeof(elementBuffer));
+    } else
+      memset(elementBuffer, 0, sizeof(elementBuffer));
     break;
   }
 
@@ -58,7 +73,7 @@ M::initializeInputMemory(InputGenerationKind inputGenKind, const Model *model,
   for (const auto &spec : model->getInputSpecs()) {
     // Allocate the tensor.
     Tensor input = Tensor::getUninit(spec, runtime);
-    if (auto err = fillWithElements(input, inputGenKind))
+    if (auto err = fillWithElements(input, inputGenKind, spec.getQuantSpec()))
       return err.takeError();
 
     inputTensors.push_back(std::move(input));
