@@ -15,6 +15,9 @@
 #include "GenericML/Support/TensorSpec.h"
 
 namespace M {
+template <typename T>
+class ErrorOr;
+class BEFType;
 
 /// This class is a framework-independent abstraction for quantization info for
 /// a single tensor.

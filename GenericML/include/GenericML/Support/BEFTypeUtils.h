@@ -12,10 +12,13 @@
 #ifndef GENERICML_SUPPORT_BEFTYPEUTILS_H
 #define GENERICML_SUPPORT_BEFTYPEUTILS_H
 
-#include "GenericML/Support/QuantSpec.h"
-#include "GraphRT/BEF/BEFTypes.h"
+#include "Support/LLVMForwardDecls.h"
 
 namespace M {
+
+class BEFFunctionType;
+class Error;
+class QuantTensorSpec;
 
 /// Decodes a BEFFunctionType signature into input and output QuantTensorSpecs.
 Optional<Error>

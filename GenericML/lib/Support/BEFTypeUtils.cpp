@@ -10,15 +10,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/Support/BEFTypeUtils.h"
+#include "GenericML/Support/QuantSpec.h"
+#include "GraphRT/BEF/BEFTypes.h"
+#include "Support/ErrorOr.h"
 using namespace M;
 
 Optional<Error>
 M::decodeQuantizedSignature(BEFFunctionType signature,
                             SmallVectorImpl<QuantTensorSpec> &inputSpecs,
                             SmallVectorImpl<QuantTensorSpec> &outputSpecs) {
-  // TODO: we should extract quantization information and store it for the
-  // model signature
-
   SmallVector<BEFType> inputTypes, outputTypes;
   signature.decode(inputTypes, outputTypes);
 
