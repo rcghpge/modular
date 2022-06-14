@@ -13,10 +13,10 @@ clients to define their own set of operators (which it calls "primitives") that
 are implemented in C++, and allows them to take and produce arbitrary C++
 data values as edges of the dataflow graph.
 
-Being fully MLIR native, GraphRT
-supports regions which allow natural control flow constructs to be implemented
-as primitives, instead of being special cases.  Another advantage of being MLIR
-native is that it is an ideal compilation target for domain specific compilers.
+Being fully MLIR native, GraphRT supports regions which allow natural control
+flow constructs to be implemented as primitives, instead of being special cases.
+Another advantage of being MLIR native is that it is an ideal compilation target
+for domain specific compilers.
 
 ## Placement in the ecosystem
 
@@ -25,7 +25,7 @@ interpreters.  Those frameworks typically have an opinionated set of operators
 for math, control flow, and often have an implicit "tensor" type that is passed
 between operators.  That level of representation is often (but not always)
 target/hardware independent.  While these abstractions can support "graph level
-optimizations", they doesn't typically expose buffers, accelerator details, and
+optimizations", they don't typically expose buffers, accelerator details, and
 other minutiae that is required to get high performance from heterogenous
 accelerators.
 
