@@ -57,6 +57,14 @@ public:
     return BEFAttr<T>(getRawAttr(index));
   }
 
+  /// Get a BEFAttr<T> at the given index. This would be selected if the type
+  /// passed-in is a BEFAttr<T> type.
+  template <template <typename> typename U, typename T>
+  std::enable_if_t<std::is_same_v<U<T>, BEFAttr<T>>, BEFAttr<T>>
+  getAttr(size_t index) const {
+    return BEFAttr<T>(getRawAttr(index));
+  }
+
   /// Return all the offsets for all attributes in this primitive frame.
   ArrayRef<uint32_t> getAttrOffsets() const { return attrOffsets; }
   const uint8_t *getAttrBase() const { return attrSection.data(); }
