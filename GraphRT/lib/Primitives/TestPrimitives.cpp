@@ -145,8 +145,7 @@ static void printType(BEFType type) {
         []() { printf(", "); });
     printf("}>");
   } else {
-    std::string str = type.getKind().getAsString();
-    printf("%.*s", (int)str.size(), str.data());
+    printf("type_bits:0x%x", type.getKind().getValue());
   }
 }
 
