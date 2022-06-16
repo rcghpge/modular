@@ -32,9 +32,29 @@ to any one framework (put these inside the framework).
 
 ## GenericML/tools/model
 
-The model tool provides a framework-agnostic way for working with models.
-It is meant to be a wrapper around existing tools within the modular code base
-(e.g. TFLC, StockTFLite etc). It also provides a way to download models, perform
+The model tool provides a framework-agnostic way for working with models. It is
+meant to be a wrapper around existing tools within the modular code base (e.g.
+TFLC, StockTFLite etc). It also provides a way to download models, perform
 competitive analysis, and more. Usage of the tool is meant to be as simple as
 possible. Usage information is available in the [Model documentation](Model.md)
-and developer information is available in the [Model developer documentation](ModelDeveloperGuide.md).
+and developer information is available in the [Model developer
+documentation](ModelDeveloperGuide.md).
+
+The `Model` tool is designed to be:
+
+* **User Friendly**: The model tool designed to be user-friendly and easy to
+use. The model tool will download the model for you, convert it, and plot the
+results.
+
+* **Single source of truth**: When someone mentions benchmarking
+`TFLite/MobileNet-V2` then that means that they ran the model tool against the
+model specified in `Model/MobileNet-V2.yaml` and not some random model file.
+
+* **Usable across teams**: Some teams might be interested in benchmarking
+models, others might be interested in comparing accuracy, etc. These are
+different uses cases that different teams are interested in. The model tool
+should contain enough tools to service the different usages across teams as
+well as provide the results in a digestable way.
+
+* **Model, framework, and platform agnostic**: The same model command should be
+able to run different frameworks models across different hardware.
