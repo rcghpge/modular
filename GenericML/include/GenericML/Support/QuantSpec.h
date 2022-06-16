@@ -97,6 +97,7 @@ private:
 /// ordinary floating point (i.e. not quantized) tensors.
 class QuantTensorSpec : public TensorSpec {
 public:
+  QuantTensorSpec() : TensorSpec() { setEltType(TensorEltType::invalid); }
   QuantTensorSpec(TensorSpec &&tensorSpec) : TensorSpec(tensorSpec) {}
   QuantTensorSpec(TensorSpec &&tensorSpec, QuantSpec &&quantSpec)
       : TensorSpec(tensorSpec), quantSpec(quantSpec) {}
