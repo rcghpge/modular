@@ -51,12 +51,13 @@ public:
     return attrSection.data() + attrOffsets[index];
   }
 
-  /// Define an SFINAE helper to unwrap a type T that may or may not be wrapped in a BEFAttr<T>.
-  template<typename T>
+  /// Define an SFINAE helper to unwrap a type T that may or may not be wrapped
+  /// in a BEFAttr<T>.
+  template <typename T>
   struct UnwrapBEFAttr {
     using InnerType = T;
   };
-  template<typename T>
+  template <typename T>
   struct UnwrapBEFAttr<BEFAttr<T>> {
     using InnerType = T;
   };
