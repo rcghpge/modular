@@ -12,6 +12,7 @@
 #ifndef GENERICML_EXECUTIONDRIVER_H
 #define GENERICML_EXECUTIONDRIVER_H
 
+#include "GenericML/Kernels.h"
 #include "LLCL/ForwardDecls.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMCompilerForwardDecls.h"

@@ -27,7 +27,9 @@ using mlir::MLIRContext;
 /// verification.
 static void printTensorResults(const ExecutableModel *model,
                                MutableArrayRef<AnyAsyncValueRef> results,
-                               MLIRContext *context, raw_ostream &os) {
+                               MLIRContext *context,
+                               Kernel::ResultOutputStyle outputStyle,
+                               raw_ostream &os) {
   StringRef name = model->getModel()->getName();
 
   // Check that any tensors we get are generic tensors, not framework
@@ -72,8 +74,8 @@ static void printTensorResults(const ExecutableModel *model,
       // Handle tensor types.
       if (auto *tensor = result->dyn_cast<Tensor>()) {
         os.flush();
-        if (auto err =
-                Kernel::printTensor(tensor->getPointer(), tensor->getSpec()))
+        if (auto err = Kernel::printTensor(tensor->getPointer(),
+                                           tensor->getSpec(), outputStyle))
           os << "<error: " << err.getError() << '>';
         return;
       }
@@ -133,7 +135,7 @@ static void executeModel(MLIRContext *ctx, const Model *model, Runtime &runtime,
     // Print the result tensors with the default printer.
     MutableArrayRef resultRef(results.data(), results.size());
     printTensorResults(executableModel.get(), resultRef.drop_front(), ctx,
-                       outs());
+                       options.resultOutputStyle, outs());
 
     auto end = std::chrono::steady_clock::now();
     std::chrono::duration<double, std::milli> time = end - start;

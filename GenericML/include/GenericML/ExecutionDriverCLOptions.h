@@ -10,6 +10,7 @@
 #include "GenericML/ExecutionDriver.h"
 #include "LLCL/Runtime/RuntimeCLOptions.h"
 #include "Support/CommonCLOptions.h"
+#include "llvm/Support/NativeFormatting.h"
 
 namespace M {
 
@@ -77,6 +78,17 @@ public:
           clEnumValN(InputGenerationKind::kOnes, "ones",
                      "All input tensors are ones")),
       cl::init(InputGenerationKind::kZeros)};
+
+  /// This tells the execution driver how to print output tensors;
+  cl::opt<Kernel::ResultOutputStyle> resultOutputStyle{
+      "result-output-style", cl::desc("Specify how to display outputs"),
+      cl::values(
+          clEnumValN(Kernel::ResultOutputStyle::kFull, "full",
+                     "Display all the elements of result"),
+          clEnumValN(
+              Kernel::ResultOutputStyle::kCompact, "compact",
+              "Display a few elements at the start and end of each dimension")),
+      cl::init(Kernel::ResultOutputStyle::kCompact)};
 };
 
 } // namespace M
