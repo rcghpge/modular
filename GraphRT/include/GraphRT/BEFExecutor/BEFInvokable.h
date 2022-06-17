@@ -9,7 +9,9 @@
 
 #include "LLCL/ForwardDecls.h"
 #include "Support/ErrorOr.h"
+#include "Support/FunctionExtras.h"
 #include "Support/LLVMForwardDecls.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 
 #include <functional>
@@ -53,6 +55,12 @@ public:
   /// static constructor should return `ErrorOr<T>`.
   template <typename T, typename Callable>
   ErrorOrSuccess walkPrimitives(Callable visitor) const {
+    // Default success to be used for CallableMaybeVoid.
+    struct DefaultSuccess {
+      operator ErrorOrSuccess() { return success(); }
+      static DefaultSuccess get() { return DefaultSuccess{}; }
+    };
+
     return walkPrimitives(
         [&](StringRef primitiveName,
             const PrimitiveDescriptor &descriptor) -> ErrorOrSuccess {
@@ -66,7 +74,9 @@ public:
           if (failed(objectOr))
             return objectOr.takeError();
 
-          return visitor(*objectOr);
+          auto ownedObj = std::move(*objectOr);
+          return invokeWithDefaultResultType<DefaultSuccess>(
+              std::forward<Callable>(visitor), std::move(ownedObj));
         });
   }
 

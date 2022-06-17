@@ -192,14 +192,12 @@ int main(int argc, char **argv) {
   SmallVector<GRTTestcase, 1> testcasesToExecute;
 
   auto *moduleInv = befFile->getTopLevelInvokable();
-  if (auto err = moduleInv->walkPrimitives<GRTTestcase>(
-          [&](GRTTestcase test) -> ErrorOrSuccess {
-            // If no testcases are specified, run them all.
-            if (clOptions.testcases.empty() ||
-                llvm::is_contained(clOptions.testcases, test.getName()))
-              testcasesToExecute.push_back(test);
-            return success();
-          })) {
+  if (auto err = moduleInv->walkPrimitives<GRTTestcase>([&](GRTTestcase test) {
+        // If no testcases are specified, run them all.
+        if (clOptions.testcases.empty() ||
+            llvm::is_contained(clOptions.testcases, test.getName()))
+          testcasesToExecute.push_back(test);
+      })) {
     llvm::errs() << err.getError() << "\n";
     return {};
   }
