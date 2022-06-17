@@ -179,11 +179,7 @@ int main(int argc, char **argv) {
     fflush(stdout);
   }
 
-  auto bufferText = fileBuffer->getBuffer();
-  llvm::SourceMgr sourceMgr;
-  sourceMgr.AddNewSourceBuffer(std::move(fileBuffer), llvm::SMLoc());
-
-  auto befFileOrError = BEFFile::open(bufferText, primitives);
+  auto befFileOrError = BEFFile::open(fileBuffer->getBuffer(), primitives);
   if (auto *error = befFileOrError.getError()) {
     llvm::errs() << argv[0] << ": error opening '" << clOptions.inputFilename
                  << "': " << error << '\n';
@@ -211,7 +207,7 @@ int main(int argc, char **argv) {
   // Run each test with a MLIRContext set up for the right kind of diagnostic
   // emission.
   LogicalResult hadError = clOptions.configureMLIRContextAndExecute(
-      sourceMgr, [&](MLIRContext *context) {
+      std::move(fileBuffer), [&](MLIRContext *context) {
         for (auto &fn : testcasesToExecute)
           runTestcase(fn, clOptions, context);
       });
