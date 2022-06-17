@@ -47,6 +47,24 @@ public:
       std::function<ErrorOrSuccess(StringRef, const PrimitiveDescriptor &)>
           visitor) const = 0;
 
+  /// The order in which to call the visitor while recursing over primitives.
+  /// PreOrder indicates calling the visitor before visiting the invokables
+  /// within the primitive, PostOrder indicates calling the visitor after
+  /// visiting the invokables within the primitive.
+  enum RecurseOrder {
+    kPreOrder,
+    kPostOrder,
+  };
+  /// Reflect over the body of the invokable recursively, calling the visitor
+  /// callback for each invokable. The behavior of this is the same as
+  /// walkPrimitives, but it will call the visitor on the current primitive
+  /// either before or after (depending on the RecurseOrder) walking all the
+  /// invokables found in each primitive.
+  ErrorOrSuccess recursePrimitives(
+      RecurseOrder order,
+      std::function<ErrorOrSuccess(StringRef, const PrimitiveDescriptor &)>
+          visitor) const;
+
   /// Reflect over the body of the invokable, calling the visitor callback for
   /// every object that has the same entity name as `T`. The entity must have 2
   /// static methods, one is a method called `getEntityName` that should return
@@ -55,7 +73,6 @@ public:
   /// static constructor should return `ErrorOr<T>`.
   template <typename T, typename Callable>
   ErrorOrSuccess walkPrimitives(Callable visitor) const {
-    // Default success to be used for CallableMaybeVoid.
     struct DefaultSuccess {
       operator ErrorOrSuccess() { return success(); }
       static DefaultSuccess get() { return DefaultSuccess{}; }
@@ -74,9 +91,36 @@ public:
           if (failed(objectOr))
             return objectOr.takeError();
 
-          auto ownedObj = std::move(*objectOr);
           return invokeWithDefaultResultType<DefaultSuccess>(
-              std::forward<Callable>(visitor), std::move(ownedObj));
+              std::forward<Callable>(visitor), std::move(*objectOr));
+        });
+  }
+
+  /// Reflect over the body of the invokable recursively, calling the visitor
+  /// callback for every object that has the same entity name as `T`.
+  template <typename T, typename Callable>
+  ErrorOrSuccess recursePrimitives(RecurseOrder order, Callable visitor) const {
+    struct DefaultSuccess {
+      operator ErrorOrSuccess() { return success(); }
+      static DefaultSuccess get() { return DefaultSuccess{}; }
+    };
+
+    return recursePrimitives(
+        order,
+        [&](StringRef primitiveName,
+            const PrimitiveDescriptor &descriptor) -> ErrorOrSuccess {
+          // If the primitive name doesn't match the desired entity name, then
+          // do nothing.
+          if (primitiveName != T::getEntityName())
+            return success();
+
+          // Attempt to construct the object.
+          auto objectOr = T::getFromDescriptor(descriptor);
+          if (failed(objectOr))
+            return objectOr.takeError();
+
+          return invokeWithDefaultResultType<DefaultSuccess>(
+              std::forward<Callable>(visitor), std::move(*objectOr));
         });
   }
 

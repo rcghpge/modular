@@ -864,6 +864,30 @@ ErrorOrSuccess BEFInvokableImpl::walkPrimitives(
   return success();
 }
 
+ErrorOrSuccess BEFInvokable::recursePrimitives(
+    BEFInvokable::RecurseOrder order,
+    std::function<ErrorOrSuccess(StringRef, const PrimitiveDescriptor &)>
+        visitor) const {
+  return walkPrimitives(
+      [&](StringRef primitiveName,
+          const PrimitiveDescriptor &descriptor) -> ErrorOrSuccess {
+        if (order == kPreOrder)
+          if (auto err = visitor(primitiveName, descriptor))
+            return err.takeError();
+
+        for (size_t i = 0, e = descriptor.getNumInvokables(); i != e; ++i)
+          if (auto err =
+                  descriptor.getInvokable(i)->recursePrimitives(order, visitor))
+            return err.takeError();
+
+        if (order == kPostOrder)
+          if (auto err = visitor(primitiveName, descriptor))
+            return err.takeError();
+
+        return success();
+      });
+}
+
 /// Return the invokable with the specified Invokable ID.
 BEFInvokable *BEFFileImpl::getInvokableByID(size_t number) const {
   assert(number < numInvokables && "invalid invokable");
