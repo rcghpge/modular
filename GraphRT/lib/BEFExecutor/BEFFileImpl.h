@@ -16,7 +16,6 @@
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
 #include "TopLevelEntity.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/StringMap.h"
 
 namespace M {
 class BEFInvokableImpl;
