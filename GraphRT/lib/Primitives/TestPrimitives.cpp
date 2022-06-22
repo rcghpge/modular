@@ -162,17 +162,17 @@ static void printIndent(unsigned indent) {
 }
 
 static void print_attr(BEFDynamicAttr value, unsigned indent) {
-  if (auto intAttr = value.dyn_cast<int32_t>()) {
+  if (auto intAttr = dyn_cast<int32_t>(value)) {
     printf("sint32 = %d\n", intAttr->get());
-  } else if (auto intAttr = value.dyn_cast<uint32_t>()) {
+  } else if (auto intAttr = dyn_cast<uint32_t>(value)) {
     printf("uint32 = %u\n", intAttr->get());
-  } else if (auto strAttr = value.dyn_cast<StringRef>()) {
+  } else if (auto strAttr = dyn_cast<StringRef>(value)) {
     printf("string = ");
     fwrite(strAttr.getValue()->data(), 1, strAttr.getValue()->size(), stdout);
     fputc('\n', stdout);
-  } else if (auto intArray = value.dyn_cast<ArrayRef<int32_t>>()) {
+  } else if (auto intArray = dyn_cast<ArrayRef<int32_t>>(value)) {
     print_array_i32(Chain(), *intArray);
-  } else if (auto dict = value.dyn_cast<BEFDictionaryAttr>()) {
+  } else if (auto dict = dyn_cast<BEFDictionaryAttr>(value)) {
     printf("dictionary {\n");
     for (const BEFDictionaryAttr::Element &elt : *dict) {
       printIndent(indent + 1);
@@ -181,7 +181,7 @@ static void print_attr(BEFDynamicAttr value, unsigned indent) {
     }
     printIndent(indent);
     printf("}\n");
-  } else if (auto list = value.dyn_cast<BEFListAttr>()) {
+  } else if (auto list = dyn_cast<BEFListAttr>(value)) {
     printf("list [\n");
     for (BEFDynamicAttr elt : *list) {
       printIndent(indent + 1);
@@ -189,7 +189,7 @@ static void print_attr(BEFDynamicAttr value, unsigned indent) {
     }
     printIndent(indent);
     printf("]\n");
-  } else if (auto type = value.dyn_cast<BEFAttr<BEFType>>()) {
+  } else if (auto type = dyn_cast<BEFAttr<BEFType>>(value)) {
     print_type(Chain(), type.getValue());
   } else {
     printf("unsupported attribute kind\n");

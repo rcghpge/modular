@@ -551,26 +551,9 @@ public:
     return BEFAttrCommon::getAttrKind(get());
   }
 
-  /// Return true if this dynamic attribute actually holds the specified
-  /// underlying type.
-  template <typename T>
-  bool isa() const {
-    return BEFAttr<T>::matchesAttrKind(get());
-  }
-
-  /// Do a checked conversion to the specified attribute kind.
-  template <typename T>
-  Optional<Detail::BEFAttrDynCastRetType<T>> dyn_cast() const {
-    using InnerType = typename Detail::BEFAttrDynCastRet<T>::InnerType;
-    // Test to see if this has the right attribute kind.
-    if (!this->template isa<InnerType>())
-      return {};
-    return BEFAttr<InnerType>(get());
-  }
-
   template <typename T>
   auto cast() const {
-    auto result = this->dyn_cast<T>();
+    auto result = dyn_cast<T>(this);
     assert(result && "dynamic attribute is not of this kind");
     return *result;
   }
@@ -581,8 +564,10 @@ public:
   ErrorOrSuccess decode(ValueType *result) const {
     using EncodedType = typename llvm::function_traits<
         decltype(&M::BEFDecoder<ValueType>::decode)>::template arg_t<0>;
+    using InnerType =
+        typename Detail::BEFAttrDynCastRet<EncodedType>::InnerType;
 
-    auto rawAttrValue = this->dyn_cast<EncodedType>();
+    auto rawAttrValue = dyn_cast<InnerType>(this);
     if (!rawAttrValue)
       return Error("incorrect encoded type");
 
@@ -837,7 +822,7 @@ public:
     if (!found)
       return None;
 
-    return found->template dyn_cast<T>();
+    return dyn_cast<T>(found);
   }
 
   /// Parse a named field of the specified attribute dictionary as the specified
@@ -1471,5 +1456,64 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
 } // end namespace Detail
 
 } // namespace M
+
+namespace llvm {
+
+template <typename To, typename From>
+struct BaseBEFAttrCast
+    : public DefaultDoCastIfPossible<Optional<To>, From,
+                                     BaseBEFAttrCast<To, From>> {
+  static bool isPossible(const From &f) {
+    return To::matchesAttrKind(
+        detail::unwrapValue(const_cast<From &>(f)).get());
+  }
+  static Optional<To> doCast(const From &f) {
+    return To(detail::unwrapValue(const_cast<From &>(f)).get());
+  }
+  static Optional<To> castFailed() { return Optional<To>{}; }
+};
+
+template <typename To>
+struct CastInfo<To, ::M::BEFDynamicAttr>
+    : public BaseBEFAttrCast<::M::BEFAttr<To>, ::M::BEFDynamicAttr> {};
+
+template <typename To>
+struct CastInfo<To, const ::M::BEFDynamicAttr>
+    : public BaseBEFAttrCast<::M::BEFAttr<To>, ::M::BEFDynamicAttr> {};
+
+template <typename To>
+struct CastInfo<::M::BEFAttr<To>, ::M::BEFDynamicAttr>
+    : public BaseBEFAttrCast<::M::BEFAttr<To>, ::M::BEFDynamicAttr> {};
+
+template <typename To>
+struct CastInfo<To, Optional<::M::BEFDynamicAttr>>
+    : public BaseBEFAttrCast<::M::BEFAttr<To>, Optional<::M::BEFDynamicAttr>> {
+};
+
+template <typename To>
+struct CastInfo<::M::BEFAttr<To>, Optional<::M::BEFDynamicAttr>>
+    : public BaseBEFAttrCast<::M::BEFAttr<To>, Optional<::M::BEFDynamicAttr>> {
+};
+
+template <typename To, typename From>
+struct BaseBEFAttrPointerCast
+    : public DefaultDoCastIfPossible<Optional<To>, const From *,
+                                     BaseBEFAttrPointerCast<To, From>> {
+  static bool isPossible(const From *f) {
+    return To::matchesAttrKind(f->get());
+  }
+  static Optional<To> doCast(const From *f) { return To(f->get()); }
+  static Optional<To> castFailed() { return Optional<To>{}; }
+};
+
+template <typename To>
+struct CastInfo<To, const ::M::BEFDynamicAttr *>
+    : public BaseBEFAttrPointerCast<::M::BEFAttr<To>, ::M::BEFDynamicAttr> {};
+
+template <typename To>
+struct CastInfo<::M::BEFAttr<To>, const ::M::BEFDynamicAttr *>
+    : public BaseBEFAttrPointerCast<::M::BEFAttr<To>, ::M::BEFDynamicAttr> {};
+
+} // namespace llvm
 
 #endif // GRAPHRT_BEFEXECUTOR_PRIMITIVE_REGISTRY_H
