@@ -83,6 +83,10 @@ public:
   /// Returns false if the QuantSpec is invalid or not quantized.
   bool isQuantized() const { return isValid() && kind != notQuantized; }
 
+  std::string getAsString() const;
+  void print(raw_ostream &os) const;
+  void dump() const;
+
 private:
   Kind kind;
   uint8_t quantDim;
@@ -91,6 +95,11 @@ private:
   // and one zero point.
   SmallVector<ScaleZeroPointPair, 1> params;
 };
+
+inline raw_ostream &operator<<(raw_ostream &os, const QuantSpec &value) {
+  value.print(os);
+  return os;
+}
 
 /// This class extends TensorSpec to include potential quantization information.
 /// Since QuantSpec can be of notQuantized kind, QuantTensorSpec can describe
@@ -111,9 +120,18 @@ public:
   /// Helper method to decode a BEFType into a TensorSpec, if possible.
   static ErrorOr<QuantTensorSpec> get(BEFType type);
 
+  std::string getAsString() const;
+  void print(raw_ostream &os) const;
+  void dump() const;
+
 private:
   QuantSpec quantSpec;
 };
+
+inline raw_ostream &operator<<(raw_ostream &os, const QuantTensorSpec &value) {
+  value.print(os);
+  return os;
+}
 
 } // namespace M
 
