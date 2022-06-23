@@ -60,7 +60,12 @@ void ::llvm::yaml::MappingTraits<M::QuantTensorSpec>::mapping(
   SmallVector<ssize_t> dims = quantTensorSpec.getDims();
   std::string eltTypeStr = quantTensorSpec.getEltType().getAsString();
   bool isQuantized = quantTensorSpec.isQuantized();
-  std::string shapeStr = quantTensorSpec.getAsString();
+  // We do not want the shape string to include the quantization information. We
+  // just want it to include the shape string (of the form
+  // dim0xdim1x...xelemType). So, we downcast the QuantTensorSpec to a
+  // TensorSpec and get the string shape serialization from the TensorSpec.
+  std::string shapeStr =
+      static_cast<M::TensorSpec>(quantTensorSpec).getAsString();
   io.mapRequired("shape", shapeStr);
   io.mapRequired("quantized", isQuantized);
   // If the tensor is quantized, then we grab the scale and zero_point
