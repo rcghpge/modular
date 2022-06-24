@@ -16,10 +16,8 @@ using namespace M;
 // Stringification and printing methods
 //===----------------------------------------------------------------------===//
 
-/// Returns a string representation of the kind and the quantized dimension if
-/// the latter is relevant to the kind.
-static std::string getKindAndDimStr(const QuantSpec *qSpec) {
-  switch (qSpec->getKind()) {
+StringRef QuantSpec::kindAsString(QuantSpec::Kind kind) {
+  switch (kind) {
   case QuantSpec::Kind::invalid:
     return "invalid";
   case QuantSpec::Kind::notQuantized:
@@ -27,13 +25,23 @@ static std::string getKindAndDimStr(const QuantSpec *qSpec) {
   case QuantSpec::Kind::uniform:
     return "uniform";
   case QuantSpec::Kind::uniformPerAxis:
-    return "uniformPerAxis:" + llvm::utostr(qSpec->getQuantDim());
+    return "uniformPerAxis";
   }
   llvm_unreachable("unknown QuantSpec kind");
 }
 
+/// Returns a string representation of the kind and the quantized dimension if
+/// the latter is relevant to the kind.
+static std::string getKindAndDimAsString(const QuantSpec *qSpec) {
+  std::string res = QuantSpec::kindAsString(qSpec->getKind()).str();
+  // Add the quandDim to the string if it the kind is uniformPerAxis.
+  if (qSpec->getKind() == QuantSpec::Kind::uniformPerAxis)
+    res += ":" + llvm::utostr(qSpec->getQuantDim());
+  return res;
+}
+
 void QuantSpec::print(raw_ostream &os) const {
-  os << getKindAndDimStr(this);
+  os << getKindAndDimAsString(this);
   auto params = getParams();
   if (params.size()) {
     os << " {";

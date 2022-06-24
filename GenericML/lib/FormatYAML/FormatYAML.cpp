@@ -68,12 +68,23 @@ void ::llvm::yaml::MappingTraits<M::QuantTensorSpec>::mapping(
       static_cast<M::TensorSpec>(quantTensorSpec).getAsString();
   io.mapRequired("shape", shapeStr);
   io.mapRequired("quantized", isQuantized);
-  // If the tensor is quantized, then we grab the scale and zero_point
-  // parameters and add them to the YAML object.
+  // If the tensor is quantized, then we grab the quant parameters and add them
+  // to the YAML object.
   if (quantTensorSpec.isQuantized()) {
-    SmallVector<M::QuantSpec::ScaleZeroPointPair> params(
-        quantTensorSpec.getQuantSpec().getParams().begin(),
-        quantTensorSpec.getQuantSpec().getParams().end());
-    io.mapRequired("params", params);
+    auto &quantSpec = quantTensorSpec.getQuantSpec();
+    auto params = quantSpec.getParams();
+    auto kind = M::QuantSpec::kindAsString(quantSpec.getKind());
+    io.mapRequired("kind", kind);
+    if (quantSpec.getKind() == M::QuantSpec::Kind::uniformPerAxis) {
+      auto quantDim = quantSpec.getQuantDim();
+      io.mapRequired("quant_dim", quantDim);
+    }
+    if (params.size()) {
+      // The yamlization does not accept an ArrayRef, so we need to construct a
+      // SmallVector for serialization.
+      SmallVector<M::QuantSpec::ScaleZeroPointPair> paramsVec(params.begin(),
+                                                              params.end());
+      io.mapRequired("params", paramsVec);
+    }
   }
 }

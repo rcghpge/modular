@@ -68,6 +68,9 @@ public:
             })));
   }
 
+  /// Returns a string representation of the kind enum.
+  static StringRef kindAsString(QuantSpec::Kind kind);
+
   /// Returns the paired scales and zero points.
   ArrayRef<ScaleZeroPointPair> getParams() const { return params; }
 
