@@ -87,9 +87,56 @@ static void printTensorResults(const ExecutableModel *model,
   }
 }
 
-static void executeModel(MLIRContext *ctx, const Model *model, Runtime &runtime,
-                         const ExecutorDriverCLOptions &options) {
+/// Evaluate the model once and print the output tensor.
+static void executeModelOnce(MLIRContext *ctx, const Model *model,
+                             Runtime &runtime,
+                             const ExecutorDriverCLOptions &options) {
+  auto errorOrExecutableModel = model->setup(runtime);
+  if (failed(errorOrExecutableModel)) {
+    outs() << errorOrExecutableModel.takeError();
+    return;
+  }
 
+  auto executableModel = errorOrExecutableModel.takeValue();
+
+  auto inputTensorsOr =
+      initializeInputMemory(options.inputGenKind, model, runtime);
+  if (failed(inputTensorsOr)) {
+    outs() << inputTensorsOr.takeError() << "\n";
+    return;
+  }
+
+  SmallVector<Tensor, 3> inputTensors = inputTensorsOr.takeValue();
+
+  // Fill the arguments.  We are running the model once so we pass in the input
+  // tensors directly (the model will deallocate them when it is done with
+  // them).
+  SmallVector<AnyAsyncValueRef> args;
+  args.reserve(model->getNumInputs());
+  for (auto &input : inputTensors)
+    args.push_back(
+        AsyncValueRef<Tensor>::createReady(runtime, std::move(input)));
+
+  outs() << "--- Running '" << model->getName() << "':\n";
+  outs().flush();
+
+  // Execute the model and insert its results into the results vec.
+  auto results = executableModel->execute(args);
+
+  // Wait for the model to finish execution, forcing synchrony.
+  await(results);
+
+  // Print the result tensors with the default printer.
+  MutableArrayRef resultRef(results.data(), results.size());
+  printTensorResults(executableModel.get(), resultRef.drop_front(), ctx,
+                     options.resultOutputStyle, outs());
+}
+
+/// Repeatedly evaluate the model (numRuns to be exact) and capture and print
+/// the runtime for each evaluation.
+static void executeModelRepeated(MLIRContext *ctx, const Model *model,
+                                 Runtime &runtime,
+                                 const ExecutorDriverCLOptions &options) {
   auto errorOrExecutableModel = model->setup(runtime);
   if (failed(errorOrExecutableModel)) {
     outs() << errorOrExecutableModel.takeError();
@@ -110,8 +157,7 @@ static void executeModel(MLIRContext *ctx, const Model *model, Runtime &runtime,
   // Run the model numWarmup times to warmup the execution. This is performed to
   // remove any added overhead due to initial setup of the model. The loop is
   // only run if numRuns > 1.
-  for (unsigned i = 0, e = options.numWarmup; options.numRuns > 1 && i != e;
-       ++i) {
+  for (unsigned i = 0, e = options.numWarmup; i != e; ++i) {
     // Fill the arguments with an an immortal reference to the tensor data
     // so the input buffers live across all executions.
     SmallVector<AnyAsyncValueRef> args;
@@ -128,51 +174,68 @@ static void executeModel(MLIRContext *ctx, const Model *model, Runtime &runtime,
     await(results);
   }
 
-  // Measure the time taken for each inference.
-  std::vector<double> cpuTimesMillis;
-  for (unsigned i = 0, e = options.numRuns; i != e; ++i) {
-    auto start = std::chrono::steady_clock::now();
+  outs() << "--- Running '" << model->getName() << "':\n";
+  outs().flush();
 
-    // Fill the arguments.  If we are running the model once (and there is no
-    // warmup), we pass in the input tensors directly (the model will deallocate
-    // them when it is done with them).  If not, we pass in an immortal
+  SmallVector<AnyAsyncValueRef> results;
+
+  SmallVector<double> cpuTimesMillis;
+  cpuTimesMillis.reserve(options.numRuns);
+
+  // Measure the time taken for each inference and print it.
+  for (unsigned i = 0, e = options.numRuns; i != e; ++i) {
+
+    // Fill the arguments.  We pass in an immortal
     // reference to the tensor data so the input buffers live across all
     // executions.
     SmallVector<AnyAsyncValueRef> args;
     args.reserve(model->getNumInputs());
-    for (auto &input : inputTensors) {
-      Tensor t = options.numRuns == 1 && options.numWarmup == 0
-                     ? std::move(input)
-                     : input.getImmortal();
-      args.push_back(AsyncValueRef<Tensor>::createReady(runtime, std::move(t)));
-    }
+    for (auto &input : inputTensors)
+      args.push_back(
+          AsyncValueRef<Tensor>::createReady(runtime, input.getImmortal()));
 
-    outs() << "--- Running '" << model->getName() << "':\n";
-    outs().flush();
+    auto start = std::chrono::steady_clock::now();
 
     // Execute the model and insert its results into the results vec.
-    auto results = executableModel->execute(args);
+    results = executableModel->execute(args);
 
     // Wait for the model to finish execution, forcing synchrony.
     await(results);
 
-    // Print the result tensors with the default printer.
-    MutableArrayRef resultRef(results.data(), results.size());
-    printTensorResults(executableModel.get(), resultRef.drop_front(), ctx,
-                       options.resultOutputStyle, outs());
-
     auto end = std::chrono::steady_clock::now();
+
     std::chrono::duration<double, std::milli> time = end - start;
+
+    // Store the time it took to perform the inference.
     cpuTimesMillis.push_back(time.count());
   }
+  outs().flush();
+  outs() << "--- Runtime(ms): ";
+  TensorSpec cpuTimesMillisShape(
+      TensorShape(SmallVector<unsigned>({options.numRuns})),
+      TensorEltType::f64);
+
+  if (auto err = Kernel::printTensor(cpuTimesMillis.data(), cpuTimesMillisShape,
+                                     Kernel::ResultOutputStyle::kFull)) {
+    outs() << "<error: " << err.getError() << '>';
+    return;
+  }
+  outs().flush();
+
+  // Print the result tensors with the default printer.
+  MutableArrayRef resultRef(results.data(), results.size());
+  printTensorResults(executableModel.get(), resultRef.drop_front(), ctx,
+                     options.resultOutputStyle, outs());
 }
 
 /// Run `model` using the command line options flags configured by the user.
 void M::runModel(MLIRContext *ctx, const Model *model, LLCL::Runtime &runtime,
                  const ExecutorDriverCLOptions &options) {
-  if (!options.benchmarkMode)
-    return executeModel(ctx, model, runtime, options);
-
+  if (!options.benchmarkMode) {
+    if (options.numRuns == 1)
+      return executeModelOnce(ctx, model, runtime, options);
+    return executeModelRepeated(ctx, model, runtime, options);
+  }
   benchmarkModel(model, runtime, options.benchmarkName, options.inputGenKind,
                  options.benchmarkScenario, options.benchmarkOutputDir,
                  options.benchmarkNoLogPrefix);
