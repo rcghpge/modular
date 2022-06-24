@@ -107,19 +107,43 @@ static void executeModel(MLIRContext *ctx, const Model *model, Runtime &runtime,
 
   SmallVector<Tensor, 3> inputTensors = inputTensorsOr.takeValue();
 
+  // Run the model numWarmup times to warmup the execution. This is performed to
+  // remove any added overhead due to initial setup of the model. The loop is
+  // only run if numRuns > 1.
+  for (unsigned i = 0, e = options.numWarmup; options.numRuns > 1 && i != e;
+       ++i) {
+    // Fill the arguments with an an immortal reference to the tensor data
+    // so the input buffers live across all executions.
+    SmallVector<AnyAsyncValueRef> args;
+    args.reserve(model->getNumInputs());
+    for (auto &input : inputTensors) {
+      args.push_back(
+          AsyncValueRef<Tensor>::createReady(runtime, input.getImmortal()));
+    }
+
+    // Execute the model and insert its results into the results vec.
+    auto results = executableModel->execute(args);
+
+    // Wait for the model to finish execution, forcing synchrony.
+    await(results);
+  }
+
   // Measure the time taken for each inference.
   std::vector<double> cpuTimesMillis;
   for (unsigned i = 0, e = options.numRuns; i != e; ++i) {
     auto start = std::chrono::steady_clock::now();
 
-    // Fill the arguments.  If we are running the model once, we pass in the
-    // input tensors directly (the model will deallocate them when it is done
-    // with them).  If not, we pass in an immortal reference to the tensor data
-    // so the input buffers live across all executions.
+    // Fill the arguments.  If we are running the model once (and there is no
+    // warmup), we pass in the input tensors directly (the model will deallocate
+    // them when it is done with them).  If not, we pass in an immortal
+    // reference to the tensor data so the input buffers live across all
+    // executions.
     SmallVector<AnyAsyncValueRef> args;
     args.reserve(model->getNumInputs());
     for (auto &input : inputTensors) {
-      Tensor t = options.numRuns == 1 ? std::move(input) : input.getImmortal();
+      Tensor t = options.numRuns == 1 && options.numWarmup == 0
+                     ? std::move(input)
+                     : input.getImmortal();
       args.push_back(AsyncValueRef<Tensor>::createReady(runtime, std::move(t)));
     }
 

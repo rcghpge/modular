@@ -19,6 +19,15 @@ namespace M {
 class ExecutorDriverCLOptions : public LLCL::RuntimeCLOptions,
                                 public CommonCLOptions {
 public:
+  /// This specifies the number of times we should execute the model in a warmup
+  /// phase. Warmup is only honored if the "num-runs" option is greater than 1
+  /// (i.e. we are in a benchmarking phase).
+  cl::opt<unsigned> numWarmup{
+      "num-warmup",
+      cl::desc("Execute inference model N times in warmup mode (default: 1). "
+               "This option is only used if \"num-runs\" > 1."),
+      cl::init(1)};
+
   /// This specifies the number of times we should execute the model.  If run
   /// more than one time, we enter "benchmarking" mode.
   cl::opt<unsigned> numRuns{
