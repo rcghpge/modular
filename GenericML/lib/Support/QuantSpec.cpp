@@ -7,7 +7,7 @@
 #include "GenericML/Support/QuantSpec.h"
 #include "GraphRT/BEF/BEFTypes.h"
 #include "Support/ErrorOr.h"
-#include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace M;
@@ -32,12 +32,12 @@ StringRef QuantSpec::kindAsString(QuantSpec::Kind kind) {
 
 /// Returns a string representation of the kind and the quantized dimension if
 /// the latter is relevant to the kind.
-static std::string getKindAndDimAsString(const QuantSpec *qSpec) {
-  std::string res = QuantSpec::kindAsString(qSpec->getKind()).str();
+static Twine getKindAndDimAsString(const QuantSpec *qSpec) {
+  Twine kind(QuantSpec::kindAsString(qSpec->getKind()));
   // Add the quandDim to the string if it the kind is uniformPerAxis.
   if (qSpec->getKind() == QuantSpec::Kind::uniformPerAxis)
-    res += ":" + llvm::utostr(qSpec->getQuantDim());
-  return res;
+    return kind + ":" + Twine(qSpec->getQuantDim());
+  return kind;
 }
 
 void QuantSpec::print(raw_ostream &os) const {
@@ -94,7 +94,8 @@ ErrorOr<QuantTensorSpec> QuantTensorSpec::get(BEFType type) {
     auto [storageType, expressedType] = qType->decode(scale, zeroPoint);
     return QuantTensorSpec(TensorSpec(dims, storageType.getKind()),
                            QuantSpec::getUniform(scale, zeroPoint));
-  } else if (auto qType = dyn_cast<BEFQuantizedPerAxisType>(befType)) {
+  }
+  if (auto qType = dyn_cast<BEFQuantizedPerAxisType>(befType)) {
     SmallVector<float> scales;
     SmallVector<int64_t> zeroPoints;
     uint8_t quantDim;
