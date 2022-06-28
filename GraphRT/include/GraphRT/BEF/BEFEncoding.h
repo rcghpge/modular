@@ -146,6 +146,9 @@ static inline unsigned getWidthInBits(AttributeKind kind) {
   return (1 << ((uint8_t)kind >> 3)) * 8;
 }
 
+/// Print the AttributeKind as a string.
+std::string getAsString(AttributeKind kind);
+
 /// Given an AttributeKind for an element, return the AttributeKind for an array
 /// of that element.
 static inline constexpr AttributeKind getArrayOf(AttributeKind elementKind) {
