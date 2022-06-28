@@ -63,6 +63,22 @@ static Chain print_array_i32(Chain chain, BEFAttr<ArrayRef<int32_t>> values) {
   return chain;
 }
 
+static ErrorOr<Chain> print_dynamic_array_float(Chain chain,
+                                                BEFDynamicAttr value) {
+  SmallVector<float> flts;
+  if (auto err = value.decode(&flts))
+    return err.takeError();
+
+  printf("array = [");
+  for (size_t i = 0, e = flts.size(); i != e; ++i) {
+    if (i != 0)
+      printf(", ");
+    printf("%f", flts[i]);
+  }
+  printf("]\n");
+  return chain;
+}
+
 static Chain print_dict_i32(Chain chain, BEFAttr<StringRef> key,
                             BEFDictionaryAttr dict) {
   printf("dictionary[%.*s] = ", (int)key->size(), key->begin());
@@ -826,6 +842,8 @@ void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "test.append_string", append_string);
   ADD_PRIMITIVE(registry, "test.print_string", print_string);
   ADD_PRIMITIVE(registry, "test.print_array_i32", print_array_i32);
+  ADD_PRIMITIVE(registry, "test.print_dynamic_array_float",
+                print_dynamic_array_float);
   ADD_PRIMITIVE(registry, "test.print_dict_i32", print_dict_i32);
   ADD_PRIMITIVE(registry, "test.print_all_dict", print_all_dict);
   ADD_PRIMITIVE(registry, "test.print_type", print_type);

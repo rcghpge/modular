@@ -148,6 +148,13 @@ grt.testcase @basic_string_and_arrays {
   bef.output
 }
 
+grt.testcase @decode_error {
+  %ch0 = grt.chain.new
+  // expected-error @+1 {{type mismatch, have si32 but caller expected llvm::SmallVector<float, 12>}}
+  %ch1 = "test.print_dynamic_array_float"(%ch0) { value = 1 : si32 } : (!grt.chain) -> (!grt.chain)
+  bef.output %ch1 : !grt.chain
+}
+
 // CHECK-LABEL: --- Running 'test_types'
 grt.testcase @test_types {
   %ch0 = grt.chain.new

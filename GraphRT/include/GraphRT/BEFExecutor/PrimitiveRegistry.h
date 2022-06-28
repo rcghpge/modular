@@ -15,6 +15,7 @@
 #include "LLCL/Support/ReferenceCounted.h"
 #include "Support/ErrorOr.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/TypeName.h"
 
 namespace M {
 
@@ -569,7 +570,8 @@ public:
 
     auto rawAttrValue = dyn_cast<InnerType>(this);
     if (!rawAttrValue)
-      return Error("incorrect encoded type");
+      return Error("type mismatch, have " + BEF::getAsString(getAttrKind()) +
+                   " but caller expected " + llvm::getTypeName<ValueType>());
 
     // If this is a C type like int8_t then look through the attr, otherwise
     // leave it intact.
