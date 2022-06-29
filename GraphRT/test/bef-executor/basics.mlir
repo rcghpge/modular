@@ -150,7 +150,9 @@ grt.testcase @basic_string_and_arrays {
 
 grt.testcase @decode_error {
   %ch0 = grt.chain.new
-  // expected-error @+1 {{type mismatch, have si32 but caller expected llvm::SmallVector<float, 12>}}
+  // COM: Because we can't do regex in expected-error we have to end the
+  // COM: llvm::SmallVector type early here to account for the sizing.
+  // expected-error @+1 {{type mismatch, have si32 but caller expected llvm::SmallVector<float}}
   %ch1 = "test.print_dynamic_array_float"(%ch0) { value = 1 : si32 } : (!grt.chain) -> (!grt.chain)
   bef.output %ch1 : !grt.chain
 }
