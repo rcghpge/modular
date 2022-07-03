@@ -12,7 +12,7 @@
 #ifndef GRAPHRT_BEF_BEFENCODING_H
 #define GRAPHRT_BEF_BEFENCODING_H
 
-#include "GenericML/Support/TensorEltType.h"
+#include "Support/DataType.h"
 #include "Support/LLVMForwardDecls.h"
 #include "llvm/ADT/BitmaskEnum.h"
 #include "llvm/ADT/StringRef.h"
