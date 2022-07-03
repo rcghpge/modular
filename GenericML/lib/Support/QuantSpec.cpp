@@ -106,6 +106,6 @@ ErrorOr<QuantTensorSpec> QuantTensorSpec::get(BEFType type) {
         TensorSpec(dims, storageType.getKind()),
         QuantSpec::getUniformPerAxis(quantDim, scales, zeroPoints));
   }
-  // BEFType are GenericML TensorEltType kinds.
+  // BEFType are GenericML DType kinds.
   return QuantTensorSpec(TensorSpec(dims, befType.getKind()), {});
 }

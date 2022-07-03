@@ -19,7 +19,7 @@ using namespace M;
 static ErrorOrSuccess fillWithElements(Tensor &tensor,
                                        InputGenerationKind inputGenKind,
                                        const QuantSpec &quantSpec) {
-  uint8_t elementBuffer[TensorEltType::kMaxElementSizeInBytes];
+  uint8_t elementBuffer[DType::kMaxElementSizeInBytes];
   auto eltType = tensor.getEltType();
 
   switch (inputGenKind) {
@@ -43,8 +43,8 @@ static ErrorOrSuccess fillWithElements(Tensor &tensor,
   case InputGenerationKind::kZeros:
     if (quantSpec.isQuantized()) {
       // FIXME: we need to handle all types, and refactor this into a kernel
-      if (tensor.getEltType() != TensorEltType::ui8 &&
-          tensor.getEltType() != TensorEltType::si8)
+      if (tensor.getEltType() != DType::ui8 &&
+          tensor.getEltType() != DType::si8)
         return Error("when filling quantized tensors with zeros, only 8 bit "
                      "storage types are supported");
       auto params = quantSpec.getParams();

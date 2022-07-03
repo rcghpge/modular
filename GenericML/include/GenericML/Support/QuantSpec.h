@@ -109,7 +109,7 @@ inline raw_ostream &operator<<(raw_ostream &os, const QuantSpec &value) {
 /// ordinary floating point (i.e. not quantized) tensors.
 class QuantTensorSpec : public TensorSpec {
 public:
-  QuantTensorSpec() : TensorSpec() { setEltType(TensorEltType::invalid); }
+  QuantTensorSpec() : TensorSpec() { setEltType(DType::invalid); }
   QuantTensorSpec(TensorSpec &&tensorSpec) : TensorSpec(tensorSpec) {}
   QuantTensorSpec(TensorSpec &&tensorSpec, QuantSpec &&quantSpec)
       : TensorSpec(tensorSpec), quantSpec(quantSpec) {}

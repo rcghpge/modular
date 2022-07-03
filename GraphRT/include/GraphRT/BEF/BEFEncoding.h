@@ -189,11 +189,11 @@ DECLARE_ATTR_MAPPING(kString, StringRef);
 // BEF type constants and helpers
 //===----------------------------------------------------------------------===//
 
-/// BEF Types are always compatible with GenericML's TensorEltType but have some
+/// BEF Types are always compatible with GenericML's DType but have some
 /// additional types for good measure.
-class TypeKind : public TensorEltType {
+class TypeKind : public DType {
 public:
-  using TensorEltType::TensorEltType;
+  using DType::DType;
   enum ExtraCases : uint8_t {
     // In the BEF encoding of these types, they all have following bytes.
     tensor = kFirstExtendedOption,

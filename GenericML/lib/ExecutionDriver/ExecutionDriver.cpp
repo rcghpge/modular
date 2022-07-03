@@ -212,8 +212,7 @@ static void executeModelRepeated(MLIRContext *ctx, const Model *model,
   outs().flush();
   outs() << "--- Runtime(ms): ";
   TensorSpec cpuTimesMillisShape(
-      TensorShape(SmallVector<unsigned>({options.numRuns})),
-      TensorEltType::f64);
+      TensorShape(SmallVector<unsigned>({options.numRuns})), DType::f64);
 
   if (auto err = Kernel::printTensor(cpuTimesMillis.data(), cpuTimesMillisShape,
                                      Kernel::ResultOutputStyle::kFull)) {
