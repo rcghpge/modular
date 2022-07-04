@@ -43,7 +43,7 @@ static std::string getKindAndDimAsString(const QuantSpec *qSpec) {
 void QuantSpec::print(raw_ostream &os) const {
   os << getKindAndDimAsString(this);
   auto params = getParams();
-  if (params.size()) {
+  if (!params.empty()) {
     os << " {";
     llvm::interleave(
         getParams(),

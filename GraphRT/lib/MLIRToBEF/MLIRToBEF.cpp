@@ -50,7 +50,7 @@ namespace {
 // at least this alignment.
 class BEFEmitter {
 public:
-  BEFEmitter() {}
+  BEFEmitter() = default;
   BEFEmitter(const BEFEmitter &) = delete;
   BEFEmitter &operator=(const BEFEmitter &) = delete;
 

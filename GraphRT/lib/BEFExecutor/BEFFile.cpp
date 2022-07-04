@@ -232,7 +232,7 @@ bool M::isBEFFile(llvm::StringRef contents) {
 }
 
 /// Home the vtable in a .cpp file.
-BEFFile::~BEFFile() {}
+BEFFile::~BEFFile() = default;
 
 /// This method inspects the contents of the BEF file to make an educated
 /// guess of what it contains, allowing for better QoI and usability of tools.

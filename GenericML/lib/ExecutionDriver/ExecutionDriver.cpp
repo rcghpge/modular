@@ -16,7 +16,6 @@
 #include <chrono>
 
 using namespace M;
-using llvm::errs;
 using llvm::outs;
 using mlir::MLIRContext;
 

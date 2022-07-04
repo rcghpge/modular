@@ -74,7 +74,7 @@ public:
       : BEFInvokable(numArguments, numResults), bodyOffset(bodyOffset),
         owner(owner) {}
 
-  virtual ~BEFInvokableImpl() = default;
+  ~BEFInvokableImpl() override = default;
 
   /// Visit each primitive in this invokable.
   ErrorOrSuccess walkPrimitives(
@@ -83,19 +83,19 @@ public:
 
   /// Invokable this using the specified runtime, passing the specified
   /// arguments. This returns one AsyncValue for each result.
-  virtual void invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
-                      MutableArrayRef<AnyAsyncValueRef> results,
-                      Runtime &runtime) const override;
+  void invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
+              MutableArrayRef<AnyAsyncValueRef> results,
+              Runtime &runtime) const override;
 
   /// Add a new reference to this object.  The lifetime of invokables are
   /// generally tied to the file they are loaded from (e.g. a BEFFile) so they
   /// don't need explicit ownership management in most cases, but some cases
   /// that can extend their lifetime (e.g. implementations of async
   /// control flow operations) should extend their lifetime.
-  virtual void addRef() const override;
+  void addRef() const override;
 
   /// Drop a reference to this object, potentially deallocating it.
-  virtual void dropRef() const override;
+  void dropRef() const override;
 
   /// Implement the only remaining LocationDecoder hook. Since we have a pointer
   /// to the BEFFileImpl we can easily decode a location provided to us.

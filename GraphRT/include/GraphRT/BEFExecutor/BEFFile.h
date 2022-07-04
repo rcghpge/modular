@@ -70,7 +70,7 @@ public:
   const BEFInvokable *getTopLevelInvokable() const;
 
 protected:
-  BEFFile() {}
+  BEFFile() = default;
 };
 
 /// Return true if the specified file contents look like it is a BEF file, by

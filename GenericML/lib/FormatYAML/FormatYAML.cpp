@@ -79,7 +79,7 @@ void ::llvm::yaml::MappingTraits<M::QuantTensorSpec>::mapping(
       auto quantDim = quantSpec.getQuantDim();
       io.mapRequired("quant_dim", quantDim);
     }
-    if (params.size()) {
+    if (!params.empty()) {
       // The yamlization does not accept an ArrayRef, so we need to construct a
       // SmallVector for serialization.
       SmallVector<M::QuantSpec::ScaleZeroPointPair> paramsVec(params.begin(),

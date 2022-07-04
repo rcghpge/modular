@@ -29,7 +29,7 @@ class PrimitiveDescriptor;
 ///
 class BEFInvokable {
 public:
-  virtual ~BEFInvokable() {}
+  virtual ~BEFInvokable() = default;
 
   size_t getNumArgs() const { return numArgs; }
   size_t getNumResults() const { return numResults; }
