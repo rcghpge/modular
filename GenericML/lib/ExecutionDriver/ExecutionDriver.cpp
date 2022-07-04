@@ -87,25 +87,12 @@ static void printTensorResults(const ExecutableModel *model,
 }
 
 /// Evaluate the model once and print the output tensor.
-static void executeModelOnce(MLIRContext *ctx, const Model *model,
-                             Runtime &runtime,
-                             const ExecutorDriverCLOptions &options) {
-  auto errorOrExecutableModel = model->setup(runtime);
-  if (failed(errorOrExecutableModel)) {
-    outs() << errorOrExecutableModel.takeError();
-    return;
-  }
-
-  auto executableModel = errorOrExecutableModel.takeValue();
-
-  auto inputTensorsOr =
-      initializeInputMemory(options.inputGenKind, model, runtime);
-  if (failed(inputTensorsOr)) {
-    outs() << inputTensorsOr.takeError() << "\n";
-    return;
-  }
-
-  SmallVector<Tensor, 3> inputTensors = inputTensorsOr.takeValue();
+static ErrorOrSuccess executeModelOnce(MLIRContext *ctx, const Model *model,
+                                       Runtime &runtime,
+                                       const ExecutorDriverCLOptions &options) {
+  UNWRAP_ERROR(executableModel, model->setup(runtime));
+  UNWRAP_ERROR(inputTensors,
+               initializeInputMemory(options.inputGenKind, model, runtime));
 
   // Fill the arguments.  We are running the model once so we pass in the input
   // tensors directly (the model will deallocate them when it is done with
@@ -129,29 +116,18 @@ static void executeModelOnce(MLIRContext *ctx, const Model *model,
   MutableArrayRef resultRef(results.data(), results.size());
   printTensorResults(executableModel.get(), resultRef.drop_front(), ctx,
                      options.resultOutputStyle, outs());
+  return success();
 }
 
 /// Repeatedly evaluate the model (numRuns to be exact) and capture and print
 /// the runtime for each evaluation.
-static void executeModelRepeated(MLIRContext *ctx, const Model *model,
-                                 Runtime &runtime,
-                                 const ExecutorDriverCLOptions &options) {
-  auto errorOrExecutableModel = model->setup(runtime);
-  if (failed(errorOrExecutableModel)) {
-    outs() << errorOrExecutableModel.takeError();
-    return;
-  }
+static ErrorOrSuccess
+executeModelRepeated(MLIRContext *ctx, const Model *model, Runtime &runtime,
+                     const ExecutorDriverCLOptions &options) {
+  UNWRAP_ERROR(executableModel, model->setup(runtime));
 
-  auto executableModel = errorOrExecutableModel.takeValue();
-
-  auto inputTensorsOr =
-      initializeInputMemory(options.inputGenKind, model, runtime);
-  if (failed(inputTensorsOr)) {
-    outs() << inputTensorsOr.takeError() << "\n";
-    return;
-  }
-
-  SmallVector<Tensor, 3> inputTensors = inputTensorsOr.takeValue();
+  UNWRAP_ERROR(inputTensors,
+               initializeInputMemory(options.inputGenKind, model, runtime));
 
   // Run the model numWarmup times to warmup the execution. This is performed to
   // remove any added overhead due to initial setup of the model. The loop is
@@ -213,28 +189,30 @@ static void executeModelRepeated(MLIRContext *ctx, const Model *model,
   TensorSpec cpuTimesMillisShape(
       TensorShape(SmallVector<unsigned>({options.numRuns})), DType::f64);
 
-  if (auto err = Kernel::printTensor(cpuTimesMillis.data(), cpuTimesMillisShape,
-                                     Kernel::ResultOutputStyle::kFull)) {
-    outs() << "<error: " << err.getError() << '>';
-    return;
-  }
+  RETURN_ERROR(Kernel::printTensor(cpuTimesMillis.data(), cpuTimesMillisShape,
+                                   Kernel::ResultOutputStyle::kFull));
   outs().flush();
 
   // Print the result tensors with the default printer.
   MutableArrayRef resultRef(results.data(), results.size());
   printTensorResults(executableModel.get(), resultRef.drop_front(), ctx,
                      options.resultOutputStyle, outs());
+  return success();
 }
 
 /// Run `model` using the command line options flags configured by the user.
 void M::runModel(MLIRContext *ctx, const Model *model, LLCL::Runtime &runtime,
                  const ExecutorDriverCLOptions &options) {
-  if (!options.benchmarkMode) {
-    if (options.numRuns == 1)
-      return executeModelOnce(ctx, model, runtime, options);
-    return executeModelRepeated(ctx, model, runtime, options);
+  if (options.benchmarkMode) {
+    benchmarkModel(model, runtime, options.benchmarkName, options.inputGenKind,
+                   options.benchmarkScenario, options.benchmarkOutputDir,
+                   options.benchmarkNoLogPrefix);
+    return;
   }
-  benchmarkModel(model, runtime, options.benchmarkName, options.inputGenKind,
-                 options.benchmarkScenario, options.benchmarkOutputDir,
-                 options.benchmarkNoLogPrefix);
+
+  auto invokeFn =
+      options.numRuns == 1 ? executeModelOnce : executeModelRepeated;
+
+  if (auto err = invokeFn(ctx, model, runtime, options))
+    outs() << err.takeError() << '\n';
 }

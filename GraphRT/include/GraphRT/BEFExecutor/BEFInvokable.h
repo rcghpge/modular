@@ -87,12 +87,10 @@ public:
             return success();
 
           // Attempt to construct the object.
-          auto objectOr = T::getFromDescriptor(descriptor);
-          if (failed(objectOr))
-            return objectOr.takeError();
+          UNWRAP_ERROR(object, T::getFromDescriptor(descriptor))
 
           return invokeWithDefaultResultType<DefaultSuccess>(
-              std::forward<Callable>(visitor), std::move(*objectOr));
+              std::forward<Callable>(visitor), std::move(object));
         });
   }
 
@@ -115,12 +113,10 @@ public:
             return success();
 
           // Attempt to construct the object.
-          auto objectOr = T::getFromDescriptor(descriptor);
-          if (failed(objectOr))
-            return objectOr.takeError();
+          UNWRAP_ERROR(object, T::getFromDescriptor(descriptor));
 
           return invokeWithDefaultResultType<DefaultSuccess>(
-              std::forward<Callable>(visitor), std::move(*objectOr));
+              std::forward<Callable>(visitor), std::move(object));
         });
   }
 

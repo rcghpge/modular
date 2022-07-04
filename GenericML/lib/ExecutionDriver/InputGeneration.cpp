@@ -73,8 +73,7 @@ M::initializeInputMemory(InputGenerationKind inputGenKind, const Model *model,
   for (const auto &spec : model->getInputSpecs()) {
     // Allocate the tensor.
     Tensor input = Tensor::getUninit(spec, runtime);
-    if (auto err = fillWithElements(input, inputGenKind, spec.getQuantSpec()))
-      return err.takeError();
+    RETURN_ERROR(fillWithElements(input, inputGenKind, spec.getQuantSpec()));
 
     inputTensors.push_back(std::move(input));
   }

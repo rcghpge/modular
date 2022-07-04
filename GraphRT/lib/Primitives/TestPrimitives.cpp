@@ -66,8 +66,7 @@ static Chain print_array_i32(Chain chain, BEFAttr<ArrayRef<int32_t>> values) {
 static ErrorOr<Chain> print_dynamic_array_float(Chain chain,
                                                 BEFDynamicAttr value) {
   SmallVector<float> flts;
-  if (auto err = value.decode(&flts))
-    return err.takeError();
+  RETURN_ERROR(value.decode(&flts));
 
   printf("array = [");
   for (size_t i = 0, e = flts.size(); i != e; ++i) {

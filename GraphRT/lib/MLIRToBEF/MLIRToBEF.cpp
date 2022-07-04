@@ -863,10 +863,9 @@ ErrorOr<BEF::TypeKind> TypeEmitter::getIntFPComplexTypeEncoding(Type type) {
   if (auto intType = type.dyn_cast<IntegerType>())
     return getIntegerTypeEncoding(intType);
   if (auto complexType = type.dyn_cast<mlir::ComplexType>()) {
-    auto eltTypeOr = getIntFPComplexTypeEncoding(complexType.getElementType());
-    if (eltTypeOr.isError())
-      return eltTypeOr.takeError();
-    return BEF::TypeKind(DType::getComplex(*eltTypeOr).getValue());
+    UNWRAP_ERROR(eltType,
+                 getIntFPComplexTypeEncoding(complexType.getElementType()));
+    return BEF::TypeKind(DType::getComplex(eltType).getValue());
   }
 
   return Error("type cannot be encoded in BEF");

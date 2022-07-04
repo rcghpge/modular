@@ -25,10 +25,8 @@ M::decodeQuantizedSignature(BEFFunctionType signature,
   auto fillArgSpecs = [](ArrayRef<BEFType> argTypes,
                          auto &argSpecs) -> Optional<Error> {
     for (auto type : argTypes) {
-      auto specOr = QuantTensorSpec::get(type);
-      if (specOr.isError())
-        return specOr.takeError();
-      argSpecs.push_back(specOr.get());
+      UNWRAP_ERROR(spec, QuantTensorSpec::get(type));
+      argSpecs.push_back(spec);
     }
     return None;
   };

@@ -307,12 +307,8 @@ ErrorOrSuccess BEFFile::installPrimitives(const PrimitiveRegistry &registry) {
 /// holding memory buffers.
 ErrorOr<RCRef<BEFFile>> BEFFile::open(StringRef file,
                                       const PrimitiveRegistry &registry) {
-  auto resultOr = open(file);
-  if (failed(resultOr))
-    return resultOr;
-  auto result = resultOr.takeValue();
-  if (auto err = result->installPrimitives(registry))
-    return err.takeError();
+  UNWRAP_ERROR(result, open(file));
+  RETURN_ERROR(result->installPrimitives(registry));
   return result;
 }
 

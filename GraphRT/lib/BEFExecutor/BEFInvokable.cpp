@@ -329,8 +329,7 @@ static ErrorOrSuccess decodePrimitiveTables(
       return std::move(*decoder.befFormatError);
     if (!registerInfo)
       continue;
-    if (auto err = registerInfo(numUses))
-      return err.takeError();
+    RETURN_ERROR(registerInfo(numUses));
   }
 
   for (size_t i = 0; i != decoder.numPrimitives; ++i) {
@@ -340,8 +339,7 @@ static ErrorOrSuccess decodePrimitiveTables(
       return std::move(*decoder.befFormatError);
     if (!primitiveInfo)
       continue;
-    if (auto err = primitiveInfo(offset, numOperandsBeforeExecuting))
-      return err.takeError();
+    RETURN_ERROR(primitiveInfo(offset, numOperandsBeforeExecuting));
   }
 
   auto numResults = decoder.inv.getNumResults();
@@ -353,8 +351,7 @@ static ErrorOrSuccess decodePrimitiveTables(
       return Error("invalid result register #");
     if (!resultRegs)
       continue;
-    if (auto err = resultRegs(registerIndex))
-      return err.takeError();
+    RETURN_ERROR(resultRegs(registerIndex));
   }
 
   // Align to where the invokable body is.
@@ -802,15 +799,13 @@ ErrorOrSuccess BEFInvokableImpl::walkPrimitives(
   // Decode the primitive tables.
   ArrayRef<uint32_t> funcBody;
   SmallVector<size_t> primitiveOffsets;
-  auto err = decodePrimitiveTables(
+  RETURN_ERROR(decodePrimitiveTables(
       decoder, funcBody, nullptr,
       [&](size_t offset, size_t numOperands) {
         primitiveOffsets.push_back(offset);
         return success();
       },
-      nullptr);
-  if (err)
-    return err.takeError();
+      nullptr));
 
   // Now we have to parse the primitive names.
   Optional<Error> befReaderError;
@@ -857,8 +852,7 @@ ErrorOrSuccess BEFInvokableImpl::walkPrimitives(
     for (auto invokableIndex : primDecoder.invokableRefIndices)
       descriptorBuilder.addInvokable(owner->getInvokableByID(invokableIndex));
 
-    if (auto err = visitor(primitiveName, descriptorBuilder))
-      return err.takeError();
+    RETURN_ERROR(visitor(primitiveName, descriptorBuilder));
   }
 
   return success();
@@ -872,17 +866,14 @@ ErrorOrSuccess BEFInvokable::recursePrimitives(
       [&](StringRef primitiveName,
           const PrimitiveDescriptor &descriptor) -> ErrorOrSuccess {
         if (order == kPreOrder)
-          if (auto err = visitor(primitiveName, descriptor))
-            return err.takeError();
+          RETURN_ERROR(visitor(primitiveName, descriptor));
 
         for (size_t i = 0, e = descriptor.getNumInvokables(); i != e; ++i)
-          if (auto err =
-                  descriptor.getInvokable(i)->recursePrimitives(order, visitor))
-            return err.takeError();
+          RETURN_ERROR(
+              descriptor.getInvokable(i)->recursePrimitives(order, visitor));
 
         if (order == kPostOrder)
-          if (auto err = visitor(primitiveName, descriptor))
-            return err.takeError();
+          RETURN_ERROR(visitor(primitiveName, descriptor));
 
         return success();
       });

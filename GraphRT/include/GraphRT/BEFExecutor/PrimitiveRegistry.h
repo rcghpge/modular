@@ -577,10 +577,8 @@ public:
     // leave it intact.
     auto valueToDecode =
         Detail::BEFAttrDynCastRet<EncodedType>::getValue(*rawAttrValue);
-    auto decodedValue = BEFDecoder<ValueType>::decode(valueToDecode);
-    if (failed(decodedValue))
-      return Error(decodedValue.takeError());
-    *result = std::move(*decodedValue);
+    UNWRAP_ERROR(decodedValue, BEFDecoder<ValueType>::decode(valueToDecode));
+    *result = std::move(decodedValue);
     return success();
   }
 
@@ -680,8 +678,7 @@ struct BEFDecoder<SmallVector<EltType, Size>> {
     result.reserve(value.size());
     for (auto element : value) {
       EltType resultElt;
-      if (auto error = element.decode(&resultElt))
-        return error.takeError();
+      RETURN_ERROR(element.decode(&resultElt));
       result.push_back(resultElt);
     }
     return result;
@@ -701,8 +698,7 @@ struct BEFDecoder<SmallVector<EltType>> {
     result.reserve(value.size());
     for (auto element : value) {
       EltType resultElt;
-      if (auto error = element.decode(&resultElt))
-        return error.takeError();
+      RETURN_ERROR(element.decode(&resultElt));
       result.push_back(resultElt);
     }
     return result;
