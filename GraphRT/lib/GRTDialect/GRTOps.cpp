@@ -214,10 +214,8 @@ ParseResult BenchmarkOp::parse(OpAsmParser &parser, OperationState &result) {
       parseParenOperandList(parser, result, operandInfo))
     return failure();
 
-  FloatAttr convergenceThreshold;
-  if (parser.parseKeyword("convergenceThreshold") || parser.parseEqual() ||
-      parser.parseAttribute(convergenceThreshold, "convergenceThreshold",
-                            result.attributes))
+  // Parse the optional attribute list.
+  if (parser.parseOptionalAttrDict(result.attributes))
     return failure();
 
   // Parse the body region.
@@ -238,9 +236,8 @@ void BenchmarkOp::print(OpAsmPrinter &p) {
   p << ' ' << getChain() << " (";
   llvm::interleaveComma(getInputs(), p,
                         [&](Value arg) { p << arg << ": " << arg.getType(); });
-  p << ") convergenceThreshold = ";
-  p.printAttribute(getConvergenceThresholdAttr());
-
+  p << ") ";
+  p.printOptionalAttrDict(getOperation()->getAttrs());
   // Reuse the argument names provided to the op for the bbarg names within
   // the region.
   p.shadowRegionArgs(getCodeUnderTest(), getOperands());
