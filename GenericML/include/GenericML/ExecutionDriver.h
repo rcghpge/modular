@@ -33,8 +33,9 @@ enum class InputGenerationKind {
 enum class BenchmarkScenario { kOnline, kBatched };
 
 /// Run `model` using the command line options flags configured by the user.
-void runModel(MLIRContext *ctx, const Model *model, LLCL::Runtime &runtime,
-              const ExecutorDriverCLOptions &options);
+ErrorOrSuccess runModel(MLIRContext *ctx, const Model *model,
+                        LLCL::Runtime &runtime,
+                        const ExecutorDriverCLOptions &options);
 
 } // namespace M
 

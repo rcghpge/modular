@@ -87,10 +87,9 @@ static void printResults(BEFInvokable *invokable,
 
 /// Run the specified bef.invokable as a testcase - this means passing in test
 /// input and printing results if we can.
-static void runTestcase(const GRTTestcase &test,
-                        const RuntimeCLOptions &runtimeConfig,
-                        MLIRContext *context) {
-
+static ErrorOrSuccess runTestcase(const GRTTestcase &test,
+                                  const RuntimeCLOptions &runtimeConfig,
+                                  MLIRContext *context) {
   // In this test driver, we want to make sure that every invokable completes
   // all execution before moving on to the next one.  This makes the leak
   // checker work better in the face of side effecting kernels that aren't
@@ -118,6 +117,8 @@ static void runTestcase(const GRTTestcase &test,
 
         printResults(test.getBody(), results, context, os);
       });
+  // FIXME: this function currently does not handle errors.
+  return success();
 }
 
 namespace {
@@ -200,16 +201,21 @@ int main(int argc, char **argv) {
             llvm::is_contained(clOptions.testcases, test.getName()))
           testcasesToExecute.push_back(test);
       })) {
-    clOptions.reportError(err.getError());
-    return {};
+    return clOptions.reportError(err.getError());
   }
 
   // Run each test with a MLIRContext set up for the right kind of diagnostic
   // emission.
   LogicalResult hadError = clOptions.configureMLIRContextAndExecute(
-      std::move(fileBuffer), [&](MLIRContext *context) {
-        for (auto &fn : testcasesToExecute)
-          runTestcase(fn, clOptions, context);
+      std::move(fileBuffer), [&](MLIRContext *context) -> LogicalResult {
+        for (auto &fn : testcasesToExecute) {
+          if (auto err = runTestcase(fn, clOptions, context)) {
+            clOptions.reportError(err.getError());
+            if (clOptions.stopOnFirstError())
+              return failure();
+          }
+        }
+        return success();
       });
 
   // We're done with the BEF, we can safely deallocate.

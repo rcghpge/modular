@@ -24,11 +24,11 @@ using mlir::MLIRContext;
 /// tensor types into something we can print if needed, and handles
 /// printing/reporting of errors in a way that works with diagnostic
 /// verification.
-static void printTensorResults(const ExecutableModel *model,
-                               MutableArrayRef<AnyAsyncValueRef> results,
-                               MLIRContext *context,
-                               Kernel::ResultOutputStyle outputStyle,
-                               raw_ostream &os) {
+static LogicalResult
+printTensorResults(const ExecutableModel *model,
+                   MutableArrayRef<AnyAsyncValueRef> results,
+                   MLIRContext *context, Kernel::ResultOutputStyle outputStyle,
+                   raw_ostream &os) {
   StringRef name = model->getModel()->getName();
 
   // Check that any tensors we get are generic tensors, not framework
@@ -60,6 +60,7 @@ static void printTensorResults(const ExecutableModel *model,
 
   // Print out the invokable results that we know about.
   // Go ahead and print out the invokable results that we know about.
+  bool hadError = false;
   if (!results.empty()) {
     os << "'" << name << "' returned ";
     llvm::interleaveComma(results, os, [&](const AnyAsyncValueRef &result) {
@@ -67,6 +68,7 @@ static void printTensorResults(const ExecutableModel *model,
       // through SourceMgr so we can validate it.
       if (auto *diag = result->getDiagnosticIfPresent()) {
         os << "<error: " << diag->getMessage() << '>';
+        hadError = true;
         return;
       }
 
@@ -74,8 +76,10 @@ static void printTensorResults(const ExecutableModel *model,
       if (auto *tensor = result->dyn_cast<Tensor>()) {
         os.flush();
         if (auto err = Kernel::printTensor(tensor->getPointer(),
-                                           tensor->getSpec(), outputStyle))
+                                           tensor->getSpec(), outputStyle)) {
           os << "<error: " << err.getError() << '>';
+          hadError = true;
+        }
         return;
       }
 
@@ -84,6 +88,7 @@ static void printTensorResults(const ExecutableModel *model,
     os << '\n';
     os.flush();
   }
+  return failure(hadError);
 }
 
 /// Evaluate the model once and print the output tensor.
@@ -114,8 +119,9 @@ static ErrorOrSuccess executeModelOnce(MLIRContext *ctx, const Model *model,
 
   // Print the result tensors with the default printer.
   MutableArrayRef resultRef(results.data(), results.size());
-  printTensorResults(executableModel.get(), resultRef.drop_front(), ctx,
-                     options.resultOutputStyle, outs());
+  if (failed(printTensorResults(executableModel.get(), resultRef.drop_front(),
+                                ctx, options.resultOutputStyle, outs())))
+    return Error("model execution failed");
   return success();
 }
 
@@ -195,24 +201,25 @@ executeModelRepeated(MLIRContext *ctx, const Model *model, Runtime &runtime,
 
   // Print the result tensors with the default printer.
   MutableArrayRef resultRef(results.data(), results.size());
-  printTensorResults(executableModel.get(), resultRef.drop_front(), ctx,
-                     options.resultOutputStyle, outs());
+  if (failed(printTensorResults(executableModel.get(), resultRef.drop_front(),
+                                ctx, options.resultOutputStyle, outs())))
+    return Error("repeated model execution failed");
   return success();
 }
 
 /// Run `model` using the command line options flags configured by the user.
-void M::runModel(MLIRContext *ctx, const Model *model, LLCL::Runtime &runtime,
-                 const ExecutorDriverCLOptions &options) {
+ErrorOrSuccess M::runModel(MLIRContext *ctx, const Model *model,
+                           LLCL::Runtime &runtime,
+                           const ExecutorDriverCLOptions &options) {
   if (options.benchmarkMode) {
+    // FIXME: benchmarkModel does not handle errors.
     benchmarkModel(model, runtime, options.benchmarkName, options.inputGenKind,
                    options.benchmarkScenario, options.benchmarkOutputDir,
                    options.benchmarkNoLogPrefix);
-    return;
+    return success();
   }
 
   auto invokeFn =
       options.numRuns == 1 ? executeModelOnce : executeModelRepeated;
-
-  if (auto err = invokeFn(ctx, model, runtime, options))
-    outs() << err.takeError() << '\n';
+  return invokeFn(ctx, model, runtime, options);
 }
