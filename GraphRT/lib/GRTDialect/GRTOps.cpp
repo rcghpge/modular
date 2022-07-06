@@ -204,6 +204,11 @@ LogicalResult RepeatI32Op::verify() {
 //===----------------------------------------------------------------------===//
 
 ParseResult BenchmarkOp::parse(OpAsmParser &parser, OperationState &result) {
+  // Parse the description string for the benchmark.
+  StringAttr description;
+  if (parser.parseAttribute(description, "description", result.attributes))
+    return failure();
+
   SmallVector<OpAsmParser::Argument> operandInfo;
 
   OpAsmParser::UnresolvedOperand chainOperand;
@@ -233,7 +238,7 @@ ParseResult BenchmarkOp::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 void BenchmarkOp::print(OpAsmPrinter &p) {
-  p << ' ' << getChain() << " (";
+  p << ' ' << getDescription() << ' ' << getChain() << " (";
   llvm::interleaveComma(getInputs(), p,
                         [&](Value arg) { p << arg << ": " << arg.getType(); });
   p << ") ";
