@@ -121,7 +121,10 @@ static void runTestcase(const GRTTestcase &test,
 }
 
 namespace {
-struct BEFExecutorCLOptions : public CommonCLOptions, public RuntimeCLOptions {
+class BEFExecutorCLOptions : public CommonCLOptions, public RuntimeCLOptions {
+public:
+  BEFExecutorCLOptions(StringRef programName) : CommonCLOptions(programName) {}
+
   cl::list<std::string> testcases{
       "tests",
       cl::desc("Specify testcases to run, defaults to all of them. Provide a "
@@ -140,7 +143,7 @@ int main(int argc, char **argv) {
   registerAllGraphRTPrimitives(primitives);
   primitives.finalize();
 
-  BEFExecutorCLOptions clOptions;
+  BEFExecutorCLOptions clOptions(argv[0]);
 
   llvm::cl::ParseCommandLineOptions(argc, argv, "bef-executor test driver\n");
 
@@ -151,7 +154,7 @@ int main(int argc, char **argv) {
          "We have async values allocated before we started to do anything");
 
   // Read the input file from disk into a memory buffer.
-  auto fileBuffer = clOptions.openInputFileOrExit(argv[0]);
+  auto fileBuffer = clOptions.openInputFileOrExit();
 
   // Print some informative messages about allocator and threadpool config.
   if (clOptions.verbose) {
@@ -180,11 +183,10 @@ int main(int argc, char **argv) {
   }
 
   auto befFileOrError = BEFFile::open(fileBuffer->getBuffer(), primitives);
-  if (auto *error = befFileOrError.getError()) {
-    llvm::errs() << argv[0] << ": error opening '" << clOptions.inputFilename
-                 << "': " << error << '\n';
-    return 1;
-  }
+  if (failed(befFileOrError))
+    return clOptions.reportError(Twine("error opening '") +
+                                 clOptions.inputFilename +
+                                 "': " + befFileOrError.getError());
 
   auto befFile = befFileOrError.takeValue();
 
@@ -198,7 +200,7 @@ int main(int argc, char **argv) {
             llvm::is_contained(clOptions.testcases, test.getName()))
           testcasesToExecute.push_back(test);
       })) {
-    llvm::errs() << err.getError() << "\n";
+    clOptions.reportError(err.getError());
     return {};
   }
 
