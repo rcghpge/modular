@@ -193,7 +193,7 @@ BEFFileImpl::~BEFFileImpl() {
 /// a `true` result indicates that iteration should stop or `false` to
 /// continue.
 ErrorOrSuccess BEFFileImpl::enumeratePrimitiveNames(
-    std::function<ErrorOrSuccess(StringRef)> callbackFn) {
+    const std::function<ErrorOrSuccess(StringRef)>& callbackFn) {
   ErrorOrSuccess errorResult;
   BEFReader primNameReader(primitiveNames,
                            [&](Error err) { errorResult = std::move(err); });

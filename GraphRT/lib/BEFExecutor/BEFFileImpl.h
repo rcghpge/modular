@@ -34,7 +34,7 @@ public:
   /// callable on each entry.  The callable function may return an error to stop
   /// iteration and diagnose problems, if it does, it is propagated out.
   ErrorOrSuccess
-  enumeratePrimitiveNames(std::function<ErrorOrSuccess(StringRef)> callbackFn);
+  enumeratePrimitiveNames(const std::function<ErrorOrSuccess(StringRef)>& callbackFn);
 
   // Everything in this class is public because the entire class is private to
   // the BEFExecutor library implementation.

@@ -35,7 +35,7 @@ PrimitiveRegistry::PrimitiveRegistry() : impl(std::make_unique<Impl>()) {
   ADD_PRIMITIVE(*this, "builtin.module", builtin_module);
 }
 
-PrimitiveRegistry::~PrimitiveRegistry() {}
+PrimitiveRegistry::~PrimitiveRegistry() = default;
 
 void PrimitiveRegistry::add(StringLiteral name, PrimitiveImplFn fn) {
   impl->prims.emplace_back(name, fn);

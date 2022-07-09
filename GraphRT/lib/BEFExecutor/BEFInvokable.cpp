@@ -223,7 +223,7 @@ public:
       : befFile(copyRCRef(file)), runtime(runtime),
         numRegisters(decoder.numRegisters),
         numPrimitives(decoder.numPrimitives) {}
-  ~BEFExecutor() {
+  ~BEFExecutor() override {
     // NOTE: we don't bother destructing the ResultInfo/PrimitiveInfo records.
   }
 
@@ -320,9 +320,9 @@ LLCL::DecodedLocation BEFExecutor::decode(const EncodedLocation &loc) const {
 /// the BEFInvokable's walk functionality.
 static ErrorOrSuccess decodePrimitiveTables(
     BEFInvokableDecoder &decoder, ArrayRef<uint32_t> &body,
-    std::function<ErrorOrSuccess(size_t)> registerInfo,
-    std::function<ErrorOrSuccess(size_t, size_t)> primitiveInfo,
-    std::function<ErrorOrSuccess(size_t)> resultRegs) {
+    const std::function<ErrorOrSuccess(size_t)>& registerInfo,
+    const std::function<ErrorOrSuccess(size_t, size_t)>& primitiveInfo,
+    const std::function<ErrorOrSuccess(size_t)>& resultRegs) {
   for (size_t i = 0, e = decoder.numRegisters; i != e; ++i) {
     size_t numUses;
     if (decoder.bodyReader.parseVBR(numUses))
