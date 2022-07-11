@@ -19,7 +19,6 @@ include "GraphRT/BEFDialect/BEFNonStrict.td"
 class GRTOp<string mnemonic, list<Trait> traits = []> :
     Op<GRTDialect, mnemonic, traits>;
 
-include "GraphRT/GRTDialect/GRTTypes.td"
 include "GraphRT/GRTDialect/GRTBenchmarkingOps.td"
 include "GraphRT/GRTDialect/GRTIntegerOps.td"
 include "GraphRT/GRTDialect/GRTControlFlowOps.td"

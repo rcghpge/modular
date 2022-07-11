@@ -23,9 +23,11 @@ def GRTDialect : Dialect {
 
   let cppNamespace = "::M::GRT";
 
+  // We depend on the BEF dialect for the chain type.
+  let dependentDialects = ["::M::BEF::BEFDialect"];
+
   // Use LLVM-style accessor prefixes.
   let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
-  let useDefaultTypePrinterParser = 1;
 }
 
 #endif // GRAPHRT_GRTDIALECT_GRTDIALECT_TD

@@ -18,7 +18,7 @@ grt.testcase @test_cancel {
 
   %ch0 = grt.chain.new
   // expected-error @+1 {{Cancelled!}}
-  %ch1 = "test.cancel"(%ch0) : (!grt.chain) -> (!grt.chain)
+  %ch1 = "test.cancel"(%ch0) : (!bef.chain) -> (!bef.chain)
 
   %b = "test.async.add.i32"(%c1, %a) : (si32, si32) -> si32
 

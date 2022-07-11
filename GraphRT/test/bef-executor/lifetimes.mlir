@@ -26,7 +26,7 @@ grt.testcase @test_linear {
   %v1 = "test.vt.constant"() { value = 1 : si32 } : () -> !vt.value
   %v2 = "test.vt.constant"() { value = 2 : si32 } : () -> !vt.value
   %r = "test.vt.add"(%v1, %v2) : (!vt.value,  !vt.value) -> !vt.value
-  "test.vt.print"(%r, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+  "test.vt.print"(%r, %ch0) : (!vt.value, !bef.chain) -> (!bef.chain)
   "test.vt.constant"() { value = 4 : si32 } : () -> !vt.value
   "test.vt.constant"() { value = 5 : si32 } : () -> !vt.value
 
@@ -55,7 +55,7 @@ grt.testcase @call_no_op {
   %ch0 = grt.chain.new
 
   // CHECK-NEXT: print vt.value(2)
-  "test.vt.print"(%x, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+  "test.vt.print"(%x, %ch0) : (!vt.value, !bef.chain) -> (!bef.chain)
   // CHECK-NEXT: destroyed vt.value(2)
   bef.output
 }
@@ -88,7 +88,7 @@ grt.testcase @caller {
   %ch0 = grt.chain.new
 
   // CHECK-NEXT: print vt.value(4)
-  "test.vt.print"(%x, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+  "test.vt.print"(%x, %ch0) : (!vt.value, !bef.chain) -> (!bef.chain)
   // CHECK-NEXT: destroyed vt.value(4)
   bef.output
 }
@@ -97,7 +97,7 @@ grt.testcase @caller {
 grt.testcase @test_hello {
  // CHECK: hello bef executor!
   %ch0 = grt.chain.new
-  %ch1 = "test.print_hello"(%ch0) : (!grt.chain) -> !grt.chain
+  %ch1 = "test.print_hello"(%ch0) : (!bef.chain) -> !bef.chain
   bef.output
 }
 
@@ -112,10 +112,10 @@ grt.testcase @share_to_two {
   %ch0 = grt.chain.new
 
   // CHECK-NEXT: print vt.value(1)
-  "test.vt.print"(%x1, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+  "test.vt.print"(%x1, %ch0) : (!vt.value, !bef.chain) -> (!bef.chain)
 
   // CHECK-NEXT: print vt.value(1)
-  "test.vt.print"(%x2, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+  "test.vt.print"(%x2, %ch0) : (!vt.value, !bef.chain) -> (!bef.chain)
 
   // CHECK-NEXT: destroyed vt.value(1)
   bef.output
@@ -139,10 +139,10 @@ grt.testcase @share_to_two_caller {
   %ch0 = grt.chain.new
 
   // CHECK-NEXT: print vt.value(1)
-  "test.vt.print"(%x1, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+  "test.vt.print"(%x1, %ch0) : (!vt.value, !bef.chain) -> (!bef.chain)
 
   // CHECK-NEXT: print vt.value(1)
-  "test.vt.print"(%x2, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+  "test.vt.print"(%x2, %ch0) : (!vt.value, !bef.chain) -> (!bef.chain)
 
   // CHECK-NEXT: destroyed vt.value(1)
   bef.output
@@ -159,16 +159,16 @@ grt.testcase @share_to_four {
   %ch0 = grt.chain.new
 
   // CHECK-NEXT: print vt.value(1)
-  "test.vt.print"(%results#0, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+  "test.vt.print"(%results#0, %ch0) : (!vt.value, !bef.chain) -> (!bef.chain)
 
   // CHECK-NEXT: print vt.value(1)
-  "test.vt.print"(%results#1, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+  "test.vt.print"(%results#1, %ch0) : (!vt.value, !bef.chain) -> (!bef.chain)
 
   // CHECK-NEXT: print vt.value(1)
-  "test.vt.print"(%results#2, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+  "test.vt.print"(%results#2, %ch0) : (!vt.value, !bef.chain) -> (!bef.chain)
 
   // CHECK-NEXT: print vt.value(1)
-  "test.vt.print"(%results#3, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+  "test.vt.print"(%results#3, %ch0) : (!vt.value, !bef.chain) -> (!bef.chain)
 
   // CHECK-NEXT: destroyed vt.value(1)
   bef.output
@@ -192,16 +192,16 @@ grt.testcase @share_to_four_caller {
   %ch0 = grt.chain.new
 
   // CHECK-NEXT: print vt.value(1)
-  "test.vt.print"(%results#0, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+  "test.vt.print"(%results#0, %ch0) : (!vt.value, !bef.chain) -> (!bef.chain)
 
   // CHECK-NEXT: print vt.value(1)
-  "test.vt.print"(%results#1, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+  "test.vt.print"(%results#1, %ch0) : (!vt.value, !bef.chain) -> (!bef.chain)
 
   // CHECK-NEXT: print vt.value(1)
-  "test.vt.print"(%results#2, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+  "test.vt.print"(%results#2, %ch0) : (!vt.value, !bef.chain) -> (!bef.chain)
 
   // CHECK-NEXT: print vt.value(1)
-  "test.vt.print"(%results#3, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+  "test.vt.print"(%results#3, %ch0) : (!vt.value, !bef.chain) -> (!bef.chain)
 
   // CHECK-NEXT: destroyed vt.value(1)
   bef.output
@@ -217,7 +217,7 @@ bef.invokable @repeat_n_inc(%n: si32) -> () {
     bef.output %r : !vt.value
   }
 
-  "test.vt.print"(%y, %ch0) : (!vt.value, !grt.chain) -> (!grt.chain)
+  "test.vt.print"(%y, %ch0) : (!vt.value, !bef.chain) -> (!bef.chain)
 
   bef.output
 }

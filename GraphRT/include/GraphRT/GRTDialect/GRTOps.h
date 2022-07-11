@@ -16,9 +16,6 @@
 #include "GraphRT/GRTDialect/GRTDialect.h"
 #include "mlir/IR/OpImplementation.h"
 
-#define GET_TYPEDEF_CLASSES
-#include "GraphRT/GRTDialect/GRTTypes.h.inc"
-
 #define GET_OP_CLASSES
 #include "GraphRT/GRTDialect/GRT.h.inc"
 

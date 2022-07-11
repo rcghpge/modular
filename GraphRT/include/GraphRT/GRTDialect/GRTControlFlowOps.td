@@ -16,7 +16,7 @@ include "mlir/IR/SymbolInterfaces.td"
 //===----------------------------------------------------------------------===//
 
 def ChainNewOp : GRTOp<"chain.new"> {
-  let summary = "Return a new !grt.chain";
+  let summary = "Return a new !bef.chain";
 
   let arguments = (ins);
   let results = (outs ChainType:$result);
@@ -28,7 +28,7 @@ def ChainNewOp : GRTOp<"chain.new"> {
 //===----------------------------------------------------------------------===//
 
 def ChainMergeOp : GRTOp<"chain.merge"> {
-  let summary = "Return a !grt.chain when all inputs are ready";
+  let summary = "Return a !bef.chain when all inputs are ready";
 
   let arguments = (ins Variadic<ChainType>:$operands);
   let results = (outs ChainType:$result);

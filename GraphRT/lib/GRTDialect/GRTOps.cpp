@@ -214,7 +214,7 @@ ParseResult BenchmarkOp::parse(OpAsmParser &parser, OperationState &result) {
   OpAsmParser::UnresolvedOperand chainOperand;
   if (parser.parseOperand(chainOperand) ||
       parser.resolveOperand(chainOperand,
-                            parser.getBuilder().getType<ChainType>(),
+                            parser.getBuilder().getType<BEF::ChainType>(),
                             result.operands) ||
       parseParenOperandList(parser, result, operandInfo))
     return failure();

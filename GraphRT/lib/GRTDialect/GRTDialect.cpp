@@ -18,14 +18,6 @@ using namespace M;
 using namespace GRT;
 
 //===----------------------------------------------------------------------===//
-// Dialect Type Parsing and Printing
-//===----------------------------------------------------------------------===//
-
-// Pull in the dialect definition.
-#define GET_TYPEDEF_CLASSES
-#include "GraphRT/GRTDialect/GRTTypes.cpp.inc"
-
-//===----------------------------------------------------------------------===//
 // Dialect specification.
 //===----------------------------------------------------------------------===//
 
@@ -37,11 +29,5 @@ void GRTDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
 #include "GraphRT/GRTDialect/GRT.cpp.inc"
-      >();
-
-  // Register types.
-  addTypes<
-#define GET_TYPEDEF_LIST
-#include "GraphRT/GRTDialect/GRTTypes.cpp.inc"
       >();
 }

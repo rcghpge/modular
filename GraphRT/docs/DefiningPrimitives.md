@@ -458,14 +458,14 @@ deallocate) the resources in the program when they are destroyed.  For example
 consider this BEF program:
 
 ```mlir
-bef.invokable @bad_design(%ch0: !grt.chain) -> !grt.chain {
+bef.invokable @bad_design(%ch0: !bef.chain) -> !bef.chain {
   %x = accel.allocate_thing : !accel.thing
 
   %ch1 = accel.process_thing %x, %ch0
 
   // A "deallocate" op is almost always wrong!
   %ch2 = accel.deallocate_thing %x, %ch1
-  bef.output %ch2 : !grt.chain
+  bef.output %ch2 : !bef.chain
 }
 ```
 

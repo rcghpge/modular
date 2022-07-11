@@ -198,12 +198,12 @@ with a `LLCL::Chain` type, which is threaded through the operations.  This is a
 legal BEF dialect program:
 
 ```mlir
-bef.invokable @dataflow_example(%a: i32, %b: i32, %ch0: !grt.chain) -> !grt.chain {
+bef.invokable @dataflow_example(%a: i32, %b: i32, %ch0: !bef.chain) -> !bef.chain {
   %a2 = grt.add.si32 %a, %a
   %b2 = grt.add.si32 %b, %b
   %ch1 = grt.print.si32 %a2, %ch0
   %ch2 = grt.print.si32 %b2, %ch1
-  bef.output %ch2 : !grt.chain
+  bef.output %ch2 : !bef.chain
 }
 ```
 
