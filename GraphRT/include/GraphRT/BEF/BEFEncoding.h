@@ -200,10 +200,11 @@ public:
     quantized,
     quantizedPerAxis,
     function,
+    chain,
   };
 };
 
 } // namespace BEF
 } // namespace M
 
-#endif // GRAPHRT_MLIR_TO_BEF_H
+#endif // GRAPHRT_BEF_BEFENCODING_H

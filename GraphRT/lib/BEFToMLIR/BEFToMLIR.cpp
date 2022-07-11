@@ -429,6 +429,9 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
           (int32_t)quantizedDim, sTypeMin, sTypeMax);
     }
 
+    case BEF::TypeKind::chain:
+      return BEF::ChainType::get(getContext());
+
     default:
       // Check for signed/unsigned integer.
       if (typeKind.isSInt()) {

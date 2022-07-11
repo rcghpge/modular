@@ -1002,6 +1002,12 @@ LogicalResult TypeEmitter::emitType(Type type) {
   if (auto qType = type.dyn_cast<UniformQuantizedPerAxisType>())
     return emitUniformQuantizedPerAxisType(qType);
 
+  // Chains are super easy, just emit the byte that says "I'm a chain".
+  if (auto chainType = type.dyn_cast<BEF::ChainType>()) {
+    emitter->emitByte(BEF::TypeKind::chain);
+    return success();
+  }
+
   // FIXME: We're ignoring CalibratedQuantizedType.  Nothing in the compiler
   // uses this, why are we generating it in the first place?
   if (auto qType = type.dyn_cast<CalibratedQuantizedType>())

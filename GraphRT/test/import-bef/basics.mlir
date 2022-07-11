@@ -127,6 +127,11 @@ bef.invokable @attributes() {
   // MD: "type.calibrated"() {t = tensor<1x28x28xf32>
   "type.calibrated"() {t = tensor<1x28x28x!quant.calibrated<f32<0.000000e+00:2.550000e+02>>>} : () -> ()
 
+  // Check that we correctly serialize and deserialize the chain type.
+  // CHECK-NEXT: bef.opaque "type.chain" [!bef.chain]()
+  // MD: "type.chain"() {t = !bef.chain
+  "type.chain"() {t = !bef.chain} : () -> ()
+
   bef.output
    // CHECK-NEXT:     bef.output
 }  // CHECK-NEXT:   }
