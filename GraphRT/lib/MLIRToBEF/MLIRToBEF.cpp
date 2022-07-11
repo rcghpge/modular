@@ -868,7 +868,7 @@ ErrorOr<BEF::TypeKind> TypeEmitter::getIntFPComplexTypeEncoding(Type type) {
     return BEF::TypeKind(DType::getComplex(eltType).getValue());
   }
 
-  return Error("type cannot be encoded in BEF");
+  return Error("numerical type cannot be encoded in BEF");
 }
 
 /// Emit an int, float, or complex type.

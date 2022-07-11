@@ -117,6 +117,10 @@ static ErrorOrSuccess executeModelOnce(MLIRContext *ctx, const Model *model,
   // Wait for the model to finish execution, forcing synchrony.
   await(results);
 
+  // There is nothing to do if there is no results.
+  if (results.empty())
+    return success();
+
   // Print the result tensors with the default printer.
   MutableArrayRef resultRef(results.data(), results.size());
   if (failed(printTensorResults(executableModel.get(), resultRef.drop_front(),
@@ -198,6 +202,10 @@ executeModelRepeated(MLIRContext *ctx, const Model *model, Runtime &runtime,
   RETURN_ERROR(Kernel::printTensor(cpuTimesMillis.data(), cpuTimesMillisShape,
                                    Kernel::ResultOutputStyle::kFull));
   outs().flush();
+
+  // There is nothing to do if there is no results.
+  if (results.empty())
+    return success();
 
   // Print the result tensors with the default printer.
   MutableArrayRef resultRef(results.data(), results.size());
