@@ -6,10 +6,16 @@
 
 #include "GenericML/Driver/DriverInputFormat.h"
 #include "GraphRT/BEFExecutor/BEFFile.h"
+#include "LLCL/Support/RCRef.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/MemoryBuffer.h"
 
 using namespace M;
+
+//===----------------------------------------------------------------------===//
+// sniffInputFormat
+//===----------------------------------------------------------------------===//
 
 FileFormat M::sniffInputFormat(StringRef fileContents) {
   // BEF files have a strong magic number we can depend on that self-identifies
@@ -39,4 +45,36 @@ FileFormat M::sniffInputFormat(StringRef fileContents) {
       return FileFormat::kTFLFlatBufferJSON;
   }
   return FileFormat::kUnknown;
+}
+
+//===----------------------------------------------------------------------===//
+// getFileContentIdentity
+//===----------------------------------------------------------------------===//
+
+ErrorOr<std::string>
+M::getFileContentIdentity(const std::unique_ptr<llvm::MemoryBuffer> &file,
+                          FileFormat format) {
+  switch (format) {
+  default:
+    return "input has unknown contents";
+  case FileFormat::kTFLFlatBuffer:
+    return "input is a binary TFLite flatbuffer file";
+  case FileFormat::kTFLFlatBufferJSON:
+    return "input is a TFLite flatbuffer file in JSON format";
+  case FileFormat::kTFLDialect:
+    return "input is TFLite model in MLIR form";
+  case FileFormat::kTFLPDialect:
+    return "input is a compiled TFLite BEF model in MLIR form";
+  case FileFormat::kFauxDialect:
+    return "input is Faux model in MLIR form";
+  case FileFormat::kBEFFile: {
+    ErrorOr<RCRef<BEFFile>> befFileOr = BEFFile::open(file->getBuffer());
+    if (failed(befFileOr))
+      return Error(befFileOr.getError());
+
+    auto befContents = befFileOr.get()->sniffFileContents();
+    return std::string("input is a BEF file containing a ") +
+           befContents.getAsString();
+  }
+  }
 }
