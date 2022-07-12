@@ -1,11 +1,11 @@
-//===- GenericML/ExecutionDriverCLOptions.h -------------------------------===//
+//===- GenericML/DriverCLOptions.h ----------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_EXECUTIONDRIVERCLOPTIONS_H
-#define GENERICML_EXECUTIONDRIVERCLOPTIONS_H
+#ifndef GENERICML_DRIVERCLOPTIONS_H
+#define GENERICML_DRIVERCLOPTIONS_H
 
 #include "GenericML/ExecutionDriver.h"
 #include "LLCL/Runtime/RuntimeCLOptions.h"
@@ -103,6 +103,65 @@ public:
       cl::init(Kernel::ResultOutputStyle::kCompact)};
 };
 
+/// This command enum specifies what action we're supposed to take, which is
+/// directly correlated with a level of abstraction.  Later stages do more
+/// processing depending on the format of the input provided to the tool.
+enum class DriverCommand {
+  inspect,       // Print information about the input without processing it.
+  printMetadata, // Print model information after conversion to BEF in YAML
+                 // format. This command is used by other tools to introspect
+                 // the model metadata.
+  printConstantMetadata, // Print information on all the constants contained in
+                         // YAML format.
+  compile,               // Compile the input into a BEF file for execution.
+  execute,               // Execute the input file.
+};
+
+/// This class provides the basic driver command options. It essentially exposes
+/// the `DriverCommand` enum with some additional options.
+class DriverCommandOptions {
+public:
+  cl::opt<DriverCommand> command{
+      cl::desc("Command to execute"),
+      cl::values(
+          clEnumValN(DriverCommand::inspect, "inspect",
+                     "Print information about the input without processing it"),
+          clEnumValN(
+              DriverCommand::printMetadata, "print-metadata",
+              "Print model metadata in YAML format for other tools to use it"),
+          clEnumValN(DriverCommand::printConstantMetadata,
+                     "print-constant-metadata",
+                     "Print constant metadata in YAML format for other tools "
+                     "to use it"),
+          clEnumValN(DriverCommand::compile, "compile",
+                     "Compile the input into a BEF file for execution"),
+          clEnumValN(DriverCommand::execute, "execute",
+                     "Execute the input file")),
+      llvm::cl::Required};
+
+  cl::opt<bool> saveTemps{
+      "save-temps",
+      cl::desc(
+          "Store the usual 'temporary' intermediate files permanently in "
+          "the directory specified by -temps-dir (defaults to the output "
+          "directory); name them as auxiliary output files. This flag only "
+          "changes the behavior of the `compile` and `execute` commands."),
+      llvm::cl::Optional};
+
+  cl::opt<std::string> tempsDir{
+      "temps-dir", cl::init(""),
+      cl::desc(
+          "The directory in which to store 'temporary' intermediate files. No "
+          "files will be saved here unless `-save-temps` is also specified."),
+      llvm::cl::Optional};
+
+  /// Return true if the selected output format is binary and shouldn't be
+  /// dumped to the console.
+  bool commandHasBinaryOutput() const {
+    return command == DriverCommand::compile;
+  }
+};
+
 } // namespace M
 
-#endif // GENERICML_EXECUTIONDRIVERCLOPTIONS_H
+#endif // GENERICML_DRIVERCLOPTIONS_H

@@ -11,7 +11,7 @@
 #ifndef DRIVERINTERNALS_H
 #define DRIVERINTERNALS_H
 
-#include "GenericML/ExecutionDriverCLOptions.h"
+#include "GenericML/DriverCLOptions.h"
 
 namespace M {
 
