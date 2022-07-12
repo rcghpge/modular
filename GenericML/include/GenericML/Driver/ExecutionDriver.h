@@ -1,4 +1,4 @@
-//===- GenericML/ExecutionDriver.h ----------------------------------------===//
+//===- GenericML/Driver/ExecutionDriver.h ---------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //
@@ -9,8 +9,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_EXECUTIONDRIVER_H
-#define GENERICML_EXECUTIONDRIVER_H
+#ifndef GENERICML_DRIVER_EXECUTIONDRIVER_H
+#define GENERICML_DRIVER_EXECUTIONDRIVER_H
 
 #include "GenericML/Kernels.h"
 #include "LLCL/ForwardDecls.h"
@@ -39,4 +39,4 @@ ErrorOrSuccess runModel(MLIRContext *ctx, const Model *model,
 
 } // namespace M
 
-#endif // GENERICML_EXECUTIONDRIVER_H
+#endif // GENERICML_DRIVER_EXECUTIONDRIVER_H

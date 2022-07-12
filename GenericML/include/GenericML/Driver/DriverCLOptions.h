@@ -1,17 +1,21 @@
-//===- GenericML/DriverCLOptions.h ----------------------------------------===//
+//===- GenericML/Driver/DriverCLOptions.h ---------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_DRIVERCLOPTIONS_H
-#define GENERICML_DRIVERCLOPTIONS_H
+#ifndef GENERICML_DRIVER_DRIVERCLOPTIONS_H
+#define GENERICML_DRIVER_DRIVERCLOPTIONS_H
 
-#include "GenericML/DriverInputFormat.h"
-#include "GenericML/ExecutionDriver.h"
+#include "GenericML/Driver/DriverInputFormat.h"
+#include "GenericML/Driver/ExecutionDriver.h"
 #include "LLCL/Runtime/RuntimeCLOptions.h"
 #include "Support/CommonCLOptions.h"
 #include "llvm/Support/NativeFormatting.h"
+
+namespace llvm {
+class MemoryBuffer;
+}
 
 namespace M {
 
@@ -215,4 +219,4 @@ public:
 
 } // namespace M
 
-#endif // GENERICML_DRIVERCLOPTIONS_H
+#endif // GENERICML_DRIVER_DRIVERCLOPTIONS_H

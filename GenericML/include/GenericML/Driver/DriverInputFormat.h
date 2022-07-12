@@ -1,11 +1,11 @@
-//===- GenericML/DriverInputFormat.h --------------------------------------===//
+//===- GenericML/Driver/DriverInputFormat.h -------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_DRIVERINPUTFORMAT_H
-#define GENERICML_DRIVERINPUTFORMAT_H
+#ifndef GENERICML_DRIVER_DRIVERINPUTFORMAT_H
+#define GENERICML_DRIVER_DRIVERINPUTFORMAT_H
 
 #include "Support/LLVMForwardDecls.h"
 
@@ -37,4 +37,4 @@ enum class FileFormat {
 FileFormat sniffInputFormat(StringRef fileContents);
 } // namespace M
 
-#endif // GENERICML_DRIVERINPUTFORMAT_H
+#endif // GENERICML_DRIVER_DRIVERINPUTFORMAT_H

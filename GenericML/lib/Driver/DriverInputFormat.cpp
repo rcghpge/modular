@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/DriverInputFormat.h"
+#include "GenericML/Driver/DriverInputFormat.h"
 #include "GraphRT/BEFExecutor/BEFFile.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
