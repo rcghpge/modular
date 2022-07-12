@@ -7,6 +7,7 @@
 #ifndef GENERICML_DRIVERCLOPTIONS_H
 #define GENERICML_DRIVERCLOPTIONS_H
 
+#include "GenericML/DriverInputFormat.h"
 #include "GenericML/ExecutionDriver.h"
 #include "LLCL/Runtime/RuntimeCLOptions.h"
 #include "Support/CommonCLOptions.h"
@@ -160,6 +161,56 @@ public:
   bool commandHasBinaryOutput() const {
     return command == DriverCommand::compile;
   }
+};
+
+/// This class provides essentially all the command-line options available to
+/// the driver. It amalgamates the commands from DriverCommandOptions and
+/// ExecutorDriverCLOptions, and provides input format and output file
+/// specification. It also provides utility methods for opening an
+/// output/intermediate file with a given filename.
+class DriverCLOptions : public DriverCommandOptions,
+                        public ExecutorDriverCLOptions {
+public:
+  DriverCLOptions(StringRef programName)
+      : ExecutorDriverCLOptions(programName) {}
+  /// Allow the user to override the input file format.  The default is to
+  /// autosense what the input is.
+  cl::opt<FileFormat> inputFormat{
+      cl::desc("input file format override"),
+      cl::values(clEnumValN(FileFormat::kTFLFlatBuffer, "tflite-flat-buffer",
+                            "Input is a TFLite flatbuffer file"),
+                 clEnumValN(FileFormat::kBEFFile, "bef",
+                            "Input is an executable BEF file")),
+      cl::init(FileFormat::kUnknown)};
+
+  /// Return the input format the user specified, allowing them to specify
+  /// something manually on the command line, but otherwise autosensing an
+  /// answer.
+  FileFormat getInputFormat(StringRef fileContents) const;
+
+  //===--------------------------------------------------------------------===//
+  // Emission Options
+  //===--------------------------------------------------------------------===//
+
+  cl::opt<std::string> outputFilename{"o", cl::desc("Output filename"),
+                                      cl::value_desc("filename"),
+                                      cl::init("-")};
+
+  /// Determine an output file name and open it.
+  std::unique_ptr<llvm::ToolOutputFile> getOutputFile() const;
+
+  /// Determine an intermediate file with extension `ext` and open it.
+  std::unique_ptr<llvm::ToolOutputFile>
+  getIntermediateFile(const std::string &ext) const;
+
+  //===--------------------------------------------------------------------===//
+  // BEF Emission Configuration
+  //===--------------------------------------------------------------------===//
+
+  cl::opt<bool> enableBEFMetadata{
+      "enable-bef-metadata",
+      cl::desc("Enable metadata sections for better BEF2MLIR"),
+      cl::init(false)};
 };
 
 } // namespace M
