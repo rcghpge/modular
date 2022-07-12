@@ -210,17 +210,22 @@ ParseResult BenchmarkOp::parse(OpAsmParser &parser, OperationState &result) {
     return failure();
 
   SmallVector<OpAsmParser::Argument> operandInfo;
-
-  OpAsmParser::UnresolvedOperand chainOperand;
-  if (parser.parseOperand(chainOperand) ||
-      parser.resolveOperand(chainOperand,
-                            parser.getBuilder().getType<BEF::ChainType>(),
-                            result.operands) ||
+  llvm::SMLoc argLoc;
+  if (parser.getCurrentLocation(&argLoc) ||
       parseParenOperandList(parser, result, operandInfo))
     return failure();
 
+  if (operandInfo.empty() || !operandInfo[0].type.isa<BEF::ChainType>())
+    return parser.emitError(
+        argLoc, "grt.benchmark must take a chain as its first argument");
+
   // Parse the optional attribute list.
   if (parser.parseOptionalAttrDict(result.attributes))
+    return failure();
+
+  // Save the current location.
+  llvm::SMLoc opLoc;
+  if (parser.getCurrentLocation(&opLoc))
     return failure();
 
   // Parse the body region.
@@ -244,12 +249,15 @@ ParseResult BenchmarkOp::parse(OpAsmParser &parser, OperationState &result) {
   Operation *bodyTerminator = body->front().getTerminator();
   result.types.assign(bodyTerminator->operand_type_begin(),
                       bodyTerminator->operand_type_end());
+  if (!result.types.front().isa<BEF::ChainType>())
+    return parser.emitError(
+        opLoc, "grt.benchmark must return a chain as its first result.");
 
   return success();
 }
 
 void BenchmarkOp::print(OpAsmPrinter &p) {
-  p << ' ' << getDescription() << ' ' << getChain() << " (";
+  p << ' ' << getDescription() << " (";
   llvm::interleaveComma(getInputs(), p,
                         [&](Value arg) { p << arg << ": " << arg.getType(); });
   p << ") ";
