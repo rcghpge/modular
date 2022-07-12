@@ -4,19 +4,29 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This is a file provides YAMLIO serialization interfaces for types found in
-// GenericML such as TensorSpec and QuantSpec.
+// This is a file provides YAMLIO serialization and deserialization interfaces
+// for types found in GenericML such as TensorSpec and QuantSpec.
 //
 //===----------------------------------------------------------------------===//
 
 #ifndef GENERICML_FORMATYAML_H
 #define GENERICML_FORMATYAML_H
 
+#include "Support/ErrorOr.h"
+#include "Support/LLVMForwardDecls.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/YAMLTraits.h"
 
 namespace M {
+class ModelSpec;
 class QuantTensorSpec;
-}
+
+ErrorOr<ModelSpec>
+loadModelSpecFromYAML(std::unique_ptr<llvm::MemoryBuffer> yamlBuffer);
+} // namespace M
+
+/// Provide the ModelSpec mapping trait for YAML conversion.
+LLVM_YAML_DECLARE_MAPPING_TRAITS(::M::ModelSpec);
 
 /// Provide the QuantTensorSpec mapping trait for YAML conversion.
 LLVM_YAML_DECLARE_MAPPING_TRAITS(::M::QuantTensorSpec);

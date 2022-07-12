@@ -7,6 +7,7 @@
 #include "GenericML/Support/QuantSpec.h"
 #include "GraphRT/BEF/BEFTypes.h"
 #include "Support/ErrorOr.h"
+#include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -28,6 +29,15 @@ StringRef QuantSpec::kindAsString(QuantSpec::Kind kind) {
     return "uniformPerAxis";
   }
   llvm_unreachable("unknown QuantSpec kind");
+}
+
+QuantSpec::Kind QuantSpec::kindFromString(StringRef kind) {
+  return llvm::StringSwitch<QuantSpec::Kind>(kind)
+      .Case("invalid", QuantSpec::Kind::invalid)
+      .Case("notQuantized", QuantSpec::Kind::notQuantized)
+      .Case("uniform", QuantSpec::Kind::uniform)
+      .Case("uniformPerAxis", QuantSpec::Kind::uniformPerAxis)
+      .Default(QuantSpec::Kind::invalid);
 }
 
 /// Returns a string representation of the kind and the quantized dimension if
@@ -64,8 +74,10 @@ void QuantSpec::dump() const { print(llvm::errs()); }
 
 void QuantTensorSpec::print(raw_ostream &os) const {
   TensorSpec::print(os);
-  os << " ";
-  getQuantSpec().print(os);
+  if (isQuantized()) {
+    os << " ";
+    getQuantSpec().print(os);
+  }
 }
 
 std::string QuantTensorSpec::getAsString() const {

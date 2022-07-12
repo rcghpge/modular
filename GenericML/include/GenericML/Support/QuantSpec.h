@@ -71,6 +71,9 @@ public:
   /// Returns a string representation of the kind enum.
   static StringRef kindAsString(QuantSpec::Kind kind);
 
+  /// Returns a QuantSpec::Kind enum given a string representation.
+  static QuantSpec::Kind kindFromString(StringRef kind);
+
   /// Returns the paired scales and zero points.
   ArrayRef<ScaleZeroPointPair> getParams() const { return params; }
 
