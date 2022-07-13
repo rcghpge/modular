@@ -30,7 +30,6 @@ printTensorResults(const ExecutableModel *model,
                    MLIRContext *context, Kernel::ResultOutputStyle outputStyle,
                    raw_ostream &os) {
   StringRef name = model->getModel()->getName();
-
   // Check that any tensors we get are generic tensors, not framework
   // specific tensors.  We know that all tensors have been awaited here.
   for (auto &result : results) {
@@ -114,12 +113,12 @@ static ErrorOrSuccess executeModelOnce(MLIRContext *ctx, const Model *model,
   // Execute the model and insert its results into the results vec.
   auto results = executableModel->execute(args);
 
-  // Wait for the model to finish execution, forcing synchrony.
-  await(results);
-
   // There is nothing to do if there is no results.
   if (results.empty())
     return success();
+
+  // Wait for the model to finish execution, forcing synchrony.
+  await(results);
 
   // Print the result tensors with the default printer.
   MutableArrayRef resultRef(results.data(), results.size());

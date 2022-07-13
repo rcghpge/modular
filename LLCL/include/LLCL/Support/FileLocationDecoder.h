@@ -28,6 +28,8 @@ class FileNameLocationDecoder final
 public:
   FileNameLocationDecoder(llvm::StringRef filename);
 
+  static EncodedLocation getEncodedLocation(llvm::StringRef filename);
+
   /// Implement the only remaining LocationDecoder hook. The only thing we
   /// can decode is the file name.
   LLCL::DecodedLocation decode(const EncodedLocation &loc) const override;

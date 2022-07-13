@@ -17,6 +17,12 @@ using namespace LLCL;
 FileNameLocationDecoder::FileNameLocationDecoder(llvm::StringRef filename)
     : filename(filename){};
 
+/// Gets and Encoded Location object that contains the filename.
+EncodedLocation
+FileNameLocationDecoder::getEncodedLocation(llvm::StringRef filename) {
+  return EncodedLocation(0, RCRef<FileNameLocationDecoder>::create(filename));
+}
+
 /// Decode the file name information in this object into a DecodedLocation.
 LLCL::DecodedLocation
 FileNameLocationDecoder::decode(const EncodedLocation &loc) const {

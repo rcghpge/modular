@@ -45,7 +45,7 @@ public:
   /// This specifies the number of times we should execute the model.  If run
   /// more than one time, we enter "benchmarking" mode.
   cl::opt<bool> benchmarkMode{
-      "benchmark", cl::desc("Measure each invocation of the model inference"),
+      "benchmark", cl::desc("Measure each invocation of the model inference."),
       cl::init(false)};
 
   /// This specifies the name of the benchmark. Typically the benchmark name is
