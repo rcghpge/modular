@@ -215,9 +215,9 @@ executeModelRepeated(MLIRContext *ctx, const Model *model, Runtime &runtime,
 }
 
 /// Run `model` using the command line options flags configured by the user.
-ErrorOrSuccess M::runModel(MLIRContext *ctx, const Model *model,
-                           LLCL::Runtime &runtime,
-                           const ExecutorDriverCLOptions &options) {
+LogicalResult M::runModel(MLIRContext *ctx, const Model *model,
+                          LLCL::Runtime &runtime,
+                          const ExecutorDriverCLOptions &options) {
   if (options.benchmarkMode) {
     // FIXME: benchmarkModel does not handle errors.
     benchmarkModel(model, runtime, options.benchmarkName, options.inputGenKind,
@@ -228,5 +228,7 @@ ErrorOrSuccess M::runModel(MLIRContext *ctx, const Model *model,
 
   auto invokeFn =
       options.numRuns == 1 ? executeModelOnce : executeModelRepeated;
-  return invokeFn(ctx, model, runtime, options);
+  if (auto err = invokeFn(ctx, model, runtime, options))
+    return failure(options.reportError(err.getError()));
+  return success();
 }
