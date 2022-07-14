@@ -260,7 +260,7 @@ As a concrete example, consider an invocable invocation:
 bef.invokable @dataflow_example(%a: i32, %b: i32) -> i32 {
   %a2 = grt.add.si32 %a, %a
   %b2 = "some long latency operation"(%b) : (i32) -> i32
-  %result = grt.invoke @other_invokable(%a2, %b2) : (i32, i32) -> i32
+  %a2b2 = grt.invoke @other_invokable(%a2, %b2) : (i32, i32) -> i32
   bef.output %a2b2 : i32
 }
 ```
