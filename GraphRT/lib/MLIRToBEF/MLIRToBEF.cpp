@@ -573,10 +573,8 @@ private:
   void emitAttributeKind(BEF::AttributeKind kind) { emitByte((uint8_t)kind); };
   FailureOr<BEF::AttributeKind> deriveAttributeKind(Type eltType,
                                                     Location loc) const;
-  BEFOffset emitAttributeInternal(Attribute attr, Location loc,
-                                  bool emitAsArrayElement = false);
-  BEFOffset emitIntegerValue(bool emitAsArrayElement, const APInt &value,
-                             Type eltType, Location loc);
+  BEFOffset emitAttributeInternal(Attribute attr, Location loc);
+  BEFOffset emitIntegerValue(const APInt &value, Type eltType, Location loc);
   BEFOffset emitStringAttribute(StringRef value);
   BEFOffset emitSymbolAttribute(StringRef value);
   BEFOffset emitDenseElementsAttribute(DenseElementsAttr value, Location loc);
@@ -636,9 +634,8 @@ AttributesEmitter::deriveAttributeKind(Type eltType, Location loc) const {
   return BEF::AttributeKind(width << 3 | uint8_t(category) << 1);
 }
 
-/// Emit a single integer value of supported type, optionally as array element.
-BEFOffset AttributesEmitter::emitIntegerValue(bool emitAsArrayElement,
-                                              const APInt &value, Type eltType,
+/// Emit a single integer value of supported type.
+BEFOffset AttributesEmitter::emitIntegerValue(const APInt &value, Type eltType,
                                               Location loc) {
   if (!llvm::isPowerOf2_64(value.getBitWidth()) || value.getBitWidth() > 64) {
     entities.emitError(loc)
@@ -649,13 +646,11 @@ BEFOffset AttributesEmitter::emitIntegerValue(bool emitAsArrayElement,
   size_t bytes = (value.getBitWidth() + 7) / 8;
   alignTo(bytes);
 
-  // If we are not being emitted as an array element, we should emit our kind.
-  if (!emitAsArrayElement) {
-    auto kindOr = deriveAttributeKind(eltType, loc);
-    if (failed(kindOr))
-      return {0};
-    emitAttributeKind(*kindOr);
-  }
+  // Emit the kind of the data.
+  auto kindOr = deriveAttributeKind(eltType, loc);
+  if (failed(kindOr))
+    return {0};
+  emitAttributeKind(*kindOr);
 
   auto offset = getOffset();
 
@@ -708,15 +703,13 @@ BEFOffset AttributesEmitter::emitDenseElementsAttribute(DenseElementsAttr value,
   auto kindOr = deriveAttributeKind(elementType, loc);
   if (failed(kindOr))
     return {0};
-
-  auto elements = value.getValues<Attribute>();
-
   BEFOffset sizeStart = getOffset();
 
   // Emit the number of elements first and then emit all of the attributes
   // consecutively, returning the offset of the first element in the attribute
   // array.
-  emitInvertedVBR(elements.size());
+  size_t numElements = value.size();
+  emitInvertedVBR(numElements);
 
   // Emit the byte for the attribute kind just after the inverted VBR for the
   // elements.
@@ -725,14 +718,42 @@ BEFOffset AttributesEmitter::emitDenseElementsAttribute(DenseElementsAttr value,
   BEFOffset sizeAndKindEnd = getOffset();
 
   // The attribute array is empty. We just return the offset past the size.
-  if (elements.empty())
+  if (numElements == 0)
     return sizeAndKindEnd;
 
-  // Emit the first element of the array, this could insert padding if it needs
-  // larger alignment then the current offset.
-  auto startOffset = emitAttributeInternal(*elements.begin(), loc, true);
-  for (auto elt : llvm::drop_begin(elements))
-    (void)emitAttributeInternal(elt, loc, true);
+  // Verify that the width of the array is of a form we support.
+  Type eltType = value.getElementType();
+  size_t bitwidth = eltType.getIntOrFloatBitWidth();
+  if (!llvm::isPowerOf2_64(bitwidth) || bitwidth > 64 || bitwidth == 2 ||
+      bitwidth == 4) {
+    entities.emitError(loc) << "unsupported element width " << bitwidth;
+    return {0};
+  }
+
+  // Emit a range of APInt values representing the elements of the array.
+  auto emitIntRange = [&](auto &&elts) -> BEFOffset {
+    size_t bytes = (bitwidth + 7) / 8;
+    alignTo(bytes);
+
+    BEFOffset startOffset = getOffset();
+    for (const APInt &elt : elts) {
+      uint64_t v = elt.getLimitedValue();
+      for (unsigned i = 0; i != bytes; ++i) {
+        emitByte(static_cast<uint8_t>(v & 255));
+        v >>= 8;
+      }
+    }
+    return startOffset;
+  };
+  BEFOffset startOffset;
+  if (eltType.isa<IntegerType>()) {
+    startOffset = emitIntRange(value.getValues<APInt>());
+  } else {
+    startOffset = emitIntRange(
+        llvm::map_range(value.getValues<APFloat>(), [](const APFloat &elt) {
+          return elt.bitcastToAPInt();
+        }));
+  }
 
   // If there is a gap between the size and the first attribute value, we
   // move the size to be immediately before the first attribute value to
@@ -1028,24 +1049,14 @@ BEFOffset AttributesEmitter::emitTypeAttribute(Type type, Location loc) {
   return startOffset;
 }
 
-BEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr, Location loc,
-                                                   bool emitAsArrayElement) {
+BEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr,
+                                                   Location loc) {
   if (auto intAttr = attr.dyn_cast<IntegerAttr>())
-    return emitIntegerValue(emitAsArrayElement, intAttr.getValue(),
-                            attr.getType(), loc);
+    return emitIntegerValue(intAttr.getValue(), attr.getType(), loc);
 
   if (auto fpAttr = attr.dyn_cast<FloatAttr>())
-    return emitIntegerValue(emitAsArrayElement,
-                            fpAttr.getValue().bitcastToAPInt(), attr.getType(),
+    return emitIntegerValue(fpAttr.getValue().bitcastToAPInt(), attr.getType(),
                             loc);
-
-  // Non-primitive (i.e. non-int or non-float) elements cannot be emitted as
-  // arrays, so if this function proceeds past here there has been an error.
-  if (emitAsArrayElement) {
-    entities.emitError(loc)
-        << "cannot have aggregates of non-primitive attrs " << attr;
-    return {0};
-  }
 
   if (auto string = attr.dyn_cast<StringAttr>())
     return emitStringAttribute(string.getValue());
