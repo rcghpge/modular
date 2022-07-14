@@ -647,6 +647,7 @@ static void vec_accumulate_async2(AsyncValueRef<TestVector> vec,
 static void vec_softmax_async(AsyncValueRef<TestFloat32Vector> input,
                               Result<TestFloat32Vector> output,
                               Runtime &runtime) {
+  using LLCL::atomicAdd;
   using LLCL::atomicMax;
   using ElementType = TestFloat32Vector::ValueType;
 
@@ -729,9 +730,7 @@ static void vec_softmax_async(AsyncValueRef<TestFloat32Vector> input,
             denomAccumLocal += val; // locally accumulate the denominator
           }
           // atomic add the floating point values.
-          // FIXME: This is incorrect and racy, it needs to use compare/xchg.
-          auto tmp = denom.load(std::memory_order_relaxed);
-          denom.store(tmp + denomAccumLocal, std::memory_order_relaxed);
+          atomicAdd(denom, denomAccumLocal);
         },
         [resultAV = denomAndExpVectorAV.copy()](
             TestFloat32Vector &expElements, std::atomic<ElementType> &denom) {
@@ -744,28 +743,27 @@ static void vec_softmax_async(AsyncValueRef<TestFloat32Vector> input,
 
   // STAGE 3: Normalize the output
   // STAGE 3 is only executed when denom is ready (i.e. STAGE 2 is complete)
-  denomAndExpVectorAV.andThen([output = output.copy(), batchSize, &runtime,
-                               vecLen, numBatches](
-                                  const AsyncValueRef<DenomAndExpVector>
-                                      &denomAndExpVector) {
-    // compute STAGE 3 in parallel and mark the output is ready when all work is
-    // done
-    parallelForEachNCustomCompletion(
-        runtime, numBatches,
-        [vecLen, batchSize, denom = denomAndExpVector->denom](
-            size_t n, TestFloat32Vector &expElements) {
-          size_t startPos = n * batchSize;
-          if (startPos >= vecLen)
-            return;
-          size_t endPos = std::min(vecLen, (n + 1) * batchSize);
-          for (size_t i = startPos; i < endPos; ++i)
-            expElements.values[i] /= denom;
-        },
-        [output = output.copy()](TestFloat32Vector &expElements) {
-          output.emplace(std::move(expElements));
-        },
-        std::move(denomAndExpVector->expElements));
-  });
+  denomAndExpVectorAV.andThen(
+      [output = output.copy(), batchSize, &runtime, vecLen,
+       numBatches](const AsyncValueRef<DenomAndExpVector> &denomAndExpVector) {
+        // compute STAGE 3 in parallel and mark the output is ready when all
+        // work is done
+        parallelForEachNCustomCompletion(
+            runtime, numBatches,
+            [vecLen, batchSize, denom = denomAndExpVector->denom](
+                size_t n, TestFloat32Vector &expElements) {
+              size_t startPos = n * batchSize;
+              if (startPos >= vecLen)
+                return;
+              size_t endPos = std::min(vecLen, (n + 1) * batchSize);
+              for (size_t i = startPos; i < endPos; ++i)
+                expElements.values[i] /= denom;
+            },
+            [output = output.copy()](TestFloat32Vector &expElements) {
+              output.emplace(std::move(expElements));
+            },
+            std::move(denomAndExpVector->expElements));
+      });
 }
 
 /// Print an integer vector to the console.
