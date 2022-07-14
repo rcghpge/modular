@@ -229,12 +229,6 @@ public:
   /// is constructed.
   T &get() const { return getPointer()->template get<T>(); }
 
-  /// Construct the result, but do not mark it ready.
-  template <typename... Args>
-  void construct(Args &&...args) {
-    getPointer()->template construct<T, Args...>(std::forward<Args>(args)...);
-  }
-
   /// Construct the result in place and mark it as ready.
   template <typename... Args>
   void emplace(Args &&...args) {
