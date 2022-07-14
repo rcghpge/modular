@@ -53,9 +53,24 @@ A BEF file is formed as a byte stream whose top-level structure is a list of
 "sections" that hold various sorts of data. It uses a few fundamental concepts:
 
 * *VBRs* are encoded in a "Variable Byte Rate" (`VBR`) encoding, allowing
-  small integers (less than 2^7) to be stored in one byte, integers up to 2^14
-  to be stored in two bytes, etc. This is done by using the high bit of each
-  byte in the stream to indicate "more bytes are coming".
+  small unsigned integers (less than 2^7) to be stored in one byte, unsigned 
+  integers up to 2^14 to be stored in two bytes, etc. This is done by using the 
+  high bit of each byte in the stream to indicate "more bytes are coming". 
+  *VBR* values are stored in big-endian byte order, while *reverse VBR* values are
+  stored in little-endian byte order.
+  *signed VBRs* are encoded using an extra sign bit. Positive numbers are shifted
+  left by 1 and negative numbers are negated and shifted left by 1 with bit 0 set,
+  this final value is then encoded as a regular *VBR*.
+
+  **Example:**
+  ```
+   2 = 0b00000010 (two's complement)
+  signed VBR = 0b00000100
+         VBR = 0b00000010
+  
+  -2 = 0b11111110 (two's complement)
+  signed VBR = 0b00000101
+  ```
 
 * *Fixed Integers* are unsigned integers with fixed bit width. The values are
   stored in little-endian byte order.
@@ -187,7 +202,7 @@ BEF files only support a subset of MLIR attributes, currently including:
 The encoding of an attribute has three pieces:
 
 1) For arrays and strings, the length of the object (in units) is encoded as a
-   reverse VBR byte sequence, allowing readers to understand how long the array
+   *reverse VBR* byte sequence, allowing readers to understand how long the array
    or string is.
 2) All attributes have a one-byte encoding of the "kind" of attribute it is,
    which is described by the `AttributeKind` enum in
