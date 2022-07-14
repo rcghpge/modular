@@ -504,21 +504,18 @@ static void vec_add_async2(AsyncValueRef<TestVector> lhs,
   if (lhsValueSize != rhs->values.size())
     return result.setToError("vector length mismatch");
 
-  // Move the AsyncValue to "constructed" state with the specified # elements.
-  result.construct(lhsValueSize);
-
   // Process each element in parallel.
   parallelForEachNCustomCompletion(
       runtime, lhsValueSize,
-      [lhs = std::move(lhs),
-       rhs = std::move(rhs)](size_t n, AsyncValueRef<TestVector> &result) {
-        result->values[n] = lhs->values[n] + rhs->values[n];
+      [lhs = std::move(lhs), rhs = std::move(rhs)](size_t n,
+                                                   TestVector &resultVec) {
+        resultVec.values[n] = lhs->values[n] + rhs->values[n];
       },
-      [](AsyncValueRef<TestVector> &result) {
-        result.getPointer()->markReady();
+      [result = result.copy()](TestVector &resultVec) {
+        result.emplace(std::move(resultVec));
       },
-      // This is the state we capture, which is passed into each closure.
-      result.copy());
+      // We capture the WIP TestVector, it is passed into each closure.
+      TestVector(lhsValueSize));
 }
 
 /// This version of vector addition does the addition with each element in
@@ -545,28 +542,6 @@ static void vec_add_async3(AsyncValueRef<TestVector> lhs,
       [&result = result.get(), lhs = std::move(lhs), rhs = std::move(rhs)](
           size_t n) { result.values[n] = lhs->values[n] + rhs->values[n]; },
       [result = result.copy()]() { result.getPointer()->markReady(); });
-}
-
-/// This version of vector addition does the addition with each element in
-/// parallel as separate tasks.
-///
-/// This is the same as vec_add_async3, but uses a convenience method to mark
-/// the resulting values as ready.
-static void vec_add_async4(AsyncValueRef<TestVector> lhs,
-                           AsyncValueRef<TestVector> rhs,
-                           Result<TestVector> result, Runtime &runtime) {
-  size_t lhsValueSize = lhs->values.size();
-  if (lhsValueSize != rhs->values.size())
-    return result.setToError("vector length mismatch");
-
-  // Move the AsyncValue to "constructed" state with the specified # elements.
-  result.construct(lhsValueSize);
-
-  // Process each element in parallel.
-  parallelForEachNMarkReady(
-      runtime, lhsValueSize, result.copy(),
-      [result = result.copy(), lhs = std::move(lhs), rhs = std::move(rhs)](
-          size_t n) { result->values[n] = lhs->values[n] + rhs->values[n]; });
 }
 
 /// Accumulates the values in the input vector and produces a scalar.
@@ -687,10 +662,6 @@ static void vec_softmax_async(AsyncValueRef<TestFloat32Vector> input,
   size_t numBatches = (vecLen + batchSize - 1) / batchSize;
 
   auto maxVal = AsyncValue::allocate<ElementType>(runtime);
-  auto denom = AsyncValue::allocate<ElementType>(runtime);
-
-  // Move the AsyncValue to "constructed" state with the specified # elements.
-  output.construct(vecLen);
 
   // STAGE 1: Find the max value in the input vector
   parallelForEachNCustomCompletion(
@@ -722,18 +693,30 @@ static void vec_softmax_async(AsyncValueRef<TestFloat32Vector> input,
       // atomic in the parallelForEachNCustomCompletion function
       std::numeric_limits<float>::lowest());
 
+  // The next phase computes the denominator as well as a copy of the vector
+  // data with all the elements passed through `exp(x)` function.
+  struct DenomAndExpVector {
+    TestFloat32Vector expElements;
+    ElementType denom;
+  };
+  AsyncValue::registerType<DenomAndExpVector>();
+
+  auto denomAndExpVectorAV =
+      AsyncValueRef<DenomAndExpVector>::allocate(runtime);
+
   // STAGE 2: Compute the exponential and denominator.
   // STAGE 2 is only executed when maxVal is ready (i.e. STAGE 1 is complete)
   //
   // Note: we do not mark the output as ready until STAGE 3 is complete.
-  maxVal->andThen([input = input.copy(), output = output.copy(),
-                   denom = denom.copy(), maxVal = maxVal.copy(), batchSize,
-                   &runtime, vecLen, numBatches]() {
+  maxVal->andThen([input = input.copy(),
+                   denomAndExpVectorAV = denomAndExpVectorAV.copy(),
+                   maxVal = maxVal.copy(), batchSize, &runtime, vecLen,
+                   numBatches]() mutable {
     parallelForEachNCustomCompletion(
         runtime, numBatches,
-        [input = input.copy(), output = output.copy(),
-         maxVal = maxVal->get<ElementType>(), vecLen,
-         batchSize](size_t n, std::atomic<ElementType> &denomResult) {
+        [input = std::move(input), maxVal = maxVal->get<ElementType>(), vecLen,
+         batchSize](size_t n, TestFloat32Vector &expElements,
+                    std::atomic<ElementType> &denom) {
           ArrayRef<ElementType> inputValues = input->values;
           size_t startPos = n * batchSize;
           if (startPos >= vecLen)
@@ -742,38 +725,46 @@ static void vec_softmax_async(AsyncValueRef<TestFloat32Vector> input,
           ElementType denomAccumLocal = 0;
           for (size_t i = startPos; i < endPos; ++i) {
             ElementType val = std::exp(inputValues[i] - maxVal);
-            output->values[i] = val;
+            expElements.values[i] = val;
             denomAccumLocal += val; // locally accumulate the denominator
           }
-          // atomic add the floating point values
-          denomResult.store(denomResult.load(std::memory_order_relaxed) +
-                                denomAccumLocal,
-                            std::memory_order_relaxed);
+          // atomic add the floating point values.
+          // FIXME: This is incorrect and racy, it needs to use compare/xchg.
+          auto tmp = denom.load(std::memory_order_relaxed);
+          denom.store(tmp + denomAccumLocal, std::memory_order_relaxed);
         },
-        [denom = denom.copy()](std::atomic<ElementType> &denomValue) {
+        [resultAV = denomAndExpVectorAV.copy()](
+            TestFloat32Vector &expElements, std::atomic<ElementType> &denom) {
           // store the denomValue in the denom asyncvalue and mark as ready
-          denom->emplace<ElementType>(denomValue);
+          resultAV.emplace(
+              DenomAndExpVector{std::move(expElements), denom.load()});
         },
-        0);
+        vecLen, 0);
   });
 
   // STAGE 3: Normalize the output
   // STAGE 3 is only executed when denom is ready (i.e. STAGE 2 is complete)
-  denom->andThen([output = output.copy(), denom = denom.copy(), batchSize,
-                  &runtime, vecLen, numBatches]() {
+  denomAndExpVectorAV.andThen([output = output.copy(), batchSize, &runtime,
+                               vecLen, numBatches](
+                                  const AsyncValueRef<DenomAndExpVector>
+                                      &denomAndExpVector) {
     // compute STAGE 3 in parallel and mark the output is ready when all work is
     // done
-    parallelForEachNMarkReady(
-        runtime, numBatches, output.copy(),
-        [output = output.copy(), denom = denom->get<ElementType>(), vecLen,
-         batchSize](size_t n) {
+    parallelForEachNCustomCompletion(
+        runtime, numBatches,
+        [vecLen, batchSize, denom = denomAndExpVector->denom](
+            size_t n, TestFloat32Vector &expElements) {
           size_t startPos = n * batchSize;
           if (startPos >= vecLen)
             return;
           size_t endPos = std::min(vecLen, (n + 1) * batchSize);
           for (size_t i = startPos; i < endPos; ++i)
-            output->values[i] /= denom;
-        });
+            expElements.values[i] /= denom;
+        },
+        [output = output.copy()](TestFloat32Vector &expElements) {
+          output.emplace(std::move(expElements));
+        },
+        std::move(denomAndExpVector->expElements));
   });
 }
 
@@ -808,7 +799,6 @@ static void registerTestVecPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "test.vec.add.async", vec_add_async);
   ADD_PRIMITIVE(registry, "test.vec.add.async2", vec_add_async2);
   ADD_PRIMITIVE(registry, "test.vec.add.async3", vec_add_async3);
-  ADD_PRIMITIVE(registry, "test.vec.add.async4", vec_add_async4);
   ADD_PRIMITIVE(registry, "test.vec.accumulate", vec_accumulate);
   ADD_PRIMITIVE(registry, "test.vec.accumulate.async", vec_accumulate_async);
   ADD_PRIMITIVE(registry, "test.vec.accumulate.async2", vec_accumulate_async2);
