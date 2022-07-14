@@ -229,6 +229,12 @@ struct MappingTraits<M::ModelSpec::ModelBinary> {
     // weights.archivedFile is empty.
     if (!io.outputting() || !binary.archivedFile.empty())
       io.mapOptional("archived_file", binary.archivedFile);
+
+    if (!io.outputting() || !binary.sha1sum.empty())
+      io.mapOptional("sha1sum", binary.sha1sum);
+
+    if (!io.outputting() || !binary.metadata.empty())
+      io.mapOptional("metadata", binary.metadata);
   }
   /// Check if the binary format and URL are valid.
   static std::string validate(IO &io, M::ModelSpec::ModelBinary &binary) {
@@ -263,6 +269,10 @@ LLVM_YAML_IS_SEQUENCE_VECTOR(M::ModelSpec::ModelBinary);
 void llvm::yaml::MappingTraits<M::ModelSpec>::mapping(IO &io,
                                                       M::ModelSpec &modelSpec) {
   io.mapRequired("name", modelSpec.name);
+  if (!io.outputting() || !modelSpec.task.empty())
+    io.mapOptional("task", modelSpec.task);
+  if (!io.outputting() || !modelSpec.description.empty())
+    io.mapOptional("description", modelSpec.description);
   io.mapRequired("model", modelSpec.model);
   io.mapRequired("inputs", modelSpec.inputs);
   io.mapRequired("outputs", modelSpec.outputs);

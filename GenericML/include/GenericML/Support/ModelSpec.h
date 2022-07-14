@@ -31,16 +31,20 @@ public:
     std::string format;
     std::string url;
     std::string archivedFile;
+    std::string sha1sum;
+    std::string metadata;
   };
+
   ModelSpec() = default;
   ModelSpec(const ModelSpec &) = default;
   ModelSpec(ModelSpec &&) = default;
   ModelSpec &operator=(ModelSpec &&) = default;
 
   ~ModelSpec();
-  StringRef getName() const { return name; };
 
   std::string name;
+  std::string task;
+  std::string description;
   SmallVector<ModelBinary, 3> model;
   SmallVector<ModelIOSpec, 5> inputs, outputs;
 };
