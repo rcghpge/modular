@@ -505,43 +505,12 @@ static void vec_add_async2(AsyncValueRef<TestVector> lhs,
     return result.setToError("vector length mismatch");
 
   // Process each element in parallel.
-  parallelForEachNCustomCompletion(
-      runtime, lhsValueSize,
+  parallelForEachNFinishing(
+      runtime, lhsValueSize, TestVector(lhsValueSize), result.copy(),
       [lhs = std::move(lhs), rhs = std::move(rhs)](size_t n,
                                                    TestVector &resultVec) {
         resultVec.values[n] = lhs->values[n] + rhs->values[n];
-      },
-      [result = result.copy()](TestVector &resultVec) {
-        result.emplace(std::move(resultVec));
-      },
-      // We capture the WIP TestVector, it is passed into each closure.
-      TestVector(lhsValueSize));
-}
-
-/// This version of vector addition does the addition with each element in
-/// parallel as separate tasks.
-///
-/// This is the same as vec_add_async2, but captures the result vector in a
-/// slightly different way that doesn't need the for loop itself to capture
-/// state, simplifying signatures.
-static void vec_add_async3(AsyncValueRef<TestVector> lhs,
-                           AsyncValueRef<TestVector> rhs,
-                           Result<TestVector> result, Runtime &runtime) {
-  size_t lhsValueSize = lhs->values.size();
-  if (lhsValueSize != rhs->values.size())
-    return result.setToError("vector length mismatch");
-
-  // Move the AsyncValue to "constructed" state with the specified # elements.
-  result.construct(lhsValueSize);
-
-  // Process each element in parallel.
-  parallelForEachNCustomCompletion(
-      runtime, lhsValueSize,
-      // Capturing result by reference here is safe since the completion handler
-      // guarantees it stays alive across execution of all elements.
-      [&result = result.get(), lhs = std::move(lhs), rhs = std::move(rhs)](
-          size_t n) { result.values[n] = lhs->values[n] + rhs->values[n]; },
-      [result = result.copy()]() { result.getPointer()->markReady(); });
+      });
 }
 
 /// Accumulates the values in the input vector and produces a scalar.
@@ -748,8 +717,9 @@ static void vec_softmax_async(AsyncValueRef<TestFloat32Vector> input,
        numBatches](const AsyncValueRef<DenomAndExpVector> &denomAndExpVector) {
         // compute STAGE 3 in parallel and mark the output is ready when all
         // work is done
-        parallelForEachNCustomCompletion(
-            runtime, numBatches,
+        parallelForEachNFinishing(
+            runtime, numBatches, std::move(denomAndExpVector->expElements),
+            output.copy(),
             [vecLen, batchSize, denom = denomAndExpVector->denom](
                 size_t n, TestFloat32Vector &expElements) {
               size_t startPos = n * batchSize;
@@ -758,11 +728,7 @@ static void vec_softmax_async(AsyncValueRef<TestFloat32Vector> input,
               size_t endPos = std::min(vecLen, (n + 1) * batchSize);
               for (size_t i = startPos; i < endPos; ++i)
                 expElements.values[i] /= denom;
-            },
-            [output = output.copy()](TestFloat32Vector &expElements) {
-              output.emplace(std::move(expElements));
-            },
-            std::move(denomAndExpVector->expElements));
+            });
       });
 }
 
@@ -796,7 +762,6 @@ static void registerTestVecPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "test.vec.add", vec_add);
   ADD_PRIMITIVE(registry, "test.vec.add.async", vec_add_async);
   ADD_PRIMITIVE(registry, "test.vec.add.async2", vec_add_async2);
-  ADD_PRIMITIVE(registry, "test.vec.add.async3", vec_add_async3);
   ADD_PRIMITIVE(registry, "test.vec.accumulate", vec_accumulate);
   ADD_PRIMITIVE(registry, "test.vec.accumulate.async", vec_accumulate_async);
   ADD_PRIMITIVE(registry, "test.vec.accumulate.async2", vec_accumulate_async2);

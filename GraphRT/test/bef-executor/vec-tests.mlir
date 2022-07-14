@@ -76,13 +76,9 @@ grt.testcase @async_add_test_par_foreach {
   %ch3 = "test.vec.print" (%v3, %ch2) : (!test.vec, !bef.chain) -> !bef.chain
   // CHECK-NEXT: vec = 3, 4, 5, 6, 7
 
-  %v4 = "test.vec.add.async3"(%v3, %v1) : (!test.vec, !test.vec) -> !test.vec
-  %ch4 = "test.vec.print" (%v4, %ch3) : (!test.vec, !bef.chain) -> !bef.chain
-  // CHECK-NEXT: vec = 3, 5, 7, 9, 11
-
   // CHECK-NEXT: 'async_add_test_par_foreach' returned chain
 
-  bef.output %ch4 : !bef.chain
+  bef.output %ch3 : !bef.chain
 }
 
 // CHECK-LABEL: --- Running 'async_accumulate'
