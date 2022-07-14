@@ -14,8 +14,11 @@
 
 #include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"
-#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/YAMLTraits.h"
+
+namespace llvm {
+class MemoryBuffer;
+};
 
 namespace M {
 class ModelSpec;
