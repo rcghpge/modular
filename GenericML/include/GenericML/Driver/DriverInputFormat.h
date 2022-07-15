@@ -40,11 +40,6 @@ enum class FileFormat {
 /// Use heuristics to determine what kind of file the input file contents
 /// represent.
 FileFormat sniffInputFormat(StringRef fileContents);
-
-/// Get a string that describes the contents of the model.
-ErrorOr<std::string>
-getFileContentIdentity(const std::unique_ptr<llvm::MemoryBuffer> &file,
-                       FileFormat format);
 } // namespace M
 
 #endif // GENERICML_DRIVER_DRIVERINPUTFORMAT_H
