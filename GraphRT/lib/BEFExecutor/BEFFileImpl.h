@@ -14,7 +14,6 @@
 #include "GraphRT/BEFExecutor/BEFFile.h"
 #include "GraphRT/BEFExecutor/BEFInvokable.h"
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
-#include "TopLevelEntity.h"
 #include "llvm/ADT/ArrayRef.h"
 
 namespace M {
