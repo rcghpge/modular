@@ -151,7 +151,7 @@ private:
 /// Read the magic number from the start of the BEF file and check it.
 bool BEFToMLIRConverter::parseHeader(BEFReader &reader) {
   // Read magic number.
-  uint8_t byte1, byte2;
+  uint8_t byte1 = 0, byte2 = 0;
   if (reader.parseByte(byte1) || reader.parseByte(byte2))
     return true;
 
@@ -290,7 +290,7 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
   };
 
   std::function<Type()> parseTypeAttr = [&]() -> Type {
-    uint8_t typeValue;
+    uint8_t typeValue = 0;
     if (attrReader.parseByte(typeValue))
       return {};
     BEF::TypeKind typeKind = BEF::TypeKind(typeValue);
@@ -408,7 +408,7 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
 
       SmallVector<double> scales(numParams);
       for (auto &scale : scales) {
-        float value;
+        float value = 0;
         if (attrReader.parseFloat(value))
           return {};
         scale = value;
@@ -490,7 +490,7 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
       return TypeAttr::get(type);
     }
 
-    uint8_t byte;
+    uint8_t byte = 0;
     // I1 attrs are a single byte in the BEF format, but are also a separate
     // attribute type, and so are special-cased here.
     if (attrKind == BEF::AttributeKind::kBool) {

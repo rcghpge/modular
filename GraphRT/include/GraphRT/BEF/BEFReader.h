@@ -65,7 +65,7 @@ public:
 
   /// Parse two bytes in little endian format from the stream.
   bool parseInt2(uint16_t &value) {
-    uint8_t a, b;
+    uint8_t a = 0, b = 0;
     if (parseByte(a) || parseByte(b))
       return true;
     value = uint16_t(a) | (uint16_t(b) << 8);
@@ -74,7 +74,7 @@ public:
 
   /// Parse four bytes in little endian format from the stream.
   bool parseInt4(uint32_t &value) {
-    uint16_t a, b;
+    uint16_t a = 0, b = 0;
     if (parseInt2(a) || parseInt2(b))
       return true;
     value = uint32_t(a) | (uint32_t(b) << 16);
@@ -210,7 +210,7 @@ public:
     if ((length & 1) != 0) {
       // If there is an alignment byte, read the alignment byte, and skip over
       // padding bytes until we reach the desired alignment.
-      uint8_t alignment;
+      uint8_t alignment = 0;
       if (parseByte(alignment) || alignTo(alignment))
         return true;
     }
