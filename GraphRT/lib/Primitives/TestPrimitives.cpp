@@ -399,11 +399,24 @@ static void async_error(IndirectResult result1, IndirectResult result2,
   });
 }
 
+/// This creates a programmatic number of waiters on an async value, then
+/// completes it.
+static int32_t test_async_many_waiters(BEFAttr<int32_t> num, Runtime &runtime) {
+  auto av = AsyncValueRef<int32_t>::allocate(runtime);
+  unsigned result = 0;
+  /// Add 'num' waiters that just increment result.
+  for (int32_t i = 0, e = *num; i != e; ++i)
+    av.andThen([&]() { ++result; });
+  av.emplace(42);
+  return result;
+}
+
 //===----------------------------------------------------------------------===//
 // TestVector Primitives
 //===----------------------------------------------------------------------===//
 
-// This is intended to test parallel operations and other "advanced" use-cases.
+// This is intended to test parallel operations and other "advanced"
+// use-cases.
 namespace {
 /// This class is a designed-to-be-simple data type that we can pass around to
 /// illustrate some more advanced usecases for async value and related types.
@@ -817,4 +830,5 @@ void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "test.async.add2.i32", async_add2_i32);
   ADD_PRIMITIVE(registry, "test.async.add.any", async_add_any);
   ADD_PRIMITIVE(registry, "test.async.error", async_error);
+  ADD_PRIMITIVE(registry, "test.async.many.waiters", test_async_many_waiters);
 }

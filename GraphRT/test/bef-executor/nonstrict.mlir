@@ -24,3 +24,21 @@ grt.testcase @unused_nonstrict_arg {
   %ch1 = grt.print.si32 %x, %ch0
   bef.output
 }
+
+// CHECK-LABEL: --- Running 'many_waiters'
+grt.testcase @many_waiters {
+  %ch0 = grt.chain.new
+
+  %v3 = "test.async.many.waiters"() { num = 3 : si32 } : () -> si32
+  %ch1 = grt.print.si32 %v3, %ch0
+  // CHECK-NEXT: int32 = 3
+  
+  %v6 = "test.async.many.waiters"() { num = 6 : si32 } : () -> si32
+  %ch2 = grt.print.si32 %v6, %ch1
+  // CHECK-NEXT: int32 = 6
+
+  %v42 = "test.async.many.waiters"() { num = 42 : si32 } : () -> si32
+  %ch3 = grt.print.si32 %v42, %ch2
+  // CHECK-NEXT: int32 = 42
+  bef.output
+}
