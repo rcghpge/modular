@@ -71,6 +71,8 @@ M::initializeInputMemory(InputGenerationKind inputGenKind, const Model *model,
   SmallVector<Tensor, 3> inputTensors;
 
   for (const auto &spec : model->getInputSpecs()) {
+    if (spec.isDynamic())
+      return Error("Dynamic input shapes are not supported.");
     // Allocate the tensor.
     Tensor input = Tensor::getUninit(spec, runtime);
     RETURN_ERROR(fillWithElements(input, inputGenKind, spec.getQuantSpec()));
