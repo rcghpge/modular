@@ -180,7 +180,7 @@ public:
   /// Allow the user to override the input file format.  The default is to
   /// autosense what the input is.
   cl::opt<FileFormat> inputFormat{
-      cl::desc("input file format override"),
+      "input-format", cl::desc("input file format override"),
       cl::values(clEnumValN(FileFormat::kTFLFlatBuffer, "tflite-flat-buffer",
                             "Input is a TFLite flatbuffer file"),
                  clEnumValN(FileFormat::kBEFFile, "bef",
@@ -191,6 +191,13 @@ public:
   /// something manually on the command line, but otherwise autosensing an
   /// answer.
   FileFormat getInputFormat(StringRef fileContents) const;
+
+  //===--------------------------------------------------------------------===//
+  // Force loading a specific dylib
+  //===--------------------------------------------------------------------===//
+
+  cl::opt<std::string> loadLib{
+      "load", cl::desc("Load the specified framework directly."), cl::init("")};
 
   //===--------------------------------------------------------------------===//
   // Emission Options
