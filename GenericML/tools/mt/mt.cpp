@@ -24,8 +24,8 @@ static constexpr char tflLibraryName[] = SYSTEM_SHARED_LIBRARY("tfl");
 /// provided by the framework.
 static ErrorOr<std::string>
 getFileContentIdentity(const llvm::MemoryBuffer &file, FileFormat format,
-                       decltype(M_openBEFFile) openHandle,
-                       decltype(M_sniffBEFFileContents) sniffHandle) {
+                       decltype(M_openBinaryFile) openHandle,
+                       decltype(M_sniffBinaryFileContents) sniffHandle) {
   switch (format) {
   default:
     return "input has unknown contents";
@@ -40,7 +40,7 @@ getFileContentIdentity(const llvm::MemoryBuffer &file, FileFormat format,
   case FileFormat::kFauxDialect:
     return "input is Faux model in MLIR form";
   case FileFormat::kBEFFile: {
-    BEFFileHandle handle;
+    ModelBinaryHandle handle;
     if (auto err = openHandle(file, &handle))
       return err.takeError();
 
@@ -93,12 +93,13 @@ loadDesiredLibrary(const llvm::MemoryBuffer &file, FileFormat inputFormat,
       return tflDylibOr.takeError();
     auto tflDylib = *tflDylibOr;
     auto openBEFFileHandle =
-        (decltype(&M_openBEFFile))tflDylib.getAddressOfSymbol("M_openBEFFile");
+        (decltype(&M_openBinaryFile))tflDylib.getAddressOfSymbol(
+            "M_openBinaryFile");
     auto sniffBEFFileContentsHandle =
-        (decltype(&M_sniffBEFFileContents))tflDylib.getAddressOfSymbol(
-            "M_sniffBEFFileContents");
+        (decltype(&M_sniffBinaryFileContents))tflDylib.getAddressOfSymbol(
+            "M_sniffBinaryFileContents");
 
-    BEFFileHandle handle;
+    ModelBinaryHandle handle;
     if (auto err = openBEFFileHandle(file, &handle))
       return err.takeError();
 
@@ -136,27 +137,28 @@ int main(int argc, char **argv) {
 
   // Pull out the handles we want.
   auto compileToBEFHandle =
-      (decltype(&M_compileToBEF))dylib.getAddressOfSymbol("M_compileToBEF");
+      (decltype(&M_compileToBinary))dylib.getAddressOfSymbol(
+          "M_compileToBinary");
   auto getMetadataFromBEFHandle =
-      (decltype(&M_getMetadataFromBEF))dylib.getAddressOfSymbol(
-          "M_getMetadataFromBEF");
+      (decltype(&M_getMetadataFromBinary))dylib.getAddressOfSymbol(
+          "M_getMetadataFromBinary");
   auto checkExpectedContentsHandle =
       (decltype(&M_checkExpectedContents))dylib.getAddressOfSymbol(
           "M_checkExpectedContents");
-  auto openBEFFileHandle =
-      (decltype(&M_openBEFFile))dylib.getAddressOfSymbol("M_openBEFFile");
-  auto sniffBEFFileContentsHandle =
-      (decltype(&M_sniffBEFFileContents))dylib.getAddressOfSymbol(
-          "M_sniffBEFFileContents");
-  auto runBEFFileHandle =
-      (decltype(&M_runBEFFile))dylib.getAddressOfSymbol("M_runBEFFile");
+  auto openBinaryFileHandle =
+      (decltype(&M_openBinaryFile))dylib.getAddressOfSymbol("M_openBinaryFile");
+  auto sniffBinaryFileContentsHandle =
+      (decltype(&M_sniffBinaryFileContents))dylib.getAddressOfSymbol(
+          "M_sniffBinaryFileContents");
+  auto runBinaryFileHandle =
+      (decltype(&M_runBinaryFile))dylib.getAddressOfSymbol("M_runBinaryFile");
 
   // Start processing the input in stages.  The inspect command is first,
   // because it works on any input without transformation.
   if (options.command == DriverCommand::inspect) {
     std::unique_ptr<llvm::ToolOutputFile> outputFile = options.getOutputFile();
-    auto identityOr = getFileContentIdentity(*file, format, openBEFFileHandle,
-                                             sniffBEFFileContentsHandle);
+    auto identityOr = getFileContentIdentity(
+        *file, format, openBinaryFileHandle, sniffBinaryFileContentsHandle);
     if (identityOr.isError()) {
       options.reportError(identityOr.getError());
       return 1;
@@ -189,8 +191,8 @@ int main(int argc, char **argv) {
           options.command == DriverCommand::execute) &&
          "unknown command");
 
-  BEFFileHandle handle;
-  if (auto err = openBEFFileHandle(*file, &handle))
+  ModelBinaryHandle handle;
+  if (auto err = openBinaryFileHandle(*file, &handle))
     return options.reportError(err.getError());
 
   // Check to see if this file contains what we expected.  If not, throw an
@@ -209,5 +211,5 @@ int main(int argc, char **argv) {
 
   // Hand off the BEFFileHandle and the file buffer to the framework to actually
   // run the thing with all the various diagnostics.
-  return runBEFFileHandle(std::move(file), handle, options);
+  return runBinaryFileHandle(std::move(file), handle, options);
 }
