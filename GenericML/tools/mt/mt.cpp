@@ -12,6 +12,7 @@
 #include "llvm/Support/ToolOutputFile.h"
 
 #include "PlatformDylib.h.inc"
+#include "llvm/Support/InitLLVM.h"
 
 using namespace M;
 using llvm::MemoryBuffer;
@@ -116,6 +117,8 @@ loadDesiredLibrary(const llvm::MemoryBuffer &file, FileFormat inputFormat,
 }
 
 int main(int argc, char **argv) {
+  llvm::InitLLVM y(argc, argv);
+
   // Register all our command line options.
   DriverCLOptions options(argv[0]);
 
