@@ -17,13 +17,27 @@
 using namespace M;
 using llvm::MemoryBuffer;
 
+namespace {
+class GenericDriverCLOptions : public DriverCLOptions {
+public:
+  GenericDriverCLOptions(StringRef programName)
+      : DriverCLOptions(programName) {}
+
+  cl::list<std::string> unparsed{
+      llvm::cl::Sink,
+      cl::desc("Arguments to be passed directly to the framework."),
+  };
+};
+} // namespace
+
 static constexpr char tflLibraryName[] = SYSTEM_SHARED_LIBRARY("tfl");
 
-/// Get a string that describes the contents of the BEF file. Given that this
-/// driver cannot link the BEF libraries, we have to rely on the symbols
-/// provided by the framework.
+/// Get a string that describes the contents of the file. Given that this driver
+/// cannot link the BEF libraries, we have to rely on the symbols provided by
+/// the framework if the input is a BEF file.
 static ErrorOr<std::string>
 getFileContentIdentity(const llvm::MemoryBuffer &file, FileFormat format,
+                       FrameworkContextHandle ctxHandle,
                        decltype(M_openBinaryFile) openHandle,
                        decltype(M_sniffBinaryFileContents) sniffHandle) {
   switch (format) {
@@ -41,11 +55,11 @@ getFileContentIdentity(const llvm::MemoryBuffer &file, FileFormat format,
     return "input is Faux model in MLIR form";
   case FileFormat::kBEFFile: {
     ModelBinaryHandle handle;
-    if (auto err = openHandle(file, &handle))
+    if (auto err = openHandle(ctxHandle, file, &handle))
       return err.takeError();
 
     std::string out;
-    sniffHandle(handle, &out);
+    sniffHandle(ctxHandle, handle, &out);
     return out;
   }
   }
@@ -92,19 +106,26 @@ loadDesiredLibrary(const llvm::MemoryBuffer &file, FileFormat inputFormat,
     if (failed(tflDylibOr))
       return tflDylibOr.takeError();
     auto tflDylib = *tflDylibOr;
-    auto openBEFFileHandle =
+    auto initFrameworkContextHandle =
+        (decltype(&M_initFrameworkContext))tflDylib.getAddressOfSymbol(
+            "M_initFrameworkContext");
+    auto openBinaryFileHandle =
         (decltype(&M_openBinaryFile))tflDylib.getAddressOfSymbol(
             "M_openBinaryFile");
-    auto sniffBEFFileContentsHandle =
+    auto sniffBinaryFileContentsHandle =
         (decltype(&M_sniffBinaryFileContents))tflDylib.getAddressOfSymbol(
             "M_sniffBinaryFileContents");
 
+    FrameworkContextHandle frameworkCtx;
+    if (auto err = initFrameworkContextHandle(&frameworkCtx))
+      return err.takeError();
+
     ModelBinaryHandle handle;
-    if (auto err = openBEFFileHandle(file, &handle))
+    if (auto err = openBinaryFileHandle(frameworkCtx, file, &handle))
       return err.takeError();
 
     std::string contents;
-    sniffBEFFileContentsHandle(handle, &contents);
+    sniffBinaryFileContentsHandle(frameworkCtx, handle, &contents);
     if (StringRef(contents).contains_insensitive("tflite"))
       return tflDylib;
 
@@ -121,7 +142,7 @@ int main(int argc, char **argv) {
   llvm::InitLLVM y(argc, argv);
 
   // Register all our command line options.
-  DriverCLOptions options(argv[0]);
+  GenericDriverCLOptions options(argv[0]);
 
   llvm::cl::ParseCommandLineOptions(argc, argv, "Modular Tool (mt)\n");
 
@@ -136,10 +157,15 @@ int main(int argc, char **argv) {
   llvm::sys::DynamicLibrary dylib = *dylibOr;
 
   // Pull out the handles we want.
-  auto compileToBEFHandle =
+  auto initFrameworkContextHandle =
+      (decltype(&M_initFrameworkContext))dylib.getAddressOfSymbol(
+          "M_initFrameworkContext");
+  auto setOptionsHandle =
+      (decltype(&M_setOptions))dylib.getAddressOfSymbol("M_setOptions");
+  auto compileToBinaryHandle =
       (decltype(&M_compileToBinary))dylib.getAddressOfSymbol(
           "M_compileToBinary");
-  auto getMetadataFromBEFHandle =
+  auto getMetadataFromBinaryHandle =
       (decltype(&M_getMetadataFromBinary))dylib.getAddressOfSymbol(
           "M_getMetadataFromBinary");
   auto checkExpectedContentsHandle =
@@ -153,12 +179,22 @@ int main(int argc, char **argv) {
   auto runBinaryFileHandle =
       (decltype(&M_runBinaryFile))dylib.getAddressOfSymbol("M_runBinaryFile");
 
+  // Init the framework context.
+  FrameworkContextHandle frameworkCtx;
+  if (auto err = initFrameworkContextHandle(&frameworkCtx))
+    return options.reportError(err.getError());
+
+  // And hand it any unparsed options we may have.
+  if (auto err = setOptionsHandle(frameworkCtx, options.unparsed))
+    return options.reportError(err.getError());
+
   // Start processing the input in stages.  The inspect command is first,
   // because it works on any input without transformation.
   if (options.command == DriverCommand::inspect) {
     std::unique_ptr<llvm::ToolOutputFile> outputFile = options.getOutputFile();
-    auto identityOr = getFileContentIdentity(
-        *file, format, openBinaryFileHandle, sniffBinaryFileContentsHandle);
+    auto identityOr = getFileContentIdentity(*file, format, frameworkCtx,
+                                             openBinaryFileHandle,
+                                             sniffBinaryFileContentsHandle);
     if (identityOr.isError()) {
       options.reportError(identityOr.getError());
       return 1;
@@ -172,7 +208,7 @@ int main(int argc, char **argv) {
   // If we are not inspecting, we must need a compiled format.  If this is
   // already done then we're golden, otherwise compile now.
   if (format != FileFormat::kBEFFile)
-    if (failed(compileToBEFHandle(file, format, options)))
+    if (failed(compileToBinaryHandle(frameworkCtx, file, format, options)))
       return 1;
 
   // If we're stopping at compilation, emit the current BEF file to the
@@ -192,24 +228,24 @@ int main(int argc, char **argv) {
          "unknown command");
 
   ModelBinaryHandle handle;
-  if (auto err = openBinaryFileHandle(*file, &handle))
+  if (auto err = openBinaryFileHandle(frameworkCtx, *file, &handle))
     return options.reportError(err.getError());
 
   // Check to see if this file contains what we expected.  If not, throw an
   // error message.
-  if (auto err = checkExpectedContentsHandle(handle))
+  if (auto err = checkExpectedContentsHandle(frameworkCtx, handle))
     return options.reportError(err.getError());
 
   // If we're just getting information, then get the BEF information
   // and print it.
   if (options.command == DriverCommand::printMetadata ||
       options.command == DriverCommand::printConstantMetadata) {
-    if (auto err = getMetadataFromBEFHandle(handle, options))
+    if (auto err = getMetadataFromBinaryHandle(frameworkCtx, handle, options))
       return options.reportError(err.getError());
     return 0;
   }
 
   // Hand off the BEFFileHandle and the file buffer to the framework to actually
   // run the thing with all the various diagnostics.
-  return runBinaryFileHandle(std::move(file), handle, options);
+  return runBinaryFileHandle(frameworkCtx, std::move(file), handle, options);
 }
