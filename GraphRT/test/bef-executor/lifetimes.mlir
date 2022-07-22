@@ -1,5 +1,5 @@
 // RUN: bef-translate -export-bef -allow-unregistered-dialect %s > %t.bef
-// RUN: bef-executor %t.bef | FileCheck %s
+// RUN: bef-executor %t.bef --num-threads=1 | FileCheck %s
 
 // CHECK-LABEL: --- Running 'test_linear'
 grt.testcase @test_linear {
