@@ -185,7 +185,7 @@ int main(int argc, char **argv) {
     return options.reportError(err.getError());
 
   // And hand it any unparsed options we may have.
-  if (auto err = setOptionsHandle(frameworkCtx, options.unparsed))
+  if (auto err = setOptionsHandle(frameworkCtx, argv[0], options.unparsed))
     return options.reportError(err.getError());
 
   // Start processing the input in stages.  The inspect command is first,
