@@ -420,11 +420,12 @@ static void test_many_tasks(Result<int32_t> result, BEFAttr<int32_t> num,
     return result.setToError("zero not supported");
   std::atomic<int32_t> counter(*num);
 
+  // Compiler optimization barrier.
+  volatile auto numVal = *num;
+
   // Add 'num' tasks that just decrements the atomic, which then completes the
   // AV.  This is really horrible, never do something like this in your code.
   for (int32_t i = 0, e = *num; i != e; ++i) {
-    // Compiler optimization barrier.
-    volatile auto numVal = *num;
     addTask(runtime,
             // Capture a bunch of stuff so we exceed the inline size of lambdas.
             [&, a = int64_t(numVal + 1), b = int64_t(numVal * 2),
