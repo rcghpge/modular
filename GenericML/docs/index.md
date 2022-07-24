@@ -40,7 +40,7 @@ possible. Usage information is available in the [Model documentation](Model.md)
 and developer information is available in the [Model developer
 documentation](ModelDeveloperGuide.md).
 
-The `Model` tool is designed to be:
+The `model` tool is designed to be:
 
 * **User Friendly**: The model tool designed to be user-friendly and easy to
 use. The model tool will download the model for you, convert it, and plot the
