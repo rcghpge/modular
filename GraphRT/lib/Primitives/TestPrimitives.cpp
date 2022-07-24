@@ -433,12 +433,17 @@ static void test_many_tasks(Result<int32_t> result, BEFAttr<int32_t> num,
              t = &runtime + 2] {
               // Note: tasks shouldn't sleep or block!
               std::this_thread::sleep_for(std::chrono::milliseconds(1));
-              if (--counter == 0)
-                result.emplace(*num);
 
               // Make all the captures look used.
-              if (a < numVal || b < numVal || c < numVal)
-                printf("%p, %p, %p\n", r, s, t);
+              if (a < numVal || b < numVal || c < numVal) {
+                // Note: this should never print.  If it does, it means that
+                // the closure was corrupted.
+                printf("%p, %p, %p %d %d %d %d\n", r, s, t, (int)a, (int)b,
+                       (int)c, (int)numVal);
+              }
+
+              if (--counter == 0)
+                result.emplace(*num);
             });
   }
 
