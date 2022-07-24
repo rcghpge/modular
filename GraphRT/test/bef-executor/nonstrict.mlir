@@ -42,3 +42,21 @@ grt.testcase @many_waiters {
   // CHECK-NEXT: int32 = 42
   bef.output
 }
+
+// CHECK-LABEL: --- Running 'test_many_tasks'
+grt.testcase @test_many_tasks {
+  %ch0 = grt.chain.new
+
+  %v3 = "test.many.tasks"() { num = 3 : si32 } : () -> si32
+  %ch1 = grt.print.si32 %v3, %ch0
+  // CHECK-NEXT: int32 = 3
+  
+  %v129 = "test.many.tasks"() { num = 129 : si32 } : () -> si32
+  %ch2 = grt.print.si32 %v129, %ch1
+  // CHECK-NEXT: int32 = 129
+
+  %v1248 = "test.many.tasks"() { num = 1248 : si32 } : () -> si32
+  %ch3 = grt.print.si32 %v1248, %ch2
+  // CHECK-NEXT: int32 = 1248
+  bef.output
+}

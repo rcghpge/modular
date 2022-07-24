@@ -18,6 +18,7 @@
 
 #include <limits>
 #include <numeric>
+#include <thread>
 
 using namespace M;
 
@@ -409,6 +410,39 @@ static int32_t test_async_many_waiters(BEFAttr<int32_t> num, Runtime &runtime) {
     av.andThen([&]() { ++result; });
   av.emplace(42);
   return result;
+}
+
+/// This creates a programmatic # tasks as stress test.  This is not written
+/// in an idiomatic style, do not follow this pattern!
+static void test_many_tasks(Result<int32_t> result, BEFAttr<int32_t> num,
+                            Runtime &runtime) {
+  if (*num == 0)
+    return result.setToError("zero not supported");
+  std::atomic<int32_t> counter(*num);
+
+  // Add 'num' tasks that just decrements the atomic, which then completes the
+  // AV.  This is really horrible, never do something like this in your code.
+  for (int32_t i = 0, e = *num; i != e; ++i) {
+    // Compiler optimization barrier.
+    volatile auto numVal = *num;
+    addTask(runtime,
+            // Capture a bunch of stuff so we exceed the inline size of lambdas.
+            [&, a = int64_t(numVal + 1), b = int64_t(numVal * 2),
+             c = int64_t(numVal * 42), r = &runtime, s = &runtime + 1,
+             t = &runtime + 2] {
+              // Note: tasks shouldn't sleep or block!
+              std::this_thread::sleep_for(std::chrono::milliseconds(1));
+              if (--counter == 0)
+                result.emplace(*num);
+
+              // Make all the captures look used.
+              if (a < numVal || b < numVal || c < numVal)
+                printf("%p, %p, %p\n", r, s, t);
+            });
+  }
+
+  // Block for all the tasks to finish.  (bad!)
+  await(result.copy());
 }
 
 //===----------------------------------------------------------------------===//
@@ -831,4 +865,5 @@ void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "test.async.add.any", async_add_any);
   ADD_PRIMITIVE(registry, "test.async.error", async_error);
   ADD_PRIMITIVE(registry, "test.async.many.waiters", test_async_many_waiters);
+  ADD_PRIMITIVE(registry, "test.many.tasks", test_many_tasks);
 }
