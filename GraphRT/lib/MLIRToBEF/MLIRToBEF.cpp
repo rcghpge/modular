@@ -152,13 +152,19 @@ public:
   // nested emitters.  This helper emits the subpieces once they are
   // constructed, ensuring that alignment requirements of the nested emitter
   // are maintained correctly.
-  void emitEmitter(const BEFEmitter &emitter) {
+  void emitEmitter(BEFEmitter &emitter) {
     alignTo(emitter.getRequiredAlignment());
-    emitBytes(emitter.result);
+    std::vector<uint8_t> sectionData = std::move(emitter.result);
+    emitBytes(sectionData);
   }
 
-  void emitSection(BEF::SectionID sectionID, ArrayRef<uint8_t> sectionData,
-                   unsigned alignment = 1) {
+  /// Emit a section record with the contents of the specified other emitter as
+  /// the data within it.  This takes the contents of the emitter.
+  void emitSection(BEF::SectionID sectionID, BEFEmitter &emitter) {
+    // Take the data from the sub-emitter.
+    std::vector<uint8_t> sectionData = std::move(emitter.result);
+    unsigned alignment = emitter.getRequiredAlignment();
+
     // Section start with an identifier.
     emitByte(static_cast<uint8_t>(sectionID));
 
@@ -183,10 +189,6 @@ public:
 
     // Emit the payload data itself.
     emitBytes(sectionData);
-  }
-
-  void emitSection(BEF::SectionID sectionID, const BEFEmitter &emitter) {
-    emitSection(sectionID, emitter.result, emitter.getRequiredAlignment());
   }
 
   std::vector<uint8_t> takeResult() { return std::move(result); }
