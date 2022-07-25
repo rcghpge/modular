@@ -23,6 +23,17 @@ public:
   GenericDriverCLOptions(StringRef programName)
       : DriverCLOptions(programName) {}
 
+  //===--------------------------------------------------------------------===//
+  // Force loading a specific dylib
+  //===--------------------------------------------------------------------===//
+
+  cl::opt<std::string> loadLib{
+      "load", cl::desc("Load the specified framework directly."), cl::init("")};
+
+  //===--------------------------------------------------------------------===//
+  // Sink for all unparsed options.
+  //===--------------------------------------------------------------------===//
+
   cl::list<std::string> unparsed{
       llvm::cl::Sink,
       cl::desc("Arguments to be passed directly to the framework."),
@@ -180,6 +191,11 @@ int main(int argc, char **argv) {
 
   auto setOptionsHandle =
       (decltype(&M_setOptions))dylib.getAddressOfSymbol("M_setOptions");
+  // We might want to get the framework's help string.
+  if (options.command == DriverCommand::frameworkHelp)
+    if (auto err = setOptionsHandle(frameworkCtx, argv[0], {"-h"}))
+      return options.reportError(err.getError());
+
   // And hand it any unparsed options we may have.
   if (auto err = setOptionsHandle(frameworkCtx, argv[0], options.unparsed))
     return options.reportError(err.getError());

@@ -120,7 +120,8 @@ enum class DriverCommand {
                          // YAML format.
   compile,               // Compile the input into a BEF file for execution.
   execute,               // Execute the input file.
-  getVersion, // Print the version string from the framework and exit.
+  getVersion,    // Print the version string from the framework and exit.
+  frameworkHelp, // Print the framework's help string.
 };
 
 /// This class provides the basic driver command options. It essentially exposes
@@ -144,7 +145,9 @@ public:
           clEnumValN(DriverCommand::execute, "execute",
                      "Execute the input file"),
           clEnumValN(DriverCommand::getVersion, "get-version",
-                     "Get the version of the loaded framework.")),
+                     "Get the version of the loaded framework."),
+          clEnumValN(DriverCommand::frameworkHelp, "framework-help",
+                     "Get the framework help string.")),
       llvm::cl::Required};
 
   cl::opt<bool> saveTemps{
@@ -194,13 +197,6 @@ public:
   /// something manually on the command line, but otherwise autosensing an
   /// answer.
   FileFormat getInputFormat(StringRef fileContents) const;
-
-  //===--------------------------------------------------------------------===//
-  // Force loading a specific dylib
-  //===--------------------------------------------------------------------===//
-
-  cl::opt<std::string> loadLib{
-      "load", cl::desc("Load the specified framework directly."), cl::init("")};
 
   //===--------------------------------------------------------------------===//
   // Emission Options
