@@ -120,6 +120,7 @@ enum class DriverCommand {
                          // YAML format.
   compile,               // Compile the input into a BEF file for execution.
   execute,               // Execute the input file.
+  getVersion, // Print the version string from the framework and exit.
 };
 
 /// This class provides the basic driver command options. It essentially exposes
@@ -141,7 +142,9 @@ public:
           clEnumValN(DriverCommand::compile, "compile",
                      "Compile the input into a BEF file for execution"),
           clEnumValN(DriverCommand::execute, "execute",
-                     "Execute the input file")),
+                     "Execute the input file"),
+          clEnumValN(DriverCommand::getVersion, "get-version",
+                     "Get the version of the loaded framework.")),
       llvm::cl::Required};
 
   cl::opt<bool> saveTemps{

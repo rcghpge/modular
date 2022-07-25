@@ -8,11 +8,11 @@
 #include "GenericML/Driver/DriverCLOptions.h"
 #include "GenericML/Support/ModelCollection.h"
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
-#include "llvm/Support/DynamicLibrary.h"
-#include "llvm/Support/ToolOutputFile.h"
-
 #include "PlatformDylib.h.inc"
+#include "Support/VCSRevision.h"
+#include "llvm/Support/DynamicLibrary.h"
 #include "llvm/Support/InitLLVM.h"
+#include "llvm/Support/ToolOutputFile.h"
 
 using namespace M;
 using llvm::MemoryBuffer;
@@ -157,11 +157,34 @@ int main(int argc, char **argv) {
   llvm::sys::DynamicLibrary dylib = *dylibOr;
 
   // Pull out the handles we want.
+  auto getVersionHandle =
+      (decltype(&M_getVersionString))dylib.getAddressOfSymbol(
+          "M_getVersionString");
+  // If the driver command is just `-get-version` then print the version and
+  // exit right away. No need to do anything else.
+  if (options.command == DriverCommand::getVersion) {
+    std::string versionStr;
+    getVersionHandle(&versionStr);
+    llvm::outs() << "mt: " << MODULAR_VCS_VERSION
+                 << "\nFramework: " << versionStr << "\n";
+    return 0;
+  }
+
   auto initFrameworkContextHandle =
       (decltype(&M_initFrameworkContext))dylib.getAddressOfSymbol(
           "M_initFrameworkContext");
+  // Init the framework context.
+  FrameworkContextHandle frameworkCtx;
+  if (auto err = initFrameworkContextHandle(&frameworkCtx))
+    return options.reportError(err.getError());
+
   auto setOptionsHandle =
       (decltype(&M_setOptions))dylib.getAddressOfSymbol("M_setOptions");
+  // And hand it any unparsed options we may have.
+  if (auto err = setOptionsHandle(frameworkCtx, argv[0], options.unparsed))
+    return options.reportError(err.getError());
+
+  // Grab the rest of the handles, everything else we will likely need to load.
   auto compileToBinaryHandle =
       (decltype(&M_compileToBinary))dylib.getAddressOfSymbol(
           "M_compileToBinary");
@@ -178,15 +201,6 @@ int main(int argc, char **argv) {
           "M_sniffBinaryFileContents");
   auto runBinaryFileHandle =
       (decltype(&M_runBinaryFile))dylib.getAddressOfSymbol("M_runBinaryFile");
-
-  // Init the framework context.
-  FrameworkContextHandle frameworkCtx;
-  if (auto err = initFrameworkContextHandle(&frameworkCtx))
-    return options.reportError(err.getError());
-
-  // And hand it any unparsed options we may have.
-  if (auto err = setOptionsHandle(frameworkCtx, argv[0], options.unparsed))
-    return options.reportError(err.getError());
 
   // Start processing the input in stages.  The inspect command is first,
   // because it works on any input without transformation.
