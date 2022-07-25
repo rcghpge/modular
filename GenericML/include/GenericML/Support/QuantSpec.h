@@ -13,10 +13,9 @@
 #define GENERICML_SUPPORT_QUANTSPEC_H
 
 #include "GenericML/Support/TensorSpec.h"
+#include "Support/ForwardDecls.h"
 
 namespace M {
-template <typename T>
-class ErrorOr;
 class BEFType;
 
 /// This class is a framework-independent abstraction for quantization info for

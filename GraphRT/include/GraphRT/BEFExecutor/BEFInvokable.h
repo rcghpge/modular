@@ -9,6 +9,7 @@
 
 #include "LLCL/ForwardDecls.h"
 #include "Support/ErrorOr.h"
+#include "Support/ForwardDecls.h"
 #include "Support/FunctionExtras.h"
 #include "Support/LLVMForwardDecls.h"
 #include "llvm/ADT/STLExtras.h"
@@ -17,7 +18,6 @@
 #include <functional>
 
 namespace M {
-class ErrorOrSuccess;
 class PrimitiveDescriptor;
 
 /// This exposes an abstract interface that describes an "invokable", which is a
