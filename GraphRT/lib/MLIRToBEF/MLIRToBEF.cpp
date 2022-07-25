@@ -19,6 +19,7 @@
 #include "GraphRT/BEF/BEFEncoding.h"
 #include "GraphRT/BEFDialect/BEFNonStrict.h"
 #include "GraphRT/BEFDialect/BEFOps.h"
+#include "Support/ConcatenationTree.h"
 #include "Support/ErrorOr.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -42,12 +43,18 @@ struct RegionSignature {
 //===----------------------------------------------------------------------===//
 
 namespace {
-// This is the emitter that builds a BEF into an std::vector.  This class
-// contains low-level routines used by the various specific emitters.  In
-// addition to collecting the bytes contained in this piece of the BEF file,
-// this tracks the alignment requirement of the contents.  If this is a
-// subsection of the file, then the enclosing container is required to provide
-// at least this alignment.
+/// This is the emitter that builds BEF-encoded data into an std::vector.  This
+/// class contains low-level routines used by the various specific emitters.  In
+/// addition to collecting the bytes contained in this piece of the BEF file,
+/// this tracks the alignment requirement of the contents.  If this is a
+/// subsection of the file, then the enclosing container is required to provide
+/// at least this alignment.
+///
+/// This class works by appending into two different collections, the
+/// `dataResult` vector is where individually emitted bytes get added, the
+/// ultimate result is in a ConcatenationTree that is maintained as well.
+/// Certain built emission operations (like including a subsection) emits the
+/// current `dataResult` as node in the concatenation tree before moving on.
 class BEFEmitter {
 public:
   BEFEmitter() = default;
@@ -58,18 +65,24 @@ public:
   unsigned getRequiredAlignment() const { return requiredAlignment; }
 
   /// Return the current position as a BEFOffset.
-  BEFOffset getOffset() const { return BEFOffset{result.size()}; }
+  BEFOffset getOffset() const {
+    return BEFOffset{treeResult.getSize() + dataResult.size()};
+  }
 
   /// Return a raw pointer into the result buffer for the specified offset.
   uint8_t *getRawPointer(BEFOffset offset) {
-    assert(offset.value <= result.size() && "invalid offset");
-    return result.data() + offset.value;
+    // Cannot offset into tree data.
+    auto treeSize = treeResult.getSize();
+    assert(offset.value >= treeSize && "cannot get offsets into tree data");
+    auto dataOffset = offset.value - treeSize;
+    assert(dataOffset <= dataResult.size() && "invalid offset");
+    return dataResult.data() + dataOffset;
   }
 
-  void emitByte(uint8_t byte) { result.push_back(byte); }
+  void emitByte(uint8_t byte) { dataResult.push_back(byte); }
 
   void emitBytes(ArrayRef<uint8_t> bytes) {
-    result.insert(result.end(), bytes.begin(), bytes.end());
+    dataResult.insert(dataResult.end(), bytes.begin(), bytes.end());
   }
 
   void emitStringData(StringRef str) {
@@ -95,7 +108,7 @@ public:
     // We need attributes to have proper alignment in the file, so figure out
     // whether we need padding before this to make sure it ends up at the right
     // address.
-    size_t curOffset = result.size();
+    size_t curOffset = getOffset().value;
     size_t neededPadding = llvm::alignTo(curOffset, alignment) - curOffset;
 
     // Emit dummy padding bytes to get up to the right offset.
@@ -150,19 +163,21 @@ public:
   // Many parts of the emitter logic includes forward references into stuff
   // that hasn't been emitted and has variable size.  This is handled by making
   // nested emitters.  This helper emits the subpieces once they are
-  // constructed, ensuring that alignment requirements of the nested emitter
-  // are maintained correctly.
+  // constructed, ensuring that alignment requirements of the nested emitter are
+  // maintained correctly.
   void emitEmitter(BEFEmitter &emitter) {
     alignTo(emitter.getRequiredAlignment());
-    std::vector<uint8_t> sectionData = std::move(emitter.result);
-    emitBytes(sectionData);
+
+    // Append the sub-emitter's contents to our contents.
+    treeResult =
+        ConcatenationTree::concat(takeContents(), emitter.takeContents());
   }
 
   /// Emit a section record with the contents of the specified other emitter as
   /// the data within it.  This takes the contents of the emitter.
   void emitSection(BEF::SectionID sectionID, BEFEmitter &emitter) {
     // Take the data from the sub-emitter.
-    std::vector<uint8_t> sectionData = std::move(emitter.result);
+    ConcatenationTree sectionData = emitter.takeContents();
     unsigned alignment = emitter.getRequiredAlignment();
 
     // Section start with an identifier.
@@ -170,16 +185,16 @@ public:
 
     // Emit a length.  The low bit indicates whether alignment padding is
     // present.  We fill it in later.
-    emitVBR(sectionData.size() << 1);
-    size_t needsAlignmentPaddingOffset = result.size() - 1;
+    emitVBR(sectionData.getSize() << 1);
+    BEFOffset needsAlignmentPaddingOffset{getOffset().value - 1};
 
     // If the section body requires alignment padding, then we need to emit
     // the alignment and the padding bytes.
     if (alignment > 1) {
-      if (result.size() & (alignment - 1)) {
+      if (getOffset().value & (alignment - 1)) {
         emitByte(alignment);
         alignTo(alignment);
-        result[needsAlignmentPaddingOffset] |= 1;
+        *getRawPointer(needsAlignmentPaddingOffset) |= 1;
       } else {
         // Otherwise, if we happen to be at a compatible offset, we just
         // remember that we need this alignment.
@@ -187,17 +202,30 @@ public:
       }
     }
 
-    // Emit the payload data itself.
-    emitBytes(sectionData);
+    // Concatenate the payload data onto ourselves.
+    treeResult =
+        ConcatenationTree::concat(takeContents(), std::move(sectionData));
   }
 
-  std::vector<uint8_t> takeResult() { return std::move(result); }
+  // Take any contents we built up and return it as a single ConcatenationTree.
+  ConcatenationTree takeContents() {
+    auto result = ConcatenationTree::concat(
+        std::move(treeResult),
+        ConcatenationTree::takeVector(std::move(dataResult)));
+    dataResult.clear();
+    return result;
+  }
 
 private:
   void emitVBRImpl(size_t value, bool isHighPart);
   // Keep track of the alignment required for the start of this object.
   unsigned requiredAlignment = 1;
-  std::vector<uint8_t> result;
+
+  // These are the results that we are building up as we go.  At any point in
+  // time, any data in 'treeResult' is assumed to preceed any data in
+  // 'dataResult'.
+  ConcatenationTree treeResult;
+  std::vector<uint8_t> dataResult;
 };
 
 } // namespace
@@ -1533,8 +1561,8 @@ void BEFModuleEmitter::emitInvokableIndex() {
 ///
 /// On error, this emits the error message through the MLIR error handler,
 /// and returns an empty vector.
-std::vector<uint8_t> M::translateMLIRToBEF(ModuleOp module,
-                                           bool enableBEFMetadata) {
+ConcatenationTree M::translateMLIRToBEF(ModuleOp module,
+                                        bool enableBEFMetadata) {
   BEFModuleEmitter emitter(module);
 
   // Build the entities table.
@@ -1592,5 +1620,5 @@ std::vector<uint8_t> M::translateMLIRToBEF(ModuleOp module,
   if (emitter.hadError())
     return {};
 
-  return emitter.takeResult();
+  return emitter.takeContents();
 }

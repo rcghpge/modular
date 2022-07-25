@@ -12,6 +12,7 @@
 #include "mlir/Tools/mlir-translate/Translation.h"
 #include "GraphRT/BEFDialect/BEFDialect.h"
 #include "GraphRT/MLIRToBEF.h"
+#include "Support/ConcatenationTree.h"
 #include "mlir/IR/BuiltinOps.h"
 using namespace M;
 
@@ -25,9 +26,12 @@ void M::registerMLIRToBEFTranslation(DialectRegistry &otherDialects) {
       "export-bef",
       [](ModuleOp module, llvm::raw_ostream &os) -> LogicalResult {
         auto data = translateMLIRToBEF(module, enableBEFMetadata);
-        if (data.empty())
+        if (data.getSize() == 0)
           return failure();
-        os.write(reinterpret_cast<const char *>(data.data()), data.size());
+        // write all the returned data out to a stream.
+        data.traverse([&](ArrayRef<uint8_t> data) {
+          os.write(reinterpret_cast<const char *>(data.data()), data.size());
+        });
         return success();
       },
       [&](DialectRegistry &registry) {

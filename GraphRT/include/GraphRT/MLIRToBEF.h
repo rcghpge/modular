@@ -18,6 +18,7 @@ class DialectRegistry;
 } // end namespace mlir
 
 namespace M {
+class ConcatenationTree;
 
 /// This function converts the specified MLIR module containing a executor
 /// compatible program to the BinaryExecutableFormat (BEF) format, which is the
@@ -27,8 +28,8 @@ namespace M {
 ///
 /// On error, this emits the error message through the MLIR error handler, and
 /// returns an empty BEFBuffer.
-std::vector<uint8_t> translateMLIRToBEF(ModuleOp module,
-                                        bool enableBEFMetadata = false);
+ConcatenationTree translateMLIRToBEF(ModuleOp module,
+                                     bool enableBEFMetadata = false);
 
 // Register this translation for GraphRTTranslate.
 void registerMLIRToBEFTranslation(DialectRegistry &otherDialects);
