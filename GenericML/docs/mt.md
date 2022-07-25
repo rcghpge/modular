@@ -1,0 +1,61 @@
+# `mt` <u>m</u>odular <u>t</u>ool
+
+`mt` is meant to be a driver for functionally *any* framework that we want to
+use. It uses an API defined in [DriverAPI.h](../include/GenericML/Driver/DriverAPI.h)
+to call into frameworks built as dynamic libraries and provide the basic commands
+we expect from a driver like `-execute`, `-inspect`, etc.
+
+The tool is designed with extensibility at the forefront - anyone who defines
+the correct API can export a dynamic library that `mt` can load and take
+advantage of the tooling it provides.
+
+## How does `mt` work?
+The first step of `mt` is to sniff the format of the input file. Depending on
+what is inside the file, `mt` will choose a framework to load or stop with an 
+error if the correct framework cannot be determined. The user can also specify
+a framework manually with the `--load` command, this will stop `mt` from trying
+to sense the input format and will force it to use the provided framework. If
+the input file is not in the expected format for the loaded framework, `mt`
+will provide an error message and exit.
+
+> NOTE: The way that stock-* frameworks are supported is by specifying the 
+> `--load=<prefix>stock-<framework>-plugin.<suffix>` flag. Otherwise, the file
+> would be auto-sensed and the modular version of the framework would be 
+> loaded.
+
+The next step is to perform any prerequisites to the command specified. For
+example, if the input file is a TFLite flatbuffer file and the command was
+`-execute`, `mt` will load the `tfl` framework and ask it to compile the input
+into a BEF file, then ask the framework to execute the resulting BEF file.
+
+The tool has a set of command line options that it recognizes and parses into 
+a C++ structure. These are the set of options that can be found in 
+[DriverCLOptions.h](../include/GenericML/Driver/DriverCLOptions.h). These 
+options are passed into the loaded framework. For example:
+```shell
+$  mt --execute .derived/models/tflite/MobileBert-float-384-20200602.tflite \ 
+      --load=libstock-tflite-plugin.dylib \
+      --model-specification=Models/TFLite/MobileBert-float-384-20200602.yaml \
+      --delegate=xnnpack
+```
+`mt` clearly doesn't know anything about the `--delegate` flag, as it only has
+meaning for the `stock-tflite-plugin` framework. This exact pattern should be
+used for all framework-specific flags.
+
+### Consequences
+The main consequence of this design (i.e. loading dynamic libraries at runtime)
+is that you now have to have at least the dynamic libraries you care about along
+with the `mt` binary itself. The table below contains the binaries for each
+framework, along with their CMake target to simplify building the target.
+
+> NOTE: The dynamic library prefixes/suffixes have been normalized to the Linux
+> standard for simplicity - please insert your platform's dynamic library 
+> prefix/suffix where appropriate.
+
+| CMake target | Binary | Framework |
+|--------------|--------|-----------|
+| `tfl` | `libtfl.so` | Modular TFLite |
+| `stock-tflite-plugin | `libstock-tflite-plugin.so` | Stock TFLite |
+
+## Graph Verification Tooling
+WIP
