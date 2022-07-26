@@ -57,5 +57,26 @@ framework, along with their CMake target to simplify building the target.
 | `tfl` | `libtfl.so` | Modular TFLite |
 | `stock-tflite-plugin | `libstock-tflite-plugin.so` | Stock TFLite |
 
+## Scenarios
+`mt` supports running what's called a 'scenario'. This means a group of flags 
+that will be passed to the loaded framework before a call to `M_runBinaryFile`.
+This enables the user to do things like:
+```shell
+mt -execute --scenario="--num-threads=2" --scenario="--num-threads=4" /path/to/file.tflite
+```
+This command would compile the file once, then execute it twice with the two 
+different scenarios, in this case, LLCL would receive a 2-thread threadpool
+and then a 4-thread threadpool.
+
+Another thing you might want is the ability to continue in case of failure.
+This can be useful when you're not worried about the first error, for example.
+In that case, you can do something like:
+```shell
+mt -execute --scenario="nofail:--flaky-option=true" --scenario="--flaky-option=off" /path/to/file.tflite
+```
+This command would ignore an error in the first scenario, but would not ignore
+any error in the second. If `nofail:` is provided in the last scenario, the
+return code of the tool will be EXIT_SUCCESS (0).
+
 ## Graph Verification Tooling
 WIP

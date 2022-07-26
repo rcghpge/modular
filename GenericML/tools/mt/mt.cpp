@@ -18,6 +18,37 @@ using namespace M;
 using llvm::MemoryBuffer;
 
 namespace {
+/// This struct provides the backing data store behind a "scenario". It
+/// describes a command-line flag that takes one of 2 forms.
+///
+/// --scenario="--num-threads=3 --unchain=true"
+/// OR
+/// --scenario="nofail:--num-threads=3 --unchain=true"
+///
+/// The first option indicates that `mt` should abort on failure of the
+/// scenario, while the second indicates that `mt` should continue even if the
+/// scenario fails.
+struct Scenario {
+  bool abortOnFailure = true;
+  SmallVector<std::string> flags = {};
+};
+
+class ScenarioParser : public llvm::cl::parser<Scenario> {
+public:
+  using llvm::cl::parser<Scenario>::parser;
+
+  bool parse(llvm::cl::Option &O, StringRef ArgName, StringRef ArgValue,
+             Scenario &Val) {
+    if (ArgValue.consume_front("nofail:"))
+      Val.abortOnFailure = false;
+
+    // The flags are what remains.
+    llvm::transform(llvm::split(ArgValue, ' '), std::back_inserter(Val.flags),
+                    [](StringRef s) { return s.str(); });
+    return false;
+  }
+};
+
 class GenericDriverCLOptions : public DriverCommandOptions,
                                public DriverInputFormatOptions,
                                public CommonCLOptions {
@@ -31,6 +62,17 @@ public:
 
   cl::opt<std::string> loadLib{
       "load", cl::desc("Load the specified framework directly."), cl::init("")};
+
+  //===--------------------------------------------------------------------===//
+  // Specify a 'scenario' to run.
+  //===--------------------------------------------------------------------===//
+
+  cl::list<Scenario, bool, ScenarioParser> scenarios{
+      "scenario",
+      cl::desc("List of scenarios to run. Only has meaning with the -execute "
+               "command. Each scenario's strings are passed directly to the "
+               "loaded framework."),
+  };
 
   //===--------------------------------------------------------------------===//
   // Sink for all unparsed options.
@@ -336,5 +378,31 @@ int main(int argc, char **argv) {
 
   // Hand off the BEFFileHandle and the file buffer to the framework to actually
   // run the thing with all the various diagnostics.
-  return runBinaryFileHandle(frameworkCtx, std::move(file), handle);
+  if (options.scenarios.empty())
+    return runBinaryFileHandle(frameworkCtx, std::move(file), handle);
+
+  // We'll just use the final scenario's return code as the executable's return
+  // code.
+  int rc = EXIT_SUCCESS;
+  for (const Scenario &scenario : options.scenarios) {
+    printf("--- (mt) Running scenario: '%s", scenario.flags.front().c_str());
+    for (StringRef f : llvm::drop_begin(scenario.flags))
+      printf(" %s", f.data());
+    printf("' - %s \n", scenario.abortOnFailure ? "Aborting on failure."
+                                                : "Not aborting on failure.");
+    fflush(stdout);
+
+    auto fileCopy = MemoryBuffer::getMemBufferCopy(file->getBuffer());
+
+    if (auto err = setOptionsHandle(frameworkCtx, argv[0], scenario.flags))
+      return options.reportError(err.getError());
+
+    rc = runBinaryFileHandle(frameworkCtx, std::move(fileCopy), handle);
+    if (rc != EXIT_SUCCESS && scenario.abortOnFailure)
+      return rc;
+    else if (!scenario.abortOnFailure)
+      rc = EXIT_SUCCESS; // Reset `rc` for suppressed failures.
+  }
+
+  return rc;
 }
