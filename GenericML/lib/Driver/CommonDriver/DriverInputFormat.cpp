@@ -47,3 +47,10 @@ FileFormat M::sniffInputFormat(StringRef fileContents) {
   }
   return FileFormat::kUnknown;
 }
+
+FileFormat
+DriverInputFormatOptions::getInputFormat(StringRef fileContents) const {
+  if (inputFormat != FileFormat::kUnknown)
+    return inputFormat;
+  return sniffInputFormat(fileContents);
+}

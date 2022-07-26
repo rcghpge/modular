@@ -18,10 +18,12 @@ using namespace M;
 using llvm::MemoryBuffer;
 
 namespace {
-class GenericDriverCLOptions : public DriverCLOptions {
+class GenericDriverCLOptions : public DriverCommandOptions,
+                               public DriverInputFormatOptions,
+                               public CommonCLOptions {
 public:
   GenericDriverCLOptions(StringRef programName)
-      : DriverCLOptions(programName) {}
+      : CommonCLOptions(programName) {}
 
   //===--------------------------------------------------------------------===//
   // Force loading a specific dylib
@@ -33,6 +35,9 @@ public:
   //===--------------------------------------------------------------------===//
   // Sink for all unparsed options.
   //===--------------------------------------------------------------------===//
+
+  cl::list<std::string> forceUnparsed{
+      "X", cl::desc("Arguments to be passed to the framework.")};
 
   cl::list<std::string> unparsed{
       llvm::cl::Sink,
@@ -75,6 +80,23 @@ getFileContentIdentity(const llvm::MemoryBuffer &file, FileFormat format,
   }
   }
 }
+
+namespace {
+/// This class provides a managed FrameworkContextHandle that we can use in `mt`
+/// to automatically free the given framework handle.
+class ManagedFrameworkHandle {
+public:
+  ManagedFrameworkHandle(decltype(&M_freeFrameworkContext) deleter)
+      : deleter(deleter) {}
+  ~ManagedFrameworkHandle() { deleter(handle); }
+
+  FrameworkContextHandle *operator&() { return &handle; }
+  operator FrameworkContextHandle() { return handle; }
+
+  decltype(&M_freeFrameworkContext) deleter;
+  FrameworkContextHandle handle;
+};
+} // namespace
 
 static ErrorOr<llvm::sys::DynamicLibrary>
 loadDesiredLibrary(const llvm::MemoryBuffer &file, FileFormat inputFormat,
@@ -120,6 +142,9 @@ loadDesiredLibrary(const llvm::MemoryBuffer &file, FileFormat inputFormat,
     auto initFrameworkContextHandle =
         (decltype(&M_initFrameworkContext))tflDylib.getAddressOfSymbol(
             "M_initFrameworkContext");
+    auto freeFrameworkContextHandle =
+        (decltype(&M_freeFrameworkContext))tflDylib.getAddressOfSymbol(
+            "M_freeFrameworkContext");
     auto openBinaryFileHandle =
         (decltype(&M_openBinaryFile))tflDylib.getAddressOfSymbol(
             "M_openBinaryFile");
@@ -127,7 +152,7 @@ loadDesiredLibrary(const llvm::MemoryBuffer &file, FileFormat inputFormat,
         (decltype(&M_sniffBinaryFileContents))tflDylib.getAddressOfSymbol(
             "M_sniffBinaryFileContents");
 
-    FrameworkContextHandle frameworkCtx;
+    ManagedFrameworkHandle frameworkCtx(freeFrameworkContextHandle);
     if (auto err = initFrameworkContextHandle(&frameworkCtx))
       return err.takeError();
 
@@ -181,20 +206,30 @@ int main(int argc, char **argv) {
     return 0;
   }
 
+  // Pull out the init/free functions for the framework context.
   auto initFrameworkContextHandle =
       (decltype(&M_initFrameworkContext))dylib.getAddressOfSymbol(
           "M_initFrameworkContext");
+  auto freeFrameworkContextHandle =
+      (decltype(&M_freeFrameworkContext))dylib.getAddressOfSymbol(
+          "M_freeFrameworkContext");
+
   // Init the framework context.
-  FrameworkContextHandle frameworkCtx;
+  ManagedFrameworkHandle frameworkCtx(freeFrameworkContextHandle);
   if (auto err = initFrameworkContextHandle(&frameworkCtx))
     return options.reportError(err.getError());
 
+  // Pull out the setOptions handle so we can feed in any options we need to.
   auto setOptionsHandle =
       (decltype(&M_setOptions))dylib.getAddressOfSymbol("M_setOptions");
   // We might want to get the framework's help string.
   if (options.command == DriverCommand::frameworkHelp)
     if (auto err = setOptionsHandle(frameworkCtx, argv[0], {"-h"}))
       return options.reportError(err.getError());
+
+  // Hand over any explicitly designated unparsed options.
+  if (auto err = setOptionsHandle(frameworkCtx, argv[0], options.forceUnparsed))
+    return options.reportError(err.getError());
 
   // And hand it any unparsed options we may have.
   if (auto err = setOptionsHandle(frameworkCtx, argv[0], options.unparsed))
@@ -221,7 +256,8 @@ int main(int argc, char **argv) {
   // Start processing the input in stages.  The inspect command is first,
   // because it works on any input without transformation.
   if (options.command == DriverCommand::inspect) {
-    std::unique_ptr<llvm::ToolOutputFile> outputFile = options.getOutputFile();
+    std::unique_ptr<llvm::ToolOutputFile> outputFile =
+        options.getOutputFile(options.commandHasBinaryOutput());
     auto identityOr = getFileContentIdentity(*file, format, frameworkCtx,
                                              openBinaryFileHandle,
                                              sniffBinaryFileContentsHandle);
@@ -238,13 +274,13 @@ int main(int argc, char **argv) {
   // If we are not inspecting, we must need a compiled format.  If this is
   // already done then we're golden, otherwise compile now.
   if (format != FileFormat::kBEFFile)
-    if (failed(compileToBinaryHandle(frameworkCtx, file, format, options)))
+    if (failed(compileToBinaryHandle(frameworkCtx, file, format)))
       return 1;
 
   // If we're stopping at compilation, emit the current BEF file to the
   // output.
   if (options.command == DriverCommand::compile) {
-    auto outputFile = options.getOutputFile();
+    auto outputFile = options.getOutputFile(options.commandHasBinaryOutput());
     outputFile->os().write(file->getBufferStart(), file->getBufferSize());
     outputFile->keep();
     return 0;
@@ -266,16 +302,17 @@ int main(int argc, char **argv) {
   if (auto err = checkExpectedContentsHandle(frameworkCtx, handle))
     return options.reportError(err.getError());
 
-  // If we're just getting information, then get the BEF information
-  // and print it.
+  // If we're just getting information, then get and print it.
   if (options.command == DriverCommand::printMetadata ||
       options.command == DriverCommand::printConstantMetadata) {
-    if (auto err = getMetadataFromBinaryHandle(frameworkCtx, handle, options))
+    if (auto err = getMetadataFromBinaryHandle(frameworkCtx, handle,
+                                               *options.getOutputFile(false),
+                                               (int)options.command.getValue()))
       return options.reportError(err.getError());
     return 0;
   }
 
   // Hand off the BEFFileHandle and the file buffer to the framework to actually
   // run the thing with all the various diagnostics.
-  return runBinaryFileHandle(frameworkCtx, std::move(file), handle, options);
+  return runBinaryFileHandle(frameworkCtx, std::move(file), handle);
 }

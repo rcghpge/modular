@@ -150,6 +150,24 @@ public:
                      "Get the framework help string.")),
       llvm::cl::Required};
 
+  /// Return true if the selected output format is binary and shouldn't be
+  /// dumped to the console.
+  bool commandHasBinaryOutput() const {
+    return command == DriverCommand::compile;
+  }
+};
+
+/// This class provides essentially all the command-line options available to
+/// the driver. It amalgamates the commands from DriverCommandOptions and
+/// ExecutorDriverCLOptions, and provides input format and output file
+/// specification. It also provides utility methods for opening an
+/// output/intermediate file with a given filename.
+class DriverCLOptions : public DriverInputFormatOptions,
+                        public ExecutorDriverCLOptions {
+public:
+  DriverCLOptions(StringRef programName)
+      : ExecutorDriverCLOptions(programName) {}
+
   cl::opt<bool> saveTemps{
       "save-temps",
       cl::desc(
@@ -165,49 +183,6 @@ public:
           "The directory in which to store 'temporary' intermediate files. No "
           "files will be saved here unless `-save-temps` is also specified."),
       llvm::cl::Optional};
-
-  /// Return true if the selected output format is binary and shouldn't be
-  /// dumped to the console.
-  bool commandHasBinaryOutput() const {
-    return command == DriverCommand::compile;
-  }
-};
-
-/// This class provides essentially all the command-line options available to
-/// the driver. It amalgamates the commands from DriverCommandOptions and
-/// ExecutorDriverCLOptions, and provides input format and output file
-/// specification. It also provides utility methods for opening an
-/// output/intermediate file with a given filename.
-class DriverCLOptions : public DriverCommandOptions,
-                        public ExecutorDriverCLOptions {
-public:
-  DriverCLOptions(StringRef programName)
-      : ExecutorDriverCLOptions(programName) {}
-  /// Allow the user to override the input file format.  The default is to
-  /// autosense what the input is.
-  cl::opt<FileFormat> inputFormat{
-      "input-format", cl::desc("input file format override"),
-      cl::values(clEnumValN(FileFormat::kTFLFlatBuffer, "tflite-flat-buffer",
-                            "Input is a TFLite flatbuffer file"),
-                 clEnumValN(FileFormat::kBEFFile, "bef",
-                            "Input is an executable BEF file")),
-      cl::init(FileFormat::kUnknown)};
-
-  /// Return the input format the user specified, allowing them to specify
-  /// something manually on the command line, but otherwise autosensing an
-  /// answer.
-  FileFormat getInputFormat(StringRef fileContents) const;
-
-  //===--------------------------------------------------------------------===//
-  // Emission Options
-  //===--------------------------------------------------------------------===//
-
-  cl::opt<std::string> outputFilename{"o", cl::desc("Output filename"),
-                                      cl::value_desc("filename"),
-                                      cl::init("-")};
-
-  /// Determine an output file name and open it.
-  std::unique_ptr<llvm::ToolOutputFile> getOutputFile() const;
 
   /// Determine an intermediate file with extension `ext` and open it.
   std::unique_ptr<llvm::ToolOutputFile>

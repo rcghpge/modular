@@ -7,6 +7,7 @@
 #ifndef GENERICML_DRIVER_DRIVERINPUTFORMAT_H
 #define GENERICML_DRIVER_DRIVERINPUTFORMAT_H
 
+#include "Support/CommandLine.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"
 
@@ -40,6 +41,24 @@ enum class FileFormat {
 /// Use heuristics to determine what kind of file the input file contents
 /// represent.
 FileFormat sniffInputFormat(StringRef fileContents);
+
+class DriverInputFormatOptions {
+public:
+  /// Allow the user to override the input file format.  The default is to
+  /// autosense what the input is.
+  cl::opt<FileFormat> inputFormat{
+      "input-format", cl::desc("input file format override"),
+      cl::values(clEnumValN(FileFormat::kTFLFlatBuffer, "tflite-flat-buffer",
+                            "Input is a TFLite flatbuffer file"),
+                 clEnumValN(FileFormat::kBEFFile, "bef",
+                            "Input is an executable BEF file")),
+      cl::init(FileFormat::kUnknown)};
+
+  /// Return the input format the user specified, allowing them to specify
+  /// something manually on the command line, but otherwise autosensing an
+  /// answer.
+  FileFormat getInputFormat(StringRef fileContents) const;
+};
 } // namespace M
 
 #endif // GENERICML_DRIVER_DRIVERINPUTFORMAT_H
