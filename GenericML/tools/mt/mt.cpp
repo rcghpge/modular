@@ -44,6 +44,36 @@ public:
       cl::desc("Arguments to be passed directly to the framework."),
   };
 };
+
+/// This class provides a managed FrameworkContextHandle that we can use in `mt`
+/// to automatically free the given framework handle.
+class ManagedFrameworkHandle {
+public:
+  ManagedFrameworkHandle(decltype(&M_freeFrameworkContext) deleter)
+      : deleter(deleter) {}
+  ~ManagedFrameworkHandle() { deleter(handle); }
+
+  FrameworkContextHandle *operator&() { return &handle; }
+  operator FrameworkContextHandle() { return handle; }
+
+  decltype(&M_freeFrameworkContext) deleter;
+  FrameworkContextHandle handle;
+};
+
+/// This class provides a managed ModelBinaryHandle that we can use in `mt` to
+/// automatically close the given binary file.
+class ManagedBinaryHandle {
+public:
+  ManagedBinaryHandle(decltype(&M_closeBinaryFile) deleter)
+      : deleter(deleter), handle(ModelBinaryHandle{nullptr}) {}
+  ~ManagedBinaryHandle() { deleter(handle); }
+
+  ModelBinaryHandle *operator&() { return &handle; }
+  operator ModelBinaryHandle() { return handle; }
+
+  decltype(&M_closeBinaryFile) deleter;
+  ModelBinaryHandle handle;
+};
 } // namespace
 
 static constexpr char tflLibraryName[] = SYSTEM_SHARED_LIBRARY("tfl");
@@ -55,6 +85,7 @@ static ErrorOr<std::string>
 getFileContentIdentity(const llvm::MemoryBuffer &file, FileFormat format,
                        FrameworkContextHandle ctxHandle,
                        decltype(M_openBinaryFile) openHandle,
+                       decltype(M_closeBinaryFile) closeHandle,
                        decltype(M_sniffBinaryFileContents) sniffHandle) {
   switch (format) {
   default:
@@ -70,7 +101,7 @@ getFileContentIdentity(const llvm::MemoryBuffer &file, FileFormat format,
   case FileFormat::kFauxDialect:
     return "input is Faux model in MLIR form";
   case FileFormat::kBEFFile: {
-    ModelBinaryHandle handle;
+    ManagedBinaryHandle handle(closeHandle);
     if (auto err = openHandle(ctxHandle, file, &handle))
       return err.takeError();
 
@@ -80,23 +111,6 @@ getFileContentIdentity(const llvm::MemoryBuffer &file, FileFormat format,
   }
   }
 }
-
-namespace {
-/// This class provides a managed FrameworkContextHandle that we can use in `mt`
-/// to automatically free the given framework handle.
-class ManagedFrameworkHandle {
-public:
-  ManagedFrameworkHandle(decltype(&M_freeFrameworkContext) deleter)
-      : deleter(deleter) {}
-  ~ManagedFrameworkHandle() { deleter(handle); }
-
-  FrameworkContextHandle *operator&() { return &handle; }
-  operator FrameworkContextHandle() { return handle; }
-
-  decltype(&M_freeFrameworkContext) deleter;
-  FrameworkContextHandle handle;
-};
-} // namespace
 
 static ErrorOr<llvm::sys::DynamicLibrary>
 loadDesiredLibrary(const llvm::MemoryBuffer &file, FileFormat inputFormat,
@@ -150,6 +164,9 @@ loadDesiredLibrary(const llvm::MemoryBuffer &file, FileFormat inputFormat,
     auto openBinaryFileHandle =
         (decltype(&M_openBinaryFile))tflDylib.getAddressOfSymbol(
             "M_openBinaryFile");
+    auto closeBinaryFileHandle =
+        (decltype(&M_closeBinaryFile))tflDylib.getAddressOfSymbol(
+            "M_closeBinaryFile");
     auto sniffBinaryFileContentsHandle =
         (decltype(&M_sniffBinaryFileContents))tflDylib.getAddressOfSymbol(
             "M_sniffBinaryFileContents");
@@ -158,7 +175,7 @@ loadDesiredLibrary(const llvm::MemoryBuffer &file, FileFormat inputFormat,
     if (auto err = initFrameworkContextHandle(&frameworkCtx))
       return err.takeError();
 
-    ModelBinaryHandle handle;
+    ManagedBinaryHandle handle(closeBinaryFileHandle);
     if (auto err = openBinaryFileHandle(frameworkCtx, file, &handle))
       return err.takeError();
 
@@ -249,6 +266,9 @@ int main(int argc, char **argv) {
           "M_checkExpectedContents");
   auto openBinaryFileHandle =
       (decltype(&M_openBinaryFile))dylib.getAddressOfSymbol("M_openBinaryFile");
+  auto closeBinaryFileHandle =
+      (decltype(&M_closeBinaryFile))dylib.getAddressOfSymbol(
+          "M_closeBinaryFile");
   auto sniffBinaryFileContentsHandle =
       (decltype(&M_sniffBinaryFileContents))dylib.getAddressOfSymbol(
           "M_sniffBinaryFileContents");
@@ -260,9 +280,9 @@ int main(int argc, char **argv) {
   if (options.command == DriverCommand::inspect) {
     std::unique_ptr<llvm::ToolOutputFile> outputFile =
         options.getOutputFile(options.commandHasBinaryOutput());
-    auto identityOr = getFileContentIdentity(*file, format, frameworkCtx,
-                                             openBinaryFileHandle,
-                                             sniffBinaryFileContentsHandle);
+    auto identityOr = getFileContentIdentity(
+        *file, format, frameworkCtx, openBinaryFileHandle,
+        closeBinaryFileHandle, sniffBinaryFileContentsHandle);
     if (identityOr.isError()) {
       options.reportError(identityOr.getError());
       return 1;
@@ -295,7 +315,7 @@ int main(int argc, char **argv) {
           options.command == DriverCommand::execute) &&
          "unknown command");
 
-  ModelBinaryHandle handle;
+  ManagedBinaryHandle handle(closeBinaryFileHandle);
   if (auto err = openBinaryFileHandle(frameworkCtx, *file, &handle))
     return options.reportError(err.getError());
 
