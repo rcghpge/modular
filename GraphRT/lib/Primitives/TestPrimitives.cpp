@@ -173,6 +173,12 @@ static Chain print_type(Chain chain, BEFAttr<BEFType> type) {
   return chain;
 }
 
+static Chain print_bool(bool val, Chain chain) {
+  printf("bool = %s\n", val ? "true" : "false");
+  fflush(stdout);
+  return chain;
+}
+
 static void printIndent(unsigned indent) {
   for (unsigned i = 0; i != indent; ++i)
     printf("  ");
@@ -853,6 +859,8 @@ void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "test.print_dict_i32", print_dict_i32);
   ADD_PRIMITIVE(registry, "test.print_all_dict", print_all_dict);
   ADD_PRIMITIVE(registry, "test.print_type", print_type);
+
+  ADD_PRIMITIVE(registry, "test.print_bool", print_bool);
 
   ADD_PRIMITIVE(registry, "test.print.dynamic.attr", print_dynamic_attr);
 
