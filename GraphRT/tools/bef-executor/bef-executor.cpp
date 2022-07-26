@@ -159,27 +159,8 @@ int main(int argc, char **argv) {
 
   // Print some informative messages about allocator and threadpool config.
   if (clOptions.verbose) {
-    printf("%s: ", argv[0]);
-    switch (clOptions.allocatorType) {
-    case AllocatorType::kMalloc:
-      printf("Using malloc allocator.\n");
-      break;
-    case AllocatorType::kLeakChecker:
-      printf("Using leak check allocator.\n");
-      break;
-    case AllocatorType::kProfiler:
-      printf("Using profiling allocator.\n");
-      break;
-    }
-    printf("%s: ", argv[0]);
-    switch (clOptions.numThreads) {
-    case 1:
-      printf("Using single thread work queue.\n");
-      break;
-    default:
-      printf("Using thread pool work queue.\n");
-      break;
-    }
+    printf("%s ", argv[0]);
+    clOptions.printRuntimeConfig();
     fflush(stdout);
   }
 

@@ -10,7 +10,6 @@
 #include "GenericML/Support/Model.h"
 #include "GenericML/Support/Tensor.h"
 #include "LLCL/Runtime/Algorithms.h"
-#include "LLCL/Runtime/AllocatorType.h"
 #include "Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
 #include <chrono>

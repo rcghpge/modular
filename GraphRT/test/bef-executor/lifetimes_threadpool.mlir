@@ -4,7 +4,7 @@
 // Ensure threadpool count can be set.
 // RUN: bef-executor -verbose --num-threads=4 %t.bef | FileCheck %s
 
-// CHECK: Using thread pool work queue.
+// CHECK: runtime using leak check allocator, and thread pool work queue
 // CHECK-LABEL: --- Running 'test_linear'
 grt.testcase @test_linear {
   %ch0 = grt.chain.new
