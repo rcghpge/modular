@@ -122,6 +122,8 @@ loadDesiredLibrary(const llvm::MemoryBuffer &file, FileFormat inputFormat,
   // have to load *a* framework in order to actually sniff the contents of the
   // BEF file.
   switch (inputFormat) {
+  default:
+    LLVM_FALLTHROUGH;
   case FileFormat::kUnknown:
     return Error("unknown file format and no framework library specified.");
   case FileFormat::kTFLFlatBuffer:
