@@ -11,6 +11,7 @@
 #include "PlatformDylib.h.inc"
 #include "Support/VCSRevision.h"
 #include "llvm/Support/DynamicLibrary.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/ToolOutputFile.h"
 
@@ -178,8 +179,6 @@ loadDesiredLibrary(const llvm::MemoryBuffer &file, FileFormat inputFormat,
   // have to load *a* framework in order to actually sniff the contents of the
   // BEF file.
   switch (inputFormat) {
-  default:
-    LLVM_FALLTHROUGH;
   case FileFormat::kUnknown:
     return Error("unknown file format and no framework library specified.");
   case FileFormat::kTFLFlatBuffer:
@@ -233,6 +232,7 @@ loadDesiredLibrary(const llvm::MemoryBuffer &file, FileFormat inputFormat,
                  "be loaded.");
   }
   }
+  llvm_unreachable("unhandled file format");
 }
 
 int main(int argc, char **argv) {
