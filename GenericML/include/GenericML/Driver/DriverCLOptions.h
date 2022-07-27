@@ -186,7 +186,7 @@ public:
 
   /// Determine an intermediate file with extension `ext` and open it.
   std::unique_ptr<llvm::ToolOutputFile>
-  getIntermediateFile(const std::string &ext) const;
+  getIntermediateFile(StringRef inputName, StringRef ext) const;
 
   //===--------------------------------------------------------------------===//
   // BEF Emission Configuration

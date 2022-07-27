@@ -392,7 +392,8 @@ int main(int argc, char **argv) {
                                                 : "Not aborting on failure.");
     fflush(stdout);
 
-    auto fileCopy = MemoryBuffer::getMemBufferCopy(file->getBuffer());
+    auto fileCopy = MemoryBuffer::getMemBufferCopy(file->getBuffer(),
+                                                   file->getBufferIdentifier());
 
     if (auto err = setOptionsHandle(frameworkCtx, argv[0], scenario.flags))
       return options.reportError(err.getError());
