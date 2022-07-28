@@ -284,9 +284,12 @@ int main(int argc, char **argv) {
   auto setOptionsHandle =
       (decltype(&M_setOptions))dylib.getAddressOfSymbol("M_setOptions");
   // We might want to get the framework's help string.
-  if (options.command == DriverCommand::frameworkHelp)
+  if (options.command == DriverCommand::frameworkHelp) {
     if (auto err = setOptionsHandle(frameworkCtx, {"-h"}))
       return options.reportError(err.getError());
+
+    return 0;
+  }
 
   // Hand over any explicitly designated unparsed options.
   SmallVector<std::string> unparsed(options.forceUnparsed.begin(),
