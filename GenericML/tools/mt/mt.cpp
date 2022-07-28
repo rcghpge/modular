@@ -14,6 +14,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include <filesystem>
 
 using namespace M;
 using llvm::MemoryBuffer;
@@ -172,8 +173,18 @@ loadDesiredLibrary(const char *argv0, const llvm::MemoryBuffer &file,
   };
 
   // If we have been forced to load a specific lib, just load it and be done.
-  if (!forceLoad.empty())
-    return fallibleLibraryLoad(forceLoad);
+  if (!forceLoad.empty()) {
+    auto path = std::filesystem::path(forceLoad.str());
+    // If there's no extension, then prefix and suffix with system shared
+    // library prefix/suffix.
+    if (!path.has_extension()) {
+      path = path.replace_filename(SYSTEM_SHARED_LIBRARY_PREFIX +
+                                   path.filename().string())
+                 .replace_extension(SYSTEM_SHARED_LIBRARY_SUFFIX);
+    }
+
+    return fallibleLibraryLoad(path.string());
+  }
 
   // Switch over the input format. The BEF case is a little tricky because we
   // have to load *a* framework in order to actually sniff the contents of the
