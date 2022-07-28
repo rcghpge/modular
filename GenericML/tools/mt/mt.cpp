@@ -156,8 +156,8 @@ getFileContentIdentity(const llvm::MemoryBuffer &file, FileFormat format,
 }
 
 static ErrorOr<llvm::sys::DynamicLibrary>
-loadDesiredLibrary(const llvm::MemoryBuffer &file, FileFormat inputFormat,
-                   StringRef forceLoad) {
+loadDesiredLibrary(const char *argv0, const llvm::MemoryBuffer &file,
+                   FileFormat inputFormat, StringRef forceLoad) {
   std::string errorMsg;
 
   // Wrap getPermanentLibrary with a thing that extracts the error message and
@@ -213,7 +213,7 @@ loadDesiredLibrary(const llvm::MemoryBuffer &file, FileFormat inputFormat,
             "M_sniffBinaryFileContents");
 
     ManagedFrameworkHandle frameworkCtx(freeFrameworkContextHandle);
-    if (auto err = initFrameworkContextHandle(&frameworkCtx))
+    if (auto err = initFrameworkContextHandle(&frameworkCtx, argv0))
       return err.takeError();
 
     ManagedBinaryHandle handle(closeBinaryFileHandle);
@@ -247,7 +247,7 @@ int main(int argc, char **argv) {
   std::unique_ptr<MemoryBuffer> file = options.openInputFileOrExit();
   FileFormat format = options.getInputFormat(file->getBuffer());
 
-  auto dylibOr = loadDesiredLibrary(*file, format, options.loadLib);
+  auto dylibOr = loadDesiredLibrary(argv[0], *file, format, options.loadLib);
   if (failed(dylibOr))
     return options.reportError(dylibOr.getError());
 
@@ -277,7 +277,7 @@ int main(int argc, char **argv) {
 
   // Init the framework context.
   ManagedFrameworkHandle frameworkCtx(freeFrameworkContextHandle);
-  if (auto err = initFrameworkContextHandle(&frameworkCtx))
+  if (auto err = initFrameworkContextHandle(&frameworkCtx, argv[0]))
     return options.reportError(err.getError());
 
   // Pull out the setOptions handle so we can feed in any options we need to.
@@ -285,15 +285,14 @@ int main(int argc, char **argv) {
       (decltype(&M_setOptions))dylib.getAddressOfSymbol("M_setOptions");
   // We might want to get the framework's help string.
   if (options.command == DriverCommand::frameworkHelp)
-    if (auto err = setOptionsHandle(frameworkCtx, argv[0], {"-h"}))
+    if (auto err = setOptionsHandle(frameworkCtx, {"-h"}))
       return options.reportError(err.getError());
 
   // Hand over any explicitly designated unparsed options.
-  if (auto err = setOptionsHandle(frameworkCtx, argv[0], options.forceUnparsed))
-    return options.reportError(err.getError());
-
-  // And hand it any unparsed options we may have.
-  if (auto err = setOptionsHandle(frameworkCtx, argv[0], options.unparsed))
+  SmallVector<std::string> unparsed(options.forceUnparsed.begin(),
+                                    options.forceUnparsed.end());
+  unparsed.append(options.unparsed.begin(), options.unparsed.end());
+  if (auto err = setOptionsHandle(frameworkCtx, unparsed))
     return options.reportError(err.getError());
 
   // Grab the rest of the handles, everything else we will likely need to load.
@@ -384,7 +383,7 @@ int main(int argc, char **argv) {
   // We'll just use the final scenario's return code as the executable's return
   // code.
   int rc = EXIT_SUCCESS;
-  for (const Scenario &scenario : options.scenarios) {
+  for (Scenario scenario : options.scenarios) {
     printf("--- (mt) Running scenario: '%s", scenario.flags.front().c_str());
     for (StringRef f : llvm::drop_begin(scenario.flags))
       printf(" %s", f.data());
@@ -395,7 +394,13 @@ int main(int argc, char **argv) {
     auto fileCopy = MemoryBuffer::getMemBufferCopy(file->getBuffer(),
                                                    file->getBufferIdentifier());
 
-    if (auto err = setOptionsHandle(frameworkCtx, argv[0], scenario.flags))
+    // Add any common flags to the scenario, this will ensure that the user can
+    // pass something like "result-output-style=full" to all scenarios without
+    // having to specify it each time.
+    scenario.flags.append(unparsed);
+
+    // Set the options.
+    if (auto err = setOptionsHandle(frameworkCtx, scenario.flags))
       return options.reportError(err.getError());
 
     rc = runBinaryFileHandle(frameworkCtx, std::move(fileCopy), handle);
