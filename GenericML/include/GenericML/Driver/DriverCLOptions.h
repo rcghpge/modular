@@ -155,6 +155,12 @@ public:
   bool commandHasBinaryOutput() const {
     return command == DriverCommand::compile;
   }
+
+  /// Return true if the command passed in requires an input file.
+  bool commandTakesInput() const {
+    return command != DriverCommand::getVersion &&
+           command != DriverCommand::frameworkHelp;
+  }
 };
 
 /// This class provides essentially all the command-line options available to

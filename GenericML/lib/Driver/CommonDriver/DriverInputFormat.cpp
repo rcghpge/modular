@@ -19,6 +19,10 @@ using namespace M;
 //===----------------------------------------------------------------------===//
 
 FileFormat M::sniffInputFormat(StringRef fileContents) {
+  // If there's nothing in the file, then we can't sniff anything.
+  if (fileContents.empty())
+    return FileFormat::kUnknown;
+
   // BEF files have a strong magic number we can depend on that self-identifies
   // them.
   if (BEF::hasBEFMagicNumber(fileContents))

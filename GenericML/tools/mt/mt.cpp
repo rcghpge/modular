@@ -243,7 +243,7 @@ loadDesiredLibrary(const char *argv0, const llvm::MemoryBuffer &file,
                  "be loaded.");
   }
   }
-  llvm_unreachable("unhandled file format");
+  llvm::report_fatal_error("unhandled file format");
 }
 
 int main(int argc, char **argv) {
@@ -254,8 +254,15 @@ int main(int argc, char **argv) {
 
   llvm::cl::ParseCommandLineOptions(argc, argv, "Modular Tool (mt)\n");
 
-  // Open the input file, and determine what it is.
-  std::unique_ptr<MemoryBuffer> file = options.openInputFileOrExit();
+  // If we don't have an input file (and we're attempting to run something that
+  // doesn't take any input), then we have to pass in an empty memory buffer
+  // which will result in an unknown file format. We want to preserve the stdin
+  // behavior for cases where the command does take input because we might be
+  // piping something into the tool.
+  std::unique_ptr<MemoryBuffer> file = MemoryBuffer::getMemBuffer("", "empty");
+  if (options.commandTakesInput() || options.inputFilename != "-")
+    file = options.openInputFileOrExit();
+
   FileFormat format = options.getInputFormat(file->getBuffer());
 
   auto dylibOr = loadDesiredLibrary(argv[0], *file, format, options.loadLib);
