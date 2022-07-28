@@ -151,8 +151,9 @@ int main(int argc, char **argv) {
   LLCL::verifyNoLiveReferenceCountedObjects(
       "No objects should start allocated");
 
-  assert(AsyncValue::getNumAllocatedInstances() == 0 &&
-         "We have async values allocated before we started to do anything");
+  if constexpr (AsyncValue::isAllocationTrackingEnabled())
+    assert(AsyncValue::getNumAllocatedInstances() == 0 &&
+           "We have async values allocated before we started to do anything");
 
   // Read the input file from disk into a memory buffer.
   auto fileBuffer = clOptions.openInputFileOrExit();
@@ -202,8 +203,9 @@ int main(int argc, char **argv) {
   // We're done with the BEF, we can safely deallocate.
   befFile.reset();
 
-  assert(AsyncValue::getNumAllocatedInstances() == 0 &&
-         "All async values should be cleaned up at the end");
+  if constexpr (AsyncValue::isAllocationTrackingEnabled())
+    assert(AsyncValue::getNumAllocatedInstances() == 0 &&
+           "All async values should be cleaned up at the end");
   verifyNoLiveReferenceCountedObjects(
       "All refcounted objects should be deallocated");
   return failed(hadError);
