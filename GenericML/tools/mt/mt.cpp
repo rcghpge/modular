@@ -20,6 +20,10 @@ using namespace M;
 using llvm::MemoryBuffer;
 
 namespace {
+//===--------------------------------------------------------------------===//
+// Scenario structure and flag parsing
+//===--------------------------------------------------------------------===//
+
 /// This struct provides the backing data store behind a "scenario". It
 /// describes a command-line flag that takes one of 2 forms.
 ///
@@ -40,16 +44,12 @@ public:
   using llvm::cl::parser<Scenario>::parser;
 
   bool parse(llvm::cl::Option &O, StringRef ArgName, StringRef ArgValue,
-             Scenario &Val) {
-    if (ArgValue.consume_front("nofail:"))
-      Val.abortOnFailure = false;
-
-    // The flags are what remains.
-    llvm::transform(llvm::split(ArgValue, ' '), std::back_inserter(Val.flags),
-                    [](StringRef s) { return s.str(); });
-    return false;
-  }
+             Scenario &Val);
 };
+
+//===--------------------------------------------------------------------===//
+// GenericDriverCLOptions
+//===--------------------------------------------------------------------===//
 
 class GenericDriverCLOptions : public DriverCommandOptions,
                                public DriverInputFormatOptions,
@@ -89,19 +89,34 @@ public:
   };
 };
 
+//===--------------------------------------------------------------------===//
+// RAII-style managed handles (Framework & Binary)
+//===--------------------------------------------------------------------===//
+
 /// This class provides a managed FrameworkContextHandle that we can use in `mt`
 /// to automatically free the given framework handle.
 class ManagedFrameworkHandle {
 public:
   ManagedFrameworkHandle(decltype(&M_freeFrameworkContext) deleter)
       : deleter(deleter) {}
-  ~ManagedFrameworkHandle() { deleter(handle); }
+  ManagedFrameworkHandle(ManagedFrameworkHandle &&other) {
+    std::swap(deleter, other.deleter);
+    std::swap(handle, other.handle);
+  }
+  ~ManagedFrameworkHandle() {
+    if (deleter)
+      deleter(handle);
+  }
 
-  FrameworkContextHandle *operator&() { return &handle; }
+  FrameworkContextHandle *get() { return &handle; }
   operator FrameworkContextHandle() { return handle; }
 
-  decltype(&M_freeFrameworkContext) deleter;
-  FrameworkContextHandle handle;
+  decltype(&M_freeFrameworkContext) deleter = nullptr;
+  FrameworkContextHandle handle = {};
+
+private:
+  // Make this non-copyable.
+  ManagedFrameworkHandle(const ManagedFrameworkHandle &other) = delete;
 };
 
 /// This class provides a managed ModelBinaryHandle that we can use in `mt` to
@@ -110,27 +125,175 @@ class ManagedBinaryHandle {
 public:
   ManagedBinaryHandle(decltype(&M_closeBinaryFile) deleter)
       : deleter(deleter), handle(ModelBinaryHandle{nullptr}) {}
-  ~ManagedBinaryHandle() { deleter(handle); }
+  ManagedBinaryHandle(ManagedBinaryHandle &&other) {
+    std::swap(deleter, other.deleter);
+    std::swap(handle, other.handle);
+  }
+  ~ManagedBinaryHandle() {
+    if (deleter)
+      deleter(handle);
+  }
 
-  ModelBinaryHandle *operator&() { return &handle; }
+  ModelBinaryHandle *get() { return &handle; }
   operator ModelBinaryHandle() { return handle; }
 
-  decltype(&M_closeBinaryFile) deleter;
-  ModelBinaryHandle handle;
+  decltype(&M_closeBinaryFile) deleter = nullptr;
+  ModelBinaryHandle handle = {};
+
+private:
+  // Make this non-copyable.
+  ManagedBinaryHandle(const ManagedBinaryHandle &other) = delete;
+};
+
+//===--------------------------------------------------------------------===//
+// Driver API helpers
+//===--------------------------------------------------------------------===//
+class DriverAPI {
+public:
+  static M::ErrorOr<DriverAPI> getFromDylib(llvm::sys::DynamicLibrary dylib);
+
+  std::string getVersion() const {
+    std::string rev;
+    getVersionStringHandle(&rev);
+    return rev;
+  }
+
+  ErrorOr<ManagedFrameworkHandle> initFrameworkContext(llvm::StringRef argv0) {
+    ManagedFrameworkHandle handle(freeFrameworkContextHandle);
+    RETURN_ERROR(initFrameworkContextHandle(handle.get(), argv0));
+    return std::move(handle);
+  }
+
+  ErrorOrSuccess setOptions(FrameworkContextHandle ctx,
+                            llvm::ArrayRef<std::string> opts) {
+    return setOptionsHandle(ctx, opts);
+  }
+
+  ErrorOrSuccess compileToBinary(FrameworkContextHandle ctx,
+                                 std::unique_ptr<llvm::MemoryBuffer> &file,
+                                 FileFormat &format) {
+    return compileToBinaryHandle(ctx, file, format);
+  }
+
+  ErrorOrSuccess getMetadataFromBinary(FrameworkContextHandle ctx,
+                                       ModelBinaryHandle handle,
+                                       llvm::ToolOutputFile &outputFile,
+                                       DriverCommand command) {
+    return getMetadataFromBinaryHandle(ctx, handle, outputFile, (int)command);
+  }
+
+  M::ErrorOr<ManagedBinaryHandle>
+  openBinaryFile(FrameworkContextHandle ctx, const llvm::MemoryBuffer &file) {
+    ManagedBinaryHandle handle(closeBinaryFileHandle);
+    RETURN_ERROR(openBinaryFileHandle(ctx, file, handle.get()));
+    return std::move(handle);
+  }
+
+  ErrorOrSuccess checkExpectedContents(FrameworkContextHandle ctx,
+                                       ModelBinaryHandle handle) {
+    return checkExpectedContentsHandle(ctx, handle);
+  }
+
+  M::ErrorOr<std::string> sniffBinaryFileContents(M::FrameworkContextHandle ctx,
+                                                  M::ModelBinaryHandle handle) {
+    std::string out;
+    sniffBinaryFileContentsHandle(ctx, handle, &out);
+    return out;
+  }
+
+  int runBinaryFile(FrameworkContextHandle ctx,
+                    std::unique_ptr<llvm::MemoryBuffer> &&fileBuffer,
+                    ModelBinaryHandle handle) {
+    return runBinaryFileHandle(ctx, std::move(fileBuffer), handle);
+  }
+
+private:
+  DriverAPI(llvm::sys::DynamicLibrary dylib) : dylib(dylib) {}
+
+  template <typename SymT>
+  ErrorOrSuccess fallibleGetSymbol(StringRef symName, SymT *symbol);
+
+  llvm::sys::DynamicLibrary dylib;
+
+  decltype(&M_getVersionString) getVersionStringHandle;
+  decltype(&M_initFrameworkContext) initFrameworkContextHandle;
+  decltype(&M_freeFrameworkContext) freeFrameworkContextHandle;
+  decltype(&M_setOptions) setOptionsHandle;
+  decltype(&M_compileToBinary) compileToBinaryHandle;
+  decltype(&M_getMetadataFromBinary) getMetadataFromBinaryHandle;
+  decltype(&M_checkExpectedContents) checkExpectedContentsHandle;
+  decltype(&M_openBinaryFile) openBinaryFileHandle;
+  decltype(&M_closeBinaryFile) closeBinaryFileHandle;
+  decltype(&M_sniffBinaryFileContents) sniffBinaryFileContentsHandle;
+  decltype(&M_runBinaryFile) runBinaryFileHandle;
 };
 } // namespace
+
+//===--------------------------------------------------------------------===//
+// ScenarioParser implementation
+//===--------------------------------------------------------------------===//
+
+bool ScenarioParser::parse(llvm::cl::Option &O, StringRef ArgName,
+                           StringRef ArgValue, Scenario &Val) {
+  if (ArgValue.consume_front("nofail:"))
+    Val.abortOnFailure = false;
+
+  // The flags are what remains.
+  llvm::transform(llvm::split(ArgValue, ' '), std::back_inserter(Val.flags),
+                  [](StringRef s) { return s.str(); });
+  return false;
+}
+
+//===--------------------------------------------------------------------===//
+// DriverAPI class implementation
+//===--------------------------------------------------------------------===//
+
+template <typename SymT>
+ErrorOrSuccess DriverAPI::fallibleGetSymbol(StringRef symName, SymT *symbol) {
+  auto sym = dylib.getAddressOfSymbol(symName.data());
+  if (!sym)
+    return Error("could not load symbol: '" + symName + "'");
+
+  *symbol = (SymT)sym;
+  return success();
+}
+
+M::ErrorOr<DriverAPI> DriverAPI::getFromDylib(llvm::sys::DynamicLibrary dylib) {
+  DriverAPI api(dylib);
+
+  RETURN_ERROR(
+      api.fallibleGetSymbol("M_getVersionString", &api.getVersionStringHandle));
+  RETURN_ERROR(api.fallibleGetSymbol("M_initFrameworkContext",
+                                     &api.initFrameworkContextHandle));
+  RETURN_ERROR(api.fallibleGetSymbol("M_freeFrameworkContext",
+                                     &api.freeFrameworkContextHandle));
+  RETURN_ERROR(api.fallibleGetSymbol("M_setOptions", &api.setOptionsHandle));
+  RETURN_ERROR(
+      api.fallibleGetSymbol("M_compileToBinary", &api.compileToBinaryHandle));
+  RETURN_ERROR(api.fallibleGetSymbol("M_getMetadataFromBinary",
+                                     &api.getMetadataFromBinaryHandle));
+  RETURN_ERROR(api.fallibleGetSymbol("M_checkExpectedContents",
+                                     &api.checkExpectedContentsHandle));
+  RETURN_ERROR(
+      api.fallibleGetSymbol("M_openBinaryFile", &api.openBinaryFileHandle));
+  RETURN_ERROR(
+      api.fallibleGetSymbol("M_closeBinaryFile", &api.closeBinaryFileHandle));
+  RETURN_ERROR(api.fallibleGetSymbol("M_sniffBinaryFileContents",
+                                     &api.sniffBinaryFileContentsHandle));
+  RETURN_ERROR(
+      api.fallibleGetSymbol("M_runBinaryFile", &api.runBinaryFileHandle));
+
+  return api;
+}
 
 static constexpr char tflLibraryName[] = SYSTEM_SHARED_LIBRARY("tfl");
 
 /// Get a string that describes the contents of the file. Given that this driver
 /// cannot link the BEF libraries, we have to rely on the symbols provided by
 /// the framework if the input is a BEF file.
-static ErrorOr<std::string>
+static M::ErrorOr<std::string>
 getFileContentIdentity(const llvm::MemoryBuffer &file, FileFormat format,
-                       FrameworkContextHandle ctxHandle,
-                       decltype(M_openBinaryFile) openHandle,
-                       decltype(M_closeBinaryFile) closeHandle,
-                       decltype(M_sniffBinaryFileContents) sniffHandle) {
+                       FrameworkContextHandle ctxHandle, DriverAPI dylib) {
   switch (format) {
   default:
     return "input has unknown contents";
@@ -145,31 +308,26 @@ getFileContentIdentity(const llvm::MemoryBuffer &file, FileFormat format,
   case FileFormat::kFauxDialect:
     return "input is Faux model in MLIR form";
   case FileFormat::kBEFFile: {
-    ManagedBinaryHandle handle(closeHandle);
-    if (auto err = openHandle(ctxHandle, file, &handle))
-      return err.takeError();
-
-    std::string out;
-    sniffHandle(ctxHandle, handle, &out);
-    return out;
+    UNWRAP_ERROR(fileHandle, dylib.openBinaryFile(ctxHandle, file));
+    return dylib.sniffBinaryFileContents(ctxHandle, fileHandle);
   }
   }
 }
 
-static ErrorOr<llvm::sys::DynamicLibrary>
-loadDesiredLibrary(const char *argv0, const llvm::MemoryBuffer &file,
-                   FileFormat inputFormat, StringRef forceLoad) {
+static M::ErrorOr<DriverAPI> loadDesiredLibrary(const char *argv0,
+                                                const llvm::MemoryBuffer &file,
+                                                FileFormat inputFormat,
+                                                StringRef forceLoad) {
   std::string errorMsg;
 
   // Wrap getPermanentLibrary with a thing that extracts the error message and
   // returns it as an Error.
-  auto fallibleLibraryLoad =
-      [&](StringRef name) -> ErrorOr<llvm::sys::DynamicLibrary> {
+  auto fallibleLibraryLoad = [&](StringRef name) -> M::ErrorOr<DriverAPI> {
     auto dylib =
         llvm::sys::DynamicLibrary::getPermanentLibrary(name.data(), &errorMsg);
     if (!dylib.isValid())
       return Error("failed to load library " + name + ": " + errorMsg);
-    return dylib;
+    return DriverAPI::getFromDylib(dylib);
   };
 
   // If we have been forced to load a specific lib, just load it and be done.
@@ -207,32 +365,12 @@ loadDesiredLibrary(const char *argv0, const llvm::MemoryBuffer &file,
     if (failed(tflDylibOr))
       return tflDylibOr.takeError();
     auto tflDylib = *tflDylibOr;
-    auto initFrameworkContextHandle =
-        (decltype(&M_initFrameworkContext))tflDylib.getAddressOfSymbol(
-            "M_initFrameworkContext");
-    auto freeFrameworkContextHandle =
-        (decltype(&M_freeFrameworkContext))tflDylib.getAddressOfSymbol(
-            "M_freeFrameworkContext");
-    auto openBinaryFileHandle =
-        (decltype(&M_openBinaryFile))tflDylib.getAddressOfSymbol(
-            "M_openBinaryFile");
-    auto closeBinaryFileHandle =
-        (decltype(&M_closeBinaryFile))tflDylib.getAddressOfSymbol(
-            "M_closeBinaryFile");
-    auto sniffBinaryFileContentsHandle =
-        (decltype(&M_sniffBinaryFileContents))tflDylib.getAddressOfSymbol(
-            "M_sniffBinaryFileContents");
 
-    ManagedFrameworkHandle frameworkCtx(freeFrameworkContextHandle);
-    if (auto err = initFrameworkContextHandle(&frameworkCtx, argv0))
-      return err.takeError();
+    UNWRAP_ERROR(frameworkCtx, tflDylib.initFrameworkContext(argv0));
+    UNWRAP_ERROR(binaryHandle, tflDylib.openBinaryFile(frameworkCtx, file));
+    UNWRAP_ERROR(contents,
+                 tflDylib.sniffBinaryFileContents(frameworkCtx, binaryHandle));
 
-    ManagedBinaryHandle handle(closeBinaryFileHandle);
-    if (auto err = openBinaryFileHandle(frameworkCtx, file, &handle))
-      return err.takeError();
-
-    std::string contents;
-    sniffBinaryFileContentsHandle(frameworkCtx, handle, &contents);
     if (StringRef(contents).contains_insensitive("tflite"))
       return tflDylib;
 
@@ -269,41 +407,25 @@ int main(int argc, char **argv) {
   if (failed(dylibOr))
     return options.reportError(dylibOr.getError());
 
-  llvm::sys::DynamicLibrary dylib = *dylibOr;
+  DriverAPI dylib = *dylibOr;
 
-  // Pull out the handles we want.
-  auto getVersionHandle =
-      (decltype(&M_getVersionString))dylib.getAddressOfSymbol(
-          "M_getVersionString");
   // If the driver command is just `-get-version` then print the version and
   // exit right away. No need to do anything else.
   if (options.command == DriverCommand::getVersion) {
-    std::string versionStr;
-    getVersionHandle(&versionStr);
     llvm::outs() << "mt: " << MODULAR_VCS_VERSION
-                 << "\nFramework: " << versionStr << "\n";
+                 << "\nFramework: " << dylib.getVersion() << "\n";
     return 0;
   }
 
-  // Pull out the init/free functions for the framework context.
-  auto initFrameworkContextHandle =
-      (decltype(&M_initFrameworkContext))dylib.getAddressOfSymbol(
-          "M_initFrameworkContext");
-  auto freeFrameworkContextHandle =
-      (decltype(&M_freeFrameworkContext))dylib.getAddressOfSymbol(
-          "M_freeFrameworkContext");
+  // Setup the framework context.
+  auto frameworkCtxOr = dylib.initFrameworkContext(argv[0]);
+  if (failed(frameworkCtxOr))
+    return options.reportError(frameworkCtxOr.getError());
+  auto frameworkCtx = std::move(*frameworkCtxOr);
 
-  // Init the framework context.
-  ManagedFrameworkHandle frameworkCtx(freeFrameworkContextHandle);
-  if (auto err = initFrameworkContextHandle(&frameworkCtx, argv[0]))
-    return options.reportError(err.getError());
-
-  // Pull out the setOptions handle so we can feed in any options we need to.
-  auto setOptionsHandle =
-      (decltype(&M_setOptions))dylib.getAddressOfSymbol("M_setOptions");
   // We might want to get the framework's help string.
   if (options.command == DriverCommand::frameworkHelp) {
-    if (auto err = setOptionsHandle(frameworkCtx, {"-h"}))
+    if (auto err = dylib.setOptions(frameworkCtx, {"-h"}))
       return options.reportError(err.getError());
 
     return 0;
@@ -313,38 +435,16 @@ int main(int argc, char **argv) {
   SmallVector<std::string> unparsed(options.forceUnparsed.begin(),
                                     options.forceUnparsed.end());
   unparsed.append(options.unparsed.begin(), options.unparsed.end());
-  if (auto err = setOptionsHandle(frameworkCtx, unparsed))
+  if (auto err = dylib.setOptions(frameworkCtx, unparsed))
     return options.reportError(err.getError());
-
-  // Grab the rest of the handles, everything else we will likely need to load.
-  auto compileToBinaryHandle =
-      (decltype(&M_compileToBinary))dylib.getAddressOfSymbol(
-          "M_compileToBinary");
-  auto getMetadataFromBinaryHandle =
-      (decltype(&M_getMetadataFromBinary))dylib.getAddressOfSymbol(
-          "M_getMetadataFromBinary");
-  auto checkExpectedContentsHandle =
-      (decltype(&M_checkExpectedContents))dylib.getAddressOfSymbol(
-          "M_checkExpectedContents");
-  auto openBinaryFileHandle =
-      (decltype(&M_openBinaryFile))dylib.getAddressOfSymbol("M_openBinaryFile");
-  auto closeBinaryFileHandle =
-      (decltype(&M_closeBinaryFile))dylib.getAddressOfSymbol(
-          "M_closeBinaryFile");
-  auto sniffBinaryFileContentsHandle =
-      (decltype(&M_sniffBinaryFileContents))dylib.getAddressOfSymbol(
-          "M_sniffBinaryFileContents");
-  auto runBinaryFileHandle =
-      (decltype(&M_runBinaryFile))dylib.getAddressOfSymbol("M_runBinaryFile");
 
   // Start processing the input in stages.  The inspect command is first,
   // because it works on any input without transformation.
   if (options.command == DriverCommand::inspect) {
     std::unique_ptr<llvm::ToolOutputFile> outputFile =
         options.getOutputFile(options.commandHasBinaryOutput());
-    auto identityOr = getFileContentIdentity(
-        *file, format, frameworkCtx, openBinaryFileHandle,
-        closeBinaryFileHandle, sniffBinaryFileContentsHandle);
+    auto identityOr =
+        getFileContentIdentity(*file, format, frameworkCtx, dylib);
     if (identityOr.isError()) {
       options.reportError(identityOr.getError());
       return 1;
@@ -358,7 +458,7 @@ int main(int argc, char **argv) {
   // If we are not inspecting, we must need a compiled format.  If this is
   // already done then we're golden, otherwise compile now.
   if (format != FileFormat::kBEFFile)
-    if (failed(compileToBinaryHandle(frameworkCtx, file, format)))
+    if (failed(dylib.compileToBinary(frameworkCtx, file, format)))
       return 1;
 
   // If we're stopping at compilation, emit the current BEF file to the
@@ -377,21 +477,22 @@ int main(int argc, char **argv) {
           options.command == DriverCommand::execute) &&
          "unknown command");
 
-  ManagedBinaryHandle handle(closeBinaryFileHandle);
-  if (auto err = openBinaryFileHandle(frameworkCtx, *file, &handle))
-    return options.reportError(err.getError());
+  auto binaryFileOr = dylib.openBinaryFile(frameworkCtx, *file);
+  if (failed(binaryFileOr))
+    return options.reportError(binaryFileOr.getError());
+  auto binaryFile = std::move(*binaryFileOr);
 
   // Check to see if this file contains what we expected.  If not, throw an
   // error message.
-  if (auto err = checkExpectedContentsHandle(frameworkCtx, handle))
+  if (auto err = dylib.checkExpectedContents(frameworkCtx, binaryFile))
     return options.reportError(err.getError());
 
   // If we're just getting information, then get and print it.
   if (options.command == DriverCommand::printMetadata ||
       options.command == DriverCommand::printConstantMetadata) {
-    if (auto err = getMetadataFromBinaryHandle(frameworkCtx, handle,
+    if (auto err = dylib.getMetadataFromBinary(frameworkCtx, binaryFile,
                                                *options.getOutputFile(false),
-                                               (int)options.command.getValue()))
+                                               options.command.getValue()))
       return options.reportError(err.getError());
     return 0;
   }
@@ -399,7 +500,7 @@ int main(int argc, char **argv) {
   // Hand off the BEFFileHandle and the file buffer to the framework to actually
   // run the thing with all the various diagnostics.
   if (options.scenarios.empty())
-    return runBinaryFileHandle(frameworkCtx, std::move(file), handle);
+    return dylib.runBinaryFile(frameworkCtx, std::move(file), binaryFile);
 
   // We'll just use the final scenario's return code as the executable's return
   // code.
@@ -421,10 +522,10 @@ int main(int argc, char **argv) {
     scenario.flags.append(unparsed);
 
     // Set the options.
-    if (auto err = setOptionsHandle(frameworkCtx, scenario.flags))
+    if (auto err = dylib.setOptions(frameworkCtx, scenario.flags))
       return options.reportError(err.getError());
 
-    rc = runBinaryFileHandle(frameworkCtx, std::move(fileCopy), handle);
+    rc = dylib.runBinaryFile(frameworkCtx, std::move(fileCopy), binaryFile);
     if (rc != EXIT_SUCCESS && scenario.abortOnFailure)
       return rc;
     else if (!scenario.abortOnFailure)
