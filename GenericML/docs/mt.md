@@ -57,6 +57,39 @@ framework, along with their CMake target to simplify building the target.
 | `tfl` | `libtfl.so` | Modular TFLite |
 | `stock-tflite-plugin | `libstock-tflite-plugin.so` | Stock TFLite |
 
+Another consequence is that `mt --help` cannot work the way many users expect 
+it to. Passing the help flag to `mt` will result in getting the `mt` help,
+not any framework flags. In order to get the framework-specific help flags you
+can do (for example):
+```shell
+$ mt --load=tfl --framework-help
+USAGE: mt [options] <input file>
+
+OPTIONS:
+
+Color Options:
+
+  --color                         - Use colors in output (default=autodetect)
+
+General options:
+
+  --allocator=<value>             - Specify allocator type:
+    =malloc                       -   System malloc/free
+    =leak-checker                 -   Allocator with leak checking
+    =profiler                     -   Allocator with profiling and leak checking
+  --benchmark                     - Measure each invocation of the model inference.
+  ...
+  --save-temps                    - Store the usual 'temporary' intermediate files permanently in the directory specified by -temps-dir (defaults to the output directory); name them as auxiliary output files. This flag only changes the behavior of the `compile` and `execute` commands.
+  --temps-dir=<string>            - The directory in which to store 'temporary' intermediate files. No files will be saved here unless `-save-temps` is also specified.
+  --verify-diagnostics            - Check that emitted diagnostics match expected-* lines on the corresponding line
+  --workqueue=<value>             - Specify workqueue type:
+    =default                      -   Auto-select based on # threads
+    =single-thread                -   Work queue that only ever uses one thread
+    =thread-pool                  -   Default threaded work queue based on std::thread
+    =sharded-semaphore            -   Thread pool work queue with sharded semaphore (experimental)
+    =nine                         -   'No Interesting Name' Experimental Work Queue
+```
+
 ## Scenarios
 `mt` supports running what's called a 'scenario'. This means a group of flags 
 that will be passed to the loaded framework before a call to `M_runBinaryFile`.
