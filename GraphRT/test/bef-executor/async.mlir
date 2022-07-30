@@ -1,5 +1,6 @@
 // RUN: bef-translate -export-bef -allow-unregistered-dialect %s > %t.bef
 // RUN: bef-executor -verify-diagnostics %t.bef | FileCheck %s
+// RUN: bef-executor -verify-diagnostics %t.bef -workqueue=nine | FileCheck %s
 
 // CHECK-LABEL: --- Running 'test_async_print_result'
 grt.testcase @test_async_print_result {
