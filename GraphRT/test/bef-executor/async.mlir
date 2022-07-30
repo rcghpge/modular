@@ -56,3 +56,14 @@ grt.testcase @test_async_errors {
 // CHECK: <error: error generated on a background thread!>,
 // CHECK: <error: error generated on a background thread #2!>
 
+// CHECK-LABEL: --- Running 'test_crash_on_threadpool_shutdown'
+grt.testcase @test_crash_on_threadpool_shutdown {
+  "test.crash.threadpool.shutdown"() : () -> ()
+  bef.output
+}
+// CHECK-DAG: task 0 shutdown
+// CHECK-DAG: task 1 shutdown
+// CHECK-DAG: task 2 shutdown
+// CHECK-DAG: task 3 shutdown
+
+

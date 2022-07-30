@@ -5,7 +5,9 @@
 //===----------------------------------------------------------------------===//
 //
 // This file implements the 'test' dialect primitives provided by the GraphRT
-// library.  These are intended for writing executor testcases.
+// library.  These are intended for writing executor testcases.  Notice that
+// MANY of these are doing things in weird or non-canonical ways.  This is all
+// about unit tests, not about doing things the right way.
 //
 //===----------------------------------------------------------------------===//
 
@@ -457,6 +459,30 @@ static void test_many_tasks(Result<int32_t> result, BEFAttr<int32_t> num,
   await(result.copy());
 }
 
+/// This test is a nasty test that tries to cause havoc when a thread pool is
+/// being torn down, by creating tasks that take a long time to run (thus
+/// allowing the test driver to get to the point where it is tearing down the
+/// runtime), and then add another task to the thread after workqueue teardown
+/// has started.
+static void test_crash_threadpool_shutdown(Runtime &runtime) {
+  addTask(runtime, [&]() {
+    for (int i = 0; i < 4; ++i) {
+      addTask(runtime, [&runtime, i]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        printf("task %d\n", i);
+        addTask(runtime, [&runtime, i]() {
+          std::this_thread::sleep_for(std::chrono::milliseconds(5));
+          printf("task %d middle\n", i);
+          addTask(runtime, [i]() {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            printf("task %d shutdown\n", i);
+          });
+        });
+      });
+    }
+  });
+}
+
 //===----------------------------------------------------------------------===//
 // TestVector Primitives
 //===----------------------------------------------------------------------===//
@@ -880,4 +906,7 @@ void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "test.async.error", async_error);
   ADD_PRIMITIVE(registry, "test.async.many.waiters", test_async_many_waiters);
   ADD_PRIMITIVE(registry, "test.many.tasks", test_many_tasks);
+  ADD_PRIMITIVE(registry, "test.crash.threadpool", test_many_tasks);
+  ADD_PRIMITIVE(registry, "test.crash.threadpool.shutdown",
+                test_crash_threadpool_shutdown);
 }
