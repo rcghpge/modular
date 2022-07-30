@@ -828,14 +828,14 @@ bool RegionParser::parsePrimitiveList() {
   for (size_t i = 0, e = primitiveTable.size(); i != e; ++i) {
     bool isOpaqueOp = false;
     uint32_t primitiveID, locOffset;
-    uint16_t numOperands, numAttrs, numTopLevelOps, numResults;
+    uint16_t numOperands, numAttrs, numInvokables, numResults;
     StringAttr primitiveName;
     uint32_t resultRegisterNo = ~0U;
     if (bodyReader.parseInt4(primitiveID) || bodyReader.parseInt4(locOffset) ||
         converter.resolveLocation(locOffset, loc) ||
         converter.resolvePrimitiveName(primitiveID, loc, primitiveName) ||
         bodyReader.parseInt2(numOperands) || bodyReader.parseInt2(numAttrs) ||
-        bodyReader.parseInt2(numTopLevelOps) ||
+        bodyReader.parseInt2(numInvokables) ||
         bodyReader.parseInt2(numResults))
       return true;
 
@@ -845,7 +845,7 @@ bool RegionParser::parsePrimitiveList() {
     if (bodyReader.parseInt4Array(numResults, numResultUsers) ||
         bodyReader.parseInt4Array(numOperands, operands) ||
         bodyReader.parseInt4Array(numAttrs, attrsOffsets) ||
-        bodyReader.parseInt4Array(numTopLevelOps, invokablesIndices))
+        bodyReader.parseInt4Array(numInvokables, invokablesIndices))
       return true;
 
     // If the primitive had results, the register number for the first one is
@@ -893,7 +893,7 @@ bool RegionParser::parsePrimitiveList() {
     // The first primitive is a pseudo op which only defines the argument
     // registers.
     if (i == 0 && region->getNumArguments() != 0) {
-      if (numOperands != 0 || numAttrs != 0 || numTopLevelOps != 0 ||
+      if (numOperands != 0 || numAttrs != 0 || numInvokables != 0 ||
           numResults != region->getNumArguments())
         return bodyReader.emitError("malformed argument pseudo op");
 
