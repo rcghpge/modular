@@ -42,7 +42,7 @@ grt.testcase @test_add_any {
 
   bef.output %a, %b, %c : si32, !test.string, si32
 }
-// CHECK: 'test_add_any' returned 43, barkrarf, <error: invalid operands to async_add_any> 
+// CHECK: 'test_add_any' returned 43, barkrarf, <error: invalid operands to async_add_any>
 
 
 // CHECK-LABEL: --- Running 'test_async_errors'
@@ -66,5 +66,3 @@ grt.testcase @test_crash_on_threadpool_shutdown {
 // CHECK-DAG: task 1 shutdown
 // CHECK-DAG: task 2 shutdown
 // CHECK-DAG: task 3 shutdown
-
-

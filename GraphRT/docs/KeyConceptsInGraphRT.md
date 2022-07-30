@@ -61,7 +61,7 @@ like `grt.if` and `grt.invoke`.
 GraphRT benefits from MLIR's ability to compose and intermix dialects together.
 In this case, it allows primitives from "grt" to intermix with the runtime APIs
 for CPU APIs (e.g. Intel MKL, ruy, etc), framework specific CPU interfaces, as
-well as the CPU side of drivers for diverse accelerators.  It is powerful to be 
+well as the CPU side of drivers for diverse accelerators.  It is powerful to be
 able to drive these from a consistent low-level runtime, and being "hackable"
 makes it possible to explore and iterate on new ideas quickly.
 
@@ -73,11 +73,11 @@ the GraphRT implementation itself.
 
 Primitive implementation functions take and return some number of `AsyncValue`
 objects, some number of MLIR attributes, and optionally regions and invokable
-references.  You can optionally use the [MLIR ODS 
+references.  You can optionally use the [MLIR ODS
 framework](https://mlir.llvm.org/docs/OpDefinitions/) to define these primitives
 in a way understood by MLIR, which gives access to pretty syntax, verification
 and makes it easier for compiler to generate the operations.  For more details
-on defining primitives, please see the [Defining Primitives in 
+on defining primitives, please see the [Defining Primitives in
 GraphRT](DefiningPrimitives.md) guide.
 
 ## Inputs/outputs of primitives can be arbitrary C++ types
@@ -92,7 +92,7 @@ capable, and it opens up other opportunities as well.
 While the Fibonacci example above use integers for simplicity, you can pass
 around tensors from multiple frameworks, optimized runtime representations like
 `TensorShape` (much more efficient than a 1D tensor), hardware-specific runtime
-objects (like CUDA streams) and can expose buffers and buffer allocation 
+objects (like CUDA streams) and can expose buffers and buffer allocation
 (important for low-level memory optimizations) without having to switch to
 another runtime.
 
@@ -101,7 +101,7 @@ itself: it is fully dynamically typed, taking and passing around `AsyncValue`s
 to primitives.  Each `AsyncValue` carries around a lightweight C++ type
 descriptor (queryable with `->isType<T>()`), which allows the primitives to
 be completely dynamically typed if they want.  For example, you don't want a
-different "invoke" primitive for each signature you want to support. 
+different "invoke" primitive for each signature you want to support.
 
 On the other hand, many primitives do have static types they work with, e.g.
 `grt.add.si32` takes and returns `int32_t` values.  We do all type checking at
@@ -124,7 +124,7 @@ File Format](BinaryExecutorFormat.md) documentation.
 
 ## BEF executor: why not call it an "interpreter"?
 
-The `BEFExecutor` is the library that reads a BEF file and executes invokables 
+The `BEFExecutor` is the library that reads a BEF file and executes invokables
 on demand.  It is designed to be low-dependency (and thus low code size) and
 efficient.
 
@@ -182,7 +182,7 @@ bef.invokable @dataflow_example(%a: i32, %b: i32) {
   %b2 = grt.add.si32 %b, %b
   "print" %a2
   "print" %b2
-  bef.output 
+  bef.output
 }
 ```
 
@@ -211,7 +211,7 @@ In this invokable there is no dependence between the two add operations, so they
 can run in any order (or, indeed, in parallel) but the prints have a data
 dependence between them, so the first runs before the second one.
 
-If you look at the [definition of the 
+If you look at the [definition of the
 `LLCL::Chain`](../../LLCL/include/LLCL/Support/Chain.h) struct, you'll see that
 it is empty.  What is happening here though is that the `AsyncValue` containing
 the chain is only marked as "ready" when the side effect for the print is
@@ -294,7 +294,7 @@ known, the `AsyncValue` for the right side can be forwarded on as the result.
 A primitive may opt-into non-strict behavior by adopting the `NonStrictOp` trait
 in its MLIR ODS description.  Doing so means it needs to be ready to handle
 argument `AsyncValue`s that are not ready yet, so it requires more careful logic
-when implementing the primitive.  Please see the [Defining Primitives in 
+when implementing the primitive.  Please see the [Defining Primitives in
 GraphRT](DefiningPrimitives.md) guide for more information.
 
 ## Lowering to BEF

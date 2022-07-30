@@ -8,7 +8,7 @@ Primitives are defined as C++ functions and registered dynamically with the
 BEF executor's primitive registry at runtime by their registered string name.
 This allows GraphRT to be an easily hackable system that is modular, low
 dependence (because the runtime doesn't depend on the primitives), and is easy
-to extend and friendly for experimentation. 
+to extend and friendly for experimentation.
 
 This document gives a general overview of how to implement your own primitives,
 with pointers to examples in the source base.
@@ -66,7 +66,7 @@ should effectively always use the `ADD_PRIMITIVE` macro to register
 primitives instead of directly poking at `RunnablePrimitiveDescriptor`.
 
 This macro uses template metaprogramming magic to generate accessors for
-`RunnablePrimitiveDescriptor` based on the signature for a C++ function.  
+`RunnablePrimitiveDescriptor` based on the signature for a C++ function.
 There are lots of examples in the [`lib/Primitives` library](../lib/Primitives/)
 but this section gives an overview of the key concepts.
 
@@ -107,7 +107,7 @@ function to generate something like this for the `lessequal_i32` example:
   registry.add("grt.lessequal.si32", [](RunnablePrimitiveDescriptor &frame) {
     assert(frame.getNumArgs() == 2 && frame.getNumResults() == 1 &&
            frame.getNumAttrs() == 0 && frame.getNumInvokables() == 0);
-    frame.emplaceResult<bool>(0, 
+    frame.emplaceResult<bool>(0,
        lessequal_i32(frame.getArg<int32_t>(0), frame.getArg<int32_t>(1)));
   });
 ```
@@ -274,8 +274,8 @@ These cases should be exceedingly rare.
 
 The BEF file format supports encoding a number of MLIR attributes (including
 string attributes, standard integer and floating point values, arrays of
-integers and floats, `DenseElementAttr`s, and `DictionaryAttr`s) into the BEF 
-file. At runtime, the BEF file is mapped into memory, so your primitive can 
+integers and floats, `DenseElementAttr`s, and `DictionaryAttr`s) into the BEF
+file. At runtime, the BEF file is mapped into memory, so your primitive can
 get a raw pointer to the data in question.  For example, consider a few simple
 cases:
 
@@ -283,7 +283,7 @@ cases:
   %x = grt.constant.si32 42
 
   // Same thing in verbose syntax:
-  %x2 = "grt.constant.si32"() {value = 42 : si32} : () -> () 
+  %x2 = "grt.constant.si32"() {value = 42 : si32} : () -> ()
 
   %z = "add.ints"() { value = dense<[1, 2, 3]> : tensor<3xsi32> } : () -> ()
 
@@ -311,7 +311,7 @@ static void some_thing(BEFAttr<int64_t> a, BEFAttr<StringRef> b) {
 
 When receiving attributes, you need to use a well-known C++ type that matches
 the datatype in question, e.g. `uint32_t` for `ui32` attributes,
-and `StringRef` or `ArrayRef` for strings and `dense` elements.  
+and `StringRef` or `ArrayRef` for strings and `dense` elements.
 
 In addition to low-level constant data access, you can also use MLIR array and
 dictionary attributes (list of name, value pairs) which are accessed with the
@@ -327,7 +327,7 @@ static int32_t findNamedElement(BEFDictionaryAttr dict) {
   Optional<BEFAttr<int32_t>> value = dict.find<int32_t>("myKey");
   if (!value)
     // Handle the error gracefully
-  
+
   return *value;
 }
 
@@ -577,7 +577,7 @@ static void nonstrict_add_i32(AsyncValueRef<int32_t> lhs,
                               Result<int32_t> result) {
   // This may get invoked before lhs/rhs are resolved, and either or both may
   // resolve to an error, so we need to handle that.
-  
+
   // Invoke the lambda when both AsyncValue's resolve.
   andThen(
       [result = result.copy()](AsyncValueRef<int32_t> lhs,

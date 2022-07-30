@@ -53,9 +53,9 @@ A BEF file is formed as a byte stream whose top-level structure is a list of
 "sections" that hold various sorts of data. It uses a few fundamental concepts:
 
 * *VBRs* are encoded in a "Variable Byte Rate" (`VBR`) encoding, allowing
-  small unsigned integers (less than 2^7) to be stored in one byte, unsigned 
-  integers up to 2^14 to be stored in two bytes, etc. This is done by using the 
-  high bit of each byte in the stream to indicate "more bytes are coming". 
+  small unsigned integers (less than 2^7) to be stored in one byte, unsigned
+  integers up to 2^14 to be stored in two bytes, etc. This is done by using the
+  high bit of each byte in the stream to indicate "more bytes are coming".
   *VBR* values are stored in big-endian byte order, while *reverse VBR* values are
   stored in little-endian byte order.
   *signed VBRs* are encoded using an extra sign bit. Positive numbers are shifted
@@ -67,7 +67,7 @@ A BEF file is formed as a byte stream whose top-level structure is a list of
    2 = 0b00000010 (two's complement)
   signed VBR = 0b00000100
          VBR = 0b00000010
-  
+
   -2 = 0b11111110 (two's complement)
   signed VBR = 0b00000101
   ```
@@ -253,8 +253,8 @@ of memory up front, rather than use a vector-style resizing mechanism.
 
 ```none
   INVOKABLES_INDEX_SECTION ::= VBR<"NumInvokables"> INVOKABLE_ENTRY*
-  INVOKABLE_ENTRY          ::= OFFSET<"Body"> VBR<"NumArguments"> 
-                               VBR<"NumResults"> 
+  INVOKABLE_ENTRY          ::= OFFSET<"Body"> VBR<"NumArguments">
+                               VBR<"NumResults">
 ```
 
 The `INVOKABLES_INDEX` section defines a table of "invokables" in the BEF file,
@@ -362,7 +362,7 @@ table of primitives allows the use of primitive indexes.
                              FIXED16<"NumAttributes">
                              FIXED16<"NumInvokables">
                              FIXED16<"NumResults">
-                             
+
   PRIMITIVE_RESULT_TABLE ::= FIXED32<"NumUsedBys">*
 
   PRIMITIVE_BODY         ::= FIXED32<PrimitiveOperand>*

@@ -49,4 +49,3 @@ grt.testcase @fib_driver {
 
   bef.output
 }
-

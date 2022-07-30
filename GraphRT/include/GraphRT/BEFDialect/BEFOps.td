@@ -71,7 +71,7 @@ def OpaqueOp : BEFOp<"opaque"> {
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region VariadicRegion<SizedRegion<1>>:$body);
   let assemblyFormat = [{
-    $opName (`nonstrict` $nonstrict^)? $attrs `(` $operands `)` attr-dict `:` 
+    $opName (`nonstrict` $nonstrict^)? $attrs `(` $operands `)` attr-dict `:`
             functional-type($operands, $results) $body
   }];
 }
@@ -106,4 +106,3 @@ def OutputOp : BEFOp<"output", [Terminator, ReturnLike]> {
     LogicalResult checkArgumentTypes(TypeRange types);
   }];
 }
-

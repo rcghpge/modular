@@ -13,7 +13,7 @@ bef.invokable @if(%cond: i1, %v1: si32, %v2: si32) -> si32 {
     bef.output %v2 : si32
   }
 
-  
+
   grt.if %cond () -> () {   // CHECK: grt.if %arg0 () -> () {
     bef.output              // CHECK-NEXT: bef.output
   } else {                  // CHECK-NEXT: } else {

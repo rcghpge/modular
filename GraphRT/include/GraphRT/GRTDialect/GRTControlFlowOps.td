@@ -42,7 +42,7 @@ def ChainMergeOp : GRTOp<"chain.merge"> {
 def InvokeOp : GRTOp<"invoke", [DeclareOpInterfaceMethods<SymbolUserOpInterface>,
                             NonStrictOp]> {
   let summary = "Invoke an invokable (non-strictly).";
-    
+
   let arguments = (ins FlatSymbolRefAttr:$target, Variadic<AnyType>:$operands);
   let results = (outs Variadic<AnyType>:$results);
   let assemblyFormat = [{

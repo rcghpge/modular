@@ -46,7 +46,7 @@ def ConstantSI32Op : GRTOp<"constant.si32"> {
 
 def AddSI32Op : GRTOp<"add.si32"> {
   let summary = "Add two int32_t values";
- 
+
   let arguments = (ins SI32:$lhs, SI32:$rhs);
   let results = (outs SI32:$result);
   let assemblyFormat = "$lhs `,` $rhs attr-dict";
@@ -58,7 +58,7 @@ def AddSI32Op : GRTOp<"add.si32"> {
 
 def LessEqualSI32Op : GRTOp<"lessequal.si32"> {
   let summary = "Compare two int32_t values for `<=` and return a bool";
- 
+
   let arguments = (ins SI32:$lhs, SI32:$rhs);
   let results = (outs I1:$result);
   let assemblyFormat = "$lhs `,` $rhs attr-dict";
@@ -70,7 +70,7 @@ def LessEqualSI32Op : GRTOp<"lessequal.si32"> {
 
 def PrintSI32Op : GRTOp<"print.si32"> {
   let summary = "Print an int32_t value";
- 
+
   let arguments = (ins SI32:$value, ChainType:$chain);
   let results = (outs ChainType:$result);
   let assemblyFormat = "$value `,` $chain attr-dict";

@@ -32,7 +32,7 @@ grt.testcase @many_waiters {
   %v3 = "test.async.many.waiters"() { num = 3 : si32 } : () -> si32
   %ch1 = grt.print.si32 %v3, %ch0
   // CHECK-NEXT: int32 = 3
-  
+
   %v6 = "test.async.many.waiters"() { num = 6 : si32 } : () -> si32
   %ch2 = grt.print.si32 %v6, %ch1
   // CHECK-NEXT: int32 = 6
@@ -50,7 +50,7 @@ grt.testcase @test_many_tasks {
   %v3 = "test.many.tasks"() { num = 3 : si32 } : () -> si32
   %ch1 = grt.print.si32 %v3, %ch0
   // CHECK-NEXT: int32 = 3
-  
+
   %v129 = "test.many.tasks"() { num = 129 : si32 } : () -> si32
   %ch2 = grt.print.si32 %v129, %ch1
   // CHECK-NEXT: int32 = 129
