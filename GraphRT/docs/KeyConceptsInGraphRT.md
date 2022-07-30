@@ -60,7 +60,7 @@ like `grt.if` and `grt.invoke`.
 
 GraphRT benefits from MLIR's ability to compose and intermix dialects together.
 In this case, it allows primitives from "grt" to intermix with the runtime APIs
-for CPU APIs (e.g. Intel MKL, ruy, etc), framework specific CPU interfaces, as
+for CPU APIs (for example Intel MKL, ruy, etc), framework specific CPU interfaces, as
 well as the CPU side of drivers for diverse accelerators.  It is powerful to be
 able to drive these from a consistent low-level runtime, and being "hackable"
 makes it possible to explore and iterate on new ideas quickly.
@@ -103,7 +103,7 @@ descriptor (queryable with `->isType<T>()`), which allows the primitives to
 be completely dynamically typed if they want.  For example, you don't want a
 different "invoke" primitive for each signature you want to support.
 
-On the other hand, many primitives do have static types they work with, e.g.
+On the other hand, many primitives do have static types they work with, for example
 `grt.add.si32` takes and returns `int32_t` values.  We do all type checking at
 the MLIR level, by defining primitives in ODS and checking their type
 constraints in the verifier.  This shifts the checking burden from runtime to
@@ -269,7 +269,7 @@ As we discussed earlier, it is possible that the `%a` and `%b` inputs are
 available at different times, and it is entirely common for an "add" operation
 to take longer to execute than "some long latency operation".  In higher level
 machine learning graphs, some operators take a lot less time to execute than
-others - e.g. some might be accelerated and some might not.
+others - for example some might be accelerated and some might not.
 
 On the other side of the call, the code embodied by `other_invokable` may include
 arbitrarily complicated logic, and some of that logic may only depend on one or
@@ -282,7 +282,7 @@ for both arguments to become available before dispatching the async call to
 `@other_invokable`.  Instead, we want to start the execution as soon as *either*
 argument is available.  As such, we mark `grt.invoke` as a non-strict primitive.
 
-Non-strict primitives are generally useful for control flow operations (e.g.
+Non-strict primitives are generally useful for control flow operations (for example
 `grt.if` can start execution of its body as soon as the condition resolves (it
 doesn't need all inputs to be available) and `grt.repeat` can start execution
 when the iteration count is known.  It is also useful for some primitives that

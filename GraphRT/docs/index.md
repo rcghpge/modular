@@ -31,7 +31,7 @@ accelerators.
 
 On the other hand, accelerated ML frameworks typically uses "lowering" (in a
 compiler sense) to transform the operator graph into a lower-level
-representation that is specific to the execution hardware, e.g. by fusing
+representation that is specific to the execution hardware, for example by fusing
 kernels into macro kernels, utilizing proprietary accelerator APIs like CUDA,
 and exposing buffer allocation and other details.  At this level of abstraction,
 the representation is typically "target specific" because it knows the set of

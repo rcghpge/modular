@@ -73,7 +73,7 @@ but this section gives an overview of the key concepts.
 ## Registering simple primitives with operands and results
 
 To see this in action, consider some simple primitives that take and return
-values as SSA operands, e.g. with an `.mlir` syntax like this:
+values as SSA operands, for example with an `.mlir` syntax like this:
 
 ```mlir
   %add = grt.add.si32 %x, %x
@@ -116,7 +116,7 @@ This automates the checking logic, unwraps the `AsyncValue`'s for the arguments
 and generates the result `AsyncValue` as needed.
 
 There are rare cases where you might want to directly access the AsyncValue for
-an argument (e.g. maybe you want to `std::move` the reference to micro-optimize
+an argument (for example maybe you want to `std::move` the reference to micro-optimize
 some reference counts.  In this case, you can take an `AsyncValueRef` or
 `AnyAsyncValueRef` directly:
 
@@ -226,7 +226,7 @@ vec_fill_non_prime_async_vector(int32_t size,
 
 While machine learning frameworks typically want to report errors synchronously,
 there are some rare cases where you only realize on the background task that
-there is a problem (e.g. maybe you want to treat divide by zero as an error,
+there is a problem (for example maybe you want to treat divide by zero as an error,
 which is dependent on the element data).  `AsyncValue`'s need location information
 to propagate their errors, and we don't copy that around by default.  To get it
 into your closure, use the `copyWithLocation()` method on `Result`:
@@ -291,7 +291,7 @@ cases:
 ```
 
 Attributes in MLIR files are always canonicalized to be in alphabetical order
-by their key (i.e., if you move the string value before the `si64` in the last
+by their key (that is, if you move the string value before the `si64` in the last
 example, they will still be emitted as "a" and then "b", so the `i64` will be
 first), and BEF files don't encode the attribute names ("a" and "b" in that
 last example).  To handle these, you can implement the primitives using
@@ -310,7 +310,7 @@ static void some_thing(BEFAttr<int64_t> a, BEFAttr<StringRef> b) {
 ```
 
 When receiving attributes, you need to use a well-known C++ type that matches
-the datatype in question, e.g. `uint32_t` for `ui32` attributes,
+the datatype in question, for example `uint32_t` for `ui32` attributes,
 and `StringRef` or `ArrayRef` for strings and `dense` elements.
 
 In addition to low-level constant data access, you can also use MLIR array and
@@ -411,7 +411,7 @@ to keep in mind for an efficient and well balanced system:
 1) Most important: all computation needs to be thread safe, and should not
    block.  This is core to the LLCL computation model.  Do not use things like
    `llvm::outs()` because it is not thread safe.
-2) Don't do synchronous work that can take unbounded time (e.g. it is dependent
+2) Don't do synchronous work that can take unbounded time (for example it is dependent
    on the input sizes).  Fork/join parallelism is an extremely common pattern,
    which induces patterns with a lot of single-threaded regions in
    between the very-parallel forked regions.  These single-threaded regions
@@ -498,10 +498,10 @@ static AsyncValueRef<MyAcceleratorType> allocate_thing() {
 
 The "MyAcceleratorType" instance will be created inline into the `AsyncValue`
 saving an extraneous allocation and automatically deleting it when the last use
-of the `AsyncValue` is done.  Sometimes you might want to get more fancy, e.g.
+of the `AsyncValue` is done.  Sometimes you might want to get more fancy, for example
 with C++ subclasses, shared references to concurrent-safe types like thread
 safe hash tables, etc.  In those cases, you can use standard C++ smart pointers,
-e.g. like shared or unique pointers:
+for example like shared or unique pointers:
 
 ```
 static void allocate_thing(Result<std::unique_ptr<MyAcceleratorType>> result) {
@@ -553,11 +553,11 @@ The `grt.invoke` operation is defined as non-strict, which allows it to kick off
 execution of its body as soon as *either* `%a_val` or `%b_val` are ready,
 allowing the expensive compute to start as soon as possible.
 
-This is really important for control flow-like operations (e.g. `grt.invoke`,
+This is really important for control flow-like operations (for example `grt.invoke`,
 `grt.if`, etc) because they can end up taking lots of operands, those operands
 can all have different computational chains that produce them, and we don't want
 to block execution of the body for all of them to be available.  Doing so would
-destroy composability of these control flow operators - e.g. not inlining a
+destroy composability of these control flow operators - for example not inlining a
 grt.invoke could have devastating and unpredictable performance effects.
 
 ## Implementing a non-strict primitive

@@ -19,15 +19,15 @@ We have the following goals:
 - This is aligned with the abstractions used by the GraphRT executor and
   includes key abstractions that it can directly use to make it speedy and
   memory efficient. The design puts more burden on the encoder of a BEF file
-  (e.g. requiring multiple passes) to make the decoder fast.
+  (for example requiring multiple passes) to make the decoder fast.
 
-- This needs to be producible online e.g. in training or interactive use
+- This needs to be producible online for example in training or interactive use
   cases.
 
 - We need to represent location information in order to reflect runtime errors
-  (e.g. shape errors) back to the user source program.
+  (for example shape errors) back to the user source program.
 
-- We should follow normal best practices for binary encodings, e.g. having
+- We should follow normal best practices for binary encodings, for example having
   tools to round trip them to a textual form (MLIR in our case), support
   arbitrary sized files (not limited to 4GB), be efficient to read, make
   reasonable attempts to be dense, etc.
@@ -81,14 +81,14 @@ A BEF file is formed as a byte stream whose top-level structure is a list of
 
 * *Offsets* are VBRs that demarcate a byte offset in the stream from a
   fixed position (typically the start of a section). These are useful when the
-  section contains a bunch of variable length things, e.g. when referring to a
+  section contains a bunch of variable length things, for example when referring to a
   string in the string table. Because variable sized integers are used
   pervasively in BEF files, offsets are very common.
 
-* *Indexes* are VBRs that demarcate an entry in a table, e.g. a register
+* *Indexes* are VBRs that demarcate an entry in a table, for example a register
   or primitives in an invokable. These are typically used when indexing into
   a table where the structure is expected to be decoded and held in memory by
-  the reader, e.g. as is the case with the primitives and types tables.
+  the reader, for example as is the case with the primitives and types tables.
 
 BEF files can be created by an arbitrary producer, but the standard ways is to
 use the [MLIRToBEF](../lib/MLIRToBEF)
@@ -154,10 +154,10 @@ not; 0 means the section body starts immediately and 1 means
 
 The top level structure of the file is a two-byte "magic number" of `0xBEF0`
 and a list of sections. The `0xBEF0` magic number allows us to encode version
-numbers, e.g. the following would be `0xBEF1`.
+numbers, for example the following would be `0xBEF1`.
 
 The BEF reader skips over unknown sections, which could be useful for future
-evolution of the format, e.g. if we want to store extra metadata in the BEF
+evolution of the format, for example if we want to store extra metadata in the BEF
 format for some purpose, or store binary tensor blobs.
 
 ### Strings Section
@@ -169,7 +169,7 @@ format for some purpose, or store binary tensor blobs.
 ```
 
 The Strings section contains a list of `NUL` terminated strings used by the
-program (e.g. for type and primitive names). Entries in this section are
+program (for example for type and primitive names). Entries in this section are
 referenced by an Offset from the start of the section. This section does not
 support embedded `NUL` in strings.
 
@@ -210,7 +210,7 @@ The encoding of an attribute has three pieces:
 3) The value of the attribute is stored in little-endian byte order.
 
 Note that emission of the attribute is always done so that the attribute value
-is naturally aligned, e.g. that a `si32` value is emitted on a 4-byte alignment.
+is naturally aligned, for example that a `si32` value is emitted on a 4-byte alignment.
 
 ***Rationale***
 

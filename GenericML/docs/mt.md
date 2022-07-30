@@ -19,7 +19,7 @@ the input file is not in the expected format for the loaded framework, `mt`
 will provide an error message and exit.
 
 > NOTE: The way that stock-* frameworks are supported is by specifying the
-> `--load=<prefix>stock-<framework>-plugin.<suffix>` flag. Otherwise, the file
+> `--load=<prefix>stock-<framework>-plugin.<suffix>` option. Otherwise, the file
 > would be auto-sensed and the modular version of the framework would be
 > loaded.
 
@@ -38,12 +38,12 @@ $  mt --execute .derived/models/tflite/MobileBert-float-384-20200602.tflite \
       --model-specification=Models/TFLite/MobileBert-float-384-20200602.yaml \
       --delegate=xnnpack
 ```
-`mt` clearly doesn't know anything about the `--delegate` flag, as it only has
+`mt` clearly doesn't know anything about the `--delegate` option, as it only has
 meaning for the `stock-tflite-plugin` framework. This exact pattern should be
-used for all framework-specific flags.
+used for all framework-specific options.
 
 ### Consequences
-The main consequence of this design (i.e. loading dynamic libraries at runtime)
+The main consequence of this design (that is loading dynamic libraries at runtime)
 is that you now have to have at least the dynamic libraries you care about along
 with the `mt` binary itself. The table below contains the binaries for each
 framework, along with their CMake target to simplify building the target.
@@ -58,8 +58,8 @@ framework, along with their CMake target to simplify building the target.
 | `stock-tflite-plugin | `libstock-tflite-plugin.so` | Stock TFLite |
 
 Another consequence is that `mt --help` cannot work the way many users expect
-it to. Passing the help flag to `mt` will result in getting the `mt` help,
-not any framework flags. In order to get the framework-specific help flags you
+it to. Passing the help option to `mt` will result in getting the `mt` help,
+not any framework options. In order to get the framework-specific help options you
 can do (for example):
 ```shell
 $ mt --load=tfl --framework-help
@@ -79,7 +79,7 @@ General options:
     =profiler                     -   Allocator with profiling and leak checking
   --benchmark                     - Measure each invocation of the model inference.
   ...
-  --save-temps                    - Store the usual 'temporary' intermediate files permanently in the directory specified by -temps-dir (defaults to the output directory); name them as auxiliary output files. This flag only changes the behavior of the `compile` and `execute` commands.
+  --save-temps                    - Store the usual 'temporary' intermediate files permanently in the directory specified by -temps-dir (defaults to the output directory); name them as auxiliary output files. This option only changes the behavior of the `compile` and `execute` commands.
   --temps-dir=<string>            - The directory in which to store 'temporary' intermediate files. No files will be saved here unless `-save-temps` is also specified.
   --verify-diagnostics            - Check that emitted diagnostics match expected-* lines on the corresponding line
   --workqueue=<value>             - Specify workqueue type:
@@ -91,7 +91,7 @@ General options:
 ```
 
 ## Scenarios
-`mt` supports running what's called a 'scenario'. This means a group of flags
+`mt` supports running what's called a 'scenario'. This means a group of options
 that will be passed to the loaded framework before a call to `M_runBinaryFile`.
 This enables the user to do things like:
 ```shell
