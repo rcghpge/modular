@@ -15,6 +15,7 @@
 #include "Support/Error.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/FunctionExtras.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/Support/MathExtras.h"
 
 namespace M {
@@ -139,9 +140,13 @@ public:
       return emitError("tried to align to non-power-of-two");
 
     uint8_t padding;
-    while (uintptr_t(contents.data()) & (uintptr_t(alignment) - 1))
+    while (uintptr_t(contents.data()) & (uintptr_t(alignment) - 1)) {
       if (parseByte(padding))
         return true;
+      if (padding != BEF::kAlignmentByte)
+        return emitError("expected alignment byte, got '" + Twine(padding) +
+                         "' instead");
+    }
 
     return false;
   }

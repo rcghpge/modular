@@ -40,7 +40,7 @@ public:
   bool parseTypes();
   bool parsePrimitiveNames();
   bool parseTopLevelOps();
-  bool parseRegionBody(Region *region, BEFReader &bodyReader,
+  bool parseRegionBody(Region *region, size_t numResults, BEFReader &bodyReader,
                        BEFReader &attrNameReader, BEFReader &mlirTypesReader);
 
   bool emitError(Error message) {
@@ -692,20 +692,20 @@ bool BEFToMLIRConverter::parseTopLevelOps() {
     // yet have the function type on the op.
     Operation *theOp = builder.create(state);
 
-    // Set up the body block and parse each region.
-    for (auto &region : theOp->getRegions()) {
-      Block &body = region.emplaceBlock();
-      inputTypes.assign(s.numArgs, unknownType);
-      body.addArguments(inputTypes, SmallVector<Location, 3>(s.numArgs, loc));
-      inputTypes.clear();
+    // We parse a single region.
+    Region &region = theOp->getRegion(0);
+    Block &body = region.emplaceBlock();
+    inputTypes.assign(s.numArgs, unknownType);
+    body.addArguments(inputTypes, SmallVector<Location, 3>(s.numArgs, loc));
+    inputTypes.clear();
 
-      // Add it to the vector now.
-      regions.push_back(&region);
+    // Add it to the vector now.
+    regions.push_back(&region);
 
-      // Parse the invokable body now.
-      if (parseRegionBody(&region, bodyReader, attrNameReader, mlirTypesReader))
-        return true;
-    }
+    // Parse the invokable body now.
+    if (parseRegionBody(&region, s.numResults, bodyReader, attrNameReader,
+                        mlirTypesReader))
+      return true;
 
     // If we have a function-like op we have to provide a function type attr.
     if (isa<mlir::FunctionOpInterface>(theOp)) {
@@ -721,7 +721,7 @@ bool BEFToMLIRConverter::parseTopLevelOps() {
   }
 
   // The module is special - it's the last one so parse it out.
-  if (parseRegionBody(&module->getBodyRegion(), bodyReader, attrNameReader,
+  if (parseRegionBody(&module->getBodyRegion(), 0, bodyReader, attrNameReader,
                       mlirTypesReader))
     return true;
 
@@ -738,10 +738,12 @@ bool BEFToMLIRConverter::parseTopLevelOps() {
 namespace {
 class RegionParser {
 public:
-  RegionParser(Region *region, BEFReader &bodyReader, BEFReader &attrNameReader,
-               BEFReader &mlirTypesReader, BEFToMLIRConverter &converter)
-      : region(region), bodyReader(bodyReader), attrNameReader(attrNameReader),
-        mlirTypesReader(mlirTypesReader), converter(converter) {}
+  RegionParser(Region *region, size_t numResults, BEFReader &bodyReader,
+               BEFReader &attrNameReader, BEFReader &mlirTypesReader,
+               BEFToMLIRConverter &converter)
+      : region(region), numResults(numResults), bodyReader(bodyReader),
+        attrNameReader(attrNameReader), mlirTypesReader(mlirTypesReader),
+        converter(converter) {}
 
   /// Entrypoint to parse the invokable body.
   bool parse();
@@ -753,6 +755,7 @@ private:
   bool parsePrimitiveList();
 
   Region *region;
+  size_t numResults;
   BEFReader &bodyReader;
 
   BEFReader &attrNameReader;  // A (possibly empty) ATTRIBUTE_NAMES_MD section.
@@ -802,7 +805,7 @@ bool RegionParser::parsePrimitiveTable(size_t numPrimitives) {
 }
 
 bool RegionParser::parseResultRegs() {
-  for (size_t i = 0, e = region->front().getNumArguments(); i != e; ++i) {
+  for (size_t i = 0; i != numResults; ++i) {
     size_t registerIndex;
     if (bodyReader.parseVBR(registerIndex))
       return true;
@@ -1003,12 +1006,13 @@ bool RegionParser::parsePrimitiveList() {
   return false;
 }
 
-bool BEFToMLIRConverter::parseRegionBody(Region *region, BEFReader &bodyReader,
+bool BEFToMLIRConverter::parseRegionBody(Region *region, size_t numResults,
+                                         BEFReader &bodyReader,
                                          BEFReader &attrNameReader,
                                          BEFReader &mlirTypesReader) {
 
-  return RegionParser(region, bodyReader, attrNameReader, mlirTypesReader,
-                      *this)
+  return RegionParser(region, numResults, bodyReader, attrNameReader,
+                      mlirTypesReader, *this)
       .parse();
 }
 

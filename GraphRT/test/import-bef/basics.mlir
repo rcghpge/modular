@@ -160,4 +160,25 @@ bef.invokable @opaque_round_trip() {
   "a.secondregion"() : () -> ()
 }) {sym_name = "multi_region"} : () -> ()
 
+// CHECK-LABEL: "bef.invokable" ["controlflow_if"]
+// CHECK-NEXT: ^bb0(%arg0: !bef.unknown, %arg1: !bef.unknown, %arg2: !bef.unknown):
+// CHECK-NEXT:   %0 = bef.opaque "grt.if" nonstrict [](%arg0, %arg1, %arg2) : (!bef.unknown, !bef.unknown, !bef.unknown) -> !bef.unknown {
+// CHECK-NEXT:   ^bb0(%arg3: !bef.unknown, %arg4: !bef.unknown):
+// CHECK-NEXT:     bef.output %arg3 : !bef.unknown
+// CHECK-NEXT:   }, {
+// CHECK-NEXT:   ^bb0(%arg3: !bef.unknown, %arg4: !bef.unknown):
+// CHECK-NEXT:     bef.output %arg4 : !bef.unknown
+// CHECK-NEXT:   }
+// CHECK-NEXT:   bef.output %0 : !bef.unknown
+// CHECK-NEXT: }
+bef.invokable @controlflow_if(%cond: i1, %v1: si32, %v2: si32) -> si32 {
+  %res = grt.if %cond (%v1: si32, %v2: si32) -> (si32) {
+    bef.output %v1 : si32
+  } else {
+    bef.output %v2 : si32
+  }
+
+  bef.output %res : si32
+}
+
 // CHECK-NEXT: }
