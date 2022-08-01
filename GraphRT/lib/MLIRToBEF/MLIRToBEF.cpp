@@ -1082,11 +1082,11 @@ BEFOffset AttributesEmitter::emitTypeAttribute(Type type, Location loc) {
 BEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr,
                                                    Location loc) {
   if (auto intAttr = attr.dyn_cast<IntegerAttr>())
-    return emitIntegerValue(intAttr.getValue(), attr.getType(), loc);
+    return emitIntegerValue(intAttr.getValue(), intAttr.getType(), loc);
 
   if (auto fpAttr = attr.dyn_cast<FloatAttr>())
-    return emitIntegerValue(fpAttr.getValue().bitcastToAPInt(), attr.getType(),
-                            loc);
+    return emitIntegerValue(fpAttr.getValue().bitcastToAPInt(),
+                            fpAttr.getType(), loc);
 
   if (auto string = attr.dyn_cast<StringAttr>())
     return emitStringAttribute(string.getValue());

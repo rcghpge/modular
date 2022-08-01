@@ -11,6 +11,7 @@
 #include "GraphRT/BEFToMLIR.h"
 #include "GraphRT/BEF/BEFReader.h"
 #include "GraphRT/BEFDialect/BEFOps.h"
+#include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
@@ -835,8 +836,7 @@ bool RegionParser::parsePrimitiveList() {
         converter.resolveLocation(locOffset, loc) ||
         converter.resolvePrimitiveName(primitiveID, loc, primitiveName) ||
         bodyReader.parseInt2(numOperands) || bodyReader.parseInt2(numAttrs) ||
-        bodyReader.parseInt2(numInvokables) ||
-        bodyReader.parseInt2(numResults))
+        bodyReader.parseInt2(numInvokables) || bodyReader.parseInt2(numResults))
       return true;
 
     // We read and ignore the # users for each result.
