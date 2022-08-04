@@ -11,8 +11,7 @@
 #include "Faux/Dialect/FauxDialect.h"
 #include "GraphRT/BEFDialect/BEFDialect.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
-#include "KGEN/KGENDialect/KGENDialect.h"
-#include "KGEN/MetaDialect/MetaDialect.h"
+#include "KGEN/InitAllDialects.h"
 #include "TFLite/TFLDialect/TFLDialect.h"
 #include "TFLite/TFLPDialect/TFLPDialect.h"
 #include "mlir/InitAllDialects.h"
@@ -25,7 +24,8 @@ int main(int argc, char **argv) {
   DialectRegistry registry;
   registerAllDialects(registry);
   registry.insert< // Modular Dialects
-      BEF::BEFDialect, Faux::FauxDialect, GRT::GRTDialect, KGEN::KGENDialect,
-      KGEN::MetaDialect, TFL::TFLDialect, TFLP::TFLPDialect>();
+      BEF::BEFDialect, Faux::FauxDialect, GRT::GRTDialect, TFL::TFLDialect,
+      TFLP::TFLPDialect>();
+  registerAllKGENDialects(registry);
   return failed(MlirLspServerMain(argc, argv, registry));
 }
