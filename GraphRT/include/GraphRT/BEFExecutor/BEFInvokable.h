@@ -73,11 +73,6 @@ public:
   /// static constructor should return `ErrorOr<T>`.
   template <typename T, typename Callable>
   ErrorOrSuccess walkPrimitives(Callable visitor) const {
-    struct DefaultSuccess {
-      operator ErrorOrSuccess() { return success(); }
-      static DefaultSuccess get() { return DefaultSuccess{}; }
-    };
-
     return walkPrimitives(
         [&](StringRef primitiveName,
             const PrimitiveDescriptor &descriptor) -> ErrorOrSuccess {
@@ -98,11 +93,6 @@ public:
   /// callback for every object that has the same entity name as `T`.
   template <typename T, typename Callable>
   ErrorOrSuccess recursePrimitives(RecurseOrder order, Callable visitor) const {
-    struct DefaultSuccess {
-      operator ErrorOrSuccess() { return success(); }
-      static DefaultSuccess get() { return DefaultSuccess{}; }
-    };
-
     return recursePrimitives(
         order,
         [&](StringRef primitiveName,
