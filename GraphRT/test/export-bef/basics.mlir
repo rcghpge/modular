@@ -1,4 +1,4 @@
-// RUN: bef-translate -export-bef -allow-unregistered-dialect < %s > %t
+// RUN: bef-translate -export-bef -allow-unregistered-dialect %s -o %t
 // RUN: od -t x1 %t | FileCheck %s
 
 // Check to make sure the magic number is right, and the first section is there.

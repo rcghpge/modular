@@ -1,4 +1,4 @@
-// RUN: bef-translate -export-bef -allow-unregistered-dialect %s > %t.bef
+// RUN: bef-translate -export-bef -allow-unregistered-dialect %s -o %t.bef
 // RUN: bef-executor %t.bef --num-threads=1 | FileCheck %s
 
 // CHECK-LABEL: --- Running 'test_linear'

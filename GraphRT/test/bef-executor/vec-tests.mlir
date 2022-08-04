@@ -1,4 +1,4 @@
-// RUN: bef-translate -export-bef -allow-unregistered-dialect %s > %t.bef
+// RUN: bef-translate -export-bef -allow-unregistered-dialect %s -o %t.bef
 // RUN: bef-executor -verify-diagnostics %t.bef | FileCheck %s
 
 // CHECK-LABEL: --- Running 'basic_test'

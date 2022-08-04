@@ -1,7 +1,7 @@
 // Check all the allocators:
 
 // Default allocator will notice the crash.
-// RUN: bef-translate -export-bef -allow-unregistered-dialect %s > %t.bef
+// RUN: bef-translate -export-bef -allow-unregistered-dialect %s -o %t.bef
 // RUN: not --crash bef-executor %t.bef 2>&1 | FileCheck %s
 
 // Profiling allocator works like the default.

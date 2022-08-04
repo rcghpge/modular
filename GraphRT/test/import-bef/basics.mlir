@@ -1,7 +1,7 @@
-// RUN: bef-translate -export-bef -allow-unregistered-dialect %s > %t
+// RUN: bef-translate -export-bef -allow-unregistered-dialect %s -o %t
 // RUN: bef-translate -import-bef -allow-unregistered-dialect %t | FileCheck %s
 
-// RUN: bef-translate -export-bef -allow-unregistered-dialect -enable-bef-metadata %s > %t2
+// RUN: bef-translate -export-bef -allow-unregistered-dialect -enable-bef-metadata %s -o %t2
 // RUN: bef-translate -import-bef -allow-unregistered-dialect %t2 | FileCheck %s --check-prefix=MD
 
 // Check to make sure the magic number is right, and the first section is there.

@@ -1,4 +1,4 @@
-// RUN: bef-translate -export-bef -allow-unregistered-dialect %s > %t
+// RUN: bef-translate -export-bef -allow-unregistered-dialect %s -o %t
 // RUN: bef-translate -import-bef %t | FileCheck %s
 
 // CHECK-LABEL: "bef.invokable" ["dict"]

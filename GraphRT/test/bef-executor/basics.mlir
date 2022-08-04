@@ -1,4 +1,4 @@
-// RUN: bef-translate -export-bef -allow-unregistered-dialect %s > %t.bef
+// RUN: bef-translate -export-bef -allow-unregistered-dialect %s -o %t.bef
 // RUN: bef-executor %t.bef -verify-diagnostics | FileCheck %s
 
 bef.invokable @args_results(%a: si32, %b: ui8) -> (ui8, si32) {

@@ -1,4 +1,4 @@
-// RUN: bef-translate -export-bef -allow-unregistered-dialect %s > %t.bef
+// RUN: bef-translate -export-bef -allow-unregistered-dialect %s -o %t.bef
 // RUN: bef-executor -verbose %t.bef | FileCheck %s
 
 // Ensure threadpool count can be set.
