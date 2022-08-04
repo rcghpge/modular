@@ -55,7 +55,7 @@ framework, along with their CMake target to simplify building the target.
 | CMake target | Binary | Framework |
 |--------------|--------|-----------|
 | `tfl` | `libtfl.so` | Modular TFLite |
-| `stock-tflite-plugin | `libstock-tflite-plugin.so` | Stock TFLite |
+| `stock-tflite-plugin` | `libstock-tflite-plugin.so` | Stock TFLite |
 
 Another consequence is that `mt --help` cannot work the way many users expect
 it to. Passing the help option to `mt` will result in getting the `mt` help,
