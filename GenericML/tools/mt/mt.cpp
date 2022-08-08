@@ -12,7 +12,6 @@
 #include "Support/VCSRevision.h"
 #include "llvm/Support/DynamicLibrary.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include <filesystem>
 
@@ -55,8 +54,7 @@ class GenericDriverCLOptions : public DriverCommandOptions,
                                public DriverInputFormatOptions,
                                public CommonCLOptions {
 public:
-  GenericDriverCLOptions(StringRef programName)
-      : CommonCLOptions(programName) {}
+  using CommonCLOptions::CommonCLOptions;
 
   //===--------------------------------------------------------------------===//
   // Force loading a specific dylib
@@ -158,9 +156,10 @@ public:
     return rev;
   }
 
-  ErrorOr<ManagedFrameworkHandle> initFrameworkContext(llvm::StringRef argv0) {
+  ErrorOr<ManagedFrameworkHandle> initFrameworkContext(int &argc,
+                                                       char **&argv) {
     ManagedFrameworkHandle handle(freeFrameworkContextHandle);
-    RETURN_ERROR(initFrameworkContextHandle(handle.get(), argv0));
+    RETURN_ERROR(initFrameworkContextHandle(handle.get(), argc, argv));
     return std::move(handle);
   }
 
@@ -314,7 +313,7 @@ getFileContentIdentity(const llvm::MemoryBuffer &file, FileFormat format,
   }
 }
 
-static M::ErrorOr<DriverAPI> loadDesiredLibrary(const char *argv0,
+static M::ErrorOr<DriverAPI> loadDesiredLibrary(int &argc, char **&argv,
                                                 const llvm::MemoryBuffer &file,
                                                 FileFormat inputFormat,
                                                 StringRef forceLoad) {
@@ -366,7 +365,7 @@ static M::ErrorOr<DriverAPI> loadDesiredLibrary(const char *argv0,
       return tflDylibOr.takeError();
     auto tflDylib = *tflDylibOr;
 
-    UNWRAP_ERROR(frameworkCtx, tflDylib.initFrameworkContext(argv0));
+    UNWRAP_ERROR(frameworkCtx, tflDylib.initFrameworkContext(argc, argv));
     UNWRAP_ERROR(binaryHandle, tflDylib.openBinaryFile(frameworkCtx, file));
     UNWRAP_ERROR(contents,
                  tflDylib.sniffBinaryFileContents(frameworkCtx, binaryHandle));
@@ -385,10 +384,12 @@ static M::ErrorOr<DriverAPI> loadDesiredLibrary(const char *argv0,
 }
 
 int main(int argc, char **argv) {
-  llvm::InitLLVM y(argc, argv);
-
-  // Register all our command line options.
-  GenericDriverCLOptions options(argv[0]);
+  // Register all our command line options.  We skipInitLLVM here because the
+  // subframework will instantiate their own CLOptions instance and will this
+  // call InitLLVM again.  Unfortunately InitLLVM does not allow multiple calls
+  // to it, so we can't tolerate that.  Just avoid calling it here at the outer
+  // level.
+  GenericDriverCLOptions options(argc, argv, /*skipInitLLVM=*/true);
 
   llvm::cl::ParseCommandLineOptions(argc, argv, "Modular Tool (mt)\n");
 
@@ -403,7 +404,7 @@ int main(int argc, char **argv) {
 
   FileFormat format = options.getInputFormat(file->getBuffer());
 
-  auto dylibOr = loadDesiredLibrary(argv[0], *file, format, options.loadLib);
+  auto dylibOr = loadDesiredLibrary(argc, argv, *file, format, options.loadLib);
   if (failed(dylibOr))
     return options.reportError(dylibOr.getError());
 
@@ -418,7 +419,7 @@ int main(int argc, char **argv) {
   }
 
   // Setup the framework context.
-  auto frameworkCtxOr = dylib.initFrameworkContext(argv[0]);
+  auto frameworkCtxOr = dylib.initFrameworkContext(argc, argv);
   if (failed(frameworkCtxOr))
     return options.reportError(frameworkCtxOr.getError());
   auto frameworkCtx = std::move(*frameworkCtxOr);

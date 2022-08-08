@@ -124,7 +124,7 @@ static ErrorOrSuccess runTestcase(const GRTTestcase &test,
 namespace {
 class BEFExecutorCLOptions : public CommonCLOptions, public RuntimeCLOptions {
 public:
-  BEFExecutorCLOptions(StringRef programName) : CommonCLOptions(programName) {}
+  using CommonCLOptions::CommonCLOptions;
 
   cl::list<std::string> testcases{
       "tests",
@@ -139,14 +139,13 @@ public:
 } // namespace
 
 int main(int argc, char **argv) {
+  BEFExecutorCLOptions clOptions(argc, argv);
+  llvm::cl::ParseCommandLineOptions(argc, argv, "bef-executor test driver\n");
+
   // Set up all our primitives.
   PrimitiveRegistry primitives;
   registerAllGraphRTPrimitives(primitives);
   primitives.finalize();
-
-  BEFExecutorCLOptions clOptions(argv[0]);
-
-  llvm::cl::ParseCommandLineOptions(argc, argv, "bef-executor test driver\n");
 
   LLCL::verifyNoLiveReferenceCountedObjects(
       "No objects should start allocated");

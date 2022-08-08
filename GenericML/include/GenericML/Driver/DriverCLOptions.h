@@ -24,8 +24,7 @@ namespace M {
 class ExecutorDriverCLOptions : public LLCL::RuntimeCLOptions,
                                 public CommonCLOptions {
 public:
-  ExecutorDriverCLOptions(StringRef programName)
-      : CommonCLOptions(programName) {}
+  using CommonCLOptions::CommonCLOptions;
 
   /// This specifies the number of times we should execute the model in a warmup
   /// phase. Warmup is only honored if the "num-runs" option is greater than 1
@@ -191,8 +190,7 @@ public:
 class DriverCLOptions : public DriverInputFormatOptions,
                         public ExecutorDriverCLOptions {
 public:
-  DriverCLOptions(StringRef programName)
-      : ExecutorDriverCLOptions(programName) {}
+  using ExecutorDriverCLOptions::ExecutorDriverCLOptions;
 
   cl::opt<bool> saveTemps{
       "save-temps",
