@@ -87,7 +87,6 @@ General options:
     =single-thread                -   Work queue that only ever uses one thread
     =thread-pool                  -   Default threaded work queue based on std::thread
     =sharded-semaphore            -   Thread pool work queue with sharded semaphore (experimental)
-    =nine                         -   'No Interesting Name' Experimental Work Queue
 ```
 
 ## Scenarios
