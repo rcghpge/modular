@@ -350,11 +350,11 @@ static M::ErrorOr<DriverAPI> loadDesiredLibrary(int &argc, char **&argv,
   case FileFormat::kUnknown:
     return Error("unknown file format and no framework library specified.");
   case FileFormat::kTFLFlatBuffer:
-    LLVM_FALLTHROUGH;
+    [[fallthrough]];
   case FileFormat::kTFLFlatBufferJSON:
-    LLVM_FALLTHROUGH;
+    [[fallthrough]];
   case FileFormat::kTFLDialect:
-    LLVM_FALLTHROUGH;
+    [[fallthrough]];
   case FileFormat::kTFLPDialect:
     return fallibleLibraryLoad(tflLibraryName);
   case FileFormat::kFauxDialect:
