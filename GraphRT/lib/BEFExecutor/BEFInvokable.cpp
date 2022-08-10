@@ -774,7 +774,7 @@ void BEFInvokableImpl::invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
     auto curLocation = EncodedLocation(
         /*some location=*/0, takeRCRef(const_cast<BEFInvokableImpl *>(this)));
     results[0] = AsyncValue::createError(
-        runtime, EncodedDiagnostic{std::move(decoder.befFormatError.getValue()),
+        runtime, EncodedDiagnostic{std::move(decoder.befFormatError.value()),
                                    std::move(curLocation)});
     // Fill in the rest with the same error.
     for (size_t i = 1, e = results.size(); i != e; ++i)

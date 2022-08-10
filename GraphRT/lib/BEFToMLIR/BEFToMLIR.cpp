@@ -384,7 +384,7 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
       auto storageAndExpressedTypeOr = parseStorageAndExpressedType();
       if (!storageAndExpressedTypeOr)
         return {};
-      auto [storageType, expressedType] = storageAndExpressedTypeOr.getValue();
+      auto [storageType, expressedType] = storageAndExpressedTypeOr.value();
 
       float scale;
       ssize_t zeroPoint;
@@ -400,7 +400,7 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
       auto storageAndExpressedTypeOr = parseStorageAndExpressedType();
       if (!storageAndExpressedTypeOr)
         return {};
-      auto [storageType, expressedType] = storageAndExpressedTypeOr.getValue();
+      auto [storageType, expressedType] = storageAndExpressedTypeOr.value();
 
       uint8_t quantizedDim;
       size_t numParams;

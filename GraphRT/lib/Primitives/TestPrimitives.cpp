@@ -193,7 +193,7 @@ static void print_attr(BEFDynamicAttr value, unsigned indent) {
     printf("uint32 = %u\n", intAttr->get());
   } else if (auto strAttr = dyn_cast<StringRef>(value)) {
     printf("string = ");
-    fwrite(strAttr.getValue()->data(), 1, strAttr.getValue()->size(), stdout);
+    fwrite(strAttr.value()->data(), 1, strAttr.value()->size(), stdout);
     fputc('\n', stdout);
   } else if (auto intArray = dyn_cast<ArrayRef<int32_t>>(value)) {
     print_array_i32(Chain(), *intArray);
@@ -215,7 +215,7 @@ static void print_attr(BEFDynamicAttr value, unsigned indent) {
     printIndent(indent);
     printf("]\n");
   } else if (auto type = dyn_cast<BEFAttr<BEFType>>(value)) {
-    print_type(Chain(), type.getValue());
+    print_type(Chain(), type.value());
   } else {
     printf("unsupported attribute kind\n");
   }

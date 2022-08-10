@@ -32,6 +32,6 @@ M::decodeQuantizedSignature(BEFFunctionType signature,
   };
 
   if (auto err = fillArgSpecs(inputTypes, inputSpecs))
-    return std::move(err.getValue());
+    return std::move(err.value());
   return fillArgSpecs(outputTypes, outputSpecs);
 }
