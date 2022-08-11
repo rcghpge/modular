@@ -118,7 +118,7 @@ static void fromYAML(llvm::yaml::IO &io, QuantTensorSpec &quantTensorSpec) {
 
   // Read the "quantized" field. The "quantized" field is optional and so is not
   // required to exist.
-  bool isQuantized;
+  bool isQuantized = false;
   io.mapOptional("quantized", isQuantized, false);
 
   // If the quantization field is not set, then we are done.
