@@ -681,7 +681,7 @@ struct BEFDecoder<SmallVector<EltType, Size>> {
 
 #ifndef __clang__
 /// GCC complains about matching SmallVector without the Size template
-/// parameter, and CLANG complaines about ambiguous partial specialization.
+/// parameter, and CLANG complains about ambiguous partial specialization.
 ///
 /// TODO: Can we implement this function in terms of
 /// BEFDecoder<SmallVector<EltType, Size>>?
@@ -691,7 +691,7 @@ struct BEFDecoder<SmallVector<EltType>> {
     SmallVector<EltType> result;
     result.reserve(value.size());
     for (auto element : value) {
-      EltType resultElt;
+      EltType resultElt{};
       RETURN_ERROR(element.decode(&resultElt));
       result.push_back(resultElt);
     }

@@ -386,7 +386,7 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
         return {};
       auto [storageType, expressedType] = storageAndExpressedTypeOr.value();
 
-      float scale;
+      float scale = 0.0;
       ssize_t zeroPoint;
       if (attrReader.parseFloat(scale) || attrReader.parseSignedVBR(zeroPoint))
         return {};

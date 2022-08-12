@@ -94,7 +94,7 @@ public:
 
 private:
   Kind kind;
-  uint8_t quantDim;
+  uint8_t quantDim = 0;
 
   // We optimize for the case when kind is uniform, and there is only one scale
   // and one zero point.
