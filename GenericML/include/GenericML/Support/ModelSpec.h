@@ -13,6 +13,7 @@
 
 #include "GenericML/Support/QuantSpec.h"
 #include "Support/LLVMForwardDecls.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace M {
@@ -24,15 +25,45 @@ namespace M {
 /// This class is a framework-independent abstraction for a single ML model's
 /// information. It is intended to contain the name, input and output tensor
 /// specs, and the input and output layer names.
+///
+/// Keep in sync with the description in Models/docs/index.md, the YAML
+/// conversion in GenericML/lib/FormatYAML/FormatYAML.cpp, the JSON schema in
+/// Models/Schema/Schema.json and the Python reader in
+/// GenericML/tools/model/model/utils/manifest.py.
 class ModelSpec {
 public:
   using ModelIOSpec = std::pair<std::string, M::QuantTensorSpec>;
+
+  /// Maps input or output names as they appear in the model spec (the
+  /// 'preferred' names) to the corresponding names as they appear in the
+  /// underlying model format (the 'native' names). Names not in this map are
+  /// assumed to match.
+  ///
+  /// Unfortunately there are trivial differences in names between 'equivalent'
+  /// models in different formats (eg tensorflow vs ONNX runtime).
+  ///
+  /// Only significant for formats which use named inputs or outputs.
+  struct NameSubstitutions {
+    llvm::StringMap<std::string> preferredToNativeMap;
+
+    /// Returns the 'native' name corresponding to the given 'preferred'
+    /// model name.
+    ///
+    /// CAUTION: The given name must be from the model spec. The result's
+    /// lifetime is then that of the containing model spec, and its data() will
+    /// be null-terminated and thus directly usable as a C string.
+    StringRef SubstitutePreferredToNativeName(StringRef name) const;
+  };
+
+  /// Describes how to fetch the model in its native binary format.
   struct ModelBinary {
     std::string format;
     std::string url;
     std::string archivedFile;
     std::string sha1sum;
     std::string metadata;
+    NameSubstitutions inputSubstitutions;
+    NameSubstitutions outputSubstitutions;
   };
 
   ModelSpec() = default;
@@ -41,6 +72,10 @@ public:
   ModelSpec &operator=(ModelSpec &&) = default;
 
   ~ModelSpec();
+
+  /// Returns the model binary corresponding to the given format.
+  [[nodiscard]] ErrorOr<const ModelBinary *>
+  GetModelBinary(StringRef format) const;
 
   std::string name;
   std::string task;

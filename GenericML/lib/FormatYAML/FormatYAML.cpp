@@ -215,6 +215,30 @@ struct MappingTraits<M::ModelSpec::ModelIOSpec> {
 LLVM_YAML_IS_SEQUENCE_VECTOR(M::ModelSpec::ModelIOSpec);
 
 //===----------------------------------------------------------------------===//
+// M::ModelSpec::NameSubstitutions
+//===----------------------------------------------------------------------===//
+
+namespace llvm::yaml {
+template <>
+struct CustomMappingTraits<M::ModelSpec::NameSubstitutions> {
+  static void inputOne(IO &io, StringRef key,
+                       M::ModelSpec::NameSubstitutions &nameSubstitutions) {
+    // Note that the YAML machinery ensures key is not already in the map.
+    assert(nameSubstitutions.preferredToNativeMap.count(key) == 0 &&
+           "model name already in substitution");
+    io.mapRequired(key.str().c_str(),
+                   nameSubstitutions.preferredToNativeMap[key]);
+  }
+
+  static void output(IO &io,
+                     M::ModelSpec::NameSubstitutions &nameSubstitutions) {
+    for (auto &kv : nameSubstitutions.preferredToNativeMap)
+      io.mapRequired(kv.getKey().str().c_str(), kv.getValue());
+  }
+};
+} // namespace llvm::yaml
+
+//===----------------------------------------------------------------------===//
 // M::ModelSpec::ModelBinary
 //===----------------------------------------------------------------------===//
 
@@ -235,6 +259,9 @@ struct MappingTraits<M::ModelSpec::ModelBinary> {
 
     if (!io.outputting() || !binary.metadata.empty())
       io.mapOptional("metadata", binary.metadata);
+
+    io.mapOptional("input_substitutions", binary.inputSubstitutions);
+    io.mapOptional("output_substitutions", binary.outputSubstitutions);
   }
   /// Check if the binary format and URL are valid.
   static std::string validate(IO &io, M::ModelSpec::ModelBinary &binary) {
@@ -251,6 +278,7 @@ struct MappingTraits<M::ModelSpec::ModelBinary> {
         R"(^(https?)://((([^\/?#]*))?([^?#]*)(\?([^#]*))?(#(.*))?))");
     if (!re.match(binary.url))
       return std::string("the ") + binary.url + " URL specified is not valid";
+
     // Return an empty string to signify that there is no error.
     return std::string{};
   }
@@ -258,8 +286,10 @@ struct MappingTraits<M::ModelSpec::ModelBinary> {
 } // namespace llvm::yaml
 
 /// Use LLVM_YAML_IS_SEQUENCE_VECTOR to specify SequenceTraits<> on the
-/// SmallVector<M::ModelSpec::ModelBinary> type.
+/// SmallVector<M::ModelSpec::ModelBinary> and
+/// SmallVector<M::ModelSpec::NameSubstitution> types.
 LLVM_YAML_IS_SEQUENCE_VECTOR(M::ModelSpec::ModelBinary);
+LLVM_YAML_IS_SEQUENCE_VECTOR(M::ModelSpec::NameSubstitutions);
 
 //===----------------------------------------------------------------------===//
 // ModelSpec
@@ -276,6 +306,56 @@ void llvm::yaml::MappingTraits<M::ModelSpec>::mapping(IO &io,
   io.mapRequired("model", modelSpec.model);
   io.mapRequired("inputs", modelSpec.inputs);
   io.mapRequired("outputs", modelSpec.outputs);
+}
+
+namespace {
+/// Check if input/output name substitutions are valid with respect to given
+/// input/output model names. Returns non-empty error string if not.
+std::string validateNameSubstitutions(
+    llvm::StringRef format, llvm::StringRef inputOrOutput,
+    llvm::ArrayRef<M::ModelSpec::ModelIOSpec> names,
+    const M::ModelSpec::NameSubstitutions &nameSubstitutions) {
+  llvm::StringMap<std::string> nativeToPreferredMap;
+  for (const auto &kv : nameSubstitutions.preferredToNativeMap) {
+    // The 'preferred' name must exist.
+    if (llvm::find_if(names, [&kv](const M::ModelSpec::ModelIOSpec &spec) {
+          return spec.first == kv.getKey();
+        }) == names.end()) {
+      return (Twine("No such preferred ") + inputOrOutput + " name '" +
+              kv.getKey() + "' for " + inputOrOutput +
+              " substitution in format " + format)
+          .str();
+    }
+    // The substitution must be bijective.
+    if (!nativeToPreferredMap.try_emplace(kv.getValue(), kv.getKey()).second) {
+      return (Twine("Already substituted native ") + inputOrOutput + " name '" +
+              kv.getValue() + "' in format " + format)
+          .str();
+    };
+  }
+  // No error.
+  return {};
+}
+} // namespace
+
+std::string
+llvm::yaml::MappingTraits<M::ModelSpec>::validate(IO &io,
+                                                  M::ModelSpec &modelSpec) {
+  for (const auto &modelBinary : modelSpec.model) {
+    std::string err =
+        validateNameSubstitutions(modelBinary.format, "input", modelSpec.inputs,
+                                  modelBinary.inputSubstitutions);
+    if (!err.empty())
+      return err;
+
+    err = validateNameSubstitutions(modelBinary.format, "output",
+                                    modelSpec.outputs,
+                                    modelBinary.outputSubstitutions);
+    if (!err.empty())
+      return err;
+  }
+  // No error.
+  return {};
 }
 
 M::ErrorOr<M::ModelSpec>

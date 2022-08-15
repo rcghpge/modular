@@ -29,9 +29,15 @@ loadModelSpecFromYAML(std::unique_ptr<llvm::MemoryBuffer> yamlBuffer);
 } // namespace M
 
 /// Provide the ModelSpec mapping trait for YAML conversion.
-LLVM_YAML_DECLARE_MAPPING_TRAITS(::M::ModelSpec);
+namespace llvm::yaml {
+template <>
+struct MappingTraits<M::ModelSpec> {
+  static void mapping(IO &io, M::ModelSpec &modelSpec);
+  static std::string validate(IO &io, M::ModelSpec &modelSpec);
+};
+} // namespace llvm::yaml
 
 /// Provide the QuantTensorSpec mapping trait for YAML conversion.
-LLVM_YAML_DECLARE_MAPPING_TRAITS(::M::QuantTensorSpec);
+LLVM_YAML_DECLARE_MAPPING_TRAITS(M::QuantTensorSpec);
 
 #endif // GENERICML_FORMATYAML_H
