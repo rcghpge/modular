@@ -194,8 +194,8 @@ executeModelRepeated(MLIRContext *ctx, const Model *model, Runtime &runtime,
   }
   outs().flush();
   outs() << "--- Runtime(ms): ";
-  TensorSpec cpuTimesMillisShape(
-      TensorShape(SmallVector<unsigned>({options.numRuns})), DType::f64);
+  TensorSpec cpuTimesMillisShape(TensorShape({options.numRuns.getValue()}),
+                                 DType::f64);
 
   RETURN_ERROR(Kernel::printTensor(cpuTimesMillis.data(), cpuTimesMillisShape,
                                    Kernel::ResultOutputStyle::kFull));
