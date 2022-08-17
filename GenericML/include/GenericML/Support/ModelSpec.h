@@ -46,13 +46,13 @@ public:
   struct NameSubstitutions {
     llvm::StringMap<std::string> preferredToNativeMap;
 
-    /// Returns the 'native' name corresponding to the given 'preferred'
-    /// model name.
+    /// Returns the 'native' preferredName corresponding to the given
+    /// 'preferred' model preferredName.
     ///
-    /// CAUTION: The given name must be from the model spec. The result's
-    /// lifetime is then that of the containing model spec, and its data() will
-    /// be null-terminated and thus directly usable as a C string.
-    StringRef SubstitutePreferredToNativeName(StringRef name) const;
+    /// CAUTION: The given preferredName must be from the model spec. The
+    /// result's lifetime is then that of the containing model spec, and its
+    /// data() will be null-terminated and thus directly usable as a C string.
+    StringRef getPreferredName(StringRef preferredName) const;
   };
 
   /// Describes how to fetch the model in its native binary format.
@@ -74,8 +74,7 @@ public:
   ~ModelSpec();
 
   /// Returns the model binary corresponding to the given format.
-  [[nodiscard]] ErrorOr<const ModelBinary *>
-  GetModelBinary(StringRef format) const;
+  ErrorOr<const ModelBinary *> getModelBinary(StringRef format) const;
 
   std::string name;
   std::string task;

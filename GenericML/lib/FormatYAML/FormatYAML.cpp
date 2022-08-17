@@ -13,6 +13,7 @@
 #include "GenericML/Support/ModelSpec.h"
 #include "GenericML/Support/QuantSpec.h"
 #include "Support/ErrorOr.h"
+#include "Support/LLVMForwardDecls.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/YAMLTraits.h"
 #include "llvm/Support/raw_ostream.h"
@@ -312,8 +313,8 @@ namespace {
 /// Check if input/output name substitutions are valid with respect to given
 /// input/output model names. Returns non-empty error string if not.
 std::string validateNameSubstitutions(
-    llvm::StringRef format, llvm::StringRef inputOrOutput,
-    llvm::ArrayRef<M::ModelSpec::ModelIOSpec> names,
+    StringRef format, StringRef inputOrOutput,
+    ArrayRef<M::ModelSpec::ModelIOSpec> names,
     const M::ModelSpec::NameSubstitutions &nameSubstitutions) {
   llvm::StringMap<std::string> nativeToPreferredMap;
   for (const auto &kv : nameSubstitutions.preferredToNativeMap) {
