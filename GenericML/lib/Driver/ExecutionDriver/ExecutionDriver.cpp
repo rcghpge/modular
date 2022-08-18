@@ -110,7 +110,7 @@ static ErrorOrSuccess executeModelOnce(MLIRContext *ctx, const Model *model,
   outs().flush();
 
   // Execute the model and insert its results into the results vec.
-  auto results = executableModel->execute(args);
+  SmallVector<AnyAsyncValueRef> results = executableModel->execute(args);
 
   // There is nothing to do if there is no results.
   if (results.empty())
@@ -120,7 +120,7 @@ static ErrorOrSuccess executeModelOnce(MLIRContext *ctx, const Model *model,
   await(results);
 
   // Print the result tensors with the default printer.
-  MutableArrayRef resultRef(results.data(), results.size());
+  MutableArrayRef<AnyAsyncValueRef> resultRef(results);
   if (failed(printTensorResults(executableModel.get(), resultRef.drop_front(),
                                 ctx, options.resultOutputStyle, outs())))
     return Error("model execution failed");
@@ -206,7 +206,7 @@ executeModelRepeated(MLIRContext *ctx, const Model *model, Runtime &runtime,
     return success();
 
   // Print the result tensors with the default printer.
-  MutableArrayRef resultRef(results.data(), results.size());
+  MutableArrayRef<AnyAsyncValueRef> resultRef(results.data(), results.size());
   if (failed(printTensorResults(executableModel.get(), resultRef.drop_front(),
                                 ctx, options.resultOutputStyle, outs())))
     return Error("repeated model execution failed");
