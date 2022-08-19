@@ -126,12 +126,9 @@ getFileContentIdentity(const llvm::MemoryBuffer &file, FileFormat format,
 }
 
 int main(int argc, char **argv) {
-  // Register all our command line options.  We skipInitLLVM here because the
-  // subframework will instantiate their own CLOptions instance and will this
-  // call InitLLVM again.  Unfortunately InitLLVM does not allow multiple calls
-  // to it, so we can't tolerate that.  Just avoid calling it here at the outer
-  // level.
-  GenericDriverCLOptions options(argc, argv, /*skipInitLLVM=*/true);
+  // Register all our command line options.  We expect that the subframeworks
+  // will not call InitLLVM, and that is the responsibility of the driver.
+  GenericDriverCLOptions options(argc, argv);
 
   llvm::cl::ParseCommandLineOptions(argc, argv, "Modular Tool (mt)\n");
 
