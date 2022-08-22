@@ -12,8 +12,8 @@
 #ifndef GENERICML_SUPPORT_QUANTSPEC_H
 #define GENERICML_SUPPORT_QUANTSPEC_H
 
-#include "GenericML/Support/TensorSpec.h"
 #include "Support/ForwardDecls.h"
+#include "Support/ML/TensorSpec.h"
 
 namespace M {
 class BEFType;

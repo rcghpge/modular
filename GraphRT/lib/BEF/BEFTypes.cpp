@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphRT/BEF/BEFTypes.h"
-#include "GenericML/Support/TensorSpec.h"
+#include "Support/ML/TensorSpec.h"
 #include "llvm/ADT/SmallVector.h"
 using namespace M;
 
