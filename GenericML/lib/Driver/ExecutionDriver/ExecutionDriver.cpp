@@ -6,9 +6,9 @@
 
 #include "DriverInternals.h"
 
-#include "GenericML/Kernels.h"
 #include "GenericML/Support/Model.h"
 #include "GenericML/Support/Tensor.h"
+#include "Kernels/Misc.h"
 #include "LLCL/Runtime/Algorithms.h"
 #include "Support/Error.h"
 #include "llvm/Support/raw_ostream.h"

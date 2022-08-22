@@ -9,6 +9,7 @@
 
 #include "GenericML/Driver/DriverInputFormat.h"
 #include "GenericML/Driver/ExecutionDriver.h"
+#include "Kernels/Misc.h"
 #include "LLCL/Runtime/RuntimeCLOptions.h"
 #include "Support/CommonCLOptions.h"
 #include "llvm/Support/NativeFormatting.h"
