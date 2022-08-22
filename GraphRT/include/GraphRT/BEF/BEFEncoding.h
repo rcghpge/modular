@@ -12,8 +12,8 @@
 #ifndef GRAPHRT_BEF_BEFENCODING_H
 #define GRAPHRT_BEF_BEFENCODING_H
 
-#include "Support/DType.h"
 #include "Support/LLVMForwardDecls.h"
+#include "Support/ML/DType.h"
 #include "llvm/ADT/BitmaskEnum.h"
 #include "llvm/ADT/StringRef.h"
 
