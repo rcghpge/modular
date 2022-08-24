@@ -39,7 +39,7 @@ enum {
 
   // Primitives in BEF are 4-byte aligned.
   kPrimitiveEntryAlignment = 4,
-}; // anonymous enum
+};
 
 /// Return true if the magic number makes this look like a BEF file.
 inline bool hasBEFMagicNumber(llvm::StringRef contents) {

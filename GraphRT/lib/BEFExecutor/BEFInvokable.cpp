@@ -72,7 +72,7 @@ private:
   /// present which gets dropped when the indirect value is resolved.
   std::atomic<AsyncValue *> value{nullptr};
 };
-} // end anonymous namespace
+} // namespace
 
 /// Return the AsyncValue for this register, creating it on demand as
 /// necessary.
@@ -165,7 +165,7 @@ struct PrimitiveInfo {
   PrimitiveInfo(unsigned offset, unsigned numOperandsBeforeExecuting)
       : numOperandsNotReady(numOperandsBeforeExecuting + 1), offset(offset) {}
 };
-} // end anonymous namespace
+} // namespace
 
 //===----------------------------------------------------------------------===//
 // BEFInvokableDecoder
@@ -200,7 +200,7 @@ public:
   SmallVector<unsigned, 8> resultRegs;
 };
 
-} // end anonymous namespace
+} // namespace
 
 //===----------------------------------------------------------------------===//
 // BEFExecutor implementation
@@ -296,7 +296,7 @@ private:
   // All of the primitive entry records for this invokable.
   ArrayRef<uint32_t> funcBody;
 };
-} // end anonymous namespace
+} // namespace
 
 /// This is the core method that implements the `LocationDecoder` abstract base
 /// class.  This turns the data payload in EncodedLocation (which, in our case,
@@ -320,9 +320,9 @@ LLCL::DecodedLocation BEFExecutor::decode(const EncodedLocation &loc) const {
 /// the BEFInvokable's walk functionality.
 static ErrorOrSuccess decodePrimitiveTables(
     BEFInvokableDecoder &decoder, ArrayRef<uint32_t> &body,
-    const std::function<ErrorOrSuccess(size_t)>& registerInfo,
-    const std::function<ErrorOrSuccess(size_t, size_t)>& primitiveInfo,
-    const std::function<ErrorOrSuccess(size_t)>& resultRegs) {
+    const std::function<ErrorOrSuccess(size_t)> &registerInfo,
+    const std::function<ErrorOrSuccess(size_t, size_t)> &primitiveInfo,
+    const std::function<ErrorOrSuccess(size_t)> &resultRegs) {
   for (size_t i = 0, e = decoder.numRegisters; i != e; ++i) {
     size_t numUses;
     if (decoder.bodyReader.parseVBR(numUses))
@@ -492,7 +492,7 @@ struct PrimitiveDecoder {
     return result;
   }
 };
-} // end anonymous namespace
+} // namespace
 
 /// Set up registers for input arguments to an invokable.
 void BEFExecutor::processArgumentsPseudo(

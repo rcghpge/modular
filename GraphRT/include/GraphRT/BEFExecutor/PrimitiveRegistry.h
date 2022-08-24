@@ -1445,7 +1445,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
     std::apply(applyFn, std::move(tuple));
   }
 };
-} // end namespace Detail
+} // namespace Detail
 
 } // namespace M
 

@@ -509,7 +509,7 @@ struct TestFloat32Vector {
   TestFloat32Vector(size_t n) { values.resize(n); }
   SmallVector<ValueType> values;
 };
-} // end anonymous namespace.
+} // namespace
 
 static TestVector vec_iota(BEFAttr<int32_t> number) {
   TestVector result;

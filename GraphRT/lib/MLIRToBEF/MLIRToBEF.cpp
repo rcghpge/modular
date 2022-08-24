@@ -615,7 +615,7 @@ private:
 
   friend class TypeEmitter;
 };
-} // end anonymous namespace.
+} // namespace
 
 /// Given a valid bitwidth and a boolean that tells us if this attribute is a
 /// float or not, construct the correct attribute kind.
@@ -1157,7 +1157,7 @@ private:
   // the MLIR type for each argument and primitive result.
   BEFEmitter *mlirTypesSection;
 };
-} // end anonymous namespace.
+} // namespace
 
 void RegionEmitter::emitRegion(Region *region) {
   assert(region->getBlocks().size() == 1 && "should have a single block");
@@ -1428,7 +1428,7 @@ private:
   ModuleOp module;
   EntityTable entities;
 };
-} // end anonymous namespace
+} // namespace
 
 void BEFModuleEmitter::emitLocationInfo(BEFEmitter &locationFilenames,
                                         BEFEmitter &locationPositions) {

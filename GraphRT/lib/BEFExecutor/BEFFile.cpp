@@ -59,7 +59,7 @@ private:
   // This is the file structure we're reading.
   BEFFileImpl &befFile;
 };
-} // end anonymous namespace
+} // namespace
 
 /// Decode the key sections of the specified BEF file, capturing some of their
 /// ranges into BEFFileImpl and completely decoding others.  Return true and
@@ -193,7 +193,7 @@ BEFFileImpl::~BEFFileImpl() {
 /// a `true` result indicates that iteration should stop or `false` to
 /// continue.
 ErrorOrSuccess BEFFileImpl::enumeratePrimitiveNames(
-    const std::function<ErrorOrSuccess(StringRef)>& callbackFn) {
+    const std::function<ErrorOrSuccess(StringRef)> &callbackFn) {
   ErrorOrSuccess errorResult;
   BEFReader primNameReader(primitiveNames,
                            [&](Error err) { errorResult = std::move(err); });

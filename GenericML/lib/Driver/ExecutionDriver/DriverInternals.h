@@ -26,6 +26,6 @@ void benchmarkModel(const Model *model, Runtime &runtime,
                     StringRef benchmarkName, InputGenerationKind inputGenKind,
                     BenchmarkScenario scenario, StringRef outputDir,
                     bool benchmarkNoLogPrefix);
-} // end namespace M
+} // namespace M
 
 #endif // DRIVERINTERNALS_H

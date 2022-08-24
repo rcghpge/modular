@@ -147,7 +147,7 @@ private:
   /// The is the parsed version of the type list when metadata is enabled.
   std::vector<Type> types;
 };
-} // end anonymous namespace.
+} // namespace
 
 /// Read the magic number from the start of the BEF file and check it.
 bool BEFToMLIRConverter::parseHeader(BEFReader &reader) {
@@ -769,7 +769,7 @@ private:
   /// This contains the register numbers that are output by the invokable.
   SmallVector<size_t> resultRegs;
 };
-} // end anonymous namespace
+} // namespace
 
 /// Entrypoint to parse the invokable body.
 bool RegionParser::parse() {
