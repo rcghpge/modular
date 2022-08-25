@@ -17,7 +17,7 @@
 #include "Support/LLVMForwardDecls.h"
 #include <string>
 
-namespace LLCL {
+namespace M::LLCL {
 
 /// This class implements LocationDecoder and reports just the the file name.
 /// FileNameLocationDecoder is used when line and column information cannot be
@@ -32,7 +32,7 @@ public:
 
   /// Implement the only remaining LocationDecoder hook. The only thing we
   /// can decode is the file name.
-  LLCL::DecodedLocation decode(const EncodedLocation &loc) const override;
+  DecodedLocation decode(const EncodedLocation &loc) const override;
   void addRef() const override;
   void dropRef() const override;
 
@@ -40,6 +40,6 @@ private:
   std::string filename;
 };
 
-} // namespace LLCL
+} // namespace M::LLCL
 
 #endif // LLCL_SUPPORT_FILELOCATIONDECODER_H

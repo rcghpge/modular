@@ -20,8 +20,8 @@
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "llvm/Support/SourceMgr.h"
 
-using namespace LLCL;
 using namespace M;
+using namespace M::LLCL;
 using mlir::MLIRContext;
 
 /// This method can be used to print the results of `invokable` in the

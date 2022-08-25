@@ -98,7 +98,7 @@ public:
 
   /// Implement the only remaining LocationDecoder hook. Since we have a pointer
   /// to the BEFFileImpl we can easily decode a location provided to us.
-  LLCL::DecodedLocation decode(const EncodedLocation &loc) const override;
+  M::LLCL::DecodedLocation decode(const EncodedLocation &loc) const override;
 
 public:
   const uint32_t bodyOffset;
