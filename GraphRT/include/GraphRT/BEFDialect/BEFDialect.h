@@ -1,4 +1,4 @@
-//===- BEFDialect.h -------------------------------------------------------===//
+//===- GraphRT/BEFDialect/BEFDialect.h ------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //

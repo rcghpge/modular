@@ -1,4 +1,4 @@
-//===- GraphRT/GRTDialect/GRTIntegerOps.td -----------------*- tablegen -*-===//
+//===- GRTIntegerOps.td ---------------------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //

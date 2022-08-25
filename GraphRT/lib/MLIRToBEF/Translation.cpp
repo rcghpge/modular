@@ -1,4 +1,4 @@
-//===- MLIRToBEF/Translation.cpp ------------------------------------------===//
+//===- Translation.cpp ----------------------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //

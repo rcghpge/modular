@@ -1,4 +1,4 @@
-//===- GraphRT/GRTDialect/GRTControlFlowOps.td -------------*- tablegen -*-===//
+//===- GRTControlFlowOps.td -----------------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //

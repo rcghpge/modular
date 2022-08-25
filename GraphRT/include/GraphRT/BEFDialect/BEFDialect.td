@@ -1,4 +1,4 @@
-//===- BEFDialect.td ---------------------------------------*- tablegen -*-===//
+//===- BEFDialect.td ------------------------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //

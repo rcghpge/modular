@@ -1,4 +1,4 @@
-//===- GraphRT/GRTDialect/GRTDialect.td --------------------*- tablegen -*-===//
+//===- GRTDialect.td ------------------------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //

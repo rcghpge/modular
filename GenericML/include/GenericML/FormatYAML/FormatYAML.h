@@ -1,4 +1,4 @@
-//===- GenericML/FormatYAML.h ---------------------------------------------===//
+//===- GenericML/FormatYAML/FormatYAML.h ----------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //

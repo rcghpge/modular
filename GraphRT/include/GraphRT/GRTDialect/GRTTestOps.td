@@ -1,4 +1,4 @@
-//===- GraphRT/GRTDialect/GRTTestOps.td --------------------*- tablegen -*-===//
+//===- GRTTestOps.td ------------------------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //

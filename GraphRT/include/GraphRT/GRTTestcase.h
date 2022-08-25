@@ -1,4 +1,4 @@
-//===- GraphRT/Tools/bef-executor/GRTTestcase.h ---------------------------===//
+//===- GraphRT/GRTTestcase.h ----------------------------------------------===//
 //
 // This file is Modular Inc proprietary.
 //
