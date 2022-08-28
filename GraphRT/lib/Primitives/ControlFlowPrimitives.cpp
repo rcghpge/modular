@@ -13,6 +13,7 @@
 #include "GraphRT/BEFExecutor/BEFInvokable.h"
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
 #include "LLCL/ForwardDecls.h"
+#include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/AsyncValueRef.h"
 #include "LLCL/Runtime/Runtime.h"
 using namespace M;
@@ -133,9 +134,13 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
   /// Capture and add-ref each argument and result AsyncValue into a state we
   /// can manage.
   struct RepeatState {
+    Runtime &runtime;
     RCRef<BEFInvokable> invokable;
     SmallVector<AnyAsyncValueRef> operands;
     SmallVector<AnyAsyncValueRef> repeatResults;
+
+    /// This is the number of iterations left to run.
+    int32_t iterationsLeft;
 
     /// This method is invoked when the AsyncValue for count resolves.  The rest
     /// of the operands may still be unavailable, but repeatResults are filled
@@ -150,30 +155,60 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
         return;
       }
 
-      // Otherwise, we kick off all of the iterations at once!
-      SmallVector<AnyAsyncValueRef> bodyResults;
+      // Now that count is resolved, we know how many iterations to do.
+      iterationsLeft = *count;
 
-      // TODO: We could be smarter about this, and only kick off an iteration
-      // when at least one result from the previous iteration is available.  We
-      // could also look for cancellation state in `Runtime` which would make
-      // cancellation quash computation faster.
-      for (int32_t i = 0, e = count.get(); i != e; ++i) {
-        bodyResults.resize(repeatResults.size());
-        invokable->invoke(operands, bodyResults, count.getRuntime());
-        // bodyResults become the operands of the next iteration.
-        operands = std::move(bodyResults);
-        bodyResults.clear();
+      // Kick off the next iteration of the loop on another task.
+      addTask(runtime,
+              [state = std::move(*this)]() mutable { state.doIteration(); });
+    }
+
+    void doIteration() {
+      // If there are no iterations left, then the repeat results are
+      // resolved to the outputs of the last iteration and we're done.
+      if (iterationsLeft == 0) {
+        // We complete by passing the final result values to the output of the
+        // repeat loop overall.
+        for (size_t argNo = 0, e = operands.size(); argNo != e; ++argNo)
+          repeatResults[argNo]->resolveIndirect(std::move(operands[argNo]));
+        return;
       }
 
-      // We complete by passing the final result values to the output of the
-      // repeat loop overall.
-      for (size_t argNo = 0, e = operands.size(); argNo != e; ++argNo)
-        repeatResults[argNo]->resolveIndirect(std::move(operands[argNo]));
+      // If the execution is canceled, give up.
+      if (AsyncValue *cancelValue = runtime.getCancelValue()) {
+        for (auto &result : repeatResults)
+          result->resolveIndirect(copyRCRef(cancelValue));
+        return;
+      }
+
+      // Otherwise, we have an iteration to perform.
+      --iterationsLeft;
+
+      SmallVector<AnyAsyncValueRef> bodyResults;
+      bodyResults.resize(repeatResults.size());
+      invokable->invoke(operands, bodyResults, runtime);
+
+      // When all the results of the previous computation complete, kick off the
+      // next iteration.  Note that this is a policy decision - we could just
+      // "unroll the loop" completely, which would increase parallelism.  This
+      // is conservatively correct though.
+      andThenMoving(
+          bodyResults, [state = std::move(*this)](
+                           MutableArrayRef<AnyAsyncValueRef> values) mutable {
+            // bodyResults become the operands of the next iteration.
+            for (auto operandAndNewValue : llvm::zip(state.operands, values))
+              std::get<0>(operandAndNewValue) =
+                  std::move(std::get<1>(operandAndNewValue));
+
+            addTask(state.runtime, [state = std::move(state)]() mutable {
+              state.doIteration();
+            });
+          });
     }
   };
 
-  RepeatState state = {copyRCRef(body), args.takeAsVector(),
-                       results.copyAsVector()};
+  RepeatState state = {runtime, copyRCRef(body), args.takeAsVector(),
+                       results.copyAsVector(), 0};
 
   // Dispatch when the `count` becomes available (possibly immediately).
   count.andThen(

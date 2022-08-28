@@ -97,11 +97,10 @@ static ErrorOrSuccess runTestcase(const GRTTestcase &test,
   // each testcase with its own runtime instance and own leak checker.
   runtimeConfig.runWithLeakCheckedRuntime(
       test.getName().str().c_str(), [&](Runtime runtime) {
-        auto &os = llvm::outs();
-
-        // Actually run the invokable.
-        os << "--- Running '" << test.getName() << "':\n";
-        os.flush();
+        // Actually run the invokable.  We use printf here because it has atomic
+        // output behavior w.r.t. the printfs in various TestPrimitives.
+        printf("--- Running '%.*s':\n", (int)test.getName().size(),
+               test.getName().data());
 
         auto results = test.getBody()->invoke(/*arguments=*/{}, runtime);
 
@@ -112,6 +111,7 @@ static ErrorOrSuccess runTestcase(const GRTTestcase &test,
         // will be printing with raw_ostream.
         fflush(stdout);
 
+        auto &os = llvm::outs();
         if (!results.empty())
           os << "'" << test.getName() << "' returned ";
 
