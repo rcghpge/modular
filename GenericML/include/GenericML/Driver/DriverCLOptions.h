@@ -13,6 +13,7 @@
 #include "LLCL/Runtime/RuntimeCLOptions.h"
 #include "Support/CommonCLOptions.h"
 #include "llvm/Support/NativeFormatting.h"
+#include "llvm/Support/Process.h"
 
 namespace llvm {
 class MemoryBuffer;
@@ -65,11 +66,14 @@ public:
       cl::init(BenchmarkScenario::kOnline)};
 
   /// This specifies the output directory which will contain the benchmarking
-  /// logs
+  /// logs. The default is to query the MODULAR_DERIVED_PATH env variable, if
+  /// it is set then that's the default output directory. Otherwise, the current
+  /// working directory is used.
   cl::opt<std::string> benchmarkOutputDir{
       "benchmark-output-dir",
       cl::desc("The output directory to place the benchmarking logs."),
-      cl::init(".")};
+      cl::init(
+          llvm::sys::Process::GetEnv("MODULAR_DERIVED_PATH").value_or("."))};
 
   /// This specifies whether to prefix the benchmarking logs or not. If the
   /// option is not set, then the default prefix
