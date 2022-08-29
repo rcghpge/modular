@@ -193,8 +193,6 @@ grt.testcase @repeat_1_inc {
   // CHECK: move constructed vt.value(1)
   // CHECK: constructed vt.value(2)
   // CHECK: move constructed vt.value(2)
-  // CHECK: destroyed vt.value(1)
-  // CHECK: destroyed vt.value(1)
   // CHECK: print vt.value(2)
 
   // Destruction of the final value runs async in parallel with the bef-executor
@@ -214,16 +212,11 @@ grt.testcase @repeat_2_inc {
   // CHECK: move constructed vt.value(1)
   // CHECK: constructed vt.value(2)
   // CHECK: move constructed vt.value(2)
-  // CHECK: destroyed vt.value(1)
-  // CHECK: destroyed vt.value(1)
   // CHECK: constructed vt.value(1)
   // CHECK: move constructed vt.value(1)
   // CHECK: constructed vt.value(3)
   // CHECK: move constructed vt.value(3)
-  // CHECK: destroyed vt.value(1)
-  // CHECK: destroyed vt.value(2)
   // CHECK: print vt.value(3)
-  // CHECK: destroyed vt.value(3)
   %ch_out = grt.invoke @repeat_n_inc(%count) : (si32) -> !bef.chain
   bef.output %ch_out : !bef.chain
 }
