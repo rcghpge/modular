@@ -196,9 +196,8 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
           bodyResults, [state = std::move(*this)](
                            MutableArrayRef<AnyAsyncValueRef> values) mutable {
             // bodyResults become the operands of the next iteration.
-            for (auto operandAndNewValue : llvm::zip(state.operands, values))
-              std::get<0>(operandAndNewValue) =
-                  std::move(std::get<1>(operandAndNewValue));
+            for (auto [operand, newValue] : llvm::zip(state.operands, values))
+              operand = std::move(newValue);
 
             addTask(state.runtime, [state = std::move(state)]() mutable {
               state.doIteration();
