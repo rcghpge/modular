@@ -25,6 +25,8 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/StringSet.h"
+#include "llvm/ADT/TypeSwitch.h"
+
 using namespace M;
 
 /// This holds an offset into a BEF section.
@@ -603,11 +605,16 @@ private:
   void emitAttributeKind(BEF::AttributeKind kind) { emitByte((uint8_t)kind); };
   FailureOr<BEF::AttributeKind> deriveAttributeKind(Type eltType,
                                                     Location loc) const;
+
   BEFOffset emitAttributeInternal(Attribute attr, Location loc);
   BEFOffset emitIntegerValue(const APInt &value, Type eltType, Location loc);
   BEFOffset emitStringAttribute(StringRef value);
   BEFOffset emitSymbolAttribute(StringRef value);
+  BEFOffset emitIntOrFloatRange(BEF::AttributeKind kind, size_t numElements,
+                                size_t bitwidth,
+                                function_ref<void(size_t)> emitRangeFn);
   BEFOffset emitDenseElementsAttribute(DenseElementsAttr value, Location loc);
+  BEFOffset emitDenseArrayAttribute(mlir::DenseArrayAttr value, Location loc);
   BEFOffset emitArrayAttribute(ArrayAttr value, Location loc);
   BEFOffset emitDictionaryAttribute(DictionaryAttr value, Location loc);
   BEFOffset emitTypeAttribute(Type type, Location loc);
@@ -617,14 +624,21 @@ private:
 };
 } // namespace
 
-/// Given a valid bitwidth and a boolean that tells us if this attribute is a
-/// float or not, construct the correct attribute kind.
+/// Given a BEF attribute category and its bitwidth, construct the BEF attribute
+/// kind.
+static BEF::AttributeKind getAttributeKind(BEF::AttrCategory category,
+                                           size_t bitwidth) {
+  return BEF::AttributeKind(uint8_t(category) << 1 | llvm::Log2_32(bitwidth / 8)
+                                                         << 3);
+}
+
+/// Given an MLIR type, construct the corresponding BEF attribute type.
 FailureOr<BEF::AttributeKind>
 AttributesEmitter::deriveAttributeKind(Type eltType, Location loc) const {
-  BEF::AttrCategory category;
   if (eltType.isSignlessInteger(1))
     return BEF::AttributeKind::kBool;
 
+  BEF::AttrCategory category;
   if (eltType.isSignedInteger())
     category = BEF::AttrCategory::Signed;
   else if (eltType.isUnsignedInteger())
@@ -637,59 +651,30 @@ AttributesEmitter::deriveAttributeKind(Type eltType, Location loc) const {
   else
     return entities.emitError(loc) << "unknown type " << eltType;
 
-  unsigned width = ~0U;
-  switch (eltType.getIntOrFloatBitWidth()) {
-  case 1:
-    if (eltType.isSignlessInteger(1))
-      return BEF::AttributeKind::kBool;
-    break;
-  case 8:
-    width = 0;
-    break;
-  case 16:
-    width = 1;
-    break;
-  case 32:
-    width = 2;
-    break;
-  case 64:
-    width = 3;
-    break;
-  }
+  size_t bitwidth = eltType.getIntOrFloatBitWidth();
+  if (bitwidth < 8 || bitwidth > 64 || !llvm::isPowerOf2_32(bitwidth))
+    return entities.emitError(loc) << "invalid bitwidth " << bitwidth;
 
-  if (width == ~0U)
-    return entities.emitError(loc)
-           << "invalid bitwidth " << eltType.getIntOrFloatBitWidth();
-
-  return BEF::AttributeKind(width << 3 | uint8_t(category) << 1);
+  return getAttributeKind(category, bitwidth);
 }
 
 /// Emit a single integer value of supported type.
 BEFOffset AttributesEmitter::emitIntegerValue(const APInt &value, Type eltType,
                                               Location loc) {
-  if (!llvm::isPowerOf2_64(value.getBitWidth()) || value.getBitWidth() > 64) {
-    entities.emitError(loc)
-        << "unsupported integer width " << value.getBitWidth();
-    return {0};
-  }
-
-  size_t bytes = (value.getBitWidth() + 7) / 8;
-  alignTo(bytes);
-
-  // Emit the kind of the data.
   auto kindOr = deriveAttributeKind(eltType, loc);
   if (failed(kindOr))
     return {0};
+
+  size_t bytes = llvm::divideCeil(value.getBitWidth(), 8);
+  alignTo(bytes);
+
+  // Emit the kind of the data.
   emitAttributeKind(*kindOr);
 
   auto offset = getOffset();
 
   uint64_t v = value.getLimitedValue();
-  for (unsigned i = 0; i != bytes; ++i) {
-    emitByte(static_cast<uint8_t>(v & 255));
-    v >>= 8;
-  }
-
+  emitBytes({reinterpret_cast<const uint8_t *>(&v), bytes});
   return offset;
 }
 
@@ -719,31 +704,20 @@ BEFOffset AttributesEmitter::emitSymbolAttribute(StringRef value) {
   return offset;
 }
 
-BEFOffset AttributesEmitter::emitDenseElementsAttribute(DenseElementsAttr value,
-                                                        Location loc) {
-  Type elementType = value.getElementType();
-
-  // We only support integer and FP element types.
-  if (!elementType.isIntOrFloat()) {
-    entities.emitError(loc) << "unsupported element type";
-    return {0};
-  }
-
-  // Get the attribute kind for the elements of the array.
-  auto kindOr = deriveAttributeKind(elementType, loc);
-  if (failed(kindOr))
-    return {0};
+BEFOffset
+AttributesEmitter::emitIntOrFloatRange(BEF::AttributeKind kind,
+                                       size_t numElements, size_t bitwidth,
+                                       function_ref<void(size_t)> emitRangeFn) {
   BEFOffset sizeStart = getOffset();
 
   // Emit the number of elements first and then emit all of the attributes
   // consecutively, returning the offset of the first element in the attribute
   // array.
-  size_t numElements = value.size();
   emitInvertedVBR(numElements);
 
   // Emit the byte for the attribute kind just after the inverted VBR for the
   // elements.
-  emitAttributeKind(BEF::getArrayOf(*kindOr));
+  emitAttributeKind(BEF::getArrayOf(kind));
 
   BEFOffset sizeAndKindEnd = getOffset();
 
@@ -751,39 +725,11 @@ BEFOffset AttributesEmitter::emitDenseElementsAttribute(DenseElementsAttr value,
   if (numElements == 0)
     return sizeAndKindEnd;
 
-  // Verify that the width of the array is of a form we support.
-  Type eltType = value.getElementType();
-  size_t bitwidth = eltType.getIntOrFloatBitWidth();
-  if (!llvm::isPowerOf2_64(bitwidth) || bitwidth > 64 || bitwidth == 2 ||
-      bitwidth == 4) {
-    entities.emitError(loc) << "unsupported element width " << bitwidth;
-    return {0};
-  }
-
-  // Emit a range of APInt values representing the elements of the array.
-  auto emitIntRange = [&](auto &&elts) -> BEFOffset {
-    size_t bytes = (bitwidth + 7) / 8;
-    alignTo(bytes);
-
-    BEFOffset startOffset = getOffset();
-    for (const APInt &elt : elts) {
-      uint64_t v = elt.getLimitedValue();
-      for (unsigned i = 0; i != bytes; ++i) {
-        emitByte(static_cast<uint8_t>(v & 255));
-        v >>= 8;
-      }
-    }
-    return startOffset;
-  };
-  BEFOffset startOffset;
-  if (eltType.isa<IntegerType>()) {
-    startOffset = emitIntRange(value.getValues<APInt>());
-  } else {
-    startOffset = emitIntRange(
-        llvm::map_range(value.getValues<APFloat>(), [](const APFloat &elt) {
-          return elt.bitcastToAPInt();
-        }));
-  }
+  // Emit a range of integer values representing the elements of the array.
+  size_t bytes = llvm::divideCeil(bitwidth, 8);
+  alignTo(bytes);
+  BEFOffset startOffset = getOffset();
+  emitRangeFn(bytes);
 
   // If there is a gap between the size and the first attribute value, we
   // move the size to be immediately before the first attribute value to
@@ -798,6 +744,66 @@ BEFOffset AttributesEmitter::emitDenseElementsAttribute(DenseElementsAttr value,
   }
 
   return startOffset;
+}
+
+BEFOffset AttributesEmitter::emitDenseElementsAttribute(DenseElementsAttr value,
+                                                        Location loc) {
+  // FIXME: Shape info is not emitted. When a dense elements attribute is
+  // decoded, it becomes a dense array.
+  Type elementType = value.getElementType();
+
+  // We only support integer and FP element types.
+  if (!elementType.isIntOrFloat()) {
+    entities.emitError(loc) << "unsupported element type";
+    return {0};
+  }
+
+  // Get the attribute kind for the elements of the array.
+  auto kindOr = deriveAttributeKind(elementType, loc);
+  if (failed(kindOr))
+    return {0};
+
+  // Verify that the width of the array is of a form we support.
+  size_t bitwidth = elementType.getIntOrFloatBitWidth();
+  if (!llvm::isPowerOf2_64(bitwidth) || bitwidth > 64 || bitwidth == 2 ||
+      bitwidth == 4) {
+    entities.emitError(loc) << "unsupported element width " << bitwidth;
+    return {0};
+  }
+
+  auto emitIntRange = [&](auto &&elts) {
+    auto emitRange = [&](size_t bytes) {
+      for (const APInt &elt : elts) {
+        int64_t v = elt.getLimitedValue();
+        emitBytes({reinterpret_cast<uint8_t *>(&v), bytes});
+      }
+    };
+    return emitIntOrFloatRange(*kindOr, value.size(), bitwidth, emitRange);
+  };
+
+  if (elementType.isa<IntegerType>()) {
+    return emitIntRange(value.getValues<APInt>());
+  } else {
+    return emitIntRange(
+        llvm::map_range(value.getValues<APFloat>(), [](const APFloat &elt) {
+          return elt.bitcastToAPInt();
+        }));
+  }
+}
+
+BEFOffset AttributesEmitter::emitDenseArrayAttribute(mlir::DenseArrayAttr value,
+                                                     Location loc) {
+  FailureOr<BEF::AttributeKind> kind =
+      deriveAttributeKind(value.getElementType(), loc);
+  if (failed(kind))
+    return {0};
+
+  auto emitRange = [&](size_t bytes) {
+    emitBytes({reinterpret_cast<const uint8_t *>(value.getRawData().begin()),
+               value.size() * bytes});
+  };
+  return emitIntOrFloatRange(
+      *kind, value.size(), value.getType().getElementTypeBitWidth(), emitRange);
 }
 
 BEFOffset AttributesEmitter::emitArrayAttribute(ArrayAttr value, Location loc) {
@@ -1096,6 +1102,9 @@ BEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr,
 
   if (auto denseElements = attr.dyn_cast<DenseElementsAttr>())
     return emitDenseElementsAttribute(denseElements, loc);
+
+  if (auto denseArray = attr.dyn_cast<mlir::DenseArrayAttr>())
+    return emitDenseArrayAttribute(denseArray, loc);
 
   if (auto array = attr.dyn_cast<ArrayAttr>())
     return emitArrayAttribute(array, loc);

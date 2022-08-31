@@ -554,23 +554,20 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
     return true;
   attrKind &= ~(uint8_t)BEF::AttributeKind::mArrayType;
 
-  SmallVector<Attribute> elements;
-  while (length--) {
-    elements.push_back(parseAttribute(BEF::AttributeKind(attrKind)));
-    if (!elements.back())
-      return true;
-  }
+  auto befKind = BEF::AttributeKind(attrKind);
 
-  int64_t numElements = elements.size();
-  Type eltType =
-      getTypeForAttributeKind(BEF::AttributeKind(attrKind), getContext());
-  if (!eltType) {
-    emitError("invalid array element type");
+  ArrayRef<uint8_t> data;
+  size_t dataSize = length;
+  if (befKind != BEF::AttributeKind::kBool)
+    dataSize *= BEF::getWidthInBits(befKind) / 8;
+  if (attrReader.parseBytes(length * dataSize, data))
     return {};
-  }
 
-  auto type = RankedTensorType::get(numElements, eltType);
-  resultAttr = DenseElementsAttr::get(type, elements);
+  resultAttr = mlir::DenseArrayAttr::get(
+      getContext(),
+      mlir::RankedTensorType::get(
+          length, getTypeForAttributeKind(befKind, getContext())),
+      ArrayRef<char>(reinterpret_cast<const char *>(data.begin()), dataSize));
   return false;
 }
 
