@@ -10,6 +10,7 @@
 #include "GenericML/Support/Tensor.h"
 #include "Kernels/Misc.h"
 #include "LLCL/Runtime/Algorithms.h"
+#include "LLCL/Support/TimeProfiler.h"
 #include "Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
 #include <chrono>
@@ -93,6 +94,7 @@ printTensorResults(const ExecutableModel *model,
 static ErrorOrSuccess executeModelOnce(MLIRContext *ctx, const Model *model,
                                        Runtime &runtime,
                                        const ExecutorDriverCLOptions &options) {
+  TIME_PROFILER_SCOPE(1, "runModelOnce");
   UNWRAP_ERROR(executableModel, model->setup(runtime));
   UNWRAP_ERROR(inputTensors,
                initializeInputMemory(options.inputGenKind, model, runtime));
@@ -167,6 +169,7 @@ executeModelRepeated(MLIRContext *ctx, const Model *model, Runtime &runtime,
 
   // Measure the time taken for each inference and print it.
   for (unsigned i = 0, e = options.numRuns; i != e; ++i) {
+    TIME_PROFILER_SCOPE(1, "runModelOnce");
 
     // Fill the arguments.  We pass in an immortal
     // reference to the tensor data so the input buffers live across all
