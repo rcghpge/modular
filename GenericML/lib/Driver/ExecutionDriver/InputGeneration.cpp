@@ -8,11 +8,9 @@
 
 #include "GenericML/Support/Model.h"
 #include "GenericML/Support/Tensor.h"
-#include "Kernels/Misc.h"
-#include "LLCL/ForwardDecls.h"
 #include "Support/ErrorOr.h"
+#include "Support/InputGeneration.h"
 #include "llvm/ADT/Twine.h"
-#include "llvm/Support/raw_ostream.h"
 
 using namespace M;
 
@@ -24,18 +22,17 @@ static ErrorOrSuccess fillWithElements(Tensor &tensor,
 
   switch (inputGenKind) {
   case InputGenerationKind::kRandom:
-    return Kernel::fillRandom(tensor.getPointer(),
-                              tensor.getShape().getNumElements(), eltType);
+    return fillRandom(tensor.getPointer(), tensor.getShape().getNumElements(),
+                      eltType);
 
   case InputGenerationKind::kOnes: {
-    ErrorOrSuccess result = Kernel::getScalarOne(elementBuffer, eltType);
+    ErrorOrSuccess result = getScalarOne(elementBuffer, eltType);
     if (failed(result))
       return result;
     break;
   }
   case InputGenerationKind::kNegOnes: {
-    ErrorOrSuccess result =
-        Kernel::getScalarNegativeOne(elementBuffer, eltType);
+    ErrorOrSuccess result = getScalarNegativeOne(elementBuffer, eltType);
     if (failed(result))
       return result;
     break;
@@ -60,9 +57,9 @@ static ErrorOrSuccess fillWithElements(Tensor &tensor,
   }
 
   // Fill the tensor with the 0, 1, -1 value.
-  return Kernel::fillHomogeneous(tensor.getPointer(),
-                                 tensor.getShape().getNumElements(), eltType,
-                                 elementBuffer);
+  return fillHomogeneous(tensor.getPointer(),
+                         tensor.getShape().getNumElements(), eltType,
+                         elementBuffer);
 }
 
 M::ErrorOr<SmallVector<Tensor, 3>>
