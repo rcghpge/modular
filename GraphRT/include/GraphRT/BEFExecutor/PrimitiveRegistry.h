@@ -582,6 +582,18 @@ public:
 
 using BEFDynamicAttr = BEFAttr<Detail::Dynamic>;
 
+// Since BEFDynamicAttr can be constructed from a nullptr, the template
+// specializations in lllm/support/Casting.h fail to apply. As such, we
+// have to explicitly define the equals and not equals operators for
+// BEFDynamicAttr.
+inline bool operator==(BEFDynamicAttr lhs, BEFDynamicAttr rhs) {
+  return lhs.get() == rhs.get();
+}
+
+inline bool operator!=(BEFDynamicAttr lhs, BEFDynamicAttr rhs) {
+  return !(lhs == rhs);
+}
+
 //===----------------------------------------------------------------------===//
 // BEFListAttr
 //===----------------------------------------------------------------------===//
