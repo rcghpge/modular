@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-include "mlir/IR/AttrTypeBase.td"
 include "GraphRT/BEFDialect/BEFDialect.td"
+include "mlir/IR/AttrTypeBase.td"
 
 // Base class for the types in this dialect.
 class BEFType<string mnemonic, list<Trait> traits = [],

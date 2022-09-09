@@ -11,9 +11,8 @@
 #ifndef GRT_TD
 #define GRT_TD
 
-include "mlir/IR/OpBase.td"
 include "GraphRT/GRTDialect/GRTDialect.td"
-include "GraphRT/BEFDialect/BEFNonStrict.td"
+include "mlir/IR/OpBase.td"
 
 // Base class for the operation in this dialect.
 class GRTOp<string mnemonic, list<Trait> traits = []> :

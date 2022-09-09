@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+include "GraphRT/BEFDialect/BEFNonStrict.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/IR/SymbolInterfaces.td"
 

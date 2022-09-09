@@ -11,6 +11,8 @@
 #ifndef GRAPHRT_BEFDIALECT_BEFDIALECT_TD
 #define GRAPHRT_BEFDIALECT_BEFDIALECT_TD
 
+include "mlir/IR/DialectBase.td"
+
 def BEFDialect : Dialect {
   let name = "bef";
 

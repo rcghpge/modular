@@ -11,8 +11,8 @@
 #ifndef BEF_TD
 #define BEF_TD
 
-include "mlir/IR/OpBase.td"
 include "GraphRT/BEFDialect/BEFDialect.td"
+include "mlir/IR/OpBase.td"
 
 // Base class for the operation in this dialect.
 class BEFOp<string mnemonic, list<Trait> traits = []> :
