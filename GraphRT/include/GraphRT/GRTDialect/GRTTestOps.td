@@ -4,10 +4,11 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This defines the test operations in GRT dialect.
+// This defines the test operations in the GRT dialect.
 //
 //===----------------------------------------------------------------------===//
 
+include "GraphRT/GRTDialect/GRTOpsBase.td"
 include "mlir/IR/SymbolInterfaces.td"
 
 //===----------------------------------------------------------------------===//

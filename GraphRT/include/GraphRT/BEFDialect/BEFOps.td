@@ -8,9 +8,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+include "GraphRT/BEFDialect/BEFDialect.td"
 include "mlir/IR/FunctionInterfaces.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
+
+// Base class for the operation in this dialect.
+class BEFOp<string mnemonic, list<Trait> traits = []> :
+    Op<BEFDialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
 // InvokableOp

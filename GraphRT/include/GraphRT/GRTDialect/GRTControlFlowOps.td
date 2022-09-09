@@ -9,8 +9,9 @@
 //===----------------------------------------------------------------------===//
 
 include "GraphRT/BEFDialect/BEFNonStrict.td"
-include "mlir/Interfaces/InferTypeOpInterface.td"
+include "GraphRT/GRTDialect/GRTOpsBase.td"
 include "mlir/IR/SymbolInterfaces.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 
 //===----------------------------------------------------------------------===//
 // ChainNewOp
