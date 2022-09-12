@@ -66,25 +66,26 @@ Here are some good entry point documents to understand the GraphRT library:
    primitives](DefiningPrimitives.md).
  - Documentation for the [BEF binary file format](BinaryExecutorFormat.md).
  - Benchmarking with [`grt.benchmark`](Benchmarking.md).
+
 ## GraphRT code base
 
 Beyond documentation, it can be helpful to browse the code.  The major
 components of the GraphRT module are:
 
-1) a set of MLIR components for representing GraphRT programs, notably the
+1. a set of MLIR components for representing GraphRT programs, notably the
    [BEF Dialect](../include/GraphRT/BEFDialect) which defines `bef.invokable`.
-1) a binary file format named the ["Binary Executor Format"
+1. a binary file format named the ["Binary Executor Format"
    (BEF)](BinaryExecutorFormat.md) which is designed to be compact and
    efficiently executable by a low-dependency interpreter.
-1) the [BEFExecutor library](../include/GraphRT/BEFExecutor/) implements the
+1. the [BEFExecutor library](../include/GraphRT/BEFExecutor/) implements the
    interpreter for the BEF file.
-1) translators for converting [MLIR to BEF](../lib/MLIRToBEF/) (a core
+1. translators for converting [MLIR to BEF](../lib/MLIRToBEF/) (a core
    part of the typical compilation flow), and from [BEF to
    MLIR](../lib/BEFToMLIR/) (more of a debugging/introspection/testing
    aid).
-1) a [set of example primitives](../lib/Primitives/) implementing integer
+1. a [set of example primitives](../lib/Primitives/) implementing integer
    arithmetic, common control flow operations, and for writing tests.  This
    library is fully generic and can be used without these, but they are
    nonetheless useful for writing tests, as examples, and even for some
    realistic higher level clients.
-1) [tests for all the relevant functionality](../test/), of course!
+1. [tests for all the relevant functionality](../test/), of course!
