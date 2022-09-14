@@ -87,6 +87,15 @@ public:
     dataResult.insert(dataResult.end(), bytes.begin(), bytes.end());
   }
 
+  /// Emit an array of bytes, which are owned by the caller and have a lifetime
+  /// guaranteed to be longer than the BEF generation process.
+  void emitOwnedBytes(ArrayRef<uint8_t> bytes) {
+    if (bytes.empty())
+      return;
+    treeResult = ConcatenationTree::concat(
+        takeContents(), ConcatenationTree::getImmortalData(bytes));
+  }
+
   void emitStringData(StringRef str) {
     emitBytes({reinterpret_cast<const uint8_t *>(str.data()), str.size()});
   }
@@ -612,7 +621,7 @@ private:
   BEFOffset emitSymbolAttribute(StringRef value);
   BEFOffset emitIntOrFloatRange(BEF::AttributeKind kind, size_t numElements,
                                 size_t bitwidth,
-                                function_ref<void(size_t)> emitRangeFn);
+                                function_ref<void()> emitRangeFn);
   BEFOffset emitDenseElementsAttribute(DenseElementsAttr value, Location loc);
   BEFOffset emitDenseArrayAttribute(mlir::DenseArrayAttr value, Location loc);
   BEFOffset emitArrayAttribute(ArrayAttr value, Location loc);
@@ -707,7 +716,7 @@ BEFOffset AttributesEmitter::emitSymbolAttribute(StringRef value) {
 BEFOffset
 AttributesEmitter::emitIntOrFloatRange(BEF::AttributeKind kind,
                                        size_t numElements, size_t bitwidth,
-                                       function_ref<void(size_t)> emitRangeFn) {
+                                       function_ref<void()> emitRangeFn) {
   BEFOffset sizeStart = getOffset();
 
   // Emit the number of elements first and then emit all of the attributes
@@ -729,7 +738,6 @@ AttributesEmitter::emitIntOrFloatRange(BEF::AttributeKind kind,
   size_t bytes = llvm::divideCeil(bitwidth, 8);
   alignTo(bytes);
   BEFOffset startOffset = getOffset();
-  emitRangeFn(bytes);
 
   // If there is a gap between the size and the first attribute value, we
   // move the size to be immediately before the first attribute value to
@@ -743,6 +751,7 @@ AttributesEmitter::emitIntOrFloatRange(BEF::AttributeKind kind,
            startOffset.value - sizeAndKindEnd.value);
   }
 
+  emitRangeFn();
   return startOffset;
 }
 
@@ -770,25 +779,34 @@ BEFOffset AttributesEmitter::emitDenseElementsAttribute(DenseElementsAttr value,
     entities.emitError(loc) << "unsupported element width " << bitwidth;
     return {0};
   }
+  size_t numElements = value.size();
 
-  auto emitIntRange = [&](auto &&elts) {
-    auto emitRange = [&](size_t bytes) {
-      for (const APInt &elt : elts) {
-        int64_t v = elt.getLimitedValue();
-        emitBytes({reinterpret_cast<uint8_t *>(&v), bytes});
-      }
-    };
-    return emitIntOrFloatRange(*kindOr, value.size(), bitwidth, emitRange);
-  };
-
-  if (elementType.isa<IntegerType>()) {
-    return emitIntRange(value.getValues<APInt>());
-  } else {
-    return emitIntRange(
-        llvm::map_range(value.getValues<APFloat>(), [](const APFloat &elt) {
-          return elt.bitcastToAPInt();
-        }));
+  // DenseElementsAttr does some "magic" compression of boolean values, handle
+  // those explicitly here.
+  if (*kindOr == BEF::AttributeKind::kBool) {
+    return emitIntOrFloatRange(*kindOr, numElements, bitwidth, [&]() {
+      for (bool b : value.getValues<bool>())
+        emitByte(b ? 1 : 0);
+    });
   }
+
+  // If the attribute is a splat, we can't use the raw data directly, we need to
+  // expand the data during emission given that DenseElementsAttr stores splats
+  // using a single value.
+  ArrayRef<char> rawCharData = value.getRawData();
+  ArrayRef<uint8_t> rawData(
+      reinterpret_cast<const uint8_t *>(rawCharData.data()),
+      rawCharData.size());
+  if (value.isSplat()) {
+    return emitIntOrFloatRange(*kindOr, value.size(), bitwidth, [&]() {
+      for (unsigned i = 0; i < numElements; ++i)
+        emitBytes(rawData);
+    });
+  }
+
+  // If it isn't a splat, we can emit the raw data directly.
+  return emitIntOrFloatRange(*kindOr, numElements, bitwidth,
+                             [&]() { emitOwnedBytes(rawData); });
 }
 
 BEFOffset AttributesEmitter::emitDenseArrayAttribute(mlir::DenseArrayAttr value,
@@ -798,12 +816,12 @@ BEFOffset AttributesEmitter::emitDenseArrayAttribute(mlir::DenseArrayAttr value,
   if (failed(kind))
     return {0};
 
-  auto emitRange = [&](size_t bytes) {
-    emitBytes({reinterpret_cast<const uint8_t *>(value.getRawData().begin()),
-               value.size() * bytes});
-  };
-  return emitIntOrFloatRange(
-      *kind, value.size(), value.getType().getElementTypeBitWidth(), emitRange);
+  unsigned bitWidth = value.getType().getElementTypeBitWidth();
+  return emitIntOrFloatRange(*kind, value.size(), bitWidth, [&]() {
+    ArrayRef<char> rawData = value.getRawData();
+    emitOwnedBytes(
+        {reinterpret_cast<const uint8_t *>(rawData.data()), rawData.size()});
+  });
 }
 
 BEFOffset AttributesEmitter::emitArrayAttribute(ArrayAttr value, Location loc) {
