@@ -9,12 +9,12 @@
 // CHECK: module {
 
 // CHECK-LABEL: "bef.invokable" ["trivial"]
-// CHECK-NEXT:    %0:2 = bef.opaque "simple.primitive" []() : () -> (!bef.unknown, !bef.unknown)
+// CHECK-NEXT:    %{{.*}}:2 = bef.opaque "simple.primitive" []() : () -> (!bef.unknown, !bef.unknown)
 // CHECK-NEXT:    bef.opaque "grt.invoke" [@trivial]() : () -> ()
 // CHECK-NEXT:    bef.output
 // CHECK-NEXT:  }
 // MD-LABEL: "bef.invokable" ["trivial"]
-// MD-NEXT:    %0:2 = "simple.primitive"() : () -> (i8, i16)
+// MD-NEXT:    %{{.*}}:2 = "simple.primitive"() : () -> (i8, i16)
 // MD-NEXT:    "grt.invoke"() {target = @trivial} : () -> ()
 // MD-NEXT:    bef.output
 // MD-NEXT:  }
@@ -25,12 +25,12 @@ bef.invokable @trivial() {
 }
 
 // CHECK-LABEL:  "bef.invokable" ["args_results"]
-// CHECK-NEXT:   ^bb0(%arg0: !bef.unknown, %arg1: !bef.unknown):
-// CHECK-NEXT:     bef.output %arg1, %arg0 : !bef.unknown, !bef.unknown
+// CHECK-NEXT:   ^bb0(%[[ARG0:.*]]: !bef.unknown, %[[ARG1:.*]]: !bef.unknown):
+// CHECK-NEXT:     bef.output %[[ARG1]], %[[ARG0]] : !bef.unknown, !bef.unknown
 // CHECK-NEXT:   }
 // MD-LABEL:  "bef.invokable" ["args_results"]
-// MD-NEXT:   ^bb0(%arg0: si32, %arg1: si8):
-// MD-NEXT:     bef.output %arg1, %arg0 : si8, si32
+// MD-NEXT:   ^bb0(%[[ARG0:.*]]: si32, %[[ARG1:.*]]: si8):
+// MD-NEXT:     bef.output %[[ARG1]], %[[ARG0]] : si8, si32
 // MD-NEXT:   }
 bef.invokable @args_results(%a: si32, %b: si8) -> (si8, si32) {
   bef.output %b, %a : si8, si32
@@ -149,8 +149,8 @@ bef.invokable @attributes() {
 }  // CHECK-NEXT:   }
 
 // CHECK-LABEL: "bef.invokable" ["opaque_round_trip"]
-// CHECK-NEXT:    %0:2 = bef.opaque "simple.primitive" []() : () -> (!bef.unknown, !bef.unknown)
-// CHECK-NEXT:    bef.opaque "other.primitive" [42 : si8](%0#1, %0#0) : (!bef.unknown, !bef.unknown) -> ()
+// CHECK-NEXT:    %[[V0:.*]]:2 = bef.opaque "simple.primitive" []() : () -> (!bef.unknown, !bef.unknown)
+// CHECK-NEXT:    bef.opaque "other.primitive" [42 : si8](%[[V0]]#1, %[[V0]]#0) : (!bef.unknown, !bef.unknown) -> ()
 // CHECK-NEXT:    bef.output
 // CHECK-NEXT:  }
 bef.invokable @opaque_round_trip() {
@@ -173,15 +173,15 @@ bef.invokable @opaque_round_trip() {
 }) {sym_name = "multi_region"} : () -> ()
 
 // CHECK-LABEL: "bef.invokable" ["controlflow_if"]
-// CHECK-NEXT: ^bb0(%arg0: !bef.unknown, %arg1: !bef.unknown, %arg2: !bef.unknown):
-// CHECK-NEXT:   %0 = bef.opaque "grt.if" nonstrict [](%arg0, %arg1, %arg2) : (!bef.unknown, !bef.unknown, !bef.unknown) -> !bef.unknown {
-// CHECK-NEXT:   ^bb0(%arg3: !bef.unknown, %arg4: !bef.unknown):
-// CHECK-NEXT:     bef.output %arg3 : !bef.unknown
+// CHECK-NEXT: ^bb0(%[[ARG0:.*]]: !bef.unknown, %[[ARG1:.*]]: !bef.unknown, %[[ARG2:.*]]: !bef.unknown):
+// CHECK-NEXT:   %[[V0:.*]] = bef.opaque "grt.if" nonstrict [](%[[ARG0]], %[[ARG1]], %[[ARG2]]) : ([[ARG2:.*]]bef.unknown, !bef.unknown, !bef.unknown) -> !bef.unknown {
+// CHECK-NEXT:   ^bb0(%[[ARG3:.*]]: !bef.unknown, %[[ARG4:.*]]: !bef.unknown):
+// CHECK-NEXT:     bef.output %[[ARG3]] : !bef.unknown
 // CHECK-NEXT:   }, {
-// CHECK-NEXT:   ^bb0(%arg3: !bef.unknown, %arg4: !bef.unknown):
-// CHECK-NEXT:     bef.output %arg4 : !bef.unknown
+// CHECK-NEXT:   ^bb0(%[[ARG3:.*]]: !bef.unknown, %[[ARG4:.*]]: !bef.unknown):
+// CHECK-NEXT:     bef.output %[[ARG4]] : !bef.unknown
 // CHECK-NEXT:   }
-// CHECK-NEXT:   bef.output %0 : !bef.unknown
+// CHECK-NEXT:   bef.output %[[V0]] : !bef.unknown
 // CHECK-NEXT: }
 bef.invokable @controlflow_if(%cond: i1, %v1: si32, %v2: si32) -> si32 {
   %res = grt.if %cond (%v1: si32, %v2: si32) -> (si32) {
