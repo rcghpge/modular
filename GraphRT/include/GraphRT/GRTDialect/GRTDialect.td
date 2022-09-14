@@ -27,9 +27,6 @@ def GRTDialect : Dialect {
 
   // We depend on the BEF dialect for the chain type.
   let dependentDialects = ["::M::BEF::BEFDialect"];
-
-  // Use LLVM-style accessor prefixes.
-  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 #endif // GRAPHRT_GRTDIALECT_GRTDIALECT_TD
