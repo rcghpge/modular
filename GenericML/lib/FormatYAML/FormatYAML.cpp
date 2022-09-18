@@ -130,13 +130,13 @@ static void fromYAML(llvm::yaml::IO &io, QuantTensorSpec &quantTensorSpec) {
 
   // Otherwise, the quantized field is set, then we read the rest of the
   // QuantSpec information. We first parse the "kind" field.
-  StringRef kindStr;
+  StringRef kindStr("");
   io.mapRequired("kind", kindStr);
   auto kind = QuantSpec::kindFromString(kindStr);
 
   // The "quant_dim" field is optionally available when the quant kind is
   // M::QuantSpec::Kind::uniformPerAxis
-  uint8_t quantDim;
+  uint8_t quantDim = 0;
   io.mapOptional("quant_dim", quantDim, 0);
 
   // The "params" field constains the optionally available vector of
