@@ -249,6 +249,10 @@ ParseResult BenchmarkOp::parse(OpAsmParser &parser, OperationState &result) {
         IntegerAttr::get(
             IntegerType::get(parser.getContext(), 32, IntegerType::Unsigned),
             BenchmarkOp::getDefaultWarmupCount()));
+  if (!result.attributes.getNamed("summarize"))
+    result.attributes.append(
+        "summarize", BoolAttr::get(parser.getContext(),
+                                   BenchmarkOp::getDefaultSummarizeValue()));
 
   // Infer the return types from the terminator's operands.
   Operation *bodyTerminator = body->front().getTerminator();
