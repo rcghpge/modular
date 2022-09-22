@@ -11,11 +11,14 @@
 #include "GraphRT/BEFToMLIR.h"
 #include "GraphRT/BEF/BEFReader.h"
 #include "GraphRT/BEFDialect/BEFOps.h"
+#include "Support/Compiler/MLIRDenseAttrStorage.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinDialect.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Parser/Parser.h"
 #include <numeric>
@@ -29,7 +32,10 @@ namespace {
 // This class reads a BEF file and converts it to a mlir module.
 class BEFToMLIRConverter {
 public:
-  BEFToMLIRConverter(Location loc) : module(ModuleOp::create(loc)) {}
+  BEFToMLIRConverter(Location loc)
+      : module(ModuleOp::create(loc)),
+        resourceManager(DenseResourceElementsHandle::getManagerInterface(
+            loc->getContext())) {}
 
   ModuleOp takeModule() { return module.release(); }
 
@@ -146,6 +152,9 @@ private:
 
   /// The is the parsed version of the type list when metadata is enabled.
   std::vector<Type> types;
+
+  /// A manager used for handling resources.
+  DenseResourceElementsHandleManager &resourceManager;
 };
 } // namespace
 
@@ -555,19 +564,34 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
   attrKind &= ~(uint8_t)BEF::AttributeKind::mArrayType;
 
   auto befKind = BEF::AttributeKind(attrKind);
-
-  ArrayRef<uint8_t> data;
-  size_t dataSize = length;
+  size_t dataElementSize = 1;
   if (befKind != BEF::AttributeKind::kBool)
-    dataSize *= BEF::getWidthInBits(befKind) / 8;
-  if (attrReader.parseBytes(length * dataSize, data))
+    dataElementSize = (BEF::getWidthInBits(befKind) / 8);
+
+  // Parse the raw data of the attribute.
+  ArrayRef<uint8_t> data;
+  if (attrReader.parseBytes(length * dataElementSize, data))
     return {};
+  auto type = mlir::RankedTensorType::get(
+      length, getTypeForAttributeKind(befKind, getContext()));
+
+  // If the array is large, use a resource for it instead of going through an
+  // inline array.
+  if (shouldUseOutOfLineAttrStorage(length)) {
+    // TODO: In many cases we should be able to use `UnmanagedAsmResourceBlob`
+    // here and avoid all allocations. In these cases we need to ensure the
+    // incoming BEF doesn't die before the generated MLIR.
+    auto blob =
+        mlir::HeapAsmResourceBlob::allocateAndCopy(data, dataElementSize);
+    resultAttr = mlir::DenseResourceElementsAttr::get(
+        type, resourceManager.insert("befArray", std::move(blob)));
+    return false;
+  }
 
   resultAttr = mlir::DenseArrayAttr::get(
-      getContext(),
-      mlir::RankedTensorType::get(
-          length, getTypeForAttributeKind(befKind, getContext())),
-      ArrayRef<char>(reinterpret_cast<const char *>(data.begin()), dataSize));
+      getContext(), type,
+      ArrayRef<char>(reinterpret_cast<const char *>(data.begin()),
+                     data.size()));
   return false;
 }
 

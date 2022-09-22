@@ -23,6 +23,7 @@
 #include "Support/ErrorOr.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -480,6 +481,7 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
   addString(StringAttr::get(module->getContext()));
 
   std::vector<std::pair<SymbolRefAttr, Location>> symbolRefAttrs;
+  std::vector<std::pair<DenseResourceElementsAttr, Location>> resourceAttrs;
 
   auto opWalker = [&](Operation *op) -> WalkResult {
     // Ignore the OutputOp: it gets special handling, instead of being treated
@@ -515,6 +517,18 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
           // them.
           if (auto fn_attr = attr.dyn_cast<SymbolRefAttr>())
             symbolRefAttrs.emplace_back(fn_attr, op->getLoc());
+
+          // Delay inserting resource attributes if we can (i.e. if they aren't
+          // nested). We could do more complex organization, but big resources
+          // generally only appear at the top level, so delay that until we
+          // actually know we need it.
+          if (!insideDict) {
+            if (auto resource_attr =
+                    attr.dyn_cast<DenseResourceElementsAttr>()) {
+              resourceAttrs.emplace_back(resource_attr, op->getLoc());
+              return;
+            }
+          }
 
           // Recurse into ArrayAttr/DictionaryAttr. Perform a post-order
           // traversal so that we can use the offsets from the values inside
@@ -578,6 +592,11 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
   if (module.walk(opWalker).wasInterrupted())
     return true;
 
+  // Process the delayed resource attributes.
+  for (auto [resource, loc] : resourceAttrs)
+    if (attributes.insert(resource))
+      attributeLocs.push_back(loc);
+
   // If we're successful, check to make sure that all regions can be resolved.
   for (auto attrAndLoc : symbolRefAttrs) {
     Operation *symbolOp =
@@ -620,10 +639,13 @@ private:
   BEFOffset emitStringAttribute(StringRef value);
   BEFOffset emitSymbolAttribute(StringRef value);
   BEFOffset emitIntOrFloatRange(BEF::AttributeKind kind, size_t numElements,
-                                size_t bitwidth,
+                                size_t alignment,
                                 function_ref<void()> emitRangeFn);
   BEFOffset emitDenseElementsAttribute(DenseElementsAttr value, Location loc);
   BEFOffset emitDenseArrayAttribute(mlir::DenseArrayAttr value, Location loc);
+  BEFOffset
+  emitDenseResourceElementsAttribute(mlir::DenseResourceElementsAttr value,
+                                     Location loc);
   BEFOffset emitArrayAttribute(ArrayAttr value, Location loc);
   BEFOffset emitDictionaryAttribute(DictionaryAttr value, Location loc);
   BEFOffset emitTypeAttribute(Type type, Location loc);
@@ -715,7 +737,7 @@ BEFOffset AttributesEmitter::emitSymbolAttribute(StringRef value) {
 
 BEFOffset
 AttributesEmitter::emitIntOrFloatRange(BEF::AttributeKind kind,
-                                       size_t numElements, size_t bitwidth,
+                                       size_t numElements, size_t alignment,
                                        function_ref<void()> emitRangeFn) {
   BEFOffset sizeStart = getOffset();
 
@@ -735,8 +757,7 @@ AttributesEmitter::emitIntOrFloatRange(BEF::AttributeKind kind,
     return sizeAndKindEnd;
 
   // Emit a range of integer values representing the elements of the array.
-  size_t bytes = llvm::divideCeil(bitwidth, 8);
-  alignTo(bytes);
+  alignTo(alignment);
   BEFOffset startOffset = getOffset();
 
   // If there is a gap between the size and the first attribute value, we
@@ -780,11 +801,12 @@ BEFOffset AttributesEmitter::emitDenseElementsAttribute(DenseElementsAttr value,
     return {0};
   }
   size_t numElements = value.size();
+  size_t alignment = llvm::divideCeil(bitwidth, 8);
 
   // DenseElementsAttr does some "magic" compression of boolean values, handle
   // those explicitly here.
   if (*kindOr == BEF::AttributeKind::kBool) {
-    return emitIntOrFloatRange(*kindOr, numElements, bitwidth, [&]() {
+    return emitIntOrFloatRange(*kindOr, numElements, alignment, [&]() {
       for (bool b : value.getValues<bool>())
         emitByte(b ? 1 : 0);
     });
@@ -798,15 +820,51 @@ BEFOffset AttributesEmitter::emitDenseElementsAttribute(DenseElementsAttr value,
       reinterpret_cast<const uint8_t *>(rawCharData.data()),
       rawCharData.size());
   if (value.isSplat()) {
-    return emitIntOrFloatRange(*kindOr, value.size(), bitwidth, [&]() {
+    return emitIntOrFloatRange(*kindOr, value.size(), alignment, [&]() {
       for (unsigned i = 0; i < numElements; ++i)
         emitBytes(rawData);
     });
   }
 
   // If it isn't a splat, we can emit the raw data directly.
-  return emitIntOrFloatRange(*kindOr, numElements, bitwidth,
+  return emitIntOrFloatRange(*kindOr, numElements, alignment,
                              [&]() { emitOwnedBytes(rawData); });
+}
+
+BEFOffset AttributesEmitter::emitDenseResourceElementsAttribute(
+    mlir::DenseResourceElementsAttr value, Location loc) {
+  Type elementType = value.getElementType();
+
+  // We only support integer and FP element types.
+  if (!elementType.isIntOrFloat()) {
+    entities.emitError(loc) << "unsupported element type";
+    return {0};
+  }
+
+  // Get the attribute kind for the elements of the array.
+  auto kindOr = deriveAttributeKind(elementType, loc);
+  if (failed(kindOr))
+    return {0};
+
+  // Verify that the width of the array is of a form we support.
+  size_t bitwidth = elementType.getIntOrFloatBitWidth();
+  if (!llvm::isPowerOf2_64(bitwidth) || bitwidth > 64 || bitwidth == 2 ||
+      bitwidth == 4) {
+    entities.emitError(loc) << "unsupported element width " << bitwidth;
+    return {0};
+  }
+
+  // Check if the data for this resource is present, we can't emit if it isn't.
+  mlir::AsmResourceBlob *resourceBlob = value.getRawHandle().getBlob();
+  if (!resourceBlob) {
+    entities.emitError(loc) << "cannot emit resource without underlying data: "
+                            << value.getRawHandle().getKey();
+    return {0};
+  }
+
+  return emitIntOrFloatRange(
+      *kindOr, value.size(), resourceBlob->getDataAlignment(),
+      [&]() { emitOwnedBytes(resourceBlob->getDataAs<uint8_t>()); });
 }
 
 BEFOffset AttributesEmitter::emitDenseArrayAttribute(mlir::DenseArrayAttr value,
@@ -817,7 +875,8 @@ BEFOffset AttributesEmitter::emitDenseArrayAttribute(mlir::DenseArrayAttr value,
     return {0};
 
   unsigned bitWidth = value.getType().getElementTypeBitWidth();
-  return emitIntOrFloatRange(*kind, value.size(), bitWidth, [&]() {
+  size_t alignment = llvm::divideCeil(bitWidth, 8);
+  return emitIntOrFloatRange(*kind, value.size(), alignment, [&]() {
     ArrayRef<char> rawData = value.getRawData();
     emitOwnedBytes(
         {reinterpret_cast<const uint8_t *>(rawData.data()), rawData.size()});
@@ -1123,6 +1182,9 @@ BEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr,
 
   if (auto denseArray = attr.dyn_cast<mlir::DenseArrayAttr>())
     return emitDenseArrayAttribute(denseArray, loc);
+
+  if (auto denseElements = attr.dyn_cast<mlir::DenseResourceElementsAttr>())
+    return emitDenseResourceElementsAttribute(denseElements, loc);
 
   if (auto array = attr.dyn_cast<ArrayAttr>())
     return emitArrayAttribute(array, loc);
