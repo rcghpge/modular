@@ -26,7 +26,7 @@ enum class FileFormat {
   kTFLFlatBufferJSON,
 
   /// This looks like a textual MLIR file with the tfl dialect in it.
-  kTFLDialect,
+  kMTFLDialect,
 
   /// This looks like a textual MLIR file with the tflp dialect in it.
   kTFLPDialect,

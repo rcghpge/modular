@@ -112,7 +112,7 @@ getFileContentIdentity(const llvm::MemoryBuffer &file, FileFormat format,
     return "input is a binary TFLite flatbuffer file";
   case FileFormat::kTFLFlatBufferJSON:
     return "input is a TFLite flatbuffer file in JSON format";
-  case FileFormat::kTFLDialect:
+  case FileFormat::kMTFLDialect:
     return "input is TFLite model in MLIR form";
   case FileFormat::kTFLPDialect:
     return "input is a compiled TFLite BEF model in MLIR form";

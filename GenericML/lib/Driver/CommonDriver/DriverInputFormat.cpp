@@ -40,8 +40,8 @@ FileFormat M::sniffInputFormat(StringRef fileContents) {
   if (llvm::isASCII(fileContents)) {
     // TODO: We need something more sophisticated here, this will pick up
     // comments (e.g. CHECK lines), for example.
-    if (fileContents.contains("tfl.graph"))
-      return FileFormat::kTFLDialect;
+    if (fileContents.contains("mtfl.graph"))
+      return FileFormat::kMTFLDialect;
     if (fileContents.contains("tflp.model"))
       return FileFormat::kTFLPDialect;
     if (fileContents.contains("faux.testcase"))
