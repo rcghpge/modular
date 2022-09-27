@@ -575,11 +575,6 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
   ArrayRef<uint8_t> data;
   if (attrReader.parseBytes(length * dataElementSize, data))
     return {};
-  // Decode signed element types as signless. `DenseArrayAttr` has better
-  // support for signless element types.
-  auto type = mlir::RankedTensorType::get(
-      length, getTypeForAttributeKind(befKind, getContext(),
-                                      /*signedAsSignless=*/true));
 
   // If the array is large, use a resource for it instead of going through an
   // inline array.
@@ -589,11 +584,18 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
     // incoming BEF doesn't die before the generated MLIR.
     auto blob =
         mlir::HeapAsmResourceBlob::allocateAndCopy(data, dataElementSize);
+    auto type = mlir::RankedTensorType::get(
+        length, getTypeForAttributeKind(befKind, getContext()));
     resultAttr = mlir::DenseResourceElementsAttr::get(
         type, resourceManager.insert("befArray", std::move(blob)));
     return false;
   }
 
+  // Decode signed element types as signless. `DenseArrayAttr` has better
+  // support for signless element types.
+  auto type = mlir::RankedTensorType::get(
+      length, getTypeForAttributeKind(befKind, getContext(),
+                                      /*signedAsSignless=*/true));
   resultAttr = mlir::DenseArrayAttr::get(
       getContext(), type,
       ArrayRef<char>(reinterpret_cast<const char *>(data.begin()),

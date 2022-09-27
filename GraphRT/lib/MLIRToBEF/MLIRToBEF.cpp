@@ -642,7 +642,6 @@ private:
   BEFOffset emitIntOrFloatRange(BEF::AttributeKind kind, size_t numElements,
                                 size_t alignment,
                                 function_ref<void()> emitRangeFn);
-  BEFOffset emitDenseElementsAttribute(DenseElementsAttr value, Location loc);
   BEFOffset emitDenseArrayAttribute(mlir::DenseArrayAttr value, Location loc);
   BEFOffset
   emitDenseResourceElementsAttribute(mlir::DenseResourceElementsAttr value,
@@ -781,61 +780,6 @@ AttributesEmitter::emitIntOrFloatRange(BEF::AttributeKind kind,
 
   emitRangeFn();
   return startOffset;
-}
-
-BEFOffset AttributesEmitter::emitDenseElementsAttribute(DenseElementsAttr value,
-                                                        Location loc) {
-  // FIXME: Shape info is not emitted. When a dense elements attribute is
-  // decoded, it becomes a dense array.
-  Type elementType = value.getElementType();
-
-  // We only support integer and FP element types.
-  if (!elementType.isIntOrFloat()) {
-    entities.emitError(loc) << "unsupported element type";
-    return {0};
-  }
-
-  // Get the attribute kind for the elements of the array.
-  auto kindOr = deriveAttributeKind(elementType, loc);
-  if (failed(kindOr))
-    return {0};
-
-  // Verify that the width of the array is of a form we support.
-  size_t bitwidth = elementType.getIntOrFloatBitWidth();
-  if (!llvm::isPowerOf2_64(bitwidth) || bitwidth > 64 || bitwidth == 2 ||
-      bitwidth == 4) {
-    entities.emitError(loc) << "unsupported element width " << bitwidth;
-    return {0};
-  }
-  size_t numElements = value.size();
-  size_t alignment = llvm::divideCeil(bitwidth, 8);
-
-  // DenseElementsAttr does some "magic" compression of boolean values, handle
-  // those explicitly here.
-  if (*kindOr == BEF::AttributeKind::kBool) {
-    return emitIntOrFloatRange(*kindOr, numElements, alignment, [&]() {
-      for (bool b : value.getValues<bool>())
-        emitByte(b ? 1 : 0);
-    });
-  }
-
-  // If the attribute is a splat, we can't use the raw data directly, we need to
-  // expand the data during emission given that DenseElementsAttr stores splats
-  // using a single value.
-  ArrayRef<char> rawCharData = value.getRawData();
-  ArrayRef<uint8_t> rawData(
-      reinterpret_cast<const uint8_t *>(rawCharData.data()),
-      rawCharData.size());
-  if (value.isSplat()) {
-    return emitIntOrFloatRange(*kindOr, value.size(), alignment, [&]() {
-      for (unsigned i = 0; i < numElements; ++i)
-        emitBytes(rawData);
-    });
-  }
-
-  // If it isn't a splat, we can emit the raw data directly.
-  return emitIntOrFloatRange(*kindOr, numElements, alignment,
-                             [&]() { emitOwnedBytes(rawData); });
 }
 
 BEFOffset AttributesEmitter::emitDenseResourceElementsAttribute(
@@ -1185,9 +1129,6 @@ BEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr,
 
   if (auto symRef = attr.dyn_cast<SymbolRefAttr>())
     return emitSymbolAttribute(symRef.getLeafReference());
-
-  if (auto denseElements = attr.dyn_cast<DenseElementsAttr>())
-    return emitDenseElementsAttribute(denseElements, loc);
 
   if (auto denseArray = attr.dyn_cast<mlir::DenseArrayAttr>())
     return emitDenseArrayAttribute(denseArray, loc);
