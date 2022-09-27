@@ -631,8 +631,9 @@ public:
 
 private:
   void emitAttributeKind(BEF::AttributeKind kind) { emitByte((uint8_t)kind); };
-  FailureOr<BEF::AttributeKind> deriveAttributeKind(Type eltType,
-                                                    Location loc) const;
+  FailureOr<BEF::AttributeKind>
+  deriveAttributeKind(Type eltType, Location loc,
+                      bool signlessToSigned = false) const;
 
   BEFOffset emitAttributeInternal(Attribute attr, Location loc);
   BEFOffset emitIntegerValue(const APInt &value, Type eltType, Location loc);
@@ -663,24 +664,30 @@ static BEF::AttributeKind getAttributeKind(BEF::AttrCategory category,
                                                          << 3);
 }
 
-/// Given an MLIR type, construct the corresponding BEF attribute type.
+/// Given an MLIR type, construct the corresponding BEF attribute type. If
+/// `signlessToSigned` is set, signless types are treated as signed.
 FailureOr<BEF::AttributeKind>
-AttributesEmitter::deriveAttributeKind(Type eltType, Location loc) const {
+AttributesEmitter::deriveAttributeKind(Type eltType, Location loc,
+                                       bool signlessToSigned) const {
   if (eltType.isSignlessInteger(1))
     return BEF::AttributeKind::kBool;
 
   BEF::AttrCategory category;
-  if (eltType.isSignedInteger())
+  if (eltType.isSignedInteger()) {
     category = BEF::AttrCategory::Signed;
-  else if (eltType.isUnsignedInteger())
+  } else if (eltType.isUnsignedInteger()) {
     category = BEF::AttrCategory::Unsigned;
-  else if (eltType.isSignlessInteger())
-    return entities.emitError(loc)
-           << "signless integer attributes not supported";
-  else if (eltType.isF32() || eltType.isF64())
+  } else if (eltType.isSignlessInteger()) {
+    if (signlessToSigned)
+      category = BEF::AttrCategory::Signed;
+    else
+      return entities.emitError(loc)
+             << "signless integer attributes not supported";
+  } else if (eltType.isF32() || eltType.isF64()) {
     category = BEF::AttrCategory::Float;
-  else
+  } else {
     return entities.emitError(loc) << "unknown type " << eltType;
+  }
 
   size_t bitwidth = eltType.getIntOrFloatBitWidth();
   if (bitwidth < 8 || bitwidth > 64 || !llvm::isPowerOf2_32(bitwidth))
@@ -869,8 +876,10 @@ BEFOffset AttributesEmitter::emitDenseResourceElementsAttribute(
 
 BEFOffset AttributesEmitter::emitDenseArrayAttribute(mlir::DenseArrayAttr value,
                                                      Location loc) {
-  FailureOr<BEF::AttributeKind> kind =
-      deriveAttributeKind(value.getElementType(), loc);
+  // `DenseArrayAttr` doesn't have great support for signed integers so we use
+  // signless by default. Encode these as signed.
+  FailureOr<BEF::AttributeKind> kind = deriveAttributeKind(
+      value.getElementType(), loc, /*signlessToSigned=*/true);
   if (failed(kind))
     return {0};
 

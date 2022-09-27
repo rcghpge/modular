@@ -222,8 +222,10 @@ bool BEFToMLIRConverter::parseLocationPositions() {
   return false;
 }
 
-/// Return the MLIR type for the specified attribute or null if invalid.
-static Type getTypeForAttributeKind(BEF::AttributeKind kind, MLIRContext *ctx) {
+/// Return the MLIR type for the specified attribute or null if invalid. If
+/// `signedAsSignless` is set, signed integers are encoded as signless.
+static Type getTypeForAttributeKind(BEF::AttributeKind kind, MLIRContext *ctx,
+                                    bool signedAsSignless = false) {
   switch (kind) {
   default:
     return Type();
@@ -239,7 +241,8 @@ static Type getTypeForAttributeKind(BEF::AttributeKind kind, MLIRContext *ctx) {
   case BEF::AttributeKind::kU64: {
     IntegerType::SignednessSemantics signedness;
     if (BEF::getCategory(kind) == BEF::AttrCategory::Signed)
-      signedness = IntegerType::Signed;
+      signedness =
+          signedAsSignless ? IntegerType::Signless : IntegerType::Signed;
     else
       signedness = IntegerType::Unsigned;
     return IntegerType::get(ctx, BEF::getWidthInBits(kind), signedness);
@@ -572,8 +575,11 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
   ArrayRef<uint8_t> data;
   if (attrReader.parseBytes(length * dataElementSize, data))
     return {};
+  // Decode signed element types as signless. `DenseArrayAttr` has better
+  // support for signless element types.
   auto type = mlir::RankedTensorType::get(
-      length, getTypeForAttributeKind(befKind, getContext()));
+      length, getTypeForAttributeKind(befKind, getContext(),
+                                      /*signedAsSignless=*/true));
 
   // If the array is large, use a resource for it instead of going through an
   // inline array.
