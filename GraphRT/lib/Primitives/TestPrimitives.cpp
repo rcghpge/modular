@@ -175,7 +175,7 @@ static Chain print_type(Chain chain, BEFAttr<BEFType> type) {
   return chain;
 }
 
-static Chain print_bool(bool val, Chain chain) {
+static Chain print_bool(Chain chain, bool val) {
   printf("bool = %s\n", val ? "true" : "false");
   fflush(stdout);
   return chain;
