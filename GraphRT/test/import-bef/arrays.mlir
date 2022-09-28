@@ -5,11 +5,11 @@ bef.invokable @attributes() {
   // CHECK: "a.b" [array<ui64: 42>]
   "a.b"() { a = array<ui64: 42> }  : () -> ()
 
-  // CHECK-NEXT: "a.b" [array<i32>]
-  "a.b"() { a = array<i32> } : () -> ()
+  // CHECK-NEXT: "a.b" [array<si32>]
+  "a.b"() { a = array<si32> } : () -> ()
 
-  // CHECK-NEXT: "a.b" [array<i64: 0, 1, 2>]
-  "a.b"() { a = array<i64: 0, 1, 2> } : () -> ()
+  // CHECK-NEXT: "a.b" [array<si64: 0, 1, 2>]
+  "a.b"() { a = array<si64: 0, 1, 2> } : () -> ()
 
   // CHECK-NEXT: "a.b" [array<f32: 1.500000e+00, 2.500000e+00, 3.500000e+00>]
   "a.b"() { a = array<f32: 1.5, 2.5, 3.5> } : () -> ()
@@ -22,7 +22,7 @@ bef.invokable @attributes() {
   "a.b"() { a = dense_resource<smallResource> : tensor<3xui64> } : () -> ()
 
   // CHECK-NEXT: "a.b" [dense_resource<befArray> : tensor<1024xsi32>]
-  "a.b"() { a = array<i32:
+  "a.b"() { a = array<si32:
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
