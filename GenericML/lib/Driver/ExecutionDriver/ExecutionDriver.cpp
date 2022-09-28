@@ -19,17 +19,10 @@ using namespace M;
 using llvm::outs;
 using mlir::MLIRContext;
 
-/// This method can be used to print the results of a model in the standard
-/// format for an executor tool.  It handles converting framework specific
-/// tensor types into something we can print if needed, and handles
-/// printing/reporting of errors in a way that works with diagnostic
-/// verification.
-static LogicalResult
-printTensorResults(const ExecutableModel *model,
-                   MutableArrayRef<AnyAsyncValueRef> results,
-                   MLIRContext *context, Kernel::ResultOutputStyle outputStyle,
-                   raw_ostream &os) {
-  StringRef name = model->getModel()->getName();
+/// Wait for results and report their errors
+static void waitForResults(const ExecutableModel *model,
+                           MutableArrayRef<AnyAsyncValueRef> results,
+                           MLIRContext *context) {
   // Check that any tensors we get are generic tensors, not framework
   // specific tensors.  We know that all tensors have been awaited here.
   for (auto &result : results) {
@@ -43,19 +36,21 @@ printTensorResults(const ExecutableModel *model,
     result = model->convertToGenericTensor(result);
     await(result);
   }
+}
 
-  // Check all the results for errors, and if we find any of them, emit them
-  // through MLIR error handling.  We use MLIR here just because it makes
-  // diagnostic verification easy.  We do this before printing the results
-  // so the diagnostics and result printing don't get intermixed.
-  for (auto &result : results) {
-    if (auto *diag = result->getDiagnosticIfPresent()) {
-      auto loc = diag->decodeLocation();
-      auto mlirLoc = mlir::FileLineColLoc::get(context, loc.filename, loc.line,
-                                               loc.column);
-      mlir::emitError(mlirLoc) << diag->getMessage();
-    }
-  }
+/// This method can be used to print the results of a model in the standard
+/// format for an executor tool.  It handles converting framework specific
+/// tensor types into something we can print if needed, and handles
+/// printing/reporting of errors in a way that works with diagnostic
+/// verification.
+static LogicalResult
+printTensorResults(const ExecutableModel *model,
+                   MutableArrayRef<AnyAsyncValueRef> results,
+                   MLIRContext *context, Kernel::ResultOutputStyle outputStyle,
+                   raw_ostream &os) {
+  StringRef name = model->getModel()->getName();
+
+  waitForResults(model, results, context);
 
   // Print out the invokable results that we know about.
   // Go ahead and print out the invokable results that we know about.
@@ -88,6 +83,38 @@ printTensorResults(const ExecutableModel *model,
     os.flush();
   }
   return failure(hadError);
+}
+
+/// Copy raw data from results to the pre-allocated memory found in outputs.
+static LogicalResult populateTensorResults(
+    const ExecutableModel *model, MutableArrayRef<AnyAsyncValueRef> results,
+    MLIRContext *context, llvm::SmallVector<void *> &outputs) {
+  assert(outputs.size() == results.size() &&
+         "Wrong number of outputs in the model.");
+
+  waitForResults(model, results, context);
+
+  size_t outIdx = 0;
+
+  for (const AnyAsyncValueRef &result : results) {
+    if (auto *diag = result->getDiagnosticIfPresent()) {
+      auto loc = diag->decodeLocation();
+      auto mlirLoc = mlir::FileLineColLoc::get(context, loc.filename, loc.line,
+                                               loc.column);
+      return emitError(mlirLoc) << diag->getMessage();
+    }
+    // Handle tensor types.
+    auto *tensor = result->dyn_cast<Tensor>();
+    if (!tensor) {
+      auto loc = model->getModel()->getLocation().decode();
+      auto mlirLoc = mlir::FileLineColLoc::get(context, loc.filename, loc.line,
+                                               loc.column);
+      return emitError(mlirLoc) << "populateTensorResults: not a Tensor";
+    }
+    memcpy(outputs[outIdx], tensor->getPointer(), tensor->getSizeInBytes());
+    outIdx++;
+  }
+  return success();
 }
 
 /// Evaluate the model once and print the output tensor.
@@ -232,5 +259,53 @@ LogicalResult M::runModel(MLIRContext *ctx, const Model *model,
       options.numRuns == 1 ? executeModelOnce : executeModelRepeated;
   if (auto err = invokeFn(ctx, model, runtime, options))
     return failure(options.reportError(err.getError()));
+  return success();
+}
+
+/// Run `model` using the command line options flags configured by the user.
+/// `inputs` is the input tensor data to the model, while `outputs` is
+/// pre-allocated memory to be filled with the model's results.
+ErrorOrSuccess M::runModelWithData(MLIRContext *ctx, const Model *model,
+                                   LLCL::Runtime &runtime,
+                                   const ExecutorDriverCLOptions &options,
+                                   const llvm::SmallVector<void *> &inputs,
+                                   llvm::SmallVector<void *> &outputs) {
+  assert(inputs.size() == model->getInputSpecs().size() &&
+         "Wrong number of inputs to the model.");
+  UNWRAP_ERROR(executableModel, model->setup(runtime));
+  SmallVector<Tensor, 3> inputTensors;
+  for (const auto &[input, spec] : llvm::zip(inputs, model->getInputSpecs())) {
+    if (spec.isDynamic())
+      return Error("Dynamic input shapes are not supported.");
+    inputTensors.emplace_back(Tensor::getImmortal(input, spec, runtime));
+  }
+
+  // Fill the arguments.  We are running the model once so we pass in the input
+  // tensors directly (the model will deallocate them when it is done with
+  // them).
+  SmallVector<AnyAsyncValueRef> args;
+  args.reserve(model->getNumInputs());
+  for (auto &input : inputTensors)
+    args.push_back(
+        AsyncValueRef<Tensor>::createReady(runtime, std::move(input)));
+
+  outs() << "--- Running and collecting outputs for '" << model->getName()
+         << "':\n";
+  outs().flush();
+
+  // Execute the model and insert its results into the results vec.
+  SmallVector<AnyAsyncValueRef> results = executableModel->execute(args);
+
+  // There is nothing to do if there is no results.
+  if (results.empty())
+    return success();
+
+  // Wait for the model to finish execution, forcing synchrony.
+  await(results);
+  MutableArrayRef<AnyAsyncValueRef> resultRef(results);
+  // Drop the first chain result and collect the output data.
+  if (failed(populateTensorResults(executableModel.get(),
+                                   resultRef.drop_front(), ctx, outputs)))
+    return Error("model execution failed");
   return success();
 }
