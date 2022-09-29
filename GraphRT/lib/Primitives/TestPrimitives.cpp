@@ -18,6 +18,7 @@
 #include "LLCL/Support/Atomics.h"
 #include "llvm/ADT/STLExtras.h"
 
+#include <cmath>
 #include <limits>
 #include <numeric>
 #include <thread>
