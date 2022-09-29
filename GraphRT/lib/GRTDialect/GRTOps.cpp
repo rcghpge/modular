@@ -234,26 +234,6 @@ ParseResult BenchmarkOp::parse(OpAsmParser &parser, OperationState &result) {
                          /*enableNameShadowing=*/true))
     return failure();
 
-  // Set the defaults for the minTime, timeUnit, and warmup count.
-  if (!result.attributes.getNamed("minTime"))
-    result.attributes.append(
-        "minTime", FloatAttr::get(FloatType::getF32(parser.getContext()),
-                                  BenchmarkOp::getDefaultMinTime()));
-  if (!result.attributes.getNamed("timeUnit"))
-    result.attributes.append(
-        "timeUnit", StringAttr::get(parser.getContext(),
-                                    BenchmarkOp::getDefaultTimeUnit()));
-  if (!result.attributes.getNamed("warmupCount"))
-    result.attributes.append(
-        "warmupCount",
-        IntegerAttr::get(
-            IntegerType::get(parser.getContext(), 32, IntegerType::Unsigned),
-            BenchmarkOp::getDefaultWarmupCount()));
-  if (!result.attributes.getNamed("summarize"))
-    result.attributes.append(
-        "summarize", BoolAttr::get(parser.getContext(),
-                                   BenchmarkOp::getDefaultSummarizeValue()));
-
   // Infer the return types from the terminator's operands.
   Operation *bodyTerminator = body->front().getTerminator();
   result.types.assign(bodyTerminator->operand_type_begin(),
