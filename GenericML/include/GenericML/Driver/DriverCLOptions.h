@@ -197,26 +197,6 @@ class DriverCLOptions : public DriverInputFormatOptions,
 public:
   using ExecutorDriverCLOptions::ExecutorDriverCLOptions;
 
-  cl::opt<bool> saveTemps{
-      "save-temps",
-      cl::desc(
-          "Store the usual 'temporary' intermediate files permanently in "
-          "the directory specified by -temps-dir (defaults to the output "
-          "directory); name them as auxiliary output files. This flag only "
-          "changes the behavior of the `compile` and `execute` commands."),
-      llvm::cl::Optional};
-
-  cl::opt<std::string> tempsDir{
-      "temps-dir", cl::init(""),
-      cl::desc(
-          "The directory in which to store 'temporary' intermediate files. No "
-          "files will be saved here unless `-save-temps` is also specified."),
-      llvm::cl::Optional};
-
-  /// Determine an intermediate file with extension `ext` and open it.
-  std::unique_ptr<llvm::ToolOutputFile>
-  getIntermediateFile(StringRef inputName, StringRef ext) const;
-
   //===--------------------------------------------------------------------===//
   // BEF Emission Configuration
   //===--------------------------------------------------------------------===//
