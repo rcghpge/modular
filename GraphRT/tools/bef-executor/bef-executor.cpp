@@ -101,6 +101,7 @@ static ErrorOrSuccess runTestcase(const GRTTestcase &test,
         // output behavior w.r.t. the printfs in various TestPrimitives.
         printf("--- Running '%.*s':\n", (int)test.getName().size(),
                test.getName().data());
+        fflush(stdout);
 
         auto results = test.getBody()->invoke(/*arguments=*/{}, runtime);
 
