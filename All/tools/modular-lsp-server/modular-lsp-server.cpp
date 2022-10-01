@@ -16,7 +16,14 @@
 #include "TFLite/MLASPDialect/MLASPDialect.h"
 #include "TFLite/MTFLDialect/MTFLDialect.h"
 #include "TFLite/TFLPDialect/TFLPDialect.h"
-#include "mlir/InitAllDialects.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/MLProgram/IR/MLProgram.h"
+#include "mlir/Dialect/Quant/QuantOps.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/IR/Dialect.h"
 #include "mlir/Tools/mlir-lsp-server/MlirLspServerMain.h"
 
 using namespace mlir;
@@ -24,10 +31,14 @@ using namespace M;
 
 int main(int argc, char **argv) {
   DialectRegistry registry;
-  registerAllDialects(registry);
-  registry.insert< // Modular Dialects
+  registry.insert<
+      // Add the LLVM Dialects.
+      arith::ArithDialect, cf::ControlFlowDialect, func::FuncDialect,
+      LLVM::LLVMDialect, quant::QuantizationDialect, scf::SCFDialect,
+      // Add the Modular Dialects.
       BEF::BEFDialect, Faux::FauxDialect, GRT::GRTDialect, index::IndexDialect,
       TFL::MLASPDialect, TFL::MTFLDialect, TFLP::TFLPDialect>();
+  // Add the KGEN Dialects.
   registerAllKGENDialects(registry);
   return failed(MlirLspServerMain(argc, argv, registry));
 }
