@@ -135,8 +135,10 @@ static ErrorOrSuccess executeModelOnce(MLIRContext *ctx, const Model *model,
     args.push_back(
         AsyncValueRef<Tensor>::createReady(runtime, std::move(input)));
 
-  outs() << "--- Running '" << model->getName() << "':\n";
-  outs().flush();
+  // We use printf here because it has atomic output behavior w.r.t. the printfs
+  // in the model.
+  printf("--- Running '%s':\n", model->getName().str().c_str());
+  fflush(stdout);
 
   // Execute the model and insert its results into the results vec.
   SmallVector<AnyAsyncValueRef> results = executableModel->execute(args);
@@ -186,8 +188,10 @@ executeModelRepeated(MLIRContext *ctx, const Model *model, Runtime &runtime,
     await(results);
   }
 
-  outs() << "--- Running '" << model->getName() << "':\n";
-  outs().flush();
+  // We use printf here because it has atomic output behavior w.r.t. the printfs
+  // in the model.
+  printf("--- Running '%s':\n", model->getName().str().c_str());
+  fflush(stdout);
 
   SmallVector<AnyAsyncValueRef> results;
 
@@ -289,9 +293,11 @@ ErrorOrSuccess M::runModelWithData(MLIRContext *ctx, const Model *model,
     args.push_back(
         AsyncValueRef<Tensor>::createReady(runtime, std::move(input)));
 
-  outs() << "--- Running and collecting outputs for '" << model->getName()
-         << "':\n";
-  outs().flush();
+  // We use printf here because it has atomic output behavior w.r.t. the printfs
+  // in the model.
+  printf("--- Running and collecting outputs for '%s':\n",
+         model->getName().str().c_str());
+  fflush(stdout);
 
   // Execute the model and insert its results into the results vec.
   SmallVector<AnyAsyncValueRef> results = executableModel->execute(args);
