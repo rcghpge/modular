@@ -13,6 +13,7 @@
 #include "GraphRT/GRTDialect/GRTDialect.h"
 #include "KGEN/InitAllDialects.h"
 #include "Support/IndexDialect/IndexDialect.h"
+#include "Support/MDialect/MDialect.h"
 #include "TFLite/MLASPDialect/MLASPDialect.h"
 #include "TFLite/MTFLDialect/MTFLDialect.h"
 #include "TFLite/TFLPDialect/TFLPDialect.h"
@@ -36,8 +37,9 @@ int main(int argc, char **argv) {
       arith::ArithDialect, cf::ControlFlowDialect, func::FuncDialect,
       LLVM::LLVMDialect, quant::QuantizationDialect, scf::SCFDialect,
       // Add the Modular Dialects.
-      BEF::BEFDialect, Faux::FauxDialect, GRT::GRTDialect, index::IndexDialect,
-      TFL::MLASPDialect, TFL::MTFLDialect, TFLP::TFLPDialect>();
+      BEF::BEFDialect, Faux::FauxDialect, GRT::GRTDialect,
+      index::IndexDialect, MDialect, TFL::MLASPDialect, TFL::MTFLDialect,
+      TFLP::TFLPDialect>();
   // Add the KGEN Dialects.
   registerAllKGENDialects(registry);
   return failed(MlirLspServerMain(argc, argv, registry));
