@@ -13,6 +13,7 @@
 #include "GraphRT/BEFDialect/BEFDialect.h"
 #include "GraphRT/MLIRToBEF.h"
 #include "Support/ConcatenationTree.h"
+#include "Support/MDialect/MDialect.h"
 #include "mlir/IR/BuiltinOps.h"
 using namespace M;
 
@@ -35,7 +36,7 @@ void M::registerMLIRToBEFTranslation(DialectRegistry &otherDialects) {
         return success();
       },
       [&](DialectRegistry &registry) {
-        registry.insert<BEF::BEFDialect>();
+        registry.insert<BEF::BEFDialect, MDialect>();
         // If the caller provided any other dialects, add them.
         otherDialects.appendTo(registry);
       });

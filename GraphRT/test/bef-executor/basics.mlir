@@ -134,7 +134,7 @@ grt.testcase @basic_string_and_arrays {
   %ch2 = "test.print_string"(%z, %ch1) : (!test.string, !bef.chain) -> (!bef.chain)
 
   // CHECK: array = [4, 1, 5712321]
-  %ch3 = "test.print_array_i32"(%ch2) { value = array<si32: 4, 1, 5712321> } : (!bef.chain) -> (!bef.chain)
+  %ch3 = "test.print_array_i32"(%ch2) { value = #M.dense_array<4, 1, 5712321> : !M.array<3xsi32> } : (!bef.chain) -> (!bef.chain)
 
   // CHECK: dictionary[theNumber3] = 3
   %ch4 = "test.print_dict_i32"(%ch3) { key = "theNumber3", value = { theNumber3 = 3 : si32, foo = "bar" } } : (!bef.chain) -> (!bef.chain)
@@ -225,9 +225,9 @@ grt.testcase @test_dynamic_attr {
   // CHECK: string = foo string
   %ch2 = "test.print.dynamic.attr"(%ch1) {value = "foo string"} : (!bef.chain) -> !bef.chain
   // CHECK: array = [4, 6, 17]
-  %ch3 = "test.print.dynamic.attr"(%ch2) {value = array<si32: 4, 6, 17>} : (!bef.chain) -> !bef.chain
+  %ch3 = "test.print.dynamic.attr"(%ch2) {value = #M.dense_array<4, 6, 17> : !M.array<3xsi32> } : (!bef.chain) -> !bef.chain
   // CHECK: array = []
-  %ch4 = "test.print.dynamic.attr"(%ch3) {value = array<si32>} : (!bef.chain) -> !bef.chain
+  %ch4 = "test.print.dynamic.attr"(%ch3) {value = #M.dense_array<> : !M.array<0xsi32> } : (!bef.chain) -> !bef.chain
   // CHECK: unsupported attribute kind
   %ch5 = "test.print.dynamic.attr"(%ch4) {value = 1: i1} : (!bef.chain) -> !bef.chain
   // CHECK: dictionary {

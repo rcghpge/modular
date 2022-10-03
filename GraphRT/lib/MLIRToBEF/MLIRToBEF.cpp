@@ -21,6 +21,7 @@
 #include "GraphRT/BEFDialect/BEFOps.h"
 #include "Support/ConcatenationTree.h"
 #include "Support/ErrorOr.h"
+#include "Support/MDialect/MAttrs.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
@@ -641,7 +642,7 @@ private:
   BEFOffset emitIntOrFloatRange(BEF::AttributeKind kind, size_t numElements,
                                 size_t alignment,
                                 function_ref<void()> emitRangeFn);
-  BEFOffset emitDenseArrayAttribute(mlir::DenseArrayAttr value, Location loc);
+  BEFOffset emitArrayElementsAttr(ArrayElementsAttr value, Location loc);
   BEFOffset
   emitDenseResourceElementsAttribute(mlir::DenseResourceElementsAttr value,
                                      Location loc);
@@ -811,10 +812,8 @@ BEFOffset AttributesEmitter::emitDenseResourceElementsAttribute(
       [&]() { emitOwnedBytes(resourceBlob->getDataAs<uint8_t>()); });
 }
 
-BEFOffset AttributesEmitter::emitDenseArrayAttribute(mlir::DenseArrayAttr value,
-                                                     Location loc) {
-  // `DenseArrayAttr` doesn't have great support for signed integers so we use
-  // signless by default. Encode these as signed.
+BEFOffset AttributesEmitter::emitArrayElementsAttr(ArrayElementsAttr value,
+                                                   Location loc) {
   FailureOr<BEF::AttributeKind> kind =
       deriveAttributeKind(value.getElementType(), loc);
   if (failed(kind))
@@ -822,11 +821,8 @@ BEFOffset AttributesEmitter::emitDenseArrayAttribute(mlir::DenseArrayAttr value,
 
   unsigned bitWidth = value.getType().getElementTypeBitWidth();
   size_t alignment = llvm::divideCeil(bitWidth, 8);
-  return emitIntOrFloatRange(*kind, value.size(), alignment, [&]() {
-    ArrayRef<char> rawData = value.getRawData();
-    emitOwnedBytes(
-        {reinterpret_cast<const uint8_t *>(rawData.data()), rawData.size()});
-  });
+  return emitIntOrFloatRange(*kind, value.size(), alignment,
+                             [&]() { emitOwnedBytes(value.getRawData()); });
 }
 
 BEFOffset AttributesEmitter::emitArrayAttribute(ArrayAttr value, Location loc) {
@@ -1123,8 +1119,8 @@ BEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr,
   if (auto symRef = attr.dyn_cast<SymbolRefAttr>())
     return emitSymbolAttribute(symRef.getLeafReference());
 
-  if (auto denseArray = attr.dyn_cast<mlir::DenseArrayAttr>())
-    return emitDenseArrayAttribute(denseArray, loc);
+  if (auto arrayElements = attr.dyn_cast<ArrayElementsAttr>())
+    return emitArrayElementsAttr(arrayElements, loc);
 
   if (auto denseElements = attr.dyn_cast<mlir::DenseResourceElementsAttr>())
     return emitDenseResourceElementsAttribute(denseElements, loc);

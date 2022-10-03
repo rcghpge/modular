@@ -12,6 +12,8 @@
 #include "GraphRT/BEF/BEFReader.h"
 #include "GraphRT/BEFDialect/BEFOps.h"
 #include "Support/Compiler/MLIRDenseAttrStorage.h"
+#include "Support/MDialect/MAttrs.h"
+#include "Support/MDialect/MTypes.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
@@ -572,8 +574,8 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
   ArrayRef<uint8_t> data;
   if (attrReader.parseBytes(length * dataElementSize, data))
     return {};
-  auto type = mlir::RankedTensorType::get(
-      length, getTypeForAttributeKind(befKind, getContext()));
+  auto type =
+      ArrayType::get(length, getTypeForAttributeKind(befKind, getContext()));
 
   // If the array is large, use a resource for it instead of going through an
   // inline array.
@@ -588,10 +590,7 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
     return false;
   }
 
-  resultAttr = mlir::DenseArrayAttr::get(
-      getContext(), type,
-      ArrayRef<char>(reinterpret_cast<const char *>(data.begin()),
-                     data.size()));
+  resultAttr = ArrayElementsAttr::get(data, type);
   return false;
 }
 

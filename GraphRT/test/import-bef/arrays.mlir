@@ -2,27 +2,27 @@
 // RUN: bef-translate -import-bef -allow-unregistered-dialect %t | FileCheck %s
 
 bef.invokable @attributes() {
-  // CHECK: "a.b" [array<ui64: 42>]
-  "a.b"() { a = array<ui64: 42> }  : () -> ()
+  // CHECK: "a.b" [#M.dense_array<42> : !M.array<1xui64>]
+  "a.b"() { a = #M.dense_array<42> : !M.array<1xui64> }  : () -> ()
 
-  // CHECK-NEXT: "a.b" [array<si32>]
-  "a.b"() { a = array<si32> } : () -> ()
+  // CHECK-NEXT: "a.b" [#M.dense_array<> : !M.array<0xsi32>]
+  "a.b"() { a = #M.dense_array<> : !M.array<0xsi32> } : () -> ()
 
-  // CHECK-NEXT: "a.b" [array<si64: 0, 1, 2>]
-  "a.b"() { a = array<si64: 0, 1, 2> } : () -> ()
+  // CHECK-NEXT: "a.b" [#M.dense_array<0, 1, 2> : !M.array<3xsi64>]
+  "a.b"() { a = #M.dense_array<0, 1, 2> : !M.array<3xsi64> } : () -> ()
 
-  // CHECK-NEXT: "a.b" [array<f32: 1.500000e+00, 2.500000e+00, 3.500000e+00>]
-  "a.b"() { a = array<f32: 1.5, 2.5, 3.5> } : () -> ()
+  // CHECK-NEXT: "a.b" [#M.dense_array<1.500000e+00, 2.500000e+00, 3.500000e+00> : !M.array<3xf32>]
+  "a.b"() { a = #M.dense_array<1.5, 2.5, 3.5> : !M.array<3xf32> } : () -> ()
 
-  // CHECK-NEXT: "a.b" [array<i1: true, false, true>]
-  "a.b"() { a = array<i1: true, false, true> }: () -> ()
+  // CHECK-NEXT: "a.b" [#M.dense_array<true, false, true> : !M.array<3xi1>]
+  "a.b"() { a = #M.dense_array<true, false, true> : !M.array<3xi1> }: () -> ()
 
   // Small arrays get inlined.
-  // CHECK-NEXT: "a.b" [array<ui64: 1, 2, 3>]
-  "a.b"() { a = dense_resource<smallResource> : tensor<3xui64> } : () -> ()
+  // CHECK-NEXT: "a.b" [#M.dense_array<1, 2, 3> : !M.array<3xui64>]
+  "a.b"() { a = dense_resource<smallResource> : !M.array<3xui64> } : () -> ()
 
-  // CHECK-NEXT: "a.b" [dense_resource<befArray> : tensor<1024xsi32>]
-  "a.b"() { a = array<si32:
+  // CHECK-NEXT: "a.b" [dense_resource<befArray> : !M.array<1024xsi32>]
+  "a.b"() { a = #M.dense_array<
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -55,7 +55,7 @@ bef.invokable @attributes() {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-  > } : () -> ()
+  > : !M.array<1024xsi32> } : () -> ()
 
   bef.output
 }

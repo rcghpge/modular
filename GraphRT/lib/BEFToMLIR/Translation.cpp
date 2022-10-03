@@ -12,6 +12,7 @@
 #include "mlir/Tools/mlir-translate/Translation.h"
 #include "GraphRT/BEFDialect/BEFDialect.h"
 #include "GraphRT/BEFToMLIR.h"
+#include "Support/MDialect/MDialect.h"
 #include "mlir/Dialect/Quant/QuantOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "llvm/Support/SourceMgr.h"
@@ -21,6 +22,7 @@ void M::registerBEFToMLIRTranslation() {
   static mlir::TranslateToMLIRRegistration toMLIR(
       "import-bef", [](llvm::SourceMgr &sourceMgr, MLIRContext *ctx) {
         ctx->loadDialect<mlir::quant::QuantizationDialect>();
+        ctx->loadDialect<MDialect>();
         const llvm::MemoryBuffer *input =
             sourceMgr.getMemoryBuffer(sourceMgr.getMainFileID());
         Location loc =
