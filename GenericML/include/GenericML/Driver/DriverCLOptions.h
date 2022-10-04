@@ -207,6 +207,27 @@ public:
       cl::init(false)};
 };
 
+/// This class provides additional command line options for the
+/// tfl-graph-verifier, namely the tolerances (rtol and atol) which are used to
+/// determine whether there is an accuracy discrepancy between the TFLP and
+/// FlatBuffer outputs.
+class VerifyGraphDriverCLOptions : public ExecutorDriverCLOptions {
+public:
+  using ExecutorDriverCLOptions::ExecutorDriverCLOptions;
+
+  cl::opt<double> atol{
+      "atol",
+      cl::desc("Absolute tolerance for determining whether there's an accuracy "
+               "discrepancy between TFLP and stock-tflite."),
+      cl::init(1.0E-5)};
+
+  cl::opt<double> rtol{
+      "rtol",
+      cl::desc("Relative tolerance for determining whether there's an "
+               "accuracy discrepancy between TFLP and stock-tflite."),
+      cl::init(1.0E-8)};
+};
+
 } // namespace M
 
 #endif // GENERICML_DRIVER_DRIVERCLOPTIONS_H
