@@ -516,7 +516,7 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
 
           // Keep track of invokable references specially so we can diagnose
           // them.
-          if (auto fn_attr = attr.dyn_cast<SymbolRefAttr>())
+          if (auto fn_attr = dyn_cast<SymbolRefAttr>(attr))
             symbolRefAttrs.emplace_back(fn_attr, op->getLoc());
 
           // Delay inserting resource attributes if we can (i.e. if they aren't
@@ -525,7 +525,7 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
           // actually know we need it.
           if (!insideDict) {
             if (auto resource_attr =
-                    attr.dyn_cast<DenseResourceElementsAttr>()) {
+                    dyn_cast<DenseResourceElementsAttr>(attr)) {
               resourceAttrs.emplace_back(resource_attr, op->getLoc());
               return;
             }
@@ -534,10 +534,10 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
           // Recurse into ArrayAttr/DictionaryAttr. Perform a post-order
           // traversal so that we can use the offsets from the values inside
           // the collection when emitting the collection.
-          if (auto arrayAttr = attr.dyn_cast<ArrayAttr>())
+          if (auto arrayAttr = dyn_cast<ArrayAttr>(attr))
             for (Attribute element : arrayAttr)
               processAttr(StringAttr::get(op->getContext()), element, true);
-          if (auto dictAttr = attr.dyn_cast<DictionaryAttr>())
+          if (auto dictAttr = dyn_cast<DictionaryAttr>(attr))
             for (NamedAttribute namedAttr : dictAttr)
               processAttr(namedAttr.getName(), namedAttr.getValue(), true);
 
@@ -899,7 +899,7 @@ ErrorOr<BEF::TypeKind> TypeEmitter::getFloatTypeEncoding(FloatType type) {
   unsigned bitWidth = type.getWidth();
   switch (bitWidth) {
   case 16:
-    if (auto bFloatType = type.dyn_cast<BFloat16Type>())
+    if (auto bFloatType = dyn_cast<BFloat16Type>(type))
       return BEF::TypeKind::bf16; // TODO: test when we have cpp type
     return BEF::TypeKind::f16;
   case 32:
@@ -934,11 +934,11 @@ ErrorOr<BEF::TypeKind> TypeEmitter::getIntegerTypeEncoding(IntegerType type) {
 
 /// Helper to get int, float or complex encoding.
 ErrorOr<BEF::TypeKind> TypeEmitter::getIntFPComplexTypeEncoding(Type type) {
-  if (auto floatType = type.dyn_cast<FloatType>())
+  if (auto floatType = dyn_cast<FloatType>(type))
     return getFloatTypeEncoding(floatType);
-  if (auto intType = type.dyn_cast<IntegerType>())
+  if (auto intType = dyn_cast<IntegerType>(type))
     return getIntegerTypeEncoding(intType);
-  if (auto complexType = type.dyn_cast<mlir::ComplexType>()) {
+  if (auto complexType = dyn_cast<mlir::ComplexType>(type)) {
     UNWRAP_ERROR(eltType,
                  getIntFPComplexTypeEncoding(complexType.getElementType()));
     return BEF::TypeKind(DType::getComplex(eltType).getValue());
@@ -1066,27 +1066,27 @@ LogicalResult TypeEmitter::emitFunctionType(FunctionType type) {
 }
 
 LogicalResult TypeEmitter::emitType(Type type) {
-  if (auto tensorType = type.dyn_cast<RankedTensorType>())
+  if (auto tensorType = dyn_cast<RankedTensorType>(type))
     return emitRankedTensorType(tensorType);
 
-  if (auto qType = type.dyn_cast<UniformQuantizedType>())
+  if (auto qType = dyn_cast<UniformQuantizedType>(type))
     return emitUniformQuantizedType(qType);
 
-  if (auto fnType = type.dyn_cast<FunctionType>())
+  if (auto fnType = dyn_cast<FunctionType>(type))
     return emitFunctionType(fnType);
 
-  if (auto qType = type.dyn_cast<UniformQuantizedPerAxisType>())
+  if (auto qType = dyn_cast<UniformQuantizedPerAxisType>(type))
     return emitUniformQuantizedPerAxisType(qType);
 
   // Chains are super easy, just emit the byte that says "I'm a chain".
-  if (auto chainType = type.dyn_cast<BEF::ChainType>()) {
+  if (auto chainType = dyn_cast<BEF::ChainType>(type)) {
     emitter->emitByte(BEF::TypeKind::chain);
     return success();
   }
 
   // FIXME: We're ignoring CalibratedQuantizedType.  Nothing in the compiler
   // uses this, why are we generating it in the first place?
-  if (auto qType = type.dyn_cast<CalibratedQuantizedType>())
+  if (auto qType = dyn_cast<CalibratedQuantizedType>(type))
     return emitType(qType.getExpressedType());
 
   return emitIntFPComplexType(type);
@@ -1106,32 +1106,32 @@ BEFOffset AttributesEmitter::emitTypeAttribute(Type type, Location loc) {
 
 BEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr,
                                                    Location loc) {
-  if (auto intAttr = attr.dyn_cast<IntegerAttr>())
+  if (auto intAttr = dyn_cast<IntegerAttr>(attr))
     return emitIntegerValue(intAttr.getValue(), intAttr.getType(), loc);
 
-  if (auto fpAttr = attr.dyn_cast<FloatAttr>())
+  if (auto fpAttr = dyn_cast<FloatAttr>(attr))
     return emitIntegerValue(fpAttr.getValue().bitcastToAPInt(),
                             fpAttr.getType(), loc);
 
-  if (auto string = attr.dyn_cast<StringAttr>())
+  if (auto string = dyn_cast<StringAttr>(attr))
     return emitStringAttribute(string.getValue());
 
-  if (auto symRef = attr.dyn_cast<SymbolRefAttr>())
+  if (auto symRef = dyn_cast<SymbolRefAttr>(attr))
     return emitSymbolAttribute(symRef.getLeafReference());
 
-  if (auto arrayElements = attr.dyn_cast<ArrayElementsAttr>())
+  if (auto arrayElements = dyn_cast<ArrayElementsAttr>(attr))
     return emitArrayElementsAttr(arrayElements, loc);
 
-  if (auto denseElements = attr.dyn_cast<mlir::DenseResourceElementsAttr>())
+  if (auto denseElements = dyn_cast<mlir::DenseResourceElementsAttr>(attr))
     return emitDenseResourceElementsAttribute(denseElements, loc);
 
-  if (auto array = attr.dyn_cast<ArrayAttr>())
+  if (auto array = dyn_cast<ArrayAttr>(attr))
     return emitArrayAttribute(array, loc);
 
-  if (auto dict = attr.dyn_cast<DictionaryAttr>())
+  if (auto dict = dyn_cast<DictionaryAttr>(attr))
     return emitDictionaryAttribute(dict, loc);
 
-  if (auto typeAttr = attr.dyn_cast<TypeAttr>())
+  if (auto typeAttr = dyn_cast<TypeAttr>(attr))
     return emitTypeAttribute(typeAttr.getValue(), loc);
 
   entities.emitError(loc) << "unsupported attribute " << attr;
@@ -1352,7 +1352,7 @@ void RegionEmitter::emitPrimitive(Operation *op,
 
   auto processAttr = [&](StringAttr name, Attribute value) {
     // Symbol ref attrs are emitted as invokables.
-    if (auto fnAttr = value.dyn_cast<FlatSymbolRefAttr>()) {
+    if (auto fnAttr = dyn_cast<FlatSymbolRefAttr>(value)) {
       // Make sure we emit every region in the callee.
       Operation *callee = theModule.lookupSymbol(fnAttr.getAttr());
       for (auto &r : callee->getRegions())
