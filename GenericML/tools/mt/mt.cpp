@@ -177,6 +177,14 @@ int main(int argc, char **argv) {
   if (auto err = dylib.setOptions(frameworkCtx, unparsed))
     return options.reportError(err.getError());
 
+  // Hand over save-temps and temps-dir options to framework.
+  if (options.saveTemps) {
+    std::string tempsDirOpt = "--temps-dir=" + options.tempsDir.getValue();
+    if (auto err =
+            dylib.setOptions(frameworkCtx, {"--save-temps", tempsDirOpt}))
+      return options.reportError(err.getError());
+  }
+
   // Start processing the input in stages.  The inspect command is first,
   // because it works on any input without transformation.
   if (options.command == DriverCommand::inspect) {
