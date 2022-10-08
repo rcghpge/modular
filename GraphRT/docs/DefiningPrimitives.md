@@ -333,7 +333,7 @@ static int32_t findNamedElement(BEFDictionaryAttr dict) {
 
 static void handleAllElements(BEFDictionaryAttr dict) {
   for (auto element : dict) {
-    if (BEFAttr<StringRef> str = element.getValue().dyn_cast<StringRef>())
+    if (BEFAttr<StringRef> str = dyn_cast<StringRef>(element.getValue()))
       // handle `str`
     } else {
       BEFAttr<int32_t> value = element.getValue<int32_t>();
@@ -344,7 +344,7 @@ static void handleAllElements(BEFDictionaryAttr dict) {
 
 static void handleAllListElements(BEFListAttr list) {
   for (auto element : list) {
-    if (BEFAttr<StringRef> str = element.dyn_cast<StringRef>())
+    if (BEFAttr<StringRef> str = dyn_cast<StringRef>(element))
       // handle `str`
     }
   }
@@ -359,11 +359,11 @@ type like this:
 
 ```c++
 static void takes_any_attribute(BEFDynamicAttr value) {
-  if (auto intVal = value.dyn_cast<int32_t>())
+  if (auto intVal = dyn_cast<int32_t>(value))
     ...
-  else if (auto stringVal = value.dyn_cast<StringRef>())
+  else if (auto stringVal = dyn_cast<StringRef>(value))
     ...
-  else if (auto arrayVal = value.dyn_cast<ArrayRef<int32_t>>())
+  else if (auto arrayVal = dyn_cast<ArrayRef<int32_t>>(value))
     ...
 }
 ```
