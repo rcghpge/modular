@@ -20,7 +20,8 @@ using namespace M;
 
 void M::registerBEFToMLIRTranslation() {
   static mlir::TranslateToMLIRRegistration toMLIR(
-      "import-bef", [](llvm::SourceMgr &sourceMgr, MLIRContext *ctx) {
+      "import-bef", "Import a BEF file and translate to MLIR",
+      [](llvm::SourceMgr &sourceMgr, MLIRContext *ctx) {
         ctx->loadDialect<mlir::quant::QuantizationDialect>();
         ctx->loadDialect<MDialect>();
         const llvm::MemoryBuffer *input =

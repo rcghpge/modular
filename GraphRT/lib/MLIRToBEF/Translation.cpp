@@ -24,7 +24,7 @@ void M::registerMLIRToBEFTranslation(DialectRegistry &otherDialects) {
       llvm::cl::init(false));
 
   static mlir::TranslateFromMLIRRegistration toBEF(
-      "export-bef",
+      "export-bef", "Translate MLIR to BEF",
       [](ModuleOp module, llvm::raw_ostream &os) -> LogicalResult {
         auto data = translateMLIRToBEF(module, enableBEFMetadata);
         if (data.getSize() == 0)

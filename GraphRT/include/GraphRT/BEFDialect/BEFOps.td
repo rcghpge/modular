@@ -30,10 +30,10 @@ def InvokableOp
   let regions = (region SizedRegion<1>:$body);
 
   let extraClassDeclaration = [{
-    using FunctionOpInterfaceTrait::getBody;
+    using FunctionOpInterfaceTrait::getFunctionBody;
     using FunctionOpInterfaceTrait::front;
     Block *getBodyBlock() {
-      return &getBody().front();
+      return &getFunctionBody().front();
     }
 
     OutputOp getOutputOp();
