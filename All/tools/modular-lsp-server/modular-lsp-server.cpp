@@ -17,6 +17,7 @@
 #include "TFLite/MLASPDialect/MLASPDialect.h"
 #include "TFLite/MTFLDialect/MTFLDialect.h"
 #include "TFLite/TFLPDialect/TFLPDialect.h"
+#include "TensorFlow/InitAllDialects.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -41,5 +42,6 @@ int main(int argc, char **argv) {
       MDialect, TFL::MLASPDialect, TFL::MTFLDialect, TFLP::TFLPDialect>();
   // Add the KGEN Dialects.
   registerAllKGENDialects(registry);
+  TF::registerAllDialects(registry);
   return failed(MlirLspServerMain(argc, argv, registry));
 }
