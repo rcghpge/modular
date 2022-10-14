@@ -11,12 +11,10 @@
 #ifndef GENERICML_MOPDIALECT_MOPOPS_TD
 #define GENERICML_MOPDIALECT_MOPOPS_TD
 
+include "mlir/IR/AttrTypeBase.td"
 include "GenericML/MOPDialect/MOPDialect.td"
 include "GenericML/MOPDialect/MOPAttrs.td"
 include "GenericML/MOPDialect/MOPTypes.td"
-include "mlir/IR/FunctionInterfaces.td"
-include "mlir/IR/SymbolInterfaces.td"
-include "mlir/Interfaces/ControlFlowInterfaces.td"
 
 // Base class for ops in this dialect.
 class MOPOp<string mnemonic, list<Trait> traits = []> :
@@ -45,5 +43,28 @@ def BufferConstantOp : MOPOp<"buffer.constant"> {
   let assemblyFormat = "attr-dict `:` qualified(type($result))";
   let hasVerifier = 1;
 }
+
+//===----------------------------------------------------------------------===//
+// ContextNewOp
+//===----------------------------------------------------------------------===//
+
+def ContextNewOp : MOPOp<"context.new"> {
+  let summary = "Constructs a context with room for primitive operation "
+                "contexts";
+  let description = [{
+    Constructs a context with the given number of slots for primitive operation
+    contexts. Generally a computational operator, such as 'lib.foo', will be
+    backed by two primitives, such as 'libp.foo.setup' and 'libp.foo'. The
+    former can be called by the model's 'init' to allocate and initialize
+    a primitive operation context for each call to 'lib.foo' in the model.
+    The latter can retrieve that primitive operation context during the model's
+    'execute'.
+  }];
+
+  let arguments = (ins I64Attr:$numSlots);
+  let results = (outs ContextType:$result);
+  let assemblyFormat = "attr-dict `:` qualified(type($result))";
+}
+
 
 #endif  // GENERICML_MOPDIALECT_MOPOPS_TD

@@ -19,9 +19,9 @@ def MOPDialect : Dialect {
   let summary = "Buffers, contexts and other framework/kernel independent glue";
   let description = [{
     The MOP dialect is intended to support buffers, contexts and other base
-    functionality which can support graphs containing a mix of
-    framework-specific ops (eg tf.add), computational library ops
-    (eg mlas.sgemm), and kernel generated from KGEN specifications.
+    functionality needed by graphs containing a mix of framework-specific ops
+    (eg tf.add), computational library ops (eg mlas.sgemm), and kernels
+    generated from KGEN specifications.
 
     (Rough design is currently in
     https://docs.google.com/document/d/10oh6cOLdFoFKrlDTbJNVI4pi5vjOoUCZ1AVG2VUTAJ8/edit

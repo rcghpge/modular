@@ -24,10 +24,10 @@ using namespace MOP;
 // BufferAttr
 //===----------------------------------------------------------------------===//
 
-// Interns data into allocator with align (or 1 if no align constraint given).
-// The BufferAttr's getData will thus return a pointer respecting the
-// requested alignment.
-ArrayRef<uint8_t>
+/// Interns data into allocator with align (or 1 if no align constraint given).
+/// The BufferAttr's getData will thus return a pointer respecting the
+/// requested alignment.
+static ArrayRef<uint8_t>
 copyIntoBuffer(mlir::StorageUniquer::StorageAllocator &allocator,
                ArrayRef<uint8_t> data, Optional<int64_t> align) {
   auto *ptr = static_cast<uint8_t *>(
@@ -36,13 +36,13 @@ copyIntoBuffer(mlir::StorageUniquer::StorageAllocator &allocator,
   return {ptr, data.size()};
 }
 
-// (Just to make clear we'll be converting from decoded hex strings directly
-//  to vectors of uint8_t below.)
+/// (Just to make clear we'll be converting from decoded hex strings directly
+///  to vectors of uint8_t below.)
 static_assert(sizeof(uint8_t) == sizeof(char));
 
-// Parse a hex string into data. The empty string denotes no data.
-ParseResult parseBufferData(AsmParser &p,
-                            FailureOr<SmallVector<uint8_t>> &data) {
+/// Parses a hex string into data. The empty string denotes no data.
+static ParseResult parseBufferData(AsmParser &p,
+                                   FailureOr<SmallVector<uint8_t>> &data) {
   std::string encoded;
   auto res = p.parseString(&encoded);
   if (failed(res))
@@ -64,9 +64,9 @@ ParseResult parseBufferData(AsmParser &p,
   return success();
 }
 
-// Print data as a hex string. The empty data array is printed as the empty
-// string.
-void printBufferData(AsmPrinter &p, ArrayRef<uint8_t> data) {
+/// Print data as a hex string. The empty data array is printed as the empty
+/// string.
+static void printBufferData(AsmPrinter &p, ArrayRef<uint8_t> data) {
   if (data.empty()) {
     p << "\"\"";
     return;
@@ -78,10 +78,10 @@ void printBufferData(AsmPrinter &p, ArrayRef<uint8_t> data) {
   p << "\"";
 }
 
-// Verifies the attribute's align constraint is sensible.
-mlir::LogicalResult
-BufferAttr::verify(function_ref<InFlightDiagnostic()> emitError,
-                   Optional<int64_t> align, ::llvm::ArrayRef<uint8_t> data) {
+/// Verifies the attribute's align constraint is sensible.
+LogicalResult BufferAttr::verify(function_ref<InFlightDiagnostic()> emitError,
+                                 Optional<int64_t> align,
+                                 ::llvm::ArrayRef<uint8_t> data) {
   if (align && *align < 0)
     return emitError() << "buffer align cannot be negative";
   if (align && !llvm::isPowerOf2_64(*align))
@@ -89,13 +89,13 @@ BufferAttr::verify(function_ref<InFlightDiagnostic()> emitError,
   return success();
 }
 
-// To support the ElementsAttr interface, returns the underlying data.
+/// To support the ElementsAttr interface, returns the underlying data.
 FailureOr<const uint8_t *>
 BufferAttr::try_value_begin_impl(OverloadToken<uint8_t>) const {
   return getData().data();
 }
 
-// To support the ElementsAttr interface, returns the implied buffer type.
+/// To support the ElementsAttr interface, returns the implied buffer type.
 ShapedType BufferAttr::getType() const {
   return BufferType::get(getContext(), static_cast<int64_t>(getData().size()),
                          getAlign());

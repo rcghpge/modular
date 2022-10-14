@@ -24,10 +24,10 @@ using namespace MOP;
 // BufferType
 //===----------------------------------------------------------------------===//
 
-// Verifies the buffer size and align constraints are valid.
-mlir::LogicalResult
-BufferType::verify(function_ref<InFlightDiagnostic()> emitError,
-                   Optional<int64_t> size, Optional<int64_t> align) {
+/// Verifies the buffer size and align constraints are valid.
+LogicalResult BufferType::verify(function_ref<InFlightDiagnostic()> emitError,
+                                 Optional<int64_t> size,
+                                 Optional<int64_t> align) {
   if (size && *size < 0)
     return emitError() << "buffer size cannot be negative";
   if (align && *align < 0)
@@ -37,8 +37,8 @@ BufferType::verify(function_ref<InFlightDiagnostic()> emitError,
   return success();
 }
 
-// Implements ShapedType::cloneWith
-ShapedType BufferType::cloneWith(Optional<llvm::ArrayRef<int64_t>> shape,
+/// Implements ShapedType::cloneWith
+ShapedType BufferType::cloneWith(Optional<ArrayRef<int64_t>> shape,
                                  Type dtype) const {
   assert(!shape && "cannot change shape in BufferType::cloneWith");
   assert(dtype.isUnsignedInteger(8) &&
@@ -46,17 +46,21 @@ ShapedType BufferType::cloneWith(Optional<llvm::ArrayRef<int64_t>> shape,
   return BufferType::get(getContext(), getSize(), getAlign());
 }
 
-// Implements ShapedType::getElementType
+/// Implements ShapedType::getElementType
 Type BufferType::getElementType() const {
-  return mlir::IntegerType::get(
-      getContext(), /*width=*/8,
-      mlir::IntegerType::SignednessSemantics::Unsigned);
+  return IntegerType::get(getContext(), /*width=*/8, IntegerType::Unsigned);
 }
 
-// Implements ShapedType::hasRank
+/// Implements ShapedType::hasRank
 bool BufferType::hasRank() const { return true; }
 
 // We defer BufferType::getShape till after ODS import since depends on impl.
+
+//===----------------------------------------------------------------------===//
+// ContextType
+//===----------------------------------------------------------------------===//
+
+// Nothing to implement.
 
 //===----------------------------------------------------------------------===//
 // MOPDialect type support
@@ -80,14 +84,12 @@ void MOPDialect::registerTypes() {
 // BufferType (cont.)
 //===----------------------------------------------------------------------===//
 
-const int64_t BufferType::unknownSize = mlir::ShapedType::kDynamicSize;
+const int64_t BufferType::unknownSize = ShapedType::kDynamicSize;
 
-// Implements ShapedType::getShape
+/// Implements ShapedType::getShape
 ArrayRef<int64_t> BufferType::getShape() const {
   Optional<int64_t> &size = getImpl()->size;
-  if (size) {
+  if (size)
     return ArrayRef<int64_t>(&size.value(), 1);
-  } else {
-    return ArrayRef<int64_t>(&unknownSize, 1);
-  }
+  return ArrayRef<int64_t>(&unknownSize, 1);
 }

@@ -61,4 +61,24 @@ def BufferType : MOPType<"Buffer", "buffer",
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// ContextType
+//===----------------------------------------------------------------------===//
+
+def ContextType : MOPType<"Context", "context"> {
+  let summary = "Type of execution contexts holding a number of primitive "
+                "contexts";
+  let description = [{
+    Contexts are objects created by the 'init' phase of a model, then reused
+    for each call to the model's 'execute'. Contexts may contain any number
+    of primitive operation contexts. A primitive operation context holds
+    attributes, scratch space, pre-computed data and, if required, cached
+    output buffers needed by a primitive. Each primitive may declare its
+    own context structure, and each call to that primitive in the graph may
+    have its own instance of that structure.
+
+    Contexts are represented by M::MOP::Context in the Modular runtime.
+  }];
+}
+
 #endif  // GENERICML_MOPDIALECT_MOPTYPES_TD
