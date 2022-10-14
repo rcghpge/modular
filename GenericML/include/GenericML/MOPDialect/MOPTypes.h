@@ -11,8 +11,9 @@
 #ifndef GENERICML_MOPDIALECT_MOPTYPES_H
 #define GENERICML_MOPDIALECT_MOPTYPES_H
 
-#include "MOPAttrs.h"
-#include "MOPDialect.h"
+#include "Support/LLVMForwardDecls.h"
+
+#include "GenericML/MOPDialect/MOPDialect.h"
 
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations

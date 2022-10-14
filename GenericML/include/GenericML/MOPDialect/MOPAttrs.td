@@ -13,11 +13,56 @@
 
 include "GenericML/MOPDialect/MOPDialect.td"
 include "mlir/IR/AttrTypeBase.td"
+include "mlir/IR/BuiltinAttributeInterfaces.td"
 
-/// An attribute in the Modular dialect.
+// Base class for attributes in this dialect.
 class MOPAttr<string attrName, string attrMnemonic, list<Trait> traits = []>
     : AttrDef<MOPDialect, attrName, traits> {
   let mnemonic = attrMnemonic;
+}
+
+//===----------------------------------------------------------------------===//
+// BufferAttr
+//===----------------------------------------------------------------------===//
+
+// Make sure the attribute's data argument is interned with the requested
+// alignment.
+def BufferData : ArrayRefParameter<"uint8_t",
+    "aligned storage for buffer data"> {
+  let allocator = [{
+    $_dst = copyIntoBuffer($_allocator, $_self, align);
+  }];
+}
+
+def BufferAttr : MOPAttr<"Buffer", "buffer",
+                         [DeclareAttrInterfaceMethods<ElementsAttrInterface>] > {
+  let summary = "A literal byte array with optional alignment";
+  let description = [{
+    This attribute encodes literal byte arrays which may have a specific
+    alignment constraint. Nothing is implied about the internal structure of
+    the bytes (rank, dimensions, underlying element type, padding, or element
+    endianness).
+
+    This attribute implements the ElementsAttrInterface as a rank-1 tensor over
+    uint8_t elements.
+
+    Generally this attribute should only be used for 'small' literals. Larger literals
+    should be placed into the resources table and be referenced by the dense_resources
+    attribute. Note that resources encode their alignment in their first four bytes
+    using the little-endian convention.
+  }];
+
+  let parameters = (ins OptionalParameter<"Optional<int64_t>">:$align, BufferData:$data);
+
+  let assemblyFormat = "`<` ($align^ `:`)? custom<BufferData>($data) `>`";
+
+  let genVerifyDecl = 1;
+
+  let extraClassDeclaration = [{
+    /// ElementsAttr interface implementation.
+    using ContiguousIterableTypesT = std::tuple<uint8_t>;
+    FailureOr<const uint8_t*> try_value_begin_impl(OverloadToken<uint8_t>) const;
+  }];
 }
 
 #endif  // GENERICML_MOPDIALECT_MOPATTRS_TD

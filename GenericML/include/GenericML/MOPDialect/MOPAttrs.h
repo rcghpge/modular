@@ -11,9 +11,11 @@
 #ifndef GENERICML_MOPDIALECT_MOPATTRS_H
 #define GENERICML_MOPDIALECT_MOPATTRS_H
 
+#include "GenericML/MOPDialect/MOPTypes.h"
 #include "Support/ForwardDecls.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributeInterfaces.h"
 #include "mlir/IR/BuiltinAttributes.h"
 
 //===----------------------------------------------------------------------===//

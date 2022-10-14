@@ -41,6 +41,7 @@ def MOPDialect : Dialect {
   }];
 
   let useDefaultAttributePrinterParser = 1;
+  let useDefaultTypePrinterParser = 1;
 }
 
 #endif // GENERICML_MOPDIALECT_MOPDIALECT_TD

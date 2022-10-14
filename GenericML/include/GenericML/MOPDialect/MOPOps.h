@@ -11,9 +11,9 @@
 #ifndef GENERICML_MOPDIALECT_MOPOPS_H
 #define GENERICML_MOPDIALECT_MOPOPS_H
 
-#include "MOPAttrs.h"
-#include "MOPDialect.h"
-#include "MOPTypes.h"
+#include "GenericML/MOPDialect/MOPAttrs.h"
+#include "GenericML/MOPDialect/MOPDialect.h"
+#include "GenericML/MOPDialect/MOPTypes.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/FunctionInterfaces.h"
 #include "mlir/IR/OpImplementation.h"
