@@ -38,8 +38,8 @@ BufferType::verify(function_ref<InFlightDiagnostic()> emitError,
 }
 
 // Implements ShapedType::cloneWith
-ShapedType BufferType::cloneWith(llvm::Optional<llvm::ArrayRef<long>> shape,
-                                 mlir::Type dtype) const {
+ShapedType BufferType::cloneWith(Optional<llvm::ArrayRef<int64_t>> shape,
+                                 Type dtype) const {
   assert(!shape && "cannot change shape in BufferType::cloneWith");
   assert(dtype.isUnsignedInteger(8) &&
          "invalid dtype for BufferType::cloneWith");
