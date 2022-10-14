@@ -41,7 +41,6 @@ def MOPDialect : Dialect {
   }];
 
   let useDefaultAttributePrinterParser = 1;
-  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 #endif // GENERICML_MOPDIALECT_MOPDIALECT_TD
