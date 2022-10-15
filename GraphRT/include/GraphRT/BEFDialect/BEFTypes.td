@@ -8,6 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifndef GRAPHRT_BEFDIALECT_BEFTYPES_TD
+#define GRAPHRT_BEFDIALECT_BEFTYPES_TD
+
 include "GraphRT/BEFDialect/BEFDialect.td"
 include "mlir/IR/AttrTypeBase.td"
 
@@ -41,3 +44,5 @@ def UnknownType : BEFType<"Unknown"> {
     don't have concrete metadata about types in the BEF file.
   }];
 }
+
+#endif // GRAPHRT_BEFDIALECT_BEFTYPES_TD
