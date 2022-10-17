@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "Faux/Dialect/FauxDialect.h"
+#include "GenericML/MOPDialect/MOPDialect.h"
 #include "GraphRT/BEFDialect/BEFDialect.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
 #include "KGEN/InitAllDialects.h"
@@ -39,7 +40,8 @@ int main(int argc, char **argv) {
       LLVM::LLVMDialect, quant::QuantizationDialect, scf::SCFDialect,
       // Add the Modular Dialects.
       BEF::BEFDialect, Faux::FauxDialect, GRT::GRTDialect, index::IndexDialect,
-      MDialect, TFL::MLASPDialect, TFL::MTFLDialect, TFLP::TFLPDialect>();
+      MDialect, TFL::MLASPDialect, TFL::MTFLDialect, TFLP::TFLPDialect,
+      MOP::MOPDialect>();
   // Add the KGEN Dialects.
   registerAllKGENDialects(registry);
   TF::registerAllDialects(registry);
