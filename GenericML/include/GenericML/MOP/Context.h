@@ -18,8 +18,8 @@ namespace M::MOP {
 class Context {
 public:
   /// Construct a new context.
-  Context(size_t numPrimContexts) : primContexts(numPrimContexts) {}
-  ~Context() {}
+  explicit Context(size_t numSlots) : primContexts(numSlots) {}
+  ~Context() = default;
 
   // No implicit copying is allowed.
   Context(const Context &rhs) = delete;
@@ -32,9 +32,9 @@ public:
                           Args &&...args) {
     assert(primContexts[slotNumber] == nullptr &&
            "PrimContext for the given slot already exists.");
-    primContexts[slotNumber] = std::unique_ptr<AnyGenericPrimContext>(
+    primContexts[slotNumber] =
         AnyGenericPrimContext::createGenericPrimContext<T>(
-            numOutputs, std::forward<Args>(args)...));
+            numOutputs, std::forward<Args>(args)...);
   }
 
   /// Retrieve the primitive context at given slot number.
