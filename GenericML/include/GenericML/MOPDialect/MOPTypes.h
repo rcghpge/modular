@@ -11,9 +11,15 @@
 #ifndef GENERICML_MOPDIALECT_MOPTYPES_H
 #define GENERICML_MOPDIALECT_MOPTYPES_H
 
+#include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"
+#include "mlir/IR/Types.h"
 
 #include "GenericML/MOPDialect/MOPDialect.h"
+
+namespace M {
+class DType;
+} // namespace M
 
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations

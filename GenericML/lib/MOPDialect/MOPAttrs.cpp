@@ -44,9 +44,8 @@ static_assert(sizeof(uint8_t) == sizeof(char));
 static ParseResult parseBufferData(AsmParser &p,
                                    FailureOr<SmallVector<uint8_t>> &data) {
   std::string encoded;
-  auto res = p.parseString(&encoded);
-  if (failed(res))
-    return res;
+  if (p.parseString(&encoded))
+    return mlir::failure();
   if (encoded.empty()) {
     data.emplace();
     return success();
