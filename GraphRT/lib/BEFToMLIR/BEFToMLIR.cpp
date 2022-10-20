@@ -9,7 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphRT/BEFToMLIR.h"
-#include "GraphRT/BEF/BEFEncoding.h"
 #include "GraphRT/BEF/BEFReader.h"
 #include "GraphRT/BEFDialect/BEFOps.h"
 #include "Support/Compiler/MLIRDenseAttrStorage.h"
@@ -502,9 +501,6 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
         return {};
       return TypeAttr::get(type);
     }
-
-    if (attrKind == BEF::AttributeKind::kUnit)
-      return UnitAttr::get(getContext());
 
     uint8_t byte = 0;
     // I1 attrs are a single byte in the BEF format, but are also a separate

@@ -636,7 +636,6 @@ private:
                                                     Location loc) const;
 
   BEFOffset emitAttributeInternal(Attribute attr, Location loc);
-  BEFOffset emitUnitAttribute(Location loc);
   BEFOffset emitIntegerValue(const APInt &value, Type eltType, Location loc);
   BEFOffset emitStringAttribute(StringRef value);
   BEFOffset emitSymbolAttribute(StringRef value);
@@ -708,12 +707,6 @@ BEFOffset AttributesEmitter::emitIntegerValue(const APInt &value, Type eltType,
   uint64_t v = value.getLimitedValue();
   emitBytes({reinterpret_cast<const uint8_t *>(&v), bytes});
   return offset;
-}
-
-/// Emits the unit attribute.
-BEFOffset AttributesEmitter::emitUnitAttribute(Location loc) {
-  emitAttributeKind(BEF::AttributeKind::kUnit);
-  return getOffset();
 }
 
 BEFOffset AttributesEmitter::emitStringAttribute(StringRef value) {
@@ -1140,9 +1133,6 @@ BEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr,
 
   if (auto typeAttr = dyn_cast<TypeAttr>(attr))
     return emitTypeAttribute(typeAttr.getValue(), loc);
-
-  if (auto unitAttr = dyn_cast<UnitAttr>(attr))
-    return emitUnitAttribute(loc);
 
   entities.emitError(loc) << "unsupported attribute " << attr;
   return {0};
