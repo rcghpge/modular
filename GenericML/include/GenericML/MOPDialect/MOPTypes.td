@@ -33,21 +33,32 @@ def BufferType : MOPType<"Buffer", "buffer",
                 "known size and alignment";
   let description = [{
     Buffers are byte arrays which may have a statically known size and
-    alignment. Nothing is implied about the internal structure of the bytes,
-    such as rank, dimensions, underlying element type, padding, or element
-    endianness. The compiler is responsible for ensuring the producers and
-    consumers of buffers agree on their interpretation of the buffer for
-    the intended target.
+    alignment 'constraints'. Nothing is implied about the internal structure
+    of the bytes, such as rank, dimensions, underlying element type, padding,
+    or element endianness. The compiler is responsible for ensuring the
+    producers and consumers of buffers agree on their interpretation of the
+    buffer for the intended target.
 
     Generally buffers are the lowest-common denominator across kernel
     implementations. Buffers may be wrapped by various tensor types, or
     used directly.
 
-    This type implements ShapedTypeInference as a rank-1 tensor over uint8_t
-    with optimally known first dimension. This in turn supports the
-    ElementsAttrInterface on buffer attributes.
+    This type implements `ShapedTypeInference` as a rank-1 tensor over
+    `uint8_t` with optimally known first dimension. This in turn supports the
+    `ElementsAttrInterface` on buffer attributes.
 
-    Buffers are represented by M::LLCL::RCBufferRefs in the Modular runtime.
+    Buffers are represented by `M::LLCL::RCBufferRefs` in the Modular runtime.
+
+    Note that align constraints in buffer types are generally only needed
+    when constructing a buffer from a dense_resource. Otherwise the align
+    constraint is not propagated within types to simplify type checking.
+
+    Examples:
+    ```mlir
+    !mop.buffer<size = 16>
+    !mop.buffer<size = 16, align = 64>
+    !mop.buffer
+    ```
   }];
 
   let parameters = (ins OptionalParameter<"Optional<int64_t>">:$size,
@@ -59,6 +70,10 @@ def BufferType : MOPType<"Buffer", "buffer",
      /// getShape may need to return an ArrayRef representing a
      /// dynamic rank-1 shape if the size is unconstrained.
      static const int64_t unknownSize;
+
+     /// Returns true if rhs is a BufferType and lhs and rhs have equal size
+     /// constraints.
+     static bool agreeOnSize(BufferType lhs, Type rhs);
   }];
 }
 
@@ -78,7 +93,12 @@ def ContextType : MOPType<"Context", "context"> {
     own context structure, and each call to that primitive in the graph may
     have its own instance of that structure.
 
-    Contexts are represented by M::MOP::Context in the Modular runtime.
+    Contexts are represented by `M::MOP::Context` in the Modular runtime.
+
+    Example:
+    ```mlir
+    !mop.context
+    ```
   }];
 }
 
@@ -156,8 +176,13 @@ def TensorShapeType : MOPType<"TensorShape", "shape"> {
   let extraClassDeclaration = [{
     /// Returns the rank of this tensor shape.
     size_t getRank() const { return getDims().size(); }
+
     /// Returns the maximum supported rank for all tensor shapes.
     static constexpr size_t getMaximumRank() { return 5; }
+
+    /// Returns the number of elements in shape, or -1 if it is
+    /// not fully static.
+    int64_t getNumElements() const;
   }];
 
   let assemblyFormat = "`<` custom<ShapeDims>($dims) `>`";
@@ -207,6 +232,17 @@ def TensorType : MOPType<"Tensor", "tensor",
   // the shape parameter 'shape'.
   let parameters = (ins TensorShapeType:$tensorShape, DTypeType:$dType);
   let assemblyFormat = "`<` custom<CompactShapeAndDType>($tensorShape, $dType) `>`";
+
+  let extraClassDeclaration = [{
+    /// Returns the statically known size of the tensor in bytes, or -1 if the
+    /// shape is not fully static.
+    int64_t getSizeInBytes() const;
+
+    /// Returns a BufferType which captures the required size for this tensor
+    /// (with no align constraint). The result will only have a size constraint
+     // if the tensor's shape is fully static.
+    BufferType getExpectedBufferType() const;
+  }];
 }
 
 #endif  // GENERICML_MOPDIALECT_MOPTYPES_TD

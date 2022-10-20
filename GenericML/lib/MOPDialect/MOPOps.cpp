@@ -10,11 +10,14 @@
 
 #include "GenericML/MOPDialect/MOPOps.h"
 #include "GraphRT/BEFDialect/BEFOps.h"
+#include "Support/ErrorOr.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributeInterfaces.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/IR/FunctionImplementation.h"
+#include "mlir/IR/TypeUtilities.h"
 
 using namespace M;
 using namespace MOP;
@@ -25,89 +28,119 @@ using namespace MOP;
 
 /// Returns the align constraint for the given attribute, or none if it
 /// has no such constraint.
-static FailureOr<Optional<int64_t>>
-getImpliedAlignment(ElementsAttr value,
-                    function_ref<InFlightDiagnostic()> emitError) {
+static ErrorOr<Optional<int64_t>> getImpliedAlignment(ElementsAttr value) {
   if (auto bufferAttr = dyn_cast<BufferAttr>(value))
     return bufferAttr.getAlign();
 
   if (auto resourceAttr = dyn_cast<DenseResourceElementsAttr>(value)) {
+    Optional<int64_t> alignFromType;
+    if (auto bufferType = dyn_cast<BufferType>(resourceAttr.getType()))
+      alignFromType = bufferType.getAlign();
+
     DenseResourceElementsHandle handle = resourceAttr.getRawHandle();
     mlir::AsmResourceBlob *blob = handle.getBlob();
-    if (!blob)
-      return emitError() << "requires the attribute resource to be initialized";
-    if (blob->getData().size() != static_cast<size_t>(value.getNumElements()))
-      // TODO: Why is this not enforced by the dense_resource attribute?
-      return emitError() << "the attribute resource size does not match the "
-                            "attribute elements size"
-                         << " (" << blob->getData().size() << " vs "
-                         << value.getNumElements() << ")";
-    size_t blobAlign = blob->getDataAlignment();
-    if (blobAlign == 0)
-      // No align constraint.
-      return {{}};
-    // We have an align constraint.
-    return Optional<int64_t>(static_cast<int64_t>(blobAlign));
+    // It appears resource blobs are not always initialized when verifying.
+    // However if the blob is available then we can check its size and
+    // alignment agree with what we expect.
+    if (blob) {
+      if (static_cast<int64_t>(blob->getData().size()) !=
+          value.getNumElements())
+        // TODO: Why is this not enforced by the dense_resource attribute?
+        return Error(Twine("the attribute resource size does not match the "
+                           "attribute elements size (" +
+                           Twine(blob->getData().size()) + " vs " +
+                           Twine(value.getNumElements()) + ")"));
+      if (alignFromType &&
+          *alignFromType != static_cast<int64_t>(blob->getDataAlignment()))
+        return Error(Twine("the attribute resource alignment does not match "
+                           "the alignment specified by the buffer type (" +
+                           Twine(blob->getDataAlignment()) + " vs " +
+                           Twine(*alignFromType) + ")"));
+    }
+    return alignFromType;
   }
 
   // No align constraint.
-  return {{}};
-}
-
-/// Verifies the attribute and result types are consistent, and the attribute
-/// is supported.
-static LogicalResult
-verifyBufferConstantOp(BufferConstantOp &op,
-                       function_ref<InFlightDiagnostic()> emitError) {
-  // We can only construct from attributes which are dense arrays (ie rank-1)
-  // of uint8_ts.
-  ElementsAttr value = op.getValue();
-  if (value.isSplat())
-    return emitError() << "does not support splat attributes";
-  ShapedType shape = value.getType();
-  if (!shape.hasRank() || shape.getShape().size() != 1)
-    return emitError() << "only supports rank-1 attributes";
-  Type elemType = value.getElementType();
-  if (!elemType.isUnsignedInteger(8))
-    return emitError() << "only supports attributes of uint8_t elements"
-                       << " (have " << elemType << ")";
-
-  // The resulting constant's type must be sized, and the size must match
-  // the attribute's size.
-  BufferType bufferType = op.getResult().getType();
-  if (!bufferType.getSize())
-    return emitError() << "requires the buffer type have a fixed size";
-  if (*bufferType.getSize() != value.getNumElements())
-    return emitError() << "requires the buffer type have a size matching the "
-                          "attribute size"
-                       << " (" << *bufferType.getSize() << " vs "
-                       << value.getNumElements() << ")";
-
-  // Only BufferAttr and DenseResourceElementsAttr can convey an align
-  // constraint.
-  Optional<int64_t> typeAlign = bufferType.getAlign();
-  FailureOr<Optional<int64_t>> failOrValueAlign =
-      getImpliedAlignment(value, emitError);
-  if (failed(failOrValueAlign))
-    return failOrValueAlign;
-  Optional<int64_t> valueAlign = *failOrValueAlign;
-  if (typeAlign.has_value() != valueAlign.has_value())
-    return emitError() << "requires the buffer type have an align "
-                          "constraint if and only "
-                          "if the attribute has an align constraint";
-  if (typeAlign.has_value() && *typeAlign != *valueAlign)
-    return emitError() << "requires the buffer type align match the "
-                          "attribute align"
-                       << " (" << *typeAlign << " vs " << *valueAlign << ")";
-
-  return success();
+  return Optional<int64_t>();
 }
 
 /// Verifies the attribute and result types are consistent, and the attribute
 /// is supported.
 LogicalResult BufferConstantOp::verify() {
-  return verifyBufferConstantOp(*this,
-                                [this]() { return this->emitOpError(); });
+  // We can only construct from attributes which are dense arrays (ie rank-1)
+  // of uint8_ts.
+  ElementsAttr value = getValue();
+  if (value.isSplat())
+    return emitOpError() << "does not support splat attributes";
+  ShapedType shape = value.getType();
+  if (!shape.hasRank() || shape.getShape().size() != 1)
+    return emitOpError() << "only supports rank-1 attributes";
+  Type elemType = value.getElementType();
+  if (!elemType.isUnsignedInteger(8))
+    return emitOpError() << "only supports attributes of uint8_t elements"
+                         << " (have " << elemType << ")";
+
+  // The resulting constant's type must be sized, and the size must match
+  // the attribute's size.
+  BufferType bufferType = getResult().getType();
+  if (!bufferType.getSize())
+    return emitOpError() << "requires the buffer type have a fixed size";
+  if (*bufferType.getSize() != value.getNumElements())
+    return emitOpError() << "requires the buffer type have a size matching the "
+                            "attribute size"
+                         << " (" << *bufferType.getSize() << " vs "
+                         << value.getNumElements() << ")";
+
+  // Only BufferAttr and DenseResourceElementsAttr can convey an align
+  // constraint. Check they are valid.
+  ErrorOr<Optional<int64_t>> errorOrValueAlign = getImpliedAlignment(value);
+  if (auto *error = errorOrValueAlign.getError())
+    return emitOpError() << error;
+  Optional<int64_t> valueAlign = *errorOrValueAlign;
+
+  // If the value is aligned then the result type may include that
+  // alignment. However, if the value is unaligned no such align
+  // constraint can appear in the result type.
+  Optional<int64_t> typeAlign = bufferType.getAlign();
+  if (valueAlign) {
+    if (typeAlign && typeAlign.has_value() && *typeAlign != *valueAlign)
+      return emitOpError() << "requires the buffer type align match the "
+                              "attribute align"
+                           << " (" << *typeAlign << " vs " << *valueAlign
+                           << ")";
+  } else {
+    if (typeAlign)
+      return emitOpError()
+             << "requires the buffer type to not have an align "
+                "constraint since the attribute has no align constraint";
+  }
+
+  return success();
+}
+
+/// Infers the buffer type result from the attribute argument.
+LogicalResult BufferConstantOp::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  assert(operands.empty() && "mismatched operand arity");
+  auto attr = attributes.get(getValueAttrName(name));
+  auto elementsAttr = dyn_cast_or_null<ElementsAttr>(attr);
+  assert(elementsAttr && "mismatched operand types");
+  int64_t size = elementsAttr.size();
+  // The inferred result type does not propagate any align constraint.
+  inferredReturnTypes.emplace_back(
+      BufferType::get(context, size, /*align=*/{}));
+  return success();
+}
+
+Optional<int64_t> BufferConstantOp::getAlign() {
+  ErrorOr<Optional<int64_t>> errorOrAlign = getImpliedAlignment(getValue());
+  assert(!errorOrAlign.isError());
+  if (errorOrAlign.isError())
+    return {};
+  return *errorOrAlign;
 }
 
 //===----------------------------------------------------------------------===//
@@ -115,6 +148,34 @@ LogicalResult BufferConstantOp::verify() {
 //===----------------------------------------------------------------------===//
 
 // Nothing to implement.
+
+//===----------------------------------------------------------------------===//
+// TensorPackOp
+//===----------------------------------------------------------------------===//
+
+/// Checks the shape, buffer type and result tensor types are consistent.
+LogicalResult TensorPackOp::verify() {
+  TensorShapeType tensorShapeType = getTensorShape().getType();
+  BufferType bufferType = getBuffer().getType();
+  TensorType tensorType = getResult().getType();
+
+  if (tensorShapeType != tensorType.getTensorShape())
+    return emitOpError() << "requires shape to match result tensor shape"
+                         << " (" << tensorShapeType << " vs "
+                         << tensorType.getTensorShape() << ")";
+  int64_t staticSize = tensorType.getSizeInBytes();
+  if ((staticSize != ShapedType::kDynamicSize) !=
+      bufferType.getSize().has_value())
+    return emitOpError() << "requires the buffer to be sized if and only if "
+                            "the tensor shape is fully static";
+  if (bufferType.getSize() && staticSize != *bufferType.getSize())
+    return emitOpError()
+           << "requires the buffer size to match the tensor size in bytes"
+           << " (" << *bufferType.getSize() << " vs " << staticSize << ")";
+  return success();
+}
+
+DTypeType TensorPackOp::getDType() { return getResult().getType().getDType(); }
 
 //===----------------------------------------------------------------------===//
 // ModelOp

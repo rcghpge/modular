@@ -39,6 +39,12 @@ LogicalResult BufferType::verify(function_ref<InFlightDiagnostic()> emitError,
   return success();
 }
 
+bool BufferType::agreeOnSize(BufferType lhs, Type rhs) {
+  if (auto rhsBuffer = mlir::dyn_cast<BufferType>(rhs))
+    return lhs.getSize() == rhsBuffer.getSize();
+  return false;
+}
+
 /// Implements ShapedType::cloneWith
 ShapedType BufferType::cloneWith(Optional<ArrayRef<int64_t>> shape,
                                  Type dtype) const {
@@ -138,6 +144,16 @@ TensorShapeType::verify(function_ref<InFlightDiagnostic()> emitError,
   return success();
 }
 
+int64_t TensorShapeType::getNumElements() const {
+  int64_t prod = 1;
+  for (auto dim : getDims()) {
+    if (dim == ShapedType::kDynamicSize)
+      return ShapedType::kDynamicSize;
+    prod *= dim;
+  }
+  return prod;
+}
+
 //===----------------------------------------------------------------------===//
 // TensorType
 //===----------------------------------------------------------------------===//
@@ -179,6 +195,19 @@ static void printCompactShapeAndDType(AsmPrinter &p,
       "x");
   p << "x";
   p << dtype.getMlirType();
+}
+
+int64_t TensorType::getSizeInBytes() const {
+  return DTypeType::mlirTypeToRawDType(getDType().getMlirType())
+      .getSizeInBytes(getTensorShape().getNumElements());
+}
+
+BufferType TensorType::getExpectedBufferType() const {
+  int64_t size = getSizeInBytes();
+  return BufferType::get(getContext(),
+                         size == ShapedType::kDynamicSize ? Optional<int64_t>()
+                                                          : size,
+                         /*align=*/{});
 }
 
 /// Implements SubElementTypeInterface::walkImmediateSubElements.
