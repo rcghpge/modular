@@ -44,6 +44,8 @@ FileFormat M::sniffInputFormat(StringRef fileContents) {
       return FileFormat::kMTFLDialect;
     if (fileContents.contains("tflp.model"))
       return FileFormat::kTFLPDialect;
+    if (fileContents.contains("mop.model"))
+      return FileFormat::kMOPDialect;
     if (fileContents.contains("faux.testcase"))
       return FileFormat::kFauxDialect;
     if (fileContents.contains("operator_codes:"))

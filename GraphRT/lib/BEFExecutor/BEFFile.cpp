@@ -240,6 +240,11 @@ BEFContents BEFFile::sniffFileContents() const {
   BEFContents result{BEFContents::kUnknown};
   (void)((BEFFileImpl *)const_cast<BEFFile *>(this))
       ->enumeratePrimitiveNames([&](StringRef primitiveName) -> ErrorOrSuccess {
+        if (primitiveName == "mop.model") {
+          result = BEFContents{BEFContents::kModularModel};
+          return Error("done"); // stop iteration early.
+        }
+
         if (primitiveName == "tflp.model") {
           result = BEFContents{BEFContents::kTFLiteModel};
           return Error("done"); // stop iteration early.

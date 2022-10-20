@@ -84,7 +84,7 @@ def ContextNewOp : MOPOp<"context.new"> {
     ```
   }];
 
-  let arguments = (ins I64Attr:$numSlots);
+  let arguments = (ins UI64Attr:$numSlots);
   let results = (outs ContextType:$result);
   let assemblyFormat = "$numSlots attr-dict";
 }
