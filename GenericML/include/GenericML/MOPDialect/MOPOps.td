@@ -45,9 +45,14 @@ def BufferConstantOp : MOPOp<"buffer.constant",
 
     Example:
     ```mlir
-    mop.buffer.constant #mop.buffer<8: "0x00010203">
-    mop.buffer.constant dense_resource<label>:!mop.buffer<size=4, align=8>
-    mop.buffer.constant array<ui8: 0, 1, 2, 3>
+    %buf = mop.buffer.constant #mop.buffer<8: "0x00010203">
+    %buf : !mop.buffer<size=4>  // at least 8 byte aligned in storage
+
+    %buf = mop.buffer.constant dense_resource<label>:!mop.buffer<size=4, align=8>
+    %buf : !mop.buffer<size=4>  // at least 8 byte aligned in storage
+
+    %buf = mop.buffer.constant array<ui8: 0, 1, 2, 3>
+    %buf : !mop.buffer<size=4>  // no specific alignment in storage
     ```
   }];
 
@@ -86,16 +91,78 @@ def BufferCreateOp : MOPOp<"buffer.create",
 
     Example:
     ```mlir
-    mop.buffer.create %size : !mop.buffer<align=8>
-    mop.buffer.create : !mop.buffer<size=8, align=64>
+    %ctxt : !mop.context
+    %size : index
+
+    %buf = mop.buffer.create %ctxt %size : !mop.buffer<align=8>
+    %buf : !mop.buffer<>  // at least 8 byte aligned in storage
+
+    %buf = mop.buffer.create %ctxt : !mop.buffer<size=8>
+    %buf : !mop.buffer<size=8>  // no specific alignment in storage
     ```
   }];
 
-  // TODO: Switch to index
-  let arguments = (ins Optional<SI64>:$runtimeSize,
+  // NOTE: We include an explicit $bufferType attributes so that the alignment
+  // can be conveyed to the op even though we don't want it in the result
+  // type.
+  let arguments = (ins ContextType:$context, Optional<Index>:$runtimeSize,
                        TypeAttrOf<BufferType>:$bufferType);
   let results = (outs BufferType:$result);
-  let assemblyFormat = "($runtimeSize^)?  attr-dict `:` $bufferType";
+  let assemblyFormat = "$context ($runtimeSize^)?  attr-dict `:` $bufferType";
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    /// Returns the align constraint for the buffer, if any.
+    Optional<int64_t> getAlign();
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// BufferRecreateOp
+//===----------------------------------------------------------------------===//
+
+def BufferRecreateOp : MOPOp<"buffer.recreate", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "Allocates or reuses a buffer of runtime size and optional "
+                "alignment, and caches it within in a primitive context";
+  let description = [{
+    The operation has access to a buffer cached at the given output index in
+    the primitive context at the given slot in the global context. If a buffer
+    of matching size already exists then it is returned directly. Otherwise a
+    new buffer is allocated and the cache is updated.
+
+    Note that any align constraint on the buffer type is ignored if the
+    cached buffer is reused. In particular, in:
+    ```mlir
+       %buf1 = mop.buffer.recreate %ctxt %size { slot=2, output=0 } : !mop..buffer<align=8>
+       %buf2 = mop.buffer.recreate %ctxt %size { slot=2, output=0 } : !mop..buffer<align=16>
+    ```
+    the second recreate will never re-allocate the cached buffer.
+
+    If the bufffer type has a size constraint then the runtime size operand
+    does not need to be supplied as an argument. In this case the 'recreate'
+    is simply pre-allocating a buffer of statically known size.
+
+    Example:
+    ```mlir
+    %ctxt : !mop.context
+    %size : index
+
+    %buf = mop.buffer.recreate %ctxt %size { slot=42, output=2 } : !mop.buffer<align=8>
+    %buf : !mop.buffer<>  // at least 8 byte aligned in storage
+
+    %buf = mop.buffer.recreate %ctxt { slot=42, output=2 } : !mop.buffer<size=64>
+    %buf : !mop.buffer<size=64>  // no specific alignment in storage
+    ```
+  }];
+
+  // NOTE: We include an explicit $bufferType attributes so that the alignment
+  // can be conveyed to the op even though we don't want it in the result
+  // type.
+  let arguments = (ins ContextType:$context, Optional<Index>:$runtimeSize,
+                       I64Attr:$slot, I64Attr:$output, TypeAttrOf<BufferType>:$bufferType);
+  let results = (outs BufferType:$result);
+  let assemblyFormat = "$context ($runtimeSize^)? attr-dict `:` $bufferType";
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
@@ -122,7 +189,8 @@ def ContextCreateOp : MOPOp<"context.create"> {
 
     Example:
     ```mlir
-    mop.context.create 4
+    %ctxt = mop.context.create 4
+    %ctxt : !mop.context
     ```
   }];
 
@@ -146,14 +214,21 @@ def ShapePackOp : MOPOp<"shape.pack"> {
 
     Example:
     ```mlir
-    mop.shape.pack %dim0 %dim1 : !mop.shape<?x?xf32>
-    mop.shape.pack %dim : !mop.shape<32x?xf32>
-    mop.shape.pack : !mop.shape<32x4xf32>
+    %dim0 : index
+    %dim1 : index
+
+    %shape = mop.shape.pack %dim0 %dim1 : !mop.shape<?x?xf32>
+    %shape : !mop.shape<?x?xf32>
+
+    %shape = mop.shape.pack %dim : !mop.shape<32x?xf32>
+    %shape : !mop.shape<32x?xf32>
+
+    %shape = mop.shape.pack : !mop.shape<32x4xf32>
+    %shape : !mop.shape<32x4xf32>
     ```
   }];
 
-  // TODO: Switch to index
-  let arguments = (ins Variadic<SI64>:$runtimeDims);
+  let arguments = (ins Variadic<Index>:$runtimeDims);
   let results = (outs TensorShapeType:$result);
   let assemblyFormat = "$runtimeDims attr-dict `:` qualified(type($result))";
   let hasVerifier = 1;
@@ -174,17 +249,48 @@ def ShapeUnpackOp : MOPOp<"shape.unpack",
 
     Example:
     ```mlir
+    %shape : !mop.shape<?x?xf32>
     %dim0, %dim1 = mop.shape.unpack %shape : !mop.shape<?x?xf32>
+    %dim0, %dim1 : index, index
+
+    %shape : !mop.shape<32x?xf32>
     %dim = mop.shape.unpack %shape : !mop.shape<32x?xf32>
-    mop.shape.unpack : !mop.shape<32x4xf32>
+    %dim : index
+
+    %shape : !mop.shape<32x4xf32>
+    mop.shape.unpack %shape : !mop.shape<32x4xf32>  // no-op
     ```
   }];
 
   let arguments = (ins TensorShapeType: $shape);
-  // TODO: Switch to index
-  let results = (outs Variadic<SI64>:$results);
+  let results = (outs Variadic<Index>:$results);
   let assemblyFormat = "$shape attr-dict `:` qualified(type($shape))";
   let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// ShapeSizeOp
+//===----------------------------------------------------------------------===//
+
+def ShapeSizeOp : MOPOp<"shape.size"> {
+  let summary = "Calculates the byte size of a tensor with given shape and "
+                "dtype";
+  let description = [{
+    Returns the number of bytes needed to represent the buffer backing a tensor
+    of the given shape and dtype. Generally the shape's type will contain at
+    least one dynamic dimension.
+
+    Example:
+    ```mlir
+    %shape : !mop.shape<32x?xf32>
+    %size = mop.shape.size %shape !mop.dtype<f32> : !mop.shape<32x?xf32>
+    %size : index
+    ```
+  }];
+
+  let arguments = (ins TensorShapeType: $shape, TypeAttrOf<DTypeType>: $dtype);
+  let results = (outs Index:$result);
+  let assemblyFormat = "$shape $dtype attr-dict `:` qualified(type($shape))";
 }
 
 //===----------------------------------------------------------------------===//
@@ -205,7 +311,15 @@ def TensorPackOp : MOPOp<"tensor.pack", [
 
     Example:
     ```mlir
-    mop.tensor.pack %shape %buf : !mop.tensor<4x16xf32>
+    %shape : !mop.shape<4x16>
+    %buf : !mop.buffer<size=256>
+    %tensor = mop.tensor.pack %shape %buf : !mop.tensor<4x16xf32>
+    %tensor : !mop.tensor<4x16xf32>
+
+    %shape : !mop.shape<?x16>
+    %buf : !mop.buffer<>
+    %tensor = mop.tensor.pack %shape %buf : !mop.tensor<?x16xf32>
+    %tensor : !mop.tensor<?x16xf32>
     ```
   }];
 
@@ -234,7 +348,15 @@ def TensorUnpackOp : MOPOp<"tensor.unpack", [
 
     Example:
     ```mlir
+    %tensor : !mop.tensor<8x64xf32>
+    %shape, %buf = mop.tensor.unpack %tensor : !mop.tensor<8x64xf32>
+    %shape : !mop.shape<8x64>
+    %buf : !mop.buffer<size=2048>
+
+    %tensor : !mop.tensor<?x64xf32>
     %shape, %buf = mop.tensor.unpack %tensor : !mop.tensor<?x64xf32>
+    %shape : !mop.shape<?x64>
+    %buf : !mop.buffer<>
     ```
   }];
 
@@ -270,8 +392,11 @@ def ModelOp : MOPOp<"model", [HasParent<"ModuleOp">, Symbol,
     first loaded, and re-uses the resulting !mop.context for each
     subsequent call to 'execute'.
 
+    Models are represented by MOP::Model in the Modular runtime.
+
     Example:
     ```mlir
+    // In the top-level
     mop.model @example_model
       init {
         ...

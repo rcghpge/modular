@@ -177,6 +177,39 @@ Optional<int64_t> BufferCreateOp::getAlign() {
 }
 
 //===----------------------------------------------------------------------===//
+// BufferRecreateOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BufferRecreateOp::verify() {
+  BufferType bufferType = getBufferType();
+  if (bufferType.getSize().has_value() == (getRuntimeSize() != nullptr)) {
+    return emitOpError()
+           << "requires a runtime size argument if and only if the buffer size "
+              "is unknown in the given buffer type";
+  }
+  return success();
+}
+
+/// Constructs the buffer type result from the given buffer type attribute.
+LogicalResult BufferRecreateOp::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  auto bufferTypeAttr =
+      dyn_cast<TypeAttr>(attributes.get(getBufferTypeAttrName(name)));
+  assert(bufferTypeAttr && "mismatched operand types");
+  auto bufferType = dyn_cast<BufferType>(bufferTypeAttr.getValue());
+  assert(bufferType && "mismatched operand types");
+  inferredReturnTypes.emplace_back(bufferType.forgetAlign());
+  return success();
+}
+
+Optional<int64_t> BufferRecreateOp::getAlign() {
+  return getBufferType().getAlign();
+}
+
+//===----------------------------------------------------------------------===//
 // ContextCreateOp
 //===----------------------------------------------------------------------===//
 
@@ -220,10 +253,15 @@ LogicalResult ShapeUnpackOp::inferReturnTypes(
   auto shapeType = dyn_cast<TensorShapeType>(operands[0].getType());
   assert(shapeType && "mismatched operand type");
   for (int64_t i = 0, e = shapeType.getNumDynamicDims(); i < e; ++i)
-    inferredReturnTypes.emplace_back(
-        IntegerType::get(context, 64, IntegerType::Signed));
+    inferredReturnTypes.emplace_back(IndexType::get(context));
   return success();
 }
+
+//===----------------------------------------------------------------------===//
+// ShapeSizeOp
+//===----------------------------------------------------------------------===//
+
+// Nothing to implement.
 
 //===----------------------------------------------------------------------===//
 // TensorPackOp
