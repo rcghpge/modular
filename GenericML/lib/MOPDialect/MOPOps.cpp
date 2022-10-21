@@ -39,9 +39,8 @@ static ErrorOr<Optional<int64_t>> getImpliedAlignment(ElementsAttr value) {
 
     DenseResourceElementsHandle handle = resourceAttr.getRawHandle();
     mlir::AsmResourceBlob *blob = handle.getBlob();
-    // It appears resource blobs are not always initialized when verifying.
-    // However if the blob is available then we can check its size and
-    // alignment agree with what we expect.
+    // If the blob is available then we can check its size and alignment
+    // agree with what we expect.
     if (blob) {
       if (static_cast<int64_t>(blob->getData().size()) !=
           value.getNumElements())
@@ -144,10 +143,87 @@ Optional<int64_t> BufferConstantOp::getAlign() {
 }
 
 //===----------------------------------------------------------------------===//
-// ContextNewOp
+// BufferCreateOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BufferCreateOp::verify() {
+  BufferType bufferType = getBufferType();
+  const bool haveRuntimeSize = getRuntimeSize() != nullptr;
+  if (bufferType.getSize().has_value() == haveRuntimeSize) {
+    return emitOpError()
+           << "requires a runtime size argument if and only if the buffer size "
+              "is unknown in the given buffer type";
+  }
+  return success();
+}
+
+/// Constructs the buffer type result from the given buffer type attribute.
+LogicalResult BufferCreateOp::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  auto bufferTypeAttr =
+      dyn_cast<TypeAttr>(attributes.get(getBufferTypeAttrName(name)));
+  assert(bufferTypeAttr && "mismatched operand types");
+  auto bufferType = dyn_cast<BufferType>(bufferTypeAttr.getValue());
+  assert(bufferType && "mismatched operand types");
+  inferredReturnTypes.emplace_back(bufferType.forgetAlign());
+  return success();
+}
+
+Optional<int64_t> BufferCreateOp::getAlign() {
+  return getBufferType().getAlign();
+}
+
+//===----------------------------------------------------------------------===//
+// ContextCreateOp
 //===----------------------------------------------------------------------===//
 
 // Nothing to implement.
+
+//===----------------------------------------------------------------------===//
+// ShapePackOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ShapePackOp::verify() {
+  TensorShapeType shapeType = getResult().getType();
+  if (static_cast<int64_t>(getRuntimeDims().size()) !=
+      shapeType.getNumDynamicDims())
+    return emitOpError() << "requires " << shapeType.getNumDynamicDims()
+                         << " dimension operands to match the shape "
+                         << shapeType << ", but given "
+                         << getRuntimeDims().size();
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ShapeUnpackOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ShapeUnpackOp::verify() {
+  TensorShapeType shapeType = getShape().getType();
+  if (static_cast<int64_t>(getResults().size()) !=
+      shapeType.getNumDynamicDims())
+    return emitOpError() << "requires " << shapeType.getNumDynamicDims()
+                         << " dimension results to match the shape "
+                         << shapeType << ", but given " << getResults().size();
+  return success();
+}
+
+LogicalResult ShapeUnpackOp::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  assert(operands.size() == 1 && "mismatched operand arity");
+  auto shapeType = dyn_cast<TensorShapeType>(operands[0].getType());
+  assert(shapeType && "mismatched operand type");
+  for (int64_t i = 0, e = shapeType.getNumDynamicDims(); i < e; ++i)
+    inferredReturnTypes.emplace_back(
+        IntegerType::get(context, 64, IntegerType::Signed));
+  return success();
+}
 
 //===----------------------------------------------------------------------===//
 // TensorPackOp
@@ -163,19 +239,56 @@ LogicalResult TensorPackOp::verify() {
     return emitOpError() << "requires shape to match result tensor shape"
                          << " (" << tensorShapeType << " vs "
                          << tensorType.getTensorShape() << ")";
-  int64_t staticSize = tensorType.getSizeInBytes();
-  if ((staticSize != ShapedType::kDynamicSize) !=
-      bufferType.getSize().has_value())
+  Optional<int64_t> staticSize = tensorType.getSizeInBytes();
+  if (staticSize.has_value() != bufferType.getSize().has_value())
     return emitOpError() << "requires the buffer to be sized if and only if "
                             "the tensor shape is fully static";
-  if (bufferType.getSize() && staticSize != *bufferType.getSize())
+  if (bufferType.getSize() && *staticSize != *bufferType.getSize())
     return emitOpError()
            << "requires the buffer size to match the tensor size in bytes"
-           << " (" << *bufferType.getSize() << " vs " << staticSize << ")";
+           << " (" << *bufferType.getSize() << " vs " << *staticSize << ")";
   return success();
 }
 
 DTypeType TensorPackOp::getDType() { return getResult().getType().getDType(); }
+
+//===----------------------------------------------------------------------===//
+// TensorUnpackOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TensorUnpackOp::verify() {
+  TensorType tensorType = getTensor().getType();
+  if (tensorType.getTensorShape() != getTensorShapeResult().getType())
+    return emitOpError() << "requires the result shape to match tensor's shape"
+                         << " (" << getTensorShapeResult().getType() << " vs "
+                         << tensorType.getTensorShape() << ")";
+  Optional<int64_t> sizeInBytes = tensorType.getSizeInBytes();
+  if (sizeInBytes.has_value() !=
+      getBufferResult().getType().getSize().has_value())
+    return emitOpError() << "requires the result buffer to have a size if and "
+                            "only if the tensor has a fully static shape";
+  if (sizeInBytes.has_value() &&
+      *sizeInBytes != *getBufferResult().getType().getSize())
+    return emitOpError() << "requires the result buffer to have a size "
+                            "matching the byte size of the tensor"
+                         << " (" << *getBufferResult().getType().getSize()
+                         << " vs " << *sizeInBytes << ")";
+  return success();
+}
+
+LogicalResult TensorUnpackOp::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  assert(operands.size() == 1 && "mismatched operand arity");
+  auto tensorType = dyn_cast<TensorType>(operands[0].getType());
+  assert(tensorType && "mismatched operand type");
+  Optional<int64_t> sizeInBytes = tensorType.getSizeInBytes();
+  inferredReturnTypes.emplace_back(tensorType.getTensorShape());
+  inferredReturnTypes.emplace_back(
+      BufferType::get(context, sizeInBytes, /*align=*/{}));
+  return success();
+}
 
 //===----------------------------------------------------------------------===//
 // ModelOp
@@ -209,7 +322,7 @@ static bool checkAndRemovePrefix(ArrayRef<Type> requiredTypes,
   return true;
 }
 
-/// Creates a new model with empty 'init' and 'execute' bodies and with
+/// Creates a model with empty 'init' and 'execute' bodies and with
 /// `inputTypes` and `resultTypes` for the op's explicit signature.
 /// `inputArgLocs` specifies the location information for the explicit
 /// arguments to the 'execute' entry point, and thus should have the same
@@ -224,11 +337,11 @@ void ModelOp::build(OpBuilder &builder, OperationState &state,
 
   // The 'init' entry point has no arguments.
   assert(implicitInitSignature(builder).getInputs().empty());
-  Region *initRegion = state.addRegion();
+  Region *initRegion = state.regions[0].get();
   initRegion->emplaceBlock();
 
   // The 'execute' entry point has both implicit and explicit arguments.
-  Region *executeRegion = state.addRegion();
+  Region *executeRegion = state.regions[1].get();
   executeRegion->emplaceBlock();
   for (auto type : implicitExecuteSignature(builder).getInputs())
     executeRegion->addArgument(type, state.location);

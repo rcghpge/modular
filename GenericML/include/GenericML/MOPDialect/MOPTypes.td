@@ -74,6 +74,9 @@ def BufferType : MOPType<"Buffer", "buffer",
      /// Returns true if rhs is a BufferType and lhs and rhs have equal size
      /// constraints.
      static bool agreeOnSize(BufferType lhs, Type rhs);
+
+     /// Returns this buffer type without any align constraint.
+     BufferType forgetAlign();
   }];
 }
 
@@ -180,9 +183,16 @@ def TensorShapeType : MOPType<"TensorShape", "shape"> {
     /// Returns the maximum supported rank for all tensor shapes.
     static constexpr size_t getMaximumRank() { return 5; }
 
-    /// Returns the number of elements in shape, or -1 if it is
-    /// not fully static.
-    int64_t getNumElements() const;
+    /// Returns the number of dynamic dimensions in this shape.
+    int64_t getNumDynamicDims() const;
+
+    /// Return the dimension at index i in this shape, or empty
+    /// if the dimension is dynamic.
+    Optional<int64_t> operator[](size_t i) const;
+
+    /// Returns the number of elements in a tensor of this shape, or empty
+    /// the shape is not fully static.
+    Optional<int64_t> getNumElements() const;
   }];
 
   let assemblyFormat = "`<` custom<ShapeDims>($dims) `>`";
@@ -234,9 +244,9 @@ def TensorType : MOPType<"Tensor", "tensor",
   let assemblyFormat = "`<` custom<CompactShapeAndDType>($tensorShape, $dType) `>`";
 
   let extraClassDeclaration = [{
-    /// Returns the statically known size of the tensor in bytes, or -1 if the
+    /// Returns the statically known size of the tensor in bytes, or empty if the
     /// shape is not fully static.
-    int64_t getSizeInBytes() const;
+    Optional<int64_t> getSizeInBytes() const;
 
     /// Returns a BufferType which captures the required size for this tensor
     /// (with no align constraint). The result will only have a size constraint

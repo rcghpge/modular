@@ -38,7 +38,7 @@ def BufferConstantOp : MOPOp<"buffer.constant",
 
     Example valid attributes include `BufferAttr`, `DenseUI8ResourceElementsAttr`
     and `DenseI8Array`. However note that `DenseI8Array` does not convey any
-    alignment constraint.
+    align constraint.
 
     Note that any align constraint of the argument is not propagated into the
     result type.
@@ -63,10 +63,52 @@ def BufferConstantOp : MOPOp<"buffer.constant",
 }
 
 //===----------------------------------------------------------------------===//
-// ContextNewOp
+// BufferCreateOp
 //===----------------------------------------------------------------------===//
 
-def ContextNewOp : MOPOp<"context.new"> {
+// TODO: Would prefer to write a type constraint like
+//   TypesMatchWith<"result type must match buffer type without align",
+//                  "bufferType", "result",
+//                  "$_self.forgetAlign()">
+// instead of using DeclareOpInterfaceMethods<InferTypeOpInterface> but
+// ods generates invalid code.
+def BufferCreateOp : MOPOp<"buffer.create",
+                        [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "Allocates a buffer of given runtime or static size and "
+                "optional alignment";
+  let description = [{
+    Allocates a buffer whose byte array is of a given size. If the size is
+    known statically within the buffer type it does not need to be supplied
+    as an argument. Otherwise it must be provided explicitly. Any align
+    constraint in the buffer type is respected in the allocation.
+
+    Note that any align constraint is not propagated into the result type.
+
+    Example:
+    ```mlir
+    mop.buffer.create %size : !mop.buffer<align=8>
+    mop.buffer.create : !mop.buffer<size=8, align=64>
+    ```
+  }];
+
+  // TODO: Switch to index
+  let arguments = (ins Optional<SI64>:$runtimeSize,
+                       TypeAttrOf<BufferType>:$bufferType);
+  let results = (outs BufferType:$result);
+  let assemblyFormat = "($runtimeSize^)?  attr-dict `:` $bufferType";
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    /// Returns the align constraint for the buffer, if any.
+    Optional<int64_t> getAlign();
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// ContextCreateOp
+//===----------------------------------------------------------------------===//
+
+def ContextCreateOp : MOPOp<"context.create"> {
   let summary = "Constructs a context with room for primitive operation "
                 "contexts";
   let description = [{
@@ -80,7 +122,7 @@ def ContextNewOp : MOPOp<"context.new"> {
 
     Example:
     ```mlir
-    mop.context.new 4
+    mop.context.create 4
     ```
   }];
 
@@ -90,20 +132,76 @@ def ContextNewOp : MOPOp<"context.new"> {
 }
 
 //===----------------------------------------------------------------------===//
+// ShapePackOp
+//===----------------------------------------------------------------------===//
+
+def ShapePackOp : MOPOp<"shape.pack"> {
+  let summary = "Constructs a tensor shape from a mix of runtime and static "
+                "dimensions";
+  let description = [{
+    Constructs a shape of statically known rank with dimensions taken from
+    either runtime operands or the given shape type. Operands must be given
+    for each unknown '?' shape dimension in order. It is valid for the shape
+    to be fully static, in which case no operands are required.
+
+    Example:
+    ```mlir
+    mop.shape.pack %dim0 %dim1 : !mop.shape<?x?xf32>
+    mop.shape.pack %dim : !mop.shape<32x?xf32>
+    mop.shape.pack : !mop.shape<32x4xf32>
+    ```
+  }];
+
+  // TODO: Switch to index
+  let arguments = (ins Variadic<SI64>:$runtimeDims);
+  let results = (outs TensorShapeType:$result);
+  let assemblyFormat = "$runtimeDims attr-dict `:` qualified(type($result))";
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// ShapeUnpackOp
+//===----------------------------------------------------------------------===//
+
+def ShapeUnpackOp : MOPOp<"shape.unpack",
+                          [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "Deconstructs a shape into its dimensions where they are unknown "
+                "in the shape's type";
+  let description = [{
+    Returns the runtime value of each dimension in a shape who's shape type
+    has the unknown '?' dimension. It is valid for the shape
+    to be fully static, in which case no results are returned.
+
+    Example:
+    ```mlir
+    %dim0, %dim1 = mop.shape.unpack %shape : !mop.shape<?x?xf32>
+    %dim = mop.shape.unpack %shape : !mop.shape<32x?xf32>
+    mop.shape.unpack : !mop.shape<32x4xf32>
+    ```
+  }];
+
+  let arguments = (ins TensorShapeType: $shape);
+  // TODO: Switch to index
+  let results = (outs Variadic<SI64>:$results);
+  let assemblyFormat = "$shape attr-dict `:` qualified(type($shape))";
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // TensorPackOp
 //===----------------------------------------------------------------------===//
 
 def TensorPackOp : MOPOp<"tensor.pack", [
-           TypesMatchWith<"shape operand must match result tensor type shape",
-                          "result", "tensorShape",
-                          "$_self.cast<TensorType>().getTensorShape()">,
-           TypesMatchWith<"buffer operand must be consistent with result tensor type",
-                          "result", "buffer",
-                          "$_self.cast<TensorType>().getExpectedBufferType()",
-                          "BufferType::agreeOnSize">]> {
-  let summary = "Constructs a MOP tensor from a shape and buffer";
+    TypesMatchWith<"shape operand must match result tensor type shape",
+                   "result", "tensorShape",
+                   "$_self.cast<TensorType>().getTensorShape()">,
+    TypesMatchWith<"buffer operand must be consistent with result tensor type",
+                   "result", "buffer",
+                   "$_self.cast<TensorType>().getExpectedBufferType()",
+                   "BufferType::agreeOnSize">]> {
+  let summary = "Constructs a tensor from a shape and buffer";
   let description = [{
-    Constructs a MOP tensor from a given shape and buffer.
+    Constructs a tensor from a given shape and buffer.
 
     Example:
     ```mlir
@@ -120,6 +218,30 @@ def TensorPackOp : MOPOp<"tensor.pack", [
     /// Returns the result tensor's dtype.
     DTypeType getDType();
   }];
+}
+
+//===----------------------------------------------------------------------===//
+// TensorUnpackOp
+//===----------------------------------------------------------------------===//
+
+def TensorUnpackOp : MOPOp<"tensor.unpack", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "Deconstructs a tensor into its shape and buffer";
+  let description = [{
+    Returns the shape and buffer components of a tensor. The resulting buffer
+    will have a statically known size if and only if the tensor shape is
+    fully static.
+
+    Example:
+    ```mlir
+    %shape, %buf = mop.tensor.unpack %tensor : !mop.tensor<?x64xf32>
+    ```
+  }];
+
+  let arguments = (ins TensorType: $tensor);
+  let results = (outs TensorShapeType: $tensorShapeResult, BufferType: $bufferResult);
+  let assemblyFormat = "$tensor attr-dict `:` qualified(type($tensor))";
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -171,7 +293,7 @@ def ModelOp : MOPOp<"model", [HasParent<"ModuleOp">, Symbol,
   }];
 
   let builders = [
-    /// Creates a new model with empty 'init' and 'execute' bodies and
+    /// Creates a model with empty 'init' and 'execute' bodies and
     /// with `inputTypes` and `resultTypes` for the op's explicit signature.
     /// `inputArgLocs` specifies the location information for the
     /// explicit arguments to the 'execute' entry point, and thus should

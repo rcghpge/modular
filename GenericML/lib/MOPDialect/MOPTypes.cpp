@@ -45,6 +45,10 @@ bool BufferType::agreeOnSize(BufferType lhs, Type rhs) {
   return false;
 }
 
+BufferType BufferType::forgetAlign() {
+  return BufferType::get(getContext(), getSize(), /*align=*/{});
+}
+
 /// Implements ShapedType::cloneWith
 ShapedType BufferType::cloneWith(Optional<ArrayRef<int64_t>> shape,
                                  Type dtype) const {
@@ -144,11 +148,26 @@ TensorShapeType::verify(function_ref<InFlightDiagnostic()> emitError,
   return success();
 }
 
-int64_t TensorShapeType::getNumElements() const {
+int64_t TensorShapeType::getNumDynamicDims() const {
+  int64_t n = 0;
+  for (auto dim : getDims()) {
+    if (dim == ShapedType::kDynamicSize)
+      n++;
+  }
+  return n;
+}
+
+Optional<int64_t> TensorShapeType::operator[](size_t i) const {
+  assert(i >= 0 && i < getDims().size() && "shape index out of range");
+  int64_t dim = getDims()[i];
+  return dim == ShapedType::kDynamicSize ? Optional<int64_t>() : dim;
+}
+
+Optional<int64_t> TensorShapeType::getNumElements() const {
   int64_t prod = 1;
   for (auto dim : getDims()) {
     if (dim == ShapedType::kDynamicSize)
-      return ShapedType::kDynamicSize;
+      return {};
     prod *= dim;
   }
   return prod;
@@ -197,17 +216,16 @@ static void printCompactShapeAndDType(AsmPrinter &p,
   p << dtype.getMlirType();
 }
 
-int64_t TensorType::getSizeInBytes() const {
+Optional<int64_t> TensorType::getSizeInBytes() const {
+  Optional<int64_t> numElems = getTensorShape().getNumElements();
+  if (!numElems)
+    return {};
   return DTypeType::mlirTypeToRawDType(getDType().getMlirType())
-      .getSizeInBytes(getTensorShape().getNumElements());
+      .getSizeInBytes(*numElems);
 }
 
 BufferType TensorType::getExpectedBufferType() const {
-  int64_t size = getSizeInBytes();
-  return BufferType::get(getContext(),
-                         size == ShapedType::kDynamicSize ? Optional<int64_t>()
-                                                          : size,
-                         /*align=*/{});
+  return BufferType::get(getContext(), getSizeInBytes(), /*align=*/{});
 }
 
 /// Implements SubElementTypeInterface::walkImmediateSubElements.
