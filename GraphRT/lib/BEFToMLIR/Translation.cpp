@@ -31,6 +31,6 @@ void M::registerBEFToMLIRTranslation() {
         auto contents = llvm::ArrayRef<uint8_t>(
             reinterpret_cast<const uint8_t *>(input->getBufferStart()),
             input->getBufferSize());
-        return translateBEFToMLIR(contents, loc);
+        return translateBEFToMLIR(contents, loc).getOperation();
       });
 }
