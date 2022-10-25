@@ -95,7 +95,7 @@ TEST(ContextTes, registerBufferGetBufferTest) {
     EXPECT_EQ(bufferOr.getError(),
               "Buffer not cached in the given output index");
 
-    auto buffer = LLCL::RCBuffer::create(allocator.get(), 1);
+    auto buffer = LLCL::RCBuffer::createHeap(allocator.get(), 1);
     EXPECT_EQ(buffer->getNumReferences(), 1);
 
     // Register to cache bumps the refcount.
