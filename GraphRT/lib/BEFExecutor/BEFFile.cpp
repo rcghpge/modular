@@ -250,6 +250,11 @@ BEFContents BEFFile::sniffFileContents() const {
           return Error("done"); // stop iteration early.
         }
 
+        if (primitiveName == "tfp.model") {
+          result = BEFContents{BEFContents::kTensorFlowModel};
+          return Error("done");
+        }
+
         if (primitiveName == "faux.testcase") {
           result = BEFContents{BEFContents::kFauxModel};
           return Error("done"); // stop iteration early.
