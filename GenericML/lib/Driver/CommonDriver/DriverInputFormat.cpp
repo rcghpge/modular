@@ -44,6 +44,10 @@ FileFormat M::sniffInputFormat(StringRef fileContents) {
       return FileFormat::kMTFLDialect;
     if (fileContents.contains("tflp.model"))
       return FileFormat::kTFLPDialect;
+    if (fileContents.contains("tf."))
+      // Top-level op in a tf graph is func.func, but matching against it
+      // can cause ambiguity. So we check for the presence of any tf Ops.
+      return FileFormat::kTFDialect;
     if (fileContents.contains("tfp.model"))
       return FileFormat::kTFPDialect;
     if (fileContents.contains("mop.model"))

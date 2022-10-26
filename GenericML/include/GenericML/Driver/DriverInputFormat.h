@@ -41,7 +41,11 @@ enum class FileFormat {
   kTFLPDialect,
 
   /// This looks like a textual MLIR file with the tfp dialect in it.
-  kTFPDialect
+  kTFPDialect,
+
+  /// This looks like a textual MLIR file with the tensorflow graph dialect in
+  /// it.
+  kTFDialect
 };
 
 /// Use heuristics to determine what kind of file the input file contents
