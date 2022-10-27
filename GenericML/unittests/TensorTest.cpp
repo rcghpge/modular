@@ -64,3 +64,12 @@ TEST(Tensor, DeepCopy) {
   IncrementContents(tensor);
   ASSERT_FALSE(HaveSameContents(tensor, deepCopy));
 }
+
+TEST(Tensor, FromBuffer) {
+  LLCL::Runtime *runtime = GetRuntime();
+  TensorSpec spec({kN, kM}, DType::getInt(8, /*isSigned=*/false).value());
+  LLCL::RCBufferRef ref =
+      LLCL::RCBuffer::createHeap(runtime->getAllocator(), 1);
+  Tensor tensor = Tensor::get(ref.copy(), spec, runtime);
+  EXPECT_EQ(2, ref->getNumReferences());
+}
