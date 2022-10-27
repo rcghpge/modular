@@ -106,97 +106,74 @@ def ContextType : MOPType<"Context", "context"> {
 }
 
 //===----------------------------------------------------------------------===//
-// DType
+// TensorSpecType
 //===----------------------------------------------------------------------===//
 
-// TODO: See also kgen.dtype.
-def DTypeType : MOPType<"DType", "dtype"> {
-  let summary = "Type of tensor element types, aka 'dtype'";
+def TensorSpecType : MOPType<"TensorSpec", "spec", [
+    DeclareTypeInterfaceMethods<SubElementTypeInterface>,
+    DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
+  let summary = "Type of tensor specs of statically known rank.";
   let description = [{
-    This type encodes the element type of a tensor. It can represent
-    integer and floating point types of a variety of widths and signedness.
+    This type represents the shape and element type of a tensor. It must be
+    between one and five dimensions. Each dimension can be a strictly positive
+    integer value or the distinguished '?' unknown dimensions. The element type
+    must be representable as an M::DType, which can express a smaller set of element
+    types than the MLIR Integer and Float types. However for convenience we
+    allow the dtype to be supplied as an MLIR type.
 
-    DTypes are represented by M::DType in the Modular runtime. However
-    currently the dtypes of tensor types are always known statically and so
-    there are no operators on this type. It exists only to mediate between the
-    MLIR IntegerType and FloatType types and the Modular DType encoding of
-    those types.
+    This type does not support:
+     - Implied scalars (eg with a rank zero shape).
+     - Dynamic ranks.
+     - Symbolic dimensions.
+     - Unknown or symbolic dtypes.
 
-    For convenience this type can be constructed using the built-in integer and
-    floating point types:
+    TensorSpecs are represented by M::TensorSpec in the Modular runtime.
+    The runtime spec will have the same rank and matching dimensions for
+    the known dimensions in this type, and will match the dtype exactly.
+
+    For convenience this type can be constructed using the same body syntax
+    as the built-in tensor type, however the dtype is parsed using the
+    M::DType string parser.
     ```mlir
-    !mop.dtype<i8>
-    !mop.dtype<fp32>
+    !mop.spec<4x16xf32>
+    !mop.spec<?x?xui8>
     ```
-    However not all such types are supported.
   }];
 
-  let parameters = (ins "Type":$mlirType);
-  let assemblyFormat = "`<` $mlirType `>`";
+  let parameters = (ins ArrayRefParameter<"int64_t", "dimensions">:$shape, "Type":$elementType);
+  let assemblyFormat = "`<` custom<ShapeAndElementType>($shape, $elementType) `>`";
   let genVerifyDecl = 1;
 
   let extraClassDeclaration = [{
     /// Returns the M::DType representing the given MLIR IntegerType or FloatType.
     /// Returns the invalid DType if type cannot be represented.
-    static DType mlirTypeToRawDType(Type mlirType);
+    static DType mlirTypeToDType(Type mlirType);
 
     /// Returns the MLIR IntegerType or FloatType representing the given DType.
     /// Returns the null type if DType cannot be represented.
-    static Type rawDTypeToMLIRType(MLIRContext* ctxt, DType rawDType);
+    static Type dtypeToMLIRType(MLIRContext* ctxt, DType dtype);
 
-    /// Returns the raw DType for this type.
-    DType getRawDType() const;
-  }];
-}
-
-//===----------------------------------------------------------------------===//
-// TensorShapeType
-//===----------------------------------------------------------------------===//
-
-def TensorShapeType : MOPType<"TensorShape", "shape"> {
-  let summary = "Type of tensor shapes of statically known rank";
-  let description = [{
-    This type represents the shape of a tensor. It must be between one and
-    five dimensions. Each dimension can be a strictly positive integer
-    value or the distinguished '?' unknown dimensions.
-
-    Dynamic ranks are not supported. Symbolic dimensions are not supported.
-
-    TensorShapes are represented by M::TensorShape in the Modular runtime.
-    The runtime shape will have the same rank and matching dimensions for
-    the known dimensions in this type.
-
-    For convenience this type can be constructed using the same body syntax
-    as the built-in tensor type, though without the trailing element type:
-    ```mlir
-    !mop.shape<4x16>
-    !mop.shape<?x?>
-    ```
-  }];
-
-  let parameters = (ins ArrayRefParameter<"int64_t", "dimensions">:$dims);
-
-  let extraClassDeclaration = [{
-    /// Returns the rank of this tensor shape.
-    size_t getRank() const { return getDims().size(); }
-
-    /// Returns the maximum supported rank for all tensor shapes.
+    /// Returns the maximum supported rank for all tensor specs.
     static constexpr size_t getMaximumRank() { return 5; }
 
-    /// Returns the number of dynamic dimensions in this shape.
+    /// Returns the rank of this tensor spec.
+    size_t getRank() const;
+
+    /// Returns the number of dynamic dimensions in this spec.
     int64_t getNumDynamicDims() const;
 
-    /// Return the dimension at index i in this shape, or empty
-    /// if the dimension is dynamic.
+    /// Return the dimension at index i in this spec, or empty if the
+    /// dimension is dynamic.
     Optional<int64_t> operator[](size_t i) const;
 
-    /// Returns the number of elements in a tensor of this shape, or empty
-    /// the shape is not fully static.
+    /// Returns the number of elements in a tensor of this spec, or
+    /// empty if the spec is not fully static.
     Optional<int64_t> getNumElements() const;
-  }];
 
-  let assemblyFormat = "`<` custom<ShapeDims>($dims) `>`";
-  let genVerifyDecl = 1;
+    /// Returns the size of the buffer needed to represent a tensor
+    /// of this spec, or empty if the spec is not fully static.
+    Optional<int64_t> getSizeInBytes() const;
+  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -207,51 +184,44 @@ def TensorShapeType : MOPType<"TensorShape", "shape"> {
 def TensorType : MOPType<"Tensor", "tensor",
                          [DeclareTypeInterfaceMethods<SubElementTypeInterface>,
                           DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
-  let summary = "Type of tensors over elements of given dtype in "
-                "dense row-major order according to given shape";
+  let summary = "Type of tensors who's underlying buffer is in "
+                "dense row-major order according to tensor spec.";
   let description = [{
-    This type is for dense CPU-friendly tensors of statically known rank and
-    partially or fully statically known shape. It is parameterized over both the
-    tensor shape and the element dtype. Values of this type consist of a runtime
-    shape and an underlying buffer. The elements in the buffer are in dense
+    This type is for dense CPU-friendly tensors of statically known rank, partially
+    or fully statically known shape, and statically known element type. It is
+    parameterized over the tensor spec. Values of this type consist of a runtime
+    spec and an underlying buffer. The elements in the buffer are in dense
     row-major order according to the runtime shape, with endianness according to
-    the target architecture. Dimensions in the runtime shape will match the known
-    dimensions in the type's shape.
+    the target architecture.
 
     Tensors are represented by M::Tensor in the modular runtime.
 
     Unlike the MLIR builtin tensor type this type:
-     - Only supports a small set of dtypes.
+     - Only supports a small set of element types.
      - Only supports shapes of known rank.
-     - Does not support quantization attributes on the dtype.
+     - Does not support quantization attributes on the element type.
      - Does not support affine maps for describing layout.
-     - Is explicitly backed by the M::Tensor and M::RCBufferRef types.
+     - Is explicitly backed by the M::Tensor type.
 
-    For convenience this type can be constructed using the same body syntax as the
-    built-in tensor type:
+    For convenience we 'inline' the tensor shape into the tensor type syntax:
     ```mlir
-    !mop.tensor<4x16xfp32>
-    !mop.tensor<?x?xi8>
+    !mop.tensor<4x16xf32>
+    !mop.tensor<?x?xui8>
     ```
-
-    Note that it is not possible to write the tensor type using individual
-    shape and dtype types in the MLIR syntax.
   }];
 
-  // Note: The ShapedTypeInterface::getShape method prevents us from calling
-  // the shape parameter 'shape'.
-  let parameters = (ins TensorShapeType:$tensorShape, DTypeType:$dType);
-  let assemblyFormat = "`<` custom<CompactShapeAndDType>($tensorShape, $dType) `>`";
+  let parameters = (ins TensorSpecType:$tensorSpec);
+  let assemblyFormat = "`<` custom<TensorSpec>($tensorSpec) `>`";
 
   let extraClassDeclaration = [{
-    /// Returns the statically known size of the tensor in bytes, or empty if the
-    /// shape is not fully static.
-    Optional<int64_t> getSizeInBytes() const;
-
     /// Returns a BufferType which captures the required size for this tensor
     /// (with no align constraint). The result will only have a size constraint
-     // if the tensor's shape is fully static.
+    /// if the tensor's shape is fully static.
     BufferType getExpectedBufferType() const;
+
+    /// Returns the size of the buffer needed to represent a tensor
+    /// of this spec, or empty if the spec is not fully static.
+    Optional<int64_t> getSizeInBytes() const { return getTensorSpec().getSizeInBytes(); }
   }];
 }
 

@@ -200,16 +200,19 @@ def ContextCreateOp : MOPOp<"context.create"> {
 }
 
 //===----------------------------------------------------------------------===//
-// ShapePackOp
+// SpecWrapOp
+//
+// TODO: The statically known dimensions and element type need to be passed as
+// attributes so we can encode the operation in BEF.
 //===----------------------------------------------------------------------===//
 
-def ShapePackOp : MOPOp<"shape.pack"> {
-  let summary = "Constructs a tensor shape from a mix of runtime and static "
+def SpecWrapOp : MOPOp<"spec.wrap"> {
+  let summary = "Constructs a tensor spec from a mix of runtime and static "
                 "dimensions";
   let description = [{
-    Constructs a shape of statically known rank with dimensions taken from
-    either runtime operands or the given shape type. Operands must be given
-    for each unknown '?' shape dimension in order. It is valid for the shape
+    Constructs a spec of statically known rank with dimensions taken from
+    either runtime operands or the given spec type. Operands must be given
+    for each unknown '?' shape dimension in order. It is valid for the spec
     to be fully static, in which case no operands are required.
 
     Example:
@@ -217,151 +220,148 @@ def ShapePackOp : MOPOp<"shape.pack"> {
     %dim0 : index
     %dim1 : index
 
-    %shape = mop.shape.pack %dim0 %dim1 : !mop.shape<?x?xf32>
-    %shape : !mop.shape<?x?xf32>
+    %spec = mop.spec.wrap %dim0 %dim1 : !mop.spec<?x?xf32>
+    %spec : !mop.spec<?x?xf32>
 
-    %shape = mop.shape.pack %dim : !mop.shape<32x?xf32>
-    %shape : !mop.shape<32x?xf32>
+    %spec = mop.spec.wrap %dim : !mop.spec<32x?xf32>
+    %spec : !mop.spec<32x?xf32>
 
-    %shape = mop.shape.pack : !mop.shape<32x4xf32>
-    %shape : !mop.shape<32x4xf32>
+    %spec = mop.spec.wrap : !mop.spec<32x4xf32>
+    %spec : !mop.spec<32x4xf32>
     ```
   }];
 
   let arguments = (ins Variadic<Index>:$runtimeDims);
-  let results = (outs TensorShapeType:$result);
+  let results = (outs TensorSpecType:$result);
   let assemblyFormat = "$runtimeDims attr-dict `:` qualified(type($result))";
   let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
-// ShapeUnpackOp
+// SpecUnwrapOp
+//
+// TODO: May need to return every dimension instead of just the dynamic dims?
 //===----------------------------------------------------------------------===//
 
-def ShapeUnpackOp : MOPOp<"shape.unpack",
+def SpecUnwrapOp : MOPOp<"spec.unwrap",
                           [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Deconstructs a shape into its dimensions where they are unknown "
-                "in the shape's type";
+  let summary = "Deconstructs a spec into its dimensions where they are unknown "
+                "in the given spec type";
   let description = [{
-    Returns the runtime value of each dimension in a shape who's shape type
-    has the unknown '?' dimension. It is valid for the shape
-    to be fully static, in which case no results are returned.
+    Returns the runtime value of each dimension in a spec who's spec type
+    has the unknown '?' dimension. It is valid for the spec to be fully static,
+    in which case no results are returned.
 
     Example:
     ```mlir
-    %shape : !mop.shape<?x?xf32>
-    %dim0, %dim1 = mop.shape.unpack %shape : !mop.shape<?x?xf32>
+    %spec : !mop.spec<?x?xf32>
+    %dim0, %dim1 = mop.spec.unwrap %spec : !mop.spec<?x?xf32>
     %dim0, %dim1 : index, index
 
-    %shape : !mop.shape<32x?xf32>
-    %dim = mop.shape.unpack %shape : !mop.shape<32x?xf32>
+    %spec : !mop.spec<32x?xf32>
+    %dim = mop.spec.unwrap %spec : !mop.spec<32x?xf32>
     %dim : index
 
-    %shape : !mop.shape<32x4xf32>
-    mop.shape.unpack %shape : !mop.shape<32x4xf32>  // no-op
+    %spec : !mop.spec<32x4xf32>
+    mop.spec.unwrap %spec : !mop.spec<32x4xf32>  // no-op
     ```
   }];
 
-  let arguments = (ins TensorShapeType: $shape);
+  let arguments = (ins TensorSpecType: $spec);
   let results = (outs Variadic<Index>:$results);
-  let assemblyFormat = "$shape attr-dict `:` qualified(type($shape))";
+  let assemblyFormat = "$spec attr-dict `:` qualified(type($spec))";
   let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
-// ShapeSizeOp
+// SpecSizeOp
 //===----------------------------------------------------------------------===//
 
-def ShapeSizeOp : MOPOp<"shape.size"> {
-  let summary = "Calculates the byte size of a tensor with given shape and "
-                "dtype";
+def SpecSizeOp : MOPOp<"spec.size"> {
+  let summary = "Calculates the byte size of a buffer for a tensor with given "
+                "spec";
   let description = [{
     Returns the number of bytes needed to represent the buffer backing a tensor
-    of the given shape and dtype. Generally the shape's type will contain at
-    least one dynamic dimension.
+    of the given spec. Generally the spec's type will contain at least one
+    dynamic dimension.
 
     Example:
     ```mlir
-    %shape : !mop.shape<32x?xf32>
-    %size = mop.shape.size %shape !mop.dtype<f32> : !mop.shape<32x?xf32>
+    %spec : !mop.spec<32x?xf32>
+    %size = mop.spec.size %spec : !mop.spec<32x?xf32>
     %size : index
     ```
   }];
 
-  let arguments = (ins TensorShapeType: $shape, TypeAttrOf<DTypeType>: $dtype);
+  let arguments = (ins TensorSpecType: $spec);
   let results = (outs Index:$result);
-  let assemblyFormat = "$shape $dtype attr-dict `:` qualified(type($shape))";
+  let assemblyFormat = "$spec attr-dict `:` qualified(type($spec))";
 }
 
 //===----------------------------------------------------------------------===//
-// TensorPackOp
+// TensorWrapOp
 //===----------------------------------------------------------------------===//
 
-def TensorPackOp : MOPOp<"tensor.pack", [
-    TypesMatchWith<"shape operand must match result tensor type shape",
-                   "result", "tensorShape",
-                   "$_self.cast<TensorType>().getTensorShape()">,
+def TensorWrapOp : MOPOp<"tensor.wrap", [
+    TypesMatchWith<"spec operand must match result tensor type spec",
+                   "result", "tensorSpec",
+                   "$_self.cast<TensorType>().getTensorSpec()">,
     TypesMatchWith<"buffer operand must be consistent with result tensor type",
                    "result", "buffer",
                    "$_self.cast<TensorType>().getExpectedBufferType()",
                    "BufferType::agreeOnSize">]> {
-  let summary = "Constructs a tensor from a shape and buffer";
+  let summary = "Constructs a tensor from a tensor spec and a buffer";
   let description = [{
-    Constructs a tensor from a given shape and buffer.
+    Constructs a tensor from a given tensor spec and buffer.
 
     Example:
     ```mlir
-    %shape : !mop.shape<4x16>
+    %s : !mop.spec<4x16xf32>
     %buf : !mop.buffer<size=256>
-    %tensor = mop.tensor.pack %shape %buf : !mop.tensor<4x16xf32>
+    %tensor = mop.tensor.wrap %spec %buf : !mop.tensor<4x16xf32>
     %tensor : !mop.tensor<4x16xf32>
 
-    %shape : !mop.shape<?x16>
+    %spec : !mop.spec<?x16xf32>
     %buf : !mop.buffer<>
-    %tensor = mop.tensor.pack %shape %buf : !mop.tensor<?x16xf32>
+    %tensor = mop.tensor.wrap %spec %buf : !mop.tensor<?x16xf32>
     %tensor : !mop.tensor<?x16xf32>
     ```
   }];
 
-  let arguments = (ins TensorShapeType: $tensorShape, BufferType: $buffer);
+  let arguments = (ins TensorSpecType: $tensorSpec, BufferType: $buffer);
   let results = (outs TensorType: $result);
-  let assemblyFormat = "$tensorShape $buffer attr-dict `:` qualified(type($result))";
+  let assemblyFormat = "$tensorSpec $buffer attr-dict `:` qualified(type($result))";
   let hasVerifier = 1;
-
-  let extraClassDeclaration = [{
-    /// Returns the result tensor's dtype.
-    DTypeType getDType();
-  }];
 }
 
 //===----------------------------------------------------------------------===//
-// TensorUnpackOp
+// TensorUnwrapOp
 //===----------------------------------------------------------------------===//
 
-def TensorUnpackOp : MOPOp<"tensor.unpack", [
+def TensorUnwrapOp : MOPOp<"tensor.unwrap", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Deconstructs a tensor into its shape and buffer";
+  let summary = "Deconstructs a tensor into its tensor spec and buffer";
   let description = [{
-    Returns the shape and buffer components of a tensor. The resulting buffer
-    will have a statically known size if and only if the tensor shape is
+    Returns the tensor spec and buffer components of a tensor. The resulting
+    buffer will have a statically known size if and only if the tensor spec is
     fully static.
 
     Example:
     ```mlir
     %tensor : !mop.tensor<8x64xf32>
-    %shape, %buf = mop.tensor.unpack %tensor : !mop.tensor<8x64xf32>
-    %shape : !mop.shape<8x64>
+    %spec, %buf = mop.tensor.unwrap %tensor : !mop.tensor<8x64xf32>
+    %spec : !mop.spec<8x64>
     %buf : !mop.buffer<size=2048>
 
     %tensor : !mop.tensor<?x64xf32>
-    %shape, %buf = mop.tensor.unpack %tensor : !mop.tensor<?x64xf32>
-    %shape : !mop.shape<?x64>
+    %spec, %buf = mop.tensor.unwrap %tensor : !mop.tensor<?x64xf32>
+    %spec : !mop.spec<?x64>
     %buf : !mop.buffer<>
     ```
   }];
 
   let arguments = (ins TensorType: $tensor);
-  let results = (outs TensorShapeType: $tensorShapeResult, BufferType: $bufferResult);
+  let results = (outs TensorSpecType: $tensorSpecResult, BufferType: $bufferResult);
   let assemblyFormat = "$tensor attr-dict `:` qualified(type($tensor))";
   let hasVerifier = 1;
 }

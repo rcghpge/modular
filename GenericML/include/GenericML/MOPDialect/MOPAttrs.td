@@ -23,6 +23,9 @@ class MOPAttr<string attrName, string attrMnemonic, list<Trait> traits = []>
 
 //===----------------------------------------------------------------------===//
 // BufferAttr
+//
+// TODO: Needs to be moved to M dialect so can be encoded in MLIRToBEF without
+//       taking a dependency on GenericML
 //===----------------------------------------------------------------------===//
 
 // Make sure the attribute's data argument is interned with the requested

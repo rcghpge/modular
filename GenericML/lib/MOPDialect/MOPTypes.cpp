@@ -75,21 +75,70 @@ bool BufferType::hasRank() const { return true; }
 // Nothing to implement.
 
 //===----------------------------------------------------------------------===//
-// DType
+// TensorSpecType
 //===----------------------------------------------------------------------===//
 
-/// Verifies the given MLIR type can be represented as a 'raw' DType.
-LogicalResult
-DTypeType::verify(function_ref<::mlir::InFlightDiagnostic()> emitError,
-                  Type mlirType) {
-  DType rawDType = mlirTypeToRawDType(mlirType);
-  if (rawDType.isInvalid())
-    return emitError() << "unable to represent MLIR type " << mlirType
-                       << " as a DType.";
+/// Parses a list of dimensions followed by a dtype, interpreting '?' as -1.
+static ParseResult
+parseShapeAndElementType(AsmParser &p, FailureOr<SmallVector<int64_t>> &shape,
+                         FailureOr<Type> &elementType) {
+  shape.emplace();
+  StringRef keyword;
+  llvm::SMLoc dtypeLoc;
+  if (p.parseDimensionList(*shape, /*allowDynamic=*/true,
+                           /*withTrailingX=*/true) ||
+      p.getCurrentLocation(&dtypeLoc) || p.parseKeyword(&keyword))
+    return failure();
+
+  FailureOr<DType> optDtype = DType::getFromString(keyword);
+  if (failed(optDtype))
+    return p.emitError(dtypeLoc)
+           << "unrecognized dtype string '" << keyword << "'.";
+  Type type = TensorSpecType::dtypeToMLIRType(p.getContext(), *optDtype);
+  if (type == nullptr)
+    return p.emitError(dtypeLoc)
+           << "unsupported dtype '" << optDtype->getAsString() << "'.";
+  elementType.emplace(type);
+
   return success();
 }
 
-DType DTypeType::mlirTypeToRawDType(Type type) {
+/// Prints a list of dimensions and dtype, interpreting -1 as '?'.
+static void printShapeAndElementType(AsmPrinter &p, ArrayRef<int64_t> shape,
+                                     Type elementType) {
+  llvm::interleave(
+      shape, p.getStream(),
+      [&](int64_t dim) {
+        p << (dim == ShapedType::kDynamicSize ? "?" : std::to_string(dim));
+      },
+      "x");
+  p << "x";
+  p << TensorSpecType::mlirTypeToDType(elementType).getAsString();
+}
+
+/// Verifies that the given dimensions represent a valid tensor shape, and
+/// that the MLIR element type is representable as a M::DType.
+LogicalResult
+TensorSpecType::verify(function_ref<InFlightDiagnostic()> emitError,
+                       ArrayRef<int64_t> shape, Type elementType) {
+  if (shape.empty() || shape.size() > getMaximumRank())
+    return emitError() << "shape must have rank between 1 and "
+                       << getMaximumRank() << ".";
+  for (auto dim : shape) {
+    if (dim <= 0 && dim != ShapedType::kDynamicSize)
+      return emitError() << "shape dimensions must be strictly positive or the "
+                            "distinguished '?' unknown dimension.";
+  }
+
+  DType dtype = mlirTypeToDType(elementType);
+  if (dtype.isInvalid())
+    return emitError() << "element type '" << elementType
+                       << "' cannot be represented as a DType.";
+
+  return success();
+}
+
+DType TensorSpecType::mlirTypeToDType(Type type) {
   if (auto intType = mlir::dyn_cast<IntegerType>(type))
     return getEquivalentDType(intType);
   if (auto fpType = mlir::dyn_cast<FloatType>(type))
@@ -97,75 +146,31 @@ DType DTypeType::mlirTypeToRawDType(Type type) {
   return {}; // invalid
 }
 
-Type DTypeType::rawDTypeToMLIRType(MLIRContext *ctxt, DType rawDType) {
-  if (rawDType.isInvalid())
+Type TensorSpecType::dtypeToMLIRType(MLIRContext *ctxt, DType dtype) {
+  if (dtype.isInvalid())
     return {}; // null
-  if (rawDType.isInt())
-    return getEquivalentIntegerType(ctxt, rawDType);
-  if (rawDType.isFloat())
-    return getEquivalentFloatType(ctxt, rawDType);
+  if (dtype.isInt())
+    return getEquivalentIntegerType(ctxt, dtype);
+  if (dtype.isFloat())
+    return getEquivalentFloatType(ctxt, dtype);
   return {}; // null
 }
 
-DType DTypeType::getRawDType() const {
-  return mlirTypeToRawDType(getMlirType());
+size_t TensorSpecType::getRank() const { return getShape().size(); }
+
+int64_t TensorSpecType::getNumDynamicDims() const {
+  return llvm::count(getShape(), ShapedType::kDynamicSize);
 }
 
-//===----------------------------------------------------------------------===//
-// TensorShapeType
-//===----------------------------------------------------------------------===//
-
-/// Parses a list of dimensions, interpreting '?' as -1.
-static ParseResult parseShapeDims(AsmParser &p,
-                                  FailureOr<SmallVector<int64_t>> &dims) {
-  dims.emplace();
-  return p.parseDimensionList(*dims, /*allowDynamic=*/true,
-                              /*withTrailingX=*/false);
-}
-
-/// Prints a list of dimensions, interpreting -1 as '?'.
-static void printShapeDims(AsmPrinter &p, ArrayRef<int64_t> dims) {
-  llvm::interleave(
-      dims, p.getStream(),
-      [&](int64_t dim) {
-        p << (dim == ShapedType::kDynamicSize ? "?" : std::to_string(dim));
-      },
-      "x");
-}
-
-/// Verifies given dimensions represent a valid tensor shape.
-LogicalResult
-TensorShapeType::verify(function_ref<InFlightDiagnostic()> emitError,
-                        ArrayRef<int64_t> dims) {
-  if (dims.empty() || dims.size() > getMaximumRank())
-    return emitError() << "shape must have rank between 1 and "
-                       << getMaximumRank();
-  for (auto dim : dims) {
-    if (dim <= 0 && dim != ShapedType::kDynamicSize)
-      return emitError() << "shape dimensions must be strictly positive or the "
-                            "distinguished '?' unknown dimension";
-  }
-  return success();
-}
-
-int64_t TensorShapeType::getNumDynamicDims() const {
-  int64_t n = 0;
-  for (auto dim : getDims()) {
-    if (dim == ShapedType::kDynamicSize)
-      n++;
-  }
-  return n;
-}
-
-Optional<int64_t> TensorShapeType::operator[](size_t i) const {
-  assert(i >= 0 && i < getDims().size() && "shape index out of range");
-  int64_t dim = getDims()[i];
+Optional<int64_t> TensorSpecType::operator[](size_t i) const {
+  assert(i >= 0 && i < getShape().size() && "shape index out of range");
+  int64_t dim = getShape()[i];
   return dim == ShapedType::kDynamicSize ? Optional<int64_t>() : dim;
 }
 
-Optional<int64_t> TensorShapeType::getNumElements() const {
+Optional<int64_t> TensorSpecType::getNumElements() const {
   int64_t prod = 1;
-  for (auto dim : getDims()) {
+  for (auto dim : getShape()) {
     if (dim == ShapedType::kDynamicSize)
       return {};
     prod *= dim;
@@ -173,102 +178,110 @@ Optional<int64_t> TensorShapeType::getNumElements() const {
   return prod;
 }
 
+Optional<int64_t> TensorSpecType::getSizeInBytes() const {
+  Optional<int64_t> numElems = getNumElements();
+  if (!numElems)
+    return {};
+  return mlirTypeToDType(getElementType()).getSizeInBytes(*numElems);
+}
+
+/// Implements SubElementTypeInterface::walkImmediateSubElements.
+void TensorSpecType::walkImmediateSubElements(
+    function_ref<void(Attribute)> walkAttrsFn,
+    function_ref<void(Type)> walkTypesFn) const {
+  walkTypesFn(getElementType());
+}
+
+/// Implements SubElementTypeInterface::replaceImmediateSubElements.
+Type TensorSpecType::replaceImmediateSubElements(
+    ArrayRef<Attribute> replAttrs, ArrayRef<Type> replTypes) const {
+  assert(replAttrs.empty());
+  assert(replTypes.size() == 1);
+  return TensorSpecType::get(getContext(), getShape(), replTypes[0]);
+}
+
+/// Implements ShapedTypeInterface::cloneWith.
+ShapedType TensorSpecType::cloneWith(Optional<ArrayRef<int64_t>> shape,
+                                     Type elementType) const {
+  return TensorSpecType::get(getContext(), shape ? *shape : getShape(),
+                             elementType ? elementType : getElementType());
+}
+
+/// Implements ShapedTypeInterface::hasRank.
+bool TensorSpecType::hasRank() const { return true; }
+
 //===----------------------------------------------------------------------===//
 // TensorType
 //===----------------------------------------------------------------------===//
 
 /// Parses a compact tensor type description.
-static ParseResult
-parseCompactShapeAndDType(AsmParser &p, FailureOr<TensorShapeType> &tensorShape,
-                          FailureOr<DTypeType> &dtype) {
-  mlir::SMLoc dimsLoc;
-  SmallVector<int64_t> dims;
-  mlir::SMLoc typeLoc;
-  Type mlirType;
-  if (p.getCurrentLocation(&dimsLoc) ||
-      p.parseDimensionList(dims, /*allowDynamic=*/true,
-                           /*withTrailingX=*/true) ||
-      p.getCurrentLocation(&typeLoc) || p.parseType(mlirType))
-    return failure();
+static ParseResult parseTensorSpec(AsmParser &p,
+                                   FailureOr<TensorSpecType> &tensorSpec) {
+  FailureOr<SmallVector<int64_t>> shape;
+  FailureOr<Type> elementType;
+  llvm::SMLoc loc;
+  if (p.getCurrentLocation(&loc) ||
+      parseShapeAndElementType(p, shape, elementType))
+    return mlir::failure();
+
   // Though the following get calls will invoke verify, the resulting errors
   // will be locationless and trigger a core dump. Try to be friendlier.
-  if (failed(TensorShapeType::verify([&]() { return p.emitError(dimsLoc); },
-                                     dims)) ||
-      failed(
-          DTypeType::verify([&]() { return p.emitError(typeLoc); }, mlirType)))
+  if (failed(TensorSpecType::verify([&]() { return p.emitError(loc); }, *shape,
+                                    *elementType)))
     return failure();
-  tensorShape.emplace(TensorShapeType::get(p.getContext(), dims));
-  dtype.emplace(DTypeType::get(p.getContext(), mlirType));
+
+  tensorSpec.emplace(TensorSpecType::get(p.getContext(), *shape, *elementType));
   return success();
 }
 
 /// Prints a compact tensor type description.
-static void printCompactShapeAndDType(AsmPrinter &p,
-                                      TensorShapeType tensorShape,
-                                      DTypeType dtype) {
-  llvm::interleave(
-      tensorShape.getDims(), p.getStream(),
-      [&](int64_t dim) {
-        p << (dim == ShapedType::kDynamicSize ? "?" : std::to_string(dim));
-      },
-      "x");
-  p << "x";
-  p << dtype.getMlirType();
-}
-
-Optional<int64_t> TensorType::getSizeInBytes() const {
-  Optional<int64_t> numElems = getTensorShape().getNumElements();
-  if (!numElems)
-    return {};
-  return DTypeType::mlirTypeToRawDType(getDType().getMlirType())
-      .getSizeInBytes(*numElems);
+static void printTensorSpec(AsmPrinter &p, TensorSpecType tensorSpec) {
+  printShapeAndElementType(p, tensorSpec.getShape(),
+                           tensorSpec.getElementType());
 }
 
 BufferType TensorType::getExpectedBufferType() const {
-  return BufferType::get(getContext(), getSizeInBytes(), /*align=*/{});
+  return BufferType::get(getContext(), getTensorSpec().getSizeInBytes(),
+                         /*align=*/{});
 }
 
 /// Implements SubElementTypeInterface::walkImmediateSubElements.
 void TensorType::walkImmediateSubElements(
     function_ref<void(Attribute)> walkAttrsFn,
     function_ref<void(Type)> walkTypesFn) const {
-  walkTypesFn(getTensorShape());
-  walkTypesFn(getDType());
+  walkTypesFn(getTensorSpec());
 }
 
 /// Implements SubElementTypeInterface::replaceImmediateSubElements.
 Type TensorType::replaceImmediateSubElements(ArrayRef<Attribute> replAttrs,
                                              ArrayRef<Type> replTypes) const {
   assert(replAttrs.empty());
-  assert(replTypes.size() == 2);
-  TensorShapeType shape = mlir::dyn_cast<TensorShapeType>(replTypes[0]);
-  assert(shape);
-  DTypeType dtype = mlir::dyn_cast<DTypeType>(replTypes[1]);
-  assert(dtype);
-  return TensorType::get(getContext(), shape, dtype);
+  assert(replTypes.size() == 1);
+  TensorSpecType spec = mlir::dyn_cast<TensorSpecType>(replTypes[0]);
+  assert(spec);
+  return TensorType::get(getContext(), spec);
 }
 
 /// Implements ShapedTypeInterface::cloneWith.
 ShapedType TensorType::cloneWith(Optional<ArrayRef<int64_t>> shape,
                                  Type elementType) const {
-  TensorShapeType newShape = getTensorShape();
-  if (shape)
-    newShape = TensorShapeType::get(getContext(), *shape);
-  DTypeType newDType = getDType();
-  if (elementType)
-    newDType = DTypeType::get(getContext(), elementType);
-  return TensorType::get(getContext(), newShape, newDType);
+  TensorSpecType tensorSpec = TensorSpecType::get(
+      getContext(), shape ? *shape : getTensorSpec().getShape(),
+      elementType ? elementType : getTensorSpec().getElementType());
+  return TensorType::get(getContext(), tensorSpec);
 }
 
 /// Implements ShapedTypeInterface::getElementType.
-Type TensorType::getElementType() const { return getDType().getMlirType(); }
+Type TensorType::getElementType() const {
+  return getTensorSpec().getElementType();
+}
 
 /// Implements ShapedTypeInterface::hasRank.
 bool TensorType::hasRank() const { return true; }
 
 /// Implements ShapedTypeInterface::getShape.
 ArrayRef<int64_t> TensorType::getShape() const {
-  return getTensorShape().getDims();
+  return getTensorSpec().getShape();
 }
 
 //===----------------------------------------------------------------------===//

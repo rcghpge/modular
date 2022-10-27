@@ -16,7 +16,7 @@ include "mlir/IR/DialectBase.td"
 def MOPDialect : Dialect {
   let name = "mop";
 
-  let summary = "Buffers, contexts and other framework/kernel independent glue";
+  let summary = "Buffers, contexts and other framework/kernel independent glue.";
   let description = [{
     The MOP dialect is intended to support buffers, contexts and other base
     functionality needed by graphs containing a mix of framework-specific ops

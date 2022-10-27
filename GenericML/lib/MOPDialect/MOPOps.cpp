@@ -71,8 +71,8 @@ LogicalResult BufferConstantOp::verify() {
   ElementsAttr value = getValue();
   if (value.isSplat())
     return emitOpError() << "does not support splat attributes";
-  ShapedType shape = value.getType();
-  if (!shape.hasRank() || shape.getShape().size() != 1)
+  ShapedType shapedType = value.getType();
+  if (!shapedType.hasRank() || shapedType.getShape().size() != 1)
     return emitOpError() << "only supports rank-1 attributes";
   Type elemType = value.getElementType();
   if (!elemType.isUnsignedInteger(8))
@@ -216,26 +216,25 @@ Optional<int64_t> BufferRecreateOp::getAlign() {
 // Nothing to implement.
 
 //===----------------------------------------------------------------------===//
-// ShapePackOp
+// SpecWrapOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult ShapePackOp::verify() {
-  TensorShapeType shapeType = getResult().getType();
+LogicalResult SpecWrapOp::verify() {
+  TensorSpecType specType = getResult().getType();
   if (static_cast<int64_t>(getRuntimeDims().size()) !=
-      shapeType.getNumDynamicDims())
-    return emitOpError() << "requires " << shapeType.getNumDynamicDims()
-                         << " dimension operands to match the shape "
-                         << shapeType << ", but given "
-                         << getRuntimeDims().size();
+      specType.getNumDynamicDims())
+    return emitOpError() << "requires " << specType.getNumDynamicDims()
+                         << " dimension operands to match the spec " << specType
+                         << ", but given " << getRuntimeDims().size();
   return success();
 }
 
 //===----------------------------------------------------------------------===//
-// ShapeUnpackOp
+// SpecUnwrapOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult ShapeUnpackOp::verify() {
-  TensorShapeType shapeType = getShape().getType();
+LogicalResult SpecUnwrapOp::verify() {
+  TensorSpecType shapeType = getSpec().getType();
   if (static_cast<int64_t>(getResults().size()) !=
       shapeType.getNumDynamicDims())
     return emitOpError() << "requires " << shapeType.getNumDynamicDims()
@@ -244,13 +243,13 @@ LogicalResult ShapeUnpackOp::verify() {
   return success();
 }
 
-LogicalResult ShapeUnpackOp::inferReturnTypes(
+LogicalResult SpecUnwrapOp::inferReturnTypes(
     MLIRContext *context, Optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
   assert(operands.size() == 1 && "mismatched operand arity");
-  auto shapeType = dyn_cast<TensorShapeType>(operands[0].getType());
+  auto shapeType = dyn_cast<TensorSpecType>(operands[0].getType());
   assert(shapeType && "mismatched operand type");
   for (int64_t i = 0, e = shapeType.getNumDynamicDims(); i < e; ++i)
     inferredReturnTypes.emplace_back(IndexType::get(context));
@@ -258,25 +257,25 @@ LogicalResult ShapeUnpackOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
-// ShapeSizeOp
+// SpecSizeOp
 //===----------------------------------------------------------------------===//
 
 // Nothing to implement.
 
 //===----------------------------------------------------------------------===//
-// TensorPackOp
+// TensorWrapOp
 //===----------------------------------------------------------------------===//
 
 /// Checks the shape, buffer type and result tensor types are consistent.
-LogicalResult TensorPackOp::verify() {
-  TensorShapeType tensorShapeType = getTensorShape().getType();
+LogicalResult TensorWrapOp::verify() {
+  TensorSpecType tensorSpecType = getTensorSpec().getType();
   BufferType bufferType = getBuffer().getType();
   TensorType tensorType = getResult().getType();
 
-  if (tensorShapeType != tensorType.getTensorShape())
+  if (tensorSpecType != tensorType.getTensorSpec())
     return emitOpError() << "requires shape to match result tensor shape"
-                         << " (" << tensorShapeType << " vs "
-                         << tensorType.getTensorShape() << ")";
+                         << " (" << tensorSpecType << " vs "
+                         << tensorType.getTensorSpec() << ")";
   Optional<int64_t> staticSize = tensorType.getSizeInBytes();
   if (staticSize.has_value() != bufferType.getSize().has_value())
     return emitOpError() << "requires the buffer to be sized if and only if "
@@ -288,18 +287,16 @@ LogicalResult TensorPackOp::verify() {
   return success();
 }
 
-DTypeType TensorPackOp::getDType() { return getResult().getType().getDType(); }
-
 //===----------------------------------------------------------------------===//
-// TensorUnpackOp
+// TensorUnwrapOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult TensorUnpackOp::verify() {
+LogicalResult TensorUnwrapOp::verify() {
   TensorType tensorType = getTensor().getType();
-  if (tensorType.getTensorShape() != getTensorShapeResult().getType())
+  if (tensorType.getTensorSpec() != getTensorSpecResult().getType())
     return emitOpError() << "requires the result shape to match tensor's shape"
-                         << " (" << getTensorShapeResult().getType() << " vs "
-                         << tensorType.getTensorShape() << ")";
+                         << " (" << getTensorSpecResult().getType() << " vs "
+                         << tensorType.getTensorSpec() << ")";
   Optional<int64_t> sizeInBytes = tensorType.getSizeInBytes();
   if (sizeInBytes.has_value() !=
       getBufferResult().getType().getSize().has_value())
@@ -314,7 +311,7 @@ LogicalResult TensorUnpackOp::verify() {
   return success();
 }
 
-LogicalResult TensorUnpackOp::inferReturnTypes(
+LogicalResult TensorUnwrapOp::inferReturnTypes(
     MLIRContext *context, Optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
@@ -322,7 +319,7 @@ LogicalResult TensorUnpackOp::inferReturnTypes(
   auto tensorType = dyn_cast<TensorType>(operands[0].getType());
   assert(tensorType && "mismatched operand type");
   Optional<int64_t> sizeInBytes = tensorType.getSizeInBytes();
-  inferredReturnTypes.emplace_back(tensorType.getTensorShape());
+  inferredReturnTypes.emplace_back(tensorType.getTensorSpec());
   inferredReturnTypes.emplace_back(
       BufferType::get(context, sizeInBytes, /*align=*/{}));
   return success();
