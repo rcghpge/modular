@@ -67,7 +67,7 @@ printTensorResults(const ExecutableModel *model,
       }
 
       // Handle tensor types.
-      if (auto *tensor = dyn_cast<Tensor *>(result)) {
+      if (auto *tensor = dyn_cast<Tensor>(result)) {
         os.flush();
         if (auto err = Kernel::printTensor(tensor->getPointer(),
                                            tensor->getSpec(), outputStyle)) {
@@ -104,7 +104,7 @@ static LogicalResult populateTensorResults(
       return emitError(mlirLoc) << diag->getMessage();
     }
     // Handle tensor types.
-    auto *tensor = dyn_cast<Tensor *>(result);
+    auto *tensor = dyn_cast<Tensor>(result);
     if (!tensor) {
       auto loc = model->getModel()->getLocation().decode();
       auto mlirLoc = mlir::FileLineColLoc::get(context, loc.filename, loc.line,
