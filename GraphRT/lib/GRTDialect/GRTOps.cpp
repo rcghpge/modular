@@ -254,6 +254,7 @@ void BenchmarkOp::print(OpAsmPrinter &p) {
   // Reuse the argument names provided to the op for the bbarg names within
   // the region.
   p.shadowRegionArgs(getCodeUnderTest(), getOperands());
+  p << " ";
   p.printRegion(getCodeUnderTest(), /*printEntryBlockArgs=*/false);
 }
 
