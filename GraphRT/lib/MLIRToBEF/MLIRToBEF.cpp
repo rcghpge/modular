@@ -883,7 +883,7 @@ private:
   ErrorOr<BEF::TypeKind> getIntegerTypeEncoding(IntegerType type);
   ErrorOr<BEF::TypeKind> getIntFPComplexTypeEncoding(Type type);
   LogicalResult emitIntFPComplexType(Type type);
-  LogicalResult emitRankedTensorType(RankedTensorType type);
+  LogicalResult emitShapedType(ShapedType type);
   LogicalResult emitFunctionType(FunctionType type);
   LogicalResult emitUniformQuantizedType(UniformQuantizedType type);
   LogicalResult
@@ -958,13 +958,17 @@ LogicalResult TypeEmitter::emitIntFPComplexType(Type type) {
   return success();
 }
 
-/// emitRankedTensorType emits a ranked tensor type of the form
-/// `tensor<1x3xf32>` into BEF. The tensor is encoded in the following form:
+/// emitShapedType emits a ranked shaped type with the supported element type
+/// as a tensor in the form of `tensor<1x3xf32>` into BEF. The type is encoded
+/// in the following form:
 ///   TypeKind::tensor | element TypeKind | shape size | shape elements in
 ///   VBR encoded shape elements
 /// For the example tensor above, the output format would look like this:
 ///   TypeKind::tensor | TypeKind::f32 | 2 | 1, 3
-LogicalResult TypeEmitter::emitRankedTensorType(RankedTensorType type) {
+LogicalResult TypeEmitter::emitShapedType(ShapedType type) {
+  if (!type.hasRank())
+    return failure();
+
   emitter->emitByte(BEF::TypeKind::tensor);
   Type elementType = type.getElementType();
 
@@ -1066,8 +1070,8 @@ LogicalResult TypeEmitter::emitFunctionType(FunctionType type) {
 }
 
 LogicalResult TypeEmitter::emitType(Type type) {
-  if (auto tensorType = dyn_cast<RankedTensorType>(type))
-    return emitRankedTensorType(tensorType);
+  if (auto tensorType = dyn_cast<ShapedType>(type))
+    return emitShapedType(tensorType);
 
   if (auto qType = dyn_cast<UniformQuantizedType>(type))
     return emitUniformQuantizedType(qType);
