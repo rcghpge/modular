@@ -3,11 +3,11 @@
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
+#include "Config/Config.h"
 #include "GenericML/Driver/CXXDriverAPI.h"
 #include "GenericML/Driver/DriverAPI.h"
 #include "GenericML/Support/ModelCollection.h"
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
-#include "Support/VCSRevision.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/ToolOutputFile.h"
 
@@ -157,7 +157,7 @@ int main(int argc, char **argv) {
   // If the driver command is just `-get-version` then print the version and
   // exit right away. No need to do anything else.
   if (options.command == DriverCommand::getVersion) {
-    llvm::outs() << "mt: " << MODULAR_VCS_VERSION
+    llvm::outs() << "mt: " << MODULAR_VERSION_STRING
                  << "\nFramework: " << dylib.getVersion() << "\n";
     return 0;
   }
