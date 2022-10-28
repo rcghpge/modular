@@ -6,7 +6,6 @@
 
 #include "GenericML/MOPDialect/MOPTypes.h"
 #include "GenericML/MOPDialect/MOPDialect.h"
-#include "Support/Compiler/MLIRDType.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"
 #include "Support/ML/DType.h"
@@ -17,7 +16,8 @@
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/TypeSwitch.h"
 
-#include "./MLIRFieldParsers.h"
+#include "./ParsingUtils.h"
+#include "./Utils.h"
 
 using namespace M;
 using namespace MOP;
@@ -30,19 +30,11 @@ using namespace MOP;
 LogicalResult BufferType::verify(function_ref<InFlightDiagnostic()> emitError,
                                  Optional<int64_t> size,
                                  Optional<int64_t> align) {
-  if (size && *size < 0)
-    return emitError() << "buffer size cannot be negative";
-  if (align && *align < 0)
-    return emitError() << "buffer align cannot be negative";
-  if (align && !llvm::isPowerOf2_64(*align))
-    return emitError() << "buffer align must be a power of two";
+  if (!isValidSize(size))
+    return emitError() << "buffer size must be positive.";
+  if (!isValidAlign(align))
+    return emitError() << "buffer align must be power of two.";
   return success();
-}
-
-bool BufferType::agreeOnSize(BufferType lhs, Type rhs) {
-  if (auto rhsBuffer = mlir::dyn_cast<BufferType>(rhs))
-    return lhs.getSize() == rhsBuffer.getSize();
-  return false;
 }
 
 BufferType BufferType::forgetAlign() {
@@ -79,33 +71,22 @@ bool BufferType::hasRank() const { return true; }
 //===----------------------------------------------------------------------===//
 
 /// Parses a list of dimensions followed by a dtype, interpreting '?' as -1.
-static ParseResult
-parseShapeAndElementType(AsmParser &p, FailureOr<SmallVector<int64_t>> &shape,
-                         FailureOr<Type> &elementType) {
+/// The dype is represented as an MLIR IntegerType or FloatType.
+static ParseResult parseShapeAndDType(AsmParser &p,
+                                      FailureOr<SmallVector<int64_t>> &shape,
+                                      FailureOr<Type> &elementType) {
   shape.emplace();
-  StringRef keyword;
-  llvm::SMLoc dtypeLoc;
   if (p.parseDimensionList(*shape, /*allowDynamic=*/true,
                            /*withTrailingX=*/true) ||
-      p.getCurrentLocation(&dtypeLoc) || p.parseKeyword(&keyword))
+      parseDType(p, elementType))
     return failure();
-
-  FailureOr<DType> optDtype = DType::getFromString(keyword);
-  if (failed(optDtype))
-    return p.emitError(dtypeLoc)
-           << "unrecognized dtype string '" << keyword << "'.";
-  Type type = TensorSpecType::dtypeToMLIRType(p.getContext(), *optDtype);
-  if (type == nullptr)
-    return p.emitError(dtypeLoc)
-           << "unsupported dtype '" << optDtype->getAsString() << "'.";
-  elementType.emplace(type);
-
   return success();
 }
 
 /// Prints a list of dimensions and dtype, interpreting -1 as '?'.
-static void printShapeAndElementType(AsmPrinter &p, ArrayRef<int64_t> shape,
-                                     Type elementType) {
+/// The dtype is represented as an MLIR IntegerType or FloatType.
+static void printShapeAndDType(AsmPrinter &p, ArrayRef<int64_t> shape,
+                               Type elementType) {
   llvm::interleave(
       shape, p.getStream(),
       [&](int64_t dim) {
@@ -113,7 +94,7 @@ static void printShapeAndElementType(AsmPrinter &p, ArrayRef<int64_t> shape,
       },
       "x");
   p << "x";
-  p << TensorSpecType::mlirTypeToDType(elementType).getAsString();
+  p << mlirTypeToDType(elementType).getAsString();
 }
 
 /// Verifies that the given dimensions represent a valid tensor shape, and
@@ -138,24 +119,6 @@ TensorSpecType::verify(function_ref<InFlightDiagnostic()> emitError,
   return success();
 }
 
-DType TensorSpecType::mlirTypeToDType(Type type) {
-  if (auto intType = mlir::dyn_cast<IntegerType>(type))
-    return getEquivalentDType(intType);
-  if (auto fpType = mlir::dyn_cast<FloatType>(type))
-    return getEquivalentDType(fpType);
-  return {}; // invalid
-}
-
-Type TensorSpecType::dtypeToMLIRType(MLIRContext *ctxt, DType dtype) {
-  if (dtype.isInvalid())
-    return {}; // null
-  if (dtype.isInt())
-    return getEquivalentIntegerType(ctxt, dtype);
-  if (dtype.isFloat())
-    return getEquivalentFloatType(ctxt, dtype);
-  return {}; // null
-}
-
 size_t TensorSpecType::getRank() const { return getShape().size(); }
 
 int64_t TensorSpecType::getNumDynamicDims() const {
@@ -163,7 +126,7 @@ int64_t TensorSpecType::getNumDynamicDims() const {
 }
 
 Optional<int64_t> TensorSpecType::operator[](size_t i) const {
-  assert(i >= 0 && i < getShape().size() && "shape index out of range");
+  assert(i < getShape().size() && "shape index out of range");
   int64_t dim = getShape()[i];
   return dim == ShapedType::kDynamicSize ? Optional<int64_t>() : dim;
 }
@@ -220,8 +183,7 @@ static ParseResult parseTensorSpec(AsmParser &p,
   FailureOr<SmallVector<int64_t>> shape;
   FailureOr<Type> elementType;
   llvm::SMLoc loc;
-  if (p.getCurrentLocation(&loc) ||
-      parseShapeAndElementType(p, shape, elementType))
+  if (p.getCurrentLocation(&loc) || parseShapeAndDType(p, shape, elementType))
     return mlir::failure();
 
   // Though the following get calls will invoke verify, the resulting errors
@@ -236,8 +198,7 @@ static ParseResult parseTensorSpec(AsmParser &p,
 
 /// Prints a compact tensor type description.
 static void printTensorSpec(AsmPrinter &p, TensorSpecType tensorSpec) {
-  printShapeAndElementType(p, tensorSpec.getShape(),
-                           tensorSpec.getElementType());
+  printShapeAndDType(p, tensorSpec.getShape(), tensorSpec.getElementType());
 }
 
 BufferType TensorType::getExpectedBufferType() const {

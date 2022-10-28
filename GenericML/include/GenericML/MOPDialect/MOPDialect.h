@@ -7,6 +7,7 @@
 #ifndef GENERICML_MOPDIALECT_MOPDIALECT_H
 #define GENERICML_MOPDIALECT_MOPDIALECT_H
 
+#include "Support/MDialect/MDialect.h"
 #include "mlir/IR/Dialect.h"
 
 //===----------------------------------------------------------------------===//

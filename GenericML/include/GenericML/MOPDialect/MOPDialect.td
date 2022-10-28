@@ -29,6 +29,7 @@ def MOPDialect : Dialect {
   }];
 
   let cppNamespace = "::M::MOP";
+  let dependentDialects = ["::M::MDialect"];
 
   let extraClassDeclaration = [{
    private:

@@ -11,6 +11,7 @@
 #ifndef GENERICML_MOPDIALECT_MOPOPS_TD
 #define GENERICML_MOPDIALECT_MOPOPS_TD
 
+include "Support/MDialect/MAttrs.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
@@ -29,7 +30,7 @@ class MOPOp<string mnemonic, list<Trait> traits = []> :
 def BufferConstantOp : MOPOp<"buffer.constant",
                              [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Constructs a buffer whose data is aliased with the "
-                "`uint8_t` array in the given attribute";
+                "`uint8_t` array in the given attribute.";
   let description = [{
     Constructs a buffer whose byte array is aliased with the `uint8_t` array
     in the given attribute. The attribute must support contiguous iteration
@@ -71,21 +72,14 @@ def BufferConstantOp : MOPOp<"buffer.constant",
 // BufferCreateOp
 //===----------------------------------------------------------------------===//
 
-// TODO: Would prefer to write a type constraint like
-//   TypesMatchWith<"result type must match buffer type without align",
-//                  "bufferType", "result",
-//                  "$_self.forgetAlign()">
-// instead of using DeclareOpInterfaceMethods<InferTypeOpInterface> but
-// ods generates invalid code.
-def BufferCreateOp : MOPOp<"buffer.create",
-                        [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+def BufferCreateOp : MOPOp<"buffer.create", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Allocates a buffer of given runtime or static size and "
-                "optional alignment";
+                "optional alignment.";
   let description = [{
-    Allocates a buffer whose byte array is of a given size. If the size is
-    known statically within the buffer type it does not need to be supplied
-    as an argument. Otherwise it must be provided explicitly. Any align
-    constraint in the buffer type is respected in the allocation.
+    Allocates a buffer whose byte array is of a given size. The size can be
+    supplied either as a runtime argument or as an attribute. Any align
+    constraint must be supplied as an attribute.
 
     Note that any align constraint is not propagated into the result type.
 
@@ -94,27 +88,25 @@ def BufferCreateOp : MOPOp<"buffer.create",
     %ctxt : !mop.context
     %size : index
 
-    %buf = mop.buffer.create %ctxt %size : !mop.buffer<align=8>
+    %buf = mop.buffer.create %ctxt %size {align=8:si64}
     %buf : !mop.buffer<>  // at least 8 byte aligned in storage
 
-    %buf = mop.buffer.create %ctxt : !mop.buffer<size=8>
-    %buf : !mop.buffer<size=8>  // no specific alignment in storage
+    %buf = mop.buffer.create %ctxt {size=64:si64}
+    %buf : !mop.buffer<size=64>  // no specific alignment in storage
+
+    %buf = mop.buffer.create %ctxt {size=64:si64, align=16:si64}
+    %buf : !mop.buffer<size=64>  // at least 16 byte aligned in storage
     ```
   }];
 
-  // NOTE: We include an explicit $bufferType attributes so that the alignment
-  // can be conveyed to the op even though we don't want it in the result
-  // type.
-  let arguments = (ins ContextType:$context, Optional<Index>:$runtimeSize,
-                       TypeAttrOf<BufferType>:$bufferType);
+  // TODO(#4301): Would be nicer to use OptionalAttr for $size and $align but
+  // MLIRToBEF cannot handle that.
+  let arguments = (ins ContextType:$theContext, Optional<Index>:$runtimeSize,
+                       DefaultValuedAttr<SI64Attr, "ShapedType::kDynamicSize">:$size,
+                       DefaultValuedAttr<SI64Attr, "ShapedType::kDynamicSize">:$align);
   let results = (outs BufferType:$result);
-  let assemblyFormat = "$context ($runtimeSize^)?  attr-dict `:` $bufferType";
+  let assemblyFormat = "$theContext ($runtimeSize^)? attr-dict";
   let hasVerifier = 1;
-
-  let extraClassDeclaration = [{
-    /// Returns the align constraint for the buffer, if any.
-    Optional<int64_t> getAlign();
-  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -123,8 +115,9 @@ def BufferCreateOp : MOPOp<"buffer.create",
 
 def BufferRecreateOp : MOPOp<"buffer.recreate", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Allocates or reuses a buffer of runtime size and optional "
-                "alignment, and caches it within in a primitive context";
+  let summary = "Allocates or reuses a buffer of given runtime or static size "
+                "and optional alignment, and caches it within in a primitive "
+                "context.";
   let description = [{
     The operation has access to a buffer cached at the given output index in
     the primitive context at the given slot in the global context. If a buffer
@@ -134,41 +127,37 @@ def BufferRecreateOp : MOPOp<"buffer.recreate", [
     Note that any align constraint on the buffer type is ignored if the
     cached buffer is reused. In particular, in:
     ```mlir
-       %buf1 = mop.buffer.recreate %ctxt %size { slot=2, output=0 } : !mop..buffer<align=8>
-       %buf2 = mop.buffer.recreate %ctxt %size { slot=2, output=0 } : !mop..buffer<align=16>
+       %buf1 = mop.buffer.recreate %ctxt %size { align=8, slot=2, output=0 }
+       %buf2 = mop.buffer.recreate %ctxt %size { align=16, slot=2, output=0 }
     ```
-    the second recreate will never re-allocate the cached buffer.
+    the second recreate will never re-allocate the cached buffer from the first.
 
-    If the bufffer type has a size constraint then the runtime size operand
-    does not need to be supplied as an argument. In this case the 'recreate'
-    is simply pre-allocating a buffer of statically known size.
+    If the size is known statically then the runtime size operand does not need
+    to be supplied as an operand. In this case the 'recreate' is simply
+    pre-allocating a buffer of statically known size.
 
     Example:
     ```mlir
     %ctxt : !mop.context
     %size : index
 
-    %buf = mop.buffer.recreate %ctxt %size { slot=42, output=2 } : !mop.buffer<align=8>
+    %buf = mop.buffer.recreate %ctxt %size { align=8:si64, slot=42, output=2 }
     %buf : !mop.buffer<>  // at least 8 byte aligned in storage
 
-    %buf = mop.buffer.recreate %ctxt { slot=42, output=2 } : !mop.buffer<size=64>
+    %buf = mop.buffer.recreate %ctxt { size=64:si64, slot=42, output=2 }
     %buf : !mop.buffer<size=64>  // no specific alignment in storage
     ```
   }];
 
-  // NOTE: We include an explicit $bufferType attributes so that the alignment
-  // can be conveyed to the op even though we don't want it in the result
-  // type.
-  let arguments = (ins ContextType:$context, Optional<Index>:$runtimeSize,
-                       I64Attr:$slot, I64Attr:$output, TypeAttrOf<BufferType>:$bufferType);
+  // TODO(#4301): Would be nicer to use OptionalAttr for $size and $align but
+  // MLIRToBEF cannot handle that.
+  let arguments = (ins ContextType:$theContext, Optional<Index>:$runtimeSize,
+                       DefaultValuedAttr<SI64Attr, "ShapedType::kDynamicSize">:$size,
+                       DefaultValuedAttr<SI64Attr, "ShapedType::kDynamicSize">:$align,
+                       UI64Attr:$slot, UI64Attr:$output);
   let results = (outs BufferType:$result);
-  let assemblyFormat = "$context ($runtimeSize^)? attr-dict `:` $bufferType";
+  let assemblyFormat = "$theContext ($runtimeSize^)? attr-dict";
   let hasVerifier = 1;
-
-  let extraClassDeclaration = [{
-    /// Returns the align constraint for the buffer, if any.
-    Optional<int64_t> getAlign();
-  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -177,7 +166,7 @@ def BufferRecreateOp : MOPOp<"buffer.recreate", [
 
 def ContextCreateOp : MOPOp<"context.create"> {
   let summary = "Constructs a context with room for primitive operation "
-                "contexts";
+                "contexts.";
   let description = [{
     Constructs a context with the given number of slots for primitive operation
     contexts. Generally a computational operator, such as 'lib.foo', will be
@@ -201,75 +190,79 @@ def ContextCreateOp : MOPOp<"context.create"> {
 
 //===----------------------------------------------------------------------===//
 // SpecWrapOp
-//
-// TODO: The statically known dimensions and element type need to be passed as
-// attributes so we can encode the operation in BEF.
 //===----------------------------------------------------------------------===//
 
-def SpecWrapOp : MOPOp<"spec.wrap"> {
+def SpecWrapOp : MOPOp<"spec.wrap", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Constructs a tensor spec from a mix of runtime and static "
-                "dimensions";
+                "dimensions.";
   let description = [{
-    Constructs a spec of statically known rank with dimensions taken from
-    either runtime operands or the given spec type. Operands must be given
-    for each unknown '?' shape dimension in order. It is valid for the spec
-    to be fully static, in which case no operands are required.
+    Constructs a tensor spec of statically known rank with dimensions taken
+    from either runtime operands or statically known dimensions, and using the
+    given statically known dtype. Operands must be given for each unknown (-1)
+    dimension in order. It is valid for all dimensions to be known, in which
+    case no operands are required.
 
     Example:
     ```mlir
     %dim0 : index
     %dim1 : index
 
-    %spec = mop.spec.wrap %dim0 %dim1 : !mop.spec<?x?xf32>
+    %spec = mop.spec.wrap %dim0 %dim1 [-1, -1] f32
     %spec : !mop.spec<?x?xf32>
 
-    %spec = mop.spec.wrap %dim : !mop.spec<32x?xf32>
+    %spec = mop.spec.wrap %dim [32, -1] f32
     %spec : !mop.spec<32x?xf32>
 
-    %spec = mop.spec.wrap : !mop.spec<32x4xf32>
+    %spec = mop.spec.wrap [32, 4] f32
     %spec : !mop.spec<32x4xf32>
     ```
   }];
 
-  let arguments = (ins Variadic<Index>:$runtimeDims);
+  let arguments = (ins Variadic<Index>:$runtimeDims,
+                       SI64ArrayElementsAttr:$dims, TypeAttr:$elementType);
   let results = (outs TensorSpecType:$result);
-  let assemblyFormat = "$runtimeDims attr-dict `:` qualified(type($result))";
+  let assemblyFormat = [{
+    $runtimeDims `[` custom<DenseIntArray>($dims, "64") `]`
+    custom<DTypeAttr>($elementType) attr-dict
+  }];
   let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
 // SpecUnwrapOp
-//
-// TODO: May need to return every dimension instead of just the dynamic dims?
 //===----------------------------------------------------------------------===//
 
-def SpecUnwrapOp : MOPOp<"spec.unwrap",
-                          [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Deconstructs a spec into its dimensions where they are unknown "
-                "in the given spec type";
+def SpecUnwrapOp : MOPOp<"spec.unwrap", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "Deconstructs the statically unknown dimensions in a tensor "
+                "spec.";
   let description = [{
-    Returns the runtime value of each dimension in a spec who's spec type
-    has the unknown '?' dimension. It is valid for the spec to be fully static,
-    in which case no results are returned.
+    Returns the runtime value of each dimension in a tensor spec where the
+    dimensions is not known statically. It is valid for the spec to be fully
+    static, in which case no results are returned (and the op is useless!).
 
     Example:
     ```mlir
     %spec : !mop.spec<?x?xf32>
-    %dim0, %dim1 = mop.spec.unwrap %spec : !mop.spec<?x?xf32>
+    %dim0, %dim1 = mop.spec.unwrap %spec [-1, -1] : !mop.spec<?x?xf32>
     %dim0, %dim1 : index, index
 
     %spec : !mop.spec<32x?xf32>
-    %dim = mop.spec.unwrap %spec : !mop.spec<32x?xf32>
+    %dim = mop.spec.unwrap %spec [32, -1] : !mop.spec<32x?xf32>
     %dim : index
 
     %spec : !mop.spec<32x4xf32>
-    mop.spec.unwrap %spec : !mop.spec<32x4xf32>  // no-op
+    mop.spec.unwrap %spec [32, 4] : !mop.spec<32x4xf32> // no-op
     ```
   }];
 
-  let arguments = (ins TensorSpecType: $spec);
+  let arguments = (ins TensorSpecType: $spec, SI64ArrayElementsAttr:$dims);
   let results = (outs Variadic<Index>:$results);
-  let assemblyFormat = "$spec attr-dict `:` qualified(type($spec))";
+  let assemblyFormat = [{
+    $spec `[` custom<DenseIntArray>($dims, "64") `]` attr-dict
+    `:` qualified(type($spec))
+  }];
   let hasVerifier = 1;
 }
 
@@ -308,9 +301,8 @@ def TensorWrapOp : MOPOp<"tensor.wrap", [
                    "$_self.cast<TensorType>().getTensorSpec()">,
     TypesMatchWith<"buffer operand must be consistent with result tensor type",
                    "result", "buffer",
-                   "$_self.cast<TensorType>().getExpectedBufferType()",
-                   "BufferType::agreeOnSize">]> {
-  let summary = "Constructs a tensor from a tensor spec and a buffer";
+                   "$_self.cast<TensorType>().getExpectedBufferType()">]> {
+  let summary = "Constructs a tensor from a tensor spec and a buffer.";
   let description = [{
     Constructs a tensor from a given tensor spec and buffer.
 
@@ -340,7 +332,7 @@ def TensorWrapOp : MOPOp<"tensor.wrap", [
 
 def TensorUnwrapOp : MOPOp<"tensor.unwrap", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Deconstructs a tensor into its tensor spec and buffer";
+  let summary = "Deconstructs a tensor into its tensor spec and buffer.";
   let description = [{
     Returns the tensor spec and buffer components of a tensor. The resulting
     buffer will have a statically known size if and only if the tensor spec is

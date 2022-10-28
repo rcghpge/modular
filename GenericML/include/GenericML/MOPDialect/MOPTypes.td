@@ -71,10 +71,6 @@ def BufferType : MOPType<"Buffer", "buffer",
      /// dynamic rank-1 shape if the size is unconstrained.
      static const int64_t unknownSize;
 
-     /// Returns true if rhs is a BufferType and lhs and rhs have equal size
-     /// constraints.
-     static bool agreeOnSize(BufferType lhs, Type rhs);
-
      /// Returns this buffer type without any align constraint.
      BufferType forgetAlign();
   }];
@@ -141,18 +137,10 @@ def TensorSpecType : MOPType<"TensorSpec", "spec", [
   }];
 
   let parameters = (ins ArrayRefParameter<"int64_t", "dimensions">:$shape, "Type":$elementType);
-  let assemblyFormat = "`<` custom<ShapeAndElementType>($shape, $elementType) `>`";
+  let assemblyFormat = "`<` custom<ShapeAndDType>($shape, $elementType) `>`";
   let genVerifyDecl = 1;
 
   let extraClassDeclaration = [{
-    /// Returns the M::DType representing the given MLIR IntegerType or FloatType.
-    /// Returns the invalid DType if type cannot be represented.
-    static DType mlirTypeToDType(Type mlirType);
-
-    /// Returns the MLIR IntegerType or FloatType representing the given DType.
-    /// Returns the null type if DType cannot be represented.
-    static Type dtypeToMLIRType(MLIRContext* ctxt, DType dtype);
-
     /// Returns the maximum supported rank for all tensor specs.
     static constexpr size_t getMaximumRank() { return 5; }
 

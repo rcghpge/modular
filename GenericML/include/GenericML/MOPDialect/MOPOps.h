@@ -15,6 +15,7 @@
 #include "GenericML/MOPDialect/MOPDialect.h"
 #include "GenericML/MOPDialect/MOPTypes.h"
 #include "Support/LLVMCompilerForwardDecls.h"
+#include "Support/MDialect/MAttrs.h"
 #include "mlir/IR/FunctionInterfaces.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/SymbolTable.h"
