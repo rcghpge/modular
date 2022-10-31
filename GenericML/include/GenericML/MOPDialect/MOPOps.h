@@ -14,6 +14,7 @@
 #include "GenericML/MOPDialect/MOPAttrs.h"
 #include "GenericML/MOPDialect/MOPDialect.h"
 #include "GenericML/MOPDialect/MOPTypes.h"
+#include "GraphRT/BEFDialect/BEFOps.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/MDialect/MAttrs.h"
 #include "mlir/IR/FunctionInterfaces.h"

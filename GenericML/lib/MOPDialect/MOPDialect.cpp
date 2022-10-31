@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MOPDialect/MOPDialect.h"
+#include "GraphRT/BEFDialect/BEFDialect.h"
 
 using namespace M;
 using namespace MOP;

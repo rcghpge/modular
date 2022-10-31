@@ -11,6 +11,7 @@
 #ifndef GENERICML_MOPDIALECT_MOPOPS_TD
 #define GENERICML_MOPDIALECT_MOPOPS_TD
 
+include "GraphRT/BEFDialect/BEFTypes.td"
 include "Support/MDialect/MAttrs.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/SymbolInterfaces.td"
@@ -186,6 +187,33 @@ def ContextCreateOp : MOP_Op<"context.create"> {
   let arguments = (ins UI64Attr:$numSlots);
   let results = (outs MOP_ContextType:$result);
   let assemblyFormat = "$numSlots attr-dict";
+}
+
+//===----------------------------------------------------------------------===//
+// PrimContextCreateOp
+//===----------------------------------------------------------------------===//
+
+def PrimContextCreateOp : MOP_Op<"primcontext.create"> {
+  let summary = "Constructs a primitive context into the global mop context.";
+  let description = [{
+    Constructs a default primitive context with the given number of outputs
+    into the given slot of the global mop context. A buffer corresponding to
+    each output value can be cached into the primitive context. The op returns
+    a chain indicating when it have completed execution.
+
+    Example:
+    ```mlir
+    %ctxt : !mop.context
+
+    %ch = mop.primcontext.create %ctxt 0 1
+    %ch : !bef.chain
+    ```
+  }];
+
+  let arguments = (ins MOP_ContextType:$theContext, UI64Attr:$numOutputs,
+                       UI64Attr: $slot);
+  let results = (outs ChainType:$result);
+  let assemblyFormat = "$theContext $slot $numOutputs attr-dict";
 }
 
 //===----------------------------------------------------------------------===//
