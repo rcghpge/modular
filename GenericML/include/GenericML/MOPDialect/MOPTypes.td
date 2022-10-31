@@ -18,16 +18,16 @@ include "mlir/IR/BuiltinTypeInterfaces.td"
 include "mlir/IR/AttrTypeBase.td"
 
 // Base class for types in this dialect.
-class MOPType<string name, string typeMnemonic, list<Trait> traits = []>
+class MOP_Type<string name, string typeMnemonic, list<Trait> traits = []>
     : TypeDef<MOPDialect, name, traits> {
   let mnemonic = typeMnemonic;
 }
 
 //===----------------------------------------------------------------------===//
-// BufferType
+// MOP_BufferType
 //===----------------------------------------------------------------------===//
 
-def BufferType : MOPType<"Buffer", "buffer",
+def MOP_BufferType : MOP_Type<"Buffer", "buffer",
                          [DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
   let summary = "Type of uninterpreted byte arrays, optionally with statically "
                 "known size and alignment";
@@ -77,10 +77,10 @@ def BufferType : MOPType<"Buffer", "buffer",
 }
 
 //===----------------------------------------------------------------------===//
-// ContextType
+// MOP_ContextType
 //===----------------------------------------------------------------------===//
 
-def ContextType : MOPType<"Context", "context"> {
+def MOP_ContextType : MOP_Type<"Context", "context"> {
   let summary = "Type of execution contexts holding a number of primitive "
                 "operation contexts";
   let description = [{
@@ -102,10 +102,10 @@ def ContextType : MOPType<"Context", "context"> {
 }
 
 //===----------------------------------------------------------------------===//
-// TensorSpecType
+// MOP_TensorSpecType
 //===----------------------------------------------------------------------===//
 
-def TensorSpecType : MOPType<"TensorSpec", "spec", [
+def MOP_TensorSpecType : MOP_Type<"TensorSpec", "spec", [
     DeclareTypeInterfaceMethods<SubElementTypeInterface>,
     DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
   let summary = "Type of tensor specs of statically known rank.";
@@ -165,11 +165,11 @@ def TensorSpecType : MOPType<"TensorSpec", "spec", [
 }
 
 //===----------------------------------------------------------------------===//
-// TensorType
+// MOP_TensorType
 //===----------------------------------------------------------------------===//
 
 // TODO: See also zap.ndbuffer.
-def TensorType : MOPType<"Tensor", "tensor",
+def MOP_TensorType : MOP_Type<"Tensor", "tensor",
                          [DeclareTypeInterfaceMethods<SubElementTypeInterface>,
                           DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
   let summary = "Type of tensors who's underlying buffer is in "
@@ -198,7 +198,7 @@ def TensorType : MOPType<"Tensor", "tensor",
     ```
   }];
 
-  let parameters = (ins TensorSpecType:$tensorSpec);
+  let parameters = (ins MOP_TensorSpecType:$tensorSpec);
   let assemblyFormat = "`<` custom<TensorSpec>($tensorSpec) `>`";
 
   let extraClassDeclaration = [{

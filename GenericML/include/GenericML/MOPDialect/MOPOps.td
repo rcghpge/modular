@@ -20,14 +20,14 @@ include "GenericML/MOPDialect/MOPAttrs.td"
 include "GenericML/MOPDialect/MOPTypes.td"
 
 // Base class for ops in this dialect.
-class MOPOp<string mnemonic, list<Trait> traits = []> :
+class MOP_Op<string mnemonic, list<Trait> traits = []> :
     Op<MOPDialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
 // BufferConstantOp
 //===----------------------------------------------------------------------===//
 
-def BufferConstantOp : MOPOp<"buffer.constant",
+def BufferConstantOp : MOP_Op<"buffer.constant",
                              [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Constructs a buffer whose data is aliased with the "
                 "`uint8_t` array in the given attribute.";
@@ -58,7 +58,7 @@ def BufferConstantOp : MOPOp<"buffer.constant",
   }];
 
   let arguments = (ins ElementsAttr:$value);
-  let results = (outs BufferType:$result);
+  let results = (outs MOP_BufferType:$result);
   let assemblyFormat = "$value attr-dict";
   let hasVerifier = 1;
 
@@ -72,7 +72,7 @@ def BufferConstantOp : MOPOp<"buffer.constant",
 // BufferCreateOp
 //===----------------------------------------------------------------------===//
 
-def BufferCreateOp : MOPOp<"buffer.create", [
+def BufferCreateOp : MOP_Op<"buffer.create", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Allocates a buffer of given runtime or static size and "
                 "optional alignment.";
@@ -101,10 +101,10 @@ def BufferCreateOp : MOPOp<"buffer.create", [
 
   // TODO(#4301): Would be nicer to use OptionalAttr for $size and $align but
   // MLIRToBEF cannot handle that.
-  let arguments = (ins ContextType:$theContext, Optional<Index>:$runtimeSize,
+  let arguments = (ins MOP_ContextType:$theContext, Optional<Index>:$runtimeSize,
                        DefaultValuedAttr<SI64Attr, "ShapedType::kDynamicSize">:$size,
                        DefaultValuedAttr<SI64Attr, "ShapedType::kDynamicSize">:$align);
-  let results = (outs BufferType:$result);
+  let results = (outs MOP_BufferType:$result);
   let assemblyFormat = "$theContext ($runtimeSize^)? attr-dict";
   let hasVerifier = 1;
 }
@@ -113,7 +113,7 @@ def BufferCreateOp : MOPOp<"buffer.create", [
 // BufferRecreateOp
 //===----------------------------------------------------------------------===//
 
-def BufferRecreateOp : MOPOp<"buffer.recreate", [
+def BufferRecreateOp : MOP_Op<"buffer.recreate", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Allocates or reuses a buffer of given runtime or static size "
                 "and optional alignment, and caches it within in a primitive "
@@ -151,11 +151,11 @@ def BufferRecreateOp : MOPOp<"buffer.recreate", [
 
   // TODO(#4301): Would be nicer to use OptionalAttr for $size and $align but
   // MLIRToBEF cannot handle that.
-  let arguments = (ins ContextType:$theContext, Optional<Index>:$runtimeSize,
+  let arguments = (ins MOP_ContextType:$theContext, Optional<Index>:$runtimeSize,
                        DefaultValuedAttr<SI64Attr, "ShapedType::kDynamicSize">:$size,
                        DefaultValuedAttr<SI64Attr, "ShapedType::kDynamicSize">:$align,
                        UI64Attr:$slot, UI64Attr:$output);
-  let results = (outs BufferType:$result);
+  let results = (outs MOP_BufferType:$result);
   let assemblyFormat = "$theContext ($runtimeSize^)? attr-dict";
   let hasVerifier = 1;
 }
@@ -164,7 +164,7 @@ def BufferRecreateOp : MOPOp<"buffer.recreate", [
 // ContextCreateOp
 //===----------------------------------------------------------------------===//
 
-def ContextCreateOp : MOPOp<"context.create"> {
+def ContextCreateOp : MOP_Op<"context.create"> {
   let summary = "Constructs a context with room for primitive operation "
                 "contexts.";
   let description = [{
@@ -184,7 +184,7 @@ def ContextCreateOp : MOPOp<"context.create"> {
   }];
 
   let arguments = (ins UI64Attr:$numSlots);
-  let results = (outs ContextType:$result);
+  let results = (outs MOP_ContextType:$result);
   let assemblyFormat = "$numSlots attr-dict";
 }
 
@@ -192,7 +192,7 @@ def ContextCreateOp : MOPOp<"context.create"> {
 // SpecWrapOp
 //===----------------------------------------------------------------------===//
 
-def SpecWrapOp : MOPOp<"spec.wrap", [
+def SpecWrapOp : MOP_Op<"spec.wrap", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Constructs a tensor spec from a mix of runtime and static "
                 "dimensions.";
@@ -221,7 +221,7 @@ def SpecWrapOp : MOPOp<"spec.wrap", [
 
   let arguments = (ins Variadic<Index>:$runtimeDims,
                        SI64ArrayElementsAttr:$dims, TypeAttr:$elementType);
-  let results = (outs TensorSpecType:$result);
+  let results = (outs MOP_TensorSpecType:$result);
   let assemblyFormat = [{
     $runtimeDims `[` custom<DenseIntArray>($dims, "64") `]`
     custom<DTypeAttr>($elementType) attr-dict
@@ -233,7 +233,7 @@ def SpecWrapOp : MOPOp<"spec.wrap", [
 // SpecUnwrapOp
 //===----------------------------------------------------------------------===//
 
-def SpecUnwrapOp : MOPOp<"spec.unwrap", [
+def SpecUnwrapOp : MOP_Op<"spec.unwrap", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Deconstructs the statically unknown dimensions in a tensor "
                 "spec.";
@@ -257,7 +257,7 @@ def SpecUnwrapOp : MOPOp<"spec.unwrap", [
     ```
   }];
 
-  let arguments = (ins TensorSpecType: $spec, SI64ArrayElementsAttr:$dims);
+  let arguments = (ins MOP_TensorSpecType: $spec, SI64ArrayElementsAttr:$dims);
   let results = (outs Variadic<Index>:$results);
   let assemblyFormat = [{
     $spec `[` custom<DenseIntArray>($dims, "64") `]` attr-dict
@@ -270,7 +270,7 @@ def SpecUnwrapOp : MOPOp<"spec.unwrap", [
 // SpecSizeOp
 //===----------------------------------------------------------------------===//
 
-def SpecSizeOp : MOPOp<"spec.size"> {
+def SpecSizeOp : MOP_Op<"spec.size"> {
   let summary = "Calculates the byte size of a buffer for a tensor with given "
                 "spec";
   let description = [{
@@ -286,7 +286,7 @@ def SpecSizeOp : MOPOp<"spec.size"> {
     ```
   }];
 
-  let arguments = (ins TensorSpecType: $spec);
+  let arguments = (ins MOP_TensorSpecType: $spec);
   let results = (outs Index:$result);
   let assemblyFormat = "$spec attr-dict `:` qualified(type($spec))";
 }
@@ -295,7 +295,7 @@ def SpecSizeOp : MOPOp<"spec.size"> {
 // TensorWrapOp
 //===----------------------------------------------------------------------===//
 
-def TensorWrapOp : MOPOp<"tensor.wrap", [
+def TensorWrapOp : MOP_Op<"tensor.wrap", [
     TypesMatchWith<"spec operand must match result tensor type spec",
                    "result", "tensorSpec",
                    "$_self.cast<TensorType>().getTensorSpec()">,
@@ -320,8 +320,8 @@ def TensorWrapOp : MOPOp<"tensor.wrap", [
     ```
   }];
 
-  let arguments = (ins TensorSpecType: $tensorSpec, BufferType: $buffer);
-  let results = (outs TensorType: $result);
+  let arguments = (ins MOP_TensorSpecType: $tensorSpec, MOP_BufferType: $buffer);
+  let results = (outs MOP_TensorType: $result);
   let assemblyFormat = "$tensorSpec $buffer attr-dict `:` qualified(type($result))";
   let hasVerifier = 1;
 }
@@ -330,7 +330,7 @@ def TensorWrapOp : MOPOp<"tensor.wrap", [
 // TensorUnwrapOp
 //===----------------------------------------------------------------------===//
 
-def TensorUnwrapOp : MOPOp<"tensor.unwrap", [
+def TensorUnwrapOp : MOP_Op<"tensor.unwrap", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Deconstructs a tensor into its tensor spec and buffer.";
   let description = [{
@@ -352,8 +352,8 @@ def TensorUnwrapOp : MOPOp<"tensor.unwrap", [
     ```
   }];
 
-  let arguments = (ins TensorType: $tensor);
-  let results = (outs TensorSpecType: $tensorSpecResult, BufferType: $bufferResult);
+  let arguments = (ins MOP_TensorType: $tensor);
+  let results = (outs MOP_TensorSpecType: $tensorSpecResult, MOP_BufferType: $bufferResult);
   let assemblyFormat = "$tensor attr-dict `:` qualified(type($tensor))";
   let hasVerifier = 1;
 }

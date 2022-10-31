@@ -16,13 +16,13 @@ include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/BuiltinAttributeInterfaces.td"
 
 // Base class for attributes in this dialect.
-class MOPAttr<string attrName, string attrMnemonic, list<Trait> traits = []>
+class MOP_Attr<string attrName, string attrMnemonic, list<Trait> traits = []>
     : AttrDef<MOPDialect, attrName, traits> {
   let mnemonic = attrMnemonic;
 }
 
 //===----------------------------------------------------------------------===//
-// BufferAttr
+// MOP_BufferAttr
 //
 // TODO: Needs to be moved to M dialect so can be encoded in MLIRToBEF without
 //       taking a dependency on GenericML
@@ -30,14 +30,14 @@ class MOPAttr<string attrName, string attrMnemonic, list<Trait> traits = []>
 
 // Make sure the attribute's data argument is interned with the requested
 // alignment.
-def BufferData : ArrayRefParameter<"uint8_t",
+def MOP_BufferData : ArrayRefParameter<"uint8_t",
     "aligned storage for buffer data"> {
   let allocator = [{
     $_dst = copyIntoBuffer($_allocator, $_self, align);
   }];
 }
 
-def BufferAttr : MOPAttr<"Buffer", "buffer",
+def MOP_BufferAttr : MOP_Attr<"Buffer", "buffer",
                          [DeclareAttrInterfaceMethods<ElementsAttrInterface>] > {
   let summary = "A literal byte array with optional alignment";
   let description = [{
@@ -55,7 +55,7 @@ def BufferAttr : MOPAttr<"Buffer", "buffer",
     using the little-endian convention.
   }];
 
-  let parameters = (ins OptionalParameter<"Optional<int64_t>">:$align, BufferData:$data);
+  let parameters = (ins OptionalParameter<"Optional<int64_t>">:$align, MOP_BufferData:$data);
 
   let assemblyFormat = "`<` ($align^ `:`)? custom<BufferData>($data) `>`";
 
