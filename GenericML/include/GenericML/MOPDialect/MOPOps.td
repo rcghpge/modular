@@ -123,13 +123,14 @@ def BufferRecreateOp : MOP_Op<"buffer.recreate", [
     The operation has access to a buffer cached at the given output index in
     the primitive context at the given slot in the global context. If a buffer
     of matching size already exists then it is returned directly. Otherwise a
-    new buffer is allocated and the cache is updated.
+    new buffer is allocated and the cache is updated. Chain is needed to
+    guarantee the construction of the primitive context at the given slot.
 
     Note that any align constraint on the buffer type is ignored if the
     cached buffer is reused. In particular, in:
     ```mlir
-       %buf1 = mop.buffer.recreate %ctxt %size { align=8, slot=2, output=0 }
-       %buf2 = mop.buffer.recreate %ctxt %size { align=16, slot=2, output=0 }
+       %buf1 = mop.buffer.recreate %ch %ctxt %size { align=8, slot=2, output=0 }
+       %buf2 = mop.buffer.recreate %ch %ctxt %size { align=16, slot=2, output=0 }
     ```
     the second recreate will never re-allocate the cached buffer from the first.
 
@@ -139,25 +140,27 @@ def BufferRecreateOp : MOP_Op<"buffer.recreate", [
 
     Example:
     ```mlir
+    %ch : !bef.chain
     %ctxt : !mop.context
     %size : index
 
-    %buf = mop.buffer.recreate %ctxt %size { align=8:si64, slot=42, output=2 }
+    %buf = mop.buffer.recreate %ch %ctxt %size { align=8:si64, slot=42, output=2 }
     %buf : !mop.buffer<>  // at least 8 byte aligned in storage
 
-    %buf = mop.buffer.recreate %ctxt { size=64:si64, slot=42, output=2 }
+    %buf = mop.buffer.recreate %ch %ctxt { size=64:si64, slot=42, output=2 }
     %buf : !mop.buffer<size=64>  // no specific alignment in storage
     ```
   }];
 
   // TODO(#4301): Would be nicer to use OptionalAttr for $size and $align but
   // MLIRToBEF cannot handle that.
-  let arguments = (ins MOP_ContextType:$theContext, Optional<Index>:$runtimeSize,
+  let arguments = (ins ChainType:$ch, MOP_ContextType:$theContext,
+                       Optional<Index>:$runtimeSize,
                        DefaultValuedAttr<SI64Attr, "ShapedType::kDynamicSize">:$size,
                        DefaultValuedAttr<SI64Attr, "ShapedType::kDynamicSize">:$align,
                        UI64Attr:$slot, UI64Attr:$output);
   let results = (outs MOP_BufferType:$result);
-  let assemblyFormat = "$theContext ($runtimeSize^)? attr-dict";
+  let assemblyFormat = "$ch $theContext ($runtimeSize^)? attr-dict";
   let hasVerifier = 1;
 }
 
