@@ -38,8 +38,8 @@ Optional<size_t> getAlign(const int64_t align) {
 // mop.buffer.constant
 //===----------------------------------------------------------------------===//
 
-// Fulfills the result with the immoral RCBufferRef whose data is backed by
-// the given constant.
+/// Fulfills the result with the immoral RCBufferRef whose data is backed by
+/// the given constant.
 static void mop_buffer_constant(Result<RCBufferRef> outBuffer,
                                 BEFDynamicAttr values, Runtime &runtime) {
   // Create immortal RCBuffer as the BEF outlives the RCBuffer.
@@ -55,9 +55,9 @@ static void mop_buffer_constant(Result<RCBufferRef> outBuffer,
 // mop.buffer.create
 //===----------------------------------------------------------------------===//
 
-// Fulfills the result with the RCBuffer. The size can be provided at run time
-// with the async value or at compile time as an attribute. Alignment can be
-// given as an attribute.
+/// Fulfills the result with the RCBuffer. The size can be provided at run time
+/// with the async value or at compile time as an attribute. Alignment can be
+/// given as an attribute.
 static void mop_buffer_create(MOP::Context &ctx, RemainingArguments args,
                               Result<RCBufferRef> outBuffer,
                               BEFAttr<int64_t> align, BEFAttr<int64_t> size,
@@ -77,10 +77,10 @@ static void mop_buffer_create(MOP::Context &ctx, RemainingArguments args,
 // mop.buffer.recreate
 //===----------------------------------------------------------------------===//
 
-// Fulfills the result with the RCBuffer. The RCBuffer can be the cached one
-// from the given (slot, output). If cache misses, allocates a new RCBuffer,
-// cache it, and fulfills the result with it. The size of the buffer can be
-// given at either run time or compile time.
+/// Fulfills the result with the RCBuffer. The RCBuffer can be the cached one
+/// from the given (slot, output). If cache misses, allocates a new RCBuffer,
+/// cache it, and fulfills the result with it. The size of the buffer can be
+/// given at either run time or compile time.
 static void mop_buffer_recreate(Chain chain, MOP::Context &ctx,
                                 RemainingArguments args,
                                 Result<RCBufferRef> outBuffer,
@@ -104,8 +104,8 @@ static void mop_buffer_recreate(Chain chain, MOP::Context &ctx,
 // mop.context.create
 //===----------------------------------------------------------------------===//
 
-// Fulfills the result with a MOP::Context initialized with `numPrimContexts`
-// primitive contexts.
+/// Fulfills the result with a MOP::Context initialized with `numPrimContexts`
+/// primitive contexts.
 static void mop_context_create(Result<MOP::Context> result,
                                BEFAttr<uint64_t> numPrimContexts) {
   result->emplace<MOP::Context>(*numPrimContexts);
@@ -115,8 +115,8 @@ static void mop_context_create(Result<MOP::Context> result,
 // mop.primcontext.create
 //===----------------------------------------------------------------------===//
 
-// Constructs the default prim context with the given outputs under the given
-// slot in the mop context.
+/// Constructs the default prim context with the given outputs under the given
+/// slot in the mop context.
 static Chain mop_primcontext_create(MOP::Context &ctx,
                                     BEFAttr<uint64_t> numOutputs,
                                     BEFAttr<uint64_t> slot) {
@@ -129,8 +129,8 @@ static Chain mop_primcontext_create(MOP::Context &ctx,
 // mop.spec.wrap
 //===----------------------------------------------------------------------===//
 
-// Fulfills the result with a tensor spec. Dimensions are given as an
-// attribute, while static cally unknown dimensions are given at the runtime.
+/// Fulfills the result with a tensor spec. Dimensions are given as an
+/// attribute, while static cally unknown dimensions are given at the runtime.
 static void mop_spec_wrap(RemainingArguments runtimeDims,
                           Result<TensorSpec> outSpec,
                           BEFAttr<ArrayRef<int64_t>> dims,
@@ -151,7 +151,7 @@ static void mop_spec_wrap(RemainingArguments runtimeDims,
 // mop.spec.unwrap
 //===----------------------------------------------------------------------===//
 
-// Fulfills the result with dimensions that were unknown at compile time.
+/// Fulfills the result with dimensions that were unknown at compile time.
 static void mop_spec_unwrap(TensorSpec spec, RemainingResults results,
                             BEFAttr<ArrayRef<int64_t>> dims, Runtime &runtime) {
   // All of the results are created as size_t.
@@ -176,8 +176,8 @@ static void mop_spec_size(TensorSpec tensorSpec, Result<size_t> result) {
 // mop.tensor.wrap
 //===----------------------------------------------------------------------===//
 
-// Fulfills the outTensor by creating a tensor from the given tensor spec and
-// the buffer.
+/// Fulfills the outTensor by creating a tensor from the given tensor spec and
+/// the buffer.
 static void mop_tensor_wrap(TensorSpec tensorSpec, RCBufferRef &buffer,
                             Result<Tensor> outTensor, Runtime &runtime) {
   outTensor.emplace(Tensor::get(buffer.copy(), tensorSpec, runtime));
@@ -187,8 +187,8 @@ static void mop_tensor_wrap(TensorSpec tensorSpec, RCBufferRef &buffer,
 // mop.tensor.unwrap
 //===----------------------------------------------------------------------===//
 
-// fulfills the outSpec and outBuffer with the corresponding spec/buffer from
-// the input tensor.
+/// fulfills the outSpec and outBuffer with the corresponding spec/buffer from
+/// the input tensor.
 static void mop_tensor_unwrap(Tensor &tensor, Result<TensorSpec> outSpec,
                               Result<RCBufferRef> outBuffer) {
   outSpec.emplace(tensor.getSpec());
