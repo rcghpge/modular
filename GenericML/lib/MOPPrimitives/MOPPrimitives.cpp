@@ -151,8 +151,17 @@ static void mop_spec_wrap(RemainingArguments runtimeDims,
 // mop.spec.unwrap
 //===----------------------------------------------------------------------===//
 
-static void mop_spec_unwrap() {
-  // TODO: implement when mop.spec.unwrap op is fixed.
+// Fulfills the result with dimensions that were unknown at compile time.
+static void mop_spec_unwrap(TensorSpec spec, RemainingResults results,
+                            BEFAttr<ArrayRef<int64_t>> dims, Runtime &runtime) {
+  // All of the results are created as size_t.
+  for (auto &result : results)
+    result = AsyncValueRef<size_t>::allocate(runtime);
+
+  unsigned next = 0;
+  for (unsigned i = 0, e = (*dims).size(); i < e; ++i)
+    if ((*dims)[i] == -1)
+      results[next++]->emplace<size_t>(spec[i]);
 }
 
 //===----------------------------------------------------------------------===//
@@ -178,8 +187,12 @@ static void mop_tensor_wrap(TensorSpec tensorSpec, RCBufferRef &buffer,
 // mop.tensor.unwrap
 //===----------------------------------------------------------------------===//
 
-static void mop_tensor_unwrap() {
-  // TODO: implement with Tensor's getBuffer().
+// fulfills the outSpec and outBuffer with the corresponding spec/buffer from
+// the input tensor.
+static void mop_tensor_unwrap(Tensor &tensor, Result<TensorSpec> outSpec,
+                              Result<RCBufferRef> outBuffer) {
+  outSpec.emplace(tensor.getSpec());
+  outBuffer.emplace(tensor.getBuffer());
 }
 
 //===----------------------------------------------------------------------===//
