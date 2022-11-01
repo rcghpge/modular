@@ -12,32 +12,16 @@
 
 using namespace M;
 
-std::unique_ptr<llvm::MemoryBuffer> M::convertToBEF(ModuleOp module,
-                                                    bool enableBEFMetadata) {
-  // Convert to BEF
+LogicalResult M::convertToBEF(ModuleOp module, raw_ostream &os,
+                              bool enableBEFMetadata) {
   ConcatenationTree result = translateMLIRToBEF(module, enableBEFMetadata);
-  auto resultSize = result.getSize();
-  if (resultSize == 0)
-    return {};
+  if (result.getSize() == 0)
+    return failure();
 
-  // If successful, linearize it into a MemoryBuffer.
-  auto buf = llvm::WritableMemoryBuffer::getNewUninitMemBuffer(resultSize);
-  // MemoryBuffer likes char, we like uint8_t, adapt.
-  auto buffer = MutableArrayRef<uint8_t>((uint8_t *)buf->getBufferStart(),
-                                         (uint8_t *)buf->getBufferEnd());
-
-  // Fill in the data by copying it from the ConcatenationTree into the result
-  // buffer.
+  // Write the ConcatenationTree to the output stream.
   result.traverse([&](ArrayRef<uint8_t> data) {
-    assert(buffer.size() >= data.size() &&
-           "ConcatenationTree has unexpected length!");
-    // Copy this chunk into the MemoryBuffer.
-    std::uninitialized_copy(data.begin(), data.end(), buffer.begin());
-
-    // Consume this space.
-    buffer = buffer.drop_front(data.size());
+    os.write(reinterpret_cast<const char *>(data.data()), data.size());
   });
 
-  assert(buffer.empty() && "Should have filled the whole buffer");
-  return std::move(buf);
+  return success();
 }

@@ -208,19 +208,34 @@ int main(int argc, char **argv) {
     return 0;
   }
 
-  // If we are not inspecting, we must need a compiled format.  If this is
-  // already done then we're golden, otherwise compile now.
-  if (format != FileFormat::kBEFFile)
-    if (failed(dylib.compileToBinary(frameworkCtx, file, format)))
-      return 1;
-
-  // If we're stopping at compilation, emit the current BEF file to the
+  // If we're stopping at compilation, emit the binary file directly to the
   // output.
   if (options.command == DriverCommand::compile) {
     auto outputFile = options.getOutputFile(options.commandHasBinaryOutput());
-    outputFile->os().write(file->getBufferStart(), file->getBufferSize());
+
+    // If the file is already a binary, just emit it directly.
+    if (format == FileFormat::kBEFFile ||
+        dylib.isBinary(frameworkCtx, *file, format)) {
+      outputFile->os().write(file->getBufferStart(), file->getBufferSize());
+      outputFile->keep();
+      return 0;
+    }
+
+    // Otherwise, compile it.
+    if (failed(dylib.compileToBinary(frameworkCtx, *file, outputFile->os(),
+                                     format)))
+      return 1;
+
     outputFile->keep();
     return 0;
+  }
+
+  // If we are not inspecting, we must need a compiled format.  If this is
+  // already done then we're golden, otherwise compile now.
+  if (format != FileFormat::kBEFFile &&
+      !dylib.isBinary(frameworkCtx, *file, format)) {
+    if (failed(dylib.compileToBinary(frameworkCtx, file, format)))
+      return 1;
   }
 
   // Otherwise we must be getting op-level information about the model or
