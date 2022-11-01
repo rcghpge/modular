@@ -57,8 +57,8 @@ def BufferConstantOp : MOP_Op<"buffer.constant",
     ```
   }];
 
-  let arguments = (ins ElementsAttr:$value);
-  let results = (outs MOP_BufferType:$result);
+  let arguments = (ins ElementsAttr : $value);
+  let results = (outs MOP_BufferType : $result);
   let assemblyFormat = "$value attr-dict";
   let hasVerifier = 1;
 
