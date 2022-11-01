@@ -32,8 +32,10 @@ using namespace MOP;
 /// Returns the align constraint for the given attribute, or none if it
 /// has no such constraint.
 static ErrorOr<Optional<int64_t>> getImpliedAlignment(ElementsAttr value) {
-  if (auto bufferAttr = dyn_cast<BufferAttr>(value))
-    return bufferAttr.getAlign();
+  // TODO(#4424): Would be better to just look for a HasAlignmentAttrInterface
+  // instead of looking for specific attribute types.
+  if (auto alignedBufferAttr = dyn_cast<AlignedBytesAttr>(value))
+    return alignedBufferAttr.getAlign();
 
   if (auto resourceAttr = dyn_cast<DenseResourceElementsAttr>(value)) {
     Optional<int64_t> alignFromType;

@@ -17,7 +17,6 @@ include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "GenericML/MOPDialect/MOPDialect.td"
-include "GenericML/MOPDialect/MOPAttrs.td"
 include "GenericML/MOPDialect/MOPTypes.td"
 
 // Base class for ops in this dialect.
@@ -47,11 +46,11 @@ def BufferConstantOp : MOP_Op<"buffer.constant",
 
     Example:
     ```mlir
-    %buf = mop.buffer.constant #mop.buffer<8: "0x00010203">
+    %buf = mop.buffer.constant #m.aligned_buffer<8: "0x00010203">
     %buf : !mop.buffer<size=4>  // at least 8 byte aligned in storage
 
-    %buf = mop.buffer.constant dense_resource<label>:!mop.buffer<size=4, align=8>
-    %buf : !mop.buffer<size=4>  // at least 8 byte aligned in storage
+    %buf = mop.buffer.constant dense_resource<label>:!m.array<4xui8>
+    %buf : !mop.buffer<size=4>  // respecting alignment encoded in blob at label
 
     %buf = mop.buffer.constant array<ui8: 0, 1, 2, 3>
     %buf : !mop.buffer<size=4>  // no specific alignment in storage

@@ -6,6 +6,7 @@
 
 #include "GenericML/MOPDialect/MOPTypes.h"
 #include "GenericML/MOPDialect/MOPDialect.h"
+#include "Support/Compiler/ParsingUtils.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"
 #include "Support/ML/DType.h"

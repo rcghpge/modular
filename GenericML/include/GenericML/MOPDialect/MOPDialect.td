@@ -41,7 +41,6 @@ def MOPDialect : Dialect {
     void registerOperations();
   }];
 
-  let useDefaultAttributePrinterParser = 1;
   let useDefaultTypePrinterParser = 1;
 }
 
