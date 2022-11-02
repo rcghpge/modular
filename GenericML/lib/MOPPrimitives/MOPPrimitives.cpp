@@ -173,13 +173,22 @@ static void mop_spec_size(TensorSpec tensorSpec, Result<size_t> result) {
 }
 
 //===----------------------------------------------------------------------===//
+// mop.spec.num_elems
+//===----------------------------------------------------------------------===//
+
+static void mop_spec_num_elems(TensorSpec tensorSpec, Result<size_t> result) {
+  result.emplace(tensorSpec.getNumElements());
+}
+
+//===----------------------------------------------------------------------===//
 // mop.tensor.wrap
 //===----------------------------------------------------------------------===//
 
 /// Fulfills the outTensor by creating a tensor from the given tensor spec and
 /// the buffer.
-static void mop_tensor_wrap(TensorSpec tensorSpec, RCBufferRef &buffer,
-                            Result<Tensor> outTensor, Runtime &runtime) {
+static void mop_tensor_wrap(Chain inChain, TensorSpec tensorSpec,
+                            RCBufferRef &buffer, Result<Tensor> outTensor,
+                            Runtime &runtime) {
   outTensor.emplace(Tensor::get(buffer.copy(), tensorSpec, runtime));
 }
 
@@ -208,6 +217,7 @@ void M::registerMOPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mop.spec.wrap", mop_spec_wrap);
   ADD_PRIMITIVE(registry, "mop.spec.unwrap", mop_spec_unwrap);
   ADD_PRIMITIVE(registry, "mop.spec.size", mop_spec_size);
+  ADD_PRIMITIVE(registry, "mop.spec.num_elems", mop_spec_num_elems);
   ADD_PRIMITIVE(registry, "mop.tensor.wrap", mop_tensor_wrap);
   ADD_PRIMITIVE(registry, "mop.tensor.unwrap", mop_tensor_unwrap);
 }

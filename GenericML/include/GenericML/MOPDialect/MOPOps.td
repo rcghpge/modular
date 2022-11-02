@@ -301,8 +301,8 @@ def SpecUnwrapOp : MOP_Op<"spec.unwrap", [
 //===----------------------------------------------------------------------===//
 
 def SpecSizeOp : MOP_Op<"spec.size"> {
-  let summary = "Calculates the byte size of a buffer for a tensor with given "
-                "spec";
+  let summary = "Returns the byte size of a buffer for a tensor with given "
+                "spec.";
   let description = [{
     Returns the number of bytes needed to represent the buffer backing a tensor
     of the given spec. Generally the spec's type will contain at least one
@@ -313,6 +313,29 @@ def SpecSizeOp : MOP_Op<"spec.size"> {
     %spec : !mop.spec<32x?xf32>
     %size = mop.spec.size %spec : !mop.spec<32x?xf32>
     %size : index
+    ```
+  }];
+
+  let arguments = (ins MOP_TensorSpecType: $spec);
+  let results = (outs Index:$result);
+  let assemblyFormat = "$spec attr-dict `:` qualified(type($spec))";
+}
+
+//===----------------------------------------------------------------------===//
+// SpecNumElemsOp
+//===----------------------------------------------------------------------===//
+
+def SpecNumElemsOp : MOP_Op<"spec.num_elems"> {
+  let summary = "Returns the number of elements in a tensor with given spec.";
+  let description = [{
+    Returns the number of elements in a tensor of the given spec. Generally the
+    spec's type will contain at least one dynamic dimension.
+
+    Example:
+    ```mlir
+    %spec : !mop.spec<32x?xf32>
+    %elems = mop.spec.num_elems %spec : !mop.spec<32x?xf32>
+    %elems : index
     ```
   }];
 
@@ -334,25 +357,31 @@ def TensorWrapOp : MOP_Op<"tensor.wrap", [
                    "$_self.cast<TensorType>().getExpectedBufferType()">]> {
   let summary = "Constructs a tensor from a tensor spec and a buffer.";
   let description = [{
-    Constructs a tensor from a given tensor spec and buffer.
+    Constructs a tensor from a given tensor spec and buffer. The
+    construction is delayed until the given chain is ready, since
+    the buffer is typically written to as a side-effect of an operation.
 
     Example:
     ```mlir
-    %s : !mop.spec<4x16xf32>
+    %ch : !bef.chain
+
+    %spec : !mop.spec<4x16xf32>
     %buf : !mop.buffer<256>
-    %tensor = mop.tensor.wrap %spec %buf : !mop.tensor<4x16xf32>
+    %tensor = mop.tensor.wrap %ch %spec %buf : !mop.tensor<4x16xf32>
     %tensor : !mop.tensor<4x16xf32>
 
     %spec : !mop.spec<?x16xf32>
     %buf : !mop.buffer<>
-    %tensor = mop.tensor.wrap %spec %buf : !mop.tensor<?x16xf32>
+    %tensor = mop.tensor.wrap %ch %spec %buf : !mop.tensor<?x16xf32>
     %tensor : !mop.tensor<?x16xf32>
     ```
   }];
 
-  let arguments = (ins MOP_TensorSpecType: $tensorSpec, MOP_BufferType: $buffer);
+  let arguments = (ins ChainType: $chain, MOP_TensorSpecType: $tensorSpec,
+                       MOP_BufferType: $buffer);
   let results = (outs MOP_TensorType: $result);
-  let assemblyFormat = "$tensorSpec $buffer attr-dict `:` qualified(type($result))";
+  let assemblyFormat = [{ $chain $tensorSpec $buffer attr-dict
+                          `:` qualified(type($result)) }];
   let hasVerifier = 1;
 }
 
