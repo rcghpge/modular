@@ -47,13 +47,13 @@ def BufferConstantOp : MOP_Op<"buffer.constant",
     Example:
     ```mlir
     %buf = mop.buffer.constant #m.aligned_buffer<8: "0x00010203">
-    %buf : !mop.buffer<size=4>  // at least 8 byte aligned in storage
+    %buf : !mop.buffer<4>  // at least 8 byte aligned in storage
 
     %buf = mop.buffer.constant dense_resource<label>:!m.array<4xui8>
-    %buf : !mop.buffer<size=4>  // respecting alignment encoded in blob at label
+    %buf : !mop.buffer<4>  // respecting alignment encoded in blob at label
 
     %buf = mop.buffer.constant array<ui8: 0, 1, 2, 3>
-    %buf : !mop.buffer<size=4>  // no specific alignment in storage
+    %buf : !mop.buffer<4>  // no specific alignment in storage
     ```
   }];
 
@@ -92,10 +92,10 @@ def BufferCreateOp : MOP_Op<"buffer.create", [
     %buf : !mop.buffer<>  // at least 8 byte aligned in storage
 
     %buf = mop.buffer.create %ctxt {size=64:si64}
-    %buf : !mop.buffer<size=64>  // no specific alignment in storage
+    %buf : !mop.buffer<64>  // no specific alignment in storage
 
     %buf = mop.buffer.create %ctxt {size=64:si64, align=16:si64}
-    %buf : !mop.buffer<size=64>  // at least 16 byte aligned in storage
+    %buf : !mop.buffer<64>  // at least 16 byte aligned in storage
     ```
   }];
 
@@ -144,10 +144,10 @@ def BufferRecreateOp : MOP_Op<"buffer.recreate", [
     %size : index
 
     %buf = mop.buffer.recreate %ch %ctxt %size { align=8:si64, slot=42, output=2 }
-    %buf : !mop.buffer<>  // at least 8 byte aligned in storage
+    %buf : !mop.buffer      // at least 8 byte aligned in storage
 
     %buf = mop.buffer.recreate %ch %ctxt { size=64:si64, slot=42, output=2 }
-    %buf : !mop.buffer<size=64>  // no specific alignment in storage
+    %buf : !mop.buffer<64>  // no specific alignment in storage
     ```
   }];
 
@@ -339,7 +339,7 @@ def TensorWrapOp : MOP_Op<"tensor.wrap", [
     Example:
     ```mlir
     %s : !mop.spec<4x16xf32>
-    %buf : !mop.buffer<size=256>
+    %buf : !mop.buffer<256>
     %tensor = mop.tensor.wrap %spec %buf : !mop.tensor<4x16xf32>
     %tensor : !mop.tensor<4x16xf32>
 
@@ -373,7 +373,7 @@ def TensorUnwrapOp : MOP_Op<"tensor.unwrap", [
     %tensor : !mop.tensor<8x64xf32>
     %spec, %buf = mop.tensor.unwrap %tensor : !mop.tensor<8x64xf32>
     %spec : !mop.spec<8x64>
-    %buf : !mop.buffer<size=2048>
+    %buf : !mop.buffer<2048>
 
     %tensor : !mop.tensor<?x64xf32>
     %spec, %buf = mop.tensor.unwrap %tensor : !mop.tensor<?x64xf32>

@@ -30,14 +30,13 @@ class MOP_Type<string name, string typeMnemonic, list<Trait> traits = []>
 def MOP_BufferType : MOP_Type<"Buffer", "buffer",
                          [DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
   let summary = "Type of uninterpreted byte arrays, optionally with statically "
-                "known size and alignment";
+                "known size.";
   let description = [{
-    Buffers are byte arrays which may have a statically known size and
-    alignment 'constraints'. Nothing is implied about the internal structure
-    of the bytes, such as rank, dimensions, underlying element type, padding,
-    or element endianness. The compiler is responsible for ensuring the
-    producers and consumers of buffers agree on their interpretation of the
-    buffer for the intended target.
+    Buffers are byte arrays which may have a statically known size. Nothing is
+    implied about the internal structure of the bytes, such as rank, dimensions,
+    underlying element type, padding, or element endianness. The compiler is
+    responsible for ensuring the producers and consumers of buffers agree on
+    their interpretation of the buffer for the intended target.
 
     Generally buffers are the lowest-common denominator across kernel
     implementations. Buffers may be wrapped by various tensor types, or
@@ -49,30 +48,26 @@ def MOP_BufferType : MOP_Type<"Buffer", "buffer",
 
     Buffers are represented by `M::LLCL::RCBufferRefs` in the Modular runtime.
 
-    Note that align constraints in buffer types are generally only needed
-    when constructing a buffer from a dense_resource. Otherwise the align
-    constraint is not propagated within types to simplify type checking.
+    Note that buffers may have alignment constraints, but those are specified
+    either in the buffer's create op or encoded within the dense attribute
+    used to construct a constant buffer.
 
     Examples:
     ```mlir
-    !mop.buffer<size = 16>
-    !mop.buffer<size = 16, align = 64>
+    !mop.buffer<16>
     !mop.buffer
     ```
   }];
 
-  let parameters = (ins OptionalParameter<"Optional<int64_t>">:$size,
-                        OptionalParameter<"Optional<int64_t>">:$align);
-  let assemblyFormat = "`<` struct(params) `>`";
+  let parameters = (ins OptionalParameter<"Optional<int64_t>">:$size);
+  let assemblyFormat = "(`<` $size^ `>`)?";
   let genVerifyDecl = 1;
 
   let extraClassDeclaration = [{
      /// getShape may need to return an ArrayRef representing a
      /// dynamic rank-1 shape if the size is unconstrained.
+     /// That ref will point to this static.
      static const int64_t unknownSize;
-
-     /// Returns this buffer type without any align constraint.
-     BufferType forgetAlign();
   }];
 }
 

@@ -29,17 +29,10 @@ using namespace MOP;
 
 /// Verifies the buffer size and align constraints are valid.
 LogicalResult BufferType::verify(function_ref<InFlightDiagnostic()> emitError,
-                                 Optional<int64_t> size,
-                                 Optional<int64_t> align) {
+                                 Optional<int64_t> size) {
   if (!isValidSize(size))
     return emitError() << "buffer size must be positive.";
-  if (!isValidAlign(align))
-    return emitError() << "buffer align must be power of two.";
   return success();
-}
-
-BufferType BufferType::forgetAlign() {
-  return BufferType::get(getContext(), getSize(), /*align=*/{});
 }
 
 /// Implements ShapedType::cloneWith
@@ -48,7 +41,7 @@ ShapedType BufferType::cloneWith(Optional<ArrayRef<int64_t>> shape,
   assert(!shape && "cannot change shape in BufferType::cloneWith");
   assert(dtype.isUnsignedInteger(8) &&
          "invalid dtype for BufferType::cloneWith");
-  return BufferType::get(getContext(), getSize(), getAlign());
+  return BufferType::get(getContext(), getSize());
 }
 
 /// Implements ShapedType::getElementType
@@ -203,8 +196,7 @@ static void printTensorSpec(AsmPrinter &p, TensorSpecType tensorSpec) {
 }
 
 BufferType TensorType::getExpectedBufferType() const {
-  return BufferType::get(getContext(), getTensorSpec().getSizeInBytes(),
-                         /*align=*/{});
+  return BufferType::get(getContext(), getTensorSpec().getSizeInBytes());
 }
 
 /// Implements SubElementTypeInterface::walkImmediateSubElements.

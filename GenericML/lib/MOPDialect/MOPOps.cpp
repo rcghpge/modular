@@ -38,30 +38,26 @@ static ErrorOr<Optional<int64_t>> getImpliedAlignment(ElementsAttr value) {
     return alignedBufferAttr.getAlign();
 
   if (auto resourceAttr = dyn_cast<DenseResourceElementsAttr>(value)) {
-    Optional<int64_t> alignFromType;
-    if (auto bufferType = dyn_cast<BufferType>(resourceAttr.getType()))
-      alignFromType = bufferType.getAlign();
-
     DenseResourceElementsHandle handle = resourceAttr.getRawHandle();
     mlir::AsmResourceBlob *blob = handle.getBlob();
-    // If the blob is available then we can check its size and alignment
-    // agree with what we expect.
-    if (blob) {
-      if (static_cast<int64_t>(blob->getData().size()) !=
-          value.getNumElements())
-        // TODO: Why is this not enforced by the dense_resource attribute?
-        return Error(Twine("the attribute resource size does not match the "
-                           "attribute elements size (" +
-                           Twine(blob->getData().size()) + " vs " +
-                           Twine(value.getNumElements()) + ")"));
-      if (alignFromType &&
-          *alignFromType != static_cast<int64_t>(blob->getDataAlignment()))
-        return Error(Twine("the attribute resource alignment does not match "
-                           "the alignment specified by the buffer type (" +
-                           Twine(blob->getDataAlignment()) + " vs " +
-                           Twine(*alignFromType) + ")"));
-    }
-    return alignFromType;
+    if (!blob)
+      return Error("the resource blob must be initialized so that its "
+                   "alignment and size can be determined.");
+
+    if (static_cast<int64_t>(blob->getData().size()) != value.getNumElements())
+      // TODO: Why is this not enforced by the dense_resource attribute?
+      return Error(Twine("the resource size does not match the "
+                         "attribute's element size (" +
+                         Twine(blob->getData().size()) + " vs " +
+                         Twine(value.getNumElements()) + ")"));
+    Optional<int64_t> align =
+        blob->getDataAlignment() == 0
+            ? Optional<int64_t>()
+            : static_cast<int64_t>(blob->getDataAlignment());
+    if (!isValidAlign(align))
+      return Error(
+          Twine("the resource alignment must be a power of two (have " +
+                Twine(blob->getDataAlignment()) + ")."));
   }
 
   // No align constraint.
@@ -100,24 +96,6 @@ LogicalResult BufferConstantOp::verify() {
   ErrorOr<Optional<int64_t>> errorOrValueAlign = getImpliedAlignment(value);
   if (auto *error = errorOrValueAlign.getError())
     return emitOpError() << error;
-  Optional<int64_t> valueAlign = *errorOrValueAlign;
-
-  // If the value is aligned then the result type may include that
-  // alignment. However, if the value is unaligned no such align
-  // constraint can appear in the result type.
-  Optional<int64_t> typeAlign = bufferType.getAlign();
-  if (valueAlign) {
-    if (typeAlign && typeAlign.has_value() && *typeAlign != *valueAlign)
-      return emitOpError() << "requires the buffer type align match the "
-                              "attribute align"
-                           << " (" << *typeAlign << " vs " << *valueAlign
-                           << ")";
-  } else {
-    if (typeAlign)
-      return emitOpError()
-             << "requires the buffer type to not have an align "
-                "constraint since the attribute has no align constraint";
-  }
 
   return success();
 }
@@ -134,8 +112,7 @@ LogicalResult BufferConstantOp::inferReturnTypes(
   assert(elementsAttr && "mismatched operand types");
   int64_t size = elementsAttr.size();
   // The inferred result type does not propagate any align constraint.
-  inferredReturnTypes.emplace_back(
-      BufferType::get(context, size, /*align=*/{}));
+  inferredReturnTypes.emplace_back(BufferType::get(context, size));
   return success();
 }
 
@@ -153,9 +130,6 @@ Optional<int64_t> BufferConstantOp::getAlign() {
 
 LogicalResult BufferCreateOp::verify() {
   BufferType bufferType = getResult().getType();
-  if (bufferType.getAlign())
-    return emitOpError()
-           << "expected result type to not have an align constraint.";
   const bool haveBufferSize = haveSize(bufferType.getSize());
   const bool haveRuntimeSize = getRuntimeSize() != nullptr;
   const bool haveStaticSize = haveSize(getSize());
@@ -186,8 +160,7 @@ LogicalResult BufferCreateOp::inferReturnTypes(
       attributes.get(getSizeAttrName(name)));
   Optional<int64_t> size =
       haveSize(sizeAttr) ? Optional<int64_t>(sizeAttr.getSInt()) : llvm::None;
-  inferredReturnTypes.emplace_back(
-      BufferType::get(context, size, /*align=*/{}));
+  inferredReturnTypes.emplace_back(BufferType::get(context, size));
   return success();
 }
 
@@ -200,9 +173,6 @@ LogicalResult BufferCreateOp::inferReturnTypes(
 
 LogicalResult BufferRecreateOp::verify() {
   BufferType bufferType = getResult().getType();
-  if (bufferType.getAlign())
-    return emitOpError()
-           << "expected result type to not have an align constraint.";
   const bool haveBufferSize = haveSize(bufferType.getSize());
   const bool haveRuntimeSize = getRuntimeSize() != nullptr;
   const bool haveStaticSize = haveSize(getSize());
@@ -233,8 +203,7 @@ LogicalResult BufferRecreateOp::inferReturnTypes(
       attributes.get(getSizeAttrName(name)));
   Optional<int64_t> size =
       haveSize(sizeAttr) ? Optional<int64_t>(sizeAttr.getSInt()) : llvm::None;
-  inferredReturnTypes.emplace_back(
-      BufferType::get(context, size, /*align=*/{}));
+  inferredReturnTypes.emplace_back(BufferType::get(context, size));
   return success();
 }
 
@@ -399,8 +368,7 @@ LogicalResult TensorUnwrapOp::inferReturnTypes(
   assert(tensorType && "mismatched operand type");
   Optional<int64_t> sizeInBytes = tensorType.getSizeInBytes();
   inferredReturnTypes.emplace_back(tensorType.getTensorSpec());
-  inferredReturnTypes.emplace_back(
-      BufferType::get(context, sizeInBytes, /*align=*/{}));
+  inferredReturnTypes.emplace_back(BufferType::get(context, sizeInBytes));
   return success();
 }
 
