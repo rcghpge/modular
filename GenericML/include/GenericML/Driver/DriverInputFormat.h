@@ -45,7 +45,10 @@ enum class FileFormat {
 
   /// This looks like a textual MLIR file with the tensorflow graph dialect in
   /// it.
-  kTFDialect
+  kTFDialect,
+
+  /// This is a TensorFlow SavedModel directory.
+  kTFSavedModel
 };
 
 /// Use heuristics to determine what kind of file the input file contents

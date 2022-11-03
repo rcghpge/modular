@@ -6,10 +6,13 @@
 #include "Config/Config.h"
 #include "GenericML/Driver/CXXDriverAPI.h"
 #include "GenericML/Driver/DriverAPI.h"
+#include "GenericML/Driver/DriverInputFormat.h"
 #include "GenericML/Support/ModelCollection.h"
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/ToolOutputFile.h"
+
+#include <filesystem>
 
 using namespace M;
 using llvm::MemoryBuffer;
@@ -118,6 +121,8 @@ getFileContentIdentity(const llvm::MemoryBuffer &file, FileFormat format,
     return "input is a compiled TFLite BEF model in MLIR form";
   case FileFormat::kTFDialect:
     return "input is a TensorFlow model in MLIR form";
+  case FileFormat::kTFSavedModel:
+    return "input is a TensorFlow model in SavedModel form";
   case FileFormat::kTFPDialect:
     return "input is a compiled TensorFlow BEF model in MLIR form";
   case FileFormat::kMOPDialect:
@@ -138,16 +143,35 @@ int main(int argc, char **argv) {
 
   llvm::cl::ParseCommandLineOptions(argc, argv, "Modular Tool (mt)\n");
 
-  // If we don't have an input file (and we're attempting to run something that
-  // doesn't take any input), then we have to pass in an empty memory buffer
-  // which will result in an unknown file format. We want to preserve the stdin
-  // behavior for cases where the command does take input because we might be
-  // piping something into the tool.
-  std::unique_ptr<MemoryBuffer> file = MemoryBuffer::getMemBuffer("", "empty");
-  if (options.commandTakesInput() || options.inputFilename != "-")
-    file = options.openInputFileOrExit();
+  FileFormat format = FileFormat::kUnknown;
 
-  FileFormat format = options.getInputFormat(file->getBuffer());
+  // If we don't have a regular input file (and we're attempting to run
+  // something that doesn't take any input), then we have to pass in an empty
+  // memory buffer which will result in an unknown file format. We want to
+  // preserve the stdin behavior for cases where the command does take input
+  // because we might be piping something into the tool.
+  std::unique_ptr<MemoryBuffer> file = MemoryBuffer::getMemBuffer("", "empty");
+  if (options.commandTakesInput() || options.inputFilename != "-") {
+    std::error_code errorCode;
+    if (std::filesystem::is_directory(
+            std::filesystem::path{options.inputFilename.getValue()},
+            errorCode)) {
+      // If the input file is a directory, we will just assume that it is a TF
+      // SavedModel. If other directory formats come up, we will need to modify
+      // this logic.
+      format = FileFormat::kTFSavedModel;
+    } else {
+      if (errorCode) {
+        return options.reportError(
+            Twine("failed to check file type of: ") + options.inputFilename +
+            " (error code: " + Twine(errorCode.message()) + ")");
+      }
+      // The input file is not a directory, so we open and sniff the format.
+      file = options.openInputFileOrExit();
+      format = options.getInputFormat(file->getBuffer());
+    }
+  }
+
   auto dylibOr = loadDesiredLibrary(argc, argv, *file, format, options.loadLib);
   if (failed(dylibOr))
     return options.reportError(dylibOr.getError());
