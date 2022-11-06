@@ -142,21 +142,6 @@ Optional<int64_t> TensorSpecType::getSizeInBytes() const {
   return mlirTypeToDType(getElementType()).getSizeInBytes(*numElems);
 }
 
-/// Implements SubElementTypeInterface::walkImmediateSubElements.
-void TensorSpecType::walkImmediateSubElements(
-    function_ref<void(Attribute)> walkAttrsFn,
-    function_ref<void(Type)> walkTypesFn) const {
-  walkTypesFn(getElementType());
-}
-
-/// Implements SubElementTypeInterface::replaceImmediateSubElements.
-Type TensorSpecType::replaceImmediateSubElements(
-    ArrayRef<Attribute> replAttrs, ArrayRef<Type> replTypes) const {
-  assert(replAttrs.empty());
-  assert(replTypes.size() == 1);
-  return TensorSpecType::get(getContext(), getShape(), replTypes[0]);
-}
-
 /// Implements ShapedTypeInterface::cloneWith.
 ShapedType TensorSpecType::cloneWith(Optional<ArrayRef<int64_t>> shape,
                                      Type elementType) const {
@@ -197,23 +182,6 @@ static void printTensorSpec(AsmPrinter &p, TensorSpecType tensorSpec) {
 
 BufferType TensorType::getExpectedBufferType() const {
   return BufferType::get(getContext(), getTensorSpec().getSizeInBytes());
-}
-
-/// Implements SubElementTypeInterface::walkImmediateSubElements.
-void TensorType::walkImmediateSubElements(
-    function_ref<void(Attribute)> walkAttrsFn,
-    function_ref<void(Type)> walkTypesFn) const {
-  walkTypesFn(getTensorSpec());
-}
-
-/// Implements SubElementTypeInterface::replaceImmediateSubElements.
-Type TensorType::replaceImmediateSubElements(ArrayRef<Attribute> replAttrs,
-                                             ArrayRef<Type> replTypes) const {
-  assert(replAttrs.empty());
-  assert(replTypes.size() == 1);
-  TensorSpecType spec = mlir::dyn_cast<TensorSpecType>(replTypes[0]);
-  assert(spec);
-  return TensorType::get(getContext(), spec);
 }
 
 /// Implements ShapedTypeInterface::cloneWith.
