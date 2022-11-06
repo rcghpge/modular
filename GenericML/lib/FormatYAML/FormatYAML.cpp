@@ -21,14 +21,6 @@
 
 using namespace M;
 
-/// Provide a way to check if a template is defined so we can not define this
-/// thing on platforms where ScalarTraits<T> is defined.
-template <class T, std::size_t = sizeof(T)>
-std::true_type is_complete_impl(T *);
-std::false_type is_complete_impl(...);
-template <class T>
-using is_complete = decltype(is_complete_impl(std::declval<T *>()));
-
 //===----------------------------------------------------------------------===//
 // QuantTensorSpec
 //===----------------------------------------------------------------------===//
@@ -36,8 +28,9 @@ using is_complete = decltype(is_complete_impl(std::declval<T *>()));
 namespace llvm::yaml {
 /// Provide a forwarding from ssize_t to int64_t for YAML ScalarTraits.
 template <typename T>
-struct ScalarTraits<T, std::enable_if_t<!is_complete<ScalarTraits<T>>::value &&
-                                        std::is_same_v<T, ssize_t>>> {
+struct ScalarTraits<
+    T, std::enable_if_t<!llvm::is_detected<ScalarTraits, T>::value &&
+                        std::is_same_v<T, ssize_t>>> {
   static void output(const ssize_t &val, void *p, llvm::raw_ostream &out) {
     ScalarTraits<int64_t>::output((int64_t)val, p, out);
   }
