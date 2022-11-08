@@ -31,7 +31,7 @@ using namespace MOP;
 
 /// Returns the align constraint for the given attribute, or none if it
 /// has no such constraint.
-static ErrorOr<Optional<int64_t>> getImpliedAlignment(ElementsAttr value) {
+static ErrorOr<Optional<uint64_t>> getImpliedAlignment(ElementsAttr value) {
   // TODO(#4424): Would be better to just look for a HasAlignmentAttrInterface
   // instead of looking for specific attribute types.
   if (auto alignedBufferAttr = dyn_cast<AlignedBytesAttr>(value))
@@ -50,10 +50,10 @@ static ErrorOr<Optional<int64_t>> getImpliedAlignment(ElementsAttr value) {
                          "attribute's element size (" +
                          Twine(blob->getData().size()) + " vs " +
                          Twine(value.getNumElements()) + ")"));
-    Optional<int64_t> align =
+    Optional<uint64_t> align =
         blob->getDataAlignment() == 0
-            ? Optional<int64_t>()
-            : static_cast<int64_t>(blob->getDataAlignment());
+            ? Optional<uint64_t>()
+            : static_cast<uint64_t>(blob->getDataAlignment());
     if (!isValidAlign(align))
       return Error(
           Twine("the resource alignment must be a power of two (have " +
@@ -61,7 +61,7 @@ static ErrorOr<Optional<int64_t>> getImpliedAlignment(ElementsAttr value) {
   }
 
   // No align constraint.
-  return Optional<int64_t>();
+  return Optional<uint64_t>();
 }
 
 /// Verifies the attribute and result types are consistent, and the attribute
@@ -93,7 +93,7 @@ LogicalResult BufferConstantOp::verify() {
 
   // Only BufferAttr and DenseResourceElementsAttr can convey an align
   // constraint. Check they are valid.
-  ErrorOr<Optional<int64_t>> errorOrValueAlign = getImpliedAlignment(value);
+  ErrorOr<Optional<uint64_t>> errorOrValueAlign = getImpliedAlignment(value);
   if (auto *error = errorOrValueAlign.getError())
     return emitOpError() << error;
 
@@ -116,8 +116,8 @@ LogicalResult BufferConstantOp::inferReturnTypes(
   return success();
 }
 
-Optional<int64_t> BufferConstantOp::getAlign() {
-  ErrorOr<Optional<int64_t>> errorOrAlign = getImpliedAlignment(getValue());
+Optional<uint64_t> BufferConstantOp::getAlign() {
+  ErrorOr<Optional<uint64_t>> errorOrAlign = getImpliedAlignment(getValue());
   assert(!errorOrAlign.isError());
   if (errorOrAlign.isError())
     return {};

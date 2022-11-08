@@ -28,8 +28,9 @@ static ErrorOr<size_t> getSize(const SmallVector<AnyAsyncValueRef> &dynamicSize,
   return hasDynamicSize ? dynamicSize[0]->get<size_t>() : staticSize;
 }
 
-Optional<size_t> getAlign(const int64_t align) {
-  if (align != mlir::ShapedType::kDynamicSize)
+// TODO(#4705): Consolidate utility functions in MOPPrimitives and MOPDialect.
+Optional<size_t> getAlign(const uint64_t align) {
+  if (align != UINT64_MAX)
     return align;
   return None;
 }
@@ -60,7 +61,7 @@ static void mop_buffer_constant(Result<RCBufferRef> outBuffer,
 /// given as an attribute.
 static void mop_buffer_create(MOP::Context &ctx, RemainingArguments args,
                               Result<RCBufferRef> outBuffer,
-                              BEFAttr<int64_t> align, BEFAttr<int64_t> size,
+                              BEFAttr<uint64_t> align, BEFAttr<int64_t> size,
                               Runtime &runtime) {
   ErrorOr<size_t> sizeOr = getSize(args.takeAsVector(), *size);
   if (sizeOr.isError())
@@ -84,7 +85,7 @@ static void mop_buffer_create(MOP::Context &ctx, RemainingArguments args,
 static void mop_buffer_recreate(Chain chain, MOP::Context &ctx,
                                 RemainingArguments args,
                                 Result<RCBufferRef> outBuffer,
-                                BEFAttr<int64_t> align,
+                                BEFAttr<uint64_t> align,
                                 BEFAttr<uint64_t> output, BEFAttr<int64_t> size,
                                 BEFAttr<uint64_t> slot, Runtime &runtime) {
   ErrorOr<size_t> sizeOr = getSize(args.takeAsVector(), *size);

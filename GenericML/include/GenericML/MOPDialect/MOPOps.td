@@ -64,7 +64,7 @@ def BufferConstantOp : MOP_Op<"buffer.constant",
 
   let extraClassDeclaration = [{
     /// Returns the align constraint for the buffer, if any.
-    Optional<int64_t> getAlign();
+    Optional<uint64_t> getAlign();
   }];
 }
 
@@ -88,22 +88,23 @@ def BufferCreateOp : MOP_Op<"buffer.create", [
     %ctxt : !mop.context
     %size : index
 
-    %buf = mop.buffer.create %ctxt %size {align=8:si64}
+    %buf = mop.buffer.create %ctxt %size {align=8:ui64}
     %buf : !mop.buffer<>  // at least 8 byte aligned in storage
 
     %buf = mop.buffer.create %ctxt {size=64:si64}
     %buf : !mop.buffer<64>  // no specific alignment in storage
 
-    %buf = mop.buffer.create %ctxt {size=64:si64, align=16:si64}
+    %buf = mop.buffer.create %ctxt {size=64:si64, align=16:ui64}
     %buf : !mop.buffer<64>  // at least 16 byte aligned in storage
     ```
   }];
 
   // TODO(#4301): Would be nicer to use OptionalAttr for $size and $align but
   // MLIRToBEF cannot handle that.
+  // TODO(#4703): Consider using unsigned size and dropping dependency on ShapedType::kDynamicSize for allowing dynamically allocated buffer lengths.
   let arguments = (ins MOP_ContextType:$theContext, Optional<Index>:$runtimeSize,
                        DefaultValuedAttr<SI64Attr, "ShapedType::kDynamicSize">:$size,
-                       DefaultValuedAttr<SI64Attr, "ShapedType::kDynamicSize">:$align);
+                       DefaultValuedAttr<UI64Attr, "UINT64_MAX">:$align);
   let results = (outs MOP_BufferType:$result);
   let assemblyFormat = "$theContext ($runtimeSize^)? attr-dict";
   let hasVerifier = 1;
@@ -143,10 +144,10 @@ def BufferRecreateOp : MOP_Op<"buffer.recreate", [
     %ctxt : !mop.context
     %size : index
 
-    %buf = mop.buffer.recreate %ch %ctxt %size { align=8:si64, slot=42, output=2 }
+    %buf = mop.buffer.recreate %ch %ctxt %size { align=8:ui64, slot=42, output=2 }
     %buf : !mop.buffer      // at least 8 byte aligned in storage
 
-    %buf = mop.buffer.recreate %ch %ctxt { size=64:si64, slot=42, output=2 }
+    %buf = mop.buffer.recreate %ch %ctxt { size=64:ui64, slot=42, output=2 }
     %buf : !mop.buffer<64>  // no specific alignment in storage
     ```
   }];
@@ -156,7 +157,7 @@ def BufferRecreateOp : MOP_Op<"buffer.recreate", [
   let arguments = (ins ChainType:$ch, MOP_ContextType:$theContext,
                        Optional<Index>:$runtimeSize,
                        DefaultValuedAttr<SI64Attr, "ShapedType::kDynamicSize">:$size,
-                       DefaultValuedAttr<SI64Attr, "ShapedType::kDynamicSize">:$align,
+                       DefaultValuedAttr<UI64Attr, "UINT64_MAX">:$align,
                        UI64Attr:$slot, UI64Attr:$output);
   let results = (outs MOP_BufferType:$result);
   let assemblyFormat = "$ch $theContext ($runtimeSize^)? attr-dict";
