@@ -47,7 +47,7 @@ public:
   size_t getNumAttrs() const { return attrOffsets.size(); }
 
   /// Get the attribute at the given index.
-  const void *getRawAttr(size_t index) const {
+  const uint8_t *getRawAttr(size_t index) const {
     return attrSection.data() + attrOffsets[index];
   }
 

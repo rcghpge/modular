@@ -14,10 +14,10 @@ using namespace Detail;
 
 /// Given a pointer to the start of a BEF array or string attribute, return the
 /// length of array or string by decoding the prefix encoded VBR.
-size_t M::decodeBEFArrayLength(const void *dataPtr) {
+size_t M::decodeBEFArrayLength(const uint8_t *dataPtr) {
   // The attribute's kind is between the VBR and the actual value, so we have to
   // make sure to subtract that offset (hence the -2).
-  const uint8_t *lenPtr = static_cast<const uint8_t *>(dataPtr) - 2;
+  const uint8_t *lenPtr = dataPtr - 2;
   size_t size = 0;
   bool hasMoreBytes;
   do {
