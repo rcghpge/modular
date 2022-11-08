@@ -10,7 +10,7 @@
 namespace M {
 class PrimitiveRegistry;
 
-/// This registers the 'mop' primitives.
+/// This registers the 'mop' dialect primitives.
 void registerMOPPrimitives(PrimitiveRegistry &registry);
 
 } // namespace M
