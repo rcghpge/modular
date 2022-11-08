@@ -151,21 +151,24 @@ int main(int argc, char **argv) {
   // preserve the stdin behavior for cases where the command does take input
   // because we might be piping something into the tool.
   std::unique_ptr<MemoryBuffer> file = MemoryBuffer::getMemBuffer("", "empty");
+  bool isInputDirectory = false;
+  std::filesystem::path inputPath;
   if (options.commandTakesInput() || options.inputFilename != "-") {
     std::error_code errorCode;
-    if (std::filesystem::is_directory(
-            std::filesystem::path{options.inputFilename.getValue()},
-            errorCode)) {
+    inputPath = std::filesystem::path{options.inputFilename.getValue()};
+    isInputDirectory = std::filesystem::is_directory(inputPath, errorCode);
+    if (errorCode) {
+      return options.reportError(
+          Twine("failed to check type of path: ") + inputPath.string() +
+          " (error code: " + Twine(errorCode.message()) + ")");
+    }
+
+    if (isInputDirectory) {
       // If the input file is a directory, we will just assume that it is a TF
       // SavedModel. If other directory formats come up, we will need to modify
       // this logic.
       format = FileFormat::kTFSavedModel;
     } else {
-      if (errorCode) {
-        return options.reportError(
-            Twine("failed to check file type of: ") + options.inputFilename +
-            " (error code: " + Twine(errorCode.message()) + ")");
-      }
       // The input file is not a directory, so we open and sniff the format.
       file = options.openInputFileOrExit();
       format = options.getInputFormat(file->getBuffer());
@@ -230,6 +233,12 @@ int main(int argc, char **argv) {
     outputFile->os() << *identityOr << ".\n";
     outputFile->keep();
     return 0;
+  }
+
+  // If we are dealing with a directory, we need to open it.
+  if (isInputDirectory) {
+    // TODO: this should be called for all files
+    file = dylib.openPath(inputPath);
   }
 
   // If we're stopping at compilation, emit the binary file directly to the
