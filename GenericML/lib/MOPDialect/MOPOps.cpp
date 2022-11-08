@@ -9,7 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MOPDialect/MOPOps.h"
-#include "./ParsingUtils.h"
 #include "Support/ErrorOr.h"
 #include "Support/MDialect/MAttrs.h"
 #include "Support/ML/DType.h"
@@ -214,31 +213,45 @@ LogicalResult BufferRecreateOp::inferReturnTypes(
 // Nothing to implement.
 
 //===----------------------------------------------------------------------===//
-// SpecWrapOp
+// SpecCreateOp
 //===----------------------------------------------------------------------===//
 
-/// Parses a dtype, but represented as an MLIR TypeAttr.
-static ParseResult parseDTypeAttr(AsmParser &p, TypeAttr &elementTypeAttr) {
-  FailureOr<Type> elementType;
-  if (parseDType(p, elementType))
+/// Parses a !mop.spec type where the element type must be known, but
+/// represented in 'raw' attribute form.
+static ParseResult parseRawShapeAndDType(AsmParser &p,
+                                         IntArrayElementsAttr &rawShape,
+                                         IntegerAttr &rawDType) {
+  Type type;
+  llvm::SMLoc loc;
+  if (p.getCurrentLocation(&loc) || p.parseType(type))
     return failure();
-  elementTypeAttr = TypeAttr::get(*elementType);
+  auto tensorSpec = dyn_cast<TensorSpecType>(type);
+  if (tensorSpec == nullptr)
+    return p.emitError(loc) << "expected a !mop.spec type.";
+  if (!tensorSpec.getDtype())
+    return p.emitError(loc)
+           << "expected !mop.spec type to have a known element type.";
+
+  rawShape = tensorSpec.getRawShape();
+  rawDType = tensorSpec.getRawDType();
+
   return success();
 }
 
-/// Prints a dtype, but represented as an MLIR TypeAtr.
-void printDTypeAttr(AsmPrinter &p, const SpecWrapOp &op,
-                    TypeAttr elementTypeAttr) {
-  printDType(p, elementTypeAttr.getValue());
+/// Prints a !mop.spec type, but represented in 'raw' attribute form.
+static void printRawShapeAndDType(AsmPrinter &p, const SpecCreateOp &op,
+                                  IntArrayElementsAttr rawShape,
+                                  IntegerAttr rawDType) {
+  p << TensorSpecType::get(rawShape, rawDType);
 }
 
-LogicalResult SpecWrapOp::verify() {
+LogicalResult SpecCreateOp::verify() {
+  auto impliedSpecType = TensorSpecType::getChecked(
+      [this]() { return emitOpError(); }, getContext(), getFstRawShape(),
+      getSndRawDType());
+  if (impliedSpecType == nullptr)
+    return failure();
   TensorSpecType actualSpecType = getResult().getType();
-  if (mlirTypeToDType(getElementType()).isInvalid())
-    return emitOpError() << "cannot represent " << getElementType()
-                         << " as a DType.";
-  TensorSpecType impliedSpecType =
-      TensorSpecType::get(getContext(), getDims(), getElementType());
   if (actualSpecType != impliedSpecType)
     return emitOpError()
            << "expected result type is " << actualSpecType
@@ -248,35 +261,117 @@ LogicalResult SpecWrapOp::verify() {
   if (static_cast<int64_t>(getRuntimeDims().size()) !=
       impliedSpecType.getNumDynamicDims())
     return emitOpError() << "requires " << actualSpecType.getNumDynamicDims()
-                         << " dimension operands to match the spec "
-                         << actualSpecType << ", but given "
-                         << getRuntimeDims().size() << ".";
+                         << " dimension operands to match " << actualSpecType
+                         << ", but given " << getRuntimeDims().size() << ".";
   return success();
 }
 
-LogicalResult
-SpecWrapOp::inferReturnTypes(MLIRContext *context, Optional<Location> location,
-                             ValueRange operands, DictionaryAttr attributes,
-                             mlir::RegionRange regions,
-                             SmallVectorImpl<Type> &inferredReturnTypes) {
+LogicalResult SpecCreateOp::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
-  auto dimsAttr =
-      dyn_cast<IntArrayElementsAttr>(attributes.get(getDimsAttrName(name)));
-  auto elementTypeAttr =
-      dyn_cast<TypeAttr>(attributes.get(getElementTypeAttrName(name)));
-  inferredReturnTypes.emplace_back(TensorSpecType::get(
-      context, dimsAttr.asArrayRef<int64_t>(), elementTypeAttr.getValue()));
+  auto rawShapeAttr = dyn_cast<IntArrayElementsAttr>(
+      attributes.get(getFstRawShapeAttrName(name)));
+  auto rawDTypeAttr =
+      dyn_cast<IntegerAttr>(attributes.get(getSndRawDTypeAttrName(name)));
+  assert(rawShapeAttr && rawDTypeAttr && "mismatched operand type");
+  inferredReturnTypes.emplace_back(
+      TensorSpecType::get(rawShapeAttr, rawDTypeAttr));
   return success();
 }
 
 //===----------------------------------------------------------------------===//
-// SpecUnwrapOp
+// SpecCreateDynamicOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult SpecUnwrapOp::verify() {
+/// Parses a !mop.spec type where the element type is unknown, but represented
+/// in 'raw' attribute form.
+static ParseResult parseRawShape(AsmParser &p, IntArrayElementsAttr &rawShape) {
+  Type type;
+  llvm::SMLoc loc;
+  if (p.getCurrentLocation(&loc) || p.parseType(type))
+    return failure();
+  auto tensorSpec = dyn_cast<TensorSpecType>(type);
+  if (tensorSpec == nullptr)
+    return p.emitError(loc) << "expected a !mop.spec type.";
+  if (tensorSpec.getDtype())
+    return p.emitError(loc)
+           << "expected !mop.spec type to have an unknown element type.";
+
+  rawShape = tensorSpec.getRawShape();
+
+  return success();
+}
+
+/// Prints a !mop.spec type, but represented in 'raw' attribute form.
+static void printRawShape(AsmPrinter &p, const SpecCreateDynamicOp &op,
+                          IntArrayElementsAttr rawShape) {
+  p << TensorSpecType::get(rawShape, /*rawDType=*/{});
+}
+
+LogicalResult SpecCreateDynamicOp::verify() {
+  auto impliedSpecType =
+      TensorSpecType::getChecked([this]() { return emitOpError(); },
+                                 getContext(), getRawShape(), /*rawDType=*/{});
+  if (impliedSpecType == nullptr)
+    return failure();
+  TensorSpecType actualSpecType = getResult().getType();
+  if (actualSpecType != impliedSpecType)
+    return emitOpError() << "expected result type is " << actualSpecType
+                         << ", but static dimensions suggest it should be "
+                         << impliedSpecType << ".";
+  if (static_cast<int64_t>(getRuntimeDims().size()) !=
+      impliedSpecType.getNumDynamicDims())
+    return emitOpError() << "requires " << actualSpecType.getNumDynamicDims()
+                         << " dimension operands to match " << actualSpecType
+                         << ", but given " << getRuntimeDims().size() << ".";
+  return success();
+}
+
+LogicalResult SpecCreateDynamicOp::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  auto rawShapeAttr =
+      dyn_cast<IntArrayElementsAttr>(attributes.get(getRawShapeAttrName(name)));
+  assert(rawShapeAttr && "mismatched operand type");
+  inferredReturnTypes.emplace_back(
+      TensorSpecType::get(rawShapeAttr, /*rawDType=*/{}));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// SpecExtractShapeOp
+//===----------------------------------------------------------------------===//
+
+/// Parses a TensorSpecType, however also sets the rawShape to capture it's
+/// shape in 'raw' attribute form.
+static ParseResult
+parseTensorSpecTypeWithRawShape(AsmParser &p, Type &specType,
+                                IntArrayElementsAttr &rawShape) {
+  llvm::SMLoc loc;
+  if (p.getCurrentLocation(&loc) || p.parseType(specType))
+    return failure();
+  auto tensorSpec = dyn_cast<TensorSpecType>(specType);
+  if (tensorSpec == nullptr)
+    p.emitError(loc) << "expected !mop.spec type";
+  rawShape = tensorSpec.getRawShape();
+  return success();
+}
+
+static void printTensorSpecTypeWithRawShape(AsmPrinter &p,
+                                            const SpecDimsDynamicOp &op,
+                                            Type specType,
+                                            IntArrayElementsAttr rawShape) {
+  p << specType;
+}
+
+LogicalResult SpecDimsDynamicOp::verify() {
   TensorSpecType actualSpecType = getSpec().getType();
   TensorSpecType impliedSpecType = TensorSpecType::get(
-      getContext(), getDims(), actualSpecType.getElementType());
+      getContext(), getRawShape(), actualSpecType.getDtype());
   if (actualSpecType != impliedSpecType)
     return emitOpError() << "expected spec type is " << actualSpecType
                          << ", but static dimensions arguments "
@@ -284,18 +379,17 @@ LogicalResult SpecUnwrapOp::verify() {
                          << impliedSpecType << ".";
   if (static_cast<int64_t>(getResults().size()) !=
       actualSpecType.getNumDynamicDims())
-    return emitOpError() << "requires " << actualSpecType.getNumDynamicDims()
-                         << " dimension results to match the tensor spc "
+    return emitOpError() << "expected " << actualSpecType.getNumDynamicDims()
+                         << " dimension results to match the tensor spec "
                          << actualSpecType << ", but given "
                          << getResults().size();
   return success();
 }
 
-LogicalResult SpecUnwrapOp::inferReturnTypes(
+LogicalResult SpecDimsDynamicOp::inferReturnTypes(
     MLIRContext *context, Optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
   assert(operands.size() == 1 && "mismatched operand arity");
   auto specType = dyn_cast<TensorSpecType>(operands[0].getType());
   assert(specType && "mismatched operand type");
@@ -306,6 +400,18 @@ LogicalResult SpecUnwrapOp::inferReturnTypes(
 
 //===----------------------------------------------------------------------===//
 // SpecSizeOp
+//===----------------------------------------------------------------------===//
+
+// Nothing to implement.
+
+//===----------------------------------------------------------------------===//
+// SpecNumElemsOp
+//===----------------------------------------------------------------------===//
+
+// Nothing to implement.
+
+//===----------------------------------------------------------------------===//
+// SpecDTypeOp
 //===----------------------------------------------------------------------===//
 
 // Nothing to implement.
@@ -324,7 +430,7 @@ LogicalResult TensorWrapOp::verify() {
     return emitOpError() << "requires shape to match result tensor shape"
                          << " (" << tensorSpecType << " vs "
                          << tensorType.getTensorSpec() << ")";
-  Optional<int64_t> staticSize = tensorType.getSizeInBytes();
+  Optional<int64_t> staticSize = tensorType.getTensorSpec().getSizeInBytes();
   if (staticSize.has_value() != bufferType.getSize().has_value())
     return emitOpError() << "requires the buffer to be sized if and only if "
                             "the tensor shape is fully static";
@@ -345,17 +451,13 @@ LogicalResult TensorUnwrapOp::verify() {
     return emitOpError() << "requires the result shape to match tensor's shape"
                          << " (" << getTensorSpecResult().getType() << " vs "
                          << tensorType.getTensorSpec() << ")";
-  Optional<int64_t> sizeInBytes = tensorType.getSizeInBytes();
-  if (sizeInBytes.has_value() !=
-      getBufferResult().getType().getSize().has_value())
-    return emitOpError() << "requires the result buffer to have a size if and "
-                            "only if the tensor has a fully static shape";
-  if (sizeInBytes.has_value() &&
-      *sizeInBytes != *getBufferResult().getType().getSize())
-    return emitOpError() << "requires the result buffer to have a size "
-                            "matching the byte size of the tensor"
-                         << " (" << *getBufferResult().getType().getSize()
-                         << " vs " << *sizeInBytes << ")";
+  BufferType impliedBufferType =
+      tensorType.getTensorSpec().getExpectedBufferType();
+  if (impliedBufferType != getBufferResult().getType())
+    return emitOpError() << "expected the result buffer to match the type "
+                            "implied by the tensor type ("
+                         << getBufferResult().getType() << " vs "
+                         << impliedBufferType << ").";
   return success();
 }
 
@@ -366,9 +468,9 @@ LogicalResult TensorUnwrapOp::inferReturnTypes(
   assert(operands.size() == 1 && "mismatched operand arity");
   auto tensorType = dyn_cast<TensorType>(operands[0].getType());
   assert(tensorType && "mismatched operand type");
-  Optional<int64_t> sizeInBytes = tensorType.getSizeInBytes();
   inferredReturnTypes.emplace_back(tensorType.getTensorSpec());
-  inferredReturnTypes.emplace_back(BufferType::get(context, sizeInBytes));
+  inferredReturnTypes.emplace_back(
+      tensorType.getTensorSpec().getExpectedBufferType());
   return success();
 }
 

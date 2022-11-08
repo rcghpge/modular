@@ -15,6 +15,11 @@
 using namespace M;
 using namespace M::LLCL;
 
+/// Denotes a dynamic dimension in a static tensor spec shape.
+/// This corresponds to the MLIR ShapedType::kDynamicSize, however
+/// the -1 literal is used ubiquitously.
+constexpr int64_t kDynamicSize = -1;
+
 static ErrorOr<size_t> getSize(const SmallVector<AnyAsyncValueRef> &dynamicSize,
                                const int64_t staticSize) {
   if (dynamicSize.size() > 1)
@@ -127,41 +132,68 @@ static Chain mop_primcontext_create(MOP::Context &ctx,
 }
 
 //===----------------------------------------------------------------------===//
-// mop.spec.wrap
+// mop.spec.create
 //===----------------------------------------------------------------------===//
 
-/// Fulfills the result with a tensor spec. Dimensions are given as an
-/// attribute, while static cally unknown dimensions are given at the runtime.
-static void mop_spec_wrap(RemainingArguments runtimeDims,
-                          Result<TensorSpec> outSpec,
-                          BEFAttr<ArrayRef<int64_t>> dims,
-                          BEFAttr<BEFType> elementType, Runtime &runtime) {
+/// Creates a TensorSpec by combining the runtime and statically known
+/// shape dimensions and the statically known DType. Only runtime dimensions
+/// corresponding to unknown dimensions should be passed in runtimeDims.
+static void mop_spec_create(RemainingArguments runtimeDims,
+                            Result<TensorSpec> outSpec,
+                            BEFAttr<ArrayRef<int64_t>> fstRawShape,
+                            BEFAttr<uint8_t> sndRawDType, Runtime &runtime) {
   auto runtimeDimsVec = runtimeDims.takeAsVector();
   auto nextRuntimeDim = runtimeDimsVec.begin();
   SmallVector<uint64_t> shape;
-  for (auto dim : *dims) {
-    if (dim == -1)
+  for (auto dim : *fstRawShape) {
+    if (dim == kDynamicSize)
       shape.push_back((*nextRuntimeDim++)->get<size_t>());
     else
       shape.push_back(dim);
   }
-  outSpec.emplace(TensorSpec(shape, elementType.getKind()));
+  outSpec.emplace(TensorSpec(shape, DType(*sndRawDType)));
 }
 
 //===----------------------------------------------------------------------===//
-// mop.spec.unwrap
+// mop.spec.create.dyn
 //===----------------------------------------------------------------------===//
 
-/// Fulfills the result with dimensions that were unknown at compile time.
-static void mop_spec_unwrap(TensorSpec spec, RemainingResults results,
-                            BEFAttr<ArrayRef<int64_t>> dims, Runtime &runtime) {
+/// Creates a TensorSpec by combining the runtime and statically known
+/// shape dimensions and a runtime DType. Only runtime dimensions corresponding
+/// to unknown dimensions should be passed in runtimeDims.
+static void mop_spec_create_dyn(DType runtimeDType,
+                                RemainingArguments runtimeDims,
+                                Result<TensorSpec> outSpec,
+                                BEFAttr<ArrayRef<int64_t>> rawShape,
+                                Runtime &runtime) {
+  auto runtimeDimsVec = runtimeDims.takeAsVector();
+  auto nextRuntimeDim = runtimeDimsVec.begin();
+  SmallVector<uint64_t> shape;
+  for (auto dim : *rawShape) {
+    if (dim == kDynamicSize)
+      shape.push_back((*nextRuntimeDim++)->get<size_t>());
+    else
+      shape.push_back(dim);
+  }
+  outSpec.emplace(TensorSpec(shape, runtimeDType));
+}
+
+//===----------------------------------------------------------------------===//
+// mop.spec.dims.dyn
+//===----------------------------------------------------------------------===//
+
+/// Fulfills the result with dimensions of tensor spec which were unknown
+/// at compile time.
+static void mop_spec_dims_dyn(TensorSpec spec, RemainingResults results,
+                              BEFAttr<ArrayRef<int64_t>> rawShape,
+                              Runtime &runtime) {
   // All of the results are created as size_t.
   for (auto &result : results)
     result = AsyncValueRef<size_t>::allocate(runtime);
 
   unsigned next = 0;
-  for (unsigned i = 0, e = (*dims).size(); i < e; ++i)
-    if ((*dims)[i] == -1)
+  for (unsigned i = 0, e = rawShape->size(); i < e; ++i)
+    if ((*rawShape)[i] == kDynamicSize)
       results[next++]->emplace<size_t>(spec[i]);
 }
 
@@ -179,6 +211,14 @@ static void mop_spec_size(TensorSpec tensorSpec, Result<size_t> result) {
 
 static void mop_spec_num_elems(TensorSpec tensorSpec, Result<size_t> result) {
   result.emplace(tensorSpec.getNumElements());
+}
+
+//===----------------------------------------------------------------------===//
+// mop.spec.dtype
+//===----------------------------------------------------------------------===//
+
+static void mop_spec_dtype(TensorSpec tensorSpec, Result<DType> result) {
+  result.emplace(tensorSpec.getEltType());
 }
 
 //===----------------------------------------------------------------------===//
@@ -215,10 +255,12 @@ void M::registerMOPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mop.buffer.recreate", mop_buffer_recreate);
   ADD_PRIMITIVE(registry, "mop.context.create", mop_context_create);
   ADD_PRIMITIVE(registry, "mop.primcontext.create", mop_primcontext_create);
-  ADD_PRIMITIVE(registry, "mop.spec.wrap", mop_spec_wrap);
-  ADD_PRIMITIVE(registry, "mop.spec.unwrap", mop_spec_unwrap);
+  ADD_PRIMITIVE(registry, "mop.spec.create", mop_spec_create);
+  ADD_PRIMITIVE(registry, "mop.spec.create.dyn", mop_spec_create_dyn);
+  ADD_PRIMITIVE(registry, "mop.spec.dims.dyn", mop_spec_dims_dyn);
   ADD_PRIMITIVE(registry, "mop.spec.size", mop_spec_size);
   ADD_PRIMITIVE(registry, "mop.spec.num_elems", mop_spec_num_elems);
+  ADD_PRIMITIVE(registry, "mop.spec.dtype", mop_spec_dtype);
   ADD_PRIMITIVE(registry, "mop.tensor.wrap", mop_tensor_wrap);
   ADD_PRIMITIVE(registry, "mop.tensor.unwrap", mop_tensor_unwrap);
 }

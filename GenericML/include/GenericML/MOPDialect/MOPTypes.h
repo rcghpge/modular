@@ -13,6 +13,8 @@
 
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"
+#include "Support/MDialect/MAttrs.h"
+#include "Support/ML/DType.h"
 #include "mlir/IR/Types.h"
 
 #include "GenericML/MOPDialect/MOPDialect.h"

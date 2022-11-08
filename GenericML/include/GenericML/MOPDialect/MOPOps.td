@@ -220,79 +220,122 @@ def PrimContextCreateOp : MOP_Op<"primcontext.create"> {
 }
 
 //===----------------------------------------------------------------------===//
-// SpecWrapOp
+// SpecCreateOp
 //===----------------------------------------------------------------------===//
 
-def SpecWrapOp : MOP_Op<"spec.wrap", [
+def SpecCreateOp : MOP_Op<"spec.create", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Constructs a tensor spec from a mix of runtime and static "
-                "dimensions.";
+  let summary = "Creates a tensor spec from a mix of runtime and static "
+                "dimensions and a statically known dtype.";
   let description = [{
     Constructs a tensor spec of statically known rank with dimensions taken
-    from either runtime operands or statically known dimensions, and using the
-    given statically known dtype. Operands must be given for each unknown (-1)
-    dimension in order. It is valid for all dimensions to be known, in which
-    case no operands are required.
+    from either runtime operands or statically known attributes. The element
+    type must be known statically. Operands must be given for each unknown
+    dimension in order. It is valid for all dimensions to be known statically,
+    in which case no operands are required.
+
+    Tensor specs are represented as M::TensorSpecs in the Modular runtime.
 
     Example:
     ```mlir
     %dim0 : index
     %dim1 : index
 
-    %spec = mop.spec.wrap %dim0 %dim1 [-1, -1] f32
+    %spec = mop.spec.create %dim0 %dim1 : !mop.spec<?x?xf32>
     %spec : !mop.spec<?x?xf32>
 
-    %spec = mop.spec.wrap %dim [32, -1] f32
-    %spec : !mop.spec<32x?xf32>
-
-    %spec = mop.spec.wrap [32, 4] f32
+    %spec = mop.spec.create : !mop.spec<32x4xf32>
     %spec : !mop.spec<32x4xf32>
     ```
   }];
 
+  // CAUTION: We include 'fst' and 'snd' prefixes in the attribute names to
+  // ensure their canonical order (ie alphabetical, as used by the primitive's
+  // C++ argument order) matches their declared order (as seen in the
+  // documentation) and their syntatic order (as seen is mlir asm).
+  // NOTE: The two attributes effectively encode the result's tensor spec type
+  // in a form understandable by BEF.
   let arguments = (ins Variadic<Index>:$runtimeDims,
-                       SI64ArrayElementsAttr:$dims, TypeAttr:$elementType);
+                       SI64ArrayElementsAttr:$fstRawShape, UI8Attr:$sndRawDType);
   let results = (outs MOP_TensorSpecType:$result);
-  let assemblyFormat = [{
-    $runtimeDims `[` custom<DenseIntArray>($dims, "64") `]`
-    custom<DTypeAttr>($elementType) attr-dict
-  }];
+  let assemblyFormat = [{ $runtimeDims attr-dict
+                          `:` custom<RawShapeAndDType>($fstRawShape, $sndRawDType) }];
   let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
-// SpecUnwrapOp
+// SpecCreateDynamicOp
 //===----------------------------------------------------------------------===//
 
-def SpecUnwrapOp : MOP_Op<"spec.unwrap", [
+def SpecCreateDynamicOp : MOP_Op<"spec.create.dyn", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Deconstructs the statically unknown dimensions in a tensor "
-                "spec.";
+  let summary = "Creates a tensor spec from a runtime DType and a mix of "
+                "runtime and static dimensions.";
   let description = [{
-    Returns the runtime value of each dimension in a tensor spec where the
-    dimensions is not known statically. It is valid for the spec to be fully
-    static, in which case no results are returned (and the op is useless!).
+    Constructs a tensor spec of statically known rank with element type taken
+    at runtime by a DType operand, and dimensions taken from either runtime
+    operands or statically known attributes. Operands must be given for each
+    unknown dimension in order. It is valid for all dimensions to be known
+    statically, in which case only an element type needs to be given.
+
+    Tensor specs are represented as M::TensorSpecs in the Modular runtime.
+
+    Example:
+    ```mlir
+    %dim0 : index
+    %dim1 : index
+    %dtype : !mop.dtype
+
+    %spec = mop.spec.create.dyn %dtype %dim0, %dim1 : !mop.spec<?x?x?>
+    %spec : !mop.spec<?x?x?>
+
+    %spec = mop.spec.create %dtype : !mop.spec<32x4x?>
+    %spec : !mop.spec<32x4x?>
+    ```
+  }];
+
+  // NOTE: The attribute effectively encodes the shape of the result's tensor
+  // spec type in a form understandable by BEF.
+  let arguments = (ins MOP_DTypeType:$runtimeDType, Variadic<Index>:$runtimeDims,
+                       SI64ArrayElementsAttr:$rawShape);
+  let results = (outs MOP_TensorSpecType:$result);
+  let assemblyFormat = [{ $runtimeDType $runtimeDims attr-dict
+                          `:` custom<RawShape>($rawShape) }];
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// SpecDimsDynamicOp
+//===----------------------------------------------------------------------===//
+
+def SpecDimsDynamicOp : MOP_Op<"spec.dims.dyn", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "Returns the runtime values of dimensions of tensor spec which "
+                "are statically unknown.";
+  let description = [{
+    Returns the actual runtime value of each dimension in a tensor spec where
+    that dimension is not known statically. It is valid for the spec to be fully
+    static, in which case no results are returned (and the op is a no-op).
 
     Example:
     ```mlir
     %spec : !mop.spec<?x?xf32>
-    %dim0, %dim1 = mop.spec.unwrap %spec [-1, -1] : !mop.spec<?x?xf32>
+    %dim0, %dim1 = mop.spec.dims.dyn %spec : !mop.spec<?x?xf32>
     %dim0, %dim1 : index, index
 
     %spec : !mop.spec<32x?xf32>
-    %dim = mop.spec.unwrap %spec [32, -1] : !mop.spec<32x?xf32>
+    %dim = mop.spec.dims.dyn %spec : !mop.spec<32x?xf32>
     %dim : index
 
     %spec : !mop.spec<32x4xf32>
-    mop.spec.unwrap %spec [32, 4] : !mop.spec<32x4xf32> // no-op
+    mop.spec.dims.dyn %spec : !mop.spec<32x4xf32> // no-op
     ```
   }];
 
-  let arguments = (ins MOP_TensorSpecType: $spec, SI64ArrayElementsAttr:$dims);
+  let arguments = (ins MOP_TensorSpecType: $spec, SI64ArrayElementsAttr:$rawShape);
   let results = (outs Variadic<Index>:$results);
   let assemblyFormat = [{
-    $spec `[` custom<DenseIntArray>($dims, "64") `]` attr-dict
-    `:` qualified(type($spec))
+    $spec attr-dict `:` custom<TensorSpecTypeWithRawShape>(type($spec), $rawShape)
   }];
   let hasVerifier = 1;
 }
@@ -307,7 +350,7 @@ def SpecSizeOp : MOP_Op<"spec.size"> {
   let description = [{
     Returns the number of bytes needed to represent the buffer backing a tensor
     of the given spec. Generally the spec's type will contain at least one
-    dynamic dimension.
+    unknown dimension and/or an unknown element type.
 
     Example:
     ```mlir
@@ -330,7 +373,7 @@ def SpecNumElemsOp : MOP_Op<"spec.num_elems"> {
   let summary = "Returns the number of elements in a tensor with given spec.";
   let description = [{
     Returns the number of elements in a tensor of the given spec. Generally the
-    spec's type will contain at least one dynamic dimension.
+    spec's type will contain at least one unknown dimension.
 
     Example:
     ```mlir
@@ -346,6 +389,29 @@ def SpecNumElemsOp : MOP_Op<"spec.num_elems"> {
 }
 
 //===----------------------------------------------------------------------===//
+// SpecDTypeOp
+//===----------------------------------------------------------------------===//
+
+def SpecDTypeOp : MOP_Op<"spec.dtype"> {
+  let summary = "Returns the DType of the given tensor spec.";
+  let description = [{
+    Returns the runtime DType of the given tensor spec. Generally the spec's
+    type will have an unknown element type.
+
+    Example:
+    ```mlir
+    %spec : !mop.spec<32x?xunk>
+    %dtype = mop.spec.dtype %spec : !mop.spec<32x?xunk>
+    %dtype : !mop.dtype
+    ```
+  }];
+
+  let arguments = (ins MOP_TensorSpecType: $spec);
+  let results = (outs MOP_DTypeType:$result);
+  let assemblyFormat = "$spec attr-dict `:` qualified(type($spec))";
+}
+
+//===----------------------------------------------------------------------===//
 // TensorWrapOp
 //===----------------------------------------------------------------------===//
 
@@ -355,7 +421,7 @@ def TensorWrapOp : MOP_Op<"tensor.wrap", [
                    "$_self.cast<TensorType>().getTensorSpec()">,
     TypesMatchWith<"buffer operand must be consistent with result tensor type",
                    "result", "buffer",
-                   "$_self.cast<TensorType>().getExpectedBufferType()">]> {
+                   "$_self.cast<TensorType>().getTensorSpec().getExpectedBufferType()">]> {
   let summary = "Constructs a tensor from a tensor spec and a buffer.";
   let description = [{
     Constructs a tensor from a given tensor spec and buffer. The

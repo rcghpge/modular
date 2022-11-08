@@ -15,8 +15,6 @@
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
 
-#include "./ParsingUtils.h"
-
 using namespace M;
 using namespace MOP;
 
