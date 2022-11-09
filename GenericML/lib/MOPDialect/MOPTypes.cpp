@@ -319,7 +319,7 @@ Optional<uint64_t> TensorSpecType::getSizeInBytes() const {
   Optional<DType> dtype = getDtype();
   if (!dtype)
     return {}; // unknown element type
-  Optional<size_t> numElems = getNumElements();
+  Optional<uint64_t> numElems = getNumElements();
   if (!numElems)
     return {}; // at least one unknown dimension
   ssize_t res = dtype->getSizeInBytes(*numElems);
