@@ -83,9 +83,9 @@ LogicalResult BufferConstantOp::verify() {
   // the attribute's size.
   BufferType bufferType = getResult().getType();
   if (!bufferType.getSize())
-    return emitOpError() << "requires the buffer type have a fixed size";
-  if (*bufferType.getSize() != value.getNumElements())
-    return emitOpError() << "requires the buffer type have a size matching the "
+    return emitOpError() << "expected the buffer type have a fixed size";
+  if (*bufferType.getSize() != static_cast<uint64_t>(value.getNumElements()))
+    return emitOpError() << "expected the buffer type have a size matching the "
                             "attribute size"
                          << " (" << *bufferType.getSize() << " vs "
                          << value.getNumElements() << ")";
@@ -124,24 +124,21 @@ Optional<uint64_t> BufferConstantOp::getAlign() {
 }
 
 //===----------------------------------------------------------------------===//
-// BufferCreateOp
+// BufferAllocOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult BufferCreateOp::verify() {
-  BufferType bufferType = getResult().getType();
-  const bool haveBufferSize = haveSize(bufferType.getSize());
+LogicalResult BufferAllocOp::verify() {
+  BufferType resultBufferType = getResult().getType();
+  BufferType impliedBufferType = BufferType::get(getContext(), getSize());
+  if (resultBufferType != impliedBufferType)
+    return emitOpError()
+           << "expected result buffer type to match type implied by operannds ("
+           << resultBufferType << " vs " << impliedBufferType << ").";
   const bool haveRuntimeSize = getRuntimeSize() != nullptr;
-  const bool haveStaticSize = haveSize(getSize());
+  const bool haveStaticSize = resultBufferType.getSize().has_value();
   if (haveRuntimeSize == haveStaticSize)
     return emitOpError()
            << "expected a runtime size argument or a size attribute.";
-  if (haveStaticSize != haveBufferSize)
-    return emitOpError() << "expected result type to have a size constraint if "
-                            "and only if a size attribute is given.";
-  if (haveStaticSize && getSize() != *bufferType.getSize())
-    return emitOpError()
-           << "expected result type size to match attribute size ("
-           << *bufferType.getSize() << " vs " << getSize() << ").";
   if (!isValidSize(getSize()))
     return emitOpError() << "expected size to be positive.";
   if (!isValidAlign(getAlign()))
@@ -150,41 +147,36 @@ LogicalResult BufferCreateOp::verify() {
 }
 
 /// Constructs the buffer type result from the given buffer type attribute.
-LogicalResult BufferCreateOp::inferReturnTypes(
+LogicalResult BufferAllocOp::inferReturnTypes(
     MLIRContext *context, Optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
   auto sizeAttr = dyn_cast_or_null<mlir::IntegerAttr>(
       attributes.get(getSizeAttrName(name)));
-  Optional<int64_t> size =
-      haveSize(sizeAttr) ? Optional<int64_t>(sizeAttr.getSInt()) : llvm::None;
-  inferredReturnTypes.emplace_back(BufferType::get(context, size));
+  inferredReturnTypes.emplace_back(BufferType::get(context, sizeAttr));
   return success();
 }
 
 //===----------------------------------------------------------------------===//
-// BufferRecreateOp
+// BufferReallocOp
 //===----------------------------------------------------------------------===//
 
-// Ideally BufferRecreateOp would just extend BufferCreateOp with the slot
+// Ideally BufferReallocOp would just extend BufferAllocOp with the slot
 // and output index attributes. Instead we have this code dup.
 
-LogicalResult BufferRecreateOp::verify() {
-  BufferType bufferType = getResult().getType();
-  const bool haveBufferSize = haveSize(bufferType.getSize());
+LogicalResult BufferReallocOp::verify() {
+  BufferType resultBufferType = getResult().getType();
+  BufferType impliedBufferType = BufferType::get(getContext(), getSize());
+  if (resultBufferType != impliedBufferType)
+    return emitOpError() << "expected result buffer type " << resultBufferType
+                         << " to match " << impliedBufferType
+                         << " given size argument";
   const bool haveRuntimeSize = getRuntimeSize() != nullptr;
-  const bool haveStaticSize = haveSize(getSize());
+  const bool haveStaticSize = resultBufferType.getSize().has_value();
   if (haveRuntimeSize == haveStaticSize)
     return emitOpError()
            << "expected a runtime size argument or a size attribute.";
-  if (haveStaticSize != haveBufferSize)
-    return emitOpError() << "expected result type to have a size constraint if "
-                            "and only if a size attribute is given.";
-  if (haveStaticSize && getSize() != *bufferType.getSize())
-    return emitOpError()
-           << "expected result type size to match attribute size ("
-           << *bufferType.getSize() << " vs " << getSize() << ").";
   if (!isValidSize(getSize()))
     return emitOpError() << "expected size to be positive.";
   if (!isValidAlign(getAlign()))
@@ -193,16 +185,14 @@ LogicalResult BufferRecreateOp::verify() {
 }
 
 /// Constructs the buffer type result from the given buffer type attribute.
-LogicalResult BufferRecreateOp::inferReturnTypes(
+LogicalResult BufferReallocOp::inferReturnTypes(
     MLIRContext *context, Optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
   auto sizeAttr = dyn_cast_or_null<mlir::IntegerAttr>(
       attributes.get(getSizeAttrName(name)));
-  Optional<int64_t> size =
-      haveSize(sizeAttr) ? Optional<int64_t>(sizeAttr.getSInt()) : llvm::None;
-  inferredReturnTypes.emplace_back(BufferType::get(context, size));
+  inferredReturnTypes.emplace_back(BufferType::get(context, sizeAttr));
   return success();
 }
 
@@ -258,9 +248,8 @@ LogicalResult SpecCreateOp::verify() {
            << ", but static dimensions and element type arguments "
               "suggest it should be "
            << impliedSpecType << ".";
-  if (static_cast<int64_t>(getRuntimeDims().size()) !=
-      impliedSpecType.getNumDynamicDims())
-    return emitOpError() << "requires " << actualSpecType.getNumDynamicDims()
+  if (getRuntimeDims().size() != impliedSpecType.getNumDynamicDims())
+    return emitOpError() << "expected " << actualSpecType.getNumDynamicDims()
                          << " dimension operands to match " << actualSpecType
                          << ", but given " << getRuntimeDims().size() << ".";
   return success();
@@ -307,7 +296,7 @@ static ParseResult parseRawShape(AsmParser &p, IntArrayElementsAttr &rawShape) {
 /// Prints a !mop.spec type, but represented in 'raw' attribute form.
 static void printRawShape(AsmPrinter &p, const SpecCreateDynamicOp &op,
                           IntArrayElementsAttr rawShape) {
-  p << TensorSpecType::get(rawShape, /*rawDType=*/{});
+  p << TensorSpecType::get(rawShape, /*rawDTypeOrNull=*/{});
 }
 
 LogicalResult SpecCreateDynamicOp::verify() {
@@ -321,9 +310,8 @@ LogicalResult SpecCreateDynamicOp::verify() {
     return emitOpError() << "expected result type is " << actualSpecType
                          << ", but static dimensions suggest it should be "
                          << impliedSpecType << ".";
-  if (static_cast<int64_t>(getRuntimeDims().size()) !=
-      impliedSpecType.getNumDynamicDims())
-    return emitOpError() << "requires " << actualSpecType.getNumDynamicDims()
+  if (getRuntimeDims().size() != impliedSpecType.getNumDynamicDims())
+    return emitOpError() << "expected " << actualSpecType.getNumDynamicDims()
                          << " dimension operands to match " << actualSpecType
                          << ", but given " << getRuntimeDims().size() << ".";
   return success();
@@ -338,7 +326,7 @@ LogicalResult SpecCreateDynamicOp::inferReturnTypes(
       dyn_cast<IntArrayElementsAttr>(attributes.get(getRawShapeAttrName(name)));
   assert(rawShapeAttr && "mismatched operand type");
   inferredReturnTypes.emplace_back(
-      TensorSpecType::get(rawShapeAttr, /*rawDType=*/{}));
+      TensorSpecType::get(rawShapeAttr, /*rawDTypeOrNull=*/{}));
   return success();
 }
 
@@ -377,8 +365,7 @@ LogicalResult SpecDimsDynamicOp::verify() {
                          << ", but static dimensions arguments "
                             "suggest it should be "
                          << impliedSpecType << ".";
-  if (static_cast<int64_t>(getResults().size()) !=
-      actualSpecType.getNumDynamicDims())
+  if (getResults().size() != actualSpecType.getNumDynamicDims())
     return emitOpError() << "expected " << actualSpecType.getNumDynamicDims()
                          << " dimension results to match the tensor spec "
                          << actualSpecType << ", but given "
@@ -393,7 +380,7 @@ LogicalResult SpecDimsDynamicOp::inferReturnTypes(
   assert(operands.size() == 1 && "mismatched operand arity");
   auto specType = dyn_cast<TensorSpecType>(operands[0].getType());
   assert(specType && "mismatched operand type");
-  for (int64_t i = 0, e = specType.getNumDynamicDims(); i < e; ++i)
+  for (size_t i = 0, e = specType.getNumDynamicDims(); i < e; ++i)
     inferredReturnTypes.emplace_back(IndexType::get(context));
   return success();
 }
@@ -417,38 +404,35 @@ LogicalResult SpecDimsDynamicOp::inferReturnTypes(
 // Nothing to implement.
 
 //===----------------------------------------------------------------------===//
-// TensorWrapOp
+// TensorCreateOp
 //===----------------------------------------------------------------------===//
 
 /// Checks the shape, buffer type and result tensor types are consistent.
-LogicalResult TensorWrapOp::verify() {
+LogicalResult TensorCreateOp::verify() {
   TensorSpecType tensorSpecType = getTensorSpec().getType();
-  BufferType bufferType = getBuffer().getType();
+  BufferType actualBufferType = getBuffer().getType();
+  BufferType expectedBufferType = tensorSpecType.getExpectedBufferType();
   TensorType tensorType = getResult().getType();
 
   if (tensorSpecType != tensorType.getTensorSpec())
-    return emitOpError() << "requires shape to match result tensor shape"
+    return emitOpError() << "expected shape to match result tensor shape"
                          << " (" << tensorSpecType << " vs "
                          << tensorType.getTensorSpec() << ")";
-  Optional<int64_t> staticSize = tensorType.getTensorSpec().getSizeInBytes();
-  if (staticSize.has_value() != bufferType.getSize().has_value())
-    return emitOpError() << "requires the buffer to be sized if and only if "
-                            "the tensor shape is fully static";
-  if (bufferType.getSize() && *staticSize != *bufferType.getSize())
+  if (actualBufferType != expectedBufferType)
     return emitOpError()
-           << "requires the buffer size to match the tensor size in bytes"
-           << " (" << *bufferType.getSize() << " vs " << *staticSize << ")";
+           << "expected buffer type to match type implied by tensor spec ("
+           << actualBufferType << " vs " << expectedBufferType << ").";
   return success();
 }
 
 //===----------------------------------------------------------------------===//
-// TensorUnwrapOp
+// TensorExtractOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult TensorUnwrapOp::verify() {
+LogicalResult TensorExtractOp::verify() {
   TensorType tensorType = getTensor().getType();
   if (tensorType.getTensorSpec() != getTensorSpecResult().getType())
-    return emitOpError() << "requires the result shape to match tensor's shape"
+    return emitOpError() << "expected the result shape to match tensor's shape"
                          << " (" << getTensorSpecResult().getType() << " vs "
                          << tensorType.getTensorSpec() << ")";
   BufferType impliedBufferType =
@@ -461,7 +445,7 @@ LogicalResult TensorUnwrapOp::verify() {
   return success();
 }
 
-LogicalResult TensorUnwrapOp::inferReturnTypes(
+LogicalResult TensorExtractOp::inferReturnTypes(
     MLIRContext *context, Optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {

@@ -23,26 +23,29 @@ include "GenericML/MOPDialect/MOPTypes.td"
 class MOP_Op<string mnemonic, list<Trait> traits = []> :
     Op<MOPDialect, mnemonic, traits>;
 
+// TODO(#4728): The syntax for slot indexes could be greatly improved, eg "#42".
+
 //===----------------------------------------------------------------------===//
 // BufferConstantOp
 //===----------------------------------------------------------------------===//
 
 def BufferConstantOp : MOP_Op<"buffer.constant",
                              [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Constructs a buffer whose data is aliased with the "
-                "`uint8_t` array in the given attribute.";
+  let summary = "Creates a buffer whose data is aliased with the bytes in the "
+                "given attribute.";
   let description = [{
-    Constructs a buffer whose byte array is aliased with the `uint8_t` array
+    Creates a buffer whose byte array is aliased with the byte array
     in the given attribute. The attribute must support contiguous iteration
-    over `uint8_t`. The attribute must agree with the buffer type's size and/or
-    alignment if given.
+    over `uint8_t`. The result buffer type will have a size matching the
+    attribute size.
 
-    Example valid attributes include `BufferAttr`, `DenseUI8ResourceElementsAttr`
-    and `DenseI8Array`. However note that `DenseI8Array` does not convey any
-    align constraint.
+    Example valid attributes include `AlignedBytesAttr` (in the M dialect),
+    `DenseUI8ResourceElementsAttr` and `DenseI8Array`. Any alignment specified
+    by the `AlignedBytesAttr` and `DenseUI8ResourceElementsAttr` attributes
+    will be preserved through to runtime.
 
-    Note that any align constraint of the argument is not propagated into the
-    result type.
+    The result buffer will 'borrow' the underlying data. In debug builds
+    the result buffer will also me marked 'immutable'.
 
     Example:
     ```mlir
@@ -69,96 +72,138 @@ def BufferConstantOp : MOP_Op<"buffer.constant",
 }
 
 //===----------------------------------------------------------------------===//
-// BufferCreateOp
+// BufferAllocOp
 //===----------------------------------------------------------------------===//
 
-def BufferCreateOp : MOP_Op<"buffer.create", [
+def BufferAllocOp : MOP_Op<"buffer.alloc", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Allocates a buffer of given runtime or static size and "
-                "optional alignment.";
+  let summary = "Allocates an uninitialized buffer of given runtime or static "
+                "size and optional alignment.";
   let description = [{
-    Allocates a buffer whose byte array is of a given size. The size can be
-    supplied either as a runtime argument or as an attribute. Any align
-    constraint must be supplied as an attribute.
+    Allocates an uninitialized buffer whose byte array is of a given size. The
+    size can be supplied either as a runtime argument or as an attribute. Any
+    alignment constraint must be supplied as an attribute.
 
     Note that any align constraint is not propagated into the result type.
+
+    The result buffer will be 'owning', and the underlying memory will be
+    reclaimed once the last reference to the result goes out of scope. In
+    debug builds the buffer will also be marked 'mutable'.
 
     Example:
     ```mlir
     %ctxt : !mop.context
     %size : index
 
-    %buf = mop.buffer.create %ctxt %size {align=8:ui64}
+    %buf = mop.buffer.alloc %ctxt %size {align=8:ui64}
     %buf : !mop.buffer<>  // at least 8 byte aligned in storage
 
-    %buf = mop.buffer.create %ctxt {size=64:si64}
+    %buf = mop.buffer.alloc %ctxt {size=64:ui64}
     %buf : !mop.buffer<64>  // no specific alignment in storage
 
-    %buf = mop.buffer.create %ctxt {size=64:si64, align=16:ui64}
+    %buf = mop.buffer.alloc %ctxt {size=64:ui64, align=16:ui64}
     %buf : !mop.buffer<64>  // at least 16 byte aligned in storage
     ```
   }];
 
   // TODO(#4301): Would be nicer to use OptionalAttr for $size and $align but
   // MLIRToBEF cannot handle that.
-  // TODO(#4703): Consider using unsigned size and dropping dependency on ShapedType::kDynamicSize for allowing dynamically allocated buffer lengths.
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
   let arguments = (ins MOP_ContextType:$theContext, Optional<Index>:$runtimeSize,
-                       DefaultValuedAttr<SI64Attr, "ShapedType::kDynamicSize">:$size,
-                       DefaultValuedAttr<UI64Attr, "UINT64_MAX">:$align);
+                       DefaultValuedAttr<UI64Attr, "UINT64_MAX">:$align,
+                       DefaultValuedAttr<UI64Attr, "UINT64_MAX">:$size);
   let results = (outs MOP_BufferType:$result);
   let assemblyFormat = "$theContext ($runtimeSize^)? attr-dict";
   let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
-// BufferRecreateOp
+// BufferReallocOp
 //===----------------------------------------------------------------------===//
 
-def BufferRecreateOp : MOP_Op<"buffer.recreate", [
+def BufferReallocOp : MOP_Op<"buffer.realloc", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Allocates or reuses a buffer of given runtime or static size "
-                "and optional alignment, and caches it within in a primitive "
-                "context.";
+  let summary = "Allocates, reallocates or reuses a buffer of given runtime or "
+                "static size and optional alignment.";
   let description = [{
-    The operation has access to a buffer cached at the given output index in
-    the primitive context at the given slot in the global context. If a buffer
-    of matching size already exists then it is returned directly. Otherwise a
-    new buffer is allocated and the cache is updated. Chain is needed to
-    guarantee the construction of the primitive context at the given slot.
+    This operation has access to a buffer cache entry in the context given
+    by the slot and output indexes.
 
-    Note that any align constraint on the buffer type is ignored if the
-    cached buffer is reused. In particular, in:
-    ```mlir
-       %buf1 = mop.buffer.recreate %ch %ctxt %size { align=8, slot=2, output=0 }
-       %buf2 = mop.buffer.recreate %ch %ctxt %size { align=16, slot=2, output=0 }
-    ```
-    the second recreate will never re-allocate the cached buffer from the first.
+    If a buffer of matching size already exists in the cache then it is
+    returned directly. Otherwise a new buffer is allocated and the cache is
+    updated, deleting any previously cached buffer.
 
     If the size is known statically then the runtime size operand does not need
-    to be supplied as an operand. In this case the 'recreate' is simply
-    pre-allocating a buffer of statically known size.
+    to be supplied as an operand. This can be used to pre-allocate a buffer
+    of statically known size.
+
+    This op accepts a chain argument so that access to the slot state can
+    be guaranteed to come after construction and initialization of the
+    state slot at the slot index.
+
+    Though the cache entry will be an 'owning' reference to the buffer,
+    the result of this op is always a 'borrowing' reference to the same
+    underlying memory. (In debug builds both refs will also be marked
+    'mutable'). The compiler must respect the following rules to avoid
+    use-after-free errors and mutation-via-aliases at runtime:
+     1. For all control flow paths, at most one mop.buffer.realloc can
+        execute for the same slot and output indexes.
+        This rule is easy to follow since no two operations in the graph should
+        share the same slot, and output indexes should correspond to op result
+        indexes.
+     2. The lifetime of the context must exceed the lifetime of the returned
+        buffer. This rule is easy to follow since the context is held by the
+        Modular runtime M::ExecutableModel, which must outlive both all calls
+        to execute and all uses of aliasing results of execute.
+
+    Note that though the buffer will be cached, the contents of the buffer need
+    not be preserved between calls to `mop.buffer.realloc` in successive
+    invocations of the model 'execute' body. This rule allows the runtime
+    to avoid some buffer copies when extracting the buffer from a tensor
+    which itself was created using a cached buffer. In other words, the cache
+    is designed to avoid re-allocating buffers rather than re-calculating the
+    contents of buffers.
+
+    Note that alignment constraints are ignored when deciding if a cached buffer
+    may be reused. In particular, in:
+    ```mlir
+       init {
+         ...
+         %buf1 = mop.buffer.realloc %ch %ctxt { size=48, align=8, slot=2, output=0 }
+       }
+       execute (...) -> ... {
+         ...
+         %buf2 = mop.buffer.realloc %ch %ctxt { size=48, align=16, slot=2, output=0 }
+       }
+    ```
+    the second realloc will always reuse the buffer from the first realloc.
 
     Example:
     ```mlir
-    %ch : !bef.chain
     %ctxt : !mop.context
     %size : index
+    %ch : !bef.chain
 
-    %buf = mop.buffer.recreate %ch %ctxt %size { align=8:ui64, slot=42, output=2 }
+    %buf = mop.buffer.realloc %ch %ctxt %size { align=8:ui64, slot=42, output=2 }
     %buf : !mop.buffer      // at least 8 byte aligned in storage
 
-    %buf = mop.buffer.recreate %ch %ctxt { size=64:ui64, slot=42, output=2 }
+    %buf = mop.buffer.realloc %ch %ctxt { size=64:ui64, slot=42, output=2 }
     %buf : !mop.buffer<64>  // no specific alignment in storage
     ```
   }];
 
   // TODO(#4301): Would be nicer to use OptionalAttr for $size and $align but
   // MLIRToBEF cannot handle that.
-  let arguments = (ins ChainType:$ch, MOP_ContextType:$theContext,
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins ChainType:$ch,
+                       MOP_ContextType:$theContext,
                        Optional<Index>:$runtimeSize,
-                       DefaultValuedAttr<SI64Attr, "ShapedType::kDynamicSize">:$size,
                        DefaultValuedAttr<UI64Attr, "UINT64_MAX">:$align,
-                       UI64Attr:$slot, UI64Attr:$output);
+                       UI64Attr:$output,
+                       DefaultValuedAttr<UI64Attr, "UINT64_MAX">:$size,
+                       UI64Attr:$slot);
   let results = (outs MOP_BufferType:$result);
   let assemblyFormat = "$ch $theContext ($runtimeSize^)? attr-dict";
   let hasVerifier = 1;
@@ -169,16 +214,9 @@ def BufferRecreateOp : MOP_Op<"buffer.recreate", [
 //===----------------------------------------------------------------------===//
 
 def ContextCreateOp : MOP_Op<"context.create"> {
-  let summary = "Constructs a context with room for primitive operation "
-                "contexts.";
+  let summary = "Creates a context with given number of state slots.";
   let description = [{
-    Constructs a context with the given number of slots for primitive operation
-    contexts. Generally a computational operator, such as 'lib.foo', will be
-    backed by two primitives, such as 'libp.foo.setup' and 'libp.foo'. The
-    former can be called by the model's 'init' to allocate and initialize
-    a primitive operation context for each call to 'lib.foo' in the model.
-    The latter can retrieve that primitive operation context during the model's
-    'execute'.
+    Creates a context with the given number of 'state slots'.
 
     Example:
     ```mlir
@@ -193,30 +231,32 @@ def ContextCreateOp : MOP_Op<"context.create"> {
 }
 
 //===----------------------------------------------------------------------===//
-// PrimContextCreateOp
+// StateSlotCreateOp
 //===----------------------------------------------------------------------===//
 
-def PrimContextCreateOp : MOP_Op<"primcontext.create"> {
-  let summary = "Constructs a primitive context into the global mop context.";
+def StateSlotCreateOp : MOP_Op<"state_slot.create"> {
+  let summary = "Creates a default state slot within the context at the "
+                "given slot index.";
   let description = [{
-    Constructs a default primitive context with the given number of outputs
-    into the given slot of the global mop context. A buffer corresponding to
-    each output value can be cached into the primitive context. The op returns
-    a chain indicating when it have completed execution.
+    Creates a default state slot at the given slot index with room for the
+    given number of cached buffers (which generally represent operator
+    outputs). The op returns a chain indicating when it has completed execution.
 
     Example:
     ```mlir
     %ctxt : !mop.context
 
-    %ch = mop.primcontext.create %ctxt 0 1
+    %ch = mop.state_slot.create %ctxt 1 { slot = 0 }
     %ch : !bef.chain
     ```
   }];
 
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names. Thankfully this matches our desired argument order.
   let arguments = (ins MOP_ContextType:$theContext, UI64Attr:$numOutputs,
                        UI64Attr: $slot);
   let results = (outs ChainType:$result);
-  let assemblyFormat = "$theContext $slot $numOutputs attr-dict";
+  let assemblyFormat = "$theContext $numOutputs attr-dict";
 }
 
 //===----------------------------------------------------------------------===//
@@ -228,7 +268,7 @@ def SpecCreateOp : MOP_Op<"spec.create", [
   let summary = "Creates a tensor spec from a mix of runtime and static "
                 "dimensions and a statically known dtype.";
   let description = [{
-    Constructs a tensor spec of statically known rank with dimensions taken
+    Creates a tensor spec of statically known rank with dimensions taken
     from either runtime operands or statically known attributes. The element
     type must be known statically. Operands must be given for each unknown
     dimension in order. It is valid for all dimensions to be known statically,
@@ -249,10 +289,8 @@ def SpecCreateOp : MOP_Op<"spec.create", [
     ```
   }];
 
-  // CAUTION: We include 'fst' and 'snd' prefixes in the attribute names to
-  // ensure their canonical order (ie alphabetical, as used by the primitive's
-  // C++ argument order) matches their declared order (as seen in the
-  // documentation) and their syntatic order (as seen is mlir asm).
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names. We include the 'fst' and 'snd' prefixes to force this.
   // NOTE: The two attributes effectively encode the result's tensor spec type
   // in a form understandable by BEF.
   let arguments = (ins Variadic<Index>:$runtimeDims,
@@ -272,7 +310,7 @@ def SpecCreateDynamicOp : MOP_Op<"spec.create.dyn", [
   let summary = "Creates a tensor spec from a runtime DType and a mix of "
                 "runtime and static dimensions.";
   let description = [{
-    Constructs a tensor spec of statically known rank with element type taken
+    Creates a tensor spec of statically known rank with element type taken
     at runtime by a DType operand, and dimensions taken from either runtime
     operands or statically known attributes. Operands must be given for each
     unknown dimension in order. It is valid for all dimensions to be known
@@ -310,8 +348,8 @@ def SpecCreateDynamicOp : MOP_Op<"spec.create.dyn", [
 
 def SpecDimsDynamicOp : MOP_Op<"spec.dims.dyn", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Returns the runtime values of dimensions of tensor spec which "
-                "are statically unknown.";
+  let summary = "Returns the runtime values of the dimensions of tensor spec "
+                "which are not statically known.";
   let description = [{
     Returns the actual runtime value of each dimension in a tensor spec where
     that dimension is not known statically. It is valid for the spec to be fully
@@ -345,12 +383,13 @@ def SpecDimsDynamicOp : MOP_Op<"spec.dims.dyn", [
 //===----------------------------------------------------------------------===//
 
 def SpecSizeOp : MOP_Op<"spec.size"> {
-  let summary = "Returns the byte size of a buffer for a tensor with given "
-                "spec.";
+  let summary = "Returns the byte size needed for a buffer for a tensor with "
+                "the given tensor spec.";
   let description = [{
     Returns the number of bytes needed to represent the buffer backing a tensor
-    of the given spec. Generally the spec's type will contain at least one
-    unknown dimension and/or an unknown element type.
+    of the given tensor spec. Generally the spec's type will contain at least
+    one unknown dimension and/or an unknown element type (otherwise the size
+    is already known).
 
     Example:
     ```mlir
@@ -370,10 +409,12 @@ def SpecSizeOp : MOP_Op<"spec.size"> {
 //===----------------------------------------------------------------------===//
 
 def SpecNumElemsOp : MOP_Op<"spec.num_elems"> {
-  let summary = "Returns the number of elements in a tensor with given spec.";
+  let summary = "Returns the number of elements in a tensor with the given "
+                "tensor spec.";
   let description = [{
-    Returns the number of elements in a tensor of the given spec. Generally the
-    spec's type will contain at least one unknown dimension.
+    Returns the number of elements in a tensor of the given tensor spec.
+    Generally the spec's type will contain at least one unknown dimension
+    (otherwise the number of elements is already known).
 
     Example:
     ```mlir
@@ -396,7 +437,8 @@ def SpecDTypeOp : MOP_Op<"spec.dtype"> {
   let summary = "Returns the DType of the given tensor spec.";
   let description = [{
     Returns the runtime DType of the given tensor spec. Generally the spec's
-    type will have an unknown element type.
+    type will have an unknown element type (otherwise the result is already
+    known).
 
     Example:
     ```mlir
@@ -412,21 +454,21 @@ def SpecDTypeOp : MOP_Op<"spec.dtype"> {
 }
 
 //===----------------------------------------------------------------------===//
-// TensorWrapOp
+// TensorCreateOp
 //===----------------------------------------------------------------------===//
 
-def TensorWrapOp : MOP_Op<"tensor.wrap", [
-    TypesMatchWith<"spec operand must match result tensor type spec",
+def TensorCreateOp : MOP_Op<"tensor.create", [
+    TypesMatchWith<"tensorSpec operand must match result tensor type spec",
                    "result", "tensorSpec",
                    "$_self.cast<TensorType>().getTensorSpec()">,
     TypesMatchWith<"buffer operand must be consistent with result tensor type",
                    "result", "buffer",
                    "$_self.cast<TensorType>().getTensorSpec().getExpectedBufferType()">]> {
-  let summary = "Constructs a tensor from a tensor spec and a buffer.";
+  let summary = "Creates a tensor from a tensor spec and a buffer.";
   let description = [{
-    Constructs a tensor from a given tensor spec and buffer. The
-    construction is delayed until the given chain is ready, since
-    the buffer is typically written to as a side-effect of an operation.
+    Creates a tensor from a given tensor spec and a buffer. The construction
+    is delayed until the given chain is ready, since the buffer is typically
+    written into as a side-effect of an operation.
 
     Example:
     ```mlir
@@ -434,13 +476,40 @@ def TensorWrapOp : MOP_Op<"tensor.wrap", [
 
     %spec : !mop.spec<4x16xf32>
     %buf : !mop.buffer<256>
-    %tensor = mop.tensor.wrap %ch %spec %buf : !mop.tensor<4x16xf32>
+    %tensor = mop.tensor.create %ch %spec %buf : !mop.tensor<4x16xf32>
     %tensor : !mop.tensor<4x16xf32>
 
     %spec : !mop.spec<?x16xf32>
-    %buf : !mop.buffer<>
-    %tensor = mop.tensor.wrap %ch %spec %buf : !mop.tensor<?x16xf32>
+    %buf : !mop.buffer
+    %tensor = mop.tensor.create %ch %spec %buf : !mop.tensor<?x16xf32>
     %tensor : !mop.tensor<?x16xf32>
+    ```
+
+    Tensors are immutable, but buffers are mutable. This means the
+    operand buffer will be copied into the tensor if it could still
+    be mutated, ie if there are multiple outstanding consumers of the
+    buffer's SSA value:
+    ```mlir
+    %buf1 = mop.buffer.alloc ...
+    %ten1 = mop.tensor.create %ch ... %buf1 // copy
+    ... other users of %buf1 ...
+
+    %buf2 = mop.buffer.alloc ...
+    %ten2 = mop.tensor.create %ch ... %buf2 // move
+    ... no other users of %buf2 ...
+    ```
+
+    If the buffer is the result of a `mop.buffer.realloc` then it
+    will be 'borrowing' rather than 'owning'. However the same rules
+    apply:
+    ```mlir
+    %buf3 = mop.buffer.realloc ...
+    %ten3 = mop.tensor.create %ch ... %buf3 // copy (as 'owning')
+    ... other users of %buf3 ...
+
+    %buf4 = mop.buffer.realloc ...
+    %ten4 = mop.tensor.create %ch ... %buf4 // move (as 'borrowing')
+    ... no other users of %buf4 ...
     ```
   }];
 
@@ -453,12 +522,12 @@ def TensorWrapOp : MOP_Op<"tensor.wrap", [
 }
 
 //===----------------------------------------------------------------------===//
-// TensorUnwrapOp
+// TensorExtractOp
 //===----------------------------------------------------------------------===//
 
-def TensorUnwrapOp : MOP_Op<"tensor.unwrap", [
+def TensorExtractOp : MOP_Op<"tensor.extract", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Deconstructs a tensor into its tensor spec and buffer.";
+  let summary = "Extracts the tensor spec and buffer of a tensor.";
   let description = [{
     Returns the tensor spec and buffer components of a tensor. The resulting
     buffer will have a statically known size if and only if the tensor spec is
@@ -467,15 +536,47 @@ def TensorUnwrapOp : MOP_Op<"tensor.unwrap", [
     Example:
     ```mlir
     %tensor : !mop.tensor<8x64xf32>
-    %spec, %buf = mop.tensor.unwrap %tensor : !mop.tensor<8x64xf32>
+    %spec, %buf = mop.tensor.extract %tensor : !mop.tensor<8x64xf32>
     %spec : !mop.spec<8x64>
     %buf : !mop.buffer<2048>
 
     %tensor : !mop.tensor<?x64xf32>
-    %spec, %buf = mop.tensor.unwrap %tensor : !mop.tensor<?x64xf32>
+    %spec, %buf = mop.tensor.extract %tensor : !mop.tensor<?x64xf32>
     %spec : !mop.spec<?x64>
     %buf : !mop.buffer<>
     ```
+
+    Tensors are immutable, but buffers are mutable. This means the
+    returned buffer will be a copy of the tensor buffer if the tensor
+    operand could still be observed, ie if if there are multiple outstanding
+    consumers of the tensor's SSA value:
+    ```mlir
+    %ten1 = mop.tensor.create ...
+    %spec1, %buf1 = mop.tensor.extract %ten1 // copy
+    ... other users of %ten1 ...
+
+    %ten2 = mop.tensor.create ...
+    %spec2, %buf2 = mop.tensor.extract %ten2 // move
+    ... no other users of %ten2 ...
+    ```
+
+    If the tensor's buffer was the result of a `mop.buffer.realloc`
+    then it will be 'borrowing' rather than 'owning'. However the
+    same rules apply:
+    ```mlir
+    %buf3 = mop.buffer.realloc ...
+    %ten3 = mop.tensor.create %buf3
+    %spec4, %buf4 = mop.tensor.extract %ten3  // copy (as 'owning')
+    ... other users of %ten3 ...
+
+    %buf5 = mop.buffer.realloc ...  // (*)
+    %ten5 = mop.tensor.create %buf5
+    %spec6, %buf6 = mop.tensor.extract %ten5  // move (as 'borrowing')
+    ... no other users of %ten5 ...
+    ```
+    Note that any mutation of %buf6 will be applied to the cached
+    buffer in the context, as established by (*). However, this is
+    acceptable due to the rules of `mop.buffer.realloc`.
   }];
 
   let arguments = (ins MOP_TensorType: $tensor);

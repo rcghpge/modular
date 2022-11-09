@@ -29,10 +29,46 @@ using namespace MOP;
 
 /// Verifies the buffer size and align constraints are valid.
 LogicalResult BufferType::verify(function_ref<InFlightDiagnostic()> emitError,
-                                 Optional<int64_t> size) {
+                                 Optional<uint64_t> size) {
   if (!isValidSize(size))
     return emitError() << "buffer size must be positive.";
   return success();
+}
+
+BufferType BufferType::get(MLIRContext *context, uint64_t rawSize) {
+  Optional<uint64_t> size =
+      rawSize == kMissingSizeOrAlign ? Optional<uint64_t>() : rawSize;
+  return BufferType::get(context, size);
+}
+
+BufferType BufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
+                                  MLIRContext *context, uint64_t rawSize) {
+  return BufferType::get(context, rawSize);
+}
+
+BufferType BufferType::get(MLIRContext *context, IntegerAttr rawSizeOrNull) {
+  Optional<uint64_t> size;
+  if (rawSizeOrNull) {
+    uint64_t value = rawSizeOrNull.getUInt();
+    if (value != kMissingSizeOrAlign)
+      size = value;
+    // else: max value denotes unknown size.
+  }
+  // else: null denotes unknown size.
+  return BufferType::get(context, size);
+}
+
+BufferType BufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
+                                  MLIRContext *context,
+                                  IntegerAttr rawSizeOrNull) {
+  return BufferType::get(context, rawSizeOrNull);
+}
+
+IntegerAttr BufferType::getRawSize() const {
+  Type ui64 = IntegerType::get(getContext(), 64, IntegerType::Unsigned);
+  uint64_t sizeOrMax = getSize() ? *getSize() : kMissingSizeOrAlign;
+  APInt value(64, sizeOrMax, /*isSigned=*/false);
+  return IntegerAttr::get(ui64, value);
 }
 
 /// Implements ShapedType::cloneWith
@@ -258,34 +294,38 @@ TensorSpecType::getChecked(function_ref<::mlir::InFlightDiagnostic()> emitError,
 
 size_t TensorSpecType::getRank() const { return getShape().size(); }
 
-int64_t TensorSpecType::getNumDynamicDims() const {
-  return llvm::count(getShape(), ShapedType::kDynamicSize);
+size_t TensorSpecType::getNumDynamicDims() const {
+  return static_cast<size_t>(llvm::count(getShape(), ShapedType::kDynamicSize));
 }
 
-Optional<int64_t> TensorSpecType::operator[](size_t i) const {
+Optional<uint64_t> TensorSpecType::operator[](size_t i) const {
   assert(i < getShape().size() && "shape index out of range");
   int64_t dim = getShape()[i];
-  return dim == ShapedType::kDynamicSize ? Optional<int64_t>() : dim;
+  return dim == ShapedType::kDynamicSize ? Optional<uint64_t>()
+                                         : static_cast<uint64_t>(dim);
 }
 
-Optional<int64_t> TensorSpecType::getNumElements() const {
-  int64_t prod = 1;
+Optional<uint64_t> TensorSpecType::getNumElements() const {
+  uint64_t prod = 1;
   for (auto dim : getShape()) {
     if (dim == ShapedType::kDynamicSize)
       return {}; // unknown dimension
-    prod *= dim;
+    prod *= static_cast<size_t>(dim);
   }
   return prod;
 }
 
-Optional<int64_t> TensorSpecType::getSizeInBytes() const {
+Optional<uint64_t> TensorSpecType::getSizeInBytes() const {
   Optional<DType> dtype = getDtype();
   if (!dtype)
     return {}; // unknown element type
-  Optional<int64_t> numElems = getNumElements();
+  Optional<size_t> numElems = getNumElements();
   if (!numElems)
     return {}; // at least one unknown dimension
-  return dtype->getSizeInBytes(*numElems);
+  ssize_t res = dtype->getSizeInBytes(*numElems);
+  if (res < 0)
+    return {}; // overflow
+  return static_cast<uint64_t>(res);
 }
 
 /// ShapedTypeInterface: Returns true since statically ranked.
@@ -315,7 +355,7 @@ Type TensorSpecType::getElementType() const {
 IntArrayElementsAttr TensorSpecType::getRawShape() const {
   Type si64 = IntegerType::get(getContext(), 64, IntegerType::Signed);
   SmallVector<APInt> dims;
-  for (uint64_t dim : getShape())
+  for (int64_t dim : getShape())
     dims.emplace_back(si64.getIntOrFloatBitWidth(), dim,
                       si64.isSignedInteger());
   return IntArrayElementsAttr::get(
@@ -413,8 +453,12 @@ const int64_t BufferType::unknownSize = ShapedType::kDynamicSize;
 
 /// Implements ShapedType::getShape
 ArrayRef<int64_t> BufferType::getShape() const {
-  Optional<int64_t> &size = getImpl()->size;
-  if (size)
-    return ArrayRef<int64_t>(&size.value(), 1);
-  return ArrayRef<int64_t>(&unknownSize, 1);
+  Optional<uint64_t> &size = getImpl()->size;
+  if (!size)
+    return ArrayRef<int64_t>(&unknownSize, 1);
+  assert(*size <= static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) &&
+         "buffer size is too large to represent as an int64_t as required by "
+         "ShapedType");
+  // We'll just reinterpret the uint64_t size as an int64_t.
+  return ArrayRef<int64_t>(reinterpret_cast<const int64_t *>(&size.value()), 1);
 }

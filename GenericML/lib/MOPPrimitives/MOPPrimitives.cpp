@@ -20,22 +20,26 @@ using namespace M::LLCL;
 /// the -1 literal is used ubiquitously.
 constexpr int64_t kDynamicSize = -1;
 
+/// Denotes a missing size or alignment attribute value.
+constexpr uint64_t kMissingSizeOrAlign = std::numeric_limits<uint64_t>::max();
+
 static ErrorOr<size_t> getSize(const SmallVector<AnyAsyncValueRef> &dynamicSize,
-                               const int64_t staticSize) {
+                               const uint64_t staticSize) {
   if (dynamicSize.size() > 1)
     return Error("unexpected argument provided");
 
   bool hasDynamicSize = !dynamicSize.empty();
-  bool hasStaticSize = (staticSize != mlir::ShapedType::kDynamicSize);
+  bool hasStaticSize = (staticSize != kMissingSizeOrAlign);
   if (hasDynamicSize == hasStaticSize)
     return Error("expected a runtime size argument or a size attribute");
 
-  return hasDynamicSize ? dynamicSize[0]->get<size_t>() : staticSize;
+  return hasDynamicSize ? dynamicSize[0]->get<size_t>()
+                        : static_cast<size_t>(staticSize);
 }
 
 // TODO(#4705): Consolidate utility functions in MOPPrimitives and MOPDialect.
 Optional<size_t> getAlign(const uint64_t align) {
-  if (align != UINT64_MAX)
+  if (align != kMissingSizeOrAlign)
     return align;
   return None;
 }
@@ -58,16 +62,16 @@ static void mop_buffer_constant(Result<RCBufferRef> outBuffer,
 }
 
 //===----------------------------------------------------------------------===//
-// mop.buffer.create
+// mop.buffer.alloc
 //===----------------------------------------------------------------------===//
 
 /// Fulfills the result with the RCBuffer. The size can be provided at run time
 /// with the async value or at compile time as an attribute. Alignment can be
 /// given as an attribute.
-static void mop_buffer_create(MOP::Context &ctx, RemainingArguments args,
-                              Result<RCBufferRef> outBuffer,
-                              BEFAttr<uint64_t> align, BEFAttr<int64_t> size,
-                              Runtime &runtime) {
+static void mop_buffer_alloc(MOP::Context &ctx, RemainingArguments args,
+                             Result<RCBufferRef> outBuffer,
+                             BEFAttr<uint64_t> align, BEFAttr<uint64_t> size,
+                             Runtime &runtime) {
   ErrorOr<size_t> sizeOr = getSize(args.takeAsVector(), *size);
   if (sizeOr.isError())
     outBuffer.setToError(sizeOr.takeError());
@@ -80,19 +84,19 @@ static void mop_buffer_create(MOP::Context &ctx, RemainingArguments args,
 }
 
 //===----------------------------------------------------------------------===//
-// mop.buffer.recreate
+// mop.buffer.realloc
 //===----------------------------------------------------------------------===//
 
 /// Fulfills the result with the RCBuffer. The RCBuffer can be the cached one
 /// from the given (slot, output). If cache misses, allocates a new RCBuffer,
 /// cache it, and fulfills the result with it. The size of the buffer can be
 /// given at either run time or compile time.
-static void mop_buffer_recreate(Chain chain, MOP::Context &ctx,
-                                RemainingArguments args,
-                                Result<RCBufferRef> outBuffer,
-                                BEFAttr<uint64_t> align,
-                                BEFAttr<uint64_t> output, BEFAttr<int64_t> size,
-                                BEFAttr<uint64_t> slot, Runtime &runtime) {
+static void mop_buffer_realloc(Chain chain, MOP::Context &ctx,
+                               RemainingArguments args,
+                               Result<RCBufferRef> outBuffer,
+                               BEFAttr<uint64_t> align,
+                               BEFAttr<uint64_t> output, BEFAttr<uint64_t> size,
+                               BEFAttr<uint64_t> slot, Runtime &runtime) {
   ErrorOr<size_t> sizeOr = getSize(args.takeAsVector(), *size);
   if (sizeOr.isError())
     outBuffer.setToError(sizeOr.takeError());
@@ -118,14 +122,14 @@ static void mop_context_create(Result<MOP::Context> result,
 }
 
 //===----------------------------------------------------------------------===//
-// mop.primcontext.create
+// mop.state_slot.create
 //===----------------------------------------------------------------------===//
 
 /// Constructs the default prim context with the given outputs under the given
 /// slot in the mop context.
-static Chain mop_primcontext_create(MOP::Context &ctx,
-                                    BEFAttr<uint64_t> numOutputs,
-                                    BEFAttr<uint64_t> slot) {
+static Chain mop_state_slot_create(MOP::Context &ctx,
+                                   BEFAttr<uint64_t> numOutputs,
+                                   BEFAttr<uint64_t> slot) {
   MOP::AnyGenericPrimContext::registerFramework<MOP::DefaultPrimContext>();
   ctx.emplacePrimContext<MOP::DefaultPrimContext>(*slot, *numOutputs);
   return {};
@@ -222,25 +226,25 @@ static void mop_spec_dtype(TensorSpec tensorSpec, Result<DType> result) {
 }
 
 //===----------------------------------------------------------------------===//
-// mop.tensor.wrap
+// mop.tensor.create
 //===----------------------------------------------------------------------===//
 
 /// Fulfills the outTensor by creating a tensor from the given tensor spec and
 /// the buffer.
-static void mop_tensor_wrap(Chain inChain, TensorSpec tensorSpec,
-                            RCBufferRef &buffer, Result<Tensor> outTensor,
-                            Runtime &runtime) {
+static void mop_tensor_create(Chain inChain, TensorSpec tensorSpec,
+                              RCBufferRef &buffer, Result<Tensor> outTensor,
+                              Runtime &runtime) {
   outTensor.emplace(Tensor::get(buffer.copy(), tensorSpec, runtime));
 }
 
 //===----------------------------------------------------------------------===//
-// mop.tensor.unwrap
+// mop.tensor.extract
 //===----------------------------------------------------------------------===//
 
 /// fulfills the outSpec and outBuffer with the corresponding spec/buffer from
 /// the input tensor.
-static void mop_tensor_unwrap(Tensor &tensor, Result<TensorSpec> outSpec,
-                              Result<RCBufferRef> outBuffer) {
+static void mop_tensor_extract(Tensor &tensor, Result<TensorSpec> outSpec,
+                               Result<RCBufferRef> outBuffer) {
   outSpec.emplace(tensor.getSpec());
   outBuffer.emplace(tensor.getBuffer());
 }
@@ -251,16 +255,16 @@ static void mop_tensor_unwrap(Tensor &tensor, Result<TensorSpec> outSpec,
 
 void M::registerMOPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mop.buffer.constant", mop_buffer_constant);
-  ADD_PRIMITIVE(registry, "mop.buffer.create", mop_buffer_create);
-  ADD_PRIMITIVE(registry, "mop.buffer.recreate", mop_buffer_recreate);
+  ADD_PRIMITIVE(registry, "mop.buffer.alloc", mop_buffer_alloc);
+  ADD_PRIMITIVE(registry, "mop.buffer.realloc", mop_buffer_realloc);
   ADD_PRIMITIVE(registry, "mop.context.create", mop_context_create);
-  ADD_PRIMITIVE(registry, "mop.primcontext.create", mop_primcontext_create);
+  ADD_PRIMITIVE(registry, "mop.state_slot.create", mop_state_slot_create);
   ADD_PRIMITIVE(registry, "mop.spec.create", mop_spec_create);
   ADD_PRIMITIVE(registry, "mop.spec.create.dyn", mop_spec_create_dyn);
   ADD_PRIMITIVE(registry, "mop.spec.dims.dyn", mop_spec_dims_dyn);
   ADD_PRIMITIVE(registry, "mop.spec.size", mop_spec_size);
   ADD_PRIMITIVE(registry, "mop.spec.num_elems", mop_spec_num_elems);
   ADD_PRIMITIVE(registry, "mop.spec.dtype", mop_spec_dtype);
-  ADD_PRIMITIVE(registry, "mop.tensor.wrap", mop_tensor_wrap);
-  ADD_PRIMITIVE(registry, "mop.tensor.unwrap", mop_tensor_unwrap);
+  ADD_PRIMITIVE(registry, "mop.tensor.create", mop_tensor_create);
+  ADD_PRIMITIVE(registry, "mop.tensor.extract", mop_tensor_extract);
 }

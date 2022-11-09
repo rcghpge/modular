@@ -23,34 +23,59 @@ class MOP_Type<string name, string typeMnemonic, list<Trait> traits = []>
   let mnemonic = typeMnemonic;
 }
 
+// TODO(#4727): The buffer and tensor types are not intended to be universal,
+// so we should give them a 'cpu' or perhaps 'host' suffix. Similarly for the
+// ops.
+
 //===----------------------------------------------------------------------===//
 // MOP_BufferType
 //===----------------------------------------------------------------------===//
 
 def MOP_BufferType : MOP_Type<"Buffer", "buffer",
                          [DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
-  let summary = "Type of uninterpreted byte arrays, optionally with statically "
-                "known size.";
+  let summary = "Type of mutable, uninterpreted byte arrays, optionally with "
+                "a statically known size.";
   let description = [{
-    Buffers are byte arrays which may have a statically known size. Nothing is
-    implied about the internal structure of the bytes, such as rank, dimensions,
-    underlying element type, padding, or element endianness. The compiler is
-    responsible for ensuring the producers and consumers of buffers agree on
-    their interpretation of the buffer for the intended target.
+    Buffers are mutable byte arrays which may have a statically known size.
+    Nothing is implied about the internal structure of the bytes, such as rank,
+    dimensions, underlying element type, padding, or element endianness. The
+    compiler is responsible for ensuring the producers and consumers of buffers
+    agree on their interpretation of the buffer for the intended target, and
+    correctly sequence their side-effects.
 
-    Generally buffers are the lowest-common denominator across kernel
-    implementations. Buffers may be wrapped by various tensor types, or
-    used directly.
+    Generally buffers are the lowest-common denominator representation of
+    tensor data across kernel implementations. Buffers may be wrapped by various
+    tensor types, including !mop.tensor, or used directly.
 
     This type implements `ShapedTypeInference` as a rank-1 tensor over
     `uint8_t` with optimally known first dimension. This in turn supports the
     `ElementsAttrInterface` on buffer attributes.
 
-    Buffers are represented by `M::LLCL::RCBufferRefs` in the Modular runtime.
+    Buffers are represented by `M::LLCL::BufferRef` in the Modular runtime.
 
-    Note that buffers may have alignment constraints, but those are specified
-    either in the buffer's create op or encoded within the dense attribute
-    used to construct a constant buffer.
+    Note that buffers may respect alignment constraints. However those are
+    specified either when the buffer is created or are encoded in the
+    attribute backing a constant buffer.
+
+    Though not exposed in MLIR, buffers may be 'owning' or 'borrowing' over
+    their underlying memory. Owning buffers automatically reclaim their
+    underlying memory when no further references to the buffer are possible.
+    Borrowing buffers assume the lifetime of the buffer is contained within
+    the lifetime of the memory being borrowed. This difference is relevant
+    to understanding the performance of many of the mop ops.
+
+    Similarly, though not exposed in MLIR or release builds, buffers may
+    also be 'mutable' or 'immutable'. The runtime will assert fail if
+    an immutable buffer is modified. This is for debugging only.
+
+    Since buffers are mutable, any op reading from a buffer must also accept
+    a chain, and any op writing to a buffer must also return a chain. In
+    this way the compiler can correctly sequence side-effects over buffers.
+
+    The size of a buffer type has two representations:
+     - 'Native' form: an `Optional<uint64_t>`, with none denoting unknown.
+     - 'Raw attribute' form: An UI64Attr, with `UINT64_MAX` denoting
+       unknown.
 
     Examples:
     ```mlir
@@ -59,16 +84,32 @@ def MOP_BufferType : MOP_Type<"Buffer", "buffer",
     ```
   }];
 
-  let parameters = (ins OptionalParameter<"Optional<int64_t>">:$size);
+  let parameters = (ins OptionalParameter<"Optional<uint64_t>">:$size);
   let assemblyFormat = "(`<` $size^ `>`)?";
   let genVerifyDecl = 1;
 
   let extraClassDeclaration = [{
      /// getShape may need to return an ArrayRef representing a
      /// dynamic rank-1 shape if the size is unconstrained.
-     /// That ref will point to this static.
+     /// That ref will point to this static. We are forced to use int64_t
+     /// for compatability with the MLIR builtins.
      static const int64_t unknownSize;
+
+     /// Returns the buffer's size in 'raw attribute' form, which is
+     /// a UI64Attr with value UINT64_MAX if the size is unknown.
+     IntegerAttr getRawSize() const;
   }];
+
+  let builders = [
+    /// Constructs a buffer type from its size in 'raw attribute' form.
+    /// As a convenience we allow the null attribute to denote unknown
+    /// size.
+    TypeBuilder<(ins "IntegerAttr":$rawSizeOrNull)>,
+
+    /// Constructs a buffer type from its size in 'raw attribute' form,
+    /// using the underlying uint64_t.
+    TypeBuilder<(ins "uint64_t":$rawSize)>,
+  ];
 }
 
 //===----------------------------------------------------------------------===//
@@ -76,16 +117,22 @@ def MOP_BufferType : MOP_Type<"Buffer", "buffer",
 //===----------------------------------------------------------------------===//
 
 def MOP_ContextType : MOP_Type<"Context", "context"> {
-  let summary = "Type of execution contexts holding a number of primitive "
-                "operation contexts";
+  let summary = "Type of execution contexts holding a number of state slots.";
   let description = [{
-    Contexts are objects created by the 'init' phase of a model, then reused
-    for each call to the model's 'execute'. Contexts may contain any number
-    of primitive operation contexts. A primitive operation context holds
-    attributes, scratch space, pre-computed data and, if required, cached
-    output buffers needed by a primitive. Each primitive may declare its
-    own context structure, and each call to that primitive in the graph may
-    have its own instance of that structure.
+    Contexts may be created by the 'init' entry point of a model, then reused
+    by each call to the model's 'execute' entry point.
+
+    Contexts may contain any number of 'state slots'. A state slot holds
+    arbitrary data needed by operations or entire framework runtimes, such as
+    attributes, scratch space, pre-computed data or cached buffers. Each op may
+    declare its own state slot structure, and each call to that op in the graph
+    (an 'operation') may have its own instance of that structure.
+
+    In general a computational operator, such as 'lib.foo', will be represented
+    by two primitives, such as 'libp.foo.setup' and 'libp.foo'. The former can
+    be invoked by the model's 'init' body to allocate and initialize a state
+    slot. The latter can access that state slot when the operation is executing
+    in the model's 'execute' body.
 
     Contexts are represented by `M::MOP::Context` in the Modular runtime.
 
@@ -176,6 +223,7 @@ def MOP_TensorSpecType : MOP_Type<"TensorSpec", "spec", [
      - The 'invalid' (zero) DType is never permitted.
     If a tensor spec is given a DType we also check it is representable as
     an MLIR type.
+    TODO(#4718): Are these discrepancies something we should redress?
 
     This type implements ShapedTypeInterface, using the distinguished
     UnknownType to represent an unknown element type. This means we
@@ -220,19 +268,19 @@ def MOP_TensorSpecType : MOP_Type<"TensorSpec", "spec", [
 
     /// Returns the number of unknown, aka 'dynamic' dimensions in
     /// this tensor spec.
-    int64_t getNumDynamicDims() const;
+    size_t getNumDynamicDims() const;
 
     /// Return the dimension at index i in this spec, or empty if the
     /// dimension is dynamic.
-    Optional<int64_t> operator[](size_t i) const;
+    Optional<uint64_t> operator[](size_t i) const;
 
     /// Returns the number of elements in a tensor of this spec, or
     /// empty if the tensor spec is not fully static.
-    Optional<int64_t> getNumElements() const;
+    Optional<uint64_t> getNumElements() const;
 
     /// Returns the size of the buffer needed to represent a tensor
     /// of this spec, or empty if the tensor spec is not fully static.
-    Optional<int64_t> getSizeInBytes() const;
+    Optional<uint64_t> getSizeInBytes() const;
 
     /// Returns the shape of this tensor spec in 'raw' attribute form.
     /// Each element of the result will be an I64Int, with -1 denoting
@@ -275,24 +323,28 @@ def MOP_TensorSpecType : MOP_Type<"TensorSpec", "spec", [
 def MOP_TensorType : MOP_Type<"Tensor", "tensor",
                          [DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
   let summary = "Type of tensors who's underlying buffer is in "
-                "dense row-major order according to tensor spec.";
+                "dense row-major order according to a tensor spec.";
   let description = [{
-    This type is for dense CPU-friendly tensors of statically known rank,
-    partially or fully statically known shape, and possibly statically known
-    element type. It is parameterized over the tensor spec. Values of this type
-    consist of a runtime spec and an underlying buffer. The elements in the
-    buffer are in dense row-major order according to the runtime tensor spec,
-    with endianness according to the target architecture.
+    This type is for dense CPU-friendly, immutable tensors of statically known
+    rank, partially or fully statically known shape, and possibly statically
+    known element type. It is parameterized over a tensor spec type. Values of
+    this type consist of a runtime tensor spec and an underlying buffer. The
+    elements in the buffer are in dense row-major order according to the
+    runtime tensor spec, with endianness according to the target architecture.
 
     Tensors are represented by M::Tensor in the modular runtime.
 
     Unlike the MLIR builtin tensor type this type:
-     - Only supports a DType element types.
+     - Only supports a DType-representable element types.
      - Only supports shapes of known rank.
      - Does not support quantization attributes on the element type.
      - Does not support affine maps for describing layout.
      - Is explicitly backed by the M::Tensor type.
      - Allows the element type to be unknown at compile time.
+
+    Tensors are immutable. When a tensor is created from a buffer, the buffer
+    must be copied if it could still be written. When a buffer is extracted
+    from a tensor, the buffer must be copied if the tensor could still be read.
 
     For convenience we 'inline' the tensor shape into the tensor type syntax:
     ```mlir
