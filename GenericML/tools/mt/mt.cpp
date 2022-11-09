@@ -238,7 +238,7 @@ int main(int argc, char **argv) {
   // If we are dealing with a directory, we need to open it.
   if (isInputDirectory) {
     // TODO: this should be called for all files
-    file = dylib.openPath(inputPath);
+    file = dylib.openPath(frameworkCtx, inputPath);
   }
 
   // If we're stopping at compilation, emit the binary file directly to the

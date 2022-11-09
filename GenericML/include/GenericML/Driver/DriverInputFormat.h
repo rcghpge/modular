@@ -64,7 +64,9 @@ public:
       cl::values(clEnumValN(FileFormat::kTFLFlatBuffer, "tflite-flat-buffer",
                             "Input is a TFLite flatbuffer file"),
                  clEnumValN(FileFormat::kBEFFile, "bef",
-                            "Input is an executable BEF file")),
+                            "Input is an executable BEF file"),
+                 clEnumValN(FileFormat::kTFSavedModel, "tf-saved-model",
+                            "Input is a TF SavedModel directory")),
       cl::init(FileFormat::kUnknown)};
 
   /// Return the input format the user specified, allowing them to specify
