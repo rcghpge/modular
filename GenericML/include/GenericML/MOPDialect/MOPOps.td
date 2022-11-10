@@ -233,7 +233,7 @@ def BufferCopyOp : MOP_Op<"buffer.copy", [
     Example:
     ```mlir
     %buf1 : !mop.buffer
-    %buf2 = mop.buffer.copy %buf1
+    %buf2 = mop.buffer.copy %buf1 : !mop.buffer
     %buf2 : !mop.buffer  // with same alignment as %buf1
     ```
   }];

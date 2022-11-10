@@ -111,6 +111,16 @@ static void mop_buffer_realloc(Chain chain, MOP::Context &ctx,
 }
 
 //===----------------------------------------------------------------------===//
+// mop.buffer.realloc
+//===----------------------------------------------------------------------===//
+
+/// Fulfills the result with the owning reference to the deep copy of inBuffer.
+static void mop_buffer_copy(RCBufferRef &inBuffer,
+                            Result<RCBufferRef> outBuffer, Runtime &runtime) {
+  outBuffer.emplace(inBuffer->deepCopy(runtime.getAllocator()));
+}
+
+//===----------------------------------------------------------------------===//
 // mop.context.create
 //===----------------------------------------------------------------------===//
 
@@ -257,6 +267,7 @@ void M::registerMOPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mop.buffer.constant", mop_buffer_constant);
   ADD_PRIMITIVE(registry, "mop.buffer.alloc", mop_buffer_alloc);
   ADD_PRIMITIVE(registry, "mop.buffer.realloc", mop_buffer_realloc);
+  ADD_PRIMITIVE(registry, "mop.buffer.copy", mop_buffer_copy);
   ADD_PRIMITIVE(registry, "mop.context.create", mop_context_create);
   ADD_PRIMITIVE(registry, "mop.state_slot.create", mop_state_slot_create);
   ADD_PRIMITIVE(registry, "mop.spec.create", mop_spec_create);
