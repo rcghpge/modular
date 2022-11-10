@@ -23,14 +23,17 @@ TEST(BufferRefTest, brrowedTest) {
 
 TEST(BufferRefTest, deepCopyTest) {
   auto allocator = createMallocAllocator();
-  int *data = (int *)malloc(sizeof(int));
+  int *data = (int *)allocator->allocateBytes(sizeof(int),
+                                              M::kPreferredMemoryAlignment);
+  *data = 0;
   auto ref = BufferRef::createBorrowed(data, sizeof(int));
   auto ref2 = ref.deepCopy(allocator.get());
   Increment((int *)ref.getData());
-  ASSERT_NE(*(int *)ref.getData(), *(int *)ref2.getData());
+  ASSERT_EQ(*(int *)ref.getData(), 1);
+  ASSERT_EQ(*(int *)ref2.getData(), 0);
   // deepCopy returns owned reference.
   ASSERT_EQ(ref2.getStorageKind(), BufferRef::kOwned);
-  free(data);
+  allocator->deallocateBytes(data, sizeof(int));
 }
 
 TEST(BufferRefTest, releaseTest) {
