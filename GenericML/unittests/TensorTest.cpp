@@ -49,12 +49,13 @@ static bool HaveSameContents(Tensor &lhs, Tensor &rhs) {
                      lhs.getSizeInBytes()) == 0;
 }
 
-TEST(Tensor, ShallowCopy) {
+TEST(Tensor, ReleaseBuffer) {
   M::Tensor tensor = MakeTensor();
-  M::Tensor shallowCopy = tensor.shallowCopy();
-  ASSERT_TRUE(HaveSameContents(tensor, shallowCopy));
-  IncrementContents(tensor);
-  ASSERT_TRUE(HaveSameContents(tensor, shallowCopy));
+  M::Tensor tensor2 = tensor.deepCopy();
+  LLCL::BufferRef ref = tensor.releaseBuffer();
+  ASSERT_EQ(ref.getSize(), tensor.getSizeInBytes());
+  ASSERT_EQ(std::memcmp(ref.getData(), tensor2.getPointer(), ref.getSize()), 0);
+  ASSERT_EQ(tensor.getPointer(), nullptr);
 }
 
 TEST(Tensor, DeepCopy) {
@@ -65,11 +66,23 @@ TEST(Tensor, DeepCopy) {
   ASSERT_FALSE(HaveSameContents(tensor, deepCopy));
 }
 
+TEST(Tensor, GetImmortal) {
+  M::Tensor tensor = MakeTensor();
+  // Immortal provides a shallow copy.
+  M::Tensor immortalCopy = tensor.getImmortal();
+  ASSERT_TRUE(HaveSameContents(tensor, immortalCopy));
+  IncrementContents(tensor);
+  ASSERT_TRUE(HaveSameContents(tensor, immortalCopy));
+}
+
 TEST(Tensor, FromBuffer) {
   LLCL::Runtime *runtime = GetRuntime();
   TensorSpec spec({kN, kM}, DType::getInt(8, /*isSigned=*/false).value());
-  LLCL::RCBufferRef ref =
-      LLCL::RCBuffer::createHeap(runtime->getAllocator(), 1);
-  Tensor tensor = Tensor::get(ref.copy(), spec, runtime);
-  EXPECT_EQ(2, ref->getNumReferences());
+  LLCL::BufferRef ref =
+      LLCL::BufferRef::createOwned(runtime->getAllocator(), 1);
+  void *data = ref.getData();
+  Tensor tensor = Tensor::get(std::move(ref), spec, runtime);
+  // Tensor takes the ownership from the bufer ref.
+  ASSERT_EQ(data, tensor.getPointer());
+  ASSERT_EQ(ref.getData(), nullptr);
 }

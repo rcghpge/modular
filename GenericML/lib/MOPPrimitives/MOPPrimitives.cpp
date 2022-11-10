@@ -48,13 +48,13 @@ Optional<size_t> getAlign(const uint64_t align) {
 // mop.buffer.constant
 //===----------------------------------------------------------------------===//
 
-/// Fulfills the result with the immoral RCBufferRef whose data is backed by
+/// Fulfills the result with the borrowed BufferRef whose data is backed by
 /// the given constant.
-static void mop_buffer_constant(Result<RCBufferRef> outBuffer,
+static void mop_buffer_constant(Result<BufferRef> outBuffer,
                                 BEFDynamicAttr values, Runtime &runtime) {
-  // Create immortal RCBuffer as the BEF outlives the RCBuffer.
+  // Create unowned BufferRef as the BEF outlives the BufferRef.
   if (auto buf = dyn_cast<ArrayRef<uint8_t>>(values))
-    outBuffer.emplace(RCBuffer::createImmortal(
+    outBuffer.emplace(BufferRef::createBorrowed(
         const_cast<void *>(static_cast<const void *>((*buf)->data())),
         (*buf)->size()));
   else
@@ -65,11 +65,11 @@ static void mop_buffer_constant(Result<RCBufferRef> outBuffer,
 // mop.buffer.alloc
 //===----------------------------------------------------------------------===//
 
-/// Fulfills the result with the RCBuffer. The size can be provided at run time
+/// Fulfills the result with the BufferRef. The size can be provided at run time
 /// with the async value or at compile time as an attribute. Alignment can be
 /// given as an attribute.
 static void mop_buffer_alloc(MOP::Context &ctx, RemainingArguments args,
-                             Result<RCBufferRef> outBuffer,
+                             Result<BufferRef> outBuffer,
                              BEFAttr<uint64_t> align, BEFAttr<uint64_t> size,
                              Runtime &runtime) {
   ErrorOr<size_t> sizeOr = getSize(args.takeAsVector(), *size);
@@ -78,9 +78,9 @@ static void mop_buffer_alloc(MOP::Context &ctx, RemainingArguments args,
 
   if (auto validAlign = getAlign(*align))
     outBuffer.emplace(
-        RCBuffer::createHeap(runtime.getAllocator(), *sizeOr, *validAlign));
+        BufferRef::createOwned(runtime.getAllocator(), *sizeOr, *validAlign));
   else
-    outBuffer.emplace(RCBuffer::createHeap(runtime.getAllocator(), *sizeOr));
+    outBuffer.emplace(BufferRef::createOwned(runtime.getAllocator(), *sizeOr));
 }
 
 //===----------------------------------------------------------------------===//
@@ -93,7 +93,7 @@ static void mop_buffer_alloc(MOP::Context &ctx, RemainingArguments args,
 /// given at either run time or compile time.
 static void mop_buffer_realloc(Chain chain, MOP::Context &ctx,
                                RemainingArguments args,
-                               Result<RCBufferRef> outBuffer,
+                               Result<BufferRef> outBuffer,
                                BEFAttr<uint64_t> align,
                                BEFAttr<uint64_t> output, BEFAttr<uint64_t> size,
                                BEFAttr<uint64_t> slot, Runtime &runtime) {
@@ -115,8 +115,9 @@ static void mop_buffer_realloc(Chain chain, MOP::Context &ctx,
 //===----------------------------------------------------------------------===//
 
 /// Fulfills the result with the owning reference to the deep copy of inBuffer.
-static void mop_buffer_copy(MOP::Context &ctx, RCBufferRef &inBuffer,
-                            Result<RCBufferRef> outBuffer, Runtime &runtime) {
+static void mop_buffer_copy(MOP::Context &ctx,
+                            AsyncValueRef<BufferRef> inBuffer,
+                            Result<BufferRef> outBuffer, Runtime &runtime) {
   outBuffer.emplace(inBuffer->deepCopy(runtime.getAllocator()));
 }
 
@@ -242,9 +243,16 @@ static void mop_spec_dtype(TensorSpec tensorSpec, Result<DType> result) {
 /// Fulfills the outTensor by creating a tensor from the given tensor spec and
 /// the buffer.
 static void mop_tensor_create(Chain inChain, TensorSpec tensorSpec,
-                              RCBufferRef &buffer, Result<Tensor> outTensor,
-                              Runtime &runtime) {
-  outTensor.emplace(Tensor::get(buffer.copy(), tensorSpec, runtime));
+                              AsyncValueRef<BufferRef> bufferRef,
+                              Result<Tensor> outTensor, Runtime &runtime) {
+  // If this is the last user of the given buffer, let Tensor take the
+  // ownership of the underlying buffer if the buffer is owned. If not, we will
+  // clone the buffer and create a tensor from it.
+  if (bufferRef.getPointer()->isUnique())
+    outTensor.emplace(Tensor::get(std::move(*bufferRef), tensorSpec, runtime));
+  else
+    outTensor.emplace(Tensor::get(bufferRef->deepCopy(runtime.getAllocator()),
+                                  tensorSpec, runtime));
 }
 
 //===----------------------------------------------------------------------===//
@@ -253,10 +261,16 @@ static void mop_tensor_create(Chain inChain, TensorSpec tensorSpec,
 
 /// fulfills the outSpec and outBuffer with the corresponding spec/buffer from
 /// the input tensor.
-static void mop_tensor_extract(Tensor &tensor, Result<TensorSpec> outSpec,
-                               Result<RCBufferRef> outBuffer) {
-  outSpec.emplace(tensor.getSpec());
-  outBuffer.emplace(tensor.getBuffer());
+static void mop_tensor_extract(AsyncValueRef<Tensor> tensor,
+                               Result<TensorSpec> outSpec,
+                               Result<BufferRef> outBuffer, Runtime &runtime) {
+  outSpec.emplace(tensor->getSpec());
+  // If this is the last user of the given tensor, move the bufferRef to the
+  // output. Otherwise, clone the underlying buffer.
+  if (tensor.getPointer()->isUnique())
+    outBuffer.emplace(tensor->releaseBuffer());
+  else
+    outBuffer.emplace(tensor->deepCopyBuffer());
 }
 
 //===----------------------------------------------------------------------===//

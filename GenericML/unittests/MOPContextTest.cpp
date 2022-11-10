@@ -62,49 +62,20 @@ TEST(ContextTest, getOrCreateBufferTest) {
     ctx.emplacePrimContext<PrimContextA>(0, 1, 43);
 
     auto &primCtx = ctx.getPrimContext(0);
-    auto buffer = primCtx.getOrCreateBuffer(0, allocator.get(), 1);
-    // refcount is 2, one for `buffer` and the other for the output cache.
-    EXPECT_EQ(buffer->getNumReferences(), 2);
+    auto buffer = primCtx.getOrCreateBuffer(
+        /*index=*/0, /*allocator=*/allocator.get(), /*size=*/1);
+    void *data = buffer.getData();
+    EXPECT_EQ(buffer.getStorageKind(), LLCL::BufferRef::kBorrowed);
 
-    {
-      // Get the buffer from the cache. refcount added by one.
-      auto buffer2 = primCtx.getOrCreateBuffer(0, allocator.get(), 1);
-      EXPECT_EQ(buffer->getNumReferences(), 3);
-      EXPECT_EQ(buffer->getData(), buffer2->getData());
-    }
+    // getOrCreateBuffer call with the same slot and the same size returns a
+    // cached buffer.
+    auto buffer2 = primCtx.getOrCreateBuffer(
+        /*index=*/0, /*allocator=*/allocator.get(), /*size=*/1);
+    EXPECT_EQ(buffer.getData(), buffer2.getData());
 
-    // Create a buffer with a different size, overwriting the cache slot 0.
-    auto buffer3 = primCtx.getOrCreateBuffer(0, allocator.get(), 2);
-    EXPECT_EQ(buffer3->getNumReferences(), 2);
-    // Now the buffer backed by buffer is kicked out of cache.
-    EXPECT_EQ(buffer->getNumReferences(), 1);
-  }
-}
-
-TEST(ContextTes, registerBufferGetBufferTest) {
-  auto allocator = LLCL::createMallocAllocator();
-  {
-    // Add scope to make sure that the allocator outlives the context.
-    Context ctx(1);
-    AnyGenericPrimContext::registerFramework<PrimContextA>();
-    ctx.emplacePrimContext<PrimContextA>(0, 1, 43);
-
-    auto &primCtx = ctx.getPrimContext(0);
-    auto bufferOr = primCtx.getBuffer(0);
-    EXPECT_TRUE(bufferOr.isError());
-    EXPECT_EQ(bufferOr.getError(),
-              "Buffer not cached in the given output index");
-
-    auto buffer = LLCL::RCBuffer::createHeap(allocator.get(), 1);
-    EXPECT_EQ(buffer->getNumReferences(), 1);
-
-    // Register to cache bumps the refcount.
-    primCtx.registerBuffer(0, buffer.copy());
-    EXPECT_EQ(buffer->getNumReferences(), 2);
-
-    bufferOr = primCtx.getBuffer(0);
-    EXPECT_FALSE(bufferOr);
-    EXPECT_EQ(buffer->getNumReferences(), 3);
-    EXPECT_EQ(buffer->getData(), (*bufferOr)->getData());
+    // Call with a different size will allocate a new memory.
+    auto buffer3 = primCtx.getOrCreateBuffer(
+        /*index=*/0, /*allocator=*/allocator.get(), /*size=*/2);
+    EXPECT_NE(buffer3.getData(), data);
   }
 }
