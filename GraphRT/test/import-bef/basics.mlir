@@ -126,14 +126,6 @@ bef.invokable @attributes() {
   // MD: "type.chain"() {t = !bef.chain
   "type.chain"() {t = !bef.chain} : () -> ()
 
-  // CHECK-NEXT: bef.opaque "type.aligned_bytes" [#M.dense_array<222, 173, 190, 239> : !M.array<4xui8>]() : () -> ()
-  // MD: "type.aligned_bytes"() {t = #M.dense_array<222, 173, 190, 239> : !M.array<4xui8>
-  "type.aligned_bytes"() {t = #M.aligned_bytes<64: "0xDEADBEEF">} : () -> ()
-
-  // CHECK-NEXT: bef.opaque "type.aligned_bytes_default_alignment" [#M.dense_array<170> : !M.array<1xui8>]() : () -> ()
-  // MD: "type.aligned_bytes_default_alignment"() {t = #M.dense_array<170> : !M.array<1xui8>
-  "type.aligned_bytes_default_alignment"() {t = #M.aligned_bytes<"0xAA">} : () -> ()
-
   bef.output
    // CHECK-NEXT:     bef.output
 }  // CHECK-NEXT:   }
