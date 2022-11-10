@@ -115,7 +115,7 @@ static void mop_buffer_realloc(Chain chain, MOP::Context &ctx,
 //===----------------------------------------------------------------------===//
 
 /// Fulfills the result with the owning reference to the deep copy of inBuffer.
-static void mop_buffer_copy(RCBufferRef &inBuffer,
+static void mop_buffer_copy(MOP::Context &ctx, RCBufferRef &inBuffer,
                             Result<RCBufferRef> outBuffer, Runtime &runtime) {
   outBuffer.emplace(inBuffer->deepCopy(runtime.getAllocator()));
 }

@@ -225,22 +225,26 @@ def BufferCopyOp : MOP_Op<"buffer.copy", [
     within the test itself. By rule 2 of `mop.buffer.realloc` the
     result of `mop.buffer.realloc` cannot outlive the context itself,
     so a copy is needed to return that buffer to the test harness
-    for printing etc.
+    for printing etc. It takes `!mop.context` as an argument to
+    make sure that the context survives until the copy is performed.
 
     Any alignment constraint on the operand buffer is preserved in
     the result.
 
     Example:
     ```mlir
+    %ctxt : !mop.context
     %buf1 : !mop.buffer
-    %buf2 = mop.buffer.copy %buf1 : !mop.buffer
+    %buf2 = mop.buffer.copy %ctxt %buf1 : !mop.buffer
     %buf2 : !mop.buffer  // with same alignment as %buf1
     ```
   }];
 
-  let arguments = (ins MOP_BufferType:$buffer);
+  let arguments = (ins MOP_ContextType:$theContext, MOP_BufferType:$buffer);
   let results = (outs MOP_BufferType:$result);
-  let assemblyFormat = "$buffer attr-dict `:` qualified(type($result))";
+  let assemblyFormat = [{
+    $theContext $buffer attr-dict `:` qualified(type($result))
+  }];
 }
 
 //===----------------------------------------------------------------------===//
