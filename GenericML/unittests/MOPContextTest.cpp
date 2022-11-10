@@ -64,7 +64,7 @@ TEST(ContextTest, getOrCreateBufferTest) {
     auto &primCtx = ctx.getPrimContext(0);
     auto buffer = primCtx.getOrCreateBuffer(
         /*index=*/0, /*allocator=*/allocator.get(), /*size=*/1);
-    void *data = buffer.getData();
+    size_t size = buffer.getSize();
     EXPECT_EQ(buffer.getStorageKind(), LLCL::BufferRef::kBorrowed);
 
     // getOrCreateBuffer call with the same slot and the same size returns a
@@ -76,6 +76,6 @@ TEST(ContextTest, getOrCreateBufferTest) {
     // Call with a different size will allocate a new memory.
     auto buffer3 = primCtx.getOrCreateBuffer(
         /*index=*/0, /*allocator=*/allocator.get(), /*size=*/2);
-    EXPECT_NE(buffer3.getData(), data);
+    EXPECT_NE(buffer3.getSize(), size);
   }
 }
