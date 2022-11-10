@@ -459,6 +459,212 @@ LogicalResult TensorExtractOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
+// ModelOp
+//===----------------------------------------------------------------------===//
+
+/// Returns the implicit signature of the 'init' entry point.
+static FunctionType implicitInitSignature(Builder &builder) {
+  return builder.getFunctionType({}, {builder.getType<BEF::ChainType>(),
+                                      builder.getType<MOP::ContextType>()});
+}
+
+/// Returns the implicit signature of the 'execute' entry point, before
+/// any explicit inputs and results have been included.
+static FunctionType implicitExecuteSignature(Builder &builder) {
+  return builder.getFunctionType(
+      {builder.getType<BEF::ChainType>(), builder.getType<MOP::ContextType>()},
+      {builder.getType<BEF::ChainType>()});
+}
+
+/// Returns true if requiredTypes is a prefix of actualTypes, in which case
+/// the prefix is removed from actualTypes.
+static bool checkAndRemovePrefix(ArrayRef<Type> requiredTypes,
+                                 SmallVectorImpl<Type> &actualTypes) {
+  auto [mismatchRequired, mismatchActual] = std::mismatch(
+      requiredTypes.begin(), requiredTypes.end(), actualTypes.begin());
+  if (mismatchRequired != requiredTypes.end())
+    return false;
+  actualTypes.erase(actualTypes.begin(),
+                    actualTypes.begin() + requiredTypes.size());
+  return true;
+}
+
+/// Parse the frameworkName attribute as a keyword.
+static ParseResult parseClassName(OpAsmParser &p, StringAttr &frameworkName) {
+  StringRef keyword;
+  if (p.parseKeyword(&keyword))
+    return failure();
+  frameworkName = StringAttr::get(p.getContext(), keyword);
+  return success();
+}
+
+/// Prints the frameworkName attribute as a keyword.
+static void printClassName(OpAsmPrinter &p, const ModelOp &op,
+                           StringAttr frameworkName) {
+  p << frameworkName.getValue();
+}
+
+/// Parses the 'execute' body, and extracts from it the implicit signature.
+static ParseResult parseExecuteRegion(OpAsmParser &p,
+                                      TypeAttr &inputOutputTypes,
+                                      Region &executeRegion) {
+  llvm::SMLoc argLoc;
+  SmallVector<OpAsmParser::Argument> args;
+  SmallVector<Type> resultTypes;
+  if (p.getCurrentLocation(&argLoc) ||
+      p.parseArgumentList(args, OpAsmParser::Delimiter::Paren,
+                          /*allowType=*/true) ||
+      p.parseArrowTypeList(resultTypes) ||
+      p.parseRegion(executeRegion, args, /*enableNameShadowing=*/true))
+    return failure();
+
+  // Check the execute region's actual signature, and save its implicit
+  // signature into inputOutputTypes.
+  FunctionType implicitExecSig = implicitExecuteSignature(p.getBuilder());
+  SmallVector<Type> inputTypes(executeRegion.getArgumentTypes());
+  if (!checkAndRemovePrefix(implicitExecSig.getInputs(), inputTypes))
+    return p.emitError(argLoc)
+           << "expected the 'execute' region arguments to begin with types "
+           << implicitExecSig.getInputs() << ".";
+  if (!checkAndRemovePrefix(implicitExecSig.getResults(), resultTypes))
+    return p.emitError(argLoc)
+           << "expected the 'execute' region outputs to begin with types "
+           << implicitExecSig.getResults() << ".";
+
+  inputOutputTypes =
+      TypeAttr::get(p.getBuilder().getFunctionType(inputTypes, resultTypes));
+  return success();
+}
+
+/// Prints the 'execute' body. The inputOutputTypes are ignored.
+static void printExecuteRegion(OpAsmPrinter &p, const ModelOp &op,
+                               TypeAttr inputOutputTypes,
+                               Region &executeRegion) {
+  Block &executeBlock = executeRegion.front();
+  p << "(";
+  llvm::interleaveComma(executeBlock.getArguments(), p.getStream(),
+                        [&](auto arg) { p.printRegionArgument(arg); });
+  p << ")";
+  p.printArrowTypeList(executeBlock.getTerminator()->getOperandTypes());
+  p << " ";
+  p.printRegion(executeRegion, /*printEntryBlockArgs=*/false);
+}
+
+/// Returns true if frameworkName is recognized as a valid framework.
+static bool isValidFrameworkName(StringRef frameworkName) {
+  return frameworkName == "tfl";
+}
+
+/// Creates a model with empty 'init' and 'execute' bodies and with
+/// `inputTypes` and `resultTypes` for the op's explicit signature.
+/// `inputArgLocs` specifies the location information for the explicit
+/// arguments to the 'execute' entry point, and thus should have the same
+/// length as `inputTypes`.
+void ModelOp::build(OpBuilder &builder, OperationState &state,
+                    StringAttr sym_name, StringAttr frameworkName,
+                    ArrayRef<Type> inputTypes, ArrayRef<Type> resultTypes,
+                    ArrayRef<Location> inputArgLocs,
+                    ArrayRef<NamedAttribute> extraAttrs) {
+  state.addAttribute(SymbolTable::getSymbolAttrName(), sym_name);
+  state.addAttribute(
+      getInputOutputTypesAttrName(state.name),
+      TypeAttr::get(builder.getFunctionType(inputTypes, resultTypes)));
+  state.addAttribute(getFrameworkNameAttrName(state.name), frameworkName);
+  state.attributes.append(extraAttrs.begin(), extraAttrs.end());
+
+  // The 'init' entry point has no arguments.
+  assert(implicitInitSignature(builder).getInputs().empty());
+  Region *initRegion = state.addRegion();
+  initRegion->emplaceBlock();
+
+  // The 'execute' entry point has both implicit and explicit arguments.
+  Region *executeRegion = state.addRegion();
+  executeRegion->emplaceBlock();
+  for (auto type : implicitExecuteSignature(builder).getInputs())
+    executeRegion->addArgument(type, state.location);
+  for (auto [type, loc] : llvm::zip(inputTypes, inputArgLocs))
+    executeRegion->addArgument(type, loc);
+}
+
+/// Verifies the init and execute regions of the model.
+LogicalResult ModelOp::verifyRegions() {
+  OpBuilder builder(getContext());
+
+  // The type of the init region is
+  //  () -> (!bef.chain, !mop.context)
+  Block *initBlock = getInitBlock();
+  if (auto output = dyn_cast<BEF::OutputOp>(initBlock->getTerminator())) {
+    FunctionType implicitInitSig = implicitInitSignature(builder);
+    assert(implicitInitSig.getInputs().empty());
+    if (!initBlock->getArgumentTypes().empty())
+      return emitOpError()
+             << "expected no arguments to the 'init' body, but got "
+             << initBlock->getArgumentTypes() << ".";
+
+    if (failed(output.checkArgumentTypes(implicitInitSig.getResults())))
+      return emitOpError()
+             << "expected the result types of the 'init' body to be "
+             << implicitInitSig.getResults() << ".";
+  }
+
+  // The type of the execute region is:
+  //   (!bef.chain, !mop.context, arg_1, ... arg_n) ->
+  //   (!bef.chain, res_1, ... res_m)
+  // where the ModelOp's inputOutputTypes are:
+  //   (arg_1, ... arg_n) -> (res_1, ... res_m)
+  Block *execBlock = getExecuteBlock();
+  if (auto output = dyn_cast<BEF::OutputOp>(execBlock->getTerminator())) {
+    FunctionType implicitExecSig = implicitExecuteSignature(builder);
+    ArrayRef<Type> modelArgTypes = getInputOutputTypes().getInputs();
+
+    SmallVector<Type> expectedArgTypes(implicitExecSig.getInputs());
+    expectedArgTypes.append(modelArgTypes.begin(), modelArgTypes.end());
+    if (execBlock->getArgumentTypes() != expectedArgTypes)
+      return emitOpError() << "expected the arguments of the "
+                              "'execute' body to be "
+                           << expectedArgTypes << ", but got "
+                           << execBlock->getArgumentTypes() << ".";
+
+    ArrayRef<Type> modelResultTypes = getInputOutputTypes().getResults();
+    SmallVector<Type> expectedResultTypes(implicitExecSig.getResults());
+    expectedResultTypes.append(modelResultTypes.begin(),
+                               modelResultTypes.end());
+
+    if (failed(output.checkArgumentTypes(expectedResultTypes)))
+      return emitOpError()
+             << "expected the result types of the 'execute' body to be "
+             << expectedResultTypes << ".";
+  }
+  return success();
+}
+
+/// Verifies the input/output type signature.
+LogicalResult ModelOp::verify() {
+  // Ensure that ModelOp's arguments and results are RankedTensorTypes.
+  // TODO(#4753): We don't want to require args to be tensors, but don't
+  // yet have a protocol for tying the M::Model subclass input and output
+  // handling with the types declared here.
+  FunctionType modelType = getInputOutputTypes();
+  for (size_t i = 0, e = modelType.getNumInputs(); i < e; ++i) {
+    Type type = modelType.getInput(i);
+    if (!type.isa<ShapedType>())
+      return emitOpError()
+             << "expected the 'execute' entry point to take arguments "
+                "of ShapedType, but argument "
+             << i << " is of type " << type << ".";
+  }
+  for (size_t i = 0, e = modelType.getNumResults(); i < e; ++i) {
+    Type type = modelType.getResult(i);
+    if (!type.isa<ShapedType>())
+      return emitOpError()
+             << "expected the 'execute' entry point to return results "
+                "of ShapedType, but result "
+             << i << " is of type " << type << ".";
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // MOPDialect op support
 //===----------------------------------------------------------------------===//
 

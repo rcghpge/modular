@@ -623,4 +623,93 @@ def TensorExtractOp : MOP_Op<"tensor.extract", [
   let hasVerifier = 1;
 }
 
+//===----------------------------------------------------------------------===//
+// ModelOp
+//===----------------------------------------------------------------------===//
+
+def ModelFrameworkAttr : ConfinedAttr<StrAttr, [
+    AttrConstraint<
+      CPred<"isValidFrameworkName($_self.cast<StringAttr>().getValue())">,
+      "must be a recognized framework name.">]>;
+
+def ModelOp : MOP_Op<"model", [HasParent<"ModuleOp">, Symbol,
+                               IsolatedFromAbove]> {
+  let summary = "Represents an executable model with 'init' and 'execute' "
+                "entry points.";
+  let description = [{
+    This op creates an executable model from single-block regions
+    representing its 'init' and 'execute' entry points.
+
+    The 'init' entry point has the implicit signature:
+      () -> (!bef.chain, !mop.context)
+
+    The 'execute' entry point has the implicit signature:
+      (!bef.chain, !mop.context, in1, ..., inn) ->
+      (!bef.chain, res1, ..., resm)
+    where:
+      (in1, ..., inn) -> (res1, ..., resm)
+    is given as the op's explicit signature.
+
+    The Modular runtime implicitly calls 'init' when the model executable is
+    first loaded, and re-uses the resulting context value for each subsequent
+    call to 'execute'.
+
+    This op is represented by a subclass of M::Model in the Modular runtime.
+    The actual class is determined from the `frameworkName` attribute, which
+    tools can inspect to determine which API to establish to mediate
+    between framework-specific values and representations used by the model.
+
+    The input and result types in the signature cannot depend on any
+    framework- or mop-specific types, and must instead use only MLIR builtin
+    (eg tensor), Modular (eg !M.array) and BEF (eg !bef.unknown) types.
+    (Perhaps we need a !bef.anyasyncvalue type?).
+
+    Example:
+    ```mlir
+    // At the top-level
+    mop.model @example_model : tfl
+      init {
+        %ch = bef.chain.new
+        %ctxt = mop.context.create 0
+        bef.output %ch, %ctxt : !bef.chain, !mop.context
+      }
+      execute (%ch: !bef.chain, %ctxt: !mop.context, %arg: tensor<?x4x16xf32>)
+              -> (!bef.chain, tensor<?x10xf32>) {
+        bef.output %ch, %arg : !bef.chain, tensor<?x4x16xf32>
+      }
+    ```
+  }];
+
+  let arguments = (ins SymbolNameAttr:$sym_name, ModelFrameworkAttr:$frameworkName,
+                       TypeAttrOf<FunctionType>:$inputOutputTypes);
+  let regions = (region SizedRegion<1>:$init, SizedRegion<1>:$execute);
+
+  let extraClassDeclaration = [{
+    Block *getInitBlock() { return &getInit().front(); }
+    Block *getExecuteBlock() { return &getExecute().front(); }
+  }];
+
+  let builders = [
+    /// Creates a model with empty 'init' and 'execute' bodies and
+    /// with `inputTypes` and `resultTypes` for the op's explicit signature.
+    /// `inputArgLocs` specifies the location information for the
+    /// explicit arguments to the 'execute' entry point, and thus should
+    /// have the same length as `inputTypes`.
+    OpBuilder<(ins "StringAttr":$sym_name,
+                   "StringAttr":$frameworkName,
+                   "ArrayRef<Type>":$inputTypes,
+                   "ArrayRef<Type>":$resultTypes,
+                   "ArrayRef<Location>":$inputArgLocs,
+                   CArg<"ArrayRef<NamedAttribute>", "{}">:$extraAttrs)>
+  ];
+
+  let assemblyFormat = [{
+    $sym_name `:` custom<ClassName>($frameworkName) attr-dict
+      `init` $init
+      `execute` custom<ExecuteRegion>($inputOutputTypes, $execute)
+  }];
+  let hasRegionVerifier = 1;
+  let hasVerifier = 1;
+}
+
 #endif  // GENERICML_MOPDIALECT_MOPOPS_TD
