@@ -67,6 +67,18 @@ static Chain print_array_i32(Chain chain, BEFAttr<ArrayRef<int32_t>> values) {
   return chain;
 }
 
+static Chain print_array_uint8_hex(Chain chain,
+                                   BEFAttr<ArrayRef<uint8_t>> values) {
+  printf("array = [");
+  for (size_t i = 0, e = values->size(); i != e; ++i) {
+    if (i != 0)
+      printf(", ");
+    printf("0x%02X", values[i]);
+  }
+  printf("]\n");
+  return chain;
+}
+
 static ErrorOr<Chain> print_dynamic_array_float(Chain chain,
                                                 BEFDynamicAttr value) {
   SmallVector<float> flts;
@@ -198,6 +210,8 @@ static void print_attr(BEFDynamicAttr value, unsigned indent) {
     fputc('\n', stdout);
   } else if (auto intArray = dyn_cast<ArrayRef<int32_t>>(value)) {
     print_array_i32(Chain(), *intArray);
+  } else if (auto byteArray = dyn_cast<ArrayRef<uint8_t>>(value)) {
+    print_array_uint8_hex(Chain(), *byteArray);
   } else if (auto dict = dyn_cast<BEFDictionaryAttr>(value)) {
     printf("dictionary {\n");
     for (const BEFDictionaryAttr::Element &elt : *dict) {
