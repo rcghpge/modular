@@ -19,6 +19,7 @@
 #include "llvm/ADT/STLExtras.h"
 
 #include <cmath>
+#include <cstdio>
 #include <limits>
 #include <numeric>
 #include <thread>
@@ -31,6 +32,7 @@ using namespace M;
 
 static Chain print_hello(Chain chain) {
   printf("hello bef executor!\n");
+  fflush(stdout);
   return chain;
 }
 static void memory_leak_one_int32(Runtime &runtime) {
@@ -53,6 +55,7 @@ static Chain print_string(const std::string &lhs, Chain chain) {
   printf("string = ");
   fwrite(lhs.data(), 1, lhs.size(), stdout);
   fputc('\n', stdout);
+  fflush(stdout);
   return chain;
 }
 
@@ -64,6 +67,7 @@ static Chain print_array_i32(Chain chain, BEFAttr<ArrayRef<int32_t>> values) {
     printf("%d", values[i]);
   }
   printf("]\n");
+  fflush(stdout);
   return chain;
 }
 
@@ -79,6 +83,7 @@ static ErrorOr<Chain> print_dynamic_array_float(Chain chain,
     printf("%f", flts[i]);
   }
   printf("]\n");
+  fflush(stdout);
   return chain;
 }
 
@@ -91,6 +96,7 @@ static Chain print_dict_i32(Chain chain, BEFAttr<StringRef> key,
   else
     printf("%d\n", value->get());
 
+  fflush(stdout);
   return chain;
 }
 
@@ -110,6 +116,7 @@ static Chain print_all_dict(Chain chain, BEFDictionaryAttr dict) {
       []() { printf(", "); });
 
   fputc('\n', stdout);
+  fflush(stdout);
   return chain;
 }
 
@@ -167,12 +174,14 @@ static void printType(BEFType type) {
     std::string str = type.getKind().getAsString();
     printf("%.*s", (int)str.size(), str.data());
   }
+  fflush(stdout);
 }
 
 static Chain print_type(Chain chain, BEFAttr<BEFType> type) {
   printf("Type attribute: ");
   printType(type);
   printf("\n");
+  fflush(stdout);
   return chain;
 }
 
@@ -185,6 +194,7 @@ static Chain print_bool(Chain chain, bool val) {
 static void printIndent(unsigned indent) {
   for (unsigned i = 0; i != indent; ++i)
     printf("  ");
+  fflush(stdout);
 }
 
 static void print_attr(BEFDynamicAttr value, unsigned indent) {
@@ -220,6 +230,7 @@ static void print_attr(BEFDynamicAttr value, unsigned indent) {
   } else {
     printf("unsupported attribute kind\n");
   }
+  fflush(stdout);
 }
 
 //===----------------------------------------------------------------------===//
@@ -257,6 +268,7 @@ public:
     if (v == -1)
       return;
     printf("destroyed vt.value(%d)\n", v);
+    fflush(stdout);
   }
 
   int32_t v;
