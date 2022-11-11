@@ -238,7 +238,10 @@ int main(int argc, char **argv) {
   // If we are dealing with a directory, we need to open it.
   if (isInputDirectory) {
     // TODO: this should be called for all files
-    file = dylib.openPath(frameworkCtx, inputPath);
+    auto fileOr = dylib.openPath(frameworkCtx, inputPath);
+    if (failed(fileOr))
+      return options.reportError(fileOr.getError());
+    file = std::move(*fileOr);
   }
 
   // If we're stopping at compilation, emit the binary file directly to the
