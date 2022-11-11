@@ -680,8 +680,11 @@ def ModelOp : MOP_Op<"model", [HasParent<"ModuleOp">, Symbol,
     ```
   }];
 
-  let arguments = (ins SymbolNameAttr:$sym_name, ModelFrameworkAttr:$frameworkName,
-                       TypeAttrOf<FunctionType>:$inputOutputTypes);
+  // CAUTION: Attributes are ordered alphabetical to correspond to
+  // expected indexes in M::Model subclasses.
+  let arguments = (ins ModelFrameworkAttr:$frameworkName,
+                       TypeAttrOf<FunctionType>:$inputOutputTypes,
+                       SymbolNameAttr:$sym_name);
   let regions = (region SizedRegion<1>:$init, SizedRegion<1>:$execute);
 
   let extraClassDeclaration = [{

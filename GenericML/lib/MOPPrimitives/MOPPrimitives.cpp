@@ -274,6 +274,12 @@ static void mop_tensor_extract(AsyncValueRef<Tensor> tensor,
 }
 
 //===----------------------------------------------------------------------===//
+// mop.model
+//===----------------------------------------------------------------------===//
+
+void mop_model() { assert(false && "mop.model should never be invoked"); }
+
+//===----------------------------------------------------------------------===//
 // Primitive registration
 //===----------------------------------------------------------------------===//
 
@@ -292,4 +298,5 @@ void M::registerMOPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mop.spec.dtype", mop_spec_dtype);
   ADD_PRIMITIVE(registry, "mop.tensor.create", mop_tensor_create);
   ADD_PRIMITIVE(registry, "mop.tensor.extract", mop_tensor_extract);
+  ADD_PRIMITIVE(registry, "mop.model", mop_model);
 }

@@ -18,6 +18,7 @@
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
+
 #include <utility>
 using namespace M;
 
@@ -225,6 +226,27 @@ ErrorOrSuccess BEFFileImpl::enumeratePrimitiveNames(
 // BEFFile implementation
 //===----------------------------------------------------------------------===//
 
+namespace {
+/// A fake 'model' used by BEFInvokable::walkPrimitives to determine the value
+/// of the mop.model's frameworkName attribute.
+class MOPModel final {
+public:
+  explicit MOPModel(std::string frameworkName)
+      : frameworkName(std::move(frameworkName)) {}
+
+  static StringLiteral getEntityName() { return "mop.model"; }
+
+  static ErrorOr<std::unique_ptr<MOPModel>>
+  getFromDescriptor(const PrimitiveDescriptor &descriptor) {
+    StringRef frameworkName = *descriptor.getAttr<StringRef>(0);
+    return std::make_unique<MOPModel>(frameworkName.str());
+  }
+
+  std::string frameworkName;
+};
+
+} // namespace
+
 /// Return true if the specified file contents look like it is a BEF file, by
 /// checking the magic number.
 bool M::isBEFFile(llvm::StringRef contents) {
@@ -237,30 +259,46 @@ BEFFile::~BEFFile() = default;
 /// This method inspects the contents of the BEF file to make an educated
 /// guess of what it contains, allowing for better QoI and usability of tools.
 BEFContents BEFFile::sniffFileContents() const {
+  bool isMopModel = false;
   BEFContents result{BEFContents::kUnknown};
+
+  // Method 1: Look for a distinguished model constructor op name.
   (void)((BEFFileImpl *)const_cast<BEFFile *>(this))
       ->enumeratePrimitiveNames([&](StringRef primitiveName) -> ErrorOrSuccess {
         if (primitiveName == "mop.model") {
-          result = BEFContents{BEFContents::kModularModel};
-          return Error("done"); // stop iteration early.
-        }
-
-        if (primitiveName == "tflp.model") {
+          // We'll need to use method 2 below.
+          isMopModel = true;
+        } else if (primitiveName == "tflp.model") {
+          // This is still supported, but will be retired in favor
+          // of mop.model with frameworkName = "tfl".
           result = BEFContents{BEFContents::kTFLiteModel};
-          return Error("done"); // stop iteration early.
-        }
-
-        if (primitiveName == "tfp.model") {
+        } else if (primitiveName == "tfp.model") {
           result = BEFContents{BEFContents::kTensorFlowModel};
-          return Error("done");
-        }
-
-        if (primitiveName == "faux.testcase") {
+        } else if (primitiveName == "faux.testcase") {
           result = BEFContents{BEFContents::kFauxModel};
-          return Error("done"); // stop iteration early.
+        } else {
+          // Keep looking.
+          return success();
         }
-        return success();
+        // Stop iteration early (we'll ignore the outer error).
+        return Error("done");
       });
+
+  if (isMopModel) {
+    // Method 2: Look at the name of the mop.model's frameworkName attribute.
+    SmallVector<std::unique_ptr<MOPModel>> models;
+    ErrorOrSuccess err = getTopLevelInvokable()->walkPrimitives<MOPModel>(
+        [&models](std::unique_ptr<MOPModel> &&model) {
+          models.emplace_back(std::move(model));
+          return success();
+        });
+    if (!err.isError() && !models.empty()) {
+      if (models.front()->frameworkName == "tfl") {
+        result = BEFContents{BEFContents::kTFLiteModel};
+      }
+      // other frameworks go here.
+    }
+  }
 
   return result;
 }
