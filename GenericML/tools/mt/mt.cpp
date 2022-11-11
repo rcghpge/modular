@@ -186,7 +186,7 @@ int main(int argc, char **argv) {
   if (options.command == DriverCommand::getVersion) {
     llvm::outs() << "mt: " << MODULAR_VERSION_STRING
                  << "\nFramework: " << dylib.getVersion() << "\n";
-    return 0;
+    return EXIT_SUCCESS;
   }
 
   // Setup the framework context.
@@ -200,7 +200,7 @@ int main(int argc, char **argv) {
     if (auto err = dylib.setOptions(frameworkCtx, {"-h"}))
       return options.reportError(err.getError());
 
-    return 0;
+    return EXIT_SUCCESS;
   }
 
   // Hand over any explicitly designated unparsed options.
@@ -225,14 +225,12 @@ int main(int argc, char **argv) {
         options.getOutputFile(options.commandHasBinaryOutput());
     auto identityOr =
         getFileContentIdentity(*file, format, frameworkCtx, dylib);
-    if (identityOr.isError()) {
-      options.reportError(identityOr.getError());
-      return 1;
-    }
+    if (failed(identityOr))
+      return options.reportError(identityOr.getError());
 
     outputFile->os() << *identityOr << ".\n";
     outputFile->keep();
-    return 0;
+    return EXIT_SUCCESS;
   }
 
   // If we are dealing with a directory, we need to open it.
@@ -254,24 +252,24 @@ int main(int argc, char **argv) {
         dylib.isBinary(frameworkCtx, *file, format)) {
       outputFile->os().write(file->getBufferStart(), file->getBufferSize());
       outputFile->keep();
-      return 0;
+      return EXIT_SUCCESS;
     }
 
     // Otherwise, compile it.
-    if (failed(dylib.compileToBinary(frameworkCtx, *file, outputFile->os(),
-                                     format)))
-      return 1;
+    if (auto err = dylib.compileToBinary(frameworkCtx, *file, outputFile->os(),
+                                         format))
+      return options.reportError(err.getError());
 
     outputFile->keep();
-    return 0;
+    return EXIT_SUCCESS;
   }
 
   // If we are not inspecting, we must need a compiled format.  If this is
   // already done then we're golden, otherwise compile now.
   if (format != FileFormat::kBEFFile &&
       !dylib.isBinary(frameworkCtx, *file, format)) {
-    if (failed(dylib.compileToBinary(frameworkCtx, file, format)))
-      return 1;
+    if (auto err = dylib.compileToBinary(frameworkCtx, file, format))
+      return options.reportError(err.getError());
   }
 
   // Otherwise we must be getting op-level information about the model or
@@ -298,7 +296,7 @@ int main(int argc, char **argv) {
                                                *options.getOutputFile(false),
                                                options.command.getValue()))
       return options.reportError(err.getError());
-    return 0;
+    return EXIT_SUCCESS;
   }
 
   // Hand off the BEFFileHandle and the file buffer to the framework to actually
