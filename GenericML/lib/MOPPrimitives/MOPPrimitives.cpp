@@ -7,6 +7,7 @@
 #include "GenericML/MOP/MOPPrimitives.h"
 #include "GenericML/MOP/Context.h"
 #include "GenericML/MOP/PrimContext.h"
+#include "GenericML/MOP/Utils.h"
 #include "GenericML/Support/Tensor.h"
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
 #include "Support/ML/TensorShape.h"
@@ -15,33 +16,17 @@
 using namespace M;
 using namespace M::LLCL;
 
-/// Denotes a dynamic dimension in a static tensor spec shape.
-/// This corresponds to the MLIR ShapedType::kDynamicSize, however
-/// the -1 literal is used ubiquitously.
-constexpr int64_t kDynamicSize = -1;
-
-/// Denotes a missing size or alignment attribute value.
-constexpr uint64_t kMissingSizeOrAlign = std::numeric_limits<uint64_t>::max();
-
 static ErrorOr<size_t> getSize(const SmallVector<AnyAsyncValueRef> &dynamicSize,
                                const uint64_t staticSize) {
   if (dynamicSize.size() > 1)
     return Error("unexpected argument provided");
 
   bool hasDynamicSize = !dynamicSize.empty();
-  bool hasStaticSize = (staticSize != kMissingSizeOrAlign);
-  if (hasDynamicSize == hasStaticSize)
+  if (hasDynamicSize == MOP::haveSize(staticSize))
     return Error("expected a runtime size argument or a size attribute");
 
   return hasDynamicSize ? dynamicSize[0]->get<size_t>()
                         : static_cast<size_t>(staticSize);
-}
-
-// TODO(#4705): Consolidate utility functions in MOPPrimitives and MOPDialect.
-Optional<size_t> getAlign(const uint64_t align) {
-  if (align != kMissingSizeOrAlign)
-    return align;
-  return None;
 }
 
 //===----------------------------------------------------------------------===//
@@ -76,9 +61,9 @@ static void mop_buffer_alloc(MOP::Context &ctx, RemainingArguments args,
   if (sizeOr.isError())
     outBuffer.setToError(sizeOr.takeError());
 
-  if (auto validAlign = getAlign(*align))
+  if (MOP::haveAlign(*align) && MOP::isValidAlign(*align))
     outBuffer.emplace(
-        BufferRef::createOwned(runtime.getAllocator(), *sizeOr, *validAlign));
+        BufferRef::createOwned(runtime.getAllocator(), *sizeOr, *align));
   else
     outBuffer.emplace(BufferRef::createOwned(runtime.getAllocator(), *sizeOr));
 }
@@ -103,9 +88,9 @@ static void mop_buffer_realloc(Chain chain, MOP::Context &ctx,
 
   Allocator *allocator = runtime.getAllocator();
   MOP::AnyGenericPrimContext &primCtx = ctx.getPrimContext(*slot);
-  if (auto validAlign = getAlign(*align))
+  if (MOP::haveAlign(*align) && MOP::isValidAlign(*align))
     outBuffer.emplace(
-        primCtx.getOrCreateBuffer(*output, allocator, *sizeOr, *validAlign));
+        primCtx.getOrCreateBuffer(*output, allocator, *sizeOr, *align));
   else
     outBuffer.emplace(primCtx.getOrCreateBuffer(*output, allocator, *sizeOr));
 }
@@ -161,7 +146,7 @@ static void mop_spec_create(RemainingArguments runtimeDims,
   auto nextRuntimeDim = runtimeDimsVec.begin();
   SmallVector<uint64_t> shape;
   for (auto dim : *fstRawShape) {
-    if (dim == kDynamicSize)
+    if (dim == MOP::kDynamicSize)
       shape.push_back((*nextRuntimeDim++)->get<size_t>());
     else
       shape.push_back(dim);
@@ -185,7 +170,7 @@ static void mop_spec_create_dyn(DType runtimeDType,
   auto nextRuntimeDim = runtimeDimsVec.begin();
   SmallVector<uint64_t> shape;
   for (auto dim : *rawShape) {
-    if (dim == kDynamicSize)
+    if (dim == MOP::kDynamicSize)
       shape.push_back((*nextRuntimeDim++)->get<size_t>());
     else
       shape.push_back(dim);
@@ -208,7 +193,7 @@ static void mop_spec_dims_dyn(TensorSpec spec, RemainingResults results,
 
   unsigned next = 0;
   for (unsigned i = 0, e = rawShape->size(); i < e; ++i)
-    if ((*rawShape)[i] == kDynamicSize)
+    if ((*rawShape)[i] == MOP::kDynamicSize)
       results[next++]->emplace<size_t>(spec[i]);
 }
 

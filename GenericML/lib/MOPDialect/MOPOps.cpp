@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MOPDialect/MOPOps.h"
+#include "GenericML/MOP/Utils.h"
 #include "Support/ErrorOr.h"
 #include "Support/MDialect/MAttrs.h"
 #include "Support/ML/DType.h"
@@ -18,8 +19,6 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/IR/TypeUtilities.h"
-
-#include "./Utils.h"
 
 using namespace M;
 using namespace MOP;

@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MOPDialect/MOPTypes.h"
+#include "GenericML/MOP/Utils.h"
 #include "GenericML/MOPDialect/MOPDialect.h"
 #include "Support/Compiler/MLIRDType.h"
 #include "Support/Compiler/ParsingUtils.h"
@@ -17,8 +18,6 @@
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/TypeSwitch.h"
-
-#include "./Utils.h"
 
 using namespace M;
 using namespace MOP;
