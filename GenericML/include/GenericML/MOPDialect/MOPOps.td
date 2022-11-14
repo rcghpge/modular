@@ -111,8 +111,8 @@ def BufferAllocOp : MOP_Op<"buffer.alloc", [
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
   let arguments = (ins MOP_ContextType:$theContext, Optional<Index>:$runtimeSize,
-                       DefaultValuedAttr<UI64Attr, "UINT64_MAX">:$align,  // 0
-                       DefaultValuedAttr<UI64Attr, "UINT64_MAX">:$size);  // 1
+                       DefaultValuedAttr<UI64Attr, "UINT64_MAX">:$align,
+                       DefaultValuedAttr<UI64Attr, "UINT64_MAX">:$size);
   let results = (outs MOP_BufferType:$result);
   let assemblyFormat = "$theContext ($runtimeSize^)? attr-dict";
   let hasVerifier = 1;
@@ -200,10 +200,10 @@ def BufferReallocOp : MOP_Op<"buffer.realloc", [
   let arguments = (ins ChainType:$ch,
                        MOP_ContextType:$theContext,
                        Optional<Index>:$runtimeSize,
-                       DefaultValuedAttr<UI64Attr, "UINT64_MAX">:$align, // 0
-                       UI64Attr:$output,                                 // 1
-                       DefaultValuedAttr<UI64Attr, "UINT64_MAX">:$size,  // 2
-                       UI64Attr:$slot);                                  // 3
+                       DefaultValuedAttr<UI64Attr, "UINT64_MAX">:$align,
+                       UI64Attr:$output,
+                       DefaultValuedAttr<UI64Attr, "UINT64_MAX">:$size,
+                       UI64Attr:$slot);
   let results = (outs MOP_BufferType:$result);
   let assemblyFormat = "$ch $theContext ($runtimeSize^)? attr-dict";
   let hasVerifier = 1;
@@ -291,9 +291,8 @@ def StateSlotCreateOp : MOP_Op<"state_slot.create"> {
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names. Thankfully this matches our desired argument order.
-  let arguments = (ins MOP_ContextType:$theContext,
-                       UI64Attr:$numOutputs,  // 0
-                       UI64Attr: $slot);      // 1
+  let arguments = (ins MOP_ContextType:$theContext, UI64Attr:$numOutputs,
+                       UI64Attr: $slot);
   let results = (outs ChainType:$result);
   let assemblyFormat = "$theContext $numOutputs attr-dict";
 }
@@ -333,8 +332,7 @@ def SpecCreateOp : MOP_Op<"spec.create", [
   // NOTE: The two attributes effectively encode the result's tensor spec type
   // in a form understandable by BEF.
   let arguments = (ins Variadic<Index>:$runtimeDims,
-                       SI64ArrayElementsAttr:$fstRawShape,  // 0
-                       UI8Attr:$sndRawDType);               // 1
+                       SI64ArrayElementsAttr:$fstRawShape, UI8Attr:$sndRawDType);
   let results = (outs MOP_TensorSpecType:$result);
   let assemblyFormat = [{ $runtimeDims attr-dict
                           `:` custom<RawShapeAndDType>($fstRawShape, $sndRawDType) }];
@@ -631,14 +629,13 @@ def TensorExtractOp : MOP_Op<"tensor.extract", [
 
 def ModelFrameworkAttr : ConfinedAttr<StrAttr, [
     AttrConstraint<
-      CPred<"BEFContents::isValidFrameworkName($_self.cast<StringAttr>().getValue())">,
+      CPred<"isValidFrameworkName($_self.cast<StringAttr>().getValue())">,
       "must be a recognized framework name.">]>;
 
 def ModelOp : MOP_Op<"model", [HasParent<"ModuleOp">, Symbol,
                                IsolatedFromAbove]> {
-  let summary = [{
-    Represents an executable model with 'init' and 'execute' entry points.
-  }];
+  let summary = "Represents an executable model with 'init' and 'execute' "
+                "entry points.";
   let description = [{
     This op creates an executable model from single-block regions
     representing its 'init' and 'execute' entry points.
@@ -683,12 +680,11 @@ def ModelOp : MOP_Op<"model", [HasParent<"ModuleOp">, Symbol,
     ```
   }];
 
-  // CAUTION: Attributes must be ordered alphabetically to correspond to
-  // expected indexes in M::Model subclasses and attribute extraction
-  // from the BEF PrimitiveDescriptor.
-  let arguments = (ins ModelFrameworkAttr:$frameworkName,            // 0
-                       TypeAttrOf<FunctionType>:$inputOutputTypes,   // 1
-                       SymbolNameAttr:$sym_name);                    // 2
+  // CAUTION: Attributes are ordered alphabetical to correspond to
+  // expected indexes in M::Model subclasses.
+  let arguments = (ins ModelFrameworkAttr:$frameworkName,
+                       TypeAttrOf<FunctionType>:$inputOutputTypes,
+                       SymbolNameAttr:$sym_name);
   let regions = (region SizedRegion<1>:$init, SizedRegion<1>:$execute);
 
   let extraClassDeclaration = [{
@@ -698,14 +694,14 @@ def ModelOp : MOP_Op<"model", [HasParent<"ModuleOp">, Symbol,
 
   let builders = [
     /// Creates a model with empty 'init' and 'execute' bodies and
-    /// with `inputTypes` and `outputTypes` for the op's explicit signature.
+    /// with `inputTypes` and `resultTypes` for the op's explicit signature.
     /// `inputArgLocs` specifies the location information for the
     /// explicit arguments to the 'execute' entry point, and thus should
     /// have the same length as `inputTypes`.
     OpBuilder<(ins "StringAttr":$sym_name,
                    "StringAttr":$frameworkName,
                    "ArrayRef<Type>":$inputTypes,
-                   "ArrayRef<Type>":$outputTypes,
+                   "ArrayRef<Type>":$resultTypes,
                    "ArrayRef<Location>":$inputArgLocs,
                    CArg<"ArrayRef<NamedAttribute>", "{}">:$extraAttrs)>
   ];

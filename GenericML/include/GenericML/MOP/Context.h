@@ -21,15 +21,6 @@ public:
   explicit Context(size_t numSlots) : primContexts(numSlots) {}
   ~Context() = default;
 
-  /// Returns the number of state slots in the context.
-  size_t getNumStateSlots() const { return primContexts.size(); }
-
-  /// Returns true if the state slot at slotNumber has been created.
-  bool hasStateSlot(size_t slotNumber) {
-    assert(slotNumber < primContexts.size() && "slotNumber is out of range");
-    return primContexts[slotNumber] != nullptr;
-  }
-
   // No implicit copying is allowed.
   Context(const Context &rhs) = delete;
   Context &operator=(const Context &rhs) = delete;

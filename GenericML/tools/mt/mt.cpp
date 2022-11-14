@@ -125,6 +125,8 @@ getFileContentIdentity(const llvm::MemoryBuffer &file, FileFormat format,
     return "input is a TensorFlow model in SavedModel form";
   case FileFormat::kTFPDialect:
     return "input is a compiled TensorFlow BEF model in MLIR form";
+  case FileFormat::kMOPDialect:
+    return "input is a compiled Modular BEF model in MLIR form";
   case FileFormat::kFauxDialect:
     return "input is Faux model in MLIR form";
   case FileFormat::kBEFFile: {
