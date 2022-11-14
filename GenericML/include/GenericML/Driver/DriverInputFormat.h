@@ -25,9 +25,6 @@ enum class FileFormat {
   /// This looks like a textual MLIR file with the faux dialect in it.
   kFauxDialect,
 
-  /// This looks like a textual MLIR file with the mop dialect in it.
-  kMOPDialect,
-
   /// This looks like a textual MLIR file with the tfl dialect in it.
   kMTFLDialect,
 

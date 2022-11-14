@@ -10,6 +10,7 @@
 
 #include "GenericML/MOPDialect/MOPOps.h"
 #include "GenericML/MOP/Utils.h"
+#include "GraphRT/BEF/BEFContents.h"
 #include "Support/ErrorOr.h"
 #include "Support/MDialect/MAttrs.h"
 #include "Support/ML/DType.h"
@@ -509,11 +510,11 @@ static ParseResult parseExecuteRegion(OpAsmParser &p,
                                       Region &executeRegion) {
   llvm::SMLoc argLoc;
   SmallVector<OpAsmParser::Argument> args;
-  SmallVector<Type> resultTypes;
+  SmallVector<Type> outputTypes;
   if (p.getCurrentLocation(&argLoc) ||
       p.parseArgumentList(args, OpAsmParser::Delimiter::Paren,
                           /*allowType=*/true) ||
-      p.parseArrowTypeList(resultTypes) ||
+      p.parseArrowTypeList(outputTypes) ||
       p.parseRegion(executeRegion, args, /*enableNameShadowing=*/true))
     return failure();
 
@@ -525,13 +526,13 @@ static ParseResult parseExecuteRegion(OpAsmParser &p,
     return p.emitError(argLoc)
            << "expected the 'execute' region arguments to begin with types "
            << implicitExecSig.getInputs() << ".";
-  if (!checkAndRemovePrefix(implicitExecSig.getResults(), resultTypes))
+  if (!checkAndRemovePrefix(implicitExecSig.getResults(), outputTypes))
     return p.emitError(argLoc)
            << "expected the 'execute' region outputs to begin with types "
            << implicitExecSig.getResults() << ".";
 
   inputOutputTypes =
-      TypeAttr::get(p.getBuilder().getFunctionType(inputTypes, resultTypes));
+      TypeAttr::get(p.getBuilder().getFunctionType(inputTypes, outputTypes));
   return success();
 }
 
@@ -549,25 +550,15 @@ static void printExecuteRegion(OpAsmPrinter &p, const ModelOp &op,
   p.printRegion(executeRegion, /*printEntryBlockArgs=*/false);
 }
 
-/// Returns true if frameworkName is recognized as a valid framework.
-static bool isValidFrameworkName(StringRef frameworkName) {
-  return frameworkName == "tfl";
-}
-
-/// Creates a model with empty 'init' and 'execute' bodies and with
-/// `inputTypes` and `resultTypes` for the op's explicit signature.
-/// `inputArgLocs` specifies the location information for the explicit
-/// arguments to the 'execute' entry point, and thus should have the same
-/// length as `inputTypes`.
 void ModelOp::build(OpBuilder &builder, OperationState &state,
                     StringAttr sym_name, StringAttr frameworkName,
-                    ArrayRef<Type> inputTypes, ArrayRef<Type> resultTypes,
+                    ArrayRef<Type> inputTypes, ArrayRef<Type> outputTypes,
                     ArrayRef<Location> inputArgLocs,
                     ArrayRef<NamedAttribute> extraAttrs) {
   state.addAttribute(SymbolTable::getSymbolAttrName(), sym_name);
   state.addAttribute(
       getInputOutputTypesAttrName(state.name),
-      TypeAttr::get(builder.getFunctionType(inputTypes, resultTypes)));
+      TypeAttr::get(builder.getFunctionType(inputTypes, outputTypes)));
   state.addAttribute(getFrameworkNameAttrName(state.name), frameworkName);
   state.attributes.append(extraAttrs.begin(), extraAttrs.end());
 
