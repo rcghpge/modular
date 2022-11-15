@@ -268,14 +268,8 @@ BEFContents BEFFile::sniffFileContents() const {
         if (primitiveName == "mop.model") {
           // We'll need to use method 2 below.
           isMopModel = true;
-        } else if (primitiveName == "tflp.model") {
-          // This is still supported, but will be retired in favor
-          // of mop.model with frameworkName = "tfl".
-          result = BEFContents{BEFContents::kTFLiteModel};
-        } else if (primitiveName == "tfp.model") {
-          result = BEFContents{BEFContents::kTensorFlowModel};
-        } else if (primitiveName == "faux.testcase") {
-          result = BEFContents{BEFContents::kFauxModel};
+        } else if (BEFContents::isValidOpName(primitiveName)) {
+          result = BEFContents::getContentsForOpName(primitiveName);
         } else {
           // Keep looking.
           return success();
@@ -292,12 +286,9 @@ BEFContents BEFFile::sniffFileContents() const {
           models.emplace_back(std::move(model));
           return success();
         });
-    if (!err.isError() && !models.empty()) {
-      if (models.front()->frameworkName == "tfl") {
-        result = BEFContents{BEFContents::kTFLiteModel};
-      }
-      // other frameworks go here.
-    }
+    if (!err.isError() && !models.empty())
+      result = BEFContents::getContentsForOpName("mop.model",
+                                                 models.front()->frameworkName);
   }
 
   return result;
