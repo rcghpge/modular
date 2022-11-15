@@ -32,13 +32,19 @@ public:
   }
 
   // Move is allowed for BufferRef.
-  BufferRef(BufferRef &&rhs) { *this = std::move(rhs); }
+  BufferRef(BufferRef &&rhs)
+      : allocator(std::exchange(rhs.allocator, nullptr)),
+        data(std::exchange(rhs.data, nullptr)),
+        size(std::exchange(rhs.size, 0)),
+        alignment(std::exchange(rhs.alignment, None)),
+        storage(std::exchange(rhs.storage, kUninit)) {}
+
   BufferRef &operator=(BufferRef &&rhs) {
-    allocator = std::exchange(rhs.allocator, nullptr);
-    data = std::exchange(rhs.data, nullptr);
-    size = std::exchange(rhs.size, 0);
-    alignment = std::exchange(rhs.alignment, None);
-    storage = std::exchange(rhs.storage, kUninit);
+    std::swap(allocator, rhs.allocator);
+    std::swap(data, rhs.data);
+    std::swap(size, rhs.size);
+    std::swap(alignment, rhs.alignment);
+    std::swap(storage, rhs.storage);
     return *this;
   }
 
@@ -67,14 +73,6 @@ public:
   /// Returns a shallow copy of BufferRef. The storage kind is set to kBorrowed
   /// regardless of the original BufferRef storage kind.
   BufferRef borrow() { return createBorrowed(data, size, alignment); }
-
-  /// Release the ownership or the underlying buffer to the new BufferRef and
-  /// return it.
-  BufferRef release() {
-    BufferRef ref;
-    ref = std::move(*this);
-    return ref;
-  }
 
   /// Returns a deep copy of this buffer with ownining reference.
   /// TODO: Instead of taking copyAllocator as an argument, we may want to use

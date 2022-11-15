@@ -39,14 +39,12 @@ TEST(BufferRefTest, deepCopyTest) {
 TEST(BufferRefTest, releaseTest) {
   int *data = (int *)malloc(sizeof(int));
   auto ref = BufferRef::createBorrowed(data, sizeof(int));
-  auto ref2 = ref.release();
-  ASSERT_EQ(ref.getData(), nullptr);
+  auto ref2 = std::move(ref);
   ASSERT_EQ(ref2.getStorageKind(), BufferRef::kBorrowed);
   free(data);
 
   auto allocator = createMallocAllocator();
   auto ref3 = BufferRef::createOwned(allocator.get(), sizeof(int));
-  auto ref4 = ref3.release();
-  ASSERT_EQ(ref3.getData(), nullptr);
+  auto ref4 = std::move(ref3);
   ASSERT_EQ(ref4.getStorageKind(), BufferRef::kOwned);
 }

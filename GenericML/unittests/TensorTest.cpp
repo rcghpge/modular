@@ -55,7 +55,6 @@ TEST(Tensor, ReleaseBuffer) {
   LLCL::BufferRef ref = tensor.releaseBuffer();
   ASSERT_EQ(ref.getSize(), tensor.getSizeInBytes());
   ASSERT_EQ(std::memcmp(ref.getData(), tensor2.getPointer(), ref.getSize()), 0);
-  ASSERT_EQ(tensor.getPointer(), nullptr);
 }
 
 TEST(Tensor, DeepCopy) {

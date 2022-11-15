@@ -60,6 +60,5 @@ void StateSlot::updateCacheIfNeeded(LLCL::BufferRef &entry,
     return;
 
   // Free the existing buffer if exists and create a new one.
-  entry.release();
   entry = LLCL::BufferRef::createOwned(allocator, size, alignment);
 }
