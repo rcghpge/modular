@@ -48,7 +48,7 @@ void StateSlot::doTypeRegistration(std::atomic<TypeID> *staticTypeID) {
   // Grab the next id. At most one thread will win, we don't care which.
   TypeID existingId = kInvalidTypeID;
   (void)staticTypeID->compare_exchange_strong(
-      existingId, nextId, std::memory_order_acquire, std::memory_order_release);
+      existingId, nextId, std::memory_order_release, std::memory_order_acquire);
 }
 
 void StateSlot::updateCacheIfNeeded(LLCL::BufferRef &entry,
