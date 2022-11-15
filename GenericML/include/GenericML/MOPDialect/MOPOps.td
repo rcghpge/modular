@@ -128,7 +128,7 @@ def BufferReallocOp : MOP_Op<"buffer.realloc", [
                 "static size and optional alignment.";
   let description = [{
     This operation has access to a buffer cache entry in the context given
-    by the slot and output indexes.
+    by the slot and buffer indexes.
 
     If a buffer of matching size already exists in the cache then it is
     returned directly. Otherwise a new buffer is allocated and the cache is
@@ -148,9 +148,9 @@ def BufferReallocOp : MOP_Op<"buffer.realloc", [
     'mutable'). The compiler must respect the following rules to avoid
     use-after-free errors and mutation-via-aliases at runtime:
      1. For all control flow paths, at most one mop.buffer.realloc can
-        execute for the same slot and output indexes.
+        execute for the same slot and buffer indexes.
         This rule is easy to follow since no two operations in the graph should
-        share the same slot, and output indexes should correspond to op result
+        share the same slot, and buffer indexes should correspond to op result
         indexes.
      2. The lifetime of the context must exceed the lifetime of the returned
         buffer. This rule is easy to follow since the context is held by the
@@ -170,11 +170,11 @@ def BufferReallocOp : MOP_Op<"buffer.realloc", [
     ```mlir
        init {
          ...
-         %buf1 = mop.buffer.realloc %ch %ctxt { size=48, align=8, slot=2, output=0 }
+         %buf1 = mop.buffer.realloc %ch %ctxt { size=48, align=8, slot=2, buffer=0 }
        }
        execute (...) -> ... {
          ...
-         %buf2 = mop.buffer.realloc %ch %ctxt { size=48, align=16, slot=2, output=0 }
+         %buf2 = mop.buffer.realloc %ch %ctxt { size=48, align=16, slot=2, buffer=0 }
        }
     ```
     the second realloc will always reuse the buffer from the first realloc.
@@ -185,10 +185,10 @@ def BufferReallocOp : MOP_Op<"buffer.realloc", [
     %size : index
     %ch : !bef.chain
 
-    %buf = mop.buffer.realloc %ch %ctxt %size { align=8:ui64, slot=42, output=2 }
+    %buf = mop.buffer.realloc %ch %ctxt %size { align=8:ui64, slot=42, buffer=2 }
     %buf : !mop.buffer      // at least 8 byte aligned in storage
 
-    %buf = mop.buffer.realloc %ch %ctxt { size=64:ui64, slot=42, output=2 }
+    %buf = mop.buffer.realloc %ch %ctxt { size=64:ui64, slot=42, buffer=2 }
     %buf : !mop.buffer<64>  // no specific alignment in storage
     ```
   }];
@@ -201,7 +201,7 @@ def BufferReallocOp : MOP_Op<"buffer.realloc", [
                        MOP_ContextType:$theContext,
                        Optional<Index>:$runtimeSize,
                        DefaultValuedAttr<UI64Attr, "UINT64_MAX">:$align, // 0
-                       UI64Attr:$output,                                 // 1
+                       UI64Attr:$buffer,                                 // 1
                        DefaultValuedAttr<UI64Attr, "UINT64_MAX">:$size,  // 2
                        UI64Attr:$slot);                                  // 3
   let results = (outs MOP_BufferType:$result);
@@ -292,10 +292,10 @@ def StateSlotCreateOp : MOP_Op<"state_slot.create"> {
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names. Thankfully this matches our desired argument order.
   let arguments = (ins MOP_ContextType:$theContext,
-                       UI64Attr:$numOutputs,  // 0
+                       UI64Attr:$numBuffers,  // 0
                        UI64Attr: $slot);      // 1
   let results = (outs ChainType:$result);
-  let assemblyFormat = "$theContext $numOutputs attr-dict";
+  let assemblyFormat = "$theContext $numBuffers attr-dict";
 }
 
 //===----------------------------------------------------------------------===//

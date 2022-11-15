@@ -12,70 +12,65 @@
 using namespace M;
 using namespace M::MOP;
 
-struct PrimContextA {
-  PrimContextA(int i) : i(i) { resource = malloc(1); }
-  ~PrimContextA() { free(resource); }
+struct PayloadA {
+  explicit PayloadA(int i) : i(i) { resource = malloc(1); }
+  ~PayloadA() { free(resource); }
   int i;
   void *resource;
 };
 
-struct PrimContextB {
-  PrimContextB(char c) : c(c) {}
+struct PayloadB {
+  explicit PayloadB(char c) : c(c) {}
   char c;
 };
 
 #ifndef NDEBUG
-TEST(ContextTest, FrameworkPrimContextDowncastFailTest) {
-  Context ctx(2);
-  AnyGenericPrimContext::registerFramework<PrimContextA>();
+TEST(ContextTest, StateSlotDowncastFailTest) {
+  Context ctx(/*numSlots=*/1);
+  StateSlot::registerType<PayloadA>();
 
-  ctx.emplacePrimContext<PrimContextA>(0, 1, 43);
-  auto &primCtxA = ctx.getPrimContext(0);
-  ASSERT_DEATH_IF_SUPPORTED(primCtxA.getFrameworkPrimContext<PrimContextB>(),
-                            "(typeID == getTypeID<T>())");
+  ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, /*numBuffers=*/1, 43);
+  ASSERT_DEATH_IF_SUPPORTED(ctx.getStateSlotPayload<PayloadB>(/*slotIndex=*/0),
+                            "(mismatched static and dynamic StateSlot types)");
 }
 #endif
 
-TEST(ContextTest, FrameworkPrimContextTest) {
-  Context ctx(2);
-  AnyGenericPrimContext::registerFramework<PrimContextA>();
-  AnyGenericPrimContext::registerFramework<PrimContextB>();
+TEST(ContextTest, StateSlotTest) {
+  Context ctx(/*numSlots=*/2);
+  StateSlot::registerType<PayloadA>();
+  StateSlot::registerType<PayloadB>();
 
-  ctx.emplacePrimContext<PrimContextA>(0, 1, 43);
-  ctx.emplacePrimContext<PrimContextB>(1, 1, 'a');
+  ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, /*numBuffers=*/1, 43);
+  ctx.emplaceStateSlot<PayloadB>(/*slotIndex=*/1, /*numBuffers=*/1, 'a');
 
-  auto &primCtxA = ctx.getPrimContext(0);
-  EXPECT_EQ(primCtxA.getTypeID(), 0);
-  EXPECT_EQ(primCtxA.getFrameworkPrimContext<PrimContextA>().i, 43);
+  EXPECT_EQ(ctx.getStateSlotPayload<PayloadA>(/*slotIndex=*/0).i, 43);
 
-  auto &primCtxB = ctx.getPrimContext(1);
-  EXPECT_EQ(primCtxB.getTypeID(), 1);
-  EXPECT_EQ(primCtxB.getFrameworkPrimContext<PrimContextB>().c, 'a');
+  EXPECT_EQ(ctx.getStateSlotPayload<PayloadB>(/*slotIndex=*/1).c, 'a');
 }
 
 TEST(ContextTest, getOrCreateBufferTest) {
   auto allocator = LLCL::createMallocAllocator();
   {
     // Add scope to make sure that the allocator outlives the context.
-    Context ctx(1);
-    AnyGenericPrimContext::registerFramework<PrimContextA>();
-    ctx.emplacePrimContext<PrimContextA>(0, 1, 43);
+    Context ctx(/*numSlots=*/1);
+    StateSlot::registerType<PayloadA>();
+    ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, /*numBuffers=*/1, 43);
 
-    auto &primCtx = ctx.getPrimContext(0);
-    auto buffer = primCtx.getOrCreateBuffer(
-        /*index=*/0, /*allocator=*/allocator.get(), /*size=*/1);
+    auto &stateSlot = ctx.getStateSlot(/*slotIndex=*/0);
+    auto buffer = stateSlot.getOrCreateBuffer(
+        /*bufferIndex=*/0, /*allocator=*/allocator.get(), /*size=*/1);
     size_t size = buffer.getSize();
     EXPECT_EQ(buffer.getStorageKind(), LLCL::BufferRef::kBorrowed);
 
     // getOrCreateBuffer call with the same slot and the same size returns a
     // cached buffer.
-    auto buffer2 = primCtx.getOrCreateBuffer(
-        /*index=*/0, /*allocator=*/allocator.get(), /*size=*/1);
+    auto buffer2 = stateSlot.getOrCreateBuffer(
+        /*bufferIndex=*/0, /*allocator=*/allocator.get(), /*size=*/1);
     EXPECT_EQ(buffer.getData(), buffer2.getData());
 
-    // Call with a different size will allocate a new memory.
-    auto buffer3 = primCtx.getOrCreateBuffer(
-        /*index=*/0, /*allocator=*/allocator.get(), /*size=*/2);
+    // Call with a different size will allocate a new buffer.
+    auto buffer3 = stateSlot.getOrCreateBuffer(
+        /*bufferIndex=*/0, /*allocator=*/allocator.get(), /*size=*/2);
     EXPECT_NE(buffer3.getSize(), size);
   }
 }

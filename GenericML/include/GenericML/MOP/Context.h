@@ -7,56 +7,74 @@
 #ifndef GENERICML_MOP_CONTEXT_H
 #define GENERICML_MOP_CONTEXT_H
 
-#include "GenericML/MOP/PrimContext.h"
+#include "GenericML/MOP/StateSlot.h"
 #include "Support/AlignedAlloc.h"
 
 namespace M::MOP {
 
-/// This is a global context for Modular framework execution. The global context
-/// manages PrimContexts, which is a context local to a particular primitive
-/// operation.
+/// A context holds a number of 'state slots'. The number of state slots is
+/// set at construction time and cannot be changed. Each state slot can hold
+/// an arbitrary C++ type. Generally the context is created during a model's
+/// 'init' phase, each slot is setup using unique slot indexes determined at
+/// compile time, and the context is reused by each call to the model's
+/// 'execute' phase.
+///
+/// Typically a state slot corresponds to a unique operation in the graph.
+/// However state slots can also be used to hold other framework-specific
+/// state, such as a framework specific context.
+///
+/// State slots also generically support caching of buffer allocations.
+///
+/// No thread synchronization is enforced. A slot index should be emplaced at
+/// most once. A state slot's contents should be accessed by one thread at a
+/// time. Both these conditions are easy to satisfy if state slots are unique
+/// for an operation in the overall graph.
 class Context {
 public:
-  /// Construct a new context.
-  explicit Context(size_t numSlots) : primContexts(numSlots) {}
+  /// Constructs a new context with numSlots uninitialized state slots.
+  explicit Context(size_t numSlots) : stateSlots(numSlots) {}
   ~Context() = default;
 
   /// Returns the number of state slots in the context.
-  size_t getNumStateSlots() const { return primContexts.size(); }
+  size_t getNumStateSlots() const { return stateSlots.size(); }
 
-  /// Returns true if the state slot at slotNumber has been created.
-  bool hasStateSlot(size_t slotNumber) {
-    assert(slotNumber < primContexts.size() && "slotNumber is out of range");
-    return primContexts[slotNumber] != nullptr;
+  /// Returns true if the state slot at slotIndex has been emplaced.
+  bool hasStateSlot(size_t slotIndex) {
+    assert(slotIndex < stateSlots.size() && "slotIndex is out of range");
+    return stateSlots[slotIndex] != nullptr;
   }
 
   // No implicit copying is allowed.
   Context(const Context &rhs) = delete;
   Context &operator=(const Context &rhs) = delete;
 
-  /// Create a GenericPrimContext for a specific framework context and register
-  /// it to the context with the given slot number.
+  /// Constructs a T in-place within the state slot at slotIndex. The state
+  /// slot must not have already been emplaced. The state slot will also hold
+  /// space for numBuffers cached buffer allocations, which will all initially
+  /// be 'uninitialized'.
   template <typename T, typename... Args>
-  void emplacePrimContext(size_t slotNumber, size_t numOutputs,
-                          Args &&...args) {
-    assert(primContexts[slotNumber] == nullptr &&
-           "PrimContext for the given slot already exists.");
-    primContexts[slotNumber] =
-        AnyGenericPrimContext::createGenericPrimContext<T>(
-            numOutputs, std::forward<Args>(args)...);
+  void emplaceStateSlot(size_t slotIndex, size_t numBuffers, Args &&...args) {
+    assert(stateSlots[slotIndex] == nullptr &&
+           "StateSlot for the given slot already exists.");
+    stateSlots[slotIndex] =
+        StateSlot::createStateSlot<T>(numBuffers, std::forward<Args>(args)...);
   }
 
-  /// Retrieve the primitive context at given slot number.
-  AnyGenericPrimContext &getPrimContext(size_t slotNumber) const {
-    auto *ptr = primContexts[slotNumber].get();
-    assert(ptr != nullptr);
-    return *ptr;
+  /// Returns the state slot at slotIndex. The state slot must have already
+  /// been emplaced.
+  StateSlot &getStateSlot(size_t slotIndex) const;
+
+  /// Returns the payload in state slot at slotIndex. The state slot must
+  /// have already been emplaced and be of type T.
+  template <typename T>
+  T &getStateSlotPayload(size_t slotIndex) const {
+    return getStateSlot(slotIndex).template get<T>();
   }
 
 private:
-  std::vector<std::unique_ptr<AnyGenericPrimContext>> primContexts;
+  std::vector<std::unique_ptr<StateSlot>> stateSlots;
 };
 
 } // namespace M::MOP
 
-#endif
+#endif // GENERICML_MOP_CONTEXT_H

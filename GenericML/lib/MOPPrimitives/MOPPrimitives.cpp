@@ -6,7 +6,7 @@
 
 #include "GenericML/MOP/MOPPrimitives.h"
 #include "GenericML/MOP/Context.h"
-#include "GenericML/MOP/PrimContext.h"
+#include "GenericML/MOP/StateSlot.h"
 #include "GenericML/MOP/Utils.h"
 #include "GenericML/Support/Tensor.h"
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
@@ -87,12 +87,12 @@ static void mop_buffer_realloc(Chain chain, MOP::Context &ctx,
     outBuffer.setToError(sizeOr.takeError());
 
   Allocator *allocator = runtime.getAllocator();
-  MOP::AnyGenericPrimContext &primCtx = ctx.getPrimContext(*slot);
+  MOP::StateSlot &stateSlot = ctx.getStateSlot(*slot);
   if (MOP::haveAlign(*align) && MOP::isValidAlign(*align))
     outBuffer.emplace(
-        primCtx.getOrCreateBuffer(*output, allocator, *sizeOr, *align));
+        stateSlot.getOrCreateBuffer(*output, allocator, *sizeOr, *align));
   else
-    outBuffer.emplace(primCtx.getOrCreateBuffer(*output, allocator, *sizeOr));
+    outBuffer.emplace(stateSlot.getOrCreateBuffer(*output, allocator, *sizeOr));
 }
 
 //===----------------------------------------------------------------------===//
@@ -121,13 +121,12 @@ static void mop_context_create(Result<MOP::Context> result,
 // mop.state_slot.create
 //===----------------------------------------------------------------------===//
 
-/// Constructs the default prim context with the given outputs under the given
-/// slot in the mop context.
+/// Constructs the default state slot with the given number of cached buffers
+/// under the given slot in the mop context.
 static Chain mop_state_slot_create(MOP::Context &ctx,
-                                   BEFAttr<uint64_t> numOutputs,
+                                   BEFAttr<uint64_t> numBuffers,
                                    BEFAttr<uint64_t> slot) {
-  MOP::AnyGenericPrimContext::registerFramework<MOP::DefaultPrimContext>();
-  ctx.emplacePrimContext<MOP::DefaultPrimContext>(*slot, *numOutputs);
+  ctx.emplaceStateSlot<MOP::DefaultStateSlot>(*slot, *numBuffers);
   return {};
 }
 
@@ -269,6 +268,8 @@ void mop_model() { assert(false && "mop.model should never be invoked"); }
 //===----------------------------------------------------------------------===//
 
 void M::registerMOPPrimitives(PrimitiveRegistry &registry) {
+  MOP::StateSlot::registerType<MOP::DefaultStateSlot>();
+
   ADD_PRIMITIVE(registry, "mop.buffer.constant", mop_buffer_constant);
   ADD_PRIMITIVE(registry, "mop.buffer.alloc", mop_buffer_alloc);
   ADD_PRIMITIVE(registry, "mop.buffer.realloc", mop_buffer_realloc);
