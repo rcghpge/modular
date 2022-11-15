@@ -607,8 +607,8 @@ class BEFAttr<Detail::List>
 public:
   using BaseClass = BEFAttrCommon<BEFAttr<Detail::List>, Detail::List>;
   explicit BEFAttr(const uint8_t *pointer)
-      : BaseClass(Detail::List{}), pointer(pointer),
-        length(decodeBEFArrayLength(pointer)) {
+      : BaseClass(Detail::List{}),
+        data(pointer, decodeBEFArrayLength(pointer)) {
     this->checkAttributeKind(pointer);
   }
 
@@ -650,25 +650,24 @@ public:
   };
 
   /// Range access into the List object.
-  Iterator begin() const { return {pointer, 0}; }
-  Iterator end() const { return Iterator{pointer, length}; }
+  Iterator begin() const { return {data.begin(), 0}; }
+  Iterator end() const { return Iterator{data.begin(), data.size()}; }
 
   /// Return the size of the List in number of elements.
-  size_t size() const { return length; }
+  size_t size() const { return data.size(); }
 
   /// Return true if there are no attributes in this list.
-  bool empty() const { return length == 0; }
+  bool empty() const { return data.empty(); }
 
   /// Parse this list attribute into the specified type (typically a
   /// SmallVector), rejecting it with an error if not present or the wrong type.
   template <typename ValueType>
   ErrorOrSuccess decode(ValueType *result) const {
-    return BEFDynamicAttr(pointer).decode<ValueType>(result);
+    return BEFDynamicAttr(data.data()).decode<ValueType>(result);
   }
 
 private:
-  const uint8_t *pointer;
-  const size_t length;
+  ArrayRef<uint8_t> data;
 };
 
 using BEFListAttr = BEFAttr<Detail::List>;
@@ -725,8 +724,8 @@ public:
   using BaseClass =
       BEFAttrCommon<BEFAttr<Detail::Dictionary>, Detail::Dictionary>;
   explicit BEFAttr(const uint8_t *pointer)
-      : BaseClass(Detail::Dictionary{}), pointer(pointer),
-        length(decodeBEFArrayLength(pointer)) {
+      : BaseClass(Detail::Dictionary{}),
+        data(pointer, decodeBEFArrayLength(pointer)) {
     this->checkAttributeKind(pointer);
   }
 
@@ -799,14 +798,14 @@ public:
   };
 
   /// Range access into the Dictionary object.
-  Iterator begin() const { return {pointer, 0}; }
-  Iterator end() const { return Iterator{pointer, length}; }
+  Iterator begin() const { return {data.begin(), 0}; }
+  Iterator end() const { return Iterator{data.begin(), data.size()}; }
 
   /// Return the size of the Dictionary in number of elements.
-  size_t size() const { return length; }
+  size_t size() const { return data.size(); }
 
   /// Return true if there are no attributes in this dictionary.
-  bool empty() const { return length == 0; }
+  bool empty() const { return data.empty(); }
 
   /// Find an element in the dictionary by name. Parses every name in sequence
   /// until it finds the right one and returns that attribute. If the name is
@@ -851,8 +850,7 @@ public:
   void dump() const;
 
 private:
-  const uint8_t *pointer;
-  const size_t length;
+  ArrayRef<uint8_t> data;
 };
 
 using BEFDictionaryAttr = BEFAttr<Detail::Dictionary>;
