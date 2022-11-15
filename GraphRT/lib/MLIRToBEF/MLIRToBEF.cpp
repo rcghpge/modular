@@ -28,6 +28,7 @@
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include <climits>
 
 using namespace M;
 
@@ -642,7 +643,11 @@ private:
   BEFOffset emitIntOrFloatRange(BEF::AttributeKind kind, size_t numElements,
                                 size_t alignment,
                                 function_ref<void()> emitRangeFn);
+  template <typename ElementsAttrType>
+  BEFOffset emitElementsAttr(ElementsAttrType value, Location loc,
+                             function_ref<void()> emitRangeFn);
   BEFOffset emitArrayElementsAttr(ArrayElementsAttr value, Location loc);
+  BEFOffset emitDenseArrayAttr(mlir::DenseArrayAttr value, Location loc);
   BEFOffset
   emitDenseResourceElementsAttribute(mlir::DenseResourceElementsAttr value,
                                      Location loc);
@@ -812,17 +817,34 @@ BEFOffset AttributesEmitter::emitDenseResourceElementsAttribute(
       [&]() { emitOwnedBytes(resourceBlob->getDataAs<uint8_t>()); });
 }
 
-BEFOffset AttributesEmitter::emitArrayElementsAttr(ArrayElementsAttr value,
-                                                   Location loc) {
+template <typename ElementsAttrType>
+BEFOffset
+AttributesEmitter::emitElementsAttr(ElementsAttrType value, Location loc,
+                                    function_ref<void()> emitRangeFn) {
   FailureOr<BEF::AttributeKind> kind =
       deriveAttributeKind(value.getElementType(), loc);
   if (failed(kind))
     return {0};
 
   unsigned bitWidth = value.getType().getElementTypeBitWidth();
-  size_t alignment = llvm::divideCeil(bitWidth, 8);
-  return emitIntOrFloatRange(*kind, value.size(), alignment,
-                             [&]() { emitOwnedBytes(value.getRawData()); });
+  // Rounding up to bytes for alignment.
+  size_t alignment = llvm::divideCeil(bitWidth, CHAR_BIT);
+  return emitIntOrFloatRange(*kind, value.size(), alignment, emitRangeFn);
+}
+
+BEFOffset AttributesEmitter::emitArrayElementsAttr(ArrayElementsAttr value,
+                                                   Location loc) {
+  return emitElementsAttr<ArrayElementsAttr>(
+      value, loc, [&]() { emitOwnedBytes(value.getRawData()); });
+}
+
+BEFOffset AttributesEmitter::emitDenseArrayAttr(mlir::DenseArrayAttr value,
+                                                Location loc) {
+  return emitElementsAttr<mlir::DenseArrayAttr>(value, loc, [&]() {
+    auto rawData = value.getRawData();
+    const uint8_t *data = (const uint8_t *)rawData.data();
+    emitOwnedBytes(ArrayRef<uint8_t>(data, rawData.size()));
+  });
 }
 
 BEFOffset AttributesEmitter::emitArrayAttribute(ArrayAttr value, Location loc) {
@@ -1125,6 +1147,9 @@ BEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr,
 
   if (auto arrayElements = dyn_cast<ArrayElementsAttr>(attr))
     return emitArrayElementsAttr(arrayElements, loc);
+
+  if (auto denseArray = dyn_cast<mlir::DenseArrayAttr>(attr))
+    return emitDenseArrayAttr(denseArray, loc);
 
   if (auto denseElements = dyn_cast<mlir::DenseResourceElementsAttr>(attr))
     return emitDenseResourceElementsAttribute(denseElements, loc);
