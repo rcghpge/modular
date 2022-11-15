@@ -627,7 +627,7 @@ public:
                                             BEFDynamicAttr>;
 
     Iterator(const uint8_t *ptr, size_t iterIdx)
-        : basePtr(const_cast<uint8_t *>(ptr)), ptr(basePtr), iterIdx(iterIdx) {}
+        : basePtr(ptr), ptr(const_cast<uint8_t *>(ptr)), iterIdx(iterIdx) {}
 
     /// Increment the iterator. Decrementing is sufficiently difficult that it's
     /// left as an exercise to the person who wants to use it.
@@ -644,7 +644,7 @@ public:
     BEFDynamicAttr operator*() const;
 
   private:
-    uint8_t *basePtr;
+    const uint8_t *basePtr;
     uint8_t *ptr;
     size_t iterIdx;
   };
@@ -775,7 +775,7 @@ public:
         llvm::iterator_facade_base<Iterator, std::input_iterator_tag, Element>;
 
     Iterator(const uint8_t *ptr, size_t iterIdx)
-        : basePtr(const_cast<uint8_t *>(ptr)), ptr(basePtr), iterIdx(iterIdx) {}
+        : basePtr(ptr), ptr(const_cast<uint8_t *>(ptr)), iterIdx(iterIdx) {}
 
     /// Increment the iterator. Decrementing is sufficiently difficult that it's
     /// left as an exercise to the person who wants to use it.
@@ -792,7 +792,7 @@ public:
     Element operator*() const;
 
   private:
-    uint8_t *basePtr;
+    const uint8_t *basePtr;
     uint8_t *ptr;
     size_t iterIdx;
   };
