@@ -17,11 +17,11 @@
 namespace M {
 
 class BEFFunctionType;
-class Error;
+class ErrorOrSuccess;
 class QuantTensorSpec;
 
 /// Decodes a BEFFunctionType signature into input and output QuantTensorSpecs.
-Optional<Error>
+ErrorOrSuccess
 decodeQuantizedSignature(BEFFunctionType signature,
                          SmallVectorImpl<QuantTensorSpec> &inputSpecs,
                          SmallVectorImpl<QuantTensorSpec> &outputSpecs);
