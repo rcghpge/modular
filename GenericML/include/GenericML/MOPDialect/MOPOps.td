@@ -23,18 +23,18 @@ include "GenericML/MOPDialect/MOPTypes.td"
 class MOP_Op<string mnemonic, list<Trait> traits = []> :
     Op<MOPDialect, mnemonic, traits>;
 
-// TODO(#4728): The syntax for slot indexes could be greatly improved, eg "#42".
-
 //===----------------------------------------------------------------------===//
-// BufferConstantOp
+// CpuBufferConstantOp
 //===----------------------------------------------------------------------===//
 
-def BufferConstantOp : MOP_Op<"buffer.constant",
+def CpuBufferConstantOp : MOP_Op<"cpu.buffer.constant",
                              [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Creates a buffer whose data is aliased with the bytes in the "
-                "given attribute.";
+  let summary = [{
+    Creates a buffer hosted on the CPU whose data is aliased with
+    the bytes in the given attribute.
+  }];
   let description = [{
-    Creates a buffer whose byte array is aliased with the byte array
+    Creates a CPU-hosted buffer whose byte array is aliased with the byte array
     in the given attribute. The attribute must support contiguous iteration
     over `uint8_t`. The result buffer type will have a size matching the
     attribute size.
@@ -49,19 +49,19 @@ def BufferConstantOp : MOP_Op<"buffer.constant",
 
     Example:
     ```mlir
-    %buf = mop.buffer.constant #m.aligned_buffer<8: "0x00010203">
-    %buf : !mop.buffer<4>  // at least 8 byte aligned in storage
+    %buf = mop.cpu.buffer.constant #m.aligned_buffer<8: "0x00010203">
+    %buf : !mop.cpu.buffer<4>  // at least 8 byte aligned in storage
 
-    %buf = mop.buffer.constant dense_resource<label>:!m.array<4xui8>
-    %buf : !mop.buffer<4>  // respecting alignment encoded in blob at label
+    %buf = mop.cpu.buffer.constant dense_resource<label>:!m.array<4xui8>
+    %buf : !mop.cpu.buffer<4>  // respecting alignment encoded in blob at label
 
-    %buf = mop.buffer.constant array<ui8: 0, 1, 2, 3>
-    %buf : !mop.buffer<4>  // no specific alignment in storage
+    %buf = mop.cpu.buffer.constant array<ui8: 0, 1, 2, 3>
+    %buf : !mop.cpu.buffer<4>  // no specific alignment in storage
     ```
   }];
 
   let arguments = (ins ElementsAttr:$value);
-  let results = (outs MOP_BufferType:$result);
+  let results = (outs MOP_CpuBufferType:$result);
   let assemblyFormat = "$value attr-dict";
   let hasVerifier = 1;
 
@@ -72,17 +72,19 @@ def BufferConstantOp : MOP_Op<"buffer.constant",
 }
 
 //===----------------------------------------------------------------------===//
-// BufferAllocOp
+// CpuBufferAllocOp
 //===----------------------------------------------------------------------===//
 
-def BufferAllocOp : MOP_Op<"buffer.alloc", [
+def CpuBufferAllocOp : MOP_Op<"cpu.buffer.alloc", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Allocates an uninitialized buffer of given runtime or static "
-                "size and optional alignment.";
+  let summary = [{
+    Allocates an uninitialized buffer on the CPU of given
+    runtime or static size and optional alignment.
+  }];
   let description = [{
-    Allocates an uninitialized buffer whose byte array is of a given size. The
-    size can be supplied either as a runtime argument or as an attribute. Any
-    alignment constraint must be supplied as an attribute.
+    Allocates an uninitialized buffer on the CPU whose byte array is of a given
+    size. The size can be supplied either as a runtime argument or as an
+    attribute. Any alignment constraint must be supplied as an attribute.
 
     Note that any align constraint is not propagated into the result type.
 
@@ -92,17 +94,17 @@ def BufferAllocOp : MOP_Op<"buffer.alloc", [
 
     Example:
     ```mlir
-    %ctxt : !mop.context
+    %ctx : !mop.context
     %size : index
 
-    %buf = mop.buffer.alloc %ctxt %size {align=8:ui64}
-    %buf : !mop.buffer<>  // at least 8 byte aligned in storage
+    %buf = mop.cpu.buffer.alloc %ctx %size {align=8:ui64}
+    %buf : !mop.cpu.buffer<>  // at least 8 byte aligned in storage
 
-    %buf = mop.buffer.alloc %ctxt {size=64:ui64}
-    %buf : !mop.buffer<64>  // no specific alignment in storage
+    %buf = mop.cpu.buffer.alloc %ctx {size=64:ui64}
+    %buf : !mop.cpu.buffer<64>  // no specific alignment in storage
 
-    %buf = mop.buffer.alloc %ctxt {size=64:ui64, align=16:ui64}
-    %buf : !mop.buffer<64>  // at least 16 byte aligned in storage
+    %buf = mop.cpu.buffer.alloc %ctx {size=64:ui64, align=16:ui64}
+    %buf : !mop.cpu.buffer<64>  // at least 16 byte aligned in storage
     ```
   }];
 
@@ -113,19 +115,21 @@ def BufferAllocOp : MOP_Op<"buffer.alloc", [
   let arguments = (ins MOP_ContextType:$theContext, Optional<Index>:$runtimeSize,
                        DefaultValuedAttr<UI64Attr, "UINT64_MAX">:$align,  // 0
                        DefaultValuedAttr<UI64Attr, "UINT64_MAX">:$size);  // 1
-  let results = (outs MOP_BufferType:$result);
+  let results = (outs MOP_CpuBufferType:$result);
   let assemblyFormat = "$theContext ($runtimeSize^)? attr-dict";
   let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
-// BufferReallocOp
+// CpuBufferReallocOp
 //===----------------------------------------------------------------------===//
 
-def BufferReallocOp : MOP_Op<"buffer.realloc", [
+def CpuBufferReallocOp : MOP_Op<"cpu.buffer.realloc", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Allocates, reallocates or reuses a buffer of given runtime or "
-                "static size and optional alignment.";
+  let summary = [{
+    Allocates, reallocates or reuses a CPU buffer of given runtime or
+    static size and optional alignment.
+  }];
   let description = [{
     This operation has access to a buffer cache entry in the context given
     by the slot and buffer indexes.
@@ -147,7 +151,7 @@ def BufferReallocOp : MOP_Op<"buffer.realloc", [
     underlying memory. (In debug builds both refs will also be marked
     'mutable'). The compiler must respect the following rules to avoid
     use-after-free errors and mutation-via-aliases at runtime:
-     1. For all control flow paths, at most one mop.buffer.realloc can
+     1. For all control flow paths, at most one mop.cpu.buffer.realloc can
         execute for the same slot and buffer indexes.
         This rule is easy to follow since no two operations in the graph should
         share the same slot, and buffer indexes should correspond to op result
@@ -158,7 +162,7 @@ def BufferReallocOp : MOP_Op<"buffer.realloc", [
         to execute and all uses of aliasing results of execute.
 
     Note that though the buffer will be cached, the contents of the buffer need
-    not be preserved between calls to `mop.buffer.realloc` in successive
+    not be preserved between calls to `mop.cpu.buffer.realloc` in successive
     invocations of the model 'execute' body. This rule allows the runtime
     to avoid some buffer copies when extracting the buffer from a tensor
     which itself was created using a cached buffer. In other words, the cache
@@ -170,26 +174,27 @@ def BufferReallocOp : MOP_Op<"buffer.realloc", [
     ```mlir
        init {
          ...
-         %buf1 = mop.buffer.realloc %ch %ctxt { size=48, align=8, slot=2, buffer=0 }
+         %buf1 = mop.cpu.buffer.realloc %ch %ctx[2, 0] { size=48, align=8 }
        }
        execute (...) -> ... {
          ...
-         %buf2 = mop.buffer.realloc %ch %ctxt { size=48, align=16, slot=2, buffer=0 }
+         %buf2 = mop.cpu.buffer.realloc %ch %ctx[2, 0] { size=48, align=16 }
        }
     ```
     the second realloc will always reuse the buffer from the first realloc.
 
     Example:
     ```mlir
-    %ctxt : !mop.context
+    %ctx : !mop.context
     %size : index
     %ch : !bef.chain
 
-    %buf = mop.buffer.realloc %ch %ctxt %size { align=8:ui64, slot=42, buffer=2 }
-    %buf : !mop.buffer      // at least 8 byte aligned in storage
+    // Reallocate the buffer in slot index 42 and buffer index 2.
+    %buf = mop.cpu.buffer.realloc %ch %ctx[42, 2] %size { align=8:ui64 }
+    %buf : !mop.cpu.buffer      // at least 8 byte aligned in storage
 
-    %buf = mop.buffer.realloc %ch %ctxt { size=64:ui64, slot=42, buffer=2 }
-    %buf : !mop.buffer<64>  // no specific alignment in storage
+    %buf = mop.cpu.buffer.realloc %ch %ctx[42, 2] { size=64:ui64 }
+    %buf : !mop.cpu.buffer<64>  // no specific alignment in storage
     ```
   }];
 
@@ -204,26 +209,28 @@ def BufferReallocOp : MOP_Op<"buffer.realloc", [
                        UI64Attr:$buffer,                                 // 1
                        DefaultValuedAttr<UI64Attr, "UINT64_MAX">:$size,  // 2
                        UI64Attr:$slot);                                  // 3
-  let results = (outs MOP_BufferType:$result);
-  let assemblyFormat = "$ch $theContext ($runtimeSize^)? attr-dict";
+  let results = (outs MOP_CpuBufferType:$result);
+  let assemblyFormat = [{
+    $ch $theContext `[` $slot `,` $buffer `]` ($runtimeSize^)? attr-dict
+  }];
   let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
-// BufferCopyOp
+// CpuBufferCopyOp
 //===----------------------------------------------------------------------===//
 
-def BufferCopyOp : MOP_Op<"buffer.copy", [
+def CpuBufferCopyOp : MOP_Op<"cpu.buffer.copy", [
     AllTypesMatch<["buffer", "result"]>]> {
-  let summary = "Copies the contents of a buffer.";
+  let summary = "Copies the contents of a CPU buffer.";
   let description = [{
-    This op returns a copy of a buffer. The result will be 'owning'.
+    This op returns a copy of a CPU buffer. The result will be 'owning'.
     In debug builds the result will also be 'mutable'.
 
     Generally this op should only be needed when testing the use
-    of `mop.buffer.realloc` using a `!mop.context` which is created
-    within the test itself. By rule 2 of `mop.buffer.realloc` the
-    result of `mop.buffer.realloc` cannot outlive the context itself,
+    of `mop.cpu.buffer.realloc` using a `!mop.context` which is created
+    within the test itself. By rule 2 of `mop.cpu.buffer.realloc` the
+    result of `mop.cpu.buffer.realloc` cannot outlive the context itself,
     so a copy is needed to return that buffer to the test harness
     for printing etc. It takes `!mop.context` as an argument to
     make sure that the context survives until the copy is performed.
@@ -233,15 +240,15 @@ def BufferCopyOp : MOP_Op<"buffer.copy", [
 
     Example:
     ```mlir
-    %ctxt : !mop.context
-    %buf1 : !mop.buffer
-    %buf2 = mop.buffer.copy %ctxt %buf1 : !mop.buffer
-    %buf2 : !mop.buffer  // with same alignment as %buf1
+    %ctx : !mop.context
+    %buf1 : !mop.cpu.buffer
+    %buf2 = mop.cpu.buffer.copy %ctx %buf1 : !mop.cpu.buffer
+    %buf2 : !mop.cpu.buffer  // with same alignment as %buf1
     ```
   }];
 
-  let arguments = (ins MOP_ContextType:$theContext, MOP_BufferType:$buffer);
-  let results = (outs MOP_BufferType:$result);
+  let arguments = (ins MOP_ContextType:$theContext, MOP_CpuBufferType:$buffer);
+  let results = (outs MOP_CpuBufferType:$result);
   let assemblyFormat = [{
     $theContext $buffer attr-dict `:` qualified(type($result))
   }];
@@ -258,8 +265,8 @@ def ContextCreateOp : MOP_Op<"context.create"> {
 
     Example:
     ```mlir
-    %ctxt = mop.context.create 4
-    %ctxt : !mop.context
+    %ctx = mop.context.create 4
+    %ctx : !mop.context
     ```
   }];
 
@@ -273,8 +280,9 @@ def ContextCreateOp : MOP_Op<"context.create"> {
 //===----------------------------------------------------------------------===//
 
 def StateSlotCreateOp : MOP_Op<"state_slot.create"> {
-  let summary = "Creates a default state slot within the context at the "
-                "given slot index.";
+  let summary = [{
+    Creates a default state slot within the context at the given slot index.
+  }];
   let description = [{
     Creates a default state slot at the given slot index with room for the
     given number of cached buffers (which generally represent operator
@@ -282,9 +290,11 @@ def StateSlotCreateOp : MOP_Op<"state_slot.create"> {
 
     Example:
     ```mlir
-    %ctxt : !mop.context
+    %ctx : !mop.context
 
-    %ch = mop.state_slot.create %ctxt 1 { slot = 0 }
+    // Creates a default state slot at index 42 with room for
+    // two buffers.
+    %ch = mop.state_slot.create %ctx[42] 2
     %ch : !bef.chain
     ```
   }];
@@ -295,19 +305,21 @@ def StateSlotCreateOp : MOP_Op<"state_slot.create"> {
                        UI64Attr:$numBuffers,  // 0
                        UI64Attr: $slot);      // 1
   let results = (outs ChainType:$result);
-  let assemblyFormat = "$theContext $numBuffers attr-dict";
+  let assemblyFormat = "$theContext `[` $slot `]` $numBuffers attr-dict";
 }
 
 //===----------------------------------------------------------------------===//
-// SpecCreateOp
+// CpuTensorSpecCreateOp
 //===----------------------------------------------------------------------===//
 
-def SpecCreateOp : MOP_Op<"spec.create", [
+def CpuTensorSpecCreateOp : MOP_Op<"cpu.tensor_spec.create", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Creates a tensor spec from a mix of runtime and static "
-                "dimensions and a statically known dtype.";
+  let summary = [{
+    Creates a CPU tensor spec from a mix of runtime and static dimensions and
+    a statically known dtype.
+  ]};
   let description = [{
-    Creates a tensor spec of statically known rank with dimensions taken
+    Creates a CPU tensor spec of statically known rank with dimensions taken
     from either runtime operands or statically known attributes. The element
     type must be known statically. Operands must be given for each unknown
     dimension in order. It is valid for all dimensions to be known statically,
@@ -320,11 +332,11 @@ def SpecCreateOp : MOP_Op<"spec.create", [
     %dim0 : index
     %dim1 : index
 
-    %spec = mop.spec.create %dim0 %dim1 : !mop.spec<?x?xf32>
-    %spec : !mop.spec<?x?xf32>
+    %spec = mop.cpu.tensor_spec.create %dim0 %dim1 : !mop.cpu.tensor_spec<?x?xf32>
+    %spec : !mop.cpu.tensor_spec<?x?xf32>
 
-    %spec = mop.spec.create : !mop.spec<32x4xf32>
-    %spec : !mop.spec<32x4xf32>
+    %spec = mop.cpu.tensor_spec.create : !mop.cpu.tensor_spec<32x4xf32>
+    %spec : !mop.cpu.tensor_spec<32x4xf32>
     ```
   }];
 
@@ -335,22 +347,24 @@ def SpecCreateOp : MOP_Op<"spec.create", [
   let arguments = (ins Variadic<Index>:$runtimeDims,
                        SI64ArrayElementsAttr:$fstRawShape,  // 0
                        UI8Attr:$sndRawDType);               // 1
-  let results = (outs MOP_TensorSpecType:$result);
+  let results = (outs MOP_CpuTensorSpecType:$result);
   let assemblyFormat = [{ $runtimeDims attr-dict
                           `:` custom<RawShapeAndDType>($fstRawShape, $sndRawDType) }];
   let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
-// SpecCreateDynamicOp
+// CpuTensorSpecCreateDynamicOp
 //===----------------------------------------------------------------------===//
 
-def SpecCreateDynamicOp : MOP_Op<"spec.create.dyn", [
+def CpuTensorSpecCreateDynamicOp : MOP_Op<"cpu.tensor_spec.create.dyn", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Creates a tensor spec from a runtime DType and a mix of "
-                "runtime and static dimensions.";
+  let summary = [{
+    Creates a CPU tensor spec from a runtime DType and a mix of runtime and
+    static dimensions.
+  }];
   let description = [{
-    Creates a tensor spec of statically known rank with element type taken
+    Creates a CPU tensor spec of statically known rank with element type taken
     at runtime by a DType operand, and dimensions taken from either runtime
     operands or statically known attributes. Operands must be given for each
     unknown dimension in order. It is valid for all dimensions to be known
@@ -364,11 +378,11 @@ def SpecCreateDynamicOp : MOP_Op<"spec.create.dyn", [
     %dim1 : index
     %dtype : !mop.dtype
 
-    %spec = mop.spec.create.dyn %dtype %dim0, %dim1 : !mop.spec<?x?x?>
-    %spec : !mop.spec<?x?x?>
+    %spec = mop.cpu.tensor_spec.create.dyn %dtype %dim0, %dim1 : !mop.cpu.tensor_spec<?x?x?>
+    %spec : !mop.cpu.tensor_spec<?x?x?>
 
-    %spec = mop.spec.create %dtype : !mop.spec<32x4x?>
-    %spec : !mop.spec<32x4x?>
+    %spec = mop.cpu.tensor_spec.create %dtype : !mop.cpu.tensor_spec<32x4x?>
+    %spec : !mop.cpu.tensor_spec<32x4x?>
     ```
   }];
 
@@ -376,41 +390,45 @@ def SpecCreateDynamicOp : MOP_Op<"spec.create.dyn", [
   // spec type in a form understandable by BEF.
   let arguments = (ins MOP_DTypeType:$runtimeDType, Variadic<Index>:$runtimeDims,
                        SI64ArrayElementsAttr:$rawShape);
-  let results = (outs MOP_TensorSpecType:$result);
+  let results = (outs MOP_CpuTensorSpecType:$result);
   let assemblyFormat = [{ $runtimeDType $runtimeDims attr-dict
                           `:` custom<RawShape>($rawShape) }];
   let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
-// SpecDimsDynamicOp
+// CpuTensorSpecDimsDynamicOp
 //===----------------------------------------------------------------------===//
 
-def SpecDimsDynamicOp : MOP_Op<"spec.dims.dyn", [
+def CpuTensorSpecDimsDynamicOp : MOP_Op<"cpu.tensor_spec.dims.dyn", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Returns the runtime values of the dimensions of tensor spec "
-                "which are not statically known.";
+  let summary = [{
+    Returns the runtime values of the dimensions of CPU tensor spec
+    which are not statically known.
+  ]};
   let description = [{
-    Returns the actual runtime value of each dimension in a tensor spec where
-    that dimension is not known statically. It is valid for the spec to be fully
-    static, in which case no results are returned (and the op is a no-op).
+    Returns the actual runtime value of each dimension in a CPU tensor spec
+    where that dimension is not known statically. It is valid for the tensor
+    spec to be fully static, in which case no results are returned (and the op
+    is a no-op).
 
     Example:
     ```mlir
-    %spec : !mop.spec<?x?xf32>
-    %dim0, %dim1 = mop.spec.dims.dyn %spec : !mop.spec<?x?xf32>
+    %spec : !mop.cpu.tensor_spec<?x?xf32>
+    %dim0, %dim1 = mop.cpu.tensor_spec.dims.dyn %spec : !mop.cpu.tensor_spec<?x?xf32>
     %dim0, %dim1 : index, index
 
-    %spec : !mop.spec<32x?xf32>
-    %dim = mop.spec.dims.dyn %spec : !mop.spec<32x?xf32>
+    %spec : !mop.cpu.tensor_spec<32x?xf32>
+    %dim = mop.cpu.tensor_spec.dims.dyn %spec : !mop.cpu.tensor_spec<32x?xf32>
     %dim : index
 
-    %spec : !mop.spec<32x4xf32>
-    mop.spec.dims.dyn %spec : !mop.spec<32x4xf32> // no-op
+    %spec : !mop.cpu.tensor_spec<32x4xf32>
+    mop.cpu.tensor_spec.dims.dyn %spec : !mop.cpu.tensor_spec<32x4xf32> // no-op
     ```
   }];
 
-  let arguments = (ins MOP_TensorSpecType: $spec, SI64ArrayElementsAttr:$rawShape);
+  let arguments = (ins MOP_CpuTensorSpecType: $spec,
+                       SI64ArrayElementsAttr:$rawShape);
   let results = (outs Variadic<Index>:$results);
   let assemblyFormat = [{
     $spec attr-dict `:` custom<TensorSpecTypeWithRawShape>(type($spec), $rawShape)
@@ -419,94 +437,98 @@ def SpecDimsDynamicOp : MOP_Op<"spec.dims.dyn", [
 }
 
 //===----------------------------------------------------------------------===//
-// SpecSizeOp
+// CpuTensorSpecSizeOp
 //===----------------------------------------------------------------------===//
 
-def SpecSizeOp : MOP_Op<"spec.size"> {
-  let summary = "Returns the byte size needed for a buffer for a tensor with "
-                "the given tensor spec.";
+def CpuTensorSpecSizeOp : MOP_Op<"cpu.tensor_spec.size"> {
+  let summary = [{
+    Returns the byte size needed for a CPU buffer for a tensor with
+    the given tensor spec.
+  }];
   let description = [{
-    Returns the number of bytes needed to represent the buffer backing a tensor
-    of the given tensor spec. Generally the spec's type will contain at least
-    one unknown dimension and/or an unknown element type (otherwise the size
-    is already known).
+    Returns the number of bytes needed to represent the CPU buffer backing a
+    tensor of the given tensor spec. Generally the tensor spec's type will
+    contain at least one unknown dimension and/or an unknown element type
+    (otherwise the size is already known).
 
     Example:
     ```mlir
-    %spec : !mop.spec<32x?xf32>
-    %size = mop.spec.size %spec : !mop.spec<32x?xf32>
+    %spec : !mop.cpu.tensor_spec<32x?xf32>
+    %size = mop.cpu.tensor_spec.size %spec : !mop.cpu.tensor_spec<32x?xf32>
     %size : index
     ```
   }];
 
-  let arguments = (ins MOP_TensorSpecType: $spec);
+  let arguments = (ins MOP_CpuTensorSpecType: $spec);
   let results = (outs Index:$result);
   let assemblyFormat = "$spec attr-dict `:` qualified(type($spec))";
 }
 
 //===----------------------------------------------------------------------===//
-// SpecNumElemsOp
+// CpuTensorSpecNumElemsOp
 //===----------------------------------------------------------------------===//
 
-def SpecNumElemsOp : MOP_Op<"spec.num_elems"> {
-  let summary = "Returns the number of elements in a tensor with the given "
-                "tensor spec.";
+def CpuTensorSpecNumElemsOp : MOP_Op<"cpu.tensor_spec.num_elems"> {
+  let summary = [{
+    Returns the number of elements in a CPU tensor with the given
+    tensor spec.
+  }];
   let description = [{
-    Returns the number of elements in a tensor of the given tensor spec.
-    Generally the spec's type will contain at least one unknown dimension
-    (otherwise the number of elements is already known).
+    Returns the number of elements in a CPU tensor of the given tensor spec.
+    Generally the tensor spec's type will contain at least one unknown
+    dimension (otherwise the number of elements is already known).
 
     Example:
     ```mlir
-    %spec : !mop.spec<32x?xf32>
-    %elems = mop.spec.num_elems %spec : !mop.spec<32x?xf32>
+    %spec : !mop.cpu.tensor_spec<32x?xf32>
+    %elems = mop.cpu.tensor_spec.num_elems %spec : !mop.cpu.tensor_spec<32x?xf32>
     %elems : index
     ```
   }];
 
-  let arguments = (ins MOP_TensorSpecType: $spec);
+  let arguments = (ins MOP_CpuTensorSpecType: $spec);
   let results = (outs Index:$result);
   let assemblyFormat = "$spec attr-dict `:` qualified(type($spec))";
 }
 
 //===----------------------------------------------------------------------===//
-// SpecDTypeOp
+// CpuTensorSpecDTypeOp
 //===----------------------------------------------------------------------===//
 
-def SpecDTypeOp : MOP_Op<"spec.dtype"> {
-  let summary = "Returns the DType of the given tensor spec.";
+def CpuTensorSpecDTypeOp : MOP_Op<"cpu.tensor_spec.dtype"> {
+  let summary = "Returns the DType of the given CPU tensor spec.";
   let description = [{
-    Returns the runtime DType of the given tensor spec. Generally the spec's
-    type will have an unknown element type (otherwise the result is already
-    known).
+    Returns the runtime DType of the given CPU tensor spec. Generally the
+    tensor spec's type will have an unknown element type (otherwise the result
+    is already known).
 
     Example:
     ```mlir
-    %spec : !mop.spec<32x?xunk>
-    %dtype = mop.spec.dtype %spec : !mop.spec<32x?xunk>
+    %spec : !mop.cpu.tensor_spec<32x?xunk>
+    %dtype = mop.cpu.tensor_spec.dtype %spec : !mop.cpu.tensor_spec<32x?xunk>
     %dtype : !mop.dtype
     ```
   }];
 
-  let arguments = (ins MOP_TensorSpecType: $spec);
+  let arguments = (ins MOP_CpuTensorSpecType: $spec);
   let results = (outs MOP_DTypeType:$result);
   let assemblyFormat = "$spec attr-dict `:` qualified(type($spec))";
 }
 
 //===----------------------------------------------------------------------===//
-// TensorCreateOp
+// CpuTensorCreateOp
 //===----------------------------------------------------------------------===//
 
-def TensorCreateOp : MOP_Op<"tensor.create", [
+def CpuTensorCreateOp : MOP_Op<"cpu.tensor.create", [
     TypesMatchWith<"tensorSpec operand must match result tensor type spec",
                    "result", "tensorSpec",
-                   "$_self.cast<TensorType>().getTensorSpec()">,
+                   "$_self.cast<CpuTensorType>().getTensorSpec()">,
     TypesMatchWith<"buffer operand must be consistent with result tensor type",
                    "result", "buffer",
-                   "$_self.cast<TensorType>().getTensorSpec().getExpectedBufferType()">]> {
-  let summary = "Creates a tensor from a tensor spec and a buffer.";
+                   "$_self.cast<CpuTensorType>().getTensorSpec().getExpectedBufferType()">]> {
+  let summary = "Creates a CPU tensor from a tensor spec and a buffer.";
   let description = [{
-    Creates a tensor from a given tensor spec and a buffer. The construction
+    Creates a CPU tensor from a given tensor spec and a buffer. The construction
     is delayed until the given chain is ready, since the buffer is typically
     written into as a side-effect of an operation.
 
@@ -514,15 +536,15 @@ def TensorCreateOp : MOP_Op<"tensor.create", [
     ```mlir
     %ch : !bef.chain
 
-    %spec : !mop.spec<4x16xf32>
-    %buf : !mop.buffer<256>
-    %tensor = mop.tensor.create %ch %spec %buf : !mop.tensor<4x16xf32>
-    %tensor : !mop.tensor<4x16xf32>
+    %spec : !mop.cpu.tensor_spec<4x16xf32>
+    %buf : !mop.cpu.buffer<256>
+    %tensor = mop.cpu.tensor.create %ch %spec %buf : !mop.cpu.tensor<4x16xf32>
+    %tensor : !mop.cpu.tensor<4x16xf32>
 
-    %spec : !mop.spec<?x16xf32>
-    %buf : !mop.buffer
-    %tensor = mop.tensor.create %ch %spec %buf : !mop.tensor<?x16xf32>
-    %tensor : !mop.tensor<?x16xf32>
+    %spec : !mop.cpu.tensor_spec<?x16xf32>
+    %buf : !mop.cpu.buffer
+    %tensor = mop.cpu.tensor.create %ch %spec %buf : !mop.cpu.tensor<?x16xf32>
+    %tensor : !mop.cpu.tensor<?x16xf32>
     ```
 
     Tensors are immutable, but buffers are mutable. This means the
@@ -530,60 +552,60 @@ def TensorCreateOp : MOP_Op<"tensor.create", [
     be mutated, ie if there are multiple outstanding consumers of the
     buffer's SSA value:
     ```mlir
-    %buf1 = mop.buffer.alloc ...
-    %ten1 = mop.tensor.create %ch ... %buf1 // copy
+    %buf1 = mop.cpu.buffer.alloc ...
+    %ten1 = mop.cpu.tensor.create %ch ... %buf1 // copy
     ... other users of %buf1 ...
 
-    %buf2 = mop.buffer.alloc ...
-    %ten2 = mop.tensor.create %ch ... %buf2 // move
+    %buf2 = mop.cpu.buffer.alloc ...
+    %ten2 = mop.cpu.tensor.create %ch ... %buf2 // move
     ... no other users of %buf2 ...
     ```
 
-    If the buffer is the result of a `mop.buffer.realloc` then it
+    If the buffer is the result of a `mop.cpu.buffer.realloc` then it
     will be 'borrowing' rather than 'owning'. However the same rules
     apply:
     ```mlir
-    %buf3 = mop.buffer.realloc ...
-    %ten3 = mop.tensor.create %ch ... %buf3 // copy (as 'owning')
+    %buf3 = mop.cpu.buffer.realloc ...
+    %ten3 = mop.cpu.tensor.create %ch ... %buf3 // copy (as 'owning')
     ... other users of %buf3 ...
 
-    %buf4 = mop.buffer.realloc ...
-    %ten4 = mop.tensor.create %ch ... %buf4 // move (as 'borrowing')
+    %buf4 = mop.cpu.buffer.realloc ...
+    %ten4 = mop.cpu.tensor.create %ch ... %buf4 // move (as 'borrowing')
     ... no other users of %buf4 ...
     ```
   }];
 
-  let arguments = (ins ChainType: $chain, MOP_TensorSpecType: $tensorSpec,
-                       MOP_BufferType: $buffer);
-  let results = (outs MOP_TensorType: $result);
+  let arguments = (ins ChainType: $chain, MOP_CpuTensorSpecType: $tensorSpec,
+                       MOP_CpuBufferType: $buffer);
+  let results = (outs MOP_CpuTensorType: $result);
   let assemblyFormat = [{ $chain $tensorSpec $buffer attr-dict
                           `:` qualified(type($result)) }];
   let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
-// TensorExtractOp
+// CpuTensorExtractOp
 //===----------------------------------------------------------------------===//
 
-def TensorExtractOp : MOP_Op<"tensor.extract", [
+def CpuTensorExtractOp : MOP_Op<"cpu.tensor.extract", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Extracts the tensor spec and buffer of a tensor.";
+  let summary = "Extracts the tensor spec and buffer of a CPU tensor.";
   let description = [{
-    Returns the tensor spec and buffer components of a tensor. The resulting
-    buffer will have a statically known size if and only if the tensor spec is
-    fully static.
+    Returns the tensor spec and buffer components of a CPU tensor. The
+    resulting buffer will have a statically known size if and only if the
+    tensor spec is fully static.
 
     Example:
     ```mlir
-    %tensor : !mop.tensor<8x64xf32>
-    %spec, %buf = mop.tensor.extract %tensor : !mop.tensor<8x64xf32>
-    %spec : !mop.spec<8x64>
-    %buf : !mop.buffer<2048>
+    %tensor : !mop.cpu.tensor<8x64xf32>
+    %spec, %buf = mop.cpu.tensor.extract %tensor : !mop.cpu.tensor<8x64xf32>
+    %spec : !mop.cpu.tensor_spec<8x64>
+    %buf : !mop.cpu.buffer<2048>
 
-    %tensor : !mop.tensor<?x64xf32>
-    %spec, %buf = mop.tensor.extract %tensor : !mop.tensor<?x64xf32>
-    %spec : !mop.spec<?x64>
-    %buf : !mop.buffer<>
+    %tensor : !mop.cpu.tensor<?x64xf32>
+    %spec, %buf = mop.cpu.tensor.extract %tensor : !mop.cpu.tensor<?x64xf32>
+    %spec : !mop.cpu.tensor_spec<?x64>
+    %buf : !mop.cpu.buffer<>
     ```
 
     Tensors are immutable, but buffers are mutable. This means the
@@ -591,36 +613,37 @@ def TensorExtractOp : MOP_Op<"tensor.extract", [
     operand could still be observed, ie if if there are multiple outstanding
     consumers of the tensor's SSA value:
     ```mlir
-    %ten1 = mop.tensor.create ...
-    %spec1, %buf1 = mop.tensor.extract %ten1 // copy
+    %ten1 = mop.cpu.tensor.create ...
+    %spec1, %buf1 = mop.cpu.tensor.extract %ten1 // copy
     ... other users of %ten1 ...
 
-    %ten2 = mop.tensor.create ...
-    %spec2, %buf2 = mop.tensor.extract %ten2 // move
+    %ten2 = mop.cpu.tensor.create ...
+    %spec2, %buf2 = mop.cpu.tensor.extract %ten2 // move
     ... no other users of %ten2 ...
     ```
 
-    If the tensor's buffer was the result of a `mop.buffer.realloc`
+    If the tensor's buffer was the result of a `mop.cpu.buffer.realloc`
     then it will be 'borrowing' rather than 'owning'. However the
     same rules apply:
     ```mlir
-    %buf3 = mop.buffer.realloc ...
-    %ten3 = mop.tensor.create %buf3
-    %spec4, %buf4 = mop.tensor.extract %ten3  // copy (as 'owning')
+    %buf3 = mop.cpu.buffer.realloc ...
+    %ten3 = mop.cpu.tensor.create %buf3
+    %spec4, %buf4 = mop.cpu.tensor.extract %ten3  // copy (as 'owning')
     ... other users of %ten3 ...
 
-    %buf5 = mop.buffer.realloc ...  // (*)
-    %ten5 = mop.tensor.create %buf5
-    %spec6, %buf6 = mop.tensor.extract %ten5  // move (as 'borrowing')
+    %buf5 = mop.cpu.buffer.realloc ...  // (*)
+    %ten5 = mop.cpu.tensor.create %buf5
+    %spec6, %buf6 = mop.cpu.tensor.extract %ten5  // move (as 'borrowing')
     ... no other users of %ten5 ...
     ```
     Note that any mutation of %buf6 will be applied to the cached
     buffer in the context, as established by (*). However, this is
-    acceptable due to the rules of `mop.buffer.realloc`.
+    acceptable due to the rules of `mop.cpu.buffer.realloc`.
   }];
 
-  let arguments = (ins MOP_TensorType: $tensor);
-  let results = (outs MOP_TensorSpecType: $tensorSpecResult, MOP_BufferType: $bufferResult);
+  let arguments = (ins MOP_CpuTensorType: $tensor);
+  let results = (outs MOP_CpuTensorSpecType: $tensorSpecResult,
+                      MOP_CpuBufferType: $bufferResult);
   let assemblyFormat = "$tensor attr-dict `:` qualified(type($tensor))";
   let hasVerifier = 1;
 }
@@ -673,10 +696,10 @@ def ModelOp : MOP_Op<"model", [HasParent<"ModuleOp">, Symbol,
     mop.model @example_model : tfl
       init {
         %ch = bef.chain.new
-        %ctxt = mop.context.create 0
-        bef.output %ch, %ctxt : !bef.chain, !mop.context
+        %ctx = mop.context.create 0
+        bef.output %ch, %ctx : !bef.chain, !mop.context
       }
-      execute (%ch: !bef.chain, %ctxt: !mop.context, %arg: tensor<?x4x16xf32>)
+      execute (%ch: !bef.chain, %ctx: !mop.context, %arg: tensor<?x4x16xf32>)
               -> (!bef.chain, tensor<?x10xf32>) {
         bef.output %ch, %arg : !bef.chain, tensor<?x4x16xf32>
       }

@@ -28,24 +28,24 @@ class MOP_Type<string name, string typeMnemonic, list<Trait> traits = []>
 // ops.
 
 //===----------------------------------------------------------------------===//
-// MOP_BufferType
+// CpuBufferType
 //===----------------------------------------------------------------------===//
 
-def MOP_BufferType : MOP_Type<"Buffer", "buffer",
+def MOP_CpuBufferType : MOP_Type<"CpuBuffer", "cpu.buffer",
                          [DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
-  let summary = "Type of mutable, uninterpreted byte arrays, optionally with "
-                "a statically known size.";
+  let summary = "Type of CPU-hosted, mutable, uninterpreted byte arrays, with "
+                "an optional statically known size.";
   let description = [{
-    Buffers are mutable byte arrays which may have a statically known size.
-    Nothing is implied about the internal structure of the bytes, such as rank,
-    dimensions, underlying element type, padding, or element endianness. The
-    compiler is responsible for ensuring the producers and consumers of buffers
-    agree on their interpretation of the buffer for the intended target, and
-    correctly sequence their side-effects.
+    `!mop.cpu.buffer`s are mutable CPU-hosted byte arrays which may have a
+    statically known size. Nothing is implied about the internal structure
+    of the bytes, such as rank, dimensions, underlying element type, padding,
+    or element endianness. The compiler is responsible for ensuring the
+    producers and consumers of buffers agree on their interpretation of the
+    buffer for the intended target, and correctly sequence their side-effects.
 
-    Generally buffers are the lowest-common denominator representation of
-    tensor data across kernel implementations. Buffers may be wrapped by various
-    tensor types, including !mop.tensor, or used directly.
+    Generally `!mop.cpu.buffer`s are the lowest-common denominator representation
+    of tensor data across CPU kernel implementations. Buffers may be wrapped by
+    various tensor types, including `!mop.cpu.tensor`, or used directly.
 
     This type implements `ShapedTypeInference` as a rank-1 tensor over
     `uint8_t` with optimally known first dimension. This in turn supports the
@@ -54,8 +54,9 @@ def MOP_BufferType : MOP_Type<"Buffer", "buffer",
     Buffers are represented by `M::LLCL::BufferRef` in the Modular runtime.
 
     Note that buffers may respect alignment constraints. However those are
-    specified either when the buffer is created or are encoded in the
-    attribute backing a constant buffer.
+    specified either when the buffer is created, or are encoded in the
+    attribute backing a constant buffer, and are not captured within the
+    buffer type.
 
     Though not exposed in MLIR, buffers may be 'owning' or 'borrowing' over
     their underlying memory. Owning buffers automatically reclaim their
@@ -68,9 +69,10 @@ def MOP_BufferType : MOP_Type<"Buffer", "buffer",
     also be 'mutable' or 'immutable'. The runtime will assert fail if
     an immutable buffer is modified. This is for debugging only.
 
-    Since buffers are mutable, any op reading from a buffer must also accept
-    a chain, and any op writing to a buffer must also return a chain. In
-    this way the compiler can correctly sequence side-effects over buffers.
+    Since buffers are generally considered mutable, any op reading from a
+    buffer must also accept a chain, and any op writing to a buffer must
+    also return a chain. In this way the compiler can correctly sequence
+    side-effects over buffers.
 
     The size of a buffer type has two representations:
      - 'Native' form: an `Optional<uint64_t>`, with none denoting unknown.
@@ -79,8 +81,8 @@ def MOP_BufferType : MOP_Type<"Buffer", "buffer",
 
     Examples:
     ```mlir
-    !mop.buffer<16>
-    !mop.buffer
+    !mop.cpu.buffer<16>   // A 16-byte buffer.
+    !mop.cpu.buffer       // A buffer who's size is only known at runtime
     ```
   }];
 
@@ -113,7 +115,7 @@ def MOP_BufferType : MOP_Type<"Buffer", "buffer",
 }
 
 //===----------------------------------------------------------------------===//
-// MOP_ContextType
+// ContextType
 //===----------------------------------------------------------------------===//
 
 def MOP_ContextType : MOP_Type<"Context", "context"> {
@@ -144,26 +146,15 @@ def MOP_ContextType : MOP_Type<"Context", "context"> {
 }
 
 //===----------------------------------------------------------------------===//
-// MOP_UnknownType
-//===----------------------------------------------------------------------===//
-
-def MOP_UnknownType : MOP_Type<"Unknown", "unknown"> {
-  let summary = "The distinguished unknown type.";
-  let description = [{
-    This type is used by TensorSpecType::getElementType to denote
-    that the tensor spec has an unknown element type.
-  }];
-}
-
-//===----------------------------------------------------------------------===//
-// MOP_DTypeType
+// DTypeType
 //===----------------------------------------------------------------------===//
 
 def MOP_DTypeType : MOP_Type<"DType", "dtype"> {
   let summary = "Runtime representation of the element type of a CPU tensor.";
   let description = [{
     This type represents a compact runtime encoding of an element type. It is
-    implemented by M::DType in the Modular runtime.
+    implemented by M::DType in the Modular runtime, and is only intended to
+    represent common int and float types common across modern CPUs.
 
     Examples:
     ```mlir
@@ -173,34 +164,34 @@ def MOP_DTypeType : MOP_Type<"DType", "dtype"> {
 
   let extraClassDeclaration = [{
     /// Returns the DType representing the given MLIR IntegerType, FloatType
-    /// or UnknownType. The UnknownType is represented as none. Returns an error
+    /// or NoneType. The NoneType is represented as unknown. Returns an error
     /// if the MLIR type has no representation as a DType.
     static ErrorOr<Optional<DType>> fromMlirType(Type mlirType);
 
-    /// Returns the MLIR IntegerType, FloatType or UnknownType representing the
-    /// given DType. The none value is represented as the UnknownType MLIR type.
+    /// Returns the MLIR IntegerType, FloatType or NoneType representing the
+    /// given DType. The unknown value is represented as the NoneType MLIR type.
     /// Returns an error if the DType has no representation as an MLIR type.
-    static ErrorOr<Type> toMLIRType(MLIRContext *ctxt, Optional<DType> dtype);
+    static ErrorOr<Type> toMLIRType(MLIRContext *context, Optional<DType> dtype);
 
     /// Returns non-empty error string if the given DType cannot be represented as
-    /// an MLIR IntegerType, FloatType or UnknownType. Otherwise returns the
+    /// an MLIR IntegerType, FloatType or NoneType. Otherwise returns the
     /// empty string.
     static std::string hasNoMLIRType(Optional<DType> dtype);
   }];
 }
 
 //===----------------------------------------------------------------------===//
-// MOP_TensorSpecType
+// CpuTensorSpecType
 //===----------------------------------------------------------------------===//
 
-def MOP_TensorSpecType : MOP_Type<"TensorSpec", "spec", [
+def MOP_CpuTensorSpecType : MOP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
     DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
   let summary = "Type of tensor specs of statically known rank.";
   let description = [{
-    This type represents the shape and element type of a tensor. The rank
-    must be between one and five. Each dimension must be a strictly positive
-    integer value, or the distinguished -1 dimension denoting unknown. The
-    element type must be a DType, or none denoting unknown.
+    This type represents the shape and element type of a tensor hosted on
+    the CPU. The rank must be between one and five. Each dimension must be
+    a strictly positive integer value, or the distinguished -1 dimension
+    denoting unknown. The element type must be a DType, or none denoting unknown.
 
     This type does not support:
      - Dynamic ranks.
@@ -226,7 +217,7 @@ def MOP_TensorSpecType : MOP_Type<"TensorSpec", "spec", [
     TODO(#4718): Are these discrepancies something we should redress?
 
     This type implements ShapedTypeInterface, using the distinguished
-    UnknownType to represent an unknown element type. This means we
+    NoneType to represent an unknown element type. This means we
     must use 'dtype' to refer to the element type in DType form, but
     'elementType' to refer to the element type in MLIR type form.
 
@@ -237,7 +228,7 @@ def MOP_TensorSpecType : MOP_Type<"TensorSpec", "spec", [
        side. However, care is taken to ensure only DTypes which are
        also representable as MLIR types are considered valid.
      - 'Shaped type' form: an array of int64_t for the shape (-1 denotes
-       unknown dimension) and an MLIR type for the element type (UnknownType
+       unknown dimension) and an MLIR type for the element type (NoneType
        denotes unknown). This supports the ShapedTypeInterface, but not
        all IntegerTypes and FloatTypes have a DType representation.
      - 'Raw attribute' form: an IntArrayElementsAttr of 64-bit signed
@@ -250,8 +241,8 @@ def MOP_TensorSpecType : MOP_Type<"TensorSpec", "spec", [
 
     Examples:
     ```mlir
-    !mop.spec<4x16xf32>
-    !mop.spec<?x?xunk>
+    !mop.cpu.tensor_spec<4x16xf32>
+    !mop.cpu.tensor_spec<?x?xunk>
     ```
   }];
 
@@ -292,10 +283,10 @@ def MOP_TensorSpecType : MOP_Type<"TensorSpec", "spec", [
     /// with 0 denoting the unknown element type.
     IntegerAttr getRawDType() const;
 
-    /// Returns a BufferType which captures the required size for this tensor.
+    /// Returns a CpuBufferType which captures the required size for this tensor.
     /// The result will only have a size constraint if the tensor's spec is
     /// fully static.
-    BufferType getExpectedBufferType() const;
+    CpuBufferType getExpectedBufferType() const;
   }];
 
   let builders = [
@@ -316,13 +307,13 @@ def MOP_TensorSpecType : MOP_Type<"TensorSpec", "spec", [
 }
 
 //===----------------------------------------------------------------------===//
-// MOP_TensorType
+// CpuTensorType
 //===----------------------------------------------------------------------===//
 
 // TODO: See also zap.ndbuffer.
-def MOP_TensorType : MOP_Type<"Tensor", "tensor",
-                         [DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
-  let summary = "Type of tensors who's underlying buffer is in "
+def MOP_CpuTensorType : MOP_Type<"CpuTensor", "cpu.tensor", [
+    DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
+  let summary = "Type of CPU-hosted tensors who's underlying buffer is in "
                 "dense row-major order according to a tensor spec.";
   let description = [{
     This type is for dense CPU-friendly, immutable tensors of statically known
@@ -348,12 +339,12 @@ def MOP_TensorType : MOP_Type<"Tensor", "tensor",
 
     For convenience we 'inline' the tensor shape into the tensor type syntax:
     ```mlir
-    !mop.tensor<4x16xf32>
-    !mop.tensor<?x?xui8>
+    !mop.cpu.tensor<4x16xf32>
+    !mop.cpu.tensor<?x?xui8>
     ```
   }];
 
-  let parameters = (ins MOP_TensorSpecType:$tensorSpec);
+  let parameters = (ins MOP_CpuTensorSpecType:$tensorSpec);
   let assemblyFormat = "`<` custom<TensorSpec>($tensorSpec) `>`";
 }
 

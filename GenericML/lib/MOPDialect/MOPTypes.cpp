@@ -23,29 +23,32 @@ using namespace M;
 using namespace MOP;
 
 //===----------------------------------------------------------------------===//
-// BufferType
+// CpuBufferType
 //===----------------------------------------------------------------------===//
 
 /// Verifies the buffer size and align constraints are valid.
-LogicalResult BufferType::verify(function_ref<InFlightDiagnostic()> emitError,
-                                 Optional<uint64_t> size) {
+LogicalResult
+CpuBufferType::verify(function_ref<InFlightDiagnostic()> emitError,
+                      Optional<uint64_t> size) {
   if (!isValidSize(size))
     return emitError() << "buffer size must be positive.";
   return success();
 }
 
-BufferType BufferType::get(MLIRContext *context, uint64_t rawSize) {
+CpuBufferType CpuBufferType::get(MLIRContext *context, uint64_t rawSize) {
   Optional<uint64_t> size =
       rawSize == kMissingSizeOrAlign ? Optional<uint64_t>() : rawSize;
-  return BufferType::get(context, size);
+  return CpuBufferType::get(context, size);
 }
 
-BufferType BufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
-                                  MLIRContext *context, uint64_t rawSize) {
-  return BufferType::get(context, rawSize);
+CpuBufferType
+CpuBufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
+                          MLIRContext *context, uint64_t rawSize) {
+  return CpuBufferType::get(context, rawSize);
 }
 
-BufferType BufferType::get(MLIRContext *context, IntegerAttr rawSizeOrNull) {
+CpuBufferType CpuBufferType::get(MLIRContext *context,
+                                 IntegerAttr rawSizeOrNull) {
   Optional<uint64_t> size;
   if (rawSizeOrNull) {
     uint64_t value = rawSizeOrNull.getUInt();
@@ -54,16 +57,16 @@ BufferType BufferType::get(MLIRContext *context, IntegerAttr rawSizeOrNull) {
     // else: max value denotes unknown size.
   }
   // else: null denotes unknown size.
-  return BufferType::get(context, size);
+  return CpuBufferType::get(context, size);
 }
 
-BufferType BufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
-                                  MLIRContext *context,
-                                  IntegerAttr rawSizeOrNull) {
-  return BufferType::get(context, rawSizeOrNull);
+CpuBufferType
+CpuBufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
+                          MLIRContext *context, IntegerAttr rawSizeOrNull) {
+  return CpuBufferType::get(context, rawSizeOrNull);
 }
 
-IntegerAttr BufferType::getRawSize() const {
+IntegerAttr CpuBufferType::getRawSize() const {
   Type ui64 = IntegerType::get(getContext(), 64, IntegerType::Unsigned);
   uint64_t sizeOrMax = getSize() ? *getSize() : kMissingSizeOrAlign;
   APInt value(64, sizeOrMax, /*isSigned=*/false);
@@ -71,32 +74,26 @@ IntegerAttr BufferType::getRawSize() const {
 }
 
 /// Implements ShapedType::cloneWith
-ShapedType BufferType::cloneWith(Optional<ArrayRef<int64_t>> shape,
-                                 Type dtype) const {
-  assert(!shape && "cannot change shape in BufferType::cloneWith");
+ShapedType CpuBufferType::cloneWith(Optional<ArrayRef<int64_t>> shape,
+                                    Type dtype) const {
+  assert(!shape && "cannot change shape in CpuBufferType::cloneWith");
   assert(dtype.isUnsignedInteger(8) &&
-         "invalid dtype for BufferType::cloneWith");
-  return BufferType::get(getContext(), getSize());
+         "invalid dtype for CpuBufferType::cloneWith");
+  return CpuBufferType::get(getContext(), getSize());
 }
 
 /// Implements ShapedType::getElementType
-Type BufferType::getElementType() const {
+Type CpuBufferType::getElementType() const {
   return IntegerType::get(getContext(), /*width=*/8, IntegerType::Unsigned);
 }
 
 /// Implements ShapedType::hasRank
-bool BufferType::hasRank() const { return true; }
+bool CpuBufferType::hasRank() const { return true; }
 
-// We defer BufferType::getShape till after ODS import since depends on impl.
+// We defer CpuBufferType::getShape till after ODS import since depends on impl.
 
 //===----------------------------------------------------------------------===//
 // ContextType
-//===----------------------------------------------------------------------===//
-
-// Nothing to implement.
-
-//===----------------------------------------------------------------------===//
-// UnknownType
 //===----------------------------------------------------------------------===//
 
 // Nothing to implement.
@@ -138,7 +135,7 @@ static void printDType(AsmPrinter &p, Optional<DType> dtype) {
 }
 
 ErrorOr<Optional<DType>> DTypeType::fromMlirType(Type mlirType) {
-  if (auto unkType = mlir::dyn_cast<UnknownType>(mlirType))
+  if (auto unkType = mlir::dyn_cast<NoneType>(mlirType))
     return llvm::None; // None denotes unknown.
   if (auto intType = mlir::dyn_cast<IntegerType>(mlirType)) {
     FailureOr<DType> dtype = getEquivalentDType(intType);
@@ -159,16 +156,17 @@ ErrorOr<Optional<DType>> DTypeType::fromMlirType(Type mlirType) {
   return Error(str);
 }
 
-ErrorOr<Type> DTypeType::toMLIRType(MLIRContext *ctxt, Optional<DType> dtype) {
+ErrorOr<Type> DTypeType::toMLIRType(MLIRContext *context,
+                                    Optional<DType> dtype) {
   if (!dtype)
-    return UnknownType::get(ctxt); // None denotes unknown.
+    return NoneType::get(context); // None denotes unknown.
   if (dtype->isInt()) {
-    Type type = getEquivalentIntegerType(ctxt, *dtype);
+    Type type = getEquivalentIntegerType(context, *dtype);
     if (type != nullptr)
       return type;
   }
   if (dtype->isFloat()) {
-    Type type = getEquivalentFloatType(ctxt, *dtype);
+    Type type = getEquivalentFloatType(context, *dtype);
     if (type != nullptr)
       return type;
   }
@@ -189,7 +187,7 @@ std::string DTypeType::hasNoMLIRType(Optional<DType> dtype) {
 }
 
 //===----------------------------------------------------------------------===//
-// TensorSpecType
+// CpuTensorSpecType
 //===----------------------------------------------------------------------===//
 
 /// Parses a list of dimensions followed by a DType, interpreting '?' as the
@@ -223,8 +221,8 @@ static void printShapeAndDType(AsmPrinter &p, ArrayRef<int64_t> shape,
 /// Verifies that the given dimensions represent a valid tensor shape, and
 /// that the element type in DType form is also representable as an MLIR type.
 LogicalResult
-TensorSpecType::verify(function_ref<InFlightDiagnostic()> emitError,
-                       ArrayRef<int64_t> shape, Optional<DType> dtype) {
+CpuTensorSpecType::verify(function_ref<InFlightDiagnostic()> emitError,
+                          ArrayRef<int64_t> shape, Optional<DType> dtype) {
   if (shape.empty() || shape.size() > getMaximumRank())
     return emitError() << "shape must have rank between 1 and "
                        << getMaximumRank() << ".";
@@ -240,71 +238,71 @@ TensorSpecType::verify(function_ref<InFlightDiagnostic()> emitError,
   return success();
 }
 
-TensorSpecType TensorSpecType::get(ArrayRef<int64_t> shape, Type elementType) {
+CpuTensorSpecType CpuTensorSpecType::get(ArrayRef<int64_t> shape,
+                                         Type elementType) {
   ErrorOr<Optional<DType>> errOrDType = DTypeType::fromMlirType(elementType);
   assert(errOrDType.getError() == nullptr &&
          "element type is not representable as a DType");
-  return TensorSpecType::get(elementType.getContext(), shape, *errOrDType);
+  return CpuTensorSpecType::get(elementType.getContext(), shape, *errOrDType);
 }
 
-TensorSpecType
-TensorSpecType::getChecked(function_ref<::mlir::InFlightDiagnostic()> emitError,
-                           ArrayRef<int64_t> shape, Type elementType) {
+CpuTensorSpecType CpuTensorSpecType::getChecked(
+    function_ref<::mlir::InFlightDiagnostic()> emitError,
+    ArrayRef<int64_t> shape, Type elementType) {
   ErrorOr<Optional<DType>> errOrDType = DTypeType::fromMlirType(elementType);
   if (const auto *err = errOrDType.getError()) {
     emitError() << err;
     return {};
   }
-  return TensorSpecType::get(elementType.getContext(), shape, *errOrDType);
+  return CpuTensorSpecType::get(elementType.getContext(), shape, *errOrDType);
 }
 
-TensorSpecType TensorSpecType::get(MLIRContext *context,
-                                   ArrayRef<int64_t> shape, uint8_t rawDType) {
+CpuTensorSpecType CpuTensorSpecType::get(MLIRContext *context,
+                                         ArrayRef<int64_t> shape,
+                                         uint8_t rawDType) {
   // The invalid DType encodes unknown.
   DType dtypeOrInvalid(rawDType);
   Optional<DType> dtype =
       dtypeOrInvalid.isValid() ? Optional<DType>(dtypeOrInvalid) : llvm::None;
-  return TensorSpecType::get(context, shape, dtype);
+  return CpuTensorSpecType::get(context, shape, dtype);
 }
 
-TensorSpecType
-TensorSpecType::getChecked(function_ref<::mlir::InFlightDiagnostic()> emitError,
-                           MLIRContext *context, ArrayRef<int64_t> shape,
-                           uint8_t rawDType) {
-  return TensorSpecType::get(context, shape, rawDType);
+CpuTensorSpecType CpuTensorSpecType::getChecked(
+    function_ref<::mlir::InFlightDiagnostic()> emitError, MLIRContext *context,
+    ArrayRef<int64_t> shape, uint8_t rawDType) {
+  return CpuTensorSpecType::get(context, shape, rawDType);
 }
 
-TensorSpecType TensorSpecType::get(IntArrayElementsAttr rawShape,
-                                   IntegerAttr rawDTypeOrNull) {
+CpuTensorSpecType CpuTensorSpecType::get(IntArrayElementsAttr rawShape,
+                                         IntegerAttr rawDTypeOrNull) {
   // The null rawDType is a convenience for unknown,
   // and the invalid DType encodes unknown.
   uint8_t rawDTypeValue =
       rawDTypeOrNull ? rawDTypeOrNull.getUInt() : DType().getValue();
-  return TensorSpecType::get(rawShape.getContext(),
-                             rawShape.asArrayRef<int64_t>(), rawDTypeValue);
+  return CpuTensorSpecType::get(rawShape.getContext(),
+                                rawShape.asArrayRef<int64_t>(), rawDTypeValue);
 }
 
-TensorSpecType
-TensorSpecType::getChecked(function_ref<::mlir::InFlightDiagnostic()> emitError,
-                           IntArrayElementsAttr rawShape,
-                           IntegerAttr rawDTypeOrNull) {
-  return TensorSpecType::get(rawShape, rawDTypeOrNull);
+CpuTensorSpecType CpuTensorSpecType::getChecked(
+    function_ref<::mlir::InFlightDiagnostic()> emitError,
+    IntArrayElementsAttr rawShape, IntegerAttr rawDTypeOrNull) {
+  return CpuTensorSpecType::get(rawShape, rawDTypeOrNull);
 }
 
-size_t TensorSpecType::getRank() const { return getShape().size(); }
+size_t CpuTensorSpecType::getRank() const { return getShape().size(); }
 
-size_t TensorSpecType::getNumDynamicDims() const {
+size_t CpuTensorSpecType::getNumDynamicDims() const {
   return static_cast<size_t>(llvm::count(getShape(), ShapedType::kDynamicSize));
 }
 
-Optional<uint64_t> TensorSpecType::operator[](size_t i) const {
+Optional<uint64_t> CpuTensorSpecType::operator[](size_t i) const {
   assert(i < getShape().size() && "shape index out of range");
   int64_t dim = getShape()[i];
   return dim == ShapedType::kDynamicSize ? Optional<uint64_t>()
                                          : static_cast<uint64_t>(dim);
 }
 
-Optional<uint64_t> TensorSpecType::getNumElements() const {
+Optional<uint64_t> CpuTensorSpecType::getNumElements() const {
   uint64_t prod = 1;
   for (auto dim : getShape()) {
     if (dim == ShapedType::kDynamicSize)
@@ -314,7 +312,7 @@ Optional<uint64_t> TensorSpecType::getNumElements() const {
   return prod;
 }
 
-Optional<uint64_t> TensorSpecType::getSizeInBytes() const {
+Optional<uint64_t> CpuTensorSpecType::getSizeInBytes() const {
   Optional<DType> dtype = getDtype();
   if (!dtype)
     return {}; // unknown element type
@@ -328,12 +326,12 @@ Optional<uint64_t> TensorSpecType::getSizeInBytes() const {
 }
 
 /// ShapedTypeInterface: Returns true since statically ranked.
-bool TensorSpecType::hasRank() const { return true; }
+bool CpuTensorSpecType::hasRank() const { return true; }
 
 /// ShapedTypeInterface: Returns clone with given element type, which
 /// must be representable as a dtype.
-ShapedType TensorSpecType::cloneWith(Optional<ArrayRef<int64_t>> shape,
-                                     Type elementType) const {
+ShapedType CpuTensorSpecType::cloneWith(Optional<ArrayRef<int64_t>> shape,
+                                        Type elementType) const {
   ArrayRef<int64_t> newShape = shape.value_or(getShape());
   Optional<DType> newDType = getDtype();
   if (elementType != nullptr) {
@@ -342,16 +340,16 @@ ShapedType TensorSpecType::cloneWith(Optional<ArrayRef<int64_t>> shape,
            "new element type is not representable as a DType");
     newDType = *errOrDtype;
   }
-  return TensorSpecType::get(getContext(), newShape, newDType);
+  return CpuTensorSpecType::get(getContext(), newShape, newDType);
 }
 
 /// ShapedTypeInterface: Returns dtype as an MLIR type. This is always well
 /// defined thanks to verify above.
-Type TensorSpecType::getElementType() const {
+Type CpuTensorSpecType::getElementType() const {
   return *DTypeType::toMLIRType(getContext(), getDtype());
 }
 
-IntArrayElementsAttr TensorSpecType::getRawShape() const {
+IntArrayElementsAttr CpuTensorSpecType::getRawShape() const {
   Type si64 = IntegerType::get(getContext(), 64, IntegerType::Signed);
   SmallVector<APInt> dims;
   for (int64_t dim : getShape())
@@ -361,7 +359,7 @@ IntArrayElementsAttr TensorSpecType::getRawShape() const {
       ArrayType::get(static_cast<int64_t>(getRank()), si64), dims);
 }
 
-IntegerAttr TensorSpecType::getRawDType() const {
+IntegerAttr CpuTensorSpecType::getRawDType() const {
   Type ui8 = IntegerType::get(getContext(), 8, IntegerType::Unsigned);
   Optional<DType> dtype = getDtype();
   uint8_t dtypeValue;
@@ -372,17 +370,17 @@ IntegerAttr TensorSpecType::getRawDType() const {
   return IntegerAttr::get(ui8, dtypeValue);
 }
 
-BufferType TensorSpecType::getExpectedBufferType() const {
-  return BufferType::get(getContext(), getSizeInBytes());
+CpuBufferType CpuTensorSpecType::getExpectedBufferType() const {
+  return CpuBufferType::get(getContext(), getSizeInBytes());
 }
 
 //===----------------------------------------------------------------------===//
-// TensorType
+// CpuTensorType
 //===----------------------------------------------------------------------===//
 
 /// Parses a compact tensor type description.
 static ParseResult parseTensorSpec(AsmParser &p,
-                                   FailureOr<TensorSpecType> &tensorSpec) {
+                                   FailureOr<CpuTensorSpecType> &tensorSpec) {
   FailureOr<SmallVector<int64_t>> shape;
   FailureOr<Optional<DType>> dtype;
   llvm::SMLoc loc;
@@ -391,38 +389,38 @@ static ParseResult parseTensorSpec(AsmParser &p,
 
   // Though the following get calls will invoke verify, the resulting errors
   // will be locationless and trigger a core dump. Try to be friendlier.
-  if (failed(TensorSpecType::verify([&]() { return p.emitError(loc); }, *shape,
-                                    *dtype)))
+  if (failed(CpuTensorSpecType::verify([&]() { return p.emitError(loc); },
+                                       *shape, *dtype)))
     return failure();
 
-  tensorSpec.emplace(TensorSpecType::get(p.getContext(), *shape, *dtype));
+  tensorSpec.emplace(CpuTensorSpecType::get(p.getContext(), *shape, *dtype));
   return success();
 }
 
 /// Prints a compact tensor type description.
-static void printTensorSpec(AsmPrinter &p, TensorSpecType tensorSpec) {
+static void printTensorSpec(AsmPrinter &p, CpuTensorSpecType tensorSpec) {
   printShapeAndDType(p, tensorSpec.getShape(), tensorSpec.getDtype());
 }
 
 /// ShapedTypeInterface: Returns clone of tensor type.
-ShapedType TensorType::cloneWith(Optional<ArrayRef<int64_t>> shape,
-                                 Type elementType) const {
-  auto tensorSpec = mlir::dyn_cast<TensorSpecType>(
+ShapedType CpuTensorType::cloneWith(Optional<ArrayRef<int64_t>> shape,
+                                    Type elementType) const {
+  auto tensorSpec = mlir::dyn_cast<CpuTensorSpecType>(
       getTensorSpec().cloneWith(shape, elementType));
-  return TensorType::get(getContext(), tensorSpec);
+  return CpuTensorType::get(getContext(), tensorSpec);
 }
 
 /// ShapedTypeInterface: Returns true since all tensors have statically
 /// known rank.
-bool TensorType::hasRank() const { return true; }
+bool CpuTensorType::hasRank() const { return true; }
 
 /// ShapedTypeInterface: Returns tensor spec's shape
-ArrayRef<int64_t> TensorType::getShape() const {
+ArrayRef<int64_t> CpuTensorType::getShape() const {
   return getTensorSpec().getShape();
 }
 
 /// ShapedTypeInterface: Returns tensor spec's element type.
-Type TensorType::getElementType() const {
+Type CpuTensorType::getElementType() const {
   return getTensorSpec().getElementType();
 }
 
@@ -445,13 +443,13 @@ void MOPDialect::registerTypes() {
 #include "GenericML/MOPDialect/MOPTypes.cpp.inc"
 
 //===----------------------------------------------------------------------===//
-// BufferType (cont.)
+// CpuBufferType (cont.)
 //===----------------------------------------------------------------------===//
 
-const int64_t BufferType::unknownSize = ShapedType::kDynamicSize;
+const int64_t CpuBufferType::unknownSize = ShapedType::kDynamicSize;
 
 /// Implements ShapedType::getShape
-ArrayRef<int64_t> BufferType::getShape() const {
+ArrayRef<int64_t> CpuBufferType::getShape() const {
   Optional<uint64_t> &size = getImpl()->size;
   if (!size)
     return ArrayRef<int64_t>(&unknownSize, 1);
