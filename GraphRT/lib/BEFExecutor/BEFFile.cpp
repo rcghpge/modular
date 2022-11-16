@@ -185,9 +185,7 @@ bool BEFFileReader::readNextSection() {
 // BEFFileImpl
 //===----------------------------------------------------------------------===//
 
-BEFFileImpl::~BEFFileImpl() {
-  free(const_cast<void *>(static_cast<const void *>(invokables)));
-}
+BEFFileImpl::~BEFFileImpl() { free(static_cast<void *>(invokables)); }
 
 /// This method enumerates the primitive name table, calling the specified
 /// callable on each entry.  The callable function should return a bool, and

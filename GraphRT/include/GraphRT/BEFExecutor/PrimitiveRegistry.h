@@ -1460,10 +1460,14 @@ template <typename To, typename From>
 struct BaseBEFAttrCast
     : public DefaultDoCastIfPossible<Optional<To>, From,
                                      BaseBEFAttrCast<To, From>> {
+  // Accept a const reference in the case of temporaries being casted which get
+  // lifetime extension when binding to a const reference.
   static bool isPossible(const From &f) {
     return To::matchesAttrKind(reinterpret_cast<const uint8_t *>(
         detail::unwrapValue(const_cast<From &>(f)).get()));
   }
+  // Accept a const reference in the case of temporaries being casted which get
+  // lifetime extension when binding to a const reference.
   static Optional<To> doCast(const From &f) {
     return To(detail::unwrapValue(const_cast<From &>(f)).get());
   }
