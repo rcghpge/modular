@@ -23,10 +23,6 @@ class MOP_Type<string name, string typeMnemonic, list<Trait> traits = []>
   let mnemonic = typeMnemonic;
 }
 
-// TODO(#4727): The buffer and tensor types are not intended to be universal,
-// so we should give them a 'cpu' or perhaps 'host' suffix. Similarly for the
-// ops.
-
 //===----------------------------------------------------------------------===//
 // CpuBufferType
 //===----------------------------------------------------------------------===//
@@ -75,9 +71,8 @@ def MOP_CpuBufferType : MOP_Type<"CpuBuffer", "cpu.buffer",
     side-effects over buffers.
 
     The size of a buffer type has two representations:
-     - 'Native' form: an `Optional<uint64_t>`, with none denoting unknown.
-     - 'Raw attribute' form: An UI64Attr, with `UINT64_MAX` denoting
-       unknown.
+     - 'Clean form': an `Optional<uint64_t>`, with none denoting unknown.
+     - 'Raw form': An UI64Attr, with ~0 denoting unknown.
 
     Examples:
     ```mlir
@@ -93,23 +88,21 @@ def MOP_CpuBufferType : MOP_Type<"CpuBuffer", "cpu.buffer",
   let extraClassDeclaration = [{
      /// getShape may need to return an ArrayRef representing a
      /// dynamic rank-1 shape if the size is unconstrained.
-     /// That ref will point to this static. We are forced to use int64_t
-     /// for compatability with the MLIR builtins.
+     /// That ref will point to this static.
      static const int64_t unknownSize;
 
-     /// Returns the buffer's size in 'raw attribute' form, which is
-     /// a UI64Attr with value UINT64_MAX if the size is unknown.
+     /// Returns the buffer's size in 'raw form', which is
+     /// a UI64Attr with value ~0 if the size is unknown.
      IntegerAttr getRawSize() const;
   }];
 
   let builders = [
-    /// Constructs a buffer type from its size in 'raw attribute' form.
+    /// Constructs a buffer type from its size in 'raw form'.
     /// As a convenience we allow the null attribute to denote unknown
     /// size.
     TypeBuilder<(ins "IntegerAttr":$rawSizeOrNull)>,
 
-    /// Constructs a buffer type from its size in 'raw attribute' form,
-    /// using the underlying uint64_t.
+    /// Constructs a buffer type from its size in 'raw form' form.
     TypeBuilder<(ins "uint64_t":$rawSize)>,
   ];
 }
@@ -177,6 +170,14 @@ def MOP_DTypeType : MOP_Type<"DType", "dtype"> {
     /// an MLIR IntegerType, FloatType or NoneType. Otherwise returns the
     /// empty string.
     static std::string hasNoMLIRType(Optional<DType> dtype);
+
+    /// Returns the 'raw form' of dtype. This will be 0 if DType is unknown,
+    /// otherwise the DType's value.
+    static uint8_t asRawDType(Optional<DType> dtype);
+
+    /// Return the 'clean form' of rawDType. This will be none if the rawDType
+    /// is 0, otherwise the DType with rawDType as value.
+    static Optional<DType> fromRawDType(uint8_t rawDType);
   }];
 }
 
@@ -188,22 +189,22 @@ def MOP_CpuTensorSpecType : MOP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
     DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
   let summary = "Type of tensor specs of statically known rank.";
   let description = [{
-    This type represents the shape and element type of a tensor hosted on
+    This type represents the shape and dtype of a tensor hosted on
     the CPU. The rank must be between one and five. Each dimension must be
     a strictly positive integer value, or the distinguished -1 dimension
-    denoting unknown. The element type must be a DType, or none denoting unknown.
+    denoting unknown. The dtype must be a DType, or none denoting unknown.
 
     This type does not support:
      - Dynamic ranks.
      - Rank zero shapes, sometimes used to denote scalars.
-     - Symbolic dimensions or element type.
+     - Symbolic dimensions or dtypes.
 
     Tensor specs are represented by M::TensorSpec in the Modular runtime.
     The runtime value will agree with the rank, known shape dimensions,
-    and known element type of the tensor spec type.
+    and known dtype of the tensor spec type.
 
     For convenience this type may be denoted using the same body syntax
-    as the built-in tensor type. However, the element type is parsed using
+    as the built-in tensor type. However, the dtype is parsed using
     the M::DType string parser, or may be 'unk' to denote unknown.
 
     DTypes can represent most variations of MLIR IntegerType and FloatTypes.
@@ -217,27 +218,29 @@ def MOP_CpuTensorSpecType : MOP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
     TODO(#4718): Are these discrepancies something we should redress?
 
     This type implements ShapedTypeInterface, using the distinguished
-    NoneType to represent an unknown element type. This means we
-    must use 'dtype' to refer to the element type in DType form, but
-    'elementType' to refer to the element type in MLIR type form.
+    NoneType to represent an unknown dtype. This means:
+     - We use 'dims' to refer to the dimensions in
+       ArrayRef<Optional<uint64_t>> form, but 'shape' to refer to
+       them in ArrayRef<int64_t> form.
+     - We use 'dtype' to refer to the dtype in DType form, but
+       'elementType' to refer to it in MLIR type form.
 
     The components of tensor spec types have three representation forms:
-     - 'Native' form: an array of int64_t for the shape (-1 denotes unknown
-       dimension) and an Optional<DType> for the element type (none denotes
-       unknown). This is the most natural representation from the MLIR/C++
-       side. However, care is taken to ensure only DTypes which are
-       also representable as MLIR types are considered valid.
-     - 'Shaped type' form: an array of int64_t for the shape (-1 denotes
+     - 'Clean form': an array of Optional<uint64_t> for the dimensions (none
+       denotes unknown dimension) and an Optional<DType> for the dtype
+       (none denotes unknown). This is the most natural representation
+       from the MLIR/C++ side. However, care is taken to ensure only DTypes
+       which are also representable as MLIR types are considered valid.
+     - 'Shaped type form': an array of int64_t for the shape (-1 denotes
        unknown dimension) and an MLIR type for the element type (NoneType
        denotes unknown). This supports the ShapedTypeInterface, but not
        all IntegerTypes and FloatTypes have a DType representation.
-     - 'Raw attribute' form: an IntArrayElementsAttr of 64-bit signed
-       integers for the shape (-1 denotes unknown dimension), and a
-       IntegerAttr of a 8-bit unsigned integer for the element type
-       (using the DType::value encoding, but with the 'invalid' (zero) DType
-       denoting unknown). This supports ops which must, in effect, encode
-       tensor spec types into their argument attributes using only the built-in
-       BEF attributes.
+     - 'Raw form': an IntArrayElementsAttr of uint64_ts for the dimensions
+       (~0 denotes unknown dimension), and a IntegerAttr of a 8-bit unsigned
+       integer for the dtype (using the DType::value encoding, but
+       with the 'invalid' (zero) DType denoting unknown). This supports ops
+       which must, in effect, encode tensor spec types into their argument
+       attributes using only the built-in BEF attributes.
 
     Examples:
     ```mlir
@@ -246,8 +249,13 @@ def MOP_CpuTensorSpecType : MOP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
     ```
   }];
 
-  let parameters = (ins ArrayRefParameter<"int64_t">:$shape, "Optional<DType>":$dtype);
-  let assemblyFormat = "`<` custom<ShapeAndDType>($shape, $dtype) `>`";
+  // NOTE: To support the ShapedType::getShape() method we must maintain
+  // the shape in the ArrayRef<int64_t> form as well as our preferred
+  // ArrayRef<Optional<uint64_t>> form.
+  let parameters = (ins ArrayRefParameter<"Optional<uint64_t>">:$dims,
+                        "Optional<DType>":$dtype,
+                        ArrayRefParameter<"int64_t">:$shape);
+  let assemblyFormat = "`<` custom<DimsAndDType>($dims, $dtype, $shape) `>`";
   let genVerifyDecl = 1;
 
   let extraClassDeclaration = [{
@@ -273,36 +281,40 @@ def MOP_CpuTensorSpecType : MOP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
     /// of this spec, or empty if the tensor spec is not fully static.
     Optional<uint64_t> getSizeInBytes() const;
 
-    /// Returns the shape of this tensor spec in 'raw' attribute form.
-    /// Each element of the result will be an I64Int, with -1 denoting
+    /// Returns the dimensions of this tensor spec in 'raw form'.
+    /// Each element of the result will be an UI64Int, with ~0 denoting
     /// an unknown dimension.
-    IntArrayElementsAttr getRawShape() const;
+    IntArrayElementsAttr getRawDims() const;
 
-    /// Returns the element type of this tensor spec in 'raw' attribute
-    /// form. The result will be a UI8Int using the DType::value encoding,
-    /// with 0 denoting the unknown element type.
+    /// Returns the dtype of this tensor spec in 'raw form'.
+    /// The result will be a UI8Int using the DType::value encoding,
+    /// with 0 denoting the unknown dtype.
     IntegerAttr getRawDType() const;
 
-    /// Returns a CpuBufferType which captures the required size for this tensor.
-    /// The result will only have a size constraint if the tensor's spec is
-    /// fully static.
+    /// Returns a CpuBufferType which captures the required size for this
+    /// tensor. The result will only have a size constraint if the tensor's
+    /// spec is fully static.
     CpuBufferType getExpectedBufferType() const;
   }];
 
   let builders = [
-    /// Constructs a tensor spec from its components in 'shaped type' form.
+    /// Constructs a tensor spec from its components in 'clean form'.
+    TypeBuilder<(ins "ArrayRef<Optional<uint64_t>>":$dims,
+                     "Optional<DType>":$dtype)>,
+
+    /// Constructs a tensor spec from its components in 'shaped type form'.
     TypeBuilderWithInferredContext<(ins "ArrayRef<int64_t>":$shape,
                                         "Type":$elementType)>,
 
-    /// Construct a tensor spec from its components in 'raw attribute' form.
+    /// Construct a tensor spec from its components in 'raw form',
+    /// using underlying integer values.
+    TypeBuilder<(ins "ArrayRef<uint64_t>":$rawDims, "uint8_t":$rawDType)>,
+
+    /// Construct a tensor spec from its components in 'raw form'.
     /// As a convenience, the null dtype attribute is taken to denote the
     /// unknown element type.
-    TypeBuilderWithInferredContext<(ins "IntArrayElementsAttr":$rawShape,
+    TypeBuilderWithInferredContext<(ins "IntArrayElementsAttr":$rawDims,
                                         "IntegerAttr":$rawDTypeOrNull)>,
-
-    /// Construct a tensor spec from its components in 'raw attribute' form,
-    /// using underlying integer values.
-    TypeBuilder<(ins "ArrayRef<int64_t>":$shape, "uint8_t":$rawDType)>,
   ];
 }
 

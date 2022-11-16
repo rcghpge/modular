@@ -9,11 +9,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MOPDialect/MOPOps.h"
-#include "GenericML/MOP/Utils.h"
 #include "Support/ErrorOr.h"
 #include "Support/MDialect/MAttrs.h"
 #include "Support/ML/CompiledFrameworkLabel.h"
 #include "Support/ML/DType.h"
+#include "Support/ML/SizeUtils.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributeInterfaces.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -49,14 +49,9 @@ static ErrorOr<Optional<uint64_t>> getImpliedAlignment(ElementsAttr value) {
                          "attribute's element size (" +
                          Twine(blob->getData().size()) + " vs " +
                          Twine(value.getNumElements()) + ")"));
-    Optional<uint64_t> align =
-        blob->getDataAlignment() == 0
-            ? Optional<uint64_t>()
-            : static_cast<uint64_t>(blob->getDataAlignment());
-    if (!isValidAlign(align))
-      return Error(
-          Twine("the resource alignment must be a power of two (have " +
-                Twine(blob->getDataAlignment()) + ")."));
+    return blob->getDataAlignment() == 0
+               ? Optional<uint64_t>()
+               : static_cast<uint64_t>(blob->getDataAlignment());
   }
 
   // No align constraint.
@@ -92,9 +87,14 @@ LogicalResult CpuBufferConstantOp::verify() {
 
   // Only BufferAttr and DenseResourceElementsAttr can convey an align
   // constraint. Check they are valid.
-  ErrorOr<Optional<uint64_t>> errorOrValueAlign = getImpliedAlignment(value);
-  if (auto *error = errorOrValueAlign.getError())
+  ErrorOr<Optional<uint64_t>> errOrAlign = getImpliedAlignment(value);
+  if (auto *error = errOrAlign.getError())
     return emitOpError() << error;
+
+  if (!isValidAlign(*errOrAlign))
+    return emitOpError()
+           << "the attribute alignment must be a power of two (have "
+           << **errOrAlign << ").";
 
   return success();
 }
@@ -116,11 +116,11 @@ LogicalResult CpuBufferConstantOp::inferReturnTypes(
 }
 
 Optional<uint64_t> CpuBufferConstantOp::getAlign() {
-  ErrorOr<Optional<uint64_t>> errorOrAlign = getImpliedAlignment(getValue());
-  assert(!errorOrAlign.isError());
-  if (errorOrAlign.isError())
+  ErrorOr<Optional<uint64_t>> errOrAlign = getImpliedAlignment(getValue());
+  assert(!errOrAlign.isError());
+  if (errOrAlign.isError())
     return {};
-  return *errorOrAlign;
+  return *errOrAlign;
 }
 
 //===----------------------------------------------------------------------===//
@@ -129,7 +129,8 @@ Optional<uint64_t> CpuBufferConstantOp::getAlign() {
 
 LogicalResult CpuBufferAllocOp::verify() {
   CpuBufferType resultBufferType = getResult().getType();
-  CpuBufferType impliedBufferType = CpuBufferType::get(getContext(), getSize());
+  CpuBufferType impliedBufferType =
+      CpuBufferType::get(getContext(), getRawSize());
   if (resultBufferType != impliedBufferType)
     return emitOpError()
            << "expected result buffer type to match type implied by operannds ("
@@ -139,9 +140,9 @@ LogicalResult CpuBufferAllocOp::verify() {
   if (haveRuntimeSize == haveStaticSize)
     return emitOpError()
            << "expected a runtime size argument or a size attribute.";
-  if (!isValidSize(getSize()))
+  if (!isValidRawSize(getRawSize()))
     return emitOpError() << "expected size to be positive.";
-  if (!isValidAlign(getAlign()))
+  if (!isValidRawAlign(getRawAlign()))
     return emitOpError() << "expected align to be a power of two.";
   return success();
 }
@@ -153,7 +154,7 @@ LogicalResult CpuBufferAllocOp::inferReturnTypes(
     SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
   auto sizeAttr = dyn_cast_or_null<mlir::IntegerAttr>(
-      attributes.get(getSizeAttrName(name)));
+      attributes.get(getRawSizeAttrName(name)));
   inferredReturnTypes.emplace_back(CpuBufferType::get(context, sizeAttr));
   return success();
 }
@@ -167,7 +168,8 @@ LogicalResult CpuBufferAllocOp::inferReturnTypes(
 
 LogicalResult CpuBufferReallocOp::verify() {
   CpuBufferType resultBufferType = getResult().getType();
-  CpuBufferType impliedBufferType = CpuBufferType::get(getContext(), getSize());
+  CpuBufferType impliedBufferType =
+      CpuBufferType::get(getContext(), getDRawSize());
   if (resultBufferType != impliedBufferType)
     return emitOpError() << "expected result buffer type " << resultBufferType
                          << " to match " << impliedBufferType
@@ -177,9 +179,9 @@ LogicalResult CpuBufferReallocOp::verify() {
   if (haveRuntimeSize == haveStaticSize)
     return emitOpError()
            << "expected a runtime size argument or a size attribute.";
-  if (!isValidSize(getSize()))
+  if (!isValidRawSize(getDRawSize()))
     return emitOpError() << "expected size to be positive.";
-  if (!isValidAlign(getAlign()))
+  if (!isValidRawAlign(getCRawAlign()))
     return emitOpError() << "expected align to be a power of two.";
   return success();
 }
@@ -191,7 +193,7 @@ LogicalResult CpuBufferReallocOp::inferReturnTypes(
     SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
   auto sizeAttr = dyn_cast_or_null<mlir::IntegerAttr>(
-      attributes.get(getSizeAttrName(name)));
+      attributes.get(getDRawSizeAttrName(name)));
   inferredReturnTypes.emplace_back(CpuBufferType::get(context, sizeAttr));
   return success();
 }
@@ -207,10 +209,10 @@ LogicalResult CpuBufferReallocOp::inferReturnTypes(
 //===----------------------------------------------------------------------===//
 
 /// Parses a !mop.cpu.tensor_spec type where the element type must be known, but
-/// represented in 'raw' attribute form.
-static ParseResult parseRawShapeAndDType(AsmParser &p,
-                                         IntArrayElementsAttr &rawShape,
-                                         IntegerAttr &rawDType) {
+/// represented in 'raw form'.
+static ParseResult parseRawDimsAndDType(AsmParser &p,
+                                        IntArrayElementsAttr &rawDims,
+                                        IntegerAttr &rawDType) {
   Type type;
   llvm::SMLoc loc;
   if (p.getCurrentLocation(&loc) || p.parseType(type))
@@ -222,23 +224,22 @@ static ParseResult parseRawShapeAndDType(AsmParser &p,
     return p.emitError(loc) << "expected !mop.cpu.tensor_spec type to have a "
                                "known element type.";
 
-  rawShape = tensorSpec.getRawShape();
+  rawDims = tensorSpec.getRawDims();
   rawDType = tensorSpec.getRawDType();
 
   return success();
 }
 
-/// Prints a !mop.cpu.tensor_spec type, but represented in 'raw' attribute form.
-static void printRawShapeAndDType(AsmPrinter &p,
-                                  const CpuTensorSpecCreateOp &op,
-                                  IntArrayElementsAttr rawShape,
-                                  IntegerAttr rawDType) {
-  p << CpuTensorSpecType::get(rawShape, rawDType);
+/// Prints a !mop.cpu.tensor_spec type, but represented in 'raw form'.
+static void printRawDimsAndDType(AsmPrinter &p, const CpuTensorSpecCreateOp &op,
+                                 IntArrayElementsAttr rawDims,
+                                 IntegerAttr rawDType) {
+  p << CpuTensorSpecType::get(rawDims, rawDType);
 }
 
 LogicalResult CpuTensorSpecCreateOp::verify() {
   auto impliedSpecType = CpuTensorSpecType::getChecked(
-      [this]() { return emitOpError(); }, getContext(), getFstRawShape(),
+      [this]() { return emitOpError(); }, getContext(), getFstRawDims(),
       getSndRawDType());
   if (impliedSpecType == nullptr)
     return failure();
@@ -261,13 +262,13 @@ LogicalResult CpuTensorSpecCreateOp::inferReturnTypes(
     DictionaryAttr attributes, mlir::RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
-  auto rawShapeAttr = dyn_cast<IntArrayElementsAttr>(
-      attributes.get(getFstRawShapeAttrName(name)));
+  auto rawDimsAttr = dyn_cast<IntArrayElementsAttr>(
+      attributes.get(getFstRawDimsAttrName(name)));
   auto rawDTypeAttr =
       dyn_cast<IntegerAttr>(attributes.get(getSndRawDTypeAttrName(name)));
-  assert(rawShapeAttr && rawDTypeAttr && "mismatched operand type");
+  assert(rawDimsAttr && rawDTypeAttr && "mismatched operand type");
   inferredReturnTypes.emplace_back(
-      CpuTensorSpecType::get(rawShapeAttr, rawDTypeAttr));
+      CpuTensorSpecType::get(rawDimsAttr, rawDTypeAttr));
   return success();
 }
 
@@ -276,8 +277,8 @@ LogicalResult CpuTensorSpecCreateOp::inferReturnTypes(
 //===----------------------------------------------------------------------===//
 
 /// Parses a !mop.cpu.tensor_spec type where the element type is unknown, but
-/// represented in 'raw' attribute form.
-static ParseResult parseRawShape(AsmParser &p, IntArrayElementsAttr &rawShape) {
+/// represented in 'raw form'.
+static ParseResult parseRawDims(AsmParser &p, IntArrayElementsAttr &rawDims) {
   Type type;
   llvm::SMLoc loc;
   if (p.getCurrentLocation(&loc) || p.parseType(type))
@@ -289,20 +290,20 @@ static ParseResult parseRawShape(AsmParser &p, IntArrayElementsAttr &rawShape) {
     return p.emitError(loc) << "expected !mop.cpu.tensor_spec type to have an "
                                "unknown element type.";
 
-  rawShape = tensorSpec.getRawShape();
+  rawDims = tensorSpec.getRawDims();
 
   return success();
 }
 
-/// Prints a !mop.cpu.tensor_spec type, but represented in 'raw' attribute form.
-static void printRawShape(AsmPrinter &p, const CpuTensorSpecCreateDynamicOp &op,
-                          IntArrayElementsAttr rawShape) {
-  p << CpuTensorSpecType::get(rawShape, /*rawDTypeOrNull=*/{});
+/// Prints a !mop.cpu.tensor_spec type, but represented in 'raw form'.
+static void printRawDims(AsmPrinter &p, const CpuTensorSpecCreateDynamicOp &op,
+                         IntArrayElementsAttr rawDims) {
+  p << CpuTensorSpecType::get(rawDims, /*rawDTypeOrNull=*/{});
 }
 
 LogicalResult CpuTensorSpecCreateDynamicOp::verify() {
   auto impliedSpecType = CpuTensorSpecType::getChecked(
-      [this]() { return emitOpError(); }, getContext(), getRawShape(),
+      [this]() { return emitOpError(); }, getContext(), getRawDims(),
       /*rawDType=*/{});
   if (impliedSpecType == nullptr)
     return failure();
@@ -323,11 +324,11 @@ LogicalResult CpuTensorSpecCreateDynamicOp::inferReturnTypes(
     DictionaryAttr attributes, mlir::RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
-  auto rawShapeAttr =
-      dyn_cast<IntArrayElementsAttr>(attributes.get(getRawShapeAttrName(name)));
-  assert(rawShapeAttr && "mismatched operand type");
+  auto rawDimsAttr =
+      dyn_cast<IntArrayElementsAttr>(attributes.get(getRawDimsAttrName(name)));
+  assert(rawDimsAttr && "mismatched operand type");
   inferredReturnTypes.emplace_back(
-      CpuTensorSpecType::get(rawShapeAttr, /*rawDTypeOrNull=*/{}));
+      CpuTensorSpecType::get(rawDimsAttr, /*rawDTypeOrNull=*/{}));
   return success();
 }
 
@@ -335,32 +336,32 @@ LogicalResult CpuTensorSpecCreateDynamicOp::inferReturnTypes(
 // SpecExtractShapeOp
 //===----------------------------------------------------------------------===//
 
-/// Parses a !mop.cpu.tensor_spec type, however also sets the rawShape to
-/// capture it's shape in 'raw' attribute form.
+/// Parses a !mop.cpu.tensor_spec type, however also sets the rawDims to
+/// capture it's dimensions in 'raw form'.
 static ParseResult
-parseTensorSpecTypeWithRawShape(AsmParser &p, Type &specType,
-                                IntArrayElementsAttr &rawShape) {
+parseTensorSpecTypeWithRawDims(AsmParser &p, Type &specType,
+                               IntArrayElementsAttr &rawDims) {
   llvm::SMLoc loc;
   if (p.getCurrentLocation(&loc) || p.parseType(specType))
     return failure();
   auto tensorSpec = dyn_cast<CpuTensorSpecType>(specType);
   if (tensorSpec == nullptr)
     p.emitError(loc) << "expected !mop.cpu.tensor_spec type";
-  rawShape = tensorSpec.getRawShape();
+  rawDims = tensorSpec.getRawDims();
   return success();
 }
 
-static void
-printTensorSpecTypeWithRawShape(AsmPrinter &p,
-                                const CpuTensorSpecDimsDynamicOp &op,
-                                Type specType, IntArrayElementsAttr rawShape) {
+static void printTensorSpecTypeWithRawDims(AsmPrinter &p,
+                                           const CpuTensorSpecDimsDynamicOp &op,
+                                           Type specType,
+                                           IntArrayElementsAttr rawDims) {
   p << specType;
 }
 
 LogicalResult CpuTensorSpecDimsDynamicOp::verify() {
   CpuTensorSpecType actualSpecType = getSpec().getType();
   CpuTensorSpecType impliedSpecType = CpuTensorSpecType::get(
-      getContext(), getRawShape(), actualSpecType.getDtype());
+      getContext(), getRawDims(), actualSpecType.getRawDType().getUInt());
   if (actualSpecType != impliedSpecType)
     return emitOpError() << "expected tensor spec type is " << actualSpecType
                          << ", but static dimensions arguments "
@@ -408,7 +409,7 @@ LogicalResult CpuTensorSpecDimsDynamicOp::inferReturnTypes(
 // TensorCreateOp
 //===----------------------------------------------------------------------===//
 
-/// Checks the shape, buffer type and result tensor types are consistent.
+/// Checks the tensor spec, buffer type and result tensor types are consistent.
 LogicalResult CpuTensorCreateOp::verify() {
   CpuTensorSpecType tensorSpecType = getTensorSpec().getType();
   CpuBufferType actualBufferType = getBuffer().getType();
@@ -416,7 +417,7 @@ LogicalResult CpuTensorCreateOp::verify() {
   CpuTensorType tensorType = getResult().getType();
 
   if (tensorSpecType != tensorType.getTensorSpec())
-    return emitOpError() << "expected shape to match result tensor shape"
+    return emitOpError() << "expected spec to match result tensor spec"
                          << " (" << tensorSpecType << " vs "
                          << tensorType.getTensorSpec() << ")";
   if (actualBufferType != expectedBufferType)
@@ -433,7 +434,7 @@ LogicalResult CpuTensorCreateOp::verify() {
 LogicalResult CpuTensorExtractOp::verify() {
   CpuTensorType tensorType = getTensor().getType();
   if (tensorType.getTensorSpec() != getTensorSpecResult().getType())
-    return emitOpError() << "expected the result shape to match tensor's shape"
+    return emitOpError() << "expected the result spec to match tensor's spec"
                          << " (" << getTensorSpecResult().getType() << " vs "
                          << tensorType.getTensorSpec() << ")";
   CpuBufferType impliedBufferType =

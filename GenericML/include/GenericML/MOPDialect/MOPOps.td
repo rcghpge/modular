@@ -97,13 +97,13 @@ def CpuBufferAllocOp : MOP_Op<"cpu.buffer.alloc", [
     %ctx : !mop.context
     %size : index
 
-    %buf = mop.cpu.buffer.alloc %ctx %size {align=8:ui64}
+    %buf = mop.cpu.buffer.alloc %ctx %size align 8
     %buf : !mop.cpu.buffer<>  // at least 8 byte aligned in storage
 
-    %buf = mop.cpu.buffer.alloc %ctx {size=64:ui64}
+    %buf = mop.cpu.buffer.alloc %ctx size 64
     %buf : !mop.cpu.buffer<64>  // no specific alignment in storage
 
-    %buf = mop.cpu.buffer.alloc %ctx {size=64:ui64, align=16:ui64}
+    %buf = mop.cpu.buffer.alloc %ctx align 16 size 64
     %buf : !mop.cpu.buffer<64>  // at least 16 byte aligned in storage
     ```
   }];
@@ -113,10 +113,13 @@ def CpuBufferAllocOp : MOP_Op<"cpu.buffer.alloc", [
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
   let arguments = (ins MOP_ContextType:$theContext, Optional<Index>:$runtimeSize,
-                       DefaultValuedAttr<UI64Attr, "UINT64_MAX">:$align,  // 0
-                       DefaultValuedAttr<UI64Attr, "UINT64_MAX">:$size);  // 1
+                       DefaultValuedAttr<UI64Attr, "kUnknownSize">:$rawAlign,  // 0
+                       DefaultValuedAttr<UI64Attr, "kUnknownSize">:$rawSize);  // 1
   let results = (outs MOP_CpuBufferType:$result);
-  let assemblyFormat = "$theContext ($runtimeSize^)? attr-dict";
+  let assemblyFormat = [{
+    $theContext ($runtimeSize^)? (`align` $rawAlign^)?
+    (`size` $rawSize^)? attr-dict
+  }];
   let hasVerifier = 1;
 }
 
@@ -174,11 +177,11 @@ def CpuBufferReallocOp : MOP_Op<"cpu.buffer.realloc", [
     ```mlir
        init {
          ...
-         %buf1 = mop.cpu.buffer.realloc %ch %ctx[2, 0] { size=48, align=8 }
+         %buf1 = mop.cpu.buffer.realloc %ch %ctx[2, 0] align 8 size 48
        }
        execute (...) -> ... {
          ...
-         %buf2 = mop.cpu.buffer.realloc %ch %ctx[2, 0] { size=48, align=16 }
+         %buf2 = mop.cpu.buffer.realloc %ch %ctx[2, 0] align 16 size 48
        }
     ```
     the second realloc will always reuse the buffer from the first realloc.
@@ -190,10 +193,10 @@ def CpuBufferReallocOp : MOP_Op<"cpu.buffer.realloc", [
     %ch : !bef.chain
 
     // Reallocate the buffer in slot index 42 and buffer index 2.
-    %buf = mop.cpu.buffer.realloc %ch %ctx[42, 2] %size { align=8:ui64 }
+    %buf = mop.cpu.buffer.realloc %ch %ctx[42, 2] %size align 8
     %buf : !mop.cpu.buffer      // at least 8 byte aligned in storage
 
-    %buf = mop.cpu.buffer.realloc %ch %ctx[42, 2] { size=64:ui64 }
+    %buf = mop.cpu.buffer.realloc %ch %ctx[42, 2] size 64
     %buf : !mop.cpu.buffer<64>  // no specific alignment in storage
     ```
   }];
@@ -205,13 +208,14 @@ def CpuBufferReallocOp : MOP_Op<"cpu.buffer.realloc", [
   let arguments = (ins ChainType:$ch,
                        MOP_ContextType:$theContext,
                        Optional<Index>:$runtimeSize,
-                       DefaultValuedAttr<UI64Attr, "UINT64_MAX">:$align, // 0
-                       UI64Attr:$buffer,                                 // 1
-                       DefaultValuedAttr<UI64Attr, "UINT64_MAX">:$size,  // 2
-                       UI64Attr:$slot);                                  // 3
+                       UI64Attr:$aSlot,                                        // 0
+                       UI64Attr:$bBuffer,                                      // 1
+                       DefaultValuedAttr<UI64Attr, "kUnknownSize">:$cRawAlign, // 2
+                       DefaultValuedAttr<UI64Attr, "kUnknownSize">:$dRawSize); // 3
   let results = (outs MOP_CpuBufferType:$result);
   let assemblyFormat = [{
-    $ch $theContext `[` $slot `,` $buffer `]` ($runtimeSize^)? attr-dict
+    $ch $theContext `[` $aSlot `,` $bBuffer `]` ($runtimeSize^)?
+    (`align` $cRawAlign^)? (`size` $dRawSize^)? attr-dict
   }];
   let hasVerifier = 1;
 }
@@ -345,11 +349,13 @@ def CpuTensorSpecCreateOp : MOP_Op<"cpu.tensor_spec.create", [
   // NOTE: The two attributes effectively encode the result's tensor spec type
   // in a form understandable by BEF.
   let arguments = (ins Variadic<Index>:$runtimeDims,
-                       SI64ArrayElementsAttr:$fstRawShape,  // 0
-                       UI8Attr:$sndRawDType);               // 1
+                       UI64ArrayElementsAttr:$fstRawDims,  // 0
+                       UI8Attr:$sndRawDType);              // 1
   let results = (outs MOP_CpuTensorSpecType:$result);
-  let assemblyFormat = [{ $runtimeDims attr-dict
-                          `:` custom<RawShapeAndDType>($fstRawShape, $sndRawDType) }];
+  let assemblyFormat = [{
+    $runtimeDims attr-dict
+    `:` custom<RawDimsAndDType>($fstRawDims, $sndRawDType)
+  }];
   let hasVerifier = 1;
 }
 
@@ -389,10 +395,10 @@ def CpuTensorSpecCreateDynamicOp : MOP_Op<"cpu.tensor_spec.create.dyn", [
   // NOTE: The attribute effectively encodes the shape of the result's tensor
   // spec type in a form understandable by BEF.
   let arguments = (ins MOP_DTypeType:$runtimeDType, Variadic<Index>:$runtimeDims,
-                       SI64ArrayElementsAttr:$rawShape);
+                       UI64ArrayElementsAttr:$rawDims);
   let results = (outs MOP_CpuTensorSpecType:$result);
   let assemblyFormat = [{ $runtimeDType $runtimeDims attr-dict
-                          `:` custom<RawShape>($rawShape) }];
+                          `:` custom<RawDims>($rawDims) }];
   let hasVerifier = 1;
 }
 
@@ -428,10 +434,10 @@ def CpuTensorSpecDimsDynamicOp : MOP_Op<"cpu.tensor_spec.dims.dyn", [
   }];
 
   let arguments = (ins MOP_CpuTensorSpecType: $spec,
-                       SI64ArrayElementsAttr:$rawShape);
+                       UI64ArrayElementsAttr:$rawDims);
   let results = (outs Variadic<Index>:$results);
   let assemblyFormat = [{
-    $spec attr-dict `:` custom<TensorSpecTypeWithRawShape>(type($spec), $rawShape)
+    $spec attr-dict `:` custom<TensorSpecTypeWithRawDims>(type($spec), $rawDims)
   }];
   let hasVerifier = 1;
 }
