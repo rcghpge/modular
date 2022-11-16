@@ -654,7 +654,8 @@ def CpuTensorExtractOp : MOP_Op<"cpu.tensor.extract", [
 
 def ModelFrameworkAttr : ConfinedAttr<StrAttr, [
     AttrConstraint<
-      CPred<"BEFContents::isValidFrameworkName($_self.cast<StringAttr>().getValue())">,
+      CPred<"CompiledFrameworkLabel::isValidFrameworkName("
+            "$_self.cast<StringAttr>().getValue())">,
       "must be a recognized framework name.">]>;
 
 def ModelOp : MOP_Op<"model", [HasParent<"ModuleOp">, Symbol,

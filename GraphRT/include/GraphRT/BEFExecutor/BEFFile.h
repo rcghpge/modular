@@ -7,11 +7,11 @@
 #ifndef GRAPHRT_BEFEXECUTOR_BEFFILE_H
 #define GRAPHRT_BEFEXECUTOR_BEFFILE_H
 
-#include "GraphRT/BEF/BEFContents.h"
 #include "LLCL/ForwardDecls.h"
 #include "LLCL/Support/ReferenceCounted.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"
+#include "Support/ML/CompiledFrameworkLabel.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -47,7 +47,7 @@ public:
 
   /// This method inspects the contents of the BEF file to make an educated
   /// guess of what it contains, allowing for better QoI and usability of tools.
-  BEFContents sniffFileContents() const;
+  CompiledFrameworkLabel sniffFileContents() const;
 
   /// Open and read a BEF file, setting up our internal state and returning a
   /// pointer to our initialized object on success.  On an initial parse

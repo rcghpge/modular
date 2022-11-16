@@ -10,9 +10,9 @@
 
 #include "GenericML/MOPDialect/MOPOps.h"
 #include "GenericML/MOP/Utils.h"
-#include "GraphRT/BEF/BEFContents.h"
 #include "Support/ErrorOr.h"
 #include "Support/MDialect/MAttrs.h"
+#include "Support/ML/CompiledFrameworkLabel.h"
 #include "Support/ML/DType.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributeInterfaces.h"

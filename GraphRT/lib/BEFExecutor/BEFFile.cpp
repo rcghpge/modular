@@ -258,9 +258,9 @@ BEFFile::~BEFFile() = default;
 
 /// This method inspects the contents of the BEF file to make an educated
 /// guess of what it contains, allowing for better QoI and usability of tools.
-BEFContents BEFFile::sniffFileContents() const {
+CompiledFrameworkLabel BEFFile::sniffFileContents() const {
   bool isMopModel = false;
-  BEFContents result{BEFContents::kUnknown};
+  CompiledFrameworkLabel result{CompiledFrameworkLabel::kUnknown};
 
   // Method 1: Look for a distinguished model constructor op name.
   (void)((BEFFileImpl *)const_cast<BEFFile *>(this))
@@ -268,8 +268,8 @@ BEFContents BEFFile::sniffFileContents() const {
         if (primitiveName == "mop.model") {
           // We'll need to use method 2 below.
           isMopModel = true;
-        } else if (BEFContents::isValidOpName(primitiveName)) {
-          result = BEFContents::getContentsForOpName(primitiveName);
+        } else if (CompiledFrameworkLabel::isValidOpName(primitiveName)) {
+          result = CompiledFrameworkLabel::getLabelForOpName(primitiveName);
         } else {
           // Keep looking.
           return success();
@@ -287,8 +287,8 @@ BEFContents BEFFile::sniffFileContents() const {
           return success();
         });
     if (!err.isError() && !models.empty())
-      result = BEFContents::getContentsForOpName("mop.model",
-                                                 models.front()->frameworkName);
+      result = CompiledFrameworkLabel::getLabelForOpName(
+          "mop.model", models.front()->frameworkName);
   }
 
   return result;

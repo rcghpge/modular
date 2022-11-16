@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/Driver/DriverInputFormat.h"
-#include "GraphRT/BEF/BEFContents.h"
+#include "Support/ML/CompiledFrameworkLabel.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -54,16 +54,17 @@ FileFormat M::sniffInputFormat(StringRef fileContents) {
       std::match_results<StringRef::iterator> m;
       std::regex_search(suffix.begin(), suffix.end(), m, regex);
       if (!m.empty() && m.size() == 2) {
-        // Map the BEFContents enum into the larger FileFormat enum.
-        switch (BEFContents::getContentsForOpName("mop.model", StringRef(m[1]))
+        // Map the CompiledFrameworkLabel enum into the larger FileFormat enum.
+        switch (CompiledFrameworkLabel::getLabelForOpName("mop.model",
+                                                          StringRef(m[1]))
                     .value) {
-        case BEFContents::kUnknown:
+        case CompiledFrameworkLabel::kUnknown:
           return FileFormat::kUnknown;
-        case BEFContents::kTensorFlowModel:
+        case CompiledFrameworkLabel::kTensorFlowModel:
           return FileFormat::kTFPDialect;
-        case BEFContents::kTFLiteModel:
+        case CompiledFrameworkLabel::kTFLiteModel:
           return FileFormat::kTFLPDialect;
-        case BEFContents::kFauxModel:
+        case CompiledFrameworkLabel::kFauxModel:
           return FileFormat::kFauxDialect;
         }
       }
