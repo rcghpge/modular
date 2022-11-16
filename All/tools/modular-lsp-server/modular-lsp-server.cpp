@@ -8,12 +8,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "Cache/CacheDialect/CacheDialect.h"
 #include "Faux/Dialect/FauxDialect.h"
 #include "GenericML/MOPDialect/MOPDialect.h"
 #include "GraphRT/BEFDialect/BEFDialect.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
 #include "KGEN/InitAllDialects.h"
-#include "Support/CacheDialect/CacheDialect.h"
 #include "Support/HLCFDialect/HLCFDialect.h"
 #include "Support/MDialect/MDialect.h"
 #include "TFLite/MLASPDialect/MLASPDialect.h"
