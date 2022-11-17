@@ -10,6 +10,7 @@
 
 #include "GenericML/MODialect/MOOps.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/FunctionImplementation.h"
 #include "mlir/IR/TypeUtilities.h"
 
 using namespace M;
@@ -24,6 +25,26 @@ void GraphOp::build(OpBuilder &builder, OperationState &state, StringRef name,
   buildWithEntryBlock(builder, state, name,
                       builder.getFunctionType(inputTypes, resultTypes), {},
                       inputTypes);
+}
+
+/// Parses an MO Graph.
+///
+/// operation ::= `graph` function-signature function-attributes? function-body
+///
+ParseResult GraphOp::parse(OpAsmParser &parser, OperationState &result) {
+  auto buildFuncType =
+      [](Builder &builder, ArrayRef<Type> argTypes, ArrayRef<Type> results,
+         mlir::function_interface_impl::VariadicFlag,
+         std::string &) { return builder.getFunctionType(argTypes, results); };
+
+  return mlir::function_interface_impl::parseFunctionOp(
+      parser, result, /*allowVariadic=*/false, buildFuncType);
+}
+
+/// Print the GraphOp.
+void GraphOp::print(OpAsmPrinter &p) {
+  mlir::function_interface_impl::printFunctionOp(p, *this,
+                                                 /*isVariadic=*/false);
 }
 
 //===----------------------------------------------------------------------===//

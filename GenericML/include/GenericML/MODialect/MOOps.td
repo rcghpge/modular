@@ -54,6 +54,8 @@ def GraphOp : MO_Op<"graph", [HasParent<"ModuleOp">, FunctionOpInterface,
       "TypeRange":$resultTypes
     )>,
   ];
+
+  let hasCustomAssemblyFormat = 1;
 }
 
 //===----------------------------------------------------------------------===//
