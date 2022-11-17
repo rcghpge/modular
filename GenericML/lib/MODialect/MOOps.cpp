@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MODialect/MOOps.h"
+#include "Support/Compiler/VerifyUtils.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/FunctionImplementation.h"
 #include "mlir/IR/TypeUtilities.h"
@@ -55,20 +56,7 @@ LogicalResult OutputOp::verify() {
   // ODS checks the parent is a GraphOp.
   auto graph = cast<GraphOp>(getOperation()->getParentOp());
 
-  // Verify our result types match up with the enclosing graphs result type.
-  if (getNumOperands() != graph.getResultTypes().size()) {
-    return emitOpError("expected ") << graph.getResultTypes().size()
-                                    << " operands for enclosing mo.graph";
-  }
-
-  for (size_t i = 0, e = getNumOperands(); i != e; ++i) {
-    if (getOperand(i).getType() != graph.getResultTypes()[i]) {
-      return emitOpError("operand #")
-             << i << " has type " << getOperand(i).getType()
-             << " but should be " << graph.getResultTypes()[i];
-    }
-  }
-  return success();
+  return checkResultTypes(getOperation(), graph.getResultTypes());
 }
 
 //===----------------------------------------------------------------------===//

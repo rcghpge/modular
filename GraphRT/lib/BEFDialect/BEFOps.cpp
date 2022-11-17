@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphRT/BEFDialect/BEFOps.h"
+#include "Support/Compiler/VerifyUtils.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/FunctionImplementation.h"
 
@@ -71,18 +72,7 @@ LogicalResult InvokableOp::verifyRegions() {
 /// Containers verify that the operands of this OutputOp match the specified set
 /// of types.
 LogicalResult OutputOp::checkArgumentTypes(TypeRange types) {
-  // Verify our result types match up with the enclosing result type.
-  if (getNumOperands() != types.size())
-    return emitOpError("expected ")
-           << types.size() << " operands for enclosing op";
-
-  for (size_t i = 0, e = getNumOperands(); i != e; ++i) {
-    if (getOperand(i).getType() != types[i])
-      return emitOpError("operand #")
-             << i << " has type " << getOperand(i).getType()
-             << " but should be " << types[i];
-  }
-  return success();
+  return checkResultTypes(getOperation(), types);
 }
 
 //===----------------------------------------------------------------------===//
