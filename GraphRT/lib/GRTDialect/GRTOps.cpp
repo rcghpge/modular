@@ -251,7 +251,7 @@ void BenchmarkOp::print(OpAsmPrinter &p) {
                         [&](Value arg) { p << arg << ": " << arg.getType(); });
   p << ") ";
   p.printOptionalAttrDict(getOperation()->getAttrs());
-  // Reuse the argument names provided to the op for the bbarg names within
+  // Reuse the argument names provided to the op for the arg names within
   // the region.
   p.shadowRegionArgs(getCodeUnderTest(), getOperands());
   p << " ";
