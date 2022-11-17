@@ -80,8 +80,11 @@ def MO_TensorSpec
   let assemblyFormat = "`` $shape `` $elementType";
 
   let builders = [
-    TypeBuilderWithInferredContext<(ins "ArrayRef<int64_t>":$shape,
-                                        "Type":$elementType)>,
+    TypeBuilderWithInferredContext<
+      (ins "ArrayRef<int64_t>":$shape, "Type":$elementType),
+      [{
+        return $_get(elementType.getContext(), shape, elementType);
+      }]>
   ];
   let extraClassDeclaration = [{
     size_t getRank() const;

@@ -19,6 +19,13 @@ using namespace MO;
 // MO_GraphOp support
 //===----------------------------------------------------------------------===//
 
+void GraphOp::build(OpBuilder &builder, OperationState &state, StringRef name,
+                    TypeRange inputTypes, TypeRange resultTypes) {
+  buildWithEntryBlock(builder, state, name,
+                      builder.getFunctionType(inputTypes, resultTypes), {},
+                      inputTypes);
+}
+
 //===----------------------------------------------------------------------===//
 // OutputOp support
 //===----------------------------------------------------------------------===//
