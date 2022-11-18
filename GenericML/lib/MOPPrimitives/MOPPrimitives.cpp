@@ -107,6 +107,16 @@ static void mop_cpu_buffer_copy(MOP::Context &ctx,
 }
 
 //===----------------------------------------------------------------------===//
+// mop.cpu.buffer.set
+//===----------------------------------------------------------------------===//
+
+/// Set each byte of the given inBuffer with the given Value, returns chain.
+static Chain mop_cpu_buffer_set(BufferRef &buffer, BEFAttr<uint8_t> value) {
+  memset(buffer.getData(), *value, buffer.getSize());
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // mop.context.create
 //===----------------------------------------------------------------------===//
 
@@ -280,6 +290,7 @@ void M::registerMOPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mop.cpu.buffer.alloc", mop_cpu_buffer_alloc);
   ADD_PRIMITIVE(registry, "mop.cpu.buffer.realloc", mop_cpu_buffer_realloc);
   ADD_PRIMITIVE(registry, "mop.cpu.buffer.copy", mop_cpu_buffer_copy);
+  ADD_PRIMITIVE(registry, "mop.cpu.buffer.set", mop_cpu_buffer_set);
   ADD_PRIMITIVE(registry, "mop.context.create", mop_context_create);
   ADD_PRIMITIVE(registry, "mop.state_slot.create", mop_state_slot_create);
   ADD_PRIMITIVE(registry, "mop.cpu.tensor_spec.create",

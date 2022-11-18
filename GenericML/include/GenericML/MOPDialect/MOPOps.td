@@ -259,6 +259,37 @@ def CpuBufferCopyOp : MOP_Op<"cpu.buffer.copy", [
 }
 
 //===----------------------------------------------------------------------===//
+// CpuBufferSetOp
+//===----------------------------------------------------------------------===//
+
+def CpuBufferSetOp : MOP_Op<"cpu.buffer.set", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = [{
+    Set each byte of the given buffer to the given value (default = 0).
+  }];
+  let description = [{
+    Sets each byte of the allocated buffer to the given value (default = 0).
+
+    Example:
+    ```mlir
+    %buf : !mop.cpu.buffer<>
+
+    // Set each byte of the buffer to 0.
+    %ch = mop.cpu.buffer.set : !mop.cpu.buffer<>
+    // Set each byte of the buffer to 1.
+    %ch = mop.cpu.buffer.set 1 : !mop.cpu.buffer<>
+    ```
+  }];
+
+  let arguments = (ins MOP_CpuBufferType:$buf,
+                       DefaultValuedAttr<UI8Attr, "0">:$value);
+  let results = (outs ChainType:$result);
+  let assemblyFormat = [{
+    $buf ($value^)? attr-dict `:` qualified(type($buf))
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // ContextCreateOp
 //===----------------------------------------------------------------------===//
 
