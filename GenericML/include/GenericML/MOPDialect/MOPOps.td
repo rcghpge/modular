@@ -275,9 +275,9 @@ def CpuBufferSetOp : MOP_Op<"cpu.buffer.set", [
     %buf : !mop.cpu.buffer<>
 
     // Set each byte of the buffer to 0.
-    %ch = mop.cpu.buffer.set : !mop.cpu.buffer<>
+    %ch = mop.cpu.buffer.set %buf : !mop.cpu.buffer<>
     // Set each byte of the buffer to 1.
-    %ch = mop.cpu.buffer.set 1 : !mop.cpu.buffer<>
+    %ch = mop.cpu.buffer.set %buf 1 : !mop.cpu.buffer<>
     ```
   }];
 
