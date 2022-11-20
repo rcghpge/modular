@@ -3,7 +3,7 @@
 
 // CHECK-LABEL: --- Running 'test_linear'
 grt.testcase @test_linear {
-  %ch0 = grt.chain.new
+  %ch0 = grt.chain.create
 
   // executed immediately.
   // CHECK-NEXT: constructed vt.value(1)
@@ -52,7 +52,7 @@ grt.testcase @call_no_op {
   // no_op returns its argument, which extends vt.value(2)'s lifetime.
   %x = grt.invoke @no_op(%c1) : (!vt.value) -> !vt.value
 
-  %ch0 = grt.chain.new
+  %ch0 = grt.chain.create
 
   // CHECK-NEXT: print vt.value(2)
   "test.vt.print"(%x, %ch0) : (!vt.value, !bef.chain) -> (!bef.chain)
@@ -85,7 +85,7 @@ grt.testcase @caller {
   // before the return.
   // CHECK-NEXT: destroyed vt.value(3)
 
-  %ch0 = grt.chain.new
+  %ch0 = grt.chain.create
 
   // CHECK-NEXT: print vt.value(4)
   "test.vt.print"(%x, %ch0) : (!vt.value, !bef.chain) -> (!bef.chain)
@@ -96,7 +96,7 @@ grt.testcase @caller {
 // CHECK-LABEL: --- Running 'test_hello'
 grt.testcase @test_hello {
  // CHECK: hello bef executor!
-  %ch0 = grt.chain.new
+  %ch0 = grt.chain.create
   %ch1 = "test.print_hello"(%ch0) : (!bef.chain) -> !bef.chain
   bef.output
 }
@@ -109,7 +109,7 @@ grt.testcase @share_to_two {
 
   %x1, %x2 = "test.vt_share_to_two"(%c1) : (!vt.value) -> (!vt.value, !vt.value)
 
-  %ch0 = grt.chain.new
+  %ch0 = grt.chain.create
 
   // CHECK-NEXT: print vt.value(1)
   "test.vt.print"(%x1, %ch0) : (!vt.value, !bef.chain) -> (!bef.chain)
@@ -136,7 +136,7 @@ grt.testcase @share_to_two_caller {
 
   %x1, %x2 = grt.invoke @call_share_to_two(%c1) : (!vt.value) -> (!vt.value, !vt.value)
 
-  %ch0 = grt.chain.new
+  %ch0 = grt.chain.create
 
   // CHECK-NEXT: print vt.value(1)
   "test.vt.print"(%x1, %ch0) : (!vt.value, !bef.chain) -> (!bef.chain)
@@ -156,7 +156,7 @@ grt.testcase @share_to_four {
 
   %results:4 = "test.vt_share_to_four"(%c1) : (!vt.value) -> (!vt.value, !vt.value, !vt.value, !vt.value)
 
-  %ch0 = grt.chain.new
+  %ch0 = grt.chain.create
 
   // CHECK-NEXT: print vt.value(1)
   "test.vt.print"(%results#0, %ch0) : (!vt.value, !bef.chain) -> (!bef.chain)
@@ -189,7 +189,7 @@ grt.testcase @share_to_four_caller {
 
   %results:4 = grt.invoke @call_share_to_four(%c1) : (!vt.value) -> (!vt.value, !vt.value, !vt.value, !vt.value)
 
-  %ch0 = grt.chain.new
+  %ch0 = grt.chain.create
 
   // CHECK-NEXT: print vt.value(1)
   "test.vt.print"(%results#0, %ch0) : (!vt.value, !bef.chain) -> (!bef.chain)
@@ -209,7 +209,7 @@ grt.testcase @share_to_four_caller {
 
 bef.invokable @repeat_n_inc(%n: si32) -> !bef.chain {
   // Returns 1 + %n by initializing %x to 1 and incrementing in a loop.
-  %ch0 = grt.chain.new
+  %ch0 = grt.chain.create
   %x = "test.vt.constant"() { value = 1 : si32 } : () -> !vt.value
   %y = grt.repeat.i32 %n (%x: !vt.value) {
     %v1 = "test.vt.constant"() { value = 1 : si32 } : () -> !vt.value

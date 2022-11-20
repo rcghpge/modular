@@ -14,11 +14,11 @@ include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 
 //===----------------------------------------------------------------------===//
-// ChainNewOp
+// ChainCreateOp
 //===----------------------------------------------------------------------===//
 
-def ChainNewOp : GRTOp<"chain.new"> {
-  let summary = "Return a new !bef.chain";
+def ChainCreateOp : GRTOp<"chain.create"> {
+  let summary = "Creates a new !bef.chain";
 
   let arguments = (ins);
   let results = (outs ChainType:$result);
