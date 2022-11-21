@@ -12,7 +12,7 @@
 #define GENERICML_MODIALECT_MOTYPES_TD
 
 include "GenericML/MODialect/MODialect.td"
-include "mlir/IR/AttrTypeBase.td"
+include "Support/Compiler/TensorUtils.td"
 include "mlir/IR/BuiltinTypeInterfaces.td"
 
 // Base class for types in this dialect.
@@ -24,29 +24,6 @@ class MO_Type<string name, string typeMnemonic, list<Trait> traits = []>
 //===----------------------------------------------------------------------===//
 // MO_TensorSpec
 //===----------------------------------------------------------------------===//
-
-// TODO: this is a duplicate of the one in MTFLTypes.td
-def DimensionListParameter : ArrayRefParameter<"int64_t", "shape"> {
-  let printer = [{
-    for (int64_t dim : $_self) {
-      if (ShapedType::isDynamic(dim))
-        $_printer << '?';
-      else
-        $_printer << dim;
-      $_printer << 'x';
-    }
-  }];
-  let parser = [{
-    [&]() -> FailureOr<llvm::SmallVector<int64_t>> {
-        llvm::SmallVector<int64_t> dims;
-        if ($_parser.parseDimensionList(dims, /*allowDynamic=*/true))
-          return failure();
-
-        return dims;
-      }
-    ()
-  }];
-}
 
 def MO_TensorSpec
     : MO_Type<"TensorSpec", "spec",
