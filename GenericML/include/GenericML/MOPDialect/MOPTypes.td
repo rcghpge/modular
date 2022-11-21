@@ -191,7 +191,7 @@ def MOP_CpuTensorSpecType : MOP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
   let description = [{
     This type represents the shape and dtype of a tensor hosted on
     the CPU. The rank must be between one and five. Each dimension must be
-    a strictly positive integer value, or the distinguished -1 dimension
+    a strictly positive integer value, or the distinguished '?' dimension
     denoting unknown. The dtype must be a DType, or none denoting unknown.
 
     This type does not support:
@@ -231,10 +231,11 @@ def MOP_CpuTensorSpecType : MOP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
        (none denotes unknown). This is the most natural representation
        from the MLIR/C++ side. However, care is taken to ensure only DTypes
        which are also representable as MLIR types are considered valid.
-     - 'Shaped type form': an array of int64_t for the shape (-1 denotes
-       unknown dimension) and an MLIR type for the element type (NoneType
-       denotes unknown). This supports the ShapedTypeInterface, but not
-       all IntegerTypes and FloatTypes have a DType representation.
+     - 'Shaped type form': an array of int64_t for the shape
+       (ShapedType::kDynamicSize denotes unknown dimension) and an MLIR
+       type for the element type (NoneType denotes unknown). This supports
+       the ShapedTypeInterface, but not all IntegerTypes and FloatTypes have
+       a DType representation.
      - 'Raw form': an IntArrayElementsAttr of uint64_ts for the dimensions
        (~0 denotes unknown dimension), and a IntegerAttr of a 8-bit unsigned
        integer for the dtype (using the DType::value encoding, but
