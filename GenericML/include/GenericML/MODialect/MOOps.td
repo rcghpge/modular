@@ -24,8 +24,8 @@ class MO_Op<string mnemonic, list<Trait> traits = []>
 // GraphOp
 //===----------------------------------------------------------------------===//
 
-def GraphOp : MO_Op<"graph", [HasParent<"ModuleOp">, FunctionOpInterface,
-                              Symbol, SymbolTable,IsolatedFromAbove
+def MO_GraphOp : MO_Op<"graph", [HasParent<"ModuleOp">, FunctionOpInterface,
+                                 Symbol, SymbolTable,IsolatedFromAbove
   // TODO : Re-enable TransformableGraphInterface
   // DeclareOpInterfaceMethods<TransformableGraphInterface>
 ]> {
@@ -62,7 +62,7 @@ def GraphOp : MO_Op<"graph", [HasParent<"ModuleOp">, FunctionOpInterface,
 // OutputOp
 //===----------------------------------------------------------------------===//
 
-def OutputOp
+def MO_OutputOp
     : MO_Op<"output", [Terminator, ReturnLike, HasParent<"MO::GraphOp">]> {
   let summary = "MO output operation";
   let description = [{
@@ -86,7 +86,7 @@ def OutputOp
 // ConstantOp
 //===----------------------------------------------------------------------===//
 
-def ConstantOp : MO_Op<"constant"> {
+def MO_ConstantOp : MO_Op<"constant"> {
   let summary = "constant MO operation";
   let description = [{
     Op to store constant tensors in model.
