@@ -14,6 +14,7 @@
 #include "GraphRT/BEFDialect/BEFDialect.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
 #include "KGEN/InitAllDialects.h"
+#include "Support/DebugInfoDialect/IR/DebugInfoDialect.h"
 #include "Support/HLCFDialect/HLCFDialect.h"
 #include "Support/MDialect/MDialect.h"
 #include "TFLite/MLASPDialect/MLASPDialect.h"
@@ -42,9 +43,10 @@ int main(int argc, char **argv) {
       index::IndexDialect, LLVM::LLVMDialect, quant::QuantizationDialect,
       scf::SCFDialect,
       // Add the Modular Dialects.
-      BEF::BEFDialect, Cache::CacheDialect, Faux::FauxDialect, GRT::GRTDialect,
-      HLCF::HLCFDialect, MDialect, TFL::MLASPDialect, TFL::MTFLDialect,
-      TFLP::TFLPDialect, MOP::MOPDialect>();
+      BEF::BEFDialect, Cache::CacheDialect, DebugInfo::DebugInfoDialect,
+      Faux::FauxDialect, GRT::GRTDialect, HLCF::HLCFDialect, MDialect,
+      TFL::MLASPDialect, TFL::MTFLDialect, TFLP::TFLPDialect,
+      MOP::MOPDialect>();
   // Add the KGEN Dialects.
   registerAllKGENDialects(registry);
   TF::registerAllDialects(registry);
