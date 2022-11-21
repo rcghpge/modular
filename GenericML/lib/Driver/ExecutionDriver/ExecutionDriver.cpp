@@ -12,6 +12,7 @@
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Support/Profiling.h"
 #include "Support/Error.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "llvm/Support/raw_ostream.h"
 #include <chrono>
 
@@ -279,7 +280,7 @@ ErrorOrSuccess M::runModelWithData(MLIRContext *ctx, const Model *model,
   UNWRAP_ERROR(executableModel, model->setup(runtime));
   SmallVector<Tensor, 3> inputTensors;
   for (const auto &[input, spec] : llvm::zip(inputs, model->getInputSpecs())) {
-    if (spec.isDynamic())
+    if (llvm::any_of(spec.getDims(), mlir::ShapedType::isDynamic))
       return Error("Dynamic input shapes are not supported.");
     inputTensors.emplace_back(Tensor::getImmortal(input, spec, runtime));
   }

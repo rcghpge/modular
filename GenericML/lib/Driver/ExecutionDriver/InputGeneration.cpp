@@ -11,6 +11,7 @@
 #include "Kernels/Misc.h"
 #include "LLCL/ForwardDecls.h"
 #include "Support/ErrorOr.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -71,7 +72,7 @@ M::initializeInputMemory(InputGenerationKind inputGenKind, const Model *model,
   SmallVector<Tensor, 3> inputTensors;
 
   for (const auto &spec : model->getInputSpecs()) {
-    if (spec.isDynamic())
+    if (llvm::any_of(spec.getDims(), mlir::ShapedType::isDynamic))
       return Error("Dynamic input shapes are not supported.");
     // Allocate the tensor.
     Tensor input = Tensor::getUninit(spec, runtime);
