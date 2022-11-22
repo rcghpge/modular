@@ -106,8 +106,8 @@ LogicalResult CpuBufferConstantOp::inferReturnTypes(
     SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
   assert(operands.empty() && "mismatched operand arity");
-  auto attr = attributes.get(getValueAttrName(name));
-  auto elementsAttr = dyn_cast_or_null<ElementsAttr>(attr);
+  auto elementsAttr =
+      dyn_cast<ElementsAttr>(attributes.get(getValueAttrName(name)));
   assert(elementsAttr && "mismatched operand types");
   int64_t size = elementsAttr.size();
   // The inferred result type does not propagate any align constraint.
@@ -124,77 +124,181 @@ Optional<uint64_t> CpuBufferConstantOp::getAlign() {
 }
 
 //===----------------------------------------------------------------------===//
-// CpuBufferAllocOp
+// CpuBufferAlloc* Utils
 //===----------------------------------------------------------------------===//
 
-LogicalResult CpuBufferAllocOp::verify() {
-  CpuBufferType resultBufferType = getResult().getType();
-  CpuBufferType impliedBufferType =
-      CpuBufferType::get(getContext(), getRawSize());
+/// Verify any of the 6 alloc primitives.
+static LogicalResult verifyAnyAllocOp(
+    MLIRContext *context, llvm::function_ref<InFlightDiagnostic()> emitOpError,
+    Optional<uint64_t> optSize, uint64_t rawAlign, IndexType optRuntimeSizeType,
+    CpuTensorSpecType optRuntimeSpecType, CpuBufferType resultBufferType) {
+  // First validate our use of the util.
+  assert((optRuntimeSizeType != nullptr ? 1 : 0) +
+                 (optRuntimeSpecType != nullptr ? 1 : 0) +
+                 (optSize.has_value() ? 1 : 0) ==
+             1 &&
+         "expecting exactly one of static size, runtime size, or runtime spec");
+
+  // Check the size and align static values.
+  if (!isValidSize(optSize))
+    return emitOpError() << "expected size to be positive.";
+  if (!isValidRawAlign(rawAlign))
+    return emitOpError() << "expected align to be a power of two.";
+
+  // Check the result buffer type is consistent.
+  CpuBufferType impliedBufferType = CpuBufferType::get(context, optSize);
   if (resultBufferType != impliedBufferType)
     return emitOpError()
-           << "expected result buffer type to match type implied by operannds ("
+           << "expected result buffer type to match type implied by operands ("
            << resultBufferType << " vs " << impliedBufferType << ").";
-  const bool haveRuntimeSize = getRuntimeSize() != nullptr;
-  const bool haveStaticSize = resultBufferType.getSize().has_value();
-  if (haveRuntimeSize == haveStaticSize)
-    return emitOpError()
-           << "expected a runtime size argument or a size attribute.";
-  if (!isValidRawSize(getRawSize()))
-    return emitOpError() << "expected size to be positive.";
-  if (!isValidRawAlign(getRawAlign()))
-    return emitOpError() << "expected align to be a power of two.";
-  return success();
-}
 
-/// Constructs the buffer type result from the given buffer type attribute.
-LogicalResult CpuBufferAllocOp::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
-  auto sizeAttr = dyn_cast_or_null<mlir::IntegerAttr>(
-      attributes.get(getRawSizeAttrName(name)));
-  inferredReturnTypes.emplace_back(CpuBufferType::get(context, sizeAttr));
+  // Check the tensor spec operand type is consistent.
+  if (optRuntimeSpecType != nullptr) {
+    Optional<uint64_t> bytes = optRuntimeSpecType.getSizeInBytes();
+    if (bytes)
+      return emitOpError()
+             << "expected tensor spec to not have statically known size (have "
+             << optRuntimeSpecType << ").";
+  }
+
   return success();
 }
 
 //===----------------------------------------------------------------------===//
-// CpuBufferReallocOp
+// CpuBufferAllocStaticOp
 //===----------------------------------------------------------------------===//
 
-// Ideally BufferReallocOp would just extend BufferAllocOp with the slot
-// and output index attributes. Instead we have this code dup.
-
-LogicalResult CpuBufferReallocOp::verify() {
-  CpuBufferType resultBufferType = getResult().getType();
-  CpuBufferType impliedBufferType =
-      CpuBufferType::get(getContext(), getDRawSize());
-  if (resultBufferType != impliedBufferType)
-    return emitOpError() << "expected result buffer type " << resultBufferType
-                         << " to match " << impliedBufferType
-                         << " given size argument";
-  const bool haveRuntimeSize = getRuntimeSize() != nullptr;
-  const bool haveStaticSize = resultBufferType.getSize().has_value();
-  if (haveRuntimeSize == haveStaticSize)
-    return emitOpError()
-           << "expected a runtime size argument or a size attribute.";
-  if (!isValidRawSize(getDRawSize()))
-    return emitOpError() << "expected size to be positive.";
-  if (!isValidRawAlign(getCRawAlign()))
-    return emitOpError() << "expected align to be a power of two.";
-  return success();
+LogicalResult CpuBufferAllocStaticOp::verify() {
+  return verifyAnyAllocOp(
+      getContext(), [this]() { return emitOpError(); },
+      /*optSize=*/getASize(), /*rawAlign=*/getBRawAlign(),
+      /*optRuntimeSizeType=*/{},
+      /*optRuntimeSpecType=*/{}, getResult().getType());
 }
 
-/// Constructs the buffer type result from the given buffer type attribute.
-LogicalResult CpuBufferReallocOp::inferReturnTypes(
+/// Constructs the buffer type result using statically known size.
+LogicalResult CpuBufferAllocStaticOp::inferReturnTypes(
     MLIRContext *context, Optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
-  auto sizeAttr = dyn_cast_or_null<mlir::IntegerAttr>(
-      attributes.get(getDRawSizeAttrName(name)));
-  inferredReturnTypes.emplace_back(CpuBufferType::get(context, sizeAttr));
+  auto sizeAttr =
+      dyn_cast<mlir::IntegerAttr>(attributes.get(getASizeAttrName(name)));
+  assert(sizeAttr != nullptr && "mismatched operand attributes");
+  Optional<uint64_t> size = sizeAttr.getUInt();
+  if (!isValidSize(size))
+    size.reset();
+  inferredReturnTypes.emplace_back(CpuBufferType::get(context, size));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CpuBufferAllocDynamicOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CpuBufferAllocDynamicOp::verify() {
+  return verifyAnyAllocOp(
+      getContext(), [this]() { return emitOpError(); },
+      /*optSize=*/{}, /*rawAlign=*/getRawAlign(),
+      /*optRuntimeSizeType=*/getRuntimeSize().getType(),
+      /*optRuntimeSpecType=*/{}, getResult().getType());
+}
+
+LogicalResult CpuBufferAllocDynamicOp::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  inferredReturnTypes.emplace_back(
+      CpuBufferType::get(context, Optional<uint64_t>()));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CpuBufferAllocSpecOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CpuBufferAllocSpecOp::verify() {
+  return verifyAnyAllocOp(
+      getContext(), [this]() { return emitOpError(); },
+      /*optSize=*/{}, /*rawAlign=*/getRawAlign(),
+      /*optRuntimeSizeType=*/{},
+      /*optRuntimeSpecType=*/getRuntimeSpec().getType(), getResult().getType());
+}
+
+LogicalResult CpuBufferAllocSpecOp::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  inferredReturnTypes.emplace_back(
+      CpuBufferType::get(context, Optional<uint64_t>()));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CpuBufferReallocStaticOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CpuBufferReallocStaticOp::verify() {
+  return verifyAnyAllocOp(
+      getContext(), [this]() { return emitOpError(); },
+      /*optSize=*/getCSize(), /*rawAlign=*/getDRawAlign(),
+      /*optRuntimeSizeType=*/{},
+      /*optRuntimeSpecType=*/{}, getResult().getType());
+}
+
+/// Constructs the buffer type result from the statically known size.
+LogicalResult CpuBufferReallocStaticOp::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  auto sizeAttr =
+      dyn_cast<mlir::IntegerAttr>(attributes.get(getCSizeAttrName(name)));
+  assert(sizeAttr != nullptr && "mismatched operand attributes");
+  Optional<uint64_t> size = sizeAttr.getUInt();
+  inferredReturnTypes.emplace_back(CpuBufferType::get(context, size));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CpuBufferReallocDynamicOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CpuBufferReallocDynamicOp::verify() {
+  return verifyAnyAllocOp(
+      getContext(), [this]() { return emitOpError(); },
+      /*optSize=*/{}, /*rawAlign=*/getCRawAlign(),
+      /*optRuntimeSizeType=*/getRuntimeSize().getType(),
+      /*optRuntimeSpecType=*/{}, getResult().getType());
+}
+
+LogicalResult CpuBufferReallocDynamicOp::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  inferredReturnTypes.emplace_back(
+      CpuBufferType::get(context, Optional<uint64_t>()));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CpuBufferReallocSpecOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CpuBufferReallocSpecOp::verify() {
+  return verifyAnyAllocOp(
+      getContext(), [this]() { return emitOpError(); },
+      /*optSize=*/{}, /*rawAlign=*/getCRawAlign(),
+      /*optRuntimeSizeType=*/{},
+      /*optRuntimeSpecType=*/getRuntimeSpec().getType(), getResult().getType());
+}
+
+LogicalResult CpuBufferReallocSpecOp::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  inferredReturnTypes.emplace_back(
+      CpuBufferType::get(context, Optional<uint64_t>()));
   return success();
 }
 
@@ -239,8 +343,8 @@ static void printRawDimsAndDType(AsmPrinter &p, const CpuTensorSpecCreateOp &op,
 
 LogicalResult CpuTensorSpecCreateOp::verify() {
   auto impliedSpecType = CpuTensorSpecType::getChecked(
-      [this]() { return emitOpError(); }, getContext(), getFstRawDims(),
-      getSndRawDType());
+      [this]() { return emitOpError(); }, getContext(), getARawDims(),
+      getBRawDType());
   if (impliedSpecType == nullptr)
     return failure();
   CpuTensorSpecType actualSpecType = getResult().getType();
@@ -262,10 +366,10 @@ LogicalResult CpuTensorSpecCreateOp::inferReturnTypes(
     DictionaryAttr attributes, mlir::RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
-  auto rawDimsAttr = dyn_cast<IntArrayElementsAttr>(
-      attributes.get(getFstRawDimsAttrName(name)));
+  auto rawDimsAttr =
+      dyn_cast<IntArrayElementsAttr>(attributes.get(getARawDimsAttrName(name)));
   auto rawDTypeAttr =
-      dyn_cast<IntegerAttr>(attributes.get(getSndRawDTypeAttrName(name)));
+      dyn_cast<IntegerAttr>(attributes.get(getBRawDTypeAttrName(name)));
   assert(rawDimsAttr && rawDTypeAttr && "mismatched operand type");
   inferredReturnTypes.emplace_back(
       CpuTensorSpecType::get(rawDimsAttr, rawDTypeAttr));

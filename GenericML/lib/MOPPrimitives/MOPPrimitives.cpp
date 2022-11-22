@@ -14,23 +14,8 @@
 #include "mlir/IR/BuiltinTypes.h"
 
 using namespace M;
-using namespace M::LLCL;
-
-/// Returns the size to use when allocating a buffer. If rawStaticSize
-/// is the distinguished missing value then the size must come from the
-/// unique entry in dynamicSize. Otherwise rawStaticSize is returned.
-static ErrorOr<size_t> getSize(const SmallVector<AnyAsyncValueRef> &dynamicSize,
-                               const uint64_t rawStaticSize) {
-  if (dynamicSize.size() > 1)
-    return Error("unexpected argument provided");
-
-  bool hasDynamicSize = !dynamicSize.empty();
-  if (hasDynamicSize == hasRawSize(rawStaticSize))
-    return Error("expected a runtime size argument or a size attribute");
-
-  return hasDynamicSize ? dynamicSize[0]->get<size_t>()
-                        : asRuntimeSize(rawStaticSize);
-}
+using namespace M::MOP;
+using M::LLCL::BufferRef;
 
 //===----------------------------------------------------------------------===//
 // mop.cpu.buffer.constant
@@ -51,47 +36,100 @@ static void mop_cpu_buffer_constant(Result<BufferRef> outBuffer,
 }
 
 //===----------------------------------------------------------------------===//
-// mop.cpu.buffer.alloc
+// mop.cpu.buffer.alloc.*
 //===----------------------------------------------------------------------===//
 
-/// Fulfills the result with the BufferRef. The size can be provided at run time
-/// with the async value or at compile time as an attribute. Alignment can be
-/// given as an attribute.
-static void mop_cpu_buffer_alloc(MOP::Context &ctx, RemainingArguments args,
-                                 Result<BufferRef> outBuffer,
-                                 BEFAttr<uint64_t> rawAlign,
-                                 BEFAttr<uint64_t> rawSize, Runtime &runtime) {
-  ErrorOr<size_t> sizeOr = getSize(args.takeAsVector(), *rawSize);
-  if (sizeOr.isError()) {
-    outBuffer.setToError(sizeOr.takeError());
+/// Returns in result a freshly allocated BufferRef. The size can be provided
+/// statically, via an runtime size argument, or via a runtime TensorSpec.
+/// Any alignment attribute is respected.
+static void mop_cpu_buffer_alloc_static(Context &ctx, Result<BufferRef> result,
+                                        BEFAttr<uint64_t> aSize,
+                                        BEFAttr<uint64_t> bRawAlign,
+                                        Runtime &runtime) {
+  if (!hasRawSize(*aSize) || !isValidRawSize(*aSize)) {
+    result.setToError("invalid size attribute");
     return;
   }
-  outBuffer.emplace(BufferRef::createOwned(
-      runtime.getAllocator(), *sizeOr,
+  size_t runtimeSize = asRuntimeSize(*aSize);
+  result.emplace(BufferRef::createOwned(
+      runtime.getAllocator(), runtimeSize,
+      asRuntimeSizeOrDefault(*bRawAlign, kPreferredMemoryAlignment)));
+}
+
+static void mop_cpu_buffer_alloc_dynamic(Context &ctx, size_t runtimeSize,
+                                         Result<BufferRef> result,
+                                         BEFAttr<uint64_t> rawAlign,
+                                         Runtime &runtime) {
+  if (!hasRawSize(runtimeSize) || !isValidRawSize(runtimeSize)) {
+    result.setToError("invalid size operand");
+    return;
+  }
+  result.emplace(BufferRef::createOwned(
+      runtime.getAllocator(), runtimeSize,
+      asRuntimeSizeOrDefault(*rawAlign, kPreferredMemoryAlignment)));
+}
+
+static void mop_cpu_buffer_alloc_spec(Context &ctx, const TensorSpec &spec,
+                                      Result<BufferRef> result,
+                                      BEFAttr<uint64_t> rawAlign,
+                                      Runtime &runtime) {
+  result.emplace(BufferRef::createOwned(
+      runtime.getAllocator(), spec.getSizeInBytes(),
       asRuntimeSizeOrDefault(*rawAlign, kPreferredMemoryAlignment)));
 }
 
 //===----------------------------------------------------------------------===//
-// mop.cpu.buffer.realloc
+// mop.cpu.buffer.realloc.*
 //===----------------------------------------------------------------------===//
 
-/// Fulfills the result with the RCBuffer. The RCBuffer can be the cached one
-/// from the given (slot, output). If cache misses, allocates a new RCBuffer,
-/// cache it, and fulfills the result with it. The size of the buffer can be
-/// given at either run time or compile time.
-static void
-mop_cpu_buffer_realloc(Chain chain, MOP::Context &ctx, RemainingArguments args,
-                       Result<BufferRef> outBuffer, BEFAttr<uint64_t> aSlot,
-                       BEFAttr<uint64_t> bBuffer, BEFAttr<uint64_t> cRawAlign,
-                       BEFAttr<uint64_t> dRawSize, Runtime &runtime) {
-  ErrorOr<size_t> sizeOr = getSize(args.takeAsVector(), *dRawSize);
-  if (sizeOr.isError()) {
-    outBuffer.setToError(sizeOr.takeError());
+/// Returns a mutable borrow BufferRef of a cached buffer. The buffer is cached
+/// at the buffer index given by bBuffer in the state slot index given by aSlot
+/// in ctx. The size can be provided statically, via a runtime size argument, or
+/// via a runtime TensorSpec. If the cache is empty a fresh buffer is allocated
+/// and cached. If the cache has a buffer of different size then it is freed
+/// and a fresh buffer is allocated. Otherwise the existing cached buffer is
+/// reused. The result BufferRef will borrow from the cached buffer.
+///
+/// Any alignment attribute is respected on allocation, however alignment
+/// is ignored when considering whether an existing cached buffer matches the
+/// requested size.
+static void mop_cpu_buffer_realloc_static(
+    Chain chain, Context &ctx, Result<BufferRef> result,
+    BEFAttr<uint64_t> aSlot, BEFAttr<uint64_t> bBuffer, BEFAttr<uint64_t> cSize,
+    BEFAttr<uint64_t> dRawAlign, Runtime &runtime) {
+  if (!hasRawSize(*cSize) || !isValidRawSize(*cSize)) {
+    result.setToError("invalid size attribute");
     return;
   }
-  MOP::StateSlot &stateSlot = ctx.getStateSlot(*aSlot);
-  outBuffer.emplace(stateSlot.getOrCreateBuffer(
-      *bBuffer, runtime.getAllocator(), *sizeOr,
+  size_t runtimeSize = asRuntimeSize(*cSize);
+  StateSlot &stateSlot = ctx.getStateSlot(*aSlot);
+  result.emplace(stateSlot.getOrCreateBuffer(
+      *bBuffer, runtime.getAllocator(), runtimeSize,
+      asRuntimeSizeOrDefault(*dRawAlign, kPreferredMemoryAlignment)));
+}
+
+static void mop_cpu_buffer_realloc_dynamic(
+    Chain chain, Context &ctx, size_t runtimeSize, Result<BufferRef> result,
+    BEFAttr<uint64_t> aSlot, BEFAttr<uint64_t> bBuffer,
+    BEFAttr<uint64_t> cRawAlign, Runtime &runtime) {
+  if (!hasRawSize(runtimeSize) || !isValidRawSize(runtimeSize)) {
+    result.setToError("invalid size operand");
+    return;
+  }
+  StateSlot &stateSlot = ctx.getStateSlot(*aSlot);
+  result.emplace(stateSlot.getOrCreateBuffer(
+      *bBuffer, runtime.getAllocator(), runtimeSize,
+      asRuntimeSizeOrDefault(*cRawAlign, kPreferredMemoryAlignment)));
+}
+
+static void
+mop_cpu_buffer_realloc_spec(Chain chain, Context &ctx, const TensorSpec &spec,
+                            Result<BufferRef> result, BEFAttr<uint64_t> aSlot,
+                            BEFAttr<uint64_t> bBuffer,
+                            BEFAttr<uint64_t> cRawAlign, Runtime &runtime) {
+  StateSlot &stateSlot = ctx.getStateSlot(*aSlot);
+  result.emplace(stateSlot.getOrCreateBuffer(
+      *bBuffer, runtime.getAllocator(), spec.getSizeInBytes(),
       asRuntimeSizeOrDefault(*cRawAlign, kPreferredMemoryAlignment)));
 }
 
@@ -100,8 +138,7 @@ mop_cpu_buffer_realloc(Chain chain, MOP::Context &ctx, RemainingArguments args,
 //===----------------------------------------------------------------------===//
 
 /// Fulfills the result with the owning reference to the deep copy of inBuffer.
-static void mop_cpu_buffer_copy(MOP::Context &ctx,
-                                AsyncValueRef<BufferRef> inBuffer,
+static void mop_cpu_buffer_copy(Context &ctx, AsyncValueRef<BufferRef> inBuffer,
                                 Result<BufferRef> outBuffer, Runtime &runtime) {
   outBuffer.emplace(inBuffer->deepCopy(runtime.getAllocator()));
 }
@@ -120,11 +157,11 @@ static Chain mop_cpu_buffer_set(BufferRef &buffer, BEFAttr<uint8_t> value) {
 // mop.context.create
 //===----------------------------------------------------------------------===//
 
-/// Fulfills the result with a MOP::Context initialized with `numPrimContexts`
+/// Fulfills the result with a Context initialized with `numPrimContexts`
 /// primitive contexts.
-static void mop_context_create(Result<MOP::Context> result,
+static void mop_context_create(Result<Context> result,
                                BEFAttr<uint64_t> numSlots) {
-  result->emplace<MOP::Context>(*numSlots);
+  result->emplace<Context>(*numSlots);
 }
 
 //===----------------------------------------------------------------------===//
@@ -133,10 +170,9 @@ static void mop_context_create(Result<MOP::Context> result,
 
 /// Constructs the default state slot with the given number of cached buffers
 /// under the given slot in the mop context.
-static Chain mop_state_slot_create(MOP::Context &ctx,
-                                   BEFAttr<uint64_t> numBuffers,
+static Chain mop_state_slot_create(Context &ctx, BEFAttr<uint64_t> numBuffers,
                                    BEFAttr<uint64_t> slot) {
-  ctx.emplaceStateSlot<MOP::DefaultStateSlot>(*slot, *numBuffers);
+  ctx.emplaceStateSlot<DefaultStateSlot>(*slot, *numBuffers);
   return {};
 }
 
@@ -149,19 +185,19 @@ static Chain mop_state_slot_create(MOP::Context &ctx,
 /// corresponding to unknown dimensions should be passed in runtimeDims.
 static void mop_cpu_tensor_spec_create(RemainingArguments runtimeDims,
                                        Result<TensorSpec> outSpec,
-                                       BEFAttr<ArrayRef<uint64_t>> fstRawDims,
-                                       BEFAttr<uint8_t> sndRawDType,
+                                       BEFAttr<ArrayRef<uint64_t>> aRawDims,
+                                       BEFAttr<uint8_t> bRawDType,
                                        Runtime &runtime) {
   auto runtimeDimsVec = runtimeDims.takeAsVector();
   auto nextRuntimeDim = runtimeDimsVec.begin();
   SmallVector<uint64_t> shape;
-  for (uint64_t dim : *fstRawDims) {
+  for (uint64_t dim : *aRawDims) {
     if (hasRawSize(dim))
       shape.push_back(asRuntimeSize(dim));
     else
       shape.push_back((*nextRuntimeDim++)->get<size_t>());
   }
-  outSpec.emplace(TensorSpec(shape, DType(*sndRawDType)));
+  outSpec.emplace(TensorSpec(shape, DType(*bRawDType)));
 }
 
 //===----------------------------------------------------------------------===//
@@ -171,11 +207,10 @@ static void mop_cpu_tensor_spec_create(RemainingArguments runtimeDims,
 /// Creates a TensorSpec by combining the runtime and statically known
 /// shape dimensions and a runtime DType. Only runtime dimensions corresponding
 /// to unknown dimensions should be passed in runtimeDims.
-static void mop_cpu_tensor_spec_create_dyn(DType runtimeDType,
-                                           RemainingArguments runtimeDims,
-                                           Result<TensorSpec> outSpec,
-                                           BEFAttr<ArrayRef<uint64_t>> rawDims,
-                                           Runtime &runtime) {
+static void mop_cpu_tensor_spec_create_dynamic(
+    DType runtimeDType, RemainingArguments runtimeDims,
+    Result<TensorSpec> outSpec, BEFAttr<ArrayRef<uint64_t>> rawDims,
+    Runtime &runtime) {
   auto runtimeDimsVec = runtimeDims.takeAsVector();
   auto nextRuntimeDim = runtimeDimsVec.begin();
   SmallVector<uint64_t> shape;
@@ -194,10 +229,9 @@ static void mop_cpu_tensor_spec_create_dyn(DType runtimeDType,
 
 /// Fulfills the result with dimensions of tensor spec which were unknown
 /// at compile time.
-static void mop_cpu_tensor_spec_dims_dyn(const TensorSpec &tensorSpec,
-                                         RemainingResults results,
-                                         BEFAttr<ArrayRef<uint64_t>> rawDims,
-                                         Runtime &runtime) {
+static void mop_cpu_tensor_spec_dims_dynamic(
+    const TensorSpec &tensorSpec, RemainingResults results,
+    BEFAttr<ArrayRef<uint64_t>> rawDims, Runtime &runtime) {
   // All of the results are created as size_t.
   for (auto &result : results)
     result = AsyncValueRef<size_t>::allocate(runtime);
@@ -284,21 +318,31 @@ void mop_model() { assert(false && "mop.model should never be invoked"); }
 //===----------------------------------------------------------------------===//
 
 void M::registerMOPPrimitives(PrimitiveRegistry &registry) {
-  MOP::StateSlot::registerType<MOP::DefaultStateSlot>();
+  StateSlot::registerType<DefaultStateSlot>();
 
   ADD_PRIMITIVE(registry, "mop.cpu.buffer.constant", mop_cpu_buffer_constant);
-  ADD_PRIMITIVE(registry, "mop.cpu.buffer.alloc", mop_cpu_buffer_alloc);
-  ADD_PRIMITIVE(registry, "mop.cpu.buffer.realloc", mop_cpu_buffer_realloc);
+  ADD_PRIMITIVE(registry, "mop.cpu.buffer.alloc.static",
+                mop_cpu_buffer_alloc_static);
+  ADD_PRIMITIVE(registry, "mop.cpu.buffer.alloc.dynamic",
+                mop_cpu_buffer_alloc_dynamic);
+  ADD_PRIMITIVE(registry, "mop.cpu.buffer.alloc.spec",
+                mop_cpu_buffer_alloc_spec);
+  ADD_PRIMITIVE(registry, "mop.cpu.buffer.realloc.static",
+                mop_cpu_buffer_realloc_static);
+  ADD_PRIMITIVE(registry, "mop.cpu.buffer.realloc.dynamic",
+                mop_cpu_buffer_realloc_dynamic);
+  ADD_PRIMITIVE(registry, "mop.cpu.buffer.realloc.spec",
+                mop_cpu_buffer_realloc_spec);
   ADD_PRIMITIVE(registry, "mop.cpu.buffer.copy", mop_cpu_buffer_copy);
   ADD_PRIMITIVE(registry, "mop.cpu.buffer.set", mop_cpu_buffer_set);
   ADD_PRIMITIVE(registry, "mop.context.create", mop_context_create);
   ADD_PRIMITIVE(registry, "mop.state_slot.create", mop_state_slot_create);
   ADD_PRIMITIVE(registry, "mop.cpu.tensor_spec.create",
                 mop_cpu_tensor_spec_create);
-  ADD_PRIMITIVE(registry, "mop.cpu.tensor_spec.create.dyn",
-                mop_cpu_tensor_spec_create_dyn);
-  ADD_PRIMITIVE(registry, "mop.cpu.tensor_spec.dims.dyn",
-                mop_cpu_tensor_spec_dims_dyn);
+  ADD_PRIMITIVE(registry, "mop.cpu.tensor_spec.create.dynamic",
+                mop_cpu_tensor_spec_create_dynamic);
+  ADD_PRIMITIVE(registry, "mop.cpu.tensor_spec.dims.dynamic",
+                mop_cpu_tensor_spec_dims_dynamic);
   ADD_PRIMITIVE(registry, "mop.cpu.tensor_spec.size", mop_cpu_tensor_spec_size);
   ADD_PRIMITIVE(registry, "mop.cpu.tensor_spec.num_elems",
                 mop_cpu_tensor_spec_num_elems);

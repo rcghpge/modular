@@ -71,22 +71,45 @@ def CpuBufferConstantOp : MOP_Op<"cpu.buffer.constant",
   }];
 }
 
+
 //===----------------------------------------------------------------------===//
-// CpuBufferAllocOp
+//
+// We have a family of 6 buffer allocation primitives, depending on choice of
+//  {static size vs dynamic size vs dynamic tensor spec} x {alloc vs re-alloc}
+//
+//  CpuBufferAllocStaticOp: Alloc with statically known size
+//    mop.cpu.buffer.alloc.static        %ctx      size 64
+//  CpuBufferAllocDynamicOp: Alloc with dynamic size
+//    mop.cpu.buffer.alloc.dynamic       %ctx      %size
+//  CpuBufferAllocSpecOp: Alloc with dynamic tensor spec
+//    mop.cpu.buffer.alloc.spec          %ctxt     %spec
+//  CpuBufferReallocStaticOp: Re-alloc with statically known size
+//    mop.cpu.buffer.realloc.static  %ch %ctx[5,1] size 64
+//  CpuBufferReallocDynamicOp: Re-alloc with dynamic size
+//    mop.cpu.buffer.realloc.dynamic %ch %ctx[5,1] %size
+//  CpuBufferReallocDynamicOp: Re-alloc with dynamic tensor spec
+//    mop.cpu.buffer.realloc.spec    %ch %ctx[5,1] %spec
+//
 //===----------------------------------------------------------------------===//
 
-def CpuBufferAllocOp : MOP_Op<"cpu.buffer.alloc", [
+//===----------------------------------------------------------------------===//
+// CpuBufferAllocStaticOp
+//===----------------------------------------------------------------------===//
+
+def CpuBufferAllocStaticOp : MOP_Op<"cpu.buffer.alloc.static", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
-    Allocates an uninitialized buffer on the CPU of given
-    runtime or static size and optional alignment.
+    Allocates an uninitialized buffer on the CPU with size taken from
+    statically known constant.
   }];
   let description = [{
-    Allocates an uninitialized buffer on the CPU whose byte array is of a given
-    size. The size can be supplied either as a runtime argument or as an
-    attribute. Any alignment constraint must be supplied as an attribute.
+    One of a family of 6 buffer allocation primitives.
 
-    Note that any align constraint is not propagated into the result type.
+    Allocates an uninitialized buffer on the CPU whose byte array is of the
+    given statically-known size. An optional static alignment constraint may
+    also be given.
+
+    Note that any alignment constraint is not propagated into the result type.
 
     The result buffer will be 'owning', and the underlying memory will be
     reclaimed once the last reference to the result goes out of scope. In
@@ -95,55 +118,132 @@ def CpuBufferAllocOp : MOP_Op<"cpu.buffer.alloc", [
     Example:
     ```mlir
     %ctx : !mop.context
-    %size : index
 
-    %buf = mop.cpu.buffer.alloc %ctx %size align 8
-    %buf : !mop.cpu.buffer<>  // at least 8 byte aligned in storage
+    %buf = mop.cpu.buffer.alloc.static %ctx size 64 align 8
+    %buf : !mop.cpu.buffer<64>  // 64 bytes aligned to 8 bytes
 
-    %buf = mop.cpu.buffer.alloc %ctx size 64
-    %buf : !mop.cpu.buffer<64>  // no specific alignment in storage
-
-    %buf = mop.cpu.buffer.alloc %ctx align 16 size 64
-    %buf : !mop.cpu.buffer<64>  // at least 16 byte aligned in storage
+    %buf = mop.cpu.buffer.alloc.static %ctx size 64
+    %buf : !mop.cpu.buffer<64>  // 64 bytes with no specific alignment
     ```
   }];
 
-  // TODO(#4301): Would be nicer to use OptionalAttr for $size and $align but
-  // MLIRToBEF cannot handle that.
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MOP_ContextType:$theContext, Optional<Index>:$runtimeSize,
-                       DefaultValuedAttr<UI64Attr, "kUnknownSize">:$rawAlign,  // 0
-                       DefaultValuedAttr<UI64Attr, "kUnknownSize">:$rawSize);  // 1
+  let arguments = (ins MOP_ContextType:$theContext,
+                       UI64Attr:$aSize,                                         // 0
+                       DefaultValuedAttr<UI64Attr, "kUnknownSize">:$bRawAlign); // 1
   let results = (outs MOP_CpuBufferType:$result);
   let assemblyFormat = [{
-    $theContext ($runtimeSize^)? (`align` $rawAlign^)?
-    (`size` $rawSize^)? attr-dict
+    $theContext $aSize (`align` $bRawAlign^)? attr-dict
   }];
   let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
-// CpuBufferReallocOp
+// CpuBufferAllocDynamicOp
 //===----------------------------------------------------------------------===//
 
-def CpuBufferReallocOp : MOP_Op<"cpu.buffer.realloc", [
+def CpuBufferAllocDynamicOp : MOP_Op<"cpu.buffer.alloc.dynamic", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
-    Allocates, reallocates or reuses a CPU buffer of given runtime or
-    static size and optional alignment.
+    Allocates an uninitialized buffer on the CPU with size taken from index
+    operand.
   }];
   let description = [{
+    One of a family of 6 buffer allocation primitives.
+
+    Allocates an uninitialized buffer on the CPU whose byte array is of the
+    given operand size. An optional static alignment constraint may also be
+    given.
+
+    See `cpu.buffer.alloc.static` for additional details.
+
+    Example:
+    ```mlir
+    %ctx : !mop.context
+    %size : index
+
+    %buf = mop.cpu.buffer.alloc.dynamic %ctx %size align 8
+    %buf : !mop.cpu.buffer  // aligned to 8 bytes
+
+    %buf = mop.cpu.buffer.alloc.dynamic %ctx %size
+    %buf : !mop.cpu.buffer  // no specific alignment
+    ```
+  }];
+
+  let arguments = (ins MOP_ContextType:$theContext,
+                       Index:$runtimeSize,
+                       DefaultValuedAttr<UI64Attr, "kUnknownSize">:$rawAlign);
+  let results = (outs MOP_CpuBufferType:$result);
+  let assemblyFormat = [{
+    $theContext $runtimeSize (`align` $rawAlign^)? attr-dict
+  }];
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// CpuBufferAllocSpecOp
+//===----------------------------------------------------------------------===//
+
+def CpuBufferAllocSpecOp : MOP_Op<"cpu.buffer.alloc.spec", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = [{
+    Allocates an uninitialized buffer on the CPU with size taken from tensor
+    spec operand.
+  }];
+  let description = [{
+    One of a family of 6 buffer allocation primitives.
+
+    Allocates an uninitialized buffer on the CPU whose byte array is of the
+    byte size of the given tensor spec operand. An optional static alignment
+    constraint may also be given.
+
+    See `cpu.buffer.alloc.static` for additional details.
+
+    Example:
+    ```mlir
+    %ctx : !mop.context
+    %spec : !mop.tensor_spec<?x64xf32>
+
+    %buf = mop.cpu.buffer.alloc.spec %ctx %spec align 8 : !mop.cpu.tensor_spec<?x64xf32>
+    %buf : !mop.cpu.buffer  // aligned to 8 bytes
+
+    %buf = mop.cpu.buffer.alloc.spec %ctx %spec : !mop.cpu.tensor_spec<?x64xf32>
+    %buf : !mop.cpu.buffer  // no specific alignment
+    ```
+  }];
+
+  let arguments = (ins MOP_ContextType:$theContext,
+                       MOP_CpuTensorSpecType:$runtimeSpec,
+                       DefaultValuedAttr<UI64Attr, "kUnknownSize">:$rawAlign);
+  let results = (outs MOP_CpuBufferType:$result);
+  let assemblyFormat = [{
+    $theContext $runtimeSpec (`align` $rawAlign^)? attr-dict
+    `:` qualified(type($runtimeSpec))
+  }];
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// CpuBufferReallocStaticOp
+//===----------------------------------------------------------------------===//
+
+def CpuBufferReallocStaticOp : MOP_Op<"cpu.buffer.realloc.static", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = [{
+    (Re)allocates a cached CPU buffer on the CPU with size taken from
+    statically known constant.
+  }];
+  let description = [{
+    One of a family of 6 buffer allocation primitives.
+
     This operation has access to a buffer cache entry in the context given
     by the slot and buffer indexes.
 
     If a buffer of matching size already exists in the cache then it is
     returned directly. Otherwise a new buffer is allocated and the cache is
-    updated, deleting any previously cached buffer.
-
-    If the size is known statically then the runtime size operand does not need
-    to be supplied as an operand. This can be used to pre-allocate a buffer
-    of statically known size.
+    updated, deleting any previously cached buffer. The size must be known
+    statically.  An optional static alignment constraint may also be given.
 
     This op accepts a chain argument so that access to the slot state can
     be guaranteed to come after construction and initialization of the
@@ -165,7 +265,7 @@ def CpuBufferReallocOp : MOP_Op<"cpu.buffer.realloc", [
         to execute and all uses of aliasing results of execute.
 
     Note that though the buffer will be cached, the contents of the buffer need
-    not be preserved between calls to `mop.cpu.buffer.realloc` in successive
+    not be preserved between calls to `mop.cpu.buffer.realloc.*` in successive
     invocations of the model 'execute' body. This rule allows the runtime
     to avoid some buffer copies when extracting the buffer from a tensor
     which itself was created using a cached buffer. In other words, the cache
@@ -177,14 +277,67 @@ def CpuBufferReallocOp : MOP_Op<"cpu.buffer.realloc", [
     ```mlir
        init {
          ...
-         %buf1 = mop.cpu.buffer.realloc %ch %ctx[2, 0] align 8 size 48
+         %buf1 = mop.cpu.buffer.realloc.static %ch %ctx[2, 0] align 8 size 48
        }
        execute (...) -> ... {
          ...
-         %buf2 = mop.cpu.buffer.realloc %ch %ctx[2, 0] align 16 size 48
+         %buf2 = mop.cpu.buffer.realloc.static %ch %ctx[2, 0] align 16 size 48
        }
     ```
     the second realloc will always reuse the buffer from the first realloc.
+
+    Example:
+    ```mlir
+    %ctx : !mop.context
+    %ch : !bef.chain
+
+    // Reallocate the buffer in slot index 42 and buffer index 2.
+    %buf = mop.cpu.buffer.realloc.static %ch %ctx[42, 2] size 64 align 8
+    %buf : !mop.cpu.buffer<64>   // 64 bytes aligned to 8 bytes
+
+    %buf = mop.cpu.buffer.realloc.static %ch %ctx[42, 2] size 64
+    %buf : !mop.cpu.buffer<64>  // 64 bytes with no specific alignment
+    ```
+  }];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins ChainType:$ch,
+                       MOP_ContextType:$theContext,
+                       UI64Attr:$aSlot,                                         // 0
+                       UI64Attr:$bBuffer,                                       // 1
+                       UI64Attr:$cSize,                                         // 2
+                       DefaultValuedAttr<UI64Attr, "kUnknownSize">:$dRawAlign); // 3
+  let results = (outs MOP_CpuBufferType:$result);
+  let assemblyFormat = [{
+    $ch $theContext `[` $aSlot `,` $bBuffer `]` $cSize
+    (`align` $dRawAlign^)? attr-dict
+  }];
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// CpuBufferReallocDynamicOp
+//===----------------------------------------------------------------------===//
+
+def CpuBufferReallocDynamicOp : MOP_Op<"cpu.buffer.realloc.dynamic", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = [{
+    (Re)allocates a cached CPU buffer on the CPU with size taken from index
+    operand.
+  }];
+  let description = [{
+    One of a family of 6 buffer allocation primitives.
+
+    This operation has access to a buffer cache entry in the context given
+    by the slot and buffer indexes.
+
+    If a buffer of matching size already exists in the cache then it is
+    returned directly. Otherwise a new buffer is allocated and the cache is
+    updated, deleting any previously cached buffer. The size is given by
+    an operand. An optional static alignment constraint may also be given.
+
+    See `cpu.buffer.realloc.static` for additional details and restrictions.
 
     Example:
     ```mlir
@@ -193,29 +346,79 @@ def CpuBufferReallocOp : MOP_Op<"cpu.buffer.realloc", [
     %ch : !bef.chain
 
     // Reallocate the buffer in slot index 42 and buffer index 2.
-    %buf = mop.cpu.buffer.realloc %ch %ctx[42, 2] %size align 8
-    %buf : !mop.cpu.buffer      // at least 8 byte aligned in storage
+    %buf = mop.cpu.buffer.realloc.dynamic %ch %ctx[42, 2] %size align 8
+    %buf : !mop.cpu.buffer      // 8 bytes aligned
 
-    %buf = mop.cpu.buffer.realloc %ch %ctx[42, 2] size 64
-    %buf : !mop.cpu.buffer<64>  // no specific alignment in storage
+    %buf = mop.cpu.buffer.realloc.dynamic %ch %ctx[42, 2] %size
+    %buf : !mop.cpu.buffer<64>  // no specific alignment
     ```
   }];
 
-  // TODO(#4301): Would be nicer to use OptionalAttr for $size and $align but
-  // MLIRToBEF cannot handle that.
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
   let arguments = (ins ChainType:$ch,
                        MOP_ContextType:$theContext,
-                       Optional<Index>:$runtimeSize,
-                       UI64Attr:$aSlot,                                        // 0
-                       UI64Attr:$bBuffer,                                      // 1
-                       DefaultValuedAttr<UI64Attr, "kUnknownSize">:$cRawAlign, // 2
-                       DefaultValuedAttr<UI64Attr, "kUnknownSize">:$dRawSize); // 3
+                       Index:$runtimeSize,
+                       UI64Attr:$aSlot,                                         // 0
+                       UI64Attr:$bBuffer,                                       // 1
+                       DefaultValuedAttr<UI64Attr, "kUnknownSize">:$cRawAlign); // 3
   let results = (outs MOP_CpuBufferType:$result);
   let assemblyFormat = [{
-    $ch $theContext `[` $aSlot `,` $bBuffer `]` ($runtimeSize^)?
-    (`align` $cRawAlign^)? (`size` $dRawSize^)? attr-dict
+    $ch $theContext `[` $aSlot `,` $bBuffer `]` $runtimeSize
+    (`align` $cRawAlign^)? attr-dict
+  }];
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// CpuBufferReallocSpecOp
+//===----------------------------------------------------------------------===//
+
+def CpuBufferReallocSpecOp : MOP_Op<"cpu.buffer.realloc.spec", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = [{
+    (Re)allocates a cached CPU buffer on the CPU with size taken from operand.
+  }];
+  let description = [{
+    One of a family of 6 buffer allocation primitives.
+
+    This operation has access to a buffer cache entry in the context given
+    by the slot and buffer indexes.
+
+    If a buffer of matching size already exists in the cache then it is
+    returned directly. Otherwise a new buffer is allocated and the cache is
+    updated, deleting any previously cached buffer. The size is given by
+    an operand. An optional static alignment constraint may also be given.
+
+    See `cpu.buffer.realloc.static` for additional details and restrictions.
+
+    Example:
+    ```mlir
+    %ctx : !mop.context
+    %spec : !mop.cpu.tensor_spec<?x64xf32>
+    %ch : !bef.chain
+
+    // Reallocate the buffer in slot index 42 and buffer index 2.
+    %buf = mop.cpu.buffer.realloc.spec %ch %ctx[42, 2] %spec align 8 : !mop.cpu.tensor_spec<?x64xf32>
+    %buf : !mop.cpu.buffer      // 8 bytes aligned
+
+    %buf = mop.cpu.buffer.realloc.spec %ch %ctx[42, 2] : %spec !mop.cpu.tensor_spec<?x64xf32>
+    %buf : !mop.cpu.buffer<64>  // no specific alignment
+    ```
+  }];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins ChainType:$ch,
+                       MOP_ContextType:$theContext,
+                       MOP_CpuTensorSpecType:$runtimeSpec,
+                       UI64Attr:$aSlot,                                         // 0
+                       UI64Attr:$bBuffer,                                       // 1
+                       DefaultValuedAttr<UI64Attr, "kUnknownSize">:$cRawAlign); // 3
+  let results = (outs MOP_CpuBufferType:$result);
+  let assemblyFormat = [{
+    $ch $theContext `[` $aSlot `,` $bBuffer `]` $runtimeSpec
+    (`align` $cRawAlign^)? attr-dict `:` qualified(type($runtimeSpec))
   }];
   let hasVerifier = 1;
 }
@@ -376,16 +579,16 @@ def CpuTensorSpecCreateOp : MOP_Op<"cpu.tensor_spec.create", [
   }];
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names. We include the 'fst' and 'snd' prefixes to force this.
+  // names.
   // NOTE: The two attributes effectively encode the result's tensor spec type
   // in a form understandable by BEF.
   let arguments = (ins Variadic<Index>:$runtimeDims,
-                       UI64ArrayElementsAttr:$fstRawDims,  // 0
-                       UI8Attr:$sndRawDType);              // 1
+                       UI64ArrayElementsAttr:$aRawDims,  // 0
+                       UI8Attr:$bRawDType);              // 1
   let results = (outs MOP_CpuTensorSpecType:$result);
   let assemblyFormat = [{
     $runtimeDims attr-dict
-    `:` custom<RawDimsAndDType>($fstRawDims, $sndRawDType)
+    `:` custom<RawDimsAndDType>($aRawDims, $bRawDType)
   }];
   let hasVerifier = 1;
 }
@@ -394,7 +597,7 @@ def CpuTensorSpecCreateOp : MOP_Op<"cpu.tensor_spec.create", [
 // CpuTensorSpecCreateDynamicOp
 //===----------------------------------------------------------------------===//
 
-def CpuTensorSpecCreateDynamicOp : MOP_Op<"cpu.tensor_spec.create.dyn", [
+def CpuTensorSpecCreateDynamicOp : MOP_Op<"cpu.tensor_spec.create.dynamic", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
     Creates a CPU tensor spec from a runtime DType and a mix of runtime and
@@ -415,7 +618,7 @@ def CpuTensorSpecCreateDynamicOp : MOP_Op<"cpu.tensor_spec.create.dyn", [
     %dim1 : index
     %dtype : !mop.dtype
 
-    %spec = mop.cpu.tensor_spec.create.dyn %dtype %dim0, %dim1 : !mop.cpu.tensor_spec<?x?x?>
+    %spec = mop.cpu.tensor_spec.create.dynamic %dtype %dim0, %dim1 : !mop.cpu.tensor_spec<?x?x?>
     %spec : !mop.cpu.tensor_spec<?x?x?>
 
     %spec = mop.cpu.tensor_spec.create %dtype : !mop.cpu.tensor_spec<32x4x?>
@@ -437,7 +640,7 @@ def CpuTensorSpecCreateDynamicOp : MOP_Op<"cpu.tensor_spec.create.dyn", [
 // CpuTensorSpecDimsDynamicOp
 //===----------------------------------------------------------------------===//
 
-def CpuTensorSpecDimsDynamicOp : MOP_Op<"cpu.tensor_spec.dims.dyn", [
+def CpuTensorSpecDimsDynamicOp : MOP_Op<"cpu.tensor_spec.dims.dynamic", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
     Returns the runtime values of the dimensions of CPU tensor spec
@@ -452,15 +655,15 @@ def CpuTensorSpecDimsDynamicOp : MOP_Op<"cpu.tensor_spec.dims.dyn", [
     Example:
     ```mlir
     %spec : !mop.cpu.tensor_spec<?x?xf32>
-    %dim0, %dim1 = mop.cpu.tensor_spec.dims.dyn %spec : !mop.cpu.tensor_spec<?x?xf32>
+    %dim0, %dim1 = mop.cpu.tensor_spec.dims.dynamic %spec : !mop.cpu.tensor_spec<?x?xf32>
     %dim0, %dim1 : index, index
 
     %spec : !mop.cpu.tensor_spec<32x?xf32>
-    %dim = mop.cpu.tensor_spec.dims.dyn %spec : !mop.cpu.tensor_spec<32x?xf32>
+    %dim = mop.cpu.tensor_spec.dims.dynamic %spec : !mop.cpu.tensor_spec<32x?xf32>
     %dim : index
 
     %spec : !mop.cpu.tensor_spec<32x4xf32>
-    mop.cpu.tensor_spec.dims.dyn %spec : !mop.cpu.tensor_spec<32x4xf32> // no-op
+    mop.cpu.tensor_spec.dims.dynamic %spec : !mop.cpu.tensor_spec<32x4xf32> // no-op
     ```
   }];
 
