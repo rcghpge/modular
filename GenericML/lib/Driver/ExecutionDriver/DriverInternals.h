@@ -19,11 +19,13 @@ namespace M {
 /// This allocates the pointer, fills in the data, and returns ownership to the
 /// caller.
 ErrorOr<SmallVector<Tensor, 3>>
-initializeInputMemory(InputGenerationKind inputGenKind, const Model *model,
+initializeInputMemory(InputGenerationKind inputGenKind,
+                      ArrayRef<TensorShape> userInputShapes, const Model *model,
                       Runtime &runtime);
 
 void benchmarkModel(const Model *model, Runtime &runtime,
-                    StringRef benchmarkName, InputGenerationKind inputGenKind,
+                    StringRef benchmarkName,
+                    const ExecutorDriverCLOptions &options,
                     BenchmarkScenario scenario, StringRef outputDir,
                     bool benchmarkNoLogPrefix);
 } // namespace M

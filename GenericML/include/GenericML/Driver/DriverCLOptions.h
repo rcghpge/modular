@@ -12,6 +12,7 @@
 #include "Kernels/Misc.h"
 #include "LLCL/Runtime/RuntimeCLOptions.h"
 #include "Support/CommonCLOptions.h"
+#include "Support/ML/TensorShape.h"
 #include "llvm/Support/NativeFormatting.h"
 #include "llvm/Support/Process.h"
 
@@ -20,6 +21,14 @@ class MemoryBuffer;
 }
 
 namespace M {
+
+class TensorShapeParser : public llvm::cl::parser<TensorShape> {
+public:
+  using llvm::cl::parser<TensorShape>::parser;
+
+  bool parse(llvm::cl::Option &O, StringRef ArgName, StringRef ArgValue,
+             TensorShape &Val);
+};
 
 /// Contains the core CLI options for *-executor, so that other executables
 /// can use these without duplicating them.
@@ -99,6 +108,12 @@ public:
           clEnumValN(InputGenerationKind::kOnes, "ones",
                      "All input tensors are ones")),
       cl::init(InputGenerationKind::kZeros)};
+
+  cl::list<TensorShape, bool, TensorShapeParser> inputShapes{
+      "input-shapes",
+      cl::desc("Specify input shapes. Required when the model has "
+               "dynamic input shapes. If specified and the model has static "
+               "input shapes, it must match the model's input shapes.")};
 
   /// This tells the execution driver how to print output tensors;
   cl::opt<Kernel::ResultOutputStyle> resultOutputStyle{

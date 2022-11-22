@@ -67,17 +67,50 @@ static ErrorOrSuccess fillWithElements(Tensor &tensor,
 }
 
 M::ErrorOr<SmallVector<Tensor, 3>>
-M::initializeInputMemory(InputGenerationKind inputGenKind, const Model *model,
-                         Runtime &runtime) {
+M::initializeInputMemory(InputGenerationKind inputGenKind,
+                         ArrayRef<TensorShape> userInputShapes,
+                         const Model *model, Runtime &runtime) {
+  SmallVector<TensorShape> inputShapes(userInputShapes.begin(),
+                                       userInputShapes.end());
+  if (!inputShapes.empty()) {
+    if (inputShapes.size() != model->getInputSpecs().size()) {
+      return Error(Twine("Number of specified input shapes (") +
+                   Twine(inputShapes.size()) +
+                   Twine(") doesn't match number of model inputs (") +
+                   Twine(model->getInputSpecs().size()) + Twine(")"));
+    }
+  } else {
+    auto modelSpecs = model->getInputSpecs();
+    inputShapes.append(modelSpecs.begin(), modelSpecs.end());
+  }
+
   SmallVector<Tensor, 3> inputTensors;
+  for (const auto &[userShape, modelSpec] :
+       llvm::zip(inputShapes, model->getInputSpecs())) {
+    if (userShape.getRank() != modelSpec.getRank())
+      return Error(Twine("Specified shape ") + Twine(userShape.getAsString()) +
+                   Twine(" doesn't match the rank of model input shape ") +
+                   Twine(modelSpec.getAsString()));
+    for (const auto &[userDim, modelDim] :
+         llvm::zip(userShape.getDims(), modelSpec.getDims())) {
+      if (mlir::ShapedType::isDynamic(modelDim)) {
+        if (mlir::ShapedType::isDynamic(userDim))
+          return Error(
+              Twine("Must specify a fixed input shape for model input shape ") +
+              Twine(modelSpec.getAsString()));
+      } else if (userDim != modelDim) {
+        return Error(Twine("Specified dimension ") + Twine(userDim) +
+                     Twine(" doesn't match model input dimension ") +
+                     Twine(modelDim) + Twine(" for shape ") +
+                     Twine(modelSpec.getAsString()));
+      }
+    }
 
-  for (const auto &spec : model->getInputSpecs()) {
-    if (llvm::any_of(spec.getDims(), mlir::ShapedType::isDynamic))
-      return Error("Dynamic input shapes are not supported.");
     // Allocate the tensor.
-    Tensor input = Tensor::getUninit(spec, runtime);
-    RETURN_ERROR(fillWithElements(input, inputGenKind, spec.getQuantSpec()));
-
+    Tensor input =
+        Tensor::getUninit({userShape, modelSpec.getEltType()}, runtime);
+    RETURN_ERROR(
+        fillWithElements(input, inputGenKind, modelSpec.getQuantSpec()));
     inputTensors.push_back(std::move(input));
   }
   return inputTensors;

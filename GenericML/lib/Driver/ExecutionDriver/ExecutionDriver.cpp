@@ -20,6 +20,18 @@ using namespace M;
 using llvm::outs;
 using mlir::MLIRContext;
 
+bool TensorShapeParser::parse(llvm::cl::Option &options, StringRef argName,
+                              StringRef argValue, TensorShape &result) {
+  auto shape =
+      llvm::map_range(llvm::split(argValue, 'x'), [](StringRef dimStr) {
+        int64_t val;
+        llvm::to_integer(dimStr, val);
+        return val;
+      });
+  result = TensorShape(shape.begin(), shape.end());
+  return false;
+}
+
 /// Wait for results and report their errors
 static void waitForResults(const ExecutableModel *model,
                            MutableArrayRef<AnyAsyncValueRef> results,
@@ -125,7 +137,8 @@ static ErrorOrSuccess executeModelOnce(MLIRContext *ctx, const Model *model,
   TIME_PROFILER_SCOPE(1, "runModelOnce");
   UNWRAP_ERROR(executableModel, model->setup(runtime));
   UNWRAP_ERROR(inputTensors,
-               initializeInputMemory(options.inputGenKind, model, runtime));
+               initializeInputMemory(options.inputGenKind, options.inputShapes,
+                                     model, runtime));
 
   // Fill the arguments.  We are running the model once so we pass in the input
   // tensors directly (the model will deallocate them when it is done with
@@ -167,7 +180,8 @@ executeModelRepeated(MLIRContext *ctx, const Model *model, Runtime &runtime,
   UNWRAP_ERROR(executableModel, model->setup(runtime));
 
   UNWRAP_ERROR(inputTensors,
-               initializeInputMemory(options.inputGenKind, model, runtime));
+               initializeInputMemory(options.inputGenKind, options.inputShapes,
+                                     model, runtime));
 
   // Run the model numWarmup times to warmup the execution. This is performed to
   // remove any added overhead due to initial setup of the model. The loop is
@@ -254,7 +268,7 @@ LogicalResult M::runModel(MLIRContext *ctx, const Model *model,
                           const ExecutorDriverCLOptions &options) {
   if (options.benchmarkMode) {
     // FIXME: benchmarkModel does not handle errors.
-    benchmarkModel(model, runtime, options.benchmarkName, options.inputGenKind,
+    benchmarkModel(model, runtime, options.benchmarkName, options,
                    options.benchmarkScenario, options.benchmarkOutputDir,
                    options.benchmarkNoLogPrefix);
     return success();
