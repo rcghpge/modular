@@ -13,6 +13,8 @@
 
 include "GenericML/MODialect/MOTypes.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/FunctionInterfaces.td"
 include "mlir/IR/SymbolInterfaces.td"
 
@@ -93,6 +95,41 @@ def MO_ConstantOp : MO_Op<"constant"> {
   }];
 
   let arguments = (ins ElementsAttr:$value);
+  let results = (outs MO_Tensor:$result);
+}
+
+
+//===----------------------------------------------------------------------===//
+// Elementwise ops
+//===----------------------------------------------------------------------===//
+
+def MO_AddOp : MO_Op<"add", [Pure]> {
+  let summary = "Add operation";
+  let description = [{
+    Returns x + y, where x and y are input tensors.
+  }];
+
+  let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y);
+  let results = (outs MO_Tensor:$result);
+}
+
+def MO_AbsOp : MO_Op<"abs", [SameOperandsAndResultType, Idempotent, Pure]> {
+  let summary = "Absolute value operation";
+  let description = [{
+    Returns abs(x), where x is the input tensors.
+  }];
+
+  let arguments = (ins MO_Tensor:$input);
+  let results = (outs MO_Tensor:$result);
+}
+
+def MO_ReluOp : MO_Op<"relu", [SameOperandsAndResultType, Idempotent, Pure]> {
+  let summary = "Rectified linear unit operation";
+  let description = [{
+    Returns max(0, x), where x is the input tensors.
+  }];
+
+  let arguments = (ins MO_Tensor:$input);
   let results = (outs MO_Tensor:$result);
 }
 
