@@ -64,7 +64,7 @@ BEFListAttr::Iterator &BEFListAttr::Iterator::operator+=(
 
 BEFDynamicAttr BEFListAttr::Iterator::operator*() const {
   auto *workPtr = ptr;
-  return BEFDynamicAttr(basePtr - parseVBR(workPtr));
+  return BEFDynamicAttr(basePtr - parseVBR(workPtr), attrSection);
 }
 
 //===----------------------------------------------------------------------===//

@@ -47,21 +47,25 @@ size_t BEFType::getEncodedSizeInBytes() const {
 
 /// Decode the inputs and results of a BEFFunctionType into the specified
 /// vectors and return the encoded size of the function type.
-static size_t decodeFunctionType(const uint8_t *pointer,
+static size_t decodeFunctionType(const uint8_t *pointer, const uint8_t *attrEnd,
                                  SmallVectorImpl<BEFType> &inputs,
                                  SmallVectorImpl<BEFType> &results) {
   auto *dataPtr = pointer;
+  assert(pointer <= attrEnd &&
+         "BEF datum not within bounds of the BEF Attribute Section");
   assert(BEF::TypeKind(dataPtr[0]) == BEF::TypeKind::function);
   uint8_t numInputs = dataPtr[1];
   uint8_t numResults = dataPtr[2];
   dataPtr += 3;
   while (numInputs--) {
-    inputs.push_back(BEFType(dataPtr));
-    dataPtr += inputs.back().getEncodedSizeInBytes();
+    uint8_t attrSize = BEFType(dataPtr, attrEnd).getEncodedSizeInBytes();
+    inputs.push_back(BEFType(dataPtr, dataPtr + attrSize));
+    dataPtr += attrSize;
   }
   while (numResults--) {
-    results.push_back(BEFType(dataPtr));
-    dataPtr += results.back().getEncodedSizeInBytes();
+    uint8_t attrSize = BEFType(dataPtr, attrEnd).getEncodedSizeInBytes();
+    results.push_back(BEFType(dataPtr, dataPtr + attrSize));
+    dataPtr += attrSize;
   }
   return dataPtr - pointer;
 }
@@ -70,12 +74,12 @@ static size_t decodeFunctionType(const uint8_t *pointer,
 size_t BEFFunctionType::getEncodedSizeInBytes() const {
   SmallVector<BEFType> ignored;
   // Use decodeFunctionType to determine the size of the function type.
-  return decodeFunctionType(pointer, ignored, ignored);
+  return decodeFunctionType(pointer, attrEnd, ignored, ignored);
 }
 
 void BEFFunctionType::decode(SmallVectorImpl<BEFType> &inputs,
                              SmallVectorImpl<BEFType> &results) const {
-  (void)decodeFunctionType(pointer, inputs, results);
+  (void)decodeFunctionType(pointer, attrEnd, inputs, results);
 }
 
 //===----------------------------------------------------------------------===//
@@ -84,12 +88,17 @@ void BEFFunctionType::decode(SmallVectorImpl<BEFType> &inputs,
 
 /// Decode the inputs and results of a BEFTensorType into the specified
 /// vector and return the encoded size of the type.
-static size_t decodeTensorType(const uint8_t *pointer, BEFType &elementType,
+static size_t decodeTensorType(const uint8_t *pointer, const uint8_t *attrEnd,
+                               BEFType &elementType,
                                SmallVectorImpl<int64_t> &dims) {
   auto *dataPtr = pointer;
+  assert(pointer <= attrEnd &&
+         "BEF datum not within bounds of the BEF Attribute Section");
   assert(BEF::TypeKind(dataPtr[0]) == BEF::TypeKind::tensor);
-  elementType = BEFType(++dataPtr);
-  dataPtr += elementType.getEncodedSizeInBytes();
+  ++dataPtr;
+  uint8_t attrSize = BEFType(dataPtr, attrEnd).getEncodedSizeInBytes();
+  elementType = BEFType(dataPtr, pointer + attrSize);
+  dataPtr += attrSize;
   uint8_t rank = *dataPtr++;
 
   while (rank--)
@@ -98,16 +107,16 @@ static size_t decodeTensorType(const uint8_t *pointer, BEFType &elementType,
 }
 
 BEFType BEFTensorType::decode(SmallVectorImpl<int64_t> &dims) const {
-  BEFType elementType(nullptr);
-  (void)decodeTensorType(pointer, elementType, dims);
+  BEFType elementType(nullptr, nullptr);
+  (void)decodeTensorType(pointer, attrEnd, elementType, dims);
   return elementType;
 }
 
 /// Return the encoded size of this type in the BEF file, in bytes.
 size_t BEFTensorType::getEncodedSizeInBytes() const {
-  BEFType elementType(nullptr);
+  BEFType elementType(nullptr, nullptr);
   SmallVector<int64_t> dims;
-  return decodeTensorType(pointer, elementType, dims);
+  return decodeTensorType(pointer, attrEnd, elementType, dims);
 }
 
 //===----------------------------------------------------------------------===//
@@ -116,22 +125,28 @@ size_t BEFTensorType::getEncodedSizeInBytes() const {
 
 // Helper to decode storage and expressed types when decoding quantized types.
 static void decodeStorageAndExpressedType(const uint8_t *&dataPtr,
+                                          const uint8_t *attrEnd,
                                           BEFType &storageType,
                                           BEFType &expressedType) {
-  storageType = BEFType(dataPtr);
-  dataPtr += storageType.getEncodedSizeInBytes();
-  expressedType = BEFType(dataPtr);
-  dataPtr += expressedType.getEncodedSizeInBytes();
+  uint8_t storageAttrSize = BEFType(dataPtr, attrEnd).getEncodedSizeInBytes();
+  storageType = BEFType(dataPtr, dataPtr + storageAttrSize);
+  dataPtr += storageAttrSize;
+  uint8_t expressedAttrSize = BEFType(dataPtr, attrEnd).getEncodedSizeInBytes();
+  expressedType = BEFType(dataPtr, dataPtr + expressedAttrSize);
+  dataPtr += expressedAttrSize;
 }
 
 /// Decode the inputs and results of a BEFQuantizedType into the specified
 /// arguments and return the encoded size of the type.
-static size_t decodeQuantizedType(const uint8_t *pointer, BEFType &storageType,
+static size_t decodeQuantizedType(const uint8_t *pointer,
+                                  const uint8_t *attrEnd, BEFType &storageType,
                                   BEFType &expressedType, float &scale,
                                   int64_t &zeroPoint) {
   auto *dataPtr = pointer;
+  assert(pointer <= attrEnd &&
+         "BEF datum not within bounds of the BEF Attribute Section");
   assert(BEF::TypeKind(dataPtr[0]) == BEF::TypeKind::quantized);
-  decodeStorageAndExpressedType(++dataPtr, storageType, expressedType);
+  decodeStorageAndExpressedType(++dataPtr, attrEnd, storageType, expressedType);
 
   scale = BEF::parseFloat(dataPtr);
   zeroPoint = BEF::parseSignedVBR(dataPtr);
@@ -141,18 +156,20 @@ static size_t decodeQuantizedType(const uint8_t *pointer, BEFType &storageType,
 
 std::pair<BEFType, BEFType> BEFQuantizedType::decode(float &scale,
                                                      int64_t &zeroPoint) const {
-  std::pair<BEFType, BEFType> storageAndExpressedTypes{nullptr, nullptr};
-  (void)decodeQuantizedType(pointer, storageAndExpressedTypes.first,
+  BEFType empty(nullptr, nullptr);
+  std::pair<BEFType, BEFType> storageAndExpressedTypes{empty, empty};
+  (void)decodeQuantizedType(pointer, attrEnd, storageAndExpressedTypes.first,
                             storageAndExpressedTypes.second, scale, zeroPoint);
   return storageAndExpressedTypes;
 }
 
 /// Return the encoded size of this type in the BEF file, in bytes.
 size_t BEFQuantizedType::getEncodedSizeInBytes() const {
-  BEFType ignored(nullptr);
+  BEFType ignored(nullptr, nullptr);
   float scale;
   int64_t zeroPoint;
-  return decodeQuantizedType(pointer, ignored, ignored, scale, zeroPoint);
+  return decodeQuantizedType(pointer, attrEnd, ignored, ignored, scale,
+                             zeroPoint);
 }
 
 //===----------------------------------------------------------------------===//
@@ -161,15 +178,15 @@ size_t BEFQuantizedType::getEncodedSizeInBytes() const {
 
 /// Decode the inputs and results of a BEFQuantizedPerAxisType into the
 /// specified arguments and return the encoded size of the type.
-static size_t decodeQuantizedPerAxisType(const uint8_t *pointer,
-                                         BEFType &storageType,
-                                         BEFType &expressedType,
-                                         SmallVectorImpl<float> &scales,
-                                         SmallVectorImpl<int64_t> &zeroPoints,
-                                         uint8_t &quantizedDim) {
+static size_t decodeQuantizedPerAxisType(
+    const uint8_t *pointer, const uint8_t *attrEnd, BEFType &storageType,
+    BEFType &expressedType, SmallVectorImpl<float> &scales,
+    SmallVectorImpl<int64_t> &zeroPoints, uint8_t &quantizedDim) {
   auto *dataPtr = pointer;
+  assert(pointer <= attrEnd &&
+         "BEF datum not within bounds of the BEF Attribute Section");
   assert(BEF::TypeKind(dataPtr[0]) == BEF::TypeKind::quantizedPerAxis);
-  decodeStorageAndExpressedType(++dataPtr, storageType, expressedType);
+  decodeStorageAndExpressedType(++dataPtr, attrEnd, storageType, expressedType);
 
   quantizedDim = *dataPtr++;
   auto numParams = BEF::parseVBR(dataPtr);
@@ -189,19 +206,20 @@ std::pair<BEFType, BEFType>
 BEFQuantizedPerAxisType::decode(SmallVectorImpl<float> &scales,
                                 SmallVectorImpl<int64_t> &zeroPoints,
                                 uint8_t &quantizedDim) const {
-  std::pair<BEFType, BEFType> storageAndExpressedTypes{nullptr, nullptr};
-  (void)decodeQuantizedPerAxisType(pointer, storageAndExpressedTypes.first,
-                                   storageAndExpressedTypes.second, scales,
-                                   zeroPoints, quantizedDim);
+  BEFType empty(nullptr, nullptr);
+  std::pair<BEFType, BEFType> storageAndExpressedTypes{empty, empty};
+  (void)decodeQuantizedPerAxisType(
+      pointer, attrEnd, storageAndExpressedTypes.first,
+      storageAndExpressedTypes.second, scales, zeroPoints, quantizedDim);
   return storageAndExpressedTypes;
 }
 
 /// Return the encoded size of this type in the BEF file, in bytes.
 size_t BEFQuantizedPerAxisType::getEncodedSizeInBytes() const {
-  BEFType ignored(nullptr);
+  BEFType ignored(nullptr, nullptr);
   SmallVector<float> scales;
   SmallVector<int64_t> zeroPoints;
   uint8_t quantizedDim;
-  return decodeQuantizedPerAxisType(pointer, ignored, ignored, scales,
+  return decodeQuantizedPerAxisType(pointer, attrEnd, ignored, ignored, scales,
                                     zeroPoints, quantizedDim);
 }

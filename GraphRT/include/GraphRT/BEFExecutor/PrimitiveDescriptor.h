@@ -65,12 +65,14 @@ public:
   /// Get a BEFAttr<T> at the given index.
   template <typename T>
   auto getAttr(size_t index) const {
-    return BEFAttr<typename UnwrapBEFAttr<T>::InnerType>(getRawAttr(index));
+    return BEFAttr<typename UnwrapBEFAttr<T>::InnerType>(getRawAttr(index),
+                                                         attrSection);
   }
 
   /// Return all the offsets for all attributes in this primitive frame.
   ArrayRef<uint32_t> getAttrOffsets() const { return attrOffsets; }
   const uint8_t *getAttrBase() const { return attrSection.data(); }
+  ArrayRef<uint8_t> getAttrSection() const { return attrSection; }
 
   //===--------------------------------------------------------------------===//
   // Invokables
