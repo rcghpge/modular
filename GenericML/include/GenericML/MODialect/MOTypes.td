@@ -22,11 +22,11 @@ class MO_Type<string name, string typeMnemonic, list<Trait> traits = []>
 }
 
 //===----------------------------------------------------------------------===//
-// MO_TensorSpec
+// MO_Tensor
 //===----------------------------------------------------------------------===//
 
-def MO_TensorSpec
-    : MO_Type<"TensorSpec", "spec",
+def MO_Tensor
+    : MO_Type<"Tensor", "tensor",
               [DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
   // TODO: Relax the constraint on dynamic rank once we reach
   // runtime agreement with MOP team.
@@ -37,24 +37,20 @@ def MO_TensorSpec
     -1 dimension denoting unknown. The element type must be a builtin dtype,
     or built in none denoting unknown.
 
-    This type does not support:
+    This type does not yet support:
      - Dynamic ranks.
-
-    Tensor specs are lowered to MOP::TensorSpec in the Modular runtime.
-    The runtime value will agree with the rank, known shape dimensions,
-    and known element type of the tensor spec type.
 
     Examples:
     ```mlir
-    !mo.spec<4x16xf32>
-    !mo.spec<?x?xnone>
+    !mo.tensor<4x16xf32>
+    !mo.tensor<?x?xnone>
     ```
   }];
 
   let parameters = (ins DimensionListParameter:$shape, "Type":$elementType);
 
   let genVerifyDecl = 1;
-  let assemblyFormat = "`` $shape `` $elementType";
+  let assemblyFormat = [{ `<` $shape `` $elementType `>` }];
 
   let builders = [
     TypeBuilderWithInferredContext<
@@ -66,30 +62,6 @@ def MO_TensorSpec
   let extraClassDeclaration = [{
     size_t getRank() const;
   }];
-}
-
-//===----------------------------------------------------------------------===//
-// MO_Tensor
-//===----------------------------------------------------------------------===//
-
-def MO_Tensor : MO_Type<"Tensor", "tensor",
-                         [DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
-  let summary = "Tensors who's type is defined according to tensor spec.";
-  let description = [{
-    Unlike the MLIR builtin tensor type this type:
-     - Only supports shapes of known rank.
-     - Does not support affine maps for describing layout.
-     - Allows the element type to be unknown at compile time.
-
-    For convenience we 'inline' the tensor shape into the tensor type syntax:
-    ```mlir
-    !mo.tensor<4x16xf32>
-    !mo.tensor<?x?xui8>
-    ```
-  }];
-
-  let parameters = (ins MO_TensorSpec:$tensorSpec);
-  let assemblyFormat = "`<` $tensorSpec `>`";
 }
 
 #endif // GENERICML_MODIALECT_MOTYPES_TD

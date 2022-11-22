@@ -15,14 +15,13 @@ using namespace M;
 using namespace MO;
 
 //===----------------------------------------------------------------------===//
-// TensorSpec
+// Tensor
 //===----------------------------------------------------------------------===//
 
 /// Verifies that the given dimensions represent a valid tensor shape, and
 /// that the element type in DType form is also representable as an MLIR type.
-LogicalResult
-TensorSpecType::verify(function_ref<InFlightDiagnostic()> emitError,
-                       ArrayRef<int64_t> shape, Type elementType) {
+LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
+                                 ArrayRef<int64_t> shape, Type elementType) {
   // TODO: Relax this once we have alignment with MOP on
   //  Dynamic Ranks
   if (shape.empty())
@@ -39,44 +38,19 @@ TensorSpecType::verify(function_ref<InFlightDiagnostic()> emitError,
 
 /// Returns clone with given element type, which must be representable as a
 /// dtype. Required by ShapedTypeInference
-ShapedType TensorSpecType::cloneWith(Optional<ArrayRef<int64_t>> shape,
-                                     Type elementType) const {
+ShapedType TensorType::cloneWith(Optional<ArrayRef<int64_t>> shape,
+                                 Type elementType) const {
   ArrayRef<int64_t> newShape = shape.value_or(getShape());
-  return TensorSpecType::get(getContext(), newShape, elementType);
+  return TensorType::get(getContext(), newShape, elementType);
 }
 
 /// Does the Tensor have a static Rank?  Required by ShapedTypeInferece
 /// TODO : Relax this once we reach agreement with MOP on dynamic rank tensors.
-bool TensorSpecType::hasRank() const { return true; }
+bool TensorType::hasRank() const { return true; }
 
 // Get the Rank of the Tensor.  Required by ShapedTypeInference
-size_t TensorSpecType::getRank() const { return getShape().size(); }
+size_t TensorType::getRank() const { return getShape().size(); }
 
-//===----------------------------------------------------------------------===//
-// Tensor
-//===----------------------------------------------------------------------===//
-
-/// Returns clone of tensor type. Required by ShapedTypeInference
-ShapedType TensorType::cloneWith(Optional<ArrayRef<int64_t>> shape,
-                                 Type elementType) const {
-  auto tensorSpec = mlir::dyn_cast<TensorSpecType>(
-      getTensorSpec().cloneWith(shape, elementType));
-  return TensorType::get(getContext(), tensorSpec);
-}
-
-/// Returns true since all tensors have statically known rank. Required by
-/// ShapedTypeInference
-bool TensorType::hasRank() const { return getTensorSpec().hasRank(); }
-
-/// Returns tensor spec's shape. Required by ShapedTypeInference
-ArrayRef<int64_t> TensorType::getShape() const {
-  return getTensorSpec().getShape();
-}
-
-/// Returns tensor spec's element type. Required by ShapedTypeInference
-Type TensorType::getElementType() const {
-  return getTensorSpec().getElementType();
-}
 //===----------------------------------------------------------------------===//
 // MODialect type support
 //===----------------------------------------------------------------------===//
