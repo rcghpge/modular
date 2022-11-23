@@ -53,11 +53,12 @@ public:
   /// space for numBuffers cached buffer allocations, which will all initially
   /// be 'uninitialized'.
   template <typename T, typename... Args>
-  void emplaceStateSlot(size_t slotIndex, size_t numBuffers, Args &&...args) {
+  T &emplaceStateSlot(size_t slotIndex, size_t numBuffers, Args &&...args) {
     assert(stateSlots[slotIndex] == nullptr &&
            "StateSlot for the given slot already exists.");
     stateSlots[slotIndex] =
         StateSlot::createStateSlot<T>(numBuffers, std::forward<Args>(args)...);
+    return getStateSlotPayload<T>(slotIndex);
   }
 
   /// Returns the state slot at slotIndex. The state slot must have already
