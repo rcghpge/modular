@@ -66,8 +66,8 @@ def CpuBufferConstantOp : MOP_Op<"cpu.buffer.constant",
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    /// Returns the align constraint for the buffer, if any.
-    Optional<uint64_t> getAlign();
+    /// Returns the optional alignment constraint for the buffer, if any.
+    Optional<uint64_t> getOptAlign();
   }];
 }
 
@@ -78,13 +78,13 @@ def CpuBufferConstantOp : MOP_Op<"cpu.buffer.constant",
 //  {static size vs dynamic size vs dynamic tensor spec} x {alloc vs re-alloc}
 //
 //  CpuBufferAllocStaticOp: Alloc with statically known size
-//    mop.cpu.buffer.alloc.static        %ctx      size 64
+//    mop.cpu.buffer.alloc.static        %ctx      64
 //  CpuBufferAllocDynamicOp: Alloc with dynamic size
 //    mop.cpu.buffer.alloc.dynamic       %ctx      %size
 //  CpuBufferAllocSpecOp: Alloc with dynamic tensor spec
 //    mop.cpu.buffer.alloc.spec          %ctxt     %spec
 //  CpuBufferReallocStaticOp: Re-alloc with statically known size
-//    mop.cpu.buffer.realloc.static  %ch %ctx[5,1] size 64
+//    mop.cpu.buffer.realloc.static  %ch %ctx[5,1] 64
 //  CpuBufferReallocDynamicOp: Re-alloc with dynamic size
 //    mop.cpu.buffer.realloc.dynamic %ch %ctx[5,1] %size
 //  CpuBufferReallocDynamicOp: Re-alloc with dynamic tensor spec
@@ -119,10 +119,10 @@ def CpuBufferAllocStaticOp : MOP_Op<"cpu.buffer.alloc.static", [
     ```mlir
     %ctx : !mop.context
 
-    %buf = mop.cpu.buffer.alloc.static %ctx size 64 align 8
+    %buf = mop.cpu.buffer.alloc.static %ctx 64 align 8
     %buf : !mop.cpu.buffer<64>  // 64 bytes aligned to 8 bytes
 
-    %buf = mop.cpu.buffer.alloc.static %ctx size 64
+    %buf = mop.cpu.buffer.alloc.static %ctx 64
     %buf : !mop.cpu.buffer<64>  // 64 bytes with no specific alignment
     ```
   }];
@@ -277,11 +277,11 @@ def CpuBufferReallocStaticOp : MOP_Op<"cpu.buffer.realloc.static", [
     ```mlir
        init {
          ...
-         %buf1 = mop.cpu.buffer.realloc.static %ch %ctx[2, 0] align 8 size 48
+         %buf1 = mop.cpu.buffer.realloc.static %ch %ctx[2, 0] 48 align 8
        }
        execute (...) -> ... {
          ...
-         %buf2 = mop.cpu.buffer.realloc.static %ch %ctx[2, 0] align 16 size 48
+         %buf2 = mop.cpu.buffer.realloc.static %ch %ctx[2, 0] 48 align 16
        }
     ```
     the second realloc will always reuse the buffer from the first realloc.
@@ -292,10 +292,10 @@ def CpuBufferReallocStaticOp : MOP_Op<"cpu.buffer.realloc.static", [
     %ch : !bef.chain
 
     // Reallocate the buffer in slot index 42 and buffer index 2.
-    %buf = mop.cpu.buffer.realloc.static %ch %ctx[42, 2] size 64 align 8
+    %buf = mop.cpu.buffer.realloc.static %ch %ctx[42, 2] 64 align 8
     %buf : !mop.cpu.buffer<64>   // 64 bytes aligned to 8 bytes
 
-    %buf = mop.cpu.buffer.realloc.static %ch %ctx[42, 2] size 64
+    %buf = mop.cpu.buffer.realloc.static %ch %ctx[42, 2] 64
     %buf : !mop.cpu.buffer<64>  // 64 bytes with no specific alignment
     ```
   }];
@@ -484,11 +484,11 @@ def CpuBufferSetOp : MOP_Op<"cpu.buffer.set", [
     ```
   }];
 
-  let arguments = (ins MOP_CpuBufferType:$buf,
+  let arguments = (ins MOP_CpuBufferType:$buffer,
                        DefaultValuedAttr<UI8Attr, "0">:$value);
   let results = (outs ChainType:$result);
   let assemblyFormat = [{
-    $buf ($value^)? attr-dict `:` qualified(type($buf))
+    $buffer ($value^)? attr-dict `:` qualified(type($buffer))
   }];
 }
 

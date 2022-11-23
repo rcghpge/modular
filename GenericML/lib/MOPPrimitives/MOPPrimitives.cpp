@@ -46,36 +46,48 @@ static void mop_cpu_buffer_alloc_static(Context &ctx, Result<BufferRef> result,
                                         BEFAttr<uint64_t> aSize,
                                         BEFAttr<uint64_t> bRawAlign,
                                         Runtime &runtime) {
-  if (!hasRawSize(*aSize) || !isValidRawSize(*aSize)) {
+  if (!isValidPlainSize(*aSize)) {
     result.setToError("invalid size attribute");
     return;
   }
-  size_t runtimeSize = asRuntimeSize(*aSize);
+  if (!isValidRawAlign(*bRawAlign)) {
+    result.setToError("invalid align attribute");
+    return;
+  }
+  size_t runtimeSize = plainSizeToRuntimeSize(*aSize);
   result.emplace(BufferRef::createOwned(
       runtime.getAllocator(), runtimeSize,
-      asRuntimeSizeOrDefault(*bRawAlign, kPreferredMemoryAlignment)));
+      rawSizeToRuntimeSizeOrDefault(*bRawAlign, kPreferredMemoryAlignment)));
 }
 
 static void mop_cpu_buffer_alloc_dynamic(Context &ctx, size_t runtimeSize,
                                          Result<BufferRef> result,
                                          BEFAttr<uint64_t> rawAlign,
                                          Runtime &runtime) {
-  if (!hasRawSize(runtimeSize) || !isValidRawSize(runtimeSize)) {
+  if (!isValidRuntimeSize(runtimeSize)) {
     result.setToError("invalid size operand");
+    return;
+  }
+  if (!isValidRawAlign(*rawAlign)) {
+    result.setToError("invalid align attribute");
     return;
   }
   result.emplace(BufferRef::createOwned(
       runtime.getAllocator(), runtimeSize,
-      asRuntimeSizeOrDefault(*rawAlign, kPreferredMemoryAlignment)));
+      rawSizeToRuntimeSizeOrDefault(*rawAlign, kPreferredMemoryAlignment)));
 }
 
 static void mop_cpu_buffer_alloc_spec(Context &ctx, const TensorSpec &spec,
                                       Result<BufferRef> result,
                                       BEFAttr<uint64_t> rawAlign,
                                       Runtime &runtime) {
+  if (!isValidRawAlign(*rawAlign)) {
+    result.setToError("invalid align attribute");
+    return;
+  }
   result.emplace(BufferRef::createOwned(
       runtime.getAllocator(), spec.getSizeInBytes(),
-      asRuntimeSizeOrDefault(*rawAlign, kPreferredMemoryAlignment)));
+      rawSizeToRuntimeSizeOrDefault(*rawAlign, kPreferredMemoryAlignment)));
 }
 
 //===----------------------------------------------------------------------===//
@@ -97,29 +109,37 @@ static void mop_cpu_buffer_realloc_static(
     Chain chain, Context &ctx, Result<BufferRef> result,
     BEFAttr<uint64_t> aSlot, BEFAttr<uint64_t> bBuffer, BEFAttr<uint64_t> cSize,
     BEFAttr<uint64_t> dRawAlign, Runtime &runtime) {
-  if (!hasRawSize(*cSize) || !isValidRawSize(*cSize)) {
+  if (!isValidPlainSize(*cSize)) {
     result.setToError("invalid size attribute");
     return;
   }
-  size_t runtimeSize = asRuntimeSize(*cSize);
+  if (!isValidRawAlign(*dRawAlign)) {
+    result.setToError("invalid align attribute");
+    return;
+  }
+  size_t runtimeSize = plainSizeToRuntimeSize(*cSize);
   StateSlot &stateSlot = ctx.getStateSlot(*aSlot);
   result.emplace(stateSlot.getOrCreateBuffer(
       *bBuffer, runtime.getAllocator(), runtimeSize,
-      asRuntimeSizeOrDefault(*dRawAlign, kPreferredMemoryAlignment)));
+      rawSizeToRuntimeSizeOrDefault(*dRawAlign, kPreferredMemoryAlignment)));
 }
 
 static void mop_cpu_buffer_realloc_dynamic(
     Chain chain, Context &ctx, size_t runtimeSize, Result<BufferRef> result,
     BEFAttr<uint64_t> aSlot, BEFAttr<uint64_t> bBuffer,
     BEFAttr<uint64_t> cRawAlign, Runtime &runtime) {
-  if (!hasRawSize(runtimeSize) || !isValidRawSize(runtimeSize)) {
+  if (!isValidRuntimeSize(runtimeSize)) {
     result.setToError("invalid size operand");
+    return;
+  }
+  if (!isValidRawAlign(*cRawAlign)) {
+    result.setToError("invalid align attribute");
     return;
   }
   StateSlot &stateSlot = ctx.getStateSlot(*aSlot);
   result.emplace(stateSlot.getOrCreateBuffer(
       *bBuffer, runtime.getAllocator(), runtimeSize,
-      asRuntimeSizeOrDefault(*cRawAlign, kPreferredMemoryAlignment)));
+      rawSizeToRuntimeSizeOrDefault(*cRawAlign, kPreferredMemoryAlignment)));
 }
 
 static void
@@ -127,10 +147,14 @@ mop_cpu_buffer_realloc_spec(Chain chain, Context &ctx, const TensorSpec &spec,
                             Result<BufferRef> result, BEFAttr<uint64_t> aSlot,
                             BEFAttr<uint64_t> bBuffer,
                             BEFAttr<uint64_t> cRawAlign, Runtime &runtime) {
+  if (!isValidRawAlign(*cRawAlign)) {
+    result.setToError("invalid align attribute");
+    return;
+  }
   StateSlot &stateSlot = ctx.getStateSlot(*aSlot);
   result.emplace(stateSlot.getOrCreateBuffer(
       *bBuffer, runtime.getAllocator(), spec.getSizeInBytes(),
-      asRuntimeSizeOrDefault(*cRawAlign, kPreferredMemoryAlignment)));
+      rawSizeToRuntimeSizeOrDefault(*cRawAlign, kPreferredMemoryAlignment)));
 }
 
 //===----------------------------------------------------------------------===//
@@ -188,20 +212,31 @@ static void mop_cpu_tensor_spec_create(RemainingArguments runtimeDims,
                                        BEFAttr<ArrayRef<uint64_t>> aRawDims,
                                        BEFAttr<uint8_t> bRawDType,
                                        Runtime &runtime) {
+  DType dtype(*bRawDType);
+  if (dtype.isInvalid()) {
+    outSpec.setToError("invalid dtype");
+    return;
+  }
   auto runtimeDimsVec = runtimeDims.takeAsVector();
   auto nextRuntimeDim = runtimeDimsVec.begin();
   SmallVector<uint64_t> shape;
   for (uint64_t dim : *aRawDims) {
     if (hasRawSize(dim))
-      shape.push_back(asRuntimeSize(dim));
-    else
-      shape.push_back((*nextRuntimeDim++)->get<size_t>());
+      shape.push_back(rawSizeToRuntimeSize(dim));
+    else {
+      size_t runtimeDim = (*nextRuntimeDim++)->get<size_t>();
+      if (!isValidRuntimeSize(runtimeDim)) {
+        outSpec.setToError("invalid dimension");
+        return;
+      }
+      shape.push_back(runtimeDim);
+    }
   }
-  outSpec.emplace(TensorSpec(shape, DType(*bRawDType)));
+  outSpec.emplace(TensorSpec(shape, dtype));
 }
 
 //===----------------------------------------------------------------------===//
-// mop.cpu.tensor_spec.create.dyn
+// mop.cpu.tensor_spec.create.dynamic
 //===----------------------------------------------------------------------===//
 
 /// Creates a TensorSpec by combining the runtime and statically known
@@ -211,20 +246,30 @@ static void mop_cpu_tensor_spec_create_dynamic(
     DType runtimeDType, RemainingArguments runtimeDims,
     Result<TensorSpec> outSpec, BEFAttr<ArrayRef<uint64_t>> rawDims,
     Runtime &runtime) {
+  if (runtimeDType.isInvalid()) {
+    outSpec.setToError("invalid dtype");
+    return;
+  }
   auto runtimeDimsVec = runtimeDims.takeAsVector();
   auto nextRuntimeDim = runtimeDimsVec.begin();
   SmallVector<uint64_t> shape;
   for (auto dim : *rawDims) {
     if (hasRawSize(dim))
-      shape.push_back(asRuntimeSize(dim));
-    else
-      shape.push_back((*nextRuntimeDim++)->get<size_t>());
+      shape.push_back(rawSizeToRuntimeSize(dim));
+    else {
+      size_t runtimeDim = (*nextRuntimeDim++)->get<size_t>();
+      if (!isValidRuntimeSize(runtimeDim)) {
+        outSpec.setToError("invalid dimension");
+        return;
+      }
+      shape.push_back(runtimeDim);
+    }
   }
   outSpec.emplace(TensorSpec(shape, runtimeDType));
 }
 
 //===----------------------------------------------------------------------===//
-// mop.cpu.tensor_spec.dims.dyn
+// mop.cpu.tensor_spec.dims.dynamic
 //===----------------------------------------------------------------------===//
 
 /// Fulfills the result with dimensions of tensor spec which were unknown

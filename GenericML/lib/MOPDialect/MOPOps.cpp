@@ -77,24 +77,24 @@ LogicalResult CpuBufferConstantOp::verify() {
   // The resulting constant's type must be sized, and the size must match
   // the attribute's size.
   CpuBufferType bufferType = getResult().getType();
-  if (!bufferType.getSize())
+  if (!bufferType.getOptSize())
     return emitOpError() << "expected the buffer type have a fixed size";
-  if (*bufferType.getSize() != static_cast<uint64_t>(value.getNumElements()))
+  if (*bufferType.getOptSize() != static_cast<uint64_t>(value.getNumElements()))
     return emitOpError() << "expected the buffer type have a size matching the "
                             "attribute size"
-                         << " (" << *bufferType.getSize() << " vs "
+                         << " (" << *bufferType.getOptSize() << " vs "
                          << value.getNumElements() << ")";
 
   // Only BufferAttr and DenseResourceElementsAttr can convey an align
   // constraint. Check they are valid.
-  ErrorOr<Optional<uint64_t>> errOrAlign = getImpliedAlignment(value);
-  if (auto *error = errOrAlign.getError())
+  ErrorOr<Optional<uint64_t>> errOrOptAlign = getImpliedAlignment(value);
+  if (auto *error = errOrOptAlign.getError())
     return emitOpError() << error;
 
-  if (!isValidAlign(*errOrAlign))
+  if (!isValidOptAlign(*errOrOptAlign))
     return emitOpError()
            << "the attribute alignment must be a power of two (have "
-           << **errOrAlign << ").";
+           << **errOrOptAlign << ").";
 
   return success();
 }
@@ -115,12 +115,12 @@ LogicalResult CpuBufferConstantOp::inferReturnTypes(
   return success();
 }
 
-Optional<uint64_t> CpuBufferConstantOp::getAlign() {
-  ErrorOr<Optional<uint64_t>> errOrAlign = getImpliedAlignment(getValue());
-  assert(!errOrAlign.isError());
-  if (errOrAlign.isError())
+Optional<uint64_t> CpuBufferConstantOp::getOptAlign() {
+  ErrorOr<Optional<uint64_t>> errOrOptAlign = getImpliedAlignment(getValue());
+  assert(!errOrOptAlign.isError() && "invalid alignment from attribute");
+  if (errOrOptAlign.isError())
     return {};
-  return *errOrAlign;
+  return *errOrOptAlign;
 }
 
 //===----------------------------------------------------------------------===//
@@ -140,7 +140,7 @@ static LogicalResult verifyAnyAllocOp(
          "expecting exactly one of static size, runtime size, or runtime spec");
 
   // Check the size and align static values.
-  if (!isValidSize(optSize))
+  if (!isValidOptSize(optSize))
     return emitOpError() << "expected size to be positive.";
   if (!isValidRawAlign(rawAlign))
     return emitOpError() << "expected align to be a power of two.";
@@ -185,10 +185,12 @@ LogicalResult CpuBufferAllocStaticOp::inferReturnTypes(
   auto sizeAttr =
       dyn_cast<mlir::IntegerAttr>(attributes.get(getASizeAttrName(name)));
   assert(sizeAttr != nullptr && "mismatched operand attributes");
-  Optional<uint64_t> size = sizeAttr.getUInt();
-  if (!isValidSize(size))
-    size.reset();
-  inferredReturnTypes.emplace_back(CpuBufferType::get(context, size));
+  uint64_t size = sizeAttr.getUInt();
+  // If the attribute happens to be invalid we'll still construct a result
+  // type, but the verify will reject the overall op.
+  Optional<uint64_t> optSize =
+      isValidPlainSize(size) ? size : Optional<uint64_t>();
+  inferredReturnTypes.emplace_back(CpuBufferType::get(context, optSize));
   return success();
 }
 
@@ -324,7 +326,7 @@ static ParseResult parseRawDimsAndDType(AsmParser &p,
   auto tensorSpec = dyn_cast<CpuTensorSpecType>(type);
   if (tensorSpec == nullptr)
     return p.emitError(loc) << "expected a !mop.cpu.tensor_spec type.";
-  if (!tensorSpec.getDtype())
+  if (!tensorSpec.getOptDType())
     return p.emitError(loc) << "expected !mop.cpu.tensor_spec type to have a "
                                "known element type.";
 
@@ -390,7 +392,7 @@ static ParseResult parseRawDims(AsmParser &p, IntArrayElementsAttr &rawDims) {
   auto tensorSpec = dyn_cast<CpuTensorSpecType>(type);
   if (tensorSpec == nullptr)
     return p.emitError(loc) << "expected a !mop.cpu.tensor_spec type.";
-  if (tensorSpec.getDtype())
+  if (tensorSpec.getOptDType())
     return p.emitError(loc) << "expected !mop.cpu.tensor_spec type to have an "
                                "unknown element type.";
 

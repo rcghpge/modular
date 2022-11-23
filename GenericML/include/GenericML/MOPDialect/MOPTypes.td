@@ -71,7 +71,7 @@ def MOP_CpuBufferType : MOP_Type<"CpuBuffer", "cpu.buffer",
     side-effects over buffers.
 
     The size of a buffer type has two representations:
-     - 'Clean form': an `Optional<uint64_t>`, with none denoting unknown.
+     - 'Optional form': an `Optional<uint64_t>`, with none denoting unknown.
      - 'Raw form': An UI64Attr, with ~0 denoting unknown.
 
     Examples:
@@ -81,13 +81,13 @@ def MOP_CpuBufferType : MOP_Type<"CpuBuffer", "cpu.buffer",
     ```
   }];
 
-  let parameters = (ins OptionalParameter<"Optional<uint64_t>">:$size);
-  let assemblyFormat = "(`<` $size^ `>`)?";
+  let parameters = (ins OptionalParameter<"Optional<uint64_t>">:$optSize);
+  let assemblyFormat = "(`<` $optSize^ `>`)?";
   let genVerifyDecl = 1;
 
   let extraClassDeclaration = [{
      /// getShape may need to return an ArrayRef representing a
-     /// dynamic rank-1 shape if the size is unconstrained.
+     /// dynamic rank-1 shape if the size is unknown.
      /// That ref will point to this static.
      static const int64_t unknownSize;
 
@@ -102,7 +102,7 @@ def MOP_CpuBufferType : MOP_Type<"CpuBuffer", "cpu.buffer",
     /// size.
     TypeBuilder<(ins "IntegerAttr":$rawSizeOrNull)>,
 
-    /// Constructs a buffer type from its size in 'raw form' form.
+    /// Constructs a buffer type from its size in 'raw form'.
     TypeBuilder<(ins "uint64_t":$rawSize)>,
   ];
 }
@@ -162,21 +162,21 @@ def MOP_DTypeType : MOP_Type<"DType", "dtype"> {
     static ErrorOr<Optional<DType>> fromMlirType(Type mlirType);
 
     /// Returns the MLIR IntegerType, FloatType or NoneType representing the
-    /// given DType. The unknown value is represented as the NoneType MLIR type.
-    /// Returns an error if the DType has no representation as an MLIR type.
-    static ErrorOr<Type> toMLIRType(MLIRContext *context, Optional<DType> dtype);
+    /// given optDType. The unknown value is represented as the NoneType MLIR
+    /// type. Returns an error if the DType has no representation as an MLIR
+    /// type.
+    static ErrorOr<Type> toMLIRType(MLIRContext *context, Optional<DType> optDType);
 
-    /// Returns non-empty error string if the given DType cannot be represented as
-    /// an MLIR IntegerType, FloatType or NoneType. Otherwise returns the
-    /// empty string.
-    static std::string hasNoMLIRType(Optional<DType> dtype);
+    /// Returns error if the given optDType cannot be represented as an
+    /// MLIR IntegerType, FloatType or NoneType. Otherwise returns success.
+    static ErrorOrSuccess hasMLIRType(Optional<DType> optDType);
 
-    /// Returns the 'raw form' of dtype. This will be 0 if DType is unknown,
+    /// Returns the 'raw form' of optDType. This will be 0 if DType is unknown,
     /// otherwise the DType's value.
-    static uint8_t asRawDType(Optional<DType> dtype);
+    static uint8_t asRawDType(Optional<DType> optDType);
 
-    /// Return the 'clean form' of rawDType. This will be none if the rawDType
-    /// is 0, otherwise the DType with rawDType as value.
+    /// Return the 'optional form' of rawDType. This will be none if the
+    /// rawDType is 0, otherwise the DType with rawDType as value.
     static Optional<DType> fromRawDType(uint8_t rawDType);
   }];
 }
@@ -226,8 +226,8 @@ def MOP_CpuTensorSpecType : MOP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
        'elementType' to refer to it in MLIR type form.
 
     The components of tensor spec types have three representation forms:
-     - 'Clean form': an array of Optional<uint64_t> for the dimensions (none
-       denotes unknown dimension) and an Optional<DType> for the dtype
+     - 'Optional form': an array of Optional<uint64_t> for the dimensions
+       (none denotes unknown dimension) and an Optional<DType> for the dtype
        (none denotes unknown). This is the most natural representation
        from the MLIR/C++ side. However, care is taken to ensure only DTypes
        which are also representable as MLIR types are considered valid.
@@ -254,9 +254,9 @@ def MOP_CpuTensorSpecType : MOP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
   // the shape in the ArrayRef<int64_t> form as well as our preferred
   // ArrayRef<Optional<uint64_t>> form.
   let parameters = (ins ArrayRefParameter<"Optional<uint64_t>">:$dims,
-                        "Optional<DType>":$dtype,
+                        "Optional<DType>":$optDType,
                         ArrayRefParameter<"int64_t">:$shape);
-  let assemblyFormat = "`<` custom<DimsAndDType>($dims, $dtype, $shape) `>`";
+  let assemblyFormat = "`<` custom<DimsAndDType>($dims, $optDType, $shape) `>`";
   let genVerifyDecl = 1;
 
   let extraClassDeclaration = [{
@@ -299,9 +299,9 @@ def MOP_CpuTensorSpecType : MOP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
   }];
 
   let builders = [
-    /// Constructs a tensor spec from its components in 'clean form'.
+    /// Constructs a tensor spec from its components in 'optional form'.
     TypeBuilder<(ins "ArrayRef<Optional<uint64_t>>":$dims,
-                     "Optional<DType>":$dtype)>,
+                     "Optional<DType>":$optDType)>,
 
     /// Constructs a tensor spec from its components in 'shaped type form'.
     TypeBuilderWithInferredContext<(ins "ArrayRef<int64_t>":$shape,
