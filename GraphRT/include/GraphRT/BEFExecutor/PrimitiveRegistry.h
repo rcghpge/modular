@@ -323,22 +323,19 @@ private:
 //===----------------------------------------------------------------------===//
 // BEFAttr and specializations
 //===----------------------------------------------------------------------===//
-//
+
 /// This CRTP class is used to provide common interfaces across the various
 /// BEFAttr implementations.
 template <typename ConcreteType, typename StoredType>
 class BEFAttrCommon {
 public:
-  BEFAttrCommon(StoredType init, ArrayRef<uint8_t> attrSection)
-      : value(init), attrSection(attrSection) {}
+  BEFAttrCommon(StoredType init) : value(init) {}
 
   using ValueType = typename std::remove_reference<StoredType>::type;
 
   const StoredType &get() const { return value; }
   const ValueType *operator->() const { return &value; }
   const StoredType &operator*() const { return value; }
-
-  ArrayRef<uint8_t> getAttrSection() const { return attrSection; }
 
   /// Given a pointer to the start of attribute value, return the attribute
   /// kind.
@@ -349,22 +346,14 @@ public:
 
   /// Check that the dynamic attribute kind encoded into the BEF file matches
   /// the C++ type for this.
-  static inline void checkAttributeKind(const uint8_t *value,
-                                        ArrayRef<uint8_t> attrSection) {
-    assert(ConcreteType::matchesAttrKind(value, attrSection.end()) &&
+  static inline void checkAttributeKind(const uint8_t *value) {
+    assert(ConcreteType::matchesAttrKind(value) &&
            "attribute passed to primitive has unexpected type;"
            " mismatch between mlir syntax and primitive definition");
   }
 
 private:
   StoredType value;
-  /// This represent the beginning and end pointers collected into an ArrayRef
-  /// to represent the range of bytes making up the whole Attribute Section.
-  /// This is useful since we want to check the pointer for the attribute is:
-  ///    1. Past the beginning of the Attribute Section in the PrimitiveRegistry
-  ///    2. Past the end of the Attribute Section downstream to BEFType for
-  ///    decoding so we know the bounds.
-  ArrayRef<uint8_t> attrSection;
 };
 
 /// Primitives use this to declare that they have an attribute input with the
@@ -374,19 +363,16 @@ class BEFAttr : public BEFAttrCommon<BEFAttr<T>, const T &> {
 public:
   using BaseClass = BEFAttrCommon<BEFAttr<T>, const T &>;
 
-  explicit BEFAttr(const uint8_t *value, ArrayRef<uint8_t> attrSection)
-      : BaseClass(*reinterpret_cast<const T *>(value), attrSection) {
+  explicit BEFAttr(const uint8_t *value)
+      : BaseClass(*reinterpret_cast<const T *>(value)) {
     // Check that the C++ type matches the encoded type for the attribute.
     static_assert(BEF::AttrKindForCXXType<T>::kind !=
                       BEF::AttributeKind::kInvalid &&
                   "C++ type passed to BEFAttr isn't supported");
-    assert(value >= attrSection.begin() &&
-           "BEF datum not within bounds of the BEF Attribute Section");
-    this->checkAttributeKind(value, attrSection);
+    this->checkAttributeKind(value);
   }
 
-  static bool matchesAttrKind(const uint8_t *pointer,
-                              const uint8_t *attrSectionEnd) {
+  static bool matchesAttrKind(const uint8_t *pointer) {
     return BaseClass::getAttrKind(pointer) == BEF::AttrKindForCXXType<T>::kind;
   }
 };
@@ -398,17 +384,13 @@ class BEFAttr<StringRef> : public BEFAttrCommon<BEFAttr<StringRef>, StringRef> {
 public:
   using BaseClass = BEFAttrCommon<BEFAttr<StringRef>, StringRef>;
 
-  explicit BEFAttr(const uint8_t *pointer, ArrayRef<uint8_t> attrSection)
+  explicit BEFAttr(const uint8_t *pointer)
       : BaseClass(StringRef(reinterpret_cast<const char *>(pointer),
-                            decodeBEFArrayLength(pointer)),
-                  attrSection) {
-    assert(pointer >= attrSection.begin() &&
-           "BEF datum not within bounds of the BEF Attribute Section");
-    this->checkAttributeKind(pointer, attrSection);
+                            decodeBEFArrayLength(pointer))) {
+    this->checkAttributeKind(pointer);
   }
 
-  static bool matchesAttrKind(const uint8_t *pointer,
-                              const uint8_t *attrSectionEnd) {
+  static bool matchesAttrKind(const uint8_t *pointer) {
     return BaseClass::getAttrKind(pointer) == BEF::AttributeKind::kString;
   }
 };
@@ -421,17 +403,13 @@ class BEFAttr<ArrayRef<T>>
 public:
   using BaseClass = BEFAttrCommon<BEFAttr<ArrayRef<T>>, ArrayRef<T>>;
 
-  explicit BEFAttr(const uint8_t *pointer, ArrayRef<uint8_t> attrSection)
+  explicit BEFAttr(const uint8_t *pointer)
       : BaseClass(ArrayRef<T>(reinterpret_cast<const T *>(pointer),
-                              decodeBEFArrayLength(pointer)),
-                  attrSection) {
-    assert(pointer >= attrSection.begin() &&
-           "BEF datum not within bounds of the BEF Attribute Section");
-    this->checkAttributeKind(pointer, attrSection);
+                              decodeBEFArrayLength(pointer))) {
+    this->checkAttributeKind(pointer);
   }
 
-  static bool matchesAttrKind(const uint8_t *pointer,
-                              const uint8_t *attrSectionEnd) {
+  static bool matchesAttrKind(const uint8_t *pointer) {
     // If the element type matches, this matches.
     BEF::AttributeKind kind = BaseClass::getAttrKind(pointer);
     return kind == BEF::getArrayOf(BEF::AttrKindForCXXType<T>::kind);
@@ -455,17 +433,13 @@ class BEFAttr<BEFSymbolRef>
 public:
   using BaseClass = BEFAttrCommon<BEFAttr<BEFSymbolRef>, BEFSymbolRef>;
 
-  explicit BEFAttr(const uint8_t *pointer, ArrayRef<uint8_t> attrSection)
+  explicit BEFAttr(const uint8_t *pointer)
       : BaseClass(StringRef(reinterpret_cast<const char *>(pointer),
-                            decodeBEFArrayLength(pointer)),
-                  attrSection) {
-    assert(pointer >= attrSection.begin() &&
-           "BEF datum not within bounds of the BEF Attribute Section");
-    this->checkAttributeKind(pointer, attrSection);
+                            decodeBEFArrayLength(pointer))) {
+    this->checkAttributeKind(pointer);
   }
 
-  static bool matchesAttrKind(const uint8_t *pointer,
-                              const uint8_t *attrSectionEnd) {
+  static bool matchesAttrKind(const uint8_t *pointer) {
     return BaseClass::getAttrKind(pointer) == BEF::AttributeKind::kSymbolRef;
   }
 };
@@ -486,18 +460,13 @@ public:
   using BaseClass =
       BEFAttrCommon<BEFAttr<BEFTypeClass>, Detail::TypeAttrEmptyStruct>;
 
-  explicit BEFTypeAttrCommon(const uint8_t *pointer,
-                             ArrayRef<uint8_t> attrSection)
-      : BaseClass(Detail::TypeAttrEmptyStruct(), attrSection),
-        BEFTypeClass(pointer, attrSection.end()) {
-    assert(pointer >= attrSection.begin() &&
-           "BEF datum not within bounds of the BEF Attribute Section");
-    this->checkAttributeKind(pointer, attrSection);
+  explicit BEFTypeAttrCommon(const uint8_t *pointer)
+      : BaseClass(Detail::TypeAttrEmptyStruct()), BEFTypeClass(pointer) {
+    this->checkAttributeKind(pointer);
   }
 
-  static bool matchesAttrKind(const uint8_t *pointer,
-                              const uint8_t *attrSectionEnd) {
-    auto dynType = BEFType(pointer, attrSectionEnd);
+  static bool matchesAttrKind(const uint8_t *pointer) {
+    auto dynType = BEFType(pointer);
     return BaseClass::getAttrKind(pointer) == BEF::AttributeKind::kType &&
            BEFTypeClass::classof(&dynType);
   }
@@ -568,11 +537,7 @@ class BEFAttr<Detail::Dynamic>
 public:
   using BaseClass = BEFAttrCommon<BEFAttr<Detail::Dynamic>, const uint8_t *>;
 
-  explicit BEFAttr(const uint8_t *pointer, ArrayRef<uint8_t> attrSection)
-      : BaseClass(pointer, attrSection) {
-    assert(pointer >= attrSection.begin() &&
-           "BEF datum not within bounds of the BEF Attribute Section");
-  }
+  explicit BEFAttr(const uint8_t *pointer) : BaseClass(pointer) {}
 
   /// Return the AttributeKind for this attribute.
   BEF::AttributeKind getAttrKind() const {
@@ -610,10 +575,7 @@ public:
   }
 
   /// Dynamic attributes are compatible with everything.
-  static bool matchesAttrKind(const uint8_t *pointer,
-                              const uint8_t *attrSectionEnd) {
-    return true;
-  }
+  static bool matchesAttrKind(const uint8_t *pointer) { return true; }
 };
 
 using BEFDynamicAttr = BEFAttr<Detail::Dynamic>;
@@ -644,16 +606,13 @@ class BEFAttr<Detail::List>
     : public BEFAttrCommon<BEFAttr<Detail::List>, Detail::List> {
 public:
   using BaseClass = BEFAttrCommon<BEFAttr<Detail::List>, Detail::List>;
-  explicit BEFAttr(const uint8_t *pointer, ArrayRef<uint8_t> attrSection)
-      : BaseClass(Detail::List{}, attrSection),
+  explicit BEFAttr(const uint8_t *pointer)
+      : BaseClass(Detail::List{}),
         data(pointer, decodeBEFArrayLength(pointer)) {
-    assert(pointer >= attrSection.begin() &&
-           "BEF datum not within bounds of the BEF Attribute Section");
-    this->checkAttributeKind(pointer, attrSection);
+    this->checkAttributeKind(pointer);
   }
 
-  static bool matchesAttrKind(const uint8_t *pointer,
-                              const uint8_t *attrSectionEnd) {
+  static bool matchesAttrKind(const uint8_t *pointer) {
     return BaseClass::getAttrKind(pointer) == BEF::AttributeKind::kList;
   }
 
@@ -667,9 +626,8 @@ public:
     using Base = llvm::iterator_facade_base<Iterator, std::input_iterator_tag,
                                             BEFDynamicAttr>;
 
-    Iterator(const uint8_t *ptr, size_t iterIdx, ArrayRef<uint8_t> attrSection)
-        : basePtr(ptr), ptr(const_cast<uint8_t *>(ptr)), iterIdx(iterIdx),
-          attrSection(attrSection) {}
+    Iterator(const uint8_t *ptr, size_t iterIdx)
+        : basePtr(ptr), ptr(const_cast<uint8_t *>(ptr)), iterIdx(iterIdx) {}
 
     /// Increment the iterator. Decrementing is sufficiently difficult that it's
     /// left as an exercise to the person who wants to use it.
@@ -689,14 +647,11 @@ public:
     const uint8_t *basePtr;
     uint8_t *ptr;
     size_t iterIdx;
-    ArrayRef<uint8_t> attrSection;
   };
 
   /// Range access into the List object.
-  Iterator begin() const { return {data.begin(), 0, getAttrSection()}; }
-  Iterator end() const {
-    return Iterator{data.begin(), data.size(), getAttrSection()};
-  }
+  Iterator begin() const { return {data.begin(), 0}; }
+  Iterator end() const { return Iterator{data.begin(), data.size()}; }
 
   /// Return the size of the List in number of elements.
   size_t size() const { return data.size(); }
@@ -708,8 +663,7 @@ public:
   /// SmallVector), rejecting it with an error if not present or the wrong type.
   template <typename ValueType>
   ErrorOrSuccess decode(ValueType *result) const {
-    return BEFDynamicAttr(data.data(), getAttrSection())
-        .decode<ValueType>(result);
+    return BEFDynamicAttr(data.data()).decode<ValueType>(result);
   }
 
 private:
@@ -769,16 +723,13 @@ class BEFAttr<Detail::Dictionary>
 public:
   using BaseClass =
       BEFAttrCommon<BEFAttr<Detail::Dictionary>, Detail::Dictionary>;
-  explicit BEFAttr(const uint8_t *pointer, ArrayRef<uint8_t> attrSection)
-      : BaseClass(Detail::Dictionary{}, attrSection),
+  explicit BEFAttr(const uint8_t *pointer)
+      : BaseClass(Detail::Dictionary{}),
         data(pointer, decodeBEFArrayLength(pointer)) {
-    assert(pointer >= attrSection.begin() &&
-           "BEF datum not within bounds of the BEF Attribute Section");
-    this->checkAttributeKind(pointer, attrSection);
+    this->checkAttributeKind(pointer);
   }
 
-  static bool matchesAttrKind(const uint8_t *pointer,
-                              const uint8_t *attrSectionEnd) {
+  static bool matchesAttrKind(const uint8_t *pointer) {
     return BaseClass::getAttrKind(pointer) == BEF::AttributeKind::kDictionary;
   }
 
@@ -792,26 +743,25 @@ public:
 
     /// Get the name of this element.
     StringRef getName() const {
-      return *BEFAttr<StringRef>(basePtr - nameOffset, attrSection);
+      return *BEFAttr<StringRef>(basePtr - nameOffset);
     }
 
     /// Get the value of this element.
     BEFDynamicAttr getValue() const {
-      return BEFDynamicAttr(basePtr - attrOffset, attrSection);
+      return BEFDynamicAttr(basePtr - attrOffset);
     }
 
     /// Templated convenience function to allow the user to get the value as a
     /// certain type. Asserts that T matches the actual attribute stored.
     template <typename T>
     BEFAttr<T> getValue() const {
-      return BEFAttr<T>(basePtr - attrOffset, attrSection);
+      return BEFAttr<T>(basePtr - attrOffset);
     }
 
   private:
     const uint8_t *basePtr;
     const size_t nameOffset;
     const size_t attrOffset;
-    ArrayRef<uint8_t> attrSection;
   };
 
   /// Provides an iterator on the Dictionary. Because we don't want to allocate
@@ -910,20 +860,18 @@ using BEFDictionaryAttr = BEFAttr<Detail::Dictionary>;
 /// and it must appear after all other attributes.
 class RemainingBEFAttrs {
 public:
-  explicit RemainingBEFAttrs(const uint8_t *basePtr, ArrayRef<uint32_t> attrs,
-                             ArrayRef<uint8_t> attrSection)
-      : basePtr(basePtr), attrs(attrs), attrSection(attrSection) {}
+  explicit RemainingBEFAttrs(const uint8_t *basePtr, ArrayRef<uint32_t> attrs)
+      : basePtr(basePtr), attrs(attrs) {}
 
   bool empty() const { return attrs.empty(); }
   size_t size() const { return attrs.size(); }
   BEFDynamicAttr operator[](size_t i) const {
-    return BEFDynamicAttr(basePtr + attrs[i], attrSection);
+    return BEFDynamicAttr(basePtr + attrs[i]);
   }
 
 private:
   const uint8_t *basePtr;
   ArrayRef<uint32_t> attrs;
-  ArrayRef<uint8_t> attrSection;
 };
 
 //===----------------------------------------------------------------------===//
@@ -1300,8 +1248,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
     static RemainingBEFAttrs process(RunnablePrimitiveDescriptor &frame) {
       return RemainingBEFAttrs(
           frame.getAttrBase(),
-          frame.getAttrOffsets().drop_front(IndicesT::attrIdx),
-          frame.getAttrSection());
+          frame.getAttrOffsets().drop_front(IndicesT::attrIdx));
     }
   };
 
@@ -1516,16 +1463,13 @@ struct BaseBEFAttrCast
   // Accept a const reference in the case of temporaries being casted which get
   // lifetime extension when binding to a const reference.
   static bool isPossible(const From &f) {
-    return To::matchesAttrKind(
-        reinterpret_cast<const uint8_t *>(
-            detail::unwrapValue(const_cast<From &>(f)).get()),
-        detail::unwrapValue(const_cast<From &>(f)).getAttrSection().end());
+    return To::matchesAttrKind(reinterpret_cast<const uint8_t *>(
+        detail::unwrapValue(const_cast<From &>(f)).get()));
   }
   // Accept a const reference in the case of temporaries being casted which get
   // lifetime extension when binding to a const reference.
   static Optional<To> doCast(const From &f) {
-    return To(detail::unwrapValue(const_cast<From &>(f)).get(),
-              detail::unwrapValue(const_cast<From &>(f)).getAttrSection());
+    return To(detail::unwrapValue(const_cast<From &>(f)).get());
   }
   static Optional<To> castFailed() { return Optional<To>{}; }
 };
@@ -1557,12 +1501,9 @@ struct BaseBEFAttrPointerCast
     : public DefaultDoCastIfPossible<Optional<To>, const From *,
                                      BaseBEFAttrPointerCast<To, From>> {
   static bool isPossible(const From *f) {
-    return To::matchesAttrKind(reinterpret_cast<const uint8_t *>(f->get()),
-                               f->getAttrSection().end());
+    return To::matchesAttrKind(reinterpret_cast<const uint8_t *>(f->get()));
   }
-  static Optional<To> doCast(const From *f) {
-    return To(f->get(), f->getAttrSection());
-  }
+  static Optional<To> doCast(const From *f) { return To(f->get()); }
   static Optional<To> castFailed() { return Optional<To>{}; }
 };
 
