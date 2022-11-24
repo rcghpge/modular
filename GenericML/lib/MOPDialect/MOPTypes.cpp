@@ -346,15 +346,15 @@ CpuTensorSpecType CpuTensorSpecType::getChecked(
   return CpuTensorSpecType::get(rawShape, rawDTypeOrNull);
 }
 
-size_t CpuTensorSpecType::getRank() const { return getShape().size(); }
+size_t CpuTensorSpecType::getRank() const { return getDims().size(); }
 
 size_t CpuTensorSpecType::getNumDynamicDims() const {
-  return static_cast<size_t>(llvm::count(getShape(), ShapedType::kDynamicSize));
+  return static_cast<size_t>(llvm::count(getDims(), llvm::None));
 }
 
 Optional<uint64_t> CpuTensorSpecType::operator[](size_t i) const {
-  assert(i < getShape().size() && "shape index out of range");
-  return getShape()[i];
+  assert(i < getDims().size() && "shape index out of range");
+  return getDims()[i];
 }
 
 Optional<uint64_t> CpuTensorSpecType::getNumElements() const {

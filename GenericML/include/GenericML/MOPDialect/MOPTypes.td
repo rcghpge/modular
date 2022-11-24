@@ -43,7 +43,7 @@ def MOP_CpuBufferType : MOP_Type<"CpuBuffer", "cpu.buffer",
     of tensor data across CPU kernel implementations. Buffers may be wrapped by
     various tensor types, including `!mop.cpu.tensor`, or used directly.
 
-    This type implements `ShapedTypeInference` as a rank-1 tensor over
+    This type implements `ShapedTypeInterface` as a rank-1 tensor over
     `uint8_t` with optimally known first dimension. This in turn supports the
     `ElementsAttrInterface` on buffer attributes.
 
