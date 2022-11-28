@@ -651,6 +651,7 @@ private:
   BEFOffset
   emitDenseResourceElementsAttribute(mlir::DenseResourceElementsAttr value,
                                      Location loc);
+  BEFOffset emitAlignedBytesAttribute(AlignedBytesAttr attr, Location loc);
   BEFOffset emitArrayAttribute(ArrayAttr value, Location loc);
   BEFOffset emitDictionaryAttribute(DictionaryAttr value, Location loc);
   BEFOffset emitTypeAttribute(Type type, Location loc);
@@ -815,6 +816,18 @@ BEFOffset AttributesEmitter::emitDenseResourceElementsAttribute(
   return emitIntOrFloatRange(
       *kindOr, value.size(), resourceBlob->getDataAlignment(),
       [&]() { emitOwnedBytes(resourceBlob->getDataAs<uint8_t>()); });
+}
+
+BEFOffset AttributesEmitter::emitAlignedBytesAttribute(AlignedBytesAttr attr,
+                                                       Location loc) {
+  auto kindOr = deriveAttributeKind(attr.getElementType(), loc);
+  if (failed(kindOr))
+    return {0};
+
+  // All encoded AlignedBytes attributes are a uint8_t array of bytes.
+  return emitIntOrFloatRange(*kindOr, attr.getNumElements(),
+                             attr.getAlign().value_or(0),
+                             [&]() { emitOwnedBytes(attr.getData()); });
 }
 
 template <typename ElementsAttrType>
@@ -1153,6 +1166,9 @@ BEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr,
 
   if (auto denseElements = dyn_cast<mlir::DenseResourceElementsAttr>(attr))
     return emitDenseResourceElementsAttribute(denseElements, loc);
+
+  if (auto alignedBytesAttr = dyn_cast<AlignedBytesAttr>(attr))
+    return emitAlignedBytesAttribute(alignedBytesAttr, loc);
 
   if (auto array = dyn_cast<ArrayAttr>(attr))
     return emitArrayAttribute(array, loc);

@@ -228,13 +228,17 @@ grt.testcase @test_dynamic_attr {
   %ch3 = "test.print.dynamic.attr"(%ch2) {value = #M.dense_array<4, 6, 17> : !M.array<3xsi32> } : (!bef.chain) -> !bef.chain
   // CHECK: array = []
   %ch4 = "test.print.dynamic.attr"(%ch3) {value = #M.dense_array<> : !M.array<0xsi32> } : (!bef.chain) -> !bef.chain
+  // CHECK: array = [0x01, 0x02, 0x03, 0x04]
+  %ch5 = "test.print.dynamic.attr"(%ch4) {value = #M.aligned_bytes<64: "0x01020304"> } : (!bef.chain) -> !bef.chain
+  // CHECK: array = [0xDE, 0xAD, 0xBE, 0xEF]
+  %ch6 = "test.print.dynamic.attr"(%ch5) {value = #M.aligned_bytes<"0xDEADBEEF"> } : (!bef.chain) -> !bef.chain
   // CHECK: unsupported attribute kind
-  %ch5 = "test.print.dynamic.attr"(%ch4) {value = 1: i1} : (!bef.chain) -> !bef.chain
+  %ch7 = "test.print.dynamic.attr"(%ch6) {value = 1: i1} : (!bef.chain) -> !bef.chain
   // CHECK: dictionary {
   // CHECK-NEXT: 'aString': string = this is a string
   // CHECK-NEXT: 'anInt': sint32 = 3125
   // CHECK-NEXT: }
-  %ch6 = "test.print.dynamic.attr"(%ch5) {value =
+  %ch8 = "test.print.dynamic.attr"(%ch7) {value =
      {aString = "this is a string", anInt = 3125 : si32}
   } : (!bef.chain) -> !bef.chain
 
@@ -248,12 +252,12 @@ grt.testcase @test_dynamic_attr {
   // CHECK-NEXT:    'b': string = foo
   // CHECK-NEXT:   }
   // CHECK-NEXT: ]
-  %ch7 = "test.print.dynamic.attr"(%ch6) {value =
+  %ch9 = "test.print.dynamic.attr"(%ch8) {value =
      ["this is a string", 3125 : si32, [], {a = 42: ui32, b = "foo"}]
   } : (!bef.chain) -> !bef.chain
 
   // CHECK-NEXT: Type attribute: f32
-  %ch8 = "test.print.dynamic.attr"(%ch7) {t = f32} : (!bef.chain) -> !bef.chain
+  %ch10 = "test.print.dynamic.attr"(%ch9) {t = f32} : (!bef.chain) -> !bef.chain
 
   bef.output
 }
