@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_MOPPRIMITIVES_H
-#define GENERICML_MOPPRIMITIVES_H
+#ifndef GENERICML_MOPPRIMITIVES_MOPPRIMITIVES_H
+#define GENERICML_MOPPRIMITIVES_MOPPRIMITIVES_H
 
 namespace M {
 class PrimitiveRegistry;
@@ -15,4 +15,4 @@ void registerMOPPrimitives(PrimitiveRegistry &registry);
 
 } // namespace M
 
-#endif // GENERICML_MOPPRIMITIVES_H
+#endif // GENERICML_MOPPRIMITIVES_MOPPRIMITIVES_H

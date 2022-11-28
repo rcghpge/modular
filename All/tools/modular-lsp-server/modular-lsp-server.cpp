@@ -10,6 +10,7 @@
 
 #include "Cache/CacheDialect/CacheDialect.h"
 #include "Faux/Dialect/FauxDialect.h"
+#include "GenericML/MLASPDialect/MLASPDialect.h"
 #include "GenericML/MOPDialect/MOPDialect.h"
 #include "GraphRT/BEFDialect/BEFDialect.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
@@ -17,7 +18,6 @@
 #include "Support/DebugInfoDialect/IR/DebugInfoDialect.h"
 #include "Support/HLCFDialect/HLCFDialect.h"
 #include "Support/MDialect/MDialect.h"
-#include "TFLite/MLASPDialect/MLASPDialect.h"
 #include "TFLite/MTFLDialect/MTFLDialect.h"
 #include "TFLite/TFLPDialect/TFLPDialect.h"
 #include "TensorFlow/InitAllDialects.h"
@@ -45,7 +45,7 @@ int main(int argc, char **argv) {
       // Add the Modular Dialects.
       BEF::BEFDialect, Cache::CacheDialect, DebugInfo::DebugInfoDialect,
       Faux::FauxDialect, GRT::GRTDialect, HLCF::HLCFDialect, MDialect,
-      TFL::MLASPDialect, TFL::MTFLDialect, TFLP::TFLPDialect,
+      MLASP::MLASPDialect, TFL::MTFLDialect, TFLP::TFLPDialect,
       MOP::MOPDialect>();
   // Add the KGEN Dialects.
   registerAllKGENDialects(registry);

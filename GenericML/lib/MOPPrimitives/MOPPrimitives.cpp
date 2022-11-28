@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/MOP/MOPPrimitives.h"
+#include "GenericML/MOPPrimitives/MOPPrimitives.h"
 #include "GenericML/MOP/Context.h"
 #include "GenericML/MOP/StateSlot.h"
 #include "GenericML/Support/Tensor.h"
