@@ -88,7 +88,7 @@ def MO_OutputOp
 // ConstantOp
 //===----------------------------------------------------------------------===//
 
-def MO_ConstantOp : MO_Op<"constant"> {
+def MO_ConstantOp : MO_Op<"constant", [ConstantLike, Pure]> {
   let summary = "constant MO operation";
   let description = [{
     Op to store constant tensors in model.
@@ -96,6 +96,8 @@ def MO_ConstantOp : MO_Op<"constant"> {
 
   let arguments = (ins ElementsAttr:$value);
   let results = (outs MO_Tensor:$result);
+
+  let hasFolder = 1;
 }
 
 
