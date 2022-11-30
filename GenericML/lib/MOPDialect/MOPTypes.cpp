@@ -493,7 +493,7 @@ void MOPDialect::registerTypes() {
 // CpuBufferType (cont.)
 //===----------------------------------------------------------------------===//
 
-const int64_t CpuBufferType::unknownSize = ShapedType::kDynamicSize;
+const int64_t CpuBufferType::unknownSize = ShapedType::kDynamic;
 
 /// Implements ShapedType::getShape
 ArrayRef<int64_t> CpuBufferType::getShape() const {

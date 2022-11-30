@@ -27,7 +27,7 @@ LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
   if (shape.empty())
     return emitError() << "shape must have rank greather than 0";
   for (auto dim : shape) {
-    if (dim <= 0 && dim != ShapedType::kDynamicSize) {
+    if (dim <= 0 && dim != ShapedType::kDynamic) {
       return emitError() << "shape dimensions must be strictly positive or the "
                             "distinguished '?' unknown dimension.";
     }
