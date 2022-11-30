@@ -1,0 +1,259 @@
+//===----------------------------------------------------------------------===//
+//
+// This file is Modular Inc proprietary.
+//
+//===----------------------------------------------------------------------===//
+//
+// Converts MO ops to MOP and BEF ops.
+//
+//===----------------------------------------------------------------------===//
+
+#include "GenericML/Conversion/MOToPrimitives.h"
+#include "GenericML/MODialect/MOOps.h"
+#include "GenericML/MOPDialect/MOPOps.h"
+#include "GraphRT/BEFDialect/BEFOps.h"
+#include "GraphRT/GRTDialect/GRTOps.h"
+#include "mlir/Transforms/DialectConversion.h"
+
+using namespace M;
+
+namespace M::MOP {
+
+#define GEN_PASS_DEF_MOTOPRIMITIVES
+#include "GenericML/Conversion/MOToPrimitives.h.inc"
+
+} // namespace M::MOP
+
+//===----------------------------------------------------------------------===//
+// MOGraphLowering implementation
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+/// This class orchestrates lowering of one mo.graph operation to a mop.model,
+/// consisting of nad 'init' phase, and 'execute' phase, and a model descriptor.
+///
+/// The construction state for the init/execute invokables are kept in 'init'
+/// and 'execute' members which are mutated as each operation in the input graph
+/// is lowered.
+class MOGraphLowering {
+public:
+  MOGraphLowering(MO::GraphOp graph, TypeConverter &typeConverter)
+      : graph(graph), typeConverter(typeConverter), init(graph.getContext()),
+        execute(graph.getContext()) {}
+
+  /// Lower the mo.graph to mop.model.
+  LogicalResult run();
+
+private:
+  /// This is common state used by both the init and execute phases.
+  struct CommonState {
+    explicit CommonState() = default;
+
+    /// This is the top-level mop.model operation we're building.
+    MOP::ModelOp modelOp;
+
+    CommonState(const CommonState &) = delete;
+    void operator=(const CommonState &) = delete;
+  };
+
+  /// This is the state used when building an invokable for the 'init' phase.
+  struct InitState {
+    InitState(MLIRContext *ctx) : builder(ctx) {}
+
+    /// This is the current chain value being added to.
+    Value chain;
+    /// This op creates and returns the overall MOP context.
+    MOP::ContextCreateOp mopContext;
+
+    /// This is a builder appending operations to the end of the invokable.
+    OpBuilder builder;
+
+    InitState(const InitState &) = delete;
+    void operator=(const InitState &) = delete;
+  };
+
+  /// This is stated used when building an invokable for the 'execute' phase.
+  struct ExecuteState {
+    ExecuteState(MLIRContext *ctx) : builder(ctx) {}
+
+    /// This is the original input chain to the invokable, and is ready
+    /// when the argument tensors are ready.
+    Value invokableInputChain;
+
+    /// This chain is ready when the current global state is ready for the
+    /// next possibly mutating op.
+    Value chain;
+
+    /// This is the MOP context passed in as the second argument.
+    Value mopContext;
+
+    /// Keeps track of what mo.tensor SSA values are lowered to.
+    DenseMap<Value, Value> loweredTensors;
+
+    /// This is a builder appending operations to the end of the invokable.
+    OpBuilder builder;
+
+    ExecuteState(const ExecuteState &) = delete;
+    void operator=(const ExecuteState &) = delete;
+  };
+
+  LogicalResult createModelOp();
+
+  /// Lowers the mo.output op to the 'bef.output' for the final results.
+  LogicalResult lowerOutput(MO::OutputOp output);
+
+  //===-----------------------------------------------------------------===//
+  // Lowering state
+  //===-----------------------------------------------------------------===//
+
+  /// This is the graph being lowered.
+  MO::GraphOp graph;
+  /// This helps lower tensor types.
+  TypeConverter &typeConverter;
+
+  /// This keeps track of the init and execute invokables that we're building.
+  CommonState common;
+  InitState init;
+  ExecuteState execute;
+};
+
+} // namespace
+
+//===----------------------------------------------------------------------===//
+// Creation of the init/execute invokables
+//===----------------------------------------------------------------------===//
+
+// Create the mop.model and the regions for the init/execute phases.
+LogicalResult MOGraphLowering::createModelOp() {
+  OpBuilder b(graph);
+
+  // Convert the tensor types for the model signature over.
+  SmallVector<Type> inputTypes, outputTypes;
+  if (failed(
+          typeConverter.convertTypes(graph.getArgumentTypes(), inputTypes)) ||
+      failed(typeConverter.convertTypes(graph.getResultTypes(), outputTypes))) {
+    return graph.emitError("failed to convert mo graph input/output types");
+  }
+
+  SmallVector<Location> inputLocs;
+  for (BlockArgument arg : graph.getArguments())
+    inputLocs.push_back(arg.getLoc());
+
+  // Create the mop.model and the regions for the init/execute phases.
+  b.setInsertionPoint(graph);
+  StringAttr frameworkName = b.getStringAttr("mop");
+  common.modelOp =
+      b.create<MOP::ModelOp>(graph.getLoc(), graph.getNameAttr(), frameworkName,
+                             inputTypes, outputTypes, inputLocs);
+
+  // Initialize the init state.
+  init.builder.setInsertionPointToEnd(common.modelOp.getInitBlock());
+  // Get the chain and context values for the body.
+  // This field tracks the current output chain as we lower into the init body.
+  init.chain = init.builder.create<GRT::ChainCreateOp>(graph.getLoc());
+
+  // Create the mop.context.create op without any slots.
+  init.mopContext =
+      init.builder.create<MOP::ContextCreateOp>(graph.getLoc(), 0);
+
+  // Initialize the execute state.
+  Block *executeBlock = common.modelOp.getExecuteBlock();
+  execute.builder.setInsertionPointToEnd(executeBlock);
+
+  // Extract chain and MOP context from arguments
+  execute.invokableInputChain = executeBlock->getArgument(0);
+
+  // This field tracks the current output chain as we lower into the execute
+  // body.
+  execute.chain = execute.invokableInputChain;
+
+  return success();
+}
+
+LogicalResult MOGraphLowering::lowerOutput(MO::OutputOp output) {
+  // Init phase lowering.
+
+  // Return the final chain.
+  init.builder.create<BEF::OutputOp>(
+      output.getLoc(), ArrayRef<Value>{init.chain, init.mopContext});
+
+  // Execute phase lowering.
+
+  // Figure out what values to return.  We always return a chain.
+  SmallVector<Value> operands;
+  operands.push_back(execute.chain);
+
+  // TODO: merge chains as needed
+  for (Value operand : output.getOperands())
+    operands.push_back(execute.loweredTensors.lookup(operand));
+
+  // Finally, we can create the bef.output op.
+  execute.builder.create<BEF::OutputOp>(output.getLoc(), operands);
+  return success();
+}
+
+LogicalResult MOGraphLowering::run() {
+  // Create the mop.model and the regions for the init/execute phases.
+  if (failed(createModelOp()))
+    return failure();
+
+  for (auto [graphArg, exeArg] : llvm::zip(
+           graph.getArguments(),
+           common.modelOp.getExecuteBlock()->getArguments().drop_front(2))) {
+    // If the argument has no uses then just ignore it.
+    if (graphArg.use_empty())
+      continue;
+
+    execute.loweredTensors.try_emplace(graphArg, exeArg);
+  }
+
+  // Lower all of the operations in the graph.
+  for (Operation &op : *graph.getBodyBlock()) {
+
+    // Lower mo.output to bef.output trivially.
+    if (auto output = dyn_cast<MO::OutputOp>(op)) {
+      if (failed(lowerOutput(output)))
+        return failure();
+      continue;
+    }
+
+    return op.emitError("op currently not supported");
+  }
+
+  // Ok, we're done with the original mo.graph, so remove it.
+  graph.erase();
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// MOToPrimitivesPass
+//===----------------------------------------------------------------------===//
+
+namespace {
+struct MOToPrimitivesPass
+    : public M::MOP::impl::MOToPrimitivesBase<MOToPrimitivesPass> {
+  using MOToPrimitivesBase::MOToPrimitivesBase;
+
+  void runOnOperation() override;
+};
+} // namespace
+
+void MOToPrimitivesPass::runOnOperation() {
+  ModuleOp theModule = getOperation();
+  auto &ctx = getContext();
+
+  TypeConverter converter;
+  converter.addConversion([&ctx](MO::TensorType t) -> Optional<Type> {
+    // TODO: this may fail for some element types.
+    return MOP::CpuTensorType::get(
+        &ctx, MOP::CpuTensorSpecType::get(t.getShape(), t.getElementType()));
+  });
+
+  // Convert each mo.graph into a mop.model.
+  for (auto graphOp :
+       llvm::make_early_inc_range(theModule.getOps<MO::GraphOp>())) {
+    if (failed(MOGraphLowering(graphOp, converter).run()))
+      return signalPassFailure();
+  }
+}
