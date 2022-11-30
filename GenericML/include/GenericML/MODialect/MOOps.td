@@ -135,4 +135,21 @@ def MO_ReluOp : MO_Op<"relu", [SameOperandsAndResultType, Idempotent, Pure]> {
   let results = (outs MO_Tensor:$result);
 }
 
+//===----------------------------------------------------------------------===//
+// Shape related ops
+//===----------------------------------------------------------------------===//
+
+def MO_BroadcastToOp : MO_Op<"broadcast_to", [Pure]> {
+  let summary = "BroadcastTo Operation";
+  let description = [{
+    Broadcast the input_x tensor to the shape input_shape.
+
+    The Broadcasting follows numpy semantics to determine validity of the
+    two shapes.
+  }];
+
+  let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_shape);
+  let results = (outs MO_Tensor:$result);
+}
+
 #endif // GENERICML_MODIALECT_MOOPS_TD
