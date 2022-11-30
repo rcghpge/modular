@@ -26,6 +26,8 @@ using M::LLCL::BufferRef;
 static void mop_cpu_buffer_constant(Result<BufferRef> outBuffer,
                                     BEFDynamicAttr values, Runtime &runtime) {
   // Create unowned BufferRef as the BEF outlives the BufferRef.
+  // TODO(#5369): Need to capture any alignment constraint on attribute so
+  // it is preserved if the result needs to be deep copied.
   if (auto buf = dyn_cast<ArrayRef<uint8_t>>(values))
     outBuffer.emplace(BufferRef::createBorrowed(
         const_cast<void *>(static_cast<const void *>((*buf)->data())),
@@ -327,10 +329,11 @@ static void mop_cpu_tensor_create(Chain inChain, const TensorSpec &tensorSpec,
   // ownership of the underlying buffer if the buffer is owned. If not, we will
   // clone the buffer and create a tensor from it.
   if (bufferRef.getPointer()->isUnique())
-    outTensor.emplace(Tensor::get(std::move(*bufferRef), tensorSpec, runtime));
+    outTensor.emplace(
+        Tensor::create(std::move(*bufferRef), tensorSpec, runtime));
   else
-    outTensor.emplace(Tensor::get(bufferRef->deepCopy(runtime.getAllocator()),
-                                  tensorSpec, runtime));
+    outTensor.emplace(Tensor::create(
+        bufferRef->deepCopy(runtime.getAllocator()), tensorSpec, runtime));
 }
 
 //===----------------------------------------------------------------------===//

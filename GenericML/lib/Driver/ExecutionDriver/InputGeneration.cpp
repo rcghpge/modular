@@ -108,7 +108,7 @@ M::initializeInputMemory(InputGenerationKind inputGenKind,
 
     // Allocate the tensor.
     Tensor input =
-        Tensor::getUninit({userShape, modelSpec.getEltType()}, runtime);
+        Tensor::createOwned({userShape, modelSpec.getEltType()}, runtime);
     RETURN_ERROR(
         fillWithElements(input, inputGenKind, modelSpec.getQuantSpec()));
     inputTensors.push_back(std::move(input));

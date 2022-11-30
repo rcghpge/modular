@@ -194,7 +194,7 @@ executeModelRepeated(MLIRContext *ctx, const Model *model, Runtime &runtime,
     args.reserve(model->getNumInputs());
     for (auto &input : inputTensors) {
       args.push_back(
-          AsyncValueRef<Tensor>::createReady(runtime, input.getImmortal()));
+          AsyncValueRef<Tensor>::createReady(runtime, input.getBorrowed()));
     }
 
     // Execute the model and insert its results into the results vec.
@@ -225,7 +225,7 @@ executeModelRepeated(MLIRContext *ctx, const Model *model, Runtime &runtime,
     args.reserve(model->getNumInputs());
     for (auto &input : inputTensors)
       args.push_back(
-          AsyncValueRef<Tensor>::createReady(runtime, input.getImmortal()));
+          AsyncValueRef<Tensor>::createReady(runtime, input.getBorrowed()));
 
     auto start = std::chrono::steady_clock::now();
 
@@ -297,7 +297,7 @@ ErrorOrSuccess M::runModelWithData(MLIRContext *ctx, const Model *model,
   for (const auto &[input, spec] : llvm::zip(inputs, model->getInputSpecs())) {
     if (llvm::any_of(spec.getDims(), mlir::ShapedType::isDynamic))
       return Error("Dynamic input shapes are not supported.");
-    inputTensors.emplace_back(Tensor::getImmortal(input, spec, runtime));
+    inputTensors.emplace_back(Tensor::createBorrowed(input, spec, runtime));
   }
 
   // Fill the arguments.  We are running the model once so we pass in the input

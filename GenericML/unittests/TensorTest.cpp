@@ -31,7 +31,7 @@ constexpr size_t kM = 6;
 
 static Tensor MakeTensor() {
   M::TensorSpec spec({kN, kM}, DType::getInt(8, /*isSigned=*/false).value());
-  M::Tensor result = Tensor::getUninit(std::move(spec), GetRuntime());
+  M::Tensor result = Tensor::createOwned(std::move(spec), GetRuntime());
   for (size_t i = 0, e = result.getSizeInBytes(); i < e; ++i)
     static_cast<uint8_t *>(result.getPointer())[i] = static_cast<uint8_t>(i);
   return result;
@@ -65,10 +65,10 @@ TEST(Tensor, DeepCopy) {
   ASSERT_FALSE(HaveSameContents(tensor, deepCopy));
 }
 
-TEST(Tensor, GetImmortal) {
+TEST(Tensor, GetBorrowed) {
   M::Tensor tensor = MakeTensor();
   // Immortal provides a shallow copy.
-  M::Tensor immortalCopy = tensor.getImmortal();
+  M::Tensor immortalCopy = tensor.getBorrowed();
   ASSERT_TRUE(HaveSameContents(tensor, immortalCopy));
   IncrementContents(tensor);
   ASSERT_TRUE(HaveSameContents(tensor, immortalCopy));
@@ -80,7 +80,7 @@ TEST(Tensor, FromBuffer) {
   LLCL::BufferRef ref =
       LLCL::BufferRef::createOwned(runtime->getAllocator(), 1);
   void *data = ref.getData();
-  Tensor tensor = Tensor::get(std::move(ref), spec, runtime);
+  Tensor tensor = Tensor::create(std::move(ref), spec, runtime);
   // Tensor takes the ownership from the bufer ref.
   ASSERT_EQ(data, tensor.getPointer());
   ASSERT_EQ(ref.getData(), nullptr);
