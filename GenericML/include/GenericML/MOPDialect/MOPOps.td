@@ -254,15 +254,17 @@ def CpuBufferReallocStaticOp : MOP_Op<"cpu.buffer.realloc.static", [
     underlying memory. (In debug builds both refs will also be marked
     'mutable'). The compiler must respect the following rules to avoid
     use-after-free errors and mutation-via-aliases at runtime:
-     1. For all control flow paths, at most one mop.cpu.buffer.realloc can
-        execute for the same slot and buffer indexes.
+     1. The 'one shot' rule: For all control flow paths, at most one
+        mop.cpu.buffer.realloc.* can execute for the same slot and buffer
+        indexes.
         This rule is easy to follow since no two operations in the graph should
         share the same slot, and buffer indexes should correspond to op result
         indexes.
-     2. The lifetime of the context must exceed the lifetime of the returned
-        buffer. This rule is easy to follow since the context is held by the
-        Modular runtime M::ExecutableModel, which must outlive both all calls
-        to execute and all uses of aliasing results of execute.
+     2. The 'lifetime' rule: The lifetime of the context must exceed the
+        lifetime of the returned buffer. This rule is easy to follow since the
+        context is held by the Modular runtime M::ExecutableModel, which must
+        outlive both all calls to execute and all uses of aliasing results of
+        execute.
 
     Note that though the buffer will be cached, the contents of the buffer need
     not be preserved between calls to `mop.cpu.buffer.realloc.*` in successive
