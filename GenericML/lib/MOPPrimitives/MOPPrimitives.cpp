@@ -12,6 +12,9 @@
 #include "Support/ML/SizeUtils.h"
 #include "Support/ML/TensorShape.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "llvm/Support/Debug.h"
+
+#define DEBUG_TYPE "mop_primitives"
 
 using namespace M;
 using namespace M::MOP;
@@ -329,12 +332,20 @@ static void mop_cpu_tensor_create(Chain inChain, const TensorSpec &tensorSpec,
   // If this is the last user of the given buffer, let Tensor take the
   // ownership of the underlying buffer if the buffer is owned. If not, we will
   // clone the buffer and create a tensor from it.
-  if (bufferRef.getPointer()->isUnique())
+  if (bufferRef.getPointer()->isUnique()) {
+    LLVM_DEBUG(llvm::dbgs() << "mop.cpu.tensor.create: Creating M::Tensor "
+                               "taking ownership of buffer\n");
     outTensor.emplace(
         Tensor::create(std::move(*bufferRef), tensorSpec, runtime));
-  else
+  } else {
+    LLVM_DEBUG(llvm::dbgs()
+               << "mop.cpu.tensor.create: Creating M::Tensor from copy of "
+                  "buffer since still has "
+               << std::to_string(bufferRef.getPointer()->getRefCount())
+               << " users\n");
     outTensor.emplace(Tensor::create(
         bufferRef->deepCopy(runtime.getAllocator()), tensorSpec, runtime));
+  }
 }
 
 //===----------------------------------------------------------------------===//
