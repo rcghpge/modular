@@ -108,7 +108,7 @@ static void mop_cpu_buffer_alloc_spec(Context &ctx, const TensorSpec &spec,
 /// is ignored when considering whether an existing cached buffer matches the
 /// requested size.
 static void mop_cpu_buffer_realloc_static(
-    Chain chain, Context &ctx, Result<BufferRef> result,
+    Chain inChain, Context &ctx, Result<BufferRef> result,
     BEFAttr<uint64_t> aSlot, BEFAttr<uint64_t> bBuffer, BEFAttr<uint64_t> cSize,
     BEFAttr<uint64_t> dRawAlign, Runtime &runtime) {
   if (!isValidPlainSize(*cSize)) {
@@ -127,7 +127,7 @@ static void mop_cpu_buffer_realloc_static(
 }
 
 static void mop_cpu_buffer_realloc_dynamic(
-    Chain chain, Context &ctx, size_t runtimeSize, Result<BufferRef> result,
+    Chain inChain, Context &ctx, size_t runtimeSize, Result<BufferRef> result,
     BEFAttr<uint64_t> aSlot, BEFAttr<uint64_t> bBuffer,
     BEFAttr<uint64_t> cRawAlign, Runtime &runtime) {
   if (!isValidRuntimeSize(runtimeSize)) {
@@ -145,7 +145,7 @@ static void mop_cpu_buffer_realloc_dynamic(
 }
 
 static void
-mop_cpu_buffer_realloc_spec(Chain chain, Context &ctx, const TensorSpec &spec,
+mop_cpu_buffer_realloc_spec(Chain inChain, Context &ctx, const TensorSpec &spec,
                             Result<BufferRef> result, BEFAttr<uint64_t> aSlot,
                             BEFAttr<uint64_t> bBuffer,
                             BEFAttr<uint64_t> cRawAlign, Runtime &runtime) {
@@ -196,7 +196,8 @@ static void mop_context_create(Result<Context> result,
 
 /// Constructs the default state slot with the given number of cached buffers
 /// under the given slot in the mop context.
-static Chain mop_state_slot_create(Context &ctx, BEFAttr<uint64_t> numBuffers,
+static Chain mop_state_slot_create(Chain inChain, Context &ctx,
+                                   BEFAttr<uint64_t> numBuffers,
                                    BEFAttr<uint64_t> slot) {
   ctx.emplaceStateSlot<DefaultStateSlot>(*slot, *numBuffers);
   return {};

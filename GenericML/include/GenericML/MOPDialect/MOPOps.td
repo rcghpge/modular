@@ -304,7 +304,7 @@ def CpuBufferReallocStaticOp : MOP_Op<"cpu.buffer.realloc.static", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins ChainType:$ch,
+  let arguments = (ins ChainType:$inChain,
                        MOP_ContextType:$theContext,
                        UI64Attr:$aSlot,                                         // 0
                        UI64Attr:$bBuffer,                                       // 1
@@ -312,7 +312,7 @@ def CpuBufferReallocStaticOp : MOP_Op<"cpu.buffer.realloc.static", [
                        DefaultValuedAttr<UI64Attr, "kUnknownSize">:$dRawAlign); // 3
   let results = (outs MOP_CpuBufferType:$result);
   let assemblyFormat = [{
-    $ch $theContext `[` $aSlot `,` $bBuffer `]` $cSize
+    $inChain $theContext `[` $aSlot `,` $bBuffer `]` $cSize
     (`align` $dRawAlign^)? attr-dict
   }];
   let hasVerifier = 1;
@@ -358,7 +358,7 @@ def CpuBufferReallocDynamicOp : MOP_Op<"cpu.buffer.realloc.dynamic", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins ChainType:$ch,
+  let arguments = (ins ChainType:$inChain,
                        MOP_ContextType:$theContext,
                        Index:$runtimeSize,
                        UI64Attr:$aSlot,                                         // 0
@@ -366,7 +366,7 @@ def CpuBufferReallocDynamicOp : MOP_Op<"cpu.buffer.realloc.dynamic", [
                        DefaultValuedAttr<UI64Attr, "kUnknownSize">:$cRawAlign); // 3
   let results = (outs MOP_CpuBufferType:$result);
   let assemblyFormat = [{
-    $ch $theContext `[` $aSlot `,` $bBuffer `]` $runtimeSize
+    $inChain $theContext `[` $aSlot `,` $bBuffer `]` $runtimeSize
     (`align` $cRawAlign^)? attr-dict
   }];
   let hasVerifier = 1;
@@ -411,7 +411,7 @@ def CpuBufferReallocSpecOp : MOP_Op<"cpu.buffer.realloc.spec", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins ChainType:$ch,
+  let arguments = (ins ChainType:$inChain,
                        MOP_ContextType:$theContext,
                        MOP_CpuTensorSpecType:$runtimeSpec,
                        UI64Attr:$aSlot,                                         // 0
@@ -419,7 +419,7 @@ def CpuBufferReallocSpecOp : MOP_Op<"cpu.buffer.realloc.spec", [
                        DefaultValuedAttr<UI64Attr, "kUnknownSize">:$cRawAlign); // 3
   let results = (outs MOP_CpuBufferType:$result);
   let assemblyFormat = [{
-    $ch $theContext `[` $aSlot `,` $bBuffer `]` $runtimeSpec
+    $inChain $theContext `[` $aSlot `,` $bBuffer `]` $runtimeSpec
     (`align` $cRawAlign^)? attr-dict `:` qualified(type($runtimeSpec))
   }];
   let hasVerifier = 1;
@@ -488,7 +488,7 @@ def CpuBufferSetOp : MOP_Op<"cpu.buffer.set", [
 
   let arguments = (ins MOP_CpuBufferType:$buffer,
                        DefaultValuedAttr<UI8Attr, "0">:$value);
-  let results = (outs ChainType:$result);
+  let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $buffer ($value^)? attr-dict `:` qualified(type($buffer))
   }];
@@ -531,21 +531,25 @@ def StateSlotCreateOp : MOP_Op<"state_slot.create"> {
     Example:
     ```mlir
     %ctx : !mop.context
+    %ch0 : !bef.chain
 
     // Creates a default state slot at index 42 with room for
     // two buffers.
-    %ch = mop.state_slot.create %ctx[42] 2
-    %ch : !bef.chain
+    %ch1 = mop.state_slot.create %ch0 %ctx[42] 2
+    %ch1 : !bef.chain
     ```
   }];
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names. Thankfully this matches our desired argument order.
-  let arguments = (ins MOP_ContextType:$theContext,
+  let arguments = (ins ChainType:$inChain,
+                       MOP_ContextType:$theContext,
                        UI64Attr:$numBuffers,  // 0
                        UI64Attr: $slot);      // 1
-  let results = (outs ChainType:$result);
-  let assemblyFormat = "$theContext `[` $slot `]` $numBuffers attr-dict";
+  let results = (outs ChainType:$outChain);
+  let assemblyFormat = [{
+    $inChain $theContext `[` $slot `]` $numBuffers attr-dict
+  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -817,10 +821,10 @@ def CpuTensorCreateOp : MOP_Op<"cpu.tensor.create", [
     ```
   }];
 
-  let arguments = (ins ChainType: $chain, MOP_CpuTensorSpecType: $tensorSpec,
+  let arguments = (ins ChainType: $inChain, MOP_CpuTensorSpecType: $tensorSpec,
                        MOP_CpuBufferType: $buffer);
   let results = (outs MOP_CpuTensorType: $result);
-  let assemblyFormat = [{ $chain $tensorSpec $buffer attr-dict
+  let assemblyFormat = [{ $inChain $tensorSpec $buffer attr-dict
                           `:` qualified(type($result)) }];
   let hasVerifier = 1;
 }
