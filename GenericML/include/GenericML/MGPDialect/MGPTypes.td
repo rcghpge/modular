@@ -4,22 +4,22 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This defines types in the MOP dialect.
+// This defines types in the MGP dialect.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_MOPDIALECT_MOPTYPES_TD
-#define GENERICML_MOPDIALECT_MOPTYPES_TD
+#ifndef GENERICML_MGPDIALECT_MGPTYPES_TD
+#define GENERICML_MGPDIALECT_MGPTYPES_TD
 
-include "GenericML/MOPDialect/MOPDialect.td"
+include "GenericML/MGPDialect/MGPDialect.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/SubElementInterfaces.td"
 include "mlir/IR/BuiltinTypeInterfaces.td"
 include "mlir/IR/AttrTypeBase.td"
 
 // Base class for types in this dialect.
-class MOP_Type<string name, string typeMnemonic, list<Trait> traits = []>
-    : TypeDef<MOPDialect, name, traits> {
+class MGP_Type<string name, string typeMnemonic, list<Trait> traits = []>
+    : TypeDef<MGPDialect, name, traits> {
   let mnemonic = typeMnemonic;
 }
 
@@ -27,21 +27,21 @@ class MOP_Type<string name, string typeMnemonic, list<Trait> traits = []>
 // CpuBufferType
 //===----------------------------------------------------------------------===//
 
-def MOP_CpuBufferType : MOP_Type<"CpuBuffer", "cpu.buffer",
+def MGP_CpuBufferType : MGP_Type<"CpuBuffer", "cpu.buffer",
                          [DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
   let summary = "Type of CPU-hosted, mutable, uninterpreted byte arrays, with "
                 "an optional statically known size.";
   let description = [{
-    `!mop.cpu.buffer`s are mutable CPU-hosted byte arrays which may have a
+    `!mgp.cpu.buffer`s are mutable CPU-hosted byte arrays which may have a
     statically known size. Nothing is implied about the internal structure
     of the bytes, such as rank, dimensions, underlying element type, padding,
     or element endianness. The compiler is responsible for ensuring the
     producers and consumers of buffers agree on their interpretation of the
     buffer for the intended target, and correctly sequence their side-effects.
 
-    Generally `!mop.cpu.buffer`s are the lowest-common denominator representation
+    Generally `!mgp.cpu.buffer`s are the lowest-common denominator representation
     of tensor data across CPU kernel implementations. Buffers may be wrapped by
-    various tensor types, including `!mop.cpu.tensor`, or used directly.
+    various tensor types, including `!mgp.cpu.tensor`, or used directly.
 
     This type implements `ShapedTypeInterface` as a rank-1 tensor over
     `uint8_t` with optimally known first dimension. This in turn supports the
@@ -59,7 +59,7 @@ def MOP_CpuBufferType : MOP_Type<"CpuBuffer", "cpu.buffer",
     underlying memory when no further references to the buffer are possible.
     Borrowing buffers assume the lifetime of the buffer is contained within
     the lifetime of the memory being borrowed. This difference is relevant
-    to understanding the performance of many of the mop ops.
+    to understanding the performance of many of the mgp ops.
 
     Similarly, though not exposed in MLIR or release builds, buffers may
     also be 'mutable' or 'immutable'. The runtime will assert fail if
@@ -76,8 +76,8 @@ def MOP_CpuBufferType : MOP_Type<"CpuBuffer", "cpu.buffer",
 
     Examples:
     ```mlir
-    !mop.cpu.buffer<16>   // A 16-byte buffer.
-    !mop.cpu.buffer       // A buffer who's size is only known at runtime
+    !mgp.cpu.buffer<16>   // A 16-byte buffer.
+    !mgp.cpu.buffer       // A buffer who's size is only known at runtime
     ```
   }];
 
@@ -111,7 +111,7 @@ def MOP_CpuBufferType : MOP_Type<"CpuBuffer", "cpu.buffer",
 // ContextType
 //===----------------------------------------------------------------------===//
 
-def MOP_ContextType : MOP_Type<"Context", "context"> {
+def MGP_ContextType : MGP_Type<"Context", "context"> {
   let summary = "Type of execution contexts holding a number of state slots.";
   let description = [{
     Contexts may be created by the 'init' entry point of a model, then reused
@@ -129,11 +129,11 @@ def MOP_ContextType : MOP_Type<"Context", "context"> {
     slot. The latter can access that state slot when the operation is executing
     in the model's 'execute' body.
 
-    Contexts are represented by `M::MOP::Context` in the Modular runtime.
+    Contexts are represented by `M::MGP::Context` in the Modular runtime.
 
     Example:
     ```mlir
-    !mop.context
+    !mgp.context
     ```
   }];
 }
@@ -142,7 +142,7 @@ def MOP_ContextType : MOP_Type<"Context", "context"> {
 // DTypeType
 //===----------------------------------------------------------------------===//
 
-def MOP_DTypeType : MOP_Type<"DType", "dtype"> {
+def MGP_DTypeType : MGP_Type<"DType", "dtype"> {
   let summary = "Runtime representation of the element type of a CPU tensor.";
   let description = [{
     This type represents a compact runtime encoding of an element type. It is
@@ -151,7 +151,7 @@ def MOP_DTypeType : MOP_Type<"DType", "dtype"> {
 
     Examples:
     ```mlir
-    !mop.dtype   // A uint8_t encoding of an element type at runtime.
+    !mgp.dtype   // A uint8_t encoding of an element type at runtime.
     ```
   }];
 
@@ -185,7 +185,7 @@ def MOP_DTypeType : MOP_Type<"DType", "dtype"> {
 // CpuTensorSpecType
 //===----------------------------------------------------------------------===//
 
-def MOP_CpuTensorSpecType : MOP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
+def MGP_CpuTensorSpecType : MGP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
     DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
   let summary = "Type of tensor specs of statically known rank.";
   let description = [{
@@ -245,8 +245,8 @@ def MOP_CpuTensorSpecType : MOP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
 
     Examples:
     ```mlir
-    !mop.cpu.tensor_spec<4x16xf32>
-    !mop.cpu.tensor_spec<?x?xunk>
+    !mgp.cpu.tensor_spec<4x16xf32>
+    !mgp.cpu.tensor_spec<?x?xunk>
     ```
   }];
 
@@ -324,7 +324,7 @@ def MOP_CpuTensorSpecType : MOP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
 //===----------------------------------------------------------------------===//
 
 // TODO: See also zap.ndbuffer.
-def MOP_CpuTensorType : MOP_Type<"CpuTensor", "cpu.tensor", [
+def MGP_CpuTensorType : MGP_Type<"CpuTensor", "cpu.tensor", [
     DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
   let summary = "Type of CPU-hosted tensors who's underlying buffer is in "
                 "dense row-major order according to a tensor spec.";
@@ -352,13 +352,13 @@ def MOP_CpuTensorType : MOP_Type<"CpuTensor", "cpu.tensor", [
 
     For convenience we 'inline' the tensor shape into the tensor type syntax:
     ```mlir
-    !mop.cpu.tensor<4x16xf32>
-    !mop.cpu.tensor<?x?xui8>
+    !mgp.cpu.tensor<4x16xf32>
+    !mgp.cpu.tensor<?x?xui8>
     ```
   }];
 
-  let parameters = (ins MOP_CpuTensorSpecType:$tensorSpec);
+  let parameters = (ins MGP_CpuTensorSpecType:$tensorSpec);
   let assemblyFormat = "`<` custom<TensorSpec>($tensorSpec) `>`";
 }
 
-#endif  // GENERICML_MOPDIALECT_MOPTYPES_TD
+#endif  // GENERICML_MGPDIALECT_MGPTYPES_TD

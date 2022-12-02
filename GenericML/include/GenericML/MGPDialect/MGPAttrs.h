@@ -4,30 +4,25 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares types for the Modular dialect.
+// Attributes and their helpers for the MGP dialect.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_MOPDIALECT_MOPTYPES_H
-#define GENERICML_MOPDIALECT_MOPTYPES_H
+#ifndef GENERICML_MGPDIALECT_MGPATTRS_H
+#define GENERICML_MGPDIALECT_MGPATTRS_H
 
+#include "GenericML/MGPDialect/MGPTypes.h"
+#include "Support/ForwardDecls.h"
 #include "Support/LLVMCompilerForwardDecls.h"
-#include "Support/LLVMForwardDecls.h"
-#include "Support/MDialect/MAttrs.h"
-#include "Support/ML/DType.h"
-#include "mlir/IR/Types.h"
-
-#include "GenericML/MOPDialect/MOPDialect.h"
-
-namespace M {
-class DType;
-} // namespace M
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributeInterfaces.h"
+#include "mlir/IR/BuiltinAttributes.h"
 
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations
 //===----------------------------------------------------------------------===//
 
-#define GET_TYPEDEF_CLASSES
-#include "GenericML/MOPDialect/MOPTypes.h.inc"
+#define GET_ATTRDEF_CLASSES
+#include "GenericML/MGPDialect/MGPAttrs.h.inc"
 
-#endif // GENERICML_MOPDIALECT_MOPTYPES_H
+#endif // GENERICML_MGPDIALECT_MGPATTRS_H

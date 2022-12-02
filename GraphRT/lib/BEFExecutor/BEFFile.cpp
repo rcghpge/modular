@@ -226,18 +226,18 @@ ErrorOrSuccess BEFFileImpl::enumeratePrimitiveNames(
 
 namespace {
 /// A fake 'model' used by BEFInvokable::walkPrimitives to determine the value
-/// of the mop.model's frameworkName attribute.
-class MOPModel final {
+/// of the mgp.model's frameworkName attribute.
+class MGPModel final {
 public:
-  explicit MOPModel(std::string frameworkName)
+  explicit MGPModel(std::string frameworkName)
       : frameworkName(std::move(frameworkName)) {}
 
-  static StringLiteral getEntityName() { return "mop.model"; }
+  static StringLiteral getEntityName() { return "mgp.model"; }
 
-  static ErrorOr<std::unique_ptr<MOPModel>>
+  static ErrorOr<std::unique_ptr<MGPModel>>
   getFromDescriptor(const PrimitiveDescriptor &descriptor) {
     StringRef frameworkName = *descriptor.getAttr<StringRef>(0);
-    return std::make_unique<MOPModel>(frameworkName.str());
+    return std::make_unique<MGPModel>(frameworkName.str());
   }
 
   std::string frameworkName;
@@ -263,7 +263,7 @@ CompiledFrameworkLabel BEFFile::sniffFileContents() const {
   // Method 1: Look for a distinguished model constructor op name.
   (void)((BEFFileImpl *)const_cast<BEFFile *>(this))
       ->enumeratePrimitiveNames([&](StringRef primitiveName) -> ErrorOrSuccess {
-        if (primitiveName == "mop.model") {
+        if (primitiveName == "mgp.model") {
           // We'll need to use method 2 below.
           isMopModel = true;
         } else if (CompiledFrameworkLabel::isValidOpName(primitiveName)) {
@@ -277,16 +277,16 @@ CompiledFrameworkLabel BEFFile::sniffFileContents() const {
       });
 
   if (isMopModel) {
-    // Method 2: Look at the name of the mop.model's frameworkName attribute.
-    SmallVector<std::unique_ptr<MOPModel>> models;
-    ErrorOrSuccess err = getTopLevelInvokable()->walkPrimitives<MOPModel>(
-        [&models](std::unique_ptr<MOPModel> &&model) {
+    // Method 2: Look at the name of the mgp.model's frameworkName attribute.
+    SmallVector<std::unique_ptr<MGPModel>> models;
+    ErrorOrSuccess err = getTopLevelInvokable()->walkPrimitives<MGPModel>(
+        [&models](std::unique_ptr<MGPModel> &&model) {
           models.emplace_back(std::move(model));
           return success();
         });
     if (!err.isError() && !models.empty())
       result = CompiledFrameworkLabel::getLabelForOpName(
-          "mop.model", models.front()->frameworkName);
+          "mgp.model", models.front()->frameworkName);
   }
 
   return result;

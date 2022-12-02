@@ -9,7 +9,7 @@
 
 #include "mlir/Pass/Pass.h"
 
-namespace M::MOP {
+namespace M::MGP {
 
 /// Generate the code for declaring the pass.
 #define GEN_PASS_DECL_MOTOPRIMITIVES
@@ -19,6 +19,6 @@ namespace M::MOP {
 #define GEN_PASS_REGISTRATION
 #include "GenericML/Conversion/MOToPrimitives.h.inc"
 
-} // namespace M::MOP
+} // namespace M::MGP
 
 #endif // GENERICML_CONVERSION_MOTOPRIMITIVES_H

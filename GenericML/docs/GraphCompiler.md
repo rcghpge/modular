@@ -16,6 +16,9 @@ and the [11/17/22 Onsite notes](https://www.notion.so/modularai/Graph-Compiler-D
 
 ![High Level System Diagram](High-Level_Modular_Stack_Diagram.png)
 
+[Original Image](https://docs.google.com/drawings/d/1VG2DDZZiHlMSuR0nVJxS0382u6scQLpHy3OOw5AtgNU/edit).
+
+
 ## MO (Modular Operations) Dialect
 
 MO is intended to be the framework-level interface to Modular optimizations.
@@ -162,11 +165,11 @@ Once kernels have been selected, MOGG will lower those kernels, generally in
 buffer semantics to the MO dialect for integration with framework kernels,
 memory optimizaiton, and lowering to BEF.
 
-TODO: Flesh out MOP/kGen interface
+TODO: Flesh out MGP/kGen interface
 
-## MOP (Modular Operation Primitives) Dialect
+## MGP (Modular Glue Primitives) Dialect
 
-Refer to the [MOP Dialect Design Doc](https://docs.google.com/document/d/1UN_MaYqxGR9romCN8DCZL8Gao_xpDqTo7HOq6UwmVK4/edit)
+Refer to the [MGP Dialect Design Doc](https://docs.google.com/document/d/1UN_MaYqxGR9romCN8DCZL8Gao_xpDqTo7HOq6UwmVK4/edit)
 
 ## Not Yet Considered
 

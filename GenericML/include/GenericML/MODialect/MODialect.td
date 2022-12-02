@@ -10,7 +10,7 @@
 include "mlir/IR/DialectBase.td"
 
 //===----------------------------------------------------------------------===//
-// MOPDialect
+// MGPDialect
 //===----------------------------------------------------------------------===//
 
 def MODialect : Dialect {
@@ -23,7 +23,7 @@ def MODialect : Dialect {
     The MO Dialect is intended to provide a centralized dialect for accessing
     Modular optimizations. It will provide an HLO-like IR that framework graphs
     can lower to, common graph level optimziation passes, tools for kernel
-    selection, and lowering to multi-backend execution through MOP.
+    selection, and lowering to multi-backend execution through MGP.
 
     (Rough design is currently in
     https://www.notion.so/modularai/Graph-Compiler-Design-Points-8db653075b7e4994a0916ef12f8b9083

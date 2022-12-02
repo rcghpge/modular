@@ -29,7 +29,7 @@ def MO_Tensor
     : MO_Type<"Tensor", "tensor",
               [DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
   // TODO: Relax the constraint on dynamic rank once we reach
-  // runtime agreement with MOP team.
+  // runtime agreement with MGP team.
   let summary = "Type of tensor specs of statically known rank.";
   let description = [{
     This type represents the shape and element type of a tensor. Each

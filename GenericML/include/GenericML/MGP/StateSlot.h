@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_MOP_STATESLOT_H
-#define GENERICML_MOP_STATESLOT_H
+#ifndef GENERICML_MGP_STATESLOT_H
+#define GENERICML_MGP_STATESLOT_H
 
 #include "LLCL/Support/BufferRef.h"
 #include "Support/AlignedAlloc.h"
@@ -15,7 +15,7 @@
 #include <limits>
 #include <vector>
 
-namespace M::MOP {
+namespace M::MGP {
 
 namespace Detail {
 template <typename T>
@@ -164,6 +164,6 @@ private:
 
 } // namespace Detail
 
-} // namespace M::MOP
+} // namespace M::MGP
 
-#endif // GENERICML_MOP_STATESLOT_H
+#endif // GENERICML_MGP_STATESLOT_H

@@ -4,13 +4,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/MOP/Context.h"
+#include "GenericML/MGP/Context.h"
 #include "LLCL/Runtime/Allocator.h"
 
 #include "gtest/gtest.h"
 
 using namespace M;
-using namespace M::MOP;
+using namespace M::MGP;
 
 struct PayloadA {
   explicit PayloadA(int i) : i(i) { resource = malloc(1); }

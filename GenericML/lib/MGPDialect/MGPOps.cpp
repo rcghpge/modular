@@ -4,11 +4,11 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file implements the MOP dialect operations.
+// This file implements the MGP dialect operations.
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/MOPDialect/MOPOps.h"
+#include "GenericML/MGPDialect/MGPOps.h"
 #include "Support/ErrorOr.h"
 #include "Support/MDialect/MAttrs.h"
 #include "Support/ML/CompiledFrameworkLabel.h"
@@ -22,7 +22,7 @@
 #include "mlir/IR/TypeUtilities.h"
 
 using namespace M;
-using namespace MOP;
+using namespace MGP;
 
 //===----------------------------------------------------------------------===//
 // CpuBufferConstantOp
@@ -314,7 +314,7 @@ LogicalResult CpuBufferReallocSpecOp::inferReturnTypes(
 // CpuTensorSpecCreateOp
 //===----------------------------------------------------------------------===//
 
-/// Parses a !mop.cpu.tensor_spec type where the element type must be known, but
+/// Parses a !mgp.cpu.tensor_spec type where the element type must be known, but
 /// represented in 'raw form'.
 static ParseResult parseRawDimsAndDType(AsmParser &p,
                                         IntArrayElementsAttr &rawDims,
@@ -325,9 +325,9 @@ static ParseResult parseRawDimsAndDType(AsmParser &p,
     return failure();
   auto tensorSpec = dyn_cast<CpuTensorSpecType>(type);
   if (tensorSpec == nullptr)
-    return p.emitError(loc) << "expected a !mop.cpu.tensor_spec type.";
+    return p.emitError(loc) << "expected a !mgp.cpu.tensor_spec type.";
   if (!tensorSpec.getOptDType())
-    return p.emitError(loc) << "expected !mop.cpu.tensor_spec type to have a "
+    return p.emitError(loc) << "expected !mgp.cpu.tensor_spec type to have a "
                                "known element type.";
 
   rawDims = tensorSpec.getRawDims();
@@ -336,7 +336,7 @@ static ParseResult parseRawDimsAndDType(AsmParser &p,
   return success();
 }
 
-/// Prints a !mop.cpu.tensor_spec type, but represented in 'raw form'.
+/// Prints a !mgp.cpu.tensor_spec type, but represented in 'raw form'.
 static void printRawDimsAndDType(AsmPrinter &p, const CpuTensorSpecCreateOp &op,
                                  IntArrayElementsAttr rawDims,
                                  IntegerAttr rawDType) {
@@ -382,7 +382,7 @@ LogicalResult CpuTensorSpecCreateOp::inferReturnTypes(
 // CpuTensorSpecCreateDynamicOp
 //===----------------------------------------------------------------------===//
 
-/// Parses a !mop.cpu.tensor_spec type where the element type is unknown, but
+/// Parses a !mgp.cpu.tensor_spec type where the element type is unknown, but
 /// represented in 'raw form'.
 static ParseResult parseRawDims(AsmParser &p, IntArrayElementsAttr &rawDims) {
   Type type;
@@ -391,9 +391,9 @@ static ParseResult parseRawDims(AsmParser &p, IntArrayElementsAttr &rawDims) {
     return failure();
   auto tensorSpec = dyn_cast<CpuTensorSpecType>(type);
   if (tensorSpec == nullptr)
-    return p.emitError(loc) << "expected a !mop.cpu.tensor_spec type.";
+    return p.emitError(loc) << "expected a !mgp.cpu.tensor_spec type.";
   if (tensorSpec.getOptDType())
-    return p.emitError(loc) << "expected !mop.cpu.tensor_spec type to have an "
+    return p.emitError(loc) << "expected !mgp.cpu.tensor_spec type to have an "
                                "unknown element type.";
 
   rawDims = tensorSpec.getRawDims();
@@ -401,7 +401,7 @@ static ParseResult parseRawDims(AsmParser &p, IntArrayElementsAttr &rawDims) {
   return success();
 }
 
-/// Prints a !mop.cpu.tensor_spec type, but represented in 'raw form'.
+/// Prints a !mgp.cpu.tensor_spec type, but represented in 'raw form'.
 static void printRawDims(AsmPrinter &p, const CpuTensorSpecCreateDynamicOp &op,
                          IntArrayElementsAttr rawDims) {
   p << CpuTensorSpecType::get(rawDims, /*rawDTypeOrNull=*/{});
@@ -442,7 +442,7 @@ LogicalResult CpuTensorSpecCreateDynamicOp::inferReturnTypes(
 // SpecExtractShapeOp
 //===----------------------------------------------------------------------===//
 
-/// Parses a !mop.cpu.tensor_spec type, however also sets the rawDims to
+/// Parses a !mgp.cpu.tensor_spec type, however also sets the rawDims to
 /// capture it's dimensions in 'raw form'.
 static ParseResult
 parseTensorSpecTypeWithRawDims(AsmParser &p, Type &specType,
@@ -452,7 +452,7 @@ parseTensorSpecTypeWithRawDims(AsmParser &p, Type &specType,
     return failure();
   auto tensorSpec = dyn_cast<CpuTensorSpecType>(specType);
   if (tensorSpec == nullptr)
-    p.emitError(loc) << "expected !mop.cpu.tensor_spec type";
+    p.emitError(loc) << "expected !mgp.cpu.tensor_spec type";
   rawDims = tensorSpec.getRawDims();
   return success();
 }
@@ -573,14 +573,14 @@ LogicalResult CpuTensorExtractOp::inferReturnTypes(
 /// Returns the implicit signature of the 'init' entry point.
 static FunctionType implicitInitSignature(Builder &builder) {
   return builder.getFunctionType({}, {builder.getType<BEF::ChainType>(),
-                                      builder.getType<MOP::ContextType>()});
+                                      builder.getType<MGP::ContextType>()});
 }
 
 /// Returns the implicit signature of the 'execute' entry point, before
 /// any explicit inputs and results have been included.
 static FunctionType implicitExecuteSignature(Builder &builder) {
   return builder.getFunctionType(
-      {builder.getType<BEF::ChainType>(), builder.getType<MOP::ContextType>()},
+      {builder.getType<BEF::ChainType>(), builder.getType<MGP::ContextType>()},
       {builder.getType<BEF::ChainType>()});
 }
 
@@ -689,7 +689,7 @@ LogicalResult ModelOp::verifyRegions() {
   OpBuilder builder(getContext());
 
   // The type of the init region is
-  //  () -> (!bef.chain, !mop.context)
+  //  () -> (!bef.chain, !mgp.context)
   Block *initBlock = getInitBlock();
   if (auto output = dyn_cast<BEF::OutputOp>(initBlock->getTerminator())) {
     FunctionType implicitInitSig = implicitInitSignature(builder);
@@ -706,7 +706,7 @@ LogicalResult ModelOp::verifyRegions() {
   }
 
   // The type of the execute region is:
-  //   (!bef.chain, !mop.context, arg_1, ... arg_n) ->
+  //   (!bef.chain, !mgp.context, arg_1, ... arg_n) ->
   //   (!bef.chain, res_1, ... res_m)
   // where the ModelOp's inputOutputTypes are:
   //   (arg_1, ... arg_n) -> (res_1, ... res_m)
@@ -763,13 +763,13 @@ LogicalResult ModelOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// MOPDialect op support
+// MGPDialect op support
 //===----------------------------------------------------------------------===//
 
-void MOPDialect::registerOperations() {
+void MGPDialect::registerOperations() {
   addOperations<
 #define GET_OP_LIST
-#include "GenericML/MOPDialect/MOP.cpp.inc"
+#include "GenericML/MGPDialect/MGP.cpp.inc"
       >();
 }
 
@@ -778,4 +778,4 @@ void MOPDialect::registerOperations() {
 //===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
-#include "GenericML/MOPDialect/MOP.cpp.inc"
+#include "GenericML/MGPDialect/MGP.cpp.inc"

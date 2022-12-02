@@ -4,23 +4,23 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This defines attributes in the MOP dialect.
+// This defines attributes in the MGP dialect.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_MOPDIALECT_MOPATTRS_TD
-#define GENERICML_MOPDIALECT_MOPATTRS_TD
+#ifndef GENERICML_MGPDIALECT_MGPATTRS_TD
+#define GENERICML_MGPDIALECT_MGPATTRS_TD
 
-include "GenericML/MOPDialect/MOPDialect.td"
+include "GenericML/MGPDialect/MGPDialect.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/BuiltinAttributeInterfaces.td"
 
 // Base class for attributes in this dialect.
-class MOP_Attr<string attrName, string attrMnemonic, list<Trait> traits = []>
-    : AttrDef<MOPDialect, attrName, traits> {
+class MGP_Attr<string attrName, string attrMnemonic, list<Trait> traits = []>
+    : AttrDef<MGPDialect, attrName, traits> {
   let mnemonic = attrMnemonic;
 }
 
 // Currently no attributes.
 
-#endif  // GENERICML_MOPDIALECT_MOPATTRS_TD
+#endif  // GENERICML_MGPDIALECT_MGPATTRS_TD

@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/MOPDialect/MOPTypes.h"
-#include "GenericML/MOPDialect/MOPDialect.h"
+#include "GenericML/MGPDialect/MGPTypes.h"
+#include "GenericML/MGPDialect/MGPDialect.h"
 #include "Support/Compiler/MLIRDType.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"
@@ -19,7 +19,7 @@
 #include "llvm/ADT/TypeSwitch.h"
 
 using namespace M;
-using namespace MOP;
+using namespace MGP;
 
 //===----------------------------------------------------------------------===//
 // CpuBufferType
@@ -472,13 +472,13 @@ Type CpuTensorType::getElementType() const {
 }
 
 //===----------------------------------------------------------------------===//
-// MOPDialect type support
+// MGPDialect type support
 //===----------------------------------------------------------------------===//
 
-void MOPDialect::registerTypes() {
+void MGPDialect::registerTypes() {
   addTypes<
 #define GET_TYPEDEF_LIST
-#include "GenericML/MOPDialect/MOPTypes.cpp.inc"
+#include "GenericML/MGPDialect/MGPTypes.cpp.inc"
       >();
 }
 
@@ -487,7 +487,7 @@ void MOPDialect::registerTypes() {
 //===----------------------------------------------------------------------===//
 
 #define GET_TYPEDEF_CLASSES
-#include "GenericML/MOPDialect/MOPTypes.cpp.inc"
+#include "GenericML/MGPDialect/MGPTypes.cpp.inc"
 
 //===----------------------------------------------------------------------===//
 // CpuBufferType (cont.)

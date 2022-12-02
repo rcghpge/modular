@@ -4,13 +4,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/MOP/StateSlot.h"
+#include "GenericML/MGP/StateSlot.h"
 
 #include "LLCL/Support/BufferRef.h"
 #include "Support/AlignedAlloc.h"
 
 using namespace M;
-using namespace MOP;
+using namespace MGP;
 
 StateSlot::StateSlot(TypeID typeID, size_t numBuffers)
     : typeID(typeID), bufferCache(numBuffers) {

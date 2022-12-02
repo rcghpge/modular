@@ -4,16 +4,16 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the operation classes for the MOP dialect.
+// This file declares the operation classes for the MGP dialect.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_MOPDIALECT_MOPOPS_H
-#define GENERICML_MOPDIALECT_MOPOPS_H
+#ifndef GENERICML_MGPDIALECT_MGPOPS_H
+#define GENERICML_MGPDIALECT_MGPOPS_H
 
-#include "GenericML/MOPDialect/MOPAttrs.h"
-#include "GenericML/MOPDialect/MOPDialect.h"
-#include "GenericML/MOPDialect/MOPTypes.h"
+#include "GenericML/MGPDialect/MGPAttrs.h"
+#include "GenericML/MGPDialect/MGPDialect.h"
+#include "GenericML/MGPDialect/MGPTypes.h"
 #include "GraphRT/BEFDialect/BEFOps.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/MDialect/MAttrs.h"
@@ -33,6 +33,6 @@ class ModuleOp;
 //===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
-#include "GenericML/MOPDialect/MOP.h.inc"
+#include "GenericML/MGPDialect/MGP.h.inc"
 
-#endif // GENERICML_MOPDIALECT_MOPOPS_H
+#endif // GENERICML_MGPDIALECT_MGPOPS_H

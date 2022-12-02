@@ -4,17 +4,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/MOPDialect/MOPDialect.h"
+#include "GenericML/MGPDialect/MGPDialect.h"
 #include "GraphRT/BEFDialect/BEFDialect.h"
 
 using namespace M;
-using namespace MOP;
+using namespace MGP;
 
 //===----------------------------------------------------------------------===//
-// MOPDialect
+// MGPDialect
 //===----------------------------------------------------------------------===//
 
-void MOPDialect::initialize() {
+void MGPDialect::initialize() {
   registerTypes();
   registerAttributes();
   registerOperations();
@@ -24,4 +24,4 @@ void MOPDialect::initialize() {
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/MOPDialect/MOPDialect.cpp.inc"
+#include "GenericML/MGPDialect/MGPDialect.cpp.inc"

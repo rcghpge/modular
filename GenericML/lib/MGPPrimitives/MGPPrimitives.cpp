@@ -4,9 +4,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/MOPPrimitives/MOPPrimitives.h"
-#include "GenericML/MOP/Context.h"
-#include "GenericML/MOP/StateSlot.h"
+#include "GenericML/MGPPrimitives/MGPPrimitives.h"
+#include "GenericML/MGP/Context.h"
+#include "GenericML/MGP/StateSlot.h"
 #include "GenericML/Support/Tensor.h"
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
 #include "Support/ML/SizeUtils.h"
@@ -14,19 +14,19 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "llvm/Support/Debug.h"
 
-#define DEBUG_TYPE "mop_primitives"
+#define DEBUG_TYPE "mgp_primitives"
 
 using namespace M;
-using namespace M::MOP;
+using namespace M::MGP;
 using M::LLCL::BufferRef;
 
 //===----------------------------------------------------------------------===//
-// mop.cpu.buffer.constant
+// mgp.cpu.buffer.constant
 //===----------------------------------------------------------------------===//
 
 /// Fulfills the result with the borrowed BufferRef whose data is backed by
 /// the given constant.
-static void mop_cpu_buffer_constant(Result<BufferRef> outBuffer,
+static void mgp_cpu_buffer_constant(Result<BufferRef> outBuffer,
                                     BEFDynamicAttr values, Runtime &runtime) {
   // Create unowned BufferRef as the BEF outlives the BufferRef.
   // TODO(#5369): Need to capture any alignment constraint on attribute so
@@ -41,13 +41,13 @@ static void mop_cpu_buffer_constant(Result<BufferRef> outBuffer,
 }
 
 //===----------------------------------------------------------------------===//
-// mop.cpu.buffer.alloc.*
+// mgp.cpu.buffer.alloc.*
 //===----------------------------------------------------------------------===//
 
 /// Returns in result a freshly allocated BufferRef. The size can be provided
 /// statically, via an runtime size argument, or via a runtime TensorSpec.
 /// Any alignment attribute is respected.
-static void mop_cpu_buffer_alloc_static(Context &ctx, Result<BufferRef> result,
+static void mgp_cpu_buffer_alloc_static(Context &ctx, Result<BufferRef> result,
                                         BEFAttr<uint64_t> aSize,
                                         BEFAttr<uint64_t> bRawAlign,
                                         Runtime &runtime) {
@@ -65,7 +65,7 @@ static void mop_cpu_buffer_alloc_static(Context &ctx, Result<BufferRef> result,
       rawSizeToRuntimeSizeOrDefault(*bRawAlign, kPreferredMemoryAlignment)));
 }
 
-static void mop_cpu_buffer_alloc_dynamic(Context &ctx, size_t runtimeSize,
+static void mgp_cpu_buffer_alloc_dynamic(Context &ctx, size_t runtimeSize,
                                          Result<BufferRef> result,
                                          BEFAttr<uint64_t> rawAlign,
                                          Runtime &runtime) {
@@ -82,7 +82,7 @@ static void mop_cpu_buffer_alloc_dynamic(Context &ctx, size_t runtimeSize,
       rawSizeToRuntimeSizeOrDefault(*rawAlign, kPreferredMemoryAlignment)));
 }
 
-static void mop_cpu_buffer_alloc_spec(Context &ctx, const TensorSpec &spec,
+static void mgp_cpu_buffer_alloc_spec(Context &ctx, const TensorSpec &spec,
                                       Result<BufferRef> result,
                                       BEFAttr<uint64_t> rawAlign,
                                       Runtime &runtime) {
@@ -96,7 +96,7 @@ static void mop_cpu_buffer_alloc_spec(Context &ctx, const TensorSpec &spec,
 }
 
 //===----------------------------------------------------------------------===//
-// mop.cpu.buffer.realloc.*
+// mgp.cpu.buffer.realloc.*
 //===----------------------------------------------------------------------===//
 
 /// Returns a mutable borrow BufferRef of a cached buffer. The buffer is cached
@@ -110,7 +110,7 @@ static void mop_cpu_buffer_alloc_spec(Context &ctx, const TensorSpec &spec,
 /// Any alignment attribute is respected on allocation, however alignment
 /// is ignored when considering whether an existing cached buffer matches the
 /// requested size.
-static void mop_cpu_buffer_realloc_static(
+static void mgp_cpu_buffer_realloc_static(
     Chain inChain, Context &ctx, Result<BufferRef> result,
     BEFAttr<uint64_t> aSlot, BEFAttr<uint64_t> bBuffer, BEFAttr<uint64_t> cSize,
     BEFAttr<uint64_t> dRawAlign, Runtime &runtime) {
@@ -129,7 +129,7 @@ static void mop_cpu_buffer_realloc_static(
       rawSizeToRuntimeSizeOrDefault(*dRawAlign, kPreferredMemoryAlignment)));
 }
 
-static void mop_cpu_buffer_realloc_dynamic(
+static void mgp_cpu_buffer_realloc_dynamic(
     Chain inChain, Context &ctx, size_t runtimeSize, Result<BufferRef> result,
     BEFAttr<uint64_t> aSlot, BEFAttr<uint64_t> bBuffer,
     BEFAttr<uint64_t> cRawAlign, Runtime &runtime) {
@@ -148,7 +148,7 @@ static void mop_cpu_buffer_realloc_dynamic(
 }
 
 static void
-mop_cpu_buffer_realloc_spec(Chain inChain, Context &ctx, const TensorSpec &spec,
+mgp_cpu_buffer_realloc_spec(Chain inChain, Context &ctx, const TensorSpec &spec,
                             Result<BufferRef> result, BEFAttr<uint64_t> aSlot,
                             BEFAttr<uint64_t> bBuffer,
                             BEFAttr<uint64_t> cRawAlign, Runtime &runtime) {
@@ -163,43 +163,43 @@ mop_cpu_buffer_realloc_spec(Chain inChain, Context &ctx, const TensorSpec &spec,
 }
 
 //===----------------------------------------------------------------------===//
-// mop.cpu.buffer.copy
+// mgp.cpu.buffer.copy
 //===----------------------------------------------------------------------===//
 
 /// Fulfills the result with the owning reference to the deep copy of inBuffer.
-static void mop_cpu_buffer_copy(Context &ctx, AsyncValueRef<BufferRef> inBuffer,
+static void mgp_cpu_buffer_copy(Context &ctx, AsyncValueRef<BufferRef> inBuffer,
                                 Result<BufferRef> outBuffer, Runtime &runtime) {
   outBuffer.emplace(inBuffer->deepCopy(runtime.getAllocator()));
 }
 
 //===----------------------------------------------------------------------===//
-// mop.cpu.buffer.set
+// mgp.cpu.buffer.set
 //===----------------------------------------------------------------------===//
 
 /// Set each byte of the given inBuffer with the given Value, returns chain.
-static Chain mop_cpu_buffer_set(BufferRef &buffer, BEFAttr<uint8_t> value) {
+static Chain mgp_cpu_buffer_set(BufferRef &buffer, BEFAttr<uint8_t> value) {
   memset(buffer.getData(), *value, buffer.getSize());
   return {};
 }
 
 //===----------------------------------------------------------------------===//
-// mop.context.create
+// mgp.context.create
 //===----------------------------------------------------------------------===//
 
 /// Fulfills the result with a Context initialized with `numPrimContexts`
 /// primitive contexts.
-static void mop_context_create(Result<Context> result,
+static void mgp_context_create(Result<Context> result,
                                BEFAttr<uint64_t> numSlots) {
   result->emplace<Context>(*numSlots);
 }
 
 //===----------------------------------------------------------------------===//
-// mop.state_slot.create
+// mgp.state_slot.create
 //===----------------------------------------------------------------------===//
 
 /// Constructs the default state slot with the given number of cached buffers
-/// under the given slot in the mop context.
-static Chain mop_state_slot_create(Chain inChain, Context &ctx,
+/// under the given slot in the mgp context.
+static Chain mgp_state_slot_create(Chain inChain, Context &ctx,
                                    BEFAttr<uint64_t> numBuffers,
                                    BEFAttr<uint64_t> slot) {
   ctx.emplaceStateSlot<DefaultStateSlot>(*slot, *numBuffers);
@@ -207,13 +207,13 @@ static Chain mop_state_slot_create(Chain inChain, Context &ctx,
 }
 
 //===----------------------------------------------------------------------===//
-// mop.cpu.tensor_spec.create
+// mgp.cpu.tensor_spec.create
 //===----------------------------------------------------------------------===//
 
 /// Creates a TensorSpec by combining the runtime and statically known
 /// shape dimensions and the statically known DType. Only runtime dimensions
 /// corresponding to unknown dimensions should be passed in runtimeDims.
-static void mop_cpu_tensor_spec_create(RemainingArguments runtimeDims,
+static void mgp_cpu_tensor_spec_create(RemainingArguments runtimeDims,
                                        Result<TensorSpec> outSpec,
                                        BEFAttr<ArrayRef<uint64_t>> aRawDims,
                                        BEFAttr<uint8_t> bRawDType,
@@ -242,13 +242,13 @@ static void mop_cpu_tensor_spec_create(RemainingArguments runtimeDims,
 }
 
 //===----------------------------------------------------------------------===//
-// mop.cpu.tensor_spec.create.dynamic
+// mgp.cpu.tensor_spec.create.dynamic
 //===----------------------------------------------------------------------===//
 
 /// Creates a TensorSpec by combining the runtime and statically known
 /// shape dimensions and a runtime DType. Only runtime dimensions corresponding
 /// to unknown dimensions should be passed in runtimeDims.
-static void mop_cpu_tensor_spec_create_dynamic(
+static void mgp_cpu_tensor_spec_create_dynamic(
     DType runtimeDType, RemainingArguments runtimeDims,
     Result<TensorSpec> outSpec, BEFAttr<ArrayRef<uint64_t>> rawDims,
     Runtime &runtime) {
@@ -275,12 +275,12 @@ static void mop_cpu_tensor_spec_create_dynamic(
 }
 
 //===----------------------------------------------------------------------===//
-// mop.cpu.tensor_spec.dims.dynamic
+// mgp.cpu.tensor_spec.dims.dynamic
 //===----------------------------------------------------------------------===//
 
 /// Fulfills the result with dimensions of tensor spec which were unknown
 /// at compile time.
-static void mop_cpu_tensor_spec_dims_dynamic(
+static void mgp_cpu_tensor_spec_dims_dynamic(
     const TensorSpec &tensorSpec, RemainingResults results,
     BEFAttr<ArrayRef<uint64_t>> rawDims, Runtime &runtime) {
   // All of the results are created as size_t.
@@ -294,52 +294,52 @@ static void mop_cpu_tensor_spec_dims_dynamic(
 }
 
 //===----------------------------------------------------------------------===//
-// mop.cpu.tensor_spec.size
+// mgp.cpu.tensor_spec.size
 //===----------------------------------------------------------------------===//
 
-static void mop_cpu_tensor_spec_size(const TensorSpec &tensorSpec,
+static void mgp_cpu_tensor_spec_size(const TensorSpec &tensorSpec,
                                      Result<size_t> result) {
   result.emplace(tensorSpec.getSizeInBytes());
 }
 
 //===----------------------------------------------------------------------===//
-// mop.cpu.tensor_spec.num_elems
+// mgp.cpu.tensor_spec.num_elems
 //===----------------------------------------------------------------------===//
 
-static void mop_cpu_tensor_spec_num_elems(const TensorSpec &tensorSpec,
+static void mgp_cpu_tensor_spec_num_elems(const TensorSpec &tensorSpec,
                                           Result<size_t> result) {
   result.emplace(tensorSpec.getNumElements());
 }
 
 //===----------------------------------------------------------------------===//
-// mop.cpu.tensor_spec.dtype
+// mgp.cpu.tensor_spec.dtype
 //===----------------------------------------------------------------------===//
 
-static void mop_cpu_tensor_spec_dtype(const TensorSpec &tensorSpec,
+static void mgp_cpu_tensor_spec_dtype(const TensorSpec &tensorSpec,
                                       Result<DType> result) {
   result.emplace(tensorSpec.getEltType());
 }
 
 //===----------------------------------------------------------------------===//
-// mop.cpu.tensor.create
+// mgp.cpu.tensor.create
 //===----------------------------------------------------------------------===//
 
 /// Fulfills the outTensor by creating a tensor from the given tensor spec and
 /// the buffer.
-static void mop_cpu_tensor_create(Chain inChain, const TensorSpec &tensorSpec,
+static void mgp_cpu_tensor_create(Chain inChain, const TensorSpec &tensorSpec,
                                   AsyncValueRef<BufferRef> bufferRef,
                                   Result<Tensor> outTensor, Runtime &runtime) {
   // If this is the last user of the given buffer, let Tensor take the
   // ownership of the underlying buffer if the buffer is owned. If not, we will
   // clone the buffer and create a tensor from it.
   if (bufferRef.getPointer()->isUnique()) {
-    LLVM_DEBUG(llvm::dbgs() << "mop.cpu.tensor.create: Creating M::Tensor "
+    LLVM_DEBUG(llvm::dbgs() << "mgp.cpu.tensor.create: Creating M::Tensor "
                                "taking ownership of buffer\n");
     outTensor.emplace(
         Tensor::create(std::move(*bufferRef), tensorSpec, runtime));
   } else {
     LLVM_DEBUG(llvm::dbgs()
-               << "mop.cpu.tensor.create: Creating M::Tensor from copy of "
+               << "mgp.cpu.tensor.create: Creating M::Tensor from copy of "
                   "buffer since still has "
                << std::to_string(bufferRef.getPointer()->getRefCount())
                << " users\n");
@@ -349,12 +349,12 @@ static void mop_cpu_tensor_create(Chain inChain, const TensorSpec &tensorSpec,
 }
 
 //===----------------------------------------------------------------------===//
-// mop.cpu.tensor.extract
+// mgp.cpu.tensor.extract
 //===----------------------------------------------------------------------===//
 
 /// fulfills the outTensorSpec and outBuffer with the corresponding tensor spec
 /// and buffer from the input tensor.
-static void mop_cpu_tensor_extract(AsyncValueRef<Tensor> tensor,
+static void mgp_cpu_tensor_extract(AsyncValueRef<Tensor> tensor,
                                    Result<TensorSpec> outTensorSpec,
                                    Result<BufferRef> outBuffer,
                                    Runtime &runtime) {
@@ -368,47 +368,47 @@ static void mop_cpu_tensor_extract(AsyncValueRef<Tensor> tensor,
 }
 
 //===----------------------------------------------------------------------===//
-// mop.model
+// mgp.model
 //===----------------------------------------------------------------------===//
 
-void mop_model() { assert(false && "mop.model should never be invoked"); }
+void mgp_model() { assert(false && "mgp.model should never be invoked"); }
 
 //===----------------------------------------------------------------------===//
 // Primitive registration
 //===----------------------------------------------------------------------===//
 
-void M::registerMOPPrimitives(PrimitiveRegistry &registry) {
+void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   StateSlot::registerType<DefaultStateSlot>();
 
-  ADD_PRIMITIVE(registry, "mop.cpu.buffer.constant", mop_cpu_buffer_constant);
-  ADD_PRIMITIVE(registry, "mop.cpu.buffer.alloc.static",
-                mop_cpu_buffer_alloc_static);
-  ADD_PRIMITIVE(registry, "mop.cpu.buffer.alloc.dynamic",
-                mop_cpu_buffer_alloc_dynamic);
-  ADD_PRIMITIVE(registry, "mop.cpu.buffer.alloc.spec",
-                mop_cpu_buffer_alloc_spec);
-  ADD_PRIMITIVE(registry, "mop.cpu.buffer.realloc.static",
-                mop_cpu_buffer_realloc_static);
-  ADD_PRIMITIVE(registry, "mop.cpu.buffer.realloc.dynamic",
-                mop_cpu_buffer_realloc_dynamic);
-  ADD_PRIMITIVE(registry, "mop.cpu.buffer.realloc.spec",
-                mop_cpu_buffer_realloc_spec);
-  ADD_PRIMITIVE(registry, "mop.cpu.buffer.copy", mop_cpu_buffer_copy);
-  ADD_PRIMITIVE(registry, "mop.cpu.buffer.set", mop_cpu_buffer_set);
-  ADD_PRIMITIVE(registry, "mop.context.create", mop_context_create);
-  ADD_PRIMITIVE(registry, "mop.state_slot.create", mop_state_slot_create);
-  ADD_PRIMITIVE(registry, "mop.cpu.tensor_spec.create",
-                mop_cpu_tensor_spec_create);
-  ADD_PRIMITIVE(registry, "mop.cpu.tensor_spec.create.dynamic",
-                mop_cpu_tensor_spec_create_dynamic);
-  ADD_PRIMITIVE(registry, "mop.cpu.tensor_spec.dims.dynamic",
-                mop_cpu_tensor_spec_dims_dynamic);
-  ADD_PRIMITIVE(registry, "mop.cpu.tensor_spec.size", mop_cpu_tensor_spec_size);
-  ADD_PRIMITIVE(registry, "mop.cpu.tensor_spec.num_elems",
-                mop_cpu_tensor_spec_num_elems);
-  ADD_PRIMITIVE(registry, "mop.cpu.tensor_spec.dtype",
-                mop_cpu_tensor_spec_dtype);
-  ADD_PRIMITIVE(registry, "mop.cpu.tensor.create", mop_cpu_tensor_create);
-  ADD_PRIMITIVE(registry, "mop.cpu.tensor.extract", mop_cpu_tensor_extract);
-  ADD_PRIMITIVE(registry, "mop.model", mop_model);
+  ADD_PRIMITIVE(registry, "mgp.cpu.buffer.constant", mgp_cpu_buffer_constant);
+  ADD_PRIMITIVE(registry, "mgp.cpu.buffer.alloc.static",
+                mgp_cpu_buffer_alloc_static);
+  ADD_PRIMITIVE(registry, "mgp.cpu.buffer.alloc.dynamic",
+                mgp_cpu_buffer_alloc_dynamic);
+  ADD_PRIMITIVE(registry, "mgp.cpu.buffer.alloc.spec",
+                mgp_cpu_buffer_alloc_spec);
+  ADD_PRIMITIVE(registry, "mgp.cpu.buffer.realloc.static",
+                mgp_cpu_buffer_realloc_static);
+  ADD_PRIMITIVE(registry, "mgp.cpu.buffer.realloc.dynamic",
+                mgp_cpu_buffer_realloc_dynamic);
+  ADD_PRIMITIVE(registry, "mgp.cpu.buffer.realloc.spec",
+                mgp_cpu_buffer_realloc_spec);
+  ADD_PRIMITIVE(registry, "mgp.cpu.buffer.copy", mgp_cpu_buffer_copy);
+  ADD_PRIMITIVE(registry, "mgp.cpu.buffer.set", mgp_cpu_buffer_set);
+  ADD_PRIMITIVE(registry, "mgp.context.create", mgp_context_create);
+  ADD_PRIMITIVE(registry, "mgp.state_slot.create", mgp_state_slot_create);
+  ADD_PRIMITIVE(registry, "mgp.cpu.tensor_spec.create",
+                mgp_cpu_tensor_spec_create);
+  ADD_PRIMITIVE(registry, "mgp.cpu.tensor_spec.create.dynamic",
+                mgp_cpu_tensor_spec_create_dynamic);
+  ADD_PRIMITIVE(registry, "mgp.cpu.tensor_spec.dims.dynamic",
+                mgp_cpu_tensor_spec_dims_dynamic);
+  ADD_PRIMITIVE(registry, "mgp.cpu.tensor_spec.size", mgp_cpu_tensor_spec_size);
+  ADD_PRIMITIVE(registry, "mgp.cpu.tensor_spec.num_elems",
+                mgp_cpu_tensor_spec_num_elems);
+  ADD_PRIMITIVE(registry, "mgp.cpu.tensor_spec.dtype",
+                mgp_cpu_tensor_spec_dtype);
+  ADD_PRIMITIVE(registry, "mgp.cpu.tensor.create", mgp_cpu_tensor_create);
+  ADD_PRIMITIVE(registry, "mgp.cpu.tensor.extract", mgp_cpu_tensor_extract);
+  ADD_PRIMITIVE(registry, "mgp.model", mgp_model);
 }

@@ -4,25 +4,25 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Converts MO ops to MOP and BEF ops.
+// Converts MO ops to MGP and BEF ops.
 //
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/Conversion/MOToPrimitives.h"
+#include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MODialect/MOOps.h"
-#include "GenericML/MOPDialect/MOPOps.h"
 #include "GraphRT/BEFDialect/BEFOps.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 using namespace M;
 
-namespace M::MOP {
+namespace M::MGP {
 
 #define GEN_PASS_DEF_MOTOPRIMITIVES
 #include "GenericML/Conversion/MOToPrimitives.h.inc"
 
-} // namespace M::MOP
+} // namespace M::MGP
 
 //===----------------------------------------------------------------------===//
 // MOGraphLowering implementation
@@ -30,7 +30,7 @@ namespace M::MOP {
 
 namespace {
 
-/// This class orchestrates lowering of one mo.graph operation to a mop.model,
+/// This class orchestrates lowering of one mo.graph operation to a mgp.model,
 /// consisting of nad 'init' phase, and 'execute' phase, and a model descriptor.
 ///
 /// The construction state for the init/execute invokables are kept in 'init'
@@ -42,7 +42,7 @@ public:
       : graph(graph), typeConverter(typeConverter), init(graph.getContext()),
         execute(graph.getContext()) {}
 
-  /// Lower the mo.graph to mop.model.
+  /// Lower the mo.graph to mgp.model.
   LogicalResult run();
 
 private:
@@ -50,8 +50,8 @@ private:
   struct CommonState {
     explicit CommonState() = default;
 
-    /// This is the top-level mop.model operation we're building.
-    MOP::ModelOp modelOp;
+    /// This is the top-level mgp.model operation we're building.
+    MGP::ModelOp modelOp;
 
     CommonState(const CommonState &) = delete;
     void operator=(const CommonState &) = delete;
@@ -63,8 +63,8 @@ private:
 
     /// This is the current chain value being added to.
     Value chain;
-    /// This op creates and returns the overall MOP context.
-    MOP::ContextCreateOp mopContext;
+    /// This op creates and returns the overall MGP context.
+    MGP::ContextCreateOp mgpContext;
 
     /// This is a builder appending operations to the end of the invokable.
     OpBuilder builder;
@@ -85,8 +85,8 @@ private:
     /// next possibly mutating op.
     Value chain;
 
-    /// This is the MOP context passed in as the second argument.
-    Value mopContext;
+    /// This is the MGP context passed in as the second argument.
+    Value mgpContext;
 
     /// Keeps track of what mo.tensor SSA values are lowered to.
     DenseMap<Value, Value> loweredTensors;
@@ -124,7 +124,7 @@ private:
 // Creation of the init/execute invokables
 //===----------------------------------------------------------------------===//
 
-// Create the mop.model and the regions for the init/execute phases.
+// Create the mgp.model and the regions for the init/execute phases.
 LogicalResult MOGraphLowering::createModelOp() {
   OpBuilder b(graph);
 
@@ -140,11 +140,11 @@ LogicalResult MOGraphLowering::createModelOp() {
   for (BlockArgument arg : graph.getArguments())
     inputLocs.push_back(arg.getLoc());
 
-  // Create the mop.model and the regions for the init/execute phases.
+  // Create the mgp.model and the regions for the init/execute phases.
   b.setInsertionPoint(graph);
-  StringAttr frameworkName = b.getStringAttr("mop");
+  StringAttr frameworkName = b.getStringAttr("mgp");
   common.modelOp =
-      b.create<MOP::ModelOp>(graph.getLoc(), graph.getNameAttr(), frameworkName,
+      b.create<MGP::ModelOp>(graph.getLoc(), graph.getNameAttr(), frameworkName,
                              inputTypes, outputTypes, inputLocs);
 
   // Initialize the init state.
@@ -153,15 +153,15 @@ LogicalResult MOGraphLowering::createModelOp() {
   // This field tracks the current output chain as we lower into the init body.
   init.chain = init.builder.create<GRT::ChainCreateOp>(graph.getLoc());
 
-  // Create the mop.context.create op without any slots.
-  init.mopContext =
-      init.builder.create<MOP::ContextCreateOp>(graph.getLoc(), 0);
+  // Create the mgp.context.create op without any slots.
+  init.mgpContext =
+      init.builder.create<MGP::ContextCreateOp>(graph.getLoc(), 0);
 
   // Initialize the execute state.
   Block *executeBlock = common.modelOp.getExecuteBlock();
   execute.builder.setInsertionPointToEnd(executeBlock);
 
-  // Extract chain and MOP context from arguments
+  // Extract chain and MGP context from arguments
   execute.invokableInputChain = executeBlock->getArgument(0);
 
   // This field tracks the current output chain as we lower into the execute
@@ -176,7 +176,7 @@ LogicalResult MOGraphLowering::lowerOutput(MO::OutputOp output) {
 
   // Return the final chain.
   init.builder.create<BEF::OutputOp>(
-      output.getLoc(), ArrayRef<Value>{init.chain, init.mopContext});
+      output.getLoc(), ArrayRef<Value>{init.chain, init.mgpContext});
 
   // Execute phase lowering.
 
@@ -194,7 +194,7 @@ LogicalResult MOGraphLowering::lowerOutput(MO::OutputOp output) {
 }
 
 LogicalResult MOGraphLowering::run() {
-  // Create the mop.model and the regions for the init/execute phases.
+  // Create the mgp.model and the regions for the init/execute phases.
   if (failed(createModelOp()))
     return failure();
 
@@ -232,7 +232,7 @@ LogicalResult MOGraphLowering::run() {
 
 namespace {
 struct MOToPrimitivesPass
-    : public M::MOP::impl::MOToPrimitivesBase<MOToPrimitivesPass> {
+    : public M::MGP::impl::MOToPrimitivesBase<MOToPrimitivesPass> {
   using MOToPrimitivesBase::MOToPrimitivesBase;
 
   void runOnOperation() override;
@@ -246,11 +246,11 @@ void MOToPrimitivesPass::runOnOperation() {
   TypeConverter converter;
   converter.addConversion([&ctx](MO::TensorType t) -> Optional<Type> {
     // TODO: this may fail for some element types.
-    return MOP::CpuTensorType::get(
-        &ctx, MOP::CpuTensorSpecType::get(t.getShape(), t.getElementType()));
+    return MGP::CpuTensorType::get(
+        &ctx, MGP::CpuTensorSpecType::get(t.getShape(), t.getElementType()));
   });
 
-  // Convert each mo.graph into a mop.model.
+  // Convert each mo.graph into a mgp.model.
   for (auto graphOp :
        llvm::make_early_inc_range(theModule.getOps<MO::GraphOp>())) {
     if (failed(MOGraphLowering(graphOp, converter).run()))

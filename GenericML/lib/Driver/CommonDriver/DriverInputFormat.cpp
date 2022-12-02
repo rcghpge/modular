@@ -45,17 +45,17 @@ FileFormat M::sniffInputFormat(StringRef fileContents) {
     // comments (e.g. CHECK lines), for example.
     if (fileContents.contains("mtfl.graph"))
       return FileFormat::kMTFLDialect;
-    if (size_t start = fileContents.find("mop.model");
+    if (size_t start = fileContents.find("mgp.model");
         start != StringRef::npos) {
-      // For mop.model our desperation is even worse: we'll just look for
-      //    mop.model @<name> : <framework>
+      // For mgp.model our desperation is even worse: we'll just look for
+      //    mgp.model @<name> : <framework>
       StringRef suffix = fileContents.drop_front(start);
-      std::regex regex(R"(mop\.model\s+@\w+\s*:\s*(\w+))");
+      std::regex regex(R"(mgp\.model\s+@\w+\s*:\s*(\w+))");
       std::match_results<StringRef::iterator> m;
       std::regex_search(suffix.begin(), suffix.end(), m, regex);
       if (!m.empty() && m.size() == 2) {
         // Map the CompiledFrameworkLabel enum into the larger FileFormat enum.
-        switch (CompiledFrameworkLabel::getLabelForOpName("mop.model",
+        switch (CompiledFrameworkLabel::getLabelForOpName("mgp.model",
                                                           StringRef(m[1]))
                     .value) {
         case CompiledFrameworkLabel::kUnknown:

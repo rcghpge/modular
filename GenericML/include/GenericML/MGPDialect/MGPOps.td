@@ -4,30 +4,30 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This defines operations in the MOP dialect.
+// This defines operations in the MGP dialect.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_MOPDIALECT_MOPOPS_TD
-#define GENERICML_MOPDIALECT_MOPOPS_TD
+#ifndef GENERICML_MGPDIALECT_MGPOPS_TD
+#define GENERICML_MGPDIALECT_MGPOPS_TD
 
 include "GraphRT/BEFDialect/BEFTypes.td"
 include "Support/MDialect/MAttrs.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
-include "GenericML/MOPDialect/MOPDialect.td"
-include "GenericML/MOPDialect/MOPTypes.td"
+include "GenericML/MGPDialect/MGPDialect.td"
+include "GenericML/MGPDialect/MGPTypes.td"
 
 // Base class for ops in this dialect.
-class MOP_Op<string mnemonic, list<Trait> traits = []> :
-    Op<MOPDialect, mnemonic, traits>;
+class MGP_Op<string mnemonic, list<Trait> traits = []> :
+    Op<MGPDialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
 // CpuBufferConstantOp
 //===----------------------------------------------------------------------===//
 
-def CpuBufferConstantOp : MOP_Op<"cpu.buffer.constant",
+def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant",
                              [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
     Creates a buffer hosted on the CPU whose data is aliased with
@@ -49,19 +49,19 @@ def CpuBufferConstantOp : MOP_Op<"cpu.buffer.constant",
 
     Example:
     ```mlir
-    %buf = mop.cpu.buffer.constant #m.aligned_buffer<8: "0x00010203">
-    %buf : !mop.cpu.buffer<4>  // at least 8 byte aligned in storage
+    %buf = mgp.cpu.buffer.constant #m.aligned_buffer<8: "0x00010203">
+    %buf : !mgp.cpu.buffer<4>  // at least 8 byte aligned in storage
 
-    %buf = mop.cpu.buffer.constant dense_resource<label>:!m.array<4xui8>
-    %buf : !mop.cpu.buffer<4>  // respecting alignment encoded in blob at label
+    %buf = mgp.cpu.buffer.constant dense_resource<label>:!m.array<4xui8>
+    %buf : !mgp.cpu.buffer<4>  // respecting alignment encoded in blob at label
 
-    %buf = mop.cpu.buffer.constant array<ui8: 0, 1, 2, 3>
-    %buf : !mop.cpu.buffer<4>  // no specific alignment in storage
+    %buf = mgp.cpu.buffer.constant array<ui8: 0, 1, 2, 3>
+    %buf : !mgp.cpu.buffer<4>  // no specific alignment in storage
     ```
   }];
 
   let arguments = (ins ElementsAttr:$value);
-  let results = (outs MOP_CpuBufferType:$result);
+  let results = (outs MGP_CpuBufferType:$result);
   let assemblyFormat = "$value attr-dict";
   let hasVerifier = 1;
 
@@ -78,17 +78,17 @@ def CpuBufferConstantOp : MOP_Op<"cpu.buffer.constant",
 //  {static size vs dynamic size vs dynamic tensor spec} x {alloc vs re-alloc}
 //
 //  CpuBufferAllocStaticOp: Alloc with statically known size
-//    mop.cpu.buffer.alloc.static        %ctx      64
+//    mgp.cpu.buffer.alloc.static        %ctx      64
 //  CpuBufferAllocDynamicOp: Alloc with dynamic size
-//    mop.cpu.buffer.alloc.dynamic       %ctx      %size
+//    mgp.cpu.buffer.alloc.dynamic       %ctx      %size
 //  CpuBufferAllocSpecOp: Alloc with dynamic tensor spec
-//    mop.cpu.buffer.alloc.spec          %ctxt     %spec
+//    mgp.cpu.buffer.alloc.spec          %ctxt     %spec
 //  CpuBufferReallocStaticOp: Re-alloc with statically known size
-//    mop.cpu.buffer.realloc.static  %ch %ctx[5,1] 64
+//    mgp.cpu.buffer.realloc.static  %ch %ctx[5,1] 64
 //  CpuBufferReallocDynamicOp: Re-alloc with dynamic size
-//    mop.cpu.buffer.realloc.dynamic %ch %ctx[5,1] %size
+//    mgp.cpu.buffer.realloc.dynamic %ch %ctx[5,1] %size
 //  CpuBufferReallocDynamicOp: Re-alloc with dynamic tensor spec
-//    mop.cpu.buffer.realloc.spec    %ch %ctx[5,1] %spec
+//    mgp.cpu.buffer.realloc.spec    %ch %ctx[5,1] %spec
 //
 //===----------------------------------------------------------------------===//
 
@@ -96,7 +96,7 @@ def CpuBufferConstantOp : MOP_Op<"cpu.buffer.constant",
 // CpuBufferAllocStaticOp
 //===----------------------------------------------------------------------===//
 
-def CpuBufferAllocStaticOp : MOP_Op<"cpu.buffer.alloc.static", [
+def CpuBufferAllocStaticOp : MGP_Op<"cpu.buffer.alloc.static", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
     Allocates an uninitialized buffer on the CPU with size taken from
@@ -117,22 +117,22 @@ def CpuBufferAllocStaticOp : MOP_Op<"cpu.buffer.alloc.static", [
 
     Example:
     ```mlir
-    %ctx : !mop.context
+    %ctx : !mgp.context
 
-    %buf = mop.cpu.buffer.alloc.static %ctx 64 align 8
-    %buf : !mop.cpu.buffer<64>  // 64 bytes aligned to 8 bytes
+    %buf = mgp.cpu.buffer.alloc.static %ctx 64 align 8
+    %buf : !mgp.cpu.buffer<64>  // 64 bytes aligned to 8 bytes
 
-    %buf = mop.cpu.buffer.alloc.static %ctx 64
-    %buf : !mop.cpu.buffer<64>  // 64 bytes with no specific alignment
+    %buf = mgp.cpu.buffer.alloc.static %ctx 64
+    %buf : !mgp.cpu.buffer<64>  // 64 bytes with no specific alignment
     ```
   }];
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MOP_ContextType:$theContext,
+  let arguments = (ins MGP_ContextType:$theContext,
                        UI64Attr:$aSize,                                         // 0
                        DefaultValuedAttr<UI64Attr, "kUnknownSize">:$bRawAlign); // 1
-  let results = (outs MOP_CpuBufferType:$result);
+  let results = (outs MGP_CpuBufferType:$result);
   let assemblyFormat = [{
     $theContext $aSize (`align` $bRawAlign^)? attr-dict
   }];
@@ -143,7 +143,7 @@ def CpuBufferAllocStaticOp : MOP_Op<"cpu.buffer.alloc.static", [
 // CpuBufferAllocDynamicOp
 //===----------------------------------------------------------------------===//
 
-def CpuBufferAllocDynamicOp : MOP_Op<"cpu.buffer.alloc.dynamic", [
+def CpuBufferAllocDynamicOp : MGP_Op<"cpu.buffer.alloc.dynamic", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
     Allocates an uninitialized buffer on the CPU with size taken from index
@@ -160,21 +160,21 @@ def CpuBufferAllocDynamicOp : MOP_Op<"cpu.buffer.alloc.dynamic", [
 
     Example:
     ```mlir
-    %ctx : !mop.context
+    %ctx : !mgp.context
     %size : index
 
-    %buf = mop.cpu.buffer.alloc.dynamic %ctx %size align 8
-    %buf : !mop.cpu.buffer  // aligned to 8 bytes
+    %buf = mgp.cpu.buffer.alloc.dynamic %ctx %size align 8
+    %buf : !mgp.cpu.buffer  // aligned to 8 bytes
 
-    %buf = mop.cpu.buffer.alloc.dynamic %ctx %size
-    %buf : !mop.cpu.buffer  // no specific alignment
+    %buf = mgp.cpu.buffer.alloc.dynamic %ctx %size
+    %buf : !mgp.cpu.buffer  // no specific alignment
     ```
   }];
 
-  let arguments = (ins MOP_ContextType:$theContext,
+  let arguments = (ins MGP_ContextType:$theContext,
                        Index:$runtimeSize,
                        DefaultValuedAttr<UI64Attr, "kUnknownSize">:$rawAlign);
-  let results = (outs MOP_CpuBufferType:$result);
+  let results = (outs MGP_CpuBufferType:$result);
   let assemblyFormat = [{
     $theContext $runtimeSize (`align` $rawAlign^)? attr-dict
   }];
@@ -185,7 +185,7 @@ def CpuBufferAllocDynamicOp : MOP_Op<"cpu.buffer.alloc.dynamic", [
 // CpuBufferAllocSpecOp
 //===----------------------------------------------------------------------===//
 
-def CpuBufferAllocSpecOp : MOP_Op<"cpu.buffer.alloc.spec", [
+def CpuBufferAllocSpecOp : MGP_Op<"cpu.buffer.alloc.spec", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
     Allocates an uninitialized buffer on the CPU with size taken from tensor
@@ -202,21 +202,21 @@ def CpuBufferAllocSpecOp : MOP_Op<"cpu.buffer.alloc.spec", [
 
     Example:
     ```mlir
-    %ctx : !mop.context
-    %spec : !mop.tensor_spec<?x64xf32>
+    %ctx : !mgp.context
+    %spec : !mgp.tensor_spec<?x64xf32>
 
-    %buf = mop.cpu.buffer.alloc.spec %ctx %spec align 8 : !mop.cpu.tensor_spec<?x64xf32>
-    %buf : !mop.cpu.buffer  // aligned to 8 bytes
+    %buf = mgp.cpu.buffer.alloc.spec %ctx %spec align 8 : !mgp.cpu.tensor_spec<?x64xf32>
+    %buf : !mgp.cpu.buffer  // aligned to 8 bytes
 
-    %buf = mop.cpu.buffer.alloc.spec %ctx %spec : !mop.cpu.tensor_spec<?x64xf32>
-    %buf : !mop.cpu.buffer  // no specific alignment
+    %buf = mgp.cpu.buffer.alloc.spec %ctx %spec : !mgp.cpu.tensor_spec<?x64xf32>
+    %buf : !mgp.cpu.buffer  // no specific alignment
     ```
   }];
 
-  let arguments = (ins MOP_ContextType:$theContext,
-                       MOP_CpuTensorSpecType:$runtimeSpec,
+  let arguments = (ins MGP_ContextType:$theContext,
+                       MGP_CpuTensorSpecType:$runtimeSpec,
                        DefaultValuedAttr<UI64Attr, "kUnknownSize">:$rawAlign);
-  let results = (outs MOP_CpuBufferType:$result);
+  let results = (outs MGP_CpuBufferType:$result);
   let assemblyFormat = [{
     $theContext $runtimeSpec (`align` $rawAlign^)? attr-dict
     `:` qualified(type($runtimeSpec))
@@ -228,7 +228,7 @@ def CpuBufferAllocSpecOp : MOP_Op<"cpu.buffer.alloc.spec", [
 // CpuBufferReallocStaticOp
 //===----------------------------------------------------------------------===//
 
-def CpuBufferReallocStaticOp : MOP_Op<"cpu.buffer.realloc.static", [
+def CpuBufferReallocStaticOp : MGP_Op<"cpu.buffer.realloc.static", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
     (Re)allocates a cached CPU buffer on the CPU with size taken from
@@ -255,7 +255,7 @@ def CpuBufferReallocStaticOp : MOP_Op<"cpu.buffer.realloc.static", [
     'mutable'). The compiler must respect the following rules to avoid
     use-after-free errors and mutation-via-aliases at runtime:
      1. The 'one shot' rule: For all control flow paths, at most one
-        mop.cpu.buffer.realloc.* can execute for the same slot and buffer
+        mgp.cpu.buffer.realloc.* can execute for the same slot and buffer
         indexes.
         This rule is easy to follow since no two operations in the graph should
         share the same slot, and buffer indexes should correspond to op result
@@ -267,7 +267,7 @@ def CpuBufferReallocStaticOp : MOP_Op<"cpu.buffer.realloc.static", [
         execute.
 
     Note that though the buffer will be cached, the contents of the buffer need
-    not be preserved between calls to `mop.cpu.buffer.realloc.*` in successive
+    not be preserved between calls to `mgp.cpu.buffer.realloc.*` in successive
     invocations of the model 'execute' body. This rule allows the runtime
     to avoid some buffer copies when extracting the buffer from a tensor
     which itself was created using a cached buffer. In other words, the cache
@@ -279,38 +279,38 @@ def CpuBufferReallocStaticOp : MOP_Op<"cpu.buffer.realloc.static", [
     ```mlir
        init {
          ...
-         %buf1 = mop.cpu.buffer.realloc.static %ch %ctx[2, 0] 48 align 8
+         %buf1 = mgp.cpu.buffer.realloc.static %ch %ctx[2, 0] 48 align 8
        }
        execute (...) -> ... {
          ...
-         %buf2 = mop.cpu.buffer.realloc.static %ch %ctx[2, 0] 48 align 16
+         %buf2 = mgp.cpu.buffer.realloc.static %ch %ctx[2, 0] 48 align 16
        }
     ```
     the second realloc will always reuse the buffer from the first realloc.
 
     Example:
     ```mlir
-    %ctx : !mop.context
+    %ctx : !mgp.context
     %ch : !bef.chain
 
     // Reallocate the buffer in slot index 42 and buffer index 2.
-    %buf = mop.cpu.buffer.realloc.static %ch %ctx[42, 2] 64 align 8
-    %buf : !mop.cpu.buffer<64>   // 64 bytes aligned to 8 bytes
+    %buf = mgp.cpu.buffer.realloc.static %ch %ctx[42, 2] 64 align 8
+    %buf : !mgp.cpu.buffer<64>   // 64 bytes aligned to 8 bytes
 
-    %buf = mop.cpu.buffer.realloc.static %ch %ctx[42, 2] 64
-    %buf : !mop.cpu.buffer<64>  // 64 bytes with no specific alignment
+    %buf = mgp.cpu.buffer.realloc.static %ch %ctx[42, 2] 64
+    %buf : !mgp.cpu.buffer<64>  // 64 bytes with no specific alignment
     ```
   }];
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
   let arguments = (ins ChainType:$inChain,
-                       MOP_ContextType:$theContext,
+                       MGP_ContextType:$theContext,
                        UI64Attr:$aSlot,                                         // 0
                        UI64Attr:$bBuffer,                                       // 1
                        UI64Attr:$cSize,                                         // 2
                        DefaultValuedAttr<UI64Attr, "kUnknownSize">:$dRawAlign); // 3
-  let results = (outs MOP_CpuBufferType:$result);
+  let results = (outs MGP_CpuBufferType:$result);
   let assemblyFormat = [{
     $inChain $theContext `[` $aSlot `,` $bBuffer `]` $cSize
     (`align` $dRawAlign^)? attr-dict
@@ -322,7 +322,7 @@ def CpuBufferReallocStaticOp : MOP_Op<"cpu.buffer.realloc.static", [
 // CpuBufferReallocDynamicOp
 //===----------------------------------------------------------------------===//
 
-def CpuBufferReallocDynamicOp : MOP_Op<"cpu.buffer.realloc.dynamic", [
+def CpuBufferReallocDynamicOp : MGP_Op<"cpu.buffer.realloc.dynamic", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
     (Re)allocates a cached CPU buffer on the CPU with size taken from index
@@ -343,28 +343,28 @@ def CpuBufferReallocDynamicOp : MOP_Op<"cpu.buffer.realloc.dynamic", [
 
     Example:
     ```mlir
-    %ctx : !mop.context
+    %ctx : !mgp.context
     %size : index
     %ch : !bef.chain
 
     // Reallocate the buffer in slot index 42 and buffer index 2.
-    %buf = mop.cpu.buffer.realloc.dynamic %ch %ctx[42, 2] %size align 8
-    %buf : !mop.cpu.buffer      // 8 bytes aligned
+    %buf = mgp.cpu.buffer.realloc.dynamic %ch %ctx[42, 2] %size align 8
+    %buf : !mgp.cpu.buffer      // 8 bytes aligned
 
-    %buf = mop.cpu.buffer.realloc.dynamic %ch %ctx[42, 2] %size
-    %buf : !mop.cpu.buffer<64>  // no specific alignment
+    %buf = mgp.cpu.buffer.realloc.dynamic %ch %ctx[42, 2] %size
+    %buf : !mgp.cpu.buffer<64>  // no specific alignment
     ```
   }];
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
   let arguments = (ins ChainType:$inChain,
-                       MOP_ContextType:$theContext,
+                       MGP_ContextType:$theContext,
                        Index:$runtimeSize,
                        UI64Attr:$aSlot,                                         // 0
                        UI64Attr:$bBuffer,                                       // 1
                        DefaultValuedAttr<UI64Attr, "kUnknownSize">:$cRawAlign); // 3
-  let results = (outs MOP_CpuBufferType:$result);
+  let results = (outs MGP_CpuBufferType:$result);
   let assemblyFormat = [{
     $inChain $theContext `[` $aSlot `,` $bBuffer `]` $runtimeSize
     (`align` $cRawAlign^)? attr-dict
@@ -376,7 +376,7 @@ def CpuBufferReallocDynamicOp : MOP_Op<"cpu.buffer.realloc.dynamic", [
 // CpuBufferReallocSpecOp
 //===----------------------------------------------------------------------===//
 
-def CpuBufferReallocSpecOp : MOP_Op<"cpu.buffer.realloc.spec", [
+def CpuBufferReallocSpecOp : MGP_Op<"cpu.buffer.realloc.spec", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
     (Re)allocates a cached CPU buffer on the CPU with size taken from operand.
@@ -396,28 +396,28 @@ def CpuBufferReallocSpecOp : MOP_Op<"cpu.buffer.realloc.spec", [
 
     Example:
     ```mlir
-    %ctx : !mop.context
-    %spec : !mop.cpu.tensor_spec<?x64xf32>
+    %ctx : !mgp.context
+    %spec : !mgp.cpu.tensor_spec<?x64xf32>
     %ch : !bef.chain
 
     // Reallocate the buffer in slot index 42 and buffer index 2.
-    %buf = mop.cpu.buffer.realloc.spec %ch %ctx[42, 2] %spec align 8 : !mop.cpu.tensor_spec<?x64xf32>
-    %buf : !mop.cpu.buffer      // 8 bytes aligned
+    %buf = mgp.cpu.buffer.realloc.spec %ch %ctx[42, 2] %spec align 8 : !mgp.cpu.tensor_spec<?x64xf32>
+    %buf : !mgp.cpu.buffer      // 8 bytes aligned
 
-    %buf = mop.cpu.buffer.realloc.spec %ch %ctx[42, 2] : %spec !mop.cpu.tensor_spec<?x64xf32>
-    %buf : !mop.cpu.buffer<64>  // no specific alignment
+    %buf = mgp.cpu.buffer.realloc.spec %ch %ctx[42, 2] : %spec !mgp.cpu.tensor_spec<?x64xf32>
+    %buf : !mgp.cpu.buffer<64>  // no specific alignment
     ```
   }];
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
   let arguments = (ins ChainType:$inChain,
-                       MOP_ContextType:$theContext,
-                       MOP_CpuTensorSpecType:$runtimeSpec,
+                       MGP_ContextType:$theContext,
+                       MGP_CpuTensorSpecType:$runtimeSpec,
                        UI64Attr:$aSlot,                                         // 0
                        UI64Attr:$bBuffer,                                       // 1
                        DefaultValuedAttr<UI64Attr, "kUnknownSize">:$cRawAlign); // 3
-  let results = (outs MOP_CpuBufferType:$result);
+  let results = (outs MGP_CpuBufferType:$result);
   let assemblyFormat = [{
     $inChain $theContext `[` $aSlot `,` $bBuffer `]` $runtimeSpec
     (`align` $cRawAlign^)? attr-dict `:` qualified(type($runtimeSpec))
@@ -429,7 +429,7 @@ def CpuBufferReallocSpecOp : MOP_Op<"cpu.buffer.realloc.spec", [
 // CpuBufferCopyOp
 //===----------------------------------------------------------------------===//
 
-def CpuBufferCopyOp : MOP_Op<"cpu.buffer.copy", [
+def CpuBufferCopyOp : MGP_Op<"cpu.buffer.copy", [
     AllTypesMatch<["buffer", "result"]>]> {
   let summary = "Copies the contents of a CPU buffer.";
   let description = [{
@@ -437,11 +437,11 @@ def CpuBufferCopyOp : MOP_Op<"cpu.buffer.copy", [
     In debug builds the result will also be 'mutable'.
 
     Generally this op should only be needed when testing the use
-    of `mop.cpu.buffer.realloc` using a `!mop.context` which is created
-    within the test itself. By rule 2 of `mop.cpu.buffer.realloc` the
-    result of `mop.cpu.buffer.realloc` cannot outlive the context itself,
+    of `mgp.cpu.buffer.realloc` using a `!mgp.context` which is created
+    within the test itself. By rule 2 of `mgp.cpu.buffer.realloc` the
+    result of `mgp.cpu.buffer.realloc` cannot outlive the context itself,
     so a copy is needed to return that buffer to the test harness
-    for printing etc. It takes `!mop.context` as an argument to
+    for printing etc. It takes `!mgp.context` as an argument to
     make sure that the context survives until the copy is performed.
 
     Any alignment constraint on the operand buffer is preserved in
@@ -449,15 +449,15 @@ def CpuBufferCopyOp : MOP_Op<"cpu.buffer.copy", [
 
     Example:
     ```mlir
-    %ctx : !mop.context
-    %buf1 : !mop.cpu.buffer
-    %buf2 = mop.cpu.buffer.copy %ctx %buf1 : !mop.cpu.buffer
-    %buf2 : !mop.cpu.buffer  // with same alignment as %buf1
+    %ctx : !mgp.context
+    %buf1 : !mgp.cpu.buffer
+    %buf2 = mgp.cpu.buffer.copy %ctx %buf1 : !mgp.cpu.buffer
+    %buf2 : !mgp.cpu.buffer  // with same alignment as %buf1
     ```
   }];
 
-  let arguments = (ins MOP_ContextType:$theContext, MOP_CpuBufferType:$buffer);
-  let results = (outs MOP_CpuBufferType:$result);
+  let arguments = (ins MGP_ContextType:$theContext, MGP_CpuBufferType:$buffer);
+  let results = (outs MGP_CpuBufferType:$result);
   let assemblyFormat = [{
     $theContext $buffer attr-dict `:` qualified(type($result))
   }];
@@ -467,7 +467,7 @@ def CpuBufferCopyOp : MOP_Op<"cpu.buffer.copy", [
 // CpuBufferSetOp
 //===----------------------------------------------------------------------===//
 
-def CpuBufferSetOp : MOP_Op<"cpu.buffer.set", [
+def CpuBufferSetOp : MGP_Op<"cpu.buffer.set", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
     Set each byte of the given buffer to the given value (default = 0).
@@ -477,16 +477,16 @@ def CpuBufferSetOp : MOP_Op<"cpu.buffer.set", [
 
     Example:
     ```mlir
-    %buf : !mop.cpu.buffer<>
+    %buf : !mgp.cpu.buffer<>
 
     // Set each byte of the buffer to 0.
-    %ch = mop.cpu.buffer.set %buf : !mop.cpu.buffer<>
+    %ch = mgp.cpu.buffer.set %buf : !mgp.cpu.buffer<>
     // Set each byte of the buffer to 1.
-    %ch = mop.cpu.buffer.set %buf 1 : !mop.cpu.buffer<>
+    %ch = mgp.cpu.buffer.set %buf 1 : !mgp.cpu.buffer<>
     ```
   }];
 
-  let arguments = (ins MOP_CpuBufferType:$buffer,
+  let arguments = (ins MGP_CpuBufferType:$buffer,
                        DefaultValuedAttr<UI8Attr, "0">:$value);
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
@@ -498,20 +498,20 @@ def CpuBufferSetOp : MOP_Op<"cpu.buffer.set", [
 // ContextCreateOp
 //===----------------------------------------------------------------------===//
 
-def ContextCreateOp : MOP_Op<"context.create"> {
+def ContextCreateOp : MGP_Op<"context.create"> {
   let summary = "Creates a context with given number of state slots.";
   let description = [{
     Creates a context with the given number of 'state slots'.
 
     Example:
     ```mlir
-    %ctx = mop.context.create 4
-    %ctx : !mop.context
+    %ctx = mgp.context.create 4
+    %ctx : !mgp.context
     ```
   }];
 
   let arguments = (ins UI64Attr:$numSlots);
-  let results = (outs MOP_ContextType:$result);
+  let results = (outs MGP_ContextType:$result);
   let assemblyFormat = "$numSlots attr-dict";
 }
 
@@ -519,7 +519,7 @@ def ContextCreateOp : MOP_Op<"context.create"> {
 // StateSlotCreateOp
 //===----------------------------------------------------------------------===//
 
-def StateSlotCreateOp : MOP_Op<"state_slot.create"> {
+def StateSlotCreateOp : MGP_Op<"state_slot.create"> {
   let summary = [{
     Creates a default state slot within the context at the given slot index.
   }];
@@ -530,12 +530,12 @@ def StateSlotCreateOp : MOP_Op<"state_slot.create"> {
 
     Example:
     ```mlir
-    %ctx : !mop.context
+    %ctx : !mgp.context
     %ch0 : !bef.chain
 
     // Creates a default state slot at index 42 with room for
     // two buffers.
-    %ch1 = mop.state_slot.create %ch0 %ctx[42] 2
+    %ch1 = mgp.state_slot.create %ch0 %ctx[42] 2
     %ch1 : !bef.chain
     ```
   }];
@@ -543,7 +543,7 @@ def StateSlotCreateOp : MOP_Op<"state_slot.create"> {
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names. Thankfully this matches our desired argument order.
   let arguments = (ins ChainType:$inChain,
-                       MOP_ContextType:$theContext,
+                       MGP_ContextType:$theContext,
                        UI64Attr:$numBuffers,  // 0
                        UI64Attr: $slot);      // 1
   let results = (outs ChainType:$outChain);
@@ -556,7 +556,7 @@ def StateSlotCreateOp : MOP_Op<"state_slot.create"> {
 // CpuTensorSpecCreateOp
 //===----------------------------------------------------------------------===//
 
-def CpuTensorSpecCreateOp : MOP_Op<"cpu.tensor_spec.create", [
+def CpuTensorSpecCreateOp : MGP_Op<"cpu.tensor_spec.create", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
     Creates a CPU tensor spec from a mix of runtime and static dimensions and
@@ -576,11 +576,11 @@ def CpuTensorSpecCreateOp : MOP_Op<"cpu.tensor_spec.create", [
     %dim0 : index
     %dim1 : index
 
-    %spec = mop.cpu.tensor_spec.create %dim0 %dim1 : !mop.cpu.tensor_spec<?x?xf32>
-    %spec : !mop.cpu.tensor_spec<?x?xf32>
+    %spec = mgp.cpu.tensor_spec.create %dim0 %dim1 : !mgp.cpu.tensor_spec<?x?xf32>
+    %spec : !mgp.cpu.tensor_spec<?x?xf32>
 
-    %spec = mop.cpu.tensor_spec.create : !mop.cpu.tensor_spec<32x4xf32>
-    %spec : !mop.cpu.tensor_spec<32x4xf32>
+    %spec = mgp.cpu.tensor_spec.create : !mgp.cpu.tensor_spec<32x4xf32>
+    %spec : !mgp.cpu.tensor_spec<32x4xf32>
     ```
   }];
 
@@ -591,7 +591,7 @@ def CpuTensorSpecCreateOp : MOP_Op<"cpu.tensor_spec.create", [
   let arguments = (ins Variadic<Index>:$runtimeDims,
                        UI64ArrayElementsAttr:$aRawDims,  // 0
                        UI8Attr:$bRawDType);              // 1
-  let results = (outs MOP_CpuTensorSpecType:$result);
+  let results = (outs MGP_CpuTensorSpecType:$result);
   let assemblyFormat = [{
     $runtimeDims attr-dict
     `:` custom<RawDimsAndDType>($aRawDims, $bRawDType)
@@ -603,7 +603,7 @@ def CpuTensorSpecCreateOp : MOP_Op<"cpu.tensor_spec.create", [
 // CpuTensorSpecCreateDynamicOp
 //===----------------------------------------------------------------------===//
 
-def CpuTensorSpecCreateDynamicOp : MOP_Op<"cpu.tensor_spec.create.dynamic", [
+def CpuTensorSpecCreateDynamicOp : MGP_Op<"cpu.tensor_spec.create.dynamic", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
     Creates a CPU tensor spec from a runtime DType and a mix of runtime and
@@ -622,21 +622,21 @@ def CpuTensorSpecCreateDynamicOp : MOP_Op<"cpu.tensor_spec.create.dynamic", [
     ```mlir
     %dim0 : index
     %dim1 : index
-    %dtype : !mop.dtype
+    %dtype : !mgp.dtype
 
-    %spec = mop.cpu.tensor_spec.create.dynamic %dtype %dim0, %dim1 : !mop.cpu.tensor_spec<?x?x?>
-    %spec : !mop.cpu.tensor_spec<?x?x?>
+    %spec = mgp.cpu.tensor_spec.create.dynamic %dtype %dim0, %dim1 : !mgp.cpu.tensor_spec<?x?x?>
+    %spec : !mgp.cpu.tensor_spec<?x?x?>
 
-    %spec = mop.cpu.tensor_spec.create %dtype : !mop.cpu.tensor_spec<32x4x?>
-    %spec : !mop.cpu.tensor_spec<32x4x?>
+    %spec = mgp.cpu.tensor_spec.create %dtype : !mgp.cpu.tensor_spec<32x4x?>
+    %spec : !mgp.cpu.tensor_spec<32x4x?>
     ```
   }];
 
   // NOTE: The attribute effectively encodes the shape of the result's tensor
   // spec type in a form understandable by BEF.
-  let arguments = (ins MOP_DTypeType:$runtimeDType, Variadic<Index>:$runtimeDims,
+  let arguments = (ins MGP_DTypeType:$runtimeDType, Variadic<Index>:$runtimeDims,
                        UI64ArrayElementsAttr:$rawDims);
-  let results = (outs MOP_CpuTensorSpecType:$result);
+  let results = (outs MGP_CpuTensorSpecType:$result);
   let assemblyFormat = [{ $runtimeDType $runtimeDims attr-dict
                           `:` custom<RawDims>($rawDims) }];
   let hasVerifier = 1;
@@ -646,7 +646,7 @@ def CpuTensorSpecCreateDynamicOp : MOP_Op<"cpu.tensor_spec.create.dynamic", [
 // CpuTensorSpecDimsDynamicOp
 //===----------------------------------------------------------------------===//
 
-def CpuTensorSpecDimsDynamicOp : MOP_Op<"cpu.tensor_spec.dims.dynamic", [
+def CpuTensorSpecDimsDynamicOp : MGP_Op<"cpu.tensor_spec.dims.dynamic", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
     Returns the runtime values of the dimensions of CPU tensor spec
@@ -660,20 +660,20 @@ def CpuTensorSpecDimsDynamicOp : MOP_Op<"cpu.tensor_spec.dims.dynamic", [
 
     Example:
     ```mlir
-    %spec : !mop.cpu.tensor_spec<?x?xf32>
-    %dim0, %dim1 = mop.cpu.tensor_spec.dims.dynamic %spec : !mop.cpu.tensor_spec<?x?xf32>
+    %spec : !mgp.cpu.tensor_spec<?x?xf32>
+    %dim0, %dim1 = mgp.cpu.tensor_spec.dims.dynamic %spec : !mgp.cpu.tensor_spec<?x?xf32>
     %dim0, %dim1 : index, index
 
-    %spec : !mop.cpu.tensor_spec<32x?xf32>
-    %dim = mop.cpu.tensor_spec.dims.dynamic %spec : !mop.cpu.tensor_spec<32x?xf32>
+    %spec : !mgp.cpu.tensor_spec<32x?xf32>
+    %dim = mgp.cpu.tensor_spec.dims.dynamic %spec : !mgp.cpu.tensor_spec<32x?xf32>
     %dim : index
 
-    %spec : !mop.cpu.tensor_spec<32x4xf32>
-    mop.cpu.tensor_spec.dims.dynamic %spec : !mop.cpu.tensor_spec<32x4xf32> // no-op
+    %spec : !mgp.cpu.tensor_spec<32x4xf32>
+    mgp.cpu.tensor_spec.dims.dynamic %spec : !mgp.cpu.tensor_spec<32x4xf32> // no-op
     ```
   }];
 
-  let arguments = (ins MOP_CpuTensorSpecType: $spec,
+  let arguments = (ins MGP_CpuTensorSpecType: $spec,
                        UI64ArrayElementsAttr:$rawDims);
   let results = (outs Variadic<Index>:$results);
   let assemblyFormat = [{
@@ -686,7 +686,7 @@ def CpuTensorSpecDimsDynamicOp : MOP_Op<"cpu.tensor_spec.dims.dynamic", [
 // CpuTensorSpecSizeOp
 //===----------------------------------------------------------------------===//
 
-def CpuTensorSpecSizeOp : MOP_Op<"cpu.tensor_spec.size"> {
+def CpuTensorSpecSizeOp : MGP_Op<"cpu.tensor_spec.size"> {
   let summary = [{
     Returns the byte size needed for a CPU buffer for a tensor with
     the given tensor spec.
@@ -699,13 +699,13 @@ def CpuTensorSpecSizeOp : MOP_Op<"cpu.tensor_spec.size"> {
 
     Example:
     ```mlir
-    %spec : !mop.cpu.tensor_spec<32x?xf32>
-    %size = mop.cpu.tensor_spec.size %spec : !mop.cpu.tensor_spec<32x?xf32>
+    %spec : !mgp.cpu.tensor_spec<32x?xf32>
+    %size = mgp.cpu.tensor_spec.size %spec : !mgp.cpu.tensor_spec<32x?xf32>
     %size : index
     ```
   }];
 
-  let arguments = (ins MOP_CpuTensorSpecType: $spec);
+  let arguments = (ins MGP_CpuTensorSpecType: $spec);
   let results = (outs Index:$result);
   let assemblyFormat = "$spec attr-dict `:` qualified(type($spec))";
 }
@@ -714,7 +714,7 @@ def CpuTensorSpecSizeOp : MOP_Op<"cpu.tensor_spec.size"> {
 // CpuTensorSpecNumElemsOp
 //===----------------------------------------------------------------------===//
 
-def CpuTensorSpecNumElemsOp : MOP_Op<"cpu.tensor_spec.num_elems"> {
+def CpuTensorSpecNumElemsOp : MGP_Op<"cpu.tensor_spec.num_elems"> {
   let summary = [{
     Returns the number of elements in a CPU tensor with the given
     tensor spec.
@@ -726,13 +726,13 @@ def CpuTensorSpecNumElemsOp : MOP_Op<"cpu.tensor_spec.num_elems"> {
 
     Example:
     ```mlir
-    %spec : !mop.cpu.tensor_spec<32x?xf32>
-    %elems = mop.cpu.tensor_spec.num_elems %spec : !mop.cpu.tensor_spec<32x?xf32>
+    %spec : !mgp.cpu.tensor_spec<32x?xf32>
+    %elems = mgp.cpu.tensor_spec.num_elems %spec : !mgp.cpu.tensor_spec<32x?xf32>
     %elems : index
     ```
   }];
 
-  let arguments = (ins MOP_CpuTensorSpecType: $spec);
+  let arguments = (ins MGP_CpuTensorSpecType: $spec);
   let results = (outs Index:$result);
   let assemblyFormat = "$spec attr-dict `:` qualified(type($spec))";
 }
@@ -741,7 +741,7 @@ def CpuTensorSpecNumElemsOp : MOP_Op<"cpu.tensor_spec.num_elems"> {
 // CpuTensorSpecDTypeOp
 //===----------------------------------------------------------------------===//
 
-def CpuTensorSpecDTypeOp : MOP_Op<"cpu.tensor_spec.dtype"> {
+def CpuTensorSpecDTypeOp : MGP_Op<"cpu.tensor_spec.dtype"> {
   let summary = "Returns the DType of the given CPU tensor spec.";
   let description = [{
     Returns the runtime DType of the given CPU tensor spec. Generally the
@@ -750,14 +750,14 @@ def CpuTensorSpecDTypeOp : MOP_Op<"cpu.tensor_spec.dtype"> {
 
     Example:
     ```mlir
-    %spec : !mop.cpu.tensor_spec<32x?xunk>
-    %dtype = mop.cpu.tensor_spec.dtype %spec : !mop.cpu.tensor_spec<32x?xunk>
-    %dtype : !mop.dtype
+    %spec : !mgp.cpu.tensor_spec<32x?xunk>
+    %dtype = mgp.cpu.tensor_spec.dtype %spec : !mgp.cpu.tensor_spec<32x?xunk>
+    %dtype : !mgp.dtype
     ```
   }];
 
-  let arguments = (ins MOP_CpuTensorSpecType: $spec);
-  let results = (outs MOP_DTypeType:$result);
+  let arguments = (ins MGP_CpuTensorSpecType: $spec);
+  let results = (outs MGP_DTypeType:$result);
   let assemblyFormat = "$spec attr-dict `:` qualified(type($spec))";
 }
 
@@ -765,7 +765,7 @@ def CpuTensorSpecDTypeOp : MOP_Op<"cpu.tensor_spec.dtype"> {
 // CpuTensorCreateOp
 //===----------------------------------------------------------------------===//
 
-def CpuTensorCreateOp : MOP_Op<"cpu.tensor.create", [
+def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
     TypesMatchWith<"tensorSpec operand must match result tensor type spec",
                    "result", "tensorSpec",
                    "$_self.cast<CpuTensorType>().getTensorSpec()">,
@@ -782,15 +782,15 @@ def CpuTensorCreateOp : MOP_Op<"cpu.tensor.create", [
     ```mlir
     %ch : !bef.chain
 
-    %spec : !mop.cpu.tensor_spec<4x16xf32>
-    %buf : !mop.cpu.buffer<256>
-    %tensor = mop.cpu.tensor.create %ch %spec %buf : !mop.cpu.tensor<4x16xf32>
-    %tensor : !mop.cpu.tensor<4x16xf32>
+    %spec : !mgp.cpu.tensor_spec<4x16xf32>
+    %buf : !mgp.cpu.buffer<256>
+    %tensor = mgp.cpu.tensor.create %ch %spec %buf : !mgp.cpu.tensor<4x16xf32>
+    %tensor : !mgp.cpu.tensor<4x16xf32>
 
-    %spec : !mop.cpu.tensor_spec<?x16xf32>
-    %buf : !mop.cpu.buffer
-    %tensor = mop.cpu.tensor.create %ch %spec %buf : !mop.cpu.tensor<?x16xf32>
-    %tensor : !mop.cpu.tensor<?x16xf32>
+    %spec : !mgp.cpu.tensor_spec<?x16xf32>
+    %buf : !mgp.cpu.buffer
+    %tensor = mgp.cpu.tensor.create %ch %spec %buf : !mgp.cpu.tensor<?x16xf32>
+    %tensor : !mgp.cpu.tensor<?x16xf32>
     ```
 
     Tensors are immutable, but buffers are mutable. This means the
@@ -798,32 +798,32 @@ def CpuTensorCreateOp : MOP_Op<"cpu.tensor.create", [
     be mutated, ie if there are multiple outstanding consumers of the
     buffer's SSA value:
     ```mlir
-    %buf1 = mop.cpu.buffer.alloc ...
-    %ten1 = mop.cpu.tensor.create %ch ... %buf1 // copy
+    %buf1 = mgp.cpu.buffer.alloc ...
+    %ten1 = mgp.cpu.tensor.create %ch ... %buf1 // copy
     ... other users of %buf1 ...
 
-    %buf2 = mop.cpu.buffer.alloc ...
-    %ten2 = mop.cpu.tensor.create %ch ... %buf2 // move
+    %buf2 = mgp.cpu.buffer.alloc ...
+    %ten2 = mgp.cpu.tensor.create %ch ... %buf2 // move
     ... no other users of %buf2 ...
     ```
 
-    If the buffer is the result of a `mop.cpu.buffer.realloc` then it
+    If the buffer is the result of a `mgp.cpu.buffer.realloc` then it
     will be 'borrowing' rather than 'owning'. However the same rules
     apply:
     ```mlir
-    %buf3 = mop.cpu.buffer.realloc ...
-    %ten3 = mop.cpu.tensor.create %ch ... %buf3 // copy (as 'owning')
+    %buf3 = mgp.cpu.buffer.realloc ...
+    %ten3 = mgp.cpu.tensor.create %ch ... %buf3 // copy (as 'owning')
     ... other users of %buf3 ...
 
-    %buf4 = mop.cpu.buffer.realloc ...
-    %ten4 = mop.cpu.tensor.create %ch ... %buf4 // move (as 'borrowing')
+    %buf4 = mgp.cpu.buffer.realloc ...
+    %ten4 = mgp.cpu.tensor.create %ch ... %buf4 // move (as 'borrowing')
     ... no other users of %buf4 ...
     ```
   }];
 
-  let arguments = (ins ChainType: $inChain, MOP_CpuTensorSpecType: $tensorSpec,
-                       MOP_CpuBufferType: $buffer);
-  let results = (outs MOP_CpuTensorType: $result);
+  let arguments = (ins ChainType: $inChain, MGP_CpuTensorSpecType: $tensorSpec,
+                       MGP_CpuBufferType: $buffer);
+  let results = (outs MGP_CpuTensorType: $result);
   let assemblyFormat = [{ $inChain $tensorSpec $buffer attr-dict
                           `:` qualified(type($result)) }];
   let hasVerifier = 1;
@@ -833,7 +833,7 @@ def CpuTensorCreateOp : MOP_Op<"cpu.tensor.create", [
 // CpuTensorExtractOp
 //===----------------------------------------------------------------------===//
 
-def CpuTensorExtractOp : MOP_Op<"cpu.tensor.extract", [
+def CpuTensorExtractOp : MGP_Op<"cpu.tensor.extract", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Extracts the tensor spec and buffer of a CPU tensor.";
   let description = [{
@@ -843,15 +843,15 @@ def CpuTensorExtractOp : MOP_Op<"cpu.tensor.extract", [
 
     Example:
     ```mlir
-    %tensor : !mop.cpu.tensor<8x64xf32>
-    %spec, %buf = mop.cpu.tensor.extract %tensor : !mop.cpu.tensor<8x64xf32>
-    %spec : !mop.cpu.tensor_spec<8x64>
-    %buf : !mop.cpu.buffer<2048>
+    %tensor : !mgp.cpu.tensor<8x64xf32>
+    %spec, %buf = mgp.cpu.tensor.extract %tensor : !mgp.cpu.tensor<8x64xf32>
+    %spec : !mgp.cpu.tensor_spec<8x64>
+    %buf : !mgp.cpu.buffer<2048>
 
-    %tensor : !mop.cpu.tensor<?x64xf32>
-    %spec, %buf = mop.cpu.tensor.extract %tensor : !mop.cpu.tensor<?x64xf32>
-    %spec : !mop.cpu.tensor_spec<?x64>
-    %buf : !mop.cpu.buffer<>
+    %tensor : !mgp.cpu.tensor<?x64xf32>
+    %spec, %buf = mgp.cpu.tensor.extract %tensor : !mgp.cpu.tensor<?x64xf32>
+    %spec : !mgp.cpu.tensor_spec<?x64>
+    %buf : !mgp.cpu.buffer<>
     ```
 
     Tensors are immutable, but buffers are mutable. This means the
@@ -859,37 +859,37 @@ def CpuTensorExtractOp : MOP_Op<"cpu.tensor.extract", [
     operand could still be observed, ie if if there are multiple outstanding
     consumers of the tensor's SSA value:
     ```mlir
-    %ten1 = mop.cpu.tensor.create ...
-    %spec1, %buf1 = mop.cpu.tensor.extract %ten1 // copy
+    %ten1 = mgp.cpu.tensor.create ...
+    %spec1, %buf1 = mgp.cpu.tensor.extract %ten1 // copy
     ... other users of %ten1 ...
 
-    %ten2 = mop.cpu.tensor.create ...
-    %spec2, %buf2 = mop.cpu.tensor.extract %ten2 // move
+    %ten2 = mgp.cpu.tensor.create ...
+    %spec2, %buf2 = mgp.cpu.tensor.extract %ten2 // move
     ... no other users of %ten2 ...
     ```
 
-    If the tensor's buffer was the result of a `mop.cpu.buffer.realloc`
+    If the tensor's buffer was the result of a `mgp.cpu.buffer.realloc`
     then it will be 'borrowing' rather than 'owning'. However the
     same rules apply:
     ```mlir
-    %buf3 = mop.cpu.buffer.realloc ...
-    %ten3 = mop.cpu.tensor.create %buf3
-    %spec4, %buf4 = mop.cpu.tensor.extract %ten3  // copy (as 'owning')
+    %buf3 = mgp.cpu.buffer.realloc ...
+    %ten3 = mgp.cpu.tensor.create %buf3
+    %spec4, %buf4 = mgp.cpu.tensor.extract %ten3  // copy (as 'owning')
     ... other users of %ten3 ...
 
-    %buf5 = mop.cpu.buffer.realloc ...  // (*)
-    %ten5 = mop.cpu.tensor.create %buf5
-    %spec6, %buf6 = mop.cpu.tensor.extract %ten5  // move (as 'borrowing')
+    %buf5 = mgp.cpu.buffer.realloc ...  // (*)
+    %ten5 = mgp.cpu.tensor.create %buf5
+    %spec6, %buf6 = mgp.cpu.tensor.extract %ten5  // move (as 'borrowing')
     ... no other users of %ten5 ...
     ```
     Note that any mutation of %buf6 will be applied to the cached
     buffer in the context, as established by (*). However, this is
-    acceptable due to the rules of `mop.cpu.buffer.realloc`.
+    acceptable due to the rules of `mgp.cpu.buffer.realloc`.
   }];
 
-  let arguments = (ins MOP_CpuTensorType: $tensor);
-  let results = (outs MOP_CpuTensorSpecType: $tensorSpecResult,
-                      MOP_CpuBufferType: $bufferResult);
+  let arguments = (ins MGP_CpuTensorType: $tensor);
+  let results = (outs MGP_CpuTensorSpecType: $tensorSpecResult,
+                      MGP_CpuBufferType: $bufferResult);
   let assemblyFormat = "$tensor attr-dict `:` qualified(type($tensor))";
   let hasVerifier = 1;
 }
@@ -904,7 +904,7 @@ def ModelFrameworkAttr : ConfinedAttr<StrAttr, [
             "$_self.cast<StringAttr>().getValue())">,
       "must be a recognized framework name.">]>;
 
-def ModelOp : MOP_Op<"model", [HasParent<"ModuleOp">, Symbol,
+def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">, Symbol,
                                IsolatedFromAbove]> {
   let summary = [{
     Represents an executable model with 'init' and 'execute' entry points.
@@ -914,10 +914,10 @@ def ModelOp : MOP_Op<"model", [HasParent<"ModuleOp">, Symbol,
     representing its 'init' and 'execute' entry points.
 
     The 'init' entry point has the implicit signature:
-      () -> (!bef.chain, !mop.context)
+      () -> (!bef.chain, !mgp.context)
 
     The 'execute' entry point has the implicit signature:
-      (!bef.chain, !mop.context, in1, ..., inn) ->
+      (!bef.chain, !mgp.context, in1, ..., inn) ->
       (!bef.chain, res1, ..., resm)
     where:
       (in1, ..., inn) -> (res1, ..., resm)
@@ -933,20 +933,20 @@ def ModelOp : MOP_Op<"model", [HasParent<"ModuleOp">, Symbol,
     between framework-specific values and representations used by the model.
 
     The input and result types in the signature cannot depend on any
-    framework- or mop-specific types, and must instead use only MLIR builtin
+    framework- or mgp-specific types, and must instead use only MLIR builtin
     (eg tensor), Modular (eg !M.array) and BEF (eg !bef.unknown) types.
     (Perhaps we need a !bef.anyasyncvalue type?).
 
     Example:
     ```mlir
     // At the top-level
-    mop.model @example_model : tfl
+    mgp.model @example_model : tfl
       init {
         %ch = bef.chain.new
-        %ctx = mop.context.create 0
-        bef.output %ch, %ctx : !bef.chain, !mop.context
+        %ctx = mgp.context.create 0
+        bef.output %ch, %ctx : !bef.chain, !mgp.context
       }
-      execute (%ch: !bef.chain, %ctx: !mop.context, %arg: tensor<?x4x16xf32>)
+      execute (%ch: !bef.chain, %ctx: !mgp.context, %arg: tensor<?x4x16xf32>)
               -> (!bef.chain, tensor<?x10xf32>) {
         bef.output %ch, %arg : !bef.chain, tensor<?x4x16xf32>
       }
@@ -989,4 +989,4 @@ def ModelOp : MOP_Op<"model", [HasParent<"ModuleOp">, Symbol,
   let hasVerifier = 1;
 }
 
-#endif  // GENERICML_MOPDIALECT_MOPOPS_TD
+#endif  // GENERICML_MGPDIALECT_MGPOPS_TD

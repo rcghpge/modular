@@ -22,7 +22,7 @@ using namespace MO;
 /// that the element type in DType form is also representable as an MLIR type.
 LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
                                  ArrayRef<int64_t> shape, Type elementType) {
-  // TODO: Relax this once we have alignment with MOP on
+  // TODO: Relax this once we have alignment with MGP on
   //  Dynamic Ranks
   if (shape.empty())
     return emitError() << "shape must have rank greather than 0";
@@ -45,7 +45,7 @@ ShapedType TensorType::cloneWith(Optional<ArrayRef<int64_t>> shape,
 }
 
 /// Does the Tensor have a static Rank?  Required by ShapedTypeInferece
-/// TODO : Relax this once we reach agreement with MOP on dynamic rank tensors.
+/// TODO : Relax this once we reach agreement with MGP on dynamic rank tensors.
 bool TensorType::hasRank() const { return true; }
 
 // Get the Rank of the Tensor.  Required by ShapedTypeInference

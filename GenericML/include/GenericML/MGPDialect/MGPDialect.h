@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_MOPDIALECT_MOPDIALECT_H
-#define GENERICML_MOPDIALECT_MOPDIALECT_H
+#ifndef GENERICML_MGPDIALECT_MGPDIALECT_H
+#define GENERICML_MGPDIALECT_MGPDIALECT_H
 
 #include "Support/MDialect/MDialect.h"
 #include "mlir/IR/Dialect.h"
@@ -14,6 +14,6 @@
 // ODS-Generated Declarations
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/MOPDialect/MOPDialect.h.inc"
+#include "GenericML/MGPDialect/MGPDialect.h.inc"
 
-#endif // GENERICML_MOPDIALECT_MOPDIALECT_H
+#endif // GENERICML_MGPDIALECT_MGPDIALECT_H

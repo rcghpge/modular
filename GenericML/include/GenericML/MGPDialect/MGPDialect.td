@@ -4,31 +4,31 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_MOPDIALECT_MOPDIALECT_TD
-#define GENERICML_MOPDIALECT_MOPDIALECT_TD
+#ifndef GENERICML_MGPDIALECT_MGPDIALECT_TD
+#define GENERICML_MGPDIALECT_MGPDIALECT_TD
 
 include "mlir/IR/DialectBase.td"
 
 //===----------------------------------------------------------------------===//
-// MOPDialect
+// MGPDialect
 //===----------------------------------------------------------------------===//
 
-def MOPDialect : Dialect {
-  let name = "mop";
+def MGPDialect : Dialect {
+  let name = "mgp";
 
   let summary = "Buffers, contexts and other framework/kernel independent glue.";
   let description = [{
-    The MOP dialect is intended to support buffers, contexts and other base
+    The MGP dialect is intended to support buffers, contexts and other base
     functionality needed by graphs containing a mix of framework-specific ops
     (eg tf.add), computational library ops (eg mlas.sgemm), and kernels
     generated from KGEN specifications.
 
     (Rough design is currently in
     https://docs.google.com/document/d/10oh6cOLdFoFKrlDTbJNVI4pi5vjOoUCZ1AVG2VUTAJ8/edit
-    which will be moved into GenericML/docs/mop.md as things firm up.)
+    which will be moved into GenericML/docs/mgp.md as things firm up.)
   }];
 
-  let cppNamespace = "::M::MOP";
+  let cppNamespace = "::M::MGP";
   let dependentDialects = ["::M::BEF::BEFDialect", "::M::MDialect"];
 
   let extraClassDeclaration = [{
@@ -44,4 +44,4 @@ def MOPDialect : Dialect {
   let useDefaultTypePrinterParser = 1;
 }
 
-#endif // GENERICML_MOPDIALECT_MOPDIALECT_TD
+#endif // GENERICML_MGPDIALECT_MGPDIALECT_TD

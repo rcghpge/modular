@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/MOPDialect/MOPAttrs.h"
-#include "GenericML/MOPDialect/MOPDialect.h"
+#include "GenericML/MGPDialect/MGPAttrs.h"
+#include "GenericML/MGPDialect/MGPDialect.h"
 #include "Support/LLVMForwardDecls.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributeInterfaces.h"
@@ -16,16 +16,16 @@
 #include "llvm/Support/Casting.h"
 
 using namespace M;
-using namespace MOP;
+using namespace MGP;
 
 //===----------------------------------------------------------------------===//
-// MOPDialect attribute support
+// MGPDialect attribute support
 //===----------------------------------------------------------------------===//
 
-void MOPDialect::registerAttributes() {
+void MGPDialect::registerAttributes() {
   addAttributes<
 #define GET_ATTRDEF_LIST
-#include "GenericML/MOPDialect/MOPAttrs.cpp.inc"
+#include "GenericML/MGPDialect/MGPAttrs.cpp.inc"
       >();
 }
 
@@ -34,4 +34,4 @@ void MOPDialect::registerAttributes() {
 //===----------------------------------------------------------------------===//
 
 #define GET_ATTRDEF_CLASSES
-#include "GenericML/MOPDialect/MOPAttrs.cpp.inc"
+#include "GenericML/MGPDialect/MGPAttrs.cpp.inc"

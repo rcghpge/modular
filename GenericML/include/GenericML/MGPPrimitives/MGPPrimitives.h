@@ -4,15 +4,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_MOPPRIMITIVES_MOPPRIMITIVES_H
-#define GENERICML_MOPPRIMITIVES_MOPPRIMITIVES_H
+#ifndef GENERICML_MGPPRIMITIVES_MGPPRIMITIVES_H
+#define GENERICML_MGPPRIMITIVES_MGPPRIMITIVES_H
 
 namespace M {
 class PrimitiveRegistry;
 
-/// This registers the 'mop' dialect primitives.
-void registerMOPPrimitives(PrimitiveRegistry &registry);
+/// This registers the 'mgp' dialect primitives.
+void registerMGPPrimitives(PrimitiveRegistry &registry);
 
 } // namespace M
 
-#endif // GENERICML_MOPPRIMITIVES_MOPPRIMITIVES_H
+#endif // GENERICML_MGPPRIMITIVES_MGPPRIMITIVES_H
