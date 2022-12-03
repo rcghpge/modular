@@ -169,7 +169,7 @@ TODO: Flesh out MGP/kGen interface
 
 ## MGP (Modular Glue Primitives) Dialect
 
-Refer to the [MGP Dialect Design Doc](https://docs.google.com/document/d/1UN_MaYqxGR9romCN8DCZL8Gao_xpDqTo7HOq6UwmVK4/edit)
+Refer to the [MGP Dialect](https://engineering.modular.com/Monorepo/GenericML/MGPDialect.html)
 
 ## Not Yet Considered
 
