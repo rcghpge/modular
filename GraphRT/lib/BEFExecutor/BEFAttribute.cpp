@@ -64,7 +64,7 @@ BEFListAttr::Iterator &BEFListAttr::Iterator::operator+=(
 
 BEFDynamicAttr BEFListAttr::Iterator::operator*() const {
   auto *workPtr = ptr;
-  return BEFDynamicAttr(basePtr - parseVBR(workPtr));
+  return BEFDynamicAttr(basePtr - parseVBR(workPtr), attrSection);
 }
 
 //===----------------------------------------------------------------------===//
@@ -87,7 +87,7 @@ BEFDictionaryAttr::Element BEFDictionaryAttr::Iterator::operator*() const {
   uint8_t *workptr = ptr;
   size_t nameOffset = parseVBR(workptr);
   size_t dataOffset = parseVBR(workptr);
-  return Element{basePtr, nameOffset, dataOffset};
+  return Element{basePtr, nameOffset, dataOffset, attrSection};
 }
 
 //===----------------------------------------------------------------------===//
