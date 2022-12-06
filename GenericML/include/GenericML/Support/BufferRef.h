@@ -8,134 +8,141 @@
 #define GENERICML_SUPPORT_BUFFERREF_H
 
 #include "LLCL/Runtime/Allocator.h"
+#include "LLCL/Runtime/CompactRuntimePtr.h"
 #include "Support/ErrorOr.h"
+
+#include "llvm/Support/Alignment.h"
 
 #include <utility>
 
 namespace M::GML {
 
-/// This class models a reference to a raw data buffer. The reference can be
-/// "owned" or "borrowed". If "owned" the underlying buffer is destroyed when
-/// the reference is destructed. The destruction doesn't happen for "borrowed"
-/// references, and the assumption is that the buffer outlives the reference.
+/// A smart pointer, aka reference, to an underlying buffer of known size but
+/// uninterpreted and possibly uninitialized bytes.
+///
+/// The underlying buffer may be 'owned' or 'borrowed' by this reference.
+/// An owning reference frees its buffer when destroyed. References may be
+/// moved (the underlying buffer is transferred), explicitly copied (the
+/// underlying buffer will be copied), and borrowed (the new reference
+/// will contain a buffer alias).
+///
+/// All owning references remember their runtime, which is needed when owning
+/// references are destroyed, and may be used when the buffer is copied. All
+/// references remember their (optional) alignment constraint, which may be
+/// used when the buffer is copied.
 class BufferRef {
 public:
-  /// This constructs uninitialized BufferRef.
-  BufferRef()
-      : allocator(nullptr), data(nullptr), size(0), alignment(None),
-        storage(kUninit){};
+  /// Constructs an uninitialized buffer reference. Useful for references
+  /// which are allocated lazily.
+  BufferRef() = default;
 
-  /// Deallocate underlying buffer only when it is owned.
-  ~BufferRef() {
-    if (storage == kOwned)
-      allocator->deallocateBytes(data, size);
-  }
+  /// Deallocates underlying buffer if an owning reference.
+  ~BufferRef();
 
-  // Move is allowed for BufferRef.
-  BufferRef(BufferRef &&rhs)
-      : allocator(std::exchange(rhs.allocator, nullptr)),
-        data(std::exchange(rhs.data, nullptr)),
-        size(std::exchange(rhs.size, 0)),
-        alignment(std::exchange(rhs.alignment, None)),
-        storage(std::exchange(rhs.storage, kUninit)) {}
-
-  BufferRef &operator=(BufferRef &&rhs) {
-    std::swap(allocator, rhs.allocator);
-    std::swap(data, rhs.data);
-    std::swap(size, rhs.size);
-    std::swap(alignment, rhs.alignment);
-    std::swap(storage, rhs.storage);
-    return *this;
-  }
+  // Move is allowed for buffer references.
+  BufferRef(BufferRef &&rhs);
+  BufferRef &operator=(BufferRef &&rhs);
 
   //===--------------------------------------------------------------------===//
   // Creation methods.
   //===--------------------------------------------------------------------===//
 
-  /// Creates a BufferRef by allocating the new object. The allocated object is
-  /// deallocated when the BufferRef is destructed.
-  static BufferRef createOwned(LLCL::Allocator *allocator, size_t size,
-                               size_t alignment = kPreferredMemoryAlignment) {
-    return BufferRef(allocator, size, alignment);
+  /// Creates an owning reference by allocating a new and uninitialized
+  /// underlying buffer of size and alignment. The allocated buffer is freed
+  /// when the reference is destroyed.
+  /// TOOO(#5799): We're requiring all callers to be explicit about alignment
+  /// (or lack thereof) to help track down 'forgotten alignment' problems.
+  static BufferRef createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
+                               Optional<size_t> alignment) {
+    return BufferRef(runtime, size, alignment);
   }
 
-  /// Returns a BufferRef that wraps the given pointer as its data. Destructing
-  /// the BufferRef does not deallocate the data.
-  static BufferRef createBorrowed(void *data, size_t size,
-                                  Optional<size_t> alignment = None) {
-    return BufferRef(data, size, alignment);
+  /// Creates a borrowing reference to the given buffer of the given size and
+  /// alignment. The returned reference must outlive the given buffer.
+  /// The alignment will be respected should the buffer need to be copied.
+  /// TODO(#5369): Also support const void* overload
+  static BufferRef createBorrowed(void *buffer, size_t size,
+                                  Optional<size_t> alignment) {
+    return BufferRef(buffer, size, alignment);
   }
 
   //===--------------------------------------------------------------------===//
   // Core APIs for working with a BufferRef.
   //===--------------------------------------------------------------------===//
 
-  /// Returns a shallow copy of BufferRef. The storage kind is set to kBorrowed
-  /// regardless of the original BufferRef storage kind.
-  BufferRef borrow() { return createBorrowed(data, size, alignment); }
+  /// Returns a borrowing reference to the buffer of this reference. This
+  /// reference may be owning or borrowing, and the underlying buffer must
+  /// outlive the returned reference.
+  /// TODO(#5369): Consistent naming with Tensor borrowing.
+  BufferRef borrow() const;
 
-  /// Returns a deep copy of this buffer with ownining reference.
-  /// TODO: Instead of taking copyAllocator as an argument, we may want to use
-  /// the allocator from the source object, though it will require capturing
-  /// of allocator even for the borrow reference.
-  BufferRef deepCopy(LLCL::Allocator *copyAllocator) const {
-    BufferRef ref =
-        createOwned(copyAllocator, size,
-                    alignment ? *alignment : kPreferredMemoryAlignment);
-    std::memcpy(ref.data, data, size);
-    return ref;
-  }
+  /// Returns an owning reference to a deep copy of this reference. The given
+  /// runtime will be used for the copy. Any alignment constraint in this
+  /// reference will be respected by the copy.
+  BufferRef deepCopy(LLCL::CompactRuntimePtr newRuntime) const;
 
-  /// Returns the pointer to the underlying buffer object. Will returns nullptr
-  /// if the buffer ref is uninitialized or the buffer is moved out.
-  void *getData() { return data; }
-  const void *getData() const { return data; }
+  /// Returns a pointer to the underlying buffer. Returns nullptr if the
+  /// reference is uninitialized or has been moved out of.
+  /// TODO(#5369): Rename to getMutableBuffer/getBuffer.
+  void *getData() { return buffer; }
+  const void *getData() const { return buffer; }
 
-  /// Returns the size of the underlying buffer object. Will returns 0 if the
-  /// buffer ref is uninitialized or the buffer is moved out.
+  /// Returns the size of the underlying buffer. Will return 0 if the
+  /// reference is uninitialized or has been moved out of.
   size_t getSize() const { return size; }
 
-  /// Returns the alignment of the underlying buffer. Will return None if the
-  /// alignment is not provided for the borrowed reference.
-  Optional<size_t> getAlignment() const { return alignment; }
+  /// Returns the alignment of the underlying buffer, or none if no alignment
+  /// constraint was given.
+  Optional<size_t> getAlignment() const {
+    return alignment.has_value()
+               ? Optional<size_t>(static_cast<size_t>(alignment->value()))
+               : llvm::None;
+  }
 
-  /// Describes whether the underlying buffer storage should be deleted
-  /// when this object is destructed.
-  enum StorageKind { kUninit, kOwned, kBorrowed };
+  /// Returns the alignment of the underlying buffer, or 1 if no alignment
+  /// constraint was given.
+  size_t getAlignmentOrOne() const { return alignment.valueOrOne().value(); }
+
+  /// Returns the runtime responsible for this owning references, or null if
+  /// the reference is a borrow.
+  LLCL::CompactRuntimePtr getRuntime() const { return runtime; }
+
+  /// Describes whether the underlying buffer should be deleted when this
+  /// reference is destroyed.
+  /// TODO(#5369): Will probably extend kBorrowed with lifetime qualifier
+  /// to help protect against overhanging borrows.
+  enum StorageKind : uint8_t { kUninit, kOwned, kBorrowed };
 
   StorageKind getStorageKind() const { return storage; }
 
 private:
-  /// This constructs "borrowed" BufferRef with the pre-allocated object. The
-  /// object is not destroyed when the BufferRef is destroyed.
-  BufferRef(void *data, size_t size, Optional<size_t> alignment)
-      : allocator(nullptr), data(data), size(size), alignment(alignment),
-        storage(kBorrowed) {}
+  /// Constructs an "owned" BufferRef. The underlying buffer is allocated
+  /// when the BufferRef is constructed, and destroyed when the BufferRef
+  /// is destroyed.
+  BufferRef(LLCL::CompactRuntimePtr runtime, size_t size,
+            Optional<size_t> alignment);
 
-  /// This constructs "owned" BufferRef. The underlying buffer is allocated
-  /// when the BufferRef is constructed, and destroyed with the BufferRef
-  /// destructed.
-  BufferRef(LLCL::Allocator *allocator, size_t size, size_t alignment)
-      : allocator(allocator), size(size), storage(kOwned) {
-    data = allocator->allocateBytes(size, alignment);
-  }
+  /// Constructs a "borrowed" BufferRef with the pre-allocated buffer. The
+  /// buffer is not destroyed when the BufferRef is destroyed.
+  BufferRef(void *buffer, size_t size, Optional<size_t> alignment);
 
   // Implicit copying is not allowed.
   BufferRef(const BufferRef &rhs) = delete;
   BufferRef &operator=(const BufferRef &rhs) = delete;
 
-  /// If kOwned, the allocator to which the data must be returned. Otherwise
-  /// null.
-  LLCL::Allocator *allocator;
-  /// Underlying buffer storage.
-  void *data;
-  /// Size of underlying buffer.
-  size_t size;
-  /// Alignment of underlying buffer. None if unknown.
-  Optional<size_t> alignment;
+  /// The underlying buffer.
+  void *buffer = nullptr;
+  /// The size of the underlying buffer.
+  size_t size = 0;
+  /// The runtime responsible for the underlying buffer if it is owned.
+  LLCL::CompactRuntimePtr runtime = nullptr; /* 1 byte */
+  /// Alignment of underlying buffer, or None if no specific alignment given.
+  llvm::MaybeAlign alignment = {}; /* 2 bytes */
   /// Whether the underlying buffer should be deleted when this object is
   /// destructed (kOwned), or never deleted (kBorrowed).
-  StorageKind storage;
+  StorageKind storage = kUninit; /* 1 byte */
+  // TODO(#5369): A notion of read-only (in DEBUG mode) with asserts.
+  /* 4 bytes unused on 64-bit systems. */
 };
 
 } // namespace M::GML

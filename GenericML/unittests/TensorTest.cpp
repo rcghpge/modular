@@ -29,20 +29,21 @@ static LLCL::Runtime *getRuntime() {
 constexpr size_t kN = 4;
 constexpr size_t kM = 6;
 
-static Tensor MakeTensor() {
+static Tensor makeTensor() {
   M::TensorSpec spec({kN, kM}, DType::getInt(8, /*isSigned=*/false).value());
-  M::Tensor result = Tensor::createOwned(std::move(spec), getRuntime());
+  M::Tensor result =
+      Tensor::createOwned(std::move(spec), getRuntime(), /*alignment=*/{});
   for (size_t i = 0, e = result.getSizeInBytes(); i < e; ++i)
     static_cast<uint8_t *>(result.getPointer())[i] = static_cast<uint8_t>(i);
   return result;
 }
 
-static void IncrementContents(Tensor &tensor) {
+static void incrementContents(Tensor &tensor) {
   for (size_t i = 0; i < tensor.getSizeInBytes(); ++i)
     ++static_cast<uint8_t *>(tensor.getPointer())[i];
 }
 
-static bool HaveSameContents(Tensor &lhs, Tensor &rhs) {
+static bool haveSameContents(Tensor &lhs, Tensor &rhs) {
   if (lhs.getSizeInBytes() != rhs.getSizeInBytes())
     return false;
   return std::memcmp(lhs.getPointer(), rhs.getPointer(),
@@ -50,36 +51,38 @@ static bool HaveSameContents(Tensor &lhs, Tensor &rhs) {
 }
 
 TEST(Tensor, ReleaseBuffer) {
-  M::Tensor tensor = MakeTensor();
-  M::Tensor tensor2 = tensor.deepCopy();
+  auto runtime = getRuntime();
+  M::Tensor tensor = makeTensor();
+  M::Tensor tensor2 = tensor.deepCopy(runtime);
   GML::BufferRef ref = tensor.releaseBuffer();
   ASSERT_EQ(ref.getSize(), tensor.getSizeInBytes());
   ASSERT_EQ(std::memcmp(ref.getData(), tensor2.getPointer(), ref.getSize()), 0);
 }
 
 TEST(Tensor, DeepCopy) {
-  M::Tensor tensor = MakeTensor();
-  M::Tensor deepCopy = tensor.deepCopy();
-  ASSERT_TRUE(HaveSameContents(tensor, deepCopy));
-  IncrementContents(tensor);
-  ASSERT_FALSE(HaveSameContents(tensor, deepCopy));
+  auto runtime = getRuntime();
+  M::Tensor tensor = makeTensor();
+  M::Tensor deepCopy = tensor.deepCopy(runtime);
+  ASSERT_TRUE(haveSameContents(tensor, deepCopy));
+  incrementContents(tensor);
+  ASSERT_FALSE(haveSameContents(tensor, deepCopy));
 }
 
 TEST(Tensor, GetBorrowed) {
-  M::Tensor tensor = MakeTensor();
+  M::Tensor tensor = makeTensor();
   // Immortal provides a shallow copy.
   M::Tensor immortalCopy = tensor.getBorrowed();
-  ASSERT_TRUE(HaveSameContents(tensor, immortalCopy));
-  IncrementContents(tensor);
-  ASSERT_TRUE(HaveSameContents(tensor, immortalCopy));
+  ASSERT_TRUE(haveSameContents(tensor, immortalCopy));
+  incrementContents(tensor);
+  ASSERT_TRUE(haveSameContents(tensor, immortalCopy));
 }
 
 TEST(Tensor, FromBuffer) {
   LLCL::Runtime *runtime = getRuntime();
   TensorSpec spec({kN, kM}, DType::getInt(8, /*isSigned=*/false).value());
-  GML::BufferRef ref = GML::BufferRef::createOwned(runtime->getAllocator(), 1);
+  GML::BufferRef ref = GML::BufferRef::createOwned(runtime, 1, {});
   void *data = ref.getData();
-  Tensor tensor = Tensor::create(std::move(ref), spec, runtime);
+  Tensor tensor = Tensor::create(std::move(ref), spec);
   // Tensor takes the ownership from the bufer ref.
   ASSERT_EQ(data, tensor.getPointer());
   ASSERT_EQ(ref.getData(), nullptr);

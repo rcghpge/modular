@@ -297,7 +297,9 @@ ErrorOrSuccess M::runModelWithData(MLIRContext *ctx, const Model *model,
   for (const auto &[input, spec] : llvm::zip(inputs, model->getInputSpecs())) {
     if (llvm::any_of(spec.getDims(), mlir::ShapedType::isDynamic))
       return Error("Dynamic input shapes are not supported.");
-    inputTensors.emplace_back(Tensor::createBorrowed(input, spec, runtime));
+    // Nothing is known about the alignment of the inputs.
+    inputTensors.emplace_back(
+        Tensor::createBorrowed(input, spec, /*alignment=*/{}));
   }
 
   // Fill the arguments.  We are running the model once so we pass in the input

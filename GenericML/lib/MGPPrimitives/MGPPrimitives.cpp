@@ -21,6 +21,11 @@
 using namespace M;
 using namespace M::GML;
 
+static Optional<size_t> getAlign(uint64_t rawAlign) {
+  return hasRawSize(rawAlign) ? Optional<size_t>(rawSizeToRuntimeSize(rawAlign))
+                              : llvm::None;
+}
+
 //===----------------------------------------------------------------------===//
 // mgp.cpu.buffer.constant
 //===----------------------------------------------------------------------===//
@@ -32,10 +37,11 @@ static void mgp_cpu_buffer_constant(Result<BufferRef> outBuffer,
   // Create unowned BufferRef as the BEF outlives the BufferRef.
   // TODO(#5369): Need to capture any alignment constraint on attribute so
   // it is preserved if the result needs to be deep copied.
+  // TODO(#5369): Remove need for const cast.
   if (auto buf = dyn_cast<ArrayRef<uint8_t>>(values))
     outBuffer.emplace(GML::BufferRef::createBorrowed(
         const_cast<void *>(static_cast<const void *>((*buf)->data())),
-        (*buf)->size()));
+        (*buf)->size(), /*alignment=*/{}));
   else
     outBuffer.setToError(
         "unsupported type, only u8 is supported for attribute elements");
@@ -61,9 +67,8 @@ static void mgp_cpu_buffer_alloc_static(Context &ctx, Result<BufferRef> result,
     return;
   }
   size_t runtimeSize = plainSizeToRuntimeSize(*aSize);
-  result.emplace(BufferRef::createOwned(
-      runtime.getAllocator(), runtimeSize,
-      rawSizeToRuntimeSizeOrDefault(*bRawAlign, kPreferredMemoryAlignment)));
+  result.emplace(
+      BufferRef::createOwned(runtime, runtimeSize, getAlign(*bRawAlign)));
 }
 
 static void mgp_cpu_buffer_alloc_dynamic(Context &ctx, size_t runtimeSize,
@@ -78,9 +83,8 @@ static void mgp_cpu_buffer_alloc_dynamic(Context &ctx, size_t runtimeSize,
     result.setToError("invalid align attribute");
     return;
   }
-  result.emplace(BufferRef::createOwned(
-      runtime.getAllocator(), runtimeSize,
-      rawSizeToRuntimeSizeOrDefault(*rawAlign, kPreferredMemoryAlignment)));
+  result.emplace(
+      BufferRef::createOwned(runtime, runtimeSize, getAlign(*rawAlign)));
 }
 
 static void mgp_cpu_buffer_alloc_spec(Context &ctx, const TensorSpec &spec,
@@ -91,9 +95,8 @@ static void mgp_cpu_buffer_alloc_spec(Context &ctx, const TensorSpec &spec,
     result.setToError("invalid align attribute");
     return;
   }
-  result.emplace(BufferRef::createOwned(
-      runtime.getAllocator(), spec.getSizeInBytes(),
-      rawSizeToRuntimeSizeOrDefault(*rawAlign, kPreferredMemoryAlignment)));
+  result.emplace(BufferRef::createOwned(runtime, spec.getSizeInBytes(),
+                                        getAlign(*rawAlign)));
 }
 
 //===----------------------------------------------------------------------===//
@@ -125,9 +128,8 @@ static void mgp_cpu_buffer_realloc_static(
   }
   size_t runtimeSize = plainSizeToRuntimeSize(*cSize);
   StateSlot &stateSlot = ctx.getStateSlot(*aSlot);
-  result.emplace(stateSlot.getOrCreateBuffer(
-      *bBuffer, runtime.getAllocator(), runtimeSize,
-      rawSizeToRuntimeSizeOrDefault(*dRawAlign, kPreferredMemoryAlignment)));
+  result.emplace(stateSlot.getOrCreateBuffer(*bBuffer, runtime, runtimeSize,
+                                             getAlign(*dRawAlign)));
 }
 
 static void mgp_cpu_buffer_realloc_dynamic(
@@ -143,9 +145,8 @@ static void mgp_cpu_buffer_realloc_dynamic(
     return;
   }
   StateSlot &stateSlot = ctx.getStateSlot(*aSlot);
-  result.emplace(stateSlot.getOrCreateBuffer(
-      *bBuffer, runtime.getAllocator(), runtimeSize,
-      rawSizeToRuntimeSizeOrDefault(*cRawAlign, kPreferredMemoryAlignment)));
+  result.emplace(stateSlot.getOrCreateBuffer(*bBuffer, runtime, runtimeSize,
+                                             getAlign(*cRawAlign)));
 }
 
 static void
@@ -159,8 +160,7 @@ mgp_cpu_buffer_realloc_spec(Chain inChain, Context &ctx, const TensorSpec &spec,
   }
   StateSlot &stateSlot = ctx.getStateSlot(*aSlot);
   result.emplace(stateSlot.getOrCreateBuffer(
-      *bBuffer, runtime.getAllocator(), spec.getSizeInBytes(),
-      rawSizeToRuntimeSizeOrDefault(*cRawAlign, kPreferredMemoryAlignment)));
+      *bBuffer, runtime, spec.getSizeInBytes(), getAlign(*cRawAlign)));
 }
 
 //===----------------------------------------------------------------------===//
@@ -170,7 +170,7 @@ mgp_cpu_buffer_realloc_spec(Chain inChain, Context &ctx, const TensorSpec &spec,
 /// Fulfills the result with the owning reference to the deep copy of inBuffer.
 static void mgp_cpu_buffer_copy(Context &ctx, AsyncValueRef<BufferRef> inBuffer,
                                 Result<BufferRef> outBuffer, Runtime &runtime) {
-  outBuffer.emplace(inBuffer->deepCopy(runtime.getAllocator()));
+  outBuffer.emplace(inBuffer->deepCopy(runtime));
 }
 
 //===----------------------------------------------------------------------===//
@@ -336,16 +336,14 @@ static void mgp_cpu_tensor_create(Chain inChain, const TensorSpec &tensorSpec,
   if (bufferRef.getPointer()->isUnique()) {
     LLVM_DEBUG(llvm::dbgs() << "mgp.cpu.tensor.create: Creating M::Tensor "
                                "taking ownership of buffer\n");
-    outTensor.emplace(
-        Tensor::create(std::move(*bufferRef), tensorSpec, runtime));
+    outTensor.emplace(Tensor::create(std::move(*bufferRef), tensorSpec));
   } else {
     LLVM_DEBUG(llvm::dbgs()
                << "mgp.cpu.tensor.create: Creating M::Tensor from copy of "
                   "buffer since still has "
                << std::to_string(bufferRef.getPointer()->getRefCount())
                << " users\n");
-    outTensor.emplace(Tensor::create(
-        bufferRef->deepCopy(runtime.getAllocator()), tensorSpec, runtime));
+    outTensor.emplace(Tensor::create(bufferRef->deepCopy(runtime), tensorSpec));
   }
 }
 
@@ -365,7 +363,7 @@ static void mgp_cpu_tensor_extract(AsyncValueRef<Tensor> tensor,
   if (tensor.getPointer()->isUnique())
     outBuffer.emplace(tensor->releaseBuffer());
   else
-    outBuffer.emplace(tensor->deepCopyBuffer());
+    outBuffer.emplace(tensor->deepCopyBuffer(runtime));
 }
 
 //===----------------------------------------------------------------------===//

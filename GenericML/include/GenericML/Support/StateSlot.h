@@ -75,9 +75,9 @@ public:
   ///    holding this state slot.
   ///  - no other call to this method for the same state slot and buffer index
   ///    should be made while the returned reference is still in use.
-  BufferRef getOrCreateBuffer(size_t bufferIndex, LLCL::Allocator *allocator,
-                              size_t size,
-                              size_t alignment = kPreferredMemoryAlignment);
+  BufferRef getOrCreateBuffer(size_t bufferIndex,
+                              LLCL::CompactRuntimePtr runtime, size_t size,
+                              Optional<size_t> alignment);
 
   /// Returns a reference to the already allocated and cached buffer at
   /// bufferIndex in this state slot. Returns Error if no buffer is cached at
@@ -99,8 +99,9 @@ protected:
 private:
   /// Ensure the buffer in enry is allocated with size, reallocating
   /// any existing buffer if required.
-  static void updateCacheIfNeeded(BufferRef &entry, LLCL::Allocator *allocator,
-                                  size_t size, size_t alignment);
+  static void updateCacheIfNeeded(BufferRef &entry,
+                                  LLCL::CompactRuntimePtr runtime, size_t size,
+                                  Optional<size_t> alignment);
 
   /// Type id uniquely describing the type of payload held by this states slot.
   TypeID typeID;

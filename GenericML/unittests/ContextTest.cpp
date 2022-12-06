@@ -6,6 +6,7 @@
 
 #include "GenericML/Support/Context.h"
 #include "LLCL/Runtime/Allocator.h"
+#include "LLCL/Runtime/Runtime.h"
 
 #include "gtest/gtest.h"
 
@@ -23,6 +24,17 @@ struct PayloadB {
   explicit PayloadB(char c) : c(c) {}
   char c;
 };
+
+static LLCL::Runtime *GetRuntime() {
+  static LLCL::Runtime *runtime = []() {
+    std::unique_ptr<Allocator> allocator =
+        LLCL::createProfilingAllocator(LLCL::createMallocAllocator());
+    std::unique_ptr<LLCL::WorkQueue> workQueue =
+        LLCL::createSingleThreadWorkQueue();
+    return new LLCL::Runtime(std::move(allocator), std::move(workQueue));
+  }();
+  return runtime;
+}
 
 #ifndef NDEBUG
 TEST(ContextTest, StateSlotDowncastFailTest) {
@@ -49,7 +61,7 @@ TEST(ContextTest, StateSlotTest) {
 }
 
 TEST(ContextTest, getOrCreateBufferTest) {
-  auto allocator = LLCL::createMallocAllocator();
+  auto runtime = GetRuntime();
   {
     // Add scope to make sure that the allocator outlives the context.
     Context ctx(/*numSlots=*/1);
@@ -58,19 +70,19 @@ TEST(ContextTest, getOrCreateBufferTest) {
 
     auto &stateSlot = ctx.getStateSlot(/*slotIndex=*/0);
     auto buffer = stateSlot.getOrCreateBuffer(
-        /*bufferIndex=*/0, /*allocator=*/allocator.get(), /*size=*/1);
+        /*bufferIndex=*/0, runtime, /*size=*/1, /*alignment=*/{});
     size_t size = buffer.getSize();
     EXPECT_EQ(buffer.getStorageKind(), BufferRef::kBorrowed);
 
     // getOrCreateBuffer call with the same slot and the same size returns a
     // cached buffer.
     auto buffer2 = stateSlot.getOrCreateBuffer(
-        /*bufferIndex=*/0, /*allocator=*/allocator.get(), /*size=*/1);
+        /*bufferIndex=*/0, runtime, /*size=*/1, /*alignment=*/{});
     EXPECT_EQ(buffer.getData(), buffer2.getData());
 
     // Call with a different size will allocate a new buffer.
     auto buffer3 = stateSlot.getOrCreateBuffer(
-        /*bufferIndex=*/0, /*allocator=*/allocator.get(), /*size=*/2);
+        /*bufferIndex=*/0, runtime, /*size=*/2, /*alignment=*/{});
     EXPECT_NE(buffer3.getSize(), size);
   }
 }
