@@ -583,8 +583,7 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
     // TODO: In many cases we should be able to use `UnmanagedAsmResourceBlob`
     // here and avoid all allocations. In these cases we need to ensure the
     // incoming BEF doesn't die before the generated MLIR.
-    auto blob =
-        mlir::HeapAsmResourceBlob::allocateAndCopy(data, dataElementSize);
+    auto blob = mlir::HeapAsmResourceBlob::allocateAndCopyInferAlign(data);
     resultAttr = mlir::DenseResourceElementsAttr::get(
         type, resourceManager.insert("befArray", std::move(blob)));
     return false;
