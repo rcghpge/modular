@@ -5,10 +5,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MGPPrimitives/MGPPrimitives.h"
-#include "GenericML/MGP/Context.h"
-#include "GenericML/MGP/StateSlot.h"
+#include "GenericML/Support/Context.h"
+#include "GenericML/Support/StateSlot.h"
 #include "GenericML/Support/Tensor.h"
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
+#include "LLCL/Runtime/AsyncValue.h"
+#include "LLCL/Runtime/AsyncValueRef.h"
 #include "Support/ML/SizeUtils.h"
 #include "Support/ML/TensorShape.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -17,8 +19,7 @@
 #define DEBUG_TYPE "mgp_primitives"
 
 using namespace M;
-using namespace M::MGP;
-using M::LLCL::BufferRef;
+using namespace M::GML;
 
 //===----------------------------------------------------------------------===//
 // mgp.cpu.buffer.constant
@@ -32,7 +33,7 @@ static void mgp_cpu_buffer_constant(Result<BufferRef> outBuffer,
   // TODO(#5369): Need to capture any alignment constraint on attribute so
   // it is preserved if the result needs to be deep copied.
   if (auto buf = dyn_cast<ArrayRef<uint8_t>>(values))
-    outBuffer.emplace(BufferRef::createBorrowed(
+    outBuffer.emplace(GML::BufferRef::createBorrowed(
         const_cast<void *>(static_cast<const void *>((*buf)->data())),
         (*buf)->size()));
   else

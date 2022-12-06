@@ -4,13 +4,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/MGP/Context.h"
+#include "GenericML/Support/Context.h"
 #include "LLCL/Runtime/Allocator.h"
 
 #include "gtest/gtest.h"
 
 using namespace M;
-using namespace M::MGP;
+using namespace M::GML;
 
 struct PayloadA {
   explicit PayloadA(int i) : i(i) { resource = malloc(1); }
@@ -60,7 +60,7 @@ TEST(ContextTest, getOrCreateBufferTest) {
     auto buffer = stateSlot.getOrCreateBuffer(
         /*bufferIndex=*/0, /*allocator=*/allocator.get(), /*size=*/1);
     size_t size = buffer.getSize();
-    EXPECT_EQ(buffer.getStorageKind(), LLCL::BufferRef::kBorrowed);
+    EXPECT_EQ(buffer.getStorageKind(), BufferRef::kBorrowed);
 
     // getOrCreateBuffer call with the same slot and the same size returns a
     // cached buffer.

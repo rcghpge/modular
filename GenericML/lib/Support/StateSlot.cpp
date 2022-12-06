@@ -4,22 +4,22 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/MGP/StateSlot.h"
+#include "GenericML/Support/StateSlot.h"
 
-#include "LLCL/Support/BufferRef.h"
+#include "GenericML/Support/BufferRef.h"
 #include "Support/AlignedAlloc.h"
 
 using namespace M;
-using namespace MGP;
+using namespace M::GML;
 
 StateSlot::StateSlot(TypeID typeID, size_t numBuffers)
     : typeID(typeID), bufferCache(numBuffers) {
   assert(typeID != kInvalidTypeID);
 }
 
-LLCL::BufferRef StateSlot::getOrCreateBuffer(size_t bufferIndex,
-                                             LLCL::Allocator *allocator,
-                                             size_t size, size_t alignment) {
+BufferRef StateSlot::getOrCreateBuffer(size_t bufferIndex,
+                                       LLCL::Allocator *allocator, size_t size,
+                                       size_t alignment) {
   assert(bufferIndex < bufferCache.size());
   auto &entry = bufferCache[bufferIndex];
   updateCacheIfNeeded(entry, allocator, size, alignment);
@@ -27,7 +27,7 @@ LLCL::BufferRef StateSlot::getOrCreateBuffer(size_t bufferIndex,
   return entry.borrow();
 }
 
-ErrorOr<LLCL::BufferRef> StateSlot::getBuffer(size_t bufferIndex) {
+ErrorOr<BufferRef> StateSlot::getBuffer(size_t bufferIndex) {
   assert(bufferIndex < bufferCache.size());
   auto &entry = bufferCache[bufferIndex];
   if (entry.getData() == nullptr)
@@ -51,7 +51,7 @@ void StateSlot::doTypeRegistration(std::atomic<TypeID> *staticTypeID) {
       existingId, nextId, std::memory_order_release, std::memory_order_acquire);
 }
 
-void StateSlot::updateCacheIfNeeded(LLCL::BufferRef &entry,
+void StateSlot::updateCacheIfNeeded(BufferRef &entry,
                                     LLCL::Allocator *allocator, size_t size,
                                     size_t alignment) {
   // Do nothing if size matches. The size will be 0 if the entry is
@@ -60,5 +60,5 @@ void StateSlot::updateCacheIfNeeded(LLCL::BufferRef &entry,
     return;
 
   // Free the existing buffer if exists and create a new one.
-  entry = LLCL::BufferRef::createOwned(allocator, size, alignment);
+  entry = BufferRef::createOwned(allocator, size, alignment);
 }

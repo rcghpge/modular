@@ -4,13 +4,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_MGP_CONTEXT_H
-#define GENERICML_MGP_CONTEXT_H
+#ifndef GENERICML_SUPPORT_CONTEXT_H
+#define GENERICML_SUPPORT_CONTEXT_H
 
-#include "GenericML/MGP/StateSlot.h"
+#include "GenericML/Support/StateSlot.h"
 #include "Support/AlignedAlloc.h"
 
-namespace M::MGP {
+namespace M::GML {
 
 /// A context holds a number of 'state slots'. The number of state slots is
 /// set at construction time and cannot be changed. Each state slot can hold
@@ -76,6 +76,6 @@ private:
   std::vector<std::unique_ptr<StateSlot>> stateSlots;
 };
 
-} // namespace M::MGP
+} // namespace M::GML
 
-#endif // GENERICML_MGP_CONTEXT_H
+#endif // GENERICML_SUPPORT_CONTEXT_H

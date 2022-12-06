@@ -4,10 +4,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_MGP_STATESLOT_H
-#define GENERICML_MGP_STATESLOT_H
+#ifndef GENERICML_SUPPORT_STATESLOT_H
+#define GENERICML_SUPPORT_STATESLOT_H
 
-#include "LLCL/Support/BufferRef.h"
+#include "GenericML/Support/BufferRef.h"
 #include "Support/AlignedAlloc.h"
 #include "Support/ErrorOr.h"
 
@@ -15,7 +15,7 @@
 #include <limits>
 #include <vector>
 
-namespace M::MGP {
+namespace M::GML {
 
 namespace Detail {
 template <typename T>
@@ -75,9 +75,9 @@ public:
   ///    holding this state slot.
   ///  - no other call to this method for the same state slot and buffer index
   ///    should be made while the returned reference is still in use.
-  LLCL::BufferRef
-  getOrCreateBuffer(size_t bufferIndex, LLCL::Allocator *allocator, size_t size,
-                    size_t alignment = kPreferredMemoryAlignment);
+  BufferRef getOrCreateBuffer(size_t bufferIndex, LLCL::Allocator *allocator,
+                              size_t size,
+                              size_t alignment = kPreferredMemoryAlignment);
 
   /// Returns a reference to the already allocated and cached buffer at
   /// bufferIndex in this state slot. Returns Error if no buffer is cached at
@@ -85,7 +85,7 @@ public:
   ///
   /// The result will always be a 'borrow' of the underlying cached buffer.
   /// See getOrCreateBuffer for safety conditions.
-  ErrorOr<LLCL::BufferRef> getBuffer(size_t bufferIndex);
+  ErrorOr<BufferRef> getBuffer(size_t bufferIndex);
 
 protected:
   /// The invalid type id.
@@ -99,9 +99,8 @@ protected:
 private:
   /// Ensure the buffer in enry is allocated with size, reallocating
   /// any existing buffer if required.
-  static void updateCacheIfNeeded(LLCL::BufferRef &entry,
-                                  LLCL::Allocator *allocator, size_t size,
-                                  size_t alignment);
+  static void updateCacheIfNeeded(BufferRef &entry, LLCL::Allocator *allocator,
+                                  size_t size, size_t alignment);
 
   /// Type id uniquely describing the type of payload held by this states slot.
   TypeID typeID;
@@ -111,7 +110,7 @@ private:
   /// references will be 'uninitialized' or 'owning', all access to them
   /// will be via 'borrowed' references. Any 'owning' buffers will be
   /// destroyed when the context holding this state slot is destroyed.
-  std::vector<LLCL::BufferRef> bufferCache;
+  std::vector<BufferRef> bufferCache;
 };
 
 /// A state slot with no extra payload state. Useful for testing and for
@@ -164,6 +163,6 @@ private:
 
 } // namespace Detail
 
-} // namespace M::MGP
+} // namespace M::GML
 
-#endif // GENERICML_MGP_STATESLOT_H
+#endif // GENERICML_SUPPORT_STATESLOT_H

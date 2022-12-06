@@ -4,20 +4,20 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLCL_SUPPORT_BUFFERREF_H
-#define LLCL_SUPPORT_BUFFERREF_H
+#ifndef GENERICML_SUPPORT_BUFFERREF_H
+#define GENERICML_SUPPORT_BUFFERREF_H
 
 #include "LLCL/Runtime/Allocator.h"
 #include "Support/ErrorOr.h"
 
 #include <utility>
 
-namespace M::LLCL {
+namespace M::GML {
 
 /// This class models a reference to a raw data buffer. The reference can be
 /// "owned" or "borrowed". If "owned" the underlying buffer is destroyed when
-/// the reference is destructed. The destrution doesn't happen for "borrowed"
-/// reference, and the assmption is that the buffer outlives the reference.
+/// the reference is destructed. The destruction doesn't happen for "borrowed"
+/// references, and the assumption is that the buffer outlives the reference.
 class BufferRef {
 public:
   /// This constructs uninitialized BufferRef.
@@ -54,7 +54,7 @@ public:
 
   /// Creates a BufferRef by allocating the new object. The allocated object is
   /// deallocated when the BufferRef is destructed.
-  static BufferRef createOwned(Allocator *allocator, size_t size,
+  static BufferRef createOwned(LLCL::Allocator *allocator, size_t size,
                                size_t alignment = kPreferredMemoryAlignment) {
     return BufferRef(allocator, size, alignment);
   }
@@ -78,7 +78,7 @@ public:
   /// TODO: Instead of taking copyAllocator as an argument, we may want to use
   /// the allocator from the source object, though it will require capturing
   /// of allocator even for the borrow reference.
-  BufferRef deepCopy(Allocator *copyAllocator) const {
+  BufferRef deepCopy(LLCL::Allocator *copyAllocator) const {
     BufferRef ref =
         createOwned(copyAllocator, size,
                     alignment ? *alignment : kPreferredMemoryAlignment);
@@ -115,7 +115,7 @@ private:
   /// This constructs "owned" BufferRef. The underlying buffer is allocated
   /// when the BufferRef is constructed, and destroyed with the BufferRef
   /// destructed.
-  BufferRef(Allocator *allocator, size_t size, size_t alignment)
+  BufferRef(LLCL::Allocator *allocator, size_t size, size_t alignment)
       : allocator(allocator), size(size), storage(kOwned) {
     data = allocator->allocateBytes(size, alignment);
   }
@@ -126,7 +126,7 @@ private:
 
   /// If kOwned, the allocator to which the data must be returned. Otherwise
   /// null.
-  Allocator *allocator;
+  LLCL::Allocator *allocator;
   /// Underlying buffer storage.
   void *data;
   /// Size of underlying buffer.
@@ -138,6 +138,6 @@ private:
   StorageKind storage;
 };
 
-} // namespace M::LLCL
+} // namespace M::GML
 
-#endif // LLCL_SUPPORT_RCBUFFER_H
+#endif // GENERICML_SUPPORT_RCBUFFER_H
