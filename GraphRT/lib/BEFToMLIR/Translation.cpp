@@ -13,9 +13,9 @@
 #include "GraphRT/BEFDialect/BEFDialect.h"
 #include "GraphRT/BEFToMLIR.h"
 #include "Support/MDialect/MDialect.h"
+#include "Support/ML/SizeUtils.h"
 #include "mlir/Dialect/Quant/QuantOps.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "llvm/Support/Process.h"
 #include "llvm/Support/SourceMgr.h"
 using namespace M;
 
@@ -34,5 +34,5 @@ void M::registerBEFToMLIRTranslation() {
             input->getBufferSize());
         return translateBEFToMLIR(contents, loc).getOperation();
       },
-      llvm::Align(llvm::sys::Process::getPageSizeEstimate()));
+      maxAttributeAlignment());
 }

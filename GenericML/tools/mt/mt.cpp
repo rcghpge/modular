@@ -9,6 +9,7 @@
 #include "GenericML/Driver/DriverInputFormat.h"
 #include "GenericML/Support/ModelCollection.h"
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
+#include "Support/ML/SizeUtils.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/ToolOutputFile.h"
 
@@ -168,7 +169,9 @@ int main(int argc, char **argv) {
       format = FileFormat::kTFSavedModel;
     } else {
       // The input file is not a directory, so we open and sniff the format.
-      file = options.openInputFileOrExit();
+      // In case the input file is BEF, it has to be aligned to the maximum
+      // attribute alignment.
+      file = options.openInputFileOrExit(maxAttributeAlignment());
       format = options.getInputFormat(file->getBuffer());
     }
   }

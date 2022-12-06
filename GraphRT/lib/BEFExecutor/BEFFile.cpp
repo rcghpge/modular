@@ -14,6 +14,7 @@
 #include "GraphRT/BEF/BEFReader.h"
 #include "LLCL/Runtime/Allocator.h"
 #include "LLCL/Support/RCRef.h"
+#include "Support/ML/SizeUtils.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -297,6 +298,13 @@ CompiledFrameworkLabel BEFFile::sniffFileContents() const {
 /// message is emitted to the errorHandler and a null RCRef is returned.
 ///
 ErrorOr<RCRef<BEFFile>> BEFFile::open(StringRef file) {
+  if (auto maxAttrAlign = maxAttributeAlignment();
+      !isAddrAligned(maxAttrAlign, file.data()))
+    return Error(Twine("BEF file (0x") +
+                 Twine::utohexstr(reinterpret_cast<uintptr_t>(file.data())) +
+                 Twine(") must be aligned to: 0x") +
+                 Twine::utohexstr(maxAttrAlign.value()));
+
   if (!BEF::hasBEFMagicNumber(file))
     return Error("not a BEF file");
   file = file.drop_front(2); // Drop the magic number.

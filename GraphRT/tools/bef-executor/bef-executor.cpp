@@ -18,6 +18,7 @@
 #include "Support/CommandLine.h"
 #include "Support/CommonCLOptions.h"
 #include "Support/LLVMCompilerForwardDecls.h"
+#include "Support/ML/SizeUtils.h"
 #include "llvm/Support/SourceMgr.h"
 
 using namespace M;
@@ -156,7 +157,7 @@ int main(int argc, char **argv) {
            "We have async values allocated before we started to do anything");
 
   // Read the input file from disk into a memory buffer.
-  auto fileBuffer = clOptions.openInputFileOrExit();
+  auto fileBuffer = clOptions.openInputFileOrExit(maxAttributeAlignment());
 
   // Print some informative messages about allocator and threadpool config.
   if (clOptions.verbose) {
