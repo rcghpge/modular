@@ -31,6 +31,7 @@ def MODialect : Dialect {
   }];
 
   let cppNamespace = "::M::MO";
+  let dependentDialects = ["MDialect"];
 
   let extraClassDeclaration = [{
   private:
@@ -41,6 +42,7 @@ def MODialect : Dialect {
   }];
 
   let useDefaultTypePrinterParser = 1;
+
 }
 
 #endif // GENERICML_MODIALECT_MODIALECT_TD

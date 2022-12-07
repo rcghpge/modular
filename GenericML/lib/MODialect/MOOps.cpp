@@ -10,6 +10,7 @@
 
 #include "GenericML/MODialect/MOOps.h"
 #include "Support/Compiler/VerifyUtils.h"
+#include "Support/MDialect/MAttrs.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/FunctionImplementation.h"
 #include "mlir/IR/TypeUtilities.h"

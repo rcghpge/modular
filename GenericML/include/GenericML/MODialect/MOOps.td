@@ -12,9 +12,11 @@
 #define GENERICML_MODIALECT_MOOPS_TD
 
 include "GenericML/MODialect/MOTypes.td"
+include "Support/MDialect/MAttrs.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/IR/BuiltinAttributes.td"
 include "mlir/IR/FunctionInterfaces.td"
 include "mlir/IR/SymbolInterfaces.td"
 
@@ -94,7 +96,10 @@ def MO_ConstantOp : MO_Op<"constant", [ConstantLike, Pure]> {
     Op to store constant tensors in model.
   }];
 
-  let arguments = (ins ElementsAttr:$value);
+  let arguments = (ins
+    ConfinedAttr<
+      ElementsAttr, [AnyAttrOf<[M_ArrayElementsAttr, Builtin_DenseResourceElementsAttr]>]
+    >:$value);
   let results = (outs MO_Tensor:$result);
 
   let hasFolder = 1;

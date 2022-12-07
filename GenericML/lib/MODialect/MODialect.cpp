@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MODialect/MODialect.h"
+#include "Support/MDialect/MDialect.h"
 
 using namespace M;
 using namespace MO;
