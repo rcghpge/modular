@@ -597,6 +597,11 @@ def CpuTensorSpecCreateOp : MGP_Op<"cpu.tensor_spec.create", [
     `:` custom<RawDimsAndDType>($aRawDims, $bRawDType)
   }];
   let hasVerifier = 1;
+
+  let builders = [
+    OpBuilder<(ins "CpuTensorSpecType":$spec,
+                   CArg<"ValueRange", "{}">:$runtimeDims)>
+  ];
 }
 
 //===----------------------------------------------------------------------===//

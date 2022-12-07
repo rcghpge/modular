@@ -230,11 +230,8 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
   auto shapedType = cast<mlir::ShapedType>(convertedType);
   auto outSpecType = MGP::CpuTensorSpecType::get(shapedType.getShape(),
                                                  shapedType.getElementType());
-  auto specOp = execute.builder.create<MGP::CpuTensorSpecCreateOp>(
-      loc,
-      /*runtimeDims=*/mlir::ValueRange({}),
-      /*aRawDims=*/outSpecType.getRawDims(),
-      /*bRawDType=*/outSpecType.getRawDType());
+  auto specOp =
+      execute.builder.create<MGP::CpuTensorSpecCreateOp>(loc, outSpecType);
 
   // We create the tensor op itself using the spec and the buffer. The result
   // of this op is what we remember.

@@ -314,6 +314,16 @@ LogicalResult CpuBufferReallocSpecOp::inferReturnTypes(
 // CpuTensorSpecCreateOp
 //===----------------------------------------------------------------------===//
 
+void CpuTensorSpecCreateOp::build(OpBuilder &odsBuilder,
+                                  OperationState &odsState,
+                                  CpuTensorSpecType spec,
+                                  ValueRange runtimeDims) {
+  CpuTensorSpecCreateOp::build(odsBuilder, odsState,
+                               /*runtimeDims=*/runtimeDims,
+                               /*aRawDims=*/spec.getRawDims(),
+                               /*bRawDType=*/spec.getRawDType());
+}
+
 /// Parses a !mgp.cpu.tensor_spec type where the element type must be known, but
 /// represented in 'raw form'.
 static ParseResult parseRawDimsAndDType(AsmParser &p,
