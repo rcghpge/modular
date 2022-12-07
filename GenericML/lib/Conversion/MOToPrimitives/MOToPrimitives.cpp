@@ -13,6 +13,7 @@
 #include "GenericML/MODialect/MOOps.h"
 #include "GraphRT/BEFDialect/BEFOps.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
+#include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 using namespace M;
@@ -100,8 +101,11 @@ private:
 
   LogicalResult createModelOp();
 
-  /// Lowers the mo.output op to the 'bef.output' for the final results.
+  /// Lowers the mo.output op to the bef.output for the final results.
   LogicalResult lowerOutput(MO::OutputOp output);
+
+  /// Lowers mo.constant op.
+  LogicalResult lowerConstant(MO::ConstantOp constOp);
 
   //===-----------------------------------------------------------------===//
   // Lowering state
@@ -193,6 +197,56 @@ LogicalResult MOGraphLowering::lowerOutput(MO::OutputOp output) {
   return success();
 }
 
+LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
+  Location loc = constOp.getLoc();
+
+  // Init phase lowering.
+
+  // Execute phase lowering.
+
+  MO::TensorType moTensorType = constOp.getType();
+  Type convertedType = typeConverter.convertType(moTensorType);
+  if (!convertedType)
+    return constOp->emitError("unsupported type ") << constOp.getType();
+
+  // MO stores constants either in line as ArrayElementsAttr or as a resource.
+  // We canonicalize the value's type to ArrayType and build a buffer op.
+  ElementsAttr value;
+  if (auto elementsAttr = dyn_cast<ArrayElementsAttr>(constOp.getValue())) {
+    auto type =
+        ArrayType::get(elementsAttr.getRawData().size(),
+                       execute.builder.getIntegerType(8, /*isSigned=*/false));
+    value = ArrayElementsAttr::get(elementsAttr.getRawData(), type);
+  } else {
+    // Value must be a resource.
+    auto resource = cast<DenseResourceElementsAttr>(constOp.getValue());
+    auto type = ArrayType::get(
+        resource.size(), execute.builder.getIntegerType(8, /*isSigned=*/false));
+    value = DenseResourceElementsAttr::get(type, resource.getRawHandle());
+  }
+  auto bufferOp = execute.builder.create<MGP::CpuBufferConstantOp>(loc, value);
+
+  // We create the tensor spec op.
+  auto shapedType = cast<mlir::ShapedType>(convertedType);
+  auto outSpecType = MGP::CpuTensorSpecType::get(shapedType.getShape(),
+                                                 shapedType.getElementType());
+  auto specOp = execute.builder.create<MGP::CpuTensorSpecCreateOp>(
+      loc,
+      /*runtimeDims=*/mlir::ValueRange({}),
+      /*aRawDims=*/outSpecType.getRawDims(),
+      /*bRawDType=*/outSpecType.getRawDType());
+
+  // We create the tensor op itself using the spec and the buffer. The result
+  // of this op is what we remember.
+  auto tensorType =
+      MGP::CpuTensorType::get(execute.builder.getContext(), outSpecType);
+  auto tensorCreateOp = execute.builder.create<MGP::CpuTensorCreateOp>(
+      loc, tensorType, execute.invokableInputChain, specOp, bufferOp);
+  execute.loweredTensors.try_emplace(constOp->getResult(0),
+                                     tensorCreateOp->getResult(0));
+  return success();
+}
+
 LogicalResult MOGraphLowering::run() {
   // Create the mgp.model and the regions for the init/execute phases.
   if (failed(createModelOp()))
@@ -210,6 +264,11 @@ LogicalResult MOGraphLowering::run() {
 
   // Lower all of the operations in the graph.
   for (Operation &op : *graph.getBodyBlock()) {
+    if (auto constOp = dyn_cast<MO::ConstantOp>(op)) {
+      if (failed(lowerConstant(constOp)))
+        return failure();
+      continue;
+    }
 
     // Lower mo.output to bef.output trivially.
     if (auto output = dyn_cast<MO::OutputOp>(op)) {
