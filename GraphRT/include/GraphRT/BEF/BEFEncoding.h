@@ -204,6 +204,11 @@ public:
   };
 };
 
+template <>
+struct AttrKindForCXXType<TypeKind> {
+  static constexpr AttributeKind kind = AttributeKind::kType;
+};
+
 } // namespace BEF
 } // namespace M
 

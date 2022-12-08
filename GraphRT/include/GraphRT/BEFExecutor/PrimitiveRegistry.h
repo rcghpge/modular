@@ -99,6 +99,11 @@ struct BEFDecoder<ArrayRef<EltType>> {
   }
 };
 
+template <>
+struct BEFDecoder<BEF::TypeKind> {
+  static ErrorOr<BEF::TypeKind> decode(BEF::TypeKind value) { return value; }
+};
+
 //===----------------------------------------------------------------------===//
 // Helper Classes For Primitive Implementations
 //===----------------------------------------------------------------------===//
