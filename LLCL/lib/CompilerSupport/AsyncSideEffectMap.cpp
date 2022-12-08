@@ -9,14 +9,14 @@
 
 using namespace M::LLCL;
 
-void AsyncSideEffectMap::andThen(Operation *key,
-                                 llvm::function_ref<void(void)> callable) {
+void AsyncSideEffectMap::andThenSync(Operation *key,
+                                     llvm::function_ref<void(void)> callable) {
   auto found = chainMap.find(key);
   // If we couldn't find the operation in the map, just run the callable.
   if (found == chainMap.end())
     callable();
 
-  found->getSecond()->andThen(callable);
+  found->getSecond()->andThenSync(callable);
 }
 
 AnyAsyncValueRef AsyncSideEffectMap::getChain(mlir::Operation *key) {

@@ -387,18 +387,18 @@ static void async_add2_i32(AsyncValueRef<int32_t> lhs,
   //
   // This isn't actually declared that way, so this is just for illustration
   // purposes.
-  andThen(std::make_tuple(std::move(lhs), std::move(rhs)),
-          [result = result.copy()](AsyncValueRef<int32_t> lhs,
-                                   AsyncValueRef<int32_t> rhs) {
-            // This actually only needs to check for error if this is
-            // defined as non-strict.
-            if (lhs.isError())
-              result.setToError(lhs.getPointer()->takeDiagnostic());
-            else if (rhs.isError())
-              result.setToError(rhs.getPointer()->takeDiagnostic());
-            else
-              result.emplace(*lhs + *rhs);
-          });
+  andThenSync(std::make_tuple(std::move(lhs), std::move(rhs)),
+              [result = result.copy()](AsyncValueRef<int32_t> lhs,
+                                       AsyncValueRef<int32_t> rhs) {
+                // This actually only needs to check for error if this is
+                // defined as non-strict.
+                if (lhs.isError())
+                  result.setToError(lhs.getPointer()->takeDiagnostic());
+                else if (rhs.isError())
+                  result.setToError(rhs.getPointer()->takeDiagnostic());
+                else
+                  result.emplace(*lhs + *rhs);
+              });
 }
 
 /// Example that returns an indirect value with IndirectResult, nominally
@@ -442,7 +442,7 @@ static int32_t test_async_many_waiters(BEFAttr<int32_t> num, Runtime &runtime) {
   unsigned result = 0;
   /// Add 'num' waiters that just increment result.
   for (int32_t i = 0, e = *num; i != e; ++i)
-    av.andThen([&]() { ++result; });
+    av.andThenSync([&]() { ++result; });
   av.emplace(42);
   return result;
 }
@@ -790,10 +790,10 @@ static void vec_softmax_async(AsyncValueRef<TestFloat32Vector> input,
   // STAGE 2 is only executed when maxVal is ready (i.e. STAGE 1 is complete)
   //
   // Note: we do not mark the output as ready until STAGE 3 is complete.
-  maxVal->andThen([input = input.copy(),
-                   denomAndExpVectorAV = denomAndExpVectorAV.copy(),
-                   maxVal = maxVal.copy(), batchSize, &runtime, vecLen,
-                   numBatches]() mutable {
+  maxVal->andThenSync([input = input.copy(),
+                       denomAndExpVectorAV = denomAndExpVectorAV.copy(),
+                       maxVal = maxVal.copy(), batchSize, &runtime, vecLen,
+                       numBatches]() mutable {
     parallelForEachNCustomCompletion(
         runtime, numBatches,
         [input = std::move(input), maxVal = maxVal->get<ElementType>(), vecLen,
@@ -824,7 +824,7 @@ static void vec_softmax_async(AsyncValueRef<TestFloat32Vector> input,
 
   // STAGE 3: Normalize the output
   // STAGE 3 is only executed when denom is ready (i.e. STAGE 2 is complete)
-  denomAndExpVectorAV.andThen(
+  denomAndExpVectorAV.andThenSync(
       [output = output.copy(), batchSize, &runtime, vecLen,
        numBatches](const AsyncValueRef<DenomAndExpVector> &denomAndExpVector) {
         // compute STAGE 3 in parallel and mark the output is ready when all

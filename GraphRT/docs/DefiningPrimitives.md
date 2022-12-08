@@ -579,7 +579,7 @@ static void nonstrict_add_i32(AsyncValueRef<int32_t> lhs,
   // resolve to an error, so we need to handle that.
 
   // Invoke the lambda when both AsyncValue's resolve.
-  andThen(
+  andThenSync(
       [result = result.copy()](AsyncValueRef<int32_t> lhs,
                                AsyncValueRef<int32_t> rhs) {
         // Okay, both are "ready" but either may be an error.  We must

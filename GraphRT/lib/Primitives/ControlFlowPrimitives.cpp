@@ -106,7 +106,7 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
   IfState state = {copyRCRef(trueInv), copyRCRef(falseInv), args.takeAsVector(),
                    results.copyAsVector()};
 
-  cond.andThen(
+  cond.andThenSync(
       [state = std::move(state)](const AsyncValueRef<bool> &cond) mutable {
         state.runWhenCondResolves(cond);
       });
@@ -192,7 +192,7 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
       // next iteration.  Note that this is a policy decision - we could just
       // "unroll the loop" completely, which would increase parallelism.  This
       // is conservatively correct though.
-      andThenMoving(
+      andThenSyncMoving(
           bodyResults, [state = std::move(*this)](
                            MutableArrayRef<AnyAsyncValueRef> values) mutable {
             // bodyResults become the operands of the next iteration.
@@ -210,7 +210,7 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
                        results.copyAsVector(), 0};
 
   // Dispatch when the `count` becomes available (possibly immediately).
-  count.andThen(
+  count.andThenSync(
       [state = std::move(state)](const AsyncValueRef<int32_t> &count) mutable {
         state.runWhenCountResolves(count);
       });

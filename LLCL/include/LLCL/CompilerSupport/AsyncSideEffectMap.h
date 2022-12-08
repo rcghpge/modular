@@ -42,7 +42,7 @@ public:
   /// Given an operation, add the provided callable to the `andThen` list of the
   /// operation's AsyncValue. If the operation is not found in the map, then the
   /// map assumes no side-effects are in flight and runs the callable.
-  void andThen(Operation *key, llvm::function_ref<void(void)> callable);
+  void andThenSync(Operation *key, llvm::function_ref<void(void)> callable);
 
   /// Given an operation, return the AsyncValue contained in the map that
   /// provides the side effect chain for that operation. If the operation is not
