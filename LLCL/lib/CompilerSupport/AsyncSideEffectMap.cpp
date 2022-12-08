@@ -14,7 +14,7 @@ void AsyncSideEffectMap::andThenSync(Operation *key,
   auto found = chainMap.find(key);
   // If we couldn't find the operation in the map, just run the callable.
   if (found == chainMap.end())
-    callable();
+    return callable();
 
   found->getSecond()->andThenSync(callable);
 }
