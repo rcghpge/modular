@@ -55,7 +55,7 @@ TEST(Tensor, ReleaseBuffer) {
   M::Tensor tensor = makeTensor();
   M::Tensor tensor2 = tensor.deepCopy(runtime);
   GML::BufferRef ref = tensor.releaseBuffer();
-  ASSERT_EQ(ref.getSize(), tensor.getSizeInBytes());
+  ASSERT_EQ(ref.getSize(), tensor2.getSizeInBytes());
   ASSERT_EQ(std::memcmp(ref.getData(), tensor2.getPointer(), ref.getSize()), 0);
 }
 
@@ -68,22 +68,23 @@ TEST(Tensor, DeepCopy) {
   ASSERT_FALSE(haveSameContents(tensor, deepCopy));
 }
 
-TEST(Tensor, GetBorrowed) {
+TEST(Tensor, Borrow) {
   M::Tensor tensor = makeTensor();
-  // Immortal provides a shallow copy.
-  M::Tensor immortalCopy = tensor.getBorrowed();
-  ASSERT_TRUE(haveSameContents(tensor, immortalCopy));
+  M::Tensor borrow = tensor.borrow(GML::BufferRef::kExecute);
+  ASSERT_TRUE(haveSameContents(tensor, borrow));
   incrementContents(tensor);
-  ASSERT_TRUE(haveSameContents(tensor, immortalCopy));
+  ASSERT_TRUE(haveSameContents(tensor, borrow));
 }
 
 TEST(Tensor, FromBuffer) {
   LLCL::Runtime *runtime = getRuntime();
   TensorSpec spec({kN, kM}, DType::getInt(8, /*isSigned=*/false).value());
-  GML::BufferRef ref = GML::BufferRef::createOwned(runtime, 1, {});
+  GML::BufferRef ref =
+      GML::BufferRef::createOwned(runtime, 1, /*alignment=*/{});
+
   void *data = ref.getData();
   Tensor tensor = Tensor::create(std::move(ref), spec);
-  // Tensor takes the ownership from the bufer ref.
+  // Tensor takes the ownership from the buffer ref.
   ASSERT_EQ(data, tensor.getPointer());
   ASSERT_EQ(ref.getData(), nullptr);
 }

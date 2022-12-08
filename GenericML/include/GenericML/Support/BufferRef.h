@@ -17,8 +17,9 @@
 
 namespace M::GML {
 
-/// A smart pointer, aka reference, to an underlying buffer of known size but
-/// uninterpreted and possibly uninitialized bytes.
+/// A reference (aka smart pointer) to an underlying buffer of known size but
+/// uninterpreted and possibly uninitialized bytes, and metadata needed to
+/// interop with the Modular runtime.
 ///
 /// The underlying buffer may be 'owned' or 'borrowed' by this reference.
 /// An owning reference frees its buffer when destroyed. References may be
@@ -26,20 +27,71 @@ namespace M::GML {
 /// underlying buffer will be copied), and borrowed (the new reference
 /// will contain a buffer alias).
 ///
+/// CAUTION: Though movable, this is 24 bytes on 64-bit systems so best not
+///          to consider it a simple handle.
+///
 /// All owning references remember their runtime, which is needed when owning
-/// references are destroyed, and may be used when the buffer is copied. All
-/// references remember their (optional) alignment constraint, which may be
+/// references are destroyed, and could be used when the buffer is deep copied.
+///
+/// All references remember their (optional) alignment constraint, which may be
 /// used when the buffer is copied.
+///
+/// All borrowing references capture a coarse-grained notion of lifetime.
+/// This is used to ensure borrows are done safely, particularly when crossing
+/// the boundary between Modular and third-party code.
 class BufferRef {
 public:
-  /// Constructs an uninitialized buffer reference. Useful for references
+  /// Describes whether the underlying buffer is owned or borrowed from
+  /// some other owner.
+  enum Ownership : uint8_t {
+    /// The reference is in the null state.
+    kNull = 0,
+    /// The buffer was allocated from the runtime and must be freed
+    /// when the reference is destroyed.
+    kOwned,
+    /// The buffor was borrowed from some other owner.
+    kBorrowed,
+  };
+
+  /// Describes a sound approximation of the lifetime of the owner of
+  /// (borrowed) buffer. Lifetimes can help determine when buffer copies can
+  /// be safely avoided in favor of borrows, and help debug lifetime overhang
+  /// bugs (ie use-after-free). Can be compared with >= to test if lhs lifetime
+  /// contains or is equivalent to the rhs lifetime.
+  enum Lifetime : uint8_t {
+    /// The buffer is owned by a reference with some local scope. Any borrowers
+    /// are responsible for ensuring lifetimes don't overhang. Typically this
+    /// implies all uses of the borrow are clearly scoped under the owners
+    /// construction and destruction. Owning references always have this
+    /// lifetime.
+    kLocal = 0,
+
+    /// The buffer is owned by:
+    ///  - a caller to a model's execute entry point which is held alive
+    ///    for the duration of the call (as an input or an output).
+    ///  - a context (eg within a state slot of an M::GML::Context) held by
+    ///    the executor. Though will be retained ofter the execute entry
+    ///    point has returned, a following execute call may reallocate or
+    ///    otherwise invalidate the buffer.
+    kExecute = 1,
+
+    /// (Technically we could have a lifetime to describe the executor itself,
+    /// however there doesn't seem to be any need for it.)
+
+    /// The buffer is a constant (eg an attribute in a BEFFile or some other
+    /// mmapped memory). The constant may be shared between multiple executors.
+    kConstant = 2,
+  };
+
+  /// Constructs a reference in the 'null' state. Useful for references
   /// which are allocated lazily.
   BufferRef() = default;
 
-  /// Deallocates underlying buffer if an owning reference.
+  /// Deallocates the underlying buffer if an owning reference.
   ~BufferRef();
 
-  // Move is allowed for buffer references.
+  // Move is allowed for buffer references. The moved-from reference is
+  // returned to the default 'null' state.
   BufferRef(BufferRef &&rhs);
   BufferRef &operator=(BufferRef &&rhs);
 
@@ -49,36 +101,49 @@ public:
 
   /// Creates an owning reference by allocating a new and uninitialized
   /// underlying buffer of size and alignment. The allocated buffer is freed
-  /// when the reference is destroyed.
+  /// when the reference is destroyed. Since ownership rests with the caller,
+  /// the lifetime will be set to 'local' by default.
+  ///
   /// TOOO(#5799): We're requiring all callers to be explicit about alignment
   /// (or lack thereof) to help track down 'forgotten alignment' problems.
   static BufferRef createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
-                               Optional<size_t> alignment) {
-    return BufferRef(runtime, size, alignment);
-  }
+                               Optional<size_t> alignment);
 
   /// Creates a borrowing reference to the given buffer of the given size and
-  /// alignment. The returned reference must outlive the given buffer.
-  /// The alignment will be respected should the buffer need to be copied.
+  /// alignment. The alignment will be respected should the buffer need to be
+  /// copied. The returned reference must outlive the given buffer. The given
+  /// lifetime should be a sound approximation of the lifetime of the buffer.
+  ///
   /// TODO(#5369): Also support const void* overload
   static BufferRef createBorrowed(void *buffer, size_t size,
-                                  Optional<size_t> alignment) {
-    return BufferRef(buffer, size, alignment);
-  }
+                                  Optional<size_t> alignment,
+                                  Lifetime lifetime);
 
   //===--------------------------------------------------------------------===//
   // Core APIs for working with a BufferRef.
   //===--------------------------------------------------------------------===//
 
-  /// Returns a borrowing reference to the buffer of this reference. This
-  /// reference may be owning or borrowing, and the underlying buffer must
-  /// outlive the returned reference.
-  /// TODO(#5369): Consistent naming with Tensor borrowing.
-  BufferRef borrow() const;
+  /// Returns a borrowing reference to the buffer of this reference.
+  /// This reference may be owning or borrowing, and the underlying buffer must
+  /// outlive the returned reference. The result will have the given
+  /// borrowLifetime.
+  ///
+  /// Returns an error if asking to borrow from a borrow whose lifetime is
+  /// not greater or equal to borrowLifetime.
+  ErrorOr<BufferRef> borrowOrError(Lifetime borrowLifetime) const;
 
-  /// Returns an owning reference to a deep copy of this reference. The given
-  /// runtime will be used for the copy. Any alignment constraint in this
-  /// reference will be respected by the copy.
+  /// Returns a borrowing reference to the buffer of this reference.
+  /// This reference may be owning or borrowing, and the underlying buffer must
+  /// outlive the returned reference. The result will have the given
+  /// borrowLifetime.
+  ///
+  /// Assert fails if asking to borrow from a borrow whose lifetime is
+  /// not greater or equal to borrowLifetime.
+  BufferRef borrow(Lifetime borrowLifetime) const;
+
+  /// Returns an owning reference to a deep copy of this reference.
+  /// The given runtime will be used for the copy. Any alignment
+  /// constraint in this reference will be respected by the copy.
   BufferRef deepCopy(LLCL::CompactRuntimePtr newRuntime) const;
 
   /// Returns a pointer to the underlying buffer. Returns nullptr if the
@@ -107,24 +172,17 @@ public:
   /// the reference is a borrow.
   LLCL::CompactRuntimePtr getRuntime() const { return runtime; }
 
-  /// Describes whether the underlying buffer should be deleted when this
-  /// reference is destroyed.
-  /// TODO(#5369): Will probably extend kBorrowed with lifetime qualifier
-  /// to help protect against overhanging borrows.
-  enum StorageKind : uint8_t { kUninit, kOwned, kBorrowed };
+  bool isOwned() const { return ownership == kOwned; }
+  Lifetime getLifetime() const { return lifetime; }
 
-  StorageKind getStorageKind() const { return storage; }
+  void printDebug(raw_ostream &os) const;
+  void swap(BufferRef &rhs);
 
 private:
-  /// Constructs an "owned" BufferRef. The underlying buffer is allocated
-  /// when the BufferRef is constructed, and destroyed when the BufferRef
-  /// is destroyed.
-  BufferRef(LLCL::CompactRuntimePtr runtime, size_t size,
-            Optional<size_t> alignment);
-
-  /// Constructs a "borrowed" BufferRef with the pre-allocated buffer. The
-  /// buffer is not destroyed when the BufferRef is destroyed.
-  BufferRef(void *buffer, size_t size, Optional<size_t> alignment);
+  BufferRef(void *buffer, size_t size, LLCL::CompactRuntimePtr runtime,
+            llvm::MaybeAlign alignment, Ownership ownership, Lifetime lifetime)
+      : buffer(buffer), size(size), runtime(runtime), alignment(alignment),
+        ownership(ownership), lifetime(lifetime) {}
 
   // Implicit copying is not allowed.
   BufferRef(const BufferRef &rhs) = delete;
@@ -137,14 +195,32 @@ private:
   /// The runtime responsible for the underlying buffer if it is owned.
   LLCL::CompactRuntimePtr runtime = nullptr; /* 1 byte */
   /// Alignment of underlying buffer, or None if no specific alignment given.
-  llvm::MaybeAlign alignment = {}; /* 2 bytes */
+  llvm::MaybeAlign alignment = llvm::None; /* 2 bytes */
   /// Whether the underlying buffer should be deleted when this object is
   /// destructed (kOwned), or never deleted (kBorrowed).
-  StorageKind storage = kUninit; /* 1 byte */
+  Ownership ownership = kNull; /* 1 byte */
+  /// A sound approximation of the lifetime of the buffer, irrespective of
+  /// whether it is owned or borrowed.
+  Lifetime lifetime = kLocal; /* 1 byte */
   // TODO(#5369): A notion of read-only (in DEBUG mode) with asserts.
-  /* 4 bytes unused on 64-bit systems. */
+  /* 3 bytes unused on 64-bit systems. */
 };
 
+inline raw_ostream &operator<<(raw_ostream &os, const BufferRef &value) {
+  value.printDebug(os);
+  return os;
+}
+
 } // namespace M::GML
+
+namespace std {
+
+// For ADL style swap.
+template <>
+inline void swap(M::GML::BufferRef &lhs, M::GML::BufferRef &rhs) {
+  lhs.swap(rhs);
+}
+
+} // namespace std
 
 #endif // GENERICML_SUPPORT_RCBUFFER_H

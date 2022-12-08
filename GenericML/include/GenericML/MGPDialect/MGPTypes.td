@@ -77,7 +77,7 @@ def MGP_CpuBufferType : MGP_Type<"CpuBuffer", "cpu.buffer",
     Examples:
     ```mlir
     !mgp.cpu.buffer<16>   // A 16-byte buffer.
-    !mgp.cpu.buffer       // A buffer who's size is only known at runtime
+    !mgp.cpu.buffer       // A buffer whose size is only known at runtime
     ```
   }];
 
@@ -326,7 +326,7 @@ def MGP_CpuTensorSpecType : MGP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
 // TODO: See also zap.ndbuffer.
 def MGP_CpuTensorType : MGP_Type<"CpuTensor", "cpu.tensor", [
     DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
-  let summary = "Type of CPU-hosted tensors who's underlying buffer is in "
+  let summary = "Type of CPU-hosted tensors whose underlying buffer is in "
                 "dense row-major order according to a tensor spec.";
   let description = [{
     This type is for dense CPU-friendly, immutable tensors of statically known

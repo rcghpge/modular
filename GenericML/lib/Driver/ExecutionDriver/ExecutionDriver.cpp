@@ -125,6 +125,10 @@ static LogicalResult populateTensorResults(
                                                loc.column);
       return emitError(mlirLoc) << "populateTensorResults: not a Tensor";
     }
+    DEBUG_WITH_TYPE("modular_memcpy",
+                    llvm::dbgs() << "memcpy " << tensor->getSizeInBytes()
+                                 << " bytes from M::Tensor to output buffer\n");
+    /// TODO(#5867): Support an API which can avoid copy-on-output.
     memcpy(outputs[outIdx], tensor->getPointer(), tensor->getSizeInBytes());
     outIdx++;
   }
@@ -146,9 +150,16 @@ static ErrorOrSuccess executeModelOnce(MLIRContext *ctx, const Model *model,
   // them).
   SmallVector<AnyAsyncValueRef> args;
   args.reserve(model->getNumInputs());
-  for (auto &input : inputTensors)
-    args.push_back(
-        AsyncValueRef<Tensor>::createReady(runtime, std::move(input)));
+  for (const auto &input : inputTensors) {
+    // Technically we could move these input tensors into the args. However
+    // that could trigger different buffer copy behaviour in the model under
+    // test depending on whether single-run or benchmarking is used, and
+    // similarly could disagree with the model behaviour when the
+    // runModelWithData interface is used. So we hold the inputs alive for
+    // the entire call and pass a borrow of 'execute' lifetime.
+    args.push_back(AsyncValueRef<Tensor>::createReady(
+        runtime, input.borrow(GML::BufferRef::kExecute)));
+  }
 
   // We use printf here because it has atomic output behavior w.r.t. the printfs
   // in the model.
@@ -188,13 +199,13 @@ executeModelRepeated(MLIRContext *ctx, const Model *model, Runtime &runtime,
   // remove any added overhead due to initial setup of the model. The loop is
   // only run if numRuns > 1.
   for (unsigned i = 0, e = options.numWarmup; i != e; ++i) {
-    // Fill the arguments with an an immortal reference to the tensor data
-    // so the input buffers live across all executions.
+    // Fill the arguments with borrowed references to the tensor data
+    // since the input buffers live across all executions.
     SmallVector<AnyAsyncValueRef> args;
     args.reserve(model->getNumInputs());
-    for (auto &input : inputTensors) {
-      args.push_back(
-          AsyncValueRef<Tensor>::createReady(runtime, input.getBorrowed()));
+    for (const auto &input : inputTensors) {
+      args.push_back(AsyncValueRef<Tensor>::createReady(
+          runtime, input.borrow(GML::BufferRef::kExecute)));
     }
 
     // Execute the model and insert its results into the results vec.
@@ -217,15 +228,13 @@ executeModelRepeated(MLIRContext *ctx, const Model *model, Runtime &runtime,
   // Measure the time taken for each inference and print it.
   for (unsigned i = 0, e = options.numRuns; i != e; ++i) {
     TIME_PROFILER_SCOPE(1, "runModelOnce");
-
-    // Fill the arguments.  We pass in an immortal
-    // reference to the tensor data so the input buffers live across all
-    // executions.
+    // Fill the arguments with borrowed references to the tensor data
+    // since the input buffers live across all executions.
     SmallVector<AnyAsyncValueRef> args;
     args.reserve(model->getNumInputs());
     for (auto &input : inputTensors)
-      args.push_back(
-          AsyncValueRef<Tensor>::createReady(runtime, input.getBorrowed()));
+      args.push_back(AsyncValueRef<Tensor>::createReady(
+          runtime, input.borrow(GML::BufferRef::kExecute)));
 
     auto start = std::chrono::steady_clock::now();
 
@@ -298,8 +307,11 @@ ErrorOrSuccess M::runModelWithData(MLIRContext *ctx, const Model *model,
     if (llvm::any_of(spec.getDims(), mlir::ShapedType::isDynamic))
       return Error("Dynamic input shapes are not supported.");
     // Nothing is known about the alignment of the inputs.
-    inputTensors.emplace_back(
-        Tensor::createBorrowed(input, spec, /*alignment=*/{}));
+    // However they will be held alive for the duration of the execute call.
+    // TODO(#5867): Support API which allows ownership of inputs to be
+    // transferred to execute call.
+    inputTensors.emplace_back(Tensor::createBorrowed(
+        input, spec, /*alignment=*/{}, GML::BufferRef::kExecute));
   }
 
   // Fill the arguments.  We are running the model once so we pass in the input
@@ -326,6 +338,7 @@ ErrorOrSuccess M::runModelWithData(MLIRContext *ctx, const Model *model,
 
   // Wait for the model to finish execution, forcing synchrony.
   await(results);
+
   MutableArrayRef<AnyAsyncValueRef> resultRef(results);
   // Drop the first chain result and collect the output data.
   if (failed(populateTensorResults(executableModel.get(),

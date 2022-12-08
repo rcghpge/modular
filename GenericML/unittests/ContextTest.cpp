@@ -72,7 +72,7 @@ TEST(ContextTest, getOrCreateBufferTest) {
     auto buffer = stateSlot.getOrCreateBuffer(
         /*bufferIndex=*/0, runtime, /*size=*/1, /*alignment=*/{});
     size_t size = buffer.getSize();
-    EXPECT_EQ(buffer.getStorageKind(), BufferRef::kBorrowed);
+    EXPECT_FALSE(buffer.isOwned());
 
     // getOrCreateBuffer call with the same slot and the same size returns a
     // cached buffer.

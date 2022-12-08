@@ -41,7 +41,7 @@ static void mgp_cpu_buffer_constant(Result<BufferRef> outBuffer,
   if (auto buf = dyn_cast<ArrayRef<uint8_t>>(values))
     outBuffer.emplace(GML::BufferRef::createBorrowed(
         const_cast<void *>(static_cast<const void *>((*buf)->data())),
-        (*buf)->size(), /*alignment=*/{}));
+        (*buf)->size(), /*alignment=*/{}, BufferRef::kConstant));
   else
     outBuffer.setToError(
         "unsupported type, only u8 is supported for attribute elements");

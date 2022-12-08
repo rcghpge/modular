@@ -24,8 +24,10 @@ BufferRef StateSlot::getOrCreateBuffer(size_t bufferIndex,
   assert(bufferIndex < bufferCache.size());
   auto &entry = bufferCache[bufferIndex];
   updateCacheIfNeeded(entry, runtime, size, alignment);
-  // Return a borrowed reference to the cached buffer.
-  return entry.borrow();
+  // Return a borrowed reference to the cached buffer. Since it's in the
+  // cache, and the compiler follows the 'one shot' rules for reallocing
+  // buffers, we can give the borrow 'execute' lifetime.
+  return entry.borrow(GML::BufferRef::kExecute);
 }
 
 ErrorOr<BufferRef> StateSlot::getBuffer(size_t bufferIndex) {
@@ -33,8 +35,10 @@ ErrorOr<BufferRef> StateSlot::getBuffer(size_t bufferIndex) {
   auto &entry = bufferCache[bufferIndex];
   if (entry.getData() == nullptr)
     return Error("no buffer has been cached at the given index");
-  // Return a borrowed reference to the cached buffer.
-  return entry.borrow();
+  // Return a borrowed reference to the cached buffer. Since it's in the
+  // cache, and the compiler follows the 'one shot' rules for reallocing
+  // buffers, we can give the borrow 'execute' lifetime.
+  return entry.borrow(GML::BufferRef::kExecute);
 }
 
 /// Assigns to staticTypeId a globally unique type id.
@@ -61,5 +65,7 @@ void StateSlot::updateCacheIfNeeded(BufferRef &entry,
     return;
 
   // Free the existing buffer if exists and create a new one.
+  // Since the compiler follows the 'one shot' rules for reallocing
+  // buffers, this cannot invalidate any existing borrows.
   entry = BufferRef::createOwned(runtime, size, alignment);
 }
