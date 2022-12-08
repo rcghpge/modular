@@ -8,12 +8,14 @@
 #include "Support/ML/CompiledFrameworkLabel.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/MemoryBufferRef.h"
 
 #include <regex>
 
 // We only use hasBEFMagicNumber, which is inlined in the header, so we don't
 // have to link the BEF library.
 #include "GraphRT/BEF/BEFEncoding.h"
+#include "mlir/Bytecode/BytecodeReader.h"
 
 using namespace M;
 
@@ -79,6 +81,12 @@ FileFormat M::sniffInputFormat(StringRef fileContents) {
       return FileFormat::kFauxDialect;
     if (fileContents.contains("operator_codes:"))
       return FileFormat::kTFLFlatBufferJSON;
+  } else if (mlir::isBytecode(llvm::MemoryBufferRef(fileContents, ""))) {
+    std::match_results<StringRef::iterator> m;
+    if (std::regex_search(fileContents.begin(), fileContents.end(), m,
+                          std::regex(R"(\bmtfl\.)"))) {
+      return FileFormat::kMTFLDialect;
+    }
   }
   return FileFormat::kUnknown;
 }
