@@ -570,9 +570,9 @@ LogicalResult CpuTensorExtractOp::inferReturnTypes(
   assert(operands.size() == 1 && "mismatched operand arity");
   auto tensorType = dyn_cast<CpuTensorType>(operands[0].getType());
   assert(tensorType && "mismatched operand type");
-  inferredReturnTypes.emplace_back(tensorType.getTensorSpec());
   inferredReturnTypes.emplace_back(
       tensorType.getTensorSpec().getExpectedBufferType());
+  inferredReturnTypes.emplace_back(tensorType.getTensorSpec());
   return success();
 }
 

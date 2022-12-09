@@ -327,8 +327,9 @@ static void mgp_cpu_tensor_spec_dtype(const TensorSpec &tensorSpec,
 
 /// Fulfills the outTensor by creating a tensor from the given tensor spec and
 /// the buffer.
-static void mgp_cpu_tensor_create(Chain inChain, const TensorSpec &tensorSpec,
+static void mgp_cpu_tensor_create(Chain inChain,
                                   AsyncValueRef<BufferRef> bufferRef,
+                                  const TensorSpec &tensorSpec,
                                   Result<Tensor> outTensor, Runtime &runtime) {
   // If this is the last user of the given buffer, let Tensor take the
   // ownership of the underlying buffer if the buffer is owned. If not, we will
@@ -354,8 +355,8 @@ static void mgp_cpu_tensor_create(Chain inChain, const TensorSpec &tensorSpec,
 /// fulfills the outTensorSpec and outBuffer with the corresponding tensor spec
 /// and buffer from the input tensor.
 static void mgp_cpu_tensor_extract(AsyncValueRef<Tensor> tensor,
-                                   Result<TensorSpec> outTensorSpec,
                                    Result<BufferRef> outBuffer,
+                                   Result<TensorSpec> outTensorSpec,
                                    Runtime &runtime) {
   outTensorSpec.emplace(tensor->getSpec());
   // If this is the last user of the given tensor, move the bufferRef to the

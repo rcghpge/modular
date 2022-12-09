@@ -789,12 +789,12 @@ def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
 
     %spec : !mgp.cpu.tensor_spec<4x16xf32>
     %buf : !mgp.cpu.buffer<256>
-    %tensor = mgp.cpu.tensor.create %ch %spec %buf : !mgp.cpu.tensor<4x16xf32>
+    %tensor = mgp.cpu.tensor.create %ch %buf %spec : !mgp.cpu.tensor<4x16xf32>
     %tensor : !mgp.cpu.tensor<4x16xf32>
 
     %spec : !mgp.cpu.tensor_spec<?x16xf32>
     %buf : !mgp.cpu.buffer
-    %tensor = mgp.cpu.tensor.create %ch %spec %buf : !mgp.cpu.tensor<?x16xf32>
+    %tensor = mgp.cpu.tensor.create %ch %buf %spec : !mgp.cpu.tensor<?x16xf32>
     %tensor : !mgp.cpu.tensor<?x16xf32>
     ```
 
@@ -804,11 +804,11 @@ def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
     buffer's SSA value:
     ```mlir
     %buf1 = mgp.cpu.buffer.alloc ...
-    %ten1 = mgp.cpu.tensor.create %ch ... %buf1 // copy
+    %ten1 = mgp.cpu.tensor.create %ch %buf1 ... // copy
     ... other users of %buf1 ...
 
     %buf2 = mgp.cpu.buffer.alloc ...
-    %ten2 = mgp.cpu.tensor.create %ch ... %buf2 // move
+    %ten2 = mgp.cpu.tensor.create %ch %buf2 ... // move
     ... no other users of %buf2 ...
     ```
 
@@ -826,11 +826,13 @@ def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
     ```
   }];
 
-  let arguments = (ins ChainType: $inChain, MGP_CpuTensorSpecType: $tensorSpec,
-                       MGP_CpuBufferType: $buffer);
+  let arguments = (ins ChainType: $inChain,
+                       MGP_CpuBufferType: $buffer,
+                       MGP_CpuTensorSpecType: $tensorSpec);
   let results = (outs MGP_CpuTensorType: $result);
-  let assemblyFormat = [{ $inChain $tensorSpec $buffer attr-dict
-                          `:` qualified(type($result)) }];
+  let assemblyFormat = [{
+    $inChain $buffer $tensorSpec attr-dict `:` qualified(type($result))
+  }];
   let hasVerifier = 1;
 }
 
@@ -849,14 +851,14 @@ def CpuTensorExtractOp : MGP_Op<"cpu.tensor.extract", [
     Example:
     ```mlir
     %tensor : !mgp.cpu.tensor<8x64xf32>
-    %spec, %buf = mgp.cpu.tensor.extract %tensor : !mgp.cpu.tensor<8x64xf32>
-    %spec : !mgp.cpu.tensor_spec<8x64>
+    %buf, %spec = mgp.cpu.tensor.extract %tensor : !mgp.cpu.tensor<8x64xf32>
     %buf : !mgp.cpu.buffer<2048>
+    %spec : !mgp.cpu.tensor_spec<8x64>
 
     %tensor : !mgp.cpu.tensor<?x64xf32>
-    %spec, %buf = mgp.cpu.tensor.extract %tensor : !mgp.cpu.tensor<?x64xf32>
-    %spec : !mgp.cpu.tensor_spec<?x64>
+    %buf, %spec = mgp.cpu.tensor.extract %tensor : !mgp.cpu.tensor<?x64xf32>
     %buf : !mgp.cpu.buffer<>
+    %spec : !mgp.cpu.tensor_spec<?x64>
     ```
 
     Tensors are immutable, but buffers are mutable. This means the
@@ -865,11 +867,11 @@ def CpuTensorExtractOp : MGP_Op<"cpu.tensor.extract", [
     consumers of the tensor's SSA value:
     ```mlir
     %ten1 = mgp.cpu.tensor.create ...
-    %spec1, %buf1 = mgp.cpu.tensor.extract %ten1 // copy
+    %buf1, %spec1 = mgp.cpu.tensor.extract %ten1 // copy
     ... other users of %ten1 ...
 
     %ten2 = mgp.cpu.tensor.create ...
-    %spec2, %buf2 = mgp.cpu.tensor.extract %ten2 // move
+    %buf2, %spec2 = mgp.cpu.tensor.extract %ten2 // move
     ... no other users of %ten2 ...
     ```
 
@@ -879,12 +881,12 @@ def CpuTensorExtractOp : MGP_Op<"cpu.tensor.extract", [
     ```mlir
     %buf3 = mgp.cpu.buffer.realloc ...
     %ten3 = mgp.cpu.tensor.create %buf3
-    %spec4, %buf4 = mgp.cpu.tensor.extract %ten3  // copy (as 'owning')
+    %buf4, %spec4 = mgp.cpu.tensor.extract %ten3  // copy (as 'owning')
     ... other users of %ten3 ...
 
     %buf5 = mgp.cpu.buffer.realloc ...  // (*)
     %ten5 = mgp.cpu.tensor.create %buf5
-    %spec6, %buf6 = mgp.cpu.tensor.extract %ten5  // move (as 'borrowing')
+    %buf6, %spec6 = mgp.cpu.tensor.extract %ten5  // move (as 'borrowing')
     ... no other users of %ten5 ...
     ```
     Note that any mutation of %buf6 will be applied to the cached
@@ -893,8 +895,8 @@ def CpuTensorExtractOp : MGP_Op<"cpu.tensor.extract", [
   }];
 
   let arguments = (ins MGP_CpuTensorType: $tensor);
-  let results = (outs MGP_CpuTensorSpecType: $tensorSpecResult,
-                      MGP_CpuBufferType: $bufferResult);
+  let results = (outs MGP_CpuBufferType: $bufferResult,
+                      MGP_CpuTensorSpecType: $tensorSpecResult);
   let assemblyFormat = "$tensor attr-dict `:` qualified(type($tensor))";
   let hasVerifier = 1;
 }

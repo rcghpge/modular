@@ -238,7 +238,7 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
   auto tensorType =
       MGP::CpuTensorType::get(execute.builder.getContext(), outSpecType);
   auto tensorCreateOp = execute.builder.create<MGP::CpuTensorCreateOp>(
-      loc, tensorType, execute.invokableInputChain, specOp, bufferOp);
+      loc, tensorType, execute.invokableInputChain, bufferOp, specOp);
   execute.loweredTensors.try_emplace(constOp->getResult(0),
                                      tensorCreateOp->getResult(0));
   return success();
