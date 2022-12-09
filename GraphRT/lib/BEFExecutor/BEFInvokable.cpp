@@ -190,7 +190,7 @@ public:
 
 public:
   const BEFInvokableImpl &inv;
-  Optional<Error> befFormatError;
+  std::optional<Error> befFormatError;
   BEFReader bodyReader;
 
   /// These are the fields we decode.
@@ -808,7 +808,7 @@ ErrorOrSuccess BEFInvokableImpl::walkPrimitives(
       nullptr));
 
   // Now we have to parse the primitive names.
-  Optional<Error> befReaderError;
+  std::optional<Error> befReaderError;
   BEFReader reader(owner->primitiveNames,
                    [&](Error msg) { befReaderError = std::move(msg); });
 

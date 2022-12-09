@@ -312,7 +312,7 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
 
     // Helper for quantized type parsing.
     auto parseStorageAndExpressedType =
-        [&]() -> Optional<std::tuple<Type, Type>> {
+        [&]() -> std::optional<std::tuple<Type, Type>> {
       if (auto storageType = parseTypeAttr()) {
         if (auto expressedType = parseTypeAttr())
           return std::make_tuple(storageType, expressedType);

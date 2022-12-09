@@ -324,7 +324,7 @@ the keys.  Accessing elements is done in the following simple examples:
 
 ```c++
 static int32_t findNamedElement(BEFDictionaryAttr dict) {
-  Optional<BEFAttr<int32_t>> value = dict.find<int32_t>("myKey");
+  std::optional<BEFAttr<int32_t>> value = dict.find<int32_t>("myKey");
   if (!value)
     // Handle the error gracefully
 

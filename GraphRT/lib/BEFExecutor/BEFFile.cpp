@@ -40,7 +40,7 @@ public:
                   [=](Error message) { this->error = std::move(message); }),
         befFile(befFile) {}
 
-  Optional<Error> &getError() { return error; }
+  std::optional<Error> &getError() { return error; }
 
   /// Decode the key sections of the specified BEF file, capturing some of their
   /// ranges into BEFFileImpl and completely decoding others.
@@ -54,7 +54,7 @@ private:
   bool readInvokableIndexSection(BEFReader &stringReader);
 
   /// This is filled in if an error occurs.
-  Optional<Error> error;
+  std::optional<Error> error;
 
   ArrayRef<uint8_t> invokableIndex;
 
