@@ -22,12 +22,19 @@ class MO_Type<string name, string typeMnemonic, list<Trait> traits = []>
 }
 
 //===----------------------------------------------------------------------===//
+// MO_ShapeRefParameter
+//===----------------------------------------------------------------------===//
+// For standard ShapeRefs, which require allocation.
+def ShapeParameter : ArrayRefParameter<"int64_t", "shape"> {
+  let printer = [{printShapeParameter($_printer, $_self)}];
+  let parser = [{parseShapeParameter($_parser)}];
+}
+
+//===----------------------------------------------------------------------===//
 // MO_Tensor
 //===----------------------------------------------------------------------===//
 
-def MO_Tensor
-    : MO_Type<"Tensor", "tensor",
-              [DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
+def MO_Tensor : MO_Type<"Tensor", "tensor", [ShapedTypeInterface]> {
   // TODO: Relax the constraint on dynamic rank once we reach
   // runtime agreement with MGP team.
   let summary = "Type of tensor specs of statically known rank.";
@@ -47,20 +54,19 @@ def MO_Tensor
     ```
   }];
 
-  let parameters = (ins DimensionListParameter:$shape, "Type":$elementType);
+  let parameters = (ins ShapeParameter : $shape, "Type" : $elementType);
 
   let genVerifyDecl = 1;
   let assemblyFormat = [{ `<` $shape `` $elementType `>` }];
 
-  let builders = [
-    TypeBuilderWithInferredContext<
-      (ins "ArrayRef<int64_t>":$shape, "Type":$elementType),
-      [{
-        return $_get(elementType.getContext(), shape, elementType);
-      }]>
-  ];
+  let builders = [TypeBuilderWithInferredContext<
+      (ins "ArrayRef<int64_t>" : $shape, "Type" : $elementType),
+      [{ return $_get(elementType.getContext(), shape, elementType); }]>];
   let extraClassDeclaration = [{
     size_t getRank() const;
+    bool hasRank() const;
+    ShapedType cloneWith(Optional<ArrayRef<int64_t>> shape, Type elementType)
+        const;
   }];
 }
 

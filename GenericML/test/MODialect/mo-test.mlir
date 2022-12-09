@@ -1,5 +1,15 @@
 // RUN: mo-opt -cse %s | mo-opt | FileCheck %s
 
+// CHECK: mo.graph @dyn_rank(%[[ARG0:.*]]: !mo.tensor<*f32>) -> !mo.tensor<*f32> {
+mo.graph @dyn_rank(%arg0: !mo.tensor<*f32>) -> (!mo.tensor<*f32>) {
+  mo.output %arg0 : !mo.tensor<*f32>
+}
+
+// CHECK: mo.graph @scalar(%[[ARG0:.*]]: !mo.tensor<f32>) -> !mo.tensor<f32> {
+mo.graph @scalar(%arg0: !mo.tensor<f32>) -> (!mo.tensor<f32>) {
+  mo.output %arg0 : !mo.tensor<f32>
+}
+
 // CHECK: mo.graph @constant() -> !mo.tensor<2x3xf32>
 mo.graph @constant() -> !mo.tensor<2x3xf32> {
   // CHECK: %[[VAL_0:.*]] = "mo.constant"() {value = #M.dense_array<1.{{0+}}e+00, 2.{{0+}}e+00, 3.{{0+}}e+00, 4.{{0+}}e+00, 5.{{0+}}e+00, 6.{{0+}}e+00> : tensor<2x3xf32>} : () -> !mo.tensor<2x3xf32>

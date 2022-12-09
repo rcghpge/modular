@@ -15,6 +15,39 @@ using namespace M;
 using namespace MO;
 
 //===----------------------------------------------------------------------===//
+// ShapeParameter
+//===----------------------------------------------------------------------===//
+
+static void printShapeParameter(AsmPrinter &p, ArrayRef<int64_t> dims) {
+  for (size_t i = 0, e = dims.size(); i < e; i++) {
+    if (ShapedType::isDynamic(dims[i])) {
+      p << '?';
+    } else if (dims[i] == kDynamicRank) {
+      p << '*';
+      // TODO: Remove this conditional when we can support partial ranks
+      if (i < e - 1)
+        p << 'x';
+    } else {
+      p << dims[i];
+      p << 'x';
+    }
+  }
+}
+
+FailureOr<llvm::SmallVector<int64_t>> parseShapeParameter(AsmParser &p) {
+  llvm::SmallVector<int64_t> dims{};
+  if (!p.parseOptionalStar()) {
+    // This is an unranked tensor.
+    dims.push_back(kDynamicRank);
+  } else {
+    // This should be a ranked tensor
+    if (p.parseDimensionList(dims, /*allowDynamic=*/true))
+      return failure();
+  }
+  return dims;
+}
+
+//===----------------------------------------------------------------------===//
 // Tensor
 //===----------------------------------------------------------------------===//
 
@@ -22,17 +55,13 @@ using namespace MO;
 /// that the element type in DType form is also representable as an MLIR type.
 LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
                                  ArrayRef<int64_t> shape, Type elementType) {
-  // TODO: Relax this once we have alignment with MGP on
-  //  Dynamic Ranks
-  if (shape.empty())
-    return emitError() << "shape must have rank greather than 0";
   for (auto dim : shape) {
-    if (dim <= 0 && dim != ShapedType::kDynamic) {
-      return emitError() << "shape dimensions must be strictly positive or the "
-                            "distinguished '?' unknown dimension.";
+    if (dim <= 0 && dim != ShapedType::kDynamic && dim != kDynamicRank) {
+      return emitError()
+             << "shape dimensions must be strictly positive or the "
+                "distinguished '?' unknown dimension or '*' unknown rank.";
     }
   }
-
   return success();
 }
 
@@ -40,13 +69,16 @@ LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
 /// dtype. Required by ShapedTypeInference
 ShapedType TensorType::cloneWith(Optional<ArrayRef<int64_t>> shape,
                                  Type elementType) const {
-  ArrayRef<int64_t> newShape = shape.value_or(getShape());
+  ArrayRef<int64_t> newShape =
+      shape.has_value() ? ArrayRef<int64_t>(shape.value()) : getShape();
   return TensorType::get(getContext(), newShape, elementType);
 }
 
 /// Does the Tensor have a static Rank?  Required by ShapedTypeInferece
-/// TODO : Relax this once we reach agreement with MGP on dynamic rank tensors.
-bool TensorType::hasRank() const { return true; }
+bool TensorType::hasRank() const {
+  auto shape = getShape();
+  return std::find(shape.begin(), shape.end(), kDynamicRank) != shape.end();
+}
 
 // Get the Rank of the Tensor.  Required by ShapedTypeInference
 size_t TensorType::getRank() const { return getShape().size(); }
