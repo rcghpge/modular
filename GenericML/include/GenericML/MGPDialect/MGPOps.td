@@ -36,13 +36,23 @@ def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant",
   let description = [{
     Creates a CPU-hosted buffer whose byte array is aliased with the byte array
     in the given attribute. The attribute must support contiguous iteration
-    over `uint8_t`. The result buffer type will have a size matching the
-    attribute size.
+    over `uint8_t` elements. The result buffer type will have a size matching
+    the attribute size.
 
-    Example valid attributes include `AlignedBytesAttr` (in the M dialect),
-    `DenseUI8ResourceElementsAttr` and `DenseI8Array`. Any alignment specified
-    by the `AlignedBytesAttr` and `DenseUI8ResourceElementsAttr` attributes
-    will be preserved through to runtime.
+    Example valid attributes include `#m.aligned_bytes`, and the builtin
+    `dense_resource' and `array`. `#m.aligned_bytes` can be used for small,
+    inline byte arrays with a given (optional) alignment. `dense_resource`
+    can be used for large, out-of-line byte arrays with a (optional) alignment
+    encoded in the resource blob. Any such alignment will be respected
+    by the constant buffer when recovered from the BEF file. Furthermore, the
+    alignment will also be respected by any deep copies of the constant
+    buffer.
+
+    When using a `dense_resource` with an alignment, it is necessary to
+    type the attribute with `mgp.aligned_bytes` so that the alignment can
+    captured before the resource corresponding to the label has been
+    established. Otherwise, the `dense_resource` attribute can be given any
+    shaped type over `uint8_t`.
 
     The result buffer will 'borrow' the underlying data. In debug builds
     the result buffer will also me marked 'immutable'.
@@ -52,23 +62,32 @@ def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant",
     %buf = mgp.cpu.buffer.constant #m.aligned_buffer<8: "0x00010203">
     %buf : !mgp.cpu.buffer<4>  // at least 8 byte aligned in storage
 
-    %buf = mgp.cpu.buffer.constant dense_resource<label>:!m.array<4xui8>
-    %buf : !mgp.cpu.buffer<4>  // respecting alignment encoded in blob at label
+    %buf = mgp.cpu.buffer.constant dense_resource<label>:!mgp.aligned_bytes<4, 16>
+    %buf : !mgp.cpu.buffer<4>  // at least 16 byte aligned in storage
+                               // the actual resource must have the same alignment
 
     %buf = mgp.cpu.buffer.constant array<ui8: 0, 1, 2, 3>
     %buf : !mgp.cpu.buffer<4>  // no specific alignment in storage
     ```
   }];
 
-  let arguments = (ins ElementsAttr:$value);
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins ElementsAttr:$aValue, UI64Attr:$bRawAlign);
   let results = (outs MGP_CpuBufferType:$result);
-  let assemblyFormat = "$value attr-dict";
+  let assemblyFormat = [{
+    custom<ElementsAttrWithAlign>($aValue, $bRawAlign) attr-dict
+  }];
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    /// Returns the optional alignment constraint for the buffer, if any.
-    Optional<uint64_t> getOptAlign();
+     /// Returns the buffer's alignment.
+     Optional<uint64_t> getOptAlign();
   }];
+
+  let builders = [
+    OpBuilder<(ins "ElementsAttr":$value)>
+  ];
 }
 
 

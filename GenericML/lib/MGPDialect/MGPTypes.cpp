@@ -22,6 +22,30 @@ using namespace M;
 using namespace MGP;
 
 //===----------------------------------------------------------------------===//
+// AlignedBytesType
+//===----------------------------------------------------------------------===//
+
+/// Implements ShapedType::cloneWith
+ShapedType AlignedBytesType::cloneWith(Optional<ArrayRef<int64_t>> shape,
+                                       Type elementType) const {
+  assert(!shape && "cannot change shape in CpuBufferType::cloneWith");
+  assert(elementType.isUnsignedInteger(8) &&
+         "invalid dtype for CpuBufferType::cloneWith");
+  return AlignedBytesType::get(getContext(), getSize(), getAlign());
+}
+
+/// Implements ShapedType::getElementType
+Type AlignedBytesType::getElementType() const {
+  return IntegerType::get(getContext(), /*width=*/8, IntegerType::Unsigned);
+}
+
+/// Implements ShapedType::hasRank
+bool AlignedBytesType::hasRank() const { return true; }
+
+// We defer AlignedBytesType::getShape till after ODS import since depends on
+// impl.
+
+//===----------------------------------------------------------------------===//
 // CpuBufferType
 //===----------------------------------------------------------------------===//
 
@@ -488,6 +512,19 @@ void MGPDialect::registerTypes() {
 
 #define GET_TYPEDEF_CLASSES
 #include "GenericML/MGPDialect/MGPTypes.cpp.inc"
+
+//===----------------------------------------------------------------------===//
+// AlignedBytesType (cont.)
+//===----------------------------------------------------------------------===//
+
+/// Implements ShapedType::getShape
+ArrayRef<int64_t> AlignedBytesType::getShape() const {
+  uint64_t &size = getImpl()->size;
+  // Convert to raw signed size for assertion side effect.
+  (void)optSizeToRawSignedSize(size);
+  // We'll just reinterpret the uint64_t size as an int64_t since it's in range.
+  return ArrayRef<int64_t>(reinterpret_cast<const int64_t *>(&size), 1);
+}
 
 //===----------------------------------------------------------------------===//
 // CpuBufferType (cont.)

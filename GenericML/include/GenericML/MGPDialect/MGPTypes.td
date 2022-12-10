@@ -24,6 +24,33 @@ class MGP_Type<string name, string typeMnemonic, list<Trait> traits = []>
 }
 
 //===----------------------------------------------------------------------===//
+// AlignedBytes
+//===----------------------------------------------------------------------===//
+
+def MGP_AlignedBytesTypes : MGP_Type<"AlignedBytes", "aligned_bytes",
+                         [DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
+  let summary = "Helper type intended to convey size and alignment on "
+                "dense_resource attributes.";
+  let description = [{
+    This type has no values and no runtime representation. It is intended only
+    to be used as a type annotation for `dense_resource` attribute operands
+    for the `mgp.cpu.buffer.constant` op. The type annotation allows the
+    resource's size and alignment to be 'forward declared' and captured by
+    the constant op before the corresponding resource blob has been parsed.
+
+    Example:
+    ```mlir
+    // Assume 'label' is for 4 bytes with 16 byte alignment.
+    %buf = mgp.cpu.buffer.constant dense_resource<label>:!mgp.aligned_bytes<4, 16>
+    %buf : !mgp.cpu.buffer<4>
+    ```
+  }];
+
+  let parameters = (ins "uint64_t":$size, "uint64_t":$align);
+  let assemblyFormat = "`<` params `>`";
+}
+
+//===----------------------------------------------------------------------===//
 // CpuBufferType
 //===----------------------------------------------------------------------===//
 

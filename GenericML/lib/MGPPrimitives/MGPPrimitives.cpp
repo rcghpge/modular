@@ -33,15 +33,19 @@ static Optional<size_t> getAlign(uint64_t rawAlign) {
 /// Fulfills the result with the borrowed BufferRef whose data is backed by
 /// the given constant.
 static void mgp_cpu_buffer_constant(Result<BufferRef> outBuffer,
-                                    BEFDynamicAttr values, Runtime &runtime) {
+                                    BEFDynamicAttr aValue,
+                                    BEFAttr<uint64_t> bRawAlign,
+                                    Runtime &runtime) {
+  Optional<size_t> optAlign;
+  if (hasRawSize(*bRawAlign))
+    optAlign = rawSizeToRuntimeSize(*bRawAlign);
+
   // Create unowned BufferRef as the BEF outlives the BufferRef.
-  // TODO(#5369): Need to capture any alignment constraint on attribute so
-  // it is preserved if the result needs to be deep copied.
   // TODO(#5369): Remove need for const cast.
-  if (auto buf = dyn_cast<ArrayRef<uint8_t>>(values))
+  if (auto buf = dyn_cast<ArrayRef<uint8_t>>(aValue))
     outBuffer.emplace(GML::BufferRef::createBorrowed(
         const_cast<void *>(static_cast<const void *>((*buf)->data())),
-        (*buf)->size(), /*alignment=*/{}, BufferRef::kConstant));
+        (*buf)->size(), optAlign, BufferRef::kConstant));
   else
     outBuffer.setToError(
         "unsupported type, only u8 is supported for attribute elements");

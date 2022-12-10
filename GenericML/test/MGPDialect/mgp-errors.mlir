@@ -13,9 +13,9 @@ func.func @buffer_constant_mismatched_size() {
 // -----
 
 func.func @buffer_constant_mismatched_align() {
-  // expected-error@+1 {{'mgp.cpu.buffer.constant' op the resource size does not match the attribute's element size (4 vs 5)}}
-  %0 = mgp.cpu.buffer.constant dense_resource<resource> : !mgp.cpu.buffer<5>
-  bef.output %0 : !mgp.cpu.buffer<5>
+  // expected-error@+1 {{'mgp.cpu.buffer.constant' op expected dense_resource blob alignment to match type annotation alignment (16 vs 64).}}
+  %0 = mgp.cpu.buffer.constant dense_resource<resource> : !mgp.aligned_bytes<4, 16>
+  bef.output %0 : !mgp.cpu.buffer<4>
 }
 
 {-#

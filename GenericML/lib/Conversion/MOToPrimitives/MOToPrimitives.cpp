@@ -220,8 +220,21 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
   } else {
     // Value must be a resource.
     auto resource = cast<DenseResourceElementsAttr>(constOp.getValue());
-    auto type = ArrayType::get(
-        resource.size(), execute.builder.getIntegerType(8, /*isSigned=*/false));
+    Type type;
+    size_t blobAlign = resource.getRawHandle().getBlob()->getDataAlignment();
+    if (blobAlign != 0)
+      // NOTE: Unclear if blobs can end up with a zero alignment since
+      // the parser assert fails with such. So this is probably always true.
+      // If the resource has an alignment, we must capture it within the
+      // lowered resource attribute type.
+      type = MGP::AlignedBytesType::get(execute.builder.getContext(),
+                                        resource.size(),
+                                        static_cast<uint64_t>(blobAlign));
+    else
+      // Otherwise the type can just be an array of uint8_ts.
+      type =
+          ArrayType::get(resource.size(),
+                         execute.builder.getIntegerType(8, /*isSigned=*/false));
     value = DenseResourceElementsAttr::get(type, resource.getRawHandle());
   }
   auto bufferOp = execute.builder.create<MGP::CpuBufferConstantOp>(loc, value);

@@ -28,34 +28,95 @@ using namespace MGP;
 // CpuBufferConstantOp
 //===----------------------------------------------------------------------===//
 
-/// Returns the align constraint for the given attribute, or none if it
+/// Returns the alignment constraint for the given attribute, or none if it
 /// has no such constraint.
+///
+/// TODO(#4424): Would be better to just look for a HasAlignmentAttrInterface
+/// instead of looking for specific attribute types.
 static ErrorOr<Optional<uint64_t>> getImpliedAlignment(ElementsAttr value) {
-  // TODO(#4424): Would be better to just look for a HasAlignmentAttrInterface
-  // instead of looking for specific attribute types.
-  if (auto alignedBufferAttr = dyn_cast<AlignedBytesAttr>(value))
-    return alignedBufferAttr.getAlign();
+  if (auto alignedBytesAttr = dyn_cast<AlignedBytesAttr>(value))
+    // This attribute has its optional alignment already available.
+    return alignedBytesAttr.getAlign();
 
   if (auto resourceAttr = dyn_cast<DenseResourceElementsAttr>(value)) {
+    // The corresponding resource blob may not yet exist if we are still
+    // parsing. However, the companion type may have a specific alignment.
+    Optional<uint64_t> optAlign;
+    if (auto alignedBytesType =
+            dyn_cast<AlignedBytesType>(resourceAttr.getType()))
+      optAlign = alignedBytesType.getAlign();
+
     DenseResourceElementsHandle handle = resourceAttr.getRawHandle();
     mlir::AsmResourceBlob *blob = handle.getBlob();
-    if (!blob)
-      return Error("the resource blob must be initialized so that its "
-                   "alignment and size can be determined.");
+    if (blob) {
+      // Since the blob is available, check it is consistent with known size
+      // and any alignment.
+      if (static_cast<int64_t>(blob->getData().size()) !=
+          value.getNumElements())
+        return Error(Twine("the resource size does not match the "
+                           "attribute's element size (" +
+                           Twine(blob->getData().size()) + " vs " +
+                           Twine(value.getNumElements()) + ")"));
 
-    if (static_cast<int64_t>(blob->getData().size()) != value.getNumElements())
-      // TODO: Why is this not enforced by the dense_resource attribute?
-      return Error(Twine("the resource size does not match the "
-                         "attribute's element size (" +
-                         Twine(blob->getData().size()) + " vs " +
-                         Twine(value.getNumElements()) + ")"));
-    return blob->getDataAlignment() == 0
-               ? Optional<uint64_t>()
-               : static_cast<uint64_t>(blob->getDataAlignment());
+      Optional<uint64_t> optBlobAlign;
+      if (blob->getDataAlignment() != 0)
+        // NOTE: Unclear if blobs can end up with a zero alignment since
+        // the parser assert fails with such. So this is probably always true.
+        optBlobAlign = static_cast<uint64_t>(blob->getDataAlignment());
+
+      if (optAlign.has_value() != optBlobAlign.has_value())
+        return Error("dense_resource blob must have an alignment if and only "
+                     "if its type annotation has an alignment");
+      if (optAlign.has_value() && *optAlign != *optBlobAlign)
+        return Error(Twine("expected dense_resource blob alignment to match "
+                           "type annotation alignment (" +
+                           Twine(*optAlign) + " vs " + Twine(*optBlobAlign) +
+                           ")."));
+    }
+    return optAlign;
   }
 
   // No align constraint.
-  return Optional<uint64_t>();
+  return llvm::None;
+}
+
+/// Parses the elements attribute, but also captures any alignment constraint.
+static ParseResult parseElementsAttrWithAlign(AsmParser &p,
+                                              ElementsAttr &aValue,
+                                              IntegerAttr &bRawAlign) {
+  llvm::SMLoc loc;
+  if (p.getCurrentLocation(&loc) || p.parseAttribute(aValue))
+    return failure();
+
+  ErrorOr<Optional<uint64_t>> errOrOptAlign = getImpliedAlignment(aValue);
+  if (const char *err = errOrOptAlign.getError())
+    return p.emitError(loc) << err;
+
+  Type ui64 = IntegerType::get(p.getContext(), 64, IntegerType::Unsigned);
+  APInt apint(ui64.getIntOrFloatBitWidth(), optSizeToRawSize(*errOrOptAlign),
+              ui64.isSignedInteger());
+  bRawAlign = IntegerAttr::get(ui64, apint);
+
+  return success();
+}
+
+/// Prints the elements attribute. The alignment attribute is not printed.
+static void printElementsAttrWithAlign(AsmPrinter &p,
+                                       const CpuBufferConstantOp &op,
+                                       ElementsAttr aValue,
+                                       IntegerAttr bRawAlign) {
+  p << aValue;
+}
+
+void CpuBufferConstantOp::build(::mlir::OpBuilder &odsBuilder,
+                                ::mlir::OperationState &odsState,
+                                ElementsAttr value) {
+  ErrorOr<Optional<uint64_t>> errOrOptAlign = getImpliedAlignment(value);
+  uint64_t rawAlign;
+  if (!errOrOptAlign.isError())
+    // If error we'll report it when the result is validated.
+    rawAlign = optSizeToRawSize(*errOrOptAlign);
+  build(odsBuilder, odsState, value, rawAlign);
 }
 
 /// Verifies the attribute and result types are consistent, and the attribute
@@ -63,16 +124,16 @@ static ErrorOr<Optional<uint64_t>> getImpliedAlignment(ElementsAttr value) {
 LogicalResult CpuBufferConstantOp::verify() {
   // We can only construct from attributes which are dense arrays (ie rank-1)
   // of uint8_ts.
-  ElementsAttr value = getValue();
+  ElementsAttr value = getAValue();
   if (value.isSplat())
-    return emitOpError() << "does not support splat attributes";
+    return emitOpError() << "does not support splat attributes.";
   ShapedType shapedType = value.getType();
   if (!shapedType.hasRank() || shapedType.getShape().size() != 1)
     return emitOpError() << "only supports rank-1 attributes";
   Type elemType = value.getElementType();
   if (!elemType.isUnsignedInteger(8))
     return emitOpError() << "only supports attributes of uint8_t elements"
-                         << " (have " << elemType << ")";
+                         << " (have " << elemType << ").";
 
   // The resulting constant's type must be sized, and the size must match
   // the attribute's size.
@@ -83,7 +144,7 @@ LogicalResult CpuBufferConstantOp::verify() {
     return emitOpError() << "expected the buffer type have a size matching the "
                             "attribute size"
                          << " (" << *bufferType.getOptSize() << " vs "
-                         << value.getNumElements() << ")";
+                         << value.getNumElements() << ").";
 
   // Only BufferAttr and DenseResourceElementsAttr can convey an align
   // constraint. Check they are valid.
@@ -96,6 +157,15 @@ LogicalResult CpuBufferConstantOp::verify() {
            << "the attribute alignment must be a power of two (have "
            << **errOrOptAlign << ").";
 
+  // The implied alignment must match the actual attribute alignment.
+  if (getOptAlign().has_value() != errOrOptAlign->has_value())
+    return emitOpError() << "expected alignment operand if and only if value "
+                            "operand has alignment";
+  if (getOptAlign().has_value() && *getOptAlign() != **errOrOptAlign)
+    return emitOpError()
+           << "expected operand alignment to match attribute's alignment"
+           << " (" << *getOptAlign() << " vs " << **errOrOptAlign << ").";
+
   return success();
 }
 
@@ -107,20 +177,15 @@ LogicalResult CpuBufferConstantOp::inferReturnTypes(
   mlir::OperationName name(getOperationName(), context);
   assert(operands.empty() && "mismatched operand arity");
   auto elementsAttr =
-      dyn_cast<ElementsAttr>(attributes.get(getValueAttrName(name)));
+      dyn_cast<ElementsAttr>(attributes.get(getAValueAttrName(name)));
   assert(elementsAttr && "mismatched operand types");
   int64_t size = elementsAttr.size();
-  // The inferred result type does not propagate any align constraint.
   inferredReturnTypes.emplace_back(CpuBufferType::get(context, size));
   return success();
 }
 
 Optional<uint64_t> CpuBufferConstantOp::getOptAlign() {
-  ErrorOr<Optional<uint64_t>> errOrOptAlign = getImpliedAlignment(getValue());
-  assert(!errOrOptAlign.isError() && "invalid alignment from attribute");
-  if (errOrOptAlign.isError())
-    return {};
-  return *errOrOptAlign;
+  return rawSizeToOptSize(getBRawAlign());
 }
 
 //===----------------------------------------------------------------------===//
@@ -148,17 +213,18 @@ static LogicalResult verifyAnyAllocOp(
   // Check the result buffer type is consistent.
   CpuBufferType impliedBufferType = CpuBufferType::get(context, optSize);
   if (resultBufferType != impliedBufferType)
-    return emitOpError()
-           << "expected result buffer type to match type implied by operands ("
-           << resultBufferType << " vs " << impliedBufferType << ").";
+    return emitOpError() << "expected result buffer type to match type "
+                            "implied by operands ("
+                         << resultBufferType << " vs " << impliedBufferType
+                         << ").";
 
   // Check the tensor spec operand type is consistent.
   if (optRuntimeSpecType != nullptr) {
     Optional<uint64_t> bytes = optRuntimeSpecType.getSizeInBytes();
     if (bytes)
-      return emitOpError()
-             << "expected tensor spec to not have statically known size (have "
-             << optRuntimeSpecType << ").";
+      return emitOpError() << "expected tensor spec to not have statically "
+                              "known size (have "
+                           << optRuntimeSpecType << ").";
   }
 
   return success();
@@ -324,8 +390,8 @@ void CpuTensorSpecCreateOp::build(OpBuilder &odsBuilder,
                                /*bRawDType=*/spec.getRawDType());
 }
 
-/// Parses a !mgp.cpu.tensor_spec type where the element type must be known, but
-/// represented in 'raw form'.
+/// Parses a !mgp.cpu.tensor_spec type where the element type must be known,
+/// but represented in 'raw form'.
 static ParseResult parseRawDimsAndDType(AsmParser &p,
                                         IntArrayElementsAttr &rawDims,
                                         IntegerAttr &rawDType) {
@@ -525,7 +591,8 @@ LogicalResult CpuTensorSpecDimsDynamicOp::inferReturnTypes(
 // TensorCreateOp
 //===----------------------------------------------------------------------===//
 
-/// Checks the tensor spec, buffer type and result tensor types are consistent.
+/// Checks the tensor spec, buffer type and result tensor types are
+/// consistent.
 LogicalResult CpuTensorCreateOp::verify() {
   CpuTensorSpecType tensorSpecType = getTensorSpec().getType();
   CpuBufferType actualBufferType = getBuffer().getType();
