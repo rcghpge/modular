@@ -43,7 +43,7 @@ LogicalResult runModel(MLIRContext *ctx, const Model *model,
 ErrorOrSuccess runModelWithData(MLIRContext *ctx, const Model *model,
                                 LLCL::Runtime &runtime,
                                 const ExecutorDriverCLOptions &options,
-                                const llvm::SmallVector<void *> &inputs,
+                                const llvm::SmallVector<const void *> &inputs,
                                 llvm::SmallVector<void *> &outputs);
 
 } // namespace M

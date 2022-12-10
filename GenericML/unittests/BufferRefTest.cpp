@@ -29,7 +29,7 @@ TEST(BufferRef, Default) {
   auto runtime = getRuntime();
   BufferRef ref;
 
-  ASSERT_EQ(ref.getData(), nullptr);
+  ASSERT_EQ(ref.getBuffer(), nullptr);
   ASSERT_EQ(ref.getSize(), 0U);
   ASSERT_EQ(ref.getAlignment(), llvm::None);
   ASSERT_FALSE(ref.getRuntime());
@@ -44,11 +44,11 @@ TEST(BufferRef, Move) {
   auto runtime = getRuntime();
   BufferRef ref =
       BufferRef::createOwned(runtime, sizeof(int), /*alignment=*/16);
-  void *data = ref.getData();
+  const void *data = ref.getBuffer();
 
   BufferRef ref2 = std::move(ref);
-  ASSERT_EQ(ref.getData(), nullptr);
-  ASSERT_EQ(ref2.getData(), data);
+  ASSERT_EQ(ref.getBuffer(), nullptr);
+  ASSERT_EQ(ref2.getBuffer(), data);
 }
 
 TEST(BufferRef, BorrowError) {
@@ -69,7 +69,7 @@ TEST(BufferRef, Borrow) {
   BufferRef ref =
       BufferRef::createOwned(runtime, sizeof(int), /*alignment=*/16);
   BufferRef bor = ref.borrow(BufferRef::kExecute);
-  ASSERT_EQ(bor.getData(), ref.getData());
+  ASSERT_EQ(bor.getBuffer(), ref.getBuffer());
   ASSERT_EQ(bor.getSize(), ref.getSize());
   ASSERT_EQ(bor.getAlignment(), ref.getAlignment());
   ASSERT_TRUE(ref.isOwned());
@@ -82,11 +82,11 @@ TEST(BufferRef, DeepCopy) {
   auto runtime = getRuntime();
   BufferRef ref =
       BufferRef::createOwned(runtime, sizeof(int), /*alignment=*/16);
-  memset(ref.getData(), 42, sizeof(int));
+  memset(ref.getMutableBuffer(), 42, sizeof(int));
   BufferRef bor = ref.borrow(BufferRef::kExecute);
   BufferRef copy = bor.deepCopy(runtime);
-  ASSERT_NE(copy.getData(), bor.getData());
-  ASSERT_EQ(memcmp(bor.getData(), copy.getData(), sizeof(int)), 0);
+  ASSERT_NE(copy.getBuffer(), bor.getBuffer());
+  ASSERT_EQ(memcmp(bor.getBuffer(), copy.getBuffer(), sizeof(int)), 0);
   ASSERT_EQ(copy.getSize(), bor.getSize());
   ASSERT_EQ(copy.getAlignment(), bor.getAlignment());
   ASSERT_TRUE(copy.isOwned());

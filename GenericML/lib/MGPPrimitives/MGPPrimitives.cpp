@@ -183,7 +183,7 @@ static void mgp_cpu_buffer_copy(Context &ctx, AsyncValueRef<BufferRef> inBuffer,
 
 /// Set each byte of the given inBuffer with the given Value, returns chain.
 static Chain mgp_cpu_buffer_set(BufferRef &buffer, BEFAttr<uint8_t> value) {
-  memset(buffer.getData(), *value, buffer.getSize());
+  memset(buffer.getMutableBuffer(), *value, buffer.getSize());
   return {};
 }
 
@@ -335,14 +335,15 @@ static void mgp_cpu_tensor_create(Chain inChain,
                                   AsyncValueRef<BufferRef> bufferRef,
                                   const TensorSpec &tensorSpec,
                                   Result<Tensor> outTensor, Runtime &runtime) {
-  // If this is the last user of the given buffer, let Tensor take the
-  // ownership of the underlying buffer if the buffer is owned. If not, we will
-  // clone the buffer and create a tensor from it.
   if (bufferRef.getPointer()->isUnique()) {
+    // If this is the only reference to the input buffer then it cannot be
+    // further mutated, so we can move it into the result tensor.
     LLVM_DEBUG(llvm::dbgs() << "mgp.cpu.tensor.create: Creating M::Tensor "
                                "taking ownership of buffer\n");
     outTensor.emplace(Tensor::create(std::move(*bufferRef), tensorSpec));
   } else {
+    // Otherwise we must take a copy of the buffer to protect the result
+    // tensor from side-effects.
     LLVM_DEBUG(llvm::dbgs()
                << "mgp.cpu.tensor.create: Creating M::Tensor from copy of "
                   "buffer since still has "
@@ -363,11 +364,13 @@ static void mgp_cpu_tensor_extract(AsyncValueRef<Tensor> tensor,
                                    Result<TensorSpec> outTensorSpec,
                                    Runtime &runtime) {
   outTensorSpec.emplace(tensor->getSpec());
-  // If this is the last user of the given tensor, move the bufferRef to the
-  // output. Otherwise, clone the underlying buffer.
   if (tensor.getPointer()->isUnique())
+    // If this is the only reference to the input tensor then it cannot
+    // be further observed, so we can move its buffer into the result.
     outBuffer.emplace(tensor->releaseBuffer());
   else
+    // Otherwise we must take a copy of the buffer to protect the input tensor
+    // from side-effects.
     outBuffer.emplace(tensor->deepCopyBuffer(runtime));
 }
 

@@ -33,7 +33,7 @@ BufferRef StateSlot::getOrCreateBuffer(size_t bufferIndex,
 ErrorOr<BufferRef> StateSlot::getBuffer(size_t bufferIndex) {
   assert(bufferIndex < bufferCache.size());
   auto &entry = bufferCache[bufferIndex];
-  if (entry.getData() == nullptr)
+  if (entry.getBuffer() == nullptr)
     return Error("no buffer has been cached at the given index");
   // Return a borrowed reference to the cached buffer. Since it's in the
   // cache, and the compiler follows the 'one shot' rules for reallocing

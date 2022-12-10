@@ -83,6 +83,12 @@ public:
     kConstant = 2,
   };
 
+  /// Describes whether the underlying buffer can be mutated.
+  enum Mutability : uint8_t {
+    kImmutable = 0,
+    kMutable,
+  };
+
   /// Constructs a reference in the 'null' state. Useful for references
   /// which are allocated lazily.
   BufferRef() = default;
@@ -113,9 +119,10 @@ public:
   /// alignment. The alignment will be respected should the buffer need to be
   /// copied. The returned reference must outlive the given buffer. The given
   /// lifetime should be a sound approximation of the lifetime of the buffer.
-  ///
-  /// TODO(#5369): Also support const void* overload
   static BufferRef createBorrowed(void *buffer, size_t size,
+                                  Optional<size_t> alignment,
+                                  Lifetime lifetime);
+  static BufferRef createBorrowed(const void *buffer, size_t size,
                                   Optional<size_t> alignment,
                                   Lifetime lifetime);
 
@@ -148,9 +155,20 @@ public:
 
   /// Returns a pointer to the underlying buffer. Returns nullptr if the
   /// reference is uninitialized or has been moved out of.
-  /// TODO(#5369): Rename to getMutableBuffer/getBuffer.
-  void *getData() { return buffer; }
-  const void *getData() const { return buffer; }
+  void *getMutableBuffer() {
+    assert(mutability == kMutable && "buffer is immutable");
+    return buffer;
+  }
+  const void *getBuffer() const { return buffer; }
+
+  template <typename T>
+  T *getMutableBuffer() {
+    return static_cast<T *>(getMutableBuffer());
+  }
+  template <typename T>
+  const T *getBuffer() const {
+    return static_cast<const T *>(getBuffer());
+  }
 
   /// Returns the size of the underlying buffer. Will return 0 if the
   /// reference is uninitialized or has been moved out of.
@@ -180,9 +198,10 @@ public:
 
 private:
   BufferRef(void *buffer, size_t size, LLCL::CompactRuntimePtr runtime,
-            llvm::MaybeAlign alignment, Ownership ownership, Lifetime lifetime)
+            llvm::MaybeAlign alignment, Ownership ownership, Lifetime lifetime,
+            Mutability mutability)
       : buffer(buffer), size(size), runtime(runtime), alignment(alignment),
-        ownership(ownership), lifetime(lifetime) {}
+        ownership(ownership), lifetime(lifetime), mutability(mutability) {}
 
   // Implicit copying is not allowed.
   BufferRef(const BufferRef &rhs) = delete;
@@ -202,8 +221,8 @@ private:
   /// A sound approximation of the lifetime of the buffer, irrespective of
   /// whether it is owned or borrowed.
   Lifetime lifetime = kLocal; /* 1 byte */
-  // TODO(#5369): A notion of read-only (in DEBUG mode) with asserts.
-  /* 3 bytes unused on 64-bit systems. */
+  /// Whether buffer can be mutated. */
+  Mutability mutability = kImmutable;
 };
 
 inline raw_ostream &operator<<(raw_ostream &os, const BufferRef &value) {

@@ -83,7 +83,7 @@ printTensorResults(const ExecutableModel *model,
       // Handle tensor types.
       if (auto *tensor = dyn_cast<Tensor>(result)) {
         os.flush();
-        if (auto err = Kernel::printTensor(tensor->getPointer(),
+        if (auto err = Kernel::printTensor(tensor->getBuffer(),
                                            tensor->getSpec(), outputStyle)) {
           os << "<error: " << err.getError() << '>';
           hadError = true;
@@ -129,7 +129,7 @@ static LogicalResult populateTensorResults(
                     llvm::dbgs() << "memcpy " << tensor->getSizeInBytes()
                                  << " bytes from M::Tensor to output buffer\n");
     /// TODO(#5867): Support an API which can avoid copy-on-output.
-    memcpy(outputs[outIdx], tensor->getPointer(), tensor->getSizeInBytes());
+    memcpy(outputs[outIdx], tensor->getBuffer(), tensor->getSizeInBytes());
     outIdx++;
   }
   return success();
@@ -294,11 +294,12 @@ LogicalResult M::runModel(MLIRContext *ctx, const Model *model,
 /// Run `model` using the command line options flags configured by the user.
 /// `inputs` is the input tensor data to the model, while `outputs` is
 /// pre-allocated memory to be filled with the model's results.
-ErrorOrSuccess M::runModelWithData(MLIRContext *ctx, const Model *model,
-                                   LLCL::Runtime &runtime,
-                                   const ExecutorDriverCLOptions &options,
-                                   const llvm::SmallVector<void *> &inputs,
-                                   llvm::SmallVector<void *> &outputs) {
+ErrorOrSuccess
+M::runModelWithData(MLIRContext *ctx, const Model *model,
+                    LLCL::Runtime &runtime,
+                    const ExecutorDriverCLOptions &options,
+                    const llvm::SmallVector<const void *> &inputs,
+                    llvm::SmallVector<void *> &outputs) {
   assert(inputs.size() == model->getInputSpecs().size() &&
          "Wrong number of inputs to the model.");
   UNWRAP_ERROR(executableModel, model->setup(runtime));

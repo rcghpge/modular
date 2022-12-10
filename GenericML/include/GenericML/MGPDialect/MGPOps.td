@@ -54,8 +54,7 @@ def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant",
     established. Otherwise, the `dense_resource` attribute can be given any
     shaped type over `uint8_t`.
 
-    The result buffer will 'borrow' the underlying data. In debug builds
-    the result buffer will also me marked 'immutable'.
+    The result buffer will 'borrow' the underlying data.
 
     Example:
     ```mlir
@@ -131,8 +130,7 @@ def CpuBufferAllocStaticOp : MGP_Op<"cpu.buffer.alloc.static", [
     Note that any alignment constraint is not propagated into the result type.
 
     The result buffer will be 'owning', and the underlying memory will be
-    reclaimed once the last reference to the result goes out of scope. In
-    debug builds the buffer will also be marked 'mutable'.
+    reclaimed once the last reference to the result goes out of scope.
 
     Example:
     ```mlir
@@ -270,8 +268,7 @@ def CpuBufferReallocStaticOp : MGP_Op<"cpu.buffer.realloc.static", [
 
     Though the cache entry will be an 'owning' reference to the buffer,
     the result of this op is always a 'borrowing' reference to the same
-    underlying memory. (In debug builds both refs will also be marked
-    'mutable'). The compiler must respect the following rules to avoid
+    underlying memory. The compiler must respect the following rules to avoid
     use-after-free errors and mutation-via-aliases at runtime:
      1. The 'one shot' rule: For all control flow paths, at most one
         mgp.cpu.buffer.realloc.* can execute for the same slot and buffer
@@ -453,7 +450,6 @@ def CpuBufferCopyOp : MGP_Op<"cpu.buffer.copy", [
   let summary = "Copies the contents of a CPU buffer.";
   let description = [{
     This op returns a copy of a CPU buffer. The result will be 'owning'.
-    In debug builds the result will also be 'mutable'.
 
     Generally this op should only be needed when testing the use
     of `mgp.cpu.buffer.realloc` using a `!mgp.context` which is created

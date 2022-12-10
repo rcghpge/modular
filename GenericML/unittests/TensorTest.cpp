@@ -34,20 +34,20 @@ static Tensor makeTensor() {
   M::Tensor result =
       Tensor::createOwned(std::move(spec), getRuntime(), /*alignment=*/{});
   for (size_t i = 0, e = result.getSizeInBytes(); i < e; ++i)
-    static_cast<uint8_t *>(result.getPointer())[i] = static_cast<uint8_t>(i);
+    result.getMutableBuffer<uint8_t>()[i] = static_cast<uint8_t>(i);
   return result;
 }
 
 static void incrementContents(Tensor &tensor) {
   for (size_t i = 0; i < tensor.getSizeInBytes(); ++i)
-    ++static_cast<uint8_t *>(tensor.getPointer())[i];
+    ++tensor.getMutableBuffer<uint8_t>()[i];
 }
 
 static bool haveSameContents(Tensor &lhs, Tensor &rhs) {
   if (lhs.getSizeInBytes() != rhs.getSizeInBytes())
     return false;
-  return std::memcmp(lhs.getPointer(), rhs.getPointer(),
-                     lhs.getSizeInBytes()) == 0;
+  return std::memcmp(lhs.getBuffer(), rhs.getBuffer(), lhs.getSizeInBytes()) ==
+         0;
 }
 
 TEST(Tensor, ReleaseBuffer) {
@@ -56,7 +56,8 @@ TEST(Tensor, ReleaseBuffer) {
   M::Tensor tensor2 = tensor.deepCopy(runtime);
   GML::BufferRef ref = tensor.releaseBuffer();
   ASSERT_EQ(ref.getSize(), tensor2.getSizeInBytes());
-  ASSERT_EQ(std::memcmp(ref.getData(), tensor2.getPointer(), ref.getSize()), 0);
+  ASSERT_EQ(std::memcmp(ref.getBuffer(), tensor2.getBuffer(), ref.getSize()),
+            0);
 }
 
 TEST(Tensor, DeepCopy) {
@@ -82,9 +83,9 @@ TEST(Tensor, FromBuffer) {
   GML::BufferRef ref =
       GML::BufferRef::createOwned(runtime, 1, /*alignment=*/{});
 
-  void *data = ref.getData();
+  const void *data = ref.getBuffer();
   Tensor tensor = Tensor::create(std::move(ref), spec);
   // Tensor takes the ownership from the buffer ref.
-  ASSERT_EQ(data, tensor.getPointer());
-  ASSERT_EQ(ref.getData(), nullptr);
+  ASSERT_EQ(data, tensor.getBuffer());
+  ASSERT_EQ(ref.getBuffer(), nullptr);
 }

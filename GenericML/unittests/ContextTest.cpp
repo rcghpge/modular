@@ -78,7 +78,7 @@ TEST(ContextTest, getOrCreateBufferTest) {
     // cached buffer.
     auto buffer2 = stateSlot.getOrCreateBuffer(
         /*bufferIndex=*/0, runtime, /*size=*/1, /*alignment=*/{});
-    EXPECT_EQ(buffer.getData(), buffer2.getData());
+    EXPECT_EQ(buffer.getBuffer(), buffer2.getBuffer());
 
     // Call with a different size will allocate a new buffer.
     auto buffer3 = stateSlot.getOrCreateBuffer(

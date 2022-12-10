@@ -25,7 +25,7 @@ static ErrorOrSuccess fillWithElements(Tensor &tensor,
 
   switch (inputGenKind) {
   case InputGenerationKind::kRandom:
-    return Kernel::fillRandom(tensor.getPointer(),
+    return Kernel::fillRandom(tensor.getMutableBuffer(),
                               tensor.getShape().getNumElements(), eltType);
 
   case InputGenerationKind::kOnes: {
@@ -61,7 +61,7 @@ static ErrorOrSuccess fillWithElements(Tensor &tensor,
   }
 
   // Fill the tensor with the 0, 1, -1 value.
-  return Kernel::fillHomogeneous(tensor.getPointer(),
+  return Kernel::fillHomogeneous(tensor.getMutableBuffer(),
                                  tensor.getShape().getNumElements(), eltType,
                                  elementBuffer);
 }
