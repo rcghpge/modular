@@ -727,15 +727,14 @@ bool BEFToMLIRConverter::parseTopLevelOps() {
       return true;
 
     // If we have a function-like op we have to provide a function type attr.
-    if (isa<mlir::FunctionOpInterface>(theOp)) {
+    if (auto func = dyn_cast<mlir::FunctionOpInterface>(theOp)) {
       // Get the function type from the parsed region. Use this so if we had the
       // types we get those for free.
       auto functionType = builder.getType<FunctionType>(
-          theOp->getRegion(0).getArgumentTypes(),
-          theOp->getRegion(0).front().getTerminator()->getOperandTypes());
+          func.getFunctionBody().getArgumentTypes(),
+          func.getFunctionBody().front().getTerminator()->getOperandTypes());
       // And add it to the invokable.
-      theOp->setAttr(mlir::FunctionOpInterface::getTypeAttrName(),
-                     TypeAttr::get(functionType));
+      func.setFunctionTypeAttr(TypeAttr::get(functionType));
     }
   }
 

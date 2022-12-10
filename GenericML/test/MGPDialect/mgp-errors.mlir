@@ -32,7 +32,7 @@ func.func @buffer_constant_mismatched_align() {
 
 func.func @buffer_constant_invalid_elem_type() {
   // expected-error@+1 {{'mgp.cpu.buffer.constant' op only supports attributes of uint8_t elements (have 'i16')}}
-  %0 = mgp.cpu.buffer.constant array<i16: 1, 2, 3, 4>
+  %0 = mgp.cpu.buffer.constant #M.dense_array<1, 2, 3, 4> : !M.array<4xi16>
 }
 
 // -----

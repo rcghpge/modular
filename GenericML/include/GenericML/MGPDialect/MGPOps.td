@@ -65,7 +65,7 @@ def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant",
     %buf : !mgp.cpu.buffer<4>  // at least 16 byte aligned in storage
                                // the actual resource must have the same alignment
 
-    %buf = mgp.cpu.buffer.constant array<ui8: 0, 1, 2, 3>
+    %buf = mgp.cpu.buffer.constant #M.dense_array<ui8: 0, 1, 2, 3>
     %buf : !mgp.cpu.buffer<4>  // no specific alignment in storage
     ```
   }];

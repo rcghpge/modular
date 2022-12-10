@@ -574,7 +574,7 @@ bool EntityTable::collect(ModuleOp module, bool enableBEFMetadata) {
       // Keep track of any attributes used by this op. If the attr is the
       // function type attr that symbols have, then don't write that.
       for (auto attr : op->getAttrs()) {
-        if (attr.getName() == mlir::FunctionOpInterface::getTypeAttrName())
+        if (attr.getName() == "function_type")
           continue;
 
         processAttr(attr.getName(), attr.getValue(), false);
@@ -839,7 +839,7 @@ AttributesEmitter::emitElementsAttr(ElementsAttrType value, Location loc,
   if (failed(kind))
     return {0};
 
-  unsigned bitWidth = value.getType().getElementTypeBitWidth();
+  unsigned bitWidth = value.getElementType().getIntOrFloatBitWidth();
   // Rounding up to bytes for alignment.
   size_t alignment = llvm::divideCeil(bitWidth, CHAR_BIT);
   return emitIntOrFloatRange(*kind, value.size(), alignment, emitRangeFn);
@@ -1418,8 +1418,7 @@ void RegionEmitter::emitPrimitive(Operation *op,
   } else {
     for (auto attrNamePair : op->getAttrs()) {
       // Don't emit the function type attr.
-      if (attrNamePair.getName() ==
-          mlir::FunctionOpInterface::getTypeAttrName())
+      if (attrNamePair.getName() == "function_type")
         continue;
 
       processAttr(attrNamePair.getName(), attrNamePair.getValue());

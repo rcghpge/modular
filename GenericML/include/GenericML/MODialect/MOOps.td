@@ -34,7 +34,9 @@ def MO_GraphOp : MO_Op<"graph", [HasParent<"ModuleOp">, FunctionOpInterface,
   // DeclareOpInterfaceMethods<TransformableGraphInterface>
 ]> {
   let summary = "Function that contains a MO graph with other ops mixed in";
-  let arguments = (ins TypeAttrOf<FunctionType>:$function_type);
+  let arguments = (ins TypeAttrOf<FunctionType>:$function_type,
+                       OptionalAttr<DictArrayAttr>:$arg_attrs,
+                       OptionalAttr<DictArrayAttr>:$res_attrs);
   let regions = (region SizedRegion<1>:$body);
 
   let extraClassDeclaration = [{
