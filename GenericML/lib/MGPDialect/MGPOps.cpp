@@ -112,7 +112,7 @@ void CpuBufferConstantOp::build(::mlir::OpBuilder &odsBuilder,
                                 ::mlir::OperationState &odsState,
                                 ElementsAttr value) {
   ErrorOr<Optional<uint64_t>> errOrOptAlign = getImpliedAlignment(value);
-  uint64_t rawAlign;
+  uint64_t rawAlign = 0;
   if (!errOrOptAlign.isError())
     // If error we'll report it when the result is validated.
     rawAlign = optSizeToRawSize(*errOrOptAlign);
