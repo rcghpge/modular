@@ -22,6 +22,7 @@ static void printShapeParameter(AsmPrinter &p, ArrayRef<int64_t> dims) {
   for (size_t i = 0, e = dims.size(); i < e; i++) {
     if (ShapedType::isDynamic(dims[i])) {
       p << '?';
+      p << 'x';
     } else if (dims[i] == kDynamicRank) {
       p << '*';
       // TODO: Remove this conditional when we can support partial ranks

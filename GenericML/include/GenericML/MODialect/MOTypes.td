@@ -40,17 +40,16 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [ShapedTypeInterface]> {
   let summary = "Type of tensor specs of statically known rank.";
   let description = [{
     This type represents the shape and element type of a tensor. Each
-    dimension must be a strictly positive integer value, or the distinguished
-    -1 dimension denoting unknown. The element type must be a builtin dtype,
-    or built in none denoting unknown.
-
-    This type does not yet support:
-     - Dynamic ranks.
+    dimension must be a strictly positive integer value, the distinguished
+    kDynamic dimension denoting unknown, or the distinguish kDynamicRank denoting 
+    unkown rank. The element type must be a builtin dtype, or built in none
+    denoting unknown.
 
     Examples:
     ```mlir
     !mo.tensor<4x16xf32>
-    !mo.tensor<?x?xnone>
+    !mo.tensor<?x?xi32>
+    !mo.tensor<*none>
     ```
   }];
 

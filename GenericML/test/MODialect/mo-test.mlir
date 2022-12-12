@@ -5,9 +5,19 @@ mo.graph @dyn_rank(%arg0: !mo.tensor<*f32>) -> (!mo.tensor<*f32>) {
   mo.output %arg0 : !mo.tensor<*f32>
 }
 
+// CHECK: mo.graph @dyn_dims(%[[ARG0:.*]]: !mo.tensor<2x?x1xf32>) -> !mo.tensor<2x?x1xf32> {
+mo.graph @dyn_dims(%arg0: !mo.tensor<2x?x1xf32>) -> (!mo.tensor<2x?x1xf32>) {
+  mo.output %arg0 : !mo.tensor<2x?x1xf32>
+}
+
 // CHECK: mo.graph @scalar(%[[ARG0:.*]]: !mo.tensor<f32>) -> !mo.tensor<f32> {
 mo.graph @scalar(%arg0: !mo.tensor<f32>) -> (!mo.tensor<f32>) {
   mo.output %arg0 : !mo.tensor<f32>
+}
+
+// CHECK: mo.graph @scalar_none(%[[ARG0:.*]]: !mo.tensor<none>) -> !mo.tensor<none> {
+mo.graph @scalar_none(%arg0: !mo.tensor<none>) -> (!mo.tensor<none>) {
+  mo.output %arg0 : !mo.tensor<none>
 }
 
 // CHECK: mo.graph @constant() -> !mo.tensor<2x3xf32>
