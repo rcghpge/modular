@@ -24,6 +24,17 @@ include "mlir/IR/SymbolInterfaces.td"
 class MO_Op<string mnemonic, list<Trait> traits = []>
     : Op<MODialect, mnemonic, traits>;
 
+
+class MO_ElementWiseBinary<string name, list<Trait> traits = []>
+  : MO_Op<name, traits # [Pure, SameOperandsAndResultType]> {
+  let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y);
+  let results = (outs MO_Tensor:$result);
+  
+  let assemblyFormat = [{
+    `(`$input_x `,` $input_y `)` attr-dict `->` qualified(type($result))
+  }];
+}
+
 //===----------------------------------------------------------------------===//
 // GraphOp
 //===----------------------------------------------------------------------===//
@@ -112,14 +123,11 @@ def MO_ConstantOp : MO_Op<"constant", [ConstantLike, Pure]> {
 // Elementwise ops
 //===----------------------------------------------------------------------===//
 
-def MO_AddOp : MO_Op<"add", [Pure]> {
+def MO_AddOp : MO_ElementWiseBinary<"add"> {
   let summary = "Add operation";
   let description = [{
     Returns x + y, where x and y are input tensors.
   }];
-
-  let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y);
-  let results = (outs MO_Tensor:$result);
 }
 
 def MO_AbsOp : MO_Op<"abs", [SameOperandsAndResultType, Idempotent, Pure]> {
@@ -132,6 +140,21 @@ def MO_AbsOp : MO_Op<"abs", [SameOperandsAndResultType, Idempotent, Pure]> {
   let results = (outs MO_Tensor:$result);
 }
 
+def MO_DivOp : MO_ElementWiseBinary<"div"> {
+  let summary = "Divide operation";
+  let description = [{
+    Returns x / y, where x and y are input tensors.
+  }];
+}
+
+def MO_MulOp : MO_ElementWiseBinary<"mul"> {
+  let summary = "Multiply operation";
+  let description = [{
+    Returns x * y, where x and y are input tensors.
+  }];
+}
+
+
 def MO_ReluOp : MO_Op<"relu", [SameOperandsAndResultType, Idempotent, Pure]> {
   let summary = "Rectified linear unit operation";
   let description = [{
@@ -140,6 +163,13 @@ def MO_ReluOp : MO_Op<"relu", [SameOperandsAndResultType, Idempotent, Pure]> {
 
   let arguments = (ins MO_Tensor:$input);
   let results = (outs MO_Tensor:$result);
+}
+
+def MO_SubOp : MO_ElementWiseBinary<"sub"> {
+  let summary = "Subtract operation";
+  let description = [{
+    Returns x - y, where x and y are input tensors.
+  }];
 }
 
 //===----------------------------------------------------------------------===//
