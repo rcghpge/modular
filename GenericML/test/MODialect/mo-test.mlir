@@ -15,9 +15,9 @@ mo.graph @scalar(%arg0: !mo.tensor<f32>) -> (!mo.tensor<f32>) {
   mo.output %arg0 : !mo.tensor<f32>
 }
 
-// CHECK: mo.graph @scalar_none(%[[ARG0:.*]]: !mo.tensor<none>) -> !mo.tensor<none> {
-mo.graph @scalar_none(%arg0: !mo.tensor<none>) -> (!mo.tensor<none>) {
-  mo.output %arg0 : !mo.tensor<none>
+// CHECK: mo.graph @invalid_type(%[[ARG0:.*]]: !mo.tensor<2x3xinvalid>) -> !mo.tensor<2x3xinvalid> {
+mo.graph @invalid_type(%arg0: !mo.tensor<2x3xinvalid>) -> (!mo.tensor<2x3xinvalid>) {
+  mo.output %arg0 : !mo.tensor<2x3xinvalid>
 }
 
 // CHECK: mo.graph @constant() -> !mo.tensor<2x3xf32>
@@ -28,13 +28,13 @@ mo.graph @constant() -> !mo.tensor<2x3xf32> {
   mo.output %0 : !mo.tensor<2x3xf32>
 }
 
-// CHECK: mo.graph @constant_cse() -> (!mo.tensor<2xi32>, !mo.tensor<2xi32>)
-mo.graph @constant_cse() -> (!mo.tensor<2xi32>, !mo.tensor<2xi32>) {
-  // CHECK: %[[VAL0:.*]] = "mo.constant"() {value = #M.dense_array<1, 2> : tensor<2xi32>} : () -> !mo.tensor<2xi32>
-  %0 = "mo.constant"() {value = #M.dense_array<1, 2> : tensor<2xi32>} : () -> !mo.tensor<2xi32>
-  %1 = "mo.constant"() {value = #M.dense_array<1, 2> : tensor<2xi32>} : () -> !mo.tensor<2xi32>
-  // CHECK: mo.output %[[VAL0]], %[[VAL0]] : !mo.tensor<2xi32>, !mo.tensor<2xi32>
-  mo.output %0, %1 : !mo.tensor<2xi32>, !mo.tensor<2xi32>
+// CHECK: mo.graph @constant_cse() -> (!mo.tensor<2xui32>, !mo.tensor<2xui32>)
+mo.graph @constant_cse() -> (!mo.tensor<2xui32>, !mo.tensor<2xui32>) {
+  // CHECK: %[[VAL0:.*]] = "mo.constant"() {value = #M.dense_array<1, 2> : tensor<2xui32>} : () -> !mo.tensor<2xui32>
+  %0 = "mo.constant"() {value = #M.dense_array<1, 2> : tensor<2xui32>} : () -> !mo.tensor<2xui32>
+  %1 = "mo.constant"() {value = #M.dense_array<1, 2> : tensor<2xui32>} : () -> !mo.tensor<2xui32>
+  // CHECK: mo.output %[[VAL0]], %[[VAL0]] : !mo.tensor<2xui32>, !mo.tensor<2xui32>
+  mo.output %0, %1 : !mo.tensor<2xui32>, !mo.tensor<2xui32>
 }
 
 // CHECK: mo.graph @two_constants() -> (!mo.tensor<2x3xf32>, !mo.tensor<4xsi8>)

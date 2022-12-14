@@ -41,30 +41,36 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [ShapedTypeInterface]> {
   let description = [{
     This type represents the shape and element type of a tensor. Each
     dimension must be a strictly positive integer value, the distinguished
-    kDynamic dimension denoting unknown, or the distinguish kDynamicRank denoting 
-    unkown rank. The element type must be a builtin dtype, or built in none
-    denoting unknown.
+    kDynamic dimension denoting unknown, or the distinguished kDynamicRank
+    denoting an unkown number of dynamic axes. The element type is an M::DType,
+    with `invalid` denoting an unknown type.
 
     Examples:
     ```mlir
     !mo.tensor<4x16xf32>
     !mo.tensor<?x?xi32>
-    !mo.tensor<*none>
+    !mo.tensor<*invalid>
     ```
   }];
 
-  let parameters = (ins ShapeParameter : $shape, "Type" : $elementType);
+  let parameters = (ins ShapeParameter : $shape, "DType" : $dtype);
 
   let genVerifyDecl = 1;
-  let assemblyFormat = [{ `<` $shape `` $elementType `>` }];
+  let assemblyFormat = [{ `<` $shape `` $dtype `>` }];
 
   let builders = [TypeBuilderWithInferredContext<
-      (ins "ArrayRef<int64_t>" : $shape, "Type" : $elementType),
-      [{ return $_get(elementType.getContext(), shape, elementType); }]>];
+      (ins "ArrayRef<int64_t>" : $shape, "Type" : $elementType),[{
+        ErrorOr<DType> errOrDType = fromMLIRType(elementType);
+        assert(!errOrDType.isError() &&
+               "element type is not representable as a DType");
+        return $_get(elementType.getContext(), shape, *errOrDType);
+      }]>];
+
   let extraClassDeclaration = [{
     size_t getRank() const;
     bool hasRank() const;
-    ShapedType cloneWith(Optional<ArrayRef<int64_t>> shape, Type elementType)
+    Type getElementType() const;
+    ShapedType cloneWith(Optional<ArrayRef<int64_t>> shape, Type dtype)
         const;
   }];
 }

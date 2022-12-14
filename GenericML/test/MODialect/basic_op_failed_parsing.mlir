@@ -33,3 +33,10 @@ mo.graph @div(%arg0: !mo.tensor<2x3xf32>, %arg1: !mo.tensor<2x10xf32>) -> (!mo.t
   %0 = mo.div(%arg0, %arg1) -> !mo.tensor<2x3xf32>
   mo.output %0 : !mo.tensor<2x3xf32>
 }
+
+// -----
+
+// expected-error@+1 {{failed to parse MO_Tensor parameter 'dtype' which is to be a `DType}}
+mo.graph @signless(%arg0: !mo.tensor<i32>) -> (!mo.tensor<i32>) {
+  mo.output %arg0 : !mo.tensor<i32>
+}

@@ -13,6 +13,7 @@
 
 #include "GenericML/MODialect/MODialect.h"
 #include "Support/LLVMCompilerForwardDecls.h"
+#include "Support/ML/DType.h"
 #include "mlir/IR/Types.h"
 
 namespace M {
