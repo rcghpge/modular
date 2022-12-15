@@ -27,3 +27,11 @@ mo.graph @div(%arg0: !mo.tensor<2x3xf32>, %arg1: !mo.tensor<2x3xf32>) -> (!mo.te
   %0 = mo.div(%arg0, %arg1) -> !mo.tensor<2x3xf32>
   mo.output %0 : !mo.tensor<2x3xf32>
 }
+
+// CHECK: mo.graph @softmax(%[[ARG0:.*]]: !mo.tensor<2x3xf32>) -> !mo.tensor<2x3xf32> {
+mo.graph @softmax(%arg0: !mo.tensor<2x3xf32>) -> (!mo.tensor<2x3xf32>) {
+  // CHECK-NEXT: mo.softmax(%[[ARG0]]) : (!mo.tensor<2x3xf32>) -> !mo.tensor<2x3xf32>
+  %0 = mo.softmax(%arg0) : (!mo.tensor<2x3xf32>) -> !mo.tensor<2x3xf32>
+  mo.output %0 : !mo.tensor<2x3xf32>
+}
+

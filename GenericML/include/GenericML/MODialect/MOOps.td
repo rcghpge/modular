@@ -165,6 +165,23 @@ def MO_ReluOp : MO_Op<"relu", [SameOperandsAndResultType, Idempotent, Pure]> {
   let results = (outs MO_Tensor:$result);
 }
 
+def MO_SoftmaxOp : MO_Op<"softmax", [SameOperandsAndResultType, Pure]> {
+  let summary = "Perfoms softmax on tensor `input`";
+  let description = [{
+    Returns softmax probability scores following:
+     `exp(input) / sum(exp(input))`
+
+    Axis is a vector representing the axes to reduce.
+  }];
+
+  let arguments = (ins MO_Tensor:$input);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 def MO_SubOp : MO_ElementWiseBinary<"sub"> {
   let summary = "Subtract operation";
   let description = [{
