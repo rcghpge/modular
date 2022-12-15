@@ -3,7 +3,7 @@
 // expected-note@+1 {{prior use here}}
 mo.graph @add(%arg0: !mo.tensor<2x3xf32>, %arg1: !mo.tensor<2x5xf32>) -> (!mo.tensor<2x3xf32>) {
   // expected-error@+1 {{use of value '%arg1' expects different type than prior uses}}
-  %0 = mo.add(%arg0, %arg1) -> !mo.tensor<2x3xf32>
+  %0 = mo.add(%arg0, %arg1) : !mo.tensor<2x3xf32>
   mo.output %0 : !mo.tensor<2x3xf32>
 }
 
@@ -12,7 +12,7 @@ mo.graph @add(%arg0: !mo.tensor<2x3xf32>, %arg1: !mo.tensor<2x5xf32>) -> (!mo.te
 // expected-note@+1 {{prior use here}}
 mo.graph @sub(%arg0: !mo.tensor<2x3xf32>, %arg1: !mo.tensor<2x10xf32>) -> (!mo.tensor<2x3xf32>) {
   // expected-error@+1 {{use of value '%arg1' expects different type than prior uses}}
-  %0 = mo.sub(%arg0, %arg1) -> !mo.tensor<2x3xf32>
+  %0 = mo.sub(%arg0, %arg1) : !mo.tensor<2x3xf32>
   mo.output %0 : !mo.tensor<2x3xf32>
 }
 
@@ -21,7 +21,7 @@ mo.graph @sub(%arg0: !mo.tensor<2x3xf32>, %arg1: !mo.tensor<2x10xf32>) -> (!mo.t
 // expected-note@+1 {{prior use here}}
 mo.graph @mul(%arg0: !mo.tensor<2x3xf32>, %arg1: !mo.tensor<2x10xf32>) -> (!mo.tensor<2x3xf32>) {
   // expected-error@+1 {{use of value '%arg1' expects different type than prior uses}}
-  %0 = mo.mul(%arg0, %arg1) -> !mo.tensor<2x3xf32>
+  %0 = mo.mul(%arg0, %arg1) : !mo.tensor<2x3xf32>
   mo.output %0 : !mo.tensor<2x3xf32>
 }
 
@@ -30,7 +30,7 @@ mo.graph @mul(%arg0: !mo.tensor<2x3xf32>, %arg1: !mo.tensor<2x10xf32>) -> (!mo.t
 // expected-note@+1 {{prior use here}}
 mo.graph @div(%arg0: !mo.tensor<2x3xf32>, %arg1: !mo.tensor<2x10xf32>) -> (!mo.tensor<2x3xf32>) {
   // expected-error@+1 {{use of value '%arg1' expects different type than prior uses}}
-  %0 = mo.div(%arg0, %arg1) -> !mo.tensor<2x3xf32>
+  %0 = mo.div(%arg0, %arg1) : !mo.tensor<2x3xf32>
   mo.output %0 : !mo.tensor<2x3xf32>
 }
 

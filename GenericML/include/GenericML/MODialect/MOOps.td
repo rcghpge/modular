@@ -31,7 +31,7 @@ class MO_ElementWiseBinary<string name, list<Trait> traits = []>
   let results = (outs MO_Tensor:$result);
   
   let assemblyFormat = [{
-    `(`$input_x `,` $input_y `)` attr-dict `->` qualified(type($result))
+    `(` operands `)` attr-dict `:` qualified(type($result))
   }];
 }
 
