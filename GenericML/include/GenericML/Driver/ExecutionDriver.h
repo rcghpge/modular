@@ -15,6 +15,7 @@
 #include "LLCL/ForwardDecls.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMCompilerForwardDecls.h"
+#include "llvm/ADT/SmallVector.h"
 #include <cstddef>
 
 namespace M {
