@@ -4,10 +4,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "DriverInternals.h"
-
-#include "GenericML/Driver/DriverCLOptions.h"
 #include "GenericML/Driver/ExecutionDriver.h"
+#include "GenericML/Driver/DriverCLOptions.h"
+#include "GenericML/Driver/DriverInternals.h"
 #include "GenericML/Support/Model.h"
 #include "GenericML/Support/Tensor.h"
 #include "Kernels/Misc.h"
