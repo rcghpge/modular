@@ -29,7 +29,7 @@ class MO_ElementWiseBinary<string name, list<Trait> traits = []>
   : MO_Op<name, traits # [Pure, SameOperandsAndResultType]> {
   let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y);
   let results = (outs MO_Tensor:$result);
-  
+
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` qualified(type($result))
   }];
@@ -114,6 +114,8 @@ def MO_ConstantOp : MO_Op<"constant", [ConstantLike, Pure]> {
       ElementsAttr, [AnyAttrOf<[M_ArrayElementsAttr, Builtin_DenseResourceElementsAttr]>]
     >:$value);
   let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = "attr-dict `:` qualified(type($result))";
 
   let hasFolder = 1;
 }
@@ -232,7 +234,7 @@ class MO_DotBase<string name, list<Trait> traits = []>
 
   }];
 
-  
+
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];

@@ -22,8 +22,8 @@
 mo.graph @constants_with_multiple_returns(%arg0: !mo.tensor<2xf32>, %arg1: !mo.tensor<5x1xf32>) -> (
     !mo.tensor<2xf32>, !mo.tensor<3xf32>, !mo.tensor<3xf32>, !mo.tensor<5x1xf32>, !mo.tensor<5x1xf32>, !mo.tensor<4xsi8>
 ) {
-  %0 = "mo.constant"() {value = #M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>} : () -> !mo.tensor<3xf32>
-  %1 = "mo.constant"() {value = dense_resource<mtfl_buffer> : tensor<4xsi8>} : () -> !mo.tensor<4xsi8>
+  %0 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>} : !mo.tensor<3xf32>
+  %1 = mo.constant {value = dense_resource<mtfl_buffer> : tensor<4xsi8>} : !mo.tensor<4xsi8>
   mo.output %arg0, %0, %0, %arg1, %arg1, %1 : !mo.tensor<2xf32>, !mo.tensor<3xf32>, !mo.tensor<3xf32>, !mo.tensor<5x1xf32>, !mo.tensor<5x1xf32>, !mo.tensor<4xsi8>
 }
 
