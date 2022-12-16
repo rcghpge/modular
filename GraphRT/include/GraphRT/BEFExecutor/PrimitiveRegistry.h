@@ -871,13 +871,13 @@ public:
   /// Find an element in the dictionary by name. Parses every name in sequence
   /// until it finds the right one and returns that attribute. If the name is
   /// not found, return None.
-  Optional<BEFDynamicAttr> find(StringRef name) const;
+  std::optional<BEFDynamicAttr> find(StringRef name) const;
 
   /// Templated access to the value in find. If nothing is found *or* the type
   /// provided is incorrect, then None is returned.
   template <typename T>
-  Optional<Detail::BEFAttrDynCastRetType<T>> find(StringRef name) const {
-    Optional<BEFDynamicAttr> found = find(name);
+  std::optional<Detail::BEFAttrDynCastRetType<T>> find(StringRef name) const {
+    std::optional<BEFDynamicAttr> found = find(name);
     if (!found)
       return std::nullopt;
 
@@ -1522,23 +1522,55 @@ namespace llvm {
 
 template <typename To, typename From>
 struct BaseBEFAttrCast
-    : public DefaultDoCastIfPossible<Optional<To>, From,
+    : public DefaultDoCastIfPossible<std::optional<To>, From,
                                      BaseBEFAttrCast<To, From>> {
   // Accept a const reference in the case of temporaries being casted which get
   // lifetime extension when binding to a const reference.
   static bool isPossible(const From &f) {
+    const From &f_const = const_cast<From &>(f);
+    auto f_unwrapped = detail::unwrapValue(f_const);
+
     return To::matchesAttrKind(
-        reinterpret_cast<const uint8_t *>(
-            detail::unwrapValue(const_cast<From &>(f)).get()),
-        detail::unwrapValue(const_cast<From &>(f)).getAttrSection().end());
+        reinterpret_cast<const uint8_t *>(f_unwrapped.get()),
+        f_unwrapped.getAttrSection().end());
   }
+
   // Accept a const reference in the case of temporaries being casted which get
   // lifetime extension when binding to a const reference.
-  static Optional<To> doCast(const From &f) {
-    return To(detail::unwrapValue(const_cast<From &>(f)).get(),
-              detail::unwrapValue(const_cast<From &>(f)).getAttrSection());
+  static std::optional<To> doCast(const From &f) {
+    const From &f_const = const_cast<From &>(f);
+    auto f_unwrapped = detail::unwrapValue(f_const);
+    return To(f_unwrapped.get(), f_unwrapped.getAttrSection());
   }
-  static Optional<To> castFailed() { return Optional<To>{}; }
+
+  static std::optional<To> castFailed() { return std::nullopt; }
+};
+
+template <typename To, typename From>
+struct BaseBEFAttrCastOptional
+    : public DefaultDoCastIfPossible<
+          std::optional<To>, std::optional<From>,
+          BaseBEFAttrCastOptional<To, std::optional<From>>> {
+  // Accept a const reference in the case of temporaries being casted which get
+  // lifetime extension when binding to a const reference.
+  static bool isPossible(const From &f) {
+    const From &f_const = const_cast<From &>(f);
+    auto f_unwrapped = detail::unwrapValue(f_const);
+
+    return To::matchesAttrKind(
+        reinterpret_cast<const uint8_t *>((*f_unwrapped).get()),
+        (*f_unwrapped).getAttrSection().end());
+  }
+
+  // Accept a const reference in the case of temporaries being casted which get
+  // lifetime extension when binding to a const reference.
+  static std::optional<To> doCast(const From &f) {
+    const From &f_const = const_cast<From &>(f);
+    auto f_unwrapped = detail::unwrapValue(f_const);
+    return To((*f_unwrapped).get(), (*f_unwrapped).getAttrSection());
+  }
+
+  static std::optional<To> castFailed() { return std::nullopt; }
 };
 
 template <typename To>
@@ -1554,27 +1586,25 @@ struct CastInfo<::M::BEFAttr<To>, ::M::BEFDynamicAttr>
     : public BaseBEFAttrCast<::M::BEFAttr<To>, ::M::BEFDynamicAttr> {};
 
 template <typename To>
-struct CastInfo<To, Optional<::M::BEFDynamicAttr>>
-    : public BaseBEFAttrCast<::M::BEFAttr<To>, Optional<::M::BEFDynamicAttr>> {
-};
+struct CastInfo<To, std::optional<::M::BEFDynamicAttr>>
+    : public BaseBEFAttrCastOptional<::M::BEFAttr<To>, ::M::BEFDynamicAttr> {};
 
 template <typename To>
-struct CastInfo<::M::BEFAttr<To>, Optional<::M::BEFDynamicAttr>>
-    : public BaseBEFAttrCast<::M::BEFAttr<To>, Optional<::M::BEFDynamicAttr>> {
-};
+struct CastInfo<::M::BEFAttr<To>, std::optional<::M::BEFDynamicAttr>>
+    : public BaseBEFAttrCastOptional<::M::BEFAttr<To>, ::M::BEFDynamicAttr> {};
 
 template <typename To, typename From>
 struct BaseBEFAttrPointerCast
-    : public DefaultDoCastIfPossible<Optional<To>, const From *,
+    : public DefaultDoCastIfPossible<std::optional<To>, const From *,
                                      BaseBEFAttrPointerCast<To, From>> {
   static bool isPossible(const From *f) {
     return To::matchesAttrKind(reinterpret_cast<const uint8_t *>(f->get()),
                                f->getAttrSection().end());
   }
-  static Optional<To> doCast(const From *f) {
+  static std::optional<To> doCast(const From *f) {
     return To(f->get(), f->getAttrSection());
   }
-  static Optional<To> castFailed() { return Optional<To>{}; }
+  static std::optional<To> castFailed() { return std::nullopt; }
 };
 
 template <typename To>

@@ -94,7 +94,7 @@ BEFDictionaryAttr::Element BEFDictionaryAttr::Iterator::operator*() const {
 // BEFDictionaryAttr implementation
 //===----------------------------------------------------------------------===//
 
-Optional<BEFDynamicAttr> BEFDictionaryAttr::find(StringRef name) const {
+std::optional<BEFDynamicAttr> BEFDictionaryAttr::find(StringRef name) const {
   auto found = llvm::find_if(
       *this, [&](const Element &elt) { return elt.getName() == name; });
 
