@@ -77,7 +77,7 @@ static ErrorOr<Optional<uint64_t>> getImpliedAlignment(ElementsAttr value) {
   }
 
   // No align constraint.
-  return llvm::None;
+  return std::nullopt;
 }
 
 /// Parses the elements attribute, but also captures any alignment constraint.

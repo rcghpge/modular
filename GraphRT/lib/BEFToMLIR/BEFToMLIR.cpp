@@ -317,7 +317,7 @@ bool BEFToMLIRConverter::parseAttribute(size_t offset,
         if (auto expressedType = parseTypeAttr())
           return std::make_tuple(storageType, expressedType);
       }
-      return None;
+      return std::nullopt;
     };
 
     // Helper for determining quantized type storage parameters.

@@ -153,7 +153,7 @@ static void printDType(AsmPrinter &p, Optional<DType> optDType) {
 
 ErrorOr<Optional<DType>> DTypeType::fromMlirType(Type mlirType) {
   if (auto unkType = mlir::dyn_cast<NoneType>(mlirType))
-    return llvm::None; // None denotes unknown.
+    return std::nullopt; // None denotes unknown.
   if (auto intType = mlir::dyn_cast<IntegerType>(mlirType)) {
     FailureOr<DType> dtype = getEquivalentDType(intType);
     if (succeeded(dtype))
@@ -373,7 +373,7 @@ CpuTensorSpecType CpuTensorSpecType::getChecked(
 size_t CpuTensorSpecType::getRank() const { return getDims().size(); }
 
 size_t CpuTensorSpecType::getNumDynamicDims() const {
-  return static_cast<size_t>(llvm::count(getDims(), llvm::None));
+  return static_cast<size_t>(llvm::count(getDims(), std::nullopt));
 }
 
 Optional<uint64_t> CpuTensorSpecType::operator[](size_t i) const {

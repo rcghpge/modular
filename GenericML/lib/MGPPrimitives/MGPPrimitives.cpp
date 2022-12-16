@@ -23,7 +23,7 @@ using namespace M::GML;
 
 static Optional<size_t> getAlign(uint64_t rawAlign) {
   return hasRawSize(rawAlign) ? Optional<size_t>(rawSizeToRuntimeSize(rawAlign))
-                              : llvm::None;
+                              : std::nullopt;
 }
 
 //===----------------------------------------------------------------------===//

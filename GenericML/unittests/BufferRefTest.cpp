@@ -31,7 +31,7 @@ TEST(BufferRef, Default) {
 
   ASSERT_EQ(ref.getBuffer(), nullptr);
   ASSERT_EQ(ref.getSize(), 0U);
-  ASSERT_EQ(ref.getAlignment(), llvm::None);
+  ASSERT_EQ(ref.getAlignment(), std::nullopt);
   ASSERT_FALSE(ref.getRuntime());
   ASSERT_FALSE(ref.isOwned());
   ASSERT_EQ(ref.getLifetime(), BufferRef::kLocal);

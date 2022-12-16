@@ -14,7 +14,7 @@ using namespace M;
 using namespace M::GML;
 
 static constexpr llvm::MaybeAlign makeMaybeAlign(Optional<size_t> alignment) {
-  return alignment.has_value() ? llvm::MaybeAlign(*alignment) : llvm::None;
+  return alignment.has_value() ? llvm::MaybeAlign(*alignment) : std::nullopt;
 }
 
 static const char *ownershipToStr(BufferRef::Ownership ownership) {

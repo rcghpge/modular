@@ -101,5 +101,5 @@ Optional<BEFDynamicAttr> BEFDictionaryAttr::find(StringRef name) const {
   if (found != end())
     return (*found).getValue();
 
-  return None;
+  return std::nullopt;
 }

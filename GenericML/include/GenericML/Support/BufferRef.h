@@ -179,7 +179,7 @@ public:
   Optional<size_t> getAlignment() const {
     return alignment.has_value()
                ? Optional<size_t>(static_cast<size_t>(alignment->value()))
-               : llvm::None;
+               : std::nullopt;
   }
 
   /// Returns the alignment of the underlying buffer, or 1 if no alignment
@@ -214,7 +214,7 @@ private:
   /// The runtime responsible for the underlying buffer if it is owned.
   LLCL::CompactRuntimePtr runtime = nullptr; /* 1 byte */
   /// Alignment of underlying buffer, or None if no specific alignment given.
-  llvm::MaybeAlign alignment = llvm::None; /* 2 bytes */
+  llvm::MaybeAlign alignment = std::nullopt; /* 2 bytes */
   /// Whether the underlying buffer should be deleted when this object is
   /// destructed (kOwned), or never deleted (kBorrowed).
   Ownership ownership = kNull; /* 1 byte */

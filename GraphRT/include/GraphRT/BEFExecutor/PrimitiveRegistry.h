@@ -879,7 +879,7 @@ public:
   Optional<Detail::BEFAttrDynCastRetType<T>> find(StringRef name) const {
     Optional<BEFDynamicAttr> found = find(name);
     if (!found)
-      return None;
+      return std::nullopt;
 
     return dyn_cast<T>(found);
   }
