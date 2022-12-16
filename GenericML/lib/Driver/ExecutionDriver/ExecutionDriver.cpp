@@ -49,7 +49,7 @@ std::optional<InputGenerationKind> M::symbolizeEnum(StringRef s) {
             InputGenerationKind::kOnes)
       .Case(stringifyEnum(InputGenerationKind::kNegOnes),
             InputGenerationKind::kNegOnes)
-      .Default(None);
+      .Default(std::nullopt);
 }
 
 bool TensorShapeParser::parse(llvm::cl::Option &options, StringRef argName,
