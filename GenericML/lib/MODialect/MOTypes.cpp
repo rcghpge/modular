@@ -32,6 +32,23 @@ struct FieldParser<DType> {
   }
 };
 
+template <typename AttributeT>
+struct FieldParser<
+    Optional<AttributeT>,
+    std::enable_if_t<std::is_base_of<Attribute, AttributeT>::value,
+                     Optional<AttributeT>>> {
+  static FailureOr<Optional<AttributeT>> parse(AsmParser &parser) {
+    AttributeT attr;
+    OptionalParseResult result = parser.parseOptionalAttribute(attr);
+    if (result.has_value()) {
+      if (succeeded(*result))
+        return {Optional<AttributeT>(attr)};
+      return failure();
+    }
+    return {std::nullopt};
+  }
+};
+
 } // namespace mlir
 
 std::string asString(Type type) {
@@ -82,7 +99,8 @@ FailureOr<llvm::SmallVector<int64_t>> parseShapeParameter(AsmParser &p) {
 /// Verifies that the given dimensions represent a valid tensor shape, and
 /// that the element type in DType form is also representable as an MLIR type.
 LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
-                                 ArrayRef<int64_t> shape, DType elementType) {
+                                 ArrayRef<int64_t> shape, DType dtype,
+                                 Optional<Attribute> metadata) {
   for (auto dim : shape) {
     if (dim <= 0 && dim != ShapedType::kDynamic && dim != kDynamicRank) {
       return emitError()
@@ -128,15 +146,15 @@ ErrorOr<Type> static toMLIRType(MLIRContext *context, DType dType) {
 
 /// Returns clone with given element type, which must be representable as a
 /// dtype. Required by ShapedTypeInference
-ShapedType TensorType::cloneWith(Optional<ArrayRef<int64_t>> shape,
-                                 Type elementType) const {
+ShapedType TensorType::cloneWith(Optional<ArrayRef<int64_t>> shape, Type dtype,
+                                 Optional<Attribute> metadata) const {
   ArrayRef<int64_t> newShape =
       shape.has_value() ? ArrayRef<int64_t>(shape.value()) : getShape();
 
-  ErrorOr<DType> errOrDType = fromMLIRType(elementType);
+  ErrorOr<DType> errOrDType = fromMLIRType(dtype);
   assert(!errOrDType.isError() &&
          "element type is not representable as an M::DType");
-  return TensorType::get(getContext(), newShape, *errOrDType);
+  return TensorType::get(getContext(), newShape, *errOrDType, metadata);
 }
 
 /// Does the Tensor have a static Rank?  Required by ShapedTypeInferece

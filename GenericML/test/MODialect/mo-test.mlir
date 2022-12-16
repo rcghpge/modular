@@ -20,6 +20,21 @@ mo.graph @invalid_type(%arg0: !mo.tensor<2x3xinvalid>) -> (!mo.tensor<2x3xinvali
   mo.output %arg0 : !mo.tensor<2x3xinvalid>
 }
 
+// CHECK: mo.graph @tensor_str_metadata(%[[ARG0:.*]]: !mo.tensor<si32, "foo">) -> !mo.tensor<si32, "foo"> {
+mo.graph @tensor_str_metadata(%arg0: !mo.tensor<si32, "foo">) -> !mo.tensor<si32, "foo"> {
+  mo.output %arg0 : !mo.tensor<si32, "foo">
+}
+
+// CHECK: mo.graph @tensor_type_metadata(%[[ARG0:.*]]: !mo.tensor<2x3xf32, f16>) -> !mo.tensor<2x3xf32, f16> {
+mo.graph @tensor_type_metadata(%arg0: !mo.tensor<2x3xf32, f16>) -> !mo.tensor<2x3xf32, f16> {
+  mo.output %arg0 : !mo.tensor<2x3xf32, f16>
+}
+
+// CHECK: mo.graph @tensor_dict_metadata(%[[ARG0:.*]]: !mo.tensor<2x3xf32, {foo = "bar"}>) -> !mo.tensor<2x3xf32, {foo = "bar"}> {
+mo.graph @tensor_dict_metadata(%arg0: !mo.tensor<2x3xf32, {foo = "bar"}>) -> !mo.tensor<2x3xf32, {foo = "bar"}> {
+  mo.output %arg0 : !mo.tensor<2x3xf32, {foo = "bar"}>
+}
+
 // CHECK: mo.graph @constant() -> !mo.tensor<2x3xf32>
 mo.graph @constant() -> !mo.tensor<2x3xf32> {
   // CHECK: %[[VAL_0:.*]] = mo.constant {value = #M.dense_array<1.{{0+}}e+00, 2.{{0+}}e+00, 3.{{0+}}e+00, 4.{{0+}}e+00, 5.{{0+}}e+00, 6.{{0+}}e+00> : tensor<2x3xf32>} : !mo.tensor<2x3xf32>

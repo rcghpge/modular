@@ -53,25 +53,31 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [ShapedTypeInterface]> {
     ```
   }];
 
-  let parameters = (ins ShapeParameter : $shape, "DType" : $dtype);
+  let parameters = (ins
+    ShapeParameter : $shape,
+    "DType" : $dtype,
+    DefaultValuedParameter<"Optional<Attribute>", "std::nullopt"> : $metadata);
 
   let genVerifyDecl = 1;
-  let assemblyFormat = [{ `<` $shape `` $dtype `>` }];
+  let assemblyFormat = "`<` $shape `` $dtype ( `,` $metadata^)? `>`";
 
-  let builders = [TypeBuilderWithInferredContext<
-      (ins "ArrayRef<int64_t>" : $shape, "Type" : $elementType),[{
-        ErrorOr<DType> errOrDType = fromMLIRType(elementType);
-        assert(!errOrDType.isError() &&
-               "element type is not representable as a DType");
-        return $_get(elementType.getContext(), shape, *errOrDType);
-      }]>];
+  let builders = [TypeBuilderWithInferredContext<(ins
+      "ArrayRef<int64_t>" : $shape,
+      "Type" : $elementType,
+      CArg<"Optional<Attribute>", "std::nullopt"> : $metadata),
+    [{
+      ErrorOr<DType> errOrDType = fromMLIRType(elementType);
+      assert(!errOrDType.isError() &&
+              "element type is not representable as a DType");
+      return $_get(elementType.getContext(), shape, *errOrDType, metadata);
+    }]>];
 
   let extraClassDeclaration = [{
     size_t getRank() const;
     bool hasRank() const;
     Type getElementType() const;
-    ShapedType cloneWith(Optional<ArrayRef<int64_t>> shape, Type dtype)
-        const;
+    ShapedType cloneWith(Optional<ArrayRef<int64_t>> shape, Type dtype,
+                         Optional<Attribute> metadata = std::nullopt) const;
   }];
 }
 
