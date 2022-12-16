@@ -6,6 +6,8 @@
 
 #include "DriverInternals.h"
 
+#include "GenericML/Driver/DriverCLOptions.h"
+#include "GenericML/Driver/ExecutionDriver.h"
 #include "GenericML/Support/Model.h"
 #include "GenericML/Support/Tensor.h"
 #include "Kernels/Misc.h"
@@ -13,12 +15,42 @@
 #include "LLCL/Support/Profiling.h"
 #include "Support/Error.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSwitch.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include <chrono>
 
 using namespace M;
 using llvm::outs;
 using mlir::MLIRContext;
+
+StringLiteral M::stringifyEnum(InputGenerationKind kind) {
+  switch (kind) {
+  case InputGenerationKind::kRandom:
+    return "random";
+  case InputGenerationKind::kZeros:
+    return "zeros";
+  case InputGenerationKind::kOnes:
+    return "ones";
+  case InputGenerationKind::kNegOnes:
+    return "negones";
+  }
+  llvm_unreachable("unhandled InputGenerationKind");
+}
+
+std::optional<InputGenerationKind> M::symbolizeEnum(StringRef s) {
+  return llvm::StringSwitch<std::optional<InputGenerationKind>>(s)
+      .Case(stringifyEnum(InputGenerationKind::kRandom),
+            InputGenerationKind::kRandom)
+      .Case(stringifyEnum(InputGenerationKind::kZeros),
+            InputGenerationKind::kZeros)
+      .Case(stringifyEnum(InputGenerationKind::kOnes),
+            InputGenerationKind::kOnes)
+      .Case(stringifyEnum(InputGenerationKind::kNegOnes),
+            InputGenerationKind::kNegOnes)
+      .Default(None);
+}
 
 bool TensorShapeParser::parse(llvm::cl::Option &options, StringRef argName,
                               StringRef argValue, TensorShape &result) {
@@ -30,6 +62,36 @@ bool TensorShapeParser::parse(llvm::cl::Option &options, StringRef argName,
     shape.emplace_back(dim);
   }
   result = TensorShape(shape.begin(), shape.end());
+  return false;
+}
+
+bool InputDataParser::parse(llvm::cl::Option &options, StringRef argName,
+                            StringRef argValue, InputDataSpec &result) {
+
+  // passed to mt through multiple --input-data args so there should be no comma
+  assert(!argValue.contains(","));
+
+  const auto [tensorIdxStr, filenameOrGenKindStr] = argValue.split(':');
+
+  // files not supported yet so check for extension
+  assert(!filenameOrGenKindStr.contains("."));
+
+  size_t tensorIdx;
+  auto err = tensorIdxStr.getAsInteger(10, tensorIdx);
+  if (err) {
+    llvm::errs() << Twine("Could not convert tensorIdx (") + tensorIdxStr
+                 << ") to integer"
+                 << "\n";
+    return err;
+  }
+  result.first = tensorIdx;
+
+  std::optional<InputGenerationKind> genKind =
+      symbolizeEnum(filenameOrGenKindStr.str());
+  // files not supported yet
+  assert(genKind.has_value());
+  result.second = genKind.value();
+
   return false;
 }
 
@@ -143,7 +205,7 @@ static ErrorOrSuccess executeModelOnce(MLIRContext *ctx, const Model *model,
   UNWRAP_ERROR(executableModel, model->setup(runtime));
   UNWRAP_ERROR(inputTensors,
                initializeInputMemory(options.inputGenKind, options.inputShapes,
-                                     model, runtime));
+                                     options.inputData, model, runtime));
 
   // Fill the arguments.  We are running the model once so we pass in the input
   // tensors directly (the model will deallocate them when it is done with
@@ -193,7 +255,7 @@ executeModelRepeated(MLIRContext *ctx, const Model *model, Runtime &runtime,
 
   UNWRAP_ERROR(inputTensors,
                initializeInputMemory(options.inputGenKind, options.inputShapes,
-                                     model, runtime));
+                                     options.inputData, model, runtime));
 
   // Run the model numWarmup times to warmup the execution. This is performed to
   // remove any added overhead due to initial setup of the model. The loop is

@@ -16,12 +16,12 @@
 namespace M {
 
 /// Initialize raw pointers for each model input with the correct data fill.
+/// Uses inputGenKind unless an InputGenerationKind is specified by inputData.
 /// This allocates the pointer, fills in the data, and returns ownership to the
 /// caller.
-ErrorOr<SmallVector<Tensor, 3>>
-initializeInputMemory(InputGenerationKind inputGenKind,
-                      ArrayRef<TensorShape> userInputShapes, const Model *model,
-                      Runtime &runtime);
+ErrorOr<SmallVector<Tensor, 3>> initializeInputMemory(
+    InputGenerationKind inputGenKind, ArrayRef<TensorShape> userInputShapes,
+    ArrayRef<InputDataSpec> inputData, const Model *model, Runtime &runtime);
 
 void benchmarkModel(const Model *model, Runtime &runtime,
                     StringRef benchmarkName,

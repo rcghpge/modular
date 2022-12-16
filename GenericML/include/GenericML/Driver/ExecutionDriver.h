@@ -29,6 +29,9 @@ enum class InputGenerationKind {
   kNegOnes, // generate inputs filled with negative ones
 };
 
+StringLiteral stringifyEnum(InputGenerationKind kind);
+std::optional<InputGenerationKind> symbolizeEnum(StringRef s);
+
 enum class BenchmarkScenario { kOnline, kBatched };
 
 /// Run `model` using the command line options flags configured by the user.

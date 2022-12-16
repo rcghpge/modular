@@ -16,6 +16,8 @@
 #include "llvm/Support/NativeFormatting.h"
 #include "llvm/Support/Process.h"
 
+#include <filesystem>
+
 namespace llvm {
 class MemoryBuffer;
 }
@@ -28,6 +30,17 @@ public:
 
   bool parse(llvm::cl::Option &O, StringRef ArgName, StringRef ArgValue,
              TensorShape &Val);
+};
+
+// map tensor idx to input source
+using InputDataSpec =
+    std::pair<size_t, std::variant<InputGenerationKind, std::filesystem::path>>;
+class InputDataParser : public llvm::cl::parser<InputDataSpec> {
+public:
+  using llvm::cl::parser<InputDataSpec>::parser;
+
+  bool parse(llvm::cl::Option &O, StringRef ArgName, StringRef ArgValue,
+             InputDataSpec &Val);
 };
 
 /// Contains the core CLI options for *-executor, so that other executables
@@ -99,13 +112,17 @@ public:
       "model-inputs", cl::desc("Specify input tensor generation:"),
       cl::values(
           clEnumValN(
-              InputGenerationKind::kRandom, "random",
+              InputGenerationKind::kRandom,
+              stringifyEnum(InputGenerationKind::kRandom),
               "Input tensors are random (distribution is type dependent)"),
-          clEnumValN(InputGenerationKind::kZeros, "zeros",
+          clEnumValN(InputGenerationKind::kZeros,
+                     stringifyEnum(InputGenerationKind::kZeros),
                      "All input tensors are zeros"),
-          clEnumValN(InputGenerationKind::kNegOnes, "negones",
+          clEnumValN(InputGenerationKind::kNegOnes,
+                     stringifyEnum(InputGenerationKind::kNegOnes),
                      "All input tensors are negatives ones"),
-          clEnumValN(InputGenerationKind::kOnes, "ones",
+          clEnumValN(InputGenerationKind::kOnes,
+                     stringifyEnum(InputGenerationKind::kOnes),
                      "All input tensors are ones")),
       cl::init(InputGenerationKind::kZeros)};
 
@@ -114,6 +131,14 @@ public:
       cl::desc("Specify input shapes. Required when the model has "
                "dynamic input shapes. If specified and the model has static "
                "input shapes, it must match the model's input shapes.")};
+
+  cl::list<InputDataSpec, bool, InputDataParser> inputData{
+      "input-data",
+      cl::desc("Specify custom data to use per input. It is specified as "
+               "--input-data=int:input_source where the int represents the "
+               "input tensor index and input_source can be one of "
+               "[random|zeros|negones|ones]. input_source will "
+               "be extended to support files shortly.")};
 
   /// This tells the execution driver how to print output tensors;
   cl::opt<Kernel::ResultOutputStyle> resultOutputStyle{

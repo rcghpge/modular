@@ -66,52 +66,89 @@ static ErrorOrSuccess fillWithElements(Tensor &tensor,
                                  elementBuffer);
 }
 
-M::ErrorOr<SmallVector<Tensor, 3>>
-M::initializeInputMemory(InputGenerationKind inputGenKind,
-                         ArrayRef<TensorShape> userInputShapes,
-                         const Model *model, Runtime &runtime) {
+static ErrorOr<Tensor> allocateInput(const TensorShape &userShape,
+                                     const QuantTensorSpec &modelSpec,
+                                     Runtime &runtime) {
+  if (userShape.getRank() != modelSpec.getRank())
+    return Error(Twine("Specified shape ") + userShape.getAsString() +
+                 " doesn't match the rank of model input shape " +
+                 modelSpec.getAsString());
+  for (const auto &[userDim, modelDim] :
+       llvm::zip(userShape.getDims(), modelSpec.getDims())) {
+    if (mlir::ShapedType::isDynamic(modelDim)) {
+      if (mlir::ShapedType::isDynamic(userDim))
+        return Error(
+            Twine("Must specify a fixed input shape for model input shape ") +
+            modelSpec.getAsString());
+    } else if (userDim != modelDim) {
+      return Error(Twine("Specified dimension ") + Twine(userDim) +
+                   " doesn't match model input dimension " + Twine(modelDim) +
+                   " for shape " + modelSpec.getAsString());
+    }
+  }
+
+  return Tensor::createOwned({userShape, modelSpec.getEltType()}, runtime,
+                             kPreferredMemoryAlignment);
+}
+
+static ErrorOrSuccess fillInput(InputGenerationKind inputGenKind,
+                                const QuantTensorSpec &modelSpec,
+                                Tensor &tensor) {
+  RETURN_ERROR(
+      fillWithElements(tensor, inputGenKind, modelSpec.getQuantSpec()));
+  return success();
+}
+
+static ErrorOr<Tensor> allocateAndFillInput(InputGenerationKind inputGenKind,
+                                            const TensorShape &userShape,
+                                            const QuantTensorSpec &modelSpec,
+                                            Runtime &runtime) {
+  UNWRAP_ERROR(result, allocateInput(userShape, modelSpec, runtime));
+  RETURN_ERROR(fillInput(inputGenKind, modelSpec, result));
+  return result;
+}
+
+M::ErrorOr<SmallVector<Tensor, 3>> M::initializeInputMemory(
+    InputGenerationKind inputGenKind, ArrayRef<TensorShape> userInputShapes,
+    ArrayRef<InputDataSpec> inputData, const Model *model, Runtime &runtime) {
   SmallVector<TensorShape> inputShapes(userInputShapes.begin(),
                                        userInputShapes.end());
+  auto numInputs = model->getInputSpecs().size();
   if (!inputShapes.empty()) {
-    if (inputShapes.size() != model->getInputSpecs().size()) {
+    if (inputShapes.size() != numInputs) {
       return Error(Twine("Number of specified input shapes (") +
                    Twine(inputShapes.size()) +
-                   Twine(") doesn't match number of model inputs (") +
-                   Twine(model->getInputSpecs().size()) + Twine(")"));
+                   ") doesn't match number of model inputs (" +
+                   Twine(numInputs) + ")");
     }
   } else {
     auto modelSpecs = model->getInputSpecs();
     inputShapes.append(modelSpecs.begin(), modelSpecs.end());
   }
 
-  SmallVector<Tensor, 3> inputTensors;
-  for (const auto &[userShape, modelSpec] :
-       llvm::zip(inputShapes, model->getInputSpecs())) {
-    if (userShape.getRank() != modelSpec.getRank())
-      return Error(Twine("Specified shape ") + Twine(userShape.getAsString()) +
-                   Twine(" doesn't match the rank of model input shape ") +
-                   Twine(modelSpec.getAsString()));
-    for (const auto &[userDim, modelDim] :
-         llvm::zip(userShape.getDims(), modelSpec.getDims())) {
-      if (mlir::ShapedType::isDynamic(modelDim)) {
-        if (mlir::ShapedType::isDynamic(userDim))
-          return Error(
-              Twine("Must specify a fixed input shape for model input shape ") +
-              Twine(modelSpec.getAsString()));
-      } else if (userDim != modelDim) {
-        return Error(Twine("Specified dimension ") + Twine(userDim) +
-                     Twine(" doesn't match model input dimension ") +
-                     Twine(modelDim) + Twine(" for shape ") +
-                     Twine(modelSpec.getAsString()));
-      }
+  for (const auto &inputData : inputData) {
+    if (inputData.first >= numInputs) {
+      return Error(
+          Twine("Tensor index (") + Twine(inputData.first) +
+          ") passed to --input-data larger than number of inputs in model (" +
+          Twine(numInputs) + ").");
     }
+  }
 
-    // Allocate the tensor.
-    Tensor input = Tensor::createOwned({userShape, modelSpec.getEltType()},
-                                       runtime, kPreferredMemoryAlignment);
-    RETURN_ERROR(
-        fillWithElements(input, inputGenKind, modelSpec.getQuantSpec()));
-    inputTensors.push_back(std::move(input));
+  SmallVector<Tensor, 3> inputTensors;
+  for (size_t i = 0; i < numInputs; i++) {
+    const auto &userShape = inputShapes[i];
+    const auto &modelSpec = model->getInputSpecs()[i];
+    auto inputDataIt =
+        std::find_if(inputData.begin(), inputData.end(),
+                     [=](const auto &v) { return v.first == i; });
+    // if per tensor input-data is specified, use it instead of the default from
+    // --model-inputs
+    if (inputDataIt != inputData.end())
+      inputGenKind = std::get<InputGenerationKind>(inputDataIt->second);
+    UNWRAP_ERROR(result, allocateAndFillInput(inputGenKind, userShape,
+                                              modelSpec, runtime));
+    inputTensors.push_back(std::move(result));
   }
   return inputTensors;
 }
