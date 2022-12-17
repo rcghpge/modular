@@ -20,7 +20,7 @@ StateSlot::StateSlot(TypeID typeID, size_t numBuffers)
 BufferRef StateSlot::getOrCreateBuffer(size_t bufferIndex,
                                        LLCL::CompactRuntimePtr runtime,
                                        size_t size,
-                                       Optional<size_t> alignment) {
+                                       std::optional<size_t> alignment) {
   assert(bufferIndex < bufferCache.size());
   auto &entry = bufferCache[bufferIndex];
   updateCacheIfNeeded(entry, runtime, size, alignment);
@@ -58,7 +58,8 @@ void StateSlot::doTypeRegistration(std::atomic<TypeID> *staticTypeID) {
 
 void StateSlot::updateCacheIfNeeded(BufferRef &entry,
                                     LLCL::CompactRuntimePtr runtime,
-                                    size_t size, Optional<size_t> alignment) {
+                                    size_t size,
+                                    std::optional<size_t> alignment) {
   // Do nothing if size matches. The size will be 0 if the entry is
   // uninitialized, thus forcing an allocation.
   if (entry.getSize() == size)

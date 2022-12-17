@@ -113,17 +113,17 @@ public:
   /// TOOO(#5799): We're requiring all callers to be explicit about alignment
   /// (or lack thereof) to help track down 'forgotten alignment' problems.
   static BufferRef createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
-                               Optional<size_t> alignment);
+                               std::optional<size_t> alignment);
 
   /// Creates a borrowing reference to the given buffer of the given size and
   /// alignment. The alignment will be respected should the buffer need to be
   /// copied. The returned reference must outlive the given buffer. The given
   /// lifetime should be a sound approximation of the lifetime of the buffer.
   static BufferRef createBorrowed(void *buffer, size_t size,
-                                  Optional<size_t> alignment,
+                                  std::optional<size_t> alignment,
                                   Lifetime lifetime);
   static BufferRef createBorrowed(const void *buffer, size_t size,
-                                  Optional<size_t> alignment,
+                                  std::optional<size_t> alignment,
                                   Lifetime lifetime);
 
   //===--------------------------------------------------------------------===//
@@ -176,9 +176,9 @@ public:
 
   /// Returns the alignment of the underlying buffer, or none if no alignment
   /// constraint was given.
-  Optional<size_t> getAlignment() const {
+  std::optional<size_t> getAlignment() const {
     return alignment.has_value()
-               ? Optional<size_t>(static_cast<size_t>(alignment->value()))
+               ? std::optional<size_t>(static_cast<size_t>(alignment->value()))
                : std::nullopt;
   }
 

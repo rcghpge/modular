@@ -13,7 +13,8 @@
 using namespace M;
 using namespace M::GML;
 
-static constexpr llvm::MaybeAlign makeMaybeAlign(Optional<size_t> alignment) {
+static constexpr llvm::MaybeAlign
+makeMaybeAlign(std::optional<size_t> alignment) {
   return alignment.has_value() ? llvm::MaybeAlign(*alignment) : std::nullopt;
 }
 
@@ -49,14 +50,14 @@ static const char *mutabilityToStr(BufferRef::Mutability mutability) {
 }
 
 BufferRef BufferRef::createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
-                                 Optional<size_t> alignment) {
+                                 std::optional<size_t> alignment) {
   void *buffer = runtime->allocateBytes(size, alignment.value_or(1));
   return BufferRef(buffer, size, runtime, makeMaybeAlign(alignment), kOwned,
                    kLocal, kMutable);
 }
 
 BufferRef BufferRef::createBorrowed(void *buffer, size_t size,
-                                    Optional<size_t> alignment,
+                                    std::optional<size_t> alignment,
                                     Lifetime lifetime) {
   assert((!alignment || llvm::isAddrAligned(llvm::Align(*alignment), buffer)) &&
          "buffer is not aligned as per purported alignment");
@@ -65,7 +66,7 @@ BufferRef BufferRef::createBorrowed(void *buffer, size_t size,
 }
 
 BufferRef BufferRef::createBorrowed(const void *buffer, size_t size,
-                                    Optional<size_t> alignment,
+                                    std::optional<size_t> alignment,
                                     Lifetime lifetime) {
   assert((!alignment || llvm::isAddrAligned(llvm::Align(*alignment), buffer)) &&
          "buffer is not aligned as per purported alignment");

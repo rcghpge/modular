@@ -21,9 +21,10 @@
 using namespace M;
 using namespace M::GML;
 
-static Optional<size_t> getAlign(uint64_t rawAlign) {
-  return hasRawSize(rawAlign) ? Optional<size_t>(rawSizeToRuntimeSize(rawAlign))
-                              : std::nullopt;
+static std::optional<size_t> getAlign(uint64_t rawAlign) {
+  return hasRawSize(rawAlign)
+             ? std::optional<size_t>(rawSizeToRuntimeSize(rawAlign))
+             : std::nullopt;
 }
 
 //===----------------------------------------------------------------------===//
@@ -36,7 +37,7 @@ static void mgp_cpu_buffer_constant(Result<BufferRef> outBuffer,
                                     BEFDynamicAttr aValue,
                                     BEFAttr<uint64_t> bRawAlign,
                                     Runtime &runtime) {
-  Optional<size_t> optAlign;
+  std::optional<size_t> optAlign;
   if (hasRawSize(*bRawAlign))
     optAlign = rawSizeToRuntimeSize(*bRawAlign);
 

@@ -77,7 +77,7 @@ public:
   ///    should be made while the returned reference is still in use.
   BufferRef getOrCreateBuffer(size_t bufferIndex,
                               LLCL::CompactRuntimePtr runtime, size_t size,
-                              Optional<size_t> alignment);
+                              std::optional<size_t> alignment);
 
   /// Returns a reference to the already allocated and cached buffer at
   /// bufferIndex in this state slot. Returns Error if no buffer is cached at
@@ -101,7 +101,7 @@ private:
   /// any existing buffer if required.
   static void updateCacheIfNeeded(BufferRef &entry,
                                   LLCL::CompactRuntimePtr runtime, size_t size,
-                                  Optional<size_t> alignment);
+                                  std::optional<size_t> alignment);
 
   /// Type id uniquely describing the type of payload held by this states slot.
   TypeID typeID;
