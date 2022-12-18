@@ -34,15 +34,15 @@ struct FieldParser<DType> {
 
 template <typename AttributeT>
 struct FieldParser<
-    Optional<AttributeT>,
+    std::optional<AttributeT>,
     std::enable_if_t<std::is_base_of<Attribute, AttributeT>::value,
-                     Optional<AttributeT>>> {
-  static FailureOr<Optional<AttributeT>> parse(AsmParser &parser) {
+                     std::optional<AttributeT>>> {
+  static FailureOr<std::optional<AttributeT>> parse(AsmParser &parser) {
     AttributeT attr;
     OptionalParseResult result = parser.parseOptionalAttribute(attr);
     if (result.has_value()) {
       if (succeeded(*result))
-        return {Optional<AttributeT>(attr)};
+        return {std::optional<AttributeT>(attr)};
       return failure();
     }
     return {std::nullopt};
@@ -100,7 +100,7 @@ FailureOr<llvm::SmallVector<int64_t>> parseShapeParameter(AsmParser &p) {
 /// that the element type in DType form is also representable as an MLIR type.
 LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
                                  ArrayRef<int64_t> shape, DType dtype,
-                                 Optional<Attribute> metadata) {
+                                 std::optional<Attribute> metadata) {
   for (auto dim : shape) {
     if (dim <= 0 && dim != ShapedType::kDynamic && dim != kDynamicRank) {
       return emitError()
@@ -146,10 +146,11 @@ ErrorOr<Type> static toMLIRType(MLIRContext *context, DType dType) {
 
 /// Returns clone with given element type, which must be representable as a
 /// dtype. Required by ShapedTypeInference
-ShapedType TensorType::cloneWith(Optional<ArrayRef<int64_t>> shape, Type dtype,
-                                 Optional<Attribute> metadata) const {
+ShapedType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
+                                 Type dtype,
+                                 std::optional<Attribute> metadata) const {
   ArrayRef<int64_t> newShape =
-      shape.has_value() ? ArrayRef<int64_t>(shape.value()) : getShape();
+      shape.has_value() ? ArrayRef<int64_t>(*shape) : getShape();
 
   ErrorOr<DType> errOrDType = fromMLIRType(dtype);
   assert(!errOrDType.isError() &&

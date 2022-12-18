@@ -56,7 +56,7 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [ShapedTypeInterface]> {
   let parameters = (ins
     ShapeParameter : $shape,
     "DType" : $dtype,
-    DefaultValuedParameter<"Optional<Attribute>", "std::nullopt"> : $metadata);
+    DefaultValuedParameter<"std::optional<Attribute>", "std::nullopt"> : $metadata);
 
   let genVerifyDecl = 1;
   let assemblyFormat = "`<` $shape `` $dtype ( `,` $metadata^)? `>`";
@@ -64,7 +64,7 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [ShapedTypeInterface]> {
   let builders = [TypeBuilderWithInferredContext<(ins
       "ArrayRef<int64_t>" : $shape,
       "Type" : $elementType,
-      CArg<"Optional<Attribute>", "std::nullopt"> : $metadata),
+      CArg<"std::optional<Attribute>", "std::nullopt"> : $metadata),
     [{
       ErrorOr<DType> errOrDType = fromMLIRType(elementType);
       assert(!errOrDType.isError() &&
@@ -76,8 +76,8 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [ShapedTypeInterface]> {
     size_t getRank() const;
     bool hasRank() const;
     Type getElementType() const;
-    ShapedType cloneWith(Optional<ArrayRef<int64_t>> shape, Type dtype,
-                         Optional<Attribute> metadata = std::nullopt) const;
+    ShapedType cloneWith(std::optional<ArrayRef<int64_t>> shape, Type dtype,
+                         std::optional<Attribute> metadata = std::nullopt) const;
   }];
 }
 

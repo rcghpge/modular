@@ -171,7 +171,7 @@ LogicalResult CpuBufferConstantOp::verify() {
 
 /// Infers the buffer type result from the attribute argument.
 LogicalResult CpuBufferConstantOp::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
@@ -244,7 +244,7 @@ LogicalResult CpuBufferAllocStaticOp::verify() {
 
 /// Constructs the buffer type result using statically known size.
 LogicalResult CpuBufferAllocStaticOp::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
@@ -273,7 +273,7 @@ LogicalResult CpuBufferAllocDynamicOp::verify() {
 }
 
 LogicalResult CpuBufferAllocDynamicOp::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   inferredReturnTypes.emplace_back(
@@ -294,7 +294,7 @@ LogicalResult CpuBufferAllocSpecOp::verify() {
 }
 
 LogicalResult CpuBufferAllocSpecOp::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   inferredReturnTypes.emplace_back(
@@ -316,7 +316,7 @@ LogicalResult CpuBufferReallocStaticOp::verify() {
 
 /// Constructs the buffer type result from the statically known size.
 LogicalResult CpuBufferReallocStaticOp::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
@@ -341,7 +341,7 @@ LogicalResult CpuBufferReallocDynamicOp::verify() {
 }
 
 LogicalResult CpuBufferReallocDynamicOp::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   inferredReturnTypes.emplace_back(
@@ -362,7 +362,7 @@ LogicalResult CpuBufferReallocSpecOp::verify() {
 }
 
 LogicalResult CpuBufferReallocSpecOp::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   inferredReturnTypes.emplace_back(
@@ -440,7 +440,7 @@ LogicalResult CpuTensorSpecCreateOp::verify() {
 }
 
 LogicalResult CpuTensorSpecCreateOp::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
@@ -502,7 +502,7 @@ LogicalResult CpuTensorSpecCreateDynamicOp::verify() {
 }
 
 LogicalResult CpuTensorSpecCreateDynamicOp::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
@@ -558,7 +558,7 @@ LogicalResult CpuTensorSpecDimsDynamicOp::verify() {
 }
 
 LogicalResult CpuTensorSpecDimsDynamicOp::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   assert(operands.size() == 1 && "mismatched operand arity");
@@ -631,7 +631,7 @@ LogicalResult CpuTensorExtractOp::verify() {
 }
 
 LogicalResult CpuTensorExtractOp::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   assert(operands.size() == 1 && "mismatched operand arity");

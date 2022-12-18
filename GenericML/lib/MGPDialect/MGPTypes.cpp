@@ -26,7 +26,7 @@ using namespace MGP;
 //===----------------------------------------------------------------------===//
 
 /// Implements ShapedType::cloneWith
-ShapedType AlignedBytesType::cloneWith(Optional<ArrayRef<int64_t>> shape,
+ShapedType AlignedBytesType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
                                        Type elementType) const {
   assert(!shape && "cannot change shape in CpuBufferType::cloneWith");
   assert(elementType.isUnsignedInteger(8) &&
@@ -90,7 +90,7 @@ IntegerAttr CpuBufferType::getRawSize() const {
 }
 
 /// Implements ShapedType::cloneWith
-ShapedType CpuBufferType::cloneWith(Optional<ArrayRef<int64_t>> shape,
+ShapedType CpuBufferType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
                                     Type elementType) const {
   assert(!shape && "cannot change shape in CpuBufferType::cloneWith");
   assert(elementType.isUnsignedInteger(8) &&
@@ -408,7 +408,7 @@ bool CpuTensorSpecType::hasRank() const { return true; }
 
 /// ShapedTypeInterface: Returns clone with given element type, which
 /// must be representable as a dtype.
-ShapedType CpuTensorSpecType::cloneWith(Optional<ArrayRef<int64_t>> shape,
+ShapedType CpuTensorSpecType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
                                         Type elementType) const {
   ArrayRef<int64_t> newShape = shape.value_or(getShape());
   Type newElementType = elementType ? elementType : getElementType();
@@ -474,7 +474,7 @@ static void printTensorSpec(AsmPrinter &p, CpuTensorSpecType tensorSpec) {
 }
 
 /// ShapedTypeInterface: Returns clone of tensor type.
-ShapedType CpuTensorType::cloneWith(Optional<ArrayRef<int64_t>> shape,
+ShapedType CpuTensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
                                     Type elementType) const {
   auto tensorSpec = mlir::dyn_cast<CpuTensorSpecType>(
       getTensorSpec().cloneWith(shape, elementType));
@@ -540,6 +540,5 @@ ArrayRef<int64_t> CpuBufferType::getShape() const {
   // Convert to raw signed size for assertion side effect.
   (void)optSizeToRawSignedSize(optSize);
   // We'll just reinterpret the uint64_t size as an int64_t since it's in range.
-  return ArrayRef<int64_t>(reinterpret_cast<const int64_t *>(&optSize.value()),
-                           1);
+  return ArrayRef<int64_t>(reinterpret_cast<const int64_t *>(&*optSize), 1);
 }
