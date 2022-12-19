@@ -32,6 +32,7 @@ struct FieldParser<DType> {
   }
 };
 
+// TODO: Upstream this (#6165)
 template <typename AttributeT>
 struct FieldParser<
     std::optional<AttributeT>,
