@@ -13,6 +13,7 @@
 #include "GenericML/Support/Tensor.h"
 #include "Kernels/Misc.h"
 #include "LLCL/ForwardDecls.h"
+#include "Support/AlignedAlloc.h"
 #include "Support/Error.h"
 #include "Support/ErrorOr.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -79,7 +80,7 @@ static ErrorOrSuccess fillWithElements(Tensor &tensor,
 
 static ErrorOr<Tensor> allocateInput(const TensorShape &userShape,
                                      const QuantTensorSpec &modelSpec,
-                                     Runtime &runtime) {
+                                     Runtime &runtime, size_t alignment) {
   if (userShape.getRank() != modelSpec.getRank())
     return Error(Twine("Specified shape ") + userShape.getAsString() +
                  " doesn't match the rank of model input shape " +
@@ -99,7 +100,7 @@ static ErrorOr<Tensor> allocateInput(const TensorShape &userShape,
   }
 
   return Tensor::createOwned({userShape, modelSpec.getEltType()}, runtime,
-                             kPreferredMemoryAlignment);
+                             alignment);
 }
 
 static ErrorOrSuccess fillInput(InputGenerationKind inputGenKind,
@@ -113,8 +114,9 @@ static ErrorOrSuccess fillInput(InputGenerationKind inputGenKind,
 static ErrorOr<Tensor> allocateAndFillInput(InputGenerationKind inputGenKind,
                                             const TensorShape &userShape,
                                             const QuantTensorSpec &modelSpec,
-                                            Runtime &runtime) {
-  UNWRAP_ERROR(result, allocateInput(userShape, modelSpec, runtime));
+                                            Runtime &runtime,
+                                            size_t alignment) {
+  UNWRAP_ERROR(result, allocateInput(userShape, modelSpec, runtime, alignment));
   RETURN_ERROR(fillInput(inputGenKind, modelSpec, result));
   return result;
 }
@@ -124,9 +126,10 @@ static ErrorOr<Tensor> allocateAndFillInput(InputGenerationKind inputGenKind,
 class FilledTensor : public ITensorGenerator {
 public:
   FilledTensor(InputGenerationKind genKind, const TensorShape &userShape,
-               const QuantTensorSpec &modelSpec, Runtime &runtime) {
+               const QuantTensorSpec &modelSpec, Runtime &runtime,
+               size_t alignment) {
     auto tensorOr =
-        allocateAndFillInput(genKind, userShape, modelSpec, runtime);
+        allocateAndFillInput(genKind, userShape, modelSpec, runtime, alignment);
     assert(!tensorOr.isError() && "could not initialize FilledTensor");
     tensor = std::make_unique<Tensor>(std::move(*tensorOr));
   }
@@ -144,26 +147,25 @@ private:
 class FileTensor : public ITensorGenerator {
 public:
   FileTensor(const std::filesystem::path &filename,
-             const TensorShape &userShape, QuantTensorSpec spec,
+             const TensorShape &userShape, const QuantTensorSpec &spec,
              Runtime &runtime, size_t alignment)
-      : alignment(alignment), pos(0),
-        stride(spec.getEltType().getSizeInBytes(userShape.getNumElements())) {
-    assert(alignment == 1 && "FileTensor only supports alignment of 1");
+      : pos(0) {
     std::string errorMsg;
-    auto dataOr =
-        mlir::openInputFile(filename.string(), this->alignment, &errorMsg);
-    if (!dataOr) {
+    auto data = mlir::openInputFile(filename.string(), llvm::Align(alignment),
+                                    &errorMsg);
+    if (!data) {
       llvm::errs() << errorMsg << "\n";
       assert(false && "Could not open input file.");
     }
-    data = std::move(dataOr);
+    auto stride = spec.getEltType().getSizeInBytes(userShape.getNumElements());
     assert(data->getBufferSize() % stride == 0 &&
            "--input-data file size not a multiple of tensor size");
-    auto bufStart = data->getBufferStart();
+    auto dataStart = data->getBufferStart();
     for (size_t i = 0, n = data->getBufferSize() / stride; i < n; i++) {
-      auto tensor = Tensor::createBorrowed(bufStart + i * stride,
-                                           {userShape, spec.getEltType()}, 1,
-                                           GML::BufferRef::Lifetime::kExecute);
+      auto tensor = Tensor::createOwned({userShape, spec.getEltType()}, runtime,
+                                        alignment);
+      auto tensorBuf = static_cast<char *>(tensor.getMutableBuffer());
+      std::memcpy(tensorBuf, dataStart + i * stride, tensor.getSizeInBytes());
       tensors.push_back(std::move(tensor));
     }
     assert(!tensors.empty() && "input file contains 0 tensors");
@@ -181,18 +183,16 @@ public:
   }
 
 private:
-  std::unique_ptr<llvm::MemoryBuffer> data;
-  llvm::Align alignment;
   size_t pos;
-  size_t stride;
   std::vector<Tensor> tensors; // each tensor holds a reference to a position in
                                // data so this shouldn't be too big
 };
 
-ErrorOr<ITensorGeneratorPtr> M::createTensorGenerator(
-    size_t tensorIdx, InputGenerationKind defaultGen,
-    ArrayRef<InputDataSpec> inputDataSpecs, const TensorShape &userShape,
-    const QuantTensorSpec &modelSpec, Runtime &runtime, size_t alignment) {
+ErrorOr<ITensorGeneratorPtr>
+M::createTensorGenerator(size_t tensorIdx, InputGenerationKind defaultGen,
+                         ArrayRef<InputDataSpec> inputDataSpecs,
+                         const TensorShape &userShape,
+                         const QuantTensorSpec &modelSpec, Runtime &runtime) {
   std::optional<InputDataSpec> spec;
   for (const auto &inputDataSpec : inputDataSpecs) {
     if (inputDataSpec.first == tensorIdx)
@@ -203,9 +203,10 @@ ErrorOr<ITensorGeneratorPtr> M::createTensorGenerator(
   if (spec && std::holds_alternative<InputGenerationKind>(spec->second))
     defaultGen = std::get<InputGenerationKind>(spec->second);
 
+  auto alignment = kPreferredMemoryAlignment;
   if (!spec || std::holds_alternative<InputGenerationKind>(spec->second))
     return std::make_unique<FilledTensor>(defaultGen, userShape, modelSpec,
-                                          runtime);
+                                          runtime, alignment);
 
   auto filename = std::get<std::filesystem::path>(spec->second);
   return std::make_unique<FileTensor>(filename, userShape, modelSpec, runtime,
