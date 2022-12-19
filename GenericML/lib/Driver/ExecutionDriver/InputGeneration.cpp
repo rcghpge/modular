@@ -23,7 +23,6 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <filesystem>
-#include <fstream>
 #include <memory>
 #include <variant>
 
@@ -122,19 +121,23 @@ static ErrorOr<Tensor> allocateAndFillInput(InputGenerationKind inputGenKind,
 }
 
 // Tensor that has been allocated and filled with an InputGenerationKind.
-// Every call to getNextTensor() returns the same underlying Tensor.
-class FilledTensor : public ITensorGenerator {
+class FilledTensorGenerator : public ITensorGenerator {
 public:
-  FilledTensor(InputGenerationKind genKind, const TensorShape &userShape,
-               const QuantTensorSpec &modelSpec, Runtime &runtime,
-               size_t alignment) {
+  FilledTensorGenerator(InputGenerationKind genKind,
+                        const TensorShape &userShape,
+                        const QuantTensorSpec &modelSpec, Runtime &runtime,
+                        size_t alignment) {
     auto tensorOr =
         allocateAndFillInput(genKind, userShape, modelSpec, runtime, alignment);
-    assert(!tensorOr.isError() && "could not initialize FilledTensor");
+    assert(!tensorOr.isError() && "could not initialize FilledTensorGenerator");
     tensor = std::make_unique<Tensor>(std::move(*tensorOr));
   }
 
   const Tensor &getNextTensor() final { return *tensor; }
+
+  const Tensor &getTensor(size_t sampleIdx) const final { return *tensor; }
+
+  size_t getSampleCount() const final { return 1; }
 
 private:
   // needs to be ptr since there is no default constructor
@@ -144,11 +147,11 @@ private:
 // Represents Tensor backed by a file.
 // File is loaded into memory during construction and then calls to
 // getNextTensor() will stride through the memory.
-class FileTensor : public ITensorGenerator {
+class FileTensorGenerator : public ITensorGenerator {
 public:
-  FileTensor(const std::filesystem::path &filename,
-             const TensorShape &userShape, const QuantTensorSpec &spec,
-             Runtime &runtime, size_t alignment)
+  FileTensorGenerator(const std::filesystem::path &filename,
+                      const TensorShape &userShape, const QuantTensorSpec &spec,
+                      Runtime &runtime, size_t alignment)
       : pos(0) {
     std::string errorMsg;
     auto data = mlir::openInputFile(filename.string(), llvm::Align(alignment),
@@ -177,10 +180,12 @@ public:
     return tensors[curr];
   }
 
-  const Tensor &getTensor(size_t sampleIdx) {
+  const Tensor &getTensor(size_t sampleIdx) const final {
     assert(sampleIdx < tensors.size() && "Requested sampleIdx out of range");
     return tensors[sampleIdx];
   }
+
+  size_t getSampleCount() const final { return tensors.size(); }
 
 private:
   size_t pos;
@@ -205,12 +210,12 @@ M::createTensorGenerator(size_t tensorIdx, InputGenerationKind defaultGen,
 
   auto alignment = kPreferredMemoryAlignment;
   if (!spec || std::holds_alternative<InputGenerationKind>(spec->second))
-    return std::make_unique<FilledTensor>(defaultGen, userShape, modelSpec,
-                                          runtime, alignment);
+    return std::make_unique<FilledTensorGenerator>(
+        defaultGen, userShape, modelSpec, runtime, alignment);
 
   auto filename = std::get<std::filesystem::path>(spec->second);
-  return std::make_unique<FileTensor>(filename, userShape, modelSpec, runtime,
-                                      alignment);
+  return std::make_unique<FileTensorGenerator>(filename, userShape, modelSpec,
+                                               runtime, alignment);
 }
 
 ErrorOr<SmallVector<ITensorGeneratorPtr, 3>>

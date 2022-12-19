@@ -19,6 +19,8 @@ namespace M {
 class ITensorGenerator {
 public:
   virtual const Tensor &getNextTensor() = 0;
+  virtual const Tensor &getTensor(size_t sampleIdx) const = 0;
+  virtual size_t getSampleCount() const = 0;
   virtual ~ITensorGenerator() = default;
 };
 
