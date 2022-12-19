@@ -30,7 +30,7 @@ constexpr size_t kN = 4;
 constexpr size_t kM = 6;
 
 static Tensor makeTensor() {
-  M::TensorSpec spec({kN, kM}, DType::getInt(8, /*isSigned=*/false).value());
+  M::TensorSpec spec({kN, kM}, *DType::getInt(8, /*isSigned=*/false));
   M::Tensor result =
       Tensor::createOwned(std::move(spec), getRuntime(), /*alignment=*/{});
   for (size_t i = 0, e = result.getSizeInBytes(); i < e; ++i)
@@ -79,7 +79,7 @@ TEST(Tensor, Borrow) {
 
 TEST(Tensor, FromBuffer) {
   LLCL::Runtime *runtime = getRuntime();
-  TensorSpec spec({kN, kM}, DType::getInt(8, /*isSigned=*/false).value());
+  TensorSpec spec({kN, kM}, *DType::getInt(8, /*isSigned=*/false));
   GML::BufferRef ref =
       GML::BufferRef::createOwned(runtime, 1, /*alignment=*/{});
 
