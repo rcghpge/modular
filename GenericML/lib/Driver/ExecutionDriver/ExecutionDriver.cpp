@@ -68,12 +68,14 @@ bool InputDataParser::parse(llvm::cl::Option &options, StringRef argName,
                             StringRef argValue, InputDataSpec &result) {
 
   // passed to mt through multiple --input-data args so there should be no comma
-  assert(!argValue.contains(","));
+  if (argValue.contains(",")) {
+    llvm::errs() << "--input-data arg should not contain a comma. Set "
+                    "--input-data flag once per tensor"
+                 << "\n";
+    return true;
+  }
 
   const auto [tensorIdxStr, filenameOrGenKindStr] = argValue.split(':');
-
-  // files not supported yet so check for extension
-  assert(!filenameOrGenKindStr.contains("."));
 
   size_t tensorIdx;
   auto err = tensorIdxStr.getAsInteger(10, tensorIdx);
@@ -87,10 +89,19 @@ bool InputDataParser::parse(llvm::cl::Option &options, StringRef argName,
 
   std::optional<InputGenerationKind> genKind =
       symbolizeEnum(filenameOrGenKindStr.str());
-  // files not supported yet
-  assert(genKind.has_value());
-  result.second = genKind.value();
+  if (genKind.has_value()) {
+    result.second = genKind.value();
+    return false;
+  }
 
+  // if string does not match an InputGenerationKind, assume it's a filename
+  auto filename = std::filesystem::path(filenameOrGenKindStr.str());
+  if (!std::filesystem::exists(filename)) {
+    llvm::errs() << "--input-data file (" << filename << ") does not exist."
+                 << "\n";
+    return true;
+  }
+  result.second = filename;
   return false;
 }
 

@@ -24,11 +24,10 @@ public:
 
 using ITensorGeneratorPtr = std::unique_ptr<ITensorGenerator>;
 
-ErrorOr<ITensorGeneratorPtr>
-createTensorGenerator(size_t tensorIdx, InputGenerationKind defaultGen,
-                      ArrayRef<InputDataSpec> inputDataSpecs,
-                      const TensorShape &userShape,
-                      const QuantTensorSpec &modelSpec, Runtime &runtime);
+ErrorOr<ITensorGeneratorPtr> createTensorGenerator(
+    size_t tensorIdx, InputGenerationKind defaultGen,
+    ArrayRef<InputDataSpec> inputDataSpecs, const TensorShape &userShape,
+    const QuantTensorSpec &modelSpec, Runtime &runtime, size_t alignment = 1);
 
 /// Initialize raw pointers for each model input with the correct data fill.
 /// Uses inputGenKind unless a per-tensor input source is specified in

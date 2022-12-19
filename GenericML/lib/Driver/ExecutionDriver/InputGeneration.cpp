@@ -7,6 +7,7 @@
 #include "GenericML/Driver/DriverCLOptions.h"
 #include "GenericML/Driver/DriverInternals.h"
 #include "GenericML/Driver/ExecutionDriver.h"
+#include "GenericML/Support/BufferRef.h"
 #include "GenericML/Support/Model.h"
 #include "GenericML/Support/QuantSpec.h"
 #include "GenericML/Support/Tensor.h"
@@ -15,10 +16,14 @@
 #include "Support/Error.h"
 #include "Support/ErrorOr.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/Support/FileUtilities.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/Alignment.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <filesystem>
 #include <fstream>
+#include <memory>
 #include <variant>
 
 using namespace M;
@@ -135,27 +140,59 @@ private:
 
 // Represents Tensor backed by a file.
 // File is loaded into memory during construction and then calls to
-// getNextTensor() will stride through the memory. CURRENTLY NOT IMPLEMENTED,
-// STUBBED OUT ONLY.
+// getNextTensor() will stride through the memory.
 class FileTensor : public ITensorGenerator {
 public:
-  FileTensor(std::filesystem::path filename, Runtime &runtime) : pos(0) {
-    assert(false && "FileTensor not implemented yet");
+  FileTensor(const std::filesystem::path &filename,
+             const TensorShape &userShape, QuantTensorSpec spec,
+             Runtime &runtime, size_t alignment)
+      : alignment(alignment), pos(0),
+        stride(spec.getEltType().getSizeInBytes(userShape.getNumElements())) {
+    assert(alignment == 1 && "FileTensor only supports alignment of 1");
+    std::string errorMsg;
+    auto dataOr =
+        mlir::openInputFile(filename.string(), this->alignment, &errorMsg);
+    if (!dataOr) {
+      llvm::errs() << errorMsg << "\n";
+      assert(false && "Could not open input file.");
+    }
+    data = std::move(dataOr);
+    assert(data->getBufferSize() % stride == 0 &&
+           "--input-data file size not a multiple of tensor size");
+    auto bufStart = data->getBufferStart();
+    for (size_t i = 0, n = data->getBufferSize() / stride; i < n; i++) {
+      auto tensor = Tensor::createBorrowed(bufStart + i * stride,
+                                           {userShape, spec.getEltType()}, 1,
+                                           GML::BufferRef::Lifetime::kExecute);
+      tensors.push_back(std::move(tensor));
+    }
+    assert(!tensors.empty() && "input file contains 0 tensors");
   }
+
   const Tensor &getNextTensor() final {
-    llvm_unreachable("FileTensor not implemented yet");
+    auto curr = pos;
+    pos = (pos + 1) % tensors.size();
+    return tensors[curr];
+  }
+
+  const Tensor &getTensor(size_t sampleIdx) {
+    assert(sampleIdx < tensors.size() && "Requested sampleIdx out of range");
+    return tensors[sampleIdx];
   }
 
 private:
-  std::vector<char> data;
+  std::unique_ptr<llvm::MemoryBuffer> data;
+  llvm::Align alignment;
   size_t pos;
+  size_t stride;
+  std::vector<Tensor> tensors; // each tensor holds a reference to a position in
+                               // data so this shouldn't be too big
 };
 
-ErrorOr<ITensorGeneratorPtr>
-M::createTensorGenerator(size_t tensorIdx, InputGenerationKind defaultGen,
-                         ArrayRef<InputDataSpec> inputDataSpecs,
-                         const TensorShape &userShape,
-                         const QuantTensorSpec &modelSpec, Runtime &runtime) {
+ErrorOr<ITensorGeneratorPtr> M::createTensorGenerator(
+    size_t tensorIdx, InputGenerationKind defaultGen,
+    ArrayRef<InputDataSpec> inputDataSpecs, const TensorShape &userShape,
+    const QuantTensorSpec &modelSpec, Runtime &runtime, size_t alignment) {
   std::optional<InputDataSpec> spec;
   for (const auto &inputDataSpec : inputDataSpecs) {
     if (inputDataSpec.first == tensorIdx)
@@ -171,7 +208,8 @@ M::createTensorGenerator(size_t tensorIdx, InputGenerationKind defaultGen,
                                           runtime);
 
   auto filename = std::get<std::filesystem::path>(spec->second);
-  return std::make_unique<FileTensor>(filename, runtime);
+  return std::make_unique<FileTensor>(filename, userShape, modelSpec, runtime,
+                                      alignment);
 }
 
 ErrorOr<SmallVector<ITensorGeneratorPtr, 3>>
