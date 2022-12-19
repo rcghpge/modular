@@ -4,15 +4,22 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GenericML/Driver/DriverCLOptions.h"
 #include "GenericML/Driver/DriverInternals.h"
+#include "GenericML/Driver/ExecutionDriver.h"
 #include "GenericML/Support/Model.h"
+#include "GenericML/Support/QuantSpec.h"
 #include "GenericML/Support/Tensor.h"
 #include "Kernels/Misc.h"
 #include "LLCL/ForwardDecls.h"
+#include "Support/Error.h"
 #include "Support/ErrorOr.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/raw_ostream.h"
+
+#include <fstream>
+#include <variant>
 
 using namespace M;
 
@@ -107,9 +114,71 @@ static ErrorOr<Tensor> allocateAndFillInput(InputGenerationKind inputGenKind,
   return result;
 }
 
-M::ErrorOr<SmallVector<Tensor, 3>> M::initializeInputMemory(
-    InputGenerationKind inputGenKind, ArrayRef<TensorShape> userInputShapes,
-    ArrayRef<InputDataSpec> inputData, const Model *model, Runtime &runtime) {
+// Tensor that has been allocated and filled with an InputGenerationKind.
+// Every call to getNextTensor() returns the same underlying Tensor.
+class FilledTensor : public ITensorGenerator {
+public:
+  FilledTensor(InputGenerationKind genKind, const TensorShape &userShape,
+               const QuantTensorSpec &modelSpec, Runtime &runtime) {
+    auto tensorOr =
+        allocateAndFillInput(genKind, userShape, modelSpec, runtime);
+    assert(!tensorOr.isError() && "could not initialize FilledTensor");
+    tensor = std::make_unique<Tensor>(std::move(*tensorOr));
+  }
+
+  const Tensor &getNextTensor() final { return *tensor; }
+
+private:
+  // needs to be ptr since there is no default constructor
+  std::unique_ptr<Tensor> tensor;
+};
+
+// Represents Tensor backed by a file.
+// File is loaded into memory during construction and then calls to
+// getNextTensor() will stride through the memory. CURRENTLY NOT IMPLEMENTED,
+// STUBBED OUT ONLY.
+class FileTensor : public ITensorGenerator {
+public:
+  FileTensor(std::filesystem::path filename, Runtime &runtime) : pos(0) {
+    assert(false && "FileTensor not implemented yet");
+  }
+  const Tensor &getNextTensor() final {
+    llvm_unreachable("FileTensor not implemented yet");
+  }
+
+private:
+  std::vector<char> data;
+  size_t pos;
+};
+
+ErrorOr<ITensorGeneratorPtr>
+M::createTensorGenerator(size_t tensorIdx, InputGenerationKind defaultGen,
+                         ArrayRef<InputDataSpec> inputDataSpecs,
+                         const TensorShape &userShape,
+                         const QuantTensorSpec &modelSpec, Runtime &runtime) {
+  std::optional<InputDataSpec> spec;
+  for (const auto &inputDataSpec : inputDataSpecs) {
+    if (inputDataSpec.first == tensorIdx)
+      spec = inputDataSpec;
+  }
+
+  // if tensor spec contains a generation function, override the default
+  if (spec && std::holds_alternative<InputGenerationKind>(spec->second))
+    defaultGen = std::get<InputGenerationKind>(spec->second);
+
+  if (!spec || std::holds_alternative<InputGenerationKind>(spec->second))
+    return std::make_unique<FilledTensor>(defaultGen, userShape, modelSpec,
+                                          runtime);
+
+  auto filename = std::get<std::filesystem::path>(spec->second);
+  return std::make_unique<FileTensor>(filename, runtime);
+}
+
+ErrorOr<SmallVector<ITensorGeneratorPtr, 3>>
+M::createTensorGenerators(InputGenerationKind inputGenKind,
+                          ArrayRef<TensorShape> userInputShapes,
+                          ArrayRef<InputDataSpec> inputDataSpecs,
+                          const Model *model, Runtime &runtime) {
   SmallVector<TensorShape> inputShapes(userInputShapes.begin(),
                                        userInputShapes.end());
   auto numInputs = model->getInputSpecs().size();
@@ -125,7 +194,7 @@ M::ErrorOr<SmallVector<Tensor, 3>> M::initializeInputMemory(
     inputShapes.append(modelSpecs.begin(), modelSpecs.end());
   }
 
-  for (const auto &inputData : inputData) {
+  for (const auto &inputData : inputDataSpecs) {
     if (inputData.first >= numInputs) {
       return Error(
           Twine("Tensor index (") + Twine(inputData.first) +
@@ -134,20 +203,13 @@ M::ErrorOr<SmallVector<Tensor, 3>> M::initializeInputMemory(
     }
   }
 
-  SmallVector<Tensor, 3> inputTensors;
+  SmallVector<ITensorGeneratorPtr, 3> inputTensorGenerators;
   for (size_t i = 0; i < numInputs; i++) {
     const auto &userShape = inputShapes[i];
     const auto &modelSpec = model->getInputSpecs()[i];
-    auto inputDataIt =
-        std::find_if(inputData.begin(), inputData.end(),
-                     [=](const auto &v) { return v.first == i; });
-    // if per tensor input-data is specified, use it instead of the default from
-    // --model-inputs
-    if (inputDataIt != inputData.end())
-      inputGenKind = std::get<InputGenerationKind>(inputDataIt->second);
-    UNWRAP_ERROR(result, allocateAndFillInput(inputGenKind, userShape,
-                                              modelSpec, runtime));
-    inputTensors.push_back(std::move(result));
+    UNWRAP_ERROR(result, createTensorGenerator(i, inputGenKind, inputDataSpecs,
+                                               userShape, modelSpec, runtime));
+    inputTensorGenerators.push_back(std::move(result));
   }
-  return inputTensors;
+  return inputTensorGenerators;
 }

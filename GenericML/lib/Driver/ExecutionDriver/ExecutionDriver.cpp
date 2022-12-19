@@ -202,16 +202,16 @@ static ErrorOrSuccess executeModelOnce(MLIRContext *ctx, const Model *model,
                                        const ExecutorDriverCLOptions &options) {
   TIME_PROFILER_SCOPE(1, "runModelOnce");
   UNWRAP_ERROR(executableModel, model->setup(runtime));
-  UNWRAP_ERROR(inputTensors,
-               initializeInputMemory(options.inputGenKind, options.inputShapes,
-                                     options.inputData, model, runtime));
+  UNWRAP_ERROR(inputTensorGenerators,
+               createTensorGenerators(options.inputGenKind, options.inputShapes,
+                                      options.inputData, model, runtime));
 
   // Fill the arguments.  We are running the model once so we pass in the input
   // tensors directly (the model will deallocate them when it is done with
   // them).
   SmallVector<AnyAsyncValueRef> args;
   args.reserve(model->getNumInputs());
-  for (const auto &input : inputTensors) {
+  for (const auto &inputGen : inputTensorGenerators) {
     // Technically we could move these input tensors into the args. However
     // that could trigger different buffer copy behaviour in the model under
     // test depending on whether single-run or benchmarking is used, and
@@ -219,7 +219,7 @@ static ErrorOrSuccess executeModelOnce(MLIRContext *ctx, const Model *model,
     // runModelWithData interface is used. So we hold the inputs alive for
     // the entire call and pass a borrow of 'execute' lifetime.
     args.push_back(AsyncValueRef<Tensor>::createReady(
-        runtime, input.borrow(GML::BufferRef::kExecute)));
+        runtime, inputGen->getNextTensor().borrow(GML::BufferRef::kExecute)));
   }
 
   // We use printf here because it has atomic output behavior w.r.t. the printfs
@@ -252,9 +252,9 @@ executeModelRepeated(MLIRContext *ctx, const Model *model, Runtime &runtime,
                      const ExecutorDriverCLOptions &options) {
   UNWRAP_ERROR(executableModel, model->setup(runtime));
 
-  UNWRAP_ERROR(inputTensors,
-               initializeInputMemory(options.inputGenKind, options.inputShapes,
-                                     options.inputData, model, runtime));
+  UNWRAP_ERROR(inputTensorGenerators,
+               createTensorGenerators(options.inputGenKind, options.inputShapes,
+                                      options.inputData, model, runtime));
 
   // Run the model numWarmup times to warmup the execution. This is performed to
   // remove any added overhead due to initial setup of the model. The loop is
@@ -264,9 +264,9 @@ executeModelRepeated(MLIRContext *ctx, const Model *model, Runtime &runtime,
     // since the input buffers live across all executions.
     SmallVector<AnyAsyncValueRef> args;
     args.reserve(model->getNumInputs());
-    for (const auto &input : inputTensors) {
+    for (const auto &inputGen : inputTensorGenerators) {
       args.push_back(AsyncValueRef<Tensor>::createReady(
-          runtime, input.borrow(GML::BufferRef::kExecute)));
+          runtime, inputGen->getNextTensor().borrow(GML::BufferRef::kExecute)));
     }
 
     // Execute the model and insert its results into the results vec.
@@ -293,9 +293,9 @@ executeModelRepeated(MLIRContext *ctx, const Model *model, Runtime &runtime,
     // since the input buffers live across all executions.
     SmallVector<AnyAsyncValueRef> args;
     args.reserve(model->getNumInputs());
-    for (auto &input : inputTensors)
+    for (auto &inputGen : inputTensorGenerators)
       args.push_back(AsyncValueRef<Tensor>::createReady(
-          runtime, input.borrow(GML::BufferRef::kExecute)));
+          runtime, inputGen->getNextTensor().borrow(GML::BufferRef::kExecute)));
 
     auto start = std::chrono::steady_clock::now();
 
