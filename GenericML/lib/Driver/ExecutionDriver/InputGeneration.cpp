@@ -24,6 +24,7 @@
 
 #include <filesystem>
 #include <memory>
+#include <numeric>
 #include <variant>
 
 using namespace M;
@@ -151,8 +152,9 @@ class FileTensorGenerator : public ITensorGenerator {
 public:
   FileTensorGenerator(const std::filesystem::path &filename,
                       const TensorShape &userShape, const QuantTensorSpec &spec,
-                      Runtime &runtime, size_t alignment)
-      : pos(0) {
+                      Runtime &runtime, size_t alignment,
+                      TensorGeneratorFlag flags)
+      : flags(flags) {
     std::string errorMsg;
     auto data = mlir::openInputFile(filename.string(), llvm::Align(alignment),
                                     &errorMsg);
@@ -161,8 +163,13 @@ public:
       assert(false && "Could not open input file.");
     }
     auto stride = spec.getEltType().getSizeInBytes(userShape.getNumElements());
-    assert(data->getBufferSize() % stride == 0 &&
-           "--input-data file size not a multiple of tensor size");
+    if (!isSet(flags, TensorGeneratorFlag::kTruncate) &&
+        data->getBufferSize() % stride != 0) {
+      llvm::errs() << "--input-data file size not a multiple of tensor size. "
+                      "Add Truncate attribute to --input-data flag to "
+                      "allow this behaviour.\n";
+      assert(false);
+    }
     auto dataStart = data->getBufferStart();
     for (size_t i = 0, n = data->getBufferSize() / stride; i < n; i++) {
       auto tensor = Tensor::createOwned({userShape, spec.getEltType()}, runtime,
@@ -175,6 +182,14 @@ public:
   }
 
   const Tensor &getNextTensor() final {
+    if (!isSet(flags, TensorGeneratorFlag::kCycle) && repeated) {
+      llvm::errs() << "All tensors in FileTensor have already been generated. "
+                      "Add Cycle attribute to --input-data to loop over "
+                      "available tensors.\n";
+      assert(false);
+    }
+    if (pos + 1 >= tensors.size())
+      repeated = true;
     auto curr = pos;
     pos = (pos + 1) % tensors.size();
     return tensors[curr];
@@ -188,9 +203,11 @@ public:
   size_t getSampleCount() const final { return tensors.size(); }
 
 private:
-  size_t pos;
+  size_t pos{0};
   std::vector<Tensor> tensors; // each tensor holds a reference to a position in
                                // data so this shouldn't be too big
+  TensorGeneratorFlag flags{TensorGeneratorFlag::kComplete};
+  bool repeated{false};
 };
 
 ErrorOr<ITensorGeneratorPtr>
@@ -200,22 +217,26 @@ M::createTensorGenerator(size_t tensorIdx, InputGenerationKind defaultGen,
                          const QuantTensorSpec &modelSpec, Runtime &runtime) {
   std::optional<InputDataSpec> spec;
   for (const auto &inputDataSpec : inputDataSpecs) {
-    if (inputDataSpec.first == tensorIdx)
+    if (inputDataSpec.tensorIdx == tensorIdx)
       spec = inputDataSpec;
   }
 
   // if tensor spec contains a generation function, override the default
-  if (spec && std::holds_alternative<InputGenerationKind>(spec->second))
-    defaultGen = std::get<InputGenerationKind>(spec->second);
+  if (spec && std::holds_alternative<InputGenerationKind>(spec->inputGen))
+    defaultGen = std::get<InputGenerationKind>(spec->inputGen);
 
   auto alignment = kPreferredMemoryAlignment;
-  if (!spec || std::holds_alternative<InputGenerationKind>(spec->second))
+  if (!spec || std::holds_alternative<InputGenerationKind>(spec->inputGen))
     return std::make_unique<FilledTensorGenerator>(
         defaultGen, userShape, modelSpec, runtime, alignment);
 
-  auto filename = std::get<std::filesystem::path>(spec->second);
+  auto filename = std::get<std::filesystem::path>(spec->inputGen);
+  // pack vector of flags into single int
+  auto flagsPacked = std::accumulate(
+      spec->genFlags.begin(), spec->genFlags.end(),
+      TensorGeneratorFlag::kComplete, [](auto acc, auto x) { return acc | x; });
   return std::make_unique<FileTensorGenerator>(filename, userShape, modelSpec,
-                                               runtime, alignment);
+                                               runtime, alignment, flagsPacked);
 }
 
 ErrorOr<SmallVector<ITensorGeneratorPtr, 3>>
@@ -239,9 +260,9 @@ M::createTensorGenerators(InputGenerationKind inputGenKind,
   }
 
   for (const auto &inputData : inputDataSpecs) {
-    if (inputData.first >= numInputs) {
+    if (inputData.tensorIdx >= numInputs) {
       return Error(
-          Twine("Tensor index (") + Twine(inputData.first) +
+          Twine("Tensor index (") + Twine(inputData.tensorIdx) +
           ") passed to --input-data larger than number of inputs in model (" +
           Twine(numInputs) + ").");
     }

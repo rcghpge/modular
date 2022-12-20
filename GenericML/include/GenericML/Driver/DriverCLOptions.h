@@ -32,15 +32,29 @@ public:
              TensorShape &Val);
 };
 
-// map tensor idx to input source
-using InputDataSpec =
-    std::pair<size_t, std::variant<InputGenerationKind, std::filesystem::path>>;
+struct InputDataSpec {
+  size_t tensorIdx;
+  std::variant<InputGenerationKind, std::filesystem::path> inputGen;
+  llvm::SmallVector<TensorGeneratorFlag, 3> genFlags;
+};
+
 class InputDataParser : public llvm::cl::parser<InputDataSpec> {
 public:
   using llvm::cl::parser<InputDataSpec>::parser;
 
   bool parse(llvm::cl::Option &O, StringRef ArgName, StringRef ArgValue,
-             InputDataSpec &Val);
+             InputDataSpec &Val) {
+    if (auto errOr = parseImpl(O, ArgName, ArgValue, Val)) {
+      llvm::errs() << errOr.getError() << "\n";
+      return true;
+    }
+    return false;
+  }
+
+private:
+  // Use this for cleaner error handling and then pass result to parse()
+  ErrorOrSuccess parseImpl(llvm::cl::Option &O, StringRef ArgName,
+                           StringRef ArgValue, InputDataSpec &Val);
 };
 
 /// Contains the core CLI options for *-executor, so that other executables
@@ -134,11 +148,16 @@ public:
 
   cl::list<InputDataSpec, bool, InputDataParser> inputData{
       "input-data",
-      cl::desc("Specify custom data to use per input. It is specified as "
-               "--input-data=int:input_source where the int represents the "
-               "input tensor index and input_source can be one of "
-               "[random|zeros|negones|ones]. input_source will "
-               "be extended to support files shortly.")};
+      cl::desc(
+          "Specify custom data to use per input. It is specified as "
+          "--input-data=tensor_idx:input_source:input_source_attr_list where:"
+          "- tensorIdx: int representing the input tensor index"
+          "- input_source: one of [random|zeros|negones|ones] or the "
+          "name of a file containing raw binary tensor data stored in "
+          "row-major little-endian order"
+          "- input_source_attr_list: optional comma separated list of "
+          "[Complete|Truncate|Cycle] which specify restrictions "
+          "on use of data in the input file")};
 
   /// This tells the execution driver how to print output tensors;
   cl::opt<Kernel::ResultOutputStyle> resultOutputStyle{

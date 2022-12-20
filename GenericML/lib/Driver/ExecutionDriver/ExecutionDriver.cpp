@@ -14,6 +14,8 @@
 #include "LLCL/Support/Profiling.h"
 #include "Support/Error.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -38,7 +40,8 @@ StringLiteral M::stringifyEnum(InputGenerationKind kind) {
   llvm_unreachable("unhandled InputGenerationKind");
 }
 
-std::optional<InputGenerationKind> M::symbolizeEnum(StringRef s) {
+std::optional<InputGenerationKind>
+M::symbolizeInputGenerationKind(StringRef s) {
   return llvm::StringSwitch<std::optional<InputGenerationKind>>(s)
       .Case(stringifyEnum(InputGenerationKind::kRandom),
             InputGenerationKind::kRandom)
@@ -48,6 +51,15 @@ std::optional<InputGenerationKind> M::symbolizeEnum(StringRef s) {
             InputGenerationKind::kOnes)
       .Case(stringifyEnum(InputGenerationKind::kNegOnes),
             InputGenerationKind::kNegOnes)
+      .Default(std::nullopt);
+}
+
+std::optional<TensorGeneratorFlag>
+M::symbolizeTensorGeneratorFlag(StringRef s) {
+  return llvm::StringSwitch<std::optional<TensorGeneratorFlag>>(s)
+      .Case("Complete", TensorGeneratorFlag::kComplete)
+      .Case("Cycle", TensorGeneratorFlag::kCycle)
+      .Case("Truncate", TensorGeneratorFlag::kTruncate)
       .Default(std::nullopt);
 }
 
@@ -64,45 +76,68 @@ bool TensorShapeParser::parse(llvm::cl::Option &options, StringRef argName,
   return false;
 }
 
-bool InputDataParser::parse(llvm::cl::Option &options, StringRef argName,
-                            StringRef argValue, InputDataSpec &result) {
+// Parse --input-data arg.
+// Format of arg is --input-data=tensor_idx:input_source:input_source_attr_list.
+//    - tensor_idx: int representing input tensor index
+//    - input_source: can be either:
+//        - input generation function: one of [zeros|random|ones|negones], which
+//        map to an InputGenerationKind
+//        - filename
+//    - input_source_attr_list (optional): csv list of [Complete|Cycle|Truncate]
+//    which map to a TensorGeneratorFlag
+ErrorOrSuccess InputDataParser::parseImpl(llvm::cl::Option &options,
+                                          StringRef argName, StringRef argValue,
+                                          InputDataSpec &result) {
+  llvm::SmallVector<llvm::StringRef, 3> args;
+  argValue.split(args, ':');
+  if (args.empty())
+    return Error("--input-data requires `:` separated list of args.");
+  if (args.size() > 3)
+    return Error("--input-data supports max of 3 args separated by `:`.");
 
-  // passed to mt through multiple --input-data args so there should be no comma
-  if (argValue.contains(",")) {
-    llvm::errs() << "--input-data arg should not contain a comma. Set "
-                    "--input-data flag once per tensor"
-                 << "\n";
-    return true;
-  }
+  // parse tensor idx field
+  auto tensorIdxStr = args[0];
+  auto err = tensorIdxStr.getAsInteger(10, result.tensorIdx);
+  if (err)
+    return Error(Twine("Could not convert tensorIdx (") + tensorIdxStr +
+                 ") to integer.");
 
-  const auto [tensorIdxStr, filenameOrGenKindStr] = argValue.split(':');
-
-  size_t tensorIdx;
-  auto err = tensorIdxStr.getAsInteger(10, tensorIdx);
-  if (err) {
-    llvm::errs() << Twine("Could not convert tensorIdx (") + tensorIdxStr
-                 << ") to integer"
-                 << "\n";
-    return err;
-  }
-  result.first = tensorIdx;
-
+  // parse input gen field
+  auto filenameOrGenKindStr = args[1];
   std::optional<InputGenerationKind> genKind =
-      symbolizeEnum(filenameOrGenKindStr.str());
+      symbolizeInputGenerationKind(filenameOrGenKindStr.str());
   if (genKind.has_value()) {
-    result.second = genKind.value();
-    return false;
+    result.inputGen = genKind.value();
+    if (args.size() == 3)
+      return Error(Twine("No additional --input-data flags (") + args[2] +
+                   ") are supported when input_source is an input "
+                   "generation function.");
+    return success();
   }
-
   // if string does not match an InputGenerationKind, assume it's a filename
   auto filename = std::filesystem::path(filenameOrGenKindStr.str());
   if (!std::filesystem::exists(filename)) {
-    llvm::errs() << "--input-data file (" << filename << ") does not exist."
-                 << "\n";
-    return true;
+    return Error(Twine("--input-data file (") + filename.string() +
+                 ") does not exist.");
   }
-  result.second = filename;
-  return false;
+  result.inputGen = filename;
+
+  // parse gen flags if they exist
+  if (args.size() < 3)
+    return success();
+  for (const auto genFlagStr : llvm::split(args[2], ",")) {
+    auto flag = symbolizeTensorGeneratorFlag(genFlagStr);
+    if (!flag)
+      return Error(Twine("Cannot convert ") + genFlagStr +
+                   "to TensorGeneratorFlag.");
+    result.genFlags.push_back(flag.value());
+  }
+  if (result.genFlags.size() > 1 &&
+      llvm::is_contained(result.genFlags, TensorGeneratorFlag::kComplete))
+    return Error("Can't specify Complete --input-data modifier in addition to "
+                 "others.");
+
+  return success();
 }
 
 /// Wait for results and report their errors

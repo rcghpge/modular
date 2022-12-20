@@ -31,7 +31,27 @@ enum class InputGenerationKind {
 };
 
 StringLiteral stringifyEnum(InputGenerationKind kind);
-std::optional<InputGenerationKind> symbolizeEnum(StringRef s);
+std::optional<InputGenerationKind> symbolizeInputGenerationKind(StringRef s);
+
+enum class TensorGeneratorFlag : int {
+  kComplete = 0,
+  kCycle = 1 << 0,    // generate infinite number of Tensors from generator by
+                      // looping over file repeatedly
+  kTruncate = 1 << 1, // if input file size not a multiple of tensor
+                      // size, discard the remainder
+};
+
+inline TensorGeneratorFlag operator|(TensorGeneratorFlag a,
+                                     TensorGeneratorFlag b) {
+  return static_cast<TensorGeneratorFlag>(static_cast<int>(a) |
+                                          static_cast<int>(b));
+};
+
+inline bool isSet(TensorGeneratorFlag a, TensorGeneratorFlag b) {
+  return static_cast<int>(a) & static_cast<int>(b);
+}
+
+std::optional<TensorGeneratorFlag> symbolizeTensorGeneratorFlag(StringRef s);
 
 enum class BenchmarkScenario { kOnline, kBatched };
 
