@@ -140,6 +140,8 @@ public:
 
   size_t getSampleCount() const final { return 1; }
 
+  bool isCycled() const final { return true; }
+
 private:
   // needs to be ptr since there is no default constructor
   std::unique_ptr<Tensor> tensor;
@@ -196,11 +198,16 @@ public:
   }
 
   const Tensor &getTensor(size_t sampleIdx) const final {
-    assert(sampleIdx < tensors.size() && "Requested sampleIdx out of range");
-    return tensors[sampleIdx];
+    if (!isCycled())
+      assert(sampleIdx < tensors.size() && "Requested sampleIdx out of range");
+    return tensors[sampleIdx % tensors.size()];
   }
 
   size_t getSampleCount() const final { return tensors.size(); }
+
+  bool isCycled() const final {
+    return isSet(flags, TensorGeneratorFlag::kCycle);
+  }
 
 private:
   size_t pos{0};
