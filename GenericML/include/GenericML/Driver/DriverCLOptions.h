@@ -35,7 +35,7 @@ public:
 struct InputDataSpec {
   size_t tensorIdx;
   std::variant<InputGenerationKind, std::filesystem::path> inputGen;
-  llvm::SmallVector<TensorGeneratorFlag, 3> genFlags;
+  TensorGeneratorFlag genFlags;
 };
 
 class InputDataParser : public llvm::cl::parser<InputDataSpec> {
@@ -155,9 +155,15 @@ public:
           "- input_source: one of [random|zeros|negones|ones] or the "
           "name of a file containing raw binary tensor data stored in "
           "row-major little-endian order"
-          "- input_source_attr_list: optional comma separated list of "
-          "[Complete|Truncate|Cycle] which specify restrictions "
-          "on use of data in the input file")};
+          "- input_source_attr_list: optional (default empty) comma separated "
+          "list of "
+          "[Truncate|Cycle] which specify relaxations"
+          "on use of data in the input file. If empty, the file size must be "
+          "an exact multiple of the input tensor size and every tensor in the "
+          "input file may only be used once. If Cycle is specified, there is "
+          "no limit on the number of times a tensor in the input file can be "
+          "used. If Truncate is specified, the file size need not be an exact "
+          "multiple of the tensor size (the remainder will be ignored).")};
 
   /// This tells the execution driver how to print output tensors;
   cl::opt<Kernel::ResultOutputStyle> resultOutputStyle{

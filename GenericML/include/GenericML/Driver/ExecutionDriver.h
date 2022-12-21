@@ -34,7 +34,6 @@ StringLiteral stringifyEnum(InputGenerationKind kind);
 std::optional<InputGenerationKind> symbolizeInputGenerationKind(StringRef s);
 
 enum class TensorGeneratorFlag : int {
-  kComplete = 0,
   kCycle = 1 << 0,    // generate infinite number of Tensors from generator by
                       // looping over file repeatedly
   kTruncate = 1 << 1, // if input file size not a multiple of tensor

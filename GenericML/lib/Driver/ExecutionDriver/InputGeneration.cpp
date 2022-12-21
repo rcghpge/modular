@@ -124,27 +124,25 @@ static ErrorOr<Tensor> allocateAndFillInput(InputGenerationKind inputGenKind,
 // Tensor that has been allocated and filled with an InputGenerationKind.
 class FilledTensorGenerator : public ITensorGenerator {
 public:
-  FilledTensorGenerator(InputGenerationKind genKind,
-                        const TensorShape &userShape,
-                        const QuantTensorSpec &modelSpec, Runtime &runtime,
-                        size_t alignment) {
-    auto tensorOr =
-        allocateAndFillInput(genKind, userShape, modelSpec, runtime, alignment);
-    assert(!tensorOr.isError() && "could not initialize FilledTensorGenerator");
-    tensor = std::make_unique<Tensor>(std::move(*tensorOr));
+  static ErrorOr<FilledTensorGenerator>
+  create(InputGenerationKind genKind, const TensorShape &userShape,
+         const QuantTensorSpec &modelSpec, Runtime &runtime, size_t alignment) {
+    UNWRAP_ERROR(tensor, allocateAndFillInput(genKind, userShape, modelSpec,
+                                              runtime, alignment));
+    return FilledTensorGenerator(std::move(tensor));
   }
 
-  const Tensor &getNextTensor() final { return *tensor; }
+  const Tensor &getNextTensor() final { return tensor; }
 
-  const Tensor &getTensor(size_t sampleIdx) const final { return *tensor; }
+  const Tensor &getTensor(size_t sampleIdx) const final { return tensor; }
 
   size_t getSampleCount() const final { return 1; }
 
   bool isCycled() const final { return true; }
 
 private:
-  // needs to be ptr since there is no default constructor
-  std::unique_ptr<Tensor> tensor;
+  FilledTensorGenerator(Tensor &&tensor) : tensor(std::move(tensor)) {}
+  Tensor tensor;
 };
 
 // Represents Tensor backed by a file.
@@ -152,25 +150,23 @@ private:
 // getNextTensor() will stride through the memory.
 class FileTensorGenerator : public ITensorGenerator {
 public:
-  FileTensorGenerator(const std::filesystem::path &filename,
-                      const TensorShape &userShape, const QuantTensorSpec &spec,
-                      Runtime &runtime, size_t alignment,
-                      TensorGeneratorFlag flags)
-      : flags(flags) {
+  static ErrorOr<FileTensorGenerator>
+  create(const std::filesystem::path &filename, const TensorShape &userShape,
+         const QuantTensorSpec &spec, Runtime &runtime, size_t alignment,
+         TensorGeneratorFlag flags) {
+    std::vector<Tensor> tensors;
     std::string errorMsg;
     auto data = mlir::openInputFile(filename.string(), llvm::Align(alignment),
                                     &errorMsg);
     if (!data) {
-      llvm::errs() << errorMsg << "\n";
-      assert(false && "Could not open input file.");
+      return Error("Could not open input file.");
     }
     auto stride = spec.getEltType().getSizeInBytes(userShape.getNumElements());
     if (!isSet(flags, TensorGeneratorFlag::kTruncate) &&
         data->getBufferSize() % stride != 0) {
-      llvm::errs() << "--input-data file size not a multiple of tensor size. "
-                      "Add Truncate attribute to --input-data flag to "
-                      "allow this behaviour.\n";
-      assert(false);
+      return Error("--input-data file size not a multiple of tensor size. "
+                   "Add Truncate attribute to --input-data flag to "
+                   "allow this behaviour.");
     }
     auto dataStart = data->getBufferStart();
     for (size_t i = 0, n = data->getBufferSize() / stride; i < n; i++) {
@@ -180,16 +176,17 @@ public:
       std::memcpy(tensorBuf, dataStart + i * stride, tensor.getSizeInBytes());
       tensors.push_back(std::move(tensor));
     }
-    assert(!tensors.empty() && "input file contains 0 tensors");
-  }
 
+    if (tensors.empty())
+      return Error("input file contains 0 tensors");
+
+    return FileTensorGenerator(std::move(tensors), flags);
+  }
   const Tensor &getNextTensor() final {
-    if (!isSet(flags, TensorGeneratorFlag::kCycle) && repeated) {
-      llvm::errs() << "All tensors in FileTensor have already been generated. "
-                      "Add Cycle attribute to --input-data to loop over "
-                      "available tensors.\n";
-      assert(false);
-    }
+    assert((isSet(flags, TensorGeneratorFlag::kCycle) || !repeated) &&
+           "All tensors in FileTensor have already been generated. "
+           "Add Cycle attribute to --input-data to loop over "
+           "available tensors.");
     if (pos + 1 >= tensors.size())
       repeated = true;
     auto curr = pos;
@@ -210,10 +207,13 @@ public:
   }
 
 private:
+  FileTensorGenerator(std::vector<Tensor> &&tensors, TensorGeneratorFlag flags)
+      : tensors(std::move(tensors)), flags(flags) {}
+
   size_t pos{0};
   std::vector<Tensor> tensors; // each tensor holds a reference to a position in
                                // data so this shouldn't be too big
-  TensorGeneratorFlag flags{TensorGeneratorFlag::kComplete};
+  TensorGeneratorFlag flags;
   bool repeated{false};
 };
 
@@ -233,17 +233,19 @@ M::createTensorGenerator(size_t tensorIdx, InputGenerationKind defaultGen,
     defaultGen = std::get<InputGenerationKind>(spec->inputGen);
 
   auto alignment = kPreferredMemoryAlignment;
-  if (!spec || std::holds_alternative<InputGenerationKind>(spec->inputGen))
-    return std::make_unique<FilledTensorGenerator>(
-        defaultGen, userShape, modelSpec, runtime, alignment);
+  if (!spec || std::holds_alternative<InputGenerationKind>(spec->inputGen)) {
+    UNWRAP_ERROR(filledGenerator,
+                 FilledTensorGenerator::create(defaultGen, userShape, modelSpec,
+                                               runtime, alignment));
+    return std::make_unique<FilledTensorGenerator>(std::move(filledGenerator));
+  }
 
   auto filename = std::get<std::filesystem::path>(spec->inputGen);
   // pack vector of flags into single int
-  auto flagsPacked = std::accumulate(
-      spec->genFlags.begin(), spec->genFlags.end(),
-      TensorGeneratorFlag::kComplete, [](auto acc, auto x) { return acc | x; });
-  return std::make_unique<FileTensorGenerator>(filename, userShape, modelSpec,
-                                               runtime, alignment, flagsPacked);
+  UNWRAP_ERROR(fileGenerator,
+               FileTensorGenerator::create(filename, userShape, modelSpec,
+                                           runtime, alignment, spec->genFlags));
+  return std::make_unique<FileTensorGenerator>(std::move(fileGenerator));
 }
 
 ErrorOr<SmallVector<ITensorGeneratorPtr, 3>>

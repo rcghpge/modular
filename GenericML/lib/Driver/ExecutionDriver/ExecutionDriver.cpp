@@ -57,7 +57,6 @@ M::symbolizeInputGenerationKind(StringRef s) {
 std::optional<TensorGeneratorFlag>
 M::symbolizeTensorGeneratorFlag(StringRef s) {
   return llvm::StringSwitch<std::optional<TensorGeneratorFlag>>(s)
-      .Case("Complete", TensorGeneratorFlag::kComplete)
       .Case("Cycle", TensorGeneratorFlag::kCycle)
       .Case("Truncate", TensorGeneratorFlag::kTruncate)
       .Default(std::nullopt);
@@ -83,14 +82,14 @@ bool TensorShapeParser::parse(llvm::cl::Option &options, StringRef argName,
 //        - input generation function: one of [zeros|random|ones|negones], which
 //        map to an InputGenerationKind
 //        - filename
-//    - input_source_attr_list (optional): csv list of [Complete|Cycle|Truncate]
+//    - input_source_attr_list (optional): csv list of [Cycle|Truncate]
 //    which map to a TensorGeneratorFlag
 ErrorOrSuccess InputDataParser::parseImpl(llvm::cl::Option &options,
                                           StringRef argName, StringRef argValue,
                                           InputDataSpec &result) {
   llvm::SmallVector<llvm::StringRef, 3> args;
   argValue.split(args, ':');
-  if (args.empty())
+  if (args.size() < 2)
     return Error("--input-data requires `:` separated list of args.");
   if (args.size() > 3)
     return Error("--input-data supports max of 3 args separated by `:`.");
@@ -108,7 +107,7 @@ ErrorOrSuccess InputDataParser::parseImpl(llvm::cl::Option &options,
       symbolizeInputGenerationKind(filenameOrGenKindStr.str());
   if (genKind.has_value()) {
     result.inputGen = genKind.value();
-    if (args.size() == 3)
+    if (args.size() > 2)
       return Error(Twine("No additional --input-data flags (") + args[2] +
                    ") are supported when input_source is an input "
                    "generation function.");
@@ -130,12 +129,8 @@ ErrorOrSuccess InputDataParser::parseImpl(llvm::cl::Option &options,
     if (!flag)
       return Error(Twine("Cannot convert ") + genFlagStr +
                    "to TensorGeneratorFlag.");
-    result.genFlags.push_back(flag.value());
+    result.genFlags = result.genFlags | flag.value();
   }
-  if (result.genFlags.size() > 1 &&
-      llvm::is_contained(result.genFlags, TensorGeneratorFlag::kComplete))
-    return Error("Can't specify Complete --input-data modifier in addition to "
-                 "others.");
 
   return success();
 }
