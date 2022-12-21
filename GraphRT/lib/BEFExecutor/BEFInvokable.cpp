@@ -616,7 +616,7 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
 
     // Iterate over all results of the primitive.  If the primitive immediately
     // completed a result (its AsyncValue is "ready"), then we can add all users
-    // to our worklist.  If not, we `andThenSync` on their unavailable result.
+    // to our worklist.  If not, we `andThenAsync` on their unavailable result.
     for (size_t resultNo = 0, e = decoder.numResults; resultNo != e;
          ++resultNo) {
       AnyAsyncValueRef &result = frame.getResult(resultNo);
@@ -642,7 +642,7 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
 /// After setting a result into the register file, process all the "used by"
 /// records for this result.  If the result is 'ready' (typical in synchronous
 /// kernels) then we want to add users to the worklist.  If not, we have to do
-/// `andThenSync` logic to process them when they become available.
+/// `andThenAsync` logic to process them when they become available.
 ///
 /// This method also adjusts the reference count of `result` and `registerVal`
 /// to prepare for the users, who will each drop a reference as they go.  This
@@ -684,7 +684,7 @@ void BEFExecutor::processUsedByRecords(
   }
 
   // If the result is ready (typical case), then we can be efficient and avoid
-  // "andThenSync" logic.
+  // "andThenAsync" logic.
   if (resultPtr->isReady()) {
     primitiveIDWorklist.append(users.begin(), users.end());
   } else if (!users.empty()) {
@@ -699,7 +699,7 @@ void BEFExecutor::processUsedByRecords(
     // that we capture `users` which is an ArrayRef instead of copying the
     // content. This is fine because the underlying BEF file is alive when the
     // BEF executor is.
-    resultPtr->andThenSync([thisRef = std::move(thisRef), users]() {
+    resultPtr->andThenAsync([thisRef = std::move(thisRef), users]() {
       SmallVector<uint32_t, 16> primitiveIDToVisit(users.begin(), users.end());
       thisRef->decrementOperandsNotReadyCounts(primitiveIDToVisit);
     });
