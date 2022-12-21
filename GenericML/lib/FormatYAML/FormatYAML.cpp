@@ -195,11 +195,23 @@ namespace llvm::yaml {
 template <>
 struct MappingTraits<M::ModelSpec::ModelIOSpec> {
   static void mapping(IO &io, M::ModelSpec::ModelIOSpec &inputOutput) {
-    // The name may be empty, so we map that as optional.
-    io.mapOptional("name", inputOutput.first);
+    // name and data may be empty, so we map them as optional.
+    io.mapOptional("name", inputOutput.name);
+    io.mapOptional("data", inputOutput.data);
     // We need to call formatYAML on the QuantTensorSpec to avoid another
     // nesting in the YAML dictionary.
-    formatYAML(io, inputOutput.second);
+    formatYAML(io, inputOutput.spec);
+  }
+
+  static std::string validate(IO &io, M::ModelSpec::ModelIOSpec &tensor) {
+    if (tensor.data.has_value() &&
+        !llvm::is_contained<std::string>({"zeros", "ones", "negones", "random"},
+                                         tensor.data.value())) {
+      return "Invalid data source: " + tensor.data.value_or("<none>");
+    }
+
+    // No error.
+    return {};
   }
 };
 } // namespace llvm::yaml
@@ -313,7 +325,7 @@ std::string validateNameSubstitutions(
   for (const auto &kv : nameSubstitutions.preferredToNativeMap) {
     // The 'preferred' name must exist.
     if (llvm::find_if(names, [&kv](const M::ModelSpec::ModelIOSpec &spec) {
-          return spec.first == kv.getKey();
+          return spec.name == kv.getKey();
         }) == names.end()) {
       return (Twine("No such preferred ") + inputOrOutput + " name '" +
               kv.getKey() + "' for " + inputOrOutput +

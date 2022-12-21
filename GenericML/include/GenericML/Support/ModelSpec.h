@@ -27,12 +27,21 @@ namespace M {
 /// specs, and the input and output layer names.
 ///
 /// Keep in sync with the description in Models/docs/index.md, the YAML
-/// conversion in GenericML/lib/FormatYAML/FormatYAML.cpp, the JSON schema in
-/// Models/Schema/Schema.json and the Python reader in
-/// GenericML/tools/model/model/utils/manifest.py.
+/// conversion in GenericML/lib/FormatYAML/FormatYAML.cpp, and the Python
+/// reader in GenericML/tools/model/model/utils/manifest.py.
 class ModelSpec {
 public:
-  using ModelIOSpec = std::pair<std::string, M::QuantTensorSpec>;
+  /// Per-tensor specification
+  struct ModelIOSpec {
+    std::string name;
+    M::QuantTensorSpec spec;
+    std::optional<std::string> data; /// One of: zeros|ones|negones|random
+
+    ModelIOSpec() = default;
+    ModelIOSpec(std::string n, M::QuantTensorSpec s,
+                std::optional<std::string> d = {})
+        : name(std::move(n)), spec(std::move(s)), data(std::move(d)) {}
+  };
 
   /// Maps input or output names as they appear in the model spec (the
   /// 'preferred' names) to the corresponding names as they appear in the
