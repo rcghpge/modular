@@ -153,6 +153,14 @@ def MO_DivOp : MO_ElementWiseBinaryOp<"div"> {
   }];
 }
 
+def MO_GeluOp : MO_ElementWiseUnaryOp<"gelu"> {
+  let summary = " Gaussian Error Linear Unit operation";
+  let description = [{
+    Returns GELU(x) = (x / 2) * (1 + erf(x/sqrt(2))), where erf denotes the
+    (Gaussian) error function.
+  }];
+}
+
 def MO_MulOp : MO_ElementWiseBinaryOp<"mul"> {
   let summary = "Multiply operation";
   let description = [{
