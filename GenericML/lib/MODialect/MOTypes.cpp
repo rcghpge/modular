@@ -80,7 +80,7 @@ static void printShapeParameter(AsmPrinter &p, ArrayRef<int64_t> dims) {
   }
 }
 
-FailureOr<llvm::SmallVector<int64_t>> parseShapeParameter(AsmParser &p) {
+static FailureOr<llvm::SmallVector<int64_t>> parseShapeParameter(AsmParser &p) {
   llvm::SmallVector<int64_t> dims{};
   if (!p.parseOptionalStar()) {
     // This is an unranked tensor.
@@ -161,8 +161,7 @@ ShapedType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
 
 /// Does the Tensor have a static Rank?  Required by ShapedTypeInferece
 bool TensorType::hasRank() const {
-  auto shape = getShape();
-  return std::find(shape.begin(), shape.end(), kDynamicRank) != shape.end();
+  return !llvm::is_contained(getShape(), kDynamicRank);
 }
 
 // Get the Rank of the Tensor.  Required by ShapedTypeInference
