@@ -11,6 +11,7 @@
 #ifndef GENERICML_MODIALECT_MOOPS_TD
 #define GENERICML_MODIALECT_MOOPS_TD
 
+include "GenericML/MODialect/MOInterfaces.td"
 include "GenericML/MODialect/MOTypes.td"
 include "Support/MDialect/MAttrs.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
@@ -226,22 +227,10 @@ class MO_DotBase<string name, list<Trait> traits = []>
   let arguments = (ins MO_Tensor:$input_a, MO_Tensor:$input_b);
   let results = (outs MO_Tensor:$result);
 
-
   let description = [{
-    Base class for all generic dot products, including matmuls.
-
-    Currenly we support the following cases:
-
-    Both inputs are 2D matrices: matmul
-      (M, K) * (K, N) -> (M, N)
-
-    However over time we will support more of the generic matmul cases as
-    outlined in these:
-    * https://pytorch.org/docs/stable/generated/torch.matmul.html
-    * https://numpy.org/doc/stable/reference/generated/numpy.matmul.html
-
+    Base class for all generic dot products (i.e. tensor contractions with two
+    inputs), for example matmuls.
   }];
-
 
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
@@ -250,13 +239,11 @@ class MO_DotBase<string name, list<Trait> traits = []>
   let hasVerifier = 1;
 }
 
-// Normal 2D matmul.
-def MO_MatmulOp : MO_DotBase<"matmul"> {
-  let summary = "Matmul";
+def MO_MatmulOp : MO_DotBase<"matmul", [MO_MatmulLike]> {
+  let summary = "Matrix-matrix multiplication";
   let description = [{
     Perform matrix multiplication on two 2D tensors.
   }];
 }
-
 
 #endif // GENERICML_MODIALECT_MOOPS_TD

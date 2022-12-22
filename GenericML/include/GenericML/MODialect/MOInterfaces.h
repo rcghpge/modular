@@ -1,0 +1,25 @@
+//===----------------------------------------------------------------------===//
+//
+// This file is Modular Inc proprietary.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef GENERICML_MODIALECT_MOINTERFACES_H
+#define GENERICML_MODIALECT_MOINTERFACES_H
+
+#include "GenericML/MODialect/MOTypes.h"
+#include "Support/LLVMCompilerForwardDecls.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/Value.h"
+
+namespace M::MO {
+class MatmulLike;
+
+namespace impl {
+LogicalResult verifyMatmulLike(MatmulLike op);
+} // namespace impl
+} // namespace M::MO
+
+#include "GenericML/MODialect/MOInterfaces.h.inc"
+
+#endif // GENERICML_MODIALECT_MOINTERFACES_H

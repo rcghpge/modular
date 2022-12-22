@@ -12,6 +12,7 @@
 #define GENERICML_MODIALECT_MOOPS_H
 
 #include "GenericML/MODialect/MODialect.h"
+#include "GenericML/MODialect/MOInterfaces.h"
 #include "GenericML/MODialect/MOTypes.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/FunctionInterfaces.h"

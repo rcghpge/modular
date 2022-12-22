@@ -84,39 +84,12 @@ OpFoldResult ConstantOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult MatmulOp::verify() {
-  auto matmul = cast<MatmulOp>(getOperation());
-
-  // Get the two input tensors. ODS guarantees these are tensor types.
-  auto aType = cast<TensorType>(matmul.getInputA().getType());
-  auto bType = cast<TensorType>(matmul.getInputB().getType());
-  auto outType = cast<TensorType>(matmul.getResult().getType());
+  TensorType aType = getTensorA().getType();
 
   // Check we have 2D * 2D tensors as input.
-  if (aType.getRank() != bType.getRank()) {
-    return matmul.emitError("Matmul input tensors are not the same rank ")
-           << aType.getRank() << " vs " << bType.getRank();
-  }
-
   if (aType.getRank() != 2) {
-    return matmul.emitError("Matmul input tensors must be rank 2, got: ")
+    return emitError("matmul input tensors must be rank 2, got: ")
            << aType.getRank();
-  }
-
-  // The tensor dims.
-  llvm::ArrayRef<int64_t> aShape = aType.getShape();
-  llvm::ArrayRef<int64_t> bShape = bType.getShape();
-  llvm::ArrayRef<int64_t> outShape = outType.getShape();
-
-  if (aShape[1] != bShape[0]) {
-    return matmul.emitError("Matmul input tensors are expected to be (M, K) * "
-                            "(K, N) but input shapes are ")
-           << "(" << aShape << ") * (" << bShape << ")";
-  }
-
-  if (outShape[0] != aShape[0] || outShape[1] != bShape[1]) {
-    return matmul.emitError(
-               "Matmul of (M, K) * (K, N) does not produce shape (M, N): ")
-           << "(" << aShape << ") * (" << bShape << ") -> (" << outShape << ")";
   }
 
   return LogicalResult::success();
