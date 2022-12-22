@@ -96,6 +96,23 @@ LogicalResult MatmulOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// Matmul definitions.
+//===----------------------------------------------------------------------===//
+
+LogicalResult BatchMatmulOp::verify() {
+  TensorType aType = getTensorA().getType();
+
+  // Check we have at least 3d tensors
+  if (aType.getRank() < 3) {
+    return emitError(
+               "batch_matmul input tensors must be at least rank 3, got: ")
+           << aType.getRank();
+  }
+
+  return LogicalResult::success();
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 

@@ -246,4 +246,14 @@ def MO_MatmulOp : MO_DotBase<"matmul", [MO_MatmulLike]> {
   }];
 }
 
+def MO_BatchMatmulOp : MO_DotBase<"batch_matmul", [MO_MatmulLike]> {
+  let summary = "Batched matrix-matrix multiplication";
+  let description = [{
+    Perform matrix multiplication on two batches of matrices, represented by
+    two N-dimensional tensors.
+
+    The last two dimensions of each input are the matrix dimensions.
+  }];
+}
+
 #endif // GENERICML_MODIALECT_MOOPS_TD
