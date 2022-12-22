@@ -202,17 +202,6 @@ struct MappingTraits<M::ModelSpec::ModelIOSpec> {
     // nesting in the YAML dictionary.
     formatYAML(io, inputOutput.spec);
   }
-
-  static std::string validate(IO &io, M::ModelSpec::ModelIOSpec &tensor) {
-    if (tensor.data.has_value() &&
-        !llvm::is_contained<std::string>({"zeros", "ones", "negones", "random"},
-                                         tensor.data.value())) {
-      return "Invalid data source: " + tensor.data.value_or("<none>");
-    }
-
-    // No error.
-    return {};
-  }
 };
 } // namespace llvm::yaml
 

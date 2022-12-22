@@ -35,7 +35,14 @@ public:
   struct ModelIOSpec {
     std::string name;
     M::QuantTensorSpec spec;
-    std::optional<std::string> data; /// One of: zeros|ones|negones|random
+
+    /// Data-source indicating how this tensor should be initialized.
+    /// This can take any of the following forms:
+    ///
+    ///   - keyword: zeros|ones|negones|random
+    ///   - filename: absolute path or relative to manifest location
+    ///
+    std::optional<std::string> data;
 
     ModelIOSpec() = default;
     ModelIOSpec(std::string n, M::QuantTensorSpec s,
