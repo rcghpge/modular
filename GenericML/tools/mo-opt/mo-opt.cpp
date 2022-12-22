@@ -6,7 +6,6 @@
 
 #include "GenericML/MODialect/MODialect.h"
 #include "Support/LLVMCompilerForwardDecls.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "mlir/Transforms/Passes.h"
 
