@@ -24,15 +24,22 @@ include "mlir/IR/SymbolInterfaces.td"
 class MO_Op<string mnemonic, list<Trait> traits = []>
     : Op<MODialect, mnemonic, traits>;
 
-
-class MO_ElementWiseBinary<string name, list<Trait> traits = []>
-  : MO_Op<name, traits # [Pure, SameOperandsAndResultType]> {
-  let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y);
+class MO_ElementWiseOp<string name, list<Trait> traits = []>
+    : MO_Op<name, traits # [Pure, SameOperandsAndResultType]> {
   let results = (outs MO_Tensor:$result);
-
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` qualified(type($result))
   }];
+}
+
+class MO_ElementWiseUnaryOp<string name, list<Trait> traits = []>
+    : MO_ElementWiseOp<name, traits> {
+  let arguments = (ins MO_Tensor:$input);
+}
+
+class MO_ElementWiseBinaryOp<string name, list<Trait> traits = []>
+    : MO_ElementWiseOp<name, traits> {
+  let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y);
 }
 
 //===----------------------------------------------------------------------===//
@@ -125,46 +132,39 @@ def MO_ConstantOp : MO_Op<"constant", [ConstantLike, Pure]> {
 // Elementwise ops
 //===----------------------------------------------------------------------===//
 
-def MO_AddOp : MO_ElementWiseBinary<"add"> {
+def MO_AddOp : MO_ElementWiseBinaryOp<"add"> {
   let summary = "Add operation";
   let description = [{
     Returns x + y, where x and y are input tensors.
   }];
 }
 
-def MO_AbsOp : MO_Op<"abs", [SameOperandsAndResultType, Idempotent, Pure]> {
+def MO_AbsOp : MO_ElementWiseUnaryOp<"abs", [Idempotent]> {
   let summary = "Absolute value operation";
   let description = [{
     Returns abs(x), where x is the input tensors.
   }];
-
-  let arguments = (ins MO_Tensor:$input);
-  let results = (outs MO_Tensor:$result);
 }
 
-def MO_DivOp : MO_ElementWiseBinary<"div"> {
+def MO_DivOp : MO_ElementWiseBinaryOp<"div"> {
   let summary = "Divide operation";
   let description = [{
     Returns x / y, where x and y are input tensors.
   }];
 }
 
-def MO_MulOp : MO_ElementWiseBinary<"mul"> {
+def MO_MulOp : MO_ElementWiseBinaryOp<"mul"> {
   let summary = "Multiply operation";
   let description = [{
     Returns x * y, where x and y are input tensors.
   }];
 }
 
-
-def MO_ReluOp : MO_Op<"relu", [SameOperandsAndResultType, Idempotent, Pure]> {
+def MO_ReluOp : MO_ElementWiseUnaryOp<"relu", [Idempotent]> {
   let summary = "Rectified linear unit operation";
   let description = [{
     Returns max(0, x), where x is the input tensors.
   }];
-
-  let arguments = (ins MO_Tensor:$input);
-  let results = (outs MO_Tensor:$result);
 }
 
 def MO_SoftmaxOp : MO_Op<"softmax", [SameOperandsAndResultType, Pure]> {
@@ -184,7 +184,7 @@ def MO_SoftmaxOp : MO_Op<"softmax", [SameOperandsAndResultType, Pure]> {
   }];
 }
 
-def MO_SubOp : MO_ElementWiseBinary<"sub"> {
+def MO_SubOp : MO_ElementWiseBinaryOp<"sub"> {
   let summary = "Subtract operation";
   let description = [{
     Returns x - y, where x and y are input tensors.
