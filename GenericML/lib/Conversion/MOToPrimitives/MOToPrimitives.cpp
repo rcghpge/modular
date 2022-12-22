@@ -146,10 +146,12 @@ LogicalResult MOGraphLowering::createModelOp() {
 
   // Create the mgp.model and the regions for the init/execute phases.
   b.setInsertionPoint(graph);
-  StringAttr frameworkName = b.getStringAttr("mgp");
-  common.modelOp =
-      b.create<MGP::ModelOp>(graph.getLoc(), graph.getNameAttr(), frameworkName,
-                             inputTypes, outputTypes, inputLocs);
+  common.modelOp = b.create<MGP::ModelOp>(graph.getLoc(),
+                                          /*sym_name=*/graph.getNameAttr(),
+                                          /*frameworkName=*/"mgp",
+                                          /*inputTypes=*/inputTypes,
+                                          /*outputTypes=*/outputTypes,
+                                          /*inputArgLocs=*/inputLocs);
 
   // Initialize the init state.
   init.builder.setInsertionPointToEnd(common.modelOp.getInitBlock());

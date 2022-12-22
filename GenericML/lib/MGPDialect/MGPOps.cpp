@@ -736,24 +736,24 @@ static void printExecuteRegion(OpAsmPrinter &p, const ModelOp &op,
 }
 
 void ModelOp::build(OpBuilder &builder, OperationState &state,
-                    StringAttr sym_name, StringAttr frameworkName,
+                    StringAttr sym_name, StringRef frameworkName,
                     ArrayRef<Type> inputTypes, ArrayRef<Type> outputTypes,
                     ArrayRef<Location> inputArgLocs,
                     ArrayRef<NamedAttribute> extraAttrs) {
-  state.addAttribute(SymbolTable::getSymbolAttrName(), sym_name);
-  state.addAttribute(
-      getInputOutputTypesAttrName(state.name),
-      TypeAttr::get(builder.getFunctionType(inputTypes, outputTypes)));
-  state.addAttribute(getFrameworkNameAttrName(state.name), frameworkName);
-  state.attributes.append(extraAttrs.begin(), extraAttrs.end());
+  DictionaryAttr extraAttrsDict =
+      extraAttrs.empty() ? nullptr
+                         : DictionaryAttr::get(state.getContext(), extraAttrs);
+  build(builder, state, StringAttr::get(state.getContext(), frameworkName),
+        TypeAttr::get(builder.getFunctionType(inputTypes, outputTypes)),
+        sym_name, extraAttrsDict);
 
   // The 'init' entry point has no arguments.
   assert(implicitInitSignature(builder).getInputs().empty());
-  Region *initRegion = state.addRegion();
+  Region *initRegion = state.regions[0].get();
   initRegion->emplaceBlock();
 
   // The 'execute' entry point has both implicit and explicit arguments.
-  Region *executeRegion = state.addRegion();
+  Region *executeRegion = state.regions[1].get();
   executeRegion->emplaceBlock();
   for (auto type : implicitExecuteSignature(builder).getInputs())
     executeRegion->addArgument(type, state.location);

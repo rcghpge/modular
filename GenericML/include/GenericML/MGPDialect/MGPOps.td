@@ -956,7 +956,7 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">, Symbol,
     Example:
     ```mlir
     // At the top-level
-    mgp.model @example_model : tfl
+    mgp.model @example_model : tfl { attr="value" }
       init {
         %ch = bef.chain.new
         %ctx = mgp.context.create 0
@@ -969,12 +969,21 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">, Symbol,
     ```
   }];
 
-  // CAUTION: Attributes must be ordered alphabetically to correspond to
-  // expected indexes in M::Model subclasses and attribute extraction
-  // from the BEF PrimitiveDescriptor.
-  let arguments = (ins ModelFrameworkAttr:$frameworkName,            // 0
-                       TypeAttrOf<FunctionType>:$inputOutputTypes,   // 1
-                       SymbolNameAttr:$sym_name);                    // 2
+  // CAUTION: There are three constraints on these attribute names and their
+  // order:
+  //  - 'sym_name' must match the standard symbol name attribute name (as given
+  //    by mlir::SymbolTable::getSymbolAttrName()). Note however that we could
+  //    probably choose a more consistent name and implement
+  //    DerivedAttributeOpInterface to recover sym_name if we really wanted
+  //    that.
+  //  - The attributes are accessed by index within M::Module subclasses and
+  //    BEF metadata extraction, and that index matches the MLIR canonical
+  //    asciibetical order.
+  //  - The extra attributes must appear last since optional.
+  let arguments = (ins ModelFrameworkAttr:$frameworkName,               // 0
+                       TypeAttrOf<FunctionType>:$inputOutputTypes,      // 1
+                       SymbolNameAttr:$sym_name,                        // 2
+                       OptionalAttr<DictionaryAttr>:$theExtraAttrs);    // 3
   let regions = (region SizedRegion<1>:$init, SizedRegion<1>:$execute);
 
   let extraClassDeclaration = [{
@@ -989,7 +998,7 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">, Symbol,
     /// explicit arguments to the 'execute' entry point, and thus should
     /// have the same length as `inputTypes`.
     OpBuilder<(ins "StringAttr":$sym_name,
-                   "StringAttr":$frameworkName,
+                   "StringRef":$frameworkName,
                    "ArrayRef<Type>":$inputTypes,
                    "ArrayRef<Type>":$outputTypes,
                    "ArrayRef<Location>":$inputArgLocs,
@@ -997,9 +1006,11 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">, Symbol,
   ];
 
   let assemblyFormat = [{
-    $sym_name `:` custom<ClassName>($frameworkName) attr-dict
+    $sym_name `:` custom<ClassName>($frameworkName)
+      ($theExtraAttrs^)?
       `init` $init
       `execute` custom<ExecuteRegion>($inputOutputTypes, $execute)
+      attr-dict
   }];
   let hasRegionVerifier = 1;
   let hasVerifier = 1;
