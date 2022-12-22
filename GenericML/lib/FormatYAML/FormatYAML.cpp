@@ -270,7 +270,7 @@ struct MappingTraits<M::ModelSpec::ModelBinary> {
 
     // Check that the URL is valid.
     llvm::Regex re(
-        R"(^(https?)://((([^\/?#]*))?([^?#]*)(\?([^#]*))?(#(.*))?))");
+        R"(^(https?|file)://((([^\/?#]*))?([^?#]*)(\?([^#]*))?(#(.*))?))");
     if (!re.match(binary.url))
       return std::string("the ") + binary.url + " URL specified is not valid";
 
