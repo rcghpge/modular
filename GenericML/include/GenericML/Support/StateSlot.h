@@ -8,6 +8,8 @@
 #define GENERICML_SUPPORT_STATESLOT_H
 
 #include "GenericML/Support/BufferRef.h"
+#include "LLCL/ForwardDecls.h"
+#include "LLCL/Support/RCRef.h"
 #include "Support/AlignedAlloc.h"
 #include "Support/ErrorOr.h"
 
@@ -163,6 +165,35 @@ private:
 };
 
 } // namespace Detail
+
+/// A 'mutable borrow' of a state slot payload of type T. This object holds
+/// both the row pointer to the state slot payload, as well as an async
+/// value reference to the outer context for the slot itself. This allows
+/// usage of the state slot payload to safely overhang the overall context.
+///
+/// TODO(#6327): We'd prefer to ensure all computation depending on the
+/// outer context be completed before the execute body is complete, using
+/// chains where necessary.
+template <typename T>
+class StateSlotPayloadRef {
+public:
+  StateSlotPayloadRef(AnyAsyncValueRef outer, T *payload)
+      : outer(std::move(outer)), payload(payload) {
+    assert(payload && "StateSlotPayloadRef payload cannot be null");
+  }
+
+  T &operator*() const { return *payload; }
+  T *operator->() const { return payload; }
+  T *get() const { return payload; }
+
+  StateSlotPayloadRef copy() const {
+    return StateSlotPayloadRef(outer.copy(), payload);
+  }
+
+private:
+  AnyAsyncValueRef outer;
+  T *payload;
+};
 
 } // namespace M::GML
 
