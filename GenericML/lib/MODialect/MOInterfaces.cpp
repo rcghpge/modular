@@ -37,8 +37,8 @@ LogicalResult impl::verifyMatmulLike(MatmulLike op) {
   if (!aType.hasStaticShape() || !bType.hasStaticShape())
     return success();
 
-  llvm::ArrayRef<int64_t> aMatShape = op.getShapeA().take_back(2);
-  llvm::ArrayRef<int64_t> bMatShape = op.getShapeB().take_back(2);
+  llvm::ArrayRef<int64_t> aMatShape = op.getTensorAShape().take_back(2);
+  llvm::ArrayRef<int64_t> bMatShape = op.getTensorBShape().take_back(2);
   if (aMatShape[1] != bMatShape[0]) {
     return op.emitError(
                "expected matmul-like input matrix shapes (M, K) x (K, N), got ")
@@ -59,7 +59,7 @@ LogicalResult impl::verifyMatmulLike(MatmulLike op) {
   if (!resType.hasStaticShape())
     return success();
 
-  llvm::ArrayRef<int64_t> resMatShape = op.getShapeResult().take_back(2);
+  llvm::ArrayRef<int64_t> resMatShape = op.getTensorResultShape().take_back(2);
   if (resMatShape[0] != aMatShape[0] || resMatShape[1] != bMatShape[1]) {
     return op.emitError("expected matmul-like inputs (M, K) x (K, N) to "
                         "produce result matrix (M, N), got ")

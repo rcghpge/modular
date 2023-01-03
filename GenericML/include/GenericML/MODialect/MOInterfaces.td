@@ -13,6 +13,26 @@
 
 include "mlir/IR/OpBase.td"
 
+def MO_MOOpInterface : OpInterface<"MOOpInterface"> {
+  let description = [{
+    Interface that all MO ops should implement, mainly providing typed accessors
+    to inputs, outputs, and their shapes.
+  }];
+  let cppNamespace = "::M::MO";
+
+  let methods = [
+    InterfaceMethod<"Get an input tensor as a TypedValue",
+      "TypedValue<TensorType>", "getInputTensor", (ins "unsigned int":$idx), [{}],
+      [{ return TypedValue<TensorType>($_op->getOperand(idx)); }]>,
+    InterfaceMethod<"Get the shape of an input tensor",
+      "ArrayRef<int64_t>", "getInputTensorShape", (ins "unsigned int":$idx), [{}],
+      [{ return $_op.getInputTensor(idx).getType().getShape(); }]>,
+    InterfaceMethod<"Get an output tensor as a TypedValue",
+      "TypedValue<TensorType>", "getOutputTensor", (ins "unsigned int":$idx), [{}],
+      [{ return TypedValue<TensorType>($_op->getResult(idx)); }]>,
+  ];
+}
+
 def MO_MatmulLike : OpInterface<"MatmulLike"> {
   let description = [{
     Interface for modeling operations that implement matmul-like behavior,
@@ -20,35 +40,51 @@ def MO_MatmulLike : OpInterface<"MatmulLike"> {
 
     Dynamically ranked/shaped inputs and results are permitted, but if the shape
     is known, the last 2 dimensions of each input are assumed to be the matrix
-    dimension.
+    dimension. This interface refers to the left and right matrices as A and B,
+    respectively.
   }];
   let cppNamespace = "::M::MO";
+  let dependentTraits = [MO_MOOpInterface];
 
   let methods = [
-    InterfaceMethod<"Get the left input", "Value", "getInputA", (ins)>,
-    InterfaceMethod<"Get the right input", "Value", "getInputB", (ins)>,
-    InterfaceMethod<"Get the result", "Value", "getResult", (ins)>,
     InterfaceMethod<"Get the left input tensor as a TypedValue",
       "TypedValue<TensorType>", "getTensorA", (ins), [{}],
-      [{ return TypedValue<TensorType>($_op.getInputA()); }]>,
+      [{ return $_op.getInputTensor(0); }]>,
     InterfaceMethod<"Get the right input tensor as a TypedValue",
       "TypedValue<TensorType>", "getTensorB", (ins), [{}],
-      [{ return TypedValue<TensorType>($_op.getInputB()); }]>,
+      [{ return $_op.getInputTensor(1); }]>,
     InterfaceMethod<"Get the result tensor as a TypedValue",
       "TypedValue<TensorType>", "getTensorResult", (ins), [{}],
-      [{ return TypedValue<TensorType>($_op.getResult()); }]>,
-    InterfaceMethod<"Get the shape of the left tensor",
-      "ArrayRef<int64_t>", "getShapeA", (ins), [{}],
-      [{ return $_op.getTensorA().getType().getShape(); }]>,
-    InterfaceMethod<"Get the shape of the right tensor",
-      "ArrayRef<int64_t>", "getShapeB", (ins), [{}],
-      [{ return $_op.getTensorB().getType().getShape(); }]>,
+      [{ return TypedValue<TensorType>($_op.getOutputTensor(0)); }]>,
+    InterfaceMethod<"Get the shape of the left input tensor",
+      "ArrayRef<int64_t>", "getTensorAShape", (ins), [{}],
+      [{ return $_op.getInputTensorShape(0); }]>,
+    InterfaceMethod<"Get the shape of the right input tensor",
+      "ArrayRef<int64_t>", "getTensorBShape", (ins), [{}],
+      [{ return $_op.getInputTensorShape(1); }]>,
     InterfaceMethod<"Get the shape of the result tensor",
-      "ArrayRef<int64_t>", "getShapeResult", (ins), [{}],
+      "ArrayRef<int64_t>", "getTensorResultShape", (ins), [{}],
       [{ return $_op.getTensorResult().getType().getShape(); }]>,
   ];
 
   let verify = [{ return impl::verifyMatmulLike($_op); }];
+}
+
+
+def MO_ElementWiseUnary : OpInterface<"ElementWiseUnary"> {
+  let description = [{
+    Interface for modeling unary element-wise operations.
+  }];
+  let cppNamespace = "::M::MO";
+  let dependentTraits = [MO_MOOpInterface];
+}
+
+def MO_ElementWiseBinary : OpInterface<"ElementWiseBinary"> {
+  let description = [{
+    Interface for modeling binary element-wise operations.
+  }];
+  let cppNamespace = "::M::MO";
+  let dependentTraits = [MO_MOOpInterface];
 }
 
 

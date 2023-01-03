@@ -23,7 +23,7 @@ include "mlir/IR/SymbolInterfaces.td"
 
 // Base class for ops in this dialect.
 class MO_Op<string mnemonic, list<Trait> traits = []>
-    : Op<MODialect, mnemonic, traits>;
+    : Op<MODialect, mnemonic, [MO_MOOpInterface] # traits>;
 
 class MO_ElementWiseOp<string name, list<Trait> traits = []>
     : MO_Op<name, traits # [Pure, SameOperandsAndResultType]> {
@@ -34,12 +34,12 @@ class MO_ElementWiseOp<string name, list<Trait> traits = []>
 }
 
 class MO_ElementWiseUnaryOp<string name, list<Trait> traits = []>
-    : MO_ElementWiseOp<name, traits> {
+    : MO_ElementWiseOp<name, traits # [MO_ElementWiseUnary]> {
   let arguments = (ins MO_Tensor:$input);
 }
 
 class MO_ElementWiseBinaryOp<string name, list<Trait> traits = []>
-    : MO_ElementWiseOp<name, traits> {
+    : MO_ElementWiseOp<name, traits # [MO_ElementWiseBinary]> {
   let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y);
 }
 
