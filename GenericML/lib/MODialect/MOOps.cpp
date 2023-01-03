@@ -73,6 +73,36 @@ OpFoldResult ConstantOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// MO_ConcatOp support
+//===----------------------------------------------------------------------===//
+
+LogicalResult ConcatOp::verify() {
+  if (!getAxis().getType().getShape().empty())
+    return emitError("concat axis must be a scalar tensor");
+
+  size_t numInputs = getInputs().size();
+  if (numInputs < 2)
+    return emitError("concat must have at least 2 input tensors");
+
+  llvm::SmallVector<size_t> ranks;
+  for (size_t j = 0; j < numInputs; ++j) {
+    TensorType t = getInputTensor(j).getType();
+    if (t.hasRank())
+      ranks.emplace_back(t.getRank());
+  }
+  if (!ranks.empty()) {
+    if (!llvm::all_equal(ranks))
+      return emitError("concat inputs with known rank must match");
+
+    if (TensorType resType = getResult().getType(); resType.hasRank())
+      if (resType.getRank() != ranks[0])
+        return emitError("concat output with known rank must match inputs");
+  }
+
+  return LogicalResult::success();
+}
+
+//===----------------------------------------------------------------------===//
 // Matmul definitions.
 //===----------------------------------------------------------------------===//
 
@@ -87,10 +117,6 @@ LogicalResult MatmulOp::verify() {
 
   return LogicalResult::success();
 }
-
-//===----------------------------------------------------------------------===//
-// Matmul definitions.
-//===----------------------------------------------------------------------===//
 
 LogicalResult BatchMatmulOp::verify() {
   TensorType aType = getTensorA().getType();

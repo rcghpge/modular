@@ -62,6 +62,24 @@ mo.graph @two_constants() -> (!mo.tensor<2x3xf32>, !mo.tensor<4xsi8>) {
   mo.output %0, %1 : !mo.tensor<2x3xf32>, !mo.tensor<4xsi8>
 }
 
+// CHECK: mo.graph @concat(%[[ARG0:.*]]: !mo.tensor<2x3xf32>, %[[ARG1:.*]]: !mo.tensor<2x5xf32>) -> !mo.tensor<2x8xf32> {
+mo.graph @concat(%arg0: !mo.tensor<2x3xf32>, %arg1: !mo.tensor<2x5xf32>) -> !mo.tensor<2x8xf32> {
+  // CHECK: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<si64>
+  %ax = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<si64>
+  // CHECK: mo.concat[%[[VAL0]] : !mo.tensor<si64>] (%[[ARG0]], %[[ARG1]]) : (!mo.tensor<2x3xf32>, !mo.tensor<2x5xf32>) -> !mo.tensor<2x8xf32>
+  %0 = mo.concat[%ax: !mo.tensor<si64>](%arg0, %arg1) : (!mo.tensor<2x3xf32>, !mo.tensor<2x5xf32>) -> !mo.tensor<2x8xf32>
+  mo.output %0 : !mo.tensor<2x8xf32>
+}
+
+// CHECK: mo.graph @concat_dyn_rank(%[[ARG0:.*]]: !mo.tensor<2x3xf32>, %[[ARG1:.*]]: !mo.tensor<*f32>) -> !mo.tensor<2x8xf32> {
+mo.graph @concat_dyn_rank(%arg0: !mo.tensor<2x3xf32>, %arg1: !mo.tensor<*f32>) -> !mo.tensor<2x8xf32> {
+  // CHECK: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<si64>
+  %ax = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<si64>
+  // CHECK: mo.concat[%[[VAL0]] : !mo.tensor<si64>] (%[[ARG0]], %[[ARG1]]) : (!mo.tensor<2x3xf32>, !mo.tensor<*f32>) -> !mo.tensor<2x8xf32>
+  %0 = mo.concat[%ax: !mo.tensor<si64>](%arg0, %arg1) : (!mo.tensor<2x3xf32>, !mo.tensor<*f32>) -> !mo.tensor<2x8xf32>
+  mo.output %0 : !mo.tensor<2x8xf32>
+}
+
 {-#
   dialect_resources: {
     builtin: {

@@ -217,6 +217,23 @@ def MO_BroadcastToOp : MO_Op<"broadcast_to", [Pure]> {
   let results = (outs MO_Tensor:$result);
 }
 
+def MO_ConcatOp : MO_Op<"concat", [Pure]> {
+  let summary = "BroadcastTo Operation";
+  let description = [{
+    Concatenate the input tensors along a given dimension.
+  }];
+
+  let arguments = (ins Variadic<MO_Tensor>:$inputs, MO_Tensor:$axis);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `[` $axis `:` qualified(type($axis)) `]`
+    `(` $inputs `)` attr-dict `:`functional-type($inputs, results)
+  }];
+
+  let hasVerifier = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // Matmul related ops
 //===----------------------------------------------------------------------===//
