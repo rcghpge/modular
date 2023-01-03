@@ -67,13 +67,6 @@ LogicalResult OutputOp::verify() {
 // MO_ConstantOp support
 //===----------------------------------------------------------------------===//
 
-void MODialect::registerOperations() {
-  addOperations<
-#define GET_OP_LIST
-#include "GenericML/MODialect/MO.cpp.inc"
-      >();
-}
-
 OpFoldResult ConstantOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.empty() && "constant has no operands");
   return getValueAttr();
@@ -115,6 +108,13 @@ LogicalResult BatchMatmulOp::verify() {
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
+
+void MODialect::registerOperations() {
+  addOperations<
+#define GET_OP_LIST
+#include "GenericML/MODialect/MO.cpp.inc"
+      >();
+}
 
 #define GET_OP_CLASSES
 #include "GenericML/MODialect/MO.cpp.inc"
