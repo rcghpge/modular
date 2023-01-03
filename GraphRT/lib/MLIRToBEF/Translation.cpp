@@ -12,7 +12,7 @@
 #include "mlir/Tools/mlir-translate/Translation.h"
 #include "GraphRT/BEFDialect/BEFDialect.h"
 #include "GraphRT/MLIRToBEF.h"
-#include "Support/ConcatenationTree.h"
+#include "Support/ADT/ConcatenationTree.h"
 #include "Support/MDialect/MDialect.h"
 #include "mlir/IR/BuiltinOps.h"
 using namespace M;

@@ -19,7 +19,7 @@
 #include "GraphRT/BEF/BEFEncoding.h"
 #include "GraphRT/BEFDialect/BEFNonStrict.h"
 #include "GraphRT/BEFDialect/BEFOps.h"
-#include "Support/ConcatenationTree.h"
+#include "Support/ADT/ConcatenationTree.h"
 #include "Support/ErrorOr.h"
 #include "Support/MDialect/MAttrs.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"

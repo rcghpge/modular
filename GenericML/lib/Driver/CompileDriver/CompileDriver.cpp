@@ -6,7 +6,7 @@
 
 #include "GenericML/Driver/CompileDriver.h"
 #include "GraphRT/MLIRToBEF.h"
-#include "Support/ConcatenationTree.h"
+#include "Support/ADT/ConcatenationTree.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "llvm/Support/MemoryBuffer.h"
 
