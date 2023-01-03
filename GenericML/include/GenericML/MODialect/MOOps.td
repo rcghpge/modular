@@ -48,7 +48,7 @@ class MO_ElementWiseBinaryOp<string name, list<Trait> traits = []>
 //===----------------------------------------------------------------------===//
 
 def MO_GraphOp : MO_Op<"graph", [HasParent<"ModuleOp">, FunctionOpInterface,
-                                 Symbol, SymbolTable,IsolatedFromAbove
+                                 Symbol, SymbolTable, IsolatedFromAbove
   // TODO : Re-enable TransformableGraphInterface
   // DeclareOpInterfaceMethods<TransformableGraphInterface>
 ]> {
