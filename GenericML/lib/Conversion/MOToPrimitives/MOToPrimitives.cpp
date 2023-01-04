@@ -16,6 +16,8 @@
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/Transforms/DialectConversion.h"
 
+#include <numeric>
+
 using namespace M;
 
 namespace M::MGP {
@@ -107,6 +109,9 @@ private:
   /// Lowers mo.constant op.
   LogicalResult lowerConstant(MO::ConstantOp constOp);
 
+  // Lower a generic operation to a KGEN invoke.
+  LogicalResult lowerOperation(mlir::Operation *op);
+
   //===-----------------------------------------------------------------===//
   // Lowering state
   //===-----------------------------------------------------------------===//
@@ -148,7 +153,7 @@ LogicalResult MOGraphLowering::createModelOp() {
   b.setInsertionPoint(graph);
   common.modelOp = b.create<MGP::ModelOp>(graph.getLoc(),
                                           /*sym_name=*/graph.getNameAttr(),
-                                          /*frameworkName=*/"mgp",
+                                          /*frameworkName=*/"tfl",
                                           /*inputTypes=*/inputTypes,
                                           /*outputTypes=*/outputTypes,
                                           /*inputArgLocs=*/inputLocs);
@@ -169,6 +174,7 @@ LogicalResult MOGraphLowering::createModelOp() {
 
   // Extract chain and MGP context from arguments
   execute.invokableInputChain = executeBlock->getArgument(0);
+  execute.mgpContext = executeBlock->getArgument(1);
 
   // This field tracks the current output chain as we lower into the execute
   // body.
@@ -196,6 +202,100 @@ LogicalResult MOGraphLowering::lowerOutput(MO::OutputOp output) {
 
   // Finally, we can create the bef.output op.
   execute.builder.create<BEF::OutputOp>(output.getLoc(), operands);
+  return success();
+}
+
+LogicalResult MOGraphLowering::lowerOperation(mlir::Operation *op) {
+  auto loc = op->getLoc();
+
+  // Operands to pass to the operation. Input tensors are expanded to buffers
+  // and specs in IR those are passed in.
+  SmallVector<Value> operands;
+  for (Value operand : op->getOperands()) {
+    // Extract the buffer and spec from the MGP tensor.
+    mlir::Value mgpTensor = execute.loweredTensors.lookup(operand);
+
+    auto extract =
+        execute.builder.create<MGP::CpuTensorExtractOp>(loc, mgpTensor);
+
+    // Add the expanded buffer and spec as arguments to the operation.
+    operands.push_back(extract.getBufferResult());
+    operands.push_back(extract.getTensorSpecResult());
+  }
+
+  // We can't create the tensors until after the operation as they are
+  // immutable.
+  SmallVector<
+      std::pair<MGP::CpuBufferAllocStaticOp, MGP::CpuTensorSpecCreateOp>>
+      outputBufferAndSpec;
+
+  // Allocate the output buffer for each result and add as argument.
+  for (Type t : op->getResultTypes()) {
+    MO::TensorType asTensor = t.cast<MO::TensorType>();
+    // TODO: Check for dynamic shapes.
+
+    // Allocate the buffer for the output.
+    // TODO: Deduce element size. Feel like maybe should be in MGP builder.
+    const int64_t elementSize = sizeof(float);
+
+    int64_t bufferSize =
+        std::accumulate(asTensor.getShape().begin(), asTensor.getShape().end(),
+                        elementSize, std::multiplies<int64_t>());
+
+    auto bufferOp = execute.builder.create<MGP::CpuBufferAllocStaticOp>(
+        loc, execute.mgpContext, bufferSize);
+
+    // Create an MGP tensor to match the MO output tensor.
+    auto outSpecType = MGP::CpuTensorSpecType::get(asTensor.getShape(),
+                                                   asTensor.getElementType());
+    auto specOp =
+        execute.builder.create<MGP::CpuTensorSpecCreateOp>(loc, outSpecType);
+
+    // Add the output buffer and spec as inputs to the operation.
+    operands.push_back(bufferOp.getResult());
+    operands.push_back(specOp.getResult());
+
+    // Track the buffer and spec so we can create the immutable tensor after the
+    // operation.
+    outputBufferAndSpec.push_back({bufferOp, specOp});
+  }
+
+  const std::string opName = "mop.kgen." + op->getName().stripDialect().str();
+
+  // Create a call to a custom invoke function we can put in the BEF.
+  mlir::OperationState opState{loc, opName};
+
+  // Add the execute chain as the first argument.
+  operands.insert(operands.begin(), execute.chain);
+  opState.addOperands(operands);
+
+  // The return type is just the chain, other outputs are passed as argument by
+  // their buffer pointers.
+  opState.addTypes({execute.chain.getType()});
+
+  // Add it to the MLIR.
+  mlir::Operation *invokeOp = execute.builder.create(opState);
+  execute.chain = invokeOp->getResult(0);
+
+  size_t outputIndex = 0;
+
+  // Allocate the output tensors this must be done after as the tensor is read
+  // only.
+  for (auto &[buffer, spec] : outputBufferAndSpec) {
+    // Get the type of the spec and infer the type of the tensor from that.
+    auto ty = cast<MGP::CpuTensorSpecType>(spec->getResultTypes()[0]);
+    auto tensorType = MGP::CpuTensorType::get(execute.builder.getContext(), ty);
+
+    // Create an immutable tensor
+    auto tensorCreateOp = execute.builder.create<MGP::CpuTensorCreateOp>(
+        loc, tensorType, execute.chain, buffer, spec);
+
+    // Update the MO tensor to now refer to this mgp tensor.
+    execute.loweredTensors.try_emplace(op->getResult(outputIndex),
+                                       tensorCreateOp.getResult());
+    outputIndex++;
+  }
+
   return success();
 }
 
@@ -253,7 +353,7 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
   auto tensorType =
       MGP::CpuTensorType::get(execute.builder.getContext(), outSpecType);
   auto tensorCreateOp = execute.builder.create<MGP::CpuTensorCreateOp>(
-      loc, tensorType, execute.invokableInputChain, bufferOp, specOp);
+      loc, tensorType, execute.chain, bufferOp, specOp);
   execute.loweredTensors.try_emplace(constOp->getResult(0),
                                      tensorCreateOp->getResult(0));
   return success();
@@ -285,6 +385,14 @@ LogicalResult MOGraphLowering::run() {
     // Lower mo.output to bef.output trivially.
     if (auto output = dyn_cast<MO::OutputOp>(op)) {
       if (failed(lowerOutput(output)))
+        return failure();
+      continue;
+    }
+
+    // If we still have a MO op just use the generic lowering.
+    // TODO-maybe?: Add as a trait.
+    if (isa<MO::MODialect>(op.getDialect())) {
+      if (failed(lowerOperation(&op)))
         return failure();
       continue;
     }

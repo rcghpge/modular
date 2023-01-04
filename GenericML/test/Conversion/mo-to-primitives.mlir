@@ -1,6 +1,6 @@
-// RUN: mgp-opt %s --mo-to-primitives | FileCheck %s
+// RUN: mgp-opt %s --mo-to-primitives --allow-unregistered-dialect | FileCheck %s
 
-// CHECK:      mgp.model @constants_with_multiple_returns : mgp init {
+// CHECK:      mgp.model @constants_with_multiple_returns : tfl init {
 // CHECK:        %0 = grt.chain.create
 // CHECK:        %1 = mgp.context.create 0
 // CHECK:        bef.output %0, %1 : !bef.chain, !mgp.context

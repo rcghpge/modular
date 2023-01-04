@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MGPPrimitives/MGPPrimitives.h"
+#include "GenericML/MOPrimitives/MOPrimitives.h"
 #include "GenericML/Support/Context.h"
 #include "GenericML/Support/StateSlot.h"
 #include "GenericML/Support/Tensor.h"
@@ -419,4 +420,7 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.cpu.tensor.create", mgp_cpu_tensor_create);
   ADD_PRIMITIVE(registry, "mgp.cpu.tensor.extract", mgp_cpu_tensor_extract);
   ADD_PRIMITIVE(registry, "mgp.model", mgp_model);
+
+  // Have the MO primitives be registered wherever MGP is registered.
+  registerMOPrimitives(registry);
 }
