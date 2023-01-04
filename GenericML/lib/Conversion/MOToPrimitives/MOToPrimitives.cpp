@@ -234,20 +234,20 @@ LogicalResult MOGraphLowering::lowerOperation(mlir::Operation *op) {
     MO::TensorType asTensor = t.cast<MO::TensorType>();
     // TODO: Check for dynamic shapes.
 
-    // Allocate the buffer for the output.
-    // TODO: Deduce element size. Feel like maybe should be in MGP builder.
-    const int64_t elementSize = sizeof(float);
-
-    int64_t bufferSize =
-        std::accumulate(asTensor.getShape().begin(), asTensor.getShape().end(),
-                        elementSize, std::multiplies<int64_t>());
-
-    auto bufferOp = execute.builder.create<MGP::CpuBufferAllocStaticOp>(
-        loc, execute.mgpContext, bufferSize);
-
-    // Create an MGP tensor to match the MO output tensor.
+    // Output tensor type.
     auto outSpecType = MGP::CpuTensorSpecType::get(asTensor.getShape(),
                                                    asTensor.getElementType());
+
+    Optional<uint64_t> bufferSize = outSpecType.getSizeInBytes();
+    // Fail for dynamic shapes for now.
+    if (!bufferSize)
+      return failure();
+
+    // Allocate the buffer for the output.
+    auto bufferOp = execute.builder.create<MGP::CpuBufferAllocStaticOp>(
+        loc, execute.mgpContext, *bufferSize);
+
+    // Create an MGP tensor to match the MO output tensor.
     auto specOp =
         execute.builder.create<MGP::CpuTensorSpecCreateOp>(loc, outSpecType);
 
