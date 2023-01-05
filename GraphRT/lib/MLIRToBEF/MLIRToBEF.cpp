@@ -1014,7 +1014,7 @@ LogicalResult TypeEmitter::emitShapedType(ShapedType type) {
   emitter->emitByte((uint8_t)shape.size());
 
   for (int64_t value : shape)
-    emitter->emitVBR((size_t)value);
+    emitter->emitVBR(static_cast<size_t>(value));
 
   return success();
 }
