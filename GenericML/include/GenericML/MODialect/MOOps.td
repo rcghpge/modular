@@ -119,7 +119,8 @@ def MO_ConstantOp : MO_Op<"constant", [ConstantLike, Pure]> {
 
   let arguments = (ins
     ConfinedAttr<
-      ElementsAttr, [AnyAttrOf<[M_ArrayElementsAttr, Builtin_DenseResourceElementsAttr]>]
+      ElementsAttr,
+      [AnyAttrOf<[M_ArrayElementsAttr, Builtin_DenseResourceElementsAttr]>]
     >:$value);
   let results = (outs MO_Tensor:$result);
 
@@ -218,6 +219,59 @@ def MO_TanhOp : MO_ElementWiseUnaryOp<"tanh"> {
   let summary = "Tanh function";
   let description = [{
     Computes the hyperbolic tangent of the input tensor elements.
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// Sliding window ops
+//===----------------------------------------------------------------------===//
+
+/// Checks if a type has rank 1 if statically ranked.
+def DimOneIfRankedTypePred : Or<[Neg<HasRankPred>, HasAnyRankOfPred<[1]>]>;
+
+/// Checks if a MO_TensorType has SI64 elements.
+def HasSI64ElementTypePred : SubstLeaves<
+  "$_self", "cast<M::MO::TensorType>($_self).getElementType()", SI64.predicate>;
+
+/// Confines the MO_TensorType so that it has SI64 elements, and rank 1 if the
+/// rank is static. This is useful because the verifier for these constraints is
+/// generated automatically.
+def ShapeLikeIfRanked : ConfinedType<MO_Tensor,
+    [DimOneIfRankedTypePred, HasSI64ElementTypePred],
+    "dim 1 or unranked with signed 64 integer elements"> {
+  let cppClassName = "::M::MO::TensorType";
+}
+
+def MO_MaxPoolOp : MO_Op<"max_pool", [Pure]>{
+  let summary = "Max pooling operation";
+  let description = [{
+    Apply max pooling with the given filter size and strides.
+
+    All hyperparameters (i.e. filter_shape, strides, dilations) must be of rank
+    1, or unranked. If the input has static rank, all hyperparameters with
+    static shape must have sizes the match the input rank.
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    ShapeLikeIfRanked:$filter_shape,
+    ShapeLikeIfRanked:$strides,
+    ShapeLikeIfRanked:$dilations);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `(` $input `)` `[` `filter_shape` `=` $filter_shape `,`
+    `strides` `=` $strides `,` `dilations` `=` $dilations `]` attr-dict `:`
+    functional-type(operands, results)
+  }];
+
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    private:
+      /// Helper for verifying window op shape/rank invariants.
+      LogicalResult verifyWindowParamShapeAndInputMatch(
+        TypedValue<::M::MO::TensorType> windowParam, StringRef name);
   }];
 }
 
