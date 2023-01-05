@@ -154,6 +154,20 @@ def MO_DivOp : MO_ElementWiseBinaryOp<"div"> {
   }];
 }
 
+def MO_ExpOp : MO_ElementWiseUnaryOp<"exp"> {
+  let summary = "Exponential function";
+  let description = [{
+    Returns exp(x), where x is the input tensor.
+  }];
+}
+
+def MO_ErfOp : MO_ElementWiseUnaryOp<"erf"> {
+  let summary = "Absolute value operation";
+  let description = [{
+    Computes the Gauss error function of the input tensor elements.
+  }];
+}
+
 def MO_GeluOp : MO_ElementWiseUnaryOp<"gelu"> {
   let summary = " Gaussian Error Linear Unit operation";
   let description = [{
@@ -172,7 +186,7 @@ def MO_MulOp : MO_ElementWiseBinaryOp<"mul"> {
 def MO_ReluOp : MO_ElementWiseUnaryOp<"relu", [Idempotent]> {
   let summary = "Rectified linear unit operation";
   let description = [{
-    Returns max(0, x), where x is the input tensors.
+    Returns max(0, x), where x is the input tensor.
   }];
 }
 
@@ -197,6 +211,13 @@ def MO_SubOp : MO_ElementWiseBinaryOp<"sub"> {
   let summary = "Subtract operation";
   let description = [{
     Returns x - y, where x and y are input tensors.
+  }];
+}
+
+def MO_TanhOp : MO_ElementWiseUnaryOp<"tanh"> {
+  let summary = "Tanh function";
+  let description = [{
+    Computes the hyperbolic tangent of the input tensor elements.
   }];
 }
 
