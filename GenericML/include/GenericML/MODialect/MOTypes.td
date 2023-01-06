@@ -81,4 +81,27 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [ShapedTypeInterface]> {
   }];
 }
 
+// ODS constraints to inject verifier logic via type annotation.
+def RankedScalarTypePred : And<[HasRankPred, HasAnyRankOfPred<[0]>]>;
+def RankedNonScalarTypePred : And<[HasRankPred, Neg<HasAnyRankOfPred<[0]>>]>;
+def IntOrIndexElementTypePred : CPred<"$_self.cast<::M::MO::TensorType>().getElementType().isIntOrIndex()">;
+
+def MO_RankedScalarTensor : ConfinedType<MO_Tensor,
+    [RankedScalarTypePred],
+    "ranked scalar tensor"> {
+  let cppClassName = "::M::MO::TensorType";
+}
+
+def MO_RankedNonScalarTensor : ConfinedType<MO_Tensor,
+    [RankedNonScalarTypePred],
+    "ranked non-scalar tensor"> {
+  let cppClassName = "::M::MO::TensorType";
+}
+
+def MO_IndicesTensor : ConfinedType<MO_Tensor,
+    [IntOrIndexElementTypePred],
+    "tensor with integer or index elements"> {
+  let cppClassName = "::M::MO::TensorType";
+}
+
 #endif // GENERICML_MODIALECT_MOTYPES_TD

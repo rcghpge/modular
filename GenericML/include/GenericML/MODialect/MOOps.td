@@ -107,6 +107,7 @@ def MO_OutputOp
   let assemblyFormat = "attr-dict ($operands^ `:` type($operands))?";
   let hasVerifier = 1;
 }
+
 //===----------------------------------------------------------------------===//
 // ConstantOp
 //===----------------------------------------------------------------------===//
@@ -293,7 +294,7 @@ def MO_BroadcastToOp : MO_Op<"broadcast_to", [Pure]> {
 }
 
 def MO_ConcatOp : MO_Op<"concat", [Pure]> {
-  let summary = "BroadcastTo Operation";
+  let summary = "Concat Operation";
   let description = [{
     Concatenate the input tensors along a given dimension.
   }];
@@ -310,9 +311,27 @@ def MO_ConcatOp : MO_Op<"concat", [Pure]> {
 }
 
 //===----------------------------------------------------------------------===//
-// Matmul related ops
+// GatherOp
 //===----------------------------------------------------------------------===//
 
+def MO_GatherOp : MO_Op<"gather", [Pure]> {
+  let summary = "Gather Operation";
+  let description = [{
+    Gather slices from params' axis according to indices.
+  }];
+
+  let arguments = (ins MO_RankedNonScalarTensor:$params,
+                       MO_IndicesTensor:$indices,
+                       MO_RankedScalarTensor:$axis);
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// Matmul related ops
+//===----------------------------------------------------------------------===//
 
 class MO_DotBase<string name, list<Trait> traits = []>
   : MO_Op<name, traits # [SameOperandsAndResultElementType]> {

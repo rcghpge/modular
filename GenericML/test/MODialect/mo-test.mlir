@@ -80,6 +80,15 @@ mo.graph @concat_dyn_rank(%arg0: !mo.tensor<2x3xf32>, %arg1: !mo.tensor<*f32>) -
   mo.output %0 : !mo.tensor<2x8xf32>
 }
 
+// CHECK: mo.graph @gather(%[[PARAMS:.*]]: !mo.tensor<2x2xf32>, %[[INDICES:.*]]: !mo.tensor<2xsi64>) -> !mo.tensor<2x2xf32> {
+mo.graph @gather(%params: !mo.tensor<2x2xf32>, %indices: !mo.tensor<2xsi64>) -> !mo.tensor<2x2xf32> {
+  // CHECK: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<si64>
+  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<si64>
+  // CHECK: mo.gather(%[[PARAMS]], %[[INDICES]], %[[AXIS]]) : (!mo.tensor<2x2xf32>, !mo.tensor<2xsi64>, !mo.tensor<si64>) -> !mo.tensor<2x2xf32>
+  %0 = mo.gather(%params, %indices, %axis) : (!mo.tensor<2x2xf32>, !mo.tensor<2xsi64>, !mo.tensor<si64>) -> !mo.tensor<2x2xf32>
+  mo.output %0 : !mo.tensor<2x2xf32>
+}
+
 {-#
   dialect_resources: {
     builtin: {
