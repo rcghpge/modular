@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/Conversion/MOToPrimitives.h"
+#include "GenericML/Interfaces/MOLoweringInterface.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MODialect/MOOps.h"
 #include "GraphRT/BEFDialect/BEFOps.h"
@@ -39,67 +40,14 @@ namespace {
 /// The construction state for the init/execute invokables are kept in 'init'
 /// and 'execute' members which are mutated as each operation in the input graph
 /// is lowered.
-class MOGraphLowering {
+class MOGraphLowering : public MGP::MOGraphLoweringState {
 public:
-  MOGraphLowering(MO::GraphOp graph, TypeConverter &typeConverter)
-      : graph(graph), typeConverter(typeConverter), init(graph.getContext()),
-        execute(graph.getContext()) {}
+  MOGraphLowering(M::MO::GraphOp graph, TypeConverter &typeConverter,
+                  llvm::StringRef compiledFrameworkLabel)
+      : MOGraphLoweringState(graph, typeConverter, compiledFrameworkLabel) {}
 
   /// Lower the mo.graph to mgp.model.
   LogicalResult run();
-
-private:
-  /// This is common state used by both the init and execute phases.
-  struct CommonState {
-    explicit CommonState() = default;
-
-    /// This is the top-level mgp.model operation we're building.
-    MGP::ModelOp modelOp;
-
-    CommonState(const CommonState &) = delete;
-    void operator=(const CommonState &) = delete;
-  };
-
-  /// This is the state used when building an invokable for the 'init' phase.
-  struct InitState {
-    InitState(MLIRContext *ctx) : builder(ctx) {}
-
-    /// This is the current chain value being added to.
-    Value chain;
-    /// This op creates and returns the overall MGP context.
-    MGP::ContextCreateOp mgpContext;
-
-    /// This is a builder appending operations to the end of the invokable.
-    OpBuilder builder;
-
-    InitState(const InitState &) = delete;
-    void operator=(const InitState &) = delete;
-  };
-
-  /// This is stated used when building an invokable for the 'execute' phase.
-  struct ExecuteState {
-    ExecuteState(MLIRContext *ctx) : builder(ctx) {}
-
-    /// This is the original input chain to the invokable, and is ready
-    /// when the argument tensors are ready.
-    Value invokableInputChain;
-
-    /// This chain is ready when the current global state is ready for the
-    /// next possibly mutating op.
-    Value chain;
-
-    /// This is the MGP context passed in as the second argument.
-    Value mgpContext;
-
-    /// Keeps track of what mo.tensor SSA values are lowered to.
-    DenseMap<Value, Value> loweredTensors;
-
-    /// This is a builder appending operations to the end of the invokable.
-    OpBuilder builder;
-
-    ExecuteState(const ExecuteState &) = delete;
-    void operator=(const ExecuteState &) = delete;
-  };
 
   LogicalResult createModelOp();
 
@@ -111,20 +59,6 @@ private:
 
   // Lower a generic operation to a KGEN invoke.
   LogicalResult lowerOperation(mlir::Operation *op);
-
-  //===-----------------------------------------------------------------===//
-  // Lowering state
-  //===-----------------------------------------------------------------===//
-
-  /// This is the graph being lowered.
-  MO::GraphOp graph;
-  /// This helps lower tensor types.
-  TypeConverter &typeConverter;
-
-  /// This keeps track of the init and execute invokables that we're building.
-  CommonState common;
-  InitState init;
-  ExecuteState execute;
 };
 
 } // namespace
@@ -151,12 +85,13 @@ LogicalResult MOGraphLowering::createModelOp() {
 
   // Create the mgp.model and the regions for the init/execute phases.
   b.setInsertionPoint(graph);
-  common.modelOp = b.create<MGP::ModelOp>(graph.getLoc(),
-                                          /*sym_name=*/graph.getNameAttr(),
-                                          /*frameworkName=*/"tfl",
-                                          /*inputTypes=*/inputTypes,
-                                          /*outputTypes=*/outputTypes,
-                                          /*inputArgLocs=*/inputLocs);
+  common.modelOp =
+      b.create<MGP::ModelOp>(graph.getLoc(),
+                             /*sym_name=*/graph.getNameAttr(),
+                             /*frameworkName=*/common.compiledFrameworkLabel,
+                             /*inputTypes=*/inputTypes,
+                             /*outputTypes=*/outputTypes,
+                             /*inputArgLocs=*/inputLocs);
 
   // Initialize the init state.
   init.builder.setInsertionPointToEnd(common.modelOp.getInitBlock());
@@ -397,6 +332,13 @@ LogicalResult MOGraphLowering::run() {
       continue;
     }
 
+    // Implementers of the lowering interface define their own logic.
+    if (auto lowerable = dyn_cast<MGP::MOLoweringInterface>(op)) {
+      if (failed(lowerable.lower(*this)))
+        return failure();
+      continue;
+    }
+
     return op.emitError("op currently not supported");
   }
 
@@ -432,7 +374,9 @@ void MOToPrimitivesPass::runOnOperation() {
   // Convert each mo.graph into a mgp.model.
   for (auto graphOp :
        llvm::make_early_inc_range(theModule.getOps<MO::GraphOp>())) {
-    if (failed(MOGraphLowering(graphOp, converter).run()))
+    if (failed(MOGraphLowering(graphOp, converter,
+                               compiledFrameworkLabel.getValue())
+                   .run()))
       return signalPassFailure();
   }
 }
