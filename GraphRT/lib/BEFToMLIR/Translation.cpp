@@ -34,5 +34,5 @@ void M::registerBEFToMLIRTranslation() {
             input->getBufferSize());
         return translateBEFToMLIR(contents, loc).getOperation();
       },
-      maxAttributeAlignment());
+      [](DialectRegistry &) {}, maxAttributeAlignment());
 }
