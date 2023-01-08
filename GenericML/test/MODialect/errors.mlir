@@ -28,7 +28,7 @@ mo.graph @concat_non_scalar_axis(%arg0: !mo.tensor<7xf32>, %arg1: !mo.tensor<2xf
 
 mo.graph @concat_non_matching_input_ranks(%arg0: !mo.tensor<7xf32>, %arg1: !mo.tensor<2x3xf32>) -> !mo.tensor<9xf32> {
   %ax = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<si64>
-  // expected-error@+1 {{concat inputs with known rank must match}}
+  // expected-error@+1 {{input and output ranks must match if static}}
   %0 = mo.concat[%ax: !mo.tensor<si64>](%arg0, %arg1) : (!mo.tensor<7xf32>, !mo.tensor<2x3xf32>) -> !mo.tensor<9xf32>
   mo.output %0 : !mo.tensor<9xf32>
 }
@@ -37,7 +37,7 @@ mo.graph @concat_non_matching_input_ranks(%arg0: !mo.tensor<7xf32>, %arg1: !mo.t
 
 mo.graph @concat_non_matching_output_rank(%arg0: !mo.tensor<2x2xf32>, %arg1: !mo.tensor<2x3xf32>) -> !mo.tensor<9xf32> {
   %ax = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<si64>
-  // expected-error@+1 {{concat output with known rank must match inputs}}
+  // expected-error@+1 {{input and output ranks must match if static}}
   %0 = mo.concat[%ax: !mo.tensor<si64>](%arg0, %arg1) : (!mo.tensor<2x2xf32>, !mo.tensor<2x3xf32>) -> !mo.tensor<9xf32>
   mo.output %0 : !mo.tensor<9xf32>
 }

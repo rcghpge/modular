@@ -1,15 +1,15 @@
 // RUN: mo-opt %s --split-input-file --verify-diagnostics
 
-mo.graph @rank_too_low(%arg0: !mo.tensor<10xf32>, %arg1: !mo.tensor<20xf32>) -> !mo.tensor<10x20xf32> {
+mo.graph @rank_too_low(%arg0: !mo.tensor<10xf32>, %arg1: !mo.tensor<10xf32>) -> !mo.tensor<10xf32> {
   // expected-error@+1 {{expected matmul-like input tensors to have at least rank 2, got 1}}
-  %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<10xf32>, !mo.tensor<20xf32>) -> !mo.tensor<10x20xf32>
-  mo.output %0 : !mo.tensor<10x20xf32>
+  %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<10xf32>, !mo.tensor<10xf32>) -> !mo.tensor<10xf32>
+  mo.output %0 : !mo.tensor<10xf32>
 }
 
 // -----
 
-mo.graph @different_ranks(%arg0: !mo.tensor<10x10x20xf32>, %arg1: !mo.tensor<20x5xf32>) -> !mo.tensor<10x5xf32> {
-  // expected-error@+1 {{matmul-like input tensors are not the same rank, got 3 and 2}}
+mo.graph @different_input_ranks(%arg0: !mo.tensor<10x10x20xf32>, %arg1: !mo.tensor<20x5xf32>) -> !mo.tensor<10x5xf32> {
+  // expected-error@+1 {{input and output ranks must match if static}}
   %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<10x10x20xf32>, !mo.tensor<20x5xf32>) -> !mo.tensor<10x5xf32>
   mo.output %0 : !mo.tensor<10x5xf32>
 }
@@ -33,7 +33,7 @@ mo.graph @output_wrong_shape(%arg0: !mo.tensor<10x20xf32>, %arg1: !mo.tensor<20x
 // -----
 
 mo.graph @output_wrong_rank(%arg0: !mo.tensor<10x20xf32>, %arg1: !mo.tensor<20x5xf32>) -> !mo.tensor<10xf32> {
-  // expected-error@+1 {{expected matmul-like result tensor to have the same rank as the input (2), got 1}}
+  // expected-error@+1 {{input and output ranks must match if static}}
   %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<10x20xf32>, !mo.tensor<20x5xf32>) -> !mo.tensor<10xf32>
   mo.output %0 : !mo.tensor<10xf32>
 }

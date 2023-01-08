@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MODialect/MOOps.h"
+#include "GenericML/MODialect/MOInterfaces.h"
 #include "Support/Compiler/VerifyUtils.h"
 #include "Support/MDialect/MAttrs.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -84,20 +85,10 @@ LogicalResult ConcatOp::verify() {
   if (numInputs < 2)
     return emitError("concat must have at least 2 input tensors");
 
-  llvm::SmallVector<size_t> ranks;
-  for (size_t j = 0; j < numInputs; ++j) {
-    TensorType t = getInputTensor(j).getType();
-    if (t.hasRank())
-      ranks.emplace_back(t.getRank());
-  }
-  if (!ranks.empty()) {
-    if (!llvm::all_equal(ranks))
-      return emitError("concat inputs with known rank must match");
-
-    if (TensorType resType = getResult().getType(); resType.hasRank())
-      if (resType.getRank() != ranks[0])
-        return emitError("concat output with known rank must match inputs");
-  }
+  SmallVector<TypedValue<TensorType>> tensors{getInputs()};
+  tensors.emplace_back(getResult());
+  if (failed(impl::verifyMatchingRanks(tensors)))
+    return emitError("input and output ranks must match if static");
 
   return LogicalResult::success();
 }
@@ -110,10 +101,6 @@ LogicalResult MaxPoolOp::verify() {
   TensorType inputTy = getInput().getType();
 
   if (inputTy.hasRank()) {
-    if (TensorType resultTy = getResult().getType(); resultTy.hasRank()) {
-      if (inputTy.getRank() != resultTy.getRank())
-        return emitError("input and result ranks must match if static");
-    }
     auto op = cast<SlidingWindow>(this->getOperation());
     if (failed(op.verifyWindowParamShape(getFilterShape(), "filter_shape")))
       return failure();

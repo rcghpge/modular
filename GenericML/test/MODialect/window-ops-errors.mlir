@@ -3,7 +3,7 @@
 mo.graph @max_pool_filter_rank(%arg0: !mo.tensor<10x10xf32>) -> !mo.tensor<5x5x3xf32> {
   %fs = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<2xsi64>
   %st = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<2xsi64>
-  // expected-error@+1 {{input and result ranks must match if static}}
+  // expected-error@+1 {{input and output ranks must match if static}}
   %0 = mo.max_pool(%arg0) [filter_shape = %fs, strides = %st, dilations = %st] : (
     !mo.tensor<10x10xf32>, !mo.tensor<2xsi64>, !mo.tensor<2xsi64>, !mo.tensor<2xsi64>) -> !mo.tensor<5x5x3xf32>
   mo.output %0 : !mo.tensor<5x5x3xf32>

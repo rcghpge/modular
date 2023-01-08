@@ -13,7 +13,28 @@
 using namespace M;
 using namespace MO;
 
+LogicalResult
+impl::verifyMatchingRanks(ArrayRef<TypedValue<M::MO::TensorType>> values) {
+  SmallVector<size_t> ranks;
+  for (auto v : values)
+    if (TensorType t = v.getType(); t.hasRank())
+      ranks.emplace_back(t.getRank());
+
+  if (!ranks.empty())
+    if (!llvm::all_equal(ranks))
+      return failure();
+
+  return success();
+}
+
 LogicalResult impl::verifyMatmulLike(MatmulLike op) {
+  // We check that statically known ranks match each other (implicit
+  // broadcasting is not supported).
+  SmallVector<TypedValue<TensorType>> tensors{op.getTensorA(), op.getTensorB(),
+                                              op.getTensorResult()};
+  if (failed(verifyMatchingRanks(tensors)))
+    return op.emitError("input and output ranks must match if static");
+
   TensorType aType = op.getTensorA().getType();
   TensorType bType = op.getTensorB().getType();
 
@@ -22,11 +43,6 @@ LogicalResult impl::verifyMatmulLike(MatmulLike op) {
   if (!aType.hasRank() || !bType.hasRank())
     return success();
 
-  // Implicit broadcasting is not supported, so static ranks must match.
-  if (aType.getRank() != bType.getRank()) {
-    return op.emitError("matmul-like input tensors are not the same rank, got ")
-           << aType.getRank() << " and " << bType.getRank();
-  }
   if (aType.getRank() < 2) {
     return op.emitError("expected matmul-like input tensors to have at least "
                         "rank 2, got ")
@@ -37,8 +53,8 @@ LogicalResult impl::verifyMatmulLike(MatmulLike op) {
   if (!aType.hasStaticShape() || !bType.hasStaticShape())
     return success();
 
-  llvm::ArrayRef<int64_t> aMatShape = op.getTensorAShape().take_back(2);
-  llvm::ArrayRef<int64_t> bMatShape = op.getTensorBShape().take_back(2);
+  ArrayRef<int64_t> aMatShape = op.getTensorAShape().take_back(2);
+  ArrayRef<int64_t> bMatShape = op.getTensorBShape().take_back(2);
   if (aMatShape[1] != bMatShape[0]) {
     return op.emitError(
                "expected matmul-like input matrix shapes (M, K) x (K, N), got ")
@@ -48,18 +64,10 @@ LogicalResult impl::verifyMatmulLike(MatmulLike op) {
   TensorType resType = op.getTensorResult().getType();
 
   // If the result is dynamically ranked/shaped, we defer to shape inference.
-  if (!resType.hasRank())
-    return success();
-  if (resType.getRank() != aType.getRank()) {
-    return op.emitError("expected matmul-like result tensor to have the same "
-                        "rank as the input (")
-           << aType.getRank() << "), got " << resType.getRank();
-  }
-
   if (!resType.hasStaticShape())
     return success();
 
-  llvm::ArrayRef<int64_t> resMatShape = op.getTensorResultShape().take_back(2);
+  ArrayRef<int64_t> resMatShape = op.getTensorResultShape().take_back(2);
   if (resMatShape[0] != aMatShape[0] || resMatShape[1] != bMatShape[1]) {
     return op.emitError("expected matmul-like inputs (M, K) x (K, N) to "
                         "produce result matrix (M, N), got ")
@@ -86,6 +94,12 @@ LogicalResult impl::verifySlidingWindow(SlidingWindow op) {
     return failure();
   if (failed(op.verifyWindowParamShape(op.getDilations(), "dilations")))
     return failure();
+
+  auto moOp = cast<MOOpInterface>(op.getOperation());
+  if (failed(verifyMatchingRanks(
+          {moOp.getInputTensor(0), moOp.getOutputTensor(0)})))
+    return op.emitError("input and output ranks must match if static");
+
   return success();
 }
 
