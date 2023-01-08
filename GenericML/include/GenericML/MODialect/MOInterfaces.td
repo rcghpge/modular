@@ -91,6 +91,8 @@ def MO_SlidingWindow : OpInterface<"SlidingWindow"> {
     /// Helper for verifying window op shape/rank invariants.
     LogicalResult verifyWindowParamShape(
       TypedValue<::M::MO::TensorType> $windowParam, StringRef name);
+    LogicalResult verifyWindowParamSizes(
+      ArrayRef<TypedValue<M::MO::TensorType>> values);
   }];
 
   let verify = [{ return impl::verifySlidingWindow($_op); }];

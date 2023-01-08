@@ -80,12 +80,27 @@ LogicalResult impl::verifyMatmulLike(MatmulLike op) {
 
 LogicalResult SlidingWindow::verifyWindowParamShape(
     TypedValue<::M::MO::TensorType> windowParam, StringRef name) {
-  TensorType inputTy =
-      cast<MOOpInterface>(this->getOperation()).getInputTensor(0).getType();
-  if (TensorType windowParamTy = windowParam.getType();
-      windowParamTy.hasStaticShape())
-    if (static_cast<size_t>(windowParamTy.getShape()[0]) != inputTy.getRank())
-      return emitError(name) << " with static size must match rank of input";
+  auto input = cast<MOOpInterface>(this->getOperation()).getInputTensor(0);
+  if (TensorType inputTy = input.getType(); inputTy.hasRank()) {
+    if (TensorType windowParamTy = windowParam.getType();
+        windowParamTy.hasStaticShape())
+      if (static_cast<size_t>(windowParamTy.getShape()[0]) != inputTy.getRank())
+        return emitError(name) << " with static size must match rank of input";
+  }
+  return success();
+}
+
+LogicalResult SlidingWindow::verifyWindowParamSizes(
+    ArrayRef<TypedValue<M::MO::TensorType>> values) {
+  SmallVector<size_t> sizes;
+  for (auto v : values)
+    if (TensorType t = v.getType(); t.hasStaticShape())
+      sizes.emplace_back(t.getDimSize(0));
+
+  if (!sizes.empty())
+    if (!llvm::all_equal(sizes))
+      return emitError("window parameter sizes must match if static");
+
   return success();
 }
 

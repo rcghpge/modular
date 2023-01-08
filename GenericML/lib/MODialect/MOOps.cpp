@@ -98,15 +98,12 @@ LogicalResult ConcatOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult MaxPoolOp::verify() {
-  TensorType inputTy = getInput().getType();
+  auto op = cast<SlidingWindow>(this->getOperation());
+  if (failed(op.verifyWindowParamShape(getFilterShape(), "filter_shape")))
+    return failure();
 
-  if (inputTy.hasRank()) {
-    auto op = cast<SlidingWindow>(this->getOperation());
-    if (failed(op.verifyWindowParamShape(getFilterShape(), "filter_shape")))
-      return failure();
-  }
-
-  return LogicalResult::success();
+  return op.verifyWindowParamSizes(
+      {getFilterShape(), getDilations(), getStrides()});
 }
 
 //===----------------------------------------------------------------------===//

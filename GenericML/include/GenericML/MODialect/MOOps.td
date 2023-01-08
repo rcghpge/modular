@@ -246,7 +246,7 @@ def ShapeLikeIfRanked : ConfinedType<MO_Tensor,
 def MO_MaxPoolOp : MO_Op<"max_pool", [Pure, MO_SlidingWindow]>{
   let summary = "Max pooling operation";
   let description = [{
-    Apply max pooling with the given filter size and strides.
+    Apply max pooling with the given filter shape, strides, and dilations.
 
     All hyperparameters (i.e. filter_shape, strides, dilations) must be of rank
     1, or unranked. If the input has static rank, all hyperparameters with
