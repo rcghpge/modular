@@ -36,10 +36,10 @@ mo.graph @max_pool_strides_el_type(%arg0: !mo.tensor<10x10xf32>) -> !mo.tensor<5
 
 mo.graph @max_pool_filter_size_mismatch(%arg0: !mo.tensor<10x10x3xf32>) -> !mo.tensor<5x5x3xf32> {
   %fs = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<2xsi64>
-  %st = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<2xsi64>
+  %c1 = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi64>} : !mo.tensor<3xsi64>
   // expected-error@+1 {{filter_shape with static size must match rank of input}}
-  %0 = mo.max_pool(%arg0) [filter_shape = %fs, strides = %st, dilations = %st] : (
-    !mo.tensor<10x10x3xf32>, !mo.tensor<2xsi64>, !mo.tensor<2xsi64>, !mo.tensor<2xsi64>) -> !mo.tensor<5x5x3xf32>
+  %0 = mo.max_pool(%arg0) [filter_shape = %fs, strides = %c1, dilations = %c1] : (
+    !mo.tensor<10x10x3xf32>, !mo.tensor<2xsi64>, !mo.tensor<3xsi64>, !mo.tensor<3xsi64>) -> !mo.tensor<5x5x3xf32>
   mo.output %0 : !mo.tensor<5x5x3xf32>
 }
 

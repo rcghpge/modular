@@ -73,6 +73,28 @@ def MO_MatmulLike : OpInterface<"MatmulLike"> {
   let verify = [{ return impl::verifyMatmulLike($_op); }];
 }
 
+def MO_SlidingWindow : OpInterface<"SlidingWindow"> {
+  let description = [{
+    Interface for modeling operations that have sliding window semantics.
+  }];
+  let cppNamespace = "::M::MO";
+  let dependentTraits = [MO_MOOpInterface];
+
+  let methods = [
+    InterfaceMethod<"Get the strides as a TypedValue",
+      "TypedValue<TensorType>", "getStrides", (ins)>,
+    InterfaceMethod<"Get the dilations as a TypedValue",
+      "TypedValue<TensorType>", "getDilations", (ins)>
+  ];
+
+  let extraClassDeclaration = [{
+    /// Helper for verifying window op shape/rank invariants.
+    LogicalResult verifyWindowParamShape(
+      TypedValue<::M::MO::TensorType> $windowParam, StringRef name);
+  }];
+
+  let verify = [{ return impl::verifySlidingWindow($_op); }];
+}
 
 def MO_ElementWiseUnary : OpInterface<"ElementWiseUnary"> {
   let description = [{

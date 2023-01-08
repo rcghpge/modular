@@ -14,9 +14,11 @@
 
 namespace M::MO {
 class MatmulLike;
+class SlidingWindow;
 
 namespace impl {
 LogicalResult verifyMatmulLike(MatmulLike op);
+LogicalResult verifySlidingWindow(SlidingWindow op);
 } // namespace impl
 } // namespace M::MO
 

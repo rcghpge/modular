@@ -106,17 +106,6 @@ LogicalResult ConcatOp::verify() {
 // Windowed ops
 //===----------------------------------------------------------------------===//
 
-// TODO: move this method to an interface.
-LogicalResult MaxPoolOp::verifyWindowParamShapeAndInputMatch(
-    TypedValue<::M::MO::TensorType> windowParam, StringRef name) {
-  TensorType inputTy = getInput().getType();
-  if (TensorType windowParamTy = windowParam.getType();
-      windowParamTy.hasStaticShape())
-    if (static_cast<size_t>(windowParamTy.getShape()[0]) != inputTy.getRank())
-      return emitError(name) << " with static size must match rank of input";
-  return LogicalResult::success();
-}
-
 LogicalResult MaxPoolOp::verify() {
   TensorType inputTy = getInput().getType();
 
@@ -125,14 +114,8 @@ LogicalResult MaxPoolOp::verify() {
       if (inputTy.getRank() != resultTy.getRank())
         return emitError("input and result ranks must match if static");
     }
-
-    if (failed(verifyWindowParamShapeAndInputMatch(getFilterShape(),
-                                                   "filter_shape")))
-      return failure();
-    if (failed(verifyWindowParamShapeAndInputMatch(getStrides(), "strides")))
-      return failure();
-    if (failed(
-            verifyWindowParamShapeAndInputMatch(getDilations(), "dilations")))
+    auto op = cast<SlidingWindow>(this->getOperation());
+    if (failed(op.verifyWindowParamShape(getFilterShape(), "filter_shape")))
       return failure();
   }
 

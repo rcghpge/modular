@@ -243,7 +243,7 @@ def ShapeLikeIfRanked : ConfinedType<MO_Tensor,
   let cppClassName = "::M::MO::TensorType";
 }
 
-def MO_MaxPoolOp : MO_Op<"max_pool", [Pure]>{
+def MO_MaxPoolOp : MO_Op<"max_pool", [Pure, MO_SlidingWindow]>{
   let summary = "Max pooling operation";
   let description = [{
     Apply max pooling with the given filter size and strides.
@@ -267,13 +267,6 @@ def MO_MaxPoolOp : MO_Op<"max_pool", [Pure]>{
   }];
 
   let hasVerifier = 1;
-
-  let extraClassDeclaration = [{
-    private:
-      /// Helper for verifying window op shape/rank invariants.
-      LogicalResult verifyWindowParamShapeAndInputMatch(
-        TypedValue<::M::MO::TensorType> windowParam, StringRef name);
-  }];
 }
 
 //===----------------------------------------------------------------------===//

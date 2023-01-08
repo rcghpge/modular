@@ -70,6 +70,25 @@ LogicalResult impl::verifyMatmulLike(MatmulLike op) {
   return success();
 }
 
+LogicalResult SlidingWindow::verifyWindowParamShape(
+    TypedValue<::M::MO::TensorType> windowParam, StringRef name) {
+  TensorType inputTy =
+      cast<MOOpInterface>(this->getOperation()).getInputTensor(0).getType();
+  if (TensorType windowParamTy = windowParam.getType();
+      windowParamTy.hasStaticShape())
+    if (static_cast<size_t>(windowParamTy.getShape()[0]) != inputTy.getRank())
+      return emitError(name) << " with static size must match rank of input";
+  return success();
+}
+
+LogicalResult impl::verifySlidingWindow(SlidingWindow op) {
+  if (failed(op.verifyWindowParamShape(op.getStrides(), "strides")))
+    return failure();
+  if (failed(op.verifyWindowParamShape(op.getDilations(), "dilations")))
+    return failure();
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
