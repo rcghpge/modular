@@ -30,6 +30,9 @@ def MO_MOOpInterface : OpInterface<"MOOpInterface"> {
     InterfaceMethod<"Get an output tensor as a TypedValue",
       "TypedValue<TensorType>", "getOutputTensor", (ins "unsigned int":$idx), [{}],
       [{ return TypedValue<TensorType>($_op->getResult(idx)); }]>,
+    InterfaceMethod<"Get the shape of an output tensor",
+      "ArrayRef<int64_t>", "getOutputTensorShape", (ins "unsigned int":$idx), [{}],
+      [{ return $_op.getOutputTensor(idx).getType().getShape(); }]>,
   ];
 }
 
