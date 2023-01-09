@@ -169,7 +169,7 @@ public:
   }
 
   ArrayRef<AnyAsyncValueRef> getArguments() const {
-    return llvm::makeArrayRef(argsAndResults.data(), getNumArgs());
+    return ArrayRef(argsAndResults.data(), getNumArgs());
   }
 
   MutableArrayRef<AnyAsyncValueRef> getArguments() {

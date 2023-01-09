@@ -358,8 +358,8 @@ static ErrorOrSuccess decodePrimitiveTables(
   if (decoder.bodyReader.alignTo(BEF::kPrimitiveEntryAlignment))
     return std::move(*decoder.befFormatError);
 
-  body = llvm::makeArrayRef((const uint32_t *)decoder.bodyReader.data(),
-                            decoder.bodyReader.getContents().size() / 4);
+  body = ArrayRef((const uint32_t *)decoder.bodyReader.data(),
+                  decoder.bodyReader.getContents().size() / 4);
 
   return success();
 }
@@ -471,13 +471,13 @@ struct PrimitiveDecoder {
     numResults = uint16_t(numInvokablesAndResults >> 16);
 
     // Decode the variable size fields.
-    perResultUsersCount = llvm::makeArrayRef(dataPtr, numResults);
+    perResultUsersCount = ArrayRef(dataPtr, numResults);
     dataPtr += numResults;
-    operandIndices = llvm::makeArrayRef(dataPtr, numOperands);
+    operandIndices = ArrayRef(dataPtr, numOperands);
     dataPtr += numOperands;
-    attrOffsets = llvm::makeArrayRef(dataPtr, numAttrs);
+    attrOffsets = ArrayRef(dataPtr, numAttrs);
     dataPtr += numAttrs;
-    invokableRefIndices = llvm::makeArrayRef(dataPtr, numInvokables);
+    invokableRefIndices = ArrayRef(dataPtr, numInvokables);
     dataPtr += numInvokables;
     if (numResults)
       firstResultRegNumber = *dataPtr++;
@@ -487,7 +487,7 @@ struct PrimitiveDecoder {
   }
 
   ArrayRef<uint32_t> getEncodedElements(size_t numElements) {
-    auto result = llvm::makeArrayRef(dataPtr, numElements);
+    auto result = ArrayRef(dataPtr, numElements);
     dataPtr += numElements;
     return result;
   }
