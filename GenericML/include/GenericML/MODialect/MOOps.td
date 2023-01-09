@@ -313,7 +313,7 @@ def MO_GatherOp : MO_Op<"gather", [Pure]> {
     Gather slices from params' axis according to indices.
   }];
 
-  let arguments = (ins MO_RankedNonScalarTensor:$params,
+  let arguments = (ins MO_UnrankedOrNonScalarTensor:$params,
                        MO_IndicesTensor:$indices,
                        MO_RankedScalarTensor:$axis);
   let results = (outs MO_Tensor:$result);
