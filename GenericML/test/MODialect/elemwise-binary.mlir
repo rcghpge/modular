@@ -28,6 +28,7 @@ mo.graph @div(%arg0: !mo.tensor<2x3xf32>, %arg1: !mo.tensor<2x3xf32>) -> (!mo.te
   mo.output %0 : !mo.tensor<2x3xf32>
 }
 
+// TODO relocate this to a proper category
 // CHECK: mo.graph @softmax(%[[ARG0:.*]]: !mo.tensor<2x3xf32>) -> !mo.tensor<2x3xf32> {
 mo.graph @softmax(%arg0: !mo.tensor<2x3xf32>) -> (!mo.tensor<2x3xf32>) {
   // CHECK-NEXT: mo.softmax(%[[ARG0]]) : (!mo.tensor<2x3xf32>) -> !mo.tensor<2x3xf32>
