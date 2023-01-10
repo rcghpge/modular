@@ -13,6 +13,7 @@
 
 #include "GenericML/Driver/DriverCLOptions.h"
 #include "GenericML/Support/Model.h"
+#include "Support/ForwardDecls.h"
 
 namespace M {
 
@@ -46,11 +47,11 @@ createTensorGenerators(InputGenerationKind inputGenKind,
                        ArrayRef<InputDataSpec> inputDataSpecs,
                        const Model *model, Runtime &runtime);
 
-void benchmarkModel(const Model *model, Runtime &runtime,
-                    StringRef benchmarkName,
-                    const ExecutorDriverCLOptions &options,
-                    BenchmarkScenario scenario, StringRef outputDir,
-                    bool benchmarkNoLogPrefix);
+ErrorOrSuccess benchmarkModel(const Model *model, Runtime &runtime,
+                              StringRef benchmarkName,
+                              const ExecutorDriverCLOptions &options,
+                              BenchmarkScenario scenario, StringRef outputDir,
+                              bool benchmarkNoLogPrefix);
 } // namespace M
 
 #endif // DRIVERINTERNALS_H
