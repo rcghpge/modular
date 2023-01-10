@@ -33,11 +33,20 @@ TEST(BufferRef, Default) {
   ASSERT_EQ(ref.getSize(), 0U);
   ASSERT_EQ(ref.getAlignment(), std::nullopt);
   ASSERT_FALSE(ref.getRuntime());
-  ASSERT_FALSE(ref.isOwned());
+  ASSERT_EQ(ref.getOwnership(), BufferRef::kNull);
   ASSERT_EQ(ref.getLifetime(), BufferRef::kLocal);
 
   ref = BufferRef::createOwned(runtime, sizeof(int), /*alignment=*/{});
   ASSERT_EQ(ref.getSize(), sizeof(int));
+}
+
+TEST(BufferRef, CreateOwned) {
+  auto runtime = getRuntime();
+  uint8_t data[4] = {1, 2, 3, 4};
+  BufferRef ref = BufferRef::createOwned(runtime, /*size=*/4,
+                                         /*alignment=*/256, /*copyFrom=*/data);
+  ASSERT_TRUE(llvm::isAddrAligned(llvm::Align(256), ref.getBuffer()));
+  ASSERT_EQ(memcmp(data, ref.getBuffer(), 4), 0);
 }
 
 TEST(BufferRef, Move) {
@@ -72,9 +81,9 @@ TEST(BufferRef, Borrow) {
   ASSERT_EQ(bor.getBuffer(), ref.getBuffer());
   ASSERT_EQ(bor.getSize(), ref.getSize());
   ASSERT_EQ(bor.getAlignment(), ref.getAlignment());
-  ASSERT_TRUE(ref.isOwned());
+  ASSERT_EQ(ref.getOwnership(), BufferRef::kOwned);
   ASSERT_FALSE(bor.getRuntime());
-  ASSERT_FALSE(bor.isOwned());
+  ASSERT_EQ(bor.getOwnership(), BufferRef::kBorrowed);
   ASSERT_EQ(bor.getLifetime(), BufferRef::kExecute);
 }
 
@@ -89,7 +98,7 @@ TEST(BufferRef, DeepCopy) {
   ASSERT_EQ(memcmp(bor.getBuffer(), copy.getBuffer(), sizeof(int)), 0);
   ASSERT_EQ(copy.getSize(), bor.getSize());
   ASSERT_EQ(copy.getAlignment(), bor.getAlignment());
-  ASSERT_TRUE(copy.isOwned());
+  ASSERT_EQ(copy.getOwnership(), BufferRef::kOwned);
   ASSERT_EQ(copy.getLifetime(), BufferRef::kLocal);
 }
 
@@ -111,4 +120,16 @@ TEST(BufferRef, Destructor) {
     BufferRef ref2 = std::move(ref);
     // Will deallocate.
   }
+}
+
+TEST(BufferRef, ReleaseBufferIfOwned) {
+  auto runtime = getRuntime();
+  uint8_t data[] = {1, 2, 3, 4};
+  BufferRef ref = BufferRef::createOwned(runtime, 4,
+                                         /*alignment=*/{}, data);
+  const void *released = ref.releaseBufferIfOwned();
+  ASSERT_TRUE(released != nullptr);
+  ASSERT_FALSE(ref);
+  ASSERT_EQ(memcmp(data, released, 4), 0);
+  runtime->deallocateBytes(const_cast<void *>(released), 4);
 }

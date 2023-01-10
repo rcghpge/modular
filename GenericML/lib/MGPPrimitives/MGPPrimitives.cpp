@@ -342,7 +342,7 @@ static void mgp_cpu_tensor_create(Chain inChain,
     // further mutated, so we can move it into the result tensor.
     LLVM_DEBUG(llvm::dbgs() << "mgp.cpu.tensor.create: Creating M::Tensor "
                                "taking ownership of buffer\n");
-    outTensor.emplace(Tensor::create(std::move(*bufferRef), tensorSpec));
+    outTensor.emplace(std::move(*bufferRef), tensorSpec);
   } else {
     // Otherwise we must take a copy of the buffer to protect the result
     // tensor from side-effects.
@@ -351,7 +351,7 @@ static void mgp_cpu_tensor_create(Chain inChain,
                   "buffer since still has "
                << std::to_string(bufferRef.getPointer()->getRefCount())
                << " users\n");
-    outTensor.emplace(Tensor::create(bufferRef->deepCopy(runtime), tensorSpec));
+    outTensor.emplace(bufferRef->deepCopy(runtime), tensorSpec);
   }
 }
 
@@ -369,7 +369,7 @@ static void mgp_cpu_tensor_extract(AsyncValueRef<Tensor> tensor,
   if (tensor.getPointer()->isUnique())
     // If this is the only reference to the input tensor then it cannot
     // be further observed, so we can move its buffer into the result.
-    outBuffer.emplace(tensor->releaseBuffer());
+    outBuffer.emplace(tensor->releaseBufferRef());
   else
     // Otherwise we must take a copy of the buffer to protect the input tensor
     // from side-effects.

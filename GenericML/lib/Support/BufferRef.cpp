@@ -27,6 +27,7 @@ static const char *ownershipToStr(BufferRef::Ownership ownership) {
   case BufferRef::kBorrowed:
     return "borrowed";
   }
+  llvm_unreachable("missing ownership case");
 }
 
 static const char *lifetimeToStr(BufferRef::Lifetime lifetime) {
@@ -38,6 +39,7 @@ static const char *lifetimeToStr(BufferRef::Lifetime lifetime) {
   case BufferRef::kConstant:
     return "constant";
   }
+  llvm_unreachable("missing lifetime case");
 }
 
 static const char *mutabilityToStr(BufferRef::Mutability mutability) {
@@ -47,39 +49,52 @@ static const char *mutabilityToStr(BufferRef::Mutability mutability) {
   case BufferRef::kMutable:
     return "mutable";
   }
+  llvm_unreachable("missing mutability case");
 }
 
 BufferRef BufferRef::createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
-                                 std::optional<size_t> alignment) {
+                                 std::optional<size_t> alignment,
+                                 const void *copyFrom) {
   void *buffer = runtime->allocateBytes(size, alignment.value_or(1));
-  return BufferRef(buffer, size, runtime, makeMaybeAlign(alignment), kOwned,
-                   kLocal, kMutable);
+  if (copyFrom)
+    std::memcpy(buffer, copyFrom, size);
+  return BufferRef(buffer, size, makeMaybeAlign(alignment), kOwned, kLocal,
+                   kMutable, runtime);
 }
 
 BufferRef BufferRef::createBorrowed(void *buffer, size_t size,
                                     std::optional<size_t> alignment,
                                     Lifetime lifetime) {
+  assert(buffer && "borrowed buffer must be non-null");
   assert((!alignment || llvm::isAddrAligned(llvm::Align(*alignment), buffer)) &&
          "buffer is not aligned as per purported alignment");
-  return BufferRef(buffer, size, /*runtime=*/nullptr, makeMaybeAlign(alignment),
-                   kBorrowed, lifetime, kMutable);
+  return BufferRef(buffer, size, makeMaybeAlign(alignment), kBorrowed, lifetime,
+                   kMutable);
 }
 
 BufferRef BufferRef::createBorrowed(const void *buffer, size_t size,
                                     std::optional<size_t> alignment,
                                     Lifetime lifetime) {
+  assert(buffer && "borrowed buffer must be non-null");
   assert((!alignment || llvm::isAddrAligned(llvm::Align(*alignment), buffer)) &&
          "buffer is not aligned as per purported alignment");
   // We make up for the const cast on buffer by setting the reference to
   // be immutable. This will assert fail if a mutable buffer pointer is
   // requested.
-  return BufferRef(const_cast<void *>(buffer), size, /*runtime=*/nullptr,
-                   makeMaybeAlign(alignment), kBorrowed, lifetime, kImmutable);
+  return BufferRef(const_cast<void *>(buffer), size, makeMaybeAlign(alignment),
+                   kBorrowed, lifetime, kImmutable);
 }
 
 BufferRef::~BufferRef() {
-  if (ownership == kOwned)
+  switch (ownership) {
+  case kNull:
+    break;
+  case kOwned:
     runtime->deallocateBytes(buffer, size);
+    break;
+  case kBorrowed:
+    break;
+  }
 }
 
 BufferRef::BufferRef(BufferRef &&rhs) { swap(rhs); }
@@ -90,10 +105,10 @@ BufferRef &BufferRef::operator=(BufferRef &&rhs) {
 }
 
 ErrorOr<BufferRef> BufferRef::borrowOrError(Lifetime borrowLifetime) const {
-  assert(getBuffer() != nullptr && "borrowing a null reference");
-  if (isOwned() || lifetime >= borrowLifetime)
-    return BufferRef(buffer, size, /*runtime=*/nullptr, alignment, kBorrowed,
-                     borrowLifetime, mutability);
+  assert(ownership != kNull && "borrowing a null reference");
+  if (ownership == kOwned || lifetime >= borrowLifetime)
+    return BufferRef(const_cast<void *>(getBuffer()), getSize(), alignment,
+                     kBorrowed, borrowLifetime, mutability);
   return Error(
       Twine("attempting to create borrowing reference with lifetime ") +
       lifetimeToStr(borrowLifetime) +
@@ -108,18 +123,39 @@ BufferRef BufferRef::borrow(Lifetime borrowLifetime) const {
 }
 
 BufferRef BufferRef::deepCopy(LLCL::CompactRuntimePtr newRuntime) const {
-  assert(getBuffer() != nullptr && "deepCopying a null reference");
-  BufferRef ref = createOwned(newRuntime, size, getAlignment());
-  std::memcpy(ref.buffer, buffer, size);
+  assert(ownership != kNull && "deepCopying a null reference");
+  BufferRef ref =
+      createOwned(newRuntime, getSize(), getAlignment(), getBuffer());
   return ref;
+}
+
+void *BufferRef::releaseMutableBufferIfOwned() {
+  assert(mutability == kMutable && "buffer is immutable");
+  if (ownership != kOwned)
+    return nullptr;
+  void *buffer_copy = buffer;
+  ownership = kNull;
+  buffer = nullptr;
+  size = 0;
+  return buffer_copy;
+}
+
+const void *BufferRef::releaseBufferIfOwned() {
+  if (ownership != kOwned)
+    return nullptr;
+  const void *buffer_copy = buffer;
+  ownership = kNull;
+  buffer = nullptr;
+  size = 0;
+  return buffer_copy;
 }
 
 void BufferRef::printDebug(raw_ostream &os) const {
   os << "BufferRef(";
-  os << llvm::format_hex(reinterpret_cast<intptr_t>(buffer),
+  os << llvm::format_hex(reinterpret_cast<intptr_t>(getBuffer()),
                          2 + 2 * sizeof(intptr_t));
   os << ", ";
-  os << size;
+  os << getSize();
   os << ", ";
   os << ownershipToStr(ownership);
   os << ", ";
@@ -132,9 +168,9 @@ void BufferRef::printDebug(raw_ostream &os) const {
 void BufferRef::swap(BufferRef &rhs) {
   std::swap(buffer, rhs.buffer);
   std::swap(size, rhs.size);
-  std::swap(runtime, rhs.runtime);
   std::swap(alignment, rhs.alignment);
   std::swap(ownership, rhs.ownership);
   std::swap(lifetime, rhs.lifetime);
   std::swap(mutability, rhs.mutability);
+  std::swap(runtime, rhs.runtime);
 }

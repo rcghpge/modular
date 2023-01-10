@@ -50,11 +50,12 @@ static bool haveSameContents(Tensor &lhs, Tensor &rhs) {
          0;
 }
 
-TEST(Tensor, ReleaseBuffer) {
+TEST(Tensor, ReleaseBufferRef) {
   auto runtime = getRuntime();
   M::Tensor tensor = makeTensor();
   M::Tensor tensor2 = tensor.deepCopy(runtime);
-  GML::BufferRef ref = tensor.releaseBuffer();
+  GML::BufferRef ref = tensor.releaseBufferRef();
+  ASSERT_TRUE(tensor.getBuffer() == nullptr);
   ASSERT_EQ(ref.getSize(), tensor2.getSizeInBytes());
   ASSERT_EQ(std::memcmp(ref.getBuffer(), tensor2.getBuffer(), ref.getSize()),
             0);
@@ -84,7 +85,7 @@ TEST(Tensor, FromBuffer) {
       GML::BufferRef::createOwned(runtime, 1, /*alignment=*/{});
 
   const void *data = ref.getBuffer();
-  Tensor tensor = Tensor::create(std::move(ref), spec);
+  Tensor tensor(std::move(ref), spec);
   // Tensor takes the ownership from the buffer ref.
   ASSERT_EQ(data, tensor.getBuffer());
   ASSERT_EQ(ref.getBuffer(), nullptr);

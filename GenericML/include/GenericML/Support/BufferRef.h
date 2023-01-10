@@ -18,20 +18,18 @@
 namespace M::GML {
 
 /// A reference (aka smart pointer) to an underlying buffer of known size but
-/// uninterpreted and possibly uninitialized bytes, and metadata needed to
-/// interop with the Modular runtime.
+/// uninterpreted and possibly uninitialized bytes, along with metadata needed
+/// to interop with the Modular runtime and free the buffer when required.
 ///
 /// The underlying buffer may be 'owned' or 'borrowed' by this reference.
-/// An owning reference frees its buffer when destroyed. References may be
-/// moved (the underlying buffer is transferred), explicitly copied (the
-/// underlying buffer will be copied), and borrowed (the new reference
-/// will contain a buffer alias).
+/// An owning reference frees its buffer when destroyed.
 ///
-/// CAUTION: Though movable, this is 24 bytes on 64-bit systems so best not
+/// References may be moved (the underlying buffer is transferred), explicitly
+/// copied (the underlying buffer will be copied), and borrowed (the new
+/// reference will contain a buffer alias).
+///
+/// CAUTION: Though movable, this type is 24 bytes on 64-bit systems so best not
 ///          to consider it a simple handle.
-///
-/// All owning references remember their runtime, which is needed when owning
-/// references are destroyed, and could be used when the buffer is deep copied.
 ///
 /// All references remember their (optional) alignment constraint, which may be
 /// used when the buffer is copied.
@@ -41,15 +39,15 @@ namespace M::GML {
 /// the boundary between Modular and third-party code.
 class BufferRef {
 public:
-  /// Describes whether the underlying buffer is owned or borrowed from
+  /// Describes whether the underlying buffer is owned, or borrowed from
   /// some other owner.
   enum Ownership : uint8_t {
     /// The reference is in the null state.
     kNull = 0,
-    /// The buffer was allocated from the runtime and must be freed
+    /// The buffer was allocated from a Modular Runtime and must be freed
     /// when the reference is destroyed.
     kOwned,
-    /// The buffor was borrowed from some other owner.
+    /// The buffer was borrowed from some other owner.
     kBorrowed,
   };
 
@@ -105,15 +103,18 @@ public:
   // Creation methods.
   //===--------------------------------------------------------------------===//
 
-  /// Creates an owning reference by allocating a new and uninitialized
-  /// underlying buffer of size and alignment. The allocated buffer is freed
-  /// when the reference is destroyed. Since ownership rests with the caller,
-  /// the lifetime will be set to 'local' by default.
+  /// Creates an owning reference by allocating a new underlying buffer of
+  /// size and alignment. The allocated buffer will be freed when the reference
+  /// is destroyed. Since ownership rests with the caller, the lifetime will
+  /// be set to 'local' by default. If copyFrom is non-null its contents will be
+  /// copied into the new underlying buffer. Otherwise the new underlying buffer
+  /// is left uninitialized.
   ///
   /// TOOO(#5799): We're requiring all callers to be explicit about alignment
   /// (or lack thereof) to help track down 'forgotten alignment' problems.
   static BufferRef createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
-                               std::optional<size_t> alignment);
+                               std::optional<size_t> alignment,
+                               const void *copyFrom = nullptr);
 
   /// Creates a borrowing reference to the given buffer of the given size and
   /// alignment. The alignment will be respected should the buffer need to be
@@ -131,8 +132,8 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Returns a borrowing reference to the buffer of this reference.
-  /// This reference may be owning or borrowing, and the underlying buffer must
-  /// outlive the returned reference. The result will have the given
+  /// This reference may be owning or borrowing, and the underlying buffer
+  /// must outlive the returned reference. The result will have the given
   /// borrowLifetime.
   ///
   /// Returns an error if asking to borrow from a borrow whose lifetime is
@@ -187,42 +188,55 @@ public:
   size_t getAlignmentOrOne() const { return alignment.valueOrOne().value(); }
 
   /// Returns the runtime responsible for this owning references, or null if
-  /// the reference is a borrow.
+  /// the reference is null, borrowed or foreign.
   LLCL::CompactRuntimePtr getRuntime() const { return runtime; }
 
-  bool isOwned() const { return ownership == kOwned; }
+  Ownership getOwnership() const { return ownership; }
   Lifetime getLifetime() const { return lifetime; }
+  Mutability getMutability() const { return mutability; }
+  operator bool() const { return ownership != kNull; }
+
+  /// If the buffer reference is owning, releases responsibility for deleting
+  /// the underlying buffer from the reference and returns it. The caller is
+  /// then responsible for the buffer. Otherwise returns null and leaves the
+  /// reference unchanged.
+  void *releaseMutableBufferIfOwned();
+  const void *releaseBufferIfOwned();
 
   void printDebug(raw_ostream &os) const;
   void swap(BufferRef &rhs);
 
 private:
-  BufferRef(void *buffer, size_t size, LLCL::CompactRuntimePtr runtime,
-            llvm::MaybeAlign alignment, Ownership ownership, Lifetime lifetime,
-            Mutability mutability)
-      : buffer(buffer), size(size), runtime(runtime), alignment(alignment),
-        ownership(ownership), lifetime(lifetime), mutability(mutability) {}
+  BufferRef(void *buffer, size_t size, llvm::MaybeAlign alignment,
+            Ownership ownership, Lifetime lifetime, Mutability mutability,
+            LLCL::CompactRuntimePtr runtime = {})
+      : buffer(buffer), size(size), alignment(alignment), ownership(ownership),
+        lifetime(lifetime), mutability(mutability), runtime(runtime) {}
 
   // Implicit copying is not allowed.
   BufferRef(const BufferRef &rhs) = delete;
   BufferRef &operator=(const BufferRef &rhs) = delete;
 
   /// The underlying buffer.
+  /// NOTE: About to become union of 'native' buffer or 'foreign' buffer.
   void *buffer = nullptr;
   /// The size of the underlying buffer.
   size_t size = 0;
-  /// The runtime responsible for the underlying buffer if it is owned.
-  LLCL::CompactRuntimePtr runtime = nullptr; /* 1 byte */
   /// Alignment of underlying buffer, or None if no specific alignment given.
-  llvm::MaybeAlign alignment = std::nullopt; /* 2 bytes */
+  llvm::MaybeAlign alignment = std::nullopt; // 2 bytes
   /// Whether the underlying buffer should be deleted when this object is
   /// destructed (kOwned), or never deleted (kBorrowed).
-  Ownership ownership = kNull; /* 1 byte */
+  Ownership ownership = kNull; // 1 byte
   /// A sound approximation of the lifetime of the buffer, irrespective of
   /// whether it is owned or borrowed.
-  Lifetime lifetime = kLocal; /* 1 byte */
-  /// Whether buffer can be mutated. */
-  Mutability mutability = kImmutable;
+  Lifetime lifetime = kLocal; // 1 byte
+  /// Whether buffer can be mutated.
+  Mutability mutability = kImmutable; // 1 byte
+  /// If kOwned, the runtime to which the buffer must be returned.
+  /// Otherwise 'null' (ie invalid).
+  /// NOTE: About to become union of runtime (for owned buffers) and foreign
+  /// buffer interface id (for foreign buffers).
+  LLCL::CompactRuntimePtr runtime; // 1 byte
 };
 
 inline raw_ostream &operator<<(raw_ostream &os, const BufferRef &value) {
