@@ -96,9 +96,11 @@ def MO_OutputOp
     no results. The operand number and types must match the signature of
     the mo.graph that contains the operation. For example:
 
+    Example:
+
     ```mlir
-      mo.graph @foo() : i32, f8 {
-      ... mo.output e0, % 1 : i32, f8
+    mo.graph @dyn_rank(%arg0: !mo.tensor<*f32>) -> (!mo.tensor<*f32>) {
+      mo.output %arg0 : !mo.tensor<*f32>
     }
     ```
   }];
@@ -116,6 +118,12 @@ def MO_ConstantOp : MO_Op<"constant", [ConstantLike, Pure]> {
   let summary = "constant MO operation";
   let description = [{
     Op to store constant tensors in model.
+
+    Example:
+
+    ```mlir
+    %0 = mo.constant {value = #M.dense_array<1, 2, 3, 4> : tensor<2x2xsi32>} : !mo.tensor<2x2xsi32>
+    ```
   }];
 
   let arguments = (ins
@@ -139,6 +147,14 @@ def MO_AddOp : MO_ElementWiseBinaryOp<"add"> {
   let summary = "Add operation";
   let description = [{
     Returns x + y, where x and y are input tensors.
+
+    Example:
+
+    ```mlir
+    %lhs: !mo.tensor<2x3xf32>
+    %rhs: !mo.tensor<2x3xf32>
+    %res = mo.add(%lhs, %rhs) : !mo.tensor<2x3xf32>
+    ```
   }];
 }
 
@@ -146,6 +162,13 @@ def MO_AbsOp : MO_ElementWiseUnaryOp<"abs", [Idempotent]> {
   let summary = "Absolute value operation";
   let description = [{
     Returns abs(x), where x is the input tensors.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<2x3xf32>
+    %res = mo.abs(%arg) : !mo.tensor<2x3xf32>
+    ```
   }];
 }
 
@@ -153,6 +176,14 @@ def MO_DivOp : MO_ElementWiseBinaryOp<"div"> {
   let summary = "Divide operation";
   let description = [{
     Returns x / y, where x and y are input tensors.
+
+    Example:
+
+    ```mlir
+    %lhs: !mo.tensor<2x3xf32>
+    %rhs: !mo.tensor<2x3xf32>
+    %res = mo.div(%lhs, %rhs) : !mo.tensor<2x3xf32>
+    ```
   }];
 }
 
@@ -160,6 +191,13 @@ def MO_ExpOp : MO_ElementWiseUnaryOp<"exp"> {
   let summary = "Exponential function";
   let description = [{
     Returns exp(x), where x is the input tensor.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<2x3xf32>
+    %res = mo.exp(%arg) : !mo.tensor<2x3xf32>
+    ```
   }];
 }
 
@@ -167,6 +205,13 @@ def MO_ErfOp : MO_ElementWiseUnaryOp<"erf"> {
   let summary = "Absolute value operation";
   let description = [{
     Computes the Gauss error function of the input tensor elements.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<2x3xf32>
+    %res = mo.erf(%arg) : !mo.tensor<2x3xf32>
+    ```
   }];
 }
 
@@ -175,6 +220,13 @@ def MO_GeluOp : MO_ElementWiseUnaryOp<"gelu"> {
   let description = [{
     Returns GELU(x) = (x / 2) * (1 + erf(x/sqrt(2))), where erf denotes the
     (Gaussian) error function.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<2x3xf32>
+    %res = mo.gelu(%arg) : !mo.tensor<2x3xf32>
+    ```
   }];
 }
 
@@ -182,6 +234,14 @@ def MO_MulOp : MO_ElementWiseBinaryOp<"mul"> {
   let summary = "Multiply operation";
   let description = [{
     Returns x * y, where x and y are input tensors.
+
+    Example:
+
+    ```mlir
+    %lhs: !mo.tensor<2x3xf32>
+    %rhs: !mo.tensor<2x3xf32>
+    %res = mo.mul(%lhs, %rhs) : !mo.tensor<2x3xf32>
+    ```
   }];
 }
 
@@ -189,6 +249,13 @@ def MO_ReluOp : MO_ElementWiseUnaryOp<"relu", [Idempotent]> {
   let summary = "Rectified linear unit operation";
   let description = [{
     Returns max(0, x), where x is the input tensor.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<2x3xf32>
+    %res = mo.relu(%arg) : !mo.tensor<2x3xf32>
+    ```
   }];
 }
 
@@ -199,6 +266,13 @@ def MO_SoftmaxOp : MO_Op<"softmax", [SameOperandsAndResultType, Pure]> {
      `exp(input) / sum(exp(input))`
 
     Axis is a vector representing the axes to reduce.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<2x3xf32>
+    %res = mo.softmax(%arg) : !mo.tensor<2x3xf32>
+    ```
   }];
 
   let arguments = (ins MO_Tensor:$input);
@@ -213,6 +287,14 @@ def MO_SubOp : MO_ElementWiseBinaryOp<"sub"> {
   let summary = "Subtract operation";
   let description = [{
     Returns x - y, where x and y are input tensors.
+
+    Example:
+
+    ```mlir
+    %lhs: !mo.tensor<2x3xf32>
+    %rhs: !mo.tensor<2x3xf32>
+    %res = mo.sub(%lhs, %rhs) : !mo.tensor<2x3xf32>
+    ```
   }];
 }
 
@@ -220,6 +302,13 @@ def MO_TanhOp : MO_ElementWiseUnaryOp<"tanh"> {
   let summary = "Tanh function";
   let description = [{
     Computes the hyperbolic tangent of the input tensor elements.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<2x3xf32>
+    %res = mo.tanh(%arg) : !mo.tensor<2x3xf32>
+    ```
   }];
 }
 
@@ -251,6 +340,17 @@ def MO_MaxPoolOp : MO_Op<"max_pool", [Pure, MO_SlidingWindow]>{
     All hyperparameters (i.e. filter_shape, strides, dilations) must be of rank
     1, or unranked. If the input has static rank, all hyperparameters with
     static shape must have sizes the match the input rank.
+
+    Example:
+
+    ```mlir
+    %fs = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<2xsi64>
+    %st = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<2xsi64>
+    %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<2xsi64>
+    %res = mo.max_pool(%arg) [filter_shape = %fs, strides = %st, dilations = %di] : (
+      !mo.tensor<10x10xf32>, !mo.tensor<2xsi64>, !mo.tensor<2xsi64>, !mo.tensor<2xsi64>
+    ) -> !mo.tensor<9x5xf32>
+    ```
   }];
 
   let arguments = (ins
@@ -280,6 +380,14 @@ def MO_BroadcastToOp : MO_Op<"broadcast_to", [Pure]> {
 
     The Broadcasting follows numpy semantics to determine validity of the
     two shapes.
+
+    Example:
+
+    ```mlir
+    %from: !mo.tensor<3xf32>
+    %to   = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<2xsi64>
+    %res  = "mo.broadcast_to"(%from, %to) : (!mo.tensor<3xf32>, !mo.tensor<2xsi64>) -> !mo.tensor<2x3xf32>
+    ```
   }];
 
   let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_shape);
@@ -290,6 +398,17 @@ def MO_ConcatOp : MO_Op<"concat", [Pure]> {
   let summary = "Concat Operation";
   let description = [{
     Concatenate the input tensors along a given dimension.
+
+    Example:
+
+    ```mlir
+    %arg0: !mo.tensor<2x3xf32>
+    %arg1: !mo.tensor<2x5xf32>
+    %axis = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<si64>
+    %res = mo.concat[%axis: !mo.tensor<si64>](%arg0, %arg1) : (
+      !mo.tensor<2x3xf32>, !mo.tensor<2x5xf32>
+    ) -> !mo.tensor<2x8xf32>
+    ```
   }];
 
   let arguments = (ins Variadic<MO_Tensor>:$inputs, MO_Tensor:$axis);
@@ -311,6 +430,17 @@ def MO_GatherOp : MO_Op<"gather", [Pure]> {
   let summary = "Gather Operation";
   let description = [{
     Gather slices from params' axis according to indices.
+
+    Example:
+
+    ```mlir
+    %params : !mo.tensor<2x2xf32>
+    %indices: !mo.tensor<2xsi64>
+    %axis = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<si64>
+    %res     = mo.gather(%params, %indices, %axis) : (
+      !mo.tensor<2x2xf32>, !mo.tensor<2xsi64>, !mo.tensor<si64>
+    ) -> !mo.tensor<2x2xf32>
+    ```
   }];
 
   let arguments = (ins MO_UnrankedOrNonScalarTensor:$params,
@@ -347,6 +477,14 @@ def MO_MatmulOp : MO_DotBase<"matmul", [MO_MatmulLike]> {
   let summary = "Matrix-matrix multiplication";
   let description = [{
     Perform matrix multiplication on two 2D tensors.
+
+    Example:
+
+    ```mlir
+    %lhs: ... !mo.tensor<10x20xf32>
+    %rhs: ... !mo.tensor<20x5xf32>
+    %res = mo.matmul(%lhs, %rhs) : (!mo.tensor<10x20xf32>, !mo.tensor<20x5xf32>) -> !mo.tensor<10x5xf32>
+    ```
   }];
 }
 
@@ -357,6 +495,14 @@ def MO_BatchMatmulOp : MO_DotBase<"batch_matmul", [MO_MatmulLike]> {
     two N-dimensional tensors.
 
     The last two dimensions of each input are the matrix dimensions.
+
+    Example:
+
+    ```mlir
+    %lhs: ... !mo.tensor<3x4x5xf32>
+    %rhs: ... !mo.tensor<3x5x6xf32>
+    %res = mo.batch_matmul(%lhs, %rhs) : (!mo.tensor<3x4x5xf32>, !mo.tensor<3x5x6f32>) -> !mo.tensor<3x4x6xf32>
+    ```
   }];
 }
 
