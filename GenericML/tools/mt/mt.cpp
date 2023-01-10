@@ -190,34 +190,37 @@ int main(int argc, char **argv) {
     return EXIT_SUCCESS;
   }
 
-  // Setup the framework context.
+  // Setup the framework context. Despite passing argc/argv no significant
+  // command line argument processing is done here.
   auto frameworkCtxOr = dylib.initFrameworkContext(argc, argv);
   if (failed(frameworkCtxOr))
     return options.reportError(frameworkCtxOr.getError());
   auto frameworkCtx = std::move(*frameworkCtxOr);
 
+  // We'll accumulate command line arguments for the framework as we go below,
+  SmallVector<std::string> dylibOptions;
+
   // We might want to get the framework's help string.
   if (options.command == DriverCommand::frameworkHelp) {
     if (auto err = dylib.setOptions(frameworkCtx, {"-h"}))
       return options.reportError(err.getError());
-
     return EXIT_SUCCESS;
   }
 
   // Hand over any explicitly designated unparsed options.
-  SmallVector<std::string> unparsed(options.forceUnparsed.begin(),
-                                    options.forceUnparsed.end());
-  unparsed.append(options.unparsed.begin(), options.unparsed.end());
-  if (auto err = dylib.setOptions(frameworkCtx, unparsed))
-    return options.reportError(err.getError());
+  dylibOptions.append(options.forceUnparsed.begin(),
+                      options.forceUnparsed.end());
+  dylibOptions.append(options.unparsed.begin(), options.unparsed.end());
 
   // Hand over save-temps and temps-dir options to framework.
   if (options.saveTemps) {
-    std::string tempsDirOpt = "--temps-dir=" + options.tempsDir.getValue();
-    if (auto err =
-            dylib.setOptions(frameworkCtx, {"--save-temps", tempsDirOpt}))
-      return options.reportError(err.getError());
+    dylibOptions.push_back("--save-temps");
+    dylibOptions.push_back("--temps-dir=" + options.tempsDir.getValue());
   }
+
+  // Tell the framework about our options.
+  if (auto err = dylib.setOptions(frameworkCtx, dylibOptions))
+    return options.reportError(err.getError());
 
   // Start processing the input in stages.  The inspect command is first,
   // because it works on any input without transformation.
@@ -322,9 +325,9 @@ int main(int argc, char **argv) {
     // Add any common flags to the scenario, this will ensure that the user can
     // pass something like "result-output-style=full" to all scenarios without
     // having to specify it each time.
-    scenario.flags.append(unparsed);
+    scenario.flags.append(dylibOptions);
 
-    // Set the options.
+    // Reset the options.
     if (auto err = dylib.setOptions(frameworkCtx, scenario.flags))
       return options.reportError(err.getError());
 
