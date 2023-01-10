@@ -10,6 +10,11 @@ mo.graph @dyn_dims(%arg0: !mo.tensor<2x?x1xf32>) -> (!mo.tensor<2x?x1xf32>) {
   mo.output %arg0 : !mo.tensor<2x?x1xf32>
 }
 
+// CHECK: mo.graph @empty_dims(%[[ARG0:.*]]: !mo.tensor<2x0x1xf32>) -> !mo.tensor<2x0x1xf32> {
+mo.graph @empty_dims(%arg0: !mo.tensor<2x0x1xf32>) -> (!mo.tensor<2x0x1xf32>) {
+  mo.output %arg0 : !mo.tensor<2x0x1xf32>
+}
+
 // CHECK: mo.graph @scalar(%[[ARG0:.*]]: !mo.tensor<f32>) -> !mo.tensor<f32> {
 mo.graph @scalar(%arg0: !mo.tensor<f32>) -> (!mo.tensor<f32>) {
   mo.output %arg0 : !mo.tensor<f32>

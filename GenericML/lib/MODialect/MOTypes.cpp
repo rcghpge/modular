@@ -85,9 +85,9 @@ LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
                                  ArrayRef<int64_t> shape, DType dtype,
                                  std::optional<Attribute> metadata) {
   for (auto dim : shape) {
-    if (dim <= 0 && dim != ShapedType::kDynamic && dim != kDynamicRank) {
+    if (dim < 0 && dim != ShapedType::kDynamic && dim != kDynamicRank) {
       return emitError()
-             << "shape dimensions must be strictly positive or the "
+             << "shape dimensions must be non-negative or the "
                 "distinguished '?' unknown dimension or '*' unknown rank.";
     }
   }

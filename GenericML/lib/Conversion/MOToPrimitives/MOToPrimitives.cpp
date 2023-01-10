@@ -66,6 +66,19 @@ public:
 //===----------------------------------------------------------------------===//
 // Creation of the init/execute invokables
 //===----------------------------------------------------------------------===//
+template <typename T>
+static MGP::CpuTensorSpecType createCpuTensorSpec(const T &tensor) {
+  // TODO: Check for dynamic shape
+  ArrayRef<int64_t> shape = tensor.getShape();
+  // Convert scalars to rank 1 tensors
+  // make a local value for one so it doesn't disappear as an rvalue
+  // when creating the ArrayRef
+  int64_t one = 1;
+  if (tensor.hasRank() && tensor.getRank() == 0)
+    shape = ArrayRef<int64_t>(one);
+  // Output tensor type.
+  return MGP::CpuTensorSpecType::get(shape, tensor.getElementType());
+}
 
 // Create the mgp.model and the regions for the init/execute phases.
 LogicalResult MOGraphLowering::createModelOp() {
@@ -166,13 +179,7 @@ LogicalResult MOGraphLowering::lowerOperation(mlir::Operation *op) {
 
   // Allocate the output buffer for each result and add as argument.
   for (Type t : op->getResultTypes()) {
-    MO::TensorType asTensor = t.cast<MO::TensorType>();
-    // TODO: Check for dynamic shapes.
-
-    // Output tensor type.
-    auto outSpecType = MGP::CpuTensorSpecType::get(asTensor.getShape(),
-                                                   asTensor.getElementType());
-
+    auto outSpecType = createCpuTensorSpec(t.cast<MO::TensorType>());
     Optional<uint64_t> bufferSize = outSpecType.getSizeInBytes();
     // Fail for dynamic shapes for now.
     if (!bufferSize)
@@ -277,9 +284,7 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
   auto bufferOp = execute.builder.create<MGP::CpuBufferConstantOp>(loc, value);
 
   // We create the tensor spec op.
-  auto shapedType = cast<mlir::ShapedType>(convertedType);
-  auto outSpecType = MGP::CpuTensorSpecType::get(shapedType.getShape(),
-                                                 shapedType.getElementType());
+  auto outSpecType = createCpuTensorSpec(cast<mlir::ShapedType>(convertedType));
   auto specOp =
       execute.builder.create<MGP::CpuTensorSpecCreateOp>(loc, outSpecType);
 
@@ -367,8 +372,7 @@ void MOToPrimitivesPass::runOnOperation() {
   TypeConverter converter;
   converter.addConversion([&ctx](MO::TensorType t) -> Optional<Type> {
     // TODO: this may fail for some element types.
-    return MGP::CpuTensorType::get(
-        &ctx, MGP::CpuTensorSpecType::get(t.getShape(), t.getElementType()));
+    return MGP::CpuTensorType::get(&ctx, createCpuTensorSpec(t));
   });
 
   // Convert each mo.graph into a mgp.model.

@@ -224,6 +224,9 @@ def MGP_CpuTensorSpecType : MGP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
     This type does not support:
      - Dynamic ranks.
      - Rank zero shapes, sometimes used to denote scalars.
+       (We prefer scalar to be represented as values without
+       indirection, or to be canonicalized to a tensor with one
+       element.)
      - Symbolic dimensions or dtypes.
 
     Tensor specs are represented by M::TensorSpec in the Modular runtime.

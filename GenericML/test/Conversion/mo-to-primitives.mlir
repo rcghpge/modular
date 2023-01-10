@@ -27,6 +27,17 @@ mo.graph @constants_with_multiple_returns(%arg0: !mo.tensor<2xf32>, %arg1: !mo.t
   mo.output %arg0, %0, %0, %arg1, %arg1, %1 : !mo.tensor<2xf32>, !mo.tensor<3xf32>, !mo.tensor<3xf32>, !mo.tensor<5x1xf32>, !mo.tensor<5x1xf32>, !mo.tensor<4xsi8>
 }
 
+// CHECK:  mgp.model @scalar_arg : tfl init {
+// CHECK:    %0 = grt.chain.create
+// CHECK:    %1 = mgp.context.create 0
+// CHECK:    bef.output %0, %1 : !bef.chain, !mgp.context
+// CHECK:  } execute (%arg0: !bef.chain, %arg1: !mgp.context, %arg2: !mgp.cpu.tensor<1xf32>) -> (!bef.chain, !mgp.cpu.tensor<1xf32>) {
+// CHECK:    bef.output %arg0, %arg2 : !bef.chain, !mgp.cpu.tensor<1xf32>
+// CHECK:  }
+mo.graph @scalar_arg(%arg0: !mo.tensor<f32>) -> (!mo.tensor<f32>) {
+  mo.output %arg0 : !mo.tensor<f32>
+}
+
 {-#
   dialect_resources: {
     builtin: {
