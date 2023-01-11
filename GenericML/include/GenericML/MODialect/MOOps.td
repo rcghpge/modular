@@ -316,22 +316,6 @@ def MO_TanhOp : MO_ElementWiseUnaryOp<"tanh"> {
 // Sliding window ops
 //===----------------------------------------------------------------------===//
 
-/// Checks if a type has rank 1 if statically ranked.
-def DimOneIfRankedTypePred : Or<[Neg<HasRankPred>, HasAnyRankOfPred<[1]>]>;
-
-/// Checks if a MO_TensorType has SI64 elements.
-def HasSI64ElementTypePred : SubstLeaves<
-  "$_self", "cast<M::MO::TensorType>($_self).getElementType()", SI64.predicate>;
-
-/// Confines the MO_TensorType so that it has SI64 elements, and rank 1 if the
-/// rank is static. This is useful because the verifier for these constraints is
-/// generated automatically.
-def ShapeLikeIfRanked : ConfinedType<MO_Tensor,
-    [DimOneIfRankedTypePred, HasSI64ElementTypePred],
-    "dim 1 or unranked with signed 64 integer elements"> {
-  let cppClassName = "::M::MO::TensorType";
-}
-
 def MO_MaxPoolOp : MO_Op<"max_pool", [Pure, MO_SlidingWindow]>{
   let summary = "Max pooling operation";
   let description = [{
@@ -355,9 +339,9 @@ def MO_MaxPoolOp : MO_Op<"max_pool", [Pure, MO_SlidingWindow]>{
 
   let arguments = (ins
     MO_Tensor:$input,
-    ShapeLikeIfRanked:$filter_shape,
-    ShapeLikeIfRanked:$strides,
-    ShapeLikeIfRanked:$dilations);
+    MO_ShapeLikeIfRanked:$filter_shape,
+    MO_ShapeLikeIfRanked:$strides,
+    MO_ShapeLikeIfRanked:$dilations);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
@@ -411,7 +395,7 @@ def MO_ConcatOp : MO_Op<"concat", [Pure]> {
     ```
   }];
 
-  let arguments = (ins Variadic<MO_Tensor>:$inputs, MO_Tensor:$axis);
+  let arguments = (ins Variadic<MO_Tensor>:$inputs, MO_RankedScalarTensor:$axis);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{

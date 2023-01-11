@@ -19,7 +19,7 @@ mo.graph @concat_no_args(%arg0: !mo.tensor<7xf32>) -> !mo.tensor<7xf32> {
 
 mo.graph @concat_non_scalar_axis(%arg0: !mo.tensor<7xf32>, %arg1: !mo.tensor<2xf32>) -> !mo.tensor<9xf32> {
   %ax = mo.constant {value = #M.dense_array<0, 2> : tensor<2xsi64>} : !mo.tensor<2xsi64>
-  // expected-error@+1 {{concat axis must be a scalar tensor}}
+  // expected-error@+1 {{'mo.concat' op operand #2 must be ranked scalar tensor, but got '!mo.tensor<2xsi64>'}}
   %0 = mo.concat[%ax: !mo.tensor<2xsi64>](%arg0, %arg1) : (!mo.tensor<7xf32>, !mo.tensor<2xf32>) -> !mo.tensor<9xf32>
   mo.output %0 : !mo.tensor<9xf32>
 }

@@ -78,9 +78,6 @@ OpFoldResult ConstantOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ConcatOp::verify() {
-  if (!getAxis().getType().getShape().empty())
-    return emitError("concat axis must be a scalar tensor");
-
   size_t numInputs = getInputs().size();
   if (numInputs < 2)
     return emitError("concat must have at least 2 input tensors");
