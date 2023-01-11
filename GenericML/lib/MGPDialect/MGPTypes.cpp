@@ -236,9 +236,8 @@ parseDimsAndDType(AsmParser &p,
   dims->reserve(shape->size());
   for (int64_t dim : *shape) {
     if (!isValidRawSignedSize(dim))
-      return p.emitError(loc)
-             << "shape dimensions must be strictly positive or the "
-                "distinguished '?' unknown dimension.";
+      return p.emitError(loc) << "shape dimensions must be non-negative or the "
+                                 "distinguished '?' unknown dimension.";
     dims->emplace_back(rawSignedSizeToOptSize(dim));
   }
 
@@ -271,7 +270,7 @@ CpuTensorSpecType::verify(function_ref<InFlightDiagnostic()> emitError,
                        << getMaximumRank() << ".";
   for (const Optional<uint64_t> &dim : dims) {
     if (!isValidOptSize(dim))
-      return emitError() << "shape dimensions must be strictly positive or the "
+      return emitError() << "shape dimensions must be non-negative or the "
                             "distinguished '?' unknown dimension.";
   }
 
@@ -399,7 +398,7 @@ Optional<uint64_t> CpuTensorSpecType::getSizeInBytes() const {
   if (!numElems)
     return {}; // at least one unknown dimension
   ssize_t bytes = optDType->getSizeInBytes(plainSizeToRuntimeSize(*numElems));
-  assert(bytes > 0 && "overflow in getSizeInBytes");
+  assert(bytes >= 0 && "overflow in getSizeInBytes");
   return static_cast<uint64_t>(bytes);
 }
 

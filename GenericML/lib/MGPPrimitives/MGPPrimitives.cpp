@@ -81,10 +81,6 @@ static void mgp_cpu_buffer_alloc_dynamic(Context &ctx, size_t runtimeSize,
                                          Result<BufferRef> result,
                                          BEFAttr<uint64_t> rawAlign,
                                          Runtime &runtime) {
-  if (!isValidRuntimeSize(runtimeSize)) {
-    result.setToError("invalid size operand");
-    return;
-  }
   if (!isValidRawAlign(*rawAlign)) {
     result.setToError("invalid align attribute");
     return;
@@ -142,10 +138,6 @@ static void mgp_cpu_buffer_realloc_dynamic(
     Chain inChain, Context &ctx, size_t runtimeSize, Result<BufferRef> result,
     BEFAttr<uint64_t> aSlot, BEFAttr<uint64_t> bBuffer,
     BEFAttr<uint64_t> cRawAlign, Runtime &runtime) {
-  if (!isValidRuntimeSize(runtimeSize)) {
-    result.setToError("invalid size operand");
-    return;
-  }
   if (!isValidRawAlign(*cRawAlign)) {
     result.setToError("invalid align attribute");
     return;
@@ -238,10 +230,6 @@ static void mgp_cpu_tensor_spec_create(RemainingArguments runtimeDims,
       shape.push_back(rawSizeToRuntimeSize(dim));
     else {
       size_t runtimeDim = (*nextRuntimeDim++)->get<size_t>();
-      if (!isValidRuntimeSize(runtimeDim)) {
-        outSpec.setToError("invalid dimension");
-        return;
-      }
       shape.push_back(runtimeDim);
     }
   }
@@ -271,10 +259,6 @@ static void mgp_cpu_tensor_spec_create_dynamic(
       shape.push_back(rawSizeToRuntimeSize(dim));
     else {
       size_t runtimeDim = (*nextRuntimeDim++)->get<size_t>();
-      if (!isValidRuntimeSize(runtimeDim)) {
-        outSpec.setToError("invalid dimension");
-        return;
-      }
       shape.push_back(runtimeDim);
     }
   }

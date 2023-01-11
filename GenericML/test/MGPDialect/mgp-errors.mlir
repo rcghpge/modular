@@ -146,11 +146,6 @@ func.func @spec_too_large(%x : !mgp.cpu.tensor_spec<1x2x3x4x5x6xf32>) {}
 
 // -----
 
-// expected-error@+1 {{shape dimensions must be strictly positive or the distinguished '?' unknown dimension.}}
-func.func @spec_zero_dim(%x : !mgp.cpu.tensor_spec<1x0x3xf32>) {}
-
-// -----
-
 // expected-error@+1 {{unrecognized dtype 'ui33'.}}
 func.func @dtype_unsupported(%x : !mgp.cpu.tensor_spec<5x10xui33>) {}
 
@@ -163,15 +158,6 @@ func.func @dtype_invalid(%x : !mgp.cpu.tensor_spec<5x10xinvalid>) {}
 
 // expected-error@+1 {{unable to represent DType 'f8' as an MLIR type.}}
 func.func @dtype_unrepresentable(%x : !mgp.cpu.tensor_spec<5x10xf8>) {}
-
-// -----
-
-//
-// !mgp.cpu.tensor
-//
-
-// expected-error@+1 {{shape dimensions must be strictly positive or the distinguished '?' unknown dimension}}
-func.func @tensor_invalid(%x : !mgp.cpu.tensor<3x0x27xf32>) {}
 
 // -----
 
