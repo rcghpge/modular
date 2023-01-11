@@ -1,0 +1,17 @@
+# Use the setuptools build backend
+[build-system]
+requires = ["wheel", "setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "modular"
+version = "0.0.0"
+dependencies = []
+
+[tool.black]
+include = '\.pyi?$'
+line-length = 80
+experimental-string-processing = true
+
+[tool.isort]
+profile = "black"
