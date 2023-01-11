@@ -10,6 +10,11 @@ if(NOT UNIX)
   return()
 endif()
 
+if(${DISABLE_ALL_EXTERNAL})
+  message(WARNING "Cannot build Python C++ bindings since PyBind11 is not available.")
+  return()
+endif()
+
 # find_package(Python3) has to be called before including pybind11 so that
 # pybind11 picks up the correct Python development paths.
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
