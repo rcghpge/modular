@@ -1,6 +1,6 @@
 // RUN: mgp-opt %s --mo-to-primitives --allow-unregistered-dialect | FileCheck %s
 
-// CHECK:      mgp.model @constants_with_multiple_returns : tfl init {
+// CHECK-LABEL: mgp.model @constants_with_multiple_returns : tfl init {
 // CHECK:        %0 = grt.chain.create
 // CHECK:        %1 = mgp.context.create 0
 // CHECK:        bef.output %0, %1 : !bef.chain, !mgp.context
@@ -11,7 +11,7 @@
 // CHECK-SAME:   !bef.chain, !mgp.cpu.tensor<2xf32>, !mgp.cpu.tensor<3xf32>,
 // CHECK-SAME:   !mgp.cpu.tensor<3xf32>, !mgp.cpu.tensor<5x1xf32>, !mgp.cpu.tensor<5x1xf32>, !mgp.cpu.tensor<4xsi8>)
 // CHECK-SAME: {
-// CHECK-DAG:    %[[VAL0:.*]] = mgp.cpu.buffer.constant #M.dense_array<0, 0, 128, 63, 0, 0, 0, 64, 0, 0, 64, 64> : !M.array<12xui8>
+// CHECK-DAG:    %[[VAL0:.*]] = mgp.cpu.buffer.constant #M.aligned_bytes<{{.*}} :"0x0000803F0000004000004040">
 // CHECK-DAG:    %[[VAL1:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<3xf32>
 // CHECK:        %[[VAL2:.*]] = mgp.cpu.tensor.create %[[ARG0]], %[[VAL0]], %[[VAL1]] : !mgp.cpu.tensor<3xf32>
 // CHECK-DAG:    %[[VAL3:.*]] = mgp.cpu.buffer.constant dense_resource<mtfl_buffer> : !mgp.aligned_bytes<4, 64>
@@ -19,6 +19,7 @@
 // CHECK:        %[[VAL5:.*]] = mgp.cpu.tensor.create %[[ARG0]], %[[VAL3]], %[[VAL4]] : !mgp.cpu.tensor<4xsi8>
 // CHECK:        bef.output %[[ARG0]], %[[ARG2]], %[[VAL2]], %[[VAL2]], %[[ARG3]], %[[ARG3]], %[[VAL5]]
 // CHECK:      }
+
 mo.graph @constants_with_multiple_returns(%arg0: !mo.tensor<2xf32>, %arg1: !mo.tensor<5x1xf32>) -> (
     !mo.tensor<2xf32>, !mo.tensor<3xf32>, !mo.tensor<3xf32>, !mo.tensor<5x1xf32>, !mo.tensor<5x1xf32>, !mo.tensor<4xsi8>
 ) {
@@ -27,7 +28,7 @@ mo.graph @constants_with_multiple_returns(%arg0: !mo.tensor<2xf32>, %arg1: !mo.t
   mo.output %arg0, %0, %0, %arg1, %arg1, %1 : !mo.tensor<2xf32>, !mo.tensor<3xf32>, !mo.tensor<3xf32>, !mo.tensor<5x1xf32>, !mo.tensor<5x1xf32>, !mo.tensor<4xsi8>
 }
 
-// CHECK:  mgp.model @scalar_arg : tfl init {
+// CHECK-LABEL: mgp.model @scalar_arg : tfl init {
 // CHECK:    %0 = grt.chain.create
 // CHECK:    %1 = mgp.context.create 0
 // CHECK:    bef.output %0, %1 : !bef.chain, !mgp.context

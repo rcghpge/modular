@@ -14,6 +14,7 @@
 #include "GenericML/MODialect/MOOps.h"
 #include "GraphRT/BEFDialect/BEFOps.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
+#include "Support/AlignedAlloc.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -243,44 +244,44 @@ LogicalResult MOGraphLowering::lowerOperation(mlir::Operation *op) {
 
 LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
   Location loc = constOp.getLoc();
-
-  // Init phase lowering.
-
-  // Execute phase lowering.
-
   MO::TensorType moTensorType = constOp.getType();
   Type convertedType = typeConverter.convertType(moTensorType);
   if (!convertedType)
     return constOp->emitError("unsupported type ") << constOp.getType();
 
-  // MO stores constants either in line as ArrayElementsAttr or as a resource.
-  // We canonicalize the value's type to ArrayType and build a buffer op.
+  // Init phase lowering.
+
+  // Execute phase lowering.
+  // We'll represent large constant attributes as DenseResourceElementsAttrs,
+  // and small as AlignedBytes.
   ElementsAttr value;
   if (auto elementsAttr = dyn_cast<ArrayElementsAttr>(constOp.getValue())) {
-    auto type =
-        ArrayType::get(elementsAttr.getRawData().size(),
-                       execute.builder.getIntegerType(8, /*isSigned=*/false));
-    value = ArrayElementsAttr::get(elementsAttr.getRawData(), type);
-  } else {
-    // Value must be a resource.
-    auto resource = cast<DenseResourceElementsAttr>(constOp.getValue());
-    Type type;
-    size_t blobAlign = resource.getRawHandle().getBlob()->getDataAlignment();
-    if (blobAlign != 0)
-      // NOTE: Unclear if blobs can end up with a zero alignment since
-      // the parser assert fails with such. So this is probably always true.
-      // If the resource has an alignment, we must capture it within the
-      // lowered resource attribute type.
-      type = MGP::AlignedBytesType::get(execute.builder.getContext(),
-                                        resource.size(),
-                                        static_cast<uint64_t>(blobAlign));
-    else
-      // Otherwise the type can just be an array of uint8_ts.
-      type =
-          ArrayType::get(resource.size(),
-                         execute.builder.getIntegerType(8, /*isSigned=*/false));
+    size_t size = elementsAttr.getRawData().size();
+    // TODO(#6838): Alignment probably needs to be a pass attribute.
+    size_t alignment = kPreferredMemoryAlignment;
+    Type type = MGP::AlignedBytesType::get(execute.builder.getContext(),
+                                           static_cast<uint64_t>(size),
+                                           static_cast<uint64_t>(alignment));
+    std::string name = "const_" + std::to_string(execute.nextConstId++);
+    const char *data =
+        reinterpret_cast<const char *>(elementsAttr.getRawData().data());
+    auto resourceManager = DenseResourceElementsHandle::getManagerInterface(
+        execute.builder.getContext());
+    value = getAttrForTensorData(type, name, ArrayRef<char>(data, size),
+                                 resourceManager, alignment);
+  } else if (auto resource =
+                 dyn_cast<DenseResourceElementsAttr>(constOp.getValue())) {
+    size_t size = resource.size();
+    size_t alignment = resource.getRawHandle().getBlob()->getDataAlignment();
+    assert(alignment > 0 && "resource blob must have non-zero alignment");
+    Type type = MGP::AlignedBytesType::get(execute.builder.getContext(),
+                                           static_cast<uint64_t>(size),
+                                           static_cast<uint64_t>(alignment));
     value = DenseResourceElementsAttr::get(type, resource.getRawHandle());
+  } else {
+    return constOp->emitError("unsupported constant attribute type");
   }
+
   auto bufferOp = execute.builder.create<MGP::CpuBufferConstantOp>(loc, value);
 
   // We create the tensor spec op.

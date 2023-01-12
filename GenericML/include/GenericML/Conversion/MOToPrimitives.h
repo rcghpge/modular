@@ -83,6 +83,10 @@ public:
     /// Keeps track of what mo.tensor SSA values are lowered to.
     DenseMap<Value, Value> loweredTensors;
 
+    /// The next available constant identifier. Used to assign names
+    /// to dense_resource attributes capturing MO constants.
+    size_t nextConstId = 0;
+
     /// This is a builder appending operations to the end of the invokable.
     OpBuilder builder;
 
