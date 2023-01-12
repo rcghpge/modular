@@ -22,13 +22,13 @@ class MOGG_Op<string mnemonic, list<Trait> traits = []>
     : Op<MOGGDialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
-// Value Semantic Graph Op
+// MOGG subgraph ops
 //===----------------------------------------------------------------------===//
 
-def MOGG_GraphOp : MOGG_Op<"op", [HasParent<"MO::GraphOp">]> {
-  let summary = "MOGG Representation of a value semantic kernel";
+def MOGG_ExtOp : MOGG_Op<"ext.op", [HasParent<"MO::GraphOp">]> {
+  let summary = "MOGG representation of an external library kernel";
   let description = [{
-    This is a generic calling function to represent kernel libraries.
+    This is a generic subgraph to represent calls to kernel libraries.
 
     It contains the name of the kernel, variadic inputs and outputs, and a body
     region for holding the externally called library for lowering.
