@@ -7,6 +7,7 @@
 #ifndef GENERICML_SUPPORT_BUFFERREF_H
 #define GENERICML_SUPPORT_BUFFERREF_H
 
+#include "GenericML/Support/ForeignBufferInterface.h"
 #include "LLCL/Runtime/Allocator.h"
 #include "LLCL/Runtime/CompactRuntimePtr.h"
 #include "Support/ErrorOr.h"
@@ -22,7 +23,11 @@ namespace M::GML {
 /// to interop with the Modular runtime and free the buffer when required.
 ///
 /// The underlying buffer may be 'owned' or 'borrowed' by this reference.
-/// An owning reference frees its buffer when destroyed.
+/// An owning reference frees its buffer when destroyed. It is possible for
+/// the 'owned' underlying buffer to be taken from a 'foreign' memory manager
+/// provided a matching ForeignBufferInterface has already been registered with
+/// the ForeignBufferInterfaceRegistry. We support this without the overhead
+/// of vtable pointers in every BufferRef.
 ///
 /// References may be moved (the underlying buffer is transferred), explicitly
 /// copied (the underlying buffer will be copied), and borrowed (the new
@@ -49,6 +54,11 @@ public:
     kOwned,
     /// The buffer was borrowed from some other owner.
     kBorrowed,
+    /// The buffer was allocated by a 'foreign' memory management system and
+    /// must be freed by that system when the reference is destroyed.
+    /// A registered ForeignBufferInterface must be used to retrieve the
+    /// buffer's data, size, and to perform the free.
+    kForeign,
   };
 
   /// Describes a sound approximation of the lifetime of the owner of
@@ -127,6 +137,12 @@ public:
                                   std::optional<size_t> alignment,
                                   Lifetime lifetime);
 
+  /// Creates an owning reference to the already allocated 'foreign' buffer
+  /// object. The corresponding ForeignBufferInterface must have been already
+  /// registered under id. The buffer is considered immutable.
+  static BufferRef createForeign(ForeignBufferInterfaceID id, void *object,
+                                 size_t size, std::optional<size_t> alignment);
+
   //===--------------------------------------------------------------------===//
   // Core APIs for working with a BufferRef.
   //===--------------------------------------------------------------------===//
@@ -158,9 +174,15 @@ public:
   /// reference is uninitialized or has been moved out of.
   void *getMutableBuffer() {
     assert(mutability == kMutable && "buffer is immutable");
-    return buffer;
+    assert(ownership != kForeign && "foreign buffers assumed immutable");
+    return bufferOrObject;
   }
-  const void *getBuffer() const { return buffer; }
+  const void *getBuffer() const {
+    if (ownership == kForeign) // typically false
+      return ForeignBufferInterfaceRegistry::getBuffer(nativeOrForeign.id,
+                                                       bufferOrObject);
+    return bufferOrObject;
+  }
 
   template <typename T>
   T *getMutableBuffer() {
@@ -189,19 +211,27 @@ public:
 
   /// Returns the runtime responsible for this owning references, or null if
   /// the reference is null, borrowed or foreign.
-  LLCL::CompactRuntimePtr getRuntime() const { return runtime; }
+  LLCL::CompactRuntimePtr getRuntime() const {
+    if (ownership == kForeign)
+      return {};
+    return nativeOrForeign.runtime;
+  }
 
   Ownership getOwnership() const { return ownership; }
   Lifetime getLifetime() const { return lifetime; }
   Mutability getMutability() const { return mutability; }
   operator bool() const { return ownership != kNull; }
 
-  /// If the buffer reference is owning, releases responsibility for deleting
-  /// the underlying buffer from the reference and returns it. The caller is
-  /// then responsible for the buffer. Otherwise returns null and leaves the
-  /// reference unchanged.
+  /// If the buffer is owning, releases ownership of the underlying owned
+  /// buffer and returns it. Otherwise returns null and leaves the reference
+  /// unchanged.
   void *releaseMutableBufferIfOwned();
   const void *releaseBufferIfOwned();
+
+  /// If the buffer reference is foreign with a the given expectedID as its
+  /// ForeignBufferInterfaceID, then releases ownership of the foreign object
+  /// and returns it. Otherwise returns null ond leaves the reference unchanged.
+  void *maybeReleaseForeignObject(ForeignBufferInterfaceID expectedID);
 
   void printDebug(raw_ostream &os) const;
   void swap(BufferRef &rhs);
@@ -210,18 +240,36 @@ private:
   BufferRef(void *buffer, size_t size, llvm::MaybeAlign alignment,
             Ownership ownership, Lifetime lifetime, Mutability mutability,
             LLCL::CompactRuntimePtr runtime = {})
-      : buffer(buffer), size(size), alignment(alignment), ownership(ownership),
-        lifetime(lifetime), mutability(mutability), runtime(runtime) {}
+      : bufferOrObject(buffer), size(size), alignment(alignment),
+        ownership(ownership), lifetime(lifetime), mutability(mutability),
+        nativeOrForeign(runtime) {}
+
+  BufferRef(ForeignBufferInterfaceID id, void *object, size_t size,
+            llvm::MaybeAlign alignment, Ownership ownership, Lifetime lifetime,
+            Mutability mutability)
+      : bufferOrObject(object), size(size), alignment(alignment),
+        ownership(ownership), lifetime(lifetime), mutability(mutability),
+        nativeOrForeign(id) {}
 
   // Implicit copying is not allowed.
   BufferRef(const BufferRef &rhs) = delete;
   BufferRef &operator=(const BufferRef &rhs) = delete;
 
-  /// The underlying buffer.
-  /// NOTE: About to become union of 'native' buffer or 'foreign' buffer.
-  void *buffer = nullptr;
+  // Reset the referenence to the kNull state. However only the ownership,
+  // buffer/object, and size fields are reset.
+  void reset() {
+    ownership = kNull;
+    bufferOrObject = nullptr;
+    size = 0;
+  }
+
+  /// If kOwned or kBorrowed, the underlying buffer.
+  /// If kForeign, a pointer to the 'foreign' object backing the buffer.
+  /// If kNull, null.
+  void *bufferOrObject = nullptr;
   /// The size of the underlying buffer.
   size_t size = 0;
+
   /// Alignment of underlying buffer, or None if no specific alignment given.
   llvm::MaybeAlign alignment = std::nullopt; // 2 bytes
   /// Whether the underlying buffer should be deleted when this object is
@@ -232,11 +280,21 @@ private:
   Lifetime lifetime = kLocal; // 1 byte
   /// Whether buffer can be mutated.
   Mutability mutability = kImmutable; // 1 byte
-  /// If kOwned, the runtime to which the buffer must be returned.
-  /// Otherwise 'null' (ie invalid).
-  /// NOTE: About to become union of runtime (for owned buffers) and foreign
-  /// buffer interface id (for foreign buffers).
-  LLCL::CompactRuntimePtr runtime; // 1 byte
+
+  union NativeOrForeign {
+    /// If kOwned, the runtime to which the buffer must be returned.
+    /// If kNull or kBorrowed, invalid.
+    LLCL::CompactRuntimePtr runtime; // 1 byte
+    /// If kForeign, ID for registered foreign buffer interface which can
+    /// interpret the bufferOrObject field.
+    ForeignBufferInterfaceID id; // 1 byte.
+
+    NativeOrForeign() : runtime() {}
+    NativeOrForeign(LLCL::CompactRuntimePtr runtime) : runtime(runtime) {}
+    NativeOrForeign(ForeignBufferInterfaceID id) : id(id) {}
+  };
+
+  NativeOrForeign nativeOrForeign; // 1 byte
 };
 
 inline raw_ostream &operator<<(raw_ostream &os, const BufferRef &value) {

@@ -26,6 +26,8 @@ static const char *ownershipToStr(BufferRef::Ownership ownership) {
     return "owned";
   case BufferRef::kBorrowed:
     return "borrowed";
+  case BufferRef::kForeign:
+    return "foreign";
   }
   llvm_unreachable("missing ownership case");
 }
@@ -85,14 +87,30 @@ BufferRef BufferRef::createBorrowed(const void *buffer, size_t size,
                    kBorrowed, lifetime, kImmutable);
 }
 
+BufferRef BufferRef::createForeign(ForeignBufferInterfaceID id, void *object,
+                                   size_t size,
+                                   std::optional<size_t> alignment) {
+  assert((!alignment ||
+          llvm::isAddrAligned(
+              llvm::Align(*alignment),
+              ForeignBufferInterfaceRegistry::getBuffer(id, object))) &&
+         "buffer is not aligned as per purported alignment");
+  return BufferRef(id, object, size, makeMaybeAlign(alignment), kForeign,
+                   kLocal, kImmutable);
+}
+
 BufferRef::~BufferRef() {
   switch (ownership) {
   case kNull:
     break;
   case kOwned:
-    runtime->deallocateBytes(buffer, size);
+    nativeOrForeign.runtime->deallocateBytes(bufferOrObject, size);
     break;
   case kBorrowed:
+    break;
+  case kForeign:
+    ForeignBufferInterfaceRegistry::deleteObject(nativeOrForeign.id,
+                                                 bufferOrObject);
     break;
   }
 }
@@ -106,7 +124,8 @@ BufferRef &BufferRef::operator=(BufferRef &&rhs) {
 
 ErrorOr<BufferRef> BufferRef::borrowOrError(Lifetime borrowLifetime) const {
   assert(ownership != kNull && "borrowing a null reference");
-  if (ownership == kOwned || lifetime >= borrowLifetime)
+  if (ownership == kOwned || ownership == kForeign ||
+      lifetime >= borrowLifetime)
     return BufferRef(const_cast<void *>(getBuffer()), getSize(), alignment,
                      kBorrowed, borrowLifetime, mutability);
   return Error(
@@ -124,30 +143,35 @@ BufferRef BufferRef::borrow(Lifetime borrowLifetime) const {
 
 BufferRef BufferRef::deepCopy(LLCL::CompactRuntimePtr newRuntime) const {
   assert(ownership != kNull && "deepCopying a null reference");
-  BufferRef ref =
-      createOwned(newRuntime, getSize(), getAlignment(), getBuffer());
-  return ref;
+  return createOwned(newRuntime, getSize(), getAlignment(), getBuffer());
 }
 
 void *BufferRef::releaseMutableBufferIfOwned() {
   assert(mutability == kMutable && "buffer is immutable");
   if (ownership != kOwned)
     return nullptr;
-  void *buffer_copy = buffer;
-  ownership = kNull;
-  buffer = nullptr;
-  size = 0;
-  return buffer_copy;
+  void *bufferCopy = bufferOrObject;
+  reset();
+  return bufferCopy;
 }
 
 const void *BufferRef::releaseBufferIfOwned() {
   if (ownership != kOwned)
     return nullptr;
-  const void *buffer_copy = buffer;
-  ownership = kNull;
-  buffer = nullptr;
-  size = 0;
-  return buffer_copy;
+  const void *bufferCopy = bufferOrObject;
+  reset();
+  return bufferCopy;
+}
+
+void *
+BufferRef::maybeReleaseForeignObject(ForeignBufferInterfaceID expectedID) {
+  if (ownership != kForeign)
+    return nullptr;
+  if (nativeOrForeign.id != expectedID)
+    return nullptr;
+  void *objectCopy = bufferOrObject;
+  reset();
+  return objectCopy;
 }
 
 void BufferRef::printDebug(raw_ostream &os) const {
@@ -162,15 +186,19 @@ void BufferRef::printDebug(raw_ostream &os) const {
   os << lifetimeToStr(lifetime);
   os << ", ";
   os << mutabilityToStr(mutability);
+  if (ownership == kForeign) {
+    os << ", ";
+    os << std::to_string(nativeOrForeign.id);
+  }
   os << ")";
 }
 
 void BufferRef::swap(BufferRef &rhs) {
-  std::swap(buffer, rhs.buffer);
+  std::swap(bufferOrObject, rhs.bufferOrObject);
   std::swap(size, rhs.size);
   std::swap(alignment, rhs.alignment);
   std::swap(ownership, rhs.ownership);
   std::swap(lifetime, rhs.lifetime);
   std::swap(mutability, rhs.mutability);
-  std::swap(runtime, rhs.runtime);
+  std::swap(nativeOrForeign, rhs.nativeOrForeign);
 }

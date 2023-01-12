@@ -133,3 +133,59 @@ TEST(BufferRef, ReleaseBufferIfOwned) {
   ASSERT_EQ(memcmp(data, released, 4), 0);
   runtime->deallocateBytes(const_cast<void *>(released), 4);
 }
+
+struct TestForeignObject {
+  int32_t buffer[4] = {1, 2, 3, 4};
+  bool deleted = false;
+};
+
+class TestForeignBufferInterface : public ForeignBufferInterface {
+public:
+  TestForeignBufferInterface()
+      : ForeignBufferInterface("TestForeignBufferInterface") {}
+  ~TestForeignBufferInterface() override = default;
+
+  const void *getBuffer(const void *object) const override {
+    return cast(object)->buffer;
+  }
+  void deleteObject(void *object) const override {
+    assert(!cast(object)->deleted && "already deleted");
+    cast(object)->deleted = true;
+  }
+
+private:
+  static TestForeignObject *cast(void *object) {
+    return static_cast<TestForeignObject *>(object);
+  }
+  static const TestForeignObject *cast(const void *object) {
+    return static_cast<const TestForeignObject *>(object);
+  }
+};
+
+TEST(BufferRef, CreateForeign) {
+  ForeignBufferInterfaceID id =
+      ForeignBufferInterfaceRegistry::registerInterface(
+          std::make_unique<TestForeignBufferInterface>());
+  ASSERT_EQ(ForeignBufferInterfaceRegistry::registerInterface(
+                std::make_unique<TestForeignBufferInterface>()),
+            id);
+  TestForeignObject object;
+  {
+    BufferRef ref = BufferRef::createForeign(id, &object, 4, /*alignment=*/{});
+    ASSERT_EQ(ref.getBuffer(), object.buffer);
+    ASSERT_EQ(ref.getSize(), 4U);
+    ASSERT_EQ(ref.getOwnership(), BufferRef::kForeign);
+  }
+  ASSERT_TRUE(object.deleted);
+}
+
+TEST(BufferRef, MaybeReleaseForeignObject) {
+  ForeignBufferInterfaceID id =
+      ForeignBufferInterfaceRegistry::registerInterface(
+          std::make_unique<TestForeignBufferInterface>());
+  TestForeignObject object;
+  BufferRef ref = BufferRef::createForeign(id, &object, 4, /*alignment=*/{});
+  void *released = ref.maybeReleaseForeignObject(id);
+  ASSERT_FALSE(ref);
+  ASSERT_EQ(released, &object);
+}
