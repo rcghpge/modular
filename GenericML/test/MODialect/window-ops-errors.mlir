@@ -75,3 +75,14 @@ mo.graph @max_pool_window_param_size_mismatch(
     !mo.tensor<*f32>, !mo.tensor<3xsi64>, !mo.tensor<3xsi64>, !mo.tensor<2xsi64>) -> !mo.tensor<*f32>
   mo.output %0 : !mo.tensor<*f32>
 }
+
+// -----
+
+mo.graph @conv_window_param_size_mismatch(
+  %arg0: !mo.tensor<*f32>, %arg1: !mo.tensor<*f32>, %st: !mo.tensor<3xsi64>, %di: !mo.tensor<2xsi64>
+) -> !mo.tensor<*f32> {
+  // expected-error@+1 {{window parameter sizes must match if static}}
+  %0 = mo.conv(%arg0, %arg1) [strides = %st, dilations = %di] : (
+    !mo.tensor<*f32>, !mo.tensor<*f32>, !mo.tensor<3xsi64>, !mo.tensor<2xsi64>) -> !mo.tensor<*f32>
+  mo.output %0 : !mo.tensor<*f32>
+}

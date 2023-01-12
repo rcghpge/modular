@@ -103,6 +103,16 @@ LogicalResult MaxPoolOp::verify() {
       {getFilterShape(), getDilations(), getStrides()});
 }
 
+LogicalResult ConvOp::verify() {
+  // The sliding window interface already checks that the input and result have
+  // matching ranks, so we can be more specific with the error message here
+  if (failed(impl::verifyMatchingRanks({getInput(), getResult(), getFilter()})))
+    return emitError("filter rank must match input/output ranks if static");
+
+  auto op = cast<SlidingWindow>(this->getOperation());
+  return op.verifyWindowParamSizes({getDilations(), getStrides()});
+}
+
 //===----------------------------------------------------------------------===//
 // Matmul definitions.
 //===----------------------------------------------------------------------===//

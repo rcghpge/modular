@@ -323,7 +323,10 @@ def MO_MaxPoolOp : MO_Op<"max_pool", [Pure, MO_SlidingWindow]>{
 
     All hyperparameters (i.e. filter_shape, strides, dilations) must be of rank
     1, or unranked. If the input has static rank, all hyperparameters with
-    static shape must have sizes the match the input rank.
+    static shape must have sizes the match the input rank. The input and output
+    data tensors' ranks must match if statically known.
+
+    This op currently only supports strides and dilations on the filter.
 
     Example:
 
@@ -347,6 +350,46 @@ def MO_MaxPoolOp : MO_Op<"max_pool", [Pure, MO_SlidingWindow]>{
   let assemblyFormat = [{
     `(` $input `)` `[` `filter_shape` `=` $filter_shape `,`
     `strides` `=` $strides `,` `dilations` `=` $dilations `]` attr-dict `:`
+    functional-type(operands, results)
+  }];
+
+  let hasVerifier = 1;
+}
+
+def MO_ConvOp : MO_Op<"conv", [Pure, MO_SlidingWindow]>{
+  let summary = "Convolution operation";
+  let description = [{
+    Compute the convolution of the input with the given filter, strides, and
+    dilations.
+
+    All hyperparameters (i.e. strides, dilations) must be of rank 1, or
+    unranked. If the input has static rank, all hyperparameters with static
+    shape must have sizes the match the input rank. The input, output and filter
+    tensors' ranks must match if statically known.
+
+    This op currently only supports strides and dilations on the filter.
+
+    Example:
+
+    ```mlir
+    %st = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<2xsi64>
+    %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<2xsi64>
+    %res = mo.conv(%0, %1) [strides = %st, dilations = %di] : (
+      !mo.tensor<5x5xf32>, !mo.tensor<3x3xf32>, !mo.tensor<2xsi64>, !mo.tensor<2xsi64>
+    ) -> !mo.tensor<2x1xf32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_Tensor:$filter,
+    MO_ShapeLikeIfRanked:$strides,
+    MO_ShapeLikeIfRanked:$dilations);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `(` $input `,` $filter `)` `[` `strides` `=` $strides `,`
+    `dilations` `=` $dilations `]` attr-dict `:`
     functional-type(operands, results)
   }];
 
