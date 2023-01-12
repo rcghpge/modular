@@ -42,13 +42,11 @@ target_compile_options(${MODULAR_PYBIND_EXT} PRIVATE
 # Ensure that tools needed for pyproject.toml parsing and wheel repair are
 # installed.
 execute_process(
-  COMMAND ${Python3_EXECUTABLE} -m pip install -r ${CMAKE_CURRENT_SOURCE_DIR}/packaging-requirements.txt
-  RESULT_VARIABLE PIP_INSTALL_DEPS_RESULT
-  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-  COMMAND_ECHO STDOUT
+  COMMAND ${Python3_EXECUTABLE} -c "import build, wheel, tomli"
+  RESULT_VARIABLE PIP_CHECK_DEPS_RESULT
 )
-if(PIP_INSTALL_DEPS_RESULT)
-  message(FATAL_ERROR "Failed to pip install dependencies for ${MODULAR_PYBIND_EXT}")
+if(PIP_CHECK_DEPS_RESULT)
+  message(FATAL_ERROR "Dependencies for building Python wheels are not installed. Please run install_python_deps.")
 endif()
 
 # Use pyproject.toml as a single source of truth for the version of the Modular
@@ -59,7 +57,6 @@ execute_process(
   OUTPUT_VARIABLE MODULAR_PYPROJECT_NAME_VERSION
   OUTPUT_STRIP_TRAILING_WHITESPACE
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-  COMMAND_ECHO STDOUT
 )
 if(TOMLI_RESULT)
   message(FATAL_ERROR "Failed to parse pyproject.toml for ${MODULAR_PYBIND_EXT}")
