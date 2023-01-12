@@ -173,7 +173,7 @@ public:
   }
 
   MutableArrayRef<AnyAsyncValueRef> getArguments() {
-    return llvm::makeMutableArrayRef(argsAndResults.data(), getNumArgs());
+    return llvm::MutableArrayRef(argsAndResults.data(), getNumArgs());
   }
 
   //===--------------------------------------------------------------------===//
@@ -186,7 +186,7 @@ public:
 
   MutableArrayRef<AnyAsyncValueRef> getResults() {
     AnyAsyncValueRef *firstResult = argsAndResults.data() + numArguments;
-    return llvm::makeMutableArrayRef(firstResult, getNumResults());
+    return llvm::MutableArrayRef(firstResult, getNumResults());
   }
 
   /// Set the result at the given index with the given AsyncValue.
@@ -265,7 +265,7 @@ public:
 
   /// Get mutable access to the argument list.
   MutableArrayRef<AnyAsyncValueRef> getArguments() {
-    return llvm::makeMutableArrayRef(argsAndResults.data(), getNumArgs());
+    return llvm::MutableArrayRef(argsAndResults.data(), getNumArgs());
   }
 
   /// Add a new argument.
