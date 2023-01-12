@@ -361,6 +361,18 @@ static void mgp_cpu_tensor_extract(AsyncValueRef<Tensor> tensor,
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.debug.cpu.tensor.print
+//===----------------------------------------------------------------------===//
+
+static void mgp_debug_cpu_tensor_print(Chain inChain, const Tensor &tensor,
+                                       Result<Chain> outChain,
+                                       Runtime &runtime) {
+  llvm::outs() << tensor << "\n";
+  llvm::outs().flush();
+  outChain.emplace();
+}
+
+//===----------------------------------------------------------------------===//
 // mgp.model
 //===----------------------------------------------------------------------===//
 
@@ -403,6 +415,8 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
                 mgp_cpu_tensor_spec_dtype);
   ADD_PRIMITIVE(registry, "mgp.cpu.tensor.create", mgp_cpu_tensor_create);
   ADD_PRIMITIVE(registry, "mgp.cpu.tensor.extract", mgp_cpu_tensor_extract);
+  ADD_PRIMITIVE(registry, "mgp.debug.cpu.tensor.print",
+                mgp_debug_cpu_tensor_print);
   ADD_PRIMITIVE(registry, "mgp.model", mgp_model);
 
   // Have the MO primitives be registered wherever MGP is registered.

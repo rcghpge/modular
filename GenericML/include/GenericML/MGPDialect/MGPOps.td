@@ -911,6 +911,31 @@ def CpuTensorExtractOp : MGP_Op<"cpu.tensor.extract", [
 }
 
 //===----------------------------------------------------------------------===//
+// DebugCpuTensorPrint
+//===----------------------------------------------------------------------===//
+
+def DebugCpuTensorPrint : MGP_Op<"debug.cpu.tensor.print"> {
+  let summary = "Prints a debug representation of argument tensor. For "
+                "debugging and testing only.";
+  let description = [{
+    Prints a debug representation of argument tensor. Currently used to
+    write lit unit tests which confirm buffer sharing.
+
+    Example:
+    ```mlir
+    %tensor : !mgp.cpu.tensor<8x64xf32>
+    %ch0 : !bef.chain
+    %ch1 = mgp.debug.cpu.tensor.print %tensor : !mgp.cpu.tensor<8x64xf32>
+    %ch1 : !bef.chain
+    ```
+  }];
+
+  let arguments = (ins ChainType:$inChain, MGP_CpuTensorType: $tensor);
+  let results = (outs ChainType: $outChain);
+  let assemblyFormat = "$inChain `,` $tensor attr-dict `:` qualified(type($tensor))";
+}
+
+//===----------------------------------------------------------------------===//
 // ModelOp
 //===----------------------------------------------------------------------===//
 

@@ -680,6 +680,7 @@ void BEFExecutor::processUsedByRecords(
 
     // We are however done with the extra reference on the register
     // IndirectAsyncValue itself, so we can drop it.
+    // NOTE: This is a no-op, needs investigation.
     (void)takeRCRef(registerVal);
   }
 
