@@ -276,7 +276,10 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
   if (auto elementsAttr = dyn_cast<ArrayElementsAttr>(constOp.getValue())) {
     size_t size = elementsAttr.getRawData().size();
     // TODO(#6838): Alignment probably needs to be a pass attribute.
-    size_t alignment = kPreferredMemoryAlignment;
+    // TODO(#6912): For now, leave alignment as 1. It appears 'aligned'
+    // attributes are not making it into the runtime respecting arbitrary
+    // alignment constraints.
+    size_t alignment = 1;
     Type type = MGP::AlignedBytesType::get(
         loweringState.getExecuteOpBuilder().getContext(),
         static_cast<uint64_t>(size), static_cast<uint64_t>(alignment));
