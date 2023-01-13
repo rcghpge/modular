@@ -38,6 +38,21 @@ def ChainMergeOp : GRTOp<"chain.merge"> {
 }
 
 //===----------------------------------------------------------------------===//
+// ChainAfterOp
+//===----------------------------------------------------------------------===//
+
+def ChainAfterOp : GRTOp<"chain.after", [AllTypesMatch<["result", "value"]>]> {
+  let summary = "Returns the first argument when all later chain arguments "
+                "are ready";
+
+  let arguments = (ins AnyType:$value, Variadic<ChainType>:$chains);
+  let results = (outs AnyType:$result);
+  let assemblyFormat = [{
+    $value `,` $chains attr-dict `:` qualified(type($value))
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // InvokeOp
 //===----------------------------------------------------------------------===//
 
