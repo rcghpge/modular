@@ -16,11 +16,11 @@
 #include "Support/MDialect/MTypes.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"
-#include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinDialect.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Parser/Parser.h"
 #include <numeric>
@@ -980,7 +980,7 @@ bool RegionParser::parsePrimitiveList() {
     });
 
     Operation *resultOp;
-    BlockAndValueMapping map;
+    IRMapping map;
     if (!hasMLIRTypes || isOpaqueOp) {
       // If we lack type information, create a bef.opaque operation.  We
       // cannot necessarily create the correct operation when we're lacking
