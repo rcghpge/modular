@@ -41,11 +41,11 @@ namespace {
 /// The construction state for the init/execute invokables are kept in 'init'
 /// and 'execute' members which are mutated as each operation in the input graph
 /// is lowered.
-class MOGraphLowering : public MGP::MOGraphLoweringState {
+class MOGraphLowering {
 public:
   MOGraphLowering(M::MO::GraphOp graph, TypeConverter &typeConverter,
                   llvm::StringRef compiledFrameworkLabel)
-      : MOGraphLoweringState(graph, typeConverter, compiledFrameworkLabel) {}
+      : loweringState(graph, typeConverter, compiledFrameworkLabel) {}
 
   /// Lower the mo.graph to mgp.model.
   LogicalResult run();
@@ -60,6 +60,9 @@ public:
 
   // Lower a generic operation to a KGEN invoke.
   LogicalResult lowerOperation(mlir::Operation *op);
+
+private:
+  M::MGP::MOGraphLoweringState loweringState;
 };
 
 } // namespace
@@ -83,13 +86,15 @@ static MGP::CpuTensorSpecType createCpuTensorSpec(const T &tensor) {
 
 // Create the mgp.model and the regions for the init/execute phases.
 LogicalResult MOGraphLowering::createModelOp() {
+  MO::GraphOp &graph = loweringState.getGraph();
   OpBuilder b(graph);
 
   // Convert the tensor types for the model signature over.
   SmallVector<Type> inputTypes, outputTypes;
-  if (failed(
-          typeConverter.convertTypes(graph.getArgumentTypes(), inputTypes)) ||
-      failed(typeConverter.convertTypes(graph.getResultTypes(), outputTypes))) {
+  if (failed(loweringState.getTypeConverter().convertTypes(
+          graph.getArgumentTypes(), inputTypes)) ||
+      failed(loweringState.getTypeConverter().convertTypes(
+          graph.getResultTypes(), outputTypes))) {
     return graph.emitError("failed to convert mo graph input/output types");
   }
 
@@ -99,35 +104,39 @@ LogicalResult MOGraphLowering::createModelOp() {
 
   // Create the mgp.model and the regions for the init/execute phases.
   b.setInsertionPoint(graph);
-  common.modelOp =
-      b.create<MGP::ModelOp>(graph.getLoc(),
-                             /*sym_name=*/graph.getNameAttr(),
-                             /*frameworkName=*/common.compiledFrameworkLabel,
-                             /*inputTypes=*/inputTypes,
-                             /*outputTypes=*/outputTypes,
-                             /*inputArgLocs=*/inputLocs);
+  loweringState.setCommonModelOp(b.create<MGP::ModelOp>(
+      graph.getLoc(),
+      /*sym_name=*/graph.getNameAttr(),
+      /*frameworkName=*/loweringState.getCompiledFrameworkLabel(),
+      /*inputTypes=*/inputTypes,
+      /*outputTypes=*/outputTypes,
+      /*inputArgLocs=*/inputLocs));
 
   // Initialize the init state.
-  init.builder.setInsertionPointToEnd(common.modelOp.getInitBlock());
+  loweringState.getInitOpBuilder().setInsertionPointToEnd(
+      loweringState.getCommonModelOp().getInitBlock());
   // Get the chain and context values for the body.
   // This field tracks the current output chain as we lower into the init body.
-  init.chain = init.builder.create<GRT::ChainCreateOp>(graph.getLoc());
+  loweringState.setInitChain(
+      loweringState.getInitOpBuilder().create<GRT::ChainCreateOp>(
+          graph.getLoc()));
 
   // Create the mgp.context.create op without any slots.
-  init.mgpContext =
-      init.builder.create<MGP::ContextCreateOp>(graph.getLoc(), 0);
+  loweringState.setInitMgpContext(
+      loweringState.getInitOpBuilder().create<MGP::ContextCreateOp>(
+          graph.getLoc(), 0));
 
   // Initialize the execute state.
-  Block *executeBlock = common.modelOp.getExecuteBlock();
-  execute.builder.setInsertionPointToEnd(executeBlock);
+  Block *executeBlock = loweringState.getCommonModelOp().getExecuteBlock();
+  loweringState.getExecuteOpBuilder().setInsertionPointToEnd(executeBlock);
 
   // Extract chain and MGP context from arguments
-  execute.invokableInputChain = executeBlock->getArgument(0);
-  execute.mgpContext = executeBlock->getArgument(1);
+  loweringState.setExecuteInvokableInputChain(executeBlock->getArgument(0));
+  loweringState.setExecuteMgpContext(executeBlock->getArgument(1));
 
   // This field tracks the current output chain as we lower into the execute
   // body.
-  execute.chain = execute.invokableInputChain;
+  loweringState.setExecuteChain(loweringState.getExecuteInvokableInputChain());
 
   return success();
 }
@@ -136,21 +145,23 @@ LogicalResult MOGraphLowering::lowerOutput(MO::OutputOp output) {
   // Init phase lowering.
 
   // Return the final chain.
-  init.builder.create<BEF::OutputOp>(
-      output.getLoc(), ArrayRef<Value>{init.chain, init.mgpContext});
+  loweringState.getInitOpBuilder().create<BEF::OutputOp>(
+      output.getLoc(), ArrayRef<Value>{loweringState.getInitChain(),
+                                       loweringState.getInitMgpContext()});
 
   // Execute phase lowering.
 
   // Figure out what values to return.  We always return a chain.
   SmallVector<Value> operands;
-  operands.push_back(execute.chain);
+  operands.push_back(loweringState.getExecuteChain());
 
   // TODO: merge chains as needed
   for (Value operand : output.getOperands())
-    operands.push_back(execute.loweredTensors.lookup(operand));
+    operands.push_back(loweringState.lookupExecuteLoweredTensor(operand));
 
   // Finally, we can create the bef.output op.
-  execute.builder.create<BEF::OutputOp>(output.getLoc(), operands);
+  loweringState.getExecuteOpBuilder().create<BEF::OutputOp>(output.getLoc(),
+                                                            operands);
   return success();
 }
 
@@ -162,10 +173,11 @@ LogicalResult MOGraphLowering::lowerOperation(mlir::Operation *op) {
   SmallVector<Value> operands;
   for (Value operand : op->getOperands()) {
     // Extract the buffer and spec from the MGP tensor.
-    mlir::Value mgpTensor = execute.loweredTensors.lookup(operand);
+    mlir::Value mgpTensor = loweringState.lookupExecuteLoweredTensor(operand);
 
     auto extract =
-        execute.builder.create<MGP::CpuTensorExtractOp>(loc, mgpTensor);
+        loweringState.getExecuteOpBuilder().create<MGP::CpuTensorExtractOp>(
+            loc, mgpTensor);
 
     // Add the expanded buffer and spec as arguments to the operation.
     operands.push_back(extract.getBufferResult());
@@ -187,12 +199,14 @@ LogicalResult MOGraphLowering::lowerOperation(mlir::Operation *op) {
       return failure();
 
     // Allocate the buffer for the output.
-    auto bufferOp = execute.builder.create<MGP::CpuBufferAllocStaticOp>(
-        loc, execute.mgpContext, *bufferSize);
+    auto bufferOp =
+        loweringState.getExecuteOpBuilder().create<MGP::CpuBufferAllocStaticOp>(
+            loc, loweringState.getExecuteMgpContext(), *bufferSize);
 
     // Create an MGP tensor to match the MO output tensor.
     auto specOp =
-        execute.builder.create<MGP::CpuTensorSpecCreateOp>(loc, outSpecType);
+        loweringState.getExecuteOpBuilder().create<MGP::CpuTensorSpecCreateOp>(
+            loc, outSpecType);
 
     // Add the output buffer and spec as inputs to the operation.
     operands.push_back(bufferOp.getResult());
@@ -209,16 +223,17 @@ LogicalResult MOGraphLowering::lowerOperation(mlir::Operation *op) {
   mlir::OperationState opState{loc, opName};
 
   // Add the execute chain as the first argument.
-  operands.insert(operands.begin(), execute.chain);
+  operands.insert(operands.begin(), loweringState.getExecuteChain());
   opState.addOperands(operands);
 
   // The return type is just the chain, other outputs are passed as argument by
   // their buffer pointers.
-  opState.addTypes({execute.chain.getType()});
+  opState.addTypes({loweringState.getExecuteChain().getType()});
 
   // Add it to the MLIR.
-  mlir::Operation *invokeOp = execute.builder.create(opState);
-  execute.chain = invokeOp->getResult(0);
+  mlir::Operation *invokeOp =
+      loweringState.getExecuteOpBuilder().create(opState);
+  loweringState.setExecuteChain(invokeOp->getResult(0));
 
   size_t outputIndex = 0;
 
@@ -227,15 +242,17 @@ LogicalResult MOGraphLowering::lowerOperation(mlir::Operation *op) {
   for (auto &[buffer, spec] : outputBufferAndSpec) {
     // Get the type of the spec and infer the type of the tensor from that.
     auto ty = cast<MGP::CpuTensorSpecType>(spec->getResultTypes()[0]);
-    auto tensorType = MGP::CpuTensorType::get(execute.builder.getContext(), ty);
+    auto tensorType = MGP::CpuTensorType::get(
+        loweringState.getExecuteOpBuilder().getContext(), ty);
 
     // Create an immutable tensor
-    auto tensorCreateOp = execute.builder.create<MGP::CpuTensorCreateOp>(
-        loc, tensorType, execute.chain, buffer, spec);
+    auto tensorCreateOp =
+        loweringState.getExecuteOpBuilder().create<MGP::CpuTensorCreateOp>(
+            loc, tensorType, loweringState.getExecuteChain(), buffer, spec);
 
     // Update the MO tensor to now refer to this mgp tensor.
-    execute.loweredTensors.try_emplace(op->getResult(outputIndex),
-                                       tensorCreateOp.getResult());
+    loweringState.emplaceExecuteLoweredTensor(op->getResult(outputIndex),
+                                              tensorCreateOp.getResult());
     outputIndex++;
   }
 
@@ -245,7 +262,8 @@ LogicalResult MOGraphLowering::lowerOperation(mlir::Operation *op) {
 LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
   Location loc = constOp.getLoc();
   MO::TensorType moTensorType = constOp.getType();
-  Type convertedType = typeConverter.convertType(moTensorType);
+  Type convertedType =
+      loweringState.getTypeConverter().convertType(moTensorType);
   if (!convertedType)
     return constOp->emitError("unsupported type ") << constOp.getType();
 
@@ -259,14 +277,15 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
     size_t size = elementsAttr.getRawData().size();
     // TODO(#6838): Alignment probably needs to be a pass attribute.
     size_t alignment = kPreferredMemoryAlignment;
-    Type type = MGP::AlignedBytesType::get(execute.builder.getContext(),
-                                           static_cast<uint64_t>(size),
-                                           static_cast<uint64_t>(alignment));
-    std::string name = "const_" + std::to_string(execute.nextConstId++);
+    Type type = MGP::AlignedBytesType::get(
+        loweringState.getExecuteOpBuilder().getContext(),
+        static_cast<uint64_t>(size), static_cast<uint64_t>(alignment));
+    std::string name =
+        "const_" + std::to_string(loweringState.getExecuteNextConstId());
     const char *data =
         reinterpret_cast<const char *>(elementsAttr.getRawData().data());
     auto resourceManager = DenseResourceElementsHandle::getManagerInterface(
-        execute.builder.getContext());
+        loweringState.getExecuteOpBuilder().getContext());
     value = getAttrForTensorData(type, name, ArrayRef<char>(data, size),
                                  resourceManager, alignment);
   } else if (auto resource =
@@ -274,45 +293,53 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
     size_t size = resource.size();
     size_t alignment = resource.getRawHandle().getBlob()->getDataAlignment();
     assert(alignment > 0 && "resource blob must have non-zero alignment");
-    Type type = MGP::AlignedBytesType::get(execute.builder.getContext(),
-                                           static_cast<uint64_t>(size),
-                                           static_cast<uint64_t>(alignment));
+    Type type = MGP::AlignedBytesType::get(
+        loweringState.getExecuteOpBuilder().getContext(),
+        static_cast<uint64_t>(size), static_cast<uint64_t>(alignment));
     value = DenseResourceElementsAttr::get(type, resource.getRawHandle());
   } else {
     return constOp->emitError("unsupported constant attribute type");
   }
 
-  auto bufferOp = execute.builder.create<MGP::CpuBufferConstantOp>(loc, value);
+  auto bufferOp =
+      loweringState.getExecuteOpBuilder().create<MGP::CpuBufferConstantOp>(
+          loc, value);
 
   // We create the tensor spec op.
   auto outSpecType = createCpuTensorSpec(cast<mlir::ShapedType>(convertedType));
   auto specOp =
-      execute.builder.create<MGP::CpuTensorSpecCreateOp>(loc, outSpecType);
+      loweringState.getExecuteOpBuilder().create<MGP::CpuTensorSpecCreateOp>(
+          loc, outSpecType);
 
   // We create the tensor op itself using the spec and the buffer. The result
   // of this op is what we remember.
-  auto tensorType =
-      MGP::CpuTensorType::get(execute.builder.getContext(), outSpecType);
-  auto tensorCreateOp = execute.builder.create<MGP::CpuTensorCreateOp>(
-      loc, tensorType, execute.chain, bufferOp, specOp);
-  execute.loweredTensors.try_emplace(constOp->getResult(0),
-                                     tensorCreateOp->getResult(0));
+  auto tensorType = MGP::CpuTensorType::get(
+      loweringState.getExecuteOpBuilder().getContext(), outSpecType);
+  auto tensorCreateOp =
+      loweringState.getExecuteOpBuilder().create<MGP::CpuTensorCreateOp>(
+          loc, tensorType, loweringState.getExecuteChain(), bufferOp, specOp);
+  loweringState.emplaceExecuteLoweredTensor(constOp->getResult(0),
+                                            tensorCreateOp->getResult(0));
   return success();
 }
 
 LogicalResult MOGraphLowering::run() {
+  MO::GraphOp &graph = loweringState.getGraph();
+
   // Create the mgp.model and the regions for the init/execute phases.
   if (failed(createModelOp()))
     return failure();
 
-  for (auto [graphArg, exeArg] : llvm::zip(
-           graph.getArguments(),
-           common.modelOp.getExecuteBlock()->getArguments().drop_front(2))) {
+  for (auto [graphArg, exeArg] :
+       llvm::zip(graph.getArguments(), loweringState.getCommonModelOp()
+                                           .getExecuteBlock()
+                                           ->getArguments()
+                                           .drop_front(2))) {
     // If the argument has no uses then just ignore it.
     if (graphArg.use_empty())
       continue;
 
-    execute.loweredTensors.try_emplace(graphArg, exeArg);
+    loweringState.emplaceExecuteLoweredTensor(graphArg, exeArg);
   }
 
   // Lower all of the operations in the graph.
@@ -340,7 +367,7 @@ LogicalResult MOGraphLowering::run() {
 
     // Implementers of the lowering interface define their own logic.
     if (auto lowerable = dyn_cast<MGP::MOLoweringInterface>(op)) {
-      if (failed(lowerable.lower(*this)))
+      if (failed(lowerable.lower(loweringState)))
         return failure();
       continue;
     }

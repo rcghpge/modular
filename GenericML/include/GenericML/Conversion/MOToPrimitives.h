@@ -26,7 +26,6 @@ namespace M::MGP {
 /// mo.graph operation to a mgp.model. It is shared between the lowering itself
 /// (MOToPrimitives) and ops that it supports (implementers of
 /// MOLoweringInterface). The state is gradually built as ops are lowered.
-/// TODO(#6591): Turn into an interface with a minimal number of methods.
 class MOGraphLoweringState {
 public:
   MOGraphLoweringState(M::MO::GraphOp graph, TypeConverter &typeConverter,
@@ -56,6 +55,7 @@ public:
 
     /// This is the current chain value being added to.
     Value chain;
+
     /// This op creates and returns the overall MGP context.
     MGP::ContextCreateOp mgpContext;
 
@@ -94,10 +94,85 @@ public:
     void operator=(const ExecuteState &) = delete;
   };
 
+  MGP::ModelOp getModelOp() { return common.modelOp; }
+
+  llvm::StringRef getCompiledFrameworkLabel() {
+    return common.compiledFrameworkLabel;
+  }
+
+  /// Return the graph being lowered.
+  MO::GraphOp &getGraph() { return graph; }
+
+  /// Return type converter for lowering known MO types into MGP ones.
+  TypeConverter &getTypeConverter() { return typeConverter; }
+
+  /// Set the top-level mgp.model operation.
+  void setCommonModelOp(MGP::ModelOp modelOp) { common.modelOp = modelOp; }
+
+  /// Return the top-level mgp.model operation.
+  MGP::ModelOp &getCommonModelOp() { return common.modelOp; }
+
+  /// Return the current chain value being added to.
+  Value getInitChain() { return init.chain; }
+
+  /// Set the current chain value being added to.
+  void setInitChain(Value chain) { init.chain = chain; }
+
+  /// Return the builder for appending operations to the end of the invokable.
+  OpBuilder &getInitOpBuilder() { return init.builder; }
+
+  /// Set op to create and return the overall MGP context.
+  void setInitMgpContext(MGP::ContextCreateOp mgpContext) {
+    init.mgpContext = mgpContext;
+  }
+
+  /// return op to create and return the overall MGP context.
+  MGP::ContextCreateOp &getInitMgpContext() { return init.mgpContext; }
+
+  /// Return the builder for appending operations to the end of the invokable.
+  OpBuilder &getExecuteOpBuilder() { return execute.builder; }
+
+  /// Set the original input chain to the invokable, ready when the argument
+  /// tensors are ready.
+  void setExecuteInvokableInputChain(Value invokableInputChain) {
+    execute.invokableInputChain = invokableInputChain;
+  }
+
+  /// Return the original input chain to the invokable, ready when the argument
+  /// tensors are ready.
+  Value getExecuteInvokableInputChain() { return execute.invokableInputChain; }
+
+  /// Return the MGP context.
+  void setExecuteMgpContext(Value mgpContext) {
+    execute.mgpContext = mgpContext;
+  }
+
+  /// Return the MGP context.
+  Value getExecuteMgpContext() { return execute.mgpContext; }
+
+  /// Set the "main thread" chain in the execute phase.
+  void setExecuteChain(Value chain) { execute.chain = chain; }
+
+  /// Return the "main thread" chain in the execute phase.
+  Value getExecuteChain() { return execute.chain; }
+
+  /// Return what mo.tensor the SSA value is lowered to.
+  Value lookupExecuteLoweredTensor(Value key) {
+    return execute.loweredTensors.lookup(key);
+  }
+
+  /// Register what mo.tensor the SSA value (key) is lowered to.
+  void emplaceExecuteLoweredTensor(Value key, Value value) {
+    execute.loweredTensors.try_emplace(key, value);
+  }
+
+  /// Return and increment the next available constant identifier.
+  size_t getExecuteNextConstId() { return execute.nextConstId++; }
+
+private:
   //===-----------------------------------------------------------------===//
   // Lowering state
   //===-----------------------------------------------------------------===//
-
   /// The graph being lowered.
   MO::GraphOp graph;
   /// Type converter for lowering known MO types into MGP ones.
