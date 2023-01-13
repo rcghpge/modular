@@ -31,12 +31,6 @@ static AsyncValueRef<Chain> chain_merge(Runtime &runtime,
   return runtime.getReadyChain().copy();
 }
 
-/// Strictly wait for all arguments, return the first.
-static AnyAsyncValueRef chain_after(Runtime &runtime, AnyAsyncValueRef value,
-                                    RemainingArguments arguments) {
-  return value;
-}
-
 static void invoke(RemainingArguments arguments, RemainingResults results,
                    BEFAttr<BEFSymbolRef> targetName, BEFInvokable *target,
                    Runtime &runtime) {
@@ -230,7 +224,6 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
 void M::registerGraphRTControlFlowPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "grt.chain.create", chain_create);
   ADD_PRIMITIVE(registry, "grt.chain.merge", chain_merge);
-  ADD_PRIMITIVE(registry, "grt.chain.after", chain_after);
   ADD_PRIMITIVE(registry, "grt.invoke", invoke);
   ADD_PRIMITIVE(registry, "grt.if", grt_if);
   ADD_PRIMITIVE(registry, "grt.repeat.i32", repeat_i32);
