@@ -52,11 +52,17 @@ public:
   /// Await any side effects of the provided operation to complete. If the
   /// operation is not in the map, this method simply returns. This forwards to
   /// LLCL::await and therefore donates the current thread to completing work
-  /// items.
-  void await(Operation *key) {
+  /// items. If the chain is resolved to an error, this takes ownership of the
+  /// error and returns it.
+  ErrorOrSuccess await(Operation *key) {
     auto found = chainMap.find(key);
     if (found != chainMap.end())
       LLCL::await(found->getSecond());
+
+    if (found->getSecond()->isError())
+      return std::move(found->getSecond()->takeDiagnostic().getMessage());
+
+    return success();
   }
 
   /// Await all side effects for every operation in the map.
