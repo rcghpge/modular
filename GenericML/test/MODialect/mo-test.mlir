@@ -67,6 +67,26 @@ mo.graph @two_constants() -> (!mo.tensor<2x3xf32>, !mo.tensor<4xsi8>) {
   mo.output %0, %1 : !mo.tensor<2x3xf32>, !mo.tensor<4xsi8>
 }
 
+// CHECK: mo.graph @broadcast_same_rank(%[[FROM:.*]]: !mo.tensor<1x3xf32>) -> !mo.tensor<2x3xf32>
+mo.graph @broadcast_same_rank(%from: !mo.tensor<1x3xf32>) -> !mo.tensor<2x3xf32> {
+  // CHECK: %[[TO:.*]] = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<2xsi64>
+  %to  = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<2xsi64>
+  // CHECK: %[[RES:.*]] = "mo.broadcast_to"(%[[FROM]], %[[TO]]) : (!mo.tensor<1x3xf32>, !mo.tensor<2xsi64>) -> !mo.tensor<2x3xf32>
+  %res = "mo.broadcast_to"(%from, %to) : (!mo.tensor<1x3xf32>, !mo.tensor<2xsi64>) -> !mo.tensor<2x3xf32>
+  // CHECK: mo.output %[[RES]] : !mo.tensor<2x3xf32>
+  mo.output %res : !mo.tensor<2x3xf32>
+}
+
+// CHECK: mo.graph @broadcast_diff_rank(%[[FROM:.*]]: !mo.tensor<3xf32>) -> !mo.tensor<2x3xf32>
+mo.graph @broadcast_diff_rank(%from: !mo.tensor<3xf32>) -> !mo.tensor<2x3xf32> {
+  // CHECK: %[[TO:.*]] = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<2xsi64>
+  %to  = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<2xsi64>
+  // CHECK: %[[RES:.*]] = "mo.broadcast_to"(%[[FROM]], %[[TO]]) : (!mo.tensor<3xf32>, !mo.tensor<2xsi64>) -> !mo.tensor<2x3xf32>
+  %res = "mo.broadcast_to"(%from, %to) : (!mo.tensor<3xf32>, !mo.tensor<2xsi64>) -> !mo.tensor<2x3xf32>
+  // CHECK: mo.output %[[RES]] : !mo.tensor<2x3xf32>
+  mo.output %res : !mo.tensor<2x3xf32>
+}
+
 // CHECK: mo.graph @concat(%[[ARG0:.*]]: !mo.tensor<2x3xf32>, %[[ARG1:.*]]: !mo.tensor<2x5xf32>) -> !mo.tensor<2x8xf32> {
 mo.graph @concat(%arg0: !mo.tensor<2x3xf32>, %arg1: !mo.tensor<2x5xf32>) -> !mo.tensor<2x8xf32> {
   // CHECK: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<si64>
@@ -93,8 +113,6 @@ mo.graph @gather(%params: !mo.tensor<2x2xf32>, %indices: !mo.tensor<2xsi64>) -> 
   %0 = mo.gather(%params, %indices, %axis) : (!mo.tensor<2x2xf32>, !mo.tensor<2xsi64>, !mo.tensor<si64>) -> !mo.tensor<2x2xf32>
   mo.output %0 : !mo.tensor<2x2xf32>
 }
-
-// -----
 
 // CHECK: mo.graph @gather_dyn_rank_param(%[[PARAMS:.*]]: !mo.tensor<*f32>, %[[INDICES:.*]]: !mo.tensor<2xsi64>) -> !mo.tensor<2x2xf32> {
 mo.graph @gather_dyn_rank_param(%params: !mo.tensor<*f32>, %indices: !mo.tensor<2xsi64>) -> !mo.tensor<2x2xf32> {
