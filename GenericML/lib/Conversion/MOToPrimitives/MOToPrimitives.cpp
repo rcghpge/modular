@@ -12,6 +12,7 @@
 #include "GenericML/Interfaces/MOLoweringInterface.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MODialect/MOOps.h"
+#include "GenericML/MOGGDialect/MOGGDialect.h"
 #include "GraphRT/BEFDialect/BEFOps.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "Support/AlignedAlloc.h"
@@ -70,19 +71,6 @@ private:
 //===----------------------------------------------------------------------===//
 // Creation of the init/execute invokables
 //===----------------------------------------------------------------------===//
-template <typename T>
-static MGP::CpuTensorSpecType createCpuTensorSpec(const T &tensor) {
-  // TODO: Check for dynamic shape
-  ArrayRef<int64_t> shape = tensor.getShape();
-  // Convert scalars to rank 1 tensors
-  // make a local value for one so it doesn't disappear as an rvalue
-  // when creating the ArrayRef
-  int64_t one = 1;
-  if (tensor.hasRank() && tensor.getRank() == 0)
-    shape = ArrayRef<int64_t>(one);
-  // Output tensor type.
-  return MGP::CpuTensorSpecType::get(shape, tensor.getElementType());
-}
 
 // Create the mgp.model and the regions for the init/execute phases.
 LogicalResult MOGraphLowering::createModelOp() {
@@ -165,100 +153,6 @@ LogicalResult MOGraphLowering::lowerOutput(MO::OutputOp output) {
   return success();
 }
 
-LogicalResult MOGraphLowering::lowerOperation(mlir::Operation *op) {
-  auto loc = op->getLoc();
-
-  // Operands to pass to the operation. Input tensors are expanded to buffers
-  // and specs in IR those are passed in.
-  SmallVector<Value> operands;
-  for (Value operand : op->getOperands()) {
-    // Extract the buffer and spec from the MGP tensor.
-    mlir::Value mgpTensor = loweringState.lookupExecuteLoweredTensor(operand);
-
-    auto extract =
-        loweringState.getExecuteOpBuilder().create<MGP::CpuTensorExtractOp>(
-            loc, mgpTensor);
-
-    // Add the expanded buffer and spec as arguments to the operation.
-    operands.push_back(extract.getBufferResult());
-    operands.push_back(extract.getTensorSpecResult());
-  }
-
-  // We can't create the tensors until after the operation as they are
-  // immutable.
-  SmallVector<
-      std::pair<MGP::CpuBufferAllocStaticOp, MGP::CpuTensorSpecCreateOp>>
-      outputBufferAndSpec;
-
-  // Allocate the output buffer for each result and add as argument.
-  for (Type t : op->getResultTypes()) {
-    auto outSpecType = createCpuTensorSpec(t.cast<MO::TensorType>());
-    Optional<uint64_t> bufferSize = outSpecType.getSizeInBytes();
-    // Fail for dynamic shapes for now.
-    if (!bufferSize)
-      return failure();
-
-    // Allocate the buffer for the output.
-    auto bufferOp =
-        loweringState.getExecuteOpBuilder().create<MGP::CpuBufferAllocStaticOp>(
-            loc, loweringState.getExecuteMgpContext(), *bufferSize);
-
-    // Create an MGP tensor to match the MO output tensor.
-    auto specOp =
-        loweringState.getExecuteOpBuilder().create<MGP::CpuTensorSpecCreateOp>(
-            loc, outSpecType);
-
-    // Add the output buffer and spec as inputs to the operation.
-    operands.push_back(bufferOp.getResult());
-    operands.push_back(specOp.getResult());
-
-    // Track the buffer and spec so we can create the immutable tensor after the
-    // operation.
-    outputBufferAndSpec.push_back({bufferOp, specOp});
-  }
-
-  const std::string opName = "mop.kgen." + op->getName().stripDialect().str();
-
-  // Create a call to a custom invoke function we can put in the BEF.
-  mlir::OperationState opState{loc, opName};
-
-  // Add the execute chain as the first argument.
-  operands.insert(operands.begin(), loweringState.getExecuteChain());
-  opState.addOperands(operands);
-
-  // The return type is just the chain, other outputs are passed as argument by
-  // their buffer pointers.
-  opState.addTypes({loweringState.getExecuteChain().getType()});
-
-  // Add it to the MLIR.
-  mlir::Operation *invokeOp =
-      loweringState.getExecuteOpBuilder().create(opState);
-  loweringState.setExecuteChain(invokeOp->getResult(0));
-
-  size_t outputIndex = 0;
-
-  // Allocate the output tensors this must be done after as the tensor is read
-  // only.
-  for (auto &[buffer, spec] : outputBufferAndSpec) {
-    // Get the type of the spec and infer the type of the tensor from that.
-    auto ty = cast<MGP::CpuTensorSpecType>(spec->getResultTypes()[0]);
-    auto tensorType = MGP::CpuTensorType::get(
-        loweringState.getExecuteOpBuilder().getContext(), ty);
-
-    // Create an immutable tensor
-    auto tensorCreateOp =
-        loweringState.getExecuteOpBuilder().create<MGP::CpuTensorCreateOp>(
-            loc, tensorType, loweringState.getExecuteChain(), buffer, spec);
-
-    // Update the MO tensor to now refer to this mgp tensor.
-    loweringState.emplaceExecuteLoweredTensor(op->getResult(outputIndex),
-                                              tensorCreateOp.getResult());
-    outputIndex++;
-  }
-
-  return success();
-}
-
 LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
   Location loc = constOp.getLoc();
   MO::TensorType moTensorType = constOp.getType();
@@ -309,7 +203,8 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
           loc, value);
 
   // We create the tensor spec op.
-  auto outSpecType = createCpuTensorSpec(cast<mlir::ShapedType>(convertedType));
+  auto outSpecType =
+      MGP::createCpuTensorSpec(cast<mlir::ShapedType>(convertedType));
   auto specOp =
       loweringState.getExecuteOpBuilder().create<MGP::CpuTensorSpecCreateOp>(
           loc, outSpecType);
@@ -360,14 +255,6 @@ LogicalResult MOGraphLowering::run() {
       continue;
     }
 
-    // If we still have a MO op just use the generic lowering.
-    // TODO-maybe?: Add as a trait.
-    if (isa<MO::MODialect>(op.getDialect())) {
-      if (failed(lowerOperation(&op)))
-        return failure();
-      continue;
-    }
-
     // Implementers of the lowering interface define their own logic.
     if (auto lowerable = dyn_cast<MGP::MOLoweringInterface>(op)) {
       if (failed(lowerable.lower(loweringState)))
@@ -403,7 +290,7 @@ void MOToPrimitivesPass::runOnOperation() {
   TypeConverter converter;
   converter.addConversion([&ctx](MO::TensorType t) -> Optional<Type> {
     // TODO: this may fail for some element types.
-    return MGP::CpuTensorType::get(&ctx, createCpuTensorSpec(t));
+    return MGP::CpuTensorType::get(&ctx, MGP::createCpuTensorSpec(t));
   });
 
   // Convert each mo.graph into a mgp.model.

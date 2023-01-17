@@ -13,6 +13,7 @@
 
 include "GenericML/MOGGDialect/MOGGDialect.td"
 include "GenericML/MODialect/MOTypes.td"
+include "GenericML/Interfaces/MOLoweringInterface.td"
 include "Support/MDialect/MAttrs.td"
 include "mlir/IR/FunctionInterfaces.td"
 include "mlir/IR/SymbolInterfaces.td"
@@ -25,7 +26,8 @@ class MOGG_Op<string mnemonic, list<Trait> traits = []>
 // MOGG subgraph ops
 //===----------------------------------------------------------------------===//
 
-def MOGG_ExtOp : MOGG_Op<"ext.op", [HasParent<"MO::GraphOp">]> {
+def MOGG_ExtOp : MOGG_Op<"ext.op", [HasParent<"MO::GraphOp">,
+                   DeclareOpInterfaceMethods<MOLoweringInterface, ["lower"]>]> {
   let summary = "MOGG representation of an external library kernel";
   let description = [{
     This is a generic subgraph to represent calls to kernel libraries.

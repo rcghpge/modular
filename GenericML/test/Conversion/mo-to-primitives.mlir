@@ -1,4 +1,4 @@
-// RUN: mgp-opt %s --mo-to-primitives --allow-unregistered-dialect | FileCheck %s
+// RUN: mo-opt %s --mo-to-primitives --allow-unregistered-dialect | FileCheck %s
 
 // CHECK-LABEL: mgp.model @constants_with_multiple_returns : tfl init {
 // CHECK:        %0 = grt.chain.create

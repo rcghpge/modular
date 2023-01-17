@@ -4,6 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GenericML/Conversion/MOToMOGG.h"
+#include "GenericML/Conversion/MOToPrimitives.h"
 #include "GenericML/MODialect/MODialect.h"
 #include "GenericML/MOGGDialect/MOGGDialect.h"
 #include "Support/LLVMCompilerForwardDecls.h"
@@ -19,6 +21,9 @@ int main(int argc, char **argv) {
   mlir::registerCSEPass();
   mlir::registerSCCPPass();
   mlir::registerCanonicalizerPass();
+
+  MO::registerMOToMOGG();
+  MGP::registerMOToPrimitives();
 
   return failed(
       mlir::MlirOptMain(argc, argv, "MO dialect test driver", registry));

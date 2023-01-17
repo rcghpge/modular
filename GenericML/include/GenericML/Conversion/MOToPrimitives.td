@@ -4,6 +4,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifndef GENERICML_CONVERSION_MOTOPRIMITIVES_TD
+#define GENERICML_CONVERSION_MOTOPRIMITIVES_TD
+
 include "mlir/Pass/PassBase.td"
 
 def MOToPrimitives : Pass<"mo-to-primitives", "ModuleOp"> {
@@ -20,3 +23,5 @@ def MOToPrimitives : Pass<"mo-to-primitives", "ModuleOp"> {
                            "MGP::MGPDialect",
                            "GRT::GRTDialect"];
 }
+
+#endif // GENERICML_CONVERSION_MOTOPRIMITIVES_TD

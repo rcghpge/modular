@@ -7,6 +7,7 @@
 #ifndef GENERICML_CONVERSION_MOTOPRIMITIVES_H
 #define GENERICML_CONVERSION_MOTOPRIMITIVES_H
 
+#include "GenericML/Conversion/Support.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MODialect/MOOps.h"
 #include "mlir/Pass/Pass.h"
