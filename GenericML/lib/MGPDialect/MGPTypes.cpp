@@ -255,7 +255,8 @@ static void printDimsAndDType(AsmPrinter &p, ArrayRef<Optional<uint64_t>> dims,
         p << (dim ? std::to_string(*dim) : "?");
       },
       "x");
-  p << "x";
+  if (!dims.empty())
+    p << "x";
   printDType(p, optDType);
 }
 
@@ -265,8 +266,8 @@ LogicalResult
 CpuTensorSpecType::verify(function_ref<InFlightDiagnostic()> emitError,
                           ArrayRef<Optional<uint64_t>> dims,
                           Optional<DType> optDType, ArrayRef<int64_t> shape) {
-  if (shape.empty() || shape.size() > getMaximumRank())
-    return emitError() << "shape must have rank between 1 and "
+  if (shape.size() > getMaximumRank())
+    return emitError() << "shape must have rank between 0 and "
                        << getMaximumRank() << ".";
   for (const Optional<uint64_t> &dim : dims) {
     if (!isValidOptSize(dim))

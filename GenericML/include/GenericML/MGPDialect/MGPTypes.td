@@ -223,10 +223,6 @@ def MGP_CpuTensorSpecType : MGP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
 
     This type does not support:
      - Dynamic ranks.
-     - Rank zero shapes, sometimes used to denote scalars.
-       (We prefer scalar to be represented as values without
-       indirection, or to be canonicalized to a tensor with one
-       element.)
      - Symbolic dimensions or dtypes.
 
     Tensor specs are represented by M::TensorSpec in the Modular runtime.
@@ -236,6 +232,9 @@ def MGP_CpuTensorSpecType : MGP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
     For convenience this type may be denoted using the same body syntax
     as the built-in tensor type. However, the dtype is parsed using
     the M::DType string parser, or may be 'unk' to denote unknown.
+
+    Rank-0 Tensors that represent scalars are allowed; they are stored
+    identically to rank 1 tensors of length 1.
 
     DTypes can represent most variations of MLIR IntegerType and FloatTypes.
     However:
