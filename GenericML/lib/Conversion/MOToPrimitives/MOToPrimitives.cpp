@@ -59,9 +59,6 @@ public:
   /// Lowers mo.constant op.
   LogicalResult lowerConstant(MO::ConstantOp constOp);
 
-  // Lower a generic operation to a KGEN invoke.
-  LogicalResult lowerOperation(mlir::Operation *op);
-
 private:
   M::MGP::MOGraphLoweringState loweringState;
 };

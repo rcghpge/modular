@@ -43,7 +43,7 @@ struct MOOpPattern : public RewritePattern {
       outputTypes.push_back(t);
 
     // TODO: Relax this, lower to kgen generators, do a search here, etc
-    std::string opName = "mop.kgen." + op->getName().stripDialect().str();
+    std::string opName = "mop.kernels." + op->getName().stripDialect().str();
 
     // Create the mogg_ext_op
     b.setInsertionPoint(op);
