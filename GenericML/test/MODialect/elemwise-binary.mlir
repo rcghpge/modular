@@ -28,7 +28,7 @@ mo.graph @div(%arg0: !mo.tensor<2x3xf32>, %arg1: !mo.tensor<2x3xf32>) -> (!mo.te
   mo.output %0 : !mo.tensor<2x3xf32>
 }
 
-// TODO relocate this to a proper category
+// TODO relocate softmax test cases to a proper category
 // CHECK: mo.graph @softmax(%[[ARG0:.*]]: !mo.tensor<2x3xf32>) -> !mo.tensor<2x3xf32> {
 mo.graph @softmax(%arg0: !mo.tensor<2x3xf32>) -> (!mo.tensor<2x3xf32>) {
   // CHECK-NEXT: mo.softmax(%[[ARG0]]) : (!mo.tensor<2x3xf32>) -> !mo.tensor<2x3xf32>
@@ -36,3 +36,9 @@ mo.graph @softmax(%arg0: !mo.tensor<2x3xf32>) -> (!mo.tensor<2x3xf32>) {
   mo.output %0 : !mo.tensor<2x3xf32>
 }
 
+// CHECK: mo.graph @softmax_dyn_rank(%[[ARG0:.*]]: !mo.tensor<*f32>) -> !mo.tensor<*f32> {
+mo.graph @softmax_dyn_rank(%arg0: !mo.tensor<*f32>) -> (!mo.tensor<*f32>) {
+  // CHECK-NEXT: mo.softmax(%[[ARG0]]) : (!mo.tensor<*f32>) -> !mo.tensor<*f32>
+  %0 = mo.softmax(%arg0) : (!mo.tensor<*f32>) -> !mo.tensor<*f32>
+  mo.output %0 : !mo.tensor<*f32>
+}

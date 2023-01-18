@@ -265,7 +265,7 @@ def MO_SoftmaxOp : MO_Op<"softmax", [SameOperandsAndResultType, Pure]> {
     Returns softmax probability scores following:
      `exp(input) / sum(exp(input))`
 
-    Axis is a vector representing the axes to reduce.
+    Input must have rank 2, and the scores are computed along the last axis.
 
     Example:
 
@@ -275,7 +275,7 @@ def MO_SoftmaxOp : MO_Op<"softmax", [SameOperandsAndResultType, Pure]> {
     ```
   }];
 
-  let arguments = (ins MO_Tensor:$input);
+  let arguments = (ins MO_MatrixIfRanked:$input);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
@@ -470,7 +470,7 @@ def MO_GatherOp : MO_Op<"gather", [Pure]> {
     ```
   }];
 
-  let arguments = (ins MO_UnrankedOrNonScalarTensor:$params,
+  let arguments = (ins MO_NonScalarIfRanked:$params,
                        MO_IndicesTensor:$indices,
                        MO_RankedScalarTensor:$axis);
   let results = (outs MO_Tensor:$result);
