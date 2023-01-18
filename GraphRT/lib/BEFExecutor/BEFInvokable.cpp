@@ -700,7 +700,9 @@ void BEFExecutor::processUsedByRecords(
     // that we capture `users` which is an ArrayRef instead of copying the
     // content. This is fine because the underlying BEF file is alive when the
     // BEF executor is.
-    resultPtr->andThenAsync([thisRef = std::move(thisRef), users]() {
+    // TODO(#6923, #7069): Using sync to see if helps with chain corruption,
+    // and does not solve uniqueness problem anyway.
+    resultPtr->andThenSync([thisRef = std::move(thisRef), users]() {
       SmallVector<uint32_t, 16> primitiveIDToVisit(users.begin(), users.end());
       thisRef->decrementOperandsNotReadyCounts(primitiveIDToVisit);
     });
