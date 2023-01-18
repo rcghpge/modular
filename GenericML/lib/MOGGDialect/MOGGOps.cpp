@@ -53,7 +53,8 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
     Optional<uint64_t> bufferSize = outSpecType.getSizeInBytes();
     // Fail for dynamic shapes for now.
     if (!bufferSize)
-      return failure();
+      // TODO(#6984) support dynamic shape
+      return op->emitError("op requires output to have static shape");
 
     // Allocate the buffer for the output.
     auto bufferOp =
