@@ -170,7 +170,7 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
     // TODO(#6912): For now, leave alignment as 1. It appears 'aligned'
     // attributes are not making it into the runtime respecting arbitrary
     // alignment constraints.
-    size_t alignment = 1;
+    size_t alignment = kPreferredMemoryAlignment;
     Type type = MGP::AlignedBytesType::get(
         loweringState.getExecuteOpBuilder().getContext(),
         static_cast<uint64_t>(size), static_cast<uint64_t>(alignment));

@@ -57,6 +57,8 @@ static const char *mutabilityToStr(BufferRef::Mutability mutability) {
 BufferRef BufferRef::createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
                                  std::optional<size_t> alignment,
                                  const void *copyFrom) {
+  if (size == 0)
+    return {};
   void *buffer = runtime->allocateBytes(size, alignment.value_or(1));
   if (copyFrom)
     std::memcpy(buffer, copyFrom, size);
@@ -67,6 +69,8 @@ BufferRef BufferRef::createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
 BufferRef BufferRef::createBorrowed(void *buffer, size_t size,
                                     std::optional<size_t> alignment,
                                     Lifetime lifetime) {
+  if (size == 0)
+    return {};
   assert(buffer && "borrowed buffer must be non-null");
   assert((!alignment || llvm::isAddrAligned(llvm::Align(*alignment), buffer)) &&
          "buffer is not aligned as per purported alignment");
@@ -77,6 +81,8 @@ BufferRef BufferRef::createBorrowed(void *buffer, size_t size,
 BufferRef BufferRef::createBorrowed(const void *buffer, size_t size,
                                     std::optional<size_t> alignment,
                                     Lifetime lifetime) {
+  if (size == 0)
+    return {};
   assert(buffer && "borrowed buffer must be non-null");
   assert((!alignment || llvm::isAddrAligned(llvm::Align(*alignment), buffer)) &&
          "buffer is not aligned as per purported alignment");
@@ -90,11 +96,13 @@ BufferRef BufferRef::createBorrowed(const void *buffer, size_t size,
 BufferRef BufferRef::createForeign(ForeignBufferInterfaceID id, void *object,
                                    size_t size,
                                    std::optional<size_t> alignment) {
-  assert((!alignment ||
-          llvm::isAddrAligned(
-              llvm::Align(*alignment),
-              ForeignBufferInterfaceRegistry::getBuffer(id, object))) &&
-         "buffer is not aligned as per purported alignment");
+  // Note that even if size is 0 we are obliged to create a non-null
+  // BufferRef so as to retain ownership of object.
+  if (alignment && size)
+    assert(llvm::isAddrAligned(
+               llvm::Align(*alignment),
+               ForeignBufferInterfaceRegistry::getBuffer(id, object)) &&
+           "buffer is not aligned as per purported alignment");
   return BufferRef(id, object, size, makeMaybeAlign(alignment), kForeign,
                    kLocal, kImmutable);
 }
@@ -123,7 +131,8 @@ BufferRef &BufferRef::operator=(BufferRef &&rhs) {
 }
 
 ErrorOr<BufferRef> BufferRef::borrowOrError(Lifetime borrowLifetime) const {
-  assert(ownership != kNull && "borrowing a null reference");
+  if (ownership == kNull)
+    return BufferRef();
   if (ownership == kOwned || ownership == kForeign ||
       lifetime >= borrowLifetime)
     return BufferRef(const_cast<void *>(getBuffer()), getSize(), alignment,
@@ -142,7 +151,8 @@ BufferRef BufferRef::borrow(Lifetime borrowLifetime) const {
 }
 
 BufferRef BufferRef::deepCopy(LLCL::CompactRuntimePtr newRuntime) const {
-  assert(ownership != kNull && "deepCopying a null reference");
+  if (ownership == kNull)
+    return {};
   return createOwned(newRuntime, getSize(), getAlignment(), getBuffer());
 }
 

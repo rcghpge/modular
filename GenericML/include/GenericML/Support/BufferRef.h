@@ -33,6 +33,8 @@ namespace M::GML {
 /// copied (the underlying buffer will be copied), and borrowed (the new
 /// reference will contain a buffer alias).
 ///
+/// Zero size buffer references are represented as the 'null' reference.
+///
 /// CAUTION: Though movable, this type is 24 bytes on 64-bit systems so best not
 ///          to consider it a simple handle.
 ///

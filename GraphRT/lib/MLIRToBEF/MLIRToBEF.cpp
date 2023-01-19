@@ -22,6 +22,7 @@
 #include "Support/ADT/ConcatenationTree.h"
 #include "Support/ErrorOr.h"
 #include "Support/MDialect/MAttrs.h"
+#include "Support/ML/SizeUtils.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
@@ -193,6 +194,7 @@ public:
     // Take the data from the sub-emitter.
     ConcatenationTree sectionData = emitter.takeContents();
     unsigned alignment = emitter.getRequiredAlignment();
+    assert(alignment < 256 && "alignment must fit in an uint8_t");
 
     // Section start with an identifier.
     emitByte(static_cast<uint8_t>(sectionID));
@@ -640,9 +642,15 @@ private:
   BEFOffset emitIntegerValue(const APInt &value, Type eltType, Location loc);
   BEFOffset emitStringAttribute(StringRef value);
   BEFOffset emitSymbolAttribute(StringRef value);
+
+  /// Emits numElements of kind using emitRangeFn. Returns the offset at which
+  /// the actual data begins. If numElements is non-zero then the returned
+  /// offset will be aligned to at least alignment. However so such alignment
+  /// is enforced if numElements is zero.
   BEFOffset emitIntOrFloatRange(BEF::AttributeKind kind, size_t numElements,
                                 size_t alignment,
                                 function_ref<void()> emitRangeFn);
+
   template <typename ElementsAttrType>
   BEFOffset emitElementsAttr(ElementsAttrType value, Location loc,
                              function_ref<void()> emitRangeFn);
@@ -824,9 +832,10 @@ BEFOffset AttributesEmitter::emitAlignedBytesAttribute(AlignedBytesAttr attr,
   if (failed(kindOr))
     return {0};
 
+  size_t align = rawSizeToRuntimeSize(attr.getAlign().value_or(0));
+
   // All encoded AlignedBytes attributes are a uint8_t array of bytes.
-  return emitIntOrFloatRange(*kindOr, attr.getNumElements(),
-                             attr.getAlign().value_or(0),
+  return emitIntOrFloatRange(*kindOr, attr.getNumElements(), align,
                              [&]() { emitOwnedBytes(attr.getData()); });
 }
 

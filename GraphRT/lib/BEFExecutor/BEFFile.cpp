@@ -135,7 +135,7 @@ bool BEFFileReader::readNextSection() {
   uint8_t sectionID;
   ArrayRef<uint8_t> sectionContents;
   if (readSection(sectionID, sectionContents))
-    return emitError("BEF file section header corrupted");
+    return true;
 
   // Remember the sections we care about either in BEFFileInfo (if they get
   // decoded lazily by the invokable executor) or in BEFFileReader (if they're

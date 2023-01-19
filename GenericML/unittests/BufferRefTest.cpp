@@ -44,9 +44,37 @@ TEST(BufferRef, CreateOwned) {
   auto runtime = getRuntime();
   uint8_t data[4] = {1, 2, 3, 4};
   BufferRef ref = BufferRef::createOwned(runtime, /*size=*/4,
-                                         /*alignment=*/256, /*copyFrom=*/data);
-  ASSERT_TRUE(llvm::isAddrAligned(llvm::Align(256), ref.getBuffer()));
+                                         /*alignment=*/128, /*copyFrom=*/data);
+  ASSERT_TRUE(llvm::isAddrAligned(llvm::Align(128), ref.getBuffer()));
   ASSERT_EQ(memcmp(data, ref.getBuffer(), 4), 0);
+}
+
+TEST(BufferRef, CreateEmptyOwned) {
+  auto runtime = getRuntime();
+  BufferRef ref = BufferRef::createOwned(runtime, /*size=*/0,
+                                         /*alignment=*/128);
+  ASSERT_FALSE(ref);
+  ASSERT_EQ(ref.getSize(), 0u);
+  ASSERT_EQ(ref.getBuffer(), nullptr);
+};
+
+TEST(BufferRef, CreateBorrowed) {
+  uint8_t data[4] = {1, 2, 3, 4};
+  BufferRef ref =
+      BufferRef::createBorrowed(data, /*size=*/4,
+                                /*alignment=*/{}, BufferRef::kConstant);
+  ASSERT_EQ(ref.getSize(), 4u);
+  ASSERT_EQ(ref.getBuffer(), data);
+}
+
+TEST(BufferRef, CreateEmptyBorrowed) {
+  void *bogusUnalignedAddress = reinterpret_cast<void *>(0x5);
+  BufferRef ref =
+      BufferRef::createBorrowed(bogusUnalignedAddress, /*size=*/0,
+                                /*alignment=*/128, BufferRef::kConstant);
+  ASSERT_FALSE(ref);
+  ASSERT_EQ(ref.getSize(), 0u);
+  ASSERT_EQ(ref.getBuffer(), nullptr);
 }
 
 TEST(BufferRef, Move) {
@@ -74,7 +102,6 @@ TEST(BufferRef, BorrowError) {
 
 TEST(BufferRef, Borrow) {
   auto runtime = getRuntime();
-
   BufferRef ref =
       BufferRef::createOwned(runtime, sizeof(int), /*alignment=*/16);
   BufferRef bor = ref.borrow(BufferRef::kExecute);

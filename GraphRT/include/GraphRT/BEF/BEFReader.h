@@ -137,7 +137,8 @@ public:
   /// Skip over bytes until reaching the specified alignment.
   bool alignTo(unsigned alignment) {
     if (!llvm::isPowerOf2_32(alignment))
-      return emitError("tried to align to non-power-of-two");
+      return emitError(Twine("tried to align to non-power-of-two: ") +
+                       Twine(alignment));
 
     uint8_t padding;
     while (uintptr_t(contents.data()) & (uintptr_t(alignment) - 1)) {
