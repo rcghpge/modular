@@ -4,7 +4,7 @@ requires = ["wheel", "setuptools", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "modular"
+name = "modular-pyframework"
 version = "0.0.0"
 dependencies = []
 
@@ -15,3 +15,6 @@ experimental-string-processing = true
 
 [tool.isort]
 profile = "black"
+
+[tool.setuptools]
+packages = ["modular.pyframework"]

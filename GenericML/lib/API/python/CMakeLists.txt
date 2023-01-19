@@ -21,23 +21,12 @@ find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
 include(AddPyBind11)
 
-set(MODULAR_PYBIND_EXT pyframework)
-
-pybind11_add_module(${MODULAR_PYBIND_EXT}
-  ${MODULAR_PYBIND_EXT}.cpp
-)
-target_link_libraries(${MODULAR_PYBIND_EXT} PUBLIC modular-framework)
-
-# The extension itself must be compiled with RTTI and exceptions enabled.
-target_compile_options(${MODULAR_PYBIND_EXT} PRIVATE
- $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:GNU>>:
-   # Enable RTTI and exceptions.
-   -frtti -fexceptions
- >
- $<$<CXX_COMPILER_ID:MSVC>:
-   # Enable RTTI and exceptions.
-   /EHsc /GR>
-)
+# Add a custom target to build the Python bindings and wheel.
+# Individual pybind11 modules are expected to be dependencies of
+# modular-pyframework.
+add_custom_target(modular-pybind-ext)
+add_subdirectory(bindings/modular/pyframework)
+add_dependencies(modular-pybind-ext modular-pyframework)
 
 # Ensure that tools needed for pyproject.toml parsing and wheel repair are
 # installed.
@@ -52,14 +41,14 @@ endif()
 # Use pyproject.toml as a single source of truth for the version of the Modular
 # Python framework.
 execute_process(
-  COMMAND ${Python3_EXECUTABLE} -c "import tomli; f = open('${CMAKE_CURRENT_SOURCE_DIR}/pyproject.toml', 'rb'); proj = tomli.load(f)['project']; print(proj['name'] + '-' + proj['version'])"
+  COMMAND ${Python3_EXECUTABLE} -c "import tomli; f = open('${CMAKE_CURRENT_SOURCE_DIR}/pyproject.toml', 'rb'); proj = tomli.load(f)['project']; print(proj['name'].replace('-', '_') + '-' + proj['version'])"
   RESULT_VARIABLE TOMLI_RESULT
   OUTPUT_VARIABLE MODULAR_PYPROJECT_NAME_VERSION
   OUTPUT_STRIP_TRAILING_WHITESPACE
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 if(TOMLI_RESULT)
-  message(FATAL_ERROR "Failed to parse pyproject.toml for ${MODULAR_PYBIND_EXT}")
+  message(FATAL_ERROR "Failed to parse pyproject.toml for Modular python bindings.")
 endif()
 
 # Package the built extension into a wheel.
@@ -82,18 +71,18 @@ execute_process(
 # needed shared libraries into the wheel.
 # This way everything is self-contained in the wheel and will still work after
 # the wheel is pip installed.
-add_custom_command(TARGET ${MODULAR_PYBIND_EXT} POST_BUILD
+add_custom_command(TARGET modular-pybind-ext POST_BUILD
   COMMAND ${Python3_EXECUTABLE} -m build --wheel --outdir ${WHEEL_DIR}
   COMMAND ${Python3_EXECUTABLE} -m wheel unpack ${WHEEL_DIR}/${WHEEL_BASENAME}.whl --dest ${WHEEL_DIR}
-  COMMAND ${CMAKE_COMMAND} -E make_directory ${UNPACKED_WHEEL}/modular
-  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${MODULAR_PYBIND_EXT}> ${UNPACKED_WHEEL}/modular
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${UNPACKED_WHEEL}/modular/pyframework
+  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:core> ${UNPACKED_WHEEL}/modular/pyframework/
   COMMAND ${CMAKE_COMMAND} -E make_directory ${UNPACKED_WHEEL}/lib
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:tfl> ${UNPACKED_WHEEL}/lib
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:KGENCompilerRT> ${UNPACKED_WHEEL}/lib
   COMMAND ${Python3_EXECUTABLE} -m wheel pack ${UNPACKED_WHEEL} --dest ${WHEEL_DIR}
-  COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_SOURCE_DIR}/{build,modular.egg-info}
+  COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_SOURCE_DIR}/{build,modular_pyframework.egg-info}
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-  COMMENT "Packing wheel with ${MODULAR_PYBIND_EXT} and shared library dependencies."
+  COMMENT "Packing wheel with bindings and shared library dependencies."
   VERBATIM
 )
 
@@ -110,7 +99,7 @@ endif()
 
 # Detect non-system shared library dependencies and copy them into the wheel,
 # updating the RECORDS metadata file.
-add_custom_command(TARGET ${MODULAR_PYBIND_EXT} POST_BUILD
+add_custom_command(TARGET modular-pybind-ext POST_BUILD
   COMMAND ${REPAIR_CMD} ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   VERBATIM
