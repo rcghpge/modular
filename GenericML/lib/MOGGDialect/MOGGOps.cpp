@@ -17,10 +17,6 @@
 using namespace M;
 using namespace MOGG;
 
-//===----------------------------------------------------------------------===//
-// ODS-Generated Definitions
-//===----------------------------------------------------------------------===//
-
 LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
   auto op = static_cast<Op *>(this);
   auto loc = op->getLoc();
@@ -28,6 +24,7 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // Operands to pass to the operation. Input tensors are expanded to buffers
   // and specs in IR those are passed in.
   SmallVector<Value> operands;
+  SmallVector<Value> input_specs;
   for (Value operand : op->getOperands()) {
     // Extract the buffer and spec from the MGP tensor.
     mlir::Value mgpTensor = loweringState.lookupExecuteLoweredTensor(operand);
@@ -39,40 +36,81 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
     // Add the expanded buffer and spec as arguments to the operation.
     operands.push_back(extract.getBufferResult());
     operands.push_back(extract.getTensorSpecResult());
+    input_specs.push_back(extract.getTensorSpecResult());
   }
 
   // We can't create the tensors until after the operation as they are
   // immutable.
-  SmallVector<
-      std::pair<MGP::CpuBufferAllocStaticOp, MGP::CpuTensorSpecCreateOp>>
+  SmallVector<std::pair<TypedValue<MGP::CpuBufferType>,
+                        TypedValue<MGP::CpuTensorSpecType>>>
       outputBufferAndSpec;
 
   // Allocate the output buffer for each result and add as argument.
   for (Type t : op->getResultTypes()) {
-    auto outSpecType = MGP::createCpuTensorSpec(t.cast<MO::TensorType>());
+    MGP::CpuTensorSpecType outSpecType =
+        MGP::createCpuTensorSpec(t.cast<MO::TensorType>());
     Optional<uint64_t> bufferSize = outSpecType.getSizeInBytes();
-    // Fail for dynamic shapes for now.
-    if (!bufferSize)
-      // TODO(#6984) support dynamic shape
-      return op->emitError("op requires output to have static shape");
+    TypedValue<MGP::CpuBufferType> buf = Value();
+    TypedValue<MGP::CpuTensorSpecType> spec = Value();
+    if (!bufferSize) {
+      // Dynamic Case
+      // TODO: This is hacky, hacky, hacky, remove as soon as we can lower
+      // parametric shapes to the runtime
+      // TODO: If we decide we want this longer term (say, for MLAS kernels)
+      // We should refactor it out as a Trait maybe? and make this a method
+      // and data member of the op class.
+      static const std::map<llvm::StringRef, std::string> shapeFuncs{
+          {"mop.kernels.abs", "mop.shape.unary"},
+          {"mop.kernels.erf", "mop.shape.unary"},
+          {"mop.kernels.exp", "mop.shape.unary"},
+          {"mop.kernels.gelu", "mop.shape.unary"},
+          {"mop.kernels.relu", "mop.shape.unary"},
+          {"mop.kernels.softmax", "mop.shape.unary"},
+          {"mop.kernels.tanh", "mop.shape.unary"},
+          {"mop.kernels.add", "mop.shape.binary"},
+          {"mop.kernels.div", "mop.shape.binary"},
+          {"mop.kernels.mul", "mop.shape.binary"},
+          {"mop.kernels.sub", "mop.shape.binary"},
+          {"mop.kernels.matmul", "mop.shape.matmul"}};
+      if (shapeFuncs.count(this->getOpName())) {
+        // Create a call to a custom invoke function we can put in the BEF.
+        mlir::OperationState opState{loc, shapeFuncs.at(this->getOpName())};
+        // inputs are input specs
+        opState.addOperands(input_specs);
+        // The return is the new spec
+        opState.addTypes(input_specs[0].getType());
 
-    // Allocate the buffer for the output.
-    auto bufferOp =
-        loweringState.getExecuteOpBuilder().create<MGP::CpuBufferAllocStaticOp>(
-            loc, loweringState.getExecuteMgpContext(), *bufferSize);
+        // Add it to the MLIR.
+        mlir::Operation *invokeOp =
+            loweringState.getExecuteOpBuilder().create(opState);
+        spec = invokeOp->getResult(0);
+        buf = loweringState.getExecuteOpBuilder()
+                  .create<MGP::CpuBufferAllocSpecOp>(
+                      loc, loweringState.getExecuteMgpContext(), spec)
+                  .getResult();
+      } else {
+        return op->emitError("op requires output to have static shape");
+      }
+    } else {
+      // Static Case
+      // Allocate the buffer for the output.
+      buf = loweringState.getExecuteOpBuilder()
+                .create<MGP::CpuBufferAllocStaticOp>(
+                    loc, loweringState.getExecuteMgpContext(), *bufferSize)
+                .getResult();
 
-    // Create an MGP tensor to match the MO output tensor.
-    auto specOp =
-        loweringState.getExecuteOpBuilder().create<MGP::CpuTensorSpecCreateOp>(
-            loc, outSpecType);
-
+      // Create an MGP tensor to match the MO output tensor.
+      spec = loweringState.getExecuteOpBuilder()
+                 .create<MGP::CpuTensorSpecCreateOp>(loc, outSpecType)
+                 .getResult();
+    }
     // Add the output buffer and spec as inputs to the operation.
-    operands.push_back(bufferOp.getResult());
-    operands.push_back(specOp.getResult());
+    operands.push_back(buf);
+    operands.push_back(spec);
 
     // Track the buffer and spec so we can create the immutable tensor after the
     // operation.
-    outputBufferAndSpec.push_back({bufferOp, specOp});
+    outputBufferAndSpec.push_back({buf, spec});
   }
 
   // Create a call to a custom invoke function we can put in the BEF.
@@ -97,7 +135,7 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // only.
   for (auto &[buffer, spec] : outputBufferAndSpec) {
     // Get the type of the spec and infer the type of the tensor from that.
-    auto ty = cast<MGP::CpuTensorSpecType>(spec->getResultTypes()[0]);
+    auto ty = cast<MGP::CpuTensorSpecType>(spec.getType());
     auto tensorType = MGP::CpuTensorType::get(
         loweringState.getExecuteOpBuilder().getContext(), ty);
 
@@ -114,6 +152,10 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   return success();
 }
+
+//===----------------------------------------------------------------------===//
+// ODS-Generated Definitions
+//===----------------------------------------------------------------------===//
 
 void MOGGDialect::registerOperations() {
   addOperations<

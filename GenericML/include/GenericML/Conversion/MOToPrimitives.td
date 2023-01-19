@@ -17,8 +17,8 @@ def MOToPrimitives : Pass<"mo-to-primitives", "ModuleOp"> {
   }];
   let options = [
     Option<"compiledFrameworkLabel", "compiled-framework-label", "std::string",
-      /*default=*/"\"tfl\"",
-      "The label for resulting MGP graph. Default is tfl.">];
+      /*default=*/"\"tf\"",
+      "The label for resulting MGP graph. Default is tf.">];
   let dependentDialects = ["BEF::BEFDialect",
                            "MGP::MGPDialect",
                            "GRT::GRTDialect"];

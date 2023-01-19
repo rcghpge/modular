@@ -1,6 +1,6 @@
 // RUN: mo-opt %s --mo-to-primitives --allow-unregistered-dialect | FileCheck %s
 
-// CHECK-LABEL: mgp.model @constants_with_multiple_returns : tfl init {
+// CHECK-LABEL: mgp.model @constants_with_multiple_returns : tf init {
 // CHECK:        %0 = grt.chain.create
 // CHECK:        %1 = mgp.context.create 0
 // CHECK:        bef.output %0, %1 : !bef.chain, !mgp.context
@@ -28,7 +28,7 @@ mo.graph @constants_with_multiple_returns(%arg0: !mo.tensor<[2], f32>, %arg1: !m
   mo.output %arg0, %0, %0, %arg1, %arg1, %1 : !mo.tensor<[2], f32>, !mo.tensor<[3], f32>, !mo.tensor<[3], f32>, !mo.tensor<[5, 1], f32>, !mo.tensor<[5, 1], f32>, !mo.tensor<[4], si8>
 }
 
-// CHECK-LABEL: mgp.model @scalar_arg : tfl init {
+// CHECK-LABEL: mgp.model @scalar_arg : tf init {
 // CHECK:    %0 = grt.chain.create
 // CHECK:    %1 = mgp.context.create 0
 // CHECK:    bef.output %0, %1 : !bef.chain, !mgp.context
