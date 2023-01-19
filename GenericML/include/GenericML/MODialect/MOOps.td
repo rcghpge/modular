@@ -99,8 +99,8 @@ def MO_OutputOp
     Example:
 
     ```mlir
-    mo.graph @dyn_rank(%arg0: !mo.tensor<*f32>) -> (!mo.tensor<*f32>) {
-      mo.output %arg0 : !mo.tensor<*f32>
+    mo.graph @dyn_rank(%arg0: !mo.tensor<?, f32>) -> (!mo.tensor<?, f32>) {
+      mo.output %arg0 : !mo.tensor<?, f32>
     }
     ```
   }];
@@ -122,7 +122,7 @@ def MO_ConstantOp : MO_Op<"constant", [ConstantLike, Pure]> {
     Example:
 
     ```mlir
-    %0 = mo.constant {value = #M.dense_array<1, 2, 3, 4> : tensor<2x2xsi32>} : !mo.tensor<2x2xsi32>
+    %0 = mo.constant {value = #M.dense_array<1, 2, 3, 4> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
     ```
   }];
 
@@ -151,9 +151,9 @@ def MO_AddOp : MO_ElementWiseBinaryOp<"add"> {
     Example:
 
     ```mlir
-    %lhs: !mo.tensor<2x3xf32>
-    %rhs: !mo.tensor<2x3xf32>
-    %res = mo.add(%lhs, %rhs) : !mo.tensor<2x3xf32>
+    %lhs: !mo.tensor<[2, 3], f32>
+    %rhs: !mo.tensor<[2, 3], f32>
+    %res = mo.add(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
@@ -166,8 +166,8 @@ def MO_AbsOp : MO_ElementWiseUnaryOp<"abs", [Idempotent]> {
     Example:
 
     ```mlir
-    %arg: !mo.tensor<2x3xf32>
-    %res = mo.abs(%arg) : !mo.tensor<2x3xf32>
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.abs(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
@@ -180,9 +180,9 @@ def MO_DivOp : MO_ElementWiseBinaryOp<"div"> {
     Example:
 
     ```mlir
-    %lhs: !mo.tensor<2x3xf32>
-    %rhs: !mo.tensor<2x3xf32>
-    %res = mo.div(%lhs, %rhs) : !mo.tensor<2x3xf32>
+    %lhs: !mo.tensor<[2, 3], f32>
+    %rhs: !mo.tensor<[2, 3], f32>
+    %res = mo.div(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
@@ -195,8 +195,8 @@ def MO_ExpOp : MO_ElementWiseUnaryOp<"exp"> {
     Example:
 
     ```mlir
-    %arg: !mo.tensor<2x3xf32>
-    %res = mo.exp(%arg) : !mo.tensor<2x3xf32>
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.exp(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
@@ -209,8 +209,8 @@ def MO_ErfOp : MO_ElementWiseUnaryOp<"erf"> {
     Example:
 
     ```mlir
-    %arg: !mo.tensor<2x3xf32>
-    %res = mo.erf(%arg) : !mo.tensor<2x3xf32>
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.erf(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
@@ -224,8 +224,8 @@ def MO_GeluOp : MO_ElementWiseUnaryOp<"gelu"> {
     Example:
 
     ```mlir
-    %arg: !mo.tensor<2x3xf32>
-    %res = mo.gelu(%arg) : !mo.tensor<2x3xf32>
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.gelu(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
@@ -238,9 +238,9 @@ def MO_MulOp : MO_ElementWiseBinaryOp<"mul"> {
     Example:
 
     ```mlir
-    %lhs: !mo.tensor<2x3xf32>
-    %rhs: !mo.tensor<2x3xf32>
-    %res = mo.mul(%lhs, %rhs) : !mo.tensor<2x3xf32>
+    %lhs: !mo.tensor<[2, 3], f32>
+    %rhs: !mo.tensor<[2, 3], f32>
+    %res = mo.mul(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
@@ -253,8 +253,8 @@ def MO_ReluOp : MO_ElementWiseUnaryOp<"relu", [Idempotent]> {
     Example:
 
     ```mlir
-    %arg: !mo.tensor<2x3xf32>
-    %res = mo.relu(%arg) : !mo.tensor<2x3xf32>
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.relu(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
@@ -270,8 +270,8 @@ def MO_SoftmaxOp : MO_Op<"softmax", [SameOperandsAndResultType, Pure]> {
     Example:
 
     ```mlir
-    %arg: !mo.tensor<2x3xf32>
-    %res = mo.softmax(%arg) : !mo.tensor<2x3xf32>
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.softmax(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 
@@ -291,9 +291,9 @@ def MO_SubOp : MO_ElementWiseBinaryOp<"sub"> {
     Example:
 
     ```mlir
-    %lhs: !mo.tensor<2x3xf32>
-    %rhs: !mo.tensor<2x3xf32>
-    %res = mo.sub(%lhs, %rhs) : !mo.tensor<2x3xf32>
+    %lhs: !mo.tensor<[2, 3], f32>
+    %rhs: !mo.tensor<[2, 3], f32>
+    %res = mo.sub(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
@@ -306,8 +306,8 @@ def MO_TanhOp : MO_ElementWiseUnaryOp<"tanh"> {
     Example:
 
     ```mlir
-    %arg: !mo.tensor<2x3xf32>
-    %res = mo.tanh(%arg) : !mo.tensor<2x3xf32>
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.tanh(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
@@ -331,12 +331,12 @@ def MO_MaxPoolOp : MO_Op<"max_pool", [Pure, MO_SlidingWindow]>{
     Example:
 
     ```mlir
-    %fs = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<2xsi64>
-    %st = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<2xsi64>
-    %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<2xsi64>
+    %fs = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %st = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
     %res = mo.max_pool(%arg) [filter_shape = %fs, strides = %st, dilations = %di] : (
-      !mo.tensor<10x10xf32>, !mo.tensor<2xsi64>, !mo.tensor<2xsi64>, !mo.tensor<2xsi64>
-    ) -> !mo.tensor<9x5xf32>
+      !mo.tensor<[10, 10], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
+    ) -> !mo.tensor<[9, 5], f32>
     ```
   }];
 
@@ -372,11 +372,11 @@ def MO_ConvOp : MO_Op<"conv", [Pure, MO_SlidingWindow]>{
     Example:
 
     ```mlir
-    %st = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<2xsi64>
-    %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<2xsi64>
+    %st = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
     %res = mo.conv(%0, %1) [strides = %st, dilations = %di] : (
-      !mo.tensor<5x5xf32>, !mo.tensor<3x3xf32>, !mo.tensor<2xsi64>, !mo.tensor<2xsi64>
-    ) -> !mo.tensor<2x1xf32>
+      !mo.tensor<[5, 5], f32>, !mo.tensor<[3, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
+    ) -> !mo.tensor<[2, 1], f32>
     ```
   }];
 
@@ -411,9 +411,9 @@ def MO_BroadcastToOp : MO_Op<"broadcast_to", [Pure]> {
     Example:
 
     ```mlir
-    %from: !mo.tensor<3xf32>
-    %to   = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<2xsi64>
-    %res  = "mo.broadcast_to"(%from, %to) : (!mo.tensor<3xf32>, !mo.tensor<2xsi64>) -> !mo.tensor<2x3xf32>
+    %from: !mo.tensor<[3], f32>
+    %to   = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %res  = "mo.broadcast_to"(%from, %to) : (!mo.tensor<[3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 3], f32>
     ```
   }];
 
@@ -429,12 +429,12 @@ def MO_ConcatOp : MO_Op<"concat", [Pure]> {
     Example:
 
     ```mlir
-    %arg0: !mo.tensor<2x3xf32>
-    %arg1: !mo.tensor<2x5xf32>
-    %axis = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<si64>
-    %res = mo.concat[%axis: !mo.tensor<si64>](%arg0, %arg1) : (
-      !mo.tensor<2x3xf32>, !mo.tensor<2x5xf32>
-    ) -> !mo.tensor<2x8xf32>
+    %arg0: !mo.tensor<[2, 3], f32>
+    %arg1: !mo.tensor<[2, 5], f32>
+    %axis = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+    %res = mo.concat[%axis: !mo.tensor<[], si64>](%arg0, %arg1) : (
+      !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 5], f32>
+    ) -> !mo.tensor<[2, 8], f32>
     ```
   }];
 
@@ -461,12 +461,12 @@ def MO_GatherOp : MO_Op<"gather", [Pure]> {
     Example:
 
     ```mlir
-    %params : !mo.tensor<2x2xf32>
-    %indices: !mo.tensor<2xsi64>
-    %axis = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<si64>
+    %params : !mo.tensor<[2, 2], f32>
+    %indices: !mo.tensor<[2], si64>
+    %axis = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
     %res     = mo.gather(%params, %indices, %axis) : (
-      !mo.tensor<2x2xf32>, !mo.tensor<2xsi64>, !mo.tensor<si64>
-    ) -> !mo.tensor<2x2xf32>
+      !mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>, !mo.tensor<[], si64>
+    ) -> !mo.tensor<[2, 2], f32>
     ```
   }];
 
@@ -508,9 +508,9 @@ def MO_MatmulOp : MO_DotBase<"matmul", [MO_MatmulLike]> {
     Example:
 
     ```mlir
-    %lhs: ... !mo.tensor<10x20xf32>
-    %rhs: ... !mo.tensor<20x5xf32>
-    %res = mo.matmul(%lhs, %rhs) : (!mo.tensor<10x20xf32>, !mo.tensor<20x5xf32>) -> !mo.tensor<10x5xf32>
+    %lhs: ... !mo.tensor<[10, 20], f32>
+    %rhs: ... !mo.tensor<[20, 5], f32>
+    %res = mo.matmul(%lhs, %rhs) : (!mo.tensor<[10, 20], f32>, !mo.tensor<[20, 5], f32>) -> !mo.tensor<[10, 5], f32>
     ```
   }];
 }
@@ -526,9 +526,11 @@ def MO_BatchMatmulOp : MO_DotBase<"batch_matmul", [MO_MatmulLike]> {
     Example:
 
     ```mlir
-    %lhs: ... !mo.tensor<3x4x5xf32>
-    %rhs: ... !mo.tensor<3x5x6xf32>
-    %res = mo.batch_matmul(%lhs, %rhs) : (!mo.tensor<3x4x5xf32>, !mo.tensor<3x5x6f32>) -> !mo.tensor<3x4x6xf32>
+    %lhs: ... !mo.tensor<[3, 4, 5], f32>
+    %rhs: ... !mo.tensor<[3, 5, 6], f32>
+    %res = mo.batch_matmul(%lhs, %rhs) :
+      mo.tensor<[3, 4, 5], f32>, !mo.tensor<[3, 5, 6], f32>
+    ) -> !mo.tensor<[3, 4, 6], f32>
     ```
   }];
 }

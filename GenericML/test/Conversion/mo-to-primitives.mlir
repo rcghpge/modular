@@ -20,12 +20,12 @@
 // CHECK:        bef.output %[[ARG0]], %[[ARG2]], %[[VAL2]], %[[VAL2]], %[[ARG3]], %[[ARG3]], %[[VAL5]]
 // CHECK:      }
 
-mo.graph @constants_with_multiple_returns(%arg0: !mo.tensor<2xf32>, %arg1: !mo.tensor<5x1xf32>) -> (
-    !mo.tensor<2xf32>, !mo.tensor<3xf32>, !mo.tensor<3xf32>, !mo.tensor<5x1xf32>, !mo.tensor<5x1xf32>, !mo.tensor<4xsi8>
+mo.graph @constants_with_multiple_returns(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[5, 1], f32>) -> (
+    !mo.tensor<[2], f32>, !mo.tensor<[3], f32>, !mo.tensor<[3], f32>, !mo.tensor<[5, 1], f32>, !mo.tensor<[5, 1], f32>, !mo.tensor<[4], si8>
 ) {
-  %0 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>} : !mo.tensor<3xf32>
-  %1 = mo.constant {value = dense_resource<mtfl_buffer> : tensor<4xsi8>} : !mo.tensor<4xsi8>
-  mo.output %arg0, %0, %0, %arg1, %arg1, %1 : !mo.tensor<2xf32>, !mo.tensor<3xf32>, !mo.tensor<3xf32>, !mo.tensor<5x1xf32>, !mo.tensor<5x1xf32>, !mo.tensor<4xsi8>
+  %0 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>} : !mo.tensor<[3], f32>
+  %1 = mo.constant {value = dense_resource<mtfl_buffer> : tensor<4xsi8>} : !mo.tensor<[4], si8>
+  mo.output %arg0, %0, %0, %arg1, %arg1, %1 : !mo.tensor<[2], f32>, !mo.tensor<[3], f32>, !mo.tensor<[3], f32>, !mo.tensor<[5, 1], f32>, !mo.tensor<[5, 1], f32>, !mo.tensor<[4], si8>
 }
 
 // CHECK-LABEL: mgp.model @scalar_arg : tfl init {
@@ -35,8 +35,8 @@ mo.graph @constants_with_multiple_returns(%arg0: !mo.tensor<2xf32>, %arg1: !mo.t
 // CHECK:  } execute (%arg0: !bef.chain, %arg1: !mgp.context, %arg2: !mgp.cpu.tensor<f32>) -> (!bef.chain, !mgp.cpu.tensor<f32>) {
 // CHECK:    bef.output %arg0, %arg2 : !bef.chain, !mgp.cpu.tensor<f32>
 // CHECK:  }
-mo.graph @scalar_arg(%arg0: !mo.tensor<f32>) -> (!mo.tensor<f32>) {
-  mo.output %arg0 : !mo.tensor<f32>
+mo.graph @scalar_arg(%arg0: !mo.tensor<[], f32>) -> (!mo.tensor<[], f32>) {
+  mo.output %arg0 : !mo.tensor<[], f32>
 }
 
 {-#

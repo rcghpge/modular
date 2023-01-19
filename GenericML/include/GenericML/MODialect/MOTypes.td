@@ -47,9 +47,9 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [ShapedTypeInterface]> {
 
     Examples:
     ```mlir
-    !mo.tensor<4x16xf32>
-    !mo.tensor<?x?xi32>
-    !mo.tensor<*invalid>
+    !mo.tensor<[4, 16], f32>
+    !mo.tensor<[?, ?], i32>
+    !mo.tensor<?, invalid>
     ```
   }];
 
@@ -59,7 +59,7 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [ShapedTypeInterface]> {
     DefaultValuedParameter<"std::optional<Attribute>", "std::nullopt"> : $metadata);
 
   let genVerifyDecl = 1;
-  let assemblyFormat = "`<` $shape `` $dtype ( `,` $metadata^)? `>`";
+  let assemblyFormat = "`<` $shape `,` $dtype ( `,` $metadata^)? `>`";
 
   let builders = [TypeBuilderWithInferredContext<(ins
       "ArrayRef<int64_t>" : $shape,

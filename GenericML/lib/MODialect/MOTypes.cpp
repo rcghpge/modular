@@ -46,33 +46,46 @@ std::string asString(Type type) {
 //===----------------------------------------------------------------------===//
 
 static void printShapeParameter(AsmPrinter &p, ArrayRef<int64_t> dims) {
-  for (size_t i = 0, e = dims.size(); i < e; i++) {
-    if (ShapedType::isDynamic(dims[i])) {
-      p << '?';
-      p << 'x';
-    } else if (dims[i] == kDynamicRank) {
-      p << '*';
-      // TODO: Remove this conditional when we can support partial ranks
-      if (i < e - 1)
-        p << 'x';
-    } else {
-      p << dims[i];
-      p << 'x';
-    }
+  if (dims.size() == 1 && dims[0] == kDynamicRank) {
+    // special syntax for the common case of unknown shape
+    p << "?";
+    return;
   }
+
+  p << "[";
+  llvm::interleaveComma(dims, p, [&](int64_t dim) {
+    if (mlir::ShapedType::isDynamic(dim))
+      p << "?";
+    else
+      p << dim;
+  });
+  p << "]";
 }
 
 static FailureOr<llvm::SmallVector<int64_t>> parseShapeParameter(AsmParser &p) {
-  llvm::SmallVector<int64_t> dims{};
-  if (!p.parseOptionalStar()) {
-    // This is an unranked tensor.
-    dims.push_back(kDynamicRank);
-  } else {
-    // This should be a ranked tensor
-    if (p.parseDimensionList(dims, /*allowDynamic=*/true))
-      return failure();
+  SmallVector<int64_t> dims{};
+  if (mlir::succeeded(p.parseOptionalQuestion())) {
+    // special syntax for the common case of unknown shape
+    dims.emplace_back(kDynamicRank);
+    return dims;
   }
-  return dims;
+
+  auto parseDimElement = [&]() -> ParseResult {
+    if (succeeded(p.parseOptionalQuestion())) {
+      dims.emplace_back(mlir::ShapedType::kDynamic);
+      return success();
+    }
+    if (int64_t dim; succeeded(p.parseInteger(dim))) {
+      dims.emplace_back(dim);
+      return success();
+    }
+    return failure();
+  };
+
+  if (succeeded(p.parseCommaSeparatedList(AsmParser::Delimiter::Square,
+                                          parseDimElement)))
+    return dims;
+  return failure();
 }
 
 //===----------------------------------------------------------------------===//
