@@ -86,13 +86,7 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [ShapedTypeInterface]> {
 //===----------------------------------------------------------------------===//
 
 /// Checks if a type has rank N if statically ranked.
-class HasAnyRankIfRankedPred<int N> : Or<[Neg<HasRankPred>, HasAnyRankOfPred<[N]>]>;
-
-/// Checks if a type has rank 0
-def RankedScalarTypePred : And<[HasRankPred, HasAnyRankOfPred<[0]>]>;
-
-/// Checks if a type is unranked or is a non-scalar
-def UnrankedOrNonScalarTypePred: Neg<RankedScalarTypePred>;
+class HasRankIfRankedPred<int N> : Or<[Neg<HasRankPred>, HasAnyRankOfPred<[N]>]>;
 
 /// Checks if a MO_TensorType has int or index elements
 def IntOrIndexElementTypePred : CPred<"$_self.cast<::M::MO::TensorType>().getElementType().isIntOrIndex()">;
@@ -103,14 +97,14 @@ def HasSI64ElementTypePred : SubstLeaves<
 
 /// Confines the MO_TensorType so that it's ranked and a scalar
 def MO_RankedScalarTensor : ConfinedType<MO_Tensor,
-    [RankedScalarTypePred],
+    [HasAnyRankOfPred<[0]>],
     "ranked scalar tensor"> {
   let cppClassName = "::M::MO::TensorType";
 }
 
 /// Confines the MO_TensorType so that it's either unranked or a non-scalar
 def MO_NonScalarIfRanked: ConfinedType<MO_Tensor,
-    [UnrankedOrNonScalarTypePred],
+    [Neg<HasAnyRankOfPred<[0]>>],
     "unranked or non-scalar tensor"> {
   let cppClassName = "::M::MO::TensorType";
 }
@@ -122,18 +116,25 @@ def MO_IndicesTensor : ConfinedType<MO_Tensor,
   let cppClassName = "::M::MO::TensorType";
 }
 
+/// Confines the MO_TensorType so that it has SI64 elements and rank 1
+def MO_ShapeLike : ConfinedType<MO_Tensor,
+    [HasAnyRankOfPred<[1]>, HasSI64ElementTypePred],
+    "rank 1 and signed 64 integer elements"> {
+  let cppClassName = "::M::MO::TensorType";
+}
+
 /// Confines the MO_TensorType so that it has SI64 elements, and rank 1 if the
 /// rank is static.
 def MO_ShapeLikeIfRanked : ConfinedType<MO_Tensor,
-    [HasAnyRankIfRankedPred<1>, HasSI64ElementTypePred],
-    "dim 1 or unranked with signed 64 integer elements"> {
+    [HasRankIfRankedPred<1>, HasSI64ElementTypePred],
+    "rank 1 or unranked with signed 64 integer elements"> {
   let cppClassName = "::M::MO::TensorType";
 }
 
 /// Confines the MO_TensorType so that it has rank 2 if rank is staticl
 def MO_MatrixIfRanked : ConfinedType<MO_Tensor,
-    [HasAnyRankIfRankedPred<2>],
-    "dim 2 or unranked"> {
+    [HasRankIfRankedPred<2>],
+    "rank 2 or unranked"> {
   let cppClassName = "::M::MO::TensorType";
 }
 

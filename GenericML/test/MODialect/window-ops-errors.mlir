@@ -14,7 +14,7 @@ mo.graph @max_pool_filter_rank(%arg0: !mo.tensor<[10, 10], f32>) -> !mo.tensor<[
 mo.graph @max_pool_filter_rank(%arg0: !mo.tensor<[10, 10], f32>) -> !mo.tensor<[5, 5], f32> {
   %fs = mo.constant {value = #M.dense_array<2, 2> : tensor<2x1xsi64>} : !mo.tensor<[2, 1], si64>
   %st = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  // expected-error@+1 {{'mo.max_pool' op operand #1 must be dim 1 or unranked with signed 64 integer elements}}
+  // expected-error@+1 {{'mo.max_pool' op operand #1 must be rank 1 or unranked with signed 64 integer elements}}
   %0 = mo.max_pool(%arg0) [filter_shape = %fs, strides = %st, dilations = %st] : (
     !mo.tensor<[10, 10], f32>, !mo.tensor<[2, 1], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[5, 5], f32>
   mo.output %0 : !mo.tensor<[5, 5], f32>
@@ -26,7 +26,7 @@ mo.graph @max_pool_strides_el_type(%arg0: !mo.tensor<[10, 10], f32>) -> !mo.tens
   %fs = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %st = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi32>} : !mo.tensor<[2], si32>
   %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  // expected-error@+1 {{'mo.max_pool' op operand #2 must be dim 1 or unranked with signed 64 integer elements}}
+  // expected-error@+1 {{'mo.max_pool' op operand #2 must be rank 1 or unranked with signed 64 integer elements}}
   %0 = mo.max_pool(%arg0) [filter_shape = %fs, strides = %st, dilations = %di] : (
     !mo.tensor<[10, 10], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si32>, !mo.tensor<[2], si64>) -> !mo.tensor<[5, 5], f32>
   mo.output %0 : !mo.tensor<[5, 5], f32>

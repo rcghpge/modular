@@ -45,7 +45,7 @@ mo.graph @signless(%arg0: !mo.tensor<[], i32>) -> (!mo.tensor<[], i32>) {
 
 // TODO relocate softmax test cases to a proper category
 mo.graph @softmax(%arg0: !mo.tensor<[3], f32>) -> (!mo.tensor<[3], f32>) {
-  // expected-error@+1 {{'mo.softmax' op operand #0 must be dim 2 or unranked, but got '!mo.tensor<[3], f32>'}}
+  // expected-error@+1 {{'mo.softmax' op operand #0 must be rank 2 or unranked, but got '!mo.tensor<[3], f32>'}}
   %0 = mo.softmax(%arg0) : (!mo.tensor<[3], f32>) -> !mo.tensor<[3], f32>
   mo.output %0 : !mo.tensor<[3], f32>
 }

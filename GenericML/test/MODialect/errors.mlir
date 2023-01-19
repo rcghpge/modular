@@ -1,5 +1,29 @@
 // RUN: mo-opt %s --split-input-file --verify-diagnostics
 
+mo.graph @shape_of_f32_output(%arg: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[2], f32> {
+  // expected-error@+1 {{'mo.shape_of' op result #0 must be rank 1 and signed 64 integer elements, but got '!mo.tensor<[2], f32>'}}
+  %res = mo.shape_of(%arg) : (!mo.tensor<[1, 3], f32>) -> !mo.tensor<[2], f32>
+  mo.output %res : !mo.tensor<[2], f32>
+}
+
+// -----
+
+mo.graph @shape_of_dyn_rank(%arg: !mo.tensor<[1, 3], f32>) -> !mo.tensor<?, si64> {
+  // expected-error@+1 {{'mo.shape_of' op result #0 must be rank 1 and signed 64 integer elements, but got '!mo.tensor<?, si64>'}}
+  %res = mo.shape_of(%arg) : (!mo.tensor<[1, 3], f32>) -> !mo.tensor<?, si64>
+  mo.output %res : !mo.tensor<?, si64>
+}
+
+// -----
+//
+mo.graph @shape_of_rank_2(%arg: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[2, 1], si64> {
+  // expected-error@+1 {{'mo.shape_of' op result #0 must be rank 1 and signed 64 integer elements, but got '!mo.tensor<[2, 1], si64>'}}
+  %res = mo.shape_of(%arg) : (!mo.tensor<[1, 3], f32>) -> !mo.tensor<[2, 1], si64>
+  mo.output %res : !mo.tensor<[2, 1], si64>
+}
+
+// -----
+
 mo.graph @constant_illegal_attr() -> !mo.tensor<[4], f32> {
   // expected-error@+1 {{'mo.constant' op attribute 'value' failed to satisfy constraint}}
   %0 = mo.constant {value = dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf32>} : !mo.tensor<[4], f32>

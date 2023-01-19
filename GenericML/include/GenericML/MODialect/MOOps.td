@@ -400,6 +400,31 @@ def MO_ConvOp : MO_Op<"conv", [Pure, MO_SlidingWindow]>{
 // Shape related ops
 //===----------------------------------------------------------------------===//
 
+def MO_ShapeOfOp : MO_Op<"shape_of", [Pure]> {
+  let summary = "ShapeOf Operation";
+  let description = [{
+    Get the shape of a tensor.
+
+    Example:
+
+    ```mlir
+    // statically ranked
+    %arg1: !mo.tensor<[1, 2, 3], f32>
+    %shape1 = mo.shapeof(%arg1) : !mo.tensor<[3], si64>
+
+    // dynamically ranked
+    %arg2: !mo.tensor<?, f32>
+    %shape2 = mo.shapeof(%arg2) : !mo.tensor<[?], si64>
+    ```
+  }];
+
+  let arguments = (ins MO_Tensor:$input);
+  let results = (outs MO_ShapeLike:$shape);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 def MO_BroadcastToOp : MO_Op<"broadcast_to", [Pure]> {
   let summary = "BroadcastTo Operation";
   let description = [{
