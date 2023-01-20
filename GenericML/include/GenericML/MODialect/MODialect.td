@@ -8,6 +8,7 @@
 #define GENERICML_MODIALECT_MODIALECT_TD
 
 include "mlir/IR/DialectBase.td"
+include "KGEN/KGENDialect/KGENDialect.td"
 
 //===----------------------------------------------------------------------===//
 // MODialect
@@ -31,10 +32,13 @@ def MODialect : Dialect {
   }];
 
   let cppNamespace = "::M::MO";
-  let dependentDialects = ["MDialect"];
+  let dependentDialects = ["MDialect", "KGEN::KGENDialect"];
+  let useDefaultAttributePrinterParser = 1;
 
   let extraClassDeclaration = [{
   private:
+    /// Register all dialect attributes.
+    void registerAttributes();
     /// Register all dialect types.
     void registerTypes();
     /// Register all dialect ops.

@@ -11,6 +11,7 @@
 #ifndef GENERICML_MODIALECT_MOTYPES_H
 #define GENERICML_MODIALECT_MOTYPES_H
 
+#include "GenericML/MODialect/MOAttrs.h"
 #include "GenericML/MODialect/MODialect.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/ML/DType.h"

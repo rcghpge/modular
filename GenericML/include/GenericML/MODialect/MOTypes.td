@@ -34,6 +34,9 @@ def ShapeParameter : ArrayRefParameter<"int64_t", "shape"> {
 // MO_Tensor
 //===----------------------------------------------------------------------===//
 
+/// The type of parametric shape attributes.
+def MO_ShapeType : MO_Type<"Shape", "shape">;
+
 def MO_Tensor : MO_Type<"Tensor", "tensor", [ShapedTypeInterface]> {
   // TODO: Relax the constraint on dynamic rank once we reach
   // runtime agreement with MGP team.

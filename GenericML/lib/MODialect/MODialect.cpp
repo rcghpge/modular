@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MODialect/MODialect.h"
+#include "KGEN/KGENDialect/KGENDialect.h"
 #include "Support/MDialect/MDialect.h"
 
 using namespace M;
@@ -15,6 +16,7 @@ using namespace MO;
 //===----------------------------------------------------------------------===//
 
 void MODialect::initialize() {
+  registerAttributes();
   registerTypes();
   registerOperations();
 }
