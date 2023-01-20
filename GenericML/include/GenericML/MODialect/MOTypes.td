@@ -11,7 +11,7 @@
 #ifndef GENERICML_MODIALECT_MOTYPES_TD
 #define GENERICML_MODIALECT_MOTYPES_TD
 
-include "GenericML/MODialect/MODialect.td"
+include "GenericML/MODialect/MOAttrs.td"
 include "Support/Compiler/TensorUtils.td"
 include "mlir/IR/BuiltinTypeInterfaces.td"
 
@@ -22,15 +22,6 @@ class MO_Type<string name, string typeMnemonic, list<Trait> traits = []>
 }
 
 //===----------------------------------------------------------------------===//
-// MO_ShapeRefParameter
-//===----------------------------------------------------------------------===//
-// For standard ShapeRefs, which require allocation.
-def ShapeParameter : ArrayRefParameter<"int64_t", "shape"> {
-  let printer = [{printShapeParameter($_printer, $_self)}];
-  let parser = [{parseShapeParameter($_parser)}];
-}
-
-//===----------------------------------------------------------------------===//
 // MO_Tensor
 //===----------------------------------------------------------------------===//
 
@@ -38,42 +29,43 @@ def ShapeParameter : ArrayRefParameter<"int64_t", "shape"> {
 def MO_ShapeType : MO_Type<"Shape", "shape">;
 
 def MO_Tensor : MO_Type<"Tensor", "tensor", [ShapedTypeInterface]> {
-  // TODO: Relax the constraint on dynamic rank once we reach
-  // runtime agreement with MGP team.
   let summary = "Type of tensor specs of statically known rank.";
   let description = [{
-    This type represents the shape and element type of a tensor. Each
-    dimension must be a strictly positive integer value, the distinguished
-    kDynamic dimension denoting unknown, or the distinguished kDynamicRank
-    denoting an unkown number of dynamic axes. The element type is an M::DType,
-    with `invalid` denoting an unknown type.
+    This type represents the shape and element type of a tensor. The shape is
+    stored as a MO::ShapeAttr, while the element type is an M::DType, with
+    `invalid` denoting an unknown type.
 
     Examples:
     ```mlir
-    !mo.tensor<[4, 16], f32>
-    !mo.tensor<[?, ?], i32>
-    !mo.tensor<?, invalid>
+    !mo.tensor<[4, 16], f32>    // static shape
+    !mo.tensor<[N, N, 6], i32>  // parameterized shape
+    !mo.tensor<[?, ?], i32>     // unknown shape of known rank
+    !mo.tensor<[1, ?, N], i32>  // partially known and parameterized shape
+    !mo.tensor<?, invalid>      // unknown shape of unknown rank
+    !mo.tensor<Sh, invalid>     // shape parameter reference
     ```
   }];
 
   let parameters = (ins
-    ShapeParameter : $shape,
+    "TypedAttr" : $shapeAttr,
     "DType" : $dtype,
+    ArrayRefParameter<"int64_t">:$shape,
     DefaultValuedParameter<"std::optional<Attribute>", "std::nullopt"> : $metadata);
 
   let genVerifyDecl = 1;
-  let assemblyFormat = "`<` $shape `,` $dtype ( `,` $metadata^)? `>`";
+  let assemblyFormat = [{
+    `<` custom<ShapeParam>($shapeAttr, $shape) `,` $dtype ( `,` $metadata^)? `>`
+  }];
 
-  let builders = [TypeBuilderWithInferredContext<(ins
+  let builders = [
+    TypeBuilderWithInferredContext<(ins
+      "TypedAttr" : $shapeAttr,
+      "DType" : $dtype,
+      CArg<"std::optional<Attribute>", "std::nullopt"> : $metadata)>,
+    TypeBuilderWithInferredContext<(ins
       "ArrayRef<int64_t>" : $shape,
       "Type" : $elementType,
-      CArg<"std::optional<Attribute>", "std::nullopt"> : $metadata),
-    [{
-      ErrorOr<DType> errOrDType = fromMLIRType(elementType);
-      assert(!errOrDType.isError() &&
-              "element type is not representable as a DType");
-      return $_get(elementType.getContext(), shape, *errOrDType, metadata);
-    }]>];
+      CArg<"std::optional<Attribute>", "std::nullopt"> : $metadata)>];
 
   let extraClassDeclaration = [{
     size_t getRank() const;
@@ -81,6 +73,11 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [ShapedTypeInterface]> {
     Type getElementType() const;
     ShapedType cloneWith(std::optional<ArrayRef<int64_t>> shape, Type dtype,
                          std::optional<Attribute> metadata = std::nullopt) const;
+    bool hasStaticShape() const;
+
+    /// Helper to get the shape attribute with MO::ShapeAttr type, fails if the
+    /// shape is unknown.
+    MO::ShapeAttr getTypedShapeAttr() const;
   }];
 }
 

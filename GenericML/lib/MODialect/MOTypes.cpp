@@ -6,6 +6,7 @@
 
 #include "GenericML/MODialect/MOTypes.h"
 #include "GenericML/MODialect/MODialect.h"
+#include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/Compiler/MLIRDType.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMCompilerForwardDecls.h"
@@ -45,47 +46,52 @@ std::string asString(Type type) {
 // ShapeParameter
 //===----------------------------------------------------------------------===//
 
-static void printShapeParameter(AsmPrinter &p, ArrayRef<int64_t> dims) {
-  if (dims.size() == 1 && dims[0] == kDynamicRank) {
-    // special syntax for the common case of unknown shape
+static void printShapeParam(AsmPrinter &p, TypedAttr shapeAttr,
+                            ArrayRef<int64_t> shape) {
+  if (isa<KGEN::UnknownAttr>(shapeAttr)) {
     p << "?";
-    return;
+  } else if (auto declRef = dyn_cast<KGEN::ParamDeclRefAttr>(shapeAttr)) {
+    KGEN::printParamName(p, declRef.getName());
+  } else {
+    p << "[";
+    printShapeValue(p, cast<MO::ShapeAttr>(shapeAttr).getValues());
+    p << "]";
   }
-
-  p << "[";
-  llvm::interleaveComma(dims, p, [&](int64_t dim) {
-    if (mlir::ShapedType::isDynamic(dim))
-      p << "?";
-    else
-      p << dim;
-  });
-  p << "]";
 }
 
-static FailureOr<llvm::SmallVector<int64_t>> parseShapeParameter(AsmParser &p) {
-  SmallVector<int64_t> dims{};
-  if (mlir::succeeded(p.parseOptionalQuestion())) {
-    // special syntax for the common case of unknown shape
-    dims.emplace_back(kDynamicRank);
-    return dims;
+static ParseResult parseShapeParam(AsmParser &p,
+                                   FailureOr<TypedAttr> &shapeAttr,
+                                   FailureOr<SmallVector<int64_t>> &shape) {
+  auto shapeTy = p.getBuilder().getType<MO::ShapeType>();
+  if (succeeded(p.parseOptionalQuestion())) {
+    shapeAttr = {KGEN::UnknownAttr::get(shapeTy)};
+    shape.emplace();
+    return success();
   }
 
-  auto parseDimElement = [&]() -> ParseResult {
-    if (succeeded(p.parseOptionalQuestion())) {
-      dims.emplace_back(mlir::ShapedType::kDynamic);
-      return success();
+  if (succeeded(p.parseOptionalLSquare())) {
+    FailureOr<llvm::SmallVector<TypedAttr>> values;
+    if (failed(p.parseOptionalRSquare())) {
+      if (parseShapeValue(p, values) || p.parseRSquare())
+        return failure();
+    } else {
+      values.emplace();
     }
-    if (int64_t dim; succeeded(p.parseInteger(dim))) {
-      dims.emplace_back(dim);
-      return success();
-    }
-    return failure();
-  };
 
-  if (succeeded(p.parseCommaSeparatedList(AsmParser::Delimiter::Square,
-                                          parseDimElement)))
-    return dims;
-  return failure();
+    auto tmpAttr = MO::ShapeAttr::get(values.value(), shapeTy);
+    shape = tmpAttr.getIntDims();
+    shapeAttr = {tmpAttr};
+    return success();
+  }
+
+  if (StringAttr name; succeeded(KGEN::parseParamName(p, name))) {
+    shapeAttr = {KGEN::ParamDeclRefAttr::get(name, shapeTy)};
+    shape.emplace();
+    return success();
+  }
+  return p.emitError(p.getCurrentLocation())
+         << "couldn't parse shape parameter: expected `?`, shape reference, or "
+            "literal shape reference (i.e. `[...]`)";
 }
 
 //===----------------------------------------------------------------------===//
@@ -95,15 +101,37 @@ static FailureOr<llvm::SmallVector<int64_t>> parseShapeParameter(AsmParser &p) {
 /// Verifies that the given dimensions represent a valid tensor shape, and
 /// that the element type in DType form is also representable as an MLIR type.
 LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
-                                 ArrayRef<int64_t> shape, DType dtype,
+                                 TypedAttr shapeAttr, DType dtype,
+                                 ArrayRef<int64_t> shape,
                                  std::optional<Attribute> metadata) {
-  for (auto dim : shape) {
-    if (dim < 0 && dim != ShapedType::kDynamic && dim != kDynamicRank) {
-      return emitError()
-             << "shape dimensions must be non-negative or the "
-                "distinguished '?' unknown dimension or '*' unknown rank.";
+  if (auto unkAttr = llvm::dyn_cast<KGEN::UnknownAttr>(shapeAttr)) {
+    if (Type ty = unkAttr.getType(); !llvm::isa<MO::ShapeType>(ty)) {
+      return emitError() << "unknown shape attribute must have ShapeType, got "
+                         << ty;
     }
+    if (!shape.empty()) {
+      return emitError()
+             << "hidden shape not empty when shape attribute is unknown";
+    }
+    return mlir::success();
   }
+  if (auto declRef = llvm::dyn_cast<KGEN::ParamDeclRefAttr>(shapeAttr)) {
+    if (Type ty = declRef.getType(); !llvm::isa<MO::ShapeType>(ty)) {
+      return emitError()
+             << "shape parameter reference must have ShapeType, got " << ty;
+    }
+    if (!shape.empty()) {
+      return emitError() << "hidden shape not empty when shape attribute is "
+                            "parameter reference";
+    }
+    return success();
+  }
+
+  auto attr = llvm::dyn_cast<MO::ShapeAttr>(shapeAttr);
+  if (!attr)
+    return emitError() << "invalid shape attribute " << shapeAttr;
+  if (!shape.equals(attr.getIntDims()))
+    return emitError() << "hidden shape does not match shape attribute";
   return success();
 }
 
@@ -140,27 +168,63 @@ ErrorOr<Type> static toMLIRType(MLIRContext *context, DType dType) {
                "' as an MLIR type.");
 }
 
+TensorType TensorType::get(TypedAttr shapeAttr, DType dtype,
+                           std::optional<Attribute> metadata) {
+  SmallVector<int64_t> hiddenShape{};
+  if (auto attr = llvm::dyn_cast<MO::ShapeAttr>(shapeAttr))
+    hiddenShape = attr.getIntDims();
+  return get(shapeAttr.getContext(), shapeAttr, dtype, hiddenShape, metadata);
+}
+
+TensorType TensorType::get(ArrayRef<int64_t> shape, Type elementType,
+                           std::optional<Attribute> metadata) {
+  auto ctx = elementType.getContext();
+  auto newShape = MO::ShapeAttr::get(shape, MO::ShapeType::get(ctx));
+
+  ErrorOr<DType> errOrDType = fromMLIRType(elementType);
+  assert(!errOrDType.isError() &&
+         "element type is not representable as a DType");
+  return get(newShape, *errOrDType, metadata);
+}
+
 /// Returns clone with given element type, which must be representable as a
 /// dtype. Required by ShapedTypeInference
 ShapedType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
                                  Type dtype,
                                  std::optional<Attribute> metadata) const {
-  ArrayRef<int64_t> newShape =
-      shape.has_value() ? ArrayRef<int64_t>(*shape) : getShape();
+  auto shapeTy = MO::ShapeType::get(getContext());
+
+  TypedAttr shapeRef;
+  if (shape.has_value())
+    shapeRef = MO::ShapeAttr::get(shape.value(), shapeTy);
+  else
+    shapeRef = KGEN::UnknownAttr::get(shapeTy);
 
   ErrorOr<DType> errOrDType = fromMLIRType(dtype);
   assert(!errOrDType.isError() &&
          "element type is not representable as an M::DType");
-  return TensorType::get(getContext(), newShape, *errOrDType, metadata);
+  return TensorType::get(shapeRef, *errOrDType, metadata);
 }
 
 /// Does the Tensor have a static Rank?  Required by ShapedTypeInferece
 bool TensorType::hasRank() const {
-  return !llvm::is_contained(getShape(), kDynamicRank);
+  // Rank is only known if we have a concrete attribute
+  if (llvm::isa<KGEN::UnknownAttr, KGEN::ParamDeclRefAttr>(getShapeAttr()))
+    return false;
+  return true;
 }
 
 // Get the Rank of the Tensor.  Required by ShapedTypeInference
-size_t TensorType::getRank() const { return getShape().size(); }
+size_t TensorType::getRank() const {
+  assert(hasRank() && "cannot get rank if shape is not known");
+  return getTypedShapeAttr().getRank();
+}
+
+/// Returns if this type has a static shape, i.e. if the type is ranked and
+/// all dimensions have known size (>= 0).
+bool TensorType::hasStaticShape() const {
+  return hasRank() && getTypedShapeAttr().isStatic();
+}
 
 // Get the mlir element type of the Tensor.  Required by ShapedTypeInference
 Type TensorType::getElementType() const {
@@ -169,6 +233,10 @@ Type TensorType::getElementType() const {
          "element type is not representable as an mlir Type");
   return *errOrType;
 }
+
+MO::ShapeAttr TensorType::getTypedShapeAttr() const {
+  return llvm::cast<MO::ShapeAttr>(getShapeAttr());
+};
 
 //===----------------------------------------------------------------------===//
 // MODialect type support
