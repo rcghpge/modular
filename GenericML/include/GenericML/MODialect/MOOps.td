@@ -11,6 +11,8 @@
 #ifndef GENERICML_MODIALECT_MOOPS_TD
 #define GENERICML_MODIALECT_MOOPS_TD
 
+include "KGEN/KGENDialect/KGENInterfaces.td"
+include "KGEN/KGENDialect/KGENTypes.td"
 include "GenericML/MODialect/MOInterfaces.td"
 include "GenericML/MODialect/MOTypes.td"
 include "Support/MDialect/MAttrs.td"
@@ -48,12 +50,14 @@ class MO_ElementWiseBinaryOp<string name, list<Trait> traits = []>
 //===----------------------------------------------------------------------===//
 
 def MO_GraphOp : MO_Op<"graph", [HasParent<"ModuleOp">, FunctionOpInterface,
-                                 Symbol, SymbolTable, IsolatedFromAbove
+                                 Symbol, SymbolTable, IsolatedFromAbove,
+                                 // needed to leverage KGEN parameter infra
+                                 DeclInterface, FuncInterface
   // TODO : Re-enable TransformableGraphInterface
   // DeclareOpInterfaceMethods<TransformableGraphInterface>
 ]> {
   let summary = "Function that contains a MO graph with other ops mixed in";
-  let arguments = (ins TypeAttrOf<FunctionType>:$function_type,
+  let arguments = (ins TypeAttrOf<KGEN_SignatureType>:$signature,
                        OptionalAttr<DictArrayAttr>:$arg_attrs,
                        OptionalAttr<DictArrayAttr>:$res_attrs);
   let regions = (region SizedRegion<1>:$body);
@@ -72,7 +76,7 @@ def MO_GraphOp : MO_Op<"graph", [HasParent<"ModuleOp">, FunctionOpInterface,
   }];
 
   let builders = [
-    /// Create a new mtfl.graph with an empty body.
+    /// Create a new mo.graph with an empty body.
     OpBuilder<(ins
       "StringRef":$name,
       "TypeRange":$inputTypes,

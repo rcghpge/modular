@@ -10,6 +10,7 @@
 
 #include "GenericML/MODialect/MOOps.h"
 #include "GenericML/MODialect/MOInterfaces.h"
+#include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/Compiler/VerifyUtils.h"
 #include "Support/MDialect/MAttrs.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -25,9 +26,26 @@ using namespace MO;
 
 void GraphOp::build(OpBuilder &builder, OperationState &state, StringRef name,
                     TypeRange inputTypes, TypeRange resultTypes) {
-  buildWithEntryBlock(builder, state, name,
-                      builder.getFunctionType(inputTypes, resultTypes), {},
-                      inputTypes);
+  // Below we basically inline and specialize `buildWithEntryBlock`, which
+  // doesn't work because we use `signature` and not `function_type`.
+  state.addAttribute(M::SymbolTable::getSymbolAttrName(),
+                     builder.getStringAttr(name));
+
+  // Add signature attribute
+  KGEN::ParamDeclArrayAttr inputParams;
+  KGEN::TypeArrayAttr resultParamTypes;
+  auto funcType = builder.getFunctionType(inputTypes, resultTypes);
+  KGEN::ConventionsAttr conventions;
+  auto sig = KGEN::SignatureType::get(inputParams, resultParamTypes, funcType,
+                                      conventions);
+  state.addAttribute(GraphOp::getSignatureAttrName(state.name),
+                     mlir::TypeAttr::get(sig));
+
+  // Add the function body.
+  Region *bodyRegion = state.addRegion();
+  Block &body = bodyRegion->emplaceBlock();
+  for (Type input : inputTypes)
+    body.addArgument(input, state.location);
 }
 
 /// Parses an MO Graph.
@@ -35,23 +53,12 @@ void GraphOp::build(OpBuilder &builder, OperationState &state, StringRef name,
 /// operation ::= `graph` function-signature function-attributes? function-body
 ///
 ParseResult GraphOp::parse(OpAsmParser &parser, OperationState &result) {
-  auto buildFuncType =
-      [](Builder &builder, ArrayRef<Type> argTypes, ArrayRef<Type> results,
-         mlir::function_interface_impl::VariadicFlag,
-         std::string &) { return builder.getFunctionType(argTypes, results); };
-
-  return mlir::function_interface_impl::parseFunctionOp(
-      parser, result, /*allowVariadic=*/false,
-      getFunctionTypeAttrName(result.name), buildFuncType,
-      getArgAttrsAttrName(result.name), getResAttrsAttrName(result.name));
+  return KGEN::parseGeneratorOrFunc(parser, result,
+                                    KGEN::GeneratorOrFuncKind::func);
 }
 
 /// Print the GraphOp.
-void GraphOp::print(OpAsmPrinter &p) {
-  mlir::function_interface_impl::printFunctionOp(
-      p, *this, /*isVariadic=*/false, getFunctionTypeAttrName(),
-      getArgAttrsAttrName(), getResAttrsAttrName());
-}
+void GraphOp::print(OpAsmPrinter &p) { KGEN::printGeneratorOrFunc(p, *this); }
 
 //===----------------------------------------------------------------------===//
 // OutputOp support

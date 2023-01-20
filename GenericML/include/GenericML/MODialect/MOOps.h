@@ -14,6 +14,8 @@
 #include "GenericML/MODialect/MODialect.h"
 #include "GenericML/MODialect/MOInterfaces.h"
 #include "GenericML/MODialect/MOTypes.h"
+#include "KGEN/KGENDialect/KGENInterfaces.h"
+#include "KGEN/KGENDialect/KGENTypes.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/FunctionInterfaces.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
@@ -23,6 +25,10 @@
 namespace mlir {
 class ModuleOp;
 }
+
+// needed because `KGEN_SignatureType` in `MOOps.td` resolves to `SignatureType`
+// w/o the `KGEN` namespace
+using M::KGEN::SignatureType;
 
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations

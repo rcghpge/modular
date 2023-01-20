@@ -1,7 +1,34 @@
 // RUN: mo-opt -cse %s | mo-opt | FileCheck %s
 
-// CHECK: mo.graph @dyn_rank(%[[ARG0:.*]]: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
+// TODO update the parametric tests to use parameters in the tensor type when it
+// becomes available
+// CHECK: mo.graph @empty_parametric_graph(%[[ARG:.*]]: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
+mo.graph @empty_parametric_graph<>(%arg: !mo.tensor<?, f32>) -> (!mo.tensor<?, f32>) {
+  // CHECK-NEXT: mo.output %[[ARG]] : !mo.tensor<?, f32>
+  mo.output %arg : !mo.tensor<?, f32>
+}
+
+// CHECK: mo.graph @nullary_parametric_graph<() -> index>(%[[ARG:.*]]: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
+mo.graph @nullary_parametric_graph<() -> index>(%arg: !mo.tensor<?, f32>) -> (!mo.tensor<?, f32>) {
+  // CHECK-NEXT: mo.output %[[ARG]] : !mo.tensor<?, f32>
+  mo.output %arg : !mo.tensor<?, f32>
+}
+
+// CHECK: mo.graph @unary_void_parametric_graph<N>(%[[ARG:.*]]: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
+mo.graph @unary_void_parametric_graph<N: index>(%arg: !mo.tensor<?, f32>) -> (!mo.tensor<?, f32>) {
+  // CHECK-NEXT: mo.output %[[ARG]] : !mo.tensor<?, f32>
+  mo.output %arg : !mo.tensor<?, f32>
+}
+
+// CHECK: mo.graph @binary_parametric_graph<A, B -> index>(%[[ARG:.*]]: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
+mo.graph @binary_parametric_graph<A: index, B: index -> index>(%arg: !mo.tensor<?, f32>) -> (!mo.tensor<?, f32>) {
+  // CHECK-NEXT: mo.output %[[ARG]] : !mo.tensor<?, f32>
+  mo.output %arg : !mo.tensor<?, f32>
+}
+
+// CHECK: mo.graph @dyn_rank(%[[ARG:.*]]: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
 mo.graph @dyn_rank(%arg0: !mo.tensor<?, f32>) -> (!mo.tensor<?, f32>) {
+  // CHECK-NEXT: mo.output %[[ARG]] : !mo.tensor<?, f32>
   mo.output %arg0 : !mo.tensor<?, f32>
 }
 
