@@ -17,6 +17,7 @@
 #include "LLCL/Runtime/Runtime.h"
 #include "LLCL/Support/Atomics.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <cmath>
 #include <cstdio>
@@ -887,16 +888,30 @@ static void registerTestVecPrimitives(PrimitiveRegistry &registry) {
 }
 
 //===----------------------------------------------------------------------===//
-// Registration
+// Misc
 //===----------------------------------------------------------------------===//
 
 void grt_testcase() {}
+
+AnyAsyncValueRef grt_debug_print_num_refs(AnyAsyncValueRef input) {
+  llvm::outs() << "operand has " << input.getPointer()->getRefCount()
+               << " refs\n";
+  llvm::outs().flush();
+  return input;
+}
+
+//===----------------------------------------------------------------------===//
+// Registration
+//===----------------------------------------------------------------------===//
 
 /// This registers the 'test' dialect primitives, intended for writing
 /// executor testcases.
 void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
   // grt.testcase
   ADD_PRIMITIVE(registry, "grt.testcase", grt_testcase);
+
+  // grt.debug.assert_unique
+  ADD_PRIMITIVE(registry, "grt.debug.print_num_refs", grt_debug_print_num_refs);
 
   // Misc.
   ADD_PRIMITIVE(registry, "test.print_hello", print_hello);

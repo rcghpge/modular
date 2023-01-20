@@ -32,3 +32,22 @@ def TestcaseOp : GRTOp<"testcase",
 
   let hasCustomAssemblyFormat = 1;
 }
+
+//===----------------------------------------------------------------------===//
+// DebugPrintNumRefs
+//===----------------------------------------------------------------------===//
+
+def DebugPrintNumRefs : GRTOp<"debug.print_num_refs", [
+    AllTypesMatch<["input", "result"]>]> {
+  let summary = "Prints the number of refereces to its operand, and returns "
+                "the operand.";
+  let description = [{
+    This op prints to stdout the number of references to its operand,
+    and returns the operand unchanged. It is intended only for use in
+    unit tests for the correct handling of unique references.
+  }];
+
+  let arguments = (ins AnyType:$input);
+  let results = (outs AnyType:$result);
+  let assemblyFormat = "$input attr-dict `:` qualified(type($input))";
+}
