@@ -43,6 +43,8 @@ def MODialect : Dialect {
 
   let useDefaultTypePrinterParser = 1;
 
+  // https://discourse.llvm.org/t/psa-new-improved-fold-method-signature-has-landed-please-update-your-downstream-projects/67618
+  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 #endif // GENERICML_MODIALECT_MODIALECT_TD

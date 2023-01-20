@@ -68,7 +68,8 @@ LogicalResult OutputOp::verify() {
 // MO_ConstantOp support
 //===----------------------------------------------------------------------===//
 
-OpFoldResult ConstantOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult ConstantOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   assert(operands.empty() && "constant has no operands");
   return getValueAttr();
 }

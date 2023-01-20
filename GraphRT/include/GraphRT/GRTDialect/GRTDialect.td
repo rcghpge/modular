@@ -27,6 +27,9 @@ def GRTDialect : Dialect {
 
   // We depend on the BEF dialect for the chain type.
   let dependentDialects = ["::M::BEF::BEFDialect"];
+
+  // https://discourse.llvm.org/t/psa-new-improved-fold-method-signature-has-landed-please-update-your-downstream-projects/67618
+  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 #endif // GRAPHRT_GRTDIALECT_GRTDIALECT_TD
