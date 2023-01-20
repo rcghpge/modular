@@ -438,12 +438,15 @@ def MO_BroadcastToOp : MO_Op<"broadcast_to", [Pure]> {
     ```mlir
     %from: !mo.tensor<[3], f32>
     %to   = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %res  = "mo.broadcast_to"(%from, %to) : (!mo.tensor<[3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 3], f32>
+    %res  = mo.broadcast_to(%from, %to) : (!mo.tensor<[3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 3], f32>
     ```
   }];
 
   let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_shape);
   let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
 }
 
 def MO_ConcatOp : MO_Op<"concat", [Pure]> {
