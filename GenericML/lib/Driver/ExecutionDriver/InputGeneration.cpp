@@ -281,9 +281,13 @@ M::createTensorGenerators(InputGenerationKind inputGenKind,
   for (size_t i = 0; i < numInputs; i++) {
     const auto &userShape = inputShapes[i];
     const auto &modelSpec = model->getInputSpecs()[i];
-    UNWRAP_ERROR(result, createTensorGenerator(i, inputGenKind, inputDataSpecs,
-                                               userShape, modelSpec, runtime));
-    inputTensorGenerators.push_back(std::move(result));
+    auto generatorOrError = createTensorGenerator(
+        i, inputGenKind, inputDataSpecs, userShape, modelSpec, runtime);
+    if (generatorOrError) {
+      return Error("Input " + llvm::Twine(i) + ": " +
+                   generatorOrError.getError());
+    }
+    inputTensorGenerators.push_back(std::move(*generatorOrError));
   }
   return inputTensorGenerators;
 }
