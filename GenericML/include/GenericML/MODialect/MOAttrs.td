@@ -51,6 +51,10 @@ def MO_ShapeAttr : KGEN_ExprAttr<"Shape", "shape"> {
 
     /// Whether the shape is static, i.e. all dims are known constants.
     bool isStatic() const { return isConstant(); };
+
+    /// Convenience function returning the type as integer values, using
+    /// mlir::ShapedType::kDynamic for unknown dimensions.
+    SmallVector<int64_t> getIntDims() const;
   }];
 
   let genVerifyDecl = 1;

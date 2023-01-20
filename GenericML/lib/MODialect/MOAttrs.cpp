@@ -34,29 +34,37 @@ void MODialect::registerAttributes() {
 //===----------------------------------------------------------------------===//
 
 ParseResult M::MO::parseShapeValue(AsmParser &p,
-                                   FailureOr<SmallVector<TypedAttr>> &values,
-                                   MO::ShapeType type) {
-  values.emplace();
-  IndexType idxType = p.getBuilder().getIndexType();
-  return p.parseCommaSeparatedList([&] {
-    return KGEN::parseParamValue(p, values->emplace_back(), idxType);
-  });
+                                   FailureOr<SmallVector<TypedAttr>> &values) {
+  values = SmallVector<TypedAttr>();
+  IndexType idxTy = p.getBuilder().getIndexType();
+  return p.parseCommaSeparatedList(
+      [&] { return KGEN::parseParamValue(p, values->emplace_back(), idxTy); });
 }
 
-void M::MO::printShapeValue(AsmPrinter &p, ArrayRef<TypedAttr> values,
-                            MO::ShapeType type) {
+ParseResult M::MO::parseShapeValue(AsmParser &p,
+                                   FailureOr<SmallVector<TypedAttr>> &values,
+                                   MO::ShapeType type) {
+  return parseShapeValue(p, values);
+}
+
+void M::MO::printShapeValue(AsmPrinter &p, ArrayRef<TypedAttr> values) {
   llvm::interleaveComma(
       values, p, [&](TypedAttr value) { KGEN::printParamValue(p, value); });
 }
 
+void M::MO::printShapeValue(AsmPrinter &p, ArrayRef<TypedAttr> values,
+                            MO::ShapeType type) {
+  printShapeValue(p, values);
+}
+
 MO::ShapeAttr MO::ShapeAttr::get(ArrayRef<int64_t> values, MO::ShapeType type) {
-  auto t = IndexType::get(type.getContext());
+  auto idxTy = IndexType::get(type.getContext());
   SmallVector<TypedAttr> newValues;
   for (auto v : values) {
     if (mlir::ShapedType::isDynamic(v))
-      newValues.emplace_back(KGEN::UnknownAttr::get(t));
+      newValues.emplace_back(KGEN::UnknownAttr::get(idxTy));
     else
-      newValues.emplace_back(IntegerAttr::get(t, v));
+      newValues.emplace_back(IntegerAttr::get(idxTy, v));
   }
   return get(type.getContext(), newValues, type);
 }
@@ -72,16 +80,25 @@ bool MO::ShapeAttr::isConstant() const {
 LogicalResult
 MO::ShapeAttr::verify(function_ref<InFlightDiagnostic()> emitError,
                       ArrayRef<TypedAttr> values, MO::ShapeType type) {
-
-  auto indexTy = IndexType::get(type.getContext());
-  for (TypedAttr value : values) {
-    if (value.getType() != indexTy) {
+  for (auto [idx, value] : llvm::enumerate(values)) {
+    if (!value.getType().isIndex()) {
       return emitError() << "expected all list elements to have type "
-                         << indexTy;
+                         << IndexType::get(type.getContext()) << " but got "
+                         << value.getType() << " at position " << idx;
     }
   }
-
   return success();
+}
+
+SmallVector<int64_t> MO::ShapeAttr::getIntDims() const {
+  SmallVector<int64_t> res;
+  for (TypedAttr typedAttr : getValues()) {
+    if (auto intAttr = llvm::dyn_cast<IntegerAttr>(typedAttr))
+      res.emplace_back(intAttr.getInt());
+    else
+      res.emplace_back(mlir::ShapedType::kDynamic);
+  }
+  return res;
 }
 
 //===----------------------------------------------------------------------===//
