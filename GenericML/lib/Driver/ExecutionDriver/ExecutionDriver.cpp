@@ -149,7 +149,7 @@ static void waitForResults(const ExecutableModel *model,
 
     // Otherwise, we must have a framework specific tensor, convert it to a
     // generic one (or get an error).
-    result = model->convertToGenericTensor(result);
+    result = model->convertToGenericTensor(std::move(result));
     await(result);
   }
 }
