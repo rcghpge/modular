@@ -72,25 +72,39 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
           {"mop.kernels.mul", "mop.shape.binary"},
           {"mop.kernels.sub", "mop.shape.binary"},
           {"mop.kernels.matmul", "mop.shape.matmul"}};
-      if (shapeFuncs.count(this->getOpName())) {
-        // Create a call to a custom invoke function we can put in the BEF.
-        mlir::OperationState opState{loc, shapeFuncs.at(this->getOpName())};
+
+      auto getOutputSpec = [&](const std::string &opName,
+                               const SmallVector<Value> &inputs) {
+        mlir::OperationState opState{loc, opName};
         // inputs are input specs
-        opState.addOperands(input_specs);
+        opState.addOperands(inputs);
         // The return is the new spec
-        opState.addTypes(input_specs[0].getType());
+        opState.addTypes(cast<mlir::Type>(outSpecType));
 
         // Add it to the MLIR.
         mlir::Operation *invokeOp =
             loweringState.getExecuteOpBuilder().create(opState);
-        spec = invokeOp->getResult(0);
-        buf = loweringState.getExecuteOpBuilder()
-                  .create<MGP::CpuBufferAllocSpecOp>(
-                      loc, loweringState.getExecuteMgpContext(), spec)
-                  .getResult();
+        return invokeOp->getResult(0);
+      };
+
+      StringRef opName = this->getOpName();
+      if (shapeFuncs.count(opName)) {
+        // Create a call to a custom invoke function we can put in the BEF.
+        spec = getOutputSpec(shapeFuncs.at(opName), input_specs);
+      } else if (opName == "mop.kernels.broadcast_to") {
+        // Hackery! Pure Hackery! I'd start setting up classes for this, but
+        // again, I don't expect this to survive E
+        Value target_shape =
+            loweringState.lookupExecuteLoweredTensor(op->getOperands()[1]);
+        spec = getOutputSpec("mop.shape.broadcast_to",
+                             {input_specs[0], target_shape});
       } else {
         return op->emitError("op requires output to have static shape");
       }
+      buf = loweringState.getExecuteOpBuilder()
+                .create<MGP::CpuBufferAllocSpecOp>(
+                    loc, loweringState.getExecuteMgpContext(), spec)
+                .getResult();
     } else {
       // Static Case
       // Allocate the buffer for the output.
