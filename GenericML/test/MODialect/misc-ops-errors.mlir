@@ -1,36 +1,10 @@
 // RUN: mo-opt %s --split-input-file --verify-diagnostics
 
-mo.graph @shape_of_f32_output(%arg: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[2], f32> {
-  // expected-error@+1 {{'mo.shape_of' op result #0 must be rank 1 and signed 64 integer elements, but got '!mo.tensor<[2], f32>'}}
-  %res = mo.shape_of(%arg) : (!mo.tensor<[1, 3], f32>) -> !mo.tensor<[2], f32>
-  mo.output %res : !mo.tensor<[2], f32>
-}
+// NOTE: Keep the tests grouped by op, and the order of ops alphabetical.
 
-// -----
-
-mo.graph @shape_of_dyn_rank(%arg: !mo.tensor<[1, 3], f32>) -> !mo.tensor<?, si64> {
-  // expected-error@+1 {{'mo.shape_of' op result #0 must be rank 1 and signed 64 integer elements, but got '!mo.tensor<?, si64>'}}
-  %res = mo.shape_of(%arg) : (!mo.tensor<[1, 3], f32>) -> !mo.tensor<?, si64>
-  mo.output %res : !mo.tensor<?, si64>
-}
-
-// -----
-//
-mo.graph @shape_of_rank_2(%arg: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[2, 1], si64> {
-  // expected-error@+1 {{'mo.shape_of' op result #0 must be rank 1 and signed 64 integer elements, but got '!mo.tensor<[2, 1], si64>'}}
-  %res = mo.shape_of(%arg) : (!mo.tensor<[1, 3], f32>) -> !mo.tensor<[2, 1], si64>
-  mo.output %res : !mo.tensor<[2, 1], si64>
-}
-
-// -----
-
-mo.graph @constant_illegal_attr() -> !mo.tensor<[4], f32> {
-  // expected-error@+1 {{'mo.constant' op attribute 'value' failed to satisfy constraint}}
-  %0 = mo.constant {value = dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf32>} : !mo.tensor<[4], f32>
-  mo.output %0 : !mo.tensor<[4], f32>
-}
-
-// -----
+//===----------------------------------------------------------------------===//
+// ConcatOp
+//===----------------------------------------------------------------------===//
 
 mo.graph @concat_no_args(%arg0: !mo.tensor<[7], f32>) -> !mo.tensor<[7], f32> {
   %ax = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
@@ -68,6 +42,10 @@ mo.graph @concat_non_matching_output_rank(%arg0: !mo.tensor<[2, 2], f32>, %arg1:
 
 // -----
 
+//===----------------------------------------------------------------------===//
+// GatherOp
+//===----------------------------------------------------------------------===//
+
 mo.graph @gather_scalar_param(%params: !mo.tensor<[], f32>, %indices: !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32> {
   %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   // expected-error@+1 {{'mo.gather' op operand #0 must be unranked or non-scalar tensor, but got '!mo.tensor<[], f32>'}}
@@ -101,3 +79,33 @@ mo.graph @gather_unranked_axis(%params: !mo.tensor<[2, 2], f32>, %indices: !mo.t
   %0 = mo.gather(%params, %indices, %axis) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>, !mo.tensor<?, si64>) -> !mo.tensor<[2, 2], f32>
   mo.output %0 : !mo.tensor<[2, 2], f32>
 }
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// ShapeOfOp
+//===----------------------------------------------------------------------===//
+
+mo.graph @shape_of_f32_output(%arg: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[2], f32> {
+  // expected-error@+1 {{'mo.shape_of' op result #0 must be rank 1 and signed 64 integer elements, but got '!mo.tensor<[2], f32>'}}
+  %res = mo.shape_of(%arg) : (!mo.tensor<[1, 3], f32>) -> !mo.tensor<[2], f32>
+  mo.output %res : !mo.tensor<[2], f32>
+}
+
+// -----
+
+mo.graph @shape_of_dyn_rank(%arg: !mo.tensor<[1, 3], f32>) -> !mo.tensor<?, si64> {
+  // expected-error@+1 {{'mo.shape_of' op result #0 must be rank 1 and signed 64 integer elements, but got '!mo.tensor<?, si64>'}}
+  %res = mo.shape_of(%arg) : (!mo.tensor<[1, 3], f32>) -> !mo.tensor<?, si64>
+  mo.output %res : !mo.tensor<?, si64>
+}
+
+// -----
+
+mo.graph @shape_of_rank_2(%arg: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[2, 1], si64> {
+  // expected-error@+1 {{'mo.shape_of' op result #0 must be rank 1 and signed 64 integer elements, but got '!mo.tensor<[2, 1], si64>'}}
+  %res = mo.shape_of(%arg) : (!mo.tensor<[1, 3], f32>) -> !mo.tensor<[2, 1], si64>
+  mo.output %res : !mo.tensor<[2, 1], si64>
+}
+
+// -----

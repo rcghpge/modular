@@ -1,5 +1,29 @@
 // RUN: mo-opt %s | FileCheck %s
 
+// NOTE: Keep the tests grouped by op, and the order of ops alphabetical.
+
+//===----------------------------------------------------------------------===//
+// BatchMatmulOp
+//===----------------------------------------------------------------------===//
+
+// CHECK: mo.graph @batch_matmul(%[[ARG0:.*]]: !mo.tensor<[3, 10, 20], f32>, %[[ARG1:.*]]: !mo.tensor<[3, 20, 5], f32>) -> !mo.tensor<[3, 10, 5], f32> {
+mo.graph @batch_matmul(%arg0: !mo.tensor<[3, 10, 20], f32>, %arg1: !mo.tensor<[3, 20, 5], f32>) -> !mo.tensor<[3, 10, 5], f32> {
+  // CHECK-NEXT: mo.batch_matmul(%[[ARG0]], %[[ARG1]]) : (!mo.tensor<[3, 10, 20], f32>, !mo.tensor<[3, 20, 5], f32>) -> !mo.tensor<[3, 10, 5], f32>
+  %0 = mo.batch_matmul(%arg0, %arg1) : (!mo.tensor<[3, 10, 20], f32>, !mo.tensor<[3, 20, 5], f32>) -> !mo.tensor<[3, 10, 5], f32>
+  mo.output %0 : !mo.tensor<[3, 10, 5], f32>
+}
+
+// CHECK: mo.graph @batch_matmul_4D(%[[ARG0:.*]]: !mo.tensor<[7, 3, 10, 20], f32>, %[[ARG1:.*]]: !mo.tensor<[7, 3, 20, 5], f32>) -> !mo.tensor<[?, ?, 10, 5], f32> {
+mo.graph @batch_matmul_4D(%arg0: !mo.tensor<[7, 3, 10, 20], f32>, %arg1: !mo.tensor<[7, 3, 20, 5], f32>) -> !mo.tensor<[?, ?, 10, 5], f32> {
+  // CHECK-NEXT: mo.batch_matmul(%[[ARG0]], %[[ARG1]]) : (!mo.tensor<[7, 3, 10, 20], f32>, !mo.tensor<[7, 3, 20, 5], f32>) -> !mo.tensor<[?, ?, 10, 5], f32>
+  %0 = mo.batch_matmul(%arg0, %arg1) : (!mo.tensor<[7, 3, 10, 20], f32>, !mo.tensor<[7, 3, 20, 5], f32>) -> !mo.tensor<[?, ?, 10, 5], f32>
+  mo.output %0 : !mo.tensor<[?, ?, 10, 5], f32>
+}
+
+//===----------------------------------------------------------------------===//
+// MatmulOp
+//===----------------------------------------------------------------------===//
+
 // CHECK: mo.graph @matmul(%[[ARG0:.*]]: !mo.tensor<[10, 20], f32>, %[[ARG1:.*]]: !mo.tensor<[20, 5], f32>) -> !mo.tensor<[10, 5], f32> {
 mo.graph @matmul(%arg0: !mo.tensor<[10, 20], f32>, %arg1: !mo.tensor<[20, 5], f32>) -> (!mo.tensor<[10, 5], f32>) {
   // CHECK-NEXT: mo.matmul(%[[ARG0]], %[[ARG1]]) : (!mo.tensor<[10, 20], f32>, !mo.tensor<[20, 5], f32>)   -> !mo.tensor<[10, 5], f32>
@@ -33,18 +57,4 @@ mo.graph @matmul_dyndim_K(%arg0: !mo.tensor<[10, ?], f32>, %arg1: !mo.tensor<[?,
   // CHECK-NEXT: mo.matmul(%[[ARG0]], %[[ARG1]]) : (!mo.tensor<[10, ?], f32>, !mo.tensor<[?, 5], f32>) -> !mo.tensor<[10, 5], f32>
   %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[10, ?], f32>, !mo.tensor<[?, 5], f32>) -> !mo.tensor<[10, 5], f32>
   mo.output %0 : !mo.tensor<[10, 5], f32>
-}
-
-// CHECK: mo.graph @batch_matmul(%[[ARG0:.*]]: !mo.tensor<[3, 10, 20], f32>, %[[ARG1:.*]]: !mo.tensor<[3, 20, 5], f32>) -> !mo.tensor<[3, 10, 5], f32> {
-mo.graph @batch_matmul(%arg0: !mo.tensor<[3, 10, 20], f32>, %arg1: !mo.tensor<[3, 20, 5], f32>) -> !mo.tensor<[3, 10, 5], f32> {
-  // CHECK-NEXT: mo.batch_matmul(%[[ARG0]], %[[ARG1]]) : (!mo.tensor<[3, 10, 20], f32>, !mo.tensor<[3, 20, 5], f32>) -> !mo.tensor<[3, 10, 5], f32>
-  %0 = mo.batch_matmul(%arg0, %arg1) : (!mo.tensor<[3, 10, 20], f32>, !mo.tensor<[3, 20, 5], f32>) -> !mo.tensor<[3, 10, 5], f32>
-  mo.output %0 : !mo.tensor<[3, 10, 5], f32>
-}
-
-// CHECK: mo.graph @batch_matmul_4D(%[[ARG0:.*]]: !mo.tensor<[7, 3, 10, 20], f32>, %[[ARG1:.*]]: !mo.tensor<[7, 3, 20, 5], f32>) -> !mo.tensor<[?, ?, 10, 5], f32> {
-mo.graph @batch_matmul_4D(%arg0: !mo.tensor<[7, 3, 10, 20], f32>, %arg1: !mo.tensor<[7, 3, 20, 5], f32>) -> !mo.tensor<[?, ?, 10, 5], f32> {
-  // CHECK-NEXT: mo.batch_matmul(%[[ARG0]], %[[ARG1]]) : (!mo.tensor<[7, 3, 10, 20], f32>, !mo.tensor<[7, 3, 20, 5], f32>) -> !mo.tensor<[?, ?, 10, 5], f32>
-  %0 = mo.batch_matmul(%arg0, %arg1) : (!mo.tensor<[7, 3, 10, 20], f32>, !mo.tensor<[7, 3, 20, 5], f32>) -> !mo.tensor<[?, ?, 10, 5], f32>
-  mo.output %0 : !mo.tensor<[?, ?, 10, 5], f32>
 }

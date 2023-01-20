@@ -1,5 +1,26 @@
 // RUN: mo-opt %s --split-input-file --verify-diagnostics
 
+// NOTE: Keep the tests grouped by op, and the order of ops alphabetical.
+
+//===----------------------------------------------------------------------===//
+// ConvOp
+//===----------------------------------------------------------------------===//
+
+mo.graph @conv_window_param_size_mismatch(
+  %arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>, %st: !mo.tensor<[3], si64>, %di: !mo.tensor<[2], si64>
+) -> !mo.tensor<?, f32> {
+  // expected-error@+1 {{window parameter sizes must match if static}}
+  %0 = mo.conv(%arg0, %arg1) [strides = %st, dilations = %di] : (
+    !mo.tensor<?, f32>, !mo.tensor<?, f32>, !mo.tensor<[3], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<?, f32>
+  mo.output %0 : !mo.tensor<?, f32>
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// MaxPoolOp
+//===----------------------------------------------------------------------===//
+
 mo.graph @max_pool_filter_rank(%arg0: !mo.tensor<[10, 10], f32>) -> !mo.tensor<[5, 5, 3], f32> {
   %fs = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %st = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
@@ -73,16 +94,5 @@ mo.graph @max_pool_window_param_size_mismatch(
   // expected-error@+1 {{window parameter sizes must match if static}}
   %0 = mo.max_pool(%arg0) [filter_shape = %c1, strides = %c1, dilations = %di] : (
     !mo.tensor<?, f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<?, f32>
-  mo.output %0 : !mo.tensor<?, f32>
-}
-
-// -----
-
-mo.graph @conv_window_param_size_mismatch(
-  %arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>, %st: !mo.tensor<[3], si64>, %di: !mo.tensor<[2], si64>
-) -> !mo.tensor<?, f32> {
-  // expected-error@+1 {{window parameter sizes must match if static}}
-  %0 = mo.conv(%arg0, %arg1) [strides = %st, dilations = %di] : (
-    !mo.tensor<?, f32>, !mo.tensor<?, f32>, !mo.tensor<[3], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<?, f32>
   mo.output %0 : !mo.tensor<?, f32>
 }
