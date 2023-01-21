@@ -189,7 +189,9 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
     assert(alignment > 0 && "resource blob must have non-zero alignment");
     Type type = MGP::AlignedBytesType::get(
         loweringState.getExecuteOpBuilder().getContext(),
-        static_cast<uint64_t>(size), static_cast<uint64_t>(alignment));
+        static_cast<uint64_t>(
+            size * resource.getElementType().getIntOrFloatBitWidth() / 8),
+        static_cast<uint64_t>(alignment));
     value = DenseResourceElementsAttr::get(type, resource.getRawHandle());
   } else {
     return constOp->emitError("unsupported constant attribute type");
