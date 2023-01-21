@@ -190,7 +190,8 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
     Type type = MGP::AlignedBytesType::get(
         loweringState.getExecuteOpBuilder().getContext(),
         static_cast<uint64_t>(
-            size * resource.getElementType().getIntOrFloatBitWidth() / 8),
+            size * resource.getElementType().getIntOrFloatBitWidth() /
+            CHAR_BIT),
         static_cast<uint64_t>(alignment));
     value = DenseResourceElementsAttr::get(type, resource.getRawHandle());
   } else {
