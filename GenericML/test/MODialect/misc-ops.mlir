@@ -89,3 +89,15 @@ mo.graph @shape_of_dyn_rank(%arg: !mo.tensor<?, f32>) -> !mo.tensor<[?], si64> {
   // CHECK: mo.output %[[RES]] : !mo.tensor<[?], si64>
   mo.output %res : !mo.tensor<[?], si64>
 }
+
+//===----------------------------------------------------------------------===//
+// NumpyBroadcastOp
+//===----------------------------------------------------------------------===//
+
+// CHECK: mo.graph @broadcast_shape(%[[ARG0:.*]]: !mo.tensor<[1, 2, 3], f32>, %[[ARG1:.*]]: !mo.tensor<[2, 1], f32>) -> !mo.tensor<[3], si64>
+mo.graph @broadcast_shape(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !mo.tensor<[2, 1], f32>) -> !mo.tensor<[3], si64> {
+  // CHECK: %[[RES:.*]] = mo.broadcast_shape(%[[ARG0:.*]], %[[ARG1:.*]]) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[2, 1], f32>) -> !mo.tensor<[3], si64>
+  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[2, 1], f32>) -> !mo.tensor<[3], si64>
+  // CHECK: mo.output %[[RES]] : !mo.tensor<[3], si64>
+  mo.output %res : !mo.tensor<[3], si64>
+}

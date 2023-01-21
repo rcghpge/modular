@@ -429,6 +429,43 @@ def MO_ShapeOfOp : MO_Op<"shape_of", [Pure]> {
   }];
 }
 
+def MO_BroadcastShapeOp : MO_Op<"broadcast_shape", [Pure]> {
+  let summary = "Broadcast Shape Operation";
+  let description = [{
+    Given two tensors, return the shape that both broadcast to under
+    the numpy rules:
+
+    1. Make the shapes the same rank by adding 1 to the front
+       of the shorter shape
+    2. Ensure each dimension is equal, either by matching them or promoting a 1
+       to a larger number from the other shape
+
+    Example 1:
+
+    ```mlir
+    %arg1: !mo.tensor<[1, 2, 3], f32>
+    %arg2: !mo.tensor<[4, 2, 1], f32>
+    %shape1 = mo.broadcast_shape(%arg1, %arg2) : !mo.tensor<[3], si64>
+    ```
+    In this example, shape1 will return [4, 2, 3]
+
+    Example 2:
+
+    ```mlir
+    %arg1: !mo.tensor<[10, 2, 1], f32>
+    %arg2: !mo.tensor<[5], f32>
+    %shape1 = mo.broadcast_shape(%arg1, %arg2) : !mo.tensor<[3], si64>
+    ```
+    In this example, shape1 will return [10, 2, 5]
+  }];
+
+  let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y);
+  let results = (outs MO_ShapeLike:$shape);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 def MO_BroadcastToOp : MO_Op<"broadcast_to", [Pure]> {
   let summary = "BroadcastTo Operation";
   let description = [{
