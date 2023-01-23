@@ -58,12 +58,12 @@ static size_t decodeFunctionType(const uint8_t *pointer, const uint8_t *attrEnd,
   uint8_t numResults = dataPtr[2];
   dataPtr += 3;
   while (numInputs--) {
-    uint8_t attrSize = BEFType(dataPtr, attrEnd).getEncodedSizeInBytes();
+    size_t attrSize = BEFType(dataPtr, attrEnd).getEncodedSizeInBytes();
     inputs.push_back(BEFType(dataPtr, dataPtr + attrSize));
     dataPtr += attrSize;
   }
   while (numResults--) {
-    uint8_t attrSize = BEFType(dataPtr, attrEnd).getEncodedSizeInBytes();
+    size_t attrSize = BEFType(dataPtr, attrEnd).getEncodedSizeInBytes();
     results.push_back(BEFType(dataPtr, dataPtr + attrSize));
     dataPtr += attrSize;
   }
@@ -96,7 +96,7 @@ static size_t decodeTensorType(const uint8_t *pointer, const uint8_t *attrEnd,
          "BEF datum not within bounds of the BEF Attribute Section");
   assert(BEF::TypeKind(dataPtr[0]) == BEF::TypeKind::tensor);
   ++dataPtr;
-  uint8_t attrSize = BEFType(dataPtr, attrEnd).getEncodedSizeInBytes();
+  size_t attrSize = BEFType(dataPtr, attrEnd).getEncodedSizeInBytes();
   elementType = BEFType(dataPtr, pointer + attrSize);
   dataPtr += attrSize;
   uint8_t rank = *dataPtr++;
@@ -128,10 +128,10 @@ static void decodeStorageAndExpressedType(const uint8_t *&dataPtr,
                                           const uint8_t *attrEnd,
                                           BEFType &storageType,
                                           BEFType &expressedType) {
-  uint8_t storageAttrSize = BEFType(dataPtr, attrEnd).getEncodedSizeInBytes();
+  size_t storageAttrSize = BEFType(dataPtr, attrEnd).getEncodedSizeInBytes();
   storageType = BEFType(dataPtr, dataPtr + storageAttrSize);
   dataPtr += storageAttrSize;
-  uint8_t expressedAttrSize = BEFType(dataPtr, attrEnd).getEncodedSizeInBytes();
+  size_t expressedAttrSize = BEFType(dataPtr, attrEnd).getEncodedSizeInBytes();
   expressedType = BEFType(dataPtr, dataPtr + expressedAttrSize);
   dataPtr += expressedAttrSize;
 }
