@@ -256,7 +256,7 @@ def MO_ErfOp : MO_ElementWiseUnaryOp<"erf"> {
 }
 
 def MO_GeluOp : MO_ElementWiseUnaryOp<"gelu"> {
-  let summary = " Gaussian Error Linear Unit operation";
+  let summary = "Gaussian Error Linear Unit operation";
   let description = [{
     Returns GELU(x) = (x / 2) * (1 + erf(x/sqrt(2))), where erf denotes the
     (Gaussian) error function.
@@ -266,6 +266,21 @@ def MO_GeluOp : MO_ElementWiseUnaryOp<"gelu"> {
     ```mlir
     %arg: !mo.tensor<[2, 3], f32>
     %res = mo.gelu(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def MO_SigmoidOp : MO_ElementWiseUnaryOp<"sigmoid"> {
+  let summary = "Logistic Sigmoid operation";
+  let description = [{
+    Returns $sigmoid(x) = \frac{1}{1+e^{-x}} = \fract{e^x}{e^x + 1} to compute
+    the logistic sigmoid operations.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.sigmoid(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
