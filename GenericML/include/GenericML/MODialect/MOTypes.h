@@ -17,12 +17,6 @@
 #include "Support/ML/DType.h"
 #include "mlir/IR/Types.h"
 
-namespace M {
-namespace MO {
-static constexpr int64_t kDynamicRank = -2;
-} // namespace MO
-} // namespace M
-
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations
 //===----------------------------------------------------------------------===//

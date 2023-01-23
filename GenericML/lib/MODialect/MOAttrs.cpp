@@ -86,6 +86,12 @@ MO::ShapeAttr::verify(function_ref<InFlightDiagnostic()> emitError,
                          << IndexType::get(type.getContext()) << " but got "
                          << value.getType() << " at position " << idx;
     }
+    if (auto intAttr = llvm::dyn_cast<IntegerAttr>(value)) {
+      auto intVal = intAttr.getInt();
+      if (intVal < 0 && !mlir::ShapedType::isDynamic(intVal))
+        return emitError() << "invalid shape dimension: " << intVal
+                           << " at position " << idx;
+    }
   }
   return success();
 }

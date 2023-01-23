@@ -176,15 +176,19 @@ TensorType TensorType::get(TypedAttr shapeAttr, DType dtype,
   return get(shapeAttr.getContext(), shapeAttr, dtype, hiddenShape, metadata);
 }
 
+TensorType TensorType::get(TypedAttr shapeAttr, Type elementType,
+                           std::optional<Attribute> metadata) {
+  ErrorOr<DType> errOrDType = fromMLIRType(elementType);
+  assert(!errOrDType.isError() &&
+         "element type is not representable as a DType");
+  return get(shapeAttr, *errOrDType, metadata);
+}
+
 TensorType TensorType::get(ArrayRef<int64_t> shape, Type elementType,
                            std::optional<Attribute> metadata) {
   auto ctx = elementType.getContext();
   auto newShape = MO::ShapeAttr::get(shape, MO::ShapeType::get(ctx));
-
-  ErrorOr<DType> errOrDType = fromMLIRType(elementType);
-  assert(!errOrDType.isError() &&
-         "element type is not representable as a DType");
-  return get(newShape, *errOrDType, metadata);
+  return get(newShape, elementType, metadata);
 }
 
 /// Returns clone with given element type, which must be representable as a
