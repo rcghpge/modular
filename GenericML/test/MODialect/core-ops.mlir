@@ -10,8 +10,8 @@ mo.graph @empty_parametric_graph<>(%arg: !mo.tensor<?, f32>) -> (!mo.tensor<?, f
   mo.output %arg : !mo.tensor<?, f32>
 }
 
-// CHECK: mo.graph @nullary_parametric_graph<() -> index>(%[[ARG:.*]]: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
-mo.graph @nullary_parametric_graph<() -> index>(%arg: !mo.tensor<?, f32>) -> (!mo.tensor<?, f32>) {
+// CHECK: mo.graph @nullary_parametric_graph<() -> r1>(%[[ARG:.*]]: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
+mo.graph @nullary_parametric_graph<() -> r1>(%arg: !mo.tensor<?, f32>) -> (!mo.tensor<?, f32>) {
   // CHECK-NEXT: mo.output %[[ARG]] : !mo.tensor<?, f32>
   mo.output %arg : !mo.tensor<?, f32>
 }
@@ -22,8 +22,8 @@ mo.graph @unary_void_parametric_graph<N: index>(%arg: !mo.tensor<[N], f32>) -> (
   mo.output %arg : !mo.tensor<[N], f32>
 }
 
-// CHECK: mo.graph @binary_parametric_graph<A, B -> index>(%[[ARG:.*]]: !mo.tensor<[A, B], f32>) -> !mo.tensor<[A, B], f32> {
-mo.graph @binary_parametric_graph<A: index, B: index -> index>(%arg: !mo.tensor<[A, B], f32>) -> (!mo.tensor<[A, B], f32>) {
+// CHECK: mo.graph @binary_parametric_graph<A, B -> r1>(%[[ARG:.*]]: !mo.tensor<[A, B], f32>) -> !mo.tensor<[A, B], f32> {
+mo.graph @binary_parametric_graph<A: index, B: index -> r1>(%arg: !mo.tensor<[A, B], f32>) -> (!mo.tensor<[A, B], f32>) {
   // CHECK-NEXT: mo.output %[[ARG]] : !mo.tensor<[A, B], f32>
   mo.output %arg : !mo.tensor<[A, B], f32>
 }

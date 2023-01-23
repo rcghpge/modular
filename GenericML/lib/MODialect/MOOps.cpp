@@ -35,12 +35,8 @@ void GraphOp::build(OpBuilder &builder, OperationState &state, StringRef name,
                      builder.getStringAttr(name));
 
   // Add signature attribute
-  KGEN::ParamDeclArrayAttr inputParams;
-  KGEN::TypeArrayAttr resultParamTypes;
-  auto funcType = builder.getFunctionType(inputTypes, resultTypes);
-  KGEN::ConventionsAttr conventions;
-  auto sig = KGEN::SignatureType::get(inputParams, resultParamTypes, funcType,
-                                      conventions);
+  FunctionType funcType = builder.getFunctionType(inputTypes, resultTypes);
+  auto sig = KGEN::SignatureType::get(funcType);
   state.addAttribute(GraphOp::getSignatureAttrName(state.name),
                      mlir::TypeAttr::get(sig));
 
