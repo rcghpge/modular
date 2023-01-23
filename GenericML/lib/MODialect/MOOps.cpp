@@ -154,10 +154,10 @@ LogicalResult BatchMatmulOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// MO_RetypeOp support
+// MO_RebindOp support
 //===----------------------------------------------------------------------===//
 
-OpFoldResult RetypeOp::fold(FoldAdaptor adaptor) {
+OpFoldResult RebindOp::fold(FoldAdaptor adaptor) {
   // We fold if the result and operand types are the same.
   if (getInput().getType() == getType())
     return getInput();

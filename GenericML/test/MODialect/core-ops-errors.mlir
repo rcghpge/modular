@@ -3,7 +3,7 @@
 mo.graph @tensor_incorrect_syntax(%arg0: !mo.tensor<[], f32>) {
   // expected-error@+2 {{expected string}}
   // expected-error@+1 {{couldn't parse shape parameter: expected `?`, shape reference, or literal shape reference (i.e. `[...]`)}}
-  %0 = mo.retype(%arg0) : !mo.tensor<[], f32> -> !mo.tensor<*, f32>
+  %0 = mo.rebind(%arg0) : !mo.tensor<[], f32> -> !mo.tensor<*, f32>
   mo.output
 }
 

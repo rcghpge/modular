@@ -124,21 +124,23 @@ def MO_OutputOp
 }
 
 //===----------------------------------------------------------------------===//
-// RetypeOp
+// RebindOp
 //===----------------------------------------------------------------------===//
 
-def MO_RetypeOp : MO_Op<"retype", [Pure]> {
-  let summary = "tensor retype op";
+def MO_RebindOp : MO_Op<"rebind", [Pure]> {
+  let summary = "tensor parameter rebind op";
   let description = [{
-    Op to represent casting a value of `!mo.tensor<...>` type to another
-    `!mo.tensor<...>`.
+    Op to represent "rebinding" a value of `!mo.tensor<...>` type to another
+    `!mo.tensor<...>`. Currently, this op can be ued to convert all attributes
+    of `!mo.tensor` types, inlcuding shape, element type, and metadata.
 
     Examples:
 
     ```mlir
-    %0 = mo.retype(%arg0) : !mo.tensor<[?, ?], f32> -> !mo.tensor<[N, 1], f32>
-    %1 = mo.retype(%0) : !mo.tensor<[N, 1], f32> -> !mo.tensor<Sh, f32>
-    %2 = mo.retype(%1) : !mo.tensor<Sh, f32> -> !mo.tensor<[], f32>
+    %0 = mo.rebind(%arg0) : !mo.tensor<[?, ?], f32> -> !mo.tensor<[N, 1], f32>
+    %1 = mo.rebind(%0) : !mo.tensor<[N, 1], f32> -> !mo.tensor<Sh, f32>
+    %2 = mo.rebind(%1) : !mo.tensor<Sh, f32> -> !mo.tensor<[], f32>
+    %2 = mo.rebind(%1) : !mo.tensor<Sh, f32> -> !mo.tensor<[], f32>
     ```
   }];
 
