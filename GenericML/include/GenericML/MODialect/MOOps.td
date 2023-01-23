@@ -57,6 +57,7 @@ class MO_ElementWiseBinaryOp<string name, list<Trait> traits = []>
 
 def MO_GraphOp : MO_Op<"graph", [HasParent<"ModuleOp">, FunctionOpInterface,
                                  Symbol, SymbolTable, IsolatedFromAbove,
+                                 MO_Parameterization,
                                  // needed to leverage KGEN parameter infra
                                  DeclInterface, FuncInterface
   // TODO : Re-enable TransformableGraphInterface
@@ -79,6 +80,8 @@ def MO_GraphOp : MO_Op<"graph", [HasParent<"ModuleOp">, FunctionOpInterface,
 
     /// Returns the result types of this function.
     ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
+
+    LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter);
   }];
 
   let builders = [
