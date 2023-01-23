@@ -309,29 +309,17 @@ static void mgp_cpu_tensor_spec_dtype(const TensorSpec &tensorSpec,
 
 /// Fulfills the outTensor by creating a tensor from the given tensor spec and
 /// the buffer.
-static void mgp_cpu_tensor_create(AsyncValueRef<Chain> inChain,
+static void mgp_cpu_tensor_create(Chain inChain,
                                   AsyncValueRef<BufferRef> bufferRef,
-                                  AsyncValueRef<TensorSpec> tensorSpec,
+                                  const TensorSpec &tensorSpec,
                                   Result<Tensor> outTensor, Runtime &runtime,
                                   EncodedLocation loc) {
-  // TODO(#6923): Suspect the outChain from kgen kernels is getting corrupted.
-  // Try to get a bit more context when fails.
-  assert(bufferRef.getPointer()->isReady() && "bufferRef is not ready");
-  assert(tensorSpec.getPointer()->isReady() && "tensorSpec is not ready");
-  if (!inChain.getPointer()->isReady()) {
-    auto decLoc = loc.decode();
-    llvm::errs() << "mgp_cpu_tensor_create: chain not ready on buffer "
-                 << *bufferRef << " and spec " << *tensorSpec << " from "
-                 << decLoc.filename << ":" << decLoc.line << "\n";
-    llvm::errs() << "*** PLEASE PASTE STACKTRACE INTO #6923 ***\n";
-  }
-  assert(inChain.getPointer()->isReady() && "inChain is not ready");
   if (bufferRef.getPointer()->isUnique()) {
     // If this is the only reference to the input buffer then it cannot be
     // further mutated, so we can move it into the result tensor.
     LLVM_DEBUG(llvm::dbgs() << "mgp.cpu.tensor.create: Creating M::Tensor, "
                                "taking ownership of buffer\n");
-    outTensor.emplace(std::move(*bufferRef), *tensorSpec);
+    outTensor.emplace(std::move(*bufferRef), tensorSpec);
   } else {
     // Otherwise we must take a copy of the buffer to protect the result
     // tensor from side-effects.
@@ -339,7 +327,7 @@ static void mgp_cpu_tensor_create(AsyncValueRef<Chain> inChain,
                << "mgp.cpu.tensor.create: Creating M::Tensor from copy of "
                   "buffer since still has "
                << bufferRef.getPointer()->getRefCount() << " users\n");
-    outTensor.emplace(bufferRef->deepCopy(runtime), *tensorSpec);
+    outTensor.emplace(bufferRef->deepCopy(runtime), tensorSpec);
   }
 }
 

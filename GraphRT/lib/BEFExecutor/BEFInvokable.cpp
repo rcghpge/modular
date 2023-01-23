@@ -671,6 +671,7 @@ void BEFExecutor::processUsedByRecords(
     return;
   }
 
+  AnyAsyncValueRef registerRef;
   if (resultPtr == registerVal) {
     // Make sure the result value has a +1 for each user.  It already has a +1
     // reference from the `result` RCRef, so we add '#users - 1' references.
@@ -684,14 +685,22 @@ void BEFExecutor::processUsedByRecords(
     // one, so let `result` do the dropRef when it goes out of scope.
 
     // We must, however, account for the extra reference on the register's
-    // IndirectAsyncValue added when it was created. We'll create a temporary
-    // ref and let it do the dropRef when it goes out of scope.
-    (void)takeRCRef(registerVal);
+    // IndirectAsyncValue added when it was created. We'll let `registerRef`
+    // do the dropRef when it goes out of scope.
+    registerRef = takeRCRef(registerVal);
+
+    // At this point we have `result`, which may become ready asynchronously,
+    // and we have registerVal, which may become ready an indeterminite time
+    // after `result`, depending on the resolveIndirect. However, downstream
+    // users of `result` will have their arguments constructed from the
+    // IndirectAsyncValue. This means we must be careful not to trigger
+    // downstream users until the IndirectAsyncValue is ready. We do this
+    // below by using registerVal instead of resultPtr.
   }
 
   // If the result is ready (typical case), then we can be efficient and avoid
   // "andThen" logic.
-  if (resultPtr->isReady()) {
+  if (registerVal->isReady()) {
     primitiveIDWorklist.append(users.begin(), users.end());
   } else if (!users.empty()) {
     // Otherwise, the primitive is going to produce its result asynchronously -
@@ -710,7 +719,7 @@ void BEFExecutor::processUsedByRecords(
     // are encouraged to use the AsyncValue::emplace family so that downstream
     // primitives see an accurate reference count for their arguments. This
     // helps support optimizations which may depend on AsyncValue::isUnique.
-    resultPtr->andThenSync([thisRef = std::move(thisRef), users]() {
+    registerVal->andThenSync([thisRef = std::move(thisRef), users]() {
       SmallVector<uint32_t, 16> primitiveIDToVisit(users.begin(), users.end());
       thisRef->decrementOperandsNotReadyCounts(primitiveIDToVisit);
     });
