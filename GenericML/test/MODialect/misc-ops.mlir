@@ -1,4 +1,4 @@
-// RUN: mo-opt -cse %s | mo-opt | FileCheck %s
+// RUN: mo-opt %s | mo-opt | FileCheck %s
 
 // NOTE: Keep the tests grouped by op, and the order of ops alphabetical.
 

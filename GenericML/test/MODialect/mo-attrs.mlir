@@ -18,20 +18,3 @@ mo.graph @shape_attr_and_type() {
   kgen.param.declare S: !mo.shape = <#mo<shape[N, 2, ?]>>
   mo.output
 }
-
-// CHECK: mo.graph @tensor_shape_attr(%[[ARG0:.*]]: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[], f32> {
-mo.graph @tensor_shape_attr(%arg0: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[], f32> {
-  // CHECK: kgen.param.declare [[N:.*]] = <2>
-  kgen.param.declare N = <2>
-  // CHECK: kgen.param.declare [[M:.*]] = <5>
-  kgen.param.declare M = <5>
-  // CHECK: %[[VAL0:.*]] = "m.cast"(%[[ARG0]]) : (!mo.tensor<[?, ?], f32>) -> !mo.tensor<[[[N]], [[M]]], f32>
-  %0 = "m.cast"(%arg0) : (!mo.tensor<[?, ?], f32>) -> !mo.tensor<[N, M], f32>
-  // CHECK: kgen.param.declare [[SH:.*]]: !mo.shape = <#mo<shape[[[N]], ?, 3]>>
-  kgen.param.declare Sh: !mo.shape = <#mo<shape[N, ?, 3]>>
-  // CHECK: %[[VAL1:.*]] = "m.cast"(%[[VAL0]]) : (!mo.tensor<[[[N]], [[M]]], f32>) -> !mo.tensor<[[SH]], f32>
-  %1 = "m.cast"(%0) : (!mo.tensor<[N, M], f32>) -> !mo.tensor<Sh, f32>
-  // CHECK: %[[VAL2:.*]] = "m.cast"(%[[VAL1]]) : (!mo.tensor<[[SH]], f32>) -> !mo.tensor<[], f32>
-  %2 = "m.cast"(%1) : (!mo.tensor<Sh, f32>) -> !mo.tensor<[], f32>
-  mo.output %2 : !mo.tensor<[], f32>
-}

@@ -1,7 +1,7 @@
-// RUN: mo-opt -cse %s | mo-opt | FileCheck %s
+// RUN: mo-opt --canonicalize %s | mo-opt | FileCheck %s
 
 //===----------------------------------------------------------------------===//
-// GraphOP and TensorType tests
+// GraphOP, RetypeOp and TensorType tests
 //===----------------------------------------------------------------------===//
 
 // TODO update the parametric tests to use parameters in the tensor type when it
@@ -68,6 +68,26 @@ mo.graph @tensor_type_metadata(%arg0: !mo.tensor<[2, 3], f32, f16>) -> !mo.tenso
 // CHECK: mo.graph @tensor_dict_metadata(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32, {foo = "bar"}>) -> !mo.tensor<[2, 3], f32, {foo = "bar"}> {
 mo.graph @tensor_dict_metadata(%arg0: !mo.tensor<[2, 3], f32, {foo = "bar"}>) -> !mo.tensor<[2, 3], f32, {foo = "bar"}> {
   mo.output %arg0 : !mo.tensor<[2, 3], f32, {foo = "bar"}>
+}
+
+// CHECK: mo.graph @cast_w_params(%[[ARG0:.*]]: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[], si8> {
+mo.graph @cast_w_params(%arg0: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[], si8> {
+  // CHECK: kgen.param.declare [[N:.*]] = <2>
+  kgen.param.declare N = <2>
+  // CHECK: kgen.param.declare [[M:.*]] = <5>
+  kgen.param.declare M = <5>
+  // CHECK: %[[VAL0:.*]] = mo.retype(%[[ARG0]]) : !mo.tensor<[?, ?], f32> -> !mo.tensor<[N, M], f32>
+  %0 = mo.retype(%arg0) : !mo.tensor<[?, ?], f32> -> !mo.tensor<[N, M], f32>
+  // CHECK: kgen.param.declare [[SH:.*]]: !mo.shape = <#mo<shape[[[N]], ?, 3]>>
+  kgen.param.declare Sh: !mo.shape = <#mo<shape[N, ?, 3]>>
+  // CHECK: %[[VAL1:.*]] = mo.retype(%[[VAL0]]) : !mo.tensor<[[[N]], [[M]]], f32> -> !mo.tensor<[[SH]], f16>
+  %1 = mo.retype(%0) : !mo.tensor<[N, M], f32> -> !mo.tensor<Sh, f16>
+  // CHECK: %[[VAL2:.*]] = mo.retype(%[[VAL1]]) : !mo.tensor<[[SH]], f16> -> !mo.tensor<[], si8>
+  %2 = mo.retype(%1) : !mo.tensor<Sh, f16> -> !mo.tensor<[], si8>
+
+  // CHECK-NEXT: mo.output %[[VAL2]] : !mo.tensor<[], si8>
+  %3 = mo.retype(%2) : !mo.tensor<[], si8> -> !mo.tensor<[], si8>
+  mo.output %3 : !mo.tensor<[], si8>
 }
 
 //===----------------------------------------------------------------------===//

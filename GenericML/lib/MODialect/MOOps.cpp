@@ -151,6 +151,17 @@ LogicalResult BatchMatmulOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// MO_RetypeOp support
+//===----------------------------------------------------------------------===//
+
+OpFoldResult RetypeOp::fold(FoldAdaptor adaptor) {
+  // We fold if the result and operand types are the same.
+  if (getInput().getType() == getType())
+    return getInput();
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 

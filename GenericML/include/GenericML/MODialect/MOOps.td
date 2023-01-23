@@ -115,6 +115,36 @@ def MO_OutputOp
 }
 
 //===----------------------------------------------------------------------===//
+// RetypeOp
+//===----------------------------------------------------------------------===//
+
+def MO_RetypeOp : MO_Op<"retype", [Pure]> {
+  let summary = "tensor retype op";
+  let description = [{
+    Op to represent casting a value of `!mo.tensor<...>` type to another
+    `!mo.tensor<...>`.
+
+    Examples:
+
+    ```mlir
+    %0 = mo.retype(%arg0) : !mo.tensor<[?, ?], f32> -> !mo.tensor<[N, 1], f32>
+    %1 = mo.retype(%0) : !mo.tensor<[N, 1], f32> -> !mo.tensor<Sh, f32>
+    %2 = mo.retype(%1) : !mo.tensor<Sh, f32> -> !mo.tensor<[], f32>
+    ```
+  }];
+
+  let arguments = (ins MO_Tensor:$input);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `(` $input `)` attr-dict `:`
+    qualified(type($input)) `->` qualified(type($result))
+  }];
+
+  let hasFolder = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // ConstantOp
 //===----------------------------------------------------------------------===//
 
