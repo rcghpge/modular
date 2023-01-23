@@ -36,6 +36,34 @@ def MO_MOOpInterface : OpInterface<"MOOpInterface"> {
   ];
 }
 
+def MO_Parameterization : OpInterface<"MOOpParameterizationInterface"> {
+  let description = [{
+    Interface to be implemented by ops that support resolving unknown shape
+    and dimension parameters in their tensors.
+  }];
+  let cppNamespace = "::M::MO";
+  let dependentTraits = [MO_MOOpInterface];
+
+  let methods = [
+    // TODO: provide default implementation
+    InterfaceMethod<"Rewrites the IR to resolve unknown shapes and dims.",
+      "LogicalResult", "resolveUnknownParameters",
+      (ins "mlir::RewriterBase &":$rewriter)>,
+  ];
+
+  let extraClassDeclaration = [{
+  private:
+    static size_t numShapeParams;
+    static size_t numDimParam;
+  public:
+    /// Convenience method to generate a new shape parameter declaration.
+    KGEN::ParamDeclAttr getNewShapeParam();
+
+    /// Convenience method to generate a new dimension parameter declaration.
+    KGEN::ParamDeclAttr getNewDimParam();
+  }];
+}
+
 def MO_MatmulLike : OpInterface<"MatmulLike"> {
   let description = [{
     Interface for modeling operations that implement matmul-like behavior,

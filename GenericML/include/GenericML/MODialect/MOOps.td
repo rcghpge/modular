@@ -36,8 +36,14 @@ class MO_ElementWiseOp<string name, list<Trait> traits = []>
 }
 
 class MO_ElementWiseUnaryOp<string name, list<Trait> traits = []>
-    : MO_ElementWiseOp<name, traits # [MO_ElementWiseUnary]> {
+    : MO_ElementWiseOp<name, traits # [MO_ElementWiseUnary, MO_Parameterization]> {
   let arguments = (ins MO_Tensor:$input);
+
+  let extraClassDeclaration = [{
+    LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter) {
+      return impl::resolveElemwiseUnknownParameters(getOperation(), rewriter);
+    }
+  }];
 }
 
 class MO_ElementWiseBinaryOp<string name, list<Trait> traits = []>

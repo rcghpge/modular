@@ -7,6 +7,7 @@
 #include "GenericML/Conversion/MOToMOGG.h"
 #include "GenericML/Conversion/MOToPrimitives.h"
 #include "GenericML/MODialect/MODialect.h"
+#include "GenericML/MODialect/MOTransforms.h"
 #include "GenericML/MOGGDialect/MOGGDialect.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
@@ -23,6 +24,7 @@ int main(int argc, char **argv) {
   mlir::registerCanonicalizerPass();
 
   MO::registerMOToMOGG();
+  MO::registerMOTransformsPasses();
   MGP::registerMOToPrimitives();
 
   return failed(

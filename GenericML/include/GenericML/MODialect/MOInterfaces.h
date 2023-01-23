@@ -12,6 +12,10 @@
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Value.h"
 
+namespace mlir {
+class RewriterBase;
+} // namespace mlir
+
 namespace M::MO {
 class MatmulLike;
 class SlidingWindow;

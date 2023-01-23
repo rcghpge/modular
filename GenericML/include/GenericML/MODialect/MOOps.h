@@ -24,7 +24,12 @@
 
 namespace mlir {
 class ModuleOp;
-}
+} // namespace mlir
+
+namespace M::MO::impl {
+LogicalResult resolveElemwiseUnknownParameters(MOOpParameterizationInterface op,
+                                               mlir::RewriterBase &rewriter);
+} // namespace M::MO::impl
 
 // needed because `KGEN_SignatureType` in `MOOps.td` resolves to `SignatureType`
 // w/o the `KGEN` namespace

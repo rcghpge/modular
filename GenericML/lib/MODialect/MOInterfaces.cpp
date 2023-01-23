@@ -9,9 +9,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MODialect/MOInterfaces.h"
+#include "mlir/IR/BuiltinTypes.h"
 
 using namespace M;
 using namespace MO;
+
+//===----------------------------------------------------------------------===//
+// MatMulLike
+//===----------------------------------------------------------------------===//
 
 LogicalResult
 impl::verifyMatchingRanks(ArrayRef<TypedValue<M::MO::TensorType>> values) {
@@ -78,6 +83,10 @@ LogicalResult impl::verifyMatmulLike(MatmulLike op) {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// SlidingWindow
+//===----------------------------------------------------------------------===//
+
 LogicalResult SlidingWindow::verifyWindowParamShape(
     TypedValue<::M::MO::TensorType> windowParam, StringRef name) {
   auto input = cast<MOOpInterface>(this->getOperation()).getInputTensor(0);
@@ -116,6 +125,24 @@ LogicalResult impl::verifySlidingWindow(SlidingWindow op) {
     return op.emitError("input and output ranks must match if static");
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// MOOpParameterizationInterface
+//===----------------------------------------------------------------------===//
+
+size_t MOOpParameterizationInterface::numShapeParams = 0;
+size_t MOOpParameterizationInterface::numDimParam = 0;
+
+KGEN::ParamDeclAttr MOOpParameterizationInterface::getNewShapeParam() {
+  auto shapeTy = MO::ShapeType::get(getContext());
+  auto nameAttr = StringAttr::get(getContext(), "Sh" + Twine(numShapeParams++));
+  return KGEN::ParamDeclAttr::get(nameAttr, shapeTy);
+}
+
+KGEN::ParamDeclAttr MOOpParameterizationInterface::getNewDimParam() {
+  auto nameAttr = StringAttr::get(getContext(), "D" + Twine(numDimParam++));
+  return KGEN::ParamDeclAttr::get(nameAttr, IndexType::get(getContext()));
 }
 
 //===----------------------------------------------------------------------===//

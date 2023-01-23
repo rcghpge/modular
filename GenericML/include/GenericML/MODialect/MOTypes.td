@@ -73,6 +73,7 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [ShapedTypeInterface]> {
     Type getElementType() const;
     ShapedType cloneWith(std::optional<ArrayRef<int64_t>> shape, Type dtype,
                          std::optional<Attribute> metadata = std::nullopt) const;
+    TensorType cloneWith(TypedAttr shapeAttr) const;
     bool hasStaticShape() const;
 
     /// Helper to get the shape attribute with MO::ShapeAttr type, fails if the

@@ -206,6 +206,12 @@ ShapedType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
   return TensorType::get(shapeRef, *errOrDType, metadata);
 }
 
+/// Returns clone with a new shape attribute.
+TensorType TensorType::cloneWith(TypedAttr shapeAttr) const {
+  return TensorType::get(shapeAttr.getContext(), shapeAttr, getDtype(),
+                         getShape(), getMetadata());
+}
+
 /// Does the Tensor have a static Rank?  Required by ShapedTypeInferece
 bool TensorType::hasRank() const {
   // Rank is only known if we have a concrete attribute
