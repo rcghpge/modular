@@ -825,24 +825,25 @@ static void vec_softmax_async(AsyncValueRef<TestFloat32Vector> input,
 
   // STAGE 3: Normalize the output
   // STAGE 3 is only executed when denom is ready (i.e. STAGE 2 is complete)
-  denomAndExpVectorAV.andThenSync(
-      [output = output.copy(), batchSize, &runtime, vecLen,
-       numBatches](const AsyncValueRef<DenomAndExpVector> &denomAndExpVector) {
-        // compute STAGE 3 in parallel and mark the output is ready when all
-        // work is done
-        parallelForEachNFinishing(
-            runtime, numBatches, std::move(denomAndExpVector->expElements),
-            output.copy(),
-            [vecLen, batchSize, denom = denomAndExpVector->denom](
-                size_t n, TestFloat32Vector &expElements) {
-              size_t startPos = n * batchSize;
-              if (startPos >= vecLen)
-                return;
-              size_t endPos = std::min(vecLen, (n + 1) * batchSize);
-              for (size_t i = startPos; i < endPos; ++i)
-                expElements.values[i] /= denom;
-            });
-      });
+  std::move(denomAndExpVectorAV)
+      .andThenSync(
+          [output = output.copy(), batchSize, &runtime, vecLen,
+           numBatches](AsyncValueRef<DenomAndExpVector> &&denomAndExpVector) {
+            // compute STAGE 3 in parallel and mark the output is ready when all
+            // work is done
+            parallelForEachNFinishing(
+                runtime, numBatches, std::move(denomAndExpVector->expElements),
+                output.copy(),
+                [vecLen, batchSize, denom = denomAndExpVector->denom](
+                    size_t n, TestFloat32Vector &expElements) {
+                  size_t startPos = n * batchSize;
+                  if (startPos >= vecLen)
+                    return;
+                  size_t endPos = std::min(vecLen, (n + 1) * batchSize);
+                  for (size_t i = startPos; i < endPos; ++i)
+                    expElements.values[i] /= denom;
+                });
+          });
 }
 
 /// Print an integer vector to the console.

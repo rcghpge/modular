@@ -81,7 +81,7 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
     /// This method is invoked when the AsyncValue for `cond` resolves.  The
     /// rest of the operands may still be unavailable, but results are filled
     /// in with the IndirectAsyncValue results to fill in.
-    void runWhenCondResolves(const AsyncValueRef<bool> &cond) {
+    void runWhenCondResolves(AsyncValueRef<bool> cond) {
       // If we have an error, then we can force propagate errors to all the
       // results.
       if (cond.isError()) {
@@ -106,9 +106,9 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
   IfState state = {copyRCRef(trueInv), copyRCRef(falseInv), args.takeAsVector(),
                    results.copyAsVector()};
 
-  cond.andThenSync(
-      [state = std::move(state)](const AsyncValueRef<bool> &cond) mutable {
-        state.runWhenCondResolves(cond);
+  std::move(cond).andThenSync(
+      [state = std::move(state)](AsyncValueRef<bool> &&cond) mutable {
+        state.runWhenCondResolves(std::move(cond));
       });
 }
 
@@ -210,9 +210,9 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
                        results.copyAsVector(), 0};
 
   // Dispatch when the `count` becomes available (possibly immediately).
-  count.andThenSync(
-      [state = std::move(state)](const AsyncValueRef<int32_t> &count) mutable {
-        state.runWhenCountResolves(count);
+  std::move(count).andThenSync(
+      [state = std::move(state)](AnyAsyncValueRef &&count) mutable {
+        state.runWhenCountResolves(std::move(count));
       });
 }
 

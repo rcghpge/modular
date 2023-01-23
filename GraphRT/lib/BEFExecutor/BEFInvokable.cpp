@@ -611,16 +611,21 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
     // Now that the primitive had a chance to look at the operand registers,
     // we're done with them.  Drop their reference so they can potentially be
     // deallocated if this was the last user of them.
+    // Note that invokables are free to move AnyAsyncValueRefs out of the frame
+    // arguments array, so the reset may be a no-op.
     for (AnyAsyncValueRef &arg : frame.getArguments())
       arg.reset();
 
     // Iterate over all results of the primitive.  If the primitive immediately
     // completed a result (its AsyncValue is "ready"), then we can add all users
-    // to our worklist.  If not, we `andThenAsync` on their unavailable result.
+    // to our worklist.  If not, we `andThen` on their unavailable result.
     for (size_t resultNo = 0, e = decoder.numResults; resultNo != e;
          ++resultNo) {
       AnyAsyncValueRef &result = frame.getResult(resultNo);
       assert(result && "Primitive impl did not set a result!");
+      // Note that the invokable may have taken a copy of the result
+      // AnyAsyncValueRef it just created, eg within a closure for an
+      // addTask.
 
       // Store the value in the register table, and get the final AsyncValue to
       // be used by the register. This could be an IndirectAsyncValue.
@@ -642,7 +647,7 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
 /// After setting a result into the register file, process all the "used by"
 /// records for this result.  If the result is 'ready' (typical in synchronous
 /// kernels) then we want to add users to the worklist.  If not, we have to do
-/// `andThenAsync` logic to process them when they become available.
+/// `andThen` logic to process them when they become available.
 ///
 /// This method also adjusts the reference count of `result` and `registerVal`
 /// to prepare for the users, who will each drop a reference as they go.  This
@@ -666,26 +671,26 @@ void BEFExecutor::processUsedByRecords(
     return;
   }
 
-  // Make sure the result value has a +1 for each user.  It already has a +1
-  // reference from the `result` RCRef, so we add '#users - 1' references.
-  if (resultPtr == registerVal) { // IndirectValue RC already handled.
-    if (totalUserRefCount != 1)   // Don't atomic add 0.
+  if (resultPtr == registerVal) {
+    // Make sure the result value has a +1 for each user.  It already has a +1
+    // reference from the `result` RCRef, so we add '#users - 1' references.
+    if (totalUserRefCount != 1) // Don't atomic add 0.
       AnyAsyncValueRef::lowLevelAddRef(resultPtr, totalUserRefCount - 1);
     // The reference count is handled manually above, don't drop another RC.
     result.release();
   } else {
-    // If we are fulfilling an IndirectValue then the IndirectValue already took
-    // a +1 to this AsyncValue.  We don't need another reference, so let
-    // `result` do the dropRef when it goes out of scope.
+    // If we are fulfilling an IndirectAsyncValue then the IndirectAsyncValue
+    // already took an extra reference to the result. We don't need another
+    // one, so let `result` do the dropRef when it goes out of scope.
 
-    // We are however done with the extra reference on the register
-    // IndirectAsyncValue itself, so we can drop it.
-    // NOTE: This is a no-op, needs investigation.
+    // We must, however, account for the extra reference on the register's
+    // IndirectAsyncValue added when it was created. We'll create a temporary
+    // ref and let it do the dropRef when it goes out of scope.
     (void)takeRCRef(registerVal);
   }
 
   // If the result is ready (typical case), then we can be efficient and avoid
-  // "andThenAsync" logic.
+  // "andThen" logic.
   if (resultPtr->isReady()) {
     primitiveIDWorklist.append(users.begin(), users.end());
   } else if (!users.empty()) {
@@ -700,8 +705,11 @@ void BEFExecutor::processUsedByRecords(
     // that we capture `users` which is an ArrayRef instead of copying the
     // content. This is fine because the underlying BEF file is alive when the
     // BEF executor is.
-    // TODO(#6923, #7069): Using sync to see if helps with chain corruption,
-    // and does not solve uniqueness problem anyway.
+    // Note that it's possible for the eventually emplacer of the result to
+    // still be holding its own result reference. However primitive authors
+    // are encouraged to use the AsyncValue::emplace family so that downstream
+    // primitives see an accurate reference count for their arguments. This
+    // helps support optimizations which may depend on AsyncValue::isUnique.
     resultPtr->andThenSync([thisRef = std::move(thisRef), users]() {
       SmallVector<uint32_t, 16> primitiveIDToVisit(users.begin(), users.end());
       thisRef->decrementOperandsNotReadyCounts(primitiveIDToVisit);
