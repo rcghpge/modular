@@ -21,6 +21,62 @@ namespace M::MO {
 
 } // namespace M::MO
 
+namespace {
+
+enum class OpType {
+  /* class of MOGG op this kernel represents */
+  kExternal,
+  kKGEN,
+};
+
+struct KernelRecord {
+  // TODO: Figure out what fields this needs and auto populate
+  // from lit.
+  OpType type;
+  StringLiteral opName;
+};
+
+static ErrorOr<ValueRange> selectMOGGOp(Operation *op) {
+  // TODO: Turn this into a registry we can access from lit
+  const static llvm::StringMap<SmallVector<KernelRecord, 5>> kernels = {
+      {"abs", {{OpType::kExternal, "mop.kernels.abs"}}},
+      {"add", {{OpType::kExternal, "mop.kernels.add"}}},
+      {"broadcast_shape", {{OpType::kExternal, "mop.kernels.broadcast_shape"}}},
+      {"broadcast_to", {{OpType::kExternal, "mop.kernels.broadcast_to"}}},
+      {"div", {{OpType::kExternal, "mop.kernels.div"}}},
+      {"erf", {{OpType::kExternal, "mop.kernels.erf"}}},
+      {"exp", {{OpType::kExternal, "mop.kernels.exp"}}},
+      {"gather", {{OpType::kExternal, "mop.kernels.gather"}}},
+      {"matmul", {{OpType::kExternal, "mop.kernels.matmul"}}},
+      {"mul", {{OpType::kExternal, "mop.kernels.mul"}}},
+      {"relu", {{OpType::kExternal, "mop.kernels.relu"}}},
+      {"shape_of", {{OpType::kExternal, "mop.kernels.shape_of"}}},
+      {"softmax", {{OpType::kExternal, "mop.kernels.softmax"}}},
+      {"sub", {{OpType::kExternal, "mop.kernels.sub"}}},
+      {"tanh", {{OpType::kExternal, "mop.kernels.tanh"}}},
+  };
+
+  std::string opName = op->getName().stripDialect().str();
+
+  OpBuilder b(op);
+  if (kernels.count(opName)) {
+    for (auto kernel : kernels.lookup(opName)) {
+      // TODO: Put kernel selection metrics in here.
+      if (kernel.type == OpType::kExternal) {
+        // Create the mogg_ext_op
+        b.setInsertionPoint(op);
+        return b
+            .create<MOGG::ExtOp>(op->getLoc(),
+                                 /*outputTypes=*/op->getResultTypes(),
+                                 /*op_name=*/kernel.opName,
+                                 /*inputOperands=*/op->getOperands())
+            .getResults();
+      }
+    }
+  }
+  return Error("Failed to find a kernel for " + opName);
+}
+
 struct MOOpPattern : public RewritePattern {
   MOOpPattern(MLIRContext *ctx) : RewritePattern(MatchAnyOpTypeTag{}, 1, ctx) {}
 
@@ -31,40 +87,22 @@ struct MOOpPattern : public RewritePattern {
         isa<MO::ConstantOp>(op) || isa<MO::OutputOp>(op))
       return failure();
 
-    // TODO: The current lowering assumes:
-    // mogg.ext.op + hard coded kgen shims and does not use the ext_op body
-    // This assumption clearly needs to be relaxed into a search going forward
-    // TODO: Decide if we need to bufferize and hold an explicit MGP graph in
-    // the body
-    OpBuilder b(op);
-
-    // TODO: Relax this, lower to kgen generators, do a search here, etc
-    std::string opName = "mop.kernels." + op->getName().stripDialect().str();
-
-    // Create the mogg_ext_op
-    b.setInsertionPoint(op);
-    auto mogg_op = b.create<MOGG::ExtOp>(op->getLoc(),
-                                         /*outputTypes=*/op->getResultTypes(),
-                                         /*op_name=*/opName,
-                                         /*inputOperands=*/op->getOperands());
-
-    // Set up the block in the body region
-    // TODO: lower Bufferized version directly in here?
-    mogg_op.getBody().emplaceBlock();
-    b.setInsertionPointToEnd(&mogg_op.getBody().front());
-    b.create<MOGG::OutputOp>(mogg_op->getLoc(), mlir::ValueRange({}));
-
-    rewriter.replaceOp(op, mogg_op.getResults());
-    return success();
+    auto results = selectMOGGOp(op);
+    if (results.isError()) {
+      return failure();
+    } else {
+      rewriter.replaceOp(op, results.takeValue());
+      return success();
+    }
   }
 };
 
-namespace {
 struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
   using MOToMOGGBase::MOToMOGGBase;
 
   void runOnOperation() override;
 };
+
 } // namespace
 
 void MOToMOGGPass::runOnOperation() {

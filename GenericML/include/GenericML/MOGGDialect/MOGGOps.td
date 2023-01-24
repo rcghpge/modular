@@ -42,10 +42,9 @@ def MOGG_ExtOp : MOGG_Op<"ext.op", [HasParent<"MO::GraphOp">,
   );
 
   let results = (outs Variadic<MO_Tensor>:$results);
-  let regions = (region SizedRegion<1>:$body);
 
   let assemblyFormat = [{
-    $opName attr-dict `(`($operands^)?`)` $body
+    $opName attr-dict `(`($operands^)?`)`
       (`:` type($operands)^)? (`->` type($results)^)?
   }];
 }
