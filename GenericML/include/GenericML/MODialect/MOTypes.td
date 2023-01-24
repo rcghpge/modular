@@ -12,6 +12,7 @@
 #define GENERICML_MODIALECT_MOTYPES_TD
 
 include "GenericML/MODialect/MOAttrs.td"
+include "KGEN/KGENDialect/KGENTypeInterfaces.td"
 include "Support/Compiler/TensorUtils.td"
 include "mlir/IR/BuiltinTypeInterfaces.td"
 
@@ -26,7 +27,8 @@ class MO_Type<string name, string typeMnemonic, list<Trait> traits = []>
 //===----------------------------------------------------------------------===//
 
 /// The type of parametric shape attributes.
-def MO_ShapeType : MO_Type<"Shape", "shape">;
+def MO_ShapeType : MO_Type<"Shape", "shape", [
+  DeclareTypeInterfaceMethods<ParameterTypeInterface>]>;
 
 def MO_Tensor : MO_Type<"Tensor", "tensor", [ShapedTypeInterface]> {
   let summary = "Type of tensor specs of statically known rank.";

@@ -13,6 +13,7 @@
 
 #include "GenericML/MODialect/MOAttrs.h"
 #include "GenericML/MODialect/MODialect.h"
+#include "KGEN/KGENDialect/KGENTypeInterfaces.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/ML/DType.h"
 #include "mlir/IR/Types.h"

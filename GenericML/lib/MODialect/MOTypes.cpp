@@ -5,7 +5,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MODialect/MOTypes.h"
+#include "GenericML/MODialect/MOAttrs.h"
 #include "GenericML/MODialect/MODialect.h"
+#include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/Compiler/MLIRDType.h"
 #include "Support/ErrorOr.h"
@@ -13,6 +15,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/TypeSwitch.h"
 
 using namespace M;
@@ -46,8 +49,7 @@ std::string asString(Type type) {
 // ShapeParameter
 //===----------------------------------------------------------------------===//
 
-static void printShapeParam(AsmPrinter &p, TypedAttr shapeAttr,
-                            ArrayRef<int64_t> shape) {
+static void printShapeParam(AsmPrinter &p, TypedAttr shapeAttr) {
   if (isa<KGEN::UnknownAttr>(shapeAttr)) {
     p << "?";
   } else if (auto declRef = dyn_cast<KGEN::ParamDeclRefAttr>(shapeAttr)) {
@@ -59,13 +61,17 @@ static void printShapeParam(AsmPrinter &p, TypedAttr shapeAttr,
   }
 }
 
+/// This version is required by `custom<ShapeParam>`
+static void printShapeParam(AsmPrinter &p, TypedAttr shapeAttr,
+                            ArrayRef<int64_t> shape) {
+  printShapeParam(p, shapeAttr);
+}
+
 static ParseResult parseShapeParam(AsmParser &p,
-                                   FailureOr<TypedAttr> &shapeAttr,
-                                   FailureOr<SmallVector<int64_t>> &shape) {
+                                   FailureOr<TypedAttr> &shapeAttr) {
   auto shapeTy = p.getBuilder().getType<MO::ShapeType>();
   if (succeeded(p.parseOptionalQuestion())) {
     shapeAttr = {KGEN::UnknownAttr::get(shapeTy)};
-    shape.emplace();
     return success();
   }
 
@@ -78,20 +84,33 @@ static ParseResult parseShapeParam(AsmParser &p,
       values.emplace();
     }
 
-    auto tmpAttr = MO::ShapeAttr::get(values.value(), shapeTy);
-    shape = tmpAttr.getIntDims();
+    auto tmpAttr = p.getChecked<MO::ShapeAttr>(values.value(), shapeTy);
+    if (!tmpAttr)
+      return failure();
     shapeAttr = {tmpAttr};
     return success();
   }
 
   if (StringAttr name; succeeded(KGEN::parseParamName(p, name))) {
     shapeAttr = {KGEN::ParamDeclRefAttr::get(name, shapeTy)};
-    shape.emplace();
     return success();
   }
   return p.emitError(p.getCurrentLocation())
          << "couldn't parse shape parameter: expected `?`, shape reference, or "
             "literal shape reference (i.e. `[...]`)";
+}
+
+static ParseResult parseShapeParam(AsmParser &p,
+                                   FailureOr<TypedAttr> &shapeAttr,
+                                   FailureOr<SmallVector<int64_t>> &shape) {
+  auto parseResult = parseShapeParam(p, shapeAttr);
+  if (succeeded(parseResult)) {
+    if (auto attr = dyn_cast<MO::ShapeAttr>(shapeAttr.value()))
+      shape = attr.getIntDims();
+    else
+      shape.emplace();
+  }
+  return parseResult;
 }
 
 //===----------------------------------------------------------------------===//
@@ -246,7 +265,23 @@ Type TensorType::getElementType() const {
 
 MO::ShapeAttr TensorType::getTypedShapeAttr() const {
   return llvm::cast<MO::ShapeAttr>(getShapeAttr());
-};
+}
+
+LogicalResult ShapeType::printValue(AsmPrinter &p, TypedAttr value) const {
+  if (!mlir::isa<KGEN::ParamDeclRefAttr, MO::ShapeAttr>(value))
+    return failure();
+  printShapeParam(p, value);
+  return success();
+}
+
+OptionalParseResult ShapeType::parseValue(AsmParser &p,
+                                          TypedAttr &value) const {
+  FailureOr<TypedAttr> shapeAttr;
+  auto parseResult = parseShapeParam(p, shapeAttr);
+  if (succeeded(parseResult))
+    value = shapeAttr.value();
+  return parseResult;
+}
 
 //===----------------------------------------------------------------------===//
 // MODialect type support

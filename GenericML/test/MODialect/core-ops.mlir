@@ -73,8 +73,8 @@ mo.graph @rebind_w_params(%arg0: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[], si8>
   // CHECK: %[[VAL0:.*]] = mo.rebind<() -> [[N:.*]], [[M:.*]]>(%[[ARG0]]) :
   // CHECK-SAME: !mo.tensor<[?, ?], f32> -> !mo.tensor<[N, M], f32>
   %0 = mo.rebind<() -> N, M>(%arg0) : !mo.tensor<[?, ?], f32> -> !mo.tensor<[N, M], f32>
-  // CHECK: kgen.param.declare [[SH:.*]]: !mo.shape = <#mo<shape[[[N]], ?, 3]>>
-  kgen.param.declare Sh: !mo.shape = <#mo<shape[N, ?, 3]>>
+  // CHECK: kgen.param.declare [[SH:.*]]: !mo.shape = <[[[N]], ?, 3]>
+  kgen.param.declare Sh: !mo.shape = <[N, ?, 3]>
   // CHECK: %[[VAL1:.*]] = mo.rebind(%[[VAL0]]) : !mo.tensor<[[[N]], [[M]]], f32> -> !mo.tensor<[[SH]], f16>
   %1 = mo.rebind(%0) : !mo.tensor<[N, M], f32> -> !mo.tensor<Sh, f16>
   // CHECK: %[[VAL2:.*]] = mo.rebind(%[[VAL1]]) : !mo.tensor<[[SH]], f16> -> !mo.tensor<[], si8>
