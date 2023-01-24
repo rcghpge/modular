@@ -1295,7 +1295,7 @@ void RegionEmitter::emitRegion(Region *region) {
     auto numOperandsBeforeRunning = op.getNumOperands();
 
     // We set the number to 1 for non-strict primitives so they get kicked off
-    // as soon as any argument is avaiable.  We use 1 instead of zero because we
+    // as soon as any argument is available.  We use 1 instead of zero because
     // primitives with no operands ready are likely to just wait anyway.
     if (isNonStrict && numOperandsBeforeRunning)
       numOperandsBeforeRunning = 1;
