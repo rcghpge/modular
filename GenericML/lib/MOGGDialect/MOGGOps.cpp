@@ -133,6 +133,7 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
       {"mop.kernels.exp", "mop.shape.unary"},
       {"mop.kernels.gelu", "mop.shape.unary"},
       {"mop.kernels.relu", "mop.shape.unary"},
+      {"mop.kernels.sigmoid", "mop.shape.unary"},
       {"mop.kernels.softmax", "mop.shape.unary"},
       {"mop.kernels.tanh", "mop.shape.unary"},
       {"mop.kernels.add", "mop.shape.binary"},
@@ -173,6 +174,14 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
         opBeingLowered->getOperands()[1]);
     output.spec = getOutputSpec("mop.shape.broadcast_to",
                                 {inputTensors[0].spec, target_shape});
+  } else if (opName == "mop.kernels.gather") {
+    // Hackery! Pure Hackery! I'd start setting up classes for this, but
+    // again, I don't expect this to survive E
+    Value target_axis = loweringState.lookupExecuteLoweredTensor(
+        opBeingLowered->getOperands()[2]);
+    output.spec =
+        getOutputSpec("mop.shape.gather", {inputTensors[0].spec,
+                                           inputTensors[1].spec, target_axis});
   } else {
     opBeingLowered->emitError("op requires output to have static shape");
     return Error("op requires output to have static shape");
