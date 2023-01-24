@@ -863,8 +863,7 @@ bool RegionParser::parsePrimitiveList() {
     // We read and ignore the # users for each result.
     SmallVector<uint32_t> numResultUsers, operands, attrsOffsets,
         invokablesIndices;
-    if (bodyReader.parseInt4Array(numResults, numResultUsers) ||
-        bodyReader.parseInt4Array(numOperands, operands) ||
+    if (bodyReader.parseInt4Array(numOperands, operands) ||
         bodyReader.parseInt4Array(numAttrs, attrsOffsets) ||
         bodyReader.parseInt4Array(numInvokables, invokablesIndices))
       return true;
@@ -875,6 +874,8 @@ bool RegionParser::parsePrimitiveList() {
       if (bodyReader.parseInt4(resultRegisterNo))
         return true;
     }
+    if (bodyReader.parseInt4Array(numResults, numResultUsers))
+      return true;
 
     // Resolve all the SSA values for the operands.
     SmallVector<Value> operandValues;

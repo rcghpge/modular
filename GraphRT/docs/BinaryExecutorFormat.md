@@ -333,7 +333,7 @@ The primitive list that is following the Primitive Table contains all the
 primitives used in this invokable. Note that every invokable has a
 pseudo-primitive that is the single entry point to the rest of the primitives.
 Specifially, a pseudo-primitive defines registers for invokable arguments and a
-pseudo-register that is conceptually used by primitives that takes no arguments.
+pseudo-register that is conceptually used by primitives that take no arguments.
 
 The result registers specify the register values to return, and must align with
 the invokable result types from the [`INVOKABLES_INDEX`
@@ -353,7 +353,6 @@ table of primitives allows the use of primitive indexes.
 
 ```none
   PRIMITIVE              ::= PRIMITIVE_HEADER
-                             PRIMITIVE_RESULT_TABLE
                              PRIMITIVE_BODY
 
   PRIMITIVE_HEADER       ::= FIXED32<"PrimitiveCode">
@@ -363,37 +362,40 @@ table of primitives allows the use of primitive indexes.
                              FIXED16<"NumInvokables">
                              FIXED16<"NumResults">
 
-  PRIMITIVE_RESULT_TABLE ::= FIXED32<"NumUsedBys">*
-
-  PRIMITIVE_BODY         ::= FIXED32<PrimitiveOperand>*
-                             FIXED32<PrimitiveAttribute>*
-                             FIXED32<PrimitiveInvokable>*
-                             FIXED32<PrimitiveResult>*
+  PRIMITIVE_BODY         ::= FIXED32<PrimitiveOperand>* (occurs NumOperands times)
+                             FIXED32<PrimitiveAttribute>* (occurs NumAttributes times)
+                             FIXED32<PrimitiveInvokable>* (occurs NumInvokables times)
+                             FIXED32<PrimitiveResult>? (occurs if NumResults > 0)
+                             FIXED32<NumUsedBys>*
                              FIXED32<PrimitiveUsedBy>*
 ```
 
-Each instance of a primitive includes a primitive header, a result table and a
-primitive body. The primitive header consists of a opcode (an index into the
-Primitives table, defined by the Primitives names section), a location (an offset into
-the [LocationPositions section](#locationpositions-section)) the numbers of
-operands, attributes, invokables and results in the primitive body.
+Each primitive has these properties:
 
-The result table contains NumResults `FIXED32` integers, indicating the number of
-users for each corresponding result. The primitive body consists of zero or more
-inputs (indexes into the Register Table for the enclosing invokable), zero or
-more constants (offsets into the [Attributes section](#attributes-section)),
-zero or more invokables (these are regions or `@foo` references in the primitive
-instance, stored as indexes into the [`INVOKABLES_INDEX`
-section](#INVOKABLES_INDEX-section)), zero or more results (indexes into the
-Register table for the enclosing invokable), and zero or more 'used by' records
-(which are
-indexes into the Primitive Table for this invokable). 'used by' records for the
-same result are grouped together and these groups are in the same order of
-'result' records. For example, if there are two results, A and B, and A has one
-user (a0) and B has two users (b0, b1), then `FIXED32<"NumResults">` will be
-`0x00000002`, followed by two `FIXED32<"NumUsedBys">`, `0x00000001` `0x00000002`;
-and in the primitive body there will be three "used by" records, a0, b0 and b1,
-consecutively.
+* Opcode (Index into Primitive Names section)
+* Location (Index into Location Positions section)
+* Operands/Inputs (Indexes into invokable's Register table)
+* Constants (Offsets into Attributes section)
+* Invokables/Regions (Indexes into Invokable Index section)
+* Results (Indexes into invokable's Register table)
+* Result used-by counts
+
+It is organized as a fixed-size header containing counts for the variable-size
+portions of the primitive, followed by a variable-size portion whose size
+depends on the header.  Additionally, the size of `PrimitiveUsedBy` depends on
+the values of `NumUsedBys`.
+
+BEF primitives must have consecutive result registers.  Hence, when `NumResults
+>= 2`, `PrimitiveResult` still only consists of one `FIXED32` value,
+representing the first result register.  When `NumResults = 0`,
+`PrimitiveResult` is absent.
+
+'Used by' records for the same result are grouped together and these groups are
+in the same order of 'result' records. For example, if there are two results, A
+and B, and A has one user (a0) and B has two users (b0, b1), then
+`FIXED32<"NumResults">` will be `0x00000002`; `FIXED32<"NumUsedBys">` will have
+two entries, `0x00000001` and `0x00000002`; and there will be three
+`FIXED32<PrimitiveUsedBy>` records, a0, b0 and b1, consecutively.
 
 ***Rationale***
 

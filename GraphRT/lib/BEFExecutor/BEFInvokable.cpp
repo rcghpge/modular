@@ -471,8 +471,6 @@ struct PrimitiveDecoder {
     numResults = uint16_t(numInvokablesAndResults >> 16);
 
     // Decode the variable size fields.
-    perResultUsersCount = ArrayRef(dataPtr, numResults);
-    dataPtr += numResults;
     operandIndices = ArrayRef(dataPtr, numOperands);
     dataPtr += numOperands;
     attrOffsets = ArrayRef(dataPtr, numAttrs);
@@ -483,6 +481,8 @@ struct PrimitiveDecoder {
       firstResultRegNumber = *dataPtr++;
     else
       firstResultRegNumber = ~0U;
+    perResultUsersCount = ArrayRef(dataPtr, numResults);
+    dataPtr += numResults;
     this->dataPtr = dataPtr;
   }
 

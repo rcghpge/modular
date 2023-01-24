@@ -1378,14 +1378,15 @@ void RegionEmitter::emitArgumentsPseudoOp(Block *block,
   primitiveList.emitInt2(0);                        // # invokables
   primitiveList.emitInt2(block->getNumArguments()); // # results
 
-  for (auto arg : block->getArguments())
-    primitiveList.emitInt4(getNumNonOutputUsers(arg));
-
   // Only emit a single register number for the decoder for consistency.  It
   // should always be zero since this is the first result of the first
   // primitive.
+  assert(block->getNumArguments() >= 1);
   assert(getRegisterNumber(block->getArguments().front()) == 0);
   primitiveList.emitInt4(0);
+
+  for (auto arg : block->getArguments())
+    primitiveList.emitInt4(getNumNonOutputUsers(arg));
 
   for (auto arg : block->getArguments()) {
     emitPrimitiveResultUsers(arg, primitiveList);
@@ -1451,10 +1452,6 @@ void RegionEmitter::emitPrimitive(Operation *op,
   primitiveList.emitInt2(regionsToEmit.size());
   primitiveList.emitInt2(op->getNumResults());
 
-  // Emit PRIMITIVE_RESULT_TABLE, results with the primitives that use them.
-  for (auto result : op->getResults())
-    primitiveList.emitInt4(getNumNonOutputUsers(result));
-
   // Emit the PRIMITIVE_BODY contents.
   for (auto operand : op->getOperands())
     primitiveList.emitInt4(getRegisterNumber(operand));
@@ -1463,12 +1460,14 @@ void RegionEmitter::emitPrimitive(Operation *op,
   for (auto fnOffset : regionsToEmit)
     primitiveList.emitInt4(fnOffset);
 
-  // Emit a single result number of we have one or more results.  They are
+  // Emit a single result number if we have one or more results.  They are
   // numbered consecutively, so we don't need to emit them all.
   if (!op->getResults().empty())
     primitiveList.emitInt4(getRegisterNumber(op->getResults()[0]));
-
-  // Then results with the primitives that use them.
+  // Emit the counts of each results' users...
+  for (auto result : op->getResults())
+    primitiveList.emitInt4(getNumNonOutputUsers(result));
+  // ...followed by the primitives that use them.
   for (auto result : op->getResults()) {
     emitPrimitiveResultUsers(result, primitiveList);
 
