@@ -68,14 +68,11 @@ mo.graph @tensor_dict_metadata(%arg0: !mo.tensor<[2, 3], f32, {foo = "bar"}>) ->
   mo.output %arg0 : !mo.tensor<[2, 3], f32, {foo = "bar"}>
 }
 
-// CHECK: mo.graph @cast_w_params(%[[ARG0:.*]]: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[], si8> {
-mo.graph @cast_w_params(%arg0: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[], si8> {
-  // CHECK: kgen.param.declare [[N:.*]] = <2>
-  kgen.param.declare N = <2>
-  // CHECK: kgen.param.declare [[M:.*]] = <5>
-  kgen.param.declare M = <5>
-  // CHECK: %[[VAL0:.*]] = mo.rebind(%[[ARG0]]) : !mo.tensor<[?, ?], f32> -> !mo.tensor<[N, M], f32>
-  %0 = mo.rebind(%arg0) : !mo.tensor<[?, ?], f32> -> !mo.tensor<[N, M], f32>
+// CHECK: mo.graph @rebind_w_params(%[[ARG0:.*]]: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[], si8> {
+mo.graph @rebind_w_params(%arg0: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[], si8> {
+  // CHECK: %[[VAL0:.*]] = mo.rebind<() -> [[N:.*]], [[M:.*]]>(%[[ARG0]]) :
+  // CHECK-SAME: !mo.tensor<[?, ?], f32> -> !mo.tensor<[N, M], f32>
+  %0 = mo.rebind<() -> N, M>(%arg0) : !mo.tensor<[?, ?], f32> -> !mo.tensor<[N, M], f32>
   // CHECK: kgen.param.declare [[SH:.*]]: !mo.shape = <#mo<shape[[[N]], ?, 3]>>
   kgen.param.declare Sh: !mo.shape = <#mo<shape[N, ?, 3]>>
   // CHECK: %[[VAL1:.*]] = mo.rebind(%[[VAL0]]) : !mo.tensor<[[[N]], [[M]]], f32> -> !mo.tensor<[[SH]], f16>

@@ -144,11 +144,11 @@ def MO_RebindOp : MO_Op<"rebind", [Pure]> {
     ```
   }];
 
-  let arguments = (ins MO_Tensor:$input);
+  let arguments = (ins MO_Tensor:$input, KGEN_ParamDeclArrayAttr:$paramDecls);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `(` $input `)` attr-dict `:`
+    `` custom<ParamDecls>($paramDecls) `(` $input `)` attr-dict `:`
     qualified(type($input)) `->` qualified(type($result))
   }];
 

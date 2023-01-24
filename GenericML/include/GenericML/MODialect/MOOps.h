@@ -31,8 +31,9 @@ LogicalResult resolveElemwiseUnknownParameters(MOOpParameterizationInterface op,
                                                mlir::RewriterBase &rewriter);
 } // namespace M::MO::impl
 
-// needed because `KGEN_SignatureType` in `MOOps.td` resolves to `SignatureType`
-// w/o the `KGEN` namespace
+// Needed because the ODS definition of some KGEN ops don't have the namespace.
+using M::KGEN::ParamDeclArrayAttr;
+using M::KGEN::ParamDeclAttr;
 using M::KGEN::SignatureType;
 
 //===----------------------------------------------------------------------===//

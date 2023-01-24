@@ -153,6 +153,27 @@ LogicalResult BatchMatmulOp::verify() {
 // MO_RebindOp support
 //===----------------------------------------------------------------------===//
 
+static ParseResult parseParamDecls(OpAsmParser &p,
+                                   KGEN::ParamDeclArrayAttr &paramDecls) {
+  if (succeeded(p.parseOptionalLess()) && failed(p.parseOptionalGreater())) {
+    if (p.parseLParen() || p.parseRParen() || p.parseArrow() ||
+        KGEN::parseParamDecls(p, paramDecls) || p.parseGreater())
+      return failure();
+  } else {
+    paramDecls = KGEN::ParamDeclArrayAttr::get(p.getContext(), {});
+  }
+  return success();
+}
+
+static void printParamDecls(OpAsmPrinter &p, Operation *,
+                            KGEN::ParamDeclArrayAttr paramDecls) {
+  if (!paramDecls.empty()) {
+    p << "<() -> ";
+    printParamDecls(p, paramDecls);
+    p << '>';
+  }
+}
+
 OpFoldResult RebindOp::fold(FoldAdaptor adaptor) {
   // We fold if the result and operand types are the same.
   if (getInput().getType() == getType())
