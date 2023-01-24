@@ -325,7 +325,7 @@ def MO_SoftmaxOp : MO_Op<"softmax", [SameOperandsAndResultType, Pure]> {
     Returns softmax probability scores following:
      `exp(input) / sum(exp(input))`
 
-    Input must have rank 2, and the scores are computed along the last axis.
+    The scores are computed along the last axis.
 
     Example:
 
@@ -335,7 +335,7 @@ def MO_SoftmaxOp : MO_Op<"softmax", [SameOperandsAndResultType, Pure]> {
     ```
   }];
 
-  let arguments = (ins MO_MatrixIfRanked:$input);
+  let arguments = (ins MO_Tensor:$input);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{

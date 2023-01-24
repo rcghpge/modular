@@ -50,6 +50,7 @@ static ErrorOr<ValueRange> selectMOGGOp(Operation *op) {
       {"matmul", {{OpType::kExternal, "mop.kernels.matmul"}}},
       {"mul", {{OpType::kExternal, "mop.kernels.mul"}}},
       {"relu", {{OpType::kExternal, "mop.kernels.relu"}}},
+      {"sigmoid", {{OpType::kExternal, "mop.kernels.sigmoid"}}},
       {"shape_of", {{OpType::kExternal, "mop.kernels.shape_of"}}},
       {"softmax", {{OpType::kExternal, "mop.kernels.softmax"}}},
       {"sub", {{OpType::kExternal, "mop.kernels.sub"}}},
