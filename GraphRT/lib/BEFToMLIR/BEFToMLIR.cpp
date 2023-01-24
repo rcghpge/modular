@@ -833,9 +833,6 @@ bool RegionParser::parseResultRegs() {
 }
 
 bool RegionParser::parsePrimitiveList() {
-  if (bodyReader.alignTo(BEF::kPrimitiveEntryAlignment))
-    return true;
-
   Block &block = region->front();
   auto bodyBuilder = OpBuilder::atBlockBegin(&block);
   Location loc = region->getLoc();
@@ -848,6 +845,9 @@ bool RegionParser::parsePrimitiveList() {
 
   // Read the primitive records.
   for (size_t i = 0, e = primitiveTable.size(); i != e; ++i) {
+    if (bodyReader.alignTo(BEF::kPrimitiveEntryAlignment))
+      return true;
+
     bool isOpaqueOp = false;
     uint32_t primitiveID, locOffset;
     uint16_t numOperands, numAttrs, numInvokables, numResults;

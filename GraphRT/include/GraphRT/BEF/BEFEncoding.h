@@ -37,9 +37,17 @@ enum {
   // This indicates whether a section has an explicit alignment.
   kSectionAlignmentFlag = 0x01,
 
-  // Primitives in BEF are 4-byte aligned.
-  kPrimitiveEntryAlignment = 4,
+  // Primitives in BEF are 8-byte aligned.
+  kPrimitiveEntryAlignment = 8,
 };
+
+// BEFInvokable.cpp addresses words in the primitive definition as a uint32_t
+// array, so it needs to be aligned to at least uint32_t for this to work.
+// (Attribute offsets are 64-bit, so we actually need to align to 8 bytes, but
+// even if that changes again, then this restriction is still required as long
+// as BEFInvokable.cpp still addresses it as a uint32_t array.)
+static_assert(BEF::kPrimitiveEntryAlignment % sizeof(uint32_t) == 0,
+              "size of uint32_t must evenly divide kPrimitiveEntryAlignment");
 
 /// Return true if the magic number makes this look like a BEF file.
 inline bool hasBEFMagicNumber(llvm::StringRef contents) {

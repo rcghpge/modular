@@ -1290,6 +1290,7 @@ void RegionEmitter::emitRegion(Region *region) {
       isNonStrict = isa<BEF::NonStrictOp>(op);
 
     // Offset of the primitive in the list.
+    primitiveList.alignTo(BEF::kPrimitiveEntryAlignment);
     emitPrimitiveOffsetNumber(primitiveList.getOffset());
     // Number of operands that need to be available before it is ready to go.
     auto numOperandsBeforeRunning = op.getNumOperands();

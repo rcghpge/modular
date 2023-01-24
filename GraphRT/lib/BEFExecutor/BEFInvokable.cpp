@@ -157,7 +157,8 @@ struct PrimitiveInfo {
   std::atomic<int> numOperandsNotReady;
 
   /// This is the offset of the primitive from the start of the invokable body.
-  /// It is stored in units of 32-bit entries, not bytes.
+  /// It is stored in units of blocks of kPrimitiveEntryAlignment bytes; it is
+  /// not an individual byte offset.
   unsigned offset;
 
   /// We initialize the ready list to "numOperands + 1" so we can drop the
@@ -553,7 +554,12 @@ void BEFExecutor::decrementOperandsNotReadyCounts(
     frame.reset();
 
     // Decode the primitive record.
-    PrimitiveDecoder decoder(&funcBody[primitives[primitiveID].offset]);
+    static_assert(
+        BEF::kPrimitiveEntryAlignment % sizeof(uint32_t) == 0,
+        "size of uint32_t must evenly divide kPrimitiveEntryAlignment");
+    PrimitiveDecoder decoder(
+        &funcBody[primitives[primitiveID].offset *
+                  (BEF::kPrimitiveEntryAlignment / sizeof(uint32_t))]);
 
     // Find the implementation of this primitive.
     auto invokableImpl = befFile->primitives[decoder.opcode];
@@ -854,7 +860,11 @@ ErrorOrSuccess BEFInvokableImpl::walkPrimitives(
   PrimitiveDescriptorBuilder descriptorBuilder(
       owner->attributes, const_cast<BEFInvokableImpl &>(*this));
   for (auto offset : primitiveOffsets) {
-    PrimitiveDecoder primDecoder(&funcBody[offset]);
+    static_assert(
+        BEF::kPrimitiveEntryAlignment % sizeof(uint32_t) == 0,
+        "size of uint32_t must evenly divide kPrimitiveEntryAlignment");
+    PrimitiveDecoder primDecoder(
+        &funcBody[offset * (BEF::kPrimitiveEntryAlignment / sizeof(uint32_t))]);
 
     // Pull out the primitive name.
     StringRef primitiveName;
