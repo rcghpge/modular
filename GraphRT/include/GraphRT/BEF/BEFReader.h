@@ -145,8 +145,8 @@ public:
       if (parseByte(padding))
         return true;
       if (padding != BEF::kAlignmentByte)
-        return emitError("expected alignment byte, got '" + Twine(padding) +
-                         "' instead");
+        return emitError("expected alignment byte, got '" +
+                         Twine(int(padding)) + "' instead");
     }
 
     return false;
