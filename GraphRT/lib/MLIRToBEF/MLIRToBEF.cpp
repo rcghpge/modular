@@ -1453,10 +1453,10 @@ void RegionEmitter::emitPrimitive(Operation *op,
   primitiveList.emitInt2(op->getNumResults());
 
   // Emit the PRIMITIVE_BODY contents.
-  for (auto operand : op->getOperands())
-    primitiveList.emitInt4(getRegisterNumber(operand));
   for (auto attrOffset : attributesToEmit)
     primitiveList.emitInt4(attrOffset);
+  for (auto operand : op->getOperands())
+    primitiveList.emitInt4(getRegisterNumber(operand));
   for (auto fnOffset : regionsToEmit)
     primitiveList.emitInt4(fnOffset);
 

@@ -863,8 +863,8 @@ bool RegionParser::parsePrimitiveList() {
     // We read and ignore the # users for each result.
     SmallVector<uint32_t> numResultUsers, operands, attrsOffsets,
         invokablesIndices;
-    if (bodyReader.parseInt4Array(numOperands, operands) ||
-        bodyReader.parseInt4Array(numAttrs, attrsOffsets) ||
+    if (bodyReader.parseInt4Array(numAttrs, attrsOffsets) ||
+        bodyReader.parseInt4Array(numOperands, operands) ||
         bodyReader.parseInt4Array(numInvokables, invokablesIndices))
       return true;
 

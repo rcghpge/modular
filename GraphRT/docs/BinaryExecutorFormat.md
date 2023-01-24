@@ -362,8 +362,8 @@ table of primitives allows the use of primitive indexes.
                              FIXED16<"NumInvokables">
                              FIXED16<"NumResults">
 
-  PRIMITIVE_BODY         ::= FIXED32<PrimitiveOperand>* (occurs NumOperands times)
-                             FIXED32<PrimitiveAttribute>* (occurs NumAttributes times)
+  PRIMITIVE_BODY         ::= FIXED32<PrimitiveAttribute>* (occurs NumAttributes times)
+                             FIXED32<PrimitiveOperand>* (occurs NumOperands times)
                              FIXED32<PrimitiveInvokable>* (occurs NumInvokables times)
                              FIXED32<PrimitiveResult>? (occurs if NumResults > 0)
                              FIXED32<NumUsedBys>*

@@ -471,10 +471,10 @@ struct PrimitiveDecoder {
     numResults = uint16_t(numInvokablesAndResults >> 16);
 
     // Decode the variable size fields.
-    operandIndices = ArrayRef(dataPtr, numOperands);
-    dataPtr += numOperands;
     attrOffsets = ArrayRef(dataPtr, numAttrs);
     dataPtr += numAttrs;
+    operandIndices = ArrayRef(dataPtr, numOperands);
+    dataPtr += numOperands;
     invokableRefIndices = ArrayRef(dataPtr, numInvokables);
     dataPtr += numInvokables;
     if (numResults)
