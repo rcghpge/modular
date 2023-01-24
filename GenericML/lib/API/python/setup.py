@@ -26,4 +26,8 @@ class bdist_wheel(_bdist_wheel):
         self.root_is_pure = False
 
 
-setup(cmdclass={"bdist_wheel": bdist_wheel}, name="modular")
+setup(
+    cmdclass={"bdist_wheel": bdist_wheel},
+    name="modular",
+    packages=["modular.pyframework"],
+)

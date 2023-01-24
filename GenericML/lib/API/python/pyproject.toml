@@ -15,6 +15,3 @@ experimental-string-processing = true
 
 [tool.isort]
 profile = "black"
-
-[tool.setuptools]
-packages = ["modular.pyframework"]
