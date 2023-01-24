@@ -15,27 +15,29 @@ if(${DISABLE_ALL_EXTERNAL})
   return()
 endif()
 
+include(AddPyEnv)
+
+set(MODULAR_PYTHON_VERSION "3.11.1"
+  CACHE
+  STRING "Python version to use for building Python bindings and wheel."
+)
+pyenv_install(${MODULAR_PYTHON_VERSION})
+
 # find_package(Python3) has to be called before including pybind11 so that
 # pybind11 picks up the correct Python development paths.
+pyenv_setup_findpython3_variables(${MODULAR_PYTHON_VERSION})
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
 include(AddPyBind11)
 
-# Add a custom target to build the Python bindings and wheel.
-# Individual pybind11 modules are expected to be dependencies of
-# modular-pyframework.
-add_custom_target(modular-pybind-ext)
-add_subdirectory(bindings/modular/pyframework)
-add_dependencies(modular-pybind-ext modular-pyframework)
-
-# Ensure that tools needed for pyproject.toml parsing and wheel repair are
-# installed.
+# Install tools needed for pyproject.toml parsing and wheel repair.
 execute_process(
-  COMMAND ${Python3_EXECUTABLE} -c "import build, wheel, tomli"
-  RESULT_VARIABLE PIP_CHECK_DEPS_RESULT
+  COMMAND ${Python3_EXECUTABLE} -m pip install -r ${CMAKE_CURRENT_SOURCE_DIR}/packaging-requirements.txt
+  OUTPUT_QUIET
+  RESULT_VARIABLE PIP_INSTALL_DEPS_RESULT
 )
-if(PIP_CHECK_DEPS_RESULT)
-  message(FATAL_ERROR "Dependencies for building Python wheels are not installed. Please run install_python_deps.")
+if(PIP_INSTALL_DEPS_RESULT)
+  message(FATAL_ERROR "Installation of Python dependencies failed unexpectedly in Python bindings configuration.")
 endif()
 
 # Use pyproject.toml as a single source of truth for the version of the Modular
@@ -65,22 +67,35 @@ execute_process(
   ERROR_QUIET
 )
 
+# Add a custom target to build and install the Python bindings and wheel.
+# Individual pybind11 modules are expected to be dependencies of
+# modular-pyframework.
+add_custom_target(modular-pybind-ext
+  COMMAND ${Python3_EXECUTABLE} -m pip install --quiet --force-reinstall ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
+  DEPENDS ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
+)
+add_dependencies(modular-pybind-ext modular-pyframework)
+add_subdirectory(bindings/modular/pyframework)
+
 # The wheel is built in the build directory.
 # However, setuptools is unaware of the pybind module since CMake built that.
 # Therefore we have to put the pybind module shared library and all other
 # needed shared libraries into the wheel.
 # This way everything is self-contained in the wheel and will still work after
 # the wheel is pip installed.
-add_custom_command(TARGET modular-pybind-ext POST_BUILD
-  COMMAND ${Python3_EXECUTABLE} -m build --wheel --outdir ${WHEEL_DIR}
-  COMMAND ${Python3_EXECUTABLE} -m wheel unpack ${WHEEL_DIR}/${WHEEL_BASENAME}.whl --dest ${WHEEL_DIR}
+# TODO(#7439): /dev/null is not portable to Windows.
+add_custom_command(OUTPUT ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
+  COMMAND ${Python3_EXECUTABLE} -m build --wheel --outdir ${WHEEL_DIR} > /dev/null
+  COMMAND ${Python3_EXECUTABLE} -m wheel unpack ${WHEEL_DIR}/${WHEEL_BASENAME}.whl --dest ${WHEEL_DIR} > /dev/null
   COMMAND ${CMAKE_COMMAND} -E make_directory ${UNPACKED_WHEEL}/modular/pyframework
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:core> ${UNPACKED_WHEEL}/modular/pyframework/
   COMMAND ${CMAKE_COMMAND} -E make_directory ${UNPACKED_WHEEL}/lib
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:tfl> ${UNPACKED_WHEEL}/lib
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:KGENCompilerRT> ${UNPACKED_WHEEL}/lib
-  COMMAND ${Python3_EXECUTABLE} -m wheel pack ${UNPACKED_WHEEL} --dest ${WHEEL_DIR}
+  COMMAND ${Python3_EXECUTABLE} -m wheel pack ${UNPACKED_WHEEL} --dest ${WHEEL_DIR} > /dev/null
   COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_SOURCE_DIR}/{build,modular_pyframework.egg-info}
+  BYPRODUCTS ${UNPACKED_WHEEL}
+  DEPENDS $<TARGET_FILE:core>
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   COMMENT "Packing wheel with bindings and shared library dependencies."
   VERBATIM
@@ -99,8 +114,9 @@ endif()
 
 # Detect non-system shared library dependencies and copy them into the wheel,
 # updating the RECORDS metadata file.
-add_custom_command(TARGET modular-pybind-ext POST_BUILD
+add_custom_target(modular-wheel-repair
   COMMAND ${REPAIR_CMD} ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   VERBATIM
 )
+add_dependencies(modular-pybind-ext modular-wheel-repair)
