@@ -37,10 +37,6 @@ struct MOOpPattern : public RewritePattern {
     // TODO: Decide if we need to bufferize and hold an explicit MGP graph in
     // the body
     OpBuilder b(op);
-    // Convert the tensor types for the model signature over.
-    SmallVector<Type> outputTypes;
-    for (Type t : op->getResultTypes())
-      outputTypes.push_back(t);
 
     // TODO: Relax this, lower to kgen generators, do a search here, etc
     std::string opName = "mop.kernels." + op->getName().stripDialect().str();
@@ -48,7 +44,7 @@ struct MOOpPattern : public RewritePattern {
     // Create the mogg_ext_op
     b.setInsertionPoint(op);
     auto mogg_op = b.create<MOGG::ExtOp>(op->getLoc(),
-                                         /*outputTypes=*/outputTypes,
+                                         /*outputTypes=*/op->getResultTypes(),
                                          /*op_name=*/opName,
                                          /*inputOperands=*/op->getOperands());
 

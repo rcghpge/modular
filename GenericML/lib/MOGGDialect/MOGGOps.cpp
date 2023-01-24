@@ -12,20 +12,72 @@
 #include "GenericML/Conversion/MOToPrimitives.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/IR/FunctionImplementation.h"
 
 using namespace M;
 using namespace MOGG;
 
-LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
-  auto op = static_cast<Op *>(this);
-  auto loc = op->getLoc();
+/*
+ * Lowering helpers.
+ */
+namespace {
 
-  // Operands to pass to the operation. Input tensors are expanded to buffers
-  // and specs in IR those are passed in.
-  SmallVector<Value> operands;
-  SmallVector<Value> input_specs;
-  for (Value operand : op->getOperands()) {
+// A MO tensor which has been lowered into a buffer and a spec.
+struct LoweredTensor {
+  /// The buffer for this tensor which is not immutable as it can be the output
+  /// buffer.
+  TypedValue<MGP::CpuBufferType> buffer;
+
+  /// The mgp.cpu.tensor_spec describing the tensor the buffer
+  /// represents.
+  TypedValue<MGP::CpuTensorSpecType> spec;
+
+  LoweredTensor() : buffer({}), spec({}) {}
+
+  LoweredTensor(TypedValue<MGP::CpuBufferType> buf,
+                TypedValue<MGP::CpuTensorSpecType> spec)
+      : buffer(buf), spec(spec) {}
+};
+
+/// This class wraps some of the common functionality of the lowering process
+/// into a shared class.
+class LowerHelper {
+public:
+  LowerHelper(MGP::MOGraphLoweringState &state, mlir::Operation *op)
+      : loweringState(state), opBeingLowered(op), loc(op->getLoc()) {}
+
+  // Lower each of the inputs in the operation to mgp buffers & specs.
+  SmallVector<LoweredTensor> lowerInputs();
+
+  // Lower the output buffer which will get passed into the input.
+  ErrorOr<SmallVector<LoweredTensor>>
+  lowerOutputBuffer(llvm::StringRef opName,
+                    const SmallVector<LoweredTensor> &inputTensors);
+
+  // Convert the tensors to a list of buffer/spec value pairs.
+  SmallVector<Value> getOperands(SmallVector<LoweredTensor> &in,
+                                 SmallVector<LoweredTensor> &outs);
+
+  // Fix up the outputs
+  void allocateOutputTensor(SmallVector<LoweredTensor> &outputTensors);
+
+private:
+  MGP::MOGraphLoweringState &loweringState;
+  mlir::Operation *opBeingLowered;
+  mlir::Location loc;
+
+  ErrorOr<LoweredTensor>
+  lowerDynamicOutput(MGP::CpuTensorSpecType outSpecType, llvm::StringRef opName,
+                     const SmallVector<LoweredTensor> &inputTensors);
+};
+
+SmallVector<LoweredTensor> LowerHelper::lowerInputs() {
+  SmallVector<LoweredTensor> inputs;
+  // Allocate space for the buffers + specs per tensor.
+  inputs.reserve(opBeingLowered->getNumOperands());
+
+  for (Value operand : opBeingLowered->getOperands()) {
     // Extract the buffer and spec from the MGP tensor.
     mlir::Value mgpTensor = loweringState.lookupExecuteLoweredTensor(operand);
 
@@ -34,101 +86,191 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
             loc, mgpTensor);
 
     // Add the expanded buffer and spec as arguments to the operation.
-    operands.push_back(extract.getBufferResult());
-    operands.push_back(extract.getTensorSpecResult());
-    input_specs.push_back(extract.getTensorSpecResult());
+    inputs.push_back(
+        {extract.getBufferResult(), extract.getTensorSpecResult()});
   }
 
-  // We can't create the tensors until after the operation as they are
-  // immutable.
-  SmallVector<std::pair<TypedValue<MGP::CpuBufferType>,
-                        TypedValue<MGP::CpuTensorSpecType>>>
-      outputBufferAndSpec;
+  return inputs;
+}
+
+void LowerHelper::allocateOutputTensor(
+    SmallVector<LoweredTensor> &outputTensors) {
+  size_t outputIndex = 0;
+
+  // Allocate the output tensors this must be done after as the tensor is read
+  // only.
+  for (LoweredTensor &tensor : outputTensors) {
+    // Get the type of the spec and infer the type of the tensor from that.
+    auto ty = cast<MGP::CpuTensorSpecType>(tensor.spec.getType());
+    auto tensorType = MGP::CpuTensorType::get(
+        loweringState.getExecuteOpBuilder().getContext(), ty);
+
+    // Create an immutable tensor
+    auto tensorCreateOp =
+        loweringState.getExecuteOpBuilder().create<MGP::CpuTensorCreateOp>(
+            loc, tensorType, loweringState.getExecuteChain(), tensor.buffer,
+            tensor.spec);
+
+    // Update the MO tensor to now refer to this mgp tensor.
+    loweringState.emplaceExecuteLoweredTensor(
+        opBeingLowered->getResult(outputIndex), tensorCreateOp.getResult());
+    outputIndex++;
+  }
+}
+
+ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
+    MGP::CpuTensorSpecType outSpecType, llvm::StringRef opName,
+    const SmallVector<LoweredTensor> &inputTensors) {
+  // Dynamic Case
+  // TODO: This is hacky, hacky, hacky, remove as soon as we can lower
+  // parametric shapes to the runtime
+  // TODO: If we decide we want this longer term (say, for MLAS kernels)
+  // We should refactor it out as a Trait maybe? and make this a method
+  // and data member of the op class.
+  static const std::map<llvm::StringRef, std::string> shapeFuncs{
+      {"mop.kernels.abs", "mop.shape.unary"},
+      {"mop.kernels.erf", "mop.shape.unary"},
+      {"mop.kernels.exp", "mop.shape.unary"},
+      {"mop.kernels.gelu", "mop.shape.unary"},
+      {"mop.kernels.relu", "mop.shape.unary"},
+      {"mop.kernels.softmax", "mop.shape.unary"},
+      {"mop.kernels.tanh", "mop.shape.unary"},
+      {"mop.kernels.add", "mop.shape.binary"},
+      {"mop.kernels.div", "mop.shape.binary"},
+      {"mop.kernels.mul", "mop.shape.binary"},
+      {"mop.kernels.sub", "mop.shape.binary"},
+      {"mop.kernels.matmul", "mop.shape.matmul"}};
+
+  auto getOutputSpec = [&](const std::string &opName,
+                           const SmallVector<Value> &inputs) {
+    mlir::OperationState opState{loc, opName};
+    // inputs are input specs
+    opState.addOperands(inputs);
+    // The return is the new spec
+    opState.addTypes(cast<mlir::Type>(outSpecType));
+
+    // Add it to the MLIR.
+    mlir::Operation *invokeOp =
+        loweringState.getExecuteOpBuilder().create(opState);
+    return invokeOp->getResult(0);
+  };
+
+  LoweredTensor output;
+
+  if (shapeFuncs.count(opName)) {
+    // Get just the specs for tensors.
+    SmallVector<Value> inputSpecs;
+    inputSpecs.reserve(inputTensors.size());
+    for (const LoweredTensor &tensor : inputTensors)
+      inputSpecs.push_back(tensor.spec);
+
+    // Create a call to a custom invoke function we can put in the BEF.
+    output.spec = getOutputSpec(shapeFuncs.at(opName), inputSpecs);
+  } else if (opName == "mop.kernels.broadcast_to") {
+    // Hackery! Pure Hackery! I'd start setting up classes for this, but
+    // again, I don't expect this to survive E
+    Value target_shape = loweringState.lookupExecuteLoweredTensor(
+        opBeingLowered->getOperands()[1]);
+    output.spec = getOutputSpec("mop.shape.broadcast_to",
+                                {inputTensors[0].spec, target_shape});
+  } else {
+    opBeingLowered->emitError("op requires output to have static shape");
+    return Error("op requires output to have static shape");
+  }
+  output.buffer =
+      loweringState.getExecuteOpBuilder()
+          .create<MGP::CpuBufferAllocSpecOp>(
+              loc, loweringState.getExecuteMgpContext(), output.spec)
+          .getResult();
+
+  return output;
+}
+
+SmallVector<Value> LowerHelper::getOperands(SmallVector<LoweredTensor> &ins,
+                                            SmallVector<LoweredTensor> &outs) {
+  // Pass the operands as a normal value list to MLIR.
+  SmallVector<Value> operands;
+  operands.reserve((ins.size() + outs.size()) * 2);
+  for (LoweredTensor &tensor : ins) {
+    operands.push_back(tensor.buffer);
+    operands.push_back(tensor.spec);
+  }
+
+  for (LoweredTensor &tensor : outs) {
+    operands.push_back(tensor.buffer);
+    operands.push_back(tensor.spec);
+  }
+
+  return operands;
+}
+
+ErrorOr<SmallVector<LoweredTensor>>
+LowerHelper::lowerOutputBuffer(llvm::StringRef opName,
+                               const SmallVector<LoweredTensor> &inputTensors) {
+
+  SmallVector<LoweredTensor> outputBufferAndSpec;
 
   // Allocate the output buffer for each result and add as argument.
-  for (Type t : op->getResultTypes()) {
+  for (Type t : opBeingLowered->getResultTypes()) {
     MGP::CpuTensorSpecType outSpecType =
         MGP::createCpuTensorSpec(t.cast<MO::TensorType>());
+
     Optional<uint64_t> bufferSize = outSpecType.getSizeInBytes();
-    TypedValue<MGP::CpuBufferType> buf = Value();
-    TypedValue<MGP::CpuTensorSpecType> spec = Value();
+
+    LoweredTensor output;
     if (!bufferSize) {
-      // Dynamic Case
-      // TODO: This is hacky, hacky, hacky, remove as soon as we can lower
-      // parametric shapes to the runtime
-      // TODO: If we decide we want this longer term (say, for MLAS kernels)
-      // We should refactor it out as a Trait maybe? and make this a method
-      // and data member of the op class.
-      static const std::map<llvm::StringRef, std::string> shapeFuncs{
-          {"mop.kernels.abs", "mop.shape.unary"},
-          {"mop.kernels.erf", "mop.shape.unary"},
-          {"mop.kernels.exp", "mop.shape.unary"},
-          {"mop.kernels.gelu", "mop.shape.unary"},
-          {"mop.kernels.relu", "mop.shape.unary"},
-          {"mop.kernels.softmax", "mop.shape.unary"},
-          {"mop.kernels.tanh", "mop.shape.unary"},
-          {"mop.kernels.add", "mop.shape.binary"},
-          {"mop.kernels.div", "mop.shape.binary"},
-          {"mop.kernels.mul", "mop.shape.binary"},
-          {"mop.kernels.sub", "mop.shape.binary"},
-          {"mop.kernels.matmul", "mop.shape.matmul"}};
-
-      auto getOutputSpec = [&](const std::string &opName,
-                               const SmallVector<Value> &inputs) {
-        mlir::OperationState opState{loc, opName};
-        // inputs are input specs
-        opState.addOperands(inputs);
-        // The return is the new spec
-        opState.addTypes(cast<mlir::Type>(outSpecType));
-
-        // Add it to the MLIR.
-        mlir::Operation *invokeOp =
-            loweringState.getExecuteOpBuilder().create(opState);
-        return invokeOp->getResult(0);
-      };
-
-      StringRef opName = this->getOpName();
-      if (shapeFuncs.count(opName)) {
-        // Create a call to a custom invoke function we can put in the BEF.
-        spec = getOutputSpec(shapeFuncs.at(opName), input_specs);
-      } else if (opName == "mop.kernels.broadcast_to") {
-        // Hackery! Pure Hackery! I'd start setting up classes for this, but
-        // again, I don't expect this to survive E
-        Value target_shape =
-            loweringState.lookupExecuteLoweredTensor(op->getOperands()[1]);
-        spec = getOutputSpec("mop.shape.broadcast_to",
-                             {input_specs[0], target_shape});
-      } else {
-        return op->emitError("op requires output to have static shape");
-      }
-      buf = loweringState.getExecuteOpBuilder()
-                .create<MGP::CpuBufferAllocSpecOp>(
-                    loc, loweringState.getExecuteMgpContext(), spec)
-                .getResult();
+      // We can't see the size so lower to a dynamic buffer.
+      UNWRAP_ERROR(out, lowerDynamicOutput(outSpecType, opName, inputTensors));
+      output = out;
     } else {
       // Static Case
       // Allocate the buffer for the output.
-      buf = loweringState.getExecuteOpBuilder()
-                .create<MGP::CpuBufferAllocStaticOp>(
-                    loc, loweringState.getExecuteMgpContext(), *bufferSize)
-                .getResult();
+      output.buffer =
+          loweringState.getExecuteOpBuilder()
+              .create<MGP::CpuBufferAllocStaticOp>(
+                  loc, loweringState.getExecuteMgpContext(), *bufferSize)
+              .getResult();
 
       // Create an MGP tensor to match the MO output tensor.
-      spec = loweringState.getExecuteOpBuilder()
-                 .create<MGP::CpuTensorSpecCreateOp>(loc, outSpecType)
-                 .getResult();
+      output.spec = loweringState.getExecuteOpBuilder()
+                        .create<MGP::CpuTensorSpecCreateOp>(loc, outSpecType)
+                        .getResult();
     }
-    // Add the output buffer and spec as inputs to the operation.
-    operands.push_back(buf);
-    operands.push_back(spec);
 
     // Track the buffer and spec so we can create the immutable tensor after the
     // operation.
-    outputBufferAndSpec.push_back({buf, spec});
+    outputBufferAndSpec.push_back(output);
   }
 
+  return outputBufferAndSpec;
+}
+
+} // namespace
+
+LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
+  ExtOp op = *this;
+  LowerHelper helper{loweringState, op};
+
+  // Operands to pass to the operation. Input tensors are expanded to buffers
+  // and specs in IR those are passed in.
+  auto inputTensors = helper.lowerInputs();
+
+  // Ext ops carry the lowered operation name around with them,
+  // others might do something else.
+  StringRef opName = op.getOpName();
+
+  // Lower the outputs to buffers which can then be passed back in as
+  // parameters.
+  auto errOr = helper.lowerOutputBuffer(opName, inputTensors);
+  if (errOr.isError())
+    return failure();
+  SmallVector<LoweredTensor> outputBufferAndSpec = errOr.takeValue();
+
+  SmallVector<Value> operands =
+      helper.getOperands(inputTensors, outputBufferAndSpec);
+
   // Create a call to a custom invoke function we can put in the BEF.
-  mlir::OperationState opState{loc, this->getOpName()};
+  mlir::OperationState opState{op->getLoc(), op.getOpName()};
 
   // Add the execute chain as the first argument.
   operands.insert(operands.begin(), loweringState.getExecuteChain());
@@ -143,27 +285,9 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
       loweringState.getExecuteOpBuilder().create(opState);
   loweringState.setExecuteChain(invokeOp->getResult(0));
 
-  size_t outputIndex = 0;
-
-  // Allocate the output tensors this must be done after as the tensor is read
-  // only.
-  for (auto &[buffer, spec] : outputBufferAndSpec) {
-    // Get the type of the spec and infer the type of the tensor from that.
-    auto ty = cast<MGP::CpuTensorSpecType>(spec.getType());
-    auto tensorType = MGP::CpuTensorType::get(
-        loweringState.getExecuteOpBuilder().getContext(), ty);
-
-    // Create an immutable tensor
-    auto tensorCreateOp =
-        loweringState.getExecuteOpBuilder().create<MGP::CpuTensorCreateOp>(
-            loc, tensorType, loweringState.getExecuteChain(), buffer, spec);
-
-    // Update the MO tensor to now refer to this mgp tensor.
-    loweringState.emplaceExecuteLoweredTensor(op->getResult(outputIndex),
-                                              tensorCreateOp.getResult());
-    outputIndex++;
-  }
-
+  // We can't create the tensors until after the operation as they are
+  // immutable.
+  helper.allocateOutputTensor(outputBufferAndSpec);
   return success();
 }
 
