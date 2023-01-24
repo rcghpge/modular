@@ -22,12 +22,14 @@ include "mlir/IR/SymbolInterfaces.td"
 class MOGG_Op<string mnemonic, list<Trait> traits = []>
     : Op<MOGGDialect, mnemonic, traits>;
 
+class MOGG_LowerableOp<string mnemonic, list<Trait> traits = []>
+    : MOGG_Op<mnemonic, traits # [DeclareOpInterfaceMethods<MOLoweringInterface, ["lower"]>]>;
+
 //===----------------------------------------------------------------------===//
 // MOGG subgraph ops
 //===----------------------------------------------------------------------===//
 
-def MOGG_ExtOp : MOGG_Op<"ext.op", [HasParent<"MO::GraphOp">,
-                   DeclareOpInterfaceMethods<MOLoweringInterface, ["lower"]>]> {
+def MOGG_ExtOp : MOGG_LowerableOp<"ext.op", [HasParent<"MO::GraphOp">]> {
   let summary = "MOGG representation of an external library kernel";
   let description = [{
     This is a generic subgraph to represent calls to kernel libraries.
@@ -71,5 +73,6 @@ def MOGG_OutputOp
   let arguments = (ins Variadic<AnyType>:$operands);
   let assemblyFormat = "attr-dict ($operands^ `:` type($operands))?";
 }
+
 
 #endif // GENERICML_MOGGDIALECT_MOGGOPS_TD

@@ -9,6 +9,7 @@
 #include "GenericML/MODialect/MODialect.h"
 #include "GenericML/MODialect/MOTransforms.h"
 #include "GenericML/MOGGDialect/MOGGDialect.h"
+#include "GenericML/MOGGDialect/MOGGPasses.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 
 #include "Support/LLVMCompilerForwardDecls.h"
@@ -41,6 +42,7 @@ int main(int argc, char **argv) {
   MO::registerMOToMOGG();
   MO::registerMOTransformsPasses();
   MGP::registerMOToPrimitives();
+  MOGG::registerPasses();
 
   mlir::registerCSEPass();
   mlir::registerSCCPPass();
