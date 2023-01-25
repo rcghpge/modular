@@ -44,6 +44,7 @@ rationale for the design decisions.
   VBR                   ::= (`0x80`...`0xFF`)* (`0x00`...`0x7F`)
   FIXED16               ::= BYTE BYTE
   FIXED32               ::= BYTE BYTE BYTE BYTE
+  FIXED64               ::= BYTE BYTE BYTE BYTE BYTE BYTE BYTE BYTE
   NUL_TERMINATED_STRING ::= (`0x01`...`0xFF`)* `0x00`
   OFFSET                ::= VBR
   INDEX                 ::= VBR
@@ -362,7 +363,7 @@ table of primitives allows the use of primitive indexes.
                              FIXED16<"NumInvokables">
                              FIXED16<"NumResults">
 
-  PRIMITIVE_BODY         ::= FIXED32<PrimitiveAttribute>* (occurs NumAttributes times)
+  PRIMITIVE_BODY         ::= FIXED64<PrimitiveAttribute>* (occurs NumAttributes times)
                              FIXED32<PrimitiveOperand>* (occurs NumOperands times)
                              FIXED32<PrimitiveInvokable>* (occurs NumInvokables times)
                              FIXED32<PrimitiveResult>? (occurs if NumResults > 0)

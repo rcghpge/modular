@@ -70,7 +70,7 @@ public:
   }
 
   /// Return all the offsets for all attributes in this primitive frame.
-  ArrayRef<uint32_t> getAttrOffsets() const { return attrOffsets; }
+  ArrayRef<uint64_t> getAttrOffsets() const { return attrOffsets; }
   const uint8_t *getAttrBase() const { return attrSection.data(); }
   ArrayRef<uint8_t> getAttrSection() const { return attrSection; }
 
@@ -114,7 +114,7 @@ protected:
   SmallVector<BEFInvokable *, 2> invokables;
 
   /// This keeps track of each attribute value into the attributeSection.
-  ArrayRef<uint32_t> attrOffsets;
+  ArrayRef<uint64_t> attrOffsets;
 };
 
 /// This class is used to construct a PrimitiveDescriptor object without
@@ -139,7 +139,7 @@ public:
   }
 
   /// Set the offsets to the attributes in the BEF attribute section.
-  void setAttrs(ArrayRef<uint32_t> attrOffsets) {
+  void setAttrs(ArrayRef<uint64_t> attrOffsets) {
     this->attrOffsets = attrOffsets;
   }
 
@@ -290,7 +290,7 @@ public:
   }
 
   /// Set the offsets to the attributes in the BEF attribute section.
-  void setAttrs(ArrayRef<uint32_t> attrOffsets) {
+  void setAttrs(ArrayRef<uint64_t> attrOffsets) {
     this->attrOffsets = attrOffsets;
   }
 

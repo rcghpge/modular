@@ -17,6 +17,7 @@
 #include "LLCL/Runtime/AsyncValue.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "llvm/Support/TrailingObjects.h"
+#include <cassert>
 using namespace M;
 
 //===----------------------------------------------------------------------===//
@@ -456,7 +457,7 @@ struct PrimitiveDecoder {
   uint16_t numInvokables, numResults;
   ArrayRef<uint32_t> perResultUsersCount;
   ArrayRef<uint32_t> operandIndices;
-  ArrayRef<uint32_t> attrOffsets;
+  ArrayRef<uint64_t> attrOffsets;
   ArrayRef<uint32_t> invokableRefIndices;
   uint32_t firstResultRegNumber;
 
@@ -472,8 +473,12 @@ struct PrimitiveDecoder {
     numResults = uint16_t(numInvokablesAndResults >> 16);
 
     // Decode the variable size fields.
-    attrOffsets = ArrayRef(dataPtr, numAttrs);
-    dataPtr += numAttrs;
+    assert(reinterpret_cast<uintptr_t>(dataPtr) % sizeof(uint64_t) == 0 &&
+           "Primitive decoding is not aligned to 8-byte boundary");
+    attrOffsets =
+        ArrayRef(reinterpret_cast<const uint64_t *>(dataPtr), numAttrs);
+    dataPtr = reinterpret_cast<const uint32_t *>(
+        reinterpret_cast<const uint64_t *>(dataPtr) + numAttrs);
     operandIndices = ArrayRef(dataPtr, numOperands);
     dataPtr += numOperands;
     invokableRefIndices = ArrayRef(dataPtr, numInvokables);

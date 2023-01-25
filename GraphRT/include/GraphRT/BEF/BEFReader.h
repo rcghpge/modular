@@ -92,6 +92,25 @@ public:
     return false;
   }
 
+  /// Parse eight bytes in little endian format from the stream.
+  bool parseInt8(uint64_t &value) {
+    uint32_t a = 0, b = 0;
+    if (parseInt4(a) || parseInt4(b))
+      return true;
+    value = uint64_t(a) | (uint64_t(b) << 32);
+    return false;
+  }
+
+  /// Parse N int8 values as an array.
+  bool parseInt8Array(size_t numElements, SmallVectorImpl<uint64_t> &result) {
+    while (numElements--) {
+      result.push_back(0);
+      if (parseInt8(result.back()))
+        return true;
+    }
+    return false;
+  }
+
   /// Parse a VBR encoded integer from the byte stream.
   bool parseVBR(size_t &result) {
     uint8_t nextByte;

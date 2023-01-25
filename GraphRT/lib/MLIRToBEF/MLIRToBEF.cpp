@@ -152,6 +152,18 @@ public:
     emitBytes(data);
   }
 
+  // Emit a guaranteed 8-byte integer aligned to 8 bytes, allowing this to be
+  // directly mapped into the target process in little-endian form.
+  void emitInt8(uint64_t value) {
+    alignTo(8);
+    uint8_t data[] = {
+        uint8_t(value & 0xFF),         uint8_t((value >> 8) & 0xFF),
+        uint8_t((value >> 16) & 0xFF), uint8_t((value >> 24) & 0xFF),
+        uint8_t((value >> 32) & 0xFF), uint8_t((value >> 40) & 0xFF),
+        uint8_t((value >> 48) & 0xFF), uint8_t((value >> 56) & 0xFF)};
+    emitBytes(data);
+  }
+
   // Emit a VBR encoded integer of arbitrary width.
   void emitVBR(size_t value) { emitVBRImpl(value, false); }
 
@@ -1401,7 +1413,7 @@ void RegionEmitter::emitPrimitive(Operation *op,
                                   BEFEmitter &primitiveList) const {
   // Collect the regions and attributes to emit.
   SmallVector<uint32_t> regionsToEmit;
-  SmallVector<uint32_t> attributesToEmit;
+  SmallVector<uint64_t> attributesToEmit;
 
   // Grab the module so we can use it to lookup symbols when necessary.
   ModuleOp theModule = op->getParentOfType<ModuleOp>();
@@ -1455,7 +1467,7 @@ void RegionEmitter::emitPrimitive(Operation *op,
 
   // Emit the PRIMITIVE_BODY contents.
   for (auto attrOffset : attributesToEmit)
-    primitiveList.emitInt4(attrOffset);
+    primitiveList.emitInt8(attrOffset);
   for (auto operand : op->getOperands())
     primitiveList.emitInt4(getRegisterNumber(operand));
   for (auto fnOffset : regionsToEmit)

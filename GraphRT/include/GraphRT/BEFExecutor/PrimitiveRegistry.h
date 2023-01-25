@@ -921,7 +921,7 @@ using BEFDictionaryAttr = BEFAttr<Detail::Dictionary>;
 /// and it must appear after all other attributes.
 class RemainingBEFAttrs {
 public:
-  explicit RemainingBEFAttrs(const uint8_t *basePtr, ArrayRef<uint32_t> attrs,
+  explicit RemainingBEFAttrs(const uint8_t *basePtr, ArrayRef<uint64_t> attrs,
                              ArrayRef<uint8_t> attrSection)
       : basePtr(basePtr), attrs(attrs), attrSection(attrSection) {}
 
@@ -933,7 +933,7 @@ public:
 
 private:
   const uint8_t *basePtr;
-  ArrayRef<uint32_t> attrs;
+  ArrayRef<uint64_t> attrs;
   ArrayRef<uint8_t> attrSection;
 };
 
