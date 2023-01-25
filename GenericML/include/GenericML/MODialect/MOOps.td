@@ -574,6 +574,28 @@ def MO_ConcatOp : MO_Op<"concat", [Pure]> {
   let hasVerifier = 1;
 }
 
+def MO_TransposeOp : MO_Op<"transpose", [Pure]> {
+  let summary = "Transpose Operation";
+  let description = [{
+    Return a new Tensor as the result of permuting the dimensions of the input
+    tensor according to the value of perm.
+
+    Example:
+
+    ```mlir
+    %input: !mo.tensor<[2, 3], f32>
+    %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %res  = mo.transpose(%input, %perm) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[3, 2], f32>
+    ```
+  }];
+
+  let arguments = (ins MO_Tensor:$input, MO_ShapeLike:$perm);
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 //===----------------------------------------------------------------------===//
 // GatherOp
 //===----------------------------------------------------------------------===//
