@@ -28,6 +28,6 @@ class bdist_wheel(_bdist_wheel):
 
 setup(
     cmdclass={"bdist_wheel": bdist_wheel},
-    name="modular",
+    name="modular-pyframework",
     packages=["modular.pyframework"],
 )
