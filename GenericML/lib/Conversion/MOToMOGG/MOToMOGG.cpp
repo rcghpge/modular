@@ -26,7 +26,7 @@ namespace {
 enum class OpType {
   /* class of MOGG op this kernel represents */
   kExternal,
-  kKGEN,
+  kJIT,
 };
 
 struct KernelRecord {
@@ -36,11 +36,15 @@ struct KernelRecord {
   StringLiteral opName;
 };
 
-static ErrorOr<ValueRange> selectMOGGOp(Operation *op) {
+static ErrorOr<ValueRange> selectMOGGOp(Operation *op, bool useJit) {
   // TODO: Turn this into a registry we can access from lit
   const static llvm::StringMap<SmallVector<KernelRecord, 5>> kernels = {
       {"abs", {{OpType::kExternal, "mop.kernels.abs"}}},
-      {"add", {{OpType::kExternal, "mop.kernels.add"}}},
+      {"add",
+       {
+           {OpType::kJIT, "$MOGG::add"},
+           {OpType::kExternal, "mop.kernels.add"},
+       }},
       {"broadcast_shape", {{OpType::kExternal, "mop.kernels.broadcast_shape"}}},
       {"broadcast_to", {{OpType::kExternal, "mop.kernels.broadcast_to"}}},
       {"div", {{OpType::kExternal, "mop.kernels.div"}}},
@@ -48,12 +52,20 @@ static ErrorOr<ValueRange> selectMOGGOp(Operation *op) {
       {"exp", {{OpType::kExternal, "mop.kernels.exp"}}},
       {"gather", {{OpType::kExternal, "mop.kernels.gather"}}},
       {"matmul", {{OpType::kExternal, "mop.kernels.matmul"}}},
-      {"mul", {{OpType::kExternal, "mop.kernels.mul"}}},
+      {"mul",
+       {
+           {OpType::kJIT, "$MOGG::mul"},
+           {OpType::kExternal, "mop.kernels.mul"},
+       }},
       {"relu", {{OpType::kExternal, "mop.kernels.relu"}}},
       {"sigmoid", {{OpType::kExternal, "mop.kernels.sigmoid"}}},
       {"shape_of", {{OpType::kExternal, "mop.kernels.shape_of"}}},
       {"softmax", {{OpType::kExternal, "mop.kernels.softmax"}}},
-      {"sub", {{OpType::kExternal, "mop.kernels.sub"}}},
+      {"sub",
+       {
+           {OpType::kJIT, "$MOGG::sub"},
+           {OpType::kExternal, "mop.kernels.sub"},
+       }},
       {"tanh", {{OpType::kExternal, "mop.kernels.tanh"}}},
   };
 
@@ -61,11 +73,21 @@ static ErrorOr<ValueRange> selectMOGGOp(Operation *op) {
 
   OpBuilder b(op);
   if (kernels.count(opName)) {
+    b.setInsertionPoint(op);
     for (auto kernel : kernels.lookup(opName)) {
       // TODO: Put kernel selection metrics in here.
-      if (kernel.type == OpType::kExternal) {
+
+      if (kernel.type == OpType::kJIT && useJit) {
+        // Create an op which will get compiled to JIT.
+        return b
+            .create<MOGG::JitTargetOp>(op->getLoc(),
+                                       /*outputTypes=*/op->getResultTypes(),
+                                       /*kernelTarget=*/kernel.opName,
+                                       /*originalOperationName=*/opName,
+                                       /*inputOperands=*/op->getOperands())
+            .getResults();
+      } else if (kernel.type == OpType::kExternal) {
         // Create the mogg_ext_op
-        b.setInsertionPoint(op);
         return b
             .create<MOGG::ExtOp>(op->getLoc(),
                                  /*outputTypes=*/op->getResultTypes(),
@@ -79,7 +101,8 @@ static ErrorOr<ValueRange> selectMOGGOp(Operation *op) {
 }
 
 struct MOOpPattern : public RewritePattern {
-  MOOpPattern(MLIRContext *ctx) : RewritePattern(MatchAnyOpTypeTag{}, 1, ctx) {}
+  MOOpPattern(MLIRContext *ctx, bool useJit)
+      : RewritePattern(MatchAnyOpTypeTag{}, 1, ctx), useJit(useJit) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
@@ -88,7 +111,7 @@ struct MOOpPattern : public RewritePattern {
         isa<MO::ConstantOp>(op) || isa<MO::OutputOp>(op))
       return failure();
 
-    auto results = selectMOGGOp(op);
+    auto results = selectMOGGOp(op, useJit);
     if (results.isError()) {
       return failure();
     } else {
@@ -96,6 +119,8 @@ struct MOOpPattern : public RewritePattern {
       return success();
     }
   }
+
+  bool useJit;
 };
 
 struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
@@ -110,7 +135,7 @@ void MOToMOGGPass::runOnOperation() {
   auto *ctx = &getContext();
 
   RewritePatternSet patterns{ctx};
-  patterns.add<MOOpPattern>(ctx);
+  patterns.add<MOOpPattern>(ctx, useJit.getValue());
 
   if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
     return signalPassFailure();

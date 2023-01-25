@@ -17,6 +17,12 @@ def MOToMOGG : Pass<"mo-to-mogg", "ModuleOp"> {
 
     TODO: Expand this to also perform lowering search
   }];
+
+  let options = [
+      Option<"useJit", "useJit", "bool", /*default=*/"false",
+            "Compile lowered kernels into the BEF as JITed kernels">,
+  ];
+
   let dependentDialects = ["MOGG::MOGGDialect"];
 }
 

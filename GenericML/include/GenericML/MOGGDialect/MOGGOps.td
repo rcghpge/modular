@@ -17,6 +17,7 @@ include "GenericML/Interfaces/MOLoweringInterface.td"
 include "Support/MDialect/MAttrs.td"
 include "mlir/IR/FunctionInterfaces.td"
 include "mlir/IR/SymbolInterfaces.td"
+include "mlir/IR/BuiltinAttributes.td"
 
 // Base class for ops in this dialect.
 class MOGG_Op<string mnemonic, list<Trait> traits = []>
@@ -74,5 +75,30 @@ def MOGG_OutputOp
   let assemblyFormat = "attr-dict ($operands^ `:` type($operands))?";
 }
 
+
+//===----------------------------------------------------------------------===//
+// MOGG jit ops
+//===----------------------------------------------------------------------===//
+
+def MOGG_JitTargetOp : MOGG_Op<"jit_target", [HasParent<"MO::GraphOp">]> {
+  let summary = "MOGG representation of an operation we should jit";
+  let description = [{
+    This represents an operation we want to create a JIT kernel for. It does not itself
+    jit anything, it just represents an operation we _will_ jit.
+  }];
+
+  let arguments = (ins
+    StrAttr:$kernelTarget,
+    StrAttr:$originalOpName,
+    Variadic<MO_Tensor>:$operands
+  );
+
+  let results = (outs Variadic<MO_Tensor>:$results);
+
+  let assemblyFormat = [{
+    $kernelTarget attr-dict `(`($operands^)?`)`
+      (`:` type($operands)^)? (`->` type($results)^)?
+  }];
+}
 
 #endif // GENERICML_MOGGDIALECT_MOGGOPS_TD
