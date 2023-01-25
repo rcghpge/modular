@@ -61,11 +61,15 @@ set(UNPACKED_WHEEL ${CMAKE_CURRENT_BINARY_DIR}/${MODULAR_PYPROJECT_NAME_VERSION}
 # This command is expected to error, which is intentionally ignored.
 execute_process(
   COMMAND ${Python3_EXECUTABLE} setup.py --dry-run --quiet bdist_wheel
-  OUTPUT_VARIABLE WHEEL_BASENAME
+  OUTPUT_VARIABLE BDIST_WHEEL_OUTPUT
   OUTPUT_STRIP_TRAILING_WHITESPACE
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   ERROR_QUIET
 )
+# For earlier versions of wheel/setuptools, setup.py emits other informational
+# messages to stdout even with the --quiet flag.
+# So ignore any additional output from setup.py after the wheel name.
+string(REGEX MATCH "^[^\n]+" WHEEL_BASENAME ${BDIST_WHEEL_OUTPUT})
 
 # Add a custom target to build and install the Python bindings and wheel.
 # Individual pybind11 modules are expected to be dependencies of
