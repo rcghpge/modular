@@ -87,7 +87,7 @@ mo.graph @gather_unranked_axis(%params: !mo.tensor<[2, 2], f32>, %indices: !mo.t
 //===----------------------------------------------------------------------===//
 
 mo.graph @shape_of_f32_output(%arg: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[2], f32> {
-  // expected-error@+1 {{'mo.shape_of' op result #0 must be rank 1 and signed 64 integer elements, but got '!mo.tensor<[2], f32>'}}
+  // expected-error@+1 {{'mo.shape_of' op result #0 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<[2], f32>'}}
   %res = mo.shape_of(%arg) : (!mo.tensor<[1, 3], f32>) -> !mo.tensor<[2], f32>
   mo.output %res : !mo.tensor<[2], f32>
 }
@@ -95,7 +95,7 @@ mo.graph @shape_of_f32_output(%arg: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[2], 
 // -----
 
 mo.graph @shape_of_dyn_rank(%arg: !mo.tensor<[1, 3], f32>) -> !mo.tensor<?, si64> {
-  // expected-error@+1 {{'mo.shape_of' op result #0 must be rank 1 and signed 64 integer elements, but got '!mo.tensor<?, si64>'}}
+  // expected-error@+1 {{'mo.shape_of' op result #0 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<?, si64>'}}
   %res = mo.shape_of(%arg) : (!mo.tensor<[1, 3], f32>) -> !mo.tensor<?, si64>
   mo.output %res : !mo.tensor<?, si64>
 }
@@ -103,7 +103,7 @@ mo.graph @shape_of_dyn_rank(%arg: !mo.tensor<[1, 3], f32>) -> !mo.tensor<?, si64
 // -----
 
 mo.graph @shape_of_rank_2(%arg: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[2, 1], si64> {
-  // expected-error@+1 {{'mo.shape_of' op result #0 must be rank 1 and signed 64 integer elements, but got '!mo.tensor<[2, 1], si64>'}}
+  // expected-error@+1 {{'mo.shape_of' op result #0 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<[2, 1], si64>'}}
   %res = mo.shape_of(%arg) : (!mo.tensor<[1, 3], f32>) -> !mo.tensor<[2, 1], si64>
   mo.output %res : !mo.tensor<[2, 1], si64>
 }
@@ -115,7 +115,7 @@ mo.graph @shape_of_rank_2(%arg: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[2, 1], s
 //===----------------------------------------------------------------------===//
 
 mo.graph @broadcast_shape_f32_output(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !mo.tensor<[2, 1], f32>) -> !mo.tensor<[2], f32> {
-  // expected-error@+1 {{'mo.broadcast_shape' op result #0 must be rank 1 and signed 64 integer elements, but got '!mo.tensor<[3], f32>'}}
+  // expected-error@+1 {{'mo.broadcast_shape' op result #0 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<[3], f32>'}}
   %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[2, 1], f32>) -> !mo.tensor<[3], f32>
   mo.output %res : !mo.tensor<[3], f32>
 }
@@ -123,7 +123,7 @@ mo.graph @broadcast_shape_f32_output(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !
 // -----
 
 mo.graph @broadcast_shape_dyn_rank(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !mo.tensor<[2, 1], f32>) -> !mo.tensor<?, si64> {
-  // expected-error@+1 {{'mo.broadcast_shape' op result #0 must be rank 1 and signed 64 integer elements, but got '!mo.tensor<?, si64>'}}
+  // expected-error@+1 {{'mo.broadcast_shape' op result #0 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<?, si64>'}}
   %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[2, 1], f32>) -> !mo.tensor<?, si64>
   mo.output %res : !mo.tensor<?, si64>
 }
@@ -131,7 +131,7 @@ mo.graph @broadcast_shape_dyn_rank(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !mo
 // -----
 
 mo.graph @broadcast_shape_f32_output(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !mo.tensor<[2, 1], f32>) -> !mo.tensor<[2, 1], si64> {
-  // expected-error@+1 {{'mo.broadcast_shape' op result #0 must be rank 1 and signed 64 integer elements, but got '!mo.tensor<[2, 1], si64>'}}
+  // expected-error@+1 {{'mo.broadcast_shape' op result #0 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<[2, 1], si64>'}}
   %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[2, 1], f32>) -> !mo.tensor<[2, 1], si64>
   mo.output %res : !mo.tensor<[2, 1], si64>
 }
