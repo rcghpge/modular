@@ -60,6 +60,14 @@ public:
     /// This op creates and returns the overall MGP context.
     MGP::ContextCreateOp mgpContext;
 
+    /// This operation is the context for all compiled code in the graph.
+    /// The current implementation stores the context as a state slot within the
+    /// mgp context.
+    mlir::Operation *jitContext;
+
+    /// The slot inside the MGP context which contains the jit context.
+    uint32_t jitContextSlot;
+
     /// This is a builder appending operations to the end of the invokable.
     OpBuilder builder;
 
@@ -169,6 +177,22 @@ public:
 
   /// Return and increment the next available constant identifier.
   size_t getExecuteNextConstId() { return execute.nextConstId++; }
+
+  /// Set the jit context. Should only be accessed during init and referred to
+  /// by the context slot in execute.
+  void setJitCtx(mlir::Operation *op) { init.jitContext = op; }
+
+  /// Get the jit context. Should only be accessed during init and referred to
+  /// by the context slot in execute.
+  mlir::Operation *getJitCtx() { return init.jitContext; }
+
+  /// The JIT context is stored in one of the "slots" of the context. This sets
+  /// the index of that slot.
+  void setJitCtxSlot(uint32_t slot) { init.jitContextSlot = slot; }
+
+  /// The JIT context is stored in one of the "slots" of the context. This
+  /// returns the index of the slot which contains it.
+  uint32_t getJitCtxSlot() { return init.jitContextSlot; }
 
 private:
   //===-----------------------------------------------------------------===//

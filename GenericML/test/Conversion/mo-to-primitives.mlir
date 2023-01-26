@@ -1,10 +1,11 @@
 // RUN: mo-opt %s --mo-to-primitives --allow-unregistered-dialect | FileCheck %s
 
 // CHECK-LABEL: mgp.model @constants_with_multiple_returns : tf init {
-// CHECK:        %0 = grt.chain.create
-// CHECK:        %1 = mgp.context.create 0
-// CHECK:        bef.output %0, %1 : !bef.chain, !mgp.context
-// CHECK:      } execute (
+// CHECK-NEXT:        %0 = grt.chain.create
+// CHECK-NEXT:        %1 = mgp.context.create 1
+// CHECK-NEXT:        %2 = "mop.create_jit_context"(%0, %1) {slot = 0 : ui32}
+// CHECK-NEXT:        bef.output %2, %1 : !bef.chain, !mgp.context
+// CHECK-NEXT:      } execute (
 // CHECK-SAME:   %[[ARG0:.*]]: !bef.chain, %[[ARG1:.*]]: !mgp.context,
 // CHECK-SAME:   %[[ARG2:.*]]: !mgp.cpu.tensor<2xf32>, %[[ARG3:.*]]: !mgp.cpu.tensor<5x1xf32>
 // CHECK-SAME: ) -> (
@@ -29,9 +30,10 @@ mo.graph @constants_with_multiple_returns(%arg0: !mo.tensor<[2], f32>, %arg1: !m
 }
 
 // CHECK-LABEL: mgp.model @scalar_arg : tf init {
-// CHECK:    %0 = grt.chain.create
-// CHECK:    %1 = mgp.context.create 0
-// CHECK:    bef.output %0, %1 : !bef.chain, !mgp.context
+// CHECK-NEXT:    %0 = grt.chain.create
+// CHECK-NEXT:    %1 = mgp.context.create 1
+// CHECK-NEXT:        %2 = "mop.create_jit_context"(%0, %1) {slot = 0 : ui32}
+// CHECK:    bef.output %2, %1 : !bef.chain, !mgp.context
 // CHECK:  } execute (%arg0: !bef.chain, %arg1: !mgp.context, %arg2: !mgp.cpu.tensor<f32>) -> (!bef.chain, !mgp.cpu.tensor<f32>) {
 // CHECK:    bef.output %arg0, %arg2 : !bef.chain, !mgp.cpu.tensor<f32>
 // CHECK:  }

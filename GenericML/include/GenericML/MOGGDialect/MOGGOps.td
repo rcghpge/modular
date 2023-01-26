@@ -101,4 +101,25 @@ def MOGG_JitTargetOp : MOGG_Op<"jit_target", [HasParent<"MO::GraphOp">]> {
   }];
 }
 
+def MOGG_LoadJitKernelOp : MOGG_LowerableOp<"load_compiled_kernel"> {
+  let summary = "Loads a compiled object into the JIT symbol table";
+  let description = [{
+  }];
+
+  let arguments = (ins Builtin_StringAttr:$kernelName,
+    ConfinedAttr<
+      ElementsAttr,
+      [AnyAttrOf<[Builtin_DenseResourceElementsAttr]>]
+    >:$value);
+}
+
+
+def MOGG_ExecuteCompiledOp : MOGG_LowerableOp<"execute_kernel", [HasParent<"MO::GraphOp">]> {
+  let summary = "A compiled KGEN ELF file attached to an op";
+  let description = [{}];
+
+  let arguments = (ins Variadic<MO_Tensor>:$operands, StrAttr:$kernelName, StrAttr:$originalOpName);
+  let results = (outs Variadic<MO_Tensor>:$results);
+}
+
 #endif // GENERICML_MOGGDIALECT_MOGGOPS_TD

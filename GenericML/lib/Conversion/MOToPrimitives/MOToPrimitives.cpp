@@ -9,10 +9,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/Conversion/MOToPrimitives.h"
+#include "GenericML/Conversion/Support.h"
 #include "GenericML/Interfaces/MOLoweringInterface.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MODialect/MOOps.h"
 #include "GenericML/MOGGDialect/MOGGDialect.h"
+#include "GenericML/MOGGDialect/MOGGOps.h"
 #include "GraphRT/BEFDialect/BEFOps.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "Support/AlignedAlloc.h"
@@ -106,10 +108,28 @@ LogicalResult MOGraphLowering::createModelOp() {
       loweringState.getInitOpBuilder().create<GRT::ChainCreateOp>(
           graph.getLoc()));
 
-  // Create the mgp.context.create op without any slots.
   loweringState.setInitMgpContext(
       loweringState.getInitOpBuilder().create<MGP::ContextCreateOp>(
-          graph.getLoc(), 0));
+          graph.getLoc(), 1));
+
+  // The slot in the mgp context reserved for the JIT context which loads the
+  // compiled binaries.
+  loweringState.setJitCtxSlot(0);
+
+  // Build up the MLIR state for the global JIT context.
+  mlir::OperationState opState{graph.getLoc(), "mop.create_jit_context"};
+  opState.addAttribute("slot",
+                       loweringState.getInitOpBuilder().getUI32IntegerAttr(
+                           loweringState.getJitCtxSlot()));
+  opState.addOperands(
+      {loweringState.getInitChain(), loweringState.getInitMgpContext()});
+  opState.addTypes({loweringState.getInitChain().getType()});
+
+  // Create the context building op.
+  mlir::Operation *jit = loweringState.getInitOpBuilder().create(opState);
+
+  loweringState.setJitCtx(jit);
+  loweringState.setInitChain(jit->getResult(0));
 
   // Initialize the execute state.
   Block *executeBlock = loweringState.getCommonModelOp().getExecuteBlock();

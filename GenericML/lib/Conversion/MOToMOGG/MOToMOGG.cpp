@@ -42,7 +42,7 @@ static ErrorOr<ValueRange> selectMOGGOp(Operation *op, bool useJit) {
       {"abs", {{OpType::kExternal, "mop.kernels.abs"}}},
       {"add",
        {
-           {OpType::kJIT, "$MOGG::add"},
+           {OpType::kJIT, "add"},
            {OpType::kExternal, "mop.kernels.add"},
        }},
       {"broadcast_shape", {{OpType::kExternal, "mop.kernels.broadcast_shape"}}},
@@ -54,7 +54,7 @@ static ErrorOr<ValueRange> selectMOGGOp(Operation *op, bool useJit) {
       {"matmul", {{OpType::kExternal, "mop.kernels.matmul"}}},
       {"mul",
        {
-           {OpType::kJIT, "$MOGG::mul"},
+           {OpType::kJIT, "mul"},
            {OpType::kExternal, "mop.kernels.mul"},
        }},
       {"relu", {{OpType::kExternal, "mop.kernels.relu"}}},
@@ -63,7 +63,7 @@ static ErrorOr<ValueRange> selectMOGGOp(Operation *op, bool useJit) {
       {"softmax", {{OpType::kExternal, "mop.kernels.softmax"}}},
       {"sub",
        {
-           {OpType::kJIT, "$MOGG::sub"},
+           {OpType::kJIT, "sub"},
            {OpType::kExternal, "mop.kernels.sub"},
        }},
       {"tanh", {{OpType::kExternal, "mop.kernels.tanh"}}},

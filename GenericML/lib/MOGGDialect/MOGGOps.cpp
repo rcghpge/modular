@@ -297,6 +297,93 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // We can't create the tensors until after the operation as they are
   // immutable.
   helper.allocateOutputTensor(outputBufferAndSpec);
+
+  return success();
+}
+
+LogicalResult LoadJitKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
+  MOGG::LoadJitKernelOp kernel = *this;
+
+  SmallVector<Value> operands{
+      loweringState.getInitChain(),
+      loweringState.getInitMgpContext(),
+  };
+
+  // Create a call to a custom invoke function we can put in the BEF.
+  mlir::OperationState opState{kernel.getLoc(), "mop.load_jit_object"};
+  opState.addOperands(operands);
+
+  // This will load and store the kernel at the given index into memory. The
+  // address will be tracked in the symbol table and it can then be accessed by
+  // refering to the index in the table. IMPORTANT! Order in BEF is alphabetical
+  // by attribute name.
+  opState.addAttribute("jitCtxSlot",
+                       loweringState.getInitOpBuilder().getUI32IntegerAttr(
+                           loweringState.getJitCtxSlot()));
+  opState.addAttribute("kernelName", kernel.getKernelName());
+  opState.addAttribute("objectData", kernel.getValue());
+
+  opState.addTypes({loweringState.getInitChain().getType()});
+
+  // Kernel will be loaded by the context inside the JIT.
+  mlir::Operation *kernelInGraph =
+      loweringState.getInitOpBuilder().create(opState);
+  loweringState.setInitChain(kernelInGraph->getResult(0));
+
+  return success();
+}
+
+LogicalResult
+ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
+  ExecuteCompiledOp op = *this;
+  LowerHelper helper{loweringState, op};
+
+  // Operands to pass to the operation. Input tensors are expanded to buffers
+  // and specs in IR those are passed in.
+  auto inputTensors = helper.lowerInputs();
+
+  // TODO: We carry around the original operation name just to trick the current
+  // dynamic shape logic.
+  std::string originalName = "mop.kernels." + op.getOriginalOpName().str();
+
+  // Lower the outputs to buffers which can then be passed back in as
+  // parameters.
+  auto errOr = helper.lowerOutputBuffer(originalName, inputTensors);
+  if (errOr.isError())
+    return failure();
+  SmallVector<LoweredTensor> outputBufferAndSpec = errOr.takeValue();
+
+  SmallVector<Value> operands =
+      helper.getOperands(inputTensors, outputBufferAndSpec);
+
+  // Create a call to a custom invoke function we can put in the BEF.
+  mlir::OperationState opState{op->getLoc(), "mop.kgen.execute_kernel"};
+
+  // For compiled ops add the context as argument and all the metadata needed to
+  // extract a compiled kernel from the context.
+  operands.insert(operands.begin(), loweringState.getExecuteMgpContext());
+  opState.addAttribute("kernelName", op.getKernelNameAttr());
+  opState.addAttribute("jitCtxSlot",
+                       loweringState.getExecuteOpBuilder().getUI32IntegerAttr(
+                           loweringState.getJitCtxSlot()));
+
+  // Add the execute chain as the first argument.
+  operands.insert(operands.begin(), loweringState.getExecuteChain());
+  opState.addOperands(operands);
+
+  // The return type is just the chain, other outputs are passed as argument by
+  // their buffer pointers.
+  opState.addTypes({loweringState.getExecuteChain().getType()});
+
+  // Add it to the MLIR.
+  mlir::Operation *invokeOp =
+      loweringState.getExecuteOpBuilder().create(opState);
+  loweringState.setExecuteChain(invokeOp->getResult(0));
+
+  // We can't create the tensors until after the operation as they are
+  // immutable.
+  helper.allocateOutputTensor(outputBufferAndSpec);
+
   return success();
 }
 
