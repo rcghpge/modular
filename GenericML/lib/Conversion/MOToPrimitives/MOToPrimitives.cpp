@@ -61,6 +61,9 @@ public:
   /// Lowers mo.constant op.
   LogicalResult lowerConstant(MO::ConstantOp constOp);
 
+  /// Lowers mo.reshape op.
+  LogicalResult lowerReshape(MO::ReshapeOp reshapeOp);
+
 private:
   M::MGP::MOGraphLoweringState loweringState;
 };
@@ -241,6 +244,43 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
   return success();
 }
 
+LogicalResult MOGraphLowering::lowerReshape(MO::ReshapeOp reshapeOp) {
+  auto loc = reshapeOp.getLoc();
+
+  // get input tensor buffer
+  auto mgpTensor =
+      loweringState.lookupExecuteLoweredTensor(reshapeOp.getInput());
+  auto extract =
+      loweringState.getExecuteOpBuilder().create<MGP::CpuTensorExtractOp>(
+          loc, mgpTensor);
+  auto buffer = extract.getBufferResult();
+
+  // get spec from output type (assume static input and output)
+  auto outSpecType = MGP::createCpuTensorSpec(reshapeOp.getType());
+  if (!buffer.getType().hasStaticShape())
+    return reshapeOp.emitError("Dynamic input shape not supported");
+  if (!outSpecType.hasStaticShape())
+    return reshapeOp.emitError("Dynamic output shape not supported");
+
+  auto outSpecValue = loweringState.getExecuteOpBuilder()
+                          .create<MGP::CpuTensorSpecCreateOp>(loc, outSpecType)
+                          .getResult();
+
+  // Create an immutable tensor
+  auto outTensorType = MGP::CpuTensorType::get(
+      loweringState.getExecuteOpBuilder().getContext(), outSpecType);
+  auto tensorCreateOp =
+      loweringState.getExecuteOpBuilder().create<MGP::CpuTensorCreateOp>(
+          loc, outTensorType, loweringState.getExecuteChain(), buffer,
+          outSpecValue);
+
+  // Update the MO tensor to now refer to this mgp tensor.
+  loweringState.emplaceExecuteLoweredTensor(reshapeOp.getResult(),
+                                            tensorCreateOp.getResult());
+
+  return success();
+}
+
 LogicalResult MOGraphLowering::run() {
   MO::GraphOp &graph = loweringState.getGraph();
 
@@ -264,6 +304,12 @@ LogicalResult MOGraphLowering::run() {
   for (Operation &op : *graph.getBodyBlock()) {
     if (auto constOp = dyn_cast<MO::ConstantOp>(op)) {
       if (failed(lowerConstant(constOp)))
+        return failure();
+      continue;
+    }
+
+    if (auto reshapeOp = dyn_cast<MO::ReshapeOp>(op)) {
+      if (failed(lowerReshape(reshapeOp)))
         return failure();
       continue;
     }
