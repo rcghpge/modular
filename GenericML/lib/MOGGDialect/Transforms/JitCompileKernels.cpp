@@ -49,8 +49,16 @@ struct JitCompileKernels
     StringLiteral path = MOGG_LIT_BINDINGS_PATH;
 
     // Load the module. The stub will be appended to this.
-    auto baseModuleRef =
+    mlir::OwningOpRef<mlir::ModuleOp> baseModuleRef =
         mlir::parseSourceFile<mlir::ModuleOp>(path, graph.getContext());
+
+    if (!baseModuleRef) {
+      graph.emitError() << "[JitCompileKernels] Could not load MOGG LIT "
+                           "binding library at path "
+                        << path;
+      return;
+    }
+
     mlir::ModuleOp baseModule = *baseModuleRef;
 
     // Strip all the export functions from the imported module.
