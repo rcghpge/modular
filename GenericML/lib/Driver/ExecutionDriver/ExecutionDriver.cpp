@@ -65,11 +65,14 @@ M::symbolizeTensorGeneratorFlag(StringRef s) {
 bool TensorShapeParser::parse(llvm::cl::Option &options, StringRef argName,
                               StringRef argValue, TensorShape &result) {
   SmallVector<int64_t, 5> shape;
-  for (StringRef dimStr : llvm::split(argValue, 'x')) {
-    int64_t dim;
-    if (!llvm::to_integer(dimStr, dim))
-      return options.error("invalid shape dimension '" + dimStr + "'");
-    shape.emplace_back(dim);
+  if (!argValue.empty()) {
+    // Empty means scalar.
+    for (StringRef dimStr : llvm::split(argValue, 'x')) {
+      int64_t dim;
+      if (!llvm::to_integer(dimStr, dim))
+        return options.error("invalid shape dimension '" + dimStr + "'");
+      shape.emplace_back(dim);
+    }
   }
   result = TensorShape(shape.begin(), shape.end());
   return false;

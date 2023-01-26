@@ -144,7 +144,8 @@ public:
       "input-shapes",
       cl::desc("Specify input shapes. Required when the model has "
                "dynamic input shapes. If specified and the model has static "
-               "input shapes, it must match the model's input shapes.")};
+               "input shapes, it must match the model's input shapes. An "
+               "empty value means scalar.")};
 
   cl::list<InputDataSpec, bool, InputDataParser> inputData{
       "input-data",
