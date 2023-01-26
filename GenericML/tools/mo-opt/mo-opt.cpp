@@ -6,6 +6,7 @@
 
 #include "GenericML/Conversion/MOToMOGG.h"
 #include "GenericML/Conversion/MOToPrimitives.h"
+#include "GenericML/MGPDialect/MGPTransforms.h"
 #include "GenericML/MODialect/MODialect.h"
 #include "GenericML/MODialect/MOTransforms.h"
 #include "GenericML/MOGGDialect/MOGGDialect.h"
@@ -42,6 +43,7 @@ int main(int argc, char **argv) {
   MO::registerMOToMOGG();
   MO::registerMOTransformsPasses();
   MGP::registerMOToPrimitives();
+  MGP::registerMGPTransformsPasses();
   MOGG::registerPasses();
 
   mlir::registerCSEPass();
