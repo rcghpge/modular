@@ -314,6 +314,12 @@ static void mgp_cpu_tensor_create(Chain inChain,
                                   const TensorSpec &tensorSpec,
                                   Result<Tensor> outTensor, Runtime &runtime,
                                   EncodedLocation loc) {
+  size_t expectedSize = tensorSpec.getSizeInBytes();
+  size_t actualSize = bufferRef.get().getSize();
+  if (expectedSize != actualSize)
+    return outTensor.setToError(Twine("buffer size should match spec size (") +
+                                Twine(actualSize) + " vs " +
+                                Twine(expectedSize) + ")");
   if (bufferRef.getPointer()->isUnique()) {
     // If this is the only reference to the input buffer then it cannot be
     // further mutated, so we can move it into the result tensor.

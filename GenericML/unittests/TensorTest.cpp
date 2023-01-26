@@ -82,7 +82,7 @@ TEST(Tensor, FromBuffer) {
   LLCL::Runtime *runtime = getRuntime();
   TensorSpec spec({kN, kM}, *DType::getInt(8, /*isSigned=*/false));
   GML::BufferRef ref =
-      GML::BufferRef::createOwned(runtime, 1, /*alignment=*/{});
+      GML::BufferRef::createOwned(runtime, kN * kM, /*alignment=*/{});
 
   const void *data = ref.getBuffer();
   Tensor tensor(std::move(ref), spec);
