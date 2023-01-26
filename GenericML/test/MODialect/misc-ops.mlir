@@ -104,6 +104,30 @@ mo.graph @shape_of_dyn_rank(%arg: !mo.tensor<?, f32>) -> !mo.tensor<[?], si64> {
 }
 
 //===----------------------------------------------------------------------===//
+// ReshapeOp
+//===----------------------------------------------------------------------===//
+
+// CHECK: mo.graph @reshape_static_shape(%[[ARG:.*]]: !mo.tensor<[4], f32>) -> !mo.tensor<[2, 2], f32>
+mo.graph @reshape_static_shape(%arg: !mo.tensor<[4], f32>) -> !mo.tensor<[2, 2], f32> {
+  // CHECK: %[[SHAPE:.*]] = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %shape = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK: %[[RES:.*]] = mo.reshape(%[[ARG]], %[[SHAPE]]) : (!mo.tensor<[4], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
+  %res = mo.reshape(%arg, %shape) : (!mo.tensor<[4], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
+  // CHECK: mo.output %[[RES]] : !mo.tensor<[2, 2], f32>
+  mo.output %res : !mo.tensor<[2, 2], f32>
+}
+
+// CHECK: mo.graph @reshape_dyn_shape(%[[ARG:.*]]: !mo.tensor<[?], f32>) -> !mo.tensor<[2, 2], f32>
+mo.graph @reshape_dyn_shape(%arg: !mo.tensor<[?], f32>) -> !mo.tensor<[2, 2], f32> {
+  // CHECK: %[[SHAPE:.*]] = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %shape = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK: %[[RES:.*]] = mo.reshape(%[[ARG]], %[[SHAPE]]) : (!mo.tensor<[?], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
+  %res = mo.reshape(%arg, %shape) : (!mo.tensor<[?], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
+  // CHECK: mo.output %[[RES]] : !mo.tensor<[2, 2], f32>
+  mo.output %res : !mo.tensor<[2, 2], f32>
+}
+
+//===----------------------------------------------------------------------===//
 // NumpyBroadcastOp
 //===----------------------------------------------------------------------===//
 

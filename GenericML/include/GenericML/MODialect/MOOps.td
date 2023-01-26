@@ -460,6 +460,27 @@ def MO_ConvOp : MO_Op<"conv", [Pure, MO_SlidingWindow]>{
 // Shape related ops
 //===----------------------------------------------------------------------===//
 
+def MO_ReshapeOp : MO_Op<"reshape", [Pure]> {
+  let summary = "Reshape Operation";
+  let description = [{
+    Return a tensor with the same underlying data, but different shape.
+
+    Example:
+
+    ```mlir
+    %arg1: !mo.tensor<[1, 2, 3], f32>
+    %shape = mo.constant {value = #M.dense_array<3, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %arg2 = mo.reshape(%arg1, %shape) : !mo.tensor<[3, 2], si64>
+    ```
+  }];
+
+  let arguments = (ins MO_Tensor:$input, MO_ShapeLike:$shape);
+  let results = (outs MO_Tensor:$output);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 def MO_ShapeOfOp : MO_Op<"shape_of", [Pure]> {
   let summary = "ShapeOf Operation";
   let description = [{
