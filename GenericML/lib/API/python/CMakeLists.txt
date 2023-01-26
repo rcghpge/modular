@@ -74,9 +74,10 @@ string(REGEX MATCH "^[^\n]+" WHEEL_BASENAME ${BDIST_WHEEL_OUTPUT})
 # Add a custom target to build and install the Python bindings and wheel.
 # Individual pybind11 modules are expected to be dependencies of
 # modular-pyframework.
-add_custom_target(modular-pybind-ext
+add_custom_target(modular-pybind-ext ALL
   COMMAND ${Python3_EXECUTABLE} -m pip install --quiet --force-reinstall ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
   DEPENDS ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
+  COMMENT "Installing Modular Python API wheel to CMake-managed pyenv Python."
 )
 add_dependencies(modular-pybind-ext modular-pyframework)
 add_subdirectory(bindings/modular/pyframework)
@@ -105,15 +106,10 @@ add_custom_command(OUTPUT ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
   VERBATIM
 )
 
-if(NOT MODULAR_ENABLE_WHEEL_REPAIR)
-  message(STATUS "Skipping wheel repair step in Python packaging.")
-  return()
-endif()
-
 if(APPLE)
-  set(REPAIR_CMD delocate-wheel -v)
+  set(REPAIR_CMD ${Python3_EXECUTABLE} -m delocate.cmd.delocate_wheel)
 else()
-  set(REPAIR_CMD auditwheel repair --plat linux_x86_64)
+  set(REPAIR_CMD ${Python3_EXECUTABLE} -m auditwheel.main repair --plat linux_x86_64)
 endif()
 
 # Detect non-system shared library dependencies and copy them into the wheel,
@@ -121,6 +117,7 @@ endif()
 add_custom_target(modular-wheel-repair
   COMMAND ${REPAIR_CMD} ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+  COMMENT "Repairing Modular Python API wheel."
   VERBATIM
 )
 add_dependencies(modular-pybind-ext modular-wheel-repair)
