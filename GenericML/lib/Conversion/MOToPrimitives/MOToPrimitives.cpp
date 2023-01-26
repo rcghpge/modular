@@ -257,14 +257,39 @@ LogicalResult MOGraphLowering::lowerReshape(MO::ReshapeOp reshapeOp) {
 
   // get spec from output type (assume static input and output)
   auto outSpecType = MGP::createCpuTensorSpec(reshapeOp.getType());
-  if (!buffer.getType().hasStaticShape())
-    return reshapeOp.emitError("Dynamic input shape not supported");
-  if (!outSpecType.hasStaticShape())
-    return reshapeOp.emitError("Dynamic output shape not supported");
+  Value outSpecValue;
+  // TODO
+  // 1. This isn't unified with `MOGG::ExtOp::lower` because we don't want
+  // reshape to allocate extra output buffer. We should refactor this at some
+  // point.
+  // 2. This shape function is pure hackery, and should be removed as soon as we
+  // can lower parametric shapes to the runtime.
+  if (outSpecType.hasStaticShape()) {
+    if (!buffer.getType().hasStaticShape())
+      return reshapeOp.emitError(
+          "Dynamic input shape and static output shape not supported");
 
-  auto outSpecValue = loweringState.getExecuteOpBuilder()
-                          .create<MGP::CpuTensorSpecCreateOp>(loc, outSpecType)
-                          .getResult();
+    outSpecValue = loweringState.getExecuteOpBuilder()
+                       .create<MGP::CpuTensorSpecCreateOp>(loc, outSpecType)
+                       .getResult();
+  } else {
+    if (buffer.getType().hasStaticShape())
+      return reshapeOp.emitError(
+          "Static input shape and dynamic output shape not supported");
+
+    mlir::OperationState opState{loc, "mop.shape.reshape"};
+    Value targetShape =
+        loweringState.lookupExecuteLoweredTensor(reshapeOp.getShape());
+    // inputs are input specs
+    opState.addOperands({extract.getTensorSpecResult(), targetShape});
+    // The return is the new spec
+    opState.addTypes(cast<mlir::Type>(outSpecType));
+
+    // Add it to the MLIR.
+    mlir::Operation *invokeOp =
+        loweringState.getExecuteOpBuilder().create(opState);
+    outSpecValue = invokeOp->getResult(0);
+  }
 
   // Create an immutable tensor
   auto outTensorType = MGP::CpuTensorType::get(
