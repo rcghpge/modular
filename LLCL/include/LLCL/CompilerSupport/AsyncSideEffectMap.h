@@ -59,8 +59,8 @@ public:
     if (found != chainMap.end())
       LLCL::await(found->getSecond());
 
-    if (found->getSecond()->isError())
-      return std::move(found->getSecond()->takeDiagnostic().getMessage());
+    if (found->getSecond().isError())
+      return std::move(found->getSecond().takeDiagnostic().getMessage());
 
     return success();
   }

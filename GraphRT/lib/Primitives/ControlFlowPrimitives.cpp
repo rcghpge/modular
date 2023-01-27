@@ -86,7 +86,7 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
       // results.
       if (cond.isError()) {
         for (AnyAsyncValueRef &result : results)
-          result->resolveIndirect(cond.copy());
+          result.resolveIndirect(cond.copy());
         return;
       }
 
@@ -99,7 +99,7 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
       // We complete by passing the final result values to the output of the
       // repeat loop overall.
       for (size_t resNo = 0, e = bodyResults.size(); resNo != e; ++resNo)
-        results[resNo]->resolveIndirect(std::move(bodyResults[resNo]));
+        results[resNo].resolveIndirect(std::move(bodyResults[resNo]));
     }
   };
 
@@ -151,7 +151,7 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
       // results.
       if (count.isError()) {
         for (AnyAsyncValueRef &result : repeatResults)
-          result->resolveIndirect(count.copy());
+          result.resolveIndirect(count.copy());
         return;
       }
 
@@ -170,14 +170,14 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
         // We complete by passing the final result values to the output of the
         // repeat loop overall.
         for (size_t argNo = 0, e = operands.size(); argNo != e; ++argNo)
-          repeatResults[argNo]->resolveIndirect(std::move(operands[argNo]));
+          repeatResults[argNo].resolveIndirect(std::move(operands[argNo]));
         return;
       }
 
       // If the execution is canceled, give up.
       if (AsyncValue *cancelValue = runtime.getCancelValue()) {
         for (auto &result : repeatResults)
-          result->resolveIndirect(copyRCRef(cancelValue));
+          result.resolveIndirect(copyRCRef(cancelValue));
         return;
       }
 

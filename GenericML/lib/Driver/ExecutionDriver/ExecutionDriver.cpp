@@ -145,9 +145,9 @@ static void waitForResults(const ExecutableModel *model,
   // Check that any tensors we get are generic tensors, not framework
   // specific tensors.  We know that all tensors have been awaited here.
   for (auto &result : results) {
-    assert(result->isReady() && "We awaited this, it should be ready");
+    assert(result.isReady() && "We awaited this, it should be ready");
     // If we have an error or Tensor result, then we're good.
-    if (result->isError() || result->isType<Tensor>())
+    if (result.isError() || result.isType<Tensor>())
       continue;
 
     // Otherwise, we must have a framework specific tensor, convert it to a
@@ -179,7 +179,7 @@ printTensorResults(const ExecutableModel *model,
     llvm::interleaveComma(results, os, [&](const AnyAsyncValueRef &result) {
       // Handle error value by printing it inline, and emitting it as an error
       // through SourceMgr so we can validate it.
-      if (auto *diag = result->getDiagnosticIfPresent()) {
+      if (auto *diag = result.getDiagnosticIfPresent()) {
         os << "<error: " << diag->getMessage() << '>';
         hadError = true;
         return;
@@ -216,7 +216,7 @@ static LogicalResult populateTensorResults(
   size_t outIdx = 0;
 
   for (const AnyAsyncValueRef &result : results) {
-    if (auto *diag = result->getDiagnosticIfPresent()) {
+    if (auto *diag = result.getDiagnosticIfPresent()) {
       auto loc = diag->decodeLocation();
       auto mlirLoc = mlir::FileLineColLoc::get(context, loc.filename, loc.line,
                                                loc.column);

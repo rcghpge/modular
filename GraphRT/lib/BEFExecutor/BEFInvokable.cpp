@@ -86,7 +86,7 @@ AsyncValue *RegisterInfo::getOrCreateIndirectValue(Runtime &runtime) {
   // If it doesn't exist, we create an IndirectAsyncValue for this.  We have to
   // be a bit careful though because a concurrent task could swap in the actual
   // result while we're working on this.
-  AsyncValue *indirect = AsyncValue::createIndirect(runtime).release();
+  AsyncValue *indirect = AsyncValue::createIndirect(runtime);
   AsyncValue *existing = nullptr;
 
   // Speculatively set refcount to `userCount` refs with the expectation that
@@ -99,7 +99,7 @@ AsyncValue *RegisterInfo::getOrCreateIndirectValue(Runtime &runtime) {
   // the primitives using the register result get run (e.g. when nonstrict)
   // ahead of the value being resolved.
   assert(userCount && "shouldn't build an IndirectAsyncValue without users");
-  AnyAsyncValueRef::lowLevelAddRef(indirect, userCount);
+  RCRef<AsyncValue>::lowLevelAddRef(indirect, userCount);
   if (value.compare_exchange_strong(existing, indirect,
                                     std::memory_order_release,
                                     std::memory_order_acquire))
@@ -107,7 +107,7 @@ AsyncValue *RegisterInfo::getOrCreateIndirectValue(Runtime &runtime) {
 
   // If someone beat us to setting a value then we don't need the
   // IndirectAsyncValue after all. Decrease refcount back to 0 to free it.
-  AnyAsyncValueRef::lowLevelDropRef(indirect, userCount + 1);
+  RCRef<AsyncValue>::lowLevelDropRef(indirect, userCount + 1);
   return existing;
 }
 
@@ -687,9 +687,9 @@ void BEFExecutor::processUsedByRecords(
     // Make sure the result value has a +1 for each user.  It already has a +1
     // reference from the `result` RCRef, so we add '#users - 1' references.
     if (totalUserRefCount != 1) // Don't atomic add 0.
-      AnyAsyncValueRef::lowLevelAddRef(resultPtr, totalUserRefCount - 1);
+      RCRef<AsyncValue>::lowLevelAddRef(resultPtr, totalUserRefCount - 1);
     // The reference count is handled manually above, don't drop another RC.
-    result.release();
+    (void)result.releasePointer();
   } else {
     // If we are fulfilling an IndirectAsyncValue then the IndirectAsyncValue
     // already took an extra reference to the result. We don't need another
@@ -804,7 +804,7 @@ void BEFInvokableImpl::invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
     // memory representation for this case.
     auto curLocation = EncodedLocation(
         /*some location=*/0, takeRCRef(const_cast<BEFInvokableImpl *>(this)));
-    results[0] = AsyncValue::createError(
+    results[0] = AnyAsyncValueRef::createError(
         runtime, EncodedDiagnostic{std::move(decoder.befFormatError.value()),
                                    std::move(curLocation)});
     // Fill in the rest with the same error.

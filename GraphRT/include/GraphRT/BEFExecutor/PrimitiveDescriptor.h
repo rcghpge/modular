@@ -8,6 +8,7 @@
 #define GRAPHRT_BEFEXECUTOR_PRIMITIVE_DESCRIPTOR_H
 
 #include "LLCL/ForwardDecls.h"
+#include "LLCL/Runtime/AnyAsyncValueRef.h"
 #include "LLCL/Runtime/AsyncValue.h"
 #include "Support/LLVMForwardDecls.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -165,7 +166,7 @@ public:
   /// Look through the argument AsyncValue to get the element as type T.
   template <typename T>
   T &getArg(size_t index) {
-    return getArg(index)->get<T>();
+    return getArg(index).get<T>();
   }
 
   ArrayRef<AnyAsyncValueRef> getArguments() const {

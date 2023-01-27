@@ -177,7 +177,10 @@ public:
     assert(!result && "result already initialized?");
   }
   AnySingleResult(const AnySingleResult &&other)
-      : result(other.result), frame(other.frame) {}
+      : result(other.result), frame(other.frame) {
+    // NOTE(#7399): Should probably change result and frame to be pointers and
+    // null them out to detect use-after-move mistakes.
+  }
 
   /// Return an owning reference to the AsyncValueRef.  This is typically used
   /// when copying into a closure.
@@ -185,24 +188,17 @@ public:
 
   /// Fill this AsyncValue with an error that has the specified message.
   void setToError(Error message) const {
-    result->setToError({std::move(message), frame.copyLocation()});
+    result.setToError({std::move(message), frame.copyLocation()});
   }
 
-  /// Return a raw pointer to the AsyncValue.
-  AsyncValue *getPointer() const { return result.getPointer(); }
-  /// Return a reference to the low-level async value without copying it.
-  AnyAsyncValueRef &getAsyncValue() const { return result; }
-
-  /// Allow dereferencing this to get access to setError().
-  AsyncValue &operator*() const { return *getPointer(); }
-  AsyncValue *operator->() const { return getPointer(); }
-
   RunnablePrimitiveDescriptor &getFrame() const { return frame; }
+
+protected:
+  AnyAsyncValueRef &result;
 
 private:
   AnySingleResult(const AnySingleResult &) = delete;
   void operator=(const AnySingleResult &) = delete;
-  AnyAsyncValueRef &result;
   RunnablePrimitiveDescriptor &frame;
 };
 
@@ -213,7 +209,7 @@ class Result : public AnySingleResult {
 public:
   explicit Result(AnyAsyncValueRef &result, RunnablePrimitiveDescriptor &frame)
       : AnySingleResult(result, frame) {
-    result = AsyncValue::allocate<T>(frame.getRuntime());
+    result = AnyAsyncValueRef::allocate<T>(frame.getRuntime());
   }
   using AnySingleResult::AnySingleResult;
 
@@ -232,12 +228,16 @@ public:
 
   /// Return a reference to the underlying element in the AsyncValue if it
   /// is constructed.
-  T &get() const { return getPointer()->template get<T>(); }
+  T &get() const { return result.template get<T>(); }
 
   /// Construct the result in place and mark it as ready.
   template <typename... Args>
   void emplace(Args &&...args) {
-    getPointer()->template emplace<T, Args...>(std::forward<Args>(args)...);
+    // CAUTION: We must copy result since it is expected to remain available
+    // to the creator of the AnySingleResult. However, we'll still mark this
+    // method as moving to make clear the result should only be emplaced once.
+    assert(result && "null result");
+    result.copy().template emplace<T, Args...>(std::forward<Args>(args)...);
   }
 };
 
@@ -250,7 +250,7 @@ public:
   explicit IndirectResult(AnyAsyncValueRef &result,
                           RunnablePrimitiveDescriptor &frame)
       : AnySingleResult(result, frame) {
-    result = AsyncValue::createIndirect(frame.getRuntime());
+    result = AnyAsyncValueRef::createIndirect(frame.getRuntime());
   }
   using AnySingleResult::AnySingleResult;
 
@@ -264,14 +264,16 @@ public:
   /// Resolve an IndirectAsyncValue to point to the specified new value,
   /// resolving any waiters whenever newValue becomes ready.
   void resolve(AnyAsyncValueRef newValue) {
-    getPointer()->resolveIndirect(std::move(newValue));
+    result.resolveIndirect(newValue.releaseRCRef());
   }
 
   /// Construct an AsyncValue for the result and resolve the indirect result.
+  ///
+  /// NOTE(#7399): Should be consuming?
   template <typename T, typename... Args>
   void emplace(Args &&...args) {
-    resolve(AsyncValue::createReady<T, Args...>(getPointer()->getRuntime(),
-                                                std::forward<Args>(args)...));
+    resolve(AnyAsyncValueRef::createReady<T, Args...>(
+        result.getRuntime(), std::forward<Args>(args)...));
   }
 };
 
@@ -300,7 +302,7 @@ public:
   void allocateIndirectResults() {
     for (auto &elt : results) {
       if (!elt)
-        elt = AsyncValue::createIndirect(runtime);
+        elt = AnyAsyncValueRef::createIndirect(runtime);
     }
   }
 
@@ -317,7 +319,7 @@ public:
   /// location `loc`.
   void setAllToError(Error error, EncodedLocation &loc) {
     for (auto &r : results)
-      r->setToError(EncodedDiagnostic(error.copy(), loc.copy()));
+      r.setToError(EncodedDiagnostic(error.copy(), loc.copy()));
   }
 
 private:
@@ -1393,7 +1395,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
             IndicesT::argIdx == -1 ||
             (!hasInChain &&
              static_cast<size_t>(IndicesT::argIdx) == frame.getNumArgs() - 1 &&
-             frame.getArg(IndicesT::argIdx)->template isType<Chain>())) &&
+             frame.getArg(IndicesT::argIdx).template isType<Chain>())) &&
            "Extra arguments passed to primitive");
     assert((IndicesT::attrIdx == (int)frame.getNumAttrs() ||
             IndicesT::attrIdx == -1) &&

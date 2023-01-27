@@ -16,7 +16,7 @@ void AsyncSideEffectMap::andThenSync(Operation *key,
   if (found == chainMap.end())
     return callable();
 
-  found->getSecond()->andThenSync(callable);
+  found->getSecond().andThenSync(callable);
 }
 
 AnyAsyncValueRef AsyncSideEffectMap::getChain(mlir::Operation *key) {

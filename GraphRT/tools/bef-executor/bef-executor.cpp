@@ -35,7 +35,7 @@ static void printResults(BEFInvokable *invokable,
   // diagnostic verification easy.  We do this before printing the results
   // so the diagnostics and result printing don't get intermixed.
   for (auto &result : results) {
-    if (auto *diag = result->getDiagnosticIfPresent()) {
+    if (auto *diag = result.getDiagnosticIfPresent()) {
       auto loc = diag->decodeLocation();
       auto mlirLoc =
           FileLineColLoc::get(context, loc.filename, loc.line, loc.column);
@@ -49,15 +49,15 @@ static void printResults(BEFInvokable *invokable,
     llvm::interleaveComma(results, os, [&](const AnyAsyncValueRef &result) {
       // Handle error value by printing it inline, and emitting it as an error
       // through SourceMgr so we can validate it.
-      if (auto *diag = result->getDiagnosticIfPresent()) {
+      if (auto *diag = result.getDiagnosticIfPresent()) {
         os << "<error: " << diag->getMessage() << '>';
         return;
       }
 
       // Otherwise we support a set of standard types for convenience.
 #define HANDLE_TYPE(TYPE)                                                      \
-  if (result->isType<TYPE>()) {                                                \
-    os << result->get<TYPE>();                                                 \
+  if (result.isType<TYPE>()) {                                                 \
+    os << result.get<TYPE>();                                                  \
     return;                                                                    \
   }
       HANDLE_TYPE(bool)
@@ -72,7 +72,7 @@ static void printResults(BEFInvokable *invokable,
       HANDLE_TYPE(float)
       HANDLE_TYPE(double)
       HANDLE_TYPE(std::string)
-      if (result->isType<Chain>())
+      if (result.isType<Chain>())
         os << "chain";
       else
         os << "<unknown type>";

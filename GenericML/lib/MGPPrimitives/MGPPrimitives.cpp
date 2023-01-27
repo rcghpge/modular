@@ -41,7 +41,7 @@ static void mgp_cpu_buffer_constant(Result<BufferRef> outBuffer,
   std::optional<size_t> optAlign;
   if (hasRawSize(*bRawAlign))
     optAlign = rawSizeToRuntimeSize(*bRawAlign);
-  outBuffer.emplace(GML::BufferRef::createBorrowed(
+  std::move(outBuffer).emplace(GML::BufferRef::createBorrowed(
       aValue->data(), aValue->size(), optAlign, BufferRef::kConstant));
 }
 
@@ -65,7 +65,7 @@ static void mgp_cpu_buffer_alloc_static(Context &ctx, Result<BufferRef> result,
     return;
   }
   size_t runtimeSize = plainSizeToRuntimeSize(*aSize);
-  result.emplace(
+  std::move(result).emplace(
       BufferRef::createOwned(runtime, runtimeSize, getAlign(*bRawAlign)));
 }
 
@@ -77,7 +77,7 @@ static void mgp_cpu_buffer_alloc_dynamic(Context &ctx, size_t runtimeSize,
     result.setToError("invalid align attribute");
     return;
   }
-  result.emplace(
+  std::move(result).emplace(
       BufferRef::createOwned(runtime, runtimeSize, getAlign(*rawAlign)));
 }
 
@@ -89,8 +89,8 @@ static void mgp_cpu_buffer_alloc_spec(Context &ctx, const TensorSpec &spec,
     result.setToError("invalid align attribute");
     return;
   }
-  result.emplace(BufferRef::createOwned(runtime, spec.getSizeInBytes(),
-                                        getAlign(*rawAlign)));
+  std::move(result).emplace(BufferRef::createOwned(
+      runtime, spec.getSizeInBytes(), getAlign(*rawAlign)));
 }
 
 //===----------------------------------------------------------------------===//
@@ -122,8 +122,8 @@ static void mgp_cpu_buffer_realloc_static(
   }
   size_t runtimeSize = plainSizeToRuntimeSize(*cSize);
   StateSlot &stateSlot = ctx.getStateSlot(*aSlot);
-  result.emplace(stateSlot.getOrCreateBuffer(*bBuffer, runtime, runtimeSize,
-                                             getAlign(*dRawAlign)));
+  std::move(result).emplace(stateSlot.getOrCreateBuffer(
+      *bBuffer, runtime, runtimeSize, getAlign(*dRawAlign)));
 }
 
 static void mgp_cpu_buffer_realloc_dynamic(
@@ -135,8 +135,8 @@ static void mgp_cpu_buffer_realloc_dynamic(
     return;
   }
   StateSlot &stateSlot = ctx.getStateSlot(*aSlot);
-  result.emplace(stateSlot.getOrCreateBuffer(*bBuffer, runtime, runtimeSize,
-                                             getAlign(*cRawAlign)));
+  std::move(result).emplace(stateSlot.getOrCreateBuffer(
+      *bBuffer, runtime, runtimeSize, getAlign(*cRawAlign)));
 }
 
 static void
@@ -149,7 +149,7 @@ mgp_cpu_buffer_realloc_spec(Chain inChain, Context &ctx, const TensorSpec &spec,
     return;
   }
   StateSlot &stateSlot = ctx.getStateSlot(*aSlot);
-  result.emplace(stateSlot.getOrCreateBuffer(
+  std::move(result).emplace(stateSlot.getOrCreateBuffer(
       *bBuffer, runtime, spec.getSizeInBytes(), getAlign(*cRawAlign)));
 }
 
@@ -160,7 +160,7 @@ mgp_cpu_buffer_realloc_spec(Chain inChain, Context &ctx, const TensorSpec &spec,
 /// Fulfills the result with the owning reference to the deep copy of inBuffer.
 static void mgp_cpu_buffer_copy(Context &ctx, AsyncValueRef<BufferRef> inBuffer,
                                 Result<BufferRef> outBuffer, Runtime &runtime) {
-  outBuffer.emplace(inBuffer->deepCopy(runtime));
+  std::move(outBuffer).emplace(inBuffer->deepCopy(runtime));
 }
 
 //===----------------------------------------------------------------------===//
@@ -181,7 +181,7 @@ static Chain mgp_cpu_buffer_set(BufferRef &buffer, BEFAttr<uint8_t> value) {
 /// primitive contexts.
 static void mgp_context_create(Result<Context> result,
                                BEFAttr<uint64_t> numSlots) {
-  result->emplace<Context>(*numSlots);
+  std::move(result).emplace(*numSlots);
 }
 
 //===----------------------------------------------------------------------===//
@@ -221,11 +221,11 @@ static void mgp_cpu_tensor_spec_create(RemainingArguments runtimeDims,
     if (hasRawSize(dim))
       shape.push_back(rawSizeToRuntimeSize(dim));
     else {
-      size_t runtimeDim = (*nextRuntimeDim++)->get<size_t>();
+      size_t runtimeDim = (*nextRuntimeDim++).get<size_t>();
       shape.push_back(runtimeDim);
     }
   }
-  outSpec.emplace(TensorSpec(shape, dtype));
+  std::move(outSpec).emplace(TensorSpec(shape, dtype));
 }
 
 //===----------------------------------------------------------------------===//
@@ -250,11 +250,11 @@ static void mgp_cpu_tensor_spec_create_dynamic(
     if (hasRawSize(dim))
       shape.push_back(rawSizeToRuntimeSize(dim));
     else {
-      size_t runtimeDim = (*nextRuntimeDim++)->get<size_t>();
+      size_t runtimeDim = (*nextRuntimeDim++).get<size_t>();
       shape.push_back(runtimeDim);
     }
   }
-  outSpec.emplace(TensorSpec(shape, runtimeDType));
+  std::move(outSpec).emplace(TensorSpec(shape, runtimeDType));
 }
 
 //===----------------------------------------------------------------------===//
@@ -271,9 +271,10 @@ static void mgp_cpu_tensor_spec_dims_dynamic(
     result = AsyncValueRef<size_t>::allocate(runtime);
 
   unsigned next = 0;
-  for (size_t i = 0, e = rawDims->size(); i < e; ++i)
+  for (size_t i = 0, e = rawDims->size(); i < e; ++i) {
     if (!hasRawSize((*rawDims)[i]))
-      results[next++]->emplace<size_t>(tensorSpec[i]);
+      results[next++].copy().emplace<size_t>(tensorSpec[i]);
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -282,7 +283,7 @@ static void mgp_cpu_tensor_spec_dims_dynamic(
 
 static void mgp_cpu_tensor_spec_size(const TensorSpec &tensorSpec,
                                      Result<size_t> result) {
-  result.emplace(tensorSpec.getSizeInBytes());
+  std::move(result).emplace(tensorSpec.getSizeInBytes());
 }
 
 //===----------------------------------------------------------------------===//
@@ -291,7 +292,7 @@ static void mgp_cpu_tensor_spec_size(const TensorSpec &tensorSpec,
 
 static void mgp_cpu_tensor_spec_num_elems(const TensorSpec &tensorSpec,
                                           Result<size_t> result) {
-  result.emplace(tensorSpec.getNumElements());
+  std::move(result).emplace(tensorSpec.getNumElements());
 }
 
 //===----------------------------------------------------------------------===//
@@ -300,7 +301,7 @@ static void mgp_cpu_tensor_spec_num_elems(const TensorSpec &tensorSpec,
 
 static void mgp_cpu_tensor_spec_dtype(const TensorSpec &tensorSpec,
                                       Result<DType> result) {
-  result.emplace(tensorSpec.getEltType());
+  std::move(result).emplace(tensorSpec.getEltType());
 }
 
 //===----------------------------------------------------------------------===//
@@ -325,7 +326,7 @@ static void mgp_cpu_tensor_create(Chain inChain,
     // further mutated, so we can move it into the result tensor.
     LLVM_DEBUG(llvm::dbgs() << "mgp.cpu.tensor.create: Creating M::Tensor, "
                                "taking ownership of buffer\n");
-    outTensor.emplace(std::move(*bufferRef), tensorSpec);
+    std::move(outTensor).emplace(std::move(*bufferRef), tensorSpec);
   } else {
     // Otherwise we must take a copy of the buffer to protect the result
     // tensor from side-effects.
@@ -333,7 +334,7 @@ static void mgp_cpu_tensor_create(Chain inChain,
                << "mgp.cpu.tensor.create: Creating M::Tensor from copy of "
                   "buffer since still has "
                << bufferRef.getPointer()->getRefCount() << " users\n");
-    outTensor.emplace(bufferRef->deepCopy(runtime), tensorSpec);
+    std::move(outTensor).emplace(bufferRef->deepCopy(runtime), tensorSpec);
   }
 }
 
@@ -347,15 +348,15 @@ static void mgp_cpu_tensor_extract(AsyncValueRef<Tensor> tensor,
                                    Result<BufferRef> outBuffer,
                                    Result<TensorSpec> outTensorSpec,
                                    Runtime &runtime) {
-  outTensorSpec.emplace(tensor->getSpec());
+  std::move(outTensorSpec).emplace(tensor->getSpec());
   if (tensor.getPointer()->isUnique())
     // If this is the only reference to the input tensor then it cannot
     // be further observed, so we can move its buffer into the result.
-    outBuffer.emplace(tensor->releaseBufferRef());
+    std::move(outBuffer).emplace(tensor->releaseBufferRef());
   else
     // Otherwise we must take a copy of the buffer to protect the input tensor
     // from side-effects.
-    outBuffer.emplace(tensor->deepCopyBuffer(runtime));
+    std::move(outBuffer).emplace(tensor->deepCopyBuffer(runtime));
 }
 
 //===----------------------------------------------------------------------===//
@@ -367,7 +368,7 @@ static void mgp_debug_cpu_tensor_print(Chain inChain, const Tensor &tensor,
                                        Runtime &runtime) {
   llvm::outs() << tensor << "\n";
   llvm::outs().flush();
-  outChain.emplace();
+  std::move(outChain).emplace();
 }
 
 //===----------------------------------------------------------------------===//

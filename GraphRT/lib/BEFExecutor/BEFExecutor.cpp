@@ -40,7 +40,7 @@ BEFInvokable::invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
 /// Create an AsyncValue with the specified cause, and our current location.
 /// This can be set into a result or used for other purposes.
 AnyAsyncValueRef RunnablePrimitiveDescriptor::getError(Error cause) {
-  return AsyncValue::createError(
+  return AnyAsyncValueRef::createError(
       runtime, EncodedDiagnostic(std::move(cause), copyLocation()));
 }
 

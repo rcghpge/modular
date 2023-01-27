@@ -390,7 +390,7 @@ static void async_add2_i32(AsyncValueRef<int32_t> lhs,
   // purposes.
   andThenSync(std::make_tuple(std::move(lhs), std::move(rhs)),
               [result = result.copy()](AsyncValueRef<int32_t> lhs,
-                                       AsyncValueRef<int32_t> rhs) {
+                                       AsyncValueRef<int32_t> rhs) mutable {
                 // This actually only needs to check for error if this is
                 // defined as non-strict.
                 if (lhs.isError())
@@ -398,7 +398,7 @@ static void async_add2_i32(AsyncValueRef<int32_t> lhs,
                 else if (rhs.isError())
                   result.setToError(rhs.getPointer()->takeDiagnostic());
                 else
-                  result.emplace(*lhs + *rhs);
+                  std::move(result).emplace(*lhs + *rhs);
               });
 }
 
@@ -407,11 +407,11 @@ static void async_add2_i32(AsyncValueRef<int32_t> lhs,
 /// depending on the resolved types of lhs/rhs
 static void async_add_any(AnyAsyncValueRef lhs, AnyAsyncValueRef rhs,
                           IndirectResult result) {
-  if (lhs->isType<int32_t>() && rhs->isType<int32_t>())
-    result.emplace<int32_t>(lhs->get<int32_t>() + rhs->get<int32_t>());
-  else if (lhs->isType<std::string>() && rhs->isType<std::string>())
-    result.emplace<std::string>(lhs->get<std::string>() +
-                                rhs->get<std::string>());
+  if (lhs.isType<int32_t>() && rhs.isType<int32_t>())
+    result.emplace<int32_t>(lhs.get<int32_t>() + rhs.get<int32_t>());
+  else if (lhs.isType<std::string>() && rhs.isType<std::string>())
+    result.emplace<std::string>(lhs.get<std::string>() +
+                                rhs.get<std::string>());
   else
     result.setToError("invalid operands to async_add_any");
 }
@@ -424,7 +424,7 @@ static void async_error(IndirectResult result1, IndirectResult result2,
   // copied/moved into the task manually and painfully as in this example...
   addTask(runtime,
           [result1 = result1.copy(), loc = std::move(manualLoc)]() mutable {
-            result1->setToError(
+            result1.setToError(
                 {"error generated on a background thread!", std::move(loc)});
           });
 
@@ -444,7 +444,7 @@ static int32_t test_async_many_waiters(BEFAttr<int32_t> num, Runtime &runtime) {
   /// Add 'num' waiters that just increment result.
   for (int32_t i = 0, e = *num; i != e; ++i)
     av.andThenSync([&]() { ++result; });
-  av.emplace(42);
+  std::move(av).emplace(42);
   return result;
 }
 
@@ -464,9 +464,9 @@ static void test_many_tasks(Result<int32_t> result, BEFAttr<int32_t> num,
   for (int32_t i = 0, e = *num; i != e; ++i) {
     addTask(runtime,
             // Capture a bunch of stuff so we exceed the inline size of lambdas.
-            [&, a = int64_t(numVal + 1), b = int64_t(numVal * 2),
-             c = int64_t(numVal * 42), r = &runtime, s = &runtime + 1,
-             t = &runtime + 2] {
+            [numVal, &counter, result = result.copy(), a = int64_t(numVal + 1),
+             b = int64_t(numVal * 2), c = int64_t(numVal * 42), r = &runtime,
+             s = &runtime + 1, t = &runtime + 2]() mutable {
               // Note: tasks shouldn't sleep or block!
               std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
@@ -479,7 +479,7 @@ static void test_many_tasks(Result<int32_t> result, BEFAttr<int32_t> num,
               }
 
               if (--counter == 0)
-                result.emplace(*num);
+                std::move(result).emplace(numVal);
             });
   }
 
@@ -596,13 +596,13 @@ static void vec_add_async(AsyncValueRef<TestVector> lhs,
   }
 
   addTask(runtime, [lhs = std::move(lhs), rhs = std::move(rhs),
-                    result = result.copy()]() {
+                    result = result.copy()]() mutable {
     auto &lhsValues = lhs->values, &rhsValues = rhs->values;
     TestVector resultValues;
     for (int32_t i = 0, e = lhsValues.size(); i != e; ++i)
       resultValues.values.push_back(lhsValues[i] + rhsValues[i]);
     // After we've populated the vector, set it into the result value.
-    result.emplace(std::move(resultValues));
+    std::move(result).emplace(std::move(resultValues));
   });
 }
 
@@ -636,10 +636,10 @@ static TestVector::ValueType vec_accumulate(const TestVector &vec) {
 static void vec_accumulate_async(AsyncValueRef<TestVector> vec,
                                  Result<TestVector::ValueType> result,
                                  Runtime &runtime) {
-  addTask(runtime, [vec = std::move(vec), result = result.copy()]() {
+  addTask(runtime, [vec = std::move(vec), result = result.copy()]() mutable {
     auto accum = std::accumulate(vec->values.begin(), vec->values.end(), 0);
     // After we've computed the sum, set it into the result value.
-    result.emplace(accum);
+    std::move(result).emplace(accum);
   });
 }
 
@@ -687,11 +687,11 @@ static void vec_accumulate_async2(AsyncValueRef<TestVector> vec,
       },
       // The completion function is called by a single thread when all prior
       // tasks are complete
-      [result =
-           result.copy()](std::atomic<TestVector::ValueType> &accumResult) {
+      [result = result.copy()](
+          std::atomic<TestVector::ValueType> &accumResult) mutable {
         // marks the result asyncvalue ready when all the subtasks are
         // completed.
-        result.emplace(accumResult.load());
+        std::move(result).emplace(accumResult.load());
       },
       // pass the initial accum to each function. It will be converted to an
       // atomic in the parallelForEachNCustomCompletion function
@@ -744,7 +744,7 @@ static void vec_softmax_async(AsyncValueRef<TestFloat32Vector> input,
   // is at least equal to vecLen.
   size_t numBatches = (vecLen + batchSize - 1) / batchSize;
 
-  auto maxVal = AsyncValue::allocate<ElementType>(runtime);
+  auto maxVal = AnyAsyncValueRef::allocate<ElementType>(runtime);
 
   // STAGE 1: Find the max value in the input vector
   parallelForEachNCustomCompletion(
@@ -767,10 +767,11 @@ static void vec_softmax_async(AsyncValueRef<TestFloat32Vector> input,
       },
       // The completion function is called by a single thread when all prior
       // tasks are complete
-      [maxVal = maxVal.copy()](std::atomic<ElementType> &maxValueResult) {
+      [maxVal =
+           maxVal.copy()](std::atomic<ElementType> &maxValueResult) mutable {
         // marks the result asyncvalue ready when all the subtasks are
         // completed.
-        maxVal->emplace<ElementType>(maxValueResult);
+        std::move(maxVal).emplace<ElementType>(maxValueResult);
       },
       // pass the initial value to each function. It will be converted to an
       // atomic in the parallelForEachNCustomCompletion function
@@ -791,37 +792,38 @@ static void vec_softmax_async(AsyncValueRef<TestFloat32Vector> input,
   // STAGE 2 is only executed when maxVal is ready (i.e. STAGE 1 is complete)
   //
   // Note: we do not mark the output as ready until STAGE 3 is complete.
-  maxVal->andThenSync([input = input.copy(),
-                       denomAndExpVectorAV = denomAndExpVectorAV.copy(),
-                       maxVal = maxVal.copy(), batchSize, &runtime, vecLen,
-                       numBatches]() mutable {
-    parallelForEachNCustomCompletion(
-        runtime, numBatches,
-        [input = std::move(input), maxVal = maxVal->get<ElementType>(), vecLen,
-         batchSize](size_t n, TestFloat32Vector &expElements,
-                    std::atomic<ElementType> &denom) {
-          ArrayRef<ElementType> inputValues = input->values;
-          size_t startPos = n * batchSize;
-          if (startPos >= vecLen)
-            return;
-          size_t endPos = std::min(vecLen, (n + 1) * batchSize);
-          ElementType denomAccumLocal = 0;
-          for (size_t i = startPos; i < endPos; ++i) {
-            ElementType val = std::exp(inputValues[i] - maxVal);
-            expElements.values[i] = val;
-            denomAccumLocal += val; // locally accumulate the denominator
-          }
-          // atomic add the floating point values.
-          atomicAdd(denom, denomAccumLocal);
-        },
-        [resultAV = denomAndExpVectorAV.copy()](
-            TestFloat32Vector &expElements, std::atomic<ElementType> &denom) {
-          // store the denomValue in the denom asyncvalue and mark as ready
-          resultAV.emplace(
-              DenomAndExpVector{std::move(expElements), denom.load()});
-        },
-        vecLen, 0);
-  });
+  std::move(maxVal).andThenSync(
+      [input = input.copy(), denomAndExpVectorAV = denomAndExpVectorAV.copy(),
+       batchSize, &runtime, vecLen,
+       numBatches](AnyAsyncValueRef &&maxVal) mutable {
+        parallelForEachNCustomCompletion(
+            runtime, numBatches,
+            [input = std::move(input), maxVal = maxVal.get<ElementType>(),
+             vecLen, batchSize](size_t n, TestFloat32Vector &expElements,
+                                std::atomic<ElementType> &denom) {
+              ArrayRef<ElementType> inputValues = input->values;
+              size_t startPos = n * batchSize;
+              if (startPos >= vecLen)
+                return;
+              size_t endPos = std::min(vecLen, (n + 1) * batchSize);
+              ElementType denomAccumLocal = 0;
+              for (size_t i = startPos; i < endPos; ++i) {
+                ElementType val = std::exp(inputValues[i] - maxVal);
+                expElements.values[i] = val;
+                denomAccumLocal += val; // locally accumulate the denominator
+              }
+              // atomic add the floating point values.
+              atomicAdd(denom, denomAccumLocal);
+            },
+            [resultAV = denomAndExpVectorAV.copy()](
+                TestFloat32Vector &expElements,
+                std::atomic<ElementType> &denom) mutable {
+              // store the denomValue in the denom asyncvalue and mark as ready
+              std::move(resultAV).emplace(
+                  DenomAndExpVector{std::move(expElements), denom.load()});
+            },
+            vecLen, 0);
+      });
 
   // STAGE 3: Normalize the output
   // STAGE 3 is only executed when denom is ready (i.e. STAGE 2 is complete)
