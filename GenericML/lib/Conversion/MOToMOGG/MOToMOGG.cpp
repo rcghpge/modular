@@ -57,10 +57,13 @@ static ErrorOr<ValueRange> selectMOGGOp(Operation *op, bool useJit) {
            {OpType::kJIT, "mul"},
            {OpType::kExternal, "mop.kernels.mul"},
        }},
+      {"pow3", {{OpType::kExternal, "mop.kernels.pow3"}}},
       {"relu", {{OpType::kExternal, "mop.kernels.relu"}}},
+      {"rsqrt", {{OpType::kExternal, "mop.kernels.rsqrt"}}},
       {"sigmoid", {{OpType::kExternal, "mop.kernels.sigmoid"}}},
       {"shape_of", {{OpType::kExternal, "mop.kernels.shape_of"}}},
       {"softmax", {{OpType::kExternal, "mop.kernels.softmax"}}},
+      {"sqrt", {{OpType::kExternal, "mop.kernels.sqrt"}}},
       {"sub",
        {
            {OpType::kJIT, "sub"},

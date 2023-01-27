@@ -305,6 +305,21 @@ def MO_MulOp : MO_ElementWiseBinaryOp<"mul"> {
   }];
 }
 
+def MO_Pow3Op : MO_ElementWiseUnaryOp<"pow3", [Idempotent]> {
+  let summary = "Power 3 (cube) operation";
+  let description = [{
+    Returns x**3, where x is the input tensor.
+    (deprecated, waiting on lit improvements for more generic kernel)
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.pow3(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
 def MO_ReluOp : MO_ElementWiseUnaryOp<"relu", [Idempotent]> {
   let summary = "Rectified linear unit operation";
   let description = [{
@@ -315,6 +330,34 @@ def MO_ReluOp : MO_ElementWiseUnaryOp<"relu", [Idempotent]> {
     ```mlir
     %arg: !mo.tensor<[2, 3], f32>
     %res = mo.relu(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def MO_RsqrtOp : MO_ElementWiseUnaryOp<"rsqrt", [Idempotent]> {
+  let summary = "Inverse Square Root operation";
+  let description = [{
+    Returns 1/sqrt(x), where x is the input tensor.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.rsqrt(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def MO_SqrtOp : MO_ElementWiseUnaryOp<"sqrt", [Idempotent]> {
+  let summary = "Square Root operation";
+  let description = [{
+    Return sqrt(x), where x is the input tensor.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.sqrt(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
