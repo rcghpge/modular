@@ -282,12 +282,13 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
   mlir::OperationState opState{op->getLoc(), op.getOpName()};
 
   // Add the execute chain as the first argument.
-  operands.insert(operands.begin(), loweringState.getExecuteChain());
+  operands.insert(operands.begin(),
+                  loweringState.getExecuteInvokableInputChain());
   opState.addOperands(operands);
 
   // The return type is just the chain, other outputs are passed as argument by
   // their buffer pointers.
-  opState.addTypes({loweringState.getExecuteChain().getType()});
+  opState.addTypes({loweringState.getExecuteInvokableInputChain().getType()});
 
   // Add it to the MLIR.
   mlir::Operation *invokeOp =
@@ -368,12 +369,13 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
                            loweringState.getJitCtxSlot()));
 
   // Add the execute chain as the first argument.
-  operands.insert(operands.begin(), loweringState.getExecuteChain());
+  operands.insert(operands.begin(),
+                  loweringState.getExecuteInvokableInputChain());
   opState.addOperands(operands);
 
   // The return type is just the chain, other outputs are passed as argument by
   // their buffer pointers.
-  opState.addTypes({loweringState.getExecuteChain().getType()});
+  opState.addTypes({loweringState.getExecuteInvokableInputChain().getType()});
 
   // Add it to the MLIR.
   mlir::Operation *invokeOp =
