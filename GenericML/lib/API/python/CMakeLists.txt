@@ -89,7 +89,7 @@ add_subdirectory(bindings/modular/pyframework)
 # This way everything is self-contained in the wheel and will still work after
 # the wheel is pip installed.
 # TODO(#7439): /dev/null is not portable to Windows.
-add_custom_command(OUTPUT ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
+add_custom_command(OUTPUT ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl
   COMMAND ${Python3_EXECUTABLE} -m build --wheel --outdir ${WHEEL_DIR} > /dev/null
   COMMAND ${Python3_EXECUTABLE} -m wheel unpack ${WHEEL_DIR}/${WHEEL_BASENAME}.whl --dest ${WHEEL_DIR} > /dev/null
   COMMAND ${CMAKE_COMMAND} -E make_directory ${UNPACKED_WHEEL}/modular/pyframework
@@ -98,6 +98,7 @@ add_custom_command(OUTPUT ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:tfl> ${UNPACKED_WHEEL}/lib
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:KGENCompilerRT> ${UNPACKED_WHEEL}/lib
   COMMAND ${Python3_EXECUTABLE} -m wheel pack ${UNPACKED_WHEEL} --dest ${WHEEL_DIR} > /dev/null
+  COMMAND ${CMAKE_COMMAND} -E rename ${WHEEL_DIR}/${WHEEL_BASENAME}.whl ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl
   COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_SOURCE_DIR}/{build,modular_pyframework.egg-info}
   BYPRODUCTS ${UNPACKED_WHEEL}
   DEPENDS $<TARGET_FILE:core>
@@ -114,10 +115,11 @@ endif()
 
 # Detect non-system shared library dependencies and copy them into the wheel,
 # updating the RECORDS metadata file.
-add_custom_target(modular-wheel-repair
-  COMMAND ${REPAIR_CMD} ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
+add_custom_command(OUTPUT ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
+  COMMAND ${REPAIR_CMD} ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl
+  COMMAND ${CMAKE_COMMAND} -E copy ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
+  DEPENDS ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   COMMENT "Repairing Modular Python API wheel."
   VERBATIM
 )
-add_dependencies(modular-pybind-ext modular-wheel-repair)
