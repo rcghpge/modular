@@ -13,7 +13,6 @@
 
 include "GenericML/MGPDialect/MGPDialect.td"
 include "mlir/IR/AttrTypeBase.td"
-include "mlir/IR/SubElementInterfaces.td"
 include "mlir/IR/BuiltinTypeInterfaces.td"
 include "mlir/IR/AttrTypeBase.td"
 

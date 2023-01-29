@@ -67,32 +67,26 @@ static void printShapeParam(AsmPrinter &p, TypedAttr shapeAttr,
   printShapeParam(p, shapeAttr);
 }
 
-static ParseResult parseShapeParam(AsmParser &p,
-                                   FailureOr<TypedAttr> &shapeAttr) {
+static ParseResult parseShapeParam(AsmParser &p, TypedAttr &shapeAttr) {
   auto shapeTy = p.getBuilder().getType<MO::ShapeType>();
   if (succeeded(p.parseOptionalQuestion())) {
-    shapeAttr = {KGEN::UnknownAttr::get(shapeTy)};
+    shapeAttr = KGEN::UnknownAttr::get(shapeTy);
     return success();
   }
 
   if (succeeded(p.parseOptionalLSquare())) {
-    FailureOr<llvm::SmallVector<TypedAttr>> values;
+    SmallVector<TypedAttr> values;
     if (failed(p.parseOptionalRSquare())) {
       if (parseShapeValue(p, values) || p.parseRSquare())
         return failure();
-    } else {
-      values.emplace();
     }
 
-    auto tmpAttr = p.getChecked<MO::ShapeAttr>(values.value(), shapeTy);
-    if (!tmpAttr)
-      return failure();
-    shapeAttr = {tmpAttr};
-    return success();
+    shapeAttr = p.getChecked<MO::ShapeAttr>(values, shapeTy);
+    return failure(!shapeAttr);
   }
 
   if (StringAttr name; succeeded(KGEN::parseParamName(p, name))) {
-    shapeAttr = {KGEN::ParamDeclRefAttr::get(name, shapeTy)};
+    shapeAttr = KGEN::ParamDeclRefAttr::get(name, shapeTy);
     return success();
   }
   return p.emitError(p.getCurrentLocation())
@@ -100,15 +94,12 @@ static ParseResult parseShapeParam(AsmParser &p,
             "literal shape reference (i.e. `[...]`)";
 }
 
-static ParseResult parseShapeParam(AsmParser &p,
-                                   FailureOr<TypedAttr> &shapeAttr,
-                                   FailureOr<SmallVector<int64_t>> &shape) {
+static ParseResult parseShapeParam(AsmParser &p, TypedAttr &shapeAttr,
+                                   SmallVector<int64_t> &shape) {
   auto parseResult = parseShapeParam(p, shapeAttr);
   if (succeeded(parseResult)) {
-    if (auto attr = dyn_cast<MO::ShapeAttr>(shapeAttr.value()))
+    if (auto attr = dyn_cast<MO::ShapeAttr>(shapeAttr))
       shape = attr.getIntDims();
-    else
-      shape.emplace();
   }
   return parseResult;
 }
@@ -276,11 +267,7 @@ LogicalResult ShapeType::printValue(AsmPrinter &p, TypedAttr value) const {
 
 OptionalParseResult ShapeType::parseValue(AsmParser &p,
                                           TypedAttr &value) const {
-  FailureOr<TypedAttr> shapeAttr;
-  auto parseResult = parseShapeParam(p, shapeAttr);
-  if (succeeded(parseResult))
-    value = shapeAttr.value();
-  return parseResult;
+  return parseShapeParam(p, value);
 }
 
 //===----------------------------------------------------------------------===//

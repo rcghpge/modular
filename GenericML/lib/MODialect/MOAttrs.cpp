@@ -34,15 +34,14 @@ void MODialect::registerAttributes() {
 //===----------------------------------------------------------------------===//
 
 ParseResult M::MO::parseShapeValue(AsmParser &p,
-                                   FailureOr<SmallVector<TypedAttr>> &values) {
+                                   SmallVector<TypedAttr> &values) {
   values = SmallVector<TypedAttr>();
   IndexType idxTy = p.getBuilder().getIndexType();
   return p.parseCommaSeparatedList(
-      [&] { return KGEN::parseParamValue(p, values->emplace_back(), idxTy); });
+      [&] { return KGEN::parseParamValue(p, values.emplace_back(), idxTy); });
 }
 
-ParseResult M::MO::parseShapeValue(AsmParser &p,
-                                   FailureOr<SmallVector<TypedAttr>> &values,
+ParseResult M::MO::parseShapeValue(AsmParser &p, SmallVector<TypedAttr> &values,
                                    MO::ShapeType type) {
   return parseShapeValue(p, values);
 }

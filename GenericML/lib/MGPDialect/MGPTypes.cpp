@@ -123,24 +123,22 @@ constexpr const char *kUnknownDType = "unk";
 
 /// Parses a DType, where 'unk' is represented as the none value, and
 /// 'invalid' is considered illegal.
-static ParseResult parseDType(AsmParser &p,
-                              FailureOr<Optional<DType>> &optDType) {
+static ParseResult parseDType(AsmParser &p, Optional<DType> &optDType) {
   StringRef keyword;
   llvm::SMLoc dtypeLoc;
   if (p.getCurrentLocation(&dtypeLoc) || p.parseKeyword(&keyword))
     return failure();
 
-  if (keyword == kUnknownDType) {
-    optDType.emplace(); // None denotes unknown.
+  if (keyword == kUnknownDType)
     return success();
-  }
 
   FailureOr<DType> failOrDType = DType::getFromString(keyword);
   if (failed(failOrDType))
     return p.emitError(dtypeLoc) << "unrecognized dtype '" << keyword << "'.";
-  if (failOrDType->isInvalid())
+  if (failOrDType->isInvalid()) {
     // Invalid is not legal.
     return p.emitError(dtypeLoc) << "invalid dtype.";
+  }
 
   optDType.emplace(*failOrDType);
   return success();
@@ -218,27 +216,23 @@ Optional<DType> DTypeType::fromRawDType(uint8_t rawDType) {
 /// Parses a list of dimensions followed by a DType, interpreting '?' as the
 /// empty dimension and 'unk' as the empty DType. The shope is constructed
 /// to match dims, but using the raw signed form.
-static ParseResult
-parseDimsAndDType(AsmParser &p,
-                  FailureOr<SmallVector<Optional<uint64_t>>> &dims,
-                  FailureOr<Optional<DType>> &optDType,
-                  FailureOr<SmallVector<int64_t>> &shape) {
-
-  shape.emplace();
+static ParseResult parseDimsAndDType(AsmParser &p,
+                                     SmallVector<Optional<uint64_t>> &dims,
+                                     Optional<DType> &optDType,
+                                     SmallVector<int64_t> &shape) {
   llvm::SMLoc loc;
   if (p.getCurrentLocation(&loc) ||
-      p.parseDimensionList(*shape, /*allowDynamic=*/true,
+      p.parseDimensionList(shape, /*allowDynamic=*/true,
                            /*withTrailingX=*/true) ||
       parseDType(p, optDType))
     return failure();
 
-  dims.emplace();
-  dims->reserve(shape->size());
-  for (int64_t dim : *shape) {
+  dims.reserve(shape.size());
+  for (int64_t dim : shape) {
     if (!isValidRawSignedSize(dim))
       return p.emitError(loc) << "shape dimensions must be non-negative or the "
                                  "distinguished '?' unknown dimension.";
-    dims->emplace_back(rawSignedSizeToOptSize(dim));
+    dims.emplace_back(rawSignedSizeToOptSize(dim));
   }
 
   return success();
@@ -448,22 +442,21 @@ CpuBufferType CpuTensorSpecType::getExpectedBufferType() const {
 
 /// Parses a compact tensor type description.
 static ParseResult parseTensorSpec(AsmParser &p,
-                                   FailureOr<CpuTensorSpecType> &tensorSpec) {
-  FailureOr<SmallVector<Optional<uint64_t>>> dims;
-  FailureOr<Optional<DType>> optDType;
-  FailureOr<SmallVector<int64_t>> shape;
+                                   CpuTensorSpecType &tensorSpec) {
+  SmallVector<Optional<uint64_t>> dims;
+  Optional<DType> optDType;
+  SmallVector<int64_t> shape;
   llvm::SMLoc loc;
   if (p.getCurrentLocation(&loc) || parseDimsAndDType(p, dims, optDType, shape))
     return failure();
 
   // Though the following get calls will invoke verify, the resulting errors
   // will be locationless and trigger a core dump. Try to be friendlier.
-  if (failed(CpuTensorSpecType::verify([&]() { return p.emitError(loc); },
-                                       *dims, *optDType, *shape)))
+  if (failed(CpuTensorSpecType::verify([&]() { return p.emitError(loc); }, dims,
+                                       optDType, shape)))
     return failure();
 
-  tensorSpec.emplace(
-      CpuTensorSpecType::get(p.getContext(), *dims, *optDType, *shape));
+  tensorSpec = CpuTensorSpecType::get(p.getContext(), dims, optDType, shape);
   return success();
 }
 

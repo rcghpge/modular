@@ -14,12 +14,10 @@ namespace M::MO {
 class ShapeType;
 
 /// Parse the parametric dimensions of a MO::ShapeAttr.
-ParseResult parseShapeValue(AsmParser &p,
-                            FailureOr<SmallVector<TypedAttr>> &values);
+ParseResult parseShapeValue(AsmParser &p, SmallVector<TypedAttr> &values);
 
 /// Parse the parametric dimensions of a MO::ShapeAttr.
-ParseResult parseShapeValue(AsmParser &p,
-                            FailureOr<SmallVector<TypedAttr>> &values,
+ParseResult parseShapeValue(AsmParser &p, SmallVector<TypedAttr> &values,
                             MO::ShapeType type);
 
 /// Print the parametric dimensions of a MO::ShapeAttr.
