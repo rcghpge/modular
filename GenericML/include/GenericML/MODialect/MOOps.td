@@ -82,6 +82,11 @@ def MO_GraphOp : MO_Op<"graph", [HasParent<"ModuleOp">, FunctionOpInterface,
     ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
 
     LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter);
+
+    /// We aren't using always_inline functionality in MO.
+    KGEN::AlwaysInlineLevel getAlwaysInlineLevel() {
+      return KGEN::AlwaysInlineLevel::Disabled;
+    }
   }];
 
   let builders = [
