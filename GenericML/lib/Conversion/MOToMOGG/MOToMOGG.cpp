@@ -53,6 +53,7 @@ static ErrorOr<ValueRange> selectMOGGOp(Operation *op, bool useJit) {
       {"transpose", {{OpType::kExternal, "mop.kernels.transpose"}}},
       {"gather", {{OpType::kExternal, "mop.kernels.gather"}}},
       {"matmul", {{OpType::kExternal, "mop.kernels.matmul"}}},
+      {"batch_matmul", {{OpType::kExternal, "mop.kernels.batch_matmul"}}},
       {"mul",
        {
            {OpType::kJIT, "mul"},
