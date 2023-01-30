@@ -192,6 +192,16 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
         opBeingLowered->getOperands()[1]);
     output.spec =
         getOutputSpec("mop.shape.transpose", {inputTensors[0].spec, perm});
+  } else if (opName == "mop.kernels.conv") {
+    // Hackery! Pure Hackery! I'd start setting up classes for this, but
+    // again, I don't expect this to survive E
+    Value stride = loweringState.lookupExecuteLoweredTensor(
+        opBeingLowered->getOperands()[2]);
+    Value dilation = loweringState.lookupExecuteLoweredTensor(
+        opBeingLowered->getOperands()[3]);
+    output.spec = getOutputSpec(
+        "mop.shape.conv",
+        {inputTensors[0].spec, inputTensors[1].spec, stride, dilation});
   } else {
     opBeingLowered->emitError("op requires output to have static shape");
     return Error("op requires output to have static shape");

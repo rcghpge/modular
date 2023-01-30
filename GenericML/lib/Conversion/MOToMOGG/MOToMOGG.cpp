@@ -47,6 +47,7 @@ static ErrorOr<ValueRange> selectMOGGOp(Operation *op, bool useJit) {
        }},
       {"broadcast_shape", {{OpType::kExternal, "mop.kernels.broadcast_shape"}}},
       {"broadcast_to", {{OpType::kExternal, "mop.kernels.broadcast_to"}}},
+      {"conv", {{OpType::kExternal, "mop.kernels.conv"}}},
       {"div", {{OpType::kExternal, "mop.kernels.div"}}},
       {"erf", {{OpType::kExternal, "mop.kernels.erf"}}},
       {"exp", {{OpType::kExternal, "mop.kernels.exp"}}},
