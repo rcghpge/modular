@@ -109,11 +109,11 @@ struct JitCompileKernels
       // Each kernel works on a clean module. We would need to compile them all
       // into the same one if not. The module will not be legal post elaboration
       // and will have lost any references.
-      auto freshModule = baseModule.clone();
+      OwningOpRef<ModuleOp> freshModule = baseModule.clone();
 
       // Find the KGEN kernel to call.
       KGEN::GeneratorOp kernel;
-      freshModule.walk([&](KGEN::GeneratorOp generator) {
+      freshModule->walk([&](KGEN::GeneratorOp generator) {
         if (generator.getSymName().starts_with("$MOGG::__mogg__")) {
           // Strip the arguments from the name.
           size_t begin = strlen("$MOGG::__mogg__");
@@ -134,7 +134,7 @@ struct JitCompileKernels
       }
 
       // Start building up the KGEN kernel.
-      KGENStubBuilder builder{op, freshModule, stubKernelName,
+      KGENStubBuilder builder{op, *freshModule, stubKernelName,
                               op.getOriginalOpName().str(),
                               useSearch.getValue()};
 
@@ -160,9 +160,6 @@ struct JitCompileKernels
       op->replaceAllUsesWith(jitExecute.getResults());
 
       jittedKernels.insert({stubKernelName, jitExecute});
-
-      // Clean up the KGEN module.
-      freshModule->destroy();
 
       // Remove the original operation from the graph.
       op->erase();
