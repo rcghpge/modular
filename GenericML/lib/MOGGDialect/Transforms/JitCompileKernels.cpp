@@ -61,6 +61,9 @@ struct JitCompileKernels
 
     mlir::ModuleOp baseModule = *baseModuleRef;
 
+    // Helper to track all the types to prevent constant reallocation.
+    Stub::TypeManager manager{graph.getContext()};
+
     // Strip all the export functions from the imported module.
     baseModule.walk([&](KGEN::ExportOp exportOp) { exportOp.erase(); });
 
@@ -134,9 +137,12 @@ struct JitCompileKernels
       }
 
       // Start building up the KGEN kernel.
-      KGENStubBuilder builder{op, *freshModule, stubKernelName,
-                              op.getOriginalOpName().str(),
-                              useSearch.getValue()};
+      Stub::KGENBuilder builder{manager,
+                                op,
+                                *freshModule,
+                                stubKernelName,
+                                op.getOriginalOpName().str(),
+                                useSearch.getValue()};
 
       // Lower the basic stub function.
       builder.startLowering();
