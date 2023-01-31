@@ -69,7 +69,7 @@ execute_process(
 # For earlier versions of wheel/setuptools, setup.py emits other informational
 # messages to stdout even with the --quiet flag.
 # So ignore any additional output from setup.py after the wheel name.
-string(REGEX MATCH "^[^\n]+" WHEEL_BASENAME ${BDIST_WHEEL_OUTPUT})
+string(REGEX MATCH "^[^\n]+" WHEEL_BASENAME "${BDIST_WHEEL_OUTPUT}")
 
 # Add a custom target to build and install the Python bindings and wheel.
 # Individual pybind11 modules are expected to be dependencies of
@@ -99,7 +99,8 @@ add_custom_command(OUTPUT ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:KGENCompilerRT> ${UNPACKED_WHEEL}/lib
   COMMAND ${Python3_EXECUTABLE} -m wheel pack ${UNPACKED_WHEEL} --dest ${WHEEL_DIR} > /dev/null
   COMMAND ${CMAKE_COMMAND} -E rename ${WHEEL_DIR}/${WHEEL_BASENAME}.whl ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl
-  COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_SOURCE_DIR}/{build,modular_pyframework.egg-info}
+  COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_SOURCE_DIR}/build
+  COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_SOURCE_DIR}/modular_pyframework.egg-info
   BYPRODUCTS ${UNPACKED_WHEEL}
   DEPENDS $<TARGET_FILE:core>
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
