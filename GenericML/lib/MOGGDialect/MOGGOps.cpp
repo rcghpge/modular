@@ -192,6 +192,13 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
         opBeingLowered->getOperands()[1]);
     output.spec =
         getOutputSpec("mop.shape.transpose", {inputTensors[0].spec, perm});
+  } else if (opName == "mop.kernels.pad") {
+    // Hackery! Pure Hackery! I'd start setting up classes for this, but
+    // again, I don't expect this to survive E
+    Value paddings = loweringState.lookupExecuteLoweredTensor(
+        opBeingLowered->getOperands()[1]);
+    output.spec =
+        getOutputSpec("mop.shape.pad", {inputTensors[0].spec, paddings});
   } else if (opName == "mop.kernels.conv") {
     // Hackery! Pure Hackery! I'd start setting up classes for this, but
     // again, I don't expect this to survive E
