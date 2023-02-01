@@ -73,14 +73,14 @@ string(REGEX MATCH "^[^\n]+" WHEEL_BASENAME "${BDIST_WHEEL_OUTPUT}")
 
 # Add a custom target to build and install the Python bindings and wheel.
 # Individual pybind11 modules are expected to be dependencies of
-# modular-pyframework.
+# modular-engine.
 add_custom_target(modular-pybind-ext ALL
   COMMAND ${Python3_EXECUTABLE} -m pip install --quiet --force-reinstall ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
   DEPENDS ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
   COMMENT "Installing Modular Python API wheel to CMake-managed pyenv Python."
 )
-add_dependencies(modular-pybind-ext modular-pyframework)
-add_subdirectory(bindings/modular/pyframework)
+add_dependencies(modular-pybind-ext modular-engine)
+add_subdirectory(bindings/modular/engine)
 
 # The wheel is built in the build directory.
 # However, setuptools is unaware of the pybind module since CMake built that.
@@ -92,15 +92,15 @@ add_subdirectory(bindings/modular/pyframework)
 add_custom_command(OUTPUT ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl
   COMMAND ${Python3_EXECUTABLE} -m build --wheel --outdir ${WHEEL_DIR} > /dev/null
   COMMAND ${Python3_EXECUTABLE} -m wheel unpack ${WHEEL_DIR}/${WHEEL_BASENAME}.whl --dest ${WHEEL_DIR} > /dev/null
-  COMMAND ${CMAKE_COMMAND} -E make_directory ${UNPACKED_WHEEL}/modular/pyframework
-  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:core> ${UNPACKED_WHEEL}/modular/pyframework/
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${UNPACKED_WHEEL}/modular/engine
+  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:core> ${UNPACKED_WHEEL}/modular/engine/
   COMMAND ${CMAKE_COMMAND} -E make_directory ${UNPACKED_WHEEL}/lib
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:tfl> ${UNPACKED_WHEEL}/lib
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:KGENCompilerRT> ${UNPACKED_WHEEL}/lib
   COMMAND ${Python3_EXECUTABLE} -m wheel pack ${UNPACKED_WHEEL} --dest ${WHEEL_DIR} > /dev/null
   COMMAND ${CMAKE_COMMAND} -E rename ${WHEEL_DIR}/${WHEEL_BASENAME}.whl ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl
   COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_SOURCE_DIR}/build
-  COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_SOURCE_DIR}/modular_pyframework.egg-info
+  COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_SOURCE_DIR}/modular_engine.egg-info
   BYPRODUCTS ${UNPACKED_WHEEL}
   DEPENDS $<TARGET_FILE:core>
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}

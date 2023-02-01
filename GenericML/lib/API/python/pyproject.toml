@@ -4,7 +4,7 @@ requires = ["wheel", "setuptools", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "modular-pyframework"
+name = "modular-engine"
 version = "0.0.0"
 dependencies = [
   "numpy >= 1.7.0"
