@@ -9,7 +9,7 @@
 
 include "mlir/Pass/PassBase.td"
 
-def JitCompileKernels: Pass<"jit-compile-kernels", "MO::GraphOp"> {
+def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
     let summary = "Compile MOGG::JitTargetOps into KGEN calls";
     let dependentDialects = [
         "M::MO::MODialect",

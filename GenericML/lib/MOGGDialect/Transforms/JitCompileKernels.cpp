@@ -42,8 +42,11 @@ struct JitCompileKernels
   using JitCompileKernelsBase::JitCompileKernelsBase;
 
   void runOnOperation() override {
-    MO::GraphOp graph = getOperation();
+    mlir::ModuleOp m = getOperation();
+    m.walk([&](MO::GraphOp graph) { this->runPass(graph); });
+  }
 
+  void runPass(MO::GraphOp graph) {
     // The path to the MOGG standard library lit bindings. The macro is set by
     // CMake.
     StringLiteral path = MOGG_LIT_BINDINGS_PATH;
