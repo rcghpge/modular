@@ -65,6 +65,34 @@ mo.graph @transpose_2d_perm(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[3, 2
 // -----
 
 //===----------------------------------------------------------------------===//
+// PadOp
+//===----------------------------------------------------------------------===//
+
+mo.graph @pad_non_scalar_constant(%input: !mo.tensor<[2, 3], f32>, %paddings: !mo.tensor<[2, 2], si64>, %constant: !mo.tensor<[2], f32>) -> !mo.tensor<[?, ?], f32> {
+  // expected-error@+1 {{'mo.pad' op operand #2 must be ranked scalar tensor, but got '!mo.tensor<[2], f32>'}}
+  %res = mo.pad(%input, %paddings, %constant) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si64>, !mo.tensor<[2], f32>) -> !mo.tensor<[?, ?], f32>
+  mo.output %res : !mo.tensor<[?, ?], f32>
+}
+
+// -----
+
+mo.graph @pad_float_paddings(%input: !mo.tensor<[2, 3], f32>, %paddings: !mo.tensor<[2, 2], f32>, %constant: !mo.tensor<[1], f32>) -> !mo.tensor<[?, ?], f32> {
+  // expected-error@+1 {{'mo.pad' op operand #1 must be shape [N, 2] and signed 64 or signed 32 integer elements, but got '!mo.tensor<[2, 2], f32>}}
+  %res = mo.pad(%input, %paddings, %constant) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], f32>, !mo.tensor<[1], f32>) -> !mo.tensor<[?, ?], f32>
+  mo.output %res : !mo.tensor<[?, ?], f32>
+}
+
+// -----
+
+mo.graph @pad_invalid_shape_paddings(%input: !mo.tensor<[2, 3], f32>, %paddings: !mo.tensor<[2, 3], si64>, %constant: !mo.tensor<[1], f32>) -> !mo.tensor<[?, ?], f32> {
+  // expected-error@+1 {{'mo.pad' op operand #1 must be shape [N, 2] and signed 64 or signed 32 integer elements, but got '!mo.tensor<[2, 3], si64>'}}
+  %res = mo.pad(%input, %paddings, %constant) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], si64>, !mo.tensor<[1], f32>) -> !mo.tensor<[?, ?], f32>
+  mo.output %res : !mo.tensor<[?, ?], f32>
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // GatherOp
 //===----------------------------------------------------------------------===//
 

@@ -649,16 +649,39 @@ def MO_TransposeOp : MO_Op<"transpose", [Pure]> {
     Return a new Tensor as the result of permuting the dimensions of the input
     tensor according to the value of perm.
 
+  }];
+
+  let arguments = (ins MO_Tensor:$input, MO_ShapeLike:$perm);
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def MO_PadOp : MO_Op<"pad", [Pure]> {
+  let summary = "Pad Operation";
+  let description = [{
+    Pad the `input` tensor with a scalar tensor `consntant` according to the
+    `paddings`. Assume input has rank `N`, the `paddings` tensor should have
+    shape `(N, 2)`, where each row has the form `[before, after]`, indicating
+    how many of `constant` to add before and after the contents of `input` in
+    that dimension. The size of each dimension D of the padded output is:
+    `paddings[D, 0] + input.dim(D) + paddings[D, 1]`.
+
     Example:
 
     ```mlir
     %input: !mo.tensor<[2, 3], f32>
-    %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %res  = mo.transpose(%input, %perm) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[3, 2], f32>
+    %constant = mo.constant {value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
+    %paddings = mo.constant {value = #M.dense_array<1, 0, 1, 1> : tensor<2x2xsi64>} : !mo.tensor<[2, 2], si64>
+    %output   = mo.pad(%input, %paddings, %constant) : (
+      !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si64>, !mo.tensor<[], f32>
+    ) -> !mo.tensor<[3, 5], f32>
     ```
   }];
 
-  let arguments = (ins MO_Tensor:$input, MO_ShapeLike:$perm);
+  // TODO(#7987) support a padding_mode argument
+  let arguments = (ins MO_Tensor:$input, MO_PaddingLike:$paddings, MO_RankedScalarTensor:$constant);
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)

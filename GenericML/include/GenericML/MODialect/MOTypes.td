@@ -106,6 +106,11 @@ def HasSI64ElementTypePred : SubstLeaves<
 def HasSI32ElementTypePred : SubstLeaves<
   "$_self", "cast<M::MO::TensorType>($_self).getElementType()", SI32.predicate>;
 
+/// Checks if a MO_TensorType has shape [N, 2]
+def HasPaddingShape : And<[
+  HasAnyRankOfPred<[2]>,
+  CPred<"$_self.cast<::M::MO::TensorType>().getDimSize(1) == 2">]>;
+
 /// Confines the MO_TensorType so that it's ranked and a scalar
 def MO_RankedScalarTensor : ConfinedType<MO_Tensor,
     [HasAnyRankOfPred<[0]>],
@@ -127,11 +132,20 @@ def MO_IndicesTensor : ConfinedType<MO_Tensor,
   let cppClassName = "::M::MO::TensorType";
 }
 
-/// Confines the MO_TensorType so that it has SI64 elements and rank 1
+/// Confines the MO_TensorType so that it has SI32 or SI64 elements and rank 1
 def MO_ShapeLike : ConfinedType<MO_Tensor,
     [HasAnyRankOfPred<[1]>, Or<[HasSI64ElementTypePred,
                                 HasSI32ElementTypePred]>],
     "rank 1 and signed 64 or signed 32 integer elements"> {
+  let cppClassName = "::M::MO::TensorType";
+}
+
+/// Confines the MO_TensorType so that it has SI32 or SI64 elements and shape
+/// [N, 2]
+def MO_PaddingLike : ConfinedType<MO_Tensor,
+    [HasPaddingShape, Or<[HasSI64ElementTypePred,
+                          HasSI32ElementTypePred]>],
+    "shape [N, 2] and signed 64 or signed 32 integer elements"> {
   let cppClassName = "::M::MO::TensorType";
 }
 
