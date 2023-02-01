@@ -14,6 +14,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/IR/FunctionImplementation.h"
+#include "llvm/ADT/StringMap.h"
 
 using namespace M;
 using namespace MOGG;
@@ -127,7 +128,9 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
   // TODO: If we decide we want this longer term (say, for MLAS kernels)
   // We should refactor it out as a Trait maybe? and make this a method
   // and data member of the op class.
-  static const std::map<llvm::StringRef, std::string> shapeFuncs{
+
+  // (arg0Spec, arg1Spec, ..., argNSpec) -> outSpec
+  static const llvm::StringMap<std::string> specNaryShapeFuncs{
       {"mop.kernels.abs", "mop.shape.unary"},
       {"mop.kernels.erf", "mop.shape.unary"},
       {"mop.kernels.exp", "mop.shape.unary"},
@@ -143,7 +146,15 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
       {"mop.kernels.mul", "mop.shape.binary"},
       {"mop.kernels.sub", "mop.shape.binary"},
       {"mop.kernels.matmul", "mop.shape.matmul"},
-      {"mop.kernels.batch_matmul", "mop.shape.batch_matmul"}};
+      {"mop.kernels.batch_matmul", "mop.shape.batch_matmul"},
+  };
+
+  // (arg0Spec, arg1) -> outSpec
+  static const llvm::StringMap<std::string> specAndTensorBinaryShapeFuncs{
+      {"mop.kernels.broadcast_to", "mop.shape.broadcast_to"},
+      {"mop.kernels.transpose", "mop.shape.transpose"},
+      {"mop.kernels.pad", "mop.shape.pad"},
+  };
 
   auto getOutputSpec = [&](const std::string &opName,
                            const SmallVector<Value> &inputs) {
@@ -161,7 +172,7 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
 
   LoweredTensor output;
 
-  if (shapeFuncs.count(opName)) {
+  if (specNaryShapeFuncs.count(opName)) {
     // Get just the specs for tensors.
     SmallVector<Value> inputSpecs;
     inputSpecs.reserve(inputTensors.size());
@@ -169,14 +180,14 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
       inputSpecs.push_back(tensor.spec);
 
     // Create a call to a custom invoke function we can put in the BEF.
-    output.spec = getOutputSpec(shapeFuncs.at(opName), inputSpecs);
-  } else if (opName == "mop.kernels.broadcast_to") {
-    // Hackery! Pure Hackery! I'd start setting up classes for this, but
-    // again, I don't expect this to survive E
-    Value target_shape = loweringState.lookupExecuteLoweredTensor(
-        opBeingLowered->getOperands()[1]);
-    output.spec = getOutputSpec("mop.shape.broadcast_to",
-                                {inputTensors[0].spec, target_shape});
+    output.spec = getOutputSpec(specNaryShapeFuncs.lookup(opName), inputSpecs);
+  } else if (specAndTensorBinaryShapeFuncs.count(opName)) {
+    const auto arg0SpecVal = inputTensors[0].spec;
+    const auto arg1 = opBeingLowered->getOperands()[1];
+    const auto arg1Val = loweringState.lookupExecuteLoweredTensor(arg1);
+    output.spec = getOutputSpec(specAndTensorBinaryShapeFuncs.lookup(opName),
+                                {arg0SpecVal, arg1Val});
+
   } else if (opName == "mop.kernels.gather") {
     // Hackery! Pure Hackery! I'd start setting up classes for this, but
     // again, I don't expect this to survive E
@@ -185,20 +196,6 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     output.spec =
         getOutputSpec("mop.shape.gather", {inputTensors[0].spec,
                                            inputTensors[1].spec, target_axis});
-  } else if (opName == "mop.kernels.transpose") {
-    // Hackery! Pure Hackery! I'd start setting up classes for this, but
-    // again, I don't expect this to survive E
-    Value perm = loweringState.lookupExecuteLoweredTensor(
-        opBeingLowered->getOperands()[1]);
-    output.spec =
-        getOutputSpec("mop.shape.transpose", {inputTensors[0].spec, perm});
-  } else if (opName == "mop.kernels.pad") {
-    // Hackery! Pure Hackery! I'd start setting up classes for this, but
-    // again, I don't expect this to survive E
-    Value paddings = loweringState.lookupExecuteLoweredTensor(
-        opBeingLowered->getOperands()[1]);
-    output.spec =
-        getOutputSpec("mop.shape.pad", {inputTensors[0].spec, paddings});
   } else if (opName == "mop.kernels.conv") {
     // Hackery! Pure Hackery! I'd start setting up classes for this, but
     // again, I don't expect this to survive E
