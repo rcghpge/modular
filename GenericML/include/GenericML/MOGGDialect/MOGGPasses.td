@@ -31,4 +31,12 @@ def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
     ];
 }
 
+def FuseElementwise: Pass<"fuse-elementwise", "MO::GraphOp"> {
+    let summary = "Fuse blocks of elementwise operations if possible";
+    let dependentDialects = [
+        "M::MO::MODialect",
+        "M::MOGG::MOGGDialect"
+    ];
+}
+
 #endif // GENERICML_MOGGDIALECT_MOGGPASSES_TD
