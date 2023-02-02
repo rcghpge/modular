@@ -421,6 +421,34 @@ def MO_TanhOp : MO_ElementWiseUnaryOp<"tanh"> {
 }
 
 //===----------------------------------------------------------------------===//
+// Reduction ops
+//===----------------------------------------------------------------------===//
+
+def MO_MeanOp : MO_Op<"mean", [Pure]> {
+  let summary = "Mean operation";
+  let description = [{
+    Reduce `input` elements across `axis` into their mean value, and change that
+    axis's dimension to 1 in the output shape.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %axis = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+    %res  = mo.mean(%arg, %axis) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+    ```
+  }];
+
+  let arguments = (ins MO_Tensor:$input,
+                       MO_RankedScalarTensor:$axis);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // Sliding window ops
 //===----------------------------------------------------------------------===//
 
