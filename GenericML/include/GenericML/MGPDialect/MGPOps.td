@@ -18,6 +18,7 @@ include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "GenericML/MGPDialect/MGPDialect.td"
 include "GenericML/MGPDialect/MGPTypes.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 
 // Base class for ops in this dialect.
 class MGP_Op<string mnemonic, list<Trait> traits = []> :
@@ -28,7 +29,7 @@ class MGP_Op<string mnemonic, list<Trait> traits = []> :
 //===----------------------------------------------------------------------===//
 
 def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant",
-                             [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+                             [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
     Creates a buffer hosted on the CPU whose data is aliased with
     the bytes in the given attribute.
@@ -564,7 +565,7 @@ def StateSlotCreateOp : MGP_Op<"state_slot.create"> {
 // CpuTensorSpecCreateOp
 //===----------------------------------------------------------------------===//
 
-def CpuTensorSpecCreateOp : MGP_Op<"cpu.tensor_spec.create", [
+def CpuTensorSpecCreateOp : MGP_Op<"cpu.tensor_spec.create", [Pure,
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
     Creates a CPU tensor spec from a mix of runtime and static dimensions and
