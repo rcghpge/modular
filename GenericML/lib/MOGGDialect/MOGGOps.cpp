@@ -154,6 +154,7 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
       {"mop.kernels.broadcast_to", "mop.shape.broadcast_to"},
       {"mop.kernels.transpose", "mop.shape.transpose"},
       {"mop.kernels.pad", "mop.shape.pad"},
+      {"mop.kernels.mean", "mop.shape.mean"},
   };
 
   auto getOutputSpec = [&](const std::string &opName,
