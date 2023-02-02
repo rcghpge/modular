@@ -36,6 +36,78 @@ namespace M::MOGG {
 
 namespace {
 
+// If this is a single elementwise operation we can pass along the shape
+// inference function hack.
+std::string getShapeInferenceName(MOGG::ElementwiseOp op) {
+  mlir::Block &block = op.getBody().front();
+  if (block.getOperations().size() != 2)
+    return "NoShapeInferFunc";
+
+  return (*block.begin()).getName().stripDialect().str();
+}
+
+// We create a mangled name which exactly matches the operation. The number of
+// inputs, the contents of the block, and which are returned. It needs to be
+// this verbose to ensure we don't recompile for identical blocks but also allow
+// for blocks of the same operations with different returns to compile legally.
+std::string createMangledName(MOGG::ElementwiseOp op) {
+  std::string name = "__gen__ins_";
+
+  // Track where each value is in the block order. This is to mangle the returns
+  // to ensure legality.
+  DenseMap<Value, std::string> valueToPositionInBlock;
+  size_t argIndex = 0;
+
+  // Get the MLIR block.
+  mlir::Block &block = op.getBody().front();
+  for (Value v : block.getArguments()) {
+    valueToPositionInBlock[v] = "i" + std::to_string(argIndex);
+    argIndex++;
+
+    // Add input id to the name.
+    name += valueToPositionInBlock[v] + "_";
+
+    // Mangle the type into the name.
+    auto tensor = cast<MO::TensorType>(v.getType());
+    for (int64_t dim : tensor.getShape()) {
+      name += ShapedType::isDynamic(dim) ? "?" : std::to_string(dim);
+      name += "x";
+    }
+    assert(tensor.getElementType().isF32());
+    name += "f32_";
+  }
+
+  size_t blockIndex = 0;
+
+  // Each operation in the block of ops contributes to the name.
+  for (mlir::Operation &innerOp : op.getBody().front()) {
+    // Handle the output as a special case, report which operations returned a
+    // value from the block.
+    if (isa<MOGG::OutputOp>(innerOp)) {
+      name += "outs_";
+      for (Value operand : innerOp.getOperands())
+        name += valueToPositionInBlock[operand] + "_";
+      break;
+    }
+
+    name += innerOp.getName().stripDialect().str() + "_";
+
+    // Add operands to the mangling.
+    for (Value input : innerOp.getOperands())
+      name += valueToPositionInBlock[input] + "_";
+
+    // Track the outputs for future mangling.
+    for (Value output : innerOp.getResults())
+      valueToPositionInBlock[output] = std::to_string(blockIndex);
+
+    // Add double seperator between operations.
+    name += "_";
+    blockIndex++;
+  }
+
+  return name;
+}
+
 // Convert all possible operations directly to the avaliable operation.
 struct JitCompileKernels
     : public impl::JitCompileKernelsBase<JitCompileKernels> {
@@ -43,7 +115,8 @@ struct JitCompileKernels
 
   void runOnOperation() override {
     mlir::ModuleOp m = getOperation();
-    m.walk([&](MO::GraphOp graph) { this->runPass(graph); });
+    for (auto graph : m.getOps<MO::GraphOp>())
+      this->runPass(graph);
   }
 
   void runPass(MO::GraphOp graph) {
@@ -76,24 +149,9 @@ struct JitCompileKernels
     std::unordered_map<std::string, MOGG::ExecuteCompiledOp> jittedKernels;
 
     // Compile all the fused chains into a KGEN kernel.
-    graph.walk([&, pass = this](MOGG::JitTargetOp op) {
+    graph.walk([&, pass = this](MOGG::ElementwiseOp op) {
       // Create a unique name for the kernel.
-      std::string stubKernelName =
-          "__Gen_" + op.getOriginalOpName().str() + "_";
-
-      // Add the types to mangle the name.
-      for (Type inType : op->getOperandTypes()) {
-        auto tensor = cast<MO::TensorType>(inType);
-
-        for (int64_t dim : tensor.getShape()) {
-          stubKernelName +=
-              ShapedType::isDynamic(dim) ? "?" : std::to_string(dim);
-          stubKernelName += "x";
-        }
-
-        assert(tensor.getElementType().isF32());
-        stubKernelName += "f32_";
-      }
+      std::string stubKernelName = createMangledName(op);
 
       // If we've added this exact kernel before reuse it.
       auto itr = jittedKernels.find(stubKernelName);
@@ -117,47 +175,25 @@ struct JitCompileKernels
       // and will have lost any references.
       OwningOpRef<ModuleOp> freshModule = baseModule.clone();
 
-      // Find the KGEN kernel to call.
-      KGEN::GeneratorOp kernel;
-      freshModule->walk([&](KGEN::GeneratorOp generator) {
-        if (generator.getSymName().starts_with("$MOGG::__mogg__")) {
-          // Strip the arguments from the name.
-          size_t begin = strlen("$MOGG::__mogg__");
-          size_t end = generator.getSymName().find("(") - begin;
-          std::string name = generator.getSymName().substr(begin, end).str();
-          if (name == op.getKernelTarget()) {
-            kernel = generator;
-            return WalkResult::interrupt();
-          }
-        }
-        return WalkResult::skip();
-      });
-
-      if (!kernel) {
-        llvm::errs() << "[JITKernel] ERROR could not find a kernel for "
-                     << op.getKernelTarget() << "\n";
-        return;
-      }
+      // The propagate the hacky shape inference name.
+      std::string shapeInferFunc = getShapeInferenceName(op);
 
       // Start building up the KGEN kernel.
-      Stub::KGENBuilder builder{manager,
-                                op,
-                                *freshModule,
-                                stubKernelName,
-                                op.getOriginalOpName().str(),
-                                useSearch.getValue()};
+      Stub::KGENBuilder builder{manager,        op,
+                                *freshModule,   stubKernelName,
+                                shapeInferFunc, useSearch.getValue()};
 
       // Lower the basic stub function.
       builder.startLowering();
 
-      // Create the actual KGEN call.
-      auto err = builder.lowerKGENCall(kernel);
-      if (err.failed()) {
+      // Lower the operation using a vectorized map over an elementwise lambda.
+      auto errOr = builder.lowerToElementwiseLambda(op.getBody().front());
+      if (errOr.isError()) {
         pass->signalPassFailure();
         return;
       }
 
-      // Run KGEN elaboration then compile to ELF.
+      // Run KGEN elaboration then compile to binary.
       auto result = builder.compile();
       if (result.isError()) {
         pass->signalPassFailure();
@@ -167,7 +203,6 @@ struct JitCompileKernels
       // Replace the original kernel with a call to the compiled jit code.
       MOGG::ExecuteCompiledOp jitExecute = result.takeValue();
       op->replaceAllUsesWith(jitExecute.getResults());
-
       jittedKernels.insert({stubKernelName, jitExecute});
 
       // Remove the original operation from the graph.

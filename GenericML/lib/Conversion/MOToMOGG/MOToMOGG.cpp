@@ -80,24 +80,35 @@ static ErrorOr<ValueRange> selectMOGGOp(Operation *op, bool useJit) {
   std::string opName = op->getName().stripDialect().str();
 
   OpBuilder b(op);
+  auto loc = op->getLoc();
   if (kernels.count(opName)) {
     b.setInsertionPoint(op);
     for (auto kernel : kernels.lookup(opName)) {
       // TODO: Put kernel selection metrics in here.
 
       if (kernel.type == OpType::kJIT && useJit) {
-        // Create an op which will get compiled to JIT.
-        return b
-            .create<MOGG::JitTargetOp>(op->getLoc(),
-                                       /*outputTypes=*/op->getResultTypes(),
-                                       /*kernelTarget=*/kernel.opName,
-                                       /*originalOperationName=*/opName,
-                                       /*inputOperands=*/op->getOperands())
-            .getResults();
+        auto fusedOp =
+            b.create<MOGG::ElementwiseOp>(loc,
+                                          /*outputTypes=*/op->getResultTypes(),
+                                          /*inputOperands=*/op->getOperands());
+        mlir::Block &body = fusedOp.getBody().emplaceBlock();
+        b.setInsertionPoint(&body, body.begin());
+
+        Operation *newOp = op->clone();
+        b.insert(newOp);
+
+        // Add arguments to our block.
+        for (size_t i = 0, end = op->getNumOperands(); i < end; ++i) {
+          Value v = op->getOperand(i);
+          auto arg = body.addArgument(v.getType(), loc);
+          newOp->setOperand(i, arg);
+        }
+        b.create<MOGG::OutputOp>(loc, newOp->getResults());
+        return fusedOp.getResults();
       } else if (kernel.type == OpType::kExternal) {
         // Create the mogg_ext_op
         return b
-            .create<MOGG::ExtOp>(op->getLoc(),
+            .create<MOGG::ExtOp>(loc,
                                  /*outputTypes=*/op->getResultTypes(),
                                  /*op_name=*/kernel.opName,
                                  /*inputOperands=*/op->getOperands())
@@ -117,6 +128,10 @@ struct MOOpPattern : public RewritePattern {
     // skip non-mo ops and container/constant/output mo ops
     if (!isa<MO::MODialect>(op->getDialect()) || isa<MO::GraphOp>(op) ||
         isa<MO::ConstantOp>(op) || isa<MO::OutputOp>(op))
+      return failure();
+
+    // Don't process nested operations.
+    if (!isa<MO::GraphOp>(op->getParentOp()))
       return failure();
 
     auto results = selectMOGGOp(op, useJit);

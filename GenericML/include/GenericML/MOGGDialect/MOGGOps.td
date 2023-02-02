@@ -52,6 +52,20 @@ def MOGG_ExtOp : MOGG_LowerableOp<"ext.op", [HasParent<"MO::GraphOp">]> {
   }];
 }
 
+def MOGG_ElementwiseOp : MOGG_Op<"elementwise", [HasParent<"MO::GraphOp">, SingleBlock]> {
+  let summary = "Block of fused elementwise operations";
+  let description = [{
+    This represents an operation we want to create a fused elementwise JIT kernel for.
+    Additional MOGG passes will fuse the regions of these operations together to create
+    fused elementwise blocks.
+  }];
+
+  let arguments = (ins Variadic<MO_Tensor>:$operands);
+  let results = (outs Variadic<MO_Tensor>:$results);
+  let regions = (region SizedRegion<1>:$body);
+}
+
+
 //===----------------------------------------------------------------------===//
 // OutputOp
 //===----------------------------------------------------------------------===//
@@ -79,27 +93,6 @@ def MOGG_OutputOp
 //===----------------------------------------------------------------------===//
 // MOGG jit ops
 //===----------------------------------------------------------------------===//
-
-def MOGG_JitTargetOp : MOGG_Op<"jit_target", [HasParent<"MO::GraphOp">]> {
-  let summary = "MOGG representation of an operation we should jit";
-  let description = [{
-    This represents an operation we want to create a JIT kernel for. It does not itself
-    jit anything, it just represents an operation we _will_ jit.
-  }];
-
-  let arguments = (ins
-    StrAttr:$kernelTarget,
-    StrAttr:$originalOpName,
-    Variadic<MO_Tensor>:$operands
-  );
-
-  let results = (outs Variadic<MO_Tensor>:$results);
-
-  let assemblyFormat = [{
-    $kernelTarget attr-dict `(`($operands^)?`)`
-      (`:` type($operands)^)? (`->` type($results)^)?
-  }];
-}
 
 def MOGG_LoadJitKernelOp : MOGG_LowerableOp<"load_compiled_kernel"> {
   let summary = "Loads a compiled object into the JIT symbol table";
