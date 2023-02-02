@@ -211,11 +211,13 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     opBeingLowered->emitError("op requires output to have static shape");
     return Error("op requires output to have static shape");
   }
-  output.buffer =
-      loweringState.getExecuteOpBuilder()
-          .create<MGP::CpuBufferAllocSpecOp>(
-              loc, loweringState.getExecuteMgpContext(), output.spec)
-          .getResult();
+  output.buffer = loweringState.getExecuteOpBuilder()
+                      .create<MGP::CpuBufferAllocSpecOp>(
+                          loc,
+                          /*theContext=*/loweringState.getExecuteMgpContext(),
+                          /*runtimeSpec=*/output.spec,
+                          /*rawAlign=*/loweringState.getMinimumCpuAlignment())
+                      .getResult();
 
   return output;
 }
@@ -262,7 +264,10 @@ LowerHelper::lowerOutputBuffer(llvm::StringRef opName,
       output.buffer =
           loweringState.getExecuteOpBuilder()
               .create<MGP::CpuBufferAllocStaticOp>(
-                  loc, loweringState.getExecuteMgpContext(), *bufferSize)
+                  loc,
+                  /*theContext=*/loweringState.getExecuteMgpContext(),
+                  /*aSize=*/*bufferSize,
+                  /*bRawAlign=*/loweringState.getMinimumCpuAlignment())
               .getResult();
 
       // Create an MGP tensor to match the MO output tensor.

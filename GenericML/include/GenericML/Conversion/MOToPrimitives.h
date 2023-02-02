@@ -10,6 +10,7 @@
 #include "GenericML/Conversion/Support.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MODialect/MOOps.h"
+#include "Support/AlignedAlloc.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -30,21 +31,28 @@ namespace M::MGP {
 class MOGraphLoweringState {
 public:
   MOGraphLoweringState(M::MO::GraphOp graph, TypeConverter &typeConverter,
-                       llvm::StringRef compiledFrameworkLabel)
+                       llvm::StringRef compiledFrameworkLabel,
+                       size_t minimumCpuAlignment)
       : graph(graph), typeConverter(typeConverter),
-        common(compiledFrameworkLabel), init(graph.getContext()),
-        execute(graph.getContext()) {}
+        common(compiledFrameworkLabel, minimumCpuAlignment),
+        init(graph.getContext()), execute(graph.getContext()) {}
 
   /// Common state used by both the init and execute phases.
   struct CommonState {
-    explicit CommonState(llvm::StringRef compiledFrameworkLabel)
-        : compiledFrameworkLabel(compiledFrameworkLabel) {}
+    explicit CommonState(llvm::StringRef compiledFrameworkLabel,
+                         size_t minimumCpuAlignment)
+        : compiledFrameworkLabel(compiledFrameworkLabel),
+          minimumCpuAlignment(minimumCpuAlignment) {}
 
     /// The top-level mgp.model operation.
     MGP::ModelOp modelOp;
 
     /// The name of the target framework, e.g. "mgp", "tfl", etc.
     llvm::StringRef compiledFrameworkLabel;
+
+    /// The minimum alignment for all CPU hosted buffers (constants and
+    /// allocated)
+    size_t minimumCpuAlignment;
 
     CommonState(const CommonState &) = delete;
     void operator=(const CommonState &) = delete;
@@ -108,6 +116,8 @@ public:
   llvm::StringRef getCompiledFrameworkLabel() {
     return common.compiledFrameworkLabel;
   }
+
+  size_t getMinimumCpuAlignment() { return common.minimumCpuAlignment; }
 
   /// Return the graph being lowered.
   MO::GraphOp &getGraph() { return graph; }

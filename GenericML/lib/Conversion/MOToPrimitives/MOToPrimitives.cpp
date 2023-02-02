@@ -47,8 +47,10 @@ namespace {
 class MOGraphLowering {
 public:
   MOGraphLowering(M::MO::GraphOp graph, TypeConverter &typeConverter,
-                  llvm::StringRef compiledFrameworkLabel)
-      : loweringState(graph, typeConverter, compiledFrameworkLabel) {}
+                  llvm::StringRef compiledFrameworkLabel,
+                  size_t minimumCpuAlignment)
+      : loweringState(graph, typeConverter, compiledFrameworkLabel,
+                      minimumCpuAlignment) {}
 
   /// Lower the mo.graph to mgp.model.
   LogicalResult run();
@@ -187,29 +189,31 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
   // We'll represent large constant attributes as DenseResourceElementsAttrs,
   // and small as AlignedBytes.
   ElementsAttr value;
+  size_t minAlignment = loweringState.getMinimumCpuAlignment();
   if (auto elementsAttr = dyn_cast<ArrayElementsAttr>(constOp.getValue())) {
     size_t size = elementsAttr.getRawData().size();
-    // TODO(#6838): Alignment probably needs to be a pass attribute.
-    // TODO(#6912): For now, leave alignment as 1. It appears 'aligned'
-    // attributes are not making it into the runtime respecting arbitrary
-    // alignment constraints.
-    size_t alignment = kPreferredMemoryAlignment;
     Type type = MGP::AlignedBytesType::get(
         loweringState.getExecuteOpBuilder().getContext(),
-        static_cast<uint64_t>(size), static_cast<uint64_t>(alignment));
+        static_cast<uint64_t>(size), static_cast<uint64_t>(minAlignment));
     std::string name =
         "const_" + std::to_string(loweringState.getExecuteNextConstId());
     const char *data =
         reinterpret_cast<const char *>(elementsAttr.getRawData().data());
     auto resourceManager = DenseResourceElementsHandle::getManagerInterface(
         loweringState.getExecuteOpBuilder().getContext());
-    value = getAttrForTensorData(type, name, ArrayRef<char>(data, size),
-                                 resourceManager, alignment);
+    value = getAttrForTensorData(
+        type, name, ArrayRef<char>(data, size), resourceManager, minAlignment,
+        /*forceOutOfLine=*/false, /*mustBeAligned=*/true);
   } else if (auto resource =
                  dyn_cast<DenseResourceElementsAttr>(constOp.getValue())) {
     size_t size = resource.size();
     size_t alignment = resource.getRawHandle().getBlob()->getDataAlignment();
     assert(alignment > 0 && "resource blob must have non-zero alignment");
+    if (alignment < minAlignment)
+      return constOp->emitError()
+             << "dense_resource has alignment " << alignment
+             << " however minimum alignment has been set as " << minAlignment
+             << ".";
     Type type = MGP::AlignedBytesType::get(
         loweringState.getExecuteOpBuilder().getContext(),
         static_cast<uint64_t>(
@@ -217,6 +221,18 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
             CHAR_BIT),
         static_cast<uint64_t>(alignment));
     value = DenseResourceElementsAttr::get(type, resource.getRawHandle());
+  } else if (auto alignedBytes =
+                 dyn_cast<AlignedBytesAttr>(constOp.getValue())) {
+    Optional<size_t> optAlignment = alignedBytes.getAlign();
+    if (optAlignment && *optAlignment < minAlignment)
+      return constOp->emitError()
+             << "m.aligned_bytes has alignment " << *optAlignment
+             << " however minimum alignment has been set as " << minAlignment
+             << ".";
+    size_t alignment = optAlignment.value_or(minAlignment);
+    value =
+        AlignedBytesAttr::get(loweringState.getExecuteOpBuilder().getContext(),
+                              alignment, alignedBytes.getData());
   } else {
     return constOp->emitError("unsupported constant attribute type");
   }
@@ -389,7 +405,8 @@ void MOToPrimitivesPass::runOnOperation() {
   for (auto graphOp :
        llvm::make_early_inc_range(theModule.getOps<MO::GraphOp>())) {
     if (failed(MOGraphLowering(graphOp, converter,
-                               compiledFrameworkLabel.getValue())
+                               compiledFrameworkLabel.getValue(),
+                               minimumCpuAlignment.getValue())
                    .run()))
       return signalPassFailure();
   }

@@ -18,7 +18,11 @@ def MOToPrimitives : Pass<"mo-to-primitives", "ModuleOp"> {
   let options = [
     Option<"compiledFrameworkLabel", "compiled-framework-label", "std::string",
       /*default=*/"\"tf\"",
-      "The label for resulting MGP graph. Default is tf.">];
+      "The label for resulting MGP graph. Default is tf.">,
+    Option<"minimumCpuAlignment", "min-cpu-alignment", "size_t",
+      /*default=*/"kPreferredMemoryAlignment",
+     "Minimum alignment for all CPU buffers (both constants and allocated)">,
+  ];
   let dependentDialects = ["BEF::BEFDialect",
                            "MGP::MGPDialect",
                            "GRT::GRTDialect"];

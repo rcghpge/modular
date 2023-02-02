@@ -179,7 +179,9 @@ def MO_ConstantOp : MO_Op<"constant", [ConstantLike, Pure]> {
   let arguments = (ins
     ConfinedAttr<
       ElementsAttr,
-      [AnyAttrOf<[M_ArrayElementsAttr, Builtin_DenseResourceElementsAttr]>]
+      [AnyAttrOf<[M_ArrayElementsAttr,
+                  Builtin_DenseResourceElementsAttr,
+                  M_AlignedBytesAttr]>]
     >:$value);
   let results = (outs MO_Tensor:$result);
 
