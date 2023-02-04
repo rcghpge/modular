@@ -89,7 +89,10 @@ LogicalResult ConcatOp::verify() {
   if (numInputs < 2)
     return emitError("concat must have at least 2 input tensors");
 
-  SmallVector<TypedValue<TensorType>> tensors{getInputs()};
+  SmallVector<TypedValue<TensorType>> tensors;
+  for (Value input : getInputs())
+    tensors.emplace_back(cast<TypedValue<TensorType>>(input));
+
   tensors.emplace_back(getResult());
   if (failed(impl::verifyMatchingRanks(tensors)))
     return emitError("input and output ranks must match if static");

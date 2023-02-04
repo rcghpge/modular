@@ -168,7 +168,7 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     // Add it to the MLIR.
     mlir::Operation *invokeOp =
         loweringState.getExecuteOpBuilder().create(opState);
-    return invokeOp->getResult(0);
+    return cast<TypedValue<MGP::CpuTensorSpecType>>(invokeOp->getResult(0));
   };
 
   LoweredTensor output;
