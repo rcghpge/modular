@@ -39,7 +39,7 @@ static void mgp_cpu_buffer_constant(Result<BufferRef> outBuffer,
                                     BEFAttr<ArrayRef<uint8_t>> aValue,
                                     BEFAttr<uint64_t> bRawAlign,
                                     Runtime &runtime) {
-  TIME_PROFILER_SCOPE(1, "mgp.buffer_constant");
+  TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_constant");
   std::optional<size_t> optAlign;
   if (hasRawSize(*bRawAlign))
     optAlign = rawSizeToRuntimeSize(*bRawAlign);
@@ -58,7 +58,7 @@ static void mgp_cpu_buffer_alloc_static(Context &ctx, Result<BufferRef> result,
                                         BEFAttr<uint64_t> aSize,
                                         BEFAttr<uint64_t> bRawAlign,
                                         Runtime &runtime) {
-  TIME_PROFILER_SCOPE(1, "mgp.buffer_alloc");
+  TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_alloc");
   if (!isValidPlainSize(*aSize)) {
     result.setToError("invalid size attribute");
     return;
@@ -76,7 +76,7 @@ static void mgp_cpu_buffer_alloc_dynamic(Context &ctx, size_t runtimeSize,
                                          Result<BufferRef> result,
                                          BEFAttr<uint64_t> rawAlign,
                                          Runtime &runtime) {
-  TIME_PROFILER_SCOPE(1, "mgp.buffer_alloc_dynamic");
+  TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_alloc_dynamic");
   if (!isValidRawAlign(*rawAlign)) {
     result.setToError("invalid align attribute");
     return;
@@ -116,7 +116,7 @@ static void mgp_cpu_buffer_realloc_static(
     Chain inChain, Context &ctx, Result<BufferRef> result,
     BEFAttr<uint64_t> aSlot, BEFAttr<uint64_t> bBuffer, BEFAttr<uint64_t> cSize,
     BEFAttr<uint64_t> dRawAlign, Runtime &runtime) {
-  TIME_PROFILER_SCOPE(1, "mgp.buffer_realloc_static");
+  TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_realloc_static");
   if (!isValidPlainSize(*cSize)) {
     result.setToError("invalid size attribute");
     return;
@@ -135,7 +135,7 @@ static void mgp_cpu_buffer_realloc_dynamic(
     Chain inChain, Context &ctx, size_t runtimeSize, Result<BufferRef> result,
     BEFAttr<uint64_t> aSlot, BEFAttr<uint64_t> bBuffer,
     BEFAttr<uint64_t> cRawAlign, Runtime &runtime) {
-  TIME_PROFILER_SCOPE(1, "mgp.buffer_realloc_dynamic");
+  TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_realloc_dynamic");
   if (!isValidRawAlign(*cRawAlign)) {
     result.setToError("invalid align attribute");
     return;
@@ -150,7 +150,7 @@ mgp_cpu_buffer_realloc_spec(Chain inChain, Context &ctx, const TensorSpec &spec,
                             Result<BufferRef> result, BEFAttr<uint64_t> aSlot,
                             BEFAttr<uint64_t> bBuffer,
                             BEFAttr<uint64_t> cRawAlign, Runtime &runtime) {
-  TIME_PROFILER_SCOPE(1, "mgp.buffer_realloc_spec");
+  TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_realloc_spec");
   if (!isValidRawAlign(*cRawAlign)) {
     result.setToError("invalid align attribute");
     return;
@@ -167,7 +167,7 @@ mgp_cpu_buffer_realloc_spec(Chain inChain, Context &ctx, const TensorSpec &spec,
 /// Fulfills the result with the owning reference to the deep copy of inBuffer.
 static void mgp_cpu_buffer_copy(Context &ctx, AsyncValueRef<BufferRef> inBuffer,
                                 Result<BufferRef> outBuffer, Runtime &runtime) {
-  TIME_PROFILER_SCOPE(1, "mgp.buffer_copy");
+  TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_copy");
   std::move(outBuffer).emplace(inBuffer->deepCopy(runtime));
 }
 
@@ -177,7 +177,7 @@ static void mgp_cpu_buffer_copy(Context &ctx, AsyncValueRef<BufferRef> inBuffer,
 
 /// Set each byte of the given inBuffer with the given Value, returns chain.
 static Chain mgp_cpu_buffer_set(BufferRef &buffer, BEFAttr<uint8_t> value) {
-  TIME_PROFILER_SCOPE(1, "mgp.buffer_set");
+  TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_set");
   memset(buffer.getMutableBuffer(), *value, buffer.getSize());
   return {};
 }
@@ -190,7 +190,7 @@ static Chain mgp_cpu_buffer_set(BufferRef &buffer, BEFAttr<uint8_t> value) {
 /// primitive contexts.
 static void mgp_context_create(Result<Context> result,
                                BEFAttr<uint64_t> numSlots) {
-  TIME_PROFILER_SCOPE(1, "mgp.context_create");
+  TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.context_create");
   std::move(result).emplace(*numSlots);
 }
 
@@ -219,7 +219,7 @@ static void mgp_cpu_tensor_spec_create(RemainingArguments runtimeDims,
                                        BEFAttr<ArrayRef<uint64_t>> aRawDims,
                                        BEFAttr<uint8_t> bRawDType,
                                        Runtime &runtime) {
-  TIME_PROFILER_SCOPE(1, "mgp.tensor_spec_create");
+  TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.tensor_spec_create");
   DType dtype(*bRawDType);
   if (dtype.isInvalid()) {
     outSpec.setToError("invalid dtype");
@@ -250,7 +250,7 @@ static void mgp_cpu_tensor_spec_create_dynamic(
     DType runtimeDType, RemainingArguments runtimeDims,
     Result<TensorSpec> outSpec, BEFAttr<ArrayRef<uint64_t>> rawDims,
     Runtime &runtime) {
-  TIME_PROFILER_SCOPE(1, "mgp.tensor_spec_create_dynamic");
+  TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.tensor_spec_create_dynamic");
   if (runtimeDType.isInvalid()) {
     outSpec.setToError("invalid dtype");
     return;
@@ -327,7 +327,7 @@ static void mgp_cpu_tensor_create(Chain inChain,
                                   const TensorSpec &tensorSpec,
                                   Result<Tensor> outTensor, Runtime &runtime,
                                   EncodedLocation loc) {
-  TIME_PROFILER_SCOPE(1, "mgp.tensor_create");
+  TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.tensor_create");
   size_t expectedSize = tensorSpec.getSizeInBytes();
   size_t actualSize = bufferRef.get().getSize();
   if (expectedSize != actualSize)
@@ -361,7 +361,7 @@ static void mgp_cpu_tensor_extract(AsyncValueRef<Tensor> tensor,
                                    Result<BufferRef> outBuffer,
                                    Result<TensorSpec> outTensorSpec,
                                    Runtime &runtime) {
-  TIME_PROFILER_SCOPE(1, "mgp.tensor_extract");
+  TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.tensor_extract");
   std::move(outTensorSpec).emplace(tensor->getSpec());
   if (tensor.getPointer()->isUnique())
     // If this is the only reference to the input tensor then it cannot

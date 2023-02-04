@@ -244,7 +244,7 @@ static LogicalResult populateTensorResults(
 static ErrorOrSuccess executeModelOnce(MLIRContext *ctx, const Model *model,
                                        Runtime &runtime,
                                        const ExecutorDriverCLOptions &options) {
-  TIME_PROFILER_SCOPE(1, "runModelOnce");
+  TIME_PROFILER_SCOPE(Trace::kOther, 1, "runModelOnce");
   UNWRAP_ERROR(executableModel, model->setup(runtime));
   UNWRAP_ERROR(inputTensorGenerators,
                createTensorGenerators(options.inputGenKind, options.inputShapes,
@@ -332,7 +332,7 @@ executeModelRepeated(MLIRContext *ctx, const Model *model, Runtime &runtime,
 
   // Measure the time taken for each inference and print it.
   for (unsigned i = 0, e = options.numRuns; i != e; ++i) {
-    TIME_PROFILER_SCOPE(1, "runModelOnce");
+    TIME_PROFILER_SCOPE(Trace::kOther, 1, "runModelOnce");
     // Fill the arguments with borrowed references to the tensor data
     // since the input buffers live across all executions.
     SmallVector<AnyAsyncValueRef> args;
