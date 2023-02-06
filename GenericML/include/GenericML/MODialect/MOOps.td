@@ -28,22 +28,22 @@ class MO_Op<string mnemonic, list<Trait> traits = []>
     : Op<MODialect, mnemonic, [MO_MOOpInterface] # traits>;
 
 class MO_ElementWiseOp<string name, list<Trait> traits = []>
-    : MO_Op<name, traits # [Pure, SameOperandsAndResultType]> {
+    : MO_Op<name, traits # [Pure, SameOperandsAndResultType, MO_Parameterization]> {
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` qualified(type($result))
   }];
-}
-
-class MO_ElementWiseUnaryOp<string name, list<Trait> traits = []>
-    : MO_ElementWiseOp<name, traits # [MO_ElementWiseUnary, MO_Parameterization]> {
-  let arguments = (ins MO_Tensor:$input);
 
   let extraClassDeclaration = [{
     LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter) {
       return impl::resolveElemwiseUnknownParameters(getOperation(), rewriter);
     }
   }];
+}
+
+class MO_ElementWiseUnaryOp<string name, list<Trait> traits = []>
+    : MO_ElementWiseOp<name, traits # [MO_ElementWiseUnary]> {
+  let arguments = (ins MO_Tensor:$input);
 }
 
 class MO_ElementWiseBinaryOp<string name, list<Trait> traits = []>
