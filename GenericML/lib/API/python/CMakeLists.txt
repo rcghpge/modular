@@ -108,6 +108,16 @@ add_custom_command(OUTPUT ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl
   VERBATIM
 )
 
+# Note: the `BYPRODUCTS` specification above is correct, but the generated
+# `clean` target won't be correct (i.e. CMake will issue a hard error at
+# configure time). Account for this by explicitly setting the
+# `ADDITIONAL_CLEAN_FILES` on the directory which makes the generated `clean`
+# target work correctly.
+set_target_properties(modular-engine
+  PROPERTIES
+  ADDITIONAL_CLEAN_FILES ${UNPACKED_WHEEL}
+)
+
 if(APPLE)
   set(REPAIR_CMD ${Python3_EXECUTABLE} -m delocate.cmd.delocate_wheel)
 else()
