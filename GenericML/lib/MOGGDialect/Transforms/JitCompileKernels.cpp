@@ -8,6 +8,7 @@
 #include <unordered_map>
 
 #include "GenericML/KGENStubBuilder/Builder.h"
+#include "GenericML/KGENStubBuilder/StubCompiler.h"
 
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -173,18 +174,13 @@ struct JitCompileKernels
       // Each kernel works on a clean module. We would need to compile them all
       // into the same one if not. The module will not be legal post elaboration
       // and will have lost any references.
-      OwningOpRef<ModuleOp> freshModule = baseModule.clone();
-
-      // The propagate the hacky shape inference name.
-      std::string shapeInferFunc = getShapeInferenceName(op);
+      OwningOpRef<ModuleOp> kgenModule = baseModule.clone();
 
       // Start building up the KGEN kernel.
-      Stub::KGENBuilder builder{manager,        op,
-                                *freshModule,   stubKernelName,
-                                shapeInferFunc, useSearch.getValue()};
+      Stub::KGENBuilder builder{manager, op, *kgenModule};
 
       // Lower the basic stub function.
-      builder.startLowering();
+      builder.startLowering(stubKernelName);
 
       // Lower the operation using a vectorized map over an elementwise lambda.
       auto errOr = builder.lowerToElementwiseLambda(op.getBody().front());
@@ -193,20 +189,22 @@ struct JitCompileKernels
         return;
       }
 
+      // The propagate the hacky shape inference name.
+      std::string shapeInferFunc = getShapeInferenceName(op);
+
+      // Replace the original kernel with a call to the compiled jit code.
+      MOGG::ExecuteCompiledOp jitExecute =
+          builder.createExecuteOperation(stubKernelName, shapeInferFunc);
+      op->replaceAllUsesWith(jitExecute.getResults());
+      jittedKernels.insert({stubKernelName, jitExecute});
+      op->erase();
+
       // Run KGEN elaboration then compile to binary.
-      auto result = builder.compile();
-      if (result.isError()) {
+      Stub::StubCompiler compiler{*kgenModule, graph, useSearch.getValue()};
+      if (failed(compiler.compile(stubKernelName))) {
         pass->signalPassFailure();
         return;
       }
-
-      // Replace the original kernel with a call to the compiled jit code.
-      MOGG::ExecuteCompiledOp jitExecute = result.takeValue();
-      op->replaceAllUsesWith(jitExecute.getResults());
-      jittedKernels.insert({stubKernelName, jitExecute});
-
-      // Remove the original operation from the graph.
-      op->erase();
     });
   }
 };
