@@ -174,15 +174,15 @@ public:
       cl::init(64)};
 
   /// This tells the execution driver how to print output tensors;
-  cl::opt<Kernel::ResultOutputStyle> resultOutputStyle{
+  cl::opt<Kernels::ResultOutputStyle> resultOutputStyle{
       "result-output-style", cl::desc("Specify how to display outputs"),
       cl::values(
-          clEnumValN(Kernel::ResultOutputStyle::kFull, "full",
+          clEnumValN(Kernels::ResultOutputStyle::kFull, "full",
                      "Display all the elements of result"),
           clEnumValN(
-              Kernel::ResultOutputStyle::kCompact, "compact",
+              Kernels::ResultOutputStyle::kCompact, "compact",
               "Display a few elements at the start and end of each dimension")),
-      cl::init(Kernel::ResultOutputStyle::kCompact)};
+      cl::init(Kernels::ResultOutputStyle::kCompact)};
 
   cl::opt<bool> enableTelemetry{"enable-telemetry",
                                 cl::desc("Enable emitting telemetry signals."),

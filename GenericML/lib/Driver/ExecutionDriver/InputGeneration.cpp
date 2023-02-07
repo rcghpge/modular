@@ -37,18 +37,18 @@ static ErrorOrSuccess fillWithElements(Tensor &tensor,
 
   switch (inputGenKind) {
   case InputGenerationKind::kRandom:
-    return Kernel::fillRandom(tensor.getMutableBuffer(),
-                              tensor.getShape().getNumElements(), eltType);
+    return Kernels::fillRandom(tensor.getMutableBuffer(),
+                               tensor.getShape().getNumElements(), eltType);
 
   case InputGenerationKind::kOnes: {
-    ErrorOrSuccess result = Kernel::getScalarOne(elementBuffer, eltType);
+    ErrorOrSuccess result = Kernels::getScalarOne(elementBuffer, eltType);
     if (failed(result))
       return result;
     break;
   }
   case InputGenerationKind::kNegOnes: {
     ErrorOrSuccess result =
-        Kernel::getScalarNegativeOne(elementBuffer, eltType);
+        Kernels::getScalarNegativeOne(elementBuffer, eltType);
     if (failed(result))
       return result;
     break;
@@ -73,9 +73,9 @@ static ErrorOrSuccess fillWithElements(Tensor &tensor,
   }
 
   // Fill the tensor with the 0, 1, -1 value.
-  return Kernel::fillHomogeneous(tensor.getMutableBuffer(),
-                                 tensor.getShape().getNumElements(), eltType,
-                                 elementBuffer);
+  return Kernels::fillHomogeneous(tensor.getMutableBuffer(),
+                                  tensor.getShape().getNumElements(), eltType,
+                                  elementBuffer);
 }
 
 static ErrorOr<Tensor> allocateInput(const TensorShape &userShape,

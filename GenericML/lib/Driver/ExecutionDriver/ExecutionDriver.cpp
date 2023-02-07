@@ -165,7 +165,7 @@ static void waitForResults(const ExecutableModel *model,
 static LogicalResult
 printTensorResults(const ExecutableModel *model,
                    MutableArrayRef<AnyAsyncValueRef> results,
-                   MLIRContext *context, Kernel::ResultOutputStyle outputStyle,
+                   MLIRContext *context, Kernels::ResultOutputStyle outputStyle,
                    raw_ostream &os) {
   StringRef name = model->getModel()->getName();
 
@@ -188,8 +188,8 @@ printTensorResults(const ExecutableModel *model,
       // Handle tensor types.
       if (auto *tensor = dyn_cast<Tensor>(result)) {
         os.flush();
-        if (auto err = Kernel::printTensor(tensor->getBuffer(),
-                                           tensor->getSpec(), outputStyle)) {
+        if (auto err = Kernels::printTensor(tensor->getBuffer(),
+                                            tensor->getSpec(), outputStyle)) {
           os << "<error: " << err.getError() << '>';
           hadError = true;
         }
@@ -363,8 +363,8 @@ executeModelRepeated(MLIRContext *ctx, const Model *model, Runtime &runtime,
   TensorSpec cpuTimesMillisShape(TensorShape({options.numRuns.getValue()}),
                                  DType::f64);
 
-  RETURN_ERROR(Kernel::printTensor(cpuTimesMillis.data(), cpuTimesMillisShape,
-                                   Kernel::ResultOutputStyle::kFull));
+  RETURN_ERROR(Kernels::printTensor(cpuTimesMillis.data(), cpuTimesMillisShape,
+                                    Kernels::ResultOutputStyle::kFull));
   outs().flush();
 
   // There is nothing to do if there is no results.
