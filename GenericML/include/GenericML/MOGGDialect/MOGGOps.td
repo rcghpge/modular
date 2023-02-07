@@ -94,6 +94,28 @@ def MOGG_OutputOp
 // MOGG jit ops
 //===----------------------------------------------------------------------===//
 
+def MOGG_LitOp : MOGG_Op<"lit", [SingleBlock]> {
+  let summary = "Represents a target to call";
+  let description = [{
+    This represents an operation which is implemented by the kernel name.
+    It will be jitted by the jit compiler pass into a compiled object.
+  }];
+
+   let arguments = (ins
+     StrAttr:$litKernelTarget,
+     StrAttr:$originalOpName,
+     Variadic<MO_Tensor>:$operands
+   );
+
+   let results = (outs Variadic<MO_Tensor>:$results);
+
+   let assemblyFormat = [{
+     $litKernelTarget attr-dict `(`($operands^)?`)`
+       (`:` type($operands)^)? (`->` type($results)^)?
+   }];
+ }
+
+
 def MOGG_LoadJitKernelOp : MOGG_LowerableOp<"load_compiled_kernel"> {
   let summary = "Loads a compiled object into the JIT symbol table";
   let description = [{

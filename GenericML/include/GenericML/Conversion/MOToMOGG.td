@@ -23,7 +23,17 @@ def MOToMOGG : Pass<"mo-to-mogg", "ModuleOp"> {
             "Compile lowered kernels into the BEF as JITed kernels">,
   ];
 
-  let dependentDialects = ["MOGG::MOGGDialect"];
+  let dependentDialects = [
+      "M::MO::MODialect",
+      "M::MOGG::MOGGDialect",
+      "M::KGEN::KGENDialect",
+      "M::KGEN::POP::POPDialect",
+      "M::KGEN::ZAP::ZAPDialect",
+      "mlir::index::IndexDialect",
+      "mlir::scf::SCFDialect",
+      "M::DebugInfo::DebugInfoDialect",
+      "M::HLCF::HLCFDialect",
+  ];
 }
 
 #endif // GENERICML_CONVERSION_MOTOMOGG_TD

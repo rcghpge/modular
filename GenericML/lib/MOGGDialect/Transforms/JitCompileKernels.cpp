@@ -44,7 +44,12 @@ std::string getShapeInferenceName(MOGG::ElementwiseOp op) {
   if (block.getOperations().size() != 2)
     return "NoShapeInferFunc";
 
-  return (*block.begin()).getName().stripDialect().str();
+  // In practice shouldn't be reachable, but legally could just be a return
+  // block for the case of an empty elementwise op.
+  auto asLit = dyn_cast<MOGG::LitOp>(*block.begin());
+  if (!asLit)
+    return "NoShapeInferFunc";
+  return asLit.getOriginalOpName().str();
 }
 
 // We create a mangled name which exactly matches the operation. The number of
@@ -91,7 +96,7 @@ std::string createMangledName(MOGG::ElementwiseOp op) {
       break;
     }
 
-    name += innerOp.getName().stripDialect().str() + "_";
+    name += cast<MOGG::LitOp>(innerOp).getOriginalOpName().str() + "_";
 
     // Add operands to the mangling.
     for (Value input : innerOp.getOperands())
@@ -208,6 +213,7 @@ struct JitCompileKernels
     });
   }
 };
+
 } // namespace
 
 } // namespace M::MOGG
