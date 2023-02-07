@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/GraphCompiler.h"
+#include "GenericML/GraphCompiler/Passes.h"
 
 #include "GenericML/Conversion/MOToMOGG.h"
 #include "GenericML/Conversion/MOToPrimitives.h"
@@ -16,6 +17,7 @@
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 
 #include "Support/LLVMCompilerForwardDecls.h"
+#include "mlir/Pass/PassManager.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "mlir/Transforms/Passes.h"
 
@@ -50,6 +52,32 @@ void registerDialectsAndPasses(mlir::DialectRegistry &registry) {
   mlir::registerCSEPass();
   mlir::registerSCCPPass();
   mlir::registerCanonicalizerPass();
+}
+
+void buildMoToMGPPipeline(mlir::PassManager &pm, const PassOptions &opts) {
+  pm.addPass(mlir::createCSEPass());
+
+  MO::MOToMOGGOptions moToMoggOpts;
+  moToMoggOpts.useJit = opts.useJit;
+  pm.addPass(MO::createMOToMOGG(moToMoggOpts));
+  pm.addPass(mlir::createCSEPass());
+
+  if (opts.useJit) {
+    // If we are jitting then we need to compile the jit kernels as well.
+    MOGG::JitCompileKernelsOptions jitOpts;
+    jitOpts.useSearch = opts.useKgenSearch;
+    pm.addPass(MOGG::createJitCompileKernels(jitOpts));
+
+    if (opts.fuseJitKernels) {
+      pm.addPass(MOGG::createFuseElementwise());
+      pm.addPass(mlir::createCSEPass());
+    }
+  }
+
+  pm.addPass(MGP::createMOToPrimitives(opts.moToPrimOpts));
+
+  pm.addPass(mlir::createCSEPass());
+  pm.addPass(MGP::createPeepholeTensorExtract());
 }
 
 } // namespace M::MO
