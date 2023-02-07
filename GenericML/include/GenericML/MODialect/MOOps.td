@@ -752,17 +752,12 @@ def MO_GatherOp : MO_Op<"gather", [Pure]> {
 
 class MO_DotBase<string name, list<Trait> traits = []>
   : MO_Op<name, traits # [SameOperandsAndResultElementType]> {
-  let arguments = (ins MO_Tensor:$input_a, MO_Tensor:$input_b);
-  let results = (outs MO_Tensor:$result);
-
   let description = [{
     Base class for all generic dot products (i.e. tensor contractions with two
     inputs), for example matmuls.
   }];
 
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
-  }];
+  let results = (outs MO_Tensor:$result);
 
   let hasVerifier = 1;
 }
@@ -780,9 +775,16 @@ def MO_MatmulOp : MO_DotBase<"matmul", [MO_MatmulLike]> {
     %res = mo.matmul(%lhs, %rhs) : (!mo.tensor<[10, 20], f32>, !mo.tensor<[20, 5], f32>) -> !mo.tensor<[10, 5], f32>
     ```
   }];
+
+  let arguments = (ins MO_Tensor:$input_a, MO_Tensor:$input_b);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
 }
 
-def MO_BatchMatmulOp : MO_DotBase<"batch_matmul", [MO_MatmulLike]> {
+def MO_BatchMatmulOp : MO_DotBase<"batch_matmul",
+    [MO_MatmulLike, DeclareOpInterfaceMethods<MO_Parameterization>]> {
   let summary = "Batched matrix-matrix multiplication";
   let description = [{
     Perform matrix multiplication on two batches of matrices, represented by
@@ -799,6 +801,20 @@ def MO_BatchMatmulOp : MO_DotBase<"batch_matmul", [MO_MatmulLike]> {
       mo.tensor<[3, 4, 5], f32>, !mo.tensor<[3, 5, 6], f32>
     ) -> !mo.tensor<[3, 4, 6], f32>
     ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input_a,
+    MO_Tensor:$input_b,
+    KGEN_ParamDeclArrayAttr:$paramDecls);
+
+  let builders = [
+    OpBuilder<(ins "Type":$resTy, "Value":$inputA, "Value":$inputB)>,
+  ];
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($paramDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 
