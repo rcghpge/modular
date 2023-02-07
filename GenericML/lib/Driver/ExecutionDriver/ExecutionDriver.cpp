@@ -247,8 +247,9 @@ static ErrorOrSuccess executeModelOnce(MLIRContext *ctx, const Model *model,
   TIME_PROFILER_SCOPE(Trace::kOther, 1, "runModelOnce");
   UNWRAP_ERROR(executableModel, model->setup(runtime));
   UNWRAP_ERROR(inputTensorGenerators,
-               createTensorGenerators(options.inputGenKind, options.inputShapes,
-                                      options.inputData, model, runtime));
+               createTensorGenerators(
+                   options.inputGenKind, options.inputShapes, options.inputData,
+                   options.minimumCpuAlignment, model, runtime));
 
   // Fill the arguments.  We are running the model once so we pass in the input
   // tensors directly (the model will deallocate them when it is done with
@@ -297,8 +298,9 @@ executeModelRepeated(MLIRContext *ctx, const Model *model, Runtime &runtime,
   UNWRAP_ERROR(executableModel, model->setup(runtime));
 
   UNWRAP_ERROR(inputTensorGenerators,
-               createTensorGenerators(options.inputGenKind, options.inputShapes,
-                                      options.inputData, model, runtime));
+               createTensorGenerators(
+                   options.inputGenKind, options.inputShapes, options.inputData,
+                   options.minimumCpuAlignment, model, runtime));
 
   // Run the model numWarmup times to warmup the execution. This is performed to
   // remove any added overhead due to initial setup of the model. The loop is

@@ -221,7 +221,8 @@ ErrorOr<ITensorGeneratorPtr>
 M::createTensorGenerator(size_t tensorIdx, InputGenerationKind defaultGen,
                          ArrayRef<InputDataSpec> inputDataSpecs,
                          const TensorShape &userShape,
-                         const QuantTensorSpec &modelSpec, Runtime &runtime) {
+                         const QuantTensorSpec &modelSpec,
+                         size_t minimumCpuAlignment, Runtime &runtime) {
   std::optional<InputDataSpec> spec;
   for (const auto &inputDataSpec : inputDataSpecs) {
     if (inputDataSpec.tensorIdx == tensorIdx)
@@ -232,27 +233,25 @@ M::createTensorGenerator(size_t tensorIdx, InputGenerationKind defaultGen,
   if (spec && std::holds_alternative<InputGenerationKind>(spec->inputGen))
     defaultGen = std::get<InputGenerationKind>(spec->inputGen);
 
-  auto alignment = kPreferredMemoryAlignment;
   if (!spec || std::holds_alternative<InputGenerationKind>(spec->inputGen)) {
     UNWRAP_ERROR(filledGenerator,
                  FilledTensorGenerator::create(defaultGen, userShape, modelSpec,
-                                               runtime, alignment));
+                                               runtime, minimumCpuAlignment));
     return std::make_unique<FilledTensorGenerator>(std::move(filledGenerator));
   }
 
   auto filename = std::get<std::filesystem::path>(spec->inputGen);
   // pack vector of flags into single int
-  UNWRAP_ERROR(fileGenerator,
-               FileTensorGenerator::create(filename, userShape, modelSpec,
-                                           runtime, alignment, spec->genFlags));
+  UNWRAP_ERROR(fileGenerator, FileTensorGenerator::create(
+                                  filename, userShape, modelSpec, runtime,
+                                  minimumCpuAlignment, spec->genFlags));
   return std::make_unique<FileTensorGenerator>(std::move(fileGenerator));
 }
 
-ErrorOr<SmallVector<ITensorGeneratorPtr, 3>>
-M::createTensorGenerators(InputGenerationKind inputGenKind,
-                          ArrayRef<TensorShape> userInputShapes,
-                          ArrayRef<InputDataSpec> inputDataSpecs,
-                          const Model *model, Runtime &runtime) {
+ErrorOr<SmallVector<ITensorGeneratorPtr, 3>> M::createTensorGenerators(
+    InputGenerationKind inputGenKind, ArrayRef<TensorShape> userInputShapes,
+    ArrayRef<InputDataSpec> inputDataSpecs, size_t minimumCpuAlignment,
+    const Model *model, Runtime &runtime) {
   SmallVector<TensorShape> inputShapes(userInputShapes.begin(),
                                        userInputShapes.end());
   auto numInputs = model->getInputSpecs().size();
@@ -281,8 +280,9 @@ M::createTensorGenerators(InputGenerationKind inputGenKind,
   for (size_t i = 0; i < numInputs; i++) {
     const auto &userShape = inputShapes[i];
     const auto &modelSpec = model->getInputSpecs()[i];
-    auto generatorOrError = createTensorGenerator(
-        i, inputGenKind, inputDataSpecs, userShape, modelSpec, runtime);
+    auto generatorOrError =
+        createTensorGenerator(i, inputGenKind, inputDataSpecs, userShape,
+                              modelSpec, minimumCpuAlignment, runtime);
     if (generatorOrError) {
       return Error("Input " + llvm::Twine(i) + ": " +
                    generatorOrError.getError());

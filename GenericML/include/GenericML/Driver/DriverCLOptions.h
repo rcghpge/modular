@@ -166,6 +166,13 @@ public:
           "used. If Truncate is specified, the file size need not be an exact "
           "multiple of the tensor size (the remainder will be ignored).")};
 
+  cl::opt<size_t> minimumCpuAlignment{
+      "minimum-cpu-alignment",
+      cl::desc(
+          "The minimum byte alignment for all CPU-allocated buffers. Default "
+          "is 64 bytes for compatability with the stock TensorFlow runtime."),
+      cl::init(64)};
+
   /// This tells the execution driver how to print output tensors;
   cl::opt<Kernel::ResultOutputStyle> resultOutputStyle{
       "result-output-style", cl::desc("Specify how to display outputs"),

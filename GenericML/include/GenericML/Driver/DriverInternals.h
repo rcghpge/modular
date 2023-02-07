@@ -32,7 +32,8 @@ ErrorOr<ITensorGeneratorPtr>
 createTensorGenerator(size_t tensorIdx, InputGenerationKind defaultGen,
                       ArrayRef<InputDataSpec> inputDataSpecs,
                       const TensorShape &userShape,
-                      const QuantTensorSpec &modelSpec, Runtime &runtime);
+                      const QuantTensorSpec &modelSpec,
+                      size_t minimumCpuAlignment, Runtime &runtime);
 
 /// Initialize raw pointers for each model input with the correct data fill.
 /// Uses inputGenKind unless a per-tensor input source is specified in
@@ -41,11 +42,10 @@ createTensorGenerator(size_t tensorIdx, InputGenerationKind defaultGen,
 /// 2. per-tensor data from a file (stubbed out but not implemented yet)
 /// The tensors can be accessed by calling getNextInput().
 /// Returns ownership of tensor generators (containing tensors) to the caller.
-ErrorOr<SmallVector<ITensorGeneratorPtr, 3>>
-createTensorGenerators(InputGenerationKind inputGenKind,
-                       ArrayRef<TensorShape> userInputShapes,
-                       ArrayRef<InputDataSpec> inputDataSpecs,
-                       const Model *model, Runtime &runtime);
+ErrorOr<SmallVector<ITensorGeneratorPtr, 3>> createTensorGenerators(
+    InputGenerationKind inputGenKind, ArrayRef<TensorShape> userInputShapes,
+    ArrayRef<InputDataSpec> inputDataSpecs, size_t minimumCpuAlignment,
+    const Model *model, Runtime &runtime);
 
 ErrorOrSuccess benchmarkModel(const Model *model, Runtime &runtime,
                               StringRef benchmarkName,
