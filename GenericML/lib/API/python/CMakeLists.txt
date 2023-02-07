@@ -89,20 +89,34 @@ add_subdirectory(bindings/modular/engine)
 # This way everything is self-contained in the wheel and will still work after
 # the wheel is pip installed.
 # TODO(#7439): /dev/null is not portable to Windows.
+set(MODULAR_FRAMEWORK_LIBS $<TARGET_FILE:tfl>)
+if(STOCK_TENSORFLOW_FOUND)
+  set(EXTERNAL_TF_EXES
+      "${MODULAR_DERIVED_DIR}/third-party/bin/external-tf-translate;"
+      "${MODULAR_DERIVED_DIR}/third-party/bin/external-tf-tfl-translate;"
+      "${MODULAR_DERIVED_DIR}/third-party/bin/external-tf-opt")
+  list(APPEND MODULAR_FRAMEWORK_LIBS $<TARGET_FILE:tf>)
+endif()
+
 add_custom_command(OUTPUT ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl
   COMMAND ${Python3_EXECUTABLE} -m build --wheel --outdir ${WHEEL_DIR} > /dev/null
   COMMAND ${Python3_EXECUTABLE} -m wheel unpack ${WHEEL_DIR}/${WHEEL_BASENAME}.whl --dest ${WHEEL_DIR} > /dev/null
   COMMAND ${CMAKE_COMMAND} -E make_directory ${UNPACKED_WHEEL}/modular/engine
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:core> ${UNPACKED_WHEEL}/modular/engine/
   COMMAND ${CMAKE_COMMAND} -E make_directory ${UNPACKED_WHEEL}/lib
-  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:tfl> ${UNPACKED_WHEEL}/lib
-  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:KGENCompilerRT> ${UNPACKED_WHEEL}/lib
+  COMMAND ${CMAKE_COMMAND} -E copy ${MODULAR_FRAMEWORK_LIBS} ${UNPACKED_WHEEL}/lib
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${UNPACKED_WHEEL}/bin
+  # NOTE: Use a temporary file so that the copy command succeeds when NOT
+  # STOCK_TENSORFLOW_FOUND.
+  COMMAND ${CMAKE_COMMAND} -E touch ${UNPACKED_WHEEL}/bin/temp
+  COMMAND ${CMAKE_COMMAND} -E copy ${UNPACKED_WHEEL}/bin/temp ${EXTERNAL_TF_EXES} ${UNPACKED_WHEEL}/bin
+  COMMAND ${CMAKE_COMMAND} -E remove ${UNPACKED_WHEEL}/bin/temp
   COMMAND ${Python3_EXECUTABLE} -m wheel pack ${UNPACKED_WHEEL} --dest ${WHEEL_DIR} > /dev/null
   COMMAND ${CMAKE_COMMAND} -E rename ${WHEEL_DIR}/${WHEEL_BASENAME}.whl ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl
   COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_SOURCE_DIR}/build
   COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_SOURCE_DIR}/modular_engine.egg-info
   BYPRODUCTS ${UNPACKED_WHEEL}
-  DEPENDS $<TARGET_FILE:core>
+  DEPENDS $<TARGET_FILE:core> ${MODULAR_FRAMEWORK_LIBS} ${EXTERNAL_TF_EXES}
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   COMMENT "Packing wheel with bindings and shared library dependencies."
   VERBATIM
