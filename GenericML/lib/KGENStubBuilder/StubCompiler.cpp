@@ -47,9 +47,12 @@ ErrorOrSuccess StubCompiler::compileToLLVM(StringRef symbolName) {
   KGEN::CompilationOptions compilationOptions;
   auto compiler = KGEN::ObjectCompiler::create(runtime, ".kgen_cache", symTable,
                                                compilationOptions);
-  auto attr = TargetInfoAttr::getForHost(ctx);
+  ErrorOr<TargetInfoAttr> target = KGEN::getHostTargetInfo(ctx);
+  if (target.isError())
+    return target.takeError();
 
-  auto standaloneOr = compiler->produceStandaloneObjectAttr(attr, true);
+  auto standaloneOr =
+      compiler->produceStandaloneObjectAttr(target.takeValue(), true);
   if (failed(standaloneOr))
     return Error("Failed to create object attribute");
 
