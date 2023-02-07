@@ -24,7 +24,6 @@
 #include "KGEN/KGENCompiler.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENPasses.h"
-#include "Kernels/KGEN.h"
 
 #include "llvm/ADT/StringExtras.h"
 
