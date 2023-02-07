@@ -28,16 +28,10 @@ class MO_Op<string mnemonic, list<Trait> traits = []>
     : Op<MODialect, mnemonic, [MO_MOOpInterface] # traits>;
 
 class MO_ElementWiseOp<string name, list<Trait> traits = []>
-    : MO_Op<name, traits # [Pure, SameOperandsAndResultType, MO_Parameterization]> {
+    : MO_Op<name, traits # [Pure, MO_SameOperandsAndResultType]> {
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` qualified(type($result))
-  }];
-
-  let extraClassDeclaration = [{
-    LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter) {
-      return impl::resolveSameOperandsAndResultTypeUnknownParameters(getOperation(), rewriter);
-    }
   }];
 }
 
@@ -367,7 +361,7 @@ def MO_SqrtOp : MO_ElementWiseUnaryOp<"sqrt", [Idempotent]> {
   }];
 }
 
-def MO_SoftmaxOp : MO_Op<"softmax", [SameOperandsAndResultType, MO_Parameterization, Pure]> {
+def MO_SoftmaxOp : MO_Op<"softmax", [MO_SameOperandsAndResultType, Pure]> {
   let summary = "Perfoms softmax on tensor `input`";
   let description = [{
     Returns softmax probability scores following:
@@ -388,12 +382,6 @@ def MO_SoftmaxOp : MO_Op<"softmax", [SameOperandsAndResultType, MO_Parameterizat
 
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
-  }];
-
-  let extraClassDeclaration = [{
-    LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter) {
-      return impl::resolveSameOperandsAndResultTypeUnknownParameters(getOperation(), rewriter);
-    }
   }];
 }
 

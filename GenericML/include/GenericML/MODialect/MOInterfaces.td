@@ -11,6 +11,7 @@
 #ifndef GENERICML_MODIALECT_MOINTERFACES_TD
 #define GENERICML_MODIALECT_MOINTERFACES_TD
 
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/IR/OpBase.td"
 
 def MO_MOOpInterface : OpInterface<"MOOpInterface"> {
@@ -142,5 +143,15 @@ def MO_ElementWiseBinary : OpInterface<"ElementWiseBinary"> {
   let dependentTraits = [MO_MOOpInterface];
 }
 
+def MO_SameInputOutputTypesParameterization : NativeOpTrait<"SameInputOutputTypesParameterization"> {
+  let cppNamespace = "::M::MO";
+  let dependentTraits = [MO_Parameterization];
+}
+
+def MO_SameOperandsAndResultType : TraitList<[
+  SameOperandsAndResultType,
+  MO_Parameterization,
+  MO_SameInputOutputTypesParameterization,
+]>;
 
 #endif // GENERICML_MODIALECT_MOINTERFACES_TD
