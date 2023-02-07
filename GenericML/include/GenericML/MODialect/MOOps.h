@@ -27,8 +27,8 @@ class ModuleOp;
 } // namespace mlir
 
 namespace M::MO::impl {
-LogicalResult resolveElemwiseUnknownParameters(MOOpParameterizationInterface op,
-                                               mlir::RewriterBase &rewriter);
+LogicalResult resolveSameOperandsAndResultTypeUnknownParameters(
+    MOOpParameterizationInterface op, mlir::RewriterBase &rewriter);
 } // namespace M::MO::impl
 
 // Needed because the ODS definition of some KGEN ops don't have the namespace.

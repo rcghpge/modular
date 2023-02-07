@@ -36,7 +36,7 @@ class MO_ElementWiseOp<string name, list<Trait> traits = []>
 
   let extraClassDeclaration = [{
     LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter) {
-      return impl::resolveElemwiseUnknownParameters(getOperation(), rewriter);
+      return impl::resolveSameOperandsAndResultTypeUnknownParameters(getOperation(), rewriter);
     }
   }];
 }
@@ -367,7 +367,7 @@ def MO_SqrtOp : MO_ElementWiseUnaryOp<"sqrt", [Idempotent]> {
   }];
 }
 
-def MO_SoftmaxOp : MO_Op<"softmax", [SameOperandsAndResultType, Pure]> {
+def MO_SoftmaxOp : MO_Op<"softmax", [SameOperandsAndResultType, MO_Parameterization, Pure]> {
   let summary = "Perfoms softmax on tensor `input`";
   let description = [{
     Returns softmax probability scores following:
@@ -388,6 +388,12 @@ def MO_SoftmaxOp : MO_Op<"softmax", [SameOperandsAndResultType, Pure]> {
 
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+
+  let extraClassDeclaration = [{
+    LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter) {
+      return impl::resolveSameOperandsAndResultTypeUnknownParameters(getOperation(), rewriter);
+    }
   }];
 }
 
