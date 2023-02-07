@@ -10,7 +10,7 @@
 
 #include "GenericML/Conversion/MOToPrimitives.h"
 #include "GenericML/Conversion/Support.h"
-#include "GenericML/Interfaces/MOLoweringInterface.h"
+#include "GenericML/Interfaces/LowerableToMGPInterface.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MODialect/MOOps.h"
 #include "GenericML/MOGGDialect/MOGGDialect.h"
@@ -364,7 +364,7 @@ LogicalResult MOGraphLowering::run() {
     }
 
     // Implementers of the lowering interface define their own logic.
-    if (auto lowerable = dyn_cast<MGP::MOLoweringInterface>(op)) {
+    if (auto lowerable = dyn_cast<MGP::LowerableToMGPInterface>(op)) {
       if (failed(lowerable.lower(loweringState)))
         return failure();
       continue;

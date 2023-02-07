@@ -4,13 +4,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_INTERFACES_MOLOWERINGINTERFACE_TD
-#define GENERICML_INTERFACES_MOLOWERINGINTERFACE_TD
+#ifndef GENERICML_INTERFACES_LOWERABLETOMGPINTERFACE_TD
+#define GENERICML_INTERFACES_LOWERABLETOMGPINTERFACE_TD
 
 include "mlir/IR/OpBase.td"
 
-def MOLoweringInterface :
-    OpInterface<"MOLoweringInterface"> {
+def LowerableToMGPInterface :
+    OpInterface<"LowerableToMGPInterface"> {
   let description = [{
     This interface provides a way for dialects to implement methods needed to
     lower themselves during the MOToPrimitives pass.
@@ -36,4 +36,4 @@ def MOLoweringInterface :
   ];
 }
 
-#endif // GENERICML_INTERFACES_MOLOWERINGINTERFACE_TD
+#endif // GENERICML_INTERFACES_LOWERABLETOMGPINTERFACE_TD

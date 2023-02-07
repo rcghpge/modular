@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_INTERFACES_MOLOWERINGINTERFACE_H
-#define GENERICML_INTERFACES_MOLOWERINGINTERFACE_H
+#ifndef GENERICML_INTERFACES_LOWERABLETOMGPINTERFACE_H
+#define GENERICML_INTERFACES_LOWERABLETOMGPINTERFACE_H
 
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/DialectInterface.h"
@@ -17,6 +17,6 @@ class MOGraphLoweringState;
 
 } // namespace M::MGP
 
-#include "GenericML/Interfaces/MOLoweringInterface.h.inc"
+#include "GenericML/Interfaces/LowerableToMGPInterface.h.inc"
 
-#endif // GENERICML_INTERFACES_MOLOWERINGINTERFACE_H
+#endif // GENERICML_INTERFACES_LOWERABLETOMGPINTERFACE_H

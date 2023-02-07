@@ -4,11 +4,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/Interfaces/MOLoweringInterface.h"
+#include "GenericML/Interfaces/LowerableToMGPInterface.h"
 #include "mlir/IR/Operation.h"
 
 //===----------------------------------------------------------------------===//
-// MOLoweringInterface
+// LowerableToMGPInterface
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/Interfaces/MOLoweringInterface.cpp.inc"
+#include "GenericML/Interfaces/LowerableToMGPInterface.cpp.inc"

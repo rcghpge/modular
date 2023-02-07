@@ -13,7 +13,7 @@
 
 include "GenericML/MOGGDialect/MOGGDialect.td"
 include "GenericML/MODialect/MOTypes.td"
-include "GenericML/Interfaces/MOLoweringInterface.td"
+include "GenericML/Interfaces/LowerableToMGPInterface.td"
 include "Support/MDialect/MAttrs.td"
 include "mlir/IR/FunctionInterfaces.td"
 include "mlir/IR/SymbolInterfaces.td"
@@ -24,7 +24,7 @@ class MOGG_Op<string mnemonic, list<Trait> traits = []>
     : Op<MOGGDialect, mnemonic, traits>;
 
 class MOGG_LowerableOp<string mnemonic, list<Trait> traits = []>
-    : MOGG_Op<mnemonic, traits # [DeclareOpInterfaceMethods<MOLoweringInterface, ["lower"]>]>;
+    : MOGG_Op<mnemonic, traits # [DeclareOpInterfaceMethods<LowerableToMGPInterface, ["lower"]>]>;
 
 //===----------------------------------------------------------------------===//
 // MOGG subgraph ops

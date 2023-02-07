@@ -11,7 +11,7 @@
 #ifndef GENERICML_MOGGDIALECT_MOGGOPS_H
 #define GENERICML_MOGGDIALECT_MOGGOPS_H
 
-#include "GenericML/Interfaces/MOLoweringInterface.h"
+#include "GenericML/Interfaces/LowerableToMGPInterface.h"
 #include "GenericML/MODialect/MOOps.h"
 #include "GenericML/MODialect/MOTypes.h"
 #include "GenericML/MOGGDialect/MOGGDialect.h"
