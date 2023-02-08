@@ -9,6 +9,7 @@
 
 #include "GenericML/Support/BufferRef.h"
 #include "LLCL/ForwardDecls.h"
+#include "LLCL/Runtime/AnyAsyncValueRef.h"
 #include "LLCL/Support/RCRef.h"
 #include "Support/AlignedAlloc.h"
 #include "Support/ErrorOr.h"

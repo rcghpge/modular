@@ -15,6 +15,7 @@
 #include "GraphRT/Primitives.h"
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/RuntimeCLOptions.h"
+#include "LLCL/Runtime/Utils.h"
 #include "Support/CommandLine.h"
 #include "Support/CommonCLOptions.h"
 #include "Support/LLVMCompilerForwardDecls.h"
@@ -96,8 +97,8 @@ static ErrorOrSuccess runTestcase(const GRTTestcase &test,
   // checker work better in the face of side effecting kernels that aren't
   // properly chained together (which is useful for testing).  As such, we run
   // each testcase with its own runtime instance and own leak checker.
-  runtimeConfig.runWithLeakCheckedRuntime(
-      test.getName().str().c_str(), [&](Runtime runtime) {
+  runWithLeakCheckedRuntime(
+      runtimeConfig, test.getName().str().c_str(), [&](Runtime &runtime) {
         // Actually run the invokable.  We use printf here because it has atomic
         // output behavior w.r.t. the printfs in various TestPrimitives.
         printf("--- Running '%.*s':\n", (int)test.getName().size(),

@@ -3,14 +3,19 @@
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
+
+// This tool will be loading dylibs containing the LLCL Runtime which makes
+// heavy use of (templated) static fields. Make sure this tool does not
+// accidentally include any headers which may duplicate those (templated)
+// static fields, which can cause very surprising runtime failures.
+#define NO_LLCL_RUNTIME
+
 #include "Config/Config.h"
 #include "GenericML/Driver/CXXDriverAPI.h"
 #include "GenericML/Driver/DriverAPI.h"
 #include "GenericML/Driver/DriverInputFormat.h"
 #include "GenericML/Support/ModelCollection.h"
-#include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
 #include "Support/ML/SizeUtils.h"
-#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/ToolOutputFile.h"
 
 #include <filesystem>

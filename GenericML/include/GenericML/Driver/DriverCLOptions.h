@@ -187,26 +187,6 @@ public:
   cl::opt<bool> enableTelemetry{"enable-telemetry",
                                 cl::desc("Enable emitting telemetry signals."),
                                 cl::init(false)};
-
-  /// This is the type we expect to have when
-  /// `setupMLIRAndRunWithLeakCheckedRuntime` is called. The runtime reference
-  /// and MLIRContext pointer are the only two things that the body function
-  /// could not capture outside this call.
-  using BodyFn = std::function<LogicalResult(Runtime &, MLIRContext *)>;
-
-  /// Run the given body function with a leak checked runtime.
-  int setupMLIRAndRunWithLeakCheckedRuntime(
-      const char *testName, std::unique_ptr<llvm::MemoryBuffer> &&file,
-      BodyFn &&bodyFn) {
-    if (failed(configureMLIRContextAndExecute(
-            std::move(file), [&](MLIRContext *ctx) {
-              return LLCL::RuntimeCLOptions::runWithLeakCheckedRuntime(
-                  testName,
-                  [&](Runtime runtime) { return bodyFn(runtime, ctx); });
-            })))
-      return EXIT_FAILURE;
-    return EXIT_SUCCESS;
-  }
 };
 
 /// This command enum specifies what action we're supposed to take, which is
