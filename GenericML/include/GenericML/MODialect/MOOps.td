@@ -782,7 +782,8 @@ def MO_MatmulOp : MO_DotBase<"matmul", [MO_MatmulLike]> {
 }
 
 def MO_BatchMatmulOp : MO_DotBase<"batch_matmul",
-    [MO_MatmulLike, DeclareOpInterfaceMethods<MO_Parameterization>]> {
+    [MO_MatmulLike, DeclareOpInterfaceMethods<MO_Parameterization>,
+     DeclareOpInterfaceMethods<MO_ForwardShapeInferenceMaterialization>]> {
   let summary = "Batched matrix-matrix multiplication";
   let description = [{
     Perform matrix multiplication on two batches of matrices, represented by
@@ -813,6 +814,13 @@ def MO_BatchMatmulOp : MO_DotBase<"batch_matmul",
   let assemblyFormat = [{
     `` custom<ParamDecls>($paramDecls) `(` operands `)` attr-dict `:`
     functional-type(operands, results)
+  }];
+
+  let extraClassDeclaration = [{
+  private:
+    /// Unique forward shape inference function name, set when materialized.
+    static std::optional<StringRef> fwShapeFunc;
+  public:
   }];
 }
 

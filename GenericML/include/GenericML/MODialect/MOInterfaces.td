@@ -23,16 +23,22 @@ def MO_MOOpInterface : OpInterface<"MOOpInterface"> {
 
   let methods = [
     InterfaceMethod<"Get an input tensor as a TypedValue",
-      "TypedValue<TensorType>", "getInputTensor", (ins "unsigned int":$idx), [{}],
-      [{ return ::llvm::cast<TypedValue<TensorType>>($_op->getOperand(idx)); }]>,
+      "TypedValue<TensorType>", "getInputTensor",
+      (ins "unsigned int":$idx), [{}],
+      [{
+        return ::llvm::cast<TypedValue<TensorType>>($_op->getOperand(idx));
+      }]>,
     InterfaceMethod<"Get the shape of an input tensor",
-      "ArrayRef<int64_t>", "getInputTensorShape", (ins "unsigned int":$idx), [{}],
+      "ArrayRef<int64_t>", "getInputTensorShape",
+      (ins "unsigned int":$idx), [{}],
       [{ return $_op.getInputTensor(idx).getType().getShape(); }]>,
     InterfaceMethod<"Get an output tensor as a TypedValue",
-      "TypedValue<TensorType>", "getOutputTensor", (ins "unsigned int":$idx), [{}],
+      "TypedValue<TensorType>", "getOutputTensor",
+      (ins "unsigned int":$idx), [{}],
       [{ return ::llvm::cast<TypedValue<TensorType>>($_op->getResult(idx)); }]>,
     InterfaceMethod<"Get the shape of an output tensor",
-      "ArrayRef<int64_t>", "getOutputTensorShape", (ins "unsigned int":$idx), [{}],
+      "ArrayRef<int64_t>", "getOutputTensorShape",
+      (ins "unsigned int":$idx), [{}],
       [{ return $_op.getOutputTensor(idx).getType().getShape(); }]>,
   ];
 }
@@ -65,6 +71,26 @@ def MO_Parameterization : OpInterface<"MOOpParameterizationInterface"> {
   }];
 }
 
+def MO_ForwardShapeInferenceMaterialization :
+    OpInterface<"MOForwardShapeInferenceMaterialization"> {
+  let description = [{
+    Forward shape inference materialization interface.
+
+    Implementers of this interface are responsible for materializing the shape
+    inference function as IR in the module containing the op, as well as gluing
+    in the appropriate invocation in the graph.
+  }];
+  let cppNamespace = "::M::MO";
+  let dependentTraits = [MO_MOOpInterface];
+
+  let methods = [
+    InterfaceMethod<
+      "Materializes and invokes the shape inference function for the op.",
+      "LogicalResult", "materializeForwardShapeInference",
+      (ins "mlir::RewriterBase &":$rewriter)>,
+  ];
+}
+
 def MO_MatmulLike : OpInterface<"MatmulLike"> {
   let description = [{
     Interface for modeling operations that implement matmul-like behavior,
@@ -87,7 +113,9 @@ def MO_MatmulLike : OpInterface<"MatmulLike"> {
       [{ return $_op.getInputTensor(1); }]>,
     InterfaceMethod<"Get the result tensor as a TypedValue",
       "TypedValue<TensorType>", "getTensorResult", (ins), [{}],
-      [{ return ::llvm::cast<TypedValue<TensorType>>($_op.getOutputTensor(0)); }]>,
+      [{
+        return ::llvm::cast<TypedValue<TensorType>>($_op.getOutputTensor(0));
+      }]>,
     InterfaceMethod<"Get the shape of the left input tensor",
       "ArrayRef<int64_t>", "getTensorAShape", (ins), [{}],
       [{ return $_op.getInputTensorShape(0); }]>,
@@ -143,7 +171,8 @@ def MO_ElementWiseBinary : OpInterface<"ElementWiseBinary"> {
   let dependentTraits = [MO_MOOpInterface];
 }
 
-def MO_SameInputOutputTypesParameterization : NativeOpTrait<"SameInputOutputTypesParameterization"> {
+def MO_SameInputOutputTypesParameterization :
+    NativeOpTrait<"SameInputOutputTypesParameterization"> {
   let cppNamespace = "::M::MO";
   let dependentTraits = [MO_Parameterization];
 }
