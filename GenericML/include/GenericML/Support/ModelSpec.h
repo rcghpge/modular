@@ -44,10 +44,16 @@ public:
     ///
     std::optional<std::string> data;
 
+    std::optional<std::string> size;
+    std::optional<std::string> sha1sum;
+
     ModelIOSpec() = default;
-    ModelIOSpec(std::string n, M::QuantTensorSpec s,
-                std::optional<std::string> d = {})
-        : name(std::move(n)), spec(std::move(s)), data(std::move(d)) {}
+    ModelIOSpec(std::string name, M::QuantTensorSpec spec,
+                std::optional<std::string> data = {},
+                std::optional<std::string> size = {},
+                std::optional<std::string> sha1sum = {})
+        : name(std::move(name)), spec(std::move(spec)), data(std::move(data)),
+          size(std::move(size)), sha1sum(std::move(sha1sum)) {}
   };
 
   /// Maps input or output names as they appear in the model spec (the
@@ -76,6 +82,7 @@ public:
     std::string format;
     std::string url;
     std::string archivedFile;
+    std::string size;
     std::string sha1sum;
     std::string metadata;
     NameSubstitutions inputSubstitutions;

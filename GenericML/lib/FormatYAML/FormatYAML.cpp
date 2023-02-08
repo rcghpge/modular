@@ -198,6 +198,8 @@ struct MappingTraits<M::ModelSpec::ModelIOSpec> {
     // name and data may be empty, so we map them as optional.
     io.mapOptional("name", inputOutput.name);
     io.mapOptional("data", inputOutput.data);
+    io.mapOptional("size", inputOutput.size);
+    io.mapOptional("sha1sum", inputOutput.sha1sum);
     // We need to call formatYAML on the QuantTensorSpec to avoid another
     // nesting in the YAML dictionary.
     formatYAML(io, inputOutput.spec);
@@ -249,6 +251,9 @@ struct MappingTraits<M::ModelSpec::ModelBinary> {
     if (!io.outputting() || !binary.archivedFile.empty())
       io.mapOptional("archived_file", binary.archivedFile);
 
+    if (!io.outputting() || !binary.size.empty())
+      io.mapOptional("size", binary.size);
+
     if (!io.outputting() || !binary.sha1sum.empty())
       io.mapOptional("sha1sum", binary.sha1sum);
 
@@ -264,7 +269,8 @@ struct MappingTraits<M::ModelSpec::ModelBinary> {
     // TODO: The format will be an enum in the future.
     if (binary.format != "bef" && binary.format != "onnx" &&
         binary.format != "tensorflow-graphdef" &&
-        binary.format != "tensorflow-savedmodel" && binary.format != "tflite")
+        binary.format != "tensorflow-savedmodel" && binary.format != "tflite" &&
+        binary.format != "mtfl")
       return std::string("the ") + binary.format +
              " format specified is not valid";
 
