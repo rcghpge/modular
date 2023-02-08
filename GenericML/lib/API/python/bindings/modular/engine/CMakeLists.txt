@@ -9,7 +9,7 @@ add_custom_target(modular-engine)
 pybind11_add_module(core
   ${CMAKE_CURRENT_SOURCE_DIR}/core.cpp
 )
-target_link_libraries(core PUBLIC $<TARGET_FILE:tfl>)
+target_link_libraries(core PUBLIC modular-framework-common $<TARGET_FILE:tfl>)
 add_dependencies(modular-engine core)
 
 # The extension itself must be compiled with RTTI and exceptions enabled.
