@@ -151,12 +151,12 @@ ErrorOr<DType> static fromMLIRType(Type mlirType) {
     return DType(); // invalid denotes unknown.
   if (auto intType = mlir::dyn_cast<IntegerType>(mlirType)) {
     FailureOr<DType> dtype = getEquivalentDType(intType);
-    if (succeeded(dtype))
+    if (succeeded(dtype) && !(dtype->isInvalid()))
       return *dtype;
   }
   if (auto floatType = mlir::dyn_cast<FloatType>(mlirType)) {
     FailureOr<DType> dtype = getEquivalentDType(floatType);
-    if (succeeded(dtype))
+    if (succeeded(dtype) && !(dtype->isInvalid()))
       return *dtype;
   }
   return Error(Twine("unable to represent MLIR Type '") + asString(mlirType) +
