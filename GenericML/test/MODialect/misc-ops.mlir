@@ -152,13 +152,21 @@ mo.graph @reshape_dyn_shape(%arg: !mo.tensor<[?], f32>) -> !mo.tensor<[2, 2], f3
 }
 
 //===----------------------------------------------------------------------===//
-// NumpyBroadcastOp
+// BroadcastShapeOp
 //===----------------------------------------------------------------------===//
 
-// CHECK: mo.graph @broadcast_shape(%[[ARG0:.*]]: !mo.tensor<[1, 2, 3], f32>, %[[ARG1:.*]]: !mo.tensor<[2, 1], f32>) -> !mo.tensor<[3], si64>
-mo.graph @broadcast_shape(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !mo.tensor<[2, 1], f32>) -> !mo.tensor<[3], si64> {
-  // CHECK: %[[RES:.*]] = mo.broadcast_shape(%[[ARG0:.*]], %[[ARG1:.*]]) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[2, 1], f32>) -> !mo.tensor<[3], si64>
-  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[2, 1], f32>) -> !mo.tensor<[3], si64>
+// CHECK: mo.graph @broadcast_shape(%[[ARG0:.*]]: !mo.tensor<[3], si64>, %[[ARG1:.*]]: !mo.tensor<[2], si64>) -> !mo.tensor<[3], si64>
+mo.graph @broadcast_shape(%arg0: !mo.tensor<[3], si64>, %arg1: !mo.tensor<[2], si64>) -> !mo.tensor<[3], si64> {
+  // CHECK: %[[RES:.*]] = mo.broadcast_shape(%[[ARG0:.*]], %[[ARG1:.*]]) : (!mo.tensor<[3], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3], si64>
+  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[3], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3], si64>
   // CHECK: mo.output %[[RES]] : !mo.tensor<[3], si64>
   mo.output %res : !mo.tensor<[3], si64>
+}
+
+// CHECK: mo.graph @broadcast_shape_i32(%[[ARG0:.*]]: !mo.tensor<[3], si32>, %[[ARG1:.*]]: !mo.tensor<[2], si32>) -> !mo.tensor<[3], si32>
+mo.graph @broadcast_shape_i32(%arg0: !mo.tensor<[3], si32>, %arg1: !mo.tensor<[2], si32>) -> !mo.tensor<[3], si32> {
+  // CHECK: %[[RES:.*]] = mo.broadcast_shape(%[[ARG0:.*]], %[[ARG1:.*]]) : (!mo.tensor<[3], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[3], si32>
+  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[3], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[3], si32>
+  // CHECK: mo.output %[[RES]] : !mo.tensor<[3], si32>
+  mo.output %res : !mo.tensor<[3], si32>
 }

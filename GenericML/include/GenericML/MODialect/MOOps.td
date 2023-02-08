@@ -579,7 +579,7 @@ def MO_ShapeOfOp : MO_Op<"shape_of", [Pure]> {
 def MO_BroadcastShapeOp : MO_Op<"broadcast_shape", [Pure]> {
   let summary = "Broadcast Shape Operation";
   let description = [{
-    Given two tensors, return the shape that both broadcast to under
+    Given two tensor shapes, return the shape that both broadcast to under
     the numpy rules:
 
     1. Make the shapes the same rank by adding 1 to the front
@@ -592,7 +592,9 @@ def MO_BroadcastShapeOp : MO_Op<"broadcast_shape", [Pure]> {
     ```mlir
     %arg1: !mo.tensor<[1, 2, 3], f32>
     %arg2: !mo.tensor<[4, 2, 1], f32>
-    %shape1 = mo.broadcast_shape(%arg1, %arg2) : !mo.tensor<[3], si64>
+    %inshape1 = mo.shape_of(%arg1) : (!mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[3], si64>
+    %inshape2 = mo.shape_of(%arg2) : (!mo.tensor<[4, 2, 1], f32>) -> !mo.tensor<[3], si64>
+    %shape1 = mo.broadcast_shape(%inshape1, %inshape2) : !mo.tensor<[3], si64>
     ```
     In this example, shape1 will return [4, 2, 3]
 
@@ -601,12 +603,14 @@ def MO_BroadcastShapeOp : MO_Op<"broadcast_shape", [Pure]> {
     ```mlir
     %arg1: !mo.tensor<[10, 2, 1], f32>
     %arg2: !mo.tensor<[5], f32>
-    %shape1 = mo.broadcast_shape(%arg1, %arg2) : !mo.tensor<[3], si64>
+    %inshape1 = mo.shape_of(%arg1) : (!mo.tensor<[10, 2, 1], f32>) -> !mo.tensor<[3], si64>
+    %inshape2 = mo.shape_of(%arg2) : (!mo.tensor<[5], f32>) -> !mo.tensor<[1], si64>
+    %shape1 = mo.broadcast_shape(%inshape1, %inshape2) : !mo.tensor<[3], si64>
     ```
     In this example, shape1 will return [10, 2, 5]
   }];
 
-  let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y);
+  let arguments = (ins MO_ShapeLike:$input_x, MO_ShapeLike:$input_y);
   let results = (outs MO_ShapeLike:$shape);
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)

@@ -164,26 +164,42 @@ mo.graph @shape_of_rank_2(%arg: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[2, 1], s
 // NumpyBroadcastOp
 //===----------------------------------------------------------------------===//
 
-mo.graph @broadcast_shape_f32_output(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !mo.tensor<[2, 1], f32>) -> !mo.tensor<[2], f32> {
+mo.graph @broadcast_shape_f32_output(%arg0: !mo.tensor<[3], si64>, %arg1: !mo.tensor<[2], si64>) -> !mo.tensor<[2], f32> {
   // expected-error@+1 {{'mo.broadcast_shape' op result #0 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<[3], f32>'}}
-  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[2, 1], f32>) -> !mo.tensor<[3], f32>
+  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[3], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3], f32>
   mo.output %res : !mo.tensor<[3], f32>
 }
 
 // -----
 
-mo.graph @broadcast_shape_dyn_rank(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !mo.tensor<[2, 1], f32>) -> !mo.tensor<?, si64> {
+mo.graph @broadcast_shape_dyn_rank(%arg0: !mo.tensor<[3], si64>, %arg1: !mo.tensor<[2], si64>) -> !mo.tensor<?, si64> {
   // expected-error@+1 {{'mo.broadcast_shape' op result #0 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<?, si64>'}}
-  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[2, 1], f32>) -> !mo.tensor<?, si64>
+  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[3], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<?, si64>
   mo.output %res : !mo.tensor<?, si64>
 }
 
 // -----
 
-mo.graph @broadcast_shape_f32_output(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !mo.tensor<[2, 1], f32>) -> !mo.tensor<[2, 1], si64> {
+mo.graph @broadcast_shape_vector_output(%arg0: !mo.tensor<[3], si64>, %arg1: !mo.tensor<[2], si64>) -> !mo.tensor<[2, 1], si64> {
   // expected-error@+1 {{'mo.broadcast_shape' op result #0 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<[2, 1], si64>'}}
-  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[2, 1], f32>) -> !mo.tensor<[2, 1], si64>
+  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[3], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 1], si64>
   mo.output %res : !mo.tensor<[2, 1], si64>
+}
+
+// -----
+
+mo.graph @broadcast_shape_f32_input(%arg0: !mo.tensor<[3], f32>, %arg1: !mo.tensor<[2], f32>) -> !mo.tensor<[3], si64> {
+  // expected-error@+1 {{'mo.broadcast_shape' op operand #0 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<[3], f32>'}}
+  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[3], f32>, !mo.tensor<[2], f32>) -> !mo.tensor<[3], si64>
+  mo.output %res : !mo.tensor<[3], si64>
+}
+
+// -----
+
+mo.graph @broadcast_shape_f32_input2(%arg0: !mo.tensor<[3], si32>, %arg1: !mo.tensor<[2], f32>) -> !mo.tensor<[3], si64> {
+  // expected-error@+1 {{'mo.broadcast_shape' op operand #1 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<[2], f32>'}}
+  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[3], si32>, !mo.tensor<[2], f32>) -> !mo.tensor<[3], si64>
+  mo.output %res : !mo.tensor<[3], si64>
 }
 
 // -----
