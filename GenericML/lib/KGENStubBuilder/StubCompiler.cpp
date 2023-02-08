@@ -24,15 +24,8 @@ LogicalResult StubCompiler::elaborateKGEN() {
       LLCL::createLeakCheckAllocator(LLCL::createMallocAllocator()),
       LLCL::createSingleThreadWorkQueue());
 
-  SmallVector<std::string> includedFiles{};
-
-  // Only option is to turn on search, no include paths as we don't include
-  // files in the stub currently.
-  KGEN::ElaborateGeneratorsOptions options;
-  options.shouldDoSearch = shouldSearch;
-
   mlir::PassManager pm(kgenModule->getContext());
-  KGEN::elaborateModule(pm, runtime, options, includedFiles);
+  KGEN::elaborateModule(pm, runtime, {shouldSearch});
 
   return pm.run(kgenModule);
 }
