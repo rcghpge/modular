@@ -54,6 +54,7 @@ framework, along with their CMake target to simplify building the target.
 
 | CMake target | Binary | Framework |
 |--------------|--------|-----------|
+| `tf` | `libtf.so` | Modular TensorFlow |
 | `tfl` | `libtfl.so` | Modular TFLite |
 | `stock-tflite-plugin` | `libstock-tflite-plugin.so` | Stock TFLite |
 
@@ -109,6 +110,55 @@ mt -execute --scenario="nofail:--flaky-option=true" --scenario="--flaky-option=o
 This command would ignore an error in the first scenario, but would not ignore
 any error in the second. If `nofail:` is provided in the last scenario, the
 return code of the tool will be EXIT_SUCCESS (0).
+
+## Input Data
+
+`mt` can initialize input tensors from a variety of sources:
+
+  - Keyword: `zeros`, `ones`, `negones`, or `random`
+  - Filename: absolute path or relative to `$PWD`
+
+These data sources can be specified on a per-tensor basis by passing a
+colon-delimited list to the `--input-data` switch. The format of this list is as
+follows:
+
+```
+# Initialize specific input tensor
+mt --input-data=tensor_idx:input_source:input_source_attr_list
+```
+
+where:
+
+  - `tensor_idx`: int representing the input tensor index
+  - `input_source`: One of the keywords above or a filename
+  - `input_source_attr_list`: comma-separated attribute list: `[Truncate|Cycle]`
+
+Input data attributes:
+
+  - `Truncate`: file size need not be an exact multiple of the tensor size
+    - If omitted (default), then the file size must be an exact multiple of the tensor size
+  - `Cycle`: no limit on the number of times a tensor in the input file can be used
+    - If omitted (default), then no tensor in the input file may be used more than once
+
+For a model with `N` inputs, the `--input-data` switch may be repeated up to `N`
+times, each with a unique tensor index.
+
+Any input tensors that are not initialized via the `--input-data` switch are
+initialized by the `--model-inputs` switch. The `--model-inputs` switch supports
+keyword datasources only:
+
+```
+# Default initialization for all input tensors
+mt --model-inputs=[zeros|ones|negones|random]
+```
+
+### Binary File Format
+
+In the case where a data file is given, the file must contain binary tensor data
+stored in row-major little-endian order. Any preprocessing (normalization,
+cropping, etc.) that is typically applied to model inputs but excluded from the
+model's definition must have already been applied to the data contained in the
+file.
 
 ## Graph Verification Tooling
 WIP
