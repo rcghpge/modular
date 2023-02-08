@@ -37,7 +37,7 @@ LogicalResult StubCompiler::elaborateKGEN() {
   return pm.run(kgenModule);
 }
 
-ErrorOrSuccess StubCompiler::compileToLLVM(StringRef symbolName) {
+ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
   LLCL::Runtime runtime(
       LLCL::createLeakCheckAllocator(LLCL::createMallocAllocator()),
       LLCL::createSingleThreadWorkQueue());
@@ -59,18 +59,16 @@ ErrorOrSuccess StubCompiler::compileToLLVM(StringRef symbolName) {
   auto objectAttr = std::move(*standaloneOr);
 
   // Add the kernel as a constant.
-  moggBuilder.create<MOGG::LoadJitKernelOp>(
-      loc, moggBuilder.getStringAttr(symbolName), objectAttr);
-
+  moggBuilder.create<MOGG::LoadJitKernelOp>(loc, combinedSymbolName,
+                                            objectAttr);
   return success();
 }
 
-ErrorOrSuccess StubCompiler::compile(StringRef symbolName) {
+ErrorOrSuccess StubCompiler::compile(mlir::ArrayAttr combinedSymbolName) {
   LogicalResult ok = elaborateKGEN();
   if (ok.failed())
     return Error("KGEN elaboration failed");
-
-  return compileToLLVM(symbolName);
+  return compileToLLVM(combinedSymbolName);
 }
 
 } // namespace M::MOGG::Stub

@@ -340,6 +340,22 @@ LogicalResult LoadJitKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       loweringState.getInitMgpContext(),
   };
 
+  // BEF can't currenly work with arrays of strings. To curcumvent this
+  // restriction we pass in the combined symbol as a string with a ";". This is
+  // the setup time load so performance should be less of an issue (though at
+  // runtime it is just string ref operations anyway).
+  auto syms = kernel.getSymbols();
+  std::string combined;
+
+  // Combine into a list with a terminator character.
+  for (StringRef symbol : syms.getAsValueRange<mlir::StringAttr>()) {
+    combined += symbol.str() + ";";
+  }
+
+  // Drop the last ";".
+  combined.pop_back();
+  auto newSymAttrs = loweringState.getInitOpBuilder().getStringAttr(combined);
+
   // Create a call to a custom invoke function we can put in the BEF.
   mlir::OperationState opState{kernel.getLoc(), "mop.load_jit_object"};
   opState.addOperands(operands);
@@ -351,7 +367,7 @@ LogicalResult LoadJitKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   opState.addAttribute("jitCtxSlot",
                        loweringState.getInitOpBuilder().getUI32IntegerAttr(
                            loweringState.getJitCtxSlot()));
-  opState.addAttribute("kernelName", kernel.getKernelName());
+  opState.addAttribute("kernelName", newSymAttrs);
   opState.addAttribute("objectData", kernel.getValue());
 
   opState.addTypes({loweringState.getInitChain().getType()});

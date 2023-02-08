@@ -153,17 +153,26 @@ struct JitCompileKernels
     // this is legal for now.
     std::unordered_map<std::string, MOGG::ExecuteCompiledOp> jittedKernels;
 
-    // Compile all the fused chains into a KGEN kernel.
+    // Track all the attributes we have added.
+    SmallVector<mlir::Attribute> symbolNamesAdded;
+
+    // Start building up the KGEN kernel.
+    Stub::KGENBuilder builder{manager, baseModule};
+
+    // Build stubs for all JIT operations and replace them with symbolic calls
+    // to the kernels in the KGEN stub.
     graph.walk([&, pass = this](MOGG::ElementwiseOp op) {
       // Create a unique name for the kernel.
       std::string stubKernelName = createMangledName(op);
 
-      // If we've added this exact kernel before reuse it.
+      // Don't duplicate KGEN kernels for the same call.
       auto itr = jittedKernels.find(stubKernelName);
       if (itr != jittedKernels.end()) {
         // Clone the jit operation (with the same jit kernel attached)
         MOGG::ExecuteCompiledOp exe = itr->second.clone();
 
+        // Add the execute op into the block at the same point as the current
+        // op.
         mlir::OpBuilder opBuilder{op->getContext()};
         opBuilder.setInsertionPoint(op);
         opBuilder.insert(exe);
@@ -175,16 +184,8 @@ struct JitCompileKernels
         return;
       }
 
-      // Each kernel works on a clean module. We would need to compile them all
-      // into the same one if not. The module will not be legal post elaboration
-      // and will have lost any references.
-      OwningOpRef<ModuleOp> kgenModule = baseModule.clone();
-
-      // Start building up the KGEN kernel.
-      Stub::KGENBuilder builder{manager, op, *kgenModule};
-
       // Lower the basic stub function.
-      builder.startLowering(stubKernelName);
+      builder.startLowering(op, stubKernelName);
 
       // Lower the operation using a vectorized map over an elementwise lambda.
       auto errOr = builder.lowerToElementwiseLambda(op.getBody().front());
@@ -203,13 +204,20 @@ struct JitCompileKernels
       jittedKernels.insert({stubKernelName, jitExecute});
       op->erase();
 
-      // Run KGEN elaboration then compile to binary.
-      Stub::StubCompiler compiler{*kgenModule, graph, useSearch.getValue()};
-      if (failed(compiler.compile(stubKernelName))) {
-        pass->signalPassFailure();
-        return;
-      }
+      // Tracking attributes makes it easier to create an array.
+      symbolNamesAdded.push_back(jitExecute.getKernelNameAttr());
     });
+
+    // Convert our list into a combined attribute.
+    auto allSyms = mlir::ArrayAttr::get(graph->getContext(), symbolNamesAdded);
+
+    // Add the compiled binary to the file.
+    Stub::StubCompiler compiler{baseModule, graph, useSearch.getValue()};
+    auto errOr = compiler.compile(allSyms);
+    if (errOr.isError()) {
+      graph.emitError() << "[JitCompileKernels] " << errOr.getError();
+      signalPassFailure();
+    }
   }
 };
 

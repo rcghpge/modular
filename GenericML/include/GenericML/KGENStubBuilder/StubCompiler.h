@@ -26,15 +26,16 @@ public:
         moggBuilder(&graph.getBody().front(), graph.getBody().front().begin()),
         shouldSearch(shouldSearch) {}
 
-  /// Compile to binary and create an operation to execute this operation.
-  ErrorOrSuccess compile(StringRef symbolName);
+  /// Compile to binary object. Tell the jit all of the given symbols as symbols
+  /// within it that can be executed at runtime.
+  ErrorOrSuccess compile(mlir::ArrayAttr combinedSymbolName);
 
 private:
   /// Run the KGEN elaboration passes on the module.
   LogicalResult elaborateKGEN();
 
   /// Lower to an binary object.
-  ErrorOrSuccess compileToLLVM(StringRef symbolName);
+  ErrorOrSuccess compileToLLVM(mlir::ArrayAttr combinedSymbolName);
 
   MLIRContext *ctx;
 

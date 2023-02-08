@@ -117,11 +117,11 @@ def MOGG_LitOp : MOGG_Op<"lit", [SingleBlock]> {
 
 
 def MOGG_LoadJitKernelOp : MOGG_LowerableOp<"load_compiled_kernel"> {
-  let summary = "Loads a compiled object into the JIT symbol table";
+  let summary = "Loads a compiled object and all symbols into the JIT runtime.";
   let description = [{
   }];
 
-  let arguments = (ins Builtin_StringAttr:$kernelName,
+  let arguments = (ins ArrayAttr:$symbols,
     ConfinedAttr<
       ElementsAttr,
       [AnyAttrOf<[Builtin_DenseResourceElementsAttr]>]
