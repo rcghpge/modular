@@ -9,6 +9,8 @@
 // MANY of these are doing things in weird or non-canonical ways.  This is all
 // about unit tests, not about doing things the right way.
 //
+// See also LLCL/unittests/AsyncValueTest.cpp.
+//
 //===----------------------------------------------------------------------===//
 
 #include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
@@ -440,11 +442,16 @@ static void async_error(IndirectResult result1, IndirectResult result2,
 /// completes it.
 static int32_t test_async_many_waiters(BEFAttr<int32_t> num, Runtime &runtime) {
   auto av = AsyncValueRef<int32_t>::allocate(runtime);
-  unsigned result = 0;
+  auto done = AsyncValueRef<Chain>::allocate(runtime);
+  std::atomic<int32_t> result = 0;
   /// Add 'num' waiters that just increment result.
   for (int32_t i = 0, e = *num; i != e; ++i)
-    av.andThenSync([&]() { ++result; });
+    av.andThenSync([&result, num = *num, done = done.copy()]() mutable {
+      if (++result == num)
+        std::move(done).emplace();
+    });
   std::move(av).emplace(42);
+  await(done);
   return result;
 }
 
