@@ -43,7 +43,7 @@ TEST(ContextTest, StateSlotDowncastFailTest) {
 
   ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, /*numBuffers=*/1, 43);
   ASSERT_DEATH_IF_SUPPORTED(ctx.getStateSlotPayload<PayloadB>(/*slotIndex=*/0),
-                            "(mismatched static and dynamic StateSlot types)");
+                            "mismatched static and dynamic StateSlot types");
 }
 #endif
 
