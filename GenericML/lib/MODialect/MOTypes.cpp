@@ -16,6 +16,7 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/Support/LogicalResult.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 
 using namespace M;
@@ -256,6 +257,19 @@ Type TensorType::getElementType() const {
 
 MO::ShapeAttr TensorType::getTypedShapeAttr() const {
   return llvm::cast<MO::ShapeAttr>(getShapeAttr());
+}
+
+SmallPtrSet<StringAttr, 4> TensorType::getUsedParamNames() const {
+  if (llvm::isa<KGEN::UnknownAttr>(getShapeAttr()))
+    return {};
+  if (auto shapeRef = llvm::dyn_cast<KGEN::ParamDeclRefAttr>(getShapeAttr()))
+    return {shapeRef.getName()};
+  SmallPtrSet<StringAttr, 4> res;
+  mlir::AttrTypeWalker walker;
+  walker.addWalk(
+      [&](KGEN::ParamDeclRefAttr attr) { res.insert(attr.getName()); });
+  walker.walk(getTypedShapeAttr());
+  return res;
 }
 
 LogicalResult ShapeType::printValue(AsmPrinter &p, TypedAttr value) const {

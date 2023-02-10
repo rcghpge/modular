@@ -85,6 +85,9 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [ShapedTypeInterface]> {
     /// Helper to get the shape attribute with MO::ShapeAttr type, fails if the
     /// shape is unknown.
     MO::ShapeAttr getTypedShapeAttr() const;
+
+    /// Returns the referenced parameter names.
+    SmallPtrSet<StringAttr, 4> getUsedParamNames() const;
   }];
 }
 

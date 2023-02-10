@@ -9,7 +9,8 @@
 
 include "mlir/Pass/PassBase.td"
 
-def ForwardShapeInferenceMaterialization : Pass<"materialize-fw-shape-funcs", "ModuleOp"> {
+def ForwardShapeInferenceMaterialization :
+    Pass<"materialize-fw-shape-funcs", "ModuleOp"> {
   let summary = "Materializes the forward shape inference functions.";
   let description = [{
     Pass to materialize forward shape inference functions for ops that have
@@ -19,8 +20,16 @@ def ForwardShapeInferenceMaterialization : Pass<"materialize-fw-shape-funcs", "M
   }];
 }
 
+def PropagateShapes : Pass<"propagate-shapes", "GraphOp"> {
+  let summary = "Propagates shape parameters through the graph.";
+  let description = [{
+    Evaluates shape parameter logic in the graph, simplifying and reducing shape
+    logic as much as it can.
+  }];
+}
+
 def ResolveUnknownParameters : Pass<"resolve-unknown-parameters", "ModuleOp"> {
-  let summary = "Attempts to resolve unknown tensor shape and dimension parameters.";
+  let summary = "Resolves unknown tensor shape and dimension parameters.";
   let description = [{
     Pass to parameterize `mo` ops. That is, replaces unknown shape and dimension
     parameters (i.e. `?`) in `!mo.tensor` instances with parameter references.
