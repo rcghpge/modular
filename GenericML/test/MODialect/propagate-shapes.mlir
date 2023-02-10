@@ -8,7 +8,7 @@ mo.graph @rebinds<Sh0: !mo.shape -> Sh1: !mo.shape>(%arg0: !mo.tensor<Sh0, f32>)
   %1 = mo.gelu(%0) : !mo.tensor<Sh2, f32>
   %2 = mo.rebind(%1) : !mo.tensor<Sh2, f32> -> !mo.tensor<Sh1, f32>
   // CHECK-NEXT: mo.output %[[VAL0]] : !mo.tensor<[[SH0]], f32>
-  mo.output %2 : !mo.tensor<Sh1, f32>
+  mo.output<:!mo.shape Sh2> %2 : !mo.tensor<Sh1, f32>
 }
 
 // CHECK: mo.graph @output_rebind_kept<[[SH0:.*]]: !mo.shape, [[SH1:.*]]: !mo.shape -> [[SH2:.*]]: !mo.shape>(
@@ -23,6 +23,6 @@ mo.graph @output_rebind_kept<Sh0: !mo.shape, Sh1: !mo.shape -> Sh2: !mo.shape>(
     !mo.tensor<Sh0, f32>, !mo.tensor<Sh1, f32>) -> !mo.tensor<Sh3, f32>
   // CHECK-NEXT: %[[VAL1:.*]] = mo.rebind(%[[VAL0]]) : !mo.tensor<[[SH3]], f32> -> !mo.tensor<[[SH2]], f32>
   %1 = mo.rebind(%0) : !mo.tensor<Sh3, f32> -> !mo.tensor<Sh2, f32>
-  // CHECK-NEXT: mo.output %[[VAL1]] : !mo.tensor<[[SH2]], f32>
-  mo.output %1 : !mo.tensor<Sh2, f32>
+  // CHECK-NEXT: mo.output<:!mo.shape [[SH3]]> %[[VAL1]] : !mo.tensor<[[SH2]], f32>
+  mo.output<:!mo.shape Sh3> %1 : !mo.tensor<Sh2, f32>
 }
