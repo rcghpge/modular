@@ -124,7 +124,8 @@ def MO_OutputOp
 // RebindOp
 //===----------------------------------------------------------------------===//
 
-def MO_RebindOp : MO_Op<"rebind", [Pure]> {
+def MO_RebindOp : MO_Op<"rebind", [Pure,
+    DeclareOpInterfaceMethods<MO_ForwardShapeInferenceMaterialization>]> {
   let summary = "tensor parameter rebind op";
   let description = [{
     Op to represent "rebinding" a value of `!mo.tensor<...>` type to another
