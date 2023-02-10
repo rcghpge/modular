@@ -28,6 +28,22 @@ mo.graph @binary_parametric_graph<A: index, B: index -> r1>(%arg: !mo.tensor<[A,
   mo.output %arg : !mo.tensor<[A, B], f32>
 }
 
+// CHECK: mo.graph @parametric_result<() -> D2>() {
+mo.graph @parametric_result<() -> D2>() {
+  // CHECK-NEXT: kgen.param.declare [[D1:.*]] = <42>
+  kgen.param.declare D1 = <42>
+  // CHECK-NEXT: mo.output<[[D1]]>
+  mo.output<D1>
+}
+
+// CHECK: mo.graph @output_with_bindings<D1 -> D2>(%[[ARG:.*]]: !mo.tensor<[D1], f32>) -> !mo.tensor<[D2], f32> {
+mo.graph @output_with_bindings<D1 -> D2>(%arg: !mo.tensor<[D1], f32>) -> (!mo.tensor<[D2], f32>) {
+  // CHECK-NEXT: %[[OUT:.*]] = mo.rebind(%[[ARG]]) : !mo.tensor<[D1], f32> -> !mo.tensor<[D2], f32>
+  %out = mo.rebind(%arg) : !mo.tensor<[D1], f32> -> !mo.tensor<[D2], f32>
+  // CHECK-NEXT: mo.output<D1> %[[OUT]] : !mo.tensor<[D2], f32>
+  mo.output<D1> %out : !mo.tensor<[D2], f32>
+}
+
 // CHECK: mo.graph @dyn_rank(%[[ARG0:.*]]: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
 mo.graph @dyn_rank(%arg0: !mo.tensor<?, f32>) -> (!mo.tensor<?, f32>) {
   mo.output %arg0 : !mo.tensor<?, f32>

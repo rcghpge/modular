@@ -14,6 +14,7 @@
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
+#include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENInterfaces.h"
 #include "KGEN/KGENDialect/KGENTypes.h"
 #include "Support/LLVMCompilerForwardDecls.h"
@@ -29,6 +30,7 @@ class ModuleOp;
 // Needed because the ODS definition of some KGEN ops don't have the namespace.
 using M::KGEN::ParamDeclArrayAttr;
 using M::KGEN::ParamDeclAttr;
+using M::KGEN::ParameterExprArrayAttr;
 using M::KGEN::SignatureType;
 
 //===----------------------------------------------------------------------===//

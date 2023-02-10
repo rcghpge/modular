@@ -11,6 +11,7 @@
 #ifndef GENERICML_GRAPHCOMPILER_MODIALECT_MOOPS_TD
 #define GENERICML_GRAPHCOMPILER_MODIALECT_MOOPS_TD
 
+include "KGEN/KGENDialect/KGENAttrs.td"
 include "KGEN/KGENDialect/KGENInterfaces.td"
 include "KGEN/KGENDialect/KGENTypes.td"
 include "GenericML/GraphCompiler/MODialect/MOInterfaces.td"
@@ -109,14 +110,29 @@ def MO_OutputOp
     Example:
 
     ```mlir
-    mo.graph @dyn_rank(%arg0: !mo.tensor<?, f32>) -> (!mo.tensor<?, f32>) {
+    mo.graph @output_without_bindings(%arg0: !mo.tensor<?, f32>) -> (!mo.tensor<?, f32>) {
       mo.output %arg0 : !mo.tensor<?, f32>
+    }
+
+    mo.graph @output_with_bindings<D1 -> D2>(%arg0: !mo.tensor<[D1], f32>) -> (!mo.tensor<[D2], f32>) {
+      %out = mo.rebind(%arg0) : !mo.tensor<[D1], f32> -> !mo.tensor<[D2], f32>
+      mo.output<D1> %out : !mo.tensor<[D2], f32>
     }
     ```
   }];
 
-  let arguments = (ins Variadic<AnyType>:$operands);
-  let assemblyFormat = "attr-dict ($operands^ `:` type($operands))?";
+  let arguments = (ins KGEN_ParameterExprArrayAttr:$parameters,
+                       Variadic<AnyType>:$operands);
+
+  let assemblyFormat = [{
+    `` custom<ParameterValues>($parameters) attr-dict ($operands^ `:` type($operands))?
+  }];
+
+  let builders = [
+    // Build with empty `parameters`; this is needed for backward compatibility.
+    OpBuilder<(ins "ValueRange":$operands)>,
+  ];
+
   let hasVerifier = 1;
 }
 
