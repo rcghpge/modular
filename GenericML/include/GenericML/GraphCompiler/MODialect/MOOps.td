@@ -1,0 +1,828 @@
+//===----------------------------------------------------------------------===//
+//
+// This file is Modular Inc proprietary.
+//
+//===----------------------------------------------------------------------===//
+//
+// This defines operations in the MO dialect.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef GENERICML_GRAPHCOMPILER_MODIALECT_MOOPS_TD
+#define GENERICML_GRAPHCOMPILER_MODIALECT_MOOPS_TD
+
+include "KGEN/KGENDialect/KGENInterfaces.td"
+include "KGEN/KGENDialect/KGENTypes.td"
+include "GenericML/GraphCompiler/MODialect/MOInterfaces.td"
+include "GenericML/GraphCompiler/MODialect/MOTypes.td"
+include "Support/MDialect/MAttrs.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/IR/BuiltinAttributes.td"
+include "mlir/IR/FunctionInterfaces.td"
+include "mlir/IR/SymbolInterfaces.td"
+
+// Base class for ops in this dialect.
+class MO_Op<string mnemonic, list<Trait> traits = []>
+    : Op<MODialect, mnemonic, [MO_MOOpInterface] # traits>;
+
+class MO_ElementWiseOp<string name, list<Trait> traits = []>
+    : MO_Op<name, traits # [Pure, MO_SameOperandsAndResultType]> {
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` qualified(type($result))
+  }];
+}
+
+class MO_ElementWiseUnaryOp<string name, list<Trait> traits = []>
+    : MO_ElementWiseOp<name, traits # [MO_ElementWiseUnary]> {
+  let arguments = (ins MO_Tensor:$input);
+}
+
+class MO_ElementWiseBinaryOp<string name, list<Trait> traits = []>
+    : MO_ElementWiseOp<name, traits # [MO_ElementWiseBinary]> {
+  let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y);
+}
+
+//===----------------------------------------------------------------------===//
+// GraphOp
+//===----------------------------------------------------------------------===//
+
+def MO_GraphOp : MO_Op<"graph", [HasParent<"ModuleOp">, FunctionOpInterface,
+                                 Symbol, SymbolTable, IsolatedFromAbove,
+                                 DeclareOpInterfaceMethods<MO_Parameterization>,
+                                 // needed to leverage KGEN parameter infra
+                                 DeclInterface, FuncInterface
+  // TODO : Re-enable TransformableGraphInterface
+  // DeclareOpInterfaceMethods<TransformableGraphInterface>
+]> {
+  let summary = "Function that contains a MO graph with other ops mixed in";
+  let arguments = (ins TypeAttrOf<KGEN_SignatureType>:$signature,
+                       OptionalAttr<DictArrayAttr>:$arg_attrs,
+                       OptionalAttr<DictArrayAttr>:$res_attrs);
+  let regions = (region SizedRegion<1>:$body);
+
+  let extraClassDeclaration = [{
+    using FunctionOpInterfaceTrait::getFunctionBody;
+    using FunctionOpInterfaceTrait::front;
+    using FunctionOpInterfaceTrait::end;
+    Block *getBodyBlock() { return &getFunctionBody().front(); }
+
+    /// Returns the argument types of this function.
+    ArrayRef<Type> getArgumentTypes() { return getFunctionType().getInputs(); }
+
+    /// Returns the result types of this function.
+    ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
+
+    /// We aren't using always_inline functionality in MO.
+    KGEN::AlwaysInlineLevel getAlwaysInlineLevel() {
+      return KGEN::AlwaysInlineLevel::Disabled;
+    }
+  }];
+
+  let builders = [
+    /// Create a new mo.graph with an empty body.
+    OpBuilder<(ins
+      "StringRef":$name,
+      "TypeRange":$inputTypes,
+      "TypeRange":$resultTypes
+    )>,
+  ];
+
+  let hasCustomAssemblyFormat = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// OutputOp
+//===----------------------------------------------------------------------===//
+
+def MO_OutputOp
+    : MO_Op<"output", [Terminator, ReturnLike, HasParent<"MO::GraphOp">]> {
+  let summary = "MO output operation";
+  let description = [{
+    The "mo.output" operation specifies the output values for a MO
+    function. The operation takes variable number of operands and produces
+    no results. The operand number and types must match the signature of
+    the mo.graph that contains the operation. For example:
+
+    Example:
+
+    ```mlir
+    mo.graph @dyn_rank(%arg0: !mo.tensor<?, f32>) -> (!mo.tensor<?, f32>) {
+      mo.output %arg0 : !mo.tensor<?, f32>
+    }
+    ```
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$operands);
+  let assemblyFormat = "attr-dict ($operands^ `:` type($operands))?";
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// RebindOp
+//===----------------------------------------------------------------------===//
+
+def MO_RebindOp : MO_Op<"rebind", [Pure,
+    DeclareOpInterfaceMethods<MO_ForwardShapeInferenceMaterialization>]> {
+  let summary = "tensor parameter rebind op";
+  let description = [{
+    Op to represent "rebinding" a value of `!mo.tensor<...>` type to another
+    `!mo.tensor<...>`. Currently, this op can be ued to convert all attributes
+    of `!mo.tensor` types, inlcuding shape, element type, and metadata.
+
+    Examples:
+
+    ```mlir
+    %0 = mo.rebind(%arg0) : !mo.tensor<[?, ?], f32> -> !mo.tensor<[N, 1], f32>
+    %1 = mo.rebind(%0) : !mo.tensor<[N, 1], f32> -> !mo.tensor<Sh, f32>
+    %2 = mo.rebind(%1) : !mo.tensor<Sh, f32> -> !mo.tensor<[], f32>
+    %2 = mo.rebind(%1) : !mo.tensor<Sh, f32> -> !mo.tensor<[], f32>
+    ```
+  }];
+
+  let arguments = (ins MO_Tensor:$input, KGEN_ParamDeclArrayAttr:$paramDecls);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($paramDecls) `(` $input `)` attr-dict `:`
+    qualified(type($input)) `->` qualified(type($result))
+  }];
+
+  let hasFolder = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// ConstantOp
+//===----------------------------------------------------------------------===//
+
+def MO_ConstantOp : MO_Op<"constant", [ConstantLike, Pure]> {
+  let summary = "constant MO operation";
+  let description = [{
+    Op to store constant tensors in model.
+
+    Example:
+
+    ```mlir
+    %0 = mo.constant {value = #M.dense_array<1, 2, 3, 4> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
+    ```
+  }];
+
+  let arguments = (ins
+    ConfinedAttr<
+      ElementsAttr,
+      [AnyAttrOf<[M_ArrayElementsAttr,
+                  Builtin_DenseResourceElementsAttr,
+                  M_AlignedBytesAttr]>]
+    >:$value);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = "attr-dict `:` qualified(type($result))";
+
+  let hasFolder = 1;
+}
+
+
+//===----------------------------------------------------------------------===//
+// Elementwise ops
+//===----------------------------------------------------------------------===//
+
+def MO_AddOp : MO_ElementWiseBinaryOp<"add"> {
+  let summary = "Add operation";
+  let description = [{
+    Returns x + y, where x and y are input tensors.
+
+    Example:
+
+    ```mlir
+    %lhs: !mo.tensor<[2, 3], f32>
+    %rhs: !mo.tensor<[2, 3], f32>
+    %res = mo.add(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def MO_AbsOp : MO_ElementWiseUnaryOp<"abs", [Idempotent]> {
+  let summary = "Absolute value operation";
+  let description = [{
+    Returns abs(x), where x is the input tensors.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.abs(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def MO_DivOp : MO_ElementWiseBinaryOp<"div"> {
+  let summary = "Divide operation";
+  let description = [{
+    Returns x / y, where x and y are input tensors.
+
+    Example:
+
+    ```mlir
+    %lhs: !mo.tensor<[2, 3], f32>
+    %rhs: !mo.tensor<[2, 3], f32>
+    %res = mo.div(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def MO_ExpOp : MO_ElementWiseUnaryOp<"exp"> {
+  let summary = "Exponential function";
+  let description = [{
+    Returns exp(x), where x is the input tensor.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.exp(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def MO_ErfOp : MO_ElementWiseUnaryOp<"erf"> {
+  let summary = "Absolute value operation";
+  let description = [{
+    Computes the Gauss error function of the input tensor elements.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.erf(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def MO_GeluOp : MO_ElementWiseUnaryOp<"gelu"> {
+  let summary = "Gaussian Error Linear Unit operation";
+  let description = [{
+    Returns GELU(x) = (x / 2) * (1 + erf(x/sqrt(2))), where erf denotes the
+    (Gaussian) error function.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.gelu(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def MO_SigmoidOp : MO_ElementWiseUnaryOp<"sigmoid"> {
+  let summary = "Logistic Sigmoid operation";
+  let description = [{
+    Returns $sigmoid(x) = \frac{1}{1+e^{-x}} = \fract{e^x}{e^x + 1} to compute
+    the logistic sigmoid operations.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.sigmoid(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def MO_MulOp : MO_ElementWiseBinaryOp<"mul"> {
+  let summary = "Multiply operation";
+  let description = [{
+    Returns x * y, where x and y are input tensors.
+
+    Example:
+
+    ```mlir
+    %lhs: !mo.tensor<[2, 3], f32>
+    %rhs: !mo.tensor<[2, 3], f32>
+    %res = mo.mul(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def MO_Pow3Op : MO_ElementWiseUnaryOp<"pow3", [Idempotent]> {
+  let summary = "Power 3 (cube) operation";
+  let description = [{
+    Returns x**3, where x is the input tensor.
+    (deprecated, waiting on lit improvements for more generic kernel)
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.pow3(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def MO_ReluOp : MO_ElementWiseUnaryOp<"relu", [Idempotent]> {
+  let summary = "Rectified linear unit operation";
+  let description = [{
+    Returns max(0, x), where x is the input tensor.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.relu(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def MO_RsqrtOp : MO_ElementWiseUnaryOp<"rsqrt", [Idempotent]> {
+  let summary = "Inverse Square Root operation";
+  let description = [{
+    Returns 1/sqrt(x), where x is the input tensor.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.rsqrt(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def MO_SqrtOp : MO_ElementWiseUnaryOp<"sqrt", [Idempotent]> {
+  let summary = "Square Root operation";
+  let description = [{
+    Return sqrt(x), where x is the input tensor.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.sqrt(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def MO_SoftmaxOp : MO_Op<"softmax", [MO_SameOperandsAndResultType, Pure]> {
+  let summary = "Perfoms softmax on tensor `input`";
+  let description = [{
+    Returns softmax probability scores following:
+     `exp(input) / sum(exp(input))`
+
+    The scores are computed along the last axis.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.softmax(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+
+  let arguments = (ins MO_Tensor:$input);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def MO_SubOp : MO_ElementWiseBinaryOp<"sub"> {
+  let summary = "Subtract operation";
+  let description = [{
+    Returns x - y, where x and y are input tensors.
+
+    Example:
+
+    ```mlir
+    %lhs: !mo.tensor<[2, 3], f32>
+    %rhs: !mo.tensor<[2, 3], f32>
+    %res = mo.sub(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def MO_TanhOp : MO_ElementWiseUnaryOp<"tanh"> {
+  let summary = "Tanh function";
+  let description = [{
+    Computes the hyperbolic tangent of the input tensor elements.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.tanh(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// Reduction ops
+//===----------------------------------------------------------------------===//
+
+def MO_MeanOp : MO_Op<"mean", [Pure]> {
+  let summary = "Mean operation";
+  let description = [{
+    Reduce `input` elements across `axis` into their mean value, and change that
+    axis's dimension to 1 in the output shape.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %axis = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+    %res  = mo.mean(%arg, %axis) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+    ```
+  }];
+
+  let arguments = (ins MO_Tensor:$input,
+                       MO_RankedScalarTensor:$axis);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// Sliding window ops
+//===----------------------------------------------------------------------===//
+
+def MO_MaxPoolOp : MO_Op<"max_pool", [Pure, MO_SlidingWindow]>{
+  let summary = "Max pooling operation";
+  let description = [{
+    Apply max pooling with the given filter shape, strides, and dilations.
+
+    All hyperparameters (i.e. filter_shape, strides, dilations) must be of rank
+    1, or unranked. If the input has static rank, all hyperparameters with
+    static shape must have sizes the match the input rank. The input and output
+    data tensors' ranks must match if statically known.
+
+    This op currently only supports strides and dilations on the filter.
+
+    Example:
+
+    ```mlir
+    %fs = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %st = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %res = mo.max_pool(%arg) [filter_shape = %fs, strides = %st, dilations = %di] : (
+      !mo.tensor<[10, 10], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
+    ) -> !mo.tensor<[9, 5], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_ShapeLikeIfRanked:$filter_shape,
+    MO_ShapeLikeIfRanked:$strides,
+    MO_ShapeLikeIfRanked:$dilations);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `(` $input `)` `[` `filter_shape` `=` $filter_shape `,`
+    `strides` `=` $strides `,` `dilations` `=` $dilations `]` attr-dict `:`
+    functional-type(operands, results)
+  }];
+
+  let hasVerifier = 1;
+}
+
+def MO_ConvOp : MO_Op<"conv", [Pure, MO_SlidingWindow]>{
+  let summary = "Convolution operation";
+  let description = [{
+    Compute the convolution of the input with the given filter, strides, and
+    dilations.
+
+    All hyperparameters (i.e. strides, dilations) must be of rank 1, or
+    unranked. If the input has static rank, all hyperparameters with static
+    shape must have sizes the match the input rank. The input, output and filter
+    tensors' ranks must match if statically known.
+
+    This op currently only supports strides and dilations on the filter.
+
+    Example:
+
+    ```mlir
+    %st = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %res = mo.conv(%0, %1) [strides = %st, dilations = %di] : (
+      !mo.tensor<[5, 5], f32>, !mo.tensor<[3, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
+    ) -> !mo.tensor<[2, 1], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_Tensor:$filter,
+    MO_ShapeLikeIfRanked:$strides,
+    MO_ShapeLikeIfRanked:$dilations);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `(` $input `,` $filter `)` `[` `strides` `=` $strides `,`
+    `dilations` `=` $dilations `]` attr-dict `:`
+    functional-type(operands, results)
+  }];
+
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// Shape related ops
+//===----------------------------------------------------------------------===//
+
+def MO_ReshapeOp : MO_Op<"reshape", [Pure]> {
+  let summary = "Reshape Operation";
+  let description = [{
+    Return a tensor with the same underlying data, but different shape.
+
+    Example:
+
+    ```mlir
+    %arg1: !mo.tensor<[1, 2, 3], f32>
+    %shape = mo.constant {value = #M.dense_array<3, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %arg2 = mo.reshape(%arg1, %shape) : !mo.tensor<[3, 2], si64>
+    ```
+  }];
+
+  let arguments = (ins MO_Tensor:$input, MO_ShapeLike:$shape);
+  let results = (outs MO_Tensor:$output);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def MO_ShapeOfOp : MO_Op<"shape_of", [Pure]> {
+  let summary = "ShapeOf Operation";
+  let description = [{
+    Get the shape of a tensor.
+
+    Example:
+
+    ```mlir
+    // statically ranked
+    %arg1: !mo.tensor<[1, 2, 3], f32>
+    %shape1 = mo.shapeof(%arg1) : !mo.tensor<[3], si64>
+
+    // dynamically ranked
+    %arg2: !mo.tensor<?, f32>
+    %shape2 = mo.shapeof(%arg2) : !mo.tensor<[?], si64>
+    ```
+  }];
+
+  let arguments = (ins MO_Tensor:$input);
+  let results = (outs MO_ShapeLike:$shape);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def MO_BroadcastShapeOp : MO_Op<"broadcast_shape", [Pure]> {
+  let summary = "Broadcast Shape Operation";
+  let description = [{
+    Given two tensor shapes, return the shape that both broadcast to under
+    the numpy rules:
+
+    1. Make the shapes the same rank by adding 1 to the front
+       of the shorter shape
+    2. Ensure each dimension is equal, either by matching them or promoting a 1
+       to a larger number from the other shape
+
+    Example 1:
+
+    ```mlir
+    %arg1: !mo.tensor<[1, 2, 3], f32>
+    %arg2: !mo.tensor<[4, 2, 1], f32>
+    %inshape1 = mo.shape_of(%arg1) : (!mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[3], si64>
+    %inshape2 = mo.shape_of(%arg2) : (!mo.tensor<[4, 2, 1], f32>) -> !mo.tensor<[3], si64>
+    %shape1 = mo.broadcast_shape(%inshape1, %inshape2) : !mo.tensor<[3], si64>
+    ```
+    In this example, shape1 will return [4, 2, 3]
+
+    Example 2:
+
+    ```mlir
+    %arg1: !mo.tensor<[10, 2, 1], f32>
+    %arg2: !mo.tensor<[5], f32>
+    %inshape1 = mo.shape_of(%arg1) : (!mo.tensor<[10, 2, 1], f32>) -> !mo.tensor<[3], si64>
+    %inshape2 = mo.shape_of(%arg2) : (!mo.tensor<[5], f32>) -> !mo.tensor<[1], si64>
+    %shape1 = mo.broadcast_shape(%inshape1, %inshape2) : !mo.tensor<[3], si64>
+    ```
+    In this example, shape1 will return [10, 2, 5]
+  }];
+
+  let arguments = (ins MO_ShapeLike:$input_x, MO_ShapeLike:$input_y);
+  let results = (outs MO_ShapeLike:$shape);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def MO_BroadcastToOp : MO_Op<"broadcast_to", [Pure]> {
+  let summary = "BroadcastTo Operation";
+  let description = [{
+    Broadcast the input_x tensor to the shape input_shape.
+
+    The Broadcasting follows numpy semantics to determine validity of the
+    two shapes.
+
+    Example:
+
+    ```mlir
+    %from: !mo.tensor<[3], f32>
+    %to   = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %res  = mo.broadcast_to(%from, %to) : (!mo.tensor<[3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 3], f32>
+    ```
+  }];
+
+  let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_shape);
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def MO_ConcatOp : MO_Op<"concat", [Pure]> {
+  let summary = "Concat Operation";
+  let description = [{
+    Concatenate the input tensors along a given dimension.
+
+    Example:
+
+    ```mlir
+    %arg0: !mo.tensor<[2, 3], f32>
+    %arg1: !mo.tensor<[2, 5], f32>
+    %axis = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+    %res = mo.concat[%axis: !mo.tensor<[], si64>](%arg0, %arg1) : (
+      !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 5], f32>
+    ) -> !mo.tensor<[2, 8], f32>
+    ```
+  }];
+
+  let arguments = (ins Variadic<MO_Tensor>:$inputs, MO_RankedScalarTensor:$axis);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `[` $axis `:` qualified(type($axis)) `]`
+    `(` $inputs `)` attr-dict `:`functional-type($inputs, results)
+  }];
+
+  let hasVerifier = 1;
+}
+
+def MO_TransposeOp : MO_Op<"transpose", [Pure]> {
+  let summary = "Transpose Operation";
+  let description = [{
+    Return a new Tensor as the result of permuting the dimensions of the input
+    tensor according to the value of perm.
+
+  }];
+
+  let arguments = (ins MO_Tensor:$input, MO_ShapeLike:$perm);
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def MO_PadOp : MO_Op<"pad", [Pure]> {
+  let summary = "Pad Operation";
+  let description = [{
+    Pad the `input` tensor with a scalar tensor `consntant` according to the
+    `paddings`. Assume input has rank `N`, the `paddings` tensor should have
+    shape `(N, 2)`, where each row has the form `[before, after]`, indicating
+    how many of `constant` to add before and after the contents of `input` in
+    that dimension. The size of each dimension D of the padded output is:
+    `paddings[D, 0] + input.dim(D) + paddings[D, 1]`.
+
+    Example:
+
+    ```mlir
+    %input: !mo.tensor<[2, 3], f32>
+    %constant = mo.constant {value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
+    %paddings = mo.constant {value = #M.dense_array<1, 0, 1, 1> : tensor<2x2xsi64>} : !mo.tensor<[2, 2], si64>
+    %output   = mo.pad(%input, %paddings, %constant) : (
+      !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si64>, !mo.tensor<[], f32>
+    ) -> !mo.tensor<[3, 5], f32>
+    ```
+  }];
+
+  // TODO(#7987) support a padding_mode argument
+  let arguments = (ins MO_Tensor:$input, MO_PaddingLike:$paddings, MO_RankedScalarTensor:$constant);
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// GatherOp
+//===----------------------------------------------------------------------===//
+
+def MO_GatherOp : MO_Op<"gather", [Pure]> {
+  let summary = "Gather Operation";
+  let description = [{
+    Gather slices from params' axis according to indices.
+
+    Example:
+
+    ```mlir
+    %params : !mo.tensor<[2, 2], f32>
+    %indices: !mo.tensor<[2], si64>
+    %axis = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
+    %res     = mo.gather(%params, %indices, %axis) : (
+      !mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>, !mo.tensor<[], si64>
+    ) -> !mo.tensor<[2, 2], f32>
+    ```
+  }];
+
+  let arguments = (ins MO_NonScalarIfRanked:$params,
+                       MO_IndicesTensor:$indices,
+                       MO_RankedScalarTensor:$axis);
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// Matmul related ops
+//===----------------------------------------------------------------------===//
+
+class MO_DotBase<string name, list<Trait> traits = []>
+  : MO_Op<name, traits # [SameOperandsAndResultElementType]> {
+  let description = [{
+    Base class for all generic dot products (i.e. tensor contractions with two
+    inputs), for example matmuls.
+  }];
+
+  let results = (outs MO_Tensor:$result);
+
+  let hasVerifier = 1;
+}
+
+def MO_MatmulOp : MO_DotBase<"matmul", [MO_MatmulLike]> {
+  let summary = "Matrix-matrix multiplication";
+  let description = [{
+    Perform matrix multiplication on two 2D tensors.
+
+    Example:
+
+    ```mlir
+    %lhs: ... !mo.tensor<[10, 20], f32>
+    %rhs: ... !mo.tensor<[20, 5], f32>
+    %res = mo.matmul(%lhs, %rhs) : (!mo.tensor<[10, 20], f32>, !mo.tensor<[20, 5], f32>) -> !mo.tensor<[10, 5], f32>
+    ```
+  }];
+
+  let arguments = (ins MO_Tensor:$input_a, MO_Tensor:$input_b);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def MO_BatchMatmulOp : MO_DotBase<"batch_matmul",
+    [MO_MatmulLike, DeclareOpInterfaceMethods<MO_Parameterization>,
+     DeclareOpInterfaceMethods<MO_ForwardShapeInferenceMaterialization>]> {
+  let summary = "Batched matrix-matrix multiplication";
+  let description = [{
+    Perform matrix multiplication on two batches of matrices, represented by
+    two N-dimensional tensors.
+
+    The last two dimensions of each input are the matrix dimensions.
+
+    Example:
+
+    ```mlir
+    %lhs: ... !mo.tensor<[3, 4, 5], f32>
+    %rhs: ... !mo.tensor<[3, 5, 6], f32>
+    %res = mo.batch_matmul(%lhs, %rhs) :
+      mo.tensor<[3, 4, 5], f32>, !mo.tensor<[3, 5, 6], f32>
+    ) -> !mo.tensor<[3, 4, 6], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input_a,
+    MO_Tensor:$input_b,
+    KGEN_ParamDeclArrayAttr:$paramDecls);
+
+  let builders = [
+    OpBuilder<(ins "Type":$resTy, "Value":$inputA, "Value":$inputB)>,
+  ];
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($paramDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
+
+  let extraClassDeclaration = [{
+  private:
+    /// Unique forward shape inference function name, set when materialized.
+    static std::optional<StringRef> fwShapeFunc;
+  public:
+  }];
+}
+
+#endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOOPS_TD

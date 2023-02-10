@@ -7,7 +7,7 @@
 #ifndef GENERICML_MO_GRAPHCOMPILER_PASSES_H
 #define GENERICML_MO_GRAPHCOMPILER_PASSES_H
 
-#include "GenericML/Conversion/MOToPrimitives.h"
+#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/GraphCompiler.h"
 
 namespace M::MO {
