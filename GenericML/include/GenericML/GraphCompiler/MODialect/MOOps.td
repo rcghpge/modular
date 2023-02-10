@@ -142,7 +142,11 @@ def MO_RebindOp : MO_Op<"rebind", [Pure,
     ```
   }];
 
-  let arguments = (ins MO_Tensor:$input, KGEN_ParamDeclArrayAttr:$paramDecls);
+  let arguments = (ins
+    MO_Tensor:$input,
+    DefaultValuedAttr<KGEN_ParamDeclArrayAttr, "ArrayRef<ParamDeclAttr>({})">:$paramDecls
+  );
+
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
