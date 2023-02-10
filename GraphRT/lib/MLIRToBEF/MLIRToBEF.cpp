@@ -1292,7 +1292,7 @@ void RegionEmitter::emitRegion(Region *region) {
 
   for (auto &op : block) {
     // Output primitive gets special processing.
-    if (isa<BEF::OutputOp>(&op))
+    if (isa<BEF::OutputOp>(op))
       continue;
 
     bool isNonStrict = false;
@@ -1317,13 +1317,12 @@ void RegionEmitter::emitRegion(Region *region) {
     emitPrimitive(&op, primitiveList);
   }
 
-  // Emit the result registers list at the end, if present. If the top level
-  // region is a graph region, then it's not necessary to have a terminator at
-  // all, and block.getTerminator() fails.
-  if (!region->getParentOp()->hasTrait<OpTrait::HasOnlyGraphRegion>()) {
-    if (auto outputOp = dyn_cast<BEF::OutputOp>(block.getTerminator()))
+  // Emit the result registers list at the end, if present.
+  if (!block.empty()) {
+    if (auto outputOp = dyn_cast<BEF::OutputOp>(block.back())) {
       for (auto operand : outputOp.getOperands())
         emitVBR(getRegisterNumber(operand));
+    }
   }
 
   // Once we're done, we can emit the primitive data after the primitive index

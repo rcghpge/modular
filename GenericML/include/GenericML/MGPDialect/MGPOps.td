@@ -15,6 +15,7 @@ include "GraphRT/BEFDialect/BEFTypes.td"
 include "Support/MDialect/MAttrs.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/SymbolInterfaces.td"
+include "mlir/IR/RegionKindInterface.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "GenericML/MGPDialect/MGPDialect.td"
 include "GenericML/MGPDialect/MGPTypes.td"
@@ -947,7 +948,8 @@ def ModelFrameworkAttr : ConfinedAttr<StrAttr, [
       "must be a recognized framework name.">]>;
 
 def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">, Symbol,
-                               IsolatedFromAbove]> {
+                               IsolatedFromAbove, RegionKindInterface,
+                               HasOnlyGraphRegion]> {
   let summary = [{
     Represents an executable model with 'init' and 'execute' entry points.
   }];
