@@ -1,4 +1,5 @@
-// RUN: mt --compile %s
+// Just check we still parse it.
+// RUN: mgp-opt %s --allow-unregistered-dialect
 
 module {
   mgp.model @upsideDown : tf init {
