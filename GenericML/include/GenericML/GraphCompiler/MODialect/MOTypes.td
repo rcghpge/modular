@@ -109,11 +109,22 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [ShapedTypeInterface]> {
 // ODS constraints to inject verifier logic via type annotation.
 //===----------------------------------------------------------------------===//
 
-/// Checks if a type has rank N if statically ranked.
-class HasRankIfRankedPred<int N> : Or<[Neg<HasRankPred>, HasAnyRankOfPred<[N]>]>;
+/// Checks if a MO_TensorType has static rank.
+def MO_HasRankPred : CPred<"$_self.cast<MO::TensorType>().hasRank()">;
 
-/// Checks if a MO_TensorType has int or index elements
-def IntOrIndexElementTypePred : CPred<"$_self.cast<::M::MO::TensorType>().getElementType().isIntOrIndex()">;
+// Checks if a MO_TensorType has one of the specified ranks.
+class MO_HasAnyRankOfPred<list<int> ranks> : And<[
+  MO_HasRankPred,
+  Or<!foreach(rank, ranks,
+    CPred<[{$_self.cast<MO::TensorType>().getRank() == }] # rank>)>]>;
+
+/// Checks if a type has rank N if statically ranked.
+class HasRankIfRankedPred<int N> :
+  Or<[Neg<MO_HasRankPred>, MO_HasAnyRankOfPred<[N]>]>;
+
+/// Checks if a MO_TensorType has int or index elements.
+def IntOrIndexElementTypePred : CPred<
+  "$_self.cast<::M::MO::TensorType>().getElementType().isIntOrIndex()">;
 
 /// Checks if a MO_TensorType has SI64 elements.
 def HasSI64ElementTypePred : SubstLeaves<
@@ -123,21 +134,20 @@ def HasSI64ElementTypePred : SubstLeaves<
 def HasSI32ElementTypePred : SubstLeaves<
   "$_self", "cast<M::MO::TensorType>($_self).getElementType()", SI32.predicate>;
 
-/// Checks if a MO_TensorType has shape [N, 2]
+/// Checks if a MO_TensorType has shape [N, 2].
 def HasPaddingShape : And<[
-  HasAnyRankOfPred<[2]>,
-  CPred<"$_self.cast<::M::MO::TensorType>().getDimSize(1) == 2">]>;
+  MO_HasAnyRankOfPred<[2]>,
+  CPred<"$_self.cast<::M::MO::TensorType>().getIntDim(1) == 2">]>;
 
-/// Confines the MO_TensorType so that it's ranked and a scalar
-def MO_RankedScalarTensor : ConfinedType<MO_Tensor,
-    [HasAnyRankOfPred<[0]>],
+/// Confines the MO_TensorType so that it's ranked and a scalar.
+def MO_RankedScalarTensor : ConfinedType<MO_Tensor, [MO_HasAnyRankOfPred<[0]>],
     "ranked scalar tensor"> {
   let cppClassName = "::M::MO::TensorType";
 }
 
 /// Confines the MO_TensorType so that it's either unranked or a non-scalar
 def MO_NonScalarIfRanked: ConfinedType<MO_Tensor,
-    [Neg<HasAnyRankOfPred<[0]>>],
+    [Neg<MO_HasAnyRankOfPred<[0]>>],
     "unranked or non-scalar tensor"> {
   let cppClassName = "::M::MO::TensorType";
 }
@@ -151,8 +161,8 @@ def MO_IndicesTensor : ConfinedType<MO_Tensor,
 
 /// Confines the MO_TensorType so that it has SI32 or SI64 elements and rank 1
 def MO_ShapeLike : ConfinedType<MO_Tensor,
-    [HasAnyRankOfPred<[1]>, Or<[HasSI64ElementTypePred,
-                                HasSI32ElementTypePred]>],
+    [MO_HasAnyRankOfPred<[1]>, Or<[HasSI64ElementTypePred,
+                                   HasSI32ElementTypePred]>],
     "rank 1 and signed 64 or signed 32 integer elements"> {
   let cppClassName = "::M::MO::TensorType";
 }
