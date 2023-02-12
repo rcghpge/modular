@@ -95,15 +95,19 @@ MO::ShapeAttr::verify(function_ref<InFlightDiagnostic()> emitError,
   return success();
 }
 
+/// Convert a symbolic dimension attribute to an integer value.
+static int64_t symbolicDimToInt(TypedAttr dim) {
+  if (auto intAttr = llvm::dyn_cast<IntegerAttr>(dim))
+    return intAttr.getInt();
+  return mlir::ShapedType::kDynamic;
+}
+
+int64_t MO::ShapeAttr::getIntDim(size_t n) const {
+  return symbolicDimToInt(getValues()[n]);
+}
+
 SmallVector<int64_t> MO::ShapeAttr::getIntDims() const {
-  SmallVector<int64_t> res;
-  for (TypedAttr typedAttr : getValues()) {
-    if (auto intAttr = llvm::dyn_cast<IntegerAttr>(typedAttr))
-      res.emplace_back(intAttr.getInt());
-    else
-      res.emplace_back(mlir::ShapedType::kDynamic);
-  }
-  return res;
+  return llvm::to_vector(llvm::map_range(getValues(), symbolicDimToInt));
 }
 
 //===----------------------------------------------------------------------===//

@@ -88,6 +88,20 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [ShapedTypeInterface]> {
 
     /// Returns the referenced parameter names.
     SmallPtrSet<StringAttr, 4> getUsedParamNames() const;
+
+    /// Return the symbolic dimensions. Fails if the shape is unknown.
+    ArrayRef<TypedAttr> getDims() const;
+
+    /// Return the nth symbolic dimensions. Fails if the shape is unknown.
+    TypedAttr getDim(size_t n) const;
+
+    /// Return the dimensions as integers, using mlir::ShapedType::kDynamic for
+    /// unknown dimensions. Fails if the shape is unknown.
+    SmallVector<int64_t> getIntDims() const;
+
+    /// Return the nth dimension as an integer, using mlir::ShapedType::kDynamic
+    /// for unknown dimensions. Fails if the shape is unknown.
+    int64_t getIntDim(size_t n) const;
   }];
 }
 

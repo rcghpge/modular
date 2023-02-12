@@ -272,6 +272,20 @@ SmallPtrSet<StringAttr, 4> TensorType::getUsedParamNames() const {
   return res;
 }
 
+ArrayRef<TypedAttr> TensorType::getDims() const {
+  return getTypedShapeAttr().getValues();
+}
+
+TypedAttr TensorType::getDim(size_t n) const { return getDims()[n]; }
+
+SmallVector<int64_t> TensorType::getIntDims() const {
+  return getTypedShapeAttr().getIntDims();
+}
+
+int64_t TensorType::getIntDim(size_t n) const {
+  return getTypedShapeAttr().getIntDim(n);
+}
+
 LogicalResult ShapeType::printValue(AsmPrinter &p, TypedAttr value) const {
   if (!mlir::isa<KGEN::ParamDeclRefAttr, MO::ShapeAttr>(value))
     return failure();
