@@ -938,6 +938,57 @@ def DebugCpuTensorPrint : MGP_Op<"debug.cpu.tensor.print"> {
 }
 
 //===----------------------------------------------------------------------===//
+// CASCreateInstance
+//===----------------------------------------------------------------------===//
+
+def CASCreateInstance : MGP_Op<"cas.create_instance"> {
+  let summary = "Creates an instance of the CAS.";
+  let description = [{
+    Creates an instance of the CAS and stores it into the provided state slot.
+
+    Example:
+    ```mlir
+    %ch = mgp.cas.create_instance %ch, %ctx[0] at "/path/to/fs"
+    ```
+  }];
+
+  let arguments = (ins ChainType:$inChain,
+                       MGP_ContextType:$theContext,
+                       UI64Attr:$aSlot,   // 0
+                       StrAttr:$bFsPath); // 1
+  let results = (outs ChainType:$outChain);
+  let assemblyFormat = [{
+    $inChain `,` $theContext `[` $aSlot `]` `at` $bFsPath attr-dict
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// CASLookup
+//===----------------------------------------------------------------------===//
+
+def CASLookup : MGP_Op<"cas.lookup"> {
+  let summary = "Lookup a CAS ID and return a ref to the buffer.";
+  let description = [{
+    Look up a provided CAS ID and return a ref to the buffer.
+
+    Example:
+    ```mlir
+    %buf = mgp.cas.lookup("SOMECASID") %ch, %ctx[0] : !mgp.cpu.buffer<N>
+    ```
+  }];
+
+  let arguments = (ins ChainType:$inChain,
+                       MGP_ContextType:$theContext,
+                       UI64Attr:$aSlot,   // 0
+                       StrAttr:$bKey);    // 1
+  let results = (outs MGP_CpuBufferType:$result);
+  let assemblyFormat = [{
+    `` `(` $bKey `)` $inChain `,` $theContext `[` $aSlot `]` attr-dict
+    `:` qualified(type($result))
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // ModelOp
 //===----------------------------------------------------------------------===//
 

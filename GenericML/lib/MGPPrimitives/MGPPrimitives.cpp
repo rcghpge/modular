@@ -504,20 +504,23 @@ AsyncValueRef<BufferRef> CASStateSlot::lookup(StringRef key,
 // mgp.cas.create_instance
 //===----------------------------------------------------------------------===//
 
-static ErrorOrSuccess mgp_cas_create_instance(Context &ctx,
+static ErrorOr<Chain> mgp_cas_create_instance(Chain inChain, Context &ctx,
                                               BEFAttr<uint64_t> slot,
                                               BEFAttr<StringRef> fsPath,
                                               Runtime &runtime) {
   auto &slotOr = ctx.emplaceStateSlot<CASStateSlot>(*slot, 0, runtime, *fsPath);
   // If the emplace failed, the state slot will hold an error.
-  return slotOr.getError();
+  if (auto err = slotOr.getError())
+    return err.takeError();
+  // Otherwise, good to go.
+  return Chain{};
 }
 
 //===----------------------------------------------------------------------===//
 // mgp.cas.lookup
 //===----------------------------------------------------------------------===//
 
-static AsyncValueRef<BufferRef> mgp_cas_lookup(Context &ctx,
+static AsyncValueRef<BufferRef> mgp_cas_lookup(Chain inChain, Context &ctx,
                                                BEFAttr<uint64_t> slot,
                                                BEFAttr<StringRef> key,
                                                EncodedLocation loc) {
