@@ -183,4 +183,15 @@ def MO_SameOperandsAndResultType : TraitList<[
   MO_SameInputOutputTypesParameterization,
 ]>;
 
+/// Logically similar to the builtin SameOperandsAndResultElementType, but this
+/// allows us to use our own logic of how the element types are accessed from
+/// the op's operands and results. In the builtin implementation, element types
+/// are only support for mlir::ShapedType. Moreover, if `MO::TensorType` needs
+/// to support element type parameters in the future, this trait would be able
+/// to support them.
+def MO_SameOperandsAndResultElementType :
+    NativeOpTrait<"MOSameOperandsAndResultElementType"> {
+  let cppNamespace = "::M::MO";
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOINTERFACES_TD

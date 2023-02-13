@@ -146,6 +146,42 @@ KGEN::ParamDeclAttr MOOpParameterizationInterface::getNewDimParam() {
 }
 
 //===----------------------------------------------------------------------===//
+// MOSameOperandsAndResultElementType
+//===----------------------------------------------------------------------===//
+
+/// Get the element type of a tensor value.
+static Type getElementType(Value v) {
+  return v.getType().cast<MO::TensorType>().getElementType();
+}
+
+/// This follows the builtin verifySameOperandsAndResultElementType.
+LogicalResult impl::verifyMOSameOperandsAndResultElementType(Operation *op) {
+  if (failed(mlir::OpTrait::impl::verifyAtLeastNOperands(op, 1)) ||
+      failed(mlir::OpTrait::impl::verifyAtLeastNResults(op, 1)))
+    return failure();
+
+  auto elementType = getElementType(op->getResult(0));
+
+  // Verify result element type matches first result's element type.
+  for (auto result : llvm::drop_begin(op->getResults(), 1)) {
+    if (getElementType(result) != elementType) {
+      return op->emitOpError(
+          "requires the same element type for all operands and results");
+    }
+  }
+
+  // Verify operand's element type matches first result's element type.
+  for (auto operand : op->getOperands()) {
+    if (getElementType(operand) != elementType) {
+      return op->emitOpError(
+          "requires the same element type for all operands and results");
+    }
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 

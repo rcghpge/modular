@@ -769,8 +769,8 @@ def MO_GatherOp : MO_Op<"gather", [Pure]> {
 // Matmul related ops
 //===----------------------------------------------------------------------===//
 
-class MO_DotBase<string name, list<Trait> traits = []>
-  : MO_Op<name, traits # [SameOperandsAndResultElementType]> {
+class MO_DotBase<string name, list<Trait> traits = []> :
+    MO_Op<name, traits # [MO_SameOperandsAndResultElementType]> {
   let description = [{
     Base class for all generic dot products (i.e. tensor contractions with two
     inputs), for example matmuls.

@@ -25,7 +25,19 @@ LogicalResult
 verifyMatchingRanks(ArrayRef<TypedValue<M::MO::TensorType>> values);
 LogicalResult verifyMatmulLike(MatmulLike op);
 LogicalResult verifySlidingWindow(SlidingWindow op);
+LogicalResult verifyMOSameOperandsAndResultElementType(Operation *op);
 } // namespace impl
+
+template <typename ConcreteType>
+class MOSameOperandsAndResultElementType
+    : public mlir::OpTrait::TraitBase<ConcreteType,
+                                      MOSameOperandsAndResultElementType> {
+public:
+  static LogicalResult verifyTrait(Operation *op) {
+    return impl::verifyMOSameOperandsAndResultElementType(op);
+  }
+};
+
 } // namespace M::MO
 
 #include "GenericML/GraphCompiler/MODialect/MOInterfaces.h.inc"
