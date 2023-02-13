@@ -40,12 +40,9 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
   KGEN::CompilationOptions compilationOptions;
   auto compiler = KGEN::ObjectCompiler::create(runtime, ".kgen_cache", symTable,
                                                compilationOptions);
-  ErrorOr<TargetInfoAttr> target = KGEN::getHostTargetInfo(ctx);
-  if (target.isError())
-    return target.takeError();
+  UNWRAP_ERROR(target, KGEN::getHostTargetInfo(ctx));
 
-  auto standaloneOr =
-      compiler->produceStandaloneObjectAttr(target.takeValue(), true);
+  auto standaloneOr = compiler->produceStandaloneObjectAttr(target, true);
   if (failed(standaloneOr))
     return Error("Failed to create object attribute");
 

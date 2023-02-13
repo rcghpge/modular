@@ -120,33 +120,58 @@ struct JitCompileKernels
 
   void runOnOperation() override {
     mlir::ModuleOp m = getOperation();
-    for (auto graph : m.getOps<MO::GraphOp>())
-      this->runPass(graph);
+    for (auto graph : m.getOps<MO::GraphOp>()) {
+      auto errOr = this->runPass(graph);
+      if (errOr.isError()) {
+        graph.emitError() << "[JitCompileKernels] " << errOr.getError();
+        return signalPassFailure();
+      }
+    }
   }
 
-  void runPass(MO::GraphOp graph) {
+  void replaceOperation(mlir::Operation *op, MOGG::ExecuteCompiledOp exe) {
+    // Add the execute op into the block at the same point as the current
+    // op.
+    mlir::OpBuilder opBuilder{op->getContext()};
+    opBuilder.setInsertionPoint(op);
+    opBuilder.insert(exe);
+
+    // Fix up the IR and replace all the uses.
+    exe->setOperands(op->getOperands());
+    op->replaceAllUsesWith(exe.getResults());
+    op->erase();
+  }
+
+  ErrorOr<mlir::OwningOpRef<mlir::ModuleOp>> loadLitLibrary() {
     // The path to the MOGG standard library lit bindings. The macro is set by
     // CMake.
     StringLiteral path = MOGG_LIT_BINDINGS_PATH;
 
     // Load the module. The stub will be appended to this.
     mlir::OwningOpRef<mlir::ModuleOp> baseModuleRef =
-        mlir::parseSourceFile<mlir::ModuleOp>(path, graph.getContext());
+        mlir::parseSourceFile<mlir::ModuleOp>(path,
+                                              getOperation()->getContext());
 
     if (!baseModuleRef) {
-      graph.emitError() << "[JitCompileKernels] Could not load MOGG LIT "
-                           "binding library at path "
-                        << path;
-      return;
+      return Error("[JitCompileKernels] Could not load MOGG LIT "
+                   "binding library at path " +
+                   path);
     }
 
-    mlir::ModuleOp baseModule = *baseModuleRef;
+    // Strip all the export functions from the imported module.
+    baseModuleRef->walk([&](KGEN::ExportOp exportOp) { exportOp.erase(); });
+
+    return baseModuleRef;
+  }
+
+  ErrorOrSuccess runPass(MO::GraphOp graph) {
+    // Load the lit library. We use this KGEN module as the starting point to
+    // build up the stub functions. It contains all the kernels and functions we
+    // will need to call.
+    UNWRAP_ERROR(kgenModule, loadLitLibrary());
 
     // Helper to track all the types to prevent constant reallocation.
     Stub::TypeManager manager{graph.getContext()};
-
-    // Strip all the export functions from the imported module.
-    baseModule.walk([&](KGEN::ExportOp exportOp) { exportOp.erase(); });
 
     // Map operations with the same output sizes onto the same kernel. Longer
     // term we may want fancier optimizations like unifying aliased inputs but
@@ -157,42 +182,28 @@ struct JitCompileKernels
     SmallVector<mlir::Attribute> symbolNamesAdded;
 
     // Start building up the KGEN kernel.
-    Stub::KGENBuilder builder{manager, baseModule};
+    Stub::KGENBuilder builder{manager, *kgenModule};
 
     // Build stubs for all JIT operations and replace them with symbolic calls
     // to the kernels in the KGEN stub.
-    graph.walk([&, pass = this](MOGG::ElementwiseOp op) {
+    for (MOGG::ElementwiseOp op :
+         llvm::make_early_inc_range(graph.getOps<MOGG::ElementwiseOp>())) {
       // Create a unique name for the kernel.
       std::string stubKernelName = createMangledName(op);
 
       // Don't duplicate KGEN kernels for the same call.
       auto itr = jittedKernels.find(stubKernelName);
       if (itr != jittedKernels.end()) {
-        // Clone the jit operation (with the same jit kernel attached)
         MOGG::ExecuteCompiledOp exe = itr->second.clone();
-
-        // Add the execute op into the block at the same point as the current
-        // op.
-        mlir::OpBuilder opBuilder{op->getContext()};
-        opBuilder.setInsertionPoint(op);
-        opBuilder.insert(exe);
-
-        // Fix up the IR and replace all the uses.
-        exe->setOperands(op->getOperands());
-        op->replaceAllUsesWith(exe.getResults());
-        op->erase();
-        return;
+        replaceOperation(op, exe);
+        continue;
       }
 
       // Lower the basic stub function.
-      builder.startLowering(op, stubKernelName);
+      RETURN_ERROR(builder.startLowering(op, stubKernelName));
 
       // Lower the operation using a vectorized map over an elementwise lambda.
-      auto errOr = builder.lowerToElementwiseLambda(op.getBody().front());
-      if (errOr.isError()) {
-        pass->signalPassFailure();
-        return;
-      }
+      RETURN_ERROR(builder.lowerToElementwiseLambda(op.getBody().front()));
 
       // The propagate the hacky shape inference name.
       std::string shapeInferFunc = getShapeInferenceName(op);
@@ -206,18 +217,15 @@ struct JitCompileKernels
 
       // Tracking attributes makes it easier to create an array.
       symbolNamesAdded.push_back(jitExecute.getKernelNameAttr());
-    });
+    }
 
     // Convert our list into a combined attribute.
     auto allSyms = mlir::ArrayAttr::get(graph->getContext(), symbolNamesAdded);
 
     // Add the compiled binary to the file.
-    Stub::StubCompiler compiler{baseModule, graph, useSearch.getValue()};
-    auto errOr = compiler.compile(allSyms);
-    if (errOr.isError()) {
-      graph.emitError() << "[JitCompileKernels] " << errOr.getError();
-      signalPassFailure();
-    }
+    Stub::StubCompiler compiler{*kgenModule, graph, useSearch.getValue()};
+    RETURN_ERROR(compiler.compile(allSyms));
+    return success();
   }
 };
 
