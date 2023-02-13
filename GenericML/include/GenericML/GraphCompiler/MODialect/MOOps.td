@@ -185,7 +185,9 @@ def MO_ConstantOp : MO_Op<"constant", [ConstantLike, Pure]> {
     Example:
 
     ```mlir
-    %0 = mo.constant {value = #M.dense_array<1, 2, 3, 4> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
+    %0 = mo.constant {
+      value = #M.dense_array<1, 2, 3, 4> : tensor<2x2xsi32>
+    } : !mo.tensor<[2, 2], si32>
     ```
   }];
 
@@ -449,8 +451,10 @@ def MO_MeanOp : MO_Op<"mean", [Pure]> {
 
     ```mlir
     %arg: !mo.tensor<[2, 3], f32>
-    %axis = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-    %res  = mo.mean(%arg, %axis) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+    %axis = mo.constant {
+      value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+    %res = mo.mean(%arg, %axis) : (
+      !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
 
@@ -482,11 +486,17 @@ def MO_MaxPoolOp : MO_Op<"max_pool", [Pure, MO_SlidingWindow]>{
     Example:
 
     ```mlir
-    %fs = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %st = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %res = mo.max_pool(%arg) [filter_shape = %fs, strides = %st, dilations = %di] : (
-      !mo.tensor<[10, 10], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
+    %fs = mo.constant {
+      value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %st = mo.constant {
+      value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %di = mo.constant {
+      value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %res = mo.max_pool(%arg) [
+        filter_shape = %fs, strides = %st, dilations = %di
+    ] : (
+      !mo.tensor<[10, 10], f32>, !mo.tensor<[2], si64>,
+      !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
     ) -> !mo.tensor<[9, 5], f32>
     ```
   }];
@@ -523,10 +533,13 @@ def MO_ConvOp : MO_Op<"conv", [Pure, MO_SlidingWindow]>{
     Example:
 
     ```mlir
-    %st = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %st = mo.constant {
+      value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %di = mo.constant {
+      value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
     %res = mo.conv(%0, %1) [strides = %st, dilations = %di] : (
-      !mo.tensor<[5, 5], f32>, !mo.tensor<[3, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
+      !mo.tensor<[5, 5], f32>, !mo.tensor<[3, 3], f32>,
+      !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
     ) -> !mo.tensor<[2, 1], f32>
     ```
   }];
@@ -560,7 +573,8 @@ def MO_ReshapeOp : MO_Op<"reshape", [Pure]> {
 
     ```mlir
     %arg1: !mo.tensor<[1, 2, 3], f32>
-    %shape = mo.constant {value = #M.dense_array<3, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %shape = mo.constant {
+      value = #M.dense_array<3, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
     %arg2 = mo.reshape(%arg1, %shape) : !mo.tensor<[3, 2], si64>
     ```
   }];
@@ -613,8 +627,10 @@ def MO_BroadcastShapeOp : MO_Op<"broadcast_shape", [Pure]> {
     ```mlir
     %arg1: !mo.tensor<[1, 2, 3], f32>
     %arg2: !mo.tensor<[4, 2, 1], f32>
-    %inshape1 = mo.shape_of(%arg1) : (!mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[3], si64>
-    %inshape2 = mo.shape_of(%arg2) : (!mo.tensor<[4, 2, 1], f32>) -> !mo.tensor<[3], si64>
+    %inshape1 = mo.shape_of(%arg1) : (
+      !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[3], si64>
+    %inshape2 = mo.shape_of(%arg2) : (
+      !mo.tensor<[4, 2, 1], f32>) -> !mo.tensor<[3], si64>
     %shape1 = mo.broadcast_shape(%inshape1, %inshape2) : !mo.tensor<[3], si64>
     ```
     In this example, shape1 will return [4, 2, 3]
@@ -624,8 +640,10 @@ def MO_BroadcastShapeOp : MO_Op<"broadcast_shape", [Pure]> {
     ```mlir
     %arg1: !mo.tensor<[10, 2, 1], f32>
     %arg2: !mo.tensor<[5], f32>
-    %inshape1 = mo.shape_of(%arg1) : (!mo.tensor<[10, 2, 1], f32>) -> !mo.tensor<[3], si64>
-    %inshape2 = mo.shape_of(%arg2) : (!mo.tensor<[5], f32>) -> !mo.tensor<[1], si64>
+    %inshape1 = mo.shape_of(%arg1) : (
+      !mo.tensor<[10, 2, 1], f32>) -> !mo.tensor<[3], si64>
+    %inshape2 = mo.shape_of(%arg2) : (
+      !mo.tensor<[5], f32>) -> !mo.tensor<[1], si64>
     %shape1 = mo.broadcast_shape(%inshape1, %inshape2) : !mo.tensor<[3], si64>
     ```
     In this example, shape1 will return [10, 2, 5]
@@ -650,8 +668,10 @@ def MO_BroadcastToOp : MO_Op<"broadcast_to", [Pure]> {
 
     ```mlir
     %from: !mo.tensor<[3], f32>
-    %to   = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %res  = mo.broadcast_to(%from, %to) : (!mo.tensor<[3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 3], f32>
+    %to = mo.constant {
+      value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %res = mo.broadcast_to(%from, %to) : (
+      !mo.tensor<[3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 3], f32>
     ```
   }];
 
@@ -672,14 +692,17 @@ def MO_ConcatOp : MO_Op<"concat", [Pure]> {
     ```mlir
     %arg0: !mo.tensor<[2, 3], f32>
     %arg1: !mo.tensor<[2, 5], f32>
-    %axis = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+    %axis = mo.constant {
+      value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
     %res = mo.concat[%axis: !mo.tensor<[], si64>](%arg0, %arg1) : (
       !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 5], f32>
     ) -> !mo.tensor<[2, 8], f32>
     ```
   }];
 
-  let arguments = (ins Variadic<MO_Tensor>:$inputs, MO_RankedScalarTensor:$axis);
+  let arguments = (ins
+    Variadic<MO_Tensor>:$inputs,
+    MO_RankedScalarTensor:$axis);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
@@ -719,8 +742,11 @@ def MO_PadOp : MO_Op<"pad", [Pure]> {
 
     ```mlir
     %input: !mo.tensor<[2, 3], f32>
-    %constant = mo.constant {value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
-    %paddings = mo.constant {value = #M.dense_array<1, 0, 1, 1> : tensor<2x2xsi64>} : !mo.tensor<[2, 2], si64>
+    %constant = mo.constant {
+      value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
+    %paddings = mo.constant {
+      value = #M.dense_array<1, 0, 1, 1> : tensor<2x2xsi64>
+    } : !mo.tensor<[2, 2], si64>
     %output   = mo.pad(%input, %paddings, %constant) : (
       !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si64>, !mo.tensor<[], f32>
     ) -> !mo.tensor<[3, 5], f32>
@@ -728,7 +754,10 @@ def MO_PadOp : MO_Op<"pad", [Pure]> {
   }];
 
   // TODO(#7987) support a padding_mode argument
-  let arguments = (ins MO_Tensor:$input, MO_PaddingLike:$paddings, MO_RankedScalarTensor:$constant);
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_PaddingLike:$paddings,
+    MO_RankedScalarTensor:$constant);
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
@@ -749,8 +778,9 @@ def MO_GatherOp : MO_Op<"gather", [Pure]> {
     ```mlir
     %params : !mo.tensor<[2, 2], f32>
     %indices: !mo.tensor<[2], si64>
-    %axis = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
-    %res     = mo.gather(%params, %indices, %axis) : (
+    %axis = mo.constant {
+      value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
+    %res = mo.gather(%params, %indices, %axis) : (
       !mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>, !mo.tensor<[], si64>
     ) -> !mo.tensor<[2, 2], f32>
     ```
@@ -791,7 +821,9 @@ def MO_MatmulOp : MO_DotBase<"matmul", [MO_MatmulLike]> {
     ```mlir
     %lhs: ... !mo.tensor<[10, 20], f32>
     %rhs: ... !mo.tensor<[20, 5], f32>
-    %res = mo.matmul(%lhs, %rhs) : (!mo.tensor<[10, 20], f32>, !mo.tensor<[20, 5], f32>) -> !mo.tensor<[10, 5], f32>
+    %res = mo.matmul(%lhs, %rhs) : (
+      !mo.tensor<[10, 20], f32>, !mo.tensor<[20, 5], f32>
+    ) -> !mo.tensor<[10, 5], f32>
     ```
   }];
 
