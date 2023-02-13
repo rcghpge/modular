@@ -10,6 +10,8 @@
 
 #include "Cache/CacheDialect/CacheDialect.h"
 #include "Faux/Dialect/FauxDialect.h"
+#include "GenericML/GraphCompiler/MODialect/MODialect.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/MGPDialect/MGPDialect.h"
 #include "GenericML/MLASPDialect/MLASPDialect.h"
 #include "GraphRT/BEFDialect/BEFDialect.h"
@@ -45,8 +47,8 @@ int main(int argc, char **argv) {
       // Add the Modular Dialects.
       BEF::BEFDialect, Cache::CacheDialect, DebugInfo::DebugInfoDialect,
       Faux::FauxDialect, GRT::GRTDialect, HLCF::HLCFDialect, MDialect,
-      MLASP::MLASPDialect, TFL::MTFLDialect, TFLP::TFLPDialect,
-      MGP::MGPDialect>();
+      MGP::MGPDialect, MLASP::MLASPDialect, MO::MODialect, MOGG::MOGGDialect,
+      TFL::MTFLDialect, TFLP::TFLPDialect>();
   // Add the KGEN Dialects.
   registerAllKGENDialects(registry);
   TF::registerAllDialects(registry);
