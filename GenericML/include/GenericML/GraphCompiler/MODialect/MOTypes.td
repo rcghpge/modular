@@ -35,7 +35,8 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [ShapedTypeInterface]> {
   let description = [{
     This type represents the shape and element type of a tensor. The shape is
     stored as a MO::ShapeAttr, while the element type is an M::DType, with
-    `invalid` denoting an unknown type.
+    `invalid` denoting an unknown type. The type implements a subset of the
+    methods in ShapedTypeInterface.
 
     Examples:
     ```mlir
@@ -74,19 +75,32 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [ShapedTypeInterface]> {
       CArg<"std::optional<Attribute>", "std::nullopt"> : $metadata)>];
 
   let extraClassDeclaration = [{
-    size_t getRank() const;
-    bool hasRank() const;
-    Type getElementType() const;
+    /// Returns clone with given element type, which must be representable as a
+    /// dtype. Needed for ShapedTypeInterface compatibility.
     ShapedType cloneWith(std::optional<ArrayRef<int64_t>> shape, Type dtype,
                          std::optional<Attribute> metadata = std::nullopt) const;
+
+    /// Returns clone with a new shape attribute.
     TensorType cloneWith(TypedAttr shapeAttr) const;
+
+    /// Checks if the tensor is statically ranked.
+    bool hasRank() const;
+
+    /// Get the rank of the tensor. Fails if not statically ranked.
+    size_t getRank() const;
+
+    /// Checks if this type has a static shape, i.e. if the type is ranked and
+    /// all dimensions have known size.
     bool hasStaticShape() const;
 
-    /// Helper to get the shape attribute with MO::ShapeAttr type, fails if the
+    /// Get the mlir element type of the tensor.
+    Type getElementType() const;
+
+    /// Helper to get the shape attribute with MO::ShapeAttr type. Fails if the
     /// shape is unknown.
     MO::ShapeAttr getTypedShapeAttr() const;
 
-    /// Returns the referenced parameter names.
+    /// Returns the referenced parameter names (shape or dimension).
     SmallPtrSet<StringAttr, 4> getUsedParamNames() const;
 
     /// Return the symbolic dimensions. Fails if the shape is unknown.

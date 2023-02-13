@@ -32,6 +32,15 @@ impl::verifyMatchingRanks(ArrayRef<TypedValue<M::MO::TensorType>> values) {
   return success();
 }
 
+/// Helper to print matrix shapes without element types.
+static std::string asString(ArrayRef<TypedAttr> matShape) {
+  std::string result;
+  llvm::raw_string_ostream os(result);
+  llvm::interleaveComma(
+      matShape, os, [&](TypedAttr dim) { dim.print(os, /*elideType=*/true); });
+  return result;
+};
+
 LogicalResult impl::verifyMatmulLike(MatmulLike op) {
   // We check that statically known ranks match each other (implicit
   // broadcasting is not supported).
@@ -58,12 +67,13 @@ LogicalResult impl::verifyMatmulLike(MatmulLike op) {
   if (!aType.hasStaticShape() || !bType.hasStaticShape())
     return success();
 
-  ArrayRef<int64_t> aMatShape = op.getTensorAShape().take_back(2);
-  ArrayRef<int64_t> bMatShape = op.getTensorBShape().take_back(2);
+  ArrayRef<TypedAttr> aMatShape = aType.getDims().take_back(2);
+  ArrayRef<TypedAttr> bMatShape = bType.getDims().take_back(2);
   if (aMatShape[1] != bMatShape[0]) {
     return op.emitError(
                "expected matmul-like input matrix shapes (M, K) x (K, N), got ")
-           << "(" << aMatShape << ") x (" << bMatShape << ")";
+           << "(" << asString(aMatShape) << ") x (" << asString(bMatShape)
+           << ")";
   }
 
   TensorType resType = op.getTensorResult().getType();
@@ -72,12 +82,12 @@ LogicalResult impl::verifyMatmulLike(MatmulLike op) {
   if (!resType.hasStaticShape())
     return success();
 
-  ArrayRef<int64_t> resMatShape = op.getTensorResultShape().take_back(2);
+  ArrayRef<TypedAttr> resMatShape = resType.getDims().take_back(2);
   if (resMatShape[0] != aMatShape[0] || resMatShape[1] != bMatShape[1]) {
     return op.emitError("expected matmul-like inputs (M, K) x (K, N) to "
                         "produce result matrix (M, N), got ")
-           << "(" << aMatShape << ") x (" << bMatShape << ") -> ("
-           << resMatShape << ")";
+           << "(" << asString(aMatShape) << ") x (" << asString(bMatShape)
+           << ") -> (" << asString(resMatShape) << ")";
   }
 
   return success();
@@ -101,14 +111,13 @@ LogicalResult SlidingWindow::verifyWindowParamShape(
 
 LogicalResult SlidingWindow::verifyWindowParamSizes(
     ArrayRef<TypedValue<M::MO::TensorType>> values) {
-  SmallVector<size_t> sizes;
+  SmallPtrSet<Attribute, 4> sizes;
   for (auto v : values)
-    if (TensorType t = v.getType(); t.hasStaticShape())
-      sizes.emplace_back(t.getDimSize(0));
+    if (TensorType t = v.getType(); t.hasRank())
+      sizes.insert(t.getDim(0));
 
-  if (!sizes.empty())
-    if (!llvm::all_equal(sizes))
-      return emitError("window parameter sizes must match if static");
+  if (sizes.size() > 1)
+    return emitError("window parameter sizes must match if static");
 
   return success();
 }

@@ -42,14 +42,15 @@ public:
 
 #include "GenericML/GraphCompiler/MODialect/MOInterfaces.h.inc"
 
-namespace M::MO::impl {
+namespace M::MO {
+// These declarations must follow the include above since they reference
+// `MOOpParameterizationInterface`.
+
+namespace impl {
 LogicalResult resolveSameOperandsAndResultTypeUnknownParameters(
     MOOpParameterizationInterface op, mlir::RewriterBase &rewriter);
-} // namespace M::MO::impl
+}
 
-namespace M::MO {
-// This class must follow include above since it references
-// `MOOpParameterizationInterface`
 template <typename ConcreteType>
 class SameInputOutputTypesParameterization
     : public mlir::OpTrait::TraitBase<ConcreteType,

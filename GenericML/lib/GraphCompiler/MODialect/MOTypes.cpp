@@ -202,8 +202,6 @@ TensorType TensorType::get(ArrayRef<int64_t> shape, Type elementType,
   return get(newShape, elementType, metadata);
 }
 
-/// Returns clone with given element type, which must be representable as a
-/// dtype. Required by ShapedTypeInference
 ShapedType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
                                  Type dtype,
                                  std::optional<Attribute> metadata) const {
@@ -221,13 +219,11 @@ ShapedType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
   return TensorType::get(shapeRef, *errOrDType, metadata);
 }
 
-/// Returns clone with a new shape attribute.
 TensorType TensorType::cloneWith(TypedAttr shapeAttr) const {
   return TensorType::get(shapeAttr.getContext(), shapeAttr, getDtype(),
                          getShape(), getMetadata());
 }
 
-/// Does the Tensor have a static Rank?  Required by ShapedTypeInferece
 bool TensorType::hasRank() const {
   // Rank is only known if we have a concrete attribute
   if (llvm::isa<KGEN::UnknownAttr, KGEN::ParamDeclRefAttr>(getShapeAttr()))
@@ -235,19 +231,15 @@ bool TensorType::hasRank() const {
   return true;
 }
 
-// Get the Rank of the Tensor.  Required by ShapedTypeInference
 size_t TensorType::getRank() const {
   assert(hasRank() && "cannot get rank if shape is not known");
   return getTypedShapeAttr().getRank();
 }
 
-/// Returns if this type has a static shape, i.e. if the type is ranked and
-/// all dimensions have known size (>= 0).
 bool TensorType::hasStaticShape() const {
   return hasRank() && getTypedShapeAttr().isStatic();
 }
 
-// Get the mlir element type of the Tensor.  Required by ShapedTypeInference
 Type TensorType::getElementType() const {
   ErrorOr<Type> errOrType = toMLIRType(getContext(), getDtype());
   assert(!errOrType.isError() &&

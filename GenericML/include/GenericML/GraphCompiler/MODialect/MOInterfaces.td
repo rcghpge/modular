@@ -28,18 +28,10 @@ def MO_MOOpInterface : OpInterface<"MOOpInterface"> {
       [{
         return ::llvm::cast<TypedValue<TensorType>>($_op->getOperand(idx));
       }]>,
-    InterfaceMethod<"Get the shape of an input tensor",
-      "ArrayRef<int64_t>", "getInputTensorShape",
-      (ins "unsigned int":$idx), [{}],
-      [{ return $_op.getInputTensor(idx).getType().getShape(); }]>,
     InterfaceMethod<"Get an output tensor as a TypedValue",
       "TypedValue<TensorType>", "getOutputTensor",
       (ins "unsigned int":$idx), [{}],
-      [{ return ::llvm::cast<TypedValue<TensorType>>($_op->getResult(idx)); }]>,
-    InterfaceMethod<"Get the shape of an output tensor",
-      "ArrayRef<int64_t>", "getOutputTensorShape",
-      (ins "unsigned int":$idx), [{}],
-      [{ return $_op.getOutputTensor(idx).getType().getShape(); }]>,
+      [{ return ::llvm::cast<TypedValue<TensorType>>($_op->getResult(idx)); }]>
   ];
 }
 
@@ -115,16 +107,7 @@ def MO_MatmulLike : OpInterface<"MatmulLike"> {
       "TypedValue<TensorType>", "getTensorResult", (ins), [{}],
       [{
         return ::llvm::cast<TypedValue<TensorType>>($_op.getOutputTensor(0));
-      }]>,
-    InterfaceMethod<"Get the shape of the left input tensor",
-      "ArrayRef<int64_t>", "getTensorAShape", (ins), [{}],
-      [{ return $_op.getInputTensorShape(0); }]>,
-    InterfaceMethod<"Get the shape of the right input tensor",
-      "ArrayRef<int64_t>", "getTensorBShape", (ins), [{}],
-      [{ return $_op.getInputTensorShape(1); }]>,
-    InterfaceMethod<"Get the shape of the result tensor",
-      "ArrayRef<int64_t>", "getTensorResultShape", (ins), [{}],
-      [{ return $_op.getTensorResult().getType().getShape(); }]>,
+      }]>
   ];
 
   let verify = [{ return impl::verifyMatmulLike($_op); }];
