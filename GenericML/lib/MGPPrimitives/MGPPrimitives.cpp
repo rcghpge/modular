@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MGPPrimitives/MGPPrimitives.h"
+#include "Cache/BlobCache.h"
 #include "GenericML/MOPrimitives/MOPrimitives.h"
 #include "GenericML/Support/Context.h"
 #include "GenericML/Support/StateSlot.h"
@@ -386,6 +387,145 @@ static void mgp_debug_cpu_tensor_print(Chain inChain, const Tensor &tensor,
 }
 
 //===----------------------------------------------------------------------===//
+// CASStateSlot
+//===----------------------------------------------------------------------===//
+
+namespace {
+/// This class provides a way to read from the data cache defined in CacheOps.h.
+/// It requires the CAS key provided directly, it doesn't perform any hashing.
+/// It is therefore a read-only key.
+struct CASReadKey {
+  using KeyTy = StringRef;
+  static std::string hashKey(KeyTy key) { return key.str(); }
+};
+
+/// This class is a wrapper around the BlobCache that can be used as a state
+/// slot. This has 2 methods that can be used, the most common by far will be
+/// `lookup`. This method returns an error if the object is not found in the
+/// cache.
+class CASStateSlot {
+public:
+  /// Construct a DataStoreStateSlot. CAUTION: The BlobCache construction can
+  /// fail, so the user should ALWAYS call `getError` after constructing this
+  /// state slot.
+  CASStateSlot(Runtime &runtime, StringRef fsPath);
+
+  /// Check if this state slot holds an error. If it does, return it.
+  ErrorOrSuccess getError() {
+    if (dataCacheOr.isError())
+      return dataCacheOr.takeError();
+
+    return success();
+  }
+
+  /// Find the given key and return the data behind it. Returns an error if the
+  /// value is not in the cache.
+  AsyncValueRef<BufferRef> lookup(StringRef key, EncodedLocation loc);
+
+private:
+  /// Find the object in the cache.
+  AsyncValueRef<std::optional<Cache::BufferRef>> find(StringRef key,
+                                                      EncodedLocation loc) {
+    assert(!dataCacheOr.isError());
+    return (*dataCacheOr)->find(key, std::move(loc));
+  }
+
+  /// Keep a reference to the LLCL runtime.
+  LLCL::CompactRuntimePtr runtime;
+  /// Pointer to the BlobCache. Because constructing the backend list can fail,
+  /// this could be an error - see the note on the constructor.
+  ErrorOr<RCRef<Cache::BlobCache<CASReadKey>>> dataCacheOr;
+  /// Hold onto the Cache::BufferRef objects we've looked up to ensure that we
+  /// keep them alive for at least the lifetime of the state slot. This will not
+  /// copy any data, simply hold onto a ref on the buffer.
+  std::vector<Cache::BufferRef> lookedUpRefs;
+};
+} // namespace
+
+//===----------------------------------------------------------------------===//
+// CASStateSlot::CASStateSlot
+//===----------------------------------------------------------------------===//
+
+CASStateSlot::CASStateSlot(Runtime &runtime, StringRef fsPath)
+    : runtime(runtime), dataCacheOr(Error("empty")) {
+  auto backendList = Cache::getDefaultBackendChain(runtime, fsPath.str());
+  if (backendList.isError())
+    dataCacheOr = backendList.takeError();
+
+  dataCacheOr =
+      RCRef<Cache::BlobCache<CASReadKey>>::create(std::move(*backendList));
+}
+
+//===----------------------------------------------------------------------===//
+// CASStateSlot::lookup
+//===----------------------------------------------------------------------===//
+
+AsyncValueRef<BufferRef> CASStateSlot::lookup(StringRef key,
+                                              EncodedLocation loc) {
+  if (dataCacheOr.isError()) {
+    return AsyncValueRef<BufferRef>::createError(
+        runtime, EncodedDiagnostic(dataCacheOr.takeError(), std::move(loc)));
+  }
+
+  auto bufferOr = find(key, loc.copy());
+
+  // Grab a ref-counted copy of the key. This ensures we don't lose the bytes
+  // in the `andThen`.
+  auto ownedKey = Cache::Buffer::get(key);
+  auto out = AsyncValueRef<BufferRef>::allocate(bufferOr.getRuntime());
+  std::move(bufferOr).andThenSync(
+      [out = out.copy(), ownedKey = std::move(ownedKey), loc = std::move(loc),
+       this](AsyncValueRef<std::optional<Cache::BufferRef>> &&result) mutable {
+        // Error => return the diagnostic.
+        if (result.isError())
+          return out.setToError(result.takeDiagnostic());
+
+        // If we don't have anything, set to an error notifying the user we
+        // couldn't find the thing.
+        if (!result->has_value())
+          return std::move(out).setToError(EncodedDiagnostic(
+              Error("could not find " + ownedKey->getBuffer()),
+              std::move(loc)));
+
+        // Store a copy of the ref to extend its lifetime. This will ensure
+        // we don't prematurely deallocate it.
+        lookedUpRefs.push_back((**result).copy());
+        // Construct an LLCL::BufferRef from the Cache::BufferRef and return
+        // that.
+        return std::move(out).emplace(BufferRef::createBorrowed(
+            (**result)->getBufferStart(), (**result)->getBufferSize(),
+            std::nullopt, BufferRef::Lifetime::kExecute));
+      });
+
+  return out;
+}
+
+//===----------------------------------------------------------------------===//
+// mgp.cas.create_instance
+//===----------------------------------------------------------------------===//
+
+static ErrorOrSuccess mgp_cas_create_instance(Context &ctx,
+                                              BEFAttr<uint64_t> slot,
+                                              BEFAttr<StringRef> fsPath,
+                                              Runtime &runtime) {
+  auto &slotOr = ctx.emplaceStateSlot<CASStateSlot>(*slot, 0, runtime, *fsPath);
+  // If the emplace failed, the state slot will hold an error.
+  return slotOr.getError();
+}
+
+//===----------------------------------------------------------------------===//
+// mgp.cas.lookup
+//===----------------------------------------------------------------------===//
+
+static AsyncValueRef<BufferRef> mgp_cas_lookup(Context &ctx,
+                                               BEFAttr<uint64_t> slot,
+                                               BEFAttr<StringRef> key,
+                                               EncodedLocation loc) {
+  auto &dataStore = ctx.getStateSlotPayload<CASStateSlot>(*slot);
+  return dataStore.lookup(*key, std::move(loc));
+}
+
+//===----------------------------------------------------------------------===//
 // mgp.model
 //===----------------------------------------------------------------------===//
 
@@ -430,6 +570,8 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.cpu.tensor.extract", mgp_cpu_tensor_extract);
   ADD_PRIMITIVE(registry, "mgp.debug.cpu.tensor.print",
                 mgp_debug_cpu_tensor_print);
+  ADD_PRIMITIVE(registry, "mgp.cas.create_instance", mgp_cas_create_instance);
+  ADD_PRIMITIVE(registry, "mgp.cas.lookup", mgp_cas_lookup);
   ADD_PRIMITIVE(registry, "mgp.model", mgp_model);
 
   // Have the MO primitives be registered wherever MGP is registered.
