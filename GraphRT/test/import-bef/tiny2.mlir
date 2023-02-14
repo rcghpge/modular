@@ -1,28 +1,28 @@
-// RUN: bef-translate -export-bef -allow-unregistered-dialect %s -o %t
-// RUN: bef-translate -import-bef -allow-unregistered-dialect %t | FileCheck %s
+// RUN: mef-translate -export-mef -allow-unregistered-dialect %s -o %t
+// RUN: mef-translate -import-mef -allow-unregistered-dialect %t | FileCheck %s
 
 // CHECK: module {
 
-// CHECK-LABEL: "bef.invokable" ["trivial"]
-// CHECK-NEXT:    %{{.*}}:2 = bef.opaque "simple.primitive" []() : () -> (!bef.unknown, !bef.unknown)
-// CHECK-NEXT:    bef.opaque "grt.invoke" [@trivial]() : () -> ()
-// CHECK-NEXT:    bef.output
+// CHECK-LABEL: "mef.invokable" ["trivial"]
+// CHECK-NEXT:    %{{.*}}:2 = mef.opaque "simple.primitive" []() : () -> (!mef.unknown, !mef.unknown)
+// CHECK-NEXT:    mef.opaque "grt.invoke" [@trivial]() : () -> ()
+// CHECK-NEXT:    mef.output
 // CHECK-NEXT:  }
-bef.invokable @trivial() {
+mef.invokable @trivial() {
   %a, %b = "simple.primitive"() : () -> (i8, i16)
   grt.invoke @trivial() : () -> ()
-  bef.output
+  mef.output
 }
 
-// CHECK-LABEL: "bef.invokable" ["trivial2"]
-// CHECK-NEXT:    %{{.*}}:2 = bef.opaque "simple.primitive2" []() : () -> (!bef.unknown, !bef.unknown)
-// CHECK-NEXT:    bef.opaque "grt.invoke" [@trivial2]() : () -> ()
-// CHECK-NEXT:    bef.output
+// CHECK-LABEL: "mef.invokable" ["trivial2"]
+// CHECK-NEXT:    %{{.*}}:2 = mef.opaque "simple.primitive2" []() : () -> (!mef.unknown, !mef.unknown)
+// CHECK-NEXT:    mef.opaque "grt.invoke" [@trivial2]() : () -> ()
+// CHECK-NEXT:    mef.output
 // CHECK-NEXT:  }
-bef.invokable @trivial2() {
+mef.invokable @trivial2() {
   %a, %b = "simple.primitive2"() : () -> (i32, i64)
   grt.invoke @trivial2() : () -> ()
-  bef.output
+  mef.output
 }
 
 // CHECK-NEXT: }

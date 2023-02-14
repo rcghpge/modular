@@ -7,7 +7,7 @@
 func.func @buffer_constant_mismatched_size() {
   %0 = mgp.cpu.buffer.constant #M.aligned_bytes<"0x000102"> // expected-note {{prior use here}}
   // expected-error@+1 {{use of value '%0' expects different type than prior uses: '!mgp.cpu.buffer<4>' vs '!mgp.cpu.buffer<3>'}}
-  bef.output %0 : !mgp.cpu.buffer<4>
+  mef.output %0 : !mgp.cpu.buffer<4>
 }
 
 // -----
@@ -15,7 +15,7 @@ func.func @buffer_constant_mismatched_size() {
 func.func @buffer_constant_mismatched_align() {
   // expected-error@+1 {{'mgp.cpu.buffer.constant' op expected attribute's explicit alignment to match the type annotation's explicit alignment (64 vs 16).}}
   %0 = mgp.cpu.buffer.constant dense_resource<resource> : !mgp.aligned_bytes<4, 16>
-  bef.output %0 : !mgp.cpu.buffer<4>
+  mef.output %0 : !mgp.cpu.buffer<4>
 }
 
 {-#
@@ -33,7 +33,7 @@ func.func @buffer_constant_mismatched_align() {
 func.func @buffer_constant_illegal_aligned_type() {
   // expected-error@+1 {{custom op 'mgp.cpu.buffer.constant' cannot supply an alignment from type annotation for this attribute value.}}
   %0 = mgp.cpu.buffer.constant #M.dense_array<1, 2, 5, 7> : !mgp.aligned_bytes<4, 16>
-  bef.output %0 : !mgp.cpu.buffer<4>
+  mef.output %0 : !mgp.cpu.buffer<4>
 }
 
 // -----
@@ -52,7 +52,7 @@ func.func @buffer_constant_invalid_elem_type() {
 func.func @buffer_alloc_static_spec(%ctx : !mgp.context, %spec : !mgp.cpu.tensor_spec<4x8xf32>) {
   // expected-error@+1 {{'mgp.cpu.buffer.alloc.spec' op expected tensor spec to not have statically known size (have '!mgp.cpu.tensor_spec<4x8xf32>').}}
   %0 = mgp.cpu.buffer.alloc.spec %ctx, %spec {align = 64 : ui64} : !mgp.cpu.tensor_spec<4x8xf32>
-  bef.output %0 : !mgp.cpu.buffer
+  mef.output %0 : !mgp.cpu.buffer
 }
 
 // -----
@@ -64,7 +64,7 @@ func.func @buffer_alloc_static_spec(%ctx : !mgp.context, %spec : !mgp.cpu.tensor
 func.func @spec_create_mismatched_dims(%dim : index) {
   // expected-error@+1 {{'mgp.cpu.tensor_spec.create' op expected 2 dimension operands to match '!mgp.cpu.tensor_spec<?x64x?xf32>', but given 1.}}
   %0 = mgp.cpu.tensor_spec.create %dim : !mgp.cpu.tensor_spec<?x64x?xf32>
-  bef.output %0 : !mgp.cpu.tensor_spec<?x64x?xf32>
+  mef.output %0 : !mgp.cpu.tensor_spec<?x64x?xf32>
 }
 
 // -----
@@ -72,7 +72,7 @@ func.func @spec_create_mismatched_dims(%dim : index) {
 func.func @spec_create_bogus_type(%dim : index) {
   // expected-error@+1 {{custom op 'mgp.cpu.tensor_spec.create' expected a !mgp.cpu.tensor_spec type.}}
   %0 = mgp.cpu.tensor_spec.create %dim : !mgp.cpu.tensor<?x64xf32>
-  bef.output %0 : !mgp.cpu.tensor_spec<?x64x?xf32>
+  mef.output %0 : !mgp.cpu.tensor_spec<?x64x?xf32>
 }
 
 // -----
@@ -80,7 +80,7 @@ func.func @spec_create_bogus_type(%dim : index) {
 func.func @spec_create_unknown_elem_type(%dim : index) {
   // expected-error@+1 {{custom op 'mgp.cpu.tensor_spec.create' expected !mgp.cpu.tensor_spec type to have a known element type.}}
   %0 = mgp.cpu.tensor_spec.create %dim : !mgp.cpu.tensor_spec<?x64xunk>
-  bef.output %0 : !mgp.cpu.tensor_spec<?x64xunk>
+  mef.output %0 : !mgp.cpu.tensor_spec<?x64xunk>
 }
 
 // -----
@@ -88,7 +88,7 @@ func.func @spec_create_unknown_elem_type(%dim : index) {
 func.func @spec_create_dynamic_mismatched_dims(%dim : index, %dtype : !mgp.dtype) {
   // expected-error@+1 {{'mgp.cpu.tensor_spec.create.dynamic' op expected 2 dimension operands to match '!mgp.cpu.tensor_spec<?x64x?xunk>', but given 1.}}
   %0 = mgp.cpu.tensor_spec.create.dynamic %dtype, %dim : !mgp.cpu.tensor_spec<?x64x?xunk>
-  bef.output %0 : !mgp.cpu.tensor_spec<?x64x?xunk>
+  mef.output %0 : !mgp.cpu.tensor_spec<?x64x?xunk>
 }
 
 // -----
@@ -96,7 +96,7 @@ func.func @spec_create_dynamic_mismatched_dims(%dim : index, %dtype : !mgp.dtype
 func.func @spec_create_dynamic_bogus_type(%dim : index, %dtype : !mgp.dtype) {
   // expected-error@+1 {{custom op 'mgp.cpu.tensor_spec.create.dynamic' expected a !mgp.cpu.tensor_spec type.}}
   %0 = mgp.cpu.tensor_spec.create.dynamic %dtype, %dim : !mgp.cpu.tensor<?x64xf32>
-  bef.output %0 : !mgp.cpu.tensor_spec<?x64x?xf32>
+  mef.output %0 : !mgp.cpu.tensor_spec<?x64x?xf32>
 }
 
 // -----
@@ -104,7 +104,7 @@ func.func @spec_create_dynamic_bogus_type(%dim : index, %dtype : !mgp.dtype) {
 func.func @spec_create_dynamic_known_elem_type(%dim : index, %dtype : !mgp.dtype) {
   // expected-error@+1 {{custom op 'mgp.cpu.tensor_spec.create.dynamic' expected !mgp.cpu.tensor_spec type to have an unknown element type.}}
   %0 = mgp.cpu.tensor_spec.create.dynamic %dtype, %dim : !mgp.cpu.tensor_spec<?x64xf32>
-  bef.output %0 : !mgp.cpu.tensor_spec<?x64xf32>
+  mef.output %0 : !mgp.cpu.tensor_spec<?x64xf32>
 }
 
 // -----
@@ -116,7 +116,7 @@ func.func @spec_create_dynamic_known_elem_type(%dim : index, %dtype : !mgp.dtype
 func.func @spec_dims_mismatched_dims(%spec : !mgp.cpu.tensor_spec<?x64x?xf32>) {
   // expected-error@+1 {{operation defines 2 results but was provided 1 to bind}}
   %dim0 = mgp.cpu.tensor_spec.dims.dynamic %spec : !mgp.cpu.tensor_spec<?x64x?xf32>
-  bef.output %dim0 : index
+  mef.output %dim0 : index
 }
 
 // -----
@@ -125,10 +125,10 @@ func.func @spec_dims_mismatched_dims(%spec : !mgp.cpu.tensor_spec<?x64x?xf32>) {
 // mgp.cpu.tensor.create
 //
 
-func.func @tensor_create_mismatched_size(%ch : !bef.chain, %buf : !mgp.cpu.buffer<61>, %spec : !mgp.cpu.tensor_spec<3x5xf32>) { // expected-note {{prior use here}}
+func.func @tensor_create_mismatched_size(%ch : !mef.chain, %buf : !mgp.cpu.buffer<61>, %spec : !mgp.cpu.tensor_spec<3x5xf32>) { // expected-note {{prior use here}}
   // expected-error@+1 {{use of value '%buf' expects different type than prior uses: '!mgp.cpu.buffer<60>' vs '!mgp.cpu.buffer<61>'}}
   %tensor = mgp.cpu.tensor.create %ch, %buf, %spec : !mgp.cpu.tensor<3x5xf32>
-  bef.output %tensor : !mgp.cpu.tensor<3x5xf32>
+  mef.output %tensor : !mgp.cpu.tensor<3x5xf32>
 }
 
 // -----
@@ -140,7 +140,7 @@ func.func @tensor_create_mismatched_size(%ch : !bef.chain, %buf : !mgp.cpu.buffe
 func.func @tensor_extract_mismatched_size(%tensor : !mgp.cpu.tensor<3x5xf32>) {
   %buf, %spec = mgp.cpu.tensor.extract %tensor : !mgp.cpu.tensor<3x5xf32>  // expected-note {{prior use here}}
   // expected-error@+1 {{use of value '%buf' expects different type than prior uses: '!mgp.cpu.buffer<61>' vs '!mgp.cpu.buffer<60>'}}
-  bef.output %buf, %spec : !mgp.cpu.buffer<61>, !mgp.cpu.tensor_spec<3x5xf32>
+  mef.output %buf, %spec : !mgp.cpu.buffer<61>, !mgp.cpu.tensor_spec<3x5xf32>
 }
 
 // -----
@@ -173,76 +173,76 @@ func.func @dtype_unrepresentable(%x : !mgp.cpu.tensor_spec<5x10xf8>) {}
 // mgp.model
 //
 
-// expected-error@+1 {{'mgp.model' op expected no arguments to the 'init' body, but got '!bef.chain'.}}
+// expected-error@+1 {{'mgp.model' op expected no arguments to the 'init' body, but got '!mef.chain'.}}
 "mgp.model"() ({
-  ^bb0(%ch: !bef.chain):
+  ^bb0(%ch: !mef.chain):
     %ctx = mgp.context.create 1
-    bef.output %ch, %ctx : !bef.chain, !mgp.context
+    mef.output %ch, %ctx : !mef.chain, !mgp.context
 }, {
-  ^bb0(%ch: !bef.chain, %ctx: !mgp.context, %x: tensor<3xf32>):
-    bef.output %ch, %x : !bef.chain, tensor<3xf32>
+  ^bb0(%ch: !mef.chain, %ctx: !mgp.context, %x: tensor<3xf32>):
+    mef.output %ch, %x : !mef.chain, tensor<3xf32>
 }) {frameworkName = "tfl", inputOutputTypes = (tensor<3xf32>) -> (tensor<3xf32>), sym_name = "badSetupArgs"} : () -> ()
 
 // -----
 
-// expected-error@+1 {{'mgp.model' op expected the result types of the 'init' body to be '!bef.chain', '!mgp.context'.}}
+// expected-error@+1 {{'mgp.model' op expected the result types of the 'init' body to be '!mef.chain', '!mgp.context'.}}
 "mgp.model"() ({
   %ch = grt.chain.create
   %ctx = mgp.context.create 1
-  // expected-error@+1 {{'bef.output' op expected 2 operands for enclosing op}}
-  bef.output %ch : !bef.chain
+  // expected-error@+1 {{'mef.output' op expected 2 operands for enclosing op}}
+  mef.output %ch : !mef.chain
 }, {
-  ^bb0(%ch: !bef.chain, %ctx: !mgp.context, %x: tensor<3xf32>):
-    bef.output %ch, %x : !bef.chain, tensor<3xf32>
+  ^bb0(%ch: !mef.chain, %ctx: !mgp.context, %x: tensor<3xf32>):
+    mef.output %ch, %x : !mef.chain, tensor<3xf32>
 }) {frameworkName = "tfl", inputOutputTypes = (tensor<3xf32>) -> (tensor<3xf32>), sym_name = "badSetupResults"} : () -> ()
 
 // -----
 
-// expected-error@+1 {{'mgp.model' op expected the arguments of the 'execute' body to be '!bef.chain', '!mgp.context', 'tensor<3xf32>', but got '!bef.chain', 'tensor<3xf32>', '!mgp.context'.}}
+// expected-error@+1 {{'mgp.model' op expected the arguments of the 'execute' body to be '!mef.chain', '!mgp.context', 'tensor<3xf32>', but got '!mef.chain', 'tensor<3xf32>', '!mgp.context'.}}
 "mgp.model"() ({
   %ch = grt.chain.create
   %ctx = mgp.context.create 1
-  bef.output %ch, %ctx : !bef.chain, !mgp.context
+  mef.output %ch, %ctx : !mef.chain, !mgp.context
 }, {
-  ^bb0(%ch: !bef.chain, %x: tensor<3xf32>, %ctx: !mgp.context):
-    bef.output %ch, %x : !bef.chain, tensor<3xf32>
+  ^bb0(%ch: !mef.chain, %x: tensor<3xf32>, %ctx: !mgp.context):
+    mef.output %ch, %x : !mef.chain, tensor<3xf32>
 }) {frameworkName = "tfl", inputOutputTypes = (tensor<3xf32>) -> (tensor<3xf32>), sym_name = "badExecuteArgs"} : () -> ()
 
 // -----
 
-// expected-error@+1 {{'mgp.model' op expected the arguments of the 'execute' body to be '!bef.chain', '!mgp.context', 'tensor<4xf32>', but got '!bef.chain', '!mgp.context', 'tensor<3xf32>'.}}
+// expected-error@+1 {{'mgp.model' op expected the arguments of the 'execute' body to be '!mef.chain', '!mgp.context', 'tensor<4xf32>', but got '!mef.chain', '!mgp.context', 'tensor<3xf32>'.}}
 "mgp.model"() ({
   %ch = grt.chain.create
   %ctx = mgp.context.create 1
-  bef.output %ch, %ctx : !bef.chain, !mgp.context
+  mef.output %ch, %ctx : !mef.chain, !mgp.context
 }, {
-  ^bb0(%ch: !bef.chain, %ctx: !mgp.context, %x: tensor<3xf32>):
-    bef.output %ch, %x : !bef.chain, tensor<3xf32>
+  ^bb0(%ch: !mef.chain, %ctx: !mgp.context, %x: tensor<3xf32>):
+    mef.output %ch, %x : !mef.chain, tensor<3xf32>
 }) {frameworkName = "tfl", inputOutputTypes = (tensor<4xf32>) -> (tensor<3xf32>), sym_name = "badExecuteArgs2"} : () -> ()
 
 // -----
 
-// expected-error@+1 {{'mgp.model' op expected the result types of the 'execute' body to be '!bef.chain'.}}
+// expected-error@+1 {{'mgp.model' op expected the result types of the 'execute' body to be '!mef.chain'.}}
 "mgp.model"() ({
   %ch = grt.chain.create
   %ctx = mgp.context.create 1
-  bef.output %ch, %ctx : !bef.chain, !mgp.context
+  mef.output %ch, %ctx : !mef.chain, !mgp.context
 }, {
-  ^bb0(%ch: !bef.chain, %ctx: !mgp.context, %x: tensor<3xf32>):
-    // expected-error@+1 {{'bef.output' op expected 1 operands for enclosing op}}
-    bef.output %ch, %x : !bef.chain, tensor<3xf32>
+  ^bb0(%ch: !mef.chain, %ctx: !mgp.context, %x: tensor<3xf32>):
+    // expected-error@+1 {{'mef.output' op expected 1 operands for enclosing op}}
+    mef.output %ch, %x : !mef.chain, tensor<3xf32>
 }) {frameworkName = "tfl", inputOutputTypes = (tensor<3xf32>) -> (), sym_name = "badExecuteResults"} : () -> ()
 
 // -----
 
-// expected-error@+1 {{'mgp.model' op expected the result types of the 'init' body to be '!bef.chain', '!mgp.context'.}}
+// expected-error@+1 {{'mgp.model' op expected the result types of the 'init' body to be '!mef.chain', '!mgp.context'.}}
 mgp.model @mismatchedContextType : tfl init {
   %ch = grt.chain.create
-  %unk = bef.opaque "bogus" [] () : ()->!bef.unknown
-  // expected-error@+1 {{'bef.output' op operand #1 has type '!bef.unknown' but should be '!mgp.context'}}
-  bef.output %ch, %unk : !bef.chain, !bef.unknown
-} execute (%ch: !bef.chain, %ctx: !mgp.context, %x: tensor<2xf32>) -> (!bef.chain, tensor<2xf32>) {
-  bef.output %ch, %x : !bef.chain, tensor<2xf32>
+  %unk = mef.opaque "bogus" [] () : ()->!mef.unknown
+  // expected-error@+1 {{'mef.output' op operand #1 has type '!mef.unknown' but should be '!mgp.context'}}
+  mef.output %ch, %unk : !mef.chain, !mef.unknown
+} execute (%ch: !mef.chain, %ctx: !mgp.context, %x: tensor<2xf32>) -> (!mef.chain, tensor<2xf32>) {
+  mef.output %ch, %x : !mef.chain, tensor<2xf32>
 }
 
 // -----
@@ -251,9 +251,9 @@ mgp.model @mismatchedContextType : tfl init {
 mgp.model @invalidExecuteArgType : tfl init {
   %ch = grt.chain.create
   %ctx = mgp.context.create 1
-  bef.output %ch, %ctx : !bef.chain, !mgp.context
-} execute (%ch: !bef.chain, %ctx: !mgp.context, %x: index) -> (!bef.chain, index) {
-  bef.output %ch, %x : !bef.chain, index
+  mef.output %ch, %ctx : !mef.chain, !mgp.context
+} execute (%ch: !mef.chain, %ctx: !mgp.context, %x: index) -> (!mef.chain, index) {
+  mef.output %ch, %x : !mef.chain, index
 }
 
 // -----
@@ -262,7 +262,7 @@ mgp.model @invalidExecuteArgType : tfl init {
 mgp.model @invalidExecuteArgType : bogus init {
   %ch = grt.chain.create
   %ctx = mgp.context.create 1
-  bef.output %ch, %ctx : !bef.chain, !mgp.context
-} execute (%ch: !bef.chain, %ctx: !mgp.context, %x: index) -> (!bef.chain, index) {
-  bef.output %ch, %x : !bef.chain, index
+  mef.output %ch, %ctx : !mef.chain, !mgp.context
+} execute (%ch: !mef.chain, %ctx: !mgp.context, %x: index) -> (!mef.chain, index) {
+  mef.output %ch, %x : !mef.chain, index
 }

@@ -89,7 +89,7 @@ static ErrorOr<Optional<uint64_t>> getImpliedAlignment(ElementsAttr value) {
   }
 
   if (typeOptAlign)
-    // Despite the type annotation the translation to BEF will only respect
+    // Despite the type annotation the translation to MEF will only respect
     // alignment constraints on blobs and aligned bytes.
     return Error(Twine("cannot supply an alignment from type annotation for "
                        "this attribute value."));
@@ -666,7 +666,7 @@ LogicalResult CpuTensorExtractOp::inferReturnTypes(
 
 /// Returns the implicit signature of the 'init' entry point.
 static FunctionType implicitInitSignature(Builder &builder) {
-  return builder.getFunctionType({}, {builder.getType<BEF::ChainType>(),
+  return builder.getFunctionType({}, {builder.getType<MEF::ChainType>(),
                                       builder.getType<MGP::ContextType>()});
 }
 
@@ -674,8 +674,8 @@ static FunctionType implicitInitSignature(Builder &builder) {
 /// any explicit inputs and results have been included.
 static FunctionType implicitExecuteSignature(Builder &builder) {
   return builder.getFunctionType(
-      {builder.getType<BEF::ChainType>(), builder.getType<MGP::ContextType>()},
-      {builder.getType<BEF::ChainType>()});
+      {builder.getType<MEF::ChainType>(), builder.getType<MGP::ContextType>()},
+      {builder.getType<MEF::ChainType>()});
 }
 
 /// Returns true if requiredTypes is a prefix of actualTypes, in which case
@@ -783,9 +783,9 @@ LogicalResult ModelOp::verifyRegions() {
   OpBuilder builder(getContext());
 
   // The type of the init region is
-  //  () -> (!bef.chain, !mgp.context)
+  //  () -> (!mef.chain, !mgp.context)
   Block *initBlock = getInitBlock();
-  if (auto output = dyn_cast<BEF::OutputOp>(initBlock->getTerminator())) {
+  if (auto output = dyn_cast<MEF::OutputOp>(initBlock->getTerminator())) {
     FunctionType implicitInitSig = implicitInitSignature(builder);
     assert(implicitInitSig.getInputs().empty());
     if (!initBlock->getArgumentTypes().empty())
@@ -800,12 +800,12 @@ LogicalResult ModelOp::verifyRegions() {
   }
 
   // The type of the execute region is:
-  //   (!bef.chain, !mgp.context, arg_1, ... arg_n) ->
-  //   (!bef.chain, res_1, ... res_m)
+  //   (!mef.chain, !mgp.context, arg_1, ... arg_n) ->
+  //   (!mef.chain, res_1, ... res_m)
   // where the ModelOp's inputOutputTypes are:
   //   (arg_1, ... arg_n) -> (res_1, ... res_m)
   Block *execBlock = getExecuteBlock();
-  if (auto output = dyn_cast<BEF::OutputOp>(execBlock->getTerminator())) {
+  if (auto output = dyn_cast<MEF::OutputOp>(execBlock->getTerminator())) {
     FunctionType implicitExecSig = implicitExecuteSignature(builder);
     ArrayRef<Type> modelArgTypes = getInputOutputTypes().getInputs();
 

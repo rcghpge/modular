@@ -12,9 +12,9 @@
 
 #include <regex>
 
-// We only use hasBEFMagicNumber, which is inlined in the header, so we don't
-// have to link the BEF library.
-#include "GraphRT/BEF/BEFEncoding.h"
+// We only use hasMEFMagicNumber, which is inlined in the header, so we don't
+// have to link the MEF library.
+#include "GraphRT/MEF/MEFEncoding.h"
 #include "mlir/Bytecode/BytecodeReader.h"
 
 using namespace M;
@@ -28,10 +28,10 @@ FileFormat M::sniffInputFormat(StringRef fileContents) {
   if (fileContents.empty())
     return FileFormat::kUnknown;
 
-  // BEF files have a strong magic number we can depend on that self-identifies
+  // MEF files have a strong magic number we can depend on that self-identifies
   // them.
-  if (BEF::hasBEFMagicNumber(fileContents))
-    return FileFormat::kBEFFile;
+  if (MEF::hasMEFMagicNumber(fileContents))
+    return FileFormat::kMEFFile;
 
   // TFLite flatbuffer binary formats start with a 32-bit binary offset, then
   // have a four-byte "kFileIdentifier" field containing "TFL3".   This appears

@@ -163,7 +163,7 @@ TODO: Flesh out MOGG/kGen interface
 
 Once kernels have been selected, MOGG will lower those kernels, generally in
 buffer semantics to the MO dialect for integration with framework kernels,
-memory optimizaiton, and lowering to BEF.
+memory optimizaiton, and lowering to MEF.
 
 TODO: Flesh out MGP/kGen interface
 

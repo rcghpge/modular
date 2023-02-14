@@ -16,7 +16,7 @@ GraphRT.
 As with [the LLCL library](../../LLCL/docs/index.md), GraphRT is designed to be
 completely non-blocking, and built on the principle of executing asynchronous
 operations across an efficient thread pool (which aims to have a 1:1
-mapping to hardware threads in the steady state).  The implementation of the BEF
+mapping to hardware threads in the steady state).  The implementation of the MEF
 executor is fully thread safe, but uses lightweight atomic operations instead of
 locks.  As with LLCL, GraphRT is designed with full error propagation support.
 
@@ -29,11 +29,11 @@ A GraphRT program is usually described in MLIR form.  For example, here is an
 example of a Fibonacci computation:
 
 ```mlir
-bef.invokable @fib(%arg: i32) -> i32 {
+mef.invokable @fib(%arg: i32) -> i32 {
   %one = grt.constant.si32 1
   %cond = grt.lessequal.si32 %arg, %one
   %res = grt.if %cond (%arg: i32) -> i32 {
-    bef.output %arg : i32
+    mef.output %arg : i32
   } else {
     %min_one = grt.constant.si32 -1
     %n_min_one = grt.add.si32 %arg, %min_one
@@ -41,15 +41,15 @@ bef.invokable @fib(%arg: i32) -> i32 {
     %fib_n_min_one = grt.invoke @fib(%n_min_one) : (i32) -> (i32)
     %fib_n_min_two = grt.invoke @fib(%n_min_two) : (i32) -> (i32)
     %sum = grt.add.si32 %fib_n_min_one, %fib_n_min_two
-    bef.output %sum : i32
+    mef.output %sum : i32
   }
 
-  bef.output %res : i32
+  mef.output %res : i32
 }
 ```
 
-While the BEF format and BEF dialect has hard coded primitives for defining
-invokables and returning from regions (`bef.invokable` and `bef.output`)
+While the MEF format and MEF dialect has hard coded primitives for defining
+invokables and returning from regions (`mef.invokable` and `mef.output`)
 respectively, it does not otherwise hard code any other operations that do
 actual computation.
 
@@ -96,7 +96,7 @@ objects (like CUDA streams) and can expose buffers and buffer allocation
 (important for low-level memory optimizations) without having to switch to
 another runtime.
 
-The key thing to know here is that the BEF executor does not type checking
+The key thing to know here is that the MEF executor does not type checking
 itself: it is fully dynamically typed, taking and passing around `AsyncValue`s
 to primitives.  Each `AsyncValue` carries around a lightweight C++ type
 descriptor (queryable with `->isType<T>()`), which allows the primitives to
@@ -107,28 +107,28 @@ On the other hand, many primitives do have static types they work with, for exam
 `grt.add.si32` takes and returns `int32_t` values.  We do all type checking at
 the MLIR level, by defining primitives in ODS and checking their type
 constraints in the verifier.  This shifts the checking burden from runtime to
-compiler, but it also means that BEF is **not** and will never be a memory safe
+compiler, but it also means that MEF is **not** and will never be a memory safe
 "trusted compute" execution format like Java bytecode tried to be.
 
-## Binary Executor Format ("BEF") File Format
+## Binary Executor Format ("MEF") File Format
 
 To efficiently execute a kernel graph, the runtime does not directly process the
 program’s MLIR representation. Instead the
-[MLIRToBEF](../include/GraphRT/MLIRToBEF.h) library converts the program
-to an in-memory format called Binary Executor Format, or **BEF**.  The BEF
+[MLIRToMEF](../include/GraphRT/MLIRToMEF.h) library converts the program
+to an in-memory format called Binary Executor Format, or **MEF**.  The MEF
 format is isomorphic to the MLIR representation, but is `mmap`-able, more
 cache-friendly, and requires many fewer dependencies for execution compared to
 executing MLIR's directly.  This is good for code size and performance.
-For more information on the file format, see the [Binary Executor Format (BEF)
+For more information on the file format, see the [Binary Executor Format (MEF)
 File Format](BinaryExecutorFormat.md) documentation.
 
-## BEF executor: why not call it an "interpreter"?
+## MEF executor: why not call it an "interpreter"?
 
-The `BEFExecutor` is the library that reads a BEF file and executes invokables
+The `MEFExecutor` is the library that reads a MEF file and executes invokables
 on demand.  It is designed to be low-dependency (and thus low code size) and
 efficient.
 
-A key design point of the BEF executor is that it executes primitives "strictly"
+A key design point of the MEF executor is that it executes primitives "strictly"
 when their dataflow graph inputs are available, not according to their lexical
 order in the invokable.  Recall that each primitive takes and returns
 asynchronous values and may have unpredictable latency.  Because we cannot (in
@@ -140,11 +140,11 @@ primitives once all their inputs are available.  For example, consider
 execution of this invokable that computes `(a+a)+(b+b)`:
 
 ```mlir
-bef.invokable @dataflow_example(%a: i32, %b: i32) -> i32 {
+mef.invokable @dataflow_example(%a: i32, %b: i32) -> i32 {
   %a2 = grt.add.si32 %a, %a
   %b2 = grt.add.si32 %b, %b
   %a2b2 = grt.add.si32 %a2, %b2
-  bef.output %a2b2 : i32
+  mef.output %a2b2 : i32
 }
 ```
 
@@ -177,12 +177,12 @@ read or write mutable buffers, or need other synchronization constructs that we
 haven't dreamed of yet.  Consider the following pseudo-code program:
 
 ```mlir
-bef.invokable @dataflow_example(%a: i32, %b: i32) {
+mef.invokable @dataflow_example(%a: i32, %b: i32) {
   %a2 = grt.add.si32 %a, %a
   %b2 = grt.add.si32 %b, %b
   "print" %a2
   "print" %b2
-  bef.output
+  mef.output
 }
 ```
 
@@ -195,15 +195,15 @@ print-outs to come out of order.
 The solution to this problem is to explicitly serialize side effects by turning
 the implicit dependencies into explicitly ordered dataflow edges.  We do this
 with a `M::LLCL::Chain` type, which is threaded through the operations.  This is a
-legal BEF dialect program:
+legal MEF dialect program:
 
 ```mlir
-bef.invokable @dataflow_example(%a: i32, %b: i32, %ch0: !bef.chain) -> !bef.chain {
+mef.invokable @dataflow_example(%a: i32, %b: i32, %ch0: !mef.chain) -> !mef.chain {
   %a2 = grt.add.si32 %a, %a
   %b2 = grt.add.si32 %b, %b
   %ch1 = grt.print.si32 %a2, %ch0
   %ch2 = grt.print.si32 %b2, %ch1
-  bef.output %ch2 : !bef.chain
+  mef.output %ch2 : !mef.chain
 }
 ```
 
@@ -250,18 +250,18 @@ off an operation before all the inputs are available: these are called
 "non-strict" primitives.
 
 Instances of "non-strict" primitives are handle differently than "strict"
-primitives by the BEF executor: instead of triggering the primitive when *all*
+primitives by the MEF executor: instead of triggering the primitive when *all*
 operands becomes available, it triggers the primitive when *any* operands are
 available.
 
 As a concrete example, consider an invocable invocation:
 
 ```mlir
-bef.invokable @dataflow_example(%a: i32, %b: i32) -> i32 {
+mef.invokable @dataflow_example(%a: i32, %b: i32) -> i32 {
   %a2 = grt.add.si32 %a, %a
   %b2 = "some long latency operation"(%b) : (i32) -> i32
   %a2b2 = grt.invoke @other_invokable(%a2, %b2) : (i32, i32) -> i32
-  bef.output %a2b2 : i32
+  mef.output %a2b2 : i32
 }
 ```
 
@@ -297,9 +297,9 @@ argument `AsyncValue`s that are not ready yet, so it requires more careful logic
 when implementing the primitive.  Please see the [Defining Primitives in
 GraphRT](DefiningPrimitives.md) guide for more information.
 
-## Lowering to BEF
+## Lowering to MEF
 
-Finally, BEF and the BEF dialect in MLIR is designed to be a low-level
+Finally, MEF and the MEF dialect in MLIR is designed to be a low-level
 execution-oriented format.  While it is possible to do some optimizations at
 this level, it is expected that machine learning frameworks will "lower" to this
 level of representation using MLIR's fantastic support for doing this.  As such,

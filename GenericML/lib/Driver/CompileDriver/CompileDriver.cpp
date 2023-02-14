@@ -5,16 +5,16 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/Driver/CompileDriver.h"
-#include "GraphRT/MLIRToBEF.h"
+#include "GraphRT/MLIRToMEF.h"
 #include "Support/ADT/ConcatenationTree.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "llvm/Support/MemoryBuffer.h"
 
 using namespace M;
 
-LogicalResult M::convertToBEF(ModuleOp module, raw_ostream &os,
-                              bool enableBEFMetadata) {
-  ConcatenationTree result = translateMLIRToBEF(module, enableBEFMetadata);
+LogicalResult M::convertToMEF(ModuleOp module, raw_ostream &os,
+                              bool enableMEFMetadata) {
+  ConcatenationTree result = translateMLIRToMEF(module, enableMEFMetadata);
   if (result.getSize() == 0)
     return failure();
 

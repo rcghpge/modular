@@ -14,10 +14,10 @@ class MemoryBuffer;
 }
 
 namespace M {
-/// Given an MLIR module with a BEF-compatible encoding, emit it to BEF using
+/// Given an MLIR module with a MEF-compatible encoding, emit it to MEF using
 /// the provided output stream.
-LogicalResult convertToBEF(mlir::ModuleOp module, raw_ostream &os,
-                           bool enableBEFMetadata);
+LogicalResult convertToMEF(mlir::ModuleOp module, raw_ostream &os,
+                           bool enableMEFMetadata);
 } // namespace M
 
 #endif // GENERICML_DRIVER_COMPILEDRIVER_H

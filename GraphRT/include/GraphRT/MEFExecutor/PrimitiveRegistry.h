@@ -1,0 +1,1622 @@
+//===----------------------------------------------------------------------===//
+//
+// This file is Modular Inc proprietary.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef GRAPHRT_MEFEXECUTOR_PRIMITIVE_REGISTRY_H
+#define GRAPHRT_MEFEXECUTOR_PRIMITIVE_REGISTRY_H
+
+#include "GraphRT/MEF/MEFEncoding.h"
+#include "GraphRT/MEF/MEFTypes.h"
+#include "GraphRT/MEFExecutor/PrimitiveDescriptor.h"
+#include "LLCL/Runtime/Runtime.h"
+#include "LLCL/Support/Chain.h"
+#include "LLCL/Support/ReferenceCounted.h"
+#include "Support/ErrorOr.h"
+#include "llvm/ADT/Twine.h"
+#include "llvm/Support/TypeName.h"
+
+namespace M {
+
+/// This represents a mapping between the names of the MLIR opcodes to the
+/// implementations of those functions, along with type mappings.
+class PrimitiveRegistry final {
+public:
+  PrimitiveRegistry();
+  ~PrimitiveRegistry();
+
+  /// Primitive implementations use this signature, acting on the data provided
+  /// in the argument frame, and returning results through it.
+  using PrimitiveImplFn = void (*)(RunnablePrimitiveDescriptor &frame);
+
+  /// Add an implementation of a primitive to the registry.  Consider using
+  /// the ADD_PRIMITIVE macro to enable various pretty forms for this.
+  void add(StringLiteral name, PrimitiveImplFn fn);
+
+  /// Finalize the registry. Calling `get()` before the registry is finalized
+  /// will result in undefined behavior.
+  void finalize();
+
+  /// Look up a primitive with a specified name out of the registry, returning
+  /// null if no match is found.
+  PrimitiveImplFn get(StringRef name) const;
+
+private:
+  PrimitiveRegistry(const PrimitiveRegistry &) = delete;
+  PrimitiveRegistry &operator=(const PrimitiveRegistry &) = delete;
+
+  struct Impl;
+  std::unique_ptr<Impl> impl;
+};
+
+//===----------------------------------------------------------------------===//
+// MEFDecoder
+//===----------------------------------------------------------------------===//
+
+/// The MEFDecoder class provides a simple deserialization mechanism for
+/// specifying how non-trivial types can be decoded from MEF attributes.  It may
+/// be specialized for user-defined types that are encoded into a MEF file.
+///
+/// To implement this, provide a static `decode` method, which is invoked on a
+/// low-level MEF encoded type (like int8_t) into a user type (or fail with an
+/// error if the encoded value is invalid).
+///
+/// This can be used to provide checking for serialized enums and other similar
+/// values.
+///
+template <typename UserType>
+struct MEFDecoder; // {
+//   static ErrorOr<UserType> decode(NativeMEFType value);
+// };
+
+/// Define trivial decoders for all our native types.
+#define DEFINE_BUILTIN_TYPE_DECODER(TYPE)                                      \
+  template <>                                                                  \
+  struct MEFDecoder<TYPE> {                                                    \
+    static ErrorOr<TYPE> decode(TYPE value) { return value; }                  \
+  }
+
+DEFINE_BUILTIN_TYPE_DECODER(bool);
+DEFINE_BUILTIN_TYPE_DECODER(int8_t);
+DEFINE_BUILTIN_TYPE_DECODER(uint8_t);
+DEFINE_BUILTIN_TYPE_DECODER(int16_t);
+DEFINE_BUILTIN_TYPE_DECODER(uint16_t);
+DEFINE_BUILTIN_TYPE_DECODER(int32_t);
+DEFINE_BUILTIN_TYPE_DECODER(uint32_t);
+DEFINE_BUILTIN_TYPE_DECODER(int64_t);
+DEFINE_BUILTIN_TYPE_DECODER(uint64_t);
+DEFINE_BUILTIN_TYPE_DECODER(float);
+DEFINE_BUILTIN_TYPE_DECODER(double);
+DEFINE_BUILTIN_TYPE_DECODER(StringRef);
+#undef DEFINE_BUILTIN_TYPE_DECODER
+
+/// ArrayRef's are generic over element type, but are also noop conversions.
+template <typename EltType>
+struct MEFDecoder<ArrayRef<EltType>> {
+  static ErrorOr<ArrayRef<EltType>> decode(ArrayRef<EltType> value) {
+    return value;
+  }
+};
+
+template <>
+struct MEFDecoder<MEF::TypeKind> {
+  static ErrorOr<MEF::TypeKind> decode(MEF::TypeKind value) { return value; }
+};
+
+//===----------------------------------------------------------------------===//
+// Helper Classes For Primitive Implementations
+//===----------------------------------------------------------------------===//
+
+/// Given a pointer to the start of a MEF array or string attribute, return the
+/// length of array or string by decoding the prefix encoded VBR.
+size_t decodeMEFArrayLength(const uint8_t *dataPtr);
+
+/// Parse a VBR and increment `workptr` in the process, so we can skip over
+/// the VBR values. This is a little weird, being a reference to a pointer,
+/// but it's to simplify the parsing use cases above by allowing us to
+/// increment the pointer that's been passed-in.
+size_t parseVBR(uint8_t *&workptr);
+
+// Utility template for tag dispatching.
+template <typename... T>
+struct TypeTag {};
+
+/// RemainingArguments collects all remaining arguments in an ArrayRef. There
+/// can be at most one RemainingArguments/RepeatedArguments, and it must appear
+/// after all other Arguments.
+//
+/// This should only be used when argument types have potentially heterogenous
+/// types, for example GRT::InvokeOp.
+class RemainingArguments {
+public:
+  explicit RemainingArguments(MutableArrayRef<AnyAsyncValueRef> arguments)
+      : arguments(arguments) {}
+
+  MutableArrayRef<AnyAsyncValueRef> get() const { return arguments; }
+
+  bool empty() const { return arguments.empty(); }
+  size_t size() const { return arguments.size(); }
+  AnyAsyncValueRef &operator[](size_t i) const { return arguments[i]; }
+
+  using iterator = MutableArrayRef<AnyAsyncValueRef>::iterator;
+  iterator begin() const { return arguments.begin(); }
+  iterator end() const { return arguments.end(); }
+
+  /// Return the AsyncValues as a SmallVector where every element is moved out.
+  SmallVector<AnyAsyncValueRef> takeAsVector() {
+    SmallVector<AnyAsyncValueRef> result;
+    result.reserve(arguments.size());
+    for (auto &a : arguments)
+      result.push_back(std::move(a));
+    return result;
+  }
+
+  /// Return the AsyncValues as a SmallVector where every element is copied out.
+  SmallVector<AnyAsyncValueRef> copyAsVector() {
+    SmallVector<AnyAsyncValueRef> result;
+    result.reserve(arguments.size());
+    for (auto &a : arguments)
+      result.push_back(a.copy());
+    return result;
+  }
+
+private:
+  MutableArrayRef<AnyAsyncValueRef> arguments;
+};
+
+/// This is a common base class between Result and IndirectResult, to reduce
+/// code duplication.
+class AnySingleResult {
+public:
+  /// On construction, the result is initialized with an AsyncValue of the
+  /// correct type.
+  explicit AnySingleResult(AnyAsyncValueRef &result,
+                           RunnablePrimitiveDescriptor &frame)
+      : result(result), frame(frame) {
+    assert(!result && "result already initialized?");
+  }
+  AnySingleResult(const AnySingleResult &&other)
+      : result(other.result), frame(other.frame) {
+    // NOTE(#7399): Should probably change result and frame to be pointers and
+    // null them out to detect use-after-move mistakes.
+  }
+
+  /// Return an owning reference to the AsyncValueRef.  This is typically used
+  /// when copying into a closure.
+  AnyAsyncValueRef copy() const { return result.copy(); }
+
+  /// Fill this AsyncValue with an error that has the specified message.
+  void setToError(Error message) const {
+    result.setToError({std::move(message), frame.copyLocation()});
+  }
+
+  RunnablePrimitiveDescriptor &getFrame() const { return frame; }
+
+protected:
+  AnyAsyncValueRef &result;
+
+private:
+  AnySingleResult(const AnySingleResult &) = delete;
+  void operator=(const AnySingleResult &) = delete;
+  RunnablePrimitiveDescriptor &frame;
+};
+
+/// The Result class is used by primitive implementations for typed asynchronous
+/// results.
+template <typename T>
+class Result : public AnySingleResult {
+public:
+  explicit Result(AnyAsyncValueRef &result, RunnablePrimitiveDescriptor &frame)
+      : AnySingleResult(result, frame) {
+    result = AnyAsyncValueRef::allocate<T>(frame.getRuntime());
+  }
+  using AnySingleResult::AnySingleResult;
+
+  /// Return an owning reference to the AsyncValueRef.  This is typically used
+  /// when copying into a closure.
+  AsyncValueRef<T> copy() const {
+    return AsyncValueRef<T>(AnySingleResult::copy());
+  }
+
+  /// Return an owning reference to the AsyncValueRef for this result, along
+  /// with an EncodedLocation that allows for elegant async error reporting.
+  LLCL::AsyncValueRefWithEncodedLocation<AsyncValueRef<T>>
+  copyWithLocation() const {
+    return {copy(), getFrame().copyLocation()};
+  }
+
+  /// Return a reference to the underlying element in the AsyncValue if it
+  /// is constructed.
+  T &get() const { return result.template get<T>(); }
+
+  /// Construct the result in place and mark it as ready.
+  template <typename... Args>
+  void emplace(Args &&...args) {
+    // CAUTION: We must copy result since it is expected to remain available
+    // to the creator of the AnySingleResult. However, we'll still mark this
+    // method as moving to make clear the result should only be emplaced once.
+    assert(result && "null result");
+    result.copy().template emplace<T, Args...>(std::forward<Args>(args)...);
+  }
+};
+
+/// The IndirectResult class is used for primitives that need a result but don't
+/// know its static type.  It will be initialized to an AsyncValue that is in
+/// indirect state, allowing it to be late-bound, e.g. asynchronously.
+class IndirectResult : public AnySingleResult {
+public:
+  /// On construction, this is initialized with an indirect AsyncValue.
+  explicit IndirectResult(AnyAsyncValueRef &result,
+                          RunnablePrimitiveDescriptor &frame)
+      : AnySingleResult(result, frame) {
+    result = AnyAsyncValueRef::createIndirect(frame.getRuntime());
+  }
+  using AnySingleResult::AnySingleResult;
+
+  /// Return an owning reference to the AsyncValueRef for this result, along
+  /// with an EncodedLocation that allows for elegant async error reporting.
+  LLCL::AsyncValueRefWithEncodedLocation<AnyAsyncValueRef>
+  copyWithLocation() const {
+    return {copy(), getFrame().copyLocation()};
+  }
+
+  /// Resolve an IndirectAsyncValue to point to the specified new value,
+  /// resolving any waiters whenever newValue becomes ready.
+  void resolve(AnyAsyncValueRef newValue) {
+    result.resolveIndirect(newValue.releaseRCRef());
+  }
+
+  /// Construct an AsyncValue for the result and resolve the indirect result.
+  ///
+  /// NOTE(#7399): Should be consuming?
+  template <typename T, typename... Args>
+  void emplace(Args &&...args) {
+    resolve(AnyAsyncValueRef::createReady<T, Args...>(
+        result.getRuntime(), std::forward<Args>(args)...));
+  }
+};
+
+/// RemainingResults collects all remaining results in a MutableArrayRef. There
+/// can be at most one RemainingResults, and it must appear after all other
+/// Results.
+///
+/// This should be used when a primitive has potentially heterogenous types, for
+/// example, GRT::InvokeOp.
+class RemainingResults {
+public:
+  explicit RemainingResults(MutableArrayRef<AnyAsyncValueRef> results,
+                            Runtime &runtime)
+      : runtime(runtime), results(results) {}
+
+  MutableArrayRef<AnyAsyncValueRef> get() const { return results; }
+  bool empty() const { return results.empty(); }
+  size_t size() const { return results.size(); }
+  AnyAsyncValueRef &operator[](size_t i) const { return results[i]; }
+
+  using iterator = MutableArrayRef<AnyAsyncValueRef>::iterator;
+  iterator begin() const { return results.begin(); }
+  iterator end() const { return results.end(); }
+
+  /// Allocate all of the unset result values as IndirectAsyncValues.
+  void allocateIndirectResults() {
+    for (auto &elt : results) {
+      if (!elt)
+        elt = AnyAsyncValueRef::createIndirect(runtime);
+    }
+  }
+
+  /// Return the AsyncValues as a SmallVector where every element is copied out.
+  SmallVector<AnyAsyncValueRef> copyAsVector() {
+    SmallVector<AnyAsyncValueRef> result;
+    result.reserve(results.size());
+    for (auto &r : results)
+      result.push_back(r.copy());
+    return result;
+  }
+
+  /// Set all results in this container to error with message `error` and
+  /// location `loc`.
+  void setAllToError(Error error, EncodedLocation &loc) {
+    for (auto &r : results)
+      r.setToError(EncodedDiagnostic(error.copy(), loc.copy()));
+  }
+
+private:
+  Runtime &runtime;
+  MutableArrayRef<AnyAsyncValueRef> results;
+};
+
+//===----------------------------------------------------------------------===//
+// MEFAttr and specializations
+//===----------------------------------------------------------------------===//
+
+/// This CRTP class is used to provide common interfaces across the various
+/// MEFAttr implementations.
+template <typename ConcreteType, typename StoredType>
+class MEFAttrCommon {
+public:
+  MEFAttrCommon(StoredType init, ArrayRef<uint8_t> attrSection)
+      : value(init), attrSection(attrSection) {}
+
+  using ValueType = typename std::remove_reference<StoredType>::type;
+
+  const StoredType &get() const { return value; }
+  const ValueType *operator->() const { return &value; }
+  const StoredType &operator*() const { return value; }
+
+  ArrayRef<uint8_t> getAttrSection() const { return attrSection; }
+
+  /// Given a pointer to the start of attribute value, return the attribute
+  /// kind.
+  static MEF::AttributeKind getAttrKind(const uint8_t *value) {
+    // The attribute kind is encoded in the byte before the attribute value.
+    return static_cast<MEF::AttributeKind>(*(value - 1));
+  }
+
+  /// Check that the dynamic attribute kind encoded into the MEF file matches
+  /// the C++ type for this.
+  static inline void checkAttributeKind(const uint8_t *value,
+                                        ArrayRef<uint8_t> attrSection) {
+    assert(ConcreteType::matchesAttrKind(value, attrSection.end()) &&
+           "attribute passed to primitive has unexpected type;"
+           " mismatch between mlir syntax and primitive definition");
+  }
+
+private:
+  StoredType value;
+  /// This represent the beginning and end pointers collected into an ArrayRef
+  /// to represent the range of bytes making up the whole Attribute Section.
+  /// This is useful since we want to check the pointer for the attribute is:
+  ///    1. Past the beginning of the Attribute Section in the PrimitiveRegistry
+  ///    2. Past the end of the Attribute Section downstream to MEFType for
+  ///    decoding so we know the bounds.
+  ArrayRef<uint8_t> attrSection;
+};
+
+/// Primitives use this to declare that they have an attribute input with the
+/// specified C++ type.
+template <typename T>
+class MEFAttr : public MEFAttrCommon<MEFAttr<T>, const T &> {
+public:
+  using BaseClass = MEFAttrCommon<MEFAttr<T>, const T &>;
+
+  explicit MEFAttr(const uint8_t *value, ArrayRef<uint8_t> attrSection)
+      : BaseClass(*reinterpret_cast<const T *>(value), attrSection) {
+    // Check that the C++ type matches the encoded type for the attribute.
+    static_assert(MEF::AttrKindForCXXType<T>::kind !=
+                      MEF::AttributeKind::kInvalid &&
+                  "C++ type passed to MEFAttr isn't supported");
+    assert(value >= attrSection.begin() &&
+           "MEF datum not within bounds of the MEF Attribute Section");
+    this->checkAttributeKind(value, attrSection);
+  }
+
+  static bool matchesAttrKind(const uint8_t *pointer,
+                              const uint8_t *attrSectionEnd) {
+    return BaseClass::getAttrKind(pointer) == MEF::AttrKindForCXXType<T>::kind;
+  }
+};
+
+/// String attributes have a special encoding that includes their length,
+/// allowing projection into a StringRef.
+template <>
+class MEFAttr<StringRef> : public MEFAttrCommon<MEFAttr<StringRef>, StringRef> {
+public:
+  using BaseClass = MEFAttrCommon<MEFAttr<StringRef>, StringRef>;
+
+  explicit MEFAttr(const uint8_t *pointer, ArrayRef<uint8_t> attrSection)
+      : BaseClass(StringRef(reinterpret_cast<const char *>(pointer),
+                            decodeMEFArrayLength(pointer)),
+                  attrSection) {
+    assert(pointer >= attrSection.begin() &&
+           "MEF datum not within bounds of the MEF Attribute Section");
+    this->checkAttributeKind(pointer, attrSection);
+  }
+
+  static bool matchesAttrKind(const uint8_t *pointer,
+                              const uint8_t *attrSectionEnd) {
+    return BaseClass::getAttrKind(pointer) == MEF::AttributeKind::kString;
+  }
+};
+
+/// Array attributes have a special encoding that includes their length,
+/// allowing projection into a ArrayRef.
+template <typename T>
+class MEFAttr<ArrayRef<T>>
+    : public MEFAttrCommon<MEFAttr<ArrayRef<T>>, ArrayRef<T>> {
+public:
+  using BaseClass = MEFAttrCommon<MEFAttr<ArrayRef<T>>, ArrayRef<T>>;
+
+  explicit MEFAttr(const uint8_t *pointer, ArrayRef<uint8_t> attrSection)
+      : BaseClass(ArrayRef<T>(reinterpret_cast<const T *>(pointer),
+                              decodeMEFArrayLength(pointer)),
+                  attrSection) {
+    assert(pointer >= attrSection.begin() &&
+           "MEF datum not within bounds of the MEF Attribute Section");
+    this->checkAttributeKind(pointer, attrSection);
+  }
+
+  static bool matchesAttrKind(const uint8_t *pointer,
+                              const uint8_t *attrSectionEnd) {
+    // If the element type matches, this matches.
+    MEF::AttributeKind kind = BaseClass::getAttrKind(pointer);
+    return kind == MEF::getArrayOf(MEF::AttrKindForCXXType<T>::kind);
+  }
+
+  size_t size() const { return this->get().size(); }
+  const T &operator[](size_t i) const { return this->get()[i]; }
+};
+
+/// Symbols are essentially strings, but we just can't call them strings.
+class MEFSymbolRef {
+public:
+  MEFSymbolRef(StringRef value) : name(value) {}
+
+  StringRef name;
+};
+
+template <>
+class MEFAttr<MEFSymbolRef>
+    : public MEFAttrCommon<MEFAttr<MEFSymbolRef>, MEFSymbolRef> {
+public:
+  using BaseClass = MEFAttrCommon<MEFAttr<MEFSymbolRef>, MEFSymbolRef>;
+
+  explicit MEFAttr(const uint8_t *pointer, ArrayRef<uint8_t> attrSection)
+      : BaseClass(StringRef(reinterpret_cast<const char *>(pointer),
+                            decodeMEFArrayLength(pointer)),
+                  attrSection) {
+    assert(pointer >= attrSection.begin() &&
+           "MEF datum not within bounds of the MEF Attribute Section");
+    this->checkAttributeKind(pointer, attrSection);
+  }
+
+  static bool matchesAttrKind(const uint8_t *pointer,
+                              const uint8_t *attrSectionEnd) {
+    return BaseClass::getAttrKind(pointer) == MEF::AttributeKind::kSymbolRef;
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// MEFAttr<*MEFType> support
+//===----------------------------------------------------------------------===//
+
+namespace Detail {
+struct TypeAttrEmptyStruct {};
+}; // namespace Detail
+
+template <typename MEFTypeClass>
+class MEFTypeAttrCommon
+    : public MEFAttrCommon<MEFAttr<MEFTypeClass>, Detail::TypeAttrEmptyStruct>,
+      public MEFTypeClass {
+public:
+  using BaseClass =
+      MEFAttrCommon<MEFAttr<MEFTypeClass>, Detail::TypeAttrEmptyStruct>;
+
+  explicit MEFTypeAttrCommon(const uint8_t *pointer,
+                             ArrayRef<uint8_t> attrSection)
+      : BaseClass(Detail::TypeAttrEmptyStruct(), attrSection),
+        MEFTypeClass(pointer, attrSection.end()) {
+    assert(pointer >= attrSection.begin() &&
+           "MEF datum not within bounds of the MEF Attribute Section");
+    this->checkAttributeKind(pointer, attrSection);
+  }
+
+  static bool matchesAttrKind(const uint8_t *pointer,
+                              const uint8_t *attrSectionEnd) {
+    auto dynType = MEFType(pointer, attrSectionEnd);
+    return BaseClass::getAttrKind(pointer) == MEF::AttributeKind::kType &&
+           MEFTypeClass::classof(&dynType);
+  }
+};
+
+template <>
+class MEFAttr<MEFType> : public MEFTypeAttrCommon<MEFType> {
+  using MEFTypeAttrCommon::MEFTypeAttrCommon;
+};
+
+template <>
+class MEFAttr<MEFFunctionType> : public MEFTypeAttrCommon<MEFFunctionType> {
+  using MEFTypeAttrCommon::MEFTypeAttrCommon;
+};
+
+template <>
+class MEFAttr<MEFTensorType> : public MEFTypeAttrCommon<MEFTensorType> {
+  using MEFTypeAttrCommon::MEFTypeAttrCommon;
+};
+
+template <>
+class MEFAttr<MEFQuantizedType> : public MEFTypeAttrCommon<MEFQuantizedType> {
+  using MEFTypeAttrCommon::MEFTypeAttrCommon;
+};
+
+template <>
+class MEFAttr<MEFQuantizedPerAxisType>
+    : public MEFTypeAttrCommon<MEFQuantizedPerAxisType> {
+  using MEFTypeAttrCommon::MEFTypeAttrCommon;
+};
+
+//===----------------------------------------------------------------------===//
+// MEFDynamicAttr
+//===----------------------------------------------------------------------===//
+
+namespace Detail {
+class Dynamic {};
+
+/// This pair of structs provides a check to see if a class T is a type wrapped
+/// in a MEFAttr. If T is already a MEFAttr, it exposes the inner type, and
+/// unconditionally provides a return type that can be used by dyn_cast and
+/// family.
+template <class T>
+struct MEFAttrDynCastRet {
+  using InnerType = T;
+  using Type = MEFAttr<T>;
+
+  static InnerType getValue(const Type &value) { return value.get(); }
+};
+
+template <class T>
+struct MEFAttrDynCastRet<MEFAttr<T>> {
+  using InnerType = T;
+  using Type = MEFAttr<T>;
+
+  static Type getValue(MEFAttr<T> value) { return value; }
+};
+
+/// Convenience typedef to simplify declarations.
+template <typename T>
+using MEFAttrDynCastRetType = typename MEFAttrDynCastRet<T>::Type;
+} // namespace Detail
+
+/// Dynamic attributes allow checked casting to other attribute kinds.
+template <>
+class MEFAttr<Detail::Dynamic>
+    : public MEFAttrCommon<MEFAttr<Detail::Dynamic>, const uint8_t *> {
+public:
+  using BaseClass = MEFAttrCommon<MEFAttr<Detail::Dynamic>, const uint8_t *>;
+
+  explicit MEFAttr(const uint8_t *pointer, ArrayRef<uint8_t> attrSection)
+      : BaseClass(pointer, attrSection) {
+    assert(pointer >= attrSection.begin() &&
+           "MEF datum not within bounds of the MEF Attribute Section");
+  }
+
+  /// Return the AttributeKind for this attribute.
+  MEF::AttributeKind getAttrKind() const {
+    return MEFAttrCommon::getAttrKind(get());
+  }
+
+  template <typename T>
+  auto cast() const {
+    auto result = dyn_cast<T>(this);
+    assert(result && "dynamic attribute is not of this kind");
+    return *result;
+  }
+
+  /// Parse the MEFDynamicAttr as a specified C++ type, rejecting it with an
+  /// error if not present or the wrong type.
+  template <typename ValueType>
+  ErrorOrSuccess decode(ValueType *result) const {
+    using EncodedType = typename llvm::function_traits<
+        decltype(&M::MEFDecoder<ValueType>::decode)>::template arg_t<0>;
+    using InnerType =
+        typename Detail::MEFAttrDynCastRet<EncodedType>::InnerType;
+
+    auto rawAttrValue = dyn_cast<InnerType>(this);
+    if (!rawAttrValue)
+      return Error("type mismatch, have " + MEF::getAsString(getAttrKind()) +
+                   " but caller expected " + llvm::getTypeName<ValueType>());
+
+    // If this is a C type like int8_t then look through the attr, otherwise
+    // leave it intact.
+    auto valueToDecode =
+        Detail::MEFAttrDynCastRet<EncodedType>::getValue(*rawAttrValue);
+    UNWRAP_ERROR(decodedValue, MEFDecoder<ValueType>::decode(valueToDecode));
+    *result = std::move(decodedValue);
+    return success();
+  }
+
+  /// Dynamic attributes are compatible with everything.
+  static bool matchesAttrKind(const uint8_t *pointer,
+                              const uint8_t *attrSectionEnd) {
+    return true;
+  }
+};
+
+using MEFDynamicAttr = MEFAttr<Detail::Dynamic>;
+
+// Since MEFDynamicAttr can be constructed from a nullptr, the template
+// specializations in lllm/support/Casting.h fail to apply. As such, we
+// have to explicitly define the equals and not equals operators for
+// MEFDynamicAttr.
+inline bool operator==(MEFDynamicAttr lhs, MEFDynamicAttr rhs) {
+  return lhs.get() == rhs.get();
+}
+
+inline bool operator!=(MEFDynamicAttr lhs, MEFDynamicAttr rhs) {
+  return !(lhs == rhs);
+}
+
+//===----------------------------------------------------------------------===//
+// MEFListAttr
+//===----------------------------------------------------------------------===//
+
+namespace Detail {
+class List {};
+} // namespace Detail
+
+/// List of attributes.
+template <>
+class MEFAttr<Detail::List>
+    : public MEFAttrCommon<MEFAttr<Detail::List>, Detail::List> {
+public:
+  using BaseClass = MEFAttrCommon<MEFAttr<Detail::List>, Detail::List>;
+  explicit MEFAttr(const uint8_t *pointer, ArrayRef<uint8_t> attrSection)
+      : BaseClass(Detail::List{}, attrSection),
+        data(pointer, decodeMEFArrayLength(pointer)) {
+    assert(pointer >= attrSection.begin() &&
+           "MEF datum not within bounds of the MEF Attribute Section");
+    this->checkAttributeKind(pointer, attrSection);
+  }
+
+  static bool matchesAttrKind(const uint8_t *pointer,
+                              const uint8_t *attrSectionEnd) {
+    return BaseClass::getAttrKind(pointer) == MEF::AttributeKind::kList;
+  }
+
+  /// Provides an iterator on the List. Because we don't want to allocate
+  /// in this data structure, we parse each attribute's name and value every
+  /// time the iterator is accessed.
+  class Iterator
+      : public llvm::iterator_facade_base<Iterator, std::input_iterator_tag,
+                                          MEFDynamicAttr> {
+  public:
+    using Base = llvm::iterator_facade_base<Iterator, std::input_iterator_tag,
+                                            MEFDynamicAttr>;
+
+    Iterator(const uint8_t *ptr, size_t iterIdx, ArrayRef<uint8_t> attrSection)
+        : basePtr(ptr), ptr(const_cast<uint8_t *>(ptr)), iterIdx(iterIdx),
+          attrSection(attrSection) {}
+
+    /// Increment the iterator. Decrementing is sufficiently difficult that it's
+    /// left as an exercise to the person who wants to use it.
+    Iterator &operator+=(Base::difference_type n);
+
+    /// Compare Iterator objects.
+    bool operator==(const Iterator &rhs) const {
+      assert(basePtr == rhs.basePtr &&
+             "Comparing iterators from different lists!");
+      return iterIdx == rhs.iterIdx;
+    }
+
+    /// Parse out and return the name and value contained in this iterator.
+    MEFDynamicAttr operator*() const;
+
+  private:
+    const uint8_t *basePtr;
+    uint8_t *ptr;
+    size_t iterIdx;
+    ArrayRef<uint8_t> attrSection;
+  };
+
+  /// Range access into the List object.
+  Iterator begin() const { return {data.begin(), 0, getAttrSection()}; }
+  Iterator end() const {
+    return Iterator{data.begin(), data.size(), getAttrSection()};
+  }
+
+  /// Return the size of the List in number of elements.
+  size_t size() const { return data.size(); }
+
+  /// Return true if there are no attributes in this list.
+  bool empty() const { return data.empty(); }
+
+  /// Parse this list attribute into the specified type (typically a
+  /// SmallVector), rejecting it with an error if not present or the wrong type.
+  template <typename ValueType>
+  ErrorOrSuccess decode(ValueType *result) const {
+    return MEFDynamicAttr(data.data(), getAttrSection())
+        .decode<ValueType>(result);
+  }
+
+private:
+  ArrayRef<uint8_t> data;
+};
+
+using MEFListAttr = MEFAttr<Detail::List>;
+
+// Allow decoding MEFListAttr into a SmallVector.
+template <typename EltType, size_t Size>
+struct MEFDecoder<SmallVector<EltType, Size>> {
+  static ErrorOr<SmallVector<EltType, Size>> decode(MEFListAttr value) {
+    SmallVector<EltType, Size> result;
+    result.reserve(value.size());
+    for (auto element : value) {
+      EltType resultElt;
+      RETURN_ERROR(element.decode(&resultElt));
+      result.push_back(resultElt);
+    }
+    return result;
+  }
+};
+
+#ifndef __clang__
+/// GCC complains about matching SmallVector without the Size template
+/// parameter, and CLANG complains about ambiguous partial specialization.
+///
+/// TODO: Can we implement this function in terms of
+/// MEFDecoder<SmallVector<EltType, Size>>?
+template <typename EltType>
+struct MEFDecoder<SmallVector<EltType>> {
+  static ErrorOr<SmallVector<EltType>> decode(MEFListAttr value) {
+    SmallVector<EltType> result;
+    result.reserve(value.size());
+    for (auto element : value) {
+      EltType resultElt{};
+      RETURN_ERROR(element.decode(&resultElt));
+      result.push_back(resultElt);
+    }
+    return result;
+  }
+};
+#endif // __clang__
+
+//===----------------------------------------------------------------------===//
+// MEFDictionaryAttr
+//===----------------------------------------------------------------------===//
+
+namespace Detail {
+class Dictionary {};
+} // namespace Detail
+
+/// Dictionaries are lists of name, value pairs.
+template <>
+class MEFAttr<Detail::Dictionary>
+    : public MEFAttrCommon<MEFAttr<Detail::Dictionary>, Detail::Dictionary> {
+public:
+  using BaseClass =
+      MEFAttrCommon<MEFAttr<Detail::Dictionary>, Detail::Dictionary>;
+  explicit MEFAttr(const uint8_t *pointer, ArrayRef<uint8_t> attrSection)
+      : BaseClass(Detail::Dictionary{}, attrSection),
+        data(pointer, decodeMEFArrayLength(pointer)) {
+    assert(pointer >= attrSection.begin() &&
+           "MEF datum not within bounds of the MEF Attribute Section");
+    this->checkAttributeKind(pointer, attrSection);
+  }
+
+  static bool matchesAttrKind(const uint8_t *pointer,
+                              const uint8_t *attrSectionEnd) {
+    return BaseClass::getAttrKind(pointer) == MEF::AttributeKind::kDictionary;
+  }
+
+  /// Provides something for the Iterator to dereference. Conceptually, this is
+  /// a single element in the MEF Dictionary attribute - it consists of a base
+  /// pointer and offsets to both the name and value of this element.
+  class Element {
+  public:
+    Element(const uint8_t *basePtr, size_t nameOffset, size_t attrOffset,
+            ArrayRef<uint8_t> attrSection)
+        : basePtr(basePtr), nameOffset(nameOffset), attrOffset(attrOffset),
+          attrSection(attrSection) {}
+
+    /// Get the name of this element.
+    StringRef getName() const {
+      return *MEFAttr<StringRef>(basePtr - nameOffset, attrSection);
+    }
+
+    /// Get the value of this element.
+    MEFDynamicAttr getValue() const {
+      return MEFDynamicAttr(basePtr - attrOffset, attrSection);
+    }
+
+    /// Templated convenience function to allow the user to get the value as a
+    /// certain type. Asserts that T matches the actual attribute stored.
+    template <typename T>
+    MEFAttr<T> getValue() const {
+      return MEFAttr<T>(basePtr - attrOffset, attrSection);
+    }
+
+  private:
+    const uint8_t *basePtr;
+    const size_t nameOffset;
+    const size_t attrOffset;
+    ArrayRef<uint8_t> attrSection;
+  };
+
+  /// Provides an iterator on the Dictionary. Because we don't want to allocate
+  /// in this data structure, we parse each attribute's name and value every
+  /// time the iterator is accessed.
+  class Iterator
+      : public llvm::iterator_facade_base<Iterator, std::input_iterator_tag,
+                                          Element> {
+  public:
+    using Base =
+        llvm::iterator_facade_base<Iterator, std::input_iterator_tag, Element>;
+
+    Iterator(const uint8_t *ptr, size_t iterIdx, ArrayRef<uint8_t> attrSection)
+        : basePtr(ptr), ptr(const_cast<uint8_t *>(ptr)), iterIdx(iterIdx),
+          attrSection(attrSection) {}
+
+    /// Increment the iterator. Decrementing is sufficiently difficult that it's
+    /// left as an exercise to the person who wants to use it.
+    Iterator &operator+=(Base::difference_type n);
+
+    /// Compare Iterator objects.
+    bool operator==(const Iterator &rhs) const {
+      assert(basePtr == rhs.basePtr &&
+             "Comparing iterators from different dictionaries!");
+      return iterIdx == rhs.iterIdx;
+    }
+
+    /// Parse out and return the name and value contained in this iterator.
+    Element operator*() const;
+
+  private:
+    const uint8_t *basePtr;
+    uint8_t *ptr;
+    size_t iterIdx;
+    ArrayRef<uint8_t> attrSection;
+  };
+
+  /// Range access into the Dictionary object.
+  Iterator begin() const { return {data.begin(), 0, getAttrSection()}; }
+  Iterator end() const {
+    return Iterator{data.begin(), data.size(), getAttrSection()};
+  }
+
+  /// Return the size of the Dictionary in number of elements.
+  size_t size() const { return data.size(); }
+
+  /// Return true if there are no attributes in this dictionary.
+  bool empty() const { return data.empty(); }
+
+  /// Find an element in the dictionary by name. Parses every name in sequence
+  /// until it finds the right one and returns that attribute. If the name is
+  /// not found, return None.
+  std::optional<MEFDynamicAttr> find(StringRef name) const;
+
+  /// Templated access to the value in find. If nothing is found *or* the type
+  /// provided is incorrect, then None is returned.
+  template <typename T>
+  std::optional<Detail::MEFAttrDynCastRetType<T>> find(StringRef name) const {
+    std::optional<MEFDynamicAttr> found = find(name);
+    if (!found)
+      return std::nullopt;
+
+    return dyn_cast<T>(found);
+  }
+
+  /// Parse a named field of the specified attribute dictionary as the specified
+  /// type, rejecting it with an error if not present or the wrong type.
+  template <typename ValueType>
+  ErrorOrSuccess decode(StringRef name, ValueType *result) const {
+    auto dynAttrValue = this->find(name);
+    if (dynAttrValue)
+      return dynAttrValue->decode<ValueType>(result);
+    return Error(Twine("missing attribute '") + name + "'");
+  }
+
+  /// Parse a named field of the specified attribute dictionary as the
+  /// specified type, ignoring it if not present or the wrong type.
+  template <typename ValueType>
+  ErrorOrSuccess decodeIfPresent(StringRef name, ValueType *result) const {
+    // The attribute doesn't have to be present.
+    auto dynAttrValue = this->find(name);
+    if (!dynAttrValue)
+      return success();
+
+    // ... but if it is, it must have the expected type.
+    return dynAttrValue->decode<ValueType>(result);
+  }
+
+  /// Print the contents of this dictionary to stderr for debugging.
+  void dump() const;
+
+private:
+  ArrayRef<uint8_t> data;
+};
+
+using MEFDictionaryAttr = MEFAttr<Detail::Dictionary>;
+
+/// RemainingMEFAttrs collects all remaining attributes for the primitive that
+/// were not explicitly handled. There can be at most one RemainingMEFAttrs,
+/// and it must appear after all other attributes.
+class RemainingMEFAttrs {
+public:
+  explicit RemainingMEFAttrs(const uint8_t *basePtr, ArrayRef<uint64_t> attrs,
+                             ArrayRef<uint8_t> attrSection)
+      : basePtr(basePtr), attrs(attrs), attrSection(attrSection) {}
+
+  bool empty() const { return attrs.empty(); }
+  size_t size() const { return attrs.size(); }
+  MEFDynamicAttr operator[](size_t i) const {
+    return MEFDynamicAttr(basePtr + attrs[i], attrSection);
+  }
+
+private:
+  const uint8_t *basePtr;
+  ArrayRef<uint64_t> attrs;
+  ArrayRef<uint8_t> attrSection;
+};
+
+//===----------------------------------------------------------------------===//
+// Primitive Registration Wrapper Generator
+//===----------------------------------------------------------------------===//
+
+/// This macro is used to register an implementation function for a primitive
+/// with a specified PrimitiveRegistry.  It handles generating a wrapper thunk
+/// that makes it much easier (and less bug prone) to work with low-level
+/// `RunnablePrimitiveDescriptor`.
+///
+/// For example:
+///    ADD_PRIMITIVE(registery, "grt.invoke", grt_invoke_impl);
+///
+#define ADD_PRIMITIVE(registry, name, fn)                                      \
+  do {                                                                         \
+    (registry).add(                                                            \
+        name, ::M::Detail::PrimitiveImpl<decltype(&(fn)), &(fn)>::invoke);     \
+    ::M::Detail::PrimitiveImpl<decltype(&(fn)), &(fn)>::registerTypes();       \
+  } while (0)
+
+namespace Detail {
+// This class implements the ADD_PRIMITIVE macro.
+template <typename FnType, FnType implFn>
+struct PrimitiveImpl;
+
+template <typename Return, typename... Args, Return (*implFn)(Args...)>
+struct PrimitiveImpl<Return (*)(Args...), implFn> {
+  //===--------------------------------------------------------------------===//
+  // Type Registration
+  //===--------------------------------------------------------------------===//
+
+  /// This class defines a helper for registering a type to enable use within
+  /// AsyncValue.
+  ///
+  /// Note: The `Dummy` type is used to avoid GCC errors for defining struct
+  /// specializations outside of a namespace.
+  template <typename T, typename Dummy = void>
+  struct TypeRegistration {
+    static void registerType() { AsyncValue::registerType<T>(); }
+  };
+  template <typename Dummy>
+  struct TypeRegistration<void, Dummy> {
+    static void registerType() {}
+  };
+
+  /// A utility registration base class that recursively invokes registration on
+  /// the given set of types.
+  template <typename... Ts>
+  struct ForwardingTypeRegistration {
+    static void registerType() { (TypeRegistration<Ts>::registerType(), ...); }
+  };
+  template <typename T1, typename T2>
+  struct TypeRegistration<std::pair<T1, T2>>
+      : public ForwardingTypeRegistration<T1, T2> {};
+  template <typename... Ts>
+  struct TypeRegistration<std::tuple<Ts...>>
+      : public ForwardingTypeRegistration<Ts...> {};
+  template <typename T>
+  struct TypeRegistration<AsyncValueRef<T>>
+      : public ForwardingTypeRegistration<T> {};
+  template <typename T>
+  struct TypeRegistration<ErrorOr<T>> : public ForwardingTypeRegistration<T> {};
+
+  /// This class defines a helper for registering types for components provided
+  /// via the primitive parameter list.
+  ///
+  /// Note: The `Dummy` type is used to avoid GCC errors for defining struct
+  /// specializations outside of a namespace.
+  template <typename T, typename Dummy = void>
+  struct ParamTypeRegistration {
+    static void registerType() {}
+  };
+  template <typename T>
+  struct ParamTypeRegistration<Result<T>> {
+    static void registerType() { TypeRegistration<T>::registerType(); }
+  };
+
+  //===--------------------------------------------------------------------===//
+  // Entry Point
+
+  /// This method is an entry point used to register the necessary types with
+  /// AsyncValue needed to properly invoke this primitive.
+  static void registerTypes() {
+    // We only really need to register result types here, given that the
+    // argument types require a valid producer. The `ParamTypeRegistration`
+    // below handles registering types for results passed as parameters.
+    TypeRegistration<std::decay_t<Return>>::registerType();
+    (ParamTypeRegistration<std::decay_t<Args>>::registerType(), ...);
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Invocation
+  //===--------------------------------------------------------------------===//
+
+  /// This is the main entry point that gets registered as an impl.  This works
+  /// by recursively processing the argument list, then handling the result
+  /// list, generating a function with the standard PrimitiveImpl signature that
+  /// handles each part of the function signature as it goes.
+  static void invoke(RunnablePrimitiveDescriptor &frame) {
+    processArgsAndInvoke<
+        ValueIndices</*argIdx=*/0, /*resultIdx=*/0, /*attrIdx=*/0,
+                     /*invIdx=*/0>,
+        /*hasInChain=*/false>(TypeTag<Args...>(), frame);
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Argument handling
+  //===--------------------------------------------------------------------===//
+
+  //===--------------------------------------------------------------------===//
+  // Argument handling: Value Type Definitions
+
+  /// This enum represents the different types of values that may be passed as
+  /// arguments during the invocation of a primitive.
+  enum class ValueType {
+    kArgument,
+    kResult,
+    kAttribute,
+    kInvokable,
+    kFramework,
+  };
+
+  /// This class represents a static container for the various indices used
+  /// during argument handling.
+  template <int argIdxVal, int resultIdxVal, int attrIdxVal, int invIdxVal>
+  struct ValueIndices {
+    /// A set of indices that correspond to lists of various value types. When
+    /// each list has been fully consumed, the index is set to -1.
+    static constexpr int argIdx = argIdxVal;
+    static constexpr int resultIdx = resultIdxVal;
+    static constexpr int attrIdx = attrIdxVal;
+    static constexpr int invIdx = invIdxVal;
+  };
+
+  /// This class provides a common static abstraction of the different value
+  /// types.
+  template <ValueType valueTypeParam, bool valueIsTerminal = false>
+  struct ValueBase {
+    /// A flag indicating the type of the value.
+    static constexpr ValueType valueType = valueTypeParam;
+
+    /// A flag indicating whether the value is a terminal value, i.e. it
+    /// consumes the remaining values of this type.
+    static constexpr bool isTerminal = valueIsTerminal;
+
+    /// A flag indicating whether the value contains a chain.
+    static constexpr bool isChain = false;
+
+    /// Updates the given index if the type matches the one for this value,
+    /// otherwise returns the current index.
+    template <ValueType type, int idx>
+    static constexpr int updateIndex() {
+      return (valueType == type) ? (isTerminal ? -1 : (idx + 1)) : idx;
+    }
+    /// Updates the given indices for the current value.
+    template <typename IndicesT>
+    using UpdatedIndicesT =
+        ValueIndices<updateIndex<ValueType::kArgument, IndicesT::argIdx>(),
+                     updateIndex<ValueType::kResult, IndicesT::resultIdx>(),
+                     updateIndex<ValueType::kAttribute, IndicesT::attrIdx>(),
+                     updateIndex<ValueType::kInvokable, IndicesT::invIdx>()>;
+
+    /// Verify the given value indices based on the current value type. The
+    /// default implementation assumes all are valid, but derived value types
+    /// may override to provide additional checks and guarantees.
+    template <typename IndicesT>
+    static constexpr void verifyCurrentIndex() {}
+  };
+
+  //===--------------------------------------------------------------------===//
+  // Argument Values
+
+  /// This class defines an Argument value.
+  template <bool isTerminal = false>
+  struct ArgValue : public ValueBase<ValueType::kArgument, isTerminal> {
+    template <typename IndicesT>
+    static constexpr void verifyCurrentIndex() {
+      static_assert(isTerminal || IndicesT::argIdx != -1,
+                    "Do not place Arguments after RemainingArguments");
+      static_assert(
+          !isTerminal || IndicesT::argIdx != -1,
+          "Do not use more than one RemainingArguments/RepeatedArguments");
+
+      static_assert(IndicesT::resultIdx == 0,
+                    "Arguments should appear before results");
+      static_assert(IndicesT::attrIdx == 0,
+                    "Arguments and results should appear before attributes");
+      static_assert(IndicesT::invIdx == 0,
+                    "Arguments and results should appear before invokables");
+    }
+  };
+  /// This class defines an Argument value that terminates the argument list,
+  /// and consumes the remaining arguments.
+  struct TerminalArgValue : public ArgValue</*isTerminal=*/true> {};
+
+  //===--------------------------------------------------------------------===//
+  // Result Values
+
+  /// This class represents a Result value.
+  template <bool isTerminal = false>
+  struct ResultValue : public ValueBase<ValueType::kResult, isTerminal> {
+    template <typename IndicesT>
+    static constexpr void verifyCurrentIndex() {
+      static_assert(isTerminal || IndicesT::resultIdx != -1,
+                    "Do not place Results after RemainingResults");
+      static_assert(!isTerminal || IndicesT::resultIdx != -1,
+                    "Do not use more than one RemainingResults");
+      static_assert(IndicesT::attrIdx == 0,
+                    "Arguments and results should appear before attributes");
+      static_assert(IndicesT::invIdx == 0,
+                    "Arguments and results should appear before invokables");
+    }
+  };
+  /// This class defines a Result value that terminates the result list,
+  /// and consumes the remaining results.
+  struct TerminalResultValue : public ResultValue</*isTerminal=*/true> {};
+
+  //===--------------------------------------------------------------------===//
+  // Attribute Values
+
+  /// This class defines an Attribute value.
+  template <bool isTerminal = false>
+  struct AttrValue : public ValueBase<ValueType::kAttribute, isTerminal> {
+    template <typename IndicesT>
+    static void verifyCurrentIndex() {
+      static_assert(IndicesT::attrIdx != -1,
+                    "Do not place Attributes after RemainingMEFAttrs");
+      static_assert(!isTerminal || IndicesT::attrIdx != -1,
+                    "Do not use more than one RemainingMEFAttrs");
+    }
+  };
+
+  /// This class defines an Attribute value that terminates the attribute list,
+  /// and consumes the remaining attributes.
+  struct TerminalAttrValue : public AttrValue</*isTerminal=*/true> {};
+
+  //===--------------------------------------------------------------------===//
+  // Invokable Values
+
+  /// This class defines a Invokable value.
+  struct InvokableValue : public ValueBase<ValueType::kInvokable> {};
+
+  //===--------------------------------------------------------------------===//
+  // Framework Values
+
+  /// This class defines a Framework value, such as a
+  /// RunnablePrimitiveDescriptor or Runtime.
+  struct FrameworkValue : public ValueBase<ValueType::kFramework> {};
+
+  //===--------------------------------------------------------------------===//
+  // Argument handling: Value Definitions
+  //===--------------------------------------------------------------------===//
+
+  /// This class defines a concrete type of value, with `T` representing the
+  /// expected C++ class. Each specialization should derive from one of the
+  /// specific value types above, and also provide a `process` function that
+  /// computes the concrete value. This function should generally be of (or
+  /// similar to) the following form:
+  ///
+  ///   template <typename IndicesT>
+  ///   static T process(RunnablePrimitiveDescriptor &frame) {
+  ///     // Compute and return the value of `T` here.
+  ///     // `IndicesT` is an instance of ValueIndices containing the current
+  ///     // indices for each value type.
+  ///   }
+  ///
+  /// Note: The `Dummy` type is used to avoid GCC errors for defining struct
+  /// specializations outside of a namespace.
+  template <typename T, typename Dummy = void>
+  struct Value;
+
+  //===--------------------------------------------------------------------===//
+  // Argument Values
+
+  /// By default, treat any unknown type as an Argument.
+  template <typename T, typename Dummy>
+  struct Value : public ArgValue<> {
+    using ArgTy = std::decay_t<T>;
+
+    template <typename IndicesT>
+    static auto &&process(RunnablePrimitiveDescriptor &frame) {
+      return frame.getArg<ArgTy>(IndicesT::argIdx);
+    }
+
+    /// Mark if the value is a chain.
+    static constexpr bool isChain = std::is_same<ArgTy, Chain>::value;
+  };
+
+  /// If this wants an AsyncValueRef, then they want raw low-level access to an
+  /// argument, provide it.
+  template <typename T, typename Dummy>
+  struct Value<AsyncValueRef<T>, Dummy> : public ArgValue<> {
+    template <typename IndicesT>
+    static AsyncValueRef<T> process(RunnablePrimitiveDescriptor &frame) {
+      return std::move(frame.getArg(IndicesT::argIdx));
+    }
+
+    /// Mark if the value is a chain.
+    static constexpr bool isChain = std::is_same<T, Chain>::value;
+  };
+
+  /// If this wants an AsyncValueRef, then they want raw low-level access to an
+  /// argument, provide it.
+  template <typename Dummy>
+  struct Value<AnyAsyncValueRef, Dummy> : public ArgValue<> {
+    template <typename IndicesT>
+    static AnyAsyncValueRef process(RunnablePrimitiveDescriptor &frame) {
+      return std::move(frame.getArg(IndicesT::argIdx));
+    }
+  };
+
+  /// RemainingArguments provides an ArrayRef containing all remaining
+  /// arguments. Useful for variadic primitives with heterogenous elements.
+  template <typename Dummy>
+  struct Value<RemainingArguments, Dummy> : public TerminalArgValue {
+    template <typename IndicesT>
+    static RemainingArguments process(RunnablePrimitiveDescriptor &frame) {
+      return RemainingArguments(
+          frame.getArguments().drop_front(IndicesT::argIdx));
+    }
+  };
+
+  //===--------------------------------------------------------------------===//
+  // Result Values
+
+  /// Result<T> provides an initialized AsyncValue with a specific type.
+  template <typename T, typename Dummy>
+  struct Value<Result<T>, Dummy> : public ResultValue<> {
+    template <typename IndicesT>
+    static Result<T> process(RunnablePrimitiveDescriptor &frame) {
+      return Result<T>(frame.getResults()[IndicesT::resultIdx], frame);
+    }
+  };
+
+  /// IndirectResult provides an initialized indirect AsyncValue.
+  template <typename Dummy>
+  struct Value<IndirectResult, Dummy> : public ResultValue<> {
+    template <typename IndicesT>
+    static IndirectResult process(RunnablePrimitiveDescriptor &frame) {
+      return IndirectResult(frame.getResults()[IndicesT::resultIdx], frame);
+    }
+  };
+
+  /// RemainingResults provides a view containing all remaining results.
+  /// Useful for variadic primitives.
+  template <typename Dummy>
+  struct Value<RemainingResults, Dummy> : public TerminalResultValue {
+    template <typename IndicesT>
+    static RemainingResults process(RunnablePrimitiveDescriptor &frame) {
+      return RemainingResults(
+          frame.getResults().drop_front(IndicesT::resultIdx),
+          frame.getRuntime());
+    }
+  };
+
+  //===--------------------------------------------------------------------===//
+  // Attribute Values
+
+  /// Specialization to cast a single attribute (T).
+  template <typename T, typename Dummy>
+  struct Value<MEFAttr<T>, Dummy> : public AttrValue<> {
+    template <typename IndicesT>
+    static MEFAttr<T> process(RunnablePrimitiveDescriptor &frame) {
+      return frame.getAttr<T>(IndicesT::attrIdx);
+    }
+  };
+
+  /// RemainingMEFAttrs provides an ArrayRef containing all remaining
+  /// attributes. Useful for primitives with unknown dynamic attributes.
+  template <typename Dummy>
+  struct Value<RemainingMEFAttrs, Dummy> : public TerminalAttrValue {
+    template <typename IndicesT>
+    static RemainingMEFAttrs process(RunnablePrimitiveDescriptor &frame) {
+      return RemainingMEFAttrs(
+          frame.getAttrBase(),
+          frame.getAttrOffsets().drop_front(IndicesT::attrIdx),
+          frame.getAttrSection());
+    }
+  };
+
+  //===--------------------------------------------------------------------===//
+  // Invokable Values
+
+  /// If this takes a `Invokable *`, then pass it down.
+  template <typename Dummy>
+  struct Value<MEFInvokable *, Dummy> : public InvokableValue {
+    template <typename IndicesT>
+    static MEFInvokable *process(RunnablePrimitiveDescriptor &frame) {
+      return frame.getInvokable(IndicesT::invIdx);
+    }
+  };
+
+  //===--------------------------------------------------------------------===//
+  // Framework Values
+
+  /// If this requires the RunnablePrimitiveDescriptor for any reason, pass it
+  /// along.
+  template <typename Dummy>
+  struct Value<RunnablePrimitiveDescriptor &, Dummy> : public FrameworkValue {
+    template <typename IndicesT>
+    static RunnablePrimitiveDescriptor &
+    process(RunnablePrimitiveDescriptor &frame) {
+      return frame;
+    }
+  };
+
+  /// If this requires a Runtime, pass it along.
+  template <typename Dummy>
+  struct Value<Runtime &, Dummy> : public FrameworkValue {
+    template <typename IndicesT>
+    static Runtime &process(RunnablePrimitiveDescriptor &frame) {
+      return frame.getRuntime();
+    }
+  };
+
+  /// If this requires an EncodedLocation for the frame, pass it along.
+  template <typename Dummy>
+  struct Value<EncodedLocation, Dummy> : public FrameworkValue {
+    template <typename IndicesT>
+    static EncodedLocation process(RunnablePrimitiveDescriptor &frame) {
+      return frame.copyLocation();
+    }
+  };
+
+  //===--------------------------------------------------------------------===//
+  // Argument handling: Processing
+  //===--------------------------------------------------------------------===//
+
+  /// This function handles the nitty gritty processing of the arguments. We
+  /// recursively unwrap each argument, verify the current value indices,
+  /// process the argument, and append it to the working argument list.
+  template <typename IndicesT, bool hasInChain, typename ArgT,
+            typename... ArgsToProcessT, typename... ArgsT>
+  static void processArgsAndInvoke(TypeTag<ArgT, ArgsToProcessT...>,
+                                   RunnablePrimitiveDescriptor &frame,
+                                   ArgsT &&...args) {
+    Value<ArgT, void>::template verifyCurrentIndex<IndicesT>();
+    processArgsAndInvoke<
+        typename Value<ArgT, void>::template UpdatedIndicesT<IndicesT>,
+        (hasInChain || Value<ArgT, void>::isChain)>(
+        TypeTag<ArgsToProcessT...>(), frame, std::forward<ArgsT>(args)...,
+        Value<ArgT, void>::template process<IndicesT>(frame));
+  }
+
+  /// This function is the base case for argument processing function above. It
+  /// is invoked after all arguments have finished processing, and handles some
+  /// final validation before invoking the primitive.
+  template <typename IndicesT, bool hasInChain, typename... ArgsT>
+  static void processArgsAndInvoke(TypeTag<>,
+                                   RunnablePrimitiveDescriptor &frame,
+                                   ArgsT &&...args) {
+    verifyResultIndex<IndicesT::resultIdx>(frame, TypeTag<Return>());
+
+    assert((IndicesT::argIdx == (int)frame.getNumArgs() ||
+            IndicesT::argIdx == -1 ||
+            (!hasInChain &&
+             static_cast<size_t>(IndicesT::argIdx) == frame.getNumArgs() - 1 &&
+             frame.getArg(IndicesT::argIdx).template isType<Chain>())) &&
+           "Extra arguments passed to primitive");
+    assert((IndicesT::attrIdx == (int)frame.getNumAttrs() ||
+            IndicesT::attrIdx == -1) &&
+           "Extra attributes passed to primitive");
+    assert((IndicesT::invIdx == frame.getNumInvokables() ||
+            IndicesT::invIdx == -1) &&
+           "Extra invokables passed to primitive");
+    invoke<Return>(frame, std::forward<ArgsT>(args)...);
+  }
+
+  // Verify the result index for non-void Return type
+  template <int resultIdx, typename T>
+  static void verifyResultIndex(RunnablePrimitiveDescriptor &frame,
+                                TypeTag<T>) {
+    static_assert(resultIdx == 0,
+                  "Don't mix return by value and Result<> syntax.");
+  }
+
+  // Verify the result index for void Return type.
+  template <int resultIdx>
+  static void verifyResultIndex(RunnablePrimitiveDescriptor &frame,
+                                TypeTag<void>) {
+    assert((resultIdx == (int)frame.getNumResults() || resultIdx == -1) &&
+           "Extra results passed to primitive");
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Result handling
+  //===--------------------------------------------------------------------===//
+
+  // Handles the return value of the primitive with `handleReturn` if
+  // non-void. Otherwise ignores the return value.
+  template <typename ReturnT, typename... ActualArgs>
+  static std::enable_if_t<!std::is_same<ReturnT, void>::value>
+  invoke(RunnablePrimitiveDescriptor &frame, ActualArgs &&...args) {
+    handleReturn(frame, implFn(std::forward<ActualArgs>(args)...));
+  }
+  template <typename ReturnT, typename... ActualArgs>
+  static std::enable_if_t<std::is_same<ReturnT, void>::value>
+  invoke(RunnablePrimitiveDescriptor &frame, ActualArgs &&...args) {
+    implFn(std::forward<ActualArgs>(args)...);
+  }
+
+  // These functions provide custom behavior for concrete result types that
+  // may come up.
+
+  /// Store result as an AsyncValue output in RunnablePrimitiveDescriptor by
+  /// creating a ConcreteAsyncValue.
+  template <typename T>
+  static void processResult(RunnablePrimitiveDescriptor &frame, size_t index,
+                            T &&t) {
+    frame.emplaceResult<std::decay_t<T>>(index, std::forward<T>(t));
+  }
+
+  /// Support functions that return ErrorOr<T>: if it contains an error, call
+  /// frame.fail() to report the error message and set an error in the output
+  /// AsyncValue. Otherwise, store the return value as normal.
+  template <typename T>
+  static void processResult(RunnablePrimitiveDescriptor &frame, size_t index,
+                            ErrorOr<T> &&errorOr) {
+    if (succeeded(errorOr))
+      processResult(frame, index, errorOr.takeValue());
+    else
+      frame.fail(errorOr.takeError());
+  }
+
+  /// Don't allocate an async value for chain results, just use the one
+  /// already stored in Runtime.
+  static void processResult(RunnablePrimitiveDescriptor &frame, size_t index,
+                            Chain t) {
+    frame.setResult(index, frame.getRuntime().getReadyChain().copy());
+  }
+
+  /// Handle explicit AnyAsyncValueRef results.
+  static void processResult(RunnablePrimitiveDescriptor &frame, size_t index,
+                            AnyAsyncValueRef t) {
+    frame.setResult(index, std::move(t));
+  }
+
+  /// Handle explicit AsyncValueRef results.
+  template <typename T>
+  static void processResult(RunnablePrimitiveDescriptor &frame, size_t index,
+                            AsyncValueRef<T> t) {
+    frame.setResult(index, std::move(t));
+  }
+
+  /// Store the primitive result back to the output AsyncValue in the
+  /// RunnablePrimitiveDescriptor.
+  template <typename T>
+  static void handleReturn(RunnablePrimitiveDescriptor &frame, T &&t) {
+    assert(frame.getNumResults() == 1 && "Incorrect number of results");
+    processResult(frame, 0, std::forward<T>(t));
+  }
+
+  /// Support implementations that return std::pair<>, storing the two results
+  /// in separate output results.
+  template <typename T1, typename T2>
+  static void handleReturn(RunnablePrimitiveDescriptor &frame,
+                           std::pair<T1, T2> &&pair) {
+    assert(frame.getNumResults() == 2 && "Incorrect number of results");
+    processResult(frame, 0, std::move(pair.first));
+    processResult(frame, 1, std::move(pair.second));
+  }
+
+  /// Support implementations that return std::tuple<>, storing each element in
+  /// separate output results.
+  template <typename... Ts>
+  static void handleReturn(RunnablePrimitiveDescriptor &frame,
+                           std::tuple<Ts...> &&tuple) {
+    assert(frame.getNumResults() == sizeof...(Ts) &&
+           "Incorrect number of results");
+
+    auto applyFn = [&](auto &&...args) {
+      // Process each result in-order.
+      int resultIdx = 0;
+      (processResult(frame, resultIdx++, std::move(args)), ...);
+    };
+    std::apply(applyFn, std::move(tuple));
+  }
+};
+} // namespace Detail
+
+} // namespace M
+
+namespace llvm {
+
+template <typename To, typename From>
+struct BaseMEFAttrCast
+    : public DefaultDoCastIfPossible<std::optional<To>, From,
+                                     BaseMEFAttrCast<To, From>> {
+  // Accept a const reference in the case of temporaries being casted which get
+  // lifetime extension when binding to a const reference.
+  static bool isPossible(const From &f) {
+    const From &f_const = const_cast<From &>(f);
+    auto f_unwrapped = detail::unwrapValue(f_const);
+
+    return To::matchesAttrKind(
+        reinterpret_cast<const uint8_t *>(f_unwrapped.get()),
+        f_unwrapped.getAttrSection().end());
+  }
+
+  // Accept a const reference in the case of temporaries being casted which get
+  // lifetime extension when binding to a const reference.
+  static std::optional<To> doCast(const From &f) {
+    const From &f_const = const_cast<From &>(f);
+    auto f_unwrapped = detail::unwrapValue(f_const);
+    return To(f_unwrapped.get(), f_unwrapped.getAttrSection());
+  }
+
+  static std::optional<To> castFailed() { return std::nullopt; }
+};
+
+template <typename To, typename From>
+struct BaseMEFAttrCastOptional
+    : public DefaultDoCastIfPossible<
+          std::optional<To>, std::optional<From>,
+          BaseMEFAttrCastOptional<To, std::optional<From>>> {
+  // Accept a const reference in the case of temporaries being casted which get
+  // lifetime extension when binding to a const reference.
+  static bool isPossible(const From &f) {
+    const From &f_const = const_cast<From &>(f);
+    auto f_unwrapped = detail::unwrapValue(f_const);
+
+    return To::matchesAttrKind(
+        reinterpret_cast<const uint8_t *>((*f_unwrapped).get()),
+        (*f_unwrapped).getAttrSection().end());
+  }
+
+  // Accept a const reference in the case of temporaries being casted which get
+  // lifetime extension when binding to a const reference.
+  static std::optional<To> doCast(const From &f) {
+    const From &f_const = const_cast<From &>(f);
+    auto f_unwrapped = detail::unwrapValue(f_const);
+    return To((*f_unwrapped).get(), (*f_unwrapped).getAttrSection());
+  }
+
+  static std::optional<To> castFailed() { return std::nullopt; }
+};
+
+template <typename To>
+struct CastInfo<To, ::M::MEFDynamicAttr>
+    : public BaseMEFAttrCast<::M::MEFAttr<To>, ::M::MEFDynamicAttr> {};
+
+template <typename To>
+struct CastInfo<To, const ::M::MEFDynamicAttr>
+    : public BaseMEFAttrCast<::M::MEFAttr<To>, ::M::MEFDynamicAttr> {};
+
+template <typename To>
+struct CastInfo<::M::MEFAttr<To>, ::M::MEFDynamicAttr>
+    : public BaseMEFAttrCast<::M::MEFAttr<To>, ::M::MEFDynamicAttr> {};
+
+template <typename To>
+struct CastInfo<To, std::optional<::M::MEFDynamicAttr>>
+    : public BaseMEFAttrCastOptional<::M::MEFAttr<To>, ::M::MEFDynamicAttr> {};
+
+template <typename To>
+struct CastInfo<::M::MEFAttr<To>, std::optional<::M::MEFDynamicAttr>>
+    : public BaseMEFAttrCastOptional<::M::MEFAttr<To>, ::M::MEFDynamicAttr> {};
+
+template <typename To, typename From>
+struct BaseMEFAttrPointerCast
+    : public DefaultDoCastIfPossible<std::optional<To>, const From *,
+                                     BaseMEFAttrPointerCast<To, From>> {
+  static bool isPossible(const From *f) {
+    return To::matchesAttrKind(reinterpret_cast<const uint8_t *>(f->get()),
+                               f->getAttrSection().end());
+  }
+  static std::optional<To> doCast(const From *f) {
+    return To(f->get(), f->getAttrSection());
+  }
+  static std::optional<To> castFailed() { return std::nullopt; }
+};
+
+template <typename To>
+struct CastInfo<To, const ::M::MEFDynamicAttr *>
+    : public BaseMEFAttrPointerCast<::M::MEFAttr<To>, ::M::MEFDynamicAttr> {};
+
+template <typename To>
+struct CastInfo<::M::MEFAttr<To>, const ::M::MEFDynamicAttr *>
+    : public BaseMEFAttrPointerCast<::M::MEFAttr<To>, ::M::MEFDynamicAttr> {};
+
+} // namespace llvm
+
+#endif // GRAPHRT_MEFEXECUTOR_PRIMITIVE_REGISTRY_H

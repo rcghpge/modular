@@ -13,7 +13,7 @@ def MOToPrimitives : Pass<"mo-to-primitives", "ModuleOp"> {
   let summary = "Convert `mo` dialect to primitives.";
   let description = [{
     This pass performs a conversion from known `mo` dialect ops to `mgp` and
-    `bef` primitives.
+    `mef` primitives.
   }];
   let options = [
     Option<"compiledFrameworkLabel", "compiled-framework-label", "std::string",
@@ -23,7 +23,7 @@ def MOToPrimitives : Pass<"mo-to-primitives", "ModuleOp"> {
       /*default=*/"kPreferredMemoryAlignment",
      "Minimum alignment for all CPU buffers (both constants and allocated)">,
   ];
-  let dependentDialects = ["BEF::BEFDialect",
+  let dependentDialects = ["MEF::MEFDialect",
                            "MGP::MGPDialect",
                            "GRT::GRTDialect"];
 }

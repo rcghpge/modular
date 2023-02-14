@@ -14,8 +14,8 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/MGPDialect/MGPDialect.h"
 #include "GenericML/MLASPDialect/MLASPDialect.h"
-#include "GraphRT/BEFDialect/BEFDialect.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
+#include "GraphRT/MEFDialect/MEFDialect.h"
 #include "KGEN/InitAllDialects.h"
 #include "Support/DebugInfoDialect/IR/DebugInfoDialect.h"
 #include "Support/HLCFDialect/HLCFDialect.h"
@@ -45,7 +45,7 @@ int main(int argc, char **argv) {
       index::IndexDialect, LLVM::LLVMDialect, quant::QuantizationDialect,
       scf::SCFDialect,
       // Add the Modular Dialects.
-      BEF::BEFDialect, Cache::CacheDialect, DebugInfo::DebugInfoDialect,
+      MEF::MEFDialect, Cache::CacheDialect, DebugInfo::DebugInfoDialect,
       Faux::FauxDialect, GRT::GRTDialect, HLCF::HLCFDialect, MDialect,
       MGP::MGPDialect, MLASP::MLASPDialect, MO::MODialect, MOGG::MOGGDialect,
       TFL::MTFLDialect, TFLP::TFLPDialect>();

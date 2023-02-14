@@ -267,7 +267,7 @@ struct MappingTraits<M::ModelSpec::ModelBinary> {
   static std::string validate(IO &io, M::ModelSpec::ModelBinary &binary) {
     // Check that the format is valid.
     // TODO: The format will be an enum in the future.
-    if (binary.format != "bef" && binary.format != "onnx" &&
+    if (binary.format != "mef" && binary.format != "onnx" &&
         binary.format != "tensorflow-graphdef" &&
         binary.format != "tensorflow-savedmodel" && binary.format != "tflite" &&
         binary.format != "mtfl")

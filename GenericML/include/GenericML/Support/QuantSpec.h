@@ -16,7 +16,7 @@
 #include "Support/ML/TensorSpec.h"
 
 namespace M {
-class BEFType;
+class MEFType;
 
 /// This class is a framework-independent abstraction for quantization info for
 /// a single tensor.
@@ -57,7 +57,7 @@ public:
                                             ArrayRef<float> scales,
                                             ArrayRef<int64_t> zeroPoints) {
     // TODO: change this to take ArrayRef<ScaleZeroPointPair>, and change the
-    // BEF encoding to encode similarly.
+    // MEF encoding to encode similarly.
     return QuantSpec(
         Kind::uniformPerAxis, quantDim,
         llvm::to_vector(
@@ -122,8 +122,8 @@ public:
   /// Returns true if QuantTensorSpec describes a truly quantized tensor.
   bool isQuantized() const { return quantSpec.isQuantized(); }
 
-  /// Helper method to decode a BEFType into a TensorSpec, if possible.
-  static ErrorOr<QuantTensorSpec> get(BEFType type);
+  /// Helper method to decode a MEFType into a TensorSpec, if possible.
+  static ErrorOr<QuantTensorSpec> get(MEFType type);
 
   std::string getAsString() const;
   void print(raw_ostream &os) const;

@@ -11,14 +11,14 @@
 #ifndef GRAPHRT_INITALLDIALECTS_H
 #define GRAPHRT_INITALLDIALECTS_H
 
-#include "GraphRT/BEFDialect/BEFDialect.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
+#include "GraphRT/MEFDialect/MEFDialect.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 
 namespace M {
 // Add all the MLIR dialects to the provided registry.
 inline void registerAllGraphRTDialects(DialectRegistry &registry) {
-  registry.insert<BEF::BEFDialect, GRT::GRTDialect>();
+  registry.insert<MEF::MEFDialect, GRT::GRTDialect>();
 }
 
 } // namespace M

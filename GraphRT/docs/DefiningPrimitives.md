@@ -5,7 +5,7 @@
 # Introduction
 
 Primitives are defined as C++ functions and registered dynamically with the
-BEF executor's primitive registry at runtime by their registered string name.
+MEF executor's primitive registry at runtime by their registered string name.
 This allows GraphRT to be an easily hackable system that is modular, low
 dependence (because the runtime doesn't depend on the primitives), and is easy
 to extend and friendly for experimentation.
@@ -18,7 +18,7 @@ with pointers to examples in the source base.
 As mentioned above, primitives are implemented as C++ functions, and these
 functions take a `PrimitiveFrame` as their operand.  They are registered
 with the [`PrimitiveRegistry`
-class](../include/GraphRT/BEFExecutor/PrimitiveRegistry.h) which looks like
+class](../include/GraphRT/MEFExecutor/PrimitiveRegistry.h) which looks like
 this:
 
 ```c++
@@ -52,8 +52,8 @@ syntax for the primitive has a directly corresponding runtime behavior:
 3) Symbol references like `@foo` and region bodies `{ ... }` in MLIR turn into
    "invokable" references that may be invoked in the executor.
 
-The [`RunnablePrimitiveDescriptor class`](../include/GraphRT/BEFExecutor/PrimitiveDescriptor.h) is
-the C++ class the BEF executor uses to wrap up all the runtime representation
+The [`RunnablePrimitiveDescriptor class`](../include/GraphRT/MEFExecutor/PrimitiveDescriptor.h) is
+the C++ class the MEF executor uses to wrap up all the runtime representation
 needed to invoke and get the results from a primitive. While fundamentally all
 primitive implementations poke the `RunnablePrimitiveDescriptor` class to get
 their work done, it is a very low-level and not-very-type-safe approach.
@@ -158,7 +158,7 @@ results bind before `RemainingResults`.
 
 This example also shows how to bind to symbol references like `@some_thing`
 and region bodies: these are declared as `Invokable *` and `ADD_PRIMITIVE`
-resolves them to the related invokable in the BEF file.
+resolves them to the related invokable in the MEF file.
 
 Finally, note that we also took a `Runtime &`.  `ADD_PRIMITIVE` has direct
 support for passing in a `Runtime &` or even a
@@ -167,7 +167,7 @@ receive.
 
 ## Producing errors and multiple results in synchronous primitives
 
-Primitives in BEF may return multiple results, and both LLCL/GraphRT support
+Primitives in MEF may return multiple results, and both LLCL/GraphRT support
 full error propagation with `AsyncValue`s.  `ADD_PRIMITIVE` makes this extremely
 simple and direct for synchronous primitives (ones that compute their values on
 the calling thread, as opposed to using `addTask` to do it in the background).
@@ -272,10 +272,10 @@ These cases should be exceedingly rare.
 
 ## Working with attributes
 
-The BEF file format supports encoding a number of MLIR attributes (including
+The MEF file format supports encoding a number of MLIR attributes (including
 string attributes, standard integer and floating point values, arrays of
-integers and floats, `DenseElementAttr`s, and `DictionaryAttr`s) into the BEF
-file. At runtime, the BEF file is mapped into memory, so your primitive can
+integers and floats, `DenseElementAttr`s, and `DictionaryAttr`s) into the MEF
+file. At runtime, the MEF file is mapped into memory, so your primitive can
 get a raw pointer to the data in question.  For example, consider a few simple
 cases:
 
@@ -293,18 +293,18 @@ cases:
 Attributes in MLIR files are always canonicalized to be in alphabetical order
 by their key (that is, if you move the string value before the `si64` in the last
 example, they will still be emitted as "a" and then "b", so the `i64` will be
-first), and BEF files don't encode the attribute names ("a" and "b" in that
+first), and MEF files don't encode the attribute names ("a" and "b" in that
 last example).  To handle these, you can implement the primitives using
-the `BEFAttr<>` C++ class, and access the attribute with `*` or `->`:
+the `MEFAttr<>` C++ class, and access the attribute with `*` or `->`:
 
 ```c++
-static int32_t constant_i32(BEFAttr<int32_t> value) {
+static int32_t constant_i32(MEFAttr<int32_t> value) {
   return *value;  // Turns the attribute value into an AsyncValue result.
 }
-static int32_t add_ints(BEFAttr<ArrayRef<int32_t>> value) {
+static int32_t add_ints(MEFAttr<ArrayRef<int32_t>> value) {
   return std::accumulate(value->begin(), value->end(), 0);
 }
-static void some_thing(BEFAttr<int64_t> a, BEFAttr<StringRef> b) {
+static void some_thing(MEFAttr<int64_t> a, MEFAttr<StringRef> b) {
   llvm::outs() << *a << " == " << b->str();
 }
 ```
@@ -315,7 +315,7 @@ and `StringRef` or `ArrayRef` for strings and `dense` elements.
 
 In addition to low-level constant data access, you can also use MLIR array and
 dictionary attributes (list of name, value pairs) which are accessed with the
-`BEFListAttr` and `BEFDictionaryAttr` types in primitives. These supports
+`MEFListAttr` and `MEFDictionaryAttr` types in primitives. These supports
 iteration, and returns the elements as a dynamic attribute (so you can cast to
 access them as a concrete type).  Dictionaries support finding individual
 elements. These are not as efficient as the other attributes because they are
@@ -323,28 +323,28 @@ accessed indirectly through iterators, and the dictionary stores the names of
 the keys.  Accessing elements is done in the following simple examples:
 
 ```c++
-static int32_t findNamedElement(BEFDictionaryAttr dict) {
-  std::optional<BEFAttr<int32_t>> value = dict.find<int32_t>("myKey");
+static int32_t findNamedElement(MEFDictionaryAttr dict) {
+  std::optional<MEFAttr<int32_t>> value = dict.find<int32_t>("myKey");
   if (!value)
     // Handle the error gracefully
 
   return *value;
 }
 
-static void handleAllElements(BEFDictionaryAttr dict) {
+static void handleAllElements(MEFDictionaryAttr dict) {
   for (auto element : dict) {
-    if (BEFAttr<StringRef> str = dyn_cast<StringRef>(element.getValue()))
+    if (MEFAttr<StringRef> str = dyn_cast<StringRef>(element.getValue()))
       // handle `str`
     } else {
-      BEFAttr<int32_t> value = element.getValue<int32_t>();
+      MEFAttr<int32_t> value = element.getValue<int32_t>();
       // handle `value`
     }
   }
 }
 
-static void handleAllListElements(BEFListAttr list) {
+static void handleAllListElements(MEFListAttr list) {
   for (auto element : list) {
-    if (BEFAttr<StringRef> str = dyn_cast<StringRef>(element))
+    if (MEFAttr<StringRef> str = dyn_cast<StringRef>(element))
       // handle `str`
     }
   }
@@ -354,11 +354,11 @@ static void handleAllListElements(BEFListAttr list) {
 **Dynamic Attributes**
 
 Some primitives might want to accept dynamic attributes and use reflection over
-them to figure out what they are.  You can do this with the `BEFDynamicAttr`
+them to figure out what they are.  You can do this with the `MEFDynamicAttr`
 type like this:
 
 ```c++
-static void takes_any_attribute(BEFDynamicAttr value) {
+static void takes_any_attribute(MEFDynamicAttr value) {
   if (auto intVal = dyn_cast<int32_t>(value))
     ...
   else if (auto stringVal = dyn_cast<StringRef>(value))
@@ -390,7 +390,7 @@ With these use-cases in mind, here are some things to think about.
 
 ## Minimize "synchronous" work, prefer "asynchronous" work
 
-The primitive is invoked by the BEF executor when its arguments become ready,
+The primitive is invoked by the MEF executor when its arguments become ready,
 and because it is arbitrary C++ logic, they can do pretty much anything.  We
 break the behavior of a primitive in two major categories:
 "synchronous" work done by the primitive itself on the invoker's thread, and
@@ -455,17 +455,17 @@ The executor will completely skip execution of primitives that get fed error
 values.  This is great for implicit and automatic propagation of error values,
 but it means that you have to be careful that the `AsyncValue`s own (and thus
 deallocate) the resources in the program when they are destroyed.  For example
-consider this BEF program:
+consider this MEF program:
 
 ```mlir
-bef.invokable @bad_design(%ch0: !bef.chain) -> !bef.chain {
+mef.invokable @bad_design(%ch0: !mef.chain) -> !mef.chain {
   %x = accel.allocate_thing : !accel.thing
 
   %ch1 = accel.process_thing %x, %ch0
 
   // A "deallocate" op is almost always wrong!
   %ch2 = accel.deallocate_thing %x, %ch1
-  bef.output %ch2 : !bef.chain
+  mef.output %ch2 : !mef.chain
 }
 ```
 
@@ -515,7 +515,7 @@ the wrong thing.  TODO: Should we completely ban pointers (and things like
 
 # Non-strict primitives
 
-By default, the BEF executor only invokes a primitive implementation function
+By default, the MEF executor only invokes a primitive implementation function
 when all of the arguments (SSA values in MLIR syntax) are "ready" `AsyncValue`'s.
 When they become ready, it checks to see if any of them are errors.  If so, the
 error value is automatically propagated to the result value of the primitive
@@ -532,13 +532,13 @@ become available.  Consider the `grt.invoke` operation for example, which invoke
 a invokable passing a bunch of arguments:
 
 ```mlir
-bef.invokable @process(%a: si32, %b: si32) -> (si32, si32) {
+mef.invokable @process(%a: si32, %b: si32) -> (si32, si32) {
   %x = "some_expensive_multithreaded_compute"(%a) : (si32) -> si32
   %y = "independent_expensive_multithreaded_compute"(%b) : (si32) -> si32
-  bef.output %x, %y : si32, si32
+  mef.output %x, %y : si32, si32
 }
 
-bef.invokable @example() {
+mef.invokable @example() {
   %a_val = "some_unpredictable_length_op"() : () -> si32
   %b_val = "other_unpredictable_length_op"() : () -> si32
 
@@ -606,7 +606,7 @@ The next question is: how do you tell GraphRT that your primitive is non-strict?
 The contract is quite different, and invoking a strict primitive too early would
 cause crashes (because they'd unconditionally try to access `AsyncValue`'s that
 are not ready.  As such, you have to explicitly register the operation in
-question with ODS (and the "mlir to bef" translator needs to know about the
+question with ODS (and the "mlir to mef" translator needs to know about the
 operation).  You then adopt the `NonStrictOp` trait.
 
 For example:
@@ -616,6 +616,6 @@ def InvokeOp : GRTOp<"invoke", [NonStrictOp, ...]> {
 def IfOp : GRTOp<"if", [NonStrictOp...]> {
 ```
 
-The MLIR to BEF translator notices the presence of this trait, and encodes the
-BEF entry for the primitive instances differently, allowing the executor to
+The MLIR to MEF translator notices the presence of this trait, and encodes the
+MEF entry for the primitive instances differently, allowing the executor to
 efficiently dispatch the primitive when one operand becomes available.

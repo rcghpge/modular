@@ -11,7 +11,7 @@
 
 #include "GraphRT/Primitives.h"
 
-#include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
+#include "GraphRT/MEFExecutor/PrimitiveRegistry.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "llvm/ADT/StringRef.h"
 using namespace M;
@@ -20,9 +20,9 @@ using namespace M;
 // Integer ops
 //===----------------------------------------------------------------------===//
 
-static bool constant_i1(BEFAttr<bool> value) { return *value; }
+static bool constant_i1(MEFAttr<bool> value) { return *value; }
 
-static int32_t constant_si32(BEFAttr<int32_t> value) { return *value; }
+static int32_t constant_si32(MEFAttr<int32_t> value) { return *value; }
 
 static Chain print_si32(int32_t value, Chain chain) {
   printf("int32 = %d\n", value);

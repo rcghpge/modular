@@ -10,8 +10,8 @@
 
 #include "GraphRT/Primitives.h"
 
-#include "GraphRT/BEFExecutor/BEFInvokable.h"
-#include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
+#include "GraphRT/MEFExecutor/MEFInvokable.h"
+#include "GraphRT/MEFExecutor/PrimitiveRegistry.h"
 #include "LLCL/ForwardDecls.h"
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/AsyncValueRef.h"
@@ -32,7 +32,7 @@ static AsyncValueRef<Chain> chain_merge(Runtime &runtime,
 }
 
 static void invoke(RemainingArguments arguments, RemainingResults results,
-                   BEFAttr<BEFSymbolRef> targetName, BEFInvokable *target,
+                   MEFAttr<MEFSymbolRef> targetName, MEFInvokable *target,
                    Runtime &runtime) {
   // We don't use the attrs passed in - it's just the symbol name.
   assert(target->getNumArgs() == arguments.size() && "argument count mismatch");
@@ -54,8 +54,8 @@ static void invoke(RemainingArguments arguments, RemainingResults results,
 /// signatures must match grt.if's signature, exempting the extra i1 for the
 /// condition.
 static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
-                   RemainingResults results, BEFInvokable *trueInv,
-                   BEFInvokable *falseInv, Runtime &runtime) {
+                   RemainingResults results, MEFInvokable *trueInv,
+                   MEFInvokable *falseInv, Runtime &runtime) {
   assert(trueInv->getNumArgs() == args.size() && "argument count mismatch");
   assert(trueInv->getNumResults() == results.size() && "result count mismatch");
   assert(trueInv->getNumArgs() == falseInv->getNumArgs() &&
@@ -65,7 +65,7 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
   // If the condition is already resolved and non-error, then avoid some
   // overhead.
   if (cond.getPointer()->isValueAvailable()) {
-    BEFInvokable *bodyInv = *cond ? trueInv : falseInv;
+    MEFInvokable *bodyInv = *cond ? trueInv : falseInv;
     bodyInv->invoke(args.get(), results.get(), runtime);
     return;
   }
@@ -74,7 +74,7 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
   results.allocateIndirectResults();
 
   struct IfState {
-    RCRef<BEFInvokable> trueInv, falseInv;
+    RCRef<MEFInvokable> trueInv, falseInv;
     SmallVector<AnyAsyncValueRef> operands;
     SmallVector<AnyAsyncValueRef> results;
 
@@ -91,7 +91,7 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
       }
 
       // Otherwise, execute the correct invokable based on the cond.
-      BEFInvokable *bodyInv = (*cond ? trueInv : falseInv).getPointer();
+      MEFInvokable *bodyInv = (*cond ? trueInv : falseInv).getPointer();
       SmallVector<AnyAsyncValueRef> bodyResults;
       bodyResults.resize(results.size());
       bodyInv->invoke(operands, bodyResults, cond.getRuntime());
@@ -122,7 +122,7 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
 /// This takes the count as an AsyncValue because this is a nonstrict primitive,
 /// and the count may not be available yet.
 static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
-                       RemainingResults results, BEFInvokable *body,
+                       RemainingResults results, MEFInvokable *body,
                        Runtime &runtime) {
   assert(args.size() == results.size() && args.size() == body->getNumArgs() &&
          results.size() == body->getNumResults());
@@ -135,7 +135,7 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
   /// can manage.
   struct RepeatState {
     Runtime &runtime;
-    RCRef<BEFInvokable> invokable;
+    RCRef<MEFInvokable> invokable;
     SmallVector<AnyAsyncValueRef> operands;
     SmallVector<AnyAsyncValueRef> repeatResults;
 

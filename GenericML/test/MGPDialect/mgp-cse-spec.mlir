@@ -13,8 +13,8 @@ module {
   mgp.model @basicMoGraph : tf init {
     %0 = grt.chain.create
     %1 = mgp.context.create 0
-    bef.output %0, %1 : !bef.chain, !mgp.context
-  } execute (%arg0: !bef.chain, %arg1: !mgp.context) -> (!bef.chain, !mgp.cpu.tensor<8xf32>) {
+    mef.output %0, %1 : !mef.chain, !mgp.context
+  } execute (%arg0: !mef.chain, %arg1: !mgp.context) -> (!mef.chain, !mgp.cpu.tensor<8xf32>) {
     %0 = mgp.cpu.buffer.constant #M.aligned_bytes<32 :"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041">
     %1 = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<8xf32>
     %2 = mgp.cpu.tensor.create %arg0, %0, %1 : !mgp.cpu.tensor<8xf32>
@@ -25,21 +25,21 @@ module {
     %bufferResult_0, %tensorSpecResult_1 = mgp.cpu.tensor.extract %5 : !mgp.cpu.tensor<8xf32>
     %6 = mgp.cpu.buffer.alloc.static %arg1, 32
     %7 = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<8xf32>
-    %8 = "mop.kernels.mul"(%arg0, %bufferResult, %tensorSpecResult, %bufferResult_0, %tensorSpecResult_1, %6, %7) : (!bef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !bef.chain
+    %8 = "mop.kernels.mul"(%arg0, %bufferResult, %tensorSpecResult, %bufferResult_0, %tensorSpecResult_1, %6, %7) : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mef.chain
     %9 = mgp.cpu.tensor.create %8, %6, %7 : !mgp.cpu.tensor<8xf32>
     %bufferResult_2, %tensorSpecResult_3 = mgp.cpu.tensor.extract %9 : !mgp.cpu.tensor<8xf32>
     %bufferResult_4, %tensorSpecResult_5 = mgp.cpu.tensor.extract %5 : !mgp.cpu.tensor<8xf32>
     %10 = mgp.cpu.buffer.alloc.static %arg1, 32
     %11 = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<8xf32>
-    %12 = "mop.kernels.mul"(%8, %bufferResult_2, %tensorSpecResult_3, %bufferResult_4, %tensorSpecResult_5, %10, %11) : (!bef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !bef.chain
+    %12 = "mop.kernels.mul"(%8, %bufferResult_2, %tensorSpecResult_3, %bufferResult_4, %tensorSpecResult_5, %10, %11) : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mef.chain
     %13 = mgp.cpu.tensor.create %12, %10, %11 : !mgp.cpu.tensor<8xf32>
     %bufferResult_6, %tensorSpecResult_7 = mgp.cpu.tensor.extract %13 : !mgp.cpu.tensor<8xf32>
     %bufferResult_8, %tensorSpecResult_9 = mgp.cpu.tensor.extract %5 : !mgp.cpu.tensor<8xf32>
     %14 = mgp.cpu.buffer.alloc.static %arg1, 32
     %15 = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<8xf32>
-    %16 = "mop.kernels.add"(%12, %bufferResult_6, %tensorSpecResult_7, %bufferResult_8, %tensorSpecResult_9, %14, %15) : (!bef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !bef.chain
+    %16 = "mop.kernels.add"(%12, %bufferResult_6, %tensorSpecResult_7, %bufferResult_8, %tensorSpecResult_9, %14, %15) : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mef.chain
     %17 = mgp.cpu.tensor.create %16, %14, %15 : !mgp.cpu.tensor<8xf32>
-    bef.output %16, %17 : !bef.chain, !mgp.cpu.tensor<8xf32>
+    mef.output %16, %17 : !mef.chain, !mgp.cpu.tensor<8xf32>
   }
 }
 

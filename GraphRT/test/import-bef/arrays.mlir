@@ -1,7 +1,7 @@
-// RUN: bef-translate -export-bef -allow-unregistered-dialect %s -o %t
-// RUN: bef-translate -import-bef -allow-unregistered-dialect %t | FileCheck %s
+// RUN: mef-translate -export-mef -allow-unregistered-dialect %s -o %t
+// RUN: mef-translate -import-mef -allow-unregistered-dialect %t | FileCheck %s
 
-bef.invokable @attributes() {
+mef.invokable @attributes() {
   // CHECK: "a.b" [#M.dense_array<42> : !M.array<1xui64>]
   "a.b"() { a = #M.dense_array<42> : !M.array<1xui64> }  : () -> ()
 
@@ -21,7 +21,7 @@ bef.invokable @attributes() {
   // CHECK-NEXT: "a.b" [#M.dense_array<1, 2, 3> : !M.array<3xui64>]
   "a.b"() { a = dense_resource<smallResource> : !M.array<3xui64> } : () -> ()
 
-  // CHECK-NEXT: "a.b" [dense_resource<befArray> : !M.array<1024xsi32>]
+  // CHECK-NEXT: "a.b" [dense_resource<mefArray> : !M.array<1024xsi32>]
   "a.b"() { a = #M.dense_array<
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -57,14 +57,14 @@ bef.invokable @attributes() {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
   > : !M.array<1024xsi32> } : () -> ()
 
-  bef.output
+  mef.output
 }
 
 // Check that the big arrays were properly transformed into a resource.
 
 // CHECK: dialect_resources: {
 // CHECK-NEXT:   builtin: {
-// CHECK-NEXT:     befArray: "0x01{{0+}}"
+// CHECK-NEXT:     mefArray: "0x01{{0+}}"
 
 // Input resources for the tests above.
 {-#

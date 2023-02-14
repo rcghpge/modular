@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Converts MO ops to MGP and BEF ops.
+// Converts MO ops to MGP and MEF ops.
 //
 //===----------------------------------------------------------------------===//
 
@@ -15,8 +15,8 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/MGPDialect/MGPOps.h"
-#include "GraphRT/BEFDialect/BEFOps.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
+#include "GraphRT/MEFDialect/MEFOps.h"
 #include "Support/AlignedAlloc.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -57,7 +57,7 @@ public:
 
   LogicalResult createModelOp();
 
-  /// Lowers the mo.output op to the bef.output for the final results.
+  /// Lowers the mo.output op to the mef.output for the final results.
   LogicalResult lowerOutput(MO::OutputOp output);
 
   /// Lowers mo.constant op.
@@ -155,7 +155,7 @@ LogicalResult MOGraphLowering::lowerOutput(MO::OutputOp output) {
   // Init phase lowering.
 
   // Return the final chain.
-  loweringState.getInitOpBuilder().create<BEF::OutputOp>(
+  loweringState.getInitOpBuilder().create<MEF::OutputOp>(
       output.getLoc(), ArrayRef<Value>{loweringState.getInitChain(),
                                        loweringState.getInitMgpContext()});
 
@@ -169,8 +169,8 @@ LogicalResult MOGraphLowering::lowerOutput(MO::OutputOp output) {
   for (Value operand : output.getOperands())
     operands.push_back(loweringState.lookupExecuteLoweredTensor(operand));
 
-  // Finally, we can create the bef.output op.
-  loweringState.getExecuteOpBuilder().create<BEF::OutputOp>(output.getLoc(),
+  // Finally, we can create the mef.output op.
+  loweringState.getExecuteOpBuilder().create<MEF::OutputOp>(output.getLoc(),
                                                             operands);
   return success();
 }
@@ -356,7 +356,7 @@ LogicalResult MOGraphLowering::run() {
       continue;
     }
 
-    // Lower mo.output to bef.output trivially.
+    // Lower mo.output to mef.output trivially.
     if (auto output = dyn_cast<MO::OutputOp>(op)) {
       if (failed(lowerOutput(output)))
         return failure();

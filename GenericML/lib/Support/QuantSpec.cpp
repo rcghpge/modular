@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/Support/QuantSpec.h"
-#include "GraphRT/BEF/BEFTypes.h"
+#include "GraphRT/MEF/MEFTypes.h"
 #include "Support/ErrorOr.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Twine.h"
@@ -93,21 +93,21 @@ void QuantTensorSpec::dump() const { print(llvm::errs()); }
 // Static helpers
 //===----------------------------------------------------------------------===//
 
-ErrorOr<QuantTensorSpec> QuantTensorSpec::get(BEFType type) {
+ErrorOr<QuantTensorSpec> QuantTensorSpec::get(MEFType type) {
   SmallVector<int64_t> dims;
-  auto tensorType = dyn_cast<BEFTensorType>(type);
+  auto tensorType = dyn_cast<MEFTensorType>(type);
   if (!tensorType)
-    return Error("BEFType cannot be cast to BEFTensorType");
+    return Error("MEFType cannot be cast to MEFTensorType");
 
-  auto befType = tensorType->decode(dims);
-  if (auto qType = dyn_cast<BEFQuantizedType>(befType)) {
+  auto mefType = tensorType->decode(dims);
+  if (auto qType = dyn_cast<MEFQuantizedType>(mefType)) {
     float scale;
     int64_t zeroPoint;
     auto [storageType, expressedType] = qType->decode(scale, zeroPoint);
     return QuantTensorSpec(TensorSpec(dims, storageType.getKind()),
                            QuantSpec::getUniform(scale, zeroPoint));
   }
-  if (auto qType = dyn_cast<BEFQuantizedPerAxisType>(befType)) {
+  if (auto qType = dyn_cast<MEFQuantizedPerAxisType>(mefType)) {
     SmallVector<float> scales;
     SmallVector<int64_t> zeroPoints;
     uint8_t quantDim;
@@ -118,6 +118,6 @@ ErrorOr<QuantTensorSpec> QuantTensorSpec::get(BEFType type) {
         TensorSpec(dims, storageType.getKind()),
         QuantSpec::getUniformPerAxis(quantDim, scales, zeroPoints));
   }
-  // BEFType are GenericML DType kinds.
-  return QuantTensorSpec(TensorSpec(dims, befType.getKind()), {});
+  // MEFType are GenericML DType kinds.
+  return QuantTensorSpec(TensorSpec(dims, mefType.getKind()), {});
 }

@@ -194,12 +194,12 @@ public:
 /// processing depending on the format of the input provided to the tool.
 enum class DriverCommand {
   inspect,       // Print information about the input without processing it.
-  printMetadata, // Print model information after conversion to BEF in YAML
+  printMetadata, // Print model information after conversion to MEF in YAML
                  // format. This command is used by other tools to introspect
                  // the model metadata.
   printConstantMetadata, // Print information on all the constants contained in
                          // YAML format.
-  compile,               // Compile the input into a BEF file for execution.
+  compile,               // Compile the input into a MEF file for execution.
   execute,               // Execute the input file.
   getVersion,    // Print the version string from the framework and exit.
   frameworkHelp, // Print the framework's help string.
@@ -222,7 +222,7 @@ public:
                      "Print constant metadata in YAML format for other tools "
                      "to use it"),
           clEnumValN(DriverCommand::compile, "compile",
-                     "Compile the input into a BEF file for execution"),
+                     "Compile the input into a MEF file for execution"),
           clEnumValN(DriverCommand::execute, "execute",
                      "Execute the input file"),
           clEnumValN(DriverCommand::getVersion, "get-version",
@@ -255,12 +255,12 @@ public:
   using ExecutorDriverCLOptions::ExecutorDriverCLOptions;
 
   //===--------------------------------------------------------------------===//
-  // BEF Emission Configuration
+  // MEF Emission Configuration
   //===--------------------------------------------------------------------===//
 
-  cl::opt<bool> enableBEFMetadata{
-      "enable-bef-metadata",
-      cl::desc("Enable metadata sections for better BEF2MLIR"),
+  cl::opt<bool> enableMEFMetadata{
+      "enable-mef-metadata",
+      cl::desc("Enable metadata sections for better MEF2MLIR"),
       cl::init(false)};
 };
 

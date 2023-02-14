@@ -4,12 +4,12 @@
 // CHECK-NEXT:        %0 = grt.chain.create
 // CHECK-NEXT:        %1 = mgp.context.create 1
 // CHECK-NEXT:        %2 = "mop.create_jit_context"(%0, %1) {slot = 0 : ui32}
-// CHECK-NEXT:        bef.output %2, %1 : !bef.chain, !mgp.context
+// CHECK-NEXT:        mef.output %2, %1 : !mef.chain, !mgp.context
 // CHECK-NEXT:      } execute (
-// CHECK-SAME:   %[[ARG0:.*]]: !bef.chain, %[[ARG1:.*]]: !mgp.context,
+// CHECK-SAME:   %[[ARG0:.*]]: !mef.chain, %[[ARG1:.*]]: !mgp.context,
 // CHECK-SAME:   %[[ARG2:.*]]: !mgp.cpu.tensor<2xf32>, %[[ARG3:.*]]: !mgp.cpu.tensor<5x1xf32>
 // CHECK-SAME: ) -> (
-// CHECK-SAME:   !bef.chain, !mgp.cpu.tensor<2xf32>, !mgp.cpu.tensor<3xf32>,
+// CHECK-SAME:   !mef.chain, !mgp.cpu.tensor<2xf32>, !mgp.cpu.tensor<3xf32>,
 // CHECK-SAME:   !mgp.cpu.tensor<3xf32>, !mgp.cpu.tensor<5x1xf32>, !mgp.cpu.tensor<5x1xf32>, !mgp.cpu.tensor<4xsi8>)
 // CHECK-SAME: {
 // CHECK-DAG:    %[[VAL0:.*]] = mgp.cpu.buffer.constant #M.aligned_bytes<{{.*}} :"0x0000803F0000004000004040">
@@ -18,7 +18,7 @@
 // CHECK-DAG:    %[[VAL3:.*]] = mgp.cpu.buffer.constant dense_resource<mtfl_buffer> : !mgp.aligned_bytes<4, 64>
 // CHECK-DAG:    %[[VAL4:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<4xsi8>
 // CHECK:        %[[VAL5:.*]] = mgp.cpu.tensor.create %[[ARG0]], %[[VAL3]], %[[VAL4]] : !mgp.cpu.tensor<4xsi8>
-// CHECK:        bef.output %[[ARG0]], %[[ARG2]], %[[VAL2]], %[[VAL2]], %[[ARG3]], %[[ARG3]], %[[VAL5]]
+// CHECK:        mef.output %[[ARG0]], %[[ARG2]], %[[VAL2]], %[[VAL2]], %[[ARG3]], %[[ARG3]], %[[VAL5]]
 // CHECK:      }
 
 mo.graph @constants_with_multiple_returns(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[5, 1], f32>) -> (
@@ -33,9 +33,9 @@ mo.graph @constants_with_multiple_returns(%arg0: !mo.tensor<[2], f32>, %arg1: !m
 // CHECK-NEXT:    %0 = grt.chain.create
 // CHECK-NEXT:    %1 = mgp.context.create 1
 // CHECK-NEXT:        %2 = "mop.create_jit_context"(%0, %1) {slot = 0 : ui32}
-// CHECK:    bef.output %2, %1 : !bef.chain, !mgp.context
-// CHECK:  } execute (%arg0: !bef.chain, %arg1: !mgp.context, %arg2: !mgp.cpu.tensor<f32>) -> (!bef.chain, !mgp.cpu.tensor<f32>) {
-// CHECK:    bef.output %arg0, %arg2 : !bef.chain, !mgp.cpu.tensor<f32>
+// CHECK:    mef.output %2, %1 : !mef.chain, !mgp.context
+// CHECK:  } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.cpu.tensor<f32>) -> (!mef.chain, !mgp.cpu.tensor<f32>) {
+// CHECK:    mef.output %arg0, %arg2 : !mef.chain, !mgp.cpu.tensor<f32>
 // CHECK:  }
 mo.graph @scalar_arg(%arg0: !mo.tensor<[], f32>) -> (!mo.tensor<[], f32>) {
   mo.output %arg0 : !mo.tensor<[], f32>

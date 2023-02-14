@@ -1,44 +1,44 @@
-// RUN: bef-translate -export-bef -allow-unregistered-dialect %s -o %t
-// RUN: bef-translate -import-bef -allow-unregistered-dialect %t | FileCheck %s
+// RUN: mef-translate -export-mef -allow-unregistered-dialect %s -o %t
+// RUN: mef-translate -import-mef -allow-unregistered-dialect %t | FileCheck %s
 
-// RUN: bef-translate -export-bef -allow-unregistered-dialect -enable-bef-metadata %s -o %t2
-// RUN: bef-translate -import-bef -allow-unregistered-dialect %t2 | FileCheck %s --check-prefix=MD
+// RUN: mef-translate -export-mef -allow-unregistered-dialect -enable-mef-metadata %s -o %t2
+// RUN: mef-translate -import-mef -allow-unregistered-dialect %t2 | FileCheck %s --check-prefix=MD
 
 // Check to make sure the magic number is right, and the first section is there.
 
 // CHECK: module {
 
-// CHECK-LABEL: "bef.invokable" ["trivial"]
-// CHECK-NEXT:    %{{.*}}:2 = bef.opaque "simple.primitive" []() : () -> (!bef.unknown, !bef.unknown)
-// CHECK-NEXT:    bef.opaque "grt.invoke" [@trivial]() : () -> ()
-// CHECK-NEXT:    bef.output
+// CHECK-LABEL: "mef.invokable" ["trivial"]
+// CHECK-NEXT:    %{{.*}}:2 = mef.opaque "simple.primitive" []() : () -> (!mef.unknown, !mef.unknown)
+// CHECK-NEXT:    mef.opaque "grt.invoke" [@trivial]() : () -> ()
+// CHECK-NEXT:    mef.output
 // CHECK-NEXT:  }
-// MD-LABEL: "bef.invokable" ["trivial"]
+// MD-LABEL: "mef.invokable" ["trivial"]
 // MD-NEXT:    %{{.*}}:2 = "simple.primitive"() : () -> (i8, i16)
 // MD-NEXT:    "grt.invoke"() {target = @trivial} : () -> ()
-// MD-NEXT:    bef.output
+// MD-NEXT:    mef.output
 // MD-NEXT:  }
-bef.invokable @trivial() {
+mef.invokable @trivial() {
   %a, %b = "simple.primitive"() : () -> (i8, i16)
   grt.invoke @trivial() : () -> ()
-  bef.output
+  mef.output
 }
 
-// CHECK-LABEL:  "bef.invokable" ["args_results"]
-// CHECK-NEXT:   ^bb0(%[[ARG0:.*]]: !bef.unknown, %[[ARG1:.*]]: !bef.unknown):
-// CHECK-NEXT:     bef.output %[[ARG1]], %[[ARG0]] : !bef.unknown, !bef.unknown
+// CHECK-LABEL:  "mef.invokable" ["args_results"]
+// CHECK-NEXT:   ^bb0(%[[ARG0:.*]]: !mef.unknown, %[[ARG1:.*]]: !mef.unknown):
+// CHECK-NEXT:     mef.output %[[ARG1]], %[[ARG0]] : !mef.unknown, !mef.unknown
 // CHECK-NEXT:   }
-// MD-LABEL:  "bef.invokable" ["args_results"]
+// MD-LABEL:  "mef.invokable" ["args_results"]
 // MD-NEXT:   ^bb0(%[[ARG0:.*]]: si32, %[[ARG1:.*]]: si8):
-// MD-NEXT:     bef.output %[[ARG1]], %[[ARG0]] : si8, si32
+// MD-NEXT:     mef.output %[[ARG1]], %[[ARG0]] : si8, si32
 // MD-NEXT:   }
-bef.invokable @args_results(%a: si32, %b: si8) -> (si8, si32) {
-  bef.output %b, %a : si8, si32
+mef.invokable @args_results(%a: si32, %b: si8) -> (si8, si32) {
+  mef.output %b, %a : si8, si32
 }
 
-// CHECK-LABEL:  "bef.invokable" ["attributes"]
-// MD-LABEL:  "bef.invokable" ["attributes"]
-bef.invokable @attributes() {
+// CHECK-LABEL:  "mef.invokable" ["attributes"]
+// MD-LABEL:  "mef.invokable" ["attributes"]
+mef.invokable @attributes() {
   // CHECK-NEXT: "a.b" [true]
   // MD-NEXT: "a.b"() {a = true}
   "a.b"() { a = 1 : i1 }: () -> ()
@@ -67,94 +67,94 @@ bef.invokable @attributes() {
   "a.b"() { a = 3.0 : f64 }: () -> ()
 
   // Dictionary attribute.
-  // CHECK-NEXT: bef.opaque "a.b" [{b = 1 : si8, c = [true, false, false]}]
+  // CHECK-NEXT: mef.opaque "a.b" [{b = 1 : si8, c = [true, false, false]}]
   "a.b"() { a = { b = 1 : si8, c = [true, false, false] } }: () -> ()
 
   // List Attribute.
-  // CHECK-NEXT: bef.opaque "a.b"  [1 : si8, [1 : ui32, 2 : si8]]
+  // CHECK-NEXT: mef.opaque "a.b"  [1 : si8, [1 : ui32, 2 : si8]]
   // MD: "a.b"() {a = 1 : si8, b = [1 : ui32, 2 : si8]} : () -> ()
   "a.b"() {a = 1: si8, b = [1: ui32, 2: si8] } : () -> ()
 
   // Type attribute.
-  // CHECK-NEXT: bef.opaque "type.i32" [si32]()
+  // CHECK-NEXT: mef.opaque "type.i32" [si32]()
   // MD: "type.i32"() {t = si32}
   "type.i32"() {t = si32} : () -> ()
 
-  // CHECK-NEXT: bef.opaque "type.f32" [f32]()
+  // CHECK-NEXT: mef.opaque "type.f32" [f32]()
   // MD:  "type.f32"() {t = f32}
   "type.f32"() {t = f32} : () -> ()
 
-  // CHECK-NEXT: bef.opaque "type.f128" [f128]()
+  // CHECK-NEXT: mef.opaque "type.f128" [f128]()
   // MD: "type.f128"() {t = f128}
   "type.f128"() {t = f128} : () -> ()
 
-  // CHECK-NEXT: bef.opaque "type.tensor" [tensor<4x1xf32>]()
+  // CHECK-NEXT: mef.opaque "type.tensor" [tensor<4x1xf32>]()
   // MD: "type.tensor"() {t = tensor<4x1xf32>}
   "type.tensor"() {t = tensor<4x1xf32>} : () -> ()
 
-  // CHECK-NEXT: bef.opaque "type.tensor" [tensor<0x1x0xcomplex<si32>>]()
+  // CHECK-NEXT: mef.opaque "type.tensor" [tensor<0x1x0xcomplex<si32>>]()
   // MD: "type.tensor"() {t = tensor<0x1x0xcomplex<si32>>
   "type.tensor"() {t = tensor<0x1x0xcomplex<si32>>} : () -> ()
 
-  // CHECK-NEXT: bef.opaque "type.quanttensor" [tensor<1x2x!quant.uniform<i16:f32:1, {0.20000000298023224:128,0.10000000149011612:-128}>>]()
+  // CHECK-NEXT: mef.opaque "type.quanttensor" [tensor<1x2x!quant.uniform<i16:f32:1, {0.20000000298023224:128,0.10000000149011612:-128}>>]()
   // MD: "type.quanttensor"() {t = tensor<1x2x!quant.uniform<i16:f32:1, {0.20000000298023224:128,0.10000000149011612:-128}>>}
   "type.quanttensor"() {t = tensor<1x2x!quant.uniform<i16:f32:1, {0.2:128, 0.1:-128}>>} : () -> ()
 
-  // CHECK-NEXT: bef.opaque "type.quant" [!quant.uniform<u8:f32, 0.0078119998797774315:128>]()
+  // CHECK-NEXT: mef.opaque "type.quant" [!quant.uniform<u8:f32, 0.0078119998797774315:128>]()
   // MD: "type.quant"() {t = !quant.uniform<u8:f32, 0.0078119998797774315:128>
   "type.quant"() {t = !quant.uniform<u8:f32, 0.0078119998797774315:128>} : () -> ()
 
-  // CHECK-NEXT: bef.opaque "type.quant" [!quant.uniform<i8:f32, 0.0078119998797774315:-128>]()
+  // CHECK-NEXT: mef.opaque "type.quant" [!quant.uniform<i8:f32, 0.0078119998797774315:-128>]()
   // MD: "type.quant"() {t = !quant.uniform<i8:f32, 0.0078119998797774315:-128>
   "type.quant"() {t = !quant.uniform<i8:f32, 0.0078119998797774315:-128>} : () -> ()
 
-  // CHECK-NEXT: bef.opaque "type.fn" [(si32, !quant.uniform<i8:f32, 0.0078119998797774315:-128>) -> tensor<4x100xf32>]()
+  // CHECK-NEXT: mef.opaque "type.fn" [(si32, !quant.uniform<i8:f32, 0.0078119998797774315:-128>) -> tensor<4x100xf32>]()
   // MD: "type.fn"() {t = (si32, !quant.uniform<i8:f32, 0.0078119998797774315:-128>) -> tensor<4x100xf32>
   "type.fn"() {t = (si32, !quant.uniform<i8:f32, 0.0078119998797774315:-128>) -> tensor<4x100xf32>} : () -> ()
 
-  // CHECK-NEXT: bef.opaque "type.fn" [() -> (si8, i1)]()
+  // CHECK-NEXT: mef.opaque "type.fn" [() -> (si8, i1)]()
   // MD: "type.fn"() {t = () -> (si8, i1)
   "type.fn"() {t = () -> (si8, i1)} : () -> ()
 
   // We're dropping the quantization information here.
-  // CHECK-NEXT: bef.opaque "type.calibrated" [tensor<1x28x28xf32>]()
+  // CHECK-NEXT: mef.opaque "type.calibrated" [tensor<1x28x28xf32>]()
   // MD: "type.calibrated"() {t = tensor<1x28x28xf32>
   "type.calibrated"() {t = tensor<1x28x28x!quant.calibrated<f32<0.000000e+00:2.550000e+02>>>} : () -> ()
 
   // Check that we correctly serialize and deserialize the chain type.
-  // CHECK-NEXT: bef.opaque "type.chain" [!bef.chain]()
-  // MD: "type.chain"() {t = !bef.chain
-  "type.chain"() {t = !bef.chain} : () -> ()
+  // CHECK-NEXT: mef.opaque "type.chain" [!mef.chain]()
+  // MD: "type.chain"() {t = !mef.chain
+  "type.chain"() {t = !mef.chain} : () -> ()
 
-  // CHECK-NEXT: bef.opaque "type.aligned_bytes" [#M.dense_array<222, 173, 190, 239> : !M.array<4xui8>]() : () -> ()
+  // CHECK-NEXT: mef.opaque "type.aligned_bytes" [#M.dense_array<222, 173, 190, 239> : !M.array<4xui8>]() : () -> ()
   // MD: "type.aligned_bytes"() {t = #M.dense_array<222, 173, 190, 239> : !M.array<4xui8>
   "type.aligned_bytes"() {t = #M.aligned_bytes<64: "0xDEADBEEF">} : () -> ()
 
-  // CHECK-NEXT: bef.opaque "type.aligned_bytes_default_alignment" [#M.dense_array<170> : !M.array<1xui8>]() : () -> ()
+  // CHECK-NEXT: mef.opaque "type.aligned_bytes_default_alignment" [#M.dense_array<170> : !M.array<1xui8>]() : () -> ()
   // MD: "type.aligned_bytes_default_alignment"() {t = #M.dense_array<170> : !M.array<1xui8>
   "type.aligned_bytes_default_alignment"() {t = #M.aligned_bytes<"0xAA">} : () -> ()
 
-  bef.output
-   // CHECK-NEXT:     bef.output
+  mef.output
+   // CHECK-NEXT:     mef.output
 }  // CHECK-NEXT:   }
 
-// CHECK-LABEL: "bef.invokable" ["opaque_round_trip"]
-// CHECK-NEXT:    %[[V0:.*]]:2 = bef.opaque "simple.primitive" []() : () -> (!bef.unknown, !bef.unknown)
-// CHECK-NEXT:    bef.opaque "other.primitive" [42 : si8](%[[V0]]#1, %[[V0]]#0) : (!bef.unknown, !bef.unknown) -> ()
-// CHECK-NEXT:    bef.output
+// CHECK-LABEL: "mef.invokable" ["opaque_round_trip"]
+// CHECK-NEXT:    %[[V0:.*]]:2 = mef.opaque "simple.primitive" []() : () -> (!mef.unknown, !mef.unknown)
+// CHECK-NEXT:    mef.opaque "other.primitive" [42 : si8](%[[V0]]#1, %[[V0]]#0) : (!mef.unknown, !mef.unknown) -> ()
+// CHECK-NEXT:    mef.output
 // CHECK-NEXT:  }
-bef.invokable @opaque_round_trip() {
-  %0:2 = "bef.opaque"() {attrs = [], opName = "simple.primitive"} : () -> (!bef.unknown, !bef.unknown)
-  "bef.opaque"(%0#1, %0#0) {attrs = [42 : si8], opName = "other.primitive"} : (!bef.unknown, !bef.unknown) -> ()
-  bef.output
+mef.invokable @opaque_round_trip() {
+  %0:2 = "mef.opaque"() {attrs = [], opName = "simple.primitive"} : () -> (!mef.unknown, !mef.unknown)
+  "mef.opaque"(%0#1, %0#0) {attrs = [42 : si8], opName = "other.primitive"} : (!mef.unknown, !mef.unknown) -> ()
+  mef.output
 }
 
-// CHECK-LABEL: bef.opaque "some.container" ["multi_region"]() : () -> () {
-// CHECK-NEXT:   bef.opaque "a.firstregion" []() : () -> ()
-// CHECK-NEXT:   bef.output
+// CHECK-LABEL: mef.opaque "some.container" ["multi_region"]() : () -> () {
+// CHECK-NEXT:   mef.opaque "a.firstregion" []() : () -> ()
+// CHECK-NEXT:   mef.output
 // CHECK-NEXT: }, {
-// CHECK-NEXT:   bef.opaque "a.secondregion" []() : () -> ()
-// CHECK-NEXT:   bef.output
+// CHECK-NEXT:   mef.opaque "a.secondregion" []() : () -> ()
+// CHECK-NEXT:   mef.output
 // CHECK-NEXT: }
 "some.container"() ({
   "a.firstregion"() : () -> ()
@@ -162,25 +162,25 @@ bef.invokable @opaque_round_trip() {
   "a.secondregion"() : () -> ()
 }) {sym_name = "multi_region"} : () -> ()
 
-// CHECK-LABEL: "bef.invokable" ["controlflow_if"]
-// CHECK-NEXT: ^bb0(%[[ARG0:.*]]: !bef.unknown, %[[ARG1:.*]]: !bef.unknown, %[[ARG2:.*]]: !bef.unknown):
-// CHECK-NEXT:   %[[V0:.*]] = bef.opaque "grt.if" nonstrict [](%[[ARG0]], %[[ARG1]], %[[ARG2]]) : ([[ARG2:.*]]bef.unknown, !bef.unknown, !bef.unknown) -> !bef.unknown {
-// CHECK-NEXT:   ^bb0(%[[ARG3:.*]]: !bef.unknown, %[[ARG4:.*]]: !bef.unknown):
-// CHECK-NEXT:     bef.output %[[ARG3]] : !bef.unknown
+// CHECK-LABEL: "mef.invokable" ["controlflow_if"]
+// CHECK-NEXT: ^bb0(%[[ARG0:.*]]: !mef.unknown, %[[ARG1:.*]]: !mef.unknown, %[[ARG2:.*]]: !mef.unknown):
+// CHECK-NEXT:   %[[V0:.*]] = mef.opaque "grt.if" nonstrict [](%[[ARG0]], %[[ARG1]], %[[ARG2]]) : ([[ARG2:.*]]mef.unknown, !mef.unknown, !mef.unknown) -> !mef.unknown {
+// CHECK-NEXT:   ^bb0(%[[ARG3:.*]]: !mef.unknown, %[[ARG4:.*]]: !mef.unknown):
+// CHECK-NEXT:     mef.output %[[ARG3]] : !mef.unknown
 // CHECK-NEXT:   }, {
-// CHECK-NEXT:   ^bb0(%[[ARG3:.*]]: !bef.unknown, %[[ARG4:.*]]: !bef.unknown):
-// CHECK-NEXT:     bef.output %[[ARG4]] : !bef.unknown
+// CHECK-NEXT:   ^bb0(%[[ARG3:.*]]: !mef.unknown, %[[ARG4:.*]]: !mef.unknown):
+// CHECK-NEXT:     mef.output %[[ARG4]] : !mef.unknown
 // CHECK-NEXT:   }
-// CHECK-NEXT:   bef.output %[[V0]] : !bef.unknown
+// CHECK-NEXT:   mef.output %[[V0]] : !mef.unknown
 // CHECK-NEXT: }
-bef.invokable @controlflow_if(%cond: i1, %v1: si32, %v2: si32) -> si32 {
+mef.invokable @controlflow_if(%cond: i1, %v1: si32, %v2: si32) -> si32 {
   %res = grt.if %cond (%v1: si32, %v2: si32) -> (si32) {
-    bef.output %v1 : si32
+    mef.output %v1 : si32
   } else {
-    bef.output %v2 : si32
+    mef.output %v2 : si32
   }
 
-  bef.output %res : si32
+  mef.output %res : si32
 }
 
 // CHECK-NEXT: }

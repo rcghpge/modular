@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MGPDialect/MGPDialect.h"
-#include "GraphRT/BEFDialect/BEFDialect.h"
+#include "GraphRT/MEFDialect/MEFDialect.h"
 
 using namespace M;
 using namespace MGP;

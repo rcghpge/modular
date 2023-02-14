@@ -180,7 +180,7 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     for (const LoweredTensor &tensor : inputTensors)
       inputSpecs.push_back(tensor.spec);
 
-    // Create a call to a custom invoke function we can put in the BEF.
+    // Create a call to a custom invoke function we can put in the MEF.
     output.spec = getOutputSpec(specNaryShapeFuncs.lookup(opName), inputSpecs);
   } else if (specAndTensorBinaryShapeFuncs.count(opName)) {
     const auto arg0SpecVal = inputTensors[0].spec;
@@ -308,7 +308,7 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
   SmallVector<Value> operands =
       helper.getOperands(inputTensors, outputBufferAndSpec);
 
-  // Create a call to a custom invoke function we can put in the BEF.
+  // Create a call to a custom invoke function we can put in the MEF.
   mlir::OperationState opState{op->getLoc(), op.getOpName()};
 
   // Add the execute chain as the first argument.
@@ -340,7 +340,7 @@ LogicalResult LoadJitKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       loweringState.getInitMgpContext(),
   };
 
-  // BEF can't currenly work with arrays of strings. To curcumvent this
+  // MEF can't currenly work with arrays of strings. To curcumvent this
   // restriction we pass in the combined symbol as a string with a ";". This is
   // the setup time load so performance should be less of an issue (though at
   // runtime it is just string ref operations anyway).
@@ -356,13 +356,13 @@ LogicalResult LoadJitKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   combined.pop_back();
   auto newSymAttrs = loweringState.getInitOpBuilder().getStringAttr(combined);
 
-  // Create a call to a custom invoke function we can put in the BEF.
+  // Create a call to a custom invoke function we can put in the MEF.
   mlir::OperationState opState{kernel.getLoc(), "mop.load_jit_object"};
   opState.addOperands(operands);
 
   // This will load and store the kernel at the given index into memory. The
   // address will be tracked in the symbol table and it can then be accessed by
-  // refering to the index in the table. IMPORTANT! Order in BEF is alphabetical
+  // refering to the index in the table. IMPORTANT! Order in MEF is alphabetical
   // by attribute name.
   opState.addAttribute("jitCtxSlot",
                        loweringState.getInitOpBuilder().getUI32IntegerAttr(
@@ -403,7 +403,7 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   SmallVector<Value> operands =
       helper.getOperands(inputTensors, outputBufferAndSpec);
 
-  // Create a call to a custom invoke function we can put in the BEF.
+  // Create a call to a custom invoke function we can put in the MEF.
   mlir::OperationState opState{op->getLoc(), "mop.kgen.execute_kernel"};
 
   // For compiled ops add the context as argument and all the metadata needed to

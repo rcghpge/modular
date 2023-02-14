@@ -10,7 +10,7 @@
 #include "GenericML/Support/Context.h"
 #include "GenericML/Support/StateSlot.h"
 #include "GenericML/Support/Tensor.h"
-#include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
+#include "GraphRT/MEFExecutor/PrimitiveRegistry.h"
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/AsyncValue.h"
 #include "LLCL/Runtime/AsyncValueRef.h"
@@ -36,8 +36,8 @@ static std::optional<size_t> getAlign(uint64_t rawAlign) {
 /// Fulfills the result with the borrowed BufferRef whose data is backed by
 /// the given constant.
 static void mgp_cpu_buffer_constant(Result<BufferRef> outBuffer,
-                                    BEFAttr<ArrayRef<uint8_t>> aValue,
-                                    BEFAttr<uint64_t> bRawAlign,
+                                    MEFAttr<ArrayRef<uint8_t>> aValue,
+                                    MEFAttr<uint64_t> bRawAlign,
                                     Runtime &runtime) {
   TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_constant");
   std::optional<size_t> optAlign;
@@ -55,8 +55,8 @@ static void mgp_cpu_buffer_constant(Result<BufferRef> outBuffer,
 /// statically, via an runtime size argument, or via a runtime TensorSpec.
 /// Any alignment attribute is respected.
 static void mgp_cpu_buffer_alloc_static(Context &ctx, Result<BufferRef> result,
-                                        BEFAttr<uint64_t> aSize,
-                                        BEFAttr<uint64_t> bRawAlign,
+                                        MEFAttr<uint64_t> aSize,
+                                        MEFAttr<uint64_t> bRawAlign,
                                         Runtime &runtime) {
   TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_alloc");
   if (!isValidPlainSize(*aSize)) {
@@ -74,7 +74,7 @@ static void mgp_cpu_buffer_alloc_static(Context &ctx, Result<BufferRef> result,
 
 static void mgp_cpu_buffer_alloc_dynamic(Context &ctx, size_t runtimeSize,
                                          Result<BufferRef> result,
-                                         BEFAttr<uint64_t> rawAlign,
+                                         MEFAttr<uint64_t> rawAlign,
                                          Runtime &runtime) {
   TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_alloc_dynamic");
   if (!isValidRawAlign(*rawAlign)) {
@@ -87,7 +87,7 @@ static void mgp_cpu_buffer_alloc_dynamic(Context &ctx, size_t runtimeSize,
 
 static void mgp_cpu_buffer_alloc_spec(Context &ctx, const TensorSpec &spec,
                                       Result<BufferRef> result,
-                                      BEFAttr<uint64_t> rawAlign,
+                                      MEFAttr<uint64_t> rawAlign,
                                       Runtime &runtime) {
   if (!isValidRawAlign(*rawAlign)) {
     result.setToError("invalid align attribute");
@@ -114,8 +114,8 @@ static void mgp_cpu_buffer_alloc_spec(Context &ctx, const TensorSpec &spec,
 /// requested size.
 static void mgp_cpu_buffer_realloc_static(
     Chain inChain, Context &ctx, Result<BufferRef> result,
-    BEFAttr<uint64_t> aSlot, BEFAttr<uint64_t> bBuffer, BEFAttr<uint64_t> cSize,
-    BEFAttr<uint64_t> dRawAlign, Runtime &runtime) {
+    MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bBuffer, MEFAttr<uint64_t> cSize,
+    MEFAttr<uint64_t> dRawAlign, Runtime &runtime) {
   TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_realloc_static");
   if (!isValidPlainSize(*cSize)) {
     result.setToError("invalid size attribute");
@@ -133,8 +133,8 @@ static void mgp_cpu_buffer_realloc_static(
 
 static void mgp_cpu_buffer_realloc_dynamic(
     Chain inChain, Context &ctx, size_t runtimeSize, Result<BufferRef> result,
-    BEFAttr<uint64_t> aSlot, BEFAttr<uint64_t> bBuffer,
-    BEFAttr<uint64_t> cRawAlign, Runtime &runtime) {
+    MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bBuffer,
+    MEFAttr<uint64_t> cRawAlign, Runtime &runtime) {
   TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_realloc_dynamic");
   if (!isValidRawAlign(*cRawAlign)) {
     result.setToError("invalid align attribute");
@@ -147,9 +147,9 @@ static void mgp_cpu_buffer_realloc_dynamic(
 
 static void
 mgp_cpu_buffer_realloc_spec(Chain inChain, Context &ctx, const TensorSpec &spec,
-                            Result<BufferRef> result, BEFAttr<uint64_t> aSlot,
-                            BEFAttr<uint64_t> bBuffer,
-                            BEFAttr<uint64_t> cRawAlign, Runtime &runtime) {
+                            Result<BufferRef> result, MEFAttr<uint64_t> aSlot,
+                            MEFAttr<uint64_t> bBuffer,
+                            MEFAttr<uint64_t> cRawAlign, Runtime &runtime) {
   TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_realloc_spec");
   if (!isValidRawAlign(*cRawAlign)) {
     result.setToError("invalid align attribute");
@@ -176,7 +176,7 @@ static void mgp_cpu_buffer_copy(Context &ctx, AsyncValueRef<BufferRef> inBuffer,
 //===----------------------------------------------------------------------===//
 
 /// Set each byte of the given inBuffer with the given Value, returns chain.
-static Chain mgp_cpu_buffer_set(BufferRef &buffer, BEFAttr<uint8_t> value) {
+static Chain mgp_cpu_buffer_set(BufferRef &buffer, MEFAttr<uint8_t> value) {
   TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_set");
   memset(buffer.getMutableBuffer(), *value, buffer.getSize());
   return {};
@@ -189,7 +189,7 @@ static Chain mgp_cpu_buffer_set(BufferRef &buffer, BEFAttr<uint8_t> value) {
 /// Fulfills the result with a Context initialized with `numPrimContexts`
 /// primitive contexts.
 static void mgp_context_create(Result<Context> result,
-                               BEFAttr<uint64_t> numSlots) {
+                               MEFAttr<uint64_t> numSlots) {
   TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.context_create");
   std::move(result).emplace(*numSlots);
 }
@@ -201,8 +201,8 @@ static void mgp_context_create(Result<Context> result,
 /// Constructs the default state slot with the given number of cached buffers
 /// under the given slot in the mgp context.
 static Chain mgp_state_slot_create(Chain inChain, Context &ctx,
-                                   BEFAttr<uint64_t> numBuffers,
-                                   BEFAttr<uint64_t> slot) {
+                                   MEFAttr<uint64_t> numBuffers,
+                                   MEFAttr<uint64_t> slot) {
   ctx.emplaceStateSlot<DefaultStateSlot>(*slot, *numBuffers);
   return {};
 }
@@ -216,8 +216,8 @@ static Chain mgp_state_slot_create(Chain inChain, Context &ctx,
 /// corresponding to unknown dimensions should be passed in runtimeDims.
 static void mgp_cpu_tensor_spec_create(RemainingArguments runtimeDims,
                                        Result<TensorSpec> outSpec,
-                                       BEFAttr<ArrayRef<uint64_t>> aRawDims,
-                                       BEFAttr<uint8_t> bRawDType,
+                                       MEFAttr<ArrayRef<uint64_t>> aRawDims,
+                                       MEFAttr<uint8_t> bRawDType,
                                        Runtime &runtime) {
   TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.tensor_spec_create");
   DType dtype(*bRawDType);
@@ -248,7 +248,7 @@ static void mgp_cpu_tensor_spec_create(RemainingArguments runtimeDims,
 /// to unknown dimensions should be passed in runtimeDims.
 static void mgp_cpu_tensor_spec_create_dynamic(
     DType runtimeDType, RemainingArguments runtimeDims,
-    Result<TensorSpec> outSpec, BEFAttr<ArrayRef<uint64_t>> rawDims,
+    Result<TensorSpec> outSpec, MEFAttr<ArrayRef<uint64_t>> rawDims,
     Runtime &runtime) {
   TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.tensor_spec_create_dynamic");
   if (runtimeDType.isInvalid()) {
@@ -277,7 +277,7 @@ static void mgp_cpu_tensor_spec_create_dynamic(
 /// at compile time.
 static void mgp_cpu_tensor_spec_dims_dynamic(
     const TensorSpec &tensorSpec, RemainingResults results,
-    BEFAttr<ArrayRef<uint64_t>> rawDims, Runtime &runtime) {
+    MEFAttr<ArrayRef<uint64_t>> rawDims, Runtime &runtime) {
   // All of the results are created as size_t.
   for (auto &result : results)
     result = AsyncValueRef<size_t>::allocate(runtime);
@@ -390,8 +390,8 @@ static void mgp_debug_cpu_tensor_print(Chain inChain, const Tensor &tensor,
 //===----------------------------------------------------------------------===//
 
 static ErrorOr<Chain> mgp_cas_create_instance(Chain inChain, Context &ctx,
-                                              BEFAttr<uint64_t> slot,
-                                              BEFAttr<StringRef> fsPath,
+                                              MEFAttr<uint64_t> slot,
+                                              MEFAttr<StringRef> fsPath,
                                               Runtime &runtime) {
   auto &slotOr = ctx.emplaceStateSlot<CASStateSlot>(*slot, 0, runtime, *fsPath);
   // If the emplace failed, the state slot will hold an error.
@@ -406,8 +406,8 @@ static ErrorOr<Chain> mgp_cas_create_instance(Chain inChain, Context &ctx,
 //===----------------------------------------------------------------------===//
 
 static AsyncValueRef<BufferRef> mgp_cas_lookup(Chain inChain, Context &ctx,
-                                               BEFAttr<uint64_t> slot,
-                                               BEFAttr<StringRef> key,
+                                               MEFAttr<uint64_t> slot,
+                                               MEFAttr<StringRef> key,
                                                EncodedLocation loc) {
   auto &dataStore = ctx.getStateSlotPayload<CASStateSlot>(*slot);
   return dataStore.lookup(*key, std::move(loc));

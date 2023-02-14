@@ -4,15 +4,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_TOOLS_BEFEXECUTOR_GRTTESTCASE_H
-#define GRAPHRT_TOOLS_BEFEXECUTOR_GRTTESTCASE_H
+#ifndef GRAPHRT_TOOLS_MEFEXECUTOR_GRTTESTCASE_H
+#define GRAPHRT_TOOLS_MEFEXECUTOR_GRTTESTCASE_H
 
 #include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace M {
-class BEFInvokable;
+class MEFInvokable;
 class PrimitiveDescriptor;
 
 class GRTTestcase {
@@ -30,14 +30,14 @@ public:
   StringRef getName() const { return name; }
 
   /// Get the body for this op - a single Invokable.
-  BEFInvokable *getBody() const { return body; }
+  MEFInvokable *getBody() const { return body; }
 
 private:
   GRTTestcase(const PrimitiveDescriptor &desc);
-  GRTTestcase(StringRef name, BEFInvokable *body) : name(name), body(body) {}
+  GRTTestcase(StringRef name, MEFInvokable *body) : name(name), body(body) {}
   StringRef name;
-  BEFInvokable *body;
+  MEFInvokable *body;
 };
 } // namespace M
 
-#endif // GRAPHRT_TOOLS_BEFEXECUTOR_GRTTESTCASE_H
+#endif // GRAPHRT_TOOLS_MEFEXECUTOR_GRTTESTCASE_H

@@ -1,15 +1,15 @@
-# Binary Executor Format (BEF) File Format
+# Binary Executor Format (MEF) File Format
 
 [TOC]
 
 This document describes the goals and rationale for the in-memory representation
 the [GraphRT](index.md) executor uses to run primitives, known as the Binary Executor
-Format "BEF".
+Format "MEF".
 
 We have the following goals:
 
 - We want this to be simple and relatively stable - though it is versioned
-  just in case (tm). We don't want BEF to contain domain specific
+  just in case (tm). We don't want MEF to contain domain specific
   abstractions that will require changing it frequently over time.
 
 - This format is designed to be usable as an immutable region in memory,
@@ -18,7 +18,7 @@ We have the following goals:
 
 - This is aligned with the abstractions used by the GraphRT executor and
   includes key abstractions that it can directly use to make it speedy and
-  memory efficient. The design puts more burden on the encoder of a BEF file
+  memory efficient. The design puts more burden on the encoder of a MEF file
   (for example requiring multiple passes) to make the decoder fast.
 
 - This needs to be producible online for example in training or interactive use
@@ -50,10 +50,10 @@ rationale for the design decisions.
   INDEX                 ::= VBR
 ```
 
-A BEF file is formed as a byte stream whose top-level structure is a list of
+A MEF file is formed as a byte stream whose top-level structure is a list of
 "sections" that hold various sorts of data. It uses a few fundamental concepts:
 
-* *VBRs* are encoded in a "Variable Byte Rate" (`VBR`) encoding, allowing
+- *VBRs* are encoded in a "Variable Byte Rate" (`VBR`) encoding, allowing
   small unsigned integers (less than 2^7) to be stored in one byte, unsigned
   integers up to 2^14 to be stored in two bytes, etc. This is done by using the
   high bit of each byte in the stream to indicate "more bytes are coming".
@@ -64,6 +64,7 @@ A BEF file is formed as a byte stream whose top-level structure is a list of
   this final value is then encoded as a regular *VBR*.
 
   **Example:**
+
   ```
    2 = 0b00000010 (two's complement)
   signed VBR = 0b00000100
@@ -73,31 +74,31 @@ A BEF file is formed as a byte stream whose top-level structure is a list of
   signed VBR = 0b00000101
   ```
 
-* *Fixed Integers* are unsigned integers with fixed bit width. The values are
+- *Fixed Integers* are unsigned integers with fixed bit width. The values are
   stored in little-endian byte order.
 
-* *NUL Terminated Strings* are terminated with the ASCII `NUL` character
+- *NUL Terminated Strings* are terminated with the ASCII `NUL` character
   (whose byte value is zero). These are not used in cases where a string may
   contain an embedded `NUL` character.
 
-* *Offsets* are VBRs that demarcate a byte offset in the stream from a
+- *Offsets* are VBRs that demarcate a byte offset in the stream from a
   fixed position (typically the start of a section). These are useful when the
   section contains a bunch of variable length things, for example when referring to a
   string in the string table. Because variable sized integers are used
-  pervasively in BEF files, offsets are very common.
+  pervasively in MEF files, offsets are very common.
 
-* *Indexes* are VBRs that demarcate an entry in a table, for example a register
+- *Indexes* are VBRs that demarcate an entry in a table, for example a register
   or primitives in an invokable. These are typically used when indexing into
   a table where the structure is expected to be decoded and held in memory by
   the reader, for example as is the case with the primitives and types tables.
 
-BEF files can be created by an arbitrary producer, but the standard ways is to
-use the [MLIRToBEF](../lib/MLIRToBEF)
+MEF files can be created by an arbitrary producer, but the standard ways is to
+use the [MLIRToMEF](../lib/MLIRToMEF)
 translation library (or standalone tool), which turns an MLIR representation of
-a program into a BEF file.
+a program into a MEF file.
 
-The `BEFToMLIR` translation library performs the reverse translation from BEF
-file to MLIR representation of the program. It is useful for writing BEF
+The `MEFToMLIR` translation library performs the reverse translation from MEF
+file to MLIR representation of the program. It is useful for writing MEF
 encoder testcases and for dealing with that "random file someone sent you".
 
 ## Sections
@@ -119,10 +120,10 @@ over entirely by the reader) and an optional alignment for the contents of the
 section.
 
 Section IDs and other fundamental constants are defined in
-[`BEFEncoding.h`](../include/GraphRT/BEF/BEFEncoding.h),
+[`MEFEncoding.h`](../include/GraphRT/MEF/MEFEncoding.h),
 and utilities for decoding the basic file structures like VBR integers are
 defined in
-[`BEFReader.h`](../include/GraphRT/BEF/BEFReader.h).
+[`MEFReader.h`](../include/GraphRT/MEF/MEFReader.h).
 
 The `LENGTH_AND_ALIGNMENT` contains `SECTION_LENGTH` and `SECTION_ALIGNMENT_FLAG`. The
 `SECTION_LENGTH` contains one bit shifted value of the section length and the
@@ -135,7 +136,7 @@ not; 0 means the section body starts immediately and 1 means
 **Grammar**
 
 ```none
-  BEF_FILE     ::= `0xBE` `0xF0` SECTION*
+  MEF_FILE     ::= `0xBE` `0xF0` SECTION*
 
   SECTION_DATA ::= STRINGS_SECTION
   SECTION_DATA ::= ATTRIBUTES_SECTION
@@ -153,12 +154,12 @@ not; 0 means the section body starts immediately and 1 means
   SECTION_DATA ::= BYTE*
 ```
 
-The top level structure of the file is a two-byte "magic number" of `0xBEF0`
-and a list of sections. The `0xBEF0` magic number allows us to encode version
-numbers, for example the following would be `0xBEF1`.
+The top level structure of the file is a two-byte "magic number" of `0xMEF0`
+and a list of sections. The `0xMEF0` magic number allows us to encode version
+numbers, for example the following would be `0xMEF1`.
 
-The BEF reader skips over unknown sections, which could be useful for future
-evolution of the format, for example if we want to store extra metadata in the BEF
+The MEF reader skips over unknown sections, which could be useful for future
+evolution of the format, for example if we want to store extra metadata in the MEF
 format for some purpose, or store binary tensor blobs.
 
 ### Strings Section
@@ -183,21 +184,21 @@ support embedded `NUL` in strings.
 ```
 
 The `ATTRIBUTES_SECTION` contains the value of attributes used by primitives in
-the BEF program. They are stored on the natural alignment boundary of the type,
+the MEF program. They are stored on the natural alignment boundary of the type,
 and the address of the attribute is directly passed into the primitive
 implementation C/C++ function as an const pointer.
 
-BEF files only support a subset of MLIR attributes, currently including:
+MEF files only support a subset of MLIR attributes, currently including:
 
-* `i1` integers: stored as 1-byte integers.
-* `si8`/`si16`/`si32`/`si64` integers: stored as 1/2/4/8-byte little endian
+- `i1` integers: stored as 1-byte integers.
+- `si8`/`si16`/`si32`/`si64` integers: stored as 1/2/4/8-byte little endian
   integers.
-* `ui8`/`ui16`/`ui32`/`ui64` integers: stored as 1/2/4/8-byte little endian
+- `ui8`/`ui16`/`ui32`/`ui64` integers: stored as 1/2/4/8-byte little endian
   integers.
-* `f32` floats: stored as IEEE single precision floats.
-* `f64` floats: stored as IEEE double precision floats.
-* `strings`: stored as arrays of bytes, not necessarily NUL terminated.
-* `arrays`: all elements of which are of the same type and fixed in width (eg.
+- `f32` floats: stored as IEEE single precision floats.
+- `f64` floats: stored as IEEE double precision floats.
+- `strings`: stored as arrays of bytes, not necessarily NUL terminated.
+- `arrays`: all elements of which are of the same type and fixed in width (eg.
   `si32`, `f32`, etc).
 
 The encoding of an attribute has three pieces:
@@ -207,7 +208,7 @@ The encoding of an attribute has three pieces:
    or string is.
 2) All attributes have a one-byte encoding of the "kind" of attribute it is,
    which is described by the `AttributeKind` enum in
-   [`BEFEncoding.h`](../include/GraphRT/BEF/BEFEncoding.h).
+   [`MEFEncoding.h`](../include/GraphRT/MEF/MEFEncoding.h).
 3) The value of the attribute is stored in little-endian byte order.
 
 Note that emission of the attribute is always done so that the attribute value
@@ -215,7 +216,7 @@ is naturally aligned, for example that a `si32` value is emitted on a 4-byte ali
 
 ***Rationale***
 
-The GraphRT executor needs to refer to attribute values, and since the BEF file
+The GraphRT executor needs to refer to attribute values, and since the MEF file
 is designed to be memory mapped in, we can directly use the encoding in memory.
 This means that primitives will need to `bswap` attributes for big-endian systems,
 but they generally have `bswap`'ing loads anyway so this shouldn't impose a
@@ -258,17 +259,17 @@ of memory up front, rather than use a vector-style resizing mechanism.
                                VBR<"NumResults">
 ```
 
-The `INVOKABLES_INDEX` section defines a table of "invokables" in the BEF file,
-including an Offset into the [`INVOKABLES_BODIES_SECTION`](#INVOKABLES_BODIES-section),
+The `INVOKABLES_INDEX` section defines a table of "invokables" in the MEF file,
+including an Offset into the [`INVOKABLES_BODIES_SECTION`](#invokables_bodies-section),
 a primitive name (an Offset into the [`STRINGS_SECTION`](#strings-section), may be empty),
 a symbol name (an Offset into the [`STRINGS_SECTION`](#strings-section), may be empty),
 an offset to the body, and the number of arguments and results.
 
 ***Rationale***
 
-This defines a symbol table for the BEF file, allowing clients to look up
+This defines a symbol table for the MEF file, allowing clients to look up
 invokables by name. While we could intersperse this information into the
-[`INVOKABLES_BODIES_SECTION`](#INVOKABLES_BODIES-section) itself, doing so would
+[`INVOKABLES_BODIES_SECTION`](#invokables_bodies-section) itself, doing so would
 require the reader to make a pass over all of the `INVOKABLES_BODIES` ahead of
 time. We prefer to have a quick index that the reader can scan at load time,
 deferring processing of any individual invokable until it is needed.
@@ -286,18 +287,18 @@ of memory up front, rather than use a vector-style resizing mechanism.
 
 The `INVOKABLES_BODIES` section is a series of bodies emitted to the byte stream
 and then addressed by an Offset indicated by the
-[`INVOKABLES_INDEX` section](#INVOKABLES_INDEX-section). This section is 4-byte
+[`INVOKABLES_INDEX` section](#invokables_index-section). This section is 4-byte
 aligned.
 
 ***Rationale***
 
-Regions in MLIR are a generalization of a unit of computation. The BEF format
+Regions in MLIR are a generalization of a unit of computation. The MEF format
 and GraphRT executor support a subset of MLIR region features that are core to
 the abstractions we need to model - in particular, while MLIR regions can have
 multiple basic blocks in them, invokables only support a single block - this
 guarantees that they are always be a DAG of computation.
 
-Invokables are used for top-level MLIR `bef.invokable` operations (indexed
+Invokables are used for top-level MLIR `mef.invokable` operations (indexed
 by the invokable name table) as well as in nested positions for control flow
 and other concepts that occur with MLIR regions.
 
@@ -373,22 +374,22 @@ table of primitives allows the use of primitive indexes.
 
 Each primitive has these properties:
 
-* Opcode (Index into Primitive Names section)
-* Location (Index into Location Positions section)
-* Operands/Inputs (Indexes into invokable's Register table)
-* Constants (Offsets into Attributes section)
-* Invokables/Regions (Indexes into Invokable Index section)
-* Results (Indexes into invokable's Register table)
-* Result used-by counts
+- Opcode (Index into Primitive Names section)
+- Location (Index into Location Positions section)
+- Operands/Inputs (Indexes into invokable's Register table)
+- Constants (Offsets into Attributes section)
+- Invokables/Regions (Indexes into Invokable Index section)
+- Results (Indexes into invokable's Register table)
+- Result used-by counts
 
 It is organized as a fixed-size header containing counts for the variable-size
 portions of the primitive, followed by a variable-size portion whose size
 depends on the header.  Additionally, the size of `PrimitiveUsedBy` depends on
 the values of `NumUsedBys`.
 
-BEF primitives must have consecutive result registers.  Hence, when `NumResults
->= 2`, `PrimitiveResult` still only consists of one `FIXED32` value,
-representing the first result register.  When `NumResults = 0`,
+MEF primitives must have consecutive result registers.  Hence, when `NumResults
+>= 2`,`PrimitiveResult`still only consists of one`FIXED32`value,
+representing the first result register.  When`NumResults = 0`,
 `PrimitiveResult` is absent.
 
 'Used by' records for the same result are grouped together and these groups are
@@ -447,7 +448,7 @@ LocationFilenames section, and VBRs for the line and column of the position.
 ```
 
 The `ATTRIBUTE_INDEX_MD` section specifies the kind of each attribute emitted to the
-attribute section, allowing `BEFToMLIR` conversion by allowing us to know the
+attribute section, allowing `MEFToMLIR` conversion by allowing us to know the
 starting offset for each attribute in the file.
 
 ### `ATTRIBUTE_NAMES_MD` Section
@@ -459,17 +460,17 @@ starting offset for each attribute in the file.
   PRIMITIVE_TABLE         ::= OFFSET<"AttributeName">*
 ```
 
-The AttributeNames sections is an optional section which is not needed for BEF
-execution, but which makes `BEFToMLIR` conversion much nicer. This
+The AttributeNames sections is an optional section which is not needed for MEF
+execution, but which makes `MEFToMLIR` conversion much nicer. This
 section describes the attribute names used by each primitive. There is a 1:1
 mapping between Primitive Table in this section and entries in
-[`INVOKABLES_INDEX` section](#INVOKABLES_INDEX-section). Each attribute and
+[`INVOKABLES_INDEX` section](#invokables_index-section). Each attribute and
 region for a primitive has an entry here specifying the name. The offset is
 into the `STRINGS_MD` section (not the `STRINGS` section).
 
 ***Rationale***
 
-Attribute names are strings that are not needed by the BEF Executor and have
+Attribute names are strings that are not needed by the MEF Executor and have
 nothing to do with types or other metadata so we put them in their own section
 looked up lazily by offset.
 
@@ -482,13 +483,13 @@ looked up lazily by offset.
 ```
 
 The `MLIRTYPE_STRINGS_MD` section defines a table of MLIR type names used by the
-program, in a format that can be parsed by `BEF2MLIR`. These are referenced by
+program, in a format that can be parsed by `MEF2MLIR`. These are referenced by
 index into the section, not offset.
 
 ***Rationale***
 
-Type names are not needed by the BEF executor, and are decoded in a single dense
-pass up-front in `BEF2MLIR`. As such, they are referenced by index (not offset).
+Type names are not needed by the MEF executor, and are decoded in a single dense
+pass up-front in `MEF2MLIR`. As such, they are referenced by index (not offset).
 
 ### `MLIRTYPE_MD` Section
 
@@ -498,8 +499,8 @@ pass up-front in `BEF2MLIR`. As such, they are referenced by index (not offset).
   MLIRTYPE_MD_SECTION ::= INDEX<"MLIRTYPE_STRINGS_MD">*
 ```
 
-The `MLIRTYPE_MD` section is an optional section which is not needed for BEF
-execution, but allows `BEF2MLIR` conversion to regenerate the correct types for
+The `MLIRTYPE_MD` section is an optional section which is not needed for MEF
+execution, but allows `MEF2MLIR` conversion to regenerate the correct types for
 invokable arguments and the result types of primitives. This section
 contains a list of VBR encoded indexes into the
 [`MLIRTYPE_STRINGS_MD` section](#TYPE_STRINGS_MD-section), and is encoded in

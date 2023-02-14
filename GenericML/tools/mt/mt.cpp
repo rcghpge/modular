@@ -109,8 +109,8 @@ bool ScenarioParser::parse(llvm::cl::Option &O, StringRef ArgName,
 }
 
 /// Get a string that describes the contents of the file. Given that this driver
-/// cannot link the BEF libraries, we have to rely on the symbols provided by
-/// the framework if the input is a BEF file.
+/// cannot link the MEF libraries, we have to rely on the symbols provided by
+/// the framework if the input is a MEF file.
 static M::ErrorOr<std::string>
 getFileContentIdentity(const llvm::MemoryBuffer &file, FileFormat format,
                        FrameworkContextHandle ctxHandle, CXXDriverAPI dylib) {
@@ -124,16 +124,16 @@ getFileContentIdentity(const llvm::MemoryBuffer &file, FileFormat format,
   case FileFormat::kMTFLDialect:
     return "input is TFLite model in MLIR form";
   case FileFormat::kTFLPDialect:
-    return "input is a compiled TFLite BEF model in MLIR form";
+    return "input is a compiled TFLite MEF model in MLIR form";
   case FileFormat::kTFDialect:
     return "input is a TensorFlow model in MLIR form";
   case FileFormat::kTFSavedModel:
     return "input is a TensorFlow model in SavedModel form";
   case FileFormat::kTFPDialect:
-    return "input is a compiled TensorFlow BEF model in MLIR form";
+    return "input is a compiled TensorFlow MEF model in MLIR form";
   case FileFormat::kFauxDialect:
     return "input is Faux model in MLIR form";
-  case FileFormat::kBEFFile: {
+  case FileFormat::kMEFFile: {
     UNWRAP_ERROR(fileHandle, dylib.openBinaryFile(ctxHandle, file));
     return dylib.sniffBinaryFileContents(ctxHandle, fileHandle);
   }
@@ -174,7 +174,7 @@ int main(int argc, char **argv) {
       format = FileFormat::kTFSavedModel;
     } else {
       // The input file is not a directory, so we open and sniff the format.
-      // In case the input file is BEF, it has to be aligned to the maximum
+      // In case the input file is MEF, it has to be aligned to the maximum
       // attribute alignment.
       file = options.openInputFileOrExit(maxAttributeAlignment());
       format = options.getInputFormat(file->getBuffer());
@@ -257,7 +257,7 @@ int main(int argc, char **argv) {
     auto outputFile = options.getOutputFile(options.commandHasBinaryOutput());
 
     // If the file is already a binary, just emit it directly.
-    if (format == FileFormat::kBEFFile ||
+    if (format == FileFormat::kMEFFile ||
         dylib.isBinary(frameworkCtx, *file, format)) {
       outputFile->os().write(file->getBufferStart(), file->getBufferSize());
       outputFile->keep();
@@ -275,7 +275,7 @@ int main(int argc, char **argv) {
 
   // If we are not inspecting, we must need a compiled format.  If this is
   // already done then we're golden, otherwise compile now.
-  if (format != FileFormat::kBEFFile &&
+  if (format != FileFormat::kMEFFile &&
       !dylib.isBinary(frameworkCtx, *file, format)) {
     if (auto err = dylib.compileToBinary(frameworkCtx, file, format))
       return options.reportError(err.getError());
@@ -308,7 +308,7 @@ int main(int argc, char **argv) {
     return EXIT_SUCCESS;
   }
 
-  // Hand off the BEFFileHandle and the file buffer to the framework to actually
+  // Hand off the MEFFileHandle and the file buffer to the framework to actually
   // run the thing with all the various diagnostics.
   if (options.scenarios.empty())
     return dylib.runBinaryFile(frameworkCtx, std::move(file), binaryFile);

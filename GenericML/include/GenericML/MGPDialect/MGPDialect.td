@@ -25,7 +25,7 @@ def MGPDialect : Dialect {
     executable model.
 
     MGP itself does not provide any op implementations. MGP is directly
-    translatable to BEF (see MLIRToBEF.cpp) without any additional passes,
+    translatable to MEF (see MLIRToMEF.cpp) without any additional passes,
     however MGP supports source-to-source optimizations to hoist allocations,
     avoid unnecessary conversions, avoid unnecessary shape calculations,
     and avoid unnecessary use of tensor wrappers. Framework-specific dialects
@@ -78,11 +78,11 @@ def MGPDialect : Dialect {
     5. [Pending for D] Provides a `mgp.kgen.invoke` primitive for invoking
        KGENed ops whose signatures, due to fusion, may not be known until model
        compile time. The implementations are drawn from the kgen_cache and
-       stored in object form in the BEF file. Shim code is also generated at
-       model compile time to mediate between the BEF Frame and the ops native
+       stored in object form in the MEF file. Shim code is also generated at
+       model compile time to mediate between the MEF Frame and the ops native
        calling convention (as per an ABI), and similarly stored in object form
-       in the BEF file. These shims and ops are linked and registered at model
-       setup time and can then be invoked as for any BEF primitive.
+       in the MEF file. These shims and ops are linked and registered at model
+       setup time and can then be invoked as for any MEF primitive.
 
     Though not in MGP directly, MGP requires co-operation from the host
     framework in the form of:
@@ -114,7 +114,7 @@ def MGPDialect : Dialect {
   }];
 
   let cppNamespace = "::M::MGP";
-  let dependentDialects = ["::M::BEF::BEFDialect", "::M::MDialect"];
+  let dependentDialects = ["::M::MEF::MEFDialect", "::M::MDialect"];
 
   let extraClassDeclaration = [{
    private:

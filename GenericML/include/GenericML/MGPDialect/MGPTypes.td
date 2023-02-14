@@ -269,7 +269,7 @@ def MGP_CpuTensorSpecType : MGP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
        integer for the dtype (using the DType::value encoding, but
        with the 'invalid' (zero) DType denoting unknown). This supports ops
        which must, in effect, encode tensor spec types into their argument
-       attributes using only the built-in BEF attributes.
+       attributes using only the built-in MEF attributes.
 
     Examples:
     ```mlir

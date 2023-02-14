@@ -40,7 +40,7 @@ parseParenOperandList(OpAsmParser &parser, OperationState &result,
 
 LogicalResult InvokeOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   // Check that the target attribute was specified.
-  BEF::InvokableOp fn = symbolTable.lookupNearestSymbolFrom<BEF::InvokableOp>(
+  MEF::InvokableOp fn = symbolTable.lookupNearestSymbolFrom<MEF::InvokableOp>(
       *this, getTargetAttr());
   if (!fn)
     return emitOpError() << "'" << getTargetAttr()
@@ -137,11 +137,11 @@ LogicalResult IfOp::verify() {
         getInputs()[i].getType() != elseBlock->getArgument(i).getType())
       return emitOpError("operand/argument type mismatch");
 
-  auto thenOutput = cast<BEF::OutputOp>(thenBlock->getTerminator());
+  auto thenOutput = cast<MEF::OutputOp>(thenBlock->getTerminator());
   if (failed(thenOutput.checkArgumentTypes(getResultTypes())))
     return failure();
 
-  auto elseOutput = cast<BEF::OutputOp>(elseBlock->getTerminator());
+  auto elseOutput = cast<MEF::OutputOp>(elseBlock->getTerminator());
   return elseOutput.checkArgumentTypes(getResultTypes());
 }
 
@@ -195,7 +195,7 @@ LogicalResult RepeatI32Op::verify() {
     if (getInputs()[i].getType() != getResult(i).getType())
       return emitOpError("operand/result type mismatch");
 
-  auto output = cast<BEF::OutputOp>(getBody()->getTerminator());
+  auto output = cast<MEF::OutputOp>(getBody()->getTerminator());
   return output.checkArgumentTypes(getResultTypes());
 }
 
@@ -215,7 +215,7 @@ ParseResult BenchmarkOp::parse(OpAsmParser &parser, OperationState &result) {
       parseParenOperandList(parser, result, operandInfo))
     return failure();
 
-  if (operandInfo.empty() || !operandInfo[0].type.isa<BEF::ChainType>())
+  if (operandInfo.empty() || !operandInfo[0].type.isa<MEF::ChainType>())
     return parser.emitError(
         argLoc, "grt.benchmark must take a chain as its first argument");
 
@@ -238,7 +238,7 @@ ParseResult BenchmarkOp::parse(OpAsmParser &parser, OperationState &result) {
   Operation *bodyTerminator = body->front().getTerminator();
   result.types.assign(bodyTerminator->operand_type_begin(),
                       bodyTerminator->operand_type_end());
-  if (!result.types.front().isa<BEF::ChainType>())
+  if (!result.types.front().isa<MEF::ChainType>())
     return parser.emitError(
         opLoc, "grt.benchmark must return a chain as its first result.");
 

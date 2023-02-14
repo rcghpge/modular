@@ -58,14 +58,14 @@ single program.
 
 Here are some good entry point documents to understand the GraphRT library:
 
- - GraphRT builds directly on the [LLCL library](../../LLCL/docs/index.md), its
+- GraphRT builds directly on the [LLCL library](../../LLCL/docs/index.md), its
    [Runtime abstraction](../../LLCL/docs/LLCLRuntime.md), and uses its
    [`AsyncValue` related types](../../LLCL/docs/AsyncValue.md) pervasively.
- - An overview of [Key Concepts in GraphRT](KeyConceptsInGraphRT.md).
- - A guide to [defining and implementing GraphRT
+- An overview of [Key Concepts in GraphRT](KeyConceptsInGraphRT.md).
+- A guide to [defining and implementing GraphRT
    primitives](DefiningPrimitives.md).
- - Documentation for the [BEF binary file format](BinaryExecutorFormat.md).
- - Benchmarking with [`grt.benchmark`](Benchmarking.md).
+- Documentation for the [MEF binary file format](BinaryExecutorFormat.md).
+- Benchmarking with [`grt.benchmark`](Benchmarking.md).
 
 ## GraphRT code base
 
@@ -73,15 +73,15 @@ Beyond documentation, it can be helpful to browse the code.  The major
 components of the GraphRT module are:
 
 1. a set of MLIR components for representing GraphRT programs, notably the
-   [BEF Dialect](../include/GraphRT/BEFDialect) which defines `bef.invokable`.
+   [MEF Dialect](../include/GraphRT/MEFDialect) which defines `mef.invokable`.
 1. a binary file format named the ["Binary Executor Format"
-   (BEF)](BinaryExecutorFormat.md) which is designed to be compact and
+   (MEF)](BinaryExecutorFormat.md) which is designed to be compact and
    efficiently executable by a low-dependency interpreter.
-1. the [BEFExecutor library](../include/GraphRT/BEFExecutor/) implements the
-   interpreter for the BEF file.
-1. translators for converting [MLIR to BEF](../lib/MLIRToBEF/) (a core
-   part of the typical compilation flow), and from [BEF to
-   MLIR](../lib/BEFToMLIR/) (more of a debugging/introspection/testing
+1. the [MEFExecutor library](../include/GraphRT/MEFExecutor/) implements the
+   interpreter for the MEF file.
+1. translators for converting [MLIR to MEF](../lib/MLIRToMEF/) (a core
+   part of the typical compilation flow), and from [MEF to
+   MLIR](../lib/MEFToMLIR/) (more of a debugging/introspection/testing
    aid).
 1. a [set of example primitives](../lib/Primitives/) implementing integer
    arithmetic, common control flow operations, and for writing tests.  This

@@ -20,7 +20,7 @@ def MOToMOGG : Pass<"mo-to-mogg", "ModuleOp"> {
 
   let options = [
       Option<"useJit", "useJit", "bool", /*default=*/"false",
-            "Compile lowered kernels into the BEF as JITed kernels">,
+            "Compile lowered kernels into the MEF as JITed kernels">,
   ];
 
   let dependentDialects = [

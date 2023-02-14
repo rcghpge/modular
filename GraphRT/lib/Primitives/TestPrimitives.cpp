@@ -13,7 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphRT/BEFExecutor/PrimitiveRegistry.h"
+#include "GraphRT/MEFExecutor/PrimitiveRegistry.h"
 #include "GraphRT/Primitives.h"
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/Runtime.h"
@@ -34,7 +34,7 @@ using namespace M;
 //===----------------------------------------------------------------------===//
 
 static Chain print_hello(Chain chain) {
-  printf("hello bef executor!\n");
+  printf("hello mef executor!\n");
   fflush(stdout);
   return chain;
 }
@@ -47,7 +47,7 @@ static void memory_leak_one_int32(Runtime &runtime) {
 // String, Array, and Dict Tests
 //===----------------------------------------------------------------------===//
 
-static std::string get_string(BEFAttr<StringRef> value) { return value->str(); }
+static std::string get_string(MEFAttr<StringRef> value) { return value->str(); }
 
 static std::string append_string(const std::string &lhs,
                                  const std::string &rhs) {
@@ -62,7 +62,7 @@ static Chain print_string(const std::string &lhs, Chain chain) {
   return chain;
 }
 
-static Chain print_array_i32(Chain chain, BEFAttr<ArrayRef<int32_t>> values) {
+static Chain print_array_i32(Chain chain, MEFAttr<ArrayRef<int32_t>> values) {
   printf("array = [");
   for (size_t i = 0, e = values->size(); i != e; ++i) {
     if (i != 0)
@@ -75,7 +75,7 @@ static Chain print_array_i32(Chain chain, BEFAttr<ArrayRef<int32_t>> values) {
 }
 
 static Chain print_array_uint8_hex(Chain chain,
-                                   BEFAttr<ArrayRef<uint8_t>> values) {
+                                   MEFAttr<ArrayRef<uint8_t>> values) {
   printf("array = [");
   for (size_t i = 0, e = values->size(); i != e; ++i) {
     if (i != 0)
@@ -87,7 +87,7 @@ static Chain print_array_uint8_hex(Chain chain,
 }
 
 static ErrorOr<Chain> print_dynamic_array_float(Chain chain,
-                                                BEFDynamicAttr value) {
+                                                MEFDynamicAttr value) {
   SmallVector<float> flts;
   RETURN_ERROR(value.decode(&flts));
 
@@ -102,8 +102,8 @@ static ErrorOr<Chain> print_dynamic_array_float(Chain chain,
   return chain;
 }
 
-static Chain print_dict_i32(Chain chain, BEFAttr<StringRef> key,
-                            BEFDictionaryAttr dict) {
+static Chain print_dict_i32(Chain chain, MEFAttr<StringRef> key,
+                            MEFDictionaryAttr dict) {
   printf("dictionary[%.*s] = ", (int)key->size(), key->begin());
   auto value = dict.find<int32_t>(*key);
   if (!value)
@@ -115,11 +115,11 @@ static Chain print_dict_i32(Chain chain, BEFAttr<StringRef> key,
   return chain;
 }
 
-static Chain print_all_dict(Chain chain, BEFDictionaryAttr dict) {
+static Chain print_all_dict(Chain chain, MEFDictionaryAttr dict) {
   printf("dictionary = ");
   llvm::interleave(
       dict,
-      [](const BEFDictionaryAttr::Element &elt) {
+      [](const MEFDictionaryAttr::Element &elt) {
         if (elt.getName() == "aString") {
           auto value = *(elt.getValue<StringRef>());
           printf("aString : %.*s", (int)value.size(), value.data());
@@ -135,29 +135,29 @@ static Chain print_all_dict(Chain chain, BEFDictionaryAttr dict) {
   return chain;
 }
 
-static void printType(BEFType type) {
-  if (auto fnType = dyn_cast<BEFFunctionType>(type)) {
-    SmallVector<BEFType> inputs, results;
+static void printType(MEFType type) {
+  if (auto fnType = dyn_cast<MEFFunctionType>(type)) {
+    SmallVector<MEFType> inputs, results;
     fnType->decode(inputs, results);
     printf("(");
     llvm::interleave(
-        inputs, [](BEFType type) { printType(type); }, []() { printf(", "); });
+        inputs, [](MEFType type) { printType(type); }, []() { printf(", "); });
     printf(") -> ");
     if (results.size() != 1)
       printf("(");
     llvm::interleave(
-        results, [](BEFType type) { printType(type); }, []() { printf(", "); });
+        results, [](MEFType type) { printType(type); }, []() { printf(", "); });
     if (results.size() != 1)
       printf(")");
-  } else if (auto tensorType = dyn_cast<BEFTensorType>(type)) {
+  } else if (auto tensorType = dyn_cast<MEFTensorType>(type)) {
     SmallVector<int64_t> dims;
-    BEFType elementType = tensorType->decode(dims);
+    MEFType elementType = tensorType->decode(dims);
     printf("tensor<");
     for (int64_t dim : dims)
       printf("%lldx", (long long)dim);
     printType(elementType);
     printf(">");
-  } else if (auto qType = dyn_cast<BEFQuantizedType>(type)) {
+  } else if (auto qType = dyn_cast<MEFQuantizedType>(type)) {
     float scale;
     int64_t zeroPoint;
     auto [storageType, expressedType] = qType->decode(scale, zeroPoint);
@@ -166,7 +166,7 @@ static void printType(BEFType type) {
     printf(":");
     printType(expressedType);
     printf(", %f:%lld>", (double)scale, (long long)zeroPoint);
-  } else if (auto qType = dyn_cast<BEFQuantizedPerAxisType>(type)) {
+  } else if (auto qType = dyn_cast<MEFQuantizedPerAxisType>(type)) {
     SmallVector<float> scales;
     SmallVector<int64_t> zeroPoints;
     uint8_t quantizedDim;
@@ -192,7 +192,7 @@ static void printType(BEFType type) {
   fflush(stdout);
 }
 
-static Chain print_type(Chain chain, BEFAttr<BEFType> type) {
+static Chain print_type(Chain chain, MEFAttr<MEFType> type) {
   printf("Type attribute: ");
   printType(type);
   printf("\n");
@@ -212,7 +212,7 @@ static void printIndent(unsigned indent) {
   fflush(stdout);
 }
 
-static void print_attr(BEFDynamicAttr value, unsigned indent) {
+static void print_attr(MEFDynamicAttr value, unsigned indent) {
   if (auto intAttr = dyn_cast<int32_t>(value)) {
     printf("sint32 = %d\n", intAttr->get());
   } else if (auto intAttr = dyn_cast<uint32_t>(value)) {
@@ -225,24 +225,24 @@ static void print_attr(BEFDynamicAttr value, unsigned indent) {
     print_array_i32(Chain(), *intArray);
   } else if (auto byteArray = dyn_cast<ArrayRef<uint8_t>>(value)) {
     print_array_uint8_hex(Chain(), *byteArray);
-  } else if (auto dict = dyn_cast<BEFDictionaryAttr>(value)) {
+  } else if (auto dict = dyn_cast<MEFDictionaryAttr>(value)) {
     printf("dictionary {\n");
-    for (const BEFDictionaryAttr::Element &elt : *dict) {
+    for (const MEFDictionaryAttr::Element &elt : *dict) {
       printIndent(indent + 1);
       printf("'%.*s': ", (int)elt.getName().size(), elt.getName().data());
       print_attr(elt.getValue(), indent + 1);
     }
     printIndent(indent);
     printf("}\n");
-  } else if (auto list = dyn_cast<BEFListAttr>(value)) {
+  } else if (auto list = dyn_cast<MEFListAttr>(value)) {
     printf("list [\n");
-    for (BEFDynamicAttr elt : *list) {
+    for (MEFDynamicAttr elt : *list) {
       printIndent(indent + 1);
       print_attr(elt, indent + 1);
     }
     printIndent(indent);
     printf("]\n");
-  } else if (auto type = dyn_cast<BEFAttr<BEFType>>(value)) {
+  } else if (auto type = dyn_cast<MEFAttr<MEFType>>(value)) {
     print_type(Chain(), type.value());
   } else {
     printf("unsupported attribute kind\n");
@@ -254,7 +254,7 @@ static void print_attr(BEFDynamicAttr value, unsigned indent) {
 // Dynamic attributes
 //===----------------------------------------------------------------------===//
 
-static Chain print_dynamic_attr(Chain chain, BEFDynamicAttr value) {
+static Chain print_dynamic_attr(Chain chain, MEFDynamicAttr value) {
   print_attr(value, 0);
   return chain;
 }
@@ -291,7 +291,7 @@ public:
   int32_t v;
 };
 
-static VTValue vt_constant(BEFAttr<int32_t> v) { return VTValue(*v); }
+static VTValue vt_constant(MEFAttr<int32_t> v) { return VTValue(*v); }
 
 static VTValue vt_add(const VTValue &lhs, const VTValue &rhs) {
   return VTValue(lhs.v + rhs.v);
@@ -365,7 +365,7 @@ static std::pair<ErrorOr<int32_t>, ErrorOr<int32_t>> partial_fail() {
 // Primitive for testing cancellation logic.
 static Chain cancel(Chain inChain, EncodedLocation location, Runtime &runtime) {
   // Do NOT do this in a normal primitive. Runtime::cancelExecution() should
-  // only be called by clients external to the BEFExecutor.
+  // only be called by clients external to the MEFExecutor.
   runtime.cancelExecution(EncodedDiagnostic{"Cancelled!", std::move(location)});
   return inChain;
 }
@@ -440,7 +440,7 @@ static void async_error(IndirectResult result1, IndirectResult result2,
 
 /// This creates a programmatic number of waiters on an async value, then
 /// completes it.
-static int32_t test_async_many_waiters(BEFAttr<int32_t> num, Runtime &runtime) {
+static int32_t test_async_many_waiters(MEFAttr<int32_t> num, Runtime &runtime) {
   auto av = AsyncValueRef<int32_t>::allocate(runtime);
   auto done = AsyncValueRef<Chain>::allocate(runtime);
   std::atomic<int32_t> result = 0;
@@ -457,7 +457,7 @@ static int32_t test_async_many_waiters(BEFAttr<int32_t> num, Runtime &runtime) {
 
 /// This creates a programmatic # tasks as stress test.  This is not written
 /// in an idiomatic style, do not follow this pattern!
-static void test_many_tasks(Result<int32_t> result, BEFAttr<int32_t> num,
+static void test_many_tasks(Result<int32_t> result, MEFAttr<int32_t> num,
                             Runtime &runtime) {
   if (*num == 0)
     return result.setToError("zero not supported");
@@ -546,7 +546,7 @@ struct TestFloat32Vector {
 };
 } // namespace
 
-static TestVector vec_iota(BEFAttr<int32_t> number) {
+static TestVector vec_iota(MEFAttr<int32_t> number) {
   TestVector result;
   result.values.reserve(*number);
   for (int32_t i = 0, e = *number; i != e; ++i)
@@ -554,8 +554,8 @@ static TestVector vec_iota(BEFAttr<int32_t> number) {
   return result;
 }
 
-static TestFloat32Vector vec_float32_iota(BEFAttr<int32_t> size,
-                                          BEFAttr<float> step) {
+static TestFloat32Vector vec_float32_iota(MEFAttr<int32_t> size,
+                                          MEFAttr<float> step) {
   TestFloat32Vector result;
   result.values.reserve(*size);
   for (int32_t i = 0, e = *size; i != e; ++i)
@@ -563,7 +563,7 @@ static TestFloat32Vector vec_float32_iota(BEFAttr<int32_t> size,
   return result;
 }
 
-static TestVector vec_constant(BEFAttr<int32_t> size, BEFAttr<int32_t> value) {
+static TestVector vec_constant(MEFAttr<int32_t> size, MEFAttr<int32_t> value) {
   TestVector result;
   result.values.reserve(*size);
   for (int32_t i = 0, e = *size; i != e; ++i)
@@ -571,8 +571,8 @@ static TestVector vec_constant(BEFAttr<int32_t> size, BEFAttr<int32_t> value) {
   return result;
 }
 
-static TestFloat32Vector vec_float32_constant(BEFAttr<int32_t> size,
-                                              BEFAttr<float> value) {
+static TestFloat32Vector vec_float32_constant(MEFAttr<int32_t> size,
+                                              MEFAttr<float> value) {
   TestFloat32Vector result;
   result.values.reserve(*size);
   for (int32_t i = 0, e = *size; i != e; ++i)

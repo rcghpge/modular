@@ -11,7 +11,7 @@
 #ifndef GENERICML_MGPDIALECT_MGPOPS_TD
 #define GENERICML_MGPDIALECT_MGPOPS_TD
 
-include "GraphRT/BEFDialect/BEFTypes.td"
+include "GraphRT/MEFDialect/MEFTypes.td"
 include "Support/MDialect/MAttrs.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/SymbolInterfaces.td"
@@ -46,7 +46,7 @@ def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant",
     inline byte arrays with a given (optional) alignment. `dense_resource`
     can be used for large, out-of-line byte arrays with a (optional) alignment
     encoded in the resource blob. Any such alignment will be respected
-    by the constant buffer when recovered from the BEF file. Furthermore, the
+    by the constant buffer when recovered from the MEF file. Furthermore, the
     alignment will also be respected by any deep copies of the constant
     buffer.
 
@@ -304,7 +304,7 @@ def CpuBufferReallocStaticOp : MGP_Op<"cpu.buffer.realloc.static", [
     Example:
     ```mlir
     %ctx : !mgp.context
-    %ch : !bef.chain
+    %ch : !mef.chain
 
     // Reallocate the buffer in slot index 42 and buffer index 2.
     %buf = mgp.cpu.buffer.realloc.static %ch, %ctx[42, 2], 64 {align = 8 : ui64}
@@ -357,7 +357,7 @@ def CpuBufferReallocDynamicOp : MGP_Op<"cpu.buffer.realloc.dynamic", [
     ```mlir
     %ctx : !mgp.context
     %size : index
-    %ch : !bef.chain
+    %ch : !mef.chain
 
     // Reallocate the buffer in slot index 42 and buffer index 2.
     %buf = mgp.cpu.buffer.realloc.dynamic %ch, %ctx[42, 2], %size {align = 8 : ui64}
@@ -409,7 +409,7 @@ def CpuBufferReallocSpecOp : MGP_Op<"cpu.buffer.realloc.spec", [
     ```mlir
     %ctx : !mgp.context
     %spec : !mgp.cpu.tensor_spec<?x64xf32>
-    %ch : !bef.chain
+    %ch : !mef.chain
 
     // Reallocate the buffer in slot index 42 and buffer index 2.
     %buf = mgp.cpu.buffer.realloc.spec %ch, %ctx[42, 2], %spec {align = 8 : ui64} : !mgp.cpu.tensor_spec<?x64xf32>
@@ -541,12 +541,12 @@ def StateSlotCreateOp : MGP_Op<"state_slot.create"> {
     Example:
     ```mlir
     %ctx : !mgp.context
-    %ch0 : !bef.chain
+    %ch0 : !mef.chain
 
     // Creates a default state slot at index 42 with room for
     // two buffers.
     %ch1 = mgp.state_slot.create %ch0, %ctx[42], 2
-    %ch1 : !bef.chain
+    %ch1 : !mef.chain
     ```
   }];
 
@@ -597,7 +597,7 @@ def CpuTensorSpecCreateOp : MGP_Op<"cpu.tensor_spec.create", [Pure,
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
   // NOTE: The two attributes effectively encode the result's tensor spec type
-  // in a form understandable by BEF.
+  // in a form understandable by MEF.
   let arguments = (ins Variadic<Index>:$runtimeDims,
                    UI64ArrayElementsAttr:$aRawDims,  // 0
                    UI8Attr:$bRawDType);              // 1
@@ -648,7 +648,7 @@ def CpuTensorSpecCreateDynamicOp : MGP_Op<"cpu.tensor_spec.create.dynamic", [
   }];
 
   // NOTE: The attribute effectively encodes the shape of the result's tensor
-  // spec type in a form understandable by BEF.
+  // spec type in a form understandable by MEF.
   let arguments = (ins MGP_DTypeType:$runtimeDType,
                    Variadic<Index>:$runtimeDims,
                    UI64ArrayElementsAttr:$rawDims);
@@ -796,7 +796,7 @@ def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
 
     Example:
     ```mlir
-    %ch : !bef.chain
+    %ch : !mef.chain
 
     %spec : !mgp.cpu.tensor_spec<4x16xf32>
     %buf : !mgp.cpu.buffer<256>
@@ -926,9 +926,9 @@ def DebugCpuTensorPrint : MGP_Op<"debug.cpu.tensor.print"> {
     Example:
     ```mlir
     %tensor : !mgp.cpu.tensor<8x64xf32>
-    %ch0 : !bef.chain
+    %ch0 : !mef.chain
     %ch1 = mgp.debug.cpu.tensor.print %tensor : !mgp.cpu.tensor<8x64xf32>
-    %ch1 : !bef.chain
+    %ch1 : !mef.chain
     ```
   }];
 
@@ -1009,11 +1009,11 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">, Symbol,
     representing its 'init' and 'execute' entry points.
 
     The 'init' entry point has the implicit signature:
-      () -> (!bef.chain, !mgp.context)
+      () -> (!mef.chain, !mgp.context)
 
     The 'execute' entry point has the implicit signature:
-      (!bef.chain, !mgp.context, in1, ..., inn) ->
-      (!bef.chain, res1, ..., resm)
+      (!mef.chain, !mgp.context, in1, ..., inn) ->
+      (!mef.chain, res1, ..., resm)
     where:
       (in1, ..., inn) -> (res1, ..., resm)
     is given as the op's explicit signature.
@@ -1029,21 +1029,21 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">, Symbol,
 
     The input and result types in the signature cannot depend on any
     framework- or mgp-specific types, and must instead use only MLIR builtin
-    (eg tensor), Modular (eg !M.array) and BEF (eg !bef.unknown) types.
-    (Perhaps we need a !bef.anyasyncvalue type?).
+    (eg tensor), Modular (eg !M.array) and MEF (eg !mef.unknown) types.
+    (Perhaps we need a !mef.anyasyncvalue type?).
 
     Example:
     ```mlir
     // At the top-level
     mgp.model @example_model : tfl { attr="value" }
       init {
-        %ch = bef.chain.new
+        %ch = mef.chain.new
         %ctx = mgp.context.create 0
-        bef.output %ch, %ctx : !bef.chain, !mgp.context
+        mef.output %ch, %ctx : !mef.chain, !mgp.context
       }
-      execute (%ch: !bef.chain, %ctx: !mgp.context, %arg: tensor<?x4x16xf32>)
-              -> (!bef.chain, tensor<?x10xf32>) {
-        bef.output %ch, %arg : !bef.chain, tensor<?x4x16xf32>
+      execute (%ch: !mef.chain, %ctx: !mgp.context, %arg: tensor<?x4x16xf32>)
+              -> (!mef.chain, tensor<?x10xf32>) {
+        mef.output %ch, %arg : !mef.chain, tensor<?x4x16xf32>
       }
     ```
   }];
@@ -1056,7 +1056,7 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">, Symbol,
   //    DerivedAttributeOpInterface to recover sym_name if we really wanted
   //    that.
   //  - The attributes are accessed by index within M::Module subclasses and
-  //    BEF metadata extraction, and that index matches the MLIR canonical
+  //    MEF metadata extraction, and that index matches the MLIR canonical
   //    asciibetical order.
   //  - The extra attributes must appear last since optional.
   let arguments = (ins ModelFrameworkAttr:$frameworkName,               // 0

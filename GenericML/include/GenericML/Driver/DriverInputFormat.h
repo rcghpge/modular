@@ -19,8 +19,8 @@ namespace M {
 enum class FileFormat {
   kUnknown = 0,
 
-  /// This looks like a BEF file of unknown contents.
-  kBEFFile,
+  /// This looks like a MEF file of unknown contents.
+  kMEFFile,
 
   /// This looks like a textual MLIR file with the faux dialect in it.
   kFauxDialect,
@@ -60,8 +60,8 @@ public:
       "input-format", cl::desc("input file format override"),
       cl::values(clEnumValN(FileFormat::kTFLFlatBuffer, "tflite-flat-buffer",
                             "Input is a TFLite flatbuffer file"),
-                 clEnumValN(FileFormat::kBEFFile, "bef",
-                            "Input is an executable BEF file"),
+                 clEnumValN(FileFormat::kMEFFile, "mef",
+                            "Input is an executable MEF file"),
                  clEnumValN(FileFormat::kTFSavedModel, "tf-saved-model",
                             "Input is a TF SavedModel directory")),
       cl::init(FileFormat::kUnknown)};

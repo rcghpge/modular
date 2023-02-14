@@ -14,7 +14,7 @@
 #include "GenericML/MGPDialect/MGPAttrs.h"
 #include "GenericML/MGPDialect/MGPDialect.h"
 #include "GenericML/MGPDialect/MGPTypes.h"
-#include "GraphRT/BEFDialect/BEFOps.h"
+#include "GraphRT/MEFDialect/MEFOps.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/MDialect/MAttrs.h"
 #include "Support/ML/SizeUtils.h"

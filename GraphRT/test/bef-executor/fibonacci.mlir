@@ -1,11 +1,11 @@
-// RUN: bef-translate -export-bef -allow-unregistered-dialect %s -o %t.bef
-// RUN: bef-executor %t.bef | FileCheck %s
+// RUN: mef-translate -export-mef -allow-unregistered-dialect %s -o %t.mef
+// RUN: mef-executor %t.mef | FileCheck %s
 
-bef.invokable @fib(%arg: si32) -> si32 {
+mef.invokable @fib(%arg: si32) -> si32 {
   %one = grt.constant.si32 1
   %cond = grt.lessequal.si32 %arg, %one
   %res = grt.if %cond (%arg: si32) -> si32 {
-    bef.output %arg : si32
+    mef.output %arg : si32
   } else {
     %min_one = grt.constant.si32 -1
     %n_min_one = grt.add.si32 %arg, %min_one
@@ -13,10 +13,10 @@ bef.invokable @fib(%arg: si32) -> si32 {
     %fib_n_min_one = grt.invoke @fib(%n_min_one) : (si32) -> (si32)
     %fib_n_min_two = grt.invoke @fib(%n_min_two) : (si32) -> (si32)
     %sum = grt.add.si32 %fib_n_min_one, %fib_n_min_two
-    bef.output %sum : si32
+    mef.output %sum : si32
   }
 
-  bef.output %res : si32
+  mef.output %res : si32
 }
 
 // CHECK-LABEL: --- Running 'fib_driver'
@@ -47,5 +47,5 @@ grt.testcase @fib_driver {
   // CHECK: int32 = 987
   %ch4 = grt.print.si32 %fib16, %ch3
 
-  bef.output
+  mef.output
 }

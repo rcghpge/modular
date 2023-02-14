@@ -26,7 +26,7 @@ will provide an error message and exit.
 The next step is to perform any prerequisites to the command specified. For
 example, if the input file is a TFLite flatbuffer file and the command was
 `-execute`, `mt` will load the `tfl` framework and ask it to compile the input
-into a BEF file, then ask the framework to execute the resulting BEF file.
+into a MEF file, then ask the framework to execute the resulting MEF file.
 
 The tool has a set of command line options that it recognizes and parses into
 a C++ structure. These are the set of options that can be found in

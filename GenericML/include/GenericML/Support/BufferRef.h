@@ -88,7 +88,7 @@ public:
     /// (Technically we could have a lifetime to describe the executor itself,
     /// however there doesn't seem to be any need for it.)
 
-    /// The buffer is a constant (eg an attribute in a BEFFile or some other
+    /// The buffer is a constant (eg an attribute in a MEFFile or some other
     /// mmapped memory). The constant may be shared between multiple executors.
     kConstant = 2,
   };

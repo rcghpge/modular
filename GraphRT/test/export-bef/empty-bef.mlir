@@ -1,4 +1,4 @@
-// RUN: bef-translate -export-bef %s -o %t
+// RUN: mef-translate -export-mef %s -o %t
 // RUN: od -t x1 %t | FileCheck %s
 
 // Empty file.  Check to make sure the magic number is right.
