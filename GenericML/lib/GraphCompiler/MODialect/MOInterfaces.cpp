@@ -103,7 +103,7 @@ LogicalResult SlidingWindow::verifyWindowParamShape(
   if (TensorType inputTy = input.getType(); inputTy.hasRank()) {
     if (TensorType windowParamTy = windowParam.getType();
         windowParamTy.hasStaticShape())
-      if (static_cast<size_t>(windowParamTy.getShape()[0]) != inputTy.getRank())
+      if (static_cast<size_t>(windowParamTy.getIntDim(0)) != inputTy.getRank())
         return emitError(name) << " with static size must match rank of input";
   }
   return success();

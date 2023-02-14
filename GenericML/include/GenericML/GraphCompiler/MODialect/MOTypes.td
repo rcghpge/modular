@@ -30,7 +30,7 @@ class MO_Type<string name, string typeMnemonic, list<Trait> traits = []>
 def MO_ShapeType : MO_Type<"Shape", "shape", [
   DeclareTypeInterfaceMethods<ParameterTypeInterface>]>;
 
-def MO_Tensor : MO_Type<"Tensor", "tensor", [ShapedTypeInterface]> {
+def MO_Tensor : MO_Type<"Tensor", "tensor"> {
   let summary = "Type of tensor specs of statically known rank.";
   let description = [{
     This type represents the shape and element type of a tensor. The shape is
@@ -52,12 +52,11 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [ShapedTypeInterface]> {
   let parameters = (ins
     "TypedAttr" : $shapeAttr,
     "DType" : $dtype,
-    ArrayRefParameter<"int64_t">:$shape,
     DefaultValuedParameter<"std::optional<Attribute>", "std::nullopt"> : $metadata);
 
   let genVerifyDecl = 1;
   let assemblyFormat = [{
-    `<` custom<ShapeParam>($shapeAttr, $shape) `,` $dtype ( `,` $metadata^)? `>`
+    `<` custom<ShapeParam>($shapeAttr) `,` $dtype ( `,` $metadata^)? `>`
   }];
 
   let builders = [
@@ -75,10 +74,10 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [ShapedTypeInterface]> {
       CArg<"std::optional<Attribute>", "std::nullopt"> : $metadata)>];
 
   let extraClassDeclaration = [{
-    /// Returns clone with given element type, which must be representable as a
-    /// dtype. Needed for ShapedTypeInterface compatibility.
-    ShapedType cloneWith(std::optional<ArrayRef<int64_t>> shape, Type dtype,
-                         std::optional<Attribute> metadata = std::nullopt) const;
+    /// Returns a clone with a new integer shape and element dtype.
+    TensorType cloneWith(
+      std::optional<ArrayRef<int64_t>> shape, Type dtype,
+      std::optional<Attribute> metadata = std::nullopt) const;
 
     /// Returns clone with a new shape attribute.
     TensorType cloneWith(TypedAttr shapeAttr) const;

@@ -7,12 +7,20 @@
 #ifndef GENERICML_GRAPHCOMPILER_CONVERSION_SUPPORT_H
 #define GENERICML_GRAPHCOMPILER_CONVERSION_SUPPORT_H
 
+#include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 
 namespace M::MGP {
 
-template <typename T>
-static MGP::CpuTensorSpecType createCpuTensorSpec(const T &tensor) {
+inline MGP::CpuTensorSpecType createCpuTensorSpec(MO::TensorType tensor) {
+  // TODO: Check for dynamic shape
+  SmallVector<int64_t> shape{}; // Defaults to unknown shape.
+  if (isa<MO::ShapeAttr>(tensor.getShapeAttr()))
+    shape = tensor.getIntDims();
+  return MGP::CpuTensorSpecType::get(shape, tensor.getElementType());
+}
+
+inline MGP::CpuTensorSpecType createCpuTensorSpec(mlir::ShapedType tensor) {
   // TODO: Check for dynamic shape
   ArrayRef<int64_t> shape = tensor.getShape();
   return MGP::CpuTensorSpecType::get(shape, tensor.getElementType());

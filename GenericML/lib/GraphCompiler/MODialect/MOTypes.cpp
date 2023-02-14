@@ -62,12 +62,6 @@ static void printShapeParam(AsmPrinter &p, TypedAttr shapeAttr) {
   }
 }
 
-/// This version is required by `custom<ShapeParam>`
-static void printShapeParam(AsmPrinter &p, TypedAttr shapeAttr,
-                            ArrayRef<int64_t> shape) {
-  printShapeParam(p, shapeAttr);
-}
-
 static ParseResult parseShapeParam(AsmParser &p, TypedAttr &shapeAttr) {
   auto shapeTy = p.getBuilder().getType<MO::ShapeType>();
   if (succeeded(p.parseOptionalQuestion())) {
@@ -95,16 +89,6 @@ static ParseResult parseShapeParam(AsmParser &p, TypedAttr &shapeAttr) {
             "literal shape reference (i.e. `[...]`)";
 }
 
-static ParseResult parseShapeParam(AsmParser &p, TypedAttr &shapeAttr,
-                                   SmallVector<int64_t> &shape) {
-  auto parseResult = parseShapeParam(p, shapeAttr);
-  if (succeeded(parseResult)) {
-    if (auto attr = dyn_cast<MO::ShapeAttr>(shapeAttr))
-      shape = attr.getIntDims();
-  }
-  return parseResult;
-}
-
 //===----------------------------------------------------------------------===//
 // Tensor
 //===----------------------------------------------------------------------===//
@@ -113,16 +97,11 @@ static ParseResult parseShapeParam(AsmParser &p, TypedAttr &shapeAttr,
 /// that the element type in DType form is also representable as an MLIR type.
 LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
                                  TypedAttr shapeAttr, DType dtype,
-                                 ArrayRef<int64_t> shape,
                                  std::optional<Attribute> metadata) {
   if (auto unkAttr = llvm::dyn_cast<KGEN::UnknownAttr>(shapeAttr)) {
     if (Type ty = unkAttr.getType(); !llvm::isa<MO::ShapeType>(ty)) {
       return emitError() << "unknown shape attribute must have ShapeType, got "
                          << ty;
-    }
-    if (!shape.empty()) {
-      return emitError()
-             << "hidden shape not empty when shape attribute is unknown";
     }
     return mlir::success();
   }
@@ -131,18 +110,12 @@ LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
       return emitError()
              << "shape parameter reference must have ShapeType, got " << ty;
     }
-    if (!shape.empty()) {
-      return emitError() << "hidden shape not empty when shape attribute is "
-                            "parameter reference";
-    }
     return success();
   }
 
   auto attr = llvm::dyn_cast<MO::ShapeAttr>(shapeAttr);
   if (!attr)
     return emitError() << "invalid shape attribute " << shapeAttr;
-  if (!shape.equals(attr.getIntDims()))
-    return emitError() << "hidden shape does not match shape attribute";
   return success();
 }
 
@@ -181,10 +154,7 @@ ErrorOr<Type> static toMLIRType(MLIRContext *context, DType dType) {
 
 TensorType TensorType::get(TypedAttr shapeAttr, DType dtype,
                            std::optional<Attribute> metadata) {
-  SmallVector<int64_t> hiddenShape{};
-  if (auto attr = llvm::dyn_cast<MO::ShapeAttr>(shapeAttr))
-    hiddenShape = attr.getIntDims();
-  return get(shapeAttr.getContext(), shapeAttr, dtype, hiddenShape, metadata);
+  return get(shapeAttr.getContext(), shapeAttr, dtype, metadata);
 }
 
 TensorType TensorType::get(TypedAttr shapeAttr, Type elementType,
@@ -202,7 +172,7 @@ TensorType TensorType::get(ArrayRef<int64_t> shape, Type elementType,
   return get(newShape, elementType, metadata);
 }
 
-ShapedType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
+TensorType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
                                  Type dtype,
                                  std::optional<Attribute> metadata) const {
   auto shapeTy = MO::ShapeType::get(getContext());
@@ -221,7 +191,7 @@ ShapedType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
 
 TensorType TensorType::cloneWith(TypedAttr shapeAttr) const {
   return TensorType::get(shapeAttr.getContext(), shapeAttr, getDtype(),
-                         getShape(), getMetadata());
+                         getMetadata());
 }
 
 bool TensorType::hasRank() const {

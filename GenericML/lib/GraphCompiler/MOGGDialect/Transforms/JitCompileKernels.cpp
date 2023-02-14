@@ -74,7 +74,7 @@ std::string createMangledName(MOGG::ElementwiseOp op) {
 
     // Mangle the type into the name.
     auto tensor = cast<MO::TensorType>(v.getType());
-    for (int64_t dim : tensor.getShape()) {
+    for (int64_t dim : tensor.getIntDims()) {
       name += ShapedType::isDynamic(dim) ? "?" : std::to_string(dim);
       name += "x";
     }
