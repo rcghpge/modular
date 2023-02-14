@@ -715,7 +715,8 @@ def MO_ConcatOp : MO_Op<"concat", [Pure]> {
   let hasVerifier = 1;
 }
 
-def MO_TransposeOp : MO_Op<"transpose", [Pure]> {
+def MO_TransposeOp : MO_Op<"transpose",
+    [Pure, DeclareOpInterfaceMethods<MO_Parameterization>]> {
   let summary = "Transpose Operation";
   let description = [{
     Return a new Tensor as the result of permuting the dimensions of the input
@@ -737,10 +738,14 @@ def MO_TransposeOp : MO_Op<"transpose", [Pure]> {
     ```
   }];
 
-  let arguments = (ins MO_Tensor:$input, MO_ShapeLike:$perm);
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_ShapeLike:$perm,
+    MO_ParamDecls:$paramDecls);
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `` custom<ParamDecls>($paramDecls) `(` operands `)` attr-dict
+    `:` functional-type(operands, results)
   }];
 
   let hasVerifier = 1;
