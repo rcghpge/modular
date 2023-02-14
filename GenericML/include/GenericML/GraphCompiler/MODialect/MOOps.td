@@ -716,6 +716,20 @@ def MO_TransposeOp : MO_Op<"transpose", [Pure]> {
     Return a new Tensor as the result of permuting the dimensions of the input
     tensor according to the value of perm.
 
+    Example:
+
+    ```mlir
+    %input : !mo.tensor<[2, 3], f32>
+    %perm : !mo.tensor<[2], si64>
+    %res = mo.transpose(%input, %perm) : (
+      !mo.tensor<[2, 3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[3, 2], f32>
+
+    %input : !mo.tensor<[?, 5, ?], f32>
+    %perm : !mo.tensor<[3], si32>
+    %res = mo.transpose(%input, %perm) : (
+      !mo.tensor<[?, 5, ?], f32>, !mo.tensor<[3], si32>
+    ) -> !mo.tensor<[?, 5, ?], f32>
+    ```
   }];
 
   let arguments = (ins MO_Tensor:$input, MO_ShapeLike:$perm);
@@ -723,6 +737,8 @@ def MO_TransposeOp : MO_Op<"transpose", [Pure]> {
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
+
+  let hasVerifier = 1;
 }
 
 def MO_PadOp : MO_Op<"pad", [Pure]> {

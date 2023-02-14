@@ -191,6 +191,38 @@ OpFoldResult RebindOp::fold(FoldAdaptor adaptor) {
 }
 
 //===----------------------------------------------------------------------===//
+// MO_TransposeOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TransposeOp::verify() {
+  // The permutation has known shape iff the argument and result are statically
+  // ranked.
+  TensorType permTy = getPerm().getType();
+  TensorType inputTy = getInput().getType();
+  TensorType resTy = getResult().getType();
+  if (!permTy.hasStaticShape()) {
+    if (inputTy.hasRank() || resTy.hasRank()) {
+      return emitError("argument and result must be dynamically ranked if perm "
+                       "has unknown shape");
+    }
+    return success();
+  }
+
+  if (!inputTy.hasRank() || !resTy.hasRank()) {
+    return emitError("argument and result must be statically ranked if perm "
+                     "has known shape");
+  }
+
+  if (inputTy.getRank() != resTy.getRank())
+    return emitError("input and result ranks do not match");
+
+  // ODS constraints ensure that perm has rank = 1.
+  if ((int64_t)resTy.getRank() != permTy.getIntDim(0))
+    return emitError("input and result ranks do not match perm size");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 
