@@ -33,12 +33,13 @@
 namespace M::MO {
 
 void registerDialectsAndPasses(mlir::DialectRegistry &registry) {
-  registry.insert<MO::MODialect, MOGG::MOGGDialect,
+  registry
+      .insert<MO::MODialect, MOGG::MOGGDialect,
 
-                  // The dialects needed for KGEN.
-                  DebugInfo::DebugInfoDialect, Cache::CacheDialect,
-                  HLCF::HLCFDialect, mlir::index::IndexDialect,
-                  mlir::LLVM::LLVMDialect, mlir::scf::SCFDialect>();
+              // The dialects needed for KGEN.
+              KGEN::KGENDialect, DebugInfo::DebugInfoDialect,
+              Cache::CacheDialect, HLCF::HLCFDialect, mlir::index::IndexDialect,
+              mlir::LLVM::LLVMDialect, mlir::scf::SCFDialect>();
 
   // The elaborator requires LLVM lowering to run the generated functions.
   mlir::registerLLVMDialectTranslation(registry);
