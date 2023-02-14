@@ -46,6 +46,10 @@ class MO_ElementWiseBinaryOp<string name, list<Trait> traits = []>
   let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y);
 }
 
+/// Helps declare optional parameter declaration arguments.
+def MO_ParamDecls : DefaultValuedAttr<KGEN_ParamDeclArrayAttr,
+                                      "ArrayRef<ParamDeclAttr>({})">;
+
 //===----------------------------------------------------------------------===//
 // GraphOp
 //===----------------------------------------------------------------------===//
@@ -110,11 +114,12 @@ def MO_OutputOp
     Example:
 
     ```mlir
-    mo.graph @output_without_bindings(%arg0: !mo.tensor<?, f32>) -> (!mo.tensor<?, f32>) {
+    mo.graph @no_params(%arg0: !mo.tensor<?, f32>) -> (!mo.tensor<?, f32>) {
       mo.output %arg0 : !mo.tensor<?, f32>
     }
 
-    mo.graph @output_with_bindings<D1 -> D2>(%arg0: !mo.tensor<[D1], f32>) -> (!mo.tensor<[D2], f32>) {
+    mo.graph @with_params<D1 -> D2>(
+        %arg0: !mo.tensor<[D1], f32>) -> (!mo.tensor<[D2], f32>) {
       %out = mo.rebind(%arg0) : !mo.tensor<[D1], f32> -> !mo.tensor<[D2], f32>
       mo.output<D1> %out : !mo.tensor<[D2], f32>
     }
@@ -123,11 +128,13 @@ def MO_OutputOp
 
   let arguments = (ins
     Variadic<AnyType>:$operands,
-    DefaultValuedAttr<KGEN_ParameterExprArrayAttr, "ArrayRef<TypedAttr>({})">:$parameters
+    DefaultValuedAttr<
+      KGEN_ParameterExprArrayAttr, "ArrayRef<TypedAttr>({})">:$parameters
   );
 
   let assemblyFormat = [{
-    `` custom<ParameterValues>($parameters) attr-dict ($operands^ `:` type($operands))?
+    `` custom<ParameterValues>($parameters) attr-dict
+    ($operands^ `:` type($operands))?
   }];
 
   let hasVerifier = 1;
@@ -151,14 +158,12 @@ def MO_RebindOp : MO_Op<"rebind", [Pure,
     %0 = mo.rebind(%arg0) : !mo.tensor<[?, ?], f32> -> !mo.tensor<[N, 1], f32>
     %1 = mo.rebind(%0) : !mo.tensor<[N, 1], f32> -> !mo.tensor<Sh, f32>
     %2 = mo.rebind(%1) : !mo.tensor<Sh, f32> -> !mo.tensor<[], f32>
-    %2 = mo.rebind(%1) : !mo.tensor<Sh, f32> -> !mo.tensor<[], f32>
+    %3 = mo.rebind<() -> K, M>(%0) :
+      !mo.tensor<[N, 1], f32> -> !mo.tensor<[K, M], f32>
     ```
   }];
 
-  let arguments = (ins
-    MO_Tensor:$input,
-    DefaultValuedAttr<KGEN_ParamDeclArrayAttr, "ArrayRef<ParamDeclAttr>({})">:$paramDecls
-  );
+  let arguments = (ins MO_Tensor:$input, MO_ParamDecls:$paramDecls);
 
   let results = (outs MO_Tensor:$result);
 
@@ -871,11 +876,7 @@ def MO_BatchMatmulOp : MO_DotBase<"batch_matmul",
   let arguments = (ins
     MO_Tensor:$input_a,
     MO_Tensor:$input_b,
-    KGEN_ParamDeclArrayAttr:$paramDecls);
-
-  let builders = [
-    OpBuilder<(ins "Type":$resTy, "Value":$inputA, "Value":$inputB)>,
-  ];
+    MO_ParamDecls:$paramDecls);
 
   let assemblyFormat = [{
     `` custom<ParamDecls>($paramDecls) `(` operands `)` attr-dict `:`

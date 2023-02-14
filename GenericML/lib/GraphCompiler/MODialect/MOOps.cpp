@@ -139,11 +139,6 @@ LogicalResult MatmulOp::verify() {
   return LogicalResult::success();
 }
 
-void BatchMatmulOp::build(OpBuilder &builder, OperationState &state, Type resTy,
-                          Value inputA, Value inputB) {
-  build(builder, state, resTy, inputA, inputB, ArrayRef<ParamDeclAttr>{});
-}
-
 LogicalResult BatchMatmulOp::verify() {
   // TODO: improve this verifier
   TensorType aType = getTensorA().getType();
