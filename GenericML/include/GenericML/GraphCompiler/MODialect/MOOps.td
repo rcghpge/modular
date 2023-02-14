@@ -121,17 +121,14 @@ def MO_OutputOp
     ```
   }];
 
-  let arguments = (ins KGEN_ParameterExprArrayAttr:$parameters,
-                       Variadic<AnyType>:$operands);
+  let arguments = (ins
+    Variadic<AnyType>:$operands,
+    DefaultValuedAttr<KGEN_ParameterExprArrayAttr, "ArrayRef<TypedAttr>({})">:$parameters
+  );
 
   let assemblyFormat = [{
     `` custom<ParameterValues>($parameters) attr-dict ($operands^ `:` type($operands))?
   }];
-
-  let builders = [
-    // Build with empty `parameters`; this is needed for backward compatibility.
-    OpBuilder<(ins "ValueRange":$operands)>,
-  ];
 
   let hasVerifier = 1;
 }

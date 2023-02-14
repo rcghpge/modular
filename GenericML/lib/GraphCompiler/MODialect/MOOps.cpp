@@ -63,12 +63,6 @@ void GraphOp::print(OpAsmPrinter &p) { KGEN::printGeneratorOrFunc(p, *this); }
 // OutputOp support
 //===----------------------------------------------------------------------===//
 
-void OutputOp::build(OpBuilder &builder, OperationState &state,
-                     ValueRange operands) {
-  auto emptyArrayAttr = ParameterExprArrayAttr::get(builder.getContext(), {});
-  build(builder, state, emptyArrayAttr, operands);
-}
-
 LogicalResult OutputOp::verify() {
   // ODS checks the parent is a GraphOp.
   auto graph = cast<GraphOp>(getOperation()->getParentOp());
