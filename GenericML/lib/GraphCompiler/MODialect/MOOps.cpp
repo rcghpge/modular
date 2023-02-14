@@ -66,8 +66,37 @@ void GraphOp::print(OpAsmPrinter &p) { KGEN::printGeneratorOrFunc(p, *this); }
 LogicalResult OutputOp::verify() {
   // ODS checks the parent is a GraphOp.
   auto graph = cast<GraphOp>(getOperation()->getParentOp());
+  if (graph.getResultParams().size() != this->getParameters().size())
+    return emitError(
+        "output bindings and result parameters must have the same size");
 
-  return checkResultTypes(getOperation(), graph.getResultTypes());
+  // Build a mapping from result param references to their binding attribute,
+  // example:
+  //  { (D1, 42), (Sh0, [D0, 10]) }
+  DenseMap<KGEN::ParamDeclRefAttr, TypedAttr> ResParamRefToBindingAttr;
+  for (auto [resParamDecl, bindingParam] :
+       llvm::zip(graph.getResultParams(), this->getParameters())) {
+    ResParamRefToBindingAttr.insert(
+        {KGEN::ParamDeclRefAttr::get(resParamDecl), bindingParam});
+  }
+
+  // Substitute param references inside graph result types using the map, which
+  // gives us the expected output operands type.
+  SmallVector<Type> expectedOutputOperandTypes;
+  for (Type ty : graph.getResultTypes()) {
+    if (auto tensorTy = dyn_cast<TensorType>(ty)) {
+      TypedAttr newShapeAttr = tensorTy.getShapeAttr().replace(
+          [&ResParamRefToBindingAttr](KGEN::ParamDeclRefAttr paramRef) {
+            TypedAttr resolvedAttr = ResParamRefToBindingAttr.lookup(paramRef);
+            return resolvedAttr ? resolvedAttr : paramRef;
+          });
+      expectedOutputOperandTypes.emplace_back(tensorTy.cloneWith(newShapeAttr));
+    } else {
+      expectedOutputOperandTypes.emplace_back(ty);
+    }
+  }
+
+  return checkResultTypes(getOperation(), expectedOutputOperandTypes);
 }
 
 //===----------------------------------------------------------------------===//

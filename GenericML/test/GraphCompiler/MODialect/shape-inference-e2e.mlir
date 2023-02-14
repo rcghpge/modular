@@ -39,7 +39,6 @@ mo.graph @unresolved_rebinds(
   %4 = mo.gelu(%3) : !mo.tensor<?, f32>
   // CHECK: %[[VAL5:.*]] = mo.sub(%[[VAL4]], %[[VAL3]]) : !mo.tensor<[[SH2]], f32>
   %5 = mo.sub(%4, %3) : !mo.tensor<?, f32>
-  // CHECK: %[[VAL6:.*]] = mo.rebind(%[[VAL5]]) : !mo.tensor<[[SH2]], f32> -> !mo.tensor<[[SH3]], f32>
-  // CHECK: mo.output<:!mo.shape [[SH2]]> %[[VAL6]] : !mo.tensor<[[SH3]], f32>
+  // CHECK: mo.output<:!mo.shape [[SH2]]> %[[VAL5]] : !mo.tensor<[[SH2]], f32>
   mo.output %5 : !mo.tensor<?, f32>
 }

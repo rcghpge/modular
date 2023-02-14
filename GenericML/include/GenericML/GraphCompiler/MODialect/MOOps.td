@@ -106,10 +106,11 @@ def MO_OutputOp
     : MO_Op<"output", [Terminator, ReturnLike, HasParent<"MO::GraphOp">]> {
   let summary = "MO output operation";
   let description = [{
-    The "mo.output" operation specifies the output values for a MO
-    function. The operation takes variable number of operands and produces
+    The "mo.output" operation specifies the output parameters and values for a
+    MO function. The operation takes variable number of operands and produces
     no results. The operand number and types must match the signature of
-    the mo.graph that contains the operation. For example:
+    the mo.graph that contains the operation (after substituting the bindings to
+    signature output type). For example:
 
     Example:
 
@@ -120,10 +121,13 @@ def MO_OutputOp
 
     mo.graph @with_params<D1 -> D2>(
         %arg0: !mo.tensor<[D1], f32>) -> (!mo.tensor<[D2], f32>) {
-      %out = mo.rebind(%arg0) : !mo.tensor<[D1], f32> -> !mo.tensor<[D2], f32>
-      mo.output<D1> %out : !mo.tensor<[D2], f32>
+      mo.output<D1> %arg0 : !mo.tensor<[D1], f32>
     }
     ```
+
+    Note that in the parameterized example, the output operands type annotation
+    don't match the graph's output type textually, but they match after
+    substituting the bindings into graph's output type.
   }];
 
   let arguments = (ins

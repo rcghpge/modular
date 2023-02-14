@@ -12,8 +12,8 @@ mo.graph @empty_parametric_graph<>(%arg: !mo.tensor<?, f32>) -> (!mo.tensor<?, f
 
 // CHECK: mo.graph @nullary_parametric_graph<() -> r1>(%[[ARG:.*]]: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
 mo.graph @nullary_parametric_graph<() -> r1>(%arg: !mo.tensor<?, f32>) -> (!mo.tensor<?, f32>) {
-  // CHECK-NEXT: mo.output %[[ARG]] : !mo.tensor<?, f32>
-  mo.output %arg : !mo.tensor<?, f32>
+  // CHECK-NEXT: mo.output<42> %[[ARG]] : !mo.tensor<?, f32>
+  mo.output<42> %arg : !mo.tensor<?, f32>
 }
 
 // CHECK: mo.graph @unary_void_parametric_graph<N>(%[[ARG:.*]]: !mo.tensor<[N], f32>) -> !mo.tensor<[N], f32> {
@@ -24,8 +24,8 @@ mo.graph @unary_void_parametric_graph<N: index>(%arg: !mo.tensor<[N], f32>) -> (
 
 // CHECK: mo.graph @binary_parametric_graph<A, B -> r1>(%[[ARG:.*]]: !mo.tensor<[A, B], f32>) -> !mo.tensor<[A, B], f32> {
 mo.graph @binary_parametric_graph<A: index, B: index -> r1>(%arg: !mo.tensor<[A, B], f32>) -> (!mo.tensor<[A, B], f32>) {
-  // CHECK-NEXT: mo.output %[[ARG]] : !mo.tensor<[A, B], f32>
-  mo.output %arg : !mo.tensor<[A, B], f32>
+  // CHECK-NEXT: mo.output<42> %[[ARG]] : !mo.tensor<[A, B], f32>
+  mo.output<42> %arg : !mo.tensor<[A, B], f32>
 }
 
 // CHECK: mo.graph @parametric_result<() -> D2>() {
@@ -38,10 +38,8 @@ mo.graph @parametric_result<() -> D2>() {
 
 // CHECK: mo.graph @output_with_bindings<D1 -> D2>(%[[ARG:.*]]: !mo.tensor<[D1], f32>) -> !mo.tensor<[D2], f32> {
 mo.graph @output_with_bindings<D1 -> D2>(%arg: !mo.tensor<[D1], f32>) -> (!mo.tensor<[D2], f32>) {
-  // CHECK-NEXT: %[[OUT:.*]] = mo.rebind(%[[ARG]]) : !mo.tensor<[D1], f32> -> !mo.tensor<[D2], f32>
-  %out = mo.rebind(%arg) : !mo.tensor<[D1], f32> -> !mo.tensor<[D2], f32>
-  // CHECK-NEXT: mo.output<D1> %[[OUT]] : !mo.tensor<[D2], f32>
-  mo.output<D1> %out : !mo.tensor<[D2], f32>
+  // CHECK-NEXT: mo.output<D1> %[[ARG]] : !mo.tensor<[D1], f32>
+  mo.output<D1> %arg : !mo.tensor<[D1], f32>
 }
 
 // CHECK: mo.graph @dyn_rank(%[[ARG0:.*]]: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
