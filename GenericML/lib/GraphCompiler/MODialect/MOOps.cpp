@@ -22,6 +22,7 @@
 
 using namespace M;
 using namespace MO;
+using namespace Shape;
 
 //===----------------------------------------------------------------------===//
 // MO_GraphOp support
