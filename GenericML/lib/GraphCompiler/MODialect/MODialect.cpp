@@ -7,6 +7,7 @@
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "KGEN/KGENDialect/KGENDialect.h"
 #include "Support/MDialect/MDialect.h"
+#include "mlir/Dialect/Index/IR/IndexDialect.h"
 
 using namespace M;
 using namespace MO;

@@ -32,7 +32,8 @@ def MODialect : Dialect {
   }];
 
   let cppNamespace = "::M::MO";
-  let dependentDialects = ["MDialect", "KGEN::KGENDialect"];
+  let dependentDialects = [
+    "MDialect", "KGEN::KGENDialect", "mlir::index::IndexDialect"];
   let useDefaultAttributePrinterParser = 1;
 
   let extraClassDeclaration = [{
