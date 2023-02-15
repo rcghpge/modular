@@ -9,6 +9,13 @@ kgen.func @assert(%arg0: index, %arg1: index) {
   kgen.return
 }
 
+// CHECK: kgen.func @concat(%[[ARG0:.*]]: !mo.shape, %[[ARG1:.*]]: !mo.shape) -> !mo.shape {
+kgen.func @concat(%sh0: !mo.shape, %sh1: !mo.shape) -> !mo.shape {
+  // CHECK: %[[VAL0:.*]] = mo.shape.concat(%[[ARG0]], %[[ARG1]])
+  %0 = mo.shape.concat(%sh0, %sh1)
+  kgen.return %0 : !mo.shape
+}
+
 // CHECK: kgen.func @equal(%[[ARG0:.*]]: !mo.shape, %[[ARG1:.*]]: !mo.shape) -> i1 {
 kgen.func @equal(%sh0: !mo.shape, %sh1: !mo.shape) -> i1 {
   // CHECK: %[[VAL0:.*]] = mo.shape.eq(%[[ARG0]], %[[ARG1]])

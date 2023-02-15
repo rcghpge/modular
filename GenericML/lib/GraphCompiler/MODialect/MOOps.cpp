@@ -22,7 +22,6 @@
 
 using namespace M;
 using namespace MO;
-using namespace Shape;
 
 //===----------------------------------------------------------------------===//
 // MO_GraphOp support
@@ -265,6 +264,8 @@ void Shape::SliceOp::build(OpBuilder &builder, OperationState &state,
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
+
+using namespace Shape;
 
 void MODialect::registerOperations() {
   addOperations<
