@@ -256,6 +256,12 @@ void Shape::GetDimOp::build(OpBuilder &builder, OperationState &state,
   build(builder, state, input, builder.getIndexAttr(dim));
 }
 
+void Shape::SliceOp::build(OpBuilder &builder, OperationState &state,
+                           Value input, int64_t start, int64_t end) {
+  build(builder, state, input, builder.getIndexAttr(start),
+        builder.getIndexAttr(end));
+}
+
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
