@@ -19,3 +19,10 @@ kgen.func @new_dim(%d0: index, %d1: index)
   %sh2 = mo.shape.new(%d0, %d1, %d0)
   kgen.return %sh0, %sh1, %sh2 : !mo.shape, !mo.shape, !mo.shape
 }
+
+// CHECK: kgen.func @get_rank(%[[SH0:.*]]: !mo.shape) -> index {
+kgen.func @get_rank(%sh0: !mo.shape) -> index {
+  // CHECK: %[[VAL0:.*]] = mo.shape.get_rank(%[[SH0]])
+  %0 = mo.shape.get_rank(%sh0)
+  kgen.return %0 : index
+}
