@@ -265,6 +265,8 @@ void Shape::SliceOp::build(OpBuilder &builder, OperationState &state,
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 
+// Needed because the type and attribute constraints in the generated file are
+// not placed in the correct namespace by tablegen.
 using namespace Shape;
 
 void MODialect::registerOperations() {
