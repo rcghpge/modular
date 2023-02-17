@@ -20,6 +20,14 @@ def ForwardShapeInferenceMaterialization :
   }];
 }
 
+def InlineShapeFunctions : Pass<"inline-shape-funcs", "GraphOp"> {
+  let summary = "Inlines shape functions into the graph.";
+  let description = [{
+    Inlines (already materialized) shape functions into the graph as parameter
+    computations.
+  }];
+}
+
 def PropagateShapes : Pass<"propagate-shapes", "GraphOp"> {
   let summary = "Propagates shape parameters through the graph.";
   let description = [{
