@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --resolve-unknown-parameters --materialize-fw-shape-funcs --inline-shape-funcs --propagate-shapes --canonicalize | FileCheck %s
+// RUN: mo-opt %s --resolve-unknown-parameters --materialize-shape-funcs --inline-shape-funcs --propagate-shapes --canonicalize | FileCheck %s
 
 // COM: For now shape functions remain in the module even after they are
 // COM: inlined, but this will be removed eventually.

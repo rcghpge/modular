@@ -63,22 +63,22 @@ def MO_Parameterization : OpInterface<"MOOpParameterizationInterface"> {
   }];
 }
 
-def MO_ForwardShapeInferenceMaterialization :
-    OpInterface<"MOForwardShapeInferenceMaterialization"> {
+def MO_ShapeInferenceMaterialization :
+    OpInterface<"MOShapeInferenceMaterialization"> {
   let description = [{
-    Forward shape inference materialization interface.
+    Shape inference materialization interface.
 
     Implementers of this interface are responsible for materializing the shape
-    inference function as IR in the module containing the op, as well as gluing
-    in the appropriate invocation in the graph.
+    inference functions as IR in the module containing the op, as well as gluing
+    in the appropriate invocations in the graph.
   }];
   let cppNamespace = "::M::MO";
   let dependentTraits = [MO_MOOpInterface];
 
   let methods = [
     InterfaceMethod<
-      "Materializes and invokes the shape inference function for the op.",
-      "LogicalResult", "materializeForwardShapeInference",
+      "Materializes and invokes the shape inference functions for the op.",
+      "LogicalResult", "materializeShapeInference",
       (ins "mlir::RewriterBase &":$rewriter)>,
   ];
 }

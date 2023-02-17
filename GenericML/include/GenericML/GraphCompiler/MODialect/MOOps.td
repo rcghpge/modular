@@ -149,7 +149,7 @@ def MO_OutputOp
 //===----------------------------------------------------------------------===//
 
 def MO_RebindOp : MO_Op<"rebind", [Pure,
-    DeclareOpInterfaceMethods<MO_ForwardShapeInferenceMaterialization>]> {
+    DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>]> {
   let summary = "tensor parameter rebind op";
   let description = [{
     Op to represent "rebinding" a value of `!mo.tensor<...>` type to another
@@ -867,7 +867,7 @@ def MO_MatmulOp : MO_DotBase<"matmul", [MO_MatmulLike]> {
 
 def MO_BatchMatmulOp : MO_DotBase<"batch_matmul",
     [MO_MatmulLike, DeclareOpInterfaceMethods<MO_Parameterization>,
-     DeclareOpInterfaceMethods<MO_ForwardShapeInferenceMaterialization>]> {
+     DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>]> {
   let summary = "Batched matrix-matrix multiplication";
   let description = [{
     Perform matrix multiplication on two batches of matrices, represented by

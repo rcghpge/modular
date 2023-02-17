@@ -9,14 +9,14 @@
 
 include "mlir/Pass/PassBase.td"
 
-def ForwardShapeInferenceMaterialization :
-    Pass<"materialize-fw-shape-funcs", "ModuleOp"> {
-  let summary = "Materializes the forward shape inference functions.";
+def ShapeInferenceMaterialization :
+    Pass<"materialize-shape-funcs", "ModuleOp"> {
+  let summary = "Materializes the shape inference functions.";
   let description = [{
-    Pass to materialize forward shape inference functions for ops that have
-    them, and add invocations to the graph. The ops need to be fully parametric
-    (i.e. unknown shapes or dimensions in the arguments and results are not
-    allowed). The shape inference functions are not evaluated.
+    Pass to materialize shape inference functions for ops that have them, and
+    add invocations to the graph. The ops need to be fully parametric (i.e.
+    unknown shapes or dimensions in the arguments and results are not allowed).
+    The shape inference functions are not evaluated.
   }];
 }
 
