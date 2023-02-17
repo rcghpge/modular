@@ -195,6 +195,30 @@ mo.graph @shape_of_rank_2(%arg: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[2, 1], s
 
 // -----
 
+mo.graph @shape_of_dyn_rank_static_res(%arg: !mo.tensor<?, f32>) -> !mo.tensor<[2], si64> {
+  // expected-error@+1 {{input must have static rank if result has known size}}
+  %res = mo.shape_of(%arg) : (!mo.tensor<?, f32>) -> !mo.tensor<[2], si64>
+  mo.output %res : !mo.tensor<[2], si64>
+}
+
+// -----
+
+mo.graph @shape_of_rank_mismatch(%arg: !mo.tensor<[1, ?], f32>) -> !mo.tensor<[1], si64> {
+  // expected-error@+1 {{input rank and output size must match}}
+  %res = mo.shape_of(%arg) : (!mo.tensor<[1, ?], f32>) -> !mo.tensor<[1], si64>
+  mo.output %res : !mo.tensor<[1], si64>
+}
+
+// -----
+
+mo.graph @shape_of_dyn_rank_static_res(%arg: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?], si64> {
+  // expected-error@+1 {{input must have dynamic rank if result has unknown size}}
+  %res = mo.shape_of(%arg) : (!mo.tensor<[?, ?], f32>) -> !mo.tensor<[?], si64>
+  mo.output %res : !mo.tensor<[?], si64>
+}
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // NumpyBroadcastOp
 //===----------------------------------------------------------------------===//

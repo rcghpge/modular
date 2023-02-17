@@ -617,6 +617,8 @@ def MO_ShapeOfOp : MO_Op<"shape_of",
     `` custom<ParamDecls>($paramDecls) `(` operands `)` attr-dict `:`
     functional-type(operands, results)
   }];
+
+  let hasVerifier = 1;
 }
 
 def MO_BroadcastShapeOp : MO_Op<"broadcast_shape", [Pure]> {

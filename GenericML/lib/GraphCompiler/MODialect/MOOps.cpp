@@ -215,6 +215,26 @@ OpFoldResult RebindOp::fold(FoldAdaptor adaptor) {
 }
 
 //===----------------------------------------------------------------------===//
+// MO_ShapeOfOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ShapeOfOp::verify() {
+  TensorType resTy = getResult().getType();
+  TensorType inputTy = getInput().getType();
+  if (resTy.hasStaticShape()) {
+    if (!inputTy.hasRank())
+      return emitError("input must have static rank if result has known size");
+    if ((int64_t)inputTy.getRank() != resTy.getIntDim(0))
+      return emitError("input rank and output size must match");
+    return success();
+  }
+
+  if (inputTy.hasRank())
+    return emitError("input must have dynamic rank if result has unknown size");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // MO_TransposeOp
 //===----------------------------------------------------------------------===//
 
