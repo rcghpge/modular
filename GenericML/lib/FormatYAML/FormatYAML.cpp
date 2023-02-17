@@ -63,39 +63,32 @@ LLVM_YAML_IS_SEQUENCE_VECTOR(M::QuantSpec::ScaleZeroPointPair);
 /// Parses a string of the form dim0xdim1x...xDType into a TensorSpec.
 static ErrorOrSuccess parseTensorSpec(llvm::yaml::IO &io, StringRef str,
                                       TensorSpec &tensorSpec) {
-  // Split the string by the "x" character.
-  SmallVector<StringRef, 5> splitStr;
-  str.split(splitStr, "x");
-
-  // Allocate the shape based on how many dimensions we have in the split
-  // string. We remove 1 element, since the DType is always present. We also
-  // account for the case where there are no elements --- i.e. the tensor is a
-  // scalar.
-  SmallVector<int64_t, 5> shape;
-  // If the string is empty, then there is nothing to be done.
-  if (!splitStr.empty()) {
-    shape.reserve(splitStr.size());
-    // Go through the split values ignoring the last element.
-    for (auto &it : llvm::drop_end(splitStr)) {
-      // Try to parse the string into an integer.
-      int64_t value;
-      if (it.getAsInteger(10, value)) {
-        return Error(Twine("could not parse dimension integer from string: ") +
-                     str + " because " + it +
-                     " cannot be parsed as an integer");
-      }
-      shape.emplace_back(value);
-    }
+  // dtype is the portion after the last 'x'.  Shape is the portion before
+  // that.  If there is no 'x', the whole string is the dtype.  (rsplit almost
+  // does this, but the no-'x' case would put the string in shape instead of
+  // dtype.)
+  auto lastXIndex = str.rfind('x');
+  StringRef shapeStr, dtypeStr;
+  if (lastXIndex == StringRef::npos) {
+    shapeStr = "";
+    dtypeStr = str;
+  } else {
+    shapeStr = str.slice(0, lastXIndex);
+    dtypeStr = str.slice(lastXIndex + 1, StringRef::npos);
   }
 
-  // We have parsed the shape, now we parse the DType.
-  auto dtype = DType::getFromString(splitStr.back());
+  auto shape = TensorShape::parseFromString(shapeStr);
+  if (failed(shape))
+    return Error(Twine("could not parse shape from string: ") + str + ": " +
+                 shape.getError());
+
+  auto dtype = DType::getFromString(dtypeStr);
   if (failed(dtype))
     return Error(Twine("could not parse dtype from string: ") + str +
-                 " because " + splitStr.back() + " is not a valid DType");
+                 " because " + dtypeStr + " is not a valid DType");
 
   // Create the tensor spec from the shape and dtype information.
-  tensorSpec = TensorSpec(shape, *dtype);
+  tensorSpec = TensorSpec(*shape, *dtype);
   return success();
 }
 
