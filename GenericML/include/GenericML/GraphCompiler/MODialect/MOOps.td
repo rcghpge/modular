@@ -592,7 +592,8 @@ def MO_ReshapeOp : MO_Op<"reshape", [Pure]> {
   }];
 }
 
-def MO_ShapeOfOp : MO_Op<"shape_of", [Pure]> {
+def MO_ShapeOfOp : MO_Op<"shape_of",
+    [Pure, DeclareOpInterfaceMethods<MO_Parameterization>]> {
   let summary = "ShapeOf Operation";
   let description = [{
     Get the shape of a tensor.
@@ -610,10 +611,11 @@ def MO_ShapeOfOp : MO_Op<"shape_of", [Pure]> {
     ```
   }];
 
-  let arguments = (ins MO_Tensor:$input);
+  let arguments = (ins MO_Tensor:$input, MO_ParamDecls:$paramDecls);
   let results = (outs MO_ShapeLike:$shape);
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `` custom<ParamDecls>($paramDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 
