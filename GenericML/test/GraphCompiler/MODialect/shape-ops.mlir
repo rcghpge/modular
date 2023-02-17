@@ -6,6 +6,8 @@ kgen.func @assert(%arg0: index, %arg1: index) {
   %0 = index.cmp eq(%arg0, %arg1)
   // CHECK: mo.shape.assert %[[VAL0]]
   mo.shape.assert %0
+  // CHECK: mo.shape.assert %[[VAL0]], "args are not equal"
+  mo.shape.assert %0, "args are not equal"
   kgen.return
 }
 

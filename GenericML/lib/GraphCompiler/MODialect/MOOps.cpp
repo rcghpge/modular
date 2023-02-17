@@ -270,6 +270,16 @@ LogicalResult TransposeOp::verify() {
 // Shape ops
 //===----------------------------------------------------------------------===//
 
+void Shape::AssertOp::build(OpBuilder &builder, OperationState &state,
+                            Value cond) {
+  build(builder, state, cond, StringAttr());
+}
+
+void Shape::AssertOp::build(OpBuilder &builder, OperationState &state,
+                            Value cond, StringRef message) {
+  build(builder, state, cond, builder.getStringAttr(message));
+}
+
 void Shape::GetDimOp::build(OpBuilder &builder, OperationState &state,
                             Value input, int64_t dim) {
   build(builder, state, input, builder.getIndexAttr(dim));
