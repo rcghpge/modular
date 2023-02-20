@@ -110,17 +110,17 @@ constraints in the verifier.  This shifts the checking burden from runtime to
 compiler, but it also means that MEF is **not** and will never be a memory safe
 "trusted compute" execution format like Java bytecode tried to be.
 
-## Binary Executor Format ("MEF") File Format
+## Modular Executor Format ("MEF") File Format
 
 To efficiently execute a kernel graph, the runtime does not directly process the
 program’s MLIR representation. Instead the
 [MLIRToMEF](../include/GraphRT/MLIRToMEF.h) library converts the program
-to an in-memory format called Binary Executor Format, or **MEF**.  The MEF
+to an in-memory format called Modular Executor Format, or **MEF**.  The MEF
 format is isomorphic to the MLIR representation, but is `mmap`-able, more
 cache-friendly, and requires many fewer dependencies for execution compared to
 executing MLIR's directly.  This is good for code size and performance.
-For more information on the file format, see the [Binary Executor Format (MEF)
-File Format](BinaryExecutorFormat.md) documentation.
+For more information on the file format, see the [Modular Executor Format (MEF)
+File Format](ModularExecutorFormat.md) documentation.
 
 ## MEF executor: why not call it an "interpreter"?
 

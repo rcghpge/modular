@@ -64,7 +64,7 @@ Here are some good entry point documents to understand the GraphRT library:
 - An overview of [Key Concepts in GraphRT](KeyConceptsInGraphRT.md).
 - A guide to [defining and implementing GraphRT
    primitives](DefiningPrimitives.md).
-- Documentation for the [MEF binary file format](BinaryExecutorFormat.md).
+- Documentation for the [MEF binary file format](ModularExecutorFormat.md).
 - Benchmarking with [`grt.benchmark`](Benchmarking.md).
 
 ## GraphRT code base
@@ -74,8 +74,8 @@ components of the GraphRT module are:
 
 1. a set of MLIR components for representing GraphRT programs, notably the
    [MEF Dialect](../include/GraphRT/MEFDialect) which defines `mef.invokable`.
-1. a binary file format named the ["Binary Executor Format"
-   (MEF)](BinaryExecutorFormat.md) which is designed to be compact and
+1. a binary file format named the ["Modular Executor Format"
+   (MEF)](ModularExecutorFormat.md) which is designed to be compact and
    efficiently executable by a low-dependency interpreter.
 1. the [MEFExecutor library](../include/GraphRT/MEFExecutor/) implements the
    interpreter for the MEF file.

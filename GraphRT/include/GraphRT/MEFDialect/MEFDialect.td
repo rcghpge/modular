@@ -16,7 +16,7 @@ include "mlir/IR/DialectBase.td"
 def MEFDialect : Dialect {
   let name = "mef";
 
-  let summary = "The 'mef' dialect for the BinaryExecutorFormat";
+  let summary = "The 'mef' dialect for the ModularExecutorFormat";
   let description = [{
     This dialect defines the `mef` dialect, which captures operations core to
     the GraphRT "MEF" executor.
