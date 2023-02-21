@@ -17,7 +17,6 @@ def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
         "M::KGEN::KGENDialect",
         "M::KGEN::POP::POPDialect",
         "mlir::index::IndexDialect",
-        "mlir::scf::SCFDialect",
         "M::Cache::CacheDialect",
         "M::DebugInfo::DebugInfoDialect",
         "mlir::LLVM::LLVMDialect",

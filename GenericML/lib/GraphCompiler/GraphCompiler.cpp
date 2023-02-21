@@ -28,18 +28,15 @@
 #include "Support/HLCFDialect/HLCFDialect.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
 
 namespace M::MO {
 
 void registerDialectsAndPasses(mlir::DialectRegistry &registry) {
-  registry
-      .insert<MO::MODialect, MOGG::MOGGDialect,
-
-              // The dialects needed for KGEN.
-              KGEN::KGENDialect, DebugInfo::DebugInfoDialect,
-              Cache::CacheDialect, HLCF::HLCFDialect, mlir::index::IndexDialect,
-              mlir::LLVM::LLVMDialect, mlir::scf::SCFDialect>();
+  registry.insert<MO::MODialect, MOGG::MOGGDialect,
+                  // The dialects needed for KGEN.
+                  KGEN::KGENDialect, DebugInfo::DebugInfoDialect,
+                  Cache::CacheDialect, HLCF::HLCFDialect,
+                  mlir::index::IndexDialect, mlir::LLVM::LLVMDialect>();
 
   // The elaborator requires LLVM lowering to run the generated functions.
   mlir::registerLLVMDialectTranslation(registry);

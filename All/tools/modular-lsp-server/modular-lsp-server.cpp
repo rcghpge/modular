@@ -30,7 +30,6 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MLProgram/IR/MLProgram.h"
 #include "mlir/Dialect/Quant/QuantOps.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/Tools/mlir-lsp-server/MlirLspServerMain.h"
 
@@ -43,7 +42,6 @@ int main(int argc, char **argv) {
       // Add the MLIR Dialects.
       arith::ArithDialect, cf::ControlFlowDialect, func::FuncDialect,
       index::IndexDialect, LLVM::LLVMDialect, quant::QuantizationDialect,
-      scf::SCFDialect,
       // Add the Modular Dialects.
       MEF::MEFDialect, Cache::CacheDialect, DebugInfo::DebugInfoDialect,
       Faux::FauxDialect, GRT::GRTDialect, HLCF::HLCFDialect, MDialect,
