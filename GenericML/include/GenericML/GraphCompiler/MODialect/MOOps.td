@@ -842,7 +842,8 @@ class MO_DotBase<string name, list<Trait> traits = []> :
   let hasVerifier = 1;
 }
 
-def MO_MatmulOp : MO_DotBase<"matmul", [MO_MatmulLike]> {
+def MO_MatmulOp : MO_DotBase<"matmul",
+    [MO_MatmulLike, DeclareOpInterfaceMethods<MO_Parameterization>]> {
   let summary = "Matrix-matrix multiplication";
   let description = [{
     Perform matrix multiplication on two 2D tensors.
