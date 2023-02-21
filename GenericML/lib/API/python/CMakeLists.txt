@@ -103,8 +103,6 @@ add_custom_command(OUTPUT ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl
   COMMAND ${Python3_EXECUTABLE} -m wheel unpack ${WHEEL_DIR}/${WHEEL_BASENAME}.whl --dest ${WHEEL_DIR} > /dev/null
   COMMAND ${CMAKE_COMMAND} -E make_directory ${UNPACKED_WHEEL}/modular/engine
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:core> ${UNPACKED_WHEEL}/modular/engine/
-  COMMAND ${CMAKE_COMMAND} -E make_directory ${UNPACKED_WHEEL}/lib
-  COMMAND ${CMAKE_COMMAND} -E copy ${MODULAR_FRAMEWORK_LIBS} ${UNPACKED_WHEEL}/lib
   COMMAND ${CMAKE_COMMAND} -E make_directory ${UNPACKED_WHEEL}/bin
   # NOTE: Use a temporary file so that the copy command succeeds when NOT
   # STOCK_TENSORFLOW_FOUND.
@@ -132,17 +130,32 @@ set_target_properties(modular-engine
   ADDITIONAL_CLEAN_FILES ${UNPACKED_WHEEL}
 )
 
+if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
+  set(HOST_ARCH x86_64)
+elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+  set(HOST_ARCH aarch64)
+else()
+  message(FATAL_ERROR "Unsupported target architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+
 if(APPLE)
   set(REPAIR_CMD ${Python3_EXECUTABLE} -m delocate.cmd.delocate_wheel)
+  set(REPAIRED_WHEEL ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl)
+  set(REPAIR_SHARED_LIB_ENV "DYLD_LIBRARY_PATH=${STOCK_TENSORFLOW_BUILD_LIB_DIR}")
 else()
-  set(REPAIR_CMD ${Python3_EXECUTABLE} -m auditwheel.main repair --plat linux_x86_64)
+  set(REPAIR_CMD ${Python3_EXECUTABLE} -m auditwheel repair --plat linux_${HOST_ARCH} --wheel-dir ${WHEEL_DIR} --strip)
+  set(REPAIRED_WHEEL ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.linux_${HOST_ARCH}.whl)
+  set(REPAIR_SHARED_LIB_ENV "LD_LIBRARY_PATH=${STOCK_TENSORFLOW_BUILD_LIB_DIR}")
 endif()
 
 # Detect non-system shared library dependencies and copy them into the wheel,
 # updating the RECORDS metadata file.
 add_custom_command(OUTPUT ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
-  COMMAND ${REPAIR_CMD} ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl
-  COMMAND ${CMAKE_COMMAND} -E copy ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
+  COMMAND ${CMAKE_COMMAND} -E env
+    PATH=$ENV{PATH}:${Python3_ROOT_DIR}/bin
+    ${REPAIR_SHARED_LIB_ENV}
+    ${REPAIR_CMD} ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl
+  COMMAND ${CMAKE_COMMAND} -E copy ${REPAIRED_WHEEL} ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
   DEPENDS ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   COMMENT "Repairing Modular Python API wheel."
