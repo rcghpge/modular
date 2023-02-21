@@ -3,7 +3,7 @@
 
 // Check to make sure the magic number is right, and the first section is there.
 
-// CHECK: 0000000 be f0 03
+// CHECK: 0000000 ee f0 03
 
 mef.invokable @trivial() {
   "simple.primitive"() { x = 42 : si8 }: () -> ()

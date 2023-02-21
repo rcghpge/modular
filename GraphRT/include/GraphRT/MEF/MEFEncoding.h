@@ -27,7 +27,7 @@ namespace MEF {
 
 enum {
   // Defined by the MEF_FILE production.
-  kMagic1 = 0xBE,
+  kMagic1 = 0xEE,
   kMagic2 = 0xF0,
   kVersion0 = 0,
 

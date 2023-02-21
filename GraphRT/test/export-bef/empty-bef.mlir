@@ -3,4 +3,4 @@
 
 // Empty file.  Check to make sure the magic number is right.
 
-// CHECK: 0000000 be f0
+// CHECK: 0000000 ee f0
