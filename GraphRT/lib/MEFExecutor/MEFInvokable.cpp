@@ -132,8 +132,10 @@ AsyncValue *RegisterInfo::setRegister(AsyncValue *newValue) {
     return newValue; // Success: old value = nullptr!
 
   // If there was already a value in it, it must be a IndirectAsyncValue. We
-  // set the IndirectAsyncValue to point to the result.
-  existing->resolveIndirect(copyRCRef(newValue));
+  // set the IndirectAsyncValue to point to the result, leaving the reference
+  // count unchanged.
+  RCRef<AsyncValue>::lowLevelAddRef(existing);
+  existing->resolveIndirectAndDecRef(copyRCRef(newValue));
   return existing;
 }
 

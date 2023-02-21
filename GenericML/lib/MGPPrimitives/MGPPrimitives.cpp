@@ -59,14 +59,10 @@ static void mgp_cpu_buffer_alloc_static(Context &ctx, Result<BufferRef> result,
                                         MEFAttr<uint64_t> bRawAlign,
                                         Runtime &runtime) {
   TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_alloc");
-  if (!isValidPlainSize(*aSize)) {
-    result.setToError("invalid size attribute");
-    return;
-  }
-  if (!isValidRawAlign(*bRawAlign)) {
-    result.setToError("invalid align attribute");
-    return;
-  }
+  if (!isValidPlainSize(*aSize))
+    return std::move(result).setToError("invalid size attribute");
+  if (!isValidRawAlign(*bRawAlign))
+    return std::move(result).setToError("invalid align attribute");
   size_t runtimeSize = plainSizeToRuntimeSize(*aSize);
   std::move(result).emplace(
       BufferRef::createOwned(runtime, runtimeSize, getAlign(*bRawAlign)));
@@ -77,10 +73,8 @@ static void mgp_cpu_buffer_alloc_dynamic(Context &ctx, size_t runtimeSize,
                                          MEFAttr<uint64_t> rawAlign,
                                          Runtime &runtime) {
   TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_alloc_dynamic");
-  if (!isValidRawAlign(*rawAlign)) {
-    result.setToError("invalid align attribute");
-    return;
-  }
+  if (!isValidRawAlign(*rawAlign))
+    return std::move(result).setToError("invalid align attribute");
   std::move(result).emplace(
       BufferRef::createOwned(runtime, runtimeSize, getAlign(*rawAlign)));
 }
@@ -89,10 +83,8 @@ static void mgp_cpu_buffer_alloc_spec(Context &ctx, const TensorSpec &spec,
                                       Result<BufferRef> result,
                                       MEFAttr<uint64_t> rawAlign,
                                       Runtime &runtime) {
-  if (!isValidRawAlign(*rawAlign)) {
-    result.setToError("invalid align attribute");
-    return;
-  }
+  if (!isValidRawAlign(*rawAlign))
+    return std::move(result).setToError("invalid align attribute");
   std::move(result).emplace(BufferRef::createOwned(
       runtime, spec.getSizeInBytes(), getAlign(*rawAlign)));
 }
@@ -117,14 +109,10 @@ static void mgp_cpu_buffer_realloc_static(
     MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bBuffer, MEFAttr<uint64_t> cSize,
     MEFAttr<uint64_t> dRawAlign, Runtime &runtime) {
   TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_realloc_static");
-  if (!isValidPlainSize(*cSize)) {
-    result.setToError("invalid size attribute");
-    return;
-  }
-  if (!isValidRawAlign(*dRawAlign)) {
-    result.setToError("invalid align attribute");
-    return;
-  }
+  if (!isValidPlainSize(*cSize))
+    return std::move(result).setToError("invalid size attribute");
+  if (!isValidRawAlign(*dRawAlign))
+    return std::move(result).setToError("invalid align attribute");
   size_t runtimeSize = plainSizeToRuntimeSize(*cSize);
   StateSlot &stateSlot = ctx.getStateSlot(*aSlot);
   std::move(result).emplace(stateSlot.getOrCreateBuffer(
@@ -136,10 +124,8 @@ static void mgp_cpu_buffer_realloc_dynamic(
     MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bBuffer,
     MEFAttr<uint64_t> cRawAlign, Runtime &runtime) {
   TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_realloc_dynamic");
-  if (!isValidRawAlign(*cRawAlign)) {
-    result.setToError("invalid align attribute");
-    return;
-  }
+  if (!isValidRawAlign(*cRawAlign))
+    return std::move(result).setToError("invalid align attribute");
   StateSlot &stateSlot = ctx.getStateSlot(*aSlot);
   std::move(result).emplace(stateSlot.getOrCreateBuffer(
       *bBuffer, runtime, runtimeSize, getAlign(*cRawAlign)));
@@ -151,10 +137,8 @@ mgp_cpu_buffer_realloc_spec(Chain inChain, Context &ctx, const TensorSpec &spec,
                             MEFAttr<uint64_t> bBuffer,
                             MEFAttr<uint64_t> cRawAlign, Runtime &runtime) {
   TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_realloc_spec");
-  if (!isValidRawAlign(*cRawAlign)) {
-    result.setToError("invalid align attribute");
-    return;
-  }
+  if (!isValidRawAlign(*cRawAlign))
+    return std::move(result).setToError("invalid align attribute");
   StateSlot &stateSlot = ctx.getStateSlot(*aSlot);
   std::move(result).emplace(stateSlot.getOrCreateBuffer(
       *bBuffer, runtime, spec.getSizeInBytes(), getAlign(*cRawAlign)));
@@ -221,10 +205,8 @@ static void mgp_cpu_tensor_spec_create(RemainingArguments runtimeDims,
                                        Runtime &runtime) {
   TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.tensor_spec_create");
   DType dtype(*bRawDType);
-  if (dtype.isInvalid()) {
-    outSpec.setToError("invalid dtype");
-    return;
-  }
+  if (dtype.isInvalid())
+    return std::move(outSpec).setToError("invalid dtype");
   auto runtimeDimsVec = runtimeDims.takeAsVector();
   auto nextRuntimeDim = runtimeDimsVec.begin();
   SmallVector<uint64_t> shape;
@@ -251,10 +233,8 @@ static void mgp_cpu_tensor_spec_create_dynamic(
     Result<TensorSpec> outSpec, MEFAttr<ArrayRef<uint64_t>> rawDims,
     Runtime &runtime) {
   TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.tensor_spec_create_dynamic");
-  if (runtimeDType.isInvalid()) {
-    outSpec.setToError("invalid dtype");
-    return;
-  }
+  if (runtimeDType.isInvalid())
+    return std::move(outSpec).setToError("invalid dtype");
   auto runtimeDimsVec = runtimeDims.takeAsVector();
   auto nextRuntimeDim = runtimeDimsVec.begin();
   SmallVector<uint64_t> shape;
@@ -283,10 +263,9 @@ static void mgp_cpu_tensor_spec_dims_dynamic(
     result = AsyncValueRef<size_t>::allocate(runtime);
 
   unsigned next = 0;
-  for (size_t i = 0, e = rawDims->size(); i < e; ++i) {
+  for (size_t i = 0, e = rawDims->size(); i < e; ++i)
     if (!hasRawSize((*rawDims)[i]))
       results[next++].copy().emplace<size_t>(tensorSpec[i]);
-  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -331,9 +310,9 @@ static void mgp_cpu_tensor_create(Chain inChain,
   size_t expectedSize = tensorSpec.getSizeInBytes();
   size_t actualSize = bufferRef.get().getSize();
   if (expectedSize != actualSize)
-    return outTensor.setToError(Twine("buffer size should match spec size (") +
-                                Twine(actualSize) + " vs " +
-                                Twine(expectedSize) + ")");
+    return std::move(outTensor).setToError(
+        Twine("buffer size should match spec size (") + Twine(actualSize) +
+        " vs " + Twine(expectedSize) + ")");
   if (bufferRef.getPointer()->isUnique()) {
     // If this is the only reference to the input buffer then it cannot be
     // further mutated, so we can move it into the result tensor.

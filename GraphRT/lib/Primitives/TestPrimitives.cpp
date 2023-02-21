@@ -390,18 +390,19 @@ static void async_add2_i32(AsyncValueRef<int32_t> lhs,
   //
   // This isn't actually declared that way, so this is just for illustration
   // purposes.
-  andThenSync(std::make_tuple(std::move(lhs), std::move(rhs)),
-              [result = result.copy()](AsyncValueRef<int32_t> lhs,
-                                       AsyncValueRef<int32_t> rhs) mutable {
-                // This actually only needs to check for error if this is
-                // defined as non-strict.
-                if (lhs.isError())
-                  result.setToError(lhs.getPointer()->takeDiagnostic());
-                else if (rhs.isError())
-                  result.setToError(rhs.getPointer()->takeDiagnostic());
-                else
-                  std::move(result).emplace(*lhs + *rhs);
-              });
+  andThenSync(
+      std::make_tuple(std::move(lhs), std::move(rhs)),
+      [result = result.copy()](AsyncValueRef<int32_t> lhs,
+                               AsyncValueRef<int32_t> rhs) mutable {
+        // This actually only needs to check for error if this is
+        // defined as non-strict.
+        if (lhs.isError())
+          std::move(result).setToError(lhs.getPointer()->takeDiagnostic());
+        else if (rhs.isError())
+          std::move(result).setToError(rhs.getPointer()->takeDiagnostic());
+        else
+          std::move(result).emplace(*lhs + *rhs);
+      });
 }
 
 /// Example that returns an indirect value with IndirectResult, nominally
@@ -410,12 +411,12 @@ static void async_add2_i32(AsyncValueRef<int32_t> lhs,
 static void async_add_any(AnyAsyncValueRef lhs, AnyAsyncValueRef rhs,
                           IndirectResult result) {
   if (lhs.isType<int32_t>() && rhs.isType<int32_t>())
-    result.emplace<int32_t>(lhs.get<int32_t>() + rhs.get<int32_t>());
+    std::move(result).emplace<int32_t>(lhs.get<int32_t>() + rhs.get<int32_t>());
   else if (lhs.isType<std::string>() && rhs.isType<std::string>())
-    result.emplace<std::string>(lhs.get<std::string>() +
-                                rhs.get<std::string>());
+    std::move(result).emplace<std::string>(lhs.get<std::string>() +
+                                           rhs.get<std::string>());
   else
-    result.setToError("invalid operands to async_add_any");
+    std::move(result).setToError("invalid operands to async_add_any");
 }
 
 /// Example that shows an example that produces an error on a background thread,
@@ -426,15 +427,15 @@ static void async_error(IndirectResult result1, IndirectResult result2,
   // copied/moved into the task manually and painfully as in this example...
   addTask(runtime,
           [result1 = result1.copy(), loc = std::move(manualLoc)]() mutable {
-            result1.setToError(
+            std::move(result1).setToError(
                 {"error generated on a background thread!", std::move(loc)});
           });
 
   // ... but please don't!  It is more convenient to use the `copyWithLocation`
   // method on [Indirect]Result, which brings it forward for you and has a
   // convenience method to set the error.
-  addTask(runtime, [result2 = result2.copyWithLocation()]() {
-    result2.setToError("error generated on a background thread #2!");
+  addTask(runtime, [result2 = result2.copyWithLocation()]() mutable {
+    std::move(result2).setToError("error generated on a background thread #2!");
   });
 }
 
@@ -460,7 +461,7 @@ static int32_t test_async_many_waiters(MEFAttr<int32_t> num, Runtime &runtime) {
 static void test_many_tasks(Result<int32_t> result, MEFAttr<int32_t> num,
                             Runtime &runtime) {
   if (*num == 0)
-    return result.setToError("zero not supported");
+    return std::move(result).setToError("zero not supported");
   std::atomic<int32_t> counter(*num);
 
   // Compiler optimization barrier.
@@ -505,14 +506,18 @@ static void test_crash_threadpool_shutdown(Runtime &runtime) {
       addTask(runtime, [&runtime, i]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         printf("task %d\n", i);
-        addTask(runtime, [&runtime, i]() {
-          std::this_thread::sleep_for(std::chrono::milliseconds(5));
-          printf("task %d middle\n", i);
-          addTask(runtime, [i]() {
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
-            printf("task %d shutdown\n", i);
-          });
-        });
+        addTask(
+            runtime,
+            [&runtime, i]() {
+              std::this_thread::sleep_for(std::chrono::milliseconds(5));
+              printf("task %d middle\n", i);
+              addTask(
+                  runtime,
+                  [i]() {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                    printf("task %d shutdown\n", i);
+                  });
+            });
       });
     }
   });
@@ -597,10 +602,8 @@ static ErrorOr<TestVector> vec_add(const TestVector &lhs,
 static void vec_add_async(AsyncValueRef<TestVector> lhs,
                           AsyncValueRef<TestVector> rhs,
                           Result<TestVector> result, Runtime &runtime) {
-  if (lhs->values.size() != rhs->values.size()) {
-    result.setToError("vector length mismatch");
-    return;
-  }
+  if (lhs->values.size() != rhs->values.size())
+    return std::move(result).setToError("vector length mismatch");
 
   addTask(runtime, [lhs = std::move(lhs), rhs = std::move(rhs),
                     result = result.copy()]() mutable {
@@ -622,7 +625,7 @@ static void vec_add_async2(AsyncValueRef<TestVector> lhs,
                            Result<TestVector> result, Runtime &runtime) {
   size_t lhsValueSize = lhs->values.size();
   if (lhsValueSize != rhs->values.size())
-    return result.setToError("vector length mismatch");
+    return std::move(result).setToError("vector length mismatch");
 
   // Process each element in parallel.
   parallelForEachNFinishing(

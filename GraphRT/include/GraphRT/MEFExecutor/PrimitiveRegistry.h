@@ -187,8 +187,11 @@ public:
   AnyAsyncValueRef copy() const { return result.copy(); }
 
   /// Fill this AsyncValue with an error that has the specified message.
-  void setToError(Error message) const {
-    result.setToError({std::move(message), frame.copyLocation()});
+  void setToError(Error message) && {
+    // CAUTION: We must copy result since it is expected to remain available
+    // to the creator of the AnySingleResult. However, we'll still mark this
+    // method as moving to make clear the result should only be set once.
+    result.copy().setToError({std::move(message), frame.copyLocation()});
   }
 
   RunnablePrimitiveDescriptor &getFrame() const { return frame; }
@@ -232,11 +235,10 @@ public:
 
   /// Construct the result in place and mark it as ready.
   template <typename... Args>
-  void emplace(Args &&...args) {
+  void emplace(Args &&...args) && {
     // CAUTION: We must copy result since it is expected to remain available
     // to the creator of the AnySingleResult. However, we'll still mark this
-    // method as moving to make clear the result should only be emplaced once.
-    assert(result && "null result");
+    // method as moving to make clear the result should only be set once.
     result.copy().template emplace<T, Args...>(std::forward<Args>(args)...);
   }
 };
@@ -263,16 +265,17 @@ public:
 
   /// Resolve an IndirectAsyncValue to point to the specified new value,
   /// resolving any waiters whenever newValue becomes ready.
-  void resolve(AnyAsyncValueRef newValue) {
-    result.resolveIndirect(newValue.releaseRCRef());
+  void resolve(AnyAsyncValueRef newValue) && {
+    // CAUTION: We must copy result since it is expected to remain available
+    // to the creator of the AnySingleResult. However, we'll still mark this
+    // method as moving to make clear the result should only be set once.
+    result.copy().resolveIndirect(newValue.releaseRCRef());
   }
 
   /// Construct an AsyncValue for the result and resolve the indirect result.
-  ///
-  /// NOTE(#7399): Should be consuming?
   template <typename T, typename... Args>
-  void emplace(Args &&...args) {
-    resolve(AnyAsyncValueRef::createReady<T, Args...>(
+  void emplace(Args &&...args) && {
+    std::move(*this).resolve(AnyAsyncValueRef::createReady<T, Args...>(
         result.getRuntime(), std::forward<Args>(args)...));
   }
 };
@@ -289,6 +292,10 @@ public:
                             Runtime &runtime)
       : runtime(runtime), results(results) {}
 
+  /// Returns reference to underlying results array.
+  /// CAUTION: The results are shared between the producer (eg a primitive)
+  /// and consumer (the creator of RemainingResults), so generally should
+  /// not be moved.
   MutableArrayRef<AnyAsyncValueRef> get() const { return results; }
   bool empty() const { return results.empty(); }
   size_t size() const { return results.size(); }
@@ -300,10 +307,9 @@ public:
 
   /// Allocate all of the unset result values as IndirectAsyncValues.
   void allocateIndirectResults() {
-    for (auto &elt : results) {
+    for (auto &elt : results)
       if (!elt)
         elt = AnyAsyncValueRef::createIndirect(runtime);
-    }
   }
 
   /// Return the AsyncValues as a SmallVector where every element is copied out.
@@ -317,9 +323,14 @@ public:
 
   /// Set all results in this container to error with message `error` and
   /// location `loc`.
-  void setAllToError(Error error, EncodedLocation &loc) {
-    for (auto &r : results)
-      r.setToError(EncodedDiagnostic(error.copy(), loc.copy()));
+  void setAllToError(Error error, EncodedLocation &loc) && {
+    for (auto &result : results) {
+      // CAUTION: We must copy each result since they are expected to remain
+      // available to the creator of the RemainingResults. However, we'll still
+      // mark this method as moving to make clear the results should only be set
+      // once.
+      result.copy().setToError(EncodedDiagnostic(error.copy(), loc.copy()));
+    }
   }
 
 private:
