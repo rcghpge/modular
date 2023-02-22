@@ -126,7 +126,7 @@ void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                        int64_t value, Type elementType) {
-  auto type = MO::TensorType::get(SmallVector<int64_t>{0ll}, elementType);
+  auto type = MO::TensorType::get(SmallVector<int64_t>{}, elementType);
   auto valueAttr = odsBuilder.getAttr<IntArrayElementsAttr>(
       ArrayRef<int64_t>(SmallVector<int64_t>{value}),
       mlir::IntegerType::Signed);
@@ -135,7 +135,7 @@ void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                        APFloat value, Type elementType) {
-  auto type = MO::TensorType::get(SmallVector<int64_t>{0ll}, elementType);
+  auto type = MO::TensorType::get(SmallVector<int64_t>{}, elementType);
   auto valueAttr =
       FloatArrayElementsAttr::get({std::move(value)}, type.getElementType());
   build(odsBuilder, odsState, type, valueAttr);
