@@ -15,3 +15,12 @@ mo.graph @shape_attr_invalid_dim_2(%arg : !mo.tensor<[], f32>) -> (!mo.tensor<[]
   kgen.param.declare S1: !mo.shape = <[N, 0, -2]>
   mo.output %arg : !mo.tensor<[], f32>
 }
+
+// -----
+
+kgen.func @param_operator_inside_tensor_type(
+  // expected-error @below {{TensorType shape parameter must be ShapeAttr or ParamDeclRefAttr}}
+  %arg : !mo.tensor<apply(:() -> !mo.shape "mo.shape.foobar"), f32>
+) {
+  kgen.return
+}
