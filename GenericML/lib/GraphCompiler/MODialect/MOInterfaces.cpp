@@ -20,16 +20,17 @@ using namespace MO;
 
 LogicalResult
 impl::verifyMatchingRanks(ArrayRef<TypedValue<M::MO::TensorType>> values) {
-  SmallVector<size_t> ranks;
+  SmallVector<size_t> staticRanks;
   for (auto v : values)
     if (TensorType t = v.getType(); t.hasRank())
-      ranks.emplace_back(t.getRank());
+      staticRanks.emplace_back(t.getRank());
 
-  if (!ranks.empty())
-    if (!llvm::all_equal(ranks))
-      return failure();
+  bool allStaticRanks = staticRanks.size() == values.size();
+  if (allStaticRanks)
+    return success(llvm::all_equal(staticRanks));
 
-  return success();
+  bool allDynamicRanks = staticRanks.empty();
+  return success(allDynamicRanks);
 }
 
 /// Helper to print matrix shapes without element types.
@@ -47,7 +48,8 @@ LogicalResult impl::verifyMatmulLike(MatmulLike op) {
   SmallVector<TypedValue<TensorType>> tensors{op.getTensorA(), op.getTensorB(),
                                               op.getTensorResult()};
   if (failed(verifyMatchingRanks(tensors)))
-    return op.emitError("input and output ranks must match if static");
+    return op.emitError(
+        "input and output ranks must be all dynamic, or all static and match");
 
   TensorType aType = op.getTensorA().getType();
   TensorType bType = op.getTensorB().getType();
@@ -131,7 +133,8 @@ LogicalResult impl::verifySlidingWindow(SlidingWindow op) {
   auto moOp = cast<MOOpInterface>(op.getOperation());
   if (failed(verifyMatchingRanks(
           {moOp.getInputTensor(0), moOp.getOutputTensor(0)})))
-    return op.emitError("input and output ranks must match if static");
+    return op.emitError(
+        "input and output ranks must be all dynamic, or all static and match");
 
   return success();
 }

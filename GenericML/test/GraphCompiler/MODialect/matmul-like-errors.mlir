@@ -14,6 +14,22 @@ mo.graph @batch_matmul_too_low_rank(%arg0: !mo.tensor<[10, 20], f32>, %arg1: !mo
 
 // -----
 
+mo.graph @batch_matmul_unranked_input_ranked_output(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !mo.tensor<[?, ?, ?], f32> {
+  // expected-error @below {{input and output ranks must be all dynamic, or all static and match}}
+  %0 = mo.batch_matmul(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<[?, ?, ?], f32>
+  mo.output %0 : !mo.tensor<[?, ?, ?], f32>
+}
+
+// -----
+
+mo.graph @batch_matmul_ranked_input_unranked_output(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32> {
+  // expected-error @below {{input and output ranks must be all dynamic, or all static and match}}
+  %0 = mo.batch_matmul(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
+  mo.output %0 : !mo.tensor<?, f32>
+}
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // MatmulOp
 //===----------------------------------------------------------------------===//
@@ -27,7 +43,7 @@ mo.graph @rank_too_low(%arg0: !mo.tensor<[10], f32>, %arg1: !mo.tensor<[10], f32
 // -----
 
 mo.graph @different_input_ranks(%arg0: !mo.tensor<[10, 10, 20], f32>, %arg1: !mo.tensor<[20, 5], f32>) -> !mo.tensor<[10, 5], f32> {
-  // expected-error@+1 {{input and output ranks must match if static}}
+  // expected-error @below {{input and output ranks must be all dynamic, or all static and match}}
   %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[10, 10, 20], f32>, !mo.tensor<[20, 5], f32>) -> !mo.tensor<[10, 5], f32>
   mo.output %0 : !mo.tensor<[10, 5], f32>
 }
@@ -51,7 +67,7 @@ mo.graph @output_wrong_shape(%arg0: !mo.tensor<[10, 20], f32>, %arg1: !mo.tensor
 // -----
 
 mo.graph @output_wrong_rank(%arg0: !mo.tensor<[10, 20], f32>, %arg1: !mo.tensor<[20, 5], f32>) -> !mo.tensor<[10], f32> {
-  // expected-error@+1 {{input and output ranks must match if static}}
+  // expected-error @below {{input and output ranks must be all dynamic, or all static and match}}
   %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[10, 20], f32>, !mo.tensor<[20, 5], f32>) -> !mo.tensor<[10], f32>
   mo.output %0 : !mo.tensor<[10], f32>
 }

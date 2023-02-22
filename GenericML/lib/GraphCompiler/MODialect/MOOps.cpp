@@ -124,7 +124,8 @@ LogicalResult ConcatOp::verify() {
 
   tensors.emplace_back(getResult());
   if (failed(impl::verifyMatchingRanks(tensors)))
-    return emitError("input and output ranks must match if static");
+    return emitError(
+        "input and output ranks must be all dynamic, or all static and match");
 
   return LogicalResult::success();
 }
@@ -146,7 +147,8 @@ LogicalResult ConvOp::verify() {
   // The sliding window interface already checks that the input and result have
   // matching ranks, so we can be more specific with the error message here
   if (failed(impl::verifyMatchingRanks({getInput(), getResult(), getFilter()})))
-    return emitError("filter rank must match input/output ranks if static");
+    return emitError("filter, input and output ranks must be all dynamic, or "
+                     "all static and match");
 
   auto op = cast<SlidingWindow>(this->getOperation());
   return op.verifyWindowParamSizes({getDilations(), getStrides()});

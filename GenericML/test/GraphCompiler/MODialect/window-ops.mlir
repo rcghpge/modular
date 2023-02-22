@@ -59,14 +59,14 @@ mo.graph @max_pool(%arg0: !mo.tensor<[10, 10], f32>) -> !mo.tensor<[9, 5], f32> 
 }
 
 // CHECK: mo.graph @max_pool_dyn_rank(
-// CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[10, 10], f32>,
+// CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<?, f32>,
 // CHECK-SAME: %[[FS:.*]]: !mo.tensor<?, si64>, %[[ST:.*]]: !mo.tensor<?, si64>,
 // CHECK-SAME: %[[DI:.*]]: !mo.tensor<?, si64>) -> !mo.tensor<?, f32> {
 mo.graph @max_pool_dyn_rank(
-    %arg0: !mo.tensor<[10, 10], f32>, %fs: !mo.tensor<?, si64>, %st: !mo.tensor<?, si64>, %di: !mo.tensor<?, si64>
+    %arg0: !mo.tensor<?, f32>, %fs: !mo.tensor<?, si64>, %st: !mo.tensor<?, si64>, %di: !mo.tensor<?, si64>
   ) -> !mo.tensor<?, f32> {
   // CHECK: mo.max_pool(%[[ARG0]]) [filter_shape = %[[FS]], strides = %[[ST]], dilations = %[[DI]]]
   %0 = mo.max_pool(%arg0) [filter_shape = %fs, strides = %st, dilations = %di] : (
-    !mo.tensor<[10, 10], f32>, !mo.tensor<?, si64>, !mo.tensor<?, si64>, !mo.tensor<?, si64>) -> !mo.tensor<?, f32>
+    !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<?, si64>, !mo.tensor<?, si64>) -> !mo.tensor<?, f32>
   mo.output %0 : !mo.tensor<?, f32>
 }
