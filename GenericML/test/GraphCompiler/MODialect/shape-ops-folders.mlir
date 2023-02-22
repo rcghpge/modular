@@ -85,3 +85,23 @@ kgen.generator @new_fold<D1, D2>() -> !mo.shape {
   %s1 = mo.shape.new(%d1, %d2, %d3)
   kgen.return %s1 : !mo.shape
 }
+
+// CHECK: kgen.generator @slice_fold<[[SH1:.*]]: !mo.shape, [[D1:.*]], [[D2:.*]]>(
+kgen.generator @slice_fold<Sh1: !mo.shape, D1, D2>(
+// CHECK: ) -> (!mo.shape, !mo.shape, !mo.shape, !mo.shape) {
+) -> (!mo.shape, !mo.shape, !mo.shape, !mo.shape) {
+  // CHECK-DAG: %[[V1:.*]] = kgen.param.constant: !mo.shape = <[[SH1]]>
+  // CHECK-DAG: %[[V2:.*]] = kgen.param.constant: !mo.shape = <[[[D1]]]>
+  // CHECK-DAG: %[[V3:.*]] = kgen.param.constant: !mo.shape = <[[[D2]], [[D1]]]>
+  // CHECK-DAG: %[[V4:.*]] = kgen.param.constant: !mo.shape = <[42, [[D2]]]>
+  // CHECK-DAG: %[[S1:.*]] = mo.shape.slice(%[[V1]])[0, -1]
+  // CHECK: kgen.return %[[S1]], %[[V2]], %[[V3]], %[[V4]]
+  %v1 = kgen.param.constant: !mo.shape = <Sh1>
+  %v2 = kgen.param.constant: !mo.shape = <[D1, 42, D2]>
+  %v3 = kgen.param.constant: !mo.shape = <[3, D2, D1]>
+  %s1 = mo.shape.slice(%v1)[0, -1]
+  %s2 = mo.shape.slice(%v2)[0, -2]
+  %s3 = mo.shape.slice(%v3)[1, 0]
+  %s4 = mo.shape.slice(%v2)[-2, 0]
+  kgen.return %s1, %s2, %s3, %s4 : !mo.shape, !mo.shape, !mo.shape, !mo.shape
+}

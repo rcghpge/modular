@@ -365,6 +365,20 @@ void Shape::SliceOp::build(OpBuilder &builder, OperationState &state,
         builder.getIndexAttr(end));
 }
 
+OpFoldResult Shape::SliceOp::fold(FoldAdaptor adaptor) {
+  if (auto input = dyn_cast_or_null<ShapeAttr>(adaptor.getInput())) {
+    int64_t start = normalizeAxis(adaptor.getStart(), input.getRank());
+    int64_t end = normalizeAxis(adaptor.getEnd(), input.getRank());
+    if (start > 0 && end == 0) // emulate pythonic shape[start:]
+      end = input.getRank();
+    SmallVector<TypedAttr> slicedDims(input.getValues().begin() + start,
+                                      input.getValues().begin() + end);
+    auto shapeTy = ShapeType::get(getContext());
+    return ShapeAttr::get(slicedDims, shapeTy);
+  }
+  return {};
+}
+
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
