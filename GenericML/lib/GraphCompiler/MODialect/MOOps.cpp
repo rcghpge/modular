@@ -272,6 +272,14 @@ LogicalResult TransposeOp::verify() {
 // Shape ops
 //===----------------------------------------------------------------------===//
 
+/// Normalize axis by incrementing negative axis with given rank. For instance,
+/// for a rank-3 tensor, the `-1` axis is the last axis, i.e., axis `2`, which
+/// is `-1 + 3`.
+static int64_t normalizeAxis(const APInt &axisApInt, int64_t rank) {
+  int64_t axis = axisApInt.getSExtValue();
+  return (axis < 0) ? rank + axis : axis;
+}
+
 void Shape::AssertOp::build(OpBuilder &builder, OperationState &state,
                             Value cond) {
   build(builder, state, cond, StringAttr());
@@ -321,6 +329,14 @@ OpFoldResult Shape::EqualOp::fold(FoldAdaptor adaptor) {
 void Shape::GetDimOp::build(OpBuilder &builder, OperationState &state,
                             Value input, int64_t dim) {
   build(builder, state, input, builder.getIndexAttr(dim));
+}
+
+OpFoldResult Shape::GetDimOp::fold(FoldAdaptor adaptor) {
+  if (auto input = dyn_cast_or_null<ShapeAttr>(adaptor.getInput())) {
+    int64_t dim = normalizeAxis(adaptor.getDim(), input.getRank());
+    return input.getValues()[dim];
+  }
+  return {};
 }
 
 void Shape::SliceOp::build(OpBuilder &builder, OperationState &state,

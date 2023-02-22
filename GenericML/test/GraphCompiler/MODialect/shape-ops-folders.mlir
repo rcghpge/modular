@@ -41,3 +41,20 @@ kgen.generator @equal_fold<Sh1: !mo.shape, D1, D2>() -> (i1, i1, i1, i1, i1) {
   %b25 = mo.shape.eq(%v2, %v5)
   kgen.return %b11, %b12, %b23, %b34, %b25 : i1, i1, i1, i1, i1
 }
+
+// CHECK: kgen.generator @get_dim_fold<[[SH1:.*]]: !mo.shape, [[D1:.*]]>()
+kgen.generator @get_dim_fold<Sh1: !mo.shape, D1>() -> (index, index, index, index) {
+  // CHECK-DAG: %[[V1:.*]] = kgen.param.constant: !mo.shape = <[[SH1]]>
+  // CHECK-DAG: %[[D10:.*]] = mo.shape.get_dim(%[[V1]])[0]
+  // CHECK-DAG: %[[D20:.*]] = kgen.param.constant = <[[D1]]>
+  // CHECK-DAG: %[[D21:.*]] = index.constant 42
+  // CHECK-DAG: %[[D22:.*]] = index.constant 23
+  // CHECK: kgen.return %[[D10]], %[[D20]], %[[D21]], %[[D22]]
+  %v1 = kgen.param.constant: !mo.shape = <Sh1>
+  %v2 = kgen.param.constant: !mo.shape = <[D1, 42, 23]>
+  %d10 = mo.shape.get_dim(%v1)[0]
+  %d20 = mo.shape.get_dim(%v2)[0]
+  %d21 = mo.shape.get_dim(%v2)[1]
+  %d22 = mo.shape.get_dim(%v2)[-1]
+  kgen.return %d10, %d20, %d21, %d22 : index, index, index, index
+}
