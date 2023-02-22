@@ -209,6 +209,30 @@ def MO_ConstantOp : MO_Op<"constant", [ConstantLike, Pure]> {
   let assemblyFormat = "attr-dict `:` qualified(type($result))";
 
   let hasFolder = 1;
+
+  let builders = [
+    /// Create a new rank-1 tensor mo.constant.
+    OpBuilder<(ins
+      "ArrayRef<int64_t>":$values,
+      "Type":$elementType
+    )>,
+    /// Create a new rank-0 (scalar) tensor mo.constant.
+    OpBuilder<(ins
+      "int64_t":$value,
+      "Type":$elementType
+    )>,
+    /// Create a new rank-1 tensor mo.constant.
+    OpBuilder<(ins
+      "ArrayRef<APFloat>":$values,
+      "Type":$elementType
+    )>,
+    /// Create a new rank-0 (scalar) tensor mo.constant.
+    OpBuilder<(ins
+      "APFloat":$value,
+      "Type":$elementType
+    )>,
+  ];
+
 }
 
 

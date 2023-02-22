@@ -109,6 +109,38 @@ OpFoldResult ConstantOp::fold(FoldAdaptor adaptor) {
   return getValueAttr();
 }
 
+void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                       ArrayRef<int64_t> values, Type elementType) {
+  auto type = MO::TensorType::get({(int64_t)values.size()}, elementType);
+  auto valueAttr = odsBuilder.getAttr<IntArrayElementsAttr>(
+      values, mlir::IntegerType::Signed);
+  build(odsBuilder, odsState, type, valueAttr);
+}
+
+void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                       ArrayRef<APFloat> values, Type elementType) {
+  auto type = MO::TensorType::get({(int64_t)values.size()}, elementType);
+  auto valueAttr = FloatArrayElementsAttr::get(values, type.getElementType());
+  build(odsBuilder, odsState, type, valueAttr);
+}
+
+void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                       int64_t value, Type elementType) {
+  auto type = MO::TensorType::get(SmallVector<int64_t>{0ll}, elementType);
+  auto valueAttr = odsBuilder.getAttr<IntArrayElementsAttr>(
+      ArrayRef<int64_t>(SmallVector<int64_t>{value}),
+      mlir::IntegerType::Signed);
+  build(odsBuilder, odsState, type, valueAttr);
+}
+
+void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                       APFloat value, Type elementType) {
+  auto type = MO::TensorType::get(SmallVector<int64_t>{0ll}, elementType);
+  auto valueAttr =
+      FloatArrayElementsAttr::get({std::move(value)}, type.getElementType());
+  build(odsBuilder, odsState, type, valueAttr);
+}
+
 //===----------------------------------------------------------------------===//
 // MO_ConcatOp support
 //===----------------------------------------------------------------------===//
