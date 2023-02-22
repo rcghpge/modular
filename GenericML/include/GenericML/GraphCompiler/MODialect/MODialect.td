@@ -35,6 +35,7 @@ def MODialect : Dialect {
   let dependentDialects = [
     "MDialect", "KGEN::KGENDialect", "mlir::index::IndexDialect"];
   let useDefaultAttributePrinterParser = 1;
+  let hasConstantMaterializer = 1;
 
   let extraClassDeclaration = [{
   private:

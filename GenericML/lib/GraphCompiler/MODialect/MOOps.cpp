@@ -282,6 +282,19 @@ void Shape::AssertOp::build(OpBuilder &builder, OperationState &state,
   build(builder, state, cond, builder.getStringAttr(message));
 }
 
+OpFoldResult Shape::ConcatOp::fold(FoldAdaptor adaptor) {
+  auto input1 = dyn_cast_or_null<ShapeAttr>(adaptor.getInput1());
+  auto input2 = dyn_cast_or_null<ShapeAttr>(adaptor.getInput2());
+  if (input1 && input2) {
+    SmallVector<TypedAttr> finalDims;
+    llvm::append_range(finalDims, input1.getValues());
+    llvm::append_range(finalDims, input2.getValues());
+    auto shapeTy = ShapeType::get(getContext());
+    return ShapeAttr::get(finalDims, shapeTy);
+  }
+  return {};
+}
+
 void Shape::GetDimOp::build(OpBuilder &builder, OperationState &state,
                             Value input, int64_t dim) {
   build(builder, state, input, builder.getIndexAttr(dim));
