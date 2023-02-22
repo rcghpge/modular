@@ -74,3 +74,14 @@ kgen.generator @get_rank_fold<Sh1: !mo.shape, D1>() -> (index, index, index) {
   %r3 = mo.shape.get_rank(%v3)
   kgen.return %r1, %r2, %r3 : index, index, index
 }
+
+// CHECK: kgen.generator @new_fold<[[D1:.*]], [[D2:.*]]>()
+kgen.generator @new_fold<D1, D2>() -> !mo.shape {
+  // CHECK: %[[S1:.*]] = kgen.param.constant: !mo.shape = <[[[D1]], 42, [[D2]]]>
+  // CHECK: kgen.return %[[S1]]
+  %d1 = kgen.param.constant: index = <D1>
+  %d2 = index.constant 42
+  %d3 = kgen.param.constant: index = <D2>
+  %s1 = mo.shape.new(%d1, %d2, %d3)
+  kgen.return %s1 : !mo.shape
+}

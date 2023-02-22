@@ -347,6 +347,18 @@ OpFoldResult Shape::GetRankOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
+OpFoldResult Shape::NewOp::fold(FoldAdaptor adaptor) {
+  SmallVector<TypedAttr> newDims;
+  for (Attribute dimAttr : adaptor.getDims()) {
+    if (auto dim = dyn_cast_or_null<TypedAttr>(dimAttr))
+      newDims.emplace_back(dim);
+    else
+      return {};
+  }
+  auto shapeTy = ShapeType::get(getContext());
+  return ShapeAttr::get(newDims, shapeTy);
+}
+
 void Shape::SliceOp::build(OpBuilder &builder, OperationState &state,
                            Value input, int64_t start, int64_t end) {
   build(builder, state, input, builder.getIndexAttr(start),

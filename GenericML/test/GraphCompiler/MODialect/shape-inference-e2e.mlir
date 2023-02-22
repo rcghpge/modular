@@ -54,8 +54,7 @@ mo.graph @unresolved_rebinds(
   // CHECK-DAG: kgen.param.assert <[[COND4]]>, "batch sizes of left and right inputs are not equal"
   // CHECK-DAG: kgen.param.declare [[N:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -2 : index}, [[SH0]])>
   // CHECK-DAG: kgen.param.declare [[M:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -1 : index}, [[SH1]])>
-  // CHECK-DAG: kgen.param.declare [[SH4:.*]]: !mo.shape = <apply(:(index, index) -> !mo.shape "mo.shape.new", [[N]], [[M]])>
-  // CHECK-DAG: kgen.param.declare [[SH5:.*]]: !mo.shape = <apply(:(!mo.shape, !mo.shape) -> !mo.shape "mo.shape.concat", [[SH2]], [[SH4]])>
+  // CHECK-DAG: kgen.param.declare [[SH5:.*]]: !mo.shape = <apply(:(!mo.shape, !mo.shape) -> !mo.shape "mo.shape.concat", [[SH2]], [[[N]], [[M]]])>
 
   // CHECK-NOT: kgen.param.declare {{.*}}: !mo.shape = <apply(:(!mo.shape, !mo.shape) -> !mo.shape @batch_matmul_fw,
 
