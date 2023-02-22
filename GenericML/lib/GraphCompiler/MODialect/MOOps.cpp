@@ -339,6 +339,14 @@ OpFoldResult Shape::GetDimOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
+OpFoldResult Shape::GetRankOp::fold(FoldAdaptor adaptor) {
+  if (auto input = dyn_cast_or_null<ShapeAttr>(adaptor.getInput())) {
+    auto indexTy = IndexType::get(getContext());
+    return IntegerAttr::get(indexTy, input.getRank());
+  }
+  return {};
+}
+
 void Shape::SliceOp::build(OpBuilder &builder, OperationState &state,
                            Value input, int64_t start, int64_t end) {
   build(builder, state, input, builder.getIndexAttr(start),

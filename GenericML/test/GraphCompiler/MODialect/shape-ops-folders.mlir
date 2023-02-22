@@ -58,3 +58,19 @@ kgen.generator @get_dim_fold<Sh1: !mo.shape, D1>() -> (index, index, index, inde
   %d22 = mo.shape.get_dim(%v2)[-1]
   kgen.return %d10, %d20, %d21, %d22 : index, index, index, index
 }
+
+// CHECK: kgen.generator @get_rank_fold<[[SH1:.*]]: !mo.shape, [[D1:.*]]>()
+kgen.generator @get_rank_fold<Sh1: !mo.shape, D1>() -> (index, index, index) {
+  // CHECK-DAG: %[[V1:.*]] = kgen.param.constant: !mo.shape = <[[SH1]]>
+  // CHECK-DAG: %[[R1:.*]] = mo.shape.get_rank(%[[V1]])
+  // CHECK-DAG: %[[R2:.*]] = index.constant 2
+  // CHECK-DAG: %[[R3:.*]] = index.constant 0
+  // CHECK: kgen.return %[[R1]], %[[R2]]
+  %v1 = kgen.param.constant: !mo.shape = <Sh1>
+  %v2 = kgen.param.constant: !mo.shape = <[D1, 42]>
+  %v3 = kgen.param.constant: !mo.shape = <[]>
+  %r1 = mo.shape.get_rank(%v1)
+  %r2 = mo.shape.get_rank(%v2)
+  %r3 = mo.shape.get_rank(%v3)
+  kgen.return %r1, %r2, %r3 : index, index, index
+}
