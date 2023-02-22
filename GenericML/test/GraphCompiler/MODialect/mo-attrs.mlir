@@ -14,6 +14,9 @@ mo.graph @shape_attr_and_type() {
   // CHECK: "foo.expression"() {dd = #mo<shape[mul(N, ?), N]> : !mo.shape} : () -> !mo.shape
   %3 = "foo.expression"() {dd = #mo<shape[mul(N, ?), N]> : !mo.shape} : () -> !mo.shape
 
+  // CHECK: kgen.param.declare [[P:.*]]: !mo.shape = <apply(:() -> !mo.shape "mo.shape.foobar")>
+  kgen.param.declare P: !mo.shape = <apply(:() -> !mo.shape "mo.shape.foobar")>
+
   // CHECK: kgen.param.declare [[S:.*]]: !mo.shape = <[N, 2, ?]>
   kgen.param.declare S: !mo.shape = <[N, 2, ?]>
   mo.output

@@ -50,6 +50,34 @@ std::string asString(Type type) {
 // ShapeParameter
 //===----------------------------------------------------------------------===//
 
+/// Return none if parser encountered something other than ShapeAttr or
+/// UnknownAttr.
+static OptionalParseResult parseShapeAttrOrUnknown(AsmParser &p,
+                                                   TypedAttr &shapeAttr) {
+  auto shapeTy = p.getBuilder().getType<MO::ShapeType>();
+  if (succeeded(p.parseOptionalQuestion())) {
+    shapeAttr = KGEN::UnknownAttr::get(shapeTy);
+    return mlir::success();
+  }
+
+  if (succeeded(p.parseOptionalLSquare())) {
+    SmallVector<TypedAttr> values;
+    if (failed(p.parseOptionalRSquare())) {
+      if (parseShapeValue(p, values) || p.parseRSquare())
+        return failure();
+    }
+
+    shapeAttr = p.getChecked<MO::ShapeAttr>(values, shapeTy);
+    return failure(!shapeAttr);
+  }
+
+  return std::nullopt;
+}
+
+//===----------------------------------------------------------------------===//
+// Tensor
+//===----------------------------------------------------------------------===//
+
 static void printShapeParam(AsmPrinter &p, TypedAttr shapeAttr) {
   if (isa<KGEN::UnknownAttr>(shapeAttr)) {
     p << "?";
@@ -64,21 +92,9 @@ static void printShapeParam(AsmPrinter &p, TypedAttr shapeAttr) {
 
 static ParseResult parseShapeParam(AsmParser &p, TypedAttr &shapeAttr) {
   auto shapeTy = p.getBuilder().getType<MO::ShapeType>();
-  if (succeeded(p.parseOptionalQuestion())) {
-    shapeAttr = KGEN::UnknownAttr::get(shapeTy);
+  OptionalParseResult res = parseShapeAttrOrUnknown(p, shapeAttr);
+  if (res.has_value() && succeeded(res.value()))
     return success();
-  }
-
-  if (succeeded(p.parseOptionalLSquare())) {
-    SmallVector<TypedAttr> values;
-    if (failed(p.parseOptionalRSquare())) {
-      if (parseShapeValue(p, values) || p.parseRSquare())
-        return failure();
-    }
-
-    shapeAttr = p.getChecked<MO::ShapeAttr>(values, shapeTy);
-    return failure(!shapeAttr);
-  }
 
   if (StringAttr name; succeeded(KGEN::parseParamName(p, name))) {
     shapeAttr = KGEN::ParamDeclRefAttr::get(name, shapeTy);
@@ -88,10 +104,6 @@ static ParseResult parseShapeParam(AsmParser &p, TypedAttr &shapeAttr) {
          << "couldn't parse shape parameter: expected `?`, shape reference, or "
             "literal shape reference (i.e. `[...]`)";
 }
-
-//===----------------------------------------------------------------------===//
-// Tensor
-//===----------------------------------------------------------------------===//
 
 /// Verifies that the given dimensions represent a valid tensor shape, and
 /// that the element type in DType form is also representable as an MLIR type.
@@ -257,7 +269,7 @@ LogicalResult ShapeType::printValue(AsmPrinter &p, TypedAttr value) const {
 
 OptionalParseResult ShapeType::parseValue(AsmParser &p,
                                           TypedAttr &value) const {
-  return parseShapeParam(p, value);
+  return parseShapeAttrOrUnknown(p, value);
 }
 
 //===----------------------------------------------------------------------===//
