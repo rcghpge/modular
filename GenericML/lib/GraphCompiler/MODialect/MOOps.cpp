@@ -295,6 +295,29 @@ OpFoldResult Shape::ConcatOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
+OpFoldResult Shape::EqualOp::fold(FoldAdaptor adaptor) {
+  auto input1 = adaptor.getInput1();
+  auto input2 = adaptor.getInput2();
+  if (!input1 || !input2)
+    return {};
+
+  if (input1 == input2) // fast path
+    return BoolAttr::get(getContext(), true);
+
+  auto shape1 = dyn_cast_or_null<ShapeAttr>(input1);
+  auto shape2 = dyn_cast_or_null<ShapeAttr>(input2);
+  if (shape1 && shape2) {
+    if (shape1.getRank() != shape2.getRank())
+      return BoolAttr::get(getContext(), false);
+
+    // we can only claim false here if inputs are different integers
+    for (auto [dim1, dim2] : llvm::zip(shape1.getValues(), shape2.getValues()))
+      if (dim1.isa<IntegerAttr>() && dim2.isa<IntegerAttr>() && dim1 != dim2)
+        return BoolAttr::get(getContext(), false);
+  }
+  return {};
+}
+
 void Shape::GetDimOp::build(OpBuilder &builder, OperationState &state,
                             Value input, int64_t dim) {
   build(builder, state, input, builder.getIndexAttr(dim));
