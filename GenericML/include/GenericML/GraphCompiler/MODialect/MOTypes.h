@@ -25,4 +25,8 @@
 #define GET_TYPEDEF_CLASSES
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h.inc"
 
+namespace M::MO {
+using MOTensorValue = M::TypedValue<M::MO::TensorType>;
+} // namespace M::MO
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTYPES_H

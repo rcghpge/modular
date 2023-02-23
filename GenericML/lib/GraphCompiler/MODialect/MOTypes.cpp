@@ -187,6 +187,13 @@ TensorType TensorType::get(ArrayRef<int64_t> shape, Type elementType,
   return get(newShape, elementType, metadata);
 }
 
+TensorType TensorType::get(ArrayRef<TypedAttr> shape, Type elementType,
+                           std::optional<Attribute> metadata) {
+  auto ctx = elementType.getContext();
+  auto newShape = MO::ShapeAttr::get(shape, MO::ShapeType::get(ctx));
+  return get(newShape, elementType, metadata);
+}
+
 TensorType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
                                  Type dtype,
                                  std::optional<Attribute> metadata) const {

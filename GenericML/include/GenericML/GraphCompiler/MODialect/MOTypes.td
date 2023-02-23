@@ -71,6 +71,10 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     TypeBuilderWithInferredContext<(ins
       "ArrayRef<int64_t>" : $shape,
       "Type" : $elementType,
+      CArg<"std::optional<Attribute>", "std::nullopt"> : $metadata)>,
+    TypeBuilderWithInferredContext<(ins
+      "ArrayRef<TypedAttr>" : $shape,
+      "Type" : $elementType,
       CArg<"std::optional<Attribute>", "std::nullopt"> : $metadata)>];
 
   let extraClassDeclaration = [{
