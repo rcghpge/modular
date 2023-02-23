@@ -710,7 +710,7 @@ def MO_BroadcastToOp : MO_Op<"broadcast_to", [Pure]> {
     ```
   }];
 
-  let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_shape);
+  let arguments = (ins MO_Tensor:$input_x, MO_ShapeLike:$input_shape);
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)

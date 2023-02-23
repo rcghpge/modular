@@ -3,6 +3,26 @@
 // NOTE: Keep the tests grouped by op, and the order of ops alphabetical.
 
 //===----------------------------------------------------------------------===//
+// BroadcastToOp
+//===----------------------------------------------------------------------===//
+
+mo.graph @broadcast_to_bad_shape(%from: !mo.tensor<?, f32>, %to: !mo.tensor<[2, 3], si64>) -> !mo.tensor<?, f32> {
+  // expected-error@+1 {{'mo.broadcast_to' op operand #1 must be rank 1 and signed 64 or signed 32 integer elements}}
+  %res = mo.broadcast_to(%from, %to) : (!mo.tensor<?, f32>, !mo.tensor<[2, 3], si64>) -> !mo.tensor<?, f32>
+  mo.output %res : !mo.tensor<?, f32>
+}
+
+// -----
+
+mo.graph @broadcast_to_bad_type(%from: !mo.tensor<?, f32>, %to: !mo.tensor<[?], f32>) -> !mo.tensor<?, f32> {
+  // expected-error@+1 {{'mo.broadcast_to' op operand #1 must be rank 1 and signed 64 or signed 32 integer elements}}
+  %res = mo.broadcast_to(%from, %to) : (!mo.tensor<?, f32>, !mo.tensor<[?], f32>) -> !mo.tensor<?, f32>
+  mo.output %res : !mo.tensor<?, f32>
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // ConcatOp
 //===----------------------------------------------------------------------===//
 
