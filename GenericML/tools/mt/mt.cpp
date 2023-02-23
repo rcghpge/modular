@@ -14,7 +14,6 @@
 #include "GenericML/Driver/CXXDriverAPI.h"
 #include "GenericML/Driver/DriverAPI.h"
 #include "GenericML/Driver/DriverInputFormat.h"
-#include "GenericML/Support/ModelCollection.h"
 #include "Support/ML/SizeUtils.h"
 #include "llvm/Support/ToolOutputFile.h"
 
