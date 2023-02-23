@@ -25,9 +25,6 @@ def MEFDialect : Dialect {
   let cppNamespace = "::M::MEF";
 
   let useDefaultTypePrinterParser = 1;
-
-  // https://discourse.llvm.org/t/psa-new-improved-fold-method-signature-has-landed-please-update-your-downstream-projects/67618
-  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 #endif // GRAPHRT_MEFDIALECT_MEFDIALECT_TD

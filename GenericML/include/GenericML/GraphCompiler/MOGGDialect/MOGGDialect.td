@@ -31,9 +31,6 @@ def MOGGDialect : Dialect {
   }];
 
   let useDefaultTypePrinterParser = 0;
-
-  // https://discourse.llvm.org/t/psa-new-improved-fold-method-signature-has-landed-please-update-your-downstream-projects/67618
-  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGDIALECT_TD
