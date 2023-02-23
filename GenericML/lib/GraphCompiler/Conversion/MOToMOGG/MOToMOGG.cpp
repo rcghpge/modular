@@ -10,8 +10,7 @@
 
 #include "GenericML/GraphCompiler/Conversion/MOToMOGG.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
-#include "KGEN/KGENDialect/KGENOps.h"
-#include "mlir/Parser/Parser.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 using namespace M;
@@ -28,19 +27,14 @@ namespace {
 // A struct containing the specification we should search for to find a kernel
 // for a given mo type.
 struct KernelRecord {
-  KernelRecord(StringLiteral name, StringLiteral shimName, bool hasLit)
-      : generator(nullptr), nameHint(name), shim(shimName),
-        shouldHaveLit(hasLit) {}
+  KernelRecord(StringLiteral moggID, StringLiteral shimName, bool hasLit)
+      : moggID(moggID), shim(shimName), shouldHaveLit(hasLit) {}
 
   ~KernelRecord() = default;
 
-  // The actual generator we are going to call. Defaults to null and populated
-  // externally by searching the lit.
-  KGEN::GeneratorOp generator;
-
   // The begining of the name. May have multiple matches we distinguish between
   // using the number of arguments.
-  StringLiteral nameHint;
+  StringLiteral moggID;
 
   // The C++ shim which implements this (i.e non-jitted kernel path).
   StringLiteral shim;
@@ -51,9 +45,11 @@ struct KernelRecord {
 
 // Helper to add a map to a jit kernel AND a shim kernel for a given mo op.
 // Add the ( to the name so we only match direct function matches.
-#define MO_TO_LIT(MOOp, MOGGName, ShimName)                                    \
+#define MO_TO_LIT(MOOp, ShimName)                                              \
   {                                                                            \
-    TypeID::get<MOOp>(), KernelRecord { MOGGName "(", ShimName, true }         \
+    TypeID::get<MOOp>(), KernelRecord {                                        \
+      MOOp::getOperationName(), ShimName, true                                 \
+    }                                                                          \
   }
 
 // Helper to add a map to a shim kernel for a given mo op.
@@ -63,23 +59,6 @@ struct KernelRecord {
   }
 
 using MoToKernelMapTy = SmallDenseMap<mlir::TypeID, KernelRecord, 32>;
-
-// Build up the MO->LIT kernel map by looking through the known KGEN bindings.
-void loadAvaliableLitBindings(mlir::ModuleOp kgenModule,
-                              MoToKernelMapTy &moToLitKernels) {
-  for (auto generator : kgenModule.getOps<KGEN::GeneratorOp>()) {
-    // Check if this generator is one of the generators we should be including.
-    for (auto &[key, impl] : moToLitKernels) {
-      // If we expect a lit kernel implementation and haven't already found one.
-      if (impl.shouldHaveLit && !impl.generator) {
-        if (generator.getSymName().starts_with(impl.nameHint)) {
-          impl.generator = generator;
-          break;
-        }
-      }
-    }
-  }
-}
 
 struct MOOpPattern : public RewritePattern {
   MOOpPattern(MLIRContext *ctx, MoToKernelMapTy &moToLitKernels, bool useJit)
@@ -119,9 +98,8 @@ struct MOOpPattern : public RewritePattern {
                    op->getName().getStringRef().str());
     KernelRecord &kernel = itr->second;
 
-    // If we should be using JIT and this kernel has a LIT implementation
-    // registered, generate a jit target. Otherwise use the shim.
-    if (useJit && kernel.generator) {
+    // If we should be using JIT generate a jit target. Otherwise use the shim.
+    if (useJit && kernel.shouldHaveLit) {
       // Wrap in an elementwise block for now.
       auto fusedOp =
           b.create<MOGG::ElementwiseOp>(loc,
@@ -139,7 +117,7 @@ struct MOOpPattern : public RewritePattern {
       auto litTarget = b.create<MOGG::LitOp>(
           op->getLoc(),
           /*outputTypes=*/op->getResultTypes(),
-          /*kernelTarget=*/kernel.generator.getSymName(),
+          /*kernelTarget=*/kernel.moggID,
           /*originalOperationName=*/op->getName().stripDialect(),
           /*inputOperands=*/body.getArguments());
 
@@ -177,58 +155,31 @@ void MOToMOGGPass::runOnOperation() {
   // will be jit compiled.
   MoToKernelMapTy moToLitKernels{
       MO_SHIM_ONLY(MO::AbsOp, "mop.kernels.abs"),
-      MO_TO_LIT(MO::AddOp, "$Math::add", "mop.kernels.add"),
+      MO_TO_LIT(MO::AddOp, "mop.kernels.add"),
       MO_SHIM_ONLY(MO::BroadcastShapeOp, "mop.kernels.broadcast_shape"),
       MO_SHIM_ONLY(MO::BroadcastToOp, "mop.kernels.broadcast_to"),
       MO_SHIM_ONLY(MO::ConvOp, "mop.kernels.conv"),
       MO_SHIM_ONLY(MO::DivOp, "mop.kernels.div"),
-      MO_TO_LIT(MO::ErfOp, "$Math::erf", "mop.kernels.erf"),
-      MO_TO_LIT(MO::ExpOp, "$Math::exp", "mop.kernels.exp"),
+      MO_TO_LIT(MO::ErfOp, "mop.kernels.erf"),
+      MO_TO_LIT(MO::ExpOp, "mop.kernels.exp"),
       MO_SHIM_ONLY(MO::TransposeOp, "mop.kernels.transpose"),
       MO_SHIM_ONLY(MO::PadOp, "mop.kernels.pad"),
       MO_SHIM_ONLY(MO::GatherOp, "mop.kernels.gather"),
       MO_SHIM_ONLY(MO::MatmulOp, "mop.kernels.matmul"),
-      MO_SHIM_ONLY(MO::BatchMatmulOp, "mop.kernels.batch_"
-                                      "matmul"),
+      MO_SHIM_ONLY(MO::BatchMatmulOp, "mop.kernels.batch_matmul"),
       MO_SHIM_ONLY(MO::MeanOp, "mop.kernels.mean"),
-      MO_TO_LIT(MO::MulOp, "$Math::mul", "mop.kernels.mul"),
-      MO_SHIM_ONLY(MO::MeanOp, "mop.kernels."
-                               "mean"),
-      MO_SHIM_ONLY(MO::Pow3Op, "mop.kernels."
-                               "pow3"),
+      MO_TO_LIT(MO::MulOp, "mop.kernels.mul"),
+      MO_SHIM_ONLY(MO::MeanOp, "mop.kernels.mean"),
+      MO_SHIM_ONLY(MO::Pow3Op, "mop.kernels.pow3"),
       MO_SHIM_ONLY(MO::ReluOp, "mop.kernels.relu"),
-      MO_TO_LIT(MO::RsqrtOp, "$Math::rsqrt", "mop.kernels.rsqrt"),
+      MO_TO_LIT(MO::RsqrtOp, "mop.kernels.rsqrt"),
       MO_SHIM_ONLY(MO::SigmoidOp, "mop.kernels.sigmoid"),
       MO_SHIM_ONLY(MO::ShapeOfOp, "mop.kernels.shape_of"),
       MO_SHIM_ONLY(MO::SoftmaxOp, "mop.kernels.softmax"),
-      MO_TO_LIT(MO::SqrtOp, "$Math::sqrt", "mop.kernels.sqrt"),
-      MO_TO_LIT(MO::SubOp, "$Math::sub", "mop.kernels.sub"),
-      MO_TO_LIT(MO::TanhOp, "$Math::tanh",
-                "mop.kernels."
-                "tanh"),
+      MO_TO_LIT(MO::SqrtOp, "mop.kernels.sqrt"),
+      MO_TO_LIT(MO::SubOp, "mop.kernels.sub"),
+      MO_TO_LIT(MO::TanhOp, "mop.kernels.tanh"),
   };
-
-  // Load the lit module with the kernels in it. Must be kept alive until pass
-  // exits so the GeneratorOps in the kernel map are legal references.
-  mlir::OwningOpRef<mlir::ModuleOp> kgenModule;
-
-  // Micro optimization to avoid the load if not in the jit context.
-  // Functionally it's fine for us to just load every time.
-  if (useJit.getValue()) {
-    // The path to the MOGG standard library lit bindings. The macro is set by
-    // CMake.
-    StringLiteral path = MOGG_LIT_BINDINGS_PATH;
-
-    kgenModule = mlir::parseSourceFile<mlir::ModuleOp>(path, ctx);
-    if (!kgenModule) {
-      getOperation()->emitError() << "[MOToMOGG] Could not load MOGG LIT "
-                                     "binding library at path "
-                                  << path;
-      return signalPassFailure();
-    }
-
-    loadAvaliableLitBindings(*kgenModule, moToLitKernels);
-  }
 
   RewritePatternSet patterns{ctx};
   patterns.add<MOOpPattern>(ctx, moToLitKernels, useJit.getValue());

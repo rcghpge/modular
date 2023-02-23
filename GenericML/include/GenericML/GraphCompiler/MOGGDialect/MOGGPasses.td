@@ -37,4 +37,22 @@ def FuseElementwise: Pass<"fuse-elementwise", "MO::GraphOp"> {
     ];
 }
 
+def LoadLitLibrary : Pass<"load-lit-library", "ModuleOp"> {
+  let summary = "Load the lit library. (nop if already loaded)";
+  let description = [{
+    Load the lit library off the disk and include the avaliable kernels in the mo graph.
+  }];
+
+
+  let dependentDialects = [
+      "M::MO::MODialect",
+      "M::MOGG::MOGGDialect",
+      "M::KGEN::KGENDialect",
+      "M::KGEN::POP::POPDialect",
+      "mlir::index::IndexDialect",
+      "M::DebugInfo::DebugInfoDialect",
+      "M::HLCF::HLCFDialect",
+  ];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGPASSES_TD

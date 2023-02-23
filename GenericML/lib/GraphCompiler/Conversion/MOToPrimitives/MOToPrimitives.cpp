@@ -401,6 +401,12 @@ void MOToPrimitivesPass::runOnOperation() {
     return MGP::CpuTensorType::get(&ctx, MGP::createCpuTensorSpec(t));
   });
 
+  // The lit kernels should already be fused so the registry is no longer
+  // needed.
+  for (MOGG::LitRegisterOp reg :
+       llvm::make_early_inc_range(theModule.getOps<MOGG::LitRegisterOp>()))
+    reg.erase();
+
   // Convert each mo.graph into a mgp.model.
   for (auto graphOp :
        llvm::make_early_inc_range(theModule.getOps<MO::GraphOp>())) {

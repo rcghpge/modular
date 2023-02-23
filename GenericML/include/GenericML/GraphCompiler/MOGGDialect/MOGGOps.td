@@ -94,6 +94,23 @@ def MOGG_OutputOp
 // MOGG jit ops
 //===----------------------------------------------------------------------===//
 
+def MOGG_LitRegisterOp : MOGG_Op<"lit_register", [HasParent<"ModuleOp">]> {
+  let summary = "A mapping of all the registered lit functions";
+  let description = [{
+    A module wide library of avaliable lit functions. This is populated by loading the target LIT library/libraries.
+    In the future this will be populated by a direct LIT binding.
+  }];
+
+  let arguments = (ins DictionaryAttr:$dict);
+
+
+  let assemblyFormat = [{
+    attr-dict
+  }];
+
+}
+
+
 def MOGG_LitOp : MOGG_Op<"lit", [SingleBlock]> {
   let summary = "Represents a target to call";
   let description = [{

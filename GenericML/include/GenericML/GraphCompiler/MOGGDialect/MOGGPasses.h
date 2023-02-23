@@ -27,6 +27,9 @@
 
 namespace M::MOGG {
 
+// Return the lit registary, adding it if needed.
+FailureOr<MOGG::LitRegisterOp> getOrLoadLitLibrary(ModuleOp mod);
+
 //===----------------------------------------------------------------------===//
 // Generated Pass Classes and Registration
 //===----------------------------------------------------------------------===//

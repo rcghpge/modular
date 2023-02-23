@@ -119,8 +119,17 @@ struct JitCompileKernels
 
   void runOnOperation() override {
     mlir::ModuleOp m = getOperation();
+
+    // Load the lit kernel library info.
+    FailureOr<MOGG::LitRegisterOp> registryOr = getOrLoadLitLibrary(m);
+    if (failed(registryOr)) {
+      m.emitError() << "[JitCompileKernels] Couldn't load lit kernel registry";
+      return signalPassFailure();
+    }
+    MOGG::LitRegisterOp registry = *registryOr;
+
     for (auto graph : m.getOps<MO::GraphOp>()) {
-      auto errOr = this->runPass(graph);
+      auto errOr = this->runPass(graph, registry);
       if (errOr.isError()) {
         graph.emitError() << "[JitCompileKernels] " << errOr.getError();
         return signalPassFailure();
@@ -163,7 +172,7 @@ struct JitCompileKernels
     return baseModuleRef;
   }
 
-  ErrorOrSuccess runPass(MO::GraphOp graph) {
+  ErrorOrSuccess runPass(MO::GraphOp graph, MOGG::LitRegisterOp registry) {
     // Load the lit library. We use this KGEN module as the starting point to
     // build up the stub functions. It contains all the kernels and functions we
     // will need to call.
@@ -181,7 +190,7 @@ struct JitCompileKernels
     SmallVector<mlir::Attribute> symbolNamesAdded;
 
     // Start building up the KGEN kernel.
-    Stub::KGENBuilder builder{manager, *kgenModule};
+    Stub::KGENBuilder builder{manager, *kgenModule, registry};
 
     // Build stubs for all JIT operations and replace them with symbolic calls
     // to the kernels in the KGEN stub.
@@ -218,12 +227,15 @@ struct JitCompileKernels
       symbolNamesAdded.push_back(jitExecute.getKernelNameAttr());
     }
 
-    // Convert our list into a combined attribute.
-    auto allSyms = mlir::ArrayAttr::get(graph->getContext(), symbolNamesAdded);
+    if (!symbolNamesAdded.empty()) {
+      // Convert our list into a combined attribute.
+      auto allSyms =
+          mlir::ArrayAttr::get(graph->getContext(), symbolNamesAdded);
 
-    // Add the compiled binary to the file.
-    Stub::StubCompiler compiler{*kgenModule, graph, useSearch.getValue()};
-    RETURN_ERROR(compiler.compile(allSyms));
+      // Add the compiled binary to the file.
+      Stub::StubCompiler compiler{*kgenModule, graph, useSearch.getValue()};
+      RETURN_ERROR(compiler.compile(allSyms));
+    }
     return success();
   }
 };
