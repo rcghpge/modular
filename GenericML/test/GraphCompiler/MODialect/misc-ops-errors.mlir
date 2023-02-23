@@ -3,6 +3,50 @@
 // NOTE: Keep the tests grouped by op, and the order of ops alphabetical.
 
 //===----------------------------------------------------------------------===//
+// BroadcastShapeOp
+//===----------------------------------------------------------------------===//
+
+mo.graph @broadcast_shape_f32_output(%arg0: !mo.tensor<[3], si64>, %arg1: !mo.tensor<[2], si64>) -> !mo.tensor<[2], f32> {
+  // expected-error@+1 {{'mo.broadcast_shape' op result #0 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<[3], f32>'}}
+  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[3], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3], f32>
+  mo.output %res : !mo.tensor<[3], f32>
+}
+
+// -----
+
+mo.graph @broadcast_shape_dyn_rank(%arg0: !mo.tensor<[3], si64>, %arg1: !mo.tensor<[2], si64>) -> !mo.tensor<?, si64> {
+  // expected-error@+1 {{'mo.broadcast_shape' op result #0 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<?, si64>'}}
+  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[3], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<?, si64>
+  mo.output %res : !mo.tensor<?, si64>
+}
+
+// -----
+
+mo.graph @broadcast_shape_vector_output(%arg0: !mo.tensor<[3], si64>, %arg1: !mo.tensor<[2], si64>) -> !mo.tensor<[2, 1], si64> {
+  // expected-error@+1 {{'mo.broadcast_shape' op result #0 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<[2, 1], si64>'}}
+  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[3], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 1], si64>
+  mo.output %res : !mo.tensor<[2, 1], si64>
+}
+
+// -----
+
+mo.graph @broadcast_shape_f32_input(%arg0: !mo.tensor<[3], f32>, %arg1: !mo.tensor<[2], f32>) -> !mo.tensor<[3], si64> {
+  // expected-error@+1 {{'mo.broadcast_shape' op operand #0 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<[3], f32>'}}
+  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[3], f32>, !mo.tensor<[2], f32>) -> !mo.tensor<[3], si64>
+  mo.output %res : !mo.tensor<[3], si64>
+}
+
+// -----
+
+mo.graph @broadcast_shape_f32_input2(%arg0: !mo.tensor<[3], si32>, %arg1: !mo.tensor<[2], f32>) -> !mo.tensor<[3], si64> {
+  // expected-error@+1 {{'mo.broadcast_shape' op operand #1 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<[2], f32>'}}
+  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[3], si32>, !mo.tensor<[2], f32>) -> !mo.tensor<[3], si64>
+  mo.output %res : !mo.tensor<[3], si64>
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // BroadcastToOp
 //===----------------------------------------------------------------------===//
 
@@ -72,91 +116,6 @@ mo.graph @concat_partial_dyn_rank(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.ten
 // -----
 
 //===----------------------------------------------------------------------===//
-// TransposeOp
-//===----------------------------------------------------------------------===//
-
-mo.graph @transpose_fp32_perm(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[3, 2], f32> {
-  %perm = mo.constant {value = #M.dense_array<1.0, 0.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
-  // expected-error@+1 {{'mo.transpose' op operand #1 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<[2], f32>'}}
-  %res = mo.transpose(%input, %perm) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2], f32>) -> !mo.tensor<[3, 2], f32>
-  mo.output %res : !mo.tensor<[3, 2], f32>
-}
-
-// -----
-
-mo.graph @transpose_2d_perm(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[3, 2], f32> {
-  %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<1x2xsi64>} : !mo.tensor<[1, 2], si64>
-  // expected-error@+1 {{'mo.transpose' op operand #1 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<[1, 2], si64>'}}
-  %res = mo.transpose(%input, %perm) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[1, 2], si64>) -> !mo.tensor<[3, 2], f32>
-  mo.output %res : !mo.tensor<[3, 2], f32>
-}
-
-// -----
-
-mo.graph @transpose_perm_size_static(%input: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
-  %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  // expected-error@+1 {{argument and result must be statically ranked if perm has known shape}}
-  %res = mo.transpose(%input, %perm) : (!mo.tensor<?, f32>, !mo.tensor<[2], si64>) -> !mo.tensor<?, f32>
-  mo.output %res : !mo.tensor<?, f32>
-}
-
-// -----
-
-mo.graph @transpose_perm_size_dynamic(%input: !mo.tensor<[?, ?], f32>, %perm: !mo.tensor<[?], si64>) -> !mo.tensor<[?, ?], f32> {
-  // expected-error@+1 {{argument and result must be dynamically ranked if perm has unknown shape}}
-  %res = mo.transpose(%input, %perm) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[?], si64>) -> !mo.tensor<[?, ?], f32>
-  mo.output %res : !mo.tensor<[?, ?], f32>
-}
-
-// -----
-
-mo.graph @transpose_arg_res_rank_mismatch(%input: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?, ?], f32> {
-  %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  // expected-error@+1 {{input and result ranks do not match}}
-  %res = mo.transpose(%input, %perm) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
-  mo.output %res : !mo.tensor<[?, ?], f32>
-}
-
-// -----
-
-mo.graph @transpose_perm_rank_mismatch(%input: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?, ?, ?], f32> {
-  %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  // expected-error@+1 {{input and result ranks do not match perm size}}
-  %res = mo.transpose(%input, %perm) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?, ?], f32>
-  mo.output %res : !mo.tensor<[?, ?, ?], f32>
-}
-
-// -----
-
-//===----------------------------------------------------------------------===//
-// PadOp
-//===----------------------------------------------------------------------===//
-
-mo.graph @pad_non_scalar_constant(%input: !mo.tensor<[2, 3], f32>, %paddings: !mo.tensor<[2, 2], si64>, %constant: !mo.tensor<[2], f32>) -> !mo.tensor<[?, ?], f32> {
-  // expected-error@+1 {{'mo.pad' op operand #2 must be ranked scalar tensor, but got '!mo.tensor<[2], f32>'}}
-  %res = mo.pad(%input, %paddings, %constant) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si64>, !mo.tensor<[2], f32>) -> !mo.tensor<[?, ?], f32>
-  mo.output %res : !mo.tensor<[?, ?], f32>
-}
-
-// -----
-
-mo.graph @pad_float_paddings(%input: !mo.tensor<[2, 3], f32>, %paddings: !mo.tensor<[2, 2], f32>, %constant: !mo.tensor<[1], f32>) -> !mo.tensor<[?, ?], f32> {
-  // expected-error@+1 {{'mo.pad' op operand #1 must be shape [N, 2] and signed 64 or signed 32 integer elements, but got '!mo.tensor<[2, 2], f32>}}
-  %res = mo.pad(%input, %paddings, %constant) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], f32>, !mo.tensor<[1], f32>) -> !mo.tensor<[?, ?], f32>
-  mo.output %res : !mo.tensor<[?, ?], f32>
-}
-
-// -----
-
-mo.graph @pad_invalid_shape_paddings(%input: !mo.tensor<[2, 3], f32>, %paddings: !mo.tensor<[2, 3], si64>, %constant: !mo.tensor<[1], f32>) -> !mo.tensor<[?, ?], f32> {
-  // expected-error@+1 {{'mo.pad' op operand #1 must be shape [N, 2] and signed 64 or signed 32 integer elements, but got '!mo.tensor<[2, 3], si64>'}}
-  %res = mo.pad(%input, %paddings, %constant) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], si64>, !mo.tensor<[1], f32>) -> !mo.tensor<[?, ?], f32>
-  mo.output %res : !mo.tensor<[?, ?], f32>
-}
-
-// -----
-
-//===----------------------------------------------------------------------===//
 // GatherOp
 //===----------------------------------------------------------------------===//
 
@@ -192,6 +151,34 @@ mo.graph @gather_unranked_axis(%params: !mo.tensor<[2, 2], f32>, %indices: !mo.t
   // expected-error@+1 {{'mo.gather' op operand #2 must be ranked scalar tensor, but got '!mo.tensor<?, si64>'}}
   %0 = mo.gather(%params, %indices, %axis) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>, !mo.tensor<?, si64>) -> !mo.tensor<[2, 2], f32>
   mo.output %0 : !mo.tensor<[2, 2], f32>
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// PadOp
+//===----------------------------------------------------------------------===//
+
+mo.graph @pad_non_scalar_constant(%input: !mo.tensor<[2, 3], f32>, %paddings: !mo.tensor<[2, 2], si64>, %constant: !mo.tensor<[2], f32>) -> !mo.tensor<[?, ?], f32> {
+  // expected-error@+1 {{'mo.pad' op operand #2 must be ranked scalar tensor, but got '!mo.tensor<[2], f32>'}}
+  %res = mo.pad(%input, %paddings, %constant) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si64>, !mo.tensor<[2], f32>) -> !mo.tensor<[?, ?], f32>
+  mo.output %res : !mo.tensor<[?, ?], f32>
+}
+
+// -----
+
+mo.graph @pad_float_paddings(%input: !mo.tensor<[2, 3], f32>, %paddings: !mo.tensor<[2, 2], f32>, %constant: !mo.tensor<[1], f32>) -> !mo.tensor<[?, ?], f32> {
+  // expected-error@+1 {{'mo.pad' op operand #1 must be shape [N, 2] and signed 64 or signed 32 integer elements, but got '!mo.tensor<[2, 2], f32>}}
+  %res = mo.pad(%input, %paddings, %constant) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], f32>, !mo.tensor<[1], f32>) -> !mo.tensor<[?, ?], f32>
+  mo.output %res : !mo.tensor<[?, ?], f32>
+}
+
+// -----
+
+mo.graph @pad_invalid_shape_paddings(%input: !mo.tensor<[2, 3], f32>, %paddings: !mo.tensor<[2, 3], si64>, %constant: !mo.tensor<[1], f32>) -> !mo.tensor<[?, ?], f32> {
+  // expected-error@+1 {{'mo.pad' op operand #1 must be shape [N, 2] and signed 64 or signed 32 integer elements, but got '!mo.tensor<[2, 3], si64>'}}
+  %res = mo.pad(%input, %paddings, %constant) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], si64>, !mo.tensor<[1], f32>) -> !mo.tensor<[?, ?], f32>
+  mo.output %res : !mo.tensor<[?, ?], f32>
 }
 
 // -----
@@ -249,45 +236,56 @@ mo.graph @shape_of_dyn_rank_static_res(%arg: !mo.tensor<[?, ?], f32>) -> !mo.ten
 // -----
 
 //===----------------------------------------------------------------------===//
-// NumpyBroadcastOp
+// TransposeOp
 //===----------------------------------------------------------------------===//
 
-mo.graph @broadcast_shape_f32_output(%arg0: !mo.tensor<[3], si64>, %arg1: !mo.tensor<[2], si64>) -> !mo.tensor<[2], f32> {
-  // expected-error@+1 {{'mo.broadcast_shape' op result #0 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<[3], f32>'}}
-  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[3], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3], f32>
-  mo.output %res : !mo.tensor<[3], f32>
+mo.graph @transpose_fp32_perm(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[3, 2], f32> {
+  %perm = mo.constant {value = #M.dense_array<1.0, 0.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
+  // expected-error@+1 {{'mo.transpose' op operand #1 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<[2], f32>'}}
+  %res = mo.transpose(%input, %perm) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2], f32>) -> !mo.tensor<[3, 2], f32>
+  mo.output %res : !mo.tensor<[3, 2], f32>
 }
 
 // -----
 
-mo.graph @broadcast_shape_dyn_rank(%arg0: !mo.tensor<[3], si64>, %arg1: !mo.tensor<[2], si64>) -> !mo.tensor<?, si64> {
-  // expected-error@+1 {{'mo.broadcast_shape' op result #0 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<?, si64>'}}
-  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[3], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<?, si64>
-  mo.output %res : !mo.tensor<?, si64>
+mo.graph @transpose_2d_perm(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[3, 2], f32> {
+  %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<1x2xsi64>} : !mo.tensor<[1, 2], si64>
+  // expected-error@+1 {{'mo.transpose' op operand #1 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<[1, 2], si64>'}}
+  %res = mo.transpose(%input, %perm) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[1, 2], si64>) -> !mo.tensor<[3, 2], f32>
+  mo.output %res : !mo.tensor<[3, 2], f32>
 }
 
 // -----
 
-mo.graph @broadcast_shape_vector_output(%arg0: !mo.tensor<[3], si64>, %arg1: !mo.tensor<[2], si64>) -> !mo.tensor<[2, 1], si64> {
-  // expected-error@+1 {{'mo.broadcast_shape' op result #0 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<[2, 1], si64>'}}
-  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[3], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 1], si64>
-  mo.output %res : !mo.tensor<[2, 1], si64>
+mo.graph @transpose_perm_size_static(%input: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
+  %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // expected-error@+1 {{argument and result must be statically ranked if perm has known shape}}
+  %res = mo.transpose(%input, %perm) : (!mo.tensor<?, f32>, !mo.tensor<[2], si64>) -> !mo.tensor<?, f32>
+  mo.output %res : !mo.tensor<?, f32>
 }
 
 // -----
 
-mo.graph @broadcast_shape_f32_input(%arg0: !mo.tensor<[3], f32>, %arg1: !mo.tensor<[2], f32>) -> !mo.tensor<[3], si64> {
-  // expected-error@+1 {{'mo.broadcast_shape' op operand #0 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<[3], f32>'}}
-  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[3], f32>, !mo.tensor<[2], f32>) -> !mo.tensor<[3], si64>
-  mo.output %res : !mo.tensor<[3], si64>
+mo.graph @transpose_perm_size_dynamic(%input: !mo.tensor<[?, ?], f32>, %perm: !mo.tensor<[?], si64>) -> !mo.tensor<[?, ?], f32> {
+  // expected-error@+1 {{argument and result must be dynamically ranked if perm has unknown shape}}
+  %res = mo.transpose(%input, %perm) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[?], si64>) -> !mo.tensor<[?, ?], f32>
+  mo.output %res : !mo.tensor<[?, ?], f32>
 }
 
 // -----
 
-mo.graph @broadcast_shape_f32_input2(%arg0: !mo.tensor<[3], si32>, %arg1: !mo.tensor<[2], f32>) -> !mo.tensor<[3], si64> {
-  // expected-error@+1 {{'mo.broadcast_shape' op operand #1 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<[2], f32>'}}
-  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[3], si32>, !mo.tensor<[2], f32>) -> !mo.tensor<[3], si64>
-  mo.output %res : !mo.tensor<[3], si64>
+mo.graph @transpose_arg_res_rank_mismatch(%input: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?, ?], f32> {
+  %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // expected-error@+1 {{input and result ranks do not match}}
+  %res = mo.transpose(%input, %perm) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
+  mo.output %res : !mo.tensor<[?, ?], f32>
 }
 
 // -----
+
+mo.graph @transpose_perm_rank_mismatch(%input: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?, ?, ?], f32> {
+  %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // expected-error@+1 {{input and result ranks do not match perm size}}
+  %res = mo.transpose(%input, %perm) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?, ?], f32>
+  mo.output %res : !mo.tensor<[?, ?, ?], f32>
+}
