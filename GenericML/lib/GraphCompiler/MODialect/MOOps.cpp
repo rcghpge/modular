@@ -59,6 +59,10 @@ ParseResult GraphOp::parse(OpAsmParser &parser, OperationState &result) {
 /// Print the GraphOp.
 void GraphOp::print(OpAsmPrinter &p) { KGEN::printGeneratorOrFunc(p, *this); }
 
+OutputOp GraphOp::getOutputOp() {
+  return cast<OutputOp>(getBodyBlock()->getTerminator());
+}
+
 //===----------------------------------------------------------------------===//
 // OutputOp support
 //===----------------------------------------------------------------------===//

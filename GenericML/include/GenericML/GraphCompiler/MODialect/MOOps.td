@@ -73,6 +73,7 @@ def MO_GraphOp : MO_Op<"graph", [HasParent<"ModuleOp">, FunctionOpInterface,
     using FunctionOpInterfaceTrait::front;
     using FunctionOpInterfaceTrait::end;
     Block *getBodyBlock() { return &getFunctionBody().front(); }
+    OutputOp getOutputOp();
 
     /// Returns the argument types of this function.
     ArrayRef<Type> getArgumentTypes() { return getFunctionType().getInputs(); }
