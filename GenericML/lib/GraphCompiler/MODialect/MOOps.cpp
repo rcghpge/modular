@@ -10,6 +10,7 @@
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
+#include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/Compiler/VerifyUtils.h"
@@ -250,6 +251,48 @@ OpFoldResult RebindOp::fold(FoldAdaptor adaptor) {
   if (getInput().getType() == getType())
     return getInput();
   return {};
+}
+
+LogicalResult RebindOp::verify() {
+  TensorType inTy = getInput().getType();
+  TensorType outTy = getType();
+  // Nothing to check if either type is dynamically ranked
+  if (!inTy.hasRank() || !outTy.hasRank())
+    return success();
+
+  if (inTy.getRank() != outTy.getRank())
+    return emitError("input and output static ranks must match");
+
+  SmallDenseMap<KGEN::ParamDeclRefAttr, IntegerAttr> dimParamToInt;
+  auto tryUnifyParamToIntDim = [&](TypedAttr srcDimAttr,
+                                   TypedAttr dstDimAttr) -> LogicalResult {
+    auto srcDimParamRef = dyn_cast<KGEN::ParamDeclRefAttr>(srcDimAttr);
+    auto dstDimIntAttr = dyn_cast<IntegerAttr>(dstDimAttr);
+    if (srcDimParamRef && dstDimIntAttr) {
+      auto [cachedEntry, _] =
+          dimParamToInt.try_emplace(srcDimParamRef, dstDimIntAttr);
+      IntegerAttr cachedDimIntAttr = cachedEntry->second;
+      if (cachedDimIntAttr != dstDimIntAttr)
+        return failure();
+    }
+    return success();
+  };
+  auto inDimAttrs = dyn_cast<ShapeAttr>(inTy.getShapeAttr());
+  auto outDimAttrs = dyn_cast<ShapeAttr>(outTy.getShapeAttr());
+  if (inDimAttrs && outDimAttrs) {
+    for (auto [inDimAttr, outDimAttr] :
+         llvm::zip(inDimAttrs.getValues(), outDimAttrs.getValues())) {
+      auto inDimIntAttr = dyn_cast<IntegerAttr>(inDimAttr);
+      auto outDimIntAttr = dyn_cast<IntegerAttr>(outDimAttr);
+      if (inDimIntAttr && outDimIntAttr && inDimIntAttr != outDimIntAttr)
+        return emitError("statically known dimensions must match");
+      else if (failed(tryUnifyParamToIntDim(inDimAttr, outDimAttr)) ||
+               failed(tryUnifyParamToIntDim(outDimAttr, inDimAttr)))
+        return emitError("one dimension parameter cannot bind to different "
+                         "static dimensions");
+    }
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

@@ -178,6 +178,7 @@ def MO_RebindOp : MO_Op<"rebind", [Pure,
   }];
 
   let hasFolder = 1;
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
