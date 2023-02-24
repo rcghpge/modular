@@ -403,7 +403,7 @@ void mgp_model() { assert(false && "mgp.model should never be invoked"); }
 //===----------------------------------------------------------------------===//
 
 void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
-  StateSlot::registerType<DefaultStateSlot>();
+  LLCL::TypeID::registerType<DefaultStateSlot>();
 
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.constant", mgp_cpu_buffer_constant);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.alloc.static",

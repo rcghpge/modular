@@ -987,7 +987,7 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
   /// specializations outside of a namespace.
   template <typename T, typename Dummy = void>
   struct TypeRegistration {
-    static void registerType() { AsyncValue::registerType<T>(); }
+    static void registerType() { LLCL::TypeID::registerType<T>(); }
   };
   template <typename Dummy>
   struct TypeRegistration<void, Dummy> {

@@ -12,9 +12,8 @@
 using namespace M;
 using namespace M::GML;
 
-StateSlot::StateSlot(TypeID typeID, size_t numBuffers)
-    : typeID(typeID), bufferCache(numBuffers) {
-  assert(typeID != kInvalidTypeID);
+StateSlot::~StateSlot() {
+  getTypeID().getValueDestructor()(getPayloadPointer());
 }
 
 BufferRef StateSlot::getOrCreateBuffer(size_t bufferIndex,
@@ -39,21 +38,6 @@ ErrorOr<BufferRef> StateSlot::getBuffer(size_t bufferIndex) {
   // cache, and the compiler follows the 'one shot' rules for reallocing
   // buffers, we can give the borrow 'execute' lifetime.
   return entry.borrow(GML::BufferRef::kExecute);
-}
-
-/// Assigns to staticTypeId a globally unique type id.
-void StateSlot::doTypeRegistration(std::atomic<TypeID> *staticTypeID) {
-  static std::atomic<TypeID> nextFreeTypeId = 0;
-  // Allocate the next id. We may end up not using it if another thread
-  // beats us to the assignment to staticTypeId below.
-  TypeID nextId = nextFreeTypeId++;
-  // Detect overflow.
-  assert(nextId != kInvalidTypeID &&
-         "too many types registered by StateSlot::registerType");
-  // Grab the next id. At most one thread will win, we don't care which.
-  TypeID existingId = kInvalidTypeID;
-  (void)staticTypeID->compare_exchange_strong(
-      existingId, nextId, std::memory_order_release, std::memory_order_acquire);
 }
 
 void StateSlot::updateCacheIfNeeded(BufferRef &entry,

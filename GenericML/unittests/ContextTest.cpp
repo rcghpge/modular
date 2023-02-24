@@ -39,7 +39,8 @@ static LLCL::Runtime *GetRuntime() {
 #ifndef NDEBUG
 TEST(ContextTest, StateSlotDowncastFailTest) {
   Context ctx(/*numSlots=*/1);
-  StateSlot::registerType<PayloadA>();
+  LLCL::TypeID::registerType<PayloadA>();
+  LLCL::TypeID::registerType<PayloadB>();
 
   ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, /*numBuffers=*/1, 43);
   ASSERT_DEATH_IF_SUPPORTED(ctx.getStateSlotPayload<PayloadB>(/*slotIndex=*/0),
@@ -49,8 +50,8 @@ TEST(ContextTest, StateSlotDowncastFailTest) {
 
 TEST(ContextTest, StateSlotTest) {
   Context ctx(/*numSlots=*/2);
-  StateSlot::registerType<PayloadA>();
-  StateSlot::registerType<PayloadB>();
+  LLCL::TypeID::registerType<PayloadA>();
+  LLCL::TypeID::registerType<PayloadB>();
 
   ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, /*numBuffers=*/1, 43);
   ctx.emplaceStateSlot<PayloadB>(/*slotIndex=*/1, /*numBuffers=*/1, 'a');
@@ -65,7 +66,7 @@ TEST(ContextTest, getOrCreateBufferTest) {
   {
     // Add scope to make sure that the allocator outlives the context.
     Context ctx(/*numSlots=*/1);
-    StateSlot::registerType<PayloadA>();
+    LLCL::TypeID::registerType<PayloadA>();
     ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, /*numBuffers=*/1, 43);
 
     auto &stateSlot = ctx.getStateSlot(/*slotIndex=*/0);

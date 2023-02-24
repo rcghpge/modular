@@ -10,6 +10,7 @@
 #include "GenericML/Support/BufferRef.h"
 #include "LLCL/ForwardDecls.h"
 #include "LLCL/Runtime/AnyAsyncValueRef.h"
+#include "LLCL/Runtime/TypeID.h"
 #include "LLCL/Support/RCRef.h"
 #include "Support/AlignedAlloc.h"
 #include "Support/ErrorOr.h"
@@ -30,24 +31,16 @@ class ConcreteStateSlot;
 /// slot is constructed. The state slot may also hold an arbitrary payload,
 /// however the payload type must be registered at least once. The payload's
 /// destructor will be called when the state slot is destroyed.
+///
+/// Requires each static type to be registered ahead of its use in an StateSlot
+/// using TypeID::registerType<T>().
 class StateSlot {
 public:
-  /// Every registered payload type is associated with a unique value
-  /// of this type.
-  using TypeID = uint16_t;
-
-  virtual ~StateSlot() = default;
+  ~StateSlot();
 
   // No implicit copying is allowed.
   StateSlot(const StateSlot &rhs) = delete;
   StateSlot &operator=(const StateSlot &rhs) = delete;
-
-  /// Registers type T as being valid for storage within a state slot.
-  /// It's ok for the same type to be registered multiple times.
-  template <typename T>
-  static void registerType() {
-    Detail::ConcreteStateSlot<T>::registerType();
-  }
 
   /// Returns a new instance of StateSlot with a freshly constructed payload of
   /// type T which can hold numBuffers cached buffer allocations.
@@ -62,7 +55,7 @@ public:
   /// must match the type id of the state slot.
   template <typename T>
   T &get() {
-    assert(typeID == Detail::ConcreteStateSlot<T>::getStaticTypeID() &&
+    assert(typeID == LLCL::TypeID::get<T>() &&
            "mismatched static and dynamic StateSlot types");
     return static_cast<Detail::ConcreteStateSlot<T> *>(this)->payload;
   }
@@ -90,14 +83,15 @@ public:
   /// See getOrCreateBuffer for safety conditions.
   ErrorOr<BufferRef> getBuffer(size_t bufferIndex);
 
+  /// Returns the type id for the value held by this state slot.
+  LLCL::TypeID getTypeID() const { return typeID; }
+
 protected:
-  /// The invalid type id.
-  static constexpr TypeID kInvalidTypeID = std::numeric_limits<TypeID>::max();
-
-  StateSlot(TypeID typeID, size_t numBuffers);
-
-  /// Assigns to staticTypeId a globally unique type id.
-  static void doTypeRegistration(std::atomic<TypeID> *staticTypeID);
+  StateSlot(LLCL::TypeID typeID, size_t numBuffers) : typeID(typeID) {
+    assert(typeID != LLCL::TypeID());
+    for (size_t i = 0; i < numBuffers; ++i)
+      bufferCache.emplace_back();
+  }
 
 private:
   /// Ensure the buffer in enry is allocated with size, reallocating
@@ -106,15 +100,22 @@ private:
                                   LLCL::CompactRuntimePtr runtime, size_t size,
                                   std::optional<size_t> alignment);
 
+  /// Return the address of the payload.
+  void *getPayloadPointer() {
+    /// The payload in a ConcreteStateSlot always immediately follows the
+    /// StateSlot. This is guaranteed by static_asserts in ConcreteStateSlot.
+    return this + 1;
+  }
+
   /// Type id uniquely describing the type of payload held by this states slot.
-  TypeID typeID;
+  LLCL::TypeID typeID;
 
   /// A place to hold pre-allocated or cached buffers. Tensors and other
   /// more refined types can be constructed from these buffers. Though these
   /// references will be 'uninitialized' or 'owning', all access to them
   /// will be via 'borrowed' references. Any 'owning' buffers will be
   /// destroyed when the context holding this state slot is destroyed.
-  std::vector<BufferRef> bufferCache;
+  SmallVector<BufferRef, 1> bufferCache;
 };
 
 /// A state slot with no extra payload state. Useful for testing and for
@@ -131,33 +132,26 @@ class ConcreteStateSlot : public StateSlot {
 public:
   template <typename... Args>
   explicit ConcreteStateSlot(size_t numOutputs, Args &&...args)
-      : StateSlot(getStaticTypeID(), numOutputs),
-        payload(std::forward<Args>(args)...) {}
+      : StateSlot(LLCL::TypeID::get<T>(), numOutputs),
+        payload(std::forward<Args>(args)...) {
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
+#endif
+    static_assert(offsetof(ConcreteStateSlot<T>, payload) == sizeof(StateSlot),
+                  "Offset of ConcreteStateSlot::payload needs to be aligned");
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
+  }
 
-  ~ConcreteStateSlot() override = default;
+  ~ConcreteStateSlot() { assert(false && "destroy from StateSlot"); }
 
   // No implicit copying is allowed
   ConcreteStateSlot(const ConcreteStateSlot &rhs) = delete;
   ConcreteStateSlot &operator=(const ConcreteStateSlot &rhs) = delete;
 
 private:
-  /// Determines a unique type id to represent T. It's ok for the same
-  /// type to be registered multiple times.
-  static void registerType() {
-    if (getStaticTypeID() != kInvalidTypeID)
-      return;
-    doTypeRegistration(&staticTypeID);
-  }
-
-  /// Returns the unique type representing T. Will be invalid until
-  /// registerType is called at least once.
-  static TypeID getStaticTypeID() {
-    return staticTypeID.load(std::memory_order_acquire);
-  }
-
-  /// Unique type id representing T.
-  static inline std::atomic<TypeID> staticTypeID{kInvalidTypeID};
-
   /// Payload.
   T payload;
 
