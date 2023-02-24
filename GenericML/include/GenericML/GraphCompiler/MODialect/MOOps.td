@@ -473,7 +473,8 @@ def MO_TanhOp : MO_ElementWiseUnaryOp<"tanh"> {
 // Reduction ops
 //===----------------------------------------------------------------------===//
 
-def MO_MeanOp : MO_Op<"mean", [Pure]> {
+def MO_MeanOp : MO_Op<"mean",
+    [Pure, DeclareOpInterfaceMethods<MO_Parameterization>]> {
   let summary = "Mean operation";
   let description = [{
     Reduce `input` elements across `axis` into their mean value, and change that
@@ -491,11 +492,13 @@ def MO_MeanOp : MO_Op<"mean", [Pure]> {
   }];
 
   let arguments = (ins MO_Tensor:$input,
-                       MO_RankedScalarTensor:$axis);
+                       MO_RankedScalarTensor:$axis,
+                       MO_ParamDecls:$paramDecls);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `` custom<ParamDecls>($paramDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 
