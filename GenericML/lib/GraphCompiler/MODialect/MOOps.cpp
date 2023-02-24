@@ -401,18 +401,41 @@ void Shape::SliceOp::build(OpBuilder &builder, OperationState &state,
         builder.getIndexAttr(end));
 }
 
+void Shape::SliceOp::build(OpBuilder &builder, OperationState &state,
+                           Value input, int64_t start) {
+  build(builder, state, input, builder.getIndexAttr(start), {});
+}
+
 OpFoldResult Shape::SliceOp::fold(FoldAdaptor adaptor) {
   if (auto input = dyn_cast_or_null<ShapeAttr>(adaptor.getInput())) {
     int64_t start = normalizeAxis(adaptor.getStart(), input.getRank());
-    int64_t end = normalizeAxis(adaptor.getEnd(), input.getRank());
-    if (start > 0 && end == 0) // emulate pythonic shape[start:]
-      end = input.getRank();
+    int64_t end = input.getRank();
+    if (adaptor.getEnd().has_value())
+      end = normalizeAxis(adaptor.getEnd().value(), input.getRank());
     SmallVector<TypedAttr> slicedDims(input.getValues().begin() + start,
                                       input.getValues().begin() + end);
     auto shapeTy = ShapeType::get(getContext());
     return ShapeAttr::get(slicedDims, shapeTy);
   }
   return {};
+}
+
+LogicalResult Shape::SliceOp::verify() {
+  // NOTE we can't check for input rank here, so verification is limited
+  IntegerAttr startAttr = getStartAttr();
+  IntegerAttr endAttr = getEndAttr();
+  if (!endAttr)
+    return success();
+
+  int64_t start = startAttr.getInt();
+  int64_t end = endAttr.getInt();
+  auto bothOrNeitherIndicesNegative =
+      (start < 0 && end < 0) || (start >= 0 && end >= 0);
+  if (bothOrNeitherIndicesNegative && end < start) {
+    return emitError("end axis cannot be smaller than start axis if they are "
+                     "both or neither negative");
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

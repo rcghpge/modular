@@ -60,5 +60,9 @@ kgen.func @slice(%sh0: !mo.shape) -> (!mo.shape, !mo.shape) {
   %sh1 = mo.shape.slice(%sh0)[0, 2]
   // CHECK-DAG: %[[SH2:.*]] = mo.shape.slice(%[[SH0]])[0, -2]
   %sh2 = mo.shape.slice(%sh0)[0, -2]
+  // CHECK-DAG: %[[SH3:.*]] = mo.shape.slice(%[[SH0]])[1]
+  %sh3 = mo.shape.slice(%sh0)[1]
+  // CHECK-DAG: %[[SH4:.*]] = mo.shape.slice(%[[SH0]])[-2]
+  %sh4 = mo.shape.slice(%sh0)[-2]
   kgen.return %sh1, %sh2 : !mo.shape, !mo.shape
 }
