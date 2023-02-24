@@ -14,6 +14,7 @@
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/AsyncValue.h"
 #include "LLCL/Runtime/AsyncValueRef.h"
+#include "LLCL/Support/SpinWaiter.h"
 #include "Support/ML/SizeUtils.h"
 #include "Support/ML/TensorShape.h"
 #include "llvm/Support/Debug.h"
@@ -39,7 +40,7 @@ static void mgp_cpu_buffer_constant(Result<BufferRef> outBuffer,
                                     MEFAttr<ArrayRef<uint8_t>> aValue,
                                     MEFAttr<uint64_t> bRawAlign,
                                     Runtime &runtime) {
-  TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_constant");
+  TimeTraceScope scope(LLCL::WorkProfilerEntry::create("mgp.buffer_constant"));
   std::optional<size_t> optAlign;
   if (hasRawSize(*bRawAlign))
     optAlign = rawSizeToRuntimeSize(*bRawAlign);
@@ -58,7 +59,7 @@ static void mgp_cpu_buffer_alloc_static(Context &ctx, Result<BufferRef> result,
                                         MEFAttr<uint64_t> aSize,
                                         MEFAttr<uint64_t> bRawAlign,
                                         Runtime &runtime) {
-  TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_alloc");
+  TimeTraceScope scope(LLCL::WorkProfilerEntry::create("mgp.buffer_alloc"));
   if (!isValidPlainSize(*aSize))
     return std::move(result).setToError("invalid size attribute");
   if (!isValidRawAlign(*bRawAlign))
@@ -72,7 +73,8 @@ static void mgp_cpu_buffer_alloc_dynamic(Context &ctx, size_t runtimeSize,
                                          Result<BufferRef> result,
                                          MEFAttr<uint64_t> rawAlign,
                                          Runtime &runtime) {
-  TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_alloc_dynamic");
+  TimeTraceScope scope(
+      LLCL::WorkProfilerEntry::create("mgp.buffer_alloc_dynamic"));
   if (!isValidRawAlign(*rawAlign))
     return std::move(result).setToError("invalid align attribute");
   std::move(result).emplace(
@@ -108,7 +110,8 @@ static void mgp_cpu_buffer_realloc_static(
     Chain inChain, Context &ctx, Result<BufferRef> result,
     MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bBuffer, MEFAttr<uint64_t> cSize,
     MEFAttr<uint64_t> dRawAlign, Runtime &runtime) {
-  TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_realloc_static");
+  TimeTraceScope scope(
+      LLCL::WorkProfilerEntry::create("mgp.buffer_realloc_static"));
   if (!isValidPlainSize(*cSize))
     return std::move(result).setToError("invalid size attribute");
   if (!isValidRawAlign(*dRawAlign))
@@ -123,7 +126,8 @@ static void mgp_cpu_buffer_realloc_dynamic(
     Chain inChain, Context &ctx, size_t runtimeSize, Result<BufferRef> result,
     MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bBuffer,
     MEFAttr<uint64_t> cRawAlign, Runtime &runtime) {
-  TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_realloc_dynamic");
+  TimeTraceScope scope(
+      LLCL::WorkProfilerEntry::create("mgp.buffer_realloc_dynamic"));
   if (!isValidRawAlign(*cRawAlign))
     return std::move(result).setToError("invalid align attribute");
   StateSlot &stateSlot = ctx.getStateSlot(*aSlot);
@@ -136,7 +140,8 @@ mgp_cpu_buffer_realloc_spec(Chain inChain, Context &ctx, const TensorSpec &spec,
                             Result<BufferRef> result, MEFAttr<uint64_t> aSlot,
                             MEFAttr<uint64_t> bBuffer,
                             MEFAttr<uint64_t> cRawAlign, Runtime &runtime) {
-  TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_realloc_spec");
+  TimeTraceScope scope(
+      LLCL::WorkProfilerEntry::create("mgp.buffer_realloc_spec"));
   if (!isValidRawAlign(*cRawAlign))
     return std::move(result).setToError("invalid align attribute");
   StateSlot &stateSlot = ctx.getStateSlot(*aSlot);
@@ -151,7 +156,7 @@ mgp_cpu_buffer_realloc_spec(Chain inChain, Context &ctx, const TensorSpec &spec,
 /// Fulfills the result with the owning reference to the deep copy of inBuffer.
 static void mgp_cpu_buffer_copy(Context &ctx, AsyncValueRef<BufferRef> inBuffer,
                                 Result<BufferRef> outBuffer, Runtime &runtime) {
-  TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_copy");
+  TimeTraceScope scope(LLCL::WorkProfilerEntry::create("mgp.buffer_copy"));
   std::move(outBuffer).emplace(inBuffer->deepCopy(runtime));
 }
 
@@ -161,7 +166,7 @@ static void mgp_cpu_buffer_copy(Context &ctx, AsyncValueRef<BufferRef> inBuffer,
 
 /// Set each byte of the given inBuffer with the given Value, returns chain.
 static Chain mgp_cpu_buffer_set(BufferRef &buffer, MEFAttr<uint8_t> value) {
-  TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.buffer_set");
+  TimeTraceScope scope(LLCL::WorkProfilerEntry::create("mgp.buffer_set"));
   memset(buffer.getMutableBuffer(), *value, buffer.getSize());
   return {};
 }
@@ -174,7 +179,7 @@ static Chain mgp_cpu_buffer_set(BufferRef &buffer, MEFAttr<uint8_t> value) {
 /// primitive contexts.
 static void mgp_context_create(Result<Context> result,
                                MEFAttr<uint64_t> numSlots) {
-  TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.context_create");
+  TimeTraceScope scope(LLCL::WorkProfilerEntry::create("mgp.context_create"));
   std::move(result).emplace(*numSlots);
 }
 
@@ -203,7 +208,8 @@ static void mgp_cpu_tensor_spec_create(RemainingArguments runtimeDims,
                                        MEFAttr<ArrayRef<uint64_t>> aRawDims,
                                        MEFAttr<uint8_t> bRawDType,
                                        Runtime &runtime) {
-  TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.tensor_spec_create");
+  TimeTraceScope scope(
+      LLCL::WorkProfilerEntry::create("mgp.tensor_spec_create"));
   DType dtype(*bRawDType);
   if (dtype.isInvalid())
     return std::move(outSpec).setToError("invalid dtype");
@@ -232,7 +238,8 @@ static void mgp_cpu_tensor_spec_create_dynamic(
     DType runtimeDType, RemainingArguments runtimeDims,
     Result<TensorSpec> outSpec, MEFAttr<ArrayRef<uint64_t>> rawDims,
     Runtime &runtime) {
-  TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.tensor_spec_create_dynamic");
+  TimeTraceScope scope(
+      LLCL::WorkProfilerEntry::create("mgp.tensor_spec_create_dynamic"));
   if (runtimeDType.isInvalid())
     return std::move(outSpec).setToError("invalid dtype");
   auto runtimeDimsVec = runtimeDims.takeAsVector();
@@ -306,7 +313,7 @@ static void mgp_cpu_tensor_create(Chain inChain,
                                   const TensorSpec &tensorSpec,
                                   Result<Tensor> outTensor, Runtime &runtime,
                                   EncodedLocation loc) {
-  TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.tensor_create");
+  TimeTraceScope scope(LLCL::WorkProfilerEntry::create("mgp.tensor_create"));
   size_t expectedSize = tensorSpec.getSizeInBytes();
   size_t actualSize = bufferRef.get().getSize();
   if (expectedSize != actualSize)
@@ -340,7 +347,7 @@ static void mgp_cpu_tensor_extract(AsyncValueRef<Tensor> tensor,
                                    Result<BufferRef> outBuffer,
                                    Result<TensorSpec> outTensorSpec,
                                    Runtime &runtime) {
-  TIME_PROFILER_SCOPE(Trace::kOther, 1, "mgp.tensor_extract");
+  TimeTraceScope scope(LLCL::WorkProfilerEntry::create("mgp.tensor_extract"));
   std::move(outTensorSpec).emplace(tensor->getSpec());
   if (tensor.getPointer()->isUnique())
     // If this is the only reference to the input tensor then it cannot
@@ -362,6 +369,29 @@ static void mgp_debug_cpu_tensor_print(Chain inChain, const Tensor &tensor,
   llvm::outs() << tensor << "\n";
   llvm::outs().flush();
   std::move(outChain).emplace();
+}
+
+//===----------------------------------------------------------------------===//
+// mgp.debug.cpu.spin_wait
+//===----------------------------------------------------------------------===//
+
+static void mgp_debug_cpu_spin_wait(Chain inChain, Result<Chain> outChain,
+                                    MEFAttr<uint64_t> delayUs,
+                                    Runtime &runtime) {
+  std::chrono::microseconds delay(*delayUs);
+  auto profilerEntry =
+      LLCL::WorkProfilerEntry::create("mgp.debug.cpu.spin_wait", [delay]() {
+        return Twine("delay:").concat(Twine(delay.count())).concat("us").str();
+      });
+  addTask(runtime, std::move(profilerEntry),
+          [delay, outChain = outChain.copy()]() mutable {
+            size_t numLoops = 0;
+            LLCL::BusyWaitSpinWaiter spinner(delay);
+            while (!spinner.wait())
+              ++numLoops;
+            (void)numLoops;
+            std::move(outChain).emplace();
+          });
 }
 
 //===----------------------------------------------------------------------===//
@@ -396,7 +426,9 @@ static AsyncValueRef<BufferRef> mgp_cas_lookup(Chain inChain, Context &ctx,
 // mgp.model
 //===----------------------------------------------------------------------===//
 
-void mgp_model() { assert(false && "mgp.model should never be invoked"); }
+static void mgp_model() {
+  assert(false && "mgp.model should never be invoked");
+}
 
 //===----------------------------------------------------------------------===//
 // Primitive registration
@@ -437,6 +469,7 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.cpu.tensor.extract", mgp_cpu_tensor_extract);
   ADD_PRIMITIVE(registry, "mgp.debug.cpu.tensor.print",
                 mgp_debug_cpu_tensor_print);
+  ADD_PRIMITIVE(registry, "mgp.debug.cpu.spin_wait", mgp_debug_cpu_spin_wait);
   ADD_PRIMITIVE(registry, "mgp.cas.create_instance", mgp_cas_create_instance);
   ADD_PRIMITIVE(registry, "mgp.cas.lookup", mgp_cas_lookup);
   ADD_PRIMITIVE(registry, "mgp.model", mgp_model);

@@ -938,6 +938,31 @@ def DebugCpuTensorPrint : MGP_Op<"debug.cpu.tensor.print"> {
 }
 
 //===----------------------------------------------------------------------===//
+// DebugCpuSpinWait
+//===----------------------------------------------------------------------===//
+
+def DebugCpuSpinWait : MGP_Op<"debug.cpu.spin_wait"> {
+  let summary = "Spins as a sub-task for given delay. Entirely CPU bound.";
+  let description = [{
+    Spins as a sub-task for given delay in microseconds. Entirely CPU bound.
+    Can be used to test for linear scaling w.r.t. number of threads on the
+    LLCL runtime. Default delay is 100us.
+
+    Example:
+    ```mlir
+    %ch0 : !mef.chain
+    %ch1 = mgp.debug.cpu.spin_wait %ch0, 30
+    %ch1 : !mef.chain
+    ```
+  }];
+
+  let arguments = (ins ChainType:$inChain,
+                       DefaultValuedAttr<UI64Attr, "100">:$delayUs);
+  let results = (outs ChainType: $outChain);
+  let assemblyFormat = "$inChain (`,` $delayUs^)? attr-dict";
+}
+
+//===----------------------------------------------------------------------===//
 // CASCreateInstance
 //===----------------------------------------------------------------------===//
 
