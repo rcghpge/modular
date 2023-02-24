@@ -183,10 +183,6 @@ public:
               Kernels::ResultOutputStyle::kCompact, "compact",
               "Display a few elements at the start and end of each dimension")),
       cl::init(Kernels::ResultOutputStyle::kCompact)};
-
-  cl::opt<bool> enableTelemetry{"enable-telemetry",
-                                cl::desc("Enable emitting telemetry signals."),
-                                cl::init(false)};
 };
 
 /// This command enum specifies what action we're supposed to take, which is
