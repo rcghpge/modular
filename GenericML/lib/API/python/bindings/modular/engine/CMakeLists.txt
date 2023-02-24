@@ -20,7 +20,7 @@ pybind11_add_module(core
 # link only to tfl so that the LLCL symbols are defined only in tfl.
 # Otherwise, if core links to modular-framework-common, then the global LLCL
 # state get defined both in core-cpython.so and libtfl.so, causing tricky bugs.
-target_link_libraries(core PRIVATE tfl)
+target_link_libraries(core PRIVATE tf)
 add_dependencies(modular-engine core)
 
 # The extension itself must be compiled with RTTI and exceptions enabled.

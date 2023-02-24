@@ -10,6 +10,12 @@ if(NOT UNIX)
   return()
 endif()
 
+# TODO: After #8927 is resolved and we no longer need to statically link to tf, we can remove this
+if(NOT STOCK_TENSORFLOW_FOUND)
+  message(WARNING "Python bindings require Stock Tensorflow to build.")
+  return()
+endif()
+
 if(${DISABLE_ALL_EXTERNAL})
   message(WARNING "Cannot build Python C++ bindings since PyBind11 is not available.")
   return()
@@ -89,13 +95,12 @@ add_subdirectory(bindings/modular/engine)
 # This way everything is self-contained in the wheel and will still work after
 # the wheel is pip installed.
 # TODO(#7439): /dev/null is not portable to Windows.
-set(MODULAR_FRAMEWORK_LIBS $<TARGET_FILE:tfl>)
 if(STOCK_TENSORFLOW_FOUND)
   set(EXTERNAL_TF_EXES
       "${MODULAR_DERIVED_DIR}/third-party/bin/external-tf-translate;"
       "${MODULAR_DERIVED_DIR}/third-party/bin/external-tf-tfl-translate;"
       "${MODULAR_DERIVED_DIR}/third-party/bin/external-tf-opt")
-  list(APPEND MODULAR_FRAMEWORK_LIBS $<TARGET_FILE:tf>)
+    set(MODULAR_FRAMEWORK_LIBS $<TARGET_FILE:tf>)
 endif()
 
 add_custom_command(OUTPUT ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl
