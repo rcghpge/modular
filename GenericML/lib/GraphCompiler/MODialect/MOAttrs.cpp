@@ -68,13 +68,17 @@ MO::ShapeAttr MO::ShapeAttr::get(ArrayRef<int64_t> values, MO::ShapeType type) {
   return get(type.getContext(), newValues, type);
 }
 
-/// A shape constant is simple if its type and elements are fully-resolved.
 bool MO::ShapeAttr::isConstant() const {
-  return llvm::all_of(getValues(), [](TypedAttr attr) {
-    // Only IntegerAttr elements can be constant.
-    return llvm::isa<IntegerAttr>(attr);
-  });
+  // A shape is constant if the dimensions are concrete integers.
+  return llvm::all_of(
+      getValues(), [](TypedAttr attr) { return llvm::isa<IntegerAttr>(attr); });
 }
+
+bool MO::ShapeAttr::hasUnknownDims() const {
+  return llvm::any_of(getValues(), [](TypedAttr attr) {
+    return llvm::isa<KGEN::UnknownAttr>(attr);
+  });
+};
 
 LogicalResult
 MO::ShapeAttr::verify(function_ref<InFlightDiagnostic()> emitError,

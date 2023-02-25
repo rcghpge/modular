@@ -59,6 +59,9 @@ def MO_ShapeAttr : KGEN_ExprAttr<"Shape", "shape"> {
     /// Returns a dimension as an integer, using mlir::ShapedType::kDynamic for
     /// unknown dimensions.
     int64_t getIntDim(size_t n) const;
+
+    /// Check whether any of the dimensions are KGEN::UnknownAttr.
+    bool hasUnknownDims() const;
   }];
 
   let genVerifyDecl = 1;
