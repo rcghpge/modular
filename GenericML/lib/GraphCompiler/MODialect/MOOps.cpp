@@ -295,6 +295,12 @@ LogicalResult RebindOp::verify() {
   return success();
 }
 
+void RebindOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  if (!getParamDecls().empty())
+    effects.emplace_back(mlir::MemoryEffects::Allocate::get());
+}
+
 //===----------------------------------------------------------------------===//
 // MO_ShapeOfOp
 //===----------------------------------------------------------------------===//

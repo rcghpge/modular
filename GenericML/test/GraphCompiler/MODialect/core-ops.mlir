@@ -99,6 +99,16 @@ mo.graph @rebind_w_params(%arg0: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[], si8>
   mo.output %3 : !mo.tensor<[], si8>
 }
 
+// CHECK: mo.graph @rebind_no_fold(%[[ARG0:.*]]: !mo.tensor<[?, ?], f32>) {
+mo.graph @rebind_no_fold(%arg0: !mo.tensor<[?, ?], f32>) {
+  // CHECK-DAG: mo.rebind<() -> [[SH:.*]]>(%[[ARG0]]) : !mo.tensor<[?, ?], f32> -> !mo.tensor<[[SH]], f32>
+  %0 = mo.rebind<() -> Sh>(%arg0) : !mo.tensor<[?, ?], f32> -> !mo.tensor<Sh, f32>
+  // CHECK-DAG: mo.rebind<() -> [[N:.*]], [[M:.*]]>(%[[ARG0]]) : !mo.tensor<[?, ?], f32> -> !mo.tensor<[[[N]], [[M]]], f32>
+  %1 = mo.rebind<() -> N, M>(%arg0) : !mo.tensor<[?, ?], f32> -> !mo.tensor<[N, M], f32>
+  // CHECK-NEXT: mo.output
+  mo.output
+}
+
 //===----------------------------------------------------------------------===//
 // ConstantOp
 //===----------------------------------------------------------------------===//

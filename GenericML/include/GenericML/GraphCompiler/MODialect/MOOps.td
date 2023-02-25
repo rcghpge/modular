@@ -149,7 +149,8 @@ def MO_OutputOp
 // RebindOp
 //===----------------------------------------------------------------------===//
 
-def MO_RebindOp : MO_Op<"rebind", [Pure,
+def MO_RebindOp : MO_Op<"rebind", [
+    DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
     DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>]> {
   let summary = "tensor parameter rebind op";
   let description = [{
