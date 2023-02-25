@@ -56,6 +56,7 @@ def MO_ParamDecls : DefaultValuedAttr<KGEN_ParamDeclArrayAttr,
 
 def MO_GraphOp : MO_Op<"graph", [HasParent<"ModuleOp">, FunctionOpInterface,
                                  Symbol, SymbolTable, IsolatedFromAbove,
+                                 SingleBlockImplicitTerminator<"OutputOp">,
                                  DeclareOpInterfaceMethods<MO_Parameterization>,
                                  // needed to leverage KGEN parameter infra
                                  DeclInterface, FuncInterface
@@ -69,10 +70,9 @@ def MO_GraphOp : MO_Op<"graph", [HasParent<"ModuleOp">, FunctionOpInterface,
   let regions = (region SizedRegion<1>:$body);
 
   let extraClassDeclaration = [{
-    using FunctionOpInterfaceTrait::getFunctionBody;
     using FunctionOpInterfaceTrait::front;
     using FunctionOpInterfaceTrait::end;
-    Block *getBodyBlock() { return &getFunctionBody().front(); }
+    Block *getBodyBlock() { return &getBody().front(); }
     OutputOp getOutputOp();
 
     /// Returns the argument types of this function.

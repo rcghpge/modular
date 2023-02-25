@@ -17,6 +17,30 @@ mo.graph @constant_illegal_attr() -> !mo.tensor<[4], f32> {
 
 // -----
 
+mo.graph @graph_early_output(%arg0: !mo.tensor<[], f32>) -> !mo.tensor<[], f32> {
+  // expected-error @below {{'mo.output' op must be the last operation in the parent block}}
+  mo.output %arg0 : !mo.tensor<[], f32>
+  %0 = mo.constant {value = #M.dense_array<1, 2> : tensor<2xui32>} : !mo.tensor<[2], ui32>
+}
+
+// -----
+
+// expected-error @below {{'mo.graph' op expects regions to end with 'mo.output', found 'kgen.return'}}
+// expected-note @below {{in custom textual format, the absence of terminator implies 'mo.output'}}
+mo.graph @graph_kgen_return(%arg0: !mo.tensor<[], f32>) -> !mo.tensor<[], f32> {
+  kgen.return %arg0 : !mo.tensor<[], f32>
+}
+
+// -----
+
+mo.graph @graph_multiple_output(%arg0: !mo.tensor<[], f32>) -> !mo.tensor<[], f32> {
+  // expected-error @below {{'mo.output' op must be the last operation in the parent block}}
+  mo.output %arg0 : !mo.tensor<[], f32>
+  mo.output %arg0 : !mo.tensor<[], f32>
+}
+
+// -----
+
 mo.graph @rebind_different_static_ranks<D0, D1, D2>(
   %arg1: !mo.tensor<[D0], f32>,
   %arg2: !mo.tensor<[D1, D2], f32>
