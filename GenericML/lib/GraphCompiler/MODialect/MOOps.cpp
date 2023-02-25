@@ -405,6 +405,17 @@ OpFoldResult Shape::EqualOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
+OpFoldResult Shape::FromTensorOp::fold(FoldAdaptor adaptor) {
+  if (auto input = dyn_cast_or_null<ElementsAttr>(adaptor.getInput())) {
+    auto newDims = llvm::to_vector(
+        llvm::map_range(input.getValues<IntegerAttr>(),
+                        [](IntegerAttr dim) { return dim.getSInt(); }));
+    auto shapeTy = ShapeType::get(getContext());
+    return ShapeAttr::get(newDims, shapeTy);
+  }
+  return {};
+}
+
 void Shape::GetDimOp::build(OpBuilder &builder, OperationState &state,
                             Value input, int64_t dim) {
   build(builder, state, input, builder.getIndexAttr(dim));
@@ -479,6 +490,17 @@ LogicalResult Shape::SliceOp::verify() {
                      "both or neither negative");
   }
   return success();
+}
+
+OpFoldResult Shape::ToTensorOp::fold(FoldAdaptor adaptor) {
+  if (auto input = dyn_cast_or_null<ShapeAttr>(adaptor.getInput())) {
+    if (input.isConstant()) {
+      return M::IntArrayElementsAttr::get(
+          getContext(), ArrayRef<int64_t>{input.getIntDims()},
+          IntegerType::SignednessSemantics::Signed);
+    }
+  }
+  return {};
 }
 
 //===----------------------------------------------------------------------===//

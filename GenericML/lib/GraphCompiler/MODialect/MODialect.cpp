@@ -4,8 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/MODialect/MODialect.h"
-#include "GenericML/GraphCompiler/MODialect/MOTypes.h"
+#include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENDialect.h"
 #include "KGEN/KGENDialect/KGENOps.h"
@@ -34,8 +33,11 @@ Operation *MODialect::materializeConstant(OpBuilder &b, Attribute value,
     return res;
 
   // Materialize symbolic shapes in shape op outputs
-  if (value.isa<KGEN::ParamDeclRefAttr, ShapeAttr>())
+  if (isa<KGEN::ParamDeclRefAttr, ShapeAttr>(value))
     return b.create<KGEN::ParamConstantOp>(loc, type, cast<TypedAttr>(value));
+
+  if (auto elements = dyn_cast_or_null<ElementsAttr>(value))
+    return b.create<ConstantOp>(loc, type, value);
 
   return nullptr;
 }

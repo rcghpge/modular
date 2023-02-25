@@ -25,6 +25,13 @@ kgen.func @equal(%sh0: !mo.shape, %sh1: !mo.shape) -> i1 {
   kgen.return %0 : i1
 }
 
+// CHECK: kgen.func @from_tensor(%[[ARG0:.*]]: !mo.tensor<[2], si64>) -> !mo.shape {
+kgen.func @from_tensor(%arg0: !mo.tensor<[2], si64>) -> !mo.shape {
+  // CHECK: %[[VAL0:.*]] = mo.shape.from_tensor(%[[ARG0]]) : !mo.tensor<[2], si64>
+  %0 = mo.shape.from_tensor(%arg0) : !mo.tensor<[2], si64>
+  kgen.return %0 : !mo.shape
+}
+
 // CHECK: kgen.func @get_dim(%[[SH0:.*]]: !mo.shape) -> (index, index) {
 kgen.func @get_dim(%sh0: !mo.shape) -> (index, index) {
   // CHECK: %[[VAL0:.*]] = mo.shape.get_dim(%[[SH0]])[0]
@@ -65,4 +72,11 @@ kgen.func @slice(%sh0: !mo.shape) -> (!mo.shape, !mo.shape) {
   // CHECK-DAG: %[[SH4:.*]] = mo.shape.slice(%[[SH0]])[-2]
   %sh4 = mo.shape.slice(%sh0)[-2]
   kgen.return %sh1, %sh2 : !mo.shape, !mo.shape
+}
+
+// CHECK: kgen.func @to_tensor_fold(%[[SH0:.*]]: !mo.shape) -> !mo.tensor<[2], si64> {
+kgen.func @to_tensor_fold(%sh0: !mo.shape) -> !mo.tensor<[2], si64> {
+  // CHECK: mo.shape.to_tensor(%[[SH0]]) -> !mo.tensor<[2], si64>
+  %0 = mo.shape.to_tensor(%sh0) -> !mo.tensor<[2], si64>
+  kgen.return %0: !mo.tensor<[2], si64>
 }

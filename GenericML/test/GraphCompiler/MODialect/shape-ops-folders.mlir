@@ -42,6 +42,15 @@ kgen.generator @equal_fold<Sh1: !mo.shape, D1, D2>() -> (i1, i1, i1, i1, i1) {
   kgen.return %b11, %b12, %b23, %b34, %b25 : i1, i1, i1, i1, i1
 }
 
+// CHECK: mo.graph @from_tensor_fold() -> !mo.shape {
+mo.graph @from_tensor_fold() -> !mo.shape {
+  // CHECK: %[[RES:.*]] = kgen.param.constant: !mo.shape = <[2, 3]>
+  %sh1 = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %0 = mo.shape.from_tensor(%sh1) : !mo.tensor<[2], si64>
+  // CHECK: mo.output %[[RES]] : !mo.shape
+  mo.output %0 : !mo.shape
+}
+
 // CHECK: kgen.generator @get_dim_fold<[[SH1:.*]]: !mo.shape, [[D1:.*]]>()
 kgen.generator @get_dim_fold<Sh1: !mo.shape, D1>() -> (index, index, index, index) {
   // CHECK-DAG: %[[V1:.*]] = kgen.param.constant: !mo.shape = <[[SH1]]>
@@ -104,4 +113,24 @@ kgen.generator @slice_fold<Sh1: !mo.shape, D1, D2>(
   %s3 = mo.shape.slice(%v3)[1]
   %s4 = mo.shape.slice(%v2)[-2]
   kgen.return %s1, %s2, %s3, %s4 : !mo.shape, !mo.shape, !mo.shape, !mo.shape
+}
+
+// CHECK: mo.graph @to_tensor_fold<[[D0:.*]], [[SH0:.*]]: !mo.shape>() -> (
+mo.graph @to_tensor_fold<D0, Sh0: !mo.shape>() -> (
+  // CHECK-SAME: !mo.tensor<[?], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
+  !mo.tensor<[?], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
+) {
+  // CHECK-DAG: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<17, 42> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK-DAG: %[[VAL1:.*]] = kgen.param.constant: !mo.shape = <[[SH0]]>
+  // CHECK-DAG: %[[VAL2:.*]] = kgen.param.constant: !mo.shape = <[[[D0]], 42]>
+  // CHECK-DAG: %[[VAL3:.*]] = mo.shape.to_tensor(%[[VAL1]]) -> !mo.tensor<[?], si64>
+  // CHECK-DAG: %[[VAL4:.*]] = mo.shape.to_tensor(%[[VAL2]]) -> !mo.tensor<[2], si64>
+  %sh0 = kgen.param.constant: !mo.shape = <Sh0>
+  %sh1 = kgen.param.constant: !mo.shape = <[D0, 42]>
+  %sh2 = kgen.param.constant: !mo.shape = <[17, 42]>
+  %0 = mo.shape.to_tensor(%sh0) -> !mo.tensor<[?], si64>
+  %1 = mo.shape.to_tensor(%sh1) -> !mo.tensor<[2], si64>
+  %2 = mo.shape.to_tensor(%sh2) -> !mo.tensor<[2], si64>
+  // CHECK-NEXT: mo.output %[[VAL3]], %[[VAL4]], %[[VAL0]] : !mo.tensor<[?], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
+  mo.output %0, %1, %2 : !mo.tensor<[?], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
 }
