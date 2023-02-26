@@ -8,14 +8,14 @@
 
 namespace M::MO {
 
-MOTensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
-                                    MOTensorValue from, TensorType reshapeType,
-                                    MOTensorValue to) {
+TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
+                                  TensorValue from, TensorType reshapeType,
+                                  TensorValue to) {
   Type elemType = builder.getIntegerType(64, /*isSigned=*/true);
 
   assert(reshapeType.hasRank() &&
          "reshapeType needs to be a statically ranked tensor type");
-  auto type = MO::TensorType::get({(int64_t)reshapeType.getRank()}, elemType);
+  auto type = TensorType::get({(int64_t)reshapeType.getRank()}, elemType);
 
   auto valueAttr = builder.getAttr<IntArrayElementsAttr>(
       ArrayRef<int64_t>(reshapeType.getIntDims()), mlir::IntegerType::Signed);
@@ -28,13 +28,12 @@ MOTensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
   return broadcastTo(builder, loc, reshapedValue, to);
 }
 
-MOTensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
-                                    MOTensorValue from,
-                                    ArrayRef<int64_t> reshapeShape,
-                                    MOTensorValue to) {
+TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
+                                  TensorValue from,
+                                  ArrayRef<int64_t> reshapeShape,
+                                  TensorValue to) {
   TensorType type = from.getType();
-  TensorType reshapeType =
-      MO::TensorType::get(reshapeShape, type.getElementType());
+  TensorType reshapeType = TensorType::get(reshapeShape, type.getElementType());
   return reshapeAndBroadcastTo(builder, loc, from, reshapeType, to);
 }
 
@@ -51,8 +50,7 @@ static TensorType unifyShapeType(TensorType type) {
 
 /// Computes the common broadcast shape of `from` and `to`.
 /// Supports parametric and unknown shapes, but not dynamic rank.
-static ErrorOr<MO::TensorType> broadcastShape(MO::TensorType from,
-                                              MO::TensorType to) {
+static ErrorOr<TensorType> broadcastShape(TensorType from, TensorType to) {
   // This largely should follow the semantics described here:
   // https://numpy.org/doc/stable/user/basics.broadcasting.html
   // TODO (#7331): Merge with Support/ML/BroadcastShape.
@@ -124,29 +122,28 @@ static ErrorOr<MO::TensorType> broadcastShape(MO::TensorType from,
     result.push_back(fromDimVal);
   }
 
-  return MO::TensorType::get(SmallVector<TypedAttr>(llvm::reverse(result)),
-                             from.getElementType());
+  return TensorType::get(SmallVector<TypedAttr>(llvm::reverse(result)),
+                         from.getElementType());
 }
 
 /// Broadcast `x` and `y` to a common dynamic shape given by `bcastCommonShape`.
-static std::pair<MOTensorValue, MOTensorValue>
-broadcastToCommonShape(OpBuilder &builder, MOTensorValue x, MOTensorValue y,
-                       MO::TensorType bcastCommonShape) {
+static std::pair<TensorValue, TensorValue>
+broadcastToCommonShape(OpBuilder &builder, TensorValue x, TensorValue y,
+                       TensorType bcastCommonShape) {
   auto intType = builder.getIntegerType(64, /*isSigned=*/true);
-  auto shape =
-      MO::TensorType::get({(int64_t)bcastCommonShape.getRank()}, intType);
+  auto shape = TensorType::get({(int64_t)bcastCommonShape.getRank()}, intType);
 
   // Get the shapes of the inputs at runtime
   TensorType xType = x.getType();
   assert(xType.hasRank());
 
   auto xShape = builder.create<MO::ShapeOfOp>(
-      x.getLoc(), MO::TensorType::get({(int64_t)xType.getRank()}, intType), x);
+      x.getLoc(), TensorType::get({(int64_t)xType.getRank()}, intType), x);
 
   TensorType yType = y.getType();
   assert(yType.hasRank());
   auto yShape = builder.create<MO::ShapeOfOp>(
-      y.getLoc(), MO::TensorType::get({(int64_t)yType.getRank()}, intType), y);
+      y.getLoc(), TensorType::get({(int64_t)yType.getRank()}, intType), y);
 
   auto bcastShape = builder.create<MO::BroadcastShapeOp>(
       x.getLoc(), shape, xShape.getShape(), yShape.getShape());
@@ -159,28 +156,27 @@ broadcastToCommonShape(OpBuilder &builder, MOTensorValue x, MOTensorValue y,
 }
 
 /// Broadcast `x` to a static shape given by `s`.
-static MOTensorValue broadcastToStaticShape(OpBuilder &builder, Location loc,
-                                            MOTensorValue x, MO::TensorType s) {
+static TensorValue broadcastToStaticShape(OpBuilder &builder, Location loc,
+                                          TensorValue x, TensorType s) {
   auto constOp = builder.create<MO::ConstantOp>(
       loc, s.getIntDims(), builder.getIntegerType(64, /*isSigned=*/true));
   return builder.create<MO::BroadcastToOp>(loc, s, x, constOp);
 }
 
-std::pair<MOTensorValue, MOTensorValue>
-reifyImplicitBroadcasting(OpBuilder &builder, Location loc, MOTensorValue x,
-                          MOTensorValue y) {
+std::pair<TensorValue, TensorValue>
+reifyImplicitBroadcasting(OpBuilder &builder, Location loc, TensorValue x,
+                          TensorValue y) {
   TensorType xShape = x.getType();
   TensorType yShape = y.getType();
   if ((xShape == yShape) && (xShape.hasStaticShape()))
     return {x, y};
 
-  ErrorOr<MO::TensorType> errorOrBcastCommonShape =
-      broadcastShape(xShape, yShape);
+  ErrorOr<TensorType> errorOrBcastCommonShape = broadcastShape(xShape, yShape);
 
   assert(!errorOrBcastCommonShape.isError() &&
          "cannot compute static broadcast shape");
 
-  MO::TensorType bcastCommonShape = *errorOrBcastCommonShape;
+  TensorType bcastCommonShape = *errorOrBcastCommonShape;
 
   assert(bcastCommonShape.hasRank() &&
          "guards should have rejected dynamic ranks");
@@ -195,8 +191,8 @@ reifyImplicitBroadcasting(OpBuilder &builder, Location loc, MOTensorValue x,
   return {x, y};
 }
 
-MOTensorValue broadcastTo(OpBuilder &builder, Location loc, MOTensorValue x,
-                          MOTensorValue y) {
+TensorValue broadcastTo(OpBuilder &builder, Location loc, TensorValue x,
+                        TensorValue y) {
   auto [newX, newY] = reifyImplicitBroadcasting(builder, loc, x, y);
 
   assert((newY.getType() == unifyShapeType(y.getType())) &&

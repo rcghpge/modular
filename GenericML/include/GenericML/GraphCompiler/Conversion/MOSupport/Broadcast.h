@@ -16,29 +16,29 @@ namespace M::MO {
 /// Reshape the `from` tensor using an intermediate shape, then attempt to
 /// broadcast to the shape of the `to` tensor.
 /// Does not currently support reshaping to dynamic or parametric shapes.
-MOTensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
-                                    MOTensorValue from, TensorType reshapeType,
-                                    MOTensorValue to);
+TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
+                                  TensorValue from, TensorType reshapeType,
+                                  TensorValue to);
 
 /// Reshape the `from` tensor using an intermediate shape, then attempt to
 /// broadcast to the shape of the `to` tensor.
 /// Does not currently support reshaping to dynamic or parametric shapes.
-MOTensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
-                                    MOTensorValue from,
-                                    ArrayRef<int64_t> reshapeShape,
-                                    MOTensorValue to);
+TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
+                                  TensorValue from,
+                                  ArrayRef<int64_t> reshapeShape,
+                                  TensorValue to);
 
 /// Broadcast tensor `x` and `y` to each other, such that they have the same
 /// shape after broadcasting. The method broadcasts statically, if the input
 /// shapes are static, or dynamically otherwise.
-std::pair<MOTensorValue, MOTensorValue>
-reifyImplicitBroadcasting(OpBuilder &builder, Location loc, MOTensorValue x,
-                          MOTensorValue y);
+std::pair<TensorValue, TensorValue>
+reifyImplicitBroadcasting(OpBuilder &builder, Location loc, TensorValue x,
+                          TensorValue y);
 
 /// Broadcast tensor `x` to `y`. Requires that `x` can be broadcast
 /// unidirectionally to `y`.
-MOTensorValue broadcastTo(OpBuilder &builder, Location loc, MOTensorValue x,
-                          MOTensorValue y);
+TensorValue broadcastTo(OpBuilder &builder, Location loc, TensorValue x,
+                        TensorValue y);
 
 } // namespace M::MO
 

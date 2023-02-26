@@ -28,23 +28,23 @@ protected:
 
   void TearDown() override { module->erase(); }
 
-  MOTensorValue getTestValue(ShapeAttr shape) {
+  MO::TensorValue getTestValue(ShapeAttr shape) {
     auto type = MO::TensorType::get(shape, FloatType::getF32(&ctx));
     SmallVector<APFloat> values(1, APFloat(0.f));
-    MOTensorValue out = builder.create<ConstantOp>(
+    MO::TensorValue out = builder.create<ConstantOp>(
         loc, ArrayRef<APFloat>(values), FloatType::getF32(&ctx));
     // Overwrite the output type
     out.setType(type);
     return out;
   }
 
-  MOTensorValue getTestValue(ArrayRef<int64_t> shape) {
+  MO::TensorValue getTestValue(ArrayRef<int64_t> shape) {
     auto shapeTy = builder.getType<MO::ShapeType>();
     auto shapeAttr = ShapeAttr::get(shape, shapeTy);
     return getTestValue(shapeAttr);
   }
 
-  MOTensorValue getTestValue(ArrayRef<TypedAttr> shape) {
+  MO::TensorValue getTestValue(ArrayRef<TypedAttr> shape) {
     auto shapeTy = builder.getType<MO::ShapeType>();
     auto shapeAttr = builder.getAttr<ShapeAttr>(shape, shapeTy);
     return getTestValue(shapeAttr);
@@ -74,24 +74,24 @@ protected:
 };
 
 TEST_F(BroadcastTest, Failure) {
-  MOTensorValue x = getTestValue({1, 3});
-  MOTensorValue y = getTestValue({1, 1});
+  MO::TensorValue x = getTestValue({1, 3});
+  MO::TensorValue y = getTestValue({1, 1});
   EXPECT_DEATH(
       broadcastTo(builder, loc, x, y),
       "don't use this helper unless you can guarantee x broadcasts to y");
 }
 
 TEST_F(BroadcastTest, Basic) {
-  MOTensorValue x = getTestValue({1, 1});
-  MOTensorValue y = getTestValue({1, 3});
-  MOTensorValue bcastX = broadcastTo(builder, loc, x, y);
+  MO::TensorValue x = getTestValue({1, 1});
+  MO::TensorValue y = getTestValue({1, 3});
+  MO::TensorValue bcastX = broadcastTo(builder, loc, x, y);
   SmallVector<int64_t> refDims{1ll, 3ll};
   ASSERT_EQ(bcastX.getType().getIntDims(), refDims);
 }
 
 TEST_F(BroadcastTest, Multi) {
-  MOTensorValue x = getTestValue({5, 1, 2});
-  MOTensorValue y = getTestValue({1, 1, 3, 1});
+  MO::TensorValue x = getTestValue({5, 1, 2});
+  MO::TensorValue y = getTestValue({1, 1, 3, 1});
   auto [bcastX, bcastY] = reifyImplicitBroadcasting(builder, loc, x, y);
   SmallVector<int64_t> refDims{1ll, 5ll, 3ll, 2ll};
   ASSERT_EQ(bcastX.getType().getIntDims(), refDims);
@@ -99,8 +99,8 @@ TEST_F(BroadcastTest, Multi) {
 }
 
 TEST_F(BroadcastTest, Dynamic1) {
-  MOTensorValue x = getTestValue({5, 1});
-  MOTensorValue y = getTestValue(SmallVector<TypedAttr>{
+  MO::TensorValue x = getTestValue({5, 1});
+  MO::TensorValue y = getTestValue(SmallVector<TypedAttr>{
       getIntegerDim(1ll), getUnknownDim(), getIntegerDim(1ll)});
   auto [bcastX, bcastY] = reifyImplicitBroadcasting(builder, loc, x, y);
   SmallVector<int64_t> refDims{1, 5ll, 1ll};
@@ -109,9 +109,9 @@ TEST_F(BroadcastTest, Dynamic1) {
 }
 
 TEST_F(BroadcastTest, Dynamic2) {
-  MOTensorValue x = getTestValue(SmallVector<TypedAttr>{
+  MO::TensorValue x = getTestValue(SmallVector<TypedAttr>{
       getIntegerDim(5ll), getUnknownDim(), getUnknownDim()});
-  MOTensorValue y = getTestValue(SmallVector<TypedAttr>{
+  MO::TensorValue y = getTestValue(SmallVector<TypedAttr>{
       getIntegerDim(1ll), getUnknownDim(), getIntegerDim(1ll)});
   auto [bcastX, bcastY] = reifyImplicitBroadcasting(builder, loc, x, y);
   auto refDims = SmallVector<TypedAttr>{getIntegerDim(5ll), getUnknownDim(),
@@ -132,8 +132,8 @@ TEST_F(BroadcastTest, Parametric) {
                                   getParametricDim("m")};
   ShapeAttr shapeRefAttr = builder.getAttr<ShapeAttr>(shapeRef, shapeTy);
 
-  MOTensorValue x = getTestValue(shapeX);
-  MOTensorValue y = getTestValue(shapeY);
+  MO::TensorValue x = getTestValue(shapeX);
+  MO::TensorValue y = getTestValue(shapeY);
 
   auto [bcastX, bcastY] = reifyImplicitBroadcasting(builder, loc, x, y);
   ASSERT_EQ(bcastX.getType().getTypedShapeAttr(), shapeRefAttr);
@@ -141,8 +141,8 @@ TEST_F(BroadcastTest, Parametric) {
 }
 
 TEST_F(BroadcastTest, ReshapeAndBroadcast) {
-  MOTensorValue x = getTestValue({5});
-  MOTensorValue y = getTestValue({3, 5, 1});
+  MO::TensorValue x = getTestValue({5});
+  MO::TensorValue y = getTestValue({3, 5, 1});
 
   auto [bcastX1, bcastY1] = reifyImplicitBroadcasting(builder, loc, x, y);
 
