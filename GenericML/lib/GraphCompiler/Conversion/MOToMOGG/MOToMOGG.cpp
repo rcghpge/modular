@@ -169,7 +169,6 @@ void MOToMOGGPass::runOnOperation() {
       MO_SHIM_ONLY(MO::BatchMatmulOp, "mop.kernels.batch_matmul"),
       MO_SHIM_ONLY(MO::MeanOp, "mop.kernels.mean"),
       MO_TO_LIT(MO::MulOp, "mop.kernels.mul"),
-      MO_SHIM_ONLY(MO::MeanOp, "mop.kernels.mean"),
       MO_SHIM_ONLY(MO::Pow3Op, "mop.kernels.pow3"),
       MO_SHIM_ONLY(MO::ReluOp, "mop.kernels.relu"),
       MO_TO_LIT(MO::RsqrtOp, "mop.kernels.rsqrt"),
