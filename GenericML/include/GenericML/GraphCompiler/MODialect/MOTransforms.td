@@ -44,4 +44,15 @@ def ResolveUnknownParameters : Pass<"resolve-unknown-parameters", "ModuleOp"> {
   }];
 }
 
+def StaticizeShapes : Pass<"staticize-shapes", "GraphOp"> {
+  let summary = "Lower shape-like tensors to `!mo.shape`.";
+  let description = [{
+    This pass attempts to lower shape-like MO tensors (i.e. rank-1, signed 32 or
+    64 bit integer) to the special `!mo.shape` type, and lower computations on
+    them to static operations. The pass currently only resolves shapes that
+    originate from `mo.shape_of` ops. In particular shape-like (or dim-like)
+    arguments provided to the graph are not supported for now.
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTRANSFORMS_TD
