@@ -651,7 +651,8 @@ def MO_ShapeOfOp : MO_Op<"shape_of",
   let hasVerifier = 1;
 }
 
-def MO_BroadcastShapeOp : MO_Op<"broadcast_shape", [Pure]> {
+def MO_BroadcastShapeOp : MO_Op<"broadcast_shape",
+    [Pure, DeclareOpInterfaceMethods<MO_Parameterization>]> {
   let summary = "Broadcast Shape Operation";
   let description = [{
     Given two tensor shapes, return the shape that both broadcast to under
@@ -689,10 +690,13 @@ def MO_BroadcastShapeOp : MO_Op<"broadcast_shape", [Pure]> {
     In this example, shape1 will return [10, 2, 5]
   }];
 
-  let arguments = (ins MO_ShapeLike:$input_x, MO_ShapeLike:$input_y);
+  let arguments = (ins MO_ShapeLike:$input_x,
+                       MO_ShapeLike:$input_y,
+                       MO_ParamDecls:$paramDecls);
   let results = (outs MO_ShapeLike:$shape);
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `` custom<ParamDecls>($paramDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
   }];
   let hasFolder = 1;
   let hasVerifier = 1;
