@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/Conversion/MOSupport/Broadcast.h"
+#include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "Support/MDialect/MDialect.h"
 #include "gtest/gtest.h"
 #include <mlir/IR/BuiltinOps.h>

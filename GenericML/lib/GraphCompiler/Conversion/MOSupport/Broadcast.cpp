@@ -4,7 +4,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GenericML/GraphCompiler/MODialect/Broadcast.h"
 #include "GenericML/GraphCompiler/Conversion/MOSupport/Broadcast.h"
+#include "GenericML/GraphCompiler/MODialect/MOOps.h"
 
 namespace M::MO {
 
@@ -46,84 +48,6 @@ static TensorType unifyShapeType(TensorType type) {
   ShapeType shapeTy = type.getTypedShapeAttr().getType();
   auto shapedAttr = ShapeAttr::get(type.getContext(), result, shapeTy);
   return TensorType::get(shapedAttr, type.getDtype());
-}
-
-/// Computes the common broadcast shape of `from` and `to`.
-/// Supports parametric and unknown shapes, but not dynamic rank.
-static ErrorOr<TensorType> broadcastShape(TensorType from, TensorType to) {
-  // This largely should follow the semantics described here:
-  // https://numpy.org/doc/stable/user/basics.broadcasting.html
-  // TODO (#7331): Merge with Support/ML/BroadcastShape.
-
-  if (!from.hasRank() || !to.hasRank())
-    return Error(Twine("Guards should have rejected unranked inputs."));
-
-  auto idxTy = IndexType::get(from.getContext());
-  auto intDim1 = IntegerAttr::get(idxTy, 1ll);
-
-  SmallVector<TypedAttr> result;
-  SmallVector<TypedAttr> fromDims(from.getDims());
-  SmallVector<TypedAttr> toDims(to.getDims());
-  for (auto [fromDim, toDim] :
-       llvm::zip_longest(llvm::reverse(fromDims), llvm::reverse(toDims))) {
-    if (!toDim.has_value()) {
-      result.push_back(fromDim.value());
-      continue;
-    }
-    if (!fromDim.has_value()) {
-      result.push_back(toDim.value());
-      continue;
-    }
-
-    TypedAttr fromDimVal = fromDim.value();
-    TypedAttr toDimVal = toDim.value();
-
-    if (fromDimVal == toDimVal) {
-      result.push_back(fromDimVal);
-      continue;
-    }
-
-    if (fromDimVal == intDim1) {
-      result.push_back(toDimVal);
-      continue;
-    }
-    if (toDimVal == intDim1) {
-      result.push_back(fromDimVal);
-      continue;
-    }
-
-    if (fromDim->isa<KGEN::ParamDeclRefAttr>()) {
-      if (toDim->isa<KGEN::UnknownAttr>()) {
-        return Error(Twine("fromDim and toDim are incompatible"));
-      }
-    }
-
-    if (toDim->isa<KGEN::ParamDeclRefAttr>()) {
-      if (fromDim->isa<KGEN::UnknownAttr>()) {
-        return Error(Twine("fromDim and toDim are incompatible"));
-      }
-    }
-
-    if (fromDim->isa<KGEN::UnknownAttr>()) {
-      result.push_back(toDimVal);
-      continue;
-    }
-
-    if (toDim->isa<KGEN::UnknownAttr>()) {
-      result.push_back(fromDimVal);
-      continue;
-    }
-
-    // Not 1, not dynamic. Then the other shape necessarily matches this.
-    if (fromDimVal != toDimVal) {
-      return Error(Twine(
-          "upstream dialect should have rejected non-broadcastable inputs"));
-    }
-    result.push_back(fromDimVal);
-  }
-
-  return TensorType::get(SmallVector<TypedAttr>(llvm::reverse(result)),
-                         from.getElementType());
 }
 
 /// Broadcast `x` and `y` to a common dynamic shape given by `bcastCommonShape`.

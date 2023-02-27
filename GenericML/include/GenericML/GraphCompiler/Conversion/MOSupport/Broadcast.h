@@ -3,8 +3,11 @@
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
+//
+// Broadcast helpers for frontends converting to MO.
+//
+//===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 
@@ -42,4 +45,4 @@ TensorValue broadcastTo(OpBuilder &builder, Location loc, TensorValue x,
 
 } // namespace M::MO
 
-#endif // GENERICML_GRAPHCOMPILER_CONVERSION_MOSUPPORT_BORADCAST_H
+#endif // GENERICML_GRAPHCOMPILER_CONVERSION_MOSUPPORT_BROADCAST_H
