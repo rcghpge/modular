@@ -56,6 +56,7 @@ TEST(BufferRef, CreateEmptyOwned) {
   ASSERT_FALSE(ref);
   ASSERT_EQ(ref.getSize(), 0u);
   ASSERT_EQ(ref.getBuffer(), nullptr);
+  ASSERT_EQ(ref.getMutableBuffer(), nullptr);
 };
 
 TEST(BufferRef, CreateBorrowed) {

@@ -58,6 +58,7 @@ BufferRef BufferRef::createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
                                  std::optional<size_t> alignment,
                                  const void *copyFrom) {
   if (size == 0)
+    // Canonicalize as zero-sized, null-buffer ptr, kNull BufferRef.
     return {};
   void *buffer = runtime->allocateBytes(size, alignment.value_or(1));
   if (copyFrom)
@@ -70,6 +71,7 @@ BufferRef BufferRef::createBorrowed(void *buffer, size_t size,
                                     std::optional<size_t> alignment,
                                     Lifetime lifetime) {
   if (size == 0)
+    // Canonicalize as zero-sized, null-buffer ptr, kNull BufferRef.
     return {};
   assert(buffer && "borrowed buffer must be non-null");
   assert((!alignment || llvm::isAddrAligned(llvm::Align(*alignment), buffer)) &&
@@ -82,6 +84,7 @@ BufferRef BufferRef::createBorrowed(const void *buffer, size_t size,
                                     std::optional<size_t> alignment,
                                     Lifetime lifetime) {
   if (size == 0)
+    // Canonicalize as zero-sized, null-buffer ptr, kNull BufferRef.
     return {};
   assert(buffer && "borrowed buffer must be non-null");
   assert((!alignment || llvm::isAddrAligned(llvm::Align(*alignment), buffer)) &&

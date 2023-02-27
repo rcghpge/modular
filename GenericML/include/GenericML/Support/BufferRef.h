@@ -175,7 +175,8 @@ public:
   /// Returns a pointer to the underlying buffer. Returns nullptr if the
   /// reference is uninitialized or has been moved out of.
   void *getMutableBuffer() {
-    assert(mutability == kMutable && "buffer is immutable");
+    assert((ownership == kNull || mutability == kMutable) &&
+           "buffer is immutable");
     assert(ownership != kForeign && "foreign buffers assumed immutable");
     return bufferOrObject;
   }
