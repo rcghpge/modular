@@ -32,6 +32,14 @@ mo.graph @broadcast_shape_fold() -> !mo.tensor<[3], si32> {
   mo.output %res : !mo.tensor<[3], si32>
 }
 
+// CHECK: mo.graph @broadcast_shape_partially_ranked<[[D0:.*]]>(%[[ARG0:.*]]: !mo.tensor<[3], si32>, %[[ARG1:.*]]: !mo.tensor<[[[D0]]], si32>) -> !mo.tensor<[4], si32>
+mo.graph @broadcast_shape_partially_ranked<D0>(%arg0: !mo.tensor<[3], si32>, %arg1: !mo.tensor<[D0], si32>) -> !mo.tensor<[4], si32> {
+  // CHECK: %[[RES:.*]] = mo.broadcast_shape(%[[ARG0:.*]], %[[ARG1:.*]]) : (!mo.tensor<[3], si32>, !mo.tensor<[[[D0]]], si32>) -> !mo.tensor<[4], si32>
+  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[3], si32>, !mo.tensor<[D0], si32>) -> !mo.tensor<[4], si32>
+  // CHECK: mo.output %[[RES]] : !mo.tensor<[4], si32>
+  mo.output %res : !mo.tensor<[4], si32>
+}
+
 //===----------------------------------------------------------------------===//
 // BroadcastToOp
 //===----------------------------------------------------------------------===//

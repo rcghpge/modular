@@ -695,6 +695,7 @@ def MO_BroadcastShapeOp : MO_Op<"broadcast_shape", [Pure]> {
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
   let hasFolder = 1;
+  let hasVerifier = 1;
 }
 
 def MO_BroadcastToOp : MO_Op<"broadcast_to",

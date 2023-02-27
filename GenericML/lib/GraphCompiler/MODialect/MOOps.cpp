@@ -109,6 +109,43 @@ LogicalResult OutputOp::verify() {
 // MO_BroadcastShapeOp support
 //===----------------------------------------------------------------------===//
 
+LogicalResult BroadcastShapeOp::verify() {
+  TensorType inputXType = getInputX().getType();
+  TensorType inputYType = getInputY().getType();
+  TensorType resultType = getResult().getType();
+  // For dynamically ranked/shaped result, we defer to shape inference
+  if (!resultType.hasStaticShape())
+    return success();
+
+  bool inputXIsStatic = inputXType.hasStaticShape();
+  bool inputYIsStatic = inputYType.hasStaticShape();
+  // Note that inputs and output are rank-1 Shape tensors
+  int64_t inputXRank = inputXIsStatic ? inputXType.getIntDim(0) : 0;
+  int64_t inputYRank = inputYIsStatic ? inputYType.getIntDim(0) : 0;
+  int64_t resultRank = resultType.getIntDim(0);
+
+  // Check first input
+  if (inputXIsStatic && inputXRank > resultRank) {
+    return emitError("result rank must be no less than first input rank if "
+                     "both are statically ranked");
+  }
+
+  // Check second input
+  if (inputYIsStatic && inputYRank > resultRank) {
+    return emitError("result rank must be no less than second input rank if "
+                     "both are statically ranked");
+  }
+
+  // Check both inputs together
+  if (inputXIsStatic && inputYIsStatic &&
+      resultRank != std::max(inputXRank, inputYRank)) {
+    return emitError("output rank must be the max between 2 input ranks, if "
+                     "all are statically ranked");
+  }
+
+  return success();
+}
+
 /// Convert as shape-like ElementsAttr of integers to a raw integer array.
 static SmallVector<int64_t> getRawIntDims(ElementsAttr intDims) {
   return llvm::to_vector(

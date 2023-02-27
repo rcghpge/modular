@@ -46,6 +46,30 @@ mo.graph @broadcast_shape_f32_input2(%arg0: !mo.tensor<[3], si32>, %arg1: !mo.te
 
 // -----
 
+mo.graph @broadcast_shape_invalid_output_rank(%arg0: !mo.tensor<[3], si32>, %arg1: !mo.tensor<[2], si32>) -> !mo.tensor<[3], si32> {
+  // expected-error @below {{output rank must be the max between 2 input ranks, if all are statically ranked}}
+  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[3], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[4], si64>
+  mo.output %arg0 : !mo.tensor<[3], si32>
+}
+
+// -----
+
+mo.graph @broadcast_shape_input_1_partially_ranked<D0>(%arg0: !mo.tensor<[D0], si32>, %arg1: !mo.tensor<[3], si32>) -> !mo.tensor<[2], si32> {
+  // expected-error @below {{result rank must be no less than second input rank if both are statically ranked}}
+  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[D0], si32>, !mo.tensor<[3], si32>) -> !mo.tensor<[2], si32>
+  mo.output %res : !mo.tensor<[2], si32>
+}
+
+// -----
+
+mo.graph @broadcast_shape_input_2_partially_ranked<D0>(%arg0: !mo.tensor<[3], si32>, %arg1: !mo.tensor<[D0], si32>) -> !mo.tensor<[2], si32> {
+  // expected-error @below {{result rank must be no less than first input rank if both are statically ranked}}
+  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[3], si32>, !mo.tensor<[D0], si32>) -> !mo.tensor<[2], si32>
+  mo.output %res : !mo.tensor<[2], si32>
+}
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // BroadcastToOp
 //===----------------------------------------------------------------------===//
