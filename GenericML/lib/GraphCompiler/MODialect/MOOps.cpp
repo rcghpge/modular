@@ -106,6 +106,44 @@ LogicalResult OutputOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// MO_BroadcastShapeOp support
+//===----------------------------------------------------------------------===//
+
+/// Convert as shape-like ElementsAttr of integers to a raw integer array.
+static SmallVector<int64_t> getRawIntDims(ElementsAttr intDims) {
+  return llvm::to_vector(
+      llvm::map_range(intDims.getValues<IntegerAttr>(),
+                      [](IntegerAttr dim) { return dim.getSInt(); }));
+}
+
+OpFoldResult BroadcastShapeOp::fold(FoldAdaptor adaptor) {
+  auto xIntDims = dyn_cast_or_null<ElementsAttr>(adaptor.getInputX());
+  auto yIntDims = dyn_cast_or_null<ElementsAttr>(adaptor.getInputY());
+  if (xIntDims && yIntDims) {
+    // This is an inefficient way of doing this, but since this op would be
+    // usually lowered to `mo.shape.broadcast`, it should be folded rarely.
+    auto shapeTy = ShapeType::get(getContext());
+    auto xShape = ShapeAttr::get(getRawIntDims(xIntDims), shapeTy);
+    auto yShape = ShapeAttr::get(getRawIntDims(yIntDims), shapeTy);
+    ErrorOr<MO::ShapeAttr> shapeOr = broadcastShape(xShape, yShape);
+    if (!shapeOr.isError()) {
+      // Ensure we return with the appropriate element type.
+      auto getResAttrs = [&](auto values) {
+        return IntArrayElementsAttr::get(
+            getContext(), values, IntegerType::SignednessSemantics::Signed);
+      };
+      if (getType().getElementType().getIntOrFloatBitWidth() == 32) {
+        SmallVector<int32_t> dims = llvm::to_vector(llvm::map_range(
+            shapeOr->getIntDims(), [](int64_t dim) -> int32_t { return dim; }));
+        return getResAttrs(ArrayRef<int32_t>{dims});
+      }
+      return getResAttrs(ArrayRef<int64_t>{shapeOr->getIntDims()});
+    }
+  }
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // MO_ConstantOp support
 //===----------------------------------------------------------------------===//
 
@@ -425,11 +463,8 @@ OpFoldResult Shape::EqualOp::fold(FoldAdaptor adaptor) {
 
 OpFoldResult Shape::FromTensorOp::fold(FoldAdaptor adaptor) {
   if (auto input = dyn_cast_or_null<ElementsAttr>(adaptor.getInput())) {
-    auto newDims = llvm::to_vector(
-        llvm::map_range(input.getValues<IntegerAttr>(),
-                        [](IntegerAttr dim) { return dim.getSInt(); }));
     auto shapeTy = ShapeType::get(getContext());
-    return ShapeAttr::get(newDims, shapeTy);
+    return ShapeAttr::get(getRawIntDims(input), shapeTy);
   }
   return {};
 }

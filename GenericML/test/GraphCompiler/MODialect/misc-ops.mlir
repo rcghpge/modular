@@ -1,4 +1,4 @@
-// RUN: mo-opt %s | mo-opt | FileCheck %s
+// RUN: mo-opt %s --canonicalize | mo-opt | FileCheck %s
 
 // NOTE: Keep the tests grouped by op, and the order of ops alphabetical.
 
@@ -19,6 +19,16 @@ mo.graph @broadcast_shape_i32(%arg0: !mo.tensor<[3], si32>, %arg1: !mo.tensor<[2
   // CHECK: %[[RES:.*]] = mo.broadcast_shape(%[[ARG0:.*]], %[[ARG1:.*]]) : (!mo.tensor<[3], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[3], si32>
   %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[3], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[3], si32>
   // CHECK: mo.output %[[RES]] : !mo.tensor<[3], si32>
+  mo.output %res : !mo.tensor<[3], si32>
+}
+
+// CHECK: mo.graph @broadcast_shape_fold() -> !mo.tensor<[3], si32> {
+mo.graph @broadcast_shape_fold() -> !mo.tensor<[3], si32> {
+  // CHECK-NEXT: %[[RES:.*]] = mo.constant {value = #M.dense_array<5, 10, 42> : !M.array<3xsi32>} : !mo.tensor<[3], si32>
+  %s0 = mo.constant {value = #M.dense_array<5, 10, 1> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+  %s1 = mo.constant {value = #M.dense_array<10, 42> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+  %res = mo.broadcast_shape(%s0, %s1) : (!mo.tensor<[3], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[3], si32>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[3], si32>
   mo.output %res : !mo.tensor<[3], si32>
 }
 
