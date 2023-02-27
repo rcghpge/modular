@@ -26,7 +26,7 @@ include "mlir/IR/SymbolInterfaces.td"
 
 // Base class for ops in this dialect.
 class MO_Op<string mnemonic, list<Trait> traits = []>
-    : Op<MODialect, mnemonic, [MO_MOOpInterface] # traits>;
+    : Op<MODialect, mnemonic, [MO_OpInterface] # traits>;
 
 class MO_ElementWiseOp<string name, list<Trait> traits = []>
     : MO_Op<name, traits # [Pure, MO_SameOperandsAndResultType]> {

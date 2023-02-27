@@ -44,11 +44,12 @@ public:
 
 namespace M::MO {
 // These declarations must follow the include above since they reference
-// `MOOpParameterizationInterface`.
+// `ParameterizationInterface`.
 
 namespace impl {
-LogicalResult resolveSameOperandsAndResultTypeUnknownParameters(
-    MOOpParameterizationInterface op, mlir::RewriterBase &rewriter);
+LogicalResult
+resolveSameOperandsAndResultTypeUnknownParameters(ParameterizationInterface op,
+                                                  mlir::RewriterBase &rewriter);
 }
 
 template <typename ConcreteType>
@@ -58,9 +59,9 @@ class SameInputOutputTypesParameterization
 public:
   mlir::LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter) {
     // dependent trait ensures this is valid
-    auto paramInterface = mlir::cast<::M::MO::MOOpParameterizationInterface>(
-        this->getOperation());
-    return ::M::MO::impl::resolveSameOperandsAndResultTypeUnknownParameters(
+    auto paramInterface =
+        mlir::cast<ParameterizationInterface>(this->getOperation());
+    return impl::resolveSameOperandsAndResultTypeUnknownParameters(
         paramInterface, rewriter);
   }
 };

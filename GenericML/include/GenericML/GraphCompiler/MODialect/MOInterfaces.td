@@ -14,7 +14,7 @@
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/IR/OpBase.td"
 
-def MO_MOOpInterface : OpInterface<"MOOpInterface"> {
+def MO_OpInterface : OpInterface<"MOOpInterface"> {
   let description = [{
     Interface that all MO ops should implement, mainly providing typed accessors
     to inputs, outputs, and their shapes.
@@ -35,13 +35,19 @@ def MO_MOOpInterface : OpInterface<"MOOpInterface"> {
   ];
 }
 
-def MO_Parameterization : OpInterface<"MOOpParameterizationInterface"> {
+/// MO interfaces should inherit from this to ensure they are in the right
+/// namespace and have the right dependencies.
+class MO_OpInterfaceBase<string name, list<Interface> baseInterfaces = []>
+    : OpInterface<name, baseInterfaces> {
+  let cppNamespace = "::M::MO";
+  let dependentTraits = [MO_OpInterface];
+}
+
+def MO_Parameterization : MO_OpInterfaceBase<"ParameterizationInterface"> {
   let description = [{
     Interface to be implemented by ops that support resolving unknown shape
     and dimension parameters in their tensors.
   }];
-  let cppNamespace = "::M::MO";
-  let dependentTraits = [MO_MOOpInterface];
 
   let methods = [
     // TODO: provide default implementation
@@ -64,7 +70,7 @@ def MO_Parameterization : OpInterface<"MOOpParameterizationInterface"> {
 }
 
 def MO_ShapeInferenceMaterialization :
-    OpInterface<"MOShapeInferenceMaterialization"> {
+    MO_OpInterfaceBase<"ShapeInferenceMaterialization"> {
   let description = [{
     Shape inference materialization interface.
 
@@ -72,8 +78,6 @@ def MO_ShapeInferenceMaterialization :
     inference functions as IR in the module containing the op, as well as gluing
     in the appropriate invocations in the graph.
   }];
-  let cppNamespace = "::M::MO";
-  let dependentTraits = [MO_MOOpInterface];
 
   let methods = [
     InterfaceMethod<
@@ -83,7 +87,7 @@ def MO_ShapeInferenceMaterialization :
   ];
 }
 
-def MO_MatmulLike : OpInterface<"MatmulLike"> {
+def MO_MatmulLike : MO_OpInterfaceBase<"MatmulLike"> {
   let description = [{
     Interface for modeling operations that implement matmul-like behavior,
     including vanilla matmul and batchmatmul.
@@ -93,8 +97,6 @@ def MO_MatmulLike : OpInterface<"MatmulLike"> {
     dimension. This interface refers to the left and right matrices as A and B,
     respectively.
   }];
-  let cppNamespace = "::M::MO";
-  let dependentTraits = [MO_MOOpInterface];
 
   let methods = [
     InterfaceMethod<"Get the left input tensor as a TypedValue",
@@ -113,12 +115,10 @@ def MO_MatmulLike : OpInterface<"MatmulLike"> {
   let verify = [{ return impl::verifyMatmulLike($_op); }];
 }
 
-def MO_SlidingWindow : OpInterface<"SlidingWindow"> {
+def MO_SlidingWindow : MO_OpInterfaceBase<"SlidingWindow"> {
   let description = [{
     Interface for modeling operations that have sliding window semantics.
   }];
-  let cppNamespace = "::M::MO";
-  let dependentTraits = [MO_MOOpInterface];
 
   let methods = [
     InterfaceMethod<"Get the strides as a TypedValue",
@@ -138,32 +138,38 @@ def MO_SlidingWindow : OpInterface<"SlidingWindow"> {
   let verify = [{ return impl::verifySlidingWindow($_op); }];
 }
 
-def MO_ElementWiseUnary : OpInterface<"ElementWiseUnary"> {
+def MO_ElementWiseUnary : MO_OpInterfaceBase<"ElementWiseUnary"> {
   let description = [{
     Interface for modeling unary element-wise operations.
   }];
-  let cppNamespace = "::M::MO";
-  let dependentTraits = [MO_MOOpInterface];
 }
 
-def MO_ElementWiseBinary : OpInterface<"ElementWiseBinary"> {
+def MO_ElementWiseBinary : MO_OpInterfaceBase<"ElementWiseBinary"> {
   let description = [{
     Interface for modeling binary element-wise operations.
   }];
-  let cppNamespace = "::M::MO";
-  let dependentTraits = [MO_MOOpInterface];
 }
 
-def MO_SameInputOutputTypesParameterization :
-    NativeOpTrait<"SameInputOutputTypesParameterization"> {
+//===----------------------------------------------------------------------===//
+// Traits
+//===----------------------------------------------------------------------===//
+
+/// MO traits should inherit from this to ensure they are in the right namespace
+/// and have the right dependencies.
+class MO_OpTrait<string name, list<Trait> traits = []>
+    : NativeOpTrait<name, traits> {
   let cppNamespace = "::M::MO";
-  let dependentTraits = [MO_Parameterization];
+  let dependentTraits = [MO_OpInterface];
 }
+
+/// Should not be used outside this file.
+def _MO_SameInputOutputTypesParameterization :
+    MO_OpTrait<"SameInputOutputTypesParameterization">;
 
 def MO_SameOperandsAndResultType : TraitList<[
   SameOperandsAndResultType,
   MO_Parameterization,
-  MO_SameInputOutputTypesParameterization,
+  _MO_SameInputOutputTypesParameterization,
 ]>;
 
 /// Logically similar to the builtin SameOperandsAndResultElementType, but this
@@ -173,8 +179,6 @@ def MO_SameOperandsAndResultType : TraitList<[
 /// to support element type parameters in the future, this trait would be able
 /// to support them.
 def MO_SameOperandsAndResultElementType :
-    NativeOpTrait<"MOSameOperandsAndResultElementType"> {
-  let cppNamespace = "::M::MO";
-}
+    MO_OpTrait<"MOSameOperandsAndResultElementType">;
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOINTERFACES_TD
