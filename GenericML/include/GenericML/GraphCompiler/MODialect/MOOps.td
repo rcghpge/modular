@@ -697,7 +697,8 @@ def MO_BroadcastShapeOp : MO_Op<"broadcast_shape", [Pure]> {
   let hasFolder = 1;
 }
 
-def MO_BroadcastToOp : MO_Op<"broadcast_to", [Pure]> {
+def MO_BroadcastToOp : MO_Op<"broadcast_to",
+    [Pure, DeclareOpInterfaceMethods<MO_Parameterization>]> {
   let summary = "BroadcastTo Operation";
   let description = [{
     Broadcast the input_x tensor to the shape input_shape.
@@ -716,11 +717,15 @@ def MO_BroadcastToOp : MO_Op<"broadcast_to", [Pure]> {
     ```
   }];
 
-  let arguments = (ins MO_Tensor:$input, MO_ShapeLike:$newShape);
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_ShapeLike:$newShape,
+    MO_ParamDecls:$paramDecls);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `` custom<ParamDecls>($paramDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
   }];
   let hasVerifier = 1;
 }
