@@ -66,6 +66,56 @@ mo.graph @broadcast_to_bad_type(%from: !mo.tensor<?, f32>, %to: !mo.tensor<[?], 
 
 // -----
 
+mo.graph @broadcast_new_shape_size_res_unranked(
+  %from: !mo.tensor<?, f32>, %to: !mo.tensor<[2], si32>
+) -> !mo.tensor<?, f32> {
+  // expected-error@+1 {{result must be statically ranked if new shape has static size}}
+  %res = mo.broadcast_to(%from, %to) : (!mo.tensor<?, f32>, !mo.tensor<[2], si32>) -> !mo.tensor<?, f32>
+  mo.output %res : !mo.tensor<?, f32>
+}
+
+// -----
+
+mo.graph @broadcast_new_shape_size_res_ranked(
+  %from: !mo.tensor<?, f32>, %to: !mo.tensor<[?], si32>
+) -> !mo.tensor<[2, 3], f32> {
+  // expected-error@+1 {{result must be dynamically ranked if input shape has unknown size}}
+  %res = mo.broadcast_to(%from, %to) : (!mo.tensor<?, f32>, !mo.tensor<[?], si32>) -> !mo.tensor<[2, 3], f32>
+  mo.output %res : !mo.tensor<[2, 3], f32>
+}
+
+// -----
+
+mo.graph @broadcast_new_shape_size_res_rank(
+  %from: !mo.tensor<?, f32>, %to: !mo.tensor<[3], si32>
+) -> !mo.tensor<[2, 3], f32> {
+  // expected-error@+1 {{new shape size and output rank must match}}
+  %res = mo.broadcast_to(%from, %to) : (!mo.tensor<?, f32>, !mo.tensor<[3], si32>) -> !mo.tensor<[2, 3], f32>
+  mo.output %res : !mo.tensor<[2, 3], f32>
+}
+
+// -----
+
+mo.graph @broadcast_input_shape_rank_res_rank(
+  %from: !mo.tensor<[1, 2, 3], f32>, %to: !mo.tensor<[2], si32>
+) -> !mo.tensor<[2, ?], f32> {
+  // expected-error@+1 {{result rank must be at least the input rank}}
+  %res = mo.broadcast_to(%from, %to) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[2], si32>) -> !mo.tensor<[2, ?], f32>
+  mo.output %res : !mo.tensor<[2, ?], f32>
+}
+
+// -----
+
+mo.graph @broadcast_input_res_not_broadcastable(
+  %from: !mo.tensor<[1, 2, 3], f32>, %to: !mo.tensor<[3], si32>
+) -> !mo.tensor<[4, 5, ?], f32> {
+  // expected-error@+1 {{input shape not broadcastable to result shape}}
+  %res = mo.broadcast_to(%from, %to) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[3], si32>) -> !mo.tensor<[4, 5, ?], f32>
+  mo.output %res : !mo.tensor<[4, 5, ?], f32>
+}
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // ConcatOp
 //===----------------------------------------------------------------------===//

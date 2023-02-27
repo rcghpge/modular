@@ -144,6 +144,53 @@ OpFoldResult BroadcastShapeOp::fold(FoldAdaptor adaptor) {
 }
 
 //===----------------------------------------------------------------------===//
+// MO_BroadcastToOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BroadcastToOp::verify() {
+  TensorType resTy = getType();
+  TensorType newShapeTy = getNewShape().getType();
+
+  if (!newShapeTy.hasStaticShape()) {
+    if (!resTy.hasRank())
+      return success();
+    return emitError(
+        "result must be dynamically ranked if input shape has unknown size");
+  }
+
+  if (!resTy.hasRank()) {
+    return emitError(
+        "result must be statically ranked if new shape has static size");
+  }
+
+  size_t resRank = resTy.getRank();
+  if ((int64_t)resRank != newShapeTy.getIntDim(0))
+    return emitError("new shape size and output rank must match");
+
+  TensorType inputTy = getInput().getType();
+  if (inputTy.hasRank()) {
+    if (inputTy.getRank() > resRank)
+      return emitError("result rank must be at least the input rank");
+
+    ArrayRef<TypedAttr> fromDims = inputTy.getTypedShapeAttr().getValues();
+    ArrayRef<TypedAttr> toDims = resTy.getTypedShapeAttr().getValues();
+    for (auto [fromDim, toDim] :
+         llvm::zip(llvm::reverse(fromDims), llvm::reverse(toDims))) {
+      auto fromIntDim = dyn_cast<IntegerAttr>(fromDim);
+      auto toIntDim = dyn_cast<IntegerAttr>(toDim);
+      if (fromIntDim && toIntDim) {
+        // We can only assert anything if both dimensions are known constants.
+        int64_t inDim = fromIntDim.getInt();
+        if (inDim > 1 && (inDim != toIntDim.getInt()))
+          return emitError("input shape not broadcastable to result shape");
+      }
+    }
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // MO_ConstantOp support
 //===----------------------------------------------------------------------===//
 
@@ -221,7 +268,7 @@ LogicalResult MaxPoolOp::verify() {
 
 LogicalResult ConvOp::verify() {
   // The sliding window interface already checks that the input and result have
-  // matching ranks, so we can be more specific with the error message here
+  // matching ranks, so we can be more specific with the error message here.
   if (failed(impl::verifyMatchingRanks({getInput(), getResult(), getFilter()})))
     return emitError("filter, input and output ranks must be all dynamic, or "
                      "all static and match");

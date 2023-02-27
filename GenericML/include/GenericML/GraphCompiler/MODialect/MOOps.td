@@ -716,11 +716,13 @@ def MO_BroadcastToOp : MO_Op<"broadcast_to", [Pure]> {
     ```
   }];
 
-  let arguments = (ins MO_Tensor:$input_x, MO_ShapeLike:$input_shape);
+  let arguments = (ins MO_Tensor:$input, MO_ShapeLike:$newShape);
   let results = (outs MO_Tensor:$result);
+
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
+  let hasVerifier = 1;
 }
 
 def MO_ConcatOp : MO_Op<"concat", [Pure]> {
