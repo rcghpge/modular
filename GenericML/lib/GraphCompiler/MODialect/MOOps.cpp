@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "GenericML/GraphCompiler/MODialect/Broadcast.h"
 #include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
@@ -373,6 +374,17 @@ void Shape::AssertOp::build(OpBuilder &builder, OperationState &state,
 void Shape::AssertOp::build(OpBuilder &builder, OperationState &state,
                             Value cond, StringRef message) {
   build(builder, state, cond, builder.getStringAttr(message));
+}
+
+OpFoldResult Shape::BroadcastOp::fold(FoldAdaptor adaptor) {
+  auto xShape = dyn_cast_or_null<ShapeAttr>(adaptor.getInputX());
+  auto yShape = dyn_cast_or_null<ShapeAttr>(adaptor.getInputY());
+  if (xShape && yShape) {
+    ErrorOr<MO::ShapeAttr> shapeOr = broadcastShape(xShape, yShape);
+    if (!shapeOr.isError())
+      return *shapeOr;
+  }
+  return {};
 }
 
 OpFoldResult Shape::ConcatOp::fold(FoldAdaptor adaptor) {

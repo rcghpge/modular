@@ -11,6 +11,11 @@ kgen.func @assert(%arg0: index, %arg1: index) {
   kgen.return
 }
 
+kgen.func @broadcast(%sh0: !mo.shape, %sh1: !mo.shape) -> !mo.shape {
+  %0 = mo.shape.broadcast(%sh0, %sh1)
+  kgen.return %0 : !mo.shape
+}
+
 // CHECK: kgen.func @concat(%[[ARG0:.*]]: !mo.shape, %[[ARG1:.*]]: !mo.shape) -> !mo.shape {
 kgen.func @concat(%sh0: !mo.shape, %sh1: !mo.shape) -> !mo.shape {
   // CHECK: %[[VAL0:.*]] = mo.shape.concat(%[[ARG0]], %[[ARG1]])

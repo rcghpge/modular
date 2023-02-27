@@ -19,6 +19,59 @@ kgen.generator @concat_fold<Sh1: !mo.shape, D1, D2>(
   kgen.return %v11, %v12, %v23 : !mo.shape, !mo.shape, !mo.shape
 }
 
+// TODO: implement tests for shapes that do not fold
+//       - becasue of unknown shape arg
+//       - becasue of not broadcastable shapes
+//       - becasue it's not possible to decide without asserts if broadcastable
+// CHECK: kgen.generator @broadcast_fold_static() -> (!mo.shape, !mo.shape) {
+kgen.generator @broadcast_fold_static() -> (!mo.shape, !mo.shape) {
+  // CHECK-NEXT: %[[RES:.*]] = kgen.param.constant: !mo.shape = <[5, 10, 42]>
+  %s0 = kgen.param.constant: !mo.shape = <[5, 10, 1]>
+  %s1 = kgen.param.constant: !mo.shape = <[10, 42]>
+  %s3 = mo.shape.broadcast(%s0, %s1)
+  %s4 = mo.shape.broadcast(%s1, %s0)
+  // CHECK-NEXT: kgen.return %[[RES]], %[[RES]] : !mo.shape, !mo.shape
+  kgen.return %s3, %s4 : !mo.shape, !mo.shape
+}
+
+// CHECK: kgen.generator @broadcast_fold_dyn<[[N:.*]], [[K:.*]]>() -> (!mo.shape, !mo.shape) {
+kgen.generator @broadcast_fold_dyn<N, K>() -> (!mo.shape, !mo.shape) {
+  // CHECK: %[[RES:.*]] = kgen.param.constant: !mo.shape = <[[[N]], 10, 42]>
+  %s0 = kgen.param.constant: !mo.shape = <[N, 10, 1]>
+  %s1 = kgen.param.constant: !mo.shape = <[10, 42]>
+  %s2 = kgen.param.constant: !mo.shape = <[1, 10, 42]>
+  %s3 = mo.shape.broadcast(%s0, %s1)
+  %s4 = mo.shape.broadcast(%s0, %s2)
+  // CHECK-NEXT: kgen.return %[[RES]], %[[RES]] : !mo.shape, !mo.shape
+  kgen.return %s3, %s4 : !mo.shape, !mo.shape
+}
+
+// CHECK: kgen.generator @broadcast_not_fold<[[N:.*]], [[K:.*]], [[SH:.*]]: !mo.shape>()
+kgen.generator @broadcast_not_fold<N, K, Sh: !mo.shape>()
+    // CHECK-SAME: -> (!mo.shape, !mo.shape, !mo.shape, !mo.shape) {
+    -> (!mo.shape, !mo.shape, !mo.shape, !mo.shape) {
+  // CHECK-DAG: %[[VAL0:.*]] = kgen.param.constant: !mo.shape = <[[[N]], 10, 42]>
+  // CHECK-DAG: %[[VAL1:.*]] = kgen.param.constant: !mo.shape = <[[[N]], 10, 5]>
+  // CHECK-DAG: %[[VAL2:.*]] = kgen.param.constant: !mo.shape = <[[[K]], 10, 42]>
+  // CHECK-DAG: %[[VAL3:.*]] = kgen.param.constant: !mo.shape = <[1, 10, [[K]]]>
+  // CHECK-DAG: %[[VAL4:.*]] = kgen.param.constant: !mo.shape = <[[SH]]>
+  // CHECK-DAG: %[[VAL5:.*]] = mo.shape.broadcast(%[[VAL0]], %[[VAL1]])
+  // CHECK-DAG: %[[VAL6:.*]] = mo.shape.broadcast(%[[VAL0]], %[[VAL2]])
+  // CHECK-DAG: %[[VAL7:.*]] = mo.shape.broadcast(%[[VAL0]], %[[VAL3]])
+  // CHECK-DAG: %[[VAL8:.*]] = mo.shape.broadcast(%[[VAL0]], %[[VAL4]])
+  %s0 = kgen.param.constant: !mo.shape = <[N, 10, 42]>
+  %s1 = kgen.param.constant: !mo.shape = <[N, 10, 5]>
+  %s2 = kgen.param.constant: !mo.shape = <[K, 10, 42]>
+  %s3 = kgen.param.constant: !mo.shape = <[1, 10, K]>
+  %s4 = kgen.param.constant: !mo.shape = <Sh>
+  %s5 = mo.shape.broadcast(%s0, %s1)
+  %s6 = mo.shape.broadcast(%s0, %s2)
+  %s7 = mo.shape.broadcast(%s0, %s3)
+  %s8 = mo.shape.broadcast(%s0, %s4)
+  // CHECK-NEXT: kgen.return %[[VAL5]], %[[VAL6]], %[[VAL7]], %[[VAL8]] : !mo.shape, !mo.shape, !mo.shape, !mo.shape
+  kgen.return %s5, %s6, %s7, %s8 : !mo.shape, !mo.shape, !mo.shape, !mo.shape
+}
+
 // CHECK: kgen.generator @equal_fold<[[SH1:.*]]: !mo.shape, [[D1:.*]], [[D2:.*]]>()
 kgen.generator @equal_fold<Sh1: !mo.shape, D1, D2>() -> (i1, i1, i1, i1, i1) {
   // CHECK-DAG: %[[V1:.*]] = kgen.param.constant: !mo.shape = <[[SH1]]>
