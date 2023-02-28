@@ -28,12 +28,8 @@ class ConcreteStateSlot;
 
 /// A type-erased wrapper for all context 'state slots'. Buffer allocations
 /// may be cached within a number of 'buffer slots' determined when the state
-/// slot is constructed. The state slot may also hold an arbitrary payload,
-/// however the payload type must be registered at least once. The payload's
-/// destructor will be called when the state slot is destroyed.
-///
-/// Requires each static type to be registered ahead of its use in an StateSlot
-/// using TypeID::registerType<T>().
+/// slot is constructed. The state slot may also hold an arbitrary payload.
+/// The payload's destructor will be called when the state slot is destroyed.
 class StateSlot {
 public:
   ~StateSlot();
@@ -55,8 +51,7 @@ public:
   /// must match the type id of the state slot.
   template <typename T>
   T &get() {
-    assert(typeID == LLCL::TypeID::get<T>() &&
-           "mismatched static and dynamic StateSlot types");
+    typeID.assertEqual(LLCL::TypeID::get<T>(), "StateSlot::get");
     return static_cast<Detail::ConcreteStateSlot<T> *>(this)->payload;
   }
 

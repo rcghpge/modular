@@ -435,8 +435,6 @@ static void mgp_model() {
 //===----------------------------------------------------------------------===//
 
 void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
-  LLCL::TypeID::registerType<DefaultStateSlot>();
-
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.constant", mgp_cpu_buffer_constant);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.alloc.static",
                 mgp_cpu_buffer_alloc_static);

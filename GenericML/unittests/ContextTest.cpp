@@ -39,20 +39,16 @@ static LLCL::Runtime *GetRuntime() {
 #ifndef NDEBUG
 TEST(ContextTest, StateSlotDowncastFailTest) {
   Context ctx(/*numSlots=*/1);
-  LLCL::TypeID::registerType<PayloadA>();
-  LLCL::TypeID::registerType<PayloadB>();
-
   ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, /*numBuffers=*/1, 43);
-  ASSERT_DEATH_IF_SUPPORTED(ctx.getStateSlotPayload<PayloadB>(/*slotIndex=*/0),
-                            "mismatched static and dynamic StateSlot types");
+  ASSERT_DEATH_IF_SUPPORTED(
+      ctx.getStateSlotPayload<PayloadB>(/*slotIndex=*/0),
+      "StateSlot::get: object has actual runtime type 'PayloadA' however it "
+      "was expected at compile time to have type 'PayloadB'");
 }
 #endif
 
 TEST(ContextTest, StateSlotTest) {
   Context ctx(/*numSlots=*/2);
-  LLCL::TypeID::registerType<PayloadA>();
-  LLCL::TypeID::registerType<PayloadB>();
-
   ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, /*numBuffers=*/1, 43);
   ctx.emplaceStateSlot<PayloadB>(/*slotIndex=*/1, /*numBuffers=*/1, 'a');
 
@@ -66,7 +62,6 @@ TEST(ContextTest, getOrCreateBufferTest) {
   {
     // Add scope to make sure that the allocator outlives the context.
     Context ctx(/*numSlots=*/1);
-    LLCL::TypeID::registerType<PayloadA>();
     ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, /*numBuffers=*/1, 43);
 
     auto &stateSlot = ctx.getStateSlot(/*slotIndex=*/0);

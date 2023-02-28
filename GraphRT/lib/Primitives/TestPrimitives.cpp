@@ -793,7 +793,6 @@ static void vec_softmax_async(AsyncValueRef<TestFloat32Vector> input,
     TestFloat32Vector expElements;
     ElementType denom;
   };
-  LLCL::TypeID::registerType<DenomAndExpVector>();
 
   auto denomAndExpVectorAV =
       AsyncValueRef<DenomAndExpVector>::allocate(runtime);

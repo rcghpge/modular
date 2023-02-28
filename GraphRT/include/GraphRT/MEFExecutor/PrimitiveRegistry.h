@@ -966,7 +966,6 @@ private:
   do {                                                                         \
     (registry).add(                                                            \
         name, ::M::Detail::PrimitiveImpl<decltype(&(fn)), &(fn)>::invoke);     \
-    ::M::Detail::PrimitiveImpl<decltype(&(fn)), &(fn)>::registerTypes();       \
   } while (0)
 
 namespace Detail {
@@ -976,68 +975,6 @@ struct PrimitiveImpl;
 
 template <typename Return, typename... Args, Return (*implFn)(Args...)>
 struct PrimitiveImpl<Return (*)(Args...), implFn> {
-  //===--------------------------------------------------------------------===//
-  // Type Registration
-  //===--------------------------------------------------------------------===//
-
-  /// This class defines a helper for registering a type to enable use within
-  /// AsyncValue.
-  ///
-  /// Note: The `Dummy` type is used to avoid GCC errors for defining struct
-  /// specializations outside of a namespace.
-  template <typename T, typename Dummy = void>
-  struct TypeRegistration {
-    static void registerType() { LLCL::TypeID::registerType<T>(); }
-  };
-  template <typename Dummy>
-  struct TypeRegistration<void, Dummy> {
-    static void registerType() {}
-  };
-
-  /// A utility registration base class that recursively invokes registration on
-  /// the given set of types.
-  template <typename... Ts>
-  struct ForwardingTypeRegistration {
-    static void registerType() { (TypeRegistration<Ts>::registerType(), ...); }
-  };
-  template <typename T1, typename T2>
-  struct TypeRegistration<std::pair<T1, T2>>
-      : public ForwardingTypeRegistration<T1, T2> {};
-  template <typename... Ts>
-  struct TypeRegistration<std::tuple<Ts...>>
-      : public ForwardingTypeRegistration<Ts...> {};
-  template <typename T>
-  struct TypeRegistration<AsyncValueRef<T>>
-      : public ForwardingTypeRegistration<T> {};
-  template <typename T>
-  struct TypeRegistration<ErrorOr<T>> : public ForwardingTypeRegistration<T> {};
-
-  /// This class defines a helper for registering types for components provided
-  /// via the primitive parameter list.
-  ///
-  /// Note: The `Dummy` type is used to avoid GCC errors for defining struct
-  /// specializations outside of a namespace.
-  template <typename T, typename Dummy = void>
-  struct ParamTypeRegistration {
-    static void registerType() {}
-  };
-  template <typename T>
-  struct ParamTypeRegistration<Result<T>> {
-    static void registerType() { TypeRegistration<T>::registerType(); }
-  };
-
-  //===--------------------------------------------------------------------===//
-  // Entry Point
-
-  /// This method is an entry point used to register the necessary types with
-  /// AsyncValue needed to properly invoke this primitive.
-  static void registerTypes() {
-    // We only really need to register result types here, given that the
-    // argument types require a valid producer. The `ParamTypeRegistration`
-    // below handles registering types for results passed as parameters.
-    TypeRegistration<std::decay_t<Return>>::registerType();
-    (ParamTypeRegistration<std::decay_t<Args>>::registerType(), ...);
-  }
 
   //===--------------------------------------------------------------------===//
   // Invocation
