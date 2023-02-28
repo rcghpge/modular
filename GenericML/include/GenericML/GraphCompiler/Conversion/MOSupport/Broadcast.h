@@ -31,6 +31,10 @@ TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
                                   ArrayRef<int64_t> reshapeShape,
                                   TensorValue to);
 
+/// Broadcast tensor `x` to the shape of `s`. Works with static shapes only.
+TensorValue broadcastToStaticShape(OpBuilder &builder, Location loc,
+                                   TensorValue x, TensorType s);
+
 /// Broadcast tensor `x` and `y` to each other, such that they have the same
 /// shape after broadcasting. The method broadcasts statically, if the input
 /// shapes are static, or dynamically otherwise.

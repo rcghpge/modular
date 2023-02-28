@@ -79,9 +79,8 @@ broadcastToCommonShape(OpBuilder &builder, TensorValue x, TensorValue y,
   return {bcastXOp, bcastYOp};
 }
 
-/// Broadcast `x` to a static shape given by `s`.
-static TensorValue broadcastToStaticShape(OpBuilder &builder, Location loc,
-                                          TensorValue x, TensorType s) {
+TensorValue broadcastToStaticShape(OpBuilder &builder, Location loc,
+                                   TensorValue x, TensorType s) {
   auto constOp = builder.create<MO::ConstantOp>(
       loc, s.getIntDims(), builder.getIntegerType(64, /*isSigned=*/true));
   return builder.create<MO::BroadcastToOp>(loc, s, x, constOp);
