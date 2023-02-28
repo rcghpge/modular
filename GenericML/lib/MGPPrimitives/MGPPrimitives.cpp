@@ -19,15 +19,19 @@
 #include "Support/ML/TensorShape.h"
 #include "llvm/Support/Debug.h"
 
-#define DEBUG_TYPE "mgp_primitives"
+#define DEBUG_TYPE "mgp"
 
 using namespace M;
 using namespace M::GML;
 
-static std::optional<size_t> getAlign(uint64_t rawAlign) {
-  return hasRawSize(rawAlign)
-             ? std::optional<size_t>(rawSizeToRuntimeSize(rawAlign))
+static std::optional<size_t> getRuntimeSize(uint64_t rawSize) {
+  return hasRawSize(rawSize)
+             ? std::optional<size_t>(rawSizeToRuntimeSize(rawSize))
              : std::nullopt;
+}
+
+static std::optional<size_t> getRuntimeAlign(uint64_t rawAlign) {
+  return getRuntimeSize(rawAlign);
 }
 
 //===----------------------------------------------------------------------===//
@@ -40,7 +44,8 @@ static void mgp_cpu_buffer_constant(Result<BufferRef> outBuffer,
                                     MEFAttr<ArrayRef<uint8_t>> aValue,
                                     MEFAttr<uint64_t> bRawAlign,
                                     Runtime &runtime) {
-  TimeTraceScope scope(LLCL::WorkProfilerEntry::create("mgp.buffer_constant"));
+  TimeTraceScope scope(
+      LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.constant"));
   std::optional<size_t> optAlign;
   if (hasRawSize(*bRawAlign))
     optAlign = rawSizeToRuntimeSize(*bRawAlign);
@@ -65,8 +70,8 @@ static void mgp_cpu_buffer_alloc_static(Context &ctx, Result<BufferRef> result,
   if (!isValidRawAlign(*bRawAlign))
     return std::move(result).setToError("invalid align attribute");
   size_t runtimeSize = plainSizeToRuntimeSize(*aSize);
-  std::move(result).emplace(
-      BufferRef::createOwned(runtime, runtimeSize, getAlign(*bRawAlign)));
+  std::move(result).emplace(BufferRef::createOwned(
+      runtime, runtimeSize, getRuntimeAlign(*bRawAlign)));
 }
 
 static void mgp_cpu_buffer_alloc_dynamic(Context &ctx, size_t runtimeSize,
@@ -78,7 +83,7 @@ static void mgp_cpu_buffer_alloc_dynamic(Context &ctx, size_t runtimeSize,
   if (!isValidRawAlign(*rawAlign))
     return std::move(result).setToError("invalid align attribute");
   std::move(result).emplace(
-      BufferRef::createOwned(runtime, runtimeSize, getAlign(*rawAlign)));
+      BufferRef::createOwned(runtime, runtimeSize, getRuntimeAlign(*rawAlign)));
 }
 
 static void mgp_cpu_buffer_alloc_spec(Context &ctx, const TensorSpec &spec,
@@ -88,7 +93,7 @@ static void mgp_cpu_buffer_alloc_spec(Context &ctx, const TensorSpec &spec,
   if (!isValidRawAlign(*rawAlign))
     return std::move(result).setToError("invalid align attribute");
   std::move(result).emplace(BufferRef::createOwned(
-      runtime, spec.getSizeInBytes(), getAlign(*rawAlign)));
+      runtime, spec.getSizeInBytes(), getRuntimeAlign(*rawAlign)));
 }
 
 //===----------------------------------------------------------------------===//
@@ -119,7 +124,7 @@ static void mgp_cpu_buffer_realloc_static(
   size_t runtimeSize = plainSizeToRuntimeSize(*cSize);
   StateSlot &stateSlot = ctx.getStateSlot(*aSlot);
   std::move(result).emplace(stateSlot.getOrCreateBuffer(
-      *bBuffer, runtime, runtimeSize, getAlign(*dRawAlign)));
+      *bBuffer, runtime, runtimeSize, getRuntimeAlign(*dRawAlign)));
 }
 
 static void mgp_cpu_buffer_realloc_dynamic(
@@ -132,7 +137,7 @@ static void mgp_cpu_buffer_realloc_dynamic(
     return std::move(result).setToError("invalid align attribute");
   StateSlot &stateSlot = ctx.getStateSlot(*aSlot);
   std::move(result).emplace(stateSlot.getOrCreateBuffer(
-      *bBuffer, runtime, runtimeSize, getAlign(*cRawAlign)));
+      *bBuffer, runtime, runtimeSize, getRuntimeAlign(*cRawAlign)));
 }
 
 static void
@@ -146,7 +151,7 @@ mgp_cpu_buffer_realloc_spec(Chain inChain, Context &ctx, const TensorSpec &spec,
     return std::move(result).setToError("invalid align attribute");
   StateSlot &stateSlot = ctx.getStateSlot(*aSlot);
   std::move(result).emplace(stateSlot.getOrCreateBuffer(
-      *bBuffer, runtime, spec.getSizeInBytes(), getAlign(*cRawAlign)));
+      *bBuffer, runtime, spec.getSizeInBytes(), getRuntimeAlign(*cRawAlign)));
 }
 
 //===----------------------------------------------------------------------===//
@@ -399,10 +404,11 @@ static void mgp_debug_cpu_spin_wait(Chain inChain, Result<Chain> outChain,
 //===----------------------------------------------------------------------===//
 
 static ErrorOr<Chain> mgp_cas_create_instance(Chain inChain, Context &ctx,
-                                              MEFAttr<uint64_t> slot,
-                                              MEFAttr<StringRef> fsPath,
+                                              MEFAttr<uint64_t> aSlot,
+                                              MEFAttr<StringRef> bFsPath,
                                               Runtime &runtime) {
-  auto &slotOr = ctx.emplaceStateSlot<CASStateSlot>(*slot, 0, runtime, *fsPath);
+  auto &slotOr =
+      ctx.emplaceStateSlot<CASStateSlot>(*aSlot, 0, runtime, *bFsPath);
   // If the emplace failed, the state slot will hold an error.
   if (auto err = slotOr.getError())
     return err.takeError();
@@ -414,12 +420,26 @@ static ErrorOr<Chain> mgp_cas_create_instance(Chain inChain, Context &ctx,
 // mgp.cas.lookup
 //===----------------------------------------------------------------------===//
 
-static AsyncValueRef<BufferRef> mgp_cas_lookup(Chain inChain, Context &ctx,
-                                               MEFAttr<uint64_t> slot,
-                                               MEFAttr<StringRef> key,
-                                               EncodedLocation loc) {
-  auto &dataStore = ctx.getStateSlotPayload<CASStateSlot>(*slot);
-  return dataStore.lookup(*key, std::move(loc));
+static void mgp_cas_lookup(Chain inChain, Context &ctx,
+                           Result<BufferRef> result, MEFAttr<uint64_t> aSlot,
+                           MEFAttr<StringRef> bKey, MEFAttr<uint64_t> cRawSize,
+                           EncodedLocation loc) {
+  auto &dataStore = ctx.getStateSlotPayload<CASStateSlot>(*aSlot);
+  Optional<size_t> expectedSize = getRuntimeSize(*cRawSize);
+  AsyncValueRef<BufferRef> lookupResult = dataStore.lookup(*bKey, loc.copy());
+  std::move(lookupResult)
+      .andThenSync([expectedSize, slot = *aSlot, result = result.copy(),
+                    loc = std::move(loc)](
+                       AsyncValueRef<BufferRef> &&lookupResult) mutable {
+        if (expectedSize && lookupResult.get().getSize() != *expectedSize)
+          return std::move(result).setToError(
+              {Error(Twine("buffer returned from CAS at slot ") + Twine(slot) +
+                     " has different size than expected (" +
+                     Twine(lookupResult.get().getSize()) + " vs " +
+                     Twine(*expectedSize) + ")"),
+               std::move(loc)});
+        std::move(result).emplace(std::move(lookupResult.get()));
+      });
 }
 
 //===----------------------------------------------------------------------===//

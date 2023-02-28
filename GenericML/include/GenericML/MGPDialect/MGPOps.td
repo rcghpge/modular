@@ -29,8 +29,8 @@ class MGP_Op<string mnemonic, list<Trait> traits = []> :
 // CpuBufferConstantOp
 //===----------------------------------------------------------------------===//
 
-def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant",
-                             [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant", [
+    Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
     Creates a buffer hosted on the CPU whose data is aliased with
     the bytes in the given attribute.
@@ -90,7 +90,6 @@ def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant",
     OpBuilder<(ins "ElementsAttr":$value)>
   ];
 }
-
 
 //===----------------------------------------------------------------------===//
 //
@@ -913,10 +912,10 @@ def CpuTensorExtractOp : MGP_Op<"cpu.tensor.extract", [
 }
 
 //===----------------------------------------------------------------------===//
-// DebugCpuTensorPrint
+// DebugCpuTensorPrintOp
 //===----------------------------------------------------------------------===//
 
-def DebugCpuTensorPrint : MGP_Op<"debug.cpu.tensor.print"> {
+def DebugCpuTensorPrintOp : MGP_Op<"debug.cpu.tensor.print"> {
   let summary = "Prints a debug representation of argument tensor. For "
                 "debugging and testing only.";
   let description = [{
@@ -938,10 +937,10 @@ def DebugCpuTensorPrint : MGP_Op<"debug.cpu.tensor.print"> {
 }
 
 //===----------------------------------------------------------------------===//
-// DebugCpuSpinWait
+// DebugCpuSpinWaitOp
 //===----------------------------------------------------------------------===//
 
-def DebugCpuSpinWait : MGP_Op<"debug.cpu.spin_wait"> {
+def DebugCpuSpinWaitOp : MGP_Op<"debug.cpu.spin_wait"> {
   let summary = "Spins as a sub-task for given delay. Entirely CPU bound.";
   let description = [{
     Spins as a sub-task for given delay in microseconds. Entirely CPU bound.
@@ -963,17 +962,20 @@ def DebugCpuSpinWait : MGP_Op<"debug.cpu.spin_wait"> {
 }
 
 //===----------------------------------------------------------------------===//
-// CASCreateInstance
+// CASCreateInstanceOp
 //===----------------------------------------------------------------------===//
 
-def CASCreateInstance : MGP_Op<"cas.create_instance"> {
+def CASCreateInstanceOp : MGP_Op<"cas.create_instance"> {
   let summary = "Creates an instance of the CAS.";
   let description = [{
     Creates an instance of the CAS and stores it into the provided state slot.
 
     Example:
     ```mlir
-    %ch = mgp.cas.create_instance %ch, %ctx[0] at "/path/to/fs"
+    %ctx : !mgp.context
+    %inCh : !mef.chain
+    %outCh = mgp.cas.create_instance %inCh, %ctx[0] at "/path/to/fs"
+    %outCh : !mef.chain
     ```
   }];
 
@@ -988,28 +990,39 @@ def CASCreateInstance : MGP_Op<"cas.create_instance"> {
 }
 
 //===----------------------------------------------------------------------===//
-// CASLookup
+// CASLookupOp
 //===----------------------------------------------------------------------===//
 
-def CASLookup : MGP_Op<"cas.lookup"> {
-  let summary = "Lookup a CAS ID and return a ref to the buffer.";
+def CASLookupOp : MGP_Op<"cas.lookup", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "Lookup an !mgp.cpu.buffer from the CAS instance at the given "
+                "slot under the given key.";
   let description = [{
-    Look up a provided CAS ID and return a ref to the buffer.
+    Lookup an !mgp.cpu.buffer from the CAS instance at the given slot under
+    the given key.  Returns an error if the retrieved CPU buffer's size does
+    not agree with the size (if any) given in the !mgp.cpu.buffer type
+    annotation.
 
     Example:
     ```mlir
-    %buf = mgp.cas.lookup("SOMECASID") %ch, %ctx[0] : !mgp.cpu.buffer<N>
+    %ctx : !mgp.context
+    %ch : !mef.chain
+    %buf = mgp.cas.lookup("SOMECASID") %ch, %ctx[0] : !mgp.cpu.buffer<256>
+    %buf : !mgp.cpu.buffer<256>
     ```
   }];
 
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
   let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
-                       UI64Attr:$aSlot,   // 0
-                       StrAttr:$bKey);    // 1
+                       UI64Attr:$aSlot,      // 0
+                       StrAttr:$bKey,        // 1
+                       UI64Attr:$cRawSize ); // 2
   let results = (outs MGP_CpuBufferType:$result);
   let assemblyFormat = [{
-    `` `(` $bKey `)` $inChain `,` $theContext `[` $aSlot `]` attr-dict
-    `:` qualified(type($result))
+    `(` $bKey `)` $inChain `,` $theContext `[` $aSlot `]` attr-dict
+    `:` custom<RawSizeAsBufferType>($cRawSize)
   }];
 }
 
