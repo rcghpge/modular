@@ -50,7 +50,9 @@ namespace impl {
 LogicalResult
 resolveSameOperandsAndResultTypeUnknownParameters(ParameterizationInterface op,
                                                   mlir::RewriterBase &rewriter);
-}
+LogicalResult resolveReductionParameters(ParameterizationInterface op,
+                                         mlir::RewriterBase &rewriter);
+} // namespace impl
 
 template <typename ConcreteType>
 class SameInputOutputTypesParameterization
@@ -65,6 +67,19 @@ public:
         paramInterface, rewriter);
   }
 };
+
+template <typename ConcreteType>
+class ReductionParameterization
+    : public mlir::OpTrait::TraitBase<ConcreteType, ReductionParameterization> {
+public:
+  mlir::LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter) {
+    // dependent trait ensures this is valid
+    auto paramInterface =
+        mlir::cast<ParameterizationInterface>(this->getOperation());
+    return impl::resolveReductionParameters(paramInterface, rewriter);
+  }
+};
+
 } // namespace M::MO
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOINTERFACES_H

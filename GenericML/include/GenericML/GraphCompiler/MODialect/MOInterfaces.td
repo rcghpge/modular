@@ -172,6 +172,12 @@ def MO_SameOperandsAndResultType : TraitList<[
   _MO_SameInputOutputTypesParameterization,
 ]>;
 
+/// Should not be used outside this file.
+def _MO_ReductionParameterization : MO_OpTrait<"ReductionParameterization">;
+
+def MO_ReductionParameterization : TraitList<[
+  MO_Parameterization, _MO_ReductionParameterization]>;
+
 /// Logically similar to the builtin SameOperandsAndResultElementType, but this
 /// allows us to use our own logic of how the element types are accessed from
 /// the op's operands and results. In the builtin implementation, element types

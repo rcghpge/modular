@@ -474,11 +474,24 @@ def MO_TanhOp : MO_ElementWiseUnaryOp<"tanh"> {
 // Reduction ops
 //===----------------------------------------------------------------------===//
 
-def MO_MeanOp : MO_Op<"mean",
-    [Pure, DeclareOpInterfaceMethods<MO_Parameterization>]> {
-  let summary = "Mean operation";
+class MO_ReductionOp<string name, list<Trait> traits = []> : MO_Op<
+    name, traits # [Pure, MO_ReductionParameterization]> {
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_RankedScalarTensor:$axis,
+    MO_ParamDecls:$paramDecls);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($paramDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
+def MO_MeanOp : MO_ReductionOp<"mean"> {
+  let summary = "Mean reduction operation";
   let description = [{
-    Reduce `input` elements across `axis` into their mean value, and change that
+    Reduce `input` elements across `axis` to their mean value, and change that
     axis's dimension to 1 in the output shape.
 
     Example:
@@ -491,15 +504,41 @@ def MO_MeanOp : MO_Op<"mean",
       !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
+}
 
-  let arguments = (ins MO_Tensor:$input,
-                       MO_RankedScalarTensor:$axis,
-                       MO_ParamDecls:$paramDecls);
-  let results = (outs MO_Tensor:$result);
+def MO_ProdOp : MO_ReductionOp<"prod"> {
+  let summary = "Product reduction operation";
+  let description = [{
+    Reduce `input` elements across `axis` to their product, and change that
+    axis's dimension to 1 in the output shape.
 
-  let assemblyFormat = [{
-    `` custom<ParamDecls>($paramDecls) `(` operands `)` attr-dict `:`
-    functional-type(operands, results)
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %axis = mo.constant {
+      value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+    %res = mo.prod(%arg, %axis) : (
+      !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+    ```
+  }];
+}
+
+def MO_SumOp : MO_ReductionOp<"sum"> {
+  let summary = "Sum reduction operation";
+  let description = [{
+    Reduce `input` elements across `axis` to their sum, and change that axis's
+    dimension to 1 in the output shape.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %axis = mo.constant {
+      value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+    %res = mo.sum(%arg, %axis) : (
+      !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+    ```
   }];
 }
 
