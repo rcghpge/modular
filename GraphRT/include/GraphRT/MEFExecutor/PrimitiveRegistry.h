@@ -186,12 +186,21 @@ public:
   /// when copying into a closure.
   AnyAsyncValueRef copy() const { return result.copy(); }
 
-  /// Fill this AsyncValue with an error that has the specified message.
+  /// Fill this AsyncValue with an error that has the specified message
+  /// and the currrent frame's location.
   void setToError(Error message) && {
     // CAUTION: We must copy result since it is expected to remain available
     // to the creator of the AnySingleResult. However, we'll still mark this
     // method as moving to make clear the result should only be set once.
     result.copy().setToError({std::move(message), frame.copyLocation()});
+  }
+
+  /// Fill this AsyncValue with an error that has the specified diagnostic.
+  void setToError(EncodedDiagnostic diagnostic) && {
+    // CAUTION: We must copy result since it is expected to remain available
+    // to the creator of the AnySingleResult. However, we'll still mark this
+    // method as moving to make clear the result should only be set once.
+    result.copy().setToError(std::move(diagnostic));
   }
 
   RunnablePrimitiveDescriptor &getFrame() const { return frame; }
