@@ -885,31 +885,31 @@ def MO_GatherOp : MO_Op<"gather",
     [Pure, DeclareOpInterfaceMethods<MO_Parameterization>]> {
   let summary = "Gather Operation";
   let description = [{
-    Gather slices from params' axis according to indices.
+    Gather slices from input' axis according to indices.
 
     If input and indices are statically ranked, the output rank must be
     `inputRank - 1 + indicesRank`. In general, the output satisfies the
     following:
     ```
     output[a_0, ..., a_n, i, ..., j, b_0, ... b_n] =
-      params[a_0, ..., a_n, indices[i, ..., j], b_0, ..., b_n]
+      input[a_0, ..., a_n, indices[i, ..., j], b_0, ..., b_n]
     ```
-    where `indices` appears at given axis of params.
+    where `indices` appears at given axis of input.
 
     Example:
 
     ```mlir
-    %params : !mo.tensor<[2, 2], f32>
+    %input : !mo.tensor<[2, 2], f32>
     %indices: !mo.tensor<[2], si64>
     %axis = mo.constant {
       value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
-    %res = mo.gather(%params, %indices, %axis) : (
+    %res = mo.gather(%input, %indices, %axis) : (
       !mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>, !mo.tensor<[], si64>
     ) -> !mo.tensor<[2, 2], f32>
     ```
   }];
 
-  let arguments = (ins MO_NonScalarIfRanked:$params,
+  let arguments = (ins MO_NonScalarIfRanked:$input,
                        MO_IndicesTensor:$indices,
                        MO_RankedScalarIndexTensor:$axis,
                        MO_ParamDecls:$paramDecls);

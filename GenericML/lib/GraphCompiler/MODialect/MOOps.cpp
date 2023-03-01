@@ -295,11 +295,11 @@ LogicalResult ConcatOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult GatherOp::verify() {
-  TensorType paramsType = getParams().getType();
+  TensorType paramsType = getInput().getType();
   TensorType indicesType = getIndices().getType();
   TensorType resultType = getResult().getType();
 
-  // Nothing we can say if either params or indices is dynamically ranked
+  // Nothing we can say if either input or indices is dynamically ranked
   if (!paramsType.hasRank() || !indicesType.hasRank())
     return LogicalResult::success();
 
