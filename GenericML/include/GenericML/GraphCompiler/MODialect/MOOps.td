@@ -770,6 +770,38 @@ def MO_BroadcastToOp : MO_Op<"broadcast_to",
   let hasVerifier = 1;
 }
 
+def MO_StaticBroadcastToOp : MO_Op<"static.broadcast_to", [Pure]> {
+  let summary = "Broadcast operation for parametric shapes";
+  let description = [{
+    Broadcast the input tensor to the result tensor. The shape of the input and
+    result tensors must not be unknown or contain unknown dimensions, but can be
+    parametric. It is not recommended for frontend conversion code to rely on
+    this op (use `mo.broadcast_to` with a constant shape-like tensor instead).
+
+    The broadcasting follows numpy semantics.
+
+    Example:
+
+    ```mlir
+    %from: !mo.tensor<[3], f32>
+    %res1 = mo.static.broadcast(%from)
+      : !mo.tensor<[3], f32> -> !mo.tensor<[2, 3], f32>
+    kgen.param.declare N = <...>
+    %res2 = mo.static.broadcast(%from)
+      : !mo.tensor<[3], f32> -> !mo.tensor<[N, 3], f32>
+    ```
+  }];
+
+  let arguments = (ins MO_KnownTensor:$input);
+  let results = (outs MO_KnownTensor:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:`
+    qualified(type($input)) `->` qualified(type($result))
+  }];
+  let hasVerifier = 1;
+}
+
 def MO_ConcatOp : MO_Op<"concat", [Pure]> {
   let summary = "Concat Operation";
   let description = [{

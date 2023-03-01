@@ -156,7 +156,6 @@ mo.graph @reshape_dyn_shape(%arg: !mo.tensor<[?], f32>) -> !mo.tensor<[2, 2], f3
   mo.output %res : !mo.tensor<[2, 2], f32>
 }
 
-
 //===----------------------------------------------------------------------===//
 // ShapeOfOp
 //===----------------------------------------------------------------------===//
@@ -177,6 +176,16 @@ mo.graph @shape_of_dyn_rank(%arg: !mo.tensor<?, f32>) -> !mo.tensor<[?], si64> {
   mo.output %res : !mo.tensor<[?], si64>
 }
 
+//===----------------------------------------------------------------------===//
+// StaticBrodcastToOp
+//===----------------------------------------------------------------------===//
+
+// CHECK: mo.graph @static_broadcast_to<[[N:.*]]>(%[[FROM:.*]]: !mo.tensor<[[[N]], 3], f32>) -> !mo.tensor<[1, [[N]], 3], f32> {
+mo.graph @static_broadcast_to<N>(%from: !mo.tensor<[N, 3], f32>) -> !mo.tensor<[1, N, 3], f32> {
+  // CHECK: [[RES:.*]] = mo.static.broadcast_to(%[[FROM]]) : !mo.tensor<[[[N]], 3], f32> -> !mo.tensor<[1, [[N]], 3], f32>
+  %res = mo.static.broadcast_to(%from) : !mo.tensor<[N, 3], f32> -> !mo.tensor<[1, N, 3], f32>
+  mo.output %res : !mo.tensor<[1, N, 3], f32>
+}
 
 //===----------------------------------------------------------------------===//
 // TransposeOp

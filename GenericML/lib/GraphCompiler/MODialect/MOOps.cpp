@@ -184,30 +184,13 @@ OpFoldResult BroadcastShapeOp::fold(FoldAdaptor adaptor) {
 // MO_BroadcastToOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult BroadcastToOp::verify() {
-  TensorType resTy = getType();
-  TensorType newShapeTy = getNewShape().getType();
-
-  if (!newShapeTy.hasStaticShape()) {
-    if (!resTy.hasRank())
-      return success();
-    return emitError(
-        "result must be dynamically ranked if input shape has unknown size");
-  }
-
-  if (!resTy.hasRank()) {
-    return emitError(
-        "result must be statically ranked if new shape has static size");
-  }
-
-  size_t resRank = resTy.getRank();
-  if ((int64_t)resRank != newShapeTy.getIntDim(0))
-    return emitError("new shape size and output rank must match");
-
-  TensorType inputTy = getInput().getType();
+/// Check if the input type can be broadcasted to the result type, assumin both
+/// have static ranks.
+static ErrorOrSuccess verifyBroadcastStaticRanks(TensorType inputTy,
+                                                 TensorType resTy) {
   if (inputTy.hasRank()) {
-    if (inputTy.getRank() > resRank)
-      return emitError("result rank must be at least the input rank");
+    if (inputTy.getRank() > resTy.getRank())
+      return Error("result rank must be at least the input rank");
 
     ArrayRef<TypedAttr> fromDims = inputTy.getTypedShapeAttr().getValues();
     ArrayRef<TypedAttr> toDims = resTy.getTypedShapeAttr().getValues();
@@ -219,11 +202,45 @@ LogicalResult BroadcastToOp::verify() {
         // We can only assert anything if both dimensions are known constants.
         int64_t inDim = fromIntDim.getInt();
         if (inDim > 1 && (inDim != toIntDim.getInt()))
-          return emitError("input shape not broadcastable to result shape");
+          return Error("input shape not broadcastable to result shape");
       }
     }
   }
+  return success();
+}
 
+LogicalResult BroadcastToOp::verify() {
+  TensorType resTy = getType();
+  TensorType newShapeTy = getNewShape().getType();
+
+  if (!newShapeTy.hasStaticShape()) {
+    if (!resTy.hasRank())
+      return success();
+    return emitError(
+        "result must be dynamically ranked if new shape has unknown size");
+  }
+
+  if (!resTy.hasRank()) {
+    return emitError(
+        "result must be statically ranked if new shape has static size");
+  }
+
+  if ((int64_t)resTy.getRank() != newShapeTy.getIntDim(0))
+    return emitError("new shape size and output rank must match");
+
+  if (auto err = verifyBroadcastStaticRanks(getInput().getType(), resTy))
+    return emitError(err.getError());
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// MO_StaticBroadcastToOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult StaticBroadcastToOp::verify() {
+  if (auto err = verifyBroadcastStaticRanks(getInput().getType(), getType()))
+    return emitError(err.getError());
   return success();
 }
 
