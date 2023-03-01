@@ -602,6 +602,15 @@ void Shape::GetDimOp::build(OpBuilder &builder, OperationState &state,
   build(builder, state, input, builder.getIndexAttr(dim));
 }
 
+TypedAttr Shape::GetDimOp::emitStaticCall(TypedAttr inputShape, int64_t axis) {
+  auto indexTy = IndexType::get(inputShape.getContext());
+  SmallVector<std::pair<StringAttr (*)(mlir::OperationName), Attribute>>
+      attrNameFuncAndArg = {
+          {Shape::GetDimOp::getDimAttrName, IntegerAttr::get(indexTy, axis)}};
+  return KGEN::emitMLIROperationCall(Shape::GetDimOp::getOperationName(),
+                                     attrNameFuncAndArg, {inputShape}, indexTy);
+}
+
 OpFoldResult Shape::GetDimOp::fold(FoldAdaptor adaptor) {
   if (auto input = dyn_cast_or_null<ShapeAttr>(adaptor.getInput())) {
     int64_t dim = normalizeAxis(adaptor.getDim(), input.getRank());
