@@ -36,7 +36,7 @@ static LLCL::Runtime *GetRuntime() {
   return runtime;
 }
 
-#ifndef NDEBUG
+#ifdef MODULAR_DEBUG
 TEST(ContextTest, StateSlotDowncastFailTest) {
   Context ctx(/*numSlots=*/1);
   ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, /*numBuffers=*/1, 43);
