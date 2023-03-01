@@ -886,6 +886,15 @@ def MO_GatherOp : MO_Op<"gather", [Pure]> {
   let description = [{
     Gather slices from params' axis according to indices.
 
+    If input and indices are statically ranked, the output rank must be
+    `inputRank - 1 + indicesRank`. In general, the output satisfies the
+    following:
+    ```
+    output[a_0, ..., a_n, i, ..., j, b_0, ... b_n] =
+      params[a_0, ..., a_n, indices[i, ..., j], b_0, ..., b_n]
+    ```
+    where `indices` appears at given axis of params.
+
     Example:
 
     ```mlir
@@ -906,6 +915,7 @@ def MO_GatherOp : MO_Op<"gather", [Pure]> {
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

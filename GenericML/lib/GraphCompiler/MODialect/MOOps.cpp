@@ -291,6 +291,33 @@ LogicalResult ConcatOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// MO_GatherOp support
+//===----------------------------------------------------------------------===//
+
+LogicalResult GatherOp::verify() {
+  TensorType paramsType = getParams().getType();
+  TensorType indicesType = getIndices().getType();
+  TensorType resultType = getResult().getType();
+
+  // Nothing we can say if either params or indices is dynamically ranked
+  if (!paramsType.hasRank() || !indicesType.hasRank())
+    return LogicalResult::success();
+
+  if (!resultType.hasRank()) {
+    return emitError(
+        "result must be ranked if both param and indices are ranked");
+  }
+
+  if (paramsType.getRank() - 1 + indicesType.getRank() !=
+      resultType.getRank()) {
+    return emitError("result rank must be 1 less than the sum of param and "
+                     "indices ranks if they are all static");
+  }
+
+  return LogicalResult::success();
+}
+
+//===----------------------------------------------------------------------===//
 // Windowed ops
 //===----------------------------------------------------------------------===//
 

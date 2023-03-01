@@ -247,6 +247,33 @@ mo.graph @gather_unranked_axis(%params: !mo.tensor<[2, 2], f32>, %indices: !mo.t
 
 // -----
 
+mo.graph @gather_result_rank_too_big(%params: !mo.tensor<[?, ?], f32>, %indices: !mo.tensor<[?], si64>) -> !mo.tensor<[?, ?, ?], f32> {
+  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
+  // expected-error @below {{result rank must be 1 less than the sum of param and indices ranks if they are all static}}
+  %0 = mo.gather(%params, %indices, %axis) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?, ?], f32>
+  mo.output %0 : !mo.tensor<[?, ?, ?], f32>
+}
+
+// -----
+
+mo.graph @gather_result_rank_too_small(%params: !mo.tensor<[?, ?], f32>, %indices: !mo.tensor<[?], si64>) -> !mo.tensor<[?], f32> {
+  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
+  // expected-error @below {{result rank must be 1 less than the sum of param and indices ranks if they are all static}}
+  %0 = mo.gather(%params, %indices, %axis) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[?], f32>
+  mo.output %0 : !mo.tensor<[?], f32>
+}
+
+// -----
+
+mo.graph @gather_unranked_output(%params: !mo.tensor<[2, 2], f32>, %indices: !mo.tensor<[2], si64>) -> !mo.tensor<?, f32> {
+  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
+  // expected-error @below {{result must be ranked if both param and indices are ranked}}
+  %0 = mo.gather(%params, %indices, %axis) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  mo.output %0 : !mo.tensor<?, f32>
+}
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // PadOp
 //===----------------------------------------------------------------------===//
