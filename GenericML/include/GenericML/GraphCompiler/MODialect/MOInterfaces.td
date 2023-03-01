@@ -145,6 +145,30 @@ def MO_ElementWiseBinary : MO_OpInterfaceBase<"ElementWiseBinary"> {
   }];
 }
 
+def MO_Reduction : MO_OpInterfaceBase<"Reduction"> {
+  let description = [{
+    Interface for modeling reduction operations.
+  }];
+
+  let methods = [
+    InterfaceMethod<"Get input tensor as a TypedValue",
+      "TensorValue", "getInput", (ins)>,
+    InterfaceMethod<"Get input tensor as a MutableOperandRange",
+      "MutableOperandRange", "getInputMutable", (ins)>,
+    InterfaceMethod<"Get the axis tensor as a TypedValue",
+      "TensorValue", "getAxis", (ins)>,
+    InterfaceMethod<"Get the axis tensor as a MutableOperandRange",
+      "MutableOperandRange", "getAxisMutable", (ins)>,
+    InterfaceMethod<"Get result tensor as a TypedValue",
+      "TensorValue", "getResult", (ins)>,
+    InterfaceMethod<"Get the parameter declarations associated with this op",
+      "ArrayRef<KGEN::ParamDeclAttr>", "getParamDecls", (ins)>,
+    InterfaceMethod<"Set the parameter declarations associated with this op",
+      "void", "setParamDecls",
+      (ins "ArrayRef<KGEN::ParamDeclAttr>":$paramDecls)>,
+  ];
+}
+
 //===----------------------------------------------------------------------===//
 // Traits
 //===----------------------------------------------------------------------===//
@@ -173,7 +197,7 @@ def _MO_ReductionParameterization : MO_OpTrait<"ReductionParameterization">;
 /// Should not be used outside this file.
 def _MO_ReductionShapeInferenceMaterialization : MO_OpTrait<"ReductionShapeInferenceMaterialization">;
 
-def MO_Reduction: TraitList<[
+def MO_ReductionTraits: TraitList<[
   MO_Parameterization,
   MO_ShapeInferenceMaterialization,
   _MO_ReductionParameterization,

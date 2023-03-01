@@ -475,7 +475,7 @@ def MO_TanhOp : MO_ElementWiseUnaryOp<"tanh"> {
 //===----------------------------------------------------------------------===//
 
 class MO_ReductionOp<string name, list<Trait> traits = []> : MO_Op<
-    name, traits # [Pure, MO_Reduction]> {
+    name, traits # [Pure, MO_Reduction, MO_ReductionTraits]> {
   let arguments = (ins
     MO_Tensor:$input,
     MO_RankedScalarIndexTensor:$axis,

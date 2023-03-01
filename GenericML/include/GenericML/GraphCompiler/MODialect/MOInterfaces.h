@@ -49,10 +49,10 @@ namespace impl {
 LogicalResult
 resolveSameOperandsAndResultTypeUnknownParameters(ParameterizationInterface op,
                                                   mlir::RewriterBase &rewriter);
-LogicalResult resolveReductionParameters(ParameterizationInterface op,
+LogicalResult resolveReductionParameters(Reduction op,
                                          mlir::RewriterBase &rewriter);
 
-LogicalResult materializeReductionShapeInference(Operation *op,
+LogicalResult materializeReductionShapeInference(Reduction op,
                                                  mlir::RewriterBase &rewriter);
 } // namespace impl
 
@@ -74,9 +74,8 @@ class ReductionParameterization
     : public mlir::OpTrait::TraitBase<ConcreteType, ReductionParameterization> {
 public:
   mlir::LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter) {
-    auto paramInterface =
-        mlir::cast<ParameterizationInterface>(this->getOperation());
-    return impl::resolveReductionParameters(paramInterface, rewriter);
+    auto reduction = mlir::cast<Reduction>(this->getOperation());
+    return impl::resolveReductionParameters(reduction, rewriter);
   }
 };
 
@@ -86,8 +85,8 @@ class ReductionShapeInferenceMaterialization
                                       ReductionShapeInferenceMaterialization> {
 public:
   LogicalResult materializeShapeInference(mlir::RewriterBase &rewriter) {
-    return impl::materializeReductionShapeInference(this->getOperation(),
-                                                    rewriter);
+    auto reduction = mlir::cast<Reduction>(this->getOperation());
+    return impl::materializeReductionShapeInference(reduction, rewriter);
   }
 };
 
