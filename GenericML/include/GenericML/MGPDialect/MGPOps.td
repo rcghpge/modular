@@ -30,7 +30,7 @@ class MGP_Op<string mnemonic, list<Trait> traits = []> :
 //===----------------------------------------------------------------------===//
 
 def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant", [
-    Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    Pure, ConstantLike, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
     Creates a buffer hosted on the CPU whose data is aliased with
     the bytes in the given attribute.
@@ -143,7 +143,7 @@ def CpuBufferGetCachedOp : MGP_Op<"cpu.buffer.get_cached", [
     ```mlir
     %ctx : !mgp.context
     %inCh : !mef.chain
-    %buf = mgp.cpu.buffer.cached %inCh, %ctx[5] : !mgp.cpu.buffer<256>
+    %buf = mgp.cpu.buffer.get_cached %inCh, %ctx[5] : !mgp.cpu.buffer<256>
     %buf : !mgp.cpu.buffer<256>
     ```
   }];

@@ -7,6 +7,7 @@
 #include "GenericML/GraphCompiler/GraphCompiler.h"
 #include "GenericML/GraphCompiler/Passes.h"
 
+#include "Cache/CachePasses/CachePasses.h"
 #include "GenericML/GraphCompiler/Conversion/MOToMOGG.h"
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
@@ -44,6 +45,7 @@ void registerDialectsAndPasses(mlir::DialectRegistry &registry) {
   MO::registerMOToMOGG();
   MO::registerMOTransformsPasses();
   MGP::registerMOToPrimitives();
+  Cache::registerDeflateConstants();
   MGP::registerMGPTransformsPasses();
   MOGG::registerPasses();
 
@@ -73,6 +75,16 @@ void buildMoToMGPPipeline(mlir::PassManager &pm, const PassOptions &opts) {
   }
 
   pm.addPass(MGP::createMOToPrimitives(opts.moToPrimOpts));
+
+  if (!opts.cacheDir.empty()) {
+    Cache::DeflateConstantsOptions deflateOpts;
+    deflateOpts.cacheDir = opts.cacheDir;
+    pm.addPass(Cache::createDeflateConstants(deflateOpts));
+
+    MGP::LookupCachedConstantsPassOptions lookupOpts;
+    lookupOpts.cacheDir = opts.cacheDir;
+    pm.addPass(MGP::createLookupCachedConstantsPass(lookupOpts));
+  }
 
   pm.addPass(mlir::createCSEPass());
   pm.addPass(MGP::createPeepholeTensorExtract());

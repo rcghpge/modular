@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MGPDialect/MGPOps.h"
+#include "Cache/CacheDialect/CacheAttrs.h"
 #include "Support/ErrorOr.h"
 #include "Support/MDialect/MAttrs.h"
 #include "Support/ML/CompiledFrameworkLabel.h"
@@ -52,6 +53,15 @@ static ErrorOr<Optional<uint64_t>> getImpliedAlignment(ElementsAttr value) {
     // The attribute encodes its own (optional) alignment (and ignores any
     // type annotation).
     return alignedBytesAttr.getAlign();
+  }
+
+  if (auto cache_constant = dyn_cast<Cache::ConstantHashAttr>(value)) {
+    // The attribute encodes its own (optional) alignment.
+    DictionaryAttr dict = cache_constant.getAdditionalData();
+    if (auto intAttr = dyn_cast_if_present<IntegerAttr>(dict.get("align")))
+      return intAttr.getUInt();
+    else
+      return std::nullopt;
   }
 
   Optional<uint64_t> typeOptAlign;

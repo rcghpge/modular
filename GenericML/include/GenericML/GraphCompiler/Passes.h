@@ -29,6 +29,11 @@ struct PassOptions {
   /// Fusing kernels is on by default but will do nothing if useJit is off. If
   /// use jit is on then we will fuse incoming jit kernels.
   bool fuseJitKernels;
+
+  /// Path used by the CAS subsystem to establish its backing store.
+  /// If non-empty then models will be rewritten to outline dense_attributes
+  /// to the given CAS instance.
+  std::string cacheDir;
 };
 
 // Create the canonical MO pipeline for the given options.
