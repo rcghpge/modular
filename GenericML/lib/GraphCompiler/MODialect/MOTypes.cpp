@@ -270,6 +270,21 @@ int64_t TensorType::getIntDim(size_t n) const {
   return getTypedShapeAttr().getIntDim(n);
 }
 
+bool TensorType::hasUnknownShape() const {
+  if (llvm::isa<KGEN::UnknownAttr>(getShapeAttr()))
+    return true;
+  if (llvm::isa<KGEN::ParamDeclRefAttr>(getShapeAttr()))
+    return false;
+  bool res = false;
+  mlir::AttrTypeWalker walker;
+  walker.addWalk([&](KGEN::UnknownAttr attr) {
+    res = true;
+    return WalkResult::interrupt();
+  });
+  walker.walk(getTypedShapeAttr());
+  return res;
+};
+
 LogicalResult ShapeType::printValue(AsmPrinter &p, TypedAttr value) const {
   if (!mlir::isa<KGEN::ParamDeclRefAttr, MO::ShapeAttr>(value))
     return failure();

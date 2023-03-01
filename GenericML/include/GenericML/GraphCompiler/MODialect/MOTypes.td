@@ -52,7 +52,8 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
   let parameters = (ins
     "TypedAttr" : $shapeAttr,
     "DType" : $dtype,
-    DefaultValuedParameter<"std::optional<Attribute>", "std::nullopt"> : $metadata);
+    DefaultValuedParameter<
+      "std::optional<Attribute>", "std::nullopt"> : $metadata);
 
   let genVerifyDecl = 1;
   let assemblyFormat = [{
@@ -119,6 +120,10 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     /// Return the nth dimension as an integer, using mlir::ShapedType::kDynamic
     /// for unknown dimensions. Fails if the shape is unknown.
     int64_t getIntDim(size_t n) const;
+
+    /// Checks if the shape or any dimensions are unknown. Parameters are
+    /// considered known.
+    bool hasUnknownShape() const;
   }];
 }
 
@@ -152,7 +157,7 @@ def HasSI32ElementTypePred : SubstLeaves<
   "$_self", "cast<M::MO::TensorType>($_self).getElementType()", SI32.predicate>;
 
 /// Checks if a MO_TensorType has shape [N, 2].
-def HasPaddingShape : And<[
+def HasPaddingShapePred : And<[
   MO_HasAnyRankOfPred<[2]>,
   CPred<"$_self.cast<::M::MO::TensorType>().getIntDim(1) == 2">]>;
 
@@ -194,8 +199,7 @@ def MO_ShapeLike : ConfinedType<MO_Tensor,
 /// Confines the MO_TensorType so that it has SI32 or SI64 elements and shape
 /// [N, 2]
 def MO_PaddingLike : ConfinedType<MO_Tensor,
-    [HasPaddingShape, Or<[HasSI64ElementTypePred,
-                          HasSI32ElementTypePred]>],
+    [HasPaddingShapePred, Or<[HasSI64ElementTypePred, HasSI32ElementTypePred]>],
     "shape [N, 2] and signed 64 or signed 32 integer elements"> {
   let cppClassName = "::M::MO::TensorType";
 }
@@ -212,6 +216,14 @@ def MO_ShapeLikeIfRanked : ConfinedType<MO_Tensor,
 def MO_MatrixIfRanked : ConfinedType<MO_Tensor,
     [HasRankIfRankedPred<2>],
     "rank 2 or unranked"> {
+  let cppClassName = "::M::MO::TensorType";
+}
+
+/// Confines the MO_TensorType so that it cannot have unknown shape or dimension
+/// parameters.
+def MO_KnownTensor  : ConfinedType<MO_Tensor,
+    [CPred<"!$_self.cast<MO::TensorType>().hasUnknownShape()">],
+    "parametrically known shape"> {
   let cppClassName = "::M::MO::TensorType";
 }
 
