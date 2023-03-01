@@ -2,6 +2,12 @@
 
 // COM: For now shape functions remain in the module even after they are
 // COM: inlined, but this will be removed eventually.
+// CHECK: kgen.func @mean_axis_0_fw
+// CHECK: kgen.return
+// CHECK: }
+// CHECK: kgen.func @mean_axis_1_fw
+// CHECK: kgen.return
+// CHECK: }
 // CHECK: kgen.func @batch_matmul_fw
 // CHECK: kgen.return
 // CHECK: }
@@ -40,11 +46,53 @@ mo.graph @batch_matmul_static_rank(
   // CHECK: kgen.param.assert <[[P12]]>, "inner dimensions do not match"
   // CHECK: kgen.param.declare [[P15:.*]]: i1 = <apply(:(!mo.shape, !mo.shape) -> i1 "mo.shape.eq", [[[D0]]], [[[D3]]])>
   // CHECK: kgen.param.assert <[[P15]]>, "batch sizes of left and right inputs are not equal"
-  // CHECK: %[[V0:.*]] = mo.rebind(%[[ARG1]]) : !mo.tensor<[D3, D4, D5], f32> -> !mo.tensor<[D0, D2, D5], f32>
+  // CHECK: %[[V0:.*]] = mo.rebind(%[[ARG1]]) : !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32> -> !mo.tensor<[[[D0]], [[D2]], [[D5]]], f32>
   // CHECK: %[[V1:.*]] = mo.batch_matmul(%[[ARG0]], %[[V0]]) : (!mo.tensor<[[[D0]], [[D1]], [[D2]]], f32>, !mo.tensor<[[[D0]], [[D2]], [[D5]]], f32>) -> !mo.tensor<[[[D0]], [[D1]], [[D5]]], f32>
   %out = mo.batch_matmul(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?, ?, ?], f32>
   // CHECK: mo.output %[[V1]] : !mo.tensor<[[[D0]], [[D1]], [[D5]]], f32>
   mo.output %out : !mo.tensor<[?, ?, ?], f32>
+}
+
+// CHECK: mo.graph @materialize_mean_axis_0_si32_e2e<[[D0:.*]]>(
+mo.graph @materialize_mean_axis_0_si32_e2e(
+// CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]], 2], f32>
+  %input: !mo.tensor<[?, 2], f32>
+// CHECK-SAME: ) -> !mo.tensor<[1, 2], f32> {
+) -> !mo.tensor<?, f32> {
+  // CHECK-NEXT: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %axis = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  // CHECK-NEXT: %[[RES:.*]] = mo.mean(%[[INPUT]], %[[AXIS]]) : (!mo.tensor<[[[D0]], 2], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[1, 2], f32>
+  %result = mo.mean(%input, %axis) : (!mo.tensor<[?, 2], f32>, !mo.tensor<[], si32>) -> !mo.tensor<?, f32>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[1, 2], f32>
+  mo.output %result : !mo.tensor<?, f32>
+}
+
+// CHECK: mo.graph @materialize_mean_axis_1_si64_e2e<[[D0:.*]]>(
+mo.graph @materialize_mean_axis_1_si64_e2e(
+// CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]], 2], f32>
+  %input: !mo.tensor<[?, 2], f32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D0]], 1], f32> {
+) -> !mo.tensor<?, f32> {
+  // CHECK-NEXT: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %axis = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  // CHECK-NEXT: %[[RES:.*]] = mo.mean(%[[INPUT]], %[[AXIS]]) : (!mo.tensor<[[[D0]], 2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[[[D0]], 1], f32>
+  %result = mo.mean(%input, %axis) : (!mo.tensor<[?, 2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[D0]], 1], f32>
+  mo.output %result : !mo.tensor<?, f32>
+}
+
+// CHECK: mo.graph @materialize_mean_axis_neg_1_si64_e2e<[[D0:.*]]>(
+mo.graph @materialize_mean_axis_neg_1_si64_e2e(
+// CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]], 2], f32>
+  %input: !mo.tensor<[?, 2], f32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D0]], 1], f32> {
+) -> !mo.tensor<?, f32> {
+  // CHECK-NEXT: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %axis = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  // CHECK-NEXT: %[[RES:.*]] = mo.mean(%[[INPUT]], %[[AXIS]]) : (!mo.tensor<[[[D0]], 2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[[[D0]], 1], f32>
+  %result = mo.mean(%input, %axis) : (!mo.tensor<[?, 2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[D0]], 1], f32>
+  mo.output %result : !mo.tensor<?, f32>
 }
 
 // CHECK: mo.graph @unresolved_rebinds<[[SH0:.*]]: !mo.shape, [[SH1:.*]]: !mo.shape -> [[SH2:.*]]: !mo.shape>(
