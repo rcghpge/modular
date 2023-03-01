@@ -8,6 +8,7 @@
 #define GENERICML_GRAPHCOMPILER_MODIALECT_MOATTRS_H
 
 #include "KGEN/KGENDialect/KGENAttrs.h"
+#include "Support/MDialect/MAttrs.h"
 #include "mlir/IR/BuiltinAttributes.h"
 
 namespace M::MO {

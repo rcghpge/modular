@@ -68,6 +68,14 @@ MO::ShapeAttr MO::ShapeAttr::get(ArrayRef<int64_t> values, MO::ShapeType type) {
   return get(type.getContext(), newValues, type);
 }
 
+MO::ShapeAttr MO::ShapeAttr::get(IntArrayElementsAttr intDims,
+                                 MO::ShapeType type) {
+  SmallVector<int64_t> rawDims = llvm::to_vector(
+      llvm::map_range(intDims.getValues(),
+                      [](const APInt &dim) { return dim.getSExtValue(); }));
+  return get(rawDims, type);
+}
+
 bool MO::ShapeAttr::isConstant() const {
   // A shape is constant if the dimensions are concrete integers.
   return llvm::all_of(

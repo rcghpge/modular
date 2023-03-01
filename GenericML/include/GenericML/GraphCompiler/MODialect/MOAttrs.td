@@ -42,6 +42,8 @@ def MO_ShapeAttr : KGEN_ExprAttr<"Shape", "shape"> {
       return $_get(type.getContext(), values, type);
     }]>,
     AttrBuilderWithInferredContext<(ins "ArrayRef<int64_t>":$values,
+                                        "MO::ShapeType":$type)>,
+    AttrBuilderWithInferredContext<(ins "IntArrayElementsAttr":$intDims,
                                         "MO::ShapeType":$type)>
   ];
 

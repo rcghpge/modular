@@ -146,22 +146,15 @@ LogicalResult BroadcastShapeOp::verify() {
   return success();
 }
 
-/// Convert as shape-like ElementsAttr of integers to a raw integer array.
-static SmallVector<int64_t> getRawIntDims(ElementsAttr intDims) {
-  return llvm::to_vector(
-      llvm::map_range(intDims.getValues<IntegerAttr>(),
-                      [](IntegerAttr dim) { return dim.getSInt(); }));
-}
-
 OpFoldResult BroadcastShapeOp::fold(FoldAdaptor adaptor) {
-  auto xIntDims = dyn_cast_or_null<ElementsAttr>(adaptor.getInputX());
-  auto yIntDims = dyn_cast_or_null<ElementsAttr>(adaptor.getInputY());
+  auto xIntDims = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInputX());
+  auto yIntDims = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInputY());
   if (xIntDims && yIntDims) {
     // This is an inefficient way of doing this, but since this op would be
     // usually lowered to `mo.shape.broadcast`, it should be folded rarely.
     auto shapeTy = ShapeType::get(getContext());
-    auto xShape = ShapeAttr::get(getRawIntDims(xIntDims), shapeTy);
-    auto yShape = ShapeAttr::get(getRawIntDims(yIntDims), shapeTy);
+    auto xShape = ShapeAttr::get(xIntDims, shapeTy);
+    auto yShape = ShapeAttr::get(yIntDims, shapeTy);
     ErrorOr<MO::ShapeAttr> shapeOr = broadcastShape(xShape, yShape);
     if (!shapeOr.isError()) {
       // Ensure we return with the appropriate element type.
@@ -590,10 +583,8 @@ OpFoldResult Shape::EqualOp::fold(FoldAdaptor adaptor) {
 }
 
 OpFoldResult Shape::FromTensorOp::fold(FoldAdaptor adaptor) {
-  if (auto input = dyn_cast_or_null<ElementsAttr>(adaptor.getInput())) {
-    auto shapeTy = ShapeType::get(getContext());
-    return ShapeAttr::get(getRawIntDims(input), shapeTy);
-  }
+  if (auto input = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInput()))
+    return ShapeAttr::get(input, ShapeType::get(getContext()));
   return {};
 }
 
