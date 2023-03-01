@@ -239,7 +239,7 @@ def MO_ConstantOp : MO_Op<"constant", [ConstantLike, Pure]> {
 // Elementwise ops
 //===----------------------------------------------------------------------===//
 
-def MO_AddOp : MO_ElementWiseBinaryOp<"add"> {
+def MO_AddOp : MO_ElementWiseBinaryOp<"add", [Commutative]> {
   let summary = "Add operation";
   let description = [{
     Returns x + y, where x and y are input tensors.
@@ -341,7 +341,7 @@ def MO_SigmoidOp : MO_ElementWiseUnaryOp<"sigmoid"> {
   }];
 }
 
-def MO_MulOp : MO_ElementWiseBinaryOp<"mul"> {
+def MO_MulOp : MO_ElementWiseBinaryOp<"mul", [Commutative]> {
   let summary = "Multiply operation";
   let description = [{
     Returns x * y, where x and y are input tensors.
@@ -687,7 +687,7 @@ def MO_ShapeOfOp : MO_Op<"shape_of",
 }
 
 def MO_BroadcastShapeOp : MO_Op<"broadcast_shape",
-    [Pure, DeclareOpInterfaceMethods<MO_Parameterization>]> {
+    [Commutative, Pure, DeclareOpInterfaceMethods<MO_Parameterization>]> {
   let summary = "Broadcast Shape Operation";
   let description = [{
     Given two tensor shapes, return the shape that both broadcast to under
