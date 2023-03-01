@@ -2,10 +2,13 @@
 
 // COM: For now shape functions remain in the module even after they are
 // COM: inlined, but this will be removed eventually.
-// CHECK: kgen.func @mean_axis_0_fw
+// CHECK: kgen.func @reduction_axis_0_fw
 // CHECK: kgen.return
 // CHECK: }
-// CHECK: kgen.func @mean_axis_1_fw
+// CHECK: kgen.func @reduction_axis_1_fw
+// CHECK: kgen.return
+// CHECK: }
+// CHECK: kgen.func @"reduction_axis_-1_fw"
 // CHECK: kgen.return
 // CHECK: }
 // CHECK: kgen.func @batch_matmul_fw
@@ -67,30 +70,30 @@ mo.graph @materialize_mean_axis_0_si32_e2e(
   mo.output %result : !mo.tensor<?, f32>
 }
 
-// CHECK: mo.graph @materialize_mean_axis_1_si64_e2e<[[D0:.*]]>(
-mo.graph @materialize_mean_axis_1_si64_e2e(
+// CHECK: mo.graph @materialize_prod_axis_1_si64_e2e<[[D0:.*]]>(
+mo.graph @materialize_prod_axis_1_si64_e2e(
 // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]], 2], f32>
   %input: !mo.tensor<[?, 2], f32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D0]], 1], f32> {
 ) -> !mo.tensor<?, f32> {
   // CHECK-NEXT: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
   %axis = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  // CHECK-NEXT: %[[RES:.*]] = mo.mean(%[[INPUT]], %[[AXIS]]) : (!mo.tensor<[[[D0]], 2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[[[D0]], 1], f32>
-  %result = mo.mean(%input, %axis) : (!mo.tensor<[?, 2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  // CHECK-NEXT: %[[RES:.*]] = mo.prod(%[[INPUT]], %[[AXIS]]) : (!mo.tensor<[[[D0]], 2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[[[D0]], 1], f32>
+  %result = mo.prod(%input, %axis) : (!mo.tensor<[?, 2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[D0]], 1], f32>
   mo.output %result : !mo.tensor<?, f32>
 }
 
-// CHECK: mo.graph @materialize_mean_axis_neg_1_si64_e2e<[[D0:.*]]>(
-mo.graph @materialize_mean_axis_neg_1_si64_e2e(
+// CHECK: mo.graph @materialize_sum_axis_neg_1_si64_e2e<[[D0:.*]]>(
+mo.graph @materialize_sum_axis_neg_1_si64_e2e(
 // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]], 2], f32>
   %input: !mo.tensor<[?, 2], f32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D0]], 1], f32> {
 ) -> !mo.tensor<?, f32> {
   // CHECK-NEXT: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[], si64>
   %axis = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  // CHECK-NEXT: %[[RES:.*]] = mo.mean(%[[INPUT]], %[[AXIS]]) : (!mo.tensor<[[[D0]], 2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[[[D0]], 1], f32>
-  %result = mo.mean(%input, %axis) : (!mo.tensor<[?, 2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  // CHECK-NEXT: %[[RES:.*]] = mo.sum(%[[INPUT]], %[[AXIS]]) : (!mo.tensor<[[[D0]], 2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[[[D0]], 1], f32>
+  %result = mo.sum(%input, %axis) : (!mo.tensor<[?, 2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[D0]], 1], f32>
   mo.output %result : !mo.tensor<?, f32>
 }

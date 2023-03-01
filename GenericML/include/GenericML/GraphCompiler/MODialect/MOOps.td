@@ -475,7 +475,7 @@ def MO_TanhOp : MO_ElementWiseUnaryOp<"tanh"> {
 //===----------------------------------------------------------------------===//
 
 class MO_ReductionOp<string name, list<Trait> traits = []> : MO_Op<
-    name, traits # [Pure, MO_ReductionParameterization]> {
+    name, traits # [Pure, MO_Reduction]> {
   let arguments = (ins
     MO_Tensor:$input,
     MO_RankedScalarIndexTensor:$axis,
@@ -488,8 +488,7 @@ class MO_ReductionOp<string name, list<Trait> traits = []> : MO_Op<
   }];
 }
 
-def MO_MeanOp : MO_ReductionOp<"mean", [
-  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>]> {
+def MO_MeanOp : MO_ReductionOp<"mean"> {
   let summary = "Mean reduction operation";
   let description = [{
     Reduce `input` elements across `axis` to their mean value, and change that
@@ -504,20 +503,6 @@ def MO_MeanOp : MO_ReductionOp<"mean", [
     %res = mo.mean(%arg, %axis) : (
       !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
     ```
-  }];
-
-  let extraClassDeclaration = [{
-  private:
-    /// Unique forward shape inference function name for each constant axis, set
-    /// when materialized. TODO(#8391): use cache
-    static llvm::DenseMap<int64_t, StringRef> &getAxisToFwShapeFuncNameMap();
-
-    /// Get the shape function name associatied with given axis.
-    std::optional<StringRef> getFwShapeFuncNameForAxis(int64_t axis);
-
-    /// Set the shape function name associatied with given axis.
-    void setFwShapeFuncNameForAxis(int64_t axis, StringRef name);
-  public:
   }];
 }
 

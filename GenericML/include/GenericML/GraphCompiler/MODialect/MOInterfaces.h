@@ -52,6 +52,9 @@ resolveSameOperandsAndResultTypeUnknownParameters(ParameterizationInterface op,
                                                   mlir::RewriterBase &rewriter);
 LogicalResult resolveReductionParameters(ParameterizationInterface op,
                                          mlir::RewriterBase &rewriter);
+
+LogicalResult materializeReductionShapeInference(Operation *op,
+                                                 mlir::RewriterBase &rewriter);
 } // namespace impl
 
 template <typename ConcreteType>
@@ -60,7 +63,6 @@ class SameInputOutputTypesParameterization
                                       SameInputOutputTypesParameterization> {
 public:
   mlir::LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter) {
-    // dependent trait ensures this is valid
     auto paramInterface =
         mlir::cast<ParameterizationInterface>(this->getOperation());
     return impl::resolveSameOperandsAndResultTypeUnknownParameters(
@@ -73,10 +75,20 @@ class ReductionParameterization
     : public mlir::OpTrait::TraitBase<ConcreteType, ReductionParameterization> {
 public:
   mlir::LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter) {
-    // dependent trait ensures this is valid
     auto paramInterface =
         mlir::cast<ParameterizationInterface>(this->getOperation());
     return impl::resolveReductionParameters(paramInterface, rewriter);
+  }
+};
+
+template <typename ConcreteType>
+class ReductionShapeInferenceMaterialization
+    : public mlir::OpTrait::TraitBase<ConcreteType,
+                                      ReductionShapeInferenceMaterialization> {
+public:
+  LogicalResult materializeShapeInference(mlir::RewriterBase &rewriter) {
+    return impl::materializeReductionShapeInference(this->getOperation(),
+                                                    rewriter);
   }
 };
 
