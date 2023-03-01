@@ -46,10 +46,6 @@ class MO_ElementWiseBinaryOp<string name, list<Trait> traits = []>
   let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y);
 }
 
-/// Helps declare optional parameter declaration arguments.
-def MO_ParamDecls : DefaultValuedAttr<KGEN_ParamDeclArrayAttr,
-                                      "ArrayRef<ParamDeclAttr>({})">;
-
 //===----------------------------------------------------------------------===//
 // GraphOp
 //===----------------------------------------------------------------------===//
@@ -745,9 +741,9 @@ def MO_BroadcastToOp : MO_Op<"broadcast_to",
     [Pure, DeclareOpInterfaceMethods<MO_Parameterization>]> {
   let summary = "BroadcastTo Operation";
   let description = [{
-    Broadcast the input_x tensor to the shape input_shape.
+    Broadcast the input tensor to the shape newShape.
 
-    The Broadcasting follows numpy semantics to determine validity of the
+    The broadcasting follows numpy semantics to determine validity of the
     two shapes.
 
     Example:

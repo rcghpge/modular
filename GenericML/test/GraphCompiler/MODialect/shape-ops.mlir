@@ -11,9 +11,18 @@ kgen.func @assert(%arg0: index, %arg1: index) {
   kgen.return
 }
 
+// CHECK: kgen.func @broadcast(%[[SH0:.*]]: !mo.shape, %[[SH1:.*]]: !mo.shape) -> !mo.shape {
 kgen.func @broadcast(%sh0: !mo.shape, %sh1: !mo.shape) -> !mo.shape {
+  // CHECK: %[[RES:.*]] = mo.shape.broadcast(%[[SH0]], %[[SH1]])
   %0 = mo.shape.broadcast(%sh0, %sh1)
   kgen.return %0 : !mo.shape
+}
+
+// CHECK: kgen.func @broadcast_to(%[[FROM:.*]]: !mo.tensor<[3], f32>, %[[TO:.*]]: !mo.shape) -> !mo.tensor<[2, 3], f32> {
+kgen.func @broadcast_to(%from: !mo.tensor<[3], f32>, %to: !mo.shape) -> !mo.tensor<[2, 3], f32> {
+  // CHECK: [[RES:.*]] = mo.shape.broadcast_to(%[[FROM]], %[[TO]]) : (!mo.tensor<[3], f32>, !mo.shape) -> !mo.tensor<[2, 3], f32>
+  %0 = mo.shape.broadcast_to(%from, %to) : (!mo.tensor<[3], f32>, !mo.shape) -> !mo.tensor<[2, 3], f32>
+  kgen.return %0 : !mo.tensor<[2, 3], f32>
 }
 
 // CHECK: kgen.func @concat(%[[ARG0:.*]]: !mo.shape, %[[ARG1:.*]]: !mo.shape) -> !mo.shape {

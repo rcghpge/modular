@@ -67,4 +67,8 @@ def MO_ShapeAttr : KGEN_ExprAttr<"Shape", "shape"> {
   let genVerifyDecl = 1;
 }
 
+/// Helps declare optional parameter declaration arguments.
+def MO_ParamDecls : DefaultValuedAttr<KGEN_ParamDeclArrayAttr,
+                                      "ArrayRef<ParamDeclAttr>({})">;
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOATTRS_TD
