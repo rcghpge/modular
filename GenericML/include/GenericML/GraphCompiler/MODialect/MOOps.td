@@ -881,7 +881,8 @@ def MO_PadOp : MO_Op<"pad", [Pure]> {
 // GatherOp
 //===----------------------------------------------------------------------===//
 
-def MO_GatherOp : MO_Op<"gather", [Pure]> {
+def MO_GatherOp : MO_Op<"gather",
+    [Pure, DeclareOpInterfaceMethods<MO_Parameterization>]> {
   let summary = "Gather Operation";
   let description = [{
     Gather slices from params' axis according to indices.
@@ -910,10 +911,12 @@ def MO_GatherOp : MO_Op<"gather", [Pure]> {
 
   let arguments = (ins MO_NonScalarIfRanked:$params,
                        MO_IndicesTensor:$indices,
-                       MO_RankedScalarIndexTensor:$axis);
+                       MO_RankedScalarIndexTensor:$axis,
+                       MO_ParamDecls:$paramDecls);
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `` custom<ParamDecls>($paramDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
   }];
   let hasVerifier = 1;
 }
