@@ -162,6 +162,13 @@ def MO_RankedScalarTensor : ConfinedType<MO_Tensor, [MO_HasAnyRankOfPred<[0]>],
   let cppClassName = "::M::MO::TensorType";
 }
 
+/// Confines the MO_TensorType so that it's ranked and a scalar.
+def MO_RankedScalarIndexTensor : ConfinedType<MO_Tensor,
+    [MO_HasAnyRankOfPred<[0]>, IntOrIndexElementTypePred],
+    "ranked scalar index tensor"> {
+  let cppClassName = "::M::MO::TensorType";
+}
+
 /// Confines the MO_TensorType so that it's either unranked or a non-scalar
 def MO_NonScalarIfRanked: ConfinedType<MO_Tensor,
     [Neg<MO_HasAnyRankOfPred<[0]>>],

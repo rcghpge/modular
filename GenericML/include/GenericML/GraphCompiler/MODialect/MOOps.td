@@ -478,7 +478,7 @@ class MO_ReductionOp<string name, list<Trait> traits = []> : MO_Op<
     name, traits # [Pure, MO_ReductionParameterization]> {
   let arguments = (ins
     MO_Tensor:$input,
-    MO_RankedScalarTensor:$axis,
+    MO_RankedScalarIndexTensor:$axis,
     MO_ParamDecls:$paramDecls);
   let results = (outs MO_Tensor:$result);
 
@@ -794,7 +794,7 @@ def MO_ConcatOp : MO_Op<"concat", [Pure]> {
 
   let arguments = (ins
     Variadic<MO_Tensor>:$inputs,
-    MO_RankedScalarTensor:$axis);
+    MO_RankedScalarIndexTensor:$axis);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
@@ -901,7 +901,7 @@ def MO_GatherOp : MO_Op<"gather", [Pure]> {
 
   let arguments = (ins MO_NonScalarIfRanked:$params,
                        MO_IndicesTensor:$indices,
-                       MO_RankedScalarTensor:$axis);
+                       MO_RankedScalarIndexTensor:$axis);
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)

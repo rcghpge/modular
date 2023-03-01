@@ -153,9 +153,18 @@ mo.graph @concat_no_args(%arg0: !mo.tensor<[7], f32>) -> !mo.tensor<[7], f32> {
 
 // -----
 
+mo.graph @concat_non_int_axis(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2], f32>) -> !mo.tensor<[9], f32> {
+  %ax = mo.constant {value = #M.dense_array<0.0, 2.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
+  // expected-error @below {{'mo.concat' op operand #2 must be ranked scalar index tensor, but got '!mo.tensor<[2], f32>'}}
+  %0 = mo.concat[%ax: !mo.tensor<[2], f32>](%arg0, %arg1) : (!mo.tensor<[7], f32>, !mo.tensor<[2], f32>) -> !mo.tensor<[9], f32>
+  mo.output %0 : !mo.tensor<[9], f32>
+}
+
+// -----
+
 mo.graph @concat_non_scalar_axis(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2], f32>) -> !mo.tensor<[9], f32> {
   %ax = mo.constant {value = #M.dense_array<0, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  // expected-error@+1 {{'mo.concat' op operand #2 must be ranked scalar tensor, but got '!mo.tensor<[2], si64>'}}
+  // expected-error @below {{'mo.concat' op operand #2 must be ranked scalar index tensor, but got '!mo.tensor<[2], si64>'}}
   %0 = mo.concat[%ax: !mo.tensor<[2], si64>](%arg0, %arg1) : (!mo.tensor<[7], f32>, !mo.tensor<[2], f32>) -> !mo.tensor<[9], f32>
   mo.output %0 : !mo.tensor<[9], f32>
 }
@@ -213,8 +222,17 @@ mo.graph @gather_float_indices(%params: !mo.tensor<[2, 2], f32>, %indices: !mo.t
 
 mo.graph @gather_non_scalar_axis(%params: !mo.tensor<[2, 2], f32>, %indices: !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32> {
   %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[2], si64>
-  // expected-error@+1 {{'mo.gather' op operand #2 must be ranked scalar tensor, but got '!mo.tensor<[2], si64>'}}
+  // expected-error @below {{'mo.gather' op operand #2 must be ranked scalar index tensor, but got '!mo.tensor<[2], si64>'}}
   %0 = mo.gather(%params, %indices, %axis) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
+  mo.output %0 : !mo.tensor<[2, 2], f32>
+}
+
+// -----
+
+mo.graph @gather_non_int_axis(%params: !mo.tensor<[2, 2], f32>, %indices: !mo.tensor<[2], f32>) -> !mo.tensor<[2, 2], f32> {
+  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[2], si64>
+  // expected-error @below {{'mo.gather' op operand #1 must be tensor with integer or index elements, but got '!mo.tensor<[2], f32>'}}
+  %0 = mo.gather(%params, %indices, %axis) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
   mo.output %0 : !mo.tensor<[2, 2], f32>
 }
 
@@ -222,7 +240,7 @@ mo.graph @gather_non_scalar_axis(%params: !mo.tensor<[2, 2], f32>, %indices: !mo
 
 mo.graph @gather_unranked_axis(%params: !mo.tensor<[2, 2], f32>, %indices: !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32> {
   %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<?, si64>
-  // expected-error@+1 {{'mo.gather' op operand #2 must be ranked scalar tensor, but got '!mo.tensor<?, si64>'}}
+  // expected-error @below {{'mo.gather' op operand #2 must be ranked scalar index tensor, but got '!mo.tensor<?, si64>'}}
   %0 = mo.gather(%params, %indices, %axis) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>, !mo.tensor<?, si64>) -> !mo.tensor<[2, 2], f32>
   mo.output %0 : !mo.tensor<[2, 2], f32>
 }
