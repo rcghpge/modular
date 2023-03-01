@@ -54,6 +54,65 @@ static void mgp_cpu_buffer_constant(Result<BufferRef> outBuffer,
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.cpu.buffer.cache
+//===----------------------------------------------------------------------===//
+
+static void mgp_cpu_buffer_cache(Chain inChain, Context &ctx,
+                                 AsyncValueRef<BufferRef> buffer,
+                                 Result<Chain> outChain, MEFAttr<uint64_t> slot,
+                                 Runtime &runtime, EncodedLocation loc) {
+  ctx.emplaceStateSlot<DefaultStateSlot>(*slot, /*numBuffers=*/1);
+  auto &defaultStateSlot = ctx.getStateSlot(*slot);
+  ErrorOrSuccess errOr;
+
+  if (buffer.getPointer()->isUnique()) {
+    // Since this is the only remaining reference to the buffer, so we can just
+    // move it into the cache slot.
+    errOr = defaultStateSlot.setBuffer(
+        /*bufferIndex=*/0, std::move(buffer.get()));
+  } else if (buffer.get().getMutability() == BufferRef::kImmutable) {
+    // Since the buffer is immutable we can just borrow it. It must have at
+    // least 'execute' lifetime.
+    errOr = defaultStateSlot.setBuffer(
+        /*bufferIndex=*/0, buffer.get().borrow(BufferRef::kExecute));
+  } else {
+    // Since the buffer is mutable we must protect against mutations from
+    // other references by taking a deep copy.
+    errOr = defaultStateSlot.setBuffer(
+        /*bufferIndex*/ 0, buffer.get().deepCopy(runtime));
+  }
+
+  if (errOr.isError())
+    return std::move(outChain).setToError({errOr.takeError(), std::move(loc)});
+  std::move(outChain).emplace();
+}
+
+//===----------------------------------------------------------------------===//
+// mgp.cpu.buffer.get_cached
+//===----------------------------------------------------------------------===//
+
+static void mgp_cpu_buffer_get_cached(Chain inChain, Context &ctx,
+                                      Result<BufferRef> outBuffer,
+                                      MEFAttr<uint64_t> aSlot,
+                                      MEFAttr<uint64_t> bRawSize,
+                                      Runtime &runtime, EncodedLocation loc) {
+  TimeTraceScope scope(
+      LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.cached"));
+  auto &stateSlot = ctx.getStateSlot(*aSlot);
+  ErrorOr<BufferRef> errOr = stateSlot.getBuffer(/*bufferIndex=*/0);
+  if (errOr.isError())
+    return std::move(outBuffer).setToError({errOr.takeError(), std::move(loc)});
+  Optional<size_t> expectedSize = getRuntimeSize(*bRawSize);
+  if (expectedSize && errOr->getSize() != *expectedSize)
+    return std::move(outBuffer).setToError(
+        {Error(Twine("buffer cached at slot ") + Twine(*aSlot) +
+               " has different size than expected (" + Twine(errOr->getSize()) +
+               " vs " + Twine(*expectedSize) + ")"),
+         std::move(loc)});
+  std::move(outBuffer).emplace(std::move(*errOr));
+}
+
+//===----------------------------------------------------------------------===//
 // mgp.cpu.buffer.alloc.*
 //===----------------------------------------------------------------------===//
 
@@ -443,6 +502,19 @@ static void mgp_cas_lookup(Chain inChain, Context &ctx,
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.cas.store
+//===----------------------------------------------------------------------===//
+
+static AsyncValueRef<Chain> mgp_cas_store(Chain inChain, Context &ctx,
+                                          const BufferRef &bufferRef,
+                                          MEFAttr<uint64_t> aSlot,
+                                          MEFAttr<StringRef> bKey,
+                                          EncodedLocation loc) {
+  auto &dataStore = ctx.getStateSlotPayload<CASStateSlot>(*aSlot);
+  return dataStore.store(*bKey, bufferRef, std::move(loc));
+}
+
+//===----------------------------------------------------------------------===//
 // mgp.model
 //===----------------------------------------------------------------------===//
 
@@ -456,6 +528,9 @@ static void mgp_model() {
 
 void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.constant", mgp_cpu_buffer_constant);
+  ADD_PRIMITIVE(registry, "mgp.cpu.buffer.cache", mgp_cpu_buffer_cache);
+  ADD_PRIMITIVE(registry, "mgp.cpu.buffer.get_cached",
+                mgp_cpu_buffer_get_cached);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.alloc.static",
                 mgp_cpu_buffer_alloc_static);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.alloc.dynamic",
@@ -490,6 +565,7 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.debug.cpu.spin_wait", mgp_debug_cpu_spin_wait);
   ADD_PRIMITIVE(registry, "mgp.cas.create_instance", mgp_cas_create_instance);
   ADD_PRIMITIVE(registry, "mgp.cas.lookup", mgp_cas_lookup);
+  ADD_PRIMITIVE(registry, "mgp.cas.store", mgp_cas_store);
   ADD_PRIMITIVE(registry, "mgp.model", mgp_model);
 
   // Have the MO primitives be registered wherever MGP is registered.

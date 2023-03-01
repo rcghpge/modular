@@ -78,6 +78,14 @@ public:
   /// See getOrCreateBuffer for safety conditions.
   ErrorOr<BufferRef> getBuffer(size_t bufferIndex);
 
+  /// Sets the cached buffer at bufferIndex to the given bufferRef. Returns
+  /// error if bufferIndex already contains a buffer.
+  ///
+  /// If bufferRef is owned we simply take over that ownership. However if
+  /// it is borrowed then it must have lifetime of at least 'execute'
+  /// so that similarly 'execute'-scoped borrows may be taken from it.
+  ErrorOrSuccess setBuffer(size_t bufferIndex, BufferRef bufferRef);
+
   /// Returns the type id for the value held by this state slot.
   LLCL::TypeID getTypeID() const { return typeID; }
 

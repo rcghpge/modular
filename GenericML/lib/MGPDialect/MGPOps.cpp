@@ -206,6 +206,50 @@ Optional<uint64_t> CpuBufferConstantOp::getOptAlign() {
 }
 
 //===----------------------------------------------------------------------===//
+// CpuBufferCachedOp
+//===----------------------------------------------------------------------===//
+
+/// Parses a !mgp.cpu.buffer type where the (optional) buffer size is
+/// represented in 'raw form'.
+static ParseResult parseRawSizeAsBufferType(AsmParser &p,
+                                            IntegerAttr &rawSize) {
+  Type type;
+  llvm::SMLoc loc;
+  if (p.getCurrentLocation(&loc) || p.parseType(type))
+    return failure();
+  auto bufferType = dyn_cast<CpuBufferType>(type);
+  if (bufferType == nullptr)
+    return p.emitError(loc) << "expected a !mgp.cpu.buffer type.";
+  rawSize = bufferType.getRawSize();
+  return success();
+}
+
+/// Prints a !mgp.cpu.buffer type, but represented in 'raw form'.
+static void printRawSizeAsBufferType(MLIRContext *context, AsmPrinter &p,
+                                     IntegerAttr rawSize) {
+  p << CpuBufferType::get(context, rawSize);
+}
+
+static void printRawSizeAsBufferType(AsmPrinter &p,
+                                     const CpuBufferGetCachedOp &op,
+                                     IntegerAttr rawSize) {
+  printRawSizeAsBufferType(op->getContext(), p, rawSize);
+}
+
+/// Infers the buffer type result from the size argument.
+LogicalResult CpuBufferGetCachedOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  auto rawSizeAttr =
+      dyn_cast<IntegerAttr>(attributes.get(getBRawSizeAttrName(name)));
+  assert(rawSizeAttr && "mismatched operand types");
+  inferredReturnTypes.emplace_back(CpuBufferType::get(context, rawSizeAttr));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // CpuBufferAlloc* Utils
 //===----------------------------------------------------------------------===//
 
@@ -664,25 +708,10 @@ LogicalResult CpuTensorExtractOp::inferReturnTypes(
 // CASLookupOp
 //===----------------------------------------------------------------------===//
 
-/// Parses a !mgp.cpu.buffer type where the (optional) buffer size is
-/// represented in 'raw form'.
-static ParseResult parseRawSizeAsBufferType(AsmParser &p,
-                                            IntegerAttr &rawSize) {
-  Type type;
-  llvm::SMLoc loc;
-  if (p.getCurrentLocation(&loc) || p.parseType(type))
-    return failure();
-  auto bufferType = dyn_cast<CpuBufferType>(type);
-  if (bufferType == nullptr)
-    return p.emitError(loc) << "expected a !mgp.cpu.buffer type.";
-  rawSize = bufferType.getRawSize();
-  return success();
-}
-
 /// Prints a !mgp.cpu.buffer type, but represented in 'raw form'.
 static void printRawSizeAsBufferType(AsmPrinter &p, const CASLookupOp &op,
                                      IntegerAttr rawSize) {
-  p << CpuBufferType::get(op->getContext(), rawSize);
+  printRawSizeAsBufferType(op->getContext(), p, rawSize);
 }
 
 /// Infers the buffer type result from the size argument.

@@ -51,7 +51,7 @@ public:
   /// Constructs a T in-place within the state slot at slotIndex. The state
   /// slot must not have already been emplaced. The state slot will also hold
   /// space for numBuffers cached buffer allocations, which will all initially
-  /// be 'uninitialized'.
+  /// be null.
   template <typename T, typename... Args>
   T &emplaceStateSlot(size_t slotIndex, size_t numBuffers, Args &&...args) {
     assert(stateSlots[slotIndex] == nullptr &&

@@ -92,6 +92,76 @@ def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant", [
 }
 
 //===----------------------------------------------------------------------===//
+// CpuBufferCacheOp
+//===----------------------------------------------------------------------===//
+
+def CpuBufferCacheOp : MGP_Op<"cpu.buffer.cache"> {
+  let summary = "Stores an !mgp.cpu.buffer in a dedicated state slot.";
+  let description = [{
+    Stores the given !mgp.cpu.buffer at buffer index 0 in a default state slot
+    at the given state slot index.
+
+    If the buffer has no other references it will be moved into the state slot.
+    If the buffer is borrowed it must have at least 'execute' lifetime.
+    If the buffer is mutable a deep copy will be taken and stored.
+
+    Example:
+    ```mlir
+    %ctx : !mgp.context
+    %buf : !mgp.buffer<256>
+    %inCh : !mef.chain
+    %outCh = mgp.cpu.buffer.cache %inCh, %ctx[5], %buf : !mgp.cpu.buffer<256>
+    %outCh : !mef.chain
+    ```
+  }];
+
+  let arguments = (ins ChainType:$inChain,
+                       MGP_ContextType:$theContext,
+                       MGP_CpuBufferType:$buffer,
+                       UI64Attr:$slot);
+  let results = (outs ChainType:$outChain);
+  let assemblyFormat = [{
+    $inChain `,` $theContext `[` $slot `]` `,` $buffer attr-dict
+    `:` qualified(type($buffer))
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// CpuBufferGetCachedOp
+//===----------------------------------------------------------------------===//
+
+def CpuBufferGetCachedOp : MGP_Op<"cpu.buffer.get_cached", [
+    Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "Retrieves an !mcp.cpu.buffer from a dedicated state slot.";
+  let description = [{
+    Retrieves the !mgp.cpu.buffer at buffer index 0 in the default state slot
+    at the given state slot index. Returns an error if the retrieved CPU
+    buffer's size does not agree with the size (if any) given in the
+    !mgp.cpu.buffer type annotation.
+
+    Example:
+    ```mlir
+    %ctx : !mgp.context
+    %inCh : !mef.chain
+    %buf = mgp.cpu.buffer.cached %inCh, %ctx[5] : !mgp.cpu.buffer<256>
+    %buf : !mgp.cpu.buffer<256>
+    ```
+  }];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins ChainType:$inChain,
+                       MGP_ContextType:$theContext,
+                       UI64Attr:$aSlot,      // 0
+                       UI64Attr:$bRawSize);  // 1
+  let results = (outs MGP_CpuBufferType:$result);
+  let assemblyFormat = [{
+    $inChain `,` $theContext `[` $aSlot `]` attr-dict
+    `:` custom<RawSizeAsBufferType>($bRawSize)
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 //
 // We have a family of 6 buffer allocation primitives, depending on choice of
 //  {static size vs dynamic size vs dynamic tensor spec} x {alloc vs re-alloc}
@@ -1023,6 +1093,44 @@ def CASLookupOp : MGP_Op<"cas.lookup", [
   let assemblyFormat = [{
     `(` $bKey `)` $inChain `,` $theContext `[` $aSlot `]` attr-dict
     `:` custom<RawSizeAsBufferType>($cRawSize)
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// CASStoreOp
+//===----------------------------------------------------------------------===//
+
+def CASStoreOp : MGP_Op<"cas.store"> {
+  let summary = "Insert a copy of an !mgp.cpu.buffer in the CAS instance at the "
+                "given slot under the given key.";
+  let description = [{
+    Insert a copy of an !mgp.cpu.buffer in the CAS instance at the given slot
+    under the given key.
+
+    This is provided for writing unit tests. The given buffer will always be
+    copied into the CAS instance.
+
+    Example:
+    ```mlir
+    %ctx : !mgp.context
+    %buf : !mgp.cpu.buffer<256>
+    %inCh : !mef.chain
+    %outCh = mgp.cas.store("SOMECASID", %buf) %inCh, %ctx[0] : !mgp.cpu.buffer<256>
+    %outCh : !mef.chain
+    ```
+  }];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins ChainType:$inChain,
+                       MGP_ContextType:$theContext,
+                       MGP_CpuBufferType:$buffer,
+                       UI64Attr:$aSlot,   // 0
+                       StrAttr:$bKey);    // 1
+  let results = (outs ChainType:$outChain);
+  let assemblyFormat = [{
+    `(` $bKey `,` $buffer `)` $inChain `,` $theContext `[` $aSlot `]` attr-dict
+    `:` qualified(type($buffer))
   }];
 }
 

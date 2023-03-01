@@ -35,9 +35,21 @@ ErrorOr<BufferRef> StateSlot::getBuffer(size_t bufferIndex) {
   if (entry.getBuffer() == nullptr)
     return Error("no buffer has been cached at the given index");
   // Return a borrowed reference to the cached buffer. Since it's in the
-  // cache, and the compiler follows the 'one shot' rules for reallocing
+  // cache, and the compiler follows the 'one shot' rules for reallocating
   // buffers, we can give the borrow 'execute' lifetime.
   return entry.borrow(GML::BufferRef::kExecute);
+}
+
+ErrorOrSuccess StateSlot::setBuffer(size_t bufferIndex, BufferRef bufferRef) {
+  assert(bufferIndex < bufferCache.size());
+  assert(bufferRef.getOwnership() == BufferRef::kOwned ||
+         (bufferRef.getOwnership() == BufferRef::kBorrowed &&
+          bufferRef.getLifetime() >= BufferRef::kExecute));
+  auto &entry = bufferCache[bufferIndex];
+  if (entry.getBuffer() != nullptr)
+    return Error("buffer has already been cached at the given index");
+  entry = std::move(bufferRef);
+  return success();
 }
 
 void StateSlot::updateCacheIfNeeded(BufferRef &entry,
@@ -50,7 +62,7 @@ void StateSlot::updateCacheIfNeeded(BufferRef &entry,
     return;
 
   // Free the existing buffer if exists and create a new one.
-  // Since the compiler follows the 'one shot' rules for reallocing
+  // Since the compiler follows the 'one shot' rules for reallocating
   // buffers, this cannot invalidate any existing borrows.
   entry = BufferRef::createOwned(runtime, size, alignment);
 }
