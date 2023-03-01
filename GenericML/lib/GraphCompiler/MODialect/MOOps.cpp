@@ -278,9 +278,9 @@ LogicalResult ConcatOp::verify() {
   if (numInputs < 2)
     return emitError("concat must have at least 2 input tensors");
 
-  SmallVector<TypedValue<TensorType>> tensors;
+  SmallVector<TensorValue> tensors;
   for (Value input : getInputs())
-    tensors.emplace_back(cast<TypedValue<TensorType>>(input));
+    tensors.emplace_back(cast<TensorValue>(input));
 
   tensors.emplace_back(getResult());
   if (failed(impl::verifyMatchingRanks(tensors)))

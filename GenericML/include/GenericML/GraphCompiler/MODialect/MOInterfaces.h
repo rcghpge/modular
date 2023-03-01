@@ -21,8 +21,7 @@ class MatmulLike;
 class SlidingWindow;
 
 namespace impl {
-LogicalResult
-verifyMatchingRanks(ArrayRef<TypedValue<M::MO::TensorType>> values);
+LogicalResult verifyMatchingRanks(ArrayRef<TensorValue> values);
 LogicalResult verifyMatmulLike(MatmulLike op);
 LogicalResult verifySlidingWindow(SlidingWindow op);
 LogicalResult verifyMOSameOperandsAndResultElementType(Operation *op);

@@ -18,8 +18,7 @@ using namespace MO;
 // MatMulLike
 //===----------------------------------------------------------------------===//
 
-LogicalResult
-impl::verifyMatchingRanks(ArrayRef<TypedValue<M::MO::TensorType>> values) {
+LogicalResult impl::verifyMatchingRanks(ArrayRef<TensorValue> values) {
   SmallVector<size_t> staticRanks;
   for (auto v : values)
     if (TensorType t = v.getType(); t.hasRank())
@@ -45,8 +44,8 @@ static std::string asString(ArrayRef<TypedAttr> matShape) {
 LogicalResult impl::verifyMatmulLike(MatmulLike op) {
   // We check that statically known ranks match each other (implicit
   // broadcasting is not supported).
-  SmallVector<TypedValue<TensorType>> tensors{op.getTensorA(), op.getTensorB(),
-                                              op.getTensorResult()};
+  SmallVector<TensorValue> tensors{op.getTensorA(), op.getTensorB(),
+                                   op.getTensorResult()};
   if (failed(verifyMatchingRanks(tensors)))
     return op.emitError(
         "input and output ranks must be all dynamic, or all static and match");
@@ -99,8 +98,8 @@ LogicalResult impl::verifyMatmulLike(MatmulLike op) {
 // SlidingWindow
 //===----------------------------------------------------------------------===//
 
-LogicalResult SlidingWindow::verifyWindowParamShape(
-    TypedValue<::M::MO::TensorType> windowParam, StringRef name) {
+LogicalResult SlidingWindow::verifyWindowParamShape(TensorValue windowParam,
+                                                    StringRef name) {
   auto input = cast<MOOpInterface>(this->getOperation()).getInputTensor(0);
   if (TensorType inputTy = input.getType(); inputTy.hasRank()) {
     if (TensorType windowParamTy = windowParam.getType();
@@ -111,8 +110,8 @@ LogicalResult SlidingWindow::verifyWindowParamShape(
   return success();
 }
 
-LogicalResult SlidingWindow::verifyWindowParamSizes(
-    ArrayRef<TypedValue<M::MO::TensorType>> values) {
+LogicalResult
+SlidingWindow::verifyWindowParamSizes(ArrayRef<TensorValue> values) {
   SmallPtrSet<Attribute, 4> sizes;
   for (auto v : values)
     if (TensorType t = v.getType(); t.hasRank())

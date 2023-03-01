@@ -23,15 +23,13 @@ def MO_OpInterface : OpInterface<"MOOpInterface"> {
 
   let methods = [
     InterfaceMethod<"Get an input tensor as a TypedValue",
-      "TypedValue<TensorType>", "getInputTensor",
+      "TensorValue", "getInputTensor",
       (ins "unsigned int":$idx), [{}],
-      [{
-        return ::llvm::cast<TypedValue<TensorType>>($_op->getOperand(idx));
-      }]>,
+      [{ return ::llvm::cast<TensorValue>($_op->getOperand(idx)); }]>,
     InterfaceMethod<"Get an output tensor as a TypedValue",
-      "TypedValue<TensorType>", "getOutputTensor",
+      "TensorValue", "getOutputTensor",
       (ins "unsigned int":$idx), [{}],
-      [{ return ::llvm::cast<TypedValue<TensorType>>($_op->getResult(idx)); }]>
+      [{ return ::llvm::cast<TensorValue>($_op->getResult(idx)); }]>
   ];
 }
 
@@ -100,16 +98,14 @@ def MO_MatmulLike : MO_OpInterfaceBase<"MatmulLike"> {
 
   let methods = [
     InterfaceMethod<"Get the left input tensor as a TypedValue",
-      "TypedValue<TensorType>", "getTensorA", (ins), [{}],
+      "TensorValue", "getTensorA", (ins), [{}],
       [{ return $_op.getInputTensor(0); }]>,
     InterfaceMethod<"Get the right input tensor as a TypedValue",
-      "TypedValue<TensorType>", "getTensorB", (ins), [{}],
+      "TensorValue", "getTensorB", (ins), [{}],
       [{ return $_op.getInputTensor(1); }]>,
     InterfaceMethod<"Get the result tensor as a TypedValue",
-      "TypedValue<TensorType>", "getTensorResult", (ins), [{}],
-      [{
-        return ::llvm::cast<TypedValue<TensorType>>($_op.getOutputTensor(0));
-      }]>
+      "TensorValue", "getTensorResult", (ins), [{}],
+      [{ return ::llvm::cast<TensorValue>($_op.getOutputTensor(0)); }]>
   ];
 
   let verify = [{ return impl::verifyMatmulLike($_op); }];
@@ -122,17 +118,16 @@ def MO_SlidingWindow : MO_OpInterfaceBase<"SlidingWindow"> {
 
   let methods = [
     InterfaceMethod<"Get the strides as a TypedValue",
-      "TypedValue<TensorType>", "getStrides", (ins)>,
+      "TensorValue", "getStrides", (ins)>,
     InterfaceMethod<"Get the dilations as a TypedValue",
-      "TypedValue<TensorType>", "getDilations", (ins)>
+      "TensorValue", "getDilations", (ins)>
   ];
 
   let extraClassDeclaration = [{
     /// Helper for verifying window op shape/rank invariants.
     LogicalResult verifyWindowParamShape(
-      TypedValue<::M::MO::TensorType> $windowParam, StringRef name);
-    LogicalResult verifyWindowParamSizes(
-      ArrayRef<TypedValue<M::MO::TensorType>> values);
+      TensorValue $windowParam, StringRef name);
+    LogicalResult verifyWindowParamSizes(ArrayRef<TensorValue> values);
   }];
 
   let verify = [{ return impl::verifySlidingWindow($_op); }];
