@@ -223,7 +223,7 @@ public:
   Ownership getOwnership() const { return ownership; }
   Lifetime getLifetime() const { return lifetime; }
   Mutability getMutability() const { return mutability; }
-  operator bool() const { return ownership != kNull; }
+  explicit operator bool() const { return ownership != kNull; }
 
   /// If the buffer is owning, releases ownership of the underlying owned
   /// buffer and returns it. Otherwise returns null and leaves the reference
