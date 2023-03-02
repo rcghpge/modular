@@ -23,15 +23,15 @@ endif()
 
 include(AddPyEnv)
 
-set(MODULAR_PYTHON_VERSION "3.11.1"
+set(MODULAR_PYTHON_API_PYTHON_VERSION "3.11.1"
   CACHE
   STRING "Python version to use for building Python bindings and wheel."
 )
-pyenv_install(${MODULAR_PYTHON_VERSION})
+pyenv_install(${MODULAR_PYTHON_API_PYTHON_VERSION})
 
 # find_package(Python3) has to be called before including pybind11 so that
 # pybind11 picks up the correct Python development paths.
-pyenv_setup_findpython3_variables(${MODULAR_PYTHON_VERSION})
+pyenv_setup_findpython3_variables(${MODULAR_PYTHON_API_PYTHON_VERSION})
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
 include(AddPyBind11)
@@ -103,7 +103,13 @@ if(STOCK_TENSORFLOW_FOUND)
     set(MODULAR_FRAMEWORK_LIBS $<TARGET_FILE:tf>)
 endif()
 
-add_custom_command(OUTPUT ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl
+# When skipping wheel repair, output the final wheel and name it accordingly.
+if (MODULAR_PYTHON_API_REPAIR_WHEEL)
+  set(MODULAR_PACKED_WHEEL_NAME ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl)
+else()
+  set(MODULAR_PACKED_WHEEL_NAME ${WHEEL_DIR}/${WHEEL_BASENAME}.whl)
+endif()
+add_custom_command(OUTPUT ${MODULAR_PACKED_WHEEL_NAME}
   COMMAND ${Python3_EXECUTABLE} -m build --wheel --outdir ${WHEEL_DIR} > /dev/null
   COMMAND ${Python3_EXECUTABLE} -m wheel unpack ${WHEEL_DIR}/${WHEEL_BASENAME}.whl --dest ${WHEEL_DIR} > /dev/null
   COMMAND ${CMAKE_COMMAND} -E make_directory ${UNPACKED_WHEEL}/modular/engine
@@ -115,7 +121,7 @@ add_custom_command(OUTPUT ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl
   COMMAND ${CMAKE_COMMAND} -E copy ${UNPACKED_WHEEL}/bin/temp ${EXTERNAL_TF_EXES} ${UNPACKED_WHEEL}/bin
   COMMAND ${CMAKE_COMMAND} -E remove ${UNPACKED_WHEEL}/bin/temp
   COMMAND ${Python3_EXECUTABLE} -m wheel pack ${UNPACKED_WHEEL} --dest ${WHEEL_DIR} > /dev/null
-  COMMAND ${CMAKE_COMMAND} -E rename ${WHEEL_DIR}/${WHEEL_BASENAME}.whl ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl
+  COMMAND ${CMAKE_COMMAND} -E rename ${WHEEL_DIR}/${WHEEL_BASENAME}.whl ${MODULAR_PACKED_WHEEL_NAME}
   COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_SOURCE_DIR}/build
   COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_SOURCE_DIR}/modular_engine.egg-info
   BYPRODUCTS ${UNPACKED_WHEEL}
@@ -134,6 +140,10 @@ set_target_properties(modular-engine
   PROPERTIES
   ADDITIONAL_CLEAN_FILES ${UNPACKED_WHEEL}
 )
+
+if (NOT MODULAR_PYTHON_API_REPAIR_WHEEL)
+  return()
+endif()
 
 if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
   set(HOST_ARCH x86_64)
