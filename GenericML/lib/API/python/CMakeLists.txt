@@ -27,11 +27,18 @@ set(MODULAR_PYTHON_API_PYTHON_VERSION "3.11.1"
   CACHE
   STRING "Python version to use for building Python bindings and wheel."
 )
-pyenv_install(${MODULAR_PYTHON_API_PYTHON_VERSION})
+set(MODULAR_PYTHON_API_PYTHON_ROOT ""
+  CACHE
+  STRING "Path to Python installation to use for building Python bindings and wheel. Overrides pyenv Python."
+)
+message(STATUS "Python version for Python API build: ${MODULAR_PYTHON_API_PYTHON_VERSION}. "
+  "Overridden if MODULAR_PYTHON_API_PYTHON_ROOT set: ${MODULAR_PYTHON_API_PYTHON_ROOT}."
+)
+pyenv_install("${MODULAR_PYTHON_API_PYTHON_VERSION}" "${MODULAR_PYTHON_API_PYTHON_ROOT}")
 
 # find_package(Python3) has to be called before including pybind11 so that
 # pybind11 picks up the correct Python development paths.
-pyenv_setup_findpython3_variables(${MODULAR_PYTHON_API_PYTHON_VERSION})
+pyenv_setup_findpython3_variables("${MODULAR_PYTHON_API_PYTHON_VERSION}" "${MODULAR_PYTHON_API_PYTHON_ROOT}")
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
 include(AddPyBind11)
