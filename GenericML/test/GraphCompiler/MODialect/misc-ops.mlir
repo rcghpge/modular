@@ -156,6 +156,48 @@ mo.graph @reshape_dyn_shape(%arg: !mo.tensor<[?], f32>) -> !mo.tensor<[2, 2], f3
   mo.output %res : !mo.tensor<[2, 2], f32>
 }
 
+// CHECK: mo.graph @reshape_fold_rank_1_to_scalar() -> !mo.tensor<[], si32>
+mo.graph @reshape_fold_rank_1_to_scalar() -> !mo.tensor<[], si32> {
+  // CHECK: %[[INPUT:.*]] = mo.constant {value = #M.dense_array<42> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %input = mo.constant {value = #M.dense_array<42> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %shape = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[1], si64>
+  %res = mo.reshape(%input, %shape) : (!mo.tensor<[1], si32>, !mo.tensor<[1], si64>) -> !mo.tensor<[], si32>
+  // CHECK: mo.output %[[INPUT]] : !mo.tensor<[], si32>
+  mo.output %res : !mo.tensor<[], si32>
+}
+
+// CHECK: mo.graph @reshape_fold_scalar_to_rank_1() -> !mo.tensor<[1], si32>
+mo.graph @reshape_fold_scalar_to_rank_1() -> !mo.tensor<[1], si32> {
+  // CHECK: %[[INPUT:.*]] = mo.constant {value = #M.dense_array<42> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %input = mo.constant {value = #M.dense_array<42> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %shape = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[1], si64>
+  %res = mo.reshape(%input, %shape) : (!mo.tensor<[], si32>, !mo.tensor<[1], si64>) -> !mo.tensor<[1], si32>
+  // CHECK: mo.output %[[INPUT]] : !mo.tensor<[1], si32>
+  mo.output %res : !mo.tensor<[1], si32>
+}
+
+// CHECK: mo.graph @reshape_fold_multi_dims() -> !mo.tensor<[2, 2], si32>
+mo.graph @reshape_fold_multi_dims() -> !mo.tensor<[2, 2], si32> {
+  // CHECK: %[[INPUT:.*]] = mo.constant {value = #M.dense_array<1, 2, 3, 4> : tensor<4xsi32>} : !mo.tensor<[2, 2], si32>
+  %input = mo.constant {value = #M.dense_array<1, 2, 3, 4> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+  %shape = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %res = mo.reshape(%input, %shape) : (!mo.tensor<[4], si32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], si32>
+  // CHECK: mo.output %[[INPUT]] : !mo.tensor<[2, 2], si32>
+  mo.output %res : !mo.tensor<[2, 2], si32>
+}
+
+// CHECK: mo.graph @reshape_no_fold_multi_dims() -> !mo.tensor<[2, 2], si32>
+mo.graph @reshape_no_fold_multi_dims() -> !mo.tensor<[2, 2], si32> {
+  // CHECK: %[[INPUT:.*]] = mo.constant {value = #M.dense_array<1, 2, 3, 4> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+  // CHECK: %[[SHAPE:.*]] = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %input = mo.constant {value = #M.dense_array<1, 2, 3, 4> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+  %shape = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK: %[[RES:.*]] = mo.reshape(%[[INPUT]], %[[SHAPE]]) : (!mo.tensor<[4], si32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], si32>
+  %res = mo.reshape(%input, %shape) : (!mo.tensor<[4], si32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], si32>
+  // CHECK: mo.output %[[RES]] : !mo.tensor<[2, 2], si32>
+  mo.output %res : !mo.tensor<[2, 2], si32>
+}
+
 //===----------------------------------------------------------------------===//
 // ShapeOfOp
 //===----------------------------------------------------------------------===//

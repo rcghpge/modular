@@ -655,6 +655,7 @@ def MO_ReshapeOp : MO_Op<"reshape", [Pure]> {
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
+  let hasFolder = 1;
 }
 
 def MO_ShapeOfOp : MO_Op<"shape_of",

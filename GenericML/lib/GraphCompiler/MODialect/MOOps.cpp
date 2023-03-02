@@ -67,7 +67,7 @@ OutputOp GraphOp::getOutputOp() {
 }
 
 //===----------------------------------------------------------------------===//
-// OutputOp support
+// MO_OutputOp support
 //===----------------------------------------------------------------------===//
 
 LogicalResult OutputOp::verify() {
@@ -460,6 +460,40 @@ void RebindOp::getEffects(
     SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
   if (!getParamDecls().empty())
     effects.emplace_back(mlir::MemoryEffects::Allocate::get());
+}
+
+//===----------------------------------------------------------------------===//
+// MO_ReshapeOp support
+//===----------------------------------------------------------------------===//
+
+OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
+  auto inputArrElemAttr =
+      dyn_cast_or_null<ArrayElementsAttr>(adaptor.getInput());
+  auto shapeArrElemAttr =
+      dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getShape());
+  auto outputShapeAttr = dyn_cast<ShapeAttr>(getType().getShapeAttr());
+  if (!inputArrElemAttr || !shapeArrElemAttr || !outputShapeAttr)
+    return {};
+
+  // Compute number of elements specified by target shape
+  int64_t shapeNumElems = 1;
+  for (llvm::APInt dim : shapeArrElemAttr.getValues()) {
+    shapeNumElems *= dim.getSExtValue();
+  }
+
+  // Compute number of elements specified by output type
+  int64_t outputNumElems = 1;
+  for (int64_t intDim : outputShapeAttr.getIntDims()) {
+    if (mlir::ShapedType::isDynamic(intDim))
+      return {};
+    outputNumElems *= intDim;
+  }
+
+  // Reshape is valid and trivial if number of elements match
+  if (shapeNumElems == outputNumElems)
+    return inputArrElemAttr;
+
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
