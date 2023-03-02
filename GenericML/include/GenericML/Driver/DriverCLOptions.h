@@ -121,6 +121,16 @@ public:
           "used the prefix will be modular_<benchmark_name>_benchmark_log_"),
       cl::init(false)};
 
+  cl::opt<uint64_t> benchmarkMinDurationMs{
+      "benchmark-min-duration-ms",
+      cl::desc("Minimum duration to run the benchmarks, in milliseconds."),
+      cl::init(10'000)};
+
+  cl::opt<uint64_t> benchmarkMinQueryCount{
+      "benchmark-min-query-count",
+      cl::desc("Minimum number of queries to run in benchmark mode."),
+      cl::init(100)};
+
   /// This tells the execution driver how to initialize model inputs.
   cl::opt<InputGenerationKind> inputGenKind{
       "model-inputs", cl::desc("Specify input tensor generation:"),

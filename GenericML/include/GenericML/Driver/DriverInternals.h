@@ -51,7 +51,9 @@ ErrorOrSuccess benchmarkModel(const Model *model, Runtime &runtime,
                               StringRef benchmarkName,
                               const ExecutorDriverCLOptions &options,
                               BenchmarkScenario scenario, StringRef outputDir,
-                              bool benchmarkNoLogPrefix);
+                              bool benchmarkNoLogPrefix,
+                              uint64_t min_duration_ms,
+                              uint64_t min_query_count);
 } // namespace M
 
 #endif // DRIVERINTERNALS_H

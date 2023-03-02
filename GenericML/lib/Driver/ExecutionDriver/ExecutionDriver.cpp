@@ -384,10 +384,11 @@ LogicalResult M::runModel(MLIRContext *ctx, const Model *model,
                           LLCL::Runtime &runtime,
                           const ExecutorDriverCLOptions &options) {
   if (options.benchmarkMode) {
-    if (auto err = benchmarkModel(model, runtime, options.benchmarkName,
-                                  options, options.benchmarkScenario,
-                                  options.benchmarkOutputDir,
-                                  options.benchmarkNoLogPrefix))
+    if (auto err = benchmarkModel(
+            model, runtime, options.benchmarkName, options,
+            options.benchmarkScenario, options.benchmarkOutputDir,
+            options.benchmarkNoLogPrefix, options.benchmarkMinDurationMs,
+            options.benchmarkMinQueryCount))
       return failure(options.reportError(err.getError()));
   }
 
