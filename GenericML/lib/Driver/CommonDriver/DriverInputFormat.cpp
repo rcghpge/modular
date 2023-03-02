@@ -23,7 +23,17 @@ using namespace M;
 // sniffInputFormat
 //===----------------------------------------------------------------------===//
 
-FileFormat M::sniffInputFormat(StringRef fileContents) {
+FileFormat M::sniffInputFormat(StringRef fileExtension,
+                               StringRef fileContents) {
+
+  // If the extension identifies the format, use that.
+  if (fileExtension.contains("onnx")) {
+    if (fileContents.contains("ir_version"))
+      return FileFormat::kONNXTextProtobuf;
+    else
+      return FileFormat::kONNXProtobuf;
+  }
+
   // If there's nothing in the file, then we can't sniff anything.
   if (fileContents.empty())
     return FileFormat::kUnknown;
@@ -47,6 +57,8 @@ FileFormat M::sniffInputFormat(StringRef fileContents) {
     // comments (e.g. CHECK lines), for example.
     if (fileContents.contains("mtfl.graph"))
       return FileFormat::kMTFLDialect;
+    if (fileContents.contains("monnx.graph"))
+      return FileFormat::kMONNXDialect;
     if (size_t start = fileContents.find("mgp.model");
         start != StringRef::npos) {
       // For mgp.model our desperation is even worse: we'll just look for
@@ -68,6 +80,8 @@ FileFormat M::sniffInputFormat(StringRef fileContents) {
           return FileFormat::kTFLPDialect;
         case CompiledFrameworkLabel::kFauxModel:
           return FileFormat::kFauxDialect;
+        case CompiledFrameworkLabel::kONNXModel:
+          return FileFormat::kMONNXDialect;
         }
       }
     }
@@ -81,6 +95,8 @@ FileFormat M::sniffInputFormat(StringRef fileContents) {
       return FileFormat::kFauxDialect;
     if (fileContents.contains("operator_codes:"))
       return FileFormat::kTFLFlatBufferJSON;
+    if (fileContents.contains("ir_version"))
+      return FileFormat::kONNXTextProtobuf;
   } else if (mlir::isBytecode(llvm::MemoryBufferRef(fileContents, ""))) {
     std::match_results<StringRef::iterator> m;
     if (std::regex_search(fileContents.begin(), fileContents.end(), m,
@@ -92,8 +108,9 @@ FileFormat M::sniffInputFormat(StringRef fileContents) {
 }
 
 FileFormat
-DriverInputFormatOptions::getInputFormat(StringRef fileContents) const {
+DriverInputFormatOptions::getInputFormat(StringRef fileExtension,
+                                         StringRef fileContents) const {
   if (inputFormat != FileFormat::kUnknown)
     return inputFormat;
-  return sniffInputFormat(fileContents);
+  return sniffInputFormat(fileExtension, fileContents);
 }

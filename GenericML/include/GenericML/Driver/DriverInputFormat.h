@@ -45,12 +45,21 @@ enum class FileFormat {
   kTFDialect,
 
   /// This is a TensorFlow SavedModel directory.
-  kTFSavedModel
+  kTFSavedModel,
+
+  /// This looks like a textual MLIR file with the MONNX graph dialect in it.
+  kMONNXDialect,
+
+  /// This looks like an ONNX binary protobuf.
+  kONNXProtobuf,
+
+  /// This looks like an ONNX textual protobuf.
+  kONNXTextProtobuf
 };
 
 /// Use heuristics to determine what kind of file the input file contents
 /// represent.
-FileFormat sniffInputFormat(StringRef fileContents);
+FileFormat sniffInputFormat(StringRef fileExtension, StringRef fileContents);
 
 class DriverInputFormatOptions {
 public:
@@ -63,13 +72,16 @@ public:
                  clEnumValN(FileFormat::kMEFFile, "mef",
                             "Input is an executable MEF file"),
                  clEnumValN(FileFormat::kTFSavedModel, "tf-saved-model",
-                            "Input is a TF SavedModel directory")),
+                            "Input is a TF SavedModel directory"),
+                 clEnumValN(FileFormat::kONNXProtobuf, "onnx-proto",
+                            "Input is an ONNX model protobuf file")),
       cl::init(FileFormat::kUnknown)};
 
   /// Return the input format the user specified, allowing them to specify
   /// something manually on the command line, but otherwise autosensing an
   /// answer.
-  FileFormat getInputFormat(StringRef fileContents) const;
+  FileFormat getInputFormat(StringRef fileExtension,
+                            StringRef fileContents) const;
 };
 } // namespace M
 

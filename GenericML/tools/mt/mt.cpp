@@ -132,6 +132,12 @@ getFileContentIdentity(const llvm::MemoryBuffer &file, FileFormat format,
     return "input is a compiled TensorFlow MEF model in MLIR form";
   case FileFormat::kFauxDialect:
     return "input is Faux model in MLIR form";
+  case FileFormat::kMONNXDialect:
+    return "input is an ONNX model in MLIR form";
+  case FileFormat::kONNXProtobuf:
+    return "input is an ONNX model in binary protobuf form";
+  case FileFormat::kONNXTextProtobuf:
+    return "input is an ONNX model in text protobuf form";
   case FileFormat::kMEFFile: {
     UNWRAP_ERROR(fileHandle, dylib.openBinaryFile(ctxHandle, file));
     return dylib.sniffBinaryFileContents(ctxHandle, fileHandle);
@@ -176,7 +182,8 @@ int main(int argc, char **argv) {
       // In case the input file is MEF, it has to be aligned to the maximum
       // attribute alignment.
       file = options.openInputFileOrExit(maxAttributeAlignment());
-      format = options.getInputFormat(file->getBuffer());
+      format = options.getInputFormat(inputPath.extension().string(),
+                                      file->getBuffer());
     }
   }
 
