@@ -16,6 +16,7 @@
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/Compiler/VerifyUtils.h"
 #include "Support/MDialect/MAttrs.h"
+#include "Support/STLExtras.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/FunctionImplementation.h"
 #include "mlir/IR/IRMapping.h"
@@ -163,8 +164,8 @@ OpFoldResult BroadcastShapeOp::fold(FoldAdaptor adaptor) {
             getContext(), values, IntegerType::SignednessSemantics::Signed);
       };
       if (getType().getElementType().getIntOrFloatBitWidth() == 32) {
-        SmallVector<int32_t> dims = llvm::to_vector(llvm::map_range(
-            shapeOr->getIntDims(), [](int64_t dim) -> int32_t { return dim; }));
+        SmallVector<int32_t> dims = map_to_vector(
+            shapeOr->getIntDims(), [](int64_t dim) -> int32_t { return dim; });
         return getResAttrs(ArrayRef<int32_t>{dims});
       }
       return getResAttrs(ArrayRef<int64_t>{shapeOr->getIntDims()});

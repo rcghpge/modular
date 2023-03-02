@@ -7,6 +7,7 @@
 #include "GenericML/Support/QuantSpec.h"
 #include "GraphRT/MEF/MEFTypes.h"
 #include "Support/ErrorOr.h"
+#include "Support/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/raw_ostream.h"
@@ -92,6 +93,18 @@ void QuantTensorSpec::dump() const { print(llvm::errs()); }
 //===----------------------------------------------------------------------===//
 // Static helpers
 //===----------------------------------------------------------------------===//
+
+QuantSpec QuantSpec::getUniformPerAxis(uint8_t quantDim, ArrayRef<float> scales,
+                                       ArrayRef<int64_t> zeroPoints) {
+  // TODO: change this to take ArrayRef<ScaleZeroPointPair>, and change the
+  // MEF encoding to encode similarly.
+  return QuantSpec(
+      Kind::uniformPerAxis, quantDim,
+      map_to_vector(llvm::zip(scales, zeroPoints), [](auto paramPair) {
+        auto [scale, zeroPoint] = paramPair;
+        return ScaleZeroPointPair{scale, static_cast<int16_t>(zeroPoint)};
+      }));
+}
 
 ErrorOr<QuantTensorSpec> QuantTensorSpec::get(MEFType type) {
   SmallVector<int64_t> dims;

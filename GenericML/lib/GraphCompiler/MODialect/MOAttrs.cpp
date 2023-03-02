@@ -10,6 +10,7 @@
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
 #include "Support/LLVMCompilerForwardDecls.h"
+#include "Support/STLExtras.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpImplementation.h"
@@ -119,7 +120,7 @@ int64_t MO::ShapeAttr::getIntDim(size_t n) const {
 }
 
 SmallVector<int64_t> MO::ShapeAttr::getIntDims() const {
-  return llvm::to_vector(llvm::map_range(getValues(), symbolicDimToInt));
+  return map_to_vector(getValues(), symbolicDimToInt);
 }
 
 //===----------------------------------------------------------------------===//

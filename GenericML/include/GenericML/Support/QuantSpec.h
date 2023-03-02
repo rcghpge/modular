@@ -12,7 +12,6 @@
 #ifndef GENERICML_SUPPORT_QUANTSPEC_H
 #define GENERICML_SUPPORT_QUANTSPEC_H
 
-#include "Support/ForwardDecls.h"
 #include "Support/ML/TensorSpec.h"
 
 namespace M {
@@ -53,19 +52,8 @@ public:
 
   /// Creates a QuantSpec of uniformPerAxis kind of separate arrays of scales
   /// and zero points.
-  static inline QuantSpec getUniformPerAxis(uint8_t quantDim,
-                                            ArrayRef<float> scales,
-                                            ArrayRef<int64_t> zeroPoints) {
-    // TODO: change this to take ArrayRef<ScaleZeroPointPair>, and change the
-    // MEF encoding to encode similarly.
-    return QuantSpec(
-        Kind::uniformPerAxis, quantDim,
-        llvm::to_vector(
-            llvm::map_range(llvm::zip(scales, zeroPoints), [](auto paramPair) {
-              auto [scale, zeroPoint] = paramPair;
-              return ScaleZeroPointPair{scale, static_cast<int16_t>(zeroPoint)};
-            })));
-  }
+  static QuantSpec getUniformPerAxis(uint8_t quantDim, ArrayRef<float> scales,
+                                     ArrayRef<int64_t> zeroPoints);
 
   /// Returns a string representation of the kind enum.
   static StringRef kindAsString(QuantSpec::Kind kind);
