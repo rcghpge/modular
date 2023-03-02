@@ -46,6 +46,15 @@ class MO_ElementWiseBinaryOp<string name, list<Trait> traits = []>
   let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y);
 }
 
+class MO_SoftmaxLikeOp<string name, list<Trait> traits = []>
+    : MO_Op<name, traits # [MO_SameOperandsAndResultType, Pure]> {
+  let arguments = (ins MO_Tensor:$input);
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 //===----------------------------------------------------------------------===//
 // GraphOp
 //===----------------------------------------------------------------------===//
@@ -326,6 +335,23 @@ def MO_GeluOp : MO_ElementWiseUnaryOp<"gelu"> {
   }];
 }
 
+def MO_LogSoftmaxOp : MO_SoftmaxLikeOp<"logsoftmax"> {
+  let summary = "Perfoms logsoftmax on tensor `input`";
+  let description = [{
+    Returns logsoftmax probability scores following:
+     `log(softmax(input))`
+
+    The scores are computed along the last axis.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.logsoftmax(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
 def MO_SigmoidOp : MO_ElementWiseUnaryOp<"sigmoid"> {
   let summary = "Logistic Sigmoid operation";
   let description = [{
@@ -413,7 +439,7 @@ def MO_SqrtOp : MO_ElementWiseUnaryOp<"sqrt", [Idempotent]> {
   }];
 }
 
-def MO_SoftmaxOp : MO_Op<"softmax", [MO_SameOperandsAndResultType, Pure]> {
+def MO_SoftmaxOp : MO_SoftmaxLikeOp<"softmax"> {
   let summary = "Perfoms softmax on tensor `input`";
   let description = [{
     Returns softmax probability scores following:
@@ -427,13 +453,6 @@ def MO_SoftmaxOp : MO_Op<"softmax", [MO_SameOperandsAndResultType, Pure]> {
     %arg: !mo.tensor<[2, 3], f32>
     %res = mo.softmax(%arg) : !mo.tensor<[2, 3], f32>
     ```
-  }];
-
-  let arguments = (ins MO_Tensor:$input);
-  let results = (outs MO_Tensor:$result);
-
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
 }
 

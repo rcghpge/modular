@@ -27,18 +27,3 @@ mo.graph @div(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[2, 3], f32>) ->
   %0 = mo.div(%arg0, %arg1) : !mo.tensor<[2, 3], f32>
   mo.output %0 : !mo.tensor<[2, 3], f32>
 }
-
-// TODO relocate softmax test cases to a proper category
-// CHECK: mo.graph @softmax(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32> {
-mo.graph @softmax(%arg0: !mo.tensor<[2, 3], f32>) -> (!mo.tensor<[2, 3], f32>) {
-  // CHECK-NEXT: mo.softmax(%[[ARG0]]) : (!mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
-  %0 = mo.softmax(%arg0) : (!mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
-  mo.output %0 : !mo.tensor<[2, 3], f32>
-}
-
-// CHECK: mo.graph @softmax_dyn_rank(%[[ARG0:.*]]: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
-mo.graph @softmax_dyn_rank(%arg0: !mo.tensor<?, f32>) -> (!mo.tensor<?, f32>) {
-  // CHECK-NEXT: mo.softmax(%[[ARG0]]) : (!mo.tensor<?, f32>) -> !mo.tensor<?, f32>
-  %0 = mo.softmax(%arg0) : (!mo.tensor<?, f32>) -> !mo.tensor<?, f32>
-  mo.output %0 : !mo.tensor<?, f32>
-}
