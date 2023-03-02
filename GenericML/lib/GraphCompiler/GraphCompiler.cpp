@@ -74,7 +74,10 @@ void buildMoToMGPPipeline(mlir::PassManager &pm, const PassOptions &opts) {
     }
   }
 
-  pm.addPass(MGP::createMOToPrimitives(opts.moToPrimOpts));
+  MGP::MOToPrimitivesOptions moToPrimOpts;
+  moToPrimOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
+  moToPrimOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel;
+  pm.addPass(MGP::createMOToPrimitives(moToPrimOpts));
 
   if (!opts.cacheDir.empty()) {
     Cache::DeflateConstantsOptions deflateOpts;
