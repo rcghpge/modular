@@ -229,6 +229,27 @@ mo.graph @static_broadcast_to<N>(%from: !mo.tensor<[N, 3], f32>) -> !mo.tensor<[
   mo.output %res : !mo.tensor<[1, N, 3], f32>
 }
 
+// CHECK: mo.graph @static_broadcast_to_fold<[[N:.*]]>(%[[FROM:.*]]: !mo.tensor<[[[N]], 3], f32>) -> !mo.tensor<[[[N]], 3], f32> {
+mo.graph @static_broadcast_to_fold<N>(%from: !mo.tensor<[N, 3], f32>) -> !mo.tensor<[N, 3], f32> {
+  %res = mo.static.broadcast_to(%from) : !mo.tensor<[N, 3], f32> -> !mo.tensor<[N, 3], f32>
+  // CHECK: mo.output %[[FROM]] : !mo.tensor<[[[N]], 3], f32>
+  mo.output %res : !mo.tensor<[N, 3], f32>
+}
+
+// CHECK: mo.graph @static_broadcast_to_no_fold<[[D0:.*]], [[D1:.*]]>(
+mo.graph @static_broadcast_to_no_fold<D0, D1>(
+  // CHECK-SAME: %[[FROM:.*]]: !mo.tensor<[[[D0]], 3], f32>,
+  %from: !mo.tensor<[D0, 3], f32>,
+  // CHECK-SAME: %[[TO:.*]]: !mo.tensor<[[[D1]], 3], f32>
+  %to: !mo.tensor<[D1, 3], f32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D1]], 3], f32> {
+) -> !mo.tensor<[D1, 3], f32> {
+  // CHECK-NEXT: %[[RES:.*]] = mo.static.broadcast_to(%[[FROM]]) : !mo.tensor<[[[D0]], 3], f32> -> !mo.tensor<[[[D1]], 3], f32>
+  %res = mo.static.broadcast_to(%from) : !mo.tensor<[D0, 3], f32> -> !mo.tensor<[D1, 3], f32>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[D1]], 3], f32>
+  mo.output %res : !mo.tensor<[D1, 3], f32>
+}
+
 //===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//

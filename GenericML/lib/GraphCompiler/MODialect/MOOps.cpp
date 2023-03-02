@@ -232,6 +232,12 @@ LogicalResult BroadcastToOp::verify() {
 // MO_StaticBroadcastToOp
 //===----------------------------------------------------------------------===//
 
+OpFoldResult StaticBroadcastToOp::fold(FoldAdaptor adaptor) {
+  if (getInput().getType() == getType())
+    return getInput();
+  return {};
+}
+
 LogicalResult StaticBroadcastToOp::verify() {
   if (auto err = verifyBroadcastStaticRanks(getInput().getType(), getType()))
     return emitError(err.getError());

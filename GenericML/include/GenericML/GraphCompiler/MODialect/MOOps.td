@@ -801,6 +801,7 @@ def MO_StaticBroadcastToOp : MO_Op<"static.broadcast_to", [Pure]> {
     qualified(type($input)) `->` qualified(type($result))
   }];
   let hasVerifier = 1;
+  let hasFolder = 1;
 }
 
 def MO_ConcatOp : MO_Op<"concat", [Pure]> {
