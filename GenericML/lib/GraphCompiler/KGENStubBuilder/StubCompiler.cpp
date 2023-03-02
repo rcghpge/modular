@@ -34,12 +34,13 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
   LLCL::Runtime runtime(
       LLCL::createLeakCheckAllocator(LLCL::createMallocAllocator()),
       LLCL::createSingleThreadWorkQueue());
+  mlir::PassManager mgr(ctx);
 
   // Compile to LLVM.
   mlir::SymbolTable symTable{kgenModule};
   KGEN::CompilationOptions compilationOptions;
-  auto compiler = KGEN::ObjectCompiler::create(runtime, ".kgen_cache", symTable,
-                                               compilationOptions);
+  auto compiler = KGEN::ObjectCompiler::create(runtime, mgr, ".kgen_cache",
+                                               symTable, compilationOptions);
   UNWRAP_ERROR(target, KGEN::getHostTargetInfo(ctx));
 
   auto standaloneOr = compiler->produceStandaloneObjectAttr(target, true);
