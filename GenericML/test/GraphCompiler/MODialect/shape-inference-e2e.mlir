@@ -2,6 +2,12 @@
 
 // COM: For now shape functions remain in the module even after they are
 // COM: inlined, but this will be removed eventually.
+// CHECK: kgen.func @gather_axis_0_fw
+// CHECK: kgen.return
+// CHECK: }
+// CHECK: kgen.func @"gather_axis_-1_fw"
+// CHECK: kgen.return
+// CHECK: }
 // CHECK: kgen.func @reduction_axis_0_fw
 // CHECK: kgen.return
 // CHECK: }
@@ -54,6 +60,40 @@ mo.graph @batch_matmul_static_rank(
   %out = mo.batch_matmul(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?, ?, ?], f32>
   // CHECK: mo.output %[[V1]] : !mo.tensor<[[[D0]], [[D1]], [[D5]]], f32>
   mo.output %out : !mo.tensor<[?, ?, ?], f32>
+}
+
+// CHECK: mo.graph @materialize_gather_axis_0_si32_e2e<[[D0:.*]], [[D1:.*]]>(
+mo.graph @materialize_gather_axis_0_si32_e2e(
+// CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]], 2], f32>,
+  %input: !mo.tensor<[?, 2], f32>,
+// CHECK-SAME: %[[INDICES:.*]]: !mo.tensor<[2, [[D1]]], si32>
+  %indices: !mo.tensor<[2, ?], si32>
+// CHECK-SAME: ) -> !mo.tensor<[2, [[D1]], 2], f32> {
+) -> !mo.tensor<[?, ?, ?], f32> {
+  // CHECK-NEXT: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %axis = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  // CHECK-NEXT: %[[RES:.*]] = mo.gather(%[[INPUT]], %[[INDICES]], %[[AXIS]]) :
+  // CHECK-SAME: (!mo.tensor<[[[D0]], 2], f32>, !mo.tensor<[2, [[D1]]], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[2, [[D1]], 2], f32>
+  %result = mo.gather(%input, %indices, %axis) : (!mo.tensor<[?, 2], f32>, !mo.tensor<[2, ?], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[?, ?, ?], f32>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[2, [[D1]], 2], f32>
+  mo.output %result : !mo.tensor<[?, ?, ?], f32>
+}
+
+// CHECK: mo.graph @materialize_gather_axis_neg_1_si32_e2e<[[D0:.*]], [[D1:.*]]>(
+mo.graph @materialize_gather_axis_neg_1_si32_e2e(
+// CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]], 2], f32>,
+  %input: !mo.tensor<[?, 2], f32>,
+// CHECK-SAME: %[[INDICES:.*]]: !mo.tensor<[2, [[D1]]], si32>
+  %indices: !mo.tensor<[2, ?], si32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D0]], 2, [[D1]]], f32> {
+) -> !mo.tensor<[?, ?, ?], f32> {
+  // CHECK-NEXT: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<-1> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %axis = mo.constant {value = #M.dense_array<-1> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  // CHECK-NEXT: %[[RES:.*]] = mo.gather(%[[INPUT]], %[[INDICES]], %[[AXIS]]) :
+  // CHECK-SAME: (!mo.tensor<[[[D0]], 2], f32>, !mo.tensor<[2, [[D1]]], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[[[D0]], 2, [[D1]]], f32>
+  %result = mo.gather(%input, %indices, %axis) : (!mo.tensor<[?, 2], f32>, !mo.tensor<[2, ?], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[?, ?, ?], f32>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[D0]], 2, [[D1]]], f32>
+  mo.output %result : !mo.tensor<[?, ?, ?], f32>
 }
 
 // CHECK: mo.graph @materialize_mean_axis_0_si32_e2e<[[D0:.*]]>(

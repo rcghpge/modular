@@ -910,8 +910,11 @@ def MO_PadOp : MO_Op<"pad", [Pure]> {
 // GatherOp
 //===----------------------------------------------------------------------===//
 
-def MO_GatherOp : MO_Op<"gather",
-    [Pure, DeclareOpInterfaceMethods<MO_Parameterization>]> {
+def MO_GatherOp : MO_Op<"gather", [
+  Pure,
+  DeclareOpInterfaceMethods<MO_Parameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
+]> {
   let summary = "Gather Operation";
   let description = [{
     Gather slices from input' axis according to indices.
