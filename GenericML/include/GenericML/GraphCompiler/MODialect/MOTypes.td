@@ -161,75 +161,57 @@ def HasPaddingShapePred : And<[
   MO_HasAnyRankOfPred<[2]>,
   CPred<"$_self.cast<::M::MO::TensorType>().getIntDim(1) == 2">]>;
 
+/// Base class for defining constraints on MO_TensorType.
+class MO_ConfinedTensor<list<Pred> predicates, string summary = ""> :
+  ConfinedType<MO_Tensor, predicates, summary, "::M::MO::TensorType">;
+
 /// Confines the MO_TensorType so that it's ranked and a scalar.
-def MO_RankedScalarTensor : ConfinedType<MO_Tensor, [MO_HasAnyRankOfPred<[0]>],
-    "ranked scalar tensor"> {
-  let cppClassName = "::M::MO::TensorType";
-}
+def MO_RankedScalarTensor : MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[0]>], "ranked scalar tensor">;
 
 /// Confines the MO_TensorType so that it's ranked and a scalar int or index.
-def MO_RankedScalarIndexTensor : ConfinedType<MO_Tensor,
-    [MO_HasAnyRankOfPred<[0]>, IntOrIndexElementTypePred],
-    "ranked scalar index tensor"> {
-  let cppClassName = "::M::MO::TensorType";
-}
+def MO_RankedScalarIndexTensor : MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[0]>, IntOrIndexElementTypePred],
+  "ranked scalar index tensor">;
 
-/// Confines the MO_TensorType so that it's either unranked or a non-scalar
-def MO_NonScalarIfRanked: ConfinedType<MO_Tensor,
-    [Neg<MO_HasAnyRankOfPred<[0]>>],
-    "unranked or non-scalar tensor"> {
-  let cppClassName = "::M::MO::TensorType";
-}
+/// Confines the MO_TensorType so that it's either unranked or a non-scalar.
+def MO_NonScalarIfRanked: MO_ConfinedTensor<
+  [Neg<MO_HasAnyRankOfPred<[0]>>], "unranked or non-scalar tensor">;
 
-/// Confines the MO_TensorType so that it has int or index elements
-def MO_IndicesTensor : ConfinedType<MO_Tensor,
-    [IntOrIndexElementTypePred],
-    "tensor with integer or index elements"> {
-  let cppClassName = "::M::MO::TensorType";
-}
+/// Confines the MO_TensorType so that it has int or index elements.
+def MO_IndicesTensor : MO_ConfinedTensor<
+  [IntOrIndexElementTypePred], "tensor with integer or index elements">;
 
-/// Confines the MO_TensorType so that it has SI32 or SI64 elements and rank 1
-def MO_ShapeLike : ConfinedType<MO_Tensor,
-    [MO_HasAnyRankOfPred<[1]>, Or<[HasSI64ElementTypePred,
-                                   HasSI32ElementTypePred]>],
-    "rank 1 and signed 64 or signed 32 integer elements"> {
-  let cppClassName = "::M::MO::TensorType";
-}
+/// Confines the MO_TensorType so that it has SI32 or SI64 elements and rank 1.
+def MO_ShapeLike : MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[1]>, Or<[HasSI64ElementTypePred,
+                                 HasSI32ElementTypePred]>],
+  "rank 1 and signed 64 or signed 32 integer elements">;
 
 /// Confines the MO_TensorType so that it has SI32 or SI64 elements and shape
-/// [N, 2]
-def MO_PaddingLike : ConfinedType<MO_Tensor,
-    [HasPaddingShapePred, Or<[HasSI64ElementTypePred, HasSI32ElementTypePred]>],
-    "shape [N, 2] and signed 64 or signed 32 integer elements"> {
-  let cppClassName = "::M::MO::TensorType";
-}
+/// [N, 2].
+def MO_PaddingLike : MO_ConfinedTensor<
+  [HasPaddingShapePred, Or<[HasSI64ElementTypePred, HasSI32ElementTypePred]>],
+  "shape [N, 2] and signed 64 or signed 32 integer elements">;
 
 /// Confines the MO_TensorType so that it has SI64 elements, and rank 1 if the
 /// rank is static.
-def MO_ShapeLikeIfRanked : ConfinedType<MO_Tensor,
-    [HasRankIfRankedPred<1>, HasSI64ElementTypePred],
-    "rank 1 or unranked with signed 64 integer elements"> {
-  let cppClassName = "::M::MO::TensorType";
-}
+def MO_ShapeLikeIfRanked : MO_ConfinedTensor<
+  [HasRankIfRankedPred<1>, HasSI64ElementTypePred],
+  "rank 1 or unranked with signed 64 integer elements">;
 
 /// Confines the MO_TensorType so that it has rank 1 if rank is static.
-def MO_VectorIfRanked : ConfinedType<
-    MO_Tensor, [HasRankIfRankedPred<1>], "rank 1 or unranked"> {
-  let cppClassName = "::M::MO::TensorType";
-}
+def MO_VectorIfRanked : MO_ConfinedTensor<
+  [HasRankIfRankedPred<1>], "rank 1 or unranked">;
 
 /// Confines the MO_TensorType so that it has rank 2 if rank is static.
-def MO_MatrixIfRanked : ConfinedType<
-    MO_Tensor, [HasRankIfRankedPred<2>], "rank 2 or unranked"> {
-  let cppClassName = "::M::MO::TensorType";
-}
+def MO_MatrixIfRanked : MO_ConfinedTensor<
+  [HasRankIfRankedPred<2>], "rank 2 or unranked">;
 
 /// Confines the MO_TensorType so that it cannot have unknown shape or dimension
 /// parameters.
-def MO_KnownTensor  : ConfinedType<MO_Tensor,
-    [CPred<"!$_self.cast<MO::TensorType>().hasUnknownShape()">],
-    "parametrically known shape"> {
-  let cppClassName = "::M::MO::TensorType";
-}
+def MO_KnownTensor : MO_ConfinedTensor<
+  [CPred<"!$_self.cast<MO::TensorType>().hasUnknownShape()">],
+  "parametrically known shape">;
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTYPES_TD
