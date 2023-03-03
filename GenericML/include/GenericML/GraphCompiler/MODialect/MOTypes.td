@@ -156,6 +156,10 @@ def HasSI64ElementTypePred : SubstLeaves<
 def HasSI32ElementTypePred : SubstLeaves<
   "$_self", "cast<M::MO::TensorType>($_self).getElementType()", SI32.predicate>;
 
+/// Checks if a MO_TensorType has I1 elements.
+def HasBoolElementTypePred : SubstLeaves<
+  "$_self", "cast<M::MO::TensorType>($_self).getElementType()", I1.predicate>;
+
 /// Checks if a MO_TensorType has shape [N, 2].
 def HasPaddingShapePred : And<[
   MO_HasAnyRankOfPred<[2]>,
@@ -213,5 +217,12 @@ def MO_MatrixIfRanked : MO_ConfinedTensor<
 def MO_KnownTensor : MO_ConfinedTensor<
   [CPred<"!$_self.cast<MO::TensorType>().hasUnknownShape()">],
   "parametrically known shape">;
+
+/// Confines the MO_TensorType so that it has Boolean elements and rank 0
+def MO_CondLike : ConfinedType<MO_Tensor,
+    [MO_HasAnyRankOfPred<[0]>, HasBoolElementTypePred],
+    "rank 0 and boolean element type"> {
+  let cppClassName = "::M::MO::TensorType";
+}
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTYPES_TD

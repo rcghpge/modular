@@ -83,9 +83,13 @@ public:
     void operator=(const InitState &) = delete;
   };
 
-  /// State used when building an invokable for the 'execute' phase.
-  struct ExecuteState {
-    ExecuteState(MLIRContext *ctx) : builder(ctx) {}
+  /// State Tracking for values needed to lower an mlir block
+  struct BlockState {
+    BlockState() {}
+    BlockState(Value inputChain, Value mainChain, Value context,
+               DenseMap<Value, Value> tensors = DenseMap<Value, Value>{})
+        : invokableInputChain(inputChain), chain(mainChain),
+          mgpContext(context), loweredTensors(tensors) {}
 
     /// The original input chain to the invokable, ready when the argument
     /// tensors are ready.
@@ -99,6 +103,16 @@ public:
 
     /// Keeps track of what mo.tensor SSA values are lowered to.
     DenseMap<Value, Value> loweredTensors;
+  };
+
+  /// State used when building an invokable for the 'execute' phase.
+  struct ExecuteState {
+    ExecuteState(MLIRContext *ctx) : builder(ctx) {}
+
+    /// A Stack of BlockState objects representing lowering state
+    /// for nested computational blocks. Begins with a state
+    // Representing Global Execution
+    SmallVector<BlockState> blockStates{BlockState()};
 
     /// The next available constant identifier. Used to assign names
     /// to dense_resource attributes capturing MO constants.
@@ -154,36 +168,50 @@ public:
   /// Set the original input chain to the invokable, ready when the argument
   /// tensors are ready.
   void setExecuteInvokableInputChain(Value invokableInputChain) {
-    execute.invokableInputChain = invokableInputChain;
+    execute.blockStates.back().invokableInputChain = invokableInputChain;
   }
 
   /// Return the original input chain to the invokable, ready when the argument
   /// tensors are ready.
-  Value getExecuteInvokableInputChain() { return execute.invokableInputChain; }
-
-  /// Return the MGP context.
-  void setExecuteMgpContext(Value mgpContext) {
-    execute.mgpContext = mgpContext;
+  Value getExecuteInvokableInputChain() {
+    return execute.blockStates.back().invokableInputChain;
   }
 
   /// Return the MGP context.
-  Value getExecuteMgpContext() { return execute.mgpContext; }
+  void setExecuteMgpContext(Value mgpContext) {
+    execute.blockStates.back().mgpContext = mgpContext;
+  }
+
+  /// Return the MGP context.
+  Value getExecuteMgpContext() { return execute.blockStates.back().mgpContext; }
 
   /// Set the "main thread" chain in the execute phase.
-  void setExecuteChain(Value chain) { execute.chain = chain; }
+  void setExecuteChain(Value chain) {
+    execute.blockStates.back().chain = chain;
+  }
 
   /// Return the "main thread" chain in the execute phase.
-  Value getExecuteChain() { return execute.chain; }
+  Value getExecuteChain() { return execute.blockStates.back().chain; }
 
   /// Return what mo.tensor the SSA value is lowered to.
   Value lookupExecuteLoweredTensor(Value key) {
-    return execute.loweredTensors.lookup(key);
+    return execute.blockStates.back().loweredTensors.lookup(key);
   }
 
   /// Register what mo.tensor the SSA value (key) is lowered to.
   void emplaceExecuteLoweredTensor(Value key, Value value) {
-    execute.loweredTensors.try_emplace(key, value);
+    execute.blockStates.back().loweredTensors.try_emplace(key, value);
   }
+
+  /// Return what mo.tensor the SSA value is lowered to.
+  void enterBlock() {
+    BlockState curr = execute.blockStates.back();
+    execute.blockStates.emplace_back(
+        BlockState(curr.invokableInputChain, curr.chain, curr.mgpContext));
+  }
+
+  /// Register what mo.tensor the SSA value (key) is lowered to.
+  void exitBlock() { execute.blockStates.pop_back(); }
 
   /// Return and increment the next available constant identifier.
   size_t getExecuteNextConstId() { return execute.nextConstId++; }

@@ -1005,6 +1005,31 @@ def DebugCpuTensorPrintOp : MGP_Op<"debug.cpu.tensor.print"> {
   let results = (outs ChainType: $outChain);
   let assemblyFormat = "$inChain `,` $tensor attr-dict `:` qualified(type($tensor))";
 }
+//===----------------------------------------------------------------------===//
+// DebugBoolPrintOp
+//===----------------------------------------------------------------------===//
+
+def DebugBoolPrintOp : MGP_Op<"debug.bool.print"> {
+  let summary = "Prints a debug representation of argument value. For "
+                "debugging and testing only.";
+  let description = [{
+    Prints a debug representation of argument value. Currently used to
+    write lit unit tests which confirm buffer sharing.
+
+    Example:
+    ```mlir
+    %b : i1
+    %ch0 : !mef.chain
+    %ch1 = mgp.debug.bool.print %ch0, %b : i1
+    %ch1 : !mef.chain
+    ```
+  }];
+
+  let arguments = (ins ChainType:$inChain, I1: $cond);
+  let results = (outs ChainType: $outChain);
+  let assemblyFormat = "$inChain `,` $cond attr-dict `:` qualified(type($cond))";
+}
+
 
 //===----------------------------------------------------------------------===//
 // DebugCpuSpinWaitOp
@@ -1137,6 +1162,41 @@ def CASStoreOp : MGP_Op<"cas.store"> {
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $aSlot `]` `,` custom<Base64>($bKey)
     `,` $buffer attr-dict `:` qualified(type($buffer))
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// ToGRTBool
+//===----------------------------------------------------------------------===//
+
+// Checks if a MGP_CpuBufferTYpe has one of the specified ranks.
+class HasBufferSizePred<list<int> sizes> :
+  Or<!foreach(size, sizes,
+    CPred<
+     [{$_self.cast<MGP::CpuBufferType>().getRawSize().getValue() == }] # size>)>;
+
+def MGP_ScalarBuffer : ConfinedType<MGP_CpuBufferType, [HasBufferSizePred<[1]>],
+    "scalar buffer"> {
+  let cppClassName = "::M::MGP::CpuBufferType";
+}
+
+def ToGRTBool : MGP_Op<"to_grt_bool"> {
+  let summary = "Convert a single byte Buffer into a builtin i1.";
+  let description = [{
+    Convert a single byte Buffer into a builtin i1.
+
+    Example:
+    ```mlir
+    %buf = mgp.to_buffer(%val) : !mgp.cpu.buffer<1> -> i1
+    ```
+  }];
+
+  let arguments = (ins ChainType:$inChain,
+                       MGP_ScalarBuffer:$arg);
+  let results = (outs I1:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
 }
 

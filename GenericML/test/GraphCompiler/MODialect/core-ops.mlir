@@ -110,6 +110,36 @@ mo.graph @rebind_no_fold(%arg0: !mo.tensor<[?, ?], f32>) {
 }
 
 //===----------------------------------------------------------------------===//
+// IfOp and YieldOp
+//===----------------------------------------------------------------------===//
+
+// CHECK: mo.graph @if_op(%[[ARG0:.*]]: !mo.tensor<[2, ?, 1], f32>, %[[ARG1:.*]]: !mo.tensor<[2, ?, 1], f32>, %[[ARG2:.*]]: !mo.tensor<[], bool>) -> !mo.tensor<[2, ?, 1], f32> {
+mo.graph @if_op(%arg0: !mo.tensor<[2, ?, 1], f32>, %arg1: !mo.tensor<[2, ?, 1], f32>, %cond : !mo.tensor<[], bool>) -> (!mo.tensor<[2, ?, 1], f32>) {
+  // CHECK: %0 = mo.if(%[[ARG2]] : !mo.tensor<[], bool>) -> !mo.tensor<[2, ?, 1], f32> {
+  %0 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[2, ?, 1], f32> {
+    // CHECK: mo.yield %[[ARG0]] : !mo.tensor<[2, ?, 1], f32>
+    mo.yield %arg0 : !mo.tensor<[2, ?, 1], f32>
+  // CHECK: } else {
+  } else {
+    // CHECK: mo.yield %[[ARG1]] : !mo.tensor<[2, ?, 1], f32>
+    mo.yield %arg1 : !mo.tensor<[2, ?, 1], f32>
+  }
+  // CHECK: mo.output %0 : !mo.tensor<[2, ?, 1], f32>
+  mo.output %0 : !mo.tensor<[2, ?, 1], f32>
+}
+
+// CHECK: mo.graph @empty_if_op(%[[ARG0:.*]]: !mo.tensor<[2, ?, 1], f32>, %[[ARG2:.*]]: !mo.tensor<[], bool>) -> !mo.tensor<[2, ?, 1], f32> {
+mo.graph @empty_if_op(%arg0: !mo.tensor<[2, ?, 1], f32>, %cond : !mo.tensor<[], bool>) -> (!mo.tensor<[2, ?, 1], f32>) {
+  // CHECK: mo.output %[[ARG0]] : !mo.tensor<[2, ?, 1], f32>
+  mo.if(%cond : !mo.tensor<[], bool>) {
+    mo.yield
+  } else {
+    mo.yield
+  }
+  mo.output %arg0 : !mo.tensor<[2, ?, 1], f32>
+}
+
+//===----------------------------------------------------------------------===//
 // ConstantOp
 //===----------------------------------------------------------------------===//
 

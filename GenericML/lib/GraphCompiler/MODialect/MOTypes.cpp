@@ -155,14 +155,12 @@ ErrorOr<DType> static fromMLIRType(Type mlirType) {
 ErrorOr<Type> static toMLIRType(MLIRContext *context, DType dType) {
   if (!dType.isValid())
     return NoneType::get(context); // None denotes unknown.
-  if (dType.isInt()) {
+  if (dType.isInt() || dType.isBool())
     if (Type type = getEquivalentIntegerType(context, dType))
       return type;
-  }
-  if (dType.isFloat()) {
+  if (dType.isFloat())
     if (Type type = getEquivalentFloatType(context, dType))
       return type;
-  }
   return Error(Twine("unable to represent DType '") + dType.getAsString() +
                "' as an MLIR type.");
 }

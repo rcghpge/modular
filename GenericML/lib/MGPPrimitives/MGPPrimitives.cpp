@@ -529,6 +529,27 @@ mgp_cas_store(Chain inChain, Context &ctx, const BufferRef &bufferRef,
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.to_grt_bool
+//===----------------------------------------------------------------------===//
+
+static void mgp_to_grt_bool(Chain inChain, AsyncValueRef<BufferRef> bufferRef,
+                            Result<bool> result, Runtime &runtime) {
+  std::move(result).emplace(
+      *static_cast<const bool *>(bufferRef.get().getBuffer()) != 0);
+}
+
+//===----------------------------------------------------------------------===//
+// mgp.debug.bool.print
+//===----------------------------------------------------------------------===//
+
+static void mgp_debug_bool_print(Chain inChain, const bool &cond,
+                                 Result<Chain> outChain, Runtime &runtime) {
+  llvm::outs() << cond << "\n";
+  llvm::outs().flush();
+  std::move(outChain).emplace();
+}
+
+//===----------------------------------------------------------------------===//
 // mgp.model
 //===----------------------------------------------------------------------===//
 
@@ -580,6 +601,8 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.cas.create_instance", mgp_cas_create_instance);
   ADD_PRIMITIVE(registry, "mgp.cas.lookup", mgp_cas_lookup);
   ADD_PRIMITIVE(registry, "mgp.cas.store", mgp_cas_store);
+  ADD_PRIMITIVE(registry, "mgp.to_grt_bool", mgp_to_grt_bool);
+  ADD_PRIMITIVE(registry, "mgp.debug.bool.print", mgp_debug_bool_print);
   ADD_PRIMITIVE(registry, "mgp.model", mgp_model);
 
   // Have the MO primitives be registered wherever MGP is registered.

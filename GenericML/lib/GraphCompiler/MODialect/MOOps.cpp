@@ -107,6 +107,24 @@ LogicalResult OutputOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// IfOp support
+//===----------------------------------------------------------------------===//
+
+LogicalResult IfOp::verify() {
+  // Verify that the return types match the block arguments.
+  // The ODS verifier already checked the cond to be present and bool.
+  auto *thenBlock = &getThenRegion().front();
+  auto *elseBlock = &getElseRegion().front();
+
+  auto thenOutput = cast<YieldOp>(thenBlock->getTerminator());
+  if (failed(checkResultTypes(thenOutput, getResultTypes())))
+    return failure();
+
+  auto elseOutput = cast<YieldOp>(elseBlock->getTerminator());
+  return checkResultTypes(elseOutput, getResultTypes());
+}
+
+//===----------------------------------------------------------------------===//
 // MO_BroadcastShapeOp support
 //===----------------------------------------------------------------------===//
 

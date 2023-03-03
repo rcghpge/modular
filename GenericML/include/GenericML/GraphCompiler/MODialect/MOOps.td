@@ -124,6 +124,85 @@ def MO_OutputOp
 }
 
 //===----------------------------------------------------------------------===//
+// IfOp
+//===----------------------------------------------------------------------===//
+
+def IfOp : MO_Op<"if",
+          [SingleBlockImplicitTerminator<"MO::YieldOp">,
+          RecursiveMemoryEffects, RecursivelySpeculatable]> {
+  let summary = "if operation";
+  let description = [{
+    The "mo.if" operation takes an i1 condition, a 'then' body and an 'else'
+    body. If the condition is true, the 'then' body is run and the "mo.if"
+    operation returns the results of that region, otherwise the "else" body is
+    run and its values are returned.
+
+    The body regions must have the same signature, but they may take an
+    arbitrary number of arguments and return values with the same types as the
+    op return types, using a 'mo.yield' operation at the end of the
+    region.
+
+    Example:
+
+    ```mlir
+      %res = mo.if (%cond : !mo.tensor<[], bool>) -> !mo.tensor<?, f32> {
+        %v1 = mo.add(%x, %y) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>
+                               ) -> !mo.tensor<?, f32>
+        mo.yield %v1 : !mo.tensor<?, f32>
+      } else {
+        %v2 = mo.sub(%x, %y) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>
+                                 ) -> !mo.tensor<?, f32>
+        mo.yield %v2 : !mo.tensor<?, f32>
+      }
+    ```
+  }];
+
+  let arguments = (ins MO_CondLike:$cond);
+  let results = (outs Variadic<MO_Tensor>:$results);
+  let regions = (region SizedRegion<1>:$thenRegion,
+                        SizedRegion<1>:$elseRegion);
+
+  let assemblyFormat = [{
+    `(` $cond `:` qualified(type($cond)) `)` (`->` type($results)^)?
+    $thenRegion `else` $elseRegion attr-dict
+  }];
+
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// YieldOp
+//===----------------------------------------------------------------------===//
+
+def MO_YieldOp
+    : MO_Op<"yield", [Terminator, ReturnLike, Pure, HasParent<"IfOp">]> {
+  let summary = "MO yield operation";
+  let description = [{
+    The "mo.yield" operation specifies the output values for MO blocks.
+    The operation takes variable number of operands and produces
+    no results.
+
+    Example:
+
+    ```mlir
+    mo.if $cond : !mo.tensor<[], bool> (!mo.tensor<?, f32>) {
+      mo.yield %arg0 : !mo.tensor<?, f32>
+    } else {
+      mo.yield %arg1 : !mo.tensor<?, f32>
+    }
+    ```
+  }];
+
+  let arguments = (ins Variadic<MO_Tensor>:$operands);
+
+  let assemblyFormat = [{
+    `` attr-dict ($operands^ `:` type($operands))?
+  }];
+
+  let builders = [OpBuilder<(ins), [{ build($_builder, $_state, {}); }]>];
+}
+
+//===----------------------------------------------------------------------===//
 // RebindOp
 //===----------------------------------------------------------------------===//
 

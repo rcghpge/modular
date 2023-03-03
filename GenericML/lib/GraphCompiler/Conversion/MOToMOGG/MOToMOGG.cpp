@@ -72,10 +72,6 @@ struct MOOpPattern : public RewritePattern {
         isa<MO::ConstantOp>(op) || isa<MO::OutputOp>(op))
       return failure();
 
-    // Don't process nested operations.
-    if (!isa<MO::GraphOp>(op->getParentOp()))
-      return failure();
-
     auto results = selectMOGGOp(op);
     if (results.isError()) {
       return failure();

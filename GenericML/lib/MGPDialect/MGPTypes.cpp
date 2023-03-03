@@ -175,7 +175,7 @@ ErrorOr<Type> DTypeType::toMLIRType(MLIRContext *context,
                                     Optional<DType> optDtype) {
   if (!optDtype)
     return NoneType::get(context); // None denotes unknown.
-  if (optDtype->isInt()) {
+  if (optDtype->isInt() || optDtype->isBool()) {
     Type type = getEquivalentIntegerType(context, *optDtype);
     if (type != nullptr)
       return type;
@@ -193,6 +193,8 @@ ErrorOrSuccess DTypeType::hasMLIRType(Optional<DType> optDType) {
   if (!optDType)
     return {}; // None denotes unknown.
   if (optDType->isInt() && hasEquivalentIntegerType(*optDType))
+    return {};
+  if (optDType->isBool())
     return {};
   if (optDType->isFloat() && hasEquivalentFloatType(*optDType))
     return {};

@@ -18,6 +18,7 @@
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "Support/AlignedAlloc.h"
+#include "Support/Compiler/OperationUtils.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -60,13 +61,22 @@ public:
   /// Lowers the mo.output op to the mef.output for the final results.
   LogicalResult lowerOutput(MO::OutputOp output);
 
+  /// Lowers the mo.yield to the mef.output for the if block results.
+  LogicalResult lowerYield(MO::YieldOp output);
+
   /// Lowers mo.constant op.
   LogicalResult lowerConstant(MO::ConstantOp constOp);
 
   /// Lowers mo.reshape op.
   LogicalResult lowerReshape(MO::ReshapeOp reshapeOp);
 
+  /// Lowers mo.if op.
+  LogicalResult lowerIf(MO::IfOp ifOp);
+
 private:
+  /// Lowers a Block
+  LogicalResult lowerBlock(mlir::Block *block);
+
   M::MGP::MOGraphLoweringState loweringState;
 };
 
@@ -165,7 +175,21 @@ LogicalResult MOGraphLowering::lowerOutput(MO::OutputOp output) {
   SmallVector<Value> operands;
   operands.push_back(loweringState.getExecuteInvokableInputChain());
 
-  // TODO: merge chains as needed
+  for (Value operand : output.getOperands())
+    operands.push_back(loweringState.lookupExecuteLoweredTensor(operand));
+
+  // Finally, we can create the mef.output op.
+  loweringState.getExecuteOpBuilder().create<MEF::OutputOp>(output.getLoc(),
+                                                            operands);
+  return success();
+}
+
+LogicalResult MOGraphLowering::lowerYield(MO::YieldOp output) {
+  // Execute phase lowering.
+
+  // Figure out what values to return. We always return the main chain
+  SmallVector<Value> operands;
+  operands.push_back(loweringState.getExecuteChain());
   for (Value operand : output.getOperands())
     operands.push_back(loweringState.lookupExecuteLoweredTensor(operand));
 
@@ -323,27 +347,122 @@ LogicalResult MOGraphLowering::lowerReshape(MO::ReshapeOp reshapeOp) {
   return success();
 }
 
-LogicalResult MOGraphLowering::run() {
-  MO::GraphOp &graph = loweringState.getGraph();
+LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
+  // Gotta figure this one out
+  // This is using a lot of functionality defined in MOGGOps.
+  // I wonder if I should lift that
 
-  // Create the mgp.model and the regions for the init/execute phases.
-  if (failed(createModelOp()))
-    return failure();
+  auto loc = ifOp->getLoc();
+  OpBuilder &builder = loweringState.getExecuteOpBuilder();
+  TypeConverter &converter = loweringState.getTypeConverter();
+  Value initChain = loweringState.getExecuteInvokableInputChain();
+  Value mainChain = loweringState.getExecuteChain();
+  Value context = loweringState.getExecuteMgpContext();
 
-  for (auto [graphArg, exeArg] :
-       llvm::zip(graph.getArguments(), loweringState.getCommonModelOp()
-                                           .getExecuteBlock()
-                                           ->getArguments()
-                                           .drop_front(2))) {
-    // If the argument has no uses then just ignore it.
-    if (graphArg.use_empty())
-      continue;
+  // This function finds all of the SSA values implicitly captured by
+  // the MO::IfOp and returns them for argument inlining.
+  // Note: The function does not de-duplicate if the Values are
+  // used repeatedly, need to handle that below
+  SmallVector<Value> captures;
+  operationIsIsolatedFromAbove(ifOp, &captures);
 
-    loweringState.emplaceExecuteLoweredTensor(graphArg, exeArg);
+  // Lower Cond
+  Value condTensor = loweringState.lookupExecuteLoweredTensor(ifOp.getCond());
+  auto condExtract = builder.create<MGP::CpuTensorExtractOp>(loc, condTensor);
+
+  auto cond = builder.create<MGP::ToGRTBool>(
+      loc, loweringState.getExecuteInvokableInputChain(),
+      condExtract.getBufferResult());
+
+  // TODO: Change this to mapToVector once Laszlo PR #9286
+  SmallVector<Value> mgpInputs;
+  SmallVector<Value> uniqueCaptures;
+  for (const auto &capture : captures) {
+    // Dedup Captures
+    if (llvm::find(uniqueCaptures, capture) == uniqueCaptures.end()) {
+      uniqueCaptures.emplace_back(capture);
+      mgpInputs.emplace_back(loweringState.lookupExecuteLoweredTensor(capture));
+    }
   }
 
-  // Lower all of the operations in the graph.
-  for (Operation &op : *graph.getBodyBlock()) {
+  SmallVector<Value> operands;
+  operands.push_back(cond.getResult());
+  operands.push_back(initChain);
+  if (initChain != mainChain)
+    operands.push_back(mainChain);
+  operands.push_back(context);
+  // This is creating a Value semantic If Op
+  // TODO: Change it to take buffers and specs? That breaks current lowering
+  // assumptions, but we don't really want to hard limit the execution of the
+  // body of the if on _all_ inputs being ready, which is what a value semantic
+  // input list will do. Possibly better solution: split the tensors here,
+  // recreate them inside the if body, let the standard lowering + tensor
+  // creation elimination clean it up?
+  operands.append(mgpInputs);
+
+  SmallVector<Type> resultTypes;
+  // Always return the main chain
+  resultTypes.emplace_back(mainChain.getType());
+  for (Type type : ifOp.getResultTypes())
+    resultTypes.emplace_back(converter.convertType(type));
+  // Create grt.if op
+  auto outputIf = builder.create<GRT::IfOp>(loc, resultTypes, operands);
+
+  auto lower_block = [&](Region &inputRegion,
+                         Region &outputRegion) -> LogicalResult {
+    // Enter a new Block
+    Block &newBlock = outputRegion.emplaceBlock();
+    builder.setInsertionPointToEnd(&newBlock);
+    loweringState.enterBlock();
+
+    loweringState.setExecuteInvokableInputChain(
+        outputRegion.addArgument(initChain.getType(), ifOp.getLoc()));
+    if (initChain != mainChain) {
+      loweringState.setExecuteChain(
+          outputRegion.addArgument(mainChain.getType(), ifOp.getLoc()));
+    } else {
+      loweringState.setExecuteChain(
+          loweringState.getExecuteInvokableInputChain());
+    }
+    loweringState.setExecuteMgpContext(
+        outputRegion.addArgument(context.getType(), ifOp.getLoc()));
+
+    for (size_t i = 0, e = uniqueCaptures.size(); i < e; i++) {
+      // Map MO tensors in this block to arguments to the region
+      Value arg =
+          outputRegion.addArgument(mgpInputs[i].getType(), ifOp.getLoc());
+      loweringState.emplaceExecuteLoweredTensor(uniqueCaptures[i], arg);
+    }
+    if (failed(lowerBlock(&inputRegion.getBlocks().front())))
+      return failure();
+    loweringState.exitBlock();
+    return success();
+  };
+
+  // Lower Then Block
+  if (failed(lower_block(ifOp.getThenRegion(), outputIf.getThenRegion())))
+    return failure();
+
+  // Lower Else Block
+  if (failed(lower_block(ifOp.getElseRegion(), outputIf.getElseRegion())))
+    return failure();
+
+  // Set the outputs
+  loweringState.setExecuteChain(outputIf.getResult(0));
+  for (size_t i = 1, e = resultTypes.size(); i < e; i++) {
+    loweringState.emplaceExecuteLoweredTensor(ifOp.getResult(i - 1),
+                                              outputIf.getResult(i));
+  }
+
+  // since we moved the insertion points for the then/else, reset to the main
+  // block
+  builder.setInsertionPointAfter(outputIf);
+
+  return success();
+}
+
+LogicalResult MOGraphLowering::lowerBlock(Block *block) {
+  for (Operation &op : *block) {
     if (auto constOp = dyn_cast<MO::ConstantOp>(op)) {
       if (failed(lowerConstant(constOp)))
         return failure();
@@ -363,6 +482,21 @@ LogicalResult MOGraphLowering::run() {
       continue;
     }
 
+    // Lower mo.if to grf.if, recursively lowering the body of
+    // the then and else branches of if.
+    if (auto ifOp = dyn_cast<MO::IfOp>(op)) {
+      if (failed(lowerIf(ifOp)))
+        return failure();
+      continue;
+    }
+
+    // Lower mo.yield to mef.output trivially.
+    if (auto output = dyn_cast<MO::YieldOp>(op)) {
+      if (failed(lowerYield(output)))
+        return failure();
+      continue;
+    }
+
     // Implementers of the lowering interface define their own logic.
     if (auto lowerable = dyn_cast<MGP::LowerableToMGPInterface>(op)) {
       if (failed(lowerable.lower(loweringState)))
@@ -372,8 +506,36 @@ LogicalResult MOGraphLowering::run() {
 
     return op.emitError("op currently not supported");
   }
+  return success();
+}
 
+LogicalResult MOGraphLowering::run() {
+  MO::GraphOp &graph = loweringState.getGraph();
+
+  // Create the mgp.model and the regions for the init/execute phases.
+  if (failed(createModelOp()))
+    return failure();
+
+  // Enter the main body of the graph
+  loweringState.enterBlock();
+  for (auto [graphArg, exeArg] :
+       llvm::zip(graph.getArguments(), loweringState.getCommonModelOp()
+                                           .getExecuteBlock()
+                                           ->getArguments()
+                                           .drop_front(2))) {
+    // If the argument has no uses then just ignore it.
+    if (graphArg.use_empty())
+      continue;
+
+    loweringState.emplaceExecuteLoweredTensor(graphArg, exeArg);
+  }
+
+  // Lower all of the operations in the graph.
+  if (failed(lowerBlock(graph.getBodyBlock())))
+    return failure();
   // Ok, we're done with the original mo.graph, so remove it.
+  loweringState.exitBlock();
+  llvm::errs() << loweringState.getModelOp() << '\n';
   graph.erase();
   return success();
 }
