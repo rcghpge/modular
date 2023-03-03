@@ -10,9 +10,12 @@
 
 #include "LLCL/Runtime/Runtime.h"
 
+#include "KGEN/CLOptions.h"
 #include "KGEN/KGENCompiler.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/LowerToObject.h"
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/TargetParser/Host.h"
 
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 
@@ -24,8 +27,18 @@ LogicalResult StubCompiler::elaborateKGEN() {
       LLCL::createLeakCheckAllocator(LLCL::createMallocAllocator()),
       LLCL::createSingleThreadWorkQueue());
 
+  llvm::InitializeNativeTarget();
+  llvm::InitializeNativeTargetAsmParser();
+  llvm::InitializeNativeTargetAsmPrinter();
+
+  ErrorOr<TargetInfoAttr> target = KGEN::getTargetInfoFor(
+      kgenModule->getContext(), llvm::sys::getDefaultTargetTriple(),
+      llvm::sys::getHostCPUName(), KGEN::getHostCPUFeatures());
+  if (target.isError())
+    return mlir::emitError(kgenModule.getLoc(), target.getError());
+
   mlir::PassManager pm(kgenModule->getContext());
-  KGEN::elaborateModule(pm, runtime, {shouldSearch});
+  KGEN::elaborateModule(pm, runtime, *target, {shouldSearch});
 
   return pm.run(kgenModule);
 }
@@ -41,7 +54,7 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
   KGEN::CompilationOptions compilationOptions;
   auto compiler = KGEN::ObjectCompiler::create(runtime, mgr, ".kgen_cache",
                                                symTable, compilationOptions);
-  UNWRAP_ERROR(target, KGEN::getHostTargetInfo(ctx));
+  TargetInfoAttr target = getTargetInfo(kgenModule);
 
   auto standaloneOr = compiler->produceStandaloneObjectAttr(target, true);
   if (failed(standaloneOr))
