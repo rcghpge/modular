@@ -229,16 +229,16 @@ LogicalResult BroadcastToOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// MO_StaticBroadcastToOp
+// MOStatic_BroadcastToOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult StaticBroadcastToOp::fold(FoldAdaptor adaptor) {
+OpFoldResult Static::BroadcastToOp::fold(FoldAdaptor adaptor) {
   if (getInput().getType() == getType())
     return getInput();
   return {};
 }
 
-LogicalResult StaticBroadcastToOp::verify() {
+LogicalResult Static::BroadcastToOp::verify() {
   if (auto err = verifyBroadcastStaticRanks(getInput().getType(), getType()))
     return emitError(err.getError());
   return success();
@@ -472,32 +472,54 @@ void RebindOp::getEffects(
 // MO_ReshapeOp support
 //===----------------------------------------------------------------------===//
 
+/// Helper to fold reshape ops.
+static ArrayElementsAttr foldReshape(ArrayRef<int64_t> outIntDims,
+                                     ArrayElementsAttr inputArr) {
+  auto outTy = RankedTensorType::get(outIntDims, inputArr.getElementType());
+  return ArrayElementsAttr::get(inputArr.getRawData(), outTy);
+}
+
 OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
-  auto inputArrElemAttr =
-      dyn_cast_or_null<ArrayElementsAttr>(adaptor.getInput());
-  auto shapeArrElemAttr =
-      dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getNewShape());
+  auto inputArr = dyn_cast_or_null<ArrayElementsAttr>(adaptor.getInput());
+  auto shapeArr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getNewShape());
   auto outputShapeAttr = dyn_cast<ShapeAttr>(getType().getShapeAttr());
-  if (!inputArrElemAttr || !shapeArrElemAttr || !outputShapeAttr)
+  if (!inputArr || !shapeArr || !outputShapeAttr)
     return {};
 
   // Compute number of elements specified by target shape
   int64_t shapeNumElems = 1;
-  for (llvm::APInt dim : shapeArrElemAttr.getValues()) {
+  for (llvm::APInt dim : shapeArr.getValues())
     shapeNumElems *= dim.getSExtValue();
-  }
 
   // Compute number of elements specified by output type
   int64_t outputNumElems = 1;
-  for (int64_t intDim : outputShapeAttr.getIntDims()) {
+  SmallVector<int64_t> outIntDims = outputShapeAttr.getIntDims();
+  for (int64_t intDim : outIntDims) {
     if (mlir::ShapedType::isDynamic(intDim))
       return {};
     outputNumElems *= intDim;
   }
 
-  // Reshape is valid and trivial if number of elements match
+  // Reshape is valid if number of elements match.
   if (shapeNumElems == outputNumElems)
-    return inputArrElemAttr;
+    return foldReshape(outIntDims, inputArr);
+
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
+// MOStatic_ReshapeOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult Static::ReshapeOp::fold(FoldAdaptor adaptor) {
+  if (auto inputArr = dyn_cast_or_null<ArrayElementsAttr>(adaptor.getInput())) {
+    auto outputShape = dyn_cast<ShapeAttr>(getType().getShapeAttr());
+    if (outputShape && outputShape.isStatic())
+      return foldReshape(outputShape.getIntDims(), inputArr);
+  }
+
+  if (getInput().getType() == getType())
+    return getInput();
 
   return {};
 }

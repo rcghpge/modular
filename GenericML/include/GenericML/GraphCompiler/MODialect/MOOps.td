@@ -654,8 +654,43 @@ def MO_ConvOp : MO_Op<"conv", [Pure, MO_SlidingWindow]>{
 // Shape related ops
 //===----------------------------------------------------------------------===//
 
-def MO_ReshapeOp : MO_Op<"reshape",
-    [Pure, DeclareOpInterfaceMethods<MO_Parameterization>]> {
+class MO_ShapeModifierOp<string mnemonic, list<Trait> traits = []> : MO_Op<
+    mnemonic, traits # [Pure, DeclareOpInterfaceMethods<MO_Parameterization>]> {
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_ShapeLike:$newShape,
+    MO_ParamDecls:$paramDecls);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($paramDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
+def MO_BroadcastToOp : MO_ShapeModifierOp<"broadcast_to"> {
+  let summary = "BroadcastTo Operation";
+  let description = [{
+    Broadcast the input tensor to the shape newShape.
+
+    The broadcasting follows numpy semantics to determine validity of the
+    two shapes.
+
+    Example:
+
+    ```mlir
+    %from: !mo.tensor<[3], f32>
+    %to = mo.constant {
+      value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %res = mo.broadcast_to(%from, %to) : (
+      !mo.tensor<[3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 3], f32>
+    ```
+  }];
+
+  let hasVerifier = 1;
+}
+
+def MO_ReshapeOp : MO_ShapeModifierOp<"reshape"> {
   let summary = "Reshape operation";
   let description = [{
     Return a tensor with the same underlying data, but different shape.
@@ -670,15 +705,6 @@ def MO_ReshapeOp : MO_Op<"reshape",
     ```
   }];
 
-  let arguments = (ins
-    MO_Tensor:$input,
-    MO_ShapeLike:$newShape,
-    MO_ParamDecls:$paramDecls);
-  let results = (outs MO_Tensor:$output);
-  let assemblyFormat = [{
-    `` custom<ParamDecls>($paramDecls) `(` operands `)` attr-dict `:`
-    functional-type(operands, results)
-  }];
   let hasFolder = 1;
 }
 
@@ -762,40 +788,21 @@ def MO_BroadcastShapeOp : MO_Op<"broadcast_shape",
   let hasVerifier = 1;
 }
 
-def MO_BroadcastToOp : MO_Op<"broadcast_to",
-    [Pure, DeclareOpInterfaceMethods<MO_Parameterization>]> {
-  let summary = "BroadcastTo Operation";
-  let description = [{
-    Broadcast the input tensor to the shape newShape.
+class MOStatic_ShapeModifierOp<string mnemonic, list<Trait> traits = []>
+    : MO_Op<"static." # mnemonic, traits # [Pure]> {
+  string cppNamespace = MODialect.cppNamespace # "::Static";
 
-    The broadcasting follows numpy semantics to determine validity of the
-    two shapes.
-
-    Example:
-
-    ```mlir
-    %from: !mo.tensor<[3], f32>
-    %to = mo.constant {
-      value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %res = mo.broadcast_to(%from, %to) : (
-      !mo.tensor<[3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 3], f32>
-    ```
-  }];
-
-  let arguments = (ins
-    MO_Tensor:$input,
-    MO_ShapeLike:$newShape,
-    MO_ParamDecls:$paramDecls);
-  let results = (outs MO_Tensor:$result);
+  let arguments = (ins MO_KnownTensor:$input);
+  let results = (outs MO_KnownTensor:$result);
 
   let assemblyFormat = [{
-    `` custom<ParamDecls>($paramDecls) `(` operands `)` attr-dict `:`
-    functional-type(operands, results)
+    `(` operands `)` attr-dict `:`
+    qualified(type($input)) `->` qualified(type($result))
   }];
-  let hasVerifier = 1;
+  let hasFolder = 1;
 }
 
-def MO_StaticBroadcastToOp : MO_Op<"static.broadcast_to", [Pure]> {
+def MOStatic_BroadcastToOp : MOStatic_ShapeModifierOp<"broadcast_to"> {
   let summary = "Broadcast operation for parametric shapes";
   let description = [{
     Broadcast the input tensor to the result tensor. The shape of the input and
@@ -817,15 +824,26 @@ def MO_StaticBroadcastToOp : MO_Op<"static.broadcast_to", [Pure]> {
     ```
   }];
 
-  let arguments = (ins MO_KnownTensor:$input);
-  let results = (outs MO_KnownTensor:$result);
-
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:`
-    qualified(type($input)) `->` qualified(type($result))
-  }];
   let hasVerifier = 1;
-  let hasFolder = 1;
+}
+
+def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape"> {
+  let summary = "Reshape operation for parametric shapes";
+  let description = [{
+    Return a tensor with the same underlying data, but different shape. The
+    shape of the input and result tensors must not be unknown or contain unknown
+    dimensions, but can be parametric. It is not recommended for frontend
+    conversion code to rely on this op (use `mo.reshape` with a constant
+    shape-like tensor instead).
+
+    Example:
+
+    ```mlir
+    %from: !mo.tensor<[2, 3], f32>
+    %res = mo.static.reshape(%from)
+      : !mo.tensor<[2, 3], f32> -> !mo.tensor<[2, 3], f32>
+    ```
+  }];
 }
 
 def MO_ConcatOp : MO_Op<"concat", [Pure]> {
