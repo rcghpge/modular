@@ -303,6 +303,43 @@ mo.graph @pad_invalid_shape_paddings(%input: !mo.tensor<[2, 3], f32>, %paddings:
 // -----
 
 //===----------------------------------------------------------------------===//
+// RangeOp
+//===----------------------------------------------------------------------===//
+
+mo.graph @range_result_rank(
+  %arg0: !mo.tensor<[], si32>, %arg1: !mo.tensor<[], si32>, %arg2: !mo.tensor<[], si32>
+) -> !mo.tensor<[5, 1], si32> {
+  // expected-error@+1 {{'mo.range' op result #0 must be rank 1 or unranked, but got '!mo.tensor<[5, 1], si32>'}}
+  %res = mo.range(%arg0, %arg1, %arg2) : (
+    !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[5, 1], si32>
+  mo.output %res : !mo.tensor<[5, 1], si32>
+}
+
+// -----
+
+mo.graph @range_arg_eltype_mismatch(
+  %arg0: !mo.tensor<[], si32>, %arg1: !mo.tensor<[], si32>, %arg2: !mo.tensor<[], f32>
+) -> !mo.tensor<[?], si32> {
+  // expected-error@+1 {{'mo.range' op requires the same element type for all operands and results}}
+  %res = mo.range(%arg0, %arg1, %arg2) : (
+    !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], f32>) -> !mo.tensor<[?], si32>
+  mo.output %res : !mo.tensor<[?], si32>
+}
+
+// -----
+
+mo.graph @range_res_eltype_mismatch(
+  %arg0: !mo.tensor<[], si32>, %arg1: !mo.tensor<[], si32>, %arg2: !mo.tensor<[], si32>
+) -> !mo.tensor<[?], f32> {
+  // expected-error@+1 {{'mo.range' op requires the same element type for all operands and results}}
+  %res = mo.range(%arg0, %arg1, %arg2) : (
+    !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[?], f32>
+  mo.output %res : !mo.tensor<[?], f32>
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // ShapeOfOp
 //===----------------------------------------------------------------------===//
 

@@ -133,6 +133,37 @@ mo.graph @pad_dynamic_output_shape(%input: !mo.tensor<[2, 3], f32>, %paddings: !
 }
 
 //===----------------------------------------------------------------------===//
+// RangeOp
+//===----------------------------------------------------------------------===//
+
+// CHECK: mo.graph @range_float_dyn(%[[LIMIT:.*]]: !mo.tensor<[], f32>)
+mo.graph @range_float_dyn(%limit: !mo.tensor<[], f32>) -> !mo.tensor<[?], f32> {
+  // CHECK-DAG: %[[START:.*]] = mo.constant {value = #M.dense_array<0.{{0+}}e+00> : tensor<f32>} : !mo.tensor<[], f32>
+  // CHECK-DAG: %[[STEP:.*]] = mo.constant {value = #M.dense_array<1.5{{0+}}e+00> : tensor<f32>} : !mo.tensor<[], f32>
+  %start = mo.constant {value = #M.dense_array<0.0> : tensor<f32>} : !mo.tensor<[], f32>
+  %step = mo.constant {value = #M.dense_array<1.5> : tensor<f32>} : !mo.tensor<[], f32>
+  // CHECK: %[[RES:.*]] = mo.range(%[[START]], %[[LIMIT]], %[[STEP]]) : (
+  %res = mo.range(%start, %limit, %step) : (
+    // CHECK-SAME: !mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[?], f32>
+    !mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[?], f32>
+  mo.output %res : !mo.tensor<[?], f32>
+}
+
+mo.graph @range_int_static() -> !mo.tensor<[5], si32> {
+  // CHECK-DAG: %[[START:.*]] = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
+  // CHECK-DAG: %[[STEP:.*]] = mo.constant {value = #M.dense_array<2> : tensor<si32>} : !mo.tensor<[], si32>
+  // CHECK-DAG: %[[LIMIT:.*]] = mo.constant {value = #M.dense_array<11> : tensor<si32>} : !mo.tensor<[], si32>
+  %startInt = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
+  %stepInt = mo.constant {value = #M.dense_array<2> : tensor<si32>} : !mo.tensor<[], si32>
+  %limitInt = mo.constant {value = #M.dense_array<11> : tensor<si32>} : !mo.tensor<[], si32>
+  // CHECK: %[[RES:.*]] = mo.range(%[[START]], %[[LIMIT]], %[[STEP]]) : (
+  %res = mo.range(%startInt, %limitInt, %stepInt) : (
+    // CHECK-SAME: !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[5], si32>
+    !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[5], si32>
+  mo.output %res : !mo.tensor<[5], si32>
+}
+
+//===----------------------------------------------------------------------===//
 // ReshapeOp
 //===----------------------------------------------------------------------===//
 
