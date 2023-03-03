@@ -162,6 +162,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_SHIM_ONLY(MO::DivOp, "mop.kernels.div"),
       MO_TO_LIT(MO::ErfOp, "mop.kernels.erf"),
       MO_TO_LIT(MO::ExpOp, "mop.kernels.exp"),
+      MO_SHIM_ONLY(MO::LogSoftmaxOp, "mop.kernels.logsoftmax"),
       MO_SHIM_ONLY(MO::TransposeOp, "mop.kernels.transpose"),
       MO_SHIM_ONLY(MO::PadOp, "mop.kernels.pad"),
       MO_SHIM_ONLY(MO::GatherOp, "mop.kernels.gather"),
