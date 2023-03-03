@@ -105,7 +105,6 @@ add_subdirectory(bindings/modular/engine)
 if(STOCK_TENSORFLOW_FOUND)
   set(EXTERNAL_TF_EXES
       "${MODULAR_DERIVED_DIR}/third-party/bin/external-tf-translate;"
-      "${MODULAR_DERIVED_DIR}/third-party/bin/external-tf-tfl-translate;"
       "${MODULAR_DERIVED_DIR}/third-party/bin/external-tf-opt")
     set(MODULAR_FRAMEWORK_LIBS $<TARGET_FILE:tf>)
 endif()
