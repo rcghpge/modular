@@ -75,6 +75,13 @@ kgen.func @new_dim(%d0: index, %d1: index)
   kgen.return %sh0, %sh1, %sh2 : !mo.shape, !mo.shape, !mo.shape
 }
 
+// CHECK: kgen.func @reshape(%[[FROM:.*]]: !mo.tensor<[3], f32>, %[[TO:.*]]: !mo.shape) -> !mo.tensor<[2, 3], f32> {
+kgen.func @reshape(%from: !mo.tensor<[3], f32>, %to: !mo.shape) -> !mo.tensor<[2, 3], f32> {
+  // CHECK: [[RES:.*]] = mo.shape.reshape(%[[FROM]], %[[TO]]) : (!mo.tensor<[3], f32>, !mo.shape) -> !mo.tensor<[2, 3], f32>
+  %0 = mo.shape.reshape(%from, %to) : (!mo.tensor<[3], f32>, !mo.shape) -> !mo.tensor<[2, 3], f32>
+  kgen.return %0 : !mo.tensor<[2, 3], f32>
+}
+
 // CHECK: kgen.func @slice(%[[SH0:.*]]: !mo.shape) -> (!mo.shape, !mo.shape) {
 kgen.func @slice(%sh0: !mo.shape) -> (!mo.shape, !mo.shape) {
   // CHECK-DAG: %[[SH1:.*]] = mo.shape.slice(%[[SH0]])[0, 2]
