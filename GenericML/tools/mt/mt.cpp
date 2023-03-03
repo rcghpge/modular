@@ -152,201 +152,237 @@ int main(int argc, char **argv) {
 
   llvm::cl::ParseCommandLineOptions(argc, argv, "Modular Tool (mt)\n");
 
-  FileFormat format = FileFormat::kUnknown;
+  struct InputInfo {
+    // If we don't have a regular input file (and we're attempting to run
+    // something that doesn't take any input), then we have to pass in an empty
+    // memory buffer which will result in an unknown file format. We want to
+    // preserve the stdin behavior for cases where the command does take input
+    // because we might be piping something into the tool.
+    std::unique_ptr<MemoryBuffer> file =
+        MemoryBuffer::getMemBuffer("", "empty");
 
-  // If we don't have a regular input file (and we're attempting to run
-  // something that doesn't take any input), then we have to pass in an empty
-  // memory buffer which will result in an unknown file format. We want to
-  // preserve the stdin behavior for cases where the command does take input
-  // because we might be piping something into the tool.
-  std::unique_ptr<MemoryBuffer> file = MemoryBuffer::getMemBuffer("", "empty");
-  bool isInputDirectory = false;
-  std::filesystem::path inputPath;
-  if (options.commandTakesInput() || options.inputFilename != "-") {
-    std::error_code errorCode;
-    inputPath = std::filesystem::path{options.inputFilename.getValue()};
-    isInputDirectory = std::filesystem::is_directory(inputPath, errorCode);
-    if (errorCode) {
+    FileFormat format = FileFormat::kUnknown;
+    bool isInputDirectory = false;
+    std::filesystem::path inputPath;
+  };
+
+  std::vector<InputInfo> inputsInfo{};
+
+  // Handle stdin specially by default-constructing an `InputInfo` so we can
+  // still process the commands later on.
+  auto fromStdin = options.inputFilename == "-";
+  if (fromStdin) {
+    inputsInfo.emplace_back();
+  }
+
+  if (options.commandTakesInput() || !fromStdin) {
+    // Input filenames are comma-separated (e.g. file1,file2).  In the future,
+    // we may change the CL option to be a list<string> instead.
+    auto inputAdaptorRange = llvm::split(options.inputFilename, ",");
+    if (std::distance(inputAdaptorRange.begin(), inputAdaptorRange.end()) > 1 &&
+        options.command != DriverCommand::execute) {
       return options.reportError(
-          Twine("failed to check type of path: ") + inputPath.string() +
-          " (error code: " + Twine(errorCode.message()) + ")");
+          "Only the execute command supports multiple inputs right now.");
     }
+    for (StringRef inputFilename : inputAdaptorRange) {
+      InputInfo info{};
+      info.inputPath = std::filesystem::path{inputFilename.str()};
 
-    if (isInputDirectory) {
-      // If the input file is a directory, we will just assume that it is a TF
-      // SavedModel. If other directory formats come up, we will need to modify
-      // this logic.
-      format = FileFormat::kTFSavedModel;
-    } else {
-      // The input file is not a directory, so we open and sniff the format.
-      // In case the input file is MEF, it has to be aligned to the maximum
-      // attribute alignment.
-      file = options.openInputFileOrExit(maxAttributeAlignment());
-      format = options.getInputFormat(inputPath.extension().string(),
-                                      file->getBuffer());
+      std::error_code errorCode;
+      info.isInputDirectory =
+          std::filesystem::is_directory(info.inputPath, errorCode);
+      if (errorCode) {
+        return options.reportError(
+            Twine("failed to check type of path: ") + inputFilename +
+            " (error code: " + Twine(errorCode.message()) + ")");
+      }
+
+      if (info.isInputDirectory) {
+        // If the input file is a directory, we will just assume that it is a TF
+        // SavedModel. If other directory formats come up, we will need to
+        // modify this logic.
+        info.format = FileFormat::kTFSavedModel;
+      } else {
+        // The input file is not a directory, so we open and sniff the format.
+        // In case the input file is MEF, it has to be aligned to the maximum
+        // attribute alignment.
+        info.file =
+            options.openInputFileOrExit(inputFilename, maxAttributeAlignment());
+        info.format = options.getInputFormat(
+            info.inputPath.extension().string(), info.file->getBuffer());
+      }
+
+      inputsInfo.push_back(std::move(info));
     }
   }
 
-  auto dylibOr = loadDesiredLibrary(argc, argv, *file, format, options.loadLib);
-  if (failed(dylibOr))
-    return options.reportError(dylibOr.getError());
+  // We'll just use the final scenario's return code as the executable's
+  // return code.
+  int rc = EXIT_SUCCESS;
 
-  CXXDriverAPI dylib = *dylibOr;
+  for (auto &inputInfo : inputsInfo) {
+    auto dylibOr = loadDesiredLibrary(argc, argv, *inputInfo.file,
+                                      inputInfo.format, options.loadLib);
+    if (failed(dylibOr))
+      return options.reportError(dylibOr.getError());
 
-  // If the driver command is just `-get-version` then print the version and
-  // exit right away. No need to do anything else.
-  if (options.command == DriverCommand::getVersion) {
-    llvm::outs() << "mt: " << MODULAR_VERSION_STRING
-                 << "\nFramework: " << dylib.getVersion() << "\n";
-    return EXIT_SUCCESS;
-  }
+    CXXDriverAPI dylib = *dylibOr;
 
-  // Setup the framework context. Despite passing argc/argv no significant
-  // command line argument processing is done here.
-  auto frameworkCtxOr = dylib.initFrameworkContext(argc, argv);
-  if (failed(frameworkCtxOr))
-    return options.reportError(frameworkCtxOr.getError());
-  auto frameworkCtx = std::move(*frameworkCtxOr);
+    // If the driver command is just `-get-version` then print the version and
+    // exit right away. No need to do anything else.
+    if (options.command == DriverCommand::getVersion) {
+      llvm::outs() << "mt: " << MODULAR_VERSION_STRING
+                   << "\nFramework: " << dylib.getVersion() << "\n";
+      return EXIT_SUCCESS;
+    }
 
-  // We'll accumulate command line arguments for the framework as we go below,
-  SmallVector<std::string> dylibOptions;
+    // Setup the framework context. Despite passing argc/argv no significant
+    // command line argument processing is done here.
+    auto frameworkCtxOr = dylib.initFrameworkContext(argc, argv);
+    if (failed(frameworkCtxOr))
+      return options.reportError(frameworkCtxOr.getError());
+    auto frameworkCtx = std::move(*frameworkCtxOr);
 
-  // We might want to get the framework's help string.
-  if (options.command == DriverCommand::frameworkHelp) {
-    if (auto err = dylib.setOptions(frameworkCtx, {"-h"}))
+    // We'll accumulate command line arguments for the framework as we go below,
+    SmallVector<std::string> dylibOptions;
+
+    // We might want to get the framework's help string.
+    if (options.command == DriverCommand::frameworkHelp) {
+      if (auto err = dylib.setOptions(frameworkCtx, {"-h"}))
+        return options.reportError(err.getError());
+      return EXIT_SUCCESS;
+    }
+
+    // Hand over any explicitly designated unparsed options.
+    dylibOptions.append(options.forceUnparsed.begin(),
+                        options.forceUnparsed.end());
+    dylibOptions.append(options.unparsed.begin(), options.unparsed.end());
+
+    // Hand over save-temps and temps-dir options to framework.
+    if (options.saveTemps) {
+      dylibOptions.push_back("--save-temps");
+      dylibOptions.push_back("--temps-dir=" + options.tempsDir.getValue());
+    }
+
+    // Tell the framework about our options.
+    if (auto err = dylib.setOptions(frameworkCtx, dylibOptions))
       return options.reportError(err.getError());
-    return EXIT_SUCCESS;
-  }
 
-  // Hand over any explicitly designated unparsed options.
-  dylibOptions.append(options.forceUnparsed.begin(),
-                      options.forceUnparsed.end());
-  dylibOptions.append(options.unparsed.begin(), options.unparsed.end());
+    // Start processing the input in stages.  The inspect command is first,
+    // because it works on any input without transformation.
+    if (options.command == DriverCommand::inspect) {
+      std::unique_ptr<llvm::ToolOutputFile> outputFile =
+          options.getOutputFile(options.commandHasBinaryOutput());
+      auto identityOr = getFileContentIdentity(
+          *inputInfo.file, inputInfo.format, frameworkCtx, dylib);
+      if (failed(identityOr))
+        return options.reportError(identityOr.getError());
 
-  // Hand over save-temps and temps-dir options to framework.
-  if (options.saveTemps) {
-    dylibOptions.push_back("--save-temps");
-    dylibOptions.push_back("--temps-dir=" + options.tempsDir.getValue());
-  }
-
-  // Tell the framework about our options.
-  if (auto err = dylib.setOptions(frameworkCtx, dylibOptions))
-    return options.reportError(err.getError());
-
-  // Start processing the input in stages.  The inspect command is first,
-  // because it works on any input without transformation.
-  if (options.command == DriverCommand::inspect) {
-    std::unique_ptr<llvm::ToolOutputFile> outputFile =
-        options.getOutputFile(options.commandHasBinaryOutput());
-    auto identityOr =
-        getFileContentIdentity(*file, format, frameworkCtx, dylib);
-    if (failed(identityOr))
-      return options.reportError(identityOr.getError());
-
-    outputFile->os() << *identityOr << ".\n";
-    outputFile->keep();
-    return EXIT_SUCCESS;
-  }
-
-  // If we are dealing with a directory, we need to open it.
-  if (isInputDirectory) {
-    // TODO: this should be called for all files
-    auto fileOr = dylib.openPath(frameworkCtx, inputPath);
-    if (failed(fileOr))
-      return options.reportError(fileOr.getError());
-    file = std::move(*fileOr);
-  }
-
-  // If we're stopping at compilation, emit the binary file directly to the
-  // output.
-  if (options.command == DriverCommand::compile) {
-    auto outputFile = options.getOutputFile(options.commandHasBinaryOutput());
-
-    // If the file is already a binary, just emit it directly.
-    if (format == FileFormat::kMEFFile ||
-        dylib.isBinary(frameworkCtx, *file, format)) {
-      outputFile->os().write(file->getBufferStart(), file->getBufferSize());
+      outputFile->os() << *identityOr << ".\n";
       outputFile->keep();
       return EXIT_SUCCESS;
     }
 
-    // Otherwise, compile it.
-    if (auto err = dylib.compileToBinary(frameworkCtx, *file, outputFile->os(),
-                                         format))
+    // If we are dealing with a directory, we need to open it.
+    if (inputInfo.isInputDirectory) {
+      // TODO: this should be called for all files
+      auto fileOr = dylib.openPath(frameworkCtx, inputInfo.inputPath);
+      if (failed(fileOr))
+        return options.reportError(fileOr.getError());
+      inputInfo.file = std::move(*fileOr);
+    }
+
+    // If we're stopping at compilation, emit the binary file directly to the
+    // output.
+    if (options.command == DriverCommand::compile) {
+      auto outputFile = options.getOutputFile(options.commandHasBinaryOutput());
+
+      // If the file is already a binary, just emit it directly.
+      if (inputInfo.format == FileFormat::kMEFFile ||
+          dylib.isBinary(frameworkCtx, *inputInfo.file, inputInfo.format)) {
+        outputFile->os().write(inputInfo.file->getBufferStart(),
+                               inputInfo.file->getBufferSize());
+        outputFile->keep();
+        return EXIT_SUCCESS;
+      }
+
+      // Otherwise, compile it.
+      if (auto err = dylib.compileToBinary(frameworkCtx, *inputInfo.file,
+                                           outputFile->os(), inputInfo.format))
+        return options.reportError(err.getError());
+
+      outputFile->keep();
+      return EXIT_SUCCESS;
+    }
+
+    // If we are not inspecting, we must need a compiled format.  If this is
+    // already done then we're golden, otherwise compile now.
+    if (inputInfo.format != FileFormat::kMEFFile &&
+        !dylib.isBinary(frameworkCtx, *inputInfo.file, inputInfo.format)) {
+      if (auto err = dylib.compileToBinary(frameworkCtx, inputInfo.file,
+                                           inputInfo.format))
+        return options.reportError(err.getError());
+    }
+
+    // Otherwise we must be getting op-level information about the model or
+    // executing the model.
+    assert((options.command == DriverCommand::printMetadata ||
+            options.command == DriverCommand::printConstantMetadata ||
+            options.command == DriverCommand::execute) &&
+           "unknown command");
+
+    auto binaryFileOr = dylib.openBinaryFile(frameworkCtx, *inputInfo.file);
+    if (failed(binaryFileOr))
+      return options.reportError(binaryFileOr.getError());
+    auto binaryFile = std::move(*binaryFileOr);
+
+    // Check to see if this file contains what we expected.  If not, throw an
+    // error message.
+    if (auto err = dylib.checkExpectedContents(frameworkCtx, binaryFile))
       return options.reportError(err.getError());
 
-    outputFile->keep();
-    return EXIT_SUCCESS;
-  }
+    // If we're just getting information, then get and print it.
+    if (options.command == DriverCommand::printMetadata ||
+        options.command == DriverCommand::printConstantMetadata) {
+      if (auto err = dylib.getMetadataFromBinary(frameworkCtx, binaryFile,
+                                                 *options.getOutputFile(false),
+                                                 options.command.getValue()))
+        return options.reportError(err.getError());
+      return EXIT_SUCCESS;
+    }
 
-  // If we are not inspecting, we must need a compiled format.  If this is
-  // already done then we're golden, otherwise compile now.
-  if (format != FileFormat::kMEFFile &&
-      !dylib.isBinary(frameworkCtx, *file, format)) {
-    if (auto err = dylib.compileToBinary(frameworkCtx, file, format))
-      return options.reportError(err.getError());
-  }
+    // Hand off the MEFFileHandle and the file buffer to the framework to
+    // actually run the thing with all the various diagnostics.
+    if (options.scenarios.empty())
+      rc = dylib.runBinaryFile(frameworkCtx, std::move(inputInfo.file),
+                               binaryFile);
 
-  // Otherwise we must be getting op-level information about the model or
-  // executing the model.
-  assert((options.command == DriverCommand::printMetadata ||
-          options.command == DriverCommand::printConstantMetadata ||
-          options.command == DriverCommand::execute) &&
-         "unknown command");
+    for (Scenario scenario : options.scenarios) {
+      printf("--- (mt) Running scenario: '%s", scenario.flags.front().c_str());
+      for (StringRef f : llvm::drop_begin(scenario.flags))
+        printf(" %s", f.data());
+      printf("' - %s \n", scenario.abortOnFailure ? "Aborting on failure."
+                                                  : "Not aborting on failure.");
+      fflush(stdout);
 
-  auto binaryFileOr = dylib.openBinaryFile(frameworkCtx, *file);
-  if (failed(binaryFileOr))
-    return options.reportError(binaryFileOr.getError());
-  auto binaryFile = std::move(*binaryFileOr);
+      auto fileCopy = MemoryBuffer::getMemBufferCopy(
+          inputInfo.file->getBuffer(), inputInfo.file->getBufferIdentifier());
 
-  // Check to see if this file contains what we expected.  If not, throw an
-  // error message.
-  if (auto err = dylib.checkExpectedContents(frameworkCtx, binaryFile))
-    return options.reportError(err.getError());
+      // Add any common flags to the scenario, this will ensure that the user
+      // can pass something like "result-output-style=full" to all scenarios
+      // without having to specify it each time.
+      scenario.flags.append(dylibOptions);
 
-  // If we're just getting information, then get and print it.
-  if (options.command == DriverCommand::printMetadata ||
-      options.command == DriverCommand::printConstantMetadata) {
-    if (auto err = dylib.getMetadataFromBinary(frameworkCtx, binaryFile,
-                                               *options.getOutputFile(false),
-                                               options.command.getValue()))
-      return options.reportError(err.getError());
-    return EXIT_SUCCESS;
-  }
+      // Reset the options.
+      if (auto err = dylib.setOptions(frameworkCtx, scenario.flags))
+        return options.reportError(err.getError());
 
-  // Hand off the MEFFileHandle and the file buffer to the framework to actually
-  // run the thing with all the various diagnostics.
-  if (options.scenarios.empty())
-    return dylib.runBinaryFile(frameworkCtx, std::move(file), binaryFile);
-
-  // We'll just use the final scenario's return code as the executable's return
-  // code.
-  int rc = EXIT_SUCCESS;
-  for (Scenario scenario : options.scenarios) {
-    printf("--- (mt) Running scenario: '%s", scenario.flags.front().c_str());
-    for (StringRef f : llvm::drop_begin(scenario.flags))
-      printf(" %s", f.data());
-    printf("' - %s \n", scenario.abortOnFailure ? "Aborting on failure."
-                                                : "Not aborting on failure.");
-    fflush(stdout);
-
-    auto fileCopy = MemoryBuffer::getMemBufferCopy(file->getBuffer(),
-                                                   file->getBufferIdentifier());
-
-    // Add any common flags to the scenario, this will ensure that the user can
-    // pass something like "result-output-style=full" to all scenarios without
-    // having to specify it each time.
-    scenario.flags.append(dylibOptions);
-
-    // Reset the options.
-    if (auto err = dylib.setOptions(frameworkCtx, scenario.flags))
-      return options.reportError(err.getError());
-
-    rc = dylib.runBinaryFile(frameworkCtx, std::move(fileCopy), binaryFile);
-    if (rc != EXIT_SUCCESS && scenario.abortOnFailure)
-      return rc;
-    else if (!scenario.abortOnFailure)
-      rc = EXIT_SUCCESS; // Reset `rc` for suppressed failures.
+      rc = dylib.runBinaryFile(frameworkCtx, std::move(fileCopy), binaryFile);
+      if (rc != EXIT_SUCCESS && scenario.abortOnFailure)
+        return rc;
+      else if (!scenario.abortOnFailure)
+        rc = EXIT_SUCCESS; // Reset `rc` for suppressed failures.
+    }
   }
 
   return rc;
