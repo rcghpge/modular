@@ -296,7 +296,7 @@ LogicalResult MOGraphLowering::lowerReshape(MO::ReshapeOp reshapeOp) {
 
     mlir::OperationState opState{loc, "mop.shape.reshape"};
     Value targetShape =
-        loweringState.lookupExecuteLoweredTensor(reshapeOp.getShape());
+        loweringState.lookupExecuteLoweredTensor(reshapeOp.getNewShape());
     // inputs are input specs
     opState.addOperands({extract.getTensorSpecResult(), targetShape});
     // The return is the new spec

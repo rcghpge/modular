@@ -476,7 +476,7 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
   auto inputArrElemAttr =
       dyn_cast_or_null<ArrayElementsAttr>(adaptor.getInput());
   auto shapeArrElemAttr =
-      dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getShape());
+      dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getNewShape());
   auto outputShapeAttr = dyn_cast<ShapeAttr>(getType().getShapeAttr());
   if (!inputArrElemAttr || !shapeArrElemAttr || !outputShapeAttr)
     return {};

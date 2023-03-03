@@ -654,8 +654,9 @@ def MO_ConvOp : MO_Op<"conv", [Pure, MO_SlidingWindow]>{
 // Shape related ops
 //===----------------------------------------------------------------------===//
 
-def MO_ReshapeOp : MO_Op<"reshape", [Pure]> {
-  let summary = "Reshape Operation";
+def MO_ReshapeOp : MO_Op<"reshape",
+    [Pure, DeclareOpInterfaceMethods<MO_Parameterization>]> {
+  let summary = "Reshape operation";
   let description = [{
     Return a tensor with the same underlying data, but different shape.
 
@@ -669,10 +670,14 @@ def MO_ReshapeOp : MO_Op<"reshape", [Pure]> {
     ```
   }];
 
-  let arguments = (ins MO_Tensor:$input, MO_ShapeLike:$shape);
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_ShapeLike:$newShape,
+    MO_ParamDecls:$paramDecls);
   let results = (outs MO_Tensor:$output);
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `` custom<ParamDecls>($paramDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
   }];
   let hasFolder = 1;
 }
@@ -893,7 +898,7 @@ def MO_TransposeOp : MO_Op<"transpose",
 def MO_PadOp : MO_Op<"pad", [Pure]> {
   let summary = "Pad Operation";
   let description = [{
-    Pad the `input` tensor with a scalar tensor `consntant` according to the
+    Pad the `input` tensor with a scalar tensor `constant` according to the
     `paddings`. Assume input has rank `N`, the `paddings` tensor should have
     shape `(N, 2)`, where each row has the form `[before, after]`, indicating
     how many of `constant` to add before and after the contents of `input` in
