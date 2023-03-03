@@ -57,11 +57,7 @@ static ErrorOr<Optional<uint64_t>> getImpliedAlignment(ElementsAttr value) {
 
   if (auto cache_constant = dyn_cast<Cache::ConstantHashAttr>(value)) {
     // The attribute encodes its own (optional) alignment.
-    DictionaryAttr dict = cache_constant.getAdditionalData();
-    if (auto intAttr = dyn_cast_if_present<IntegerAttr>(dict.get("align")))
-      return intAttr.getUInt();
-    else
-      return std::nullopt;
+    return cache_constant.getOptAlign();
   }
 
   Optional<uint64_t> typeOptAlign;
@@ -734,6 +730,14 @@ LogicalResult CASLookupOp::inferReturnTypes(
       dyn_cast<IntegerAttr>(attributes.get(getCRawSizeAttrName(name)));
   assert(rawSizeAttr && "mismatched operand types");
   inferredReturnTypes.emplace_back(CpuBufferType::get(context, rawSizeAttr));
+  return success();
+}
+
+/// Verifies optional alignment is valid.
+LogicalResult CASLookupOp::verify() {
+  if (!isValidRawAlign(getDRawAlign()))
+    emitOpError() << "the alignment must be a power of two (have "
+                  << getDRawAlign() << ").";
   return success();
 }
 

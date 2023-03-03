@@ -482,10 +482,12 @@ static ErrorOr<Chain> mgp_cas_create_instance(Chain inChain, Context &ctx,
 static void mgp_cas_lookup(Chain inChain, Context &ctx,
                            Result<BufferRef> result, MEFAttr<uint64_t> aSlot,
                            MEFAttr<StringRef> bKey, MEFAttr<uint64_t> cRawSize,
-                           EncodedLocation loc) {
+                           MEFAttr<uint64_t> dRawAlign, EncodedLocation loc) {
   auto &dataStore = ctx.getStateSlotPayload<CASStateSlot>(*aSlot);
-  Optional<size_t> expectedSize = getRuntimeSize(*cRawSize);
-  AsyncValueRef<BufferRef> lookupResult = dataStore.lookup(*bKey, loc.copy());
+  std::optional<size_t> expectedSize = getRuntimeSize(*cRawSize);
+  std::optional<size_t> alignment = getRuntimeAlign(*dRawAlign);
+  AsyncValueRef<BufferRef> lookupResult =
+      dataStore.lookup(*bKey, alignment, loc.copy());
   std::move(lookupResult)
       .andThenSync([expectedSize, slot = *aSlot, result = result.copy(),
                     loc = std::move(loc)](

@@ -207,7 +207,7 @@ def CpuBufferAllocStaticOp : MGP_Op<"cpu.buffer.alloc.static", [
     ```mlir
     %ctx : !mgp.context
 
-    %buf = mgp.cpu.buffer.alloc.static %ctx, 64 {align = 8 : ui64}
+    %buf = mgp.cpu.buffer.alloc.static %ctx, 64 {bRawAlign = 8 : ui64}
     %buf : !mgp.cpu.buffer<64>  // 64 bytes aligned to 8 bytes
 
     %buf = mgp.cpu.buffer.alloc.static %ctx, 64
@@ -249,7 +249,7 @@ def CpuBufferAllocDynamicOp : MGP_Op<"cpu.buffer.alloc.dynamic", [
     %ctx : !mgp.context
     %size : index
 
-    %buf = mgp.cpu.buffer.alloc.dynamic %ctx, %size {align = 8 : ui64}
+    %buf = mgp.cpu.buffer.alloc.dynamic %ctx, %size {rawAlign = 8 : ui64}
     %buf : !mgp.cpu.buffer  // aligned to 8 bytes
 
     %buf = mgp.cpu.buffer.alloc.dynamic %ctx, %size
@@ -289,7 +289,7 @@ def CpuBufferAllocSpecOp : MGP_Op<"cpu.buffer.alloc.spec", [
     %ctx : !mgp.context
     %spec : !mgp.tensor_spec<?x64xf32>
 
-    %buf = mgp.cpu.buffer.alloc.spec %ctx, %spec, {align = 8 : ui64} : !mgp.cpu.tensor_spec<?x64xf32>
+    %buf = mgp.cpu.buffer.alloc.spec %ctx, %spec, {rawAlign = 8 : ui64} : !mgp.cpu.tensor_spec<?x64xf32>
     %buf : !mgp.cpu.buffer  // aligned to 8 bytes
 
     %buf = mgp.cpu.buffer.alloc.spec %ctx, %spec : !mgp.cpu.tensor_spec<?x64xf32>
@@ -361,11 +361,11 @@ def CpuBufferReallocStaticOp : MGP_Op<"cpu.buffer.realloc.static", [
     ```mlir
        init {
          ...
-         %buf1 = mgp.cpu.buffer.realloc.static %ch, %ctx[2, 0], 48 {align = 8 : ui64}
+         %buf1 = mgp.cpu.buffer.realloc.static %ch, %ctx[2, 0], 48 {dRawAlign = 8 : ui64}
        }
        execute (...) -> ... {
          ...
-         %buf2 = mgp.cpu.buffer.realloc.static %ch, %ctx[2, 0], 48 {align = 16 : ui64}
+         %buf2 = mgp.cpu.buffer.realloc.static %ch, %ctx[2, 0], 48 {dRawAlign = 16 : ui64}
        }
     ```
     the second realloc will always reuse the buffer from the first realloc.
@@ -376,7 +376,7 @@ def CpuBufferReallocStaticOp : MGP_Op<"cpu.buffer.realloc.static", [
     %ch : !mef.chain
 
     // Reallocate the buffer in slot index 42 and buffer index 2.
-    %buf = mgp.cpu.buffer.realloc.static %ch, %ctx[42, 2], 64 {align = 8 : ui64}
+    %buf = mgp.cpu.buffer.realloc.static %ch, %ctx[42, 2], 64 {dRawAlign = 8 : ui64}
     %buf : !mgp.cpu.buffer<64>   // 64 bytes aligned to 8 bytes
 
     %buf = mgp.cpu.buffer.realloc.static %ch, %ctx[42, 2], 64
@@ -429,7 +429,7 @@ def CpuBufferReallocDynamicOp : MGP_Op<"cpu.buffer.realloc.dynamic", [
     %ch : !mef.chain
 
     // Reallocate the buffer in slot index 42 and buffer index 2.
-    %buf = mgp.cpu.buffer.realloc.dynamic %ch, %ctx[42, 2], %size {align = 8 : ui64}
+    %buf = mgp.cpu.buffer.realloc.dynamic %ch, %ctx[42, 2], %size {cRawAlign = 8 : ui64}
     %buf : !mgp.cpu.buffer      // 8 bytes aligned
 
     %buf = mgp.cpu.buffer.realloc.dynamic %ch, %ctx[42, 2], %size
@@ -481,7 +481,7 @@ def CpuBufferReallocSpecOp : MGP_Op<"cpu.buffer.realloc.spec", [
     %ch : !mef.chain
 
     // Reallocate the buffer in slot index 42 and buffer index 2.
-    %buf = mgp.cpu.buffer.realloc.spec %ch, %ctx[42, 2], %spec {align = 8 : ui64} : !mgp.cpu.tensor_spec<?x64xf32>
+    %buf = mgp.cpu.buffer.realloc.spec %ch, %ctx[42, 2], %spec {cRawAlign = 8 : ui64} : !mgp.cpu.tensor_spec<?x64xf32>
     %buf : !mgp.cpu.buffer      // 8 bytes aligned
 
     %buf = mgp.cpu.buffer.realloc.spec %ch, %ctx[42, 2] : %spec !mgp.cpu.tensor_spec<?x64xf32>
@@ -1036,26 +1036,30 @@ def DebugCpuSpinWaitOp : MGP_Op<"debug.cpu.spin_wait"> {
 //===----------------------------------------------------------------------===//
 
 def CASCreateInstanceOp : MGP_Op<"cas.create_instance"> {
-  let summary = "Creates an instance of the CAS.";
+  let summary = "Creates a CAS instance at given cache directory.";
   let description = [{
-    Creates an instance of the CAS and stores it into the provided state slot.
+    Creates a CAS instance at the given cache directory, and stores it at
+    the given state slot index. The same index should be used by
+    mgp.cas.lookup and mgp.cas.store.
 
     Example:
     ```mlir
     %ctx : !mgp.context
     %inCh : !mef.chain
-    %outCh = mgp.cas.create_instance %inCh, %ctx[0] at "/path/to/fs"
+    %outCh = mgp.cas.create_instance %inCh, %ctx[0] at "/path/to/cache"
     %outCh : !mef.chain
     ```
   }];
 
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
   let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
-                       UI64Attr:$aSlot,   // 0
-                       StrAttr:$bFsPath); // 1
+                       UI64Attr:$aSlot,     // 0
+                       StrAttr:$bCacheDir); // 1
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aSlot `]` `at` $bFsPath attr-dict
+    $inChain `,` $theContext `[` $aSlot `]` `at` $bCacheDir attr-dict
   }];
 }
 
@@ -1077,7 +1081,7 @@ def CASLookupOp : MGP_Op<"cas.lookup", [
     ```mlir
     %ctx : !mgp.context
     %ch : !mef.chain
-    %buf = mgp.cas.lookup("SOMECASID") %ch, %ctx[0] : !mgp.cpu.buffer<256>
+    %buf = mgp.cas.lookup("SOMECASID") %ch, %ctx[0] { dRawAlign=64 : ui64 } : !mgp.cpu.buffer<256>
     %buf : !mgp.cpu.buffer<256>
     ```
   }];
@@ -1086,14 +1090,16 @@ def CASLookupOp : MGP_Op<"cas.lookup", [
   // names.
   let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
-                       UI64Attr:$aSlot,      // 0
-                       StrAttr:$bKey,        // 1
-                       UI64Attr:$cRawSize ); // 2
+                       UI64Attr:$aSlot,                                         // 0
+                       StrAttr:$bKey,                                           // 1
+                       UI64Attr:$cRawSize,                                      // 2
+                       DefaultValuedAttr<UI64Attr, "kUnknownSize">:$dRawAlign); // 3
   let results = (outs MGP_CpuBufferType:$result);
   let assemblyFormat = [{
     `(` $bKey `)` $inChain `,` $theContext `[` $aSlot `]` attr-dict
     `:` custom<RawSizeAsBufferType>($cRawSize)
   }];
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
