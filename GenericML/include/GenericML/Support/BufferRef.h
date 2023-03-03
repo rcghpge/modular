@@ -10,6 +10,7 @@
 #include "GenericML/Support/ForeignBufferInterface.h"
 #include "LLCL/Runtime/Allocator.h"
 #include "LLCL/Runtime/CompactRuntimePtr.h"
+#include "LLCL/Support/Profiling.h"
 #include "Support/ErrorOr.h"
 
 #include "llvm/Support/Alignment.h"
@@ -17,6 +18,10 @@
 #include <utility>
 
 namespace M::GML {
+
+/// If enabled, the lifetime of every BufferRef can be tracked.
+using BufferRefProfilerEntry =
+    ProfilerEntry<Trace::EnableTrace(Trace::kMem, 2)>;
 
 /// A reference (aka smart pointer) to an underlying buffer of known size but
 /// uninterpreted and possibly uninitialized bytes, along with metadata needed
@@ -245,7 +250,13 @@ private:
             LLCL::CompactRuntimePtr runtime = {})
       : bufferOrObject(buffer), size(size), alignment(alignment),
         ownership(ownership), lifetime(lifetime), mutability(mutability),
-        nativeOrForeign(runtime) {}
+        nativeOrForeign(runtime) {
+    if (ownership == kOwned)
+      profilerEntry =
+          BufferRefProfilerEntry::create("mem.buffer.owned", [this]() {
+            return Twine("size:").concat(Twine(this->size)).concat("B").str();
+          });
+  }
 
   BufferRef(ForeignBufferInterfaceID id, void *object, size_t size,
             llvm::MaybeAlign alignment, Ownership ownership, Lifetime lifetime,
@@ -258,12 +269,15 @@ private:
   BufferRef(const BufferRef &rhs) = delete;
   BufferRef &operator=(const BufferRef &rhs) = delete;
 
-  // Reset the referenence to the kNull state. However only the ownership,
+  // Reset the reference to the kNull state. However only the ownership,
   // buffer/object, and size fields are reset.
   void reset() {
     ownership = kNull;
     bufferOrObject = nullptr;
     size = 0;
+    // Though the underlying buffer has not been freed, stop the profiling
+    // entry since we can no longer track its lifetime.
+    std::move(profilerEntry).record();
   }
 
   /// If kOwned or kBorrowed, the underlying buffer.
@@ -298,6 +312,8 @@ private:
   };
 
   NativeOrForeign nativeOrForeign; // 1 byte
+
+  BufferRefProfilerEntry profilerEntry;
 };
 
 inline raw_ostream &operator<<(raw_ostream &os, const BufferRef &value) {

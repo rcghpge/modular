@@ -116,6 +116,7 @@ BufferRef::~BufferRef() {
     break;
   case kOwned:
     nativeOrForeign.runtime->deallocateBytes(bufferOrObject, size);
+    std::move(profilerEntry).record();
     break;
   case kBorrowed:
     break;
@@ -214,4 +215,5 @@ void BufferRef::swap(BufferRef &rhs) {
   std::swap(lifetime, rhs.lifetime);
   std::swap(mutability, rhs.mutability);
   std::swap(nativeOrForeign, rhs.nativeOrForeign);
+  std::swap(profilerEntry, rhs.profilerEntry);
 }
