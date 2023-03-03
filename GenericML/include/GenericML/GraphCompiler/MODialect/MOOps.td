@@ -28,33 +28,6 @@ include "mlir/IR/SymbolInterfaces.td"
 class MO_Op<string mnemonic, list<Trait> traits = []>
     : Op<MODialect, mnemonic, [MO_OpInterface] # traits>;
 
-class MO_ElementWiseOp<string name, list<Trait> traits = []>
-    : MO_Op<name, traits # [Pure, MO_SameOperandsAndResultType]> {
-  let results = (outs MO_Tensor:$result);
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` qualified(type($result))
-  }];
-}
-
-class MO_ElementWiseUnaryOp<string name, list<Trait> traits = []>
-    : MO_ElementWiseOp<name, traits # [MO_ElementWiseUnary]> {
-  let arguments = (ins MO_Tensor:$input);
-}
-
-class MO_ElementWiseBinaryOp<string name, list<Trait> traits = []>
-    : MO_ElementWiseOp<name, traits # [MO_ElementWiseBinary]> {
-  let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y);
-}
-
-class MO_SoftmaxLikeOp<string name, list<Trait> traits = []>
-    : MO_Op<name, traits # [MO_SameOperandsAndResultType, Pure]> {
-  let arguments = (ins MO_Tensor:$input);
-  let results = (outs MO_Tensor:$result);
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
-  }];
-}
-
 //===----------------------------------------------------------------------===//
 // GraphOp
 //===----------------------------------------------------------------------===//
@@ -243,10 +216,27 @@ def MO_ConstantOp : MO_Op<"constant", [ConstantLike, Pure]> {
 
 }
 
-
 //===----------------------------------------------------------------------===//
 // Elementwise ops
 //===----------------------------------------------------------------------===//
+
+class MO_ElementWiseOp<string name, list<Trait> traits = []>
+    : MO_Op<name, traits # [Pure, MO_SameOperandsAndResultType]> {
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` qualified(type($result))
+  }];
+}
+
+class MO_ElementWiseUnaryOp<string name, list<Trait> traits = []>
+    : MO_ElementWiseOp<name, traits # [MO_ElementWiseUnary]> {
+  let arguments = (ins MO_Tensor:$input);
+}
+
+class MO_ElementWiseBinaryOp<string name, list<Trait> traits = []>
+    : MO_ElementWiseOp<name, traits # [MO_ElementWiseBinary]> {
+  let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y);
+}
 
 def MO_AddOp : MO_ElementWiseBinaryOp<"add", [Commutative]> {
   let summary = "Add operation";
@@ -331,23 +321,6 @@ def MO_GeluOp : MO_ElementWiseUnaryOp<"gelu"> {
     ```mlir
     %arg: !mo.tensor<[2, 3], f32>
     %res = mo.gelu(%arg) : !mo.tensor<[2, 3], f32>
-    ```
-  }];
-}
-
-def MO_LogSoftmaxOp : MO_SoftmaxLikeOp<"logsoftmax"> {
-  let summary = "Perfoms logsoftmax on tensor `input`";
-  let description = [{
-    Returns logsoftmax probability scores following:
-     `log(softmax(input))`
-
-    The scores are computed along the last axis.
-
-    Example:
-
-    ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %res = mo.logsoftmax(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
@@ -439,23 +412,6 @@ def MO_SqrtOp : MO_ElementWiseUnaryOp<"sqrt", [Idempotent]> {
   }];
 }
 
-def MO_SoftmaxOp : MO_SoftmaxLikeOp<"softmax"> {
-  let summary = "Perfoms softmax on tensor `input`";
-  let description = [{
-    Returns softmax probability scores following:
-     `exp(input) / sum(exp(input))`
-
-    The scores are computed along the last axis.
-
-    Example:
-
-    ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %res = mo.softmax(%arg) : !mo.tensor<[2, 3], f32>
-    ```
-  }];
-}
-
 def MO_SubOp : MO_ElementWiseBinaryOp<"sub"> {
   let summary = "Subtract operation";
   let description = [{
@@ -481,6 +437,53 @@ def MO_TanhOp : MO_ElementWiseUnaryOp<"tanh"> {
     ```mlir
     %arg: !mo.tensor<[2, 3], f32>
     %res = mo.tanh(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// Softmax-like ops
+//===----------------------------------------------------------------------===//
+
+class MO_SoftmaxLikeOp<string name, list<Trait> traits = []>
+    : MO_Op<name, traits # [MO_SameOperandsAndResultType, Pure]> {
+  let arguments = (ins MO_Tensor:$input);
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def MO_LogSoftmaxOp : MO_SoftmaxLikeOp<"logsoftmax"> {
+  let summary = "Perfoms logsoftmax on tensor `input`";
+  let description = [{
+    Returns logsoftmax probability scores following:
+     `log(softmax(input))`
+
+    The scores are computed along the last axis.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.logsoftmax(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def MO_SoftmaxOp : MO_SoftmaxLikeOp<"softmax"> {
+  let summary = "Perfoms softmax on tensor `input`";
+  let description = [{
+    Returns softmax probability scores following:
+     `exp(input) / sum(exp(input))`
+
+    The scores are computed along the last axis.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.softmax(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
