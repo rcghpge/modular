@@ -1081,7 +1081,7 @@ def CASLookupOp : MGP_Op<"cas.lookup", [
     ```mlir
     %ctx : !mgp.context
     %ch : !mef.chain
-    %buf = mgp.cas.lookup("SOMECASID") %ch, %ctx[0] { dRawAlign=64 : ui64 } : !mgp.cpu.buffer<256>
+    %buf = mgp.cas.lookup %ch, %ctx[0], "SOMECASID" { dRawAlign=64 : ui64 } : !mgp.cpu.buffer<256>
     %buf : !mgp.cpu.buffer<256>
     ```
   }];
@@ -1096,7 +1096,7 @@ def CASLookupOp : MGP_Op<"cas.lookup", [
                        DefaultValuedAttr<UI64Attr, "kUnknownSize">:$dRawAlign); // 3
   let results = (outs MGP_CpuBufferType:$result);
   let assemblyFormat = [{
-    `(` $bKey `)` $inChain `,` $theContext `[` $aSlot `]` attr-dict
+    $inChain `,` $theContext `[` $aSlot `]` `,` custom<Base64>($bKey) attr-dict
     `:` custom<RawSizeAsBufferType>($cRawSize)
   }];
   let hasVerifier = 1;
@@ -1121,7 +1121,7 @@ def CASStoreOp : MGP_Op<"cas.store"> {
     %ctx : !mgp.context
     %buf : !mgp.cpu.buffer<256>
     %inCh : !mef.chain
-    %outCh = mgp.cas.store("SOMECASID", %buf) %inCh, %ctx[0] : !mgp.cpu.buffer<256>
+    %outCh = mgp.cas.store %inCh, %ctx[0], "SOMECASID", %buf : !mgp.cpu.buffer<256>
     %outCh : !mef.chain
     ```
   }];
@@ -1135,8 +1135,8 @@ def CASStoreOp : MGP_Op<"cas.store"> {
                        StrAttr:$bKey);    // 1
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    `(` $bKey `,` $buffer `)` $inChain `,` $theContext `[` $aSlot `]` attr-dict
-    `:` qualified(type($buffer))
+    $inChain `,` $theContext `[` $aSlot `]` `,` custom<Base64>($bKey)
+    `,` $buffer attr-dict `:` qualified(type($buffer))
   }];
 }
 

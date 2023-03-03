@@ -42,7 +42,7 @@ def LookupCachedConstantsPass : Pass<"lookup-cached-constants", "MGP::ModelOp"> 
     becomes, in the 'init' block:
     ```mlir
     %ch1 = mgp.cas.create_instance %ch0, %ctx[0] at "cacheDir"
-    %buf = mgp.cas.lookup("tag") %ch1, %ctx[0] : !mgp.cpu.buffer<256>
+    %buf = mgp.cas.lookup %ch1, %ctx[0], "tag" : !mgp.cpu.buffer<256>
     %ch2 = mgp.cpu.buffer.cache %ch1, %ctx[5], %buf : !mgp.cpu.buffer<256>
     ```
     and in the 'execute' block:

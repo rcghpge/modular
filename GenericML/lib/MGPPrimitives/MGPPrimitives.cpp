@@ -462,17 +462,17 @@ static void mgp_debug_cpu_spin_wait(Chain inChain, Result<Chain> outChain,
 // mgp.cas.create_instance
 //===----------------------------------------------------------------------===//
 
-static ErrorOr<Chain> mgp_cas_create_instance(Chain inChain, Context &ctx,
-                                              MEFAttr<uint64_t> aSlot,
-                                              MEFAttr<StringRef> bFsPath,
-                                              Runtime &runtime) {
-  auto &slotOr =
-      ctx.emplaceStateSlot<CASStateSlot>(*aSlot, 0, runtime, *bFsPath);
-  // If the emplace failed, the state slot will hold an error.
-  if (auto err = slotOr.getError())
-    return err.takeError();
-  // Otherwise, good to go.
-  return Chain{};
+static void mgp_cas_create_instance(Chain inChain, Context &ctx,
+                                    Result<Chain> outChain,
+                                    MEFAttr<uint64_t> aSlot,
+                                    MEFAttr<StringRef> bCacheDir,
+                                    Runtime &runtime) {
+  auto &stateSlot = ctx.emplaceStateSlot<CASStateSlot>(
+      *aSlot, /*numBuffers=*/0, std::string(*bCacheDir), runtime);
+  // The CASStateSlot must be setup.
+  if (auto err = stateSlot.setup())
+    return std::move(outChain).setToError(err.takeError());
+  std::move(outChain).emplace();
 }
 
 //===----------------------------------------------------------------------===//
@@ -483,21 +483,31 @@ static void mgp_cas_lookup(Chain inChain, Context &ctx,
                            Result<BufferRef> result, MEFAttr<uint64_t> aSlot,
                            MEFAttr<StringRef> bKey, MEFAttr<uint64_t> cRawSize,
                            MEFAttr<uint64_t> dRawAlign, EncodedLocation loc) {
-  auto &dataStore = ctx.getStateSlotPayload<CASStateSlot>(*aSlot);
+  auto &stateSlot = ctx.getStateSlotPayload<CASStateSlot>(*aSlot);
+  if (!stateSlot.isValid())
+    return std::move(result).setToError(
+        {"CAS instance has not been established", std::move(loc)});
   std::optional<size_t> expectedSize = getRuntimeSize(*cRawSize);
   std::optional<size_t> alignment = getRuntimeAlign(*dRawAlign);
   AsyncValueRef<BufferRef> lookupResult =
-      dataStore.lookup(*bKey, alignment, loc.copy());
+      stateSlot.lookup(*bKey, alignment, loc.copy());
   std::move(lookupResult)
       .andThenSync([expectedSize, slot = *aSlot, result = result.copy(),
-                    loc = std::move(loc)](
+                    key = *bKey, loc = std::move(loc)](
                        AsyncValueRef<BufferRef> &&lookupResult) mutable {
+        if (lookupResult.isError()) {
+          // We'll construct our own error so that we can report the key
+          // in base64 form.
+          return std::move(result).setToError(
+              {Twine("unable to lookup buffer with key '") + key + "'",
+               std::move(loc)});
+        }
         if (expectedSize && lookupResult.get().getSize() != *expectedSize)
           return std::move(result).setToError(
-              {Error(Twine("buffer returned from CAS at slot ") + Twine(slot) +
-                     " has different size than expected (" +
-                     Twine(lookupResult.get().getSize()) + " vs " +
-                     Twine(*expectedSize) + ")"),
+              {Twine("buffer returned from CAS at slot ") + Twine(slot) +
+                   " has different size than expected (" +
+                   Twine(lookupResult.get().getSize()) + " vs " +
+                   Twine(*expectedSize) + ")",
                std::move(loc)});
         std::move(result).emplace(std::move(lookupResult.get()));
       });
@@ -507,13 +517,15 @@ static void mgp_cas_lookup(Chain inChain, Context &ctx,
 // mgp.cas.store
 //===----------------------------------------------------------------------===//
 
-static AsyncValueRef<Chain> mgp_cas_store(Chain inChain, Context &ctx,
-                                          const BufferRef &bufferRef,
-                                          MEFAttr<uint64_t> aSlot,
-                                          MEFAttr<StringRef> bKey,
-                                          EncodedLocation loc) {
-  auto &dataStore = ctx.getStateSlotPayload<CASStateSlot>(*aSlot);
-  return dataStore.store(*bKey, bufferRef, std::move(loc));
+static AsyncValueRef<Chain>
+mgp_cas_store(Chain inChain, Context &ctx, const BufferRef &bufferRef,
+              MEFAttr<uint64_t> aSlot, MEFAttr<StringRef> bKey,
+              EncodedLocation loc, Runtime &runtime) {
+  auto &stateSlot = ctx.getStateSlotPayload<CASStateSlot>(*aSlot);
+  if (!stateSlot.isValid())
+    return AsyncValueRef<Chain>::createError(
+        runtime, {"CAS instance has not been established", std::move(loc)});
+  return stateSlot.store(*bKey, bufferRef, std::move(loc));
 }
 
 //===----------------------------------------------------------------------===//

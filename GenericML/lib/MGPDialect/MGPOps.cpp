@@ -21,6 +21,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "llvm/Support/Base64.h"
 
 using namespace M;
 using namespace MGP;
@@ -714,6 +715,23 @@ LogicalResult CpuTensorExtractOp::inferReturnTypes(
 // CASLookupOp
 //===----------------------------------------------------------------------===//
 
+/// Parse string from base64 encoding.
+static ParseResult parseBase64(AsmParser &parser, StringAttr &stringAttr) {
+  std::vector<char> outBytes;
+  outBytes.reserve(32);
+  if (parser.parseBase64Bytes(&outBytes))
+    return failure();
+  std::string str(outBytes.data(), outBytes.size());
+  stringAttr = StringAttr::get(parser.getContext(), str);
+  return success();
+}
+
+/// Print string in base64 encoding.
+static void printBase64(AsmPrinter &printer, const CASLookupOp &op,
+                        StringAttr stringAttr) {
+  printer.printKeywordOrString(llvm::encodeBase64(stringAttr.getValue()));
+}
+
 /// Prints a !mgp.cpu.buffer type, but represented in 'raw form'.
 static void printRawSizeAsBufferType(AsmPrinter &p, const CASLookupOp &op,
                                      IntegerAttr rawSize) {
@@ -739,6 +757,16 @@ LogicalResult CASLookupOp::verify() {
     emitOpError() << "the alignment must be a power of two (have "
                   << getDRawAlign() << ").";
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CASStoreOp
+//===----------------------------------------------------------------------===//
+
+/// Print string in base64 encoding.
+static void printBase64(AsmPrinter &printer, const CASStoreOp &op,
+                        StringAttr stringAttr) {
+  printer.printKeywordOrString(llvm::encodeBase64(stringAttr.getValue()));
 }
 
 //===----------------------------------------------------------------------===//
