@@ -71,9 +71,8 @@ MO::ShapeAttr MO::ShapeAttr::get(ArrayRef<int64_t> values, MO::ShapeType type) {
 
 MO::ShapeAttr MO::ShapeAttr::get(IntArrayElementsAttr intDims,
                                  MO::ShapeType type) {
-  SmallVector<int64_t> rawDims = llvm::to_vector(
-      llvm::map_range(intDims.getValues(),
-                      [](const APInt &dim) { return dim.getSExtValue(); }));
+  SmallVector<int64_t> rawDims = map_to_vector(
+      intDims.getValues(), [](const APInt &dim) { return dim.getSExtValue(); });
   return get(rawDims, type);
 }
 
