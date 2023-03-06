@@ -535,7 +535,6 @@ LogicalResult MOGraphLowering::run() {
     return failure();
   // Ok, we're done with the original mo.graph, so remove it.
   loweringState.exitBlock();
-  llvm::errs() << loweringState.getModelOp() << '\n';
   graph.erase();
   return success();
 }
