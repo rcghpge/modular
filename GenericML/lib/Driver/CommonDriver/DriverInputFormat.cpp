@@ -28,7 +28,7 @@ FileFormat M::sniffInputFormat(StringRef fileExtension,
 
   // If the extension identifies the format, use that.
   if (fileExtension.contains("onnx")) {
-    if (fileContents.contains("ir_version"))
+    if (fileContents.contains("ir_version: "))
       return FileFormat::kONNXTextProtobuf;
     else
       return FileFormat::kONNXProtobuf;
@@ -95,7 +95,7 @@ FileFormat M::sniffInputFormat(StringRef fileExtension,
       return FileFormat::kFauxDialect;
     if (fileContents.contains("operator_codes:"))
       return FileFormat::kTFLFlatBufferJSON;
-    if (fileContents.contains("ir_version"))
+    if (fileContents.contains("ir_version: "))
       return FileFormat::kONNXTextProtobuf;
   } else if (mlir::isBytecode(llvm::MemoryBufferRef(fileContents, ""))) {
     std::match_results<StringRef::iterator> m;
