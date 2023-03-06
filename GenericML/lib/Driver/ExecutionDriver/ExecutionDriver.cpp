@@ -390,12 +390,12 @@ LogicalResult M::runModel(MLIRContext *ctx, const Model *model,
             options.benchmarkNoLogPrefix, options.benchmarkMinDurationMs,
             options.benchmarkMinQueryCount))
       return failure(options.reportError(err.getError()));
+  } else {
+    auto invokeFn =
+        options.numRuns == 1 ? executeModelOnce : executeModelRepeated;
+    if (auto err = invokeFn(ctx, model, runtime, options))
+      return failure(options.reportError(err.getError()));
   }
-
-  auto invokeFn =
-      options.numRuns == 1 ? executeModelOnce : executeModelRepeated;
-  if (auto err = invokeFn(ctx, model, runtime, options))
-    return failure(options.reportError(err.getError()));
   return success();
 }
 
