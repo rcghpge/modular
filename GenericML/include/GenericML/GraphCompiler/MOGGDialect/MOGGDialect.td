@@ -28,6 +28,8 @@ def MOGGDialect : Dialect {
   private:
     /// Register all dialect ops.
     void registerOperations();
+    /// Register all dialect types.
+    void registerTypes();
   }];
 
   let useDefaultTypePrinterParser = 0;

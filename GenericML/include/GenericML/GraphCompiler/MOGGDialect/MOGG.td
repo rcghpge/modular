@@ -8,6 +8,7 @@
 #define GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGG_TD
 
 include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.td"
+include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.td"
 include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.td"
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGG_TD

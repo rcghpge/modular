@@ -8,6 +8,18 @@
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "Support/MDialect/MDialect.h"
 
+#include "KGEN/KGENDialect/KGENAttrs.h"
+#include "KGEN/KGENDialect/KGENUtils.h"
+#include "Support/Compiler/MLIRDType.h"
+#include "Support/ErrorOr.h"
+#include "Support/LLVMCompilerForwardDecls.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/DialectImplementation.h"
+#include "mlir/Support/LogicalResult.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/TypeSwitch.h"
+
 using namespace M;
 using namespace MOGG;
 
@@ -15,7 +27,10 @@ using namespace MOGG;
 // MOGGDialect
 //===----------------------------------------------------------------------===//
 
-void MOGGDialect::initialize() { registerOperations(); }
+void MOGGDialect::initialize() {
+  registerTypes();
+  registerOperations();
+}
 
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
