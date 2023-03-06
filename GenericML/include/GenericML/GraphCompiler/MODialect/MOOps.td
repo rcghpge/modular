@@ -1206,4 +1206,57 @@ def MO_BatchMatmulOp : MO_DotBase<"batch_matmul",
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// Linear Algebra ops
+//===----------------------------------------------------------------------===//
+
+def MO_MatrixBandPartOp : MO_Op<"matrix_band_part", [Pure]> {
+  let summary = "Matrix Band Part operation";
+  let description = [{
+    Copy a tensor setting everything outside central (diagonal) band of the 
+    matrices, where all but the last two axes are effectively batches, and the 
+    last two axes define sub matricies.
+
+    Assume the input has dimensions [I, J, ..., M, N], then the output tensor
+    has the same shape as the input, and the values values are given by
+
+    out[i, j, ..., m, n] = in_band(m, n) * input[i, j,  ..., m, n].
+
+    With the indicator function
+
+    in_band(m, n) = ((num_lower < 0 || (m - n) <= num_lower)) &&
+                     (num_upper < 0 || (n - m) <= num_upper))
+
+    Please explicitly note that with negative values, this kernel returns the
+    entire lower or uppper triangle of the matrix, and otherwise returns
+    a diagonal band around the main diagonal of the matrix.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[3, 2, 3], f32>
+    %num_lower = mo.constant {
+      value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+    %num_upper = mo.constant {
+      value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+    %res = mo.matrix_band_part(%arg, %num_lower, %num_upper) : (
+      !mo.tensor<[3, 2, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>
+      ) -> !mo.tensor<[3, 2, 3], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_RankedScalarIndexTensor:$num_lower,
+    MO_RankedScalarIndexTensor:$num_upper);
+
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+     `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+
+  let hasVerifier = 1;
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOOPS_TD

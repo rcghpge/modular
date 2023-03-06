@@ -175,6 +175,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_LIT(MO::SqrtOp, "mop.kernels.sqrt"),
       MO_TO_LIT(MO::SubOp, "mop.kernels.sub"),
       MO_TO_LIT(MO::TanhOp, "mop.kernels.tanh"),
+      MO_SHIM_ONLY(MO::MatrixBandPartOp, "mop.kernels.matrix_band_part"),
   };
 
   RewritePatternSet patterns{ctx};

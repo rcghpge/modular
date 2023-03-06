@@ -145,6 +145,7 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
       {"mop.kernels.div", "mop.shape.binary"},
       {"mop.kernels.mul", "mop.shape.binary"},
       {"mop.kernels.sub", "mop.shape.binary"},
+      {"mop.kernels.matrix_band_part", "mop.shape.matrix_band_part"},
       {"mop.kernels.matmul", "mop.shape.matmul"},
       {"mop.kernels.batch_matmul", "mop.shape.batch_matmul"},
   };

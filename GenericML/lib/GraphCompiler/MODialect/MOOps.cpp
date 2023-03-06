@@ -595,6 +595,17 @@ LogicalResult TransposeOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// Linear Algebra Ops
+//===----------------------------------------------------------------------===//
+
+LogicalResult MatrixBandPartOp::verify() {
+  // TODO: Refactor this into a trait when we see another op that does this
+  if (getInput().getType() != getResult().getType())
+    return emitError("first operand and the result must have the same type");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // Shape ops
 //===----------------------------------------------------------------------===//
 
