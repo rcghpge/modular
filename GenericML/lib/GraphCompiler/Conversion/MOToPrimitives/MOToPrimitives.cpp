@@ -348,23 +348,10 @@ LogicalResult MOGraphLowering::lowerReshape(MO::ReshapeOp reshapeOp) {
 }
 
 LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
-  // Gotta figure this one out
-  // This is using a lot of functionality defined in MOGGOps.
-  // I wonder if I should lift that
-
   auto loc = ifOp->getLoc();
   OpBuilder &builder = loweringState.getExecuteOpBuilder();
   TypeConverter &converter = loweringState.getTypeConverter();
-  Value initChain = loweringState.getExecuteInvokableInputChain();
   Value mainChain = loweringState.getExecuteChain();
-  Value context = loweringState.getExecuteMgpContext();
-
-  // This function finds all of the SSA values implicitly captured by
-  // the MO::IfOp and returns them for argument inlining.
-  // Note: The function does not de-duplicate if the Values are
-  // used repeatedly, need to handle that below
-  SmallVector<Value> captures;
-  operationIsIsolatedFromAbove(ifOp, &captures);
 
   // Lower Cond
   Value condTensor = loweringState.lookupExecuteLoweredTensor(ifOp.getCond());
@@ -374,23 +361,8 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
       loc, loweringState.getExecuteInvokableInputChain(),
       condExtract.getBufferResult());
 
-  // TODO: Change this to mapToVector once Laszlo PR #9286
-  SmallVector<Value> mgpInputs;
-  SmallVector<Value> uniqueCaptures;
-  for (const auto &capture : captures) {
-    // Dedup Captures
-    if (llvm::find(uniqueCaptures, capture) == uniqueCaptures.end()) {
-      uniqueCaptures.emplace_back(capture);
-      mgpInputs.emplace_back(loweringState.lookupExecuteLoweredTensor(capture));
-    }
-  }
-
   SmallVector<Value> operands;
   operands.push_back(cond.getResult());
-  operands.push_back(initChain);
-  if (initChain != mainChain)
-    operands.push_back(mainChain);
-  operands.push_back(context);
   // This is creating a Value semantic If Op
   // TODO: Change it to take buffers and specs? That breaks current lowering
   // assumptions, but we don't really want to hard limit the execution of the
@@ -398,13 +370,13 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
   // input list will do. Possibly better solution: split the tensors here,
   // recreate them inside the if body, let the standard lowering + tensor
   // creation elimination clean it up?
-  operands.append(mgpInputs);
 
   SmallVector<Type> resultTypes;
   // Always return the main chain
   resultTypes.emplace_back(mainChain.getType());
   for (Type type : ifOp.getResultTypes())
     resultTypes.emplace_back(converter.convertType(type));
+
   // Create grt.if op
   auto outputIf = builder.create<GRT::IfOp>(loc, resultTypes, operands);
 
@@ -413,29 +385,9 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
     // Enter a new Block
     Block &newBlock = outputRegion.emplaceBlock();
     builder.setInsertionPointToEnd(&newBlock);
-    loweringState.enterBlock();
 
-    loweringState.setExecuteInvokableInputChain(
-        outputRegion.addArgument(initChain.getType(), ifOp.getLoc()));
-    if (initChain != mainChain) {
-      loweringState.setExecuteChain(
-          outputRegion.addArgument(mainChain.getType(), ifOp.getLoc()));
-    } else {
-      loweringState.setExecuteChain(
-          loweringState.getExecuteInvokableInputChain());
-    }
-    loweringState.setExecuteMgpContext(
-        outputRegion.addArgument(context.getType(), ifOp.getLoc()));
-
-    for (size_t i = 0, e = uniqueCaptures.size(); i < e; i++) {
-      // Map MO tensors in this block to arguments to the region
-      Value arg =
-          outputRegion.addArgument(mgpInputs[i].getType(), ifOp.getLoc());
-      loweringState.emplaceExecuteLoweredTensor(uniqueCaptures[i], arg);
-    }
     if (failed(lowerBlock(&inputRegion.getBlocks().front())))
       return failure();
-    loweringState.exitBlock();
     return success();
   };
 
@@ -443,8 +395,47 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
   if (failed(lower_block(ifOp.getThenRegion(), outputIf.getThenRegion())))
     return failure();
 
+  // Reset the main chain between blocks
+  loweringState.setExecuteChain(mainChain);
+
   // Lower Else Block
   if (failed(lower_block(ifOp.getElseRegion(), outputIf.getElseRegion())))
+    return failure();
+
+  // This function finds all of the SSA values implicitly captured by
+  // the GRT::IfOp and returns them for argument inlining.
+  // Note: The function does not de-duplicate if the Values are
+  // used repeatedly, need to handle that below
+  SmallVector<Value> captures;
+  operationIsIsolatedFromAbove(outputIf, &captures, /* allowIsolated */ true);
+
+  // Deuplicate captures
+  SmallVector<Value> uniqueCaptures;
+  for (const auto &capture : captures) {
+    if (capture != cond &&
+        llvm::find(uniqueCaptures, capture) == uniqueCaptures.end())
+      uniqueCaptures.emplace_back(capture);
+  }
+
+  // Pass captures as inputs
+  outputIf.getInputsMutable().append(uniqueCaptures);
+
+  auto isolate_region = [&](Region &region) -> LogicalResult {
+    for (Value &capture : uniqueCaptures) {
+      auto arg = region.addArgument(capture.getType(), ifOp.getLoc());
+      capture.replaceUsesWithIf(arg, [&](OpOperand &use) {
+        return region.findAncestorOpInRegion(*use.getOwner());
+      });
+    }
+    return success();
+  };
+
+  // Isolate Then Block
+  if (failed(isolate_region(outputIf.getThenRegion())))
+    return failure();
+
+  // Isolate Else Block
+  if (failed(isolate_region(outputIf.getElseRegion())))
     return failure();
 
   // Set the outputs
@@ -517,7 +508,6 @@ LogicalResult MOGraphLowering::run() {
     return failure();
 
   // Enter the main body of the graph
-  loweringState.enterBlock();
   for (auto [graphArg, exeArg] :
        llvm::zip(graph.getArguments(), loweringState.getCommonModelOp()
                                            .getExecuteBlock()
@@ -534,7 +524,6 @@ LogicalResult MOGraphLowering::run() {
   if (failed(lowerBlock(graph.getBodyBlock())))
     return failure();
   // Ok, we're done with the original mo.graph, so remove it.
-  loweringState.exitBlock();
   graph.erase();
   return success();
 }
