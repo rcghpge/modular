@@ -82,3 +82,31 @@ mo.graph @unfolded_apply_shouldnt_be_inlined<Sh0: !mo.shape, Sh1: !mo.shape -> S
   // CHECK-NEXT: mo.output<:!mo.shape [[P4]]> %[[OUT]] : !mo.tensor<[[P4]], f32>
   mo.output<:!mo.shape P4> %1 : !mo.tensor<P4, f32>
 }
+
+// CHECK: mo.graph @graph_with_param_decls_in_ops<[[D0:.*]] -> [[D1:.*]], [[D2:.*]]>(
+mo.graph @graph_with_param_decls_in_ops<D0 -> D1, D2>(
+  // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[[D0]], 20, ?], f32>,
+  %arg0: !mo.tensor<[D0, 20, ?], f32>,
+  // CHECK-SAME: %[[SHAPE:.*]]: !mo.tensor<[2], si32>
+  %shape: !mo.tensor<[2], si32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D1]], [[D2]]], f32> {
+) -> !mo.tensor<[D1, D2], f32> {
+  kgen.param.declare D3 = <D0>
+  kgen.param.declare D4 = <20>
+  // CHECK-NEXT: %[[VAL0:.*]] = mo.rebind<() -> [[D5:.*]]>(%[[ARG0]]) :
+  // CHECK-SAME: !mo.tensor<[[[D0]], 20, ?], f32> -> !mo.tensor<[[[D0]], 20, [[D5]]], f32>
+  %0 = mo.rebind<() -> D5>(%arg0) : !mo.tensor<[D0, 20, ?], f32> -> !mo.tensor<[D3, D4, D5], f32>
+  // CHECK-NEXT: %[[VAL1:.*]] = mo.reshape<() -> [[D6:.*]], [[D7:.*]]>(%[[VAL0]], %[[SHAPE]]) : (
+  // CHECK-SAME:   !mo.tensor<[[[D0]], 20, [[D5]]], f32>, !mo.tensor<[2], si32>
+  // CHECK-SAME: ) -> !mo.tensor<[[[D6]], [[D7]]], f32>
+  %1 = mo.reshape<() -> D6, D7>(%0, %shape) : (
+    !mo.tensor<[D3, D4, D5], f32>, !mo.tensor<[2], si32>
+  ) -> !mo.tensor<[D6, D7], f32>
+  kgen.param.declare D8 = <D5>
+  kgen.param.declare D9 = <D7>
+  // CHECK-NEXT: %[[VAL2:.*]] = mo.rebind(%[[VAL1]]) :
+  // CHECK-SAME: !mo.tensor<[[[D6]], [[D7]]], f32> -> !mo.tensor<[[[D5]], [[D7]]], f32>
+  %2 = mo.rebind(%1) : !mo.tensor<[D6, D7], f32> -> !mo.tensor<[D8, D9], f32>
+  // CHECK-NEXT: mo.output<[[D5]], [[D7]]> %[[VAL2]] : !mo.tensor<[[[D5]], [[D7]]], f32>
+  mo.output<D8, D9> %2 : !mo.tensor<[D8, D9], f32>
+}
