@@ -25,13 +25,13 @@ mo.graph @output_param_decl_kept<Sh0: !mo.shape, Sh1: !mo.shape -> Sh2: !mo.shap
 }
 
 // CHECK: @batch_matmul_without_certain_checks<[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(
-mo.graph @batch_matmul_without_certain_checks<D0, D1, D2, D3>(
-// CHECK-SAME: %arg0: !mo.tensor<[[[D0]], [[D1]], [[D2]]], f32>,
+mo.graph @batch_matmul_without_certain_checks<D0, D1, D2, D3 -> D4, D5, D6>(
+  // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[[D0]], [[D1]], [[D2]]], f32>,
   %arg0: !mo.tensor<[D0, D1, D2], f32>,
-// CHECK-SAME: %arg1: !mo.tensor<[[[D0]], [[D2]], [[D3]]], f32>
+  // CHECK-SAME: %[[ARG1:.*]]: !mo.tensor<[[[D0]], [[D2]], [[D3]]], f32>
   %arg1: !mo.tensor<[D0, D2, D3], f32>
-// CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], [[D2]]], f32> {
-) -> !mo.tensor<[D0, D1, D2], f32> {
+// CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], [[D3]]], f32> {
+) -> !mo.tensor<[D4, D5, D6], f32> {
   kgen.param.declare Sh0: !mo.shape = <[D0, D1, D2]>
   %0 = mo.rebind(%arg0) : !mo.tensor<[D0, D1, D2], f32> -> !mo.tensor<Sh0, f32>
   kgen.param.declare Sh1: !mo.shape = <[D0, D2, D3]>
@@ -49,13 +49,17 @@ mo.graph @batch_matmul_without_certain_checks<D0, D1, D2, D3>(
   kgen.param.declare P13: !mo.shape = <[P11, P12]>
   kgen.param.declare P14: !mo.shape = <apply(:(!mo.shape, !mo.shape) -> !mo.shape "mo.shape.concat", P8, P13)>
   kgen.param.declare Sh2: !mo.shape = <P14>
-  // CHECK-NEXT: %0 = mo.batch_matmul(%arg0, %arg1) : (
+  // CHECK-NEXT: %[[OUT:.*]] = mo.batch_matmul(%arg0, %arg1) : (
   // CHECK-SAME:   !mo.tensor<[[[D0]], [[D1]], [[D2]]], f32>,
   // CHECK-SAME:   !mo.tensor<[[[D0]], [[D2]], [[D3]]], f32>
   // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], [[D3]]], f32>
   %2 = mo.batch_matmul(%0, %1) : (!mo.tensor<Sh0, f32>, !mo.tensor<Sh1, f32>) -> !mo.tensor<Sh2, f32>
-  // CHECK-NEXT: mo.output %arg0 : !mo.tensor<[[[D0]], [[D1]], [[D2]]], f32>
-  mo.output %arg0 : !mo.tensor<[D0, D1, D2], f32>
+  kgen.param.declare D7 = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = 0 : index}, Sh2)>
+  kgen.param.declare D8 = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = 1 : index}, Sh2)>
+  kgen.param.declare D9 = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = 2 : index}, Sh2)>
+  %3 = mo.rebind(%2) : !mo.tensor<Sh2, f32> -> !mo.tensor<[D7, D8, D9], f32>
+  // CHECK-NEXT: mo.output %[[OUT]] : !mo.tensor<[[[D0]], [[D1]], [[D3]]], f32>
+  mo.output<D7, D8, D9> %3 : !mo.tensor<[D7, D8, D9], f32>
 }
 
 // CHECK: mo.graph @unfolded_apply_shouldnt_be_inlined<[[SH0:.*]]: !mo.shape, [[SH1:.*]]: !mo.shape -> [[SH2:.*]]: !mo.shape>(

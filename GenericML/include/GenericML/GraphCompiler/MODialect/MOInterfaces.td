@@ -12,6 +12,7 @@
 #define GENERICML_GRAPHCOMPILER_MODIALECT_MOINTERFACES_TD
 
 include "mlir/Interfaces/InferTypeOpInterface.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/OpBase.td"
 
 def MO_OpInterface : OpInterface<"MOOpInterface"> {
@@ -67,7 +68,8 @@ def MO_Parameterization : MO_OpInterfaceBase<"ParameterizationInterface"> {
   }];
 }
 
-def MO_ParamDeclaration : MO_OpInterfaceBase<"ParamDeclarationInterface"> {
+def MO_ParamDeclaration : MO_OpInterfaceBase<"ParamDeclarationInterface",
+  [MemoryEffectsOpInterface]> {
   let description = [{
     Interface to be implemented by ops that declare shape or dimension
     parammeters.
@@ -79,6 +81,15 @@ def MO_ParamDeclaration : MO_OpInterfaceBase<"ParamDeclarationInterface"> {
       return {};
     }]>,
   ];
+
+  let extraTraitClassDeclaration = [{
+    void getEffects(
+      llvm::SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+      auto paramDeclItf = cast<ParamDeclarationInterface>(this->getOperation());
+      if (!paramDeclItf.getOutputParamDecls().empty())
+        effects.emplace_back(mlir::MemoryEffects::Allocate::get());
+    }
+  }];
 }
 
 def MO_ShapeInferenceMaterialization :

@@ -207,7 +207,6 @@ def MO_YieldOp
 //===----------------------------------------------------------------------===//
 
 def MO_RebindOp : MO_Op<"rebind", [
-    DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
     DeclareOpInterfaceMethods<MO_ParamDeclaration>,
     DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>]> {
   let summary = "tensor parameter rebind op";
@@ -731,7 +730,6 @@ def MO_ConvOp : MO_Op<"conv", [Pure, MO_SlidingWindow]>{
 
 class MO_ShapeModifierOp<string mnemonic, list<Trait> traits = []> : MO_Op<
     mnemonic, traits # [
-    Pure,
     DeclareOpInterfaceMethods<MO_Parameterization>,
     DeclareOpInterfaceMethods<MO_ParamDeclaration>
 ]> {
@@ -788,7 +786,6 @@ def MO_ReshapeOp : MO_ShapeModifierOp<"reshape"> {
 }
 
 def MO_ShapeOfOp : MO_Op<"shape_of", [
-  Pure,
   DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>
 ]> {
@@ -821,7 +818,6 @@ def MO_ShapeOfOp : MO_Op<"shape_of", [
 
 def MO_BroadcastShapeOp : MO_Op<"broadcast_shape", [
   Commutative,
-  Pure,
   DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
 ]> {
@@ -964,7 +960,6 @@ def MO_ConcatOp : MO_Op<"concat", [Pure]> {
 }
 
 def MO_TransposeOp : MO_Op<"transpose", [
-  Pure,
   DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
 ]> {
@@ -1043,7 +1038,6 @@ def MO_PadOp : MO_Op<"pad", [Pure]> {
 //===----------------------------------------------------------------------===//
 
 def MO_GatherOp : MO_Op<"gather", [
-  Pure,
   DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
   DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
@@ -1145,7 +1139,12 @@ def MO_RangeOp : MO_Op<"range", [
 //===----------------------------------------------------------------------===//
 
 class MO_DotBase<string name, list<Trait> traits = []> :
-    MO_Op<name, traits # [MO_SameOperandsAndResultElementType]> {
+    MO_Op<name, traits # [
+    MO_SameOperandsAndResultElementType,
+    MO_MatmulLike,
+    DeclareOpInterfaceMethods<MO_Parameterization>,
+    DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+]> {
   let description = [{
     Base class for all generic dot products (i.e. tensor contractions with two
     inputs), for example matmuls.
@@ -1156,11 +1155,7 @@ class MO_DotBase<string name, list<Trait> traits = []> :
   let hasVerifier = 1;
 }
 
-def MO_MatmulOp : MO_DotBase<"matmul", [
-  MO_MatmulLike,
-  DeclareOpInterfaceMethods<MO_Parameterization>,
-  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
-]> {
+def MO_MatmulOp : MO_DotBase<"matmul"> {
   let summary = "Matrix-matrix multiplication";
   let description = [{
     Perform matrix multiplication on two 2D tensors.
@@ -1184,9 +1179,6 @@ def MO_MatmulOp : MO_DotBase<"matmul", [
 }
 
 def MO_BatchMatmulOp : MO_DotBase<"batch_matmul", [
-  MO_MatmulLike,
-  DeclareOpInterfaceMethods<MO_Parameterization>,
-  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
   DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
 ]> {
   let summary = "Batched matrix-matrix multiplication";

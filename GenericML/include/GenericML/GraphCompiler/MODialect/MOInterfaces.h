@@ -11,6 +11,7 @@
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Value.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 
 namespace mlir {
 class RewriterBase;
