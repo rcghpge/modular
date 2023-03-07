@@ -1082,7 +1082,10 @@ def MO_GatherOp : MO_Op<"gather", [
 // Range
 //===----------------------------------------------------------------------===//
 
-def MO_RangeOp : MO_Op<"range", [Pure, MO_SameOperandsAndResultElementType]> {
+def MO_RangeOp : MO_Op<"range", [
+    Pure,
+    MO_SameOperandsAndResultElementType,
+    DeclareOpInterfaceMethods<MO_Parameterization>]> {
   let summary = "Create a sequence of numbers";
   let description = [{
     The sequence goes from `start` with increments of size `step` up to (but not
@@ -1116,12 +1119,16 @@ def MO_RangeOp : MO_Op<"range", [Pure, MO_SameOperandsAndResultElementType]> {
   let arguments = (ins
     MO_RankedScalarTensor:$start,
     MO_RankedScalarTensor:$limit,
-    MO_RankedScalarTensor:$step);
+    MO_RankedScalarTensor:$step,
+    MO_ParamDecls:$paramDecls);
   let results = (outs MO_VectorIfRanked:$result);
 
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `` custom<ParamDecls>($paramDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
   }];
+
+  let hasVerifier = 1;
 }
 
 

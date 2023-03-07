@@ -339,6 +339,28 @@ mo.graph @range_res_eltype_mismatch(
 
 // -----
 
+mo.graph @range_too_many_params<() -> K>(
+  %arg0: !mo.tensor<[], f32>, %arg1: !mo.tensor<[], f32>, %arg2: !mo.tensor<[], f32>
+) -> !mo.tensor<[?], f32> {
+  // expected-error@+1 {{cannot declare more than one parameter}}
+  %res = mo.range<() -> M, N>(%arg0, %arg1, %arg2) : (
+    !mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[M], f32>
+  mo.output<M> %res : !mo.tensor<[M], f32>
+}
+
+// -----
+
+mo.graph @range_not_index_param<() -> K>(
+  %arg0: !mo.tensor<[], si32>, %arg1: !mo.tensor<[], si32>, %arg2: !mo.tensor<[], si32>
+) -> !mo.tensor<[?], f32> {
+  // expected-error@+1 {{can only declare index parameters}}
+  %res = mo.range<() -> Sh1: !mo.shape>(%arg0, %arg1, %arg2) : (
+    !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[K], si32>
+  mo.output<K> %res : !mo.tensor<[K], si32>
+}
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // ShapeOfOp
 //===----------------------------------------------------------------------===//

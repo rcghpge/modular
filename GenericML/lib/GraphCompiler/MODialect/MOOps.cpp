@@ -407,6 +407,21 @@ LogicalResult BatchMatmulOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// MO_RangeOp support
+//===----------------------------------------------------------------------===//
+
+LogicalResult RangeOp::verify() {
+  ArrayRef<KGEN::ParamDeclAttr> paramDecls = getParamDecls();
+  if (!paramDecls.empty()) {
+    if (paramDecls.size() != 1)
+      return emitError("cannot declare more than one parameter");
+    if (!paramDecls[0].getType().isIndex())
+      return emitError("can only declare index parameters");
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // MO_RebindOp support
 //===----------------------------------------------------------------------===//
 
