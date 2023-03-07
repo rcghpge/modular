@@ -271,26 +271,18 @@ def MO_ConstantOp : MO_Op<"constant", [ConstantLike, Pure]> {
   let hasFolder = 1;
 
   let builders = [
-    /// Create a new rank-1 tensor mo.constant.
-    OpBuilder<(ins
-      "ArrayRef<int64_t>":$values,
-      "Type":$elementType
-    )>,
-    /// Create a new rank-0 (scalar) tensor mo.constant.
-    OpBuilder<(ins
-      "int64_t":$value,
-      "Type":$elementType
-    )>,
-    /// Create a new rank-1 tensor mo.constant.
-    OpBuilder<(ins
-      "ArrayRef<APFloat>":$values,
-      "Type":$elementType
-    )>,
-    /// Create a new rank-0 (scalar) tensor mo.constant.
-    OpBuilder<(ins
-      "APFloat":$value,
-      "Type":$elementType
-    )>,
+    /// Create a new rank-1 tensor mo.constant of int32 value or less.
+    OpBuilder<(ins "ArrayRef<int32_t>":$values)>,
+    /// Create a new rank-0 (scalar) tensor mo.constant of int32 value or less.
+    OpBuilder<(ins "int32_t":$value)>,
+    /// Create a new rank-1 tensor mo.constant of int64 value or less.
+    OpBuilder<(ins "ArrayRef<int64_t>":$values)>,
+    /// Create a new rank-0 (scalar) tensor mo.constant of int64 value or less.
+    OpBuilder<(ins "int64_t":$value)>,
+    /// Create a new rank-1 tensor mo.constant of any float type.
+    OpBuilder<(ins "ArrayRef<APFloat>":$values, "Type":$elementType)>,
+    /// Create a new rank-0 (scalar) tensor mo.constant of any float type.
+    OpBuilder<(ins "APFloat":$value, "Type":$elementType )>,
   ];
 
 }
@@ -1220,9 +1212,9 @@ def MO_BatchMatmulOp : MO_DotBase<"batch_matmul",
 def MO_MatrixBandPartOp : MO_Op<"matrix_band_part", [Pure]> {
   let summary = "Matrix Band Part operation";
   let description = [{
-    Copy a tensor setting everything outside central (diagonal) band of the 
-    matrices, where all but the last two axes are effectively batches, and the 
-    last two axes define sub matricies.
+    Copy a tensor setting everything outside central (diagonal) band of the
+    matrices to zero, where all but the last two axes are effectively batches,
+    and the last two axes define sub matricies.
 
     Assume the input has dimensions [I, J, ..., M, N], then the output tensor
     has the same shape as the input, and the values values are given by

@@ -273,8 +273,20 @@ OpFoldResult ConstantOp::fold(FoldAdaptor adaptor) {
 }
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                       ArrayRef<int64_t> values, Type elementType) {
-  auto type = MO::TensorType::get({(int64_t)values.size()}, elementType);
+                       ArrayRef<int64_t> values) {
+  auto type =
+      MO::TensorType::get({(int64_t)values.size()},
+                          odsBuilder.getIntegerType(64, /*isSigned=*/true));
+  auto valueAttr = odsBuilder.getAttr<IntArrayElementsAttr>(
+      values, mlir::IntegerType::Signed);
+  build(odsBuilder, odsState, type, valueAttr);
+}
+
+void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                       ArrayRef<int32_t> values) {
+  auto type =
+      MO::TensorType::get({(int64_t)values.size()},
+                          odsBuilder.getIntegerType(32, /*isSigned=*/true));
   auto valueAttr = odsBuilder.getAttr<IntArrayElementsAttr>(
       values, mlir::IntegerType::Signed);
   build(odsBuilder, odsState, type, valueAttr);
@@ -288,10 +300,21 @@ void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 }
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                       int64_t value, Type elementType) {
-  auto type = MO::TensorType::get(SmallVector<int64_t>{}, elementType);
+                       int64_t value) {
+  auto type = MO::TensorType::get(
+      SmallVector<int64_t>{}, odsBuilder.getIntegerType(64, /*isSigned=*/true));
   auto valueAttr = odsBuilder.getAttr<IntArrayElementsAttr>(
       ArrayRef<int64_t>(SmallVector<int64_t>{value}),
+      mlir::IntegerType::Signed);
+  build(odsBuilder, odsState, type, valueAttr);
+}
+
+void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                       int32_t value) {
+  auto type = MO::TensorType::get(
+      SmallVector<int64_t>{}, odsBuilder.getIntegerType(32, /*isSigned=*/true));
+  auto valueAttr = odsBuilder.getAttr<IntArrayElementsAttr>(
+      ArrayRef<int32_t>(SmallVector<int32_t>{value}),
       mlir::IntegerType::Signed);
   build(odsBuilder, odsState, type, valueAttr);
 }

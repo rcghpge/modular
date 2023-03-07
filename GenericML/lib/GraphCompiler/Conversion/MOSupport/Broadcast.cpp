@@ -81,8 +81,7 @@ broadcastToCommonShape(OpBuilder &builder, TensorValue x, TensorValue y,
 
 TensorValue broadcastToStaticShape(OpBuilder &builder, Location loc,
                                    TensorValue x, TensorType s) {
-  auto constOp = builder.create<MO::ConstantOp>(
-      loc, s.getIntDims(), builder.getIntegerType(64, /*isSigned=*/true));
+  auto constOp = builder.create<MO::ConstantOp>(loc, s.getIntDims());
   return builder.create<MO::BroadcastToOp>(loc, s, x, constOp);
 }
 
