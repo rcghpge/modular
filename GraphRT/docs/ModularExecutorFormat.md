@@ -1,10 +1,10 @@
-# Binary Executor Format (MEF) File Format
+# Modular Executor Format (MEF) File Format
 
 [TOC]
 
 This document describes the goals and rationale for the in-memory representation
-the [GraphRT](index.md) executor uses to run primitives, known as the Binary Executor
-Format "MEF".
+the [GraphRT](index.md) executor uses to run primitives, known as the Modular
+Executor Format "MEF".
 
 We have the following goals:
 
