@@ -208,6 +208,7 @@ def MO_YieldOp
 
 def MO_RebindOp : MO_Op<"rebind", [
     DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+    DeclareOpInterfaceMethods<MO_ParamDeclaration>,
     DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>]> {
   let summary = "tensor parameter rebind op";
   let description = [{
@@ -226,12 +227,12 @@ def MO_RebindOp : MO_Op<"rebind", [
     ```
   }];
 
-  let arguments = (ins MO_Tensor:$input, MO_ParamDecls:$paramDecls);
+  let arguments = (ins MO_Tensor:$input, MO_ParamDecls:$outputParamDecls);
 
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `` custom<ParamDecls>($paramDecls) `(` $input `)` attr-dict `:`
+    `` custom<ParamDecls>($outputParamDecls) `(` $input `)` attr-dict `:`
     qualified(type($input)) `->` qualified(type($result))
   }];
 
@@ -568,11 +569,11 @@ class MO_ReductionOp<string name, list<Trait> traits = []> : MO_Op<
   let arguments = (ins
     MO_Tensor:$input,
     MO_RankedScalarIndexTensor:$axis,
-    MO_ParamDecls:$paramDecls);
+    MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `` custom<ParamDecls>($paramDecls) `(` operands `)` attr-dict `:`
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
     functional-type(operands, results)
   }];
 }
@@ -729,15 +730,19 @@ def MO_ConvOp : MO_Op<"conv", [Pure, MO_SlidingWindow]>{
 //===----------------------------------------------------------------------===//
 
 class MO_ShapeModifierOp<string mnemonic, list<Trait> traits = []> : MO_Op<
-    mnemonic, traits # [Pure, DeclareOpInterfaceMethods<MO_Parameterization>]> {
+    mnemonic, traits # [
+    Pure,
+    DeclareOpInterfaceMethods<MO_Parameterization>,
+    DeclareOpInterfaceMethods<MO_ParamDeclaration>
+]> {
   let arguments = (ins
     MO_Tensor:$input,
     MO_ShapeLike:$newShape,
-    MO_ParamDecls:$paramDecls);
+    MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `` custom<ParamDecls>($paramDecls) `(` operands `)` attr-dict `:`
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
     functional-type(operands, results)
   }];
 }
@@ -782,8 +787,11 @@ def MO_ReshapeOp : MO_ShapeModifierOp<"reshape"> {
   let hasFolder = 1;
 }
 
-def MO_ShapeOfOp : MO_Op<"shape_of",
-    [Pure, DeclareOpInterfaceMethods<MO_Parameterization>]> {
+def MO_ShapeOfOp : MO_Op<"shape_of", [
+  Pure,
+  DeclareOpInterfaceMethods<MO_Parameterization>,
+  DeclareOpInterfaceMethods<MO_ParamDeclaration>
+]> {
   let summary = "ShapeOf Operation";
   let description = [{
     Get the shape of a tensor.
@@ -801,18 +809,22 @@ def MO_ShapeOfOp : MO_Op<"shape_of",
     ```
   }];
 
-  let arguments = (ins MO_Tensor:$input, MO_ParamDecls:$paramDecls);
+  let arguments = (ins MO_Tensor:$input, MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_ShapeLike:$shape);
   let assemblyFormat = [{
-    `` custom<ParamDecls>($paramDecls) `(` operands `)` attr-dict `:`
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
     functional-type(operands, results)
   }];
 
   let hasVerifier = 1;
 }
 
-def MO_BroadcastShapeOp : MO_Op<"broadcast_shape",
-    [Commutative, Pure, DeclareOpInterfaceMethods<MO_Parameterization>]> {
+def MO_BroadcastShapeOp : MO_Op<"broadcast_shape", [
+  Commutative,
+  Pure,
+  DeclareOpInterfaceMethods<MO_Parameterization>,
+  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+]> {
   let summary = "Broadcast Shape Operation";
   let description = [{
     Given two tensor shapes, return the shape that both broadcast to under
@@ -852,10 +864,10 @@ def MO_BroadcastShapeOp : MO_Op<"broadcast_shape",
 
   let arguments = (ins MO_ShapeLike:$input_x,
                        MO_ShapeLike:$input_y,
-                       MO_ParamDecls:$paramDecls);
+                       MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_ShapeLike:$shape);
   let assemblyFormat = [{
-    `` custom<ParamDecls>($paramDecls) `(` operands `)` attr-dict `:`
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
     functional-type(operands, results)
   }];
   let hasFolder = 1;
@@ -951,8 +963,11 @@ def MO_ConcatOp : MO_Op<"concat", [Pure]> {
   let hasVerifier = 1;
 }
 
-def MO_TransposeOp : MO_Op<"transpose",
-    [Pure, DeclareOpInterfaceMethods<MO_Parameterization>]> {
+def MO_TransposeOp : MO_Op<"transpose", [
+  Pure,
+  DeclareOpInterfaceMethods<MO_Parameterization>,
+  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+]> {
   let summary = "Transpose Operation";
   let description = [{
     Return a new Tensor as the result of permuting the dimensions of the input
@@ -977,10 +992,10 @@ def MO_TransposeOp : MO_Op<"transpose",
   let arguments = (ins
     MO_Tensor:$input,
     MO_ShapeLike:$perm,
-    MO_ParamDecls:$paramDecls);
+    MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
-    `` custom<ParamDecls>($paramDecls) `(` operands `)` attr-dict
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict
     `:` functional-type(operands, results)
   }];
 
@@ -1030,7 +1045,8 @@ def MO_PadOp : MO_Op<"pad", [Pure]> {
 def MO_GatherOp : MO_Op<"gather", [
   Pure,
   DeclareOpInterfaceMethods<MO_Parameterization>,
-  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
+  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
 ]> {
   let summary = "Gather Operation";
   let description = [{
@@ -1061,10 +1077,10 @@ def MO_GatherOp : MO_Op<"gather", [
   let arguments = (ins MO_NonScalarIfRanked:$input,
                        MO_IndicesTensor:$indices,
                        MO_RankedScalarIndexTensor:$axis,
-                       MO_ParamDecls:$paramDecls);
+                       MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
-    `` custom<ParamDecls>($paramDecls) `(` operands `)` attr-dict `:`
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
     functional-type(operands, results)
   }];
   let hasVerifier = 1;
@@ -1112,11 +1128,11 @@ def MO_RangeOp : MO_Op<"range", [
     MO_RankedScalarTensor:$start,
     MO_RankedScalarTensor:$limit,
     MO_RankedScalarTensor:$step,
-    MO_ParamDecls:$paramDecls);
+    MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_VectorIfRanked:$result);
 
   let assemblyFormat = [{
-    `` custom<ParamDecls>($paramDecls) `(` operands `)` attr-dict `:`
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
     functional-type(operands, results)
   }];
 
@@ -1140,8 +1156,11 @@ class MO_DotBase<string name, list<Trait> traits = []> :
   let hasVerifier = 1;
 }
 
-def MO_MatmulOp : MO_DotBase<"matmul",
-    [MO_MatmulLike, DeclareOpInterfaceMethods<MO_Parameterization>]> {
+def MO_MatmulOp : MO_DotBase<"matmul", [
+  MO_MatmulLike,
+  DeclareOpInterfaceMethods<MO_Parameterization>,
+  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+]> {
   let summary = "Matrix-matrix multiplication";
   let description = [{
     Perform matrix multiplication on two 2D tensors.
@@ -1164,9 +1183,12 @@ def MO_MatmulOp : MO_DotBase<"matmul",
   }];
 }
 
-def MO_BatchMatmulOp : MO_DotBase<"batch_matmul",
-    [MO_MatmulLike, DeclareOpInterfaceMethods<MO_Parameterization>,
-     DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>]> {
+def MO_BatchMatmulOp : MO_DotBase<"batch_matmul", [
+  MO_MatmulLike,
+  DeclareOpInterfaceMethods<MO_Parameterization>,
+  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
+]> {
   let summary = "Batched matrix-matrix multiplication";
   let description = [{
     Perform matrix multiplication on two batches of matrices, represented by
@@ -1188,10 +1210,10 @@ def MO_BatchMatmulOp : MO_DotBase<"batch_matmul",
   let arguments = (ins
     MO_Tensor:$input_a,
     MO_Tensor:$input_b,
-    MO_ParamDecls:$paramDecls);
+    MO_ParamDecls:$outputParamDecls);
 
   let assemblyFormat = [{
-    `` custom<ParamDecls>($paramDecls) `(` operands `)` attr-dict `:`
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
     functional-type(operands, results)
   }];
 

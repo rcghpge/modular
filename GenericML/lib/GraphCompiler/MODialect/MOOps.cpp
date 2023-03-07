@@ -434,7 +434,7 @@ LogicalResult BatchMatmulOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult RangeOp::verify() {
-  ArrayRef<KGEN::ParamDeclAttr> paramDecls = getParamDecls();
+  ArrayRef<KGEN::ParamDeclAttr> paramDecls = getOutputParamDecls();
   if (!paramDecls.empty()) {
     if (paramDecls.size() != 1)
       return emitError("cannot declare more than one parameter");
@@ -520,7 +520,7 @@ LogicalResult RebindOp::verify() {
 
 void RebindOp::getEffects(
     SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
-  if (!getParamDecls().empty())
+  if (!getOutputParamDecls().empty())
     effects.emplace_back(mlir::MemoryEffects::Allocate::get());
 }
 
