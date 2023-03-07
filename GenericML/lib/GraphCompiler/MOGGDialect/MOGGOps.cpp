@@ -439,7 +439,6 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
 static ParseResult parseLambda(OpAsmParser &p, StringAttr &name, TypeAttr &sig,
                                Region &region) {
   SmallVector<OpAsmParser::Argument> args;
-  KGEN::MetadataAttr metadata;
   llvm::SMLoc loc;
   KGEN::SignatureType sigType;
 
