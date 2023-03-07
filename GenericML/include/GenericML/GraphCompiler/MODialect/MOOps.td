@@ -426,7 +426,7 @@ def MO_MulOp : MO_ElementWiseBinaryOp<"mul", [Commutative]> {
   }];
 }
 
-def MO_Pow3Op : MO_ElementWiseUnaryOp<"pow3", [Idempotent]> {
+def MO_Pow3Op : MO_ElementWiseUnaryOp<"pow3"> {
   let summary = "Power 3 (cube) operation";
   let description = [{
     Returns x**3, where x is the input tensor.
@@ -455,7 +455,7 @@ def MO_ReluOp : MO_ElementWiseUnaryOp<"relu", [Idempotent]> {
   }];
 }
 
-def MO_RsqrtOp : MO_ElementWiseUnaryOp<"rsqrt", [Idempotent]> {
+def MO_RsqrtOp : MO_ElementWiseUnaryOp<"rsqrt"> {
   let summary = "Inverse Square Root operation";
   let description = [{
     Returns 1/sqrt(x), where x is the input tensor.
@@ -469,7 +469,7 @@ def MO_RsqrtOp : MO_ElementWiseUnaryOp<"rsqrt", [Idempotent]> {
   }];
 }
 
-def MO_SqrtOp : MO_ElementWiseUnaryOp<"sqrt", [Idempotent]> {
+def MO_SqrtOp : MO_ElementWiseUnaryOp<"sqrt"> {
   let summary = "Square Root operation";
   let description = [{
     Return sqrt(x), where x is the input tensor.
