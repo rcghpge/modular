@@ -332,14 +332,10 @@ public:
 
   /// Set all results in this container to error with message `error` and
   /// location `loc`.
-  void setAllToError(Error error, EncodedLocation &loc) && {
-    for (auto &result : results) {
-      // CAUTION: We must copy each result since they are expected to remain
-      // available to the creator of the RemainingResults. However, we'll still
-      // mark this method as moving to make clear the results should only be set
-      // once.
-      result.copy().setToError(EncodedDiagnostic(error.copy(), loc.copy()));
-    }
+  void setAllToError(Error error, const EncodedLocation &loc) && {
+    for (auto &result : results)
+      result = AnyAsyncValueRef::createError(
+          runtime, EncodedDiagnostic(error.copy(), loc.copy()));
   }
 
 private:

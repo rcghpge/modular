@@ -217,11 +217,93 @@ mgp_cpu_buffer_realloc_spec(Chain inChain, Context &ctx, const TensorSpec &spec,
 // mgp.cpu.buffer.copy
 //===----------------------------------------------------------------------===//
 
-/// Fulfills the result with the owning reference to the deep copy of inBuffer.
 static void mgp_cpu_buffer_copy(Context &ctx, AsyncValueRef<BufferRef> inBuffer,
                                 Result<BufferRef> outBuffer, Runtime &runtime) {
-  TimeTraceScope scope(LLCL::WorkProfilerEntry::create("mgp.buffer_copy"));
+  TimeTraceScope scope(LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.copy"));
   std::move(outBuffer).emplace(inBuffer->deepCopy(runtime));
+}
+
+//===----------------------------------------------------------------------===//
+// mgp.cpu.buffer.concat
+//===----------------------------------------------------------------------===//
+
+static void mgp_cpu_buffer_concat(Chain inChain,
+                                  AsyncValueRef<BufferRef> outBuffer,
+                                  RemainingArguments inBuffers,
+                                  Result<Chain> outChain, Runtime &runtime) {
+  TimeTraceScope scope(
+      LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.concat"));
+  uint8_t *const out = outBuffer->getMutableBuffer<uint8_t>();
+  const size_t outSize = outBuffer->getSize();
+  size_t totalSize = 0; // total size of all input buffers processed so far
+  for (const auto &inBuffer : inBuffers) {
+    const BufferRef &ref = inBuffer.get<BufferRef>();
+    const size_t thisSize = ref.getSize();
+    if (totalSize + thisSize <= outSize)
+      // Just stop copying if it turns out the sizes don't line up.
+      // We'll report failure below.
+      memcpy(out + totalSize, ref.getBuffer(), thisSize);
+    totalSize += thisSize;
+  }
+  if (totalSize != outBuffer->getSize())
+    return std::move(outChain).setToError(
+        Twine("output buffer size must be sum of input buffer sizes (") +
+        Twine(outBuffer->getSize()) + " vs " + Twine(totalSize));
+  std::move(outChain).emplace();
+}
+
+//===----------------------------------------------------------------------===//
+// mgp.cpu.buffer.split.mutable_borrow
+//===----------------------------------------------------------------------===//
+
+static void mgp_cpu_buffer_split_mutable_borrow(
+    AsyncValueRef<BufferRef> inBuffer, RemainingArguments runtimeSizes,
+    RemainingResults outBuffers, MEFAttr<ArrayRef<uint64_t>> outBufferRawSizes,
+    Runtime &runtime, EncodedLocation loc) {
+  TimeTraceScope scope(
+      LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.split.mutable_borrow"));
+  uint8_t *const in = inBuffer->getMutableBuffer<uint8_t>();
+  const size_t inSize = inBuffer->getSize();
+  size_t totalSize = 0; // total size of all output buffers processed so far
+  size_t runtimeSizeIndex = 0; // index of next runtimeSizes operand to use
+  SmallVector<BufferRef> newBuffers;
+  // We'll have an entry in outBufferRawSizes for each output buffer, which
+  // will be either the output buffer's compile time size or the distinguished
+  // 'no value' value.
+  newBuffers.reserve(outBufferRawSizes.size());
+  for (uint64_t outBufferRawSize : *outBufferRawSizes) {
+    size_t outBufferRuntimeSize = rawSizeToRuntimeSize(outBufferRawSize);
+    size_t thisSize;
+    if (hasRuntimeSize(outBufferRuntimeSize)) {
+      // The size of this output buffer is known at compile time.
+      thisSize = outBufferRuntimeSize;
+    } else {
+      // The size of this output buffer in unknown at compile time, so
+      // must be taken from a runtimeSize operand value.
+      assert(runtimeSizeIndex < runtimeSizes.size() &&
+             "mismatched runtimeSizes arity");
+      thisSize = runtimeSizes[runtimeSizeIndex].get<size_t>();
+      runtimeSizeIndex++;
+    }
+    if (totalSize + thisSize <= inSize)
+      // Just stop creating results if it turns out the sizes don't line up.
+      // We'll report failure below.
+      // TODO(#9883): The output buffers will not have any alignment property.
+      newBuffers.emplace_back(BufferRef::createBorrowed(
+          /*buffer=*/in + totalSize, /*size=*/thisSize, /*alignment=*/{},
+          /*lifetime=*/BufferRef::kLocal));
+    totalSize += thisSize;
+  }
+  if (totalSize != inBuffer->getSize())
+    return std::move(outBuffers)
+        .setAllToError(Twine("mgp.cpu.buffer.split.mutable_borrow input buffer "
+                             "size must be sum of output buffer sizes (") +
+                           Twine(inBuffer->getSize()) + " vs " +
+                           Twine(totalSize) + ")",
+                       loc);
+  for (auto [outBuffer, newBuffer] : llvm::zip(outBuffers.get(), newBuffers))
+    outBuffer =
+        AnyAsyncValueRef::createReady<BufferRef>(runtime, std::move(newBuffer));
 }
 
 //===----------------------------------------------------------------------===//
@@ -579,6 +661,9 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.realloc.spec",
                 mgp_cpu_buffer_realloc_spec);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.copy", mgp_cpu_buffer_copy);
+  ADD_PRIMITIVE(registry, "mgp.cpu.buffer.concat", mgp_cpu_buffer_concat);
+  ADD_PRIMITIVE(registry, "mgp.cpu.buffer.split.mutable_borrow",
+                mgp_cpu_buffer_split_mutable_borrow);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.set", mgp_cpu_buffer_set);
   ADD_PRIMITIVE(registry, "mgp.context.create", mgp_context_create);
   ADD_PRIMITIVE(registry, "mgp.state_slot.create", mgp_state_slot_create);

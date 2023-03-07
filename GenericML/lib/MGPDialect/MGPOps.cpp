@@ -439,6 +439,99 @@ LogicalResult CpuBufferReallocSpecOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
+// CpuBufferConcatOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CpuBufferConcatOp::verify() {
+  if (!getOutBuffer().getType().getOptSize())
+    // Nothing to check.
+    return success();
+  uint64_t inTotalSize = 0;
+  for (const auto &inBuffer : getInBuffers()) {
+    auto inBufferType = dyn_cast<CpuBufferType>(inBuffer.getType());
+    Optional<uint64_t> optSize = inBufferType.getOptSize();
+    if (!optSize)
+      // Not all input buffers have a statically known size.
+      return success();
+    inTotalSize += *optSize;
+  }
+  CpuBufferType expectedOutType =
+      CpuBufferType::get(getContext(), Optional<uint64_t>(inTotalSize));
+  if (getOutBuffer().getType() != expectedOutType)
+    return emitOpError() << "expected output buffer type does not match actual "
+                            "output buffer type ("
+                         << expectedOutType << " vs "
+                         << getOutBuffer().getType() << ").";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CpuBufferSplitBorrowOp
+//===----------------------------------------------------------------------===//
+
+/// Parses a list of mgp.cpu.buffer types, but also extracts the raw sizes
+/// of each type.
+static ParseResult
+parseBufferTypesAndRawSizes(AsmParser &p, SmallVectorImpl<Type> &bufferTypes,
+                            IntArrayElementsAttr &rawSizes) {
+  SmallVector<APInt> rawDims;
+  if (p.parseArrowTypeList(bufferTypes))
+    return failure();
+  rawDims.reserve(bufferTypes.size());
+  for (const auto &type : bufferTypes) {
+    auto bufferType = dyn_cast<CpuBufferType>(type);
+    rawDims.emplace_back(bufferType.getRawSize().getValue());
+  }
+  Type ui64 = IntegerType::get(p.getContext(), 64, IntegerType::Unsigned);
+  rawSizes = IntArrayElementsAttr::get(
+      ArrayType::get(static_cast<int64_t>(rawDims.size()), ui64), rawDims);
+  return success();
+}
+
+/// Prints a list of mgp.cpu.buffer types, ignoring the raw sizes.
+static void
+printBufferTypesAndRawSizes(AsmPrinter &p,
+                            const CpuBufferSplitMutableBorrowOp &op,
+                            mlir::ValueTypeRange<mlir::ResultRange> bufferTypes,
+                            IntArrayElementsAttr rawSizes) {
+  p.printArrowTypeList(bufferTypes);
+}
+
+// Verifies the output buffer sizes are consistent with the input buffer size,
+// and that we have a runtime size operand for every output buffer of unknown
+// size.
+LogicalResult CpuBufferSplitMutableBorrowOp::verify() {
+  size_t numDynamic = llvm::count_if(getOutBuffers(), [](const Value &v) {
+    return !dyn_cast<CpuBufferType>(v.getType()).getOptSize().has_value();
+  });
+  if (getRuntimeSizes().size() != numDynamic)
+    return emitOpError() << "expected a runtime size operand for every output "
+                            "buffer without a statically known size (given "
+                         << getRuntimeSizes().size() << " but need "
+                         << numDynamic << ").";
+  if (!getInBuffer().getType().getOptSize())
+    // Nothing more to check
+    return success();
+  uint64_t outTotalSize = 0;
+  for (const auto &outBuffer : getOutBuffers()) {
+    auto outBufferType = dyn_cast<CpuBufferType>(outBuffer.getType());
+    Optional<uint64_t> optSize = outBufferType.getOptSize();
+    if (!optSize)
+      // Not all output buffers have a statically known size.
+      return success();
+    outTotalSize += *optSize;
+  }
+  CpuBufferType expectedInType =
+      CpuBufferType::get(getContext(), Optional<uint64_t>(outTotalSize));
+  if (getInBuffer().getType() != expectedInType)
+    return emitOpError() << "expected input buffer type does not match "
+                            "actual input buffer type ("
+                         << expectedInType << " vs " << getInBuffer().getType()
+                         << ").";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ContextCreateOp
 //===----------------------------------------------------------------------===//
 

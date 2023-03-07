@@ -511,20 +511,14 @@ def CpuBufferReallocSpecOp : MGP_Op<"cpu.buffer.realloc.spec", [
 
 def CpuBufferCopyOp : MGP_Op<"cpu.buffer.copy", [
     AllTypesMatch<["buffer", "result"]>]> {
-  let summary = "Copies the contents of a CPU buffer.";
+  let summary = "Returns a deep copy of a CPU buffer.";
   let description = [{
-    This op returns a copy of a CPU buffer. The result will be 'owning'.
+    This op returns a deep copy of a CPU buffer. The result will be 'owning'.
+    Any alignment constraint on the operand buffer is preserved in the result.
 
-    Generally this op should only be needed when testing the use
-    of `mgp.cpu.buffer.realloc` using a `!mgp.context` which is created
-    within the test itself. By rule 2 of `mgp.cpu.buffer.realloc` the
-    result of `mgp.cpu.buffer.realloc` cannot outlive the context itself,
-    so a copy is needed to return that buffer to the test harness
-    for printing etc. It takes `!mgp.context` as an argument to
-    make sure that the context survives until the copy is performed.
-
-    Any alignment constraint on the operand buffer is preserved in
-    the result.
+    Generally this op should only be needed when testing uses of buffers
+    which are managed by a `!mgp.context` which is created within the test
+    itself.
 
     Example:
     ```mlir
@@ -540,6 +534,92 @@ def CpuBufferCopyOp : MGP_Op<"cpu.buffer.copy", [
   let assemblyFormat = [{
     $theContext `,` $buffer attr-dict `:` qualified(type($result))
   }];
+}
+
+//===----------------------------------------------------------------------===//
+// CpuBufferConcatOp
+//===----------------------------------------------------------------------===//
+
+def CpuBufferConcatOp : MGP_Op<"cpu.buffer.concat"> {
+  let summary = "Concatenates a sequence of input buffers into an output "
+                "buffer.";
+  let description = [{
+    Concatenates a sequence of input buffers into an output buffer. If only a
+    single operand is given then mimics an ordinary buffer copy. The the output
+    buffer and all input buffers have statically known sizes then they are
+    checked for consistency at compile time. A runtime error will be returned
+    if the actual runtime sizes of input and output buffers are not consistent.
+
+    Example:
+    ```mlir
+    %in_ch : !mef.chain
+    %out_buf : !mgp.cpu.buffer<256>
+    %in0_buf : !mgp.cpu.buffer<128>
+    %in1_buf : !mgp.cpu.buffer
+    %in2_buf : !mgp.cpu.buffer
+    %out_ch = mgp.cpu.buffer.concat %in_ch, %out_buf, %in0_buf, %in1_buf, %in2_buf
+              : (!mgp.cpu.buffer<128>, !mgp.cpu.buffer, !mgp.cpu.buffer)
+              -> !mgp.cpu.buffer<256>
+    %out_ch : !mef.chain
+    ```
+  }];
+
+  let arguments = (ins ChainType:$inChain,
+                       MGP_CpuBufferType:$outBuffer,
+                       Variadic<MGP_CpuBufferType>:$inBuffers);
+  let results = (outs ChainType:$outChain);
+  let assemblyFormat = [{
+    $inChain `,` $outBuffer `,` $inBuffers attr-dict
+    `:` functional-type($inBuffers, $outBuffer)
+  }];
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// CpuBufferSplitMutableBorrowOp
+//===----------------------------------------------------------------------===//
+
+def CpuBufferSplitMutableBorrowOp : MGP_Op<"cpu.buffer.split.mutable_borrow"> {
+  let summary = "Splits an input buffer into multiple mutable borrows to its "
+                "contents.";
+  let description = [{
+    Splits a mutable input buffer into multiple mutable borrows into its
+    contents. An `mgp.cpu.buffer.concat` of those buffers would recover the
+    contents of the input buffer. An index operand must be supplied at runtime
+    for each output buffer which does not have a statically known size. A
+    runtime error will be returned if the actual runtime sizes of input and
+    output buffers and size operands are not consistent.
+
+    Note that no copying is done, and the result buffers merely borrow from the
+    (offsets into) the input buffer. Thus the input buffer must have a lifetime
+    equal to or greater than all the output buffers.
+
+    TODO(#9883): The output buffers will not have any alignment property set.
+
+    Example:
+    ```mlir
+    %in_buf : !mgp.cpu.buffer<256>
+    %size1 : index
+    %size2 : index
+    %out0_buf, %out1_buf, %out2_buf =
+        mgp.cpu.buffer.split.mutable_borrow %in_buf, %size1, %size2
+        : !mgp.cpu.buffer<256> -> (!mgp.cpu.buffer<128>, !mgp.cpu.buffer, !mgp.cpu.buffer)
+    %out0_buf : !mgp.cpu.buffer<128>
+    %out1_buf : !mgp.cpu.buffer
+    %out2_buf : !mgp.cpu.buffer
+    ```
+  }];
+
+  let arguments = (ins MGP_CpuBufferType:$inBuffer,
+                       Variadic<Index>:$runtimeSizes,
+                       UI64ArrayElementsAttr:$outBufferRawSizes);
+  let results = (outs Variadic<MGP_CpuBufferType>:$outBuffers);
+  let assemblyFormat = [{
+    $inBuffer (`,` $runtimeSizes^)? attr-dict
+    `:` qualified(type($inBuffer))
+        custom<BufferTypesAndRawSizes>(type($outBuffers), $outBufferRawSizes)
+  }];
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
