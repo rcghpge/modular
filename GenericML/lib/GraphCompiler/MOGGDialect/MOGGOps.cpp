@@ -11,6 +11,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/MGPDialect/MGPOps.h"
+#include "KGEN/KGENDialect/KGENUtils.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/IR/FunctionImplementation.h"
@@ -349,9 +350,8 @@ LogicalResult LoadJitKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   std::string combined;
 
   // Combine into a list with a terminator character.
-  for (StringRef symbol : syms.getAsValueRange<mlir::StringAttr>()) {
+  for (StringRef symbol : syms.getAsValueRange<mlir::StringAttr>())
     combined += symbol.str() + ";";
-  }
 
   // Drop the last ";".
   combined.pop_back();
@@ -434,6 +434,77 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   helper.allocateOutputTensor(outputBufferAndSpec);
 
   return success();
+}
+
+static ParseResult parseLambda(OpAsmParser &p, StringAttr &name, TypeAttr &sig,
+                               Region &region) {
+  SmallVector<OpAsmParser::Argument> args;
+  KGEN::MetadataAttr metadata;
+  llvm::SMLoc loc;
+  KGEN::SignatureType sigType;
+
+  if (p.parseSymbolName(name) || p.parseEqual() ||
+      KGEN::parseFunctionSignature(p, args, sigType) ||
+      p.getCurrentLocation(&loc) || p.parseRegion(region, args))
+    return failure();
+
+  SmallVector<Type> argTypes;
+  for (const OpAsmParser::Argument &arg : args)
+    argTypes.push_back(arg.type);
+
+  sig = TypeAttr::get(
+      p.getBuilder().getFunctionType(argTypes, sigType.getValueResults()));
+  return success();
+}
+
+static void printLambda(OpAsmPrinter &p, mlir::Operation *lambda,
+                        StringAttr name, TypeAttr sig, Region &region) {
+  p.printSymbolName(name.strref());
+  p << " = ";
+
+  auto func = cast<FunctionType>(sig.getValue());
+
+  auto sigTy = KGEN::SignatureType::get(lambda->getContext(), func.getInputs(),
+                                        func.getResults());
+  KGEN::printFunctionSignature(p, region, sigTy);
+  p.printRegion(region, /*printEntryBlockArgs=*/false);
+}
+
+static ParseResult
+parseKernel(OpAsmParser &p,
+            SmallVectorImpl<OpAsmParser::UnresolvedOperand> &operands,
+            SmallVectorImpl<Type> &operandTypes,
+            SmallVectorImpl<Type> &resultTypes, Region &region) {
+  SmallVector<OpAsmParser::Argument> args;
+  llvm::SMLoc loc;
+  KGEN::SignatureType sig;
+
+  if (p.parseOperandList(operands, AsmParser::Delimiter::Paren) ||
+      p.parseColon() || KGEN::parseFunctionSignature(p, args, sig) ||
+      p.getCurrentLocation(&loc) || p.parseRegion(region, args))
+    return failure();
+
+  for (const OpAsmParser::Argument &arg : args)
+    operandTypes.push_back(arg.type);
+
+  for (Type res : sig.getValueResults())
+    resultTypes.push_back(res);
+
+  return success();
+}
+
+static void printKernel(OpAsmPrinter &p, mlir::Operation *kernel,
+                        ValueRange operands, TypeRange operandTypes,
+                        TypeRange resultTypes, Region &region) {
+  p << '(';
+  p.printOperands(operands);
+  p << ") : ";
+
+  auto sigTy =
+      KGEN::SignatureType::get(kernel->getContext(), operandTypes, resultTypes);
+
+  KGEN::printFunctionSignature(p, region, sigTy);
+  p.printRegion(region, /*printEntryBlockArgs=*/false);
 }
 
 //===----------------------------------------------------------------------===//

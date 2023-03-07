@@ -32,7 +32,7 @@ def MOGGDialect : Dialect {
     void registerTypes();
   }];
 
-  let useDefaultTypePrinterParser = 0;
+  let useDefaultTypePrinterParser = 1;
 }
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGDIALECT_TD
