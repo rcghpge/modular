@@ -114,7 +114,7 @@ static ParseResult parseElementsAttrWithAlign(AsmParser &p,
 
   ErrorOr<Optional<uint64_t>> errOrOptAlign = getImpliedAlignment(aValue);
   if (const char *err = errOrOptAlign.getError())
-    return p.emitError(loc) << err;
+    return p.emitError(loc) << std::string(err);
 
   Type ui64 = IntegerType::get(p.getContext(), 64, IntegerType::Unsigned);
   APInt apint(ui64.getIntOrFloatBitWidth(), optSizeToRawSize(*errOrOptAlign),
@@ -174,7 +174,7 @@ LogicalResult CpuBufferConstantOp::verify() {
   // constraint. Check they are valid.
   ErrorOr<Optional<uint64_t>> errOrOptAlign = getImpliedAlignment(value);
   if (auto *error = errOrOptAlign.getError())
-    return emitOpError() << error;
+    return emitOpError() << std::string(error);
 
   if (!isValidOptAlign(*errOrOptAlign))
     return emitOpError()
