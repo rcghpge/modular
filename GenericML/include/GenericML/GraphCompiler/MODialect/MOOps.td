@@ -635,6 +635,54 @@ def MO_SumOp : MO_ReductionOp<"sum"> {
 // Sliding window ops
 //===----------------------------------------------------------------------===//
 
+def MO_AvgPoolOp : MO_Op<"avg_pool", [Pure, MO_SlidingWindow]>{
+  let summary = "Average pooling operation";
+  let description = [{
+    Apply average pooling with the given filter shape, strides, and dilations.
+
+    All hyperparameters (i.e. filter_shape, strides, dilations) must be of rank
+    1, or unranked. If the input has static rank, all hyperparameters with
+    static shape must have sizes the match the input rank. The input and output
+    data tensors' ranks must match if statically known.
+
+    This op currently only supports strides and dilations on the filter.
+
+    TODO: Clarify how AvgPool should work with padding.
+
+    Example:
+
+    ```mlir
+    %fs = mo.constant {
+      value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %st = mo.constant {
+      value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %di = mo.constant {
+      value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %res = mo.avg_pool(%arg) [
+        filter_shape = %fs, strides = %st, dilations = %di
+    ] : (
+      !mo.tensor<[10, 10], f32>, !mo.tensor<[2], si64>,
+      !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
+    ) -> !mo.tensor<[9, 5], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_ShapeLikeIfRanked:$filter_shape,
+    MO_ShapeLikeIfRanked:$strides,
+    MO_ShapeLikeIfRanked:$dilations);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `(` $input `)` `[` `filter_shape` `=` $filter_shape `,`
+    `strides` `=` $strides `,` `dilations` `=` $dilations `]` attr-dict `:`
+    functional-type(operands, results)
+  }];
+
+  let hasVerifier = 1;
+}
+
 def MO_MaxPoolOp : MO_Op<"max_pool", [Pure, MO_SlidingWindow]>{
   let summary = "Max pooling operation";
   let description = [{
