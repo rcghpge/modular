@@ -271,13 +271,13 @@ def MO_ConstantOp : MO_Op<"constant", [ConstantLike, Pure]> {
   let hasFolder = 1;
 
   let builders = [
-    /// Create a new rank-1 tensor mo.constant of int32 value or less.
+    /// Create a new rank-1 tensor mo.constant of int32 value.
     OpBuilder<(ins "ArrayRef<int32_t>":$values)>,
-    /// Create a new rank-0 (scalar) tensor mo.constant of int32 value or less.
+    /// Create a new rank-0 (scalar) tensor mo.constant of int32 value.
     OpBuilder<(ins "int32_t":$value)>,
-    /// Create a new rank-1 tensor mo.constant of int64 value or less.
+    /// Create a new rank-1 tensor mo.constant of int64 value.
     OpBuilder<(ins "ArrayRef<int64_t>":$values)>,
-    /// Create a new rank-0 (scalar) tensor mo.constant of int64 value or less.
+    /// Create a new rank-0 (scalar) tensor mo.constant of int64 value.
     OpBuilder<(ins "int64_t":$value)>,
     /// Create a new rank-1 tensor mo.constant of any float type.
     OpBuilder<(ins "ArrayRef<APFloat>":$values, "Type":$elementType)>,
