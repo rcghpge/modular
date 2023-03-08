@@ -4,12 +4,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-// This tool will be loading dylibs containing the LLCL Runtime which makes
-// heavy use of (templated) static fields. Make sure this tool does not
-// accidentally include any headers which may duplicate those (templated)
-// static fields, which can cause very surprising runtime failures.
-#define NO_LLCL_RUNTIME
-
 #include "Config/Config.h"
 #include "GenericML/Driver/CXXDriverAPI.h"
 #include "GenericML/Driver/DriverAPI.h"
