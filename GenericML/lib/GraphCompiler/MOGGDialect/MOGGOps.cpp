@@ -144,6 +144,8 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
       {"mop.kernels.tanh", "mop.shape.unary"},
       {"mop.kernels.add", "mop.shape.binary"},
       {"mop.kernels.div", "mop.shape.binary"},
+      {"mop.kernels.max", "mop.shape.binary"},
+      {"mop.kernels.min", "mop.shape.binary"},
       {"mop.kernels.mul", "mop.shape.binary"},
       {"mop.kernels.sub", "mop.shape.binary"},
       {"mop.kernels.matrix_band_part", "mop.shape.matrix_band_part"},

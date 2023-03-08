@@ -411,6 +411,36 @@ def MO_SigmoidOp : MO_ElementWiseUnaryOp<"sigmoid"> {
   }];
 }
 
+def MO_MaxOp : MO_ElementWiseBinaryOp<"max", [Commutative]> {
+  let summary = "Maximum operation";
+  let description = [{
+    Returns max(x, y), where x and y are input tensors.
+
+    Example:
+
+    ```mlir
+    %lhs: !mo.tensor<[2, 3], f32>
+    %rhs: !mo.tensor<[2, 3], f32>
+    %res = mo.max(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def MO_MinOp : MO_ElementWiseBinaryOp<"min", [Commutative]> {
+  let summary = "Minimum operation";
+  let description = [{
+    Returns min(x, y), where x and y are input tensors.
+
+    Example:
+
+    ```mlir
+    %lhs: !mo.tensor<[2, 3], f32>
+    %rhs: !mo.tensor<[2, 3], f32>
+    %res = mo.min(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
 def MO_MulOp : MO_ElementWiseBinaryOp<"mul", [Commutative]> {
   let summary = "Multiply operation";
   let description = [{
