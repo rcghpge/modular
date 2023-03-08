@@ -238,11 +238,16 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
              << "dense_resource has alignment " << alignment
              << " however minimum alignment has been set as " << minAlignment
              << ".";
+    // The element type might have a bitwidth of 1 - in which case we've turned
+    // it into a set of ui8 (basically). If that's the case, use a single byte
+    // for this. Because integer division rounds down, N / 8 will result in 0 if
+    // N < 8, so we do the max(N/8, 1).
+    int64_t elementTypeInBytes =
+        std::max(resource.getElementType().getIntOrFloatBitWidth() / CHAR_BIT,
+                 (unsigned)1);
     Type type = MGP::AlignedBytesType::get(
         loweringState.getExecuteOpBuilder().getContext(),
-        static_cast<uint64_t>(
-            size * resource.getElementType().getIntOrFloatBitWidth() /
-            CHAR_BIT),
+        static_cast<uint64_t>(size * elementTypeInBytes),
         static_cast<uint64_t>(alignment));
     value = DenseResourceElementsAttr::get(type, resource.getRawHandle());
   } else if (auto alignedBytes =
