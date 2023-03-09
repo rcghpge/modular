@@ -7,8 +7,8 @@
 #ifndef GENERICML_DRIVER_UTILS_H
 #define GENERICML_DRIVER_UTILS_H
 
+#include "GenericML/Driver/DriverCLOptions.h"
 #include "LLCL/Runtime/Runtime.h"
-#include "LLCL/Runtime/RuntimeCLOptions.h"
 #include "LLCL/Runtime/Utils.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 
