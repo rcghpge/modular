@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --resolve-unknown-parameters --materialize-shape-funcs --inline-shape-funcs --propagate-shapes --canonicalize | FileCheck %s
+// RUN: mo-opt %s --resolve-unknown-parameters --staticize-shapes --materialize-shape-funcs --inline-shape-funcs --propagate-shapes --canonicalize | FileCheck %s
 
 // COM: For now shape functions remain in the module even after they are
 // COM: inlined, but this will be removed eventually.
@@ -21,6 +21,9 @@
 // CHECK: kgen.return
 // CHECK: }
 // CHECK: kgen.func @batch_matmul_side
+// CHECK: kgen.return
+// CHECK: }
+// CHECK: kgen.func @broadcast_2_fw
 // CHECK: kgen.return
 // CHECK: }
 
@@ -187,4 +190,40 @@ mo.graph @unresolved_rebinds(
   %5 = mo.sub(%4, %3) : !mo.tensor<?, f32>
   // CHECK: mo.output<:!mo.shape [[SH5]]> %[[VAL5]] : !mo.tensor<[[SH5]], f32>
   mo.output %5 : !mo.tensor<?, f32>
+}
+
+// CHECK: mo.graph @broadcasted_binary_elwise<[[D15:.*]], [[D16:.*]], [[D17:.*]], [[D18:.*]] -> [[D20:.*]], [[D21:.*]]>(
+mo.graph @broadcasted_binary_elwise(
+  // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[[D15]], 12, [[D16]]], f32>,
+  // CHECK-SAME: %[[ARG1:.*]]: !mo.tensor<[[[D17]], [[D18]]], f32>
+  %arg0: !mo.tensor<[?, 12, ?], f32>, %arg1: !mo.tensor<[?, ?], f32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D15]], [[D20]], [[D21]]], f32> {
+) -> (!mo.tensor<[?, ?, ?], f32>) {
+  // CHECK-DAG: kgen.param.declare [[P4:.*]]: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate eq>}, [[D17]], 1)>
+  // CHECK-DAG: kgen.param.declare [[P5:.*]]: i1 = <apply(:(i1, i1) -> i1 "arith.ori", 0, [[P4]])>
+  // CHECK-DAG: kgen.param.declare [[P6:.*]]: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate eq>}, 12, [[D17]])>
+  // CHECK-DAG: kgen.param.declare [[P7:.*]]: i1 = <apply(:(i1, i1) -> i1 "arith.ori", [[P5]], [[P6]])>
+  // CHECK-DAG: kgen.param.assert <[[P7]]>, "dimensions are not broadcastable"
+
+  // CHECK-DAG: kgen.param.declare [[P8:.*]] = <apply(:(index, index) -> index "index.maxs", 12, [[D17]])>
+  // CHECK-DAG: kgen.param.declare [[P11:.*]]: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate eq>}, [[D16]], 1)>
+  // CHECK-DAG: kgen.param.declare [[P12:.*]]: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate eq>}, [[D18]], 1)>
+  // CHECK-DAG: kgen.param.declare [[P13:.*]]: i1 = <apply(:(i1, i1) -> i1 "arith.ori", [[P11]], [[P12]])>
+  // CHECK-DAG: kgen.param.declare [[P14:.*]]: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate eq>}, [[D16]], [[D18]])>
+  // CHECK-DAG: kgen.param.declare [[P15:.*]]: i1 = <apply(:(i1, i1) -> i1 "arith.ori", [[P13]], [[P14]])>
+  // CHECK-DAG: kgen.param.assert <[[P15]]>, "dimensions are not broadcastable"
+
+  // CHECK-DAG: kgen.param.declare [[P16:.*]] = <apply(:(index, index) -> index "index.maxs", [[D16]], [[D18]])>
+  %shape1 = mo.shape_of(%arg0) : (!mo.tensor<[?, 12, ?], f32>) -> !mo.tensor<[3], si64>
+  %shape2 = mo.shape_of(%arg1) : (!mo.tensor<[?, ?], f32>) -> !mo.tensor<[2], si64>
+  %shape = mo.broadcast_shape(%shape1, %shape2) : (!mo.tensor<[3], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3], si64>
+
+  // CHECK-DAG: %[[VAL0:.*]] = mo.static.broadcast_to(%arg0) : !mo.tensor<[[[D15]], 12, [[D16]]], f32> -> !mo.tensor<[[[D15]], [[P8]], [[P16]]], f32>
+  // CHECK-DAG: %[[VAL1:.*]] = mo.static.broadcast_to(%arg1) : !mo.tensor<[[[D17]], [[D18]]], f32> -> !mo.tensor<[[[D15]], [[P8]], [[P16]]], f32>
+  %0 = mo.broadcast_to(%arg0, %shape) : (!mo.tensor<[?, 12, ?], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[?, ?, ?], f32>
+  %1 = mo.broadcast_to(%arg1, %shape) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[?, ?, ?], f32>
+  // CHECK-NEXT: %[[RES:.*]] = mo.add(%[[VAL0]], %[[VAL1]]) : !mo.tensor<[[[D15]], [[P8]], [[P16]]], f32>
+  %3 = mo.add(%0, %1) : !mo.tensor<[?, ?, ?], f32>
+  // CHECK-NEXT: mo.output<[[P8]], [[P16]]> %[[RES]] : !mo.tensor<[[[D15]], [[P8]], [[P16]]], f32>
+  mo.output %3 : !mo.tensor<[?, ?, ?], f32>
 }
