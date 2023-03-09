@@ -237,7 +237,8 @@ def MOGG_CallOp : MOGG_Op<"call"> {
  }
 
 
-def MOGG_LambdaInvokeOp : MOGG_Op<"invoke"> {
+def MOGG_LambdaInvokeOp : MOGG_Op<"invoke",
+   [MemoryEffectsOpInterface]> {
   let summary = "Represents an inlined call to a lambda";
   let description = [{
     Lambda invoke is a direct call of that lambda. This will lower to a 
@@ -253,13 +254,25 @@ def MOGG_LambdaInvokeOp : MOGG_Op<"invoke"> {
 
   let arguments = (ins
      SymbolRefAttr:$lambda,
-     Variadic<AnyTypeOf<[MOGG_Simd, MOGG_Indices]>>:$operands
+     Variadic<AnyTypeOf<[MOGG_Simd, MOGG_Indices]>>:$operands,
+     OptionalAttr<BoolAttr>:$readOnly
   );
   let results = (outs Variadic<MOGG_Simd>:$outs);
 
   let assemblyFormat = [{
-    $lambda attr-dict `(`($operands^)?`)`
+    $lambda `(`($operands^)?`)` attr-dict
       (`:` type($operands)^)? (`->` type($outs)^)?
+  }];
+
+  // TODO(10098): We will want to come up with a proper side effect analysis here.
+  let extraClassDeclaration = [{
+    void getEffects(
+      llvm::SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+      // If we don't have attr or it is false assume this has a side effect.
+      bool isReadOnly = getReadOnly().value_or(false);
+      if (!isReadOnly)
+        effects.emplace_back(mlir::MemoryEffects::Write::get());
+    }
   }];
  }
 
