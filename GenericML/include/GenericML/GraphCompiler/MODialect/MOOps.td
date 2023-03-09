@@ -625,7 +625,7 @@ def MO_MeanOp : MO_ReductionOp<"mean"> {
   }];
 }
 
-def MO_ProdOp : MO_ReductionOp<"prod"> {
+def MO_ReduceMulOp : MO_ReductionOp<"reduce.mul"> {
   let summary = "Product reduction operation";
   let description = [{
     Reduce `input` elements across `axis` to their product, and change that
@@ -637,13 +637,13 @@ def MO_ProdOp : MO_ReductionOp<"prod"> {
     %arg: !mo.tensor<[2, 3], f32>
     %axis = mo.constant {
       value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-    %res = mo.prod(%arg, %axis) : (
+    %res = mo.reduce.mul(%arg, %axis) : (
       !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
 }
 
-def MO_SumOp : MO_ReductionOp<"sum"> {
+def MO_ReduceAddOp : MO_ReductionOp<"reduce.add"> {
   let summary = "Sum reduction operation";
   let description = [{
     Reduce `input` elements across `axis` to their sum, and change that axis's
@@ -655,7 +655,43 @@ def MO_SumOp : MO_ReductionOp<"sum"> {
     %arg: !mo.tensor<[2, 3], f32>
     %axis = mo.constant {
       value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-    %res = mo.sum(%arg, %axis) : (
+    %res = mo.reduce.add(%arg, %axis) : (
+      !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+    ```
+  }];
+}
+
+def MO_ReduceMinOp : MO_ReductionOp<"reduce.min"> {
+  let summary = "Minimum reduction operation";
+  let description = [{
+    Reduce `input` elements across `axis` to their minimum, and change that axis's
+    dimension to 1 in the output shape.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %axis = mo.constant {
+      value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+    %res = mo.reduce.min(%arg, %axis) : (
+      !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+    ```
+  }];
+}
+
+def MO_ReduceMaxOp : MO_ReductionOp<"reduce.max"> {
+  let summary = "Maximum reduction operation";
+  let description = [{
+    Reduce `input` elements across `axis` to their maximum, and change that axis's
+    dimension to 1 in the output shape.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %axis = mo.constant {
+      value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+    %res = mo.reduce.max(%arg, %axis) : (
       !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
