@@ -106,7 +106,7 @@ LogicalResult MOGraphLowering::createModelOp() {
 
   // Create the mgp.model and the regions for the init/execute phases.
   b.setInsertionPoint(graph);
-  loweringState.setCommonModelOp(b.create<MGP::ModelOp>(
+  loweringState.setModelOp(b.create<MGP::ModelOp>(
       graph.getLoc(),
       /*sym_name=*/graph.getNameAttr(),
       /*frameworkName=*/loweringState.getCompiledFrameworkLabel(),
@@ -116,7 +116,7 @@ LogicalResult MOGraphLowering::createModelOp() {
 
   // Initialize the init state.
   loweringState.getInitOpBuilder().setInsertionPointToEnd(
-      loweringState.getCommonModelOp().getInitBlock());
+      loweringState.getModelOp().getInitBlock());
   // Get the chain and context values for the body.
   // This field tracks the current output chain as we lower into the init body.
   loweringState.setInitChain(
@@ -147,7 +147,7 @@ LogicalResult MOGraphLowering::createModelOp() {
   loweringState.setInitChain(jit->getResult(0));
 
   // Initialize the execute state.
-  Block *executeBlock = loweringState.getCommonModelOp().getExecuteBlock();
+  Block *executeBlock = loweringState.getModelOp().getExecuteBlock();
   loweringState.getExecuteOpBuilder().setInsertionPointToEnd(executeBlock);
 
   // Extract chain and MGP context from arguments
@@ -514,7 +514,7 @@ LogicalResult MOGraphLowering::run() {
 
   // Enter the main body of the graph
   for (auto [graphArg, exeArg] :
-       llvm::zip(graph.getArguments(), loweringState.getCommonModelOp()
+       llvm::zip(graph.getArguments(), loweringState.getModelOp()
                                            .getExecuteBlock()
                                            ->getArguments()
                                            .drop_front(2))) {

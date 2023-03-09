@@ -111,7 +111,11 @@ public:
     void operator=(const ExecuteState &) = delete;
   };
 
+  /// Return the top-level mgp.model operation.
   MGP::ModelOp getModelOp() { return common.modelOp; }
+
+  /// Set the top-level mgp.model operation.
+  void setModelOp(MGP::ModelOp modelOp) { common.modelOp = modelOp; }
 
   llvm::StringRef getCompiledFrameworkLabel() {
     return common.compiledFrameworkLabel;
@@ -124,12 +128,6 @@ public:
 
   /// Return type converter for lowering known MO types into MGP ones.
   TypeConverter &getTypeConverter() { return typeConverter; }
-
-  /// Set the top-level mgp.model operation.
-  void setCommonModelOp(MGP::ModelOp modelOp) { common.modelOp = modelOp; }
-
-  /// Return the top-level mgp.model operation.
-  MGP::ModelOp &getCommonModelOp() { return common.modelOp; }
 
   /// Return the current chain value being added to.
   Value getInitChain() { return init.chain; }
