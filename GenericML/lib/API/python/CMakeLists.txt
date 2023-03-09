@@ -162,11 +162,11 @@ endif()
 if(APPLE)
   set(REPAIR_CMD ${Python3_EXECUTABLE} -m delocate.cmd.delocate_wheel)
   set(REPAIRED_WHEEL ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl)
-  set(REPAIR_SHARED_LIB_ENV "DYLD_LIBRARY_PATH=${STOCK_TENSORFLOW_BUILD_LIB_DIR}")
+  set(REPAIR_SHARED_LIB_ENV "DYLD_LIBRARY_PATH=${STOCK_TENSORFLOW_INSTALL_LIB_DIR}")
 else()
   set(REPAIR_CMD ${Python3_EXECUTABLE} -m auditwheel repair --plat linux_${HOST_ARCH} --wheel-dir ${WHEEL_DIR} --strip)
   set(REPAIRED_WHEEL ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.linux_${HOST_ARCH}.whl)
-  set(REPAIR_SHARED_LIB_ENV "LD_LIBRARY_PATH=${STOCK_TENSORFLOW_BUILD_LIB_DIR}")
+  set(REPAIR_SHARED_LIB_ENV "LD_LIBRARY_PATH=${STOCK_TENSORFLOW_INSTALL_LIB_DIR}")
 endif()
 
 # Detect non-system shared library dependencies and copy them into the wheel,
