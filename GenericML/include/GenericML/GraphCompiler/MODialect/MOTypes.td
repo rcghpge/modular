@@ -218,6 +218,10 @@ def MO_KnownTensor : MO_ConfinedTensor<
   [CPred<"!$_self.cast<MO::TensorType>().hasUnknownShape()">],
   "parametrically known shape">;
 
+/// Confines the MO_TensorType so that it has Boolean elements
+def MO_BooleanMask : MO_ConfinedTensor<
+    [HasBoolElementTypePred], "boolean element type">;
+
 /// Confines the MO_TensorType so that it has Boolean elements and rank 0
 def MO_CondLike : ConfinedType<MO_Tensor,
     [MO_HasAnyRankOfPred<[0]>, HasBoolElementTypePred],

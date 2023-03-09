@@ -138,6 +138,7 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
       {"mop.kernels.pow3", "mop.shape.unary"},
       {"mop.kernels.relu", "mop.shape.unary"},
       {"mop.kernels.rsqrt", "mop.shape.unary"},
+      {"mop.kernels.select", "mop.shape.select"},
       {"mop.kernels.sigmoid", "mop.shape.unary"},
       {"mop.kernels.softmax", "mop.shape.unary"},
       {"mop.kernels.sqrt", "mop.shape.unary"},

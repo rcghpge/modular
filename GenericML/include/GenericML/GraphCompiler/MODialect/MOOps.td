@@ -513,6 +513,30 @@ def MO_SqrtOp : MO_ElementWiseUnaryOp<"sqrt"> {
   }];
 }
 
+// TODO: Use an AllElementTypesMatch<["x", "y", "result"]> trait for MO_Tensor.
+// TODO: Use an SameOperandsShape trait for MO_Tensor.
+def MO_SelectOp : MO_Op<"select", [Pure]>{
+  let summary = "Select operation";
+  let description = [{
+    Return cond ? x : y (element-wise), where cond, x and y are input tensors.
+
+    Example:
+
+    ```mlir
+    %cond: !mo.tensor<[2, 3], bool>
+    %x: !mo.tensor<[2, 3], f32>
+    %y: !mo.tensor<[2, 3], f32>
+    %res = mo.select(%cond, %x, %y) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+  let arguments = (ins MO_BooleanMask:$cond, MO_Tensor:$x, MO_Tensor:$y);
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+  let hasVerifier = 1;
+}
+
 def MO_SubOp : MO_ElementWiseBinaryOp<"sub"> {
   let summary = "Subtract operation";
   let description = [{

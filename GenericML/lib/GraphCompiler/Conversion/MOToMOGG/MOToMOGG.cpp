@@ -176,6 +176,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_SHIM_ONLY(MO::RangeOp, "mop.kernels.range"),
       MO_SHIM_ONLY(MO::ReluOp, "mop.kernels.relu"),
       MO_TO_LIT(MO::RsqrtOp, "mop.kernels.rsqrt"),
+      MO_TO_LIT(MO::SelectOp, "mop.kernels.select"),
       MO_SHIM_ONLY(MO::SigmoidOp, "mop.kernels.sigmoid"),
       MO_SHIM_ONLY(MO::ShapeOfOp, "mop.kernels.shape_of"),
       MO_SHIM_ONLY(MO::SoftmaxOp, "mop.kernels.softmax"),
