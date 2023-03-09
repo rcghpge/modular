@@ -105,7 +105,6 @@ def MOGG_LitRegisterOp : MOGG_Op<"lit_register", [HasParent<"ModuleOp">]> {
 
   let arguments = (ins DictionaryAttr:$dict);
 
-
   let assemblyFormat = [{
     attr-dict
   }];
