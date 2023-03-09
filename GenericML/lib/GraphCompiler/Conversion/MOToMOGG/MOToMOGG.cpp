@@ -169,6 +169,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_LIT(MO::MinOp, "mop.kernels.min"),
       MO_TO_LIT(MO::MulOp, "mop.kernels.mul"),
       MO_SHIM_ONLY(MO::Pow3Op, "mop.kernels.pow3"),
+      MO_SHIM_ONLY(MO::RangeOp, "mop.kernels.range"),
       MO_SHIM_ONLY(MO::ReluOp, "mop.kernels.relu"),
       MO_TO_LIT(MO::RsqrtOp, "mop.kernels.rsqrt"),
       MO_SHIM_ONLY(MO::SigmoidOp, "mop.kernels.sigmoid"),

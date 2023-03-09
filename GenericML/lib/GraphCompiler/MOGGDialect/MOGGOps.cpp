@@ -177,6 +177,8 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
 
   LoweredTensor output;
 
+  // Hackery! Pure Hackery! I'd start setting up classes for this, but
+  // again, I don't expect this to survive E
   if (specNaryShapeFuncs.count(opName)) {
     // Get just the specs for tensors.
     SmallVector<Value> inputSpecs;
@@ -194,16 +196,12 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
                                 {arg0SpecVal, arg1Val});
 
   } else if (opName == "mop.kernels.gather") {
-    // Hackery! Pure Hackery! I'd start setting up classes for this, but
-    // again, I don't expect this to survive E
     Value target_axis = loweringState.lookupExecuteLoweredTensor(
         opBeingLowered->getOperands()[2]);
     output.spec =
         getOutputSpec("mop.shape.gather", {inputTensors[0].spec,
                                            inputTensors[1].spec, target_axis});
   } else if (opName == "mop.kernels.conv") {
-    // Hackery! Pure Hackery! I'd start setting up classes for this, but
-    // again, I don't expect this to survive E
     Value stride = loweringState.lookupExecuteLoweredTensor(
         opBeingLowered->getOperands()[2]);
     Value dilation = loweringState.lookupExecuteLoweredTensor(
@@ -211,6 +209,14 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     output.spec = getOutputSpec(
         "mop.shape.conv",
         {inputTensors[0].spec, inputTensors[1].spec, stride, dilation});
+  } else if (opName == "mop.kernels.range") {
+    Value start = loweringState.lookupExecuteLoweredTensor(
+        opBeingLowered->getOperands()[0]);
+    Value limit = loweringState.lookupExecuteLoweredTensor(
+        opBeingLowered->getOperands()[1]);
+    Value step = loweringState.lookupExecuteLoweredTensor(
+        opBeingLowered->getOperands()[2]);
+    output.spec = getOutputSpec("mop.shape.range", {start, limit, step});
   } else {
     opBeingLowered->emitError("op requires output to have static shape");
     return Error("op requires output to have static shape");
