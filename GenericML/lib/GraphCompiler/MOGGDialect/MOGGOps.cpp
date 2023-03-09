@@ -15,6 +15,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/IR/FunctionImplementation.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringMap.h"
 
 using namespace M;
@@ -130,26 +131,29 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
   // We should refactor it out as a Trait maybe? and make this a method
   // and data member of the op class.
 
+  // Elementwise shapes are guaranteed to match.
+  static const llvm::SmallDenseSet<StringRef, 32> elementwise{
+      "mop.kernels.abs",
+      "mop.kernels.add",
+      "mop.kernels.div",
+      "mop.kernels.erf",
+      "mop.kernels.exp",
+      "mop.kernels.max",
+      "mop.kernels.min",
+      "mop.kernels.mul",
+      "mop.kernels.matrix_band_part",
+      "mop.kernels.pow3",
+      "mop.kernels.relu",
+      "mop.kernels.rsqrt",
+      "mop.kernels.sigmoid",
+      "mop.kernels.softmax",
+      "mop.kernels.sqrt",
+      "mop.kernels.sub",
+      "mop.kernels.tanh",
+  };
+
   // (arg0Spec, arg1Spec, ..., argNSpec) -> outSpec
   static const llvm::StringMap<std::string> specNaryShapeFuncs{
-      {"mop.kernels.abs", "mop.shape.unary"},
-      {"mop.kernels.erf", "mop.shape.unary"},
-      {"mop.kernels.exp", "mop.shape.unary"},
-      {"mop.kernels.pow3", "mop.shape.unary"},
-      {"mop.kernels.relu", "mop.shape.unary"},
-      {"mop.kernels.rsqrt", "mop.shape.unary"},
-      {"mop.kernels.select", "mop.shape.select"},
-      {"mop.kernels.sigmoid", "mop.shape.unary"},
-      {"mop.kernels.softmax", "mop.shape.unary"},
-      {"mop.kernels.sqrt", "mop.shape.unary"},
-      {"mop.kernels.tanh", "mop.shape.unary"},
-      {"mop.kernels.add", "mop.shape.binary"},
-      {"mop.kernels.div", "mop.shape.binary"},
-      {"mop.kernels.max", "mop.shape.binary"},
-      {"mop.kernels.min", "mop.shape.binary"},
-      {"mop.kernels.mul", "mop.shape.binary"},
-      {"mop.kernels.sub", "mop.shape.binary"},
-      {"mop.kernels.matrix_band_part", "mop.shape.matrix_band_part"},
       {"mop.kernels.matmul", "mop.shape.matmul"},
       {"mop.kernels.batch_matmul", "mop.shape.batch_matmul"},
   };
@@ -184,7 +188,11 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
 
   // Hackery! Pure Hackery! I'd start setting up classes for this, but
   // again, I don't expect this to survive E
-  if (specNaryShapeFuncs.count(opName)) {
+  if (elementwise.contains(opName)) {
+    // All elementwise kernels are guaranteed to have at least one argument
+    // which is guaranteed to match the output.
+    output.spec = inputTensors[0].spec;
+  } else if (specNaryShapeFuncs.count(opName)) {
     // Get just the specs for tensors.
     SmallVector<Value> inputSpecs;
     inputSpecs.reserve(inputTensors.size());
