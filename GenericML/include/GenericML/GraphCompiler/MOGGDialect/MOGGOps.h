@@ -19,6 +19,7 @@
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/SymbolTable.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations

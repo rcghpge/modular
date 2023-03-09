@@ -32,8 +32,7 @@ class MOGG_LowerableOp<string mnemonic, list<Trait> traits = []>
 // MOGG subgraph ops
 //===----------------------------------------------------------------------===//
 
-
-def MOGG_ExtOp : MOGG_LowerableOp<"ext.op"> {
+def MOGG_ExtOp : MOGG_LowerableOp<"ext.op", [Pure]> {
   let summary = "MOGG representation of an external library kernel";
   let description = [{
     This is a generic subgraph to represent calls to kernel libraries.
@@ -55,7 +54,7 @@ def MOGG_ExtOp : MOGG_LowerableOp<"ext.op"> {
   }];
 }
 
-def MOGG_ElementwiseOp : MOGG_Op<"elementwise", [SingleBlock]> {
+def MOGG_ElementwiseOp : MOGG_Op<"elementwise", [SingleBlock, Pure]> {
   let summary = "Block of fused elementwise operations";
   let description = [{
     This represents an operation we want to create a fused elementwise JIT kernel for.
