@@ -167,17 +167,17 @@ def CpuBufferGetCachedOp : MGP_Op<"cpu.buffer.get_cached", [
 //  {static size vs dynamic size vs dynamic tensor spec} x {alloc vs re-alloc}
 //
 //  CpuBufferAllocStaticOp: Alloc with statically known size
-//    mgp.cpu.buffer.alloc.static        %ctx      64
+//    mgp.cpu.buffer.alloc.static    %ch,            64
 //  CpuBufferAllocDynamicOp: Alloc with dynamic size
-//    mgp.cpu.buffer.alloc.dynamic       %ctx      %size
+//    mgp.cpu.buffer.alloc.dynamic   %ch,            %size
 //  CpuBufferAllocSpecOp: Alloc with dynamic tensor spec
-//    mgp.cpu.buffer.alloc.spec          %ctxt     %spec
+//    mgp.cpu.buffer.alloc.spec      %ch,            %spec
 //  CpuBufferReallocStaticOp: Re-alloc with statically known size
-//    mgp.cpu.buffer.realloc.static  %ch %ctx[5,1] 64
+//    mgp.cpu.buffer.realloc.static  %ch, %ctx[5,1], 64
 //  CpuBufferReallocDynamicOp: Re-alloc with dynamic size
-//    mgp.cpu.buffer.realloc.dynamic %ch %ctx[5,1] %size
+//    mgp.cpu.buffer.realloc.dynamic %ch, %ctx[5,1], %size
 //  CpuBufferReallocDynamicOp: Re-alloc with dynamic tensor spec
-//    mgp.cpu.buffer.realloc.spec    %ch %ctx[5,1] %spec
+//    mgp.cpu.buffer.realloc.spec    %ch, %ctx[5,1], %spec
 //
 //===----------------------------------------------------------------------===//
 
@@ -205,23 +205,25 @@ def CpuBufferAllocStaticOp : MGP_Op<"cpu.buffer.alloc.static", [
 
     Example:
     ```mlir
-    %ctx : !mgp.context
+    %ch : !mef.chain
 
-    %buf = mgp.cpu.buffer.alloc.static %ctx, 64 {bRawAlign = 8 : ui64}
+    %buf = mgp.cpu.buffer.alloc.static %ch, 64 align 8
     %buf : !mgp.cpu.buffer<64>  // 64 bytes aligned to 8 bytes
 
-    %buf = mgp.cpu.buffer.alloc.static %ctx, 64
+    %buf = mgp.cpu.buffer.alloc.static %ch, 64
     %buf : !mgp.cpu.buffer<64>  // 64 bytes with no specific alignment
     ```
   }];
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MGP_ContextType:$theContext,
+  let arguments = (ins ChainType:$inChain,
                    UI64Attr:$aSize,                                         // 0
                    DefaultValuedAttr<UI64Attr, "kUnknownSize">:$bRawAlign); // 1
   let results = (outs MGP_CpuBufferType:$result);
-  let assemblyFormat = "$theContext `,` $aSize attr-dict";
+  let assemblyFormat = [{
+    $inChain `,` $aSize (`,` `align` $bRawAlign^)? attr-dict
+  }];
   let hasVerifier = 1;
 }
 
@@ -246,22 +248,24 @@ def CpuBufferAllocDynamicOp : MGP_Op<"cpu.buffer.alloc.dynamic", [
 
     Example:
     ```mlir
-    %ctx : !mgp.context
+    %ch : !mef.chain
     %size : index
 
-    %buf = mgp.cpu.buffer.alloc.dynamic %ctx, %size {rawAlign = 8 : ui64}
+    %buf = mgp.cpu.buffer.alloc.dynamic %ch, %size align 8
     %buf : !mgp.cpu.buffer  // aligned to 8 bytes
 
-    %buf = mgp.cpu.buffer.alloc.dynamic %ctx, %size
+    %buf = mgp.cpu.buffer.alloc.dynamic %ch, %size
     %buf : !mgp.cpu.buffer  // no specific alignment
     ```
   }];
 
-  let arguments = (ins MGP_ContextType:$theContext,
+  let arguments = (ins ChainType:$inChain,
                    Index:$runtimeSize,
                    DefaultValuedAttr<UI64Attr, "kUnknownSize">:$rawAlign);
   let results = (outs MGP_CpuBufferType:$result);
-  let assemblyFormat = "$theContext `,` $runtimeSize attr-dict";
+  let assemblyFormat = [{
+    $inChain `,` $runtimeSize (`,` `align` $rawAlign^)? attr-dict
+  }];
   let hasVerifier = 1;
 }
 
@@ -286,23 +290,24 @@ def CpuBufferAllocSpecOp : MGP_Op<"cpu.buffer.alloc.spec", [
 
     Example:
     ```mlir
-    %ctx : !mgp.context
+    %ch : !mef.chain
     %spec : !mgp.tensor_spec<?x64xf32>
 
-    %buf = mgp.cpu.buffer.alloc.spec %ctx, %spec, {rawAlign = 8 : ui64} : !mgp.cpu.tensor_spec<?x64xf32>
+    %buf = mgp.cpu.buffer.alloc.spec %ch, %spec, align 8 : !mgp.cpu.tensor_spec<?x64xf32>
     %buf : !mgp.cpu.buffer  // aligned to 8 bytes
 
-    %buf = mgp.cpu.buffer.alloc.spec %ctx, %spec : !mgp.cpu.tensor_spec<?x64xf32>
+    %buf = mgp.cpu.buffer.alloc.spec %ch, %spec : !mgp.cpu.tensor_spec<?x64xf32>
     %buf : !mgp.cpu.buffer  // no specific alignment
     ```
   }];
 
-  let arguments = (ins MGP_ContextType:$theContext,
+  let arguments = (ins ChainType:$inChain,
                    MGP_CpuTensorSpecType:$runtimeSpec,
                    DefaultValuedAttr<UI64Attr, "kUnknownSize">:$rawAlign);
   let results = (outs MGP_CpuBufferType:$result);
   let assemblyFormat = [{
-    $theContext `,` $runtimeSpec attr-dict `:` qualified(type($runtimeSpec))
+    $inChain `,` $runtimeSpec (`,` `align` $rawAlign^)? attr-dict
+    `:` qualified(type($runtimeSpec))
   }];
   let hasVerifier = 1;
 }
@@ -361,11 +366,11 @@ def CpuBufferReallocStaticOp : MGP_Op<"cpu.buffer.realloc.static", [
     ```mlir
        init {
          ...
-         %buf1 = mgp.cpu.buffer.realloc.static %ch, %ctx[2, 0], 48 {dRawAlign = 8 : ui64}
+         %buf1 = mgp.cpu.buffer.realloc.static %ch, %ctx[2, 0], 48, align 8
        }
        execute (...) -> ... {
          ...
-         %buf2 = mgp.cpu.buffer.realloc.static %ch, %ctx[2, 0], 48 {dRawAlign = 16 : ui64}
+         %buf2 = mgp.cpu.buffer.realloc.static %ch, %ctx[2, 0], 48, align 16
        }
     ```
     the second realloc will always reuse the buffer from the first realloc.
@@ -376,7 +381,7 @@ def CpuBufferReallocStaticOp : MGP_Op<"cpu.buffer.realloc.static", [
     %ch : !mef.chain
 
     // Reallocate the buffer in slot index 42 and buffer index 2.
-    %buf = mgp.cpu.buffer.realloc.static %ch, %ctx[42, 2], 64 {dRawAlign = 8 : ui64}
+    %buf = mgp.cpu.buffer.realloc.static %ch, %ctx[42, 2], 64, align 8
     %buf : !mgp.cpu.buffer<64>   // 64 bytes aligned to 8 bytes
 
     %buf = mgp.cpu.buffer.realloc.static %ch, %ctx[42, 2], 64
@@ -394,7 +399,8 @@ def CpuBufferReallocStaticOp : MGP_Op<"cpu.buffer.realloc.static", [
                    DefaultValuedAttr<UI64Attr, "kUnknownSize">:$dRawAlign); // 3
   let results = (outs MGP_CpuBufferType:$result);
   let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aSlot `,` $bBuffer `]` `,` $cSize attr-dict
+    $inChain `,` $theContext `[` $aSlot `,` $bBuffer `]` `,` $cSize
+    (`,` `align` $dRawAlign^)? attr-dict
   }];
   let hasVerifier = 1;
 }
@@ -429,7 +435,7 @@ def CpuBufferReallocDynamicOp : MGP_Op<"cpu.buffer.realloc.dynamic", [
     %ch : !mef.chain
 
     // Reallocate the buffer in slot index 42 and buffer index 2.
-    %buf = mgp.cpu.buffer.realloc.dynamic %ch, %ctx[42, 2], %size {cRawAlign = 8 : ui64}
+    %buf = mgp.cpu.buffer.realloc.dynamic %ch, %ctx[42, 2], %size, align 8
     %buf : !mgp.cpu.buffer      // 8 bytes aligned
 
     %buf = mgp.cpu.buffer.realloc.dynamic %ch, %ctx[42, 2], %size
@@ -447,7 +453,8 @@ def CpuBufferReallocDynamicOp : MGP_Op<"cpu.buffer.realloc.dynamic", [
                    DefaultValuedAttr<UI64Attr, "kUnknownSize">:$cRawAlign); // 3
   let results = (outs MGP_CpuBufferType:$result);
   let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aSlot `,` $bBuffer `]` `,` $runtimeSize attr-dict
+    $inChain `,` $theContext `[` $aSlot `,` $bBuffer `]` `,` $runtimeSize
+    (`,` `align` $cRawAlign^)? attr-dict
   }];
   let hasVerifier = 1;
 }
@@ -481,7 +488,7 @@ def CpuBufferReallocSpecOp : MGP_Op<"cpu.buffer.realloc.spec", [
     %ch : !mef.chain
 
     // Reallocate the buffer in slot index 42 and buffer index 2.
-    %buf = mgp.cpu.buffer.realloc.spec %ch, %ctx[42, 2], %spec {cRawAlign = 8 : ui64} : !mgp.cpu.tensor_spec<?x64xf32>
+    %buf = mgp.cpu.buffer.realloc.spec %ch, %ctx[42, 2], %spec, align 8 : !mgp.cpu.tensor_spec<?x64xf32>
     %buf : !mgp.cpu.buffer      // 8 bytes aligned
 
     %buf = mgp.cpu.buffer.realloc.spec %ch, %ctx[42, 2] : %spec !mgp.cpu.tensor_spec<?x64xf32>
@@ -500,7 +507,7 @@ def CpuBufferReallocSpecOp : MGP_Op<"cpu.buffer.realloc.spec", [
   let results = (outs MGP_CpuBufferType:$result);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $aSlot `,` $bBuffer `]` `,` $runtimeSpec
-    attr-dict `:` qualified(type($runtimeSpec))
+    (`,` `align` $cRawAlign^)? attr-dict `:` qualified(type($runtimeSpec))
   }];
   let hasVerifier = 1;
 }

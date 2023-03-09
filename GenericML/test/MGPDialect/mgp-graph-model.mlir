@@ -11,7 +11,7 @@ module {
     %3 = mgp.cpu.tensor.create %2, %0, %1 : !mgp.cpu.tensor<8xf32>
     %2 = "mop.kernels.add"(%arg0, %bufferResult, %tensorSpecResult, %bufferResult_0, %tensorSpecResult_1, %0, %1) : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mef.chain
     %1 = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<8xf32>
-    %0 = mgp.cpu.buffer.alloc.static %arg1, 32 {bRawAlign = 32 : ui64}
+    %0 = mgp.cpu.buffer.alloc.static %arg0, 32 {bRawAlign = 32 : ui64}
     %bufferResult, %tensorSpecResult = mgp.cpu.tensor.extract %arg2 : !mgp.cpu.tensor<8xf32>
     %bufferResult_0, %tensorSpecResult_1 = mgp.cpu.tensor.extract %arg2 : !mgp.cpu.tensor<8xf32>
     mef.output %arg0, %3 : !mef.chain, !mgp.cpu.tensor<8xf32>

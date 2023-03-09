@@ -11,6 +11,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/MGPDialect/MGPOps.h"
+#include "GenericML/MGPDialect/MGPUtils.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
@@ -55,15 +56,17 @@ public:
 
   // Lower the output buffer which will get passed into the input.
   ErrorOr<SmallVector<LoweredTensor>>
-  lowerOutputBuffer(llvm::StringRef opName,
+  lowerOutputBuffer(llvm::StringRef opName, Value inChain,
                     const SmallVector<LoweredTensor> &inputTensors);
 
   // Convert the tensors to a list of buffer/spec value pairs.
   SmallVector<Value> getOperands(SmallVector<LoweredTensor> &in,
                                  SmallVector<LoweredTensor> &outs);
 
-  // Fix up the outputs
-  void allocateOutputTensor(SmallVector<LoweredTensor> &outputTensors);
+  // Allocate tensors for all outputs given their buffers and specs. Tensor
+  // creation is gated on inChain.
+  void allocateOutputTensor(Value inChain,
+                            SmallVector<LoweredTensor> &outputTensors);
 
 private:
   MGP::MOGraphLoweringState &loweringState;
@@ -72,6 +75,7 @@ private:
 
   ErrorOr<LoweredTensor>
   lowerDynamicOutput(MGP::CpuTensorSpecType outSpecType, llvm::StringRef opName,
+                     Value inChain,
                      const SmallVector<LoweredTensor> &inputTensors);
 };
 
@@ -97,11 +101,9 @@ SmallVector<LoweredTensor> LowerHelper::lowerInputs() {
 }
 
 void LowerHelper::allocateOutputTensor(
-    SmallVector<LoweredTensor> &outputTensors) {
+    Value inChain, SmallVector<LoweredTensor> &outputTensors) {
   size_t outputIndex = 0;
 
-  // Allocate the output tensors this must be done after as the tensor is read
-  // only.
   for (LoweredTensor &tensor : outputTensors) {
     // Get the type of the spec and infer the type of the tensor from that.
     auto ty = cast<MGP::CpuTensorSpecType>(tensor.spec.getType());
@@ -111,8 +113,11 @@ void LowerHelper::allocateOutputTensor(
     // Create an immutable tensor
     auto tensorCreateOp =
         loweringState.getExecuteOpBuilder().create<MGP::CpuTensorCreateOp>(
-            loc, tensorType, loweringState.getExecuteChain(), tensor.buffer,
-            tensor.spec);
+            loc,
+            /*result=*/tensorType,
+            /*inChain=*/inChain,
+            /*buffer=*/tensor.buffer,
+            /*tensorSpec=*/tensor.spec);
 
     // Update the MO tensor to now refer to this mgp tensor.
     loweringState.emplaceExecuteLoweredTensor(
@@ -122,7 +127,7 @@ void LowerHelper::allocateOutputTensor(
 }
 
 ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
-    MGP::CpuTensorSpecType outSpecType, llvm::StringRef opName,
+    MGP::CpuTensorSpecType outSpecType, llvm::StringRef opName, Value inChain,
     const SmallVector<LoweredTensor> &inputTensors) {
   // Dynamic Case
   // TODO: This is hacky, hacky, hacky, remove as soon as we can lower
@@ -237,7 +242,7 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
   output.buffer = loweringState.getExecuteOpBuilder()
                       .create<MGP::CpuBufferAllocSpecOp>(
                           loc,
-                          /*theContext=*/loweringState.getExecuteMgpContext(),
+                          /*inChain=*/inChain,
                           /*runtimeSpec=*/output.spec,
                           /*rawAlign=*/loweringState.getMinimumCpuAlignment())
                       .getResult();
@@ -264,7 +269,7 @@ SmallVector<Value> LowerHelper::getOperands(SmallVector<LoweredTensor> &ins,
 }
 
 ErrorOr<SmallVector<LoweredTensor>>
-LowerHelper::lowerOutputBuffer(llvm::StringRef opName,
+LowerHelper::lowerOutputBuffer(llvm::StringRef opName, Value inChain,
                                const SmallVector<LoweredTensor> &inputTensors) {
 
   SmallVector<LoweredTensor> outputBufferAndSpec;
@@ -279,7 +284,8 @@ LowerHelper::lowerOutputBuffer(llvm::StringRef opName,
     LoweredTensor output;
     if (!bufferSize) {
       // We can't see the size so lower to a dynamic buffer.
-      UNWRAP_ERROR(out, lowerDynamicOutput(outSpecType, opName, inputTensors));
+      UNWRAP_ERROR(
+          out, lowerDynamicOutput(outSpecType, opName, inChain, inputTensors));
       output = out;
     } else {
       // Static Case
@@ -288,7 +294,7 @@ LowerHelper::lowerOutputBuffer(llvm::StringRef opName,
           loweringState.getExecuteOpBuilder()
               .create<MGP::CpuBufferAllocStaticOp>(
                   loc,
-                  /*theContext=*/loweringState.getExecuteMgpContext(),
+                  /*inChain=*/inChain,
                   /*aSize=*/*bufferSize,
                   /*bRawAlign=*/loweringState.getMinimumCpuAlignment())
               .getResult();
@@ -323,11 +329,13 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   // Lower the outputs to buffers which can then be passed back in as
   // parameters.
-  auto errOr = helper.lowerOutputBuffer(opName, inputTensors);
+  auto errOr = helper.lowerOutputBuffer(
+      opName, loweringState.getExecuteInvokableInputChain(), inputTensors);
   if (errOr.isError())
     return failure();
   SmallVector<LoweredTensor> outputBufferAndSpec = errOr.takeValue();
 
+  size_t numOutputBuffers = outputBufferAndSpec.size();
   SmallVector<Value> operands =
       helper.getOperands(inputTensors, outputBufferAndSpec);
 
@@ -346,11 +354,13 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // Add it to the MLIR.
   mlir::Operation *invokeOp =
       loweringState.getExecuteOpBuilder().create(opState);
-  loweringState.setExecuteChain(invokeOp->getResult(0));
+  Value outChain = invokeOp->getResult(0);
+  // Downstream passes may need to distinguish input from output buffers.
+  MGP::setNumOutputBuffers(invokeOp, numOutputBuffers);
 
-  // We can't create the tensors until after the operation as they are
-  // immutable.
-  helper.allocateOutputTensor(outputBufferAndSpec);
+  // Create the output tensors once we are sure the operation has finished
+  // writing to them.
+  helper.allocateOutputTensor(outChain, outputBufferAndSpec);
 
   return success();
 }
@@ -415,13 +425,19 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // dynamic shape logic.
   std::string originalName = "mop.kernels." + op.getOriginalOpName().str();
 
-  // Lower the outputs to buffers which can then be passed back in as
-  // parameters.
-  auto errOr = helper.lowerOutputBuffer(originalName, inputTensors);
+  // Allocate buffers to hold all the operation's result tensors. At this stage
+  // we gate the allocation only on the overall 'execute' block's chain. The
+  // PeepholeTensorExtract pass will change this to use the chain which signals
+  // when all of the operation's input buffers have been written to, thus
+  // ensuring we allocate buffers just-in-time for their writers.
+  auto errOr = helper.lowerOutputBuffer(
+      originalName, loweringState.getExecuteInvokableInputChain(),
+      inputTensors);
   if (errOr.isError())
     return failure();
   SmallVector<LoweredTensor> outputBufferAndSpec = errOr.takeValue();
 
+  size_t numOutputBuffers = outputBufferAndSpec.size();
   SmallVector<Value> operands =
       helper.getOperands(inputTensors, outputBufferAndSpec);
 
@@ -436,7 +452,9 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
                        loweringState.getExecuteOpBuilder().getUI32IntegerAttr(
                            loweringState.getJitCtxSlot()));
 
-  // Add the execute chain as the first argument.
+  // The operation's execution will be gated by a chain. As for output
+  // allocation above, at this stage use the 'execute' block's chain.
+  // The PeepholeTensorExtract will change this.
   operands.insert(operands.begin(),
                   loweringState.getExecuteInvokableInputChain());
   opState.addOperands(operands);
@@ -448,11 +466,13 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // Add it to the MLIR.
   mlir::Operation *invokeOp =
       loweringState.getExecuteOpBuilder().create(opState);
-  loweringState.setExecuteChain(invokeOp->getResult(0));
+  Value outChain = invokeOp->getResult(0);
+  // Downstream passes may need to distinguish input from output buffers.
+  MGP::setNumOutputBuffers(invokeOp, numOutputBuffers);
 
-  // We can't create the tensors until after the operation as they are
-  // immutable.
-  helper.allocateOutputTensor(outputBufferAndSpec);
+  // Create the output tensors once we are sure the operation has finished
+  // writing to them.
+  helper.allocateOutputTensor(outChain, outputBufferAndSpec);
 
   return success();
 }

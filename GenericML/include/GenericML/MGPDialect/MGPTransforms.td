@@ -59,4 +59,18 @@ def LookupCachedConstantsPass : Pass<"lookup-cached-constants", "MGP::ModelOp"> 
   let dependentDialects = ["Cache::CacheDialect"];
 }
 
+//===----------------------------------------------------------------------===//
+// StripBufferAttributesPass
+//===----------------------------------------------------------------------===//
+
+def StripBufferAttributesPass : Pass<"strip-buffer-attributes", "MGP::ModelOp"> {
+  let summary = "Removes numOutputBuffers attributes.";
+  let description = [{
+    Removes numOutputBuffers attributes. These may be added during lowering
+    to help downstream passes distinguish between input and output buffer
+    arguments, but are not needed thereafter.
+  }];
+}
+
+
 #endif // GENERICML_MGPDIALECT_MGPTRANSFORMS_TD

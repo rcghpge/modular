@@ -91,6 +91,7 @@ void buildMoToMGPPipeline(mlir::PassManager &pm, const PassOptions &opts) {
 
   pm.addPass(mlir::createCSEPass());
   pm.addPass(MGP::createPeepholeTensorExtract());
+  pm.addPass(MGP::createStripBufferAttributesPass());
 }
 
 } // namespace M::MO

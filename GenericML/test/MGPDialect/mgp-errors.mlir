@@ -49,9 +49,9 @@ func.func @buffer_constant_invalid_elem_type() {
 // mgp.cpu.buffer.alloc.spec
 //
 
-func.func @buffer_alloc_static_spec(%ctx : !mgp.context, %spec : !mgp.cpu.tensor_spec<4x8xf32>) {
+func.func @buffer_alloc_static_spec(%ch : !mef.chain, %spec : !mgp.cpu.tensor_spec<4x8xf32>) {
   // expected-error@+1 {{'mgp.cpu.buffer.alloc.spec' op expected tensor spec to not have statically known size (have '!mgp.cpu.tensor_spec<4x8xf32>').}}
-  %0 = mgp.cpu.buffer.alloc.spec %ctx, %spec {align = 64 : ui64} : !mgp.cpu.tensor_spec<4x8xf32>
+  %0 = mgp.cpu.buffer.alloc.spec %ch, %spec, align 64 : !mgp.cpu.tensor_spec<4x8xf32>
   mef.output %0 : !mgp.cpu.buffer
 }
 
