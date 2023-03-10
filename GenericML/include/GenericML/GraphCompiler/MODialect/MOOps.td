@@ -1100,6 +1100,7 @@ def MO_ConcatOp : MO_Op<"concat", [Pure]> {
 def MO_TransposeOp : MO_Op<"transpose", [
   DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
 ]> {
   let summary = "Transpose Operation";
   let description = [{
