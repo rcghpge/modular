@@ -13,11 +13,13 @@
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
+#include "Support/STLExtras.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/IR/FunctionImplementation.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringMap.h"
+#include <llvm/ADT/STLExtras.h>
 
 using namespace M;
 using namespace MOGG;
@@ -219,6 +221,15 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     output.spec =
         getOutputSpec("mop.shape.gather", {inputTensors[0].spec,
                                            inputTensors[1].spec, target_axis});
+  } else if (opName == "mop.kernels.concat") {
+    // Ignore axis tensor at the end
+    SmallVector<Value> shapeFuncArgs = map_to_vector(
+        llvm::drop_end(inputTensors),
+        [](LoweredTensor tensor) -> Value { return tensor.spec; });
+    Value axis = loweringState.lookupExecuteLoweredTensor(
+        opBeingLowered->getOperands().back());
+    shapeFuncArgs.push_back(axis);
+    output.spec = getOutputSpec("mop.shape.concat", shapeFuncArgs);
   } else if (opName == "mop.kernels.conv") {
     Value stride = loweringState.lookupExecuteLoweredTensor(
         opBeingLowered->getOperands()[2]);
