@@ -523,11 +523,47 @@ static void printParamDecls(OpAsmPrinter &p, Operation *,
   }
 }
 
-OpFoldResult RebindOp::fold(FoldAdaptor adaptor) {
+LogicalResult RebindOp::canonicalize(RebindOp op, PatternRewriter &rewriter) {
   // We fold if the result and operand types are the same.
-  if (getInput().getType() == getType())
-    return getInput();
-  return {};
+  if (op.getInput().getType() == op.getType()) {
+    rewriter.replaceOp(op, op.getInput());
+    return success();
+  }
+
+  // Likely already processed, or doesn't help shape inference.
+  if (isa_and_nonnull<RebindOp>(op.getInput().getDefiningOp()))
+    return failure();
+  //  %0 = mo.rebind<...>(%arg) // dominator
+  //  %1 = mo.rebind<...>(%arg)
+  //  %2 = mo.rebind<...>(%arg)
+  // ==>
+  //  %0 = mo.rebind<...>(%arg) // dominator
+  //  %1 = mo.rebind<...>(%0)
+  //  %2 = mo.rebind<...>(%0)
+  //
+  // NOTE This helps shape inference propagate parameter constraints across
+  // these rebinds, in case `%arg`'s type is never parameterized and contains
+  // unknown dimension `?`.
+  SmallVector<RebindOp> rebindsWithSameInput;
+  RebindOp dominatorRebindOp = op;
+  for (Operation *rebindInputUser : op.getInput().getUsers()) {
+    auto rebindOp = dyn_cast<RebindOp>(rebindInputUser);
+    // TODO To support this across blocks, we need `DominanceInfo`, which
+    // might require us to move this into a pass
+    if (rebindOp && rebindOp->getBlock() == dominatorRebindOp->getBlock()) {
+      rebindsWithSameInput.push_back(rebindOp);
+      if (rebindOp->isBeforeInBlock(dominatorRebindOp))
+        dominatorRebindOp = rebindOp;
+    }
+  }
+  if (rebindsWithSameInput.size() > 1) {
+    for (RebindOp rebindOp : rebindsWithSameInput)
+      if (rebindOp != dominatorRebindOp)
+        rebindOp.getInputMutable().assign(dominatorRebindOp);
+    return success();
+  }
+
+  return failure();
 }
 
 LogicalResult RebindOp::verify() {

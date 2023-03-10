@@ -235,7 +235,7 @@ def MO_RebindOp : MO_Op<"rebind", [
     qualified(type($input)) `->` qualified(type($result))
   }];
 
-  let hasFolder = 1;
+  let hasCanonicalizeMethod = 1;
   let hasVerifier = 1;
 }
 
