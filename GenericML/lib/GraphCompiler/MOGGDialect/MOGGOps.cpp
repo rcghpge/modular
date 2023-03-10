@@ -256,7 +256,7 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
                           /*inChain=*/inChain,
                           /*runtimeSpec=*/output.spec,
                           /*rawAlign=*/loweringState.getMinimumCpuAlignment())
-                      .getResult();
+                      .getOutBuffer();
 
   return output;
 }
@@ -308,7 +308,7 @@ LowerHelper::lowerOutputBuffer(llvm::StringRef opName, Value inChain,
                   /*inChain=*/inChain,
                   /*aSize=*/*bufferSize,
                   /*bRawAlign=*/loweringState.getMinimumCpuAlignment())
-              .getResult();
+              .getOutBuffer();
 
       // Create an MGP tensor to match the MO output tensor.
       output.spec = loweringState.getExecuteOpBuilder()

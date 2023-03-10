@@ -20,6 +20,7 @@ include "mlir/Interfaces/InferTypeOpInterface.td"
 include "GenericML/MGPDialect/MGPDialect.td"
 include "GenericML/MGPDialect/MGPTypes.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "GenericML/MGPDialect/MGPBufferAllocInterface.td"
 
 // Base class for ops in this dialect.
 class MGP_Op<string mnemonic, list<Trait> traits = []> :
@@ -186,7 +187,8 @@ def CpuBufferGetCachedOp : MGP_Op<"cpu.buffer.get_cached", [
 //===----------------------------------------------------------------------===//
 
 def CpuBufferAllocStaticOp : MGP_Op<"cpu.buffer.alloc.static", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<MGPBufferAllocInterface, ["getOutBuffer"]>]> {
   let summary = [{
     Allocates an uninitialized buffer on the CPU with size taken from
     statically known constant.
@@ -220,7 +222,7 @@ def CpuBufferAllocStaticOp : MGP_Op<"cpu.buffer.alloc.static", [
   let arguments = (ins ChainType:$inChain,
                    UI64Attr:$aSize,                                         // 0
                    DefaultValuedAttr<UI64Attr, "kUnknownSize">:$bRawAlign); // 1
-  let results = (outs MGP_CpuBufferType:$result);
+  let results = (outs MGP_CpuBufferType:$outBuffer);
   let assemblyFormat = [{
     $inChain `,` $aSize (`,` `align` $bRawAlign^)? attr-dict
   }];
@@ -232,7 +234,8 @@ def CpuBufferAllocStaticOp : MGP_Op<"cpu.buffer.alloc.static", [
 //===----------------------------------------------------------------------===//
 
 def CpuBufferAllocDynamicOp : MGP_Op<"cpu.buffer.alloc.dynamic", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<MGPBufferAllocInterface, ["getOutBuffer"]>]> {
   let summary = [{
     Allocates an uninitialized buffer on the CPU with size taken from index
     operand.
@@ -262,7 +265,7 @@ def CpuBufferAllocDynamicOp : MGP_Op<"cpu.buffer.alloc.dynamic", [
   let arguments = (ins ChainType:$inChain,
                    Index:$runtimeSize,
                    DefaultValuedAttr<UI64Attr, "kUnknownSize">:$rawAlign);
-  let results = (outs MGP_CpuBufferType:$result);
+  let results = (outs MGP_CpuBufferType:$outBuffer);
   let assemblyFormat = [{
     $inChain `,` $runtimeSize (`,` `align` $rawAlign^)? attr-dict
   }];
@@ -274,7 +277,8 @@ def CpuBufferAllocDynamicOp : MGP_Op<"cpu.buffer.alloc.dynamic", [
 //===----------------------------------------------------------------------===//
 
 def CpuBufferAllocSpecOp : MGP_Op<"cpu.buffer.alloc.spec", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<MGPBufferAllocInterface, ["getOutBuffer"]>]> {
   let summary = [{
     Allocates an uninitialized buffer on the CPU with size taken from tensor
     spec operand.
@@ -304,7 +308,7 @@ def CpuBufferAllocSpecOp : MGP_Op<"cpu.buffer.alloc.spec", [
   let arguments = (ins ChainType:$inChain,
                    MGP_CpuTensorSpecType:$runtimeSpec,
                    DefaultValuedAttr<UI64Attr, "kUnknownSize">:$rawAlign);
-  let results = (outs MGP_CpuBufferType:$result);
+  let results = (outs MGP_CpuBufferType:$outBuffer);
   let assemblyFormat = [{
     $inChain `,` $runtimeSpec (`,` `align` $rawAlign^)? attr-dict
     `:` qualified(type($runtimeSpec))
@@ -317,7 +321,8 @@ def CpuBufferAllocSpecOp : MGP_Op<"cpu.buffer.alloc.spec", [
 //===----------------------------------------------------------------------===//
 
 def CpuBufferReallocStaticOp : MGP_Op<"cpu.buffer.realloc.static", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<MGPBufferAllocInterface, ["getOutBuffer"]>]> {
   let summary = [{
     (Re)allocates a cached CPU buffer on the CPU with size taken from
     statically known constant.
@@ -397,7 +402,7 @@ def CpuBufferReallocStaticOp : MGP_Op<"cpu.buffer.realloc.static", [
                    UI64Attr:$bBuffer,                                       // 1
                    UI64Attr:$cSize,                                         // 2
                    DefaultValuedAttr<UI64Attr, "kUnknownSize">:$dRawAlign); // 3
-  let results = (outs MGP_CpuBufferType:$result);
+  let results = (outs MGP_CpuBufferType:$outBuffer);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $aSlot `,` $bBuffer `]` `,` $cSize
     (`,` `align` $dRawAlign^)? attr-dict
@@ -410,7 +415,8 @@ def CpuBufferReallocStaticOp : MGP_Op<"cpu.buffer.realloc.static", [
 //===----------------------------------------------------------------------===//
 
 def CpuBufferReallocDynamicOp : MGP_Op<"cpu.buffer.realloc.dynamic", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<MGPBufferAllocInterface, ["getOutBuffer"]>]> {
   let summary = [{
     (Re)allocates a cached CPU buffer on the CPU with size taken from index
     operand.
@@ -451,7 +457,7 @@ def CpuBufferReallocDynamicOp : MGP_Op<"cpu.buffer.realloc.dynamic", [
                    UI64Attr:$aSlot,                                         // 0
                    UI64Attr:$bBuffer,                                       // 1
                    DefaultValuedAttr<UI64Attr, "kUnknownSize">:$cRawAlign); // 3
-  let results = (outs MGP_CpuBufferType:$result);
+  let results = (outs MGP_CpuBufferType:$outBuffer);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $aSlot `,` $bBuffer `]` `,` $runtimeSize
     (`,` `align` $cRawAlign^)? attr-dict
@@ -464,7 +470,8 @@ def CpuBufferReallocDynamicOp : MGP_Op<"cpu.buffer.realloc.dynamic", [
 //===----------------------------------------------------------------------===//
 
 def CpuBufferReallocSpecOp : MGP_Op<"cpu.buffer.realloc.spec", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<MGPBufferAllocInterface, ["getOutBuffer"]>]> {
   let summary = [{
     (Re)allocates a cached CPU buffer on the CPU with size taken from operand.
   }];
@@ -504,7 +511,7 @@ def CpuBufferReallocSpecOp : MGP_Op<"cpu.buffer.realloc.spec", [
                    UI64Attr:$aSlot,                                         // 0
                    UI64Attr:$bBuffer,                                       // 1
                    DefaultValuedAttr<UI64Attr, "kUnknownSize">:$cRawAlign); // 3
-  let results = (outs MGP_CpuBufferType:$result);
+  let results = (outs MGP_CpuBufferType:$outBuffer);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $aSlot `,` $bBuffer `]` `,` $runtimeSpec
     (`,` `align` $cRawAlign^)? attr-dict `:` qualified(type($runtimeSpec))

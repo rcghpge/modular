@@ -6,6 +6,7 @@
 
 #include "GenericML/MGPDialect/MGPUtils.h"
 
+#include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPTypes.h"
 #include "mlir/IR/Builders.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -37,7 +38,9 @@ void M::MGP::removeNumOutputBuffers(Operation *op) {
   op->removeAttr(kNumOutputBuffers);
 }
 
-size_t M::MGP::getFirstOutputBufferOperandIndex(Operation *op) {
+/// Returns the operand index for the first output buffer argument to op.
+/// Returnn the op's arity if it has no output buffer arguments.
+static size_t getFirstOutputBufferOperandIndex(Operation *op) {
   size_t numOutputBuffers = getNumOutputBuffers(op);
   if (numOutputBuffers == 0)
     return op->getNumOperands();
@@ -45,7 +48,7 @@ size_t M::MGP::getFirstOutputBufferOperandIndex(Operation *op) {
     return isa<CpuBufferType>(v.getType());
   });
   assert(numOutputBuffers <= numBuffers &&
-         "operation has fewer buffer operands than its numOUtputBuffers "
+         "operation has fewer buffer operands than its numOutputBuffers "
          "attribute");
   size_t numInputBuffers = numBuffers - numOutputBuffers;
   size_t bufferIndex = 0; // index for next buffer operand
@@ -58,4 +61,16 @@ size_t M::MGP::getFirstOutputBufferOperandIndex(Operation *op) {
     }
   }
   llvm_unreachable("didn't find first output buffer");
+}
+
+bool M::MGP::isBufferReadingOpOperand(OpOperand &opOperand) {
+  return isa<CpuBufferType>(opOperand.get().getType()) &&
+         opOperand.getOperandNumber() <
+             getFirstOutputBufferOperandIndex(opOperand.getOwner());
+}
+
+bool M::MGP::isBufferWritingOpOperand(OpOperand &opOperand) {
+  return isa<CpuBufferType>(opOperand.get().getType()) &&
+         opOperand.getOperandNumber() >=
+             getFirstOutputBufferOperandIndex(opOperand.getOwner());
 }

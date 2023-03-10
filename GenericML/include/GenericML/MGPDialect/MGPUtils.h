@@ -3,10 +3,15 @@
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
+//
+// Compile-time utilities for working with MGP buffers operands and operations.
+//
+//===----------------------------------------------------------------------===//
 
 #ifndef GENERICML_MGPDIALECT_MGPUTILS_H
 #define GENERICML_MGPDIALECT_MGPUTILS_H
 
+#include "GenericML/MGPDialect/MGPTypes.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/Operation.h"
 
@@ -22,9 +27,11 @@ size_t getNumOutputBuffers(Operation *op);
 /// Removes any attribute for output buffers.
 void removeNumOutputBuffers(Operation *op);
 
-/// Returns the operand index for the first output buffer argument to op.
-/// Returnn the op's arity if it has no output buffer arguments.
-size_t getFirstOutputBufferOperandIndex(Operation *op);
+/// Returns true if opOperand is a reading occurrence of a buffer.
+bool isBufferReadingOpOperand(OpOperand &opOperand);
+
+/// Returns true if opOperand is a writing occurrence of a buffer.
+bool isBufferWritingOpOperand(OpOperand &opOperand);
 
 } // namespace M::MGP
 

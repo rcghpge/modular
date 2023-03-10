@@ -72,5 +72,44 @@ def StripBufferAttributesPass : Pass<"strip-buffer-attributes", "MGP::ModelOp"> 
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// ConcatInPlacePass
+//===----------------------------------------------------------------------===//
+
+def ConcatInPlacePass : Pass<"concat-in-place", "MGP::ModelOp"> {
+  let summary = "Replaces mgp.cpu.buffer.concat with "
+                "mcp.cpu.buffer.split.mutable_borrow.";
+  let description = [{
+    This pass replaces mgc.cpu.buffer.concat with
+    mcp.cpu.buffer.split.mutable_borrow, provided all writers to the buffer
+    operands to the concat can be rewritten to instead write to the buffer
+    results of split.
+
+    For example:
+    ```mlir
+    %in1_buf = mgp.cpu.buffer.alloc.static ..., <size1>
+    %in1_ch = ...
+    %in2_spec = ...
+    %in2_buf = mgp.cpu.buffer.alloc.spec ..., %in2_spec
+    %in2_ch = ...
+    %out_spec = ...
+    %out_buf = mgp.cpu.buffer.alloc.spec ..., %out_spec
+    %ch1 = grt.chain.merge %in1_ch, %in2_ch
+    %ch2 = mgp.cpu.buffer.concat %ch1, %out_buf, %in1_buf, %in2_buf : ...
+    // where these are the only uses of %in1_buf and %in2_buf
+    ```
+    is rewritten to:
+    ```mlir
+    %out_spec = ...
+    %out_buf = mgp.cpu.buffer.alloc.spec ..., %out_spec
+    %in2_spec = ...
+    %in2_size = mgp.cpu.tensor_spec.size %in2_spec
+    %in1_buf, %in2_buf = mgp.cpu.buffer.split %out_buf, %in2_size : ...
+    %in1_ch = ...
+    %in2_ch = ...
+    %ch2 = grt.chain.merge %in1_ch, %in2_ch
+    ```
+  }];
+}
 
 #endif // GENERICML_MGPDIALECT_MGPTRANSFORMS_TD
