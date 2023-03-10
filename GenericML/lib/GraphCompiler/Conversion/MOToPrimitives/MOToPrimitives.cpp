@@ -411,22 +411,16 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
   // the GRT::IfOp and returns them for argument inlining.
   // Note: The function does not de-duplicate if the Values are
   // used repeatedly, need to handle that below
-  SmallVector<Value> captures;
-  operationIsIsolatedFromAbove(outputIf, &captures, /* allowIsolated */ true);
-
-  // Deuplicate captures
-  SmallVector<Value> uniqueCaptures;
-  for (const auto &capture : captures) {
-    if (capture != cond &&
-        llvm::find(uniqueCaptures, capture) == uniqueCaptures.end())
-      uniqueCaptures.emplace_back(capture);
-  }
+  llvm::SetVector<Value> uniqueCaptures;
+  operationIsIsolatedFromAbove(outputIf, &uniqueCaptures,
+                               /* allowIsolated */ true);
+  uniqueCaptures.erase(llvm::find(uniqueCaptures, Value(cond)));
 
   // Pass captures as inputs
-  outputIf.getInputsMutable().append(uniqueCaptures);
+  outputIf.getInputsMutable().append(llvm::to_vector(uniqueCaptures));
 
   auto isolate_region = [&](Region &region) -> LogicalResult {
-    for (Value &capture : uniqueCaptures) {
+    for (Value capture : uniqueCaptures) {
       auto arg = region.addArgument(capture.getType(), ifOp.getLoc());
       capture.replaceUsesWithIf(arg, [&](OpOperand &use) {
         return region.findAncestorOpInRegion(*use.getOwner());
