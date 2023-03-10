@@ -17,6 +17,9 @@ public:
   using CLOptionsBase::CLOptionsBase;
 
   cl::list<std::string> paths{"paths", cl::desc("Paths of models")};
+  cl::opt<std::string> cacheDir{"cache-dir",
+                                cl::desc("Filesystem path of CAS cache"),
+                                llvm::cl::Optional};
   cl::opt<size_t> num_threads{"num-threads", cl::desc("Number of threads"),
                               cl::init(0)};
   cl::list<TensorShape, bool, TensorShapeParser> inputShapes{
