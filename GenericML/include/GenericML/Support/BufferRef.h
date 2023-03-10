@@ -333,4 +333,4 @@ inline void swap(M::GML::BufferRef &lhs, M::GML::BufferRef &rhs) {
 
 } // namespace std
 
-#endif // GENERICML_SUPPORT_RCBUFFER_H
+#endif // GENERICML_SUPPORT_BUFFERREF_H

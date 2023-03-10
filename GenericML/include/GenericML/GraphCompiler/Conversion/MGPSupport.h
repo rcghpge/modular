@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_GRAPHCOMPILER_CONVERSION_SUPPORT_H
-#define GENERICML_GRAPHCOMPILER_CONVERSION_SUPPORT_H
+#ifndef GENERICML_GRAPHCOMPILER_CONVERSION_MGPSUPPORT_H
+#define GENERICML_GRAPHCOMPILER_CONVERSION_MGPSUPPORT_H
 
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/MGPDialect/MGPOps.h"
@@ -28,4 +28,4 @@ inline MGP::CpuTensorSpecType createCpuTensorSpec(mlir::ShapedType tensor) {
 
 } // namespace M::MGP
 
-#endif // GENERICML_GRAPHCOMPILER_CONVERSION_SUPPORT_H
+#endif // GENERICML_GRAPHCOMPILER_CONVERSION_MGPSUPPORT_H

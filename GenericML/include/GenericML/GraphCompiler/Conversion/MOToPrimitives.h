@@ -7,9 +7,8 @@
 #ifndef GENERICML_GRAPHCOMPILER_CONVERSION_MOTOPRIMITIVES_H
 #define GENERICML_GRAPHCOMPILER_CONVERSION_MOTOPRIMITIVES_H
 
-#include "GenericML/GraphCompiler/Conversion/Support.h"
+#include "GenericML/GraphCompiler/Conversion/MGPSupport.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
-#include "GenericML/MGPDialect/MGPOps.h"
 #include "Support/AlignedAlloc.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
