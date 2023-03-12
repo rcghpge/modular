@@ -513,6 +513,27 @@ def MO_SqrtOp : MO_ElementWiseUnaryOp<"sqrt"> {
   }];
 }
 
+// TODO: Use an AllShapesMatch<["input", "result"]> trait for MO_Tensor.
+def MO_CastOp : MO_Op<"cast", [Pure]> {
+  let summary = "Cast operation";
+  let description = [{
+    Return cast[dtype](x), where x is the input tensor.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.sqrt(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+  let arguments = (ins MO_Tensor:$input);
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+  let hasVerifier = 1;
+}
+
 // TODO: Use an AllElementTypesMatch<["x", "y", "result"]> trait for MO_Tensor.
 // TODO: Use an SameOperandsShape trait for MO_Tensor.
 def MO_SelectOp : MO_Op<"select", [Pure]>{

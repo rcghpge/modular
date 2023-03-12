@@ -374,6 +374,20 @@ LogicalResult GatherOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// MO_CastOp support
+//===----------------------------------------------------------------------===//
+
+LogicalResult CastOp::verify() {
+  TensorType inputType = getInput().getType();
+  TensorType resultType = getResult().getType();
+
+  if (inputType.getTypedShapeAttr() != resultType.getTypedShapeAttr())
+    return emitError("input and result must have identical shapes");
+
+  return LogicalResult::success();
+}
+
+//===----------------------------------------------------------------------===//
 // MO_SelectOp support
 //===----------------------------------------------------------------------===//
 
