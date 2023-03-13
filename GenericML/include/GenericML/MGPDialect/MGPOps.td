@@ -42,8 +42,8 @@ def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant", [
     over `uint8_t` elements. The result buffer type will have a size matching
     the attribute size.
 
-    Example valid attributes include `#m.aligned_bytes`, and the builtin
-    `dense_resource' and `array`. `#m.aligned_bytes` can be used for small,
+    Example valid attributes include `#M.aligned_bytes`, and the builtin
+    `dense_resource' and `array`. `#M.aligned_bytes` can be used for small,
     inline byte arrays with a given (optional) alignment. `dense_resource`
     can be used for large, out-of-line byte arrays with a (optional) alignment
     encoded in the resource blob. Any such alignment will be respected
@@ -52,7 +52,7 @@ def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant", [
     buffer.
 
     When using a `dense_resource` with an alignment, it is necessary to
-    type the attribute with `mgp.aligned_bytes` so that the alignment can
+    type the attribute with `!M.aligned_bytes` so that the alignment can
     captured before the resource corresponding to the label has been
     established. Otherwise, the `dense_resource` attribute can be given any
     shaped type over `uint8_t`.
@@ -64,7 +64,7 @@ def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant", [
     %buf = mgp.cpu.buffer.constant #m.aligned_buffer<8: "0x00010203">
     %buf : !mgp.cpu.buffer<4>  // at least 8 byte aligned in storage
 
-    %buf = mgp.cpu.buffer.constant dense_resource<label>:!mgp.aligned_bytes<4, 16>
+    %buf = mgp.cpu.buffer.constant dense_resource<label>:!M.aligned_bytes<4, align 16>
     %buf : !mgp.cpu.buffer<4>  // at least 16 byte aligned in storage
                                // the actual resource must have the same alignment
 

@@ -72,6 +72,24 @@ public:
   /// Lowers the mo.yield to the mef.output for the if block results.
   LogicalResult lowerYield(MO::YieldOp output);
 
+  /// Returns an attribute to represent elementAttr for the remainder of
+  /// compilation:
+  ///  - We commit to a specific byte layout, ie from here on the attribute
+  ///    is considered an ArrayRef<uint8_t> with no further interpretation.
+  ///  - Large attributes are outlined as dense_resources.
+  ///  - The required runtime alignment is captured as an !M.aligned_bytes type.
+  ///  - The runtime alignment will be at least 'minimumCpuAlignment' from
+  ///    the pass options.
+  ///  - If elementAttr already has an !M.aligned_bytes type annotation, that
+  ///    may increase the alignment. Otherwise, if the attribute itself has some
+  ///    indication of alignment (eg a dense_resource's blob's alignment) that
+  ///    may increase the alignment.
+  ///  - However the result's underlying data may not respect the alignment.
+  ///    Instead we assume alignment is enforced on serialization to MEF.
+  ///    This helps us avoid gratuitous memory copies.
+  ///  - No data is copied.
+  ErrorOr<ElementsAttr> lowerElementsAttr(ElementsAttr elementsAttr);
+
   /// Lowers mo.constant op.
   LogicalResult lowerConstant(MO::ConstantOp constOp);
 
@@ -210,6 +228,67 @@ LogicalResult MOGraphLowering::lowerYield(MO::YieldOp output) {
   return success();
 }
 
+/// Since the UnmanagedAsmResourceBlobs are created from ArrayRefs which have
+/// already been interned into the MLIR context, we don't need to do anything
+/// when the blob is to be deleted.
+static void noOpDeleter(void *data, size_t size, size_t align) {}
+
+/// Minimum byte size for a dense_resource.
+static constexpr size_t kLargeDataThreshold = 512;
+
+ErrorOr<ElementsAttr>
+MOGraphLowering::lowerElementsAttr(ElementsAttr elementsAttr) {
+  MLIRContext *ctx = loweringState.getExecuteOpBuilder().getContext();
+
+  /// All attributes must have a minimum alignment of this value.
+  uint64_t alignment =
+      static_cast<uint64_t>(loweringState.getMinimumCpuAlignment());
+
+  if (auto arrayAttr = dyn_cast<ArrayElementsAttr>(elementsAttr)) {
+    auto attrAlignedBytesType = getAlignedBytesType(arrayAttr);
+    alignment = std::max(alignment, attrAlignedBytesType.getAlign());
+    auto type =
+        AlignedBytesType::get(ctx, attrAlignedBytesType.getSize(), alignment);
+    // In the following we'll reuse the underlying array elements data as is,
+    // ignoring its current alignment. The desired MEF alignment is instead
+    // conveyed via the aligned_bytes type.
+    if (arrayAttr.getRawData().size() < kLargeDataThreshold) {
+      // Small attributes can remain inline.
+      return AlignedBytesAttr::get(ctx, alignment, arrayAttr.getRawData());
+    } else {
+      // Push large attributes to dense_resources.
+      std::string name =
+          "const_" + std::to_string(loweringState.getExecuteNextConstId());
+      ArrayRef<char> data(
+          reinterpret_cast<const char *>(arrayAttr.getRawData().data()),
+          arrayAttr.getRawData().size());
+      return DenseResourceElementsAttr::get(
+          type, DenseResourceElementsHandle::getManagerInterface(ctx).insert(
+                    name, mlir::UnmanagedAsmResourceBlob::allocateWithAlign(
+                              data, alignment, noOpDeleter)));
+    }
+  }
+
+  if (auto resourceAttr = dyn_cast<DenseResourceElementsAttr>(elementsAttr)) {
+    auto attrAlignedBytesType = getAlignedBytesType(resourceAttr);
+    alignment = std::max(alignment, attrAlignedBytesType.getAlign());
+    auto type =
+        AlignedBytesType::get(ctx, attrAlignedBytesType.getSize(), alignment);
+    // We'll not try to allocate a new blob. Instead we'll reuse the original
+    // blob and rely on the type annotation to capture our desired alignment.
+    return DenseResourceElementsAttr::get(type, resourceAttr.getRawHandle());
+  }
+
+  if (auto alignedAttr = dyn_cast<AlignedBytesAttr>(elementsAttr)) {
+    Optional<uint64_t> optAlignment = alignedAttr.getAlign();
+    if (optAlignment)
+      alignment = std::max(alignment, *optAlignment);
+    return AlignedBytesAttr::get(ctx, alignment, alignedAttr.getData());
+  }
+
+  return Error("unsupported constant attribute type");
+}
+
 LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
   Location loc = constOp.getLoc();
   MO::TensorType moTensorType = constOp.getType();
@@ -221,65 +300,13 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
   // Init phase lowering.
 
   // Execute phase lowering.
-  // We'll represent large constant attributes as DenseResourceElementsAttrs,
-  // and small as AlignedBytes.
-  ElementsAttr value;
-  size_t minAlignment = loweringState.getMinimumCpuAlignment();
-  if (auto elementsAttr = dyn_cast<ArrayElementsAttr>(constOp.getValue())) {
-    size_t size = elementsAttr.getRawData().size();
-    Type type = MGP::AlignedBytesType::get(
-        loweringState.getExecuteOpBuilder().getContext(),
-        static_cast<uint64_t>(size), static_cast<uint64_t>(minAlignment));
-    std::string name =
-        "const_" + std::to_string(loweringState.getExecuteNextConstId());
-    const char *data =
-        reinterpret_cast<const char *>(elementsAttr.getRawData().data());
-    auto resourceManager = DenseResourceElementsHandle::getManagerInterface(
-        loweringState.getExecuteOpBuilder().getContext());
-    value = getAttrForTensorData(
-        type, name, ArrayRef<char>(data, size), resourceManager, minAlignment,
-        /*forceOutOfLine=*/false, /*mustBeAligned=*/true);
-  } else if (auto resource =
-                 dyn_cast<DenseResourceElementsAttr>(constOp.getValue())) {
-    size_t size = resource.size();
-    size_t alignment = resource.getRawHandle().getBlob()->getDataAlignment();
-    assert(alignment > 0 && "resource blob must have non-zero alignment");
-    if (alignment < minAlignment)
-      return constOp->emitError()
-             << "dense_resource has alignment " << alignment
-             << " however minimum alignment has been set as " << minAlignment
-             << ".";
-    // The element type might have a bitwidth of 1 - in which case we've turned
-    // it into a set of ui8 (basically). If that's the case, use a single byte
-    // for this. Because integer division rounds down, N / 8 will result in 0 if
-    // N < 8, so we do the max(N/8, 1).
-    int64_t elementTypeInBytes =
-        std::max(resource.getElementType().getIntOrFloatBitWidth() / CHAR_BIT,
-                 (unsigned)1);
-    Type type = MGP::AlignedBytesType::get(
-        loweringState.getExecuteOpBuilder().getContext(),
-        static_cast<uint64_t>(size * elementTypeInBytes),
-        static_cast<uint64_t>(alignment));
-    value = DenseResourceElementsAttr::get(type, resource.getRawHandle());
-  } else if (auto alignedBytes =
-                 dyn_cast<AlignedBytesAttr>(constOp.getValue())) {
-    Optional<size_t> optAlignment = alignedBytes.getAlign();
-    if (optAlignment && *optAlignment < minAlignment)
-      return constOp->emitError()
-             << "m.aligned_bytes has alignment " << *optAlignment
-             << " however minimum alignment has been set as " << minAlignment
-             << ".";
-    size_t alignment = optAlignment.value_or(minAlignment);
-    value =
-        AlignedBytesAttr::get(loweringState.getExecuteOpBuilder().getContext(),
-                              alignment, alignedBytes.getData());
-  } else {
-    return constOp->emitError("unsupported constant attribute type");
-  }
+  ErrorOr<ElementsAttr> errOrValue = lowerElementsAttr(constOp.getValue());
+  if (auto *err = errOrValue.getError())
+    return constOp->emitOpError() << std::string(err);
 
   auto bufferOp =
       loweringState.getExecuteOpBuilder().create<MGP::CpuBufferConstantOp>(
-          loc, value);
+          loc, *errOrValue);
 
   // We create the tensor spec op.
   auto outSpecType =
@@ -413,10 +440,10 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
   // This is creating a Value semantic If Op
   // TODO: Change it to take buffers and specs? That breaks current lowering
   // assumptions, but we don't really want to hard limit the execution of the
-  // body of the if on _all_ inputs being ready, which is what a value semantic
-  // input list will do. Possibly better solution: split the tensors here,
-  // recreate them inside the if body, let the standard lowering + tensor
-  // creation elimination clean it up?
+  // body of the if on _all_ inputs being ready, which is what a value
+  // semantic input list will do. Possibly better solution: split the tensors
+  // here, recreate them inside the if body, let the standard lowering +
+  // tensor creation elimination clean it up?
 
   SmallVector<Type> resultTypes;
   // Always return the main chain

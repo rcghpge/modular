@@ -663,11 +663,7 @@ private:
                                 size_t alignment,
                                 function_ref<void()> emitRangeFn);
 
-  template <typename ElementsAttrType>
-  MEFOffset emitElementsAttr(ElementsAttrType value, Location loc,
-                             function_ref<void()> emitRangeFn);
   MEFOffset emitArrayElementsAttr(ArrayElementsAttr value, Location loc);
-  MEFOffset emitDenseArrayAttr(mlir::DenseArrayAttr value, Location loc);
   MEFOffset
   emitDenseResourceElementsAttribute(mlir::DenseResourceElementsAttr value,
                                      Location loc);
@@ -833,9 +829,13 @@ MEFOffset AttributesEmitter::emitDenseResourceElementsAttribute(
     return {0};
   }
 
-  return emitIntOrFloatRange(
-      *kindOr, value.size(), resourceBlob->getDataAlignment(),
-      [&]() { emitOwnedBytes(resourceBlob->getDataAs<uint8_t>()); });
+  // The attribute may include an alignment in its type annotation.
+  // Otherwise use the blob's alignment.
+  uint64_t align = getAlignedBytesType(value).getAlign();
+
+  return emitIntOrFloatRange(*kindOr, value.size(), align, [&]() {
+    emitOwnedBytes(resourceBlob->getDataAs<uint8_t>());
+  });
 }
 
 MEFOffset AttributesEmitter::emitAlignedBytesAttribute(AlignedBytesAttr attr,
@@ -851,34 +851,18 @@ MEFOffset AttributesEmitter::emitAlignedBytesAttribute(AlignedBytesAttr attr,
                              [&]() { emitOwnedBytes(attr.getData()); });
 }
 
-template <typename ElementsAttrType>
-MEFOffset
-AttributesEmitter::emitElementsAttr(ElementsAttrType value, Location loc,
-                                    function_ref<void()> emitRangeFn) {
-  FailureOr<MEF::AttributeKind> kind =
-      deriveAttributeKind(value.getElementType(), loc);
-  if (failed(kind))
-    return {0};
-
-  unsigned bitWidth = value.getElementType().getIntOrFloatBitWidth();
-  // Rounding up to bytes for alignment.
-  size_t alignment = llvm::divideCeil(bitWidth, CHAR_BIT);
-  return emitIntOrFloatRange(*kind, value.size(), alignment, emitRangeFn);
-}
-
 MEFOffset AttributesEmitter::emitArrayElementsAttr(ArrayElementsAttr value,
                                                    Location loc) {
-  return emitElementsAttr<ArrayElementsAttr>(
-      value, loc, [&]() { emitOwnedBytes(value.getRawData()); });
-}
+  auto kindOr = deriveAttributeKind(value.getElementType(), loc);
+  if (failed(kindOr))
+    return {0};
 
-MEFOffset AttributesEmitter::emitDenseArrayAttr(mlir::DenseArrayAttr value,
-                                                Location loc) {
-  return emitElementsAttr<mlir::DenseArrayAttr>(value, loc, [&]() {
-    auto rawData = value.getRawData();
-    const uint8_t *data = (const uint8_t *)rawData.data();
-    emitOwnedBytes(ArrayRef<uint8_t>(data, rawData.size()));
-  });
+  // The attribute may include an alignment in its type annotation.
+  // Otherwise use a default according to the element type.
+  size_t align = getAlignedBytesType(value).getAlign();
+
+  return emitIntOrFloatRange(*kindOr, value.size(), align,
+                             [&]() { emitOwnedBytes(value.getRawData()); });
 }
 
 MEFOffset AttributesEmitter::emitArrayAttribute(ArrayAttr value, Location loc) {
@@ -1181,9 +1165,6 @@ MEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr,
 
   if (auto arrayElements = dyn_cast<ArrayElementsAttr>(attr))
     return emitArrayElementsAttr(arrayElements, loc);
-
-  if (auto denseArray = dyn_cast<mlir::DenseArrayAttr>(attr))
-    return emitDenseArrayAttr(denseArray, loc);
 
   if (auto denseElements = dyn_cast<mlir::DenseResourceElementsAttr>(attr))
     return emitDenseResourceElementsAttribute(denseElements, loc);

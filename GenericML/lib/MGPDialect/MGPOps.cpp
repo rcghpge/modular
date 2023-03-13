@@ -30,20 +30,6 @@ using namespace MGP;
 // CpuBufferConstantOp
 //===----------------------------------------------------------------------===//
 
-static ErrorOr<Optional<uint64_t>>
-checkAlignmentsAgree(Optional<uint64_t> typeOptAlign,
-                     Optional<uint64_t> attrOptAlign) {
-  if (typeOptAlign.has_value() != attrOptAlign.has_value())
-    return Error("attribute must have an explicit alignment if and only "
-                 "if its type annotation has an explicit alignment");
-  if (typeOptAlign.has_value() && *typeOptAlign != *attrOptAlign)
-    return Error(Twine("expected attribute's explicit alignment to match "
-                       "the type annotation's explicit alignment (" +
-                       Twine(*attrOptAlign) + " vs " + Twine(*typeOptAlign) +
-                       ")."));
-  return attrOptAlign;
-}
-
 /// Returns the alignment constraint for the given attribute, or none if it
 /// has no such constraint.
 ///
@@ -51,57 +37,46 @@ checkAlignmentsAgree(Optional<uint64_t> typeOptAlign,
 /// instead of looking for specific attribute types.
 static ErrorOr<Optional<uint64_t>> getImpliedAlignment(ElementsAttr value) {
   if (auto alignedBytesAttr = dyn_cast<AlignedBytesAttr>(value)) {
-    // The attribute encodes its own (optional) alignment (and ignores any
-    // type annotation).
+    // The attribute encodes its own (optional) alignment.
     return alignedBytesAttr.getAlign();
   }
 
-  if (auto cache_constant = dyn_cast<Cache::ConstantHashAttr>(value)) {
+  if (auto cacheConstant = dyn_cast<Cache::ConstantHashAttr>(value)) {
     // The attribute encodes its own (optional) alignment.
-    return cache_constant.getOptAlign();
+    return cacheConstant.getOptAlign();
   }
-
-  Optional<uint64_t> typeOptAlign;
-  if (auto alignedBytesType = dyn_cast<AlignedBytesType>(value.getType()))
-    // The attribute's type encodes the desired alignment.
-    typeOptAlign = alignedBytesType.getAlign();
 
   if (auto resourceAttr = dyn_cast<DenseResourceElementsAttr>(value)) {
     DenseResourceElementsHandle handle = resourceAttr.getRawHandle();
     mlir::AsmResourceBlob *blob = handle.getBlob();
-    if (!blob) {
-      // The corresponding resource blob may not yet exist if we are still
-      // parsing. In that case we just trust the type's attribute (which
-      // must be given).
-      if (!typeOptAlign)
-        return Error(Twine("dense_resource blob is not available, so require "
-                           "type annotation to supply an attribute"));
-      return typeOptAlign;
+    if (!blob && !isa<AlignedBytesType>(resourceAttr.getType()))
+      return Error(Twine("dense_resource blob is not available, so require "
+                         "type annotation to supply an alignment"));
+
+    if (blob) {
+      // Since the blob is available, check its size is consistent with the
+      // attribute size.
+      if (static_cast<int64_t>(blob->getData().size()) !=
+          value.getNumElements())
+        return Error(Twine("the resource size does not match the "
+                           "attribute's element size (" +
+                           Twine(blob->getData().size()) + " vs " +
+                           Twine(value.getNumElements()) + ")"));
     }
 
-    // Since the blob is available, check it is consistent with known size
-    // and any alignment.
-    if (static_cast<int64_t>(blob->getData().size()) != value.getNumElements())
-      return Error(Twine("the resource size does not match the "
-                         "attribute's element size (" +
-                         Twine(blob->getData().size()) + " vs " +
-                         Twine(value.getNumElements()) + ")"));
-
-    Optional<uint64_t> blobOptAlign;
-    if (blob->getDataAlignment() != 0)
-      // NOTE: Unclear if blobs can end up with a zero alignment since
-      // the parser assert fails with such. So this is probably always true.
-      blobOptAlign = static_cast<uint64_t>(blob->getDataAlignment());
-    return checkAlignmentsAgree(typeOptAlign, blobOptAlign);
+    // The attribute's type annotation may include an alignment, otherwise
+    // use the underlying blob's alignment.
+    return getAlignedBytesType(resourceAttr).getAlign();
   }
 
-  if (typeOptAlign)
-    // Despite the type annotation the translation to MEF will only respect
-    // alignment constraints on blobs and aligned bytes.
-    return Error(Twine("cannot supply an alignment from type annotation for "
-                       "this attribute value."));
+  if (auto arrayAttr = dyn_cast<ArrayElementsAttr>(value)) {
+    // The attribute's type annotation may include an alignment, otherwise
+    // default according to array element type.
+    return getAlignedBytesType(arrayAttr).getAlign();
+  }
 
-  return std::nullopt;
+  return Error("cannot supply an alignment from type annotation for "
+               "this attribute value.");
 }
 
 /// Parses the elements attribute, but also captures any alignment constraint.

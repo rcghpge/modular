@@ -12,32 +12,6 @@ func.func @buffer_constant_mismatched_size() {
 
 // -----
 
-func.func @buffer_constant_mismatched_align() {
-  // expected-error@+1 {{'mgp.cpu.buffer.constant' op expected attribute's explicit alignment to match the type annotation's explicit alignment (64 vs 16).}}
-  %0 = mgp.cpu.buffer.constant dense_resource<resource> : !mgp.aligned_bytes<4, 16>
-  mef.output %0 : !mgp.cpu.buffer<4>
-}
-
-{-#
-  dialect_resources: {
-    builtin: {
-      resource:
-        // First 4 bytes are alignment in little-endian form.
-        "0x4000000000010203"
-    }
-  }
-#-}
-
-// -----
-
-func.func @buffer_constant_illegal_aligned_type() {
-  // expected-error@+1 {{custom op 'mgp.cpu.buffer.constant' cannot supply an alignment from type annotation for this attribute value.}}
-  %0 = mgp.cpu.buffer.constant #M.dense_array<1, 2, 5, 7> : !mgp.aligned_bytes<4, 16>
-  mef.output %0 : !mgp.cpu.buffer<4>
-}
-
-// -----
-
 func.func @buffer_constant_invalid_elem_type() {
   // expected-error@+1 {{'mgp.cpu.buffer.constant' op only supports attributes of uint8_t elements (have 'i16')}}
   %0 = mgp.cpu.buffer.constant #M.dense_array<1, 2, 3, 4> : !M.array<4xi16>
