@@ -826,7 +826,7 @@ def CpuTensorSpecCreateDynamicOp : MGP_Op<"cpu.tensor_spec.create.dynamic", [
 //===----------------------------------------------------------------------===//
 
 def CpuTensorSpecDimsDynamicOp : MGP_Op<"cpu.tensor_spec.dims.dynamic", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
     Returns the runtime values of the dimensions of CPU tensor spec
     which are not statically known.
@@ -1015,7 +1015,7 @@ def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
 //===----------------------------------------------------------------------===//
 
 def CpuTensorExtractOp : MGP_Op<"cpu.tensor.extract", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Extracts the tensor spec and buffer of a CPU tensor.";
   let description = [{
     Returns the tensor spec and buffer components of a CPU tensor. The

@@ -99,6 +99,9 @@ public:
     /// Keeps track of what mo.tensor SSA values are lowered to.
     DenseMap<Value, Value> loweredTensors;
 
+    /// Tracks what parameters are lowered to.
+    DenseMap<StringAttr, Value> loweredParams;
+
     /// The next available constant identifier. Used to assign names
     /// to dense_resource attributes capturing MO constants.
     size_t nextConstId = 0;
@@ -180,6 +183,16 @@ public:
   /// Register what mo.tensor the SSA value (key) is lowered to.
   void emplaceExecuteLoweredTensor(Value key, Value value) {
     execute.loweredTensors.try_emplace(key, value);
+  }
+
+  /// Return what the parameter with the given name is lowered to.
+  Value lookupExecuteLoweredParam(StringAttr name) {
+    return execute.loweredParams.lookup(name);
+  }
+
+  /// Register what the parameter with the given name is lowered to.
+  void emplaceExecuteLoweredParam(StringAttr name, Value value) {
+    execute.loweredParams.try_emplace(name, value);
   }
 
   /// Return and increment the next available constant identifier.
