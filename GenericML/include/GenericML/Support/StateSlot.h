@@ -32,7 +32,12 @@ class ConcreteStateSlot;
 /// The payload's destructor will be called when the state slot is destroyed.
 class StateSlot {
 public:
-  ~StateSlot();
+  /// Destroy this state slot, including its underlying payload.
+  ///
+  /// Note: Though we use the TypeID machinery which captures destructor
+  /// functions, we instead prefer to just pay for a vtable and use virtual
+  /// destructors to avoid surprising interactions with std::unique_ptrs.
+  virtual ~StateSlot() = default;
 
   // No implicit copying is allowed.
   StateSlot(const StateSlot &rhs) = delete;
@@ -103,13 +108,6 @@ private:
                                   LLCL::CompactRuntimePtr runtime, size_t size,
                                   std::optional<size_t> alignment);
 
-  /// Return the address of the payload.
-  void *getPayloadPointer() {
-    /// The payload in a ConcreteStateSlot always immediately follows the
-    /// StateSlot. This is guaranteed by static_asserts in ConcreteStateSlot.
-    return this + 1;
-  }
-
   /// Type id uniquely describing the type of payload held by this states slot.
   LLCL::TypeID typeID;
 
@@ -136,19 +134,9 @@ public:
   template <typename... Args>
   explicit ConcreteStateSlot(size_t numOutputs, Args &&...args)
       : StateSlot(LLCL::TypeID::get<T>(), numOutputs),
-        payload(std::forward<Args>(args)...) {
-#if defined(__GNUC__) && !defined(__clang__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Winvalid-offsetof"
-#endif
-    static_assert(offsetof(ConcreteStateSlot<T>, payload) == sizeof(StateSlot),
-                  "Offset of ConcreteStateSlot::payload needs to be aligned");
-#if defined(__GNUC__) && !defined(__clang__)
-#pragma GCC diagnostic pop
-#endif
-  }
+        payload(std::forward<Args>(args)...) {}
 
-  ~ConcreteStateSlot() { assert(false && "destroy from StateSlot"); }
+  ~ConcreteStateSlot() override = default;
 
   // No implicit copying is allowed
   ConcreteStateSlot(const ConcreteStateSlot &rhs) = delete;

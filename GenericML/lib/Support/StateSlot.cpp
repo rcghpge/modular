@@ -12,10 +12,6 @@
 using namespace M;
 using namespace M::GML;
 
-StateSlot::~StateSlot() {
-  getTypeID().getValueDestructor()(getPayloadPointer());
-}
-
 BufferRef StateSlot::getOrCreateBuffer(size_t bufferIndex,
                                        LLCL::CompactRuntimePtr runtime,
                                        size_t size,
