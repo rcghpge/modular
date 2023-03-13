@@ -156,6 +156,8 @@ void MOToMOGGPass::runOnOperation() {
       MO_SHIM_ONLY(MO::BroadcastToOp, "mop.kernels.broadcast_to"),
       MO_TO_LIT(MO::CastOp, "mop.kernels.cast"),
       MO_SHIM_ONLY(MO::ConcatOp, "mop.kernels.concat"),
+      MO_SHIM_ONLY(MO::Static::BroadcastToOp,
+                   "mop.kernels.static.broadcast_to"),
       MO_SHIM_ONLY(MO::ConvOp, "mop.kernels.conv"),
       MO_SHIM_ONLY(MO::DivOp, "mop.kernels.div"),
       MO_TO_LIT(MO::ErfOp, "mop.kernels.erf"),

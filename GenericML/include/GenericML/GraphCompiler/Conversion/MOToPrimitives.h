@@ -195,6 +195,10 @@ public:
     execute.loweredParams.try_emplace(name, value);
   }
 
+  /// Return the SSA values corresponding to the parametric dimensions in the
+  /// given shape (in the order they appear in the shape).
+  SmallVector<Value> lookupExecuteDynDims(MO::ShapeAttr shapeAttr);
+
   /// Return and increment the next available constant identifier.
   size_t getExecuteNextConstId() { return execute.nextConstId++; }
 

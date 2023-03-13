@@ -17,7 +17,6 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/IR/FunctionImplementation.h"
-#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringMap.h"
 #include <llvm/ADT/STLExtras.h>
 
@@ -169,6 +168,7 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
       {"mop.kernels.reduce.max", "mop.shape.reduce"},
   };
 
+  OpBuilder exeBuilder = loweringState.getExecuteOpBuilder();
   auto getOutputSpec = [&](const std::string &opName,
                            const SmallVector<Value> &inputs) {
     mlir::OperationState opState{loc, opName};
@@ -178,8 +178,7 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     opState.addTypes(cast<mlir::Type>(outSpecType));
 
     // Add it to the MLIR.
-    mlir::Operation *invokeOp =
-        loweringState.getExecuteOpBuilder().create(opState);
+    mlir::Operation *invokeOp = exeBuilder.create(opState);
     return cast<TypedValue<MGP::CpuTensorSpecType>>(invokeOp->getResult(0));
   };
 
@@ -238,11 +237,19 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     Value step = loweringState.lookupExecuteLoweredTensor(
         opBeingLowered->getOperands()[2]);
     output.spec = getOutputSpec("mop.shape.range", {start, limit, step});
+  } else if (opName == "mop.kernels.static.broadcast_to") {
+    auto resTy = cast<MO::TensorType>(opBeingLowered->getResult(0).getType());
+
+    SmallVector<Value> runtimeDims =
+        loweringState.lookupExecuteDynDims(resTy.getTypedShapeAttr());
+    auto specOp = exeBuilder.create<MGP::CpuTensorSpecCreateOp>(
+        loc, MGP::createCpuTensorSpec(resTy), runtimeDims);
+    output.spec = specOp.getResult();
   } else {
     opBeingLowered->emitError("op requires output to have static shape");
     return Error("op requires output to have static shape");
   }
-  output.buffer = loweringState.getExecuteOpBuilder()
+  output.buffer = exeBuilder
                       .create<MGP::CpuBufferAllocSpecOp>(
                           loc,
                           /*inChain=*/inChain,

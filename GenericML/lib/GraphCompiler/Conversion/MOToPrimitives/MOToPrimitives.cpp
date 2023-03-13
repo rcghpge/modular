@@ -29,6 +29,19 @@ namespace M::MGP {
 } // namespace M::MGP
 
 //===----------------------------------------------------------------------===//
+// MOGraphLoweringState implementation
+//===----------------------------------------------------------------------===//
+
+SmallVector<Value>
+MGP::MOGraphLoweringState::lookupExecuteDynDims(MO::ShapeAttr shapeAttr) {
+  SmallVector<Value> runtimeDims;
+  for (TypedAttr dim : shapeAttr.getValues())
+    if (auto dimRef = dyn_cast<KGEN::ParamDeclRefAttr>(dim))
+      runtimeDims.emplace_back(lookupExecuteLoweredParam(dimRef.getName()));
+  return runtimeDims;
+}
+
+//===----------------------------------------------------------------------===//
 // MOGraphLowering implementation
 //===----------------------------------------------------------------------===//
 
@@ -42,7 +55,7 @@ namespace {
 /// is lowered.
 class MOGraphLowering {
 public:
-  MOGraphLowering(M::MO::GraphOp graph, TypeConverter &typeConverter,
+  MOGraphLowering(MO::GraphOp graph, TypeConverter &typeConverter,
                   llvm::StringRef compiledFrameworkLabel,
                   size_t minimumCpuAlignment)
       : loweringState(graph, typeConverter, compiledFrameworkLabel,
@@ -75,7 +88,7 @@ private:
   /// Lowers a Block
   LogicalResult lowerBlock(mlir::Block *block);
 
-  M::MGP::MOGraphLoweringState loweringState;
+  MGP::MOGraphLoweringState loweringState;
 };
 
 } // namespace
@@ -304,16 +317,10 @@ MOGraphLowering::lowerStaticReshape(MO::Static::ReshapeOp reshapeOp) {
   if (!resTy.hasRank())
     return reshapeOp.emitError("Dynamic output rank not support");
 
-  SmallVector<Value> runtimeDims;
-  for (TypedAttr dim : resTy.getDims()) {
-    if (auto dimRef = dyn_cast<KGEN::ParamDeclRefAttr>(dim)) {
-      runtimeDims.emplace_back(
-          loweringState.lookupExecuteLoweredParam(dimRef.getName()));
-    }
-  }
-
   // Create the new spec from the dimensions.
   auto specTy = MGP::createCpuTensorSpec(resTy);
+  SmallVector<Value> runtimeDims =
+      loweringState.lookupExecuteDynDims(resTy.getTypedShapeAttr());
   auto specOp =
       exeBuilder.create<MGP::CpuTensorSpecCreateOp>(loc, specTy, runtimeDims);
 
@@ -606,7 +613,7 @@ LogicalResult MOGraphLowering::run() {
 
 namespace {
 struct MOToPrimitivesPass
-    : public M::MGP::impl::MOToPrimitivesBase<MOToPrimitivesPass> {
+    : public MGP::impl::MOToPrimitivesBase<MOToPrimitivesPass> {
   using MOToPrimitivesBase::MOToPrimitivesBase;
 
   void runOnOperation() override;
