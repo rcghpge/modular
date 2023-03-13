@@ -13,6 +13,8 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
+#include "LoweringHelper.h"
+
 using namespace M;
 
 namespace M::MO {
@@ -82,11 +84,6 @@ struct MOOpPattern : public RewritePattern {
   }
 
   ErrorOr<ValueRange> selectMOGGOp(Operation *op) const {
-    OpBuilder b(op);
-    b.setInsertionPoint(op);
-
-    auto loc = op->getLoc();
-
     // Get the implementation info for this operation.
     auto itr = moToLitKernels.find(op->getName().getTypeID());
     if (itr == moToLitKernels.end())
@@ -94,40 +91,14 @@ struct MOOpPattern : public RewritePattern {
                    op->getName().getStringRef().str());
     KernelRecord &kernel = itr->second;
 
+    // Helper to encapsulate all the code required to lower to a kernel.
+    MO::KernelLowererHelper helper{op};
+
     // If we should be using JIT generate a jit target. Otherwise use the shim.
-    if (useJit && kernel.shouldHaveLit) {
-      // Wrap in an elementwise block for now.
-      auto fusedOp =
-          b.create<MOGG::ElementwiseOp>(loc,
-                                        /*outputTypes=*/op->getResultTypes(),
-                                        /*inputOperands=*/op->getOperands());
-
-      // Build up a block representing an elementwise lambda.
-      mlir::Block &body = fusedOp.getBody().emplaceBlock();
-      b.setInsertionPoint(&body, body.begin());
-      for (mlir::Type operandTy : op->getOperandTypes())
-        body.addArgument(operandTy, loc);
-
-      // Create the lit target which implements this operation and add it within
-      // the block.
-      auto litTarget = b.create<MOGG::LitOp>(
-          op->getLoc(),
-          /*outputTypes=*/op->getResultTypes(),
-          /*kernelTarget=*/kernel.moggID,
-          /*originalOperationName=*/op->getName().stripDialect(),
-          /*inputOperands=*/body.getArguments());
-
-      b.create<MOGG::OutputOp>(loc, litTarget->getResults());
-      return fusedOp.getResults();
-    } else {
-      // Create the mogg_ext_op
-      return b
-          .create<MOGG::ExtOp>(loc,
-                               /*outputTypes=*/op->getResultTypes(),
-                               /*op_name=*/kernel.shim,
-                               /*inputOperands=*/op->getOperands())
-          .getResults();
-    }
+    if (useJit && kernel.shouldHaveLit)
+      return helper.lowerToKernel(kernel.moggID);
+    else
+      return helper.lowerToShim(kernel.shim);
   }
 
   MoToKernelMapTy &moToLitKernels;
@@ -168,6 +139,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_SHIM_ONLY(MO::GatherOp, "mop.kernels.gather"),
       MO_SHIM_ONLY(MO::MatmulOp, "mop.kernels.matmul"),
       MO_SHIM_ONLY(MO::BatchMatmulOp, "mop.kernels.batch_matmul"),
+      MO_SHIM_ONLY(MO::MatrixBandPartOp, "mop.kernels.matrix_band_part"),
       MO_SHIM_ONLY(MO::MaxOp, "mop.kernels.max"),
       MO_SHIM_ONLY(MO::MeanOp, "mop.kernels.mean"),
       MO_SHIM_ONLY(MO::ReduceAddOp, "mop.kernels.reduce.add"),
@@ -187,7 +159,6 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_LIT(MO::SqrtOp, "mop.kernels.sqrt"),
       MO_TO_LIT(MO::SubOp, "mop.kernels.sub"),
       MO_TO_LIT(MO::TanhOp, "mop.kernels.tanh"),
-      MO_SHIM_ONLY(MO::MatrixBandPartOp, "mop.kernels.matrix_band_part"),
   };
 
   RewritePatternSet patterns{ctx};

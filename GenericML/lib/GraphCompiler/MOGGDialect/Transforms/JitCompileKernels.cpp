@@ -35,26 +35,74 @@ namespace M::MOGG {
 
 namespace {
 
-// If this is a single elementwise operation we can pass along the shape
-// inference function hack.
-std::string getShapeInferenceName(MOGG::ElementwiseOp op) {
-  mlir::Block &block = op.getBody().front();
-  if (block.getOperations().size() != 2)
-    return "NoShapeInferFunc";
+std::string mangleBlock(mlir::Block &block,
+                        DenseMap<Value, std::string> &valueToPositionInBlock) {
+  std::string name = "";
+  size_t blockIndex = 0;
 
-  // In practice shouldn't be reachable, but legally could just be a return
-  // block for the case of an empty elementwise op.
-  auto asLit = dyn_cast<MOGG::LitOp>(*block.begin());
-  if (!asLit)
-    return "NoShapeInferFunc";
-  return asLit.getOriginalOpName().str();
+  // Each operation in the block of ops contributes to the name.
+  for (mlir::Operation &innerOp : block) {
+    // Handle the output as a special case, report which operations returned a
+    // value from the block.
+    if (isa<MOGG::OutputOp>(innerOp)) {
+      name += "outs_";
+      for (Value operand : innerOp.getOperands())
+        name += valueToPositionInBlock[operand] + "_";
+    } else if (auto lambda = dyn_cast<MOGG::LambdaOp>(innerOp)) {
+      mlir::Block &lambdaBlock = lambda.getBody().front();
+
+      // Mangle the lambda block arguments.
+      for (size_t argIndex = 0, e = lambdaBlock.getNumArguments(); argIndex < e;
+           ++argIndex)
+        valueToPositionInBlock[lambdaBlock.getArgument(argIndex)] =
+            "L" + std::to_string(argIndex);
+
+      name += mangleBlock(lambdaBlock, valueToPositionInBlock);
+    } else if (auto out = dyn_cast<MOGG::OutputPlaceholdersOp>(innerOp)) {
+      for (Value output : out.getResults())
+        valueToPositionInBlock[output] = "O" + std::to_string(blockIndex);
+    } else if (auto invokeOp = dyn_cast<MOGG::LambdaInvokeOp>(innerOp)) {
+      name += "invoke_" + invokeOp.getLambda().getLeafReference().str() + "_";
+
+      // Add operands to the mangling.
+      for (Value input : innerOp.getOperands())
+        name += valueToPositionInBlock[input] + "_";
+
+      // Track the outputs for future mangling.
+      for (Value output : innerOp.getResults())
+        valueToPositionInBlock[output] = std::to_string(blockIndex);
+
+    } else if (auto call = dyn_cast<MOGG::CallOp>(innerOp)) {
+      name += "call_" + call.getLitKernelTarget().str();
+
+      // If we have parameters we have to mangle those too.
+      if (call.getParams()) {
+        for (SymbolRefAttr sym :
+             call.getParamsAttr().getAsRange<SymbolRefAttr>())
+          name += sym.getLeafReference().str() + "_";
+      }
+
+      for (Value input : innerOp.getOperands())
+        name += valueToPositionInBlock[input] + "_";
+
+      // Track the outputs name for future mangling.
+      for (Value output : innerOp.getResults())
+        valueToPositionInBlock[output] = std::to_string(blockIndex);
+    }
+
+    // Add double seperator between operations.
+    name += "_";
+    blockIndex++;
+  }
+
+  return name;
 }
 
 // We create a mangled name which exactly matches the operation. The number of
 // inputs, the contents of the block, and which are returned. It needs to be
 // this verbose to ensure we don't recompile for identical blocks but also allow
 // for blocks of the same operations with different returns to compile legally.
-std::string createMangledName(MOGG::ElementwiseOp op) {
+std::string createMangledName(MOGG::KernelOp op) {
   std::string name = "__gen__ins_";
 
   // Track where each value is in the block order. This is to mangle the returns
@@ -81,34 +129,7 @@ std::string createMangledName(MOGG::ElementwiseOp op) {
     name += "f32_";
   }
 
-  size_t blockIndex = 0;
-
-  // Each operation in the block of ops contributes to the name.
-  for (mlir::Operation &innerOp : op.getBody().front()) {
-    // Handle the output as a special case, report which operations returned a
-    // value from the block.
-    if (isa<MOGG::OutputOp>(innerOp)) {
-      name += "outs_";
-      for (Value operand : innerOp.getOperands())
-        name += valueToPositionInBlock[operand] + "_";
-      break;
-    }
-
-    name += cast<MOGG::LitOp>(innerOp).getOriginalOpName().str() + "_";
-
-    // Add operands to the mangling.
-    for (Value input : innerOp.getOperands())
-      name += valueToPositionInBlock[input] + "_";
-
-    // Track the outputs for future mangling.
-    for (Value output : innerOp.getResults())
-      valueToPositionInBlock[output] = std::to_string(blockIndex);
-
-    // Add double seperator between operations.
-    name += "_";
-    blockIndex++;
-  }
-
+  name += mangleBlock(op.getBody().front(), valueToPositionInBlock);
   return name;
 }
 
@@ -194,8 +215,8 @@ struct JitCompileKernels
 
     // Build stubs for all JIT operations and replace them with symbolic calls
     // to the kernels in the KGEN stub.
-    for (MOGG::ElementwiseOp op :
-         llvm::make_early_inc_range(graph.getOps<MOGG::ElementwiseOp>())) {
+    for (MOGG::KernelOp op :
+         llvm::make_early_inc_range(graph.getOps<MOGG::KernelOp>())) {
       // Create a unique name for the kernel.
       std::string stubKernelName = createMangledName(op);
 
@@ -211,14 +232,11 @@ struct JitCompileKernels
       RETURN_ERROR(builder.startLowering(op, stubKernelName));
 
       // Lower the operation using a vectorized map over an elementwise lambda.
-      RETURN_ERROR(builder.lowerToElementwiseLambda(op.getBody().front()));
-
-      // The propagate the hacky shape inference name.
-      std::string shapeInferFunc = getShapeInferenceName(op);
+      RETURN_ERROR(builder.lowerToElementwiseLambda(op));
 
       // Replace the original kernel with a call to the compiled jit code.
       MOGG::ExecuteCompiledOp jitExecute =
-          builder.createExecuteOperation(stubKernelName, shapeInferFunc);
+          builder.createExecuteOperation(stubKernelName, op.getShapeFunc());
       op->replaceAllUsesWith(jitExecute.getResults());
       jittedKernels.insert({stubKernelName, jitExecute});
       op->erase();
