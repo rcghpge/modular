@@ -151,9 +151,9 @@ struct JitCompileKernels
   }
 
   ErrorOr<mlir::OwningOpRef<mlir::ModuleOp>> loadLitLibrary() {
-    // The path to the MOGG standard library lit bindings. The macro is set by
+    // The path to the MOGG standard library mojo bindings. The macro is set by
     // CMake.
-    StringLiteral path = MOGG_LIT_BINDINGS_PATH;
+    StringLiteral path = MOGG_MOJO_BINDINGS_PATH;
 
     // Load the module. The stub will be appended to this.
     mlir::OwningOpRef<mlir::ModuleOp> baseModuleRef =
