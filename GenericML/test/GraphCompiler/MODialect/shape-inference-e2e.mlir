@@ -57,7 +57,7 @@ mo.graph @batch_matmul_static_rank(
   %arg1: !mo.tensor<[?, ?, ?], f32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], [[D5]]], f32> {
 ) -> !mo.tensor<[?, ?, ?], f32> {
-  // CHECK: kgen.param.declare [[P12:.*]]: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate eq>}, [[D2]], [[D4]])>
+  // CHECK: kgen.param.declare [[P12:.*]]: i1 = <eq([[D2]], [[D4]])>
   // CHECK: kgen.param.assert <[[P12]]>, "inner dimensions do not match"
   // CHECK: kgen.param.declare [[P15:.*]]: i1 = <apply(:(!mo.shape, !mo.shape) -> i1 "mo.shape.eq", [[[D0]]], [[[D3]]])>
   // CHECK: kgen.param.assert <[[P15]]>, "batch sizes of left and right inputs are not equal"
@@ -160,13 +160,13 @@ mo.graph @unresolved_rebinds(
 
   // CHECK-DAG: kgen.param.declare [[R1:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_rank", [[SH0]])>
   // CHECK-DAG: kgen.param.declare [[R2:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_rank", [[SH1]])>
-  // CHECK-DAG: kgen.param.declare [[COND1:.*]]: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate eq>}, [[R1]], [[R2]])>
+  // CHECK-DAG: kgen.param.declare [[COND1:.*]]: i1 = <eq([[R1]], [[R2]])>
   // CHECK-DAG: kgen.param.assert <[[COND1]]>, "ranks of left and right inputs are not equal"
-  // CHECK-DAG: kgen.param.declare [[COND2:.*]]: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate sgt>}, [[R2]], 2)>
+  // CHECK-DAG: kgen.param.declare [[COND2:.*]]: i1 = <ge([[R2]], 3)>
   // CHECK-DAG: kgen.param.assert <[[COND2]]>, "input ranks are not greater than 2"
   // CHECK-DAG: kgen.param.declare [[K:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -1 : index}, [[SH0]])>
   // CHECK-DAG: kgen.param.declare [[KK:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -2 : index}, [[SH1]])>
-  // CHECK-DAG: kgen.param.declare [[COND3:.*]]: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate eq>}, [[K]], [[KK]])>
+  // CHECK-DAG: kgen.param.declare [[COND3:.*]]: i1 = <eq([[K]], [[KK]])>
   // CHECK-DAG: kgen.param.assert <[[COND3]]>, "inner dimensions do not match"
   // CHECK-DAG: kgen.param.declare [[LBATCH:.*]]: !mo.shape = <apply(:(!mo.shape) -> !mo.shape "mo.shape.slice"{end = -2 : index, start = 0 : index}, [[SH0]])>
   // CHECK-DAG: kgen.param.declare [[RBATCH:.*]]: !mo.shape = <apply(:(!mo.shape) -> !mo.shape "mo.shape.slice"{end = -2 : index, start = 0 : index}, [[SH1]])>
@@ -202,21 +202,20 @@ mo.graph @broadcasted_binary_elwise(
   %arg0: !mo.tensor<[?, 12, ?], f32>, %arg1: !mo.tensor<[?, ?], f32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D15]], [[D20]], [[D21]]], f32> {
 ) -> (!mo.tensor<[?, ?, ?], f32>) {
-  // CHECK-DAG: kgen.param.declare [[P4:.*]]: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate eq>}, [[D17]], 1)>
-  // CHECK-DAG: kgen.param.declare [[P5:.*]]: i1 = <apply(:(i1, i1) -> i1 "arith.ori", 0, [[P4]])>
-  // CHECK-DAG: kgen.param.declare [[P6:.*]]: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate eq>}, 12, [[D17]])>
-  // CHECK-DAG: kgen.param.declare [[P7:.*]]: i1 = <apply(:(i1, i1) -> i1 "arith.ori", [[P5]], [[P6]])>
+  // CHECK-DAG: kgen.param.declare [[P4:.*]]: i1 = <eq([[D17]], 1)>
+  // CHECK-DAG: kgen.param.declare [[P6:.*]]: i1 = <eq([[D17]], 12)>
+  // CHECK-DAG: kgen.param.declare [[P7:.*]]: i1 = <or([[P4]], [[P6]])>
   // CHECK-DAG: kgen.param.assert <[[P7]]>, "dimensions are not broadcastable"
 
-  // CHECK-DAG: kgen.param.declare [[P8:.*]] = <apply(:(index, index) -> index "index.maxs", 12, [[D17]])>
-  // CHECK-DAG: kgen.param.declare [[P11:.*]]: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate eq>}, [[D16]], 1)>
-  // CHECK-DAG: kgen.param.declare [[P12:.*]]: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate eq>}, [[D18]], 1)>
-  // CHECK-DAG: kgen.param.declare [[P13:.*]]: i1 = <apply(:(i1, i1) -> i1 "arith.ori", [[P11]], [[P12]])>
-  // CHECK-DAG: kgen.param.declare [[P14:.*]]: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate eq>}, [[D16]], [[D18]])>
-  // CHECK-DAG: kgen.param.declare [[P15:.*]]: i1 = <apply(:(i1, i1) -> i1 "arith.ori", [[P13]], [[P14]])>
+  // CHECK-DAG: kgen.param.declare [[P8:.*]] = <max([[D17]], 12)>
+  // CHECK-DAG: kgen.param.declare [[P11:.*]]: i1 = <eq([[D16]], 1)>
+  // CHECK-DAG: kgen.param.declare [[P12:.*]]: i1 = <eq([[D18]], 1)>
+  // CHECK-DAG: kgen.param.declare [[P13:.*]]: i1 = <or([[P11]], [[P12]])>
+  // CHECK-DAG: kgen.param.declare [[P14:.*]]: i1 = <eq([[D16]], [[D18]])>
+  // CHECK-DAG: kgen.param.declare [[P15:.*]]: i1 = <or([[P13]], [[P14]])>
   // CHECK-DAG: kgen.param.assert <[[P15]]>, "dimensions are not broadcastable"
 
-  // CHECK-DAG: kgen.param.declare [[P16:.*]] = <apply(:(index, index) -> index "index.maxs", [[D16]], [[D18]])>
+  // CHECK-DAG: kgen.param.declare [[P16:.*]] = <max([[D16]], [[D18]])>
   %shape1 = mo.shape_of(%arg0) : (!mo.tensor<[?, 12, ?], f32>) -> !mo.tensor<[3], si64>
   %shape2 = mo.shape_of(%arg1) : (!mo.tensor<[?, ?], f32>) -> !mo.tensor<[2], si64>
   %shape = mo.broadcast_shape(%shape1, %shape2) : (!mo.tensor<[3], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3], si64>
