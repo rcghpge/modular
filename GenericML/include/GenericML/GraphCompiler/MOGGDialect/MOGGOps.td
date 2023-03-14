@@ -54,19 +54,6 @@ def MOGG_ExtOp : MOGG_LowerableOp<"ext.op", [Pure]> {
   }];
 }
 
-def MOGG_ElementwiseOp : MOGG_Op<"elementwise", [SingleBlock, Pure]> {
-  let summary = "Block of fused elementwise operations";
-  let description = [{
-    This represents an operation we want to create a fused elementwise JIT kernel for.
-    Additional MOGG passes will fuse the regions of these operations together to create
-    fused elementwise blocks.
-  }];
-
-  let arguments = (ins Variadic<MO_Tensor>:$operands);
-  let results = (outs Variadic<MO_Tensor>:$results);
-  let regions = (region SizedRegion<1>:$body);
-}
-
 
 //===----------------------------------------------------------------------===//
 // OutputOp
@@ -110,28 +97,6 @@ def MOGG_LitRegisterOp : MOGG_Op<"lit_register", [HasParent<"ModuleOp">]> {
   }];
 
 }
-
-
-def MOGG_LitOp : MOGG_Op<"lit", [SingleBlock]> {
-  let summary = "Represents a target to call";
-  let description = [{
-    This represents an operation which is implemented by the kernel name.
-    It will be jitted by the jit compiler pass into a compiled object.
-  }];
-
-   let arguments = (ins
-     StrAttr:$litKernelTarget,
-     StrAttr:$originalOpName,
-     Variadic<MO_Tensor>:$operands
-   );
-
-   let results = (outs Variadic<MO_Tensor>:$results);
-
-   let assemblyFormat = [{
-     $litKernelTarget attr-dict `(`($operands^)?`)`
-       (`:` type($operands)^)? (`->` type($results)^)?
-   }];
- }
 
 
  def MOGG_KernelOp : MOGG_Op<"kernel", [IsolatedFromAbove,
