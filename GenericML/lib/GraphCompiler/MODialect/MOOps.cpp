@@ -435,6 +435,24 @@ LogicalResult SelectOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// WhereOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult WhereOp::verify() {
+  TensorType resTy = getResult().getType();
+  TensorType inputTy = getInput().getType();
+
+  if (!resTy.hasRank() || resTy.getRank() != 2)
+    return emitError("mo.where: invalid output shape: rank must be 2");
+
+  if ((inputTy.hasRank() && resTy.getIntDim(1) != (int64_t)inputTy.getRank()) ||
+      (!inputTy.hasRank() && !ShapedType::isDynamic(resTy.getIntDim(1))))
+    return emitError("mo.where: invalid output shape: inner_dim != input_rank");
+
+  return LogicalResult::success();
+}
+
+//===----------------------------------------------------------------------===//
 // Windowed ops
 //===----------------------------------------------------------------------===//
 

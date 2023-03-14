@@ -1241,6 +1241,36 @@ def MO_GatherOp : MO_Op<"gather", [
 }
 
 //===----------------------------------------------------------------------===//
+// WhereOp
+//===----------------------------------------------------------------------===//
+
+def MO_WhereOp : MO_Op<"where", [Pure]> {
+  let summary = "Returns locations of nonzero values in a tensor";
+  let description = [{
+    Return a tensor of coordinates of the nonzero values in the given tensor.
+    The return value is a 2D tensor of shape [nnz x rank_in], where nnz is the
+    number of nonzero elements in the input tensor, and rank_in is the rank of
+    the input tensor. Coordinates are generated in row-major order.
+
+    Example:
+
+    ```mlir
+    %0 = mo.constant {
+      value = #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8> : tensor<2x2xsi32>
+    } : !mo.tensor<[3, 3], si32>
+    %1 = mo.where(%0) : (!mo.tensor<[3, 3], si32>) -> !mo.tensor<[?, 2], si32>
+    ```
+    }];
+
+  let arguments = (ins MO_Tensor:$input);
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // Range
 //===----------------------------------------------------------------------===//
 
