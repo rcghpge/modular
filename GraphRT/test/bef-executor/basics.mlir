@@ -229,11 +229,9 @@ grt.testcase @test_dynamic_attr {
   // CHECK: array = []
   %ch4 = "test.print.dynamic.attr"(%ch3) {value = #M.dense_array<> : !M.array<0xsi32> } : (!mef.chain) -> !mef.chain
   // CHECK: array = [0x01, 0x02, 0x03, 0x04]
-  %ch5 = "test.print.dynamic.attr"(%ch4) {value = #M.aligned_bytes<64: "0x01020304"> } : (!mef.chain) -> !mef.chain
-  // CHECK: array = [0xDE, 0xAD, 0xBE, 0xEF]
-  %ch6 = "test.print.dynamic.attr"(%ch5) {value = #M.aligned_bytes<"0xDEADBEEF"> } : (!mef.chain) -> !mef.chain
+  %ch5 = "test.print.dynamic.attr"(%ch4) {value = #M.aligned_bytes<"0x01020304", align 64> } : (!mef.chain) -> !mef.chain
   // CHECK: unsupported attribute kind
-  %ch7 = "test.print.dynamic.attr"(%ch6) {value = 1: i1} : (!mef.chain) -> !mef.chain
+  %ch7 = "test.print.dynamic.attr"(%ch5) {value = 1: i1} : (!mef.chain) -> !mef.chain
   // CHECK: dictionary {
   // CHECK-NEXT: 'aString': string = this is a string
   // CHECK-NEXT: 'anInt': sint32 = 3125

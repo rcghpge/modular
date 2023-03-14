@@ -18,9 +18,9 @@ mgp.model @static_concat : tf init {
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %mgp_ctx: !mgp.context) -> (!mef.chain, !mgp.cpu.tensor<16xf32>) {
-  %0 = mgp.cpu.buffer.constant #M.aligned_bytes<32 :"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041">
+  %0 = mgp.cpu.buffer.constant #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
   %1 = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<8xf32>
-  %2 = mgp.cpu.buffer.constant #M.aligned_bytes<32 :"0x0000204100002041000020410000204100002041000020410000204100002041">
+  %2 = mgp.cpu.buffer.constant #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
   %3 = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<8xf32>
   %4 = mgp.cpu.buffer.alloc.static %ch0, 32
   %5 = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<8xf32>
@@ -55,9 +55,9 @@ mgp.model @dynamic_concat : tf init {
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %mgp_ctx: !mgp.context) -> (!mef.chain, !mgp.cpu.tensor<16xf32>) {
-  %0 = mgp.cpu.buffer.constant #M.aligned_bytes<32 :"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041">
+  %0 = mgp.cpu.buffer.constant #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
   %1 = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<8xf32>
-  %2 = mgp.cpu.buffer.constant #M.aligned_bytes<32 :"0x0000204100002041000020410000204100002041000020410000204100002041">
+  %2 = mgp.cpu.buffer.constant #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
   %3 = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<8xf32>
   %size = mgp.cpu.tensor_spec.size %3 : !mgp.cpu.tensor_spec<8xf32>
   %4 = mgp.cpu.buffer.alloc.dynamic %ch0, %size
@@ -96,9 +96,9 @@ mgp.model @dont_trigger_since_shared : tf init {
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %mgp_ctx: !mgp.context) -> (!mef.chain, !mgp.cpu.tensor<16xf32>) {
-  %0 = mgp.cpu.buffer.constant #M.aligned_bytes<32 :"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041">
+  %0 = mgp.cpu.buffer.constant #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
   %1 = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<8xf32>
-  %2 = mgp.cpu.buffer.constant #M.aligned_bytes<32 :"0x0000204100002041000020410000204100002041000020410000204100002041">
+  %2 = mgp.cpu.buffer.constant #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
   %3 = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<8xf32>
   %4 = mgp.cpu.buffer.alloc.static %ch0, 32
   %5 = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<8xf32>

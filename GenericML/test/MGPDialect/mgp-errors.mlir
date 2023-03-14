@@ -5,7 +5,7 @@
 //
 
 func.func @buffer_constant_mismatched_size() {
-  %0 = mgp.cpu.buffer.constant #M.aligned_bytes<"0x000102"> // expected-note {{prior use here}}
+  %0 = mgp.cpu.buffer.constant #M.aligned_bytes<"0x000102", align 32> // expected-note {{prior use here}}
   // expected-error@+1 {{use of value '%0' expects different type than prior uses: '!mgp.cpu.buffer<4>' vs '!mgp.cpu.buffer<3>'}}
   mef.output %0 : !mgp.cpu.buffer<4>
 }

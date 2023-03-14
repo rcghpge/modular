@@ -36,22 +36,14 @@ using namespace MGP;
 /// TODO(#4424): Would be better to just look for a HasAlignmentAttrInterface
 /// instead of looking for specific attribute types.
 static ErrorOr<Optional<uint64_t>> getImpliedAlignment(ElementsAttr value) {
-  if (auto alignedBytesAttr = dyn_cast<AlignedBytesAttr>(value)) {
-    // The attribute encodes its own (optional) alignment.
-    return alignedBytesAttr.getAlign();
-  }
-
-  if (auto cacheConstant = dyn_cast<Cache::ConstantHashAttr>(value)) {
-    // The attribute encodes its own (optional) alignment.
-    return cacheConstant.getOptAlign();
-  }
-
   if (auto resourceAttr = dyn_cast<DenseResourceElementsAttr>(value)) {
     DenseResourceElementsHandle handle = resourceAttr.getRawHandle();
     mlir::AsmResourceBlob *blob = handle.getBlob();
-    if (!blob && !isa<AlignedBytesType>(resourceAttr.getType()))
+    if (!blob && !isa<AlignedBytesType>(resourceAttr.getType())) {
+      // Report a user-friendly error in this situation.
       return Error(Twine("dense_resource blob is not available, so require "
                          "type annotation to supply an alignment"));
+    }
 
     if (blob) {
       // Since the blob is available, check its size is consistent with the
@@ -63,16 +55,18 @@ static ErrorOr<Optional<uint64_t>> getImpliedAlignment(ElementsAttr value) {
                            Twine(blob->getData().size()) + " vs " +
                            Twine(value.getNumElements()) + ")"));
     }
-
-    // The attribute's type annotation may include an alignment, otherwise
-    // use the underlying blob's alignment.
-    return getAlignedBytesType(resourceAttr).getAlign();
+    // DenneResourceElementsAttrs support HasAlignedBytesInterface, so fall
+    // through.
   }
 
-  if (auto arrayAttr = dyn_cast<ArrayElementsAttr>(value)) {
-    // The attribute's type annotation may include an alignment, otherwise
-    // default according to array element type.
-    return getAlignedBytesType(arrayAttr).getAlign();
+  if (auto hasAlignedBytesAttr = dyn_cast<HasAlignedBytesInterface>(value)) {
+    // The attribute has an alignment or default alignment we can use.
+    return hasAlignedBytesAttr.getAlignedBytesType().getAlign();
+  }
+
+  if (auto cacheConstant = dyn_cast<Cache::ConstantHashAttr>(value)) {
+    // The attribute encodes its own (optional) alignment.
+    return cacheConstant.getOptAlign();
   }
 
   return Error("cannot supply an alignment from type annotation for "

@@ -44,12 +44,11 @@ def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant", [
 
     Example valid attributes include `#M.aligned_bytes`, and the builtin
     `dense_resource' and `array`. `#M.aligned_bytes` can be used for small,
-    inline byte arrays with a given (optional) alignment. `dense_resource`
-    can be used for large, out-of-line byte arrays with a (optional) alignment
-    encoded in the resource blob. Any such alignment will be respected
+    inline byte arrays with a given alignment. `dense_resource` can be used
+    for large, out-of-line byte arrays with a (optional) alignment encoded in
+    the resource blob or type annotation. Any such alignment will be respected
     by the constant buffer when recovered from the MEF file. Furthermore, the
-    alignment will also be respected by any deep copies of the constant
-    buffer.
+    alignment will also be respected by any deep copies of the constant buffer.
 
     When using a `dense_resource` with an alignment, it is necessary to
     type the attribute with `!M.aligned_bytes` so that the alignment can
@@ -61,7 +60,7 @@ def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant", [
 
     Example:
     ```mlir
-    %buf = mgp.cpu.buffer.constant #m.aligned_buffer<8: "0x00010203">
+    %buf = mgp.cpu.buffer.constant #M.aligned_bytes<"0x00010203", align 8>
     %buf : !mgp.cpu.buffer<4>  // at least 8 byte aligned in storage
 
     %buf = mgp.cpu.buffer.constant dense_resource<label>:!M.aligned_bytes<4, align 16>

@@ -12,7 +12,7 @@
 // CHECK-SAME:   !mef.chain, !mgp.cpu.tensor<2xf32>, !mgp.cpu.tensor<3xf32>,
 // CHECK-SAME:   !mgp.cpu.tensor<3xf32>, !mgp.cpu.tensor<5x1xf32>, !mgp.cpu.tensor<5x1xf32>, !mgp.cpu.tensor<4xsi8>)
 // CHECK-SAME: {
-// CHECK-DAG:    %[[VAL0:.*]] = mgp.cpu.buffer.constant #M.aligned_bytes<{{.*}} :"0x0000803F0000004000004040">
+// CHECK-DAG:    %[[VAL0:.*]] = mgp.cpu.buffer.constant #M.aligned_bytes<"0x0000803F0000004000004040", align {{.*}}>
 // CHECK-DAG:    %[[VAL1:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<3xf32>
 // CHECK:        %[[VAL2:.*]] = mgp.cpu.tensor.create %[[ARG0]], %[[VAL0]], %[[VAL1]] : !mgp.cpu.tensor<3xf32>
 // CHECK-DAG:    %[[VAL3:.*]] = mgp.cpu.buffer.constant dense_resource<mtfl_buffer> : !M.aligned_bytes<4, align 64>

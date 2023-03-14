@@ -128,11 +128,7 @@ mef.invokable @attributes() {
 
   // CHECK-NEXT: mef.opaque "type.aligned_bytes" [#M.dense_array<222, 173, 190, 239> : !M.array<4xui8>]() : () -> ()
   // MD: "type.aligned_bytes"() {t = #M.dense_array<222, 173, 190, 239> : !M.array<4xui8>
-  "type.aligned_bytes"() {t = #M.aligned_bytes<64: "0xDEADBEEF">} : () -> ()
-
-  // CHECK-NEXT: mef.opaque "type.aligned_bytes_default_alignment" [#M.dense_array<170> : !M.array<1xui8>]() : () -> ()
-  // MD: "type.aligned_bytes_default_alignment"() {t = #M.dense_array<170> : !M.array<1xui8>
-  "type.aligned_bytes_default_alignment"() {t = #M.aligned_bytes<"0xAA">} : () -> ()
+  "type.aligned_bytes"() {t = #M.aligned_bytes<"0xDEADBEEF", align 64>} : () -> ()
 
   mef.output
    // CHECK-NEXT:     mef.output

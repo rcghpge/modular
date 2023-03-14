@@ -831,7 +831,9 @@ MEFOffset AttributesEmitter::emitDenseResourceElementsAttribute(
 
   // The attribute may include an alignment in its type annotation.
   // Otherwise use the blob's alignment.
-  uint64_t align = getAlignedBytesType(value).getAlign();
+  uint64_t align = dyn_cast<HasAlignedBytesInterface>(value)
+                       .getAlignedBytesType()
+                       .getAlign();
 
   return emitIntOrFloatRange(*kindOr, value.size(), align, [&]() {
     emitOwnedBytes(resourceBlob->getDataAs<uint8_t>());
@@ -844,10 +846,9 @@ MEFOffset AttributesEmitter::emitAlignedBytesAttribute(AlignedBytesAttr attr,
   if (failed(kindOr))
     return {0};
 
-  size_t align = rawSizeToRuntimeSize(attr.getAlign().value_or(0));
-
   // All encoded AlignedBytes attributes are a uint8_t array of bytes.
-  return emitIntOrFloatRange(*kindOr, attr.getNumElements(), align,
+  return emitIntOrFloatRange(*kindOr, attr.getNumElements(),
+                             static_cast<size_t>(attr.getAlign()),
                              [&]() { emitOwnedBytes(attr.getData()); });
 }
 
@@ -859,7 +860,7 @@ MEFOffset AttributesEmitter::emitArrayElementsAttr(ArrayElementsAttr value,
 
   // The attribute may include an alignment in its type annotation.
   // Otherwise use a default according to the element type.
-  size_t align = getAlignedBytesType(value).getAlign();
+  size_t align = value.getAlignedBytesType().getAlign();
 
   return emitIntOrFloatRange(*kindOr, value.size(), align,
                              [&]() { emitOwnedBytes(value.getRawData()); });

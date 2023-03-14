@@ -228,11 +228,6 @@ LogicalResult MOGraphLowering::lowerYield(MO::YieldOp output) {
   return success();
 }
 
-/// Since the UnmanagedAsmResourceBlobs are created from ArrayRefs which have
-/// already been interned into the MLIR context, we don't need to do anything
-/// when the blob is to be deleted.
-static void noOpDeleter(void *data, size_t size, size_t align) {}
-
 /// Minimum byte size for a dense_resource.
 static constexpr size_t kLargeDataThreshold = 512;
 
@@ -240,21 +235,28 @@ ErrorOr<ElementsAttr>
 MOGraphLowering::lowerElementsAttr(ElementsAttr elementsAttr) {
   MLIRContext *ctx = loweringState.getExecuteOpBuilder().getContext();
 
-  /// All attributes must have a minimum alignment of this value.
+  // All attributes must have a minimum alignment of this value.
   uint64_t alignment =
       static_cast<uint64_t>(loweringState.getMinimumCpuAlignment());
 
+  auto hasAlignedAttr = dyn_cast<HasAlignedBytesInterface>(elementsAttr);
+  if (hasAlignedAttr == nullptr)
+    return Error("unsupported constant attribute type");
+  auto origType = hasAlignedAttr.getAlignedBytesType();
+
+  // Increase alignment to respect what the attribute requests.
+  alignment = std::max(alignment, origType.getAlign());
+
+  // Incorporate the alignment and size into an AlignedBytesType.
+  auto finalType = AlignedBytesType::get(ctx, origType.getSize(), alignment);
+
   if (auto arrayAttr = dyn_cast<ArrayElementsAttr>(elementsAttr)) {
-    auto attrAlignedBytesType = getAlignedBytesType(arrayAttr);
-    alignment = std::max(alignment, attrAlignedBytesType.getAlign());
-    auto type =
-        AlignedBytesType::get(ctx, attrAlignedBytesType.getSize(), alignment);
     // In the following we'll reuse the underlying array elements data as is,
     // ignoring its current alignment. The desired MEF alignment is instead
     // conveyed via the aligned_bytes type.
     if (arrayAttr.getRawData().size() < kLargeDataThreshold) {
       // Small attributes can remain inline.
-      return AlignedBytesAttr::get(ctx, alignment, arrayAttr.getRawData());
+      return AlignedBytesAttr::get(ctx, arrayAttr.getRawData(), alignment);
     } else {
       // Push large attributes to dense_resources.
       std::string name =
@@ -263,30 +265,25 @@ MOGraphLowering::lowerElementsAttr(ElementsAttr elementsAttr) {
           reinterpret_cast<const char *>(arrayAttr.getRawData().data()),
           arrayAttr.getRawData().size());
       return DenseResourceElementsAttr::get(
-          type, DenseResourceElementsHandle::getManagerInterface(ctx).insert(
-                    name, mlir::UnmanagedAsmResourceBlob::allocateWithAlign(
-                              data, alignment, noOpDeleter)));
+          finalType,
+          DenseResourceElementsHandle::getManagerInterface(ctx).insert(
+              name, mlir::UnmanagedAsmResourceBlob::allocateWithAlign(
+                        data, alignment)));
     }
   }
 
   if (auto resourceAttr = dyn_cast<DenseResourceElementsAttr>(elementsAttr)) {
-    auto attrAlignedBytesType = getAlignedBytesType(resourceAttr);
-    alignment = std::max(alignment, attrAlignedBytesType.getAlign());
-    auto type =
-        AlignedBytesType::get(ctx, attrAlignedBytesType.getSize(), alignment);
     // We'll not try to allocate a new blob. Instead we'll reuse the original
     // blob and rely on the type annotation to capture our desired alignment.
-    return DenseResourceElementsAttr::get(type, resourceAttr.getRawHandle());
+    return DenseResourceElementsAttr::get(finalType,
+                                          resourceAttr.getRawHandle());
   }
 
-  if (auto alignedAttr = dyn_cast<AlignedBytesAttr>(elementsAttr)) {
-    Optional<uint64_t> optAlignment = alignedAttr.getAlign();
-    if (optAlignment)
-      alignment = std::max(alignment, *optAlignment);
-    return AlignedBytesAttr::get(ctx, alignment, alignedAttr.getData());
-  }
+  if (auto alignedAttr = dyn_cast<AlignedBytesAttr>(elementsAttr))
+    return AlignedBytesAttr::get(ctx, alignedAttr.getData(), alignment);
 
-  return Error("unsupported constant attribute type");
+  llvm_unreachable(
+      "missing case for implementation of HasAlignedBytesInterface");
 }
 
 LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
