@@ -381,12 +381,9 @@ LogicalResult MOGraphLowering::lowerReshape(MO::ReshapeOp reshapeOp) {
   // 2. This shape function is pure hackery, and should be removed as soon as we
   // can lower parametric shapes to the runtime.
   if (outSpecTy.hasStaticShape()) {
-    if (!buffer.getType().hasStaticShape())
-      return reshapeOp.emitError(
-          "Dynamic input shape and static output shape not supported");
-
-    auto specOp = exeBuilder.create<MGP::CpuTensorSpecCreateOp>(loc, outSpecTy);
-    outSpecValue = specOp.getResult();
+    outSpecValue = loweringState.getExecuteOpBuilder()
+                       .create<MGP::CpuTensorSpecCreateOp>(loc, outSpecTy)
+                       .getResult();
   } else {
     if (buffer.getType().hasStaticShape())
       return reshapeOp.emitError(

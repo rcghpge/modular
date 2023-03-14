@@ -1112,7 +1112,7 @@ def MO_ConcatOp : MO_Op<"concat", [Pure]> {
 
   let assemblyFormat = [{
     `[` $axis `:` qualified(type($axis)) `]`
-    `(` $inputs `)` attr-dict `:`functional-type($inputs, results)
+    `(` $inputs `)` attr-dict `:` functional-type($inputs, results)
   }];
 
   let hasVerifier = 1;

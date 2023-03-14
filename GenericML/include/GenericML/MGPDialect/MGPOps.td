@@ -946,10 +946,7 @@ def CpuTensorSpecDTypeOp : MGP_Op<"cpu.tensor_spec.dtype"> {
 def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
     TypesMatchWith<"tensorSpec operand must match result tensor type spec",
                    "result", "tensorSpec",
-                   "$_self.cast<CpuTensorType>().getTensorSpec()">,
-    TypesMatchWith<"buffer operand must be consistent with result tensor type",
-                   "result", "buffer",
-                   "$_self.cast<CpuTensorType>().getTensorSpec().getExpectedBufferType()">]> {
+                   "$_self.cast<CpuTensorType>().getTensorSpec()">]> {
   let summary = "Creates a CPU tensor from a tensor spec and a buffer.";
   let description = [{
     Creates a CPU tensor from a given tensor spec and a buffer. The construction
@@ -1004,7 +1001,8 @@ def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
                    MGP_CpuTensorSpecType: $tensorSpec);
   let results = (outs MGP_CpuTensorType: $result);
   let assemblyFormat = [{
-    $inChain `,` $buffer `,` $tensorSpec attr-dict `:` qualified(type($result))
+    $inChain `,` $buffer `:` qualified(type($buffer))
+    `,` $tensorSpec attr-dict `:` qualified(type($result))
   }];
   let hasVerifier = 1;
 }
