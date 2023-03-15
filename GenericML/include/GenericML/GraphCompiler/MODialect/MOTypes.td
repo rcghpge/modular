@@ -208,6 +208,12 @@ def MO_ShapeLikeIfRanked : MO_ConfinedTensor<
 def MO_VectorIfRanked : MO_ConfinedTensor<
   [HasRankIfRankedPred<1>], "rank 1 or unranked">;
 
+/// Confines the MO_TensorType so that it has int/index elements, and rank 1 if
+/// rank is static.
+def MO_IndicesVectorIfRanked : MO_ConfinedTensor<
+  [IntOrIndexElementTypePred, HasRankIfRankedPred<1>],
+  "rank 1 or unranked with integer or index elements">;
+
 /// Confines the MO_TensorType so that it has rank 2 if rank is static.
 def MO_MatrixIfRanked : MO_ConfinedTensor<
   [HasRankIfRankedPred<2>], "rank 2 or unranked">;

@@ -558,6 +558,44 @@ def MO_SelectOp : MO_Op<"select", [Pure]>{
   let hasVerifier = 1;
 }
 
+def MO_SliceOp : MO_Op<"slice", [Pure]>{
+  let summary = "Slice operation";
+  let description = [{
+    Return a new tensor with a subset of the elements from an N-dimensional
+    `input` tensor. The subset is chosen using the `start`, `stop`, and `step`
+    1D index tensors; each index tensor has N elements, one for each dimension
+    of the `input` tensor.
+
+    The semantics follows the numpy index semantics, such that
+    1. For each dimension `i`, `start[i]:stop[i]:step[i]` represents the "indexing".
+    2. Negative indices are supported for `start` and `stop`, e.g., -1 represents
+       the largest axis.
+    3. `step` must contain nonzero elements.
+
+    Example:
+      %input: !mo.tensor<[?, ?], f32>
+      %start: !mo.tensor<[2], si64> // [1, -6]
+      %stop: !mo.tensor<[2], si32>  // [-3, 6]
+      %step: !mo.tensor<[2], si64>  // [5, 1]
+      // equivalent to this in numpy: `input[1:-3:5, -6:6:1]`
+      %res = mo.slice(%input, %start, %stop, %step) : (
+        !mo.tensor<[10, 10], f32>,
+        !mo.tensor<[2], si64>,
+        !mo.tensor<[2], si32>,
+        !mo.tensor<[2], si64>
+      ) -> !mo.tensor<[?, ?], f32>
+  }];
+  let arguments = (ins MO_Tensor:$input,
+                       MO_IndicesVectorIfRanked:$start,
+                       MO_IndicesVectorIfRanked:$stop,
+                       MO_IndicesVectorIfRanked:$step);
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+  let hasVerifier = 1;
+}
+
 def MO_SubOp : MO_ElementWiseBinaryOp<"sub"> {
   let summary = "Subtract operation";
   let description = [{

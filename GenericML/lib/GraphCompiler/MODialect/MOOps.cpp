@@ -717,6 +717,45 @@ LogicalResult ShapeOfOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// MO_SliceOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult SliceOp::verify() {
+  TensorType inputTy = getInput().getType();
+  TensorType startTy = getStart().getType();
+  TensorType stopTy = getStop().getType();
+  TensorType stepTy = getStep().getType();
+  if (inputTy.hasRank()) {
+    int64_t inputRank = inputTy.getRank();
+    if (startTy.hasStaticShape() && startTy.getIntDim(0) != inputRank)
+      return emitError("start shape must be [inputRank] if it's static");
+
+    if (stopTy.hasStaticShape() && stopTy.getIntDim(0) != inputRank)
+      return emitError("stop shape must be [inputRank] if it's static");
+
+    if (stepTy.hasStaticShape() && stepTy.getIntDim(0) != inputRank)
+      return emitError("step shape must be [inputRank] if it's static");
+
+  } else {
+    if (startTy.hasStaticShape()) {
+      return emitError(
+          "start shape must be dynamic if input is has dynamic rank");
+    }
+
+    if (stopTy.hasStaticShape()) {
+      return emitError(
+          "stop shape must be dynamic if input is has dynamic rank");
+    }
+
+    if (stepTy.hasStaticShape()) {
+      return emitError(
+          "step shape must be dynamic if input is has dynamic rank");
+    }
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // MO_TransposeOp
 //===----------------------------------------------------------------------===//
 

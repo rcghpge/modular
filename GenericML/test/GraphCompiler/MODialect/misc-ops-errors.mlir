@@ -442,6 +442,130 @@ mo.graph @static_broadcast_input_shape_rank_res_rank(%from: !mo.tensor<[1, 2, 3]
 // -----
 
 //===----------------------------------------------------------------------===//
+// SliceOp
+//===----------------------------------------------------------------------===//
+
+mo.graph @slice_non_vector_index(
+  %input: !mo.tensor<[10, 10], f32>,
+  %start : !mo.tensor<[1, 2], si64>,
+  %stop : !mo.tensor<[2], si32>,
+  %step : !mo.tensor<[2], si64>
+) -> !mo.tensor<[8, 5], f32> {
+  // expected-error @below {{'mo.slice' op operand #1 must be rank 1 or unranked with integer or index elements, but got '!mo.tensor<[1, 2], si64>'}}
+  %res = mo.slice(%input, %start, %stop, %step) : (
+    !mo.tensor<[10, 10], f32>, !mo.tensor<[1, 2], si64>, !mo.tensor<[2], si32>, !mo.tensor<[2], si64>
+  ) -> !mo.tensor<[8, 5], f32>
+  mo.output %res : !mo.tensor<[8, 5], f32>
+}
+
+// -----
+
+mo.graph @slice_f32_index(
+  %input: !mo.tensor<[10, 10], f32>,
+  %start : !mo.tensor<[2], si64>,
+  %stop : !mo.tensor<[2], f32>,
+  %step : !mo.tensor<[2], si64>
+) -> !mo.tensor<[8, 5], f32> {
+  // expected-error @below {{'mo.slice' op operand #2 must be rank 1 or unranked with integer or index elements, but got '!mo.tensor<[2], f32>'}}
+  %res = mo.slice(%input, %start, %stop, %step) : (
+    !mo.tensor<[10, 10], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], f32>, !mo.tensor<[2], si64>
+  ) -> !mo.tensor<[8, 5], f32>
+  mo.output %res : !mo.tensor<[8, 5], f32>
+}
+
+// -----
+
+mo.graph @slice_start_invalid_rank(
+  %input: !mo.tensor<[10, 10], f32>,
+  %start : !mo.tensor<[1], si64>,
+  %stop : !mo.tensor<[2], si32>,
+  %step : !mo.tensor<[2], si64>
+) -> !mo.tensor<[8, 5], f32> {
+  // expected-error @below {{start shape must be [inputRank] if it's static}}
+  %res = mo.slice(%input, %start, %stop, %step) : (
+    !mo.tensor<[10, 10], f32>, !mo.tensor<[1], si64>, !mo.tensor<[2], si32>, !mo.tensor<[2], si64>
+  ) -> !mo.tensor<[8, 5], f32>
+  mo.output %res : !mo.tensor<[8, 5], f32>
+}
+
+// -----
+
+mo.graph @slice_end_invalid_rank(
+  %input: !mo.tensor<[10, 10], f32>,
+  %start : !mo.tensor<[2], si64>,
+  %stop : !mo.tensor<[3], si32>,
+  %step : !mo.tensor<[2], si64>
+) -> !mo.tensor<[8, 5], f32> {
+  // expected-error @below {{stop shape must be [inputRank] if it's static}}
+  %res = mo.slice(%input, %start, %stop, %step) : (
+    !mo.tensor<[10, 10], f32>, !mo.tensor<[2], si64>, !mo.tensor<[3], si32>, !mo.tensor<[2], si64>
+  ) -> !mo.tensor<[8, 5], f32>
+  mo.output %res : !mo.tensor<[8, 5], f32>
+}
+
+// -----
+
+mo.graph @slice_step_invalid_rank(
+  %input: !mo.tensor<[10, 10], f32>,
+  %start : !mo.tensor<[2], si64>,
+  %stop : !mo.tensor<[2], si32>,
+  %step : !mo.tensor<[3], si64>
+) -> !mo.tensor<[8, 5], f32> {
+  // expected-error @below {{step shape must be [inputRank] if it's static}}
+  %res = mo.slice(%input, %start, %stop, %step) : (
+    !mo.tensor<[10, 10], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si32>, !mo.tensor<[3], si64>
+  ) -> !mo.tensor<[8, 5], f32>
+  mo.output %res : !mo.tensor<[8, 5], f32>
+}
+
+// -----
+
+mo.graph @slice_dyn_rank_input_static_start(
+  %input: !mo.tensor<?, f32>,
+  %start : !mo.tensor<[2], si64>,
+  %stop : !mo.tensor<[?], si32>,
+  %step : !mo.tensor<[?], si64>
+) -> !mo.tensor<?, f32> {
+  // expected-error @below {{start shape must be dynamic if input is has dynamic rank}}
+  %res = mo.slice(%input, %start, %stop, %step) : (
+    !mo.tensor<?, f32>, !mo.tensor<[2], si64>, !mo.tensor<[?], si32>, !mo.tensor<[?], si64>
+  ) -> !mo.tensor<?, f32>
+  mo.output %res : !mo.tensor<?, f32>
+}
+
+// -----
+
+mo.graph @slice_dyn_rank_input_static_stop(
+  %input: !mo.tensor<?, f32>,
+  %start : !mo.tensor<[?], si64>,
+  %stop : !mo.tensor<[1], si32>,
+  %step : !mo.tensor<[?], si64>
+) -> !mo.tensor<?, f32> {
+  // expected-error @below {{stop shape must be dynamic if input is has dynamic rank}}
+  %res = mo.slice(%input, %start, %stop, %step) : (
+    !mo.tensor<?, f32>, !mo.tensor<[?], si64>, !mo.tensor<[1], si32>, !mo.tensor<[?], si64>
+  ) -> !mo.tensor<?, f32>
+  mo.output %res : !mo.tensor<?, f32>
+}
+
+// -----
+
+mo.graph @slice_dyn_rank_input_static_step(
+  %input: !mo.tensor<?, f32>,
+  %start : !mo.tensor<[?], si64>,
+  %stop : !mo.tensor<[?], si32>,
+  %step : !mo.tensor<[3], si64>
+) -> !mo.tensor<?, f32> {
+  // expected-error @below {{step shape must be dynamic if input is has dynamic rank}}
+  %res = mo.slice(%input, %start, %stop, %step) : (
+    !mo.tensor<?, f32>, !mo.tensor<[?], si64>, !mo.tensor<[?], si32>, !mo.tensor<[3], si64>
+  ) -> !mo.tensor<?, f32>
+  mo.output %res : !mo.tensor<?, f32>
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//
 
