@@ -725,12 +725,21 @@ LogicalResult CpuTensorSpecDimsDynamicOp::inferReturnTypes(
 /// consistent.
 LogicalResult CpuTensorCreateOp::verify() {
   CpuTensorSpecType tensorSpecType = getTensorSpec().getType();
+  CpuBufferType actualBufferType = getBuffer().getType();
+  CpuBufferType expectedBufferType = tensorSpecType.getExpectedBufferType();
   CpuTensorType tensorType = getResult().getType();
 
   if (tensorSpecType != tensorType.getTensorSpec())
     return emitOpError() << "expected spec to match result tensor spec"
                          << " (" << tensorSpecType << " vs "
                          << tensorType.getTensorSpec() << ")";
+  if (tensorSpecType.hasRank() && tensorSpecType.hasStaticShape() &&
+      actualBufferType.hasStaticShape() &&
+      (actualBufferType != expectedBufferType))
+    return emitOpError() << "expected buffer type to match type implied by the "
+                            "static tensor spec ("
+                         << actualBufferType << " vs " << expectedBufferType
+                         << ").";
   return success();
 }
 

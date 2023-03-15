@@ -943,6 +943,8 @@ def CpuTensorSpecDTypeOp : MGP_Op<"cpu.tensor_spec.dtype"> {
 // CpuTensorCreateOp
 //===----------------------------------------------------------------------===//
 
+// TODO: Look into representing dynamic buffers more explicitly.
+// E.g. !mgp.cpu.buffer<?> instead of just !mgp.cpu.buffer.
 def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
     TypesMatchWith<"tensorSpec operand must match result tensor type spec",
                    "result", "tensorSpec",
