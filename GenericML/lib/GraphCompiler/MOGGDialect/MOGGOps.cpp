@@ -221,6 +221,16 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
         opBeingLowered->getOperands().back());
     shapeFuncArgs.push_back(axis);
     output.spec = getOutputSpec("mop.shape.concat", shapeFuncArgs);
+  } else if (opName == "mop.kernels.gather_sum") {
+    // Hackery! Pure Hackery! I'd start setting up classes for this, but
+    // again, I don't expect this to survive E
+    Value gather_axis = loweringState.lookupExecuteLoweredTensor(
+        opBeingLowered->getOperands()[2]);
+    Value reduce_axis = loweringState.lookupExecuteLoweredTensor(
+        opBeingLowered->getOperands()[3]);
+    output.spec = getOutputSpec(
+        "mop.shape.gather_sum",
+        {inputTensors[0].spec, inputTensors[1].spec, gather_axis, reduce_axis});
   } else if (opName == "mop.kernels.conv") {
     Value stride = loweringState.lookupExecuteLoweredTensor(
         opBeingLowered->getOperands()[2]);
