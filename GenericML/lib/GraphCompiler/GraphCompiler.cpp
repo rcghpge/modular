@@ -60,18 +60,22 @@ void buildMoToMGPPipeline(mlir::PassManager &pm, const PassOptions &opts) {
   MO::MOToMOGGOptions moToMoggOpts;
   moToMoggOpts.useJit = opts.useJit;
   pm.addPass(MO::createMOToMOGG(moToMoggOpts));
+  pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
   if (opts.useJit) {
+    // Fuse connected elementwise kernels.
+    if (opts.fuseJitKernels) {
+      pm.addPass(MOGG::createFuseElementwise());
+      pm.addPass(mlir::createCanonicalizerPass());
+      pm.addPass(mlir::createCSEPass());
+    }
+
+
     // If we are jitting then we need to compile the jit kernels as well.
     MOGG::JitCompileKernelsOptions jitOpts;
     jitOpts.useSearch = opts.useKgenSearch;
     pm.addPass(MOGG::createJitCompileKernels(jitOpts));
-
-    if (opts.fuseJitKernels) {
-      pm.addPass(MOGG::createFuseElementwise());
-      pm.addPass(mlir::createCSEPass());
-    }
   }
 
   MGP::MOToPrimitivesOptions moToPrimOpts;
