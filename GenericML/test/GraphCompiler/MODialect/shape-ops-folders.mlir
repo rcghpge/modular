@@ -2,21 +2,58 @@
 
 // CHECK: kgen.generator @concat_fold<[[SH1:.*]]: !mo.shape, [[D1:.*]], [[D2:.*]]>(
 kgen.generator @concat_fold<Sh1: !mo.shape, D1, D2>(
-// CHECK: ) -> (!mo.shape, !mo.shape, !mo.shape) {
+// CHECK-SAME: ) -> (!mo.shape, !mo.shape, !mo.shape) {
 ) -> (!mo.shape, !mo.shape, !mo.shape) {
   // CHECK-DAG: %[[V1:.*]] = kgen.param.constant: !mo.shape = <[[SH1]]>
   // CHECK-DAG: %[[V2:.*]] = kgen.param.constant: !mo.shape = <[[[D1]], 42]>
   // CHECK-DAG: %[[V23:.*]] = kgen.param.constant: !mo.shape = <[[[D1]], 42, 3, [[D2]]]>
-  // CHECK-DAG: %[[V11:.*]] = mo.shape.concat(%[[V1]], %[[V1]])
-  // CHECK-DAG: %[[V12:.*]] = mo.shape.concat(%[[V1]], %[[V2]])
-  // CHECK: kgen.return %[[V11]], %[[V12]], %[[V23]]
   %v1 = kgen.param.constant: !mo.shape = <Sh1>
   %v2 = kgen.param.constant: !mo.shape = <[D1, 42]>
   %v3 = kgen.param.constant: !mo.shape = <[3, D2]>
+  // CHECK-DAG: %[[V11:.*]] = mo.shape.concat(%[[V1]], %[[V1]])
+  // CHECK-DAG: %[[V12:.*]] = mo.shape.concat(%[[V1]], %[[V2]])
   %v11 = mo.shape.concat(%v1, %v1)
   %v12 = mo.shape.concat(%v1, %v2)
   %v23 = mo.shape.concat(%v2, %v3)
+  // CHECK-NEXT: kgen.return %[[V11]], %[[V12]], %[[V23]]
   kgen.return %v11, %v12, %v23 : !mo.shape, !mo.shape, !mo.shape
+}
+
+// CHECK: kgen.func @concat_empty_fold() -> !mo.shape {
+kgen.func @concat_empty_fold() -> !mo.shape {
+  // CHECK-DAG: %[[V1:.*]] = kgen.param.constant: !mo.shape = <[]>
+  %c1 = mo.shape.concat()
+  // CHECK: kgen.return %[[V1]]
+  kgen.return %c1 : !mo.shape
+}
+
+// CHECK: kgen.generator @concat_unary_fold<[[SH1:.*]]: !mo.shape>() -> (!mo.shape, !mo.shape)
+kgen.generator @concat_unary_fold<Sh1: !mo.shape>() -> (!mo.shape, !mo.shape) {
+  // CHECK-DAG: %[[V1:.*]] = kgen.param.constant: !mo.shape = <[[SH1]]>
+  // CHECK-DAG: %[[V2:.*]] = kgen.param.constant: !mo.shape = <[[[D1]], 42]>
+  %v1 = kgen.param.constant: !mo.shape = <Sh1>
+  %v2 = kgen.param.constant: !mo.shape = <[D1, 42]>
+  %c1 = mo.shape.concat(%v1)
+  %c2 = mo.shape.concat(%v2)
+  // CHECK: kgen.return %[[V1]], %[[V2]]
+  kgen.return %c1, %c2 : !mo.shape, !mo.shape
+}
+
+// CHECK: kgen.generator @concat_variadic_fold<[[SH1:.*]]: !mo.shape, [[D1:.*]], [[D2:.*]]>(
+kgen.generator @concat_variadic_fold<Sh1: !mo.shape, D1, D2>(
+// CHECK-SAME: ) -> (!mo.shape, !mo.shape) {
+) -> (!mo.shape, !mo.shape) {
+  // CHECK-DAG: %[[V1:.*]] = kgen.param.constant: !mo.shape = <[[SH1]]>
+  // CHECK-DAG: %[[V2:.*]] = kgen.param.constant: !mo.shape = <[[[D1]], 42]>
+  // CHECK-DAG: %[[V232:.*]] = kgen.param.constant: !mo.shape = <[[[D1]], 42, 3, [[D2]], [[D1]], 42]>
+  %v1 = kgen.param.constant: !mo.shape = <Sh1>
+  %v2 = kgen.param.constant: !mo.shape = <[D1, 42]>
+  %v3 = kgen.param.constant: !mo.shape = <[3, D2]>
+  // CHECK-DAG: %[[V121:.*]] = mo.shape.concat(%[[V1]], %[[V2]], %[[V1]])
+  %v121 = mo.shape.concat(%v1, %v2, %v1)
+  %v232 = mo.shape.concat(%v2, %v3, %v2)
+  // CHECK-NEXT: kgen.return %[[V121]], %[[V232]]
+  kgen.return %v121, %v232 : !mo.shape, !mo.shape
 }
 
 // TODO: implement tests for shapes that do not fold

@@ -831,17 +831,27 @@ OpFoldResult Shape::BroadcastOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
+void Shape::ConcatOp::build(OpBuilder &builder, OperationState &state,
+                            TypedValue<ShapeType> input1,
+                            TypedValue<ShapeType> input2) {
+  return build(builder, state, {input1, input2});
+}
+
 OpFoldResult Shape::ConcatOp::fold(FoldAdaptor adaptor) {
-  auto input1 = dyn_cast_or_null<ShapeAttr>(adaptor.getInput1());
-  auto input2 = dyn_cast_or_null<ShapeAttr>(adaptor.getInput2());
-  if (input1 && input2) {
-    SmallVector<TypedAttr> finalDims;
-    llvm::append_range(finalDims, input1.getValues());
-    llvm::append_range(finalDims, input2.getValues());
-    auto shapeTy = ShapeType::get(getContext());
-    return ShapeAttr::get(finalDims, shapeTy);
+  // Single shape parameter or dimension parameters
+  if (adaptor.getInputs().size() == 1)
+    return adaptor.getInputs().front();
+
+  // Collect dimension parameters from all inputs
+  SmallVector<TypedAttr> finalDims;
+  for (Attribute input : adaptor.getInputs()) {
+    if (auto inputDims = dyn_cast_or_null<ShapeAttr>(input))
+      llvm::append_range(finalDims, inputDims.getValues());
+    else
+      return {};
   }
-  return {};
+  auto shapeTy = ShapeType::get(getContext());
+  return ShapeAttr::get(finalDims, shapeTy);
 }
 
 OpFoldResult Shape::EqualOp::fold(FoldAdaptor adaptor) {
