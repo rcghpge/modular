@@ -194,10 +194,16 @@ public:
   void emplaceExecuteLoweredParam(StringAttr name, Value value) {
     execute.loweredParams.try_emplace(name, value);
   }
-
+  // TODO(#10314): Move these methods to a .cpp file
   /// Return the SSA values corresponding to the parametric dimensions in the
   /// given shape (in the order they appear in the shape).
-  SmallVector<Value> lookupExecuteDynDims(MO::ShapeAttr shapeAttr);
+  SmallVector<Value> lookupExecuteDynDims(MO::ShapeAttr shapeAttr) {
+    SmallVector<Value> runtimeDims;
+    for (TypedAttr dim : shapeAttr.getValues())
+      if (auto dimRef = dyn_cast<KGEN::ParamDeclRefAttr>(dim))
+        runtimeDims.emplace_back(lookupExecuteLoweredParam(dimRef.getName()));
+    return runtimeDims;
+  }
 
   /// Return and increment the next available constant identifier.
   size_t getExecuteNextConstId() { return execute.nextConstId++; }

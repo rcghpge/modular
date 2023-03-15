@@ -29,19 +29,6 @@ namespace M::MGP {
 } // namespace M::MGP
 
 //===----------------------------------------------------------------------===//
-// MOGraphLoweringState implementation
-//===----------------------------------------------------------------------===//
-
-SmallVector<Value>
-MGP::MOGraphLoweringState::lookupExecuteDynDims(MO::ShapeAttr shapeAttr) {
-  SmallVector<Value> runtimeDims;
-  for (TypedAttr dim : shapeAttr.getValues())
-    if (auto dimRef = dyn_cast<KGEN::ParamDeclRefAttr>(dim))
-      runtimeDims.emplace_back(lookupExecuteLoweredParam(dimRef.getName()));
-  return runtimeDims;
-}
-
-//===----------------------------------------------------------------------===//
 // MOGraphLowering implementation
 //===----------------------------------------------------------------------===//
 
