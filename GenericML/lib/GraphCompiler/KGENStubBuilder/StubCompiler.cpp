@@ -56,15 +56,14 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
                                                symTable, compilationOptions);
   TargetInfoAttr target = getTargetInfo(kgenModule);
 
-  auto standaloneOr = compiler->produceStandaloneObjectAttr(target, true);
+  auto standaloneOr = compiler->produceStandaloneArchiveAttr(target, true);
   if (failed(standaloneOr))
-    return Error("Failed to create object attribute");
-
-  auto objectAttr = std::move(*standaloneOr);
+    return Error("Failed to create archive attribute");
+  ElementsAttr archiveAttr = *standaloneOr;
 
   // Add the kernel as a constant.
   moggBuilder.create<MOGG::LoadJitKernelOp>(loc, combinedSymbolName,
-                                            objectAttr);
+                                            archiveAttr);
   return success();
 }
 

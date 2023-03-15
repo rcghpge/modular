@@ -409,18 +409,18 @@ LogicalResult LoadJitKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   auto newSymAttrs = loweringState.getInitOpBuilder().getStringAttr(combined);
 
   // Create a call to a custom invoke function we can put in the MEF.
-  mlir::OperationState opState{kernel.getLoc(), "mop.load_jit_object"};
+  mlir::OperationState opState{kernel.getLoc(), "mop.load_jit_archive"};
   opState.addOperands(operands);
 
   // This will load and store the kernel at the given index into memory. The
   // address will be tracked in the symbol table and it can then be accessed by
   // refering to the index in the table. IMPORTANT! Order in MEF is alphabetical
   // by attribute name.
+  opState.addAttribute("archiveData", kernel.getValue());
   opState.addAttribute("jitCtxSlot",
                        loweringState.getInitOpBuilder().getUI32IntegerAttr(
                            loweringState.getJitCtxSlot()));
   opState.addAttribute("kernelName", newSymAttrs);
-  opState.addAttribute("objectData", kernel.getValue());
 
   opState.addTypes({loweringState.getInitChain().getType()});
 
