@@ -11,7 +11,7 @@
 // CHECK: %[[CH1:.*]] = "mop.kernels.add"(%[[CH0]], %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %[[IN_BUFS]]#0, %{{.*}})
 // CHECK: %[[CH2:.*]] = "mop.kernels.sub"(%[[CH0]], %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %[[IN_BUFS]]#1, %{{.*}})
 // CHECK: %[[CH3:.*]] = grt.chain.merge %[[CH1]], %[[CH2]]
-// CHECK: %[[OUT_TENSOR:.*]] = mgp.cpu.tensor.create %[[CH3]], %[[OUT_BUF]] : !mgp.cpu.buffer<64>, %{{.*}}
+// CHECK: %[[OUT_TENSOR:.*]] = mgp.cpu.tensor.create %[[CH3]], %[[OUT_BUF]], %{{.*}}
 
 mgp.model @static_concat : tf init {
   %0 = grt.chain.create
@@ -32,7 +32,7 @@ mgp.model @static_concat : tf init {
   %15 = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<16xf32>
   %16 = grt.chain.merge %6, %12
   %17 = mgp.cpu.buffer.concat %16, %14, %4, %10 : (!mgp.cpu.buffer<32>, !mgp.cpu.buffer<32>) -> !mgp.cpu.buffer<64>
-  %18 = mgp.cpu.tensor.create %17, %14 : !mgp.cpu.buffer<64>, %15 : !mgp.cpu.tensor<16xf32>
+  %18 = mgp.cpu.tensor.create %17, %14, %15 : !mgp.cpu.tensor<16xf32>
   mef.output %ch0, %18 : !mef.chain, !mgp.cpu.tensor<16xf32>
 }
 
@@ -48,7 +48,7 @@ mgp.model @static_concat : tf init {
 // CHECK: %[[CH1:.*]] = "mop.kernels.add"(%[[CH0]], %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %[[IN_BUFS]]#0, %{{.*}})
 // CHECK: %[[CH2:.*]] = "mop.kernels.sub"(%[[CH0]], %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %[[IN_BUFS]]#1, %{{.*}})
 // CHECK: %[[CH3:.*]] = grt.chain.merge %[[CH1]], %[[CH2]]
-// CHECK: %[[OUT_TENSOR:.*]] = mgp.cpu.tensor.create %[[CH3]], %[[OUT_BUF]] : !mgp.cpu.buffer<64>, %{{.*}}
+// CHECK: %[[OUT_TENSOR:.*]] = mgp.cpu.tensor.create %[[CH3]], %[[OUT_BUF]], %{{.*}}
 
 mgp.model @dynamic_concat : tf init {
   %0 = grt.chain.create
@@ -70,7 +70,7 @@ mgp.model @dynamic_concat : tf init {
   %15 = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<16xf32>
   %16 = grt.chain.merge %6, %12
   %17 = mgp.cpu.buffer.concat %16, %14, %4, %10 : (!mgp.cpu.buffer, !mgp.cpu.buffer<32>) -> !mgp.cpu.buffer<64>
-  %18 = mgp.cpu.tensor.create %17, %14 : !mgp.cpu.buffer<64>, %15 : !mgp.cpu.tensor<16xf32>
+  %18 = mgp.cpu.tensor.create %17, %14, %15 : !mgp.cpu.tensor<16xf32>
   mef.output %ch0, %18 : !mef.chain, !mgp.cpu.tensor<16xf32>
 }
 
@@ -89,7 +89,7 @@ mgp.model @dynamic_concat : tf init {
 // CHECK: %[[OUT_BUF:.*]] = mgp.cpu.buffer.alloc.static %[[CH0]], 64
 // CHECK: %[[CH3:.*]] = grt.chain.merge %[[CH1]], %[[CH2]]
 // CHECK: %[[CH4:.*]] = mgp.cpu.buffer.concat %[[CH3]], %[[OUT_BUF]], %[[IN_BUF0]], %[[IN_BUF1]]
-// CHECK: %[[OUT_TENSOR:.*]] = mgp.cpu.tensor.create %[[CH4]], %[[OUT_BUF]] : !mgp.cpu.buffer<64>, %{{.*}}
+// CHECK: %[[OUT_TENSOR:.*]] = mgp.cpu.tensor.create %[[CH4]], %[[OUT_BUF]], %{{.*}}
 
 mgp.model @dont_trigger_since_shared : tf init {
   %0 = grt.chain.create
@@ -110,6 +110,6 @@ mgp.model @dont_trigger_since_shared : tf init {
   %15 = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<16xf32>
   %16 = grt.chain.merge %6, %12
   %17 = mgp.cpu.buffer.concat %16, %14, %4, %10 : (!mgp.cpu.buffer<32>, !mgp.cpu.buffer<32>) -> !mgp.cpu.buffer<64>
-  %18 = mgp.cpu.tensor.create %17, %14 : !mgp.cpu.buffer<64>, %15 : !mgp.cpu.tensor<16xf32>
+  %18 = mgp.cpu.tensor.create %17, %14, %15 : !mgp.cpu.tensor<16xf32>
   mef.output %ch0, %18 : !mef.chain, !mgp.cpu.tensor<16xf32>
 }

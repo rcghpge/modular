@@ -14,10 +14,10 @@
 // CHECK-SAME: {
 // CHECK-DAG:    %[[VAL0:.*]] = mgp.cpu.buffer.constant #M.aligned_bytes<"0x0000803F0000004000004040", align {{.*}}>
 // CHECK-DAG:    %[[VAL1:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<3xf32>
-// CHECK:        %[[VAL2:.*]] = mgp.cpu.tensor.create %[[ARG0]], %[[VAL0]] : !mgp.cpu.buffer<12>, %[[VAL1]] : !mgp.cpu.tensor<3xf32>
+// CHECK:        %[[VAL2:.*]] = mgp.cpu.tensor.create %[[ARG0]], %[[VAL0]], %[[VAL1]] : !mgp.cpu.tensor<3xf32>
 // CHECK-DAG:    %[[VAL3:.*]] = mgp.cpu.buffer.constant dense_resource<mtfl_buffer> : !M.aligned_bytes<4, align 64>
 // CHECK-DAG:    %[[VAL4:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<4xsi8>
-// CHECK:        %[[VAL5:.*]] = mgp.cpu.tensor.create %[[ARG0]], %[[VAL3]] : !mgp.cpu.buffer<4>, %[[VAL4]] : !mgp.cpu.tensor<4xsi8>
+// CHECK:        %[[VAL5:.*]] = mgp.cpu.tensor.create %[[ARG0]], %[[VAL3]], %[[VAL4]] : !mgp.cpu.tensor<4xsi8>
 // CHECK:        mef.output %[[ARG0]], %[[ARG2]], %[[VAL2]], %[[VAL2]], %[[ARG3]], %[[ARG3]], %[[VAL5]]
 // CHECK:      }
 

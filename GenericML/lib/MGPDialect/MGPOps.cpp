@@ -721,6 +721,46 @@ LogicalResult CpuTensorSpecDimsDynamicOp::inferReturnTypes(
 // TensorCreateOp
 //===----------------------------------------------------------------------===//
 
+/// Parses the expected result tensor type, but also derives the appropriate
+/// buffer operand's type based on an optional "dynamic" keyword.
+static ParseResult parseMayBeDynamicBuffer(AsmParser &parser,
+                                           Type &bufferRawType,
+                                           Type &resultRawType) {
+  mlir::SMLoc loc;
+  bool isDynamic = false;
+  if (parser.getCurrentLocation(&loc))
+    return failure();
+  if (mlir::succeeded(parser.parseOptionalKeyword("dynamic")))
+    isDynamic = true;
+  if (parser.parseColon() || parser.parseType(resultRawType))
+    return failure();
+  auto resultTensorType = dyn_cast<CpuTensorType>(resultRawType);
+  if (resultTensorType == nullptr)
+    return parser.emitError(loc) << "expecting !mgp.cpu.tensor type";
+  if (isDynamic) {
+    // Dynamic keyword -- buffer operand has unsized !mgp.cpu.buffer type.
+    bufferRawType =
+        CpuBufferType::get(parser.getContext(), /*optSize=*/std::nullopt);
+  } else {
+    // No dynamic keyword -- buffer operand's type is uniquely determined
+    // from the result tensor type.
+    bufferRawType = resultTensorType.getTensorSpec().getExpectedBufferType();
+  }
+  return success();
+}
+
+/// Prints the actual result tensor type, but also prints a "dynamic"
+/// keyword if the actual buffer type suggests it.
+static void printMayBeDynamicBuffer(AsmPrinter &printer,
+                                    const CpuTensorCreateOp &op,
+                                    CpuBufferType bufferType,
+                                    CpuTensorType resultType) {
+  if (resultType.getTensorSpec().getExpectedBufferType() != bufferType)
+    printer.printKeywordOrString("dynamic");
+  printer.getStream() << " : ";
+  printer.printType(resultType);
+}
+
 /// Checks the tensor spec, buffer type and result tensor types are
 /// consistent.
 LogicalResult CpuTensorCreateOp::verify() {
@@ -733,13 +773,23 @@ LogicalResult CpuTensorCreateOp::verify() {
     return emitOpError() << "expected spec to match result tensor spec"
                          << " (" << tensorSpecType << " vs "
                          << tensorType.getTensorSpec() << ")";
-  if (tensorSpecType.hasRank() && tensorSpecType.hasStaticShape() &&
-      actualBufferType.hasStaticShape() &&
-      (actualBufferType != expectedBufferType))
-    return emitOpError() << "expected buffer type to match type implied by the "
-                            "static tensor spec ("
-                         << actualBufferType << " vs " << expectedBufferType
-                         << ").";
+  if (!actualBufferType.getOptSize() &&
+      expectedBufferType.getOptSize().has_value()) {
+    // This is the 'dynamic' case.
+    // It is valid for the result tensor type to be fully static but the
+    // argument buffer to have unknown size. This can happen when lowering
+    // reshapes involving dynamic dimensions, eg:
+    //    reshape %x, %y : (tensor<?x?xf32>, tensor<2xui32>) ->
+    //    tensor<8x16xf32>
+    // Here the buffer backing %x will have unknown size, and we wish to
+    // assert it has size 512 bytes at runtime when constructing the result
+    // tensor.
+    // no-op
+  } else if (actualBufferType != expectedBufferType) {
+    return emitOpError()
+           << "expected buffer type to match type implied by tensor spec ("
+           << actualBufferType << " vs " << expectedBufferType << ").";
+  }
   return success();
 }
 

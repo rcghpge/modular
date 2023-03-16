@@ -955,6 +955,11 @@ def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
     is delayed until the given chain is ready, since the buffer is typically
     written into as a side-effect of an operation.
 
+    If the result tensor type is fully static then the buffer is expected to
+    have a known and matching size. However if the buffer has an unknown size
+    (for example, it is the result of a dynamic resize operation) then the
+    `dynamic` keyword can be included.
+
     Example:
     ```mlir
     %ch : !mef.chain
@@ -968,6 +973,11 @@ def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
     %buf : !mgp.cpu.buffer
     %tensor = mgp.cpu.tensor.create %ch, %buf, %spec : !mgp.cpu.tensor<?x16xf32>
     %tensor : !mgp.cpu.tensor<?x16xf32>
+
+    %spec : !mgp.cpu.tensor_spec<4x16xf32>
+    %buf : !mgp.cpu.buffer
+    %tensor = mgp.cpu.tensor.create %ch, %buf, %spec dynamic : !mgp.cpu.tensor<4x16xf32>
+    %tensor : !mgp.cpu.tensor<4x16xf32>
     ```
 
     Tensors are immutable, but buffers are mutable. This means the
@@ -1003,8 +1013,8 @@ def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
                    MGP_CpuTensorSpecType: $tensorSpec);
   let results = (outs MGP_CpuTensorType: $result);
   let assemblyFormat = [{
-    $inChain `,` $buffer `:` qualified(type($buffer))
-    `,` $tensorSpec attr-dict `:` qualified(type($result))
+    $inChain `,` $buffer `,` $tensorSpec attr-dict
+    custom<MayBeDynamicBuffer>(type($buffer), type($result))
   }];
   let hasVerifier = 1;
 }

@@ -11,7 +11,7 @@
 // Constant for output shape
 // CHECK-NEXT: %[[SHAPE_CONST:.*]] = mgp.cpu.buffer.constant
 // CHECK-NEXT: %[[SHAPE_SPEC:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<2xsi64>
-// CHECK-NEXT: %[[SHAPE_TENSOR:.*]] = mgp.cpu.tensor.create %[[CHAIN]], %[[SHAPE_CONST]] : !mgp.cpu.buffer<16>, %[[SHAPE_SPEC]] : !mgp.cpu.tensor<2xsi64>
+// CHECK-NEXT: %[[SHAPE_TENSOR:.*]] = mgp.cpu.tensor.create %[[CHAIN]], %[[SHAPE_CONST]], %[[SHAPE_SPEC]] : !mgp.cpu.tensor<2xsi64>
 
 // Extract the input tensor buffer
 // CHECK-NEXT: %[[IN_BUF:.*]], %[[IN_SPEC:.*]] = mgp.cpu.tensor.extract %[[INPUT]] : !mgp.cpu.tensor<4xf32>
@@ -20,7 +20,7 @@
 // CHECK-NEXT: %[[OUT_SPEC:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<2x2xf32>
 
 // Create output tensor with same buffer and new spec
-// CHECK-NEXT: %[[OUT_TENSOR:.*]] =  mgp.cpu.tensor.create %[[CHAIN]], %[[IN_BUF]] : !mgp.cpu.buffer<16>, %[[OUT_SPEC]] : !mgp.cpu.tensor<2x2xf32>
+// CHECK-NEXT: %[[OUT_TENSOR:.*]] =  mgp.cpu.tensor.create %[[CHAIN]], %[[IN_BUF]], %[[OUT_SPEC]] : !mgp.cpu.tensor<2x2xf32>
 
 // Return output
 // CHECK-NEXT: mef.output %[[CHAIN]], %[[OUT_TENSOR]] : !mef.chain, !mgp.cpu.tensor<2x2xf32>
@@ -45,7 +45,7 @@ mo.graph @reshape_static_shape(%arg: !mo.tensor<[4], f32>) -> !mo.tensor<[2, 2],
 // CHECK-NEXT: %[[OUT_SPEC:.*]] = "mop.shape.reshape"(%[[IN_SPEC]], %[[SHAPE]]) : (!mgp.cpu.tensor_spec<?xf32>, !mgp.cpu.tensor<2xsi64>) -> !mgp.cpu.tensor_spec<?x?xf32>
 
 // Create output tensor with same buffer and new spec
-// CHECK-NEXT: %[[OUT_TENSOR:.*]] =  mgp.cpu.tensor.create %[[CHAIN]], %[[IN_BUF]] : !mgp.cpu.buffer, %[[OUT_SPEC]] : !mgp.cpu.tensor<?x?xf32>
+// CHECK-NEXT: %[[OUT_TENSOR:.*]] =  mgp.cpu.tensor.create %[[CHAIN]], %[[IN_BUF]], %[[OUT_SPEC]] : !mgp.cpu.tensor<?x?xf32>
 
 // Return output
 // CHECK-NEXT: mef.output %[[CHAIN]], %[[OUT_TENSOR]] : !mef.chain, !mgp.cpu.tensor<?x?xf32>
