@@ -273,13 +273,21 @@ private:
         auto dynDims = builder.create<MGP::CpuTensorSpecDimsDynamicOp>(
             loc, spec, spec.getType().getRawDims());
 
-        // The semantics of CpuTensorSpecDimsDynamicOp are quirky.
-        assert(dynDims->getNumResults() == argType.getRank());
-        for (auto [dim, dimValue] :
-             llvm::zip(argType.getDims(), dynDims->getResults())) {
-          if (!isa<IntegerAttr>(dim) && !state.lookupLowered(dim))
-            state.emplaceLowered(dim, dimValue);
-        }
+        // The semantics of CpuTensorSpecDimsDynamicOp are quirky: it returns
+        // only dynamic runtime dimensions, so we filter for parametric
+        // dimensions in the argument shape. Notably, we do not allow general
+        // expressions in the signature (yet).
+        SmallVector<KGEN::ParamDeclRefAttr> paramDims;
+        for (TypedAttr dim : argType.getDims())
+          if (auto pDim = dyn_cast<KGEN::ParamDeclRefAttr>(dim))
+            paramDims.emplace_back(pDim);
+        assert(dynDims->getNumResults() == paramDims.size());
+
+        // Only update the parameter mapping the first time.
+        for (auto [pDim, dimValue] :
+             llvm::zip(paramDims, dynDims->getResults()))
+          if (!state.lookupLowered(pDim))
+            state.emplaceLowered(pDim, dimValue);
       }
     }
     return hasParams;

@@ -29,6 +29,19 @@ mo.graph @constants_with_multiple_returns(%arg0: !mo.tensor<[2], f32>, %arg1: !m
   mo.output %arg0, %0, %0, %arg1, %arg1, %1 : !mo.tensor<[2], f32>, !mo.tensor<[3], f32>, !mo.tensor<[3], f32>, !mo.tensor<[5, 1], f32>, !mo.tensor<[5, 1], f32>, !mo.tensor<[4], si8>
 }
 
+// CHECK: mgp.model @foo : tf init {
+// CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
+// CHECK-SAME: %[[ARG2:.*]]: !mgp.cpu.tensor<1x?xf32>, %[[ARG3:.*]]: !mgp.cpu.tensor<?xf32>) -> !mef.chain {
+// CHECK:   %[[BUF1:.*]], %[[SPEC1:.*]] = mgp.cpu.tensor.extract %[[ARG2]] : !mgp.cpu.tensor<1x?xf32>
+// CHECK:   %[[VAL0:.*]] = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC1]] : !mgp.cpu.tensor_spec<1x?xf32>
+// CHECK:   %[[BUF2:.*]], %[[SPEC2:.*]] = mgp.cpu.tensor.extract %[[ARG3]] : !mgp.cpu.tensor<?xf32>
+// CHECK:   %[[VAL1:.*]] = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC2]] : !mgp.cpu.tensor_spec<?xf32>
+// CHECK:   mef.output %[[CHAIN]] : !mef.chain
+// CHECK: }
+mo.graph @foo<N>(%arg0: !mo.tensor<[1, N], f32>, %arg1: !mo.tensor<[N], f32>) {
+  mo.output
+}
+
 // CHECK-LABEL: mgp.model @scalar_arg : tf init {
 // CHECK-NEXT:    %0 = grt.chain.create
 // CHECK-NEXT:    %1 = mgp.context.create 1
