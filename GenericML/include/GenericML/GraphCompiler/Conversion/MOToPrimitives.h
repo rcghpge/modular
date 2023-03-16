@@ -8,6 +8,7 @@
 #define GENERICML_GRAPHCOMPILER_CONVERSION_MOTOPRIMITIVES_H
 
 #include "GenericML/GraphCompiler/Conversion/MGPSupport.h"
+#include "GenericML/GraphCompiler/Conversion/ParameterLowering.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "Support/AlignedAlloc.h"
 #include "mlir/Pass/Pass.h"
@@ -99,9 +100,6 @@ public:
     /// Keeps track of what mo.tensor SSA values are lowered to.
     DenseMap<Value, Value> loweredTensors;
 
-    /// Tracks what parameters are lowered to.
-    DenseMap<StringAttr, Value> loweredParams;
-
     /// The next available constant identifier. Used to assign names
     /// to dense_resource attributes capturing MO constants.
     size_t nextConstId = 0;
@@ -185,26 +183,6 @@ public:
     execute.loweredTensors.try_emplace(key, value);
   }
 
-  /// Return what the parameter with the given name is lowered to.
-  Value lookupExecuteLoweredParam(StringAttr name) {
-    return execute.loweredParams.lookup(name);
-  }
-
-  /// Register what the parameter with the given name is lowered to.
-  void emplaceExecuteLoweredParam(StringAttr name, Value value) {
-    execute.loweredParams.try_emplace(name, value);
-  }
-  // TODO(#10314): Move these methods to a .cpp file
-  /// Return the SSA values corresponding to the parametric dimensions in the
-  /// given shape (in the order they appear in the shape).
-  SmallVector<Value> lookupExecuteDynDims(MO::ShapeAttr shapeAttr) {
-    SmallVector<Value> runtimeDims;
-    for (TypedAttr dim : shapeAttr.getValues())
-      if (auto dimRef = dyn_cast<KGEN::ParamDeclRefAttr>(dim))
-        runtimeDims.emplace_back(lookupExecuteLoweredParam(dimRef.getName()));
-    return runtimeDims;
-  }
-
   /// Return and increment the next available constant identifier.
   size_t getExecuteNextConstId() { return execute.nextConstId++; }
 
@@ -224,7 +202,98 @@ public:
   /// returns the index of the slot which contains it.
   uint32_t getJitCtxSlot() { return init.jitContextSlot; }
 
+  /// Lower the given graph argument using the provided builder and hook. The
+  /// hook (using the execute state's builder and the given argument) is
+  /// responsible for updating the value mapping.
+  ErrorOr<bool> lowerArg(BlockArgument &arg, BlockArgument &exeArg) {
+    // TODO(C++20): remove the capture with initializer.
+    // See: https://en.cppreference.com/w/cpp/language/structured_binding
+    auto lowerFunc = [&exeArg = exeArg](auto &&...args) {
+      return lowerArgImpl(std::forward<decltype(args)>(args)..., exeArg);
+    };
+    return params.lowerArg(getExecuteOpBuilder(), arg, lowerFunc);
+  }
+
+  /// Returns a lowered value for the parameter expression attribute. Parameter
+  /// references not seen before are lowered to a placeholder, parameter
+  /// operators are lowered recursively, and all other attributes are delegated
+  /// to the provided hook (using the execute state's builder and the provided
+  /// location).
+  ErrorOr<Value> lowerExpression(Location loc, TypedAttr attr) {
+    return params.lowerExpression(getExecuteOpBuilder(), loc, attr,
+                                  lowerExpressionImpl);
+  }
+
+  /// Lower a parameter declaration, resolving the placeholder if necessary. A
+  /// declaration can only be lowered once, and an error is returned otherwise.
+  ErrorOrSuccess lowerParamDecl(KGEN::ParamDeclAttr declAttr, Value value) {
+    return params.lowerParamDecl(declAttr, value);
+  }
+
+  /// Return the SSA values corresponding to the parametric dimensions in the
+  /// given shape (in the order they appear in the shape).
+  ErrorOr<SmallVector<Value>> lowerShapeAttrDynDims(MO::ShapeAttr shapeAttr,
+                                                    Location loc) {
+    SmallVector<Value> runtimeDims;
+    for (TypedAttr dim : shapeAttr.getValues()) {
+      if (!isa<IntegerAttr>(dim)) {
+        UNWRAP_ERROR(v, lowerExpression(loc, dim));
+        runtimeDims.emplace_back(v);
+      }
+    }
+    return runtimeDims;
+  }
+
 private:
+  //===-----------------------------------------------------------------===//
+  // Parameter lowering helpers.
+  //===-----------------------------------------------------------------===//
+
+  /// Lower the graph argument, and return whether it was parameterized.
+  static ErrorOr<bool> lowerArgImpl(ParameterLoweringState &state,
+                                    OpBuilder &builder, BlockArgument &arg,
+                                    BlockArgument &exeArg) {
+    bool hasParams = false;
+    Location loc = arg.getLoc();
+    if (auto tensorArg = dyn_cast<MO::TensorValue>(arg)) {
+      MO::TensorType argType = tensorArg.getType();
+      // We check if the tensor is parameterized.
+      if (!argType.hasUnknownShape() && !argType.hasStaticShape()) {
+        if (isa<KGEN::ParamDeclRefAttr>(argType.getShapeAttr()))
+          return Error("Shape parameters are not supported");
+
+        // At this point, we must be dealing with a statically ranked,
+        // parameterized argument. We lower to some MGP ops, but only update
+        // mappings the first time we encounter a parameter. The unused MGP ops
+        // can be cleaned up using DCE.
+        hasParams = true;
+        auto extractOp = builder.create<MGP::CpuTensorExtractOp>(loc, exeArg);
+        TypedValue<MGP::CpuTensorSpecType> spec =
+            extractOp.getTensorSpecResult();
+        auto dynDims = builder.create<MGP::CpuTensorSpecDimsDynamicOp>(
+            loc, spec, spec.getType().getRawDims());
+
+        // The semantics of CpuTensorSpecDimsDynamicOp are quirky.
+        assert(dynDims->getNumResults() == argType.getRank());
+        for (auto [dim, dimValue] :
+             llvm::zip(argType.getDims(), dynDims->getResults())) {
+          if (!isa<IntegerAttr>(dim) && !state.lookupLowered(dim))
+            state.emplaceLowered(dim, dimValue);
+        }
+      }
+    }
+    return hasParams;
+  }
+
+  /// Lower a parameter expression.
+  static ErrorOr<Value> lowerExpressionImpl(ParameterLoweringState &state,
+                                            OpBuilder &builder, Location loc,
+                                            TypedAttr attr,
+                                            ValueRange operands) {
+    // TODO: implement lowerings.
+    return Error("cannot lower parameter expression");
+  }
+
   //===-----------------------------------------------------------------===//
   // Lowering state
   //===-----------------------------------------------------------------===//
@@ -236,6 +305,9 @@ private:
   CommonState common;
   InitState init;
   ExecuteState execute;
+
+  /// The state and interface for parameter lowering.
+  ParameterLoweringState params;
 };
 
 } // namespace M::MGP

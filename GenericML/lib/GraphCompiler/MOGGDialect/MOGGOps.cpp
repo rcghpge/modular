@@ -247,8 +247,8 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
   } else if (opName == "mop.kernels.static.broadcast_to") {
     auto resTy = cast<MO::TensorType>(opBeingLowered->getResult(0).getType());
 
-    SmallVector<Value> runtimeDims =
-        loweringState.lookupExecuteDynDims(resTy.getTypedShapeAttr());
+    UNWRAP_ERROR(runtimeDims, loweringState.lowerShapeAttrDynDims(
+                                  resTy.getTypedShapeAttr(), loc));
     auto specOp = exeBuilder.create<MGP::CpuTensorSpecCreateOp>(
         loc, MGP::createCpuTensorSpec(resTy), runtimeDims);
     output.spec = specOp.getResult();

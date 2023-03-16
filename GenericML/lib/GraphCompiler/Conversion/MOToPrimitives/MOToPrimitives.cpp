@@ -330,10 +330,14 @@ MOGraphLowering::lowerStaticReshape(MO::Static::ReshapeOp reshapeOp) {
 
   // Create the new spec from the dimensions.
   auto specTy = MGP::createCpuTensorSpec(resTy);
-  SmallVector<Value> runtimeDims =
-      loweringState.lookupExecuteDynDims(resTy.getTypedShapeAttr());
-  auto specOp =
-      exeBuilder.create<MGP::CpuTensorSpecCreateOp>(loc, specTy, runtimeDims);
+
+  // We get the values corresponding to dynamic dimensions.
+  auto runtimeDimsOr =
+      loweringState.lowerShapeAttrDynDims(resTy.getTypedShapeAttr(), loc);
+  if (runtimeDimsOr.isError())
+    return reshapeOp->emitError(runtimeDimsOr.getError());
+  auto specOp = exeBuilder.create<MGP::CpuTensorSpecCreateOp>(loc, specTy,
+                                                              *runtimeDimsOr);
 
   // Create an immutable tensor
   auto outTensorTy = exeBuilder.getType<MGP::CpuTensorType>(specTy);
@@ -557,7 +561,6 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
 
 LogicalResult MOGraphLowering::run() {
   MO::GraphOp &graph = loweringState.getGraph();
-  Location loc = graph->getLoc();
 
   // Create the mgp.model and the regions for the init/execute phases.
   if (failed(createModelOp()))
@@ -569,39 +572,12 @@ LogicalResult MOGraphLowering::run() {
                                            .getExecuteBlock()
                                            ->getArguments()
                                            .drop_front(2))) {
-    bool hasParams = false;
-    if (auto tensorArg = dyn_cast<MO::TensorValue>(graphArg)) {
-      MO::TensorType argType = tensorArg.getType();
-      // We check if the tensor is parameterized.
-      if (!argType.hasUnknownShape() && !argType.hasStaticShape()) {
-        if (isa<KGEN::ParamDeclRefAttr>(argType.getShapeAttr()))
-          return graph.emitError("Shape parameters are not supported");
-
-        // At this point, we must be dealing with a statically ranked,
-        // parameterized argument.
-        hasParams = true;
-        OpBuilder &builder = loweringState.getExecuteOpBuilder();
-        auto extractOp = builder.create<MGP::CpuTensorExtractOp>(loc, exeArg);
-        TypedValue<MGP::CpuTensorSpecType> spec =
-            extractOp.getTensorSpecResult();
-        auto dynDims = builder.create<MGP::CpuTensorSpecDimsDynamicOp>(
-            loc, spec, spec.getType().getRawDims());
-
-        // The semantics of CpuTensorSpecDimsDynamicOp are quirky.
-        assert(dynDims->getNumResults() == argType.getRank());
-        for (auto [dim, dimValue] :
-             llvm::zip(argType.getDims(), dynDims->getResults())) {
-          if (auto dimRef = dyn_cast<KGEN::ParamDeclRefAttr>(dim)) {
-            StringAttr paramName = dimRef.getName();
-            if (!loweringState.lookupExecuteLoweredParam(paramName))
-              loweringState.emplaceExecuteLoweredParam(paramName, dimValue);
-          }
-        }
-      }
-    }
+    auto hasParamsOr = loweringState.lowerArg(graphArg, exeArg);
+    if (hasParamsOr.isError())
+      return graph->emitError(hasParamsOr.getError());
 
     // If the argument has no uses (and no parameters) then just ignore it.
-    if (!hasParams && graphArg.use_empty())
+    if (!hasParamsOr.get() && graphArg.use_empty())
       continue;
 
     loweringState.emplaceExecuteLoweredTensor(graphArg, exeArg);
