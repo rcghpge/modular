@@ -42,6 +42,12 @@ struct PassOptions {
 // Create the canonical MO pipeline for the given options.
 void buildMoToMGPPipeline(mlir::PassManager &pm, const PassOptions &opts);
 
+// Registers the end-to-end shape inference pipeline.
+void registerShapeInferencePipeline();
+
+// Create the end-to-end shape inference pipeline.
+void buildShapeInferencePipeline(mlir::OpPassManager &pm);
+
 } // namespace M::MO
 
 #endif // GENERICML_MO_GRAPHCOMPILER_PASSES_H

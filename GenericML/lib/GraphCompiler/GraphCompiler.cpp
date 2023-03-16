@@ -5,8 +5,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/GraphCompiler.h"
-#include "GenericML/GraphCompiler/Passes.h"
-
 #include "Cache/CachePasses/CachePasses.h"
 #include "GenericML/GraphCompiler/Conversion/MOToMOGG.h"
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
@@ -14,11 +12,12 @@
 #include "GenericML/GraphCompiler/MODialect/MOTransforms.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
+#include "GenericML/GraphCompiler/Passes.h"
 #include "GenericML/MGPDialect/MGPTransforms.h"
-#include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
-
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Pass/PassRegistry.h"
+#include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "mlir/Transforms/Passes.h"
 
@@ -30,9 +29,10 @@
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 
-namespace M::MO {
+using namespace M;
+using namespace MO;
 
-void loadDialects(mlir::DialectRegistry &registry) {
+void M::MO::loadDialects(mlir::DialectRegistry &registry) {
   registry.insert<MO::MODialect, MOGG::MOGGDialect,
                   // The dialects needed for KGEN.
                   KGEN::KGENDialect, DebugInfo::DebugInfoDialect,
@@ -43,7 +43,14 @@ void loadDialects(mlir::DialectRegistry &registry) {
   mlir::registerLLVMDialectTranslation(registry);
 }
 
-void registerPasses() {
+void M::MO::registerShapeInferencePipeline() {
+  mlir::PassPipelineRegistration<>(
+      "shape-inference", "Run the end-to-end shape inference pipeline.",
+      buildShapeInferencePipeline);
+}
+
+void M::MO::registerPasses() {
+  MO::registerShapeInferencePipeline();
   MO::registerMOToMOGG();
   MO::registerMOTransformsPasses();
   MGP::registerMOToPrimitives();
@@ -56,7 +63,8 @@ void registerPasses() {
   mlir::registerCanonicalizerPass();
 }
 
-void buildMoToMGPPipeline(mlir::PassManager &pm, const PassOptions &opts) {
+void M::MO::buildMoToMGPPipeline(mlir::PassManager &pm,
+                                 const PassOptions &opts) {
   pm.addPass(mlir::createCSEPass());
 
   MO::MOToMOGGOptions moToMoggOpts;
@@ -99,4 +107,12 @@ void buildMoToMGPPipeline(mlir::PassManager &pm, const PassOptions &opts) {
   pm.addPass(MGP::createStripBufferAttributesPass());
 }
 
-} // namespace M::MO
+void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm) {
+  pm.addPass(MO::createResolveUnknownParameters());
+  pm.addPass(MO::createStaticizeShapes());
+  pm.addPass(MO::createShapeInferenceMaterialization());
+  pm.addPass(MO::createInlineShapeFunctions());
+  pm.addPass(MO::createPropagateShapes());
+  pm.addPass(mlir::createCSEPass());
+  pm.addPass(mlir::createCanonicalizerPass());
+}
