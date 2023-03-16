@@ -26,6 +26,16 @@ namespace mlir {
 class ModuleOp;
 } // namespace mlir
 
+namespace M::MO {
+/// If `val` comes from a constant integer scalar tensor, convert it to a
+/// integer literal, else return None.
+std::optional<int64_t> tryGetConstantInt(TensorValue val);
+
+/// If `val` comes from a constant integer 1D tensor, convert it to a integer
+/// vector, else return None.
+std::optional<SmallVector<int64_t>> tryGetConstantIntVector(TensorValue val);
+} // namespace M::MO
+
 // Needed because the ODS definition of some KGEN ops don't have the namespace.
 using M::KGEN::ParamDeclArrayAttr;
 using M::KGEN::ParamDeclAttr;

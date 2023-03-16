@@ -16,6 +16,7 @@
 #include "Support/MDialect/MAttrs.h"
 #include "Support/STLExtras.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/IR/FunctionImplementation.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
@@ -23,6 +24,79 @@
 
 using namespace M;
 using namespace MO;
+
+//===----------------------------------------------------------------------===//
+// Utilities
+//===----------------------------------------------------------------------===//
+
+/// If `val` is defined by a ConstantOp with given rank, return the ConstantOp,
+/// else return null.
+static ConstantOp tryGetConstantOpOfRank(TensorValue val, size_t rank) {
+  auto constantOp = val.getDefiningOp<ConstantOp>();
+  if (!constantOp)
+    return {};
+
+  MO::TensorType type = constantOp.getType();
+  if (!type.hasRank() || type.getRank() != rank)
+    return {};
+
+  return constantOp;
+}
+
+/// Convert the data held by `attr` into a vector of int64_t.
+template <typename T>
+static SmallVector<int64_t>
+denseResourceAttrToIntVec(DenseResourceElementsAttr attr) {
+  ArrayRef<T> data = attr.getRawHandle().getBlob()->getDataAs<T>();
+  return SmallVector<int64_t>(data.begin(), data.end());
+}
+
+/// If `attr` represents a blob of constant integers, return them in a vector,
+/// else return None.
+static std::optional<SmallVector<int64_t>>
+tryGetConstantIntBlob(mlir::ElementsAttr attr, DType dType) {
+  if (auto intElemsAttr = dyn_cast<IntArrayElementsAttr>(attr)) {
+    return map_to_vector(intElemsAttr.getValues(), [](const llvm::APInt &dim) {
+      return dim.getSExtValue();
+    });
+  }
+
+  if (auto axisValueAttr = dyn_cast<DenseResourceElementsAttr>(attr)) {
+    return dType.dispatch<std::optional<SmallVector<int64_t>>>()
+        .when<M::DType::si32>(
+            [&]() { return denseResourceAttrToIntVec<int32_t>(axisValueAttr); })
+        .when<M::DType::si64>(
+            [&]() { return denseResourceAttrToIntVec<int64_t>(axisValueAttr); })
+        .otherwise([&]() { return std::nullopt; });
+  }
+
+  return std::nullopt;
+}
+
+std::optional<int64_t> M::MO::tryGetConstantInt(TensorValue val) {
+  if (ConstantOp constantOp = tryGetConstantOpOfRank(val, 0)) {
+    mlir::ElementsAttr attr = constantOp.getValueAttr();
+    DType dType = constantOp.getType().getDtype();
+    if (std::optional<SmallVector<int64_t>> maybeIntBlob =
+            tryGetConstantIntBlob(attr, dType)) {
+      return maybeIntBlob.value().front();
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<SmallVector<int64_t>>
+M::MO::tryGetConstantIntVector(TensorValue val) {
+  if (ConstantOp constantOp = tryGetConstantOpOfRank(val, 1)) {
+    mlir::ElementsAttr attr = constantOp.getValueAttr();
+    DType dType = constantOp.getType().getDtype();
+    if (std::optional<SmallVector<int64_t>> maybeIntBlob =
+            tryGetConstantIntBlob(attr, dType)) {
+      return maybeIntBlob.value();
+    }
+  }
+  return std::nullopt;
+}
 
 //===----------------------------------------------------------------------===//
 // MO_GraphOp support
