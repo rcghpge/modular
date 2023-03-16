@@ -169,8 +169,7 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
   };
 
   OpBuilder exeBuilder = loweringState.getExecuteOpBuilder();
-  auto getOutputSpec = [&](const std::string &opName,
-                           const SmallVector<Value> &inputs) {
+  auto getOutputSpec = [&](StringRef opName, ArrayRef<Value> inputs) {
     mlir::OperationState opState{loc, opName};
     // inputs are input specs
     opState.addOperands(inputs);
@@ -192,17 +191,15 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     output.spec = inputTensors[0].spec;
   } else if (specNaryShapeFuncs.count(opName)) {
     // Get just the specs for tensors.
-    SmallVector<Value> inputSpecs;
-    inputSpecs.reserve(inputTensors.size());
-    for (const LoweredTensor &tensor : inputTensors)
-      inputSpecs.push_back(tensor.spec);
+    SmallVector<Value> inputSpecs = map_to_vector(
+        inputTensors, [](const LoweredTensor &t) -> Value { return t.spec; });
 
     // Create a call to a custom invoke function we can put in the MEF.
     output.spec = getOutputSpec(specNaryShapeFuncs.lookup(opName), inputSpecs);
   } else if (specAndTensorBinaryShapeFuncs.count(opName)) {
-    const auto arg0SpecVal = inputTensors[0].spec;
-    const auto arg1 = opBeingLowered->getOperands()[1];
-    const auto arg1Val = loweringState.lookupExecuteLoweredTensor(arg1);
+    TypedValue<MGP::CpuTensorSpecType> arg0SpecVal = inputTensors[0].spec;
+    Value arg1 = opBeingLowered->getOperand(1);
+    Value arg1Val = loweringState.lookupExecuteLoweredTensor(arg1);
     output.spec = getOutputSpec(specAndTensorBinaryShapeFuncs.lookup(opName),
                                 {arg0SpecVal, arg1Val});
 

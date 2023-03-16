@@ -175,12 +175,12 @@ public:
   /// Return the "main thread" chain in the execute phase.
   Value getExecuteChain() { return execute.chain; }
 
-  /// Return what mo.tensor the SSA value is lowered to.
+  /// Return what SSA value the mo.tensor (key) is lowered to.
   Value lookupExecuteLoweredTensor(Value key) {
     return execute.loweredTensors.lookup(key);
   }
 
-  /// Register what mo.tensor the SSA value (key) is lowered to.
+  /// Register what SSA value the mo.tensor (key) is lowered to.
   void emplaceExecuteLoweredTensor(Value key, Value value) {
     execute.loweredTensors.try_emplace(key, value);
   }
