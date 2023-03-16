@@ -157,16 +157,34 @@ static void waitForResults(const ExecutableModel *model,
   }
 }
 
+/// Helper that prints diagnostics if an AnyAsyncValueRef is an error.
+static LogicalResult printDiagIfError(const AnyAsyncValueRef &res,
+                                      raw_ostream &os) {
+  if (auto *diag = res.getDiagnosticIfPresent()) {
+    os << "<error: " << diag->getMessage() << '>';
+    return failure();
+  }
+  return success();
+}
+
 /// This method can be used to print the results of a model in the standard
-/// format for an executor tool.  It handles converting framework specific
-/// tensor types into something we can print if needed, and handles
-/// printing/reporting of errors in a way that works with diagnostic
-/// verification.
+/// format for an executor tool. It handles converting framework specific tensor
+/// types into something we can print if needed, and handles printing/reporting
+/// of errors in a way that works with diagnostic verification. It expects the
+/// first argument to be a chain, which is never printed (but it's handled if
+/// it's an error).
 static LogicalResult
 printTensorResults(const ExecutableModel *model,
                    MutableArrayRef<AnyAsyncValueRef> results,
                    MLIRContext *context, Kernels::ResultOutputStyle outputStyle,
                    raw_ostream &os) {
+  // We expect the first result to be a chaing
+  const AnyAsyncValueRef &ch = results.front();
+  if (failed(printDiagIfError(ch, os)))
+    return failure();
+  assert(isa<Chain>(ch) && "first argument is not a chain");
+  results = results.drop_front();
+
   StringRef name = model->getModel()->getName();
 
   waitForResults(model, results, context);
@@ -179,8 +197,7 @@ printTensorResults(const ExecutableModel *model,
     llvm::interleaveComma(results, os, [&](const AnyAsyncValueRef &result) {
       // Handle error value by printing it inline, and emitting it as an error
       // through SourceMgr so we can validate it.
-      if (auto *diag = result.getDiagnosticIfPresent()) {
-        os << "<error: " << diag->getMessage() << '>';
+      if (failed(printDiagIfError(result, os))) {
         hadError = true;
         return;
       }
@@ -284,8 +301,8 @@ static ErrorOrSuccess executeModelOnce(MLIRContext *ctx, const Model *model,
 
   // Print the result tensors with the default printer.
   MutableArrayRef<AnyAsyncValueRef> resultRef(results);
-  if (failed(printTensorResults(executableModel.get(), resultRef.drop_front(),
-                                ctx, options.resultOutputStyle, outs())))
+  if (failed(printTensorResults(executableModel.get(), resultRef, ctx,
+                                options.resultOutputStyle, outs())))
     return Error("model execution failed");
   return success();
 }
@@ -373,8 +390,8 @@ executeModelRepeated(MLIRContext *ctx, const Model *model, Runtime &runtime,
 
   // Print the result tensors with the default printer.
   MutableArrayRef<AnyAsyncValueRef> resultRef(results.data(), results.size());
-  if (failed(printTensorResults(executableModel.get(), resultRef.drop_front(),
-                                ctx, options.resultOutputStyle, outs())))
+  if (failed(printTensorResults(executableModel.get(), resultRef, ctx,
+                                options.resultOutputStyle, outs())))
     return Error("repeated model execution failed");
   return success();
 }
