@@ -32,7 +32,7 @@
 
 namespace M::MO {
 
-void registerDialectsAndPasses(mlir::DialectRegistry &registry) {
+void loadDialects(mlir::DialectRegistry &registry) {
   registry.insert<MO::MODialect, MOGG::MOGGDialect,
                   // The dialects needed for KGEN.
                   KGEN::KGENDialect, DebugInfo::DebugInfoDialect,
@@ -41,7 +41,9 @@ void registerDialectsAndPasses(mlir::DialectRegistry &registry) {
 
   // The elaborator requires LLVM lowering to run the generated functions.
   mlir::registerLLVMDialectTranslation(registry);
+}
 
+void registerPasses() {
   MO::registerMOToMOGG();
   MO::registerMOTransformsPasses();
   MGP::registerMOToPrimitives();
@@ -70,7 +72,6 @@ void buildMoToMGPPipeline(mlir::PassManager &pm, const PassOptions &opts) {
       pm.addPass(mlir::createCanonicalizerPass());
       pm.addPass(mlir::createCSEPass());
     }
-
 
     // If we are jitting then we need to compile the jit kernels as well.
     MOGG::JitCompileKernelsOptions jitOpts;

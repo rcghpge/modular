@@ -12,7 +12,8 @@ using namespace M;
 
 int main(int argc, char **argv) {
   DialectRegistry registry;
-  MO::registerDialectsAndPasses(registry);
+  MO::loadDialects(registry);
+  MO::registerPasses();
 
   return failed(
       mlir::MlirOptMain(argc, argv, "MO dialect test driver", registry));
