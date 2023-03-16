@@ -433,7 +433,7 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
   Value condTensor = loweringState.lookupExecuteLoweredTensor(ifOp.getCond());
   auto condExtract = builder.create<MGP::CpuTensorExtractOp>(loc, condTensor);
 
-  auto cond = builder.create<MGP::ToGRTBool>(
+  auto cond = builder.create<MGP::ToGRTBoolOp>(
       loc, loweringState.getExecuteInvokableInputChain(),
       condExtract.getBufferResult());
 

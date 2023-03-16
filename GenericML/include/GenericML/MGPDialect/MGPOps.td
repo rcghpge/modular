@@ -1269,7 +1269,7 @@ def CASStoreOp : MGP_Op<"cas.store"> {
 }
 
 //===----------------------------------------------------------------------===//
-// ToGRTBool
+// ToGRTBoolOp
 //===----------------------------------------------------------------------===//
 
 // Checks if a MGP_CpuBufferTYpe has one of the specified ranks.
@@ -1283,14 +1283,14 @@ def MGP_ScalarBuffer : ConfinedType<MGP_CpuBufferType, [HasBufferSizePred<[1]>],
   let cppClassName = "::M::MGP::CpuBufferType";
 }
 
-def ToGRTBool : MGP_Op<"to_grt_bool"> {
+def ToGRTBoolOp : MGP_Op<"to_grt_bool"> {
   let summary = "Convert a single byte Buffer into a builtin i1.";
   let description = [{
     Convert a single byte Buffer into a builtin i1.
 
     Example:
     ```mlir
-    %buf = mgp.to_buffer(%val) : !mgp.cpu.buffer<1> -> i1
+    %0 = mgp.to_grt_bool(%ch0, %buf) : (!mef.chain, !mgp.cpu.buffer<1>) -> i1
     ```
   }];
 
