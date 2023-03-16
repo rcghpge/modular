@@ -285,13 +285,78 @@ private:
     return hasParams;
   }
 
+  /// Maps KGEN::POC opcodes to mop.index.* op names.
+  static ErrorOr<StringRef> pocToMopIndexOp(KGEN::POC poc) {
+    // TODO: support more opcodes
+    switch (poc) {
+    case KGEN::POC::Add:
+      return "mop.index.add";
+    case KGEN::POC::EQ:
+      return "mop.index.equal";
+    case KGEN::POC::Mul:
+      return "mop.index.mul";
+    case KGEN::POC::Or:
+      return "mop.bool.or";
+    default:
+      return Error(Twine("unsupported POC '") + stringifyPOC(poc) + "'");
+    }
+  }
+
+  /// Lowers an operator attribute to the appropriate mop index op.
+  static ErrorOr<Operation *> lowerParamOperator(OpBuilder &builder,
+                                                 Location loc,
+                                                 KGEN::ParamOperatorAttr opAttr,
+                                                 ValueRange operands) {
+    UNWRAP_ERROR(mopName, pocToMopIndexOp(opAttr.getOpcode()));
+    return builder.create(loc, builder.getStringAttr(mopName), operands,
+                          {opAttr.getType()});
+  }
+
+  /// Lowers an integer attribute to a mop constant op.
+  static Operation *lowerIntAttr(OpBuilder &builder, Location loc,
+                                 IntegerAttr intAttr) {
+    StringRef opname;
+    IntegerAttr valueAttr;
+    if (auto boolAttr = dyn_cast<BoolAttr>(intAttr)) {
+      opname = "mop.bool.const";
+      valueAttr = boolAttr;
+    } else {
+      opname = "mop.index.const";
+      auto si64Ty =
+          IntegerType::get(intAttr.getContext(), 64, IntegerType::Signed);
+      valueAttr = builder.getIntegerAttr(si64Ty, intAttr.getInt());
+    }
+
+    SmallVector<NamedAttribute> attrs{
+        {builder.getStringAttr("value"), valueAttr}};
+    return builder.create(loc, builder.getStringAttr(opname), {},
+                          {intAttr.getType()}, attrs);
+  }
+
   /// Lower a parameter expression.
   static ErrorOr<Value> lowerExpressionImpl(ParameterLoweringState &state,
                                             OpBuilder &builder, Location loc,
                                             TypedAttr attr,
                                             ValueRange operands) {
-    // TODO: implement lowerings.
-    return Error("cannot lower parameter expression");
+    Operation *newOp;
+    if (auto intAttr = dyn_cast<IntegerAttr>(attr)) {
+      newOp = lowerIntAttr(builder, loc, intAttr);
+    } else if (auto opAttr = dyn_cast<KGEN::ParamOperatorAttr>(attr)) {
+      UNWRAP_ERROR_OR_SET(newOp,
+                          lowerParamOperator(builder, loc, opAttr, operands));
+    } else if (auto shapeAttr = dyn_cast<MO::ShapeAttr>(attr)) {
+      // Lower dimensions recursively.
+      for (TypedAttr dim : shapeAttr.getValues()) {
+        RETURN_ERROR(
+            state.lowerExpression(builder, loc, dim, lowerExpressionImpl));
+      }
+      // Shape attributes cannot be mapped to any mgp op, so we return a null.
+      return Value();
+    } else {
+      return Error("cannot lower parameter expression");
+    }
+
+    return newOp->getResult(0);
   }
 
   //===-----------------------------------------------------------------===//

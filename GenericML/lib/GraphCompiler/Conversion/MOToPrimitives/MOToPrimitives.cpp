@@ -77,6 +77,9 @@ public:
   ///  - No data is copied.
   ErrorOr<ElementsAttr> lowerElementsAttr(ElementsAttr elementsAttr);
 
+  /// Lower a parameter declaration op.
+  LogicalResult lowerParamDeclare(KGEN::ParamDeclareOp declOp);
+
   /// Lowers mo.constant op.
   LogicalResult lowerConstant(MO::ConstantOp constOp);
 
@@ -271,6 +274,20 @@ MOGraphLowering::lowerElementsAttr(ElementsAttr elementsAttr) {
 
   llvm_unreachable(
       "missing case for implementation of HasAlignedBytesInterface");
+}
+
+LogicalResult MOGraphLowering::lowerParamDeclare(KGEN::ParamDeclareOp declOp) {
+  // We first lower the expression.
+  auto valueOr =
+      loweringState.lowerExpression(declOp->getLoc(), declOp.getValue());
+  if (valueOr.isError())
+    return declOp->emitError(valueOr.getError());
+
+  // Then map the parameter declaration to it.
+  if (auto err = loweringState.lowerParamDecl(declOp.getParamDecl(), *valueOr))
+    return declOp->emitError(err.getError());
+
+  return success();
 }
 
 LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
@@ -507,6 +524,12 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
 
 LogicalResult MOGraphLowering::lowerBlock(Block *block) {
   for (Operation &op : *block) {
+    if (auto declOp = dyn_cast<KGEN::ParamDeclareOp>(op)) {
+      if (failed(lowerParamDeclare(declOp)))
+        return failure();
+      continue;
+    }
+
     if (auto constOp = dyn_cast<MO::ConstantOp>(op)) {
       if (failed(lowerConstant(constOp)))
         return failure();
