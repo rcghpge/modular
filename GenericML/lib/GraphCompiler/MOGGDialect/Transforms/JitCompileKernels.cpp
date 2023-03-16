@@ -35,6 +35,9 @@ namespace M::MOGG {
 
 namespace {
 
+// Directly embed the lit file rather than loading dynamically.
+#include MOGG_MOJO_BINDING_H
+
 std::string mangleBlock(mlir::Block &block,
                         DenseMap<Value, std::string> &valueToPositionInBlock) {
   std::string name = "";
@@ -172,19 +175,18 @@ struct JitCompileKernels
   }
 
   ErrorOr<mlir::OwningOpRef<mlir::ModuleOp>> loadLitLibrary() {
-    // The path to the MOGG standard library mojo bindings. The macro is set by
-    // CMake.
-    StringLiteral path = MOGG_MOJO_BINDINGS_PATH;
 
     // Load the module. The stub will be appended to this.
+    llvm::StringRef source{
+        reinterpret_cast<const char *>(MojoMoggBindings::data),
+        MojoMoggBindings::size};
     mlir::OwningOpRef<mlir::ModuleOp> baseModuleRef =
-        mlir::parseSourceFile<mlir::ModuleOp>(path,
-                                              getOperation()->getContext());
+        mlir::parseSourceString<mlir::ModuleOp>(source,
+                                                getOperation()->getContext());
 
     if (!baseModuleRef) {
-      return Error("[JitCompileKernels] Could not load MOGG LIT "
-                   "binding library at path " +
-                   path);
+      return Error("[JitCompileKernels] Could not load the embedded MOGG LIT "
+                   "binding library at path ");
     }
 
     // Strip all the export functions from the imported module.
