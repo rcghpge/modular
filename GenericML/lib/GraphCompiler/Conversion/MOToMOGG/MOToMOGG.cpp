@@ -94,8 +94,24 @@ struct MOOpPattern : public RewritePattern {
     // Helper to encapsulate all the code required to lower to a kernel.
     MO::KernelLowererHelper helper{op};
 
+    // Current jit kernel constraints:
+    // Only f32.
+    // Ranked.
+    // Rank between 1-5 (due to kernel bug #10551)
+    // Only within the top level graph and not within e.g control flow.
+    bool shouldUseJit = useJit && kernel.shouldHaveLit;
+    for (Type t : op->getOperandTypes()) {
+      auto tensor = dyn_cast<MO::TensorType>(t);
+      if (!tensor || !tensor.getElementType().isF32() || !tensor.hasRank() ||
+          tensor.getRank() > 5)
+        shouldUseJit = false;
+    }
+
+    if (!isa<MO::GraphOp>(op->getParentOp()))
+      shouldUseJit = false;
+
     // If we should be using JIT generate a jit target. Otherwise use the shim.
-    if (useJit && kernel.shouldHaveLit)
+    if (shouldUseJit)
       return helper.lowerToKernel(kernel.moggID);
     else
       return helper.lowerToShim(kernel.shim);
