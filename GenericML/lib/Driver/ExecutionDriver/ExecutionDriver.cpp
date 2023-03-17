@@ -263,6 +263,10 @@ static ErrorOrSuccess executeModelOnce(MLIRContext *ctx, const Model *model,
                                        const ExecutorDriverCLOptions &options) {
   TIME_PROFILER_SCOPE(Trace::kOther, 1, "runModelOnce");
   UNWRAP_ERROR(executableModel, model->setup(runtime));
+  auto errorOrSuccess = executableModel->waitForModelSetup();
+  if (errorOrSuccess.isError())
+    return errorOrSuccess.takeError();
+
   UNWRAP_ERROR(inputTensorGenerators,
                createTensorGenerators(
                    options.inputGenKind, options.inputShapes, options.inputData,
@@ -313,7 +317,9 @@ static ErrorOrSuccess
 executeModelRepeated(MLIRContext *ctx, const Model *model, Runtime &runtime,
                      const ExecutorDriverCLOptions &options) {
   UNWRAP_ERROR(executableModel, model->setup(runtime));
-
+  auto errorOrSuccess = executableModel->waitForModelSetup();
+  if (errorOrSuccess.isError())
+    return errorOrSuccess.takeError();
   UNWRAP_ERROR(inputTensorGenerators,
                createTensorGenerators(
                    options.inputGenKind, options.inputShapes, options.inputData,
@@ -428,6 +434,9 @@ M::runModelWithData(MLIRContext *ctx, const Model *model,
   assert(inputs.size() == model->getInputSpecs().size() &&
          "Wrong number of inputs to the model.");
   UNWRAP_ERROR(executableModel, model->setup(runtime));
+  auto errorOrSuccess = executableModel->waitForModelSetup();
+  if (errorOrSuccess.isError())
+    return errorOrSuccess.takeError();
   SmallVector<Tensor, 3> inputTensors;
   for (const auto &[input, spec] : llvm::zip(inputs, model->getInputSpecs())) {
     if (llvm::any_of(spec.getDims(), mlir::ShapedType::isDynamic))
