@@ -644,6 +644,16 @@ static void mgp_to_grt_bool(Chain inChain, AsyncValueRef<BufferRef> bufferRef,
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.assert
+//===----------------------------------------------------------------------===//
+
+static ErrorOr<Chain> mgp_assert(bool cond, MEFAttr<StringRef> message) {
+  if (cond)
+    return Chain();
+  return Error(*message);
+}
+
+//===----------------------------------------------------------------------===//
 // mgp.debug.bool.print
 //===----------------------------------------------------------------------===//
 
@@ -711,6 +721,7 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.cas.lookup", mgp_cas_lookup);
   ADD_PRIMITIVE(registry, "mgp.cas.store", mgp_cas_store);
   ADD_PRIMITIVE(registry, "mgp.to_grt_bool", mgp_to_grt_bool);
+  ADD_PRIMITIVE(registry, "mgp.assert", mgp_assert);
   ADD_PRIMITIVE(registry, "mgp.debug.bool.print", mgp_debug_bool_print);
   ADD_PRIMITIVE(registry, "mgp.model", mgp_model);
 

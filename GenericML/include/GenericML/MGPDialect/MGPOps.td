@@ -1304,6 +1304,28 @@ def ToGRTBoolOp : MGP_Op<"to_grt_bool"> {
 }
 
 //===----------------------------------------------------------------------===//
+// AssertOp
+//===----------------------------------------------------------------------===//
+
+def AssertOp : MGP_Op<"assert"> {
+  let summary = "Assert that a boolean condition is true.";
+  let description = [{
+    Return an error with the given message if the condition is false.
+
+    Example:
+    ```mlir
+    %ch = mgp.assert %cond, "condition is not true"
+    ```
+  }];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins I1:$cond, StrAttr:$message);
+  let results = (outs ChainType:$outChain);
+  let assemblyFormat = "$cond `,` $message attr-dict";
+}
+
+//===----------------------------------------------------------------------===//
 // ModelOp
 //===----------------------------------------------------------------------===//
 
