@@ -52,11 +52,16 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
   // Compile to LLVM.
   mlir::SymbolTable symTable{kgenModule};
   KGEN::CompilationOptions compilationOptions;
-  auto compiler = KGEN::ObjectCompiler::create(runtime, mgr, ".kgen_cache",
-                                               symTable, compilationOptions);
+  auto compilerOr = KGEN::ObjectCompiler::create(runtime, mgr, ".kgen_cache",
+                                                 symTable, compilationOptions);
+  if (compilerOr.isError())
+    return compilerOr.takeError();
+
+  KGEN::ObjectCompiler compiler = compilerOr.takeValue();
+
   TargetInfoAttr target = getTargetInfo(kgenModule);
 
-  auto standaloneOr = compiler->produceStandaloneArchiveAttr(target, true);
+  auto standaloneOr = compiler.produceStandaloneArchiveAttr(target, true);
   if (failed(standaloneOr))
     return Error("Failed to create archive attribute");
   ElementsAttr archiveAttr = *standaloneOr;
