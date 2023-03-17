@@ -346,8 +346,8 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   // Lower the outputs to buffers which can then be passed back in as
   // parameters.
-  auto errOr = helper.lowerOutputBuffer(
-      opName, loweringState.getExecuteInvokableInputChain(), inputTensors);
+  auto errOr = helper.lowerOutputBuffer(opName, loweringState.getExecuteChain(),
+                                        inputTensors);
   if (errOr.isError())
     return failure();
   SmallVector<LoweredTensor> outputBufferAndSpec = errOr.takeValue();
@@ -360,13 +360,12 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
   mlir::OperationState opState{op->getLoc(), op.getOpName()};
 
   // Add the execute chain as the first argument.
-  operands.insert(operands.begin(),
-                  loweringState.getExecuteInvokableInputChain());
+  operands.insert(operands.begin(), loweringState.getExecuteChain());
   opState.addOperands(operands);
 
   // The return type is just the chain, other outputs are passed as argument by
   // their buffer pointers.
-  opState.addTypes({loweringState.getExecuteInvokableInputChain().getType()});
+  opState.addTypes({loweringState.getExecuteChain().getType()});
 
   // Add it to the MLIR.
   mlir::Operation *invokeOp =
@@ -448,8 +447,7 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // when all of the operation's input buffers have been written to, thus
   // ensuring we allocate buffers just-in-time for their writers.
   auto errOr = helper.lowerOutputBuffer(
-      originalName, loweringState.getExecuteInvokableInputChain(),
-      inputTensors);
+      originalName, loweringState.getExecuteChain(), inputTensors);
   if (errOr.isError())
     return failure();
   SmallVector<LoweredTensor> outputBufferAndSpec = errOr.takeValue();
@@ -472,13 +470,12 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // The operation's execution will be gated by a chain. As for output
   // allocation above, at this stage use the 'execute' block's chain.
   // The PeepholeTensorExtract will change this.
-  operands.insert(operands.begin(),
-                  loweringState.getExecuteInvokableInputChain());
+  operands.insert(operands.begin(), loweringState.getExecuteChain());
   opState.addOperands(operands);
 
   // The return type is just the chain, other outputs are passed as argument by
   // their buffer pointers.
-  opState.addTypes({loweringState.getExecuteInvokableInputChain().getType()});
+  opState.addTypes({loweringState.getExecuteChain().getType()});
 
   // Add it to the MLIR.
   mlir::Operation *invokeOp =

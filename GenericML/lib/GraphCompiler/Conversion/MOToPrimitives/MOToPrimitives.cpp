@@ -170,12 +170,8 @@ LogicalResult MOGraphLowering::createModelOp() {
   loweringState.getExecuteOpBuilder().setInsertionPointToEnd(executeBlock);
 
   // Extract chain and MGP context from arguments
-  loweringState.setExecuteInvokableInputChain(executeBlock->getArgument(0));
+  loweringState.setExecuteChain(executeBlock->getArgument(0));
   loweringState.setExecuteMgpContext(executeBlock->getArgument(1));
-
-  // This field tracks the current output chain as we lower into the execute
-  // body.
-  loweringState.setExecuteChain(loweringState.getExecuteInvokableInputChain());
 
   return success();
 }
@@ -192,7 +188,7 @@ LogicalResult MOGraphLowering::lowerOutput(MO::OutputOp output) {
 
   // Figure out what values to return.  We always return a chain.
   SmallVector<Value> operands;
-  operands.push_back(loweringState.getExecuteInvokableInputChain());
+  operands.push_back(loweringState.getExecuteChain());
 
   for (Value operand : output.getOperands())
     operands.push_back(loweringState.lookupExecuteLoweredTensor(operand));
@@ -322,8 +318,7 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
       loweringState.getExecuteOpBuilder().getContext(), outSpecType);
   auto tensorCreateOp =
       loweringState.getExecuteOpBuilder().create<MGP::CpuTensorCreateOp>(
-          loc, tensorType, loweringState.getExecuteInvokableInputChain(),
-          bufferOp, specOp);
+          loc, tensorType, loweringState.getExecuteChain(), bufferOp, specOp);
   loweringState.emplaceExecuteLoweredTensor(constOp->getResult(0),
                                             tensorCreateOp->getResult(0));
   return success();
@@ -359,7 +354,7 @@ MOGraphLowering::lowerStaticReshape(MO::Static::ReshapeOp reshapeOp) {
   // Create an immutable tensor
   auto outTensorTy = exeBuilder.getType<MGP::CpuTensorType>(specTy);
   auto tensorCreateOp = exeBuilder.create<MGP::CpuTensorCreateOp>(
-      loc, outTensorTy, loweringState.getExecuteInvokableInputChain(), buffer,
+      loc, outTensorTy, loweringState.getExecuteChain(), buffer,
       specOp.getResult());
 
   // Update the MO tensor to now refer to this mgp tensor.
@@ -413,8 +408,7 @@ LogicalResult MOGraphLowering::lowerReshape(MO::ReshapeOp reshapeOp) {
   // Create an immutable tensor
   auto outTensorTy = exeBuilder.getType<MGP::CpuTensorType>(outSpecTy);
   auto tensorCreateOp = exeBuilder.create<MGP::CpuTensorCreateOp>(
-      loc, outTensorTy, loweringState.getExecuteInvokableInputChain(), buffer,
-      outSpecValue);
+      loc, outTensorTy, loweringState.getExecuteChain(), buffer, outSpecValue);
 
   // Update the MO tensor to now refer to this mgp tensor.
   loweringState.emplaceExecuteLoweredTensor(reshapeOp.getResult(),
@@ -434,8 +428,7 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
   auto condExtract = builder.create<MGP::CpuTensorExtractOp>(loc, condTensor);
 
   auto cond = builder.create<MGP::ToGRTBoolOp>(
-      loc, loweringState.getExecuteInvokableInputChain(),
-      condExtract.getBufferResult());
+      loc, loweringState.getExecuteChain(), condExtract.getBufferResult());
 
   SmallVector<Value> operands;
   operands.push_back(cond.getResult());

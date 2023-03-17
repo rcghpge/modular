@@ -111,6 +111,27 @@ public:
     void operator=(const ExecuteState &) = delete;
   };
 
+  // Base class for clients that want to inject their own custom state.
+  struct ClientState {
+    virtual ~ClientState() = default;
+  };
+
+  // Check if the client state has been initialized.
+  bool hasClientState() const { return bool(clientState); }
+
+  // Initializes the client state, only to be called once.
+  template <typename T>
+  void initClientState(T &&initState) {
+    assert(!hasClientState());
+    clientState = std::make_unique<T>(std::forward<T>(initState));
+  }
+
+  // Get a reference to the stored client state.
+  template <typename T>
+  T &getClientState() {
+    return static_cast<T &>(*clientState);
+  }
+
   /// Return the top-level mgp.model operation.
   MGP::ModelOp getModelOp() { return common.modelOp; }
 
@@ -149,16 +170,6 @@ public:
   /// Return the builder for appending operations to the end of the invokable.
   OpBuilder &getExecuteOpBuilder() { return execute.builder; }
 
-  /// Set the original input chain to the invokable, ready when the argument
-  /// tensors are ready.
-  void setExecuteInvokableInputChain(Value invokableInputChain) {
-    execute.invokableInputChain = invokableInputChain;
-  }
-
-  /// Return the original input chain to the invokable, ready when the argument
-  /// tensors are ready.
-  Value getExecuteInvokableInputChain() { return execute.invokableInputChain; }
-
   /// Return the MGP context.
   void setExecuteMgpContext(Value mgpContext) {
     execute.mgpContext = mgpContext;
@@ -167,10 +178,15 @@ public:
   /// Return the MGP context.
   Value getExecuteMgpContext() { return execute.mgpContext; }
 
-  /// Set the "main thread" chain in the execute phase.
+  // Global side effect chain, currently reserved exclusively for asserts.
+  // Consumers of tensor specs must block on this chain. This is not intended
+  // for general side effects.
+  // TODO: Remove the need for this by wiring dependencies on asserts locally.
   void setExecuteChain(Value chain) { execute.chain = chain; }
 
-  /// Return the "main thread" chain in the execute phase.
+  /// Return the global side effect chain in the execute phase. Consumers of
+  /// tensor specs must block on this chain.
+  // TODO: Remove the need for this by wiring dependencies on asserts locally.
   Value getExecuteChain() { return execute.chain; }
 
   /// Return what SSA value the mo.tensor (key) is lowered to.
@@ -369,6 +385,9 @@ private:
   CommonState common;
   InitState init;
   ExecuteState execute;
+
+  // Arbitrary client state.
+  std::unique_ptr<ClientState> clientState;
 
   /// The state and interface for parameter lowering.
   ParameterLoweringState params;

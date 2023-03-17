@@ -12,7 +12,7 @@
 // CHECK: } else {
 // CHECK: mef.output %[[CHAIN]], %[[VAL2]]
 // CHECK: }
-// CHECK: mef.output %[[CHAIN]], %[[OUT]]#1 : !mef.chain, !mgp.cpu.tensor<2xf32>
+// CHECK: mef.output %[[OUT]]#0, %[[OUT]]#1 : !mef.chain, !mgp.cpu.tensor<2xf32>
 mo.graph @if_op() -> (!mo.tensor<[2], f32>) {
   %cond = mo.constant {value = #M.dense_array<1> : tensor<1xi1>} : !mo.tensor<[], bool>
   %val1 = mo.constant {value = #M.dense_array<1.0, 2.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
@@ -24,4 +24,3 @@ mo.graph @if_op() -> (!mo.tensor<[2], f32>) {
   }
   mo.output %0 : !mo.tensor<[2], f32>
 }
-
