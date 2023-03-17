@@ -24,7 +24,7 @@ struct PassOptions {
   size_t minimumCpuAlignment = kPreferredMemoryAlignment;
 
   /// Should we compile kernels on the fly, if not will use the C++ shims.
-  bool useJit = false;
+  bool useJit = true;
 
   /// When jitting kernels should we enable the KGEN search.
   bool useKgenSearch = false;
