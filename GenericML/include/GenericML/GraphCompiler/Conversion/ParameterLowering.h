@@ -28,14 +28,6 @@ public:
   /// null value if it hasn't been lowered yet.
   Value lookupLowered(Attribute attr) { return loweredParams.lookup(attr); }
 
-  /// Lower the given graph argument using the provided builder and hook. The
-  /// hook (using the given builder and argument) is responsible for updating
-  /// the value mapping.
-  template <typename LowerArgFunc>
-  ErrorOr<bool> lowerArg(OpBuilder &b, BlockArgument &arg, LowerArgFunc func) {
-    return func(*this, b, arg);
-  }
-
   /// Returns a lowered value for the parameter expression attribute. Parameter
   /// references not seen before are lowered to a placeholder, parameter
   /// operators are lowered recursively, and all other attributes are delegated
