@@ -116,3 +116,53 @@ mo.graph @multipleDiamondPattern(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<
 // CHECK-NEXT:    mogg.invoke @[[OUTPUT_LAMBDA:.*]](%[[INDICES]], %[[MUL]]) : !mogg.indices, !mogg.simd<f32>
 // CHECK-NEXT:    mogg.output
 
+
+// Check we correctly fuse a top heavy graph with a wide input surface and still fuse into one at the end.
+mo.graph @inversePyramid(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) { 
+  // Top level ops.
+  %0 = mo.sqrt(%arg0) : !mo.tensor<[4, 3], f32>
+  %1 = mo.relu(%arg0) : !mo.tensor<[4, 3], f32>
+  %2 = mo.sqrt(%arg1) : !mo.tensor<[4, 3], f32>
+  %3 = mo.relu(%arg1) : !mo.tensor<[4, 3], f32>
+  %4 = mo.add(%arg0, %arg1) : !mo.tensor<[4, 3], f32>
+  %5 = mo.mul(%arg0, %arg1) : !mo.tensor<[4, 3], f32>
+  %6 = mo.sub(%arg0, %arg1) : !mo.tensor<[4, 3], f32>
+  %7 = mo.div(%arg0, %arg1) : !mo.tensor<[4, 3], f32>
+  %8 = mo.tanh(%arg0) : !mo.tensor<[4, 3], f32>
+
+  // Start reducing down into a pyramid
+  %9 = mo.add(%0, %1) : !mo.tensor<[4, 3], f32>
+  %10 = mo.add(%2, %3) : !mo.tensor<[4, 3], f32>
+  %11 = mo.add(%5, %6) : !mo.tensor<[4, 3], f32>
+  %12 = mo.add(%7, %8) : !mo.tensor<[4, 3], f32>
+
+  %13 = mo.add(%9, %10) : !mo.tensor<[4, 3], f32>
+  %14 = mo.add(%11, %12) : !mo.tensor<[4, 3], f32>
+
+  %out = mo.mul(%13, %14) : !mo.tensor<[4, 3], f32>
+  mo.output %out : !mo.tensor<[4, 3], f32>
+}
+
+
+// CHECK: mo.graph @inversePyramid
+// CHECK-NEXT: mogg.kernel (%[[NULL:.*]]) : (%[[ARG1:.*]]: !mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32>
+// CHECK: mogg.lambda @elemwise_compute_lambda = (%[[INDICES:.*]]: !mogg.indices){
+// CHECK-NEXT:    %[[IN1:.*]] = mogg.invoke @[[INPUT_LAMBDA:.*]](%[[INDICES]])
+// CHECK-NEXT:    %[[OP0:.*]] = mogg.call "mo.sqrt"(%[[IN1]])
+// CHECK-NEXT:    %[[OP1:.*]] = mogg.call "mo.relu"(%[[IN1]])
+// CHECK-NEXT:    %[[OP2:.*]] = mogg.call "mo.add"(%[[OP0]], %[[OP1]])
+// CHECK-NEXT:    %[[IN2:.*]] = mogg.invoke @[[INPUT_LAMBDA2:.*]](%[[INDICES]])
+// CHECK-NEXT:    %[[OP3:.*]] = mogg.call "mo.sqrt"(%[[IN2]])
+// CHECK-NEXT:    %[[OP4:.*]] = mogg.call "mo.relu"(%[[IN2]])
+// CHECK-NEXT:    %[[OP5:.*]] = mogg.call "mo.add"(%[[OP3]], %[[OP4]])
+// CHECK-NEXT:    %[[OP6:.*]] = mogg.call "mo.add"(%[[OP2]], %[[OP5]])
+// CHECK-NEXT:    %[[OP7:.*]] = mogg.call "mo.mul"(%[[IN1]], %[[IN2]])
+// CHECK-NEXT:    %[[OP8:.*]] = mogg.call "mo.sub"(%[[IN1]], %[[IN2]])
+// CHECK-NEXT:    %[[OP9:.*]] = mogg.call "mo.add"(%[[OP7]], %[[OP8]])
+// CHECK-NEXT:    %[[OP10:.*]] = mogg.call "mo.div"(%[[IN1]], %[[IN2]])
+// CHECK-NEXT:    %[[OP11:.*]] = mogg.call "mo.tanh"(%[[IN1]])
+// CHECK-NEXT:    %[[OP12:.*]] = mogg.call "mo.add"(%[[OP10]], %[[OP11]])
+// CHECK-NEXT:    %[[OP13:.*]] = mogg.call "mo.add"(%[[OP9]], %[[OP12]])
+// CHECK-NEXT:    %[[FINAL:.*]] = mogg.call "mo.mul"(%[[OP6]], %[[OP13]])
+// CHECK-NEXT:    mogg.invoke @[[OUTPUT_LAMBDA:.*]](%[[INDICES]], %[[FINAL]])
+// CHECK-NEXT:    mogg.output
