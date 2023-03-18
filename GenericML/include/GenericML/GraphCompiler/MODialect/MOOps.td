@@ -456,18 +456,38 @@ def MO_MulOp : MO_ElementWiseBinaryOp<"mul", [Commutative]> {
   }];
 }
 
-def MO_Pow3Op : MO_ElementWiseUnaryOp<"pow3"> {
-  let summary = "Power 3 (cube) operation";
+def MO_PowOp : MO_Op<"pow", [Pure, MO_SameOperandsAndResultShape]> {
+  let summary = "Power operation";
   let description = [{
-    Returns x**3, where x is the input tensor.
-    (deprecated, waiting on lit improvements for more generic kernel)
+    Computes elementwise x ** y, where x is the base tensor and y is the
+    exponent tensor.
 
     Example:
 
     ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %res = mo.pow3(%arg) : !mo.tensor<[2, 3], f32>
+    %x: !mo.tensor<[2, 3], f32>
+    %y: !mo.tensor<[2, 3], f32>
+    %res = mo.pow(
+        %x: !mo.tensor<[2, 3], f32>,
+        %y: !mo.tensor<[2, 3], f32>
+    ) : !mo.tensor<[2, 3], f32>
+
+    %x: !mo.tensor<[2, 3], f32>
+    %y_int: !mo.tensor<[2, 3], si32>
+    %res = mo.pow(
+        %x: !mo.tensor<[2, 3], f32>,
+        %y: !mo.tensor<[2, 3], si32>
+    ) : !mo.tensor<[2, 3], f32>
+    %res = mo.pow(%x, %y_int) : !mo.tensor<[2, 3], f32>
     ```
+  }];
+
+  let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y);
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `(` $input_x `:` qualified(type($input_x))
+    `,` $input_y `:` qualified(type($input_y)) `)` attr-dict
+    `:` qualified(type($result))
   }];
 }
 

@@ -193,6 +193,41 @@ LogicalResult impl::verifyMOSameOperandsAndResultElementType(Operation *op) {
 }
 
 //===----------------------------------------------------------------------===//
+// MOSameOperandsAndResultElementShapeAttr
+//===----------------------------------------------------------------------===//
+
+/// Get the element type of a tensor value.
+static MO::ShapeAttr getShapeAttr(Value v) {
+  return v.getType().cast<MO::TensorType>().getTypedShapeAttr();
+}
+
+LogicalResult impl::verifyMOSameOperandsAndResultShapeAttr(Operation *op) {
+  if (failed(mlir::OpTrait::impl::verifyAtLeastNOperands(op, 1)) ||
+      failed(mlir::OpTrait::impl::verifyAtLeastNResults(op, 1)))
+    return failure();
+
+  auto shapeAttr = getShapeAttr(op->getResult(0));
+
+  // Verify result element type matches first result's element type.
+  for (auto result : llvm::drop_begin(op->getResults(), 1)) {
+    if (getShapeAttr(result) != shapeAttr) {
+      return op->emitOpError(
+          "requires the same shape for all operands and results");
+    }
+  }
+
+  // Verify operand's element type matches first result's element type.
+  for (auto operand : op->getOperands()) {
+    if (getShapeAttr(operand) != shapeAttr) {
+      return op->emitOpError(
+          "requires the same shape for all operands and results");
+    }
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 

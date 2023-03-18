@@ -63,13 +63,6 @@ mo.graph @sqrt(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
   mo.output %0 : !mo.tensor<[4, 5], f32>
 }
 
-// CHECK: mo.graph @pow3(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> {
-mo.graph @pow3(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
-  // CHECK-NEXT: mo.pow3(%[[ARG0]]) : !mo.tensor<[4, 5], f32>
-  %0 = mo.pow3(%arg0) : !mo.tensor<[4, 5], f32>
-  mo.output %0 : !mo.tensor<[4, 5], f32>
-}
-
 // CHECK: mo.graph @cast(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], si32> {
 mo.graph @cast(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], si32>) {
   // CHECK-NEXT: mo.cast(%[[ARG0]]) : (!mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], si32>

@@ -207,13 +207,24 @@ class MO_OpTrait<string name, list<Trait> traits = []>
 }
 
 /// Should not be used outside this file.
-def _MO_SameInputOutputTypesParameterization :
-    MO_OpTrait<"SameInputOutputTypesParameterization">;
+def _MO_SameInputOutputShapesParameterization :
+    MO_OpTrait<"SameInputOutputShapesParameterization">;
 
 def MO_SameOperandsAndResultType : TraitList<[
   SameOperandsAndResultType,
   MO_Parameterization,
-  _MO_SameInputOutputTypesParameterization,
+  _MO_SameInputOutputShapesParameterization,
+]>;
+
+/// Logically similar to the builtin SameOperandsAndResultShape, but uses
+/// MO::ShapeAttr which is used to store the MO::Tensor shape.
+def MO_SameOperandsAndResultShapeAttr :
+    MO_OpTrait<"MOSameOperandsAndResultShapeAttr">;
+
+def MO_SameOperandsAndResultShape: TraitList<[
+  MO_Parameterization,
+  MO_SameOperandsAndResultShapeAttr,
+  _MO_SameInputOutputShapesParameterization,
 ]>;
 
 /// Should not be used outside this file.

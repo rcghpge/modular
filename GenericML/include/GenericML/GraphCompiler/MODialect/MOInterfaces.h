@@ -26,6 +26,7 @@ LogicalResult verifyMatchingRanks(ArrayRef<TensorValue> values);
 LogicalResult verifyMatmulLike(MatmulLike op);
 LogicalResult verifySlidingWindow(SlidingWindow op);
 LogicalResult verifyMOSameOperandsAndResultElementType(Operation *op);
+LogicalResult verifyMOSameOperandsAndResultShapeAttr(Operation *op);
 } // namespace impl
 
 template <typename ConcreteType>
@@ -38,6 +39,16 @@ public:
   }
 };
 
+template <typename ConcreteType>
+class MOSameOperandsAndResultShapeAttr
+    : public mlir::OpTrait::TraitBase<ConcreteType,
+                                      MOSameOperandsAndResultShapeAttr> {
+public:
+  static LogicalResult verifyTrait(Operation *op) {
+    return impl::verifyMOSameOperandsAndResultShapeAttr(op);
+  }
+};
+
 } // namespace M::MO
 
 #include "GenericML/GraphCompiler/MODialect/MOInterfaces.h.inc"
@@ -47,9 +58,9 @@ namespace M::MO {
 // `ParameterizationInterface`.
 
 namespace impl {
-LogicalResult
-resolveSameOperandsAndResultTypeUnknownParameters(ParameterizationInterface op,
-                                                  mlir::RewriterBase &rewriter);
+LogicalResult resolveSameOperandsAndResultShapeUnknownParameters(
+    ParameterizationInterface op, mlir::RewriterBase &rewriter);
+
 LogicalResult resolveReductionParameters(Reduction op,
                                          mlir::RewriterBase &rewriter);
 
@@ -58,14 +69,14 @@ LogicalResult materializeReductionShapeInference(Reduction op,
 } // namespace impl
 
 template <typename ConcreteType>
-class SameInputOutputTypesParameterization
+class SameInputOutputShapesParameterization
     : public mlir::OpTrait::TraitBase<ConcreteType,
-                                      SameInputOutputTypesParameterization> {
+                                      SameInputOutputShapesParameterization> {
 public:
   mlir::LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter) {
     auto paramInterface =
         mlir::cast<ParameterizationInterface>(this->getOperation());
-    return impl::resolveSameOperandsAndResultTypeUnknownParameters(
+    return impl::resolveSameOperandsAndResultShapeUnknownParameters(
         paramInterface, rewriter);
   }
 };

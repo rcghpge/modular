@@ -144,7 +144,7 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
       "mop.kernels.erf",     "mop.kernels.exp",
       "mop.kernels.max",     "mop.kernels.min",
       "mop.kernels.mul",     "mop.kernels.matrix_band_part",
-      "mop.kernels.pow3",    "mop.kernels.relu",
+      "mop.kernels.pow",     "mop.kernels.relu",
       "mop.kernels.rsqrt",   "mop.kernels.sigmoid",
       "mop.kernels.softmax", "mop.kernels.sqrt",
       "mop.kernels.sub",     "mop.kernels.tanh",

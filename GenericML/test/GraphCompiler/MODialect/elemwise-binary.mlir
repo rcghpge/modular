@@ -35,6 +35,20 @@ mo.graph @mul(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[2, 3], f32>) ->
   mo.output %0 : !mo.tensor<[2, 3], f32>
 }
 
+// CHECK: mo.graph @pow(%[[ARG0:.*]]: ![[ARG0TYPE:.*]], %[[ARG1:.*]]: ![[ARG1TYPE:.*]]) -> !mo.tensor<[2, 3], f32> {
+mo.graph @pow(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[2, 3], f32>) -> (!mo.tensor<[2, 3], f32>) {
+  // CHECK-NEXT: mo.pow(%[[ARG0]] : ![[ARG0TYPE]], %[[ARG1]] :
+  %0 = mo.pow(%arg0 : !mo.tensor<[2, 3], f32>, %arg1 : !mo.tensor<[2, 3], f32>) : !mo.tensor<[2, 3], f32>
+  mo.output %0 : !mo.tensor<[2, 3], f32>
+}
+
+// CHECK: mo.graph @pow_int_exponent(%[[ARG0:.*]]: ![[ARG0TYPE:.*]], %[[ARG1:.*]]: ![[ARG1TYPE:.*]]) -> !mo.tensor<[2, 3], f32> {
+mo.graph @pow_int_exponent(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[2, 3], si32>) -> (!mo.tensor<[2, 3], f32>) {
+  // CHECK-NEXT: mo.pow(%[[ARG0]] : ![[ARG0TYPE]], %[[ARG1]] : ![[ARG1TYPE]]) : !mo.tensor<[2, 3], f32>
+  %0 = mo.pow(%arg0 : !mo.tensor<[2, 3], f32>, %arg1 : !mo.tensor<[2, 3], si32>) : !mo.tensor<[2, 3], f32>
+  mo.output %0 : !mo.tensor<[2, 3], f32>
+}
+
 // CHECK: mo.graph @sub(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>, %[[ARG1:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32> {
 mo.graph @sub(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[2, 3], f32>) -> (!mo.tensor<[2, 3], f32>) {
   // CHECK-NEXT: mo.sub(%[[ARG0]], %[[ARG1]]) : !mo.tensor<[2, 3], f32>
