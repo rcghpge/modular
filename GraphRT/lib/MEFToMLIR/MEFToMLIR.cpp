@@ -990,8 +990,8 @@ bool RegionParser::parsePrimitiveList() {
           loc, resultTypes, primitiveName, bodyBuilder.getArrayAttr(attrs),
           nonStrict, operandValues, regions.size());
       // Clone all the region bodies.
-      for (auto &r : llvm::enumerate(regions))
-        r.value()->cloneInto(&resultOp->getRegion(r.index()), map);
+      for (auto [index, region] : llvm::enumerate(regions))
+        region->cloneInto(&resultOp->getRegion(index), map);
     } else {
       OperationState state(loc, primitiveName, operandValues, resultTypes,
                            /*attrs*/ {});
