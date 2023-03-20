@@ -80,6 +80,9 @@ public:
   /// Lower a parameter declaration op.
   LogicalResult lowerParamDeclare(KGEN::ParamDeclareOp declOp);
 
+  /// Lower a tensor rebind.
+  LogicalResult lowerRebind(MO::RebindOp rebindOp);
+
   /// Lowers mo.constant op.
   LogicalResult lowerConstant(MO::ConstantOp constOp);
 
@@ -283,6 +286,24 @@ LogicalResult MOGraphLowering::lowerParamDeclare(KGEN::ParamDeclareOp declOp) {
   if (auto err = loweringState.lowerParamDecl(declOp.getParamDecl(), *valueOr))
     return declOp->emitError(err.getError());
 
+  return success();
+}
+
+LogicalResult MOGraphLowering::lowerRebind(MO::RebindOp rebindOp) {
+  MO::TensorValue inputTensor = rebindOp.getInput();
+  MO::TensorValue resTensor = rebindOp.getResult();
+
+  MO::TensorType inputTy = inputTensor.getType();
+  MO::TensorType resTy = resTensor.getType();
+  if (inputTy.hasRank() != resTy.hasRank())
+    return rebindOp.emitError("rebind lowering doesn't support unknown shapes");
+
+  for (auto [inDim, resDim] : llvm::zip(inputTy.getDims(), resTy.getDims()))
+    if (isa<IntegerAttr>(inDim) != isa<IntegerAttr>(resDim))
+      return rebindOp.emitError("dynamic dimensions don't match in rebind");
+
+  Value mgpInput = loweringState.lookupExecuteLoweredTensor(inputTensor);
+  loweringState.emplaceExecuteLoweredTensor(resTensor, mgpInput);
   return success();
 }
 
@@ -519,6 +540,12 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
   for (Operation &op : *block) {
     if (auto declOp = dyn_cast<KGEN::ParamDeclareOp>(op)) {
       if (failed(lowerParamDeclare(declOp)))
+        return failure();
+      continue;
+    }
+
+    if (auto rebindOp = dyn_cast<MO::RebindOp>(op)) {
+      if (failed(lowerRebind(rebindOp)))
         return failure();
       continue;
     }
