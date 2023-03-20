@@ -33,6 +33,3 @@ target_compile_options(core PRIVATE
    # Enable RTTI and exceptions.
    /EHsc /GR>
 )
-
-target_include_directories(core PRIVATE
-        ${MODULAR_SOURCE_DIR}/GenericML/include/GenericML/API)
