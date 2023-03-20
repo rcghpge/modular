@@ -38,7 +38,7 @@ LogicalResult StubCompiler::elaborateKGEN() {
     return mlir::emitError(kgenModule.getLoc(), target.getError());
 
   mlir::PassManager pm(kgenModule->getContext());
-  KGEN::elaborateModule(pm, runtime, *target, {shouldSearch});
+  KGEN::populateElaborateModulePasses(pm, runtime, *target, {shouldSearch});
 
   return pm.run(kgenModule);
 }
