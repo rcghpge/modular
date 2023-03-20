@@ -13,6 +13,7 @@
 #include "KGEN/CLOptions.h"
 #include "KGEN/KGENCompiler.h"
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "KGEN/KGENDialect/KGENUtils.h"
 #include "KGEN/LowerToObject.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/TargetParser/Host.h"
@@ -53,15 +54,18 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
   mlir::SymbolTable symTable{kgenModule};
   KGEN::CompilationOptions compilationOptions;
   auto compilerOr = KGEN::ObjectCompiler::create(runtime, mgr, ".kgen_cache",
-                                                 symTable, compilationOptions);
+                                                 compilationOptions);
   if (compilerOr.isError())
     return compilerOr.takeError();
+  llvm::MapVector<StringAttr, KGEN::ExportedSymbol> exportedSymbols =
+      KGEN::getExportedSymbols(kgenModule);
 
   KGEN::ObjectCompiler compiler = compilerOr.takeValue();
 
   TargetInfoAttr target = getTargetInfo(kgenModule);
 
-  auto standaloneOr = compiler.produceStandaloneArchiveAttr(target, true);
+  auto standaloneOr = compiler.produceStandaloneArchiveAttr(
+      symTable, exportedSymbols, target, true);
   if (failed(standaloneOr))
     return Error("Failed to create archive attribute");
   ElementsAttr archiveAttr = *standaloneOr;
