@@ -542,8 +542,8 @@ def MO_CastOp : MO_Op<"cast", [Pure]> {
     Example:
 
     ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %res = mo.sqrt(%arg) : !mo.tensor<[2, 3], f32>
+    %arg: !mo.tensor<[2, 3], i32>
+    %res = mo.cast(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
   let arguments = (ins MO_Tensor:$input);
