@@ -63,6 +63,7 @@ def MO_AssertOp : MO_Op<"assert"> {
   ];
 
   let assemblyFormat = "$cond (`,` $message^)? attr-dict";
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//
