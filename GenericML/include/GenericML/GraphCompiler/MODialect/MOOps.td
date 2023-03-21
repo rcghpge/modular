@@ -26,7 +26,44 @@ include "mlir/IR/SymbolInterfaces.td"
 
 // Base class for ops in this dialect.
 class MO_Op<string mnemonic, list<Trait> traits = []>
-    : Op<MODialect, mnemonic, [MO_OpInterface] # traits>;
+  : Op<MODialect, mnemonic, traits>;
+
+// Base class for ops that work with tensors in the MO dialect.
+class MO_TensorOp<string mnemonic, list<Trait> traits = []>
+  : MO_Op<mnemonic, [MO_TensorOpInterface] # traits>;
+
+//===----------------------------------------------------------------------===//
+// Assert
+//===----------------------------------------------------------------------===//
+
+def MO_AssertOp : MO_Op<"assert"> {
+  let summary = "Assert that a single boolean value is true.";
+  let description = [{
+    This op is special in the MO dialect since it does not take or return MO
+    tensors. The argument is single index value and a !mo.chain is returned.
+
+    Example:
+
+    ```mlir
+    %0 : index
+    %1 : index
+    %b1 = index.cmp eq(%0, %1)
+    %ch1 = mo.assert %b1
+    %b2 = index.cmp lt(%0, %1)
+    %ch2 = mo.assert %b2, "something went wrong"
+    ```
+  }];
+
+  let arguments = (ins I1:$cond, OptionalAttr<StrAttr>:$message);
+  let results = (outs MO_ChainType:$chain);
+
+  let builders = [
+    OpBuilder<(ins "Value":$cond)>,
+    OpBuilder<(ins "Value":$cond, "StringRef":$message)>,
+  ];
+
+  let assemblyFormat = "$cond (`,` $message^)? attr-dict";
+}
 
 //===----------------------------------------------------------------------===//
 // Assert
@@ -65,12 +102,12 @@ def MO_AssertOp : Op<MODialect, "assert"> {
 // GraphOp
 //===----------------------------------------------------------------------===//
 
-def MO_GraphOp : MO_Op<"graph", [HasParent<"ModuleOp">, FunctionOpInterface,
-                                 Symbol, SymbolTable, IsolatedFromAbove,
-                                 SingleBlockImplicitTerminator<"OutputOp">,
-                                 DeclareOpInterfaceMethods<MO_Parameterization>,
-                                 // needed to leverage KGEN parameter infra
-                                 DeclInterface, FuncInterface
+def MO_GraphOp : MO_TensorOp<"graph",
+  [HasParent<"ModuleOp">, FunctionOpInterface, Symbol, SymbolTable,
+   IsolatedFromAbove, SingleBlockImplicitTerminator<"OutputOp">,
+  DeclareOpInterfaceMethods<MO_Parameterization>,
+  // needed to leverage KGEN parameter infra
+  DeclInterface, FuncInterface
   // TODO : Re-enable TransformableGraphInterface
   // DeclareOpInterfaceMethods<TransformableGraphInterface>
 ]> {
@@ -114,8 +151,8 @@ def MO_GraphOp : MO_Op<"graph", [HasParent<"ModuleOp">, FunctionOpInterface,
 // OutputOp
 //===----------------------------------------------------------------------===//
 
-def MO_OutputOp
-    : MO_Op<"output", [Terminator, ReturnLike, HasParent<"MO::GraphOp">]> {
+def MO_OutputOp : MO_TensorOp<"output",
+    [Terminator, ReturnLike, HasParent<"MO::GraphOp">]> {
   let summary = "MO output operation";
   let description = [{
     The "mo.output" operation specifies the output parameters and values for a
@@ -160,7 +197,7 @@ def MO_OutputOp
 // IfOp
 //===----------------------------------------------------------------------===//
 
-def IfOp : MO_Op<"if",
+def IfOp : MO_TensorOp<"if",
           [SingleBlockImplicitTerminator<"MO::YieldOp">,
           RecursiveMemoryEffects, RecursivelySpeculatable]> {
   let summary = "if operation";
@@ -208,7 +245,7 @@ def IfOp : MO_Op<"if",
 //===----------------------------------------------------------------------===//
 
 def MO_YieldOp
-    : MO_Op<"yield", [Terminator, ReturnLike, Pure, HasParent<"IfOp">]> {
+    : MO_TensorOp<"yield", [Terminator, ReturnLike, Pure, HasParent<"IfOp">]> {
   let summary = "MO yield operation";
   let description = [{
     The "mo.yield" operation specifies the output values for MO blocks.
@@ -239,7 +276,7 @@ def MO_YieldOp
 // RebindOp
 //===----------------------------------------------------------------------===//
 
-def MO_RebindOp : MO_Op<"rebind", [
+def MO_RebindOp : MO_TensorOp<"rebind", [
     DeclareOpInterfaceMethods<MO_ParamDeclaration>,
     DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>]> {
   let summary = "tensor parameter rebind op";
@@ -276,7 +313,7 @@ def MO_RebindOp : MO_Op<"rebind", [
 // ConstantOp
 //===----------------------------------------------------------------------===//
 
-def MO_ConstantOp : MO_Op<"constant", [ConstantLike, Pure]> {
+def MO_ConstantOp : MO_TensorOp<"constant", [ConstantLike, Pure]> {
   let summary = "constant MO operation";
   let description = [{
     Op to store constant tensors in model.
@@ -325,7 +362,7 @@ def MO_ConstantOp : MO_Op<"constant", [ConstantLike, Pure]> {
 //===----------------------------------------------------------------------===//
 
 class MO_ElementWiseOp<string name, list<Trait> traits = []>
-    : MO_Op<name, traits # [Pure, MO_SameOperandsAndResultType]> {
+    : MO_TensorOp<name, traits # [Pure, MO_SameOperandsAndResultType]> {
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` qualified(type($result))
@@ -503,7 +540,7 @@ def MO_MulOp : MO_ElementWiseBinaryOp<"mul", [Commutative]> {
   }];
 }
 
-def MO_PowOp : MO_Op<"pow", [Pure, MO_SameOperandsAndResultShape]> {
+def MO_PowOp : MO_TensorOp<"pow", [Pure, MO_SameOperandsAndResultShape]> {
   let summary = "Power operation";
   let description = [{
     Computes elementwise x ** y, where x is the base tensor and y is the
@@ -581,7 +618,7 @@ def MO_SqrtOp : MO_ElementWiseUnaryOp<"sqrt"> {
 }
 
 // TODO: Use an AllShapesMatch<["input", "result"]> trait for MO_Tensor.
-def MO_CastOp : MO_Op<"cast", [Pure]> {
+def MO_CastOp : MO_TensorOp<"cast", [Pure]> {
   let summary = "Cast operation";
   let description = [{
     Return cast[dtype](x), where x is the input tensor.
@@ -654,7 +691,7 @@ def MO_GreaterEqualOp : MO_ComparisonBinaryOp<"greater_equal"> {
 
 // TODO: Use an AllElementTypesMatch<["x", "y", "result"]> trait for MO_Tensor.
 // TODO: Use an SameOperandsShape trait for MO_Tensor.
-def MO_SelectOp : MO_Op<"select", [Pure]>{
+def MO_SelectOp : MO_TensorOp<"select", [Pure]>{
   let summary = "Select operation";
   let description = [{
     Return cond ? x : y (element-wise), where cond, x and y are input tensors.
@@ -676,7 +713,7 @@ def MO_SelectOp : MO_Op<"select", [Pure]>{
   let hasVerifier = 1;
 }
 
-def MO_SliceOp : MO_Op<"slice", [Pure]>{
+def MO_SliceOp : MO_TensorOp<"slice", [Pure]>{
   let summary = "Slice operation";
   let description = [{
     Return a new tensor with a subset of the elements from an N-dimensional
@@ -685,9 +722,10 @@ def MO_SliceOp : MO_Op<"slice", [Pure]>{
     of the `input` tensor.
 
     The semantics follows the numpy index semantics, such that
-    1. For each dimension `i`, `start[i]:stop[i]:step[i]` represents the "indexing".
-    2. Negative indices are supported for `start` and `stop`, e.g., -1 represents
-       the largest axis.
+    1. For each dimension `i`, `start[i]:stop[i]:step[i]` represents the
+       "indexing" along that dimension.
+    2. Negative indices are supported for `start` and `stop`, e.g., -1
+       represents the largest axis.
     3. `step` must contain nonzero elements.
 
     Example:
@@ -748,7 +786,7 @@ def MO_TanhOp : MO_ElementWiseUnaryOp<"tanh"> {
 //===----------------------------------------------------------------------===//
 
 class MO_SoftmaxLikeOp<string name, list<Trait> traits = []>
-    : MO_Op<name, traits # [MO_SameOperandsAndResultType, Pure]> {
+    : MO_TensorOp<name, traits # [MO_SameOperandsAndResultType, Pure]> {
   let arguments = (ins MO_Tensor:$input);
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
@@ -794,7 +832,7 @@ def MO_SoftmaxOp : MO_SoftmaxLikeOp<"softmax"> {
 // Reduction ops
 //===----------------------------------------------------------------------===//
 
-class MO_ReductionOp<string name, list<Trait> traits = []> : MO_Op<
+class MO_ReductionOp<string name, list<Trait> traits = []> : MO_TensorOp<
     name, traits # [Pure, MO_Reduction, MO_ReductionTraits]> {
   let arguments = (ins
     MO_Tensor:$input,
@@ -865,8 +903,8 @@ def MO_ReduceAddOp : MO_ReductionOp<"reduce.add"> {
 def MO_ReduceMinOp : MO_ReductionOp<"reduce.min"> {
   let summary = "Minimum reduction operation";
   let description = [{
-    Reduce `input` elements across `axis` to their minimum, and change that axis's
-    dimension to 1 in the output shape.
+    Reduce `input` elements across `axis` to their minimum, and change that
+    axis's dimension to 1 in the output shape.
 
     Example:
 
@@ -883,8 +921,8 @@ def MO_ReduceMinOp : MO_ReductionOp<"reduce.min"> {
 def MO_ReduceMaxOp : MO_ReductionOp<"reduce.max"> {
   let summary = "Maximum reduction operation";
   let description = [{
-    Reduce `input` elements across `axis` to their maximum, and change that axis's
-    dimension to 1 in the output shape.
+    Reduce `input` elements across `axis` to their maximum, and change that
+    axis's dimension to 1 in the output shape.
 
     Example:
 
@@ -902,7 +940,7 @@ def MO_ReduceMaxOp : MO_ReductionOp<"reduce.max"> {
 // Sliding window ops
 //===----------------------------------------------------------------------===//
 
-def MO_AvgPoolOp : MO_Op<"avg_pool", [Pure, MO_SlidingWindow]>{
+def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [Pure, MO_SlidingWindow]>{
   let summary = "Average pooling operation";
   let description = [{
     Apply average pooling with the given filter shape, strides, and dilations.
@@ -950,7 +988,7 @@ def MO_AvgPoolOp : MO_Op<"avg_pool", [Pure, MO_SlidingWindow]>{
   let hasVerifier = 1;
 }
 
-def MO_MaxPoolOp : MO_Op<"max_pool", [Pure, MO_SlidingWindow]>{
+def MO_MaxPoolOp : MO_TensorOp<"max_pool", [Pure, MO_SlidingWindow]>{
   let summary = "Max pooling operation";
   let description = [{
     Apply max pooling with the given filter shape, strides, and dilations.
@@ -996,7 +1034,7 @@ def MO_MaxPoolOp : MO_Op<"max_pool", [Pure, MO_SlidingWindow]>{
   let hasVerifier = 1;
 }
 
-def MO_ConvOp : MO_Op<"conv", [Pure, MO_SlidingWindow]>{
+def MO_ConvOp : MO_TensorOp<"conv", [Pure, MO_SlidingWindow]>{
   let summary = "Convolution operation";
   let description = [{
     Compute the convolution of the input with the given filter, strides, and
@@ -1043,11 +1081,11 @@ def MO_ConvOp : MO_Op<"conv", [Pure, MO_SlidingWindow]>{
 // Shape related ops
 //===----------------------------------------------------------------------===//
 
-class MO_ShapeModifierOp<string mnemonic, list<Trait> traits = []> : MO_Op<
-    mnemonic, traits # [
-    DeclareOpInterfaceMethods<MO_Parameterization>,
-    DeclareOpInterfaceMethods<MO_ParamDeclaration>
-]> {
+class MO_ShapeModifierOp<string mnemonic, list<Trait> traits = []>
+  : MO_TensorOp<mnemonic,
+    traits # [DeclareOpInterfaceMethods<MO_Parameterization>,
+              DeclareOpInterfaceMethods<MO_ParamDeclaration>]
+> {
   let arguments = (ins
     MO_Tensor:$input,
     MO_ShapeLike:$newShape,
@@ -1100,7 +1138,7 @@ def MO_ReshapeOp : MO_ShapeModifierOp<"reshape"> {
   let hasFolder = 1;
 }
 
-def MO_ShapeOfOp : MO_Op<"shape_of", [
+def MO_ShapeOfOp : MO_TensorOp<"shape_of", [
   DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>
 ]> {
@@ -1131,7 +1169,7 @@ def MO_ShapeOfOp : MO_Op<"shape_of", [
   let hasVerifier = 1;
 }
 
-def MO_BroadcastShapeOp : MO_Op<"broadcast_shape", [
+def MO_BroadcastShapeOp : MO_TensorOp<"broadcast_shape", [
   Commutative,
   DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
@@ -1186,7 +1224,7 @@ def MO_BroadcastShapeOp : MO_Op<"broadcast_shape", [
 }
 
 class MOStatic_ShapeModifierOp<string mnemonic, list<Trait> traits = []>
-    : MO_Op<"static." # mnemonic, traits # [Pure]> {
+    : MO_TensorOp<"static." # mnemonic, traits # [Pure]> {
   string cppNamespace = MODialect.cppNamespace # "::Static";
 
   let arguments = (ins MO_KnownTensor:$input);
@@ -1243,7 +1281,7 @@ def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape"> {
   }];
 }
 
-def MO_ConcatOp : MO_Op<"concat", [Pure]> {
+def MO_ConcatOp : MO_TensorOp<"concat", [Pure]> {
   let summary = "Concat Operation";
   let description = [{
     Concatenate the input tensors along a given dimension.
@@ -1274,7 +1312,7 @@ def MO_ConcatOp : MO_Op<"concat", [Pure]> {
   let hasVerifier = 1;
 }
 
-def MO_TransposeOp : MO_Op<"transpose", [
+def MO_TransposeOp : MO_TensorOp<"transpose", [
   DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
   DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
@@ -1313,7 +1351,7 @@ def MO_TransposeOp : MO_Op<"transpose", [
   let hasVerifier = 1;
 }
 
-def MO_PadOp : MO_Op<"pad", [Pure]> {
+def MO_PadOp : MO_TensorOp<"pad", [Pure]> {
   let summary = "Pad Operation";
   let description = [{
     Pad the `input` tensor with a scalar tensor `constant` according to the
@@ -1353,7 +1391,7 @@ def MO_PadOp : MO_Op<"pad", [Pure]> {
 // GatherOp
 //===----------------------------------------------------------------------===//
 
-def MO_GatherOp : MO_Op<"gather", [
+def MO_GatherOp : MO_TensorOp<"gather", [
   DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
   DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
@@ -1400,7 +1438,7 @@ def MO_GatherOp : MO_Op<"gather", [
 // WhereOp
 //===----------------------------------------------------------------------===//
 
-def MO_WhereOp : MO_Op<"where", [Pure]> {
+def MO_WhereOp : MO_TensorOp<"where", [Pure]> {
   let summary = "Returns locations of nonzero values in a tensor";
   let description = [{
     Return a tensor of coordinates of the nonzero values in the given tensor.
@@ -1430,7 +1468,7 @@ def MO_WhereOp : MO_Op<"where", [Pure]> {
 // Range
 //===----------------------------------------------------------------------===//
 
-def MO_RangeOp : MO_Op<"range", [
+def MO_RangeOp : MO_TensorOp<"range", [
     Pure,
     MO_SameOperandsAndResultElementType,
     DeclareOpInterfaceMethods<MO_Parameterization>]> {
@@ -1485,7 +1523,7 @@ def MO_RangeOp : MO_Op<"range", [
 //===----------------------------------------------------------------------===//
 
 class MO_DotBase<string name, list<Trait> traits = []> :
-    MO_Op<name, traits # [
+    MO_TensorOp<name, traits # [
     MO_SameOperandsAndResultElementType,
     MO_MatmulLike,
     DeclareOpInterfaceMethods<MO_Parameterization>,
@@ -1569,7 +1607,7 @@ def MO_BatchMatmulOp : MO_DotBase<"batch_matmul", [
 // Linear Algebra ops
 //===----------------------------------------------------------------------===//
 
-def MO_MatrixBandPartOp : MO_Op<"matrix_band_part", [Pure]> {
+def MO_MatrixBandPartOp : MO_TensorOp<"matrix_band_part", [Pure]> {
   let summary = "Matrix Band Part operation";
   let description = [{
     Copy a tensor setting everything outside central (diagonal) band of the
