@@ -33,7 +33,7 @@ class MO_TensorOp<string mnemonic, list<Trait> traits = []>
   : MO_Op<mnemonic, [MO_TensorOpInterface] # traits>;
 
 //===----------------------------------------------------------------------===//
-// Assert
+// AssertOp
 //===----------------------------------------------------------------------===//
 
 def MO_AssertOp : MO_Op<"assert"> {
@@ -63,6 +63,35 @@ def MO_AssertOp : MO_Op<"assert"> {
   ];
 
   let assemblyFormat = "$cond (`,` $message^)? attr-dict";
+}
+
+//===----------------------------------------------------------------------===//
+// GuardOp
+//===----------------------------------------------------------------------===//
+
+def MO_GuardOp : MO_Op<"guard"> {
+  let summary = "Signify control dependencies of the operands.";
+  let description = [{
+    Sometimes (although not often) the validity of values may depend on things
+    that we can't (or don't want to) express in the dataflow. This op allows one
+    to express explicit control dependencies, that later lowerings must convert
+    to correct dependencies at runtime.
+    %sh0: !mo.shape
+    %cond0: i1
+    %ch0 = mo.assert %cond0
+    mo.guard[%ch0](%sh0)
+
+    %sh1: !mo.shape
+    %cond1: i1
+    %ch1 = mo.assert %cond1
+    mo.guard[%ch1](%sh0, %sh1)
+    ```
+  }];
+
+  let arguments = (ins MO_ChainType:$chain, Variadic<AnyType>:$values);
+  let assemblyFormat = [{
+    `[` $chain `]` ($values^ `:` type($values))? attr-dict
+  }];
 }
 
 //===----------------------------------------------------------------------===//

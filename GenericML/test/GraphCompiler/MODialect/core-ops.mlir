@@ -16,6 +16,20 @@ kgen.func @assert(%arg0: index, %arg1: index) -> (!mo.chain, !mo.chain) {
 }
 
 //===----------------------------------------------------------------------===//
+// GuardOp
+//===----------------------------------------------------------------------===//
+
+// CHECK: kgen.func @guard(%[[ARG0:.*]]: !mo.shape, %[[ARG1:.*]]: !mo.shape, %[[COND:.*]]: i1) -> !mo.chain {
+kgen.func @guard(%sh0: !mo.shape, %sh1: !mo.shape, %cond: i1) -> !mo.chain {
+  // CHECK: %[[CH:.*]] = mo.assert %[[COND]]
+  %ch = mo.assert %cond
+  // CHECK: mo.guard[%[[CH]]] %[[ARG0]], %[[ARG1]] : !mo.shape, !mo.shape
+  mo.guard[%ch] %sh0, %sh1 : !mo.shape, !mo.shape
+  // CHECK: kgen.return %[[CH]] : !mo.chain
+  kgen.return %ch : !mo.chain
+}
+
+//===----------------------------------------------------------------------===//
 // GraphOP, RebindOp and TensorType tests
 //===----------------------------------------------------------------------===//
 
