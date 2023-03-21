@@ -275,6 +275,36 @@ OpFoldResult BroadcastShapeOp::fold(FoldAdaptor adaptor) {
 }
 
 //===----------------------------------------------------------------------===//
+// MO_AddOp support
+//===----------------------------------------------------------------------===//
+
+OpFoldResult AddOp::fold(FoldAdaptor adaptor) {
+  // TODO(#10811): support other types and do this using a MOJO kernel?
+
+  auto xAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInputX());
+  auto yAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInputY());
+  if (!xAttr || !yAttr)
+    return {};
+
+  TensorType resTy = getType();
+  DType resDType = resTy.getDtype();
+  auto maybeX = tryGetConstantIntBlob(xAttr, resDType);
+  auto maybeY = tryGetConstantIntBlob(yAttr, resDType);
+  if (!maybeX.has_value() || !maybeY.has_value())
+    return {};
+
+  ArrayRef<int64_t> xArr = *maybeX;
+  ArrayRef<int64_t> yArr = *maybeY;
+  SmallVector<APInt> res(xArr.size());
+  for (size_t idx = 0, e = xArr.size(); idx < e; idx++)
+    res[idx] = APInt(64, xArr[idx] + yArr[idx], /*isSigned=*/false);
+
+  auto rankedResTy =
+      RankedTensorType::get(resTy.getIntDims(), resTy.getElementType());
+  return IntArrayElementsAttr::get(rankedResTy, res);
+}
+
+//===----------------------------------------------------------------------===//
 // MO_BroadcastToOp
 //===----------------------------------------------------------------------===//
 

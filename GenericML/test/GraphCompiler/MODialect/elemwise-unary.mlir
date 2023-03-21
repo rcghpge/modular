@@ -7,6 +7,16 @@ mo.graph @abs(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
   mo.output %0 : !mo.tensor<[4, 5], f32>
 }
 
+// CHECK: mo.graph @add_folder()
+mo.graph @add_folder() -> (!mo.tensor<[2, 2], si32>) {
+  // CHECK: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<-1, 2, 0, 4> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
+  %0 = mo.constant {value = #M.dense_array<-1, 0, 1, 2> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
+  %1 = mo.constant {value = #M.dense_array<0, 2, -1, 2> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
+  %2 = mo.add(%0, %1) : !mo.tensor<[2, 2], si32>
+  // CHECK-NEXT: mo.output %[[VAL0]] : !mo.tensor<[2, 2], si32>
+  mo.output %2 : !mo.tensor<[2, 2], si32>
+}
+
 // CHECK: mo.graph @relu(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> {
 mo.graph @relu(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
   // CHECK-NEXT: mo.relu(%[[ARG0]]) : !mo.tensor<[4, 5], f32>

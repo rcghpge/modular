@@ -373,6 +373,8 @@ def MO_AddOp : MO_ElementWiseBinaryOp<"add", [Commutative]> {
     %res = mo.add(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
     ```
   }];
+
+  let hasFolder = 1;
 }
 
 def MO_AbsOp : MO_ElementWiseUnaryOp<"abs", [Idempotent]> {
