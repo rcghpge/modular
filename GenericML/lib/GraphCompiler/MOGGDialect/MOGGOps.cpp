@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
@@ -158,12 +158,6 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
       "mop.kernels.tanh",
   };
 
-  static const llvm::SmallDenseSet<StringRef, 8> elementwise_conditional{
-      "mop.kernels.equal",
-      "mop.kernels.greater",
-      "mop.kernels.greater_equal",
-  };
-
   // (arg0Spec, arg1Spec, ..., argNSpec) -> outSpec
   static const llvm::StringMap<std::string> specNaryShapeFuncs{
       {"mop.kernels.matmul", "mop.shape.matmul"},
@@ -203,10 +197,6 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     // All elementwise kernels are guaranteed to have at least one argument
     // which is guaranteed to match the output.
     output.spec = inputTensors[0].spec;
-  } else if (elementwise_conditional.contains(opName)) {
-    // Get the shape of the first Tensor to compute the output spec
-    output.spec =
-        getOutputSpec("mop.shape.conditional", {inputTensors[0].spec});
   } else if (specNaryShapeFuncs.count(opName)) {
     // Get just the specs for tensors.
     SmallVector<Value> inputSpecs = map_to_vector(
