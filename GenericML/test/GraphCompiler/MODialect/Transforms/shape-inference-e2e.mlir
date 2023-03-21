@@ -63,9 +63,9 @@ mo.graph @batch_matmul_static_rank(
   // CHECK-DAG: ,
   // CHECK-DAG: [[D4]]
   // CHECK-SAME: )>
-  // CHECK: kgen.param.assert <[[P12]]>, "inner dimensions do not match"
+  // CHECK: kgen.param.declare [[CH0:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "inner dimensions do not match"}, [[P12]])>
   // CHECK: kgen.param.declare [[P15:.*]]: i1 = <apply(:(!mo.shape, !mo.shape) -> i1 "mo.shape.eq", [[[D0]]], [[[D3]]])>
-  // CHECK: kgen.param.assert <[[P15]]>, "batch sizes of left and right inputs are not equal"
+  // CHECK: kgen.param.declare [[CH1:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "batch sizes of left and right inputs are not equal"}, [[P15]])>
   // CHECK: %[[V0:.*]] = mo.rebind(%[[ARG1]]) : !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32> -> !mo.tensor<[[[D0]], [[D2]], [[D5]]], f32>
   // CHECK: %[[V1:.*]] = mo.batch_matmul(%[[ARG0]], %[[V0]]) : (!mo.tensor<[[[D0]], [[D1]], [[D2]]], f32>, !mo.tensor<[[[D0]], [[D2]], [[D5]]], f32>) -> !mo.tensor<[[[D0]], [[D1]], [[D5]]], f32>
   %out = mo.batch_matmul(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?, ?, ?], f32>
@@ -171,9 +171,9 @@ mo.graph @unresolved_rebinds(
   // CHECK-DAG:,
   // CHECK-DAG: [[R2]]
   // CHECK-SAME:)>
-  // CHECK-DAG: kgen.param.assert <[[COND1]]>, "ranks of left and right inputs are not equal"
+  // CHECK-DAG: kgen.param.declare [[CH0:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "ranks of left and right inputs are not equal"}, [[COND1]])>
   // CHECK-DAG: kgen.param.declare [[COND2:.*]]: i1 = <ge([[R2]], 3)>
-  // CHECK-DAG: kgen.param.assert <[[COND2]]>, "input ranks are not greater than 2"
+  // CHECK-DAG: kgen.param.declare [[CH1:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "input ranks are not greater than 2"}, [[COND2]])>
   // CHECK-DAG: kgen.param.declare [[K:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -1 : index}, [[SH0]])>
   // CHECK-DAG: kgen.param.declare [[KK:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -2 : index}, [[SH1]])>
   // CHECK-DAG: kgen.param.declare [[COND3:.*]]: i1 =
@@ -182,11 +182,11 @@ mo.graph @unresolved_rebinds(
   // CHECK-DAG:,
   // CHECK-DAG: [[KK]]
   // CHECK-SAME:)>
-  // CHECK-DAG: kgen.param.assert <[[COND3]]>, "inner dimensions do not match"
+  // CHECK-DAG: kgen.param.declare [[CH2:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "inner dimensions do not match"}, [[COND3]])>
   // CHECK-DAG: kgen.param.declare [[LBATCH:.*]]: !mo.shape = <apply(:(!mo.shape) -> !mo.shape "mo.shape.slice"{end = -2 : index, start = 0 : index}, [[SH0]])>
   // CHECK-DAG: kgen.param.declare [[RBATCH:.*]]: !mo.shape = <apply(:(!mo.shape) -> !mo.shape "mo.shape.slice"{end = -2 : index, start = 0 : index}, [[SH1]])>
   // CHECK-DAG: kgen.param.declare [[COND4:.*]]: i1 = <apply(:(!mo.shape, !mo.shape) -> i1 "mo.shape.eq", [[LBATCH]], [[RBATCH]])>
-  // CHECK-DAG: kgen.param.assert <[[COND4]]>, "batch sizes of left and right inputs are not equal"
+  // CHECK-DAG: kgen.param.declare [[CH3:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "batch sizes of left and right inputs are not equal"}, [[COND4]])>
   // CHECK-DAG: kgen.param.declare [[NN:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -1 : index}, [[SH1]])>
   // CHECK-DAG: kgen.param.declare [[SH8:.*]]: !mo.shape = <apply(:(!mo.shape, !mo.shape) -> !mo.shape "mo.shape.concat", [[LBATCH]], [[[K]], [[NN]]])>
   // CHECK: %[[ARG1REB2:.*]] = mo.rebind(%[[ARG1REB1]]) : !mo.tensor<[[SH0]], f32> -> !mo.tensor<[[SH8]], f32>
@@ -225,7 +225,7 @@ mo.graph @broadcasted_binary_elwise(
   // CHECK-DAG:,
   // CHECK-DAG: [[P6]]
   // CHECK-SAME:)>
-  // CHECK-DAG: kgen.param.assert <[[P7]]>, "dimensions are not broadcastable"
+  // CHECK-DAG: kgen.param.declare [[CH0:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "dimensions are not broadcastable"}, [[P7]])>
 
   // CHECK-DAG: kgen.param.declare [[P8:.*]] = <max([[D17]], 12)>
   // CHECK-DAG: kgen.param.declare [[P11:.*]]: i1 = <eq([[D16]], 1)>
@@ -248,7 +248,7 @@ mo.graph @broadcasted_binary_elwise(
   // CHECK-DAG:,
   // CHECK-DAG: [[P14]]
   // CHECK-SAME:)>
-  // CHECK-DAG: kgen.param.assert <[[P15]]>, "dimensions are not broadcastable"
+  // CHECK-DAG: kgen.param.declare [[CH1:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "dimensions are not broadcastable"}, [[P15]])>
 
   // CHECK-DAG: kgen.param.declare [[P16:.*]] =
   // CHECK-SAME: <max(
