@@ -22,6 +22,9 @@ class MO_Type<string name, string typeMnemonic, list<Trait> traits = []>
   let mnemonic = typeMnemonic;
 }
 
+/// The type used to represent explicit control dependencies.
+def MO_ChainType : MO_Type<"Chain", "chain">;
+
 //===----------------------------------------------------------------------===//
 // MO_Tensor
 //===----------------------------------------------------------------------===//

@@ -29,6 +29,39 @@ class MO_Op<string mnemonic, list<Trait> traits = []>
     : Op<MODialect, mnemonic, [MO_OpInterface] # traits>;
 
 //===----------------------------------------------------------------------===//
+// Assert
+//===----------------------------------------------------------------------===//
+
+def MO_AssertOp : Op<MODialect, "assert"> {
+  let summary = "Assert that a single boolean value is true.";
+  let description = [{
+    This op is special in the MO dialect since it does not take or return MO
+    tensors. The argument is single index value and a !mo.chain is returned.
+
+    Example:
+
+    ```mlir
+    %0 : index
+    %1 : index
+    %b1 = index.cmp eq(%0, %1)
+    %ch1 = mo.assert %b1
+    %b2 = index.cmp lt(%0, %1)
+    %ch2 = mo.assert %b2, "something went wrong"
+    ```
+  }];
+
+  let arguments = (ins I1:$cond, OptionalAttr<StrAttr>:$message);
+  let results = (outs MO_ChainType:$chain);
+
+  let builders = [
+    OpBuilder<(ins "Value":$cond)>,
+    OpBuilder<(ins "Value":$cond, "StringRef":$message)>,
+  ];
+
+  let assemblyFormat = "$cond (`,` $message^)? attr-dict";
+}
+
+//===----------------------------------------------------------------------===//
 // GraphOp
 //===----------------------------------------------------------------------===//
 

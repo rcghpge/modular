@@ -99,6 +99,19 @@ M::MO::tryGetConstantIntVector(TensorValue val) {
 }
 
 //===----------------------------------------------------------------------===//
+// MO_AssertOp
+//===----------------------------------------------------------------------===//
+
+void AssertOp::build(OpBuilder &builder, OperationState &state, Value cond) {
+  build(builder, state, cond, StringAttr());
+}
+
+void AssertOp::build(OpBuilder &builder, OperationState &state, Value cond,
+                     StringRef message) {
+  build(builder, state, cond, builder.getStringAttr(message));
+}
+
+//===----------------------------------------------------------------------===//
 // MO_GraphOp support
 //===----------------------------------------------------------------------===//
 
@@ -882,16 +895,6 @@ LogicalResult MatrixBandPartOp::verify() {
 static int64_t normalizeAxis(const APInt &axisApInt, int64_t rank) {
   int64_t axis = axisApInt.getSExtValue();
   return (axis < 0) ? rank + axis : axis;
-}
-
-void Shape::AssertOp::build(OpBuilder &builder, OperationState &state,
-                            Value cond) {
-  build(builder, state, cond, StringAttr());
-}
-
-void Shape::AssertOp::build(OpBuilder &builder, OperationState &state,
-                            Value cond, StringRef message) {
-  build(builder, state, cond, builder.getStringAttr(message));
 }
 
 OpFoldResult Shape::BroadcastOp::fold(FoldAdaptor adaptor) {

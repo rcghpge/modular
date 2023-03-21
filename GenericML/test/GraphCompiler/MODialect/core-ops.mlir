@@ -1,6 +1,21 @@
 // RUN: mo-opt --canonicalize %s | mo-opt | FileCheck %s
 
 //===----------------------------------------------------------------------===//
+// AssertOp
+//===----------------------------------------------------------------------===//
+
+// CHECK: kgen.func @assert(%[[ARG0:.*]]: index, %[[ARG1:.*]]: index) -> (!mo.chain, !mo.chain) {
+kgen.func @assert(%arg0: index, %arg1: index) -> (!mo.chain, !mo.chain) {
+  // CHECK: %[[VAL0:.*]] = index.cmp eq(%[[ARG0]], %[[ARG1]])
+  %0 = index.cmp eq(%arg0, %arg1)
+  // CHECK: mo.assert %[[VAL0]]
+  %ch0 = mo.assert %0
+  // CHECK: mo.assert %[[VAL0]], "args are not equal"
+  %ch1 = mo.assert %0, "args are not equal"
+  kgen.return %ch0, %ch1 : !mo.chain, !mo.chain
+}
+
+//===----------------------------------------------------------------------===//
 // GraphOP, RebindOp and TensorType tests
 //===----------------------------------------------------------------------===//
 

@@ -1,16 +1,5 @@
 // RUN: mo-opt %s | mo-opt | FileCheck %s
 
-// CHECK: kgen.func @assert(%[[ARG0:.*]]: index, %[[ARG1:.*]]: index) {
-kgen.func @assert(%arg0: index, %arg1: index) {
-  // CHECK: %[[VAL0:.*]] = index.cmp eq(%[[ARG0]], %[[ARG1]])
-  %0 = index.cmp eq(%arg0, %arg1)
-  // CHECK: mo.shape.assert %[[VAL0]]
-  mo.shape.assert %0
-  // CHECK: mo.shape.assert %[[VAL0]], "args are not equal"
-  mo.shape.assert %0, "args are not equal"
-  kgen.return
-}
-
 // CHECK: kgen.func @broadcast(%[[SH0:.*]]: !mo.shape, %[[SH1:.*]]: !mo.shape) -> !mo.shape {
 kgen.func @broadcast(%sh0: !mo.shape, %sh1: !mo.shape) -> !mo.shape {
   // CHECK: %[[RES:.*]] = mo.shape.broadcast(%[[SH0]], %[[SH1]])
