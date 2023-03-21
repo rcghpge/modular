@@ -474,6 +474,20 @@ LogicalResult ConcatOp::verify() {
 // MO_GatherOp support
 //===----------------------------------------------------------------------===//
 
+OpFoldResult GatherOp::fold(FoldAdaptor adaptor) {
+  // TODO(#10811): support other types and do this using a MOJO kernel?
+  
+  // The verifier should ensure that indices is empty, but we don't check it.
+  if (auto inputElems = dyn_cast_or_null<ElementsAttr>(adaptor.getInput())) {
+    if (inputElems.empty()) {
+      return ArrayElementsAttr::get(
+          {}, RankedTensorType::get({0}, inputElems.getElementType()));
+    }
+  }
+
+  return {};
+}
+
 LogicalResult GatherOp::verify() {
   TensorType paramsType = getInput().getType();
   TensorType indicesType = getIndices().getType();

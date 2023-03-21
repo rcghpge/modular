@@ -108,6 +108,17 @@ mo.graph @gather_dyn_rank_param(%input: !mo.tensor<?, f32>, %indices: !mo.tensor
   mo.output %0 : !mo.tensor<[2, 2], f32>
 }
 
+// CHECK: mo.graph @gather_empty_folder
+mo.graph @gather_empty_folder(%indices: !mo.tensor<?, si32>) -> !mo.tensor<[0], si64> {
+  // CHECK-NEXT: %[[RES:.*]] = mo.constant {value = #M.dense_array<> : tensor<0xsi64>} : !mo.tensor<[0], si64>
+  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
+  %0 = mo.constant {value = #M.dense_array<> : !M.array<0xsi64>} : !mo.tensor<[0], si64>
+  %1 = mo.gather(%0, %indices, %axis) : (!mo.tensor<[0], si64>, !mo.tensor<?, si32>, !mo.tensor<[], si64>) -> !mo.tensor<[0], si64>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[0], si64>
+  mo.output %1 : !mo.tensor<[0], si64>
+}
+
+
 //===----------------------------------------------------------------------===//
 // PadOp
 //===----------------------------------------------------------------------===//
