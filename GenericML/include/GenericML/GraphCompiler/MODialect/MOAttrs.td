@@ -14,8 +14,32 @@
 include "GenericML/GraphCompiler/MODialect/MODialect.td"
 include "KGEN/KGENDialect/KGENAttrs.td"
 
+def MO_ChainAttr : KGEN_ExprAttr<"Chain", "chain"> {
+  let summary = "Chain expression attribute";
+
+  let description = [{
+    Represents non-error chain values. The type of this attribute is always
+    `!mo.chain`.
+
+    Example:
+
+    ```mlir
+    #mo<chain> : !mo.chain
+    ```
+  }];
+
+  let dialect = MODialect;
+  let parameters = (ins AttributeSelfTypeParameter<"", "MO::ChainType">:$type);
+
+  let builders = [TypeBuilderWithInferredContext<(ins "MO::ChainType":$type), [{
+    return get(type.getContext(), type);
+  }]>];
+
+  let assemblyFormat = "";
+}
+
 def MO_ShapeAttr : KGEN_ExprAttr<"Shape", "shape"> {
-  let summary = "shape expression attribute";
+  let summary = "Shape expression attribute";
   let description = [{
     The `#mo.shape` attribute contains a variable number of `TypedAttr`s, each
     of which have index type. The type of this attribute is always `!mo.shape`.

@@ -12,6 +12,7 @@
 #include "mlir/IR/BuiltinAttributes.h"
 
 namespace M::MO {
+class ChainType;
 class ShapeType;
 
 /// Parse the parametric dimensions of a MO::ShapeAttr.

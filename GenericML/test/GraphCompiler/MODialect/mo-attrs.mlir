@@ -21,3 +21,12 @@ mo.graph @shape_attr_and_type() {
   kgen.param.declare S: !mo.shape = <[N, 2, ?]>
   mo.output
 }
+
+// CHECK: mo.graph @chain_attr() {
+mo.graph @chain_attr() {
+  // CHECK-DAG: "foo.chain"() {ch = #mo.chain : !mo.chain} : () -> !mo.chain
+  %0 = "foo.chain"() {ch = #mo.chain : !mo.chain} : () -> !mo.chain
+  // CHECK-DAG: kgen.param.declare [[CH:.*]]: !mo.chain = <#mo.chain>
+  kgen.param.declare Ch: !mo.chain = <#mo.chain>
+  mo.output
+}
