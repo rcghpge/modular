@@ -95,6 +95,8 @@ add_custom_target(modular-pybind-ext ALL
 add_dependencies(modular-pybind-ext modular-engine)
 add_subdirectory(bindings/modular/engine)
 
+set(MODULAR_FRAMEWORK_LIBS $<TARGET_FILE:monnx> $<TARGET_FILE:tfl>)
+
 # The wheel is built in the build directory.
 # However, setuptools is unaware of the pybind module since CMake built that.
 # Therefore we have to put the pybind module shared library and all other
@@ -106,7 +108,7 @@ if(STOCK_TENSORFLOW_FOUND)
   set(EXTERNAL_TF_EXES
       "${MODULAR_DERIVED_DIR}/third-party/bin/external-tf-translate;"
       "${MODULAR_DERIVED_DIR}/third-party/bin/external-tf-opt")
-    set(MODULAR_FRAMEWORK_LIBS $<TARGET_FILE:tf>)
+  list(APPEND MODULAR_FRAMEWORK_LIBS $<TARGET_FILE:tf>)
 endif()
 
 # When skipping wheel repair, output the final wheel and name it accordingly.
