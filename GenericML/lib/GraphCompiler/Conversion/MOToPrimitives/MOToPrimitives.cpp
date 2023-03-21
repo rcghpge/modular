@@ -432,10 +432,6 @@ LogicalResult MOGraphLowering::lowerReshape(MO::ReshapeOp reshapeOp) {
                        .create<MGP::CpuTensorSpecCreateOp>(loc, outSpecTy)
                        .getResult();
   } else {
-    if (buffer.getType().hasStaticShape())
-      return reshapeOp.emitError(
-          "Static input shape and dynamic output shape not supported");
-
     OperationState opState{loc, "mop.shape.reshape"};
     Value targetShape =
         loweringState.lookupExecuteLoweredTensor(reshapeOp.getNewShape());
