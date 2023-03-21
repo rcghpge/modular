@@ -250,4 +250,7 @@ def MO_ReductionTraits: TraitList<[
 def MO_SameOperandsAndResultElementType :
     MO_OpTrait<"MOSameOperandsAndResultElementType">;
 
+def MO_SameOperandsElementType :
+    MO_OpTrait<"MOSameOperandsElementType">;
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOINTERFACES_TD

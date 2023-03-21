@@ -228,6 +228,26 @@ LogicalResult impl::verifyMOSameOperandsAndResultShapeAttr(Operation *op) {
 }
 
 //===----------------------------------------------------------------------===//
+// MOSameOperandsElementType
+//===----------------------------------------------------------------------===//
+
+/// This follows the builtin verifySameOperandsAndResultElementType.
+LogicalResult impl::verifyMOSameOperandsElementType(Operation *op) {
+  if (failed(mlir::OpTrait::impl::verifyAtLeastNOperands(op, 1)) ||
+      failed(mlir::OpTrait::impl::verifyAtLeastNResults(op, 1)))
+    return failure();
+
+  auto elementType = getElementType(op->getOperand(0));
+
+  // Verify operand's element type matches first result's element type.
+  for (auto operand : op->getOperands())
+    if (getElementType(operand) != elementType)
+      return op->emitOpError("requires the same element type for all operands");
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 

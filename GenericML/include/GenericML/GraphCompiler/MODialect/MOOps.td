@@ -309,6 +309,20 @@ class MO_ElementWiseBinaryOp<string name, list<Trait> traits = []>
   let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y);
 }
 
+class MO_ComparisonOp<string name, list<Trait> traits = []>
+    : MO_Op<name, traits # [Pure, MO_SameOperandsElementType,
+                            MO_SameOperandsAndResultShape]> {
+  let results = (outs MO_BooleanMask:$result);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+class MO_ComparisonBinaryOp<string name, list<Trait> traits = []>
+    : MO_ComparisonOp<name, traits> {
+  let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y);
+}
+
 def MO_AddOp : MO_ElementWiseBinaryOp<"add", [Commutative]> {
   let summary = "Add operation";
   let description = [{
@@ -552,6 +566,57 @@ def MO_CastOp : MO_Op<"cast", [Pure]> {
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
   let hasVerifier = 1;
+}
+
+def MO_EqualOp : MO_ComparisonBinaryOp<"equal", [Commutative]> {
+  let summary = "Equal operation";
+  let description = [{
+    Returns elementwise x == y, where x and y are input tensors.
+
+    Example:
+
+    ```mlir
+    %lhs: !mo.tensor<[2, 3], f32>
+    %rhs: !mo.tensor<[2, 3], f32>
+    %res = mo.equal(%lhs, %rhs) : (!mo.tensor<[2, 3], f32>,
+                                   !mo.tensor<[2, 3], f32>
+                                  ) -> !mo.tensor<[2, 3], bool>
+    ```
+  }];
+}
+
+def MO_GreaterOp : MO_ComparisonBinaryOp<"greater"> {
+  let summary = "Greater operation";
+  let description = [{
+    Returns elementwise x > y, where x and y are input tensors.
+
+    Example:
+
+    ```mlir
+    %lhs: !mo.tensor<[2, 3], f32>
+    %rhs: !mo.tensor<[2, 3], f32>
+    %res = mo.greater(%lhs, %rhs) : (!mo.tensor<[2, 3], f32>,
+                                     !mo.tensor<[2, 3], f32>
+                                    ) -> !mo.tensor<[2, 3], bool>
+    ```
+  }];
+}
+
+def MO_GreaterEqualOp : MO_ComparisonBinaryOp<"greater_equal"> {
+  let summary = "Greater Equal operation";
+  let description = [{
+    Returns elementwise x >= y, where x and y are input tensors.
+
+    Example:
+
+    ```mlir
+    %lhs: !mo.tensor<[2, 3], f32>
+    %rhs: !mo.tensor<[2, 3], f32>
+    %res = mo.greater_equal(%lhs, %rhs) : (!mo.tensor<[2, 3], f32>,
+                                           !mo.tensor<[2, 3], f32>
+                                          ) -> !mo.tensor<[2, 3], bool>
+    ```
+  }];
 }
 
 // TODO: Use an AllElementTypesMatch<["x", "y", "result"]> trait for MO_Tensor.

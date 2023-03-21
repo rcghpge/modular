@@ -27,6 +27,8 @@ LogicalResult verifyMatmulLike(MatmulLike op);
 LogicalResult verifySlidingWindow(SlidingWindow op);
 LogicalResult verifyMOSameOperandsAndResultElementType(Operation *op);
 LogicalResult verifyMOSameOperandsAndResultShapeAttr(Operation *op);
+LogicalResult verifyMOSameOperandsAndResultShape(Operation *op);
+LogicalResult verifyMOSameOperandsElementType(Operation *op);
 } // namespace impl
 
 template <typename ConcreteType>
@@ -46,6 +48,15 @@ class MOSameOperandsAndResultShapeAttr
 public:
   static LogicalResult verifyTrait(Operation *op) {
     return impl::verifyMOSameOperandsAndResultShapeAttr(op);
+  }
+};
+
+template <typename ConcreteType>
+class MOSameOperandsElementType
+    : public mlir::OpTrait::TraitBase<ConcreteType, MOSameOperandsElementType> {
+public:
+  static LogicalResult verifyTrait(Operation *op) {
+    return impl::verifyMOSameOperandsElementType(op);
   }
 };
 
