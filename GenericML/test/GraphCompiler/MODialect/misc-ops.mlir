@@ -160,11 +160,10 @@ mo.graph @range_float_dyn(%limit: !mo.tensor<[], f32>) -> !mo.tensor<[?], f32> {
   mo.output %res : !mo.tensor<[?], f32>
 }
 
-mo.graph @range_int_static() -> !mo.tensor<[5], si32> {
-  // CHECK-DAG: %[[START:.*]] = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
+// CHECK: mo.graph @range_int_static(%[[START:.*]]: !mo.tensor<[], si32>)
+mo.graph @range_int_static(%startInt: !mo.tensor<[], si32>) -> !mo.tensor<[5], si32> {
   // CHECK-DAG: %[[STEP:.*]] = mo.constant {value = #M.dense_array<2> : tensor<si32>} : !mo.tensor<[], si32>
   // CHECK-DAG: %[[LIMIT:.*]] = mo.constant {value = #M.dense_array<11> : tensor<si32>} : !mo.tensor<[], si32>
-  %startInt = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
   %stepInt = mo.constant {value = #M.dense_array<2> : tensor<si32>} : !mo.tensor<[], si32>
   %limitInt = mo.constant {value = #M.dense_array<11> : tensor<si32>} : !mo.tensor<[], si32>
   // CHECK: %[[RES:.*]] = mo.range(%[[START]], %[[LIMIT]], %[[STEP]]) : (
@@ -172,6 +171,24 @@ mo.graph @range_int_static() -> !mo.tensor<[5], si32> {
     // CHECK-SAME: !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[5], si32>
     !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[5], si32>
   mo.output %res : !mo.tensor<[5], si32>
+}
+
+// CHECK: mo.graph @range_folder
+mo.graph @range_folder() -> (!mo.tensor<[5], ui32>, !mo.tensor<[4], si64>) {
+  // CHECK-DAG: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<1, 3, 5, 7, 9> : tensor<5xui32>} : !mo.tensor<[5], ui32>
+  %start = mo.constant {value = #M.dense_array<1> : tensor<ui32>} : !mo.tensor<[], ui32>
+  %limit = mo.constant {value = #M.dense_array<11> : tensor<ui32>} : !mo.tensor<[], ui32>
+  %step = mo.constant {value = #M.dense_array<2> : tensor<ui32>} : !mo.tensor<[], ui32>
+  %0 = mo.range(%start, %limit, %step) : (
+    !mo.tensor<[], ui32>, !mo.tensor<[], ui32>, !mo.tensor<[], ui32>) -> !mo.tensor<[5], ui32>
+  // CHECK-DAG: %[[VAL1:.*]] = mo.constant {value = #M.dense_array<2, 1, 0, -1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %startNeg = mo.constant {value = #M.dense_array<2> : tensor<si64>} : !mo.tensor<[], si64>
+  %limitNeg = mo.constant {value = #M.dense_array<-2> : tensor<si64>} : !mo.tensor<[], si64>
+  %stepNeg = mo.constant {value = #M.dense_array<-1> : tensor<si64>} : !mo.tensor<[], si64>
+  %1 = mo.range(%startNeg, %limitNeg, %stepNeg) : (
+    !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[4], si64>
+  // CHECK-NEXT: %[[VAL0]], %[[VAL1]] : !mo.tensor<[5], ui32>, !mo.tensor<[4], si64>
+  mo.output %0, %1 : !mo.tensor<[5], ui32>, !mo.tensor<[4], si64>
 }
 
 //===----------------------------------------------------------------------===//

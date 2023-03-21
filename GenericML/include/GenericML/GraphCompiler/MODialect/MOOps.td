@@ -1517,6 +1517,7 @@ def MO_RangeOp : MO_TensorOp<"range", [
   }];
 
   let hasVerifier = 1;
+  let hasFolder = 1;
 }
 
 

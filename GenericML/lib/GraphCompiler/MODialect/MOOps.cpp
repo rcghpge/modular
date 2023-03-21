@@ -51,15 +51,19 @@ denseResourceAttrToIntVec(DenseResourceElementsAttr attr) {
   return SmallVector<int64_t>(data.begin(), data.end());
 }
 
+/// Return the contents of the IntArrayElementsAttr as a vector in int64_t.
+static SmallVector<int64_t> getBlob(IntArrayElementsAttr intElemsAttr) {
+  return map_to_vector(intElemsAttr.getValues(), [](const llvm::APInt &dim) {
+    return dim.getSExtValue();
+  });
+}
+
 /// If `attr` represents a blob of constant integers, return them in a vector,
 /// else return None.
 static std::optional<SmallVector<int64_t>>
 tryGetConstantIntBlob(mlir::ElementsAttr attr, DType dType) {
-  if (auto intElemsAttr = dyn_cast<IntArrayElementsAttr>(attr)) {
-    return map_to_vector(intElemsAttr.getValues(), [](const llvm::APInt &dim) {
-      return dim.getSExtValue();
-    });
-  }
+  if (auto intElemsAttr = dyn_cast<IntArrayElementsAttr>(attr))
+    return getBlob(intElemsAttr);
 
   if (auto axisValueAttr = dyn_cast<DenseResourceElementsAttr>(attr)) {
     return dType.dispatch<std::optional<SmallVector<int64_t>>>()
@@ -307,7 +311,7 @@ OpFoldResult AddOp::fold(FoldAdaptor adaptor) {
   ArrayRef<int64_t> yArr = *maybeY;
   SmallVector<APInt> res(xArr.size());
   for (size_t idx = 0, e = xArr.size(); idx < e; idx++)
-    res[idx] = APInt(64, xArr[idx] + yArr[idx], /*isSigned=*/false);
+    res[idx] = APInt(64, xArr[idx] + yArr[idx], /*isSigned=*/true);
 
   auto rankedResTy =
       RankedTensorType::get(resTy.getIntDims(), resTy.getElementType());
@@ -526,7 +530,7 @@ OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
     // This is inefficient, but simple.
     SmallVector<APInt> res =
         map_to_vector(intElemsAttr.getValues(), [](const llvm::APInt &dim) {
-          return APInt(64, dim.getSExtValue(), /*isSigned=*/false);
+          return APInt(64, dim.getSExtValue(), /*isSigned=*/true);
         });
 
     return IntArrayElementsAttr::get(rankedResTy, res);
@@ -675,6 +679,44 @@ LogicalResult BatchMatmulOp::verify() {
 //===----------------------------------------------------------------------===//
 // MO_RangeOp support
 //===----------------------------------------------------------------------===//
+
+/// Integer division that rounds up.
+static int64_t ceilDiv(int64_t x, int64_t y) { return x / y + (x % y != 0); }
+
+OpFoldResult RangeOp::fold(FoldAdaptor adaptor) {
+  // TODO(#10811): support other types and do this using a MOJO kernel?
+
+  // Folding if the result shape is not known statically can cause problems
+  // during lowering. So we don't do this, and instead let shape inference
+  // resolve the shape.
+  if (!getType().hasStaticShape())
+    return {};
+
+  auto startAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getStart());
+  auto limitAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getLimit());
+  auto stepAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getStep());
+  if (!startAttr || !limitAttr || !stepAttr)
+    return {};
+
+  int64_t start = getBlob(startAttr).front();
+  int64_t limit = getBlob(limitAttr).front();
+  int64_t step = getBlob(stepAttr).front();
+
+  int64_t direction = (step < 0) ? -1 : 1;
+  int64_t intervalLen = direction * (limit - start);
+  if (0 > intervalLen)
+    return {};
+
+  int64_t numEl = ceilDiv(intervalLen, std::abs(step));
+  SmallVector<APInt> res((size_t)numEl);
+  for (size_t idx = 0; idx < (size_t)numEl; ++idx) {
+    res[idx] = APInt(64, start, /*isSigned=*/true);
+    start += step;
+  }
+
+  auto resTy = RankedTensorType::get({numEl}, startAttr.getElementType());
+  return IntArrayElementsAttr::get(resTy, res);
+}
 
 LogicalResult RangeOp::verify() {
   ArrayRef<KGEN::ParamDeclAttr> paramDecls = getOutputParamDecls();
