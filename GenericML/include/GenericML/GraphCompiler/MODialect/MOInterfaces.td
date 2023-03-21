@@ -15,7 +15,7 @@ include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/OpBase.td"
 
-def MO_TensorOpInterface : OpInterface<"MOTensorOpInterface"> {
+def MO_OpInterface : OpInterface<"MOOpInterface"> {
   let description = [{
     Interface that all MO ops should implement, mainly providing typed accessors
     to inputs, outputs, and their shapes.
@@ -36,14 +36,13 @@ def MO_TensorOpInterface : OpInterface<"MOTensorOpInterface"> {
 
 /// MO interfaces should inherit from this to ensure they are in the right
 /// namespace and have the right dependencies.
-class MO_TensorOpInterfaceBase<string name, list<Interface> baseInterfaces = []>
+class MO_OpInterfaceBase<string name, list<Interface> baseInterfaces = []>
     : OpInterface<name, baseInterfaces> {
   let cppNamespace = "::M::MO";
-  let dependentTraits = [MO_TensorOpInterface];
+  let dependentTraits = [MO_OpInterface];
 }
 
-def MO_Parameterization
-    : MO_TensorOpInterfaceBase<"ParameterizationInterface"> {
+def MO_Parameterization : MO_OpInterfaceBase<"ParameterizationInterface"> {
   let description = [{
     Interface to be implemented by ops that support resolving unknown shape
     and dimension parameters in their tensors.
@@ -69,7 +68,7 @@ def MO_Parameterization
   }];
 }
 
-def MO_ParamDeclaration : MO_TensorOpInterfaceBase<"ParamDeclarationInterface",
+def MO_ParamDeclaration : MO_OpInterfaceBase<"ParamDeclarationInterface",
   [MemoryEffectsOpInterface]> {
   let description = [{
     Interface to be implemented by ops that declare shape or dimension
@@ -77,10 +76,10 @@ def MO_ParamDeclaration : MO_TensorOpInterfaceBase<"ParamDeclarationInterface",
   }];
 
   let methods = [
-    InterfaceMethod<
-      "Return the output shape or dimension parameters declared by this op",
-      "llvm::ArrayRef<KGEN::ParamDeclAttr>", "getOutputParamDecls",
-      (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Return the output shape or dimension parameters declared by this op",
+      "llvm::ArrayRef<KGEN::ParamDeclAttr>", "getOutputParamDecls", (ins), [{}], [{
+      return {};
+    }]>,
   ];
 
   let extraTraitClassDeclaration = [{
@@ -94,7 +93,7 @@ def MO_ParamDeclaration : MO_TensorOpInterfaceBase<"ParamDeclarationInterface",
 }
 
 def MO_ShapeInferenceMaterialization :
-    MO_TensorOpInterfaceBase<"ShapeInferenceMaterialization"> {
+    MO_OpInterfaceBase<"ShapeInferenceMaterialization"> {
   let description = [{
     Shape inference materialization interface.
 
@@ -111,7 +110,7 @@ def MO_ShapeInferenceMaterialization :
   ];
 }
 
-def MO_MatmulLike : MO_TensorOpInterfaceBase<"MatmulLike"> {
+def MO_MatmulLike : MO_OpInterfaceBase<"MatmulLike"> {
   let description = [{
     Interface for modeling operations that implement matmul-like behavior,
     including vanilla matmul and batchmatmul.
@@ -137,7 +136,7 @@ def MO_MatmulLike : MO_TensorOpInterfaceBase<"MatmulLike"> {
   let verify = [{ return impl::verifyMatmulLike($_op); }];
 }
 
-def MO_SlidingWindow : MO_TensorOpInterfaceBase<"SlidingWindow"> {
+def MO_SlidingWindow : MO_OpInterfaceBase<"SlidingWindow"> {
   let description = [{
     Interface for modeling operations that have sliding window semantics.
   }];
@@ -159,19 +158,19 @@ def MO_SlidingWindow : MO_TensorOpInterfaceBase<"SlidingWindow"> {
   let verify = [{ return impl::verifySlidingWindow($_op); }];
 }
 
-def MO_ElementWiseUnary : MO_TensorOpInterfaceBase<"ElementWiseUnary"> {
+def MO_ElementWiseUnary : MO_OpInterfaceBase<"ElementWiseUnary"> {
   let description = [{
     Interface for modeling unary element-wise operations.
   }];
 }
 
-def MO_ElementWiseBinary : MO_TensorOpInterfaceBase<"ElementWiseBinary"> {
+def MO_ElementWiseBinary : MO_OpInterfaceBase<"ElementWiseBinary"> {
   let description = [{
     Interface for modeling binary element-wise operations.
   }];
 }
 
-def MO_Reduction : MO_TensorOpInterfaceBase<"Reduction"> {
+def MO_Reduction : MO_OpInterfaceBase<"Reduction"> {
   let description = [{
     Interface for modeling reduction operations.
   }];
@@ -187,11 +186,9 @@ def MO_Reduction : MO_TensorOpInterfaceBase<"Reduction"> {
       "MutableOperandRange", "getAxisMutable", (ins)>,
     InterfaceMethod<"Get result tensor as a TypedValue",
       "TensorValue", "getResult", (ins)>,
-    InterfaceMethod<
-      "Get the output parameter declarations associated with this op",
+    InterfaceMethod<"Get the output parameter declarations associated with this op",
       "ArrayRef<KGEN::ParamDeclAttr>", "getOutputParamDecls", (ins)>,
-    InterfaceMethod<
-      "Set the output parameter declarations associated with this op",
+    InterfaceMethod<"Set the output parameter declarations associated with this op",
       "void", "setOutputParamDecls",
       (ins "ArrayRef<KGEN::ParamDeclAttr>":$paramDecls)>,
   ];
@@ -206,6 +203,7 @@ def MO_Reduction : MO_TensorOpInterfaceBase<"Reduction"> {
 class MO_OpTrait<string name, list<Trait> traits = []>
     : NativeOpTrait<name, traits> {
   let cppNamespace = "::M::MO";
+  let dependentTraits = [MO_OpInterface];
 }
 
 /// Should not be used outside this file.
@@ -233,8 +231,7 @@ def MO_SameOperandsAndResultShape: TraitList<[
 def _MO_ReductionParameterization : MO_OpTrait<"ReductionParameterization">;
 
 /// Should not be used outside this file.
-def _MO_ReductionShapeInferenceMaterialization
-  : MO_OpTrait<"ReductionShapeInferenceMaterialization">;
+def _MO_ReductionShapeInferenceMaterialization : MO_OpTrait<"ReductionShapeInferenceMaterialization">;
 
 def MO_ReductionTraits: TraitList<[
   MO_Parameterization,

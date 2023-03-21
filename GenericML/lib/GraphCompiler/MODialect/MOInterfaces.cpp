@@ -100,8 +100,7 @@ LogicalResult impl::verifyMatmulLike(MatmulLike op) {
 
 LogicalResult SlidingWindow::verifyWindowParamShape(TensorValue windowParam,
                                                     StringRef name) {
-  auto input =
-      cast<MOTensorOpInterface>(this->getOperation()).getInputTensor(0);
+  auto input = cast<MOOpInterface>(this->getOperation()).getInputTensor(0);
   if (TensorType inputTy = input.getType(); inputTy.hasRank()) {
     if (TensorType windowParamTy = windowParam.getType();
         windowParamTy.hasStaticShape())
@@ -130,7 +129,7 @@ LogicalResult impl::verifySlidingWindow(SlidingWindow op) {
   if (failed(op.verifyWindowParamShape(op.getDilations(), "dilations")))
     return failure();
 
-  auto moOp = cast<MOTensorOpInterface>(op.getOperation());
+  auto moOp = cast<MOOpInterface>(op.getOperation());
   if (failed(verifyMatchingRanks(
           {moOp.getInputTensor(0), moOp.getOutputTensor(0)})))
     return op.emitError(
