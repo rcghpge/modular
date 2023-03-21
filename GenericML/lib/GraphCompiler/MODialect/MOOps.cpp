@@ -461,6 +461,25 @@ LogicalResult GatherOp::verify() {
 // MO_CastOp support
 //===----------------------------------------------------------------------===//
 
+OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
+  // TODO(#10811): support other types and do this using a MOJO kernel?
+
+  TensorType resTy = getResult().getType();
+  auto rankedResTy =
+      RankedTensorType::get(resTy.getIntDims(), resTy.getElementType());
+  Attribute inputAttr = adaptor.getInput();
+  if (auto intElemsAttr = dyn_cast_or_null<IntArrayElementsAttr>(inputAttr)) {
+    // This is inefficient, but simple.
+    SmallVector<APInt> res =
+        map_to_vector(intElemsAttr.getValues(), [](const llvm::APInt &dim) {
+          return APInt(64, dim.getSExtValue(), /*isSigned=*/false);
+        });
+
+    return IntArrayElementsAttr::get(rankedResTy, res);
+  }
+  return {};
+}
+
 LogicalResult CastOp::verify() {
   TensorType inputType = getInput().getType();
   TensorType resultType = getResult().getType();

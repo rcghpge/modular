@@ -1,4 +1,4 @@
-// RUN: mo-opt %s | FileCheck %s
+// RUN: mo-opt %s --canonicalize | FileCheck %s
 
 // CHECK: mo.graph @abs(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> {
 mo.graph @abs(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
@@ -68,4 +68,26 @@ mo.graph @cast(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], si32>) {
   // CHECK-NEXT: mo.cast(%[[ARG0]]) : (!mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], si32>
   %0 = mo.cast(%arg0) : (!mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], si32>
   mo.output %0 : !mo.tensor<[4, 5], si32>
+}
+
+// CHECK: mo.graph @cast_folder()
+mo.graph @cast_folder() -> (!mo.tensor<[2], si32>, !mo.tensor<[3], ui64>, !mo.tensor<[2, 2], ui32>, !mo.tensor<[5], si64>) {
+  // CHECK-DAG: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+  %0 = mo.constant {value = #M.dense_array<1, 2> : tensor<2xui64>} : !mo.tensor<[2], ui64>
+  %1 = mo.cast(%0) : (!mo.tensor<[2], ui64>) -> !mo.tensor<[2], si32>
+
+  // CHECK-DAG: %[[VAL1:.*]] = mo.constant {value = #M.dense_array<18446744073709551615, 0, 1> : tensor<3xui64>} : !mo.tensor<[3], ui64>
+  %2 = mo.constant {value = #M.dense_array<-1, 0, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %3 = mo.cast(%2) : (!mo.tensor<[3], si64>) -> !mo.tensor<[3], ui64>
+
+  // CHECK-DAG: %[[VAL2:.*]] = mo.constant {value = #M.dense_array<4294967295, 0, 1, 2> : tensor<2x2xui32>} : !mo.tensor<[2, 2], ui32>
+  %4 = mo.constant {value = #M.dense_array<-1, 0, 1, 2> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
+  %5 = mo.cast(%4) : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2], ui32>
+
+  // CHECK-DAG: %[[VAL3:.*]] = mo.constant {value = #M.dense_array<-2, -1, 0, 1, 2> : tensor<5xsi64>} : !mo.tensor<[5], si64>
+  %6 = mo.constant {value = #M.dense_array<-2, -1, 0, 1, 2> : tensor<5xsi32>} : !mo.tensor<[5], si32>
+  %7 = mo.cast(%6) : (!mo.tensor<[5], si32>) -> !mo.tensor<[5], si64>
+
+  // CHECK-NEXT: %[[VAL0]], %[[VAL1]], %[[VAL2]], %[[VAL3]] : !mo.tensor<[2], si32>, !mo.tensor<[3], ui64>, !mo.tensor<[2, 2], ui32>, !mo.tensor<[5], si64>
+  mo.output %1, %3, %5, %7 : !mo.tensor<[2], si32>, !mo.tensor<[3], ui64>, !mo.tensor<[2, 2], ui32>, !mo.tensor<[5], si64>
 }

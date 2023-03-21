@@ -603,6 +603,7 @@ def MO_CastOp : MO_TensorOp<"cast", [Pure]> {
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
   let hasVerifier = 1;
+  let hasFolder = 1;
 }
 
 def MO_EqualOp : MO_ComparisonBinaryOp<"equal", [Commutative]> {
