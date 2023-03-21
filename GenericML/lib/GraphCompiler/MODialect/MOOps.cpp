@@ -73,29 +73,26 @@ tryGetConstantIntBlob(mlir::ElementsAttr attr, DType dType) {
   return std::nullopt;
 }
 
-std::optional<int64_t> M::MO::tryGetConstantInt(TensorValue val) {
-  if (ConstantOp constantOp = tryGetConstantOpOfRank(val, 0)) {
-    mlir::ElementsAttr attr = constantOp.getValueAttr();
-    DType dType = constantOp.getType().getDtype();
-    if (std::optional<SmallVector<int64_t>> maybeIntBlob =
-            tryGetConstantIntBlob(attr, dType)) {
-      return maybeIntBlob.value().front();
-    }
+/// If `val` is defined by a ConstantOp with given rank, convert it to an
+/// integer vector, else return None.
+static std::optional<SmallVector<int64_t>>
+tryGetConstantIntOfRank(TensorValue val, size_t rank) {
+  if (ConstantOp constantOp = tryGetConstantOpOfRank(val, rank)) {
+    return tryGetConstantIntBlob(constantOp.getValueAttr(),
+                                 constantOp.getType().getDtype());
   }
+  return std::nullopt;
+}
+
+std::optional<int64_t> M::MO::tryGetConstantInt(TensorValue val) {
+  if (auto maybeIntBlob = tryGetConstantIntOfRank(val, 0))
+    return maybeIntBlob.value().front();
   return std::nullopt;
 }
 
 std::optional<SmallVector<int64_t>>
 M::MO::tryGetConstantIntVector(TensorValue val) {
-  if (ConstantOp constantOp = tryGetConstantOpOfRank(val, 1)) {
-    mlir::ElementsAttr attr = constantOp.getValueAttr();
-    DType dType = constantOp.getType().getDtype();
-    if (std::optional<SmallVector<int64_t>> maybeIntBlob =
-            tryGetConstantIntBlob(attr, dType)) {
-      return maybeIntBlob.value();
-    }
-  }
-  return std::nullopt;
+  return tryGetConstantIntOfRank(val, 1);
 }
 
 //===----------------------------------------------------------------------===//
