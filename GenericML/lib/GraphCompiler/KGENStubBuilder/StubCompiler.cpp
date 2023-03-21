@@ -34,7 +34,7 @@ LogicalResult StubCompiler::elaborateKGEN() {
 
   ErrorOr<TargetInfoAttr> target = KGEN::getTargetInfoFor(
       kgenModule->getContext(), llvm::sys::getDefaultTargetTriple(),
-      llvm::sys::getHostCPUName(), KGEN::getHostCPUFeatures());
+      llvm::sys::getHostCPUName(), getHostCPUFeatures());
   if (target.isError())
     return mlir::emitError(kgenModule.getLoc(), target.getError());
 
