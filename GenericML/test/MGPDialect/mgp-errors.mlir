@@ -101,7 +101,23 @@ func.func @spec_dims_mismatched_dims(%spec : !mgp.cpu.tensor_spec<?x64x?xf32>) {
 
 func.func @tensor_create_mismatched_size(%ch : !mef.chain, %buf : !mgp.cpu.buffer<61>, %spec : !mgp.cpu.tensor_spec<3x5xf32>) { // expected-note {{prior use here}}
   // expected-error@+1 {{use of value '%buf' expects different type than prior uses: '!mgp.cpu.buffer<60>' vs '!mgp.cpu.buffer<61>'}}
-  %tensor = mgp.cpu.tensor.create %ch, %buf , %spec : !mgp.cpu.tensor<3x5xf32>
+  %tensor = mgp.cpu.tensor.create %ch, %buf, %spec : !mgp.cpu.tensor<3x5xf32>
+  mef.output %tensor : !mgp.cpu.tensor<3x5xf32>
+}
+
+// -----
+
+func.func @tensor_create_mismatched_size_with_buf_annot(%ch : !mef.chain, %buf : !mgp.cpu.buffer<61>, %spec : !mgp.cpu.tensor_spec<3x5xf32>) { // expected-note {{prior use here}}
+  // expected-error@+1 {{use of value '%buf' expects different type than prior uses: '!mgp.cpu.buffer<60>' vs '!mgp.cpu.buffer<61>'}}
+  %tensor = mgp.cpu.tensor.create %ch, %buf, %spec !mgp.cpu.buffer<60> : !mgp.cpu.tensor<3x5xf32>
+  mef.output %tensor : !mgp.cpu.tensor<3x5xf32>
+}
+
+// -----
+
+func.func @tensor_create_mismatched_buf_and_spec_with_buf_annot(%ch : !mef.chain, %buf : !mgp.cpu.buffer<61>, %spec : !mgp.cpu.tensor_spec<3x5xf32>) {
+  // expected-error@+1 {{'mgp.cpu.tensor.create' op expected buffer type to match type implied by tensor spec ('!mgp.cpu.buffer<61>' vs '!mgp.cpu.buffer<60>')}}
+  %tensor = mgp.cpu.tensor.create %ch, %buf, %spec !mgp.cpu.buffer<61> : !mgp.cpu.tensor<3x5xf32>
   mef.output %tensor : !mgp.cpu.tensor<3x5xf32>
 }
 

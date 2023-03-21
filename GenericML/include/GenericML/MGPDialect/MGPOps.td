@@ -956,9 +956,9 @@ def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
     written into as a side-effect of an operation.
 
     If the result tensor type is fully static then the buffer is expected to
-    have a known and matching size. However if the buffer has an unknown size
-    (for example, it is the result of a dynamic resize operation) then the
-    `dynamic` keyword can be included.
+    have a known and matching size. However if the actual buffer type cannot be
+    correctly inferred from the spec types, the user must annotate this op with
+    the correct buffer type.
 
     Example:
     ```mlir
@@ -976,8 +976,13 @@ def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
 
     %spec : !mgp.cpu.tensor_spec<4x16xf32>
     %buf : !mgp.cpu.buffer
-    %tensor = mgp.cpu.tensor.create %ch, %buf, %spec dynamic : !mgp.cpu.tensor<4x16xf32>
+    %tensor = mgp.cpu.tensor.create %ch, %buf, %spec !mgp.cpu.buffer : !mgp.cpu.tensor<4x16xf32>
     %tensor : !mgp.cpu.tensor<4x16xf32>
+
+    %spec : !mgp.cpu.tensor_spec<4x?xf32>
+    %buf : !mgp.cpu.buffer<16>
+    %tensor = mgp.cpu.tensor.create %ch, %buf, %spec !mgp.cpu.buffer<16> : !mgp.cpu.tensor<4x?xf32>
+    %tensor : !mgp.cpu.tensor<4x?xf32>
     ```
 
     Tensors are immutable, but buffers are mutable. This means the
