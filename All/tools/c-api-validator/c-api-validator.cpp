@@ -17,6 +17,7 @@
 
 #include "llvm/ADT/STLExtras.h"
 
+#include <mutex>
 #include <numeric>
 #include <vector>
 
@@ -59,6 +60,8 @@ public:
       cl::init(1)};
 };
 
+static std::mutex mu; // serializes console output
+
 /// Thread friendly logger.
 template <typename... Arg>
 void log(bool threaded, const char *fmt, const Arg &...args) {
@@ -68,8 +71,30 @@ void log(bool threaded, const char *fmt, const Arg &...args) {
     os << llvm::get_threadid() << ": ";
   os << llvm::format(fmt, args...);
   os << "\n";
-  llvm::outs() << ostr;
-  llvm::outs().flush();
+  {
+    std::lock_guard<std::mutex> l(mu);
+    llvm::outs() << ostr;
+    llvm::outs().flush();
+  }
+}
+
+/// Logs a brief summary of buffer's contents.
+void log(bool threaded, ArrayRef<float> buffer) {
+  std::string ostr;
+  llvm::raw_string_ostream os(ostr);
+  if (threaded)
+    os << llvm::get_threadid() << ": ";
+  os << "Output: [";
+  const size_t extract = std::min(2ul, buffer.size());
+  llvm::interleaveComma(buffer.slice(0, extract), os);
+  os << " ... ";
+  llvm::interleaveComma(buffer.slice(buffer.size() - extract, extract), os);
+  os << "]\n";
+  {
+    std::lock_guard<std::mutex> l(mu);
+    llvm::outs() << ostr;
+    llvm::outs().flush();
+  }
 }
 
 /// Fork-join wrapper.
@@ -345,17 +370,7 @@ struct ExecutePhase {
       // TODO: read output dtype value to know how to decode the data
       // correctly for other dtypes
       auto *tensorData = static_cast<const float *>(M_getTensorData(tensor));
-
-      size_t extract = std::min(2ul, numElements);
-      std::string ostr;
-      llvm::raw_string_ostream os(ostr);
-      llvm::interleaveComma(ArrayRef<float>{tensorData, tensorData + extract},
-                            os);
-      os << " ... ";
-      llvm::interleaveComma(ArrayRef<float>{tensorData + numElements - extract,
-                                            tensorData + numElements},
-                            os);
-      log(threaded, "%s", ostr.c_str());
+      log(threaded, ArrayRef<float>(tensorData, numElements));
       M_freeTensor(tensor);
     }
 

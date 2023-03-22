@@ -15,10 +15,10 @@
 // CHECK: NumInputs: 1
 // CHECK: NumOutputs: 1
 // CHECK: NumElements: 1001
-// CHECK: 9.49{{.*}}, 9.10{{.*}}
+// CHECK: Output: [9.49{{.*}}, 9.10{{.*}} ... 1.29{{.*}}, 7.53{{.*}}]
 
 // CHECK: INFO: Executing {{.*}}/resnet50-v1.tflite
 // CHECK: NumInputs: 1
 // CHECK: NumOutputs: 1
 // CHECK: NumElements: 1001
-// CHECK: 9.49{{.*}}, 9.10{{.*}}
+// CHECK: Output: [9.49{{.*}}, 9.10{{.*}} ... 1.29{{.*}}, 7.53{{.*}}]
