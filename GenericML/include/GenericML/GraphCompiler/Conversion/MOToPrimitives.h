@@ -300,18 +300,18 @@ private:
   // Parameter lowering helpers.
   //===-----------------------------------------------------------------===//
 
-  /// Maps KGEN::POC opcodes to mop.index.* op names.
+  /// Maps KGEN::POC opcodes to mip.index.* op names.
   static ErrorOr<StringRef> pocToMopIndexOp(KGEN::POC poc) {
     // TODO: support more opcodes
     switch (poc) {
     case KGEN::POC::Add:
-      return "mop.index.add";
+      return "mip.index.add";
     case KGEN::POC::EQ:
-      return "mop.index.equal";
+      return "mip.index.equal";
     case KGEN::POC::Mul:
-      return "mop.index.mul";
+      return "mip.index.mul";
     case KGEN::POC::Or:
-      return "mop.bool.or";
+      return "mip.bool.or";
     default:
       return Error(Twine("unsupported POC '") + stringifyPOC(poc) + "'");
     }
@@ -333,10 +333,10 @@ private:
     StringRef opname;
     IntegerAttr valueAttr;
     if (auto boolAttr = dyn_cast<BoolAttr>(intAttr)) {
-      opname = "mop.bool.const";
+      opname = "mip.bool.const";
       valueAttr = boolAttr;
     } else {
-      opname = "mop.index.const";
+      opname = "mip.index.const";
       auto si64Ty =
           IntegerType::get(intAttr.getContext(), 64, IntegerType::Signed);
       valueAttr = builder.getIntegerAttr(si64Ty, intAttr.getInt());
