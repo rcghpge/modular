@@ -467,9 +467,10 @@ LogicalResult ConcatOp::verify() {
     tensors.emplace_back(cast<TensorValue>(input));
 
   tensors.emplace_back(getResult());
-  if (failed(impl::verifyMatchingRanks(tensors)))
+  if (failed(impl::verifyMatchingRanks(tensors))) {
     return emitError(
         "input and output ranks must be all dynamic, or all static and match");
+  }
 
   return LogicalResult::success();
 }

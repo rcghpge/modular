@@ -1281,7 +1281,10 @@ def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape"> {
   }];
 }
 
-def MO_ConcatOp : MO_TensorOp<"concat", [Pure]> {
+def MO_ConcatOp : MO_TensorOp<"concat", [
+  DeclareOpInterfaceMethods<MO_Parameterization>,
+  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+]> {
   let summary = "Concat Operation";
   let description = [{
     Concatenate the input tensors along a given dimension.
@@ -1301,10 +1304,12 @@ def MO_ConcatOp : MO_TensorOp<"concat", [Pure]> {
 
   let arguments = (ins
     Variadic<MO_Tensor>:$inputs,
-    MO_RankedScalarIndexTensor:$axis);
+    MO_RankedScalarIndexTensor:$axis,
+    MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls)
     `[` $axis `:` qualified(type($axis)) `]`
     `(` $inputs `)` attr-dict `:` functional-type($inputs, results)
   }];
