@@ -80,9 +80,6 @@ public:
   /// Lower a parameter declaration op.
   LogicalResult lowerParamDeclare(KGEN::ParamDeclareOp declOp);
 
-  /// Lower a parameter assertion.
-  LogicalResult lowerAssert(KGEN::ParamAssertOp assertOp);
-
   /// Lower a tensor rebind.
   LogicalResult lowerRebind(MO::RebindOp rebindOp);
 
@@ -285,30 +282,14 @@ LogicalResult MOGraphLowering::lowerParamDeclare(KGEN::ParamDeclareOp declOp) {
   if (valueOr.isError())
     return declOp->emitError(valueOr.getError());
 
+  Value value = *valueOr;
   // Then map the parameter declaration to it.
-  if (auto err = loweringState.lowerParamDecl(declOp.getParamDecl(), *valueOr))
+  if (auto err = loweringState.lowerParamDecl(declOp.getParamDecl(), value))
     return declOp->emitError(err.getError());
 
-  return success();
-}
-
-LogicalResult MOGraphLowering::lowerAssert(KGEN::ParamAssertOp assertOp) {
-  Location loc = assertOp->getLoc();
-  // We first lower the condition expression.
-  auto valueOr = loweringState.lowerExpression(loc, assertOp.getCond());
-  if (valueOr.isError())
-    return assertOp->emitError(valueOr.getError());
-
-  OpBuilder &builder = loweringState.getExecuteOpBuilder();
-  SmallVector<NamedAttribute> attrs{
-      {builder.getStringAttr("message"),
-       cast<StringAttr>(assertOp.getMessageAttr())}};
-  Operation *mgpAssert =
-      builder.create(loc, builder.getStringAttr("mgp.assert"), {*valueOr},
-                     {loweringState.getExecuteChain().getType()}, attrs);
-
   // TODO: fix this hack when we can properly lower asserts.
-  loweringState.setExecuteChain(mgpAssert->getResult(0));
+  if (auto chain = dyn_cast<TypedValue<MEF::ChainType>>(value))
+    loweringState.setExecuteChain(chain);
   return success();
 }
 
@@ -559,12 +540,6 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
   for (Operation &op : *block) {
     if (auto declOp = dyn_cast<KGEN::ParamDeclareOp>(op)) {
       if (failed(lowerParamDeclare(declOp)))
-        return failure();
-      continue;
-    }
-
-    if (auto assertOp = dyn_cast<KGEN::ParamAssertOp>(op)) {
-      if (failed(lowerAssert(assertOp)))
         return failure();
       continue;
     }

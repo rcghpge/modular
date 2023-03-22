@@ -44,15 +44,16 @@ public:
       // A decl ref we haven't seen before gets a placeholder.
       newValue = b.create<KGEN::ParamConstantOp>(loc, declRef).getResult();
     } else if (auto opAttr = dyn_cast<KGEN::ParamOperatorAttr>(attr)) {
-      // Expressions can be nested, so we lower the operands recursively.
-      SmallVector<Value> newOperands;
-      for (TypedAttr operand : opAttr.getOperands()) {
-        UNWRAP_ERROR(newOperand, lowerExpression(b, loc, operand, func));
-        newOperands.emplace_back(newOperand);
+      ArrayRef<TypedAttr> operands = opAttr.getOperands();
+      TypedAttr newOpAttr = attr;
+      if (opAttr.getOpcode() == KGEN::POC::Apply) {
+        // Apply is special, since its first argument is an mlir op.
+        newOpAttr = operands.front();
+        operands = operands.drop_front();
       }
-
-      // Then we lower the operator using the hook.
-      UNWRAP_ERROR_OR_SET(newValue, func(*this, b, loc, opAttr, newOperands));
+      UNWRAP_ERROR(newOperands, lowerOperands(b, loc, operands, func));
+      UNWRAP_ERROR_OR_SET(newValue,
+                          func(*this, b, loc, newOpAttr, newOperands));
     } else {
       UNWRAP_ERROR_OR_SET(newValue, func(*this, b, loc, attr, {}));
     }
@@ -84,6 +85,20 @@ public:
   }
 
 private:
+  /// Helper to lower an array of expression operands.
+  template <typename LowerExprFunc>
+  ErrorOr<SmallVector<Value>> lowerOperands(OpBuilder &b, Location loc,
+                                            ArrayRef<TypedAttr> operands,
+                                            LowerExprFunc func) {
+    SmallVector<Value> newOperands;
+    for (TypedAttr operand : operands) {
+      // Expressions can be nested, so we lower the operands recursively.
+      UNWRAP_ERROR(newOperand, lowerExpression(b, loc, operand, func));
+      newOperands.emplace_back(newOperand);
+    }
+    return newOperands;
+  }
+
   /// Tracks what parameters attributes (e.g. expressions) are lowered to.
   DenseMap<Attribute, Value> loweredParams;
 };
