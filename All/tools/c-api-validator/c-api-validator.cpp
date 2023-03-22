@@ -60,7 +60,11 @@ public:
       cl::init(1)};
 };
 
-static std::mutex mu; // serializes console output
+/// serializes console output
+std::mutex &consoleMutex() {
+  static std::mutex *mu = new std::mutex();
+  return *mu;
+}
 
 /// Thread friendly logger.
 template <typename... Arg>
@@ -72,7 +76,7 @@ void log(bool threaded, const char *fmt, const Arg &...args) {
   os << llvm::format(fmt, args...);
   os << "\n";
   {
-    std::lock_guard<std::mutex> l(mu);
+    std::lock_guard<std::mutex> l(consoleMutex());
     llvm::outs() << ostr;
     llvm::outs().flush();
   }
@@ -91,7 +95,7 @@ void log(bool threaded, ArrayRef<float> buffer) {
   llvm::interleaveComma(buffer.slice(buffer.size() - extract, extract), os);
   os << "]\n";
   {
-    std::lock_guard<std::mutex> l(mu);
+    std::lock_guard<std::mutex> l(consoleMutex());
     llvm::outs() << ostr;
     llvm::outs().flush();
   }
