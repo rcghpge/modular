@@ -133,14 +133,14 @@ TEST(BufferRef, DeepCopy) {
 TEST(BufferRef, Destructor) {
   // We are relying on the use of the profiling Allocator in getRuntime.
   auto runtime = getRuntime();
-  void *data = runtime->allocateBytes(sizeof(int), 16);
+  void *data = runtime->getAllocator()->allocateBytes(sizeof(int), 16);
   {
     BufferRef ref = BufferRef::createBorrowed(
         data, sizeof(int), /*alignment=*/16, BufferRef::kLocal);
     BufferRef ref2 = std::move(ref);
     // No deallocation.
   }
-  runtime->deallocateBytes(data, sizeof(int));
+  runtime->getAllocator()->deallocateBytes(data, sizeof(int));
 
   {
     BufferRef ref =
@@ -159,7 +159,7 @@ TEST(BufferRef, ReleaseBufferIfOwned) {
   ASSERT_TRUE(released != nullptr);
   ASSERT_FALSE(ref);
   ASSERT_EQ(memcmp(data, released, 4), 0);
-  runtime->deallocateBytes(const_cast<void *>(released), 4);
+  runtime->getAllocator()->deallocateBytes(const_cast<void *>(released), 4);
 }
 
 struct TestForeignObject {

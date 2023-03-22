@@ -40,7 +40,7 @@ static Chain print_hello(Chain chain) {
 }
 static void memory_leak_one_int32(Runtime &runtime) {
   // We allocate an integer to intentionally cause a memory leak for testing.
-  runtime.allocate<int32_t>();
+  runtime.getAllocator()->allocate<int32_t>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -506,18 +506,14 @@ static void test_crash_threadpool_shutdown(Runtime &runtime) {
       addTask(runtime, [&runtime, i]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         printf("task %d\n", i);
-        addTask(
-            runtime,
-            [&runtime, i]() {
-              std::this_thread::sleep_for(std::chrono::milliseconds(5));
-              printf("task %d middle\n", i);
-              addTask(
-                  runtime,
-                  [i]() {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(5));
-                    printf("task %d shutdown\n", i);
-                  });
-            });
+        addTask(runtime, [&runtime, i]() {
+          std::this_thread::sleep_for(std::chrono::milliseconds(5));
+          printf("task %d middle\n", i);
+          addTask(runtime, [i]() {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            printf("task %d shutdown\n", i);
+          });
+        });
       });
     }
   });

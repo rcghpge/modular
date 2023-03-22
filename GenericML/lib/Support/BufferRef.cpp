@@ -60,7 +60,8 @@ BufferRef BufferRef::createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
   if (size == 0)
     // Canonicalize as zero-sized, null-buffer ptr, kNull BufferRef.
     return {};
-  void *buffer = runtime->allocateBytes(size, alignment.value_or(1));
+  void *buffer =
+      runtime->getAllocator()->allocateBytes(size, alignment.value_or(1));
   if (copyFrom)
     std::memcpy(buffer, copyFrom, size);
   return BufferRef(buffer, size, makeMaybeAlign(alignment), kOwned, kLocal,
@@ -115,7 +116,8 @@ BufferRef::~BufferRef() {
   case kNull:
     break;
   case kOwned:
-    nativeOrForeign.runtime->deallocateBytes(bufferOrObject, size);
+    nativeOrForeign.runtime->getAllocator()->deallocateBytes(bufferOrObject,
+                                                             size);
     std::move(profilerEntry).record();
     break;
   case kBorrowed:

@@ -247,7 +247,8 @@ public:
     this->~MEFExecutor();
     auto sizeInBytes = totalSizeToAlloc<RegisterInfo, PrimitiveInfo>(
         numRegisters, numPrimitives);
-    runtime.deallocateBytes(const_cast<MEFExecutor *>(this), sizeInBytes);
+    runtime.getAllocator()->deallocateBytes(const_cast<MEFExecutor *>(this),
+                                            sizeInBytes);
   }
 
   /// Provide access to the inline-allocated RegisterInfo table.
@@ -791,7 +792,8 @@ void MEFInvokableImpl::invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
   // well as reducing #allocations.
   auto sizeInBytes = MEFExecutor::totalSizeToAlloc<RegisterInfo, PrimitiveInfo>(
       decoder.numRegisters, decoder.numPrimitives);
-  void *rawPtr = runtime.allocateBytes(sizeInBytes, alignof(MEFExecutor));
+  void *rawPtr =
+      runtime.getAllocator()->allocateBytes(sizeInBytes, alignof(MEFExecutor));
   auto executor = takeRCRef(new (rawPtr) MEFExecutor(owner, runtime, decoder));
 
   // Parse the rest of the tables now that we allocated memory.
