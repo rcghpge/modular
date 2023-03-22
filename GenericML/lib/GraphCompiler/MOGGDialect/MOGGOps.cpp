@@ -258,6 +258,16 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     output.spec = getOutputSpec(
         "mop.shape.conv",
         {inputTensors[0].spec, inputTensors[1].spec, stride, dilation});
+  } else if (opName == "mop.kernels.pool.max" ||
+             opName == "mop.kernels.pool.avg") {
+    Value kernel = loweringState.lookupExecuteLoweredTensor(
+        opBeingLowered->getOperands()[1]);
+    Value stride = loweringState.lookupExecuteLoweredTensor(
+        opBeingLowered->getOperands()[2]);
+    Value dilation = loweringState.lookupExecuteLoweredTensor(
+        opBeingLowered->getOperands()[3]);
+    output.spec = getOutputSpec(
+        "mop.shape.pool", {inputTensors[0].spec, kernel, stride, dilation});
   } else if (opName == "mop.kernels.range") {
     Value start = loweringState.lookupExecuteLoweredTensor(
         opBeingLowered->getOperands()[0]);

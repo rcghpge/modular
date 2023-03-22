@@ -215,6 +215,8 @@ void MOToMOGGPass::runOnOperation() {
       MO_SHIM_ONLY(MO::ReduceMulOp, "mop.kernels.reduce.mul"),
       MO_SHIM_ONLY(MO::ReduceMinOp, "mop.kernels.reduce.min"),
       MO_SHIM_ONLY(MO::ReduceMaxOp, "mop.kernels.reduce.max"),
+      MO_SHIM_ONLY(MO::MaxPoolOp, "mop.kernels.pool.max"),
+      MO_SHIM_ONLY(MO::AvgPoolOp, "mop.kernels.pool.avg"),
       MO_SHIM_ONLY(MO::MinOp, "mop.kernels.min"),
       MO_TO_LIT(MO::MulOp, "mop.kernels.mul"),
       MO_SHIM_ONLY(MO::PowOp, "mop.kernels.pow"),
