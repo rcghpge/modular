@@ -479,16 +479,25 @@ LogicalResult ConcatOp::verify() {
 // MO_GatherOp support
 //===----------------------------------------------------------------------===//
 
+/// Return an empty array with the given element type.
+static ArrayElementsAttr getEmptyArray(Type elTy) {
+  return ArrayElementsAttr::get({}, RankedTensorType::get({0}, elTy));
+}
+
 OpFoldResult GatherOp::fold(FoldAdaptor adaptor) {
   // TODO(#10811): support other types and do this using a MOJO kernel?
 
+  if (!getOutputParamDecls().empty())
+    return {};
+
   // The verifier should ensure that indices is empty, but we don't check it.
-  if (auto inputElems = dyn_cast_or_null<ElementsAttr>(adaptor.getInput())) {
-    if (inputElems.empty()) {
-      return ArrayElementsAttr::get(
-          {}, RankedTensorType::get({0}, inputElems.getElementType()));
-    }
-  }
+  if (auto inputElems = dyn_cast_or_null<ElementsAttr>(adaptor.getInput()))
+    if (inputElems.empty())
+      return getEmptyArray(inputElems.getElementType());
+
+  if (auto idxElems = dyn_cast_or_null<ElementsAttr>(adaptor.getIndices()))
+    if (idxElems.empty())
+      return getEmptyArray(idxElems.getElementType());
 
   return {};
 }
