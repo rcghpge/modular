@@ -1471,9 +1471,10 @@ def MO_WhereOp : MO_TensorOp<"where", [Pure]> {
 //===----------------------------------------------------------------------===//
 
 def MO_RangeOp : MO_TensorOp<"range", [
-    Pure,
     MO_SameOperandsAndResultElementType,
-    DeclareOpInterfaceMethods<MO_Parameterization>]> {
+    DeclareOpInterfaceMethods<MO_Parameterization>,
+    DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+    DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>]> {
   let summary = "Create a sequence of numbers";
   let description = [{
     The sequence goes from `start` with increments of size `step` up to (but not
@@ -1518,6 +1519,14 @@ def MO_RangeOp : MO_TensorOp<"range", [
 
   let hasVerifier = 1;
   let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+  private:
+    /// Return the number of results given constant start/limit/step values.
+    static ErrorOr<int64_t> getNumResElelements(
+      int64_t start, int64_t limit, int64_t step);
+  public:
+  }];
 }
 
 

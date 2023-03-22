@@ -480,7 +480,7 @@ LogicalResult ConcatOp::verify() {
 
 OpFoldResult GatherOp::fold(FoldAdaptor adaptor) {
   // TODO(#10811): support other types and do this using a MOJO kernel?
-  
+
   // The verifier should ensure that indices is empty, but we don't check it.
   if (auto inputElems = dyn_cast_or_null<ElementsAttr>(adaptor.getInput())) {
     if (inputElems.empty()) {
@@ -683,6 +683,22 @@ LogicalResult BatchMatmulOp::verify() {
 /// Integer division that rounds up.
 static int64_t ceilDiv(int64_t x, int64_t y) { return x / y + (x % y != 0); }
 
+ErrorOr<int64_t> RangeOp::getNumResElelements(int64_t start, int64_t limit,
+                                              int64_t step) {
+  if (step == 0)
+    return Error("step must not be zero");
+
+  bool stepSign = step > 0;
+  int64_t intervalLen = (stepSign ? 1ll : -1ll) * (limit - start);
+  if (intervalLen < 0) {
+    return Error(Twine("limit must be ") + (stepSign ? "greater" : "less") +
+                 " than or equal to start when step is " +
+                 (stepSign ? "positive" : "negative"));
+  }
+
+  return ceilDiv(intervalLen, std::abs(step));
+}
+
 OpFoldResult RangeOp::fold(FoldAdaptor adaptor) {
   // TODO(#10811): support other types and do this using a MOJO kernel?
 
@@ -702,19 +718,18 @@ OpFoldResult RangeOp::fold(FoldAdaptor adaptor) {
   int64_t limit = getBlob(limitAttr).front();
   int64_t step = getBlob(stepAttr).front();
 
-  int64_t direction = (step < 0) ? -1 : 1;
-  int64_t intervalLen = direction * (limit - start);
-  if (0 > intervalLen)
+  auto numResElementsOr = getNumResElelements(start, limit, step);
+  if (numResElementsOr.isError())
     return {};
-
-  int64_t numEl = ceilDiv(intervalLen, std::abs(step));
-  SmallVector<APInt> res((size_t)numEl);
-  for (size_t idx = 0; idx < (size_t)numEl; ++idx) {
+  int64_t numResElements = *numResElementsOr;
+  SmallVector<APInt> res((size_t)numResElements);
+  for (size_t idx = 0; idx < (size_t)numResElements; ++idx) {
     res[idx] = APInt(64, start, /*isSigned=*/true);
     start += step;
   }
 
-  auto resTy = RankedTensorType::get({numEl}, startAttr.getElementType());
+  auto resTy =
+      RankedTensorType::get({numResElements}, startAttr.getElementType());
   return IntArrayElementsAttr::get(resTy, res);
 }
 
