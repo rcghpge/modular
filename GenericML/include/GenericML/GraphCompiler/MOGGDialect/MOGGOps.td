@@ -201,6 +201,34 @@ def MOGG_CallOp : MOGG_Op<"call"> {
  }
 
 
+def MOGG_SimdLoadOp : MOGG_Op<"simd_load"> {
+  let summary = "Represents a simd load";
+  let description = [{
+    Represents the special case of a simd_load. Simd load is a special case because we 
+    can lower it to different functions depending on the tensor details. If the tensor is
+    a scalar then it becomes a splat, broadcasted last dim might need a splat, etc.
+
+    Each load is in a performance critical function so we have to do this ahead of time.
+
+    Example:
+    ```mlir
+    mogg.simd_load(%indices, %tensor) : !mogg.indices, !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$tensor,
+    MOGG_Indices:$indices
+  );
+
+  let results = (outs MOGG_Simd:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+
 def MOGG_LambdaInvokeOp : MOGG_Op<"invoke",
    [MemoryEffectsOpInterface]> {
   let summary = "Represents an inlined call to a lambda";

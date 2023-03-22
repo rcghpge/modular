@@ -57,4 +57,21 @@ def LoadLitLibrary : Pass<"load-lit-library", "ModuleOp"> {
   ];
 }
 
+
+ def LowerSimdLoads : Pass<"lower-simd-loads", "ModuleOp"> {
+   let summary = "Lower simd loads to an optimal implementation";
+   let description = [{
+     SIMD loads can be lowered to one of many implementations depending
+     on kernel level circumstances. This pass looks at the kernel and picks
+     the best load for each simd_load within that kernel.
+   }];
+
+
+   let dependentDialects = [
+     "M::MO::MODialect",
+     "M::MOGG::MOGGDialect"
+   ];
+ }
+
+
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGPASSES_TD

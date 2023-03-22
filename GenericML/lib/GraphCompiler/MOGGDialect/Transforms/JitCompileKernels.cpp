@@ -13,6 +13,7 @@
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Parser/Parser.h"
+#include "mlir/Pass/PassManager.h"
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
@@ -151,6 +152,12 @@ struct JitCompileKernels
       return signalPassFailure();
     }
     MOGG::LitRegisterOp registry = *registryOr;
+
+    // Run the jit required passes.
+    mlir::PassManager pm(m->getContext());
+    pm.addPass(createLowerSimdLoads());
+    if (failed(pm.run(m)))
+      return signalPassFailure();
 
     for (auto graph : m.getOps<MO::GraphOp>()) {
       auto errOr = this->runPass(graph, registry);
