@@ -1284,6 +1284,18 @@ LogicalResult Shape::SliceOp::verify() {
 
 OpFoldResult Shape::ToTensorOp::fold(FoldAdaptor adaptor) {
   if (auto input = dyn_cast_or_null<ShapeAttr>(adaptor.getInput())) {
+    if (getType().hasUnknownShape()) {
+      OpBuilder builder(getOperation());
+      builder.setInsertionPointAfter(getOperation());
+      TensorType newTy = getType().cloneWith(ShapeAttr::get(
+          {(int64_t)input.getRank()}, builder.getType<MO::ShapeType>()));
+      Location loc = getLoc();
+      auto newOp = builder.create<Shape::ToTensorOp>(loc, newTy, getInput());
+      auto rebindOp = builder.create<RebindOp>(loc, getType(), newOp);
+      getResult().replaceAllUsesExcept(rebindOp, rebindOp.getOperation());
+      return rebindOp.getResult();
+    }
+
     if (input.isConstant()) {
       return M::IntArrayElementsAttr::get(
           getContext(), ArrayRef<int64_t>{input.getIntDims()},

@@ -224,3 +224,14 @@ mo.graph @to_tensor_fold<D0, Sh0: !mo.shape>() -> (
   // CHECK-NEXT: mo.output %[[VAL3]], %[[VAL4]], %[[VAL0]] : !mo.tensor<[?], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
   mo.output %0, %1, %2 : !mo.tensor<[?], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
 }
+
+// CHECK: mo.graph @to_tensor_fold_unknown<[[K:.*]]>() -> !mo.tensor<[?], si32> {
+mo.graph @to_tensor_fold_unknown<K>() -> !mo.tensor<[?], si32> {
+  // CHECK: %[[VAL0:.*]] = kgen.param.constant: !mo.shape = <[[[K]]]>
+  %0 = kgen.param.constant: !mo.shape = <[K]>
+  // CHECK: %[[VAL1:.*]] = mo.shape.to_tensor(%[[VAL0]]) -> !mo.tensor<[1], si32>
+  %1 = mo.shape.to_tensor(%0) -> !mo.tensor<[?], si32>
+  // CHECK: %[[VAL2:.*]] = mo.rebind(%[[VAL1]]) : !mo.tensor<[1], si32> -> !mo.tensor<[?], si32>
+  // CHECK: mo.output %[[VAL2]] : !mo.tensor<[?], si32>
+  mo.output %1 : !mo.tensor<[?], si32>
+}
