@@ -18,7 +18,10 @@
 #include "MEFFileImpl.h"
 #include "llvm/Support/TrailingObjects.h"
 #include <cassert>
+
 using namespace M;
+
+#define DEBUG_TYPE "mef"
 
 //===----------------------------------------------------------------------===//
 // RegisterInfo
@@ -615,6 +618,8 @@ void MEFExecutor::decrementOperandsNotReadyCounts(
       frame.setLocationData(decoder.locOffset);
 
       // Run it.
+      LLVM_DEBUG(llvm::dbgs() << "invoking primitive with opcode "
+                              << decoder.opcode << "\n");
       invokableImpl(frame);
     } else {
       // Otherwise, automatically propagate errors to the result values.

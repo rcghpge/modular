@@ -21,6 +21,9 @@
 #include "llvm/ADT/Twine.h"
 
 #include <utility>
+
+#define DEBUG_TYPE "mef"
+
 using namespace M;
 
 //===----------------------------------------------------------------------===//
@@ -332,6 +335,9 @@ ErrorOrSuccess MEFFile::installPrimitives(const PrimitiveRegistry &registry) {
           return Error("unknown primitive '" + primitiveName + "'");
 
         // Otherwise remember it.
+        LLVM_DEBUG(llvm::dbgs()
+                   << "registering primitive '" << primitiveName
+                   << "' with opcode " << mefFile->primitives.size() << "\n");
         mefFile->primitives.push_back(primitiveImpl);
         return success();
       });
