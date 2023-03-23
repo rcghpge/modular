@@ -29,10 +29,14 @@ using namespace MO;
 // Utilities
 //===----------------------------------------------------------------------===//
 
-/// If `val` is defined by a ConstantOp with given rank, return the ConstantOp,
-/// else return null.
+/// If `val` is defined by a ConstantOp or a RebindOp that takes in a
+/// ConstantOp with given rank, return the ConstantOp, else return null.
 static ConstantOp tryGetConstantOpOfRank(TensorValue val, size_t rank) {
-  auto constantOp = val.getDefiningOp<ConstantOp>();
+  Operation *inputOp = val.getDefiningOp();
+  if (auto rebindOp = dyn_cast_or_null<RebindOp>(inputOp))
+    inputOp = rebindOp.getInput().getDefiningOp();
+
+  auto constantOp = dyn_cast_or_null<ConstantOp>(inputOp);
   if (!constantOp)
     return {};
 
@@ -77,8 +81,9 @@ tryGetConstantIntBlob(mlir::ElementsAttr attr, DType dType) {
   return std::nullopt;
 }
 
-/// If `val` is defined by a ConstantOp with given rank, convert it to an
-/// integer vector, else return None.
+/// If `val` is defined by a ConstantOp or a RebindOp that takes in a
+/// ConstantOp with given rank, convert it to an integer vector, else return
+/// None.
 static std::optional<SmallVector<int64_t>>
 tryGetConstantIntOfRank(TensorValue val, size_t rank) {
   if (ConstantOp constantOp = tryGetConstantOpOfRank(val, rank)) {

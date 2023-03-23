@@ -27,12 +27,14 @@ class ModuleOp;
 } // namespace mlir
 
 namespace M::MO {
-/// If `val` comes from a constant integer scalar tensor, convert it to a raw
+/// If `val` comes from a constant integer scalar tensor (defined by a
+/// ConstantOp or RebindOp that takes in a ConstantOp), convert it to a raw
 /// integer, else return None.
 std::optional<int64_t> tryGetConstantInt(TensorValue val);
 
-/// If `val` comes from a constant integer 1D tensor, convert it to an integer
-/// vector, else return None.
+/// If `val` comes from a constant integer 1D tensor (defined by a ConstantOp or
+/// RebindOp that takes in a ConstantOp), convert it to an integer vector, else
+/// return None.
 std::optional<SmallVector<int64_t>> tryGetConstantIntVector(TensorValue val);
 } // namespace M::MO
 
