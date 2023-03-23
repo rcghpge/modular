@@ -51,7 +51,7 @@ void M::MO::registerShapeInferencePipeline() {
 
 void M::MO::registerPasses() {
   MO::registerShapeInferencePipeline();
-  MO::registerMOToMOGG();
+  MO::registerMOToMOGGPasses();
   MO::registerMOTransformsPasses();
   MGP::registerMOToPrimitives();
   Cache::registerDeflateConstants();

@@ -56,6 +56,34 @@ def MOGG_ExtOp : MOGG_LowerableOp<"ext.op", [Pure]> {
 
 
 //===----------------------------------------------------------------------===//
+// Internal helper ops
+//===----------------------------------------------------------------------===//
+
+def MOGG_BroadcastToTensorOp : MOGG_Op<"broadcast_to_tensor", []> {
+  let summary = "BroadcastToTensor Operation";
+  let description = [{
+    Broadcast the input tensor to the shape of the other tensor.
+
+    Example:
+
+    ```mlir
+    %from: !mo.tensor<[100, 1, 100], f32>
+    %to: !mo.tensor<[10,20,100,50,100], f32>
+    %res = mo.broadcast_to_tensor(%from, %to) : (
+      !mo.tensor<[100, 1, 100], f32>, !mo.tensor<[10,20,100,50,100], f32>)
+        -> !mo.tensor<[10,20,100,50,100], f32>
+    ```
+  }];
+
+  let arguments = (ins MO_Tensor:$from, MO_Tensor:$to);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // OutputOp
 //===----------------------------------------------------------------------===//
 
