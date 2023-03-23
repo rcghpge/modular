@@ -23,9 +23,6 @@
 // CHECK: kgen.func @batch_matmul_side
 // CHECK: kgen.return
 // CHECK: }
-// CHECK: kgen.func @broadcast_2_fw
-// CHECK: kgen.return
-// CHECK: }
 // CHECK: kgen.func @transpose_perms_1_0_fw
 // CHECK: kgen.return
 // CHECK: }

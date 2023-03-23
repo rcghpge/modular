@@ -109,10 +109,11 @@ void M::MO::buildMoToMGPPipeline(mlir::PassManager &pm,
 
 void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm) {
   pm.addPass(MO::createResolveUnknownParameters());
-  pm.addPass(MO::createStaticizeShapes());
   pm.addPass(MO::createShapeInferenceMaterialization());
-  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(MO::createStaticizeShapes());
   pm.addPass(MO::createInlineShapeFunctions());
+  pm.addPass(mlir::createCSEPass());
+  pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(MO::createPropagateShapes());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
