@@ -31,8 +31,10 @@ namespace {
 // A struct containing the specification we should search for to find a kernel
 // for a given mo type.
 struct KernelRecord {
-  KernelRecord(StringLiteral moggID, StringLiteral shimName, bool hasLit)
-      : moggID(moggID), shim(shimName), shouldHaveLit(hasLit) {}
+  KernelRecord(StringLiteral moggID, StringLiteral shimName, bool hasLit,
+               bool hasShim = true, bool isView = false)
+      : moggID(moggID), shim(shimName), shouldHaveLit(hasLit),
+        shouldHaveShim(hasShim), isView(isView) {}
 
   ~KernelRecord() = default;
 
@@ -45,6 +47,12 @@ struct KernelRecord {
 
   // Should we have a lit kernel for this?
   bool shouldHaveLit;
+
+  // Operations only expected to be lowered by jit do not need a shim.
+  bool shouldHaveShim;
+
+  // Does this operation represent a view which then has special lowering code.
+  bool isView;
 };
 
 // Helper to add a map to a jit kernel AND a shim kernel for a given mo op.
@@ -53,6 +61,14 @@ struct KernelRecord {
   {                                                                            \
     TypeID::get<MOOp>(), KernelRecord {                                        \
       MOOp::getOperationName(), ShimName, true                                 \
+    }                                                                          \
+  }
+
+// Adds a kernel which is only backed by a jit compiled kernel but not a shim.
+#define MO_TO_MOJO_ONLY(MOOp, isView)                                          \
+  {                                                                            \
+    TypeID::get<MOOp>(), KernelRecord {                                        \
+      MOOp::getOperationName(), "", true, false, isView                        \
     }                                                                          \
   }
 
@@ -122,9 +138,13 @@ struct MOOpPattern : public RewritePattern {
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
+
+    bool lowerableMogg = isa<MOGG::BroadcastToTensorOp>(op);
+
     // skip non-mo ops and container/constant/output mo ops
-    if (!isa<MO::MODialect>(op->getDialect()) || isa<MO::GraphOp>(op) ||
-        isa<MO::ConstantOp>(op) || isa<MO::OutputOp>(op))
+    if (!lowerableMogg &&
+        (!isa<MO::MODialect>(op->getDialect()) || isa<MO::GraphOp>(op) ||
+         isa<MO::ConstantOp>(op) || isa<MO::OutputOp>(op)))
       return failure();
 
     auto results = selectMOGGOp(op);
@@ -164,10 +184,15 @@ struct MOOpPattern : public RewritePattern {
       shouldUseJit = false;
 
     // If we should be using JIT generate a jit target. Otherwise use the shim.
-    if (shouldUseJit)
-      return helper.lowerToKernel(kernel.moggID);
-    else
+    if (shouldUseJit) {
+      return helper.lowerToKernel(kernel.moggID, kernel.isView);
+    } else {
+      if (!kernel.shouldHaveShim)
+        return Error("[MOTOMOGG] Kernel does not have a shim but did not "
+                     "select a jit kernel.");
+
       return helper.lowerToShim(kernel.shim);
+    }
   }
 
   MoToKernelMapTy &moToLitKernels;
@@ -194,6 +219,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_LIT(MO::AddOp, "mop.kernels.add"),
       MO_SHIM_ONLY(MO::BroadcastShapeOp, "mop.kernels.broadcast_shape"),
       MO_SHIM_ONLY(MO::BroadcastToOp, "mop.kernels.broadcast_to"),
+      MO_TO_MOJO_ONLY(MOGG::BroadcastToTensorOp, true),
       MO_SHIM_ONLY(MO::CastOp, "mop.kernels.cast"),
       MO_SHIM_ONLY(MO::ConcatOp, "mop.kernels.concat"),
       MO_SHIM_ONLY(MO::Static::BroadcastToOp,
@@ -245,3 +271,4 @@ void MOToMOGGPass::runOnOperation() {
 
 #undef MO_TO_LIT
 #undef MO_SHIM_ONLY
+#undef MO_TO_MOJO_ONLY

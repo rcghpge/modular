@@ -180,7 +180,9 @@ def MOGG_LitRegisterOp : MOGG_Op<"lit_register", [HasParent<"ModuleOp">]> {
     StrAttr:$shapeFunc,
     OptionalAttr<ArrayAttr>:$inputFusionInterface,
     OptionalAttr<ArrayAttr>:$outputFusionInterface,
-    OptionalAttr<StrAttr>:$fusionBodyLambda
+    OptionalAttr<StrAttr>:$fusionBodyLambda,
+    OptionalAttr<BoolAttr>:$isViewOp,
+    OptionalAttr<ArrayAttr>:$bcastInputIndices
   );
   let results = (outs Variadic<MO_Tensor>:$results);
   let regions = (region SizedRegion<1>:$body);
