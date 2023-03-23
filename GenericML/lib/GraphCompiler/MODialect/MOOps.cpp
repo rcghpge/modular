@@ -784,16 +784,111 @@ static void printParamDecls(OpAsmPrinter &p, Operation *,
   }
 }
 
+static LogicalResult materializeShapeInference(RebindOp op,
+                                               PatternRewriter &rewriter) {
+  ArrayRef<KGEN::ParamDeclAttr> paramDecls = op.getOutputParamDecls();
+  if (paramDecls.empty())
+    return failure();
+
+  // TODO lift into a method on MO::TensorType?
+  auto doesShapeAttrContainUnknown = [](TypedAttr shapeAttr) {
+    if (auto dimAttrs = dyn_cast<ShapeAttr>(shapeAttr))
+      return dimAttrs.hasUnknownDims();
+    return isa<KGEN::UnknownAttr>(shapeAttr);
+  };
+
+  Location loc = op.getLoc();
+  TypedAttr inputShapeAttr = op.getInput().getType().getShapeAttr();
+  if (paramDecls.size() == 1) {
+    KGEN::ParamDeclAttr newDecl = paramDecls.front();
+    if (isa<MO::ShapeType>(newDecl.getType()) &&
+        !doesShapeAttrContainUnknown(inputShapeAttr)) {
+      // If there is a single declaration in rebind that is a shape parameter,
+      // we materialize into a kgen.param.declare.
+      rewriter.create<KGEN::ParamDeclareOp>(loc, newDecl, inputShapeAttr);
+      op.setOutputParamDecls({});
+      return success();
+    }
+  }
+
+  TypedAttr outputShapeAttr = op.getResult().getType().getShapeAttr();
+  auto outputDimAttrs = dyn_cast<ShapeAttr>(outputShapeAttr);
+  bool allDeclsAreDimAttrs = llvm::all_of(
+      paramDecls, [](auto decl) { return isa<IndexType>(decl.getType()); });
+  if (allDeclsAreDimAttrs && outputDimAttrs) {
+    llvm::SmallDenseMap<StringAttr, KGEN::ParamDeclAttr> nameToParamDecl;
+    for (KGEN::ParamDeclAttr paramDecl : paramDecls)
+      nameToParamDecl.try_emplace(paramDecl.getName(), paramDecl);
+    if (auto inputShapeParamRef =
+            dyn_cast<KGEN::ParamDeclRefAttr>(inputShapeAttr)) {
+      // Example:
+      //   rebind<() -> D1> : Sh0 -> [D0, D1, 44]
+      // --->
+      //   kgen.param.declare D1 = <apply("mo.shape.get_dim", Sh0, 1)>
+      //   rebind : Sh0 -> [D0, D1, 44]
+      for (auto [axis, outputDimAttr] :
+           llvm::enumerate(outputDimAttrs.getValues())) {
+        KGEN::ParamDeclAttr paramDecl;
+        auto outputDimParamRef =
+            dyn_cast<KGEN::ParamDeclRefAttr>(outputDimAttr);
+        if (outputDimParamRef &&
+            (paramDecl = nameToParamDecl.lookup(outputDimParamRef.getName()))) {
+          TypedAttr mlirOpCallAttr =
+              Shape::GetDimOp::emitStaticCall(inputShapeParamRef, axis);
+          rewriter.create<KGEN::ParamDeclareOp>(loc, paramDecl, mlirOpCallAttr);
+        }
+      }
+      op.setOutputParamDecls({});
+      return success();
+    }
+
+    if (auto inputDimAttrs = dyn_cast<ShapeAttr>(inputShapeAttr)) {
+      // Example:
+      //   rebind<() -> D4> : [D0, D1, D2] -> [D3, D4, 42]
+      // --->
+      //   kgen.param.declare D4 = <D1>
+      //   rebind : [D0, D1, D2] -> [D0, D4, 42]
+      llvm::DenseSet<KGEN::ParamDeclAttr> unknownParamDecls;
+      for (auto [inputDimAttr, outputDimAttr] :
+           llvm::zip(inputDimAttrs.getValues(), outputDimAttrs.getValues())) {
+        if (auto outputDimParamRef =
+                dyn_cast<KGEN::ParamDeclRefAttr>(outputDimAttr)) {
+          if (KGEN::ParamDeclAttr paramDecl =
+                  nameToParamDecl.lookup(outputDimParamRef.getName())) {
+            if (isa<KGEN::UnknownAttr>(inputDimAttr))
+              unknownParamDecls.insert(paramDecl);
+            else
+              rewriter.create<KGEN::ParamDeclareOp>(loc, paramDecl,
+                                                    inputDimAttr);
+          }
+        }
+      }
+      if (unknownParamDecls.size() == paramDecls.size())
+        return failure();
+      op.setOutputParamDecls(SmallVector<KGEN::ParamDeclAttr>(
+          unknownParamDecls.begin(), unknownParamDecls.end()));
+      return success();
+    }
+  }
+
+  // TODO: support materialization for other rebinds
+  return failure();
+}
+
 LogicalResult RebindOp::canonicalize(RebindOp op, PatternRewriter &rewriter) {
   // We fold if the result and operand types are the same.
   if (op.getInput().getType() == op.getType()) {
+    assert(op.getOutputParamDecls().empty());
     rewriter.replaceOp(op, op.getInput());
     return success();
   }
 
+  // We materialize the parameter declarations explictly.
+  LogicalResult paramsResolved = materializeShapeInference(op, rewriter);
+
   // Likely already processed, or doesn't help shape inference.
   if (isa_and_nonnull<RebindOp>(op.getInput().getDefiningOp()))
-    return failure();
+    return success(succeeded(paramsResolved));
   //  %0 = mo.rebind<...>(%arg) // dominator
   //  %1 = mo.rebind<...>(%arg)
   //  %2 = mo.rebind<...>(%arg)
@@ -824,7 +919,7 @@ LogicalResult RebindOp::canonicalize(RebindOp op, PatternRewriter &rewriter) {
     return success();
   }
 
-  return failure();
+  return success(succeeded(paramsResolved));
 }
 
 LogicalResult RebindOp::verify() {

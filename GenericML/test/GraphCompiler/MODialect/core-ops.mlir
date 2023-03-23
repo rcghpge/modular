@@ -30,7 +30,7 @@ kgen.func @guard(%sh0: !mo.shape, %sh1: !mo.shape, %cond: i1) -> !mo.chain {
 }
 
 //===----------------------------------------------------------------------===//
-// GraphOP, RebindOp and TensorType tests
+// GraphOP and TensorType tests
 //===----------------------------------------------------------------------===//
 
 // CHECK: mo.graph @empty_parametric_graph(%[[ARG:.*]]: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
@@ -109,65 +109,6 @@ mo.graph @tensor_type_metadata(%arg0: !mo.tensor<[2, 3], f32, f16>) -> !mo.tenso
 // CHECK: mo.graph @tensor_dict_metadata(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32, {foo = "bar"}>) -> !mo.tensor<[2, 3], f32, {foo = "bar"}> {
 mo.graph @tensor_dict_metadata(%arg0: !mo.tensor<[2, 3], f32, {foo = "bar"}>) -> !mo.tensor<[2, 3], f32, {foo = "bar"}> {
   mo.output %arg0 : !mo.tensor<[2, 3], f32, {foo = "bar"}>
-}
-
-// CHECK: mo.graph @rebind_w_params(%[[ARG0:.*]]: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[], si8> {
-mo.graph @rebind_w_params(%arg0: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[], si8> {
-  // CHECK: %[[VAL0:.*]] = mo.rebind<() -> [[N:.*]], [[M:.*]]>(%[[ARG0]]) :
-  // CHECK-SAME: !mo.tensor<[?, ?], f32> -> !mo.tensor<[[[N]], [[M]]], f32>
-  %0 = mo.rebind<() -> N, M>(%arg0) : !mo.tensor<[?, ?], f32> -> !mo.tensor<[N, M], f32>
-  // CHECK: kgen.param.declare [[SH:.*]]: !mo.shape = <[[[N]], ?, 3]>
-  kgen.param.declare Sh: !mo.shape = <[N, ?, 3]>
-  // CHECK: %[[VAL1:.*]] = mo.rebind(%[[VAL0]]) : !mo.tensor<[[[N]], [[M]]], f32> -> !mo.tensor<[[SH]], f16>
-  %1 = mo.rebind(%0) : !mo.tensor<[N, M], f32> -> !mo.tensor<Sh, f16>
-  // CHECK: %[[VAL2:.*]] = mo.rebind(%[[VAL1]]) : !mo.tensor<[[SH]], f16> -> !mo.tensor<[], si8>
-  %2 = mo.rebind(%1) : !mo.tensor<Sh, f16> -> !mo.tensor<[], si8>
-
-  // CHECK-NEXT: mo.output %[[VAL2]] : !mo.tensor<[], si8>
-  %3 = mo.rebind(%2) : !mo.tensor<[], si8> -> !mo.tensor<[], si8>
-  mo.output %3 : !mo.tensor<[], si8>
-}
-
-// CHECK: mo.graph @rebind_no_fold(%[[ARG0:.*]]: !mo.tensor<[?], f32>, %[[ARG1:.*]]: !mo.tensor<[?, ?], f32>) {
-  mo.graph @rebind_no_fold(%arg0: !mo.tensor<[?], f32>, %arg1: !mo.tensor<[?, ?], f32>) {
-  // CHECK-DAG: mo.rebind<() -> [[SH:.*]]: !mo.shape>(%[[ARG0]]) : !mo.tensor<[?], f32> -> !mo.tensor<[[SH]], f32>
-  %0 = mo.rebind<() -> Sh: !mo.shape>(%arg0) : !mo.tensor<[?], f32> -> !mo.tensor<Sh, f32>
-  // CHECK-DAG: mo.rebind<() -> [[N:.*]], [[M:.*]]>(%[[ARG1]]) : !mo.tensor<[?, ?], f32> -> !mo.tensor<[[[N]], [[M]]], f32>
-  %1 = mo.rebind<() -> N, M>(%arg1) : !mo.tensor<[?, ?], f32> -> !mo.tensor<[N, M], f32>
-  // CHECK-NEXT: mo.output
-  mo.output
-}
-
-// CHECK: mo.graph @rebinds_with_same_input(%[[ARG0:.*]]: !mo.tensor<[?, ?], f32>, %[[COND:.*]]: !mo.tensor<[], bool>) {
-mo.graph @rebinds_with_same_input(%arg0: !mo.tensor<[?, ?], f32>, %cond : !mo.tensor<[], bool>) {
-  // CHECK-NEXT: %[[VAL0:.*]] = mo.rebind<() -> [[SH0:.*]]: !mo.shape>(%[[ARG0]]) :
-  // CHECK-SAME: !mo.tensor<[?, ?], f32> -> !mo.tensor<[[SH0]], f32>
-  %0 = mo.rebind<() -> Sh0: !mo.shape>(%arg0) : !mo.tensor<[?, ?], f32> -> !mo.tensor<Sh0, f32>
-  // CHECK-NEXT: %[[VAL1:.*]] = mo.rebind<() -> [[N:.*]], [[M:.*]]>(%[[VAL0]])
-  // CHECK-SAME: !mo.tensor<[[SH0]], f32> -> !mo.tensor<[[[N]], [[M]]], f32>
-  %1 = mo.rebind<() -> N, M>(%arg0) : !mo.tensor<[?, ?], f32> -> !mo.tensor<[N, M], f32>
-  // CHECK-NEXT: %[[VAL2:.*]] = mo.rebind<() -> [[SH1:.*]]: !mo.shape>(%[[VAL0]])
-  // CHECK-SAME: !mo.tensor<[[SH0]], f32> -> !mo.tensor<[[SH1]], f32>
-  %2 = mo.rebind<() -> Sh1: !mo.shape>(%arg0) : !mo.tensor<[?, ?], f32> -> !mo.tensor<Sh1, f32>
-
-  // CHECK-NEXT: %[[VAL5:.*]] = mo.if(%[[COND]] : !mo.tensor<[], bool>) -> !mo.tensor<[?, ?], f32> {
-  %5 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[?, ?], f32> {
-    // CHECK-NEXT: %[[VAL3:.*]] = mo.rebind<() -> [[SH2:.*]]: !mo.shape>(%[[ARG0]]) :
-    // CHECK-SAME: !mo.tensor<[?, ?], f32> -> !mo.tensor<[[SH2]], f32>
-    %3 = mo.rebind<() -> Sh2: !mo.shape>(%arg0) : !mo.tensor<[?, ?], f32> -> !mo.tensor<Sh2, f32>
-    // CHECK: mo.yield %[[ARG0]] : !mo.tensor<[?, ?], f32>
-    mo.yield %arg0 : !mo.tensor<[?, ?], f32>
-  // CHECK-NEXT: } else {
-  } else {
-    // CHECK-NEXT: %[[VAL4:.*]] = mo.rebind<() -> [[SH3:.*]]: !mo.shape>(%[[ARG0]]) :
-    // CHECK-SAME: !mo.tensor<[?, ?], f32> -> !mo.tensor<[[SH3]], f32>
-    %4 = mo.rebind<() -> Sh3: !mo.shape>(%arg0) : !mo.tensor<[?, ?], f32> -> !mo.tensor<Sh3, f32>
-    // CHECK: mo.yield %[[ARG0]] : !mo.tensor<[?, ?], f32>
-    mo.yield %arg0 : !mo.tensor<[?, ?], f32>
-  // CHECK-NEXT: }
-  }
-  // CHECK-NEXT: mo.output
-  mo.output
 }
 
 //===----------------------------------------------------------------------===//

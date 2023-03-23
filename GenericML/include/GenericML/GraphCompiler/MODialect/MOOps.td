@@ -274,8 +274,7 @@ def MO_YieldOp
 //===----------------------------------------------------------------------===//
 
 def MO_RebindOp : MO_TensorOp<"rebind", [
-    DeclareOpInterfaceMethods<MO_ParamDeclaration>,
-    DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>]> {
+    DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
   let summary = "tensor parameter rebind op";
   let description = [{
     Op to represent "rebinding" a value of `!mo.tensor<...>` type to another

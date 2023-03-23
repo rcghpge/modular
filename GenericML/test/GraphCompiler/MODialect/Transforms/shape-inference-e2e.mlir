@@ -164,7 +164,7 @@ mo.graph @unresolved_rebinds(
   // CHECK-NOT: kgen.param.declare {{.*}}: !mo.shape = <apply(:(!mo.shape, !mo.shape) -> !mo.shape @batch_matmul_fw,
 
   // CHECK-DAG: kgen.param.declare [[R1:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_rank", [[SH0]])>
-  // CHECK-DAG: kgen.param.declare [[R2:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_rank", [[SH1]])>
+  // CHECK-DAG: kgen.param.declare [[R2:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_rank", [[SH0]])>
   // CHECK-DAG: kgen.param.declare [[COND1:.*]]: i1 =
   // CHECK-SAME: <eq(
   // CHECK-DAG: [[R1]]
@@ -175,7 +175,7 @@ mo.graph @unresolved_rebinds(
   // CHECK-DAG: kgen.param.declare [[COND2:.*]]: i1 = <ge([[R2]], 3)>
   // CHECK-DAG: kgen.param.declare [[CH1:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "input ranks are not greater than 2"}, [[COND2]])>
   // CHECK-DAG: kgen.param.declare [[K:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -1 : index}, [[SH0]])>
-  // CHECK-DAG: kgen.param.declare [[KK:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -2 : index}, [[SH1]])>
+  // CHECK-DAG: kgen.param.declare [[KK:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -2 : index}, [[SH0]])>
   // CHECK-DAG: kgen.param.declare [[COND3:.*]]: i1 =
   // CHECK-SAME: <eq(
   // CHECK-DAG: [[K]]
@@ -184,10 +184,10 @@ mo.graph @unresolved_rebinds(
   // CHECK-SAME:)>
   // CHECK-DAG: kgen.param.declare [[CH2:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "inner dimensions do not match"}, [[COND3]])>
   // CHECK-DAG: kgen.param.declare [[LBATCH:.*]]: !mo.shape = <apply(:(!mo.shape) -> !mo.shape "mo.shape.slice"{end = -2 : index, start = 0 : index}, [[SH0]])>
-  // CHECK-DAG: kgen.param.declare [[RBATCH:.*]]: !mo.shape = <apply(:(!mo.shape) -> !mo.shape "mo.shape.slice"{end = -2 : index, start = 0 : index}, [[SH1]])>
+  // CHECK-DAG: kgen.param.declare [[RBATCH:.*]]: !mo.shape = <apply(:(!mo.shape) -> !mo.shape "mo.shape.slice"{end = -2 : index, start = 0 : index}, [[SH0]])>
   // CHECK-DAG: kgen.param.declare [[COND4:.*]]: i1 = <apply(:(!mo.shape, !mo.shape) -> i1 "mo.shape.eq", [[LBATCH]], [[RBATCH]])>
   // CHECK-DAG: kgen.param.declare [[CH3:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "batch sizes of left and right inputs are not equal"}, [[COND4]])>
-  // CHECK-DAG: kgen.param.declare [[NN:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -1 : index}, [[SH1]])>
+  // CHECK-DAG: kgen.param.declare [[NN:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -1 : index}, [[SH0]])>
   // CHECK-DAG: kgen.param.declare [[SH8:.*]]: !mo.shape = <apply(:(!mo.shape, !mo.shape) -> !mo.shape "mo.shape.concat", [[LBATCH]], [[[K]], [[NN]]])>
   // CHECK: %[[ARG1REB2:.*]] = mo.rebind(%[[ARG1REB1]]) : !mo.tensor<[[SH0]], f32> -> !mo.tensor<[[SH8]], f32>
 
