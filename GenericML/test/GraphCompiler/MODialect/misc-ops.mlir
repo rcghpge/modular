@@ -280,6 +280,30 @@ mo.graph @reshape_no_fold_multi_dims() -> !mo.tensor<[2, 2], si32> {
   mo.output %res : !mo.tensor<[2, 2], si32>
 }
 
+// CHECK: mo.graph @reshape_no_fold_output_neg_one_dim() -> !mo.tensor<[2, -1], si32>
+mo.graph @reshape_no_fold_output_neg_one_dim() -> !mo.tensor<[2, -1], si32> {
+  // CHECK: %[[INPUT:.*]] = mo.constant {value = #M.dense_array<1, 2, 3, 4> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+  // CHECK: %[[SHAPE:.*]] = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[-1], si64>
+  %input = mo.constant {value = #M.dense_array<1, 2, 3, 4> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+  %shape = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[-1], si64>
+  // CHECK: %[[RES:.*]] = mo.reshape(%[[INPUT]], %[[SHAPE]]) : (!mo.tensor<[4], si32>, !mo.tensor<[-1], si64>) -> !mo.tensor<[2, -1], si32>
+  %res = mo.reshape(%input, %shape) : (!mo.tensor<[4], si32>, !mo.tensor<[-1], si64>) -> !mo.tensor<[2, -1], si32>
+  // CHECK: mo.output %[[RES]] : !mo.tensor<[2, -1], si32>
+  mo.output %res : !mo.tensor<[2, -1], si32>
+}
+
+// CHECK: mo.graph @reshape_no_fold_target_shape_neg_one_dim() -> !mo.tensor<[2, -1], si32>
+mo.graph @reshape_no_fold_target_shape_neg_one_dim() -> !mo.tensor<[2, -1], si32> {
+  // CHECK: %[[INPUT:.*]] = mo.constant {value = #M.dense_array<1, 2, 3, 4> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+  // CHECK: %[[SHAPE:.*]] = mo.constant {value = #M.dense_array<2, -1> : tensor<2xsi64>} : !mo.tensor<[-1], si64>
+  %input = mo.constant {value = #M.dense_array<1, 2, 3, 4> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+  %shape = mo.constant {value = #M.dense_array<2, -1> : tensor<2xsi64>} : !mo.tensor<[-1], si64>
+  // CHECK: %[[RES:.*]] = mo.reshape(%[[INPUT]], %[[SHAPE]]) : (!mo.tensor<[4], si32>, !mo.tensor<[-1], si64>) -> !mo.tensor<[2, -1], si32>
+  %res = mo.reshape(%input, %shape) : (!mo.tensor<[4], si32>, !mo.tensor<[-1], si64>) -> !mo.tensor<[2, -1], si32>
+  // CHECK: mo.output %[[RES]] : !mo.tensor<[2, -1], si32>
+  mo.output %res : !mo.tensor<[2, -1], si32>
+}
+
 //===----------------------------------------------------------------------===//
 // ShapeOfOp
 //===----------------------------------------------------------------------===//
@@ -338,8 +362,9 @@ mo.graph @static_broadcast_to_no_fold<D0, D1>(
 
 // CHECK: mo.graph @static_reshape<[[N:.*]]>(%[[FROM:.*]]: !mo.tensor<[[[N]], 3], f32>)
 mo.graph @static_reshape<N>(%from: !mo.tensor<[N, 3], f32>) -> !mo.tensor<[1, 3, N], f32> {
-  // CHECK: [[RES:.*]] = mo.static.reshape(%[[FROM]]) : !mo.tensor<[[[N]], 3], f32> -> !mo.tensor<[1, 3, [[N]]], f32>
+  // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[FROM]]) : !mo.tensor<[[[N]], 3], f32> -> !mo.tensor<[1, 3, [[N]]], f32>
   %res = mo.static.reshape(%from) : !mo.tensor<[N, 3], f32> -> !mo.tensor<[1, 3, N], f32>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[1, 3, [[N]]], f32>
   mo.output %res : !mo.tensor<[1, 3, N], f32>
 }
 
@@ -350,13 +375,23 @@ mo.graph @static_reshape_fold_same<N>(%from: !mo.tensor<[N, 3], f32>) -> !mo.ten
   mo.output %res : !mo.tensor<[N, 3], f32>
 }
 
-// CHECK: mo.graph @static_reshape_fold
-mo.graph @static_reshape_fold() -> !mo.tensor<[2, 2], si32> {
+// CHECK: mo.graph @static_reshape_fold_static_out_shape_attr() -> !mo.tensor<[2, 2], si32> {
+mo.graph @static_reshape_fold_static_out_shape_attr() -> !mo.tensor<[2, 2], si32> {
   // CHECK-NEXT: %[[INPUT:.*]] = mo.constant {value = #M.dense_array<1, 2, 3, 4> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
   %from = mo.constant {value = #M.dense_array<1, 2, 3, 4> : tensor<4xsi32>} : !mo.tensor<[4], si32>
   %res = mo.static.reshape(%from) : !mo.tensor<[4], si32> -> !mo.tensor<[2, 2], si32>
   // CHECK-NEXT: mo.output %[[INPUT]] : !mo.tensor<[2, 2], si32>
   mo.output %res : !mo.tensor<[2, 2], si32>
+}
+
+// CHECK: mo.graph @static_reshape_no_fold_neg_one_dim() -> !mo.tensor<[-1], si32> {
+mo.graph @static_reshape_no_fold_neg_one_dim() -> !mo.tensor<[-1], si32> {
+  // CHECK-NEXT: %[[INPUT:.*]] = mo.constant {value = #M.dense_array<1, 2, 3, 4> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
+  %from = mo.constant {value = #M.dense_array<1, 2, 3, 4> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
+  // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[INPUT]]) : !mo.tensor<[2, 2], si32> -> !mo.tensor<[-1], si32>
+  %res = mo.static.reshape(%from) : !mo.tensor<[2, 2], si32> -> !mo.tensor<[-1], si32>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[-1], si32>
+  mo.output %res : !mo.tensor<[-1], si32>
 }
 
 //===----------------------------------------------------------------------===//

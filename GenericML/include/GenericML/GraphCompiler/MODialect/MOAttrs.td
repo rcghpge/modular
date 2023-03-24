@@ -44,11 +44,16 @@ def MO_ShapeAttr : KGEN_ExprAttr<"Shape", "shape"> {
     The `#mo.shape` attribute contains a variable number of `TypedAttr`s, each
     of which have index type. The type of this attribute is always `!mo.shape`.
 
+    Note that -1 can be used as a special dimension value that denotes a
+    dimension to be inferred from other dimensions and total number of elements
+    in the tensor. At most 1 dimension can be -1.
+
     Example:
 
     ```mlir
     kgen.param.declare N = <3>
     #mo<shape[1, ?, N]> : !mo.shape
+    #mo<shape[3, -1, 42]> : !mo.shape
     ```
   }];
   let dialect = MODialect;

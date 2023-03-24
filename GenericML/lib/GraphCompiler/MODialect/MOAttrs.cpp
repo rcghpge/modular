@@ -97,6 +97,7 @@ bool MO::ShapeAttr::hasUnknownDims() const {
 LogicalResult
 MO::ShapeAttr::verify(function_ref<InFlightDiagnostic()> emitError,
                       ArrayRef<TypedAttr> values, MO::ShapeType type) {
+  bool hasEncounteredNegOne = false;
   for (auto [idx, value] : llvm::enumerate(values)) {
     if (!value.getType().isIndex()) {
       return emitError() << "expected all list elements to have type "
@@ -105,9 +106,14 @@ MO::ShapeAttr::verify(function_ref<InFlightDiagnostic()> emitError,
     }
     if (auto intAttr = llvm::dyn_cast<IntegerAttr>(value)) {
       auto intVal = intAttr.getInt();
-      if (intVal < 0 && !mlir::ShapedType::isDynamic(intVal))
+      if (intVal == -1) {
+        if (hasEncounteredNegOne)
+          return emitError() << "at most one -1 dimension is allowed";
+        hasEncounteredNegOne = true;
+      } else if (intVal < 0 && !mlir::ShapedType::isDynamic(intVal)) {
         return emitError() << "invalid shape dimension: " << intVal
                            << " at position " << idx;
+      }
     }
   }
   return success();

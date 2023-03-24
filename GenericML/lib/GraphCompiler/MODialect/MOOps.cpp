@@ -21,6 +21,7 @@
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
+#include <llvm/ADT/STLExtras.h>
 
 using namespace M;
 using namespace MO;
@@ -971,6 +972,8 @@ LogicalResult RebindOp::verify() {
 /// Helper to fold reshape ops.
 static ArrayElementsAttr foldReshape(ArrayRef<int64_t> outIntDims,
                                      ArrayElementsAttr inputArr) {
+  if (llvm::is_contained(outIntDims, -1))
+    return {};
   auto outTy = RankedTensorType::get(outIntDims, inputArr.getElementType());
   return ArrayElementsAttr::get(inputArr.getRawData(), outTy);
 }
@@ -984,14 +987,17 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
 
   // Compute number of elements specified by target shape
   int64_t shapeNumElems = 1;
-  for (llvm::APInt dim : shapeArr.getValues())
+  for (llvm::APInt dim : shapeArr.getValues()) {
+    if (dim == -1)
+      return {};
     shapeNumElems *= dim.getSExtValue();
+  }
 
   // Compute number of elements specified by output type
   int64_t outputNumElems = 1;
   SmallVector<int64_t> outIntDims = outputShapeAttr.getIntDims();
   for (int64_t intDim : outIntDims) {
-    if (mlir::ShapedType::isDynamic(intDim))
+    if (mlir::ShapedType::isDynamic(intDim) || intDim == -1)
       return {};
     outputNumElems *= intDim;
   }
