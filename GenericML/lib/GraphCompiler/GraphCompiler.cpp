@@ -69,6 +69,14 @@ void M::MO::buildMoToMGPPipeline(mlir::PassManager &pm,
 
   MO::MOToMOGGOptions moToMoggOpts;
   moToMoggOpts.useJit = opts.useJit;
+
+  // If jiting simplify broadcast patterns to a single op that we can jit.
+  if (opts.useJit) {
+    pm.addPass(MO::createConvertBroadcastToShape());
+    pm.addPass(mlir::createCanonicalizerPass());
+    pm.addPass(mlir::createCSEPass());
+  }
+
   pm.addPass(MO::createMOToMOGG(moToMoggOpts));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
@@ -77,6 +85,11 @@ void M::MO::buildMoToMGPPipeline(mlir::PassManager &pm,
     // Fuse connected elementwise kernels.
     if (opts.fuseJitKernels) {
       pm.addPass(MOGG::createFuseElementwise());
+      pm.addPass(mlir::createCanonicalizerPass());
+      pm.addPass(mlir::createCSEPass());
+
+      // Fuse broadcasts.
+      pm.addPass(MOGG::createFuseBroadcasts());
       pm.addPass(mlir::createCanonicalizerPass());
       pm.addPass(mlir::createCSEPass());
     }
