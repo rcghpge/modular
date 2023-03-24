@@ -146,8 +146,8 @@ struct FuseElementwisePass
     // just will just no longer be used in that kernel.
     for (MOGG::KernelOp kernel : graph.getOps<MOGG::KernelOp>()) {
       // Skip non elementwise kernels.
-      if (!kernel.getFusionBodyLambda())
-        return;
+      if (!kernel.getFusionBodyLambda() || kernel.getIsViewOp().value_or(false))
+        continue;
 
       // The graph of reachable elementwise ops from this kernel
       ElementwiseGraph reachableOps;
@@ -191,6 +191,11 @@ struct FuseElementwisePass
       // If the input operation is a kernel and is implemented by a lambda then
       // we can fuse it.
       if (auto otherKernel = dyn_cast<KernelOp>(edge)) {
+        // If the other kernel has been marked a view operation we don't fuse it
+        // here.
+        if (otherKernel.getIsViewOp().value_or(false))
+          return -1;
+
         if (otherKernel.getFusionBodyLambda())
           return index;
       }

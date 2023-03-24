@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
@@ -56,9 +56,10 @@ public:
   SmallVector<LoweredTensor> lowerInputs();
 
   // Lower the output buffer which will get passed into the input.
-  ErrorOr<SmallVector<LoweredTensor>>
-  lowerOutputBuffer(llvm::StringRef opName, Value inChain,
-                    const SmallVector<LoweredTensor> &inputTensors);
+  ErrorOr<SmallVector<LoweredTensor>> lowerOutputBuffer(
+      llvm::StringRef opName, Value inChain,
+      const SmallVector<LoweredTensor> &inputTensors,
+      std::optional<SmallVector<int32_t, 2>> bcastIndices = std::nullopt);
 
   // Convert the tensors to a list of buffer/spec value pairs.
   SmallVector<Value> getOperands(SmallVector<LoweredTensor> &in,
@@ -77,7 +78,8 @@ private:
   ErrorOr<LoweredTensor>
   lowerDynamicOutput(MGP::CpuTensorSpecType outSpecType, llvm::StringRef opName,
                      Value inChain,
-                     const SmallVector<LoweredTensor> &inputTensors);
+                     const SmallVector<LoweredTensor> &inputTensors,
+                     std::optional<SmallVector<int32_t, 2>> bcastIndices);
 };
 
 SmallVector<LoweredTensor> LowerHelper::lowerInputs() {
@@ -129,7 +131,8 @@ void LowerHelper::allocateOutputTensor(
 
 ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     MGP::CpuTensorSpecType outSpecType, llvm::StringRef opName, Value inChain,
-    const SmallVector<LoweredTensor> &inputTensors) {
+    const SmallVector<LoweredTensor> &inputTensors,
+    std::optional<SmallVector<int32_t, 2>> bcastIndices) {
   // Dynamic Case
   // TODO: This is hacky, hacky, hacky, remove as soon as we can lower
   // parametric shapes to the runtime
@@ -295,6 +298,19 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     auto specOp = exeBuilder.create<MGP::CpuTensorSpecCreateOp>(
         loc, MGP::createCpuTensorSpec(resTy), runtimeDims);
     output.spec = specOp.getResult();
+  } else if (opName == "mop.kernels.broadcast_to_tensor") {
+    assert(bcastIndices && "Broadcast kernel doesn't have indices");
+
+    // Broadcast kernels or operations which have fused a broadcast are supposed
+    // to provide an indices attribute which we can then use to tell the shape
+    // function which two inputs should be broadcasted together to produce the
+    // final shape.
+    SmallVector<Value> inputSpecs{
+        inputTensors[(*bcastIndices)[0]].spec,
+        inputTensors[(*bcastIndices)[1]].spec,
+    };
+
+    output.spec = getOutputSpec("mop.shape.broadcast_to_tensor", inputSpecs);
   } else {
     opBeingLowered->emitError("op requires output to have static shape");
     return Error("op requires output to have static shape");
@@ -328,9 +344,10 @@ SmallVector<Value> LowerHelper::getOperands(SmallVector<LoweredTensor> &ins,
   return operands;
 }
 
-ErrorOr<SmallVector<LoweredTensor>>
-LowerHelper::lowerOutputBuffer(llvm::StringRef opName, Value inChain,
-                               const SmallVector<LoweredTensor> &inputTensors) {
+ErrorOr<SmallVector<LoweredTensor>> LowerHelper::lowerOutputBuffer(
+    llvm::StringRef opName, Value inChain,
+    const SmallVector<LoweredTensor> &inputTensors,
+    std::optional<SmallVector<int32_t, 2>> bcastIndices) {
 
   SmallVector<LoweredTensor> outputBufferAndSpec;
 
@@ -344,8 +361,8 @@ LowerHelper::lowerOutputBuffer(llvm::StringRef opName, Value inChain,
     LoweredTensor output;
     if (!bufferSize) {
       // We can't see the size so lower to a dynamic buffer.
-      UNWRAP_ERROR(
-          out, lowerDynamicOutput(outSpecType, opName, inChain, inputTensors));
+      UNWRAP_ERROR(out, lowerDynamicOutput(outSpecType, opName, inChain,
+                                           inputTensors, bcastIndices));
       output = out;
     } else {
       // Static Case
@@ -484,13 +501,39 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // dynamic shape logic.
   std::string originalName = "mop.kernels." + op.getOriginalOpName().str();
 
+  std::optional<SmallVector<int32_t, 2>> bcastIndices = std::nullopt;
+
+  // If the operation is a broadcast or is a fused kernel containing a broadcast
+  // the indices of the inputs to that broadcast will be listed. These are
+  // needed to tell the shape function how to compute the output shape.
+  // Specifically the tell the shape inference which of the inputs represent the
+  // broadcast inputs in a multi input fused kernel. If there are many
+  // broadcasts we only look at one because we know that they are compatable
+  // shapes as per fusion rules (we fuse on elementwise kernels which only
+  // consume comptable shapes and only fuse the immediate operands so we can
+  // guarantee shape compatibility).
+  if (op.getBcastInputIndices()) {
+    mlir::ArrayAttr indices = *op.getBcastInputIndices();
+
+    SmallVector<int32_t, 2> inds;
+    for (llvm::APInt index : indices.getAsValueRange<mlir::IntegerAttr>()) {
+      inds.push_back(static_cast<int32_t>(index.getLimitedValue()));
+    }
+
+    assert(inds.size() == 2 &&
+           "[MOGG_OPS] If kernel has bcast indices it should only have two.");
+
+    bcastIndices = inds;
+  }
+
   // Allocate buffers to hold all the operation's result tensors. At this stage
   // we gate the allocation only on the overall 'execute' block's chain. The
   // PeepholeTensorExtract pass will change this to use the chain which signals
   // when all of the operation's input buffers have been written to, thus
   // ensuring we allocate buffers just-in-time for their writers.
-  auto errOr = helper.lowerOutputBuffer(
-      originalName, loweringState.getExecuteChain(), inputTensors);
+  auto errOr =
+      helper.lowerOutputBuffer(originalName, loweringState.getExecuteChain(),
+                               inputTensors, bcastIndices);
   if (errOr.isError())
     return failure();
   SmallVector<LoweredTensor> outputBufferAndSpec = errOr.takeValue();

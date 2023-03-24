@@ -174,6 +174,17 @@ def MOGG_LitRegisterOp : MOGG_Op<"lit_register", [HasParent<"ModuleOp">]> {
     `outputFusionInterface` Same as the above but for storing.
 
     `shapeFunc` This allows us to use our current hacky shape function implementation. TODO: remove once we have param system working.
+
+    `isViewOp` This attribute is an easy way for us to check if something can
+               be represented as a view. I.E a broadcast in the form of a view
+               change followed by a copy. We can drop the copy and keep the
+               view change op.
+
+
+    `bcastInputIndices` This is a hack until we have the shape inference in
+                        place. This lets us tell the lowering which inputs
+                        of the kernel can be broadcasted together to produce
+                        the output shape.
   }];
 
   let arguments = (ins Variadic<MO_Tensor>:$operands,
@@ -372,7 +383,10 @@ def MOGG_ExecuteCompiledOp : MOGG_LowerableOp<"execute_kernel"> {
   let summary = "A compiled KGEN ELF file attached to an op";
   let description = [{}];
 
-  let arguments = (ins Variadic<MO_Tensor>:$operands, StrAttr:$kernelName, StrAttr:$originalOpName);
+  let arguments = (ins Variadic<MO_Tensor>:$operands,
+                          StrAttr:$kernelName,
+                          StrAttr:$originalOpName,
+                          OptionalAttr<ArrayAttr>:$bcastInputIndices);
   let results = (outs Variadic<MO_Tensor>:$results);
 }
 

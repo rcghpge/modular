@@ -166,3 +166,20 @@ mo.graph @inversePyramid(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[4, 3
 // CHECK-NEXT:    %[[FINAL:.*]] = mogg.call "mo.mul"(%[[OP6]], %[[OP13]])
 // CHECK-NEXT:    mogg.invoke @[[OUTPUT_LAMBDA:.*]](%[[INDICES]], %[[FINAL]])
 // CHECK-NEXT:    mogg.output
+
+
+// Broadcast (currently) has its own fusion pass so should not be fused along with the elementwise ops in the fuse-elementwise pass.
+
+mo.graph @broadcastNoFuse(%arg0: !mo.tensor<[?, ?], f32>, %arg1: !mo.tensor<[?, ?], f32>) -> (!mo.tensor<[?, ?], f32>) {
+  %bcast1 = mogg.broadcast_to_tensor(%arg0, %arg1) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, ?], f32>
+  %bcast2 = mogg.broadcast_to_tensor(%arg1, %arg0) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, ?], f32>
+  %1 = mo.add(%bcast1, %bcast2) : !mo.tensor<[?, ?], f32>
+  mo.output %1 : !mo.tensor<[?, ?], f32>
+}
+
+// Check each broadcast is in its own standalone kernel.
+// CHECK: mo.graph @broadcastNoFuse
+// CHECK-NEXT: %[[BCAST1:.*]] = mogg.kernel
+// CHECK: %[[BCAST2:.*]] = mogg.kernel
+// CHECK: %[[ADD:.*]] = mogg.kernel (%[[BCAST1]], %[[BCAST2]])
+// CHECK: mo.output %[[ADD]] : !mo.tensor<[?, ?], f32>
