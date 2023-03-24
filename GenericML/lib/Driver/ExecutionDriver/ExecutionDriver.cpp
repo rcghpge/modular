@@ -257,78 +257,31 @@ static LogicalResult populateTensorResults(
   return success();
 }
 
-/// Evaluate the model once and print the output tensor.
-static ErrorOrSuccess executeModelOnce(MLIRContext *ctx, const Model *model,
-                                       Runtime &runtime,
-                                       const ExecutorDriverCLOptions &options) {
-  TIME_PROFILER_SCOPE(Trace::kOther, 1, "runModelOnce");
-  UNWRAP_ERROR(executableModel, model->setup(runtime));
-  auto errorOrSuccess = executableModel->waitForModelSetup();
-  if (errorOrSuccess.isError())
-    return errorOrSuccess.takeError();
-
-  UNWRAP_ERROR(inputTensorGenerators,
-               createTensorGenerators(
-                   options.inputGenKind, options.inputShapes, options.inputData,
-                   options.minimumCpuAlignment, model, runtime));
-
-  // Fill the arguments.  We are running the model once so we pass in the input
-  // tensors directly (the model will deallocate them when it is done with
-  // them).
-  SmallVector<AnyAsyncValueRef> args;
-  args.reserve(model->getNumInputs());
-  for (const auto &inputGen : inputTensorGenerators) {
-    // Technically we could move these input tensors into the args. However
-    // that could trigger different buffer copy behaviour in the model under
-    // test depending on whether single-run or benchmarking is used, and
-    // similarly could disagree with the model behaviour when the
-    // runModelWithData interface is used. So we hold the inputs alive for
-    // the entire call and pass a borrow of 'execute' lifetime.
-    args.push_back(AsyncValueRef<Tensor>::createReady(
-        runtime, inputGen->getNextTensor().borrow(GML::BufferRef::kExecute)));
-  }
-
-  // We use printf here because it has atomic output behavior w.r.t. the printfs
-  // in the model.
-  printf("--- Running '%s':\n", model->getName().str().c_str());
-  fflush(stdout);
-
-  // Execute the model and insert its results into the results vec.
-  SmallVector<AnyAsyncValueRef> results = executableModel->execute(args);
-
-  // There is nothing to do if there is no results.
-  if (results.empty())
-    return success();
-
-  // Wait for the model to finish execution, forcing synchrony.
-  await(results);
-
-  // Print the result tensors with the default printer.
-  MutableArrayRef<AnyAsyncValueRef> resultRef(results);
-  if (failed(printTensorResults(executableModel.get(), resultRef, ctx,
-                                options.resultOutputStyle, outs())))
-    return Error("model execution failed");
-  return success();
-}
-
 /// Repeatedly evaluate the model (numRuns to be exact) and capture and print
 /// the runtime for each evaluation.
-static ErrorOrSuccess
-executeModelRepeated(MLIRContext *ctx, const Model *model, Runtime &runtime,
-                     const ExecutorDriverCLOptions &options) {
+static ErrorOrSuccess executeModel(MLIRContext *ctx, const Model *model,
+                                   Runtime &runtime,
+                                   const ExecutorDriverCLOptions &options,
+                                   unsigned int numRuns,
+                                   unsigned int numWarmup) {
+  TIME_PROFILER_SCOPE(Trace::kOther, 1, "executeModel");
+
   UNWRAP_ERROR(executableModel, model->setup(runtime));
   auto errorOrSuccess = executableModel->waitForModelSetup();
   if (errorOrSuccess.isError())
     return errorOrSuccess.takeError();
+
+  // Note: this may cause the warmup run to consume inputs. If it becomes
+  // surprising to users, we won't be able to share buffers between warmup and
+  // input.
   UNWRAP_ERROR(inputTensorGenerators,
                createTensorGenerators(
                    options.inputGenKind, options.inputShapes, options.inputData,
                    options.minimumCpuAlignment, model, runtime));
 
   // Run the model numWarmup times to warmup the execution. This is performed to
-  // remove any added overhead due to initial setup of the model. The loop is
-  // only run if numRuns > 1.
-  for (unsigned i = 0, e = options.numWarmup; i != e; ++i) {
+  // remove any added overhead due to initial setup of the model.
+  for (unsigned i = 0; i < numWarmup; ++i) {
     // Fill the arguments with borrowed references to the tensor data
     // since the input buffers live across all executions.
     SmallVector<AnyAsyncValueRef> args;
@@ -352,11 +305,7 @@ executeModelRepeated(MLIRContext *ctx, const Model *model, Runtime &runtime,
 
   SmallVector<AnyAsyncValueRef> results;
 
-  SmallVector<double> cpuTimesMillis;
-  cpuTimesMillis.reserve(options.numRuns);
-
-  // Measure the time taken for each inference and print it.
-  for (unsigned i = 0, e = options.numRuns; i != e; ++i) {
+  for (unsigned i = 0; i < numRuns; ++i) {
     TIME_PROFILER_SCOPE(Trace::kOther, 1, "runModelOnce");
     // Fill the arguments with borrowed references to the tensor data
     // since the input buffers live across all executions.
@@ -366,39 +315,23 @@ executeModelRepeated(MLIRContext *ctx, const Model *model, Runtime &runtime,
       args.push_back(AsyncValueRef<Tensor>::createReady(
           runtime, inputGen->getNextTensor().borrow(GML::BufferRef::kExecute)));
 
-    auto start = std::chrono::steady_clock::now();
-
     // Execute the model and insert its results into the results vec.
     results = executableModel->execute(args);
 
     // Wait for the model to finish execution, forcing synchrony.
     await(results);
+    outs().flush();
 
-    auto end = std::chrono::steady_clock::now();
+    // There is nothing to do if there is no results.
+    if (results.empty())
+      continue;
 
-    std::chrono::duration<double, std::milli> time = end - start;
-
-    // Store the time it took to perform the inference.
-    cpuTimesMillis.push_back(time.count());
+    // Print the result tensors with the default printer.
+    MutableArrayRef<AnyAsyncValueRef> resultRef(results.data(), results.size());
+    if (failed(printTensorResults(executableModel.get(), resultRef, ctx,
+                                  options.resultOutputStyle, outs())))
+      return Error("repeated model execution failed");
   }
-  outs().flush();
-  outs() << "--- Runtime(ms): ";
-  TensorSpec cpuTimesMillisShape(TensorShape({options.numRuns.getValue()}),
-                                 DType::f64);
-
-  RETURN_ERROR(Kernels::printTensor(cpuTimesMillis.data(), cpuTimesMillisShape,
-                                    Kernels::ResultOutputStyle::kFull));
-  outs().flush();
-
-  // There is nothing to do if there is no results.
-  if (results.empty())
-    return success();
-
-  // Print the result tensors with the default printer.
-  MutableArrayRef<AnyAsyncValueRef> resultRef(results.data(), results.size());
-  if (failed(printTensorResults(executableModel.get(), resultRef, ctx,
-                                options.resultOutputStyle, outs())))
-    return Error("repeated model execution failed");
   return success();
 }
 
@@ -407,16 +340,43 @@ LogicalResult M::runModel(MLIRContext *ctx, const Model *model,
                           LLCL::Runtime &runtime,
                           const ExecutorDriverCLOptions &options) {
   if (options.benchmarkMode) {
+    if (options.numRuns.getValue() > 2) {
+      // If it's not the default 1, the user most likely set it; warn them about
+      // that.
+      llvm::errs() << "WARNING: num-runs is ignored in benchmarking mode. "
+                      "Please use benchmark-min-query-count instead.\n";
+    }
+    // Execute the model for the warmup runs only.
+    if (auto err = executeModel(ctx, model, runtime, options, 0,
+                                options.numWarmup.getValue()))
+      return failure(options.reportError(err.getError()));
+    // Run the actual benchmark.
     if (auto err = benchmarkModel(
             model, runtime, options.benchmarkName, options,
             options.benchmarkScenario, options.benchmarkOutputDir,
             options.benchmarkNoLogPrefix, options.benchmarkMinDurationMs,
             options.benchmarkMinQueryCount))
       return failure(options.reportError(err.getError()));
+
   } else {
-    auto invokeFn =
-        options.numRuns == 1 ? executeModelOnce : executeModelRepeated;
-    if (auto err = invokeFn(ctx, model, runtime, options))
+    unsigned int numRuns = options.numRuns.getValue();
+    unsigned int numWarmup = options.numWarmup.getValue();
+    if (numRuns < 2) {
+      // Well this sucks. It looks like things barf all over the place when
+      // enabling multi runs.
+      // So for now, keep the old behavior of resetting num-warmup to 0 for
+      // num-runs=1.
+      // TODO(#11042): Remove this ugliness.
+      if (options.numRuns.getValue() > 2) {
+        // If it's not the default 1, the user most likely set it; warn them
+        // about that.
+        llvm::errs() << "WARNING: Due to #11042, num-warmup is reset to zero "
+                        "when num-runs is 1.\n";
+      }
+      numWarmup = 0;
+    }
+    if (auto err =
+            executeModel(ctx, model, runtime, options, numRuns, numWarmup))
       return failure(options.reportError(err.getError()));
   }
   return success();
