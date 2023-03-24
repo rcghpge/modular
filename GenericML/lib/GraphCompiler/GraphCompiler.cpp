@@ -17,6 +17,7 @@
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
+#include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "mlir/Transforms/Passes.h"
@@ -40,6 +41,7 @@ void M::MO::loadDialects(mlir::DialectRegistry &registry) {
                   mlir::index::IndexDialect, mlir::LLVM::LLVMDialect>();
 
   // The elaborator requires LLVM lowering to run the generated functions.
+  mlir::registerBuiltinDialectTranslation(registry);
   mlir::registerLLVMDialectTranslation(registry);
 }
 
