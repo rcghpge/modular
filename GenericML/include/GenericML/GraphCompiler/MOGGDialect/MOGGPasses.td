@@ -30,6 +30,14 @@ def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
     ];
 }
 
+def FuseBroadcasts: Pass<"fuse-bcasts", "MO::GraphOp"> {
+    let summary = "Fuse broadcasts into other kernels.";
+    let dependentDialects = [
+        "M::MO::MODialect",
+        "M::MOGG::MOGGDialect"
+    ];
+}
+
 def FuseElementwise: Pass<"fuse-elementwise", "MO::GraphOp"> {
     let summary = "Fuse blocks of elementwise operations if possible";
     let dependentDialects = [

@@ -194,7 +194,8 @@ struct FuseElementwisePass
         // If the other kernel has been marked a view operation we don't fuse it
         // here.
         if (otherKernel.getIsViewOp().value_or(false))
-          return -1;
+          continue;
+
 
         if (otherKernel.getFusionBodyLambda())
           return index;
