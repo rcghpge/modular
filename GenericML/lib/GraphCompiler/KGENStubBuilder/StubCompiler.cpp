@@ -15,6 +15,7 @@
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "KGEN/LowerToObject.h"
+#include "Support/Host.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/TargetParser/Host.h"
 
@@ -26,7 +27,9 @@ LogicalResult StubCompiler::elaborateKGEN() {
   // Create a runtime for KGEN to evaluate the kernels.
   LLCL::Runtime runtime(
       LLCL::createLeakCheckAllocator(LLCL::createMallocAllocator()),
-      LLCL::createSingleThreadWorkQueue());
+      LLCL::createThreadPoolWorkQueue(
+          /*numThreads=*/static_cast<int>(
+              M::getHostMachineInfo()->numPhysicalCores)));
 
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmParser();
@@ -47,7 +50,9 @@ LogicalResult StubCompiler::elaborateKGEN() {
 ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
   LLCL::Runtime runtime(
       LLCL::createLeakCheckAllocator(LLCL::createMallocAllocator()),
-      LLCL::createSingleThreadWorkQueue());
+      LLCL::createThreadPoolWorkQueue(
+          /*numThreads=*/static_cast<int>(
+              M::getHostMachineInfo()->numPhysicalCores)));
   mlir::PassManager mgr(ctx);
 
   // Compile to LLVM.
