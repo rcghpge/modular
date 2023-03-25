@@ -28,8 +28,8 @@ LogicalResult StubCompiler::elaborateKGEN() {
   LLCL::Runtime runtime(
       LLCL::createLeakCheckAllocator(LLCL::createMallocAllocator()),
       LLCL::createThreadPoolWorkQueue(
-          /*numThreads=*/static_cast<int>(
-              M::getHostMachineInfo()->numPhysicalCores)));
+          /*numThreads=*/
+          M::getHostMachineInfo()->numPhysicalCores));
 
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmParser();
@@ -51,8 +51,8 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
   LLCL::Runtime runtime(
       LLCL::createLeakCheckAllocator(LLCL::createMallocAllocator()),
       LLCL::createThreadPoolWorkQueue(
-          /*numThreads=*/static_cast<int>(
-              M::getHostMachineInfo()->numPhysicalCores)));
+          /*numThreads=*/
+          M::getHostMachineInfo()->numPhysicalCores));
   mlir::PassManager mgr(ctx);
 
   // Compile to LLVM.
