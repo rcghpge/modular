@@ -30,6 +30,14 @@ def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
     ];
 }
 
+def PatternFusion: Pass<"mo-pattern-fusion", "MO::GraphOp"> {
+    let summary = "Fuse kernels based on patterns.";
+    let dependentDialects = [
+        "M::MO::MODialect",
+        "M::MOGG::MOGGDialect"
+    ];
+}
+
 def FuseBroadcasts: Pass<"fuse-bcasts", "MO::GraphOp"> {
     let summary = "Fuse broadcasts into other kernels.";
     let dependentDialects = [

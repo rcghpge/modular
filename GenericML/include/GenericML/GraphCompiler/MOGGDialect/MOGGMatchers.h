@@ -184,6 +184,12 @@ auto m_Typed(Value *val, Matcher matcher) {
   return detail::Capture(val, m_Typed<T, Matcher>(matcher));
 }
 
+template <typename T>
+auto m_MOMatrix(T *input) {
+  return m_Ranked(2,
+                  m_Typed<M::MO::TensorType>(input, mlir::matchers::m_Any()));
+}
+
 } // namespace mlir
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGMATCHERS_H

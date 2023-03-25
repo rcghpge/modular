@@ -78,57 +78,6 @@ struct KernelRecord {
     TypeID::get<MOOp>(), KernelRecord { "", ShimName, false }                  \
   }
 
-template <typename T>
-auto MOMatrix(T *input) {
-  return m_Ranked(2, m_Typed<MO::TensorType>(input, mlir::matchers::m_Any()));
-}
-
-struct GatherSumPattern : public RewritePattern {
-  GatherSumPattern(MLIRContext *ctx)
-      : RewritePattern(MatchAnyOpTypeTag{}, 2, ctx) {}
-
-  LogicalResult matchAndRewrite(Operation *op,
-                                PatternRewriter &rewriter) const override {
-    OpBuilder b(op);
-    b.setInsertionPoint(op);
-    Value input, indices, gatherAxis, reduceAxis;
-    Operation *gather, *sum;
-    // TODO: Simplify this once we have parameterized shape calculations
-    auto reduceAxisPattern = m_ScalarConstantInt(&reduceAxis, 1);
-    auto sumPattern = m_Op<MO::ReduceAddOp>(
-        &sum,
-        m_Op<MO::GatherOp>(&gather, MOMatrix(&input), MOMatrix(&indices),
-                           m_ScalarConstantInt(&gatherAxis, 0)),
-        reduceAxisPattern);
-    auto any = matchers::m_Any();
-    auto zero = m_ScalarConstantInt(0);
-    auto one = m_ScalarConstantInt(1);
-    auto sumShapePattern = m_Op<MO::ShapeOfOp>(sumPattern);
-    auto squeezeShapePattern = m_Op<MO::ConcatOp>(
-        m_Op<MO::GatherOp>(sumShapePattern, m_Op<MO::RangeOp>(any, any, one),
-                           zero),
-        m_Op<MO::GatherOp>(sumShapePattern, m_Op<MO::RangeOp>(any, any, one),
-                           zero),
-        zero);
-
-    if (!m_Op<MO::ReshapeOp>(sumPattern, squeezeShapePattern).match(op))
-      return failure();
-
-    auto results =
-        b.create<MOGG::ExtOp>(
-             op->getLoc(),
-             /*outputTypes=*/op->getResultTypes(),
-             /*op_name=*/"mop.kernels.gather_sum",
-             /*inputOperands=*/
-             SmallVector<Value>{input, indices, gatherAxis, reduceAxis})
-            .getResults();
-
-    rewriter.replaceOp(op, results);
-
-    return mlir::success();
-  }
-};
-
 using MoToKernelMapTy = SmallDenseMap<mlir::TypeID, KernelRecord, 32>;
 
 struct MOOpPattern : public RewritePattern {
@@ -263,7 +212,6 @@ void MOToMOGGPass::runOnOperation() {
 
   RewritePatternSet patterns{ctx};
   patterns.add<MOOpPattern>(ctx, moToLitKernels, useJit.getValue());
-  patterns.add<GatherSumPattern>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
     return signalPassFailure();

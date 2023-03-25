@@ -33,6 +33,9 @@ struct PassOptions {
   /// use jit is on then we will fuse incoming jit kernels.
   bool fuseJitKernels = true;
 
+  /// Lower to hand-fused kernels using pattern matching
+  bool usePatterns = true;
+
   /// Path used by the CAS subsystem to establish its backing store.
   /// If non-empty then models will be rewritten to outline dense_attributes
   /// to the given CAS instance.

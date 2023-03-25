@@ -69,9 +69,14 @@ void M::MO::buildMoToMGPPipeline(mlir::PassManager &pm,
                                  const PassOptions &opts) {
   pm.addPass(mlir::createCSEPass());
 
+  if (opts.usePatterns) {
+    pm.addPass(MOGG::createPatternFusion());
+    pm.addPass(mlir::createCanonicalizerPass());
+    pm.addPass(mlir::createCSEPass());
+  }
+
   MO::MOToMOGGOptions moToMoggOpts;
   moToMoggOpts.useJit = opts.useJit;
-
   // If jiting simplify broadcast patterns to a single op that we can jit.
   if (opts.useJit) {
     pm.addPass(MO::createConvertBroadcastToShape());
