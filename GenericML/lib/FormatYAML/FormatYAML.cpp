@@ -232,6 +232,13 @@ struct CustomMappingTraits<M::ModelSpec::NameSubstitutions> {
 // M::ModelSpec::ModelBinary
 //===----------------------------------------------------------------------===//
 
+static bool isValidModelFormat(StringRef format) {
+  return llvm::is_contained({"mef", "onnx", "torchscript",
+                             "tensorflow-graphdef", "tensorflow-savedmodel",
+                             "tflite", "mtfl"},
+                            format);
+}
+
 namespace llvm::yaml {
 template <>
 struct MappingTraits<M::ModelSpec::ModelBinary> {
@@ -260,10 +267,7 @@ struct MappingTraits<M::ModelSpec::ModelBinary> {
   static std::string validate(IO &io, M::ModelSpec::ModelBinary &binary) {
     // Check that the format is valid.
     // TODO: The format will be an enum in the future.
-    if (binary.format != "mef" && binary.format != "onnx" &&
-        binary.format != "tensorflow-graphdef" &&
-        binary.format != "tensorflow-savedmodel" && binary.format != "tflite" &&
-        binary.format != "mtfl")
+    if (!isValidModelFormat(binary.format))
       return std::string("the ") + binary.format +
              " format specified is not valid";
 
