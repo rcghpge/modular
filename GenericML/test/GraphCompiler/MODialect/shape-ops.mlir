@@ -64,6 +64,13 @@ kgen.func @new_dim(%d0: index, %d1: index)
   kgen.return %sh0, %sh1, %sh2 : !mo.shape, !mo.shape, !mo.shape
 }
 
+// CHECK: kgen.func @num_elements(%[[SH0:.*]]: !mo.shape) -> index {
+kgen.func @num_elements(%sh0: !mo.shape) -> index {
+  // CHECK: %[[VAL0:.*]] = mo.shape.num_elements(%[[SH0]])
+  %0 = mo.shape.num_elements(%sh0)
+  kgen.return %0 : index
+}
+
 // CHECK: kgen.func @reshape(%[[FROM:.*]]: !mo.tensor<[3], f32>, %[[TO:.*]]: !mo.shape) -> !mo.tensor<[2, 3], f32> {
 kgen.func @reshape(%from: !mo.tensor<[3], f32>, %to: !mo.shape) -> !mo.tensor<[2, 3], f32> {
   // CHECK: [[RES:.*]] = mo.shape.reshape(%[[FROM]], %[[TO]]) : (!mo.tensor<[3], f32>, !mo.shape) -> !mo.tensor<[2, 3], f32>
