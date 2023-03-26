@@ -302,12 +302,70 @@ LogicalResult MOGraphLowering::lowerRebind(MO::RebindOp rebindOp) {
   if (inputTy.hasRank() != resTy.hasRank())
     return rebindOp.emitError("rebind lowering doesn't support unknown shapes");
 
-  for (auto [inDim, resDim] : llvm::zip(inputTy.getDims(), resTy.getDims()))
-    if (isa<IntegerAttr>(inDim) != isa<IntegerAttr>(resDim))
-      return rebindOp.emitError("dynamic dimensions don't match in rebind");
+  if (!rebindOp.getOutputParamDecls().empty())
+    return rebindOp.emitError("rebind lowering doesn't support param decls");
 
+  // If the input and output specs are the same, we can just map to the already
+  // lowered tensor.
+  auto outSpecTy = MGP::createCpuTensorSpec(resTy);
+  auto inSpecTy = MGP::createCpuTensorSpec(inputTy);
   Value mgpInput = loweringState.lookupExecuteLoweredTensor(inputTensor);
-  loweringState.emplaceExecuteLoweredTensor(resTensor, mgpInput);
+  if (outSpecTy == inSpecTy) {
+    loweringState.emplaceExecuteLoweredTensor(resTensor, mgpInput);
+    return success();
+  }
+
+  // We will collect the runtime dimensions for the result spec.
+  SmallVector<Value> runtimeDims;
+  MGP::CpuTensorSpecDimsDynamicOp dynDimsOp;
+  Location loc = rebindOp.getLoc();
+  OpBuilder exeBuilder = loweringState.getExecuteOpBuilder();
+  for (auto [idx, inDim, resDim] :
+       llvm::enumerate(inputTy.getDims(), resTy.getDims())) {
+
+    // If the result dimension is static, nothing to do.
+    if (isa<IntegerAttr>(resDim))
+      continue;
+
+    // If the input dimension is static, and the result is dynamic, we create a
+    // constant runtime dimension.
+    if (auto intAttr = dyn_cast<IntegerAttr>(inDim)) {
+      IntegerType si64Ty = exeBuilder.getIntegerType(64, /*isSigned=*/true);
+      SmallVector<NamedAttribute> attrs{
+          {exeBuilder.getStringAttr("value"),
+           exeBuilder.getIntegerAttr(si64Ty, intAttr.getInt())}};
+      Operation *constOp =
+          exeBuilder.create(loc, exeBuilder.getStringAttr("mip.index.const"),
+                            {}, {intAttr.getType()}, attrs);
+      runtimeDims.emplace_back(constOp->getResult(0));
+      continue;
+    }
+
+    // At this point we are dealing with dynamic input and result dimensions.
+    if (!dynDimsOp) {
+      // We extract the dynamic dimensions only once.
+      auto extractOp =
+          exeBuilder.create<MGP::CpuTensorExtractOp>(loc, mgpInput);
+      TypedValue<MGP::CpuTensorSpecType> spec = extractOp.getTensorSpecResult();
+      dynDimsOp = exeBuilder.create<MGP::CpuTensorSpecDimsDynamicOp>(
+          loc, spec, spec.getType().getRawDims());
+    }
+
+    // Forward the appropriate dynamic dimension from the input.
+    runtimeDims.emplace_back(
+        dynDimsOp->getResult(inSpecTy.getDynamicDimIndex(idx)));
+  }
+
+  // We create a new spec, then a new tensor from it and the input buffer.
+  auto outTensorTy = exeBuilder.getType<MGP::CpuTensorType>(outSpecTy);
+  auto specOp =
+      loweringState.getExecuteOpBuilder().create<MGP::CpuTensorSpecCreateOp>(
+          loc, outSpecTy, runtimeDims);
+  auto extractOp = exeBuilder.create<MGP::CpuTensorExtractOp>(loc, mgpInput);
+  auto mgpRes = exeBuilder.create<MGP::CpuTensorCreateOp>(
+      loc, outTensorTy, loweringState.getExecuteChain(),
+      extractOp.getBufferResult(), specOp);
+  loweringState.emplaceExecuteLoweredTensor(resTensor, mgpRes);
   return success();
 }
 
