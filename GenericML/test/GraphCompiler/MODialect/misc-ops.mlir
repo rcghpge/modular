@@ -310,8 +310,20 @@ mo.graph @reshape_no_fold_target_shape_neg_one_dim() -> !mo.tensor<[2, -1], si32
 
 // CHECK: mo.graph @shape_of_static_rank(%[[ARG:.*]]: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[2], si64>
 mo.graph @shape_of_static_rank(%arg: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[2], si64> {
-  // CHECK: %[[RES:.*]] = mo.shape_of(%[[ARG]]) : (!mo.tensor<[1, 3], f32>) -> !mo.tensor<[2], si64>
+  // CHECK: %[[RES:.*]] = mo.constant {value = #M.dense_array<1, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %res = mo.shape_of(%arg) : (!mo.tensor<[1, 3], f32>) -> !mo.tensor<[2], si64>
+  // CHECK: mo.output %[[RES]] : !mo.tensor<[2], si64>
+  mo.output %res : !mo.tensor<[2], si64>
+}
+
+// CHECK: mo.graph @shape_of_static_rank_parameterized<[[D0:.*]]>(
+mo.graph @shape_of_static_rank_parameterized<D0>(
+  // CHECK-SAME: %[[ARG:.*]]: !mo.tensor<[[[D0]], 3], f32>
+  %arg: !mo.tensor<[D0, 3], f32>
+// CHECK-SAME: ) -> !mo.tensor<[2], si64>
+) -> !mo.tensor<[2], si64> {
+  // CHECK: %[[RES:.*]] = mo.shape_of(%[[ARG]]) : (!mo.tensor<[[[D0]], 3], f32>) -> !mo.tensor<[2], si64>
+  %res = mo.shape_of(%arg) : (!mo.tensor<[D0, 3], f32>) -> !mo.tensor<[2], si64>
   // CHECK: mo.output %[[RES]] : !mo.tensor<[2], si64>
   mo.output %res : !mo.tensor<[2], si64>
 }
