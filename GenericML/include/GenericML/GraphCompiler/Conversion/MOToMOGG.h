@@ -17,9 +17,9 @@
 // KGEN dialects are needed so we can load the LIT kernels to dynamically create
 // the list of avaliable MOGG operations.
 #include "Cache/CacheDialect/CacheDialect.h"
+#include "KGEN/HLCFDialect/HLCFDialect.h"
 #include "KGEN/InitAllDialects.h"
 #include "Support/DebugInfoDialect/IR/DebugInfoDialect.h"
-#include "Support/HLCFDialect/HLCFDialect.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 
 namespace M::MO {
