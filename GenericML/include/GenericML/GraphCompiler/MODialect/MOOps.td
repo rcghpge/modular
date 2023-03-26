@@ -334,6 +334,7 @@ def MO_ConstantOp : MO_TensorOp<"constant", [ConstantLike, Pure]> {
 
   let assemblyFormat = "attr-dict `:` qualified(type($result))";
 
+  let hasCanonicalizeMethod = 1;
   let hasFolder = 1;
 
   let builders = [

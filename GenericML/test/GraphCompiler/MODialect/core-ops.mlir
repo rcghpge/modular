@@ -172,6 +172,15 @@ mo.graph @two_constants() -> (!mo.tensor<[2, 3], f32>, !mo.tensor<[4], si8>) {
   mo.output %0, %1 : !mo.tensor<[2, 3], f32>, !mo.tensor<[4], si8>
 }
 
+// CHECK: mo.graph @constant_unknown_shape_fold() -> !mo.tensor<[2, ?], si32>
+mo.graph @constant_unknown_shape_fold() -> !mo.tensor<[2, ?], si32> {
+  // CHECK-NEXT: %[[VAL:.*]] = mo.constant {value = #M.dense_array<1, 2, 3, 4> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
+  // CHECK-NEXT: %[[VAL_REB:.*]] = mo.rebind(%[[VAL]]) : !mo.tensor<[2, 2], si32> -> !mo.tensor<[2, ?], si32>
+  %0 = mo.constant {value = #M.dense_array<1, 2, 3, 4> : tensor<2x2xsi32>} : !mo.tensor<[2, ?], si32>
+  // CHECK-NEXT: mo.output %[[VAL_REB]] : !mo.tensor<[2, ?], si32>
+  mo.output %0 : !mo.tensor<[2, ?], si32>
+}
+
 {-#
   dialect_resources: {
     builtin: {

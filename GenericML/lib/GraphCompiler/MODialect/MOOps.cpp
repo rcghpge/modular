@@ -398,6 +398,20 @@ LogicalResult Static::BroadcastToOp::verify() {
 // MO_ConstantOp support
 //===----------------------------------------------------------------------===//
 
+LogicalResult ConstantOp::canonicalize(ConstantOp op,
+                                       PatternRewriter &rewriter) {
+  if (op.getType().hasUnknownShape()) {
+    Location loc = op.getLoc();
+    ElementsAttr elements = op.getValue();
+    auto staticTensorType = TensorType::get(elements.getType().getShape(),
+                                            elements.getElementType());
+    auto constantOp =
+        rewriter.create<ConstantOp>(loc, staticTensorType, elements);
+    rewriter.replaceOpWithNewOp<RebindOp>(op, op.getType(), constantOp);
+  }
+  return success();
+}
+
 OpFoldResult ConstantOp::fold(FoldAdaptor adaptor) {
   auto operands = adaptor.getOperands();
   assert(operands.empty() && "constant has no operands");
