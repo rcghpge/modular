@@ -615,8 +615,7 @@ def MO_SqrtOp : MO_ElementWiseUnaryOp<"sqrt"> {
   }];
 }
 
-// TODO: Use an AllShapesMatch<["input", "result"]> trait for MO_Tensor.
-def MO_CastOp : MO_TensorOp<"cast", [Pure]> {
+def MO_CastOp : MO_TensorOp<"cast", [Pure, MO_SameOperandsAndResultShape]> {
   let summary = "Cast operation";
   let description = [{
     Return cast[dtype](x), where x is the input tensor.
@@ -633,7 +632,6 @@ def MO_CastOp : MO_TensorOp<"cast", [Pure]> {
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
-  let hasVerifier = 1;
   let hasFolder = 1;
 }
 

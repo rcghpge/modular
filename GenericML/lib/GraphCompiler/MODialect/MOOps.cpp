@@ -8,9 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/Broadcast.h"
 #include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
+#include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/Compiler/VerifyUtils.h"
 #include "Support/MDialect/MAttrs.h"
@@ -537,11 +537,13 @@ LogicalResult GatherOp::verify() {
 
 OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
   // TODO(#10811): support other types and do this using a MOJO kernel?
+  Attribute inputAttr = adaptor.getInput();
+  if (!inputAttr)
+    return {};
 
   TensorType resTy = getResult().getType();
   auto rankedResTy =
       RankedTensorType::get(resTy.getIntDims(), resTy.getElementType());
-  Attribute inputAttr = adaptor.getInput();
   if (auto intElemsAttr = dyn_cast_or_null<IntArrayElementsAttr>(inputAttr)) {
     // This is inefficient, but simple.
     SmallVector<APInt> res =
@@ -552,16 +554,6 @@ OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
     return IntArrayElementsAttr::get(rankedResTy, res);
   }
   return {};
-}
-
-LogicalResult CastOp::verify() {
-  TensorType inputType = getInput().getType();
-  TensorType resultType = getResult().getType();
-
-  if (inputType.getTypedShapeAttr() != resultType.getTypedShapeAttr())
-    return emitError("input and result must have identical shapes");
-
-  return LogicalResult::success();
 }
 
 //===----------------------------------------------------------------------===//

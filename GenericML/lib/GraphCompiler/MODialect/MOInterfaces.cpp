@@ -198,8 +198,8 @@ LogicalResult impl::verifyMOSameOperandsAndResultElementType(Operation *op) {
 //===----------------------------------------------------------------------===//
 
 /// Get the element type of a tensor value.
-static MO::ShapeAttr getShapeAttr(Value v) {
-  return v.getType().cast<MO::TensorType>().getTypedShapeAttr();
+static TypedAttr getShapeAttr(Value v) {
+  return v.getType().cast<MO::TensorType>().getShapeAttr();
 }
 
 LogicalResult impl::verifyMOSameOperandsAndResultShapeAttr(Operation *op) {
