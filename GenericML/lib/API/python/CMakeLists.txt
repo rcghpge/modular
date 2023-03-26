@@ -10,12 +10,6 @@ if(NOT UNIX)
   return()
 endif()
 
-# TODO: After #8927 is resolved and we no longer need to statically link to tf, we can remove this
-if(NOT STOCK_TENSORFLOW_FOUND)
-  message(WARNING "Python bindings require Stock Tensorflow to build.")
-  return()
-endif()
-
 if(${DISABLE_ALL_EXTERNAL})
   message(WARNING "Cannot build Python C++ bindings since PyBind11 is not available.")
   return()
