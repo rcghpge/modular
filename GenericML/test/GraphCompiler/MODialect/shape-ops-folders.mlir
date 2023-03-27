@@ -185,6 +185,25 @@ kgen.generator @new_fold<D1, D2>() -> !mo.shape {
   kgen.return %s1 : !mo.shape
 }
 
+// CHECK: kgen.generator @num_elements_dyn_rank_no_fold<[[SH0:.*]]: !mo.shape>() -> index {
+kgen.generator @num_elements_dyn_rank_no_fold<Sh0: !mo.shape>() -> index {
+  // CHECK-NEXT: %[[SH:.*]] = kgen.param.constant: !mo.shape = <[[SH0]]>
+  %sh0 = kgen.param.constant: !mo.shape = <Sh0>
+  // CHECK-NEXT: %[[RES:.*]] = mo.shape.num_elements(%[[SH]])
+  %0 = mo.shape.num_elements(%sh0)
+  // CHECK-NEXT: kgen.return %[[RES]] : index
+  kgen.return %0 : index
+}
+
+// CHECK: kgen.generator @num_elements_static_rank_fold<[[D0:.*]]>() -> index {
+kgen.generator @num_elements_static_rank_fold<D0>() -> index {
+  %sh0 = kgen.param.constant: !mo.shape = <[42, D0, 10]>
+  // CHECK-NEXT: %[[RES:.*]] = kgen.param.constant = <mul([[D0]], 420)>
+  %0 = mo.shape.num_elements(%sh0)
+  // CHECK-NEXT: kgen.return %[[RES]] : index
+  kgen.return %0 : index
+}
+
 // CHECK: kgen.generator @slice_fold<[[SH1:.*]]: !mo.shape, [[D1:.*]], [[D2:.*]]>(
 kgen.generator @slice_fold<Sh1: !mo.shape, D1, D2>(
 // CHECK: ) -> (!mo.shape, !mo.shape, !mo.shape, !mo.shape) {

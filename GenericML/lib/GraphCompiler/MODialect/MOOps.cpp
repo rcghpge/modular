@@ -1368,6 +1368,15 @@ OpFoldResult Shape::NewOp::fold(FoldAdaptor adaptor) {
   return ShapeAttr::get(newDims, shapeTy);
 }
 
+OpFoldResult Shape::NumElementsOp::fold(FoldAdaptor adaptor) {
+  if (auto inputDimAttrs = dyn_cast_or_null<ShapeAttr>(adaptor.getInput())) {
+    return KGEN::ParamOperatorAttr::get(KGEN::POC::Mul,
+                                        inputDimAttrs.getValues());
+  }
+
+  return {};
+}
+
 void Shape::SliceOp::build(OpBuilder &builder, OperationState &state,
                            Value input, int64_t start, int64_t end) {
   build(builder, state, input, builder.getIndexAttr(start),

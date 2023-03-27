@@ -34,7 +34,7 @@ Operation *MODialect::materializeConstant(OpBuilder &b, Attribute value,
     return res;
 
   // Materialize symbolic shapes in shape op outputs
-  if (isa<KGEN::ParamDeclRefAttr, ShapeAttr>(value))
+  if (isa<KGEN::ParamDeclRefAttr, ShapeAttr, KGEN::ParamOperatorAttr>(value))
     return b.create<KGEN::ParamConstantOp>(loc, type, cast<TypedAttr>(value));
 
   if (auto elements = dyn_cast_or_null<ElementsAttr>(value))
