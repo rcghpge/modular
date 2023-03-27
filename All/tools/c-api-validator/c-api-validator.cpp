@@ -17,6 +17,7 @@
 
 #include "llvm/ADT/STLExtras.h"
 
+#include <cstdlib>
 #include <mutex>
 #include <numeric>
 #include <vector>
@@ -102,8 +103,13 @@ void log(bool threaded, ArrayRef<float> buffer) {
 }
 
 /// Fork-join wrapper.
-struct TaskGroup {
+class TaskGroup final {
+public:
   TaskGroup(size_t reserved) { tasks.reserve(reserved); }
+
+  void add_task(std::function<void()> task) {
+    tasks.emplace_back(std::move(task));
+  }
 
   void run(bool threaded) {
     if (threaded) {
@@ -119,14 +125,37 @@ struct TaskGroup {
     }
   }
 
+  /// Threadsafe method to set an error message if not currently in an error
+  /// state.
+  void setError(std::string_view msg) {
+    std::lock_guard<std::mutex> l(errorMutex);
+    if (!hasError) {
+      hasError = true;
+      errorMessage = msg;
+    }
+  }
+
+  const std::string &getError() const {
+    std::lock_guard<std::mutex> l(errorMutex);
+    return errorMessage;
+  }
+
+  /// This should only be called from a threadsafe context since it isn't
+  /// protected by a mutex.
+  bool didErrorOccur() const { return hasError; }
+
+private:
   std::vector<std::function<void()>> tasks;
+  std::string errorMessage;
+  mutable std::mutex errorMutex;
+  bool hasError{false};
 };
 
 /// Convenience macros for working with M_Status.
 #define RETURN_IF_ERROR(status)                                                \
   do {                                                                         \
-    if (M_isError(status.get()))                                               \
-      return Error(M_getError(status.get()));                                  \
+    if (M_isError((status).get()))                                             \
+      return Error(M_getError((status).get()));                                \
   } while (false)
 
 /// We have a runtime context, but not yet any compiled model.
@@ -427,7 +456,16 @@ struct ExecutePhase {
   auto errOr##x = (e);                                                         \
   if (errOr##x.isError()) {                                                    \
     log(threaded, "ERROR: %s", errOr##x.getError());                           \
-    exit(1);                                                                   \
+    exit(EXIT_FAILURE);                                                        \
+  }                                                                            \
+  auto(x) = std::move(*errOr##x)
+
+#define THREAD_RETURN_IF_ERROR(tg, x, e)                                       \
+  auto errOr##x = (e);                                                         \
+  if (errOr##x.isError()) {                                                    \
+    log(threaded, "ERROR: %s", errOr##x.getError());                           \
+    (tg).setError(errOr##x.getError());                                        \
+    return;                                                                    \
   }                                                                            \
   auto(x) = std::move(*errOr##x)
 
@@ -467,15 +505,20 @@ int main(int argc, char **argv) {
   {
     TaskGroup tg(numPaths);
     for (const auto &externalModel : externalModels) {
-      tg.tasks.emplace_back([&]() {
-        EXIT_IF_ERROR(compiledModel,
-                      CompiledModelPhase::createCompiledModel(
-                          threaded, &runtimeContext, &externalModel));
+      tg.add_task([&]() {
+        THREAD_RETURN_IF_ERROR(tg, compiledModel,
+                               CompiledModelPhase::createCompiledModel(
+                                   threaded, &runtimeContext, &externalModel));
         std::lock_guard<std::mutex> l(mu);
         compiledModels.emplace_back(std::move(compiledModel));
       });
     }
     tg.run(/*threaded=*/false);
+
+    if (tg.didErrorOccur()) {
+      log(threaded, "TaskGroup ERROR: %s", tg.getError().c_str());
+      return EXIT_FAILURE;
+    }
   }
 
   // Initialize all the models, concurrently if threaded is true.
@@ -485,16 +528,21 @@ int main(int argc, char **argv) {
     TaskGroup tg(numPaths * clOptions.numInitialized);
     for (auto &compiledModel : compiledModels) {
       for (size_t i = 0; i < clOptions.numInitialized; ++i) {
-        tg.tasks.emplace_back([&]() {
-          EXIT_IF_ERROR(initializedModel,
-                        InitializedModelPhase::createInitializedModel(
-                            threaded, &compiledModel));
+        tg.add_task([&]() {
+          THREAD_RETURN_IF_ERROR(tg, initializedModel,
+                                 InitializedModelPhase::createInitializedModel(
+                                     threaded, &compiledModel));
           std::lock_guard<std::mutex> l(mu);
           initializedModels.emplace_back(std::move(initializedModel));
         });
       }
     }
     tg.run(threaded);
+
+    if (tg.didErrorOccur()) {
+      log(threaded, "TaskGroup ERROR: %s", tg.getError().c_str());
+      return EXIT_FAILURE;
+    }
   }
 
   // Execute all the models, concurrently over initialized models (if threaded
@@ -513,17 +561,23 @@ int main(int argc, char **argv) {
                  clOptions.numConcurrentRequesters);
     for (const auto &initializedModel : initializedModels) {
       for (size_t i = 0; i < clOptions.numConcurrentRequesters; ++i) {
-        tg.tasks.emplace_back([&]() {
+        tg.add_task([&]() {
           for (size_t j = 0; j < clOptions.numSequentialRequests; ++j) {
-            EXIT_IF_ERROR(executingModel,
-                          ExecutePhase::createExecute(&initializedModel));
-            EXIT_IF_ERROR(unit, executingModel.execute(threaded));
+            THREAD_RETURN_IF_ERROR(
+                tg, executingModel,
+                ExecutePhase::createExecute(&initializedModel));
+            THREAD_RETURN_IF_ERROR(tg, unit, executingModel.execute(threaded));
             (void)unit;
           }
         });
       }
     }
     tg.run(threaded);
+
+    if (tg.didErrorOccur()) {
+      log(threaded, "TaskGroup ERROR: %s", tg.getError().c_str());
+      return EXIT_FAILURE;
+    }
   }
 
   return 0;
