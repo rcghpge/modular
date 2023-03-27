@@ -311,6 +311,7 @@ private:
     case KGEN::POC::Max:
       return "mip.index.max";
     case KGEN::POC::Mul:
+    case KGEN::POC::MulNuw:
       return "mip.index.mul";
     case KGEN::POC::Or:
       return "mip.bool.or";

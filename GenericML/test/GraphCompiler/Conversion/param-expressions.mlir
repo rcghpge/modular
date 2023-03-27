@@ -43,9 +43,9 @@ mo.graph @sub_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
 // CHECK-DAG: %[[VAL2:.*]] = "mip.index.const"() {value = 2 : si64} : () -> index
 // CHECK:     %[[VAL3:.*]] = "mip.index.mul"(%[[VAL1]], %[[VAL2]]) : (index, index) -> index
 mo.graph @mul_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
-  kgen.param.declare M0 = <mul(X, Y)>
-  kgen.param.declare M1 = <mul(Y, X)>
-  kgen.param.declare M2 = <mul(M0, 2)>
+  kgen.param.declare M0 = <mul_nuw(X, Y)>
+  kgen.param.declare M1 = <mul_nuw(Y, X)>
+  kgen.param.declare M2 = <mul_nuw(M0, 2)>
   mo.output
 }
 
@@ -94,6 +94,6 @@ mo.graph @or_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
 // CHECK-DAG: %[[VAL2:.*]] = "mip.index.mul"(%[[DIMS]]#1, %[[DIMS]]#2) : (index, index) -> index
 // CHECK-DAG: %[[VAL3:.*]] = "mip.index.add"(%1, %2) : (index, index) -> index
 mo.graph @complex_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
-  kgen.param.declare C0 = <add(mul(X, Y), mul(Y, Z))>
+  kgen.param.declare C0 = <add(mul_nuw(X, Y), mul_nuw(Y, Z))>
   mo.output
 }
