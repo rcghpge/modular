@@ -7,9 +7,11 @@
 #include "GenericML/GraphCompiler/KGENStubBuilder/StubCompiler.h"
 
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Support/FileUtilities.h"
 
 #include "LLCL/Runtime/Runtime.h"
 
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "KGEN/CLOptions.h"
 #include "KGEN/KGENCompiler.h"
 #include "KGEN/KGENDialect/KGENOps.h"
@@ -17,9 +19,8 @@
 #include "KGEN/LowerToObject.h"
 #include "Support/Host.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Support/ToolOutputFile.h"
 #include "llvm/TargetParser/Host.h"
-
-#include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 
 namespace M::MOGG::Stub {
 
@@ -44,7 +45,23 @@ LogicalResult StubCompiler::elaborateKGEN() {
   mlir::PassManager pm(kgenModule->getContext());
   KGEN::populateElaborateModulePasses(pm, runtime, *target, {shouldSearch});
 
-  return pm.run(kgenModule);
+  if (!saveTempsPrefix.empty()) {
+    std::string outPath = saveTempsPrefix + ".kgen.prelaboration.mlir";
+    auto outFile = mlir::openOutputFile(outPath);
+    outFile->os() << kgenModule;
+    outFile->keep();
+  }
+
+  auto res = pm.run(kgenModule);
+
+  if (!saveTempsPrefix.empty()) {
+    std::string outPath = saveTempsPrefix + ".kgen.elaborated.mlir";
+    auto outFile = mlir::openOutputFile(outPath);
+    outFile->os() << kgenModule;
+    outFile->keep();
+  }
+
+  return res;
 }
 
 ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
@@ -58,6 +75,10 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
   // Compile to LLVM.
   mlir::SymbolTable symTable{kgenModule};
   KGEN::CompilationOptions compilationOptions;
+
+  if (!saveTempsPrefix.empty())
+    compilationOptions.setSaveTemps(saveTempsPrefix);
+
   auto compilerOr = KGEN::ObjectCompiler::create(runtime, mgr, ".kgen_cache",
                                                  compilationOptions);
   if (compilerOr.isError())

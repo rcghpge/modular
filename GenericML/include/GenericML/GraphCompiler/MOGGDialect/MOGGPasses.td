@@ -27,6 +27,8 @@ def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
     let options = [
         Option<"useSearch", "useSearch", "bool", /*default=*/"false",
                 "Tell KGEN elaborator to search for best kernel.">,
+        Option<"saveTempPrefix", "saveTempPrefix", "std::string", /*default=*/"",
+                "The prefix to use when saving temporary files. Setting this option toggles on saveTemps.">,
     ];
 }
 

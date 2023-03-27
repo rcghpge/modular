@@ -21,10 +21,11 @@ namespace M::MOGG::Stub {
 /// binary stuff from the KGEN stub creation process.
 class StubCompiler {
 public:
-  StubCompiler(mlir::ModuleOp kgenStubs, MO::GraphOp graph, bool shouldSearch)
+  StubCompiler(mlir::ModuleOp kgenStubs, MO::GraphOp graph, bool shouldSearch,
+               std::string saveTempsPrefix)
       : ctx(graph.getContext()), kgenModule(kgenStubs), loc(graph.getLoc()),
         moggBuilder(&graph.getBody().front(), graph.getBody().front().begin()),
-        shouldSearch(shouldSearch) {}
+        saveTempsPrefix(saveTempsPrefix), shouldSearch(shouldSearch) {}
 
   /// Compile to binary object. Tell the jit all of the given symbols as symbols
   /// within it that can be executed at runtime.
@@ -49,7 +50,12 @@ private:
   /// than the kgen stub.
   mlir::OpBuilder moggBuilder;
 
-  // Should tell KGEN to search.
+  /// If set to non empty string emit temporary IR and assembly outputs to the
+  /// given prefix. Currently emits KGEN before and after elaboration, llvm
+  /// before and after optimization, and the final assembly.
+  std::string saveTempsPrefix;
+
+  /// Should tell KGEN to search.
   bool shouldSearch;
 };
 

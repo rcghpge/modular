@@ -260,7 +260,8 @@ struct JitCompileKernels
           mlir::ArrayAttr::get(graph->getContext(), symbolNamesAdded);
 
       // Add the compiled binary to the file.
-      Stub::StubCompiler compiler{*kgenModule, graph, useSearch.getValue()};
+      Stub::StubCompiler compiler{*kgenModule, graph, useSearch.getValue(),
+                                  saveTempPrefix.getValue()};
       RETURN_ERROR(compiler.compile(allSyms));
     }
     return success();
