@@ -308,6 +308,8 @@ private:
       return "mip.index.add";
     case KGEN::POC::EQ:
       return "mip.index.equal";
+    case KGEN::POC::Max:
+      return "mip.index.max";
     case KGEN::POC::Mul:
       return "mip.index.mul";
     case KGEN::POC::Or:
