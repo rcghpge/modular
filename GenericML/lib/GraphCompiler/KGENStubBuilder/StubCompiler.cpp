@@ -48,6 +48,9 @@ LogicalResult StubCompiler::elaborateKGEN() {
   if (!saveTempsPrefix.empty()) {
     std::string outPath = saveTempsPrefix + ".kgen.prelaboration.mlir";
     auto outFile = mlir::openOutputFile(outPath);
+    if (!outFile)
+      return failure();
+
     outFile->os() << kgenModule;
     outFile->keep();
   }
@@ -57,6 +60,8 @@ LogicalResult StubCompiler::elaborateKGEN() {
   if (!saveTempsPrefix.empty()) {
     std::string outPath = saveTempsPrefix + ".kgen.elaborated.mlir";
     auto outFile = mlir::openOutputFile(outPath);
+    if (!outFile)
+      return failure();
     outFile->os() << kgenModule;
     outFile->keep();
   }
