@@ -709,6 +709,7 @@ def MO_SelectOp : MO_TensorOp<"select", [Pure]>{
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
+  let hasFolder = 1;
   let hasVerifier = 1;
 }
 

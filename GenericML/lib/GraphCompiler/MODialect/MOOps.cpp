@@ -20,6 +20,7 @@
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
+#include <llvm/ADT/APInt.h>
 #include <llvm/ADT/STLExtras.h>
 
 using namespace M;
@@ -603,6 +604,39 @@ OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 // MO_SelectOp support
 //===----------------------------------------------------------------------===//
+
+OpFoldResult SelectOp::fold(FoldAdaptor adaptor) {
+  // TODO(#10811): support other types and do this using a MOJO kernel?
+  // TODO refactor parts of this with other folders
+
+  auto condAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getCond());
+  auto xAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getX());
+  auto yAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getY());
+  if (!condAttr || !xAttr || !yAttr)
+    return {};
+
+  TensorType resTy = getType();
+  DType condDType = getCond().getType().getDtype();
+  DType resDType = resTy.getDtype();
+  auto maybeCond = tryGetConstantIntBlob(condAttr, condDType);
+  auto maybeX = tryGetConstantIntBlob(xAttr, resDType);
+  auto maybeY = tryGetConstantIntBlob(yAttr, resDType);
+  if (!maybeX.has_value() || !maybeY.has_value())
+    return {};
+
+  ArrayRef<int64_t> condArr = *maybeCond;
+  ArrayRef<int64_t> xArr = *maybeX;
+  ArrayRef<int64_t> yArr = *maybeY;
+  SmallVector<APInt> res(condAttr.size());
+  for (size_t idx = 0, e = condAttr.size(); idx < e; idx++) {
+    int64_t resVal = condArr[idx] ? xArr[idx] : yArr[idx];
+    res[idx] = APInt(64, resVal, /*isSigned=*/true);
+  }
+
+  auto rankedResTy =
+      RankedTensorType::get(resTy.getIntDims(), resTy.getElementType());
+  return IntArrayElementsAttr::get(rankedResTy, res);
+}
 
 // TODO: Place this in Support somewhere. Maybe already there?
 static bool shapesMatch(TensorType x, TensorType y) {
