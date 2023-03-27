@@ -214,6 +214,36 @@ mo.graph @range_folder() -> (!mo.tensor<[5], ui32>, !mo.tensor<[4], si64>) {
   mo.output %0, %1 : !mo.tensor<[5], ui32>, !mo.tensor<[4], si64>
 }
 
+// CHECK: mo.graph @range_folder_unknown_output
+mo.graph @range_folder_unknown_output() -> !mo.tensor<[?], ui32> {
+  // CHECK-DAG: %[[START:.*]] = mo.constant {value = #M.dense_array<1> : tensor<ui32>} : !mo.tensor<[], ui32>
+  // CHECK-DAG: %[[LIMIT:.*]] = mo.constant {value = #M.dense_array<11> : tensor<ui32>} : !mo.tensor<[], ui32>
+  // CHECK-DAG: %[[STEP:.*]] = mo.constant {value = #M.dense_array<2> : tensor<ui32>} : !mo.tensor<[], ui32>
+  %start = mo.constant {value = #M.dense_array<1> : tensor<ui32>} : !mo.tensor<[], ui32>
+  %limit = mo.constant {value = #M.dense_array<11> : tensor<ui32>} : !mo.tensor<[], ui32>
+  %step = mo.constant {value = #M.dense_array<2> : tensor<ui32>} : !mo.tensor<[], ui32>
+  // CHECK-NEXT: %[[VAL0:.*]] = mo.range(%[[START]], %[[LIMIT]], %[[STEP]]) : (
+  %0 = mo.range(%start, %limit, %step) : (
+    // CHECK-SAME: !mo.tensor<[], ui32>, !mo.tensor<[], ui32>, !mo.tensor<[], ui32>) -> !mo.tensor<[?], ui32>
+    !mo.tensor<[], ui32>, !mo.tensor<[], ui32>, !mo.tensor<[], ui32>) -> !mo.tensor<[?], ui32>
+  // CHECK-NEXT: %[[VAL0]] : !mo.tensor<[?], ui32>
+  mo.output %0 : !mo.tensor<[?], ui32>
+}
+
+// CHECK: mo.graph @range_folder_parametric_output<() -> [[D0:.*]]>() -> !mo.tensor<[[[D0]]], ui32> {
+mo.graph @range_folder_parametric_output<() -> D0>() -> !mo.tensor<[D0], ui32> {
+  // CHECK-NEXT: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<1, 3, 5, 7, 9> : tensor<5xui32>} : !mo.tensor<[5], ui32>
+  // CHECK-DAG: kgen.param.declare [[D1:.*]] = <5>
+  // CHECK-DAG: %[[RES:.*]] = mo.rebind(%[[VAL0]]) : !mo.tensor<[5], ui32> -> !mo.tensor<[[[D1]]], ui32>
+  %start = mo.constant {value = #M.dense_array<1> : tensor<ui32>} : !mo.tensor<[], ui32>
+  %limit = mo.constant {value = #M.dense_array<11> : tensor<ui32>} : !mo.tensor<[], ui32>
+  %step = mo.constant {value = #M.dense_array<2> : tensor<ui32>} : !mo.tensor<[], ui32>
+  %0 = mo.range<() -> D1>(%start, %limit, %step) : (
+    !mo.tensor<[], ui32>, !mo.tensor<[], ui32>, !mo.tensor<[], ui32>) -> !mo.tensor<[D1], ui32>
+  // CHECK-NEXT: mo.output<[[D1]]> %[[RES]] : !mo.tensor<[[[D1]]], ui32>
+  mo.output<D1> %0 : !mo.tensor<[D1], ui32>
+}
+
 //===----------------------------------------------------------------------===//
 // ReshapeOp
 //===----------------------------------------------------------------------===//

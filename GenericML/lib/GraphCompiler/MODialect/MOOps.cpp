@@ -724,10 +724,10 @@ ErrorOr<int64_t> RangeOp::getNumResElelements(int64_t start, int64_t limit,
 OpFoldResult RangeOp::fold(FoldAdaptor adaptor) {
   // TODO(#10811): support other types and do this using a MOJO kernel?
 
-  // Folding if the result shape is not known statically can cause problems
-  // during lowering. So we don't do this, and instead let shape inference
-  // resolve the shape.
-  if (!getType().hasStaticShape())
+  TensorType outTy = getType();
+  // Don't fold if there are `?` in the output shape; in such cases,
+  // parameterization should run first.
+  if (outTy.hasUnknownShape())
     return {};
 
   auto startAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getStart());
@@ -750,9 +750,19 @@ OpFoldResult RangeOp::fold(FoldAdaptor adaptor) {
     start += step;
   }
 
-  auto resTy =
+  auto attrTy =
       RankedTensorType::get({numResElements}, startAttr.getElementType());
-  return IntArrayElementsAttr::get(resTy, res);
+  auto foldedAttr = IntArrayElementsAttr::get(attrTy, res);
+  if (outTy.hasStaticShape())
+    return foldedAttr;
+
+  Location loc = getLoc();
+  OpBuilder builder(*this); // insert before this op
+  auto resTy = TensorType::get({numResElements}, outTy.getElementType());
+  auto constantOp = builder.create<ConstantOp>(loc, resTy, foldedAttr);
+  auto rebindOp =
+      builder.create<RebindOp>(loc, outTy, constantOp, getOutputParamDecls());
+  return rebindOp.getResult();
 }
 
 LogicalResult RangeOp::verify() {
@@ -1050,7 +1060,6 @@ OpFoldResult ShapeOfOp::fold(FoldAdaptor adaptor) {
   }
   return {};
 }
-
 
 LogicalResult ShapeOfOp::verify() {
   TensorType resTy = getResult().getType();
