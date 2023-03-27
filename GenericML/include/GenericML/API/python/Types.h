@@ -8,8 +8,6 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-using namespace M;
-
 namespace core {
 M_Dtype mapPybind11Type(pybind11::dtype dtype) {
   if (dtype.is(pybind11::dtype::of<int8_t>()))
