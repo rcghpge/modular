@@ -685,6 +685,7 @@ def MO_GreaterEqualOp : MO_ComparisonBinaryOp<"greater_equal"> {
                                           ) -> !mo.tensor<[2, 3], bool>
     ```
   }];
+  let hasFolder = 1;
 }
 
 // TODO: Use an AllElementTypesMatch<["x", "y", "result"]> trait for MO_Tensor.
