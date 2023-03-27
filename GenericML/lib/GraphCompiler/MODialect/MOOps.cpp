@@ -8,9 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/MODialect/Broadcast.h"
-#include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "GenericML/GraphCompiler/MODialect/Broadcast.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/Compiler/VerifyUtils.h"
 #include "Support/MDialect/MAttrs.h"
@@ -1028,6 +1027,34 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 // MOStatic_ReshapeOp
 //===----------------------------------------------------------------------===//
+
+LogicalResult Static::ReshapeOp::canonicalize(Static::ReshapeOp op,
+                                              PatternRewriter &rewriter) {
+  // We fold consecutive static reshapes into a single reshape.
+  if (auto precedingOp = op.getInput().getDefiningOp<Static::ReshapeOp>()) {
+    op.setOperand(precedingOp.getInput());
+    return success();
+  }
+
+  // A reshape that changes only a single dimension is just a rebind.
+  TensorType inputTy = op.getInput().getType();
+  TensorType resTy = op.getType();
+  if (!resTy.hasRank() || !inputTy.hasRank() ||
+      inputTy.getRank() != resTy.getRank())
+    return failure();
+
+  bool foundDifferentDim = false;
+  for (auto [inDim, resDim] : llvm::zip(inputTy.getDims(), resTy.getDims())) {
+    if (inDim != resDim) {
+      if (foundDifferentDim)
+        return failure();
+      foundDifferentDim = true;
+    }
+  }
+
+  rewriter.replaceOpWithNewOp<RebindOp>(op, resTy, op.getInput());
+  return success();
+}
 
 OpFoldResult Static::ReshapeOp::fold(FoldAdaptor adaptor) {
   if (auto inputArr = dyn_cast_or_null<ArrayElementsAttr>(adaptor.getInput())) {

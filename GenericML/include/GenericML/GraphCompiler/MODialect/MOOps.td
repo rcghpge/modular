@@ -1278,6 +1278,8 @@ def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape"> {
       : !mo.tensor<[2, 3], f32> -> !mo.tensor<[2, 3], f32>
     ```
   }];
+
+  let hasCanonicalizeMethod = 1;
 }
 
 def MO_ConcatOp : MO_TensorOp<"concat", [

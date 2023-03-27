@@ -436,6 +436,33 @@ mo.graph @static_reshape_no_fold_neg_one_dim() -> !mo.tensor<[-1], si32> {
   mo.output %res : !mo.tensor<[-1], si32>
 }
 
+// CHECK: mo.graph @static_reshape_fold_to_rebind_static<[[A:.*]], [[B:.*]]>(
+// CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[[A]], [[B]]], f32>) -> !mo.tensor<[2, [[B]]], f32> {
+mo.graph @static_reshape_fold_to_rebind_static<A, B>(%arg0: !mo.tensor<[A, B], f32>) -> !mo.tensor<[2, B], f32> {
+  // CHECK-NEXT: %[[RES:.*]] = mo.rebind(%[[ARG0]]) : !mo.tensor<[[[A]], [[B]]], f32> -> !mo.tensor<[2, [[B]]], f32>
+  %0 = mo.static.reshape(%arg0) : !mo.tensor<[A, B], f32> -> !mo.tensor<[2, B], f32>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[2, B], f32>
+  mo.output %0 : !mo.tensor<[2, B], f32>
+}
+
+// CHECK: mo.graph @static_reshape_fold_to_rebind_param<[[A:.*]], [[B:.*]]>(
+// CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[[A]], [[B]]], f32>) -> !mo.tensor<[[[A]], [[A]]], f32> {
+mo.graph @static_reshape_fold_to_rebind_param<A, B>(%arg0: !mo.tensor<[A, B], f32>) -> !mo.tensor<[A, A], f32> {
+  // CHECK-NEXT: %[[RES:.*]] = mo.rebind(%[[ARG0]]) : !mo.tensor<[[[A]], [[B]]], f32> -> !mo.tensor<[[[A]], [[A]]], f32>
+  %0 = mo.static.reshape(%arg0) : !mo.tensor<[A, B], f32> -> !mo.tensor<[A, A], f32>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[A]], [[A]]], f32>
+  mo.output %0 : !mo.tensor<[A, A], f32>
+}
+
+// CHECK: mo.graph @static_reshape_not_fold_to_rebind<[[A:.*]], [[B:.*]]>(
+// CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[[A]], [[B]]], f32>) -> !mo.tensor<[[[B]], [[A]]], f32> {
+mo.graph @static_reshape_not_fold_to_rebind<A, B>(%arg0: !mo.tensor<[A, B], f32>) -> !mo.tensor<[B, A], f32> {
+  // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[ARG0]]) : !mo.tensor<[[[A]], [[B]]], f32> -> !mo.tensor<[[[B]], [[A]]], f32>
+  %0 = mo.static.reshape(%arg0) : !mo.tensor<[A, B], f32> -> !mo.tensor<[B, A], f32>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[B]], [[A]]], f32>
+  mo.output %0 : !mo.tensor<[B, A], f32>
+}
+
 //===----------------------------------------------------------------------===//
 // SliceOp
 //===----------------------------------------------------------------------===//
