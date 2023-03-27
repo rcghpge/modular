@@ -1283,6 +1283,7 @@ def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape"> {
 def MO_ConcatOp : MO_TensorOp<"concat", [
   DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
 ]> {
   let summary = "Concat Operation";
   let description = [{
