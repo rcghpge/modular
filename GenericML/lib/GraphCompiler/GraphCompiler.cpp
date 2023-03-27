@@ -68,6 +68,9 @@ void M::MO::registerPasses() {
 void M::MO::buildMoToMGPPipeline(mlir::PassManager &pm,
                                  const PassOptions &opts) {
   pm.addPass(mlir::createCSEPass());
+  pm.addPass(mlir::createCanonicalizerPass());
+  if (opts.shapeInference)
+    buildShapeInferencePipeline(pm);
 
   if (opts.usePatterns) {
     pm.addPass(MOGG::createPatternFusion());

@@ -40,6 +40,9 @@ struct PassOptions {
   /// If non-empty then models will be rewritten to outline dense_attributes
   /// to the given CAS instance.
   std::string cacheDir;
+
+  /// Run shape inference on the input before other optimiziations and lowering.
+  bool shapeInference = false;
 };
 
 // Create the canonical MO pipeline for the given options.
