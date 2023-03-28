@@ -1076,8 +1076,7 @@ OpFoldResult ReduceMulOp::fold(FoldAdaptor adaptor) {
       std::accumulate(inputs.begin(), inputs.end(), 1, std::multiplies<>());
 
   SmallVector<APInt> resArr{APInt(64, res, /*isSigned=*/true)};
-  auto rankedResTy =
-      RankedTensorType::get(resTy.getIntDims(), resTy.getElementType());
+  auto rankedResTy = RankedTensorType::get({1}, resTy.getElementType());
   return IntArrayElementsAttr::get(rankedResTy, resArr);
 }
 
