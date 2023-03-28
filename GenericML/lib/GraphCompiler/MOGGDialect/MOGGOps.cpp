@@ -311,6 +311,18 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     };
 
     output.spec = getOutputSpec("mop.shape.broadcast_to_tensor", inputSpecs);
+  } else if (opName == "mop.kernels.slice") {
+    Value input = inputTensors[0].spec;
+    Value start = loweringState.lookupExecuteLoweredTensor(
+        opBeingLowered->getOperands()[1]);
+    Value stop = loweringState.lookupExecuteLoweredTensor(
+        opBeingLowered->getOperands()[2]);
+    Value step = loweringState.lookupExecuteLoweredTensor(
+        opBeingLowered->getOperands()[3]);
+
+    output.spec =
+        getOutputSpec("mop.shape.slice", {loweringState.getExecuteChain(),
+                                          input, start, stop, step});
   } else {
     opBeingLowered->emitError("op requires output to have static shape");
     return Error("op requires output to have static shape");
