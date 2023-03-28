@@ -1168,7 +1168,6 @@ def MO_ShapeOfOp : MO_TensorOp<"shape_of", [
     functional-type(operands, results)
   }];
 
-  let hasFolder = 1;
   let hasVerifier = 1;
 }
 

@@ -1173,21 +1173,6 @@ OpFoldResult Static::ReshapeOp::fold(FoldAdaptor adaptor) {
 // MO_ShapeOfOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult ShapeOfOp::fold(FoldAdaptor adaptor) {
-  TensorType inputTy = getInput().getType();
-  if (inputTy.hasStaticShape()) {
-    int64_t inputRank = inputTy.getRank();
-    auto rankedResTy = RankedTensorType::get(
-        {inputRank}, getResult().getType().getElementType());
-    SmallVector<APInt> apIntDims =
-        map_to_vector(inputTy.getIntDims(), [](int64_t dim) {
-          return APInt(64, dim, /*isSigned=*/true);
-        });
-    return IntArrayElementsAttr::get(rankedResTy, apIntDims);
-  }
-  return {};
-}
-
 LogicalResult ShapeOfOp::verify() {
   TensorType resTy = getResult().getType();
   TensorType inputTy = getInput().getType();
