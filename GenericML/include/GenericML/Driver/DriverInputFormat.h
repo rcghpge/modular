@@ -57,6 +57,12 @@ enum class FileFormat {
   kONNXTextProtobuf
 };
 
+/// Helper to check if a format is within the valid range.
+inline bool isValidFileFormat(FileFormat format) {
+  return (format >= FileFormat::kUnknown) &&
+         (format <= FileFormat::kONNXTextProtobuf);
+}
+
 /// Use heuristics to determine what kind of file the input file contents
 /// represent.
 FileFormat sniffInputFormat(StringRef fileExtension, StringRef fileContents);
