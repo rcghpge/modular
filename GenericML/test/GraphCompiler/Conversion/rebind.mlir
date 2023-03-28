@@ -4,8 +4,10 @@
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
 // CHECK-SAME: %[[ARG2:.*]]: !mgp.cpu.tensor<?x?xf32>, %[[ARG3:.*]]: !mgp.cpu.tensor<?x?xf32>) -> (!mef.chain, !mgp.cpu.tensor<?x?xf32>) {
 // CHECK:   %[[BUF0:.*]], %[[SPEC0:.*]] = mgp.cpu.tensor.extract %[[ARG2]] : !mgp.cpu.tensor<?x?xf32>
+// CHECK:   %[[DIM0:.*]]:2 = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC0]] : !mgp.cpu.tensor_spec<?x?xf32>
 // CHECK:   %[[BUF1:.*]], %[[SPEC1:.*]] = mgp.cpu.tensor.extract %[[ARG3]] : !mgp.cpu.tensor<?x?xf32>
-// CHECK:   %[[VAL0:.*]] = "mop.shape.matmul"(%[[SPEC0]], %[[SPEC1]]) : (!mgp.cpu.tensor_spec<?x?xf32>, !mgp.cpu.tensor_spec<?x?xf32>) -> !mgp.cpu.tensor_spec<?x?xf32>
+// CHECK:   %[[DIM1:.*]]:2 = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC1]] : !mgp.cpu.tensor_spec<?x?xf32>
+// CHECK:   %[[VAL0:.*]] = mgp.cpu.tensor_spec.create %[[DIM0]]#0, %[[DIM1]]#1 : !mgp.cpu.tensor_spec<?x?xf32>
 // CHECK:   %[[VAL1:.*]] = mgp.cpu.buffer.alloc.spec %[[CHAIN]], %[[VAL0]], align {{.*}} : !mgp.cpu.tensor_spec<?x?xf32>
 // CHECK:   %[[VAL2:.*]] = "mop.kernels.matmul"(%[[CHAIN]], %[[BUF0]], %[[SPEC0]], %[[BUF1]], %[[SPEC1]], %[[VAL1]], %[[VAL0]])
 // CHECK:   %[[VAL3:.*]] = mgp.cpu.tensor.create %[[VAL2]], %[[VAL1]], %[[VAL0]]  : !mgp.cpu.tensor<?x?xf32>

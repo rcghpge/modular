@@ -76,8 +76,8 @@ private:
   mlir::Location loc;
 
   ErrorOr<LoweredTensor>
-  lowerDynamicOutput(MGP::CpuTensorSpecType outSpecType, llvm::StringRef opName,
-                     Value inChain,
+  lowerDynamicOutput(MGP::CpuTensorSpecType outSpecType, MO::TensorType moType,
+                     llvm::StringRef opName, Value inChain,
                      const SmallVector<LoweredTensor> &inputTensors,
                      std::optional<SmallVector<int32_t, 2>> bcastIndices);
 };
@@ -130,7 +130,8 @@ void LowerHelper::allocateOutputTensor(
 }
 
 ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
-    MGP::CpuTensorSpecType outSpecType, llvm::StringRef opName, Value inChain,
+    MGP::CpuTensorSpecType outSpecType, MO::TensorType moType,
+    llvm::StringRef opName, Value inChain,
     const SmallVector<LoweredTensor> &inputTensors,
     std::optional<SmallVector<int32_t, 2>> bcastIndices) {
   // Dynamic Case
@@ -210,6 +211,14 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     // All elementwise kernels are guaranteed to have at least one argument
     // which is guaranteed to match the output.
     output.spec = inputTensors[0].spec;
+  } else if (!moType.hasUnknownShape() && !moType.hasStaticShape()) {
+    // We get the values corresponding to dynamic dimensions.
+    UNWRAP_ERROR(runtimeDims, loweringState.lowerShapeAttrDynDims(
+                                  moType.getTypedShapeAttr(), loc));
+    output.spec =
+        loweringState.getExecuteOpBuilder()
+            .create<MGP::CpuTensorSpecCreateOp>(loc, outSpecType, runtimeDims)
+            .getResult();
   } else if (elementwise_conditional.contains(opName)) {
     // Get the shape of the first Tensor to compute the output spec
     output.spec =
@@ -293,14 +302,6 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     Value step = loweringState.lookupExecuteLoweredTensor(
         opBeingLowered->getOperands()[2]);
     output.spec = getOutputSpec("mop.shape.range", {start, limit, step});
-  } else if (opName == "mop.kernels.static.broadcast_to") {
-    auto resTy = cast<MO::TensorType>(opBeingLowered->getResult(0).getType());
-
-    UNWRAP_ERROR(runtimeDims, loweringState.lowerShapeAttrDynDims(
-                                  resTy.getTypedShapeAttr(), loc));
-    auto specOp = exeBuilder.create<MGP::CpuTensorSpecCreateOp>(
-        loc, MGP::createCpuTensorSpec(resTy), runtimeDims);
-    output.spec = specOp.getResult();
   } else if (opName == "mop.kernels.broadcast_to_tensor") {
     assert(bcastIndices && "Broadcast kernel doesn't have indices");
 
@@ -368,15 +369,15 @@ ErrorOr<SmallVector<LoweredTensor>> LowerHelper::lowerOutputBuffer(
 
   // Allocate the output buffer for each result and add as argument.
   for (Type t : opBeingLowered->getResultTypes()) {
-    MGP::CpuTensorSpecType outSpecType =
-        MGP::createCpuTensorSpec(t.cast<MO::TensorType>());
-
+    auto ty = t.cast<MO::TensorType>();
+    if (!ty.hasRank())
+      return Error("dynamic output rank not supported");
+    MGP::CpuTensorSpecType outSpecType = MGP::createCpuTensorSpec(ty);
     Optional<uint64_t> bufferSize = outSpecType.getSizeInBytes();
-
     LoweredTensor output;
     if (!bufferSize) {
       // We can't see the size so lower to a dynamic buffer.
-      UNWRAP_ERROR(out, lowerDynamicOutput(outSpecType, opName, inChain,
+      UNWRAP_ERROR(out, lowerDynamicOutput(outSpecType, ty, opName, inChain,
                                            inputTensors, bcastIndices));
       output = out;
     } else {
