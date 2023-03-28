@@ -306,6 +306,8 @@ private:
     switch (poc) {
     case KGEN::POC::Add:
       return "mip.index.add";
+    case KGEN::POC::Div:
+      return "mip.index.div";
     case KGEN::POC::EQ:
       return "mip.index.equal";
     case KGEN::POC::Max:
