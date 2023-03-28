@@ -77,6 +77,49 @@ struct GatherSumPattern : public RewritePattern {
   }
 };
 
+struct MatmulTranspBPattern : public RewritePattern {
+  MatmulTranspBPattern(MLIRContext *ctx)
+      : RewritePattern(MatchAnyOpTypeTag{}, 2, ctx) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    OpBuilder b(op);
+    b.setInsertionPoint(op);
+    Value input, weight, axes;
+    if (!m_Op<MO::MatmulOp>(
+             m_Any(&input),
+             m_Op<MO::TransposeOp>(m_Any(&weight), m_MOVector(m_Any(&axes))))
+             .match(op))
+      return failure();
+
+    if (!input || !weight || !axes)
+      return failure();
+
+    std::optional<SmallVector<int64_t>> maybeAxes =
+        MO::tryGetConstantIntVector(cast<MO::TensorValue>(axes));
+
+    if (!maybeAxes.has_value())
+      return failure();
+
+    SmallVector<int64_t> &axesValues = maybeAxes.value();
+
+    if (axesValues[0] != 1 || axesValues[1] != 0)
+      return failure();
+
+    auto results =
+        b.create<MOGG::ExtOp>(op->getLoc(),
+                              /*outputTypes=*/op->getResultTypes(),
+                              /*op_name=*/"mop.kernels.matmul_transpb",
+                              /*inputOperands=*/
+                              SmallVector<Value>{input, weight})
+            .getResults();
+
+    rewriter.replaceOp(op, results);
+
+    return mlir::success();
+  }
+};
+
 struct BatchMatmulAdjBPattern : public RewritePattern {
   BatchMatmulAdjBPattern(MLIRContext *ctx)
       : RewritePattern(MatchAnyOpTypeTag{}, 2, ctx) {}
@@ -140,6 +183,7 @@ void PatternFusionPass::runOnOperation() {
   RewritePatternSet patterns{ctx};
   patterns.add<GatherSumPattern>(ctx);
   patterns.add<BatchMatmulAdjBPattern>(ctx);
+  patterns.add<MatmulTranspBPattern>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
     return signalPassFailure();
