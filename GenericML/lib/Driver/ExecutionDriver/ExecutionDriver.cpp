@@ -178,7 +178,7 @@ printTensorResults(const ExecutableModel *model,
                    MutableArrayRef<AnyAsyncValueRef> results,
                    MLIRContext *context, Kernels::ResultOutputStyle outputStyle,
                    raw_ostream &os) {
-  // We expect the first result to be a chaing
+  // We expect the first result to be a chain
   const AnyAsyncValueRef &ch = results.front();
   if (failed(printDiagIfError(ch, os)))
     return failure();

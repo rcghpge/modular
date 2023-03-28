@@ -44,7 +44,7 @@ inline TensorGeneratorFlag operator|(TensorGeneratorFlag a,
                                      TensorGeneratorFlag b) {
   return static_cast<TensorGeneratorFlag>(static_cast<int>(a) |
                                           static_cast<int>(b));
-};
+}
 
 inline bool isSet(TensorGeneratorFlag a, TensorGeneratorFlag b) {
   return static_cast<int>(a) & static_cast<int>(b);
