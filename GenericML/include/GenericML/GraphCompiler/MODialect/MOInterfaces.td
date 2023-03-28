@@ -194,6 +194,8 @@ def MO_Reduction : MO_TensorOpInterfaceBase<"Reduction",
     InterfaceMethod<"Get result tensor as a TypedValue",
       "TensorValue", "getResult", (ins)>
   ];
+
+  let verify = [{ return impl::verifyReduction($_op); }];
 }
 
 //===----------------------------------------------------------------------===//

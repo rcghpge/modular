@@ -20,10 +20,12 @@ class RewriterBase;
 namespace M::MO {
 class MatmulLike;
 class SlidingWindow;
+class Reduction;
 
 namespace impl {
 LogicalResult verifyMatchingRanks(ArrayRef<TensorValue> values);
 LogicalResult verifyMatmulLike(MatmulLike op);
+LogicalResult verifyReduction(Reduction op);
 LogicalResult verifySlidingWindow(SlidingWindow op);
 LogicalResult verifyMOSameOperandsAndResultElementType(Operation *op);
 LogicalResult verifyMOSameOperandsAndResultShapeAttr(Operation *op);

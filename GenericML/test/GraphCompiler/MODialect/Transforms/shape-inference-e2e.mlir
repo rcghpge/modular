@@ -109,13 +109,13 @@ mo.graph @materialize_mean_axis_0_si32_e2e(
 // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]], 2], f32>
   %input: !mo.tensor<[?, 2], f32>
 // CHECK-SAME: ) -> !mo.tensor<[1, 2], f32> {
-) -> !mo.tensor<?, f32> {
+) -> !mo.tensor<[?, ?], f32> {
   // CHECK-NEXT: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
   %axis = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
   // CHECK-NEXT: %[[RES:.*]] = mo.mean(%[[INPUT]], %[[AXIS]]) : (!mo.tensor<[[[D0]], 2], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[1, 2], f32>
-  %result = mo.mean(%input, %axis) : (!mo.tensor<[?, 2], f32>, !mo.tensor<[], si32>) -> !mo.tensor<?, f32>
+  %result = mo.mean(%input, %axis) : (!mo.tensor<[?, 2], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[?, ?], f32>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[1, 2], f32>
-  mo.output %result : !mo.tensor<?, f32>
+  mo.output %result : !mo.tensor<[?, ?], f32>
 }
 
 // CHECK: mo.graph @materialize_prod_axis_1_si64_e2e<[[D0:.*]]>(
@@ -123,13 +123,13 @@ mo.graph @materialize_prod_axis_1_si64_e2e(
 // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]], 2], f32>
   %input: !mo.tensor<[?, 2], f32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D0]], 1], f32> {
-) -> !mo.tensor<?, f32> {
+) -> !mo.tensor<[?, ?], f32> {
   // CHECK-NEXT: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
   %axis = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
   // CHECK-NEXT: %[[RES:.*]] = mo.reduce.mul(%[[INPUT]], %[[AXIS]]) : (!mo.tensor<[[[D0]], 2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[[[D0]], 1], f32>
-  %result = mo.reduce.mul(%input, %axis) : (!mo.tensor<[?, 2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %result = mo.reduce.mul(%input, %axis) : (!mo.tensor<[?, 2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?], f32>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[D0]], 1], f32>
-  mo.output %result : !mo.tensor<?, f32>
+  mo.output %result : !mo.tensor<[?, ?], f32>
 }
 
 // CHECK: mo.graph @materialize_sum_axis_neg_1_si64_e2e<[[D0:.*]]>(
@@ -137,13 +137,13 @@ mo.graph @materialize_sum_axis_neg_1_si64_e2e(
 // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]], 2], f32>
   %input: !mo.tensor<[?, 2], f32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D0]], 1], f32> {
-) -> !mo.tensor<?, f32> {
+) -> !mo.tensor<[?, ?], f32> {
   // CHECK-NEXT: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[], si64>
   %axis = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[], si64>
   // CHECK-NEXT: %[[RES:.*]] = mo.reduce.add(%[[INPUT]], %[[AXIS]]) : (!mo.tensor<[[[D0]], 2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[[[D0]], 1], f32>
-  %result = mo.reduce.add(%input, %axis) : (!mo.tensor<[?, 2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %result = mo.reduce.add(%input, %axis) : (!mo.tensor<[?, 2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?], f32>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[D0]], 1], f32>
-  mo.output %result : !mo.tensor<?, f32>
+  mo.output %result : !mo.tensor<[?, ?], f32>
 }
 
 // CHECK: mo.graph @unresolved_rebinds<[[SH0:.*]]: !mo.shape, [[SH1:.*]]: !mo.shape -> [[SH2:.*]]: !mo.shape>(

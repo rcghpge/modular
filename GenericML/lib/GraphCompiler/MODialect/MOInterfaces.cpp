@@ -46,9 +46,10 @@ LogicalResult impl::verifyMatmulLike(MatmulLike op) {
   // broadcasting is not supported).
   SmallVector<TensorValue> tensors{op.getTensorA(), op.getTensorB(),
                                    op.getTensorResult()};
-  if (failed(verifyMatchingRanks(tensors)))
+  if (failed(verifyMatchingRanks(tensors))) {
     return op.emitError(
         "input and output ranks must be all dynamic, or all static and match");
+  }
 
   TensorType aType = op.getTensorA().getType();
   TensorType bType = op.getTensorB().getType();
@@ -95,6 +96,19 @@ LogicalResult impl::verifyMatmulLike(MatmulLike op) {
 }
 
 //===----------------------------------------------------------------------===//
+// Reduction
+//===----------------------------------------------------------------------===//
+
+LogicalResult impl::verifyReduction(Reduction op) {
+  // TODO: test
+  if (failed(verifyMatchingRanks({op.getInput(), op.getResult()})))
+    return op.emitError(
+        "input and ranks ranks must be both dynamic, or both static and match");
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // SlidingWindow
 //===----------------------------------------------------------------------===//
 
@@ -132,9 +146,10 @@ LogicalResult impl::verifySlidingWindow(SlidingWindow op) {
 
   auto moOp = cast<MOTensorOpInterface>(op.getOperation());
   if (failed(verifyMatchingRanks(
-          {moOp.getInputTensor(0), moOp.getOutputTensor(0)})))
+          {moOp.getInputTensor(0), moOp.getOutputTensor(0)}))) {
     return op.emitError(
         "input and output ranks must be all dynamic, or all static and match");
+  }
 
   return success();
 }
