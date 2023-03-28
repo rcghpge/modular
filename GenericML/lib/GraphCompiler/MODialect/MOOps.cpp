@@ -1084,6 +1084,40 @@ OpFoldResult ReduceMulOp::fold(FoldAdaptor adaptor) {
 // MO_ReshapeOp support
 //===----------------------------------------------------------------------===//
 
+LogicalResult ReshapeOp::canonicalize(ReshapeOp op, PatternRewriter &rewriter) {
+  TensorValue inputVal = op.getInput();
+  TensorType inputTy = inputVal.getType();
+  if (inputTy.hasUnknownShape())
+    return failure();
+
+  TensorType resTy = op.getType();
+  if (!inputTy.hasRank() || !resTy.hasRank())
+    return failure();
+
+  // TODO(#11269) Emit runtime checks.
+  // [] --> [?]
+  if (inputTy.getRank() == 0 && resTy.getRank() == 1) {
+    auto inferredResTy =
+        TensorType::get(SmallVector<int64_t>({1}), resTy.getElementType());
+    auto newReshapeOp = rewriter.create<Static::ReshapeOp>(
+        op.getLoc(), inferredResTy, inputVal);
+    rewriter.replaceOpWithNewOp<RebindOp>(op, resTy, newReshapeOp);
+    return success();
+  }
+
+  // [?] --> []
+  if (inputTy.getRank() == 1 && resTy.getRank() == 0) {
+    auto inferredResTy =
+        TensorType::get(SmallVector<int64_t>({}), resTy.getElementType());
+    auto newReshapeOp = rewriter.create<Static::ReshapeOp>(
+        op.getLoc(), inferredResTy, inputVal);
+    rewriter.replaceOpWithNewOp<RebindOp>(op, resTy, newReshapeOp);
+    return success();
+  }
+
+  return failure();
+}
+
 /// Helper to fold reshape ops.
 static ArrayElementsAttr foldReshape(ArrayRef<int64_t> outIntDims,
                                      ArrayElementsAttr inputArr) {
