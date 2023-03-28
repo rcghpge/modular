@@ -161,14 +161,13 @@ public:
       "input-data",
       cl::desc(
           "Specify custom data to use per input. It is specified as "
-          "--input-data=tensor_idx:input_source:input_source_attr_list where:"
-          "- tensorIdx: int representing the input tensor index"
+          "--input-data=tensor_idx:input_source:input_source_attr_list where:\n"
+          "- tensor_idx: int representing the input tensor index\n"
           "- input_source: one of [random|zeros|negones|ones] or the "
           "name of a file containing raw binary tensor data stored in "
-          "row-major little-endian order"
+          "row-major little-endian order\n"
           "- input_source_attr_list: optional (default empty) comma separated "
-          "list of "
-          "[Truncate|Cycle] which specify relaxations"
+	  "list of [Truncate|Cycle] which specify relaxations "
           "on use of data in the input file. If empty, the file size must be "
           "an exact multiple of the input tensor size and every tensor in the "
           "input file may only be used once. If Cycle is specified, there is "
