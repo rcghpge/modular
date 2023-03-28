@@ -17,6 +17,7 @@
 
 using namespace M;
 using namespace mlir;
+using namespace mlir::matchers;
 
 namespace M::MOGG {
 
@@ -39,10 +40,11 @@ struct GatherSumPattern : public RewritePattern {
     auto reduceAxisPattern = m_ScalarConstantInt(&reduceAxis, 1);
     auto sumPattern = m_Op<MO::ReduceAddOp>(
         &sum,
-        m_Op<MO::GatherOp>(&gather, m_MOMatrix(&input), m_MOMatrix(&indices),
+        m_Op<MO::GatherOp>(&gather, m_MOMatrix(m_Any(&input)),
+                           m_MOMatrix(m_Any(&indices)),
                            m_ScalarConstantInt(&gatherAxis, 0)),
         reduceAxisPattern);
-    auto any = matchers::m_Any();
+    auto any = m_Any();
     auto zero = m_ScalarConstantInt(0);
     auto one = m_ScalarConstantInt(1);
     auto sumShapePattern = m_Op<MO::ShapeOfOp>(sumPattern);

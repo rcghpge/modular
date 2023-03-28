@@ -108,6 +108,37 @@ TEST_F(MatchersTest, Ranked) {
   ASSERT_FALSE(pattern.match(graph.getArgument(2)));
 }
 
+TEST_F(MatchersTest, MOVector_Matrix) {
+  Value v, m;
+  auto vector = m_MOVector(m_Any(&v));
+  auto matrix = m_MOMatrix(m_Any(&m));
+
+  ASSERT_FALSE(matrix.match(graph.getArgument(0)));
+  ASSERT_NE(graph.getArgument(1), m);
+  ASSERT_TRUE(matrix.match(graph.getArgument(1)));
+  ASSERT_EQ(graph.getArgument(1), m);
+  ASSERT_FALSE(matrix.match(graph.getArgument(2)));
+
+  ASSERT_NE(graph.getArgument(0), v);
+  ASSERT_TRUE(vector.match(graph.getArgument(0)));
+  ASSERT_EQ(graph.getArgument(1), m);
+  ASSERT_FALSE(vector.match(graph.getArgument(1)));
+  ASSERT_FALSE(vector.match(graph.getArgument(2)));
+}
+
+TEST_F(MatchersTest, Optional) {
+  Value ranked;
+  auto any = m_Any(&ranked);
+  auto pattern = m_Optional(m_Ranked(2, any), m_Ranked(1, any));
+
+  ASSERT_NE(graph.getArgument(0), ranked);
+  ASSERT_TRUE(pattern.match(graph.getArgument(0)));
+  ASSERT_EQ(graph.getArgument(0), ranked);
+  ASSERT_TRUE(pattern.match(graph.getArgument(1)));
+  ASSERT_EQ(graph.getArgument(1), ranked);
+  ASSERT_FALSE(pattern.match(graph.getArgument(2)));
+}
+
 TEST_F(MatchersTest, Typed) {
   Value typed;
   auto pattern1 = m_Typed<MO::TensorType>(m_Any(&typed));

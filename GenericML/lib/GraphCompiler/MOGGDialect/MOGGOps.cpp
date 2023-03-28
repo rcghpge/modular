@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
@@ -170,6 +170,7 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
   // (arg0Spec, arg1Spec, ..., argNSpec) -> outSpec
   static const llvm::StringMap<std::string> specNaryShapeFuncs{
       {"mop.kernels.matmul", "mop.shape.matmul"},
+      {"mop.kernels.fully_connected", "mop.shape.fully_connected"},
       {"mop.kernels.batch_matmul", "mop.shape.batch_matmul"},
       {"mop.kernels.select", "mop.shape.select"},
   };

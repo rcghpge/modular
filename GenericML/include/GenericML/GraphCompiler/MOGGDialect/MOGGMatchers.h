@@ -57,6 +57,7 @@ struct Capture {
   bool match(T op) {
     if (!matcher.match(op))
       return false;
+
     bindDest = op;
     return true;
   }
@@ -135,6 +136,40 @@ private:
   Matcher matcher;
 };
 
+/// Statically switch to a Value matcher.
+template <typename MatcherClass>
+std::enable_if_t<llvm::is_detected<detail::has_operation_or_value_matcher_t,
+                                   MatcherClass, Value>::value,
+                 bool>
+matchOperandOrValue(Value op, MatcherClass &matcher) {
+  return matcher.match(op);
+}
+
+/// Statically switch to an Operation matcher.
+template <typename MatcherClass>
+std::enable_if_t<llvm::is_detected<detail::has_operation_or_value_matcher_t,
+                                   MatcherClass, Operation *>::value,
+                 bool>
+matchOperandOrValue(Value op, MatcherClass &matcher) {
+  if (auto *defOp = op.getDefiningOp())
+    return matcher.match(defOp);
+  return false;
+}
+
+template <typename Matcher1, typename Matcher2>
+struct OptionalMatcher {
+  OptionalMatcher(Matcher1 matcher1, Matcher2 matcher2)
+      : matcher1(matcher1), matcher2(matcher2) {}
+  bool match(Value op) {
+    return matchOperandOrValue(op, matcher1) ||
+           matchOperandOrValue(op, matcher2);
+  }
+
+private:
+  Matcher1 matcher1;
+  Matcher2 matcher2;
+};
+
 } // namespace detail
 
 template <typename OpType, typename... Matchers>
@@ -184,10 +219,19 @@ auto m_Typed(Value *val, Matcher matcher) {
   return detail::Capture(val, m_Typed<T, Matcher>(matcher));
 }
 
-template <typename T>
-auto m_MOMatrix(T *input) {
-  return m_Ranked(2,
-                  m_Typed<M::MO::TensorType>(input, mlir::matchers::m_Any()));
+template <typename Matcher>
+auto m_MOVector(Matcher matcher) {
+  return m_Ranked(1, m_Typed<M::MO::TensorType, Matcher>(matcher));
+}
+
+template <typename Matcher>
+auto m_MOMatrix(Matcher matcher) {
+  return m_Ranked(2, m_Typed<M::MO::TensorType, Matcher>(matcher));
+}
+
+template <typename Matcher1, typename Matcher2>
+auto m_Optional(Matcher1 matcher1, Matcher2 matcher2) {
+  return detail::OptionalMatcher<Matcher1, Matcher2>(matcher1, matcher2);
 }
 
 } // namespace mlir
