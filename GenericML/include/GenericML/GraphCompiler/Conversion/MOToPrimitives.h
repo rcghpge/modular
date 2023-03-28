@@ -218,6 +218,16 @@ public:
   /// returns the index of the slot which contains it.
   uint32_t getJitCtxSlot() { return init.jitContextSlot; }
 
+  /// Helper to extract the dynamic dimensions for an MGP tensor.
+  MGP::CpuTensorSpecDimsDynamicOp getDynamicDims(Value mgpTensor,
+                                                 Location loc) {
+    OpBuilder &exeBuilder = getExecuteOpBuilder();
+    auto extractOp = exeBuilder.create<MGP::CpuTensorExtractOp>(loc, mgpTensor);
+    TypedValue<MGP::CpuTensorSpecType> spec = extractOp.getTensorSpecResult();
+    return exeBuilder.create<MGP::CpuTensorSpecDimsDynamicOp>(
+        loc, spec, spec.getType().getRawDims());
+  }
+
   /// Lower the given graph argument using the provided builder and hook. The
   /// hook (using the execute state's builder and the given argument) is
   /// responsible for updating the value mapping.
@@ -238,12 +248,7 @@ public:
         // mappings the first time we encounter a parameter. The unused MGP ops
         // can be cleaned up using DCE.
         hasParams = true;
-        OpBuilder &builder = getExecuteOpBuilder();
-        auto extractOp = builder.create<MGP::CpuTensorExtractOp>(loc, exeArg);
-        TypedValue<MGP::CpuTensorSpecType> spec =
-            extractOp.getTensorSpecResult();
-        auto dynDims = builder.create<MGP::CpuTensorSpecDimsDynamicOp>(
-            loc, spec, spec.getType().getRawDims());
+        MGP::CpuTensorSpecDimsDynamicOp dynDims = getDynamicDims(exeArg, loc);
 
         // The semantics of CpuTensorSpecDimsDynamicOp are quirky: it returns
         // only dynamic runtime dimensions, so we filter for parametric

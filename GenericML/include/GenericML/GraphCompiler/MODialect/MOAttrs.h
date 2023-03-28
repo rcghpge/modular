@@ -14,6 +14,11 @@
 namespace M::MO {
 class ChainType;
 class ShapeType;
+class ShapeAttr;
+
+/// Helper to find the location of a parameter in a shape. Returns -1 if the
+/// parameter does not appear in the shape.
+int64_t findDeclIdx(ShapeAttr shape, KGEN::ParamDeclAttr decl);
 
 /// Parse the parametric dimensions of a MO::ShapeAttr.
 ParseResult parseShapeValue(AsmParser &p, SmallVector<TypedAttr> &values);

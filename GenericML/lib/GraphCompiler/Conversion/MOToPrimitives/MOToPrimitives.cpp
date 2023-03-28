@@ -15,6 +15,7 @@
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "Support/Compiler/OperationUtils.h"
+#include "Support/STLExtras.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 
 #include <numeric>
@@ -293,27 +294,20 @@ LogicalResult MOGraphLowering::lowerParamDeclare(KGEN::ParamDeclareOp declOp) {
   return success();
 }
 
-LogicalResult MOGraphLowering::lowerRebind(MO::RebindOp rebindOp) {
+/// Returns the MGP tensor that the rebind's result should map to.
+static Value getRebindResMgpTensor(MO::RebindOp rebindOp,
+                                   MGP::MOGraphLoweringState &loweringState) {
   MO::TensorValue inputTensor = rebindOp.getInput();
-  MO::TensorValue resTensor = rebindOp.getResult();
-
   MO::TensorType inputTy = inputTensor.getType();
-  MO::TensorType resTy = resTensor.getType();
-  if (inputTy.hasRank() != resTy.hasRank())
-    return rebindOp.emitError("rebind lowering doesn't support unknown shapes");
-
-  if (!rebindOp.getOutputParamDecls().empty())
-    return rebindOp.emitError("rebind lowering doesn't support param decls");
+  MO::TensorType resTy = rebindOp.getResult().getType();
 
   // If the input and output specs are the same, we can just map to the already
   // lowered tensor.
   auto outSpecTy = MGP::createCpuTensorSpec(resTy);
   auto inSpecTy = MGP::createCpuTensorSpec(inputTy);
   Value mgpInput = loweringState.lookupExecuteLoweredTensor(inputTensor);
-  if (outSpecTy == inSpecTy) {
-    loweringState.emplaceExecuteLoweredTensor(resTensor, mgpInput);
-    return success();
-  }
+  if (outSpecTy == inSpecTy)
+    return mgpInput;
 
   // We will collect the runtime dimensions for the result spec.
   SmallVector<Value> runtimeDims;
@@ -362,10 +356,43 @@ LogicalResult MOGraphLowering::lowerRebind(MO::RebindOp rebindOp) {
       loweringState.getExecuteOpBuilder().create<MGP::CpuTensorSpecCreateOp>(
           loc, outSpecTy, runtimeDims);
   auto extractOp = exeBuilder.create<MGP::CpuTensorExtractOp>(loc, mgpInput);
-  auto mgpRes = exeBuilder.create<MGP::CpuTensorCreateOp>(
+  return exeBuilder.create<MGP::CpuTensorCreateOp>(
       loc, outTensorTy, loweringState.getExecuteChain(),
       extractOp.getBufferResult(), specOp);
+}
+
+LogicalResult MOGraphLowering::lowerRebind(MO::RebindOp rebindOp) {
+  MO::TensorValue inputTensor = rebindOp.getInput();
+  MO::TensorValue resTensor = rebindOp.getResult();
+
+  MO::TensorType inputTy = inputTensor.getType();
+  MO::TensorType resTy = resTensor.getType();
+  if (inputTy.hasRank() != resTy.hasRank())
+    return rebindOp.emitError("rebind lowering doesn't support unknown shapes");
+
+  Value mgpRes = getRebindResMgpTensor(rebindOp, loweringState);
   loweringState.emplaceExecuteLoweredTensor(resTensor, mgpRes);
+
+  ArrayRef<KGEN::ParamDeclAttr> decls = rebindOp.getOutputParamDecls();
+  if (!decls.empty()) {
+    MGP::CpuTensorSpecDimsDynamicOp dynDims =
+        loweringState.getDynamicDims(mgpRes, rebindOp.getLoc());
+
+    MO::ShapeAttr resShape = resTy.getTypedShapeAttr();
+    for (KGEN::ParamDeclAttr decl : decls) {
+      int64_t idx = findDeclIdx(resShape, decl);
+      if (idx == -1) {
+        return rebindOp.emitError(
+            "rebind declares parameter not appearing in its result");
+      }
+
+      MGP::CpuTensorSpecType specTy = dynDims.getSpec().getType();
+      Value rtVal = dynDims->getResult(specTy.getDynamicDimIndex(idx));
+      if (auto err = loweringState.lowerParamDecl(decl, rtVal))
+        return rebindOp->emitError(err.getError());
+    }
+  }
+
   return success();
 }
 

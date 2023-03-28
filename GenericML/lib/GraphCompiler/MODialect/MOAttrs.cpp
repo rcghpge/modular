@@ -40,6 +40,16 @@ bool ChainAttr::isConstant() const { return true; }
 // ShapeAttr
 //===----------------------------------------------------------------------===//
 
+int64_t M::MO::findDeclIdx(ShapeAttr shape, KGEN::ParamDeclAttr decl) {
+  StringAttr declName = decl.getName();
+  for (auto [idx, dim] : llvm::enumerate(shape.getValues())) {
+    if (auto dimRef = dyn_cast<KGEN::ParamDeclRefAttr>(dim))
+      if (dimRef.getName() == declName)
+        return idx;
+  }
+  return -1;
+}
+
 ParseResult M::MO::parseShapeValue(AsmParser &p,
                                    SmallVector<TypedAttr> &values) {
   values = SmallVector<TypedAttr>();
