@@ -34,7 +34,7 @@ struct GatherSumPattern : public RewritePattern {
                                 PatternRewriter &rewriter) const override {
     OpBuilder b(op);
     b.setInsertionPoint(op);
-    Value input, indices, gatherAxis, reduceAxis;
+    Value null, input, indices, gatherAxis, reduceAxis;
     Operation *gather, *sum;
     // TODO: Simplify this once we have parameterized shape calculations
     auto reduceAxisPattern = m_ScalarConstantInt(&reduceAxis, 1);
@@ -58,6 +58,10 @@ struct GatherSumPattern : public RewritePattern {
     if (!m_Op<MO::ReshapeOp>(sumPattern, squeezeShapePattern).match(op))
       return failure();
 
+    if (input == null || indices == null || gatherAxis == null ||
+        reduceAxis == null)
+      return failure();
+
     auto results =
         b.create<MOGG::ExtOp>(
              op->getLoc(),
@@ -65,6 +69,55 @@ struct GatherSumPattern : public RewritePattern {
              /*op_name=*/"mop.kernels.gather_sum",
              /*inputOperands=*/
              SmallVector<Value>{input, indices, gatherAxis, reduceAxis})
+            .getResults();
+
+    rewriter.replaceOp(op, results);
+
+    return mlir::success();
+  }
+};
+
+struct BatchMatmulAdjBPattern : public RewritePattern {
+  BatchMatmulAdjBPattern(MLIRContext *ctx)
+      : RewritePattern(MatchAnyOpTypeTag{}, 2, ctx) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    OpBuilder b(op);
+    b.setInsertionPoint(op);
+    Value input, weight, axes;
+    if (!m_Op<MO::BatchMatmulOp>(
+             m_Any(&input),
+             m_Op<MO::TransposeOp>(m_Any(&weight), m_MOVector(m_Any(&axes))))
+             .match(op))
+      return failure();
+
+    if (!input || !weight || !axes)
+      return failure();
+
+    std::optional<SmallVector<int64_t>> maybeAxes =
+        MO::tryGetConstantIntVector(cast<MO::TensorValue>(axes));
+
+    if (!maybeAxes.has_value())
+      return failure();
+
+    SmallVector<int64_t> &axesValues = maybeAxes.value();
+
+    int64_t rank = axesValues.size();
+
+    if (axesValues[rank - 1] != rank - 2 || axesValues[rank - 2] != rank - 1)
+      return failure();
+
+    for (int64_t i = 0, e = rank - 2; i < e; ++i)
+      if (axesValues[i] != i)
+        return failure();
+
+    auto results =
+        b.create<MOGG::ExtOp>(op->getLoc(),
+                              /*outputTypes=*/op->getResultTypes(),
+                              /*op_name=*/"mop.kernels.batch_matmul_adjb",
+                              /*inputOperands=*/
+                              SmallVector<Value>{input, weight})
             .getResults();
 
     rewriter.replaceOp(op, results);
@@ -86,6 +139,7 @@ void PatternFusionPass::runOnOperation() {
 
   RewritePatternSet patterns{ctx};
   patterns.add<GatherSumPattern>(ctx);
+  patterns.add<BatchMatmulAdjBPattern>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
     return signalPassFailure();
