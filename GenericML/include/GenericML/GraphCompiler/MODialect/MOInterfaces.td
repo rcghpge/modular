@@ -81,6 +81,11 @@ def MO_ParamDeclaration : MO_TensorOpInterfaceBase<"ParamDeclarationInterface",
       "Return the output shape or dimension parameters declared by this op",
       "llvm::ArrayRef<KGEN::ParamDeclAttr>", "getOutputParamDecls",
       (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<
+      "Set the output parameter declarations associated with this op",
+      "void", "setOutputParamDecls",
+      (ins "ArrayRef<KGEN::ParamDeclAttr>":$paramDecls), [{}],
+      [{ assert(paramDecls.empty()); }]>,
   ];
 
   let extraTraitClassDeclaration = [{
@@ -171,7 +176,8 @@ def MO_ElementWiseBinary : MO_TensorOpInterfaceBase<"ElementWiseBinary"> {
   }];
 }
 
-def MO_Reduction : MO_TensorOpInterfaceBase<"Reduction"> {
+def MO_Reduction : MO_TensorOpInterfaceBase<"Reduction",
+    [MO_ParamDeclaration]> {
   let description = [{
     Interface for modeling reduction operations.
   }];
@@ -186,14 +192,7 @@ def MO_Reduction : MO_TensorOpInterfaceBase<"Reduction"> {
     InterfaceMethod<"Get the axis tensor as a MutableOperandRange",
       "MutableOperandRange", "getAxisMutable", (ins)>,
     InterfaceMethod<"Get result tensor as a TypedValue",
-      "TensorValue", "getResult", (ins)>,
-    InterfaceMethod<
-      "Get the output parameter declarations associated with this op",
-      "ArrayRef<KGEN::ParamDeclAttr>", "getOutputParamDecls", (ins)>,
-    InterfaceMethod<
-      "Set the output parameter declarations associated with this op",
-      "void", "setOutputParamDecls",
-      (ins "ArrayRef<KGEN::ParamDeclAttr>":$paramDecls)>,
+      "TensorValue", "getResult", (ins)>
   ];
 }
 
@@ -236,7 +235,9 @@ def _MO_ReductionParameterization : MO_OpTrait<"ReductionParameterization">;
 def _MO_ReductionShapeInferenceMaterialization
   : MO_OpTrait<"ReductionShapeInferenceMaterialization">;
 
+/// All traits that reduction ops should have.
 def MO_ReductionTraits: TraitList<[
+  MO_Reduction,
   MO_Parameterization,
   MO_ParamDeclaration,
   MO_ShapeInferenceMaterialization,

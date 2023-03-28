@@ -833,7 +833,7 @@ def MO_SoftmaxOp : MO_SoftmaxLikeOp<"softmax"> {
 //===----------------------------------------------------------------------===//
 
 class MO_ReductionOp<string name, list<Trait> traits = []> : MO_TensorOp<
-    name, traits # [Pure, MO_Reduction, MO_ReductionTraits]> {
+    name, traits # [MO_ReductionTraits]> {
   let arguments = (ins
     MO_Tensor:$input,
     MO_RankedScalarIndexTensor:$axis,
