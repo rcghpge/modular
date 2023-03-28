@@ -1424,7 +1424,7 @@ OpFoldResult Shape::NewOp::fold(FoldAdaptor adaptor) {
 
 OpFoldResult Shape::NumElementsOp::fold(FoldAdaptor adaptor) {
   if (auto inputDimAttrs = dyn_cast_or_null<ShapeAttr>(adaptor.getInput())) {
-    return KGEN::ParamOperatorAttr::get(KGEN::POC::Mul,
+    return KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw,
                                         inputDimAttrs.getValues());
   }
 
