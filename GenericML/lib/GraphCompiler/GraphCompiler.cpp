@@ -50,9 +50,14 @@ void M::MO::registerShapeInferencePipeline() {
       "shape-inference", "Run the end-to-end shape inference pipeline.",
       buildShapeInferencePipeline);
 }
+void M::MO::registerMoToMgpPipeline() {
+  mlir::PassPipelineRegistration<MoToMgpOptions>(
+      "mo-to-mgp", "Lower MO to MGP.", buildMoToMgpPipeline);
+}
 
 void M::MO::registerPasses() {
   MO::registerShapeInferencePipeline();
+  MO::registerMoToMgpPipeline();
   MO::registerMOToMOGGPasses();
   MO::registerMOTransformsPasses();
   MGP::registerMOToPrimitives();
@@ -65,11 +70,11 @@ void M::MO::registerPasses() {
   mlir::registerCanonicalizerPass();
 }
 
-void M::MO::buildMoToMGPPipeline(mlir::PassManager &pm,
-                                 const PassOptions &opts) {
+void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
+                                 const MoToMgpOptions &opts) {
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
-  if (opts.shapeInference)
+  if (opts.useShapeInference)
     buildShapeInferencePipeline(pm);
 
   if (opts.usePatterns) {
@@ -112,10 +117,11 @@ void M::MO::buildMoToMGPPipeline(mlir::PassManager &pm,
 
   MGP::MOToPrimitivesOptions moToPrimOpts;
   moToPrimOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
-  moToPrimOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel;
+  if (opts.compiledFrameworkLabel.hasValue())
+    moToPrimOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel;
   pm.addPass(MGP::createMOToPrimitives(moToPrimOpts));
 
-  if (!opts.cacheDir.empty()) {
+  if (opts.cacheDir.hasValue() && !opts.cacheDir.empty()) {
     Cache::DeflateConstantsOptions deflateOpts;
     deflateOpts.cacheDir = opts.cacheDir;
     pm.addPass(Cache::createDeflateConstants(deflateOpts));

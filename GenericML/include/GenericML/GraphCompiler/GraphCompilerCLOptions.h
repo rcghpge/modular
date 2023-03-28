@@ -11,7 +11,7 @@
 
 namespace M::MO {
 
-/// Collects command line options which influence M::MO::buildMoToMGPPipeline.
+/// Collects command line options which influence M::MO::buildMoToMgpPipeline.
 class GraphCompilerCLOptions {
 public:
   cl::opt<std::string> cacheDir{
