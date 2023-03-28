@@ -91,5 +91,14 @@ def LoadLitLibrary : Pass<"load-lit-library", "ModuleOp"> {
    ];
  }
 
+def InlineLambdas: Pass<"inline-lambdas", "MO::GraphOp"> {
+    let summary = "Inline lambda invokes into lambdas and remove unused lambdas";
+    let dependentDialects = [
+        "M::MO::MODialect",
+        "M::MOGG::MOGGDialect"
+    ];
+}
+
+
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGPASSES_TD
