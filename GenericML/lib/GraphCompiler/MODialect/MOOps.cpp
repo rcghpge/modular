@@ -22,6 +22,7 @@
 #include "mlir/IR/TypeUtilities.h"
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/STLExtras.h>
+#include <numeric>
 
 using namespace M;
 using namespace MO;
@@ -1043,6 +1044,41 @@ LogicalResult RebindOp::verify() {
     }
   }
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// MO_ReduceMulOp support
+//===----------------------------------------------------------------------===//
+
+OpFoldResult ReduceMulOp::fold(FoldAdaptor adaptor) {
+  // TODO(#10811): support other types and do this using a MOJO kernel?
+
+  auto inputArr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInput());
+  auto axisArr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getAxis());
+  if (!inputArr || !axisArr)
+    return {};
+
+  // We only support rank-1 integers (i.e. shape-like).
+  if (inputArr.getType().getRank() != 1)
+    return {};
+
+  int64_t axis = getBlob(axisArr).front();
+  if (axis != 0)
+    return {};
+
+  TensorType resTy = getType();
+  auto maybeInput = tryGetConstantIntBlob(inputArr, resTy.getDtype());
+  if (!maybeInput.has_value())
+    return {};
+
+  ArrayRef<int64_t> inputs = *maybeInput;
+  int64_t res =
+      std::accumulate(inputs.begin(), inputs.end(), 1, std::multiplies<>());
+
+  SmallVector<APInt> resArr{APInt(64, res, /*isSigned=*/true)};
+  auto rankedResTy =
+      RankedTensorType::get(resTy.getIntDims(), resTy.getElementType());
+  return IntArrayElementsAttr::get(rankedResTy, resArr);
 }
 
 //===----------------------------------------------------------------------===//

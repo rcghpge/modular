@@ -1,4 +1,4 @@
-// RUN: mo-opt %s | FileCheck %s
+// RUN: mo-opt %s --canonicalize | FileCheck %s
 
 // CHECK: mo.graph @mean(%[[INPUT:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32> {
 mo.graph @mean(%input: !mo.tensor<[2, 3], f32>) -> (!mo.tensor<[2, 1], f32>) {
@@ -9,8 +9,8 @@ mo.graph @mean(%input: !mo.tensor<[2, 3], f32>) -> (!mo.tensor<[2, 1], f32>) {
   mo.output %output : !mo.tensor<[2, 1], f32>
 }
 
-// CHECK: mo.graph @prod(%[[INPUT:.*]]: !mo.tensor<[?, ?, 5], f32>) -> !mo.tensor<[?, ?, 1], f32> {
-mo.graph @prod(%input: !mo.tensor<[?, ?, 5], f32>) -> (!mo.tensor<[?, ?, 1], f32>) {
+// CHECK: mo.graph @reduce_mul(%[[INPUT:.*]]: !mo.tensor<[?, ?, 5], f32>) -> !mo.tensor<[?, ?, 1], f32> {
+mo.graph @reduce_mul(%input: !mo.tensor<[?, ?, 5], f32>) -> (!mo.tensor<[?, ?, 1], f32>) {
   // CHECK: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[], si64>
   %axis = mo.constant {value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[], si64>
   // CHECK-NEXT: mo.reduce.mul(%[[INPUT]], %[[AXIS]]) : (!mo.tensor<[?, ?, 5], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?, 1], f32>
@@ -18,8 +18,18 @@ mo.graph @prod(%input: !mo.tensor<[?, ?, 5], f32>) -> (!mo.tensor<[?, ?, 1], f32
   mo.output %output : !mo.tensor<[?, ?, 1], f32>
 }
 
-// CHECK: mo.graph @sum(%[[INPUT:.*]]: !mo.tensor<[?, ?, 5], f32>) -> !mo.tensor<[?, ?, 1], f32> {
-mo.graph @sum(%input: !mo.tensor<[?, ?, 5], f32>) -> (!mo.tensor<[?, ?, 1], f32>) {
+// CHECK: mo.graph @reduce_mul_fold() -> !mo.tensor<[1], si64> {
+mo.graph @reduce_mul_fold() -> !mo.tensor<[1], si64> {
+  %axis = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %input = mo.constant {value = #M.dense_array<2, 3, 4> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  // CHECK-NEXT: %[[RES:.*]] = mo.constant {value = #M.dense_array<24> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %output = mo.reduce.mul(%input, %axis) : (!mo.tensor<[3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[1], si64>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[1], si64>
+  mo.output %output : !mo.tensor<[1], si64>
+}
+
+// CHECK: mo.graph @reduce_add(%[[INPUT:.*]]: !mo.tensor<[?, ?, 5], f32>) -> !mo.tensor<[?, ?, 1], f32> {
+mo.graph @reduce_add(%input: !mo.tensor<[?, ?, 5], f32>) -> (!mo.tensor<[?, ?, 1], f32>) {
   // CHECK: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[], si64>
   %axis = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[], si64>
   // CHECK-NEXT: mo.reduce.add(%[[INPUT]], %[[AXIS]]) : (!mo.tensor<[?, ?, 5], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?, 1], f32>
@@ -44,4 +54,3 @@ mo.graph @reduce_max(%input: !mo.tensor<[?, ?, 5], f32>) -> (!mo.tensor<[?, ?, 1
   %output = mo.reduce.max(%input, %axis) : (!mo.tensor<[?, ?, 5], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?, 1], f32>
   mo.output %output : !mo.tensor<[?, ?, 1], f32>
 }
-
