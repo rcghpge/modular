@@ -114,3 +114,19 @@ mo.graph @graph_with_param_decls_in_ops<D0 -> D1, D2>(
   // CHECK-NEXT: mo.output<[[D5]], [[D7]]> %[[VAL2]] : !mo.tensor<[[[D5]], [[D7]]], f32>
   mo.output<D8, D9> %2 : !mo.tensor<[D8, D9], f32>
 }
+
+// CHECK: mo.graph @nested_div_mul_simplification<[[D0:.*]], [[D1:.*]]>(
+mo.graph @nested_div_mul_simplification<D0, D1 -> D2>(
+  // CHECK-SAME: %[[ARG:.*]]: !mo.tensor<[[[D0]], [[D1]], 20], f32>
+  %arg: !mo.tensor<[D0, D1, 20], f32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], 4, 5], f32> {
+) -> !mo.tensor<[D0, D2, 4, 5], f32> {
+  kgen.param.declare NUM = <mul_nuw(D0, D1, 20)>
+  kgen.param.declare DENOM = <mul_nuw(D0, 4, 5)>
+  kgen.param.declare DIV = <div(NUM, DENOM)>
+  // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[ARG]])
+  // CHECK-SAME: : !mo.tensor<[[[D0]], [[D1]], 20], f32> -> !mo.tensor<[[[D0]], [[D1]], 4, 5], f32>
+  %res = mo.static.reshape(%arg) : !mo.tensor<[D0, D1, 20], f32> -> !mo.tensor<[D0, DIV, 4, 5], f32>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[D0]], [[D1]], 4, 5], f32>
+  mo.output<DIV> %res : !mo.tensor<[D0, DIV, 4, 5], f32>
+}
