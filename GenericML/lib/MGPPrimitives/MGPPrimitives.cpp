@@ -218,6 +218,27 @@ mgp_cpu_buffer_realloc_spec(Chain inChain, Context &ctx, const TensorSpec &spec,
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.cpu.buffer.set_with_index
+//===----------------------------------------------------------------------===//
+
+static ErrorOr<Chain> mgp_cpu_buffer_set_with_index(BufferRef &buffer,
+                                                    size_t idx) {
+  size_t bufSize = buffer.getSize();
+  switch (bufSize) {
+  case 4:
+    *buffer.getMutableBuffer<int32_t>() = (int32_t)idx;
+    break;
+  case 8:
+    *buffer.getMutableBuffer<int64_t>() = (int64_t)idx;
+    break;
+  default:
+    return Error("unsupported size for singleton index buffer: " +
+                 Twine(bufSize));
+  }
+  return Chain();
+}
+
+//===----------------------------------------------------------------------===//
 // mgp.cpu.buffer.copy
 //===----------------------------------------------------------------------===//
 
@@ -694,6 +715,8 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
                 mgp_cpu_buffer_realloc_dynamic);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.realloc.spec",
                 mgp_cpu_buffer_realloc_spec);
+  ADD_PRIMITIVE(registry, "mgp.cpu.buffer.set_with_index",
+                mgp_cpu_buffer_set_with_index);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.copy", mgp_cpu_buffer_copy);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.concat", mgp_cpu_buffer_concat);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.split.mutable_borrow",

@@ -519,6 +519,32 @@ def CpuBufferReallocSpecOp : MGP_Op<"cpu.buffer.realloc.spec", [
 }
 
 //===----------------------------------------------------------------------===//
+// CpuBufferSetWithIndex
+//===----------------------------------------------------------------------===//
+
+def CpuBufferSetWithIndexOp : MGP_Op<"cpu.buffer.set_with_index"> {
+  let summary = "Set a buffer with the value from an index.";
+  let description = [{
+    The runtime index value will be sign extended or truncated to the given
+    buffer size. Therefore only buffer sizes of 4 and 8 bytes are supported by
+    the primitive.
+
+    Example:
+    ```mlir
+    %idx : index
+    %buf : !mgp.cpu.buffer
+    %ch = mgp.cpu.buffer.set_with_index %buf1, %idx : !mgp.cpu.buffer<4>
+    ```
+  }];
+
+  let arguments = (ins MGP_CpuBufferType:$buffer, Index:$value);
+  let results = (outs ChainType:$outChain);
+  let assemblyFormat = [{
+    $buffer `,` $value attr-dict `:` qualified(type($buffer))
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // CpuBufferCopyOp
 //===----------------------------------------------------------------------===//
 
