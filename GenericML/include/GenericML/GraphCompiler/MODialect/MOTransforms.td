@@ -20,7 +20,7 @@ def ShapeInferenceMaterialization :
   }];
 }
 
-def InlineShapeFunctions : Pass<"inline-shape-funcs", "GraphOp"> {
+def InlineShapeFunctions : Pass<"inline-shape-funcs", "ModuleOp"> {
   let summary = "Inlines shape functions into the graph.";
   let description = [{
     Inlines (already materialized) shape functions into the graph as parameter

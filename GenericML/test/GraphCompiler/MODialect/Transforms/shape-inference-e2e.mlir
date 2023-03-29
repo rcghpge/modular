@@ -1,40 +1,6 @@
 // RUN: mo-opt %s --canonicalize --shape-inference | FileCheck %s
 
-// COM: For now shape functions remain in the module even after they are
-// COM: inlined, but this will be removed eventually.
-// CHECK: kgen.func @broadcast_2_fw
-// CHECK: kgen.return
-// CHECK: }
-// CHECK: kgen.func @"gather_axis_-1_fw"
-// CHECK: kgen.return
-// CHECK: }
-// CHECK: kgen.func @reduction_axis_0_fw
-// CHECK: kgen.return
-// CHECK: }
-// CHECK: kgen.func @reduction_axis_1_fw
-// CHECK: kgen.return
-// CHECK: }
-// CHECK: kgen.func @"reduction_axis_-1_fw"
-// CHECK: kgen.return
-// CHECK: }
-// CHECK: kgen.func @batch_matmul_fw
-// CHECK: kgen.return
-// CHECK: }
-// CHECK: kgen.func @batch_matmul_side
-// CHECK: kgen.return
-// CHECK: }
-// CHECK: kgen.func @transpose_perms_0_1_fw
-// CHECK: kgen.return
-// CHECK: }
-// CHECK: kgen.func @transpose_perms_1_0_fw
-// CHECK: kgen.return
-// CHECK: }
-// CHECK: kgen.func @gather_axis_0_fw
-// CHECK: kgen.return
-// CHECK: }
-// CHECK: kgen.func @concat_inputs_2_axis_0_fw
-// CHECK: kgen.return
-// CHECK: }
+// CHECK-NOT: kgen.func
 
 // CHECK: mo.graph @static_ranks<[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(
 // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[[D0]], [[D1]]], f32>, %[[ARG1:.*]]: !mo.tensor<[[[D2]], [[D3]]], f32>
