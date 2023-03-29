@@ -1554,11 +1554,6 @@ def MO_RangeOp : MO_TensorOp<"range", [
   let hasFolder = 1;
 
   let extraClassDeclaration = [{
-  private:
-    /// Return the number of results given constant start/limit/step values.
-    static ErrorOr<int64_t> getNumResElelements(
-      int64_t start, int64_t limit, int64_t step);
-  public:
     LogicalResult deparameterize(mlir::RewriterBase &rewriter);
   }];
 }

@@ -13,6 +13,7 @@
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/Compiler/VerifyUtils.h"
 #include "Support/MDialect/MAttrs.h"
+#include "Support/ML/RangeUtils.h"
 #include "Support/STLExtras.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
@@ -781,25 +782,6 @@ LogicalResult BatchMatmulOp::verify() {
 // MO_RangeOp support
 //===----------------------------------------------------------------------===//
 
-/// Integer division that rounds up.
-static int64_t ceilDiv(int64_t x, int64_t y) { return x / y + (x % y != 0); }
-
-ErrorOr<int64_t> RangeOp::getNumResElelements(int64_t start, int64_t limit,
-                                              int64_t step) {
-  if (step == 0)
-    return Error("step must not be zero");
-
-  bool stepSign = step > 0;
-  int64_t intervalLen = (stepSign ? 1ll : -1ll) * (limit - start);
-  if (intervalLen < 0) {
-    return Error(Twine("limit must be ") + (stepSign ? "greater" : "less") +
-                 " than or equal to start when step is " +
-                 (stepSign ? "positive" : "negative"));
-  }
-
-  return ceilDiv(intervalLen, std::abs(step));
-}
-
 OpFoldResult RangeOp::fold(FoldAdaptor adaptor) {
   // TODO(#10811): support other types and do this using a MOJO kernel?
 
@@ -819,7 +801,7 @@ OpFoldResult RangeOp::fold(FoldAdaptor adaptor) {
   int64_t limit = getBlob(limitAttr).front();
   int64_t step = getBlob(stepAttr).front();
 
-  auto numResElementsOr = getNumResElelements(start, limit, step);
+  auto numResElementsOr = getRangeNumElements(start, limit, step);
   if (numResElementsOr.isError())
     return {};
   int64_t numResElements = *numResElementsOr;
