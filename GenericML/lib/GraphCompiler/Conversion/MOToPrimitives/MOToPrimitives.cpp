@@ -81,6 +81,12 @@ public:
   /// Lower a parameter declaration op.
   LogicalResult lowerParamDeclare(KGEN::ParamDeclareOp declOp);
 
+  /// Lower a parameter constant op.
+  LogicalResult lowerParamConstant(KGEN::ParamConstantOp paramConstOp);
+
+  /// Lower an index to scalar tensor cast op.
+  LogicalResult lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp);
+
   /// Lower a tensor rebind.
   LogicalResult lowerRebind(MO::RebindOp rebindOp);
 
@@ -294,6 +300,47 @@ LogicalResult MOGraphLowering::lowerParamDeclare(KGEN::ParamDeclareOp declOp) {
   return success();
 }
 
+LogicalResult
+MOGraphLowering::lowerParamConstant(KGEN::ParamConstantOp paramConstOp) {
+  auto valueOr = loweringState.lowerExpression(paramConstOp.getLoc(),
+                                               paramConstOp.getValue());
+  if (valueOr.isError())
+    return paramConstOp->emitError(valueOr.getError());
+
+  loweringState.emplaceExecuteLoweredTensor(paramConstOp.getResult(), *valueOr);
+  return success();
+}
+
+LogicalResult
+MOGraphLowering::lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp) {
+  Location loc = toTensorOp.getLoc();
+  OpBuilder &exeBuilder = loweringState.getExecuteOpBuilder();
+
+  // We first allocate an buffer for the result tensor.
+  uint64_t bufferSize =
+      toTensorOp.getResult().getType().getDtype().getSizeInBytes(1);
+  auto bufferAllocOp = exeBuilder.create<MGP::CpuBufferAllocStaticOp>(
+      loc, loweringState.getExecuteChain(), bufferSize,
+      loweringState.getMinimumCpuAlignment());
+  TypedValue<MGP::CpuBufferType> buffer = bufferAllocOp.getOutBuffer();
+
+  // We populate the buffer with the index value.
+  Value mgpIndexVal =
+      loweringState.lookupExecuteLoweredTensor(toTensorOp.getInput());
+  auto bufferSetOp =
+      exeBuilder.create<MGP::CpuBufferSetWithIndexOp>(loc, buffer, mgpIndexVal);
+
+  // Finally we create an MGP tensor we can map to.
+  auto outSpecTy = MGP::createCpuTensorSpec(toTensorOp.getType());
+  auto outTensorTy = exeBuilder.getType<MGP::CpuTensorType>(outSpecTy);
+  auto specOp = exeBuilder.create<MGP::CpuTensorSpecCreateOp>(loc, outSpecTy);
+  auto tensorCreateOp = exeBuilder.create<MGP::CpuTensorCreateOp>(
+      loc, outTensorTy, bufferSetOp.getOutChain(), buffer, specOp);
+  loweringState.emplaceExecuteLoweredTensor(toTensorOp.getResult(),
+                                            tensorCreateOp.getResult());
+  return success();
+}
+
 /// Returns the MGP tensor that the rebind's result should map to.
 static Value getRebindResMgpTensor(MO::RebindOp rebindOp,
                                    MGP::MOGraphLoweringState &loweringState) {
@@ -352,9 +399,8 @@ static Value getRebindResMgpTensor(MO::RebindOp rebindOp,
 
   // We create a new spec, then a new tensor from it and the input buffer.
   auto outTensorTy = exeBuilder.getType<MGP::CpuTensorType>(outSpecTy);
-  auto specOp =
-      loweringState.getExecuteOpBuilder().create<MGP::CpuTensorSpecCreateOp>(
-          loc, outSpecTy, runtimeDims);
+  auto specOp = exeBuilder.create<MGP::CpuTensorSpecCreateOp>(loc, outSpecTy,
+                                                              runtimeDims);
   auto extractOp = exeBuilder.create<MGP::CpuTensorExtractOp>(loc, mgpInput);
   return exeBuilder.create<MGP::CpuTensorCreateOp>(
       loc, outTensorTy, loweringState.getExecuteChain(),
@@ -429,8 +475,8 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
   auto tensorCreateOp =
       loweringState.getExecuteOpBuilder().create<MGP::CpuTensorCreateOp>(
           loc, tensorType, loweringState.getExecuteChain(), bufferOp, specOp);
-  loweringState.emplaceExecuteLoweredTensor(constOp->getResult(0),
-                                            tensorCreateOp->getResult(0));
+  loweringState.emplaceExecuteLoweredTensor(constOp.getResult(),
+                                            tensorCreateOp.getResult());
   return success();
 }
 
@@ -625,6 +671,18 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
   for (Operation &op : *block) {
     if (auto declOp = dyn_cast<KGEN::ParamDeclareOp>(op)) {
       if (failed(lowerParamDeclare(declOp)))
+        return failure();
+      continue;
+    }
+
+    if (auto paramConstOp = dyn_cast<KGEN::ParamConstantOp>(op)) {
+      if (failed(lowerParamConstant(paramConstOp)))
+        return failure();
+      continue;
+    }
+
+    if (auto toTensorOp = dyn_cast<MO::IndexToTensorOp>(op)) {
+      if (failed(lowerIndexToTensorOp(toTensorOp)))
         return failure();
       continue;
     }
