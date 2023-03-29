@@ -682,7 +682,7 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
       continue;
     }
 
-    return op.emitError("op currently not supported");
+    return op.emitOpError("currently not supported");
   }
   return success();
 }
