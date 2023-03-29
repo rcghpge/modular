@@ -121,6 +121,8 @@ mo.graph @nested_div_mul_simplification<D0, D1 -> D2>(
   %arg: !mo.tensor<[D0, D1, 20], f32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], 4, 5], f32> {
 ) -> !mo.tensor<[D0, D2, 4, 5], f32> {
+  // CHECK-NEXT: kgen.param.declare [[NUM:.*]] = <mul_nuw([[D0]], [[D1]], 20)>
+  // CHECK-NEXT: kgen.param.declare [[DENOM:.*]] = <mul_nuw([[D0]], 20)>
   kgen.param.declare NUM = <mul_nuw(D0, D1, 20)>
   kgen.param.declare DENOM = <mul_nuw(D0, 4, 5)>
   kgen.param.declare DIV = <div(NUM, DENOM)>
