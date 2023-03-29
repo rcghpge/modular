@@ -1,8 +1,8 @@
-// RUN: mo-opt %s --shape-inference | FileCheck %s
+// RUN: mo-opt %s --canonicalize --shape-inference | FileCheck %s
 
 // COM: For now shape functions remain in the module even after they are
 // COM: inlined, but this will be removed eventually.
-// CHECK: kgen.func @gather_axis_0_fw
+// CHECK: kgen.func @broadcast_2_fw
 // CHECK: kgen.return
 // CHECK: }
 // CHECK: kgen.func @"gather_axis_-1_fw"
@@ -23,7 +23,16 @@
 // CHECK: kgen.func @batch_matmul_side
 // CHECK: kgen.return
 // CHECK: }
+// CHECK: kgen.func @transpose_perms_0_1_fw
+// CHECK: kgen.return
+// CHECK: }
 // CHECK: kgen.func @transpose_perms_1_0_fw
+// CHECK: kgen.return
+// CHECK: }
+// CHECK: kgen.func @gather_axis_0_fw
+// CHECK: kgen.return
+// CHECK: }
+// CHECK: kgen.func @concat_inputs_2_axis_0_fw
 // CHECK: kgen.return
 // CHECK: }
 
@@ -288,4 +297,30 @@ mo.graph @transpose_static_rank(
   // CHECK-NEXT: mo.output %[[OUT2]], %[[OUT3]] : !mo.tensor<[[[D8]], [[D9]]], f32>, !mo.tensor<[[[D11]], [[D10]]], f32>
   mo.output %output0, %output1 : !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], f32>
 // CHECK-NEXT: }
+}
+
+// CHECK: mo.graph @scalar_to_tensor_reshapes_before_staticization<[[D0:.*]], [[D1:.*]]>(
+mo.graph @scalar_to_tensor_reshapes_before_staticization(
+  // CHECK-SAME: %[[ARG:.*]]: !mo.tensor<[[[D0]], [[D1]]], si32>
+  %arg: !mo.tensor<[?, ?], si32>
+  // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D0]]], si32> {
+) -> !mo.tensor<[?, ?], si32> {
+  %scalar_one = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %scalar_zero = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si32>
+  %tensor_zero = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %tensor_one = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  // CHECK-NEXT: %[[RES:.*]] = mo.rebind(%[[ARG]])
+  // CHECK-SAME: : !mo.tensor<[[[D0]], [[D1]]], si32> -> !mo.tensor<[[[D0]], [[D0]]], si32>
+  %arg_shape = mo.shape_of(%arg) : (!mo.tensor<[?, ?], si32>) -> !mo.tensor<[2], si32>
+  %arg_dim0 = mo.slice(%arg_shape, %tensor_zero, %tensor_one, %tensor_one) : (!mo.tensor<[2], si32>, !mo.tensor<[1], si32>, !mo.tensor<[1], si32>, !mo.tensor<[1], si32>) -> !mo.tensor<[?], si32>
+  %empty_tensor = mo.range(%scalar_zero, %scalar_zero, %scalar_one) : (!mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[?], si32>
+  %one_ = mo.gather(%tensor_one, %empty_tensor, %scalar_zero) : (!mo.tensor<[1], si32>, !mo.tensor<[?], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[?], si64>
+  %one_one = mo.concat[%scalar_zero : !mo.tensor<[], si32>] (%one_, %one_) : (!mo.tensor<[?], si64>, !mo.tensor<[?], si64>) -> !mo.tensor<[?], si64>
+  %arg_dim0_rs1 = mo.reshape(%arg_dim0, %one_one) : (!mo.tensor<[?], si32>, !mo.tensor<[?], si64>) -> !mo.tensor<[], si32>
+  %arg_dim0_rs2 = mo.reshape(%arg_dim0_rs1, %tensor_one) : (!mo.tensor<[], si32>, !mo.tensor<[1], si32>) -> !mo.tensor<[?], si32>
+  %arg_dim0_dim0 = mo.concat[%scalar_zero : !mo.tensor<[], si32>] (%arg_dim0_rs2, %arg_dim0_rs2)
+  : (!mo.tensor<[?], si32>, !mo.tensor<[?], si32>) -> !mo.tensor<[2], si32>
+  %res = mo.reshape(%arg, %arg_dim0_dim0) : (!mo.tensor<[?, ?], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[?, ?], si32>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[D0]], [[D0]]], si32>
+  mo.output %res : !mo.tensor<[?, ?], si32>
 }
