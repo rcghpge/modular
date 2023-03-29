@@ -6,6 +6,7 @@
 
 #include "GenericML/MGPDialect/MGPDialect.h"
 #include "GraphRT/MEFDialect/MEFDialect.h"
+#include "GraphRT/MIPDialect/MIPDialect.h"
 
 using namespace M;
 using namespace MGP;

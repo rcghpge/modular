@@ -376,7 +376,7 @@ static Value getRebindResMgpTensor(MO::RebindOp rebindOp,
           {exeBuilder.getStringAttr("value"),
            exeBuilder.getIntegerAttr(si64Ty, intAttr.getInt())}};
       Operation *constOp =
-          exeBuilder.create(loc, exeBuilder.getStringAttr("mip.index.const"),
+          exeBuilder.create(loc, exeBuilder.getStringAttr("mip.constant.index"),
                             {}, {intAttr.getType()}, attrs);
       runtimeDims.emplace_back(constOp->getResult(0));
       continue;

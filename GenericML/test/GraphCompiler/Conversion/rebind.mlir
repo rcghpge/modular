@@ -22,7 +22,7 @@ mo.graph @static_ranks<D0, D1, D2, D3>(%arg0: !mo.tensor<[D0, D1], f32>, %arg1: 
 // CHECK: mgp.model @static_ranks_int_to_unknown : tf init {
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
 // CHECK-SAME: %[[ARG2:.*]]: !mgp.cpu.tensor<42x?xf32>) -> (!mef.chain, !mgp.cpu.tensor<?x?xf32>) {
-// CHECK:   %[[CDIM:.*]] = "mip.index.const"() {value = 42 : si64} : () -> index
+// CHECK:   %[[CDIM:.*]] = mip.constant.index 42
 // CHECK:   %[[BUF:.*]], %[[SPEC:.*]] = mgp.cpu.tensor.extract %arg2 : !mgp.cpu.tensor<42x?xf32>
 // CHECK:   %[[DYNDIM:.*]] = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.cpu.tensor_spec<42x?xf32>
 // CHECK:   %[[NEWSPEC:.*]] = mgp.cpu.tensor_spec.create %[[CDIM]], %[[DYNDIM]] : !mgp.cpu.tensor_spec<?x?xf32>

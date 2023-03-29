@@ -114,7 +114,11 @@ def MGPDialect : Dialect {
   }];
 
   let cppNamespace = "::M::MGP";
-  let dependentDialects = ["::M::MEF::MEFDialect", "::M::MDialect"];
+  let dependentDialects = [
+    "::M::MEF::MEFDialect",
+    "::M::MIP::MIPDialect",
+    "::M::MDialect"
+  ];
 
   let extraClassDeclaration = [{
    private:

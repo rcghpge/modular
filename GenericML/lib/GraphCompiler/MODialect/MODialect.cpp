@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "GraphRT/MIPDialect/MIPDialect.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENDialect.h"
 #include "KGEN/KGENDialect/KGENOps.h"

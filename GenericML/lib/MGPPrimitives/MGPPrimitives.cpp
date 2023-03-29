@@ -750,7 +750,4 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
 
   // Have the MO primitives be registered wherever MGP is registered.
   registerMOPrimitives(registry);
-
-  // Index and shape manipulation primitives should always be available.
-  registerIndexPrimitives(registry);
 }

@@ -310,18 +310,18 @@ private:
     // TODO: support more opcodes
     switch (poc) {
     case KGEN::POC::Add:
-      return "mip.index.add";
+      return "mip.add";
     case KGEN::POC::Div:
-      return "mip.index.div";
+      return "mip.div";
     case KGEN::POC::EQ:
-      return "mip.index.equal";
+      return "mip.eq";
     case KGEN::POC::Max:
-      return "mip.index.max";
+      return "mip.max";
     case KGEN::POC::Mul:
     case KGEN::POC::MulNuw:
-      return "mip.index.mul";
+      return "mip.mul";
     case KGEN::POC::Or:
-      return "mip.bool.or";
+      return "mip.or";
     default:
       return Error(Twine("unsupported POC '") + stringifyPOC(poc) + "'");
     }
@@ -343,10 +343,10 @@ private:
     StringRef opname;
     IntegerAttr valueAttr;
     if (auto boolAttr = dyn_cast<BoolAttr>(intAttr)) {
-      opname = "mip.bool.const";
+      opname = "mip.constant.bool";
       valueAttr = boolAttr;
     } else {
-      opname = "mip.index.const";
+      opname = "mip.constant.index";
       auto si64Ty =
           IntegerType::get(intAttr.getContext(), 64, IntegerType::Signed);
       valueAttr = builder.getIntegerAttr(si64Ty, intAttr.getInt());

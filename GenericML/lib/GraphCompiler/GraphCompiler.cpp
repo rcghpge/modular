@@ -14,6 +14,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/Passes.h"
 #include "GenericML/MGPDialect/MGPTransforms.h"
+#include "GraphRT/MIPDialect/MIPDialect.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
@@ -34,7 +35,7 @@ using namespace M;
 using namespace MO;
 
 void M::MO::loadDialects(mlir::DialectRegistry &registry) {
-  registry.insert<MO::MODialect, MOGG::MOGGDialect,
+  registry.insert<MO::MODialect, MIP::MIPDialect, MOGG::MOGGDialect,
                   // The dialects needed for KGEN.
                   KGEN::KGENDialect, DebugInfo::DebugInfoDialect,
                   Cache::CacheDialect, HLCF::HLCFDialect,

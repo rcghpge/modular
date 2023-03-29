@@ -22,6 +22,9 @@ void registerGraphRTTestPrimitives(PrimitiveRegistry &registry);
 /// This registers the 'graphrt' dialect primitives for working with integers.
 void registerGraphRTIntegerPrimitives(PrimitiveRegistry &registry);
 
+/// This registers the 'mip' dialect primitives for working with index values.
+void registerMipPrimitives(PrimitiveRegistry &registry);
+
 /// This registers the 'graphrt' dialect primitives for control flow.
 void registerGraphRTControlFlowPrimitives(PrimitiveRegistry &registry);
 
@@ -31,6 +34,7 @@ void registerGraphRTBenchmarkingPrimitives(PrimitiveRegistry &registry);
 /// This registers all the primitive libraries in the GraphRT subsystem.
 inline void registerAllGraphRTPrimitives(PrimitiveRegistry &registry) {
   registerGraphRTTestPrimitives(registry);
+  registerMipPrimitives(registry);
   registerGraphRTIntegerPrimitives(registry);
   registerGraphRTControlFlowPrimitives(registry);
   registerGraphRTBenchmarkingPrimitives(registry);

@@ -34,7 +34,7 @@ def MODialect : Dialect {
   let cppNamespace = "::M::MO";
   let dependentDialects = [
     "MDialect", "KGEN::KGENDialect", "mlir::index::IndexDialect",
-    "mlir::arith::ArithDialect"];
+    "mlir::arith::ArithDialect", "MIP::MIPDialect"];
   let useDefaultAttributePrinterParser = 1;
   let hasConstantMaterializer = 1;
 
