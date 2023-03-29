@@ -206,6 +206,8 @@ TensorType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
   ErrorOr<DType> errOrDType = fromMLIRType(dtype);
   assert(!errOrDType.isError() &&
          "element type is not representable as an M::DType");
+  if (!metadata.has_value())
+    metadata = getMetadata();
   return TensorType::get(shapeRef, *errOrDType, metadata);
 }
 

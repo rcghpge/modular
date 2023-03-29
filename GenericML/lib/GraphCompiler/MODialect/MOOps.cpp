@@ -841,6 +841,28 @@ LogicalResult RangeOp::verify() {
   return success();
 }
 
+LogicalResult RangeOp::deparameterize(mlir::RewriterBase &rewriter) {
+  ArrayRef<KGEN::ParamDeclAttr> decls = getOutputParamDecls();
+  if (decls.empty())
+    return failure();
+  setOutputParamDecls({});
+
+  TensorType resTy = getType();
+  auto shapeTy = rewriter.getType<ShapeType>();
+  TensorType unknownResTy;
+  if (resTy.hasRank())
+    unknownResTy = resTy.cloneWith(resTy.getIntDims(), resTy.getElementType());
+  else
+    unknownResTy = resTy.cloneWith(KGEN::UnknownAttr::get(shapeTy));
+
+  auto newOp = rewriter.create<MO::RangeOp>(
+      getLoc(), unknownResTy, getOperands(),
+      getOperation()->getAttrDictionary().getValue());
+  rewriter.replaceOpWithNewOp<RebindOp>(*this, resTy, newOp, decls);
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // MO_RebindOp support
 //===----------------------------------------------------------------------===//

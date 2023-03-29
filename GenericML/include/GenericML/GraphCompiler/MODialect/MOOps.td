@@ -1537,6 +1537,7 @@ def MO_RangeOp : MO_TensorOp<"range", [
     static ErrorOr<int64_t> getNumResElelements(
       int64_t start, int64_t limit, int64_t step);
   public:
+    LogicalResult deparameterize(mlir::RewriterBase &rewriter);
   }];
 }
 

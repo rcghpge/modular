@@ -145,6 +145,7 @@ void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm) {
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(MO::createPropagateShapes());
+  pm.addPass(MO::createDeparameterizeMoOps());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 }

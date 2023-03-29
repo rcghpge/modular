@@ -86,6 +86,14 @@ def MO_ParamDeclaration : MO_TensorOpInterfaceBase<"ParamDeclarationInterface",
       "void", "setOutputParamDecls",
       (ins "ArrayRef<KGEN::ParamDeclAttr>":$paramDecls), [{}],
       [{ assert(paramDecls.empty()); }]>,
+    InterfaceMethod<
+      "Deparameterizes the op by materializing rebinds around it.",
+      "LogicalResult", "deparameterize",
+      (ins "mlir::RewriterBase &":$rewriter), [{}],
+      [{
+        assert(getOutputParamDecls().empty());
+        return failure();
+      }]>,
   ];
 
   let extraTraitClassDeclaration = [{

@@ -55,4 +55,13 @@ def StaticizeShapes : Pass<"staticize-shapes", "GraphOp"> {
   }];
 }
 
+def DeparameterizeMoOps : Pass<"deparameterize-mo-ops", "GraphOp"> {
+  let summary = "Lower parameter declarations in MO ops into rebinds.";
+  let description = [{
+    This pass lowers all parameter declarations in ops that could not be
+    resolved using shape inference materialization. The pass fails if any of the
+    ops don't support deparameterization and are still declaring parameters.
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTRANSFORMS_TD
