@@ -372,13 +372,10 @@ static Value getRebindResMgpTensor(MO::RebindOp rebindOp,
     // constant runtime dimension.
     if (auto intAttr = dyn_cast<IntegerAttr>(inDim)) {
       IntegerType si64Ty = exeBuilder.getIntegerType(64, /*isSigned=*/true);
-      SmallVector<NamedAttribute> attrs{
-          {exeBuilder.getStringAttr("value"),
-           exeBuilder.getIntegerAttr(si64Ty, intAttr.getInt())}};
-      Operation *constOp =
-          exeBuilder.create(loc, exeBuilder.getStringAttr("mip.constant.index"),
-                            {}, {intAttr.getType()}, attrs);
-      runtimeDims.emplace_back(constOp->getResult(0));
+      auto newIntAttr = exeBuilder.getIntegerAttr(si64Ty, intAttr.getInt());
+      auto constOp = exeBuilder.create<MIP::ConstantIndexOp>(
+          loc, intAttr.getType(), newIntAttr);
+      runtimeDims.emplace_back(constOp.getResult());
       continue;
     }
 

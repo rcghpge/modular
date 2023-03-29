@@ -10,6 +10,7 @@
 #include "GenericML/GraphCompiler/Conversion/MGPSupport.h"
 #include "GenericML/GraphCompiler/Conversion/ParameterLowering.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "GraphRT/MIPDialect/MIPOps.h"
 #include "Support/AlignedAlloc.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -310,18 +311,18 @@ private:
     // TODO: support more opcodes
     switch (poc) {
     case KGEN::POC::Add:
-      return "mip.add";
+      return MIP::AddOp::getOperationName();
     case KGEN::POC::Div:
-      return "mip.div";
+      return MIP::DivOp::getOperationName();
     case KGEN::POC::EQ:
-      return "mip.eq";
+      return MIP::EqualOp::getOperationName();
     case KGEN::POC::Max:
-      return "mip.max";
+      return MIP::MaxOp::getOperationName();
     case KGEN::POC::Mul:
     case KGEN::POC::MulNuw:
-      return "mip.mul";
+      return MIP::MulOp::getOperationName();
     case KGEN::POC::Or:
-      return "mip.or";
+      return MIP::OrOp::getOperationName();
     default:
       return Error(Twine("unsupported POC '") + stringifyPOC(poc) + "'");
     }
@@ -337,25 +338,17 @@ private:
                           {opAttr.getType()});
   }
 
-  /// Lowers an integer attribute to a mop constant op.
+  /// Lowers an integer attribute to a mip constant op.
   static Operation *lowerIntAttr(OpBuilder &builder, Location loc,
                                  IntegerAttr intAttr) {
-    StringRef opname;
-    IntegerAttr valueAttr;
     if (auto boolAttr = dyn_cast<BoolAttr>(intAttr)) {
-      opname = "mip.constant.bool";
-      valueAttr = boolAttr;
-    } else {
-      opname = "mip.constant.index";
-      auto si64Ty =
-          IntegerType::get(intAttr.getContext(), 64, IntegerType::Signed);
-      valueAttr = builder.getIntegerAttr(si64Ty, intAttr.getInt());
+      return builder.create<MIP::ConstantBoolOp>(loc, intAttr.getType(),
+                                                 boolAttr);
     }
-
-    SmallVector<NamedAttribute> attrs{
-        {builder.getStringAttr("value"), valueAttr}};
-    return builder.create(loc, builder.getStringAttr(opname), {},
-                          {intAttr.getType()}, attrs);
+    IntegerType si64Ty = builder.getIntegerType(64, /*isSigned=*/true);
+    auto newIntAttr = builder.getIntegerAttr(si64Ty, intAttr.getInt());
+    return builder.create<MIP::ConstantIndexOp>(loc, intAttr.getType(),
+                                                newIntAttr);
   }
 
   /// Lower a parameter expression.
