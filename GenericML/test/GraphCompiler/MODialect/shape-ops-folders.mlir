@@ -113,10 +113,9 @@ kgen.generator @broadcast_not_fold<N, K, Sh: !mo.shape>()
 kgen.generator @equal_fold<Sh1: !mo.shape, D1, D2>() -> (i1, i1, i1, i1, i1) {
   // CHECK-DAG: %[[V1:.*]] = kgen.param.constant: !mo.shape = <[[SH1]]>
   // CHECK-DAG: %[[V2:.*]] = kgen.param.constant: !mo.shape = <[[[D1]], 42]>
-  // CHECK-DAG: %[[V3:.*]] = kgen.param.constant: !mo.shape = <[3, [[D2]]]>
   // CHECK-DAG: %[[TRUE:.*]] = index.bool.constant true
   // CHECK-DAG: %[[B12:.*]] = mo.shape.eq(%[[V1]], %[[V2]])
-  // CHECK-DAG: %[[B23:.*]] = mo.shape.eq(%[[V2]], %[[V3]])
+  // CHECK-DAG: %[[B23:.*]] = kgen.param.constant: i1 = <and(eq([[D1]], 3), eq([[D2]], 42))>
   // CHECK-DAG: %[[FALSE:.*]] = index.bool.constant false
   // CHECK: kgen.return %[[TRUE]], %[[B12]], %[[B23]], %[[FALSE]], %[[FALSE]]
   %v1 = kgen.param.constant: !mo.shape = <Sh1>

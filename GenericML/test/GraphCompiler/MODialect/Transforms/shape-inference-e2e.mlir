@@ -36,7 +36,12 @@ mo.graph @batch_matmul_static_rank(
   // CHECK-DAG: [[D4]]
   // CHECK-SAME: )>
   // CHECK: kgen.param.declare [[CH0:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "inner dimensions do not match"}, [[P12]])>
-  // CHECK: kgen.param.declare [[P15:.*]]: i1 = <apply(:(!mo.shape, !mo.shape) -> i1 "mo.shape.eq", [[[D0]]], [[[D3]]])>
+  // CHECK: kgen.param.declare [[P15:.*]]: i1 =
+  // CHECK-SAME: <eq(
+  // CHECK-DAG: [[D0]]
+  // CHECK-DAG: ,
+  // CHECK-DAG: [[D3]]
+  // CHECK-SAME: )>
   // CHECK: kgen.param.declare [[CH1:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "batch sizes of left and right inputs are not equal"}, [[P15]])>
   // CHECK: %[[V0:.*]] = mo.rebind(%[[ARG1]]) : !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32> -> !mo.tensor<[[[D0]], [[D2]], [[D5]]], f32>
   // CHECK: %[[V1:.*]] = mo.batch_matmul(%[[ARG0]], %[[V0]]) : (!mo.tensor<[[[D0]], [[D1]], [[D2]]], f32>, !mo.tensor<[[[D0]], [[D2]], [[D5]]], f32>) -> !mo.tensor<[[[D0]], [[D1]], [[D5]]], f32>

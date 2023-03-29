@@ -1408,6 +1408,16 @@ OpFoldResult Shape::ConcatOp::fold(FoldAdaptor adaptor) {
   return ShapeAttr::get(finalDims, shapeTy);
 }
 
+TypedAttr Shape::EqualOp::asExpression(ShapeAttr shape1, ShapeAttr shape2) {
+  assert(shape1.getRank() == shape2.getRank());
+  SmallVector<TypedAttr> andOperands;
+  for (auto [xDim, yDim] : llvm::zip(shape1.getValues(), shape2.getValues())) {
+    andOperands.emplace_back(
+        KGEN::ParamOperatorAttr::get(KGEN::POC::EQ, {xDim, yDim}));
+  }
+  return KGEN::ParamOperatorAttr::get(KGEN::POC::And, andOperands);
+}
+
 OpFoldResult Shape::EqualOp::fold(FoldAdaptor adaptor) {
   auto input1 = adaptor.getInput1();
   auto input2 = adaptor.getInput2();
@@ -1419,16 +1429,15 @@ OpFoldResult Shape::EqualOp::fold(FoldAdaptor adaptor) {
 
   auto shape1 = dyn_cast_or_null<ShapeAttr>(input1);
   auto shape2 = dyn_cast_or_null<ShapeAttr>(input2);
-  if (shape1 && shape2) {
-    if (shape1.getRank() != shape2.getRank())
-      return BoolAttr::get(getContext(), false);
+  if (!shape1 || !shape2)
+    return {};
 
-    // we can only claim false here if inputs are different integers
-    for (auto [dim1, dim2] : llvm::zip(shape1.getValues(), shape2.getValues()))
-      if (dim1.isa<IntegerAttr>() && dim2.isa<IntegerAttr>() && dim1 != dim2)
-        return BoolAttr::get(getContext(), false);
-  }
-  return {};
+  // If the inputs are different rank, we can fold.
+  if (shape1.getRank() != shape2.getRank())
+    return BoolAttr::get(getContext(), false);
+
+  // If both inputs have the same static rank, we fold into an expression.
+  return asExpression(shape1, shape2);
 }
 
 OpFoldResult Shape::FromTensorOp::fold(FoldAdaptor adaptor) {
