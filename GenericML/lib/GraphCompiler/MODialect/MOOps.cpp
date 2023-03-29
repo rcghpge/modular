@@ -123,10 +123,24 @@ OpFoldResult AssertOp::fold(FoldAdaptor adaptor) {
   // If the condition is true, we return a chain attribute, otherwise we leave
   // the op as is and a pass can either check for failing asserts or it becomes
   // a guaranteed runtime failure.
-  if (auto boolAttr = adaptor.getCond().dyn_cast_or_null<BoolAttr>())
+  if (auto boolAttr = dyn_cast_or_null<BoolAttr>(adaptor.getCond()))
     if (boolAttr.getValue())
       return ChainAttr::get(ChainType::get(getContext()));
   return {};
+}
+
+//===----------------------------------------------------------------------===//
+// MO_IndexToTensorOp support
+//===----------------------------------------------------------------------===//
+
+OpFoldResult IndexToTensorOp::fold(FoldAdaptor adaptor) {
+  auto inputAttr = dyn_cast_or_null<IntegerAttr>(adaptor.getInput());
+  if (!inputAttr)
+    return {};
+
+  SmallVector<APInt> res{inputAttr.getValue()};
+  auto rankedResTy = RankedTensorType::get({}, getType().getElementType());
+  return IntArrayElementsAttr::get(rankedResTy, res);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1184,6 +1198,19 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
 // MOStatic_ReshapeOp
 //===----------------------------------------------------------------------===//
 
+/// Returns a parameter constant attribute through a variant of ToTensor ops if
+/// possible. Otherwise returns a null attribute.
+template <typename OpTy>
+static TypedAttr getParamConstThrough(TensorValue inputVal) {
+  if (auto toTensorOp = inputVal.template getDefiningOp<OpTy>()) {
+    if (auto constOp = toTensorOp.getInput()
+                           .template getDefiningOp<KGEN::ParamConstantOp>()) {
+      return constOp.getValue();
+    }
+  }
+  return {};
+}
+
 LogicalResult Static::ReshapeOp::canonicalize(Static::ReshapeOp op,
                                               PatternRewriter &rewriter) {
   // We fold consecutive static reshapes into a single reshape.
@@ -1192,13 +1219,39 @@ LogicalResult Static::ReshapeOp::canonicalize(Static::ReshapeOp op,
     return success();
   }
 
-  // A reshape that changes only a single dimension is just a rebind.
-  TensorType inputTy = op.getInput().getType();
+  TensorValue inputVal = op.getInput();
+  TensorType inputTy = inputVal.getType();
   TensorType resTy = op.getType();
-  if (!resTy.hasRank() || !inputTy.hasRank() ||
-      inputTy.getRank() != resTy.getRank())
+  if (!resTy.hasRank() || !inputTy.hasRank())
     return failure();
 
+  size_t inputRank = inputTy.getRank();
+  size_t resRank = resTy.getRank();
+  if (inputRank == 0 && resRank == 1) {
+    if (TypedAttr param = getParamConstThrough<IndexToTensorOp>(inputVal)) {
+      // TODO: test
+      auto shape = ShapeAttr::get(SmallVector<TypedAttr>{param},
+                                  rewriter.getType<ShapeType>());
+      auto newConstOp =
+          rewriter.create<KGEN::ParamConstantOp>(op->getLoc(), shape);
+      rewriter.replaceOpWithNewOp<Shape::ToTensorOp>(op, resTy, newConstOp);
+    }
+  } else if (inputRank == 1 && resRank == 0) {
+    if (TypedAttr param = getParamConstThrough<Shape::ToTensorOp>(inputVal)) {
+      if (auto shape = dyn_cast<ShapeAttr>(param);
+          shape && shape.getRank() == 1) {
+        // TODO: test
+        auto newConstOp = rewriter.create<KGEN::ParamConstantOp>(
+            op->getLoc(), shape.getValues()[0]);
+        rewriter.replaceOpWithNewOp<IndexToTensorOp>(op, resTy, newConstOp);
+      }
+    }
+  }
+
+  if (inputTy.getRank() != resTy.getRank())
+    return failure();
+
+  // A reshape that changes only a single dimension is just a rebind.
   bool foundDifferentDim = false;
   for (auto [inDim, resDim] : llvm::zip(inputTy.getDims(), resTy.getDims())) {
     if (inDim != resDim) {

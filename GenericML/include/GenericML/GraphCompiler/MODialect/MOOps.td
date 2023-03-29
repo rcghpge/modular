@@ -96,6 +96,28 @@ def MO_GuardOp : MO_Op<"guard"> {
 }
 
 //===----------------------------------------------------------------------===//
+// IndexToTensorOp
+//===----------------------------------------------------------------------===//
+
+def MO_IndexToTensorOp : MO_Op<"index.to_tensor", [Pure]> {
+  let summary = "Cast from `index` to scalar-like `!mo.tensor`.";
+  let description = [{
+    Example:
+
+    ```mlir
+    %c: index
+    %scalarT = mo.index.to_tensor(%c) -> !mo.tensor<[], si64>
+    ```
+  }];
+
+  let arguments = (ins Index:$input);
+  let results = (outs MO_RankedScalarIndexTensor:$result);
+
+  let assemblyFormat = "`(` $input `)` attr-dict `->` qualified(type($result))";
+  let hasFolder = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // GraphOp
 //===----------------------------------------------------------------------===//
 
