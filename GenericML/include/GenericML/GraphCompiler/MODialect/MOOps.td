@@ -710,6 +710,23 @@ def MO_GreaterEqualOp : MO_ComparisonBinaryOp<"greater_equal"> {
   let hasFolder = 1;
 }
 
+def MO_NotEqualOp : MO_ComparisonBinaryOp<"not_equal", [Commutative]> {
+  let summary = "Not Equal operation";
+  let description = [{
+    Returns elementwise x != y, where x and y are input tensors.
+
+    Example:
+
+    ```mlir
+    %lhs: !mo.tensor<[2, 3], f32>
+    %rhs: !mo.tensor<[2, 3], f32>
+    %res = mo.not_equal(%lhs, %rhs) : (!mo.tensor<[2, 3], f32>,
+                                       !mo.tensor<[2, 3], f32>
+                                      ) -> !mo.tensor<[2, 3], bool>
+    ```
+  }];
+}
+
 // TODO: Use an AllElementTypesMatch<["x", "y", "result"]> trait for MO_Tensor.
 // TODO: Use an SameOperandsShape trait for MO_Tensor.
 def MO_SelectOp : MO_TensorOp<"select", [Pure]>{

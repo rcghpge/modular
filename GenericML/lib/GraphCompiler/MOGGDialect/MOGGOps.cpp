@@ -166,6 +166,7 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
       "mop.kernels.equal",
       "mop.kernels.greater",
       "mop.kernels.greater_equal",
+      "mop.kernels.not_equal",
   };
 
   // (arg0Spec, arg1Spec, ..., argNSpec) -> outSpec

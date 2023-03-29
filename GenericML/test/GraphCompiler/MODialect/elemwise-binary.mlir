@@ -86,3 +86,11 @@ mo.graph @greater_equal_int_folder() -> (!mo.tensor<[2, 3], bool>) {
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[2, 3], bool>
   mo.output %0 : !mo.tensor<[2, 3], bool>
 }
+
+// CHECK: mo.graph @not_equal(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>, %[[ARG1:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], bool> {
+mo.graph @not_equal(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[2, 3], f32>) -> (!mo.tensor<[2, 3], bool>) {
+  // CHECK-NEXT: mo.not_equal(%[[ARG0]], %[[ARG1]]) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], bool>
+  %0 = mo.not_equal(%arg0, %arg1) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], bool>
+  mo.output %0 : !mo.tensor<[2, 3], bool>
+}
+

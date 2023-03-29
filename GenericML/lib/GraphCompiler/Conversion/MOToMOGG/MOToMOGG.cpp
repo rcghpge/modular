@@ -180,6 +180,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_SHIM_ONLY(MO::EqualOp, "mop.kernels.equal"),
       MO_SHIM_ONLY(MO::GreaterOp, "mop.kernels.greater"),
       MO_SHIM_ONLY(MO::GreaterEqualOp, "mop.kernels.greater_equal"),
+      MO_SHIM_ONLY(MO::NotEqualOp, "mop.kernels.not_equal"),
       MO_SHIM_ONLY(MO::LogSoftmaxOp, "mop.kernels.logsoftmax"),
       MO_SHIM_ONLY(MO::TransposeOp, "mop.kernels.transpose"),
       MO_SHIM_ONLY(MO::PadOp, "mop.kernels.pad"),
