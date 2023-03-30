@@ -133,6 +133,8 @@ mo.graph @unresolved_rebinds(
 // CHECK-SAME: ) -> !mo.tensor<[[SH2]], f32> {
 ) -> !mo.tensor<?, f32> {
   // CHECK: %[[ARG1REB1:.*]] = mo.rebind(%[[ARG1]]) : !mo.tensor<[[SH1]], f32> -> !mo.tensor<[[SH0]], f32>
+  // CHECK: kgen.param.declare [[EQ:.*]]: i1 = <apply(:(!mo.shape, !mo.shape) -> i1 "mo.shape.eq", [[SH0]], [[SH1]])>
+  // CHECK: kgen.param.declare [[CH:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "input shapes must match"}, [[EQ]])>
   // CHECK: %[[VAL0:.*]] = mo.add(%[[ARG0]], %[[ARG1REB1]]) : !mo.tensor<[[SH0]], f32>
   %0 = mo.add(%arg0, %arg1) : !mo.tensor<?, f32>
   // CHECK: %[[VAL1:.*]] = mo.gelu(%[[VAL0]]) : !mo.tensor<[[SH0]], f32>
@@ -141,7 +143,7 @@ mo.graph @unresolved_rebinds(
   // CHECK-NOT: kgen.param.declare {{.*}}: !mo.shape = <apply(:(!mo.shape, !mo.shape) -> !mo.shape @batch_matmul_fw,
 
   // CHECK-DAG: kgen.param.declare [[R1:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_rank", [[SH0]])>
-  // CHECK-DAG: kgen.param.declare [[R2:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_rank", [[SH0]])>
+  // CHECK-DAG: kgen.param.declare [[R2:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_rank", [[SH1]])>
   // CHECK-DAG: kgen.param.declare [[COND1:.*]]: i1 =
   // CHECK-SAME: <eq(
   // CHECK-DAG: [[R1]]
@@ -152,7 +154,7 @@ mo.graph @unresolved_rebinds(
   // CHECK-DAG: kgen.param.declare [[COND2:.*]]: i1 = <ge([[R2]], 3)>
   // CHECK-DAG: kgen.param.declare [[CH1:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "input ranks are not greater than 2"}, [[COND2]])>
   // CHECK-DAG: kgen.param.declare [[K:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -1 : index}, [[SH0]])>
-  // CHECK-DAG: kgen.param.declare [[KK:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -2 : index}, [[SH0]])>
+  // CHECK-DAG: kgen.param.declare [[KK:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -2 : index}, [[SH1]])>
   // CHECK-DAG: kgen.param.declare [[COND3:.*]]: i1 =
   // CHECK-SAME: <eq(
   // CHECK-DAG: [[K]]
@@ -161,12 +163,12 @@ mo.graph @unresolved_rebinds(
   // CHECK-SAME:)>
   // CHECK-DAG: kgen.param.declare [[CH2:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "inner dimensions do not match"}, [[COND3]])>
   // CHECK-DAG: kgen.param.declare [[LBATCH:.*]]: !mo.shape = <apply(:(!mo.shape) -> !mo.shape "mo.shape.slice"{end = -2 : index, start = 0 : index}, [[SH0]])>
-  // CHECK-DAG: kgen.param.declare [[RBATCH:.*]]: !mo.shape = <apply(:(!mo.shape) -> !mo.shape "mo.shape.slice"{end = -2 : index, start = 0 : index}, [[SH0]])>
+  // CHECK-DAG: kgen.param.declare [[RBATCH:.*]]: !mo.shape = <apply(:(!mo.shape) -> !mo.shape "mo.shape.slice"{end = -2 : index, start = 0 : index}, [[SH1]])>
   // CHECK-DAG: kgen.param.declare [[COND4:.*]]: i1 = <apply(:(!mo.shape, !mo.shape) -> i1 "mo.shape.eq", [[LBATCH]], [[RBATCH]])>
   // CHECK-DAG: kgen.param.declare [[CH3:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "batch sizes of left and right inputs are not equal"}, [[COND4]])>
-  // CHECK-DAG: kgen.param.declare [[NN:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -1 : index}, [[SH0]])>
+  // CHECK-DAG: kgen.param.declare [[NN:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -1 : index}, [[SH1]])>
   // CHECK-DAG: kgen.param.declare [[SH8:.*]]: !mo.shape = <apply(:(!mo.shape, !mo.shape) -> !mo.shape "mo.shape.concat", [[LBATCH]], [[[K]], [[NN]]])>
-  // CHECK: %[[ARG1REB2:.*]] = mo.rebind(%[[ARG1REB1]]) : !mo.tensor<[[SH0]], f32> -> !mo.tensor<[[SH8]], f32>
+  // CHECK-DAG: %[[ARG1REB2:.*]] = mo.rebind(%[[ARG1REB1]]) : !mo.tensor<[[SH0]], f32> -> !mo.tensor<[[SH8]], f32>
 
   // CHECK-DAG: kgen.param.declare [[N:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -2 : index}, [[SH0]])>
   // CHECK-DAG: kgen.param.declare [[M:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -1 : index}, [[SH8]])>
@@ -294,4 +296,51 @@ mo.graph @scalar_to_tensor_reshapes_before_staticization(
   %res = mo.reshape(%arg, %arg_dim0_dim0) : (!mo.tensor<[?, ?], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[?, ?], si32>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[D0]], [[D0]]], si32>
   mo.output %res : !mo.tensor<[?, ?], si32>
+}
+
+// CHECK: mo.graph @binary_op_asserts<[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(
+mo.graph @binary_op_asserts(
+  // CHECK-SAME: %[[ARG1:.*]]: !mo.tensor<[[[D0]], [[D1]]], f32>
+  %arg1: !mo.tensor<[?, ?], f32>,
+  // CHECK-SAME: %[[ARG2:.*]]: !mo.tensor<[[[D2]], [[D3]]], f32>
+  %arg2: !mo.tensor<[?, ?], f32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]]], f32> {
+) -> (!mo.tensor<[?, ?], f32>) {
+  // CHECK-NEXT: %[[ADD11:.*]] = mo.add(%[[ARG1]], %[[ARG1]]) : !mo.tensor<[[[D0]], [[D1]]], f32>
+  // CHECK-NEXT: %[[ARG2_REB:.*]] = mo.rebind(%[[ARG2]]) : !mo.tensor<[[[D2]], [[D3]]], f32> -> !mo.tensor<[[[D0]], [[D1]]], f32>
+  // CHECK-DAG: kgen.param.declare [[EQ:.*]]: i1 =
+  // CHECK-SAME: <and(
+  // CHECK-DAG: eq(
+  // CHECK-DAG: [[D2]]
+  // CHECK-DAG:,
+  // CHECK-DAG: [[D0]]
+  // CHECK-DAG: ),
+  // CHECK-DAG: eq(
+  // CHECK-DAG: [[D3]]
+  // CHECK-DAG:,
+  // CHECK-DAG: [[D1]]
+  // CHECK-DAG: )
+  // CHECK-SAME:)>
+  // CHECK-DAG: kgen.param.declare [[CH:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "input shapes must match"}, [[EQ]])>
+  %add11 = mo.add(%arg1, %arg1) : !mo.tensor<[?, ?], f32>
+  // CHECK-NEXT: %[[ADD12:.*]] = mo.add(%[[ARG1]], %[[ARG2_REB]]) : !mo.tensor<[[[D0]], [[D1]]], f32>
+  %add12 = mo.add(%arg1, %arg2) : !mo.tensor<[?, ?], f32>
+  // CHECK-NEXT: %[[RES:.*]] = mo.add(%[[ADD11]], %[[ADD12]]) : !mo.tensor<[[[D0]], [[D1]]], f32>
+  %res = mo.add(%add11, %add12) : !mo.tensor<[?, ?], f32>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[D0]], [[D1]]], f32>
+  mo.output %res : !mo.tensor<[?, ?], f32>
+}
+
+// CHECK: mo.graph @binary_op_no_assert<[[D0:.*]], [[D1:.*]]>(
+mo.graph @binary_op_no_assert(
+  // CHECK-SAME: %[[ARG1:.*]]: !mo.tensor<[[[D0]], [[D1]]], f32>
+  %arg1: !mo.tensor<[?, ?], f32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]]], f32> {
+) -> (!mo.tensor<[?, ?], f32>) {
+  // CHECK-NEXT: %[[ADD11:.*]] = mo.add(%[[ARG1]], %[[ARG1]]) : !mo.tensor<[[[D0]], [[D1]]], f32>
+  %add11 = mo.add(%arg1, %arg1) : !mo.tensor<[?, ?], f32>
+  // CHECK-NEXT: %[[RES:.*]] = mo.add(%[[ARG1]], %[[ADD11]]) : !mo.tensor<[[[D0]], [[D1]]], f32>
+  %res = mo.add(%arg1, %add11) : !mo.tensor<[?, ?], f32>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[D0]], [[D1]]], f32>
+  mo.output %res : !mo.tensor<[?, ?], f32>
 }
