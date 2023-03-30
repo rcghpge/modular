@@ -221,19 +221,35 @@ mgp_cpu_buffer_realloc_spec(Chain inChain, Context &ctx, const TensorSpec &spec,
 // mgp.cpu.buffer.set_with_index
 //===----------------------------------------------------------------------===//
 
-static ErrorOr<Chain> mgp_cpu_buffer_set_with_index(BufferRef &buffer,
-                                                    size_t idx) {
+/// Helper to fill the buffer with the given index values.
+template <typename T>
+static void fillBuffer(BufferRef &buffer, RemainingArguments idxValues) {
+  T *target = buffer.getMutableBuffer<T>();
+  for (const auto &asyncIdx : idxValues)
+    *(target++) = static_cast<T>(asyncIdx.get<size_t>());
+}
+
+static ErrorOr<Chain>
+mgp_cpu_buffer_set_with_index(BufferRef &buffer, RemainingArguments idxValues) {
   size_t bufSize = buffer.getSize();
-  switch (bufSize) {
+  size_t numArgs = idxValues.size();
+
+  if (bufSize % numArgs != 0) {
+    return Error("buffer size " + Twine(bufSize) +
+                 " not divisible by number of index arguments ( " +
+                 Twine(numArgs) + " )");
+  }
+
+  size_t elSize = bufSize / numArgs;
+  switch (elSize) {
   case 4:
-    *buffer.getMutableBuffer<int32_t>() = (int32_t)idx;
+    fillBuffer<int32_t>(buffer, idxValues);
     break;
   case 8:
-    *buffer.getMutableBuffer<int64_t>() = (int64_t)idx;
+    fillBuffer<int64_t>(buffer, idxValues);
     break;
   default:
-    return Error("unsupported size for singleton index buffer: " +
-                 Twine(bufSize));
+    return Error("unsupported element size for index buffer: " + Twine(elSize));
   }
   return Chain();
 }
