@@ -132,3 +132,42 @@ mo.graph @nested_div_mul_simplification<D0, D1 -> D2>(
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[D0]], [[D1]], 4, 5], f32>
   mo.output<DIV> %res : !mo.tensor<[D0, DIV, 4, 5], f32>
 }
+
+// CHECK: mo.graph @param_expr_cse<[[D0:.*]], [[D1:.*]] -> [[D2:.*]], [[D4:.*]]>(
+mo.graph @param_expr_cse<D0, D1 -> D2, D3, D4>(
+  // CHECK-SAME: %[[ARG:.*]]: !mo.tensor<[[[D0]], [[D1]], 20], f32>
+  %arg: !mo.tensor<[D0, D1, 20], f32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D2]], 42, [[D4]]], f32> {
+) -> !mo.tensor<[D2, D3, D4], f32> {
+  // CHECK-NEXT: kgen.param.declare [[D5:.*]] = <mul_nuw([[D0]], 20)>
+  // CHECK-NEXT: kgen.param.declare [[D6:.*]] = <mul_nuw([[D0]], 20)>
+  // CHECK-NEXT: kgen.param.declare [[D7:.*]] = <add([[D0]], 20)>
+  kgen.param.declare D5 = <mul_nuw(D0, 20)>
+  kgen.param.declare D6 = <mul_nuw(D0, 20)>
+  kgen.param.declare D7 = <add(D0, 20)>
+  // CHECK-NEXT: %[[RESHAPED:.*]] = mo.static.reshape(%[[ARG]])
+  // CHECK-SAME: : !mo.tensor<[[[D0]], [[D1]], 20], f32> -> !mo.tensor<[[[D5]], [[D5]], [[D7]]], f32>
+  %reshaped = mo.static.reshape(%arg) : !mo.tensor<[D0, D1, 20], f32> -> !mo.tensor<[D5, D6, D7], f32>
+  // CHECK-NEXT: %[[RES:.*]] = mo.static.broadcast_to(%[[RESHAPED]])
+  // CHECK-SAME: : !mo.tensor<[[[D5]], [[D5]], [[D7]]], f32> -> !mo.tensor<[[[D5]], 42, [[D5]]], f32>
+  %res = mo.static.broadcast_to(%reshaped) : !mo.tensor<[D5, D6, D7], f32> -> !mo.tensor<[D6, 42, D5], f32>
+  // CHECK-NEXT: mo.output<[[D5]], [[D5]]> %[[RES]] : !mo.tensor<[[[D5]], 42, [[D5]]], f32>
+  mo.output<D6, 42, D5> %res : !mo.tensor<[D6, 42, D5], f32>
+}
+
+// CHECK: mo.graph @param_expr_apply_no_cse<[[SH0:.*]]: !mo.shape -> [[D2:.*]], [[D3:.*]]>(
+mo.graph @param_expr_apply_no_cse<Sh0: !mo.shape -> D2, D3>(
+  // CHECK-SAME: %[[ARG:.*]]: !mo.tensor<[[SH0]], f32>
+  %arg: !mo.tensor<Sh0, f32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D2]], [[D3]]], f32> {
+) -> !mo.tensor<[D2, D3], f32> {
+  // CHECK-NEXT: kgen.param.declare [[D5:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = 1 : index}, [[SH0]])>
+  // CHECK-NEXT: kgen.param.declare [[D6:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = 1 : index}, [[SH0]])>
+  kgen.param.declare D5 = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = 1 : index}, Sh0)>
+  kgen.param.declare D6 = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = 1 : index}, Sh0)>
+  // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[ARG]])
+  // CHECK-SAME: : !mo.tensor<[[SH0]], f32> -> !mo.tensor<[[[D5]], [[D6]]], f32>
+  %res = mo.static.reshape(%arg) : !mo.tensor<Sh0, f32> -> !mo.tensor<[D5, D6], f32>
+  // CHECK-NEXT: mo.output<[[D5]], [[D6]]> %[[RES]] : !mo.tensor<[[[D5]], [[D6]]], f32>
+  mo.output<D5, D6> %res : !mo.tensor<[D5, D6], f32>
+}
