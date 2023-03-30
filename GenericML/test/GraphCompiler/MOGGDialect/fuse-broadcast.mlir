@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg=useJit=true --fuse-elementwise --canonicalize --cse --fuse-bcasts --canonicalize --cse %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg=use-jit=true --fuse-elementwise --canonicalize --cse --fuse-bcasts --canonicalize --cse %s | FileCheck %s
 
 mo.graph @basicBroadcastFuse(%arg0: !mo.tensor<[?, ?], f32>, %arg1: !mo.tensor<[?, ?], f32>) -> (!mo.tensor<[?, ?], f32>) {
   %bcast1 = mogg.broadcast_to_tensor(%arg0, %arg1) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, ?], f32>
@@ -66,7 +66,7 @@ mo.graph @basicBroadcastIntoElemwise(%arg0: !mo.tensor<[?, ?, ?, ?], f32>, %arg1
 // Check the elementwise was still fused.
 // CHECK:   mogg.lambda @elemwise_compute_lambda = (%[[INDICES]]: !mogg.indices)
 // CHECK-NEXT:      %[[LOAD_IN1:.*]] = mogg.invoke @input_0_fn(%[[INDICES]])
-// CHECK-NEXT:      %[[LOAD_IN2:.*]] = mogg.invoke @input_1_fn(%[[INDICES]]) 
+// CHECK-NEXT:      %[[LOAD_IN2:.*]] = mogg.invoke @input_1_fn(%[[INDICES]])
 // CHECK-NEXT:      %[[ADD:.*]] = mogg.call "mo.add"(%[[LOAD_IN1]], %[[LOAD_IN2]])
 // CHECK-NEXT:      %[[SQRT:.*]] = mogg.call "mo.sqrt"(%[[ADD]])
 // CHECK-NEXT:      %[[TANH:.*]] = mogg.call "mo.tanh"(%[[ADD]])
@@ -219,7 +219,7 @@ mo.graph @many_bcasts() -> !mo.tensor<[2, 2, 3], f32> {
 mo.graph @check_no_fuse_if(%cond : !mo.tensor<[], bool>, %arg0: !mo.tensor<[?, ?], f32>, %arg1: !mo.tensor<[?, ?], f32>) -> (!mo.tensor<[?, ?], f32>) {
   %bcast1 = mogg.broadcast_to_tensor(%arg0, %arg1) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, ?], f32>
   %bcast2 = mogg.broadcast_to_tensor(%arg1, %arg0) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, ?], f32>
-  
+
   %0 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[?, ?], f32> {
     %1 = mo.add(%bcast1, %bcast2) : !mo.tensor<[?, ?], f32>
     mo.yield %1 : !mo.tensor<[?, ?], f32>
@@ -250,7 +250,7 @@ mo.graph @check_no_fuse_if(%cond : !mo.tensor<[], bool>, %arg0: !mo.tensor<[?, ?
 
 // CHECK: mo.if
 // CHECK-NEXT: mogg.ext.op "mop.kernels.add"(%[[BCAST1]], %[[BCAST2]])
-// CHECK-NEXT: mo.yield 
+// CHECK-NEXT: mo.yield
 // CHECK-NEXT: } else {
 // CHECK-NEXT: mogg.ext.op "mop.kernels.mul"(%[[BCAST1]], %[[BCAST2]])
-// CHECK-NEXT: mo.yield 
+// CHECK-NEXT: mo.yield

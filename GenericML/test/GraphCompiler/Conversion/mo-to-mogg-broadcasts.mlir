@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg=useJit=true | FileCheck %s
+// RUN: mo-opt %s --mo-to-mogg=use-jit=true | FileCheck %s
 
 mo.graph @bcast_basic(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?], f32>) -> (!mo.tensor<[?, ?, ?], f32>) {
   %0 = mogg.broadcast_to_tensor(%arg0, %arg1): (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?], f32>) -> !mo.tensor<[?, ?, ?], f32>
@@ -44,4 +44,3 @@ mo.graph @bcast_basic(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?], 
 // No fusion interfaces but it does have the indcies of the inputs which are broadcast and the isView marking.
 // CHECK-NEXT: } {bcastInputIndices = [0 : i32, 1 : i32], isViewOp = true, shapeFunc = "broadcast_to_tensor"}
 // CHECK-NEXT: mo.output %[[KERNEL]] : !mo.tensor<[?, ?, ?], f32>
-

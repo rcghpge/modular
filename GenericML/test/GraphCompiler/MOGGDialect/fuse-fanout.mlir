@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg=useJit=true --fuse-elementwise --canonicalize --cse %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg=use-jit=true --fuse-elementwise --canonicalize --cse %s | FileCheck %s
 
 
 // Our current greedy upwards algorithm assumes that elementwise is going to be fused into
@@ -113,7 +113,6 @@ mo.graph @manyFanOut(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>
 // CHECK-NEXT:    mogg.call "mo.rsqrt"
 // CHECK-NEXT:    %[[FINAL:.*]] = mogg.call "mo.mul"
 // CHECK-NEXT:    mogg.invoke @[[OUT_LAMBDA:.*]](%[[INDICES]], %[[FINAL]]) : !mogg.indices, !mogg.simd<f32>
-// CHECK-NEXT:    mogg.output  
+// CHECK-NEXT:    mogg.output
 
 // CHECK: mo.output %[[KERNEL1]], %[[KERNEL2]], %[[KERNEL3]], %[[KERNEL4]]
-

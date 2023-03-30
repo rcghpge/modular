@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg=useJit=true --fuse-elementwise --canonicalize --cse %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg=use-jit=true --fuse-elementwise --canonicalize --cse %s | FileCheck %s
 
 
 mo.graph @simpleDoubleUse(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) {
@@ -118,7 +118,7 @@ mo.graph @multipleDiamondPattern(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<
 
 
 // Check we correctly fuse a top heavy graph with a wide input surface and still fuse into one at the end.
-mo.graph @inversePyramid(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) { 
+mo.graph @inversePyramid(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) {
   // Top level ops.
   %0 = mo.sqrt(%arg0) : !mo.tensor<[4, 3], f32>
   %1 = mo.relu(%arg0) : !mo.tensor<[4, 3], f32>
