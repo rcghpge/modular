@@ -210,7 +210,7 @@ def MOGG_CallOp : MOGG_Op<"call"> {
     This represents a call to a KGEN function. The kernel target will be a function
     we retrieve from the LitRegisterOp. The call can also take an optional list of
     symbols in the from of `$params`. These are lambdas within this kernel which should
-    be passed as parameters to the KGEN call. 
+    be passed as parameters to the KGEN call.
 
     Example:
     ```mlir
@@ -245,7 +245,7 @@ def MOGG_CallOp : MOGG_Op<"call"> {
 def MOGG_SimdLoadOp : MOGG_Op<"simd_load"> {
   let summary = "Represents a simd load";
   let description = [{
-    Represents the special case of a simd_load. Simd load is a special case because we 
+    Represents the special case of a simd_load. Simd load is a special case because we
     can lower it to different functions depending on the tensor details. If the tensor is
     a scalar then it becomes a splat, broadcasted last dim might need a splat, etc.
 
@@ -274,7 +274,7 @@ def MOGG_LambdaInvokeOp : MOGG_Op<"invoke",
    [MemoryEffectsOpInterface]> {
   let summary = "Represents an inlined call to a lambda";
   let description = [{
-    Lambda invoke is a direct call of that lambda. This will lower to a 
+    Lambda invoke is a direct call of that lambda. This will lower to a
     kgen.call_param operation. It cannot take in any parameters. It can take in/return
     only on simd values or indices, not tensors directly. Tensors are just captured
     from above in the invoked lambda.
@@ -310,7 +310,7 @@ def MOGG_LambdaInvokeOp : MOGG_Op<"invoke",
  }
 
 
-def MOGG_LambdaOp : MOGG_Op<"lambda", 
+def MOGG_LambdaOp : MOGG_Op<"lambda",
     [HasParent<"MOGG::KernelOp">, SingleBlockImplicitTerminator<"OutputOp">,
     Symbol]> {
   let summary = "Represents non-isolated from above lambda";

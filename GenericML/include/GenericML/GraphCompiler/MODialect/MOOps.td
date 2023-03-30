@@ -131,9 +131,14 @@ def MO_GraphOp : MO_TensorOp<"graph",
   // DeclareOpInterfaceMethods<TransformableGraphInterface>
 ]> {
   let summary = "Function that contains a MO graph with other ops mixed in";
-  let arguments = (ins TypeAttrOf<KGEN_SignatureType>:$signature,
-                       OptionalAttr<DictArrayAttr>:$arg_attrs,
-                       OptionalAttr<DictArrayAttr>:$res_attrs);
+  let arguments = (ins
+    TypeAttrOf<KGEN_SignatureType>:$signature,
+    TypeAttrOf<FunctionType>:$functionType,
+    KGEN_ParamDeclArrayAttr:$inputParams,
+    KGEN_ParamDeclArrayAttr:$resultParams,
+    OptionalAttr<DictArrayAttr>:$arg_attrs,
+    OptionalAttr<DictArrayAttr>:$res_attrs
+  );
   let regions = (region SizedRegion<1>:$body);
 
   let extraClassDeclaration = [{

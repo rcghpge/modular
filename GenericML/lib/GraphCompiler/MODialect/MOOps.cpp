@@ -158,8 +158,12 @@ void GraphOp::build(OpBuilder &builder, OperationState &state, StringRef name,
   // Add signature attribute
   FunctionType funcType = builder.getFunctionType(inputTypes, resultTypes);
   auto sig = KGEN::SignatureType::get(funcType);
-  state.addAttribute(GraphOp::getSignatureAttrName(state.name),
-                     mlir::TypeAttr::get(sig));
+  state.addAttribute(getSignatureAttrName(state.name), TypeAttr::get(sig));
+  state.addAttribute(getFunctionTypeAttrName(state.name),
+                     TypeAttr::get(funcType));
+  auto emptyParams = KGEN::ParamDeclArrayAttr::get(builder.getContext(), {});
+  state.addAttribute(getInputParamsAttrName(state.name), emptyParams);
+  state.addAttribute(getResultParamsAttrName(state.name), emptyParams);
 
   // Add the function body.
   Region *bodyRegion = state.addRegion();
@@ -174,7 +178,7 @@ void GraphOp::build(OpBuilder &builder, OperationState &state, StringRef name,
 ///
 ParseResult GraphOp::parse(OpAsmParser &parser, OperationState &result) {
   return KGEN::parseGeneratorOrFunc(parser, result,
-                                    KGEN::GeneratorOrFuncKind::func);
+                                    KGEN::GeneratorOrFuncKind::generator);
 }
 
 /// Print the GraphOp.

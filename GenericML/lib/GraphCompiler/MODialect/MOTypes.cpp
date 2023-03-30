@@ -118,10 +118,17 @@ LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
       return emitError() << "unknown shape attribute must have ShapeType, got "
                          << ty;
     }
-    return mlir::success();
+    return success();
   }
   if (auto declRef = llvm::dyn_cast<KGEN::ParamDeclRefAttr>(shapeAttr)) {
     if (Type ty = declRef.getType(); !llvm::isa<MO::ShapeType>(ty)) {
+      return emitError()
+             << "shape parameter reference must have ShapeType, got " << ty;
+    }
+    return success();
+  }
+  if (auto indexRef = ::dyn_cast<KGEN::ParamIndexRefAttr>(shapeAttr)) {
+    if (Type ty = indexRef.getType(); !::isa<MO::ShapeType>(ty)) {
       return emitError()
              << "shape parameter reference must have ShapeType, got " << ty;
     }

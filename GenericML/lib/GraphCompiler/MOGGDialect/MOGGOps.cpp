@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
@@ -594,23 +594,25 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   return success();
 }
 
-static ParseResult parseLambda(OpAsmParser &p, StringAttr &name, TypeAttr &sig,
+static ParseResult parseLambda(OpAsmParser &p, StringAttr &name, TypeAttr &func,
                                Region &region) {
   SmallVector<OpAsmParser::Argument> args;
   llvm::SMLoc loc;
   KGEN::SignatureType sigType;
+  FunctionType functionType;
+  KGEN::ParamDeclArrayAttr inputParams, resultParams;
 
+  llvm::SMLoc sigLoc;
   if (p.parseSymbolName(name) || p.parseEqual() ||
-      KGEN::parseFunctionSignature(p, args, sigType) ||
+      p.getCurrentLocation(&sigLoc) ||
+      KGEN::parseFunctionSignature(p, args, inputParams, resultParams,
+                                   functionType, sigType) ||
       p.getCurrentLocation(&loc) || p.parseRegion(region, args))
     return failure();
+  if (!inputParams.empty() || !resultParams.empty())
+    return p.emitError(sigLoc, "unexpected input or result parameters");
 
-  SmallVector<Type> argTypes;
-  for (const OpAsmParser::Argument &arg : args)
-    argTypes.push_back(arg.type);
-
-  sig = TypeAttr::get(
-      p.getBuilder().getFunctionType(argTypes, sigType.getValueResults()));
+  func = TypeAttr::get(functionType);
   return success();
 }
 
@@ -623,7 +625,7 @@ static void printLambda(OpAsmPrinter &p, mlir::Operation *lambda,
 
   auto sigTy = KGEN::SignatureType::get(lambda->getContext(), func.getInputs(),
                                         func.getResults());
-  KGEN::printFunctionSignature(p, region, sigTy);
+  KGEN::printFunctionSignature(p, region, {}, {}, func, sigTy);
   p.printRegion(region, /*printEntryBlockArgs=*/false);
 }
 
@@ -634,17 +636,24 @@ parseKernel(OpAsmParser &p,
             SmallVectorImpl<Type> &resultTypes, Region &region) {
   SmallVector<OpAsmParser::Argument> args;
   llvm::SMLoc loc;
-  KGEN::SignatureType sig;
+  KGEN::SignatureType sigType;
+  FunctionType functionType;
+  KGEN::ParamDeclArrayAttr inputParams, resultParams;
 
+  llvm::SMLoc sigLoc;
   if (p.parseOperandList(operands, AsmParser::Delimiter::Paren) ||
-      p.parseColon() || KGEN::parseFunctionSignature(p, args, sig) ||
+      p.parseColon() || p.getCurrentLocation(&sigLoc) ||
+      KGEN::parseFunctionSignature(p, args, inputParams, resultParams,
+                                   functionType, sigType) ||
       p.getCurrentLocation(&loc) || p.parseRegion(region, args))
     return failure();
+  if (!inputParams.empty() || !resultParams.empty())
+    return p.emitError(sigLoc, "unexpected input or result parameters");
 
   for (const OpAsmParser::Argument &arg : args)
     operandTypes.push_back(arg.type);
 
-  for (Type res : sig.getValueResults())
+  for (Type res : functionType.getResults())
     resultTypes.push_back(res);
 
   return success();
@@ -657,10 +666,11 @@ static void printKernel(OpAsmPrinter &p, mlir::Operation *kernel,
   p.printOperands(operands);
   p << ") : ";
 
-  auto sigTy =
-      KGEN::SignatureType::get(kernel->getContext(), operandTypes, resultTypes);
+  auto functionType =
+      FunctionType::get(kernel->getContext(), operandTypes, resultTypes);
 
-  KGEN::printFunctionSignature(p, region, sigTy);
+  KGEN::printFunctionSignature(p, region, {}, {}, functionType,
+                               SignatureType::get(functionType));
   p.printRegion(region, /*printEntryBlockArgs=*/false);
 }
 
