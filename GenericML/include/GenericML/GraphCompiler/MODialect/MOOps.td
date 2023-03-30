@@ -1178,6 +1178,10 @@ def MO_ReshapeOp : MO_ShapeModifierOp<"reshape"> {
 
   let hasCanonicalizeMethod = 1;
   let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    LogicalResult deparameterize(mlir::RewriterBase &rewriter);
+  }];
 }
 
 def MO_ShapeOfOp : MO_TensorOp<"shape_of", [
