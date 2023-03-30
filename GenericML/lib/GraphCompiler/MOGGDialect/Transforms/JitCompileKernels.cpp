@@ -12,6 +12,7 @@
 
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Pass/PassManager.h"
 
@@ -168,19 +169,6 @@ struct JitCompileKernels
     }
   }
 
-  void replaceOperation(mlir::Operation *op, MOGG::ExecuteCompiledOp exe) {
-    // Add the execute op into the block at the same point as the current
-    // op.
-    mlir::OpBuilder opBuilder{op->getContext()};
-    opBuilder.setInsertionPoint(op);
-    opBuilder.insert(exe);
-
-    // Fix up the IR and replace all the uses.
-    exe->setOperands(op->getOperands());
-    op->replaceAllUsesWith(exe.getResults());
-    op->erase();
-  }
-
   ErrorOr<mlir::OwningOpRef<mlir::ModuleOp>> loadLitLibrary() {
 
     // Load the module. The stub will be appended to this.
@@ -232,8 +220,16 @@ struct JitCompileKernels
       // Don't duplicate KGEN kernels for the same call.
       auto itr = jittedKernels.find(stubKernelName);
       if (itr != jittedKernels.end()) {
-        MOGG::ExecuteCompiledOp exe = itr->second.clone();
-        replaceOperation(op, exe);
+        MOGG::ExecuteCompiledOp cachedExeOp = itr->second;
+
+        // We cannot just clone the cached operation because its result type may
+        // be different from the currently processed kernel's result type, if
+        // they are parameterized.
+        mlir::IRRewriter rewriter{OpBuilder(op)};
+        rewriter.replaceOpWithNewOp<MOGG::ExecuteCompiledOp>(
+            op, op->getResultTypes(), op->getOperands(),
+            cachedExeOp->getAttrDictionary().getValue());
+
         continue;
       }
 
