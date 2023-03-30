@@ -294,7 +294,7 @@ def CpuBufferAllocSpecOp : MGP_Op<"cpu.buffer.alloc.spec", [
     Example:
     ```mlir
     %ch : !mef.chain
-    %spec : !mgp.tensor_spec<?x64xf32>
+    %spec : !mgp.cpu.tensor_spec<?x64xf32>
 
     %buf = mgp.cpu.buffer.alloc.spec %ch, %spec, align 8 : !mgp.cpu.tensor_spec<?x64xf32>
     %buf : !mgp.cpu.buffer  // aligned to 8 bytes

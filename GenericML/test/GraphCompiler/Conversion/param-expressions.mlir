@@ -110,3 +110,15 @@ mo.graph @variadic_exprs<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
   kgen.param.declare C0 = <add(X, Y, Z)>
   mo.output
 }
+
+// Entry point
+// CHECK: mgp.model @shape_attr : tf init {
+//
+// CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[ARG2:.*]]: !mgp.cpu.tensor<?x?x?xf32>)
+// CHECK: %[[BUF:.*]], %[[SPEC:.*]] = mgp.cpu.tensor.extract %[[ARG2]] : !mgp.cpu.tensor<?x?x?xf32>
+// CHECK: %[[DIMS:.*]]:3 = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.cpu.tensor_spec<?x?x?xf32>
+// CHECK: %[[VAL1:.*]] = mgp.cpu.tensor_spec.create %[[DIMS]]#0, %[[DIMS]]#1, %[[DIMS]]#2 : !mgp.cpu.tensor_spec<?x?x?xsi64>
+mo.graph @shape_attr<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
+  kgen.param.declare Sh: !mo.shape = <[X, Y, Z]>
+  mo.output
+}

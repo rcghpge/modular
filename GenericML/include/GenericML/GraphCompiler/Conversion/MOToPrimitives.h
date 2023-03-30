@@ -377,12 +377,21 @@ private:
                                             opAttr.getAttrs().getValue());
     } else if (auto shapeAttr = dyn_cast<MO::ShapeAttr>(attr)) {
       // Lower dimensions recursively.
+      SmallVector<Value> dimVals;
       for (TypedAttr dim : shapeAttr.getValues()) {
-        RETURN_ERROR(
-            state.lowerExpression(builder, loc, dim, lowerExpressionImpl));
+        UNWRAP_ERROR(dimVal, state.lowerExpression(builder, loc, dim,
+                                                   lowerExpressionImpl));
+        dimVals.emplace_back(dimVal);
       }
-      // Shape attributes cannot be mapped to any mgp op, so we return a null.
-      return Value();
+
+      // There is no runtime shape type in MGP, so we map shape attributes to a
+      // fully dynamic spec.
+      SmallVector<std::optional<uint64_t>> dummyShape(dimVals.size());
+      auto specTy = MGP::CpuTensorSpecType::get(loc.getContext(), dummyShape,
+                                                DType::si64);
+      auto specOp =
+          builder.create<MGP::CpuTensorSpecCreateOp>(loc, specTy, dimVals);
+      return specOp.getResult();
     } else {
       return Error("cannot lower parameter expression");
     }
