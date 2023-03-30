@@ -614,7 +614,7 @@ static void mgp_cas_lookup(Chain inChain, Context &ctx,
   std::optional<size_t> expectedSize = getRuntimeSize(*cRawSize);
   std::optional<size_t> alignment = getRuntimeAlign(*dRawAlign);
   AsyncValueRef<BufferRef> lookupResult =
-      stateSlot.lookup(*bKey, alignment, loc.copy());
+      stateSlot.lookup(*bKey, expectedSize, alignment, loc.copy());
   std::move(lookupResult)
       .andThenSync([expectedSize, slot = *aSlot, result = result.copy(),
                     key = *bKey, loc = std::move(loc)](
@@ -623,7 +623,8 @@ static void mgp_cas_lookup(Chain inChain, Context &ctx,
           // We'll construct our own error so that we can report the key
           // in base64 form.
           return std::move(result).setToError(
-              {Twine("unable to lookup buffer with key '") + key + "'",
+              {"unable to lookup buffer with key '" + key +
+                   "': " + lookupResult.takeDiagnostic().getMessage().get(),
                std::move(loc)});
         }
         if (expectedSize && lookupResult.get().getSize() != *expectedSize)
