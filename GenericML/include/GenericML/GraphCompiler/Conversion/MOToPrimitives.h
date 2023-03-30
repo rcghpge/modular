@@ -329,13 +329,20 @@ private:
   }
 
   /// Lowers an operator attribute to the appropriate mop index op.
-  static ErrorOr<Operation *> lowerParamOperator(OpBuilder &builder,
-                                                 Location loc,
-                                                 KGEN::ParamOperatorAttr opAttr,
-                                                 ValueRange operands) {
+  static ErrorOr<Value> lowerParamOperator(OpBuilder &builder, Location loc,
+                                           KGEN::ParamOperatorAttr opAttr,
+                                           ValueRange operands) {
     UNWRAP_ERROR(mopName, pocToMopIndexOp(opAttr.getOpcode()));
-    return builder.create(loc, builder.getStringAttr(mopName), operands,
-                          {opAttr.getType()});
+    auto opNameAttr = builder.getStringAttr(mopName);
+    Type resTy = opAttr.getType();
+
+    Value res = operands.front();
+    do {
+      operands = operands.drop_front();
+      res = builder.create(loc, opNameAttr, {res, operands.front()}, {resTy})
+                ->getResult(0);
+    } while (operands.size() > 1);
+    return res;
   }
 
   /// Lowers an integer attribute to a mip constant op.
@@ -360,8 +367,7 @@ private:
     if (auto intAttr = dyn_cast<IntegerAttr>(attr)) {
       newOp = lowerIntAttr(builder, loc, intAttr);
     } else if (auto opAttr = dyn_cast<KGEN::ParamOperatorAttr>(attr)) {
-      UNWRAP_ERROR_OR_SET(newOp,
-                          lowerParamOperator(builder, loc, opAttr, operands));
+      return lowerParamOperator(builder, loc, opAttr, operands);
     } else if (auto opAttr = dyn_cast<KGEN::MLIROpAttr>(attr)) {
       if (opAttr.getName() != MO::AssertOp::getOperationName())
         return Error("cannot lower mlir operation in parameter expression");
