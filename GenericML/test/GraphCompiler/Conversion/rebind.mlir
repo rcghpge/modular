@@ -55,8 +55,8 @@ mo.graph @static_ranks_unknown_to_int<D0, D1>(
 // CHECK: mgp.model @static_ranks_unknown_to_static : tf init {
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
 // CHECK-SAME: %[[ARG2:.*]]: !mgp.cpu.tensor<?x?xf32>) -> (!mef.chain, !mgp.cpu.tensor<42x10xf32>) {
-// CHECK:   %[[NEWSPEC:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<42x10xf32>
 // CHECK:   %[[BUF:.*]], %[[SPEC:.*]] = mgp.cpu.tensor.extract %[[ARG2]] : !mgp.cpu.tensor<?x?xf32>
+// CHECK:   %[[NEWSPEC:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<42x10xf32>
 // CHECK:   %[[RES:.*]] = mgp.cpu.tensor.create %[[CHAIN]], %[[BUF]], %[[NEWSPEC]] !mgp.cpu.buffer : !mgp.cpu.tensor<42x10xf32>
 // CHECK:   mef.output %[[CHAIN]], %[[RES]] : !mef.chain, !mgp.cpu.tensor<42x10xf32>
 // CHECK: }

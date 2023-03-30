@@ -229,6 +229,22 @@ public:
         loc, spec, spec.getType().getRawDims());
   }
 
+  /// Helper to create a new runtime tensor from the given buffer, chain, and
+  /// tensor type.
+  template <typename TensorTy>
+  MGP::CpuTensorCreateOp
+  createNewMgpTensor(Value chain, TypedValue<MGP::CpuBufferType> buffer,
+                     TensorTy resTy, Location loc,
+                     ValueRange runtimeDims = {}) {
+    OpBuilder &exeBuilder = getExecuteOpBuilder();
+    MGP::CpuTensorSpecType outSpecTy = MGP::createCpuTensorSpec(resTy);
+    auto outTensorTy = exeBuilder.getType<MGP::CpuTensorType>(outSpecTy);
+    auto specOp = exeBuilder.create<MGP::CpuTensorSpecCreateOp>(loc, outSpecTy,
+                                                                runtimeDims);
+    return exeBuilder.create<MGP::CpuTensorCreateOp>(loc, outTensorTy, chain,
+                                                     buffer, specOp);
+  }
+
   /// Lower the given graph argument using the provided builder and hook. The
   /// hook (using the execute state's builder and the given argument) is
   /// responsible for updating the value mapping.
