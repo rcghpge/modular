@@ -83,8 +83,11 @@ public:
   /// Lower a parameter constant op.
   LogicalResult lowerParamConstant(KGEN::ParamConstantOp paramConstOp);
 
-  /// Lower an index to scalar tensor cast op.
+  /// Lower an index -> scalar-like tensor cast op.
   LogicalResult lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp);
+
+  /// Lower a shape -> shape-like tensor cast op.
+  LogicalResult lowerShapeToTensorOp(MO::Shape::ToTensorOp toTensorOp);
 
   /// Lower a tensor rebind.
   LogicalResult lowerRebind(MO::RebindOp rebindOp);
@@ -341,6 +344,36 @@ MOGraphLowering::lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp) {
       loweringState.lookupExecuteLoweredTensor(toTensorOp.getInput());
   auto bufferSetOp =
       exeBuilder.create<MGP::CpuBufferSetWithIndexOp>(loc, buffer, mgpIndexVal);
+
+  // Finally we create an MGP tensor we can map to.
+  MGP::CpuTensorCreateOp tensorCreateOp = loweringState.createNewMgpTensor(
+      bufferSetOp.getOutChain(), buffer, toTensorOp.getType(), loc);
+  loweringState.emplaceExecuteLoweredTensor(toTensorOp.getResult(),
+                                            tensorCreateOp.getResult());
+  return success();
+}
+
+LogicalResult
+MOGraphLowering::lowerShapeToTensorOp(MO::Shape::ToTensorOp toTensorOp) {
+  Location loc = toTensorOp.getLoc();
+  OpBuilder &exeBuilder = loweringState.getExecuteOpBuilder();
+
+  MO::TensorType resTy = toTensorOp.getResult().getType();
+  if (!resTy.hasStaticShape())
+    toTensorOp.emitOpError("dynamic ranks not supported");
+
+  // We first allocate a buffer for the result tensor.
+  TypedValue<MGP::CpuBufferType> buffer =
+      allocateStaticBuffer(resTy, loweringState, loc);
+
+  // Then we populate the buffer with the runtime dimensions.
+  Value mgpShapeVal =
+      loweringState.lookupExecuteLoweredTensor(toTensorOp.getInput());
+  auto dummySpec = cast<TypedValue<MGP::CpuTensorSpecType>>(mgpShapeVal);
+  auto dynDimsOp = exeBuilder.create<MGP::CpuTensorSpecDimsDynamicOp>(
+      loc, dummySpec, dummySpec.getType().getRawDims());
+  auto bufferSetOp = exeBuilder.create<MGP::CpuBufferSetWithIndexOp>(
+      loc, buffer, dynDimsOp.getResults());
 
   // Finally we create an MGP tensor we can map to.
   MGP::CpuTensorCreateOp tensorCreateOp = loweringState.createNewMgpTensor(
@@ -664,6 +697,12 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
 
     if (auto toTensorOp = dyn_cast<MO::IndexToTensorOp>(op)) {
       if (failed(lowerIndexToTensorOp(toTensorOp)))
+        return failure();
+      continue;
+    }
+
+    if (auto toTensorOp = dyn_cast<MO::Shape::ToTensorOp>(op)) {
+      if (failed(lowerShapeToTensorOp(toTensorOp)))
         return failure();
       continue;
     }
