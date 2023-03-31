@@ -24,10 +24,11 @@ def LowerableToMGPInterface :
         Lower this op into primitives compatible with MGP. Implementers make
         use of the shared lowering state object, and mutate it appropriately. In
         particular, they need to:
-         * call lowering.execute.builder and lowering.init.builder to insert
-           the lowered ops into their appropriate location
-         * update lowering.execute.loweredTensors for any new outputs they
-           generate, and/or lowering.execute.chain / lowering.init.chain, if
+         * use the builders returned by getExecuteOpBuilder() and
+           getInitOpBuilder() to insert the lowered ops into their appropriate
+           location
+         * update the lowering state using emplaceExecuteLoweredValue(...) for
+           any new outputs they generate, and use get{Execute,Init}Chain() as
            needed
       }],
       "mlir::LogicalResult",

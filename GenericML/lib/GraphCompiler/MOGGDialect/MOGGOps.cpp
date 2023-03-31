@@ -89,7 +89,7 @@ SmallVector<LoweredTensor> LowerHelper::lowerInputs() {
 
   for (Value operand : opBeingLowered->getOperands()) {
     // Extract the buffer and spec from the MGP tensor.
-    mlir::Value mgpTensor = loweringState.lookupExecuteLoweredTensor(operand);
+    mlir::Value mgpTensor = loweringState.lookupExecuteLoweredValue(operand);
 
     auto extract =
         loweringState.getExecuteOpBuilder().create<MGP::CpuTensorExtractOp>(
@@ -123,7 +123,7 @@ void LowerHelper::allocateOutputTensor(
             /*tensorSpec=*/tensor.spec);
 
     // Update the MO tensor to now refer to this mgp tensor.
-    loweringState.emplaceExecuteLoweredTensor(
+    loweringState.emplaceExecuteLoweredValue(
         opBeingLowered->getResult(outputIndex), tensorCreateOp.getResult());
     outputIndex++;
   }
@@ -234,12 +234,12 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
   } else if (specAndTensorBinaryShapeFuncs.count(opName)) {
     TypedValue<MGP::CpuTensorSpecType> arg0SpecVal = inputTensors[0].spec;
     Value arg1 = opBeingLowered->getOperand(1);
-    Value arg1Val = loweringState.lookupExecuteLoweredTensor(arg1);
+    Value arg1Val = loweringState.lookupExecuteLoweredValue(arg1);
     output.spec = getOutputSpec(specAndTensorBinaryShapeFuncs.lookup(opName),
                                 {arg0SpecVal, arg1Val});
 
   } else if (opName == "mop.kernels.gather") {
-    Value target_axis = loweringState.lookupExecuteLoweredTensor(
+    Value target_axis = loweringState.lookupExecuteLoweredValue(
         opBeingLowered->getOperands()[2]);
     output.spec =
         getOutputSpec("mop.shape.gather", {inputTensors[0].spec,
@@ -263,44 +263,44 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     SmallVector<Value> shapeFuncArgs = map_to_vector(
         llvm::drop_end(inputTensors),
         [](LoweredTensor tensor) -> Value { return tensor.spec; });
-    Value axis = loweringState.lookupExecuteLoweredTensor(
+    Value axis = loweringState.lookupExecuteLoweredValue(
         opBeingLowered->getOperands().back());
     shapeFuncArgs.push_back(axis);
     output.spec = getOutputSpec("mop.shape.concat", shapeFuncArgs);
   } else if (opName == "mop.kernels.gather_sum") {
     // Hackery! Pure Hackery! I'd start setting up classes for this, but
     // again, I don't expect this to survive E
-    Value gather_axis = loweringState.lookupExecuteLoweredTensor(
+    Value gather_axis = loweringState.lookupExecuteLoweredValue(
         opBeingLowered->getOperands()[2]);
-    Value reduce_axis = loweringState.lookupExecuteLoweredTensor(
+    Value reduce_axis = loweringState.lookupExecuteLoweredValue(
         opBeingLowered->getOperands()[3]);
     output.spec = getOutputSpec(
         "mop.shape.gather_sum",
         {inputTensors[0].spec, inputTensors[1].spec, gather_axis, reduce_axis});
   } else if (opName == "mop.kernels.conv") {
-    Value stride = loweringState.lookupExecuteLoweredTensor(
+    Value stride = loweringState.lookupExecuteLoweredValue(
         opBeingLowered->getOperands()[2]);
-    Value dilation = loweringState.lookupExecuteLoweredTensor(
+    Value dilation = loweringState.lookupExecuteLoweredValue(
         opBeingLowered->getOperands()[3]);
     output.spec = getOutputSpec(
         "mop.shape.conv",
         {inputTensors[0].spec, inputTensors[1].spec, stride, dilation});
   } else if (opName == "mop.kernels.pool.max" ||
              opName == "mop.kernels.pool.avg") {
-    Value kernel = loweringState.lookupExecuteLoweredTensor(
+    Value kernel = loweringState.lookupExecuteLoweredValue(
         opBeingLowered->getOperands()[1]);
-    Value stride = loweringState.lookupExecuteLoweredTensor(
+    Value stride = loweringState.lookupExecuteLoweredValue(
         opBeingLowered->getOperands()[2]);
-    Value dilation = loweringState.lookupExecuteLoweredTensor(
+    Value dilation = loweringState.lookupExecuteLoweredValue(
         opBeingLowered->getOperands()[3]);
     output.spec = getOutputSpec(
         "mop.shape.pool", {inputTensors[0].spec, kernel, stride, dilation});
   } else if (opName == "mop.kernels.range") {
-    Value start = loweringState.lookupExecuteLoweredTensor(
+    Value start = loweringState.lookupExecuteLoweredValue(
         opBeingLowered->getOperands()[0]);
-    Value limit = loweringState.lookupExecuteLoweredTensor(
+    Value limit = loweringState.lookupExecuteLoweredValue(
         opBeingLowered->getOperands()[1]);
-    Value step = loweringState.lookupExecuteLoweredTensor(
+    Value step = loweringState.lookupExecuteLoweredValue(
         opBeingLowered->getOperands()[2]);
     output.spec = getOutputSpec("mop.shape.range", {start, limit, step});
   } else if (opName == "mop.kernels.broadcast_to_tensor") {
@@ -318,11 +318,11 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     output.spec = getOutputSpec("mop.shape.broadcast_to_tensor", inputSpecs);
   } else if (opName == "mop.kernels.slice") {
     Value input = inputTensors[0].spec;
-    Value start = loweringState.lookupExecuteLoweredTensor(
+    Value start = loweringState.lookupExecuteLoweredValue(
         opBeingLowered->getOperands()[1]);
-    Value stop = loweringState.lookupExecuteLoweredTensor(
+    Value stop = loweringState.lookupExecuteLoweredValue(
         opBeingLowered->getOperands()[2]);
-    Value step = loweringState.lookupExecuteLoweredTensor(
+    Value step = loweringState.lookupExecuteLoweredValue(
         opBeingLowered->getOperands()[3]);
 
     output.spec =

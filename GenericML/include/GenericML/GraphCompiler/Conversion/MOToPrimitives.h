@@ -98,8 +98,8 @@ public:
     /// The MGP context, passed in as the second argument.
     Value mgpContext;
 
-    /// Keeps track of what mo.tensor SSA values are lowered to.
-    DenseMap<Value, Value> loweredTensors;
+    /// Keeps track of what runtime SSA values the graph SSA values lower to.
+    DenseMap<Value, Value> loweredValues;
 
     /// The next available constant identifier. Used to assign names
     /// to dense_resource attributes capturing MO constants.
@@ -190,20 +190,24 @@ public:
   // TODO: Remove the need for this by wiring dependencies on asserts locally.
   Value getExecuteChain() { return execute.chain; }
 
-  /// Return what SSA value the mo.tensor (key) is lowered to.
-  Value lookupExecuteLoweredTensor(Value key) {
-    return execute.loweredTensors.lookup(key);
+  /// Return the runtime SSA value that the given graph SSA value is lowered to.
+  /// The key is an arbitrary SSA value in the mo.graph, most often (but not
+  /// necessarily) a `mo.tensor`.
+  Value lookupExecuteLoweredValue(Value key) {
+    return execute.loweredValues.lookup(key);
   }
 
   using ParamPlaceholderOp = ParameterLoweringState::PlaceholderOp;
 
-  /// Register what SSA value the mo.tensor (key) is lowered to.
-  void emplaceExecuteLoweredTensor(Value key, Value value) {
+  /// Register what runtime SSA value the given graph SSA value is lowered to.
+  /// The key is an arbitrary SSA value in the mo.graph, most often (but not
+  /// necessarily) a `mo.tensor`.
+  void emplaceExecuteLoweredValue(Value key, Value value) {
     // If we are mapping to a placeholder, we remember it.
     if (auto placeholder = value.getDefiningOp<ParamPlaceholderOp>())
       placeholderMap.find(placeholder)->getSecond().emplace_back(key);
 
-    execute.loweredTensors.try_emplace(key, value);
+    execute.loweredValues.try_emplace(key, value);
   }
 
   /// Return and increment the next available constant identifier.
@@ -319,8 +323,8 @@ public:
       // If we just resolved a placeholder, we need to make sure no one will
       // ever map to it in the future.
       for (Value key : placeholderMap.at(maybePlaceholder)) {
-        execute.loweredTensors.erase(key);
-        execute.loweredTensors.try_emplace(key, value);
+        execute.loweredValues.erase(key);
+        execute.loweredValues.try_emplace(key, value);
       }
       placeholderMap.erase(maybePlaceholder);
 
