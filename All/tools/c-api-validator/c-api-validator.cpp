@@ -165,10 +165,13 @@ struct RuntimeContextPhase {
     RuntimeContextPhase result;
     result.runtimeConfig = M_newRuntimeConfig();
     M_setNumThreads(result.runtimeConfig, clOptions.numThreads);
-    if (!clOptions.cacheDir.empty())
-      M_setLocalCASPath(result.runtimeConfig, clOptions.cacheDir.c_str());
-
     StatusPtr status(M_newStatus(), M_freeStatus);
+    if (!clOptions.cacheDir.empty()) {
+      M_setCASPath(result.runtimeConfig, clOptions.cacheDir.c_str(),
+                   status.get());
+      RETURN_IF_ERROR(status);
+    }
+
     result.context = M_newRuntimeContext(result.runtimeConfig, status.get());
     RETURN_IF_ERROR(status);
 
