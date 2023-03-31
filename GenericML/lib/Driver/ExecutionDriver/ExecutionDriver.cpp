@@ -399,7 +399,7 @@ M::runModelWithData(MLIRContext *ctx, const Model *model,
     return errorOrSuccess.takeError();
   SmallVector<Tensor, 3> inputTensors;
   for (const auto &[input, spec] : llvm::zip(inputs, model->getInputSpecs())) {
-    if (llvm::any_of(spec.getDims(), mlir::ShapedType::isDynamic))
+    if (llvm::any_of(spec, mlir::ShapedType::isDynamic))
       return Error("Dynamic input shapes are not supported.");
     // Nothing is known about the alignment of the inputs.
     // However they will be held alive for the duration of the execute call.

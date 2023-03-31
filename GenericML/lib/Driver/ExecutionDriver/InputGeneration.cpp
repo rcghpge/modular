@@ -85,8 +85,7 @@ static ErrorOr<Tensor> allocateInput(const TensorShape &userShape,
     return Error(Twine("Specified shape ") + userShape.getAsString() +
                  " doesn't match the rank of model input shape " +
                  modelSpec.getAsString());
-  for (const auto &[userDim, modelDim] :
-       llvm::zip(userShape.getDims(), modelSpec.getDims())) {
+  for (const auto &[userDim, modelDim] : llvm::zip(userShape, modelSpec)) {
     if (mlir::ShapedType::isDynamic(modelDim)) {
       if (mlir::ShapedType::isDynamic(userDim))
         return Error(
