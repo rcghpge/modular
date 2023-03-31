@@ -64,6 +64,11 @@ def MO_AssertOp : MO_Op<"assert"> {
 
   let assemblyFormat = "$cond (`,` $message^)? attr-dict";
   let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    /// Create a static call to apply(mo.assert, cond, message)
+    static TypedAttr emitStaticCall(TypedAttr cond, StringRef message);
+  }];
 }
 
 //===----------------------------------------------------------------------===//

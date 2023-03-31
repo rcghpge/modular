@@ -120,6 +120,16 @@ void AssertOp::build(OpBuilder &builder, OperationState &state, Value cond,
   build(builder, state, cond, builder.getStringAttr(message));
 }
 
+TypedAttr AssertOp::emitStaticCall(TypedAttr cond, StringRef message) {
+  MLIRContext *ctx = cond.getContext();
+  SmallVector<std::pair<StringAttr (*)(mlir::OperationName), Attribute>>
+      msgAttrNameFuncAndArg = {
+          {AssertOp::getMessageAttrName, StringAttr::get(ctx, message)}};
+  auto chainTy = ChainType::get(ctx);
+  return KGEN::emitMLIROperationCall(AssertOp::getOperationName(),
+                                     msgAttrNameFuncAndArg, {cond}, chainTy);
+}
+
 OpFoldResult AssertOp::fold(FoldAdaptor adaptor) {
   // If the condition is true, we return a chain attribute, otherwise we leave
   // the op as is and a pass can either check for failing asserts or it becomes
