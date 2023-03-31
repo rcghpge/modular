@@ -44,7 +44,7 @@ static void invoke(RemainingArguments arguments, RemainingResults results,
 // grt.if
 //===----------------------------------------------------------------------===//
 
-/// This primtive dispatches to a 'true' or 'false' invokable based on a
+/// This primitive dispatches to a 'true' or 'false' invokable based on a
 /// condition.
 ///
 /// Arguments: The first argument is the condition, with type i1/bool, and any

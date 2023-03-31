@@ -113,8 +113,8 @@ void IfOp::print(OpAsmPrinter &p) {
   p << ' ';
   p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
 
-  // Reuse the argument names provided to the op for the bbarg names within
-  // the region.
+  // Reuse the argument names provided to the op for the basic block arg names
+  // within the region.
   p.shadowRegionArgs(getThenRegion(), getInputs());
   p.printRegion(getThenRegion(), /*printEntryBlockArgs=*/false);
   p << " else ";
@@ -180,8 +180,8 @@ void RepeatI32Op::print(OpAsmPrinter &p) {
   p << ") ";
   p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
 
-  // Reuse the argument names provided to the op for the bbarg names within
-  // the region.
+  // Reuse the argument names provided to the op for the basic block arg names
+  // within the region.
   p.shadowRegionArgs(getRegion(), getInputs());
   p.printRegion(getRegion(), /*printEntryBlockArgs=*/false);
 }

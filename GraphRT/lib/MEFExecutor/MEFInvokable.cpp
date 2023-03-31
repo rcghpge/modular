@@ -709,7 +709,7 @@ void MEFExecutor::processUsedByRecords(
     registerRef = takeRCRef(registerVal);
 
     // At this point we have `result`, which may become ready asynchronously,
-    // and we have registerVal, which may become ready an indeterminite time
+    // and we have registerVal, which may become ready an indeterminate time
     // after `result`, depending on the resolveIndirect. However, downstream
     // users of `result` will have their arguments constructed from the
     // IndirectAsyncValue. This means we must be careful not to trigger
@@ -926,6 +926,6 @@ ErrorOrSuccess MEFInvokable::recursePrimitives(
 /// Return the invokable with the specified Invokable ID.
 MEFInvokable *MEFFileImpl::getInvokableByID(size_t number) const {
   assert(number < numInvokables && "invalid invokable");
-  // invokables are stored consequtively in memory.
+  // Invokables are stored consecutively in memory.
   return invokables + number;
 }

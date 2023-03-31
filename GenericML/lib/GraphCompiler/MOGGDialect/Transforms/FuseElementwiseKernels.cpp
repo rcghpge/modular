@@ -55,7 +55,7 @@ void ElementwiseGraph::buildGraph(MOGG::KernelOp start) {
       endpoint.push_back(current);
 
     if (auto useOrP = dyn_cast<KernelOp>(userOrProducer)) {
-      // If the user or producer is anythig but an elementwise kernel then we
+      // If the user or producer is anything but an elementwise kernel then we
       // are a leaf/root. Elementwise = is considered implementable just by
       // application of an elementwise lambda across all elements.
       if (!useOrP.getFusionBodyLambda()) {
@@ -116,7 +116,7 @@ void ElementwiseGraph::buildGraph(MOGG::KernelOp start) {
 */
 // clang-format on
 // The `fusionBodyLambda` is used to identify the body we fuse and the
-// `inputFusionInterface` are used to identify the lambdas assosiated for a
+// `inputFusionInterface` are used to identify the lambdas associated for a
 // given input. It tells us that accesses to operand 0 (%0) are implemented by
 // an invoke of the lambda `input_0_fn_0` so to fuse the producer of `%0` into
 // this kernel we need to replace those invokes.
@@ -164,7 +164,7 @@ struct FuseElementwisePass
 
         DenseMap<Value, Value> alreadyFused;
 
-        // On each leaf in the graph we will continously fuse until nothing is
+        // On each leaf in the graph we will continuously fuse until nothing is
         // left to fuse down.
         while (true) {
           int32_t idx = getInputToFuse(leaf);
@@ -195,7 +195,6 @@ struct FuseElementwisePass
         // here.
         if (otherKernel.getIsViewOp().value_or(false))
           continue;
-
 
         if (otherKernel.getFusionBodyLambda())
           return index;
@@ -236,8 +235,8 @@ struct FuseElementwisePass
     ArrayAttr leafHooks = leaf.getInputFusionInterfaceAttr();
     StringAttr inputLambdaToReplace = cast<StringAttr>(leafHooks[idx]);
 
-    // Each input on the kernel has an assosiated input lambda which loads that
-    // operand. When we remove the operand we must remove the lamdba and update
+    // Each input on the kernel has an associated input lambda which loads that
+    // operand. When we remove the operand we must remove the lambda and update
     // the list of exposed lambdas to reflect that.
     SmallVector<StringRef> newHooks = removeIndexFromInputInterface(leaf, idx);
 
@@ -260,8 +259,8 @@ struct FuseElementwisePass
     // replaced.
     auto itr = alreadyFused.find(operandBeingReplaced);
     if (itr != alreadyFused.end()) {
-      replaceLoadWithExisitingUse(leaf, inputLambdaToReplace,
-                                  leafElemwiseLambda, inserter, itr->second);
+      replaceLoadWithExistingUse(leaf, inputLambdaToReplace, leafElemwiseLambda,
+                                 inserter, itr->second);
 
       // Expose the new updated input hooks.
       leaf.setInputFusionInterfaceAttr(inserter.getStrArrayAttr(newHooks));
@@ -420,10 +419,10 @@ struct FuseElementwisePass
 
   // Replace all loads from `inputLambdaToReplace` in `leafElemwiseLambda` with
   // the existing value `newVal`.
-  void replaceLoadWithExisitingUse(MOGG::KernelOp leaf,
-                                   StringAttr inputLambdaToReplace,
-                                   MOGG::LambdaOp leafElemwiseLambda,
-                                   mlir::OpBuilder &builder, Value newVal) {
+  void replaceLoadWithExistingUse(MOGG::KernelOp leaf,
+                                  StringAttr inputLambdaToReplace,
+                                  MOGG::LambdaOp leafElemwiseLambda,
+                                  mlir::OpBuilder &builder, Value newVal) {
     mlir::SymbolTable leafSymTable{leaf};
 
     // The input lambda we should remove.

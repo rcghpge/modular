@@ -55,7 +55,7 @@ static ErrorOr<Optional<uint64_t>> getImpliedAlignment(ElementsAttr value) {
                            Twine(blob->getData().size()) + " vs " +
                            Twine(value.getNumElements()) + ")"));
     }
-    // DenneResourceElementsAttrs support HasAlignedBytesInterface, so fall
+    // DenseResourceElementsAttrs support HasAlignedBytesInterface, so fall
     // through.
   }
 

@@ -358,7 +358,7 @@ OpFoldResult AddOp::fold(FoldAdaptor adaptor) {
 // MO_BroadcastToOp
 //===----------------------------------------------------------------------===//
 
-/// Check if the input type can be broadcasted to the result type, assumin both
+/// Check if the input type can be broadcasted to the result type, assuming both
 /// have static ranks.
 static ErrorOrSuccess verifyBroadcastStaticRanks(TensorType inputTy,
                                                  TensorType resTy) {
@@ -997,7 +997,7 @@ LogicalResult RebindOp::canonicalize(RebindOp op, PatternRewriter &rewriter) {
     return success();
   }
 
-  // We materialize the parameter declarations explictly.
+  // We materialize the parameter declarations explicitly.
   LogicalResult paramsResolved = materializeShapeInference(op, rewriter);
 
   // Likely already processed, or doesn't help shape inference.

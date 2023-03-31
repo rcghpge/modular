@@ -187,7 +187,7 @@ public:
   AnyAsyncValueRef copy() const { return result.copy(); }
 
   /// Fill this AsyncValue with an error that has the specified message
-  /// and the currrent frame's location.
+  /// and the current frame's location.
   void setToError(Error message) && {
     // CAUTION: We must copy result since it is expected to remain available
     // to the creator of the AnySingleResult. However, we'll still mark this
@@ -642,7 +642,7 @@ public:
 using MEFDynamicAttr = MEFAttr<Detail::Dynamic>;
 
 // Since MEFDynamicAttr can be constructed from a nullptr, the template
-// specializations in lllm/support/Casting.h fail to apply. As such, we
+// specializations in llvm/Support/Casting.h fail to apply. As such, we
 // have to explicitly define the equals and not equals operators for
 // MEFDynamicAttr.
 inline bool operator==(MEFDynamicAttr lhs, MEFDynamicAttr rhs) {
@@ -965,7 +965,7 @@ private:
 /// `RunnablePrimitiveDescriptor`.
 ///
 /// For example:
-///    ADD_PRIMITIVE(registery, "grt.invoke", grt_invoke_impl);
+///    ADD_PRIMITIVE(registry, "grt.invoke", grt_invoke_impl);
 ///
 #define ADD_PRIMITIVE(registry, name, fn)                                      \
   do {                                                                         \

@@ -49,7 +49,7 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
   Option<bool> useShapeInference{
       *this, "mo-shape-inference",
       llvm::cl::desc("Run shape inference on the input before other "
-                     "optimiziations and lowering."),
+                     "optimizations and lowering."),
       llvm::cl::init(false)};
 };
 

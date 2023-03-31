@@ -39,7 +39,7 @@ void M::MGP::removeNumOutputBuffers(Operation *op) {
 }
 
 /// Returns the operand index for the first output buffer argument to op.
-/// Returnn the op's arity if it has no output buffer arguments.
+/// Return the op's arity if it has no output buffer arguments.
 static size_t getFirstOutputBufferOperandIndex(Operation *op) {
   size_t numOutputBuffers = getNumOutputBuffers(op);
   if (numOutputBuffers == 0)

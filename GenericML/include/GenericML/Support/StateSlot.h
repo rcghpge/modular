@@ -102,7 +102,7 @@ protected:
   }
 
 private:
-  /// Ensure the buffer in enry is allocated with size, reallocating
+  /// Ensure the buffer in entry is allocated with size, reallocating
   /// any existing buffer if required.
   static void updateCacheIfNeeded(BufferRef &entry,
                                   LLCL::CompactRuntimePtr runtime, size_t size,

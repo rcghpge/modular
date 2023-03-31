@@ -466,7 +466,7 @@ LogicalResult LoadJitKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       loweringState.getInitMgpContext(),
   };
 
-  // MEF can't currenly work with arrays of strings. To curcumvent this
+  // MEF can't currently work with arrays of strings. To circumvent this
   // restriction we pass in the combined symbol as a string with a ";". This is
   // the setup time load so performance should be less of an issue (though at
   // runtime it is just string ref operations anyway).
@@ -532,15 +532,15 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   if (op.getBcastInputIndices()) {
     mlir::ArrayAttr indices = *op.getBcastInputIndices();
 
-    SmallVector<int32_t, 2> inds;
+    SmallVector<int32_t, 2> newBcastIndices;
     for (llvm::APInt index : indices.getAsValueRange<mlir::IntegerAttr>()) {
-      inds.push_back(static_cast<int32_t>(index.getLimitedValue()));
+      newBcastIndices.push_back(static_cast<int32_t>(index.getLimitedValue()));
     }
 
-    assert(inds.size() == 2 &&
+    assert(newBcastIndices.size() == 2 &&
            "[MOGG_OPS] If kernel has bcast indices it should only have two.");
 
-    bcastIndices = inds;
+    bcastIndices = newBcastIndices;
   }
 
   // Allocate buffers to hold all the operation's result tensors. At this stage

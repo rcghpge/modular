@@ -174,7 +174,7 @@ bool MEFFileReader::readNextSection() {
     return false;
 
   // We just remember the locations of the kInvokablesBodies section - it is
-  // directly indexed with a byte offset from the kinvokablesIndex section.
+  // directly indexed with a byte offset from the kInvokablesIndex section.
   case MEF::SectionID::kTopLevelOpBodies:
     mefFile.invokableBodies = sectionContents;
     return false;

@@ -88,14 +88,14 @@ static Chain print_array_uint8_hex(Chain chain,
 
 static ErrorOr<Chain> print_dynamic_array_float(Chain chain,
                                                 MEFDynamicAttr value) {
-  SmallVector<float> flts;
-  RETURN_ERROR(value.decode(&flts));
+  SmallVector<float> floats;
+  RETURN_ERROR(value.decode(&floats));
 
   printf("array = [");
-  for (size_t i = 0, e = flts.size(); i != e; ++i) {
+  for (size_t i = 0, e = floats.size(); i != e; ++i) {
     if (i != 0)
       printf(", ");
-    printf("%f", flts[i]);
+    printf("%f", floats[i]);
   }
   printf("]\n");
   fflush(stdout);
@@ -888,7 +888,7 @@ static void registerTestVecPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "test.vec.accumulate.async2", vec_accumulate_async2);
   ADD_PRIMITIVE(registry, "test.vec.print", vec_print);
 
-  // primtivies that operating on floating point vectors
+  // Primitives that operate on floating point vectors.
   ADD_PRIMITIVE(registry, "test.vec.f32.iota", vec_float32_iota);
   ADD_PRIMITIVE(registry, "test.vec.f32.constant", vec_float32_constant);
   ADD_PRIMITIVE(registry, "test.vec.f32.softmax.async", vec_softmax_async);

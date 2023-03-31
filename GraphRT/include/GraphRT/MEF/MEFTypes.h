@@ -47,7 +47,7 @@ protected:
 };
 
 // Since MEFType can be constructed from a nullptr, the template
-// specializations in lllm/support/Casting.h fail to apply. As such, we
+// specializations in llvm/Support/Casting.h fail to apply. As such, we
 // have to explicitly define the equals and not equals operators for
 // MEFType.
 inline bool operator==(MEFType lhs, MEFType rhs) {

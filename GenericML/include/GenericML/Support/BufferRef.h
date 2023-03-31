@@ -127,7 +127,7 @@ public:
   /// copied into the new underlying buffer. Otherwise the new underlying buffer
   /// is left uninitialized.
   ///
-  /// TOOO(#5799): We're requiring all callers to be explicit about alignment
+  /// TODO(#5799): We're requiring all callers to be explicit about alignment
   /// (or lack thereof) to help track down 'forgotten alignment' problems.
   static BufferRef createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
                                std::optional<size_t> alignment,

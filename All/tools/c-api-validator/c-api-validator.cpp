@@ -484,7 +484,7 @@ int main(int argc, char **argv) {
                                              clOptions.inputShapes.end());
 
   // Collect the 'ExternalModels'.
-  // TODO: We probably should take paths to model specification yamls so
+  // TODO: We probably should take paths to model specification YAMLs so
   // as to extract all the metadata we need.
   std::vector<ExternalModel> externalModels;
   externalModels.reserve(numPaths);
