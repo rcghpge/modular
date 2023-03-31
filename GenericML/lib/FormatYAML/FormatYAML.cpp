@@ -279,8 +279,7 @@ struct MappingTraits<M::ModelSpec::ModelBinary> {
              " format specified is not valid";
 
     // Check that the URL is valid.
-    llvm::Regex re(
-        R"(^(https?|file)://((([^\/?#]*))?([^?#]*)(\?([^#]*))?(#(.*))?))");
+    llvm::Regex re(R"(^(https?|file|s3)://)");
     if (!re.match(binary.url))
       return std::string("the ") + binary.url + " URL specified is not valid";
 
