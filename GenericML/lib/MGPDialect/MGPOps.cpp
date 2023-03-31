@@ -101,15 +101,30 @@ static void printElementsAttrWithAlign(AsmPrinter &p,
   p << aValue;
 }
 
-void CpuBufferConstantOp::build(::mlir::OpBuilder &odsBuilder,
-                                ::mlir::OperationState &odsState,
-                                ElementsAttr value) {
+/// Get the raw alignment for elements when building a buffer constant.
+static uint64_t getRawAlign(ElementsAttr value) {
   ErrorOr<Optional<uint64_t>> errOrOptAlign = getImpliedAlignment(value);
-  uint64_t rawAlign = 0;
-  if (!errOrOptAlign.isError())
-    // If error we'll report it when the result is validated.
-    rawAlign = optSizeToRawSize(*errOrOptAlign);
-  build(odsBuilder, odsState, value, rawAlign);
+  if (errOrOptAlign.isError())
+    return 0;
+
+  // If error we'll report it when the result is validated.
+  return optSizeToRawSize(*errOrOptAlign);
+}
+
+void CpuBufferConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                                ElementsAttr value) {
+  build(odsBuilder, odsState, value, getRawAlign(value));
+}
+
+void CpuBufferConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                                Type type, ElementsAttr value) {
+  build(odsBuilder, odsState, type, value, getRawAlign(value));
+}
+
+OpFoldResult CpuBufferConstantOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
+  assert(operands.empty() && "constant has no operands");
+  return getAValue();
 }
 
 /// Verifies the attribute and result types are consistent, and the attribute

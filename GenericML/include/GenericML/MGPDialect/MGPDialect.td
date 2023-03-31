@@ -131,6 +131,7 @@ def MGPDialect : Dialect {
   }];
 
   let useDefaultTypePrinterParser = 1;
+  let hasConstantMaterializer = 1;
 }
 
 #endif // GENERICML_MGPDIALECT_MGPDIALECT_TD

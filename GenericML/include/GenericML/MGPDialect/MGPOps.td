@@ -80,6 +80,7 @@ def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant", [
     custom<ElementsAttrWithAlign>($aValue, $bRawAlign) attr-dict
   }];
   let hasVerifier = 1;
+  let hasFolder = 1;
 
   let extraClassDeclaration = [{
      /// Returns the buffer's alignment.
@@ -87,7 +88,8 @@ def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant", [
   }];
 
   let builders = [
-    OpBuilder<(ins "ElementsAttr":$value)>
+    OpBuilder<(ins "ElementsAttr":$value)>,
+    OpBuilder<(ins "Type":$type, "ElementsAttr":$value)>,
   ];
 }
 
