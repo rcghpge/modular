@@ -195,8 +195,14 @@ public:
     return execute.loweredTensors.lookup(key);
   }
 
+  using ParamPlaceholderOp = ParameterLoweringState::PlaceholderOp;
+
   /// Register what SSA value the mo.tensor (key) is lowered to.
   void emplaceExecuteLoweredTensor(Value key, Value value) {
+    // If we are mapping to a placeholder, we remember it.
+    if (auto placeholder = value.getDefiningOp<ParamPlaceholderOp>())
+      placeholderMap.find(placeholder)->getSecond().emplace_back(key);
+
     execute.loweredTensors.try_emplace(key, value);
   }
 
@@ -293,14 +299,36 @@ public:
   /// to the provided hook (using the execute state's builder and the provided
   /// location).
   ErrorOr<Value> lowerExpression(Location loc, TypedAttr attr) {
-    return params.lowerExpression(getExecuteOpBuilder(), loc, attr,
-                                  lowerExpressionImpl);
+    UNWRAP_ERROR(newVal, params.lowerExpression(getExecuteOpBuilder(), loc,
+                                                attr, lowerExpressionImpl))
+
+    // If we got a placeholder, we need to remember it, in case we map an SSA
+    // value to it.
+    if (auto placeholder = newVal.getDefiningOp<ParamPlaceholderOp>())
+      if (!placeholderMap.contains(placeholder))
+        placeholderMap.try_emplace(placeholder, SmallVector<Value>{});
+    return newVal;
   }
 
   /// Lower a parameter declaration, resolving the placeholder if necessary. A
   /// declaration can only be lowered once, and an error is returned otherwise.
   ErrorOrSuccess lowerParamDecl(KGEN::ParamDeclAttr declAttr, Value value) {
-    return params.lowerParamDecl(declAttr, value);
+    UNWRAP_ERROR(maybePlaceholder, params.lowerParamDecl(declAttr, value));
+
+    if (maybePlaceholder) {
+      // If we just resolved a placeholder, we need to make sure no one will
+      // ever map to it in the future.
+      for (Value key : placeholderMap.at(maybePlaceholder)) {
+        execute.loweredTensors.erase(key);
+        execute.loweredTensors.try_emplace(key, value);
+      }
+      placeholderMap.erase(maybePlaceholder);
+
+      // We also need to replace all its existing uses.
+      maybePlaceholder.replaceAllUsesWith(value);
+      maybePlaceholder->erase();
+    }
+    return success();
   }
 
   /// Return the SSA values corresponding to the parametric dimensions in the
@@ -432,6 +460,9 @@ private:
 
   /// The state and interface for parameter lowering.
   ParameterLoweringState params;
+
+  /// Keeps track of all values that map to parameter placeholders.
+  DenseMap<Value, SmallVector<Value>> placeholderMap;
 };
 
 } // namespace M::MGP
