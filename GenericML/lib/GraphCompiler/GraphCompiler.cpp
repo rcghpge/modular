@@ -136,6 +136,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCSEPass());
   pm.addPass(MGP::createPeepholeTensorExtract());
   pm.addPass(MGP::createStripBufferAttributesPass());
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
 }
 
 void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm) {
