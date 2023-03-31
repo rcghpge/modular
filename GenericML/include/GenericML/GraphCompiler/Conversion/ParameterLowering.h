@@ -70,8 +70,7 @@ public:
   /// If a placeholder is resolved, its SSA value is returned so that callers
   /// can replace their uses if necessary. Otherwise, a null Value signifies a
   /// successful lowering without placeholder resolution.
-  ErrorOr<PlaceholderOp> lowerParamDecl(KGEN::ParamDeclAttr declAttr,
-                                        Value value) {
+  ErrorOr<Value> lowerParamDecl(KGEN::ParamDeclAttr declAttr, Value value) {
     auto declRef = KGEN::ParamDeclRefAttr::get(declAttr);
     if (Value lowered = lookupLowered(declRef)) {
       auto placeholder = lowered.getDefiningOp<PlaceholderOp>();
@@ -86,7 +85,7 @@ public:
     }
 
     emplaceLowered(declRef, value);
-    return PlaceholderOp();
+    return Value();
   }
 
 private:

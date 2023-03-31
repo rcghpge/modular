@@ -322,15 +322,17 @@ public:
     if (maybePlaceholder) {
       // If we just resolved a placeholder, we need to make sure no one will
       // ever map to it in the future.
-      for (Value key : placeholderMap.at(maybePlaceholder)) {
-        execute.loweredValues.erase(key);
-        execute.loweredValues.try_emplace(key, value);
+      if (placeholderMap.contains(maybePlaceholder)) {
+        for (Value key : placeholderMap.at(maybePlaceholder)) {
+          execute.loweredValues.erase(key);
+          execute.loweredValues.try_emplace(key, value);
+        }
+        placeholderMap.erase(maybePlaceholder);
       }
-      placeholderMap.erase(maybePlaceholder);
 
       // We also need to replace all its existing uses.
       maybePlaceholder.replaceAllUsesWith(value);
-      maybePlaceholder->erase();
+      maybePlaceholder.getDefiningOp<ParamPlaceholderOp>().erase();
     }
     return success();
   }
