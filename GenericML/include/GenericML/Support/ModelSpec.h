@@ -47,6 +47,10 @@ public:
     std::optional<std::string> size;
     std::optional<std::string> sha1sum;
 
+    /// TODO: This is a temporary flag that is used as we bring up mo shape
+    /// inference.
+    std::optional<bool> legacyShapeInference;
+
     ModelIOSpec() = default;
     ModelIOSpec(std::string name, M::QuantTensorSpec spec,
                 std::optional<std::string> data = {},
@@ -87,6 +91,9 @@ public:
     std::string metadata;
     NameSubstitutions inputSubstitutions;
     NameSubstitutions outputSubstitutions;
+    /// TODO: This is a temporary flag that is used as we bring up mo shape
+    /// inference.
+    std::optional<bool> legacyShapeInference;
   };
 
   ModelSpec() = default;

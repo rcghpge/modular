@@ -193,6 +193,10 @@ struct MappingTraits<M::ModelSpec::ModelIOSpec> {
     io.mapOptional("data", inputOutput.data);
     io.mapOptional("size", inputOutput.size);
     io.mapOptional("sha1sum", inputOutput.sha1sum);
+
+    // TODO: This is a temporary flag that is used as we bring up mo shape
+    // inference.
+    io.mapOptional("legacy_shape_inference", inputOutput.legacyShapeInference);
     // We need to call formatYAML on the QuantTensorSpec to avoid another
     // nesting in the YAML dictionary.
     formatYAML(io, inputOutput.spec);
@@ -262,6 +266,9 @@ struct MappingTraits<M::ModelSpec::ModelBinary> {
 
     io.mapOptional("input_substitutions", binary.inputSubstitutions);
     io.mapOptional("output_substitutions", binary.outputSubstitutions);
+    // TODO: This is a temporary flag that is used as we bring up mo shape
+    // inference.
+    io.mapOptional("legacy_shape_inference", binary.legacyShapeInference);
   }
   /// Check if the binary format and URL are valid.
   static std::string validate(IO &io, M::ModelSpec::ModelBinary &binary) {
