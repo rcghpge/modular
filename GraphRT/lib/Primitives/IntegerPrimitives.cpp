@@ -25,8 +25,8 @@ static bool constant_i1(MEFAttr<bool> value) { return *value; }
 static int32_t constant_si32(MEFAttr<int32_t> value) { return *value; }
 
 static Chain print_si32(int32_t value, Chain chain) {
-  printf("int32 = %d\n", value);
-  fflush(stdout);
+  llvm::outs() << "int32 = " << value << "\n";
+  llvm::outs().flush();
   return chain;
 }
 
