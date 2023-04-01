@@ -358,6 +358,29 @@ OpFoldResult AddOp::fold(FoldAdaptor adaptor) {
 // MO_BroadcastToOp
 //===----------------------------------------------------------------------===//
 
+// TODO refactor with `RangeOp::deparameterize`
+LogicalResult BroadcastToOp::deparameterize(mlir::RewriterBase &rewriter) {
+  ArrayRef<KGEN::ParamDeclAttr> decls = getOutputParamDecls();
+  if (decls.empty())
+    return failure();
+  setOutputParamDecls({});
+
+  TensorType resTy = getType();
+  auto shapeTy = rewriter.getType<ShapeType>();
+  TensorType unknownResTy;
+  if (resTy.hasRank())
+    unknownResTy = resTy.cloneWith(resTy.getIntDims(), resTy.getElementType());
+  else
+    unknownResTy = resTy.cloneWith(KGEN::UnknownAttr::get(shapeTy));
+
+  auto newOp = rewriter.create<MO::BroadcastToOp>(
+      getLoc(), unknownResTy, getOperands(),
+      getOperation()->getAttrDictionary().getValue());
+  rewriter.replaceOpWithNewOp<RebindOp>(*this, resTy, newOp, decls);
+
+  return success();
+}
+
 /// Check if the input type can be broadcasted to the result type, assuming both
 /// have static ranks.
 static ErrorOrSuccess verifyBroadcastStaticRanks(TensorType inputTy,

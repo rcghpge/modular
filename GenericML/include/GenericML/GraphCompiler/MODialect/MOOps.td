@@ -1169,6 +1169,10 @@ def MO_BroadcastToOp : MO_ShapeModifierOp<"broadcast_to"> {
   }];
 
   let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    LogicalResult deparameterize(mlir::RewriterBase &rewriter);
+  }];
 }
 
 def MO_ReshapeOp : MO_ShapeModifierOp<"reshape"> {
