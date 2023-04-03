@@ -15,6 +15,7 @@
 #include "GraphRT/MEFDialect/MEFNonStrict.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 
 #define GET_OP_CLASSES
 #include "GraphRT/GRTDialect/GRT.h.inc"

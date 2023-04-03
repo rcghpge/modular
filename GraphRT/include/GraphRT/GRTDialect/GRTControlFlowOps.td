@@ -12,6 +12,7 @@ include "GraphRT/MEFDialect/MEFNonStrict.td"
 include "GraphRT/GRTDialect/GRTOpsBase.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 
 //===----------------------------------------------------------------------===//
 // ChainCreateOp
@@ -29,12 +30,14 @@ def ChainCreateOp : GRTOp<"chain.create"> {
 // ChainMergeOp
 //===----------------------------------------------------------------------===//
 
-def ChainMergeOp : GRTOp<"chain.merge"> {
+def ChainMergeOp : GRTOp<"chain.merge", [Pure]> {
   let summary = "Return a !mef.chain when all inputs are ready";
 
   let arguments = (ins Variadic<ChainType>:$operands);
   let results = (outs ChainType:$result);
   let assemblyFormat = "$operands attr-dict";
+
+  let hasCanonicalizeMethod = 1;
 }
 
 //===----------------------------------------------------------------------===//

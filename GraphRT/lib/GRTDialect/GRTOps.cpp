@@ -12,6 +12,8 @@
 #include "Support/LLVMForwardDecls.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/FunctionImplementation.h"
+#include "mlir/IR/PatternMatch.h"
+#include "llvm/ADT/SmallPtrSet.h"
 
 using namespace M;
 using namespace GRT;
@@ -32,6 +34,47 @@ parseParenOperandList(OpAsmParser &parser, OperationState &result,
 
   return parser.parseCommaSeparatedList(OpAsmParser::Delimiter::Paren,
                                         parseOperandFn, "in operand list");
+}
+
+//===----------------------------------------------------------------------===//
+// ChainMergeOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ChainMergeOp::canonicalize(ChainMergeOp op,
+                                         PatternRewriter &rewriter) {
+  // Using a set allows us to unique the operands on the fly.
+  SmallPtrSet<Value, 4> uniqueOperands;
+
+  // We collect the operands, and if an input comes from another ChainMergeOp,
+  // we try to fold it into this one.
+  for (Value operand : op->getOperands()) {
+    if (auto producer = operand.getDefiningOp<ChainMergeOp>()) {
+      auto producerArgs = producer->getOperands();
+      uniqueOperands.insert(producerArgs.begin(), producerArgs.end());
+    } else {
+      uniqueOperands.insert(operand);
+    }
+  }
+
+  // If there is a single input, we just fold this op.
+  if (uniqueOperands.size() == 1) {
+    op.replaceAllUsesWith(*uniqueOperands.begin());
+    return success();
+  }
+
+  // If we have multiple operands, we sort them to have a canonicalize list.
+  SmallVector<Value> newOperands(uniqueOperands.begin(), uniqueOperands.end());
+  llvm::sort(newOperands, [](Value a, Value b) -> bool {
+    return a.getAsOpaquePointer() < b.getAsOpaquePointer();
+  });
+
+  // If there is no change, we can return.
+  if (newOperands == SmallVector<Value>(op->getOperands()))
+    return failure();
+
+  // Finally, we can update the op with the new (canonicalized) operands.
+  op->setOperands(newOperands);
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
