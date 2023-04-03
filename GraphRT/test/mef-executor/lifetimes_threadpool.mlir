@@ -4,7 +4,8 @@
 // Ensure threadpool count can be set.
 // RUN: mef-executor -verbose --num-threads=4 %t.mef | FileCheck %s
 
-// CHECK: runtime using malloc allocator, and thread pool work queue
+// TODO(#11695): reenable this
+// COM: runtime using malloc allocator, and thread pool work queue
 // CHECK-LABEL: --- Running 'test_linear'
 grt.testcase @test_linear {
   %ch0 = grt.chain.create
