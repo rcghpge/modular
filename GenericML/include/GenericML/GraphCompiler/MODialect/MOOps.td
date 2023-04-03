@@ -1683,7 +1683,10 @@ def MO_BatchMatmulOp : MO_DotBase<"batch_matmul", [
 // Linear Algebra ops
 //===----------------------------------------------------------------------===//
 
-def MO_MatrixBandPartOp : MO_TensorOp<"matrix_band_part", [Pure]> {
+// TODO: Use an AllElementTypesMatch<["input", "result"]> trait for MO_Tensor.
+def MO_MatrixBandPartOp : MO_TensorOp<"matrix_band_part", [
+    DeclareOpInterfaceMethods<MO_Parameterization>,
+    DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
   let summary = "Matrix Band Part operation";
   let description = [{
     Copy a tensor setting everything outside central (diagonal) band of the
@@ -1721,12 +1724,14 @@ def MO_MatrixBandPartOp : MO_TensorOp<"matrix_band_part", [Pure]> {
   let arguments = (ins
     MO_Tensor:$input,
     MO_RankedScalarIndexTensor:$num_lower,
-    MO_RankedScalarIndexTensor:$num_upper);
+    MO_RankedScalarIndexTensor:$num_upper,
+    MO_ParamDecls:$outputParamDecls);
 
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-     `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
   }];
 
   let hasVerifier = 1;
