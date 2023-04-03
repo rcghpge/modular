@@ -81,9 +81,9 @@ struct KernelRecord {
 using MoToKernelMapTy = SmallDenseMap<mlir::TypeID, KernelRecord, 32>;
 
 struct MOOpPattern : public RewritePattern {
-  MOOpPattern(MLIRContext *ctx, MoToKernelMapTy &moToLitKernels, bool useJit)
+  MOOpPattern(MLIRContext *ctx, MoToKernelMapTy &moToMojoKernels, bool useJit)
       : RewritePattern(MatchAnyOpTypeTag{}, 1, ctx),
-        moToLitKernels(moToLitKernels), useJit(useJit) {}
+        moToMojoKernels(moToMojoKernels), useJit(useJit) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
@@ -107,8 +107,8 @@ struct MOOpPattern : public RewritePattern {
 
   ErrorOr<ValueRange> selectMOGGOp(Operation *op) const {
     // Get the implementation info for this operation.
-    auto itr = moToLitKernels.find(op->getName().getTypeID());
-    if (itr == moToLitKernels.end())
+    auto itr = moToMojoKernels.find(op->getName().getTypeID());
+    if (itr == moToMojoKernels.end())
       return Error("[MO_TO_MOGG] Failed to find a kernel for " +
                    op->getName().getStringRef().str());
     KernelRecord &kernel = itr->second;
@@ -144,7 +144,7 @@ struct MOOpPattern : public RewritePattern {
     }
   }
 
-  MoToKernelMapTy &moToLitKernels;
+  MoToKernelMapTy &moToMojoKernels;
 
   bool useJit;
 };
@@ -163,7 +163,7 @@ void MOToMOGGPass::runOnOperation() {
   // A map of MO types to the known implementations. Ops can be backed by two
   // implementations. A C++ shim in the mop primitives and a LIT kernel which
   // will be jit compiled.
-  MoToKernelMapTy moToLitKernels{
+  MoToKernelMapTy moToMojoKernels{
       MO_SHIM_ONLY(MO::AbsOp, "mop.kernels.abs"),
       MO_TO_LIT(MO::AddOp, "mop.kernels.add"),
       MO_SHIM_ONLY(MO::BroadcastShapeOp, "mop.kernels.broadcast_shape"),
@@ -213,7 +213,7 @@ void MOToMOGGPass::runOnOperation() {
   };
 
   RewritePatternSet patterns{ctx};
-  patterns.add<MOOpPattern>(ctx, moToLitKernels, useJit.getValue());
+  patterns.add<MOOpPattern>(ctx, moToMojoKernels, useJit.getValue());
 
   if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
     return signalPassFailure();
