@@ -7,10 +7,10 @@ mo.graph @bcast_basic(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?], 
 
 // CHECK: mo.graph @bcast_basic
 // CHECK-NEXT: %[[KERNEL:.*]] = mogg.kernel (%[[NULL:.*]], %[[NULL:.*]]) : (%[[IN1:.*]]: !mo.tensor<[?, ?, ?], f32>, %[[IN2:.*]]: !mo.tensor<[?], f32>) -> !mo.tensor<[?, ?, ?], f32>{
+// CHECK-NEXT: %[[OUT:.*]] = mogg.output_placeholders : !mo.tensor<[?, ?, ?], f32>
 
 // We broadcast the tensor.
 // CHECK-NEXT: %[[BCAST:.*]] = mogg.call "mogg.broadcast_to_tensor"(%[[IN1]], %[[IN2]]) : !mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?], f32> -> !mo.tensor<[?, ?, ?], f32>
-// CHECK-NEXT: %[[OUT:.*]] = mogg.output_placeholders : !mo.tensor<[?, ?, ?], f32>
 
 // Load the first argument for use in the copy. Loads the broadcasted view.
 // CHECK-NEXT:  mogg.lambda @input_0_fn = (%[[INDICES:.*]]: !mogg.indices) -> !mogg.simd<f32>{

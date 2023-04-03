@@ -57,6 +57,8 @@ struct KernelRecord {
 
 // Helper to add a map to a jit kernel AND a shim kernel for a given mo op.
 // Add the ( to the name so we only match direct function matches.
+// MOOps is the C++ class type of the MO op which provides the op name for the
+// map. ShimName is the name of the C++ shim kernel to target in MGP.
 #define MO_TO_LIT(MOOp, ShimName)                                              \
   {                                                                            \
     TypeID::get<MOOp>(), KernelRecord {                                        \
@@ -64,8 +66,20 @@ struct KernelRecord {
     }                                                                          \
   }
 
+// Same as the above but a special case for view ops.
+// MOOps is the C++ class type of the MO op which provides the op name for the
+// map. ShimName is the name of the C++ shim kernel to target in MGP.
+#define MO_TO_MOJO_VIEW(MOOp, ShimName)                                        \
+  {                                                                            \
+    TypeID::get<MOOp>(), KernelRecord {                                        \
+      MOOp::getOperationName(), ShimName, true, true, true                     \
+    }                                                                          \
+  }
+
 // Adds a kernel which is only backed by a jit compiled kernel but not a shim.
-#define MO_TO_MOJO_ONLY(MOOp, isView)                                          \
+// MOOps is the C++ class type of the MO op which provides the op name for the
+// map. isView tells us if the op is a view or not.
+#define MO_TO_MOJO_ONLY(MOOp, isView)                                           \
   {                                                                            \
     TypeID::get<MOOp>(), KernelRecord {                                        \
       MOOp::getOperationName(), "", true, false, isView                        \
@@ -73,6 +87,8 @@ struct KernelRecord {
   }
 
 // Helper to add a map to a shim kernel for a given mo op.
+// MOOps is the C++ class type of the MO op which provides the op name for the
+// map. ShimName is the name of the C++ shim kernel to target in MGP.
 #define MO_SHIM_ONLY(MOOp, ShimName)                                           \
   {                                                                            \
     TypeID::get<MOOp>(), KernelRecord { "", ShimName, false }                  \
@@ -171,8 +187,8 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_MOJO_ONLY(MOGG::BroadcastToTensorOp, true),
       MO_SHIM_ONLY(MO::CastOp, "mop.kernels.cast"),
       MO_SHIM_ONLY(MO::ConcatOp, "mop.kernels.concat"),
-      MO_SHIM_ONLY(MO::Static::BroadcastToOp,
-                   "mop.kernels.static.broadcast_to"),
+      MO_TO_MOJO_VIEW(MO::Static::BroadcastToOp,
+                      "mop.kernels.static.broadcast_to"),
       MO_SHIM_ONLY(MO::ConvOp, "mop.kernels.conv"),
       MO_TO_LIT(MO::DivOp, "mop.kernels.div"),
       MO_TO_LIT(MO::ErfOp, "mop.kernels.erf"),
@@ -222,3 +238,4 @@ void MOToMOGGPass::runOnOperation() {
 #undef MO_TO_LIT
 #undef MO_SHIM_ONLY
 #undef MO_TO_MOJO_ONLY
+#undef MO_TO_MOJO_VIEW

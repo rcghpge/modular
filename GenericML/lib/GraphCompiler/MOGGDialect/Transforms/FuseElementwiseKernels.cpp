@@ -188,6 +188,23 @@ struct FuseElementwisePass
       if (edge->getParentRegion() != leaf->getParentRegion())
         continue;
 
+      auto resultTy = leaf->getResult(0).getType();
+
+      // These should never fail in the current composition of ops however we
+      // will check it for safety. The types should be compatable with each
+      // other per the mo spec.
+
+      bool typesAreCompatible = true;
+      for (auto operandType : edge->getOperandTypes()) {
+        if (resultTy != operandType)
+          typesAreCompatible = false;
+      }
+      if (!typesAreCompatible)
+        continue;
+
+      if (resultTy != leaf.getOperand(index).getType())
+        continue;
+
       // If the input operation is a kernel and is implemented by a lambda then
       // we can fuse it.
       if (auto otherKernel = dyn_cast<KernelOp>(edge)) {
@@ -235,6 +252,15 @@ struct FuseElementwisePass
     ArrayAttr leafHooks = leaf.getInputFusionInterfaceAttr();
     StringAttr inputLambdaToReplace = cast<StringAttr>(leafHooks[idx]);
 
+    // Get the output placeholder operation in the block we are inserting into.
+    // We want to this to be at the top as that simplifies other transforms so
+    // we use this as the start of the block.
+    MOGG::OutputPlaceholdersOp leafOuts;
+    for (auto ph : leaf.getOps<MOGG::OutputPlaceholdersOp>()) {
+      assert(!leafOuts && "Only one placeholder expected");
+      leafOuts = ph;
+    }
+
     // Each input on the kernel has an associated input lambda which loads that
     // operand. When we remove the operand we must remove the lambda and update
     // the list of exposed lambdas to reflect that.
@@ -248,8 +274,10 @@ struct FuseElementwisePass
     Block &oldBlock = producerKernel.getBody().front();
     Block &leafBlock = leaf.getBody().front();
 
-    // Add the new lambdas to the top of the leaf kernel.
-    mlir::OpBuilder inserter{&leafBlock, leafBlock.begin()};
+    // Add the new lambdas to the top of the leaf kernel after the output
+    // placeholders.
+    mlir::OpBuilder inserter{leafOuts->getContext()};
+    inserter.setInsertionPointAfter(leafOuts);
 
     // Get the main elementwise block in the kernel we are fusing into.
     StringRef leafMainBody = *leaf.getFusionBodyLambda();

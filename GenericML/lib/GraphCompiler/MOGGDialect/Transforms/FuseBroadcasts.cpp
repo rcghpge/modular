@@ -62,13 +62,28 @@ struct FuseBroadcastsPass
       if (hasFused) {
         Block &leafBlock = kernel.getBody().front();
 
+        // Block all fusion on this operation going forward for safety.
+        kernel.removeInputFusionInterfaceAttr();
+        kernel.removeOutputFusionInterfaceAttr();
+        kernel.removeFusionBodyLambdaAttr();
+
+        auto moType = cast<MO::TensorType>(kernel.getResult(0).getType());
+
+        // If we have a parameterized shape then we don't need the hacky shape
+        // function anymore.
+        if (!moType.hasUnknownShape() && !moType.hasStaticShape()) {
+          kernel.setShapeFunc("infered_from_output");
+          continue;
+        }
+
         MOGG::CallOp bcast;
 
         // Find a broadcast.
         for (Value arg : leafBlock.getArguments()) {
           for (Operation *user : arg.getUsers()) {
             auto call = dyn_cast<MOGG::CallOp>(user);
-            if (call && call.getLitKernelTarget() == MOGG::BroadcastToTensorOp::getOperationName()) {
+            if (call && call.getLitKernelTarget() ==
+                            MOGG::BroadcastToTensorOp::getOperationName()) {
               // At least one of the broadcasts must use only the inputs. That
               // is the one we want as we need to tell the shape inference
               // function which of our inputs can be used to deduce the shape.
@@ -86,11 +101,6 @@ struct FuseBroadcastsPass
         }
 
         assert(bcast && "Broadcast not found but fusion was performed.");
-
-        // Block all fusion on this operation going forward for safety.
-        kernel.removeInputFusionInterfaceAttr();
-        kernel.removeOutputFusionInterfaceAttr();
-        kernel.removeFusionBodyLambdaAttr();
 
         // The indices of the original tensor and the target tensor of the
         // broadcast. These are needed for the shape inference function.
@@ -128,6 +138,11 @@ struct FuseBroadcastsPass
     if (edge->getParentRegion() != kernel->getParentRegion())
       return false;
 
+    // This should never fail in the current composition of ops however we will
+    // check it for safety.
+    if (kernel->getResult(0).getType() != kernel.getOperand(index).getType())
+      return false;
+
     if (auto otherKernel = dyn_cast<KernelOp>(edge)) {
       // Only fuse view operations.
       if (otherKernel.getIsViewOp().value_or(false))
@@ -147,6 +162,28 @@ struct FuseBroadcastsPass
         cast<KernelOp>(operandBeingReplaced.getDefiningOp());
     Block &producerBlock = producerKernel.getBody().front();
     Block &leafBlock = leaf.getBody().front();
+
+    // Make the outputPlaceholders remap to each other. The semantics of the
+    // broadcast are such that a broadcast can be fused an operation when the
+    // output matches the target. Therefor a broadcast to the output is
+    // semantically the same.
+    MOGG::OutputPlaceholdersOp leafOuts;
+    for (auto ph : leaf.getOps<MOGG::OutputPlaceholdersOp>()) {
+      assert(!leafOuts && "Only one placeholder expected");
+      leafOuts = ph;
+    }
+
+    MOGG::OutputPlaceholdersOp producerOuts;
+    for (auto ph : producerKernel.getOps<MOGG::OutputPlaceholdersOp>()) {
+      assert(!producerOuts && "Only one placeholder expected");
+      producerOuts = ph;
+    }
+
+    // Remap the outputs.
+    for (auto [leafOut, producerOut] :
+         llvm::zip(leafOuts.getResults(), producerOuts.getResults())) {
+      remapper.map(producerOut, leafOut);
+    }
 
     MOGG::CallOp bcast;
 
@@ -184,10 +221,13 @@ struct FuseBroadcastsPass
         remapper.map(otherBlockArg, leafBlockArg);
       }
 
-      // The mogg kernel has been marked as a view, this means one of the arguments must be broadcasted. Search the kernel for the broadcast function.
+      // The mogg kernel has been marked as a view, this means one of the
+      // arguments must be broadcasted. Search the kernel for the broadcast
+      // function.
       for (Operation *user : otherBlockArg.getUsers()) {
         auto call = dyn_cast<MOGG::CallOp>(user);
-        if (call && call.getLitKernelTarget() == MOGG::BroadcastToTensorOp::getOperationName()) {
+        if (call && call.getLitKernelTarget() ==
+                        MOGG::BroadcastToTensorOp::getOperationName()) {
           if (bcast) {
             assert(bcast == call &&
                    "More than one broadcast in kernel being fused.");
@@ -199,7 +239,9 @@ struct FuseBroadcastsPass
 
     assert(bcast && "Kernel was marked as a view, it must have a broadcast");
 
-    mlir::OpBuilder builder{&leafBlock, leafBlock.begin()};
+    // Insert at the top just after the output placeholders.
+    mlir::OpBuilder builder{leafOuts->getContext()};
+    builder.setInsertionPointAfter(leafOuts);
     mlir::Operation *insertPoint = nullptr;
 
     auto newOp = bcast->clone(remapper);

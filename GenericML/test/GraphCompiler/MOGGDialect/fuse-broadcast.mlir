@@ -9,9 +9,9 @@ mo.graph @basicBroadcastFuse(%arg0: !mo.tensor<[?, ?], f32>, %arg1: !mo.tensor<[
 
 // CHECK:  mo.graph @basicBroadcastFuse(%[[ARG0:.*]]: !mo.tensor<[?, ?], f32>, %[[ARG1:.*]]: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, ?], f32> {
 // CHECK-NEXT:   %[[KERNEL:.*]] = mogg.kernel (%[[ARG1]], %[[ARG0]]) : (%[[IN1:.*]]: !mo.tensor<[?, ?], f32>, %[[IN2:.*]]: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, ?], f32>{
+// CHECK-NEXT:   %[[OUT:.*]] = mogg.output_placeholders : !mo.tensor<[?, ?], f32>
 // CHECK-NEXT:   %[[BCAST_1:.*]] = mogg.call "mogg.broadcast_to_tensor"(%[[IN2]], %[[IN1]]) : !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], f32> -> !mo.tensor<[?, ?], f32>
 // CHECK-NEXT:   %[[BCAST_2:.*]] = mogg.call "mogg.broadcast_to_tensor"(%[[IN1]], %[[IN2]]) : !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], f32> -> !mo.tensor<[?, ?], f32>
-// CHECK-NEXT:   %[[OUT:.*]] = mogg.output_placeholders : !mo.tensor<[?, ?], f32>
 // CHECK-NEXT:   mogg.lambda @input_0_fn = (%[[INDICES:.*]]: !mogg.indices) -> !mogg.simd<f32>{
 // CHECK-NEXT:      %[[LOAD:.*]] = mogg.simd_load(%[[BCAST_1]], %[[INDICES]]) : (!mo.tensor<[?, ?], f32>, !mogg.indices) -> !mogg.simd<f32>
 // CHECK-NEXT:      mogg.output %[[LOAD]] : !mogg.simd<f32>
@@ -53,6 +53,7 @@ mo.graph @basicBroadcastIntoElemwise(%arg0: !mo.tensor<[?, ?, ?, ?], f32>, %arg1
 
 // CHECK:  mo.graph @basicBroadcastIntoElemwise(%[[ARG0:.*]]: !mo.tensor<[?, ?, ?, ?], f32>, %[[ARG1:.*]]: !mo.tensor<[?, ?], f32>)
 // CHECK-NEXT:   %[[KERNEL:.*]] = mogg.kernel (%[[ARG1]], %[[ARG0]]) : (%[[IN1:.*]]: !mo.tensor<[?, ?], f32>, %[[IN2:.*]]: !mo.tensor<[?, ?, ?, ?], f32>) -> !mo.tensor<[?, ?, ?, ?], f32>
+// CHECK-NEXT:   mogg.output_placeholders
 // CHECK-NEXT:   %[[BCAST_1:.*]] = mogg.call "mogg.broadcast_to_tensor"(%[[IN2]], %[[IN1]]) : !mo.tensor<[?, ?, ?, ?], f32>, !mo.tensor<[?, ?], f32> -> !mo.tensor<[?, ?, ?, ?], f32>
 // CHECK-NEXT:   %[[BCAST_2:.*]] = mogg.call "mogg.broadcast_to_tensor"(%[[IN1]], %[[IN2]]) : !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?, ?, ?], f32> -> !mo.tensor<[?, ?, ?, ?], f32>
 
@@ -91,6 +92,7 @@ mo.graph @checkOneLayerFusion(%arg0: !mo.tensor<[?], f32>, %arg1: !mo.tensor<[?,
 // CHECK: mo.graph @checkOneLayerFusion(%[[ARG0:.*]]: !mo.tensor<[?], f32>, %[[ARG1:.*]]: !mo.tensor<[?, ?, ?, ?], f32>, %[[ARG2:.*]]: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?, ?, ?, ?], f32>
 
 // CHECK-NEXT:%[[KERNEL1:.*]] = mogg.kernel (%[[ARG0]], %[[ARG2]]) : (%[[IN1:.*]]: !mo.tensor<[?], f32>, %[[IN2:.*]]: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?, ?, ?], f32>
+// CHECK-NEXT: mogg.output_placeholders
 
 // Find the first unfused kernel.
 // CHECK-NEXT:      %[[BCAST:.*]] = mogg.call "mogg.broadcast_to_tensor"(%[[IN1]], %[[IN2]]) : !mo.tensor<[?], f32>, !mo.tensor<[?, ?, ?], f32> -> !mo.tensor<[?, ?, ?], f32>
@@ -105,6 +107,7 @@ mo.graph @checkOneLayerFusion(%arg0: !mo.tensor<[?], f32>, %arg1: !mo.tensor<[?,
 
 
 // CHECK: %[[KERNEL2:.*]] = mogg.kernel (%[[ARG1]], %[[KERNEL1]]) : (%[[IN1:.*]]: !mo.tensor<[?, ?, ?, ?], f32>, %[[IN2:.*]]: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?, ?, ?, ?], f32>
+// CHECK-NEXT: mogg.output_placeholders
 // CHECK-NEXT:      %[[BCAST1:.*]] = mogg.call "mogg.broadcast_to_tensor"(%[[IN2]], %[[IN1]]) : !mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?, ?], f32> -> !mo.tensor<[?, ?, ?, ?], f32>
 // CHECK-NEXT:      %[[BCAST2:.*]] = mogg.call "mogg.broadcast_to_tensor"(%[[IN1]], %[[IN2]]) : !mo.tensor<[?, ?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32> -> !mo.tensor<[?, ?, ?, ?], f32>
 
@@ -137,6 +140,7 @@ mo.graph @bcastUsesRHS(%arg0: !mo.tensor<[?], f32>, %arg1: !mo.tensor<[?, ?, ?, 
 
 // CHECK: mo.graph @bcastUsesRHS(%[[ARG0:.*]]: !mo.tensor<[?], f32>, %[[ARG1:.*]]: !mo.tensor<[?, ?, ?, ?], f32>, %[[ARG2:.*]]: !mo.tensor<[?, ?], f32>)
 // CHECK-NEXT: %[[KERNEL_OUT:.*]] = mogg.kernel (%[[ARG0]], %[[ARG1]], %[[ARG2]]) : (%[[IN1:.*]]: !mo.tensor<[?], f32>, %[[IN2:.*]]: !mo.tensor<[?, ?, ?, ?], f32>, %[[IN3:.*]]: !mo.tensor<[?, ?], f32>)
+// CHECK-NEXT: mogg.output_placeholders
 // CHECK-NEXT: %[[BCAST_1:.*]] = mogg.call "mogg.broadcast_to_tensor"(%[[IN1]], %[[IN2]])
 // CHECK-NEXT: %[[BCAST_2:.*]] = mogg.call "mogg.broadcast_to_tensor"(%[[IN3]], %[[BCAST_1]])
 
@@ -165,6 +169,7 @@ mo.graph @bcastUsesLHS(%arg0: !mo.tensor<[?], f32>, %arg1: !mo.tensor<[?, ?, ?, 
 
 // CHECK: mo.graph @bcastUsesLHS(%[[ARG0:.*]]: !mo.tensor<[?], f32>, %[[ARG1:.*]]: !mo.tensor<[?, ?, ?, ?], f32>, %[[ARG2:.*]]: !mo.tensor<[?, ?], f32>)
 // CHECK-NEXT: %[[KERNEL_OUT:.*]] = mogg.kernel (%[[ARG2]], %[[ARG0]], %[[ARG1]]) : (%[[IN1:.*]]: !mo.tensor<[?, ?], f32>, %[[IN2:.*]]: !mo.tensor<[?], f32>, %[[IN3:.*]]: !mo.tensor<[?, ?, ?, ?], f32>)
+// CHECK-NEXT: mogg.output_placeholders
 // CHECK-NEXT: %[[BCAST_1:.*]] = mogg.call "mogg.broadcast_to_tensor"(%[[IN2]], %[[IN3]])
 // CHECK-NEXT: %[[BCAST_2:.*]] = mogg.call "mogg.broadcast_to_tensor"(%[[IN1]], %[[BCAST_1]])
 
@@ -202,6 +207,7 @@ mo.graph @many_bcasts() -> !mo.tensor<[2, 2, 3], f32> {
 
 
 // CHECK: mogg.kernel
+// CHECK-NEXT: mogg.output_placeholders
 // CHECK-NEXT:  %[[BCAST_1:.*]] = mogg.call "mogg.broadcast_to_tensor"
 // CHECK-NEXT:  %[[BCAST_2:.*]] = mogg.call "mogg.broadcast_to_tensor"
 // CHECK-NEXT:  %[[BCAST_3:.*]] = mogg.call "mogg.broadcast_to_tensor"
@@ -235,6 +241,7 @@ mo.graph @check_no_fuse_if(%cond : !mo.tensor<[], bool>, %arg0: !mo.tensor<[?, ?
 
 // Check the bcasts still become standalone kernels
 // CHECK-NEXT: %[[BCAST1:.*]] = mogg.kernel
+// CHECK-NEXT: mogg.output_placeholders
 // CHECK-NEXT:  mogg.call "mogg.broadcast_to_tensor"
 // CHECK:  mogg.lambda @elemwise_compute_lambda = (%[[INDICES:.*]]: !mogg.indices)
 // CHECK-NEXT:  %[[LOAD:.*]] = mogg.invoke @input_0_fn
@@ -242,6 +249,7 @@ mo.graph @check_no_fuse_if(%cond : !mo.tensor<[], bool>, %arg0: !mo.tensor<[?, ?
 
 
 // CHECK: %[[BCAST2:.*]] = mogg.kernel
+// CHECK-NEXT: mogg.output_placeholders
 // CHECK-NEXT:  mogg.call "mogg.broadcast_to_tensor"
 // CHECK:  mogg.lambda @elemwise_compute_lambda = (%[[INDICES:.*]]: !mogg.indices)
 // CHECK-NEXT:  %[[LOAD:.*]] = mogg.invoke @input_0_fn
