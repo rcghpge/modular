@@ -56,10 +56,10 @@ def FuseElementwise: Pass<"fuse-elementwise", "MO::GraphOp"> {
     ];
 }
 
-def LoadLitLibrary : Pass<"load-lit-library", "ModuleOp"> {
-  let summary = "Load the lit library. (nop if already loaded)";
+def LoadMojoLibrary : Pass<"load-mojo-library", "ModuleOp"> {
+  let summary = "Load the mojo library. (nop if already loaded)";
   let description = [{
-    Load the lit library off the disk and include the avaliable kernels in the mo graph.
+    Load the mojo library off the disk and include the avaliable kernels in the mo graph.
   }];
 
 

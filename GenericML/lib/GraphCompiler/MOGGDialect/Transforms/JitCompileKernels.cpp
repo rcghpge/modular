@@ -37,7 +37,7 @@ namespace M::MOGG {
 
 namespace {
 
-// Directly embed the lit file rather than loading dynamically.
+// Directly embed the mojo file rather than loading dynamically.
 #include MOGG_MOJO_BINDING_H
 
 std::string mangleBlock(mlir::Block &block,
@@ -146,13 +146,13 @@ struct JitCompileKernels
   void runOnOperation() override {
     mlir::ModuleOp m = getOperation();
 
-    // Load the lit kernel library info.
-    FailureOr<MOGG::LitRegisterOp> registryOr = getOrLoadLitLibrary(m);
+    // Load the mojo kernel library info.
+    FailureOr<MOGG::MojoRegisterOp> registryOr = getOrLoadMojoLibrary(m);
     if (failed(registryOr)) {
-      m.emitError() << "[JitCompileKernels] Couldn't load lit kernel registry";
+      m.emitError() << "[JitCompileKernels] Couldn't load mojo kernel registry";
       return signalPassFailure();
     }
-    MOGG::LitRegisterOp registry = *registryOr;
+    MOGG::MojoRegisterOp registry = *registryOr;
 
     // Run the jit required passes.
     mlir::PassManager pm(m->getContext());
@@ -169,7 +169,7 @@ struct JitCompileKernels
     }
   }
 
-  ErrorOr<mlir::OwningOpRef<mlir::ModuleOp>> loadLitLibrary() {
+  ErrorOr<mlir::OwningOpRef<mlir::ModuleOp>> loadMojoLibrary() {
 
     // Load the module. The stub will be appended to this.
     llvm::StringRef source{
@@ -180,7 +180,7 @@ struct JitCompileKernels
                                                 getOperation()->getContext());
 
     if (!baseModuleRef) {
-      return Error("[JitCompileKernels] Could not load the embedded MOGG LIT "
+      return Error("[JitCompileKernels] Could not load the embedded MOGG Mojo "
                    "binding library at path ");
     }
 
@@ -190,11 +190,11 @@ struct JitCompileKernels
     return baseModuleRef;
   }
 
-  ErrorOrSuccess runPass(MO::GraphOp graph, MOGG::LitRegisterOp registry) {
-    // Load the lit library. We use this KGEN module as the starting point to
+  ErrorOrSuccess runPass(MO::GraphOp graph, MOGG::MojoRegisterOp registry) {
+    // Load the mojo library. We use this KGEN module as the starting point to
     // build up the stub functions. It contains all the kernels and functions we
     // will need to call.
-    UNWRAP_ERROR(kgenModule, loadLitLibrary());
+    UNWRAP_ERROR(kgenModule, loadMojoLibrary());
 
     // Helper to track all the types to prevent constant reallocation.
     Stub::TypeManager manager{graph.getContext()};

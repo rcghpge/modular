@@ -820,10 +820,11 @@ void MOToPrimitivesPass::runOnOperation() {
     return MGP::CpuTensorType::get(&ctx, MGP::createCpuTensorSpec(t));
   });
 
-  // The lit kernels should already be fused so the registry is no longer
-  // needed.
-  for (MOGG::LitRegisterOp reg :
-       llvm::make_early_inc_range(theModule.getOps<MOGG::LitRegisterOp>()))
+  // The mojo kernels will already be composed into novel jit kernels at this
+  // point so there is no lowering for the MojoRegisterOp which is just a helper
+  // to link between MOGG and mojo.
+  for (MOGG::MojoRegisterOp reg :
+       llvm::make_early_inc_range(theModule.getOps<MOGG::MojoRegisterOp>()))
     reg.erase();
 
   // Convert each mo.graph into a mgp.model.

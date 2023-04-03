@@ -111,11 +111,11 @@ def MOGG_OutputOp
 // MOGG abstract compiled components representation
 //===----------------------------------------------------------------------===//
 
-def MOGG_LitRegisterOp : MOGG_Op<"lit_register", [HasParent<"ModuleOp">]> {
-  let summary = "A mapping of all the registered lit functions";
+def MOGG_MojoRegisterOp : MOGG_Op<"mojo_register", [HasParent<"ModuleOp">]> {
+  let summary = "A mapping of all the registered mojo functions";
   let description = [{
-    A module wide library of avaliable lit functions. This is populated by loading the target LIT library/libraries.
-    In the future this will be populated by a direct LIT binding.
+    A module wide library of avaliable mojo functions. This is populated by loading the target Mojo library/libraries.
+    In the future this will be populated by a direct Mojo binding.
   }];
 
   let arguments = (ins DictionaryAttr:$dict);
@@ -208,7 +208,7 @@ def MOGG_CallOp : MOGG_Op<"call"> {
   let summary = "Represents a KGEN function to call";
   let description = [{
     This represents a call to a KGEN function. The kernel target will be a function
-    we retrieve from the LitRegisterOp. The call can also take an optional list of
+    we retrieve from the MojoRegisterOp. The call can also take an optional list of
     symbols in the from of `$params`. These are lambdas within this kernel which should
     be passed as parameters to the KGEN call.
 
@@ -217,7 +217,7 @@ def MOGG_CallOp : MOGG_Op<"call"> {
     mogg.call "fake_op" [@test_lambda, @test_lambda2](%input, %output) : !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>
     ```
 
-    The above will look up `fake_op` in the lit op register to find the actual lit symbol for that function
+    The above will look up `fake_op` in the mojo op register to find the actual mojo symbol for that function
     and will compile down to a kgen call to that symbol with the lambda functions passed as parameters.
 
    ```mlir

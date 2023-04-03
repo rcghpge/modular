@@ -31,9 +31,9 @@ namespace {
 // A struct containing the specification we should search for to find a kernel
 // for a given mo type.
 struct KernelRecord {
-  KernelRecord(StringLiteral moggID, StringLiteral shimName, bool hasLit,
+  KernelRecord(StringLiteral moggID, StringLiteral shimName, bool hasMojo,
                bool hasShim = true, bool isView = false)
-      : moggID(moggID), shim(shimName), shouldHaveLit(hasLit),
+      : moggID(moggID), shim(shimName), shouldHaveMojo(hasMojo),
         shouldHaveShim(hasShim), isView(isView) {}
 
   ~KernelRecord() = default;
@@ -45,8 +45,8 @@ struct KernelRecord {
   // The C++ shim which implements this (i.e non-jitted kernel path).
   StringLiteral shim;
 
-  // Should we have a lit kernel for this?
-  bool shouldHaveLit;
+  // Should we have a mojo kernel for this?
+  bool shouldHaveMojo;
 
   // Operations only expected to be lowered by jit do not need a shim.
   bool shouldHaveShim;
@@ -59,7 +59,7 @@ struct KernelRecord {
 // Add the ( to the name so we only match direct function matches.
 // MOOps is the C++ class type of the MO op which provides the op name for the
 // map. ShimName is the name of the C++ shim kernel to target in MGP.
-#define MO_TO_LIT(MOOp, ShimName)                                              \
+#define MO_TO_MOJO(MOOp, ShimName)                                             \
   {                                                                            \
     TypeID::get<MOOp>(), KernelRecord {                                        \
       MOOp::getOperationName(), ShimName, true                                 \
@@ -79,7 +79,7 @@ struct KernelRecord {
 // Adds a kernel which is only backed by a jit compiled kernel but not a shim.
 // MOOps is the C++ class type of the MO op which provides the op name for the
 // map. isView tells us if the op is a view or not.
-#define MO_TO_MOJO_ONLY(MOOp, isView)                                           \
+#define MO_TO_MOJO_ONLY(MOOp, isView)                                          \
   {                                                                            \
     TypeID::get<MOOp>(), KernelRecord {                                        \
       MOOp::getOperationName(), "", true, false, isView                        \
@@ -137,7 +137,7 @@ struct MOOpPattern : public RewritePattern {
     // Ranked.
     // Rank between 1-5 (due to kernel bug #10551)
     // Only within the top level graph and not within e.g control flow.
-    bool shouldUseJit = useJit && kernel.shouldHaveLit;
+    bool shouldUseJit = useJit && kernel.shouldHaveMojo;
     for (Type t : op->getOperandTypes()) {
       auto tensor = dyn_cast<MO::TensorType>(t);
       if (!tensor || !tensor.getElementType().isF32() || !tensor.hasRank() ||
@@ -177,11 +177,11 @@ void MOToMOGGPass::runOnOperation() {
   auto *ctx = &getContext();
 
   // A map of MO types to the known implementations. Ops can be backed by two
-  // implementations. A C++ shim in the mop primitives and a LIT kernel which
+  // implementations. A C++ shim in the mop primitives and a Mojo kernel which
   // will be jit compiled.
   MoToKernelMapTy moToMojoKernels{
       MO_SHIM_ONLY(MO::AbsOp, "mop.kernels.abs"),
-      MO_TO_LIT(MO::AddOp, "mop.kernels.add"),
+      MO_TO_MOJO(MO::AddOp, "mop.kernels.add"),
       MO_SHIM_ONLY(MO::BroadcastShapeOp, "mop.kernels.broadcast_shape"),
       MO_SHIM_ONLY(MO::BroadcastToOp, "mop.kernels.broadcast_to"),
       MO_TO_MOJO_ONLY(MOGG::BroadcastToTensorOp, true),
@@ -190,9 +190,9 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_MOJO_VIEW(MO::Static::BroadcastToOp,
                       "mop.kernels.static.broadcast_to"),
       MO_SHIM_ONLY(MO::ConvOp, "mop.kernels.conv"),
-      MO_TO_LIT(MO::DivOp, "mop.kernels.div"),
-      MO_TO_LIT(MO::ErfOp, "mop.kernels.erf"),
-      MO_TO_LIT(MO::ExpOp, "mop.kernels.exp"),
+      MO_TO_MOJO(MO::DivOp, "mop.kernels.div"),
+      MO_TO_MOJO(MO::ErfOp, "mop.kernels.erf"),
+      MO_TO_MOJO(MO::ExpOp, "mop.kernels.exp"),
       MO_SHIM_ONLY(MO::EqualOp, "mop.kernels.equal"),
       MO_SHIM_ONLY(MO::GreaterOp, "mop.kernels.greater"),
       MO_SHIM_ONLY(MO::GreaterEqualOp, "mop.kernels.greater_equal"),
@@ -213,19 +213,19 @@ void MOToMOGGPass::runOnOperation() {
       MO_SHIM_ONLY(MO::MaxPoolOp, "mop.kernels.pool.max"),
       MO_SHIM_ONLY(MO::AvgPoolOp, "mop.kernels.pool.avg"),
       MO_SHIM_ONLY(MO::MinOp, "mop.kernels.min"),
-      MO_TO_LIT(MO::MulOp, "mop.kernels.mul"),
+      MO_TO_MOJO(MO::MulOp, "mop.kernels.mul"),
       MO_SHIM_ONLY(MO::PowOp, "mop.kernels.pow"),
       MO_SHIM_ONLY(MO::RangeOp, "mop.kernels.range"),
-      MO_TO_LIT(MO::ReluOp, "mop.kernels.relu"),
-      MO_TO_LIT(MO::RsqrtOp, "mop.kernels.rsqrt"),
+      MO_TO_MOJO(MO::ReluOp, "mop.kernels.relu"),
+      MO_TO_MOJO(MO::RsqrtOp, "mop.kernels.rsqrt"),
       MO_SHIM_ONLY(MO::SelectOp, "mop.kernels.select"),
       MO_SHIM_ONLY(MO::SigmoidOp, "mop.kernels.sigmoid"),
       MO_SHIM_ONLY(MO::SliceOp, "mop.kernels.slice"),
       MO_SHIM_ONLY(MO::ShapeOfOp, "mop.kernels.shape_of"),
       MO_SHIM_ONLY(MO::SoftmaxOp, "mop.kernels.softmax"),
-      MO_TO_LIT(MO::SqrtOp, "mop.kernels.sqrt"),
-      MO_TO_LIT(MO::SubOp, "mop.kernels.sub"),
-      MO_TO_LIT(MO::TanhOp, "mop.kernels.tanh"),
+      MO_TO_MOJO(MO::SqrtOp, "mop.kernels.sqrt"),
+      MO_TO_MOJO(MO::SubOp, "mop.kernels.sub"),
+      MO_TO_MOJO(MO::TanhOp, "mop.kernels.tanh"),
   };
 
   RewritePatternSet patterns{ctx};
@@ -235,7 +235,7 @@ void MOToMOGGPass::runOnOperation() {
     return signalPassFailure();
 }
 
-#undef MO_TO_LIT
+#undef MO_TO_MOJO
 #undef MO_SHIM_ONLY
 #undef MO_TO_MOJO_ONLY
 #undef MO_TO_MOJO_VIEW
