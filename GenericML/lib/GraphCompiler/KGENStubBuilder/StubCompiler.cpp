@@ -42,8 +42,12 @@ LogicalResult StubCompiler::elaborateKGEN() {
   if (target.isError())
     return mlir::emitError(kgenModule.getLoc(), target.getError());
 
+  BuildInfoAttr buildInfo =
+      BuildInfoAttr::getForCurrentBuild(kgenModule->getContext());
+
   mlir::PassManager pm(kgenModule->getContext());
-  KGEN::populateElaborateModulePasses(pm, runtime, *target, {shouldSearch});
+  KGEN::populateElaborateModulePasses(pm, runtime, *target, buildInfo,
+                                      {shouldSearch});
 
   if (!saveTempsPrefix.empty()) {
     std::string outPath = saveTempsPrefix + ".kgen.prelaboration.mlir";
