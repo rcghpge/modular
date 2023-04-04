@@ -1267,30 +1267,43 @@ LogicalResult Static::ReshapeOp::canonicalize(Static::ReshapeOp op,
   if (!resTy.hasRank() || !inputTy.hasRank())
     return failure();
 
+  // If we are preceded by ranked -> ranked rebind, we fold that into this op.
+  if (auto rebindOp = inputVal.getDefiningOp<RebindOp>()) {
+    TensorValue rebIn = rebindOp.getInput();
+    TensorType rebInTy = rebIn.getType();
+    if (rebInTy.hasRank() && !rebInTy.hasUnknownShape()) {
+      op.setOperand(rebIn);
+      return success();
+    }
+  }
+
   size_t inputRank = inputTy.getRank();
   size_t resRank = resTy.getRank();
   if (inputRank == 0 && resRank == 1) {
+    // We can fold static reshapes from scalars to singletons.
     if (TypedAttr param = getParamConstThrough<IndexToTensorOp>(inputVal)) {
-      // TODO: test
       auto shape = ShapeAttr::get(SmallVector<TypedAttr>{param},
                                   rewriter.getType<ShapeType>());
       auto newConstOp =
           rewriter.create<KGEN::ParamConstantOp>(op->getLoc(), shape);
       rewriter.replaceOpWithNewOp<Shape::ToTensorOp>(op, resTy, newConstOp);
+      return success();
     }
-  } else if (inputRank == 1 && resRank == 0) {
+  }
+  if (inputRank == 1 && resRank == 0) {
+    // We can fold static reshapes from singletons to scalars.
     if (TypedAttr param = getParamConstThrough<Shape::ToTensorOp>(inputVal)) {
       if (auto shape = dyn_cast<ShapeAttr>(param);
           shape && shape.getRank() == 1) {
-        // TODO: test
         auto newConstOp = rewriter.create<KGEN::ParamConstantOp>(
             op->getLoc(), shape.getValues()[0]);
         rewriter.replaceOpWithNewOp<IndexToTensorOp>(op, resTy, newConstOp);
+        return success();
       }
     }
   }
 
-  if (inputTy.getRank() != resTy.getRank())
+  if (inputRank != resRank)
     return failure();
 
   // A reshape that changes only a single dimension is just a rebind.

@@ -120,3 +120,12 @@ mo.graph @static_reshape_singleton_const<A>() -> !mo.tensor<[], si64> {
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[], si64>
   mo.output %2 : !mo.tensor<[], si64>
 }
+
+// CHECK: mo.graph @static_reshape_preceding_rebind<[[A:.*]], [[B:.*]]>(%[[ARG0:.*]]: !mo.tensor<[[[A]], [[B]]], si64>) -> !mo.tensor<[10], si64> {
+mo.graph @static_reshape_preceding_rebind<A, B>(%arg0: !mo.tensor<[A, B], si64>) -> !mo.tensor<[10], si64> {
+  %1 = mo.rebind(%arg0) : !mo.tensor<[A, B], si64> -> !mo.tensor<[2, B], si64>
+  // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[ARG0]]) : !mo.tensor<[[[A]], [[B]]], si64> -> !mo.tensor<[10], si64>
+  %2 = mo.static.reshape(%1) : !mo.tensor<[2, B], si64> -> !mo.tensor<[10], si64>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[10], si64>
+  mo.output %2 : !mo.tensor<[10], si64>
+}
