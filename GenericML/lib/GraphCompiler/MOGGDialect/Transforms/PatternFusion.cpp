@@ -32,10 +32,8 @@ struct GatherSumPattern : public RewritePattern {
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-    OpBuilder b(op);
-    b.setInsertionPoint(op);
-    Value null, input, indices, gatherAxis, reduceAxis;
-    Operation *gather, *sum;
+    Value input, indices, gatherAxis, reduceAxis;
+    Operation *gather, *sum, *staticReshape;
     // TODO: Simplify this once we have parameterized shape calculations
     auto reduceAxisPattern = m_ScalarConstantInt(&reduceAxis, 1);
     auto sumPattern = m_Op<MO::ReduceAddOp>(
@@ -44,6 +42,7 @@ struct GatherSumPattern : public RewritePattern {
                            m_MOMatrix(m_Any(&indices)),
                            m_ScalarConstantInt(&gatherAxis, 0)),
         reduceAxisPattern);
+
     auto any = m_Any();
     auto zero = m_ScalarConstantInt(0);
     auto one = m_ScalarConstantInt(1);
@@ -55,23 +54,36 @@ struct GatherSumPattern : public RewritePattern {
                            zero),
         zero);
 
-    if (!m_Op<MO::ReshapeOp>(sumPattern, squeezeShapePattern).match(op))
+    if (m_Op<MO::Static::ReshapeOp>(&staticReshape, sumPattern).match(op)) {
+      auto outShape = cast<MO::TensorType>(staticReshape->getResultTypes()[0])
+                          .getTypedShapeAttr();
+      auto inShape =
+          cast<MO::TensorType>(staticReshape->getOperand(0).getType())
+              .getTypedShapeAttr();
+      auto inValues = inShape.getValues();
+      auto outValues = outShape.getValues();
+
+      // This kernel is assuming the reshape is a squeeze on axis 1, so we
+      // check that the input and output shapes match that assumption
+      if (inShape.getRank() != 3 || inShape.getIntDim(1) != 1 ||
+          outValues[0] != inValues[0] || outValues[1] != inValues[2])
+        return failure();
+    } else if (!m_Op<MO::ReshapeOp>(sumPattern, squeezeShapePattern)
+                    .match(op)) {
+      return failure();
+    }
+
+    if (!input || !indices || !gatherAxis || !reduceAxis)
       return failure();
 
-    if (input == null || indices == null || gatherAxis == null ||
-        reduceAxis == null)
-      return failure();
-
-    auto results =
-        b.create<MOGG::ExtOp>(
-             op->getLoc(),
-             /*outputTypes=*/op->getResultTypes(),
-             /*op_name=*/"mop.kernels.gather_sum",
-             /*inputOperands=*/
-             SmallVector<Value>{input, indices, gatherAxis, reduceAxis})
-            .getResults();
-
-    rewriter.replaceOp(op, results);
+    rewriter
+        .replaceOpWithNewOp<MOGG::ExtOp>(
+            op,
+            /*outputTypes=*/op->getResultTypes(),
+            /*op_name=*/"mop.kernels.gather_sum",
+            /*inputOperands=*/
+            SmallVector<Value>{input, indices, gatherAxis, reduceAxis})
+        .getResults();
 
     return mlir::success();
   }
