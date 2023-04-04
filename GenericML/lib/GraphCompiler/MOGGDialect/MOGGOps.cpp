@@ -59,7 +59,8 @@ public:
   ErrorOr<SmallVector<LoweredTensor>> lowerOutputBuffer(
       llvm::StringRef opName, Value inChain,
       const SmallVector<LoweredTensor> &inputTensors,
-      std::optional<SmallVector<int32_t, 2>> bcastIndices = std::nullopt);
+      std::optional<SmallVector<int32_t, 2>> bcastIndices = std::nullopt,
+      std::optional<IntArrayElementsAttr> matmulOriginalBDims = std::nullopt);
 
   // Convert the tensors to a list of buffer/spec value pairs.
   SmallVector<Value> getOperands(SmallVector<LoweredTensor> &in,
@@ -79,7 +80,8 @@ private:
   lowerDynamicOutput(MGP::CpuTensorSpecType outSpecType, MO::TensorType moType,
                      llvm::StringRef opName, Value inChain,
                      const SmallVector<LoweredTensor> &inputTensors,
-                     std::optional<SmallVector<int32_t, 2>> bcastIndices);
+                     std::optional<SmallVector<int32_t, 2>> bcastIndices,
+                     std::optional<IntArrayElementsAttr> matmulOriginalBDims);
 };
 
 SmallVector<LoweredTensor> LowerHelper::lowerInputs() {
@@ -133,7 +135,8 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     MGP::CpuTensorSpecType outSpecType, MO::TensorType moType,
     llvm::StringRef opName, Value inChain,
     const SmallVector<LoweredTensor> &inputTensors,
-    std::optional<SmallVector<int32_t, 2>> bcastIndices) {
+    std::optional<SmallVector<int32_t, 2>> bcastIndices,
+    std::optional<IntArrayElementsAttr> matmulOriginalBDims) {
   // Dynamic Case
   // TODO: This is hacky, hacky, hacky, remove as soon as we can lower
   // parametric shapes to the runtime
@@ -173,6 +176,8 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
   static const llvm::StringMap<std::string> specNaryShapeFuncs{
       {"mop.kernels.matmul", "mop.shape.matmul"},
       {"mop.kernels.matmul_transpb", "mop.shape.matmul_transpb"},
+      {"mop.kernels.pack_matmul_b", "mop.shape.pack_matmul_b"},
+      {"mop.kernels.matmul_packb", "mop.shape.matmul_packb"},
       {"mop.kernels.fully_connected", "mop.shape.fully_connected"},
       {"mop.kernels.batch_matmul", "mop.shape.batch_matmul"},
       {"mop.kernels.batch_matmul_adjb", "mop.shape.batch_matmul_adjb"},
@@ -198,6 +203,13 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     opState.addOperands(inputs);
     // The return is the new spec
     opState.addTypes(cast<mlir::Type>(outSpecType));
+    // TODO(#11821) remove once shape inference is on by default
+    if (matmulOriginalBDims.has_value()) {
+      mlir::OperationName extOpName{ExtOp::getOperationName(),
+                                    opState.getContext()};
+      opState.addAttribute(ExtOp::getOriginalBDimsAttrName(extOpName),
+                           matmulOriginalBDims.value());
+    }
 
     // Add it to the MLIR.
     mlir::Operation *invokeOp = exeBuilder.create(opState);
@@ -364,7 +376,8 @@ SmallVector<Value> LowerHelper::getOperands(SmallVector<LoweredTensor> &ins,
 ErrorOr<SmallVector<LoweredTensor>> LowerHelper::lowerOutputBuffer(
     llvm::StringRef opName, Value inChain,
     const SmallVector<LoweredTensor> &inputTensors,
-    std::optional<SmallVector<int32_t, 2>> bcastIndices) {
+    std::optional<SmallVector<int32_t, 2>> bcastIndices,
+    std::optional<IntArrayElementsAttr> matmulOriginalBDims) {
 
   SmallVector<LoweredTensor> outputBufferAndSpec;
 
@@ -377,9 +390,9 @@ ErrorOr<SmallVector<LoweredTensor>> LowerHelper::lowerOutputBuffer(
     Optional<uint64_t> bufferSize = outSpecType.getSizeInBytes();
     LoweredTensor output;
     if (!bufferSize) {
-      // We can't see the size so lower to a dynamic buffer.
       UNWRAP_ERROR(out, lowerDynamicOutput(outSpecType, ty, opName, inChain,
-                                           inputTensors, bcastIndices));
+                                           inputTensors, bcastIndices,
+                                           matmulOriginalBDims));
       output = out;
     } else {
       // Static Case
@@ -409,6 +422,23 @@ ErrorOr<SmallVector<LoweredTensor>> LowerHelper::lowerOutputBuffer(
 
 } // namespace
 
+void ExtOp::build(OpBuilder &builder, OperationState &state,
+                  TypeRange resultTypes, StringRef opName, ValueRange operands,
+                  ArrayRef<uint64_t> originalBDims) {
+  MLIRContext *ctx = builder.getContext();
+  mlir::OperationName extOpName{ExtOp::getOperationName(), ctx};
+  auto originalBDimsAttr = IntArrayElementsAttr::get(
+      ctx, originalBDims, IntegerType::SignednessSemantics::Unsigned);
+  build(builder, state, resultTypes, opName, operands, originalBDimsAttr);
+}
+
+void ExtOp::build(OpBuilder &builder, OperationState &state,
+                  TypeRange resultTypes, StringRef opName,
+                  ValueRange operands) {
+  IntArrayElementsAttr nullAttr;
+  build(builder, state, resultTypes, opName, operands, nullAttr);
+}
+
 LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
   ExtOp op = *this;
   LowerHelper helper{loweringState, op};
@@ -421,10 +451,16 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // others might do something else.
   StringRef opName = op.getOpName();
 
+  // TODO(#11821) remove once shape inference is on by default
+  std::optional<IntArrayElementsAttr> matmulOriginalBDims = std::nullopt;
+  if (auto originalBDimsAttr = getOriginalBDimsAttr())
+    matmulOriginalBDims = originalBDimsAttr;
+
   // Lower the outputs to buffers which can then be passed back in as
   // parameters.
-  auto errOr = helper.lowerOutputBuffer(opName, loweringState.getExecuteChain(),
-                                        inputTensors);
+  auto errOr = helper.lowerOutputBuffer(
+      opName, loweringState.getExecuteChain(), inputTensors,
+      /*bcastIndices=*/std::nullopt, matmulOriginalBDims);
   if (errOr.isError())
     return failure();
   SmallVector<LoweredTensor> outputBufferAndSpec = errOr.takeValue();
