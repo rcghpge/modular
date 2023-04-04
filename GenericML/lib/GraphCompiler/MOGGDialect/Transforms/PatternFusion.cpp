@@ -55,35 +55,34 @@ struct GatherSumPattern : public RewritePattern {
         zero);
 
     if (m_Op<MO::Static::ReshapeOp>(&staticReshape, sumPattern).match(op)) {
-      auto outShape = cast<MO::TensorType>(staticReshape->getResultTypes()[0])
-                          .getTypedShapeAttr();
-      auto inShape =
+      MO::ShapeAttr outShape =
+          cast<MO::TensorType>(staticReshape->getResultTypes()[0])
+              .getTypedShapeAttr();
+      MO::ShapeAttr inShape =
           cast<MO::TensorType>(staticReshape->getOperand(0).getType())
               .getTypedShapeAttr();
-      auto inValues = inShape.getValues();
-      auto outValues = outShape.getValues();
+      ArrayRef<TypedAttr> inValues = inShape.getValues();
+      ArrayRef<TypedAttr> outValues = outShape.getValues();
 
       // This kernel is assuming the reshape is a squeeze on axis 1, so we
       // check that the input and output shapes match that assumption
       if (inShape.getRank() != 3 || inShape.getIntDim(1) != 1 ||
           outValues[0] != inValues[0] || outValues[1] != inValues[2])
-        return failure();
+        return rewriter.notifyMatchFailure(op, "failed to match squeeze shape");
     } else if (!m_Op<MO::ReshapeOp>(sumPattern, squeezeShapePattern)
                     .match(op)) {
-      return failure();
+      return rewriter.notifyMatchFailure(op, "failed to match pattern");
     }
 
     if (!input || !indices || !gatherAxis || !reduceAxis)
-      return failure();
+      return rewriter.notifyMatchFailure(op, "null input value");
 
-    rewriter
-        .replaceOpWithNewOp<MOGG::ExtOp>(
-            op,
-            /*outputTypes=*/op->getResultTypes(),
-            /*op_name=*/"mop.kernels.gather_sum",
-            /*inputOperands=*/
-            SmallVector<Value>{input, indices, gatherAxis, reduceAxis})
-        .getResults();
+    rewriter.replaceOpWithNewOp<MOGG::ExtOp>(
+        op,
+        /*outputTypes=*/op->getResultTypes(),
+        /*op_name=*/"mop.kernels.gather_sum",
+        /*inputOperands=*/
+        SmallVector<Value>{input, indices, gatherAxis, reduceAxis});
 
     return mlir::success();
   }
@@ -102,21 +101,21 @@ struct MatmulTranspBPattern : public RewritePattern {
              m_Any(&input),
              m_Op<MO::TransposeOp>(m_Any(&weight), m_MOVector(m_Any(&axes))))
              .match(op))
-      return failure();
+      return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
     if (!input || !weight || !axes)
-      return failure();
+      return rewriter.notifyMatchFailure(op, "null input value");
 
     std::optional<SmallVector<int64_t>> maybeAxes =
         MO::tryGetConstantIntVector(cast<MO::TensorValue>(axes));
 
     if (!maybeAxes.has_value())
-      return failure();
+      return rewriter.notifyMatchFailure(op, "axes not constant");
 
     SmallVector<int64_t> &axesValues = maybeAxes.value();
 
     if (axesValues[0] != 1 || axesValues[1] != 0)
-      return failure();
+      return rewriter.notifyMatchFailure(op, "axes not transposing");
 
     auto results =
         b.create<MOGG::ExtOp>(op->getLoc(),
@@ -145,27 +144,27 @@ struct BatchMatmulAdjBPattern : public RewritePattern {
              m_Any(&input),
              m_Op<MO::TransposeOp>(m_Any(&weight), m_MOVector(m_Any(&axes))))
              .match(op))
-      return failure();
+      return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
     if (!input || !weight || !axes)
-      return failure();
+      return rewriter.notifyMatchFailure(op, "null input value");
 
     std::optional<SmallVector<int64_t>> maybeAxes =
         MO::tryGetConstantIntVector(cast<MO::TensorValue>(axes));
 
     if (!maybeAxes.has_value())
-      return failure();
+      return rewriter.notifyMatchFailure(op, "axes not constant");
 
     SmallVector<int64_t> &axesValues = maybeAxes.value();
 
     int64_t rank = axesValues.size();
 
     if (axesValues[rank - 1] != rank - 2 || axesValues[rank - 2] != rank - 1)
-      return failure();
+      return rewriter.notifyMatchFailure(op, "axes not adjoint");
 
     for (int64_t i = 0, e = rank - 2; i < e; ++i)
       if (axesValues[i] != i)
-        return failure();
+        return rewriter.notifyMatchFailure(op, "axes not adjoint");
 
     auto results =
         b.create<MOGG::ExtOp>(op->getLoc(),
