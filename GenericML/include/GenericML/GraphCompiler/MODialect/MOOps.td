@@ -1668,15 +1668,6 @@ def MO_BatchMatmulOp : MO_DotBase<"batch_matmul", [
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
     functional-type(operands, results)
   }];
-
-  let extraClassDeclaration = [{
-  private:
-    /// Unique forward shape inference function name, set when materialized.
-    static std::optional<StringRef> fwShapeFunc;
-    /// Unique sideways shape inference function name, set when materialized.
-    static std::optional<StringRef> sideShapeFunc;
-  public:
-  }];
 }
 
 //===----------------------------------------------------------------------===//
