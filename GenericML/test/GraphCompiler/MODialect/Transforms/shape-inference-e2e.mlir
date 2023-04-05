@@ -168,7 +168,7 @@ mo.graph @unresolved_rebinds(
   // CHECK-DAG: kgen.param.declare [[CH3:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "batch sizes of left and right inputs are not equal"}, [[COND4]])>
   // CHECK-DAG: kgen.param.declare [[NN:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -1 : index}, [[SH1]])>
   // CHECK-DAG: kgen.param.declare [[SH8:.*]]: !mo.shape = <apply(:(!mo.shape, !mo.shape) -> !mo.shape "mo.shape.concat", [[LBATCH]], [[[K]], [[NN]]])>
-  // CHECK-DAG: %[[ARG1REB2:.*]] = mo.rebind(%[[ARG1REB1]]) : !mo.tensor<[[SH0]], f32> -> !mo.tensor<[[SH8]], f32>
+  // CHECK-DAG: %[[ARG1REB2:.*]] = mo.rebind(%[[ARG1]]) : !mo.tensor<[[SH1]], f32> -> !mo.tensor<[[SH8]], f32>
 
   // CHECK-DAG: kgen.param.declare [[N:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -2 : index}, [[SH0]])>
   // CHECK-DAG: kgen.param.declare [[M:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -1 : index}, [[SH8]])>

@@ -1024,7 +1024,7 @@ LogicalResult RebindOp::canonicalize(RebindOp op, PatternRewriter &rewriter) {
   LogicalResult paramsResolved = materializeShapeInference(op, rewriter);
 
   // Likely already processed, or doesn't help shape inference.
-  if (isa_and_nonnull<RebindOp>(op.getInput().getDefiningOp()))
+  if (op.getInput().getDefiningOp<RebindOp>())
     return success(succeeded(paramsResolved));
   //  %0 = mo.rebind<...>(%arg) // dominator
   //  %1 = mo.rebind<...>(%arg)
@@ -1037,23 +1037,25 @@ LogicalResult RebindOp::canonicalize(RebindOp op, PatternRewriter &rewriter) {
   // NOTE This helps shape inference propagate parameter constraints across
   // these rebinds, in case `%arg`'s type is never parameterized and contains
   // unknown dimension `?`.
-  SmallVector<RebindOp> rebindsWithSameInput;
-  RebindOp dominatorRebindOp = op;
-  for (Operation *rebindInputUser : op.getInput().getUsers()) {
-    auto rebindOp = dyn_cast<RebindOp>(rebindInputUser);
-    // TODO To support this across blocks, we need `DominanceInfo`, which
-    // might require us to move this into a pass
-    if (rebindOp && rebindOp->getBlock() == dominatorRebindOp->getBlock()) {
-      rebindsWithSameInput.push_back(rebindOp);
-      if (rebindOp->isBeforeInBlock(dominatorRebindOp))
-        dominatorRebindOp = rebindOp;
+  if (op.getInput().getType().hasUnknownShape()) {
+    SmallVector<RebindOp> rebindsWithSameInput;
+    RebindOp dominatorRebindOp = op;
+    for (Operation *rebindInputUser : op.getInput().getUsers()) {
+      auto rebindOp = dyn_cast<RebindOp>(rebindInputUser);
+      // TODO To support this across blocks, we need `DominanceInfo`, which
+      // might require us to move this into a pass
+      if (rebindOp && rebindOp->getBlock() == dominatorRebindOp->getBlock()) {
+        rebindsWithSameInput.push_back(rebindOp);
+        if (rebindOp->isBeforeInBlock(dominatorRebindOp))
+          dominatorRebindOp = rebindOp;
+      }
     }
-  }
-  if (rebindsWithSameInput.size() > 1) {
-    for (RebindOp rebindOp : rebindsWithSameInput)
-      if (rebindOp != dominatorRebindOp)
-        rebindOp.getInputMutable().assign(dominatorRebindOp);
-    return success();
+    if (rebindsWithSameInput.size() > 1) {
+      for (RebindOp rebindOp : rebindsWithSameInput)
+        if (rebindOp != dominatorRebindOp)
+          rebindOp.getInputMutable().assign(dominatorRebindOp);
+      return success();
+    }
   }
 
   return success(succeeded(paramsResolved));
