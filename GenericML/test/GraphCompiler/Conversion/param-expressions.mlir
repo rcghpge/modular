@@ -86,19 +86,27 @@ mo.graph @le_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   mo.output
 }
 
-// CHECK: mgp.model @or_expressions : tf init {
+// CHECK: mgp.model @bool_expressions : tf init {
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[ARG2:.*]]: !mgp.cpu.tensor<?x?x?xf32>)
 // CHECK:     %[[BUF:.*]], %[[SPEC:.*]] = mgp.cpu.tensor.extract %[[ARG2]] : !mgp.cpu.tensor<?x?x?xf32>
 // CHECK:     %[[DIMS:.*]]:3 = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.cpu.tensor_spec<?x?x?xf32>
 // CHECK-DAG: %[[VAL1:.*]] = mip.cmp.eq %[[DIMS]]#0, %[[DIMS]]#1
 // CHECK-DAG: %[[VAL2:.*]] = mip.cmp.eq %[[DIMS]]#1, %[[DIMS]]#2
 // CHECK-DAG: %[[VAL3:.*]] = mip.bool.or %[[VAL1]], %[[VAL2]]
-mo.graph @or_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
+// CHECK-DAG: %[[VAL4:.*]] = mip.bool.xor %[[VAL1]], %[[VAL2]]
+// CHECK-DAG: %[[VAL5:.*]] = mip.bool.and %[[VAL1]], %[[VAL2]]
+mo.graph @bool_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
   kgen.param.declare E0: i1 = <eq(X, Y)>
   kgen.param.declare E1: i1 = <eq(Y, Z)>
 
   kgen.param.declare O0: i1 = <or(E0, E1)>
   kgen.param.declare O1: i1 = <or(E1, E0)>
+
+  kgen.param.declare X0: i1 = <xor(E0, E1)>
+  kgen.param.declare X1: i1 = <xor(E1, E0)>
+
+  kgen.param.declare A0: i1 = <and(E0, E1)>
+  kgen.param.declare A1: i1 = <and(E1, E0)>
   mo.output
 }
 

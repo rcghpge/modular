@@ -375,8 +375,12 @@ private:
     case KGEN::POC::Mul:
     case KGEN::POC::MulNuw:
       return MIP::MulOp::getOperationName();
+    case KGEN::POC::And:
+      return MIP::AndOp::getOperationName();
     case KGEN::POC::Or:
       return MIP::OrOp::getOperationName();
+    case KGEN::POC::Xor:
+      return MIP::XorOp::getOperationName();
     default:
       return Error(Twine("unsupported POC '") + stringifyPOC(poc) + "'");
     }
