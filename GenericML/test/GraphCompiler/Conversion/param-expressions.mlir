@@ -92,7 +92,7 @@ mo.graph @le_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
 // CHECK:     %[[DIMS:.*]]:3 = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.cpu.tensor_spec<?x?x?xf32>
 // CHECK-DAG: %[[VAL1:.*]] = mip.cmp.eq %[[DIMS]]#0, %[[DIMS]]#1
 // CHECK-DAG: %[[VAL2:.*]] = mip.cmp.eq %[[DIMS]]#1, %[[DIMS]]#2
-// CHECK-DAG: %[[VAL3:.*]] = mip.or %[[VAL1]], %[[VAL2]]
+// CHECK-DAG: %[[VAL3:.*]] = mip.bool.or %[[VAL1]], %[[VAL2]]
 mo.graph @or_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
   kgen.param.declare E0: i1 = <eq(X, Y)>
   kgen.param.declare E1: i1 = <eq(Y, Z)>
