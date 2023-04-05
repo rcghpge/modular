@@ -1240,19 +1240,6 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
 // MOStatic_ReshapeOp
 //===----------------------------------------------------------------------===//
 
-/// Returns a parameter constant attribute through a variant of ToTensor ops if
-/// possible. Otherwise returns a null attribute.
-template <typename OpTy>
-static TypedAttr getParamConstThrough(TensorValue inputVal) {
-  if (auto toTensorOp = inputVal.template getDefiningOp<OpTy>()) {
-    if (auto constOp = toTensorOp.getInput()
-                           .template getDefiningOp<KGEN::ParamConstantOp>()) {
-      return constOp.getValue();
-    }
-  }
-  return {};
-}
-
 LogicalResult Static::ReshapeOp::canonicalize(Static::ReshapeOp op,
                                               PatternRewriter &rewriter) {
   // We fold consecutive static reshapes into a single reshape.
