@@ -1,8 +1,6 @@
 // RUN: mo-opt %s --mo-to-mogg --mo-to-primitives --allow-unregistered-dialect | FileCheck %s
 
-// Entry point
 // CHECK: mgp.model @add_expressions : tf init {
-//
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[ARG2:.*]]: !mgp.cpu.tensor<?x?xf32>)
 // CHECK:     %[[BUF:.*]], %[[SPEC:.*]] = mgp.cpu.tensor.extract %[[ARG2]] : !mgp.cpu.tensor<?x?xf32>
 // CHECK:     %[[DIMS:.*]]:2 = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.cpu.tensor_spec<?x?xf32>
@@ -16,9 +14,7 @@ mo.graph @add_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   mo.output
 }
 
-// Entry point
 // CHECK: mgp.model @sub_expressions : tf init {
-//
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[ARG2:.*]]: !mgp.cpu.tensor<?x?xf32>)
 // CHECK:     %[[BUF:.*]], %[[SPEC:.*]] = mgp.cpu.tensor.extract %[[ARG2]] : !mgp.cpu.tensor<?x?xf32>
 // CHECK:     %[[DIMS:.*]]:2 = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.cpu.tensor_spec<?x?xf32>
@@ -33,9 +29,7 @@ mo.graph @sub_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   mo.output
 }
 
-// Entry point
 // CHECK: mgp.model @mul_expressions : tf init {
-//
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[ARG2:.*]]: !mgp.cpu.tensor<?x?xf32>)
 // CHECK:     %[[BUF:.*]], %[[SPEC:.*]] = mgp.cpu.tensor.extract %[[ARG2]] : !mgp.cpu.tensor<?x?xf32>
 // CHECK:     %[[DIMS:.*]]:2 = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.cpu.tensor_spec<?x?xf32>
@@ -49,9 +43,7 @@ mo.graph @mul_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   mo.output
 }
 
-// Entry point
 // CHECK: mgp.model @eq_expressions : tf init {
-//
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[ARG2:.*]]: !mgp.cpu.tensor<?x?x?xf32>)
 // CHECK:     %[[BUF:.*]], %[[SPEC:.*]] = mgp.cpu.tensor.extract %[[ARG2]] : !mgp.cpu.tensor<?x?x?xf32>
 // CHECK:     %[[DIMS:.*]]:3 = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.cpu.tensor_spec<?x?x?xf32>
@@ -66,9 +58,35 @@ mo.graph @eq_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
   mo.output
 }
 
-// Entry point
+// CHECK: mgp.model @lt_expressions : tf init {
+// CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[ARG2:.*]]: !mgp.cpu.tensor<?x?xf32>)
+// CHECK:     %[[BUF:.*]], %[[SPEC:.*]] = mgp.cpu.tensor.extract %[[ARG2]] : !mgp.cpu.tensor<?x?xf32>
+// CHECK:     %[[DIMS:.*]]:2 = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.cpu.tensor_spec<?x?xf32>
+// CHECK-DAG: %[[VAL1:.*]] = mip.cmp.lt %[[DIMS]]#0, %[[DIMS]]#1
+// CHECK-DAG: %[[VAL2:.*]] = mip.cmp.lt %[[DIMS]]#1, %[[DIMS]]#0
+// CHECK-DAG: %[[VAL3:.*]] = mip.cmp.lt %[[DIMS]]#0, %[[DIMS]]#0
+mo.graph @lt_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
+  kgen.param.declare LT0: i1 = <lt(X, Y)>
+  kgen.param.declare LT1: i1 = <lt(Y, X)>
+  kgen.param.declare LT2: i1 = <lt(X, X)>
+  mo.output
+}
+
+// CHECK: mgp.model @le_expressions : tf init {
+// CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[ARG2:.*]]: !mgp.cpu.tensor<?x?xf32>)
+// CHECK:     %[[BUF:.*]], %[[SPEC:.*]] = mgp.cpu.tensor.extract %[[ARG2]] : !mgp.cpu.tensor<?x?xf32>
+// CHECK:     %[[DIMS:.*]]:2 = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.cpu.tensor_spec<?x?xf32>
+// CHECK-DAG: %[[VAL1:.*]] = mip.cmp.le %[[DIMS]]#0, %[[DIMS]]#1
+// CHECK-DAG: %[[VAL2:.*]] = mip.cmp.le %[[DIMS]]#1, %[[DIMS]]#0
+// CHECK-DAG: %[[VAL3:.*]] = mip.cmp.le %[[DIMS]]#0, %[[DIMS]]#0
+mo.graph @le_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
+  kgen.param.declare LE0: i1 = <le(X, Y)>
+  kgen.param.declare LE1: i1 = <le(Y, X)>
+  kgen.param.declare LE2: i1 = <le(X, X)>
+  mo.output
+}
+
 // CHECK: mgp.model @or_expressions : tf init {
-//
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[ARG2:.*]]: !mgp.cpu.tensor<?x?x?xf32>)
 // CHECK:     %[[BUF:.*]], %[[SPEC:.*]] = mgp.cpu.tensor.extract %[[ARG2]] : !mgp.cpu.tensor<?x?x?xf32>
 // CHECK:     %[[DIMS:.*]]:3 = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.cpu.tensor_spec<?x?x?xf32>
@@ -84,9 +102,7 @@ mo.graph @or_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
   mo.output
 }
 
-// Entry point
 // CHECK: mgp.model @complex_expressions : tf init {
-//
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[ARG2:.*]]: !mgp.cpu.tensor<?x?x?xf32>)
 // CHECK:     %[[BUF:.*]], %[[SPEC:.*]] = mgp.cpu.tensor.extract %[[ARG2]] : !mgp.cpu.tensor<?x?x?xf32>
 // CHECK:     %[[DIMS:.*]]:3 = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.cpu.tensor_spec<?x?x?xf32>
@@ -98,9 +114,7 @@ mo.graph @complex_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
   mo.output
 }
 
-// Entry point
 // CHECK: mgp.model @variadic_exprs : tf init {
-//
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[ARG2:.*]]: !mgp.cpu.tensor<?x?x?xf32>)
 // CHECK: %[[BUF:.*]], %[[SPEC:.*]] = mgp.cpu.tensor.extract %[[ARG2]] : !mgp.cpu.tensor<?x?x?xf32>
 // CHECK: %[[DIMS:.*]]:3 = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.cpu.tensor_spec<?x?x?xf32>
@@ -111,9 +125,7 @@ mo.graph @variadic_exprs<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
   mo.output
 }
 
-// Entry point
 // CHECK: mgp.model @shape_attr : tf init {
-//
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[ARG2:.*]]: !mgp.cpu.tensor<?x?x?xf32>)
 // CHECK: %[[BUF:.*]], %[[SPEC:.*]] = mgp.cpu.tensor.extract %[[ARG2]] : !mgp.cpu.tensor<?x?x?xf32>
 // CHECK: %[[DIMS:.*]]:3 = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.cpu.tensor_spec<?x?x?xf32>

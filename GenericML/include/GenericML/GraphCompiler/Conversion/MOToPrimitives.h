@@ -366,6 +366,10 @@ private:
       return MIP::DivOp::getOperationName();
     case KGEN::POC::EQ:
       return MIP::EqualOp::getOperationName();
+    case KGEN::POC::LT:
+      return MIP::LessThanOp::getOperationName();
+    case KGEN::POC::LE:
+      return MIP::LessThanEqualOp::getOperationName();
     case KGEN::POC::Max:
       return MIP::MaxOp::getOperationName();
     case KGEN::POC::Mul:
