@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Config/Config.h"
+#include "Config/Version.h"
 #include "GenericML/Driver/CXXDriverAPI.h"
 #include "GenericML/Driver/DriverAPI.h"
 #include "GenericML/Driver/DriverInputFormat.h"
@@ -225,7 +225,7 @@ int main(int argc, char **argv) {
     // If the driver command is just `-get-version` then print the version and
     // exit right away. No need to do anything else.
     if (options.command == DriverCommand::getVersion) {
-      llvm::outs() << "mt: " << MODULAR_VERSION_STRING
+      llvm::outs() << "mt: " << getModularVersionString()
                    << "\nFramework: " << dylib.getVersion() << "\n";
       return EXIT_SUCCESS;
     }
