@@ -1508,7 +1508,9 @@ def MO_GatherOp : MO_TensorOp<"gather", [
 // WhereOp
 //===----------------------------------------------------------------------===//
 
-def MO_WhereOp : MO_TensorOp<"where", [Pure]> {
+def MO_WhereOp : MO_TensorOp<"where", [
+    DeclareOpInterfaceMethods<MO_Parameterization>,
+    DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
   let summary = "Returns locations of nonzero values in a tensor";
   let description = [{
     Return a tensor of coordinates of the nonzero values in the given tensor.
@@ -1526,10 +1528,11 @@ def MO_WhereOp : MO_TensorOp<"where", [Pure]> {
     ```
     }];
 
-  let arguments = (ins MO_Tensor:$input);
+  let arguments = (ins MO_Tensor:$input, MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
   }];
   let hasVerifier = 1;
 }
