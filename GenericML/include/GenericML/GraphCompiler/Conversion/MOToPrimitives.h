@@ -427,8 +427,11 @@ private:
     } else if (auto opAttr = dyn_cast<KGEN::ParamOperatorAttr>(attr)) {
       return lowerParamOperator(builder, loc, opAttr, operands);
     } else if (auto opAttr = dyn_cast<KGEN::MLIROpAttr>(attr)) {
-      if (opAttr.getName() != MO::AssertOp::getOperationName())
-        return Error("cannot lower mlir operation in parameter expression");
+      StringAttr opName = opAttr.getName();
+      if (opName != MO::AssertOp::getOperationName()) {
+        return Error(Twine("cannot lower mlir operation '") + opName.strref() +
+                     "' in parameter expression");
+      }
 
       // We must be dealing with an assert.
       newOp = builder.create<MGP::AssertOp>(loc, operands,
