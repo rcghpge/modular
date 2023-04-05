@@ -44,7 +44,7 @@ def ResolveUnknownParameters : Pass<"resolve-unknown-parameters", "ModuleOp"> {
   }];
 }
 
-def StaticizeShapes : Pass<"staticize-shapes", "GraphOp"> {
+def StaticizeShapes : Pass<"staticize-shapes", "ModuleOp"> {
   let summary = "Lower shape-like tensors to `!mo.shape`.";
   let description = [{
     This pass attempts to lower shape-like MO tensors (i.e. rank-1, signed 32 or
