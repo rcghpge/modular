@@ -294,15 +294,6 @@ struct InitializedModelPhase {
     M_waitForModel(result.model, status.get());
     RETURN_IF_ERROR(status);
 
-    M_ModelId *sourceModelId =
-        M_getSourceModelId(compiledModel->compiledModel, status.get());
-    RETURN_IF_ERROR(status);
-
-    // Print the source model ID for checking with FileCheck
-    log(threaded, "Source model ID: %s", M_getModelIdBase64(sourceModelId));
-
-    M_freeModelId(sourceModelId);
-
     return result;
   }
 

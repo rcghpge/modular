@@ -7,9 +7,7 @@
 // CHECK: INFO: Compiling {{.*}}/resnet50-v1.tflite
 
 // CHECK: INFO: Initializing {{.*}}/resnet50-v1.5{{/?}}
-// CHECK: Source model ID: AN0xfDVzJAJ67GDYbWoZPe2rBTw/uvXFel1J5KKjRtA=
 // CHECK: INFO: Initializing {{.*}}/resnet50-v1.tflite
-// CHECK: Source model ID: 6xhrMllqF3oBAueviP9FkHLMiKQaqsDxMBHt5kvS2Yk=
 
 // CHECK: INFO: Executing {{.*}}/resnet50-v1.5{{/?}}
 // CHECK: NumInputs: 1
