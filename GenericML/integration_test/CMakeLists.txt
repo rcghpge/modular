@@ -18,7 +18,6 @@ add_modular_testsuite(check-genericml-integration
   FileCheck
   mo-opt
   mt
-  tf-opt
 
   DEPENDS
   tf

@@ -29,6 +29,6 @@ tool_dirs = [
     config.mlir_tools_dir,
     config.llvm_tools_dir,
 ]
-tools = ["mo-opt", "mt", "tf-opt"]
+tools = ["mo-opt", "mt"]
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)
