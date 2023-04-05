@@ -33,46 +33,14 @@ struct GatherSumPattern : public RewritePattern {
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     Value input, indices, gatherAxis, reduceAxis;
-    Operation *gather, *sum, *staticReshape;
-    // TODO: Simplify this once we have parameterized shape calculations
-    auto reduceAxisPattern = m_ScalarConstantInt(&reduceAxis, 1);
-    auto sumPattern = m_Op<MO::ReduceAddOp>(
-        &sum,
-        m_Op<MO::GatherOp>(&gather, m_MOMatrix(m_Any(&input)),
-                           m_MOMatrix(m_Any(&indices)),
-                           m_ScalarConstantInt(&gatherAxis, 0)),
-        reduceAxisPattern);
 
-    auto any = m_Any();
-    auto zero = m_ScalarConstantInt(0);
-    auto one = m_ScalarConstantInt(1);
-    auto sumShapePattern = m_Op<MO::ShapeOfOp>(sumPattern);
-    auto squeezeShapePattern = m_Op<MO::ConcatOp>(
-        m_Op<MO::GatherOp>(sumShapePattern, m_Op<MO::RangeOp>(any, any, one),
-                           zero),
-        m_Op<MO::GatherOp>(sumShapePattern, m_Op<MO::RangeOp>(any, any, one),
-                           zero),
-        zero);
-
-    if (m_Op<MO::Static::ReshapeOp>(&staticReshape, sumPattern).match(op)) {
-      MO::ShapeAttr outShape =
-          cast<MO::TensorType>(staticReshape->getResultTypes()[0])
-              .getTypedShapeAttr();
-      MO::ShapeAttr inShape =
-          cast<MO::TensorType>(staticReshape->getOperand(0).getType())
-              .getTypedShapeAttr();
-      ArrayRef<TypedAttr> inValues = inShape.getValues();
-      ArrayRef<TypedAttr> outValues = outShape.getValues();
-
-      // This kernel is assuming the reshape is a squeeze on axis 1, so we
-      // check that the input and output shapes match that assumption
-      if (inShape.getRank() != 3 || inShape.getIntDim(1) != 1 ||
-          outValues[0] != inValues[0] || outValues[1] != inValues[2])
-        return rewriter.notifyMatchFailure(op, "failed to match squeeze shape");
-    } else if (!m_Op<MO::ReshapeOp>(sumPattern, squeezeShapePattern)
-                    .match(op)) {
+    if (!m_Op<MO::ReduceAddOp>(
+             m_Op<MO::GatherOp>(m_MOMatrix(m_Any(&input)),
+                                m_MOMatrix(m_Any(&indices)),
+                                m_ScalarConstantInt(&gatherAxis, 0)),
+             m_ScalarConstantInt(&reduceAxis, 1))
+             .match(op))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
-    }
 
     if (!input || !indices || !gatherAxis || !reduceAxis)
       return rewriter.notifyMatchFailure(op, "null input value");
