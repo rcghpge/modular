@@ -177,7 +177,6 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
       {"mop.kernels.matmul", "mop.shape.matmul"},
       {"mop.kernels.matmul_transpb", "mop.shape.matmul_transpb"},
       {"mop.kernels.pack_matmul_b", "mop.shape.pack_matmul_b"},
-      {"mop.kernels.matmul_packb", "mop.shape.matmul_packb"},
       {"mop.kernels.fully_connected", "mop.shape.fully_connected"},
       {"mop.kernels.batch_matmul", "mop.shape.batch_matmul"},
       {"mop.kernels.batch_matmul_adjb", "mop.shape.batch_matmul_adjb"},
@@ -340,6 +339,12 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     output.spec =
         getOutputSpec("mop.shape.slice", {loweringState.getExecuteChain(),
                                           input, start, stop, step});
+  } else if (opName == "mop.kernels.matmul_packb") {
+    // Get just the specs for tensors.
+    Value lhsSpec = inputTensors.front().spec;
+
+    // Create a call to a custom invoke function we can put in the MEF.
+    output.spec = getOutputSpec("mop.shape.matmul_packb", {lhsSpec});
   } else {
     opBeingLowered->emitError("op requires output to have static shape");
     return Error("op requires output to have static shape");
