@@ -247,10 +247,10 @@ void PatternFusionPass::runOnOperation() {
   auto *ctx = &getContext();
 
   RewritePatternSet patterns{ctx};
-  patterns.add<GatherSumPattern>(ctx);
-  patterns.add<BatchMatmulAdjBPattern>(ctx);
-  patterns.add<MatmulConstBPattern>(ctx);
-  patterns.add<MatmulTranspBPattern>(ctx);
+  patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern>(
+      ctx);
+  if (useMatmulPacking.getValue())
+    patterns.add<MatmulConstBPattern>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
     return signalPassFailure();

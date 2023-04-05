@@ -38,6 +38,10 @@ def PatternFusion: Pass<"mo-pattern-fusion", "MO::GraphOp"> {
         "M::MO::MODialect",
         "M::MOGG::MOGGDialect"
     ];
+    let options = [
+        Option<"useMatmulPacking", "use-matmul-packing", "bool", /*default=*/"false",
+                "Enable matmul bias packing.">
+    ];
 }
 
 def FuseBroadcasts: Pass<"fuse-bcasts", "MO::GraphOp"> {
