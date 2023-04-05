@@ -55,8 +55,8 @@ mo.graph @mul_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[ARG2:.*]]: !mgp.cpu.tensor<?x?x?xf32>)
 // CHECK:     %[[BUF:.*]], %[[SPEC:.*]] = mgp.cpu.tensor.extract %[[ARG2]] : !mgp.cpu.tensor<?x?x?xf32>
 // CHECK:     %[[DIMS:.*]]:3 = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.cpu.tensor_spec<?x?x?xf32>
-// CHECK-DAG: %[[VAL1:.*]] = mip.eq %[[DIMS]]#0, %[[DIMS]]#1
-// CHECK-DAG: %[[VAL2:.*]] = mip.eq %[[DIMS]]#1, %[[DIMS]]#2
+// CHECK-DAG: %[[VAL1:.*]] = mip.cmp.eq %[[DIMS]]#0, %[[DIMS]]#1
+// CHECK-DAG: %[[VAL2:.*]] = mip.cmp.eq %[[DIMS]]#1, %[[DIMS]]#2
 // CHECK-DAG: %[[VAL3:.*]] = mip.constant.bool true
 mo.graph @eq_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
   kgen.param.declare E0: i1 = <eq(X, Y)>
@@ -72,8 +72,8 @@ mo.graph @eq_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[ARG2:.*]]: !mgp.cpu.tensor<?x?x?xf32>)
 // CHECK:     %[[BUF:.*]], %[[SPEC:.*]] = mgp.cpu.tensor.extract %[[ARG2]] : !mgp.cpu.tensor<?x?x?xf32>
 // CHECK:     %[[DIMS:.*]]:3 = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.cpu.tensor_spec<?x?x?xf32>
-// CHECK-DAG: %[[VAL1:.*]] = mip.eq %[[DIMS]]#0, %[[DIMS]]#1
-// CHECK-DAG: %[[VAL2:.*]] = mip.eq %[[DIMS]]#1, %[[DIMS]]#2
+// CHECK-DAG: %[[VAL1:.*]] = mip.cmp.eq %[[DIMS]]#0, %[[DIMS]]#1
+// CHECK-DAG: %[[VAL2:.*]] = mip.cmp.eq %[[DIMS]]#1, %[[DIMS]]#2
 // CHECK-DAG: %[[VAL3:.*]] = mip.or %[[VAL1]], %[[VAL2]]
 mo.graph @or_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
   kgen.param.declare E0: i1 = <eq(X, Y)>
