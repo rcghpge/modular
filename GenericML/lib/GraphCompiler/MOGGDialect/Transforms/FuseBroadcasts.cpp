@@ -71,7 +71,7 @@ struct FuseBroadcastsPass
 
         // If we have a parameterized shape then we don't need the hacky shape
         // function anymore.
-        if (!moType.hasUnknownShape() && !moType.hasStaticShape()) {
+        if (!moType.hasUnknownShape()) {
           kernel.setShapeFunc("infered_from_output");
           continue;
         }
