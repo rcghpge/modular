@@ -738,6 +738,29 @@ LogicalResult SelectOp::verify() {
 // WhereOp
 //===----------------------------------------------------------------------===//
 
+// TODO refactor with `RangeOp::deparameterize`
+LogicalResult WhereOp::deparameterize(mlir::RewriterBase &rewriter) {
+  ArrayRef<KGEN::ParamDeclAttr> decls = getOutputParamDecls();
+  if (decls.empty())
+    return failure();
+  setOutputParamDecls({});
+
+  TensorType resTy = getType();
+  auto shapeTy = rewriter.getType<ShapeType>();
+  TensorType unknownResTy;
+  if (resTy.hasRank())
+    unknownResTy = resTy.cloneWith(resTy.getIntDims(), resTy.getElementType());
+  else
+    unknownResTy = resTy.cloneWith(KGEN::UnknownAttr::get(shapeTy));
+
+  auto newOp =
+      rewriter.create<WhereOp>(getLoc(), unknownResTy, getOperand(),
+                               getOperation()->getAttrDictionary().getValue());
+  rewriter.replaceOpWithNewOp<RebindOp>(*this, resTy, newOp, decls);
+
+  return success();
+}
+
 LogicalResult WhereOp::verify() {
   TensorType resTy = getResult().getType();
   TensorType inputTy = getInput().getType();
