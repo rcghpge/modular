@@ -232,6 +232,77 @@ struct FullyConnectedPattern : public RewritePattern {
     return mlir::success();
   }
 };
+// TODO(#11975): move this logic to an interface on MatrixBandPartOp.
+struct CommuteBroadcastWithMatBandPart
+    : OpRewritePattern<MO::MatrixBandPartOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(MO::MatrixBandPartOp bandPartOp,
+                                PatternRewriter &rewriter) const override {
+    Location loc = bandPartOp.getLoc();
+
+    MO::TensorType resTy = bandPartOp.getType();
+    if (!resTy.hasRank())
+      return rewriter.notifyMatchFailure(loc, "not statically ranked");
+
+    MO::TensorValue inputVal = bandPartOp.getInput();
+    auto bcastOp = inputVal.getDefiningOp<MO::Static::BroadcastToOp>();
+    if (!bcastOp)
+      return rewriter.notifyMatchFailure(loc, "not preceded by broadcast");
+
+    MO::TensorValue bcastInput = bcastOp.getInput();
+    MO::TensorType bcastInputTy = bcastInput.getType();
+    if (!bcastInputTy.hasRank()) {
+      return rewriter.notifyMatchFailure(
+          loc, "preceding broadcast has unranked input");
+    }
+
+    MO::TensorType inputTy = inputVal.getType();
+    SmallVector<TypedAttr> newBcastResDims;
+    if (bcastInputTy.getRank() > 2) {
+      // If broadcasting in the batch dimensions, we check their equality.
+      ArrayRef<TypedAttr> inBatchDims = bcastInputTy.getDims().drop_back(2);
+      ArrayRef<TypedAttr> outBatchDims = inputTy.getDims().drop_back(2);
+      if (inBatchDims.equals(outBatchDims)) {
+        return rewriter.notifyMatchFailure(
+            loc, "preceding broadcast with batch dims canonical");
+      }
+      newBcastResDims.append(inBatchDims.begin(), inBatchDims.end());
+    } else {
+      // We are broadcasting from something less than rank-2, so it's enough to
+      // ensure that we are broadcasting to rank-2.
+      if (inputTy.getRank() == 2) {
+        return rewriter.notifyMatchFailure(
+            loc, "preceding broadcast without batch dims canonical");
+      }
+    }
+
+    // We will inject a new broadcast before the band part op that does not
+    // broadcast in the batch dimensions. If there is no broadcasting in the
+    // trailing two dimensions (e.g. because they are static and equal) the
+    // broadcast canonicalizer will erase the op.
+    ArrayRef<TypedAttr> matDims = inputTy.getDims().take_back(2);
+    newBcastResDims.append(matDims.begin(), matDims.end());
+
+    auto shapeTy = rewriter.getType<MO::ShapeType>();
+    MO::TensorType newBcastResTy =
+        inputTy.cloneWith(MO::ShapeAttr::get(newBcastResDims, shapeTy));
+    auto newBcastOp = rewriter.create<MO::Static::BroadcastToOp>(
+        loc, newBcastResTy, bcastInput);
+
+    // We replace the bandpart op using a new input and result type.
+    SmallVector<Value> newOperands(bandPartOp.getOperands());
+    newOperands[0] = newBcastOp;
+    auto newBandPartOp = rewriter.create<MO::MatrixBandPartOp>(
+        loc, newBcastResTy, newOperands,
+        bandPartOp->getAttrDictionary().getValue());
+
+    // Note that the original result type is used
+    rewriter.replaceOpWithNewOp<MO::Static::BroadcastToOp>(bandPartOp, resTy,
+                                                           newBandPartOp);
+    return success();
+  }
+};
 
 struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
   using PatternFusionBase::PatternFusionBase;
@@ -246,7 +317,7 @@ void PatternFusionPass::runOnOperation() {
 
   RewritePatternSet patterns{ctx};
   patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
-               FullyConnectedPattern>(ctx);
+               FullyConnectedPattern, CommuteBroadcastWithMatBandPart>(ctx);
   if (useMatmulPacking.getValue())
     patterns.add<MatmulConstBPattern>(ctx);
 

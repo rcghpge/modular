@@ -385,7 +385,7 @@ LogicalResult BroadcastToOp::deparameterize(mlir::RewriterBase &rewriter) {
 /// have static ranks.
 static ErrorOrSuccess verifyBroadcastStaticRanks(TensorType inputTy,
                                                  TensorType resTy) {
-  if (inputTy.hasRank()) {
+  if (inputTy.hasRank() && resTy.hasRank()) {
     if (inputTy.getRank() > resTy.getRank())
       return Error("result rank must be at least the input rank");
 
