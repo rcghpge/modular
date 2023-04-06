@@ -20,10 +20,10 @@
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
+
 #include <chrono>
 
 using namespace M;
-using llvm::outs;
 using mlir::MLIRContext;
 
 StringLiteral M::stringifyEnum(InputGenerationKind kind) {
@@ -138,30 +138,36 @@ ErrorOrSuccess InputDataParser::parseImpl(llvm::cl::Option &options,
   return success();
 }
 
-/// Wait for results and report their errors
-static void waitForResults(const ExecutableModel *model,
-                           MutableArrayRef<AnyAsyncValueRef> results,
-                           MLIRContext *context) {
-  // Check that any tensors we get are generic tensors, not framework
-  // specific tensors.  We know that all tensors have been awaited here.
+/// Replace any non M::Tensor tensors in results with their M::Tensor
+/// equivalents.
+static void
+convertResultsToGenericTensors(const ExecutableModel *model,
+                               MutableArrayRef<AnyAsyncValueRef> results) {
   for (auto &result : results) {
-    assert(result.isReady() && "We awaited this, it should be ready");
-    // If we have an error or Tensor result, then we're good.
+    assert(result.isReady() && "tensor result should be ready");
     if (result.isError() || result.isType<Tensor>())
       continue;
-
-    // Otherwise, we must have a framework specific tensor, convert it to a
-    // generic one (or get an error).
     result = model->convertToGenericTensor(std::move(result));
     await(result);
   }
 }
 
+/// Wait for results to be ready and return success if none are marked with an
+/// error. Otherwise return first error encountered.
+static ErrorOrSuccess awaitAndCheck(MutableArrayRef<AnyAsyncValueRef> results) {
+  await(results);
+  for (const auto &result : results) {
+    if (auto *diag = result.getDiagnosticIfPresent())
+      // TODO: Capture location
+      return std::move(diag->getMessage());
+  }
+  return success();
+}
+
 /// Helper that prints diagnostics if an AnyAsyncValueRef is an error.
-static LogicalResult printDiagIfError(const AnyAsyncValueRef &res,
-                                      raw_ostream &os) {
+static LogicalResult printDiagIfError(const AnyAsyncValueRef &res) {
   if (auto *diag = res.getDiagnosticIfPresent()) {
-    os << "<error: " << diag->getMessage() << '>';
+    llvm::outs() << "<error: " << diag->getMessage() << '>';
     return failure();
   }
   return success();
@@ -176,77 +182,74 @@ static LogicalResult printDiagIfError(const AnyAsyncValueRef &res,
 static LogicalResult
 printTensorResults(const ExecutableModel *model,
                    MutableArrayRef<AnyAsyncValueRef> results,
-                   MLIRContext *context, Kernels::ResultOutputStyle outputStyle,
-                   raw_ostream &os) {
-  // We expect the first result to be a chain
+                   Kernels::ResultOutputStyle outputStyle) {
+  // We expect the first result to be a chain.
   const AnyAsyncValueRef &ch = results.front();
-  if (failed(printDiagIfError(ch, os)))
-    return failure();
-  assert(isa<Chain>(ch) && "first argument is not a chain");
+  assert(ch.isReady() && isa<Chain>(ch) &&
+         "first result must be a ready chain");
+  if (failed(printDiagIfError(ch)))
+    return mlir::failure();
   results = results.drop_front();
 
+  if (results.empty())
+    return success();
+
+  convertResultsToGenericTensors(model, results);
+
   StringRef name = model->getModel()->getName();
+  llvm::outs() << "'" << name << "' returned ";
 
-  waitForResults(model, results, context);
-
-  // Print out the invokable results that we know about.
-  // Go ahead and print out the invokable results that we know about.
-  bool hadError = false;
-  if (!results.empty()) {
-    os << "'" << name << "' returned ";
-    llvm::interleaveComma(results, os, [&](const AnyAsyncValueRef &result) {
-      // Handle error value by printing it inline, and emitting it as an error
-      // through SourceMgr so we can validate it.
-      if (failed(printDiagIfError(result, os))) {
-        hadError = true;
-        return;
-      }
-
-      // Handle tensor types.
+  bool first = true;
+  bool hasError = false;
+  for (const auto &result : results) {
+    assert(result.isReady() && "model result must be ready");
+    if (!first)
+      llvm::outs() << ", ";
+    first = false;
+    if (failed(printDiagIfError(result)))
+      hasError = true;
+    else {
       if (auto *tensor = dyn_cast<Tensor>(result)) {
-        os.flush();
         if (auto err = Kernels::printTensor(tensor->getBuffer(),
                                             tensor->getSpec(), outputStyle)) {
-          os << "<error: " << err.getError() << '>';
-          hadError = true;
+          llvm::outs() << "<error: " << err.getError() << '>';
+          hasError = true;
         }
-        return;
+      } else {
+        llvm::outs() << "<unknown type>";
       }
-
-      os << "<unknown type>";
-    });
-    os << '\n';
-    os.flush();
+    }
   }
-  return failure(hadError);
+  llvm::outs() << '\n';
+  return failure(hasError);
 }
 
 /// Copy raw data from results to the pre-allocated memory found in outputs.
-static LogicalResult populateTensorResults(
+static ErrorOrSuccess populateTensorResults(
     const ExecutableModel *model, MutableArrayRef<AnyAsyncValueRef> results,
     MLIRContext *context, llvm::SmallVector<void *> &outputs) {
+  // We expect the first result to be a chain
+  const AnyAsyncValueRef &ch = results.front();
+  assert(ch.isReady() && !ch.isError() && isa<Chain>(ch) &&
+         "first result must be a ready non-error chain");
+  results = results.drop_front();
+
   assert(outputs.size() == results.size() &&
          "Wrong number of outputs in the model.");
 
-  waitForResults(model, results, context);
+  if (results.empty())
+    return success();
+
+  convertResultsToGenericTensors(model, results);
 
   size_t outIdx = 0;
 
   for (const AnyAsyncValueRef &result : results) {
-    if (auto *diag = result.getDiagnosticIfPresent()) {
-      auto loc = diag->decodeLocation();
-      auto mlirLoc = mlir::FileLineColLoc::get(context, loc.filename, loc.line,
-                                               loc.column);
-      return emitError(mlirLoc) << diag->getMessage();
-    }
-    // Handle tensor types.
+    assert(result.isReady() && !result.isError() &&
+           "model result must be ready and non-error");
     auto *tensor = dyn_cast<Tensor>(result);
-    if (!tensor) {
-      auto loc = model->getModel()->getLocation().decode();
-      auto mlirLoc = mlir::FileLineColLoc::get(context, loc.filename, loc.line,
-                                               loc.column);
-      return emitError(mlirLoc) << "populateTensorResults: not a Tensor";
-    }
+    if (!tensor)
+      return Error("model result is not a Tensor");
     DEBUG_WITH_TYPE("modular_memcpy",
                     llvm::dbgs() << "memcpy " << tensor->getSizeInBytes()
                                  << " bytes from M::Tensor to output buffer\n");
@@ -257,23 +260,37 @@ static LogicalResult populateTensorResults(
   return success();
 }
 
+// Returns a ready AsyncValueRef<Tensor> for every given generator, ready
+// to be passed to the model's execute function. Each tensor will borrow,
+// at 'execute' scope, from the underlying generotar's 'next' tensor.
+static SmallVector<AnyAsyncValueRef, 3>
+buildArgs(Runtime &runtime, ArrayRef<ITensorGeneratorPtr> generators) {
+  SmallVector<AnyAsyncValueRef, 3> args;
+  args.reserve(generators.size());
+  for (const auto &generator : generators) {
+    args.emplace_back(AsyncValueRef<Tensor>::createReady(
+        runtime, generator->getNextTensor().borrow(GML::BufferRef::kExecute)));
+  }
+  return args;
+}
+
 /// Repeatedly evaluate the model (numRuns to be exact) and capture and print
 /// the runtime for each evaluation.
-static ErrorOrSuccess executeModel(MLIRContext *ctx, const Model *model,
-                                   Runtime &runtime,
+static ErrorOrSuccess executeModel(const Model *model, Runtime &runtime,
                                    const ExecutorDriverCLOptions &options,
                                    unsigned int numRuns,
                                    unsigned int numWarmup) {
   TIME_PROFILER_SCOPE(Trace::kOther, 1, "executeModel");
 
+  // Setup once.
   UNWRAP_ERROR(executableModel, model->setup(runtime));
   auto errorOrSuccess = executableModel->waitForModelSetup();
   if (errorOrSuccess.isError())
     return errorOrSuccess.takeError();
 
-  // Note: this may cause the warmup run to consume inputs. If it becomes
-  // surprising to users, we won't be able to share buffers between warmup and
-  // input.
+  // Establish a tensor generator for each model input as per command line
+  // options and shapes. Each tensor generator holds one or more M::Tensor's
+  // with lifetime matching the generator itself.
   UNWRAP_ERROR(inputTensorGenerators,
                createTensorGenerators(
                    options.inputGenKind, options.inputShapes, options.inputData,
@@ -281,56 +298,66 @@ static ErrorOrSuccess executeModel(MLIRContext *ctx, const Model *model,
 
   // Run the model numWarmup times to warmup the execution. This is performed to
   // remove any added overhead due to initial setup of the model.
+  if (numWarmup > 0) {
+    llvm::outs() << "--- Warming up '" << model->getName().str() << "' "
+                 << numWarmup << " times\n";
+    llvm::outs().flush();
+  }
   for (unsigned i = 0; i < numWarmup; ++i) {
-    // Fill the arguments with borrowed references to the tensor data
-    // since the input buffers live across all executions.
-    SmallVector<AnyAsyncValueRef> args;
-    args.reserve(model->getNumInputs());
-    for (const auto &inputGen : inputTensorGenerators) {
-      args.push_back(AsyncValueRef<Tensor>::createReady(
-          runtime, inputGen->getNextTensor().borrow(GML::BufferRef::kExecute)));
-    }
+    auto args = buildArgs(runtime, inputTensorGenerators);
 
-    // Execute the model and insert its results into the results vec.
+    // Execute the model synchronously. Propagate any error back to caller.
     auto results = executableModel->execute(args);
-
-    // Wait for the model to finish execution, forcing synchrony.
-    await(results);
+    UNWRAP_ERROR(unit, awaitAndCheck(results));
+    (void)unit;
   }
 
-  // We use printf here because it has atomic output behavior w.r.t. the printfs
-  // in the model.
-  printf("--- Running '%s':\n", model->getName().str().c_str());
-  fflush(stdout);
-
-  SmallVector<AnyAsyncValueRef> results;
+  llvm::outs() << "--- Running '" << model->getName().str() << "'";
+  if (numRuns > 1)
+    llvm::outs() << " " << numRuns << " times:\n";
+  else
+    llvm::outs() << ":\n";
+  llvm::outs().flush();
 
   for (unsigned i = 0; i < numRuns; ++i) {
     TIME_PROFILER_SCOPE(Trace::kOther, 1, "runModelOnce");
-    // Fill the arguments with borrowed references to the tensor data
-    // since the input buffers live across all executions.
-    SmallVector<AnyAsyncValueRef> args;
-    args.reserve(model->getNumInputs());
-    for (auto &inputGen : inputTensorGenerators)
-      args.push_back(AsyncValueRef<Tensor>::createReady(
-          runtime, inputGen->getNextTensor().borrow(GML::BufferRef::kExecute)));
+    auto args = buildArgs(runtime, inputTensorGenerators);
 
-    // Execute the model and insert its results into the results vec.
-    results = executableModel->execute(args);
+    // Execute the model synchronously.
+    auto startTime = std::chrono::high_resolution_clock::now();
+    auto results = executableModel->execute(args);
+    if (options.resultOutputStyle == Kernels::ResultOutputStyle::kNone) {
+      // Though we don't want to print the tensor results, we still want to
+      // propagate any error back to the caller.
+      UNWRAP_ERROR(unit, awaitAndCheck(results));
+      (void)unit;
+    } else {
+      // Simply wait for the result chain and all tensor results. We'll
+      // deal with errors when printing below.
+      await(results);
+    }
+    auto endTime = std::chrono::high_resolution_clock::now();
 
-    // Wait for the model to finish execution, forcing synchrony.
-    await(results);
-    outs().flush();
+    if (options.resultOutputStyle != Kernels::ResultOutputStyle::kNone) {
+      // Convert and print the result tensors. This is the one place where
+      // AsyncValue errors are printed to stdout and a generic
+      // "repeated model execution failed" is returned to the caller instead
+      // of just propagating the error. This helps unit tests distinguish
+      // expected model error output from transient errors running the tool
+      // itself.
+      if (failed(printTensorResults(executableModel.get(), results,
+                                    options.resultOutputStyle)))
+        return Error("repeated model execution failed");
+    }
 
-    // There is nothing to do if there is no results.
-    if (results.empty())
-      continue;
+    // If requested, print the model execution time in nanoseconds with no
+    // adornment for the convenience of scripts. Note that failed executions
+    // will have no time reported.
+    if (options.printTiming)
+      llvm::outs() << std::chrono::nanoseconds(endTime - startTime).count()
+                   << "\n";
 
-    // Print the result tensors with the default printer.
-    MutableArrayRef<AnyAsyncValueRef> resultRef(results.data(), results.size());
-    if (failed(printTensorResults(executableModel.get(), resultRef, ctx,
-                                  options.resultOutputStyle, outs())))
-      return Error("repeated model execution failed");
+    llvm::outs().flush();
   }
   return success();
 }
@@ -341,13 +368,13 @@ LogicalResult M::runModel(MLIRContext *ctx, const Model *model,
                           const ExecutorDriverCLOptions &options) {
   if (options.benchmarkMode) {
     if (options.numRuns.getValue() > 2) {
-      // If it's not the default 1, the user most likely set it; warn them about
-      // that.
+      // If it's not the default 1, the user most likely set it; warn them
+      // about that.
       llvm::errs() << "WARNING: num-runs is ignored in benchmarking mode. "
                       "Please use benchmark-min-query-count instead.\n";
     }
     // Execute the model for the warmup runs only.
-    if (auto err = executeModel(ctx, model, runtime, options, 0,
+    if (auto err = executeModel(model, runtime, options, /*numRuns=*/0,
                                 options.numWarmup.getValue()))
       return failure(options.reportError(err.getError()));
     // Run the actual benchmark.
@@ -359,24 +386,9 @@ LogicalResult M::runModel(MLIRContext *ctx, const Model *model,
       return failure(options.reportError(err.getError()));
 
   } else {
-    unsigned int numRuns = options.numRuns.getValue();
-    unsigned int numWarmup = options.numWarmup.getValue();
-    if (numRuns < 2) {
-      // Well this sucks. It looks like things barf all over the place when
-      // enabling multi runs.
-      // So for now, keep the old behavior of resetting num-warmup to 0 for
-      // num-runs=1.
-      // TODO(#11042): Remove this ugliness.
-      if (options.numRuns.getValue() > 2) {
-        // If it's not the default 1, the user most likely set it; warn them
-        // about that.
-        llvm::errs() << "WARNING: Due to #11042, num-warmup is reset to zero "
-                        "when num-runs is 1.\n";
-      }
-      numWarmup = 0;
-    }
     if (auto err =
-            executeModel(ctx, model, runtime, options, numRuns, numWarmup))
+            executeModel(model, runtime, options, options.numRuns.getValue(),
+                         options.numWarmup.getValue()))
       return failure(options.reportError(err.getError()));
   }
   return success();
@@ -393,11 +405,15 @@ M::runModelWithData(MLIRContext *ctx, const Model *model,
                     llvm::SmallVector<void *> &outputs) {
   assert(inputs.size() == model->getInputSpecs().size() &&
          "Wrong number of inputs to the model.");
+
+  // Setup the model.
   UNWRAP_ERROR(executableModel, model->setup(runtime));
-  auto errorOrSuccess = executableModel->waitForModelSetup();
-  if (errorOrSuccess.isError())
-    return errorOrSuccess.takeError();
-  SmallVector<Tensor, 3> inputTensors;
+  UNWRAP_ERROR(unit, executableModel->waitForModelSetup());
+  (void)unit;
+
+  // Construct input tensors which borrow from the given input buffers. We
+  // assume they are held alive for the entire execution.
+  SmallVector<AnyAsyncValueRef, 3> args;
   for (const auto &[input, spec] : llvm::zip(inputs, model->getInputSpecs())) {
     if (llvm::any_of(spec, mlir::ShapedType::isDynamic))
       return Error("Dynamic input shapes are not supported.");
@@ -405,39 +421,25 @@ M::runModelWithData(MLIRContext *ctx, const Model *model,
     // However they will be held alive for the duration of the execute call.
     // TODO(#5867): Support API which allows ownership of inputs to be
     // transferred to execute call.
-    inputTensors.emplace_back(Tensor::createBorrowed(
-        input, spec, /*alignment=*/{}, GML::BufferRef::kExecute));
+    args.emplace_back(AsyncValueRef<Tensor>::createReady(
+        runtime, Tensor::createBorrowed(input, spec, /*alignment=*/{},
+                                        GML::BufferRef::kExecute)));
   }
 
-  // Fill the arguments.  We are running the model once so we pass in the input
-  // tensors directly (the model will deallocate them when it is done with
-  // them).
-  SmallVector<AnyAsyncValueRef> args;
-  args.reserve(model->getNumInputs());
-  for (auto &input : inputTensors)
-    args.push_back(
-        AsyncValueRef<Tensor>::createReady(runtime, std::move(input)));
+  llvm::outs() << "--- Running and collecting outputs for '"
+               << model->getName().str() << "':\n";
+  llvm::outs().flush();
 
-  // We use printf here because it has atomic output behavior w.r.t. the printfs
-  // in the model.
-  printf("--- Running and collecting outputs for '%s':\n",
-         model->getName().str().c_str());
-  fflush(stdout);
+  // Execute the model synchronously.
+  auto results = executableModel->execute(args);
+  UNWRAP_ERROR(unit2, awaitAndCheck(results));
+  (void)unit2;
 
-  // Execute the model and insert its results into the results vec.
-  SmallVector<AnyAsyncValueRef> results = executableModel->execute(args);
+  // Copy results into pre-allocated outputs, which we trust are of the
+  // correct size. Propagate any error back to caller.
+  UNWRAP_ERROR(unit3, populateTensorResults(executableModel.get(), results, ctx,
+                                            outputs));
+  (void)unit3;
 
-  // There is nothing to do if there is no results.
-  if (results.empty())
-    return success();
-
-  // Wait for the model to finish execution, forcing synchrony.
-  await(results);
-
-  MutableArrayRef<AnyAsyncValueRef> resultRef(results);
-  // Drop the first chain result and collect the output data.
-  if (failed(populateTensorResults(executableModel.get(),
-                                   resultRef.drop_front(), ctx, outputs)))
-    return Error("model execution failed");
   return success();
 }

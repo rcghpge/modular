@@ -69,20 +69,19 @@ public:
   /// (i.e. we are in a benchmarking phase).
   cl::opt<unsigned> numWarmup{
       "num-warmup",
-      cl::desc("Execute inference model N times in warmup mode (default: 1). "
+      cl::desc("Execute inference model N times in warmup mode (default 0). "
                "This option is only used if \"num-runs\" > 1."),
-      cl::init(1)};
+      cl::init(0)};
 
-  /// This specifies the number of times we should execute the model.  If run
-  /// more than one time, we enter "benchmarking" mode.
+  /// This specifies the number of times we should execute the model.
   cl::opt<unsigned> numRuns{
-      "num-runs", cl::desc("Execute inference model N times (default: 1)."),
+      "num-runs", cl::desc("Execute inference model N times (default 1)."),
       cl::init(1)};
 
-  /// This specifies the number of times we should execute the model.  If run
-  /// more than one time, we enter "benchmarking" mode.
+  /// Benchmarks the model using the mlperf infrastructure.
   cl::opt<bool> benchmarkMode{
-      "benchmark", cl::desc("Measure each invocation of the model inference."),
+      "benchmark",
+      cl::desc("If set, benchmarks the model using the mlperf infrastructure."),
       cl::init(false)};
 
   /// This specifies the name of the benchmark. Typically the benchmark name is
@@ -94,11 +93,16 @@ public:
   /// This specifies the benchmarking workload scenario during benchmarking.
   /// The valid options are "online" and "batched"
   cl::opt<BenchmarkScenario> benchmarkScenario{
-      "benchmark-scenario", cl::desc("The benchmarking scenario used."),
-      cl::values(clEnumValN(BenchmarkScenario::kOnline, "online",
-                            "Online / streamed input generation"),
-                 clEnumValN(BenchmarkScenario::kBatched, "batched",
-                            "Batched generation")),
+      "benchmark-scenario", cl::desc("The benchmarking scenario to use."),
+      cl::values(
+          clEnumValN(
+              BenchmarkScenario::kOnline, "online",
+              "Online / streamed benchmarking execution mode. Corresponds "
+              "to mlperf's 'single stream' model. Default."),
+          clEnumValN(
+              BenchmarkScenario::kBatched, "batched",
+              "Batched benchmarking execution mode. Corresponds to mlperf's "
+              "'multi stream' model).")),
       cl::init(BenchmarkScenario::kOnline)};
 
   /// This specifies the output directory which will contain the benchmarking
@@ -123,12 +127,16 @@ public:
 
   cl::opt<uint64_t> benchmarkMinDurationMs{
       "benchmark-min-duration-ms",
-      cl::desc("Minimum duration to run the benchmarks, in milliseconds."),
+      cl::desc(
+          "Minimum duration to run the benchmarks, in milliseconds. "
+          "Corresponds to mlperf's min_duration_ms configuration parameter."),
       cl::init(10'000)};
 
   cl::opt<uint64_t> benchmarkMinQueryCount{
       "benchmark-min-query-count",
-      cl::desc("Minimum number of queries to run in benchmark mode."),
+      cl::desc(
+          "Minimum number of queries to run in benchmark mode. Corresponds to "
+          "mlperf's min_query_count configuration parameter."),
       cl::init(100)};
 
   /// This tells the execution driver how to initialize model inputs.
@@ -167,7 +175,7 @@ public:
           "name of a file containing raw binary tensor data stored in "
           "row-major little-endian order\n"
           "- input_source_attr_list: optional (default empty) comma separated "
-	  "list of [Truncate|Cycle] which specify relaxations "
+          "list of [Truncate|Cycle] which specify relaxations "
           "on use of data in the input file. If empty, the file size must be "
           "an exact multiple of the input tensor size and every tensor in the "
           "input file may only be used once. If Cycle is specified, there is "
@@ -190,8 +198,16 @@ public:
                      "Display all the elements of result"),
           clEnumValN(
               Kernels::ResultOutputStyle::kCompact, "compact",
-              "Display a few elements at the start and end of each dimension")),
+              "Display a few elements at the start and end of each dimension"),
+          clEnumValN(Kernels::ResultOutputStyle::kNone, "none",
+                     "Do not display any result details")),
       cl::init(Kernels::ResultOutputStyle::kCompact)};
+
+  /// If set, print the execution time of every non-warmup run.
+  cl::opt<bool> printTiming{"print-timing",
+                            cl::desc("If set, print the execution time, in "
+                                     "nanoseconds, of every non-warmup run."),
+                            cl::init(false)};
 };
 
 /// This command enum specifies what action we're supposed to take, which is
