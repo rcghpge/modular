@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
@@ -314,6 +314,10 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     Value step = loweringState.lookupExecuteLoweredValue(
         opBeingLowered->getOperands()[2]);
     output.spec = getOutputSpec("mop.shape.range", {start, limit, step});
+  } else if (opName == "mop.kernels.where") {
+    Value input = loweringState.lookupExecuteLoweredValue(
+        opBeingLowered->getOperands()[0]);
+    output.spec = getOutputSpec("mop.shape.where", {input});
   } else if (opName == "mop.kernels.broadcast_to_tensor") {
     assert(bcastIndices && "Broadcast kernel doesn't have indices");
 
