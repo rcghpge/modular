@@ -296,9 +296,7 @@ LogicalResult MOGraphLowering::lowerParamDeclare(KGEN::ParamDeclareOp declOp) {
   if (auto err = loweringState.lowerParamDecl(declOp.getParamDecl(), value))
     return declOp->emitError(err.getError());
 
-  // TODO: fix this hack when we can properly lower asserts.
-  if (auto chain = dyn_cast<TypedValue<MEF::ChainType>>(value))
-    loweringState.setExecuteChain(chain);
+  // TODO(#12023): properly lower assert's control dependencies
   return success();
 }
 
