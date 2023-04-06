@@ -203,6 +203,36 @@ struct BatchMatmulAdjBPattern : public RewritePattern {
   }
 };
 
+struct FullyConnectedPattern : public RewritePattern {
+  FullyConnectedPattern(MLIRContext *ctx)
+      : RewritePattern(MatchAnyOpTypeTag{}, 2, ctx) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    OpBuilder b(op);
+    b.setInsertionPoint(op);
+
+    Value input, weight, bias;
+    auto matmulP = m_Op<MO::MatmulOp>(m_MOMatrix(m_Any(&input)),
+                                      m_MOMatrix(m_Any(&weight)));
+    auto biasP = m_Ranked(1, m_Typed<M::MO::TensorType>(m_Any(&bias)));
+    if (!m_Op<MO::AddOp>(
+             m_Optional(matmulP, m_Op<MO::BroadcastToOp>(matmulP, m_Any())),
+             m_Optional(biasP, m_Op<MO::BroadcastToOp>(biasP, m_Any())))
+             .match(op))
+      return rewriter.notifyMatchFailure(op, "failed to match pattern");
+
+    if (!input || !weight || !bias)
+      return rewriter.notifyMatchFailure(op, "null input value");
+
+    rewriter.replaceOpWithNewOp<MOGG::ExtOp>(
+        op, op->getResultTypes(), "mop.kernels.fully_connected",
+        SmallVector<Value>{input, weight, bias});
+
+    return mlir::success();
+  }
+};
+
 struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
   using PatternFusionBase::PatternFusionBase;
 
@@ -215,8 +245,8 @@ void PatternFusionPass::runOnOperation() {
   auto *ctx = &getContext();
 
   RewritePatternSet patterns{ctx};
-  patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern>(
-      ctx);
+  patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
+               FullyConnectedPattern>(ctx);
   if (useMatmulPacking.getValue())
     patterns.add<MatmulConstBPattern>(ctx);
 
