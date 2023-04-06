@@ -82,7 +82,7 @@ def MOGG_BroadcastToTensorOp : MOGG_Op<"broadcast_to_tensor", []> {
     ```mlir
     %from: !mo.tensor<[100, 1, 100], f32>
     %to: !mo.tensor<[10,20,100,50,100], f32>
-    %res = mo.broadcast_to_tensor(%from, %to) : (
+    %res = mogg.broadcast_to_tensor(%from, %to) : (
       !mo.tensor<[100, 1, 100], f32>, !mo.tensor<[10,20,100,50,100], f32>)
         -> !mo.tensor<[10,20,100,50,100], f32>
     ```
