@@ -312,12 +312,14 @@ static ErrorOrSuccess executeModel(const Model *model, Runtime &runtime,
     (void)unit;
   }
 
-  llvm::outs() << "--- Running '" << model->getName().str() << "'";
-  if (numRuns > 1)
-    llvm::outs() << " " << numRuns << " times:\n";
-  else
-    llvm::outs() << ":\n";
-  llvm::outs().flush();
+  if (numRuns > 0) {
+    llvm::outs() << "--- Running '" << model->getName().str() << "'";
+    if (numRuns > 1)
+      llvm::outs() << " " << numRuns << " times:\n";
+    else
+      llvm::outs() << ":\n";
+    llvm::outs().flush();
+  }
 
   for (unsigned i = 0; i < numRuns; ++i) {
     TIME_PROFILER_SCOPE(Trace::kOther, 1, "runModelOnce");
@@ -359,6 +361,7 @@ static ErrorOrSuccess executeModel(const Model *model, Runtime &runtime,
 
     llvm::outs().flush();
   }
+
   return success();
 }
 
@@ -367,15 +370,22 @@ LogicalResult M::runModel(MLIRContext *ctx, const Model *model,
                           LLCL::Runtime &runtime,
                           const ExecutorDriverCLOptions &options) {
   if (options.benchmarkMode) {
+    int numWarmup = options.numWarmup.getValue();
     if (options.numRuns.getValue() > 2) {
       // If it's not the default 1, the user most likely set it; warn them
       // about that.
       llvm::errs() << "WARNING: num-runs is ignored in benchmarking mode. "
                       "Please use benchmark-min-query-count instead.\n";
     }
+    if (numWarmup == 0) {
+      // Force at least one warmup.
+      llvm::errs() << "WARNING: forcing one warmup run in benchmarking mode. "
+                      "You can set an larger value using --num-warmup.\n";
+      numWarmup = 1;
+    }
     // Execute the model for the warmup runs only.
-    if (auto err = executeModel(model, runtime, options, /*numRuns=*/0,
-                                options.numWarmup.getValue()))
+    if (auto err =
+            executeModel(model, runtime, options, /*numRuns=*/0, numWarmup))
       return failure(options.reportError(err.getError()));
     // Run the actual benchmark.
     if (auto err = benchmarkModel(
