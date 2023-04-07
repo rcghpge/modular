@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-pattern-fusion | FileCheck %s
+// RUN: mo-opt %s --symbolic-optimize | FileCheck %s
 
 // CHECK: mo.graph @bcast_low_rank<[[A:.*]], [[B:.*]], [[C:.*]] -> [[D:.*]], [[E:.*]], [[F:.*]]>(
 mo.graph @bcast_low_rank<A, B, C -> D, E, F>(

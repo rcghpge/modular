@@ -64,4 +64,12 @@ def DeparameterizeMoOps : Pass<"deparameterize-mo-ops", "GraphOp"> {
   }];
 }
 
+def SymbolicOptimiziation : Pass<"symbolic-optimize", "GraphOp"> {
+  let summary = "Optimize the graph using symbolic reasoning.";
+  let description = [{
+    This pass leverages symbolic information present in the graph (usually as a
+    result of shape inference) to optimize computations.
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTRANSFORMS_TD
