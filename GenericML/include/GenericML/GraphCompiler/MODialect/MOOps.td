@@ -1527,7 +1527,7 @@ def MO_WhereOp : MO_TensorOp<"where", [
     }];
 
   let arguments = (ins MO_Tensor:$input, MO_ParamDecls:$outputParamDecls);
-  let results = (outs MO_Tensor:$result);
+  let results = (outs MO_I64Tensor:$result);
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
     functional-type(operands, results)

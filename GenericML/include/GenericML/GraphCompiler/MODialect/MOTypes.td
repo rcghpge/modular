@@ -238,4 +238,11 @@ def MO_CondLike : ConfinedType<MO_Tensor,
   let cppClassName = "::M::MO::TensorType";
 }
 
+/// Confines the MO_TensorType so that it has signed 64-bit integer elements
+def MO_I64Tensor : ConfinedType<MO_Tensor,
+    [HasSI64ElementTypePred],
+    "signed 64 integer element type"> {
+  let cppClassName = "::M::MO::TensorType";
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTYPES_TD

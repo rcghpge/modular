@@ -598,32 +598,40 @@ mo.graph @transpose_perm_rank_mismatch(%input: !mo.tensor<[?, ?, ?], f32>) -> !m
 // WhereOp
 //===----------------------------------------------------------------------===//
 
-mo.graph @where_bad_result_rank(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 1, 2], si32> {
+mo.graph @where_bad_result_rank(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 1, 2], si64> {
   // expected-error@+1 {{mo.where: invalid output shape: rank must be 2}}
-  %res = mo.where(%arg) : (!mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 1, 2], si32>
-  mo.output %res : !mo.tensor<[?, 1, 2], si32>
+  %res = mo.where(%arg) : (!mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 1, 2], si64>
+  mo.output %res : !mo.tensor<[?, 1, 2], si64>
 }
 
 // -----
 
-mo.graph @where_dynamic_result_rank(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tensor<?, si32> {
+mo.graph @where_dynamic_result_rank(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tensor<?, si64> {
   // expected-error@+1 {{mo.where: invalid output shape: rank must be 2}}
-  %res = mo.where(%arg) : (!mo.tensor<[7, 7], f32>) -> !mo.tensor<?, si32>
-  mo.output %res : !mo.tensor<?, si32>
+  %res = mo.where(%arg) : (!mo.tensor<[7, 7], f32>) -> !mo.tensor<?, si64>
+  mo.output %res : !mo.tensor<?, si64>
 }
 
 // -----
 
-mo.graph @where_dynamic_input_rank(%arg: !mo.tensor<?, f32>) -> !mo.tensor<[?, 2], si32> {
+mo.graph @where_dynamic_input_rank(%arg: !mo.tensor<?, f32>) -> !mo.tensor<[?, 2], si64> {
   // expected-error@+1 {{mo.where: invalid output shape: inner_dim != input_rank}}
-  %res = mo.where(%arg) : (!mo.tensor<?, f32>) -> !mo.tensor<[?, 2], si32>
-  mo.output %res : !mo.tensor<[?, 2], si32>
+  %res = mo.where(%arg) : (!mo.tensor<?, f32>) -> !mo.tensor<[?, 2], si64>
+  mo.output %res : !mo.tensor<[?, 2], si64>
 }
 
 // -----
 
-mo.graph @where_bad_result_dim(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 1], si32> {
+mo.graph @where_bad_result_dim(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 1], si64> {
   // expected-error@+1 {{mo.where: invalid output shape: inner_dim != input_rank}}
-  %res = mo.where(%arg) : (!mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 1], si32>
-  mo.output %res : !mo.tensor<[?, 1], si32>
+  %res = mo.where(%arg) : (!mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 1], si64>
+  mo.output %res : !mo.tensor<[?, 1], si64>
+}
+
+// -----
+
+mo.graph @where_fp_result_type(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 2], si64> {
+  // expected-error@+1 {{'mo.where' op result #0 must be signed 64 integer element type, but got '!mo.tensor<[?, 2], f32>'}}
+  %res = mo.where(%arg) : (!mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 2], f32>
+  mo.output %res : !mo.tensor<[?, 2], f32>
 }

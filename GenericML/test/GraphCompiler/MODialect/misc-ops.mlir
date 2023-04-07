@@ -434,34 +434,34 @@ mo.graph @transpose(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[3, 2], f32> 
 // WhereOp
 //===----------------------------------------------------------------------===//
 
-// CHECK: mo.graph @where_1d(%[[ARG:.*]]: !mo.tensor<[7], f32>) -> !mo.tensor<[?, 1], si32>
-mo.graph @where_1d(%arg: !mo.tensor<[7], f32>) -> !mo.tensor<[?, 1], si32> {
-  // CHECK-NEXT: %[[RES:.*]] = mo.where(%[[ARG]]) : (!mo.tensor<[7], f32>) -> !mo.tensor<[?, 1], si32>
-  %res = mo.where(%arg) : (!mo.tensor<[7], f32>) -> !mo.tensor<[?, 1], si32>
-  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[?, 1], si32>
-  mo.output %res : !mo.tensor<[?, 1], si32>
+// CHECK: mo.graph @where_1d(%[[ARG:.*]]: !mo.tensor<[7], f32>) -> !mo.tensor<[?, 1], si64>
+mo.graph @where_1d(%arg: !mo.tensor<[7], f32>) -> !mo.tensor<[?, 1], si64> {
+  // CHECK-NEXT: %[[RES:.*]] = mo.where(%[[ARG]]) : (!mo.tensor<[7], f32>) -> !mo.tensor<[?, 1], si64>
+  %res = mo.where(%arg) : (!mo.tensor<[7], f32>) -> !mo.tensor<[?, 1], si64>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[?, 1], si64>
+  mo.output %res : !mo.tensor<[?, 1], si64>
 }
 
-// CHECK: mo.graph @where_2d(%[[ARG:.*]]: !mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 2], si32>
-mo.graph @where_2d(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 2], si32> {
-  // CHECK-NEXT: %[[RES:.*]] = mo.where(%[[ARG]]) : (!mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 2], si32>
-  %res = mo.where(%arg) : (!mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 2], si32>
-  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[?, 2], si32>
-  mo.output %res : !mo.tensor<[?, 2], si32>
+// CHECK: mo.graph @where_2d(%[[ARG:.*]]: !mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 2], si64>
+mo.graph @where_2d(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 2], si64> {
+  // CHECK-NEXT: %[[RES:.*]] = mo.where(%[[ARG]]) : (!mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 2], si64>
+  %res = mo.where(%arg) : (!mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 2], si64>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[?, 2], si64>
+  mo.output %res : !mo.tensor<[?, 2], si64>
 }
 
-// CHECK: mo.graph @where_2d_dynamic_shape(%[[ARG:.*]]: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, 2], si32>
-mo.graph @where_2d_dynamic_shape(%arg: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, 2], si32> {
-  // CHECK-NEXT: %[[RES:.*]] = mo.where(%[[ARG]]) : (!mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, 2], si32>
-  %res = mo.where(%arg) : (!mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, 2], si32>
-  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[?, 2], si32>
-  mo.output %res : !mo.tensor<[?, 2], si32>
+// CHECK: mo.graph @where_2d_dynamic_shape(%[[ARG:.*]]: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, 2], si64>
+mo.graph @where_2d_dynamic_shape(%arg: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, 2], si64> {
+  // CHECK-NEXT: %[[RES:.*]] = mo.where(%[[ARG]]) : (!mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, 2], si64>
+  %res = mo.where(%arg) : (!mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, 2], si64>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[?, 2], si64>
+  mo.output %res : !mo.tensor<[?, 2], si64>
 }
 
-// CHECK: mo.graph @where_dynamic_rank(%[[ARG:.*]]: !mo.tensor<?, f32>) -> !mo.tensor<[?, ?], si32>
-mo.graph @where_dynamic_rank(%arg: !mo.tensor<?, f32>) -> !mo.tensor<[?, ?], si32> {
-  // CHECK-NEXT: %[[RES:.*]] = mo.where(%[[ARG]]) : (!mo.tensor<?, f32>) -> !mo.tensor<[?, ?], si32>
-  %res = mo.where(%arg) : (!mo.tensor<?, f32>) -> !mo.tensor<[?, ?], si32>
-  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[?, ?], si32>
-  mo.output %res : !mo.tensor<[?, ?], si32>
+// CHECK: mo.graph @where_dynamic_rank(%[[ARG:.*]]: !mo.tensor<?, f32>) -> !mo.tensor<[?, ?], si64>
+mo.graph @where_dynamic_rank(%arg: !mo.tensor<?, f32>) -> !mo.tensor<[?, ?], si64> {
+  // CHECK-NEXT: %[[RES:.*]] = mo.where(%[[ARG]]) : (!mo.tensor<?, f32>) -> !mo.tensor<[?, ?], si64>
+  %res = mo.where(%arg) : (!mo.tensor<?, f32>) -> !mo.tensor<[?, ?], si64>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[?, ?], si64>
+  mo.output %res : !mo.tensor<[?, ?], si64>
 }
