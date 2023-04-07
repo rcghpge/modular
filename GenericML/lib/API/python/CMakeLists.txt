@@ -143,6 +143,8 @@ set_target_properties(modular-engine
   ADDITIONAL_CLEAN_FILES ${UNPACKED_WHEEL}
 )
 
+add_subdirectory(docs)
+
 if (NOT MODULAR_PYTHON_API_REPAIR_WHEEL)
   return()
 endif()
