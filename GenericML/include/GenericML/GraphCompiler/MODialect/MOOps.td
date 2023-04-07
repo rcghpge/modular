@@ -325,7 +325,6 @@ def MO_RebindOp : MO_TensorOp<"rebind", [
   }];
 
   let arguments = (ins MO_Tensor:$input, MO_ParamDecls:$outputParamDecls);
-
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
@@ -335,6 +334,13 @@ def MO_RebindOp : MO_TensorOp<"rebind", [
 
   let hasCanonicalizeMethod = 1;
   let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    /// Deparameterization for rebind always fails since we lower them to MGP.
+    LogicalResult deparameterize(mlir::RewriterBase &rewriter) {
+      return failure();
+    }
+  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -1169,10 +1175,6 @@ def MO_BroadcastToOp : MO_ShapeModifierOp<"broadcast_to"> {
   }];
 
   let hasVerifier = 1;
-
-  let extraClassDeclaration = [{
-    LogicalResult deparameterize(mlir::RewriterBase &rewriter);
-  }];
 }
 
 def MO_ReshapeOp : MO_ShapeModifierOp<"reshape"> {
@@ -1192,10 +1194,6 @@ def MO_ReshapeOp : MO_ShapeModifierOp<"reshape"> {
 
   let hasCanonicalizeMethod = 1;
   let hasFolder = 1;
-
-  let extraClassDeclaration = [{
-    LogicalResult deparameterize(mlir::RewriterBase &rewriter);
-  }];
 }
 
 def MO_ShapeOfOp : MO_TensorOp<"shape_of", [
@@ -1535,10 +1533,6 @@ def MO_WhereOp : MO_TensorOp<"where", [
     functional-type(operands, results)
   }];
   let hasVerifier = 1;
-
-  let extraClassDeclaration = [{
-    LogicalResult deparameterize(mlir::RewriterBase &rewriter);
-  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -1594,10 +1588,6 @@ def MO_RangeOp : MO_TensorOp<"range", [
 
   let hasVerifier = 1;
   let hasFolder = 1;
-
-  let extraClassDeclaration = [{
-    LogicalResult deparameterize(mlir::RewriterBase &rewriter);
-  }];
 }
 
 

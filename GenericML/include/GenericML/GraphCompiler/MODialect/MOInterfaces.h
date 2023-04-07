@@ -21,6 +21,8 @@ namespace M::MO {
 class MatmulLike;
 class SlidingWindow;
 class Reduction;
+class ParameterizationInterface;
+class ParamDeclarationInterface;
 
 namespace impl {
 LogicalResult verifyMatchingRanks(ArrayRef<TensorValue> values);
@@ -31,6 +33,17 @@ LogicalResult verifyMOSameOperandsAndResultElementType(Operation *op);
 LogicalResult verifyMOSameOperandsAndResultShapeAttr(Operation *op);
 LogicalResult verifyMOSameOperandsAndResultShape(Operation *op);
 LogicalResult verifyMOSameOperandsElementType(Operation *op);
+
+LogicalResult resolveReductionParameters(Reduction op,
+                                         mlir::RewriterBase &rewriter);
+LogicalResult resolveSameOperandsAndResultShapeUnknownParameters(
+    ParameterizationInterface op, mlir::RewriterBase &rewriter);
+
+LogicalResult materializeReductionShapeInference(Reduction op,
+                                                 mlir::RewriterBase &rewriter);
+
+LogicalResult defaultDeparameterize(ParamDeclarationInterface op,
+                                    mlir::RewriterBase &rewriter);
 } // namespace impl
 
 template <typename ConcreteType>
@@ -68,18 +81,7 @@ public:
 
 namespace M::MO {
 // These declarations must follow the include above since they reference
-// `ParameterizationInterface`.
-
-namespace impl {
-LogicalResult resolveSameOperandsAndResultShapeUnknownParameters(
-    ParameterizationInterface op, mlir::RewriterBase &rewriter);
-
-LogicalResult resolveReductionParameters(Reduction op,
-                                         mlir::RewriterBase &rewriter);
-
-LogicalResult materializeReductionShapeInference(Reduction op,
-                                                 mlir::RewriterBase &rewriter);
-} // namespace impl
+// classes declared in the generated header.
 
 template <typename ConcreteType>
 class SameInputOutputShapesParameterization

@@ -90,10 +90,7 @@ def MO_ParamDeclaration : MO_TensorOpInterfaceBase<"ParamDeclarationInterface",
       "Deparameterizes the op by materializing rebinds around it.",
       "LogicalResult", "deparameterize",
       (ins "mlir::RewriterBase &":$rewriter), [{}],
-      [{
-        assert(getOutputParamDecls().empty());
-        return failure();
-      }]>,
+      [{ return impl::defaultDeparameterize($_op, rewriter); }]>,
   ];
 
   let extraTraitClassDeclaration = [{

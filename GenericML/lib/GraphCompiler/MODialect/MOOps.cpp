@@ -358,29 +358,6 @@ OpFoldResult AddOp::fold(FoldAdaptor adaptor) {
 // MO_BroadcastToOp
 //===----------------------------------------------------------------------===//
 
-// TODO refactor with `RangeOp::deparameterize`
-LogicalResult BroadcastToOp::deparameterize(mlir::RewriterBase &rewriter) {
-  ArrayRef<KGEN::ParamDeclAttr> decls = getOutputParamDecls();
-  if (decls.empty())
-    return failure();
-  setOutputParamDecls({});
-
-  TensorType resTy = getType();
-  auto shapeTy = rewriter.getType<ShapeType>();
-  TensorType unknownResTy;
-  if (resTy.hasRank())
-    unknownResTy = resTy.cloneWith(resTy.getIntDims(), resTy.getElementType());
-  else
-    unknownResTy = resTy.cloneWith(KGEN::UnknownAttr::get(shapeTy));
-
-  auto newOp = rewriter.create<MO::BroadcastToOp>(
-      getLoc(), unknownResTy, getOperands(),
-      getOperation()->getAttrDictionary().getValue());
-  rewriter.replaceOpWithNewOp<RebindOp>(*this, resTy, newOp, decls);
-
-  return success();
-}
-
 /// Check if the input type can be broadcasted to the result type, assuming both
 /// have static ranks.
 static ErrorOrSuccess verifyBroadcastStaticRanks(TensorType inputTy,
@@ -738,29 +715,6 @@ LogicalResult SelectOp::verify() {
 // WhereOp
 //===----------------------------------------------------------------------===//
 
-// TODO refactor with `RangeOp::deparameterize`
-LogicalResult WhereOp::deparameterize(mlir::RewriterBase &rewriter) {
-  ArrayRef<KGEN::ParamDeclAttr> decls = getOutputParamDecls();
-  if (decls.empty())
-    return failure();
-  setOutputParamDecls({});
-
-  TensorType resTy = getType();
-  auto shapeTy = rewriter.getType<ShapeType>();
-  TensorType unknownResTy;
-  if (resTy.hasRank())
-    unknownResTy = resTy.cloneWith(resTy.getIntDims(), resTy.getElementType());
-  else
-    unknownResTy = resTy.cloneWith(KGEN::UnknownAttr::get(shapeTy));
-
-  auto newOp =
-      rewriter.create<WhereOp>(getLoc(), unknownResTy, getOperand(),
-                               getOperation()->getAttrDictionary().getValue());
-  rewriter.replaceOpWithNewOp<RebindOp>(*this, resTy, newOp, decls);
-
-  return success();
-}
-
 LogicalResult WhereOp::verify() {
   TensorType resTy = getResult().getType();
   TensorType inputTy = getInput().getType();
@@ -894,28 +848,6 @@ LogicalResult RangeOp::verify() {
     if (!paramDecls[0].getType().isIndex())
       return emitError("can only declare index parameters");
   }
-  return success();
-}
-
-LogicalResult RangeOp::deparameterize(mlir::RewriterBase &rewriter) {
-  ArrayRef<KGEN::ParamDeclAttr> decls = getOutputParamDecls();
-  if (decls.empty())
-    return failure();
-  setOutputParamDecls({});
-
-  TensorType resTy = getType();
-  auto shapeTy = rewriter.getType<ShapeType>();
-  TensorType unknownResTy;
-  if (resTy.hasRank())
-    unknownResTy = resTy.cloneWith(resTy.getIntDims(), resTy.getElementType());
-  else
-    unknownResTy = resTy.cloneWith(KGEN::UnknownAttr::get(shapeTy));
-
-  auto newOp = rewriter.create<MO::RangeOp>(
-      getLoc(), unknownResTy, getOperands(),
-      getOperation()->getAttrDictionary().getValue());
-  rewriter.replaceOpWithNewOp<RebindOp>(*this, resTy, newOp, decls);
-
   return success();
 }
 
@@ -1196,29 +1128,6 @@ LogicalResult ReshapeOp::canonicalize(ReshapeOp op, PatternRewriter &rewriter) {
   }
 
   return failure();
-}
-
-// TODO refactor with `RangeOp::deparameterize`
-LogicalResult ReshapeOp::deparameterize(mlir::RewriterBase &rewriter) {
-  ArrayRef<KGEN::ParamDeclAttr> decls = getOutputParamDecls();
-  if (decls.empty())
-    return failure();
-  setOutputParamDecls({});
-
-  TensorType resTy = getType();
-  auto shapeTy = rewriter.getType<ShapeType>();
-  TensorType unknownResTy;
-  if (resTy.hasRank())
-    unknownResTy = resTy.cloneWith(resTy.getIntDims(), resTy.getElementType());
-  else
-    unknownResTy = resTy.cloneWith(KGEN::UnknownAttr::get(shapeTy));
-
-  auto newOp = rewriter.create<MO::ReshapeOp>(
-      getLoc(), unknownResTy, getOperands(),
-      getOperation()->getAttrDictionary().getValue());
-  rewriter.replaceOpWithNewOp<RebindOp>(*this, resTy, newOp, decls);
-
-  return success();
 }
 
 /// Helper to fold reshape ops.

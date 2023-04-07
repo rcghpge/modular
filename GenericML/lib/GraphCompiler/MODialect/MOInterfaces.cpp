@@ -8,8 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
+#include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include <mlir/IR/PatternMatch.h>
 
 using namespace M;
 using namespace MO;
@@ -259,6 +260,40 @@ LogicalResult impl::verifyMOSameOperandsElementType(Operation *op) {
   for (auto operand : op->getOperands())
     if (getElementType(operand) != elementType)
       return op->emitOpError("requires the same element type for all operands");
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Deparameterization
+//===----------------------------------------------------------------------===//
+
+LogicalResult impl::defaultDeparameterize(ParamDeclarationInterface op,
+                                          mlir::RewriterBase &rewriter) {
+  ArrayRef<KGEN::ParamDeclAttr> decls = op.getOutputParamDecls();
+  if (decls.empty())
+    return failure();
+  op.setOutputParamDecls({});
+
+  // The default deparameterization only supports a single result.
+  if (op->getNumResults() != 1)
+    return failure();
+
+  auto resTy = dyn_cast<TensorType>(op->getResult(0).getType());
+  if (!resTy)
+    return failure();
+
+  auto shapeTy = rewriter.getType<ShapeType>();
+  TensorType unknownResTy;
+  if (resTy.hasRank())
+    unknownResTy = resTy.cloneWith(resTy.getIntDims(), resTy.getElementType());
+  else
+    unknownResTy = resTy.cloneWith(KGEN::UnknownAttr::get(shapeTy));
+
+  Operation *newOp = rewriter.create(op.getLoc(), op->getName().getIdentifier(),
+                                     op->getOperands(), {unknownResTy},
+                                     op->getAttrDictionary().getValue());
+  rewriter.replaceOpWithNewOp<RebindOp>(op, resTy, newOp->getResult(0), decls);
 
   return success();
 }
