@@ -317,9 +317,11 @@ void PatternFusionPass::runOnOperation() {
 
   RewritePatternSet patterns{ctx};
   patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
-               FullyConnectedPattern, CommuteBroadcastWithMatBandPart>(ctx);
+               CommuteBroadcastWithMatBandPart>(ctx);
   if (useMatmulPacking.getValue())
     patterns.add<MatmulConstBPattern>(ctx);
+  if (useFullyConnected.getValue())
+    patterns.add<FullyConnectedPattern>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
     return signalPassFailure();
