@@ -20,6 +20,15 @@ mo.graph @static_broadcast_to_fold<N>(%from: !mo.tensor<[N, 3], f32>) -> !mo.ten
   mo.output %res : !mo.tensor<[N, 3], f32>
 }
 
+// CHECK: mo.graph @static_broadcast_to_fold_scalar_input() -> !mo.tensor<[2, 2], f32> {
+mo.graph @static_broadcast_to_fold_scalar_input() -> !mo.tensor<[2, 2], f32> {
+  %from = mo.constant {value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[1], f32>
+  // CHECK-NEXT: %[[FROM:.*]] = mo.constant {value = #M.dense_array<1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32>
+  %res = mo.static.broadcast_to(%from) : !mo.tensor<[1], f32> -> !mo.tensor<[2, 2], f32>
+  // CHECK-NEXT: mo.output %[[FROM]] : !mo.tensor<[2, 2], f32>
+  mo.output %res : !mo.tensor<[2, 2], f32>
+}
+
 // CHECK: mo.graph @static_broadcast_to_no_fold<[[D0:.*]], [[D1:.*]]>(
 mo.graph @static_broadcast_to_no_fold<D0, D1>(
   // CHECK-SAME: %[[FROM:.*]]: !mo.tensor<[[[D0]], 3], f32>,

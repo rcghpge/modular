@@ -21,6 +21,7 @@
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
+#include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/STLExtras.h>
 #include <numeric>
@@ -59,10 +60,17 @@ denseResourceAttrToIntVec(DenseResourceElementsAttr attr) {
 }
 
 /// Return the contents of the IntArrayElementsAttr as a vector in int64_t.
-static SmallVector<int64_t> getBlob(IntArrayElementsAttr intElemsAttr) {
+static SmallVector<int64_t> getIntBlob(IntArrayElementsAttr intElemsAttr) {
   return map_to_vector(intElemsAttr.getValues(), [](const llvm::APInt &dim) {
     return dim.getSExtValue();
   });
+}
+
+/// Return the contents of the FloatArrayElementsAttr as a vector in float.
+static SmallVector<float> getFloatBlob(FloatArrayElementsAttr floatElemsAttr) {
+  return map_to_vector(
+      floatElemsAttr.getValues(),
+      [](const llvm::APFloat &dim) { return dim.convertToFloat(); });
 }
 
 /// If `attr` represents a blob of constant integers, return them in a vector,
@@ -70,7 +78,7 @@ static SmallVector<int64_t> getBlob(IntArrayElementsAttr intElemsAttr) {
 static std::optional<SmallVector<int64_t>>
 tryGetConstantIntBlob(mlir::ElementsAttr attr, DType dType) {
   if (auto intElemsAttr = dyn_cast<IntArrayElementsAttr>(attr))
-    return getBlob(intElemsAttr);
+    return getIntBlob(intElemsAttr);
 
   if (auto axisValueAttr = dyn_cast<DenseResourceElementsAttr>(attr)) {
     return dType.dispatch<std::optional<SmallVector<int64_t>>>()
@@ -413,8 +421,27 @@ LogicalResult BroadcastToOp::verify() {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult Static::BroadcastToOp::fold(FoldAdaptor adaptor) {
-  if (getInput().getType() == getType())
+  TensorType outTy = getType();
+  if (getInput().getType() == outTy)
     return getInput();
+
+  // TODO(#10811): support other types and do this using a MOJO kernel?
+  auto floatInputAttr =
+      dyn_cast_or_null<FloatArrayElementsAttr>(adaptor.getInput());
+  if (floatInputAttr && floatInputAttr.getNumElements() == 1 &&
+      outTy.hasStaticShape() && outTy.getElementType().isF32()) {
+    float inputScalar = getFloatBlob(floatInputAttr).front();
+
+    // TODO consider lifting this into a TensorType util.
+    SmallVector<int64_t> outIntDims = outTy.getIntDims();
+    int64_t outNumElems = std::accumulate(outIntDims.begin(), outIntDims.end(),
+                                          1, std::multiplies<int64_t>());
+    SmallVector<APFloat> res(outNumElems, APFloat(inputScalar));
+
+    auto rankedResTy =
+        RankedTensorType::get(outIntDims, outTy.getElementType());
+    return FloatArrayElementsAttr::get(rankedResTy, res);
+  }
   return {};
 }
 
@@ -811,9 +838,9 @@ OpFoldResult RangeOp::fold(FoldAdaptor adaptor) {
   if (!startAttr || !limitAttr || !stepAttr)
     return {};
 
-  int64_t start = getBlob(startAttr).front();
-  int64_t limit = getBlob(limitAttr).front();
-  int64_t step = getBlob(stepAttr).front();
+  int64_t start = getIntBlob(startAttr).front();
+  int64_t limit = getIntBlob(limitAttr).front();
+  int64_t step = getIntBlob(stepAttr).front();
 
   auto numResElementsOr = getRangeNumElements(start, limit, step);
   if (numResElementsOr.isError())
@@ -1074,7 +1101,7 @@ OpFoldResult ReduceMulOp::fold(FoldAdaptor adaptor) {
   if (inputArr.getType().getRank() != 1)
     return {};
 
-  int64_t axis = getBlob(axisArr).front();
+  int64_t axis = getIntBlob(axisArr).front();
   if (axis != 0)
     return {};
 
