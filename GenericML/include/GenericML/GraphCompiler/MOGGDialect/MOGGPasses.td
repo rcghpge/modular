@@ -37,7 +37,7 @@ def PatternFusion: Pass<"mo-pattern-fusion", "MO::GraphOp"> {
   let dependentDialects = ["M::MOGG::MOGGDialect"];
   let options = [
     Option<"useMatmulPacking", "use-matmul-packing",
-           "bool", /*default=*/"false", "Enable matmul bias packing.">,
+           "bool", /*default=*/"true", "Enable matmul bias packing.">,
     Option<"useFullyConnected", "use-fully-connected",
            "bool", /*default=*/"false", "Enable fully connected fusion.">
   ];
