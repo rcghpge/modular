@@ -112,4 +112,87 @@ def ConcatInPlacePass : Pass<"concat-in-place", "MGP::ModelOp"> {
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// ExecInvariantCodeMotionPass
+//===----------------------------------------------------------------------===//
+
+def ExecInvariantCodeMotionPass : Pass<"exec-invariant-code-motion", "MGP::ModelOp"> {
+  let summary = "Lifts execute-phase invariant code to init-phase";
+  let description = [{
+    This pass examines computations in the exec phase, identifies the ones that
+    are invariant over multiple runs of the exec phase (e.g., with different
+    input arguments), and lift them into the init phase.
+
+    To enable aggressive lifting, it does the following:
+    1. use the buffer cache so that ops in the exec phase can still refer to
+       the lifted buffers.
+    2. wire up ops that consumes/produces chains so that control dependencies
+       are preserved.
+    3. duplicate certain computations to enable more lifting (e.g., to lift a
+       simple spec computation that has unliftable users, we must duplicate the
+       computation because we can't cache spec).
+
+    For example:
+    ```mlir
+    mgp.model @example : tf init {
+      %ch0 = grt.chain.create
+      %ctx = mgp.context.create 1
+      mef.output %ch0, %ctx : !mef.chain, !mgp.context
+
+    } execute (%ch0: !mef.chain, %ctx: !mgp.context, %arg: !mgp.cpu.tensor<?xf32>) -> (!mef.chain, !mgp.cpu.tensor<?xf32>) {
+      %const_buf     : !mgp.cpu.buffer
+      %const_spec    : !mgp.cpu.tensor_spec<?xf32>
+      %new_const_buf : !mgp.cpu.tensor_spec<?xf32>
+      %new_const_spec = spec_update_op(%const_spec) : (!mgp.cpu.tensor_spec<?xf32>) -> !mgp.cpu.tensor_spec<?xf32>
+      %kernel_ch1 = kernel_op1(%ch0, %const_buf, %const_spec, %new_const_buf, %new_const_spec) : ... -> mef.chain
+
+      %out_spec : !mgp.cpu.tensor_spec<?xf32>
+      %out_buf  : !mgp.cpu.buffer
+      %kernel_ch2 = kernel_op2(%kernel_ch1, %arg_buf, %arg_spec, %new_const_buf, %new_const_spec, %out_buf, %out_spec) : ...
+      %out_tensor = mgp.cpu.tensor.create %kernel_ch2, %out_buf, %out_spec  : !mgp.cpu.tensor<?xf32>
+      mef.output %ch0, %out_tensor : !mef.chain, !mgp.cpu.tensor<?xf32>
+    }
+    ```
+    is rewritten to (note all the clarifying comments):
+    ```mlir
+    mgp.model @example : tf init {
+      %ch0 = grt.chain.create
+      // number of slots increased, to store lifted buffers
+      %ctx = mgp.context.create 2
+
+      // moved from exec phase
+      %const_buf     : !mgp.cpu.buffer
+      %const_spec    : !mgp.cpu.tensor_spec<?xf32>
+      %new_const_buf : !mgp.cpu.tensor_spec<?xf32>
+      %new_const_spec = spec_update_op(%const_spec) : ...
+      %kernel_ch1 = kernel_op1(%ch0, %const_buf, %const_spec, %new_const_buf, %new_const_spec) : ... -> mef.chain
+
+      // inserted; buffer.cache may perform a deep copy, so we must wait for the
+      // actions on buffers to finish first.
+      %buffer_action_ch = grt.merge %kernel_ch1 // may have more action chain in general
+      %cache_ch = mgp.cpu.buffer.cache %buffer_action_ch, %ctx[1], %new_const_buf : !mgp.cpu.buffer
+
+      // out chain changed
+      %out_ch = grt.merge %cache_ch // may have more cache_ch in general
+      mef.output %out_ch, %ctx : !mef.chain, !mgp.context
+
+    } execute (%ch0: !mef.chain, %ctx: !mgp.context, %arg: !mgp.cpu.tensor<?xf32>) -> (!mef.chain, !mgp.cpu.tensor<?xf32>) {
+      // cloned
+      %const_spec : !mgp.cpu.tensor_spec<?xf32>
+      %new_const_spec = spec_update_op(%const_spec) : (!mgp.cpu.tensor_spec<?xf32>) -> !mgp.cpu.tensor_spec<?xf32>
+
+      // inserted
+      %new_const_buf = mgp.cpu.buffer.get_cached %ch0, %ctx[1] : !mgp.cpu.buffer
+
+      // references to `%kernel_ch1` become `%ch0`
+      %out_spec : !mgp.cpu.tensor_spec<?xf32>
+      %out_buf  : !mgp.cpu.buffer
+      %kernel_ch2 = kernel_op2(%ch0, %arg_buf, %arg_spec, %new_const_buf, %new_const_spec, %out_buf, %out_spec) : ... -> mef.chain
+      %out_tensor = mgp.cpu.tensor.create %kernel_ch2, %out_buf, %out_spec  : !mgp.cpu.tensor<?xf32>
+      mef.output %ch0, %out_tensor : !mef.chain, !mgp.cpu.tensor<?xf32>
+    }
+    ```
+  }];
+}
+
 #endif // GENERICML_MGPDIALECT_MGPTRANSFORMS_TD
