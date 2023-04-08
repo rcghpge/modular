@@ -182,9 +182,11 @@ public:
     // null them out to detect use-after-move mistakes.
   }
 
-  /// Return an owning reference to the AsyncValueRef.  This is typically used
-  /// when copying into a closure.
+  /// Return a fresh reference to the AsyncValue allocated to hold the result.
   AnyAsyncValueRef copy() const { return result.copy(); }
+
+  /// Return a copy of the location for the currently execution primitive.
+  EncodedLocation copyLocation() const { return getFrame().copyLocation(); }
 
   /// Fill this AsyncValue with an error that has the specified message
   /// and the current frame's location.
@@ -225,7 +227,7 @@ public:
   }
   using AnySingleResult::AnySingleResult;
 
-  /// Return an owning reference to the AsyncValueRef.  This is typically used
+  /// Return a fresh reference to the AsyncValue allocated to hold the result.
   /// when copying into a closure.
   AsyncValueRef<T> copy() const {
     return AsyncValueRef<T>(AnySingleResult::copy());
@@ -235,7 +237,7 @@ public:
   /// with an EncodedLocation that allows for elegant async error reporting.
   LLCL::AsyncValueRefWithEncodedLocation<AsyncValueRef<T>>
   copyWithLocation() const {
-    return {copy(), getFrame().copyLocation()};
+    return {copy(), copyLocation()};
   }
 
   /// Return a reference to the underlying element in the AsyncValue if it
@@ -269,7 +271,7 @@ public:
   /// with an EncodedLocation that allows for elegant async error reporting.
   LLCL::AsyncValueRefWithEncodedLocation<AnyAsyncValueRef>
   copyWithLocation() const {
-    return {copy(), getFrame().copyLocation()};
+    return {copy(), copyLocation()};
   }
 
   /// Resolve an IndirectAsyncValue to point to the specified new value,
