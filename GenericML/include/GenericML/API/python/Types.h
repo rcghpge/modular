@@ -71,27 +71,27 @@ pybind11::dtype mapDType(M_Dtype dtype) {
 std::string printDType(M_Dtype dtype) {
   switch (dtype) {
   case M_INT8:
-    return "DType.int8";
+    return "DType.si8";
   case M_INT16:
-    return "DType.int16";
+    return "DType.si16";
   case M_INT32:
-    return "DType.int32";
+    return "DType.si32";
   case M_INT64:
-    return "DType.int64";
+    return "DType.si64";
   case M_UINT8:
-    return "DType.uint8";
+    return "DType.ui8";
   case M_UINT16:
-    return "DType.uint16";
+    return "DType.ui16";
   case M_UINT32:
-    return "DType.uint32";
+    return "DType.ui32";
   case M_UINT64:
-    return "DType.uint64";
+    return "DType.ui64";
   case M_FLOAT16:
-    return "DType.float16";
+    return "DType.f16";
   case M_FLOAT32:
-    return "DType.float32";
+    return "DType.f32";
   case M_DOUBLE:
-    return "DType.double";
+    return "DType.f64";
   case M_BOOL:
     return "DType.bool";
   default:
