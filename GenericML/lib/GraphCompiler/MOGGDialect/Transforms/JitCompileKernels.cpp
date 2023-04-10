@@ -157,6 +157,7 @@ struct JitCompileKernels
     // Run the jit required passes.
     mlir::PassManager pm(m->getContext());
     pm.addPass(createLowerSimdLoads());
+    pm.addNestedPass<MO::GraphOp>(createInlineLambdas());
     if (failed(pm.run(m)))
       return signalPassFailure();
 
