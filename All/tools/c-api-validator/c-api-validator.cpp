@@ -372,11 +372,9 @@ struct ExecutePhase {
         initializedModel->model, inputToModel, status.get());
     RETURN_IF_ERROR(status);
     size_t numInputs = M_getNumModelInputs(
-        initializedModel->compiledModel->runtimeContext->context,
         initializedModel->compiledModel->compiledModel, status.get());
     RETURN_IF_ERROR(status);
     size_t numOutputs = M_getNumModelOutputs(
-        initializedModel->compiledModel->runtimeContext->context,
         initializedModel->compiledModel->compiledModel, status.get());
     RETURN_IF_ERROR(status);
 
