@@ -19,8 +19,12 @@
 
 namespace M::GML {
 
-/// If enabled, the lifetime of every BufferRef can be tracked.
-using BufferRefProfilerEntry =
+/// If enabled, the time for every alloc and free can be traced.
+using BufferRefAllocFreeProfilerEntry =
+    ProfilerEntry<Trace::EnableTrace(Trace::kMem, 1)>;
+
+/// If enabled, the lifetime of every BufferRef can be traced.
+using BufferRefLifetimeProfilerEntry =
     ProfilerEntry<Trace::EnableTrace(Trace::kMem, 2)>;
 
 /// A reference (aka smart pointer) to an underlying buffer of known size but
@@ -253,7 +257,7 @@ private:
         nativeOrForeign(runtime) {
     if (ownership == kOwned)
       profilerEntry =
-          BufferRefProfilerEntry::create("mem.buffer.owned", [this]() {
+          BufferRefLifetimeProfilerEntry::create("mem.buffer.owned", [this]() {
             return Twine("size:").concat(Twine(this->size)).concat("B").str();
           });
   }
@@ -313,7 +317,7 @@ private:
 
   NativeOrForeign nativeOrForeign; // 1 byte
 
-  BufferRefProfilerEntry profilerEntry;
+  BufferRefLifetimeProfilerEntry profilerEntry;
 };
 
 inline raw_ostream &operator<<(raw_ostream &os, const BufferRef &value) {
