@@ -196,7 +196,7 @@ mo.graph @range_int_static(%startInt: !mo.tensor<[], si32>) -> !mo.tensor<[5], s
   mo.output %res : !mo.tensor<[5], si32>
 }
 
-// CHECK: mo.graph @range_folder
+// CHECK: mo.graph @range_folder() -> (!mo.tensor<[5], ui32>, !mo.tensor<[4], si64>) {
 mo.graph @range_folder() -> (!mo.tensor<[5], ui32>, !mo.tensor<[4], si64>) {
   // CHECK-DAG: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<1, 3, 5, 7, 9> : tensor<5xui32>} : !mo.tensor<[5], ui32>
   %start = mo.constant {value = #M.dense_array<1> : tensor<ui32>} : !mo.tensor<[], ui32>
@@ -214,19 +214,16 @@ mo.graph @range_folder() -> (!mo.tensor<[5], ui32>, !mo.tensor<[4], si64>) {
   mo.output %0, %1 : !mo.tensor<[5], ui32>, !mo.tensor<[4], si64>
 }
 
-// CHECK: mo.graph @range_folder_unknown_output
+// CHECK: mo.graph @range_folder_unknown_output() -> !mo.tensor<[?], ui32> {
 mo.graph @range_folder_unknown_output() -> !mo.tensor<[?], ui32> {
-  // CHECK-DAG: %[[START:.*]] = mo.constant {value = #M.dense_array<1> : tensor<ui32>} : !mo.tensor<[], ui32>
-  // CHECK-DAG: %[[LIMIT:.*]] = mo.constant {value = #M.dense_array<11> : tensor<ui32>} : !mo.tensor<[], ui32>
-  // CHECK-DAG: %[[STEP:.*]] = mo.constant {value = #M.dense_array<2> : tensor<ui32>} : !mo.tensor<[], ui32>
+  // CHECK-NEXT: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<1, 3, 5, 7, 9> : tensor<5xui32>} : !mo.tensor<[5], ui32>
+  // CHECK-NEXT: %[[RES:.*]] = mo.rebind(%[[VAL0]]) : !mo.tensor<[5], ui32> -> !mo.tensor<[?], ui32>
   %start = mo.constant {value = #M.dense_array<1> : tensor<ui32>} : !mo.tensor<[], ui32>
   %limit = mo.constant {value = #M.dense_array<11> : tensor<ui32>} : !mo.tensor<[], ui32>
   %step = mo.constant {value = #M.dense_array<2> : tensor<ui32>} : !mo.tensor<[], ui32>
-  // CHECK-NEXT: %[[VAL0:.*]] = mo.range(%[[START]], %[[LIMIT]], %[[STEP]]) : (
   %0 = mo.range(%start, %limit, %step) : (
-    // CHECK-SAME: !mo.tensor<[], ui32>, !mo.tensor<[], ui32>, !mo.tensor<[], ui32>) -> !mo.tensor<[?], ui32>
     !mo.tensor<[], ui32>, !mo.tensor<[], ui32>, !mo.tensor<[], ui32>) -> !mo.tensor<[?], ui32>
-  // CHECK-NEXT: %[[VAL0]] : !mo.tensor<[?], ui32>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[?], ui32>
   mo.output %0 : !mo.tensor<[?], ui32>
 }
 

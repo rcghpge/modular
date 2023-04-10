@@ -864,12 +864,6 @@ LogicalResult BatchMatmulOp::verify() {
 OpFoldResult RangeOp::fold(FoldAdaptor adaptor) {
   // TODO(#10811): support other types and do this using a MOJO kernel?
 
-  TensorType outTy = getType();
-  // Don't fold if there are `?` in the output shape; in such cases,
-  // parameterization should run first.
-  if (outTy.hasUnknownShape())
-    return {};
-
   auto startAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getStart());
   auto limitAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getLimit());
   auto stepAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getStep());
@@ -893,6 +887,7 @@ OpFoldResult RangeOp::fold(FoldAdaptor adaptor) {
   auto attrTy =
       RankedTensorType::get({numResElements}, startAttr.getElementType());
   auto foldedAttr = IntArrayElementsAttr::get(attrTy, res);
+  TensorType outTy = getType();
   if (outTy.hasStaticShape())
     return foldedAttr;
 
