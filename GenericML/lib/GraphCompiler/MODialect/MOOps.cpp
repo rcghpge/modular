@@ -742,6 +742,44 @@ LogicalResult SelectOp::verify() {
 // WhereOp
 //===----------------------------------------------------------------------===//
 
+OpFoldResult WhereOp::fold(FoldAdaptor adaptor) {
+  TensorType inTy = getInput().getType();
+  TensorType outTy = getType();
+
+  // TODO(#10811): support other types and do this using a MOJO kernel?
+  auto floatInputAttr =
+      dyn_cast_or_null<FloatArrayElementsAttr>(adaptor.getInput());
+  bool inputIsF32Vector =
+      inTy.hasRank() && inTy.getRank() == 1 && inTy.getElementType().isF32();
+  if (floatInputAttr && inputIsF32Vector) {
+    SmallVector<APInt> res;
+    for (auto [idx, val] : llvm::enumerate(getFloatBlob(floatInputAttr)))
+      if (val != 0)
+        res.push_back(APInt(64, idx, /*isSigned=*/false));
+
+    SmallVector<int64_t> outShape{static_cast<int64_t>(res.size()), 1};
+    auto rankedOutTy = RankedTensorType::get(outShape, outTy.getElementType());
+    auto foldedAttr = IntArrayElementsAttr::get(rankedOutTy, res);
+
+    if (outTy.hasStaticShape()) {
+      assert(outTy.getIntDims() == outShape &&
+          "Annotated output type doesn't match folded output type");
+      return foldedAttr;
+    }
+
+    // TODO refactor with `RangeOp::fold`
+    Location loc = getLoc();
+    OpBuilder builder(*this); // insert before this op
+    auto resTy = TensorType::get(outShape, outTy.getElementType());
+    auto constantOp = builder.create<ConstantOp>(loc, resTy, foldedAttr);
+    auto rebindOp =
+        builder.create<RebindOp>(loc, outTy, constantOp, getOutputParamDecls());
+    setOutputParamDecls({});
+    return rebindOp.getResult();
+  }
+  return {};
+}
+
 LogicalResult WhereOp::verify() {
   TensorType resTy = getResult().getType();
   TensorType inputTy = getInput().getType();

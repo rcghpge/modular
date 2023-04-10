@@ -1533,6 +1533,7 @@ def MO_WhereOp : MO_TensorOp<"where", [
     functional-type(operands, results)
   }];
   let hasVerifier = 1;
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//

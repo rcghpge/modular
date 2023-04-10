@@ -465,3 +465,24 @@ mo.graph @where_dynamic_rank(%arg: !mo.tensor<?, f32>) -> !mo.tensor<[?, ?], si6
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[?, ?], si64>
   mo.output %res : !mo.tensor<[?, ?], si64>
 }
+
+// CHECK: mo.graph @where_1d_fold() -> !mo.tensor<[?, 1], si64>
+mo.graph @where_1d_fold() -> !mo.tensor<[?, 1], si64> {
+  %input = mo.constant {value = #M.dense_array<1.0, 0.0, 1.0> : tensor<3xf32>} : !mo.tensor<[3], f32>
+  // CHECK-NEXT: %[[RES:.*]] = mo.constant {value = #M.dense_array<0, 2> : tensor<2x1xsi64>} : !mo.tensor<[2, 1], si64>
+  // CHECK-NEXT: %[[REB:.*]] = mo.rebind(%[[RES]]) : !mo.tensor<[2, 1], si64> -> !mo.tensor<[?, 1], si64>
+  %res = mo.where(%input) : (!mo.tensor<[3], f32>) -> !mo.tensor<[?, 1], si64>
+  // CHECK-NEXT: mo.output %[[REB]] : !mo.tensor<[?, 1], si64>
+  mo.output %res : !mo.tensor<[?, 1], si64>
+}
+
+// CHECK: mo.graph @where_1d_parameterized_fold<() -> [[D0:.*]]>() -> !mo.tensor<[[[D0]], 1], si64>
+mo.graph @where_1d_parameterized_fold<() -> D0>() -> !mo.tensor<[D0, 1], si64> {
+  %input = mo.constant {value = #M.dense_array<1.0, 0.0, 1.0> : tensor<3xf32>} : !mo.tensor<[3], f32>
+  // CHECK-NEXT: %[[RES:.*]] = mo.constant {value = #M.dense_array<0, 2> : tensor<2x1xsi64>} : !mo.tensor<[2, 1], si64>
+  // CHECK-NEXT: kgen.param.declare [[D1:.*]] = <2>
+  // CHECK-NEXT: %[[REB:.*]] = mo.rebind(%[[RES]]) : !mo.tensor<[2, 1], si64> -> !mo.tensor<[D1, 1], si64>
+  %res = mo.where<() -> D1>(%input) : (!mo.tensor<[3], f32>) -> !mo.tensor<[D1, 1], si64>
+  // CHECK-NEXT: mo.output<[[D1]]> %[[REB]] : !mo.tensor<[[[D1]], 1], si64>
+  mo.output<D1> %res : !mo.tensor<[D1, 1], si64>
+}
