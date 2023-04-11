@@ -23,8 +23,21 @@ if(Sphinx_FOUND)
   # case it is not built yet.
   add_dependencies(docs-inference_engine_python-html modular-pybind-ext)
 
+  add_custom_target(
+    inference_engine_python_docs_postprocessing_cleanup
+    DEPENDS docs-inference_engine_python-html
+    COMMAND ${CMAKE_COMMAND} -E rm -rf _static _sources
+    COMMAND ${CMAKE_COMMAND} -E rm -f objects.inv searchindex.js
+    COMMAND ${CMAKE_COMMAND} -E rm -f genindex.html search.html py-modindex.html index.html
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/postprocess.py -d ${CMAKE_CURRENT_BINARY_DIR}
+
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/html
+    COMMENT "Remove unwanted directories and files from the sphinx-build."
+    VERBATIM
+  )
+
   if(TARGET inference_engine_docs)
-    add_dependencies(inference_engine_docs docs-inference_engine_python-html)
+    add_dependencies(inference_engine_docs inference_engine_python_docs_postprocessing_cleanup)
   endif()
 else()
   message("Skipping doc generation for Inference Engine Python APIs
