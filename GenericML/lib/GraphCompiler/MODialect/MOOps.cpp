@@ -8,15 +8,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/Broadcast.h"
+#include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/Compiler/VerifyUtils.h"
 #include "Support/MDialect/MAttrs.h"
 #include "Support/ML/RangeUtils.h"
 #include "Support/STLExtras.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/IR/FunctionImplementation.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
@@ -35,7 +34,7 @@ using namespace MO;
 
 /// If `val` is defined by a ConstantOp or a RebindOp that takes in a
 /// ConstantOp with given rank, return the ConstantOp, else return null.
-static ConstantOp tryGetConstantOpOfRank(TensorValue val, size_t rank) {
+ConstantOp M::MO::tryGetConstantOpOfRank(TensorValue val, size_t rank) {
   Operation *inputOp = val.getDefiningOp();
   if (auto rebindOp = dyn_cast_or_null<RebindOp>(inputOp))
     inputOp = rebindOp.getInput().getDefiningOp();
@@ -49,14 +48,6 @@ static ConstantOp tryGetConstantOpOfRank(TensorValue val, size_t rank) {
     return {};
 
   return constantOp;
-}
-
-/// Convert the data held by `attr` into a vector of int64_t.
-template <typename T>
-static SmallVector<int64_t>
-denseResourceAttrToIntVec(DenseResourceElementsAttr attr) {
-  ArrayRef<T> data = attr.getRawHandle().getBlob()->getDataAs<T>();
-  return SmallVector<int64_t>(data.begin(), data.end());
 }
 
 /// Return the contents of the IntArrayElementsAttr as a vector in int64_t.
@@ -73,46 +64,15 @@ static SmallVector<float> getFloatBlob(FloatArrayElementsAttr floatElemsAttr) {
       [](const llvm::APFloat &dim) { return dim.convertToFloat(); });
 }
 
-/// If `attr` represents a blob of constant integers, return them in a vector,
-/// else return None.
-static std::optional<SmallVector<int64_t>>
-tryGetConstantIntBlob(mlir::ElementsAttr attr, DType dType) {
-  if (auto intElemsAttr = dyn_cast<IntArrayElementsAttr>(attr))
-    return getIntBlob(intElemsAttr);
-
-  if (auto axisValueAttr = dyn_cast<DenseResourceElementsAttr>(attr)) {
-    return dType.dispatch<std::optional<SmallVector<int64_t>>>()
-        .when<M::DType::si32>(
-            [&]() { return denseResourceAttrToIntVec<int32_t>(axisValueAttr); })
-        .when<M::DType::si64>(
-            [&]() { return denseResourceAttrToIntVec<int64_t>(axisValueAttr); })
-        .otherwise([&]() { return std::nullopt; });
-  }
-
-  return std::nullopt;
-}
-
-/// If `val` is defined by a ConstantOp or a RebindOp that takes in a
-/// ConstantOp with given rank, convert it to an integer vector, else return
-/// None.
-static std::optional<SmallVector<int64_t>>
-tryGetConstantIntOfRank(TensorValue val, size_t rank) {
-  if (ConstantOp constantOp = tryGetConstantOpOfRank(val, rank)) {
-    return tryGetConstantIntBlob(constantOp.getValueAttr(),
-                                 constantOp.getType().getDtype());
-  }
-  return std::nullopt;
-}
-
 std::optional<int64_t> M::MO::tryGetConstantInt(TensorValue val) {
-  if (auto maybeIntBlob = tryGetConstantIntOfRank(val, 0))
+  if (auto maybeIntBlob = tryGetConstantOfRank<int64_t>(val, 0))
     return maybeIntBlob.value().front();
   return std::nullopt;
 }
 
 std::optional<SmallVector<int64_t>>
 M::MO::tryGetConstantIntVector(TensorValue val) {
-  return tryGetConstantIntOfRank(val, 1);
+  return tryGetConstantOfRank<int64_t>(val, 1);
 }
 
 //===----------------------------------------------------------------------===//
@@ -346,8 +306,8 @@ OpFoldResult AddOp::fold(FoldAdaptor adaptor) {
 
   TensorType resTy = getType();
   DType resDType = resTy.getDtype();
-  auto maybeX = tryGetConstantIntBlob(xAttr, resDType);
-  auto maybeY = tryGetConstantIntBlob(yAttr, resDType);
+  auto maybeX = tryGetConstantBlob<int64_t>(xAttr, resDType);
+  auto maybeY = tryGetConstantBlob<int64_t>(yAttr, resDType);
   if (!maybeX.has_value() || !maybeY.has_value())
     return {};
 
@@ -620,8 +580,8 @@ OpFoldResult GreaterEqualOp::fold(FoldAdaptor adaptor) {
 
   TensorType resTy = getType();
   DType resDType = resTy.getDtype();
-  auto maybeX = tryGetConstantIntBlob(xAttr, resDType);
-  auto maybeY = tryGetConstantIntBlob(yAttr, resDType);
+  auto maybeX = tryGetConstantBlob<int64_t>(xAttr, resDType);
+  auto maybeY = tryGetConstantBlob<int64_t>(yAttr, resDType);
   if (!maybeX.has_value() || !maybeY.has_value())
     return {};
 
@@ -678,9 +638,9 @@ OpFoldResult SelectOp::fold(FoldAdaptor adaptor) {
   TensorType resTy = getType();
   DType condDType = getCond().getType().getDtype();
   DType resDType = resTy.getDtype();
-  auto maybeCond = tryGetConstantIntBlob(condAttr, condDType);
-  auto maybeX = tryGetConstantIntBlob(xAttr, resDType);
-  auto maybeY = tryGetConstantIntBlob(yAttr, resDType);
+  auto maybeCond = tryGetConstantBlob<int64_t>(condAttr, condDType);
+  auto maybeX = tryGetConstantBlob<int64_t>(xAttr, resDType);
+  auto maybeY = tryGetConstantBlob<int64_t>(yAttr, resDType);
   if (!maybeX.has_value() || !maybeY.has_value())
     return {};
 
@@ -1142,7 +1102,7 @@ OpFoldResult ReduceMulOp::fold(FoldAdaptor adaptor) {
     return {};
 
   TensorType resTy = getType();
-  auto maybeInput = tryGetConstantIntBlob(inputArr, resTy.getDtype());
+  auto maybeInput = tryGetConstantBlob<int64_t>(inputArr, resTy.getDtype());
   if (!maybeInput.has_value())
     return {};
 
