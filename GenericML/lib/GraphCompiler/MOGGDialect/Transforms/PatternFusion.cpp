@@ -275,6 +275,72 @@ struct LiftTransposesPattern : public RewritePattern {
     return mlir::success();
   }
 };
+
+// TODO: Put this in a MO Transform Pass?
+// Need to move pattern matching to a more generic place
+struct ConvertBatchMatmulToMatmulPattern : public RewritePattern {
+  ConvertBatchMatmulToMatmulPattern(MLIRContext *ctx)
+      : RewritePattern(MatchAnyOpTypeTag{}, 4, ctx) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    Value input, weight;
+    Operation *broadcast;
+    if (!m_Op<MO::BatchMatmulOp>(m_Any(&input),
+                                 m_Op<MO::Static::BroadcastToOp>(
+                                     &broadcast, m_MOMatrix(m_Any(&weight))))
+             .match(op))
+      return rewriter.notifyMatchFailure(op, "failed to match pattern");
+
+    if (!input || !weight)
+      return rewriter.notifyMatchFailure(op, "null input value");
+
+    auto inputTy = cast<MO::TensorType>(input.getType());
+    auto weightTy = cast<MO::TensorType>(weight.getType());
+    auto broadcastTy = cast<MO::TensorType>(broadcast->getResult(0).getType());
+    auto bmmTy = cast<MO::TensorType>(op->getResult(0).getType());
+
+    if (inputTy.hasUnknownShape() || weightTy.hasUnknownShape() ||
+        bmmTy.hasUnknownShape() || !bmmTy.hasRank()) {
+      return rewriter.notifyMatchFailure(
+          op, "ops aren't parameterized, can't rewrite");
+    }
+
+    ArrayRef<TypedAttr> outDims =
+        broadcastTy.getDims().drop_front(broadcastTy.getRank() - 2);
+    ArrayRef<TypedAttr> inDims = weightTy.getDims();
+
+    if (!inDims.equals(outDims)) {
+      return rewriter.notifyMatchFailure(op, "Broadcast not on batch axis");
+    }
+
+    ArrayRef<TypedAttr> oldShape = inputTy.getDims();
+    ArrayRef<TypedAttr> kVec = oldShape.take_back();
+    TypedAttr batch =
+        KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, oldShape.drop_back(1));
+    SmallVector<TypedAttr> newShape{batch, kVec[0]};
+
+    auto shapeTy = rewriter.getType<MO::ShapeType>();
+    MO::TensorType reshapeTy =
+        inputTy.cloneWith(MO::ShapeAttr::get(newShape, shapeTy));
+    Value reshape =
+        rewriter.create<MO::Static::ReshapeOp>(op->getLoc(), reshapeTy, input)
+            .getResult();
+
+    ArrayRef<TypedAttr> weightShape = weightTy.getDims();
+    MO::TensorType matmulTy = inputTy.cloneWith(
+        MO::ShapeAttr::get({newShape[0], weightShape[1]}, shapeTy));
+
+    Value matmul =
+        rewriter.create<MO::MatmulOp>(op->getLoc(), matmulTy, reshape, weight)
+            .getResult();
+
+    rewriter.replaceOpWithNewOp<MO::Static::ReshapeOp>(op, bmmTy, matmul);
+
+    return mlir::success();
+  }
+};
+
 // TODO: Move this to an algebraic simplification pass after refactoring
 // patterns out of MOGG
 struct Pow2Pattern : public RewritePattern {
@@ -311,7 +377,9 @@ void PatternFusionPass::runOnOperation() {
 
   RewritePatternSet patterns{ctx};
   patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
-               LiftTransposesPattern, Pow2Pattern>(ctx);
+               LiftTransposesPattern, Pow2Pattern,
+               ConvertBatchMatmulToMatmulPattern>(ctx);
+
   if (useMatmulPacking.getValue())
     patterns.add<MatmulConstBPattern>(ctx);
   if (useFullyConnected.getValue())
