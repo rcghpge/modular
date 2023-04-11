@@ -4,6 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
 #include "mlir/IR/BuiltinOps.h"
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
@@ -233,6 +234,48 @@ struct FullyConnectedPattern : public RewritePattern {
   }
 };
 
+struct LiftTransposesPattern : public RewritePattern {
+  LiftTransposesPattern(MLIRContext *ctx)
+      : RewritePattern(MatchAnyOpTypeTag{}, 2, ctx) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    // input perm1            input  perm1
+    //   \    /                 \      /
+    //  transpose1             transpose1   perm2
+    //     |            ===>        \        /
+    //   unary  perm2               transpose2 (updated)
+    //      \    /                       |
+    //    transpose2 (op)              unary (updated)
+    Value input, perm1, perm2;
+    Operation *unaryOp;
+    auto transpose1P = m_Op<MO::TransposeOp>(m_Any(&input), m_Any(&perm1));
+    auto transpose2P = m_Op<MO::TransposeOp>(
+        m_Op<MO::ElementWiseUnary>(&unaryOp, transpose1P), m_Any(&perm2));
+    if (!transpose2P.match(op))
+      return rewriter.notifyMatchFailure(op, "failed to match pattern");
+
+    if (!input || !perm1 || !perm2)
+      return rewriter.notifyMatchFailure(op, "null input or permutation value");
+
+    // If unary op has multiple uses, we don't lift the transposes because it
+    // may create extra computation.
+    // TODO add [get|set]Input method to `ElementWiseUnary` interface
+    Value unary = unaryOp->getResult(0);
+    if (!unary.hasOneUse())
+      return rewriter.notifyMatchFailure(op, "unary op has multiple uses");
+
+    auto transpose2Op = cast<MO::TransposeOp>(op);
+    transpose2Op.replaceAllUsesWith(unary);
+    transpose2Op.getInputMutable().assign(unaryOp->getOperand(0));
+    unaryOp->setOperand(0, transpose2Op.getResult());
+    unary.setType(transpose2Op.getType());
+    unaryOp->moveAfter(transpose2Op);
+
+    return mlir::success();
+  }
+};
+
 struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
   using PatternFusionBase::PatternFusionBase;
 
@@ -245,8 +288,8 @@ void PatternFusionPass::runOnOperation() {
   auto *ctx = &getContext();
 
   RewritePatternSet patterns{ctx};
-  patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern>(
-      ctx);
+  patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
+               LiftTransposesPattern>(ctx);
   if (useMatmulPacking.getValue())
     patterns.add<MatmulConstBPattern>(ctx);
   if (useFullyConnected.getValue())
