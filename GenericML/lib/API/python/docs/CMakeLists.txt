@@ -29,6 +29,7 @@ if(Sphinx_FOUND)
     COMMAND ${CMAKE_COMMAND} -E rm -rf _static _sources
     COMMAND ${CMAKE_COMMAND} -E rm -f objects.inv searchindex.js
     COMMAND ${CMAKE_COMMAND} -E rm -f genindex.html search.html py-modindex.html index.html
+    COMMAND ${CMAKE_COMMAND} -E rm -f genindex.md search.md py-modindex.md index.md
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/postprocess.py -d ${CMAKE_CURRENT_BINARY_DIR}
 
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/html
