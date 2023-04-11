@@ -203,11 +203,13 @@ public:
                      "Do not display any result details")),
       cl::init(Kernels::ResultOutputStyle::kCompact)};
 
-  /// If set, print the execution time of every non-warmup run.
-  cl::opt<bool> printTiming{"print-timing",
-                            cl::desc("If set, print the execution time, in "
-                                     "nanoseconds, of every non-warmup run."),
-                            cl::init(false)};
+  /// If set, save the execution time of every non-warmup run to given file.
+  cl::opt<std::string> saveTimings{
+      "save-timings",
+      cl::desc("Optional filename to capture the execution latency (in "
+               "nanonseconds) per run. Use '-' to output to stdout. Does "
+               "not include warmup runs. Ignored in --benchmark mode."),
+      cl::init("")};
 };
 
 /// This command enum specifies what action we're supposed to take, which is

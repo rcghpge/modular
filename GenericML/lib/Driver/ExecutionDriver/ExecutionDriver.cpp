@@ -312,6 +312,16 @@ static ErrorOrSuccess executeModel(const Model *model, Runtime &runtime,
     (void)unit;
   }
 
+  std::unique_ptr<llvm::raw_fd_ostream> optTimingOs;
+  if (!options.saveTimings.empty()) {
+    std::error_code errorCode;
+    optTimingOs =
+        std::make_unique<llvm::raw_fd_ostream>(options.saveTimings, errorCode);
+    if (errorCode)
+      return Error(
+          Twine("failed to open timings file: " + errorCode.message()));
+  }
+
   if (numRuns > 0) {
     llvm::outs() << "--- Running '" << model->getName().str() << "'";
     if (numRuns > 1)
@@ -324,6 +334,9 @@ static ErrorOrSuccess executeModel(const Model *model, Runtime &runtime,
   for (unsigned i = 0; i < numRuns; ++i) {
     TIME_PROFILER_SCOPE(Trace::kOther, 1, "runModelOnce");
     auto args = buildArgs(runtime, inputTensorGenerators);
+
+    if (i > 0 && i % 100 == 0)
+      llvm::outs() << "--- Run " << i << "...\n";
 
     // Execute the model synchronously.
     auto startTime = std::chrono::high_resolution_clock::now();
@@ -355,9 +368,12 @@ static ErrorOrSuccess executeModel(const Model *model, Runtime &runtime,
     // If requested, print the model execution time in nanoseconds with no
     // adornment for the convenience of scripts. Note that failed executions
     // will have no time reported.
-    if (options.printTiming)
-      llvm::outs() << std::chrono::nanoseconds(endTime - startTime).count()
-                   << "\n";
+    if (optTimingOs) {
+      *optTimingOs << (endTime - startTime).count() << "\n";
+      // Let's just flush on every output so you can interrupt the process
+      // and still have usable data.
+      optTimingOs->flush();
+    }
 
     llvm::outs().flush();
   }
