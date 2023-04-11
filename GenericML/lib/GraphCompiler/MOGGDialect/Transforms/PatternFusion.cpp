@@ -37,8 +37,8 @@ struct GatherSumPattern : public RewritePattern {
     if (!m_Op<MO::ReduceAddOp>(
              m_Op<MO::GatherOp>(m_MOMatrix(m_Any(&input)),
                                 m_MOMatrix(m_Any(&indices)),
-                                m_ScalarConstantInt(&gatherAxis, 0)),
-             m_ScalarConstantInt(&reduceAxis, 1))
+                                m_ScalarConstant(&gatherAxis, 0)),
+             m_ScalarConstant(&reduceAxis, 1))
              .match(op))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 

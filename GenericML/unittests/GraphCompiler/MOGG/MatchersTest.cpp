@@ -77,14 +77,21 @@ TEST_F(MatchersTest, Constants) {
   MO::TensorValue i = getIntConst({1});
   MO::TensorValue j = getFloatConst({1});
   Value c;
-  auto match = m_ScalarConstantInt(1);
-  auto capture = m_ScalarConstantInt(&c, 1);
+
+  auto match = m_ScalarConstant(1);
+  auto floatMatch = m_ScalarConstant(0.0);
+  auto intZero = m_ScalarConstant(0);
+  auto capture = m_ScalarConstant(&c, 1);
 
   ASSERT_FALSE(match.match(y));
   ASSERT_FALSE(match.match(i));
   ASSERT_FALSE(match.match(j));
   ASSERT_TRUE(match.match(x));
   ASSERT_TRUE(match.match(x32));
+  ASSERT_FALSE(floatMatch.match(x));
+  ASSERT_TRUE(floatMatch.match(y));
+  ASSERT_FALSE(intZero.match(x));
+  ASSERT_TRUE(intZero.match(y));
 
   ASSERT_FALSE(capture.match(y));
   ASSERT_FALSE(capture.match(i));

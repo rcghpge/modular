@@ -90,16 +90,30 @@ private:
 template <typename U, typename Matcher>
 StringAttrMatcher(U, Matcher) -> StringAttrMatcher<U, Matcher>;
 
-// TODO(1044): Refactor to support more types of constants and
-// make this more composable.
-struct MOScalarConstantIntMatcher {
-  MOScalarConstantIntMatcher(int64_t targetValue) : targetValue(targetValue) {}
+template <typename T>
+struct MOScalarConstantMatcher {
+  MOScalarConstantMatcher(T targetValue) : targetValue(targetValue) {}
 
-  bool match(Value val);
+  bool match(Value val) {
+    auto tensorVal = dyn_cast<M::MO::TensorValue>(val);
+    if (!tensorVal)
+      return false;
+
+    std::optional<SmallVector<T>> maybeInt =
+        M::MO::tryGetConstantOfRank<T>(tensorVal, 0);
+    if (maybeInt.has_value())
+      return maybeInt.value().front() == targetValue;
+
+    return false;
+  }
 
 private:
-  int64_t targetValue;
+  T targetValue;
 };
+
+// CTAD Declaration to make the compiler happy
+template <typename T>
+MOScalarConstantMatcher(T) -> MOScalarConstantMatcher<T>;
 
 template <typename Matcher>
 struct MORankedValueMatcher {
@@ -204,10 +218,15 @@ auto m_Ranked(int64_t targetRank, Matcher matcher) {
   return detail::MORankedValueMatcher<Matcher>(targetRank, matcher);
 }
 
-detail::Capture<Value, detail::MOScalarConstantIntMatcher>
-m_ScalarConstantInt(Value *val, int64_t targetValue);
+template <typename T>
+auto m_ScalarConstant(T target_value) {
+  return detail::MOScalarConstantMatcher<T>(target_value);
+}
 
-detail::MOScalarConstantIntMatcher m_ScalarConstantInt(int64_t targetValue);
+template <typename T>
+auto m_ScalarConstant(mlir::Value *val, T target_value) {
+  return detail::Capture(val, m_ScalarConstant(target_value));
+}
 
 template <typename T, typename Matcher>
 auto m_Typed(Matcher matcher) {
