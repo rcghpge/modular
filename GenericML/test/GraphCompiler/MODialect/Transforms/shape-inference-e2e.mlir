@@ -257,17 +257,14 @@ mo.graph @transpose_static_rank(
   %input1: !mo.tensor<[?, ?], f32>
 // CHECK-SAME: ) -> (!mo.tensor<[[[D8]], [[D9]]], f32>, !mo.tensor<[[[D11]], [[D10]]], f32>) {
 ) -> (!mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], f32>) {
-  // CHECK-DAG: %[[PERM0:.*]] = mo.constant {value = #M.dense_array<0, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  // CHECK-DAG: %[[PERM1:.*]] = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK-NEXT: %[[PERM1:.*]] = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %perm0 = mo.constant {value = #M.dense_array<0, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %perm1 = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  // CHECK-NEXT: %[[OUT2:.*]] = mo.transpose(%[[ARG0]], %[[PERM0]])
-  // CHECK-SAME: : (!mo.tensor<[[[D8]], [[D9]]], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[[[D8]], [[D9]]], f32>
   %output0 = mo.transpose(%input0, %perm0) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
-  // CHECK-NEXT: %[[OUT3:.*]] = mo.transpose(%[[ARG1]], %[[PERM1]])
+  // CHECK-NEXT: %[[OUT1:.*]] = mo.transpose(%[[ARG1]], %[[PERM1]])
   // CHECK-SAME: : (!mo.tensor<[[[D10]], [[D11]]], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[[[D11]], [[D10]]], f32>
   %output1 = mo.transpose(%input1, %perm1) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
-  // CHECK-NEXT: mo.output %[[OUT2]], %[[OUT3]] : !mo.tensor<[[[D8]], [[D9]]], f32>, !mo.tensor<[[[D11]], [[D10]]], f32>
+  // CHECK-NEXT: mo.output %[[ARG0]], %[[OUT1]] : !mo.tensor<[[[D8]], [[D9]]], f32>, !mo.tensor<[[[D11]], [[D10]]], f32>
   mo.output %output0, %output1 : !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], f32>
 // CHECK-NEXT: }
 }

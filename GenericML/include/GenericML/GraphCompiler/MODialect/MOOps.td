@@ -1414,6 +1414,7 @@ def MO_TransposeOp : MO_TensorOp<"transpose", [
     `:` functional-type(operands, results)
   }];
 
+  let hasCanonicalizeMethod = 1;
   let hasVerifier = 1;
 }
 

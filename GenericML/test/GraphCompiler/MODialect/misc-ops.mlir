@@ -427,6 +427,44 @@ mo.graph @transpose(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[3, 2], f32> 
   mo.output %res : !mo.tensor<[3, 2], f32>
 }
 
+// CHECK: mo.graph @transpose_identity_fold_no_decl(%[[INPUT:.*]]: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, ?], f32> {
+mo.graph @transpose_identity_fold_no_decl(%input: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, ?], f32> {
+  %perm = mo.constant {value = #M.dense_array<0, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %res = mo.transpose(%input, %perm) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
+  // CHECK-NEXT: mo.output %[[INPUT]] : !mo.tensor<[?, ?], f32>
+  mo.output %res : !mo.tensor<[?, ?], f32>
+}
+
+// CHECK: mo.graph @transpose_identity_fold_with_decl<[[D0:.*]] -> [[D1:.*]], [[D2:.*]]>(
+mo.graph @transpose_identity_fold_with_decl<D0 -> D1, D2>(
+  // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]], 42], f32>
+  %input: !mo.tensor<[D0, 42], f32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D1]], [[D2]]], f32> {
+) -> !mo.tensor<[D1, D2], f32> {
+  %perm = mo.constant {value = #M.dense_array<0, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK-DAG: kgen.param.declare [[D3:.*]] = <[[D0]]>
+  // CHECK-DAG: kgen.param.declare [[D4:.*]] = <42>
+  // CHECK-DAG: %[[RES:.*]] = mo.rebind(%[[INPUT]]) : !mo.tensor<[[[D0]], 42], f32> -> !mo.tensor<[[[D3]], [[D4]]], f32>
+  %res = mo.transpose<() -> D3, D4>(%input, %perm) : (!mo.tensor<[D0, 42], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[D3, D4], f32>
+  // CHECK-NEXT: mo.output<[[D3]], [[D4]]> %[[RES]] : !mo.tensor<[[[D3]], [[D4]]], f32>
+  mo.output<D3, D4> %res : !mo.tensor<[D3, D4], f32>
+}
+
+// CHECK: mo.graph @transpose_non_const_perm_no_fold(
+mo.graph @transpose_non_const_perm_no_fold(
+  // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[2, 2], f32>,
+  %input: !mo.tensor<[2, 2], f32>,
+  // CHECK-SAME: %[[PERM:.*]]: !mo.tensor<[2], si64>
+  %perm: !mo.tensor<[2], si64>
+// CHECK-SAME: ) -> !mo.tensor<[2, 2], f32> {
+) -> !mo.tensor<[2, 2], f32> {
+  // CHECK-NEXT: %[[RES:.*]] = mo.transpose(%[[INPUT]], %[[PERM]])
+  // CHECK-SAME: : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
+  %res = mo.transpose(%input, %perm) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[2, 2], f32>
+  mo.output %res : !mo.tensor<[2, 2], f32>
+}
+
 //===----------------------------------------------------------------------===//
 // WhereOp
 //===----------------------------------------------------------------------===//

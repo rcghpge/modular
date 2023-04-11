@@ -766,7 +766,7 @@ OpFoldResult WhereOp::fold(FoldAdaptor adaptor) {
 
     if (outTy.hasStaticShape()) {
       assert(outTy.getIntDims() == outShape &&
-          "Annotated output type doesn't match folded output type");
+             "Annotated output type doesn't match folded output type");
       return foldedAttr;
     }
 
@@ -1379,6 +1379,27 @@ LogicalResult SliceOp::verify() {
 //===----------------------------------------------------------------------===//
 // MO_TransposeOp
 //===----------------------------------------------------------------------===//
+
+LogicalResult TransposeOp::canonicalize(TransposeOp op,
+                                        PatternRewriter &rewriter) {
+  auto maybePermVec = tryGetConstantIntVector(op.getPerm());
+  if (!maybePermVec.has_value())
+    return failure();
+
+  if (!op.getType().hasRank())
+    return failure();
+
+  size_t opRank = op.getType().getRank();
+  ArrayRef<int64_t> permVec(maybePermVec.value());
+  auto identityPerm = llvm::iota_range<int64_t>(0, opRank, /*Inclusive=*/false);
+  if (llvm::equal(permVec, identityPerm)) {
+    rewriter.replaceOpWithNewOp<RebindOp>(op, op.getType(), op.getInput(),
+                                          op.getOutputParamDecls());
+    return success();
+  }
+
+  return failure();
+}
 
 LogicalResult TransposeOp::verify() {
   // The permutation has known shape iff the argument and result are statically
