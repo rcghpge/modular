@@ -61,3 +61,46 @@ mgp.model @matmul_packb : tf init {
   %out_tensor = mgp.cpu.tensor.create %ch2, %out_buf, %out_spec  : !mgp.cpu.tensor<?x2xf32>
   mef.output %ch0, %out_tensor : !mef.chain, !mgp.cpu.tensor<?x2xf32>
 }
+
+//
+// @non_pure_op
+//
+
+// CHECK-LABEL: mgp.model @non_pure_op : tf init {
+// CHECK-NEXT:  %[[CH0:.*]] = grt.chain.create
+// CHECK-NEXT:  %[[CTX:.*]] = mgp.context.create 1
+// CHECK-NEXT:  %[[CH1:.*]] = "mop.create_jit_context"(%[[CH0]], %[[CTX]]) {slot = 0 : ui32} : (!mef.chain, !mgp.context) -> !mef.chain
+// Dummy chain
+// CHECK-NEXT:  %{{.*}} = grt.chain.create
+// Trivial chain merge to preserve control dependencies
+// CHECK-NEXT:  %[[BUF_ACTION_CH:.*]] = grt.chain.merge
+// Trivial chain merge to preserve control dependencies
+// CHECK-NEXT:  %[[OUT_CH:.*]] = grt.chain.merge %[[CH1]]
+// CHECK-NEXT:  mef.output %[[OUT_CH]], %[[CTX]] : !mef.chain, !mgp.context
+//
+// CHECK-NEXT:} execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context) -> (!mef.chain, !mgp.cpu.tensor<?x?xf32>) {
+// No op got lifted/recomputed because they have side effects.
+// CHECK-NEXT:  %[[CONST_BUF:.*]] = mgp.cpu.buffer.constant #M.aligned_bytes<"0x0000803F0000803F0000803F0000803F", align 16>
+// CHECK-NEXT:  %[[CONST_SPEC:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<2x2xf32>
+// CHECK-NEXT:  %[[OUT_SPEC:.*]] = "foo.side_effect_op"(%[[CONST_SPEC]]) : (!mgp.cpu.tensor_spec<2x2xf32>) -> !mgp.cpu.tensor_spec<?x?xf32>
+// CHECK-NEXT:  %[[OUT_BUF:.*]] = mgp.cpu.buffer.alloc.spec %[[CH0]], %[[OUT_SPEC]], align 16 : !mgp.cpu.tensor_spec<?x?xf32>
+// CHECK-NEXT:  %[[PACK_CH:.*]] = "bar.side_effect_op"(%[[CH0]], %[[CONST_BUF]], %[[CONST_SPEC]], %[[OUT_BUF]], %[[OUT_SPEC]]) : (!mef.chain, !mgp.cpu.buffer<16>, !mgp.cpu.tensor_spec<2x2xf32>, !mgp.cpu.buffer, !mgp.cpu.tensor_spec<?x?xf32>) -> !mef.chain
+// CHECK-NEXT:  %[[OUT_TENSOR:.*]] = mgp.cpu.tensor.create %[[PACK_CH]], %[[OUT_BUF]], %[[OUT_SPEC]]  : !mgp.cpu.tensor<?x?xf32>
+// CHECK-NEXT:  mef.output %[[CH0]], %[[OUT_TENSOR]] : !mef.chain, !mgp.cpu.tensor<?x?xf32>
+// CHECK-NEXT:}
+
+mgp.model @non_pure_op : tf init {
+  %ch0 = grt.chain.create
+  %ctx = mgp.context.create 1
+  %ch1 = "mop.create_jit_context"(%ch0, %ctx) {slot = 0 : ui32} : (!mef.chain, !mgp.context) -> !mef.chain
+  mef.output %ch1, %ctx : !mef.chain, !mgp.context
+
+} execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.cpu.tensor<?x?xf32>) {
+  %const_buf = mgp.cpu.buffer.constant #M.aligned_bytes<"0x0000803F0000803F0000803F0000803F", align 16>
+  %const_spec = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<2x2xf32>
+  %out_spec = "foo.side_effect_op"(%const_spec) : (!mgp.cpu.tensor_spec<2x2xf32>) -> !mgp.cpu.tensor_spec<?x?xf32>
+  %out_buf = mgp.cpu.buffer.alloc.spec %ch0, %out_spec, align 16 : !mgp.cpu.tensor_spec<?x?xf32>
+  %ch1 = "bar.side_effect_op"(%ch0, %const_buf, %const_spec, %out_buf, %out_spec) : (!mef.chain, !mgp.cpu.buffer<16>, !mgp.cpu.tensor_spec<2x2xf32>, !mgp.cpu.buffer, !mgp.cpu.tensor_spec<?x?xf32>) -> !mef.chain
+  %out_tensor = mgp.cpu.tensor.create %ch1, %out_buf, %out_spec  : !mgp.cpu.tensor<?x?xf32>
+  mef.output %ch0, %out_tensor : !mef.chain, !mgp.cpu.tensor<?x?xf32>
+}
