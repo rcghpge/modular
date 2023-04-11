@@ -450,6 +450,26 @@ mo.graph @transpose_identity_fold_with_decl<D0 -> D1, D2>(
   mo.output<D3, D4> %res : !mo.tensor<[D3, D4], f32>
 }
 
+// CHECK: mo.graph @transpose_consecutive_fold<[[D0:.*]] -> [[D1:.*]], [[D2:.*]], [[D3:.*]]>(
+mo.graph @transpose_consecutive_fold<D0 -> D1, D2, D3>(
+  // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]], 10, 20], f32>
+  %input: !mo.tensor<[D0, 10, 20], f32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D1]], [[D2]], [[D3]]], f32> {
+) -> !mo.tensor<[D1, D2, D3], f32> {
+  // CHECK-NEXT: %[[NEW_PERM:.*]] = mo.constant {value = #M.dense_array<2, 1, 0> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
+  // CHECK-NEXT: %[[PERM1:.*]] = mo.constant {value = #M.dense_array<0, 2, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %perm1 = mo.constant {value = #M.dense_array<0, 2, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %perm2 = mo.constant {value = #M.dense_array<1, 2, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  // CHECK-NEXT: %[[RES1:.*]] = mo.transpose<() -> [[D4:.*]], [[D5:.*]], [[D6:.*]]>(%[[INPUT]], %[[PERM1]])
+  // CHECK-SAME: : (!mo.tensor<[[[D0]], 10, 20], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[[[D4]], [[D5]], [[D6]]], f32>
+  %res1 = mo.transpose<() -> D4, D5, D6>(%input, %perm1) : (!mo.tensor<[D0, 10, 20], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[D4, D5, D6], f32>
+  // CHECK-NEXT: %[[RES2:.*]] = mo.transpose<() -> [[D7:.*]], [[D8:.*]], [[D9:.*]]>(%[[INPUT]], %[[NEW_PERM]])
+  // CHECK-SAME: : (!mo.tensor<[[[D0]], 10, 20], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[[[D7]], [[D8]], [[D9]]], f32>
+  %res2 = mo.transpose<() -> D7, D8, D9>(%res1, %perm2) : (!mo.tensor<[D4, D5, D6], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[D7, D8, D9], f32>
+  // CHECK-NEXT: mo.output<[[D7]], [[D8]], [[D9]]> %[[RES2]] : !mo.tensor<[[[D7]], [[D8]], [[D9]]], f32>
+  mo.output<D7, D8, D9> %res2 : !mo.tensor<[D7, D8, D9], f32>
+}
+
 // CHECK: mo.graph @transpose_non_const_perm_no_fold(
 mo.graph @transpose_non_const_perm_no_fold(
   // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[2, 2], f32>,

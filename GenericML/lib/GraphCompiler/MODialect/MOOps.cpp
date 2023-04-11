@@ -1380,6 +1380,19 @@ LogicalResult SliceOp::verify() {
 // MO_TransposeOp
 //===----------------------------------------------------------------------===//
 
+static SmallVector<int64_t> permute(ArrayRef<int64_t> values,
+                                    ArrayRef<int64_t> perm) {
+  // TODO check `perm` must contain unique elements here?
+  // In general we might need a more principled way of erroring on invalid
+  // inputs during constant folding.
+  assert(values.size() == perm.size() && "values and perm must have same size");
+  SmallVector<int64_t> res;
+  for (int64_t permIdx : perm) {
+    res.push_back(values[permIdx]);
+  }
+  return res;
+}
+
 LogicalResult TransposeOp::canonicalize(TransposeOp op,
                                         PatternRewriter &rewriter) {
   auto maybePermVec = tryGetConstantIntVector(op.getPerm());
@@ -1395,6 +1408,21 @@ LogicalResult TransposeOp::canonicalize(TransposeOp op,
   if (llvm::equal(permVec, identityPerm)) {
     rewriter.replaceOpWithNewOp<RebindOp>(op, op.getType(), op.getInput(),
                                           op.getOutputParamDecls());
+    return success();
+  }
+
+  // Merge consecutive transposes by merging their constant permutations
+  if (auto inputTransposeOp = op.getInput().getDefiningOp<TransposeOp>()) {
+    auto maybeInputPermVec =
+        tryGetConstantIntVector(inputTransposeOp.getPerm());
+    if (!maybeInputPermVec.has_value())
+      return failure();
+    ArrayRef<int64_t> inputPermVec(maybeInputPermVec.value());
+    SmallVector<int64_t> mergedPerm = permute(inputPermVec, permVec);
+    auto mergedPermVal = rewriter.create<ConstantOp>(op.getLoc(), mergedPerm);
+    rewriter.replaceOpWithNewOp<TransposeOp>(
+        op, op.getType(), inputTransposeOp.getInput(), mergedPermVal,
+        op.getOutputParamDecls());
     return success();
   }
 
