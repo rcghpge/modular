@@ -19,11 +19,8 @@
 
 namespace M::GML {
 
-/// If enabled, the time for every alloc and free can be traced.
-using BufferRefAllocFreeProfilerEntry =
-    ProfilerEntry<Trace::EnableTrace(Trace::kMem, 1)>;
-
-/// If enabled, the lifetime of every BufferRef can be traced.
+/// If enabled, the lifetime of every owning BufferRef is tracable.
+/// Name: "mem.buffer.owned"
 using BufferRefLifetimeProfilerEntry =
     ProfilerEntry<Trace::EnableTrace(Trace::kMem, 2)>;
 

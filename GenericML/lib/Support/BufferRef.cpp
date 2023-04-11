@@ -60,18 +60,10 @@ BufferRef BufferRef::createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
   if (size == 0)
     // Canonicalize as zero-sized, null-buffer ptr, kNull BufferRef.
     return {};
-  void *buffer;
-  {
-    auto entry =
-        BufferRefAllocFreeProfilerEntry::create("mem.buffer.alloc", [size]() {
-          return Twine("size:").concat(Twine(size)).concat("B").str();
-        });
-    buffer =
-        runtime->getAllocator()->allocateBytes(size, alignment.value_or(1));
-    std::move(entry).record();
-  }
+  void *buffer =
+      runtime->getAllocator()->allocateBytes(size, alignment.value_or(1));
   if (copyFrom)
-    std::memcpy(buffer, copyFrom, size);
+    LLCL::profiledMemcpy(buffer, copyFrom, size);
   return BufferRef(buffer, size, makeMaybeAlign(alignment), kOwned, kLocal,
                    kMutable, runtime);
 }
@@ -124,15 +116,8 @@ BufferRef::~BufferRef() {
   case kNull:
     break;
   case kOwned: {
-    {
-      auto entry = BufferRefAllocFreeProfilerEntry::create(
-          "mem.buffer.dealloc", [size = size]() {
-            return Twine("size:").concat(Twine(size)).concat("B").str();
-          });
-      nativeOrForeign.runtime->getAllocator()->deallocateBytes(bufferOrObject,
-                                                               size);
-      std::move(entry).record();
-    }
+    nativeOrForeign.runtime->getAllocator()->deallocateBytes(bufferOrObject,
+                                                             size);
     std::move(profilerEntry).record();
     break;
   }

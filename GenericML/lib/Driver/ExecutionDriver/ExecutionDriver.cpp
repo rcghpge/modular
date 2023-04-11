@@ -254,7 +254,8 @@ static ErrorOrSuccess populateTensorResults(
                     llvm::dbgs() << "memcpy " << tensor->getSizeInBytes()
                                  << " bytes from M::Tensor to output buffer\n");
     /// TODO(#5867): Support an API which can avoid copy-on-output.
-    memcpy(outputs[outIdx], tensor->getBuffer(), tensor->getSizeInBytes());
+    LLCL::profiledMemcpy(outputs[outIdx], tensor->getBuffer(),
+                         tensor->getSizeInBytes());
     outIdx++;
   }
   return success();
