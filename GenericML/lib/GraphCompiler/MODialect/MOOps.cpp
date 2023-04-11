@@ -436,6 +436,9 @@ OpFoldResult Static::BroadcastToOp::fold(FoldAdaptor adaptor) {
     SmallVector<int64_t> outIntDims = outTy.getIntDims();
     int64_t outNumElems = std::accumulate(outIntDims.begin(), outIntDims.end(),
                                           1, std::multiplies<int64_t>());
+    if (outNumElems > 10)
+      return {};
+
     SmallVector<APFloat> res(outNumElems, APFloat(inputScalar));
 
     auto rankedResTy =
