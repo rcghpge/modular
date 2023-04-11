@@ -22,6 +22,10 @@ if(Sphinx_FOUND)
   # avoids any surprises in `autodoc` failing to import the Python wheel in the
   # case it is not built yet.
   add_dependencies(docs-inference_engine_python-html modular-pybind-ext)
+
+  if(TARGET inference_engine_docs)
+    add_dependencies(inference_engine_docs docs-inference_engine_python-html)
+  endif()
 else()
   message("Skipping doc generation for Inference Engine Python APIs
            since `sphinx` is not installed.")
