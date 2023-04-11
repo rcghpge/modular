@@ -275,6 +275,28 @@ struct LiftTransposesPattern : public RewritePattern {
     return mlir::success();
   }
 };
+// TODO: Move this to an algebraic simplification pass after refactoring
+// patterns out of MOGG
+struct Pow2Pattern : public RewritePattern {
+  Pow2Pattern(MLIRContext *ctx) : RewritePattern(MatchAnyOpTypeTag{}, 2, ctx) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    Value input;
+
+    if (!m_Op<MO::PowOp>(m_Any(&input),
+                         m_Op<MO::Static::BroadcastToOp>(m_ScalarConstant(2)))
+             .match(op))
+      return rewriter.notifyMatchFailure(op, "failed to match pattern");
+
+    if (!input)
+      return rewriter.notifyMatchFailure(op, "null input value");
+
+    rewriter.replaceOpWithNewOp<MO::MulOp>(op, input, input);
+
+    return mlir::success();
+  }
+};
 
 struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
   using PatternFusionBase::PatternFusionBase;
@@ -289,7 +311,7 @@ void PatternFusionPass::runOnOperation() {
 
   RewritePatternSet patterns{ctx};
   patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
-               LiftTransposesPattern>(ctx);
+               LiftTransposesPattern, Pow2Pattern>(ctx);
   if (useMatmulPacking.getValue())
     patterns.add<MatmulConstBPattern>(ctx);
   if (useFullyConnected.getValue())
