@@ -167,8 +167,8 @@ struct RuntimeContextPhase {
     M_setNumThreads(result.runtimeConfig, clOptions.numThreads);
     StatusPtr status(M_newStatus(), M_freeStatus);
     if (!clOptions.cacheDir.empty()) {
-      M_setCASPath(result.runtimeConfig, clOptions.cacheDir.c_str(),
-                   status.get());
+      M_setArtifactPath(result.runtimeConfig, clOptions.cacheDir.c_str(),
+                        status.get());
       RETURN_IF_ERROR(status);
     }
 
