@@ -56,6 +56,12 @@ LogicalResult ChainMergeOp::canonicalize(ChainMergeOp op,
     }
   }
 
+  // If there isn't any input, this becomes a new chain that's immediately ready
+  if (uniqueOperands.empty()) {
+    rewriter.replaceOpWithNewOp<ChainCreateOp>(op);
+    return success();
+  }
+
   // If there is a single input, we just fold this op.
   if (uniqueOperands.size() == 1) {
     op.replaceAllUsesWith(*uniqueOperands.begin());
