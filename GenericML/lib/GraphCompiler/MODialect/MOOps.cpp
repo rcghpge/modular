@@ -1609,7 +1609,7 @@ LogicalResult Shape::SliceOp::verify() {
 OpFoldResult Shape::ToTensorOp::fold(FoldAdaptor adaptor) {
   if (auto input = dyn_cast_or_null<ShapeAttr>(adaptor.getInput())) {
     TensorType resTy = getType();
-    if (resTy.hasUnknownShape()) {
+    if (!resTy.hasStaticShape()) {
       OpBuilder builder(getOperation());
       builder.setInsertionPointAfter(getOperation());
       TensorType newTy = resTy.cloneWith(ShapeAttr::get(
