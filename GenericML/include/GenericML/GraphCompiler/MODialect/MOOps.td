@@ -1182,12 +1182,26 @@ def MO_ReshapeOp : MO_ShapeModifierOp<"reshape"> {
   let description = [{
     Return a tensor with the same underlying data, but different shape.
 
+    The first argument is the tensor to reshape.  The second tensor is the
+    shape to reshape the first tensor to.  The second tensor may contain a
+    single "-1" element, which signifies that that dimension should be
+    automatically computed.
+
     Example:
 
     ```mlir
     %arg1: !mo.tensor<[1, 2, 3], f32>
     %shape = mo.constant {
       value = #M.dense_array<3, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %arg2 = mo.reshape(%arg1, %shape) : !mo.tensor<[3, 2], si64>
+    ```
+
+    Auto-sizing example:
+
+    ```mlir
+    %arg1: !mo.tensor<[1, 2, 3], f32>
+    %shape = mo.constant {
+      value = #M.dense_array<3, -1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
     %arg2 = mo.reshape(%arg1, %shape) : !mo.tensor<[3, 2], si64>
     ```
   }];
