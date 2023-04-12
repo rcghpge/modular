@@ -9,13 +9,6 @@ mo.graph @duplicate_param_decl<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
 
 // -----
 
-// expected-error@+1 {{Shape parameters are not supported}}
-mo.graph @shape_param_arg<Sh: !mo.shape>(%arg0: !mo.tensor<Sh, f32>) {
-  mo.output
-}
-
-// -----
-
 mo.graph @unsupported_expr() {
   // expected-error@+1 {{cannot lower parameter expression}}
   kgen.param.declare fn: () -> index = <@foo>

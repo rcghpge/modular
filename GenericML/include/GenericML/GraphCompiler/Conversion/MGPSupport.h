@@ -13,7 +13,8 @@
 namespace M::MGP {
 
 inline MGP::CpuTensorSpecType createCpuTensorSpec(MO::TensorType tensor) {
-  // TODO: Check for dynamic shape
+  // TODO(#12114): Enable dynamic rank
+  assert(tensor.hasRank() && "dynamic rank not supported");
   SmallVector<int64_t> shape{}; // Defaults to unknown shape.
   if (isa<MO::ShapeAttr>(tensor.getShapeAttr()))
     shape = tensor.getIntDims();
@@ -21,7 +22,8 @@ inline MGP::CpuTensorSpecType createCpuTensorSpec(MO::TensorType tensor) {
 }
 
 inline MGP::CpuTensorSpecType createCpuTensorSpec(mlir::ShapedType tensor) {
-  // TODO: Check for dynamic shape
+  // TODO(#12114): Enable dynamic rank
+  assert(tensor.hasRank() && "dynamic rank not supported");
   ArrayRef<int64_t> shape = tensor.getShape();
   return MGP::CpuTensorSpecType::get(shape, tensor.getElementType());
 }
