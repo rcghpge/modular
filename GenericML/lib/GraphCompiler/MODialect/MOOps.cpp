@@ -1608,22 +1608,27 @@ LogicalResult Shape::SliceOp::verify() {
 
 OpFoldResult Shape::ToTensorOp::fold(FoldAdaptor adaptor) {
   if (auto input = dyn_cast_or_null<ShapeAttr>(adaptor.getInput())) {
-    if (getType().hasUnknownShape()) {
+    TensorType resTy = getType();
+    if (resTy.hasUnknownShape()) {
       OpBuilder builder(getOperation());
       builder.setInsertionPointAfter(getOperation());
-      TensorType newTy = getType().cloneWith(ShapeAttr::get(
+      TensorType newTy = resTy.cloneWith(ShapeAttr::get(
           {(int64_t)input.getRank()}, builder.getType<MO::ShapeType>()));
       Location loc = getLoc();
       auto newOp = builder.create<Shape::ToTensorOp>(loc, newTy, getInput());
-      auto rebindOp = builder.create<RebindOp>(loc, getType(), newOp);
+      auto rebindOp = builder.create<RebindOp>(loc, resTy, newOp);
       getResult().replaceAllUsesExcept(rebindOp, rebindOp.getOperation());
       return rebindOp.getResult();
     }
 
     if (input.isConstant()) {
-      return M::IntArrayElementsAttr::get(
-          getContext(), ArrayRef<int64_t>{input.getIntDims()},
-          IntegerType::SignednessSemantics::Signed);
+      auto outTy =
+          RankedTensorType::get(resTy.getIntDims(), resTy.getElementType());
+      SmallVector<APInt> res =
+          map_to_vector(input.getIntDims(), [](int64_t dim) {
+            return APInt(64, dim, /*isSigned=*/true);
+          });
+      return IntArrayElementsAttr::get(outTy, res);
     }
   }
   return {};
