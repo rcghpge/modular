@@ -159,17 +159,21 @@ mgp.model @weight_transpose : tf init {
 
 // CHECK-LABEL: mgp.model @zero_size_buf  : tf init {
 // CHECK-NEXT:   %[[CH0:.*]] = grt.chain.create
-// CHECK-NEXT:   %[[CTX:.*]] = mgp.context.create 1
+// CHECK-NEXT:   %[[CTX:.*]] = mgp.context.create 2
 // Dummy chain
 // CHECK-NEXT:   %{{.*}} = grt.chain.create
+// Lifted ops
+// CHECK-DAG:    %[[OUT_BUF:.*]] = mgp.cpu.buffer.alloc.static %[[CH0]], 0, align 16
 // Chain merge to preserve control dependencies (will be cleared by DCE)
-// CHECK-NEXT:   %[[BUF_ACTION_CH:.*]] = grt.chain.merge
-// Chain merge to preserve control dependencies (will be cleared by DCE)
-// CHECK-NEXT:   %[[OUT_CH:.*]] = grt.chain.merge %[[CH0]]
+// CHECK-DAG:    %[[BUF_ACTION_CH:.*]] = grt.chain.merge
+// Buffer caching
+// CHECK-DAG:    %[[CACHE_CH:.*]] = mgp.cpu.buffer.cache %[[BUF_ACTION_CH]], %[[CTX]][1], %[[OUT_BUF]] : !mgp.cpu.buffer<0>
+// Chain merge to preserve control dependencies
+// CHECK-NEXT:   %[[OUT_CH:.*]] = grt.chain.merge %[[CH0]], %[[CACHE_CH]]
 // CHECK-NEXT:   mef.output %[[OUT_CH]], %[[CTX]] : !mef.chain, !mgp.context
 // CHECK-NEXT: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context) -> (!mef.chain, !mgp.cpu.buffer<0>) {
 // Zero-sized buffer isn't lifted because we can't cache it
-// CHECK-NEXT:   %[[OUT_BUF:.*]] = mgp.cpu.buffer.alloc.static %[[CH0]], 0, align 16
+// CHECK-NEXT:   %[[OUT_BUF:.*]] = mgp.cpu.buffer.get_cached %[[CH0]], %[[CTX]][1] : !mgp.cpu.buffer<0>
 // CHECK-NEXT:   mef.output %[[CH0]], %[[OUT_BUF]] : !mef.chain, !mgp.cpu.buffer<0>
 // CHECK-NEXT: }
 
