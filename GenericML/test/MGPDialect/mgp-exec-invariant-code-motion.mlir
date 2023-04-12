@@ -72,6 +72,8 @@ mgp.model @matmul_packb : tf init {
 // CHECK-NEXT:  %[[CH1:.*]] = "mop.create_jit_context"(%[[CH0]], %[[CTX]]) {slot = 0 : ui32} : (!mef.chain, !mgp.context) -> !mef.chain
 // Dummy chain
 // CHECK-NEXT:  %{{.*}} = grt.chain.create
+// Redundant lift, will be cleaned by canonicalization
+// CHECK-NEXT:  %{{.*}} = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<2x2xf32>
 // Trivial chain merge to preserve control dependencies
 // CHECK-NEXT:  %[[BUF_ACTION_CH:.*]] = grt.chain.merge
 // Trivial chain merge to preserve control dependencies
@@ -103,4 +105,79 @@ mgp.model @non_pure_op : tf init {
   %ch1 = "bar.side_effect_op"(%ch0, %const_buf, %const_spec, %out_buf, %out_spec) : (!mef.chain, !mgp.cpu.buffer<16>, !mgp.cpu.tensor_spec<2x2xf32>, !mgp.cpu.buffer, !mgp.cpu.tensor_spec<?x?xf32>) -> !mef.chain
   %out_tensor = mgp.cpu.tensor.create %ch1, %out_buf, %out_spec  : !mgp.cpu.tensor<?x?xf32>
   mef.output %ch0, %out_tensor : !mef.chain, !mgp.cpu.tensor<?x?xf32>
+}
+
+//
+// @weight_transpose
+//
+
+// CHECK-LABEL: mgp.model @weight_transpose : tf init {
+// CHECK-NEXT:   %[[CH0:.*]] = grt.chain.create
+// CHECK-NEXT:   %[[CTX:.*]] = mgp.context.create 2
+// Dummy chain
+// CHECK-NEXT:   %{{.*}} = grt.chain.create
+// Lifted ops
+// CHECK-NEXT:   %[[PERM_BUF:.*]] = mgp.cpu.buffer.constant #M.aligned_bytes<"0x0200000000000000030000000000000001000000000000000000000000000000", align 16>
+// CHECK-NEXT:   %[[WEIGHT_BUF:.*]] = mgp.cpu.buffer.constant dense_resource<onnx__Conv_497> : !M.aligned_bytes<37632, align 16>
+// CHECK-NEXT:   %[[PERM_SPEC:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<4xsi64>
+// CHECK-NEXT:   %[[WEIGHT_SPEC:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<64x3x7x7xf32>
+// CHECK-DAG:    %[[OUT_SPEC:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<7x7x3x64xf32>
+// CHECK-DAG:    %[[OUT_BUF:.*]] = mgp.cpu.buffer.alloc.static %[[CH0]], 37632, align 16
+// CHECK-DAG:    %[[TRANSPOSE_CH:.*]] = "mop.kernels.transpose"(%[[CH0]], %[[WEIGHT_BUF]], %[[WEIGHT_SPEC]], %[[PERM_BUF]], %[[PERM_SPEC]], %[[OUT_BUF]], %[[OUT_SPEC]]) : (!mef.chain, !mgp.cpu.buffer<37632>, !mgp.cpu.tensor_spec<64x3x7x7xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<4xsi64>, !mgp.cpu.buffer<37632>, !mgp.cpu.tensor_spec<7x7x3x64xf32>) -> !mef.chain
+// Chain merge to preserve control dependencies
+// CHECK-DAG:    %[[BUF_ACTION_CH:.*]] = grt.chain.merge %[[TRANSPOSE_CH]]
+// Buffer caching
+// CHECK-DAG:    %[[CACHE_CH:.*]] = mgp.cpu.buffer.cache %[[BUF_ACTION_CH]], %[[CTX]][1], %[[OUT_BUF]] : !mgp.cpu.buffer<37632>
+// Chain merge to preserve control dependencies
+// CHECK-DAG:    %[[OUT_CH:.*]] = grt.chain.merge %[[CH0]], %[[CACHE_CH]]
+// CHECK-NEXT:   mef.output %[[OUT_CH]], %[[CTX]] : !mef.chain, !mgp.context
+// CHECK-NEXT: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context) -> !mef.chain {
+// Inserted buffer lookup
+// CHECK-NEXT:   %[[BUF:.*]] = mgp.cpu.buffer.get_cached %[[CH0]], %[[CTX]][1] : !mgp.cpu.buffer<37632>
+// Reference to lifted chain got updated to input chain
+// CHECK-NEXT:   mef.output %[[CH0]] : !mef.chain
+// CHECK-NEXT: }
+
+mgp.model @weight_transpose : tf init {
+  %ch0 = grt.chain.create
+  %ctx = mgp.context.create 1
+  mef.output %ch0, %ctx : !mef.chain, !mgp.context
+} execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain) {
+  %perm_buf = mgp.cpu.buffer.constant #M.aligned_bytes<"0x0200000000000000030000000000000001000000000000000000000000000000", align 16>
+  %weight_buf = mgp.cpu.buffer.constant dense_resource<onnx__Conv_497> : !M.aligned_bytes<37632, align 16>
+  %perm_spec = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<4xsi64>
+  %weight_spec = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<64x3x7x7xf32>
+  %out_buf = mgp.cpu.buffer.alloc.static %ch0, 37632, align 16
+  %out_spec = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<7x7x3x64xf32>
+  %out_ch = "mop.kernels.transpose"(%ch0, %weight_buf, %weight_spec, %perm_buf, %perm_spec, %out_buf, %out_spec) : (!mef.chain, !mgp.cpu.buffer<37632>, !mgp.cpu.tensor_spec<64x3x7x7xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<4xsi64>, !mgp.cpu.buffer<37632>, !mgp.cpu.tensor_spec<7x7x3x64xf32>) -> !mef.chain
+  mef.output %out_ch : !mef.chain
+}
+
+//
+// @zero_size_buf
+//
+
+// CHECK-LABEL: mgp.model @zero_size_buf  : tf init {
+// CHECK-NEXT:   %[[CH0:.*]] = grt.chain.create
+// CHECK-NEXT:   %[[CTX:.*]] = mgp.context.create 1
+// Dummy chain
+// CHECK-NEXT:   %{{.*}} = grt.chain.create
+// Chain merge to preserve control dependencies (will be cleared by DCE)
+// CHECK-NEXT:   %[[BUF_ACTION_CH:.*]] = grt.chain.merge
+// Chain merge to preserve control dependencies (will be cleared by DCE)
+// CHECK-NEXT:   %[[OUT_CH:.*]] = grt.chain.merge %[[CH0]]
+// CHECK-NEXT:   mef.output %[[OUT_CH]], %[[CTX]] : !mef.chain, !mgp.context
+// CHECK-NEXT: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context) -> (!mef.chain, !mgp.cpu.buffer<0>) {
+// Zero-sized buffer isn't lifted because we can't cache it
+// CHECK-NEXT:   %[[OUT_BUF:.*]] = mgp.cpu.buffer.alloc.static %[[CH0]], 0, align 16
+// CHECK-NEXT:   mef.output %[[CH0]], %[[OUT_BUF]] : !mef.chain, !mgp.cpu.buffer<0>
+// CHECK-NEXT: }
+
+mgp.model @zero_size_buf : tf init {
+  %ch0 = grt.chain.create
+  %ctx = mgp.context.create 1
+  mef.output %ch0, %ctx : !mef.chain, !mgp.context
+} execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.cpu.buffer<0>) {
+  %out_buf = mgp.cpu.buffer.alloc.static %ch0, 0, align 16
+  mef.output %ch0, %out_buf : !mef.chain, !mgp.cpu.buffer<0>
 }
