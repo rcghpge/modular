@@ -281,13 +281,28 @@ static ErrorOrSuccess executeModel(const Model *model, Runtime &runtime,
                                    const ExecutorDriverCLOptions &options,
                                    unsigned int numRuns,
                                    unsigned int numWarmup) {
+  std::unique_ptr<llvm::raw_fd_ostream> optTimingOs;
+  if (!options.saveTimings.empty()) {
+    std::error_code errorCode;
+    optTimingOs =
+        std::make_unique<llvm::raw_fd_ostream>(options.saveTimings, errorCode);
+    if (errorCode)
+      return Error(
+          Twine("failed to open timings file: " + errorCode.message()));
+  }
+
   TIME_PROFILER_SCOPE(Trace::kOther, 1, "executeModel");
 
   // Setup once.
-  UNWRAP_ERROR(executableModel, model->setup(runtime));
-  auto errorOrSuccess = executableModel->waitForModelSetup();
-  if (errorOrSuccess.isError())
-    return errorOrSuccess.takeError();
+  std::unique_ptr<ExecutableModel> executableModel;
+  {
+    TIME_PROFILER_SCOPE(Trace::kOther, 1, "executeModel.setup");
+    UNWRAP_ERROR(executableModel1, model->setup(runtime));
+    auto errorOrSuccess = executableModel1->waitForModelSetup();
+    if (errorOrSuccess.isError())
+      return errorOrSuccess.takeError();
+    executableModel = std::move(executableModel1);
+  }
 
   // Establish a tensor generator for each model input as per command line
   // options and shapes. Each tensor generator holds one or more M::Tensor's
@@ -305,22 +320,13 @@ static ErrorOrSuccess executeModel(const Model *model, Runtime &runtime,
     llvm::outs().flush();
   }
   for (unsigned i = 0; i < numWarmup; ++i) {
+    TIME_PROFILER_SCOPE(Trace::kOther, 1, "executeModel.warmup");
     auto args = buildArgs(runtime, inputTensorGenerators);
 
     // Execute the model synchronously. Propagate any error back to caller.
     auto results = executableModel->execute(args);
     UNWRAP_ERROR(unit, awaitAndCheck(results));
     (void)unit;
-  }
-
-  std::unique_ptr<llvm::raw_fd_ostream> optTimingOs;
-  if (!options.saveTimings.empty()) {
-    std::error_code errorCode;
-    optTimingOs =
-        std::make_unique<llvm::raw_fd_ostream>(options.saveTimings, errorCode);
-    if (errorCode)
-      return Error(
-          Twine("failed to open timings file: " + errorCode.message()));
   }
 
   if (numRuns > 0) {
@@ -333,26 +339,31 @@ static ErrorOrSuccess executeModel(const Model *model, Runtime &runtime,
   }
 
   for (unsigned i = 0; i < numRuns; ++i) {
-    TIME_PROFILER_SCOPE(Trace::kOther, 1, "runModelOnce");
     auto args = buildArgs(runtime, inputTensorGenerators);
 
     if (i > 0 && i % 100 == 0)
       llvm::outs() << "--- Run " << i << "...\n";
 
     // Execute the model synchronously.
-    auto startTime = std::chrono::high_resolution_clock::now();
-    auto results = executableModel->execute(args);
-    if (options.resultOutputStyle == Kernels::ResultOutputStyle::kNone) {
-      // Though we don't want to print the tensor results, we still want to
-      // propagate any error back to the caller.
-      UNWRAP_ERROR(unit, awaitAndCheck(results));
-      (void)unit;
-    } else {
-      // Simply wait for the result chain and all tensor results. We'll
-      // deal with errors when printing below.
-      await(results);
+    std::chrono::high_resolution_clock::time_point startTime, endTime;
+    SmallVector<AnyAsyncValueRef> results;
+    {
+      TIME_PROFILER_SCOPE(Trace::kOther, 1, "executeModel.run");
+
+      startTime = std::chrono::high_resolution_clock::now();
+      results = executableModel->execute(args);
+      if (options.resultOutputStyle == Kernels::ResultOutputStyle::kNone) {
+        // Though we don't want to print the tensor results, we still want to
+        // propagate any error back to the caller.
+        UNWRAP_ERROR(unit, awaitAndCheck(results));
+        (void)unit;
+      } else {
+        // Simply wait for the result chain and all tensor results. We'll
+        // deal with errors when printing below.
+        await(results);
+      }
+      endTime = std::chrono::high_resolution_clock::now();
     }
-    auto endTime = std::chrono::high_resolution_clock::now();
 
     if (options.resultOutputStyle != Kernels::ResultOutputStyle::kNone) {
       // Convert and print the result tensors. This is the one place where
