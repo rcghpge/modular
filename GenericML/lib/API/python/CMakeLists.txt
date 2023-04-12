@@ -149,6 +149,7 @@ set_target_properties(modular-engine
 )
 
 add_subdirectory(docs)
+add_subdirectory(notebooks)
 
 if (NOT MODULAR_PYTHON_API_REPAIR_WHEEL)
   return()
