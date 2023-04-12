@@ -10,11 +10,20 @@ if(Sphinx_FOUND)
   configure_file(conf.py.in conf.py @ONLY)
 
   include(AddModularSphinxTarget)
+
+  if (MODULAR_BUILD_INFERENCE_ENGINE_DOCS_PREVIEW)
+    set(sphinx_output_dir ${CMAKE_CURRENT_BINARY_DIR}/preview)
+  else()
+    set(sphinx_output_dir ${CMAKE_CURRENT_BINARY_DIR}/web)
+  endif()
+
   add_modular_sphinx_target(html inference_engine_python
     SOURCE_DIR
     ${CMAKE_SOURCE_DIR}/GenericML/lib/API/python/modular/engine
     CONF_DIR
     ${CMAKE_CURRENT_BINARY_DIR}
+    OUTPUT_DIR
+    ${sphinx_output_dir}
   )
 
   # Have doc-generation internal CMake target depend on the Python wheel,
@@ -31,14 +40,14 @@ if(Sphinx_FOUND)
   else()
     add_custom_target(
       inference_engine_docs_python_postprocessing_cleanup
-      DEPENDS docs-inference_engine_python-html
+      DEPENDS docs-inference_engine_python-html # the internal target from the sphinx build
       COMMAND ${CMAKE_COMMAND} -E rm -rf _static _sources
       COMMAND ${CMAKE_COMMAND} -E rm -f objects.inv searchindex.js
       COMMAND ${CMAKE_COMMAND} -E rm -f genindex.html search.html py-modindex.html index.html
       COMMAND ${CMAKE_COMMAND} -E rm -f genindex.md search.md py-modindex.md index.md
       COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/postprocess.py -d ${CMAKE_CURRENT_BINARY_DIR}
 
-      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/html
+      WORKING_DIRECTORY ${sphinx_output_dir}
       COMMENT "Remove unwanted directories and files from the sphinx-build."
       VERBATIM
     )
