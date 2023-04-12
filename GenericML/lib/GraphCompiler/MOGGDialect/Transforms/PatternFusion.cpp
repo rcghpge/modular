@@ -219,11 +219,13 @@ struct FullyConnectedPattern : public RewritePattern {
                                       m_MOMatrix(m_Any(&weight)));
     auto broadcastP =
         m_Optional(matmulP, m_Op<MO::Static::BroadcastToOp>(matmulP));
-    if (!m_Op<MO::AddOp>(m_Optional(broadcastP, m_Op<MO::Static::ReshapeOp>(
-                                                    &reshape, broadcastP)),
-                         m_Op<MO::Static::BroadcastToOp>(m_Ranked(
-                             1, m_Typed<M::MO::TensorType>(m_Any(&bias)))))
-             .match(op))
+    auto lhs = m_Optional(broadcastP,
+                          m_Op<MO::Static::ReshapeOp>(&reshape, broadcastP));
+    auto rhs = m_Op<MO::Static::BroadcastToOp>(
+        m_Ranked(1, m_Typed<M::MO::TensorType>(m_Any(&bias))));
+    if (isa<MO::AddOp>(op) &&
+        !m_Optional(m_Op<MO::AddOp>(lhs, rhs), m_Op<MO::AddOp>(rhs, lhs))
+             .match(op->getResult(0)))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
     if (!input || !weight || !bias)
