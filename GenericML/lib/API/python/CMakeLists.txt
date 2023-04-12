@@ -111,6 +111,11 @@ if (MODULAR_PYTHON_API_REPAIR_WHEEL)
 else()
   set(MODULAR_PACKED_WHEEL_NAME ${WHEEL_DIR}/${WHEEL_BASENAME}.whl)
 endif()
+
+set(modular_python_package_sources
+  ${CMAKE_CURRENT_SOURCE_DIR}/modular/engine/api.py
+  ${CMAKE_CURRENT_SOURCE_DIR}/modular/engine/core.pyi
+)
 add_custom_command(OUTPUT ${MODULAR_PACKED_WHEEL_NAME}
   COMMAND ${Python3_EXECUTABLE} -m build --wheel --outdir ${WHEEL_DIR} > /dev/null
   COMMAND ${Python3_EXECUTABLE} -m wheel unpack ${WHEEL_DIR}/${WHEEL_BASENAME}.whl --dest ${WHEEL_DIR} > /dev/null
@@ -127,7 +132,7 @@ add_custom_command(OUTPUT ${MODULAR_PACKED_WHEEL_NAME}
   COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_SOURCE_DIR}/build
   COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_SOURCE_DIR}/modular_engine.egg-info
   BYPRODUCTS ${UNPACKED_WHEEL}
-  DEPENDS $<TARGET_FILE:core> ${MODULAR_FRAMEWORK_LIBS} ${EXTERNAL_TF_EXES}
+  DEPENDS $<TARGET_FILE:core> ${MODULAR_FRAMEWORK_LIBS} ${EXTERNAL_TF_EXES} ${modular_python_package_sources}
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   COMMENT "Packing wheel with bindings and shared library dependencies."
   VERBATIM
