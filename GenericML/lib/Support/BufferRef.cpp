@@ -13,6 +13,9 @@
 using namespace M;
 using namespace M::GML;
 
+// We'll need an address for zero sized buffers. Use this as the target.
+static const uint64_t kDummyTargetOfEmptyBuffer = 0xdeadbeef;
+
 static constexpr llvm::MaybeAlign
 makeMaybeAlign(std::optional<size_t> alignment) {
   return alignment.has_value() ? llvm::MaybeAlign(*alignment) : std::nullopt;
@@ -57,11 +60,10 @@ static const char *mutabilityToStr(BufferRef::Mutability mutability) {
 BufferRef BufferRef::createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
                                  std::optional<size_t> alignment,
                                  const void *copyFrom) {
-  if (size == 0)
-    // Canonicalize as zero-sized, null-buffer ptr, kNull BufferRef.
-    return {};
   void *buffer =
-      runtime->getAllocator()->allocateBytes(size, alignment.value_or(1));
+      size == 0
+          ? (void *)&kDummyTargetOfEmptyBuffer
+          : runtime->getAllocator()->allocateBytes(size, alignment.value_or(1));
   if (copyFrom)
     LLCL::profiledMemcpy(buffer, copyFrom, size);
   return BufferRef(buffer, size, makeMaybeAlign(alignment), kOwned, kLocal,
@@ -71,35 +73,38 @@ BufferRef BufferRef::createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
 BufferRef BufferRef::createBorrowed(void *buffer, size_t size,
                                     std::optional<size_t> alignment,
                                     Lifetime lifetime) {
-  if (size == 0)
-    // Canonicalize as zero-sized, null-buffer ptr, kNull BufferRef.
-    return {};
-  assert(buffer && "borrowed buffer must be non-null");
-  assert((!alignment || llvm::isAddrAligned(llvm::Align(*alignment), buffer)) &&
+  assert((size == 0 || buffer) && "borrowed buffer must be non-null");
+  assert((size == 0 || !alignment ||
+          llvm::isAddrAligned(llvm::Align(*alignment), buffer)) &&
          "buffer is not aligned as per purported alignment");
-  return BufferRef(buffer, size, makeMaybeAlign(alignment), kBorrowed, lifetime,
-                   kMutable);
+  void *borrowedBuffer = size == 0 && buffer == nullptr
+                             ? (void *)&kDummyTargetOfEmptyBuffer
+                             : buffer;
+  return BufferRef(borrowedBuffer, size, makeMaybeAlign(alignment), kBorrowed,
+                   lifetime, kMutable);
 }
 
 BufferRef BufferRef::createBorrowed(const void *buffer, size_t size,
                                     std::optional<size_t> alignment,
                                     Lifetime lifetime) {
-  if (size == 0)
-    // Canonicalize as zero-sized, null-buffer ptr, kNull BufferRef.
-    return {};
-  assert(buffer && "borrowed buffer must be non-null");
-  assert((!alignment || llvm::isAddrAligned(llvm::Align(*alignment), buffer)) &&
+  assert((size == 0 || buffer) && "borrowed buffer must be non-null");
+  assert((size == 0 || !alignment ||
+          llvm::isAddrAligned(llvm::Align(*alignment), buffer)) &&
          "buffer is not aligned as per purported alignment");
+  const void *borrowedBuffer = size == 0 && buffer == nullptr
+                                   ? (void *)&kDummyTargetOfEmptyBuffer
+                                   : buffer;
   // We make up for the const cast on buffer by setting the reference to
   // be immutable. This will assert fail if a mutable buffer pointer is
   // requested.
-  return BufferRef(const_cast<void *>(buffer), size, makeMaybeAlign(alignment),
-                   kBorrowed, lifetime, kImmutable);
+  return BufferRef(const_cast<void *>(borrowedBuffer), size,
+                   makeMaybeAlign(alignment), kBorrowed, lifetime, kImmutable);
 }
 
 BufferRef BufferRef::createForeign(ForeignBufferInterfaceID id, void *object,
                                    size_t size,
                                    std::optional<size_t> alignment) {
+  assert(object && "foreign object cannot be null");
   // Note that even if size is 0 we are obliged to create a non-null
   // BufferRef so as to retain ownership of object.
   if (alignment && size)
@@ -116,8 +121,9 @@ BufferRef::~BufferRef() {
   case kNull:
     break;
   case kOwned: {
-    nativeOrForeign.runtime->getAllocator()->deallocateBytes(bufferOrObject,
-                                                             size);
+    if (size)
+      nativeOrForeign.runtime->getAllocator()->deallocateBytes(bufferOrObject,
+                                                               size);
     std::move(profilerEntry).record();
     break;
   }

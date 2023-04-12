@@ -39,10 +39,14 @@ using BufferRefLifetimeProfilerEntry =
 /// copied (the underlying buffer will be copied), and borrowed (the new
 /// reference will contain a buffer alias).
 ///
-/// Zero size buffer references are represented as the 'null' reference.
+/// Zero size buffers are representable and are distinct from the 'null' buffer
+/// (built by the default constructor). A zero size buffer still has a non-null
+/// buffer pointer, though obviously there's nothing that can be done with that
+/// pointer. (We are not sensitive to the system's malloc handling of zero
+/// sizes, which could return null or a pointer.)
 ///
-/// CAUTION: Though movable, this type is 24 bytes on 64-bit systems so best not
-///          to consider it a simple handle.
+/// Buffers may be marked immutable, however this will only trigger an assert
+/// on a call to getMutableBuffer and no deeper protection is enforced.
 ///
 /// All references remember their (optional) alignment constraint, which may be
 /// used when the buffer is copied.
@@ -50,6 +54,9 @@ using BufferRefLifetimeProfilerEntry =
 /// All borrowing references capture a coarse-grained notion of lifetime.
 /// This is used to ensure borrows are done safely, particularly when crossing
 /// the boundary between Modular and third-party code.
+///
+/// CAUTION: Though movable, this type is 24 bytes on 64-bit systems so best not
+///          to consider it a simple handle.
 class BufferRef {
 public:
   /// Describes whether the underlying buffer is owned, or borrowed from
@@ -126,10 +133,8 @@ public:
   /// is destroyed. Since ownership rests with the caller, the lifetime will
   /// be set to 'local' by default. If copyFrom is non-null its contents will be
   /// copied into the new underlying buffer. Otherwise the new underlying buffer
-  /// is left uninitialized.
-  ///
-  /// TODO(#5799): We're requiring all callers to be explicit about alignment
-  /// (or lack thereof) to help track down 'forgotten alignment' problems.
+  /// is left uninitialized. It is valid for size to be zero, and the resulting
+  /// reference will not be 'null'.
   static BufferRef createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
                                std::optional<size_t> alignment,
                                const void *copyFrom = nullptr);
@@ -138,6 +143,8 @@ public:
   /// alignment. The alignment will be respected should the buffer need to be
   /// copied. The returned reference must outlive the given buffer. The given
   /// lifetime should be a sound approximation of the lifetime of the buffer.
+  /// It is valid for size to be zero, and the resulting reference will not
+  /// be 'null' irrespective of buffer argument.
   static BufferRef createBorrowed(void *buffer, size_t size,
                                   std::optional<size_t> alignment,
                                   Lifetime lifetime);
@@ -147,7 +154,8 @@ public:
 
   /// Creates an owning reference to the already allocated 'foreign' buffer
   /// object. The corresponding ForeignBufferInterface must have been already
-  /// registered under id. The buffer is considered immutable.
+  /// registered under id. The buffer is considered immutable. It is valid for
+  /// size to be zero, and the resulting reference will not be 'null'.
   static BufferRef createForeign(ForeignBufferInterfaceID id, void *object,
                                  size_t size, std::optional<size_t> alignment);
 
@@ -179,7 +187,8 @@ public:
   BufferRef deepCopy(LLCL::CompactRuntimePtr newRuntime) const;
 
   /// Returns a pointer to the underlying buffer. Returns nullptr if the
-  /// reference is uninitialized or has been moved out of.
+  /// reference is 'null' or has been moved out of. A zero sized buffer
+  /// will not return nullptr.
   void *getMutableBuffer() {
     assert((ownership == kNull || mutability == kMutable) &&
            "buffer is immutable");
@@ -213,10 +222,6 @@ public:
                ? std::optional<size_t>(static_cast<size_t>(alignment->value()))
                : std::nullopt;
   }
-
-  /// Returns the alignment of the underlying buffer, or 1 if no alignment
-  /// constraint was given.
-  size_t getAlignmentOrOne() const { return alignment.valueOrOne().value(); }
 
   /// Returns the runtime responsible for this owning references, or null if
   /// the reference is null, borrowed or foreign.

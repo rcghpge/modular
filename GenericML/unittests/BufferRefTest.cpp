@@ -26,18 +26,15 @@ static LLCL::Runtime *getRuntime() {
 }
 
 TEST(BufferRef, Default) {
-  auto runtime = getRuntime();
   BufferRef ref;
 
+  ASSERT_FALSE(ref);
   ASSERT_EQ(ref.getBuffer(), nullptr);
   ASSERT_EQ(ref.getSize(), 0U);
   ASSERT_EQ(ref.getAlignment(), std::nullopt);
   ASSERT_FALSE(ref.getRuntime());
   ASSERT_EQ(ref.getOwnership(), BufferRef::kNull);
   ASSERT_EQ(ref.getLifetime(), BufferRef::kLocal);
-
-  ref = BufferRef::createOwned(runtime, sizeof(int), /*alignment=*/{});
-  ASSERT_EQ(ref.getSize(), sizeof(int));
 }
 
 TEST(BufferRef, CreateOwned) {
@@ -45,6 +42,7 @@ TEST(BufferRef, CreateOwned) {
   uint8_t data[4] = {1, 2, 3, 4};
   BufferRef ref = BufferRef::createOwned(runtime, /*size=*/4,
                                          /*alignment=*/128, /*copyFrom=*/data);
+  ASSERT_TRUE(ref);
   ASSERT_TRUE(llvm::isAddrAligned(llvm::Align(128), ref.getBuffer()));
   ASSERT_EQ(memcmp(data, ref.getBuffer(), 4), 0);
 }
@@ -53,10 +51,10 @@ TEST(BufferRef, CreateEmptyOwned) {
   auto runtime = getRuntime();
   BufferRef ref = BufferRef::createOwned(runtime, /*size=*/0,
                                          /*alignment=*/128);
-  ASSERT_FALSE(ref);
+  ASSERT_TRUE(ref);
   ASSERT_EQ(ref.getSize(), 0u);
-  ASSERT_EQ(ref.getBuffer(), nullptr);
-  ASSERT_EQ(ref.getMutableBuffer(), nullptr);
+  ASSERT_NE(ref.getBuffer(), nullptr);
+  ASSERT_NE(ref.getMutableBuffer(), nullptr);
 };
 
 TEST(BufferRef, CreateBorrowed) {
@@ -69,13 +67,13 @@ TEST(BufferRef, CreateBorrowed) {
 }
 
 TEST(BufferRef, CreateEmptyBorrowed) {
-  void *bogusUnalignedAddress = reinterpret_cast<void *>(0x5);
   BufferRef ref =
-      BufferRef::createBorrowed(bogusUnalignedAddress, /*size=*/0,
+      BufferRef::createBorrowed(/*buffer=*/(void*)nullptr, /*size=*/0,
                                 /*alignment=*/128, BufferRef::kConstant);
-  ASSERT_FALSE(ref);
+  ASSERT_TRUE(ref);
   ASSERT_EQ(ref.getSize(), 0u);
-  ASSERT_EQ(ref.getBuffer(), nullptr);
+  ASSERT_NE(ref.getBuffer(), nullptr);
+  ASSERT_NE(ref.getMutableBuffer(), nullptr);
 }
 
 TEST(BufferRef, Move) {
