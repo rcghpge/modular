@@ -24,7 +24,7 @@ if(Sphinx_FOUND)
   add_dependencies(docs-inference_engine_python-html modular-pybind-ext)
 
   add_custom_target(
-    inference_engine_python_docs_postprocessing_cleanup
+    inference_engine_docs_python_postprocessing_cleanup
     DEPENDS docs-inference_engine_python-html
     COMMAND ${CMAKE_COMMAND} -E rm -rf _static _sources
     COMMAND ${CMAKE_COMMAND} -E rm -f objects.inv searchindex.js
@@ -37,8 +37,11 @@ if(Sphinx_FOUND)
     VERBATIM
   )
 
+  add_custom_target(inference_engine_docs_python)
+  add_dependencies(inference_engine_docs_python inference_engine_docs_python_postprocessing_cleanup)
+
   if(TARGET inference_engine_docs)
-    add_dependencies(inference_engine_docs inference_engine_python_docs_postprocessing_cleanup)
+    add_dependencies(inference_engine_docs inference_engine_docs_python)
   endif()
 else()
   message("Skipping doc generation for Inference Engine Python APIs
