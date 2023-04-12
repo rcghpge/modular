@@ -38,8 +38,6 @@ def PatternFusion: Pass<"mo-pattern-fusion", "MO::GraphOp"> {
   let options = [
     Option<"useMatmulPacking", "use-matmul-packing",
            "bool", /*default=*/"true", "Enable matmul bias packing.">,
-    Option<"useFullyConnected", "use-fully-connected",
-           "bool", /*default=*/"false", "Enable fully connected fusion.">
   ];
 }
 

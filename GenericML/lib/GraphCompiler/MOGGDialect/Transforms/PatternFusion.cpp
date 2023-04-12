@@ -206,7 +206,7 @@ struct BatchMatmulAdjBPattern : public RewritePattern {
 
 struct FullyConnectedPattern : public RewritePattern {
   FullyConnectedPattern(MLIRContext *ctx)
-      : RewritePattern(MatchAnyOpTypeTag{}, 2, ctx) {}
+      : RewritePattern(MatchAnyOpTypeTag{}, 3, ctx) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
@@ -214,21 +214,67 @@ struct FullyConnectedPattern : public RewritePattern {
     b.setInsertionPoint(op);
 
     Value input, weight, bias;
-    auto matmulP = m_Op<MO::MatmulOp>(m_MOMatrix(m_Any(&input)),
+    Operation *matmul, *reshape;
+    auto matmulP = m_Op<MO::MatmulOp>(&matmul, m_MOMatrix(m_Any(&input)),
                                       m_MOMatrix(m_Any(&weight)));
-    auto biasP = m_Ranked(1, m_Typed<M::MO::TensorType>(m_Any(&bias)));
-    if (!m_Op<MO::AddOp>(
-             m_Optional(matmulP, m_Op<MO::BroadcastToOp>(matmulP, m_Any())),
-             m_Optional(biasP, m_Op<MO::BroadcastToOp>(biasP, m_Any())))
+    auto broadcastP =
+        m_Optional(matmulP, m_Op<MO::Static::BroadcastToOp>(matmulP));
+    if (!m_Op<MO::AddOp>(m_Optional(broadcastP, m_Op<MO::Static::ReshapeOp>(
+                                                    &reshape, broadcastP)),
+                         m_Op<MO::Static::BroadcastToOp>(m_Ranked(
+                             1, m_Typed<M::MO::TensorType>(m_Any(&bias)))))
              .match(op))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
     if (!input || !weight || !bias)
       return rewriter.notifyMatchFailure(op, "null input value");
+    Value fc;
+    if (!isa_and_nonnull<MO::ConstantOp>(weight.getDefiningOp())) {
+      fc = rewriter
+               .create<MOGG::ExtOp>(op->getLoc(), matmul->getResultTypes(),
+                                    "mop.kernels.fully_connected",
+                                    SmallVector<Value>{input, weight, bias})
+               .getResult(0);
+    } else {
+      MO::TensorType weightsType = cast<MO::TensorType>(weight.getType());
+      SmallVector<uint64_t> weightsDims;
+      for (int64_t dim : weightsType.getIntDims()) {
+        // NOTE this (constants with unknown shape) may occur as a result of
+        // constant folding. Once we have shape inference on by default, we
+        // won't have this anymore.
+        if (dim < 0)
+          return failure();
+        weightsDims.push_back(dim);
+      }
+      MO::TensorType packedWeightsType = weightsType;
+      if (weightsType.hasRank()) {
+        SmallVector<int64_t> unknownDims(weightsType.getRank(),
+                                         mlir::ShapedType::kDynamic);
+        Type dtype = weightsType.getElementType();
+        packedWeightsType = weightsType.cloneWith(unknownDims, dtype);
+      }
+      Value packedWeights =
+          rewriter
+              .create<MOGG::ExtOp>(op->getLoc(),
+                                   /*outputTypes=*/packedWeightsType,
+                                   /*op_name=*/"mop.kernels.pack_matmul_b",
+                                   /*inputOperands=*/SmallVector<Value>{weight})
+              .getResult(0);
 
-    rewriter.replaceOpWithNewOp<MOGG::ExtOp>(
-        op, op->getResultTypes(), "mop.kernels.fully_connected",
-        SmallVector<Value>{input, weight, bias});
+      fc = rewriter
+               .create<MOGG::ExtOp>(
+                   op->getLoc(), matmul->getResultTypes()[0],
+                   "mop.kernels.fully_connected_packb",
+                   SmallVector<Value>{input, packedWeights, bias}, weightsDims)
+               .getResult(0);
+    }
+
+    if (reshape) {
+      rewriter.replaceOpWithNewOp<MO::Static::ReshapeOp>(
+          op, op->getResultTypes()[0], fc);
+    } else {
+      rewriter.replaceOp(op, fc);
+    }
 
     return mlir::success();
   }
@@ -378,12 +424,9 @@ void PatternFusionPass::runOnOperation() {
   RewritePatternSet patterns{ctx};
   patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
                LiftTransposesPattern, Pow2Pattern,
-               ConvertBatchMatmulToMatmulPattern>(ctx);
-
+               ConvertBatchMatmulToMatmulPattern, FullyConnectedPattern>(ctx);
   if (useMatmulPacking.getValue())
     patterns.add<MatmulConstBPattern>(ctx);
-  if (useFullyConnected.getValue())
-    patterns.add<FullyConnectedPattern>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
     return signalPassFailure();
