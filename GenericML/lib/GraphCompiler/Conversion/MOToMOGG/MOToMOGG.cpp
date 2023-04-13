@@ -194,6 +194,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_MOJO(MO::ErfOp, "mop.kernels.erf"),
       MO_TO_MOJO(MO::ExpOp, "mop.kernels.exp"),
       MO_SHIM_ONLY(MO::EqualOp, "mop.kernels.equal"),
+      MO_SHIM_ONLY(MO::GeluOp, "mop.kernels.gelu"),
       MO_SHIM_ONLY(MO::GreaterOp, "mop.kernels.greater"),
       MO_SHIM_ONLY(MO::GreaterEqualOp, "mop.kernels.greater_equal"),
       MO_SHIM_ONLY(MO::NotEqualOp, "mop.kernels.not_equal"),

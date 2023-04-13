@@ -146,23 +146,15 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
 
   // Elementwise shapes are guaranteed to match.
   static const llvm::SmallDenseSet<StringRef, 32> elementwise{
-      "mop.kernels.abs",
-      "mop.kernels.add",
-      "mop.kernels.div",
-      "mop.kernels.erf",
-      "mop.kernels.exp",
-      "mop.kernels.max",
-      "mop.kernels.min",
-      "mop.kernels.mul",
-      "mop.kernels.matrix_band_part",
-      "mop.kernels.pow",
-      "mop.kernels.relu",
-      "mop.kernels.rsqrt",
-      "mop.kernels.sigmoid",
-      "mop.kernels.softmax",
-      "mop.kernels.sqrt",
-      "mop.kernels.sub",
-      "mop.kernels.tanh",
+      "mop.kernels.abs",     "mop.kernels.add",
+      "mop.kernels.div",     "mop.kernels.erf",
+      "mop.kernels.exp",     "mop.kernels.gelu",
+      "mop.kernels.max",     "mop.kernels.min",
+      "mop.kernels.mul",     "mop.kernels.matrix_band_part",
+      "mop.kernels.pow",     "mop.kernels.relu",
+      "mop.kernels.rsqrt",   "mop.kernels.sigmoid",
+      "mop.kernels.softmax", "mop.kernels.sqrt",
+      "mop.kernels.sub",     "mop.kernels.tanh",
   };
 
   static const llvm::SmallDenseSet<StringRef, 8> elementwise_conditional{
