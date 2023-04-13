@@ -11,7 +11,16 @@ find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
 # Install dependencies needed for pytest unit tests.
 if(APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64)$")
-  set(REQUIREMENTS_FILE "${CMAKE_CURRENT_SOURCE_DIR}/requirements-macos.txt")
+  # M1 Macs only support TensorFlow (which is a dependency) for Python <= 3.11
+  if (${Python3_VERSION_MINOR} GREATER_EQUAL "11")
+    message(WARNING "Cannot install all test dependencies for system configuration.
+      Use a pyenv with Python version <= 3.10 for building notebook examples
+      and pass flag MODULAR_PYTHON_API_PYTHON_ROOT to pass a path to
+      your Python env while configuring CMake")
+    return()
+  else()
+    set(REQUIREMENTS_FILE "${CMAKE_CURRENT_SOURCE_DIR}/requirements-macos.txt")
+  endif()
 else()
   set(REQUIREMENTS_FILE "${CMAKE_CURRENT_SOURCE_DIR}/requirements.txt")
 endif()
