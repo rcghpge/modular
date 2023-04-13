@@ -5,8 +5,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
-#include "GenericML/GraphCompiler/MOGGDialect/MOGGMatchers.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/GraphCompiler/Matchers.h"
 #include "Support/MDialect/MDialect.h"
 #include "gtest/gtest.h"
 #include <mlir/IR/BuiltinOps.h>

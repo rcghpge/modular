@@ -5,7 +5,8 @@
 //===----------------------------------------------------------------------===//
 //
 // This file provides MO/MOGG specific Pattern matching indended to be
-// used when lowering MO ops to more complex kernels.
+// used when lowering MO ops to more complex kernels or performing
+// simplifications
 //
 // This is not a final solution, longer term we would like this infrastructure
 // to live in MOJO, so this is intended to be the lightest weight solution
@@ -14,8 +15,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGMATCHERS_H
-#define GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGMATCHERS_H
+#ifndef GENERICML_GRAPHCOMPILER_MATCHERS_H
+#define GENERICML_GRAPHCOMPILER_MATCHERS_H
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "Support/LLVMCompilerForwardDecls.h"
@@ -261,4 +262,4 @@ auto m_BinaryCommutativeOp(Matcher1 matcher1, Matcher2 matcher2) {
 
 } // namespace mlir
 
-#endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGMATCHERS_H
+#endif // GENERICML_GRAPHCOMPILER_MATCHERS_H
