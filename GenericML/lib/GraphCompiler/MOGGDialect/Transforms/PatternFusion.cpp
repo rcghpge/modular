@@ -309,135 +309,6 @@ struct LiftTransposesPattern : public OpRewritePattern<MO::TransposeOp> {
   }
 };
 
-// TODO: Put this in a MO Transform Pass?
-// Need to move pattern matching to a more generic place
-struct ConvertBatchMatmulToMatmulPattern
-    : public OpRewritePattern<MO::BatchMatmulOp> {
-  ConvertBatchMatmulToMatmulPattern(MLIRContext *ctx)
-      : OpRewritePattern(ctx, 4) {}
-
-  LogicalResult matchAndRewrite(MO::BatchMatmulOp op,
-                                PatternRewriter &rewriter) const override {
-    Value input, weight;
-    Operation *broadcast;
-    if (!m_Op<MO::BatchMatmulOp>(m_Any(&input),
-                                 m_Op<MO::Static::BroadcastToOp>(
-                                     &broadcast, m_MOMatrix(m_Any(&weight))))
-             .match(op))
-      return rewriter.notifyMatchFailure(op, "failed to match pattern");
-
-    if (!input || !weight)
-      return rewriter.notifyMatchFailure(op, "null input value");
-
-    auto inputTy = cast<MO::TensorType>(input.getType());
-    auto weightTy = cast<MO::TensorType>(weight.getType());
-    auto broadcastTy = cast<MO::TensorType>(broadcast->getResult(0).getType());
-    auto bmmTy = cast<MO::TensorType>(op->getResult(0).getType());
-
-    if (inputTy.hasUnknownShape() || weightTy.hasUnknownShape() ||
-        bmmTy.hasUnknownShape() || !bmmTy.hasRank()) {
-      return rewriter.notifyMatchFailure(
-          op, "ops aren't parameterized, can't rewrite");
-    }
-
-    ArrayRef<TypedAttr> outDims =
-        broadcastTy.getDims().drop_front(broadcastTy.getRank() - 2);
-    ArrayRef<TypedAttr> inDims = weightTy.getDims();
-
-    if (!inDims.equals(outDims)) {
-      return rewriter.notifyMatchFailure(op, "Broadcast not on batch axis");
-    }
-
-    ArrayRef<TypedAttr> oldShape = inputTy.getDims();
-    ArrayRef<TypedAttr> kVec = oldShape.take_back();
-    TypedAttr batch =
-        KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, oldShape.drop_back(1));
-    SmallVector<TypedAttr> newShape{batch, kVec[0]};
-
-    auto shapeTy = rewriter.getType<MO::ShapeType>();
-    MO::TensorType reshapeTy =
-        inputTy.cloneWith(MO::ShapeAttr::get(newShape, shapeTy));
-    Value reshape =
-        rewriter.create<MO::Static::ReshapeOp>(op->getLoc(), reshapeTy, input)
-            .getResult();
-
-    ArrayRef<TypedAttr> weightShape = weightTy.getDims();
-    MO::TensorType matmulTy = inputTy.cloneWith(
-        MO::ShapeAttr::get({newShape[0], weightShape[1]}, shapeTy));
-
-    Value matmul =
-        rewriter.create<MO::MatmulOp>(op->getLoc(), matmulTy, reshape, weight)
-            .getResult();
-
-    rewriter.replaceOpWithNewOp<MO::Static::ReshapeOp>(op, bmmTy, matmul);
-
-    return mlir::success();
-  }
-};
-
-// TODO: Move this to an algebraic simplification pass after refactoring
-// patterns out of MOGG
-struct Pow2Pattern : public OpRewritePattern<MO::PowOp> {
-  Pow2Pattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
-
-  LogicalResult matchAndRewrite(MO::PowOp op,
-                                PatternRewriter &rewriter) const override {
-    Value input;
-
-    if (!m_Op<MO::PowOp>(m_Any(&input),
-                         m_Op<MO::Static::BroadcastToOp>(m_ScalarConstant(2)))
-             .match(op))
-      return rewriter.notifyMatchFailure(op, "failed to match pattern");
-
-    if (!input)
-      return rewriter.notifyMatchFailure(op, "null input value");
-
-    rewriter.replaceOpWithNewOp<MO::MulOp>(op, input, input);
-
-    return mlir::success();
-  }
-};
-
-// TODO: Move this to an algebraic simplification pass after refactoring
-// patterns out of MOGG
-struct GeluPattern : public OpRewritePattern<MO::MulOp> {
-  GeluPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 4) {}
-
-  LogicalResult matchAndRewrite(MO::MulOp op,
-                                PatternRewriter &rewriter) const override {
-    Value input;
-    // gelu = x * 1/2 * (1 + erf(x/sqrt(2)))
-    auto sq2 = m_Op<MO::Static::BroadcastToOp>(
-        m_ScalarConstant(llvm::numbers::sqrt2f));
-    auto divsq2 = m_Op<MO::Static::BroadcastToOp>(
-        m_ScalarConstant(llvm::numbers::inv_sqrt2f));
-    auto x = m_Any(&input);
-    auto erf = m_Op<MO::ErfOp>(m_Optional(
-        m_Op<MO::DivOp>(x, sq2), m_BinaryCommutativeOp<MO::MulOp>(x, divsq2)));
-    auto one = m_Op<MO::Static::BroadcastToOp>(m_ScalarConstant(1.0f));
-    auto add = m_BinaryCommutativeOp<MO::AddOp>(one, erf);
-
-    auto half = m_Op<MO::Static::BroadcastToOp>(m_ScalarConstant(0.5f));
-    auto x2 = m_Val(input);
-    // TODO: write an associative commutative matcher?
-    auto gelu =
-        m_Optional(m_BinaryCommutativeOp<MO::MulOp>(
-                       m_BinaryCommutativeOp<MO::MulOp>(x2, half), add),
-                   m_BinaryCommutativeOp<MO::MulOp>(
-                       half, m_BinaryCommutativeOp<MO::MulOp>(x2, add)));
-
-    if (isa<MO::MulOp>(op) && gelu.match(op->getResult(0)))
-      return rewriter.notifyMatchFailure(op, "failed to match pattern");
-
-    if (!input)
-      return rewriter.notifyMatchFailure(op, "null input value");
-
-    rewriter.replaceOpWithNewOp<MO::GeluOp>(op, input);
-
-    return mlir::success();
-  }
-};
-
 struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
   using PatternFusionBase::PatternFusionBase;
 
@@ -451,9 +322,8 @@ void PatternFusionPass::runOnOperation() {
 
   RewritePatternSet patterns{ctx};
   patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
-               LiftTransposesPattern, Pow2Pattern,
-               ConvertBatchMatmulToMatmulPattern, FullyConnectedPattern,
-               GeluPattern>(ctx);
+               LiftTransposesPattern, FullyConnectedPattern>(ctx);
+
   if (useMatmulPacking.getValue())
     patterns.add<MatmulConstBPattern>(ctx);
 
