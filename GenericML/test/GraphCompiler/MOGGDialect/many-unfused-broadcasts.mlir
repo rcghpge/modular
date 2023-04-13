@@ -1,0 +1,21 @@
+// RUN: mo-opt --mo-to-mogg=use-jit=true --fuse-elementwise --cse --canonicalize --fuse-bcasts --cse --canonicalize --jit-compile-kernels %s | FileCheck %s
+
+// Check that with many broadcasts of the same value we still produce a unique kernel for each
+
+mo.graph @many_bcasts_same_val(%arg0: !mo.tensor<[1, 100], f32>) -> !mo.tensor<[1, 65], f32> {
+  %0 = mo.constant {value = #M.dense_array<1.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
+  %bcast1 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32> -> !mo.tensor<[100, 300], f32>
+  %4 = mo.matmul(%arg0, %bcast1) : (!mo.tensor<[1, 100], f32>, !mo.tensor<[100, 300], f32>) -> !mo.tensor<[1, 300], f32>
+  %bcast2 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32> -> !mo.tensor<[1, 300], f32>
+  %6 = mo.add(%4, %bcast2) : !mo.tensor<[1, 300], f32>
+  %bcast3 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32> -> !mo.tensor<[300, 10], f32>
+  %7 = mo.matmul(%6, %bcast3) : (!mo.tensor<[1, 300], f32>, !mo.tensor<[300, 10], f32>) -> !mo.tensor<[1, 10], f32>
+
+  %bcast4 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32> -> !mo.tensor<[10, 65], f32>
+  %8 = mo.matmul(%7, %bcast4) : (!mo.tensor<[1, 10], f32>, !mo.tensor<[10, 65], f32>) -> !mo.tensor<[1, 65], f32>
+  mo.output %8 : !mo.tensor<[1, 65], f32>
+}
+
+
+// CHECK: "mogg.load_compiled_kernel"() {symbols = ["[[SYM1:.*]]", "[[SYM2:.*]]", "[[SYM3:.*]]", "[[SYM4:.*]]"]
+

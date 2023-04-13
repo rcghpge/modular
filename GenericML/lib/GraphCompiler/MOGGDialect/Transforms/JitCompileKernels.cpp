@@ -134,6 +134,19 @@ std::string createMangledName(MOGG::KernelOp op) {
     name += "f32_";
   }
 
+  // Add the output type as the kernel could reference this independently.
+  name += "_out_ty_";
+  for (Type res : op->getResultTypes()) {
+    auto tensor = cast<MO::TensorType>(res);
+    for (int64_t dim : tensor.getIntDims()) {
+      name += ShapedType::isDynamic(dim) ? "?" : std::to_string(dim);
+      name += "x";
+    }
+    assert(tensor.getElementType().isF32());
+    name += "f32_";
+  }
+  name += "_";
+
   name += mangleBlock(op.getBody().front(), valueToPositionInBlock);
   return name;
 }
