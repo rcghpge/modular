@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/MODialect/Broadcast.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "GenericML/GraphCompiler/MODialect/Broadcast.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/Compiler/VerifyUtils.h"
 #include "Support/MDialect/MAttrs.h"
@@ -72,7 +72,9 @@ std::optional<int64_t> M::MO::tryGetConstantInt(TensorValue val) {
 
 std::optional<SmallVector<int64_t>>
 M::MO::tryGetConstantIntVector(TensorValue val) {
-  return tryGetConstantOfRank<int64_t>(val, 1);
+  if (val.getType().getElementType().isIntOrIndex())
+    return tryGetConstantOfRank<int64_t>(val, 1);
+  return std::nullopt;
 }
 
 //===----------------------------------------------------------------------===//
