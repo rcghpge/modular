@@ -13,6 +13,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "llvm/Support/MathExtras.h"
 
 #include "mlir/IR/IRMapping.h"
 
@@ -412,6 +413,46 @@ struct Pow2Pattern : public RewritePattern {
   }
 };
 
+// TODO: Move this to an algebraic simplification pass after refactoring
+// patterns out of MOGG
+struct GeluPattern : public RewritePattern {
+  GeluPattern(MLIRContext *ctx) : RewritePattern(MatchAnyOpTypeTag{}, 2, ctx) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    Value input;
+    // gelu = x * 1/2 * (1 + erf(x/sqrt(2)))
+    auto sq2 = m_Op<MO::Static::BroadcastToOp>(
+        m_ScalarConstant(llvm::numbers::sqrt2f));
+    auto divsq2 = m_Op<MO::Static::BroadcastToOp>(
+        m_ScalarConstant(llvm::numbers::inv_sqrt2f));
+    auto x = m_Any(&input);
+    auto erf = m_Op<MO::ErfOp>(m_Optional(
+        m_Op<MO::DivOp>(x, sq2), m_BinaryCommutativeOp<MO::MulOp>(x, divsq2)));
+    auto one = m_Op<MO::Static::BroadcastToOp>(m_ScalarConstant(1.0f));
+    auto add = m_BinaryCommutativeOp<MO::AddOp>(one, erf);
+
+    auto half = m_Op<MO::Static::BroadcastToOp>(m_ScalarConstant(0.5f));
+    auto x2 = m_Val(input);
+    // TODO: write an associative commutative matcher?
+    auto gelu =
+        m_Optional(m_BinaryCommutativeOp<MO::MulOp>(
+                       m_BinaryCommutativeOp<MO::MulOp>(x2, half), add),
+                   m_BinaryCommutativeOp<MO::MulOp>(
+                       half, m_BinaryCommutativeOp<MO::MulOp>(x2, add)));
+
+    if (isa<MO::MulOp>(op) && gelu.match(op->getResult(0)))
+      return rewriter.notifyMatchFailure(op, "failed to match pattern");
+
+    if (!input)
+      return rewriter.notifyMatchFailure(op, "null input value");
+
+    rewriter.replaceOpWithNewOp<MO::GeluOp>(op, input);
+
+    return mlir::success();
+  }
+};
+
 struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
   using PatternFusionBase::PatternFusionBase;
 
@@ -426,7 +467,8 @@ void PatternFusionPass::runOnOperation() {
   RewritePatternSet patterns{ctx};
   patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
                LiftTransposesPattern, Pow2Pattern,
-               ConvertBatchMatmulToMatmulPattern, FullyConnectedPattern>(ctx);
+               ConvertBatchMatmulToMatmulPattern, FullyConnectedPattern,
+               GeluPattern>(ctx);
   if (useMatmulPacking.getValue())
     patterns.add<MatmulConstBPattern>(ctx);
 

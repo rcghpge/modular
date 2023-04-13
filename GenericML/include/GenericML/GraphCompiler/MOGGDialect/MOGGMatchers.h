@@ -253,6 +253,12 @@ auto m_Optional(Matcher1 matcher1, Matcher2 matcher2) {
   return detail::OptionalMatcher<Matcher1, Matcher2>(matcher1, matcher2);
 }
 
+template <typename OpType, typename Matcher1, typename Matcher2>
+auto m_BinaryCommutativeOp(Matcher1 matcher1, Matcher2 matcher2) {
+  return m_Optional(m_Op<OpType>(matcher1, matcher2),
+                    m_Op<OpType>(matcher2, matcher1));
+}
+
 } // namespace mlir
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGMATCHERS_H
