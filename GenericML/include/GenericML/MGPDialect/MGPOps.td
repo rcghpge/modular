@@ -682,12 +682,12 @@ def CpuBufferSetOp : MGP_Op<"cpu.buffer.set", [
 
     Example:
     ```mlir
-    %buf : !mgp.cpu.buffer<>
+    %buf : !mgp.cpu.buffer
 
     // Set each byte of the buffer to 0.
-    %ch = mgp.cpu.buffer.set %buf : !mgp.cpu.buffer<>
+    %ch = mgp.cpu.buffer.set %buf : !mgp.cpu.buffer
     // Set each byte of the buffer to 1.
-    %ch = mgp.cpu.buffer.set %buf 1 : !mgp.cpu.buffer<>
+    %ch = mgp.cpu.buffer.set %buf 1 : !mgp.cpu.buffer
     ```
   }];
 

@@ -195,4 +195,25 @@ def ExecInvariantCodeMotionPass : Pass<"exec-invariant-code-motion", "MGP::Model
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// ReallocBufferPass
+//===----------------------------------------------------------------------===//
+
+def ReallocBuffersPass : Pass<"realloc-buffers", "MGP::ModelOp"> {
+  let summary = "Replaces calls to mgp.cpu.buffer.alloc.* with corresponding "
+                "realloc versions";
+  let description = [{
+    This pass replaces mgp.cpu.buffer.alloc.* calls in the 'execute' block
+    with mgp.cpu.buffer.realloc.* calls, also in the 'execute' block. Each
+    alloc call gets a dedicated 'default' slot created in the 'init' block.
+    In this way buffer allocations will be cached between calls to 'execute'
+    unless the required buffer size changes. That reduces dynamic memory
+    management overhead at the expense of memory high water mark.
+
+    Note that we do not attempt to move mgp.cpu.buffer.alloc.static allocations
+    to the init phase itself, though that may be worthwhile. Currently there's
+    no op to allocate into a slot but return only a chain.
+  }];
+}
+
 #endif // GENERICML_MGPDIALECT_MGPTRANSFORMS_TD

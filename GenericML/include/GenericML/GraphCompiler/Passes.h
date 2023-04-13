@@ -51,6 +51,13 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       llvm::cl::desc("Run shape inference on the input before other "
                      "optimizations and lowering."),
       llvm::cl::init(false)};
+  Option<bool> cacheBuffersAcrossExecutes{
+      *this, "cache-buffers-across-executes",
+      llvm::cl::desc(
+          "If true, use realloc instead of alloc for all buffers, "
+          "thus sharing the cost of buffer allocation across "
+          "calls to execute at the cost of higher memory high water mark."),
+      llvm::cl::init(false)};
 };
 
 // Registers the end-to-end shape inference pipeline.

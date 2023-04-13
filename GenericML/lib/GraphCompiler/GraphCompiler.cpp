@@ -126,6 +126,9 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     moToPrimOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel;
   pm.addPass(MGP::createMOToPrimitives(moToPrimOpts));
 
+  if (opts.cacheBuffersAcrossExecutes)
+    pm.addPass(MGP::createReallocBuffersPass());
+
   if (opts.cacheDir.hasValue() && !opts.cacheDir.empty()) {
     Cache::DeflateConstantsOptions deflateOpts;
     deflateOpts.cacheDir = opts.cacheDir;
