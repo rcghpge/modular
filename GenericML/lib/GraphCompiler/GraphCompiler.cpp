@@ -69,6 +69,7 @@ void M::MO::registerPasses() {
   mlir::registerCSEPass();
   mlir::registerSCCPPass();
   mlir::registerCanonicalizerPass();
+  mlir::registerSymbolDCE();
 }
 
 void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
@@ -154,6 +155,7 @@ void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm) {
   pm.addPass(MO::createInlineShapeFunctions());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(MO::createPropagateShapes());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
