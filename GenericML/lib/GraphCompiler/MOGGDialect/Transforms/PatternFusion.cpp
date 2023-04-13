@@ -28,11 +28,10 @@ namespace M::MOGG {
 
 namespace {
 
-struct GatherSumPattern : public RewritePattern {
-  GatherSumPattern(MLIRContext *ctx)
-      : RewritePattern(MatchAnyOpTypeTag{}, 2, ctx) {}
+struct GatherSumPattern : public OpRewritePattern<MO::ReduceAddOp> {
+  GatherSumPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(Operation *op,
+  LogicalResult matchAndRewrite(MO::ReduceAddOp op,
                                 PatternRewriter &rewriter) const override {
     Value input, indices, gatherAxis, reduceAxis;
 
@@ -58,15 +57,13 @@ struct GatherSumPattern : public RewritePattern {
   }
 };
 
-struct MatmulConstBPattern : public RewritePattern {
-  MatmulConstBPattern(MLIRContext *ctx)
-      : RewritePattern(MatchAnyOpTypeTag{}, 2, ctx) {}
+struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
+  MatmulConstBPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(Operation *op,
+  LogicalResult matchAndRewrite(MO::MatmulOp op,
                                 PatternRewriter &rewriter) const override {
-    Value input, weight;
-    if (!m_Op<MO::MatmulOp>(m_Any(&input), m_Any(&weight)).match(op))
-      return failure();
+    Value input = op.getInputA();
+    Value weight = op.getInputB();
 
     if (!input || !isa_and_nonnull<MO::ConstantOp>(weight.getDefiningOp()))
       return failure();
@@ -113,14 +110,11 @@ struct MatmulConstBPattern : public RewritePattern {
   }
 };
 
-struct MatmulTranspBPattern : public RewritePattern {
-  MatmulTranspBPattern(MLIRContext *ctx)
-      : RewritePattern(MatchAnyOpTypeTag{}, 2, ctx) {}
+struct MatmulTranspBPattern : public OpRewritePattern<MO::MatmulOp> {
+  MatmulTranspBPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(Operation *op,
+  LogicalResult matchAndRewrite(MO::MatmulOp op,
                                 PatternRewriter &rewriter) const override {
-    OpBuilder b(op);
-    b.setInsertionPoint(op);
     Value input, weight, axes;
     if (!m_Op<MO::MatmulOp>(
              m_Any(&input),
@@ -142,28 +136,22 @@ struct MatmulTranspBPattern : public RewritePattern {
     if (axesValues[0] != 1 || axesValues[1] != 0)
       return rewriter.notifyMatchFailure(op, "axes not transposing");
 
-    auto results =
-        b.create<MOGG::ExtOp>(op->getLoc(),
-                              /*outputTypes=*/op->getResultTypes(),
-                              /*op_name=*/"mop.kernels.matmul_transpb",
-                              /*inputOperands=*/
-                              SmallVector<Value>{input, weight})
-            .getResults();
-
-    rewriter.replaceOp(op, results);
+    rewriter.replaceOpWithNewOp<MOGG::ExtOp>(
+        op,
+        /*outputTypes=*/op->getResultTypes(),
+        /*op_name=*/"mop.kernels.matmul_transpb",
+        /*inputOperands=*/
+        SmallVector<Value>{input, weight});
 
     return mlir::success();
   }
 };
 
-struct BatchMatmulAdjBPattern : public RewritePattern {
-  BatchMatmulAdjBPattern(MLIRContext *ctx)
-      : RewritePattern(MatchAnyOpTypeTag{}, 2, ctx) {}
+struct BatchMatmulAdjBPattern : public OpRewritePattern<MO::BatchMatmulOp> {
+  BatchMatmulAdjBPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(Operation *op,
+  LogicalResult matchAndRewrite(MO::BatchMatmulOp op,
                                 PatternRewriter &rewriter) const override {
-    OpBuilder b(op);
-    b.setInsertionPoint(op);
     Value input, weight, axes;
     if (!m_Op<MO::BatchMatmulOp>(
              m_Any(&input),
@@ -191,15 +179,12 @@ struct BatchMatmulAdjBPattern : public RewritePattern {
       if (axesValues[i] != i)
         return rewriter.notifyMatchFailure(op, "axes not adjoint");
 
-    auto results =
-        b.create<MOGG::ExtOp>(op->getLoc(),
-                              /*outputTypes=*/op->getResultTypes(),
-                              /*op_name=*/"mop.kernels.batch_matmul_adjb",
-                              /*inputOperands=*/
-                              SmallVector<Value>{input, weight})
-            .getResults();
-
-    rewriter.replaceOp(op, results);
+    rewriter.replaceOpWithNewOp<MOGG::ExtOp>(
+        op,
+        /*outputTypes=*/op->getResultTypes(),
+        /*op_name=*/"mop.kernels.batch_matmul_adjb",
+        /*inputOperands=*/
+        SmallVector<Value>{input, weight});
 
     return mlir::success();
   }
@@ -283,11 +268,10 @@ struct FullyConnectedPattern : public RewritePattern {
   }
 };
 
-struct LiftTransposesPattern : public RewritePattern {
-  LiftTransposesPattern(MLIRContext *ctx)
-      : RewritePattern(MatchAnyOpTypeTag{}, 2, ctx) {}
+struct LiftTransposesPattern : public OpRewritePattern<MO::TransposeOp> {
+  LiftTransposesPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(Operation *op,
+  LogicalResult matchAndRewrite(MO::TransposeOp op,
                                 PatternRewriter &rewriter) const override {
     // input perm1            input  perm1
     //   \    /                 \      /
@@ -327,11 +311,12 @@ struct LiftTransposesPattern : public RewritePattern {
 
 // TODO: Put this in a MO Transform Pass?
 // Need to move pattern matching to a more generic place
-struct ConvertBatchMatmulToMatmulPattern : public RewritePattern {
+struct ConvertBatchMatmulToMatmulPattern
+    : public OpRewritePattern<MO::BatchMatmulOp> {
   ConvertBatchMatmulToMatmulPattern(MLIRContext *ctx)
-      : RewritePattern(MatchAnyOpTypeTag{}, 4, ctx) {}
+      : OpRewritePattern(ctx, 4) {}
 
-  LogicalResult matchAndRewrite(Operation *op,
+  LogicalResult matchAndRewrite(MO::BatchMatmulOp op,
                                 PatternRewriter &rewriter) const override {
     Value input, weight;
     Operation *broadcast;
@@ -392,10 +377,10 @@ struct ConvertBatchMatmulToMatmulPattern : public RewritePattern {
 
 // TODO: Move this to an algebraic simplification pass after refactoring
 // patterns out of MOGG
-struct Pow2Pattern : public RewritePattern {
-  Pow2Pattern(MLIRContext *ctx) : RewritePattern(MatchAnyOpTypeTag{}, 2, ctx) {}
+struct Pow2Pattern : public OpRewritePattern<MO::PowOp> {
+  Pow2Pattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(Operation *op,
+  LogicalResult matchAndRewrite(MO::PowOp op,
                                 PatternRewriter &rewriter) const override {
     Value input;
 
@@ -415,10 +400,10 @@ struct Pow2Pattern : public RewritePattern {
 
 // TODO: Move this to an algebraic simplification pass after refactoring
 // patterns out of MOGG
-struct GeluPattern : public RewritePattern {
-  GeluPattern(MLIRContext *ctx) : RewritePattern(MatchAnyOpTypeTag{}, 2, ctx) {}
+struct GeluPattern : public OpRewritePattern<MO::MulOp> {
+  GeluPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 4) {}
 
-  LogicalResult matchAndRewrite(Operation *op,
+  LogicalResult matchAndRewrite(MO::MulOp op,
                                 PatternRewriter &rewriter) const override {
     Value input;
     // gelu = x * 1/2 * (1 + erf(x/sqrt(2)))
