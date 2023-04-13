@@ -50,20 +50,6 @@ ConstantOp M::MO::tryGetConstantOpOfRank(TensorValue val, size_t rank) {
   return constantOp;
 }
 
-/// Return the contents of the IntArrayElementsAttr as a vector in int64_t.
-static SmallVector<int64_t> getIntBlob(IntArrayElementsAttr intElemsAttr) {
-  return map_to_vector(intElemsAttr.getValues(), [](const llvm::APInt &dim) {
-    return dim.getSExtValue();
-  });
-}
-
-/// Return the contents of the FloatArrayElementsAttr as a vector in float.
-static SmallVector<float> getFloatBlob(FloatArrayElementsAttr floatElemsAttr) {
-  return map_to_vector(
-      floatElemsAttr.getValues(),
-      [](const llvm::APFloat &dim) { return dim.convertToFloat(); });
-}
-
 std::optional<int64_t> M::MO::tryGetConstantInt(TensorValue val) {
   if (auto maybeIntBlob = tryGetConstantOfRank<int64_t>(val, 0))
     return maybeIntBlob.value().front();
