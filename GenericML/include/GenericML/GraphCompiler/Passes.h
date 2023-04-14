@@ -50,7 +50,7 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       *this, "mo-shape-inference",
       llvm::cl::desc("Run shape inference on the input before other "
                      "optimizations and lowering."),
-      llvm::cl::init(false)};
+      llvm::cl::init(true)};
   Option<bool> cacheBuffersAcrossExecutes{
       *this, "cache-buffers-across-executes",
       llvm::cl::desc(
