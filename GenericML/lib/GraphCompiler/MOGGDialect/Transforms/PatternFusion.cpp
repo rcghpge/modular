@@ -295,6 +295,71 @@ struct FullyConnectedPattern : public RewritePattern {
 
 // TODO: Move this to a MO transformation pass after refactoring patterns out of
 // MOGG
+struct SinkTransposeThroughBinaryOpPattern
+    : public OpInterfaceRewritePattern<MO::ElementWiseBinary> {
+  SinkTransposeThroughBinaryOpPattern(MLIRContext *ctx)
+      : OpInterfaceRewritePattern(ctx, 2) {}
+
+  LogicalResult matchAndRewrite(MO::ElementWiseBinary op,
+                                PatternRewriter &rewriter) const override {
+    // input1     perm1  input2     perm2
+    //    \        /        \        /
+    //    transpose1        transpose2
+    //           \           /
+    //            binary (op)
+    //
+    // =======>
+    //
+    //  input1   input2
+    //     \      /
+    //      binary(*)    perm1 (or perm2, they are the same)
+    //          \        /
+    //          transpose
+    //
+    // NOTE (*) means result type or operands of the op were updated
+    Value input1, input2, perm1, perm2;
+    auto transpose1P = m_Op<MO::TransposeOp>(m_Any(&input1), m_Any(&perm1));
+    auto transpose2P = m_Op<MO::TransposeOp>(m_Any(&input2), m_Any(&perm2));
+    auto binaryP = m_Op<MO::ElementWiseBinary>(transpose1P, transpose2P);
+    if (!binaryP.match(op))
+      return rewriter.notifyMatchFailure(op, "failed to match pattern");
+
+    if (!input1 || !input2 || !perm1 || !perm2)
+      return rewriter.notifyMatchFailure(op, "null input or permutation value");
+
+    // If any transpose op has multiple uses, we don't sink the transposes
+    // because it we'll end up doing extra computation overall since we must
+    // keep the original transposes for other users.
+    // TODO add [get|set]Input method to `ElementWiseBinary` interface
+    if (!op->getOperand(0).hasOneUse())
+      return rewriter.notifyMatchFailure(op, "lhs transpose has multiple uses");
+
+    if (!op->getOperand(1).hasOneUse())
+      return rewriter.notifyMatchFailure(op, "rhs transpose has multiple uses");
+
+    if (perm1 != perm2)
+      return rewriter.notifyMatchFailure(op, "permutations are different");
+
+    Type input1Ty = input1.getType();
+    if (input1Ty != input2.getType())
+      return rewriter.notifyMatchFailure(op, "input types are different");
+
+    Value opRes = op->getResult(0);
+    op->setOperand(0, input1);
+    op->setOperand(1, input2);
+    Type oldOpResTy = opRes.getType();
+    opRes.setType(input1Ty);
+    rewriter.setInsertionPointAfter(op);
+    auto finalTransposeOp = rewriter.create<MO::TransposeOp>(
+        op->getLoc(), oldOpResTy, opRes, perm1);
+    rewriter.replaceAllUsesExcept(opRes, finalTransposeOp, finalTransposeOp);
+
+    return mlir::success();
+  }
+};
+
+// TODO: Move this to a MO transformation pass after refactoring patterns out of
+// MOGG
 struct SinkTransposeThroughUnaryOpPattern
     : public OpInterfaceRewritePattern<MO::ElementWiseUnary> {
   SinkTransposeThroughUnaryOpPattern(MLIRContext *ctx)
@@ -350,7 +415,8 @@ void PatternFusionPass::runOnOperation() {
 
   RewritePatternSet patterns{ctx};
   patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
-               SinkTransposeThroughUnaryOpPattern>(ctx);
+               SinkTransposeThroughUnaryOpPattern,
+               SinkTransposeThroughBinaryOpPattern>(ctx);
   // TODO(#12590): enable FullyConnectedPattern
   if (useMatmulPacking.getValue())
     patterns.add<MatmulConstBPattern>(ctx);
