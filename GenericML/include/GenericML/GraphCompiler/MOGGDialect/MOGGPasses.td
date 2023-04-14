@@ -29,6 +29,8 @@ def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
     Option<"saveTempPrefix", "save-temp-prefix", "std::string", /*default=*/"",
             "The prefix to use when saving temporary files. Setting this "
             "option toggles on saveTemps.">,
+    Option<"dumpStub", "dump-stub", "bool", /*default=*/"false",
+            "Prints the generated KGEN stub for use in tests and debugging">,
   ];
 }
 

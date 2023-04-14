@@ -264,6 +264,9 @@ struct JitCompileKernels
       symbolNamesAdded.push_back(jitExecute.getKernelNameAttr());
     }
 
+    if (dumpStub.getValue())
+      builder.dumpStub();
+
     if (!symbolNamesAdded.empty()) {
       // Convert our list into a combined attribute.
       auto allSyms =
