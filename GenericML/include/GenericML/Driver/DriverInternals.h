@@ -31,7 +31,6 @@ using ITensorGeneratorPtr = std::unique_ptr<ITensorGenerator>;
 ErrorOr<ITensorGeneratorPtr>
 createTensorGenerator(size_t tensorIdx, InputGenerationKind defaultGen,
                       ArrayRef<InputDataSpec> inputDataSpecs,
-                      const TensorShape &userShape,
                       const QuantTensorSpec &modelSpec,
                       size_t minimumCpuAlignment, Runtime &runtime);
 
@@ -42,18 +41,18 @@ createTensorGenerator(size_t tensorIdx, InputGenerationKind defaultGen,
 /// 2. per-tensor data from a file (stubbed out but not implemented yet)
 /// The tensors can be accessed by calling getNextInput().
 /// Returns ownership of tensor generators (containing tensors) to the caller.
-ErrorOr<SmallVector<ITensorGeneratorPtr, 3>> createTensorGenerators(
-    InputGenerationKind inputGenKind, ArrayRef<TensorShape> userInputShapes,
-    ArrayRef<InputDataSpec> inputDataSpecs, size_t minimumCpuAlignment,
-    const Model *model, Runtime &runtime);
+ErrorOr<SmallVector<ITensorGeneratorPtr, 3>>
+createTensorGenerators(InputGenerationKind inputGenKind,
+                       ArrayRef<QuantTensorSpec> inputShapeSpecs,
+                       ArrayRef<InputDataSpec> inputDataSpecs,
+                       size_t minimumCpuAlignment, Runtime &runtime);
 
-ErrorOrSuccess benchmarkModel(const Model *model, Runtime &runtime,
-                              StringRef benchmarkName,
-                              const ExecutorDriverCLOptions &options,
-                              BenchmarkScenario scenario, StringRef outputDir,
-                              bool benchmarkNoLogPrefix,
-                              uint64_t min_duration_ms,
-                              uint64_t min_query_count);
+ErrorOrSuccess
+benchmarkModel(const Model *model, Runtime &runtime, StringRef benchmarkName,
+               const ExecutorDriverCLOptions &options,
+               ArrayRef<QuantTensorSpec> inputSpecs, BenchmarkScenario scenario,
+               StringRef outputDir, bool benchmarkNoLogPrefix,
+               uint64_t min_duration_ms, uint64_t min_query_count);
 } // namespace M
 
 #endif // DRIVERINTERNALS_H

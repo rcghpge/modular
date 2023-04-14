@@ -279,6 +279,7 @@ buildArgs(Runtime &runtime, ArrayRef<ITensorGeneratorPtr> generators) {
 /// the runtime for each evaluation.
 static ErrorOrSuccess executeModel(const Model *model, Runtime &runtime,
                                    const ExecutorDriverCLOptions &options,
+                                   ArrayRef<QuantTensorSpec> inputSpecs,
                                    unsigned int numRuns,
                                    unsigned int numWarmup) {
   std::unique_ptr<llvm::raw_fd_ostream> optTimingOs;
@@ -308,9 +309,9 @@ static ErrorOrSuccess executeModel(const Model *model, Runtime &runtime,
   // options and shapes. Each tensor generator holds one or more M::Tensor's
   // with lifetime matching the generator itself.
   UNWRAP_ERROR(inputTensorGenerators,
-               createTensorGenerators(
-                   options.inputGenKind, options.inputShapes, options.inputData,
-                   options.minimumCpuAlignment, model, runtime));
+               createTensorGenerators(options.inputGenKind, inputSpecs,
+                                      options.inputData,
+                                      options.minimumCpuAlignment, runtime));
 
   // Run the model numWarmup times to warmup the execution. This is performed to
   // remove any added overhead due to initial setup of the model.
@@ -393,10 +394,75 @@ static ErrorOrSuccess executeModel(const Model *model, Runtime &runtime,
   return success();
 }
 
+/// Given an array of compile-time QuantTensorSpecs and an array of run-time
+/// override shapes, return an updated array of QuantTensorSpecs.
+static ErrorOr<SmallVector<QuantTensorSpec>>
+getResolvedInputShapes(ArrayRef<QuantTensorSpec> compiledShapes,
+                       ArrayRef<TensorShape> userInputShapes) {
+  SmallVector<QuantTensorSpec> ret;
+  auto numInputTensors = compiledShapes.size();
+
+  // If no user shapes, just copy input to output
+  if (userInputShapes.empty()) {
+    ret.append(compiledShapes.begin(), compiledShapes.end());
+    return ret;
+  }
+
+  // Next, check that array sizes match.
+  if (userInputShapes.size() != numInputTensors) {
+    return Error(Twine("Number of specified input shapes (") +
+                 Twine(userInputShapes.size()) + ") doesn't match " +
+                 "number of model inputs (" + Twine(numInputTensors) + ")");
+  }
+
+  // Iterate through each input tensor
+  for (unsigned i = 0; i < numInputTensors; ++i) {
+    auto userShape = userInputShapes[i];
+    auto compiledShape = compiledShapes[i];
+
+    // Verify that ranks match.
+    if (userShape.getRank() != compiledShape.getRank()) {
+      return Error(Twine("Specified shape ") + userShape.getAsString() +
+                   " doesn't match the rank of model input shape " +
+                   compiledShape.getAsString());
+    }
+
+    // Validate given dimensions.
+    for (const auto &[userDim, modelDim] :
+         llvm::zip(userShape, compiledShape)) {
+      if (mlir::ShapedType::isDynamic(modelDim)) {
+        if (mlir::ShapedType::isDynamic(userDim)) {
+          return Error(
+              Twine("Must specify a fixed input shape for model input shape ") +
+              compiledShape.getAsString());
+        }
+      } else if (userDim != modelDim) {
+        return Error(Twine("Specified dimension ") + Twine(userDim) +
+                     " doesn't match model input dimension " + Twine(modelDim) +
+                     " for shape " + compiledShape.getAsString());
+      }
+    }
+
+    // Build new TensorSpec
+    ret.push_back(compiledShape.cloneWithNewShape(userShape));
+  }
+
+  return ret;
+}
+
 /// Run `model` using the command line options flags configured by the user.
 LogicalResult M::runModel(MLIRContext *ctx, const Model *model,
                           LLCL::Runtime &runtime,
                           const ExecutorDriverCLOptions &options) {
+
+  // Get fully resolved input shapes
+  auto shapesOrErr =
+      getResolvedInputShapes(model->getInputSpecs(), options.inputShapes);
+  if (shapesOrErr.isError()) {
+    return failure(options.reportError(shapesOrErr.getError()));
+  }
+  const auto &inputSpecs = shapesOrErr.takeValue();
+
   if (options.benchmarkMode) {
     int numWarmup = options.numWarmup.getValue();
     if (options.numRuns.getValue() > 2) {
@@ -412,21 +478,21 @@ LogicalResult M::runModel(MLIRContext *ctx, const Model *model,
       numWarmup = 1;
     }
     // Execute the model for the warmup runs only.
-    if (auto err =
-            executeModel(model, runtime, options, /*numRuns=*/0, numWarmup))
+    if (auto err = executeModel(model, runtime, options, inputSpecs,
+                                /*numRuns=*/0, numWarmup))
       return failure(options.reportError(err.getError()));
     // Run the actual benchmark.
     if (auto err = benchmarkModel(
-            model, runtime, options.benchmarkName, options,
+            model, runtime, options.benchmarkName, options, inputSpecs,
             options.benchmarkScenario, options.benchmarkOutputDir,
             options.benchmarkNoLogPrefix, options.benchmarkMinDurationMs,
             options.benchmarkMinQueryCount))
       return failure(options.reportError(err.getError()));
 
   } else {
-    if (auto err =
-            executeModel(model, runtime, options, options.numRuns.getValue(),
-                         options.numWarmup.getValue()))
+    if (auto err = executeModel(model, runtime, options, inputSpecs,
+                                options.numRuns.getValue(),
+                                options.numWarmup.getValue()))
       return failure(options.reportError(err.getError()));
   }
   return success();
@@ -448,6 +514,12 @@ M::runModelWithData(MLIRContext *ctx, const Model *model,
   UNWRAP_ERROR(executableModel, model->setup(runtime));
   UNWRAP_ERROR(unit, executableModel->waitForModelSetup());
   (void)unit;
+
+  // The runModel() entrypoint supports runtime override for input shapes,
+  // but that's not available here. Verify that the user isn't trying to do so.
+  if (options.inputShapes.size()) {
+    return Error("Runtime input shapes are not supported.");
+  }
 
   // Construct input tensors which borrow from the given input buffers. We
   // assume they are held alive for the entire execution.

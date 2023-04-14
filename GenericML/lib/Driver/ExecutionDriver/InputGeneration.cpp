@@ -78,27 +78,9 @@ static ErrorOrSuccess fillWithElements(Tensor &tensor,
                                   elementBuffer);
 }
 
-static ErrorOr<Tensor> allocateInput(const TensorShape &userShape,
-                                     const QuantTensorSpec &modelSpec,
+static ErrorOr<Tensor> allocateInput(const QuantTensorSpec &modelSpec,
                                      Runtime &runtime, size_t alignment) {
-  if (userShape.getRank() != modelSpec.getRank())
-    return Error(Twine("Specified shape ") + userShape.getAsString() +
-                 " doesn't match the rank of model input shape " +
-                 modelSpec.getAsString());
-  for (const auto &[userDim, modelDim] : llvm::zip(userShape, modelSpec)) {
-    if (mlir::ShapedType::isDynamic(modelDim)) {
-      if (mlir::ShapedType::isDynamic(userDim))
-        return Error(
-            Twine("Must specify a fixed input shape for model input shape ") +
-            modelSpec.getAsString());
-    } else if (userDim != modelDim) {
-      return Error(Twine("Specified dimension ") + Twine(userDim) +
-                   " doesn't match model input dimension " + Twine(modelDim) +
-                   " for shape " + modelSpec.getAsString());
-    }
-  }
-
-  return Tensor::createOwned({userShape, modelSpec.getEltType()}, runtime,
+  return Tensor::createOwned({modelSpec, modelSpec.getEltType()}, runtime,
                              alignment);
 }
 
@@ -111,11 +93,10 @@ static ErrorOrSuccess fillInput(InputGenerationKind inputGenKind,
 }
 
 static ErrorOr<Tensor> allocateAndFillInput(InputGenerationKind inputGenKind,
-                                            const TensorShape &userShape,
                                             const QuantTensorSpec &modelSpec,
                                             Runtime &runtime,
                                             size_t alignment) {
-  UNWRAP_ERROR(result, allocateInput(userShape, modelSpec, runtime, alignment));
+  UNWRAP_ERROR(result, allocateInput(modelSpec, runtime, alignment));
   RETURN_ERROR(fillInput(inputGenKind, modelSpec, result));
   return result;
 }
@@ -123,11 +104,12 @@ static ErrorOr<Tensor> allocateAndFillInput(InputGenerationKind inputGenKind,
 // Tensor that has been allocated and filled with an InputGenerationKind.
 class FilledTensorGenerator : public ITensorGenerator {
 public:
-  static ErrorOr<FilledTensorGenerator>
-  create(InputGenerationKind genKind, const TensorShape &userShape,
-         const QuantTensorSpec &modelSpec, Runtime &runtime, size_t alignment) {
-    UNWRAP_ERROR(tensor, allocateAndFillInput(genKind, userShape, modelSpec,
-                                              runtime, alignment));
+  static ErrorOr<FilledTensorGenerator> create(InputGenerationKind genKind,
+                                               const QuantTensorSpec &modelSpec,
+                                               Runtime &runtime,
+                                               size_t alignment) {
+    UNWRAP_ERROR(tensor,
+                 allocateAndFillInput(genKind, modelSpec, runtime, alignment));
     return FilledTensorGenerator(std::move(tensor));
   }
 
@@ -150,9 +132,8 @@ private:
 class FileTensorGenerator : public ITensorGenerator {
 public:
   static ErrorOr<FileTensorGenerator>
-  create(const std::filesystem::path &filename, const TensorShape &userShape,
-         const QuantTensorSpec &spec, Runtime &runtime, size_t alignment,
-         TensorGeneratorFlag flags) {
+  create(const std::filesystem::path &filename, const QuantTensorSpec &spec,
+         Runtime &runtime, size_t alignment, TensorGeneratorFlag flags) {
     std::vector<Tensor> tensors;
     std::string errorMsg;
     auto data = mlir::openInputFile(filename.string(), llvm::Align(alignment),
@@ -160,7 +141,7 @@ public:
     if (!data) {
       return Error("Could not open input file.");
     }
-    auto stride = spec.getEltType().getSizeInBytes(userShape.getNumElements());
+    auto stride = spec.getEltType().getSizeInBytes(spec.getNumElements());
     if (!isSet(flags, TensorGeneratorFlag::kTruncate) &&
         data->getBufferSize() % stride != 0) {
       return Error("--input-data file size not a multiple of tensor size. "
@@ -169,8 +150,8 @@ public:
     }
     auto dataStart = data->getBufferStart();
     for (size_t i = 0, n = data->getBufferSize() / stride; i < n; i++) {
-      auto tensor = Tensor::createOwned({userShape, spec.getEltType()}, runtime,
-                                        alignment);
+      auto tensor =
+          Tensor::createOwned({spec, spec.getEltType()}, runtime, alignment);
       auto tensorBuf = static_cast<char *>(tensor.getMutableBuffer());
       std::memcpy(tensorBuf, dataStart + i * stride, tensor.getSizeInBytes());
       tensors.push_back(std::move(tensor));
@@ -219,7 +200,6 @@ private:
 ErrorOr<ITensorGeneratorPtr>
 M::createTensorGenerator(size_t tensorIdx, InputGenerationKind defaultGen,
                          ArrayRef<InputDataSpec> inputDataSpecs,
-                         const TensorShape &userShape,
                          const QuantTensorSpec &modelSpec,
                          size_t minimumCpuAlignment, Runtime &runtime) {
   std::optional<InputDataSpec> spec;
@@ -234,37 +214,25 @@ M::createTensorGenerator(size_t tensorIdx, InputGenerationKind defaultGen,
 
   if (!spec || std::holds_alternative<InputGenerationKind>(spec->inputGen)) {
     UNWRAP_ERROR(filledGenerator,
-                 FilledTensorGenerator::create(defaultGen, userShape, modelSpec,
-                                               runtime, minimumCpuAlignment));
+                 FilledTensorGenerator::create(defaultGen, modelSpec, runtime,
+                                               minimumCpuAlignment));
     return std::make_unique<FilledTensorGenerator>(std::move(filledGenerator));
   }
 
   auto filename = std::get<std::filesystem::path>(spec->inputGen);
   // pack vector of flags into single int
   UNWRAP_ERROR(fileGenerator, FileTensorGenerator::create(
-                                  filename, userShape, modelSpec, runtime,
+                                  filename, modelSpec, runtime,
                                   minimumCpuAlignment, spec->genFlags));
   return std::make_unique<FileTensorGenerator>(std::move(fileGenerator));
 }
 
-ErrorOr<SmallVector<ITensorGeneratorPtr, 3>> M::createTensorGenerators(
-    InputGenerationKind inputGenKind, ArrayRef<TensorShape> userInputShapes,
-    ArrayRef<InputDataSpec> inputDataSpecs, size_t minimumCpuAlignment,
-    const Model *model, Runtime &runtime) {
-  SmallVector<TensorShape> inputShapes(userInputShapes.begin(),
-                                       userInputShapes.end());
-  auto numInputs = model->getInputSpecs().size();
-  if (!inputShapes.empty()) {
-    if (inputShapes.size() != numInputs) {
-      return Error(Twine("Number of specified input shapes (") +
-                   Twine(inputShapes.size()) +
-                   ") doesn't match number of model inputs (" +
-                   Twine(numInputs) + ")");
-    }
-  } else {
-    auto modelSpecs = model->getInputSpecs();
-    inputShapes.append(modelSpecs.begin(), modelSpecs.end());
-  }
+ErrorOr<SmallVector<ITensorGeneratorPtr, 3>>
+M::createTensorGenerators(InputGenerationKind inputGenKind,
+                          ArrayRef<QuantTensorSpec> inputShapeSpecs,
+                          ArrayRef<InputDataSpec> inputDataSpecs,
+                          size_t minimumCpuAlignment, Runtime &runtime) {
+  auto numInputs = inputShapeSpecs.size();
 
   for (const auto &inputData : inputDataSpecs) {
     if (inputData.tensorIdx >= numInputs) {
@@ -277,11 +245,10 @@ ErrorOr<SmallVector<ITensorGeneratorPtr, 3>> M::createTensorGenerators(
 
   SmallVector<ITensorGeneratorPtr, 3> inputTensorGenerators;
   for (size_t i = 0; i < numInputs; i++) {
-    const auto &userShape = inputShapes[i];
-    const auto &modelSpec = model->getInputSpecs()[i];
+    const auto &modelSpec = inputShapeSpecs[i];
     auto generatorOrError =
-        createTensorGenerator(i, inputGenKind, inputDataSpecs, userShape,
-                              modelSpec, minimumCpuAlignment, runtime);
+        createTensorGenerator(i, inputGenKind, inputDataSpecs, modelSpec,
+                              minimumCpuAlignment, runtime);
     if (generatorOrError) {
       return Error("Input " + llvm::Twine(i) + ": " +
                    generatorOrError.getError());

@@ -98,6 +98,11 @@ inline raw_ostream &operator<<(raw_ostream &os, const QuantSpec &value) {
 /// Since QuantSpec can be of notQuantized kind, QuantTensorSpec can describe
 /// ordinary floating point (i.e. not quantized) tensors.
 class QuantTensorSpec : public TensorSpec {
+private:
+  QuantTensorSpec(const QuantTensorSpec &spec, const TensorShape &newShape)
+      : TensorSpec(newShape, spec.getEltType()),
+        quantSpec(spec.getQuantSpec()) {}
+
 public:
   QuantTensorSpec() : TensorSpec() { setEltType(DType::invalid); }
   QuantTensorSpec(TensorSpec &&tensorSpec) : TensorSpec(tensorSpec) {}
@@ -109,6 +114,11 @@ public:
 
   /// Returns true if QuantTensorSpec describes a truly quantized tensor.
   bool isQuantized() const { return quantSpec.isQuantized(); }
+
+  /// Returns new QuantTensorSpec with identical attributes save for newShape.
+  QuantTensorSpec cloneWithNewShape(const TensorShape &newShape) const {
+    return QuantTensorSpec(*this, newShape);
+  }
 
   /// Helper method to decode a MEFType into a TensorSpec, if possible.
   static ErrorOr<QuantTensorSpec> get(MEFType type);
