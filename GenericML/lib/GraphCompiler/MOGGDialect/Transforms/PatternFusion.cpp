@@ -295,40 +295,43 @@ struct FullyConnectedPattern : public RewritePattern {
 
 // TODO: Move this to a MO transformation pass after refactoring patterns out of
 // MOGG
-struct LiftTransposesPattern : public OpRewritePattern<MO::TransposeOp> {
-  LiftTransposesPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
+struct SinkTransposeThroughUnaryOpPattern
+    : public OpInterfaceRewritePattern<MO::ElementWiseUnary> {
+  SinkTransposeThroughUnaryOpPattern(MLIRContext *ctx)
+      : OpInterfaceRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(MO::TransposeOp op,
+  LogicalResult matchAndRewrite(MO::ElementWiseUnary op,
                                 PatternRewriter &rewriter) const override {
-    //   input               input     perm
-    //     |                   \        /
-    //   unary  perm    ===>   transpose (*)
-    //      \    /                 |
-    //   transpose (op)          unary (*)
+    //  input     perm       input
+    //    \        /           |
+    //    transpose     ==>  unary(*)    perm
+    //        |                 \       /
+    //      unary (op)          transpose(*)
     //
     // NOTE: (*) means result type or operands of the op were updated
     Value input, perm;
-    Operation *unaryOp;
-    auto transposeP = m_Op<MO::TransposeOp>(
-        m_Op<MO::ElementWiseUnary>(&unaryOp, m_Any(&input)), m_Any(&perm));
-    if (!transposeP.match(op))
+    Operation *opaqueTransposeOp;
+    auto unaryP = m_Op<MO::ElementWiseUnary>(
+        m_Op<MO::TransposeOp>(&opaqueTransposeOp, m_Any(&input), m_Any(&perm)));
+    if (!unaryP.match(op))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
     if (!input || !perm)
       return rewriter.notifyMatchFailure(op, "null input or permutation value");
 
-    // If unary op has multiple uses, we don't lift the transposes because
-    // we'll have to recompute the original unary op for other users.
+    // If transpose op has multiple uses, we don't sink the transposes because
+    // we'll have to recompute the original transpose op for other users.
     // TODO add [get|set]Input method to `ElementWiseUnary` interface
-    Value unary = unaryOp->getResult(0);
-    if (!unary.hasOneUse())
-      return rewriter.notifyMatchFailure(op, "unary op has multiple uses");
+    Value transpose = opaqueTransposeOp->getResult(0);
+    if (!transpose.hasOneUse())
+      return rewriter.notifyMatchFailure(op, "transpose op has multiple uses");
 
-    rewriter.replaceAllUsesWith(op.getResult(), unary);
-    op.getInputMutable().assign(input);
-    unaryOp->setOperand(0, op.getResult());
-    unary.setType(op.getType());
-    unaryOp->moveAfter(op);
+    auto transposeOp = cast<MO::TransposeOp>(opaqueTransposeOp);
+    rewriter.replaceAllUsesWith(op->getResults(), transposeOp.getResult());
+    op->setOperand(0, input);
+    op->getResult(0).setType(input.getType());
+    transposeOp.getInputMutable().assign(op->getResult(0));
+    transposeOp->moveAfter(op);
 
     return mlir::success();
   }
@@ -347,9 +350,8 @@ void PatternFusionPass::runOnOperation() {
 
   RewritePatternSet patterns{ctx};
   patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
-               LiftTransposesPattern>(ctx);
+               SinkTransposeThroughUnaryOpPattern>(ctx);
   // TODO(#12590): enable FullyConnectedPattern
-
   if (useMatmulPacking.getValue())
     patterns.add<MatmulConstBPattern>(ctx);
 
