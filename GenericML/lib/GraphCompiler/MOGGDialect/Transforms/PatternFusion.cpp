@@ -347,7 +347,8 @@ void PatternFusionPass::runOnOperation() {
 
   RewritePatternSet patterns{ctx};
   patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
-               LiftTransposesPattern, FullyConnectedPattern>(ctx);
+               LiftTransposesPattern>(ctx);
+  // TODO(#12590): enable FullyConnectedPattern
 
   if (useMatmulPacking.getValue())
     patterns.add<MatmulConstBPattern>(ctx);
