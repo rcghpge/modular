@@ -9,24 +9,8 @@ include(AddPyEnv)
 pyenv_setup_findpython3_variables("${MODULAR_PYTHON_API_PYTHON_VERSION}" "${MODULAR_PYTHON_API_PYTHON_ROOT}")
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
-# Install dependencies needed for pytest unit tests.
-if(APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64)$")
-  # M1 Macs only support TensorFlow (which is a dependency) for Python <= 3.11
-  if (${Python3_VERSION_MINOR} GREATER_EQUAL "11")
-    message(WARNING "Cannot install all test dependencies for system configuration.
-      Use a pyenv with Python version <= 3.10 for building notebook examples
-      and pass flag MODULAR_PYTHON_API_PYTHON_ROOT to pass a path to
-      your Python env while configuring CMake")
-    return()
-  else()
-    set(REQUIREMENTS_FILE "${CMAKE_CURRENT_SOURCE_DIR}/requirements-macos.txt")
-  endif()
-else()
-  set(REQUIREMENTS_FILE "${CMAKE_CURRENT_SOURCE_DIR}/requirements.txt")
-endif()
-
 execute_process(
-  COMMAND ${Python3_EXECUTABLE} -m pip install --root-user-action=ignore -r ${REQUIREMENTS_FILE}
+  COMMAND ${Python3_EXECUTABLE} -m pip install --root-user-action=ignore -r ${CMAKE_CURRENT_SOURCE_DIR}/requirements.txt
   OUTPUT_QUIET
   RESULT_VARIABLE PIP_INSTALL_DEPS_RESULT
 )
