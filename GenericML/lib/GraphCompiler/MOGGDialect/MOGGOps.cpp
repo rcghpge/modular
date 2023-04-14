@@ -336,7 +336,7 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
         getOutputSpec("mop.shape.slice", {loweringState.getExecuteChain(),
                                           input, start, stop, step});
   } else if (opName == "mop.kernels.matmul_packb" ||
-             opName == "mop.kernels.fully_connected_packb") {
+             opName.startswith("mop.kernels.fully_connected.packb")) {
     // Get just the specs for tensors.
     Value lhsSpec = inputTensors.front().spec;
 

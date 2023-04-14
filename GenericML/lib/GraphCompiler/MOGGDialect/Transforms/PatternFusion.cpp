@@ -200,26 +200,39 @@ struct FullyConnectedPattern : public RewritePattern {
     b.setInsertionPoint(op);
 
     Value input, weight, bias;
-    Operation *matmul, *reshape;
+    Operation *matmul = nullptr, *add = nullptr, *reshape = nullptr,
+              *gelu = nullptr, *relu = nullptr, *tanh = nullptr;
     auto matmulP = m_Op<MO::MatmulOp>(&matmul, m_MOMatrix(m_Any(&input)),
                                       m_MOMatrix(m_Any(&weight)));
     auto broadcastP =
         m_Optional(matmulP, m_Op<MO::Static::BroadcastToOp>(matmulP));
-    auto lhs = m_Optional(broadcastP,
-                          m_Op<MO::Static::ReshapeOp>(&reshape, broadcastP));
-    auto rhs = m_Op<MO::Static::BroadcastToOp>(
-        m_Ranked(1, m_Typed<M::MO::TensorType>(m_Any(&bias))));
-    if (isa<MO::AddOp>(op) &&
-        !m_Optional(m_Op<MO::AddOp>(lhs, rhs), m_Op<MO::AddOp>(rhs, lhs))
-             .match(op->getResult(0)))
+    auto bias_add = m_BinaryCommutativeOp<MO::AddOp>(
+        &add,
+        m_Optional(broadcastP,
+                   m_Op<MO::Static::ReshapeOp>(&reshape, broadcastP)),
+        m_Op<MO::Static::BroadcastToOp>(
+            m_Ranked(1, m_Typed<M::MO::TensorType>(m_Any(&bias)))));
+
+    auto fully_connected = m_Optional(
+        m_Op<MO::GeluOp>(&gelu, bias_add),
+        m_Optional(m_Op<MO::ReluOp>(&relu, bias_add),
+                   m_Optional(m_Op<MO::TanhOp>(&tanh, bias_add), bias_add)));
+    // TODO: Make the Optional Matcher work with Operation* directly
+    if (op->getNumResults() > 0 && !fully_connected.match(op->getResult(0)))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
     if (!input || !weight || !bias)
       return rewriter.notifyMatchFailure(op, "null input value");
+
     Value fc;
     if (!isa_and_nonnull<MO::ConstantOp>(weight.getDefiningOp())) {
+      if (gelu || relu || tanh)
+        return rewriter.notifyMatchFailure(
+            op, "haven't implemented activation fusions with out packb");
       fc = rewriter
-               .create<MOGG::ExtOp>(op->getLoc(), matmul->getResultTypes(),
+               .create<MOGG::ExtOp>(op->getLoc(),
+                                    reshape ? matmul->getResultTypes()[0]
+                                            : add->getResultTypes()[0],
                                     "mop.kernels.fully_connected",
                                     SmallVector<Value>{input, weight, bias})
                .getResult(0);
@@ -249,11 +262,23 @@ struct FullyConnectedPattern : public RewritePattern {
                                    /*inputOperands=*/SmallVector<Value>{weight})
               .getResult(0);
 
+      std::string kernel;
+      if (gelu)
+        kernel = "mop.kernels.fully_connected.packb.gelu";
+      else if (relu)
+        kernel = "mop.kernels.fully_connected.packb.relu";
+      else if (tanh)
+        kernel = "mop.kernels.fully_connected.packb.tanh";
+      else
+        kernel = "mop.kernels.fully_connected.packb";
+
       fc = rewriter
                .create<MOGG::ExtOp>(
-                   op->getLoc(), matmul->getResultTypes()[0],
-                   "mop.kernels.fully_connected_packb",
-                   SmallVector<Value>{input, packedWeights, bias}, weightsDims)
+                   op->getLoc(),
+                   reshape ? matmul->getResultTypes()[0]
+                           : add->getResultTypes()[0],
+                   kernel, SmallVector<Value>{input, packedWeights, bias},
+                   weightsDims)
                .getResult(0);
     }
 

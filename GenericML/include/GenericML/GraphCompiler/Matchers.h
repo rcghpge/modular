@@ -260,6 +260,13 @@ auto m_BinaryCommutativeOp(Matcher1 matcher1, Matcher2 matcher2) {
                     m_Op<OpType>(matcher2, matcher1));
 }
 
+template <typename OpType, typename Matcher1, typename Matcher2>
+auto m_BinaryCommutativeOp(Operation **bindDest, Matcher1 matcher1,
+                           Matcher2 matcher2) {
+  return m_Optional(m_Op<OpType>(bindDest, matcher1, matcher2),
+                    m_Op<OpType>(bindDest, matcher2, matcher1));
+}
+
 } // namespace mlir
 
 #endif // GENERICML_GRAPHCOMPILER_MATCHERS_H
