@@ -1,0 +1,48 @@
+// RUN: mo-opt --mo-to-mogg=use-jit=true --fuse-elementwise --canonicalize --cse --fuse-bcasts --canonicalize --cse --fuse-consts %s | FileCheck %s
+
+mo.graph @basic_constant_fuse(%arg0: !mo.tensor<[2, 2, 4], f32>) -> (!mo.tensor<[2, 2, 4], f32>) {
+  %cst1 = mo.constant {value = #M.dense_array<1.500000e-01, 1.500000e-01, 2.500000e-01, 3.500000e-01, 4.500000e-01, 5.500000e-01, 6.500000e-01, 7.500000e-01, 1.500000e-01, 1.500000e-01, 2.500000e-01, 3.500000e-01, 4.500000e-01, 5.500000e-01, 6.500000e-01, 7.500000e-01> : tensor<16xf32>} : !mo.tensor<[2, 2, 4], f32>
+  %cst2 = mo.constant {value = #M.dense_array<1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00, 7.000000e+00, 8.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00, 7.000000e+00, 8.000000e+00> : tensor<16xf32>} : !mo.tensor<[2, 2, 4], f32>
+  %cst3 = mo.constant {value = #M.dense_array<15.000000e+00, 14.000000e+00, 13.000000e+00, 12.000000e+00, 11.000000e+00, 10.000000e+00, 9.000000e+00, 8.000000e+00, 7.000000e+00, 6.000000e+00, 5.000000e+00, 4.000000e+00, 3.000000e+00, 2.000000e+00, 1.000000e+00, 0.000000e+00> : tensor<16xf32>} : !mo.tensor<[2, 2, 4], f32>
+
+  %1 = mo.add(%arg0, %cst1) : !mo.tensor<[2, 2, 4], f32>
+  %2 = mo.sub(%1, %cst2) : !mo.tensor<[2, 2, 4], f32>
+  %3 = mo.mul(%2, %cst3) : !mo.tensor<[2, 2, 4], f32>
+  mo.output %3 : !mo.tensor<[2, 2, 4], f32>
+}
+
+// CHECK-LABEL: mo.graph @basic_constant_fuse
+// CHECK: (%[[ARG:.*]]: !mo.tensor<[2, 2, 4], f32>)
+
+// Check kernel is next (so consts have been dce'd) & that it has one arg.
+// CHECK-NEXT: mogg.kernel (%[[ARG]])
+// CHECK-NEXT: mogg.output_placeholders
+
+// Check the constants are inside the kernel now.
+// CHECK-NEXT: mo.constant {value = #M.dense_array<1.500000e+01,
+// CHECK-NEXT: mo.constant {value = #M.dense_array<1.000000e+00,
+// CHECK-NEXT: mo.constant {value = #M.dense_array<1.500000e-01
+
+
+// Check broadcasted constants get fused
+mo.graph @bcasted_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], f32>) -> !mo.tensor<[D14, D15], f32> {
+  %0 = mo.constant {value = #M.dense_array<1.250000e-01> : tensor<f32>} : !mo.tensor<[], f32>
+  %1 = mo.constant {value = #M.dense_array<6.000000e+02> : tensor<f32>} : !mo.tensor<[], f32>
+  %2 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32> -> !mo.tensor<[D14, D15], f32>
+  %3 = mo.static.broadcast_to(%1) : !mo.tensor<[], f32> -> !mo.tensor<[D14, D15], f32>
+  %4 = mo.add(%2, %arg0) : !mo.tensor<[D14, D15], f32>
+  %5 = mo.div(%4, %3) : !mo.tensor<[D14, D15], f32>
+  mo.output %5 : !mo.tensor<[D14, D15], f32>
+}
+
+
+// CHECK-LABEL: mo.graph @bcasted_const_fusion
+// CHECK-NEXT: mogg.kernel
+// CHECK-NEXT: mogg.output_placeholders
+
+// Check constants are in kernel and used in broadcasts.
+// CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1.250000e-01>
+// CHECK-NEXT: %[[CST2:.*]] = mo.constant {value = #M.dense_array<6.000000e+02>
+// CHECK-NEXT: mogg.call "mogg.broadcast_to_tensor"(%[[CST2]]
+// CHECK-NEXT: mogg.call "mogg.broadcast_to_tensor"(%[[CST1]]
+

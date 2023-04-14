@@ -44,6 +44,7 @@ std::string mangleBlock(mlir::Block &block,
                         DenseMap<Value, std::string> &valueToPositionInBlock) {
   std::string name = "";
   size_t blockIndex = 0;
+  size_t numConstants = 0;
 
   // Each operation in the block of ops contributes to the name.
   for (mlir::Operation &innerOp : block) {
@@ -93,6 +94,21 @@ std::string mangleBlock(mlir::Block &block,
       // Track the outputs name for future mangling.
       for (Value output : innerOp.getResults())
         valueToPositionInBlock[output] = std::to_string(blockIndex);
+    } else if (auto cst = dyn_cast<MO::ConstantOp>(innerOp)) {
+      std::string constantID = "CST" + std::to_string(numConstants);
+      numConstants++;
+
+      valueToPositionInBlock[cst.getResult()] = constantID;
+
+      // Add to the mangling soup.
+      name += constantID + "_";
+
+      // Add the actual constant to the soup.
+      auto attr = cast<M::ArrayElementsAttr>(cst.getValueAttr());
+      const float *asFloat =
+          reinterpret_cast<const float *>(attr.getRawData().data());
+      for (int64_t i = 0, e = attr.getNumElements(); i < e; ++i)
+        name += std::to_string(asFloat[i]) + "_";
     }
 
     // Add double seperator between operations.

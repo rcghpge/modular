@@ -112,6 +112,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
       pm.addPass(MOGG::createFuseBroadcasts());
       pm.addPass(mlir::createCanonicalizerPass());
       pm.addPass(mlir::createCSEPass());
+      pm.addPass(MOGG::createFuseConstants());
     }
 
     // If we are jitting then we need to compile the jit kernels as well.

@@ -48,6 +48,11 @@ def FuseBroadcasts: Pass<"fuse-bcasts", "MO::GraphOp"> {
   let dependentDialects = ["M::MOGG::MOGGDialect"];
 }
 
+def FuseConstants: Pass<"fuse-consts", "MO::GraphOp"> {
+  let summary = "Fold constants into the jit kernels";
+  let dependentDialects = ["M::MOGG::MOGGDialect"];
+}
+
 def FuseElementwise: Pass<"fuse-elementwise", "MO::GraphOp"> {
   let summary = "Fuse blocks of elementwise operations if possible";
   let dependentDialects = ["M::MOGG::MOGGDialect"];
