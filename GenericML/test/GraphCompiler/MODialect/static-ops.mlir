@@ -6,11 +6,18 @@
 // Static_BrodcastToOp
 //===----------------------------------------------------------------------===//
 
-// CHECK: mo.graph @static_broadcast_to<[[N:.*]]>(%[[FROM:.*]]: !mo.tensor<[[[N]], 3], f32>) -> !mo.tensor<[1, [[N]], 3], f32> {
-mo.graph @static_broadcast_to<N>(%from: !mo.tensor<[N, 3], f32>) -> !mo.tensor<[1, N, 3], f32> {
-  // CHECK: [[RES:.*]] = mo.static.broadcast_to(%[[FROM]]) : !mo.tensor<[[[N]], 3], f32> -> !mo.tensor<[1, [[N]], 3], f32>
-  %res = mo.static.broadcast_to(%from) : !mo.tensor<[N, 3], f32> -> !mo.tensor<[1, N, 3], f32>
-  mo.output %res : !mo.tensor<[1, N, 3], f32>
+// CHECK: mo.graph @static_broadcast_to<[[N:.*]]>(%[[FROM:.*]]: !mo.tensor<[[[N]], 3], f32>) -> !mo.tensor<[2, [[N]], 3], f32> {
+mo.graph @static_broadcast_to<N>(%from: !mo.tensor<[N, 3], f32>) -> !mo.tensor<[2, N, 3], f32> {
+  // CHECK: [[RES:.*]] = mo.static.broadcast_to(%[[FROM]]) : !mo.tensor<[[[N]], 3], f32> -> !mo.tensor<[2, [[N]], 3], f32>
+  %res = mo.static.broadcast_to(%from) : !mo.tensor<[N, 3], f32> -> !mo.tensor<[2, N, 3], f32>
+  mo.output %res : !mo.tensor<[2, N, 3], f32>
+}
+
+// CHECK: mo.graph @static_broadcast_to_reshape<[[N:.*]]>(%[[FROM:.*]]: !mo.tensor<[5, [[N]]], f32>) -> !mo.tensor<[1, [[N]], 5], f32> {
+mo.graph @static_broadcast_to_reshape<N>(%from: !mo.tensor<[5, N], f32>) -> !mo.tensor<[1, N, 5], f32> {
+  // CHECK: [[RES:.*]] = mo.static.reshape(%[[FROM]]) : !mo.tensor<[5, [[N]]], f32> -> !mo.tensor<[1, [[N]], 5], f32>
+  %res = mo.static.broadcast_to(%from) : !mo.tensor<[5, N], f32> -> !mo.tensor<[1, N, 5], f32>
+  mo.output %res : !mo.tensor<[1, N, 5], f32>
 }
 
 // CHECK: mo.graph @static_broadcast_to_fold<[[N:.*]]>(%[[FROM:.*]]: !mo.tensor<[[[N]], 3], f32>) -> !mo.tensor<[[[N]], 3], f32> {

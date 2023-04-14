@@ -292,6 +292,10 @@ bool TensorType::hasUnknownShape() const {
   return res;
 };
 
+TypedAttr TensorType::getSymbolicNumElements() const {
+  return getTypedShapeAttr().getSymbolicNumElements();
+}
+
 LogicalResult ShapeType::printValue(AsmPrinter &p, TypedAttr value) const {
   if (!mlir::isa<KGEN::ParamDeclRefAttr, MO::ShapeAttr>(value))
     return failure();

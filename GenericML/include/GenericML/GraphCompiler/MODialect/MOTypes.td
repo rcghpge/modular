@@ -127,6 +127,10 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     /// Checks if the shape or any dimensions are unknown. Parameters are
     /// considered known.
     bool hasUnknownShape() const;
+
+    /// Returns the number of elements as a symbolic (i.e. parametric)
+    /// expression. Fails if not statically ranked.
+    TypedAttr getSymbolicNumElements() const;
   }];
 }
 

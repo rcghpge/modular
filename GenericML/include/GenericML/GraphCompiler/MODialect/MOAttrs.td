@@ -93,6 +93,9 @@ def MO_ShapeAttr : KGEN_ExprAttr<"Shape", "shape"> {
 
     /// Check whether any of the dimensions are KGEN::UnknownAttr.
     bool hasUnknownDims() const;
+
+    /// Returns the number of elements as a symbolic expression.
+    TypedAttr getSymbolicNumElements() const;
   }];
 
   let genVerifyDecl = 1;

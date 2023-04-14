@@ -368,12 +368,26 @@ LogicalResult BroadcastToOp::verify() {
 // MOStatic_BroadcastToOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult Static::BroadcastToOp::fold(FoldAdaptor adaptor) {
-  TensorType outTy = getType();
-  if (getInput().getType() == outTy)
-    return getInput();
+LogicalResult Static::BroadcastToOp::canonicalize(Static::BroadcastToOp op,
+                                                  PatternRewriter &rewriter) {
+  TensorType resTy = op.getType();
+  TensorValue inputVal = op.getInput();
+  TensorType inputTy = inputVal.getType();
+  if (!inputTy.hasRank() || !resTy.hasRank())
+    return failure();
 
+  // If a broadcast does not change the number of elements, it is equivalent to
+  // a reshape. This is something we can check symbolically.
+  if (resTy.getSymbolicNumElements() != inputTy.getSymbolicNumElements())
+    return failure();
+
+  rewriter.replaceOpWithNewOp<Static::ReshapeOp>(op, resTy, inputVal);
+  return success();
+}
+
+OpFoldResult Static::BroadcastToOp::fold(FoldAdaptor adaptor) {
   // TODO(#10811): support other types and do this using a MOJO kernel?
+  TensorType outTy = getType();
   auto floatInputAttr =
       dyn_cast_or_null<FloatArrayElementsAttr>(adaptor.getInput());
   if (floatInputAttr && floatInputAttr.getNumElements() == 1 &&
@@ -1543,11 +1557,8 @@ OpFoldResult Shape::NewOp::fold(FoldAdaptor adaptor) {
 }
 
 OpFoldResult Shape::NumElementsOp::fold(FoldAdaptor adaptor) {
-  if (auto inputDimAttrs = dyn_cast_or_null<ShapeAttr>(adaptor.getInput())) {
-    return KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw,
-                                        inputDimAttrs.getValues());
-  }
-
+  if (auto inputDimAttrs = dyn_cast_or_null<ShapeAttr>(adaptor.getInput()))
+    return inputDimAttrs.getSymbolicNumElements();
   return {};
 }
 

@@ -144,6 +144,12 @@ SmallVector<int64_t> MO::ShapeAttr::getIntDims() const {
   return map_to_vector(getValues(), symbolicDimToInt);
 }
 
+TypedAttr MO::ShapeAttr::getSymbolicNumElements() const {
+  if (getRank() == 0)
+    return OpBuilder(getContext()).getIndexAttr(1);
+  return KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, getValues());
+}
+
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//

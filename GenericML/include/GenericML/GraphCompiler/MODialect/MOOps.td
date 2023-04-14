@@ -1332,6 +1332,7 @@ def MOStatic_BroadcastToOp : MOStatic_ShapeModifierOp<"broadcast_to"> {
   }];
 
   let hasVerifier = 1;
+  let hasCanonicalizeMethod = 1;
 }
 
 def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape"> {
