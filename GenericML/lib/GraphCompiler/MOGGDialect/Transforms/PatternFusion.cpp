@@ -293,6 +293,8 @@ struct FullyConnectedPattern : public RewritePattern {
   }
 };
 
+// TODO: Move this to a MO transformation pass after refactoring patterns out of
+// MOGG
 struct LiftTransposesPattern : public OpRewritePattern<MO::TransposeOp> {
   LiftTransposesPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
 
