@@ -514,7 +514,54 @@ LogicalResult ConcatOp::verify() {
         "input and output ranks must be all dynamic, or all static and match");
   }
 
-  return LogicalResult::success();
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// MO_SplitOp support
+//===----------------------------------------------------------------------===//
+
+LogicalResult SplitOp::verify() {
+  SmallVector<TensorValue> tensors;
+  tensors.emplace_back(getInput());
+  for (Value output : getResults())
+    tensors.emplace_back(cast<TensorValue>(output));
+
+  if (failed(impl::verifyMatchingRanks(tensors))) {
+    return emitError(
+        "input and output ranks must be all dynamic, or all static and match");
+  }
+
+  TensorType inputTy = getInput().getType();
+  TensorType resultTy = cast<TensorType>(getResults().front().getType());
+  if (inputTy.getDtype() != resultTy.getDtype())
+    return emitError("input and output element types must match");
+
+  // If the results and inputs have static shapes, and the axis is also a
+  // constant, then verify that the sum of the output shapes along the split
+  // axis matches the input shape, and that the other dimensions match.
+  std::optional<int64_t> axisOr = tryGetConstantInt(getAxis());
+  if (resultTy.hasStaticShape() && axisOr) {
+    int64_t splitDimSum = 0;
+    int64_t axis = *axisOr;
+    for (auto res : ArrayRef<TensorValue>(tensors).drop_front()) {
+      TensorType resTy = res.getType();
+      for (auto [i, dimSize] : llvm::enumerate(resTy.getIntDims())) {
+        if ((int64_t)i == axis) {
+          splitDimSum += dimSize;
+        } else if (dimSize != inputTy.getIntDim(i)) {
+          return emitError(
+              "input and output static shapes must match except split axis");
+        }
+      }
+    }
+
+    if (splitDimSum != inputTy.getIntDim(axis))
+      return emitError(
+          "sum of output shapes along split axis must match input shape");
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -551,7 +598,7 @@ LogicalResult GatherOp::verify() {
 
   // Nothing we can say if either input or indices is dynamically ranked
   if (!paramsType.hasRank() || !indicesType.hasRank())
-    return LogicalResult::success();
+    return success();
 
   if (!resultType.hasRank()) {
     return emitError(
@@ -564,7 +611,7 @@ LogicalResult GatherOp::verify() {
                      "indices ranks if they are all static");
   }
 
-  return LogicalResult::success();
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -700,7 +747,7 @@ LogicalResult SelectOp::verify() {
     return emitError(
         "operands and result type must have the same element type");
 
-  return LogicalResult::success();
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -756,7 +803,7 @@ LogicalResult WhereOp::verify() {
       (!inputTy.hasRank() && !ShapedType::isDynamic(resTy.getIntDim(1))))
     return emitError("mo.where: invalid output shape: inner_dim != input_rank");
 
-  return LogicalResult::success();
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -805,7 +852,7 @@ LogicalResult MatmulOp::verify() {
            << aType.getRank();
   }
 
-  return LogicalResult::success();
+  return success();
 }
 
 LogicalResult BatchMatmulOp::verify() {
@@ -819,7 +866,7 @@ LogicalResult BatchMatmulOp::verify() {
            << aType.getRank();
   }
 
-  return LogicalResult::success();
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

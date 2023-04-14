@@ -87,6 +87,32 @@ mo.graph @concat_dyn_rank(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) 
 }
 
 //===----------------------------------------------------------------------===//
+// SplitOp
+//===----------------------------------------------------------------------===//
+
+// CHECK: mo.graph @split_static(%[[ARG0:.*]]: !mo.tensor<[6], si32>, %[[ARG1:.*]]: !mo.tensor<[2], si64>) -> (!mo.tensor<[?], si32>, !mo.tensor<[?], si32>) {
+mo.graph @split_static(%arg0: !mo.tensor<[6], si32>, %arg1: !mo.tensor<[2], si64>) -> (!mo.tensor<[?], si32>, !mo.tensor<[?], si32>) {
+  // CHECK: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %ax = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  // CHECK: %{{.*}} = mo.split[%[[VAL0]] : !mo.tensor<[], si32>] (%[[ARG0]], %[[ARG1]]) : (!mo.tensor<[6], si32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[?], si32>, !mo.tensor<[?], si32>)
+  %out1, %out2 = mo.split[%ax: !mo.tensor<[], si32>](%arg0, %arg1) : (!mo.tensor<[6], si32>, !mo.tensor<[2], si64>) -> (
+    !mo.tensor<[?], si32>, !mo.tensor<[?], si32>
+  )
+  mo.output %out1, %out2 : !mo.tensor<[?], si32>, !mo.tensor<[?], si32>
+}
+
+// CHECK: mo.graph @split_dyn_rank(%[[ARG0:.*]]: !mo.tensor<?, si32>, %[[ARG1:.*]]: !mo.tensor<[2], si64>) -> (!mo.tensor<?, si32>, !mo.tensor<?, si32>) {
+mo.graph @split_dyn_rank(%arg0: !mo.tensor<?, si32>, %arg1: !mo.tensor<[2], si64>) -> (!mo.tensor<?, si32>, !mo.tensor<?, si32>) {
+  // CHECK: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %ax = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  // CHECK: %{{.*}} = mo.split[%[[VAL0]] : !mo.tensor<[], si32>] (%[[ARG0]], %[[ARG1]]) : (!mo.tensor<?, si32>, !mo.tensor<[2], si64>) -> (!mo.tensor<?, si32>, !mo.tensor<?, si32>)
+  %out1, %out2 = mo.split[%ax: !mo.tensor<[], si32>](%arg0, %arg1) : (!mo.tensor<?, si32>, !mo.tensor<[2], si64>) -> (
+    !mo.tensor<?, si32>, !mo.tensor<?, si32>
+  )
+  mo.output %out1, %out2 : !mo.tensor<?, si32>, !mo.tensor<?, si32>
+}
+
+//===----------------------------------------------------------------------===//
 // GatherOp
 //===----------------------------------------------------------------------===//
 

@@ -199,6 +199,92 @@ mo.graph @concat_partial_dyn_rank(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.ten
 // -----
 
 //===----------------------------------------------------------------------===//
+// SplitOp
+//===----------------------------------------------------------------------===//
+
+mo.graph @split_non_int_axis(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2], si64>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>) {
+  %ax = mo.constant {value = #M.dense_array<0.0> : tensor<1xf32>} : !mo.tensor<[], f32>
+  // expected-error @below {{'mo.split' op operand #2 must be ranked scalar index tensor, but got '!mo.tensor<[], f32>'}}
+  %0, %1 = mo.split[%ax: !mo.tensor<[], f32>](%arg0, %arg1) : (!mo.tensor<[7], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>)
+  mo.output %0, %1 : !mo.tensor<[?], f32>, !mo.tensor<[?], f32>
+}
+
+// -----
+
+mo.graph @split_non_shapelike_splits(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2], f32>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>) {
+  %ax = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  // expected-error @below {{'mo.split' op operand #1 must be rank 1 or unranked with signed 64 integer elements, but got '!mo.tensor<[2], f32>'}}
+  %0, %1 = mo.split[%ax: !mo.tensor<[], si32>](%arg0, %arg1) : (!mo.tensor<[7], f32>, !mo.tensor<[2], f32>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>)
+  mo.output %0, %1 : !mo.tensor<[?], f32>, !mo.tensor<[?], f32>
+}
+
+// -----
+
+mo.graph @split_non_scalar_axis(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2], si64>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>) {
+  %ax = mo.constant {value = #M.dense_array<0, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // expected-error @below {{'mo.split' op operand #2 must be ranked scalar index tensor, but got '!mo.tensor<[2], si64>'}}
+  %0, %1 = mo.split[%ax: !mo.tensor<[2], si64>](%arg0, %arg1) : (!mo.tensor<[7], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>)
+  mo.output %0, %1 : !mo.tensor<[?], f32>, !mo.tensor<[?], f32>
+}
+
+// -----
+
+mo.graph @split_non_matching_output_rank(%arg0: !mo.tensor<[6, 7], f32>, %arg1: !mo.tensor<[2], si64>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>) {
+  %ax = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  // expected-error @below {{input and output ranks must be all dynamic, or all static and match}}
+  %0, %1 = mo.split[%ax: !mo.tensor<[], si32>](%arg0, %arg1) : (!mo.tensor<[6, 7], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>)
+  mo.output %0, %1 : !mo.tensor<[?], f32>, !mo.tensor<[?], f32>
+}
+
+// -----
+
+mo.graph @split_partial_dyn_rank(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[2], si64>) -> (!mo.tensor<?, f32>, !mo.tensor<?, f32>) {
+  %ax = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  // expected-error @below {{input and output ranks must be all dynamic, or all static and match}}
+  %0, %1 = mo.split[%ax: !mo.tensor<[], si64>](%arg0, %arg1) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<?, f32>, !mo.tensor<?, f32>)
+  mo.output %0, %1 : !mo.tensor<?, f32>, !mo.tensor<?, f32>
+}
+
+// -----
+
+mo.graph @split_no_matching_elem_types(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2], si64>) -> (!mo.tensor<[?], si32>, !mo.tensor<[?], si32>) {
+  %ax = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  // expected-error @below {{input and output element types must match}}
+  %0, %1 = mo.split[%ax: !mo.tensor<[], si32>](%arg0, %arg1) : (!mo.tensor<[7], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[?], si32>, !mo.tensor<[?], si32>)
+  mo.output %0, %1 : !mo.tensor<[?], si32>, !mo.tensor<[?], si32>
+}
+
+// -----
+
+mo.graph @split_no_matching_static_shapes() -> (!mo.tensor<[1, 1], si32>, !mo.tensor<[3, 3], si32>) {
+  %ax = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
+  %array = mo.constant {value = #M.dense_array<2, 3, 5, 7> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+  %shape = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %input = mo.reshape(%array, %shape) : (!mo.tensor<[4], si32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], si32>
+  %splitSizes = mo.constant {value = #M.dense_array<1, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // expected-error @below {{input and output static shapes must match except split axis}}
+  %0, %1 = mo.split[%ax: !mo.tensor<[], si32>](%input, %splitSizes) : (
+    !mo.tensor<[2, 2], si32>, !mo.tensor<[2], si64>
+  ) -> (!mo.tensor<[1, 1], si32>, !mo.tensor<[3, 3], si32>)
+  mo.output %0, %1 : !mo.tensor<[1, 1], si32>, !mo.tensor<[3, 3], si32>
+}
+
+// -----
+
+mo.graph @split_wrong_split_dim_sum() -> (!mo.tensor<[1], si32>, !mo.tensor<[2], si32>) {
+  %ax = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
+  %input = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+  %splitSizes = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // expected-error @below {{sum of output shapes along split axis must match input shape}}
+  %0, %1 = mo.split[%ax: !mo.tensor<[], si32>](%input, %splitSizes) : (
+    !mo.tensor<[2], si32>, !mo.tensor<[2], si64>
+  ) -> (!mo.tensor<[1], si32>, !mo.tensor<[2], si32>)
+  mo.output %0, %1 : !mo.tensor<[1], si32>, !mo.tensor<[2], si32>
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // GatherOp
 //===----------------------------------------------------------------------===//
 

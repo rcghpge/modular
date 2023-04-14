@@ -1393,6 +1393,55 @@ def MO_ConcatOp : MO_TensorOp<"concat", [
   let hasVerifier = 1;
 }
 
+def MO_SplitOp : MO_TensorOp<"split", [Pure]> {
+  let summary = "Split Operation";
+  let description = [{
+    Split the input tensor into multiple tensors along a given dimension.
+
+    `mo.split` splits the tensor `input` into multiple output tensors.
+    The number of output tensors is equal to the number of elements in
+    `splitSizes`, which is a rank-1 tensor of integers.
+    Each of the output tensors has the same shape as `input` except along the
+    split dimension `axis`, where the size is given by the corresponding
+    element in `splitSizes`.
+
+    `input` is the tensor to split.
+    `splitSizes` is a rank-1 tensor of integers that specifies the size of each
+    output along the split dimension.
+    `axis` is the dimension along which to split the input tensor.
+
+    Example:
+
+    ```mlir
+    %input: !mo.tensor<[2, 8], f32>
+    %splitSizes = mo.constant {
+      value = #M.dense_array<3, 5> : tensor<2xsi64>
+    } : !mo.tensor<[2], si64>
+    %axis = mo.constant {
+      value = #M.dense_array<1> : tensor<1xsi64>
+    } : !mo.tensor<[], si64>
+    %res = mo.split[%axis: !mo.tensor<[], si64>](%input, %splitSizes) : (
+      !mo.tensor<[2, 8], f32>, !mo.tensor<[2], si64>
+    ) -> (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 5], f32>)
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_ShapeLikeIfRanked:$splitSizes,
+    MO_RankedScalarIndexTensor:$axis);
+  let results = (outs Variadic<MO_Tensor>:$results);
+
+  let assemblyFormat = [{
+    `[` $axis `:` qualified(type($axis)) `]`
+    `(` $input `,` $splitSizes `)` attr-dict `:` `(`
+      qualified(type($input)) `,` qualified(type($splitSizes))
+    `)` `->` `(` type($results) `)`
+  }];
+
+  let hasVerifier = 1;
+}
+
 def MO_TransposeOp : MO_TensorOp<"transpose", [
   DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
