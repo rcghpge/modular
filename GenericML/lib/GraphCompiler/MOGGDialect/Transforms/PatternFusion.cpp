@@ -328,8 +328,8 @@ struct SinkTransposeThroughBinaryOpPattern
       return rewriter.notifyMatchFailure(op, "null input or permutation value");
 
     // If any transpose op has multiple uses, we don't sink the transposes
-    // because it we'll end up doing extra computation overall since we must
-    // keep the original transposes for other users.
+    // because we'll end up doing extra computation overall since we must keep
+    // the original transposes for other users.
     // TODO add [get|set]Input method to `ElementWiseBinary` interface
     if (!op->getOperand(0).hasOneUse())
       return rewriter.notifyMatchFailure(op, "lhs transpose has multiple uses");
@@ -353,6 +353,75 @@ struct SinkTransposeThroughBinaryOpPattern
     auto finalTransposeOp = rewriter.create<MO::TransposeOp>(
         op->getLoc(), oldOpResTy, opRes, perm1);
     rewriter.replaceAllUsesExcept(opRes, finalTransposeOp, finalTransposeOp);
+
+    return mlir::success();
+  }
+};
+
+// TODO: Move this to a MO transformation pass after refactoring patterns out of
+// MOGG
+struct SinkTransposeThroughStaticBroadcastToOpPattern
+    : public OpRewritePattern<MO::Static::BroadcastToOp> {
+  SinkTransposeThroughStaticBroadcastToOpPattern(MLIRContext *ctx)
+      : OpRewritePattern(ctx, 2) {}
+
+  // Return a permutation of `attrs` such that, if it gets permuted via `perm`,
+  // it'll become `attrs` again.
+  static SmallVector<TypedAttr> unpermute(ArrayRef<TypedAttr> attrs,
+                                          ArrayRef<int64_t> perm) {
+    // e.g., if perm == [2, 0, 1], inversePerm == [1, 2  0]
+    SmallVector<TypedAttr> result(perm.size());
+    for (auto [idx, permIdx] : llvm::enumerate(perm))
+      result[permIdx] = attrs[idx];
+    return result;
+  }
+
+  LogicalResult matchAndRewrite(MO::Static::BroadcastToOp op,
+                                PatternRewriter &rewriter) const override {
+    //  input     perm       input
+    //    \        /           |
+    //    transpose     ==>  broadcast(*)    perm
+    //        |                 \           /
+    //    broadcast (op)         transpose(*)
+    //
+    // NOTE (*) means result type or operands of the op were updated
+    Value input, perm;
+    Operation *opaqueTransposeOp;
+    auto broadcastP = m_Op<MO::Static::BroadcastToOp>(
+        m_Op<MO::TransposeOp>(&opaqueTransposeOp, m_Any(&input), m_Any(&perm)));
+    if (!broadcastP.match(op))
+      return rewriter.notifyMatchFailure(op, "failed to match pattern");
+
+    if (!input || !perm)
+      return rewriter.notifyMatchFailure(op, "null input or permutation value");
+
+    // If transpose op has multiple uses, we don't sink the transposes because
+    // it we'll have to recompute the original transpose op for other users.
+    Value transpose = opaqueTransposeOp->getResult(0);
+    if (!transpose.hasOneUse())
+      return rewriter.notifyMatchFailure(op, "transpose op has multiple uses");
+
+    MO::TensorType oldBroadcastResTy = op.getType();
+    if (!oldBroadcastResTy.hasRank())
+      return rewriter.notifyMatchFailure(op, "broadcast shape is unranked");
+
+    auto maybePermVec =
+        MO::tryGetConstantIntVector(cast<MO::TensorValue>(perm));
+    if (!maybePermVec.has_value())
+      return rewriter.notifyMatchFailure(op, "permutation isn't constant");
+    SmallVector<TypedAttr> newBroadcastDims =
+        unpermute(oldBroadcastResTy.getDims(), maybePermVec.value());
+    auto shapeTy = rewriter.getType<MO::ShapeType>();
+    MO::TensorType newBroadcastResTy = oldBroadcastResTy.cloneWith(
+        MO::ShapeAttr::get(newBroadcastDims, shapeTy));
+
+    auto transposeOp = cast<MO::TransposeOp>(opaqueTransposeOp);
+    rewriter.replaceAllUsesWith(op, transposeOp.getResult());
+    op.getInputMutable().assign(input);
+    op.getResult().setType(newBroadcastResTy);
+    transposeOp.getInputMutable().assign(op.getResult());
+    transposeOp->moveAfter(op);
+    transposeOp.getResult().setType(oldBroadcastResTy);
 
     return mlir::success();
   }
@@ -416,8 +485,8 @@ void PatternFusionPass::runOnOperation() {
   RewritePatternSet patterns{ctx};
   patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
                FullyConnectedPattern, SinkTransposeThroughUnaryOpPattern,
-               SinkTransposeThroughBinaryOpPattern>(ctx);
-
+               SinkTransposeThroughBinaryOpPattern,
+               SinkTransposeThroughStaticBroadcastToOpPattern>(ctx);
   if (useMatmulPacking.getValue())
     patterns.add<MatmulConstBPattern>(ctx);
 
