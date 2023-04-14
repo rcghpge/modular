@@ -489,6 +489,7 @@ void PatternFusionPass::runOnOperation() {
                SinkTransposeThroughStaticBroadcastToOpPattern>(ctx);
   if (useMatmulPacking.getValue())
     patterns.add<MatmulConstBPattern>(ctx);
+  MO::TransposeOp::getCanonicalizationPatterns(patterns, ctx);
 
   if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
     return signalPassFailure();

@@ -43,6 +43,29 @@ mo.graph @sink_transpose_through_broadcast_ops<D0, D1, D2>(
   mo.output %broadcast : !mo.tensor<[D0, D1, D2], f32>
 }
 
+// CHECK: mo.graph @sink_transpose_through_multi_use_unary_ops(
+mo.graph @sink_transpose_through_multi_use_unary_ops(
+  // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[2, 2, 2], f32>
+  %input: !mo.tensor<[2, 2, 2], f32>
+// CHECK-SAME: ) -> (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[2, 2, 2], f32>) {
+) -> (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[2, 2, 2], f32>) {
+  // CHECK-NEXT: %[[MERGED_PERM:.*]] = mo.constant {value = #M.dense_array<1, 2, 0> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
+  // CHECK-NEXT: %[[PERM:.*]] = mo.constant {value = #M.dense_array<2, 0, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %perm = mo.constant {value = #M.dense_array<2, 0, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  // CHECK-NEXT: %[[RELU:.*]] = mo.relu(%[[INPUT]]) : !mo.tensor<[2, 2, 2], f32>
+  // CHECK-NEXT: %[[RELU_T:.*]] = mo.transpose(%[[RELU]], %[[MERGED_PERM]])
+  // CHECK-SAME: : (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, 2, 2], f32>
+  // CHECK-NEXT: %[[ABS:.*]] = mo.abs(%[[RELU]]) : !mo.tensor<[2, 2, 2], f32>
+  // CHECK-NEXT: %[[ABS_T:.*]] = mo.transpose(%[[ABS]], %[[PERM]])
+  // CHECK-SAME: : (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, 2, 2], f32>
+  %transpose1 = mo.transpose(%input, %perm) : (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, 2, 2], f32>
+  %relu = mo.relu(%transpose1) : !mo.tensor<[2, 2, 2], f32>
+  %transpose2 = mo.transpose(%relu, %perm) : (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, 2, 2], f32>
+  %abs = mo.abs(%relu) : !mo.tensor<[2, 2, 2], f32>
+  // CHECK-NEXT: mo.output %[[RELU_T]], %[[ABS_T]] : !mo.tensor<[2, 2, 2], f32>
+  mo.output %transpose2, %abs : !mo.tensor<[2, 2, 2], f32>, !mo.tensor<[2, 2, 2], f32>
+}
+
 // CHECK: mo.graph @sink_transpose_through_unary_ops(
 mo.graph @sink_transpose_through_unary_ops(
   // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[2, 2, 2], f32>
