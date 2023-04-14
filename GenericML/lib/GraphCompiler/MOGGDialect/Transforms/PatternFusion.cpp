@@ -298,37 +298,35 @@ struct LiftTransposesPattern : public OpRewritePattern<MO::TransposeOp> {
 
   LogicalResult matchAndRewrite(MO::TransposeOp op,
                                 PatternRewriter &rewriter) const override {
-    // input perm1            input  perm1
-    //   \    /                 \      /
-    //  transpose1             transpose1   perm2
-    //     |            ===>        \        /
-    //   unary  perm2               transpose2 (updated)
-    //      \    /                       |
-    //    transpose2 (op)              unary (updated)
-    Value input, perm1, perm2;
+    //   input               input     perm
+    //     |                   \        /
+    //   unary  perm    ===>   transpose (*)
+    //      \    /                 |
+    //   transpose (op)          unary (*)
+    //
+    // NOTE: (*) means result type or operands of the op were updated
+    Value input, perm;
     Operation *unaryOp;
-    auto transpose1P = m_Op<MO::TransposeOp>(m_Any(&input), m_Any(&perm1));
-    auto transpose2P = m_Op<MO::TransposeOp>(
-        m_Op<MO::ElementWiseUnary>(&unaryOp, transpose1P), m_Any(&perm2));
-    if (!transpose2P.match(op))
+    auto transposeP = m_Op<MO::TransposeOp>(
+        m_Op<MO::ElementWiseUnary>(&unaryOp, m_Any(&input)), m_Any(&perm));
+    if (!transposeP.match(op))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
-    if (!input || !perm1 || !perm2)
+    if (!input || !perm)
       return rewriter.notifyMatchFailure(op, "null input or permutation value");
 
-    // If unary op has multiple uses, we don't lift the transposes because it
-    // may create extra computation.
+    // If unary op has multiple uses, we don't lift the transposes because
+    // we'll have to recompute the original unary op for other users.
     // TODO add [get|set]Input method to `ElementWiseUnary` interface
     Value unary = unaryOp->getResult(0);
     if (!unary.hasOneUse())
       return rewriter.notifyMatchFailure(op, "unary op has multiple uses");
 
-    auto transpose2Op = cast<MO::TransposeOp>(op);
-    transpose2Op.replaceAllUsesWith(unary);
-    transpose2Op.getInputMutable().assign(unaryOp->getOperand(0));
-    unaryOp->setOperand(0, transpose2Op.getResult());
-    unary.setType(transpose2Op.getType());
-    unaryOp->moveAfter(transpose2Op);
+    rewriter.replaceAllUsesWith(op.getResult(), unary);
+    op.getInputMutable().assign(input);
+    unaryOp->setOperand(0, op.getResult());
+    unary.setType(op.getType());
+    unaryOp->moveAfter(op);
 
     return mlir::success();
   }
