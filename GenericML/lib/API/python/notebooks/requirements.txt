@@ -1,2 +1,1 @@
-ipython==8.12
-jupyter==1.0.0
+execnb

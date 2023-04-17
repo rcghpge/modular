@@ -28,15 +28,14 @@ else()
 endif()
 
 file(GLOB DOCTESTS "${CMAKE_CURRENT_SOURCE_DIR}/*.ipynb")
+set(PYTHON_DOCTESTS_ENV "TF_CPP_MIN_LOG_LEVEL=3")
+set(DOCTESTS_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
 # Add Python tests for the Modular Python API.
-# DYLD_INSERT_LIBRARIES is passed as a CMake cache variable so that pytest can
-# run when configured as ASAN.
-# Without this, on MacOS with ASAN, pytest fails with an error.
 add_test(NAME PythonDocTests
   COMMAND ${CMAKE_COMMAND} -E env
-  ${PYTHON_API_TESTS_ASAN_ENV}
-  ${Python3_EXECUTABLE} -m jupyter nbconvert --to notebook --execute --inplace ${DOCTESTS}
+  ${PYTHON_DOCTESTS_ENV}
+  ${Python3_EXECUTABLE} ${DOCTESTS_DIR}/runtests.py ${DOCTESTS_DIR}
 )
 
 add_custom_target(check-PythonDocTests
