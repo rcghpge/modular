@@ -11,15 +11,79 @@ include "mlir/Pass/PassBase.td"
 include "MGPOps.td"
 
 //===----------------------------------------------------------------------===//
-// PeepholeTensorExtract
+// RemoveRedundantTensorExtractsPass
 //===----------------------------------------------------------------------===//
 
-def PeepholeTensorExtract : Pass<"peephole-tensor-extract", "MGP::ModelOp"> {
+def RemoveRedundantTensorExtractsPass : Pass<"remove-redundant-tensor-extracts", "MGP::ModelOp"> {
   let summary = "Removes redundant tensor extract operations from the graph.";
   let description = [{
-    If a tensor is created only to be extracted then we
-    should elide both and just refer to the underlying
-    buffer and spec.
+    This pass avoid redundant mgp.cpu.tensor.extract operations in two
+    situations:
+
+    1. Ensures 'execute' block argument tensors are fed to at most one
+       mgp.cpu.tensor.extract operation. Eg:
+    ```mlir
+          execute(%tensor : !mgp.cpu.tensor):
+            %buf, %spec = mgp.cpu.tensor.extract %tensor
+            my_op(..., %buf, %spec, ...)
+            %buf2, %spec2 = mgp.cpu.tensor.extract %tensor
+            my_op(..., %buf2, %spec2, ...)
+    ```
+       becomes:
+    ```mlir
+          execute(%tensor : !mgp.cpu.tensor):
+            %buf, %spec = mgp.cpu.tensor.extract %tensor
+            my_op(..., %buf, %spec, ...)
+            my_op(..., %buf, %spec, ...)
+    ```
+
+    2. Removes mgp.cpu.tensor.create ops which are only subsequently consumed
+       by mgp.cpu.tensor.extract ops. Eg:
+    ```mlir
+          %tensor0 = mgp.cpu.tensor.create %inputChain0, %inputBuf0, %inputSpec0
+          %tensor1 = mgp.cpu.tensor.create %inputChain1, %inputBuf1, %inputSpec1
+          %buf0, %spec0 = mgp.cpu.tensor.extract %tensor0
+          %buf1, %spec1 = mgp.cpu.tensor.extract %tensor1
+          %resultChain = my_op(%opChain, ..., %buf0, %spec0, %buf1, %spec1)
+          // where %buf0, %buf1 are in 'input' positions
+    ```
+       becomes:
+    ```mlir
+          %ch = grt.chain.merge %opChain, %inputChain0, %inputChain1
+          %resultChain = my_op(%ch, ...,
+                               %inputBuf0, %inputSpec0,
+                               %inputBuf1, %inputSpec1)
+    ```
+       Assumes:
+        - All buffers passed to mgp.cpu.tensor.create will not be further
+          mutated once the chain to that op is ready. This is currently true
+          for the GraphCompiler, but need not be true in general.
+        - Ops with buffer operands have "numOutputBuffers" attributes.
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// DeferAllocsPass
+//===----------------------------------------------------------------------===//
+
+def DeferAllocsPass : Pass<"defer-allocs", "MGP::ModelOp"> {
+  let summary = "Defers allocations until the producing op is ready to execute.";
+  let description = [{
+    Ensures mgp.cpu.buffer.alloc.* operations are deferred till they are
+    about to be written to. Eg:
+    ```mlir
+      %buf = mgp.cpu.buffer.alloc.static %bufChain, 24
+      my_op(%opChain, %buf, ...)
+      // where %buf is in an 'output' position
+    ```
+    becomes:
+    ```
+      %ch = grt.chain.merge %opChain, %bufChain
+      %buf = mgp.cpu.buffer.alloc.static %ch, 24
+      my_op(%ch, %buf, ...)
+    ```
+    Assumes:
+      - Ops with buffer operands have "numOutputBuffers" attributes.
   }];
 }
 
@@ -87,21 +151,22 @@ def ConcatInPlacePass : Pass<"concat-in-place", "MGP::ModelOp"> {
 
     For example:
     ```mlir
-    %in1_buf = mgp.cpu.buffer.alloc.static ..., <size1>
+    %in1_buf = mgp.cpu.buffer.alloc.static %ch0, <size1>
     %in1_ch = ...
     %in2_spec = ...
-    %in2_buf = mgp.cpu.buffer.alloc.spec ..., %in2_spec
+    %in2_buf = mgp.cpu.buffer.alloc.spec %ch0, %in2_spec
     %in2_ch = ...
     %out_spec = ...
-    %out_buf = mgp.cpu.buffer.alloc.spec ..., %out_spec
+    %out_buf = mgp.cpu.buffer.alloc.spec %ch0, %out_spec
     %ch1 = grt.chain.merge %in1_ch, %in2_ch
     %ch2 = mgp.cpu.buffer.concat %ch1, %out_buf, %in1_buf, %in2_buf : ...
     // where these are the only uses of %in1_buf and %in2_buf
     ```
+    (where %ch0 must be the argument chain to the 'execute' block)
     is rewritten to:
     ```mlir
     %out_spec = ...
-    %out_buf = mgp.cpu.buffer.alloc.spec ..., %out_spec
+    %out_buf = mgp.cpu.buffer.alloc.spec %ch0, %out_spec
     %in2_spec = ...
     %in2_size = mgp.cpu.tensor_spec.size %in2_spec
     %in1_buf, %in2_buf = mgp.cpu.buffer.split %out_buf, %in2_size : ...
@@ -109,6 +174,14 @@ def ConcatInPlacePass : Pass<"concat-in-place", "MGP::ModelOp"> {
     %in2_ch = ...
     %ch2 = grt.chain.merge %in1_ch, %in2_ch
     ```
+
+    This pass should be run before DeferAllocsPass and thus before allocs
+    start to have subtle control flom dependencies thanks to their non-trivial
+    argument chain.
+
+    Note that this pass simply assumes that the argument chain to the
+    concat op will only be ready once all argument buffers are ready. In
+    this way we simply replace uses of %ch2 with %ch1.
   }];
 }
 
