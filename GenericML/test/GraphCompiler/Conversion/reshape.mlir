@@ -1,7 +1,7 @@
 // RUN: mo-opt %s --mo-to-mogg --mo-to-primitives --allow-unregistered-dialect | FileCheck %s
 
 // Entry point
-// CHECK: mgp.model @reshape_static_shape : tf init {
+// CHECK: mgp.model @reshape_static_input_static_output : tf init {
 // CHECK-NEXT: %[[INIT_CHAIN:.*]] = grt.chain.create
 // CHECK-NEXT: %[[INIT_CTX:.*]] = mgp.context.create 1
 // CHECK-NEXT: %[[JIT_CHAIN:.*]] = "mop.create_jit_context"(%[[INIT_CHAIN]], %[[INIT_CTX]]) {slot = 0 : ui32} : (!mef.chain, !mgp.context) -> !mef.chain
@@ -16,15 +16,15 @@
 // Extract the input tensor buffer
 // CHECK-NEXT: %[[IN_BUF:.*]], %[[IN_SPEC:.*]] = mgp.cpu.tensor.extract %[[INPUT]] : !mgp.cpu.tensor<4xf32>
 
-// Create new output spec
-// CHECK-NEXT: %[[OUT_SPEC:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<2x2xf32>
+// NOTE call hacky primitive to compute output spec
+// CHECK-NEXT: %[[OUT_SPEC:.*]] = "mop.shape.reshape"(%[[IN_SPEC]], %[[SHAPE_TENSOR]]) : (!mgp.cpu.tensor_spec<4xf32>, !mgp.cpu.tensor<2xsi64>) -> !mgp.cpu.tensor_spec<2x2xf32>
 
 // Create output tensor with same buffer and new spec
 // CHECK-NEXT: %[[OUT_TENSOR:.*]] =  mgp.cpu.tensor.create %[[CHAIN]], %[[IN_BUF]], %[[OUT_SPEC]] : !mgp.cpu.tensor<2x2xf32>
 
 // Return output
 // CHECK-NEXT: mef.output %[[CHAIN]], %[[OUT_TENSOR]] : !mef.chain, !mgp.cpu.tensor<2x2xf32>
-mo.graph @reshape_static_shape(%arg: !mo.tensor<[4], f32>) -> !mo.tensor<[2, 2], f32> {
+mo.graph @reshape_static_input_static_output(%arg: !mo.tensor<[4], f32>) -> !mo.tensor<[2, 2], f32> {
   %shape = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %res = mo.reshape(%arg, %shape) : (!mo.tensor<[4], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
   mo.output %res : !mo.tensor<[2, 2], f32>
@@ -65,8 +65,8 @@ mo.graph @reshape_dyn_input_dyn_output(%arg: !mo.tensor<[?], f32>, %shape : !mo.
 // Extract the input tensor buffer
 // CHECK-NEXT: %[[IN_BUF:.*]], %[[IN_SPEC:.*]] = mgp.cpu.tensor.extract %[[INPUT]] : !mgp.cpu.tensor<?xf32>
 
-// Create new output spec
-// CHECK-NEXT: %[[SHAPE_SPEC:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<4x2xf32>
+// NOTE call hacky primitive to compute output spec
+// CHECK-NEXT: %[[OUT_SPEC:.*]] = "mop.shape.reshape"(%[[IN_SPEC]], %[[SHAPE]]) : (!mgp.cpu.tensor_spec<?xf32>, !mgp.cpu.tensor<2xsi64>) -> !mgp.cpu.tensor_spec<4x2xf32>
 
 // Create output tensor with same buffer and new spec
 // CHECK-NEXT: %[[OUT_TENSOR:.*]] =  mgp.cpu.tensor.create %[[CHAIN]], %[[IN_BUF]], %[[OUT_SPEC]] !mgp.cpu.buffer : !mgp.cpu.tensor<4x2xf32>

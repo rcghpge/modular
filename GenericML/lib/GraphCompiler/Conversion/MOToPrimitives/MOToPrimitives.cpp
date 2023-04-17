@@ -551,23 +551,25 @@ LogicalResult MOGraphLowering::lowerReshape(MO::ReshapeOp reshapeOp) {
   // point.
   // 2. This shape function is pure hackery, and should be removed as soon as we
   // can lower parametric shapes to the runtime.
-  if (outSpecTy.hasStaticShape()) {
-    outSpecValue = loweringState.getExecuteOpBuilder()
-                       .create<MGP::CpuTensorSpecCreateOp>(loc, outSpecTy)
-                       .getResult();
-  } else {
-    OperationState opState{loc, "mop.shape.reshape"};
-    Value targetShape =
-        loweringState.lookupExecuteLoweredValue(reshapeOp.getNewShape());
-    // inputs are input specs
-    opState.addOperands({extract.getTensorSpecResult(), targetShape});
-    // The return is the new spec
-    opState.addTypes(cast<Type>(outSpecTy));
+  // 3. Send output shape annotation as a spec to the shape function and check
+  // for compatibility between target shape tensor and static parts of the
+  // annotatation. TODO(#12718)
+  //
+  // NOTE
+  // We need to use the shape function even if the annotated output shape is
+  // static, because we must verify validity of the target shape tensor, and
+  // check (3) in the TODOs above.
+  OperationState opState{loc, "mop.shape.reshape"};
+  Value targetShape =
+      loweringState.lookupExecuteLoweredValue(reshapeOp.getNewShape());
+  // inputs are input specs
+  opState.addOperands({extract.getTensorSpecResult(), targetShape});
+  // The return is the new spec
+  opState.addTypes(cast<Type>(outSpecTy));
 
-    // Add it to the MLIR.
-    Operation *invokeOp = exeBuilder.create(opState);
-    outSpecValue = invokeOp->getResult(0);
-  }
+  // Add it to the MLIR.
+  Operation *invokeOp = exeBuilder.create(opState);
+  outSpecValue = invokeOp->getResult(0);
 
   // Create an immutable tensor
   auto outTensorTy = exeBuilder.getType<MGP::CpuTensorType>(outSpecTy);
