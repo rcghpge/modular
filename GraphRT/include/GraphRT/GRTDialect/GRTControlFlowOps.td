@@ -10,6 +10,7 @@
 
 include "GraphRT/MEFDialect/MEFNonStrict.td"
 include "GraphRT/GRTDialect/GRTOpsBase.td"
+include "mlir/IR/RegionKindInterface.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
@@ -61,7 +62,7 @@ def InvokeOp : GRTOp<"invoke", [DeclareOpInterfaceMethods<SymbolUserOpInterface>
 
 def IfOp : GRTOp<"if",
           [IsolatedFromAbove, SingleBlockImplicitTerminator<"MEF::OutputOp">,
-           NonStrictOp]> {
+           NonStrictOp, RegionKindInterface, HasOnlyGraphRegion]> {
   let summary = "if operation";
   let description = [{
     The "grt.if" operation takes an i1 condition, a 'then' body and an 'else'
