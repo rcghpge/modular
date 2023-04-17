@@ -183,3 +183,17 @@ mo.graph @broadcastNoFuse(%arg0: !mo.tensor<[?, ?], f32>, %arg1: !mo.tensor<[?, 
 // CHECK: %[[BCAST2:.*]] = mogg.kernel
 // CHECK: %[[ADD:.*]] = mogg.kernel (%[[BCAST1]], %[[BCAST2]])
 // CHECK: mo.output %[[ADD]] : !mo.tensor<[?, ?], f32>
+
+mo.graph @fused_si32(%arg0: !mo.tensor<[6], si32>, %arg1: !mo.tensor<[6], si32>) -> (!mo.tensor<[6], si32>) {
+  %0 = mo.add(%arg0, %arg1) : !mo.tensor<[6], si32>
+  %1 = mo.relu(%0) : !mo.tensor<[6], si32>
+  mo.output %1 : !mo.tensor<[6], si32>
+}
+
+// CHECK-LABEL: mo.graph @fused_si32
+
+// CHECK: mogg.lambda @elemwise_compute_lambda
+// CHECK-NEXT: %[[LOAD1:.*]] = mogg.invoke @input_0_fn_0
+// CHECK-NEXT: %[[LOAD2:.*]] = mogg.invoke @input_1_fn
+// CHECK-NEXT: %[[ADD:.*]] = mogg.call "mo.add"(%[[LOAD1]], %[[LOAD2]]) : !mogg.simd<si32>, !mogg.simd<si32> -> !mogg.simd<si32>
+// CHECK-NEXT: %[[RELU:.*]] = mogg.call "mo.relu"(%[[ADD]]) : !mogg.simd<si32> -> !mogg.simd<si32>

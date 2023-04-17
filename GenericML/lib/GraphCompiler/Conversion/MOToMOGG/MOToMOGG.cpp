@@ -140,12 +140,18 @@ struct MOOpPattern : public RewritePattern {
     bool shouldUseJit = useJit && kernel.shouldHaveMojo;
     for (Type t : op->getOperandTypes()) {
       auto tensor = dyn_cast<MO::TensorType>(t);
-      if (!tensor || !tensor.getElementType().isF32() || !tensor.hasRank() ||
+
+      bool allowedElementTypes = tensor.getElementType().isF32() ||
+                                 tensor.getElementType().isSignedInteger(32);
+
+      if (!tensor || !allowedElementTypes || !tensor.hasRank() ||
           tensor.getRank() > 5)
         shouldUseJit = false;
     }
 
-    if (!isa<MO::GraphOp>(op->getParentOp()))
+    // Check general op level constraints. Currently only ops within the main
+    // block and single result ops are allowed.
+    if (!isa<MO::GraphOp>(op->getParentOp()) || op->getNumResults() != 1)
       shouldUseJit = false;
 
     // If we should be using JIT generate a jit target. Otherwise use the shim.
