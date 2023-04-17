@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
@@ -487,7 +487,7 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
       loweringState.getExecuteOpBuilder().create(opState);
   Value outChain = invokeOp->getResult(0);
   // Downstream passes may need to distinguish input from output buffers.
-  MGP::setNumOutputBuffers(invokeOp, numOutputBuffers);
+  MGP::setNumBackOutputBuffers(invokeOp, numOutputBuffers);
 
   // Create the output tensors once we are sure the operation has finished
   // writing to them.
@@ -623,7 +623,7 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
       loweringState.getExecuteOpBuilder().create(opState);
   Value outChain = invokeOp->getResult(0);
   // Downstream passes may need to distinguish input from output buffers.
-  MGP::setNumOutputBuffers(invokeOp, numOutputBuffers);
+  MGP::setNumBackOutputBuffers(invokeOp, numOutputBuffers);
 
   // Create the output tensors once we are sure the operation has finished
   // writing to them.
