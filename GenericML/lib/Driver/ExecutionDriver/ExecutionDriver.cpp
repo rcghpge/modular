@@ -450,6 +450,14 @@ getResolvedInputShapes(ArrayRef<QuantTensorSpec> compiledShapes,
   return ret;
 }
 
+/// Pass resolved input shapes to profiler, if its active.
+static void saveInputSpecs(ArrayRef<QuantTensorSpec> specs,
+                           std::optional<TimeTraceProfiler> &profiler) {
+  if (profiler)
+    for (auto &spec : specs)
+      profiler->addInputShape(spec.getAsString());
+}
+
 /// Run `model` using the command line options flags configured by the user.
 LogicalResult M::runModel(MLIRContext *ctx, const Model *model,
                           LLCL::Runtime &runtime,
@@ -462,6 +470,7 @@ LogicalResult M::runModel(MLIRContext *ctx, const Model *model,
     return failure(options.reportError(shapesOrErr.getError()));
   }
   const auto &inputSpecs = shapesOrErr.takeValue();
+  saveInputSpecs(inputSpecs, runtime.getProfiler());
 
   if (options.benchmarkMode) {
     int numWarmup = options.numWarmup.getValue();
