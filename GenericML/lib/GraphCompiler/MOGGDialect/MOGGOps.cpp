@@ -173,6 +173,7 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
       {"mop.kernels.batch_matmul", "mop.shape.batch_matmul"},
       {"mop.kernels.batch_matmul_adjb", "mop.shape.batch_matmul_adjb"},
       {"mop.kernels.select", "mop.shape.select"},
+      {"mop.kernels.in_place_concat", "mop.shape.in_place_concat"},
   };
 
   // (arg0Spec, arg1) -> outSpec
@@ -493,6 +494,55 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // writing to them.
   helper.allocateOutputTensor(outChain, outputBufferAndSpec);
 
+  return success();
+}
+
+// InPlaceConcatOp
+
+static void printParamDecls(OpAsmPrinter &p, Operation *,
+                            KGEN::ParamDeclArrayAttr paramDecls) {
+  if (!paramDecls.empty()) {
+    p << "<() -> ";
+    printParamDecls(p, paramDecls);
+    p << '>';
+  }
+}
+
+LogicalResult InPlaceConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
+  InPlaceConcatOp op = *this;
+  LowerHelper helper{loweringState, op};
+
+  // Operands to pass to the operation. Input tensors are expanded to buffers
+  // and specs in IR those are passed in.
+  auto inputTensors = helper.lowerInputs();
+
+  // Lower the outputs to buffers which can then be passed back in as
+  // parameters.
+  auto errOr = helper.lowerOutputBuffer(
+      "mop.kernels.in_place_concat", loweringState.getExecuteChain(),
+      inputTensors,
+      /*bcastIndices=*/std::nullopt, /*matmulOriginalBDims=*/std::nullopt);
+  if (errOr.isError())
+    return failure();
+  SmallVector<LoweredTensor> outputBufferAndSpec = errOr.takeValue();
+
+  SmallVector<Value> operands;
+  for (auto tensor : inputTensors)
+    operands.push_back(tensor.buffer);
+
+  auto concatOp =
+      loweringState.getExecuteOpBuilder().create<MGP::CpuBufferConcatOp>(
+          op.getLoc(),
+          /*inChain=*/loweringState.getExecuteChain(),
+          /*outBuffer=*/outputBufferAndSpec[0].buffer,
+          /*inBuffers=*/operands);
+
+  // Make sure downstream passes recognise the first buffer arg as an output.
+  // CAUTION: This is different from the mop output argument convention used
+  // elsewhere here.
+  MGP::setNumFrontOutputBuffers(concatOp, 1);
+
+  helper.allocateOutputTensor(concatOp.getOutChain(), outputBufferAndSpec);
   return success();
 }
 

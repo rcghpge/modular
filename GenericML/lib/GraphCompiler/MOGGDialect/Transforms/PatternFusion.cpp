@@ -477,6 +477,43 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
   void runOnOperation() override;
 };
 
+struct ConcatPattern : public RewritePattern {
+  ConcatPattern(MLIRContext *ctx)
+      : RewritePattern(MatchAnyOpTypeTag{}, 2, ctx) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    // Doing this manually, I don't think the patterns can support variadic
+    // inputs yet
+    auto concat = dyn_cast<MO::ConcatOp>(op);
+    if (!concat)
+      return rewriter.notifyMatchFailure(op, "Not a Concat Op");
+
+    std::optional<int64_t> axis =
+        MO::tryGetConstantInt(cast<MO::TensorValue>(concat.getAxis()));
+    if (!axis.has_value() || axis.value() != 0)
+      return rewriter.notifyMatchFailure(op, "axis not constant 0");
+
+    for (Value input : concat.getInputs()) {
+      // ensure inputs aren't constant or used anywhere else
+      if (mlir::Operation *iop = input.getDefiningOp()) {
+        if (isa<MO::ConstantOp>(iop))
+          return rewriter.notifyMatchFailure(iop, "is constant");
+      }
+      if (!input.hasOneUse())
+        return rewriter.notifyMatchFailure(input.getLoc(), "has extra users");
+    }
+
+    rewriter.replaceOpWithNewOp<MOGG::InPlaceConcatOp>(
+        op,
+        /*outputTypes=*/op->getResultTypes(),
+        /*inputOperands=*/concat.getInputs(),
+        /*outputParamDelcs=*/concat.getOutputParamDecls());
+
+    return mlir::success();
+  }
+};
+
 } // namespace
 
 void PatternFusionPass::runOnOperation() {
@@ -486,7 +523,8 @@ void PatternFusionPass::runOnOperation() {
   patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
                FullyConnectedPattern, SinkTransposeThroughUnaryOpPattern,
                SinkTransposeThroughBinaryOpPattern,
-               SinkTransposeThroughStaticBroadcastToOpPattern>(ctx);
+               SinkTransposeThroughStaticBroadcastToOpPattern, ConcatPattern>(
+      ctx);
   if (useMatmulPacking.getValue())
     patterns.add<MatmulConstBPattern>(ctx);
   MO::TransposeOp::getCanonicalizationPatterns(patterns, ctx);

@@ -96,6 +96,39 @@ def MOGG_BroadcastToTensorOp : MOGG_Op<"broadcast_to_tensor", []> {
   }];
 }
 
+def MOGG_InPlaceConcatOp : MOGG_LowerableOp<"in_place_concat", []> {
+  let summary = "In Place Operation";
+  let description = [{
+    Concat input tensors along axis zero by allocating the output of the
+    previous op as a slice of the output of the concat buffer.
+
+    Requires that the axis of concat be constant zero
+    and that the inputs are only used by the concat.
+
+    Maintains parameter decls from the mo.concat op.
+
+    Example:
+
+    ```mlir
+    %arg0: !mo.tensor<[3, 3], f32>
+    %arg1: !mo.tensor<[2, 3], f32>
+    %res = mogg.concat(%arg0, %arg1) : (
+      !mo.tensor<[3, 3], f32>, !mo.tensor<[2, 3], f32>
+    ) -> !mo.tensor<[5, 3], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    Variadic<MO_Tensor>:$inputs,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls)
+    `(` $inputs `)` attr-dict `:` functional-type($inputs, results)
+  }];
+}
+
 //===----------------------------------------------------------------------===//
 // OutputOp
 //===----------------------------------------------------------------------===//
