@@ -86,6 +86,33 @@ mo.graph @concat_dyn_rank(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) 
   mo.output %0 : !mo.tensor<?, f32>
 }
 
+// CHECK: mo.graph @concat_canonicalize(
+mo.graph @concat_canonicalize(
+  // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[2, ?], f32>, %[[ARG1:.*]]: !mo.tensor<[2, 0], f32>, %[[AX:.*]]: !mo.tensor<[], si64>
+  %arg0: !mo.tensor<[2, ?], f32>, %arg1: !mo.tensor<[2, 0], f32>, %ax: !mo.tensor<[], si64>
+// CHECK-SAME: ) -> !mo.tensor<[2, ?], f32> {
+) -> !mo.tensor<[2, ?], f32> {
+  // CHECK-NEXT: %[[RES:.*]] = mo.concat[%[[AX]] : !mo.tensor<[], si64>] (%[[ARG0]], %[[ARG0]]) : (
+  // CHECK-SAME:   !mo.tensor<[2, ?], f32>, !mo.tensor<[2, ?], f32>) -> !mo.tensor<[2, ?], f32>
+  %0 = mo.concat[%ax: !mo.tensor<[], si64>](%arg0, %arg1, %arg0) : (
+    !mo.tensor<[2, ?], f32>, !mo.tensor<[2, 0], f32>, !mo.tensor<[2, ?], f32>) -> !mo.tensor<[2, ?], f32>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[2, ?], f32>
+  mo.output %0 : !mo.tensor<[2, ?], f32>
+}
+
+// CHECK: mo.graph @concat_canonicalize_to_rebind<[[N:.*]], [[K:.*]] -> [[M:.*]]>(
+mo.graph @concat_canonicalize_to_rebind<N, K -> M>(
+  // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[2, [[N]]], f32>, %[[ARG1:.*]]: !mo.tensor<[2, 0], f32>, %[[AX:.*]]: !mo.tensor<[], si64>
+  %arg0: !mo.tensor<[2, N], f32>, %arg1: !mo.tensor<[2, 0], f32>, %ax: !mo.tensor<[], si64>
+// CHECK-SAME: ) -> !mo.tensor<[2, [[M]]], f32> {
+) -> !mo.tensor<[2, M], f32> {
+  // CHECK-NEXT: %[[RES:.*]] = mo.rebind(%[[ARG0]]) : !mo.tensor<[2, N], f32> -> !mo.tensor<[2, K], f32>
+  %0 = mo.concat[%ax: !mo.tensor<[], si64>](%arg1, %arg0, %arg1) : (
+    !mo.tensor<[2, 0], f32>, !mo.tensor<[2, N], f32>, !mo.tensor<[2, 0], f32>) -> !mo.tensor<[2, K], f32>
+  // CHECK-NEXT: mo.output<[[K]]> %[[RES]] : !mo.tensor<[2, [[K]]], f32>
+  mo.output<K> %0 : !mo.tensor<[2, K], f32>
+}
+
 //===----------------------------------------------------------------------===//
 // SplitOp
 //===----------------------------------------------------------------------===//

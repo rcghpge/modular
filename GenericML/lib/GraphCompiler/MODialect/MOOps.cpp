@@ -593,6 +593,34 @@ LogicalResult SplitOp::verify() {
   return success();
 }
 
+LogicalResult ConcatOp::canonicalize(ConcatOp op, PatternRewriter &rewriter) {
+  Operation::operand_range inputs = op.getInputs();
+  SmallVector<Value> nonEmptyInputs;
+  for (Value arg : inputs) {
+    TensorType argTy = cast<TensorType>(arg.getType());
+    auto isNonZero = [](int64_t dim) { return dim != 0; };
+    if (!argTy.hasRank() || llvm::all_of(argTy.getIntDims(), isNonZero))
+      nonEmptyInputs.emplace_back(arg);
+  }
+
+  // TODO: implement this
+  if (nonEmptyInputs.empty())
+    return failure();
+
+  if (nonEmptyInputs.size() == 1) {
+    rewriter.replaceOpWithNewOp<RebindOp>(op, op.getType(),
+                                          nonEmptyInputs.front());
+    return success();
+  }
+
+  if (nonEmptyInputs.size() != inputs.size()) {
+    op.getInputsMutable().assign(nonEmptyInputs);
+    return success();
+  }
+
+  return failure();
+}
+
 //===----------------------------------------------------------------------===//
 // MO_GatherOp support
 //===----------------------------------------------------------------------===//
