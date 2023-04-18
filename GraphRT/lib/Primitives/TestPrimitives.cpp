@@ -902,8 +902,8 @@ static void registerTestVecPrimitives(PrimitiveRegistry &registry) {
 void grt_testcase() {}
 
 AnyAsyncValueRef grt_debug_print_num_refs(AnyAsyncValueRef input) {
-  llvm::outs() << "operand has " << input.getPointer()->getRefCount()
-               << " refs\n";
+  llvm::outs() << "operand has "
+               << input.getPointer()->getRefCountForDebugging() << " refs\n";
   llvm::outs().flush();
   return input;
 }

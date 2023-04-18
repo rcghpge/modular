@@ -530,7 +530,8 @@ static void mgp_cpu_tensor_create(Chain inChain,
     LLVM_DEBUG(llvm::dbgs()
                << "mgp.cpu.tensor.create: Creating M::Tensor from copy of "
                   "buffer since still has "
-               << bufferRef.getPointer()->getRefCount() << " users\n");
+               << bufferRef.getPointer()->getRefCountForDebugging()
+               << " users\n");
     std::move(outTensor).emplace(bufferRef->deepCopy(runtime), tensorSpec);
   }
 }
