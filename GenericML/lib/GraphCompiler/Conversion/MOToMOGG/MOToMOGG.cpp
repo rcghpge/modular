@@ -138,16 +138,24 @@ struct MOOpPattern : public RewritePattern {
     // Rank between 1-5 (due to kernel bug #10551)
     // Only within the top level graph and not within e.g control flow.
     bool shouldUseJit = useJit && kernel.shouldHaveMojo;
-    for (Type t : op->getOperandTypes()) {
-      auto tensor = dyn_cast<MO::TensorType>(t);
 
+    // Returns true if a type is compatable with jit.
+    auto isTypeAllowed = [&](Type t) {
+      auto tensor = dyn_cast<MO::TensorType>(t);
       bool allowedElementTypes = tensor.getElementType().isF32() ||
                                  tensor.getElementType().isSignedInteger(32);
 
       if (!tensor || !allowedElementTypes || !tensor.hasRank() ||
           tensor.getRank() > 5)
-        shouldUseJit = false;
-    }
+        return false;
+      return true;
+    };
+
+    for (Type t : op->getOperandTypes())
+      shouldUseJit &= isTypeAllowed(t);
+
+    for (Type t : op->getResultTypes())
+      shouldUseJit &= isTypeAllowed(t);
 
     // Check general op level constraints. Currently only ops within the main
     // block and single result ops are allowed.
@@ -191,7 +199,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_SHIM_ONLY(MO::BroadcastShapeOp, "mop.kernels.broadcast_shape"),
       MO_SHIM_ONLY(MO::BroadcastToOp, "mop.kernels.broadcast_to"),
       MO_TO_MOJO_ONLY(MOGG::BroadcastToTensorOp, true),
-      MO_SHIM_ONLY(MO::CastOp, "mop.kernels.cast"),
+      MO_TO_MOJO(MO::CastOp, "mop.kernels.cast"),
       MO_SHIM_ONLY(MO::ConcatOp, "mop.kernels.concat"),
       MO_SHIM_ONLY(MO::SplitOp, "mop.kernels.split"),
       MO_TO_MOJO_VIEW(MO::Static::BroadcastToOp,

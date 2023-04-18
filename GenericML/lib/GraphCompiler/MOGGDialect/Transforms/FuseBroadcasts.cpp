@@ -138,11 +138,6 @@ struct FuseBroadcastsPass
     if (edge->getParentRegion() != kernel->getParentRegion())
       return false;
 
-    // This should never fail in the current composition of ops however we will
-    // check it for safety.
-    if (kernel->getResult(0).getType() != kernel.getOperand(index).getType())
-      return false;
-
     if (auto otherKernel = dyn_cast<KernelOp>(edge)) {
       // Only fuse view operations.
       if (otherKernel.getIsViewOp().value_or(false))

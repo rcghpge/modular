@@ -188,23 +188,6 @@ struct FuseElementwisePass
       if (edge->getParentRegion() != leaf->getParentRegion())
         continue;
 
-      auto resultTy = leaf->getResult(0).getType();
-
-      // These should never fail in the current composition of ops however we
-      // will check it for safety. The types should be compatable with each
-      // other per the mo spec.
-
-      bool typesAreCompatible = true;
-      for (auto operandType : edge->getOperandTypes()) {
-        if (resultTy != operandType)
-          typesAreCompatible = false;
-      }
-      if (!typesAreCompatible)
-        continue;
-
-      if (resultTy != leaf.getOperand(index).getType())
-        continue;
-
       // If the input operation is a kernel and is implemented by a lambda then
       // we can fuse it.
       if (auto otherKernel = dyn_cast<KernelOp>(edge)) {
