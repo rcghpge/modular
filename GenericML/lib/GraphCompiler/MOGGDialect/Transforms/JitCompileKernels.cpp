@@ -47,10 +47,19 @@ std::string getIDForType(mlir::Type t) {
     return "f32";
   if (asTensor.getElementType().isSignedInteger(32))
     return "si32";
+  if (asTensor.getElementType().isSignedInteger(64))
+    return "si64";
 
   assert(false &&
          "[JITCOMPILEKERNELS] Unreachable. Types should have been guarded.");
   return "unreachable";
+}
+
+template <typename T>
+void appendConstToString(M::ArrayElementsAttr attr, std::string &name) {
+  const T *asDtype = reinterpret_cast<const T *>(attr.getRawData().data());
+  for (int64_t i = 0, e = attr.getNumElements(); i < e; ++i)
+    name += std::to_string(asDtype[i]) + "_";
 }
 
 std::string mangleBlock(mlir::Block &block,
@@ -119,20 +128,15 @@ std::string mangleBlock(mlir::Block &block,
       // Add the actual constant to the soup.
       auto attr = cast<M::ArrayElementsAttr>(cst.getValueAttr());
 
-      if (attr.getElementType().isF32()) {
-        const float *asFloat =
-            reinterpret_cast<const float *>(attr.getRawData().data());
-        for (int64_t i = 0, e = attr.getNumElements(); i < e; ++i)
-          name += std::to_string(asFloat[i]) + "_";
-      } else if (attr.getElementType().isSignedInteger(32)) {
-        const int32_t *asInt =
-            reinterpret_cast<const int32_t *>(attr.getRawData().data());
-        for (int64_t i = 0, e = attr.getNumElements(); i < e; ++i)
-          name += std::to_string(asInt[i]) + "_";
-      } else {
-        assert(false && "[JITCOMPILEKERNELS] Unreachable: folded constant is "
+      if (attr.getElementType().isF32())
+        appendConstToString<float>(attr, name);
+      else if (attr.getElementType().isSignedInteger(32))
+        appendConstToString<int32_t>(attr, name);
+      else if (attr.getElementType().isSignedInteger(64))
+        appendConstToString<int64_t>(attr, name);
+      else
+        assert(false && "Unreachable: folded constant is "
                         "not of supported type.");
-      }
     }
 
     // Add double seperator between operations.

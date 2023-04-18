@@ -143,7 +143,8 @@ struct MOOpPattern : public RewritePattern {
     auto isTypeAllowed = [&](Type t) {
       auto tensor = dyn_cast<MO::TensorType>(t);
       bool allowedElementTypes = tensor.getElementType().isF32() ||
-                                 tensor.getElementType().isSignedInteger(32);
+                                 tensor.getElementType().isSignedInteger(32) ||
+                                 tensor.getElementType().isSignedInteger(64);
 
       if (!tensor || !allowedElementTypes || !tensor.hasRank() ||
           tensor.getRank() > 5)
