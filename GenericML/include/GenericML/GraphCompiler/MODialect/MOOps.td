@@ -1739,6 +1739,7 @@ def MO_BatchMatmulOp : MO_DotBase<"batch_matmul", [
 
 // TODO: Use an AllElementTypesMatch<["input", "result"]> trait for MO_Tensor.
 def MO_MatrixBandPartOp : MO_TensorOp<"matrix_band_part", [
+    DeclareOpInterfaceMethods<MO_SinkStaticBroadcastTo>,
     DeclareOpInterfaceMethods<MO_Parameterization>,
     DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
   let summary = "Matrix Band Part operation";

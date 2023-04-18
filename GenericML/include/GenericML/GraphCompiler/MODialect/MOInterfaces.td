@@ -203,6 +203,22 @@ def MO_Reduction : MO_TensorOpInterfaceBase<"Reduction",
   let verify = [{ return impl::verifyReduction($_op); }];
 }
 
+def MO_SinkStaticBroadcastTo :
+    MO_TensorOpInterfaceBase<"SinkStaticBroadcastToInterface"> {
+  let description = [{
+    Interface for ops that can commute with `mo.static.broadcast_to`.
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      "Check if the op is preceded by `mo.static.broadcast_to`, and sink the "
+      "broadcast below the op if possible. Implementers should not erase the "
+      "preceding `mo.static.broadcast_to` operations.",
+      "ErrorOrSuccess", "sinkStaticBroadcastTo",
+      (ins "mlir::RewriterBase &":$rewriter)>,
+  ];
+}
+
 //===----------------------------------------------------------------------===//
 // Traits
 //===----------------------------------------------------------------------===//
