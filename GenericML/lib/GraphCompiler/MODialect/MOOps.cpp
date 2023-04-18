@@ -527,6 +527,32 @@ LogicalResult ConcatOp::verify() {
 // MO_SplitOp support
 //===----------------------------------------------------------------------===//
 
+/// Verify that the sum of `outputs` shapes along `splitAxis` matches the input
+/// shape, and that the other dimensions match.
+static ErrorOrSuccess verifyMatchingSplitShapes(ArrayRef<TensorValue> outputs,
+                                                TensorType inputTy,
+                                                int64_t splitAxis) {
+  int64_t splitDimSum = 0;
+  for (auto res : outputs) {
+    TensorType resTy = res.getType();
+    for (auto [i, dimSize] : llvm::enumerate(resTy.getIntDims())) {
+      if ((int64_t)i == splitAxis) {
+        splitDimSum += dimSize;
+      } else if (dimSize != inputTy.getIntDim(i)) {
+        return Error(
+            "input and output static shapes must match except split axis");
+      }
+    }
+  }
+
+  if (splitDimSum != inputTy.getIntDim(splitAxis)) {
+    return Error(
+        "sum of output shapes along split axis must match input shape");
+  }
+
+  return success();
+}
+
 LogicalResult SplitOp::verify() {
   SmallVector<TensorValue> tensors;
   tensors.emplace_back(getInput());
@@ -543,28 +569,25 @@ LogicalResult SplitOp::verify() {
   if (inputTy.getDtype() != resultTy.getDtype())
     return emitError("input and output element types must match");
 
-  // If the results and inputs have static shapes, and the axis is also a
-  // constant, then verify that the sum of the output shapes along the split
-  // axis matches the input shape, and that the other dimensions match.
+  // If the input has a static shape and the axis is a constant, then verify
+  // that the axis is in range.
+  // Then, if the results also have static shapes, verify that the sum of the
+  // output shapes along the split axis matches the input shape, and that the
+  // other dimensions match.
   std::optional<int64_t> axisOr = tryGetConstantInt(getAxis());
-  if (resultTy.hasStaticShape() && axisOr) {
-    int64_t splitDimSum = 0;
+  if (inputTy.hasStaticShape() && axisOr) {
     int64_t axis = *axisOr;
-    for (auto res : ArrayRef<TensorValue>(tensors).drop_front()) {
-      TensorType resTy = res.getType();
-      for (auto [i, dimSize] : llvm::enumerate(resTy.getIntDims())) {
-        if ((int64_t)i == axis) {
-          splitDimSum += dimSize;
-        } else if (dimSize != inputTy.getIntDim(i)) {
-          return emitError(
-              "input and output static shapes must match except split axis");
-        }
-      }
-    }
+    int64_t inputRank = inputTy.getRank();
+    int64_t normalizedAxis = (axis < 0) ? axis + inputRank : axis;
+    if ((normalizedAxis < 0) || (inputRank <= normalizedAxis))
+      return emitError("split axis must be in range [-rank, rank)");
 
-    if (splitDimSum != inputTy.getIntDim(axis))
-      return emitError(
-          "sum of output shapes along split axis must match input shape");
+    if (resultTy.hasStaticShape()) {
+      ErrorOrSuccess result = verifyMatchingSplitShapes(
+          ArrayRef<TensorValue>(tensors).drop_front(), inputTy, normalizedAxis);
+      if (result.isError())
+        return emitError(result.getError());
+    }
   }
 
   return success();

@@ -229,6 +229,15 @@ mo.graph @split_non_scalar_axis(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[
 
 // -----
 
+mo.graph @split_axis_out_of_range(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2], si64>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>) {
+  %ax = mo.constant {value = #M.dense_array<7> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  // expected-error @below {{split axis must be in range [-rank, rank)}}
+  %0, %1 = mo.split[%ax: !mo.tensor<[], si32>](%arg0, %arg1) : (!mo.tensor<[7], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>)
+  mo.output %0, %1 : !mo.tensor<[?], f32>, !mo.tensor<[?], f32>
+}
+
+// -----
+
 mo.graph @split_non_matching_output_rank(%arg0: !mo.tensor<[6, 7], f32>, %arg1: !mo.tensor<[2], si64>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>) {
   %ax = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
   // expected-error @below {{input and output ranks must be all dynamic, or all static and match}}
