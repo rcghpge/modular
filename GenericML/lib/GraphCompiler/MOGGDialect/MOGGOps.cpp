@@ -82,6 +82,13 @@ private:
                      const SmallVector<LoweredTensor> &inputTensors,
                      std::optional<SmallVector<int32_t, 2>> bcastIndices,
                      std::optional<IntArrayElementsAttr> matmulOriginalBDims);
+
+  /// Lower outputs whose shape function needs to return multiple output specs
+  /// in one invokation.
+  ErrorOr<SmallVector<LoweredTensor>>
+  lowerMultiOutputShapeFunc(StringRef shapeFuncName, Value inChain,
+                            ArrayRef<LoweredTensor> inputTensors,
+                            ArrayRef<MO::TensorType> resultMoTypes);
 };
 
 SmallVector<LoweredTensor> LowerHelper::lowerInputs() {
@@ -376,17 +383,90 @@ SmallVector<Value> LowerHelper::getOperands(SmallVector<LoweredTensor> &ins,
   return operands;
 }
 
+ErrorOr<SmallVector<LoweredTensor>>
+LowerHelper::lowerMultiOutputShapeFunc(StringRef shapeFuncName, Value inChain,
+                                       ArrayRef<LoweredTensor> inputTensors,
+                                       ArrayRef<MO::TensorType> resultMoTypes) {
+  SmallVector<LoweredTensor> outputBuffersAndSpecs;
+
+  // Create vector of result types.
+  SmallVector<MGP::CpuTensorSpecType> resultMgpTypes =
+      map_to_vector(resultMoTypes, [](MO::TensorType t) {
+        return MGP::createCpuTensorSpec(t);
+      });
+
+  OpBuilder exeBuilder = loweringState.getExecuteOpBuilder();
+  // Helper function to create the invoke op for the shape function.
+  auto getMultiOutputSpecs = [&](StringRef opName, ArrayRef<Value> inputs) {
+    OperationState opState(loc, shapeFuncName);
+    opState.addOperands(inputs);
+    opState.addTypes(resultMgpTypes);
+
+    Operation *invokeOp = exeBuilder.create(opState);
+
+    // Return the output specs.
+    return map_to_vector(invokeOp->getResults(), [](Value v) {
+      return cast<TypedValue<MGP::CpuTensorSpecType>>(v);
+    });
+  };
+
+  SmallVector<TypedValue<MGP::CpuTensorSpecType>> outputSpecs;
+  if (shapeFuncName == "mop.shape.split") {
+    // Get inputs for "mop.shape.split"(%inputSpec, %splitSizes, %axis)
+    Value inputSpec = inputTensors[0].spec;
+    Value splitSizes = loweringState.lookupExecuteLoweredValue(
+        opBeingLowered->getOperands()[1]);
+    Value axis = loweringState.lookupExecuteLoweredValue(
+        opBeingLowered->getOperands()[2]);
+    outputSpecs =
+        getMultiOutputSpecs(shapeFuncName, {inputSpec, splitSizes, axis});
+  } else {
+    opBeingLowered->emitError("multi-output shape func not supported");
+    return Error("multi-output shape func not supported");
+  }
+
+  // Create output buffers from specs.
+  for (const auto &outSpec : outputSpecs) {
+    auto buffer = exeBuilder
+                      .create<MGP::CpuBufferAllocSpecOp>(
+                          loc,
+                          /*inChain=*/inChain,
+                          /*runtimeSpec=*/outSpec,
+                          /*rawAlign=*/loweringState.getMinimumCpuAlignment())
+                      .getOutBuffer();
+    outputBuffersAndSpecs.push_back({buffer, outSpec});
+  }
+
+  return outputBuffersAndSpecs;
+}
+
 ErrorOr<SmallVector<LoweredTensor>> LowerHelper::lowerOutputBuffer(
     llvm::StringRef opName, Value inChain,
     const SmallVector<LoweredTensor> &inputTensors,
     std::optional<SmallVector<int32_t, 2>> bcastIndices,
     std::optional<IntArrayElementsAttr> matmulOriginalBDims) {
+  // Handle ops with shape functions that return multiple outputs.
+  // For example, mop.shape.split returns a variable number of outputs, so it
+  // takes a slightly different lowering path.
+  static const llvm::StringMap<StringRef> multiOutputShapeFuncs{
+      {"mop.kernels.split", "mop.shape.split"},
+  };
 
+  SmallVector<MO::TensorType> resultMoTypes =
+      map_to_vector(opBeingLowered->getResultTypes(),
+                    [](Type t) { return t.cast<MO::TensorType>(); });
+  if (multiOutputShapeFuncs.contains(opName) && !resultMoTypes.empty() &&
+      !resultMoTypes.front().hasStaticShape()) {
+    return lowerMultiOutputShapeFunc(multiOutputShapeFuncs.lookup(opName),
+                                     inChain, inputTensors, resultMoTypes);
+  }
+
+  // Proceed with the normal case when there is only one output, or all the
+  // output shapes are known statically.
   SmallVector<LoweredTensor> outputBufferAndSpec;
 
   // Allocate the output buffer for each result and add as argument.
-  for (Type t : opBeingLowered->getResultTypes()) {
-    auto ty = t.cast<MO::TensorType>();
+  for (MO::TensorType ty : resultMoTypes) {
     if (!ty.hasRank())
       return Error("dynamic output rank not supported");
     MGP::CpuTensorSpecType outSpecType = MGP::createCpuTensorSpec(ty);
