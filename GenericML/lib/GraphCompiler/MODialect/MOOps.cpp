@@ -378,11 +378,17 @@ LogicalResult Static::BroadcastToOp::canonicalize(Static::BroadcastToOp op,
 
   // If a broadcast does not change the number of elements, it is equivalent to
   // a reshape. This is something we can check symbolically.
-  if (resTy.getSymbolicNumElements() != inputTy.getSymbolicNumElements())
-    return failure();
+  if (resTy.getSymbolicNumElements() == inputTy.getSymbolicNumElements()) {
+    rewriter.replaceOpWithNewOp<Static::ReshapeOp>(op, resTy, inputVal);
+    return success();
+  }
 
-  rewriter.replaceOpWithNewOp<Static::ReshapeOp>(op, resTy, inputVal);
-  return success();
+  for (Operation *user : op->getUsers()) {
+    if (auto sinkInterface = dyn_cast<SinkStaticBroadcastToInterface>(user))
+      if (succeeded(sinkInterface.sinkStaticBroadcastTo(rewriter)))
+        return success();
+  }
+  return failure();
 }
 
 OpFoldResult Static::BroadcastToOp::fold(FoldAdaptor adaptor) {
