@@ -193,6 +193,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_MOJO_ONLY(MOGG::BroadcastToTensorOp, true),
       MO_SHIM_ONLY(MO::CastOp, "mop.kernels.cast"),
       MO_SHIM_ONLY(MO::ConcatOp, "mop.kernels.concat"),
+      MO_SHIM_ONLY(MO::SplitOp, "mop.kernels.split"),
       MO_TO_MOJO_VIEW(MO::Static::BroadcastToOp,
                       "mop.kernels.static.broadcast_to"),
       MO_SHIM_ONLY(MO::ConvOp, "mop.kernels.conv"),
