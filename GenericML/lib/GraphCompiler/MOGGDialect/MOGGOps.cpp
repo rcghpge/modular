@@ -59,7 +59,6 @@ public:
   ErrorOr<SmallVector<LoweredTensor>> lowerOutputBuffer(
       llvm::StringRef opName, Value inChain,
       const SmallVector<LoweredTensor> &inputTensors,
-      std::optional<SmallVector<int32_t, 2>> bcastIndices = std::nullopt,
       std::optional<IntArrayElementsAttr> matmulOriginalBDims = std::nullopt);
 
   // Convert the tensors to a list of buffer/spec value pairs.
@@ -80,7 +79,6 @@ private:
   lowerDynamicOutput(MGP::CpuTensorSpecType outSpecType, MO::TensorType moType,
                      llvm::StringRef opName, Value inChain,
                      const SmallVector<LoweredTensor> &inputTensors,
-                     std::optional<SmallVector<int32_t, 2>> bcastIndices,
                      std::optional<IntArrayElementsAttr> matmulOriginalBDims);
 
   /// Lower outputs whose shape function needs to return multiple output specs
@@ -142,7 +140,6 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     MGP::CpuTensorSpecType outSpecType, MO::TensorType moType,
     llvm::StringRef opName, Value inChain,
     const SmallVector<LoweredTensor> &inputTensors,
-    std::optional<SmallVector<int32_t, 2>> bcastIndices,
     std::optional<IntArrayElementsAttr> matmulOriginalBDims) {
   // Dynamic Case
   // TODO: This is hacky, hacky, hacky, remove as soon as we can lower
@@ -318,19 +315,6 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     Value input = loweringState.lookupExecuteLoweredValue(
         opBeingLowered->getOperands()[0]);
     output.spec = getOutputSpec("mop.shape.where", {input});
-  } else if (opName == "mop.kernels.broadcast_to_tensor") {
-    assert(bcastIndices && "Broadcast kernel doesn't have indices");
-
-    // Broadcast kernels or operations which have fused a broadcast are supposed
-    // to provide an indices attribute which we can then use to tell the shape
-    // function which two inputs should be broadcasted together to produce the
-    // final shape.
-    SmallVector<Value> inputSpecs{
-        inputTensors[(*bcastIndices)[0]].spec,
-        inputTensors[(*bcastIndices)[1]].spec,
-    };
-
-    output.spec = getOutputSpec("mop.shape.broadcast_to_tensor", inputSpecs);
   } else if (opName == "mop.kernels.slice") {
     Value input = inputTensors[0].spec;
     Value start = loweringState.lookupExecuteLoweredValue(
@@ -443,7 +427,6 @@ LowerHelper::lowerMultiOutputShapeFunc(StringRef shapeFuncName, Value inChain,
 ErrorOr<SmallVector<LoweredTensor>> LowerHelper::lowerOutputBuffer(
     llvm::StringRef opName, Value inChain,
     const SmallVector<LoweredTensor> &inputTensors,
-    std::optional<SmallVector<int32_t, 2>> bcastIndices,
     std::optional<IntArrayElementsAttr> matmulOriginalBDims) {
   // Handle ops with shape functions that return multiple outputs.
   // For example, mop.shape.split returns a variable number of outputs, so it
@@ -474,8 +457,7 @@ ErrorOr<SmallVector<LoweredTensor>> LowerHelper::lowerOutputBuffer(
     LoweredTensor output;
     if (!bufferSize) {
       UNWRAP_ERROR(out, lowerDynamicOutput(outSpecType, ty, opName, inChain,
-                                           inputTensors, bcastIndices,
-                                           matmulOriginalBDims));
+                                           inputTensors,matmulOriginalBDims));
       output = out;
     } else {
       // Static Case
@@ -543,7 +525,7 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // parameters.
   auto errOr = helper.lowerOutputBuffer(
       opName, loweringState.getExecuteChain(), inputTensors,
-      /*bcastIndices=*/std::nullopt, matmulOriginalBDims);
+      matmulOriginalBDims);
   if (errOr.isError())
     return failure();
   SmallVector<LoweredTensor> outputBufferAndSpec = errOr.takeValue();
@@ -672,43 +654,16 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // and specs in IR those are passed in.
   auto inputTensors = helper.lowerInputs();
 
-  // TODO: We carry around the original operation name just to trick the current
-  // dynamic shape logic.
-  std::string originalName = "mop.kernels." + op.getOriginalOpName().str();
-
-  std::optional<SmallVector<int32_t, 2>> bcastIndices = std::nullopt;
-
-  // If the operation is a broadcast or is a fused kernel containing a broadcast
-  // the indices of the inputs to that broadcast will be listed. These are
-  // needed to tell the shape function how to compute the output shape.
-  // Specifically the tell the shape inference which of the inputs represent the
-  // broadcast inputs in a multi input fused kernel. If there are many
-  // broadcasts we only look at one because we know that they are compatable
-  // shapes as per fusion rules (we fuse on elementwise kernels which only
-  // consume comptable shapes and only fuse the immediate operands so we can
-  // guarantee shape compatibility).
-  if (op.getBcastInputIndices()) {
-    mlir::ArrayAttr indices = *op.getBcastInputIndices();
-
-    SmallVector<int32_t, 2> newBcastIndices;
-    for (llvm::APInt index : indices.getAsValueRange<mlir::IntegerAttr>()) {
-      newBcastIndices.push_back(static_cast<int32_t>(index.getLimitedValue()));
-    }
-
-    assert(newBcastIndices.size() == 2 &&
-           "[MOGG_OPS] If kernel has bcast indices it should only have two.");
-
-    bcastIndices = newBcastIndices;
-  }
-
   // Allocate buffers to hold all the operation's result tensors. At this stage
   // we gate the allocation only on the overall 'execute' block's chain. The
   // PeepholeTensorExtract pass will change this to use the chain which signals
   // when all of the operation's input buffers have been written to, thus
-  // ensuring we allocate buffers just-in-time for their writers.
+  // ensuring we allocate buffers just-in-time for their writers. Jit compiled
+  // kernels have no shape function and just use the shape infered values
+  // directly and are guarded to only run on static or shape infered ops.
   auto errOr =
-      helper.lowerOutputBuffer(originalName, loweringState.getExecuteChain(),
-                               inputTensors, bcastIndices);
+      helper.lowerOutputBuffer("jit_compiled", loweringState.getExecuteChain(),
+                               inputTensors);
   if (errOr.isError())
     return failure();
   SmallVector<LoweredTensor> outputBufferAndSpec = errOr.takeValue();

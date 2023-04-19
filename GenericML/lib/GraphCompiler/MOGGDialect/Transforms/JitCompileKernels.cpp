@@ -297,7 +297,7 @@ struct JitCompileKernels
 
       // Replace the original kernel with a call to the compiled jit code.
       MOGG::ExecuteCompiledOp jitExecute =
-          builder.createExecuteOperation(stubKernelName, op.getShapeFunc());
+          builder.createExecuteOperation(stubKernelName);
       op->replaceAllUsesWith(jitExecute.getResults());
       jittedKernels.insert({stubKernelName, jitExecute});
       op->erase();

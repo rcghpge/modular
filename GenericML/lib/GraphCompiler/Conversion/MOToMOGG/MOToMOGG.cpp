@@ -103,13 +103,9 @@ struct MOOpPattern : public RewritePattern {
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-
-    bool lowerableMogg = isa<MOGG::BroadcastToTensorOp>(op);
-
     // skip non-mo ops and container/constant/output mo ops
-    if (!lowerableMogg &&
-        (!isa<MO::MODialect>(op->getDialect()) || isa<MO::GraphOp>(op) ||
-         isa<MO::ConstantOp>(op) || isa<MO::OutputOp>(op)))
+    if (!isa<MO::MODialect>(op->getDialect()) || isa<MO::GraphOp>(op) ||
+         isa<MO::ConstantOp>(op) || isa<MO::OutputOp>(op))
       return failure();
 
     auto results = selectMOGGOp(op);
@@ -133,9 +129,9 @@ struct MOOpPattern : public RewritePattern {
     MO::KernelLowererHelper helper{op};
 
     // Current jit kernel constraints:
-    // Only f32.
     // Ranked.
     // Rank between 1-5 (due to kernel bug #10551)
+    // Dimensions are static or shape infered (i.e not '?')
     // Only within the top level graph and not within e.g control flow.
     bool shouldUseJit = useJit && kernel.shouldHaveMojo;
 
@@ -147,7 +143,7 @@ struct MOOpPattern : public RewritePattern {
                                  tensor.getElementType().isSignedInteger(64);
 
       if (!tensor || !allowedElementTypes || !tensor.hasRank() ||
-          tensor.getRank() > 5)
+          tensor.getRank() > 5 || tensor.hasUnknownShape())
         return false;
       return true;
     };
@@ -199,7 +195,6 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_MOJO(MO::AddOp, "mop.kernels.add"),
       MO_SHIM_ONLY(MO::BroadcastShapeOp, "mop.kernels.broadcast_shape"),
       MO_SHIM_ONLY(MO::BroadcastToOp, "mop.kernels.broadcast_to"),
-      MO_TO_MOJO_ONLY(MOGG::BroadcastToTensorOp, true),
       MO_TO_MOJO(MO::CastOp, "mop.kernels.cast"),
       MO_SHIM_ONLY(MO::ConcatOp, "mop.kernels.concat"),
       MO_SHIM_ONLY(MO::SplitOp, "mop.kernels.split"),

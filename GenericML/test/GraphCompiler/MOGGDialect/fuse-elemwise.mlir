@@ -7,6 +7,7 @@ mo.graph @simpleDoubleUse(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3],
   mo.output %1 : !mo.tensor<[4, 3], f32>
 }
 
+// CHECK-LABEL: mo.graph @simpleDoubleUse
 // CHECK: %[[KERNEL_OUT:.*]] = mogg.kernel (%[[ARG1:.*]])
 
 // Find the input lambda name.
@@ -30,7 +31,7 @@ mo.graph @rightmostTreeFusion(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<
   mo.output %5 : !mo.tensor<[4, 3], f32>
 }
 
-
+// CHECK-LABEL: mo.graph @rightmostTreeFusion
 // CHECK: %[[KERNEL_OUT:.*]] = mogg.kernel (%[[ARG1:.*]], %[[ARG2:.*]])
 // CHECK: mogg.lambda @elemwise_compute_lambda = (%[[INDICES:.*]]: !mogg.indices){
 // CHECK-NEXT:    %[[LOAD1:.*]] = mogg.invoke @[[ANY_NAME:.*]](%[[INDICES]]) {readOnly = true} : !mogg.indices -> !mogg.simd<f32>
@@ -46,7 +47,7 @@ mo.graph @rightmostTreeFusion(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<
 // CHECK-NEXT:}
 // CHECK-NEXT: mogg.call "elementwise" [@elemwise_compute_lambda]
 // CHECK-NEXT: mogg.output
-// CHECK-NEXT:} {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn", "input_0_fn_1"], outputFusionInterface = ["output_0_fn"], shapeFunc = "add"}
+// CHECK-NEXT:} {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn", "input_0_fn_1"], outputFusionInterface = ["output_0_fn"]}
 // CHECK:  mo.output %[[KERNEL_OUT]]
 
 
@@ -60,6 +61,7 @@ mo.graph @leftmostTreeFusion(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[
   mo.output %5 : !mo.tensor<[4, 3], f32>
 }
 
+// CHECK-LABEL: mo.graph @leftmostTreeFusion
 // CHECK: %[[KERNEL_OUT:.*]] = mogg.kernel (%[[ARG1:.*]], %[[ARG2:.*]])
 // CHECK: mogg.lambda @elemwise_compute_lambda = (%[[INDICES:.*]]: !mogg.indices){
 // CHECK-NEXT:    %[[LOAD1:.*]] = mogg.invoke @[[ANY_NAME:.*]](%[[INDICES]]) {readOnly = true} : !mogg.indices -> !mogg.simd<f32>
@@ -75,7 +77,7 @@ mo.graph @leftmostTreeFusion(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[
 // CHECK-NEXT:}
 // CHECK-NEXT: mogg.call "elementwise" [@elemwise_compute_lambda]
 // CHECK-NEXT: mogg.output
-// CHECK-NEXT:} {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_1_fn", "input_0_fn_0"], outputFusionInterface = ["output_0_fn"], shapeFunc = "add"}
+// CHECK-NEXT:} {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_1_fn", "input_0_fn_0"], outputFusionInterface = ["output_0_fn"]}
 // CHECK:  mo.output %[[KERNEL_OUT]]
 
 
@@ -170,19 +172,19 @@ mo.graph @inversePyramid(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[4, 3
 
 // Broadcast (currently) has its own fusion pass so should not be fused along with the elementwise ops in the fuse-elementwise pass.
 
-mo.graph @broadcastNoFuse(%arg0: !mo.tensor<[?, ?], f32>, %arg1: !mo.tensor<[?, ?], f32>) -> (!mo.tensor<[?, ?], f32>) {
-  %bcast1 = mogg.broadcast_to_tensor(%arg0, %arg1) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, ?], f32>
-  %bcast2 = mogg.broadcast_to_tensor(%arg1, %arg0) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, ?], f32>
-  %1 = mo.add(%bcast1, %bcast2) : !mo.tensor<[?, ?], f32>
-  mo.output %1 : !mo.tensor<[?, ?], f32>
+mo.graph @broadcastNoFuse<N, M, K>(%arg0: !mo.tensor<[N, K], f32>, %arg1: !mo.tensor<[K, M], f32>) -> (!mo.tensor<[N, M], f32>) {
+  %bcast1 = mo.static.broadcast_to(%arg0) : !mo.tensor<[N, K], f32> -> !mo.tensor<[N, M], f32>
+  %bcast2 = mo.static.broadcast_to(%arg1) : !mo.tensor<[K, M], f32> -> !mo.tensor<[N, M], f32>
+  %1 = mo.add(%bcast1, %bcast2) : !mo.tensor<[N, M], f32>
+  mo.output %1 : !mo.tensor<[N, M], f32>
 }
 
 // Check each broadcast is in its own standalone kernel.
-// CHECK: mo.graph @broadcastNoFuse
+// CHECK-LABEL: mo.graph @broadcastNoFuse
 // CHECK-NEXT: %[[BCAST1:.*]] = mogg.kernel
 // CHECK: %[[BCAST2:.*]] = mogg.kernel
 // CHECK: %[[ADD:.*]] = mogg.kernel (%[[BCAST1]], %[[BCAST2]])
-// CHECK: mo.output %[[ADD]] : !mo.tensor<[?, ?], f32>
+// CHECK: mo.output %[[ADD]] : !mo.tensor<[N, M], f32>
 
 mo.graph @fused_si32(%arg0: !mo.tensor<[6], si32>, %arg1: !mo.tensor<[6], si32>) -> (!mo.tensor<[6], si32>) {
   %0 = mo.add(%arg0, %arg1) : !mo.tensor<[6], si32>

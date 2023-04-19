@@ -72,30 +72,6 @@ def MOGG_ExtOp : MOGG_LowerableOp<"ext.op", [Pure]> {
 // Internal helper ops
 //===----------------------------------------------------------------------===//
 
-def MOGG_BroadcastToTensorOp : MOGG_Op<"broadcast_to_tensor", []> {
-  let summary = "BroadcastToTensor Operation";
-  let description = [{
-    Broadcast the input tensor to the shape of the other tensor.
-
-    Example:
-
-    ```mlir
-    %from: !mo.tensor<[100, 1, 100], f32>
-    %to: !mo.tensor<[10,20,100,50,100], f32>
-    %res = mogg.broadcast_to_tensor(%from, %to) : (
-      !mo.tensor<[100, 1, 100], f32>, !mo.tensor<[10,20,100,50,100], f32>)
-        -> !mo.tensor<[10,20,100,50,100], f32>
-    ```
-  }];
-
-  let arguments = (ins MO_Tensor:$from, MO_Tensor:$to);
-  let results = (outs MO_Tensor:$result);
-
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
-  }];
-}
-
 def MOGG_ConcatOp : MOGG_LowerableOp<"concat", []> {
   let summary = "Concat Operation along axis zero";
   let description = [{
@@ -186,7 +162,7 @@ def MOGG_MojoRegisterOp : MOGG_Op<"mojo_register", [HasParent<"ModuleOp">]> {
     ```mlir
     %1 = mogg.kernel (%0, %arg1) : (%arg2: !mo.tensor<[2, 3], f32>, %arg3: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>{
       ...
-    } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn", "input_1_fn"], outputFusionInterface = ["output_0_fn"], shapeFunc = "add"}
+    } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn", "input_1_fn"], outputFusionInterface = ["output_0_fn"]}
     ```
 
     This above kernel has a graph semantic %1 and inputs %0, %arg1 which work with the rest of the MO/MOGG operations.
@@ -197,8 +173,8 @@ def MOGG_MojoRegisterOp : MOGG_Op<"mojo_register", [HasParent<"ModuleOp">]> {
     ```mlir
     { fusionBodyLambda = "elemwise_compute_lambda",
       inputFusionInterface = ["input_0_fn", "input_1_fn"],
-      outputFusionInterface = ["output_0_fn"],
-      shapeFunc = "add"}
+      outputFusionInterface = ["output_0_fn"]
+    }
     ```
     `fusionBodyLambda` Represents the fusable elementwise / view operation body contained with in. This signfies that this kernel is
     fully implemented by applying this lambda to an otherwise identity operation, therefore we can safely fuse it into a user.
@@ -210,27 +186,17 @@ def MOGG_MojoRegisterOp : MOGG_Op<"mojo_register", [HasParent<"ModuleOp">]> {
 
     `outputFusionInterface` Same as the above but for storing.
 
-    `shapeFunc` This allows us to use our current hacky shape function implementation. TODO: remove once we have param system working.
-
     `isViewOp` This attribute is an easy way for us to check if something can
                be represented as a view. I.E a broadcast in the form of a view
                change followed by a copy. We can drop the copy and keep the
                view change op.
-
-
-    `bcastInputIndices` This is a hack until we have the shape inference in
-                        place. This lets us tell the lowering which inputs
-                        of the kernel can be broadcasted together to produce
-                        the output shape.
   }];
 
   let arguments = (ins Variadic<MO_Tensor>:$operands,
-    StrAttr:$shapeFunc,
     OptionalAttr<ArrayAttr>:$inputFusionInterface,
     OptionalAttr<ArrayAttr>:$outputFusionInterface,
     OptionalAttr<StrAttr>:$fusionBodyLambda,
-    OptionalAttr<BoolAttr>:$isViewOp,
-    OptionalAttr<ArrayAttr>:$bcastInputIndices
+    OptionalAttr<BoolAttr>:$isViewOp
   );
   let results = (outs Variadic<MO_Tensor>:$results);
   let regions = (region SizedRegion<1>:$body);
@@ -421,9 +387,7 @@ def MOGG_ExecuteCompiledOp : MOGG_LowerableOp<"execute_kernel"> {
   let description = [{}];
 
   let arguments = (ins Variadic<MO_Tensor>:$operands,
-                          StrAttr:$kernelName,
-                          StrAttr:$originalOpName,
-                          OptionalAttr<ArrayAttr>:$bcastInputIndices);
+                          StrAttr:$kernelName);
   let results = (outs Variadic<MO_Tensor>:$results);
 }
 

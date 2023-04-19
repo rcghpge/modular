@@ -92,7 +92,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   moToMoggOpts.useJit = opts.useJit;
   // If jiting simplify broadcast patterns to a single op that we can jit.
   if (opts.useJit) {
-    pm.addPass(MO::createConvertBroadcastToShape());
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createCSEPass());
   }

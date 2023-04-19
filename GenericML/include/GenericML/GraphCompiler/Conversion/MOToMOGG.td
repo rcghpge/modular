@@ -34,19 +34,4 @@ def MOToMOGG : Pass<"mo-to-mogg", "ModuleOp"> {
   ];
 }
 
-
-def ConvertBroadcastToShape : Pass<"convert-broadcast-to-shape", "MO::GraphOp"> {
-  let summary = "Converts shape semantic broadcasts to tensor semantic broadcasts";
-  let description = [{
-    Converts the many op shape semantic broadcast to a single tensor semantic op so it
-    can be targetted by the jit. This operation has no shim backing so will only compile
-    if the operation
-  }];
-
-  let dependentDialects = [
-    "M::MO::MODialect",
-    "M::MOGG::MOGGDialect"
-  ];
-}
-
 #endif // GENERICML_GRAPHCOMPILER_CONVERSION_MOTOMOGG_TD

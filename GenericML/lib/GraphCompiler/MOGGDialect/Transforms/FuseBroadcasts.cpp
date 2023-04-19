@@ -36,8 +36,6 @@ struct FuseBroadcastsPass
       if (!kernel.getFusionBodyLambda() || kernel.getIsViewOp().value_or(false))
         continue;
 
-      bool hasFused = false;
-
       // For catching the rare case of a broadcast taking a broadcast as arg AND
       // this kernel taking both as arg.
       DenseMap<Value, Value> alreadyFused;
@@ -55,75 +53,6 @@ struct FuseBroadcastsPass
         // All legality checking should be performed above so we assume this
         // will perform the fusion or produce a fatal failure.
         fuseInputAtIndex(kernel, index, alreadyFused);
-        hasFused = true;
-      }
-
-      // Fix up the attributes on this kernel.
-      if (hasFused) {
-        Block &leafBlock = kernel.getBody().front();
-
-        // Block all fusion on this operation going forward for safety.
-        kernel.removeInputFusionInterfaceAttr();
-        kernel.removeOutputFusionInterfaceAttr();
-        kernel.removeFusionBodyLambdaAttr();
-
-        auto moType = cast<MO::TensorType>(kernel.getResult(0).getType());
-
-        // If we have a parameterized shape then we don't need the hacky shape
-        // function anymore.
-        if (!moType.hasUnknownShape()) {
-          kernel.setShapeFunc("infered_from_output");
-          continue;
-        }
-
-        MOGG::CallOp bcast;
-
-        // Find a broadcast.
-        for (Value arg : leafBlock.getArguments()) {
-          for (Operation *user : arg.getUsers()) {
-            auto call = dyn_cast<MOGG::CallOp>(user);
-            if (call && call.getLitKernelTarget() ==
-                            MOGG::BroadcastToTensorOp::getOperationName()) {
-              // At least one of the broadcasts must use only the inputs. That
-              // is the one we want as we need to tell the shape inference
-              // function which of our inputs can be used to deduce the shape.
-              if (call->getOperand(0).getDefiningOp() == nullptr &&
-                  call->getOperand(1).getDefiningOp() == nullptr) {
-                bcast = call;
-                break;
-              }
-            }
-          }
-
-          // We only need one.
-          if (bcast)
-            break;
-        }
-
-        assert(bcast && "Broadcast not found but fusion was performed.");
-
-        // The indices of the original tensor and the target tensor of the
-        // broadcast. These are needed for the shape inference function.
-        int32_t i = 0, fromIndex = -1, toIndex = -1;
-        for (Value arg : leafBlock.getArguments()) {
-          if (bcast->getOperand(0) == arg)
-            fromIndex = i;
-          else if (bcast->getOperand(1) == arg)
-            toIndex = i;
-
-          i++;
-        }
-
-        assert(fromIndex != -1 && "From index could not be identified.");
-        assert(toIndex != -1 && "To index could not be identified.");
-
-        mlir::OpBuilder builder{kernel.getContext()};
-
-        // Tell the shape function which of the indices should be used to deduce
-        // the shape.
-        kernel.setBcastInputIndicesAttr(
-            builder.getI32ArrayAttr({fromIndex, toIndex}));
-        kernel.setShapeFunc("broadcast_to_tensor");
       }
     }
   }
@@ -216,13 +145,12 @@ struct FuseBroadcastsPass
         remapper.map(otherBlockArg, leafBlockArg);
       }
 
-      // The mogg kernel has been marked as a view, this means one of the
-      // arguments must be broadcasted. Search the kernel for the broadcast
-      // function.
+      // The mogg kernel has been marked as a view. Search the kernel for the
+      // broadcast function.
       for (Operation *user : otherBlockArg.getUsers()) {
         auto call = dyn_cast<MOGG::CallOp>(user);
         if (call && call.getLitKernelTarget() ==
-                        MOGG::BroadcastToTensorOp::getOperationName()) {
+                        MO::Static::BroadcastToOp::getOperationName()) {
           if (bcast) {
             assert(bcast == call &&
                    "More than one broadcast in kernel being fused.");
