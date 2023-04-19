@@ -180,7 +180,7 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
       {"mop.kernels.batch_matmul", "mop.shape.batch_matmul"},
       {"mop.kernels.batch_matmul_adjb", "mop.shape.batch_matmul_adjb"},
       {"mop.kernels.select", "mop.shape.select"},
-      {"mop.kernels.in_place_concat", "mop.shape.in_place_concat"},
+      {"mop.kernels.concat_axis_0", "mop.shape.concat_axis_0"},
   };
 
   // (arg0Spec, arg1) -> outSpec
@@ -590,8 +590,8 @@ LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   // Lower the outputs to buffers which can then be passed back in as
   // parameters.
-  auto errOr = helper.lowerOutputBuffer("mop.kernels.in_place_concat",
-                                        execChain, inputTensors);
+  auto errOr = helper.lowerOutputBuffer("mop.kernels.concat_axis_0", execChain,
+                                        inputTensors);
   if (errOr.isError())
     return failure();
   SmallVector<LoweredTensor> outputBufferAndSpec = errOr.takeValue();
