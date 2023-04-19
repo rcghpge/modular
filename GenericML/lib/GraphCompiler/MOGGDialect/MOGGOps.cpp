@@ -577,20 +577,12 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
   return success();
 }
 
-// InPlaceConcatOp
+// ConcatOp
 
-static void printParamDecls(OpAsmPrinter &p, Operation *,
-                            KGEN::ParamDeclArrayAttr paramDecls) {
-  if (!paramDecls.empty()) {
-    p << "<() -> ";
-    printParamDecls(p, paramDecls);
-    p << '>';
-  }
-}
-
-LogicalResult InPlaceConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
-  InPlaceConcatOp op = *this;
+LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
+  ConcatOp op = *this;
   LowerHelper helper{loweringState, op};
+  Value execChain = loweringState.getExecuteChain();
 
   // Operands to pass to the operation. Input tensors are expanded to buffers
   // and specs in IR those are passed in.
@@ -598,10 +590,8 @@ LogicalResult InPlaceConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   // Lower the outputs to buffers which can then be passed back in as
   // parameters.
-  auto errOr = helper.lowerOutputBuffer(
-      "mop.kernels.in_place_concat", loweringState.getExecuteChain(),
-      inputTensors,
-      /*bcastIndices=*/std::nullopt, /*matmulOriginalBDims=*/std::nullopt);
+  auto errOr = helper.lowerOutputBuffer("mop.kernels.in_place_concat",
+                                        execChain, inputTensors);
   if (errOr.isError())
     return failure();
   SmallVector<LoweredTensor> outputBufferAndSpec = errOr.takeValue();

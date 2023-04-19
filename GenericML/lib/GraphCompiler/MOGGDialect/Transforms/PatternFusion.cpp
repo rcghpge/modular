@@ -499,7 +499,7 @@ struct ConcatPattern : public RewritePattern {
       if (mlir::Operation *iop = input.getDefiningOp()) {
         if (isa<MO::ConstantOp>(iop))
           return rewriter.notifyMatchFailure(iop, "is constant");
-        if (isa<MO::ConcatOp>(iop) || isa<MOGG::InPlaceConcatOp>(iop))
+        if (isa<MO::ConcatOp>(iop) || isa<MOGG::ConcatOp>(iop))
           return rewriter.notifyMatchFailure(
               iop, "don't currently support nesting in-place concats");
       }
@@ -507,11 +507,10 @@ struct ConcatPattern : public RewritePattern {
         return rewriter.notifyMatchFailure(input.getLoc(), "has extra users");
     }
 
-    rewriter.replaceOpWithNewOp<MOGG::InPlaceConcatOp>(
+    rewriter.replaceOpWithNewOp<MOGG::ConcatOp>(
         op,
         /*outputTypes=*/op->getResultTypes(),
-        /*inputOperands=*/concat.getInputs(),
-        /*outputParamDelcs=*/concat.getOutputParamDecls());
+        /*inputOperands=*/concat.getInputs());
 
     return mlir::success();
   }
