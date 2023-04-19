@@ -129,3 +129,30 @@ mgp.model @DivergentChains : tf init {
   %17 = mgp.cpu.tensor.create %16, %14, %15 : !mgp.cpu.tensor<8xf32>
   mef.output %16, %17 : !mef.chain, !mgp.cpu.tensor<8xf32>
 }
+
+// Simply testing for algorithm convergence (in presence of alloc reordering)
+// CHECK: mgp.model @multiple_writers_convergence : tf init {
+// CHECK-NEXT:   %[[CH:.*]] = grt.chain.create
+// CHECK-NEXT:   %[[CTX:.*]] = mgp.context.create 0
+// CHECK-NEXT:   mef.output %[[CH]], %[[CTX]] : !mef.chain, !mgp.context
+// CHECK-NEXT: } execute (%[[CH:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context) -> (!mef.chain, !mgp.cpu.buffer<8>, !mgp.cpu.buffer<8>) {
+// CHECK-NEXT:   %[[SPEC:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<1xsi64>
+// CHECK-NEXT:   %[[BUF0:.*]] = mgp.cpu.buffer.alloc.static %[[CH]], 8, align 8
+// CHECK-NEXT:   %[[BUF1:.*]] = mgp.cpu.buffer.alloc.static %[[CH]], 8, align 16
+// CHECK-NEXT:   %[[OUT_CH:.*]] = "test.write_bufs"(%[[CH]], %[[BUF0]], %[[SPEC]], %[[BUF1]], %[[SPEC]]) {numBackOutputBuffers = 2 : ui32}
+// CHECK-SAME:   : (!mef.chain, !mgp.cpu.buffer<8>, !mgp.cpu.tensor_spec<1xsi64>, !mgp.cpu.buffer<8>, !mgp.cpu.tensor_spec<1xsi64>) -> !mef.chain
+// CHECK-NEXT:   mef.output %[[OUT_CH]], %[[BUF0]], %[[BUF1]] : !mef.chain, !mgp.cpu.buffer<8>, !mgp.cpu.buffer<8>
+// CHECK-NEXT: }
+
+mgp.model @multiple_writers_convergence : tf init {
+  %ch = grt.chain.create
+  %ctx = mgp.context.create 0
+  mef.output %ch, %ctx : !mef.chain, !mgp.context
+} execute (%ch: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.cpu.buffer<8>, !mgp.cpu.buffer<8>) {
+  %buf0 = mgp.cpu.buffer.alloc.static %ch, 8, align 8
+  %buf1 = mgp.cpu.buffer.alloc.static %ch, 8, align 16
+  %spec = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<1xsi64>
+  %out_ch = "test.write_bufs"(%ch, %buf0, %spec, %buf1, %spec) {numBackOutputBuffers = 2 : ui32}
+  : (!mef.chain, !mgp.cpu.buffer<8>, !mgp.cpu.tensor_spec<1xsi64>, !mgp.cpu.buffer<8>, !mgp.cpu.tensor_spec<1xsi64>) -> !mef.chain
+  mef.output %out_ch, %buf0, %buf1 : !mef.chain, !mgp.cpu.buffer<8>, !mgp.cpu.buffer<8>
+}
