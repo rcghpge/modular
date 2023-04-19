@@ -372,6 +372,8 @@ private:
       return MIP::LessThanEqualOp::getOperationName();
     case KGEN::POC::Max:
       return MIP::MaxOp::getOperationName();
+    case KGEN::POC::Min:
+      return MIP::MinOp::getOperationName();
     case KGEN::POC::Mul:
     case KGEN::POC::MulNuw:
       return MIP::MulOp::getOperationName();
