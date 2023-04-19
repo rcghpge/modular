@@ -499,6 +499,9 @@ struct ConcatPattern : public RewritePattern {
       if (mlir::Operation *iop = input.getDefiningOp()) {
         if (isa<MO::ConstantOp>(iop))
           return rewriter.notifyMatchFailure(iop, "is constant");
+        if (isa<MO::ConcatOp>(iop) || isa<MOGG::InPlaceConcatOp>(iop))
+          return rewriter.notifyMatchFailure(
+              iop, "don't currently support nesting in-place concats");
       }
       if (!input.hasOneUse())
         return rewriter.notifyMatchFailure(input.getLoc(), "has extra users");
