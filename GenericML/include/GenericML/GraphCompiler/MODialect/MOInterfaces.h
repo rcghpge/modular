@@ -46,9 +46,8 @@ LogicalResult materializeReductionShapeInference(Reduction op,
 LogicalResult defaultDeparameterize(ParamDeclarationInterface op,
                                     mlir::RewriterBase &rewriter);
 
-ErrorOrSuccess
-elementwiseBinarySinkStaticBroadcastTo(ElementWiseBinary op,
-                                       mlir::RewriterBase &rewriter);
+ErrorOrSuccess elementwiseSinkStaticBroadcastTo(Operation *op,
+                                                mlir::RewriterBase &rewriter);
 } // namespace impl
 
 template <typename ConcreteType>

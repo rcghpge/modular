@@ -185,22 +185,26 @@ def MO_SinkStaticBroadcastTo :
   ];
 }
 
-def MO_ElementWiseUnary : MO_TensorOpInterfaceBase<"ElementWiseUnary"> {
+/// Should not be used outside this file.
+class _MO_ElementWise<string name, list<Interface> baseInterfaces = []> :
+    MO_TensorOpInterfaceBase<name,
+                             baseInterfaces # [MO_SinkStaticBroadcastTo]> {
+  let extraTraitClassDeclaration = [{
+    ErrorOrSuccess sinkStaticBroadcastTo(mlir::RewriterBase &rewriter) {
+      return impl::elementwiseSinkStaticBroadcastTo($_op, rewriter);
+    }
+  }];
+}
+
+def MO_ElementWiseUnary : _MO_ElementWise<"ElementWiseUnary"> {
   let description = [{
     Interface for modeling unary element-wise operations.
   }];
 }
 
-def MO_ElementWiseBinary : MO_TensorOpInterfaceBase<"ElementWiseBinary",
-    [MO_SinkStaticBroadcastTo]> {
+def MO_ElementWiseBinary : _MO_ElementWise<"ElementWiseBinary"> {
   let description = [{
     Interface for modeling binary element-wise operations.
-  }];
-
-  let extraTraitClassDeclaration = [{
-    ErrorOrSuccess sinkStaticBroadcastTo(mlir::RewriterBase &rewriter) {
-      return impl::elementwiseBinarySinkStaticBroadcastTo($_op, rewriter);
-    }
   }];
 }
 
