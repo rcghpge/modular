@@ -1759,6 +1759,9 @@ def MO_MatrixBandPartOp : MO_TensorOp<"matrix_band_part", [
     in_band(m, n) = ((num_lower < 0 || (m - n) <= num_lower)) &&
                      (num_upper < 0 || (n - m) <= num_upper))
 
+    If `exclude` is set, the selection is reverted: The elements in band are set
+    to zero while the elements outside the band are copied to the output tensor.
+
     Please explicitly note that with negative values, this kernel returns the
     entire lower or uppper triangle of the matrix, and otherwise returns
     a diagonal band around the main diagonal of the matrix.
@@ -1771,8 +1774,11 @@ def MO_MatrixBandPartOp : MO_TensorOp<"matrix_band_part", [
       value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[], si64>
     %num_upper = mo.constant {
       value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-    %res = mo.matrix_band_part(%arg, %num_lower, %num_upper) : (
-      !mo.tensor<[3, 2, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>
+    %exclude = mo.constant {
+      value = #M.dense_array<0> : tensor<1xui8>} : !mo.tensor<[], bool>
+    %res = mo.matrix_band_part(%arg, %num_lower, %num_upper, %exclude) : (
+      !mo.tensor<[3, 2, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>,
+      !mo.tensor<[], bool>
       ) -> !mo.tensor<[3, 2, 3], f32>
     ```
   }];
@@ -1781,6 +1787,7 @@ def MO_MatrixBandPartOp : MO_TensorOp<"matrix_band_part", [
     MO_Tensor:$input,
     MO_RankedScalarIndexTensor:$num_lower,
     MO_RankedScalarIndexTensor:$num_upper,
+    MO_CondLike:$exclude,
     MO_ParamDecls:$outputParamDecls);
 
   let results = (outs MO_Tensor:$result);
