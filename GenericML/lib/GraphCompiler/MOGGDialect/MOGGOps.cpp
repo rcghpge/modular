@@ -52,14 +52,25 @@ public:
   LowerHelper(MGP::MOGraphLoweringState &state, mlir::Operation *op)
       : loweringState(state), opBeingLowered(op), loc(op->getLoc()) {}
 
-  // Lower each of the inputs in the operation to mgp buffers & specs.
-  SmallVector<LoweredTensor> lowerInputs();
+  // Extract the buffer and spec from the MGP tensor each input value lowered
+  // to, and return each pair as a LoweredTensor.
+  SmallVector<LoweredTensor> getLoweredInputs();
+
+  // Extract the buffer and spec from the MGP tensor that `val` lowered to, and
+  // return them as a LoweredTensor.
+  LoweredTensor getLoweredTensorForValue(Value val);
 
   // Lower the output buffer which will get passed into the input.
   ErrorOr<SmallVector<LoweredTensor>> lowerOutputBuffer(
       llvm::StringRef opName, Value inChain,
       const SmallVector<LoweredTensor> &inputTensors,
       std::optional<IntArrayElementsAttr> matmulOriginalBDims = std::nullopt);
+
+  // Emit instructions to invoke the legacy primitive shape function with given
+  // name, input values, and result types. Return the output spec values.
+  SmallVector<TypedValue<MGP::CpuTensorSpecType>>
+  invokeLegacyShapeFunc(StringRef shapeFuncName, ArrayRef<Value> inputs,
+                        ArrayRef<MO::TensorType> resultMoTypes);
 
   // Convert the tensors to a list of buffer/spec value pairs.
   SmallVector<Value> getOperands(SmallVector<LoweredTensor> &in,
@@ -89,25 +100,21 @@ private:
                             ArrayRef<MO::TensorType> resultMoTypes);
 };
 
-SmallVector<LoweredTensor> LowerHelper::lowerInputs() {
-  SmallVector<LoweredTensor> inputs;
-  // Allocate space for the buffers + specs per tensor.
-  inputs.reserve(opBeingLowered->getNumOperands());
+SmallVector<LoweredTensor> LowerHelper::getLoweredInputs() {
+  return map_to_vector(opBeingLowered->getOperands(), [&](Value operand) {
+    return getLoweredTensorForValue(operand);
+  });
+}
 
-  for (Value operand : opBeingLowered->getOperands()) {
-    // Extract the buffer and spec from the MGP tensor.
-    mlir::Value mgpTensor = loweringState.lookupExecuteLoweredValue(operand);
+LoweredTensor LowerHelper::getLoweredTensorForValue(Value val) {
+  mlir::Value mgpTensor = loweringState.lookupExecuteLoweredValue(val);
+  auto extract =
+      loweringState.getExecuteOpBuilder().create<MGP::CpuTensorExtractOp>(
+          loc, mgpTensor);
 
-    auto extract =
-        loweringState.getExecuteOpBuilder().create<MGP::CpuTensorExtractOp>(
-            loc, mgpTensor);
-
-    // Add the expanded buffer and spec as arguments to the operation.
-    inputs.push_back(
-        {extract.getBufferResult(), extract.getTensorSpecResult()});
-  }
-
-  return inputs;
+  // Add the expanded buffer and spec as arguments to the operation.
+  return LoweredTensor(extract.getBufferResult(),
+                       extract.getTensorSpecResult());
 }
 
 void LowerHelper::allocateOutputTensor(
@@ -372,28 +379,6 @@ LowerHelper::lowerMultiOutputShapeFunc(StringRef shapeFuncName, Value inChain,
                                        ArrayRef<LoweredTensor> inputTensors,
                                        ArrayRef<MO::TensorType> resultMoTypes) {
   SmallVector<LoweredTensor> outputBuffersAndSpecs;
-
-  // Create vector of result types.
-  SmallVector<MGP::CpuTensorSpecType> resultMgpTypes =
-      map_to_vector(resultMoTypes, [](MO::TensorType t) {
-        return MGP::createCpuTensorSpec(t);
-      });
-
-  OpBuilder exeBuilder = loweringState.getExecuteOpBuilder();
-  // Helper function to create the invoke op for the shape function.
-  auto getMultiOutputSpecs = [&](StringRef opName, ArrayRef<Value> inputs) {
-    OperationState opState(loc, shapeFuncName);
-    opState.addOperands(inputs);
-    opState.addTypes(resultMgpTypes);
-
-    Operation *invokeOp = exeBuilder.create(opState);
-
-    // Return the output specs.
-    return map_to_vector(invokeOp->getResults(), [](Value v) {
-      return cast<TypedValue<MGP::CpuTensorSpecType>>(v);
-    });
-  };
-
   SmallVector<TypedValue<MGP::CpuTensorSpecType>> outputSpecs;
   if (shapeFuncName == "mop.shape.split") {
     // Get inputs for "mop.shape.split"(%inputSpec, %splitSizes, %axis)
@@ -402,8 +387,8 @@ LowerHelper::lowerMultiOutputShapeFunc(StringRef shapeFuncName, Value inChain,
         opBeingLowered->getOperands()[1]);
     Value axis = loweringState.lookupExecuteLoweredValue(
         opBeingLowered->getOperands()[2]);
-    outputSpecs =
-        getMultiOutputSpecs(shapeFuncName, {inputSpec, splitSizes, axis});
+    outputSpecs = invokeLegacyShapeFunc(
+        shapeFuncName, {inputSpec, splitSizes, axis}, resultMoTypes);
   } else {
     opBeingLowered->emitError("multi-output shape func not supported");
     return Error("multi-output shape func not supported");
@@ -411,7 +396,7 @@ LowerHelper::lowerMultiOutputShapeFunc(StringRef shapeFuncName, Value inChain,
 
   // Create output buffers from specs.
   for (const auto &outSpec : outputSpecs) {
-    auto buffer = exeBuilder
+    auto buffer = loweringState.getExecuteOpBuilder()
                       .create<MGP::CpuBufferAllocSpecOp>(
                           loc,
                           /*inChain=*/inChain,
@@ -485,6 +470,28 @@ ErrorOr<SmallVector<LoweredTensor>> LowerHelper::lowerOutputBuffer(
   return outputBufferAndSpec;
 }
 
+SmallVector<TypedValue<MGP::CpuTensorSpecType>>
+LowerHelper::invokeLegacyShapeFunc(StringRef shapeFuncName,
+                                   ArrayRef<Value> inputs,
+                                   ArrayRef<MO::TensorType> resultMoTypes) {
+  // TODO(#11821) merge this function with `getOutputSpec` after
+  // `matmulOriginalBDims` is removed
+  SmallVector<MGP::CpuTensorSpecType> resultMgpTypes =
+      map_to_vector(resultMoTypes, [](MO::TensorType t) {
+        return MGP::createCpuTensorSpec(t);
+      });
+  OperationState opState(loc, shapeFuncName);
+  opState.addOperands(inputs);
+  opState.addTypes(resultMgpTypes);
+
+  Operation *invokeOp = loweringState.getExecuteOpBuilder().create(opState);
+
+  // Return the output specs.
+  return map_to_vector(invokeOp->getResults(), [](Value v) {
+    return cast<TypedValue<MGP::CpuTensorSpecType>>(v);
+  });
+};
+
 } // namespace
 
 void ExtOp::build(OpBuilder &builder, OperationState &state,
@@ -510,7 +517,7 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   // Operands to pass to the operation. Input tensors are expanded to buffers
   // and specs in IR those are passed in.
-  auto inputTensors = helper.lowerInputs();
+  auto inputTensors = helper.getLoweredInputs();
 
   // Ext ops carry the lowered operation name around with them,
   // others might do something else.
@@ -568,7 +575,7 @@ LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   // Operands to pass to the operation. Input tensors are expanded to buffers
   // and specs in IR those are passed in.
-  auto inputTensors = helper.lowerInputs();
+  auto inputTensors = helper.getLoweredInputs();
 
   // Lower the outputs to buffers which can then be passed back in as
   // parameters.
@@ -652,7 +659,7 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   // Operands to pass to the operation. Input tensors are expanded to buffers
   // and specs in IR those are passed in.
-  auto inputTensors = helper.lowerInputs();
+  auto inputTensors = helper.getLoweredInputs();
 
   // Allocate buffers to hold all the operation's result tensors. At this stage
   // we gate the allocation only on the overall 'execute' block's chain. The
