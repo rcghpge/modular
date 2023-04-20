@@ -189,6 +189,7 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
 
   // (arg0Spec, arg1) -> outSpec
   static const llvm::StringMap<std::string> specAndTensorBinaryShapeFuncs{
+      {"mop.kernels.arg_max", "mop.shape.arg_reduce"},
       {"mop.kernels.broadcast_to", "mop.shape.broadcast_to"},
       {"mop.kernels.transpose", "mop.shape.transpose"},
       {"mop.kernels.pad", "mop.shape.pad"},
@@ -442,7 +443,7 @@ ErrorOr<SmallVector<LoweredTensor>> LowerHelper::lowerOutputBuffer(
     LoweredTensor output;
     if (!bufferSize) {
       UNWRAP_ERROR(out, lowerDynamicOutput(outSpecType, ty, opName, inChain,
-                                           inputTensors,matmulOriginalBDims));
+                                           inputTensors, matmulOriginalBDims));
       output = out;
     } else {
       // Static Case
@@ -530,9 +531,8 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   // Lower the outputs to buffers which can then be passed back in as
   // parameters.
-  auto errOr = helper.lowerOutputBuffer(
-      opName, loweringState.getExecuteChain(), inputTensors,
-      matmulOriginalBDims);
+  auto errOr = helper.lowerOutputBuffer(opName, loweringState.getExecuteChain(),
+                                        inputTensors, matmulOriginalBDims);
   if (errOr.isError())
     return failure();
   SmallVector<LoweredTensor> outputBufferAndSpec = errOr.takeValue();
@@ -668,9 +668,8 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // ensuring we allocate buffers just-in-time for their writers. Jit compiled
   // kernels have no shape function and just use the shape infered values
   // directly and are guarded to only run on static or shape infered ops.
-  auto errOr =
-      helper.lowerOutputBuffer("jit_compiled", loweringState.getExecuteChain(),
-                               inputTensors);
+  auto errOr = helper.lowerOutputBuffer(
+      "jit_compiled", loweringState.getExecuteChain(), inputTensors);
   if (errOr.isError())
     return failure();
   SmallVector<LoweredTensor> outputBufferAndSpec = errOr.takeValue();

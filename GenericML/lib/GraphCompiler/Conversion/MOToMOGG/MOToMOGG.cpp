@@ -193,6 +193,7 @@ void MOToMOGGPass::runOnOperation() {
   MoToKernelMapTy moToMojoKernels{
       MO_SHIM_ONLY(MO::AbsOp, "mop.kernels.abs"),
       MO_TO_MOJO(MO::AddOp, "mop.kernels.add"),
+      MO_SHIM_ONLY(MO::ArgMaxOp, "mop.kernels.arg_max"),
       MO_SHIM_ONLY(MO::BroadcastShapeOp, "mop.kernels.broadcast_shape"),
       MO_SHIM_ONLY(MO::BroadcastToOp, "mop.kernels.broadcast_to"),
       MO_TO_MOJO(MO::CastOp, "mop.kernels.cast"),
