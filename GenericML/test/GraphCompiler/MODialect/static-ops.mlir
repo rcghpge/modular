@@ -20,11 +20,20 @@ mo.graph @static_broadcast_to_reshape<N>(%from: !mo.tensor<[5, N], f32>) -> !mo.
   mo.output %res : !mo.tensor<[1, N, 5], f32>
 }
 
-// CHECK: mo.graph @static_broadcast_to_fold<[[N:.*]]>(%[[FROM:.*]]: !mo.tensor<[[[N]], 3], f32>) -> !mo.tensor<[[[N]], 3], f32> {
-mo.graph @static_broadcast_to_fold<N>(%from: !mo.tensor<[N, 3], f32>) -> !mo.tensor<[N, 3], f32> {
+// CHECK: mo.graph @static_broadcast_to_fold_same_static_rank<[[N:.*]]>(%[[FROM:.*]]: !mo.tensor<[[[N]], 3], f32>) -> !mo.tensor<[[[N]], 3], f32> {
+mo.graph @static_broadcast_to_fold_same_static_rank<N>(%from: !mo.tensor<[N, 3], f32>) -> !mo.tensor<[N, 3], f32> {
   %res = mo.static.broadcast_to(%from) : !mo.tensor<[N, 3], f32> -> !mo.tensor<[N, 3], f32>
   // CHECK: mo.output %[[FROM]] : !mo.tensor<[[[N]], 3], f32>
   mo.output %res : !mo.tensor<[N, 3], f32>
+}
+
+// CHECK: mo.graph @static_broadcast_to_fold_same_dyn_rank<[[SH0:.*]]: !mo.shape -> [[SH1:.*]]: !mo.shape>(
+mo.graph @static_broadcast_to_fold_same_dyn_rank<Sh0: !mo.shape -> Sh1: !mo.shape>(
+    // CHECK-SAME: %[[FROM:.*]]: !mo.tensor<[[SH0]], f32>) -> !mo.tensor<[[SH1]], f32> {
+    %from: !mo.tensor<Sh0, f32>) -> !mo.tensor<Sh1, f32> {
+  %res = mo.static.broadcast_to(%from) : !mo.tensor<Sh0, f32> -> !mo.tensor<Sh0, f32>
+  // CHECK: mo.output<:!mo.shape Sh0> %[[FROM]] : !mo.tensor<Sh0, f32>
+  mo.output<:!mo.shape Sh0> %res : !mo.tensor<Sh0, f32>
 }
 
 // CHECK: mo.graph @static_broadcast_to_fold_scalar_input() -> !mo.tensor<[2, 2], f32> {
@@ -62,11 +71,20 @@ mo.graph @static_reshape<N>(%from: !mo.tensor<[N, 3], f32>) -> !mo.tensor<[1, 3,
   mo.output %res : !mo.tensor<[1, 3, N], f32>
 }
 
-// CHECK: mo.graph @static_reshape_fold_same<[[N:.*]]>(%[[FROM:.*]]: !mo.tensor<[[[N]], 3], f32>)
-mo.graph @static_reshape_fold_same<N>(%from: !mo.tensor<[N, 3], f32>) -> !mo.tensor<[N, 3], f32> {
+// CHECK: mo.graph @static_reshape_fold_same_static_rank<[[N:.*]]>(%[[FROM:.*]]: !mo.tensor<[[[N]], 3], f32>)
+mo.graph @static_reshape_fold_same_static_rank<N>(%from: !mo.tensor<[N, 3], f32>) -> !mo.tensor<[N, 3], f32> {
   %res = mo.static.reshape(%from) : !mo.tensor<[N, 3], f32> -> !mo.tensor<[N, 3], f32>
   // CHECK-NEXT: mo.output %[[FROM]] : !mo.tensor<[N, 3], f32>
   mo.output %res : !mo.tensor<[N, 3], f32>
+}
+
+// CHECK: mo.graph @static_reshape_fold_same_dyn_rank<[[SH0:.*]]: !mo.shape -> [[SH1:.*]]: !mo.shape>(
+mo.graph @static_reshape_fold_same_dyn_rank<Sh0: !mo.shape -> Sh1: !mo.shape>(
+    // CHECK-SAME: %[[FROM:.*]]: !mo.tensor<[[SH0]], f32>) -> !mo.tensor<[[SH1]], f32> {
+    %from: !mo.tensor<Sh0, f32>) -> !mo.tensor<Sh1, f32> {
+  %res = mo.static.reshape(%from) : !mo.tensor<Sh0, f32> -> !mo.tensor<Sh0, f32>
+  // CHECK: mo.output<:!mo.shape Sh0> %[[FROM]] : !mo.tensor<Sh0, f32>
+  mo.output<:!mo.shape Sh0> %res : !mo.tensor<Sh0, f32>
 }
 
 // CHECK: mo.graph @static_reshape_fold_static_out_shape_attr() -> !mo.tensor<[2, 2], si32> {

@@ -373,6 +373,18 @@ LogicalResult Static::BroadcastToOp::canonicalize(Static::BroadcastToOp op,
   TensorType resTy = op.getType();
   TensorValue inputVal = op.getInput();
   TensorType inputTy = inputVal.getType();
+
+  if (resTy.getShapeAttr() == inputTy.getShapeAttr()) {
+    rewriter.replaceAllUsesExcept(op, inputVal, op);
+    return success();
+  }
+
+  for (Operation *user : op->getUsers()) {
+    if (auto sinkInterface = dyn_cast<SinkStaticBroadcastToInterface>(user))
+      if (succeeded(sinkInterface.sinkStaticBroadcastTo(rewriter)))
+        return success();
+  }
+
   if (!inputTy.hasRank() || !resTy.hasRank())
     return failure();
 
@@ -383,11 +395,6 @@ LogicalResult Static::BroadcastToOp::canonicalize(Static::BroadcastToOp op,
     return success();
   }
 
-  for (Operation *user : op->getUsers()) {
-    if (auto sinkInterface = dyn_cast<SinkStaticBroadcastToInterface>(user))
-      if (succeeded(sinkInterface.sinkStaticBroadcastTo(rewriter)))
-        return success();
-  }
   return failure();
 }
 
