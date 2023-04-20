@@ -730,3 +730,65 @@ mo.graph @where_fp_result_type(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 
   %res = mo.where(%arg) : (!mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 2], f32>
   mo.output %res : !mo.tensor<[?, 2], f32>
 }
+
+//===----------------------------------------------------------------------===//
+// ArgMaxOp
+//===----------------------------------------------------------------------===//
+
+// -----
+
+mo.graph @arg_max_bad_axis_type(%arg: !mo.tensor<[7, 7], f32>, %axis: !mo.tensor<[], si32>) -> !mo.tensor<[7, 1], si64> {
+  // expected-error@+1 {{axis type must be si64}}
+  %res = mo.arg_max(%arg, %axis) : (!mo.tensor<[7, 7], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[7, 1], si64>
+  mo.output %res : !mo.tensor<[7, 1], si64>
+}
+
+// -----
+
+mo.graph @arg_max_bad_axis_shape(%arg: !mo.tensor<[7, 7], f32>, %axis: !mo.tensor<[1], si64>) -> !mo.tensor<[7, 1], si64> {
+  // expected-error@+1 {{op operand #1 must be ranked scalar index tensor}}
+  %res = mo.arg_max(%arg, %axis) : (!mo.tensor<[7, 7], f32>, !mo.tensor<[1], si64>) -> !mo.tensor<[7, 1], si64>
+  mo.output %res : !mo.tensor<[7, 1], si64>
+}
+
+// -----
+
+mo.graph @arg_max_bad_result_type(%arg: !mo.tensor<[7, 7], f32>, %axis: !mo.tensor<[], si64>) -> !mo.tensor<[7, 1], si32> {
+  // expected-error@+1 {{op result #0 must be signed 64 integer}}
+  %res = mo.arg_max(%arg, %axis) : (!mo.tensor<[7, 7], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[7, 1], si32>
+  mo.output %res : !mo.tensor<[7, 1], si32>
+}
+
+// -----
+
+mo.graph @arg_max_bad_rank(%arg: !mo.tensor<[7, 7], f32>, %axis: !mo.tensor<[], si64>) -> !mo.tensor<[7, 1, 1], si64> {
+  // expected-error@+1 {{output rank must match input rank}}
+  %res = mo.arg_max(%arg, %axis) : (!mo.tensor<[7, 7], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[7, 1, 1], si64>
+  mo.output %res : !mo.tensor<[7, 1, 1], si64>
+}
+
+// -----
+
+mo.graph @arg_max_bad_dimensions(%arg: !mo.tensor<[7, 7], f32>, %axis: !mo.tensor<[], si64>) -> !mo.tensor<[6, 1], si64> {
+  // expected-error@+1 {{output dimensions must match input dimensions}}
+  %res = mo.arg_max(%arg, %axis) : (!mo.tensor<[7, 7], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[6, 1], si64>
+  mo.output %res : !mo.tensor<[6, 1], si64>
+}
+
+// -----
+
+mo.graph @arg_max_bad_reduction_dim(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tensor<[7, 2], si64> {
+  %axis = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  // expected-error@+1 {{output dimensions must be 1 at the reduction axis}}
+  %res = mo.arg_max(%arg, %axis) : (!mo.tensor<[7, 7], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[7, 2], si64>
+  mo.output %res : !mo.tensor<[7, 2], si64>
+}
+
+// -----
+
+mo.graph @arg_max_too_many_reductions(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tensor<[1, 1], si64> {
+  %axis = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  // expected-error@+1 {{output dimensions must match input dimensions}}
+  %res = mo.arg_max(%arg, %axis) : (!mo.tensor<[7, 7], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1, 1], si64>
+  mo.output %res : !mo.tensor<[1, 1], si64>
+}

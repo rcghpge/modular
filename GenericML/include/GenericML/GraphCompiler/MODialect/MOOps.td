@@ -1586,7 +1586,7 @@ def MO_WhereOp : MO_TensorOp<"where", [
 
     ```mlir
     %0 = mo.constant {
-      value = #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8> : tensor<2x2xsi32>
+      value = #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8> : tensor<3x3xsi32>
     } : !mo.tensor<[3, 3], si32>
     %1 = mo.where(%0) : (!mo.tensor<[3, 3], si32>) -> !mo.tensor<[?, 2], si32>
     ```
@@ -1600,6 +1600,48 @@ def MO_WhereOp : MO_TensorOp<"where", [
   }];
   let hasVerifier = 1;
   let hasFolder = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// ArgMaxOp
+//===----------------------------------------------------------------------===//
+
+def MO_ArgMaxOp : MO_TensorOp<"arg_max", [
+    DeclareOpInterfaceMethods<MO_Parameterization>,
+    DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
+  let summary = "Returns the indices of the maximum value in a tensor";
+  let description = [{
+    This op is equivalent to reduce_max, but returns indices instead of values.
+
+    The axis attribute specifies the reduction axis.
+
+    Like reductions, the output shape is the same as the input shape, except for
+    the reduced axis which is set to 1.
+
+    Example:
+
+    ```mlir
+    %0 = mo.constant {
+      value = #M.dense_array<0, 1, 3, 2> : tensor<2x2xsi32>
+    } : !mo.tensor<[2, 2], si32>
+    %axis = mo.constant {
+      value = #M.dense_array<1> : tensor<si32>
+    } : !mo.tensor<[], si32>
+    %1 = mo.arg_max(%0, %axis) : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
+    ```
+    }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_RankedScalarIndexTensor:$axis,
+    MO_ParamDecls:$outputParamDecls);
+
+  let results = (outs MO_I64Tensor:$result);
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

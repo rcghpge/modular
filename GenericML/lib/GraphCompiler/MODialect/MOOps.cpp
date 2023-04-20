@@ -815,7 +815,7 @@ LogicalResult SelectOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// WhereOp
+// MO_WhereOp support
 //===----------------------------------------------------------------------===//
 
 OpFoldResult WhereOp::fold(FoldAdaptor adaptor) {
@@ -871,6 +871,90 @@ LogicalResult WhereOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// MO::ArgMaxOp support
+//===----------------------------------------------------------------------===//
+
+static LogicalResult verifyWithRankedInput(ArgMaxOp *op, int64_t axis,
+                                           int64_t resDim, TensorType inputTy,
+                                           size_t &dynamicOutDims,
+                                           size_t &reducedDims) {
+  auto inDim = inputTy.getTypedShapeAttr().getIntDim(axis);
+  if (mlir::ShapedType::isDynamic(resDim) ||
+      mlir::ShapedType::isDynamic(inDim)) {
+    dynamicOutDims++;
+    return success();
+  }
+  if (inDim != resDim) {
+    if (resDim != 1)
+      return op->emitOpError(
+          "mo.arg_max: output dimensions must match input "
+          "dimensions, except at the reduction axis where the "
+          "output dimension must be 1");
+    reducedDims++;
+  }
+  return success();
+};
+
+static void verifyWithUnrankedInput(int64_t axis, int64_t resDim,
+                                    size_t &dynamicOutDims,
+                                    size_t &reducedDims) {
+  if (mlir::ShapedType::isDynamic(resDim)) {
+    dynamicOutDims++;
+    return;
+  }
+  if (resDim == 1)
+    reducedDims++;
+};
+
+LogicalResult ArgMaxOp::verify() {
+  TensorType resTy = getResult().getType();
+  TensorType inputTy = getInput().getType();
+  TensorType axisTy = getAxis().getType();
+
+  // TODO(#12939): Refactor this into verifyReduction.
+
+  if (!axisTy.getElementType().isSignedInteger(64))
+    return emitOpError("axis type must be si64");
+
+  if ((inputTy.hasRank() && resTy.hasRank()) &&
+      (inputTy.getRank() != resTy.getRank()))
+    return emitOpError("mo.arg_max: output rank must match input rank");
+
+  if (resTy.hasRank()) {
+    auto optAxis = tryGetConstantInt(getAxis());
+    size_t reducedDims = 0;
+    size_t dynamicOutDims = 0;
+
+    for (int64_t axis = 0, rank = resTy.getRank(); axis < rank; axis++) {
+      int64_t resDim = resTy.getTypedShapeAttr().getIntDim(axis);
+
+      if (optAxis.has_value() && (axis == optAxis.value()) && (resDim != 1) &&
+          !mlir::ShapedType::isDynamic(resDim))
+        return emitOpError(
+            "mo.arg_max: output dimensions must be 1 at the reduction axis");
+      // Note: we don't check that non-reduction axes match directly. The code
+      // below does it, which handles the dynamic cases as well.
+
+      if (inputTy.hasRank()) {
+        if (failed(verifyWithRankedInput(this, axis, resDim, inputTy,
+                                         dynamicOutDims, reducedDims)))
+          return failure();
+      } else {
+        verifyWithUnrankedInput(axis, resDim, dynamicOutDims, reducedDims);
+      }
+    }
+
+    if ((reducedDims > 1) || (!reducedDims && !dynamicOutDims)) {
+      return emitOpError(
+          "mo.arg_max: output dimensions must match input "
+          "dimensions, except for exactly one dimension, the reduction axis");
+    }
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // Windowed ops
 //===----------------------------------------------------------------------===//
 
@@ -893,8 +977,9 @@ LogicalResult MaxPoolOp::verify() {
 }
 
 LogicalResult ConvOp::verify() {
-  // The sliding window interface already checks that the input and result have
-  // matching ranks, so we can be more specific with the error message here.
+  // The sliding window interface already checks that the input and result
+  // have matching ranks, so we can be more specific with the error message
+  // here.
   if (failed(impl::verifyMatchingRanks({getInput(), getResult(), getFilter()})))
     return emitError("filter, input and output ranks must be all dynamic, or "
                      "all static and match");
@@ -1503,8 +1588,8 @@ LogicalResult TransposeOp::canonicalize(TransposeOp op,
 }
 
 LogicalResult TransposeOp::verify() {
-  // The permutation has known shape iff the argument and result are statically
-  // ranked.
+  // The permutation has known shape iff the argument and result are
+  // statically ranked.
   TensorType permTy = getPerm().getType();
   TensorType inputTy = getInput().getType();
   TensorType resTy = getResult().getType();
@@ -1545,9 +1630,9 @@ LogicalResult MatrixBandPartOp::verify() {
 // Shape ops
 //===----------------------------------------------------------------------===//
 
-/// Normalize axis by incrementing negative axis with given rank. For instance,
-/// for a rank-3 tensor, the `-1` axis is the last axis, i.e., axis `2`, which
-/// is `-1 + 3`.
+/// Normalize axis by incrementing negative axis with given rank. For
+/// instance, for a rank-3 tensor, the `-1` axis is the last axis, i.e., axis
+/// `2`, which is `-1 + 3`.
 static int64_t normalizeAxis(const APInt &axisApInt, int64_t rank) {
   int64_t axis = axisApInt.getSExtValue();
   return (axis < 0) ? rank + axis : axis;
