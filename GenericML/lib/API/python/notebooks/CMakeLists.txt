@@ -43,4 +43,6 @@ add_custom_target(check-PythonDocTests
 )
 
 add_dependencies(check-PythonDocTests modular-pybind-ext)
-add_dependencies(inference_engine_docs check-PythonDocTests)
+if (TARGET inference_engine_docs)
+  add_dependencies(inference_engine_docs check-PythonDocTests)
+endif()
