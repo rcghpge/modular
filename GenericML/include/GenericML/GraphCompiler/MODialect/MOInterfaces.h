@@ -18,11 +18,12 @@ class RewriterBase;
 } // namespace mlir
 
 namespace M::MO {
+class ElementWiseBinary;
 class MatmulLike;
-class SlidingWindow;
-class Reduction;
-class ParameterizationInterface;
 class ParamDeclarationInterface;
+class ParameterizationInterface;
+class Reduction;
+class SlidingWindow;
 
 namespace impl {
 LogicalResult verifyMatchingRanks(ArrayRef<TensorValue> values);
@@ -44,6 +45,10 @@ LogicalResult materializeReductionShapeInference(Reduction op,
 
 LogicalResult defaultDeparameterize(ParamDeclarationInterface op,
                                     mlir::RewriterBase &rewriter);
+
+ErrorOrSuccess
+elementwiseBinarySinkStaticBroadcastTo(ElementWiseBinary op,
+                                       mlir::RewriterBase &rewriter);
 } // namespace impl
 
 template <typename ConcreteType>

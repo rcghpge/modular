@@ -281,6 +281,95 @@ LogicalResult impl::defaultDeparameterize(ParamDeclarationInterface op,
 }
 
 //===----------------------------------------------------------------------===//
+// SinkStaticBroadcastToInterface
+//===----------------------------------------------------------------------===//
+
+static TypedAttr getCommonBroadcastShape(ArrayRef<TypedAttr> shapeParams) {
+  // We collect all the statically ranked shapes first.
+  SmallVector<MO::ShapeAttr> shapes;
+  for (TypedAttr p : shapeParams)
+    if (auto shape = dyn_cast<MO::ShapeAttr>(p))
+      shapes.emplace_back(shape);
+
+  // If all the shapes are dynamically ranked, we can only determine a common
+  // shape if they are all the same.
+  if (shapes.empty()) {
+    TypedAttr res = shapeParams.front();
+    auto notSameAsFirst = [res](TypedAttr other) { return res != other; };
+    if (llvm::any_of(shapeParams.drop_front(), notSameAsFirst))
+      return {};
+    return res;
+  }
+
+  // If we have both static and dynamic ranks, we can't do anything.
+  if (shapes.size() != shapeParams.size())
+    return {};
+
+  // At this point, we are dealing with all static ranks. We will go through all
+  // the shapes and successively reduce the common shape. If the rank of the
+  // common dimension drops below the maximum of the ranks, we terminate early.
+  MO::ShapeAttr lastShape = shapes.pop_back_val();
+  ArrayRef<TypedAttr> commonDims = lastShape.getValues();
+  size_t maxRank = commonDims.size();
+  for (MO::ShapeAttr sh : shapes) {
+    auto newDims = llvm::reverse(sh.getValues());
+
+    // We count the number of trailing dimensions that are the same.
+    size_t numCommonTrailingDims = 0;
+    for (auto [cDim, nDim] : llvm::zip(llvm::reverse(commonDims), newDims)) {
+      if (cDim != nDim)
+        break;
+      numCommonTrailingDims++;
+    }
+
+    // If we no longer have common dimensions, we can stop, otherwise we reduce.
+    maxRank = std::max(maxRank, sh.getRank());
+    if (numCommonTrailingDims < maxRank)
+      return {};
+    commonDims = commonDims.take_back(numCommonTrailingDims);
+  }
+
+  return MO::ShapeAttr::get(commonDims, lastShape.getType());
+}
+
+ErrorOrSuccess
+impl::elementwiseBinarySinkStaticBroadcastTo(ElementWiseBinary op,
+                                             mlir::RewriterBase &rewriter) {
+  // We first ensure the elementwise op has only broadcast inputs, and collect
+  // the input shapes of the broadcasts.
+  SmallVector<TypedAttr> shapeParams;
+  for (Value arg : op->getOperands()) {
+    auto bcastOp = arg.getDefiningOp<Static::BroadcastToOp>();
+    if (!bcastOp)
+      return Error("not preceded by broadcast");
+    if (!arg.hasOneUse())
+      return Error("argument has more than one use"); // TODO: relax this
+    shapeParams.emplace_back(bcastOp.getInput().getType().getShapeAttr());
+  }
+
+  // We calculate the smallest common shapes of the broadcast inputs.
+  TypedAttr commonBcastShape = getCommonBroadcastShape(shapeParams);
+  if (!commonBcastShape)
+    return Error("no common shape for preceding broadcasts");
+
+  // NOTE: we can safely modify the type only becuase we ensured a single user.
+  // Also, we rely on the elementwise op having the same arg and result types.
+  auto resVal = cast<TensorValue>(op->getResult(0));
+  TensorType resTy = resVal.getType();
+  auto newResTy = resTy.cloneWith(commonBcastShape);
+  for (auto [arg, shape] : llvm::zip(op->getOperands(), shapeParams))
+    arg.setType(newResTy);
+  resVal.setType(newResTy);
+
+  rewriter.setInsertionPointAfter(op);
+  auto bcastOp =
+      rewriter.create<Static::BroadcastToOp>(op.getLoc(), resTy, resVal);
+  rewriter.replaceAllUsesExcept(resVal, bcastOp.getResult(), bcastOp);
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 

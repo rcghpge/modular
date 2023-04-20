@@ -169,15 +169,38 @@ def MO_SlidingWindow : MO_TensorOpInterfaceBase<"SlidingWindow"> {
   let verify = [{ return impl::verifySlidingWindow($_op); }];
 }
 
+def MO_SinkStaticBroadcastTo :
+    MO_TensorOpInterfaceBase<"SinkStaticBroadcastToInterface"> {
+  let description = [{
+    Interface for ops that can commute with `mo.static.broadcast_to`.
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      "Check if the op is preceded by `mo.static.broadcast_to`, and sink the "
+      "broadcast below the op if possible. Implementers should not erase the "
+      "preceding `mo.static.broadcast_to` operations.",
+      "ErrorOrSuccess", "sinkStaticBroadcastTo",
+      (ins "mlir::RewriterBase &":$rewriter)>,
+  ];
+}
+
 def MO_ElementWiseUnary : MO_TensorOpInterfaceBase<"ElementWiseUnary"> {
   let description = [{
     Interface for modeling unary element-wise operations.
   }];
 }
 
-def MO_ElementWiseBinary : MO_TensorOpInterfaceBase<"ElementWiseBinary"> {
+def MO_ElementWiseBinary : MO_TensorOpInterfaceBase<"ElementWiseBinary",
+    [MO_SinkStaticBroadcastTo]> {
   let description = [{
     Interface for modeling binary element-wise operations.
+  }];
+
+  let extraTraitClassDeclaration = [{
+    ErrorOrSuccess sinkStaticBroadcastTo(mlir::RewriterBase &rewriter) {
+      return impl::elementwiseBinarySinkStaticBroadcastTo($_op, rewriter);
+    }
   }];
 }
 
@@ -201,22 +224,6 @@ def MO_Reduction : MO_TensorOpInterfaceBase<"Reduction",
   ];
 
   let verify = [{ return impl::verifyReduction($_op); }];
-}
-
-def MO_SinkStaticBroadcastTo :
-    MO_TensorOpInterfaceBase<"SinkStaticBroadcastToInterface"> {
-  let description = [{
-    Interface for ops that can commute with `mo.static.broadcast_to`.
-  }];
-
-  let methods = [
-    InterfaceMethod<
-      "Check if the op is preceded by `mo.static.broadcast_to`, and sink the "
-      "broadcast below the op if possible. Implementers should not erase the "
-      "preceding `mo.static.broadcast_to` operations.",
-      "ErrorOrSuccess", "sinkStaticBroadcastTo",
-      (ins "mlir::RewriterBase &":$rewriter)>,
-  ];
 }
 
 //===----------------------------------------------------------------------===//
