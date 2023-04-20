@@ -156,24 +156,6 @@ LogicalResult impl::verifySlidingWindow(SlidingWindow op) {
 }
 
 //===----------------------------------------------------------------------===//
-// ParameterizationInterface
-//===----------------------------------------------------------------------===//
-
-size_t ParameterizationInterface::numShapeParams = 0;
-size_t ParameterizationInterface::numDimParam = 0;
-
-KGEN::ParamDeclAttr ParameterizationInterface::getNewShapeParam() {
-  auto shapeTy = MO::ShapeType::get(getContext());
-  auto nameAttr = StringAttr::get(getContext(), "Sh" + Twine(numShapeParams++));
-  return KGEN::ParamDeclAttr::get(nameAttr, shapeTy);
-}
-
-KGEN::ParamDeclAttr ParameterizationInterface::getNewDimParam() {
-  auto nameAttr = StringAttr::get(getContext(), "D" + Twine(numDimParam++));
-  return KGEN::ParamDeclAttr::get(nameAttr, IndexType::get(getContext()));
-}
-
-//===----------------------------------------------------------------------===//
 // MOSameOperandsAndResultElementType
 //===----------------------------------------------------------------------===//
 
