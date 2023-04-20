@@ -79,6 +79,9 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   if (opts.useShapeInference) {
     buildShapeInferencePipeline(pm);
     pm.addPass(MO::createSymbolicOptimization());
+    pm.addPass(MO::createPropagateShapes());
+    pm.addPass(mlir::createCanonicalizerPass());
+    pm.addPass(mlir::createCSEPass());
   }
   pm.addPass(MO::createDeparameterizeMoOps());
 
