@@ -88,3 +88,15 @@ mo.graph @bcasted_si64_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si64
 // CHECK-NEXT: %[[CST2:.*]] = mo.constant {value = #M.dense_array<6>
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST2]]
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST1]]
+
+mo.graph @transpose_fold_perm<D14, D15, D16>(%arg0: !mo.tensor<[D14, D15, D16], f32>) -> !mo.tensor<[D16, D15, D14], f32> {
+  %perm = mo.constant {value = #M.dense_array<2, 1, 0> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
+  %trans = mo.transpose(%arg0, %perm) : (!mo.tensor<[D14, D15, D16], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[D16, D15, D14], f32>
+  mo.output %trans : !mo.tensor<[D16, D15, D14], f32>
+}
+
+// CHECK-LABEL: mo.graph @transpose_fold_perm
+// CHECK-NEXT: mogg.kernel
+// CHECK-NEXT: mogg.output_placeholders
+// CHECK-NEXT: %[[PERM:.*]] = mo.constant {value = #M.dense_array<2, 1, 0> 
+// CHECK-NEXT: mogg.call "mo.transpose"(%[[NULL:.*]], %[[PERM]]

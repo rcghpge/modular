@@ -109,7 +109,10 @@ struct FuseBroadcastsPass
       remapper.map(producerOut, leafOut);
     }
 
-    MOGG::CallOp bcast;
+    // A view op kernel should contain a view transforming operation followed by
+    // a copy into the output. When we fuse we just hoist the view operation and
+    // not the copy. This is to find that view operation.
+    MOGG::CallOp viewOp;
 
     // Add the operands of the old kernel to the new one.
     for (size_t i = 0, e = producerKernel->getNumOperands(); i < e; ++i) {
@@ -119,7 +122,7 @@ struct FuseBroadcastsPass
 
       bool alreadyHasOperand = false;
 
-      // Check if we already take this value as input to avoid adding multiple
+      // Check if we already have this value as input to avoid adding multiple
       // copies.
       for (size_t leafI = 0, e = leaf->getNumOperands(); leafI < e; ++leafI) {
         if (otherOperand == leaf->getOperand(leafI)) {
@@ -129,7 +132,7 @@ struct FuseBroadcastsPass
         }
       }
 
-      // If we already fused the argument
+      // If we already fused this argument then just reuse it.
       auto itr = alreadyFused.find(otherOperand);
       if (itr != alreadyFused.end()) {
         alreadyHasOperand = true;
@@ -149,35 +152,36 @@ struct FuseBroadcastsPass
       // broadcast function.
       for (Operation *user : otherBlockArg.getUsers()) {
         auto call = dyn_cast<MOGG::CallOp>(user);
-        if (call && call.getLitKernelTarget() ==
-                        MO::Static::BroadcastToOp::getOperationName()) {
-          if (bcast) {
-            assert(bcast == call &&
-                   "More than one broadcast in kernel being fused.");
+        if (call) {
+          if (viewOp) {
+            assert(viewOp == call &&
+                   "More than one view op in kernel being fused.");
           }
-          bcast = call;
+          viewOp = call;
         }
       }
     }
 
-    assert(bcast && "Kernel was marked as a view, it must have a broadcast");
+    assert(viewOp && "Kernel was marked as a view, it must have a tensor "
+                     "semantic view operation.");
 
     // Insert at the top just after the output placeholders.
     mlir::OpBuilder builder{leafOuts->getContext()};
     builder.setInsertionPointAfter(leafOuts);
     mlir::Operation *insertPoint = nullptr;
 
-    auto newOp = bcast->clone(remapper);
+    auto newOp = viewOp->clone(remapper);
 
-    // If the tensor isn't a kernel input we need to insert after the input of
-    // this kernel.
-    if (newOp->getOperand(0).getDefiningOp() != nullptr)
-      insertPoint = newOp->getOperand(0).getDefiningOp();
+    // If the tensor isn't a kernel input we need to insert after the last
+    // occuring input.
+    for (Value operand : newOp->getOperands()) {
+      Operation *definingOp = operand.getDefiningOp();
+      if (definingOp == nullptr)
+        continue;
 
-    auto rhs = newOp->getOperand(1).getDefiningOp();
-    if (rhs != nullptr) {
-      if (!insertPoint || !rhs->isBeforeInBlock(insertPoint))
-        insertPoint = rhs;
+      // If we don't have an insert point use this otherwise check the order.
+      if (!insertPoint || definingOp->isBeforeInBlock(insertPoint))
+        insertPoint = definingOp;
     }
 
     if (insertPoint)
