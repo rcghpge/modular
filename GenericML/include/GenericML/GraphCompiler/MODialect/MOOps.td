@@ -1488,7 +1488,10 @@ def MO_TransposeOp : MO_TensorOp<"transpose", [
   let hasVerifier = 1;
 }
 
-def MO_PadOp : MO_TensorOp<"pad", [Pure]> {
+def MO_PadOp : MO_TensorOp<"pad", [
+  DeclareOpInterfaceMethods<MO_Parameterization>,
+  DeclareOpInterfaceMethods<MO_ParamDeclaration>
+]> {
   let summary = "Pad Operation";
   let description = [{
     Pad the `input` tensor with a scalar tensor `constant` according to the
@@ -1517,10 +1520,12 @@ def MO_PadOp : MO_TensorOp<"pad", [Pure]> {
   let arguments = (ins
     MO_Tensor:$input,
     MO_PaddingLike:$paddings,
-    MO_RankedScalarTensor:$constant);
+    MO_RankedScalarTensor:$constant,
+    MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
   }];
 
   let hasVerifier = 1;
