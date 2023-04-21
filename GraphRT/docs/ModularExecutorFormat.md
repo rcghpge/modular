@@ -1,7 +1,5 @@
 # Modular Executor Format (MEF) File Format
 
-[TOC]
-
 This document describes the goals and rationale for the in-memory representation
 the [GraphRT](README.md) executor uses to run primitives, known as the Modular
 Executor Format "MEF".

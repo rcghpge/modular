@@ -1,7 +1,5 @@
 # GraphRT Runtime Library
 
-[TOC]
-
 The "GraphRT" library provides a low-level execution framework for programs
 expressed as asynchronous dataflow graphs.  Unlike many other dataflow graph
 execution frameworks, GraphRT does not hard code a set of operators or

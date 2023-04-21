@@ -12,8 +12,6 @@ predated this version of the document, look at the
 [Original Design Exploration](https://www.notion.so/modularai/Graph-Compiler-Design-Points-8db653075b7e4994a0916ef12f8b9083)
 and the [11/17/22 Onsite notes](https://www.notion.so/modularai/Graph-Compiler-Design-Points-8db653075b7e4994a0916ef12f8b9083).
 
-[TOC]
-
 ![High Level System Diagram](High-Level_Modular_Stack_Diagram.png)
 
 [Original Image](https://docs.google.com/drawings/d/1VG2DDZZiHlMSuR0nVJxS0382u6scQLpHy3OOw5AtgNU/edit).

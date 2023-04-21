@@ -1,7 +1,5 @@
 # GenericML
 
-[TOC]
-
 ## Introduction
 
 This module contains high-quality helper classes and routines for building

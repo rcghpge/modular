@@ -1,7 +1,5 @@
 # Defining Primitives in GraphRT
 
-[TOC]
-
 # Introduction
 
 Primitives are defined as C++ functions and registered dynamically with the
