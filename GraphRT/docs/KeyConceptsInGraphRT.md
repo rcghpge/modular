@@ -13,7 +13,7 @@ GraphRT.
 
 ## Non-blocking, asynchronous, and lock-free
 
-As with [the LLCL library](../../LLCL/docs/index.md), GraphRT is designed to be
+As with [the LLCL library](../../LLCL/docs/README.md), GraphRT is designed to be
 completely non-blocking, and built on the principle of executing asynchronous
 operations across an efficient thread pool (which aims to have a 1:1
 mapping to hardware threads in the steady state).  The implementation of the MEF

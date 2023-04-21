@@ -58,7 +58,7 @@ single program.
 
 Here are some good entry point documents to understand the GraphRT library:
 
-- GraphRT builds directly on the [LLCL library](../../LLCL/docs/index.md), its
+- GraphRT builds directly on the [LLCL library](../../LLCL/docs/README.md), its
    [Runtime abstraction](../../LLCL/docs/LLCLRuntime.md), and uses its
    [`AsyncValue` related types](../../LLCL/docs/AsyncValue.md) pervasively.
 - An overview of [Key Concepts in GraphRT](KeyConceptsInGraphRT.md).

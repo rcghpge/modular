@@ -3,7 +3,7 @@
 [TOC]
 
 This document describes the goals and rationale for the in-memory representation
-the [GraphRT](index.md) executor uses to run primitives, known as the Modular
+the [GraphRT](README.md) executor uses to run primitives, known as the Modular
 Executor Format "MEF".
 
 We have the following goals:
