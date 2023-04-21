@@ -289,4 +289,19 @@ def ReallocBuffersPass : Pass<"realloc-buffers", "MGP::ModelOp"> {
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// LegalizeBorrowLifetimePass
+//===----------------------------------------------------------------------===//
+
+def LegalizeBorrowLifetimePass : Pass<"legalize-borrow-lifetime", "MGP::ModelOp"> {
+  let summary = "Inserts mgp.cpu.buffer.touch to ensure lifetime of borrowed buffer "
+                "exceeds the borrowing ones";
+  let description = [{
+    This pass inserts mgp.cpu.buffer.touch to ensure lifetime of borrowed buffer
+    exceeds the borrows. This is mainly used with mgp.cpu.split.mutable_borrow,
+    which could result in borrows that outlive the input buffer (if it's part of
+    an in-place split).
+  }];
+}
+
 #endif // GENERICML_MGPDIALECT_MGPTRANSFORMS_TD
