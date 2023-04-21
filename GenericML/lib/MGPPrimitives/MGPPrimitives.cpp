@@ -359,6 +359,13 @@ static Chain mgp_cpu_buffer_set(BufferRef &buffer, MEFAttr<uint8_t> value) {
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.cpu.buffer.touch
+//===----------------------------------------------------------------------===//
+
+/// Just wait until input chain is ready.
+static void mgp_cpu_buffer_touch(Chain inChain, BufferRef &buffer) {}
+
+//===----------------------------------------------------------------------===//
 // mgp.context.create
 //===----------------------------------------------------------------------===//
 
@@ -740,6 +747,7 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.split.mutable_borrow",
                 mgp_cpu_buffer_split_mutable_borrow);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.set", mgp_cpu_buffer_set);
+  ADD_PRIMITIVE(registry, "mgp.cpu.buffer.touch", mgp_cpu_buffer_touch);
   ADD_PRIMITIVE(registry, "mgp.context.create", mgp_context_create);
   ADD_PRIMITIVE(registry, "mgp.state_slot.create", mgp_state_slot_create);
   ADD_PRIMITIVE(registry, "mgp.cpu.tensor_spec.create",

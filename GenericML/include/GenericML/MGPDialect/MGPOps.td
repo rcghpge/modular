@@ -700,6 +700,47 @@ def CpuBufferSetOp : MGP_Op<"cpu.buffer.set", [
 }
 
 //===----------------------------------------------------------------------===//
+// CpuBufferTouch
+//===----------------------------------------------------------------------===//
+
+def CpuBufferTouch : MGP_Op<"cpu.buffer.touch"> {
+  let summary = [{
+    Touches a buffer (with minimal overhead) until given chain is ready.
+  }];
+  let description = [{
+    Touches input buffer until input chain is ready. The execution semantics
+    doesn't involve changes to the input buffer at all -- it merely uses it as
+    an input so the runtime won't deallocate the buffer. This helps prevent the
+    buffer from being deallocated while it's borrowed.
+
+    Example:
+    ```mlir
+    %in_buf : !mgp.cpu.buffer<256>
+    %size1 : index
+    %out0_buf, %out1_buf =
+        mgp.cpu.buffer.split.mutable_borrow %in_buf, %size1
+        : !mgp.cpu.buffer<256> -> (!mgp.cpu.buffer<128>, !mgp.cpu.buffer)
+
+    %out00_ch = ... // op that uses `out0_buf`
+    %out01_ch = ... // another op that uses `out0_buf`
+    %out10_ch = ... // op that uses `out1_buf`
+
+    %borrow_uses_end_ch = grt.chain.merge %out00_ch, %out01_ch, %out10_ch
+
+    // This ensures that %in_buf doesn't get deallocated until the buffer
+    // borrowers finish their uses of the buffer.
+    mgp.cpu.buffer.touch %borrow_uses_end_ch, %in_buf
+    ```
+  }];
+
+  let arguments = (ins ChainType:$inChain,
+                   MGP_CpuBufferType:$buffer);
+  let assemblyFormat = [{
+    $inChain `,` $buffer attr-dict `:` qualified(type($buffer))
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // ContextCreateOp
 //===----------------------------------------------------------------------===//
 
