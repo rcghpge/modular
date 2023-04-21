@@ -230,6 +230,15 @@ mo.graph @pad_dynamic_output_shape(%input: !mo.tensor<[2, 3], f32>, %paddings: !
   mo.output %res : !mo.tensor<[?, ?], f32>
 }
 
+// CHECK: mo.graph @pad_unranked(%[[INPUT:.*]]: !mo.tensor<?, f32>, %[[PADDINGS:.*]]: !mo.tensor<[?, 2], si64>) -> !mo.tensor<?, f32> {
+mo.graph @pad_unranked(%input: !mo.tensor<?, f32>, %paddings: !mo.tensor<[?, 2], si64>) -> !mo.tensor<?, f32> {
+  // CHECK: %[[CONSTANT:.*]] = mo.constant {value = #M.dense_array<1.000000e+00> : tensor<f32>} :
+  %constant = mo.constant {value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
+  // CHECK: mo.pad(%[[INPUT]], %[[PADDINGS]], %[[CONSTANT]]) : (!mo.tensor<?, f32>, !mo.tensor<[?, 2], si64>, !mo.tensor<[], f32>) -> !mo.tensor<?, f32>
+  %res = mo.pad(%input, %paddings, %constant) : (!mo.tensor<?, f32>, !mo.tensor<[?, 2], si64>, !mo.tensor<[], f32>) -> !mo.tensor<?, f32>
+  mo.output %res : !mo.tensor<?, f32>
+}
+
 //===----------------------------------------------------------------------===//
 // RangeOp
 //===----------------------------------------------------------------------===//

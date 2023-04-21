@@ -1019,6 +1019,29 @@ LogicalResult BatchMatmulOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// MO_PadOp support
+//===----------------------------------------------------------------------===//
+
+LogicalResult PadOp::verify() {
+  TensorType inputTy = getInput().getType();
+  TensorType paddingsTy = getPaddings().getType();
+  TensorType resTy = getType();
+  if (inputTy.hasRank()) {
+    if (!resTy.hasRank())
+      return emitOpError("result must be ranked if input is ranked");
+    if ((int64_t)inputTy.getRank() != paddingsTy.getIntDim(0))
+      return emitOpError("paddings shape does not match static input rank");
+  } else {
+    if (resTy.hasRank())
+      return emitOpError("result must be unranked if input is unranked");
+    if (isa<IntegerAttr>(paddingsTy.getDim(0)))
+      return emitOpError("paddings shape does not match dynamic input rank");
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // MO_RangeOp support
 //===----------------------------------------------------------------------===//
 

@@ -1522,6 +1522,8 @@ def MO_PadOp : MO_TensorOp<"pad", [Pure]> {
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
+
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
