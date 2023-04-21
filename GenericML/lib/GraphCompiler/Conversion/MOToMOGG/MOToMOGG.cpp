@@ -76,6 +76,16 @@ struct KernelRecord {
     }                                                                          \
   }
 
+// Adds a kernel which is only backed by a jit compiled kernel but not a shim.
+// MOOps is the C++ class type of the MO op which provides the op name for the
+// map. isView tells us if the op is a view or not.
+#define MO_TO_MOJO_ONLY(MOOp, isView)                                          \
+  {                                                                            \
+    TypeID::get<MOOp>(), KernelRecord {                                        \
+      MOOp::getOperationName(), "", true, false, isView                        \
+    }                                                                          \
+  }
+
 // Helper to add a map to a shim kernel for a given mo op.
 // MOOps is the C++ class type of the MO op which provides the op name for the
 // map. ShimName is the name of the C++ shim kernel to target in MGP.
@@ -84,7 +94,7 @@ struct KernelRecord {
     TypeID::get<MOOp>(), KernelRecord { "", ShimName, false }                  \
   }
 
-using MoToKernelMapTy = SmallDenseMap<mlir::TypeID, KernelRecord, 64>;
+using MoToKernelMapTy = SmallDenseMap<mlir::TypeID, KernelRecord, 32>;
 
 struct MOOpPattern : public RewritePattern {
   MOOpPattern(MLIRContext *ctx, MoToKernelMapTy &moToMojoKernels, bool useJit)
@@ -95,7 +105,7 @@ struct MOOpPattern : public RewritePattern {
                                 PatternRewriter &rewriter) const override {
     // skip non-mo ops and container/constant/output mo ops
     if (!isa<MO::MODialect>(op->getDialect()) || isa<MO::GraphOp>(op) ||
-        isa<MO::ConstantOp>(op) || isa<MO::OutputOp>(op))
+         isa<MO::ConstantOp>(op) || isa<MO::OutputOp>(op))
       return failure();
 
     auto results = selectMOGGOp(op);
@@ -184,15 +194,13 @@ void MOToMOGGPass::runOnOperation() {
       MO_SHIM_ONLY(MO::AbsOp, "mop.kernels.abs"),
       MO_TO_MOJO(MO::AddOp, "mop.kernels.add"),
       MO_SHIM_ONLY(MO::ArgMaxOp, "mop.kernels.arg_max"),
-      MO_SHIM_ONLY(MO::AvgPoolOp, "mop.kernels.pool.avg"),
-      MO_SHIM_ONLY(MO::BatchMatmulOp, "mop.kernels.batch_matmul"),
-      MO_SHIM_ONLY(MO::ArgMaxOp, "mop.kernels.arg_max"),
       MO_SHIM_ONLY(MO::BroadcastShapeOp, "mop.kernels.broadcast_shape"),
       MO_SHIM_ONLY(MO::BroadcastToOp, "mop.kernels.broadcast_to"),
-      MO_TO_MOJO_VIEW(MO::Static::BroadcastToOp,
-                      "mop.kernels.static.broadcast_to"),
       MO_TO_MOJO(MO::CastOp, "mop.kernels.cast"),
       MO_SHIM_ONLY(MO::ConcatOp, "mop.kernels.concat"),
+      MO_SHIM_ONLY(MO::SplitOp, "mop.kernels.split"),
+      MO_TO_MOJO_VIEW(MO::Static::BroadcastToOp,
+                      "mop.kernels.static.broadcast_to"),
       MO_SHIM_ONLY(MO::ConvOp, "mop.kernels.conv"),
       MO_TO_MOJO(MO::DivOp, "mop.kernels.div"),
       MO_TO_MOJO(MO::ErfOp, "mop.kernels.erf"),
@@ -201,35 +209,36 @@ void MOToMOGGPass::runOnOperation() {
       MO_SHIM_ONLY(MO::GeluOp, "mop.kernels.gelu"),
       MO_SHIM_ONLY(MO::GreaterOp, "mop.kernels.greater"),
       MO_SHIM_ONLY(MO::GreaterEqualOp, "mop.kernels.greater_equal"),
+      MO_SHIM_ONLY(MO::NotEqualOp, "mop.kernels.not_equal"),
       MO_SHIM_ONLY(MO::LogSoftmaxOp, "mop.kernels.logsoftmax"),
+      MO_SHIM_ONLY(MO::TransposeOp, "mop.kernels.transpose"),
+      MO_SHIM_ONLY(MO::PadOp, "mop.kernels.pad"),
       MO_SHIM_ONLY(MO::GatherOp, "mop.kernels.gather"),
       MO_SHIM_ONLY(MO::MatmulOp, "mop.kernels.matmul"),
+      MO_SHIM_ONLY(MO::BatchMatmulOp, "mop.kernels.batch_matmul"),
       MO_SHIM_ONLY(MO::MatrixBandPartOp, "mop.kernels.matrix_band_part"),
       MO_SHIM_ONLY(MO::MaxOp, "mop.kernels.max"),
-      MO_SHIM_ONLY(MO::MaxPoolOp, "mop.kernels.pool.max"),
       MO_SHIM_ONLY(MO::MeanOp, "mop.kernels.mean"),
-      MO_SHIM_ONLY(MO::MinOp, "mop.kernels.min"),
-      MO_TO_MOJO(MO::MulOp, "mop.kernels.mul"),
-      MO_SHIM_ONLY(MO::NotEqualOp, "mop.kernels.not_equal"),
-      MO_SHIM_ONLY(MO::PadOp, "mop.kernels.pad"),
       MO_SHIM_ONLY(MO::ReduceAddOp, "mop.kernels.reduce.add"),
       MO_SHIM_ONLY(MO::ReduceMulOp, "mop.kernels.reduce.mul"),
       MO_SHIM_ONLY(MO::ReduceMinOp, "mop.kernels.reduce.min"),
       MO_SHIM_ONLY(MO::ReduceMaxOp, "mop.kernels.reduce.max"),
+      MO_SHIM_ONLY(MO::MaxPoolOp, "mop.kernels.pool.max"),
+      MO_SHIM_ONLY(MO::AvgPoolOp, "mop.kernels.pool.avg"),
+      MO_SHIM_ONLY(MO::MinOp, "mop.kernels.min"),
+      MO_TO_MOJO(MO::MulOp, "mop.kernels.mul"),
       MO_SHIM_ONLY(MO::PowOp, "mop.kernels.pow"),
       MO_SHIM_ONLY(MO::RangeOp, "mop.kernels.range"),
       MO_TO_MOJO(MO::ReluOp, "mop.kernels.relu"),
       MO_TO_MOJO(MO::RsqrtOp, "mop.kernels.rsqrt"),
       MO_SHIM_ONLY(MO::SelectOp, "mop.kernels.select"),
-      MO_SHIM_ONLY(MO::ShapeOfOp, "mop.kernels.shape_of"),
       MO_SHIM_ONLY(MO::SigmoidOp, "mop.kernels.sigmoid"),
       MO_SHIM_ONLY(MO::SliceOp, "mop.kernels.slice"),
-      MO_SHIM_ONLY(MO::SplitOp, "mop.kernels.split"),
+      MO_SHIM_ONLY(MO::ShapeOfOp, "mop.kernels.shape_of"),
       MO_SHIM_ONLY(MO::SoftmaxOp, "mop.kernels.softmax"),
       MO_TO_MOJO(MO::SqrtOp, "mop.kernels.sqrt"),
       MO_TO_MOJO(MO::SubOp, "mop.kernels.sub"),
       MO_TO_MOJO(MO::TanhOp, "mop.kernels.tanh"),
-      MO_TO_MOJO_VIEW(MO::TransposeOp, "mop.kernels.transpose"),
       MO_SHIM_ONLY(MO::WhereOp, "mop.kernels.where"),
   };
 
@@ -242,4 +251,5 @@ void MOToMOGGPass::runOnOperation() {
 
 #undef MO_TO_MOJO
 #undef MO_SHIM_ONLY
+#undef MO_TO_MOJO_ONLY
 #undef MO_TO_MOJO_VIEW

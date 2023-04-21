@@ -140,30 +140,3 @@ mo.graph @check_no_fuse_if<N, M>(%cond : !mo.tensor<[], bool>, %arg0: !mo.tensor
 // CHECK-NEXT: } else {
 // CHECK-NEXT: mogg.ext.op "mop.kernels.mul"(%[[BCAST1]], %[[BCAST1]])
 // CHECK-NEXT: mo.yield
-
-// Check everything gets fused together.
-mo.graph @transpose_and_bcast_fused(%arg0 : !mo.tensor<[], si32>) -> !mo.tensor<[5, 4], si32>  {
-  %0 = mo.constant {value = #M.dense_array<1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20> : tensor<20xsi32>} : !mo.tensor<[4, 5], si32>
-  %perm = mo.constant {value = #M.dense_array<1, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-  %trans = mo.transpose(%0, %perm) : (!mo.tensor<[4, 5], si32>, !mo.tensor<[2], si64>) -> !mo.tensor<[5, 4], si32>
-  %bcast = mo.static.broadcast_to(%arg0) : !mo.tensor<[], si32> -> !mo.tensor<[5, 4], si32>
-  %add = mo.add(%bcast, %trans) : !mo.tensor<[5, 4], si32>
-  mo.output %add : !mo.tensor<[5, 4], si32>
-}
-
-// CHECK-LABEL: mo.graph @transpose_and_bcast_fused
-// CHECK: mogg.kernel
-// CHECK-NEXT: mogg.output_placeholders
-// CHECK-NEXT:  %[[BCAST:.*]] = mogg.call "mo.static.broadcast_to"
-// CHECK-NEXT:  %[[TRANSPOSE:.*]] = mogg.call "mo.transpose"
-
-// CHECK:   mogg.lambda @input_0_fn = (%[[INDICES:.*]]: !mogg.indices) -> !mogg.simd<si32>{
-// CHECK-NEXT:      mogg.simd_load(%[[BCAST]], %[[INDICES]])
-
-// CHECK:   mogg.lambda @input_1_fn = (%[[INDICES:.*]]: !mogg.indices) -> !mogg.simd<si32>{
-// CHECK-NEXT:      mogg.simd_load(%[[TRANSPOSE]], %[[INDICES]]) 
-
-// CHECK: mogg.lambda @elemwise_compute_lambda =
-// CHECK-NEXT:  %[[LOAD1:.*]] = mogg.invoke @input_0_fn
-// CHECK-NEXT:  %[[LOAD2:.*]] = mogg.invoke @input_1_fn
-// CHECK-NEXT:  %[[ADD:.*]] = mogg.call "mo.add"(%[[LOAD1]], %[[LOAD2]])
