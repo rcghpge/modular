@@ -477,8 +477,8 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
   void runOnOperation() override;
 };
 
-struct ConcatPattern : public RewritePattern {
-  ConcatPattern(MLIRContext *ctx)
+struct ConcatZeroAxisPattern : public RewritePattern {
+  ConcatZeroAxisPattern(MLIRContext *ctx)
       : RewritePattern(MatchAnyOpTypeTag{}, 2, ctx) {}
 
   LogicalResult matchAndRewrite(Operation *op,
@@ -525,8 +525,8 @@ void PatternFusionPass::runOnOperation() {
   patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
                FullyConnectedPattern, SinkTransposeThroughUnaryOpPattern,
                SinkTransposeThroughBinaryOpPattern,
-               SinkTransposeThroughStaticBroadcastToOpPattern, ConcatPattern>(
-      ctx);
+               SinkTransposeThroughStaticBroadcastToOpPattern,
+               ConcatZeroAxisPattern>(ctx);
   if (useMatmulPacking.getValue())
     patterns.add<MatmulConstBPattern>(ctx);
   MO::TransposeOp::getCanonicalizationPatterns(patterns, ctx);
