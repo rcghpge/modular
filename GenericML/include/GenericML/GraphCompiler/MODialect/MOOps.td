@@ -1490,7 +1490,8 @@ def MO_TransposeOp : MO_TensorOp<"transpose", [
 
 def MO_PadOp : MO_TensorOp<"pad", [
   DeclareOpInterfaceMethods<MO_Parameterization>,
-  DeclareOpInterfaceMethods<MO_ParamDeclaration>
+  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
 ]> {
   let summary = "Pad Operation";
   let description = [{
