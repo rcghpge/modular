@@ -28,6 +28,10 @@ using namespace MOGG;
  */
 namespace {
 
+static SmallVector<MO::TensorType> castToMoTensorTypes(TypeRange types) {
+  return map_to_vector(types, [](Type t) { return t.cast<MO::TensorType>(); });
+}
+
 // A MO tensor which has been lowered into a buffer and a spec.
 struct LoweredTensor {
   /// The buffer for this tensor which is not immutable as it can be the output
@@ -422,8 +426,7 @@ ErrorOr<SmallVector<LoweredTensor>> LowerHelper::lowerOutputBuffer(
   };
 
   SmallVector<MO::TensorType> resultMoTypes =
-      map_to_vector(opBeingLowered->getResultTypes(),
-                    [](Type t) { return t.cast<MO::TensorType>(); });
+      castToMoTensorTypes(opBeingLowered->getResultTypes());
   if (multiOutputShapeFuncs.contains(opName) && !resultMoTypes.empty() &&
       !resultMoTypes.front().hasStaticShape()) {
     return lowerMultiOutputShapeFunc(multiOutputShapeFuncs.lookup(opName),
@@ -602,6 +605,85 @@ LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
   MGP::setNumFrontOutputBuffers(concatOp, 1);
 
   helper.allocateOutputTensor(concatOp.getOutChain(), outputBufferAndSpec);
+  return success();
+}
+
+// SplitOp
+
+LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
+  SplitOp op = *this;
+  LowerHelper helper{loweringState, op};
+  Value execChain = loweringState.getExecuteChain();
+  OpBuilder execBuilder = loweringState.getExecuteOpBuilder();
+
+  // Get lowered input tensor's buffer and spec
+  LoweredTensor loweredInputTensor =
+      helper.getLoweredTensorForValue(op.getInput());
+  Value inputSpec = loweredInputTensor.spec;
+  Value inputBuf = loweredInputTensor.buffer;
+  // TODO Supporting this requires either
+  // 1. Lower this with via the regular `mo.split` path, which loses in-place
+  // buffer splitting.
+  // 2. A immutable version of `CpuBufferSplitMutableBorrowOp`
+  if (inputBuf.getDefiningOp<MGP::CpuBufferConstantOp>())
+    return op.emitError("constant input buffer is unsupported");
+
+  // Get lowered split size tensor value
+  Value splitSizes =
+      loweringState.lookupExecuteLoweredValue(op.getSplitSizes());
+
+  // Get output tensor specs
+  SmallVector<MO::TensorType> resultMoTypes =
+      castToMoTensorTypes(op->getResultTypes());
+  SmallVector<TypedValue<MGP::CpuTensorSpecType>> outSpecs =
+      helper.invokeLegacyShapeFunc("mop.shape.split_axis_0",
+                                   {inputSpec, splitSizes}, resultMoTypes);
+
+  // Build/collect inputs to the MGP buffer split op
+  Location loc = op.getLoc();
+  MLIRContext *ctx = execBuilder.getContext();
+  SmallVector<Type> outBufTypes;
+  SmallVector<Value> runtimeSizes;
+  SmallVector<uint64_t> rawSizes;
+  for (TypedValue<MGP::CpuTensorSpecType> outSpec : outSpecs) {
+    MGP::CpuTensorSpecType outSpecTy = outSpec.getType();
+    Optional<uint64_t> bufferSize = outSpecTy.getSizeInBytes();
+
+    outBufTypes.emplace_back(MGP::CpuBufferType::get(ctx, bufferSize));
+    rawSizes.emplace_back(optSizeToRawSize(bufferSize));
+    if (!bufferSize.has_value()) {
+      runtimeSizes.emplace_back(
+          execBuilder.create<MGP::CpuTensorSpecSizeOp>(loc, outSpec));
+    }
+  }
+
+  // Build MGP buffer split op
+  auto mgpBufferSplitOp =
+      execBuilder.create<MGP::CpuBufferSplitMutableBorrowOp>(
+          loc,
+          /*outBuffers=*/outBufTypes,
+          /*inBuffer=*/inputBuf,
+          /*runtimeSizes=*/runtimeSizes,
+          /*outBufferRawSizes=*/rawSizes);
+
+  // Associate each result MO tensor with a new MGP tensor
+  for (auto [outIdx, outSpec, outBuf] :
+       llvm::enumerate(outSpecs, mgpBufferSplitOp.getResults())) {
+    // Get the type of the spec and infer the type of the tensor from that.
+    auto outSpecTy = cast<MGP::CpuTensorSpecType>(outSpec.getType());
+    auto outTensorTy = MGP::CpuTensorType::get(ctx, outSpecTy);
+
+    // Associate the result MO tensor with a new MGP tensor
+    auto tensorCreateOp =
+        execBuilder.create<MGP::CpuTensorCreateOp>(op.getLoc(),
+                                                   /*result=*/outTensorTy,
+                                                   /*inChain=*/execChain,
+                                                   /*buffer=*/outBuf,
+                                                   /*tensorSpec=*/outSpec);
+    loweringState.emplaceExecuteLoweredValue(op.getResult(outIdx),
+                                             tensorCreateOp.getResult());
+  }
+
   return success();
 }
 

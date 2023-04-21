@@ -96,6 +96,38 @@ def MOGG_ConcatOp : MOGG_LowerableOp<"concat", []> {
   }];
 }
 
+def MOGG_SplitOp : MOGG_LowerableOp<"split", []> {
+  let summary = "Split Operation along axis zero";
+  let description = [{
+    Split input tensors into multiple tensors along axis zero.
+
+    Each of the output tensors has the same shape as `input` except along axis
+    zero, where the size is given by the corresponding element in `splitSizes`.
+
+    Example:
+
+    ```mlir
+    %input: !mo.tensor<[9, 8], f32>
+    %split_sizes = mo.constant {
+      value = #M.dense_array<2, 3, 4> : tensor<3xsi64>} : !mo.tensor<[], si64>
+    %res = mogg.split(%input, %split_sizes) : (
+      !mo.tensor<[9, 8], f32>, !mo.tensor<[3], si64>
+    ) -> (!mo.tensor<[2, 3], f32>, !mo.tensor<[3, 3], f32>, !mo.tensor<[4, 3], f32>)
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_ShapeLikeIfRanked:$splitSizes);
+  let results = (outs Variadic<MO_Tensor>:$results);
+
+  let assemblyFormat = [{
+    `(` $input `,` $splitSizes `)` attr-dict `:` `(`
+      qualified(type($input)) `,` qualified(type($splitSizes))
+    `)` `->` `(` type($results) `)`
+  }];
+}
+
 //===----------------------------------------------------------------------===//
 // OutputOp
 //===----------------------------------------------------------------------===//
