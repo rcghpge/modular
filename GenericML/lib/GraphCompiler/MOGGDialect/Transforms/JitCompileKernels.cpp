@@ -27,6 +27,7 @@
 #include "KGEN/KGENPasses.h"
 
 #include "llvm/ADT/StringExtras.h"
+#include <sstream>
 
 using namespace M;
 
@@ -58,8 +59,16 @@ std::string getIDForType(mlir::Type t) {
 template <typename T>
 void appendConstToString(M::ArrayElementsAttr attr, std::string &name) {
   const T *asDtype = reinterpret_cast<const T *>(attr.getRawData().data());
-  for (int64_t i = 0, e = attr.getNumElements(); i < e; ++i)
-    name += std::to_string(asDtype[i]) + "_";
+  for (int64_t i = 0, e = attr.getNumElements(); i < e; ++i) {
+
+    if (std::is_floating_point<T>::value) {
+      std::stringstream ss;
+      ss << std::scientific << asDtype[i];
+      name += ss.str() + "_";
+    } else {
+      name += std::to_string(asDtype[i]) + "_";
+    }
+  }
 }
 
 std::string mangleBlock(mlir::Block &block,
