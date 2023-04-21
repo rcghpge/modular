@@ -516,6 +516,30 @@ struct ConcatZeroAxisPattern : public RewritePattern {
   }
 };
 
+struct SplitZeroAxisPattern : public OpRewritePattern<MO::SplitOp> {
+  SplitZeroAxisPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
+
+  LogicalResult matchAndRewrite(MO::SplitOp op,
+                                PatternRewriter &rewriter) const override {
+    std::optional<int64_t> axis =
+        MO::tryGetConstantInt(cast<MO::TensorValue>(op.getAxis()));
+    if (!axis.has_value() || axis.value() != 0)
+      return rewriter.notifyMatchFailure(op, "axis not constant 0");
+
+    // Ensure input isn't constant
+    if (op.getInput().getDefiningOp<MO::ConstantOp>())
+      return rewriter.notifyMatchFailure(op, "input is a constant");
+
+    rewriter.replaceOpWithNewOp<MOGG::SplitOp>(
+        op,
+        /*outputTypes=*/op->getResultTypes(),
+        /*input=*/op.getInput(),
+        /*splitSizes=*/op.getSplitSizes());
+
+    return mlir::success();
+  }
+};
+
 } // namespace
 
 void PatternFusionPass::runOnOperation() {
@@ -526,7 +550,7 @@ void PatternFusionPass::runOnOperation() {
                FullyConnectedPattern, SinkTransposeThroughUnaryOpPattern,
                SinkTransposeThroughBinaryOpPattern,
                SinkTransposeThroughStaticBroadcastToOpPattern,
-               ConcatZeroAxisPattern>(ctx);
+               ConcatZeroAxisPattern, SplitZeroAxisPattern>(ctx);
   if (useMatmulPacking.getValue())
     patterns.add<MatmulConstBPattern>(ctx);
   MO::TransposeOp::getCanonicalizationPatterns(patterns, ctx);
