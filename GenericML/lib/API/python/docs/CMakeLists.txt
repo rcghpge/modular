@@ -9,38 +9,35 @@ include(FindSphinx)
 if(Sphinx_FOUND)
   configure_file(conf.py.in conf.py @ONLY)
 
-  include(AddModularSphinxTarget)
-
   if (MODULAR_BUILD_INFERENCE_ENGINE_DOCS_PREVIEW)
     set(sphinx_output_dir ${CMAKE_CURRENT_BINARY_DIR}/preview)
   else()
     set(sphinx_output_dir ${CMAKE_CURRENT_BINARY_DIR}/web)
   endif()
 
-  add_modular_sphinx_target(html inference_engine_python
-    SOURCE_DIR
-    ${CMAKE_SOURCE_DIR}/GenericML/lib/API/python/modular/engine
-    CONF_DIR
-    ${CMAKE_CURRENT_BINARY_DIR}
-    OUTPUT_DIR
-    ${sphinx_output_dir}
+  add_custom_target(inference_engine_python_docs_sphinx
+    COMMAND
+      ${SPHINX_EXECUTABLE}
+      -b html
+      -c ${CMAKE_CURRENT_BINARY_DIR}
+      -q # quiet
+      -W # treat warnings as errors for now
+      ${CMAKE_SOURCE_DIR}/GenericML/lib/API/python/modular/engine # Source
+      ${sphinx_output_dir} # Output
+    DEPENDS modular-pybind-ext # ensure the wheel is always up-to-date
+    COMMENT "Generating Sphinx documentation for Inference Engine Python API into ${sphinx_output_dir}."
+    VERBATIM
   )
-
-  # Have doc-generation internal CMake target depend on the Python wheel,
-  # This ensures that doc generation is always using the up-to-date wheel and
-  # avoids any surprises in `autodoc` failing to import the Python wheel in the
-  # case it is not built yet.
-  add_dependencies(docs-inference_engine_python-html modular-pybind-ext)
 
   add_custom_target(inference_engine_docs_python)
 
   # We only want to do cleanup of files in preview mode
   if (MODULAR_BUILD_INFERENCE_ENGINE_DOCS_PREVIEW)
-    add_dependencies(inference_engine_docs_python docs-inference_engine_python-html)
+    add_dependencies(inference_engine_docs_python inference_engine_python_docs_sphinx)
   else()
     add_custom_target(
       inference_engine_docs_python_postprocessing_cleanup
-      DEPENDS docs-inference_engine_python-html # the internal target from the sphinx build
+      DEPENDS inference_engine_python_docs_sphinx
       COMMAND ${CMAKE_COMMAND} -E rm -rf _static _sources
       COMMAND ${CMAKE_COMMAND} -E rm -f objects.inv searchindex.js
       COMMAND ${CMAKE_COMMAND} -E rm -f genindex.html search.html py-modindex.html index.html
@@ -54,9 +51,7 @@ if(Sphinx_FOUND)
     add_dependencies(inference_engine_docs_python inference_engine_docs_python_postprocessing_cleanup)
   endif()
 
-  if(TARGET inference_engine_docs)
-    add_dependencies(inference_engine_docs inference_engine_docs_python)
-  endif()
+  add_dependencies(inference_engine_docs inference_engine_docs_python)
 else()
   message("Skipping doc generation for Inference Engine Python APIs
            since `sphinx` is not installed.")
