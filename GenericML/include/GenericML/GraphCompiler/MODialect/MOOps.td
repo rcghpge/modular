@@ -1091,7 +1091,11 @@ def MO_MaxPoolOp : MO_TensorOp<"max_pool", [Pure, MO_SlidingWindow]>{
   let hasVerifier = 1;
 }
 
-def MO_ConvOp : MO_TensorOp<"conv", [Pure, MO_SlidingWindow]>{
+def MO_ConvOp : MO_TensorOp<"conv", [
+  MO_SlidingWindow,
+  DeclareOpInterfaceMethods<MO_Parameterization>,
+  DeclareOpInterfaceMethods<MO_ParamDeclaration>
+]>{
   let summary = "Convolution operation";
   let description = [{
     Compute the convolution of the input with the given filter, strides, and
@@ -1122,12 +1126,13 @@ def MO_ConvOp : MO_TensorOp<"conv", [Pure, MO_SlidingWindow]>{
     MO_Tensor:$input,
     MO_Tensor:$filter,
     MO_ShapeLikeIfRanked:$strides,
-    MO_ShapeLikeIfRanked:$dilations);
+    MO_ShapeLikeIfRanked:$dilations,
+    MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `(` $input `,` $filter `)` `[` `strides` `=` $strides `,`
-    `dilations` `=` $dilations `]` attr-dict `:`
+    `` custom<ParamDecls>($outputParamDecls) `(` $input `,` $filter `)`
+    `[` `strides` `=` $strides `,` `dilations` `=` $dilations `]` attr-dict `:`
     functional-type(operands, results)
   }];
 
