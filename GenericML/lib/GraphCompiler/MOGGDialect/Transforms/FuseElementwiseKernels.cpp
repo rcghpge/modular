@@ -32,9 +32,77 @@ namespace {
 struct ElementwiseGraph {
   void buildGraph(MOGG::KernelOp kernel);
 
-  llvm::SmallVector<MOGG::KernelOp> roots;
-  llvm::SmallVector<MOGG::KernelOp> leaves;
+  void printGraphAsDot();
+
+  llvm::SetVector<MOGG::KernelOp> roots;
+  llvm::SetVector<MOGG::KernelOp> leaves;
 };
+
+void ElementwiseGraph::printGraphAsDot() {
+  llvm::errs() << "digraph {\n";
+
+  // Each node in the dot format needs an ID, we can just use the size of this
+  // map.
+  DenseMap<Operation *, size_t> nodeIds;
+  auto getId = [&nodeIds](Operation *kernel) -> size_t {
+    auto itr = nodeIds.find(kernel);
+    if (itr != nodeIds.end())
+      return itr->second;
+
+    size_t newId = nodeIds.size() + 1;
+    nodeIds[kernel] = newId;
+    return newId;
+  };
+
+  llvm::SmallVector<Operation *> toPrint;
+
+  DenseSet<Operation *> hasPrinted;
+  auto printNode = [&](Operation *op) {
+    // Only print each once.
+    if (hasPrinted.contains(op))
+      return;
+    hasPrinted.insert(op);
+
+    // If we are not a kernel or a non fusable kernel then we
+    auto kernel = dyn_cast<MOGG::KernelOp>(op);
+    bool isTerminator = !kernel || !kernel.getFusionBodyLambda();
+
+    size_t opId = getId(op);
+    if (!isTerminator) {
+      std::string shape = "ellipse";
+
+      if (leaves.contains(kernel))
+        shape = "triangle";
+
+      llvm::errs() << opId
+                   << " [color=\"green\", label=\"elementwise\", shape=\""
+                   << shape << "\"]\n";
+    } else {
+      llvm::errs() << opId << " [color=\"red\", label=\"non-fused-op\"]"
+                   << "\n";
+    }
+
+    // Print the children of nodes within the graph. (ignore terminators)
+    if (!isTerminator) {
+      for (Operation *user : op->getUsers()) {
+        llvm::errs() << opId << " -> " << getId(user) << ";\n";
+        toPrint.push_back(user);
+      }
+    }
+  };
+
+  // Start from the top and recursively print all the nodes.
+  for (MOGG::KernelOp root : roots)
+    toPrint.push_back(root);
+
+  while (!toPrint.empty()) {
+    Operation *op = toPrint.back();
+    toPrint.pop_back();
+    printNode(op);
+  }
+
+  llvm::errs() << "}\n";
+}
 
 void ElementwiseGraph::buildGraph(MOGG::KernelOp start) {
   llvm::SmallDenseSet<MOGG::KernelOp> seenNodes;
@@ -49,24 +117,24 @@ void ElementwiseGraph::buildGraph(MOGG::KernelOp start) {
   // the roots if the current op is the end of the chain.
   auto process = [&searchList, &seenNodes,
                   region](KernelOp current, Operation *userOrProducer,
-                          SmallVector<KernelOp> &endpoint) {
+                          llvm::SetVector<KernelOp> &endpoint) {
     // Must be in same region to be connected.
     if (region != userOrProducer->getParentRegion())
-      endpoint.push_back(current);
+      endpoint.insert(current);
 
     if (auto useOrP = dyn_cast<KernelOp>(userOrProducer)) {
       // If the user or producer is anything but an elementwise kernel then we
       // are a leaf/root. Elementwise = is considered implementable just by
       // application of an elementwise lambda across all elements.
       if (!useOrP.getFusionBodyLambda()) {
-        endpoint.push_back(current);
+        endpoint.insert(current);
       } else {
         if (!seenNodes.contains(useOrP))
           searchList.push_back(useOrP);
       }
     } else {
       // All other ops are exits.
-      endpoint.push_back(current);
+      endpoint.insert(current);
     }
   };
 
@@ -88,7 +156,7 @@ void ElementwiseGraph::buildGraph(MOGG::KernelOp start) {
       if (edge)
         process(op, edge, roots);
       else
-        roots.push_back(op);
+        roots.insert(op);
     }
   }
 }
@@ -153,6 +221,8 @@ struct FuseElementwisePass
       ElementwiseGraph reachableOps;
       reachableOps.buildGraph(kernel);
 
+      bool printed = false;
+
       // Traverse up from each operation and fuse all connected operations
       // downwards into it.
       for (MOGG::KernelOp leaf : reachableOps.leaves) {
@@ -167,9 +237,17 @@ struct FuseElementwisePass
         // On each leaf in the graph we will continuously fuse until nothing is
         // left to fuse down.
         while (true) {
-          int32_t idx = getInputToFuse(leaf);
+          int32_t idx = getInputToFuse(leaf, reachableOps);
           if (idx == -1)
             break;
+
+          // Print the graph but only if it hasn't already been printed and only
+          // if we actually fused as we don't care about graphs which don't get
+          // fused.
+          if (!printed && dumpDotGraph.getValue()) {
+            printed = true;
+            reachableOps.printGraphAsDot();
+          }
 
           fuseInputAtIndex(leaf, idx, alreadyFused);
         }
@@ -178,7 +256,7 @@ struct FuseElementwisePass
   }
 
   /// Return the index of the input to fuse or -1 if nothing can be fused.
-  int32_t getInputToFuse(MOGG::KernelOp leaf) {
+  int32_t getInputToFuse(MOGG::KernelOp leaf, ElementwiseGraph &reachableOps) {
     for (int32_t index = 0, e = leaf.getNumOperands(); index < e; ++index) {
       // Block arguments have no defining op and obviously cant be fused.
       Operation *edge = leaf.getOperand(index).getDefiningOp();
@@ -194,6 +272,11 @@ struct FuseElementwisePass
         // If the other kernel has been marked a view operation we don't fuse it
         // here.
         if (otherKernel.getIsViewOp().value_or(false))
+          continue;
+
+        // Each leaf is already guaranteed to be a standalone or fused kernel so
+        // we won't fuse them again.
+        if (reachableOps.leaves.contains(otherKernel))
           continue;
 
         if (otherKernel.getFusionBodyLambda())

@@ -56,6 +56,11 @@ def FuseConstants: Pass<"fuse-consts", "MO::GraphOp"> {
 def FuseElementwise: Pass<"fuse-elementwise", "MO::GraphOp"> {
   let summary = "Fuse blocks of elementwise operations if possible";
   let dependentDialects = ["M::MOGG::MOGGDialect"];
+  let options = [
+    Option<"dumpDotGraph", "dump-dot-graph",
+           "bool", /*default=*/"false", 
+           "Prints the connected elementwise graph we traverse to find fusions.">,
+  ];
 }
 
 def LoadMojoLibrary : Pass<"load-mojo-library", "ModuleOp"> {
