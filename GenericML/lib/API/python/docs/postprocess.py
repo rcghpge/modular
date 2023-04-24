@@ -43,6 +43,14 @@ def remove_empty_dd(soup):
     return soup
 
 
+def add_quarto_include(content):
+    """Add Quarto include command as raw text because bs4 deals only with
+    DOM trees and Sphinx/Jinja always escape the brackets."""
+    include = "{{< include /_preview-notice-engine.qmd >}}\n\n"
+    pos = content.find('<div class="sphinx-docs">')
+    return content[:pos] + include + content[pos:]
+
+
 def process(file):
     """Processes an individual file."""
     print("Post-processing " + file)
@@ -51,8 +59,10 @@ def process(file):
         soup = remove_h1(soup)
         soup = add_data_anchors(soup)
         soup = remove_empty_dd(soup)
+        content = f"{str(soup)}\n"
+        content = add_quarto_include(content)
         f.seek(0)
-        f.write(f"{str(soup)}\n")
+        f.write(content)
         f.truncate()
 
 
