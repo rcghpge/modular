@@ -228,7 +228,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_MOJO(MO::SqrtOp, "mop.kernels.sqrt"),
       MO_TO_MOJO(MO::SubOp, "mop.kernels.sub"),
       MO_TO_MOJO(MO::TanhOp, "mop.kernels.tanh"),
-      MO_SHIM_ONLY(MO::TransposeOp, "mop.kernels.transpose"),
+      MO_TO_MOJO_VIEW(MO::TransposeOp, "mop.kernels.transpose"),
       MO_SHIM_ONLY(MO::WhereOp, "mop.kernels.where"),
   };
 
