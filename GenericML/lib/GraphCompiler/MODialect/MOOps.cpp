@@ -379,11 +379,18 @@ LogicalResult Static::BroadcastToOp::canonicalize(Static::BroadcastToOp op,
     return success();
   }
 
+  OpBuilder::InsertPoint insertPoint = rewriter.saveInsertionPoint();
   for (Operation *user : op->getUsers()) {
-    if (auto sinkInterface = dyn_cast<SinkStaticBroadcastToInterface>(user))
+    if (auto sinkInterface = dyn_cast<SinkStaticBroadcastToInterface>(user)) {
+      // NOTE this helps preserve dominance
+      // TODO we should document the insertion point assumption in the interface
+      // or somewhere.
+      rewriter.setInsertionPoint(user);
       if (succeeded(sinkInterface.sinkStaticBroadcastTo(rewriter)))
         return success();
+    }
   }
+  rewriter.restoreInsertionPoint(insertPoint);
 
   if (!inputTy.hasRank() || !resTy.hasRank())
     return failure();
