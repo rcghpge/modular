@@ -201,7 +201,8 @@ struct FullyConnectedPattern : public RewritePattern {
 
     Value input, weight, bias;
     Operation *matmul = nullptr, *add = nullptr, *reshape = nullptr,
-              *gelu = nullptr, *relu = nullptr, *tanh = nullptr;
+              *gelu = nullptr, *relu = nullptr, *tanh = nullptr,
+              *sigmoid = nullptr;
     auto matmulP = m_Op<MO::MatmulOp>(&matmul, m_MOMatrix(m_Any(&input)),
                                       m_MOMatrix(m_Any(&weight)));
     auto broadcastP =
@@ -215,8 +216,11 @@ struct FullyConnectedPattern : public RewritePattern {
 
     auto fully_connected = m_Optional(
         m_Op<MO::GeluOp>(&gelu, bias_add),
-        m_Optional(m_Op<MO::ReluOp>(&relu, bias_add),
-                   m_Optional(m_Op<MO::TanhOp>(&tanh, bias_add), bias_add)));
+        m_Optional(
+            m_Op<MO::ReluOp>(&relu, bias_add),
+            m_Optional(m_Op<MO::TanhOp>(&tanh, bias_add),
+                       m_Optional(m_Op<MO::SigmoidOp>(&sigmoid, bias_add),
+                                  bias_add))));
     // TODO: Make the Optional Matcher work with Operation* directly
     if (op->getNumResults() > 0 && !fully_connected.match(op->getResult(0)))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
@@ -226,7 +230,7 @@ struct FullyConnectedPattern : public RewritePattern {
 
     Value fc;
     if (!isa_and_nonnull<MO::ConstantOp>(weight.getDefiningOp())) {
-      if (gelu || relu || tanh)
+      if (gelu || relu || tanh || sigmoid)
         return rewriter.notifyMatchFailure(
             op, "haven't implemented activation fusions with out packb");
       fc = rewriter
@@ -265,6 +269,8 @@ struct FullyConnectedPattern : public RewritePattern {
       std::string kernel;
       if (gelu)
         kernel = "mop.kernels.fully_connected.packb.gelu";
+      else if (sigmoid)
+        kernel = "mop.kernels.fully_connected.packb.sigmoid";
       else if (relu)
         kernel = "mop.kernels.fully_connected.packb.relu";
       else if (tanh)
