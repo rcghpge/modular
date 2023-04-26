@@ -181,7 +181,7 @@ void MOToMOGGPass::runOnOperation() {
   // implementations. A C++ shim in the mop primitives and a Mojo kernel which
   // will be jit compiled.
   MoToKernelMapTy moToMojoKernels{
-      MO_SHIM_ONLY(MO::AbsOp, "mop.kernels.abs"),
+      MO_TO_MOJO(MO::AbsOp, "mop.kernels.abs"),
       MO_TO_MOJO(MO::AddOp, "mop.kernels.add"),
       MO_SHIM_ONLY(MO::ArgMaxOp, "mop.kernels.arg_max"),
       MO_SHIM_ONLY(MO::AvgPoolOp, "mop.kernels.pool.avg"),
@@ -215,7 +215,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_SHIM_ONLY(MO::ReduceMulOp, "mop.kernels.reduce.mul"),
       MO_SHIM_ONLY(MO::ReduceMinOp, "mop.kernels.reduce.min"),
       MO_SHIM_ONLY(MO::ReduceMaxOp, "mop.kernels.reduce.max"),
-      MO_SHIM_ONLY(MO::PowOp, "mop.kernels.pow"),
+      MO_TO_MOJO(MO::PowOp, "mop.kernels.pow"),
       MO_SHIM_ONLY(MO::RangeOp, "mop.kernels.range"),
       MO_TO_MOJO(MO::ReluOp, "mop.kernels.relu"),
       MO_TO_MOJO(MO::RsqrtOp, "mop.kernels.rsqrt"),
