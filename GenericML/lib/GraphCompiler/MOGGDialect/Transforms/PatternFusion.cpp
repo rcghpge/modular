@@ -540,6 +540,71 @@ struct SplitZeroAxisPattern : public OpRewritePattern<MO::SplitOp> {
   }
 };
 
+struct LayerNormPattern : public OpRewritePattern<MO::AddOp> {
+  LayerNormPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 6) {}
+
+  LogicalResult matchAndRewrite(MO::AddOp op,
+                                PatternRewriter &rewriter) const override {
+    // x = input + skip
+    // layernorm = gamma * (x - mean(x)) / sqrt(var(x) + eps) + beta
+    Value gamma, beta, eps;
+    auto gam = m_Op<MO::Static::BroadcastToOp>(m_Any(&gamma));
+    auto bet = m_Op<MO::Static::BroadcastToOp>(m_Any(&beta));
+    auto ep = m_Op<MO::Static::BroadcastToOp>(m_Any(&eps));
+
+    auto last_axis = m_Optional(m_ScalarConstant(2), m_ScalarConstant(-1));
+    // TODO: Current capture system can't distinguish multiple uses of the same
+    // value in the pattern, need to fix, this might be slightly risky
+    Value input, skip;
+    auto x =
+        m_Optional(m_BinaryCommutativeOp<MO::AddOp>(m_Ranked(3, m_Any(&input)),
+                                                    m_Ranked(3, m_Any(&skip))),
+                   m_Ranked(3, m_Any(&input)));
+    auto mean = m_Op<MO::Static::BroadcastToOp>(m_Op<MO::MeanOp>(x, last_axis));
+    auto diff = m_Op<MO::SubOp>(x, mean);
+    auto var = m_Op<MO::MeanOp>(m_Op<MO::MulOp>(diff, diff), last_axis);
+    // pytorch specific pattern
+    auto p_ratio =
+        m_Op<MO::DivOp>(diff, m_Op<MO::Static::BroadcastToOp>(m_Op<MO::SqrtOp>(
+                                  m_BinaryCommutativeOp<MO::AddOp>(var, ep))));
+    auto p_layernorm = m_BinaryCommutativeOp<MO::AddOp>(
+        m_BinaryCommutativeOp<MO::MulOp>(gam, p_ratio), bet);
+
+    // TF specific Pattern
+    auto t_rDenom = m_BinaryCommutativeOp<MO::MulOp>(
+        gam, m_Op<MO::Static::BroadcastToOp>(
+                 m_Op<MO::RsqrtOp>(m_BinaryCommutativeOp<MO::AddOp>(var, ep))));
+    auto t_term1 = m_BinaryCommutativeOp<MO::MulOp>(x, t_rDenom);
+    auto t_term2 = m_BinaryCommutativeOp<MO::MulOp>(mean, t_rDenom);
+    auto t_term3 = m_Op<MO::SubOp>(bet, t_term2);
+    auto t_layernorm = m_BinaryCommutativeOp<MO::AddOp>(t_term1, t_term3);
+
+    if (!t_layernorm.match(op.getResult()) &&
+        !p_layernorm.match(op.getResult()))
+      return rewriter.notifyMatchFailure(op, "failed to match pattern");
+
+    if (!input || !beta || !gamma || !eps)
+      return rewriter.notifyMatchFailure(op, "null input value");
+    if (!skip) {
+      rewriter.replaceOpWithNewOp<MOGG::ExtOp>(
+          op,
+          /*outputTypes=*/op->getResultTypes(),
+          /*op_name=*/"mop.kernels.layer_norm",
+          /*inputOperands=*/
+          SmallVector<Value>{input, gamma, beta, eps});
+    } else {
+      rewriter.replaceOpWithNewOp<MOGG::ExtOp>(
+          op,
+          /*outputTypes=*/op->getResultTypes(),
+          /*op_name=*/"mop.kernels.layer_norm.skip",
+          /*inputOperands=*/
+          SmallVector<Value>{input, gamma, beta, eps, skip});
+    }
+    return mlir::success();
+    return failure();
+  }
+};
+
 } // namespace
 
 void PatternFusionPass::runOnOperation() {
@@ -550,7 +615,8 @@ void PatternFusionPass::runOnOperation() {
                FullyConnectedPattern, SinkTransposeThroughUnaryOpPattern,
                SinkTransposeThroughBinaryOpPattern,
                SinkTransposeThroughStaticBroadcastToOpPattern,
-               ConcatZeroAxisPattern, SplitZeroAxisPattern>(ctx);
+               ConcatZeroAxisPattern, SplitZeroAxisPattern, LayerNormPattern>(
+      ctx);
   if (useMatmulPacking.getValue())
     patterns.add<MatmulConstBPattern>(ctx);
   MO::TransposeOp::getCanonicalizationPatterns(patterns, ctx);
