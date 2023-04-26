@@ -201,10 +201,13 @@ struct FullyConnectedPattern : public RewritePattern {
 
     Value input, weight, bias;
     Operation *matmul = nullptr, *add = nullptr, *reshape = nullptr,
-              *gelu = nullptr, *relu = nullptr, *tanh = nullptr,
-              *sigmoid = nullptr;
-    auto matmulP = m_Op<MO::MatmulOp>(&matmul, m_MOMatrix(m_Any(&input)),
-                                      m_MOMatrix(m_Any(&weight)));
+              *transpose = nullptr, *gelu = nullptr, *relu = nullptr,
+              *tanh = nullptr, *sigmoid = nullptr;
+    auto weightP = m_MOMatrix(m_Any(&weight));
+    auto matmulP = m_Op<MO::MatmulOp>(
+        &matmul, m_MOMatrix(m_Any(&input)),
+        m_Optional(m_Op<MO::TransposeOp>(&transpose, weightP, m_Any()),
+                   weightP));
     auto broadcastP =
         m_Optional(matmulP, m_Op<MO::Static::BroadcastToOp>(matmulP));
     auto bias_add = m_BinaryCommutativeOp<MO::AddOp>(
@@ -241,7 +244,8 @@ struct FullyConnectedPattern : public RewritePattern {
                                     SmallVector<Value>{input, weight, bias})
                .getResult(0);
     } else {
-      MO::TensorType weightsType = cast<MO::TensorType>(weight.getType());
+      Value weights = transpose ? transpose->getResult(0) : weight;
+      MO::TensorType weightsType = cast<MO::TensorType>(weights.getType());
       SmallVector<uint64_t> weightsDims;
       for (int64_t dim : weightsType.getIntDims()) {
         // NOTE this (constants with unknown shape) may occur as a result of
@@ -260,10 +264,11 @@ struct FullyConnectedPattern : public RewritePattern {
       }
       Value packedWeights =
           rewriter
-              .create<MOGG::ExtOp>(op->getLoc(),
-                                   /*outputTypes=*/packedWeightsType,
-                                   /*op_name=*/"mop.kernels.pack_matmul_b",
-                                   /*inputOperands=*/SmallVector<Value>{weight})
+              .create<MOGG::ExtOp>(
+                  op->getLoc(),
+                  /*outputTypes=*/packedWeightsType,
+                  /*op_name=*/"mop.kernels.pack_matmul_b",
+                  /*inputOperands=*/SmallVector<Value>{weights})
               .getResult(0);
 
       std::string kernel;
