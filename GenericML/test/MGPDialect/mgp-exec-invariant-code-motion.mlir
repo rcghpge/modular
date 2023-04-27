@@ -1,6 +1,52 @@
 // RUN: mgp-opt %s --allow-unregistered-dialect --exec-invariant-code-motion | FileCheck %s
 
 //
+// @kgen_execute_kernel
+//
+
+// CHECK-LABEL: mgp.model @kgen_execute_kernel : tf init {
+// CHECK-NEXT:   %[[CH0:.*]] = grt.chain.create
+// CHECK-NEXT:   %[[CTX:.*]] = mgp.context.create 2
+// Dummy chain
+// CHECK-NEXT:   %{{.*}} = grt.chain.create
+// Lifted ops
+// CHECK-NEXT:   %[[PERM_BUF:.*]] = mgp.cpu.buffer.constant #M.aligned_bytes<"0x0200000000000000030000000000000001000000000000000000000000000000", align 16>
+// CHECK-NEXT:   %[[WEIGHT_BUF:.*]] = mgp.cpu.buffer.constant dense_resource<onnx__Conv_497> : !M.aligned_bytes<37632, align 16>
+// CHECK-NEXT:   %[[PERM_SPEC:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<4xsi64>
+// CHECK-NEXT:   %[[WEIGHT_SPEC:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<64x3x7x7xf32>
+// CHECK-DAG:    %[[OUT_SPEC:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<7x7x3x64xf32>
+// CHECK-DAG:    %[[OUT_BUF:.*]] = mgp.cpu.buffer.alloc.static %[[CH0]], 37632, align 16
+// CHECK-DAG:    %[[TRANSPOSE_CH:.*]] = "mop.kgen.execute_kernel"(%[[CH0]], %[[WEIGHT_BUF]], %[[WEIGHT_SPEC]], %[[PERM_BUF]], %[[PERM_SPEC]], %[[OUT_BUF]], %[[OUT_SPEC]]) : (!mef.chain, !mgp.cpu.buffer<37632>, !mgp.cpu.tensor_spec<64x3x7x7xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<4xsi64>, !mgp.cpu.buffer<37632>, !mgp.cpu.tensor_spec<7x7x3x64xf32>) -> !mef.chain
+// Chain merge to preserve control dependencies
+// CHECK-DAG:    %[[BUF_ACTION_CH:.*]] = grt.chain.merge %[[TRANSPOSE_CH]]
+// Buffer caching
+// CHECK-DAG:    %[[CACHE_CH:.*]] = mgp.cpu.buffer.cache %[[BUF_ACTION_CH]], %[[CTX]][1], %[[OUT_BUF]] : !mgp.cpu.buffer<37632>
+// Chain merge to preserve control dependencies
+// CHECK-DAG:    %[[OUT_CH:.*]] = grt.chain.merge %[[CH0]], %[[CACHE_CH]]
+// CHECK-NEXT:   mef.output %[[OUT_CH]], %[[CTX]] : !mef.chain, !mgp.context
+// CHECK-NEXT: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context) -> !mef.chain {
+// Inserted buffer lookup
+// CHECK-NEXT:   %[[BUF:.*]] = mgp.cpu.buffer.get_cached %[[CH0]], %[[CTX]][1] : !mgp.cpu.buffer<37632>
+// Reference to lifted chain got updated to input chain
+// CHECK-NEXT:   mef.output %[[CH0]] : !mef.chain
+// CHECK-NEXT: }
+
+mgp.model @kgen_execute_kernel : tf init {
+  %ch0 = grt.chain.create
+  %ctx = mgp.context.create 1
+  mef.output %ch0, %ctx : !mef.chain, !mgp.context
+} execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain) {
+  %perm_buf = mgp.cpu.buffer.constant #M.aligned_bytes<"0x0200000000000000030000000000000001000000000000000000000000000000", align 16>
+  %weight_buf = mgp.cpu.buffer.constant dense_resource<onnx__Conv_497> : !M.aligned_bytes<37632, align 16>
+  %perm_spec = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<4xsi64>
+  %weight_spec = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<64x3x7x7xf32>
+  %out_buf = mgp.cpu.buffer.alloc.static %ch0, 37632, align 16
+  %out_spec = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<7x7x3x64xf32>
+  %out_ch = "mop.kgen.execute_kernel"(%ch0, %weight_buf, %weight_spec, %perm_buf, %perm_spec, %out_buf, %out_spec) : (!mef.chain, !mgp.cpu.buffer<37632>, !mgp.cpu.tensor_spec<64x3x7x7xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<4xsi64>, !mgp.cpu.buffer<37632>, !mgp.cpu.tensor_spec<7x7x3x64xf32>) -> !mef.chain
+  mef.output %out_ch : !mef.chain
+}
+
+//
 // @matmul_packb
 //
 
