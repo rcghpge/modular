@@ -83,13 +83,13 @@ mgp.model @dynamic_concat : tf init {
 }
 
 //
-// @dont_trigger_since_shared
+// @concat_with_shared_input_buffer
 //
 
-// CHECK-LABEL: mgp.model @dont_trigger_since_shared
-// CHECK: %{{.*}} = mgp.cpu.buffer.concat %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}
+// CHECK-LABEL: mgp.model @concat_with_shared_input_buffer
+// CHECK: %{{.*}} = mgp.cpu.buffer.split.mutable_borrow
 
-mgp.model @dont_trigger_since_shared : tf init {
+mgp.model @concat_with_shared_input_buffer : tf init {
   %0 = grt.chain.create
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
