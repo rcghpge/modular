@@ -1446,6 +1446,7 @@ def MO_SplitOp : MO_TensorOp<"split", [Pure]> {
   }];
 
   let hasVerifier = 1;
+  let hasFolder = 1;
 }
 
 def MO_TransposeOp : MO_TensorOp<"transpose", [
