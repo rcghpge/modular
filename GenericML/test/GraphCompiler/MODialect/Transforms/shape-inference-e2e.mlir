@@ -341,3 +341,25 @@ mo.graph @binary_op_no_assert(
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[D0]], [[D1]]], f32>
   mo.output %res : !mo.tensor<[?, ?], f32>
 }
+
+
+// CHECK-LABEL: mo.graph @concat_negative_ones() -> !mo.tensor<[2], si64> {
+mo.graph @concat_negative_ones() -> !mo.tensor<[2], si64> {
+  %negOne = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %axis = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
+  // CHECK: %[[RES:.*]] = mo.concat[%{{.*}} : !mo.tensor<[], si64>] (%[[NEGONE:.*]], %[[NEGONE]]) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
+  %out = mo.concat[%axis : !mo.tensor<[], si64>] (%negOne, %negOne) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[2], si64>
+  mo.output %out : !mo.tensor<[2], si64>
+}
+
+// CHECK-LABEL: mo.graph @concat_negative_two() -> !mo.tensor<[2], si64> {
+mo.graph @concat_negative_two() -> !mo.tensor<[2], si64> {
+  %zero = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %negTwo = mo.constant {value = #M.dense_array<-2> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %axis = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
+  // CHECK: %[[RES:.*]] = mo.concat[%{{.*}} : !mo.tensor<[], si64>] (%{{.*}}, %{{.*}}) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
+  %out = mo.concat[%axis : !mo.tensor<[], si64>] (%negTwo, %zero) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[2], si64>
+  mo.output %out : !mo.tensor<[2], si64>
+}
