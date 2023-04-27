@@ -744,12 +744,17 @@ OpFoldResult GreaterEqualOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
+  // Cast to the same type is just identity.
+  TensorType resTy = getResult().getType();
+  TensorType inTy = getInput().getType();
+  if (inTy == resTy)
+    return getInput();
+
   // TODO(#10811): support other types and do this using a MOJO kernel?
   Attribute inputAttr = adaptor.getInput();
   if (!inputAttr)
     return {};
 
-  TensorType resTy = getResult().getType();
   auto rankedResTy =
       RankedTensorType::get(resTy.getIntDims(), resTy.getElementType());
   if (auto intElemsAttr = dyn_cast_or_null<IntArrayElementsAttr>(inputAttr)) {

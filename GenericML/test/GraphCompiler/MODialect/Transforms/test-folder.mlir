@@ -46,3 +46,11 @@ mo.graph @fold_num_splits_1(%arg0 : !mo.tensor<[100, ?, 50], f32>) -> (!mo.tenso
     // CHECK-NEXT: mo.output %[[ARG0]]
     mo.output %o1 : !mo.tensor<[100, ?, 50], f32>
 }
+
+mo.graph @fold_cast(%arg0 : !mo.tensor<[100, ?, 50], f32>) -> (!mo.tensor<[100, ?, 50], f32>) {
+    %output = mo.cast(%arg0) : (!mo.tensor<[100, ?, 50], f32>) -> !mo.tensor<[100, ?, 50],f32>
+    // CHECK-LABEL: mo.graph @fold_cast
+    // CHECK: (%[[ARG0:.*]]: !mo.tensor<[100, ?, 50], f32>)
+    // CHECK-NEXT: mo.output %[[ARG0]]
+    mo.output %output : !mo.tensor<[100, ?, 50], f32>
+}
