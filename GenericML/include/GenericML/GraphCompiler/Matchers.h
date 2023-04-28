@@ -102,6 +102,7 @@ struct MOScalarConstantMatcher {
 
     std::optional<SmallVector<T>> maybeInt =
         M::MO::tryGetConstantOfRank<T>(tensorVal, 0);
+    // TODO: Make this approximate for floating point numbers?
     if (maybeInt.has_value())
       return maybeInt.value().front() == targetValue;
 

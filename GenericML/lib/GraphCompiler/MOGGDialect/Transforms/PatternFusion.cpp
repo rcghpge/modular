@@ -201,8 +201,9 @@ struct FullyConnectedPattern : public RewritePattern {
 
     Value input, weight, bias;
     Operation *matmul = nullptr, *add = nullptr, *reshape = nullptr,
-              *transpose = nullptr, *gelu = nullptr, *relu = nullptr,
-              *tanh = nullptr, *sigmoid = nullptr;
+              *transpose = nullptr, *gelu_approx_sigmoid = nullptr,
+              *gelu = nullptr, *relu = nullptr, *tanh = nullptr,
+              *sigmoid = nullptr;
     auto weightP = m_MOMatrix(m_Any(&weight));
     auto matmulP = m_Op<MO::MatmulOp>(
         &matmul, m_MOMatrix(m_Any(&input)),
@@ -216,14 +217,20 @@ struct FullyConnectedPattern : public RewritePattern {
                    m_Op<MO::Static::ReshapeOp>(&reshape, broadcastP)),
         m_Op<MO::Static::BroadcastToOp>(
             m_Ranked(1, m_Typed<M::MO::TensorType>(m_Any(&bias)))));
-
+    auto approxGeluP = m_BinaryCommutativeOp<MO::MulOp>(
+        &gelu_approx_sigmoid, bias_add,
+        m_Op<MO::SigmoidOp>(m_BinaryCommutativeOp<MO::MulOp>(
+            bias_add,
+            m_Op<MO::Static::BroadcastToOp>(m_ScalarConstant(1.702f)))));
+    auto geluP = m_Op<MO::GeluOp>(&gelu, bias_add);
+    auto reluP = m_Op<MO::ReluOp>(&relu, bias_add);
+    auto tanhP = m_Op<MO::TanhOp>(&tanh, bias_add);
+    auto sigmoidP = m_Op<MO::SigmoidOp>(&sigmoid, bias_add);
     auto fully_connected = m_Optional(
-        m_Op<MO::GeluOp>(&gelu, bias_add),
-        m_Optional(
-            m_Op<MO::ReluOp>(&relu, bias_add),
-            m_Optional(m_Op<MO::TanhOp>(&tanh, bias_add),
-                       m_Optional(m_Op<MO::SigmoidOp>(&sigmoid, bias_add),
-                                  bias_add))));
+        approxGeluP,
+        m_Optional(geluP,
+                   m_Optional(reluP, m_Optional(tanhP, m_Optional(sigmoidP,
+                                                                  bias_add)))));
     // TODO: Make the Optional Matcher work with Operation* directly
     if (op->getNumResults() > 0 && !fully_connected.match(op->getResult(0)))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
@@ -233,7 +240,7 @@ struct FullyConnectedPattern : public RewritePattern {
 
     Value fc;
     if (!isa_and_nonnull<MO::ConstantOp>(weight.getDefiningOp())) {
-      if (gelu || relu || tanh || sigmoid)
+      if (gelu_approx_sigmoid || gelu || relu || tanh || sigmoid)
         return rewriter.notifyMatchFailure(
             op, "haven't implemented activation fusions with out packb");
       fc = rewriter
@@ -272,7 +279,9 @@ struct FullyConnectedPattern : public RewritePattern {
               .getResult(0);
 
       std::string kernel;
-      if (gelu)
+      if (gelu_approx_sigmoid)
+        kernel = "mop.kernels.fully_connected.packb.gelu_approx_sigmoid";
+      else if (gelu)
         kernel = "mop.kernels.fully_connected.packb.gelu";
       else if (sigmoid)
         kernel = "mop.kernels.fully_connected.packb.sigmoid";
