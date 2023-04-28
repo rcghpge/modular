@@ -125,11 +125,10 @@ LogicalResult InvokeOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
 //===----------------------------------------------------------------------===//
 
 ParseResult IfOp::parse(OpAsmParser &parser, OperationState &result) {
+  // Parse the 'cond' operand and signature.
   SmallVector<OpAsmParser::Argument> operandInfo;
-  llvm::SMLoc operandLoc;
   OpAsmParser::UnresolvedOperand condOperand;
   if (parser.parseOperand(condOperand) ||
-      parser.getCurrentLocation(&operandLoc) ||
       parser.resolveOperand(condOperand,
                             IntegerType::get(result.getContext(), 1),
                             result.operands) ||
@@ -138,12 +137,13 @@ ParseResult IfOp::parse(OpAsmParser &parser, OperationState &result) {
       parser.parseOptionalAttrDictWithKeyword(result.attributes))
     return failure();
 
-  // Parse the then region.
+  // Parse the 'then' region, allowing shadowing of the op argument names.
   Region *thenRegion = result.addRegion();
   if (parser.parseRegion(*thenRegion, operandInfo,
                          /*enableNameShadowing=*/true))
     return failure();
 
+  // Parse the 'else' region, again with shadowing.
   Region *elseRegion = result.addRegion();
   if (parser.parseKeyword("else") ||
       parser.parseRegion(*elseRegion, operandInfo,
@@ -163,7 +163,7 @@ void IfOp::print(OpAsmPrinter &p) {
   p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
 
   // Reuse the argument names provided to the op for the basic block arg names
-  // within the region.
+  // within the regions.
   p.shadowRegionArgs(getThenRegion(), getInputs());
   p.printRegion(getThenRegion(), /*printEntryBlockArgs=*/false);
   p << " else ";
@@ -186,6 +186,7 @@ LogicalResult IfOp::verify() {
         getInputs()[i].getType() != elseBlock->getArgument(i).getType())
       return emitOpError("operand/argument type mismatch");
 
+  // Verify the 'then' and 'else' block return types.
   auto thenOutput = cast<MEF::OutputOp>(thenBlock->getTerminator());
   if (failed(thenOutput.checkArgumentTypes(getResultTypes())))
     return failure();
@@ -195,15 +196,88 @@ LogicalResult IfOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// WhileOp
+//===----------------------------------------------------------------------===//
+
+ParseResult WhileOp::parse(OpAsmParser &parser, OperationState &result) {
+  SmallVector<OpAsmParser::Argument> operandInfo;
+  // Parse the signature.
+  if (parseParenOperandList(parser, result, operandInfo) ||
+      parser.parseOptionalAttrDictWithKeyword(result.attributes))
+    return failure();
+
+  // The op's return types match those of the signature arguments.
+  result.types.reserve(result.operands.size());
+  for (auto operand : result.operands)
+    result.types.push_back(operand.getType());
+
+  // Parse the 'cond' region, allowing shadowing of the op argument names.
+  Region *condRegion = result.addRegion();
+  if (parser.parseRegion(*condRegion, operandInfo,
+                         /*enableNameShadowing=*/true))
+    return failure();
+
+  // Parse the 'body' region, again allowing shadowing.
+  Region *bodyRegion = result.addRegion();
+  if (parser.parseKeyword("do") ||
+      parser.parseRegion(*bodyRegion, operandInfo,
+                         /*enableNameShadowing=*/true))
+    return failure();
+
+  return success();
+}
+
+void WhileOp::print(OpAsmPrinter &p) {
+  p << " (";
+  llvm::interleaveComma(getInputs(), p,
+                        [&](Value arg) { p << arg << ": " << arg.getType(); });
+  p << ") ";
+  p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
+
+  // Reuse the argument names provided to the op for the basic block arg names
+  // within the regions.
+  p.shadowRegionArgs(getCondRegion(), getInputs());
+  p.printRegion(getCondRegion(), /*printEntryBlockArgs=*/false);
+  p << " do ";
+  p.shadowRegionArgs(getBodyRegion(), getInputs());
+  p.printRegion(getBodyRegion(), /*printEntryBlockArgs=*/false);
+}
+
+LogicalResult WhileOp::verify() {
+  // Verify that the operands match the bb arguments.  The ODS verifier already
+  // checked the first argument to be present and i1.
+  auto *condBlock = &getCondRegion().front();
+  if (getInputs().size() != condBlock->getNumArguments())
+    return emitOpError("incorrect number of arguments to 'cond' block");
+  auto *bodyBlock = &getBodyRegion().front();
+  if (getInputs().size() != bodyBlock->getNumArguments())
+    return emitOpError("incorrect number of arguments to 'body' block");
+
+  for (unsigned i = 0, e = getNumOperands() - 1; i != e; ++i)
+    if (getInputs()[i].getType() != condBlock->getArgument(i).getType() ||
+        getInputs()[i].getType() != bodyBlock->getArgument(i).getType())
+      return emitOpError("operand/argument type mismatch");
+
+  // Verify the 'cond' return type is an i1.
+  auto condOutput = cast<MEF::OutputOp>(condBlock->getTerminator());
+  if (failed(
+          condOutput.checkArgumentTypes({IntegerType::get(getContext(), 1)})))
+    return failure();
+
+  // Verify the 'body' return types.
+  auto bodyOutput = cast<MEF::OutputOp>(bodyBlock->getTerminator());
+  return bodyOutput.checkArgumentTypes(getResultTypes());
+}
+
+//===----------------------------------------------------------------------===//
 // RepeatI32Op
 //===----------------------------------------------------------------------===//
 
 ParseResult RepeatI32Op::parse(OpAsmParser &parser, OperationState &result) {
+  // Parse the 'tripCount' operand and signature.
   SmallVector<OpAsmParser::Argument> operandInfo;
-  llvm::SMLoc operandLoc;
   OpAsmParser::UnresolvedOperand countOperand;
   if (parser.parseOperand(countOperand) ||
-      parser.getCurrentLocation(&operandLoc) ||
       parser.resolveOperand(
           countOperand,
           IntegerType::get(result.getContext(), 32, IntegerType::Signed),
@@ -212,11 +286,12 @@ ParseResult RepeatI32Op::parse(OpAsmParser &parser, OperationState &result) {
       parser.parseOptionalAttrDictWithKeyword(result.attributes))
     return failure();
 
-  // The result types are the same as the operands (ignoring count).
-  for (Value operand : llvm::drop_begin(result.operands))
+  // The result types are the same as the operands (ignoring 'tripCount').
+  result.types.reserve(result.operands.size() - 1);
+  for (auto operand : llvm::drop_begin(result.operands))
     result.types.push_back(operand.getType());
 
-  // Parse the body region.
+  // Parse the 'body' region, allowing shadowing of the op argument names.
   Region *body = result.addRegion();
   return parser.parseRegion(*body, operandInfo,
                             /*enableNameShadowing=*/true);
@@ -231,8 +306,8 @@ void RepeatI32Op::print(OpAsmPrinter &p) {
 
   // Reuse the argument names provided to the op for the basic block arg names
   // within the region.
-  p.shadowRegionArgs(getRegion(), getInputs());
-  p.printRegion(getRegion(), /*printEntryBlockArgs=*/false);
+  p.shadowRegionArgs(getBodyRegion(), getInputs());
+  p.printRegion(getBodyRegion(), /*printEntryBlockArgs=*/false);
 }
 
 LogicalResult RepeatI32Op::verify() {
@@ -244,7 +319,8 @@ LogicalResult RepeatI32Op::verify() {
     if (getInputs()[i].getType() != getResult(i).getType())
       return emitOpError("operand/result type mismatch");
 
-  auto output = cast<MEF::OutputOp>(getBody()->getTerminator());
+  auto *bodyBlock = &getBodyRegion().front();
+  auto output = cast<MEF::OutputOp>(bodyBlock->getTerminator());
   return output.checkArgumentTypes(getResultTypes());
 }
 

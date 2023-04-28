@@ -63,21 +63,21 @@ def InvokeOp : GRTOp<"invoke", [DeclareOpInterfaceMethods<SymbolUserOpInterface>
 def IfOp : GRTOp<"if",
           [IsolatedFromAbove, SingleBlockImplicitTerminator<"MEF::OutputOp">,
            NonStrictOp, RegionKindInterface, HasOnlyGraphRegion]> {
-  let summary = "if operation";
+  let summary = "if control flow operation";
   let description = [{
-    The "grt.if" operation takes an i1 condition, a 'then' body and an 'else'
-    body.  If the condition is true, the 'then' body is run and the "grt.if"
-    operation returns the results of that region, otherwise the "else" body is
-    run and its values are returned.
+    The "grt.if" operation takes an i1 condition, a 'then' block and an 'else'
+    block.  If the condition is true, the 'then' block is executed and the
+    "grt.if" operation returns the results of that block. Otherwise the 'else'
+    block is executed and its values are returned.
 
-    The body regions must have the same signature, but they may take an
-    arbitrary number of arguments and return values with the same types as the
-    op return types, using a 'mef.output' operation at the end of the
-    region.  The initial values are specified as operands of "mef.if" (along
-    with the condition).
+    The two blocks must have the same signature. Both take an arbitrary number
+    of arguments, as given in the "grt.if" operation. Both must return values
+    with the same types as the "grt.if" op results, using a "mef.output"
+    operation at the end of each block.
 
-    This operation is safe to use as a 'nonstrict' op, which dispatches its body
-    whenever the condition and any dependent arguments are resolved.
+    This operation is 'nonstrict'. When the condition is ready the 'then' or
+    'else' blocks will be merged into the overall dataflow graph without
+    waiting for any additional arguments to become ready.
 
     Example:
 
@@ -102,40 +102,94 @@ def IfOp : GRTOp<"if",
 }
 
 //===----------------------------------------------------------------------===//
+// WhileOp
+//===----------------------------------------------------------------------===//
+
+def WhileOp : GRTOp<"while",
+          [IsolatedFromAbove, SingleBlockImplicitTerminator<"MEF::OutputOp">,
+           NonStrictOp, RegionKindInterface, HasOnlyGraphRegion]> {
+  let summary = "while control flow operation";
+  let description = [{
+    The "grt.while" operation takes a 'cond' and 'body' block. While the
+    'cond' block evaluates to the i1 true condition, the 'body' block is
+    executed.
+
+    Both the 'cond' and 'body' blocks accept the same arguments, as given
+    in the "grt.while" operation signature. The 'cond' block must return an
+    i1 result, using a "mef.output" operation. The 'body' block must return
+    results with the same types matching the "grt.while" op arguments, again
+    using the "mef.output" operation. The result of the "grt.while" op is the
+    result of the last executed 'body' body, or the "grt.while" op arguments
+    directly if 'cond' never evaluated to true.
+
+    This operation is 'nonstrict'. The 'cond' block is merged into the overall
+    dataflow graph without waiting for any arguments to become ready. When it
+    yields a true condition, the 'body' block is similarly merged into the
+    overall dataflow graph, followed by the 'cond' block to evaluate the
+    condition again.
+
+    Example:
+
+    ```mlir
+      %res1, %res2 = grt.while (%x: i32, %y: f32) {
+        %v1 = "compare"(%x, %y) : (i32, f32) -> i1
+        mef.output %v1 : i1
+      } do {
+        %v2, %v3 = "use"(%x, %y) : (i32, f32) -> (i32, f32)
+        mef.output %v2, %v3 : (i32, f32)
+      }
+    ```
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$inputs);
+  let results = (outs Variadic<AnyType>:$results);
+  let regions = (region SizedRegion<1>:$condRegion,
+                        SizedRegion<1>:$bodyRegion);
+
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // RepeatI32Op
 //===----------------------------------------------------------------------===//
 
 def RepeatI32Op : GRTOp<"repeat.i32",
          [IsolatedFromAbove, SingleBlockImplicitTerminator<"MEF::OutputOp">,
-          NonStrictOp]> {
+          NonStrictOp, RegionKindInterface, HasOnlyGraphRegion]> {
   let summary = "Repeat a body N times";
   let description = [{
-    The "grt.repeat.i32" operation is a repeat loop that executes its body N
-    times, where N is a 32-bit value specified by its first operand.  It has one
-    region which represents the loop body.
+    The "grt.repeat.i32" operation is a repeat loop that executes its 'body'
+    block 'tripCount' times, where 'tripCount' is an i32 value specified by the
+    first operand.
 
-    The body region takes an arbitrary number of arguments and must return
-    values with the same types, using a 'mef.output' operation at the end of the
-    region.  The initial values for the loop are specified as operands (along
-    with the trip count), and the types of the loop values are specified with a
-    type list.  The operation returns the results of the final iteration.
+    The 'body' block takes an arbitrary number of arguments, as given in the
+    "grt.repeat.i32" operation signature. The block must return values with the
+    same types, using a "mef.output" operation at the end of the block. The
+    result of the "grt.repeat.i32" op is the result of the last executed 'body'
+    block, or the "grt.repeat.i32" signature arguments directly if 'tripCount'
+    is <= 0.
 
-    This operation is safe to use as a 'nonstrict' op, which dispatches its body
-    whenever dependent arguments are resolved.
+    This operation is 'nonstrict'. Once the 'tripCount' operand is ready and
+    > 0 then the 'body' block is merged into the overall dataflow graph.
+    However, each subsequent execution of the 'body' block is only merged
+    once all results of the previous iteration are ready. (This is a policy
+    decision to avoid unrolling the loop body into a potentially very large
+    dataflow graph.)
 
     Example:
 
     ```mlir
       %res1, %res2 = grt.repeat.i32 %i (%loopval1: si32, %loopval2: f32) {
-        ...
-        mef.output %loopval1, %loopval2 : si32, f32
+        %v1, v2 = "process"(%loopval1, %loopval2) : (si32, f32) -> (s132, f32)
+        mef.output %v1, %v2 : si32, f32
       }
     ```
   }];
 
   let arguments = (ins SI32:$tripCount, Variadic<AnyType>:$inputs);
   let results = (outs Variadic<AnyType>:$results);
-  let regions = (region SizedRegion<1>:$region);
+  let regions = (region SizedRegion<1>:$bodyRegion);
 
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;

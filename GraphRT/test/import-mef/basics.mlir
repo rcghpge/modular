@@ -160,7 +160,7 @@ mef.invokable @opaque_round_trip() {
 
 // CHECK-LABEL: "mef.invokable" ["controlflow_if"]
 // CHECK-NEXT: ^bb0(%[[ARG0:.*]]: !mef.unknown, %[[ARG1:.*]]: !mef.unknown, %[[ARG2:.*]]: !mef.unknown):
-// CHECK-NEXT:   %[[V0:.*]] = mef.opaque "grt.if" nonstrict [](%[[ARG0]], %[[ARG1]], %[[ARG2]]) : ([[ARG2:.*]]mef.unknown, !mef.unknown, !mef.unknown) -> !mef.unknown {
+// CHECK-NEXT:   %[[V0:.*]] = mef.opaque "grt.if" nonstrict [](%[[ARG0]], %[[ARG1]], %[[ARG2]]) : (!mef.unknown, !mef.unknown, !mef.unknown) -> !mef.unknown {
 // CHECK-NEXT:   ^bb0(%[[ARG3:.*]]: !mef.unknown, %[[ARG4:.*]]: !mef.unknown):
 // CHECK-NEXT:     mef.output %[[ARG3]] : !mef.unknown
 // CHECK-NEXT:   }, {
