@@ -194,11 +194,30 @@ struct FullyConnectedPattern : public RewritePattern {
   FullyConnectedPattern(MLIRContext *ctx)
       : RewritePattern(MatchAnyOpTypeTag{}, 3, ctx) {}
 
+  // Return null if we fail to get a rank-1 shape after squeezing `ty`'s shape
+  static MO::TensorType tryGetVectorTyAfterSqueeze(MO::TensorType ty) {
+    if (!ty.hasRank())
+      return {};
+
+    MO::ShapeAttr shapeAttr = ty.getTypedShapeAttr();
+    SmallVector<TypedAttr> dimsAfterSqueeze;
+    for (TypedAttr dim : shapeAttr.getValues()) {
+      auto intAttrDim = dyn_cast<IntegerAttr>(dim);
+      // Squeeze only if we see a static 1
+      if (intAttrDim && intAttrDim.getInt() == 1)
+        continue;
+      dimsAfterSqueeze.push_back(dim);
+    }
+
+    if (dimsAfterSqueeze.size() == 1) {
+      return ty.cloneWith(
+          MO::ShapeAttr::get(dimsAfterSqueeze, shapeAttr.getType()));
+    }
+    return {};
+  }
+
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-    OpBuilder b(op);
-    b.setInsertionPoint(op);
-
     Value input, weight, bias;
     Operation *matmul = nullptr, *add = nullptr, *reshape = nullptr,
               *transpose = nullptr, *gelu_approx_sigmoid = nullptr,
@@ -215,8 +234,7 @@ struct FullyConnectedPattern : public RewritePattern {
         &add,
         m_Optional(broadcastP,
                    m_Op<MO::Static::ReshapeOp>(&reshape, broadcastP)),
-        m_Op<MO::Static::BroadcastToOp>(
-            m_Ranked(1, m_Typed<M::MO::TensorType>(m_Any(&bias)))));
+        m_Op<MO::Static::BroadcastToOp>(m_Typed<MO::TensorType>(m_Any(&bias))));
     auto approxGeluP = m_BinaryCommutativeOp<MO::MulOp>(
         &gelu_approx_sigmoid, bias_add,
         m_Op<MO::SigmoidOp>(m_BinaryCommutativeOp<MO::MulOp>(
@@ -238,13 +256,25 @@ struct FullyConnectedPattern : public RewritePattern {
     if (!input || !weight || !bias)
       return rewriter.notifyMatchFailure(op, "null input value");
 
+    // NOTE we need this because sometimes the bias comes in the form [1, N],
+    // so we must match such cases.
+    MO::TensorType vecBiasTy =
+        tryGetVectorTyAfterSqueeze(cast<MO::TensorValue>(bias).getType());
+    if (!vecBiasTy)
+      return rewriter.notifyMatchFailure(op, "bias is not a vector");
+
+    // NOTE The FC kernel requires bias to be rank-1, so we reshape if needed.
+    Location loc = op->getLoc();
+    if (bias.getType() != vecBiasTy)
+      bias = rewriter.create<MO::Static::ReshapeOp>(loc, vecBiasTy, bias);
+
     Value fc;
     if (!isa_and_nonnull<MO::ConstantOp>(weight.getDefiningOp())) {
       if (gelu_approx_sigmoid || gelu || relu || tanh || sigmoid)
         return rewriter.notifyMatchFailure(
             op, "haven't implemented activation fusions with out packb");
       fc = rewriter
-               .create<MOGG::ExtOp>(op->getLoc(),
+               .create<MOGG::ExtOp>(loc,
                                     reshape ? matmul->getResultTypes()[0]
                                             : add->getResultTypes()[0],
                                     "mop.kernels.fully_connected",
@@ -272,7 +302,7 @@ struct FullyConnectedPattern : public RewritePattern {
       Value packedWeights =
           rewriter
               .create<MOGG::ExtOp>(
-                  op->getLoc(),
+                  loc,
                   /*outputTypes=*/packedWeightsType,
                   /*op_name=*/"mop.kernels.pack_matmul_b",
                   /*inputOperands=*/SmallVector<Value>{weights})
@@ -294,7 +324,7 @@ struct FullyConnectedPattern : public RewritePattern {
 
       fc = rewriter
                .create<MOGG::ExtOp>(
-                   op->getLoc(),
+                   loc,
                    reshape ? matmul->getResultTypes()[0]
                            : add->getResultTypes()[0],
                    kernel, SmallVector<Value>{input, packedWeights, bias},
