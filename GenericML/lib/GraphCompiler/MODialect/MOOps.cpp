@@ -63,6 +63,31 @@ M::MO::tryGetConstantIntVector(TensorValue val) {
   return std::nullopt;
 }
 
+template <typename Adaptor>
+OpFoldResult foldElemwiseOp(MO::TensorType resTy, Adaptor adaptor,
+                            std::function<int64_t(int64_t, int64_t)> lambda) {
+  auto xAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInputX());
+  auto yAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInputY());
+  if (!xAttr || !yAttr)
+    return {};
+
+  DType resDType = resTy.getDtype();
+  auto maybeX = tryGetConstantBlob<int64_t>(xAttr, resDType);
+  auto maybeY = tryGetConstantBlob<int64_t>(yAttr, resDType);
+  if (!maybeX.has_value() || !maybeY.has_value())
+    return {};
+
+  ArrayRef<int64_t> xArr = *maybeX;
+  ArrayRef<int64_t> yArr = *maybeY;
+  SmallVector<APInt> res(xArr.size());
+  for (size_t idx = 0, e = xArr.size(); idx < e; idx++)
+    res[idx] = APInt(64, lambda(xArr[idx], yArr[idx]), /*isSigned=*/true);
+
+  auto rankedResTy =
+      RankedTensorType::get(resTy.getIntDims(), resTy.getElementType());
+  return IntArrayElementsAttr::get(rankedResTy, res);
+}
+
 //===----------------------------------------------------------------------===//
 // MO_AssertOp
 //===----------------------------------------------------------------------===//
@@ -281,33 +306,17 @@ OpFoldResult BroadcastShapeOp::fold(FoldAdaptor adaptor) {
 }
 
 //===----------------------------------------------------------------------===//
-// MO_AddOp support
+// Elementwise folder support
 //===----------------------------------------------------------------------===//
 
 OpFoldResult AddOp::fold(FoldAdaptor adaptor) {
-  // TODO(#10811): support other types and do this using a MOJO kernel?
+  return foldElemwiseOp(getType(), adaptor,
+                        [](int64_t x, int64_t y) { return x + y; });
+}
 
-  auto xAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInputX());
-  auto yAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInputY());
-  if (!xAttr || !yAttr)
-    return {};
-
-  TensorType resTy = getType();
-  DType resDType = resTy.getDtype();
-  auto maybeX = tryGetConstantBlob<int64_t>(xAttr, resDType);
-  auto maybeY = tryGetConstantBlob<int64_t>(yAttr, resDType);
-  if (!maybeX.has_value() || !maybeY.has_value())
-    return {};
-
-  ArrayRef<int64_t> xArr = *maybeX;
-  ArrayRef<int64_t> yArr = *maybeY;
-  SmallVector<APInt> res(xArr.size());
-  for (size_t idx = 0, e = xArr.size(); idx < e; idx++)
-    res[idx] = APInt(64, xArr[idx] + yArr[idx], /*isSigned=*/true);
-
-  auto rankedResTy =
-      RankedTensorType::get(resTy.getIntDims(), resTy.getElementType());
-  return IntArrayElementsAttr::get(rankedResTy, res);
+OpFoldResult DivOp::fold(FoldAdaptor adaptor) {
+  return foldElemwiseOp(getType(), adaptor,
+                        [](int64_t x, int64_t y) { return x / y; });
 }
 
 //===----------------------------------------------------------------------===//

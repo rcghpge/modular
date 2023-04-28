@@ -54,3 +54,14 @@ mo.graph @fold_cast(%arg0 : !mo.tensor<[100, ?, 50], f32>) -> (!mo.tensor<[100, 
     // CHECK-NEXT: mo.output %[[ARG0]]
     mo.output %output : !mo.tensor<[100, ?, 50], f32>
 }
+
+mo.graph @fold_div() -> (!mo.tensor<[7], si32>) {
+    %0 = "mo.constant"() {value = #M.dense_array<1, -5, 10, 3, 1, 250, -343> : tensor<7xsi32>} : () -> !mo.tensor<[7], si32>
+    %1 = "mo.constant"() {value = #M.dense_array<1, 5, -2, 2, 3, 5, -343> : tensor<7xsi32>} : () -> !mo.tensor<[7], si32>
+
+    %output = mo.div(%0, %1) : !mo.tensor<[7], si32>
+    // CHECK-LABEL: mo.graph @fold_div
+    // CHECK-NEXT: %[[CST:.*]] = mo.constant {value = #M.dense_array<1, -1, -5, 1, 0, 50, 1> : tensor<7xsi32>}
+    // CHECK-NEXT: mo.output %[[CST]]
+    mo.output %output : !mo.tensor<[7], si32>
+}
