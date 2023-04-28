@@ -757,8 +757,28 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   SmallVector<LoweredTensor> outputBufferAndSpec = errOr.takeValue();
 
   size_t numOutputBuffers = outputBufferAndSpec.size();
-  SmallVector<Value> operands =
-      helper.getOperands(inputTensors, outputBufferAndSpec);
+  size_t numBuffers = inputTensors.size() + outputBufferAndSpec.size();
+
+  // We only take the input buffers, we don't need the specs as we just read the
+  // used parameters directly.
+  SmallVector<Value> operands;
+  operands.reserve(numBuffers);
+
+  // Collect the buffers from the input/output tensors.
+  for (LoweredTensor &tensor : inputTensors)
+    operands.push_back(tensor.buffer);
+  for (LoweredTensor &tensor : outputBufferAndSpec)
+    operands.push_back(tensor.buffer);
+
+  // Add the used kernel parameters.
+  ArrayAttr usedParams = op.getUsedParamsAttr();
+  for (auto param : usedParams.getAsRange<KGEN::ParamDeclRefAttr>()) {
+    auto symbolicDimOr = loweringState.lowerExpression(op->getLoc(), param);
+    if (symbolicDimOr.isError())
+      return failure();
+
+    operands.push_back(symbolicDimOr.takeValue());
+  }
 
   // Create a call to a custom invoke function we can put in the MEF.
   mlir::OperationState opState{op->getLoc(), "mop.kgen.execute_kernel"};
@@ -770,6 +790,12 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   opState.addAttribute("jitCtxSlot",
                        loweringState.getExecuteOpBuilder().getUI32IntegerAttr(
                            loweringState.getJitCtxSlot()));
+
+  // Tell the primitive how many of the arguments are buffers so it knows when
+  // to stop reading.
+  opState.addAttribute(
+      "numBufferArgs",
+      loweringState.getExecuteOpBuilder().getUI32IntegerAttr(numBuffers));
 
   // The operation's execution will be gated by a chain. As for output
   // allocation above, at this stage use the 'execute' block's chain.

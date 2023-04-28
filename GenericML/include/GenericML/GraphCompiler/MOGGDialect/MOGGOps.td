@@ -419,7 +419,8 @@ def MOGG_ExecuteCompiledOp : MOGG_LowerableOp<"execute_kernel"> {
   let description = [{}];
 
   let arguments = (ins Variadic<MO_Tensor>:$operands,
-                          StrAttr:$kernelName);
+                          StrAttr:$kernelName,
+                          ArrayAttr:$usedParams);
   let results = (outs Variadic<MO_Tensor>:$results);
 }
 

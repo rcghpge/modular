@@ -156,11 +156,29 @@ std::string mangleBlock(mlir::Block &block,
   return name;
 }
 
+// We lower static dimensions as the dimension directly, obviously, but symbolic
+// dimensions we track by their index in the loaded dimensions i.e <D1314,
+// D2424> will become <P0, P1>. This is so that kernels which use the parameters
+// in the same way, i.e that the parameters maintain the same internal
+// relationship, will match and we avoid compiling a new novel kernel.
+void addTensorDimsToName(MO::TensorType tensor, std::string &name,
+                         DenseMap<KGEN::ParamDeclRefAttr, size_t> &params) {
+  for (auto dim : tensor.getTypedShapeAttr().getValues()) {
+    if (auto asInt = dyn_cast<IntegerAttr>(dim))
+      name += std::to_string(asInt.getInt());
+    else if (auto asSymbolic = dyn_cast<KGEN::ParamDeclRefAttr>(dim))
+      name += "P" + std::to_string(params[asSymbolic]);
+    name += "x";
+  }
+}
+
 // We create a mangled name which exactly matches the operation. The number of
 // inputs, the contents of the block, and which are returned. It needs to be
 // this verbose to ensure we don't recompile for identical blocks but also allow
 // for blocks of the same operations with different returns to compile legally.
-std::string createMangledName(MOGG::KernelOp op) {
+std::string
+createMangledName(MOGG::KernelOp op,
+                  DenseMap<KGEN::ParamDeclRefAttr, size_t> &params) {
   std::string name = "__gen__ins_";
 
   // Track where each value is in the block order. This is to mangle the returns
@@ -179,10 +197,7 @@ std::string createMangledName(MOGG::KernelOp op) {
 
     // Mangle the type into the name.
     auto tensor = cast<MO::TensorType>(v.getType());
-    for (int64_t dim : tensor.getIntDims()) {
-      name += ShapedType::isDynamic(dim) ? "?" : std::to_string(dim);
-      name += "x";
-    }
+    addTensorDimsToName(tensor, name, params);
     name += getIDForType(tensor) + "_";
   }
 
@@ -190,16 +205,66 @@ std::string createMangledName(MOGG::KernelOp op) {
   name += "_out_ty_";
   for (Type res : op->getResultTypes()) {
     auto tensor = cast<MO::TensorType>(res);
-    for (int64_t dim : tensor.getIntDims()) {
-      name += ShapedType::isDynamic(dim) ? "?" : std::to_string(dim);
-      name += "x";
-    }
+    addTensorDimsToName(tensor, name, params);
     name += getIDForType(tensor) + "_";
   }
   name += "_";
 
   name += mangleBlock(op.getBody().front(), valueToPositionInBlock);
   return name;
+}
+
+SmallVector<KGEN::ParamDeclRefAttr> getUsedParameters(MOGG::KernelOp kernel) {
+  DenseSet<KGEN::ParamDeclRefAttr> seenParams;
+  SmallVector<KGEN::ParamDeclRefAttr> usedParameters;
+
+  // Track all unique parameters from a given tensor that we haven't seen
+  // already.
+  auto addParamsFromTensor = [&](Type t) {
+    MO::TensorType asTensor = dyn_cast<MO::TensorType>(t);
+    if (!asTensor)
+      return;
+
+    for (auto dim : asTensor.getTypedShapeAttr().getValues()) {
+      if (auto param = dyn_cast<KGEN::ParamDeclRefAttr>(dim)) {
+        if (seenParams.contains(param))
+          continue;
+
+        seenParams.insert(param);
+        usedParameters.push_back(param);
+      }
+    }
+  };
+
+  // Get all parameters used by an operation.
+  auto addParamsFromOp = [&](Operation *op) {
+    for (Type t : op->getResultTypes())
+      addParamsFromTensor(t);
+
+    for (Type t : op->getOperandTypes())
+      addParamsFromTensor(t);
+  };
+
+  // Start with the inputs / outputs on the kernel. Generally this would be all
+  // parameters.
+  addParamsFromOp(kernel);
+
+  // However rarely we could create a kernel which internally uses a parameter
+  // which isn't known from the inputs. I.E
+
+  // clang-format off
+  // %0 = broadcast(%input) : tensor<[N]> -> tensor<N, J> 
+  // %1 = broadcast(%0) : tensor<[N, J]> -> tensor<N, B> 
+  // %3 = broadcast(%1) : tensor<[N, B, K]> -> tensor<N, B, K, M>
+  // clang-format on
+
+  // We would see `N` on the input and `B` / `K` / `M` on the outputs but the
+  // intermediate `J` is not on either.
+
+  // To capture the above legal composition we walk the kernel ops as well.
+  kernel.walk(addParamsFromOp);
+
+  return usedParameters;
 }
 
 // Convert all possible operations directly to the avaliable operation.
@@ -279,8 +344,29 @@ struct JitCompileKernels
     // to the kernels in the KGEN stub.
     for (MOGG::KernelOp op :
          llvm::make_early_inc_range(graph.getOps<MOGG::KernelOp>())) {
+
+      // We collect all the parameters used by this operation and track them on
+      // the kernel.
+      SmallVector<KGEN::ParamDeclRefAttr> usedParameters =
+          getUsedParameters(op);
+
+      // Helper so we can make arrays from it.
+      SmallVector<Attribute> usedParamsAsAttr;
+      usedParamsAsAttr.reserve(usedParameters.size());
+
+      // Parameters will be passed in as an array so we need to relate to them
+      // by their index in that array (which is the same order as the above
+      // vector).
+      DenseMap<KGEN::ParamDeclRefAttr, size_t> paramToIndex;
+
+      size_t paramIndex = 0;
+      for (auto param : usedParameters) {
+        paramToIndex[param] = paramIndex++;
+        usedParamsAsAttr.push_back(param);
+      }
+
       // Create a unique name for the kernel.
-      std::string stubKernelName = createMangledName(op);
+      std::string stubKernelName = createMangledName(op, paramToIndex);
 
       // Don't duplicate KGEN kernels for the same call.
       auto itr = jittedKernels.find(stubKernelName);
@@ -291,22 +377,25 @@ struct JitCompileKernels
         // be different from the currently processed kernel's result type, if
         // they are parameterized.
         mlir::IRRewriter rewriter{OpBuilder(op)};
-        rewriter.replaceOpWithNewOp<MOGG::ExecuteCompiledOp>(
+        auto newOp = rewriter.replaceOpWithNewOp<MOGG::ExecuteCompiledOp>(
             op, op->getResultTypes(), op->getOperands(),
             cachedExeOp->getAttrDictionary().getValue());
+
+        // Add the new used parameters which may be different than before.
+        newOp.setUsedParamsAttr(rewriter.getArrayAttr(usedParamsAsAttr));
 
         continue;
       }
 
       // Lower the basic stub function.
-      RETURN_ERROR(builder.startLowering(op, stubKernelName));
+      RETURN_ERROR(builder.startLowering(op, stubKernelName, usedParameters));
 
       // Lower the operation using a vectorized map over an elementwise lambda.
       RETURN_ERROR(builder.lowerToElementwiseLambda(op));
 
       // Replace the original kernel with a call to the compiled jit code.
       MOGG::ExecuteCompiledOp jitExecute =
-          builder.createExecuteOperation(stubKernelName);
+          builder.createExecuteOperation(stubKernelName, usedParamsAsAttr);
       op->replaceAllUsesWith(jitExecute.getResults());
       jittedKernels.insert({stubKernelName, jitExecute});
       op->erase();
