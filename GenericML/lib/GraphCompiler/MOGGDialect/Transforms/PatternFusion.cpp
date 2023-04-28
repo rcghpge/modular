@@ -625,6 +625,54 @@ struct LayerNormPattern : public OpRewritePattern<MO::AddOp> {
   }
 };
 
+struct MultiHeadAttentionPattern : public OpRewritePattern<MO::BatchMatmulOp> {
+  MultiHeadAttentionPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
+
+  LogicalResult matchAndRewrite(MO::BatchMatmulOp op,
+                                PatternRewriter &rewriter) const override {
+    //   bmm1 = mo.batch_matmul(query, keyT)
+    //   softmax = mo.softmax(bmm1)
+    //   broadcast = mo.static.broadcast_to(%softmax)  // optional
+    //   res = mo.batch_matmul(broadcast, value)
+    //
+    // ==>
+    //
+    //   res = "mop.kernels.multi_head_attention"(query, keyT, value)
+    Value query, keyT, value;
+    Operation *bmm1Op = nullptr, *softmaxOp = nullptr, *broadcastOp = nullptr;
+    auto queryP = m_Any(&query);
+    auto keyTP = m_Any(&keyT);
+    auto bmm1P = m_Op<MO::BatchMatmulOp>(&bmm1Op, queryP, keyTP);
+    auto softmaxP = m_Op<MO::SoftmaxOp>(&softmaxOp, bmm1P);
+    // TODO remove this once shape inference can eliminate these broadcasts in
+    // top models.
+    auto broadcastP = m_Optional(
+        softmaxP, m_Op<MO::Static::BroadcastToOp>(&broadcastOp, softmaxP));
+    auto valueP = m_Any(&value);
+    auto bmm2P = m_Op<MO::BatchMatmulOp>(broadcastP, valueP);
+
+    if (!bmm2P.match(op))
+      return rewriter.notifyMatchFailure(op, "failed to match pattern");
+
+    // Don't fuse if intermediate results are used elsewhere
+    if (!bmm1Op->hasOneUse())
+      return rewriter.notifyMatchFailure(op, "first bmm has multiple users");
+
+    if (!softmaxOp->hasOneUse())
+      return rewriter.notifyMatchFailure(op, "softmax has multiple users");
+
+    if (broadcastOp && !broadcastOp->hasOneUse())
+      return rewriter.notifyMatchFailure(op, "broadcast has multiple users");
+
+    // Replace with fused kernel call
+    rewriter.replaceOpWithNewOp<MOGG::ExtOp>(
+        op, op.getResult().getType(), "mop.kernels.multi_head_attention",
+        SmallVector<Value>{query, keyT, value});
+
+    return mlir::success();
+  }
+};
+
 } // namespace
 
 void PatternFusionPass::runOnOperation() {
@@ -635,8 +683,8 @@ void PatternFusionPass::runOnOperation() {
                FullyConnectedPattern, SinkTransposeThroughUnaryOpPattern,
                SinkTransposeThroughBinaryOpPattern,
                SinkTransposeThroughStaticBroadcastToOpPattern,
-               ConcatZeroAxisPattern, SplitZeroAxisPattern, LayerNormPattern>(
-      ctx);
+               ConcatZeroAxisPattern, SplitZeroAxisPattern, LayerNormPattern,
+               MultiHeadAttentionPattern>(ctx);
   if (useMatmulPacking.getValue())
     patterns.add<MatmulConstBPattern>(ctx);
   MO::TransposeOp::getCanonicalizationPatterns(patterns, ctx);
