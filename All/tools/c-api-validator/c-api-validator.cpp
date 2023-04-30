@@ -90,7 +90,7 @@ void log(bool threaded, ArrayRef<float> buffer) {
   if (threaded)
     os << llvm::get_threadid() << ": ";
   os << "Output: [";
-  const size_t extract = std::min(2ul, buffer.size());
+  const size_t extract = std::min(static_cast<size_t>(2ul), buffer.size());
   llvm::interleaveComma(buffer.slice(0, extract), os);
   os << " ... ";
   llvm::interleaveComma(buffer.slice(buffer.size() - extract, extract), os);
