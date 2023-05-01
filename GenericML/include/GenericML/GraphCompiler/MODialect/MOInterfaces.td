@@ -144,7 +144,7 @@ def MO_MatmulLike : MO_TensorOpInterfaceBase<"MatmulLike"> {
       [{ return ::llvm::cast<TensorValue>($_op.getOutputTensor(0)); }]>
   ];
 
-  let verify = [{ return impl::verifyMatmulLike($_op); }];
+  let verify = [{ return impl::verifyMatmulLike(cast<MatmulLike>($_op)); }];
 }
 
 def MO_SlidingWindow : MO_TensorOpInterfaceBase<"SlidingWindow"> {
@@ -166,7 +166,7 @@ def MO_SlidingWindow : MO_TensorOpInterfaceBase<"SlidingWindow"> {
     LogicalResult verifyWindowParamSizes(ArrayRef<TensorValue> values);
   }];
 
-  let verify = [{ return impl::verifySlidingWindow($_op); }];
+  let verify = [{ return impl::verifySlidingWindow(cast<SlidingWindow>($_op)); }];
 }
 
 def MO_SinkStaticBroadcastTo :
@@ -259,7 +259,7 @@ def MO_Reduction : MO_TensorOpInterfaceBase<"Reduction",
       "TensorValue", "getResult", (ins)>
   ];
 
-  let verify = [{ return impl::verifyReduction($_op); }];
+  let verify = [{ return impl::verifyReduction(cast<Reduction>($_op)); }];
 }
 
 //===----------------------------------------------------------------------===//

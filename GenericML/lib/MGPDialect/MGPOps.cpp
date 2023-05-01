@@ -133,7 +133,7 @@ LogicalResult CpuBufferConstantOp::verify() {
   // We can only construct from attributes which are dense arrays (ie rank-1)
   // of uint8_ts.
   ElementsAttr value = getAValue();
-  ShapedType shapedType = value.getType();
+  ShapedType shapedType = cast<ShapedType>(value.getType());
   if (value.size() != shapedType.getNumElements())
     return emitOpError() << "does not support splat attributes.";
   if (!shapedType.hasRank() || shapedType.getShape().size() != 1)

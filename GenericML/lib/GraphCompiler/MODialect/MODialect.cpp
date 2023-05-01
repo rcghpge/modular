@@ -39,7 +39,7 @@ Operation *MODialect::materializeConstant(OpBuilder &b, Attribute value,
     return b.create<KGEN::ParamConstantOp>(loc, type, cast<TypedAttr>(value));
 
   if (auto elements = dyn_cast_or_null<ElementsAttr>(value))
-    return b.create<ConstantOp>(loc, type, value);
+    return b.create<ConstantOp>(loc, type, elements);
 
   return nullptr;
 }

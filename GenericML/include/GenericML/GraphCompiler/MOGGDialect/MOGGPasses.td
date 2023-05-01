@@ -12,15 +12,16 @@ include "mlir/Pass/PassBase.td"
 def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
   let summary = "Compile MOGG::JitTargetOps into KGEN calls";
   let dependentDialects = [
+    "M::MDialect",
     "M::MOGG::MOGGDialect",
     "M::KGEN::KGENDialect",
     "M::KGEN::LIT::LITDialect",
     "M::KGEN::POP::POPDialect",
-    "mlir::index::IndexDialect",
+    "M::HLCF::HLCFDialect",
     "M::Cache::CacheDialect",
     "M::DebugInfo::DebugInfoDialect",
     "mlir::LLVM::LLVMDialect",
-    "M::HLCF::HLCFDialect",
+    "mlir::index::IndexDialect",
   ];
 
   let options = [
@@ -58,7 +59,7 @@ def FuseElementwise: Pass<"fuse-elementwise", "MO::GraphOp"> {
   let dependentDialects = ["M::MOGG::MOGGDialect"];
   let options = [
     Option<"dumpDotGraph", "dump-dot-graph",
-           "bool", /*default=*/"false", 
+           "bool", /*default=*/"false",
            "Prints the connected elementwise graph we traverse to find fusions.">,
   ];
 }

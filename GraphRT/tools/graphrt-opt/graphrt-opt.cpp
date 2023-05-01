@@ -28,7 +28,6 @@ int main(int argc, char **argv) {
   mlir::registerInlinerPass();
   mlir::registerCanonicalizerPass();
 
-  return failed(mlir::MlirOptMain(argc, argv, "graphrt optimizer driver",
-                                  registry,
-                                  /*preloadDialectsInContext=*/false));
+  return failed(
+      mlir::MlirOptMain(argc, argv, "graphrt optimizer driver", registry));
 }

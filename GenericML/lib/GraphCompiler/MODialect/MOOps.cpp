@@ -72,8 +72,10 @@ OpFoldResult foldElemwiseOp(MO::TensorType resTy, Adaptor adaptor,
     return {};
 
   DType resDType = resTy.getDtype();
-  auto maybeX = tryGetConstantBlob<int64_t>(xAttr, resDType);
-  auto maybeY = tryGetConstantBlob<int64_t>(yAttr, resDType);
+  auto maybeX =
+      tryGetConstantBlob<int64_t>(cast<ElementsAttr>(xAttr), resDType);
+  auto maybeY =
+      tryGetConstantBlob<int64_t>(cast<ElementsAttr>(yAttr), resDType);
   if (!maybeX.has_value() || !maybeY.has_value())
     return {};
 
@@ -205,11 +207,11 @@ LogicalResult OutputOp::verify() {
   SmallVector<Type> expectedOutputOperandTypes;
   for (Type ty : graph.getResultTypes()) {
     if (auto tensorTy = dyn_cast<TensorType>(ty)) {
-      TypedAttr newShapeAttr = tensorTy.getShapeAttr().replace(
+      TypedAttr newShapeAttr = cast<TypedAttr>(tensorTy.getShapeAttr().replace(
           [&ResParamRefToBindingAttr](KGEN::ParamDeclRefAttr paramRef) {
             TypedAttr resolvedAttr = ResParamRefToBindingAttr.lookup(paramRef);
             return resolvedAttr ? resolvedAttr : paramRef;
-          });
+          }));
       expectedOutputOperandTypes.emplace_back(tensorTy.cloneWith(newShapeAttr));
     } else {
       expectedOutputOperandTypes.emplace_back(ty);
@@ -451,8 +453,9 @@ LogicalResult ConstantOp::canonicalize(ConstantOp op,
   if (op.getType().hasUnknownShape()) {
     Location loc = op.getLoc();
     ElementsAttr elements = op.getValue();
-    auto staticTensorType = TensorType::get(elements.getType().getShape(),
-                                            elements.getElementType());
+    auto staticTensorType =
+        TensorType::get(cast<ShapedType>(elements.getType()).getShape(),
+                        elements.getElementType());
     auto constantOp =
         rewriter.create<ConstantOp>(loc, staticTensorType, elements);
     rewriter.replaceOpWithNewOp<RebindOp>(op, op.getType(), constantOp);
@@ -473,7 +476,7 @@ void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                           odsBuilder.getIntegerType(64, /*isSigned=*/true));
   auto valueAttr = odsBuilder.getAttr<IntArrayElementsAttr>(
       values, mlir::IntegerType::Signed);
-  build(odsBuilder, odsState, type, valueAttr);
+  build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
 }
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
@@ -483,14 +486,14 @@ void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                           odsBuilder.getIntegerType(32, /*isSigned=*/true));
   auto valueAttr = odsBuilder.getAttr<IntArrayElementsAttr>(
       values, mlir::IntegerType::Signed);
-  build(odsBuilder, odsState, type, valueAttr);
+  build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
 }
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                        ArrayRef<APFloat> values, Type elementType) {
   auto type = MO::TensorType::get({(int64_t)values.size()}, elementType);
   auto valueAttr = FloatArrayElementsAttr::get(values, type.getElementType());
-  build(odsBuilder, odsState, type, valueAttr);
+  build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
 }
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
@@ -500,7 +503,7 @@ void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   auto valueAttr = odsBuilder.getAttr<IntArrayElementsAttr>(
       ArrayRef<int64_t>(SmallVector<int64_t>{value}),
       mlir::IntegerType::Signed);
-  build(odsBuilder, odsState, type, valueAttr);
+  build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
 }
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
@@ -510,7 +513,7 @@ void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   auto valueAttr = odsBuilder.getAttr<IntArrayElementsAttr>(
       ArrayRef<int32_t>(SmallVector<int32_t>{value}),
       mlir::IntegerType::Signed);
-  build(odsBuilder, odsState, type, valueAttr);
+  build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
 }
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
@@ -518,7 +521,7 @@ void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   auto type = MO::TensorType::get(SmallVector<int64_t>{}, elementType);
   auto valueAttr =
       FloatArrayElementsAttr::get({std::move(value)}, type.getElementType());
-  build(odsBuilder, odsState, type, valueAttr);
+  build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
 }
 
 //===----------------------------------------------------------------------===//
@@ -729,8 +732,10 @@ OpFoldResult GreaterEqualOp::fold(FoldAdaptor adaptor) {
 
   TensorType resTy = getType();
   DType resDType = resTy.getDtype();
-  auto maybeX = tryGetConstantBlob<int64_t>(xAttr, resDType);
-  auto maybeY = tryGetConstantBlob<int64_t>(yAttr, resDType);
+  auto maybeX =
+      tryGetConstantBlob<int64_t>(cast<ElementsAttr>(xAttr), resDType);
+  auto maybeY =
+      tryGetConstantBlob<int64_t>(cast<ElementsAttr>(yAttr), resDType);
   if (!maybeX.has_value() || !maybeY.has_value())
     return {};
 
@@ -796,9 +801,12 @@ OpFoldResult SelectOp::fold(FoldAdaptor adaptor) {
   TensorType resTy = getType();
   DType condDType = getCond().getType().getDtype();
   DType resDType = resTy.getDtype();
-  auto maybeCond = tryGetConstantBlob<int64_t>(condAttr, condDType);
-  auto maybeX = tryGetConstantBlob<int64_t>(xAttr, resDType);
-  auto maybeY = tryGetConstantBlob<int64_t>(yAttr, resDType);
+  auto maybeCond =
+      tryGetConstantBlob<int64_t>(cast<ElementsAttr>(condAttr), condDType);
+  auto maybeX =
+      tryGetConstantBlob<int64_t>(cast<ElementsAttr>(xAttr), resDType);
+  auto maybeY =
+      tryGetConstantBlob<int64_t>(cast<ElementsAttr>(yAttr), resDType);
   if (!maybeX.has_value() || !maybeY.has_value())
     return {};
 
@@ -892,7 +900,8 @@ OpFoldResult WhereOp::fold(FoldAdaptor adaptor) {
     Location loc = getLoc();
     OpBuilder builder(*this); // insert before this op
     auto resTy = TensorType::get(outShape, outTy.getElementType());
-    auto constantOp = builder.create<ConstantOp>(loc, resTy, foldedAttr);
+    auto constantOp =
+        builder.create<ConstantOp>(loc, resTy, cast<ElementsAttr>(foldedAttr));
     auto rebindOp =
         builder.create<RebindOp>(loc, outTy, constantOp, getOutputParamDecls());
     setOutputParamDecls({});
@@ -1123,7 +1132,8 @@ OpFoldResult RangeOp::fold(FoldAdaptor adaptor) {
   Location loc = getLoc();
   OpBuilder builder(*this); // insert before this op
   auto resTy = TensorType::get({numResElements}, outTy.getElementType());
-  auto constantOp = builder.create<ConstantOp>(loc, resTy, foldedAttr);
+  auto constantOp =
+      builder.create<ConstantOp>(loc, resTy, cast<ElementsAttr>(foldedAttr));
   auto rebindOp =
       builder.create<RebindOp>(loc, outTy, constantOp, getOutputParamDecls());
   return rebindOp.getResult();
@@ -1368,7 +1378,8 @@ OpFoldResult ReduceMulOp::fold(FoldAdaptor adaptor) {
     return {};
 
   TensorType resTy = getType();
-  auto maybeInput = tryGetConstantBlob<int64_t>(inputArr, resTy.getDtype());
+  auto maybeInput = tryGetConstantBlob<int64_t>(cast<ElementsAttr>(inputArr),
+                                                resTy.getDtype());
   if (!maybeInput.has_value())
     return {};
 

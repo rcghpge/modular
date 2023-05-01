@@ -22,7 +22,8 @@ TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
   auto valueAttr = builder.getAttr<IntArrayElementsAttr>(
       ArrayRef<int64_t>(reshapeType.getIntDims()), mlir::IntegerType::Signed);
 
-  auto reshapeShapeValue = builder.create<MO::ConstantOp>(loc, type, valueAttr);
+  auto reshapeShapeValue =
+      builder.create<MO::ConstantOp>(loc, type, cast<ElementsAttr>(valueAttr));
 
   auto reshapedValue =
       builder.create<MO::ReshapeOp>(loc, reshapeType, from, reshapeShapeValue);
