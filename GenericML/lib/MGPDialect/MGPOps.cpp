@@ -10,6 +10,7 @@
 
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "Cache/CacheDialect/CacheAttrs.h"
+#include "Support/Compiler/VerifyUtils.h"
 #include "Support/ErrorOr.h"
 #include "Support/MDialect/MAttrs.h"
 #include "Support/ML/CompiledFrameworkLabel.h"
@@ -1035,10 +1036,8 @@ LogicalResult ModelOp::verifyRegions() {
              << "expected no arguments to the 'init' body, but got "
              << initBlock->getArgumentTypes() << ".";
 
-    if (failed(output.checkArgumentTypes(implicitInitSig.getResults())))
-      return emitOpError()
-             << "expected the result types of the 'init' body to be "
-             << implicitInitSig.getResults() << ".";
+    if (failed(checkOperandTypes(output, implicitInitSig.getResults())))
+      return failure();
   }
 
   // The type of the execute region is:
@@ -1064,10 +1063,8 @@ LogicalResult ModelOp::verifyRegions() {
     expectedResultTypes.append(modelResultTypes.begin(),
                                modelResultTypes.end());
 
-    if (failed(output.checkArgumentTypes(expectedResultTypes)))
-      return emitOpError()
-             << "expected the result types of the 'execute' body to be "
-             << expectedResultTypes << ".";
+    if (failed(checkOperandTypes(output, expectedResultTypes)))
+      return failure();
   }
   return success();
 }

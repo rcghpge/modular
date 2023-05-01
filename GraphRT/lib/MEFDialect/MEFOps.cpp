@@ -65,17 +65,7 @@ void InvokableOp::print(OpAsmPrinter &p) {
 }
 
 LogicalResult InvokableOp::verifyRegions() {
-  return getOutputOp().checkArgumentTypes(getResultTypes());
-}
-
-//===----------------------------------------------------------------------===//
-// OutputOp
-//===----------------------------------------------------------------------===//
-
-/// Containers verify that the operands of this OutputOp match the specified set
-/// of types.
-LogicalResult OutputOp::checkArgumentTypes(TypeRange types) {
-  return checkResultTypes(getOperation(), types);
+  return checkOperandTypes(getOutputOp(), getResultTypes());
 }
 
 //===----------------------------------------------------------------------===//

@@ -207,11 +207,10 @@ func.func @buffer_split_operands(%in_buf : !mgp.cpu.buffer) {
 
 // -----
 
-// expected-error@+1 {{'mgp.model' op expected the result types of the 'init' body to be '!mef.chain', '!mgp.context'.}}
 "mgp.model"() ({
   %ch = grt.chain.create
   %ctx = mgp.context.create 1
-  // expected-error@+1 {{'mef.output' op expected 2 operands for enclosing op}}
+  // expected-error@+1 {{'mef.output' op expected 2 operands, but given 1}}
   mef.output %ch : !mef.chain
 }, {
   ^bb0(%ch: !mef.chain, %ctx: !mgp.context, %x: tensor<3xf32>):
@@ -244,24 +243,22 @@ func.func @buffer_split_operands(%in_buf : !mgp.cpu.buffer) {
 
 // -----
 
-// expected-error@+1 {{'mgp.model' op expected the result types of the 'execute' body to be '!mef.chain'.}}
 "mgp.model"() ({
   %ch = grt.chain.create
   %ctx = mgp.context.create 1
   mef.output %ch, %ctx : !mef.chain, !mgp.context
 }, {
   ^bb0(%ch: !mef.chain, %ctx: !mgp.context, %x: tensor<3xf32>):
-    // expected-error@+1 {{'mef.output' op expected 1 operands for enclosing op}}
+    // expected-error@+1 {{'mef.output' op expected 1 operands, but given 2}}
     mef.output %ch, %x : !mef.chain, tensor<3xf32>
 }) {frameworkName = "tfl", inputOutputTypes = (tensor<3xf32>) -> (), sym_name = "badExecuteResults"} : () -> ()
 
 // -----
 
-// expected-error@+1 {{'mgp.model' op expected the result types of the 'init' body to be '!mef.chain', '!mgp.context'.}}
 mgp.model @mismatchedContextType : tfl init {
   %ch = grt.chain.create
   %unk = mef.opaque "bogus" [] () : ()->!mef.unknown
-  // expected-error@+1 {{'mef.output' op operand #1 has type '!mef.unknown' but should be '!mgp.context'}}
+  // expected-error@+1 {{'mef.output' op operand #1 has type '!mef.unknown' but expected '!mgp.context'}}
   mef.output %ch, %unk : !mef.chain, !mef.unknown
 } execute (%ch: !mef.chain, %ctx: !mgp.context, %x: tensor<2xf32>) -> (!mef.chain, tensor<2xf32>) {
   mef.output %ch, %x : !mef.chain, tensor<2xf32>

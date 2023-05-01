@@ -26,7 +26,7 @@ mo.graph @graph_early_output(%arg0: !mo.tensor<[], f32>) -> !mo.tensor<[], f32> 
 // -----
 
 mo.graph @if_op_missing_yield(%arg0: !mo.tensor<[2, ?, 1], f32>, %arg1: !mo.tensor<[2, ?, 1], f32>, %cond : !mo.tensor<[], bool>) -> (!mo.tensor<[2, ?, 1], f32>) {
-  // expected-error@+1 {{'mo.yield' op expected 1 operands for enclosing op}}
+  // expected-error@+1 {{'mo.yield' op expected 1 operands, but given 0}}
   %0 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[2, ?, 1], f32> {
     mo.yield %arg0 : !mo.tensor<[2, ?, 1], f32>
   } else {
@@ -52,7 +52,7 @@ mo.graph @if_op_type_mismatch(%arg0: !mo.tensor<[2, ?, 1], f32>, %arg1: !mo.tens
   %0 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[2, ?, 1], f32> {
     mo.yield %arg0 : !mo.tensor<[2, ?, 1], f32>
   } else {
-    // expected-error@+1 {{'mo.yield' op operand #0 has type '!mo.tensor<[3, ?, 1], f32>' but should be '!mo.tensor<[2, ?, 1], f32>'}}
+    // expected-error@+1 {{'mo.yield' op operand #0 has type '!mo.tensor<[3, ?, 1], f32>' but expected '!mo.tensor<[2, ?, 1], f32>'}}
     mo.yield %arg1 : !mo.tensor<[3, ?, 1], f32>
   }
   mo.output %0 : !mo.tensor<[2, ?, 1], f32>

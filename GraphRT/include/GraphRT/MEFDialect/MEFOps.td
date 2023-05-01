@@ -106,10 +106,4 @@ def OutputOp : MEFOp<"output", [Terminator, ReturnLike]> {
 
   let arguments = (ins Variadic<AnyType>:$operands);
   let assemblyFormat = "attr-dict ($operands^ `:` type($operands))?";
-
-  let extraClassDeclaration = [{
-    /// Verify that the operands of this OutputOp match the specified set of
-    /// types.
-    LogicalResult checkArgumentTypes(TypeRange types);
-  }];
 }

@@ -15,14 +15,14 @@ mef.invokable @need_output() {
 // -----
 
 mef.invokable @need_output() -> i32 {
-  // expected-error @+1 {{'mef.output' op expected 1 operands for enclosing op}}
+  // expected-error @+1 {{'mef.output' op expected 1 operands, but given 0}}
   mef.output
 }
 
 // -----
 
 mef.invokable @type_mismatch(%a: f32) -> i32 {
-  // expected-error @+1 {{'mef.output' op operand #0 has type 'f32' but should be 'i32'}}
+  // expected-error @+1 {{'mef.output' op operand #0 has type 'f32' but expected 'i32'}}
   mef.output %a : f32
 }
 

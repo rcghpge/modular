@@ -9,6 +9,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphRT/GRTDialect/GRTOps.h"
+#include "Support/Compiler/ParserUtils.h"
+#include "Support/Compiler/VerifyUtils.h"
 #include "Support/LLVMForwardDecls.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/FunctionImplementation.h"
@@ -17,24 +19,6 @@
 
 using namespace M;
 using namespace GRT;
-
-/// Parse a parenthesized operand list with types included, e.g.
-/// `(%a: i32, %b: f32)`.
-static ParseResult
-parseParenOperandList(OpAsmParser &parser, OperationState &result,
-                      SmallVectorImpl<OpAsmParser::Argument> &argumentInfo) {
-  auto parseOperandFn = [&]() -> ParseResult {
-    OpAsmParser::Argument arg;
-    if (parser.parseArgument(arg, /*allowType=*/true) ||
-        parser.resolveOperand(arg.ssaName, arg.type, result.operands))
-      return failure();
-    argumentInfo.push_back(arg);
-    return success();
-  };
-
-  return parser.parseCommaSeparatedList(OpAsmParser::Delimiter::Paren,
-                                        parseOperandFn, "in operand list");
-}
 
 //===----------------------------------------------------------------------===//
 // ChainMergeOp
@@ -172,27 +156,29 @@ void IfOp::print(OpAsmPrinter &p) {
 }
 
 LogicalResult IfOp::verify() {
-  // Verify that the operands match the bb arguments.  The ODS verifier already
-  // checked the first argument to be present and i1.
+  // The 'then' block should accept arguments matching the grt.if signature.
   auto *thenBlock = &getThenRegion().front();
-  if (getInputs().size() != thenBlock->getNumArguments())
-    return emitOpError("incorrect number of arguments to 'then' block");
-  auto *elseBlock = &getElseRegion().front();
-  if (getInputs().size() != elseBlock->getNumArguments())
-    return emitOpError("incorrect number of arguments to 'else' block");
-
-  for (unsigned i = 0, e = getNumOperands() - 1; i != e; ++i)
-    if (getInputs()[i].getType() != thenBlock->getArgument(i).getType() ||
-        getInputs()[i].getType() != elseBlock->getArgument(i).getType())
-      return emitOpError("operand/argument type mismatch");
-
-  // Verify the 'then' and 'else' block return types.
-  auto thenOutput = cast<MEF::OutputOp>(thenBlock->getTerminator());
-  if (failed(thenOutput.checkArgumentTypes(getResultTypes())))
+  if (failed(
+          checkArgumentTypes(*this, "then", thenBlock, getInputs().getTypes())))
     return failure();
 
+  // The 'else' block should accept arguments matching the grt.if signature.
+  auto *elseBlock = &getElseRegion().front();
+  if (failed(
+          checkArgumentTypes(*this, "else", elseBlock, getInputs().getTypes())))
+    return failure();
+
+  // The 'then' block should return results matching the grt.if results.
+  auto thenOutput = cast<MEF::OutputOp>(thenBlock->getTerminator());
+  if (failed(checkOperandTypes(thenOutput, getResultTypes())))
+    return failure();
+
+  // The 'else' block should return results matching the grt.if results.
   auto elseOutput = cast<MEF::OutputOp>(elseBlock->getTerminator());
-  return elseOutput.checkArgumentTypes(getResultTypes());
+  if (failed(checkOperandTypes(elseOutput, getResultTypes())))
+    return failure();
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -244,29 +230,37 @@ void WhileOp::print(OpAsmPrinter &p) {
 }
 
 LogicalResult WhileOp::verify() {
-  // Verify that the operands match the bb arguments.  The ODS verifier already
-  // checked the first argument to be present and i1.
-  auto *condBlock = &getCondRegion().front();
-  if (getInputs().size() != condBlock->getNumArguments())
-    return emitOpError("incorrect number of arguments to 'cond' block");
-  auto *bodyBlock = &getBodyRegion().front();
-  if (getInputs().size() != bodyBlock->getNumArguments())
-    return emitOpError("incorrect number of arguments to 'body' block");
-
-  for (unsigned i = 0, e = getNumOperands() - 1; i != e; ++i)
-    if (getInputs()[i].getType() != condBlock->getArgument(i).getType() ||
-        getInputs()[i].getType() != bodyBlock->getArgument(i).getType())
-      return emitOpError("operand/argument type mismatch");
-
-  // Verify the 'cond' return type is an i1.
-  auto condOutput = cast<MEF::OutputOp>(condBlock->getTerminator());
-  if (failed(
-          condOutput.checkArgumentTypes({IntegerType::get(getContext(), 1)})))
+  // The grt.while results must match the signature types.
+  if (failed(checkMatchingTypes(*this, "result", getResultTypes(),
+                                getInputs().getTypes())))
     return failure();
 
-  // Verify the 'body' return types.
+  // The 'cond' block should accept arguments matching the grt.while signature.
+  auto *condBlock = &getCondRegion().front();
+  if (failed(
+          checkArgumentTypes(*this, "cond", condBlock, getInputs().getTypes())))
+    return failure();
+
+  // The 'body' block should accept arguments matching the grt.while signature.
+  auto *bodyBlock = &getBodyRegion().front();
+  if (failed(
+          checkArgumentTypes(*this, "body", bodyBlock, getInputs().getTypes())))
+    return failure();
+
+  // The 'cond' block should return an i1.
+  auto condOutput = cast<MEF::OutputOp>(condBlock->getTerminator());
+  SmallVector<Type> condResultTypes;
+  condResultTypes.reserve(1);
+  condResultTypes.emplace_back(IntegerType::get(getContext(), 1));
+  if (failed(checkOperandTypes(condOutput, condResultTypes)))
+    return failure();
+
+  // The 'body' block should return a result for each grt.while result.
   auto bodyOutput = cast<MEF::OutputOp>(bodyBlock->getTerminator());
-  return bodyOutput.checkArgumentTypes(getResultTypes());
+  if (failed(checkOperandTypes(bodyOutput, getResultTypes())))
+    return failure();
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -311,17 +305,24 @@ void RepeatI32Op::print(OpAsmPrinter &p) {
 }
 
 LogicalResult RepeatI32Op::verify() {
-  // Verify that the operand and result types match.
-  if (getNumResults() != getInputs().size())
-    return emitOpError("incorrect number of operands");
+  // The grt.repeat.i32 results should match the signature types.
+  if (failed(checkMatchingTypes(*this, "result", getResultTypes(),
+                                getInputs().getTypes())))
+    return failure();
 
-  for (unsigned i = 0, e = getNumResults(); i != e; ++i)
-    if (getInputs()[i].getType() != getResult(i).getType())
-      return emitOpError("operand/result type mismatch");
-
+  // The 'body' block should accept arguments matching the grt.repeat.i32
+  // signature.
   auto *bodyBlock = &getBodyRegion().front();
+  if (failed(
+          checkArgumentTypes(*this, "body", bodyBlock, getInputs().getTypes())))
+    return failure();
+
+  // The 'body' block should return a result for each grt.repeat.i32 result.
   auto output = cast<MEF::OutputOp>(bodyBlock->getTerminator());
-  return output.checkArgumentTypes(getResultTypes());
+  if (failed(checkOperandTypes(output, getResultTypes())))
+    return failure();
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

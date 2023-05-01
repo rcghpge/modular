@@ -11,6 +11,7 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/Broadcast.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
+#include "Support/Compiler/ParserUtils.h"
 #include "Support/Compiler/VerifyUtils.h"
 #include "Support/MDialect/MAttrs.h"
 #include "Support/ML/RangeUtils.h"
@@ -218,7 +219,7 @@ LogicalResult OutputOp::verify() {
     }
   }
 
-  return checkResultTypes(getOperation(), expectedOutputOperandTypes);
+  return checkOperandTypes(getOperation(), expectedOutputOperandTypes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -232,11 +233,11 @@ LogicalResult IfOp::verify() {
   auto *elseBlock = &getElseRegion().front();
 
   auto thenOutput = cast<YieldOp>(thenBlock->getTerminator());
-  if (failed(checkResultTypes(thenOutput, getResultTypes())))
+  if (failed(checkOperandTypes(thenOutput, getResultTypes())))
     return failure();
 
   auto elseOutput = cast<YieldOp>(elseBlock->getTerminator());
-  return checkResultTypes(elseOutput, getResultTypes());
+  return checkOperandTypes(elseOutput, getResultTypes());
 }
 
 //===----------------------------------------------------------------------===//
