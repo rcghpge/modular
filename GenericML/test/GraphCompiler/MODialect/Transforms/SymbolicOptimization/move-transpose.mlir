@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-pattern-fusion | FileCheck %s
+// RUN: mo-opt %s --symbolic-optimize | FileCheck %s
 
 // CHECK: mo.graph @sink_transpose_through_binary_ops(
 mo.graph @sink_transpose_through_binary_ops(
