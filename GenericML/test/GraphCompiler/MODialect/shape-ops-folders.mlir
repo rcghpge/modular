@@ -205,14 +205,16 @@ kgen.generator @num_elements_static_rank_fold<D0>() -> index {
 
 // CHECK: kgen.generator @slice_fold<[[SH1:.*]]: !mo.shape, [[D1:.*]], [[D2:.*]]>(
 kgen.generator @slice_fold<Sh1: !mo.shape, D1, D2>(
-// CHECK: ) -> (!mo.shape, !mo.shape, !mo.shape, !mo.shape) {
-) -> (!mo.shape, !mo.shape, !mo.shape, !mo.shape) {
+// CHECK: ) -> (!mo.shape, !mo.shape, !mo.shape, !mo.shape, !mo.shape, !mo.shape) {
+) -> (!mo.shape, !mo.shape, !mo.shape, !mo.shape, !mo.shape, !mo.shape) {
   // CHECK-DAG: %[[V1:.*]] = kgen.param.constant: !mo.shape = <[[SH1]]>
   // CHECK-DAG: %[[V2:.*]] = kgen.param.constant: !mo.shape = <[[[D1]]]>
   // CHECK-DAG: %[[V3:.*]] = kgen.param.constant: !mo.shape = <[[[D2]], [[D1]]]>
   // CHECK-DAG: %[[V4:.*]] = kgen.param.constant: !mo.shape = <[42, [[D2]]]>
+  // CHECK-DAG: %[[V5:.*]] = kgen.param.constant: !mo.shape = <[[[D2]]]>
+  // CHECK-DAG: %[[V6:.*]] = kgen.param.constant: !mo.shape = <[3, [[D2]]]>
   // CHECK-DAG: %[[S1:.*]] = mo.shape.slice(%[[V1]])[0, -1]
-  // CHECK: kgen.return %[[S1]], %[[V2]], %[[V3]], %[[V4]]
+  // CHECK: kgen.return %[[S1]], %[[V2]], %[[V3]], %[[V4]], %[[V5]], %[[V6]]
   %v1 = kgen.param.constant: !mo.shape = <Sh1>
   %v2 = kgen.param.constant: !mo.shape = <[D1, 42, D2]>
   %v3 = kgen.param.constant: !mo.shape = <[3, D2, D1]>
@@ -220,7 +222,9 @@ kgen.generator @slice_fold<Sh1: !mo.shape, D1, D2>(
   %s2 = mo.shape.slice(%v2)[0, -2]
   %s3 = mo.shape.slice(%v3)[1]
   %s4 = mo.shape.slice(%v2)[-2]
-  kgen.return %s1, %s2, %s3, %s4 : !mo.shape, !mo.shape, !mo.shape, !mo.shape
+  %s5 = mo.shape.slice(%v2)[2, 99]
+  %s6 = mo.shape.slice(%v3)[-99, 2]
+  kgen.return %s1, %s2, %s3, %s4, %s5, %s6 : !mo.shape, !mo.shape, !mo.shape, !mo.shape, !mo.shape, !mo.shape
 }
 
 // CHECK: mo.graph @to_tensor_fold<[[D0:.*]], [[SH0:.*]]: !mo.shape -> [[D1:.*]]>() -> (

@@ -1848,12 +1848,22 @@ void Shape::SliceOp::build(OpBuilder &builder, OperationState &state,
   build(builder, state, input, builder.getIndexAttr(start), {});
 }
 
+/// Clamps `axisApInt` to the range [0, rank].
+static int64_t clampAxis(const APInt &axisApInt, int64_t rank) {
+  int64_t axis = normalizeAxis(axisApInt, rank);
+  return std::max(std::min(axis, rank), (int64_t)0);
+}
+
 OpFoldResult Shape::SliceOp::fold(FoldAdaptor adaptor) {
   if (auto input = dyn_cast_or_null<ShapeAttr>(adaptor.getInput())) {
-    int64_t start = normalizeAxis(adaptor.getStart(), input.getRank());
-    int64_t end = input.getRank();
+    int64_t rank = input.getRank();
+    // Clamp `start` and `end` to the range [0, rank], since based on slice
+    // semantics these arguments may fall outside the rank of the `ShapeAttr`.
+    int64_t start = clampAxis(adaptor.getStart(), rank);
+    int64_t end = rank;
     if (adaptor.getEnd().has_value())
-      end = normalizeAxis(adaptor.getEnd().value(), input.getRank());
+      end = clampAxis(adaptor.getEnd().value(), rank);
+
     SmallVector<TypedAttr> slicedDims(input.getValues().begin() + start,
                                       input.getValues().begin() + end);
     auto shapeTy = ShapeType::get(getContext());
