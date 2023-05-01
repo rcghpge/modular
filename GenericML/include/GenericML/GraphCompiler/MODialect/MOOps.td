@@ -227,8 +227,7 @@ def MO_OutputOp : MO_TensorOp<"output",
 //===----------------------------------------------------------------------===//
 
 def IfOp : MO_TensorOp<"if",
-          [SingleBlockImplicitTerminator<"MO::YieldOp">,
-          RecursiveMemoryEffects, RecursivelySpeculatable]> {
+          [SingleBlockImplicitTerminator<"MO::YieldOp">]> {
   let summary = "if operation";
   let description = [{
     The "mo.if" operation takes an i1 condition, a 'then' body and an 'else'
