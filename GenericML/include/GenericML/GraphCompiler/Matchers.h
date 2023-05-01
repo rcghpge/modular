@@ -204,6 +204,8 @@ auto m_Op(Operation **bindDest, StringRef opName, Matchers... matchers) {
   return detail::Capture(bindDest, m_Op(opName, matchers...));
 }
 
+namespace matchers {
+
 template <typename Matcher>
 auto m_StringAttr(StringRef attrName, StringRef opName, Matcher matcher) {
   return detail::StringAttrMatcher(attrName, opName, matcher);
@@ -268,6 +270,7 @@ auto m_BinaryCommutativeOp(Operation **bindDest, Matcher1 matcher1,
                     m_Op<OpType>(bindDest, matcher2, matcher1));
 }
 
+} // namespace matchers
 } // namespace mlir
 
 #endif // GENERICML_GRAPHCOMPILER_MATCHERS_H
