@@ -380,11 +380,10 @@ struct SinkTransposeThroughBinaryOpPattern
     // If any transpose op has multiple uses, we don't sink the transposes
     // because we'll end up doing extra computation overall since we must keep
     // the original transposes for other users.
-    // TODO add [get|set]Input method to `ElementWiseBinary` interface
-    if (!op->getOperand(0).hasOneUse())
+    if (!op.getLhsInput().hasOneUse())
       return rewriter.notifyMatchFailure(op, "lhs transpose has multiple uses");
 
-    if (!op->getOperand(1).hasOneUse())
+    if (!op.getRhsInput().hasOneUse())
       return rewriter.notifyMatchFailure(op, "rhs transpose has multiple uses");
 
     if (perm1 != perm2)
@@ -394,11 +393,11 @@ struct SinkTransposeThroughBinaryOpPattern
     if (input1Ty != input2.getType())
       return rewriter.notifyMatchFailure(op, "input types are different");
 
-    Value opRes = op->getResult(0);
-    op->setOperand(0, input1);
-    op->setOperand(1, input2);
+    MO::TensorValue opRes = op.getResult();
+    op.setLhsInput(input1);
+    op.setRhsInput(input2);
     Type oldOpResTy = opRes.getType();
-    opRes.setType(input1Ty);
+    opRes.setType(cast<MO::TensorType>(input1Ty));
     rewriter.setInsertionPointAfter(op);
     auto finalTransposeOp = rewriter.create<MO::TransposeOp>(
         op->getLoc(), oldOpResTy, opRes, perm1);
@@ -493,28 +492,29 @@ struct SinkTransposeThroughUnaryOpPattern
     //      unary (op)          transpose(*)
     //
     // NOTE: (*) means result type or operands of the op were updated
-    Value input, perm;
+    Value perm;
     Operation *opaqueTransposeOp;
     auto unaryP = m_Op<MO::ElementWiseUnary>(
-        m_Op<MO::TransposeOp>(&opaqueTransposeOp, m_Any(&input), m_Any(&perm)));
+        m_Op<MO::TransposeOp>(&opaqueTransposeOp, m_Any(), m_Any(&perm)));
     if (!unaryP.match(op))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
-    if (!input || !perm)
-      return rewriter.notifyMatchFailure(op, "null input or permutation value");
+    if (!perm)
+      return rewriter.notifyMatchFailure(op, "null permutation value");
 
     // If transpose op has multiple uses, we don't sink the transposes because
     // we'll have to recompute the original transpose op for other users.
-    // TODO add [get|set]Input method to `ElementWiseUnary` interface
     Value transpose = opaqueTransposeOp->getResult(0);
     if (!transpose.hasOneUse())
       return rewriter.notifyMatchFailure(op, "transpose op has multiple uses");
 
     auto transposeOp = cast<MO::TransposeOp>(opaqueTransposeOp);
+    MO::TensorValue input = transposeOp.getInput();
+    MO::TensorValue opRes = op.getResult();
     rewriter.replaceAllUsesWith(op->getResults(), transposeOp.getResult());
-    op->setOperand(0, input);
-    op->getResult(0).setType(input.getType());
-    transposeOp.getInputMutable().assign(op->getResult(0));
+    op.setInput(input);
+    opRes.setType(input.getType());
+    transposeOp.getInputMutable().assign(opRes);
     transposeOp->moveAfter(op);
 
     return mlir::success();

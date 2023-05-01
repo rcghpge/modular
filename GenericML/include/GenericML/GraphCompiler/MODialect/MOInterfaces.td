@@ -202,12 +202,42 @@ def MO_ElementWiseUnary : _MO_ElementWise<"ElementWiseUnary"> {
   let description = [{
     Interface for modeling unary element-wise operations.
   }];
+
+  let methods = [
+    InterfaceMethod<"Get the input tensor as a TypedValue",
+      "TensorValue", "getInput", (ins), [{}],
+      [{ return $_op.getInputTensor(0); }]>,
+    InterfaceMethod<"Get the result tensor as a TypedValue",
+      "TensorValue", "getResult", (ins), [{}],
+      [{ return ::llvm::cast<TensorValue>($_op.getOutputTensor(0)); }]>,
+    InterfaceMethod<"Set the input tensor to given Value",
+      "void", "setInput", (ins "mlir::Value":$val), [{}],
+      [{ $_op->setOperand(0, val); }]>,
+  ];
 }
 
 def MO_ElementWiseBinary : _MO_ElementWise<"ElementWiseBinary"> {
   let description = [{
     Interface for modeling binary element-wise operations.
   }];
+
+  let methods = [
+    InterfaceMethod<"Get the left input tensor as a TypedValue",
+      "TensorValue", "getLhsInput", (ins), [{}],
+      [{ return $_op.getInputTensor(0); }]>,
+    InterfaceMethod<"Get the right input tensor as a TypedValue",
+      "TensorValue", "getRhsInput", (ins), [{}],
+      [{ return $_op.getInputTensor(1); }]>,
+    InterfaceMethod<"Get the result tensor as a TypedValue",
+      "TensorValue", "getResult", (ins), [{}],
+      [{ return ::llvm::cast<TensorValue>($_op.getOutputTensor(0)); }]>,
+    InterfaceMethod<"Set the left input tensor to given Value",
+      "void", "setLhsInput", (ins "mlir::Value":$val), [{}],
+      [{ $_op->setOperand(0, val); }]>,
+    InterfaceMethod<"Set the right input tensor to given Value",
+      "void", "setRhsInput", (ins "mlir::Value":$val), [{}],
+      [{ $_op->setOperand(1, val); }]>,
+  ];
 }
 
 def MO_Reduction : MO_TensorOpInterfaceBase<"Reduction",
