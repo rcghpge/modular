@@ -133,7 +133,7 @@ static void grt_while(RemainingArguments args, RemainingResults results,
   assert(args.size() == results.size());
   assert(cond->getNumArgs() == args.size() && cond->getNumResults() == 1);
   assert(body->getNumArgs() == args.size() &&
-         body->getNumResults() == args.size());
+         body->getNumResults() == results.size());
 
   // Define results as IndirectAsync values.  The actual results are set in the
   // last iteration of the loop.
@@ -206,7 +206,7 @@ static void grt_while(RemainingArguments args, RemainingResults results,
     void evalBody() && {
       // Start executing the 'body' block, consuming the current operands.
       SmallVector<AnyAsyncValueRef> bodyResults;
-      bodyResults.resize(currentOperands.size());
+      bodyResults.resize(whileResults.size());
       bodyInvokable->invoke(currentOperands, bodyResults, runtime);
 
       // The 'body' block results are the new current operands (though they

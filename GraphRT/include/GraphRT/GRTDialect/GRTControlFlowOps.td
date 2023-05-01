@@ -66,14 +66,13 @@ def IfOp : GRTOp<"if",
   let summary = "if control flow operation";
   let description = [{
     The "grt.if" operation takes an i1 condition, a 'then' block and an 'else'
-    block.  If the condition is true, the 'then' block is executed and the
+    block. If the condition is true, the 'then' block is executed and the
     "grt.if" operation returns the results of that block. Otherwise the 'else'
     block is executed and its values are returned.
 
-    The two blocks must have the same signature. Both take an arbitrary number
-    of arguments, as given in the "grt.if" operation. Both must return values
-    with the same types as the "grt.if" op results, using a "mef.output"
-    operation at the end of each block.
+    Both blocks have access to the outer SSA values listed in the "grt.if"
+    lhs signature. Both must return results with the same types as the "grt.if"
+    rhs signature, using a "mef.output" operation at the end of each block.
 
     This operation is 'nonstrict'. When the condition is ready the 'then' or
     'else' blocks will be merged into the overall dataflow graph without
@@ -110,23 +109,23 @@ def WhileOp : GRTOp<"while",
            NonStrictOp, RegionKindInterface, HasOnlyGraphRegion]> {
   let summary = "while control flow operation";
   let description = [{
-    The "grt.while" operation takes a 'cond' and 'body' block. While the
+    The "grt.while" operation takes 'cond' and 'body' blocks. While the
     'cond' block evaluates to the i1 true condition, the 'body' block is
     executed.
 
-    Both the 'cond' and 'body' blocks accept the same arguments, as given
-    in the "grt.while" operation signature. The 'cond' block must return an
-    i1 result, using a "mef.output" operation. The 'body' block must return
-    results with the same types matching the "grt.while" op arguments, again
-    using the "mef.output" operation. The result of the "grt.while" op is the
-    result of the last executed 'body' body, or the "grt.while" op arguments
-    directly if 'cond' never evaluated to true.
+    Both the 'cond' and 'body' blocks have access to the outer SSA values listed
+    in the "grt.while" signature. The 'cond' block must return an i1 indicating
+    the condition result, using a "mef.output" op. The 'body' block must return
+    results with the same types as the "grt.while" signature, again using the
+    "mef.output" operation. Each execution of the 'body' block effectively
+    'updates' the arguments given in the "grt.while" signature, and the
+    results of the "grt.while" op are the last 'updated' arguments.
 
     This operation is 'nonstrict'. The 'cond' block is merged into the overall
-    dataflow graph without waiting for any arguments to become ready. When it
-    yields a true condition, the 'body' block is similarly merged into the
-    overall dataflow graph, followed by the 'cond' block to evaluate the
-    condition again.
+    dataflow graph without waiting for any arguments to become ready. When its
+    condition result is true then the 'body' block is similarly merged into the
+    overall dataflow graph, followed by the 'cond' block again to re-evaluate
+    the loop condition.
 
     Example:
 
@@ -163,12 +162,12 @@ def RepeatI32Op : GRTOp<"repeat.i32",
     block 'tripCount' times, where 'tripCount' is an i32 value specified by the
     first operand.
 
-    The 'body' block takes an arbitrary number of arguments, as given in the
-    "grt.repeat.i32" operation signature. The block must return values with the
-    same types, using a "mef.output" operation at the end of the block. The
-    result of the "grt.repeat.i32" op is the result of the last executed 'body'
-    block, or the "grt.repeat.i32" signature arguments directly if 'tripCount'
-    is <= 0.
+    The 'body' block has access to the outer SSA values listed in the
+    "grt.repeat.i32" signature. The block must return values with the
+    same types as the signature, using a "mef.output" operation at the end of
+    the block. The result of the "grt.repeat.i32" op is the result of the last
+    executed 'body' block, or the "grt.repeat.i32" signature arguments directly
+    if 'tripCount' is <= 0.
 
     This operation is 'nonstrict'. Once the 'tripCount' operand is ready and
     > 0 then the 'body' block is merged into the overall dataflow graph.

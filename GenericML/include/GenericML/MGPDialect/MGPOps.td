@@ -1351,7 +1351,7 @@ def CASStoreOp : MGP_Op<"cas.store"> {
 // ToGRTBoolOp
 //===----------------------------------------------------------------------===//
 
-// Checks if a MGP_CpuBufferTYpe has one of the specified ranks.
+// Checks if a MGP_CpuBufferType has one of the specified ranks.
 class HasBufferSizePred<list<int> sizes> :
   Or<!foreach(size, sizes,
     CPred<
