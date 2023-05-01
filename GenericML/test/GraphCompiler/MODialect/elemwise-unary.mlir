@@ -80,8 +80,8 @@ mo.graph @cast(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], si32>) {
   mo.output %0 : !mo.tensor<[4, 5], si32>
 }
 
-// CHECK: mo.graph @cast_folder()
-mo.graph @cast_folder() -> (!mo.tensor<[2], si32>, !mo.tensor<[3], ui64>, !mo.tensor<[2, 2], ui32>, !mo.tensor<[5], si64>) {
+// CHECK: mo.graph @cast_int_folder()
+mo.graph @cast_int_folder() -> (!mo.tensor<[2], si32>, !mo.tensor<[3], ui64>, !mo.tensor<[2, 2], ui32>, !mo.tensor<[5], si64>) {
   // CHECK-DAG: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi32>} : !mo.tensor<[2], si32>
   %0 = mo.constant {value = #M.dense_array<1, 2> : tensor<2xui64>} : !mo.tensor<[2], ui64>
   %1 = mo.cast(%0) : (!mo.tensor<[2], ui64>) -> !mo.tensor<[2], si32>
@@ -100,4 +100,20 @@ mo.graph @cast_folder() -> (!mo.tensor<[2], si32>, !mo.tensor<[3], ui64>, !mo.te
 
   // CHECK-NEXT: %[[VAL0]], %[[VAL1]], %[[VAL2]], %[[VAL3]] : !mo.tensor<[2], si32>, !mo.tensor<[3], ui64>, !mo.tensor<[2, 2], ui32>, !mo.tensor<[5], si64>
   mo.output %1, %3, %5, %7 : !mo.tensor<[2], si32>, !mo.tensor<[3], ui64>, !mo.tensor<[2, 2], ui32>, !mo.tensor<[5], si64>
+}
+
+// CHECK: mo.graph @cast_int_float_mixed_folder()
+mo.graph @cast_int_float_mixed_folder() -> (!mo.tensor<[2], f32>, !mo.tensor<[3], f64>) {
+  // CHECK-DAG: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<1, 2> : tensor<2xui64>} : !mo.tensor<[2], ui64>
+  // CHECK-DAG: %[[VAL1:.*]] = mo.cast(%[[VAL0]]) : (!mo.tensor<[2], ui64>) -> !mo.tensor<[2], f32>
+  %0 = mo.constant {value = #M.dense_array<1, 2> : tensor<2xui64>} : !mo.tensor<[2], ui64>
+  %1 = mo.cast(%0) : (!mo.tensor<[2], ui64>) -> !mo.tensor<[2], f32>
+
+  // CHECK-DAG: %[[VAL2:.*]] = mo.constant {value = #M.dense_array<-1, 0, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  // CHECK-DAG: %[[VAL3:.*]] = mo.cast(%[[VAL2]]) : (!mo.tensor<[3], si64>) -> !mo.tensor<[3], f64>
+  %2 = mo.constant {value = #M.dense_array<-1, 0, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %3 = mo.cast(%2) : (!mo.tensor<[3], si64>) -> !mo.tensor<[3], f64>
+
+  // CHECK-NEXT: %[[VAL1]], %[[VAL3]] : !mo.tensor<[2], f32>, !mo.tensor<[3], f64>
+  mo.output %1, %3 : !mo.tensor<[2], f32>, !mo.tensor<[3], f64>
 }

@@ -766,15 +766,19 @@ OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
 
   auto rankedResTy =
       RankedTensorType::get(resTy.getIntDims(), resTy.getElementType());
+  auto resElemTy = rankedResTy.getElementType();
   if (auto intElemsAttr = dyn_cast_or_null<IntArrayElementsAttr>(inputAttr)) {
-    // This is inefficient, but simple.
-    SmallVector<APInt> res =
-        map_to_vector(intElemsAttr.getValues(), [](const llvm::APInt &dim) {
-          return APInt(64, dim.getSExtValue(), /*isSigned=*/true);
-        });
+    if (isa<IntegerType>(resElemTy)) {
+      // This is inefficient, but simple.
+      SmallVector<APInt> res =
+          map_to_vector(intElemsAttr.getValues(), [](const llvm::APInt &dim) {
+            return APInt(64, dim.getSExtValue(), /*isSigned=*/true);
+          });
 
-    return IntArrayElementsAttr::get(rankedResTy, res);
+      return IntArrayElementsAttr::get(rankedResTy, res);
+    }
   }
+
   return {};
 }
 
