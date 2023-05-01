@@ -178,8 +178,10 @@ def MO_SinkStaticBroadcastTo :
   let methods = [
     InterfaceMethod<
       "Check if the op is preceded by `mo.static.broadcast_to`, and sink the "
-      "broadcast below the op if possible. Implementers should not erase the "
-      "preceding `mo.static.broadcast_to` operations.",
+      "broadcast below the op if possible. Implementers can assume that "
+      "insertion point is set to the op when the interface method is called "
+      "and they should not erase the preceding `mo.static.broadcast_to` "
+      "operations.",
       "ErrorOrSuccess", "sinkStaticBroadcastTo",
       (ins "mlir::RewriterBase &":$rewriter)>,
   ];
