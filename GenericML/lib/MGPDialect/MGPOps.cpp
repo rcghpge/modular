@@ -181,8 +181,8 @@ LogicalResult CpuBufferConstantOp::verify() {
 /// Infers the buffer type result from the attribute argument.
 LogicalResult CpuBufferConstantOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
   assert(operands.empty() && "mismatched operand arity");
   auto elementsAttr =
@@ -231,8 +231,8 @@ static void printRawSizeAsBufferType(AsmPrinter &p,
 /// Infers the buffer type result from the size argument.
 LogicalResult CpuBufferGetCachedOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
   auto rawSizeAttr =
       dyn_cast<IntegerAttr>(attributes.get(getBRawSizeAttrName(name)));
@@ -298,8 +298,8 @@ LogicalResult CpuBufferAllocStaticOp::verify() {
 /// Constructs the buffer type result using statically known size.
 LogicalResult CpuBufferAllocStaticOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
   auto sizeAttr =
       dyn_cast<mlir::IntegerAttr>(attributes.get(getASizeAttrName(name)));
@@ -327,8 +327,8 @@ LogicalResult CpuBufferAllocDynamicOp::verify() {
 
 LogicalResult CpuBufferAllocDynamicOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   inferredReturnTypes.emplace_back(
       CpuBufferType::get(context, Optional<uint64_t>()));
   return success();
@@ -348,8 +348,8 @@ LogicalResult CpuBufferAllocSpecOp::verify() {
 
 LogicalResult CpuBufferAllocSpecOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   inferredReturnTypes.emplace_back(
       CpuBufferType::get(context, Optional<uint64_t>()));
   return success();
@@ -370,8 +370,8 @@ LogicalResult CpuBufferReallocStaticOp::verify() {
 /// Constructs the buffer type result from the statically known size.
 LogicalResult CpuBufferReallocStaticOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
   auto sizeAttr =
       dyn_cast<mlir::IntegerAttr>(attributes.get(getCSizeAttrName(name)));
@@ -395,8 +395,8 @@ LogicalResult CpuBufferReallocDynamicOp::verify() {
 
 LogicalResult CpuBufferReallocDynamicOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   inferredReturnTypes.emplace_back(
       CpuBufferType::get(context, Optional<uint64_t>()));
   return success();
@@ -416,8 +416,8 @@ LogicalResult CpuBufferReallocSpecOp::verify() {
 
 LogicalResult CpuBufferReallocSpecOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   inferredReturnTypes.emplace_back(
       CpuBufferType::get(context, Optional<uint64_t>()));
   return success();
@@ -587,8 +587,8 @@ LogicalResult CpuTensorSpecCreateOp::verify() {
 
 LogicalResult CpuTensorSpecCreateOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
   auto rawDimsAttr =
       dyn_cast<IntArrayElementsAttr>(attributes.get(getARawDimsAttrName(name)));
@@ -649,8 +649,8 @@ LogicalResult CpuTensorSpecCreateDynamicOp::verify() {
 
 LogicalResult CpuTensorSpecCreateDynamicOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
   auto rawDimsAttr =
       dyn_cast<IntArrayElementsAttr>(attributes.get(getRawDimsAttrName(name)));
@@ -705,8 +705,8 @@ LogicalResult CpuTensorSpecDimsDynamicOp::verify() {
 
 LogicalResult CpuTensorSpecDimsDynamicOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   assert(operands.size() == 1 && "mismatched operand arity");
   auto specType = dyn_cast<CpuTensorSpecType>(operands[0].getType());
   assert(specType && "mismatched operand type");
@@ -834,8 +834,8 @@ LogicalResult CpuTensorExtractOp::verify() {
 
 LogicalResult CpuTensorExtractOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   assert(operands.size() == 1 && "mismatched operand arity");
   auto tensorType = dyn_cast<CpuTensorType>(operands[0].getType());
   assert(tensorType && "mismatched operand type");
@@ -875,8 +875,8 @@ static void printRawSizeAsBufferType(AsmPrinter &p, const CASLookupOp &op,
 /// Infers the buffer type result from the size argument.
 LogicalResult CASLookupOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
   auto rawSizeAttr =
       dyn_cast<IntegerAttr>(attributes.get(getCRawSizeAttrName(name)));
