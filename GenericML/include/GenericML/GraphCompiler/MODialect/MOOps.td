@@ -273,7 +273,7 @@ def IfOp : MO_TensorOp<"if",
 
 def WhileOp : MO_TensorOp<"while",
           [SingleBlockImplicitTerminator<"MO::YieldOp">,
-          RecursiveMemoryEffects, RecursivelySpeculatable, IsolatedFromAbove]> {
+          IsolatedFromAbove]> {
   let summary = "while control flow operation";
   let description = [{
     The "mo.while" operation takes 'cond' and 'body' blocks. While the 'cond'
