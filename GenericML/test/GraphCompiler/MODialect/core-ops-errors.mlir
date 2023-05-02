@@ -60,6 +60,30 @@ mo.graph @if_op_type_mismatch(%arg0: !mo.tensor<[2, ?, 1], f32>, %arg1: !mo.tens
 
 // -----
 
+mo.graph @while_op_type_mismatch_cond(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[3], f32>, %cond : !mo.tensor<[], bool>) -> !mo.tensor<[2], f32> {
+  %0:2 = mo.while (%arg0 : !mo.tensor<[2], f32>, %cond: !mo.tensor<[], bool>) {
+    // expected-error@+1 {{'mo.yield' op operand #0 has type '!mo.tensor<[2], f32>' but expected '!mo.tensor<[], bool>'}}
+    mo.yield %arg0 : !mo.tensor<[2], f32>
+  } do {
+    mo.yield %arg0, %cond : !mo.tensor<[2], f32>, !mo.tensor<[], bool>
+  }
+  mo.output %0#0 : !mo.tensor<[2], f32>
+}
+
+// -----
+
+mo.graph @while_op_type_mismatch_body(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[3], f32>, %cond : !mo.tensor<[], bool>) -> !mo.tensor<[2], f32> {
+  %0:3 = mo.while (%arg0 : !mo.tensor<[2], f32>, %arg1: !mo.tensor<[3], f32>, %cond: !mo.tensor<[], bool>) {
+    mo.yield %cond : !mo.tensor<[], bool>
+  } do {
+    // expected-error@+1 {{'mo.yield' op operand #0 has type '!mo.tensor<[3], f32>' but expected '!mo.tensor<[2], f32>'}}
+    mo.yield %arg1, %arg0, %cond : !mo.tensor<[3], f32>, !mo.tensor<[2], f32>, !mo.tensor<[], bool>
+  }
+  mo.output %0#0 : !mo.tensor<[2], f32>
+}
+
+// -----
+
 // expected-error @below {{'mo.graph' op expects regions to end with 'mo.output', found 'kgen.return'}}
 // expected-note @below {{in custom textual format, the absence of terminator implies 'mo.output'}}
 mo.graph @graph_kgen_return(%arg0: !mo.tensor<[], f32>) -> !mo.tensor<[], f32> {

@@ -104,6 +104,9 @@ public:
   /// Lowers mo.if op.
   LogicalResult lowerIf(MO::IfOp ifOp);
 
+  /// Lowers mo.while op.
+  LogicalResult lowerWhile(MO::WhileOp whileOp);
+
 private:
   /// Lowers a Block
   LogicalResult lowerBlock(mlir::Block *block);
@@ -214,7 +217,8 @@ LogicalResult MOGraphLowering::lowerOutput(MO::OutputOp output) {
 LogicalResult MOGraphLowering::lowerYield(MO::YieldOp output) {
   // Execute phase lowering.
 
-  // Figure out what values to return. We always return the main chain
+  // Figure out what values to return. We always implicitly return the main
+  // chain.
   SmallVector<Value> operands;
   operands.push_back(loweringState.getExecuteChain());
   for (Value operand : output.getOperands())
@@ -598,13 +602,12 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
 
   SmallVector<Value> operands;
   operands.push_back(cond.getResult());
-  // This is creating a Value semantic If Op
-  // TODO: Change it to take buffers and specs? That breaks current lowering
-  // assumptions, but we don't really want to hard limit the execution of the
-  // body of the if on _all_ inputs being ready, which is what a value
-  // semantic input list will do. Possibly better solution: split the tensors
-  // here, recreate them inside the if body, let the standard lowering +
-  // tensor creation elimination clean it up?
+
+  // Note: Currently the MGPTransforms RemoveRedundantTensorExtractsPass
+  // will not remove mpg.cpu.tensor.{create,extract} pairs which cross
+  // control flow boundaries. Nevertheless here we translate the 'then' and
+  // 'else' blocks in the usual way, ensuring only !mgp.cpu.tensors pass
+  // between ops, including control flow ops.
 
   SmallVector<Type> resultTypes;
   // Always return the main chain
@@ -681,6 +684,135 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
   return success();
 }
 
+LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
+  auto loc = whileOp->getLoc();
+  OpBuilder &builder = loweringState.getExecuteOpBuilder();
+
+  // We'll need to thread the 'execute' chain through the while loop's 'cond'
+  // and 'body' blocks.
+  Value mainChain = loweringState.getExecuteChain();
+
+  // Collect the lowered form of all the outer SSA values which (may) appear
+  // in the final grt.while 'cond' and 'body' blocks.
+  SmallVector<Value> loweredFreeValues;
+  loweredFreeValues.emplace_back(mainChain);
+  for (Value value : whileOp.getInputs())
+    loweredFreeValues.emplace_back(
+        loweringState.lookupExecuteLoweredValue(value));
+
+  // It would be nice to collect SSA values from the outer scope which are used
+  // by the 'cond' or 'body' blocks without being mentioned by the signature,
+  // and automatically include those in the grt.while signature. That would
+  // avoid a lot of tedious boilerplate in MO for naming and returning SAA
+  // values which are only read and never 'updated' by the 'body' block. However
+  // MLIR does not allow 'partially isolated' regions.
+
+  // We now know the grt.while op's result types and signature.
+  SmallVector<Value> operands;
+  operands.reserve(loweredFreeValues.size());
+  SmallVector<Type> resultTypes;
+  resultTypes.reserve(loweredFreeValues.size());
+  for (Value loweredFreeValue : loweredFreeValues) {
+    operands.emplace_back(loweredFreeValue);
+    resultTypes.emplace_back(loweredFreeValue.getType());
+  }
+  auto loweredWhileOp =
+      builder.create<GRT::WhileOp>(loc, resultTypes, operands);
+
+  auto lower_block = [&](Region &inputRegion,
+                         Region &outputRegion) -> LogicalResult {
+    // Enter the lowered region's unique block.
+    Block &newBlock = outputRegion.emplaceBlock();
+    builder.setInsertionPointToEnd(&newBlock);
+
+    // Establish the block's arguments. The chain comes first.
+    auto loweredChainArg =
+        outputRegion.addArgument(mainChain.getType(), whileOp.getLoc());
+    loweringState.setExecuteChain(loweredChainArg);
+
+    // Then an arg for each of the original region args.
+    // We'll use the loweredFreeValues since they have the lowered types
+    // already.
+    for (auto [loweredFreeValue, arg] : llvm::zip(
+             llvm::drop_begin(loweredFreeValues), inputRegion.getArguments())) {
+      auto loweredArg =
+          outputRegion.addArgument(loweredFreeValue.getType(), arg.getLoc());
+      loweringState.emplaceExecuteLoweredValue(arg, loweredArg);
+    }
+
+    // Lower the block, including its terminating mo.yield.
+    if (failed(lowerBlock(&inputRegion.getBlocks().front())))
+      return failure();
+
+    return success();
+  };
+
+  // Lower the 'cond' block. We'll later need to make 2 adjustments:
+  // 1) The mo.while 'cond' block will mo.yield only the condition result. That
+  //    mo.yield will be lowered to a mef.output with the 'execute' chain and
+  //    lowered condition results. However, the grt.while requires the 'cond'
+  //    block to return a result for all signature arguments plus the condition,
+  //    so we'll need to include those.
+  // 2) The lowered condition will be a mgp.cpu.tensor<bool>, which we need to
+  //    convert to an i1.
+  if (failed(
+          lower_block(whileOp.getCondRegion(), loweredWhileOp.getCondRegion())))
+    return failure();
+
+  // Lower the 'body' block.
+  if (failed(
+          lower_block(whileOp.getBodyRegion(), loweredWhileOp.getBodyRegion())))
+    return failure();
+
+  // Now repair the lowered 'cond' block's mef.output to include all the
+  // additional variables between the output chain and condition, and fix
+  // the condition to be an i1.
+  {
+    auto condOutputOp = cast<MEF::OutputOp>(
+        loweredWhileOp.getCondRegion().front().getTerminator());
+    assert(condOutputOp->getNumOperands() == 2); // chain and condition
+    Value loweredChain = condOutputOp->getOperand(0);
+    Value loweredCondTensor = condOutputOp->getOperand(1);
+
+    SmallVector<Value> condOutputOpOperands;
+    condOutputOpOperands.reserve(loweredWhileOp->getNumResults() + 1);
+
+    // chain
+    condOutputOpOperands.emplace_back(loweredChain);
+
+    // additional non-chain args
+    llvm::append_range(
+        condOutputOpOperands,
+        llvm::drop_begin(loweredWhileOp.getCondRegion().getArguments()));
+
+    // i1 condition
+    builder.setInsertionPoint(condOutputOp);
+    auto loweredCondExtract =
+        builder.create<MGP::CpuTensorExtractOp>(loc, loweredCondTensor);
+    Value loweredInputChain = loweredWhileOp.getCondRegion().getArgument(0);
+    auto loweredCondI1 = builder.create<MGP::ToGRTBoolOp>(
+        loc, loweredInputChain, loweredCondExtract.getBufferResult());
+    condOutputOpOperands.emplace_back(loweredCondI1);
+
+    condOutputOp.getOperandsMutable().clear();
+    condOutputOp.getOperandsMutable().append(condOutputOpOperands);
+  }
+
+  // Capture the lowered outputs.
+  assert(loweredWhileOp.getNumResults() == whileOp.getNumResults() + 1);
+  loweringState.setExecuteChain(loweredWhileOp.getResult(0));
+  for (size_t i = 0, e = whileOp.getNumResults(); i < e; i++) {
+    loweringState.emplaceExecuteLoweredValue(whileOp.getResult(i),
+                                             loweredWhileOp.getResult(i + 1));
+  }
+
+  // Since we moved the insertion points for the 'cond' and 'body' blocks,
+  // reset back to the main block
+  builder.setInsertionPointAfter(loweredWhileOp);
+
+  return success();
+}
+
 LogicalResult MOGraphLowering::lowerBlock(Block *block) {
   for (Operation &op : *block) {
     if (auto declOp = dyn_cast<KGEN::ParamDeclareOp>(op)) {
@@ -739,9 +871,17 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
     }
 
     // Lower mo.if to grf.if, recursively lowering the body of
-    // the then and else branches of if.
+    // the 'then' and 'else' blocks.
     if (auto ifOp = dyn_cast<MO::IfOp>(op)) {
       if (failed(lowerIf(ifOp)))
+        return failure();
+      continue;
+    }
+
+    // Lower mo.while to grf.while, recursively lowering the body of
+    // the 'cond' and 'body' blocks..
+    if (auto whileOp = dyn_cast<MO::WhileOp>(op)) {
+      if (failed(lowerWhile(whileOp)))
         return failure();
       continue;
     }

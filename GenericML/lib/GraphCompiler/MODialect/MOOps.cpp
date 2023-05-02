@@ -227,17 +227,105 @@ LogicalResult OutputOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult IfOp::verify() {
-  // Verify that the return types match the block arguments.
-  // The ODS verifier already checked the cond to be present and bool.
+  // The 'then' and 'else' blocks take no arguments.
   auto *thenBlock = &getThenRegion().front();
-  auto *elseBlock = &getElseRegion().front();
+  if (thenBlock->getNumArguments() != 0)
+    return emitOpError("expected no arguments to 'then' block");
 
+  auto *elseBlock = &getElseRegion().front();
+  if (elseBlock->getNumArguments() != 0)
+    return emitOpError("expected no arguments to 'else' block");
+
+  // The 'then' block results must match the mo.if results.
   auto thenOutput = cast<YieldOp>(thenBlock->getTerminator());
   if (failed(checkOperandTypes(thenOutput, getResultTypes())))
     return failure();
 
+  // The 'else' block results must match the mo.if results.
   auto elseOutput = cast<YieldOp>(elseBlock->getTerminator());
   return checkOperandTypes(elseOutput, getResultTypes());
+}
+
+//===----------------------------------------------------------------------===//
+// WhileOp support
+//===----------------------------------------------------------------------===//
+
+ParseResult WhileOp::parse(OpAsmParser &parser, OperationState &result) {
+  SmallVector<OpAsmParser::Argument> operandInfo;
+  // Parse the signature.
+  if (parseParenOperandList(parser, result, operandInfo) ||
+      parser.parseOptionalAttrDictWithKeyword(result.attributes))
+    return failure();
+
+  // The op's return types match those of the signature arguments.
+  result.types.reserve(result.operands.size());
+  for (auto operand : result.operands)
+    result.types.push_back(operand.getType());
+
+  // Parse the 'cond' region, allowing shadowing of the op argument names.
+  Region *condRegion = result.addRegion();
+  if (parser.parseRegion(*condRegion, operandInfo,
+                         /*enableNameShadowing=*/true))
+    return failure();
+
+  // Parse the 'body' region.
+  Region *bodyRegion = result.addRegion();
+  if (parser.parseKeyword("do") ||
+      parser.parseRegion(*bodyRegion, operandInfo,
+                         /*enableNameShadowing=*/true))
+    return failure();
+
+  return success();
+}
+
+void WhileOp::print(OpAsmPrinter &p) {
+  p << " (";
+  llvm::interleaveComma(getInputs(), p,
+                        [&](Value arg) { p << arg << ": " << arg.getType(); });
+  p << ") ";
+  p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
+
+  // Reuse the argument names provided to the op for the basic block arg names
+  // within the regions.
+  p.shadowRegionArgs(getCondRegion(), getInputs());
+  p.printRegion(getCondRegion(), /*printEntryBlockArgs=*/false);
+  p << " do ";
+  p.shadowRegionArgs(getBodyRegion(), getInputs());
+  p.printRegion(getBodyRegion(), /*printEntryBlockArgs=*/false);
+}
+
+LogicalResult WhileOp::verify() {
+  // The grt.while results must match the signature types.
+  if (failed(checkMatchingTypes(*this, "result", getResultTypes(),
+                                getInputs().getTypes())))
+    return failure();
+
+  // The 'cond' block should accept arguments matching the grt.while signature.
+  auto *condBlock = &getCondRegion().front();
+  if (failed(
+          checkArgumentTypes(*this, "cond", condBlock, getInputs().getTypes())))
+    return failure();
+
+  // The 'body' block should accept arguments matching the grt.while signature.
+  auto *bodyBlock = &getBodyRegion().front();
+  if (failed(
+          checkArgumentTypes(*this, "body", bodyBlock, getInputs().getTypes())))
+    return failure();
+
+  // The 'cond' block returns a single 'scalar' boolean.
+  auto condOutput = cast<MO::YieldOp>(condBlock->getTerminator());
+  SmallVector<Type, 1> expectedTypes;
+  expectedTypes.emplace_back(MO::TensorType::get(
+      SmallVector<int64_t, 0>(), IntegerType::get(getContext(), 1)));
+  if (failed(checkOperandTypes(condOutput, expectedTypes)))
+    return failure();
+
+  // The 'body' block returns a result for each mo.while result.
+  auto bodyOutput = cast<MO::YieldOp>(bodyBlock->getTerminator());
+  if (failed(checkOperandTypes(bodyOutput, getResultTypes())))
+    return failure();
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

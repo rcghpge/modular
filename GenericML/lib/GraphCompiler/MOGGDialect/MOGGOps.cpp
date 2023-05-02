@@ -112,6 +112,7 @@ SmallVector<LoweredTensor> LowerHelper::getLoweredInputs() {
 
 LoweredTensor LowerHelper::getLoweredTensorForValue(Value val) {
   mlir::Value mgpTensor = loweringState.lookupExecuteLoweredValue(val);
+  assert(mgpTensor != nullptr && "referenced SSA value has not been lowered");
   auto extract =
       loweringState.getExecuteOpBuilder().create<MGP::CpuTensorExtractOp>(
           loc, mgpTensor);

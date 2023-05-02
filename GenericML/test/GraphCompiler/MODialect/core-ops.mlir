@@ -163,6 +163,27 @@ mo.graph @empty_if_op(%arg0: !mo.tensor<[2, ?, 1], f32>, %cond : !mo.tensor<[], 
 }
 
 //===----------------------------------------------------------------------===//
+// WhileOp and YieldOp
+//===----------------------------------------------------------------------===//
+
+// CHECK: mo.graph @while_op(%[[ARG0:.*]]: !mo.tensor<[2], f32>, %[[COND:.*]]: !mo.tensor<[], bool>) -> !mo.tensor<[2], f32> {
+mo.graph @while_op(%arg0: !mo.tensor<[2], f32>, %cond : !mo.tensor<[], bool>) -> (!mo.tensor<[2], f32>) {
+  // CHECK: %[[RES:.*]]:2 = mo.while (%[[ARG0]]: !mo.tensor<[2], f32>, %[[COND]]: !mo.tensor<[], bool>) {
+  %0:2 = mo.while (%arg0 : !mo.tensor<[2], f32>, %cond: !mo.tensor<[], bool>) {
+    // CHECK: mo.yield %[[COND]] : !mo.tensor<[], bool>
+    mo.yield %cond : !mo.tensor<[], bool>
+  // CHECK: } do {
+  } do {
+    // CHECK: %[[NEW_ARG0:.*]] = mo.add(%[[ARG0]], %[[ARG0]]) : !mo.tensor<[2], f32>
+    %new_arg0 = mo.add (%arg0, %arg0) : !mo.tensor<[2], f32>
+    // CHECK: mo.yield %[[NEW_ARG0]], %[[COND]] : !mo.tensor<[2], f32>, !mo.tensor<[], bool>
+    mo.yield %new_arg0, %cond : !mo.tensor<[2], f32>, !mo.tensor<[], bool>
+  }
+  // CHECK: mo.output %[[RES]]#0 : !mo.tensor<[2], f32>
+  mo.output %0#0 : !mo.tensor<[2], f32>
+}
+
+//===----------------------------------------------------------------------===//
 // ConstantOp
 //===----------------------------------------------------------------------===//
 

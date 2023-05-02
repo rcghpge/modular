@@ -230,15 +230,14 @@ def IfOp : MO_TensorOp<"if",
           [SingleBlockImplicitTerminator<"MO::YieldOp">]> {
   let summary = "if operation";
   let description = [{
-    The "mo.if" operation takes an i1 condition, a 'then' body and an 'else'
-    body. If the condition is true, the 'then' body is run and the "mo.if"
-    operation returns the results of that region, otherwise the "else" body is
+    The "mo.if" operation takes an i1 condition, a 'then' block and an 'else'
+    block. If the condition is true, the 'then' block is run and the "mo.if"
+    operation returns the results of that block, otherwise the "else" block is
     run and its values are returned.
 
-    The body regions must have the same signature, but they may take an
-    arbitrary number of arguments and return values with the same types as the
-    op return types, using a 'mo.yield' operation at the end of the
-    region.
+    The blocks have access to all outer SSA values. The blocks must return
+    values using the "mo.yield' op, and the returned values must match the
+    types given in the "mo.if" result signature.
 
     Example:
 
@@ -269,16 +268,77 @@ def IfOp : MO_TensorOp<"if",
 }
 
 //===----------------------------------------------------------------------===//
+// WhileOp
+//===----------------------------------------------------------------------===//
+
+def WhileOp : MO_TensorOp<"while",
+          [SingleBlockImplicitTerminator<"MO::YieldOp">,
+          RecursiveMemoryEffects, RecursivelySpeculatable, IsolatedFromAbove]> {
+  let summary = "while control flow operation";
+  let description = [{
+    The "mo.while" operation takes 'cond' and 'body' blocks. While the 'cond'
+    block evaluates to the true condition, the 'body' block is executed.
+
+    Both the 'cond' and 'body' blocks have access to the outer SSA values listed
+    in the "mo.while" signature. The 'cond' block must return a single
+    `!mo.tensor<[], bool>` 'scalar' condition result, using a "mo.yield"
+    operation. The 'body' block must return results with the same types as
+    the "mo.while" signature, again using a "mo.yield". It is not possible
+    for the 'cond' or 'body' blocks to access outer SSA values not listed in
+    the signature, even if those values never need to be 'updated' by the 'body'
+    block.
+
+    The results of the "mo.while" op are the results of the last executed
+    'body' block, or the "mo.while" signature arguments if 'cond' never
+    evaluated to true.
+
+    Example:
+
+    ```mlir
+      %x: !mo.tensor<[2], f32>
+      %y: !mo.tensor<[], f32>
+      %res:2 = mo.while (%x: !mo.tensor<[2], f32>, %y: !mo.tensor<[], f32>) {
+        %zero = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
+        %shape = mo.constant {value = #M.dense_array<> : tensor<0xsi64>} : !mo.tensor<[0], si64>
+        %mean0 = mo.mean (%x, %zero) : (!mo.tensor<[2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1], f32>
+        %mean1 = mo.reshape (%mean0, %shape) : (!mo.tensor<[1], f32>, !mo.tensor<[0], si64>) -> !mo.tensor<[], f32>
+        %cond = mo.greater (%y, %mean1) : (!mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[], bool>
+        mo.yield %cond : !mo.tensor<[], bool>
+      } do {
+        %new_x = mo.add(%x, %x) : !mo.tensor<[2], f32>
+        mo.yield %new_x, %y : !mo.tensor<[2], f32>, !mo.tensor<f32>
+      }
+      %res#1: !mo.tensor<[2], f32>
+    ```
+  }];
+
+  let arguments = (ins Variadic<MO_Tensor>:$inputs);
+  let results = (outs Variadic<MO_Tensor>:$results);
+  let regions = (region SizedRegion<1>:$condRegion,
+                        SizedRegion<1>:$bodyRegion);
+
+  // The assemblyFormat is almost:
+  //   custom<ParenOperandList>($inputs) attr-dict $condRegion `do` $bodyRegion
+  // However since inputs are used as both referential and binding occurrences
+  // we must instead use a custom parser.
+  let hasCustomAssemblyFormat = 1;
+
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // YieldOp
 //===----------------------------------------------------------------------===//
 
 def MO_YieldOp
-    : MO_TensorOp<"yield", [Terminator, ReturnLike, Pure, HasParent<"IfOp">]> {
+    : MO_TensorOp<"yield", [
+        Terminator, ReturnLike, Pure, ParentOneOf<["IfOp", "WhileOp"]>
+      ]> {
   let summary = "MO yield operation";
   let description = [{
-    The "mo.yield" operation specifies the output values for MO blocks.
-    The operation takes variable number of operands and produces
-    no results.
+    The "mo.yield" operation specifies the output values for MO control flow
+    blocks. The operation takes variable number of operands and produces no
+    results.
 
     Example:
 
