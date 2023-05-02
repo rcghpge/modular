@@ -32,9 +32,9 @@ namespace {
 // for a given mo type.
 struct KernelRecord {
   KernelRecord(StringLiteral moggID, StringLiteral shimName, bool hasMojo,
-               bool hasShim = true, bool isView = false)
+               bool isView = false)
       : moggID(moggID), shim(shimName), shouldHaveMojo(hasMojo),
-        shouldHaveShim(hasShim), isView(isView) {}
+        isView(isView) {}
 
   ~KernelRecord() = default;
 
@@ -47,9 +47,6 @@ struct KernelRecord {
 
   // Should we have a mojo kernel for this?
   bool shouldHaveMojo;
-
-  // Operations only expected to be lowered by jit do not need a shim.
-  bool shouldHaveShim;
 
   // Does this operation represent a view which then has special lowering code.
   bool isView;
@@ -72,7 +69,7 @@ struct KernelRecord {
 #define MO_TO_MOJO_VIEW(MOOp, ShimName)                                        \
   {                                                                            \
     TypeID::get<MOOp>(), KernelRecord {                                        \
-      MOOp::getOperationName(), ShimName, true, true, true                     \
+      MOOp::getOperationName(), ShimName, true, true                           \
     }                                                                          \
   }
 
@@ -150,15 +147,10 @@ struct MOOpPattern : public RewritePattern {
       shouldUseJit = false;
 
     // If we should be using JIT generate a jit target. Otherwise use the shim.
-    if (shouldUseJit) {
+    if (shouldUseJit)
       return helper.lowerToKernel(kernel.moggID, kernel.isView);
-    } else {
-      if (!kernel.shouldHaveShim)
-        return Error("[MOTOMOGG] Kernel does not have a shim but did not "
-                     "select a jit kernel.");
-
+    else
       return helper.lowerToShim(kernel.shim);
-    }
   }
 
   MoToKernelMapTy &moToMojoKernels;
