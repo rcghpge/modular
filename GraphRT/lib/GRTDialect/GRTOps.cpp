@@ -247,10 +247,12 @@ LogicalResult WhileOp::verify() {
           checkArgumentTypes(*this, "body", bodyBlock, getInputs().getTypes())))
     return failure();
 
-  // The 'cond' block should return an i1.
+  // The 'cond' block should return a result for each grt.while result,
+  // followed by an i1.
   auto condOutput = cast<MEF::OutputOp>(condBlock->getTerminator());
   SmallVector<Type> condResultTypes;
-  condResultTypes.reserve(1);
+  condResultTypes.reserve(getResultTypes().size() + 1);
+  llvm::append_range(condResultTypes, getResultTypes());
   condResultTypes.emplace_back(IntegerType::get(getContext(), 1));
   if (failed(checkOperandTypes(condOutput, condResultTypes)))
     return failure();

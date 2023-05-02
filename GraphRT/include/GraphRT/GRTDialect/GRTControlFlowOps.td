@@ -114,25 +114,31 @@ def WhileOp : GRTOp<"while",
     executed.
 
     Both the 'cond' and 'body' blocks have access to the outer SSA values listed
-    in the "grt.while" signature. The 'cond' block must return an i1 indicating
-    the condition result, using a "mef.output" op. The 'body' block must return
+    in the "grt.while" signature. The 'cond' block must return results with the
+    same types as the "grt.while" signatures, followed by an i1 indicating the
+    condition result, using a "mef.output" op. The 'body' block must return
     results with the same types as the "grt.while" signature, again using the
-    "mef.output" operation. Each execution of the 'body' block effectively
-    'updates' the arguments given in the "grt.while" signature, and the
-    results of the "grt.while" op are the last 'updated' arguments.
+    "mef.output" operation. Each execution of the 'cond' or 'body' block
+    effectively 'updates' the arguments given in the "grt.while" signature,
+    and the results of the "grt.while" op are the last 'updated' arguments.
+
+    Note we allow the 'cond' block to 'update' arguments so as to support
+    side-effecting condition code. In particular, it is possible to thread a
+    chain through all 'cond' and 'body' block execution.
 
     This operation is 'nonstrict'. The 'cond' block is merged into the overall
     dataflow graph without waiting for any arguments to become ready. When its
-    condition result is true then the 'body' block is similarly merged into the
-    overall dataflow graph, followed by the 'cond' block again to re-evaluate
-    the loop condition.
+    condition result is true, the 'body' block is similarly merged into the
+    overall dataflow graph, followed by the 'cond' for the next iteration. In
+    this way the 'cond' block may control how much asynchrony is permitted in
+    the loop.
 
     Example:
 
     ```mlir
       %res1, %res2 = grt.while (%x: i32, %y: f32) {
         %v1 = "compare"(%x, %y) : (i32, f32) -> i1
-        mef.output %v1 : i1
+        mef.output %x, %y, %v1 : (i32, f32, i1)
       } do {
         %v2, %v3 = "use"(%x, %y) : (i32, f32) -> (i32, f32)
         mef.output %v2, %v3 : (i32, f32)

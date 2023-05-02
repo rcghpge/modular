@@ -32,7 +32,7 @@ mef.invokable @if(%cond: i1, %v1: si32, %v2: si32) -> si32 {
 // CHECK-SAME: %[[ARG1:.*]]: i32, %[[ARG2:.*]]: f32
 // CHECK: %[[RES:.*]]:2 = grt.while (%[[ARG1]]: i32, %[[ARG2]]: f32) {
 // CHECK-NEXT: %[[COND:.*]] = "my.cond"(%[[ARG1]], %[[ARG2]])
-// CHECK-NEXT: mef.output %[[COND]]
+// CHECK-NEXT: mef.output %[[ARG1]], %[[ARG2]], %[[COND]]
 // CHECK-NEXT: } do {
 // CHECK-NEXT: mef.output %[[ARG1]], %[[ARG2]]
 // CHECK-NEXT: }
@@ -40,7 +40,7 @@ mef.invokable @if(%cond: i1, %v1: si32, %v2: si32) -> si32 {
 mef.invokable @while(%v1: i32, %v2: f32) -> (i32, f32) {
   %res1, %res2 = grt.while (%v1: i32, %v2: f32) {
     %c = "my.cond"(%v1, %v2) : (i32, f32) -> i1
-    mef.output %c : i1
+    mef.output %v1, %v2, %c : i32, f32, i1
   } do {
     mef.output %v1, %v2 : i32, f32
   }

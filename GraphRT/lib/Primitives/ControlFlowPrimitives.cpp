@@ -131,7 +131,8 @@ static void grt_while(RemainingArguments args, RemainingResults results,
                       MEFInvokable *cond, MEFInvokable *body,
                       Runtime &runtime) {
   assert(args.size() == results.size());
-  assert(cond->getNumArgs() == args.size() && cond->getNumResults() == 1);
+  assert(cond->getNumArgs() == args.size() &&
+         cond->getNumResults() == results.size() + 1);
   assert(body->getNumArgs() == args.size() &&
          body->getNumResults() == results.size());
 
@@ -179,10 +180,17 @@ static void grt_while(RemainingArguments args, RemainingResults results,
       // they may be needed by the 'body' block.
       SmallVector<AnyAsyncValueRef> operands = getCurrentOperandsCopy();
       SmallVector<AnyAsyncValueRef, 1> condResults;
-      condResults.resize(1);
+      condResults.resize(whileResults.size() + 1);
       condInvokable->invoke(operands, condResults, runtime);
 
-      std::move(condResults.front())
+      // The 'cond' block results (except the last condition result) are the
+      // new current operands (though they need not be ready yet).
+      for (auto [currentOperand, bodyResult] :
+           llvm::zip(currentOperands, llvm::drop_end(condResults)))
+        currentOperand = std::move(bodyResult);
+
+      // Wait for the last condition result of the 'cond' block to be ready.
+      std::move(condResults.back())
           .andThenSync([state = std::move(*this)](
                            AnyAsyncValueRef &&condResult) mutable {
             // If the execution is canceled, give up.

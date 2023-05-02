@@ -15,8 +15,8 @@ mef.invokable @controlflow_while_invalid1() {
   %n = grt.constant.si32 4
   %res:2 = grt.while (%i: si32, %n: si32) {
     %bogus = grt.constant.si32 42
-    // expected-error @+1 {{'mef.output' op operand #0 has type 'si32' but expected 'i1'}}
-    mef.output %bogus: si32
+    // expected-error @+1 {{'mef.output' op operand #2 has type 'si32' but expected 'i1'}}
+    mef.output %i, %n, %bogus: si32, si32, si32
   } do {
     mef.output %i, %n: si32, si32
   }
@@ -31,7 +31,7 @@ mef.invokable @controlflow_while_invalid2() {
   %n = grt.constant.si32 4
   %res:2 = grt.while (%i: si32, %n: si32) {
     %cond = grt.lessequal.si32 %i, %n
-    mef.output %cond: i1
+    mef.output %i, %n, %cond: si32, si32, i1
   } do {
     // expected-error @+1 {{'mef.output' op expected 2 operands, but given 1}}
     mef.output %i: si32
@@ -47,7 +47,7 @@ mef.invokable @controlflow_while_invalid3() {
   %n = grt.constant.si32 4
   %res:2 = grt.while (%i: si32, %n: si32) {
     %cond = grt.lessequal.si32 %i, %n
-    mef.output %cond: i1
+    mef.output %i, %n, %cond: si32, si32, i1
   } do {
     %bogus = grt.lessequal.si32 %i, %n
     // expected-error @+1 {{'mef.output' op operand #1 has type 'i1' but expected 'si32'}}
@@ -65,7 +65,7 @@ mef.invokable @controlflow_while_invalid4() {
   %res = grt.while (%i: si32) {
     %n = grt.constant.si32 4
     %cond = grt.lessequal.si32 %i, %n
-    mef.output %cond: i1
+    mef.output %i, %cond: si32, i1
   } do {
     // expected-error @+1 {{use of undeclared SSA value name}}
     %new_i = grt.add.si32 %i, %bogus
