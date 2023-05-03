@@ -68,12 +68,41 @@ TEST(BufferRef, CreateBorrowed) {
 
 TEST(BufferRef, CreateEmptyBorrowed) {
   BufferRef ref =
-      BufferRef::createBorrowed(/*buffer=*/(void*)nullptr, /*size=*/0,
+      BufferRef::createBorrowed(/*buffer=*/(void *)nullptr, /*size=*/0,
                                 /*alignment=*/128, BufferRef::kConstant);
   ASSERT_TRUE(ref);
   ASSERT_EQ(ref.getSize(), 0u);
   ASSERT_NE(ref.getBuffer(), nullptr);
   ASSERT_NE(ref.getMutableBuffer(), nullptr);
+}
+
+TEST(BufferRef, CreateSafeBorrowed) {
+  auto runtime = getRuntime();
+  BufferRef owned =
+      BufferRef::createOwned(runtime, /*size=*/8, /*alignment=*/64);
+  auto borrowe =
+      AsyncValueRef<BufferRef>::createReady(runtime, std::move(owned));
+  {
+    BufferRef borrowed = BufferRef::createSafeBorrowedSlice(borrowe.copy());
+    ASSERT_EQ(borrowed.getSize(), 8u);
+    ASSERT_EQ(borrowed.getAlignment(), 64u);
+    ASSERT_EQ(borrowed.getBuffer(), borrowe.get().getBuffer());
+    ASSERT_EQ(borrowe.getPointer()->getRefCountForDebugging(), 2);
+  }
+  ASSERT_EQ(borrowe.getPointer()->getRefCountForDebugging(), 1);
+}
+
+TEST(BufferRef, CreateSafeBorrowedSlice) {
+  auto runtime = getRuntime();
+  BufferRef owned =
+      BufferRef::createOwned(runtime, /*size=*/8, /*alignment=*/64);
+  auto borrowe =
+      AsyncValueRef<BufferRef>::createReady(runtime, std::move(owned));
+  BufferRef borrowed = BufferRef::createSafeBorrowedSlice(
+      borrowe.copy(), /*offset=*/2, /*size=*/4);
+  ASSERT_EQ(borrowed.getSize(), 4u);
+  ASSERT_EQ(borrowed.getAlignment(), std::nullopt);
+  ASSERT_EQ(borrowed.getBuffer(), borrowe.get().getBuffer<uint8_t>() + 2);
 }
 
 TEST(BufferRef, Move) {

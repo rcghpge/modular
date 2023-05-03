@@ -637,10 +637,11 @@ def CpuBufferSplitBorrowOp : MGP_Op<"cpu.buffer.split.borrow"> {
     output buffers and size operands are not consistent.
 
     Note that no copying is done, and the result buffers merely borrow from the
-    (offsets into) the input buffer. Thus the input buffer must have a lifetime
-    equal to or greater than all the output buffers.
-
-    TODO(#9883): The output buffers will not have any alignment property set.
+    (offsets into) the input buffer. Currently the runtime will guarantee the
+    input buffer will outlive the result buffers. In the future we'll make it
+    possible to supress this overhead when lifetime analysis can guarantee
+    the last reference to the input buffer will be consumed strictly after
+    the last reference to all result buffers.
 
     Example:
     ```mlir
@@ -687,7 +688,7 @@ def CpuBufferSetOp : MGP_Op<"cpu.buffer.set", [
     // Set each byte of the buffer to 0.
     %ch = mgp.cpu.buffer.set %buf : !mgp.cpu.buffer
     // Set each byte of the buffer to 1.
-    %ch = mgp.cpu.buffer.set %buf 1 : !mgp.cpu.buffer
+    %ch = mgp.cpu.buffer.set %buf, 1 : !mgp.cpu.buffer
     ```
   }];
 
@@ -696,47 +697,6 @@ def CpuBufferSetOp : MGP_Op<"cpu.buffer.set", [
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $buffer (`,` $value^)? attr-dict `:` qualified(type($buffer))
-  }];
-}
-
-//===----------------------------------------------------------------------===//
-// CpuBufferTouch
-//===----------------------------------------------------------------------===//
-
-def CpuBufferTouch : MGP_Op<"cpu.buffer.touch"> {
-  let summary = [{
-    Touches a buffer (with minimal overhead) until given chain is ready.
-  }];
-  let description = [{
-    Touches input buffer until input chain is ready. The execution semantics
-    doesn't involve changes to the input buffer at all -- it merely uses it as
-    an input so the runtime won't deallocate the buffer. This helps prevent the
-    buffer from being deallocated while it's borrowed.
-
-    Example:
-    ```mlir
-    %in_buf : !mgp.cpu.buffer<256>
-    %size1 : index
-    %out0_buf, %out1_buf =
-        mgp.cpu.buffer.split.borrow %in_buf, %size1
-        : !mgp.cpu.buffer<256> -> (!mgp.cpu.buffer<128>, !mgp.cpu.buffer)
-
-    %out00_ch = ... // op that uses `out0_buf`
-    %out01_ch = ... // another op that uses `out0_buf`
-    %out10_ch = ... // op that uses `out1_buf`
-
-    %borrow_uses_end_ch = grt.chain.merge %out00_ch, %out01_ch, %out10_ch
-
-    // This ensures that %in_buf doesn't get deallocated until the buffer
-    // borrowers finish their uses of the buffer.
-    mgp.cpu.buffer.touch %borrow_uses_end_ch, %in_buf
-    ```
-  }];
-
-  let arguments = (ins ChainType:$inChain,
-                   MGP_CpuBufferType:$buffer);
-  let assemblyFormat = [{
-    $inChain `,` $buffer attr-dict `:` qualified(type($buffer))
   }];
 }
 
@@ -1171,14 +1131,13 @@ def DebugCpuTensorPrintOp : MGP_Op<"debug.cpu.tensor.print"> {
   let summary = "Prints a debug representation of argument tensor. For "
                 "debugging and testing only.";
   let description = [{
-    Prints a debug representation of argument tensor. Currently used to
-    write lit unit tests which confirm buffer sharing.
+    Prints a debug representation of argument tensor. For lit unit tests.
 
     Example:
     ```mlir
     %tensor : !mgp.cpu.tensor<8x64xf32>
     %ch0 : !mef.chain
-    %ch1 = mgp.debug.cpu.tensor.print %tensor : !mgp.cpu.tensor<8x64xf32>
+    %ch1 = mgp.debug.cpu.tensor.print %ch0, %tensor : !mgp.cpu.tensor<8x64xf32>
     %ch1 : !mef.chain
     ```
   }];
@@ -1187,16 +1146,41 @@ def DebugCpuTensorPrintOp : MGP_Op<"debug.cpu.tensor.print"> {
   let results = (outs ChainType: $outChain);
   let assemblyFormat = "$inChain `,` $tensor attr-dict `:` qualified(type($tensor))";
 }
+
+//===----------------------------------------------------------------------===//
+// DebugCpuBufferPrintOp
+//===----------------------------------------------------------------------===//
+
+def DebugCpuBufferPrintOp : MGP_Op<"debug.cpu.buffer.print"> {
+  let summary = "Prints a debug representation of argument buffer. For "
+                "debugging and testing only.";
+  let description = [{
+    Prints a debug representation of argument buffer. For lit unit tests.
+
+    Example:
+    ```mlir
+    %buf : !mgp.cpu.buffer<8>
+    %ch0 : !mef.chain
+    %ch1 = mgp.debug.cpu.buffer.print %ch0, %buf : !mgp.cpu.buffer<8>
+    %ch1 : !mef.chain
+    ```
+  }];
+
+  let arguments = (ins ChainType:$inChain, MGP_CpuBufferType: $buffer);
+  let results = (outs ChainType: $outChain);
+  let assemblyFormat = "$inChain `,` $buffer attr-dict `:` qualified(type($buffer))";
+}
+
+
 //===----------------------------------------------------------------------===//
 // DebugBoolPrintOp
 //===----------------------------------------------------------------------===//
 
 def DebugBoolPrintOp : MGP_Op<"debug.bool.print"> {
-  let summary = "Prints a debug representation of argument value. For "
+  let summary = "Prints a debug representation of argument boolean. For "
                 "debugging and testing only.";
   let description = [{
-    Prints a debug representation of argument value. Currently used to
-    write lit unit tests which confirm buffer sharing.
+    Prints a debug representation of argument boolean. For lit unit tests.
 
     Example:
     ```mlir

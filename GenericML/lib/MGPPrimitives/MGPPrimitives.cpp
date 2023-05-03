@@ -328,9 +328,12 @@ static void mgp_cpu_buffer_split_borrow(
 
     // Just stop creating results if it turns out the sizes don't line up.
     // We'll report failure below.
-    // TODO(#9883): The output buffers will not have any alignment property.
+    // We'll create a 'safe' borrow from inBuffer, with the same mutability.
+    // Each borrow will take a reference to inBuffer, thus guaranteeing its
+    // lifetime will exceed each borrow.
     if (totalSize + thisSize <= inSize)
-      newBuffers.emplace_back(inBuffer->createBorrowedSlice(totalSize, thisSize));
+      newBuffers.emplace_back(BufferRef::createSafeBorrowedSlice(
+          inBuffer.copy(), totalSize, thisSize));
     totalSize += thisSize;
   }
   if (totalSize != inBuffer->getSize())
@@ -355,13 +358,6 @@ static Chain mgp_cpu_buffer_set(BufferRef &buffer, MEFAttr<uint8_t> value) {
   memset(buffer.getMutableBuffer(), *value, buffer.getSize());
   return {};
 }
-
-//===----------------------------------------------------------------------===//
-// mgp.cpu.buffer.touch
-//===----------------------------------------------------------------------===//
-
-/// Just wait until input chain is ready.
-static void mgp_cpu_buffer_touch(Chain inChain, BufferRef &buffer) {}
 
 //===----------------------------------------------------------------------===//
 // mgp.context.create
@@ -579,6 +575,32 @@ static void mgp_debug_cpu_tensor_print(Chain inChain, const Tensor &tensor,
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.debug.cpu.buffer.print
+//===----------------------------------------------------------------------===//
+
+static void mgp_debug_cpu_buffer_print(Chain inChain, const BufferRef &buffer,
+                                       Result<Chain> outChain,
+                                       Runtime &runtime) {
+  TimeTraceScope scope(
+      LLCL::WorkProfilerEntry::create("mgp.debug.cpu.buffer.print"));
+  llvm::outs() << buffer << "\n";
+  llvm::outs().flush();
+  std::move(outChain).emplace();
+}
+
+//===----------------------------------------------------------------------===//
+// mgp.debug.bool.print
+//===----------------------------------------------------------------------===//
+
+static void mgp_debug_bool_print(Chain inChain, const bool &cond,
+                                 Result<Chain> outChain, Runtime &runtime) {
+  TimeTraceScope scope(LLCL::WorkProfilerEntry::create("mgp.debug.bool.print"));
+  llvm::outs() << cond << "\n";
+  llvm::outs().flush();
+  std::move(outChain).emplace();
+}
+
+//===----------------------------------------------------------------------===//
 // mgp.debug.cpu.spin_wait
 //===----------------------------------------------------------------------===//
 
@@ -698,18 +720,6 @@ static ErrorOr<Chain> mgp_assert(bool cond, MEFAttr<StringRef> message) {
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.debug.bool.print
-//===----------------------------------------------------------------------===//
-
-static void mgp_debug_bool_print(Chain inChain, const bool &cond,
-                                 Result<Chain> outChain, Runtime &runtime) {
-  TimeTraceScope scope(LLCL::WorkProfilerEntry::create("mgp.debug.bool.print"));
-  llvm::outs() << cond << "\n";
-  llvm::outs().flush();
-  std::move(outChain).emplace();
-}
-
-//===----------------------------------------------------------------------===//
 // mgp.model
 //===----------------------------------------------------------------------===//
 
@@ -745,7 +755,6 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.split.borrow",
                 mgp_cpu_buffer_split_borrow);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.set", mgp_cpu_buffer_set);
-  ADD_PRIMITIVE(registry, "mgp.cpu.buffer.touch", mgp_cpu_buffer_touch);
   ADD_PRIMITIVE(registry, "mgp.context.create", mgp_context_create);
   ADD_PRIMITIVE(registry, "mgp.state_slot.create", mgp_state_slot_create);
   ADD_PRIMITIVE(registry, "mgp.cpu.tensor_spec.create",
@@ -763,13 +772,15 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.cpu.tensor.extract", mgp_cpu_tensor_extract);
   ADD_PRIMITIVE(registry, "mgp.debug.cpu.tensor.print",
                 mgp_debug_cpu_tensor_print);
+  ADD_PRIMITIVE(registry, "mgp.debug.cpu.buffer.print",
+                mgp_debug_cpu_buffer_print);
+  ADD_PRIMITIVE(registry, "mgp.debug.bool.print", mgp_debug_bool_print);
   ADD_PRIMITIVE(registry, "mgp.debug.cpu.spin_wait", mgp_debug_cpu_spin_wait);
   ADD_PRIMITIVE(registry, "mgp.cas.create_instance", mgp_cas_create_instance);
   ADD_PRIMITIVE(registry, "mgp.cas.lookup", mgp_cas_lookup);
   ADD_PRIMITIVE(registry, "mgp.cas.store", mgp_cas_store);
   ADD_PRIMITIVE(registry, "mgp.to_grt_bool", mgp_to_grt_bool);
   ADD_PRIMITIVE(registry, "mgp.assert", mgp_assert);
-  ADD_PRIMITIVE(registry, "mgp.debug.bool.print", mgp_debug_bool_print);
   ADD_PRIMITIVE(registry, "mgp.model", mgp_model);
 
   // Have the MO primitives be registered wherever MGP is registered.

@@ -66,13 +66,14 @@ BufferRef BufferRef::createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
           : runtime->getAllocator()->allocateBytes(size, alignment.value_or(1));
   if (copyFrom)
     LLCL::profiledMemcpy(buffer, copyFrom, size);
-  return BufferRef(buffer, size, makeMaybeAlign(alignment), kOwned, kLocal,
-                   kMutable, runtime);
+  return BufferRef(buffer, size, /*owningRef=*/{}, makeMaybeAlign(alignment),
+                   kOwned, kLocal, kMutable, runtime);
 }
 
 BufferRef BufferRef::createBorrowed(void *buffer, size_t size,
                                     std::optional<size_t> alignment,
-                                    Lifetime lifetime) {
+                                    Lifetime lifetime,
+                                    LLCL::AnyAsyncValueRef owningRef) {
   assert((size == 0 || buffer) && "borrowed buffer must be non-null");
   assert((size == 0 || !alignment ||
           llvm::isAddrAligned(llvm::Align(*alignment), buffer)) &&
@@ -80,13 +81,15 @@ BufferRef BufferRef::createBorrowed(void *buffer, size_t size,
   void *borrowedBuffer = size == 0 && buffer == nullptr
                              ? (void *)&kDummyTargetOfEmptyBuffer
                              : buffer;
-  return BufferRef(borrowedBuffer, size, makeMaybeAlign(alignment), kBorrowed,
-                   lifetime, kMutable);
+  return BufferRef(borrowedBuffer, size, std::move(owningRef),
+                   makeMaybeAlign(alignment), kBorrowed, lifetime, kMutable,
+                   /*runtime=*/{});
 }
 
 BufferRef BufferRef::createBorrowed(const void *buffer, size_t size,
                                     std::optional<size_t> alignment,
-                                    Lifetime lifetime) {
+                                    Lifetime lifetime,
+                                    AnyAsyncValueRef owningRef) {
   assert((size == 0 || buffer) && "borrowed buffer must be non-null");
   assert((size == 0 || !alignment ||
           llvm::isAddrAligned(llvm::Align(*alignment), buffer)) &&
@@ -98,12 +101,13 @@ BufferRef BufferRef::createBorrowed(const void *buffer, size_t size,
   // be immutable. This will assert fail if a mutable buffer pointer is
   // requested.
   return BufferRef(const_cast<void *>(borrowedBuffer), size,
-                   makeMaybeAlign(alignment), kBorrowed, lifetime, kImmutable);
+                   std::move(owningRef), makeMaybeAlign(alignment), kBorrowed,
+                   lifetime, kImmutable, /*runtime=*/{});
 }
 
 BufferRef BufferRef::createForeign(ForeignBufferInterfaceID id, void *object,
-                                   size_t size,
-                                   std::optional<size_t> alignment) {
+                                   size_t size, std::optional<size_t> alignment,
+                                   AnyAsyncValueRef owningRef) {
   assert(object && "foreign object cannot be null");
   // Note that even if size is 0 we are obliged to create a non-null
   // BufferRef so as to retain ownership of object.
@@ -112,17 +116,32 @@ BufferRef BufferRef::createForeign(ForeignBufferInterfaceID id, void *object,
                llvm::Align(*alignment),
                ForeignBufferInterfaceRegistry::getBuffer(id, object)) &&
            "buffer is not aligned as per purported alignment");
-  return BufferRef(id, object, size, makeMaybeAlign(alignment), kForeign,
-                   kLocal, kImmutable);
+  return BufferRef(id, object, size, {} /*std::move(owningRef)*/,
+                   makeMaybeAlign(alignment), kForeign, kLocal, kImmutable);
 }
 
-BufferRef BufferRef::createBorrowedSlice(size_t offset, size_t size) {
-  // For the case of a mutable buffer it does matter if we pass in a const *
-  // as the immutablity is determined by the seperate mutablity property.
-  const void *newPtr = getBuffer<uint8_t>() + offset;
-  return BufferRef(const_cast<void *>(newPtr), size,
-                   makeMaybeAlign(getAlignment()), kBorrowed, kLocal,
-                   getMutability());
+BufferRef BufferRef::createSafeBorrowedSlice(AsyncValueRef<BufferRef> borrowe,
+                                             size_t offset, size_t size) {
+  assert(borrowe.isValueAvailable() &&
+         "given AsyncValue reference must be ready and not an error");
+  BufferRef &borroweBufferRef = borrowe.get();
+  assert(offset <= borroweBufferRef.size && "given offset must be in range");
+  if (size == std::numeric_limits<size_t>::max())
+    size = borroweBufferRef.size - offset;
+  assert(offset + size <= borroweBufferRef.size &&
+         "given size must be in range");
+
+  const void *newBuffer = borroweBufferRef.getBuffer<uint8_t>() + offset;
+
+  // We can preserve the borrowe's alignment if the offset is compatible with
+  // it. Otherwise fall back to unknown alignment.
+  std::optional<size_t> alignment = borroweBufferRef.getAlignment();
+  if (alignment && !llvm::isAddrAligned(llvm::Align(*alignment), newBuffer))
+    alignment = std::nullopt;
+
+  return BufferRef(const_cast<void *>(newBuffer), size, std::move(borrowe),
+                   makeMaybeAlign(alignment), kBorrowed, kLocal,
+                   borroweBufferRef.mutability, /*runtime=*/{});
 }
 
 BufferRef::~BufferRef() {
@@ -157,8 +176,9 @@ ErrorOr<BufferRef> BufferRef::borrowOrError(Lifetime borrowLifetime) const {
     return BufferRef();
   if (ownership == kOwned || ownership == kForeign ||
       lifetime >= borrowLifetime)
-    return BufferRef(const_cast<void *>(getBuffer()), getSize(), alignment,
-                     kBorrowed, borrowLifetime, mutability);
+    return BufferRef(const_cast<void *>(getBuffer()), getSize(),
+                     owningRef.copy(), alignment, kBorrowed, borrowLifetime,
+                     mutability, /*runtime=*/{});
   return Error(
       Twine("attempting to create borrowing reference with lifetime ") +
       lifetimeToStr(borrowLifetime) +
@@ -212,6 +232,10 @@ void BufferRef::printDebug(raw_ostream &os) const {
                          2 + 2 * sizeof(intptr_t));
   os << ", ";
   os << getSize();
+  if (owningRef) {
+    os << ", ";
+    os << *owningRef.getPointer();
+  }
   os << ", ";
   os << ownershipToStr(ownership);
   os << ", ";
@@ -228,6 +252,7 @@ void BufferRef::printDebug(raw_ostream &os) const {
 void BufferRef::swap(BufferRef &rhs) {
   std::swap(bufferOrObject, rhs.bufferOrObject);
   std::swap(size, rhs.size);
+  std::swap(owningRef, rhs.owningRef);
   std::swap(alignment, rhs.alignment);
   std::swap(ownership, rhs.ownership);
   std::swap(lifetime, rhs.lifetime);
