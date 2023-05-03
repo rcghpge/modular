@@ -244,11 +244,8 @@ struct FullyConnectedPattern : public RewritePattern {
     auto reluP = m_Op<MO::ReluOp>(&relu, bias_add);
     auto tanhP = m_Op<MO::TanhOp>(&tanh, bias_add);
     auto sigmoidP = m_Op<MO::SigmoidOp>(&sigmoid, bias_add);
-    auto fully_connected = m_Optional(
-        approxGeluP,
-        m_Optional(geluP,
-                   m_Optional(reluP, m_Optional(tanhP, m_Optional(sigmoidP,
-                                                                  bias_add)))));
+    auto fully_connected =
+        m_Optional(approxGeluP, geluP, reluP, tanhP, sigmoidP, bias_add);
     // TODO: Make the Optional Matcher work with Operation* directly
     if (op->getNumResults() > 0 && !fully_connected.match(op->getResult(0)))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
