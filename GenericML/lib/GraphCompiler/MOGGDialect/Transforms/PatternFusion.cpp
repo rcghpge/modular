@@ -490,6 +490,7 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<MO::BatchMatmulOp> {
                                 PatternRewriter &rewriter) const override {
     //   bmm1 = mo.batch_matmul(query, keyT)
     // * bmm1 = (bmm1 * scalar) or (bmm1 / scalar)
+    // * bmm1 = bmm1 + mask
     //   softmax = mo.softmax(bmm1)
     // * broadcast = mo.static.broadcast_to(softmax)
     //   res = mo.batch_matmul(broadcast, value)
@@ -497,9 +498,12 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<MO::BatchMatmulOp> {
     // ==>
     //
     //   res = "mop.kernels.multi_head_attention"(query, keyT, value, scale)
+    // or
+    //   res = "mop.kernels.multi_head_attention_masked"(
+    //          query, keyT, value, scale, mask)
     //
     // NOTE `*` means optional
-    Value query, keyT, value, mulScalar, divScalar;
+    Value query, keyT, value, mulScalar, divScalar, mask;
     Operation *bmm1Op = nullptr, *softmaxOp = nullptr, *broadcastOp = nullptr;
     auto queryP = m_Any(&query);
     auto keyTP = m_Any(&keyT);
@@ -509,7 +513,17 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<MO::BatchMatmulOp> {
     auto divBmm1P = m_Op<MO::DivOp>(
         bmm1P, m_Op<MO::Static::BroadcastToOp>(m_Any(&divScalar)));
     auto scaledBmm1P = m_Optional(bmm1P, mulBmm1P, divBmm1P);
-    auto softmaxP = m_Op<MO::SoftmaxOp>(&softmaxOp, scaledBmm1P);
+    // TODO
+    // 1. eliminate broadcast on `scaledBmm1P` via more aggressive shape
+    // inference
+    // 2. fuse in the broadcast on `mask`
+    auto maskedBmm1P =
+        m_Optional(scaledBmm1P,
+                   m_BinaryCommutativeOp<MO::AddOp>(
+                       m_Optional(scaledBmm1P,
+                                  m_Op<MO::Static::BroadcastToOp>(scaledBmm1P)),
+                       m_Any(&mask)));
+    auto softmaxP = m_Op<MO::SoftmaxOp>(&softmaxOp, maskedBmm1P);
     // TODO remove this once shape inference can eliminate these broadcasts in
     // top models.
     auto broadcastP = m_Optional(
@@ -534,10 +548,17 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<MO::BatchMatmulOp> {
     if (!scale)
       return rewriter.notifyMatchFailure(op, "failed to resolve scale");
 
+    // Prepare kernell name and arguments
+    StringRef kernelName = "mop.kernels.multi_head_attention";
+    SmallVector<Value> kernelArgs{query, keyT, value, scale};
+    if (mask) {
+      kernelName = "mop.kernels.multi_head_attention_masked";
+      kernelArgs.push_back(mask);
+    }
+
     // Replace with fused kernel call
-    rewriter.replaceOpWithNewOp<MOGG::ExtOp>(
-        op, op.getResult().getType(), "mop.kernels.multi_head_attention",
-        SmallVector<Value>{query, keyT, value, scale});
+    rewriter.replaceOpWithNewOp<MOGG::ExtOp>(op, op.getResult().getType(),
+                                             kernelName, kernelArgs);
 
     return mlir::success();
   }
