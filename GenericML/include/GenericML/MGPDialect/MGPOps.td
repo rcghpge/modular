@@ -622,14 +622,14 @@ def CpuBufferConcatOp : MGP_Op<"cpu.buffer.concat"> {
 }
 
 //===----------------------------------------------------------------------===//
-// CpuBufferSplitMutableBorrowOp
+// CpuBufferSplitBorrowOp
 //===----------------------------------------------------------------------===//
 
-def CpuBufferSplitMutableBorrowOp : MGP_Op<"cpu.buffer.split.mutable_borrow"> {
-  let summary = "Splits an input buffer into multiple mutable borrows to its "
-                "contents.";
+def CpuBufferSplitBorrowOp : MGP_Op<"cpu.buffer.split.borrow"> {
+  let summary = "Splits an input buffer into multiple borrowed buffer slices "
+                "of its contents.";
   let description = [{
-    Splits a mutable input buffer into multiple mutable borrows into its
+    Splits an input buffer into multiple borrowed buffer slices into its
     contents. An `mgp.cpu.buffer.concat` of those buffers would recover the
     contents of the input buffer. An index operand must be supplied at runtime
     for each output buffer which does not have a statically known size. A
@@ -648,7 +648,7 @@ def CpuBufferSplitMutableBorrowOp : MGP_Op<"cpu.buffer.split.mutable_borrow"> {
     %size1 : index
     %size2 : index
     %out0_buf, %out1_buf, %out2_buf =
-        mgp.cpu.buffer.split.mutable_borrow %in_buf, %size1, %size2
+        mgp.cpu.buffer.split.borrow %in_buf, %size1, %size2
         : !mgp.cpu.buffer<256> -> (!mgp.cpu.buffer<128>, !mgp.cpu.buffer, !mgp.cpu.buffer)
     %out0_buf : !mgp.cpu.buffer<128>
     %out1_buf : !mgp.cpu.buffer
@@ -718,7 +718,7 @@ def CpuBufferTouch : MGP_Op<"cpu.buffer.touch"> {
     %in_buf : !mgp.cpu.buffer<256>
     %size1 : index
     %out0_buf, %out1_buf =
-        mgp.cpu.buffer.split.mutable_borrow %in_buf, %size1
+        mgp.cpu.buffer.split.borrow %in_buf, %size1
         : !mgp.cpu.buffer<256> -> (!mgp.cpu.buffer<128>, !mgp.cpu.buffer)
 
     %out00_ch = ... // op that uses `out0_buf`

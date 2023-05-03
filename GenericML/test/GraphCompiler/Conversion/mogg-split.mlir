@@ -17,7 +17,7 @@
 // CHECK-SAME:   : (!mgp.cpu.tensor_spec<?x8xf32>, !mgp.cpu.tensor<2xsi64>) -> (!mgp.cpu.tensor_spec<?x8xf32>, !mgp.cpu.tensor_spec<?x8xf32>)
 // CHECK-NEXT:   %[[SPLIT_SPEC1:.*]] = mgp.cpu.tensor_spec.size %[[SPLIT_SPECS]]#0 : !mgp.cpu.tensor_spec<?x8xf32>
 // CHECK-NEXT:   %[[SPLIT_SPEC2:.*]] = mgp.cpu.tensor_spec.size %[[SPLIT_SPECS]]#1 : !mgp.cpu.tensor_spec<?x8xf32>
-// CHECK-NEXT:   %[[SPLIT_BUFS:.*]]:2 = mgp.cpu.buffer.split.mutable_borrow %[[INPUT_BUF]], %[[SPLIT_SPEC1]], %[[SPLIT_SPEC2]]
+// CHECK-NEXT:   %[[SPLIT_BUFS:.*]]:2 = mgp.cpu.buffer.split.borrow %[[INPUT_BUF]], %[[SPLIT_SPEC1]], %[[SPLIT_SPEC2]]
 // CHECK-SAME:   : !mgp.cpu.buffer  -> (!mgp.cpu.buffer, !mgp.cpu.buffer)
 // CHECK-NEXT:   %[[SPLIT_TENSOR1:.*]] = mgp.cpu.tensor.create %[[CH]], %[[SPLIT_BUFS]]#0, %[[SPLIT_SPECS]]#0  : !mgp.cpu.tensor<?x8xf32>
 // CHECK-NEXT:   %[[SPLIT_TENSOR2:.*]] = mgp.cpu.tensor.create %[[CH]], %[[SPLIT_BUFS]]#1, %[[SPLIT_SPECS]]#1  : !mgp.cpu.tensor<?x8xf32>

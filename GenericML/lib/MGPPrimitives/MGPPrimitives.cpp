@@ -294,16 +294,15 @@ static void mgp_cpu_buffer_concat(Chain inChain,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.cpu.buffer.split.mutable_borrow
+// mgp.cpu.buffer.split.borrow
 //===----------------------------------------------------------------------===//
 
-static void mgp_cpu_buffer_split_mutable_borrow(
+static void mgp_cpu_buffer_split_borrow(
     AsyncValueRef<BufferRef> inBuffer, RemainingArguments runtimeSizes,
     RemainingResults outBuffers, MEFAttr<ArrayRef<uint64_t>> outBufferRawSizes,
     Runtime &runtime, EncodedLocation loc) {
   TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.split.mutable_borrow"));
-  uint8_t *const in = inBuffer->getMutableBuffer<uint8_t>();
+      LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.split.borrow"));
   const size_t inSize = inBuffer->getSize();
   size_t totalSize = 0; // total size of all output buffers processed so far
   size_t runtimeSizeIndex = 0; // index of next runtimeSizes operand to use
@@ -326,18 +325,17 @@ static void mgp_cpu_buffer_split_mutable_borrow(
       thisSize = runtimeSizes[runtimeSizeIndex].get<size_t>();
       runtimeSizeIndex++;
     }
+
+    // Just stop creating results if it turns out the sizes don't line up.
+    // We'll report failure below.
+    // TODO(#9883): The output buffers will not have any alignment property.
     if (totalSize + thisSize <= inSize)
-      // Just stop creating results if it turns out the sizes don't line up.
-      // We'll report failure below.
-      // TODO(#9883): The output buffers will not have any alignment property.
-      newBuffers.emplace_back(BufferRef::createBorrowed(
-          /*buffer=*/in + totalSize, /*size=*/thisSize, /*alignment=*/{},
-          /*lifetime=*/BufferRef::kLocal));
+      newBuffers.emplace_back(inBuffer->createBorrowedSlice(totalSize, thisSize));
     totalSize += thisSize;
   }
   if (totalSize != inBuffer->getSize())
     return std::move(outBuffers)
-        .setAllToError(Twine("mgp.cpu.buffer.split.mutable_borrow input buffer "
+        .setAllToError(Twine("mgp.cpu.buffer.split.borrow input buffer "
                              "size must be sum of output buffer sizes (") +
                            Twine(inBuffer->getSize()) + " vs " +
                            Twine(totalSize) + ")",
@@ -744,8 +742,8 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
                 mgp_cpu_buffer_set_with_index);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.copy", mgp_cpu_buffer_copy);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.concat", mgp_cpu_buffer_concat);
-  ADD_PRIMITIVE(registry, "mgp.cpu.buffer.split.mutable_borrow",
-                mgp_cpu_buffer_split_mutable_borrow);
+  ADD_PRIMITIVE(registry, "mgp.cpu.buffer.split.borrow",
+                mgp_cpu_buffer_split_borrow);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.set", mgp_cpu_buffer_set);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.touch", mgp_cpu_buffer_touch);
   ADD_PRIMITIVE(registry, "mgp.context.create", mgp_context_create);

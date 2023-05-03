@@ -152,6 +152,10 @@ public:
                                   std::optional<size_t> alignment,
                                   Lifetime lifetime);
 
+  /// Slices this buffer by offset and returns a new buffer ref starting from
+  /// that pointer of the given size which is a borrow of this buffer.
+  BufferRef createBorrowedSlice(size_t offset, size_t size);
+
   /// Creates an owning reference to the already allocated 'foreign' buffer
   /// object. The corresponding ForeignBufferInterface must have been already
   /// registered under id. The buffer is considered immutable. It is valid for

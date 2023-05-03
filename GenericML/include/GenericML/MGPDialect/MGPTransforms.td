@@ -142,10 +142,10 @@ def StripBufferAttributesPass : Pass<"strip-buffer-attributes", "MGP::ModelOp"> 
 
 def ConcatInPlacePass : Pass<"concat-in-place", "MGP::ModelOp"> {
   let summary = "Replaces mgp.cpu.buffer.concat with "
-                "mcp.cpu.buffer.split.mutable_borrow.";
+                "mcp.cpu.buffer.split.borrow.";
   let description = [{
     This pass replaces mgc.cpu.buffer.concat with
-    mcp.cpu.buffer.split.mutable_borrow, provided all writers to the buffer
+    mcp.cpu.buffer.split.borrow, provided all writers to the buffer
     operands to the concat can be rewritten to instead write to the buffer
     results of split.
 
@@ -298,7 +298,7 @@ def LegalizeBorrowLifetimePass : Pass<"legalize-borrow-lifetime", "MGP::ModelOp"
                 "exceeds the borrowing ones";
   let description = [{
     This pass inserts mgp.cpu.buffer.touch to ensure lifetime of borrowed buffer
-    exceeds the borrows. This is mainly used with mgp.cpu.split.mutable_borrow,
+    exceeds the borrows. This is mainly used with mgp.cpu.split.borrow,
     which could result in borrows that outlive the input buffer (if it's part of
     an in-place split).
   }];

@@ -116,6 +116,15 @@ BufferRef BufferRef::createForeign(ForeignBufferInterfaceID id, void *object,
                    kLocal, kImmutable);
 }
 
+BufferRef BufferRef::createBorrowedSlice(size_t offset, size_t size) {
+  // For the case of a mutable buffer it does matter if we pass in a const *
+  // as the immutablity is determined by the seperate mutablity property.
+  const void *newPtr = getBuffer<uint8_t>() + offset;
+  return BufferRef(const_cast<void *>(newPtr), size,
+                   makeMaybeAlign(getAlignment()), kBorrowed, kLocal,
+                   getMutability());
+}
+
 BufferRef::~BufferRef() {
   switch (ownership) {
   case kNull:

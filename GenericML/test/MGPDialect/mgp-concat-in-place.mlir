@@ -7,7 +7,7 @@
 // CHECK-LABEL: mgp.model @static_concat
 // CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[MGP_CTX:.*]]: !mgp.context)
 // CHECK: %[[OUT_BUF:.*]] = mgp.cpu.buffer.alloc.static %[[CH0]], 64
-// CHECK: %[[IN_BUFS:.*]]:2 = mgp.cpu.buffer.split.mutable_borrow %[[OUT_BUF]] : !mgp.cpu.buffer<64>  -> (!mgp.cpu.buffer<32>, !mgp.cpu.buffer<32>)
+// CHECK: %[[IN_BUFS:.*]]:2 = mgp.cpu.buffer.split.borrow %[[OUT_BUF]] : !mgp.cpu.buffer<64>  -> (!mgp.cpu.buffer<32>, !mgp.cpu.buffer<32>)
 // CHECK: %[[CH1:.*]] = "mop.kernels.add"(%[[CH0]], %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %[[IN_BUFS]]#0, %{{.*}})
 // CHECK: %[[CH2:.*]] = "mop.kernels.sub"(%[[CH0]], %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %[[IN_BUFS]]#1, %{{.*}})
 // CHECK: %[[CH3:.*]] = grt.chain.merge %[[CH1]], %[[CH2]]
@@ -49,7 +49,7 @@ mgp.model @static_concat : tf init {
 // *byte size of buffer we are splitting, ie 64*
 // CHECK: %[[TOTAL_SIZE:.*]] = mgp.cpu.tensor_spec.size %{{.*}}
 // CHECK: %[[OUT_BUF:.*]] = mgp.cpu.buffer.alloc.dynamic %[[CH0]], %[[TOTAL_SIZE]]
-// CHECK: %[[IN_BUFS:.*]]:2 = mgp.cpu.buffer.split.mutable_borrow %[[OUT_BUF]], %[[SPLIT_SIZE]] : !mgp.cpu.buffer  -> (!mgp.cpu.buffer, !mgp.cpu.buffer<32>)
+// CHECK: %[[IN_BUFS:.*]]:2 = mgp.cpu.buffer.split.borrow %[[OUT_BUF]], %[[SPLIT_SIZE]] : !mgp.cpu.buffer  -> (!mgp.cpu.buffer, !mgp.cpu.buffer<32>)
 // CHECK: %[[CH1:.*]] = "mop.kernels.add"(%[[CH0]], %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %[[IN_BUFS]]#0, %{{.*}})
 // CHECK: %[[CH2:.*]] = "mop.kernels.sub"(%[[CH0]], %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %[[IN_BUFS]]#1, %{{.*}})
 // CHECK: %[[CH3:.*]] = grt.chain.merge %[[CH1]], %[[CH2]]
@@ -87,7 +87,7 @@ mgp.model @dynamic_concat : tf init {
 //
 
 // CHECK-LABEL: mgp.model @concat_with_shared_input_buffer
-// CHECK: %{{.*}} = mgp.cpu.buffer.split.mutable_borrow
+// CHECK: %{{.*}} = mgp.cpu.buffer.split.borrow
 
 mgp.model @concat_with_shared_input_buffer : tf init {
   %0 = grt.chain.create

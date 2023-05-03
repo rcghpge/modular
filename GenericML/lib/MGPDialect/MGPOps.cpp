@@ -476,7 +476,7 @@ parseBufferTypesAndRawSizes(AsmParser &p, SmallVectorImpl<Type> &bufferTypes,
 /// Prints a list of mgp.cpu.buffer types, ignoring the raw sizes.
 static void
 printBufferTypesAndRawSizes(AsmPrinter &p,
-                            const CpuBufferSplitMutableBorrowOp &op,
+                            const CpuBufferSplitBorrowOp &op,
                             mlir::ValueTypeRange<mlir::ResultRange> bufferTypes,
                             IntArrayElementsAttr rawSizes) {
   p.printArrowTypeList(bufferTypes);
@@ -485,7 +485,7 @@ printBufferTypesAndRawSizes(AsmPrinter &p,
 // Verifies the output buffer sizes are consistent with the input buffer size,
 // and that we have a runtime size operand for every output buffer of unknown
 // size.
-LogicalResult CpuBufferSplitMutableBorrowOp::verify() {
+LogicalResult CpuBufferSplitBorrowOp::verify() {
   size_t numDynamic = llvm::count_if(getOutBuffers(), [](const Value &v) {
     return !dyn_cast<CpuBufferType>(v.getType()).getOptSize().has_value();
   });

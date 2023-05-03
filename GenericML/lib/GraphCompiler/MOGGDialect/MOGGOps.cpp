@@ -622,10 +622,8 @@ LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
       helper.getLoweredTensorForValue(op.getInput());
   Value inputSpec = loweredInputTensor.spec;
   Value inputBuf = loweredInputTensor.buffer;
-  // TODO Supporting this requires either
-  // 1. Lower this with via the regular `mo.split` path, which loses in-place
-  // buffer splitting.
-  // 2. A immutable version of `CpuBufferSplitMutableBorrowOp`
+
+  // TODO Enable this.
   if (inputBuf.getDefiningOp<MGP::CpuBufferConstantOp>())
     return op.emitError("constant input buffer is unsupported");
 
@@ -659,13 +657,12 @@ LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
   }
 
   // Build MGP buffer split op
-  auto mgpBufferSplitOp =
-      execBuilder.create<MGP::CpuBufferSplitMutableBorrowOp>(
-          loc,
-          /*outBuffers=*/outBufTypes,
-          /*inBuffer=*/inputBuf,
-          /*runtimeSizes=*/runtimeSizes,
-          /*outBufferRawSizes=*/rawSizes);
+  auto mgpBufferSplitOp = execBuilder.create<MGP::CpuBufferSplitBorrowOp>(
+      loc,
+      /*outBuffers=*/outBufTypes,
+      /*inBuffer=*/inputBuf,
+      /*runtimeSizes=*/runtimeSizes,
+      /*outBufferRawSizes=*/rawSizes);
 
   // Associate each result MO tensor with a new MGP tensor
   for (auto [outIdx, outSpec, outBuf] :
