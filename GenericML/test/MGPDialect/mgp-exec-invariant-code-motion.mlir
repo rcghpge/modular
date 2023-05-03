@@ -78,7 +78,7 @@ mgp.model @kgen_execute_kernel : tf init {
 // CHECK-NEXT:  %[[PACKED_BUF:.*]] = mgp.cpu.buffer.get_cached %[[CH0]], %[[CTX]][1] : !mgp.cpu.buffer
 // Ops that didn't get lifted, but references to chain and buffer got updated.
 // CHECK-NEXT:  %[[ARG2_BUF:.*]], %[[ARG2_SPEC:.*]] = mgp.cpu.tensor.extract %[[ARG2]] : !mgp.cpu.tensor<?x2xf32>
-// CHECK-NEXT:  %[[OUT_SPEC:.*]] = "mop.shape.matmul_packb"(%[[ARG2_SPEC]]) {originalBDims = #M.dense_array<2, 2> : !M.array<2xui64>} : (!mgp.cpu.tensor_spec<?x2xf32>) -> !mgp.cpu.tensor_spec<?x2xf32>
+// CHECK-NEXT:  %[[OUT_SPEC:.*]] = "mop.shape.matmul_packb"(%[[ARG2_SPEC]]) : (!mgp.cpu.tensor_spec<?x2xf32>) -> !mgp.cpu.tensor_spec<?x2xf32>
 // CHECK-NEXT:  %[[OUT_BUF:.*]] = mgp.cpu.buffer.alloc.spec %[[CH0]], %[[OUT_SPEC]], align 16 : !mgp.cpu.tensor_spec<?x2xf32>
 // CHECK-NEXT:  %[[CH2:.*]] = "mop.kernels.matmul_packb"(%[[CH0]], %[[ARG2_BUF]], %[[ARG2_SPEC]], %[[PACKED_BUF]], %[[PACKED_SPEC]], %[[OUT_BUF]], %[[OUT_SPEC]])
 // CHECK-SAME:    : (!mef.chain, !mgp.cpu.buffer, !mgp.cpu.tensor_spec<?x2xf32>, !mgp.cpu.buffer, !mgp.cpu.tensor_spec<?x?xf32>, !mgp.cpu.buffer, !mgp.cpu.tensor_spec<?x2xf32>) -> !mef.chain
@@ -100,7 +100,7 @@ mgp.model @matmul_packb : tf init {
   %ch1 = "mop.kernels.pack_matmul_b"(%ch0, %const_buf, %const_spec, %packed_buf, %packed_spec) : (!mef.chain, !mgp.cpu.buffer<16>, !mgp.cpu.tensor_spec<2x2xf32>, !mgp.cpu.buffer, !mgp.cpu.tensor_spec<?x?xf32>) -> !mef.chain
 
   %arg2_buf, %arg2_spec = mgp.cpu.tensor.extract %arg2 : !mgp.cpu.tensor<?x2xf32>
-  %out_spec = "mop.shape.matmul_packb"(%arg2_spec) {originalBDims = #M.dense_array<2, 2> : !M.array<2xui64>} : (!mgp.cpu.tensor_spec<?x2xf32>) -> !mgp.cpu.tensor_spec<?x2xf32>
+  %out_spec = "mop.shape.matmul_packb"(%arg2_spec) : (!mgp.cpu.tensor_spec<?x2xf32>) -> !mgp.cpu.tensor_spec<?x2xf32>
   %out_buf = mgp.cpu.buffer.alloc.spec %ch1, %out_spec, align 16 : !mgp.cpu.tensor_spec<?x2xf32>
   %ch2 = "mop.kernels.matmul_packb"(%ch1, %arg2_buf, %arg2_spec, %packed_buf, %packed_spec, %out_buf, %out_spec)
   : (!mef.chain, !mgp.cpu.buffer, !mgp.cpu.tensor_spec<?x2xf32>, !mgp.cpu.buffer, !mgp.cpu.tensor_spec<?x?xf32>, !mgp.cpu.buffer, !mgp.cpu.tensor_spec<?x2xf32>) -> !mef.chain

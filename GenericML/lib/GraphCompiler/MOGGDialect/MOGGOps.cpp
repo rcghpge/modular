@@ -65,16 +65,22 @@ public:
   LoweredTensor getLoweredTensorForValue(Value val);
 
   // Lower the output buffer which will get passed into the input.
-  ErrorOr<SmallVector<LoweredTensor>> lowerOutputBuffer(
-      llvm::StringRef opName, Value inChain,
-      const SmallVector<LoweredTensor> &inputTensors,
-      std::optional<IntArrayElementsAttr> matmulOriginalBDims = std::nullopt);
+  ErrorOr<SmallVector<LoweredTensor>>
+  lowerOutputBuffer(llvm::StringRef opName, Value inChain,
+                    const SmallVector<LoweredTensor> &inputTensors);
 
-  // Emit instructions to invoke the legacy primitive shape function with given
-  // name, input values, and result types. Return the output spec values.
+  // Emit instructions to invoke the legacy primitive shape function that has
+  // the given name, input values, and returns tensor spec of types
+  // corresponding to `resultMoTypes`.
   SmallVector<TypedValue<MGP::CpuTensorSpecType>>
   invokeLegacyShapeFunc(StringRef shapeFuncName, ArrayRef<Value> inputs,
                         ArrayRef<MO::TensorType> resultMoTypes);
+
+  // Emit instructions to invoke the legacy primitive shape function that has
+  // the given name, input values, and returns tensor spec of given types.
+  SmallVector<TypedValue<MGP::CpuTensorSpecType>>
+  invokeLegacyShapeFunc(StringRef shapeFuncName, ArrayRef<Value> inputs,
+                        ArrayRef<MGP::CpuTensorSpecType> resultSpecTypes);
 
   // Convert the tensors to a list of buffer/spec value pairs.
   SmallVector<Value> getOperands(SmallVector<LoweredTensor> &in,
@@ -93,8 +99,7 @@ private:
   ErrorOr<LoweredTensor>
   lowerDynamicOutput(MGP::CpuTensorSpecType outSpecType, MO::TensorType moType,
                      llvm::StringRef opName, Value inChain,
-                     const SmallVector<LoweredTensor> &inputTensors,
-                     std::optional<IntArrayElementsAttr> matmulOriginalBDims);
+                     const SmallVector<LoweredTensor> &inputTensors);
 
   /// Lower outputs whose shape function needs to return multiple output specs
   /// in one invokation.
@@ -151,8 +156,7 @@ void LowerHelper::allocateOutputTensor(
 ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     MGP::CpuTensorSpecType outSpecType, MO::TensorType moType,
     llvm::StringRef opName, Value inChain,
-    const SmallVector<LoweredTensor> &inputTensors,
-    std::optional<IntArrayElementsAttr> matmulOriginalBDims) {
+    const SmallVector<LoweredTensor> &inputTensors) {
   // Dynamic Case
   // TODO: This is hacky, hacky, hacky, remove as soon as we can lower
   // parametric shapes to the runtime
@@ -207,22 +211,7 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
 
   OpBuilder exeBuilder = loweringState.getExecuteOpBuilder();
   auto getOutputSpec = [&](StringRef opName, ArrayRef<Value> inputs) {
-    mlir::OperationState opState{loc, opName};
-    // inputs are input specs
-    opState.addOperands(inputs);
-    // The return is the new spec
-    opState.addTypes(cast<mlir::Type>(outSpecType));
-    // TODO(#11821) remove once shape inference is on by default
-    if (matmulOriginalBDims.has_value()) {
-      mlir::OperationName extOpName{ExtOp::getOperationName(),
-                                    opState.getContext()};
-      opState.addAttribute(ExtOp::getOriginalBDimsAttrName(extOpName),
-                           matmulOriginalBDims.value());
-    }
-
-    // Add it to the MLIR.
-    mlir::Operation *invokeOp = exeBuilder.create(opState);
-    return cast<TypedValue<MGP::CpuTensorSpecType>>(invokeOp->getResult(0));
+    return invokeLegacyShapeFunc(opName, inputs, {outSpecType}).front();
   };
 
   LoweredTensor output;
@@ -340,13 +329,6 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     output.spec =
         getOutputSpec("mop.shape.slice", {loweringState.getExecuteChain(),
                                           input, start, stop, step});
-  } else if (opName == "mop.kernels.matmul_packb" ||
-             opName.startswith("mop.kernels.fully_connected.packb")) {
-    // Get just the specs for tensors.
-    Value lhsSpec = inputTensors.front().spec;
-
-    // Create a call to a custom invoke function we can put in the MEF.
-    output.spec = getOutputSpec("mop.shape.matmul_packb", {lhsSpec});
   } else {
     opBeingLowered->emitError("op requires output to have static shape");
     return Error("op requires output to have static shape");
@@ -415,10 +397,9 @@ LowerHelper::lowerMultiOutputShapeFunc(StringRef shapeFuncName, Value inChain,
   return outputBuffersAndSpecs;
 }
 
-ErrorOr<SmallVector<LoweredTensor>> LowerHelper::lowerOutputBuffer(
-    llvm::StringRef opName, Value inChain,
-    const SmallVector<LoweredTensor> &inputTensors,
-    std::optional<IntArrayElementsAttr> matmulOriginalBDims) {
+ErrorOr<SmallVector<LoweredTensor>>
+LowerHelper::lowerOutputBuffer(llvm::StringRef opName, Value inChain,
+                               const SmallVector<LoweredTensor> &inputTensors) {
   // Handle ops with shape functions that return multiple outputs.
   // For example, mop.shape.split returns a variable number of outputs, so it
   // takes a slightly different lowering path.
@@ -447,7 +428,7 @@ ErrorOr<SmallVector<LoweredTensor>> LowerHelper::lowerOutputBuffer(
     LoweredTensor output;
     if (!bufferSize) {
       UNWRAP_ERROR(out, lowerDynamicOutput(outSpecType, ty, opName, inChain,
-                                           inputTensors, matmulOriginalBDims));
+                                           inputTensors));
       output = out;
     } else {
       // Static Case
@@ -479,15 +460,20 @@ SmallVector<TypedValue<MGP::CpuTensorSpecType>>
 LowerHelper::invokeLegacyShapeFunc(StringRef shapeFuncName,
                                    ArrayRef<Value> inputs,
                                    ArrayRef<MO::TensorType> resultMoTypes) {
-  // TODO(#11821) merge this function with `getOutputSpec` after
-  // `matmulOriginalBDims` is removed
-  SmallVector<MGP::CpuTensorSpecType> resultMgpTypes =
+  SmallVector<MGP::CpuTensorSpecType> resultSpecTypes =
       map_to_vector(resultMoTypes, [](MO::TensorType t) {
         return MGP::createCpuTensorSpec(t);
       });
+  return invokeLegacyShapeFunc(shapeFuncName, inputs, resultSpecTypes);
+};
+
+SmallVector<TypedValue<MGP::CpuTensorSpecType>>
+LowerHelper::invokeLegacyShapeFunc(
+    StringRef shapeFuncName, ArrayRef<Value> inputs,
+    ArrayRef<MGP::CpuTensorSpecType> resultSpecTypes) {
   OperationState opState(loc, shapeFuncName);
   opState.addOperands(inputs);
-  opState.addTypes(resultMgpTypes);
+  opState.addTypes(resultSpecTypes);
 
   Operation *invokeOp = loweringState.getExecuteOpBuilder().create(opState);
 
@@ -498,23 +484,6 @@ LowerHelper::invokeLegacyShapeFunc(StringRef shapeFuncName,
 };
 
 } // namespace
-
-void ExtOp::build(OpBuilder &builder, OperationState &state,
-                  TypeRange resultTypes, StringRef opName, ValueRange operands,
-                  ArrayRef<uint64_t> originalBDims) {
-  MLIRContext *ctx = builder.getContext();
-  mlir::OperationName extOpName{ExtOp::getOperationName(), ctx};
-  auto originalBDimsAttr = IntArrayElementsAttr::get(
-      ctx, originalBDims, IntegerType::SignednessSemantics::Unsigned);
-  build(builder, state, resultTypes, opName, operands, originalBDimsAttr);
-}
-
-void ExtOp::build(OpBuilder &builder, OperationState &state,
-                  TypeRange resultTypes, StringRef opName,
-                  ValueRange operands) {
-  IntArrayElementsAttr nullAttr;
-  build(builder, state, resultTypes, opName, operands, nullAttr);
-}
 
 LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
   ExtOp op = *this;
@@ -528,15 +497,10 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // others might do something else.
   StringRef opName = op.getOpName();
 
-  // TODO(#11821) remove once shape inference is on by default
-  std::optional<IntArrayElementsAttr> matmulOriginalBDims = std::nullopt;
-  if (auto originalBDimsAttr = getOriginalBDimsAttr())
-    matmulOriginalBDims = originalBDimsAttr;
-
   // Lower the outputs to buffers which can then be passed back in as
   // parameters.
   auto errOr = helper.lowerOutputBuffer(opName, loweringState.getExecuteChain(),
-                                        inputTensors, matmulOriginalBDims);
+                                        inputTensors);
   if (errOr.isError())
     return failure();
   SmallVector<LoweredTensor> outputBufferAndSpec = errOr.takeValue();

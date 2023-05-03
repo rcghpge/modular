@@ -69,16 +69,6 @@ struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
       return failure();
 
     MO::TensorType weightsType = cast<MO::TensorType>(weight.getType());
-    SmallVector<uint64_t> weightsDims;
-    for (int64_t dim : weightsType.getIntDims()) {
-      // NOTE this (constants with unknown shape) may occur as a result of
-      // constant folding. Once we have shape inference on by default, we won't
-      // have this anymore.
-      if (dim < 0)
-        return failure();
-      weightsDims.push_back(dim);
-    }
-
     if (!weightsType.hasStaticShape() || weightsType.hasUnknownShape())
       return failure();
 
@@ -104,7 +94,7 @@ struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
 
     rewriter.replaceOpWithNewOp<MOGG::ExtOp>(
         op, op->getResultTypes(), "mop.kernels.matmul_packb",
-        SmallVector<Value>{input, packedWeights}, weightsDims);
+        SmallVector<Value>{input, packedWeights});
 
     return mlir::success();
   }
@@ -280,15 +270,6 @@ struct FullyConnectedPattern : public RewritePattern {
     } else {
       Value weights = transpose ? transpose->getResult(0) : weight;
       MO::TensorType weightsType = cast<MO::TensorType>(weights.getType());
-      SmallVector<uint64_t> weightsDims;
-      for (int64_t dim : weightsType.getIntDims()) {
-        // NOTE this (constants with unknown shape) may occur as a result of
-        // constant folding. Once we have shape inference on by default, we
-        // won't have this anymore.
-        if (dim < 0)
-          return failure();
-        weightsDims.push_back(dim);
-      }
       MO::TensorType packedWeightsType = weightsType;
       if (weightsType.hasRank()) {
         SmallVector<int64_t> unknownDims(weightsType.getRank(),
@@ -324,8 +305,7 @@ struct FullyConnectedPattern : public RewritePattern {
                    loc,
                    reshape ? matmul->getResultTypes()[0]
                            : add->getResultTypes()[0],
-                   kernel, SmallVector<Value>{input, packedWeights, bias},
-                   weightsDims)
+                   kernel, SmallVector<Value>{input, packedWeights, bias})
                .getResult(0);
     }
 

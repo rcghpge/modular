@@ -43,10 +43,7 @@ def MOGG_ExtOp : MOGG_LowerableOp<"ext.op", [Pure]> {
 
   let arguments = (ins
     StrAttr:$opName,
-    Variadic<MO_Tensor>:$operands,
-    // NOTE this is only used by packed matmul
-    // TODO(#11821) remove once shape inference is on by default across all stacks
-    OptionalAttr<UI64ArrayElementsAttr>:$originalBDims
+    Variadic<MO_Tensor>:$operands
   );
 
   let results = (outs Variadic<MO_Tensor>:$results);
@@ -55,16 +52,6 @@ def MOGG_ExtOp : MOGG_LowerableOp<"ext.op", [Pure]> {
     $opName attr-dict `(`($operands^)?`)`
       (`:` type($operands)^)? (`->` type($results)^)?
   }];
-
-  let builders = [
-    OpBuilder<(ins "TypeRange":$resultTypes,
-                   "StringRef":$opName,
-                   "ValueRange":$operands,
-                   "ArrayRef<uint64_t>":$originalBDims)>,
-    OpBuilder<(ins "TypeRange":$resultTypes,
-                   "StringRef":$opName,
-                   "ValueRange":$operands)>
-  ];
 }
 
 
