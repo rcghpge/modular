@@ -445,8 +445,12 @@ def MO_ConstantOp : MO_TensorOp<"constant", [ConstantLike, Pure]> {
     OpBuilder<(ins "int64_t":$value)>,
     /// Create a new rank-1 tensor mo.constant of any float type.
     OpBuilder<(ins "ArrayRef<APFloat>":$values, "Type":$elementType)>,
-    /// Create a new rank-0 (scalar) tensor mo.constant of any float type.
+    /// Create a new rank-0 (scalar) tensor mo.constant of given float type.
     OpBuilder<(ins "APFloat":$value, "Type":$elementType )>,
+    /// Create a new rank-0 (scalar) tensor mo.constant of f32 type.
+    OpBuilder<(ins "float":$value)>,
+    /// Create a new rank-0 (scalar) tensor mo.constant of f64 type.
+    OpBuilder<(ins "double":$value)>,
   ];
 
 }

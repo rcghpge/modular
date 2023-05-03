@@ -109,6 +109,11 @@ static std::optional<SmallVector<T>> tryGetConstantOfRank(TensorValue val,
   return std::nullopt;
 }
 
+/// If `val` comes from a constant float scalar tensor (defined by a
+/// ConstantOp or RebindOp that takes in a ConstantOp), convert it to a raw
+/// float, else return None.
+std::optional<float> tryGetConstantFloat(TensorValue val);
+
 /// If `val` comes from a constant integer scalar tensor (defined by a
 /// ConstantOp or RebindOp that takes in a ConstantOp), convert it to a raw
 /// integer, else return None.

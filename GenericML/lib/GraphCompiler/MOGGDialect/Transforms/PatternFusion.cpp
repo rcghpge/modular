@@ -457,22 +457,59 @@ struct LayerNormPattern : public OpRewritePattern<MO::AddOp> {
 struct MultiHeadAttentionPattern : public OpRewritePattern<MO::BatchMatmulOp> {
   MultiHeadAttentionPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
 
+  // Resolve any specified `mulScalar` or `divScalar` to be a multiplicative f32
+  // scale, or return null if such conversion failed. If none of these scalars
+  // are specified (i.e., both null), return a new scalar 1 of type f32.
+  static Value resolveScale(Value mulScalar, Value divScalar, Location loc,
+                            RewriterBase &rewriter) {
+    auto tensorMulScalar = dyn_cast_or_null<MO::TensorValue>(mulScalar);
+    auto tensorDivScalar = dyn_cast_or_null<MO::TensorValue>(divScalar);
+
+    // TODO support non-f32 scalar
+    if (tensorMulScalar) {
+      if (tensorMulScalar.getType().getElementType().isF32())
+        return mulScalar;
+
+      return {};
+    }
+
+    if (tensorDivScalar) {
+      auto scalarType = tensorDivScalar.getType();
+      if (scalarType.getElementType().isF32()) {
+        auto one = rewriter.create<MO::ConstantOp>(loc, 1.0f);
+        return rewriter.create<MO::DivOp>(loc, scalarType, one, divScalar);
+      }
+
+      return {};
+    }
+
+    return rewriter.create<MO::ConstantOp>(loc, 1.0f);
+  }
+
   LogicalResult matchAndRewrite(MO::BatchMatmulOp op,
                                 PatternRewriter &rewriter) const override {
     //   bmm1 = mo.batch_matmul(query, keyT)
+    // * bmm1 = (bmm1 * scalar) or (bmm1 / scalar)
     //   softmax = mo.softmax(bmm1)
-    //   broadcast = mo.static.broadcast_to(%softmax)  // optional
+    // * broadcast = mo.static.broadcast_to(softmax)
     //   res = mo.batch_matmul(broadcast, value)
     //
     // ==>
     //
-    //   res = "mop.kernels.multi_head_attention"(query, keyT, value)
-    Value query, keyT, value;
+    //   res = "mop.kernels.multi_head_attention"(query, keyT, value, scale)
+    //
+    // NOTE `*` means optional
+    Value query, keyT, value, mulScalar, divScalar;
     Operation *bmm1Op = nullptr, *softmaxOp = nullptr, *broadcastOp = nullptr;
     auto queryP = m_Any(&query);
     auto keyTP = m_Any(&keyT);
     auto bmm1P = m_Op<MO::BatchMatmulOp>(&bmm1Op, queryP, keyTP);
-    auto softmaxP = m_Op<MO::SoftmaxOp>(&softmaxOp, bmm1P);
+    auto mulBmm1P = m_BinaryCommutativeOp<MO::MulOp>(
+        bmm1P, m_Op<MO::Static::BroadcastToOp>(m_Any(&mulScalar)));
+    auto divBmm1P = m_Op<MO::DivOp>(
+        bmm1P, m_Op<MO::Static::BroadcastToOp>(m_Any(&divScalar)));
+    auto scaledBmm1P = m_Optional(bmm1P, mulBmm1P, divBmm1P);
+    auto softmaxP = m_Op<MO::SoftmaxOp>(&softmaxOp, scaledBmm1P);
     // TODO remove this once shape inference can eliminate these broadcasts in
     // top models.
     auto broadcastP = m_Optional(
@@ -493,10 +530,14 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<MO::BatchMatmulOp> {
     if (broadcastOp && !broadcastOp->hasOneUse())
       return rewriter.notifyMatchFailure(op, "broadcast has multiple users");
 
+    Value scale = resolveScale(mulScalar, divScalar, op.getLoc(), rewriter);
+    if (!scale)
+      return rewriter.notifyMatchFailure(op, "failed to resolve scale");
+
     // Replace with fused kernel call
     rewriter.replaceOpWithNewOp<MOGG::ExtOp>(
         op, op.getResult().getType(), "mop.kernels.multi_head_attention",
-        SmallVector<Value>{query, keyT, value});
+        SmallVector<Value>{query, keyT, value, scale});
 
     return mlir::success();
   }

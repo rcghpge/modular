@@ -51,6 +51,12 @@ ConstantOp M::MO::tryGetConstantOpOfRank(TensorValue val, size_t rank) {
   return constantOp;
 }
 
+std::optional<float> M::MO::tryGetConstantFloat(TensorValue val) {
+  if (auto maybeIntBlob = tryGetConstantOfRank<float>(val, 0))
+    return maybeIntBlob.value().front();
+  return std::nullopt;
+}
+
 std::optional<int64_t> M::MO::tryGetConstantInt(TensorValue val) {
   if (auto maybeIntBlob = tryGetConstantOfRank<int64_t>(val, 0))
     return maybeIntBlob.value().front();
@@ -618,6 +624,26 @@ void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   auto type = MO::TensorType::get(SmallVector<int64_t>{}, elementType);
   auto valueAttr =
       FloatArrayElementsAttr::get({std::move(value)}, type.getElementType());
+  build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
+}
+
+void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                       float value) {
+  Type dtype = odsBuilder.getF32Type();
+  auto type = MO::TensorType::get(SmallVector<int64_t>{}, dtype);
+  SmallVector<APFloat> data;
+  data.emplace_back(value);
+  auto valueAttr = FloatArrayElementsAttr::get(data, dtype);
+  build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
+}
+
+void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                       double value) {
+  Type dtype = odsBuilder.getF64Type();
+  auto type = MO::TensorType::get(SmallVector<int64_t>{}, dtype);
+  SmallVector<APFloat> data;
+  data.emplace_back(value);
+  auto valueAttr = FloatArrayElementsAttr::get(data, dtype);
   build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
 }
 
