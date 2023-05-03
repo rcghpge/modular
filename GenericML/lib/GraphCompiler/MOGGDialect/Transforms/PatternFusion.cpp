@@ -531,9 +531,8 @@ void PatternFusionPass::runOnOperation() {
   patterns
       .add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
            FullyConnectedPattern, ConcatZeroAxisPattern, SplitZeroAxisPattern,
-           LayerNormPattern, MultiHeadAttentionPattern>(ctx);
-  if (useMatmulPacking.getValue())
-    patterns.add<MatmulConstBPattern>(ctx);
+           LayerNormPattern, MatmulConstBPattern, MultiHeadAttentionPattern>(
+          ctx);
 
   if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
     return signalPassFailure();

@@ -38,10 +38,6 @@ def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
 def PatternFusion: Pass<"mo-pattern-fusion", "MO::GraphOp"> {
   let summary = "Fuse kernels based on patterns.";
   let dependentDialects = ["M::MOGG::MOGGDialect"];
-  let options = [
-    Option<"useMatmulPacking", "use-matmul-packing",
-           "bool", /*default=*/"true", "Enable matmul bias packing.">,
-  ];
 }
 
 def FuseBroadcasts: Pass<"fuse-bcasts", "MO::GraphOp"> {
