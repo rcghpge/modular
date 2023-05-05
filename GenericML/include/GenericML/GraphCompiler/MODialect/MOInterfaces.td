@@ -45,12 +45,11 @@ class MO_TensorOpInterfaceBase<string name, list<Interface> baseInterfaces = []>
 def MO_Parameterization
     : MO_TensorOpInterfaceBase<"ParameterizationInterface"> {
   let description = [{
-    Interface to be implemented by ops that support resolving unknown shape
-    and dimension parameters in their tensors.
+    Interface to be implemented by ops that support resolving unknown shape and
+    dimension parameters in their tensors.
   }];
 
   let methods = [
-    // TODO: provide default implementation
     InterfaceMethod<"Rewrites the IR to resolve unknown shapes and dims.",
       "LogicalResult", "resolveUnknownParameters",
       (ins "mlir::RewriterBase &":$rewriter)>,
@@ -73,7 +72,7 @@ def MO_ParamDeclaration : MO_TensorOpInterfaceBase<"ParamDeclarationInterface",
   [MemoryEffectsOpInterface]> {
   let description = [{
     Interface to be implemented by ops that declare shape or dimension
-    parammeters.
+    parameters.
   }];
 
   let methods = [
@@ -262,6 +261,44 @@ def MO_Reduction : MO_TensorOpInterfaceBase<"Reduction",
   let verify = [{ return impl::verifyReduction(cast<Reduction>($_op)); }];
 }
 
+def MO_DefaultParameterization : MO_TensorOpInterfaceBase<
+  "DefaultParameterization", [MO_Parameterization, MO_ParamDeclaration]
+> {
+  let description = [{
+    Interface providing a default (naive) parameterization that is appropriate
+    for ops without strict invariants on arguments and results (e.g. shape
+    and/or dimension equalities). The interface can only handle ops with a
+    single result, and ignores all arguments/results that are not MO tensors.
+  }];
+
+  let extraTraitClassDeclaration = [{
+    LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter) {
+      auto paramInterface =
+        mlir::cast<ParameterizationInterface>(this->getOperation());
+      return impl::defaultResolveUnknownParameters(paramInterface, rewriter);
+    }
+  }];
+}
+
+def MO_SameInputOutputShapesParameterization : MO_TensorOpInterfaceBase<
+  "SameInputOutputShapesParameterization",
+  [MO_Parameterization, MO_ParamDeclaration]
+> {
+  let description = [{
+    Interface providing a default parameterization for ops that should have the
+    same input and output shapes.
+  }];
+
+  let extraTraitClassDeclaration = [{
+    LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter) {
+      auto paramInterface =
+        mlir::cast<ParameterizationInterface>(this->getOperation());
+      return impl::resolveSameOperandsAndResultShapeUnknownParameters(
+        paramInterface, rewriter);
+    }
+  }];
+}
+
 //===----------------------------------------------------------------------===//
 // Traits
 //===----------------------------------------------------------------------===//
@@ -273,14 +310,9 @@ class MO_OpTrait<string name, list<Trait> traits = []>
   let cppNamespace = "::M::MO";
 }
 
-/// Should not be used outside this file.
-def _MO_SameInputOutputShapesParameterization :
-    MO_OpTrait<"SameInputOutputShapesParameterization">;
-
 def MO_SameOperandsAndResultType : TraitList<[
   SameOperandsAndResultType,
-  MO_Parameterization,
-  _MO_SameInputOutputShapesParameterization,
+  MO_SameInputOutputShapesParameterization
 ]>;
 
 /// Logically similar to the builtin SameOperandsAndResultShape, but uses
@@ -289,13 +321,9 @@ def MO_SameOperandsAndResultShapeAttr :
     MO_OpTrait<"MOSameOperandsAndResultShapeAttr">;
 
 def MO_SameOperandsAndResultShape: TraitList<[
-  MO_Parameterization,
   MO_SameOperandsAndResultShapeAttr,
-  _MO_SameInputOutputShapesParameterization,
+  MO_SameInputOutputShapesParameterization
 ]>;
-
-/// Should not be used outside this file.
-def _MO_ReductionParameterization : MO_OpTrait<"ReductionParameterization">;
 
 /// Should not be used outside this file.
 def _MO_ReductionShapeInferenceMaterialization
@@ -304,10 +332,8 @@ def _MO_ReductionShapeInferenceMaterialization
 /// All traits that reduction ops should have.
 def MO_ReductionTraits: TraitList<[
   MO_Reduction,
-  MO_Parameterization,
-  MO_ParamDeclaration,
   MO_ShapeInferenceMaterialization,
-  _MO_ReductionParameterization,
+  MO_DefaultParameterization,
   _MO_ReductionShapeInferenceMaterialization
 ]>;
 

@@ -126,9 +126,9 @@ def MO_IndexToTensorOp : MO_Op<"index.to_tensor", [Pure]> {
 // GraphOp
 //===----------------------------------------------------------------------===//
 
-def MO_GraphOp : MO_TensorOp<"graph",
-  [HasParent<"ModuleOp">, FunctionOpInterface, Symbol, SymbolTable,
-   IsolatedFromAbove, SingleBlockImplicitTerminator<"OutputOp">,
+def MO_GraphOp : MO_TensorOp<"graph", [
+  HasParent<"ModuleOp">, FunctionOpInterface, Symbol, SymbolTable,
+  IsolatedFromAbove, SingleBlockImplicitTerminator<"OutputOp">,
   DeclareOpInterfaceMethods<MO_Parameterization>,
   // needed to leverage KGEN parameter infra
   DeclInterface, FuncInterface
@@ -1158,8 +1158,7 @@ def MO_MaxPoolOp : MO_TensorOp<"max_pool", [Pure, MO_SlidingWindow]>{
 
 def MO_ConvOp : MO_TensorOp<"conv", [
   MO_SlidingWindow,
-  DeclareOpInterfaceMethods<MO_Parameterization>,
-  DeclareOpInterfaceMethods<MO_ParamDeclaration>
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>
 ]>{
   let summary = "Convolution operation";
   let description = [{
@@ -1210,8 +1209,7 @@ def MO_ConvOp : MO_TensorOp<"conv", [
 
 class MO_ShapeModifierOp<string mnemonic, list<Trait> traits = []>
   : MO_TensorOp<mnemonic,
-    traits # [DeclareOpInterfaceMethods<MO_Parameterization>,
-              DeclareOpInterfaceMethods<MO_ParamDeclaration>]
+    traits # [DeclareOpInterfaceMethods<MO_DefaultParameterization>]
 > {
   let arguments = (ins
     MO_Tensor:$input,
@@ -1281,8 +1279,7 @@ def MO_ReshapeOp : MO_ShapeModifierOp<"reshape"> {
 }
 
 def MO_ShapeOfOp : MO_TensorOp<"shape_of", [
-  DeclareOpInterfaceMethods<MO_Parameterization>,
-  DeclareOpInterfaceMethods<MO_ParamDeclaration>
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>
 ]> {
   let summary = "ShapeOf Operation";
   let description = [{
@@ -1312,9 +1309,7 @@ def MO_ShapeOfOp : MO_TensorOp<"shape_of", [
 }
 
 def MO_BroadcastShapeOp : MO_TensorOp<"broadcast_shape", [
-  Commutative,
-  DeclareOpInterfaceMethods<MO_Parameterization>,
-  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+  Commutative, DeclareOpInterfaceMethods<MO_DefaultParameterization>
 ]> {
   let summary = "Broadcast Shape Operation";
   let description = [{
@@ -1515,8 +1510,7 @@ def MO_SplitOp : MO_TensorOp<"split", [Pure]> {
 }
 
 def MO_TransposeOp : MO_TensorOp<"transpose", [
-  DeclareOpInterfaceMethods<MO_Parameterization>,
-  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
 ]> {
   let summary = "Transpose Operation";
@@ -1555,8 +1549,7 @@ def MO_TransposeOp : MO_TensorOp<"transpose", [
 }
 
 def MO_PadOp : MO_TensorOp<"pad", [
-  DeclareOpInterfaceMethods<MO_Parameterization>,
-  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
 ]> {
   let summary = "Pad Operation";
@@ -1603,8 +1596,7 @@ def MO_PadOp : MO_TensorOp<"pad", [
 //===----------------------------------------------------------------------===//
 
 def MO_GatherOp : MO_TensorOp<"gather", [
-  DeclareOpInterfaceMethods<MO_Parameterization>,
-  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
 ]> {
   let summary = "Gather Operation";
@@ -1652,8 +1644,8 @@ def MO_GatherOp : MO_TensorOp<"gather", [
 //===----------------------------------------------------------------------===//
 
 def MO_WhereOp : MO_TensorOp<"where", [
-    DeclareOpInterfaceMethods<MO_Parameterization>,
-    DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>
+]> {
   let summary = "Returns locations of nonzero values in a tensor";
   let description = [{
     Return a tensor of coordinates of the nonzero values in the given tensor.
@@ -1686,8 +1678,8 @@ def MO_WhereOp : MO_TensorOp<"where", [
 //===----------------------------------------------------------------------===//
 
 def MO_ArgMaxOp : MO_TensorOp<"arg_max", [
-    DeclareOpInterfaceMethods<MO_Parameterization>,
-    DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+]> {
   let summary = "Returns the indices of the maximum value in a tensor";
   let description = [{
     This op is equivalent to reduce_max, but returns indices instead of values.
@@ -1728,10 +1720,10 @@ def MO_ArgMaxOp : MO_TensorOp<"arg_max", [
 //===----------------------------------------------------------------------===//
 
 def MO_RangeOp : MO_TensorOp<"range", [
-    MO_SameOperandsAndResultElementType,
-    DeclareOpInterfaceMethods<MO_Parameterization>,
-    DeclareOpInterfaceMethods<MO_ParamDeclaration>,
-    DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>]> {
+  MO_SameOperandsAndResultElementType,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
+]> {
   let summary = "Create a sequence of numbers";
   let description = [{
     The sequence goes from `start` with increments of size `step` up to (but not

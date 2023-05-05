@@ -35,8 +35,8 @@ LogicalResult verifyMOSameOperandsAndResultShapeAttr(Operation *op);
 LogicalResult verifyMOSameOperandsAndResultShape(Operation *op);
 LogicalResult verifyMOSameOperandsElementType(Operation *op);
 
-LogicalResult resolveReductionParameters(Reduction op,
-                                         mlir::RewriterBase &rewriter);
+LogicalResult defaultResolveUnknownParameters(ParameterizationInterface op,
+                                              mlir::RewriterBase &rewriter);
 LogicalResult resolveSameOperandsAndResultShapeUnknownParameters(
     ParameterizationInterface op, mlir::RewriterBase &rewriter);
 
@@ -86,29 +86,6 @@ public:
 namespace M::MO {
 // These declarations must follow the include above since they reference
 // classes declared in the generated header.
-
-template <typename ConcreteType>
-class SameInputOutputShapesParameterization
-    : public mlir::OpTrait::TraitBase<ConcreteType,
-                                      SameInputOutputShapesParameterization> {
-public:
-  mlir::LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter) {
-    auto paramInterface =
-        mlir::cast<ParameterizationInterface>(this->getOperation());
-    return impl::resolveSameOperandsAndResultShapeUnknownParameters(
-        paramInterface, rewriter);
-  }
-};
-
-template <typename ConcreteType>
-class ReductionParameterization
-    : public mlir::OpTrait::TraitBase<ConcreteType, ReductionParameterization> {
-public:
-  mlir::LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter) {
-    auto reduction = mlir::cast<Reduction>(this->getOperation());
-    return impl::resolveReductionParameters(reduction, rewriter);
-  }
-};
 
 template <typename ConcreteType>
 class ReductionShapeInferenceMaterialization
