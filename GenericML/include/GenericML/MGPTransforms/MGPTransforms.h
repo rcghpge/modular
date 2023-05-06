@@ -20,11 +20,11 @@ namespace M::MGP {
 
 /// Generate the code for declaring the passes.
 #define GEN_PASS_DECL
-#include "GenericML/MGPDialect/MGPTransforms.h.inc"
+#include "GenericML/MGPTransforms/MGPTransforms.h.inc"
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
-#include "GenericML/MGPDialect/MGPTransforms.h.inc"
+#include "GenericML/MGPTransforms/MGPTransforms.h.inc"
 
 } // namespace M::MGP
 

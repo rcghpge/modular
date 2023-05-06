@@ -13,7 +13,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/Passes.h"
-#include "GenericML/MGPDialect/MGPTransforms.h"
+#include "GenericML/MGPTransforms/MGPTransforms.h"
 #include "GraphRT/MIPDialect/MIPDialect.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Pass/PassManager.h"

@@ -8,7 +8,7 @@
 #define GENERICML_MGPDIALECT_MGPTRANSFORMS_TD
 
 include "mlir/Pass/PassBase.td"
-include "MGPOps.td"
+include "GenericML/MGPDialect/MGPOps.td"
 
 //===----------------------------------------------------------------------===//
 // RemoveRedundantTensorExtractsPass
