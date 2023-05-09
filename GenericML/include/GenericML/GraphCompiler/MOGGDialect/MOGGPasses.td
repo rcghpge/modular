@@ -63,7 +63,7 @@ def FuseElementwise: Pass<"fuse-elementwise", "MO::GraphOp"> {
 def LoadMojoLibrary : Pass<"load-mojo-library", "ModuleOp"> {
   let summary = "Load the mojo library (noop if already loaded).";
   let description = [{
-    Load the mojo library off the disk and include the avaliable kernels in the
+    Load the mojo library off the disk and include the available kernels in the
     MO graph.
   }];
   let dependentDialects = [
