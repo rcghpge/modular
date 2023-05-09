@@ -1548,7 +1548,10 @@ def MO_TransposeOp : MO_TensorOp<"transpose", [
   let hasVerifier = 1;
 }
 
-def MO_TileOp : MO_TensorOp<"tile", []> {
+def MO_TileOp : MO_TensorOp<"tile", [
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
+]> {
   let summary = "Tile Operation";
   let description = [{
     Return a new Tensor as the result of copying the input tensor N_i times
@@ -1569,10 +1572,12 @@ def MO_TileOp : MO_TensorOp<"tile", []> {
 
   let arguments = (ins
     MO_Tensor:$input,
-    MO_ShapeLike:$repeats);
+    MO_ShapeLike:$repeats,
+    MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict
+    `:` functional-type(operands, results)
   }];
 
   let hasVerifier = 1;
