@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/Broadcast.h"
+#include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/Compiler/ParserUtils.h"
 #include "Support/Compiler/VerifyUtils.h"
@@ -73,7 +73,7 @@ M::MO::tryGetConstantIntVector(TensorValue val) {
 template <typename Adaptor>
 OpFoldResult foldElemwiseOp(MO::TensorType resTy, Adaptor adaptor,
                             std::function<int64_t(int64_t, int64_t)> lambda,
-                            size_t bitwidth = 64, bool isSigned=true) {
+                            size_t bitwidth = 64, bool isSigned = true) {
   auto xAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInputX());
   auto yAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInputY());
   if (!xAttr || !yAttr)
@@ -418,11 +418,10 @@ OpFoldResult DivOp::fold(FoldAdaptor adaptor) {
 }
 
 OpFoldResult GreaterEqualOp::fold(FoldAdaptor adaptor) {
-  return foldElemwiseOp(getType(), adaptor,
-                        [](int64_t x, int64_t y) { return x >= y; },
-                        1, false);
+  return foldElemwiseOp(
+      getType(), adaptor, [](int64_t x, int64_t y) { return x >= y; }, 1,
+      false);
 }
-
 
 //===----------------------------------------------------------------------===//
 // MO_BroadcastToOp
@@ -1781,6 +1780,38 @@ LogicalResult TransposeOp::verify() {
   // ODS constraints ensure that perm has rank = 1.
   if ((int64_t)resTy.getRank() != permTy.getIntDim(0))
     return emitError("input and result ranks do not match perm size");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// MO_TileOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TileOp::verify() {
+  // The permutation has known shape iff the argument and result are
+  // statically ranked.
+  TensorType repeatsTy = getRepeats().getType();
+  TensorType inputTy = getInput().getType();
+  TensorType resTy = getResult().getType();
+  if (!repeatsTy.hasStaticShape()) {
+    if (inputTy.hasRank() || resTy.hasRank()) {
+      return emitError("argument and result must be dynamically ranked if "
+                       "repeats has unknown shape");
+    }
+    return success();
+  }
+
+  if (!inputTy.hasRank() || !resTy.hasRank()) {
+    return emitError("argument and result must be statically ranked if "
+                     "repeats has known shape");
+  }
+
+  if (inputTy.getRank() != resTy.getRank())
+    return emitError("input and result ranks do not match");
+
+  // ODS constraints ensure that perm has rank = 1.
+  if ((int64_t)resTy.getRank() != repeatsTy.getIntDim(0))
+    return emitError("input and result ranks do not match repeats size");
   return success();
 }
 

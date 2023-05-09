@@ -1548,6 +1548,36 @@ def MO_TransposeOp : MO_TensorOp<"transpose", [
   let hasVerifier = 1;
 }
 
+def MO_TileOp : MO_TensorOp<"tile", []> {
+  let summary = "Tile Operation";
+  let description = [{
+    Return a new Tensor as the result of copying the input tensor N_i times
+    on each dimension, where N_i = tiles[i].
+
+    The output shape of the op will be the shape of the input multiplied
+    by the tiles
+
+    Example:
+
+    ```mlir
+    %input : !mo.tensor<[2, 3], f32>
+    %repeats : !mo.tensor<[2], si64>
+    %res = mo.tile(%input, %repeats) : (
+      !mo.tensor<[2, 3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_ShapeLike:$repeats);
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+
+  let hasVerifier = 1;
+}
+
 def MO_PadOp : MO_TensorOp<"pad", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>

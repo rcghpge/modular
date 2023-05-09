@@ -824,3 +824,63 @@ mo.graph @arg_max_too_many_reductions(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tens
   %res = mo.arg_max(%arg, %axis) : (!mo.tensor<[7, 7], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1, 1], si64>
   mo.output %res : !mo.tensor<[1, 1], si64>
 }
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// TileOp
+//===----------------------------------------------------------------------===//
+
+mo.graph @tile_fp32_repeats(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[4, 3], f32> {
+  %repeats = mo.constant {value = #M.dense_array<2.0, 1.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
+  // expected-error@+1 {{'mo.tile' op operand #1 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<[2], f32>'}}
+  %res = mo.tile(%input, %repeats) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2], f32>) -> !mo.tensor<[4, 3], f32>
+  mo.output %res : !mo.tensor<[4, 3], f32>
+}
+
+// -----
+
+mo.graph @tile_2d_repeats(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[4, 3], f32> {
+  %repeats = mo.constant {value = #M.dense_array<2, 1> : tensor<1x2xsi64>} : !mo.tensor<[1, 2], si64>
+  // expected-error@+1 {{'mo.tile' op operand #1 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<[1, 2], si64>'}}
+  %res = mo.tile(%input, %repeats) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[1, 2], si64>) -> !mo.tensor<[4, 3], f32>
+  mo.output %res : !mo.tensor<[4, 3], f32>
+}
+
+// -----
+
+mo.graph @tile_repeats_size_static(%input: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
+  %repeats = mo.constant {value = #M.dense_array<2, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // expected-error@+1 {{argument and result must be statically ranked if repeats has known shape}}
+  %res = mo.tile(%input, %repeats) : (!mo.tensor<?, f32>, !mo.tensor<[2], si64>) -> !mo.tensor<?, f32>
+  mo.output %res : !mo.tensor<?, f32>
+}
+
+// -----
+
+mo.graph @tile_repeats_size_dynamic(%input: !mo.tensor<[?, ?], f32>, %repeats: !mo.tensor<[?], si64>) -> !mo.tensor<[?, ?], f32> {
+  // expected-error@+1 {{argument and result must be dynamically ranked if repeats has unknown shape}}
+  %res = mo.tile(%input, %repeats) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[?], si64>) -> !mo.tensor<[?, ?], f32>
+  mo.output %res : !mo.tensor<[?, ?], f32>
+}
+
+// -----
+
+mo.graph @tile_arg_res_rank_mismatch(%input: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?, ?], f32> {
+  %repeats = mo.constant {value = #M.dense_array<2, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // expected-error@+1 {{input and result ranks do not match}}
+  %res = mo.tile(%input, %repeats) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
+  mo.output %res : !mo.tensor<[?, ?], f32>
+}
+
+// -----
+
+mo.graph @tile_repeats_rank_mismatch(%input: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?, ?, ?], f32> {
+  %repeats = mo.constant {value = #M.dense_array<2, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // expected-error@+1 {{input and result ranks do not match repeats size}}
+  %res = mo.tile(%input, %repeats) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?, ?], f32>
+  mo.output %res : !mo.tensor<[?, ?, ?], f32>
+}
+
+// -----
+
