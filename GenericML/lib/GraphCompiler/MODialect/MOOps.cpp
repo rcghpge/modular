@@ -419,8 +419,26 @@ OpFoldResult DivOp::fold(FoldAdaptor adaptor) {
 
 OpFoldResult GreaterEqualOp::fold(FoldAdaptor adaptor) {
   return foldElemwiseOp(
-      getType(), adaptor, [](int64_t x, int64_t y) { return x >= y; }, 1,
-      false);
+      getType(), adaptor, [](int64_t x, int64_t y) { return x >= y; },
+      /*bitwidth=*/1, /*isSigned=*/false);
+}
+
+OpFoldResult GreaterOp::fold(FoldAdaptor adaptor) {
+  return foldElemwiseOp(
+      getType(), adaptor, [](int64_t x, int64_t y) { return x > y; },
+      /*bitwidth=*/1, /*isSigned=*/false);
+}
+
+OpFoldResult EqualOp::fold(FoldAdaptor adaptor) {
+  return foldElemwiseOp(
+      getType(), adaptor, [](int64_t x, int64_t y) { return x == y; },
+      /*bitwidth=*/1, /*isSigned=*/false);
+}
+
+OpFoldResult NotEqualOp::fold(FoldAdaptor adaptor) {
+  return foldElemwiseOp(
+      getType(), adaptor, [](int64_t x, int64_t y) { return x != y; },
+      /*bitwidth=*/1, /*isSigned=*/false);
 }
 
 //===----------------------------------------------------------------------===//

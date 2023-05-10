@@ -754,6 +754,7 @@ def MO_EqualOp : MO_ComparisonBinaryOp<"equal", [Commutative]> {
                                   ) -> !mo.tensor<[2, 3], bool>
     ```
   }];
+  let hasFolder = 1;
 }
 
 def MO_GreaterOp : MO_ComparisonBinaryOp<"greater"> {
@@ -771,6 +772,7 @@ def MO_GreaterOp : MO_ComparisonBinaryOp<"greater"> {
                                     ) -> !mo.tensor<[2, 3], bool>
     ```
   }];
+  let hasFolder = 1;
 }
 
 def MO_GreaterEqualOp : MO_ComparisonBinaryOp<"greater_equal"> {
@@ -806,6 +808,7 @@ def MO_NotEqualOp : MO_ComparisonBinaryOp<"not_equal", [Commutative]> {
                                       ) -> !mo.tensor<[2, 3], bool>
     ```
   }];
+  let hasFolder = 1;
 }
 
 // TODO: Use an AllElementTypesMatch<["x", "y", "result"]> trait for MO_Tensor.
