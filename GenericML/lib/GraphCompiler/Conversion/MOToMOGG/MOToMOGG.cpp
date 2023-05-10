@@ -195,7 +195,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_SHIM_ONLY(MO::LogSoftmaxOp, "mop.kernels.logsoftmax"),
       MO_SHIM_ONLY(MO::GatherOp, "mop.kernels.gather"),
       MO_SHIM_ONLY(MO::MatmulOp, "mop.kernels.matmul"),
-      MO_SHIM_ONLY(MO::MatrixBandPartOp, "mop.kernels.matrix_band_part"),
+      MO_SHIM_ONLY(MO::LinAlg::BandPartOp, "mop.kernels.linalg.band_part"),
       MO_SHIM_ONLY(MO::MaxOp, "mop.kernels.max"),
       MO_SHIM_ONLY(MO::MaxPoolOp, "mop.kernels.pool.max"),
       MO_SHIM_ONLY(MO::MeanOp, "mop.kernels.mean"),

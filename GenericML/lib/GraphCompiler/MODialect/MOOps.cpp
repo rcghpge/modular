@@ -1837,7 +1837,7 @@ LogicalResult TileOp::verify() {
 // Linear Algebra Ops
 //===----------------------------------------------------------------------===//
 
-LogicalResult MatrixBandPartOp::verify() {
+LogicalResult LinAlg::BandPartOp::verify() {
   // TODO: Refactor this into a trait when we see another op that does this
   if (getInput().getType() != getResult().getType())
     return emitError("first operand and the result must have the same type");

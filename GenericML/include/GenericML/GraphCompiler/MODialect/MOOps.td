@@ -1889,8 +1889,13 @@ def MO_BatchMatmulOp : MO_DotBase<"batch_matmul", [
 // Linear Algebra ops
 //===----------------------------------------------------------------------===//
 
+class MO_LinalgOp<string mnemonic, list<Trait> traits = []>
+    : MO_TensorOp<"linalg." # mnemonic, traits # [Pure]> {
+  string cppNamespace = MODialect.cppNamespace # "::LinAlg";
+}
+
 // TODO: Use an AllElementTypesMatch<["input", "result"]> trait for MO_Tensor.
-def MO_MatrixBandPartOp : MO_TensorOp<"matrix_band_part", [
+def MO_BandPartOp : MO_LinalgOp<"band_part", [
     DeclareOpInterfaceMethods<MO_SinkStaticBroadcastTo>,
     DeclareOpInterfaceMethods<MO_Parameterization>,
     DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
@@ -1927,7 +1932,7 @@ def MO_MatrixBandPartOp : MO_TensorOp<"matrix_band_part", [
       value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
     %exclude = mo.constant {
       value = #M.dense_array<0> : tensor<1xui8>} : !mo.tensor<[], bool>
-    %res = mo.matrix_band_part(%arg, %num_lower, %num_upper, %exclude) : (
+    %res = mo.linalg.band_part(%arg, %num_lower, %num_upper, %exclude) : (
       !mo.tensor<[3, 2, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>,
       !mo.tensor<[], bool>
       ) -> !mo.tensor<[3, 2, 3], f32>

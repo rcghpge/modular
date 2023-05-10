@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
@@ -170,7 +170,7 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
       "mop.kernels.div",     "mop.kernels.erf",
       "mop.kernels.exp",     "mop.kernels.gelu",
       "mop.kernels.max",     "mop.kernels.min",
-      "mop.kernels.mul",     "mop.kernels.matrix_band_part",
+      "mop.kernels.mul",     "mop.kernels.linalg.band_part",
       "mop.kernels.pow",     "mop.kernels.relu",
       "mop.kernels.rsqrt",   "mop.kernels.sigmoid",
       "mop.kernels.softmax", "mop.kernels.sqrt",
