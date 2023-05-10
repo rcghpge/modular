@@ -14,6 +14,22 @@ mo.graph @batch_matmul_too_low_rank(%arg0: !mo.tensor<[10, 20], f32>, %arg1: !mo
 
 // -----
 
+mo.graph @batch_matmul_mismatched_batches(%arg0: !mo.tensor<[1, 10, 20], f32>, %arg1: !mo.tensor<[2, 20, 5], f32>) -> !mo.tensor<[2, 10, 5], f32> {
+  // expected-error@+1 {{expected matmul-like input matrix shapes to have equal batch dimensions, but got (1) x (2)}}
+  %0 = mo.batch_matmul(%arg0, %arg1) : (!mo.tensor<[1, 10, 20], f32>, !mo.tensor<[2, 20, 5], f32>) -> !mo.tensor<[2, 10, 5], f32>
+  mo.output %0 : !mo.tensor<[2, 10, 5], f32>
+}
+
+// -----
+
+mo.graph @batch_matmul_mismatched_result_batches(%arg0: !mo.tensor<[2, 10, 20], f32>, %arg1: !mo.tensor<[2, 20, 5], f32>) -> !mo.tensor<[1, 10, 5], f32> {
+  // expected-error@+1 {{expected matmul-like input and output matrix shapes to have equal batch dimensions, but got (2) x (1)}}
+  %0 = mo.batch_matmul(%arg0, %arg1) : (!mo.tensor<[2, 10, 20], f32>, !mo.tensor<[2, 20, 5], f32>) -> !mo.tensor<[1, 10, 5], f32>
+  mo.output %0 : !mo.tensor<[1, 10, 5], f32>
+}
+
+// -----
+
 mo.graph @batch_matmul_unranked_input_ranked_output(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !mo.tensor<[?, ?, ?], f32> {
   // expected-error @below {{input and output ranks must be all dynamic, or all static and match}}
   %0 = mo.batch_matmul(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<[?, ?, ?], f32>

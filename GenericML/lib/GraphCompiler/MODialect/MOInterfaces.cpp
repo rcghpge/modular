@@ -79,6 +79,15 @@ LogicalResult impl::verifyMatmulLike(MatmulLike op) {
            << ")";
   }
 
+  ArrayRef<TypedAttr> aMatBatches = aType.getDims().drop_back(2);
+  ArrayRef<TypedAttr> bMatBatches = bType.getDims().drop_back(2);
+  if (!aMatBatches.equals(bMatBatches)) {
+    return op.emitError("expected matmul-like input matrix shapes to have "
+                        "equal batch dimensions, but got ")
+           << "(" << asString(aMatBatches) << ") x (" << asString(bMatBatches)
+           << ")";
+  }
+
   TensorType resType = op.getTensorResult().getType();
 
   // If the result is dynamically ranked/shaped, we defer to shape inference.
@@ -91,6 +100,14 @@ LogicalResult impl::verifyMatmulLike(MatmulLike op) {
                         "produce result matrix (M, N), got ")
            << "(" << asString(aMatShape) << ") x (" << asString(bMatShape)
            << ") -> (" << asString(resMatShape) << ")";
+  }
+
+  ArrayRef<TypedAttr> resMatBatches = resType.getDims().drop_back(2);
+  if (!aMatBatches.equals(resMatBatches)) {
+    return op.emitError("expected matmul-like input and output matrix shapes "
+                        "to have equal batch dimensions, but got ")
+           << "(" << asString(aMatBatches) << ") x (" << asString(resMatBatches)
+           << ")";
   }
 
   return success();
