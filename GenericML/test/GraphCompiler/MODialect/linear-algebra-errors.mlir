@@ -62,3 +62,59 @@ mo.graph @linalg_band_part() -> !mo.tensor<[1, 2, 3], f32> {
   mo.output %4 : !mo.tensor<[1, 2, 3], f32>
 }
 
+// -----
+
+//===----------------------------------------------------------------------===//
+// Solve
+//===----------------------------------------------------------------------===//
+
+mo.graph @linalg_solve() -> !mo.tensor<[1, 2, 2], f32> {
+  %0 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<1x2x2xf32>} : !mo.tensor<[1, 2, 2], f32>
+  %1 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0> : tensor<1x2x3xf32>} : !mo.tensor<[1, 2, 3], f32>
+  // expected-error@+1 {{'mo.linalg.solve' op incompatible input/result matmul shapes}}
+  %4 = mo.linalg.solve(%0, %1) : (!mo.tensor<[1, 2, 2], f32>, !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[1, 2, 2], f32>
+  mo.output %4 : !mo.tensor<[1, 2, 2], f32>
+}
+
+// -----
+
+mo.graph @linalg_solve_mismatched_batches() -> !mo.tensor<[2, 2, 3], f32> {
+  %0 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<1x2x2xf32>} : !mo.tensor<[1, 2, 2], f32>
+  %1 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0> : tensor<2x2x3xf32>} : !mo.tensor<[2, 2, 3], f32>
+  // expected-error@+1 {{mo.linalg.solve' op incompatible input/result batch dimensions}}
+  %4 = mo.linalg.solve(%0, %1) : (!mo.tensor<[1, 2, 2], f32>, !mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 2, 3], f32>
+  mo.output %4 : !mo.tensor<[2, 2, 3], f32>
+}
+
+// -----
+
+mo.graph @linalg_solve_non_square() -> !mo.tensor<[1, 3, 3], f32> {
+  %0 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0> : tensor<1x2x3xf32>} : !mo.tensor<[1, 3, 2], f32>
+  %1 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0> : tensor<1x2x3xf32>} : !mo.tensor<[1, 2, 3], f32>
+  // expected-error@+1 {{first operand must be a batch of square matrices}}
+  %4 = mo.linalg.solve(%0, %1) : (!mo.tensor<[1, 3, 2], f32>, !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[1, 3, 3], f32>
+  mo.output %4 : !mo.tensor<[1, 3, 3], f32>
+}
+
+// -----
+
+mo.graph @linalg_solve_wrong_dtype() -> !mo.tensor<[1, 2, 3], f64> {
+  %0 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<1x2x2xf32>} : !mo.tensor<[1, 2, 2], f32>
+  %1 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0> : tensor<1x2x3xf32>} : !mo.tensor<[1, 2, 3], f64>
+  // expected-error@+1 {{'mo.linalg.solve' op requires the same element type for all operands and results}}
+  %4 = mo.linalg.solve(%0, %1) : (!mo.tensor<[1, 2, 2], f32>, !mo.tensor<[1, 2, 3], f64>) -> !mo.tensor<[1, 2, 3], f64>
+  mo.output %4 : !mo.tensor<[1, 2, 3], f64>
+}
+
+// -----
+
+mo.graph @linalg_solve_mismatched_ranks() -> !mo.tensor<[2, 3], f32> {
+  %0 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<1x2x2xf32>} : !mo.tensor<[1, 2, 2], f32>
+  %1 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0> : tensor<1x2x3xf32>} : !mo.tensor<[2, 3], f32>
+  // expected-error@+1 {{input and output ranks must be all dynamic, or all static and match}}
+  %4 = mo.linalg.solve(%0, %1) : (!mo.tensor<[1, 2, 2], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
+  mo.output %4 : !mo.tensor<[2, 3], f32>
+}
+
+// -----
+

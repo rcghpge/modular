@@ -1834,6 +1834,17 @@ LogicalResult LinAlg::BandPartOp::verify() {
   return success();
 }
 
+LogicalResult LinAlg::SolveOp::verify() {
+  TensorType inType = getInput().getType();
+  if (inType.hasStaticShape()) {
+    ArrayRef<TypedAttr> inMatShape = inType.getDims().take_back(2);
+    if (inMatShape[0] != inMatShape[1])
+      return emitOpError("first operand must be a batch of square matrices");
+  }
+  return impl::checkMatmulCompatibility(getOperation(), getInput(), getResult(),
+                                        getRhs());
+}
+
 //===----------------------------------------------------------------------===//
 // Shape ops
 //===----------------------------------------------------------------------===//

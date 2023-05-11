@@ -48,3 +48,15 @@ mo.graph @linalg_band_part_dynamic_rank(%arg0: !mo.tensor<?, f32>) -> !mo.tensor
   mo.output %4 : !mo.tensor<?, f32>
 }
 
+// CHECK: mo.graph @linalg_solve() -> !mo.tensor<[1, 2, 3], f32>
+mo.graph @linalg_solve() -> !mo.tensor<[1, 2, 3], f32> {
+  // CHECK: %[[VAL_0:.*]] = mo.constant {value = #M.dense_array<1.{{0+}}e+00, 2.{{0+}}e+00, 3.{{0+}}e+00, 4.{{0+}}e+00> : tensor<1x2x2xf32>} : !mo.tensor<[1, 2, 2], f32>
+  %0 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<1x2x2xf32>} : !mo.tensor<[1, 2, 2], f32>
+  // CHECK: %[[VAL_1:.*]] = mo.constant {value = #M.dense_array<1.{{0+}}e+00, 2.{{0+}}e+00, 3.{{0+}}e+00, 4.{{0+}}e+00, 5.{{0+}}e+00, 6.{{0+}}e+00> : tensor<1x2x3xf32>} : !mo.tensor<[1, 2, 3], f32>
+  %1 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0> : tensor<1x2x3xf32>} : !mo.tensor<[1, 2, 3], f32>
+  // CHECK: %[[VAL_4:.*]] = mo.linalg.solve(%[[VAL_0]], %[[VAL_1]])
+  %4 = mo.linalg.solve(%0, %1) : (!mo.tensor<[1, 2, 2], f32>, !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[1, 2, 3], f32>
+  // CHECK: mo.output %[[VAL_4]] : !mo.tensor<[1, 2, 3], f32>
+  mo.output %4 : !mo.tensor<[1, 2, 3], f32>
+}
+
