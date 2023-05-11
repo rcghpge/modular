@@ -136,6 +136,15 @@ static TypedAttr getParamConstThrough(TensorValue inputVal) {
   }
   return {};
 }
+
+/// Return a vector that contains elements of `values` permuted based on `perm`.
+template <typename T>
+static SmallVector<T> permute(ArrayRef<T> values, ArrayRef<int64_t> perm) {
+  assert(values.size() == perm.size() && "values and perm must have same size");
+  return map_to_vector(perm,
+                       [&](int64_t permIdx) -> T { return values[permIdx]; });
+}
+
 } // namespace M::MO
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOOPS_H
