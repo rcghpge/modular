@@ -33,27 +33,19 @@ LogicalResult impl::verifyMatchingRanks(ArrayRef<TensorValue> values) {
   return success(allDynamicRanks);
 }
 
-/// Helper to print matrix shapes without element types.
-static std::string asString(ArrayRef<TypedAttr> matShape) {
-  std::string result;
-  llvm::raw_string_ostream os(result);
-  llvm::interleaveComma(
-      matShape, os, [&](TypedAttr dim) { dim.print(os, /*elideType=*/true); });
-  return result;
-};
-
-LogicalResult impl::verifyMatmulLike(MatmulLike op) {
+LogicalResult impl::checkMatmulCompatibility(Operation *op, TensorValue A,
+                                             TensorValue B, TensorValue C) {
   // We check that statically known ranks match each other (implicit
   // broadcasting is not supported).
-  SmallVector<TensorValue> tensors{op.getTensorA(), op.getTensorB(),
-                                   op.getTensorResult()};
+  SmallVector<TensorValue> tensors{A, B, C};
+
   if (failed(verifyMatchingRanks(tensors))) {
-    return op.emitError(
+    return op->emitOpError(
         "input and output ranks must be all dynamic, or all static and match");
   }
 
-  TensorType aType = op.getTensorA().getType();
-  TensorType bType = op.getTensorB().getType();
+  TensorType aType = A.getType();
+  TensorType bType = B.getType();
 
   // If either input is dynamically ranked, we don't try to verify.
   // When partially known ranks are supported we might refine this.
@@ -61,8 +53,8 @@ LogicalResult impl::verifyMatmulLike(MatmulLike op) {
     return success();
 
   if (aType.getRank() < 2) {
-    return op.emitError("expected matmul-like input tensors to have at least "
-                        "rank 2, got ")
+    return op->emitOpError(
+               "expected input tensors to have at least rank 2, got ")
            << aType.getRank();
   }
 
@@ -72,45 +64,34 @@ LogicalResult impl::verifyMatmulLike(MatmulLike op) {
 
   ArrayRef<TypedAttr> aMatShape = aType.getDims().take_back(2);
   ArrayRef<TypedAttr> bMatShape = bType.getDims().take_back(2);
-  if (aMatShape[1] != bMatShape[0]) {
-    return op.emitError(
-               "expected matmul-like input matrix shapes (M, K) x (K, N), got ")
-           << "(" << asString(aMatShape) << ") x (" << asString(bMatShape)
-           << ")";
-  }
+  if (aMatShape[1] != bMatShape[0])
+    return op->emitOpError("incompatible input/result matmul shapes");
 
   ArrayRef<TypedAttr> aMatBatches = aType.getDims().drop_back(2);
   ArrayRef<TypedAttr> bMatBatches = bType.getDims().drop_back(2);
-  if (!aMatBatches.equals(bMatBatches)) {
-    return op.emitError("expected matmul-like input matrix shapes to have "
-                        "equal batch dimensions, but got ")
-           << "(" << asString(aMatBatches) << ") x (" << asString(bMatBatches)
-           << ")";
-  }
+  if (!aMatBatches.equals(bMatBatches))
+    return op->emitOpError("incompatible input/result batch dimensions");
 
-  TensorType resType = op.getTensorResult().getType();
+  TensorType resType = C.getType();
 
   // If the result is dynamically ranked/shaped, we defer to shape inference.
   if (!resType.hasStaticShape())
     return success();
 
   ArrayRef<TypedAttr> resMatShape = resType.getDims().take_back(2);
-  if (resMatShape[0] != aMatShape[0] || resMatShape[1] != bMatShape[1]) {
-    return op.emitError("expected matmul-like inputs (M, K) x (K, N) to "
-                        "produce result matrix (M, N), got ")
-           << "(" << asString(aMatShape) << ") x (" << asString(bMatShape)
-           << ") -> (" << asString(resMatShape) << ")";
-  }
+  if (resMatShape[0] != aMatShape[0] || resMatShape[1] != bMatShape[1])
+    return op->emitOpError("incompatible input/result matmul shapes");
 
   ArrayRef<TypedAttr> resMatBatches = resType.getDims().drop_back(2);
-  if (!aMatBatches.equals(resMatBatches)) {
-    return op.emitError("expected matmul-like input and output matrix shapes "
-                        "to have equal batch dimensions, but got ")
-           << "(" << asString(aMatBatches) << ") x (" << asString(resMatBatches)
-           << ")";
-  }
+  if (!aMatBatches.equals(resMatBatches))
+    return op->emitOpError("incompatible input/result batch dimensions");
 
   return success();
+}
+
+LogicalResult impl::verifyMatmulLike(MatmulLike op) {
+  return checkMatmulCompatibility(op.getOperation(), op.getTensorA(),
+                                  op.getTensorB(), op.getTensorResult());
 }
 
 //===----------------------------------------------------------------------===//
