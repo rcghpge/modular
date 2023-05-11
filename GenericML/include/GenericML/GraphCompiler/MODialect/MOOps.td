@@ -1957,7 +1957,10 @@ def MO_BandPartOp : MO_LinalgOp<"band_part", [
 }
 
 def MO_SolveOp : MO_LinalgOp<"solve", [
-    MO_SameOperandsAndResultElementType]> {
+    MO_SameOperandsAndResultElementType,
+    DeclareOpInterfaceMethods<MO_Parameterization>,
+    DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+    DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>]> {
   let summary = "Solves systems of Linear Equations";
   let description = [{
     Solve the system of linear equations described by
@@ -1975,19 +1978,21 @@ def MO_SolveOp : MO_LinalgOp<"solve", [
     %arg: !mo.tensor<[3, 3, 3], f32>
     %rhs: !mo.tensor<[3, 3, 2], f32>
     %res = mo.linalg.band_part(%arg, %rhs) : (
-      !mo.tensor<[3, 3, 2], f32>, !mo.tensor<[3, 3, 2], f32>, !mo.tensor<[]
+      !mo.tensor<[3, 3, 3], f32>, !mo.tensor<[3, 3, 2], f32>, !mo.tensor<[]
       ) -> !mo.tensor<[3, 3, 2], f32>
     ```
   }];
 
   let arguments = (ins
     MO_Tensor:$input,
-    MO_Tensor:$rhs);
+    MO_Tensor:$rhs,
+    MO_ParamDecls:$outputParamDecls);
 
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
   }];
 
   let hasVerifier = 1;
