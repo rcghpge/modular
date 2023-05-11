@@ -1422,6 +1422,13 @@ def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape"> {
   }];
 
   let hasCanonicalizeMethod = 1;
+  let extraClassDeclaration = [{
+   public:
+    /// Returns the forward shape function (building it in the given module if
+    /// necessary).
+    static KGEN::FuncOp getForwardShapeFunc(
+      Location loc, ModuleOp module, mlir::RewriterBase &rewriter);
+  }];
 }
 
 def MO_ConcatOp : MO_TensorOp<"concat", [

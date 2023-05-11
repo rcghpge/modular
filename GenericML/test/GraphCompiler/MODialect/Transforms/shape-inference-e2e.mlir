@@ -275,6 +275,10 @@ mo.graph @scalar_to_tensor_reshapes_before_staticization(
   %arg: !mo.tensor<[?, ?], si32>
   // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D0]]], si32> {
 ) -> !mo.tensor<[?, ?], si32> {
+  // CHECK-DAG: kgen.param.declare [[P0:.*]] = <mul_nuw([[D0]], [[D1]])>
+  // CHECK-DAG: kgen.param.declare [[P1:.*]] = <mul_nuw([[D0]], [[D0]])>
+  // CHECK-DAG: kgen.param.declare [[P2:.*]]: i1 = <eq([[P0]], [[P1]])>
+  // CHECK-DAG: kgen.param.declare [[P3:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "number of elements must be equal"}, [[P2]])>
   %scalar_one = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
   %scalar_zero = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si32>
   %tensor_zero = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[1], si32>
