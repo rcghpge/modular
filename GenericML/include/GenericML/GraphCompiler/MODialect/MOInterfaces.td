@@ -90,6 +90,19 @@ def MO_ParamDeclaration : MO_TensorOpInterfaceBase<"ParamDeclarationInterface",
       "LogicalResult", "deparameterize",
       (ins "mlir::RewriterBase &":$rewriter), [{}],
       [{ return impl::defaultDeparameterize($_op, rewriter); }]>,
+    InterfaceMethod<
+      "Emit a forward shape function call for an op that can declare either new"
+      "dimension parameters or a new shape parameter.",
+      "LogicalResult", "emitFwShapeFuncInvoke",
+      (ins
+        "KGEN::FuncOp":$fwFuncOp,
+        "llvm::ArrayRef<mlir::TypedAttr>":$operands,
+        "llvm::Twine":$tmpParamName,
+        "mlir::RewriterBase &":$rewriter), [{}],
+      [{
+        return impl::emitFwShapeFuncInvoke(
+          $_op, fwFuncOp, operands, tmpParamName, rewriter);
+      }]>,
   ];
 
   let extraTraitClassDeclaration = [{

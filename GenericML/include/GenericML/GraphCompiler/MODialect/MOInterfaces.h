@@ -8,6 +8,7 @@
 #define GENERICML_GRAPHCOMPILER_MODIALECT_MOINTERFACES_H
 
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
+#include "KGEN/KGENDialect/KGENOps.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Value.h"
@@ -54,6 +55,12 @@ LogicalResult defaultDeparameterize(ParamDeclarationInterface op,
 
 ErrorOrSuccess elementwiseSinkStaticBroadcastTo(Operation *op,
                                                 mlir::RewriterBase &rewriter);
+
+LogicalResult emitFwShapeFuncInvoke(ParamDeclarationInterface op,
+                                    KGEN::FuncOp fwFuncOp,
+                                    ArrayRef<TypedAttr> operands,
+                                    Twine tmpParamName,
+                                    mlir::RewriterBase &rewriter);
 } // namespace impl
 
 template <typename ConcreteType>
