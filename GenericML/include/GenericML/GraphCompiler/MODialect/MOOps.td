@@ -1363,6 +1363,113 @@ def MO_BroadcastShapeOp : MO_TensorOp<"broadcast_shape", [
   let hasVerifier = 1;
 }
 
+/// Used to model MO ops that accept both MO_Tensor and MO_ShapeType.
+/// TODO(#14312): this is currently used in `MOShapeOps.td`.
+class MOShape_Op<string mnemonic, list<Trait> traits = []>
+    : Op<MODialect, "shape." # mnemonic, traits> {
+  string cppNamespace = MODialect.cppNamespace # "::Shape";
+}
+
+def MOShape_ReshapeOp : MOShape_Op<"reshape", [
+  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+]> {
+  let summary = "Reshape operation";
+  let description = [{
+    Return a tensor with the same underlying data, but different shape. The
+    semantics of this op are nearly identical to those of `mo.reshape` (see the
+    documentation of that op for details), with the only difference that
+    `mo.shape.reshape` accepts a `!mo.shape` value as the new shape instead of a
+    shape-like tensor.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[1, 2, 3], f32>
+    %to: !mo.shape
+    %res = mo.shape.reshape(%arg, %to) : !mo.tensor<[3, 2], si64>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_ShapeType:$newShape,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
+def MOShape_BroadcastToOp : MOShape_Op<"broadcast_to", [
+  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+]> {
+  let summary = "BroadcastTo operation";
+  let description = [{
+    Broadcast the input tensor to the shape newShape. The semantics of this op
+    are nearly identical to those of `mo.broadcast_to` (see the documentation of
+    that op for details), with the only difference that `mo.shape.broadcast_to`
+    accepts a `!mo.shape` value as the new shape instead of a shape-like tensor.
+
+    Example:
+
+    ```mlir
+    %from: !mo.tensor<[3], f32>
+    %to: !mo.shape
+    %res = mo.shape.broadcast_to(%from, %to) : (
+      !mo.tensor<[3], f32>, !mo.shape) -> !mo.tensor<[2, 3], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_ShapeType:$newShape,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
+def MOShape_FromTensorOp : MOShape_Op<"from_tensor", [Pure]> {
+  let summary = "Cast from a shape-like `!mo.tensor` to `!mo.shape`.";
+  let description = [{
+    Example:
+
+    ```mlir
+    %sht: !mo.tensor<[2], si64>
+    %sh = mo.shape.from_tensor(%sht) : !mo.tensor<[2], si64>
+    ```
+  }];
+
+  let arguments = (ins MO_ShapeLike:$input);
+  let results = (outs MO_ShapeType:$result);
+
+  let assemblyFormat = "`(` $input `)` attr-dict `:` qualified(type($input))";
+  let hasFolder = 1;
+}
+
+def MOShape_ToTensorOp : MOShape_Op<"to_tensor", [Pure]> {
+  let summary = "Cast from a `!mo.shape` to a shape-like `!mo.tensor`.";
+  let description = [{
+    Example:
+
+    ```mlir
+    %sh: !mo.shape
+    %sht = mo.shape.to_tensor(%sh) -> !mo.tensor<[2], si64>
+    ```
+  }];
+
+  let arguments = (ins MO_ShapeType:$input);
+  let results = (outs MO_ShapeLike:$result);
+
+  let assemblyFormat = "`(` $input `)` attr-dict `->` qualified(type($result))";
+  let hasFolder = 1;
+}
+
 class MOStatic_ShapeModifierOp<string mnemonic, list<Trait> traits = []>
     : MO_TensorOp<"static." # mnemonic, traits # [Pure]> {
   string cppNamespace = MODialect.cppNamespace # "::Static";
