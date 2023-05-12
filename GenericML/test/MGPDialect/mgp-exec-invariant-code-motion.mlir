@@ -291,3 +291,79 @@ mgp.model @intermediate_buffer : tf init {
 
   mef.output %packed_ch, %packed_buf : !mef.chain, !mgp.cpu.buffer
 }
+
+//
+// @constant_buffer_used_in_both_init_and_exec
+//
+
+// CHECK-LABEL: mgp.model @constant_buffer_used_in_both_init_and_exec : tf init {
+// Lifted constant buffers
+// Old chains and context ops
+// CHECK-NEXT:   %[[CH0:.*]] = grt.chain.create
+// CHECK-NEXT:   %[[CTX:.*]] = mgp.context.create 2
+// Dummy chain
+// CHECK-NEXT:   %{{.*}} = grt.chain.create
+// Lifted ops
+//   constant permutation (note that this buffer is used in both init and exec)
+// CHECK-DAG:    %[[PERM_BUF:.*]] = mgp.cpu.buffer.constant #M.aligned_bytes<"0x10000000000000000000000000000000", align 16>
+// CHECK-DAG:    %[[PERM_SPEC:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<2xsi64>
+//   constant weights
+// CHECK-DAG:    %[[WEIGHT_BUF:.*]] = mgp.cpu.buffer.constant dense_resource<onnx__Conv_497> : !M.aligned_bytes<1600, align 16>
+// CHECK-DAG:    %[[WEIGHT_SPEC:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<10x20xf32>
+//   transpose
+// CHECK-DAG:    %[[WEIGHT_T_BUF:.*]] = mgp.cpu.buffer.alloc.static %[[CH0]], 1600, align 16
+// CHECK-DAG:    %[[WEIGHT_T_SPEC:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<20x10xf32>
+// CHECK-DAG:    %[[WEIGHT_T_CH:.*]] = "mop.kernels.transpose"(%[[CH0]], %[[WEIGHT_BUF]], %[[WEIGHT_SPEC]], %[[PERM_BUF]], %[[PERM_SPEC]], %[[WEIGHT_T_BUF]], %[[WEIGHT_T_SPEC]]) : (!mef.chain, !mgp.cpu.buffer<1600>, !mgp.cpu.tensor_spec<10x20xf32>, !mgp.cpu.buffer<16>, !mgp.cpu.tensor_spec<2xsi64>, !mgp.cpu.buffer<1600>, !mgp.cpu.tensor_spec<20x10xf32>) -> !mef.chain
+// Chain merge to preserve control dependencies
+// CHECK-DAG:    %[[BUF_ACTION_CH:.*]] = grt.chain.merge %[[WEIGHT_T_CH]]
+// Buffer caching
+// CHECK-DAG:    %[[PERM_CACHE_CH:.*]] = mgp.cpu.buffer.cache %[[BUF_ACTION_CH]], %[[CTX]][0], %[[PERM_BUF]] : !mgp.cpu.buffer<16>
+// CHECK-DAG:    %[[WEIGHT_T_CACHE_CH:.*]] = mgp.cpu.buffer.cache %[[BUF_ACTION_CH]], %[[CTX]][1], %[[WEIGHT_T_BUF]] : !mgp.cpu.buffer<1600>
+// Chain merge to preserve control dependencies
+// CHECK-DAG:    %[[OUT_CH:.*]] = grt.chain.merge %[[CH0]], %[[PERM_CACHE_CH]], %[[WEIGHT_T_CACHE_CH]]
+// CHECK-NEXT:   mef.output %[[OUT_CH]], %[[CTX]] : !mef.chain, !mgp.context
+
+// CHECK-NEXT: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[ARG:.*]]: !mgp.cpu.tensor<1x2xf32>) -> (!mef.chain, !mgp.cpu.buffer<1600>, !mgp.cpu.buffer<8>) {
+// CHECK-NEXT:   %[[ARG_BUF:.*]], %[[ARG_SPEC:.*]] = mgp.cpu.tensor.extract %[[ARG]] : !mgp.cpu.tensor<1x2xf32>
+// Inserted buffer lookup
+// CHECK-NEXT:   %[[PERM_BUF:.*]] = mgp.cpu.buffer.get_cached %[[CH0]], %[[CTX]][0] : !mgp.cpu.buffer<16>
+// CHECK-DAG:    %[[PERM_SPEC:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<2xsi64>
+// CHECK-NEXT:   %[[WEIGHT_T_BUF:.*]] = mgp.cpu.buffer.get_cached %[[CH0]], %[[CTX]][1] : !mgp.cpu.buffer<1600>
+// Old non-constant arg transpose
+// Note that all references to lifted chain got updated to input chain
+// CHECK-NEXT:   %[[ARG_T_SPEC:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<2x1xf32>
+// CHECK-NEXT:   %[[ARG_T_BUF:.*]] = mgp.cpu.buffer.alloc.static %[[CH0]], 8, align 16
+// CHECK-NEXT:   %[[ARG_T_CH:.*]] = "mop.kernels.transpose"(%[[CH0]], %[[ARG_BUF]], %[[ARG_SPEC]], %[[PERM_BUF]], %[[PERM_SPEC]], %[[ARG_T_BUF]], %[[ARG_T_SPEC]]) : (!mef.chain, !mgp.cpu.buffer<8>, !mgp.cpu.tensor_spec<1x2xf32>, !mgp.cpu.buffer<16>, !mgp.cpu.tensor_spec<2xsi64>, !mgp.cpu.buffer<8>, !mgp.cpu.tensor_spec<2x1xf32>) -> !mef.chain
+// Final output
+// CHECK-NEXT: %[[OUT_CH:.*]] = grt.chain.merge %[[CH0]], %[[ARG_T_CH]]
+// CHECK-NEXT: mef.output %[[OUT_CH]], %[[WEIGHT_T_BUF]], %[[ARG_T_BUF]] : !mef.chain, !mgp.cpu.buffer<1600>, !mgp.cpu.buffer<8>
+// CHECK-NEXT: }
+
+mgp.model @constant_buffer_used_in_both_init_and_exec : tf init {
+  %ch0 = grt.chain.create
+  %ctx = mgp.context.create 0
+  mef.output %ch0, %ctx : !mef.chain, !mgp.context
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %arg: !mgp.cpu.tensor<1x2xf32>) -> (!mef.chain, !mgp.cpu.buffer<1600>, !mgp.cpu.buffer<8>) {
+  %arg_buf, %arg_spec = mgp.cpu.tensor.extract %arg : !mgp.cpu.tensor<1x2xf32>
+
+  // constant permutation
+  %perm_buf = mgp.cpu.buffer.constant #M.aligned_bytes<"0x10000000000000000000000000000000", align 16>
+  %perm_spec = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<2xsi64>
+
+  // constant weights
+  %weight_buf = mgp.cpu.buffer.constant dense_resource<onnx__Conv_497> : !M.aligned_bytes<1600, align 16>
+  %weight_spec = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<10x20xf32>
+
+  // constant weight transpose
+  %weight_t_buf = mgp.cpu.buffer.alloc.static %ch0, 1600, align 16
+  %weight_t_spec = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<20x10xf32>
+  %weight_t_ch = "mop.kernels.transpose"(%ch0, %weight_buf, %weight_spec, %perm_buf, %perm_spec, %weight_t_buf, %weight_t_spec) : (!mef.chain, !mgp.cpu.buffer<1600>, !mgp.cpu.tensor_spec<10x20xf32>, !mgp.cpu.buffer<16>, !mgp.cpu.tensor_spec<2xsi64>, !mgp.cpu.buffer<1600>, !mgp.cpu.tensor_spec<20x10xf32>) -> !mef.chain
+
+  // non-constant arg transpose
+  %arg_t_spec = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<2x1xf32>
+  %arg_t_buf = mgp.cpu.buffer.alloc.static %ch0, 8, align 16
+  %arg_t_ch = "mop.kernels.transpose"(%ch0, %arg_buf, %arg_spec, %perm_buf, %perm_spec, %arg_t_buf, %arg_t_spec) : (!mef.chain, !mgp.cpu.buffer<8>, !mgp.cpu.tensor_spec<1x2xf32>, !mgp.cpu.buffer<16>, !mgp.cpu.tensor_spec<2xsi64>, !mgp.cpu.buffer<8>, !mgp.cpu.tensor_spec<2x1xf32>) -> !mef.chain
+
+  %out_ch = grt.chain.merge %weight_t_ch, %arg_t_ch
+  mef.output %out_ch, %weight_t_buf, %arg_t_buf : !mef.chain, !mgp.cpu.buffer<1600>, !mgp.cpu.buffer<8>
+}

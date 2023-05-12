@@ -198,7 +198,7 @@ def ExecInvariantCodeMotionPass : Pass<"exec-invariant-code-motion", "MGP::Model
 
     To enable aggressive lifting, it does the following:
     1. insert minimal buffer cache ops so that ops in the exec phase can still
-       refer to the lifted buffers.
+       refer to the lifted buffers (which can be allocated buffer or constant).
     2. wire up ops that consumes/produces chains so that control dependencies
        are preserved.
     3. duplicate certain computations to enable more lifting (e.g., to lift a

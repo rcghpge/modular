@@ -87,7 +87,8 @@ class ExecInvariantCodeMotionPass
   // relax and maybe generalize them later.
   static bool isLiftableBufferOp(Operation *op) {
     return op->getNumResults() == 1 &&
-           isa<CpuBufferAllocSpecOp, CpuBufferAllocStaticOp>(op);
+           isa<CpuBufferAllocSpecOp, CpuBufferAllocStaticOp,
+               CpuBufferConstantOp>(op);
   }
 
   static bool isLiftableChainOp(Operation *op) {
