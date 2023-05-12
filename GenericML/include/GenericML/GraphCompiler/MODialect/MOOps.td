@@ -173,6 +173,7 @@ def MO_GraphOp : MO_TensorOp<"graph", [
     )>,
   ];
 
+  let hasVerifier = 1;
   let hasCustomAssemblyFormat = 1;
 }
 
@@ -180,8 +181,10 @@ def MO_GraphOp : MO_TensorOp<"graph", [
 // OutputOp
 //===----------------------------------------------------------------------===//
 
-def MO_OutputOp : MO_TensorOp<"output",
-    [Terminator, ReturnLike, HasParent<"MO::GraphOp">]> {
+def MO_OutputOp : MO_TensorOp<"output", [
+  Terminator, ReturnLike, HasParent<"MO::GraphOp">,
+  DeclareOpInterfaceMethods<ParamOpInterface>
+]>, NoParamDecls {
   let summary = "MO output operation";
   let description = [{
     The "mo.output" operation specifies the output parameters and values for a

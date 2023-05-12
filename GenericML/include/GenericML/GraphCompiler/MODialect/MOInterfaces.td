@@ -11,6 +11,7 @@
 #ifndef GENERICML_GRAPHCOMPILER_MODIALECT_MOINTERFACES_TD
 #define GENERICML_GRAPHCOMPILER_MODIALECT_MOINTERFACES_TD
 
+include "KGEN/KGENDialect/KGENInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/OpBase.td"
@@ -69,7 +70,7 @@ def MO_Parameterization
 }
 
 def MO_ParamDeclaration : MO_TensorOpInterfaceBase<"ParamDeclarationInterface",
-  [MemoryEffectsOpInterface]> {
+  [MemoryEffectsOpInterface, ParamOpInterface]> {
   let description = [{
     Interface to be implemented by ops that declare shape or dimension
     parameters.
@@ -111,6 +112,34 @@ def MO_ParamDeclaration : MO_TensorOpInterfaceBase<"ParamDeclarationInterface",
       auto paramDeclItf = cast<ParamDeclarationInterface>(this->getOperation());
       if (!paramDeclItf.getOutputParamDecls().empty())
         effects.emplace_back(mlir::MemoryEffects::Allocate::get());
+    }
+
+    void walkDeclarations(function_ref<void(KGEN::ParamDeclAttr)> walkDecl) {
+      auto paramDeclItf = cast<ParamDeclarationInterface>(this->getOperation());
+      llvm::for_each(paramDeclItf.getOutputParamDecls(), walkDecl);
+    }
+
+    void walkDefinitions(function_ref<void(KGEN::ParamDeclAttr,
+        const KGEN::ParamDefValue &)> walkDef) {
+      mlir::AttrTypeWalker walker;
+      SmallVector<Attribute> refs;
+      walker.addWalk([&](KGEN::ParamDeclRefAttr declRef) {
+        refs.emplace_back(declRef);
+      });
+      Operation *op = this->getOperation();
+      for (auto t : op->getOperandTypes())
+        walker.walk(t);
+
+      auto paramDeclItf = cast<ParamDeclarationInterface>(op);
+      KGEN::ParamDefValue deps(refs, {});
+      for (KGEN::ParamDeclAttr decl : paramDeclItf.getOutputParamDecls())
+        walkDef(decl, deps);
+    }
+
+    void renameDeclarations(ArrayRef<KGEN::ParamDeclAttr> decls) {
+      auto paramDeclItf = cast<ParamDeclarationInterface>(this->getOperation());
+      assert(decls.size() == paramDeclItf.getOutputParamDecls().size());
+      paramDeclItf.setOutputParamDecls(decls);
     }
   }];
 }

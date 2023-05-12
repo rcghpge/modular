@@ -1,13 +1,9 @@
 // RUN: mo-opt %s --mo-to-mogg --mo-to-primitives --split-input-file --verify-diagnostics --allow-unregistered-dialect
 
-mo.graph @duplicate_param_decl<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
-  kgen.param.declare Z = <X>
-  // expected-error@+1 {{Duplicate declaration of Z}}
-  kgen.param.declare Z = <Y>
-  mo.output
+kgen.func @foo() -> index {
+  %c = index.constant 42
+  kgen.return %c : index
 }
-
-// -----
 
 mo.graph @unsupported_expr() {
   // expected-error@+1 {{cannot lower parameter expression}}

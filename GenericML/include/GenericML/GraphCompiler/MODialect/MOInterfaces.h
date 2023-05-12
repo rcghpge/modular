@@ -26,6 +26,9 @@ class ParameterizationInterface;
 class Reduction;
 class SlidingWindow;
 
+using M::KGEN::ParamDeclAttr;
+using M::KGEN::ParamDefValue;
+
 namespace impl {
 /// Verify that ranks are either all static and match or all dynamic.
 LogicalResult verifyMatchingRanks(ArrayRef<TensorValue> values);

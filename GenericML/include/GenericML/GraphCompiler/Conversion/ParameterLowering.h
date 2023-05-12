@@ -65,18 +65,17 @@ public:
     return newValue;
   }
 
-  /// Lower a parameter declaration, resolving the placeholder if necessary. A
-  /// declaration can only be lowered once, and an error is returned otherwise.
-  /// If a placeholder is resolved, its SSA value is returned so that callers
-  /// can replace their uses if necessary. Otherwise, a null Value signifies a
+  /// Lower a parameter declaration, resolving the placeholder if necessary. If
+  /// a placeholder is resolved, its SSA value is returned so that callers can
+  /// replace their uses if necessary. Otherwise, a null Value signifies a
   /// successful lowering without placeholder resolution.
-  ErrorOr<Value> lowerParamDecl(KGEN::ParamDeclAttr declAttr, Value value) {
+  Value lowerParamDecl(KGEN::ParamDeclAttr declAttr, Value value) {
     auto declRef = KGEN::ParamDeclRefAttr::get(declAttr);
     if (Value lowered = lookupLowered(declRef)) {
       auto placeholder = lowered.getDefiningOp<PlaceholderOp>();
-      // If the parameter is already declared, we return an error.
-      if (!placeholder)
-        return Error("Duplicate declaration of " + declRef.getName().strref());
+      // The parameter verification should ensure we don't have duplicate
+      // declarations, so we just assert
+      assert(placeholder && "duplicate declaration of parameter");
 
       // Otherwise, we update the mapping and return the placeholder.
       loweredParams.erase(declRef);
@@ -85,7 +84,7 @@ public:
     }
 
     emplaceLowered(declRef, value);
-    return Value();
+    return {};
   }
 
 private:

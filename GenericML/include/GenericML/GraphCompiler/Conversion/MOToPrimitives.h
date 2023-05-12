@@ -317,7 +317,7 @@ public:
   /// Lower a parameter declaration, resolving the placeholder if necessary. A
   /// declaration can only be lowered once, and an error is returned otherwise.
   ErrorOrSuccess lowerParamDecl(KGEN::ParamDeclAttr declAttr, Value value) {
-    UNWRAP_ERROR(maybePlaceholder, params.lowerParamDecl(declAttr, value));
+    Value maybePlaceholder = params.lowerParamDecl(declAttr, value);
 
     if (maybePlaceholder) {
       // If we just resolved a placeholder, we need to make sure no one will

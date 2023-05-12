@@ -482,8 +482,9 @@ mo.graph @range_not_index_param<() -> K>(
 ) -> !mo.tensor<[?], f32> {
   // expected-error@+1 {{can only declare index parameters}}
   %res = mo.range<() -> Sh1: !mo.shape>(%arg0, %arg1, %arg2) : (
-    !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[K], si32>
-  mo.output<K> %res : !mo.tensor<[K], si32>
+    !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<Sh1, si32>
+  %resreb = mo.rebind<() -> N>(%res) : !mo.tensor<Sh1, si32> -> !mo.tensor<[N], si32>
+  mo.output<N> %resreb : !mo.tensor<[N], si32>
 }
 
 // -----

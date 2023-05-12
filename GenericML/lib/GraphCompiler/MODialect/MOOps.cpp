@@ -8,8 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/MODialect/Broadcast.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "GenericML/GraphCompiler/MODialect/Broadcast.h"
+#include "KGEN/KGENDialect/KGENParameters.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/Compiler/ParserUtils.h"
 #include "Support/Compiler/VerifyUtils.h"
@@ -189,23 +190,46 @@ OutputOp GraphOp::getOutputOp() {
   return cast<OutputOp>(getBodyBlock()->getTerminator());
 }
 
+LogicalResult GraphOp::verify() {
+  mlir::SymbolTableAnalysis symTabAnalysis(getOperation());
+  mlir::LockedSymbolTableCollection symtabs(symTabAnalysis.getSymbolTables());
+  KGEN::ParameterCollector::Analysis cache;
+  KGEN::ParameterUseDefGraph useDefGraph(getRegion());
+  return useDefGraph.verify(symtabs, cache);
+}
+
 //===----------------------------------------------------------------------===//
 // MO_OutputOp support
 //===----------------------------------------------------------------------===//
 
+void OutputOp::walkDefinitions(
+    function_ref<void(KGEN::ParamDeclAttr, const KGEN::ParamDefValue &)>
+        walkDef) {
+  auto graph = cast<GraphOp>(getOperation()->getParentOp());
+  ArrayRef<KGEN::ParamDeclAttr> decls = graph.getResultParams();
+  ArrayRef<TypedAttr> defs = this->getParameters();
+  assert(decls.size() == defs.size() &&
+         "output bindings and result parameters must have the same size");
+
+  for (auto [decl, def] : llvm::zip(decls, defs))
+    walkDef(decl, def);
+}
+
 LogicalResult OutputOp::verify() {
   // ODS checks the parent is a GraphOp.
   auto graph = cast<GraphOp>(getOperation()->getParentOp());
-  if (graph.getResultParams().size() != this->getParameters().size())
+  ArrayRef<KGEN::ParamDeclAttr> decls = graph.getResultParams();
+  ArrayRef<TypedAttr> defs = this->getParameters();
+  if (decls.size() != defs.size()) {
     return emitError(
         "output bindings and result parameters must have the same size");
+  }
 
   // Build a mapping from result param references to their binding attribute,
   // example:
   //  { (D1, 42), (Sh0, [D0, 10]) }
   DenseMap<KGEN::ParamDeclRefAttr, TypedAttr> ResParamRefToBindingAttr;
-  for (auto [resParamDecl, bindingParam] :
-       llvm::zip(graph.getResultParams(), this->getParameters())) {
+  for (auto [resParamDecl, bindingParam] : llvm::zip(decls, defs)) {
     ResParamRefToBindingAttr.insert(
         {KGEN::ParamDeclRefAttr::get(resParamDecl), bindingParam});
   }
@@ -1520,7 +1544,8 @@ LogicalResult ReshapeOp::canonicalize(ReshapeOp op, PatternRewriter &rewriter) {
         TensorType::get(SmallVector<int64_t>({1}), resTy.getElementType());
     auto newReshapeOp = rewriter.create<Static::ReshapeOp>(
         op.getLoc(), inferredResTy, inputVal);
-    rewriter.replaceOpWithNewOp<RebindOp>(op, resTy, newReshapeOp);
+    rewriter.replaceOpWithNewOp<RebindOp>(op, resTy, newReshapeOp,
+                                          op.getOutputParamDecls());
     return success();
   }
 
@@ -1530,7 +1555,8 @@ LogicalResult ReshapeOp::canonicalize(ReshapeOp op, PatternRewriter &rewriter) {
         TensorType::get(SmallVector<int64_t>({}), resTy.getElementType());
     auto newReshapeOp = rewriter.create<Static::ReshapeOp>(
         op.getLoc(), inferredResTy, inputVal);
-    rewriter.replaceOpWithNewOp<RebindOp>(op, resTy, newReshapeOp);
+    rewriter.replaceOpWithNewOp<RebindOp>(op, resTy, newReshapeOp,
+                                          op.getOutputParamDecls());
     return success();
   }
 
