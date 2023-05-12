@@ -42,10 +42,12 @@ namespace {
 /// causes some critical differences in the pass implementation (otherwise we
 /// won't be able to lift anything useful at all):
 ///
-/// 1. We want to lift ops that produces buffers into the init phase. In order
-/// to reference such lifted buffers in the exec phase, we need to leverage the
+/// 1. We want to lift buffer-producing ops into the init phase. In order to
+/// reference such lifted buffers in the exec phase, we need to leverage the
 /// buffer cache mechanism, i.e., cache in the init phase, and look up the cache
-/// in the exec phase.
+/// in the exec phase. Note that if all users of a lifted buffer are also
+/// lifted, we don't cache such buffers, thereby minimizing the number of buffer
+/// cache ops inserted.
 ///
 /// 2. We want to lift ops that modifies the lifted buffers into the init phase
 /// (e.g., matmul weights pre-packing). Usually such ops produces a chain; in
@@ -229,6 +231,11 @@ class ExecInvariantCodeMotionPass
     SmallVector<Value> potentialBufferActionChains;
     SmallVector<Value> finalOutChains{initOriginalChain};
 
+    // A local helper; we can't make this a member method and pass it as lambda.
+    auto isOpOperandUnliftable = [this](OpOperand &operand) {
+      return unliftableOps.contains(operand.getOwner());
+    };
+
     // We need `make_early_inc_range` because we might move `op`.
     for (Operation &op :
          llvm::make_early_inc_range(executeState.execute->getOperations())) {
@@ -244,13 +251,12 @@ class ExecInvariantCodeMotionPass
         potentialBufferActionChains.push_back(op.getResult(0));
 
         // Replace old uses that will remain in exec block
-        op.getResult(0).replaceUsesWithIf(
-            execInputChain, [&](OpOperand &operand) {
-              return unliftableOps.contains(operand.getOwner());
-            });
+        op.getResult(0).replaceUsesWithIf(execInputChain,
+                                          isOpOperandUnliftable);
 
-      } else if (isLiftableBufferOp(&op)) {
-        // Insert
+      } else if (isLiftableBufferOp(&op) &&
+                 llvm::any_of(op.getUses(), isOpOperandUnliftable)) {
+        // If this liftable buffer op has unliftable users, insert
         // - `cpu.buffer.cache` in the init phase
         // - `cpu.buffer.get_cache` in the exec phase
         size_t currBufferSlot = initState.allocSlot();
@@ -267,9 +273,7 @@ class ExecInvariantCodeMotionPass
         finalOutChains.push_back(bufferCacheOutChain);
 
         // Replace old uses that will remain in exec block
-        op.replaceUsesWithIf(bufferGetCacheOp, [&](OpOperand &operand) {
-          return unliftableOps.contains(operand.getOwner());
-        });
+        op.replaceUsesWithIf(bufferGetCacheOp, isOpOperandUnliftable);
       }
 
       // Finally, lift this op into the init phase.
