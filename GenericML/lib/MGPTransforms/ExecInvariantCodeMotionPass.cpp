@@ -45,9 +45,11 @@ namespace {
 /// 1. We want to lift buffer-producing ops into the init phase. In order to
 /// reference such lifted buffers in the exec phase, we need to leverage the
 /// buffer cache mechanism, i.e., cache in the init phase, and look up the cache
-/// in the exec phase. Note that if all users of a lifted buffer are also
-/// lifted, we don't cache such buffers, thereby minimizing the number of buffer
-/// cache ops inserted.
+/// in the exec phase. Note that
+///   (a). if all users of a lifted buffer are also lifted, we don't cache such
+///   buffers, thereby minimizing the number of buffer cache ops inserted.
+///   (b). if no user of a buffer op is lifted, we don't lift the buffer op
+///   because it merely adds more caching without saving us any computation.
 ///
 /// 2. We want to lift ops that modifies the lifted buffers into the init phase
 /// (e.g., matmul weights pre-packing). Usually such ops produces a chain; in
@@ -180,6 +182,18 @@ class ExecInvariantCodeMotionPass
 
     while (!worklist.empty())
       processOpFromWorklist();
+
+    auto isOpUnliftable = [&](Operation *user) {
+      return unliftableOps.contains(user);
+    };
+    // For buffers ops, don't lift them (mark as unliftable) if _all_ of their
+    // uses are unliftable, because we don't save any computation in such cases.
+    for (Operation &op : executeState.execute->getOperations()) {
+      if (isLiftableBufferOp(&op) && !unliftableOps.contains(&op) &&
+          llvm::all_of(op.getUsers(), isOpUnliftable)) {
+        unliftableOps.insert(&op);
+      }
+    }
   }
 
   void cloneOpsToRecompute() {
@@ -331,7 +345,6 @@ class ExecInvariantCodeMotionPass
   // This contains ops we must re-compute (i.e., compute in both init and exec
   // phases) so we can enable more lifting.
   DenseSet<Operation *> opsToRecompute;
-  // NOTE one must reset the state per `runOnOperation`
 };
 
 } // namespace
