@@ -1384,6 +1384,11 @@ def MOShape_ReshapeOp : MOShape_Op<"reshape", [
     `mo.shape.reshape` accepts a `!mo.shape` value as the new shape instead of a
     shape-like tensor.
 
+    Notably, this op differs from `MOStatic_ReshapeOp` in that this op takes the
+    new shape as an explicit argument (i.e. SSA value), whereas
+    `MOStatic_ReshapeOp` relies on its parametric result type to determine the
+    new shape.
+
     Example:
 
     ```mlir
@@ -1414,6 +1419,11 @@ def MOShape_BroadcastToOp : MOShape_Op<"broadcast_to", [
     are nearly identical to those of `mo.broadcast_to` (see the documentation of
     that op for details), with the only difference that `mo.shape.broadcast_to`
     accepts a `!mo.shape` value as the new shape instead of a shape-like tensor.
+
+    Notably, this op differs from `MOStatic_BroadcastToOp` in that this op takes
+    the new shape as an explicit argument (i.e. SSA value), whereas
+    `MOStatic_BroadcastToOp` relies on its parametric result type to determine
+    the new shape.
 
     Example:
 
