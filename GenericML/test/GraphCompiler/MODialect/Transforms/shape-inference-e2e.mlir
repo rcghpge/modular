@@ -346,7 +346,6 @@ mo.graph @binary_op_no_assert(
   mo.output %res : !mo.tensor<[?, ?], f32>
 }
 
-
 // CHECK-LABEL: mo.graph @concat_negative_ones() -> !mo.tensor<[2], si64> {
 mo.graph @concat_negative_ones() -> !mo.tensor<[2], si64> {
   %negOne = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
@@ -366,4 +365,72 @@ mo.graph @concat_negative_two() -> !mo.tensor<[2], si64> {
   %out = mo.concat[%axis : !mo.tensor<[], si64>] (%negTwo, %zero) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[2], si64>
   mo.output %out : !mo.tensor<[2], si64>
+}
+
+// CHECK-LABEL: mo.graph @batch_matmul_reused_rhs
+// CHECK-SAME: <[[D0:.*]], [[D1:.*]]>(
+mo.graph @batch_matmul_reused_rhs<D0, D1 -> Sh0: !mo.shape>(
+  // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[3, [[D0]], 4], f32>,
+  %arg0: !mo.tensor<[3, D0, 4], f32>,
+  // CHECK-SAME: %[[ARG1:.*]]: !mo.tensor<[3, 4, [[D1]]], f32>
+  %arg1: !mo.tensor<[3, 4, D1], f32>
+// CHECK-SAME: ) -> !mo.tensor<[3, [[D0]], [[D1]]], f32> {
+) -> !mo.tensor<Sh0, f32> {
+
+  %arg0reb = mo.rebind<() -> Sh1: !mo.shape>(%arg0) : !mo.tensor<[3, D0, 4], f32> -> !mo.tensor<Sh1, f32>
+  %arg1reb = mo.rebind<() -> Sh2: !mo.shape>(%arg1) : !mo.tensor<[3, 4, D1], f32> -> !mo.tensor<Sh2, f32>
+
+  // CHECK-NEXT: %[[BMM1:.*]] = mo.batch_matmul(%[[ARG0]], %[[ARG1]])
+  // CHECK-SAME: : (!mo.tensor<[3, [[D0]], 4], f32>, !mo.tensor<[3, 4, [[D1]]], f32>) -> !mo.tensor<[3, [[D0]], [[D1]]], f32>
+  // CHECK-NEXT: kgen.param.declare [[EQ:.*]]: i1 =
+  // CHECK-SAME: <eq(
+  // CHECK-DAG: [[D1]]
+  // CHECK-DAG:,
+  // CHECK-DAG: 4
+  // CHECK-SAME:)>
+  // CHECK-NEXT: kgen.param.declare [[CH:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "inner dimensions do not match"}, [[EQ]])>
+  %bmm1 = mo.batch_matmul<() -> Sh3: !mo.shape>(%arg0reb, %arg1reb) : (!mo.tensor<Sh1, f32>, !mo.tensor<Sh2, f32>) -> !mo.tensor<Sh3, f32>
+
+  // CHECK-NEXT: %[[ARG1REB:.*]] = mo.rebind(%[[ARG1:.*]]) : !mo.tensor<[3, 4, [[D1]]], f32> -> !mo.tensor<[3, [[D1]], [[D1]]], f32>
+  // CHECK-NEXT: %[[BMM2:.*]] = mo.batch_matmul(%[[BMM1]], %[[ARG1REB]])
+  // CHECK-SAME: (!mo.tensor<[3, [[D0]], [[D1]]], f32>, !mo.tensor<[3, [[D1]], [[D1]]], f32>) -> !mo.tensor<[3, [[D0]], [[D1]]], f32>
+  %bmm2 = mo.batch_matmul<() -> Sh4: !mo.shape>(%bmm1, %arg1reb) : (!mo.tensor<Sh3, f32>, !mo.tensor<Sh2, f32>) -> !mo.tensor<Sh4, f32>
+
+  // CHECK-NEXT: mo.output %[[BMM2]] : !mo.tensor<[3, [[D0]], [[D1]]], f32>
+  mo.output<:!mo.shape Sh4> %bmm2 : !mo.tensor<Sh4, f32>
+// CHECK-NEXT: }
+}
+
+// CHECK-LABEL: mo.graph @linalg_solve_reused_rhs
+// CHECK-SAME: <[[D0:.*]], [[D1:.*]]>(
+mo.graph @linalg_solve_reused_rhs<D0, D1 -> Sh0: !mo.shape>(
+  // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[3, [[D0]], [[D0]]], f32>,
+  %arg0: !mo.tensor<[3, D0, D0], f32>,
+  // CHECK-SAME: %[[ARG1:.*]]: !mo.tensor<[3, [[D0]], [[D1]]], f32>
+  %arg1: !mo.tensor<[3, D0, D1], f32>
+// CHECK-SAME: ) -> !mo.tensor<[3, [[D0]], [[D1]]], f32> {
+) -> !mo.tensor<Sh0, f32> {
+
+  %arg0reb = mo.rebind<() -> Sh1: !mo.shape>(%arg0) : !mo.tensor<[3, D0, D0], f32> -> !mo.tensor<Sh1, f32>
+  %arg1reb = mo.rebind<() -> Sh2: !mo.shape>(%arg1) : !mo.tensor<[3, D0, D1], f32> -> !mo.tensor<Sh2, f32>
+
+  // CHECK-NEXT: %[[VAL0:.*]] = mo.linalg.solve(%[[ARG0]], %[[ARG1]])
+  // CHECK-SAME: : (!mo.tensor<[3, [[D0]], [[D0]]], f32>, !mo.tensor<[3, [[D0]], [[D1]]], f32>) -> !mo.tensor<[3, [[D0]], [[D1]]], f32>
+  // CHECK-NEXT: kgen.param.declare [[EQ:.*]]: i1 =
+  // CHECK-SAME: <eq(
+  // CHECK-DAG: [[D0]]
+  // CHECK-DAG:,
+  // CHECK-DAG: [[D1]]
+  // CHECK-SAME:)>
+  // CHECK-NEXT: kgen.param.declare [[CH:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "inner dimensions do not match"}, [[EQ]])>
+  %0 = mo.linalg.solve<() -> Sh3: !mo.shape>(%arg0reb, %arg1reb) : (!mo.tensor<Sh1, f32>, !mo.tensor<Sh2, f32>) -> !mo.tensor<Sh3, f32>
+
+  // CHECK-NEXT: %[[ARG1REB:.*]] = mo.rebind(%[[ARG1:.*]]) : !mo.tensor<[3, [[D0]], [[D1]]], f32> -> !mo.tensor<[3, [[D1]], [[D1]]], f32>
+  // CHECK-NEXT: %[[VAL1:.*]] = mo.linalg.solve(%[[VAL0]], %[[ARG1REB]])
+  // CHECK-SAME: (!mo.tensor<[3, [[D0]], [[D1]]], f32>, !mo.tensor<[3, [[D1]], [[D1]]], f32>) -> !mo.tensor<[3, [[D0]], [[D1]]], f32>
+  %1 = mo.linalg.solve<() -> Sh4: !mo.shape>(%0, %arg1reb) : (!mo.tensor<Sh3, f32>, !mo.tensor<Sh2, f32>) -> !mo.tensor<Sh4, f32>
+
+  // CHECK-NEXT: mo.output %[[VAL1]] : !mo.tensor<[3, [[D0]], [[D1]]], f32>
+  mo.output<:!mo.shape Sh4> %1 : !mo.tensor<Sh4, f32>
+// CHECK-NEXT: }
 }
