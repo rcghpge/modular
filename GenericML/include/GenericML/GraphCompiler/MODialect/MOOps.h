@@ -14,11 +14,9 @@
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
+#include "GenericML/GraphCompiler/MODialect/MOUtils.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENTypes.h"
-#include "Support/LLVMCompilerForwardDecls.h"
-#include "Support/STLExtras.h"
-#include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/IR/FunctionInterfaces.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
@@ -46,51 +44,6 @@ using M::KGEN::SignatureType;
 //===----------------------------------------------------------------------===//
 
 namespace M::MO {
-
-// TODO: Perhaps these should be in a MOUtils.h instead of MOOps.h?
-template <typename inT, typename outT>
-static SmallVector<outT>
-denseResourceAttrToVec(DenseResourceElementsAttr attr) {
-  ArrayRef<inT> data = attr.getRawHandle().getBlob()->getDataAs<inT>();
-  return SmallVector<outT>(data.begin(), data.end());
-}
-
-/// If `attr` represents a blob of constants, return them in a vector,
-/// else return None.
-template <typename T>
-static std::optional<SmallVector<T>> tryGetConstantBlob(mlir::ElementsAttr attr,
-                                                        DType dType) {
-  if (auto floatElemsAttr = dyn_cast<FloatArrayElementsAttr>(attr)) {
-    SmallVector<double> blob =
-        map_to_vector(floatElemsAttr.getValues(), [](const llvm::APFloat &dim) {
-          return dim.convertToDouble();
-        });
-    return SmallVector<T>(blob.begin(), blob.end());
-  }
-
-  if (auto intElemsAttr = dyn_cast<IntArrayElementsAttr>(attr)) {
-    SmallVector<int64_t> blob =
-        map_to_vector(intElemsAttr.getValues(), [](const llvm::APInt &dim) {
-          return dim.getSExtValue();
-        });
-    return SmallVector<T>(blob.begin(), blob.end());
-  }
-
-  if (auto axisValueAttr = dyn_cast<DenseResourceElementsAttr>(attr)) {
-    return dType.dispatch<std::optional<SmallVector<T>>>()
-        .template when<M::DType::si32>(
-            [&]() { return denseResourceAttrToVec<int32_t, T>(axisValueAttr); })
-        .template when<M::DType::si64>(
-            [&]() { return denseResourceAttrToVec<int64_t, T>(axisValueAttr); })
-        .template when<M::DType::f32>(
-            [&]() { return denseResourceAttrToVec<float, T>(axisValueAttr); })
-        .template when<M::DType::f64>(
-            [&]() { return denseResourceAttrToVec<double, T>(axisValueAttr); })
-        .otherwise([&]() { return std::nullopt; });
-  }
-
-  return std::nullopt;
-}
 
 /// If `val` comes from a constant tensor (defined by a ConstantOp or
 /// RebindOp that takes in a ConstantOp), return the defining op
@@ -135,14 +88,6 @@ static TypedAttr getParamConstThrough(TensorValue inputVal) {
     }
   }
   return {};
-}
-
-/// Return a vector that contains elements of `values` permuted based on `perm`.
-template <typename T>
-static SmallVector<T> permute(ArrayRef<T> values, ArrayRef<int64_t> perm) {
-  assert(values.size() == perm.size() && "values and perm must have same size");
-  return map_to_vector(perm,
-                       [&](int64_t permIdx) -> T { return values[permIdx]; });
 }
 
 } // namespace M::MO
