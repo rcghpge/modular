@@ -296,6 +296,16 @@ TypedAttr TensorType::getSymbolicNumElements() const {
   return getTypedShapeAttr().getSymbolicNumElements();
 }
 
+ErrorOr<TensorType> TensorType::broadcastShapes(TensorType x, TensorType y) {
+  if (!x.hasRank() || !y.hasRank())
+    return Error(Twine("Guards should have rejected unranked inputs."));
+
+  UNWRAP_ERROR(result, MO::ShapeAttr::broadcastShapes(x.getTypedShapeAttr(),
+                                                      y.getTypedShapeAttr()));
+
+  return MO::TensorType::get(result, x.getElementType());
+}
+
 LogicalResult ShapeType::printValue(AsmPrinter &p, TypedAttr value) const {
   if (!mlir::isa<KGEN::ParamDeclRefAttr, MO::ShapeAttr>(value))
     return failure();

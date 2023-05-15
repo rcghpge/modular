@@ -4,7 +4,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/MODialect/Broadcast.h"
 #include "GenericML/GraphCompiler/Conversion/MOSupport/Broadcast.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 
@@ -94,7 +93,8 @@ reifyImplicitBroadcasting(OpBuilder &builder, Location loc, TensorValue x,
   if ((xShape == yShape) && (xShape.hasStaticShape()))
     return {x, y};
 
-  ErrorOr<TensorType> errorOrBcastCommonShape = broadcastShape(xShape, yShape);
+  ErrorOr<TensorType> errorOrBcastCommonShape =
+      TensorType::broadcastShapes(xShape, yShape);
 
   assert(!errorOrBcastCommonShape.isError() &&
          "cannot compute static broadcast shape");

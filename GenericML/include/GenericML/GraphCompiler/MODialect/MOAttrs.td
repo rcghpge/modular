@@ -96,6 +96,11 @@ def MO_ShapeAttr : KGEN_ExprAttr<"Shape", "shape"> {
 
     /// Returns the number of elements as a symbolic expression.
     TypedAttr getSymbolicNumElements() const;
+
+    /// Computes the common broadcast shape of the given shapes. Supports
+    /// parametric and unknown shapes, as long as they can be broadcasted
+    /// without constraints.
+    static ErrorOr<ShapeAttr> broadcastShapes(ShapeAttr xSh, ShapeAttr ySh);
   }];
 
   let genVerifyDecl = 1;

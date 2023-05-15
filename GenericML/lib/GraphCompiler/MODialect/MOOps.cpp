@@ -9,7 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
-#include "GenericML/GraphCompiler/MODialect/Broadcast.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/Compiler/ParserUtils.h"
@@ -409,7 +408,7 @@ OpFoldResult BroadcastShapeOp::fold(FoldAdaptor adaptor) {
     auto shapeTy = ShapeType::get(getContext());
     auto xShape = ShapeAttr::get(xIntDims, shapeTy);
     auto yShape = ShapeAttr::get(yIntDims, shapeTy);
-    ErrorOr<MO::ShapeAttr> shapeOr = broadcastShape(xShape, yShape);
+    ErrorOr<ShapeAttr> shapeOr = ShapeAttr::broadcastShapes(xShape, yShape);
     if (!shapeOr.isError()) {
       // Ensure we return with the appropriate element type.
       auto getResAttrs = [&](auto values) {
@@ -1887,7 +1886,7 @@ OpFoldResult Shape::BroadcastOp::fold(FoldAdaptor adaptor) {
   auto xShape = dyn_cast_or_null<ShapeAttr>(adaptor.getInputX());
   auto yShape = dyn_cast_or_null<ShapeAttr>(adaptor.getInputY());
   if (xShape && yShape) {
-    ErrorOr<MO::ShapeAttr> shapeOr = broadcastShape(xShape, yShape);
+    ErrorOr<ShapeAttr> shapeOr = ShapeAttr::broadcastShapes(xShape, yShape);
     if (!shapeOr.isError())
       return *shapeOr;
   }

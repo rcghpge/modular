@@ -150,6 +150,82 @@ TypedAttr MO::ShapeAttr::getSymbolicNumElements() const {
   return KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, getValues());
 }
 
+ErrorOr<ShapeAttr> MO::ShapeAttr::broadcastShapes(ShapeAttr xSh,
+                                                  ShapeAttr ySh) {
+  // This largely should follow the semantics described here:
+  // https://numpy.org/doc/stable/user/basics.broadcasting.html
+  // TODO (#7331): Merge with Support/ML/BroadcastShape.
+
+  if (xSh == ySh) // Short circuit.
+    return ySh;
+
+  auto idxTy = IndexType::get(xSh.getContext());
+  auto intDim1 = IntegerAttr::get(idxTy, 1ll);
+
+  SmallVector<TypedAttr> result;
+  ArrayRef<TypedAttr> xShDims = xSh.getValues();
+  ArrayRef<TypedAttr> yShDims = ySh.getValues();
+  for (auto [xShDim, yShDim] :
+       llvm::zip_longest(llvm::reverse(xShDims), llvm::reverse(yShDims))) {
+    if (!yShDim.has_value()) {
+      result.push_back(xShDim.value());
+      continue;
+    }
+    if (!xShDim.has_value()) {
+      result.push_back(yShDim.value());
+      continue;
+    }
+
+    TypedAttr xShDimVal = xShDim.value();
+    TypedAttr yShDimVal = yShDim.value();
+
+    if (xShDimVal == yShDimVal) {
+      result.push_back(xShDimVal);
+      continue;
+    }
+
+    if (xShDimVal == intDim1) {
+      result.push_back(yShDimVal);
+      continue;
+    }
+    if (yShDimVal == intDim1) {
+      result.push_back(xShDimVal);
+      continue;
+    }
+
+    if (xShDim->isa<KGEN::ParamDeclRefAttr>()) {
+      if (yShDim->isa<KGEN::UnknownAttr>()) {
+        return Error(Twine("xShDim and yShDim are incompatible"));
+      }
+    }
+
+    if (yShDim->isa<KGEN::ParamDeclRefAttr>()) {
+      if (xShDim->isa<KGEN::UnknownAttr>()) {
+        return Error(Twine("xShDim and yShDim are incompatible"));
+      }
+    }
+
+    if (xShDim->isa<KGEN::UnknownAttr>()) {
+      result.push_back(yShDimVal);
+      continue;
+    }
+
+    if (yShDim->isa<KGEN::UnknownAttr>()) {
+      result.push_back(xShDimVal);
+      continue;
+    }
+
+    // Not 1, not dynamic. Then the other shape necessarily matches this.
+    if (xShDimVal != yShDimVal) {
+      return Error(Twine(
+          "upstream dialect should have rejected non-broadcastable inputs"));
+    }
+    result.push_back(xShDimVal);
+  }
+  return MO::ShapeAttr::get(SmallVector<TypedAttr>(llvm::reverse(result)),
+                            xSh.getType());
+}
+
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//

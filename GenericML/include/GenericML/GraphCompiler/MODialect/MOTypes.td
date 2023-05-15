@@ -131,6 +131,10 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     /// Returns the number of elements as a symbolic (i.e. parametric)
     /// expression. Fails if not statically ranked.
     TypedAttr getSymbolicNumElements() const;
+
+    /// Computes the common broadcast shape of the shapes of given tensors.
+    /// Supports parametric and unknown shapes, but not dynamic rank.
+    static ErrorOr<TensorType> broadcastShapes(TensorType x, TensorType y);
   }];
 }
 
