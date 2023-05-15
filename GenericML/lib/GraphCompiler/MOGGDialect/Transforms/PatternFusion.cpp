@@ -209,18 +209,27 @@ struct FullyConnectedPattern : public RewritePattern {
               *transpose = nullptr, *gelu_approx_sigmoid = nullptr,
               *gelu = nullptr, *relu = nullptr, *tanh = nullptr,
               *sigmoid = nullptr;
+
+    // Pattern For the Matmul including possible transpose on the weight
+    // and broadcast after the matmul
     auto weightP = m_MOMatrix(m_Any(&weight));
     auto matmulP = m_Op<MO::MatmulOp>(
         &matmul, m_MOMatrix(m_Any(&input)),
         m_Optional(m_Op<MO::TransposeOp>(&transpose, weightP, m_Any()),
                    weightP));
+
+    // Pattern for the Bias Add  including possible reshaping of the matmul
+    // and broadcasting of the bias vector
     auto broadcastP =
         m_Optional(matmulP, m_Op<MO::Static::BroadcastToOp>(matmulP));
+    auto biasP = m_Typed<MO::TensorType>(m_Any(&bias));
     auto bias_add = m_BinaryCommutativeOp<MO::AddOp>(
         &add,
         m_Optional(broadcastP,
                    m_Op<MO::Static::ReshapeOp>(&reshape, broadcastP)),
-        m_Op<MO::Static::BroadcastToOp>(m_Typed<MO::TensorType>(m_Any(&bias))));
+        m_Optional(m_Op<MO::Static::BroadcastToOp>(biasP), biasP));
+
+    // Patterns for Activation Functions
     auto approxGeluP = m_BinaryCommutativeOp<MO::MulOp>(
         &gelu_approx_sigmoid, bias_add,
         m_Op<MO::SigmoidOp>(m_BinaryCommutativeOp<MO::MulOp>(
@@ -230,6 +239,7 @@ struct FullyConnectedPattern : public RewritePattern {
     auto reluP = m_Op<MO::ReluOp>(&relu, bias_add);
     auto tanhP = m_Op<MO::TanhOp>(&tanh, bias_add);
     auto sigmoidP = m_Op<MO::SigmoidOp>(&sigmoid, bias_add);
+
     auto fully_connected =
         m_Optional(approxGeluP, geluP, reluP, tanhP, sigmoidP, bias_add);
     // TODO: Make the Optional Matcher work with Operation* directly
