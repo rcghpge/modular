@@ -18,6 +18,7 @@
 #include "Support/Compiler/ParserUtils.h"
 #include "Support/Compiler/VerifyUtils.h"
 #include "Support/MDialect/MAttrs.h"
+#include "Support/ML/Permutation.h"
 #include "Support/ML/RangeUtils.h"
 #include "Support/STLExtras.h"
 #include "mlir/IR/BuiltinOps.h"
