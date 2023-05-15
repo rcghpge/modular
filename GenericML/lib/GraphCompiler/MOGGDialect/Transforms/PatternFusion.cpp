@@ -53,13 +53,34 @@ struct GatherSumPattern : public OpRewritePattern<MO::ReduceAddOp> {
   }
 };
 
+static LogicalResult validate2DTranspose(Value axes) {
+  std::optional<SmallVector<int64_t>> maybeAxes =
+      MO::tryGetConstantIntVector(cast<MO::TensorValue>(axes));
+
+  if (!maybeAxes.has_value())
+    return failure();
+
+  SmallVector<int64_t> &axesValues = maybeAxes.value();
+
+  if (axesValues[0] != 1 || axesValues[1] != 0)
+    return failure();
+  return success();
+}
+
 struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
-  MatmulConstBPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
+  MatmulConstBPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 3) {}
 
   LogicalResult matchAndRewrite(MO::MatmulOp op,
                                 PatternRewriter &rewriter) const override {
     Value input = op.getInputA();
-    Value weight = op.getInputB();
+    Value weight, axes;
+    Operation *transpose = nullptr;
+    auto weightP = m_MOMatrix(m_Any(&weight));
+    if (!m_Optional(m_Op<MO::TransposeOp>(&transpose, weightP,
+                                          m_MOVector(m_Any(&axes))),
+                    weightP)
+             .match(op.getInputB()))
+      return failure();
 
     if (!input || !isa_and_nonnull<MO::ConstantOp>(weight.getDefiningOp()))
       return failure();
@@ -68,6 +89,12 @@ struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
     if (!weightsType.hasStaticShape() || weightsType.hasUnknownShape())
       return failure();
 
+    std::string packing_kernel = "mop.kernels.pack_matmul_b";
+    if (transpose) {
+      if (!axes || validate2DTranspose(axes).failed())
+        return rewriter.notifyMatchFailure(op, "invalid transpose");
+      packing_kernel = "mop.kernels.pack_matmul_b.transp_b";
+    }
     //   res = matmul(any, const_weight) : [_, _]
     // ===>
     //   packed_weight = pack(const_weight) : [?, ?]
@@ -84,7 +111,7 @@ struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
         rewriter
             .create<MOGG::ExtOp>(op->getLoc(),
                                  /*outputTypes=*/packedWeightsType,
-                                 /*op_name=*/"mop.kernels.pack_matmul_b",
+                                 /*op_name=*/packing_kernel,
                                  /*inputOperands=*/SmallVector<Value>{weight})
             .getResult(0);
 
@@ -110,18 +137,8 @@ struct MatmulTranspBPattern : public OpRewritePattern<MO::MatmulOp> {
 
     if (!input || !weight || !axes)
       return rewriter.notifyMatchFailure(op, "null input value");
-
-    std::optional<SmallVector<int64_t>> maybeAxes =
-        MO::tryGetConstantIntVector(cast<MO::TensorValue>(axes));
-
-    if (!maybeAxes.has_value())
-      return rewriter.notifyMatchFailure(op, "axes not constant");
-
-    SmallVector<int64_t> &axesValues = maybeAxes.value();
-
-    if (axesValues[0] != 1 || axesValues[1] != 0)
-      return rewriter.notifyMatchFailure(op, "axes not transposing");
-
+    if (validate2DTranspose(axes).failed())
+      return rewriter.notifyMatchFailure(op, "invalid transpose");
     rewriter.replaceOpWithNewOp<MOGG::ExtOp>(
         op,
         /*outputTypes=*/op->getResultTypes(),

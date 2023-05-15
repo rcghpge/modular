@@ -191,6 +191,8 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
       {"mop.kernels.matmul", "mop.shape.matmul"},
       {"mop.kernels.matmul_transpb", "mop.shape.matmul_transpb"},
       {"mop.kernels.pack_matmul_b", "mop.shape.pack_matmul_b"},
+      {"mop.kernels.pack_matmul_b.transp_b",
+       "mop.shape.pack_matmul_b.transp_b"},
       {"mop.kernels.fully_connected", "mop.shape.fully_connected"},
       {"mop.kernels.batch_matmul", "mop.shape.batch_matmul"},
       {"mop.kernels.batch_matmul_adjb", "mop.shape.batch_matmul_adjb"},
@@ -332,8 +334,9 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
         getOutputSpec("mop.shape.slice", {loweringState.getExecuteChain(),
                                           input, start, stop, step});
   } else {
-    opBeingLowered->emitError("op requires output to have static shape");
-    return Error("op requires output to have static shape");
+    llvm::Twine dynErr = opName + " requires output to have static shape";
+    opBeingLowered->emitOpError(dynErr);
+    return Error(dynErr);
   }
   output.buffer = exeBuilder
                       .create<MGP::CpuBufferAllocSpecOp>(
