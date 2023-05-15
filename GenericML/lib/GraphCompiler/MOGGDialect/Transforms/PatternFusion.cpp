@@ -53,16 +53,16 @@ struct GatherSumPattern : public OpRewritePattern<MO::ReduceAddOp> {
   }
 };
 
-static LogicalResult validate2DTranspose(Value axes) {
-  std::optional<SmallVector<int64_t>> maybeAxes =
-      MO::tryGetConstantIntVector(cast<MO::TensorValue>(axes));
+static LogicalResult validate2DTranspose(Value perm) {
+  std::optional<SmallVector<int64_t>> maybePerm =
+      MO::tryGetConstantIntVector(cast<MO::TensorValue>(perm));
 
-  if (!maybeAxes.has_value())
+  if (!maybePerm.has_value())
     return failure();
 
-  SmallVector<int64_t> &axesValues = maybeAxes.value();
+  SmallVector<int64_t> &permValues = maybePerm.value();
 
-  if (axesValues[0] != 1 || axesValues[1] != 0)
+  if (permValues[0] != 1 || permValues[1] != 0)
     return failure();
   return success();
 }
@@ -73,11 +73,11 @@ struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
   LogicalResult matchAndRewrite(MO::MatmulOp op,
                                 PatternRewriter &rewriter) const override {
     Value input = op.getInputA();
-    Value weight, axes;
+    Value weight, perm;
     Operation *transpose = nullptr;
     auto weightP = m_MOMatrix(m_Any(&weight));
     if (!m_Optional(m_Op<MO::TransposeOp>(&transpose, weightP,
-                                          m_MOVector(m_Any(&axes))),
+                                          m_MOVector(m_Any(&perm))),
                     weightP)
              .match(op.getInputB()))
       return failure();
@@ -91,7 +91,7 @@ struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
 
     std::string packing_kernel = "mop.kernels.pack_matmul_b";
     if (transpose) {
-      if (!axes || validate2DTranspose(axes).failed())
+      if (!perm || validate2DTranspose(perm).failed())
         return rewriter.notifyMatchFailure(op, "invalid transpose");
       packing_kernel = "mop.kernels.pack_matmul_b.transp_b";
     }
@@ -128,16 +128,16 @@ struct MatmulTranspBPattern : public OpRewritePattern<MO::MatmulOp> {
 
   LogicalResult matchAndRewrite(MO::MatmulOp op,
                                 PatternRewriter &rewriter) const override {
-    Value input, weight, axes;
+    Value input, weight, perm;
     if (!m_Op<MO::MatmulOp>(
              m_Any(&input),
-             m_Op<MO::TransposeOp>(m_Any(&weight), m_MOVector(m_Any(&axes))))
+             m_Op<MO::TransposeOp>(m_Any(&weight), m_MOVector(m_Any(&perm))))
              .match(op))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
-    if (!input || !weight || !axes)
+    if (!input || !weight || !perm)
       return rewriter.notifyMatchFailure(op, "null input value");
-    if (validate2DTranspose(axes).failed())
+    if (validate2DTranspose(perm).failed())
       return rewriter.notifyMatchFailure(op, "invalid transpose");
     rewriter.replaceOpWithNewOp<MOGG::ExtOp>(
         op,
@@ -155,32 +155,32 @@ struct BatchMatmulAdjBPattern : public OpRewritePattern<MO::BatchMatmulOp> {
 
   LogicalResult matchAndRewrite(MO::BatchMatmulOp op,
                                 PatternRewriter &rewriter) const override {
-    Value input, weight, axes;
+    Value input, weight, perm;
     if (!m_Op<MO::BatchMatmulOp>(
              m_Any(&input),
-             m_Op<MO::TransposeOp>(m_Any(&weight), m_MOVector(m_Any(&axes))))
+             m_Op<MO::TransposeOp>(m_Any(&weight), m_MOVector(m_Any(&perm))))
              .match(op))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
-    if (!input || !weight || !axes)
+    if (!input || !weight || !perm)
       return rewriter.notifyMatchFailure(op, "null input value");
 
-    std::optional<SmallVector<int64_t>> maybeAxes =
-        MO::tryGetConstantIntVector(cast<MO::TensorValue>(axes));
+    std::optional<SmallVector<int64_t>> maybePerm =
+        MO::tryGetConstantIntVector(cast<MO::TensorValue>(perm));
 
-    if (!maybeAxes.has_value())
-      return rewriter.notifyMatchFailure(op, "axes not constant");
+    if (!maybePerm.has_value())
+      return rewriter.notifyMatchFailure(op, "perm not constant");
 
-    SmallVector<int64_t> &axesValues = maybeAxes.value();
+    SmallVector<int64_t> &permValues = maybePerm.value();
 
-    int64_t rank = axesValues.size();
+    int64_t rank = permValues.size();
 
-    if (axesValues[rank - 1] != rank - 2 || axesValues[rank - 2] != rank - 1)
-      return rewriter.notifyMatchFailure(op, "axes not adjoint");
+    if (permValues[rank - 1] != rank - 2 || permValues[rank - 2] != rank - 1)
+      return rewriter.notifyMatchFailure(op, "perm not adjoint");
 
     for (int64_t i = 0, e = rank - 2; i < e; ++i)
-      if (axesValues[i] != i)
-        return rewriter.notifyMatchFailure(op, "axes not adjoint");
+      if (permValues[i] != i)
+        return rewriter.notifyMatchFailure(op, "perm not adjoint");
 
     rewriter.replaceOpWithNewOp<MOGG::ExtOp>(
         op,
