@@ -358,7 +358,7 @@ def MO_SameOperandsAndResultType : TraitList<[
 ]>;
 
 /// Logically similar to the builtin SameOperandsAndResultShape, but uses
-/// MO::ShapeAttr which is used to store the MO::Tensor shape.
+/// MOSH::ShapeAttr which is used to store the MO::Tensor shape.
 def MO_SameOperandsAndResultShapeAttr :
     MO_OpTrait<"MOSameOperandsAndResultShapeAttr">;
 

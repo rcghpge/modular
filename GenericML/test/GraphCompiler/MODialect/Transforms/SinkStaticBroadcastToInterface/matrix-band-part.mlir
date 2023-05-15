@@ -53,8 +53,8 @@ mo.graph @multiple_users<A, B, C -> D>(
   mo.output<B> %1, %2 : !mo.tensor<[B, B, B, 5], f32>, !mo.tensor<[B, B, B, 5], f32>
 }
 
-// CHECK: mo.graph @no_match_dyn_rank_bcast_in<[[A:.*]], [[B:.*]], [[C:.*]], [[SH0:.*]]: !mo.shape -> [[D:.*]], [[E:.*]], [[F:.*]]>(
-mo.graph @no_match_dyn_rank_bcast_in<A, B, C, Sh0: !mo.shape -> D, E, F>(
+// CHECK: mo.graph @no_match_dyn_rank_bcast_in<[[A:.*]], [[B:.*]], [[C:.*]], [[SH0:.*]]: !mosh.ape -> [[D:.*]], [[E:.*]], [[F:.*]]>(
+mo.graph @no_match_dyn_rank_bcast_in<A, B, C, Sh0: !mosh.ape -> D, E, F>(
   // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[SH0]], f32>, %[[NUMLOWER:.*]]: !mo.tensor<[], si32>, %[[NUMUPPER:.*]]: !mo.tensor<[], si32>, %[[EXCLUDE:.*]]: !mo.tensor<[], bool>
   %arg0: !mo.tensor<Sh0, f32>, %numLower: !mo.tensor<[], si32>, %numUpper: !mo.tensor<[], si32>, %exclude: !mo.tensor<[], bool>
 // CHECK-SAME: ) -> !mo.tensor<[[[D]], [[E]], [[F]]], f32> {
@@ -68,8 +68,8 @@ mo.graph @no_match_dyn_rank_bcast_in<A, B, C, Sh0: !mo.shape -> D, E, F>(
   mo.output<A, B, C> %1 : !mo.tensor<[A, B, C], f32>
 }
 
-// CHECK: mo.graph @no_match_dyn_rank<[[A:.*]], [[B:.*]], [[C:.*]], [[SH0:.*]]: !mo.shape -> [[SH1:.*]]: !mo.shape>(
-mo.graph @no_match_dyn_rank<A, B, C, Sh0: !mo.shape -> Sh1: !mo.shape>(
+// CHECK: mo.graph @no_match_dyn_rank<[[A:.*]], [[B:.*]], [[C:.*]], [[SH0:.*]]: !mosh.ape -> [[SH1:.*]]: !mosh.ape>(
+mo.graph @no_match_dyn_rank<A, B, C, Sh0: !mosh.ape -> Sh1: !mosh.ape>(
   // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[[A]], [[B]], [[C]]], f32>, %[[NUMLOWER:.*]]: !mo.tensor<[], si32>, %[[NUMUPPER:.*]]: !mo.tensor<[], si32>, %[[EXCLUDE:.*]]: !mo.tensor<[], bool>
   %arg0: !mo.tensor<[A, B, C], f32>, %numLower: !mo.tensor<[], si32>, %numUpper: !mo.tensor<[], si32>, %exclude: !mo.tensor<[], bool>
 // CHECK-SAME: ) -> !mo.tensor<[[SH1]], f32> {
@@ -79,8 +79,8 @@ mo.graph @no_match_dyn_rank<A, B, C, Sh0: !mo.shape -> Sh1: !mo.shape>(
   // CHECK-NEXT: %[[RES:.*]] = mo.linalg.band_part(%[[VAL0]], %[[NUMLOWER]], %[[NUMUPPER]], %[[EXCLUDE]]) :
   // CHECK-SAME: (!mo.tensor<[[SH0]], f32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], bool>) -> !mo.tensor<[[SH0]], f32>
   %1 = mo.linalg.band_part(%0, %numLower, %numUpper, %exclude) : (!mo.tensor<Sh0, f32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], bool>) -> !mo.tensor<Sh0, f32>
-  // CHECK-NEXT: mo.output<:!mo.shape [[SH0]]> %1 : !mo.tensor<[[SH0]], f32>
-  mo.output<:!mo.shape Sh0> %1 : !mo.tensor<Sh0, f32>
+  // CHECK-NEXT: mo.output<:!mosh.ape [[SH0]]> %1 : !mo.tensor<[[SH0]], f32>
+  mo.output<:!mosh.ape Sh0> %1 : !mo.tensor<Sh0, f32>
 }
 
 // CHECK: mo.graph @intermediate_variable_dominance<[[A:.*]], [[B:.*]], [[C:.*]] -> [[D:.*]], [[E:.*]], [[F:.*]]>(

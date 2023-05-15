@@ -1,0 +1,324 @@
+//===----------------------------------------------------------------------===//
+//
+// This file is Modular Inc proprietary.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file implements the MOSH dialect operations.
+//
+//===----------------------------------------------------------------------===//
+
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"
+#include "GenericML/GraphCompiler/MOSHDialect/ShapeFuncHelpers.h"
+#include "KGEN/KGENDialect/KGENAttrs.h"
+#include "Support/STLExtras.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Index/IR/IndexAttrs.h"
+#include "mlir/Dialect/Index/IR/IndexOps.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/TypeUtilities.h"
+#include <llvm/ADT/STLExtras.h>
+#include <mlir/IR/PatternMatch.h>
+
+using namespace M;
+using namespace MOSH;
+
+namespace Index = mlir::index;
+namespace Arith = mlir::arith;
+
+//===----------------------------------------------------------------------===//
+// Shape ops
+//===----------------------------------------------------------------------===//
+
+/// Normalize axis by incrementing negative axis with given rank. For
+/// instance, for a rank-3 tensor, the `-1` axis is the last axis, i.e., axis
+/// `2`, which is `-1 + 3`.
+static int64_t normalizeAxis(const APInt &axisApInt, int64_t rank) {
+  int64_t axis = axisApInt.getSExtValue();
+  return (axis < 0) ? rank + axis : axis;
+}
+
+OpFoldResult BroadcastOp::fold(FoldAdaptor adaptor) {
+  auto xShape = dyn_cast_or_null<ShapeAttr>(adaptor.getInputX());
+  auto yShape = dyn_cast_or_null<ShapeAttr>(adaptor.getInputY());
+  if (xShape && yShape) {
+    ErrorOr<ShapeAttr> shapeOr = ShapeAttr::broadcastShapes(xShape, yShape);
+    if (!shapeOr.isError())
+      return *shapeOr;
+  }
+  return {};
+}
+
+void ConcatOp::build(OpBuilder &builder, OperationState &state,
+                     TypedValue<ShapeType> input1,
+                     TypedValue<ShapeType> input2) {
+  return build(builder, state, {input1, input2});
+}
+
+OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
+  // Single shape parameter or dimension parameters
+  if (adaptor.getInputs().size() == 1)
+    return adaptor.getInputs().front();
+
+  // Collect dimension parameters from all inputs
+  SmallVector<TypedAttr> finalDims;
+  for (Attribute input : adaptor.getInputs()) {
+    if (auto inputDims = dyn_cast_or_null<ShapeAttr>(input))
+      llvm::append_range(finalDims, inputDims.getValues());
+    else
+      return {};
+  }
+  auto shapeTy = ShapeType::get(getContext());
+  return ShapeAttr::get(finalDims, shapeTy);
+}
+
+TypedAttr EqualOp::asExpression(ShapeAttr shape1, ShapeAttr shape2) {
+  assert(shape1.getRank() == shape2.getRank());
+  SmallVector<TypedAttr> andOperands;
+  for (auto [xDim, yDim] : llvm::zip(shape1.getValues(), shape2.getValues())) {
+    andOperands.emplace_back(
+        KGEN::ParamOperatorAttr::get(KGEN::POC::EQ, {xDim, yDim}));
+  }
+  return KGEN::ParamOperatorAttr::get(KGEN::POC::And, andOperands);
+}
+
+OpFoldResult EqualOp::fold(FoldAdaptor adaptor) {
+  auto input1 = adaptor.getInput1();
+  auto input2 = adaptor.getInput2();
+  if (!input1 || !input2)
+    return {};
+
+  if (input1 == input2) // fast path
+    return BoolAttr::get(getContext(), true);
+
+  auto shape1 = dyn_cast_or_null<ShapeAttr>(input1);
+  auto shape2 = dyn_cast_or_null<ShapeAttr>(input2);
+  if (!shape1 || !shape2)
+    return {};
+
+  // If the inputs are different rank, we can fold.
+  if (shape1.getRank() != shape2.getRank())
+    return BoolAttr::get(getContext(), false);
+
+  // If both inputs have the same static rank, we fold into an expression.
+  return asExpression(shape1, shape2);
+}
+
+void GetDimOp::build(OpBuilder &builder, OperationState &state, Value input,
+                     int64_t dim) {
+  build(builder, state, input, builder.getIndexAttr(dim));
+}
+
+TypedAttr GetDimOp::emitStaticCall(TypedAttr inputShape, int64_t axis) {
+  auto indexTy = IndexType::get(inputShape.getContext());
+  SmallVector<std::pair<StringAttr (*)(mlir::OperationName), Attribute>>
+      attrNameFuncAndArg = {
+          {GetDimOp::getDimAttrName, IntegerAttr::get(indexTy, axis)}};
+  return KGEN::emitMLIROperationCall(GetDimOp::getOperationName(),
+                                     attrNameFuncAndArg, {inputShape}, indexTy);
+}
+
+OpFoldResult GetDimOp::fold(FoldAdaptor adaptor) {
+  if (auto input = dyn_cast_or_null<ShapeAttr>(adaptor.getInput())) {
+    int64_t dim = normalizeAxis(adaptor.getDim(), input.getRank());
+    return input.getValues()[dim];
+  }
+  return {};
+}
+
+OpFoldResult GetRankOp::fold(FoldAdaptor adaptor) {
+  if (auto input = dyn_cast_or_null<ShapeAttr>(adaptor.getInput())) {
+    auto indexTy = IndexType::get(getContext());
+    return IntegerAttr::get(indexTy, input.getRank());
+  }
+  return {};
+}
+
+OpFoldResult NewOp::fold(FoldAdaptor adaptor) {
+  SmallVector<TypedAttr> newDims;
+  for (Attribute dimAttr : adaptor.getDims()) {
+    if (auto dim = dyn_cast_or_null<TypedAttr>(dimAttr))
+      newDims.emplace_back(dim);
+    else
+      return {};
+  }
+  auto shapeTy = ShapeType::get(getContext());
+  return ShapeAttr::get(newDims, shapeTy);
+}
+
+OpFoldResult NumElementsOp::fold(FoldAdaptor adaptor) {
+  if (auto inputDimAttrs = dyn_cast_or_null<ShapeAttr>(adaptor.getInput()))
+    return inputDimAttrs.getSymbolicNumElements();
+  return {};
+}
+
+void SliceOp::build(OpBuilder &builder, OperationState &state, Value input,
+                    int64_t start, int64_t end) {
+  build(builder, state, input, builder.getIndexAttr(start),
+        builder.getIndexAttr(end));
+}
+
+void SliceOp::build(OpBuilder &builder, OperationState &state, Value input,
+                    int64_t start) {
+  build(builder, state, input, builder.getIndexAttr(start), {});
+}
+
+/// Clamps `axisApInt` to the range [0, rank].
+static int64_t clampAxis(const APInt &axisApInt, int64_t rank) {
+  int64_t axis = normalizeAxis(axisApInt, rank);
+  return std::max(std::min(axis, rank), (int64_t)0);
+}
+
+OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
+  if (auto input = dyn_cast_or_null<ShapeAttr>(adaptor.getInput())) {
+    int64_t rank = input.getRank();
+    // Clamp `start` and `end` to the range [0, rank], since based on slice
+    // semantics these arguments may fall outside the rank of the `ShapeAttr`.
+    int64_t start = clampAxis(adaptor.getStart(), rank);
+    int64_t end = rank;
+    if (adaptor.getEnd().has_value())
+      end = clampAxis(adaptor.getEnd().value(), rank);
+
+    SmallVector<TypedAttr> slicedDims(input.getValues().begin() + start,
+                                      input.getValues().begin() + end);
+    auto shapeTy = ShapeType::get(getContext());
+    return ShapeAttr::get(slicedDims, shapeTy);
+  }
+  return {};
+}
+
+LogicalResult SliceOp::verify() {
+  // NOTE we can't check for input rank here, so verification is limited
+  IntegerAttr startAttr = getStartAttr();
+  IntegerAttr endAttr = getEndAttr();
+  if (!endAttr)
+    return success();
+
+  int64_t start = startAttr.getInt();
+  int64_t end = endAttr.getInt();
+  auto bothOrNeitherIndicesNegative =
+      (start < 0 && end < 0) || (start >= 0 && end >= 0);
+  if (bothOrNeitherIndicesNegative && end < start) {
+    return emitError("end axis cannot be smaller than start axis if they are "
+                     "both or neither negative");
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Shape::BroadcastOp
+//===----------------------------------------------------------------------===//
+
+namespace ShapeBcastImpl {
+
+static KGEN::FuncOp buildForwardShapeFunc(Location loc, StringRef fwFuncName,
+                                          size_t smallerRank,
+                                          mlir::RewriterBase &rewriter) {
+  KGEN::FuncOp funcOp = createNewShapeFunc(fwFuncName, 2, loc, rewriter);
+
+  Block *entryBlock = funcOp.addEntryBlock();
+  rewriter.setInsertionPointToEnd(entryBlock);
+  ShapeValue xShape = getBlockArg(entryBlock, 0);
+  ShapeValue yShape = getBlockArg(entryBlock, 1);
+
+  SmallVector<Value> newDims;
+  auto constOne = rewriter.create<Index::ConstantOp>(loc, 1);
+  for (int64_t axis = -smallerRank; axis < 0; ++axis) {
+    auto xDim = rewriter.create<GetDimOp>(loc, xShape, axis);
+    auto yDim = rewriter.create<GetDimOp>(loc, yShape, axis);
+
+    auto xDimIsOne = rewriter.create<Index::CmpOp>(
+        loc, Index::IndexCmpPredicate::EQ, xDim, constOne);
+    auto yDimIsOne = rewriter.create<Index::CmpOp>(
+        loc, Index::IndexCmpPredicate::EQ, yDim, constOne);
+    auto xOrYIsOne = rewriter.create<Arith::OrIOp>(loc, xDimIsOne, yDimIsOne);
+    auto xDimIsYDim = rewriter.create<Index::CmpOp>(
+        loc, Index::IndexCmpPredicate::EQ, xDim, yDim);
+    auto bcastCond = rewriter.create<Arith::OrIOp>(loc, xOrYIsOne, xDimIsYDim);
+    rewriter.create<AssertOp>(loc, bcastCond,
+                              "dimensions are not broadcastable");
+
+    auto resDim = rewriter.create<Index::MaxSOp>(loc, xDim, yDim);
+    newDims.emplace_back(resDim);
+  }
+
+  // One of these shapes is empty because we know the smaller rank.
+  auto xBatch = rewriter.create<SliceOp>(loc, xShape, 0, -smallerRank);
+  auto yBatch = rewriter.create<SliceOp>(loc, yShape, 0, -smallerRank);
+  auto batchDims = rewriter.create<ConcatOp>(loc, xBatch, yBatch);
+  auto bcastedDims = rewriter.create<NewOp>(loc, newDims);
+  auto res = rewriter.create<ConcatOp>(loc, batchDims, bcastedDims);
+
+  rewriter.create<KGEN::ReturnOp>(loc, SmallVector<Value>{res});
+
+  return funcOp;
+}
+
+} // namespace ShapeBcastImpl
+
+KGEN::FuncOp BroadcastOp::getForwardShapeFunc(Location loc, ModuleOp module,
+                                              size_t smallerRank,
+                                              mlir::RewriterBase &rewriter) {
+  using namespace ShapeBcastImpl;
+
+  std::string fwShapeFuncName =
+      ("broadcast_" + Twine(smallerRank) + "_fw").str();
+  if (auto funcOp = module.lookupSymbol<KGEN::FuncOp>(fwShapeFuncName))
+    return funcOp;
+
+  auto insPoint = rewriter.saveInsertionPoint();
+  rewriter.setInsertionPointToStart(module.getBody());
+  KGEN::FuncOp funcOp =
+      buildForwardShapeFunc(loc, fwShapeFuncName, smallerRank, rewriter);
+  rewriter.setInsertionPoint(insPoint.getBlock(), insPoint.getPoint());
+  return funcOp;
+}
+
+//===----------------------------------------------------------------------===//
+// MO_AssertOp
+//===----------------------------------------------------------------------===//
+
+void AssertOp::build(OpBuilder &builder, OperationState &state, Value cond) {
+  build(builder, state, cond, StringAttr());
+}
+
+void AssertOp::build(OpBuilder &builder, OperationState &state, Value cond,
+                     StringRef message) {
+  build(builder, state, cond, builder.getStringAttr(message));
+}
+
+TypedAttr AssertOp::emitStaticCall(TypedAttr cond, StringRef message) {
+  MLIRContext *ctx = cond.getContext();
+  SmallVector<std::pair<StringAttr (*)(mlir::OperationName), Attribute>>
+      msgAttrNameFuncAndArg = {
+          {AssertOp::getMessageAttrName, StringAttr::get(ctx, message)}};
+  auto chainTy = ChainType::get(ctx);
+  return KGEN::emitMLIROperationCall(AssertOp::getOperationName(),
+                                     msgAttrNameFuncAndArg, {cond}, chainTy);
+}
+
+OpFoldResult AssertOp::fold(FoldAdaptor adaptor) {
+  // If the condition is true, we return a chain attribute, otherwise we leave
+  // the op as is and a pass can either check for failing asserts or it becomes
+  // a guaranteed runtime failure.
+  if (auto boolAttr = dyn_cast_or_null<BoolAttr>(adaptor.getCond()))
+    if (boolAttr.getValue())
+      return ChainAttr::get(ChainType::get(getContext()));
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
+// ODS-Generated Definitions
+//===----------------------------------------------------------------------===//
+
+void MOSHDialect::registerOperations() {
+  addOperations<
+#define GET_OP_LIST
+#include "GenericML/GraphCompiler/MOSHDialect/MOSH.cpp.inc"
+      >();
+}
+
+#define GET_OP_CLASSES
+#include "GenericML/GraphCompiler/MOSHDialect/MOSH.cpp.inc"

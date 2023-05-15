@@ -10,6 +10,8 @@
 #include "GenericML/GraphCompiler/Conversion/MGPSupport.h"
 #include "GenericML/GraphCompiler/Conversion/ParameterLowering.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GraphRT/MIPDialect/MIPOps.h"
 #include "Support/AlignedAlloc.h"
 #include "mlir/Pass/Pass.h"
@@ -339,7 +341,7 @@ public:
 
   /// Return the SSA values corresponding to the parametric dimensions in the
   /// given shape (in the order they appear in the shape).
-  ErrorOr<SmallVector<Value>> lowerShapeAttrDynDims(MO::ShapeAttr shapeAttr,
+  ErrorOr<SmallVector<Value>> lowerShapeAttrDynDims(MOSH::ShapeAttr shapeAttr,
                                                     Location loc) {
     SmallVector<Value> runtimeDims;
     for (TypedAttr dim : shapeAttr.getValues()) {
@@ -430,7 +432,7 @@ private:
       return lowerParamOperator(builder, loc, opAttr, operands);
     } else if (auto opAttr = dyn_cast<KGEN::MLIROpAttr>(attr)) {
       StringAttr opName = opAttr.getName();
-      if (opName != MO::AssertOp::getOperationName()) {
+      if (opName != M::MOSH::AssertOp::getOperationName()) {
         return Error(Twine("cannot lower mlir operation '") + opName.strref() +
                      "' in parameter expression");
       }
@@ -438,7 +440,7 @@ private:
       // We must be dealing with an assert.
       newOp = builder.create<MGP::AssertOp>(loc, operands,
                                             opAttr.getAttrs().getValue());
-    } else if (auto shapeAttr = dyn_cast<MO::ShapeAttr>(attr)) {
+    } else if (auto shapeAttr = dyn_cast<MOSH::ShapeAttr>(attr)) {
       // Lower dimensions recursively.
       SmallVector<Value> dimVals;
       for (TypedAttr dim : shapeAttr.getValues()) {

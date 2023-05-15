@@ -139,6 +139,6 @@ mo.graph @variadic_exprs<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
 // CHECK: %[[DIMS:.*]]:3 = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.cpu.tensor_spec<?x?x?xf32>
 // CHECK: %[[VAL1:.*]] = mgp.cpu.tensor_spec.create %[[DIMS]]#0, %[[DIMS]]#1, %[[DIMS]]#2 : !mgp.cpu.tensor_spec<?x?x?xsi64>
 mo.graph @shape_attr<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
-  kgen.param.declare Sh: !mo.shape = <[X, Y, Z]>
+  kgen.param.declare Sh: !mosh.ape = <[X, Y, Z]>
   mo.output
 }

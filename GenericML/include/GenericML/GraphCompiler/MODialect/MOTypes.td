@@ -11,8 +11,7 @@
 #ifndef GENERICML_GRAPHCOMPILER_MODIALECT_MOTYPES_TD
 #define GENERICML_GRAPHCOMPILER_MODIALECT_MOTYPES_TD
 
-include "GenericML/GraphCompiler/MODialect/MOAttrs.td"
-include "KGEN/KGENDialect/KGENTypeInterfaces.td"
+include "GenericML/GraphCompiler/MODialect/MODialect.td"
 include "Support/Compiler/TensorUtils.td"
 include "mlir/IR/BuiltinTypeInterfaces.td"
 
@@ -22,22 +21,15 @@ class MO_Type<string name, string typeMnemonic, list<Trait> traits = []>
   let mnemonic = typeMnemonic;
 }
 
-/// The type used to represent explicit control dependencies.
-def MO_ChainType : MO_Type<"Chain", "chain">;
-
 //===----------------------------------------------------------------------===//
 // MO_Tensor
 //===----------------------------------------------------------------------===//
-
-/// The type of parametric shape attributes.
-def MO_ShapeType : MO_Type<"Shape", "shape", [
-  DeclareTypeInterfaceMethods<ParameterTypeInterface>]>;
 
 def MO_Tensor : MO_Type<"Tensor", "tensor"> {
   let summary = "Type of tensor specs of statically known rank.";
   let description = [{
     This type represents the shape and element type of a tensor. The shape is
-    stored as a MO::ShapeAttr, while the element type is an M::DType, with
+    stored as a MOSH::ShapeAttr, while the element type is an M::DType, with
     `invalid` denoting an unknown type. The type implements a subset of the
     methods in ShapedTypeInterface.
 
@@ -103,9 +95,9 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     /// Get the mlir element type of the tensor.
     Type getElementType() const;
 
-    /// Helper to get the shape attribute with MO::ShapeAttr type. Fails if the
-    /// shape is unknown.
-    MO::ShapeAttr getTypedShapeAttr() const;
+    /// Helper to get the shape attribute with MOSH::ShapeAttr type. Fails if
+    /// the shape is unknown.
+    MOSH::ShapeAttr getTypedShapeAttr() const;
 
     /// Returns the referenced parameter names (shape or dimension).
     SmallPtrSet<StringAttr, 4> getUsedParamNames() const;

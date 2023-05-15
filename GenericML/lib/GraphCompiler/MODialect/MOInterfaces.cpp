@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
-#include "mlir/IR/BuiltinTypes.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include <mlir/IR/PatternMatch.h>
 
 using namespace M;

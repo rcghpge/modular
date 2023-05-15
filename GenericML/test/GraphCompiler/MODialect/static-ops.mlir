@@ -27,13 +27,13 @@ mo.graph @static_broadcast_to_fold_same_static_rank<N>(%from: !mo.tensor<[N, 3],
   mo.output %res : !mo.tensor<[N, 3], f32>
 }
 
-// CHECK: mo.graph @static_broadcast_to_fold_same_dyn_rank<[[SH0:.*]]: !mo.shape -> [[SH1:.*]]: !mo.shape>(
-mo.graph @static_broadcast_to_fold_same_dyn_rank<Sh0: !mo.shape -> Sh1: !mo.shape>(
+// CHECK: mo.graph @static_broadcast_to_fold_same_dyn_rank<[[SH0:.*]]: !mosh.ape -> [[SH1:.*]]: !mosh.ape>(
+mo.graph @static_broadcast_to_fold_same_dyn_rank<Sh0: !mosh.ape -> Sh1: !mosh.ape>(
     // CHECK-SAME: %[[FROM:.*]]: !mo.tensor<[[SH0]], f32>) -> !mo.tensor<[[SH1]], f32> {
     %from: !mo.tensor<Sh0, f32>) -> !mo.tensor<Sh1, f32> {
   %res = mo.static.broadcast_to(%from) : !mo.tensor<Sh0, f32> -> !mo.tensor<Sh0, f32>
-  // CHECK: mo.output<:!mo.shape Sh0> %[[FROM]] : !mo.tensor<Sh0, f32>
-  mo.output<:!mo.shape Sh0> %res : !mo.tensor<Sh0, f32>
+  // CHECK: mo.output<:!mosh.ape Sh0> %[[FROM]] : !mo.tensor<Sh0, f32>
+  mo.output<:!mosh.ape Sh0> %res : !mo.tensor<Sh0, f32>
 }
 
 // CHECK: mo.graph @static_broadcast_to_fold_scalar_input() -> !mo.tensor<[2, 2], f32> {
@@ -78,13 +78,13 @@ mo.graph @static_reshape_fold_same_static_rank<N>(%from: !mo.tensor<[N, 3], f32>
   mo.output %res : !mo.tensor<[N, 3], f32>
 }
 
-// CHECK: mo.graph @static_reshape_fold_same_dyn_rank<[[SH0:.*]]: !mo.shape -> [[SH1:.*]]: !mo.shape>(
-mo.graph @static_reshape_fold_same_dyn_rank<Sh0: !mo.shape -> Sh1: !mo.shape>(
+// CHECK: mo.graph @static_reshape_fold_same_dyn_rank<[[SH0:.*]]: !mosh.ape -> [[SH1:.*]]: !mosh.ape>(
+mo.graph @static_reshape_fold_same_dyn_rank<Sh0: !mosh.ape -> Sh1: !mosh.ape>(
     // CHECK-SAME: %[[FROM:.*]]: !mo.tensor<[[SH0]], f32>) -> !mo.tensor<[[SH1]], f32> {
     %from: !mo.tensor<Sh0, f32>) -> !mo.tensor<Sh1, f32> {
   %res = mo.static.reshape(%from) : !mo.tensor<Sh0, f32> -> !mo.tensor<Sh0, f32>
-  // CHECK: mo.output<:!mo.shape Sh0> %[[FROM]] : !mo.tensor<Sh0, f32>
-  mo.output<:!mo.shape Sh0> %res : !mo.tensor<Sh0, f32>
+  // CHECK: mo.output<:!mosh.ape Sh0> %[[FROM]] : !mo.tensor<Sh0, f32>
+  mo.output<:!mosh.ape Sh0> %res : !mo.tensor<Sh0, f32>
 }
 
 // CHECK: mo.graph @static_reshape_fold_static_out_shape_attr() -> !mo.tensor<[2, 2], si32> {
@@ -135,7 +135,7 @@ mo.graph @static_reshape_not_fold_to_rebind<A, B>(%arg0: !mo.tensor<[A, B], f32>
 
 // CHECK: mo.graph @static_reshape_index_const<[[A:.*]]>() -> !mo.tensor<[1], si32> {
 mo.graph @static_reshape_index_const<A>() -> !mo.tensor<[1], si32> {
-  // CHECK-NEXT: %[[C:.*]] = kgen.param.constant: !mo.shape = <[[[A]]]>
+  // CHECK-NEXT: %[[C:.*]] = kgen.param.constant: !mosh.ape = <[[[A]]]>
   // CHECK-NEXT: %[[RES:.*]] = mo.shape.to_tensor(%[[C]]) -> !mo.tensor<[1], si32>
   %0 = kgen.param.constant: index = <A>
   %1 = mo.index.to_tensor(%0) -> !mo.tensor<[], si32>
@@ -148,7 +148,7 @@ mo.graph @static_reshape_index_const<A>() -> !mo.tensor<[1], si32> {
 mo.graph @static_reshape_singleton_const<A>() -> !mo.tensor<[], si64> {
   // CHECK-NEXT: %[[C:.*]] = kgen.param.constant = <[[A]]>
   // CHECK-NEXT: %[[RES:.*]] = mo.index.to_tensor(%[[C]]) -> !mo.tensor<[], si64>
-  %0 = kgen.param.constant: !mo.shape = <[A]>
+  %0 = kgen.param.constant: !mosh.ape = <[A]>
   %1 = mo.shape.to_tensor(%0) -> !mo.tensor<[1], si64>
   %2 = mo.static.reshape(%1) : !mo.tensor<[1], si64> -> !mo.tensor<[], si64>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[], si64>

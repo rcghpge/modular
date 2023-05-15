@@ -1,27 +1,27 @@
 // RUN: mo-opt %s --propagate-shapes --canonicalize | FileCheck %s
 
-// CHECK: mo.graph @output_param_decl_removed<[[SH0:.*]]: !mo.shape>(%[[ARG0:.*]]: !mo.tensor<[[SH0]], f32>) -> !mo.tensor<[[SH0]], f32> {
-mo.graph @output_param_decl_removed<Sh0: !mo.shape -> Sh1: !mo.shape>(%arg0: !mo.tensor<Sh0, f32>) -> !mo.tensor<Sh1, f32> {
-  kgen.param.declare Sh2: !mo.shape = <Sh0>
+// CHECK: mo.graph @output_param_decl_removed<[[SH0:.*]]: !mosh.ape>(%[[ARG0:.*]]: !mo.tensor<[[SH0]], f32>) -> !mo.tensor<[[SH0]], f32> {
+mo.graph @output_param_decl_removed<Sh0: !mosh.ape -> Sh1: !mosh.ape>(%arg0: !mo.tensor<Sh0, f32>) -> !mo.tensor<Sh1, f32> {
+  kgen.param.declare Sh2: !mosh.ape = <Sh0>
   %0 = mo.rebind(%arg0) : !mo.tensor<Sh0, f32> -> !mo.tensor<Sh2, f32>
   // CHECK-NEXT: %[[VAL0:.*]] = mo.gelu(%[[ARG0]]) : !mo.tensor<[[SH0]], f32>
   %1 = mo.gelu(%0) : !mo.tensor<Sh2, f32>
   // CHECK-NEXT: mo.output %[[VAL0]] : !mo.tensor<[[SH0]], f32>
-  mo.output<:!mo.shape Sh2> %1 : !mo.tensor<Sh2, f32>
+  mo.output<:!mosh.ape Sh2> %1 : !mo.tensor<Sh2, f32>
 }
 
-// CHECK: mo.graph @output_param_decl_kept<[[SH0:.*]]: !mo.shape, [[SH1:.*]]: !mo.shape -> [[SH2:.*]]: !mo.shape>(
-mo.graph @output_param_decl_kept<Sh0: !mo.shape, Sh1: !mo.shape -> Sh2: !mo.shape>(
+// CHECK: mo.graph @output_param_decl_kept<[[SH0:.*]]: !mosh.ape, [[SH1:.*]]: !mosh.ape -> [[SH2:.*]]: !mosh.ape>(
+mo.graph @output_param_decl_kept<Sh0: !mosh.ape, Sh1: !mosh.ape -> Sh2: !mosh.ape>(
     // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[SH0]], f32>, %[[ARG1:.*]]: !mo.tensor<[[SH1]], f32>
     %arg0: !mo.tensor<Sh0, f32>, %arg1: !mo.tensor<Sh1, f32>
 // CHECK-SAME: ) -> !mo.tensor<[[SH2]], f32> {
 ) -> !mo.tensor<Sh2, f32> {
-  // CHECK-NEXT: %[[VAL0:.*]] = mo.batch_matmul<() -> [[SH3:.*]]: !mo.shape>(%[[ARG0]], %[[ARG1]]) : (
+  // CHECK-NEXT: %[[VAL0:.*]] = mo.batch_matmul<() -> [[SH3:.*]]: !mosh.ape>(%[[ARG0]], %[[ARG1]]) : (
   // CHECK-SAME:   !mo.tensor<[[SH0]], f32>, !mo.tensor<[[SH1]], f32>) -> !mo.tensor<[[SH3]], f32>
-  %0 = mo.batch_matmul<() -> Sh3: !mo.shape>(%arg0, %arg1) : (
+  %0 = mo.batch_matmul<() -> Sh3: !mosh.ape>(%arg0, %arg1) : (
     !mo.tensor<Sh0, f32>, !mo.tensor<Sh1, f32>) -> !mo.tensor<Sh3, f32>
-  // CHECK-NEXT: mo.output<:!mo.shape [[SH3]]> %[[VAL0]] : !mo.tensor<[[SH3]], f32>
-  mo.output<:!mo.shape Sh3> %0 : !mo.tensor<Sh3, f32>
+  // CHECK-NEXT: mo.output<:!mosh.ape [[SH3]]> %[[VAL0]] : !mo.tensor<[[SH3]], f32>
+  mo.output<:!mosh.ape Sh3> %0 : !mo.tensor<Sh3, f32>
 }
 
 // CHECK: @batch_matmul_without_certain_checks<[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(
@@ -32,59 +32,59 @@ mo.graph @batch_matmul_without_certain_checks<D0, D1, D2, D3 -> D4, D5, D6>(
   %arg1: !mo.tensor<[D0, D2, D3], f32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], [[D3]]], f32> {
 ) -> !mo.tensor<[D4, D5, D6], f32> {
-  kgen.param.declare Sh0: !mo.shape = <[D0, D1, D2]>
+  kgen.param.declare Sh0: !mosh.ape = <[D0, D1, D2]>
   %0 = mo.rebind(%arg0) : !mo.tensor<[D0, D1, D2], f32> -> !mo.tensor<Sh0, f32>
-  kgen.param.declare Sh1: !mo.shape = <[D0, D2, D3]>
+  kgen.param.declare Sh1: !mosh.ape = <[D0, D2, D3]>
   %1 = mo.rebind(%arg1) : !mo.tensor<[D0, D2, D3], f32> -> !mo.tensor<Sh1, f32>
   kgen.param.declare P0 = <2>
-  kgen.param.declare P1 = <apply(:(!mo.shape) -> index "mo.shape.get_rank", Sh0)>
-  kgen.param.declare P2 = <apply(:(!mo.shape) -> index "mo.shape.get_rank", Sh1)>
+  kgen.param.declare P1 = <apply(:(!mosh.ape) -> index "mosh.get_rank", Sh0)>
+  kgen.param.declare P2 = <apply(:(!mosh.ape) -> index "mosh.get_rank", Sh1)>
   kgen.param.declare P3: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate eq>}, P1, P2)>
-  kgen.param.declare CH0: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "ranks of left and right inputs are not equal"}, P3)>
+  kgen.param.declare CH0: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "ranks of left and right inputs are not equal"}, P3)>
   kgen.param.declare P4: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate sgt>}, P2, P0)>
-  kgen.param.declare CH1: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "input ranks are not greater than 2"}, P4)>
-  kgen.param.declare P8: !mo.shape = <apply(:(!mo.shape) -> !mo.shape "mo.shape.slice"{end = -2 : index, start = 0 : index}, Sh0)>
-  kgen.param.declare P11 = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -2 : index}, Sh0)>
-  kgen.param.declare P12 = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -1 : index}, Sh1)>
-  kgen.param.declare P13: !mo.shape = <[P11, P12]>
-  kgen.param.declare P14: !mo.shape = <apply(:(!mo.shape, !mo.shape) -> !mo.shape "mo.shape.concat", P8, P13)>
-  kgen.param.declare Sh2: !mo.shape = <P14>
+  kgen.param.declare CH1: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "input ranks are not greater than 2"}, P4)>
+  kgen.param.declare P8: !mosh.ape = <apply(:(!mosh.ape) -> !mosh.ape "mosh.slice"{end = -2 : index, start = 0 : index}, Sh0)>
+  kgen.param.declare P11 = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = -2 : index}, Sh0)>
+  kgen.param.declare P12 = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = -1 : index}, Sh1)>
+  kgen.param.declare P13: !mosh.ape = <[P11, P12]>
+  kgen.param.declare P14: !mosh.ape = <apply(:(!mosh.ape, !mosh.ape) -> !mosh.ape "mosh.concat", P8, P13)>
+  kgen.param.declare Sh2: !mosh.ape = <P14>
   // CHECK-NEXT: %[[OUT:.*]] = mo.batch_matmul(%arg0, %arg1) : (
   // CHECK-SAME:   !mo.tensor<[[[D0]], [[D1]], [[D2]]], f32>,
   // CHECK-SAME:   !mo.tensor<[[[D0]], [[D2]], [[D3]]], f32>
   // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], [[D3]]], f32>
   %2 = mo.batch_matmul(%0, %1) : (!mo.tensor<Sh0, f32>, !mo.tensor<Sh1, f32>) -> !mo.tensor<Sh2, f32>
-  kgen.param.declare D7 = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = 0 : index}, Sh2)>
-  kgen.param.declare D8 = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = 1 : index}, Sh2)>
-  kgen.param.declare D9 = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = 2 : index}, Sh2)>
+  kgen.param.declare D7 = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = 0 : index}, Sh2)>
+  kgen.param.declare D8 = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = 1 : index}, Sh2)>
+  kgen.param.declare D9 = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = 2 : index}, Sh2)>
   %3 = mo.rebind(%2) : !mo.tensor<Sh2, f32> -> !mo.tensor<[D7, D8, D9], f32>
   // CHECK-NEXT: mo.output %[[OUT]] : !mo.tensor<[[[D0]], [[D1]], [[D3]]], f32>
   mo.output<D7, D8, D9> %3 : !mo.tensor<[D7, D8, D9], f32>
 }
 
-// CHECK: mo.graph @unfolded_apply_shouldnt_be_inlined<[[SH0:.*]]: !mo.shape, [[SH1:.*]]: !mo.shape -> [[SH2:.*]]: !mo.shape>(
+// CHECK: mo.graph @unfolded_apply_shouldnt_be_inlined<[[SH0:.*]]: !mosh.ape, [[SH1:.*]]: !mosh.ape -> [[SH2:.*]]: !mosh.ape>(
 // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[SH0]], f32>,
 // CHECK-SAME: %[[ARG1:.*]]: !mo.tensor<[[SH1]], f32>
 // CHECK-SAME: ) -> !mo.tensor<[[SH2]], f32> {
-mo.graph @unfolded_apply_shouldnt_be_inlined<Sh0: !mo.shape, Sh1: !mo.shape -> Sh2: !mo.shape>(
+mo.graph @unfolded_apply_shouldnt_be_inlined<Sh0: !mosh.ape, Sh1: !mosh.ape -> Sh2: !mosh.ape>(
   %arg0: !mo.tensor<Sh0, f32>, %arg1: !mo.tensor<Sh1, f32>
 ) -> !mo.tensor<Sh2, f32> {
-  // CHECK-NEXT: kgen.param.declare [[P1:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_rank", [[SH0]])>
-  kgen.param.declare P1 = <apply(:(!mo.shape) -> index "mo.shape.get_rank", Sh0)>
-  // CHECK-NEXT: kgen.param.declare [[P2:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_rank", [[SH1]])>
-  kgen.param.declare P2 = <apply(:(!mo.shape) -> index "mo.shape.get_rank", Sh1)>
+  // CHECK-NEXT: kgen.param.declare [[P1:.*]] = <apply(:(!mosh.ape) -> index "mosh.get_rank", [[SH0]])>
+  kgen.param.declare P1 = <apply(:(!mosh.ape) -> index "mosh.get_rank", Sh0)>
+  // CHECK-NEXT: kgen.param.declare [[P2:.*]] = <apply(:(!mosh.ape) -> index "mosh.get_rank", [[SH1]])>
+  kgen.param.declare P2 = <apply(:(!mosh.ape) -> index "mosh.get_rank", Sh1)>
   // CHECK-NEXT: kgen.param.declare [[P3:.*]]: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate eq>}, [[P1]], [[P2]])>
   kgen.param.declare P3: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate eq>}, P1, P2)>
-  // CHECK-NEXT: kgen.param.declare [[CH0:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert", [[P3]])>
-  kgen.param.declare CH0: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert", P3)>
+  // CHECK-NEXT: kgen.param.declare [[CH0:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert", [[P3]])>
+  kgen.param.declare CH0: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert", P3)>
 
-  // CHECK-NEXT: kgen.param.declare [[P4:.*]]: !mo.shape = <apply(:(!mo.shape) -> !mo.shape "mo.shape.slice"{end = -2 : index, start = 0 : index}, [[SH0]])>
-  kgen.param.declare P4: !mo.shape = <apply(:(!mo.shape) -> !mo.shape "mo.shape.slice"{end = -2 : index, start = 0 : index}, Sh0)>
+  // CHECK-NEXT: kgen.param.declare [[P4:.*]]: !mosh.ape = <apply(:(!mosh.ape) -> !mosh.ape "mosh.slice"{end = -2 : index, start = 0 : index}, [[SH0]])>
+  kgen.param.declare P4: !mosh.ape = <apply(:(!mosh.ape) -> !mosh.ape "mosh.slice"{end = -2 : index, start = 0 : index}, Sh0)>
   // CHECK-NEXT: %[[OUT:.*]] = mo.rebind(%[[ARG0]]) : !mo.tensor<[[SH0]], f32> -> !mo.tensor<[[P4]], f32>
   %1 = mo.rebind(%arg0) : !mo.tensor<Sh0, f32> -> !mo.tensor<P4, f32>
 
-  // CHECK-NEXT: mo.output<:!mo.shape [[P4]]> %[[OUT]] : !mo.tensor<[[P4]], f32>
-  mo.output<:!mo.shape P4> %1 : !mo.tensor<P4, f32>
+  // CHECK-NEXT: mo.output<:!mosh.ape [[P4]]> %[[OUT]] : !mo.tensor<[[P4]], f32>
+  mo.output<:!mosh.ape P4> %1 : !mo.tensor<P4, f32>
 }
 
 // CHECK: mo.graph @graph_with_param_decls_in_ops<[[D0:.*]] -> [[D1:.*]], [[D2:.*]]>(
@@ -155,16 +155,16 @@ mo.graph @param_expr_cse<D0, D1 -> D2, D3, D4>(
   mo.output<D6, 42, D5> %res : !mo.tensor<[D6, 42, D5], f32>
 }
 
-// CHECK: mo.graph @param_expr_apply_no_cse<[[SH0:.*]]: !mo.shape -> [[D2:.*]], [[D3:.*]]>(
-mo.graph @param_expr_apply_no_cse<Sh0: !mo.shape -> D2, D3>(
+// CHECK: mo.graph @param_expr_apply_no_cse<[[SH0:.*]]: !mosh.ape -> [[D2:.*]], [[D3:.*]]>(
+mo.graph @param_expr_apply_no_cse<Sh0: !mosh.ape -> D2, D3>(
   // CHECK-SAME: %[[ARG:.*]]: !mo.tensor<[[SH0]], f32>
   %arg: !mo.tensor<Sh0, f32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D2]], [[D3]]], f32> {
 ) -> !mo.tensor<[D2, D3], f32> {
-  // CHECK-NEXT: kgen.param.declare [[D5:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = 1 : index}, [[SH0]])>
-  // CHECK-NEXT: kgen.param.declare [[D6:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = 1 : index}, [[SH0]])>
-  kgen.param.declare D5 = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = 1 : index}, Sh0)>
-  kgen.param.declare D6 = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = 1 : index}, Sh0)>
+  // CHECK-NEXT: kgen.param.declare [[D5:.*]] = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = 1 : index}, [[SH0]])>
+  // CHECK-NEXT: kgen.param.declare [[D6:.*]] = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = 1 : index}, [[SH0]])>
+  kgen.param.declare D5 = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = 1 : index}, Sh0)>
+  kgen.param.declare D6 = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = 1 : index}, Sh0)>
   // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[ARG]])
   // CHECK-SAME: : !mo.tensor<[[SH0]], f32> -> !mo.tensor<[[[D5]], [[D6]]], f32>
   %res = mo.static.reshape(%arg) : !mo.tensor<Sh0, f32> -> !mo.tensor<[D5, D6], f32>

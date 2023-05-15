@@ -8,8 +8,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
@@ -260,8 +262,8 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     // dtype, so make it a scalar.
     // TODO: Use a unit const instead? Are shape functions compatible with it?
     auto castScalarType = MO::TensorType::get(
-        MO::ShapeAttr::get(SmallVector<int64_t>{},
-                           MO::ShapeType::get(exeBuilder.getContext())),
+        MOSH::ShapeAttr::get(SmallVector<int64_t>{},
+                             MOSH::ShapeType::get(exeBuilder.getContext())),
         outType.getElementType());
     auto castScalarSpec = exeBuilder.create<MGP::CpuTensorSpecCreateOp>(
         opBeingLowered->getLoc(), MGP::createCpuTensorSpec(castScalarType),

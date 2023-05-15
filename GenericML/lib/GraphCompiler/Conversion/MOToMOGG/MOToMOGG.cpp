@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/Conversion/MOToMOGG.h"
+#include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/Matchers.h"

@@ -4,19 +4,23 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares types for the Modular dialect.
+// This file declares types for the MO dialect.
 //
 //===----------------------------------------------------------------------===//
 
 #ifndef GENERICML_GRAPHCOMPILER_MODIALECT_MOTYPES_H
 #define GENERICML_GRAPHCOMPILER_MODIALECT_MOTYPES_H
 
-#include "GenericML/GraphCompiler/MODialect/MOAttrs.h"
-#include "GenericML/GraphCompiler/MODialect/MODialect.h"
-#include "KGEN/KGENDialect/KGENTypeInterfaces.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/ML/DType.h"
-#include "mlir/IR/Types.h"
+#include <mlir/IR/Attributes.h>
+#include <mlir/IR/Types.h>
+
+namespace M::MOSH {
+class ChainType;
+class ShapeAttr;
+class ShapeType;
+} // namespace M::MOSH
 
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations
@@ -26,6 +30,9 @@
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h.inc"
 
 namespace M::MO {
+using ChainType = MOSH::ChainType;
+using ShapeAttr = MOSH::ShapeAttr;
+using ShapeType = MOSH::ShapeType;
 using TensorValue = M::TypedValue<M::MO::TensorType>;
 } // namespace M::MO
 

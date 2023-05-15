@@ -4,18 +4,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
-#include "mlir/IR/BuiltinOps.h"
-
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
-#include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "GenericML/GraphCompiler/Matchers.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/Support/MathExtras.h"
-
-#include "mlir/IR/IRMapping.h"
 
 using namespace M;
 using namespace mlir;
@@ -189,7 +185,7 @@ struct FullyConnectedPattern : public RewritePattern {
     if (!ty.hasRank())
       return {};
 
-    MO::ShapeAttr shapeAttr = ty.getTypedShapeAttr();
+    MOSH::ShapeAttr shapeAttr = ty.getTypedShapeAttr();
     SmallVector<TypedAttr> dimsAfterSqueeze;
     for (TypedAttr dim : shapeAttr.getValues()) {
       auto intAttrDim = dyn_cast<IntegerAttr>(dim);
@@ -201,7 +197,7 @@ struct FullyConnectedPattern : public RewritePattern {
 
     if (dimsAfterSqueeze.size() == 1) {
       return ty.cloneWith(
-          MO::ShapeAttr::get(dimsAfterSqueeze, shapeAttr.getType()));
+          MOSH::ShapeAttr::get(dimsAfterSqueeze, shapeAttr.getType()));
     }
     return {};
   }

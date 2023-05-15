@@ -20,6 +20,7 @@
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/Support/Tensor.h"
 
 #include "KGEN/KGENCompiler.h"
@@ -253,8 +254,8 @@ SmallVector<KGEN::ParamDeclRefAttr> getUsedParameters(MOGG::KernelOp kernel) {
   // which isn't known from the inputs. I.E
 
   // clang-format off
-  // %0 = broadcast(%input) : tensor<[N]> -> tensor<N, J> 
-  // %1 = broadcast(%0) : tensor<[N, J]> -> tensor<N, B> 
+  // %0 = broadcast(%input) : tensor<[N]> -> tensor<N, J>
+  // %1 = broadcast(%0) : tensor<[N, J]> -> tensor<N, B>
   // %3 = broadcast(%1) : tensor<[N, B, K]> -> tensor<N, B, K, M>
   // clang-format on
 

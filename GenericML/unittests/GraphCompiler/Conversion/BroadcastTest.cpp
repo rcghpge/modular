@@ -5,7 +5,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/Conversion/MOSupport/Broadcast.h"
+#include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "Support/MDialect/MDialect.h"
 #include "gtest/gtest.h"
 #include <mlir/IR/BuiltinOps.h>
@@ -40,13 +43,13 @@ protected:
   }
 
   MO::TensorValue getTestValue(ArrayRef<int64_t> shape) {
-    auto shapeTy = builder.getType<MO::ShapeType>();
+    auto shapeTy = builder.getType<ShapeType>();
     auto shapeAttr = ShapeAttr::get(shape, shapeTy);
     return getTestValue(shapeAttr);
   }
 
   MO::TensorValue getTestValue(ArrayRef<TypedAttr> shape) {
-    auto shapeTy = builder.getType<MO::ShapeType>();
+    auto shapeTy = builder.getType<ShapeType>();
     auto shapeAttr = builder.getAttr<ShapeAttr>(shape, shapeTy);
     return getTestValue(shapeAttr);
   }
@@ -122,7 +125,7 @@ TEST_F(BroadcastTest, Dynamic2) {
 }
 
 TEST_F(BroadcastTest, Parametric) {
-  auto shapeTy = builder.getType<MO::ShapeType>();
+  auto shapeTy = builder.getType<ShapeType>();
   SmallVector<TypedAttr> shapeX{getParametricDim("n"), getIntegerDim(1),
                                 getParametricDim("m")};
 

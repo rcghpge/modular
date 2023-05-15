@@ -1,53 +1,24 @@
 // RUN: mo-opt --canonicalize %s | mo-opt | FileCheck %s
 
 //===----------------------------------------------------------------------===//
-// AssertOp
-//===----------------------------------------------------------------------===//
-
-// CHECK: kgen.func @assert(%[[ARG0:.*]]: index, %[[ARG1:.*]]: index) -> (!mo.chain, !mo.chain) {
-kgen.func @assert(%arg0: index, %arg1: index) -> (!mo.chain, !mo.chain) {
-  // CHECK: %[[VAL0:.*]] = index.cmp eq(%[[ARG0]], %[[ARG1]])
-  %0 = index.cmp eq(%arg0, %arg1)
-  // CHECK: mo.assert %[[VAL0]]
-  %ch0 = mo.assert %0
-  // CHECK: mo.assert %[[VAL0]], "args are not equal"
-  %ch1 = mo.assert %0, "args are not equal"
-  kgen.return %ch0, %ch1 : !mo.chain, !mo.chain
-}
-
-//===----------------------------------------------------------------------===//
-// GuardOp
-//===----------------------------------------------------------------------===//
-
-// CHECK: kgen.func @guard(%[[ARG0:.*]]: !mo.shape, %[[ARG1:.*]]: !mo.shape, %[[COND:.*]]: i1) -> !mo.chain {
-kgen.func @guard(%sh0: !mo.shape, %sh1: !mo.shape, %cond: i1) -> !mo.chain {
-  // CHECK: %[[CH:.*]] = mo.assert %[[COND]]
-  %ch = mo.assert %cond
-  // CHECK: mo.guard[%[[CH]]] %[[ARG0]], %[[ARG1]] : !mo.shape, !mo.shape
-  mo.guard[%ch] %sh0, %sh1 : !mo.shape, !mo.shape
-  // CHECK: kgen.return %[[CH]] : !mo.chain
-  kgen.return %ch : !mo.chain
-}
-
-//===----------------------------------------------------------------------===//
 // IndexToTensorOp
 //===----------------------------------------------------------------------===//
 
-// CHECK: kgen.func @index_to_tensor(%[[ARG0:.*]]: index) -> !mo.tensor<[], si64> {
-kgen.func @index_to_tensor(%arg0: index) -> !mo.tensor<[], si64> {
+// CHECK: mo.graph @index_to_tensor(%[[ARG0:.*]]: index) -> !mo.tensor<[], si64> {
+mo.graph @index_to_tensor(%arg0: index) -> !mo.tensor<[], si64> {
   // CHECK: %[[RES:.*]] = mo.index.to_tensor(%[[ARG0]]) -> !mo.tensor<[], si64>
   %0 = mo.index.to_tensor(%arg0) -> !mo.tensor<[], si64>
-  // CHECK: kgen.return %[[RES]] : !mo.tensor<[], si64>
-  kgen.return %0: !mo.tensor<[], si64>
+  // CHECK: mo.output %[[RES]] : !mo.tensor<[], si64>
+  mo.output %0: !mo.tensor<[], si64>
 }
 
-// CHECK: kgen.func @index_to_tensor_fold() -> !mo.tensor<[], si64> {
-kgen.func @index_to_tensor_fold() -> !mo.tensor<[], si64> {
+// CHECK: mo.graph @index_to_tensor_fold() -> !mo.tensor<[], si64> {
+mo.graph @index_to_tensor_fold() -> !mo.tensor<[], si64> {
   %0 = index.constant 42
   // CHECK-NEXT: %[[RES:.*]] = mo.constant {value = #M.dense_array<42> : tensor<si64>} : !mo.tensor<[], si64>
   %1 = mo.index.to_tensor(%0) -> !mo.tensor<[], si64>
-  // CHECK-NEXT: kgen.return %[[RES]] : !mo.tensor<[], si64>
-  kgen.return %1: !mo.tensor<[], si64>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[], si64>
+  mo.output %1: !mo.tensor<[], si64>
 }
 
 //===----------------------------------------------------------------------===//

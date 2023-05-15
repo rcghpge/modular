@@ -457,7 +457,7 @@ LogicalResult MOGraphLowering::lowerRebind(MO::RebindOp rebindOp) {
     MGP::CpuTensorSpecDimsDynamicOp dynDims =
         loweringState.getDynamicDims(mgpRes, rebindOp.getLoc());
 
-    MO::ShapeAttr resShape = resTy.getTypedShapeAttr();
+    MOSH::ShapeAttr resShape = resTy.getTypedShapeAttr();
     for (KGEN::ParamDeclAttr decl : decls) {
       int64_t idx = findDeclIdx(resShape, decl);
       if (idx == -1) {

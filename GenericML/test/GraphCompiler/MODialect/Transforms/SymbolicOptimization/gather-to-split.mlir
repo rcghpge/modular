@@ -42,8 +42,8 @@ mo.graph @gather_to_split<D0>(
   mo.output %add_all : !mo.tensor<[1, D0, 10], f32>
 }
 
-// CHECK: mo.graph @gather_to_split_unranked_input<[[SH0:.*]]: !mo.shape>(
-mo.graph @gather_to_split_unranked_input<Sh0: !mo.shape>(
+// CHECK: mo.graph @gather_to_split_unranked_input<[[SH0:.*]]: !mosh.ape>(
+mo.graph @gather_to_split_unranked_input<Sh0: !mosh.ape>(
   // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[SH0]], f32>
   %input: !mo.tensor<Sh0, f32>
 // CHECK-SAME: ) -> !mo.tensor<[[SH0]], f32> {

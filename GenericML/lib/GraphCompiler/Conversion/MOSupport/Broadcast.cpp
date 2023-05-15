@@ -6,6 +6,8 @@
 
 #include "GenericML/GraphCompiler/Conversion/MOSupport/Broadcast.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 
 namespace M::MO {
 

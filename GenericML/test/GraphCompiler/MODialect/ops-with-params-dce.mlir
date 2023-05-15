@@ -6,8 +6,8 @@ mo.graph @ops_with_params_no_dce(%arg0: !mo.tensor<[?], si32>) -> !mo.tensor<[?]
   // CHECK-NEXT: %[[VAL0:.*]] = mo.rebind<() -> [[D0:.*]]>(%[[ARG0]])
   // CHECK-SAME: : !mo.tensor<[?], si32> -> !mo.tensor<[[[D0]]], si32>
   %0 = mo.rebind<() -> D0>(%arg0) : !mo.tensor<[?], si32> -> !mo.tensor<[D0], si32>
-  // CHECK-NEXT: %[[VAL1:.*]] = mo.broadcast_to<() -> [[SH0:.*]]: !mo.shape>(%[[ARG0]], %[[ARG0]])
-  %1 = mo.broadcast_to<() -> Sh0: !mo.shape>(%arg0, %arg0) : (
+  // CHECK-NEXT: %[[VAL1:.*]] = mo.broadcast_to<() -> [[SH0:.*]]: !mosh.ape>(%[[ARG0]], %[[ARG0]])
+  %1 = mo.broadcast_to<() -> Sh0: !mosh.ape>(%arg0, %arg0) : (
     // CHECK-SAME: : (!mo.tensor<[?], si32>, !mo.tensor<[?], si32>) -> !mo.tensor<[[SH0]], si32>
     !mo.tensor<[?], si32>, !mo.tensor<[?], si32>)-> !mo.tensor<Sh0, si32>
   // CHECK-NEXT: %[[VAL2:.*]] = mo.reshape<() -> [[D1:.*]], [[D2:.*]]>(%[[ARG0]], %[[ARG0]])

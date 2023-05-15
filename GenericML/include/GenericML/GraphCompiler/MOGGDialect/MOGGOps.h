@@ -12,7 +12,6 @@
 #define GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGOPS_H
 
 #include "GenericML/GraphCompiler/Interfaces/LowerableToMGPInterface.h"
-#include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.h"

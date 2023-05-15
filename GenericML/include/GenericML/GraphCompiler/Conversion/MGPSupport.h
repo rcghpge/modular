@@ -16,7 +16,7 @@ inline MGP::CpuTensorSpecType createCpuTensorSpec(MO::TensorType tensor) {
   // TODO(#12114): Enable dynamic rank
   assert(tensor.hasRank() && "dynamic rank not supported");
   SmallVector<int64_t> shape{}; // Defaults to unknown shape.
-  if (isa<MO::ShapeAttr>(tensor.getShapeAttr()))
+  if (isa<MOSH::ShapeAttr>(tensor.getShapeAttr()))
     shape = tensor.getIntDims();
   return MGP::CpuTensorSpecType::get(shape, tensor.getElementType());
 }

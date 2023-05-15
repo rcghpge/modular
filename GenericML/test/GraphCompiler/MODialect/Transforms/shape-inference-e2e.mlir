@@ -35,14 +35,14 @@ mo.graph @batch_matmul_static_rank(
   // CHECK-DAG: ,
   // CHECK-DAG: [[D4]]
   // CHECK-SAME: )>
-  // CHECK: kgen.param.declare [[CH0:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "inner dimensions do not match"}, [[P12]])>
+  // CHECK: kgen.param.declare [[CH0:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "inner dimensions do not match"}, [[P12]])>
   // CHECK: kgen.param.declare [[P15:.*]]: i1 =
   // CHECK-SAME: <eq(
   // CHECK-DAG: [[D0]]
   // CHECK-DAG: ,
   // CHECK-DAG: [[D3]]
   // CHECK-SAME: )>
-  // CHECK: kgen.param.declare [[CH1:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "batch sizes of left and right inputs are not equal"}, [[P15]])>
+  // CHECK: kgen.param.declare [[CH1:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "batch sizes of left and right inputs are not equal"}, [[P15]])>
   // CHECK: %[[V0:.*]] = mo.rebind(%[[ARG1]]) : !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32> -> !mo.tensor<[[[D0]], [[D2]], [[D5]]], f32>
   // CHECK: %[[V1:.*]] = mo.batch_matmul(%[[ARG0]], %[[V0]]) : (!mo.tensor<[[[D0]], [[D1]], [[D2]]], f32>, !mo.tensor<[[[D0]], [[D2]], [[D5]]], f32>) -> !mo.tensor<[[[D0]], [[D1]], [[D5]]], f32>
   %out = mo.batch_matmul(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?, ?, ?], f32>
@@ -126,56 +126,56 @@ mo.graph @materialize_sum_axis_neg_1_si64_e2e(
   mo.output %result : !mo.tensor<[?, ?], f32>
 }
 
-// CHECK: mo.graph @unresolved_rebinds<[[SH0:.*]]: !mo.shape, [[SH1:.*]]: !mo.shape -> [[SH2:.*]]: !mo.shape>(
+// CHECK: mo.graph @unresolved_rebinds<[[SH0:.*]]: !mosh.ape, [[SH1:.*]]: !mosh.ape -> [[SH2:.*]]: !mosh.ape>(
 mo.graph @unresolved_rebinds(
   // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[SH0]], f32>, %[[ARG1:.*]]: !mo.tensor<[[SH1]], f32>
   %arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>
 // CHECK-SAME: ) -> !mo.tensor<[[SH2]], f32> {
 ) -> !mo.tensor<?, f32> {
   // CHECK: %[[ARG1REB1:.*]] = mo.rebind(%[[ARG1]]) : !mo.tensor<[[SH1]], f32> -> !mo.tensor<[[SH0]], f32>
-  // CHECK: kgen.param.declare [[EQ:.*]]: i1 = <apply(:(!mo.shape, !mo.shape) -> i1 "mo.shape.eq", [[SH0]], [[SH1]])>
-  // CHECK: kgen.param.declare [[CH:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "input shapes must match"}, [[EQ]])>
+  // CHECK: kgen.param.declare [[EQ:.*]]: i1 = <apply(:(!mosh.ape, !mosh.ape) -> i1 "mosh.eq", [[SH0]], [[SH1]])>
+  // CHECK: kgen.param.declare [[CH:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "input shapes must match"}, [[EQ]])>
   // CHECK: %[[VAL0:.*]] = mo.add(%[[ARG0]], %[[ARG1REB1]]) : !mo.tensor<[[SH0]], f32>
   %0 = mo.add(%arg0, %arg1) : !mo.tensor<?, f32>
   // CHECK: %[[VAL1:.*]] = mo.gelu(%[[VAL0]]) : !mo.tensor<[[SH0]], f32>
   %1 = mo.gelu(%0) : !mo.tensor<?, f32>
 
-  // CHECK-NOT: kgen.param.declare {{.*}}: !mo.shape = <apply(:(!mo.shape, !mo.shape) -> !mo.shape @batch_matmul_fw,
+  // CHECK-NOT: kgen.param.declare {{.*}}: !mosh.ape = <apply(:(!mosh.ape, !mosh.ape) -> !mosh.ape @batch_matmul_fw,
 
-  // CHECK-DAG: kgen.param.declare [[R1:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_rank", [[SH0]])>
-  // CHECK-DAG: kgen.param.declare [[R2:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_rank", [[SH1]])>
+  // CHECK-DAG: kgen.param.declare [[R1:.*]] = <apply(:(!mosh.ape) -> index "mosh.get_rank", [[SH0]])>
+  // CHECK-DAG: kgen.param.declare [[R2:.*]] = <apply(:(!mosh.ape) -> index "mosh.get_rank", [[SH1]])>
   // CHECK-DAG: kgen.param.declare [[COND1:.*]]: i1 =
   // CHECK-SAME: <eq(
   // CHECK-DAG: [[R1]]
   // CHECK-DAG:,
   // CHECK-DAG: [[R2]]
   // CHECK-SAME:)>
-  // CHECK-DAG: kgen.param.declare [[CH0:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "ranks of left and right inputs are not equal"}, [[COND1]])>
+  // CHECK-DAG: kgen.param.declare [[CH0:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "ranks of left and right inputs are not equal"}, [[COND1]])>
   // CHECK-DAG: kgen.param.declare [[COND2:.*]]: i1 = <ge([[R2]], 3)>
-  // CHECK-DAG: kgen.param.declare [[CH1:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "input ranks are not greater than 2"}, [[COND2]])>
-  // CHECK-DAG: kgen.param.declare [[K:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -1 : index}, [[SH0]])>
-  // CHECK-DAG: kgen.param.declare [[KK:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -2 : index}, [[SH1]])>
+  // CHECK-DAG: kgen.param.declare [[CH1:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "input ranks are not greater than 2"}, [[COND2]])>
+  // CHECK-DAG: kgen.param.declare [[K:.*]] = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = -1 : index}, [[SH0]])>
+  // CHECK-DAG: kgen.param.declare [[KK:.*]] = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = -2 : index}, [[SH1]])>
   // CHECK-DAG: kgen.param.declare [[COND3:.*]]: i1 =
   // CHECK-SAME: <eq(
   // CHECK-DAG: [[K]]
   // CHECK-DAG:,
   // CHECK-DAG: [[KK]]
   // CHECK-SAME:)>
-  // CHECK-DAG: kgen.param.declare [[CH2:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "inner dimensions do not match"}, [[COND3]])>
-  // CHECK-DAG: kgen.param.declare [[LBATCH:.*]]: !mo.shape = <apply(:(!mo.shape) -> !mo.shape "mo.shape.slice"{end = -2 : index, start = 0 : index}, [[SH0]])>
-  // CHECK-DAG: kgen.param.declare [[RBATCH:.*]]: !mo.shape = <apply(:(!mo.shape) -> !mo.shape "mo.shape.slice"{end = -2 : index, start = 0 : index}, [[SH1]])>
-  // CHECK-DAG: kgen.param.declare [[COND4:.*]]: i1 = <apply(:(!mo.shape, !mo.shape) -> i1 "mo.shape.eq", [[LBATCH]], [[RBATCH]])>
-  // CHECK-DAG: kgen.param.declare [[CH3:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "batch sizes of left and right inputs are not equal"}, [[COND4]])>
-  // CHECK-DAG: kgen.param.declare [[NN:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -1 : index}, [[SH1]])>
-  // CHECK-DAG: kgen.param.declare [[SH8:.*]]: !mo.shape = <apply(:(!mo.shape, !mo.shape) -> !mo.shape "mo.shape.concat", [[LBATCH]], [[[K]], [[NN]]])>
+  // CHECK-DAG: kgen.param.declare [[CH2:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "inner dimensions do not match"}, [[COND3]])>
+  // CHECK-DAG: kgen.param.declare [[LBATCH:.*]]: !mosh.ape = <apply(:(!mosh.ape) -> !mosh.ape "mosh.slice"{end = -2 : index, start = 0 : index}, [[SH0]])>
+  // CHECK-DAG: kgen.param.declare [[RBATCH:.*]]: !mosh.ape = <apply(:(!mosh.ape) -> !mosh.ape "mosh.slice"{end = -2 : index, start = 0 : index}, [[SH1]])>
+  // CHECK-DAG: kgen.param.declare [[COND4:.*]]: i1 = <apply(:(!mosh.ape, !mosh.ape) -> i1 "mosh.eq", [[LBATCH]], [[RBATCH]])>
+  // CHECK-DAG: kgen.param.declare [[CH3:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "batch sizes of left and right inputs are not equal"}, [[COND4]])>
+  // CHECK-DAG: kgen.param.declare [[NN:.*]] = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = -1 : index}, [[SH1]])>
+  // CHECK-DAG: kgen.param.declare [[SH8:.*]]: !mosh.ape = <apply(:(!mosh.ape, !mosh.ape) -> !mosh.ape "mosh.concat", [[LBATCH]], [[[K]], [[NN]]])>
   // CHECK-DAG: %[[ARG1REB2:.*]] = mo.rebind(%[[ARG1]]) : !mo.tensor<[[SH1]], f32> -> !mo.tensor<[[SH8]], f32>
 
-  // CHECK-DAG: kgen.param.declare [[N:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -2 : index}, [[SH0]])>
-  // CHECK-DAG: kgen.param.declare [[M:.*]] = <apply(:(!mo.shape) -> index "mo.shape.get_dim"{dim = -1 : index}, [[SH8]])>
-  // CHECK-DAG: kgen.param.declare [[SH4:.*]]: !mo.shape = <apply(:(!mo.shape) -> !mo.shape "mo.shape.slice"{end = -2 : index, start = 0 : index}, [[SH0]])>
-  // CHECK-DAG: kgen.param.declare [[SH5:.*]]: !mo.shape = <apply(:(!mo.shape, !mo.shape) -> !mo.shape "mo.shape.concat", [[SH4]], [[[N]], [[M]]])>
+  // CHECK-DAG: kgen.param.declare [[N:.*]] = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = -2 : index}, [[SH0]])>
+  // CHECK-DAG: kgen.param.declare [[M:.*]] = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = -1 : index}, [[SH8]])>
+  // CHECK-DAG: kgen.param.declare [[SH4:.*]]: !mosh.ape = <apply(:(!mosh.ape) -> !mosh.ape "mosh.slice"{end = -2 : index, start = 0 : index}, [[SH0]])>
+  // CHECK-DAG: kgen.param.declare [[SH5:.*]]: !mosh.ape = <apply(:(!mosh.ape, !mosh.ape) -> !mosh.ape "mosh.concat", [[SH4]], [[[N]], [[M]]])>
 
-  // CHECK-NOT: kgen.param.declare {{.*}}: !mo.shape = <apply(:(!mo.shape, !mo.shape) -> !mo.shape @batch_matmul_fw,
+  // CHECK-NOT: kgen.param.declare {{.*}}: !mosh.ape = <apply(:(!mosh.ape, !mosh.ape) -> !mosh.ape @batch_matmul_fw,
 
   // CHECK: %[[VAL2:.*]] = mo.batch_matmul(%[[VAL1]], %[[ARG1REB2]]) : (!mo.tensor<[[SH0]], f32>, !mo.tensor<[[SH8]], f32>) -> !mo.tensor<[[SH5]], f32>
   %2 = mo.batch_matmul(%1, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f32>
@@ -185,7 +185,7 @@ mo.graph @unresolved_rebinds(
   %4 = mo.gelu(%3) : !mo.tensor<?, f32>
   // CHECK: %[[VAL5:.*]] = mo.sub(%[[VAL4]], %[[VAL3]]) : !mo.tensor<[[SH5]], f32>
   %5 = mo.sub(%4, %3) : !mo.tensor<?, f32>
-  // CHECK: mo.output<:!mo.shape [[SH5]]> %[[VAL5]] : !mo.tensor<[[SH5]], f32>
+  // CHECK: mo.output<:!mosh.ape [[SH5]]> %[[VAL5]] : !mo.tensor<[[SH5]], f32>
   mo.output %5 : !mo.tensor<?, f32>
 }
 
@@ -204,7 +204,7 @@ mo.graph @broadcasted_binary_elwise(
   // CHECK-DAG:,
   // CHECK-DAG: [[P6]]
   // CHECK-SAME:)>
-  // CHECK-DAG: kgen.param.declare [[CH0:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "dimensions are not broadcastable"}, [[P7]])>
+  // CHECK-DAG: kgen.param.declare [[CH0:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "dimensions are not broadcastable"}, [[P7]])>
 
   // CHECK-DAG: kgen.param.declare [[P8:.*]] = <max([[D17]], 12)>
   // CHECK-DAG: kgen.param.declare [[P11:.*]]: i1 = <eq([[D16]], 1)>
@@ -227,7 +227,7 @@ mo.graph @broadcasted_binary_elwise(
   // CHECK-DAG:,
   // CHECK-DAG: [[P14]]
   // CHECK-SAME:)>
-  // CHECK-DAG: kgen.param.declare [[CH1:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "dimensions are not broadcastable"}, [[P15]])>
+  // CHECK-DAG: kgen.param.declare [[CH1:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "dimensions are not broadcastable"}, [[P15]])>
 
   // CHECK-DAG: kgen.param.declare [[P16:.*]] =
   // CHECK-SAME: <max(
@@ -278,7 +278,7 @@ mo.graph @scalar_to_tensor_reshapes_before_staticization(
   // CHECK-DAG: kgen.param.declare [[P0:.*]] = <mul_nuw([[D0]], [[D1]])>
   // CHECK-DAG: kgen.param.declare [[P1:.*]] = <mul_nuw([[D0]], [[D0]])>
   // CHECK-DAG: kgen.param.declare [[P2:.*]]: i1 = <eq([[P0]], [[P1]])>
-  // CHECK-DAG: kgen.param.declare [[P3:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "number of elements must be equal"}, [[P2]])>
+  // CHECK-DAG: kgen.param.declare [[P3:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "number of elements must be equal"}, [[P2]])>
   %scalar_one = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
   %scalar_zero = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si32>
   %tensor_zero = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[1], si32>
@@ -322,7 +322,7 @@ mo.graph @binary_op_asserts(
   // CHECK-DAG: [[D1]]
   // CHECK-DAG: )
   // CHECK-SAME:)>
-  // CHECK-DAG: kgen.param.declare [[CH:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "input shapes must match"}, [[EQ]])>
+  // CHECK-DAG: kgen.param.declare [[CH:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "input shapes must match"}, [[EQ]])>
   %add11 = mo.add(%arg1, %arg1) : !mo.tensor<[?, ?], f32>
   // CHECK-NEXT: %[[ADD12:.*]] = mo.add(%[[ARG1]], %[[ARG2_REB]]) : !mo.tensor<[[[D0]], [[D1]]], f32>
   %add12 = mo.add(%arg1, %arg2) : !mo.tensor<[?, ?], f32>
@@ -369,7 +369,7 @@ mo.graph @concat_negative_two() -> !mo.tensor<[2], si64> {
 
 // CHECK-LABEL: mo.graph @batch_matmul_reused_rhs
 // CHECK-SAME: <[[D0:.*]], [[D1:.*]]>(
-mo.graph @batch_matmul_reused_rhs<D0, D1 -> Sh0: !mo.shape>(
+mo.graph @batch_matmul_reused_rhs<D0, D1 -> Sh0: !mosh.ape>(
   // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[3, [[D0]], 4], f32>,
   %arg0: !mo.tensor<[3, D0, 4], f32>,
   // CHECK-SAME: %[[ARG1:.*]]: !mo.tensor<[3, 4, [[D1]]], f32>
@@ -377,8 +377,8 @@ mo.graph @batch_matmul_reused_rhs<D0, D1 -> Sh0: !mo.shape>(
 // CHECK-SAME: ) -> !mo.tensor<[3, [[D0]], [[D1]]], f32> {
 ) -> !mo.tensor<Sh0, f32> {
 
-  %arg0reb = mo.rebind<() -> Sh1: !mo.shape>(%arg0) : !mo.tensor<[3, D0, 4], f32> -> !mo.tensor<Sh1, f32>
-  %arg1reb = mo.rebind<() -> Sh2: !mo.shape>(%arg1) : !mo.tensor<[3, 4, D1], f32> -> !mo.tensor<Sh2, f32>
+  %arg0reb = mo.rebind<() -> Sh1: !mosh.ape>(%arg0) : !mo.tensor<[3, D0, 4], f32> -> !mo.tensor<Sh1, f32>
+  %arg1reb = mo.rebind<() -> Sh2: !mosh.ape>(%arg1) : !mo.tensor<[3, 4, D1], f32> -> !mo.tensor<Sh2, f32>
 
   // CHECK-NEXT: %[[BMM1:.*]] = mo.batch_matmul(%[[ARG0]], %[[ARG1]])
   // CHECK-SAME: : (!mo.tensor<[3, [[D0]], 4], f32>, !mo.tensor<[3, 4, [[D1]]], f32>) -> !mo.tensor<[3, [[D0]], [[D1]]], f32>
@@ -388,22 +388,22 @@ mo.graph @batch_matmul_reused_rhs<D0, D1 -> Sh0: !mo.shape>(
   // CHECK-DAG:,
   // CHECK-DAG: 4
   // CHECK-SAME:)>
-  // CHECK-NEXT: kgen.param.declare [[CH:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "inner dimensions do not match"}, [[EQ]])>
-  %bmm1 = mo.batch_matmul<() -> Sh3: !mo.shape>(%arg0reb, %arg1reb) : (!mo.tensor<Sh1, f32>, !mo.tensor<Sh2, f32>) -> !mo.tensor<Sh3, f32>
+  // CHECK-NEXT: kgen.param.declare [[CH:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "inner dimensions do not match"}, [[EQ]])>
+  %bmm1 = mo.batch_matmul<() -> Sh3: !mosh.ape>(%arg0reb, %arg1reb) : (!mo.tensor<Sh1, f32>, !mo.tensor<Sh2, f32>) -> !mo.tensor<Sh3, f32>
 
   // CHECK-NEXT: %[[ARG1REB:.*]] = mo.rebind(%[[ARG1:.*]]) : !mo.tensor<[3, 4, [[D1]]], f32> -> !mo.tensor<[3, [[D1]], [[D1]]], f32>
   // CHECK-NEXT: %[[BMM2:.*]] = mo.batch_matmul(%[[BMM1]], %[[ARG1REB]])
   // CHECK-SAME: (!mo.tensor<[3, [[D0]], [[D1]]], f32>, !mo.tensor<[3, [[D1]], [[D1]]], f32>) -> !mo.tensor<[3, [[D0]], [[D1]]], f32>
-  %bmm2 = mo.batch_matmul<() -> Sh4: !mo.shape>(%bmm1, %arg1reb) : (!mo.tensor<Sh3, f32>, !mo.tensor<Sh2, f32>) -> !mo.tensor<Sh4, f32>
+  %bmm2 = mo.batch_matmul<() -> Sh4: !mosh.ape>(%bmm1, %arg1reb) : (!mo.tensor<Sh3, f32>, !mo.tensor<Sh2, f32>) -> !mo.tensor<Sh4, f32>
 
   // CHECK-NEXT: mo.output %[[BMM2]] : !mo.tensor<[3, [[D0]], [[D1]]], f32>
-  mo.output<:!mo.shape Sh4> %bmm2 : !mo.tensor<Sh4, f32>
+  mo.output<:!mosh.ape Sh4> %bmm2 : !mo.tensor<Sh4, f32>
 // CHECK-NEXT: }
 }
 
 // CHECK-LABEL: mo.graph @linalg_solve_reused_rhs
 // CHECK-SAME: <[[D0:.*]], [[D1:.*]]>(
-mo.graph @linalg_solve_reused_rhs<D0, D1 -> Sh0: !mo.shape>(
+mo.graph @linalg_solve_reused_rhs<D0, D1 -> Sh0: !mosh.ape>(
   // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[3, [[D0]], [[D0]]], f32>,
   %arg0: !mo.tensor<[3, D0, D0], f32>,
   // CHECK-SAME: %[[ARG1:.*]]: !mo.tensor<[3, [[D0]], [[D1]]], f32>
@@ -411,8 +411,8 @@ mo.graph @linalg_solve_reused_rhs<D0, D1 -> Sh0: !mo.shape>(
 // CHECK-SAME: ) -> !mo.tensor<[3, [[D0]], [[D1]]], f32> {
 ) -> !mo.tensor<Sh0, f32> {
 
-  %arg0reb = mo.rebind<() -> Sh1: !mo.shape>(%arg0) : !mo.tensor<[3, D0, D0], f32> -> !mo.tensor<Sh1, f32>
-  %arg1reb = mo.rebind<() -> Sh2: !mo.shape>(%arg1) : !mo.tensor<[3, D0, D1], f32> -> !mo.tensor<Sh2, f32>
+  %arg0reb = mo.rebind<() -> Sh1: !mosh.ape>(%arg0) : !mo.tensor<[3, D0, D0], f32> -> !mo.tensor<Sh1, f32>
+  %arg1reb = mo.rebind<() -> Sh2: !mosh.ape>(%arg1) : !mo.tensor<[3, D0, D1], f32> -> !mo.tensor<Sh2, f32>
 
   // CHECK-NEXT: %[[VAL0:.*]] = mo.linalg.solve(%[[ARG0]], %[[ARG1]])
   // CHECK-SAME: : (!mo.tensor<[3, [[D0]], [[D0]]], f32>, !mo.tensor<[3, [[D0]], [[D1]]], f32>) -> !mo.tensor<[3, [[D0]], [[D1]]], f32>
@@ -422,15 +422,15 @@ mo.graph @linalg_solve_reused_rhs<D0, D1 -> Sh0: !mo.shape>(
   // CHECK-DAG:,
   // CHECK-DAG: [[D1]]
   // CHECK-SAME:)>
-  // CHECK-NEXT: kgen.param.declare [[CH:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "inner dimensions do not match"}, [[EQ]])>
-  %0 = mo.linalg.solve<() -> Sh3: !mo.shape>(%arg0reb, %arg1reb) : (!mo.tensor<Sh1, f32>, !mo.tensor<Sh2, f32>) -> !mo.tensor<Sh3, f32>
+  // CHECK-NEXT: kgen.param.declare [[CH:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "inner dimensions do not match"}, [[EQ]])>
+  %0 = mo.linalg.solve<() -> Sh3: !mosh.ape>(%arg0reb, %arg1reb) : (!mo.tensor<Sh1, f32>, !mo.tensor<Sh2, f32>) -> !mo.tensor<Sh3, f32>
 
   // CHECK-NEXT: %[[ARG1REB:.*]] = mo.rebind(%[[ARG1:.*]]) : !mo.tensor<[3, [[D0]], [[D1]]], f32> -> !mo.tensor<[3, [[D1]], [[D1]]], f32>
   // CHECK-NEXT: %[[VAL1:.*]] = mo.linalg.solve(%[[VAL0]], %[[ARG1REB]])
   // CHECK-SAME: (!mo.tensor<[3, [[D0]], [[D1]]], f32>, !mo.tensor<[3, [[D1]], [[D1]]], f32>) -> !mo.tensor<[3, [[D0]], [[D1]]], f32>
-  %1 = mo.linalg.solve<() -> Sh4: !mo.shape>(%0, %arg1reb) : (!mo.tensor<Sh3, f32>, !mo.tensor<Sh2, f32>) -> !mo.tensor<Sh4, f32>
+  %1 = mo.linalg.solve<() -> Sh4: !mosh.ape>(%0, %arg1reb) : (!mo.tensor<Sh3, f32>, !mo.tensor<Sh2, f32>) -> !mo.tensor<Sh4, f32>
 
   // CHECK-NEXT: mo.output %[[VAL1]] : !mo.tensor<[3, [[D0]], [[D1]]], f32>
-  mo.output<:!mo.shape Sh4> %1 : !mo.tensor<Sh4, f32>
+  mo.output<:!mosh.ape Sh4> %1 : !mo.tensor<Sh4, f32>
 // CHECK-NEXT: }
 }

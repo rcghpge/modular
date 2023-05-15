@@ -3,19 +3,23 @@
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
+//
+// This file implements the MO dialect types.
+//
+//===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MODialect/MOAttrs.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/Compiler/MLIRDType.h"
 #include "Support/ErrorOr.h"
-#include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
-#include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 
@@ -39,7 +43,7 @@ struct FieldParser<DType> {
 
 } // namespace mlir
 
-std::string asString(Type type) {
+static std::string asString(Type type) {
   std::string str;
   llvm::raw_string_ostream os(str);
   os << type;
@@ -47,52 +51,12 @@ std::string asString(Type type) {
 }
 
 //===----------------------------------------------------------------------===//
-// ShapeParameter
-//===----------------------------------------------------------------------===//
-
-/// Return none if parser encountered something other than ShapeAttr or
-/// UnknownAttr.
-static OptionalParseResult parseShapeAttrOrUnknown(AsmParser &p,
-                                                   TypedAttr &shapeAttr) {
-  auto shapeTy = p.getBuilder().getType<MO::ShapeType>();
-  if (succeeded(p.parseOptionalQuestion())) {
-    shapeAttr = KGEN::UnknownAttr::get(shapeTy);
-    return mlir::success();
-  }
-
-  if (succeeded(p.parseOptionalLSquare())) {
-    SmallVector<TypedAttr> values;
-    if (failed(p.parseOptionalRSquare())) {
-      if (parseShapeValue(p, values) || p.parseRSquare())
-        return failure();
-    }
-
-    shapeAttr = p.getChecked<MO::ShapeAttr>(values, shapeTy);
-    return failure(!shapeAttr);
-  }
-
-  return std::nullopt;
-}
-
-//===----------------------------------------------------------------------===//
 // Tensor
 //===----------------------------------------------------------------------===//
 
-static void printShapeParam(AsmPrinter &p, TypedAttr shapeAttr) {
-  if (isa<KGEN::UnknownAttr>(shapeAttr)) {
-    p << "?";
-  } else if (auto declRef = dyn_cast<KGEN::ParamDeclRefAttr>(shapeAttr)) {
-    KGEN::printParamName(p, declRef.getName());
-  } else {
-    p << "[";
-    printShapeValue(p, cast<MO::ShapeAttr>(shapeAttr).getValues());
-    p << "]";
-  }
-}
-
 static ParseResult parseShapeParam(AsmParser &p, TypedAttr &shapeAttr) {
-  auto shapeTy = p.getBuilder().getType<MO::ShapeType>();
-  OptionalParseResult res = parseShapeAttrOrUnknown(p, shapeAttr);
+  auto shapeTy = p.getBuilder().getType<ShapeType>();
+  OptionalParseResult res = MOSH::parseShapeAttrOrUnknown(p, shapeAttr);
   if (res.has_value() && succeeded(res.value()))
     return success();
 
@@ -108,34 +72,36 @@ static ParseResult parseShapeParam(AsmParser &p, TypedAttr &shapeAttr) {
             "literal shape reference (i.e. `[...]`)";
 }
 
+static auto printShapeParam = MOSH::printShapeTypedAttr;
+
 /// Verifies that the given dimensions represent a valid tensor shape, and
 /// that the element type in DType form is also representable as an MLIR type.
 LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
                                  TypedAttr shapeAttr, DType dtype,
                                  std::optional<Attribute> metadata) {
   if (auto unkAttr = llvm::dyn_cast<KGEN::UnknownAttr>(shapeAttr)) {
-    if (Type ty = unkAttr.getType(); !llvm::isa<MO::ShapeType>(ty)) {
+    if (Type ty = unkAttr.getType(); !llvm::isa<ShapeType>(ty)) {
       return emitError() << "unknown shape attribute must have ShapeType, got "
                          << ty;
     }
     return success();
   }
   if (auto declRef = llvm::dyn_cast<KGEN::ParamDeclRefAttr>(shapeAttr)) {
-    if (Type ty = declRef.getType(); !llvm::isa<MO::ShapeType>(ty)) {
+    if (Type ty = declRef.getType(); !llvm::isa<ShapeType>(ty)) {
       return emitError()
              << "shape parameter reference must have ShapeType, got " << ty;
     }
     return success();
   }
   if (auto indexRef = ::dyn_cast<KGEN::ParamIndexRefAttr>(shapeAttr)) {
-    if (Type ty = indexRef.getType(); !::isa<MO::ShapeType>(ty)) {
+    if (Type ty = indexRef.getType(); !::isa<ShapeType>(ty)) {
       return emitError()
              << "shape parameter reference must have ShapeType, got " << ty;
     }
     return success();
   }
 
-  auto attr = llvm::dyn_cast<MO::ShapeAttr>(shapeAttr);
+  auto attr = llvm::dyn_cast<ShapeAttr>(shapeAttr);
   if (!attr)
     return emitError() << "invalid shape attribute " << shapeAttr;
   return success();
@@ -188,25 +154,25 @@ TensorType TensorType::get(TypedAttr shapeAttr, Type elementType,
 TensorType TensorType::get(ArrayRef<int64_t> shape, Type elementType,
                            std::optional<Attribute> metadata) {
   auto ctx = elementType.getContext();
-  auto newShape = MO::ShapeAttr::get(shape, MO::ShapeType::get(ctx));
+  auto newShape = ShapeAttr::get(shape, ShapeType::get(ctx));
   return get(newShape, elementType, metadata);
 }
 
 TensorType TensorType::get(ArrayRef<TypedAttr> shape, Type elementType,
                            std::optional<Attribute> metadata) {
   auto ctx = elementType.getContext();
-  auto newShape = MO::ShapeAttr::get(shape, MO::ShapeType::get(ctx));
+  auto newShape = ShapeAttr::get(shape, ShapeType::get(ctx));
   return get(newShape, elementType, metadata);
 }
 
 TensorType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
                                  Type dtype,
                                  std::optional<Attribute> metadata) const {
-  auto shapeTy = MO::ShapeType::get(getContext());
+  auto shapeTy = ShapeType::get(getContext());
 
   TypedAttr shapeRef;
   if (shape.has_value())
-    shapeRef = MO::ShapeAttr::get(shape.value(), shapeTy);
+    shapeRef = ShapeAttr::get(shape.value(), shapeTy);
   else
     shapeRef = KGEN::UnknownAttr::get(shapeTy);
 
@@ -246,8 +212,8 @@ Type TensorType::getElementType() const {
   return *errOrType;
 }
 
-MO::ShapeAttr TensorType::getTypedShapeAttr() const {
-  return llvm::cast<MO::ShapeAttr>(getShapeAttr());
+ShapeAttr TensorType::getTypedShapeAttr() const {
+  return llvm::cast<ShapeAttr>(getShapeAttr());
 }
 
 SmallPtrSet<StringAttr, 4> TensorType::getUsedParamNames() const {
@@ -300,22 +266,10 @@ ErrorOr<TensorType> TensorType::broadcastShapes(TensorType x, TensorType y) {
   if (!x.hasRank() || !y.hasRank())
     return Error(Twine("Guards should have rejected unranked inputs."));
 
-  UNWRAP_ERROR(result, MO::ShapeAttr::broadcastShapes(x.getTypedShapeAttr(),
-                                                      y.getTypedShapeAttr()));
+  UNWRAP_ERROR(result, ShapeAttr::broadcastShapes(x.getTypedShapeAttr(),
+                                                  y.getTypedShapeAttr()));
 
   return MO::TensorType::get(result, x.getElementType());
-}
-
-LogicalResult ShapeType::printValue(AsmPrinter &p, TypedAttr value) const {
-  if (!mlir::isa<KGEN::ParamDeclRefAttr, MO::ShapeAttr>(value))
-    return failure();
-  printShapeParam(p, value);
-  return success();
-}
-
-OptionalParseResult ShapeType::parseValue(AsmParser &p,
-                                          TypedAttr &value) const {
-  return parseShapeAttrOrUnknown(p, value);
 }
 
 //===----------------------------------------------------------------------===//

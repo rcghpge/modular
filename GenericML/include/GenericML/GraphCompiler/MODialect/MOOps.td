@@ -16,6 +16,7 @@ include "KGEN/KGENDialect/KGENInterfaces.td"
 include "KGEN/KGENDialect/KGENTypes.td"
 include "GenericML/GraphCompiler/MODialect/MOInterfaces.td"
 include "GenericML/GraphCompiler/MODialect/MOTypes.td"
+include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.td"
 include "Support/MDialect/MAttrs.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
@@ -31,74 +32,6 @@ class MO_Op<string mnemonic, list<Trait> traits = []>
 // Base class for ops that work with tensors in the MO dialect.
 class MO_TensorOp<string mnemonic, list<Trait> traits = []>
   : MO_Op<mnemonic, [MO_TensorOpInterface] # traits>;
-
-//===----------------------------------------------------------------------===//
-// AssertOp
-//===----------------------------------------------------------------------===//
-
-def MO_AssertOp : MO_Op<"assert"> {
-  let summary = "Assert that a single boolean value is true.";
-  let description = [{
-    This op is special in the MO dialect since it does not take or return MO
-    tensors. The argument is single index value and a !mo.chain is returned.
-
-    Example:
-
-    ```mlir
-    %0 : index
-    %1 : index
-    %b1 = index.cmp eq(%0, %1)
-    %ch1 = mo.assert %b1
-    %b2 = index.cmp lt(%0, %1)
-    %ch2 = mo.assert %b2, "something went wrong"
-    ```
-  }];
-
-  let arguments = (ins I1:$cond, OptionalAttr<StrAttr>:$message);
-  let results = (outs MO_ChainType:$chain);
-
-  let builders = [
-    OpBuilder<(ins "Value":$cond)>,
-    OpBuilder<(ins "Value":$cond, "StringRef":$message)>,
-  ];
-
-  let assemblyFormat = "$cond (`,` $message^)? attr-dict";
-  let hasFolder = 1;
-
-  let extraClassDeclaration = [{
-    /// Create a static call to apply(mo.assert, cond, message)
-    static TypedAttr emitStaticCall(TypedAttr cond, StringRef message);
-  }];
-}
-
-//===----------------------------------------------------------------------===//
-// GuardOp
-//===----------------------------------------------------------------------===//
-
-def MO_GuardOp : MO_Op<"guard"> {
-  let summary = "Signify control dependencies of the operands.";
-  let description = [{
-    Sometimes (although not often) the validity of values may depend on things
-    that we can't (or don't want to) express in the dataflow. This op allows one
-    to express explicit control dependencies, that later lowerings must convert
-    to correct dependencies at runtime.
-    %sh0: !mo.shape
-    %cond0: i1
-    %ch0 = mo.assert %cond0
-    mo.guard[%ch0](%sh0)
-
-    %sh1: !mo.shape
-    %cond1: i1
-    %ch1 = mo.assert %cond1
-    mo.guard[%ch1](%sh0, %sh1)
-    ```
-  }];
-
-  let arguments = (ins MO_ChainType:$chain, Variadic<AnyType>:$values);
-  let assemblyFormat = [{
-    `[` $chain `]` ($values^ `:` type($values))? attr-dict
-  }];
-}
 
 //===----------------------------------------------------------------------===//
 // IndexToTensorOp
@@ -1296,11 +1229,11 @@ def MO_ShapeOfOp : MO_TensorOp<"shape_of", [
     ```mlir
     // statically ranked
     %arg1: !mo.tensor<[1, 2, 3], f32>
-    %shape1 = mo.shapeof(%arg1) : !mo.tensor<[3], si64>
+    %shape1 = mo.shape_of(%arg1) : !mo.tensor<[3], si64>
 
     // dynamically ranked
     %arg2: !mo.tensor<?, f32>
-    %shape2 = mo.shapeof(%arg2) : !mo.tensor<[?], si64>
+    %shape2 = mo.shape_of(%arg2) : !mo.tensor<[?], si64>
     ```
   }];
 
@@ -1366,8 +1299,7 @@ def MO_BroadcastShapeOp : MO_TensorOp<"broadcast_shape", [
   let hasVerifier = 1;
 }
 
-/// Used to model MO ops that accept both MO_Tensor and MO_ShapeType.
-/// TODO(#14312): this is currently used in `MOShapeOps.td`.
+/// Used to model MO ops that accept both MO_Tensor and MOSH_ShapeType.
 class MOShape_Op<string mnemonic, list<Trait> traits = []>
     : Op<MODialect, "shape." # mnemonic, traits> {
   string cppNamespace = MODialect.cppNamespace # "::Shape";
@@ -1381,7 +1313,7 @@ def MOShape_ReshapeOp : MOShape_Op<"reshape", [
     Return a tensor with the same underlying data, but different shape. The
     semantics of this op are nearly identical to those of `mo.reshape` (see the
     documentation of that op for details), with the only difference that
-    `mo.shape.reshape` accepts a `!mo.shape` value as the new shape instead of a
+    `mo.shape.reshape` accepts a `!mosh.ape` value as the new shape instead of a
     shape-like tensor.
 
     Notably, this op differs from `MOStatic_ReshapeOp` in that this op takes the
@@ -1393,14 +1325,14 @@ def MOShape_ReshapeOp : MOShape_Op<"reshape", [
 
     ```mlir
     %arg: !mo.tensor<[1, 2, 3], f32>
-    %to: !mo.shape
+    %to: !mosh.ape
     %res = mo.shape.reshape(%arg, %to) : !mo.tensor<[3, 2], si64>
     ```
   }];
 
   let arguments = (ins
     MO_Tensor:$input,
-    MO_ShapeType:$newShape,
+    MOSH_ShapeType:$newShape,
     MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 
@@ -1418,7 +1350,7 @@ def MOShape_BroadcastToOp : MOShape_Op<"broadcast_to", [
     Broadcast the input tensor to the shape newShape. The semantics of this op
     are nearly identical to those of `mo.broadcast_to` (see the documentation of
     that op for details), with the only difference that `mo.shape.broadcast_to`
-    accepts a `!mo.shape` value as the new shape instead of a shape-like tensor.
+    accepts a `!mosh.ape` value as the new shape instead of a shape-like tensor.
 
     Notably, this op differs from `MOStatic_BroadcastToOp` in that this op takes
     the new shape as an explicit argument (i.e. SSA value), whereas
@@ -1429,15 +1361,15 @@ def MOShape_BroadcastToOp : MOShape_Op<"broadcast_to", [
 
     ```mlir
     %from: !mo.tensor<[3], f32>
-    %to: !mo.shape
+    %to: !mosh.ape
     %res = mo.shape.broadcast_to(%from, %to) : (
-      !mo.tensor<[3], f32>, !mo.shape) -> !mo.tensor<[2, 3], f32>
+      !mo.tensor<[3], f32>, !mosh.ape) -> !mo.tensor<[2, 3], f32>
     ```
   }];
 
   let arguments = (ins
     MO_Tensor:$input,
-    MO_ShapeType:$newShape,
+    MOSH_ShapeType:$newShape,
     MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 
@@ -1448,7 +1380,7 @@ def MOShape_BroadcastToOp : MOShape_Op<"broadcast_to", [
 }
 
 def MOShape_FromTensorOp : MOShape_Op<"from_tensor", [Pure]> {
-  let summary = "Cast from a shape-like `!mo.tensor` to `!mo.shape`.";
+  let summary = "Cast from a shape-like `!mo.tensor` to `!mosh.ape`.";
   let description = [{
     Example:
 
@@ -1459,24 +1391,24 @@ def MOShape_FromTensorOp : MOShape_Op<"from_tensor", [Pure]> {
   }];
 
   let arguments = (ins MO_ShapeLike:$input);
-  let results = (outs MO_ShapeType:$result);
+  let results = (outs MOSH_ShapeType:$result);
 
   let assemblyFormat = "`(` $input `)` attr-dict `:` qualified(type($input))";
   let hasFolder = 1;
 }
 
 def MOShape_ToTensorOp : MOShape_Op<"to_tensor", [Pure]> {
-  let summary = "Cast from a `!mo.shape` to a shape-like `!mo.tensor`.";
+  let summary = "Cast from a `!mosh.ape` to a shape-like `!mo.tensor`.";
   let description = [{
     Example:
 
     ```mlir
-    %sh: !mo.shape
+    %sh: !mosh.ape
     %sht = mo.shape.to_tensor(%sh) -> !mo.tensor<[2], si64>
     ```
   }];
 
-  let arguments = (ins MO_ShapeType:$input);
+  let arguments = (ins MOSH_ShapeType:$input);
   let results = (outs MO_ShapeLike:$result);
 
   let assemblyFormat = "`(` $input `)` attr-dict `->` qualified(type($result))";
