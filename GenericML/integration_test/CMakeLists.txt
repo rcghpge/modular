@@ -13,6 +13,7 @@ configure_lit_site_cfg(
   ${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg.py
 )
 
+if (NOT BENCHMARKING)
 add_modular_testsuite(check-genericml-integration
   TOOLS
   FileCheck
@@ -23,3 +24,4 @@ add_modular_testsuite(check-genericml-integration
   DEPENDS
   tf
   )
+endif()
