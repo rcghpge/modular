@@ -20,15 +20,14 @@
 #include "Support/MDialect/MAttrs.h"
 #include "Support/ML/Permutation.h"
 #include "Support/ML/RangeUtils.h"
-#include "Support/STLExtras.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/FunctionImplementation.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "llvm/ADT/SmallVectorExtras.h"
 #include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/APInt.h>
-#include <llvm/ADT/STLExtras.h>
 #include <numeric>
 
 using namespace M;
@@ -388,7 +387,7 @@ OpFoldResult BroadcastShapeOp::fold(FoldAdaptor adaptor) {
             getContext(), values, IntegerType::SignednessSemantics::Signed);
       };
       if (getType().getElementType().getIntOrFloatBitWidth() == 32) {
-        SmallVector<int32_t> dims = map_to_vector(
+        SmallVector<int32_t> dims = llvm::map_to_vector(
             shapeOr->getIntDims(), [](int64_t dim) -> int32_t { return dim; });
         return getResAttrs(ArrayRef<int32_t>{dims});
       }
@@ -874,8 +873,8 @@ OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
   if (auto intElemsAttr = dyn_cast_or_null<IntArrayElementsAttr>(inputAttr)) {
     if (isa<IntegerType>(resElemTy)) {
       // This is inefficient, but simple.
-      SmallVector<APInt> res =
-          map_to_vector(intElemsAttr.getValues(), [](const llvm::APInt &dim) {
+      SmallVector<APInt> res = llvm::map_to_vector(
+          intElemsAttr.getValues(), [](const llvm::APInt &dim) {
             return APInt(64, dim.getSExtValue(), /*isSigned=*/true);
           });
 
@@ -1867,7 +1866,7 @@ OpFoldResult Shape::ToTensorOp::fold(FoldAdaptor adaptor) {
       auto outTy =
           RankedTensorType::get(resTy.getIntDims(), resTy.getElementType());
       SmallVector<APInt> res =
-          map_to_vector(input.getIntDims(), [](int64_t dim) {
+          llvm::map_to_vector(input.getIntDims(), [](int64_t dim) {
             return APInt(64, dim, /*isSigned=*/true);
           });
       return IntArrayElementsAttr::get(outTy, res);

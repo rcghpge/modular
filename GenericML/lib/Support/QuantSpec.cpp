@@ -7,7 +7,7 @@
 #include "GenericML/Support/QuantSpec.h"
 #include "GraphRT/MEF/MEFTypes.h"
 #include "Support/ErrorOr.h"
-#include "Support/STLExtras.h"
+#include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/raw_ostream.h"
@@ -100,7 +100,7 @@ QuantSpec QuantSpec::getUniformPerAxis(uint8_t quantDim, ArrayRef<float> scales,
   // MEF encoding to encode similarly.
   return QuantSpec(
       Kind::uniformPerAxis, quantDim,
-      map_to_vector(llvm::zip(scales, zeroPoints), [](auto paramPair) {
+      llvm::map_to_vector(llvm::zip(scales, zeroPoints), [](auto paramPair) {
         auto [scale, zeroPoint] = paramPair;
         return ScaleZeroPointPair{scale, static_cast<int16_t>(zeroPoint)};
       }));

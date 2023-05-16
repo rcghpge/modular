@@ -17,8 +17,8 @@
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/MDialect/MAttrs.h"
 #include "Support/ML/DType.h"
-#include "Support/STLExtras.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
+#include "llvm/ADT/SmallVectorExtras.h"
 
 //===----------------------------------------------------------------------===//
 // MO Utilities
@@ -42,18 +42,16 @@ static std::optional<SmallVector<T>> tryGetConstantBlob(mlir::ElementsAttr attr,
                                                         DType dType) {
   using namespace detail;
   if (auto floatElemsAttr = dyn_cast<FloatArrayElementsAttr>(attr)) {
-    SmallVector<double> blob =
-        map_to_vector(floatElemsAttr.getValues(), [](const llvm::APFloat &dim) {
-          return dim.convertToDouble();
-        });
+    SmallVector<double> blob = llvm::map_to_vector(
+        floatElemsAttr.getValues(),
+        [](const llvm::APFloat &dim) { return dim.convertToDouble(); });
     return SmallVector<T>(blob.begin(), blob.end());
   }
 
   if (auto intElemsAttr = dyn_cast<IntArrayElementsAttr>(attr)) {
-    SmallVector<int64_t> blob =
-        map_to_vector(intElemsAttr.getValues(), [](const llvm::APInt &dim) {
-          return dim.getSExtValue();
-        });
+    SmallVector<int64_t> blob = llvm::map_to_vector(
+        intElemsAttr.getValues(),
+        [](const llvm::APInt &dim) { return dim.getSExtValue(); });
     return SmallVector<T>(blob.begin(), blob.end());
   }
 

@@ -12,8 +12,8 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
-#include "Support/STLExtras.h"
 #include "mlir/IR/Builders.h"
+#include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 
 using namespace M;
@@ -122,7 +122,7 @@ ShapeAttr ShapeAttr::get(ArrayRef<int64_t> values, ShapeType type) {
 }
 
 ShapeAttr ShapeAttr::get(IntArrayElementsAttr intDims, ShapeType type) {
-  SmallVector<int64_t> rawDims = map_to_vector(
+  SmallVector<int64_t> rawDims = llvm::map_to_vector(
       intDims.getValues(), [](const APInt &dim) { return dim.getSExtValue(); });
   return get(rawDims, type);
 }
@@ -175,7 +175,7 @@ int64_t ShapeAttr::getIntDim(size_t n) const {
 }
 
 SmallVector<int64_t> ShapeAttr::getIntDims() const {
-  return map_to_vector(getValues(), symbolicDimToInt);
+  return llvm::map_to_vector(getValues(), symbolicDimToInt);
 }
 
 TypedAttr ShapeAttr::getSymbolicNumElements() const {

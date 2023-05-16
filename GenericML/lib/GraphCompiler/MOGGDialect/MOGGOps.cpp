@@ -15,12 +15,11 @@
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
-#include "Support/STLExtras.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/IR/FunctionImplementation.h"
+#include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/StringMap.h"
-#include <llvm/ADT/STLExtras.h>
 
 using namespace M;
 using namespace MOGG;
@@ -31,7 +30,8 @@ using namespace MOGG;
 namespace {
 
 static SmallVector<MO::TensorType> castToMoTensorTypes(TypeRange types) {
-  return map_to_vector(types, [](Type t) { return t.cast<MO::TensorType>(); });
+  return llvm::map_to_vector(types,
+                             [](Type t) { return t.cast<MO::TensorType>(); });
 }
 
 // A MO tensor which has been lowered into a buffer and a spec.
@@ -112,7 +112,7 @@ private:
 };
 
 SmallVector<LoweredTensor> LowerHelper::getLoweredInputs() {
-  return map_to_vector(opBeingLowered->getOperands(), [&](Value operand) {
+  return llvm::map_to_vector(opBeingLowered->getOperands(), [&](Value operand) {
     return getLoweredTensorForValue(operand);
   });
 }
@@ -240,7 +240,7 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
         getOutputSpec("mop.shape.conditional", {inputTensors[0].spec});
   } else if (specNaryShapeFuncs.count(opName)) {
     // Get just the specs for tensors.
-    SmallVector<Value> inputSpecs = map_to_vector(
+    SmallVector<Value> inputSpecs = llvm::map_to_vector(
         inputTensors, [](const LoweredTensor &t) -> Value { return t.spec; });
 
     // Create a call to a custom invoke function we can put in the MEF.
@@ -274,7 +274,7 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
         getOutputSpec("mop.shape.cast", {inputTensors[0].spec, castScalarSpec});
   } else if (opName == "mop.kernels.concat") {
     // Ignore axis tensor at the end
-    SmallVector<Value> shapeFuncArgs = map_to_vector(
+    SmallVector<Value> shapeFuncArgs = llvm::map_to_vector(
         llvm::drop_end(inputTensors),
         [](LoweredTensor tensor) -> Value { return tensor.spec; });
     Value axis = loweringState.lookupExecuteLoweredValue(
@@ -466,7 +466,7 @@ LowerHelper::invokeLegacyShapeFunc(StringRef shapeFuncName,
                                    ArrayRef<Value> inputs,
                                    ArrayRef<MO::TensorType> resultMoTypes) {
   SmallVector<MGP::CpuTensorSpecType> resultSpecTypes =
-      map_to_vector(resultMoTypes, [](MO::TensorType t) {
+      llvm::map_to_vector(resultMoTypes, [](MO::TensorType t) {
         return MGP::createCpuTensorSpec(t);
       });
   return invokeLegacyShapeFunc(shapeFuncName, inputs, resultSpecTypes);
@@ -483,7 +483,7 @@ LowerHelper::invokeLegacyShapeFunc(
   Operation *invokeOp = loweringState.getExecuteOpBuilder().create(opState);
 
   // Return the output specs.
-  return map_to_vector(invokeOp->getResults(), [](Value v) {
+  return llvm::map_to_vector(invokeOp->getResults(), [](Value v) {
     return cast<TypedValue<MGP::CpuTensorSpecType>>(v);
   });
 };
