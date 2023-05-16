@@ -47,6 +47,8 @@ std::string getIDForType(mlir::Type t) {
 
   if (asTensor.getElementType().isF32())
     return "f32";
+  if (asTensor.getElementType().isF64())
+    return "f64";
   if (asTensor.getElementType().isSignedInteger(32))
     return "si32";
   if (asTensor.getElementType().isSignedInteger(64))
@@ -140,6 +142,8 @@ std::string mangleBlock(mlir::Block &block,
 
       if (attr.getElementType().isF32())
         appendConstToString<float>(attr, name);
+      else if (attr.getElementType().isF64())
+        appendConstToString<double>(attr, name);
       else if (attr.getElementType().isSignedInteger(32))
         appendConstToString<int32_t>(attr, name);
       else if (attr.getElementType().isSignedInteger(64))

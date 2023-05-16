@@ -46,6 +46,28 @@ mo.graph @bcasted_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], f32>) -> 
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST2]]
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST1]]
 
+// Check broadcasted f64 constants get fused
+mo.graph @bcasted_f64_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], f64>) -> !mo.tensor<[D14, D15], f64> {
+  %0 = mo.constant {value = #M.dense_array<1.250000e-01> : tensor<f64>} : !mo.tensor<[], f64>
+  %1 = mo.constant {value = #M.dense_array<6.000000e+02> : tensor<f64>} : !mo.tensor<[], f64>
+  %2 = mo.static.broadcast_to(%0) : !mo.tensor<[], f64> -> !mo.tensor<[D14, D15], f64>
+  %3 = mo.static.broadcast_to(%1) : !mo.tensor<[], f64> -> !mo.tensor<[D14, D15], f64>
+  %4 = mo.add(%2, %arg0) : !mo.tensor<[D14, D15], f64>
+  %5 = mo.div(%4, %3) : !mo.tensor<[D14, D15], f64>
+  mo.output %5 : !mo.tensor<[D14, D15], f64>
+}
+
+
+// CHECK-LABEL: mo.graph @bcasted_f64_const_fusion
+// CHECK-NEXT: mogg.kernel
+// CHECK-NEXT: mogg.output_placeholders
+
+// Check constants are in kernel and used in broadcasts.
+// CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1.250000e-01>
+// CHECK-NEXT: %[[CST2:.*]] = mo.constant {value = #M.dense_array<6.000000e+02>
+// CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST2]]
+// CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST1]]
+
 // Check broadcasted si32 constants get fused
 mo.graph @bcasted_si32_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si32>) -> !mo.tensor<[D14, D15], si32> {
   %0 = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
