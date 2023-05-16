@@ -140,7 +140,7 @@ mo.graph @unresolved_rebinds(
   // CHECK: %[[VAL1:.*]] = mo.gelu(%[[VAL0]]) : !mo.tensor<[[SH0]], f32>
   %1 = mo.gelu(%0) : !mo.tensor<?, f32>
 
-  // CHECK-NOT: kgen.param.declare {{.*}}: !mosh.ape = <apply(:(!mosh.ape, !mosh.ape) -> !mosh.ape @batch_matmul_fw,
+  // CHECK-NOT: kgen.param.declare {{.*}}: !mosh.ape = <apply(:(!mosh.ape, !mosh.ape) -> !mosh.ape @matmul_like_fw,
 
   // CHECK-DAG: kgen.param.declare [[R1:.*]] = <apply(:(!mosh.ape) -> index "mosh.get_rank", [[SH0]])>
   // CHECK-DAG: kgen.param.declare [[R2:.*]] = <apply(:(!mosh.ape) -> index "mosh.get_rank", [[SH1]])>
@@ -175,7 +175,7 @@ mo.graph @unresolved_rebinds(
   // CHECK-DAG: kgen.param.declare [[SH4:.*]]: !mosh.ape = <apply(:(!mosh.ape) -> !mosh.ape "mosh.slice"{end = -2 : index, start = 0 : index}, [[SH0]])>
   // CHECK-DAG: kgen.param.declare [[SH5:.*]]: !mosh.ape = <apply(:(!mosh.ape, !mosh.ape) -> !mosh.ape "mosh.concat", [[SH4]], [[[N]], [[M]]])>
 
-  // CHECK-NOT: kgen.param.declare {{.*}}: !mosh.ape = <apply(:(!mosh.ape, !mosh.ape) -> !mosh.ape @batch_matmul_fw,
+  // CHECK-NOT: kgen.param.declare {{.*}}: !mosh.ape = <apply(:(!mosh.ape, !mosh.ape) -> !mosh.ape @matmul_like_fw,
 
   // CHECK: %[[VAL2:.*]] = mo.batch_matmul(%[[VAL1]], %[[ARG1REB2]]) : (!mo.tensor<[[SH0]], f32>, !mo.tensor<[[SH8]], f32>) -> !mo.tensor<[[SH5]], f32>
   %2 = mo.batch_matmul(%1, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f32>
