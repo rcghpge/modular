@@ -67,6 +67,70 @@ LogicalResult ChainMergeOp::canonicalize(ChainMergeOp op,
   return success();
 }
 
+static ParseResult
+parseParenOperandList(OpAsmParser &parser, OperationState &result,
+                      SmallVectorImpl<OpAsmParser::Argument> &argumentInfo,
+                      Type optDefaultType = {}) {
+  auto parseOperandFn = [&]() -> ParseResult {
+    OpAsmParser::Argument arg;
+
+    // parse argument name
+    NamedAttrList attrs;
+    if (failed(parser.parseOperand(arg.ssaName, /*allowResultNumber=*/false)))
+      return failure();
+
+    // parse optional type annotation
+    arg.type = optDefaultType;
+    if (succeeded(parser.parseOptionalColon())) {
+      if (failed(parser.parseType(arg.type)))
+        return failure();
+    } else if (!optDefaultType) {
+      return parser.emitError(parser.getCurrentLocation(),
+                              "expected type annotation");
+    }
+    arg.attrs = attrs.getDictionary(parser.getContext());
+
+    // resolve operand
+    if (failed(parser.resolveOperand(arg.ssaName, arg.type, result.operands)))
+      return failure();
+    argumentInfo.push_back(arg);
+    return success();
+  };
+
+  return parser.parseCommaSeparatedList(OpAsmParser::Delimiter::Paren,
+                                        parseOperandFn, "in operand list");
+}
+
+ParseResult ChainMergeOp::parse(OpAsmParser &parser, OperationState &result) {
+  auto chainType = MEF::ChainType::get(parser.getContext());
+
+  SmallVector<OpAsmParser::Argument> operandInfo;
+  // Parse the signature.
+  if (failed(::parseParenOperandList(parser, result, operandInfo,
+                                     /*optDefaultType=*/chainType)) ||
+      failed(parser.parseOptionalAttrDictWithKeyword(result.attributes))) {
+    return failure();
+  }
+
+  // Result type is deterministic
+  result.types.push_back(chainType);
+
+  return success();
+}
+
+void ChainMergeOp::print(OpAsmPrinter &p) {
+  auto printArg = [&](Value arg) {
+    p << arg;
+    if (!isa<MEF::ChainType>(arg.getType()))
+      p << ": " << arg.getType();
+  };
+
+  p << " (";
+  llvm::interleaveComma(getOperands(), p, printArg);
+  p << ") ";
+  p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
+}
+
 //===----------------------------------------------------------------------===//
 // InvokeOp
 //===----------------------------------------------------------------------===//

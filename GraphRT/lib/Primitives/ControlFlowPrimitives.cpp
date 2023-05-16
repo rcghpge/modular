@@ -24,11 +24,10 @@ static AsyncValueRef<Chain> chain_create(Runtime &runtime) {
   return runtime.getReadyChain().copy();
 }
 
-/// Strictly wait for all the chain operands, and return one when they're ready.
+/// Strictly wait for all the input operands, and return a new chain when
+/// they're ready.
 static AsyncValueRef<Chain> chain_merge(Runtime &runtime,
                                         RemainingArguments arguments) {
-  if (!arguments.empty())
-    return std::move(arguments[0]);
   return runtime.getReadyChain().copy();
 }
 

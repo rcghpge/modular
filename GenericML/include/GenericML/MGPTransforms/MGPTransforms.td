@@ -49,7 +49,7 @@ def RemoveRedundantTensorExtractsPass : Pass<"remove-redundant-tensor-extracts",
     ```
        becomes:
     ```mlir
-          %ch = grt.chain.merge %opChain, %inputChain0, %inputChain1
+          %ch = grt.chain.merge (%opChain, %inputChain0, %inputChain1)
           %resultChain = my_op(%ch, ...,
                                %inputBuf0, %inputSpec0,
                                %inputBuf1, %inputSpec1)
@@ -78,7 +78,7 @@ def DeferAllocsPass : Pass<"defer-allocs", "MGP::ModelOp"> {
     ```
     becomes:
     ```
-      %ch = grt.chain.merge %opChain, %bufChain
+      %ch = grt.chain.merge (%opChain, %bufChain)
       %buf = mgp.cpu.buffer.alloc.static %ch, 24
       my_op(%ch, %buf, ...)
     ```
@@ -158,7 +158,7 @@ def ConcatInPlacePass : Pass<"concat-in-place", "MGP::ModelOp"> {
     %in2_ch = ...
     %out_spec = ...
     %out_buf = mgp.cpu.buffer.alloc.spec %ch0, %out_spec
-    %ch1 = grt.chain.merge %in1_ch, %in2_ch
+    %ch1 = grt.chain.merge (%in1_ch, %in2_ch)
     %ch2 = mgp.cpu.buffer.concat %ch1, %out_buf, %in1_buf, %in2_buf : ...
     // where these are the only uses of %in1_buf and %in2_buf
     ```
@@ -172,7 +172,7 @@ def ConcatInPlacePass : Pass<"concat-in-place", "MGP::ModelOp"> {
     %in1_buf, %in2_buf = mgp.cpu.buffer.split %out_buf, %in2_size : ...
     %in1_ch = ...
     %in2_ch = ...
-    %ch2 = grt.chain.merge %in1_ch, %in2_ch
+    %ch2 = grt.chain.merge (%in1_ch, %in2_ch)
     ```
 
     This pass should be run before DeferAllocsPass and thus before allocs
@@ -242,11 +242,11 @@ def ExecInvariantCodeMotionPass : Pass<"exec-invariant-code-motion", "MGP::Model
 
       // inserted; buffer.cache may perform a deep copy, so we must wait for the
       // actions on buffers to finish first.
-      %buffer_action_ch = grt.merge %kernel_ch1 // may have more action chain in general
+      %buffer_action_ch = grt.merge (%kernel_ch1) // may have more action chain in general
       %cache_ch = mgp.cpu.buffer.cache %buffer_action_ch, %ctx[1], %new_const_buf : !mgp.cpu.buffer
 
       // out chain changed
-      %out_ch = grt.merge %cache_ch // may have more cache_ch in general
+      %out_ch = grt.merge (%cache_ch) // may have more cache_ch in general
       mef.output %out_ch, %ctx : !mef.chain, !mgp.context
 
     } execute (%ch0: !mef.chain, %ctx: !mgp.context, %arg: !mgp.cpu.tensor<?xf32>) -> (!mef.chain, !mgp.cpu.tensor<?xf32>) {

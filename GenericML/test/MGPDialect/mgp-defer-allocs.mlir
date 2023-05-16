@@ -28,7 +28,7 @@
 // CHECK-NEXT: %[[CH2:.*]] = "mop.kernels.sub"(%[[CH1]], %[[OUT_BUF_1]], %[[OUT_SPEC_1]], %[[IN_BUF_2]], %[[IN_SPEC_2]], %[[OUT_BUF_2]], %[[OUT_SPEC_2]])
 // CHECK-NEXT: %[[OUT_SPEC_3:.*]] = mgp.cpu.tensor_spec.create
 // ** Add must wait for mul and sub to finish.
-// CHECK-NEXT: %[[CH3:.*]] = grt.chain.merge %[[CH1]], %[[CH2]]
+// CHECK-NEXT: %[[CH3:.*]] = grt.chain.merge (%[[CH1]], %[[CH2]])
 // ** Don't alloc add output till about to run it.
 // CHECK-NEXT: %[[OUT_BUF_3:.*]] = mgp.cpu.buffer.alloc.static %[[CH3]], 32
 // CHECK-NEXT: %[[CH4:.*]] = "mop.kernels.add"(%[[CH3]], %[[OUT_BUF_2]], %[[OUT_SPEC_2]], %[[OUT_BUF_1]], %[[OUT_SPEC_1]], %[[OUT_BUF_3]], %[[OUT_SPEC_3]])
@@ -79,15 +79,15 @@ mgp.model @basicMoGraph : tf init {
 // CHECK-NEXT: %[[CH3:.*]] = grt.chain.create
 // CHECK-NEXT: %[[CH4:.*]] = grt.chain.create
 
-// CHECK: %[[CH5:.*]] = grt.chain.merge %[[CH3]], %[[CH4]]
+// CHECK: %[[CH5:.*]] = grt.chain.merge (%[[CH3]], %[[CH4]])
 // CHECK-NEXT: %[[OUT_BUF_1:.*]] = mgp.cpu.buffer.alloc.static %[[CH5]], 32
 // CHECK-NEXT: %[[CH6:.*]] = "mop.kernels.mul"(%[[CH5]], %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %[[OUT_BUF_1]], %{{.*}})
 
-// CHECK: %[[CH7:.*]] = grt.chain.merge %[[CH1]], %[[CH4]], %[[CH6]]
+// CHECK: %[[CH7:.*]] = grt.chain.merge (%[[CH1]], %[[CH4]], %[[CH6]])
 // CHECK-NEXT: %[[OUT_BUF_2:.*]] = mgp.cpu.buffer.alloc.static %[[CH7]], 32
 // CHECK-NEXT: %[[CH8:.*]] = "mop.kernels.sub"(%[[CH7]], %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %[[OUT_BUF_2]], %{{.*}})
 
-// CHECK: %[[CH9:.*]] = grt.chain.merge %[[CH1]], %[[CH2]], %[[CH4]], %[[CH8]]
+// CHECK: %[[CH9:.*]] = grt.chain.merge (%[[CH1]], %[[CH2]], %[[CH4]], %[[CH8]])
 // CHECK-NEXT: %[[OUT_BUF_3:.*]] = mgp.cpu.buffer.alloc.static %[[CH9]], 32
 // CHECK-NEXT: %[[CH10:.*]] = "mop.kernels.add"(%[[CH9]], %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %[[OUT_BUF_3]], %{{.*}})
 // CHECK-NEXT: %[[OUT_TENSOR:.*]] = mgp.cpu.tensor.create %[[CH10]], %18, %16 : !mgp.cpu.tensor<8xf32>
@@ -124,7 +124,7 @@ mgp.model @DivergentChains : tf init {
   %buf6, %spec6 = mgp.cpu.tensor.extract %5 : !mgp.cpu.tensor<8xf32>
   %14 = mgp.cpu.buffer.alloc.static %arg0, 32
   %15 = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<8xf32>
-  %merged = grt.chain.merge %ch1, %ch2
+  %merged = grt.chain.merge (%ch1, %ch2)
   %16 = "mop.kernels.add"(%merged, %buf5, %spec5, %buf6, %spec6, %14, %15) {numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mef.chain
   %17 = mgp.cpu.tensor.create %16, %14, %15 : !mgp.cpu.tensor<8xf32>
   mef.output %16, %17 : !mef.chain, !mgp.cpu.tensor<8xf32>

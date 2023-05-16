@@ -34,10 +34,25 @@ def ChainCreateOp : GRTOp<"chain.create"> {
 def ChainMergeOp : GRTOp<"chain.merge", [Pure]> {
   let summary = "Return a !mef.chain when all inputs are ready";
 
-  let arguments = (ins Variadic<ChainType>:$operands);
-  let results = (outs ChainType:$result);
-  let assemblyFormat = "$operands attr-dict";
+  let description = [{
+    This operation returns a ready !mef.chain when all of its inputs are ready.
+    It's used to merge multiple data dependencies into a single one on the
+    output chain.
 
+    Example:
+
+    ```mlir
+      %arg1: index
+      %arg2: !mef.chain
+      %arg3: !mef.chain
+      %arg4: i32
+      %ch1 = grt.chain.merge (%arg1: index, %arg2, %arg3: !mef.chain, %arg4: i32)
+    ```
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$operands);
+  let results = (outs ChainType:$result);
+  let hasCustomAssemblyFormat = 1;
   let hasCanonicalizeMethod = 1;
 }
 
