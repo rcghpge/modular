@@ -124,19 +124,23 @@ def MOShape_GetDimOp : MOSH_Op<"get_dim", [Pure]> {
     ```
   }];
 
-  let arguments = (ins MOSH_ShapeType:$input, IndexAttr:$dim);
+  let arguments = (ins MOSH_ShapeType:$input, AttrOfType<Index>:$dim);
   let results = (outs Index:$result);
 
   let builders = [
     OpBuilder<(ins "Value":$input, "int64_t":$dim)>,
   ];
 
-  let assemblyFormat = "`(` $input `)` `` `[` $dim `]` attr-dict";
+  let assemblyFormat = [{
+    `(` $input `)` `` `[` custom<IndexParamValue>($dim) `]` attr-dict
+  }];
   let hasFolder = 1;
 
   let extraClassDeclaration = [{
     /// Create a static call to apply(mosh.get_dim[axis], inputShape)
     static TypedAttr emitStaticCall(TypedAttr inputShape, int64_t axis);
+    /// Helper to get the value of the dim attribute.
+    std::optional<APInt> getDimValue();
   }];
 }
 
@@ -220,9 +224,11 @@ def MOShape_SliceOp : MOSH_Op<"slice", [Pure]> {
     ```
   }];
 
-  let arguments = (ins MOSH_ShapeType:$input,
-                       IndexAttr:$start,
-                       OptionalAttr<IndexAttr>:$end);
+  let arguments = (ins
+    MOSH_ShapeType:$input,
+    AttrOfType<Index>:$start,
+    OptionalAttr<AttrOfType<Index>>:$end
+  );
   let results = (outs MOSH_ShapeType:$result);
 
   let builders = [
@@ -230,9 +236,20 @@ def MOShape_SliceOp : MOSH_Op<"slice", [Pure]> {
     OpBuilder<(ins "Value":$input, "int64_t":$start)>,
   ];
 
-  let assemblyFormat = "`(` $input `)` `` `[` $start (`,` $end ^)? `]` attr-dict";
+  /// TODO(#14472): update this
+  let assemblyFormat = [{
+    `(` $input `)` `` `[` custom<IndexParamValue>($start)
+    `` custom<OptionalEndValue>($end) `]` attr-dict
+  }];
   let hasFolder = 1;
   let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    /// Helper to get the value of the start attribute.
+    std::optional<APInt> getStartValue();
+    /// Helper to get the value of the end attribute.
+    std::optional<APInt> getEndValue();
+  }];
 }
 
 //===----------------------------------------------------------------------===//

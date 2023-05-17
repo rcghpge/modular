@@ -424,7 +424,7 @@ private:
       return lowerParamOperator(builder, loc, opAttr, operands);
     } else if (auto opAttr = dyn_cast<KGEN::MLIROpAttr>(attr)) {
       StringAttr opName = opAttr.getName();
-      if (opName != M::MOSH::AssertOp::getOperationName()) {
+      if (opName != MOSH::AssertOp::getOperationName()) {
         return Error(Twine("cannot lower mlir operation '") + opName.strref() +
                      "' in parameter expression");
       }

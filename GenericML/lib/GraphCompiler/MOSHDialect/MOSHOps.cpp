@@ -13,6 +13,7 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/ShapeFuncHelpers.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
+#include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/STLExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Index/IR/IndexAttrs.h"
@@ -120,10 +121,18 @@ TypedAttr GetDimOp::emitStaticCall(TypedAttr inputShape, int64_t axis) {
                                      attrNameFuncAndArg, {inputShape}, indexTy);
 }
 
+std::optional<APInt> GetDimOp::getDimValue() {
+  if (auto intAttr = dyn_cast<IntegerAttr>(getDim()))
+    return intAttr.getValue();
+  return {};
+};
+
 OpFoldResult GetDimOp::fold(FoldAdaptor adaptor) {
   if (auto input = dyn_cast_or_null<ShapeAttr>(adaptor.getInput())) {
-    int64_t dim = normalizeAxis(adaptor.getDim(), input.getRank());
-    return input.getValues()[dim];
+    if (std::optional<APInt> maybeDim = getDimValue(); maybeDim.has_value()) {
+      int64_t dim = normalizeAxis(maybeDim.value(), input.getRank());
+      return input.getValues()[dim];
+    }
   }
   return {};
 }
@@ -171,15 +180,39 @@ static int64_t clampAxis(const APInt &axisApInt, int64_t rank) {
   return std::max(std::min(axis, rank), (int64_t)0);
 }
 
+std::optional<APInt> SliceOp::getStartValue() {
+  if (auto intAttr = dyn_cast<IntegerAttr>(getStart()))
+    return intAttr.getValue();
+  return {};
+};
+
+std::optional<APInt> SliceOp::getEndValue() {
+  if (auto intAttr = dyn_cast_or_null<IntegerAttr>(getEndAttr()))
+    return intAttr.getValue();
+  return {};
+};
+
 OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
   if (auto input = dyn_cast_or_null<ShapeAttr>(adaptor.getInput())) {
     int64_t rank = input.getRank();
     // Clamp `start` and `end` to the range [0, rank], since based on slice
     // semantics these arguments may fall outside the rank of the `ShapeAttr`.
-    int64_t start = clampAxis(adaptor.getStart(), rank);
-    int64_t end = rank;
-    if (adaptor.getEnd().has_value())
-      end = clampAxis(adaptor.getEnd().value(), rank);
+    std::optional<APInt> maybeStart = getStartValue();
+    if (!maybeStart.has_value())
+      return {};
+    int64_t start = clampAxis(maybeStart.value(), rank);
+
+    // NOTE: we have to be careful here, and only allow folding if the end is
+    // unspecified (defaults to the rank) or if it's an integer attribute.
+    int64_t end;
+    if (!getEnd().has_value()) {
+      end = rank;
+    } else {
+      std::optional<APInt> maybeEnd = getEndValue();
+      if (!maybeEnd.has_value())
+        return {};
+      end = clampAxis(maybeEnd.value(), rank);
+    }
 
     SmallVector<TypedAttr> slicedDims(input.getValues().begin() + start,
                                       input.getValues().begin() + end);
@@ -191,13 +224,15 @@ OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
 
 LogicalResult SliceOp::verify() {
   // NOTE we can't check for input rank here, so verification is limited
-  IntegerAttr startAttr = getStartAttr();
-  IntegerAttr endAttr = getEndAttr();
-  if (!endAttr)
+  std::optional<APInt> maybeStart = getStartValue();
+  if (!maybeStart.has_value())
     return success();
+  int64_t start = maybeStart->getSExtValue();
 
-  int64_t start = startAttr.getInt();
-  int64_t end = endAttr.getInt();
+  std::optional<APInt> maybeEnd = getEndValue();
+  if (!maybeEnd.has_value())
+    return success();
+  int64_t end = maybeEnd->getSExtValue();
   auto bothOrNeitherIndicesNegative =
       (start < 0 && end < 0) || (start >= 0 && end >= 0);
   if (bothOrNeitherIndicesNegative && end < start) {
@@ -307,6 +342,28 @@ OpFoldResult AssertOp::fold(FoldAdaptor adaptor) {
     if (boolAttr.getValue())
       return ChainAttr::get(ChainType::get(getContext()));
   return {};
+}
+
+//===----------------------------------------------------------------------===//
+// ODS-Generated Definitions
+//===----------------------------------------------------------------------===//
+
+using KGEN::parseIndexParamValue;
+using KGEN::printIndexParamValue;
+
+/// TODO(#14472): remove this in favor of improved asm format string
+static void printOptionalEndValue(AsmPrinter &p, Operation *op, TypedAttr end) {
+  if (!end)
+    return;
+  p << ", ";
+  KGEN::printParamValue(p, end);
+}
+
+/// TODO(#14472): remove this in favor of improved asm format string
+static ParseResult parseOptionalEndValue(AsmParser &p, TypedAttr &end) {
+  if (succeeded(p.parseOptionalComma()))
+    return KGEN::parseParamValue(p, end, p.getBuilder().getIndexType());
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
