@@ -297,6 +297,15 @@ mo.graph @split_wrong_split_dim_sum() -> (!mo.tensor<[1], si32>, !mo.tensor<[2],
 // GatherOp
 //===----------------------------------------------------------------------===//
 
+mo.graph @gather_mixed_input_output_types(%input: !mo.tensor<[4], si32>, %indices: !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2], f32> {
+  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
+  // expected-error @below {{input and output must have the same element type}}
+  %0 = mo.gather(%input, %indices, %axis) : (!mo.tensor<[4], si32>, !mo.tensor<[2, 2], si32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 2], f32>
+  mo.output %0 : !mo.tensor<[2, 2], f32>
+}
+
+// -----
+
 mo.graph @gather_scalar_param(%input: !mo.tensor<[], f32>, %indices: !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32> {
   %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   // expected-error@+1 {{'mo.gather' op operand #0 must be unranked or non-scalar tensor, but got '!mo.tensor<[], f32>'}}

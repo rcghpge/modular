@@ -833,6 +833,9 @@ LogicalResult GatherOp::verify() {
   TensorType indicesType = getIndices().getType();
   TensorType resultType = getResult().getType();
 
+  if (paramsType.getDtype() != resultType.getDtype())
+    return emitError("input and output must have the same element type");
+
   // Nothing we can say if either input or indices is dynamically ranked
   if (!paramsType.hasRank() || !indicesType.hasRank())
     return success();
