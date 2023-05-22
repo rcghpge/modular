@@ -276,6 +276,7 @@ public:
         // dimensions in the argument shape. Notably, we do not allow general
         // expressions in the signature (yet).
         SmallVector<KGEN::ParamDeclRefAttr> paramDims;
+        // TODO(#14531) handle param expr
         for (TypedAttr dim : argType.getDims())
           if (auto pDim = dyn_cast<KGEN::ParamDeclRefAttr>(dim))
             paramDims.emplace_back(pDim);

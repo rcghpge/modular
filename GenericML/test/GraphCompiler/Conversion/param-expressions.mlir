@@ -142,3 +142,20 @@ mo.graph @shape_attr<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
   kgen.param.declare Sh: !mosh.ape = <[X, Y, Z]>
   mo.output
 }
+
+// CHECK: mgp.model @param_expr_in_output_shape : tf init {
+// CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[INPUT:.*]]: !mgp.cpu.tensor<?x4xf32>) -> (!mef.chain, !mgp.cpu.tensor<?x2xf32>) {
+// CHECK: {{.*}}, %[[SPEC:.*]] = mgp.cpu.tensor.extract %[[INPUT]] : !mgp.cpu.tensor<?x4xf32>
+// CHECK: %[[D0:.*]] = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.cpu.tensor_spec<?x4xf32>
+// CHECK: %[[BUF:.*]], {{.*}} = mgp.cpu.tensor.extract %[[INPUT]] : !mgp.cpu.tensor<?x4xf32>
+// CHECK: %[[TWO:.*]] = mip.constant.index 2
+// CHECK: %[[TWOd0:.*]] = mip.mul %[[D0]], %[[TWO]]
+// CHECK: %[[OUT_SPEC:.*]] = mgp.cpu.tensor_spec.create %[[TWOd0]] : !mgp.cpu.tensor_spec<?x2xf32>
+// CHECK: %[[OUT_TENSOR:.*]] = mgp.cpu.tensor.create %[[CHAIN]], %[[BUF]], %[[OUT_SPEC]]  : !mgp.cpu.tensor<?x2xf32>
+// CHECK: mef.output %[[CHAIN]], %[[OUT_TENSOR]] : !mef.chain, !mgp.cpu.tensor<?x2xf32>
+mo.graph @param_expr_in_output_shape<D0>(
+  %arg0: !mo.tensor<[D0, 4], f32>
+) -> !mo.tensor<[mul_nuw(D0, 2), 2], f32> {
+  %res = mo.static.reshape(%arg0) : !mo.tensor<[D0, 4], f32> -> !mo.tensor<[mul_nuw(D0, 2), 2], f32>
+  mo.output %res : !mo.tensor<[mul_nuw(D0, 2), 2], f32>
+}
