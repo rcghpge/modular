@@ -152,7 +152,7 @@ mo.graph @unresolved_rebinds(
   // CHECK-SAME:)>
   // CHECK-DAG: kgen.param.declare [[CH0:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "ranks of left and right inputs are not equal"}, [[COND1]])>
   // CHECK-DAG: kgen.param.declare [[COND2:.*]]: i1 = <ge([[R2]], 3)>
-  // CHECK-DAG: kgen.param.declare [[CH1:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "input ranks are not greater than 2"}, [[COND2]])>
+  // CHECK-DAG: kgen.param.declare [[CH1:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "input ranks are not greater than minimum rank for matmul-like"}, [[COND2]])>
   // CHECK-DAG: kgen.param.declare [[K:.*]] = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = -1 : index}, [[SH0]])>
   // CHECK-DAG: kgen.param.declare [[KK:.*]] = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = -2 : index}, [[SH1]])>
   // CHECK-DAG: kgen.param.declare [[COND3:.*]]: i1 =
