@@ -10,6 +10,7 @@ the correct API can export a dynamic library that `mt` can load and take
 advantage of the tooling it provides.
 
 ## How does `mt` work?
+
 The first step of `mt` is to sniff the format of the input file. Depending on
 what is inside the file, `mt` will choose a framework to load or stop with an
 error if the correct framework cannot be determined. The user can also specify
@@ -32,17 +33,20 @@ The tool has a set of command line options that it recognizes and parses into
 a C++ structure. These are the set of options that can be found in
 [DriverCLOptions.h](../include/GenericML/Driver/DriverCLOptions.h). These
 options are passed into the loaded framework. For example:
+
 ```shell
 $  mt --execute .derived/models/tflite/MobileBert-float-384-20200602.tflite \
       --load=libstock-tflite-plugin.dylib \
       --model-specification=Models/TFLite/MobileBert-float-384-20200602.yaml \
       --delegate=xnnpack
 ```
+
 `mt` clearly doesn't know anything about the `--delegate` option, as it only has
 meaning for the `stock-tflite-plugin` framework. This exact pattern should be
 used for all framework-specific options.
 
 ### Consequences
+
 The main consequence of this design (that is loading dynamic libraries at runtime)
 is that you now have to have at least the dynamic libraries you care about along
 with the `mt` binary itself. The table below contains the binaries for each
@@ -62,6 +66,7 @@ Another consequence is that `mt --help` cannot work the way many users expect
 it to. Passing the help option to `mt` will result in getting the `mt` help,
 not any framework options. In order to get the framework-specific help options you
 can do (for example):
+
 ```shell
 $ mt --load=tfl --framework-help
 USAGE: mt [options] <input file>
@@ -91,12 +96,15 @@ General options:
 ```
 
 ## Scenarios
+
 `mt` supports running what's called a 'scenario'. This means a group of options
 that will be passed to the loaded framework before a call to `M_runBinaryFile`.
 This enables the user to do things like:
+
 ```shell
 mt -execute --scenario="--num-threads=2" --scenario="--num-threads=4" /path/to/file.tflite
 ```
+
 This command would compile the file once, then execute it twice with the two
 different scenarios, in this case, LLCL would receive a 2-thread threadpool
 and then a 4-thread threadpool.
@@ -104,9 +112,11 @@ and then a 4-thread threadpool.
 Another thing you might want is the ability to continue in case of failure.
 This can be useful when you're not worried about the first error, for example.
 In that case, you can do something like:
+
 ```shell
 mt -execute --scenario="nofail:--flaky-option=true" --scenario="--flaky-option=off" /path/to/file.tflite
 ```
+
 This command would ignore an error in the first scenario, but would not ignore
 any error in the second. If `nofail:` is provided in the last scenario, the
 return code of the tool will be EXIT_SUCCESS (0).
@@ -115,8 +125,8 @@ return code of the tool will be EXIT_SUCCESS (0).
 
 `mt` can initialize input tensors from a variety of sources:
 
-  - Keyword: `zeros`, `ones`, `negones`, or `random`
-  - Filename: absolute path or relative to `$PWD`
+- Keyword: `zeros`, `ones`, `negones`, or `random`
+- Filename: absolute path or relative to `$PWD`
 
 These data sources can be specified on a per-tensor basis by passing a
 colon-delimited list to the `--input-data` switch. The format of this list is as
@@ -129,16 +139,16 @@ mt --input-data=tensor_idx:input_source:input_source_attr_list
 
 where:
 
-  - `tensor_idx`: int representing the input tensor index
-  - `input_source`: One of the keywords above or a filename
-  - `input_source_attr_list`: comma-separated attribute list: `[Truncate|Cycle]`
+- `tensor_idx`: int representing the input tensor index
+- `input_source`: One of the keywords above or a filename
+- `input_source_attr_list`: comma-separated attribute list: `[Truncate|Cycle]`
 
 Input data attributes:
 
-  - `Truncate`: file size need not be an exact multiple of the tensor size
-    - If omitted (default), then the file size must be an exact multiple of the tensor size
-  - `Cycle`: no limit on the number of times a tensor in the input file can be used
-    - If omitted (default), then no tensor in the input file may be used more than once
+- `Truncate`: file size need not be an exact multiple of the tensor size
+  - If omitted (default), then the file size must be an exact multiple of the tensor size
+- `Cycle`: no limit on the number of times a tensor in the input file can be used
+  - If omitted (default), then no tensor in the input file may be used more than once
 
 For a model with `N` inputs, the `--input-data` switch may be repeated up to `N`
 times, each with a unique tensor index.
@@ -161,4 +171,5 @@ model's definition must have already been applied to the data contained in the
 file.
 
 ## Graph Verification Tooling
+
 WIP

@@ -16,7 +16,6 @@ and the [11/17/22 Onsite notes](https://www.notion.so/modularai/Graph-Compiler-D
 
 [Original Image](https://docs.google.com/drawings/d/1VG2DDZZiHlMSuR0nVJxS0382u6scQLpHy3OOw5AtgNU/edit).
 
-
 ## MO (Modular Operations) Dialect
 
 MO is intended to be the framework-level interface to Modular optimizations.
@@ -43,14 +42,14 @@ features we do need (i.e, M::DType). Thus, we will fork the builtin tensor and
 We will extend the built in tensor with the following features.
 
 - Shape
-    - Dynamic shapes and ranks
+  - Dynamic shapes and ranks
 - Element Data Type
-    - Based on the extensible M::DType, supported by including dynamic
+  - Based on the extensible M::DType, supported by including dynamic
     `NoneType` from the builtin dialect
 - Layout information (e.g. “NHWC” or “row major”)
 - Quantization information
-    - Including quantization method (affine, log, etc.)
-    - Quantization parameters (e.g. scale and zero point)
+  - Including quantization method (affine, log, etc.)
+  - Quantization parameters (e.g. scale and zero point)
 - Target (i.e. device placement) information
 
 Each of these features will need to be extensible to support both future
@@ -70,17 +69,18 @@ static shapes or embedded in the lowered program for runtime shape/type
 inference and dynamic memory allocation.
 
 ### Core Operations
+
 - ConstantOp
 - GraphOp
-    - Which serves as a model container and function
+  - Which serves as a model container and function
 - OutputOp
-    - To satisfy termination requirements for the GraphOp
+  - To satisfy termination requirements for the GraphOp
 - IfOp
-    - For control flow, use MLIR regions in the ops instead of embedding GraphOp
+  - For control flow, use MLIR regions in the ops instead of embedding GraphOp
 - WhileOp
-    - For control flow, use MLIR regions in the ops instead of embedding GraphOp
+  - For control flow, use MLIR regions in the ops instead of embedding GraphOp
 - SendOp
-    - To model device transfers
+  - To model device transfers
 
 If, While, and perhaps Send are expected in E, but will not be implemented in D
 
@@ -112,19 +112,18 @@ information.
 
 - We run a pass that assigns device and layout, possibly with a future search
 algorithm.
-    - This increases specificity in the type system
+  - This increases specificity in the type system
 
 - We run a pass that transforms QAT (Quantization Aware Training) graphs into
 integer ops, and canonicalizes them.
-    - Quantized type information is useful for the QAT transformation, but
+  - Quantized type information is useful for the QAT transformation, but
     canonicalization removes quantization parameters from the type system
 
 - We then run a pass that searches and selects what kernel interface we want to
 run (i.e., winograd conv vs im2col vs direct) via a search mechanism
-    - This increases specificity of ops to a state that is no longer HLO, ops
+  - This increases specificity of ops to a state that is no longer HLO, ops
     now contain implementation information, and they are lowered to the
     MOGG dialect.
-
 
 ## MOGG (Modular Operation Generator Graph) Dialect
 
@@ -178,5 +177,5 @@ better parallelism
 - Stateful Operations (in place updates on tensor slices, mutable
 tensor arrays, etc.)
 - Recomputation
-    - In training generally you want to recompute the backward activations,
+  - In training generally you want to recompute the backward activations,
     especially if they can be fused.

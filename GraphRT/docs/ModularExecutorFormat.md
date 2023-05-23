@@ -35,7 +35,7 @@ rationale for the design decisions.
 
 ## Fundamental Concepts
 
-**Grammar**
+**Grammar:**
 
 ```none
   BYTE                  ::= `0x00`...`0xFF`
@@ -101,7 +101,7 @@ encoder testcases and for dealing with that "random file someone sent you".
 
 ## Sections
 
-**Grammar**
+**Grammar:**
 
 ```none
   SECTION                ::= SECTION_HEADER SECTION_DATA
@@ -131,7 +131,7 @@ not; 0 means the section body starts immediately and 1 means
 
 ## Top Level Structure
 
-**Grammar**
+**Grammar:**
 
 ```none
   MEF_FILE     ::= `0xBE` `0xF0` SECTION*
@@ -162,7 +162,7 @@ format for some purpose, or store binary tensor blobs.
 
 ### Strings Section
 
-**Grammar**
+**Grammar:**
 
 ```none
   STRINGS_SECTION ::= NUL_TERMINATED_STRING*
@@ -175,7 +175,7 @@ support embedded `NUL` in strings.
 
 ### `ATTRIBUTES` Section
 
-**Grammar**
+**Grammar:**
 
 ```none
   ATTRIBUTES_SECTION ::= BYTE*
@@ -222,7 +222,7 @@ performance penalty.
 
 ### `PRIMITIVE_NAMES` Section
 
-**Grammar**
+**Grammar:**
 
 ```none
   PRIMITIVE_NAMES_SECTION ::= VBR<NumPrimitiveNames>
@@ -249,7 +249,7 @@ of memory up front, rather than use a vector-style resizing mechanism.
 
 ### `INVOKABLES_INDEX` Section
 
-**Grammar**
+**Grammar:**
 
 ```none
   INVOKABLES_INDEX_SECTION ::= VBR<"NumInvokables"> INVOKABLE_ENTRY*
@@ -277,7 +277,7 @@ of memory up front, rather than use a vector-style resizing mechanism.
 
 ### `INVOKABLES_BODIES` Section
 
-**Grammar**
+**Grammar:**
 
 ```none
   INVOKABLES_BODIES_SECTION ::= INVOKABLE_BODY*
@@ -302,7 +302,7 @@ and other concepts that occur with MLIR regions.
 
 ### Invokable Body Definition
 
-**Grammar**
+**Grammar:**
 
 ```none
   INVOKABLE_BODY  ::= VBR<"NumPrimitives"> REGISTER_TABLE PRIMITIVE_TABLE
@@ -349,7 +349,7 @@ table of primitives allows the use of primitive indexes.
 
 ### Primitive Definition
 
-**Grammar**
+**Grammar:**
 
 ```none
   PRIMITIVE              ::= PRIMITIVE_HEADER
@@ -407,7 +407,7 @@ for the primitive.
 
 ### LocationFilenames Section
 
-**Grammar**
+**Grammar:**
 
 ```none
   LOCATION_FILENAMES_SECTION ::= NUL_TERMINATED_STRING*
@@ -426,7 +426,7 @@ strings.
 
 ### LocationPositions Section
 
-**Grammar**
+**Grammar:**
 
 ```none
   LOCATIONS_SECTION ::= LOCATION*
@@ -438,7 +438,7 @@ LocationFilenames section, and VBRs for the line and column of the position.
 
 ### `ATTRIBUTE_INDEX_MD` Section
 
-**Grammar**
+**Grammar:**
 
 ```none
   ATTRIBUTE_INDEX_MD_SECTION ::= VBR<"NumAttributes"> ATTRIBUTE_INDEX_ENTRY*
@@ -451,7 +451,7 @@ starting offset for each attribute in the file.
 
 ### `ATTRIBUTE_NAMES_MD` Section
 
-**Grammar**
+**Grammar:**
 
 ```none
   ATTRIBUTE_NAMES_SECTION ::= PRIMITIVE_TABLE*
@@ -474,7 +474,7 @@ looked up lazily by offset.
 
 ### `MLIRTYPE_STRINGS_MD` Section
 
-**Grammar**
+**Grammar:**
 
 ```none
   MLIRTYPE_STRINGS_MD_SECTION ::= NUL_TERMINATED_STRING*
@@ -491,7 +491,7 @@ pass up-front in `MEF2MLIR`. As such, they are referenced by index (not offset).
 
 ### `MLIRTYPE_MD` Section
 
-**Grammar**
+**Grammar:**
 
 ```none
   MLIRTYPE_MD_SECTION ::= INDEX<"MLIRTYPE_STRINGS_MD">*
