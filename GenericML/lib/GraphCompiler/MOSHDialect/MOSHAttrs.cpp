@@ -68,6 +68,8 @@ void M::MOSH::printShapeTypedAttr(AsmPrinter &p, TypedAttr shapeAttr) {
     p << "?";
   } else if (auto declRef = dyn_cast<KGEN::ParamDeclRefAttr>(shapeAttr)) {
     KGEN::printParamName(p, declRef.getName());
+  } else if (auto declRef = dyn_cast<KGEN::ParamIndexRefAttr>(shapeAttr)) {
+    KGEN::printParamValue(p, declRef, declRef.getType());
   } else {
     p << "[";
     printShapeValue(p, cast<ShapeAttr>(shapeAttr).getValues());

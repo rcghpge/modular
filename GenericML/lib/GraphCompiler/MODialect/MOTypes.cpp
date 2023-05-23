@@ -61,7 +61,7 @@ static ParseResult parseShapeParam(AsmParser &p, TypedAttr &shapeAttr) {
     return success();
 
   if (succeeded(KGEN::parseParamValue(p, shapeAttr, shapeTy))) {
-    if (isa<KGEN::ParamDeclRefAttr>(shapeAttr))
+    if (isa<KGEN::ParamDeclRefAttr, KGEN::ParamIndexRefAttr>(shapeAttr))
       return success();
     return p.emitError(p.getCurrentLocation())
            << "TensorType shape parameter must be ShapeAttr or "
