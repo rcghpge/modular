@@ -98,7 +98,7 @@ struct MOOpPattern : public RewritePattern {
 
     auto results = selectMOGGOp(op);
     if (results.isError()) {
-      return op->emitOpError(results.takeError().get());
+      return failure();
     } else {
       rewriter.replaceOp(op, results.takeValue());
       return mlir::success();
