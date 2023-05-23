@@ -198,22 +198,32 @@ kgen.generator @num_elements_static_rank_fold<D0>() -> index {
 kgen.generator @slice_fold<Sh1: !mosh.ape, D1, D2>(
 // CHECK: ) -> (!mosh.ape, !mosh.ape, !mosh.ape, !mosh.ape, !mosh.ape, !mosh.ape) {
 ) -> (!mosh.ape, !mosh.ape, !mosh.ape, !mosh.ape, !mosh.ape, !mosh.ape) {
+  // CHECK-DAG: %[[C0:.*]] = index.constant 0
+  // CHECK-DAG: %[[CN1:.*]] = index.constant -1
+  %idx0 = index.constant 0
+  %idx1 = index.constant 1
+  %idx2 = index.constant 2
+  %idx3 = index.constant 3
+  %idx99 = index.constant 99
+  %idx-1 = index.constant -1
+  %idx-2 = index.constant -2
+  %idx-99 = index.constant -99
   // CHECK-DAG: %[[V1:.*]] = kgen.param.constant: !mosh.ape = <[[SH1]]>
   // CHECK-DAG: %[[V2:.*]] = kgen.param.constant: !mosh.ape = <[[[D1]]]>
   // CHECK-DAG: %[[V3:.*]] = kgen.param.constant: !mosh.ape = <[[[D2]], [[D1]]]>
   // CHECK-DAG: %[[V4:.*]] = kgen.param.constant: !mosh.ape = <[42, [[D2]]]>
   // CHECK-DAG: %[[V5:.*]] = kgen.param.constant: !mosh.ape = <[[[D2]]]>
   // CHECK-DAG: %[[V6:.*]] = kgen.param.constant: !mosh.ape = <[3, [[D2]]]>
-  // CHECK-DAG: %[[S1:.*]] = mosh.slice(%[[V1]])[0, -1]
+  // CHECK-DAG: %[[S1:.*]] = mosh.slice(%[[V1]])[%[[C0]], %[[CN1]]]
   // CHECK: kgen.return %[[S1]], %[[V2]], %[[V3]], %[[V4]], %[[V5]], %[[V6]]
   %v1 = kgen.param.constant: !mosh.ape = <Sh1>
   %v2 = kgen.param.constant: !mosh.ape = <[D1, 42, D2]>
   %v3 = kgen.param.constant: !mosh.ape = <[3, D2, D1]>
-  %s1 = mosh.slice(%v1)[0, -1]
-  %s2 = mosh.slice(%v2)[0, -2]
-  %s3 = mosh.slice(%v3)[1]
-  %s4 = mosh.slice(%v2)[-2]
-  %s5 = mosh.slice(%v2)[2, 99]
-  %s6 = mosh.slice(%v3)[-99, 2]
+  %s1 = mosh.slice(%v1)[%idx0, %idx-1]
+  %s2 = mosh.slice(%v2)[%idx0, %idx-2]
+  %s3 = mosh.slice(%v3)[%idx1, %idx3]
+  %s4 = mosh.slice(%v2)[%idx-2, %idx3]
+  %s5 = mosh.slice(%v2)[%idx2, %idx99]
+  %s6 = mosh.slice(%v3)[%idx-99, %idx2]
   kgen.return %s1, %s2, %s3, %s4, %s5, %s6 : !mosh.ape, !mosh.ape, !mosh.ape, !mosh.ape, !mosh.ape, !mosh.ape
 }

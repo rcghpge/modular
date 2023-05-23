@@ -217,39 +217,28 @@ def MOShape_SliceOp : MOSH_Op<"slice", [Pure]> {
 
     ```mlir
     %sh0 : !mosh.ape
-    %sh1 = mosh.slice(%sh0)[0, 2]    // first two dims
-    %sh2 = mosh.slice(%sh0)[-2]      // last two dims
-    %sh3 = mosh.slice(%sh0)[0, -2]   // all but last two dims
-    %sh4 = mosh.slice(%sh0)[-2, -1]  // second to last dim
+    %zero = index.constant 0
+    %two = index.constant -2
+    %negOne = index.constant -2
+    %negTwo = index.constant -2
+
+    %sh1 = mosh.slice(%sh0)[%zero, %two]      // first two dims
+    %sh2 = mosh.slice(%sh0)[%negTwo]          // last two dims
+    %sh3 = mosh.slice(%sh0)[%zero, %negTwo]   // all but last two dims
+    %sh4 = mosh.slice(%sh0)[%negTwo, %negOne] // second to last dim
     ```
   }];
 
   let arguments = (ins
     MOSH_ShapeType:$input,
-    AttrOfType<Index>:$start,
-    OptionalAttr<AttrOfType<Index>>:$end
+    Index:$start,
+    Index:$end
   );
   let results = (outs MOSH_ShapeType:$result);
 
-  let builders = [
-    OpBuilder<(ins "Value":$input, "int64_t":$start, "int64_t":$end)>,
-    OpBuilder<(ins "Value":$input, "int64_t":$start)>,
-  ];
+  let assemblyFormat = "`(` $input `)` `` `[` $start `,` $end `]` attr-dict";
 
-  /// TODO(#14472): update this
-  let assemblyFormat = [{
-    `(` $input `)` `` `[` custom<IndexParamValue>($start)
-    `` custom<OptionalEndValue>($end) `]` attr-dict
-  }];
   let hasFolder = 1;
-  let hasVerifier = 1;
-
-  let extraClassDeclaration = [{
-    /// Helper to get the value of the start attribute.
-    std::optional<APInt> getStartValue();
-    /// Helper to get the value of the end attribute.
-    std::optional<APInt> getEndValue();
-  }];
 }
 
 //===----------------------------------------------------------------------===//

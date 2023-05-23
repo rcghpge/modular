@@ -163,83 +163,30 @@ OpFoldResult NumElementsOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
-void SliceOp::build(OpBuilder &builder, OperationState &state, Value input,
-                    int64_t start, int64_t end) {
-  build(builder, state, input, builder.getIndexAttr(start),
-        builder.getIndexAttr(end));
-}
-
-void SliceOp::build(OpBuilder &builder, OperationState &state, Value input,
-                    int64_t start) {
-  build(builder, state, input, builder.getIndexAttr(start), {});
-}
-
 /// Clamps `axisApInt` to the range [0, rank].
 static int64_t clampAxis(const APInt &axisApInt, int64_t rank) {
   int64_t axis = normalizeAxis(axisApInt, rank);
   return std::max(std::min(axis, rank), (int64_t)0);
 }
 
-std::optional<APInt> SliceOp::getStartValue() {
-  if (auto intAttr = dyn_cast<IntegerAttr>(getStart()))
-    return intAttr.getValue();
-  return {};
-};
-
-std::optional<APInt> SliceOp::getEndValue() {
-  if (auto intAttr = dyn_cast_or_null<IntegerAttr>(getEndAttr()))
-    return intAttr.getValue();
-  return {};
-};
-
 OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
-  if (auto input = dyn_cast_or_null<ShapeAttr>(adaptor.getInput())) {
-    int64_t rank = input.getRank();
-    // Clamp `start` and `end` to the range [0, rank], since based on slice
-    // semantics these arguments may fall outside the rank of the `ShapeAttr`.
-    std::optional<APInt> maybeStart = getStartValue();
-    if (!maybeStart.has_value())
-      return {};
-    int64_t start = clampAxis(maybeStart.value(), rank);
+  auto inputAttr = dyn_cast_or_null<ShapeAttr>(adaptor.getInput());
+  auto startAttr = dyn_cast_or_null<IntegerAttr>(adaptor.getStart());
+  auto endAttr = dyn_cast_or_null<IntegerAttr>(adaptor.getEnd());
+  if (!inputAttr || !startAttr || !endAttr)
+    return {};
 
-    // NOTE: we have to be careful here, and only allow folding if the end is
-    // unspecified (defaults to the rank) or if it's an integer attribute.
-    int64_t end;
-    if (!getEnd().has_value()) {
-      end = rank;
-    } else {
-      std::optional<APInt> maybeEnd = getEndValue();
-      if (!maybeEnd.has_value())
-        return {};
-      end = clampAxis(maybeEnd.value(), rank);
-    }
+  // Clamp `start` and `end` to the range [0, rank], since based on slice
+  // semantics these arguments may fall outside the rank of the `ShapeAttr`.
+  // TODO: is this really needed? Maybe we should just enforce this in IR.
+  int64_t rank = inputAttr.getRank();
+  int64_t end = clampAxis(endAttr.getValue(), rank);
+  int64_t start = clampAxis(startAttr.getValue(), rank);
 
-    SmallVector<TypedAttr> slicedDims(input.getValues().begin() + start,
-                                      input.getValues().begin() + end);
-    auto shapeTy = ShapeType::get(getContext());
-    return ShapeAttr::get(slicedDims, shapeTy);
-  }
-  return {};
-}
-
-LogicalResult SliceOp::verify() {
-  // NOTE we can't check for input rank here, so verification is limited
-  std::optional<APInt> maybeStart = getStartValue();
-  if (!maybeStart.has_value())
-    return success();
-  int64_t start = maybeStart->getSExtValue();
-
-  std::optional<APInt> maybeEnd = getEndValue();
-  if (!maybeEnd.has_value())
-    return success();
-  int64_t end = maybeEnd->getSExtValue();
-  auto bothOrNeitherIndicesNegative =
-      (start < 0 && end < 0) || (start >= 0 && end >= 0);
-  if (bothOrNeitherIndicesNegative && end < start) {
-    return emitError("end axis cannot be smaller than start axis if they are "
-                     "both or neither negative");
-  }
-  return success();
+  auto it = inputAttr.getValues().begin();
+  SmallVector<TypedAttr> slicedDims(it + start, it + end);
+  auto shapeTy = ShapeType::get(getContext());
+  return ShapeAttr::get(slicedDims, shapeTy);
 }
 
 //===----------------------------------------------------------------------===//
@@ -280,8 +227,16 @@ static KGEN::FuncOp buildForwardShapeFunc(Location loc, StringRef fwFuncName,
   }
 
   // One of these shapes is empty because we know the smaller rank.
-  auto xBatch = rewriter.create<SliceOp>(loc, xShape, 0, -smallerRank);
-  auto yBatch = rewriter.create<SliceOp>(loc, yShape, 0, -smallerRank);
+  auto constZero = rewriter.create<Index::ConstantOp>(loc, 0);
+  auto constSmallerRank = rewriter.create<Index::ConstantOp>(loc, smallerRank);
+  auto constNegOne = rewriter.create<Index::ConstantOp>(loc, -1);
+  auto negSmallerRank =
+      rewriter.create<Index::MulOp>(loc, constSmallerRank, constNegOne);
+
+  auto xBatch =
+      rewriter.create<SliceOp>(loc, xShape, constZero, negSmallerRank);
+  auto yBatch =
+      rewriter.create<SliceOp>(loc, yShape, constZero, negSmallerRank);
   auto batchDims = rewriter.create<ConcatOp>(loc, xBatch, yBatch);
   auto bcastedDims = rewriter.create<NewOp>(loc, newDims);
   auto res = rewriter.create<ConcatOp>(loc, batchDims, bcastedDims);
@@ -350,21 +305,6 @@ OpFoldResult AssertOp::fold(FoldAdaptor adaptor) {
 
 using KGEN::parseIndexParamValue;
 using KGEN::printIndexParamValue;
-
-/// TODO(#14472): remove this in favor of improved asm format string
-static void printOptionalEndValue(AsmPrinter &p, Operation *op, TypedAttr end) {
-  if (!end)
-    return;
-  p << ", ";
-  KGEN::printParamValue(p, end);
-}
-
-/// TODO(#14472): remove this in favor of improved asm format string
-static ParseResult parseOptionalEndValue(AsmParser &p, TypedAttr &end) {
-  if (succeeded(p.parseOptionalComma()))
-    return KGEN::parseParamValue(p, end, p.getBuilder().getIndexType());
-  return success();
-}
 
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions

@@ -78,15 +78,9 @@ kgen.func @num_elements(%sh0: !mosh.ape) -> index {
   kgen.return %0 : index
 }
 
-// CHECK: kgen.func @slice(%[[SH0:.*]]: !mosh.ape) -> (!mosh.ape, !mosh.ape) {
-kgen.func @slice(%sh0: !mosh.ape) -> (!mosh.ape, !mosh.ape) {
-  // CHECK-DAG: %[[SH1:.*]] = mosh.slice(%[[SH0]])[0, 2]
-  %sh1 = mosh.slice(%sh0)[0, 2]
-  // CHECK-DAG: %[[SH2:.*]] = mosh.slice(%[[SH0]])[0, -2]
-  %sh2 = mosh.slice(%sh0)[0, -2]
-  // CHECK-DAG: %[[SH3:.*]] = mosh.slice(%[[SH0]])[1]
-  %sh3 = mosh.slice(%sh0)[1]
-  // CHECK-DAG: %[[SH4:.*]] = mosh.slice(%[[SH0]])[-2]
-  %sh4 = mosh.slice(%sh0)[-2]
-  kgen.return %sh1, %sh2 : !mosh.ape, !mosh.ape
+// CHECK: kgen.func @slice(%[[SH0:.*]]: !mosh.ape, %[[START:.*]]: index, %[[END:.*]]: index) -> !mosh.ape {
+kgen.func @slice(%sh0: !mosh.ape, %start: index, %end: index) -> !mosh.ape {
+  // CHECK: %[[VAL0:.*]] = mosh.slice(%[[SH0]])[%[[START]], %[[END]]]
+  %sh1 = mosh.slice(%sh0)[%start, %end]
+  kgen.return %sh1 : !mosh.ape
 }
