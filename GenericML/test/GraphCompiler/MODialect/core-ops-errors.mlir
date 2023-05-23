@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --split-input-file --verify-diagnostics
+// RUN: mo-opt %s --allow-unregistered-dialect --split-input-file --verify-diagnostics
 
 mo.graph @tensor_incorrect_syntax(%arg0: !mo.tensor<[], f32>) {
   // expected-error@+2 {{expected string}}
@@ -84,10 +84,10 @@ mo.graph @while_op_type_mismatch_body(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.te
 
 // -----
 
-// expected-error @below {{'mo.graph' op expects regions to end with 'mo.output', found 'kgen.return'}}
+// expected-error @below {{'mo.graph' op expects regions to end with 'mo.output', found 'graph.return'}}
 // expected-note @below {{in custom textual format, the absence of terminator implies 'mo.output'}}
 mo.graph @graph_kgen_return(%arg0: !mo.tensor<[], f32>) -> !mo.tensor<[], f32> {
-  kgen.return %arg0 : !mo.tensor<[], f32>
+  "graph.return"(%arg0) : (!mo.tensor<[], f32>) -> ()
 }
 
 // -----
