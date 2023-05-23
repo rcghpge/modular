@@ -98,7 +98,7 @@ struct MOOpPattern : public RewritePattern {
 
     auto results = selectMOGGOp(op);
     if (results.isError()) {
-      return failure();
+      return op->emitOpError(results.takeError().get());
     } else {
       rewriter.replaceOp(op, results.takeValue());
       return mlir::success();
@@ -151,8 +151,10 @@ struct MOOpPattern : public RewritePattern {
     // If we should be using JIT generate a jit target. Otherwise use the shim.
     if (shouldUseJit)
       return helper.lowerToKernel(kernel.moggID, kernel.isView);
-    else
+    else if (kernel.shim != "None")
       return helper.lowerToShim(kernel.shim);
+    else
+      return Error("Attempting to lower a JIT-only kernel to a C++ shim");
   }
 
   MoToKernelMapTy &moToMojoKernels;
@@ -194,6 +196,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_MOJO(MO::GeluOp, "mop.kernels.gelu"),
       MO_SHIM_ONLY(MO::GreaterOp, "mop.kernels.greater"),
       MO_SHIM_ONLY(MO::GreaterEqualOp, "mop.kernels.greater_equal"),
+      MO_TO_MOJO(MO::Log1pOp, "None"),
       MO_SHIM_ONLY(MO::LinAlg::BandPartOp, "mop.kernels.linalg.band_part"),
       MO_SHIM_ONLY(MO::LinAlg::SolveOp, "mop.kernels.linalg.solve"),
       MO_SHIM_ONLY(MO::LogSoftmaxOp, "mop.kernels.logsoftmax"),
