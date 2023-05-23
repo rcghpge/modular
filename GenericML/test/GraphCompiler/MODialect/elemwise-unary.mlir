@@ -117,3 +117,11 @@ mo.graph @cast_int_float_mixed_folder() -> (!mo.tensor<[2], f32>, !mo.tensor<[3]
   // CHECK-NEXT: %[[VAL1]], %[[VAL3]] : !mo.tensor<[2], f32>, !mo.tensor<[3], f64>
   mo.output %1, %3 : !mo.tensor<[2], f32>, !mo.tensor<[3], f64>
 }
+
+// CHECK: mo.graph @log1p(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> {
+mo.graph @log1p(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
+  // CHECK-NEXT: mo.log1p(%[[ARG0]]) : !mo.tensor<[4, 5], f32>
+  %0 = mo.log1p(%arg0) : !mo.tensor<[4, 5], f32>
+  mo.output %0 : !mo.tensor<[4, 5], f32>
+}
+

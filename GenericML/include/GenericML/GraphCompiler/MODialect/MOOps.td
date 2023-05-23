@@ -518,6 +518,21 @@ def MO_GeluOp : MO_ElementWiseUnaryOp<"gelu"> {
   }];
 }
 
+def MO_Log1pOp : MO_ElementWiseUnaryOp<"log1p"> {
+  let summary = "Natural Logarithm of 1 + x";
+  let description = [{
+    Calculate log(1 + x) maintaining accuracy for small
+    x where 1 + x = 1 in floating point rounding.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.log1p(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
 def MO_SigmoidOp : MO_ElementWiseUnaryOp<"sigmoid"> {
   let summary = "Logistic Sigmoid operation";
   let description = [{
