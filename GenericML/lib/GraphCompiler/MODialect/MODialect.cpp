@@ -35,6 +35,12 @@ Operation *MODialect::materializeConstant(OpBuilder &b, Attribute value,
   return nullptr;
 }
 
+ModuleOp MODialect::getShapeFuncModule() { return shapeFuncModule; }
+
+void MODialect::setShapeFuncModule(ModuleOp module) {
+  shapeFuncModule = module;
+}
+
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
