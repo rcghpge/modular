@@ -54,13 +54,19 @@ enum class FileFormat {
   kONNXProtobuf,
 
   /// This looks like an ONNX textual protobuf.
-  kONNXTextProtobuf
+  kONNXTextProtobuf,
+
+  /// This looks like a textual MLIR file with the Torch graph dialect in it.
+  kTorchDialect,
+
+  /// This looks like a PT file (TorchScript module) in pickled form.
+  kPTPickle,
+
 };
 
 /// Helper to check if a format is within the valid range.
 inline bool isValidFileFormat(FileFormat format) {
-  return (format >= FileFormat::kUnknown) &&
-         (format <= FileFormat::kONNXTextProtobuf);
+  return (format >= FileFormat::kUnknown) && (format <= FileFormat::kPTPickle);
 }
 
 /// Use heuristics to determine what kind of file the input file contents

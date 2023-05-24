@@ -32,6 +32,8 @@ FileFormat M::sniffInputFormat(StringRef fileExtension,
       return FileFormat::kONNXTextProtobuf;
     else
       return FileFormat::kONNXProtobuf;
+  } else if (fileExtension.contains("pt")) {
+    return FileFormat::kPTPickle;
   }
 
   // If there's nothing in the file, then we can't sniff anything.
@@ -82,6 +84,8 @@ FileFormat M::sniffInputFormat(StringRef fileExtension,
           return FileFormat::kFauxDialect;
         case CompiledFrameworkLabel::kONNXModel:
           return FileFormat::kMONNXDialect;
+        case CompiledFrameworkLabel::kPyTorchModel:
+          return FileFormat::kTorchDialect;
         }
       }
     }
@@ -95,6 +99,8 @@ FileFormat M::sniffInputFormat(StringRef fileExtension,
       return FileFormat::kTFLFlatBufferJSON;
     if (fileContents.contains("ir_version: "))
       return FileFormat::kONNXTextProtobuf;
+    if (fileContents.contains("torch.debug_module_name"))
+      return FileFormat::kTorchDialect;
   } else if (mlir::isBytecode(llvm::MemoryBufferRef(fileContents, ""))) {
     std::match_results<StringRef::iterator> m;
     if (std::regex_search(fileContents.begin(), fileContents.end(), m,

@@ -132,6 +132,10 @@ getFileContentIdentity(const llvm::MemoryBuffer &file, FileFormat format,
     return "input is an ONNX model in binary protobuf form";
   case FileFormat::kONNXTextProtobuf:
     return "input is an ONNX model in text protobuf form";
+  case FileFormat::kTorchDialect:
+    return "input is a PyTorch model in Torch MLIR dialect form";
+  case FileFormat::kPTPickle:
+    return "input is a PyTorch model in PT pickled form";
   case FileFormat::kMEFFile: {
     UNWRAP_ERROR(fileHandle, dylib.openBinaryFile(ctxHandle, file));
     return dylib.sniffBinaryFileContents(ctxHandle, fileHandle);
