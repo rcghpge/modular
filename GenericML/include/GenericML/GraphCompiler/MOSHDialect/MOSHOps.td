@@ -12,6 +12,7 @@
 #define GENERICML_GRAPHCOMPILER_MOSHDIALECT_MOSHOPS_TD
 
 include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.td"
+include "KGEN/KGENDialect/KGENTypes.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
@@ -266,15 +267,14 @@ def MOSH_AssertOp : MOSH_Op<"assert"> {
     ```
   }];
 
-  let arguments = (ins I1:$cond, OptionalAttr<StrAttr>:$message);
+  let arguments = (ins I1:$cond, AttrOfType<KGEN_StringType>:$message);
   let results = (outs MOSH_ChainType:$chain);
 
   let builders = [
-    OpBuilder<(ins "Value":$cond)>,
-    OpBuilder<(ins "Value":$cond, "StringRef":$message)>,
+    OpBuilder<(ins "Value":$cond, "Twine":$message)>,
   ];
 
-  let assemblyFormat = "$cond (`,` $message^)? attr-dict";
+  let assemblyFormat = "$cond `,` custom<StringParam>($message) attr-dict";
   let hasFolder = 1;
 
   let extraClassDeclaration = [{

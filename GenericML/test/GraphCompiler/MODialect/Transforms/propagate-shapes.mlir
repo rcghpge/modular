@@ -40,9 +40,9 @@ mo.graph @batch_matmul_without_certain_checks<D0, D1, D2, D3 -> D4, D5, D6>(
   kgen.param.declare P1 = <apply(:(!mosh.ape) -> index "mosh.get_rank", Sh0)>
   kgen.param.declare P2 = <apply(:(!mosh.ape) -> index "mosh.get_rank", Sh1)>
   kgen.param.declare P3: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate eq>}, P1, P2)>
-  kgen.param.declare CH0: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "ranks of left and right inputs are not equal"}, P3)>
+  kgen.param.declare CH0: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "ranks of left and right inputs are not equal" : !kgen.string}, P3)>
   kgen.param.declare P4: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate sgt>}, P2, P0)>
-  kgen.param.declare CH1: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "input ranks are not greater than 2"}, P4)>
+  kgen.param.declare CH1: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "input ranks are not greater than 2" : !kgen.string}, P4)>
   kgen.param.declare P8: !mosh.ape = <apply(:(!mosh.ape, index, index) -> !mosh.ape "mosh.slice", Sh0, 0, -2)>
   kgen.param.declare P11 = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = -2 : index}, Sh0)>
   kgen.param.declare P12 = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = -1 : index}, Sh1)>
@@ -75,8 +75,8 @@ mo.graph @unfolded_apply_shouldnt_be_inlined<Sh0: !mosh.ape, Sh1: !mosh.ape -> S
   kgen.param.declare P2 = <apply(:(!mosh.ape) -> index "mosh.get_rank", Sh1)>
   // CHECK-NEXT: kgen.param.declare [[P3:.*]]: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate eq>}, [[P1]], [[P2]])>
   kgen.param.declare P3: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate eq>}, P1, P2)>
-  // CHECK-NEXT: kgen.param.declare [[CH0:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert", [[P3]])>
-  kgen.param.declare CH0: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert", P3)>
+  // CHECK-NEXT: kgen.param.declare [[CH0:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "" : !kgen.string}, [[P3]])>
+  kgen.param.declare CH0: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "" : !kgen.string}, P3)>
 
   // CHECK-NEXT: kgen.param.declare [[P4:.*]]: !mosh.ape = <apply(:(!mosh.ape, index, index) -> !mosh.ape "mosh.slice", [[SH0]], 0, -2)>
   kgen.param.declare P4: !mosh.ape = <apply(:(!mosh.ape, index, index) -> !mosh.ape "mosh.slice", Sh0, 0, -2)>

@@ -270,20 +270,19 @@ KGEN::FuncOp BroadcastOp::getForwardShapeFunc(Location loc, ModuleOp module,
 // MO_AssertOp
 //===----------------------------------------------------------------------===//
 
-void AssertOp::build(OpBuilder &builder, OperationState &state, Value cond) {
-  build(builder, state, cond, StringAttr());
-}
-
 void AssertOp::build(OpBuilder &builder, OperationState &state, Value cond,
-                     StringRef message) {
-  build(builder, state, cond, builder.getStringAttr(message));
+                     Twine message) {
+  auto attr = StringAttr::get(message.str(),
+                              KGEN::StringType::get(builder.getContext()));
+  build(builder, state, cond, cast<TypedAttr>(attr));
 }
 
 TypedAttr AssertOp::emitStaticCall(TypedAttr cond, StringRef message) {
   MLIRContext *ctx = cond.getContext();
   SmallVector<std::pair<StringAttr (*)(mlir::OperationName), Attribute>>
       msgAttrNameFuncAndArg = {
-          {AssertOp::getMessageAttrName, StringAttr::get(ctx, message)}};
+          {AssertOp::getMessageAttrName,
+           StringAttr::get(message, KGEN::StringType::get(ctx))}};
   auto chainTy = ChainType::get(ctx);
   return KGEN::emitMLIROperationCall(AssertOp::getOperationName(),
                                      msgAttrNameFuncAndArg, {cond}, chainTy);
@@ -304,7 +303,9 @@ OpFoldResult AssertOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 
 using KGEN::parseIndexParamValue;
+using KGEN::parseStringParam;
 using KGEN::printIndexParamValue;
+using KGEN::printStringParam;
 
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
