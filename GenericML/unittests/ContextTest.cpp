@@ -7,6 +7,7 @@
 #include "GenericML/Support/Context.h"
 #include "LLCL/Runtime/Allocator.h"
 #include "LLCL/Runtime/Runtime.h"
+#include "LLCL/Runtime/TypeID.h"
 
 #include "gtest/gtest.h"
 
@@ -40,10 +41,15 @@ static LLCL::Runtime *GetRuntime() {
 TEST(ContextTest, StateSlotDowncastFailTest) {
   Context ctx(/*numSlots=*/1);
   ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, /*numBuffers=*/1, 43);
-  ASSERT_DEATH_IF_SUPPORTED(
-      ctx.getStateSlotPayload<PayloadB>(/*slotIndex=*/0),
-      "StateSlot::get: object has actual runtime type 'PayloadA' however it "
-      "was expected at compile time to have type 'PayloadB'");
+  constexpr std::string_view typeA = LLCL::Detail::typeNameFor<PayloadA>();
+  constexpr std::string_view typeB = LLCL::Detail::typeNameFor<PayloadB>();
+  std::string errorMessage = "StateSlot::get: object has actual runtime type '";
+  errorMessage += typeA;
+  errorMessage += "' however it was expected at compile time to have type '";
+  errorMessage += typeB;
+  errorMessage += "'";
+  ASSERT_DEATH_IF_SUPPORTED(ctx.getStateSlotPayload<PayloadB>(/*slotIndex=*/0),
+                            errorMessage);
 }
 #endif
 
