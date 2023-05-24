@@ -39,11 +39,6 @@ def MODialect : Dialect {
   let hasConstantMaterializer = 1;
 
   let extraClassDeclaration = [{
-  public:
-    /// Return the module that stores the shape functions implemented in mojo.
-    ModuleOp getShapeFuncModule();
-    /// Set the module that stores the shape functions implemented in mojo.
-    void setShapeFuncModule(ModuleOp module);
   private:
     /// Register all dialect attributes.
     void registerAttributes();
@@ -51,8 +46,6 @@ def MODialect : Dialect {
     void registerTypes();
     /// Register all dialect ops.
     void registerOperations();
-    /// Module for storing the shape functions implemented in mojo.
-    ModuleOp shapeFuncModule;
   }];
 
   let useDefaultTypePrinterParser = 1;
