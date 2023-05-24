@@ -132,7 +132,7 @@ These data sources can be specified on a per-tensor basis by passing a
 colon-delimited list to the `--input-data` switch. The format of this list is as
 follows:
 
-```
+```shell
 # Initialize specific input tensor
 mt --input-data=tensor_idx:input_source:input_source_attr_list
 ```
@@ -157,7 +157,7 @@ Any input tensors that are not initialized via the `--input-data` switch are
 initialized by the `--model-inputs` switch. The `--model-inputs` switch supports
 keyword datasources only:
 
-```
+```shell
 # Default initialization for all input tensors
 mt --model-inputs=[zeros|ones|negones|random]
 ```

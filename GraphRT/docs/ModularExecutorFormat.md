@@ -63,7 +63,7 @@ A MEF file is formed as a byte stream whose top-level structure is a list of
 
   **Example:**
 
-  ```
+  ```none
    2 = 0b00000010 (two's complement)
   signed VBR = 0b00000100
          VBR = 0b00000010

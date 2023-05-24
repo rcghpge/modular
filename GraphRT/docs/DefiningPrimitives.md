@@ -1,7 +1,5 @@
 # Defining Primitives in GraphRT
 
-# Introduction
-
 Primitives are defined as C++ functions and registered dynamically with the
 MEF executor's primitive registry at runtime by their registered string name.
 This allows GraphRT to be an easily hackable system that is modular, low
@@ -11,7 +9,7 @@ to extend and friendly for experimentation.
 This document gives a general overview of how to implement your own primitives,
 with pointers to examples in the source base.
 
-# How primitives work
+## How primitives work
 
 As mentioned above, primitives are implemented as C++ functions, and these
 functions take a `PrimitiveFrame` as their operand.  They are registered
@@ -56,7 +54,7 @@ needed to invoke and get the results from a primitive. While fundamentally all
 primitive implementations poke the `RunnablePrimitiveDescriptor` class to get
 their work done, it is a very low-level and not-very-type-safe approach.
 
-# Registering primitives with the `ADD_PRIMITIVE` macro
+## Registering primitives with the `ADD_PRIMITIVE` macro
 
 Because the `RunnablePrimitiveDescriptor` class is so low-level and
 error-prone, GraphRT provides an `ADD_PRIMITIVE` macro to help - you
@@ -68,7 +66,7 @@ This macro uses template metaprogramming magic to generate accessors for
 There are lots of examples in the [`lib/Primitives` library](../lib/Primitives/)
 but this section gives an overview of the key concepts.
 
-## Registering simple primitives with operands and results
+### Registering simple primitives with operands and results
 
 To see this in action, consider some simple primitives that take and return
 values as SSA operands, for example with an `.mlir` syntax like this:
@@ -125,7 +123,7 @@ static AsyncValueRef<int32_t> test_noop(AsyncValueRef<int32_t> input) {
 }
 ```
 
-## Variadic operands/results, invokables, and magic references
+### Variadic operands/results, invokables, and magic references
 
 In some cases you may want to capture "all the rest" of the operands or results
 in an operation.  For example, consider the `grt.invoke` operation, which is
@@ -163,7 +161,7 @@ support for passing in a `Runtime &` or even a
 `RunnablePrimitiveDescriptor &` for advanced cases: just ask and you will
 receive.
 
-## Producing errors and multiple results in synchronous primitives
+### Producing errors and multiple results in synchronous primitives
 
 Primitives in MEF may return multiple results, and both LLCL/GraphRT support
 full error propagation with `AsyncValue`s.  `ADD_PRIMITIVE` makes this extremely
@@ -190,7 +188,7 @@ This is mostly useful for simple primitives like this that don't involve
 asynchronous processing on a `WorkQueue`.  For asynchronous cases, you need more
 advanced patterns.
 
-## Asynchronous results and custom result handling
+### Asynchronous results and custom result handling
 
 While directly returning a simple type like `int32_t` is useful for trivial
 cases, many primitives use the work queue in the runtime to parallelize the
@@ -268,7 +266,7 @@ really_custom(int32_t size, Runtime &runtime) {
 
 These cases should be exceedingly rare.
 
-## Working with attributes
+### Working with attributes
 
 The MEF file format supports encoding a number of MLIR attributes (including
 string attributes, standard integer and floating point values, arrays of
@@ -349,7 +347,7 @@ static void handleAllListElements(MEFListAttr list) {
 }
 ```
 
-**Dynamic Attributes**
+**Dynamic Attributes:**
 
 Some primitives might want to accept dynamic attributes and use reflection over
 them to figure out what they are.  You can do this with the `MEFDynamicAttr`
@@ -366,7 +364,7 @@ static void takes_any_attribute(MEFDynamicAttr value) {
 }
 ```
 
-# Guidelines for Implementing Primitives
+## Guidelines for Implementing Primitives
 
 Now that you know how to register and implement primitives, it is important to
 understand the general design principles that go into implementing them well.
@@ -386,7 +384,7 @@ typically a significant amount of parallelism within an operation kernel
 
 With these use-cases in mind, here are some things to think about.
 
-## Minimize "synchronous" work, prefer "asynchronous" work
+### Minimize "synchronous" work, prefer "asynchronous" work
 
 The primitive is invoked by the MEF executor when its arguments become ready,
 and because it is arbitrary C++ logic, they can do pretty much anything.  We
@@ -447,7 +445,7 @@ static void vec_fill_vector(int32_t size, Result<std::vector<int32_t>> result) {
 
 TODO: We should quantify this and develop a better sense for the tradeoff point.
 
-## Correctly managing resource lifetimes
+### Correctly managing resource lifetimes
 
 The executor will completely skip execution of primitives that get fed error
 values.  This is great for implicit and automatic propagation of error values,
@@ -488,7 +486,7 @@ The solution to this is to take advantage of the fact that `AsyncValue` can hold
 completely arbitrary C++ types, including ones that are not-even-movable.  For
 example, you could use this instead:
 
-```
+```c++
 static AsyncValueRef<MyAcceleratorType> allocate_thing() {
   return AsyncValueRef<MyAcceleratorType>::createReady(...);
 }
@@ -501,7 +499,7 @@ with C++ subclasses, shared references to concurrent-safe types like thread
 safe hash tables, etc.  In those cases, you can use standard C++ smart pointers,
 for example like shared or unique pointers:
 
-```
+```c++
 static void allocate_thing(Result<std::unique_ptr<MyAcceleratorType>> result) {
   result.emplace(new MyCoolAcceleratorThing(...))
 }
@@ -511,7 +509,7 @@ As such, be on the lookup for "deallocator" primitives.  They are almost always
 the wrong thing.  TODO: Should we completely ban pointers (and things like
 `ArrayRef`/`StringRef`) in arguments and results?
 
-# Non-strict primitives
+## Non-strict primitives
 
 By default, the MEF executor only invokes a primitive implementation function
 when all of the arguments (SSA values in MLIR syntax) are "ready" `AsyncValue`'s.
@@ -522,7 +520,7 @@ default for almost all primitives, but some (notably control flow) want to do
 more custom processing.  For these cases, GraphRT supports a "non-strict"
 primitive.
 
-## What are non-strict primitives?
+### What are non-strict primitives?
 
 The defining feature of a GraphRT "non-strict" primitive is that it is invoked
 when *any* argument (SSA value) becomes ready, instead of when *all* arguments
@@ -558,7 +556,7 @@ to block execution of the body for all of them to be available.  Doing so would
 destroy composability of these control flow operators - for example not inlining a
 grt.invoke could have devastating and unpredictable performance effects.
 
-## Implementing a non-strict primitive
+### Implementing a non-strict primitive
 
 The key thing to remember when implementing a non-strict primitive is that their
 body gets invoked before the operands are "ready", and (as such) those operands
@@ -598,7 +596,7 @@ look at the primitives implemented in
 [ControlFlowPrimitives.cpp](../lib/Primitives/ControlFlowPrimitives.cpp) for
 examples.
 
-## Declaring a non-strict primitive in ODS
+### Declaring a non-strict primitive in ODS
 
 The next question is: how do you tell GraphRT that your primitive is non-strict?
 The contract is quite different, and invoking a strict primitive too early would
