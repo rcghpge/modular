@@ -763,8 +763,7 @@ def MO_NotEqualOp : MO_ComparisonBinaryOp<"not_equal", [Commutative]> {
 }
 
 // TODO: Use an AllElementTypesMatch<["x", "y", "result"]> trait for MO_Tensor.
-// TODO: Use an SameOperandsShape trait for MO_Tensor.
-def MO_SelectOp : MO_TensorOp<"select", [Pure]>{
+def MO_SelectOp : MO_TensorOp<"select", [Pure, MO_SameOperandsAndResultShape]>{
   let summary = "Select operation";
   let description = [{
     Return cond ? x : y (element-wise), where cond, x and y are input tensors.

@@ -928,38 +928,9 @@ OpFoldResult SelectOp::fold(FoldAdaptor adaptor) {
   return IntArrayElementsAttr::get(rankedResTy, res);
 }
 
-// TODO: Place this in Support somewhere. Maybe already there?
-static bool shapesMatch(TensorType x, TensorType y) {
-  if (!x.hasRank() || !y.hasRank())
-    return true;
-  if (x.getRank() != y.getRank())
-    return false;
-  for (int i = 0, e = x.getRank(); i < e; i++) {
-    auto xDim = x.getIntDim(i);
-    auto yDim = y.getIntDim(i);
-    if (mlir::ShapedType::isDynamic(xDim) || mlir::ShapedType::isDynamic(yDim))
-      continue;
-    if (xDim != yDim)
-      return false;
-  }
-  return true;
-}
-
 LogicalResult SelectOp::verify() {
-  TensorType condType = getCond().getType();
-  TensorType xType = getX().getType();
-  TensorType yType = getY().getType();
-  TensorType resultType = getResult().getType();
-
-  if (!shapesMatch(xType, yType))
-    emitError("operands must have matching shapes");
-  if (!shapesMatch(xType, condType))
-    emitError("operands and condition must have matching shapes");
-  if (!shapesMatch(xType, resultType))
-    emitError("operands and result must have matching shapes");
-
-  DType xDType = xType.getDtype();
-  DType yDType = yType.getDtype();
+  DType xDType = getX().getType().getDtype();
+  DType yDType = getY().getType().getDtype();
   DType resultDType = getResult().getType().getDtype();
 
   if (xDType != yDType)
