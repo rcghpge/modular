@@ -48,11 +48,12 @@ syntax for the primitive has a directly corresponding runtime behavior:
 3) Symbol references like `@foo` and region bodies `{ ... }` in MLIR turn into
    "invokable" references that may be invoked in the executor.
 
-The [`RunnablePrimitiveDescriptor class`](../include/GraphRT/MEFExecutor/PrimitiveDescriptor.h) is
-the C++ class the MEF executor uses to wrap up all the runtime representation
-needed to invoke and get the results from a primitive. While fundamentally all
-primitive implementations poke the `RunnablePrimitiveDescriptor` class to get
-their work done, it is a very low-level and not-very-type-safe approach.
+The [`RunnablePrimitiveDescriptor
+class`](../include/GraphRT/MEFExecutor/PrimitiveDescriptor.h) is the C++ class
+the MEF executor uses to wrap up all the runtime representation needed to
+invoke and get the results from a primitive. While fundamentally all primitive
+implementations poke the `RunnablePrimitiveDescriptor` class to get their work
+done, it is a very low-level and not-very-type-safe approach.
 
 ## Registering primitives with the `ADD_PRIMITIVE` macro
 
@@ -549,12 +550,14 @@ The `grt.invoke` operation is defined as non-strict, which allows it to kick off
 execution of its body as soon as *either* `%a_val` or `%b_val` are ready,
 allowing the expensive compute to start as soon as possible.
 
-This is really important for control flow-like operations (for example `grt.invoke`,
-`grt.if`, etc) because they can end up taking lots of operands, those operands
-can all have different computational chains that produce them, and we don't want
-to block execution of the body for all of them to be available.  Doing so would
-destroy composability of these control flow operators - for example not inlining a
-grt.invoke could have devastating and unpredictable performance effects.
+This is really important for control flow-like operations (for example
+`grt.invoke`, `grt.if`, etc) because they can end up taking lots of operands,
+those operands can all have different computational chains that produce them,
+and we don't want to block execution of the body for all of them to be
+available. Doing so would destroy composability of these control flow operators
+
+- for example not inlining a grt.invoke could have devastating and
+unpredictable performance effects.
 
 ### Implementing a non-strict primitive
 

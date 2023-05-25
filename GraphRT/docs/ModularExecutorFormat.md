@@ -25,8 +25,8 @@ We have the following goals:
 - We need to represent location information in order to reflect runtime errors
   (for example shape errors) back to the user source program.
 
-- We should follow normal best practices for binary encodings, for example having
-  tools to round trip them to a textual form (MLIR in our case), support
+- We should follow normal best practices for binary encodings, for example
+  having tools to round trip them to a textual form (MLIR in our case), support
   arbitrary sized files (not limited to 4GB), be efficient to read, make
   reasonable attempts to be dense, etc.
 
@@ -51,15 +51,15 @@ rationale for the design decisions.
 A MEF file is formed as a byte stream whose top-level structure is a list of
 "sections" that hold various sorts of data. It uses a few fundamental concepts:
 
-- *VBRs* are encoded in a "Variable Byte Rate" (`VBR`) encoding, allowing
-  small unsigned integers (less than 2^7) to be stored in one byte, unsigned
-  integers up to 2^14 to be stored in two bytes, etc. This is done by using the
-  high bit of each byte in the stream to indicate "more bytes are coming".
-  *VBR* values are stored in big-endian byte order, while *reverse VBR* values are
-  stored in little-endian byte order.
-  *signed VBRs* are encoded using an extra sign bit. Positive numbers are shifted
-  left by 1 and negative numbers are negated and shifted left by 1 with bit 0 set,
-  this final value is then encoded as a regular *VBR*.
+- *VBRs* are encoded in a "Variable Byte Rate" (`VBR`) encoding, allowing small
+  unsigned integers (less than 2^7) to be stored in one byte, unsigned integers
+  up to 2^14 to be stored in two bytes, etc. This is done by using the high bit
+  of each byte in the stream to indicate "more bytes are coming". *VBR* values
+  are stored in big-endian byte order, while *reverse VBR* values are stored in
+  little-endian byte order. *signed VBRs* are encoded using an extra sign bit.
+  Positive numbers are shifted left by 1 and negative numbers are negated and
+  shifted left by 1 with bit 0 set, this final value is then encoded as a
+  regular *VBR*.
 
   **Example:**
 
@@ -81,8 +81,8 @@ A MEF file is formed as a byte stream whose top-level structure is a list of
 
 - *Offsets* are VBRs that demarcate a byte offset in the stream from a
   fixed position (typically the start of a section). These are useful when the
-  section contains a bunch of variable length things, for example when referring to a
-  string in the string table. Because variable sized integers are used
+  section contains a bunch of variable length things, for example when referring
+  to a string in the string table. Because variable sized integers are used
   pervasively in MEF files, offsets are very common.
 
 - *Indexes* are VBRs that demarcate an entry in a table, for example a register
@@ -123,11 +123,11 @@ and utilities for decoding the basic file structures like VBR integers are
 defined in
 [`MEFReader.h`](../include/GraphRT/MEF/MEFReader.h).
 
-The `LENGTH_AND_ALIGNMENT` contains `SECTION_LENGTH` and `SECTION_ALIGNMENT_FLAG`. The
-`SECTION_LENGTH` contains one bit shifted value of the section length and the
-`SECTION_ALIGNMENT_FLAG` (0 bit) indicates if `SECTION_BODY_ALIGNMENT` exists or
-not; 0 means the section body starts immediately and 1 means
-`SECTION_BODY_ALIGNMENT` follows.
+The `LENGTH_AND_ALIGNMENT` contains `SECTION_LENGTH` and
+`SECTION_ALIGNMENT_FLAG`. The `SECTION_LENGTH` contains one bit shifted value
+of the section length and the `SECTION_ALIGNMENT_FLAG` (0 bit) indicates if
+`SECTION_BODY_ALIGNMENT` exists or not; 0 means the section body starts
+immediately and 1 means `SECTION_BODY_ALIGNMENT` follows.
 
 ## Top Level Structure
 
@@ -157,8 +157,8 @@ and a list of sections. The `0xMEF0` magic number allows us to encode version
 numbers, for example the following would be `0xMEF1`.
 
 The MEF reader skips over unknown sections, which could be useful for future
-evolution of the format, for example if we want to store extra metadata in the MEF
-format for some purpose, or store binary tensor blobs.
+evolution of the format, for example if we want to store extra metadata in the
+MEF format for some purpose, or store binary tensor blobs.
 
 ### Strings Section
 
@@ -202,23 +202,24 @@ MEF files only support a subset of MLIR attributes, currently including:
 The encoding of an attribute has three pieces:
 
 1) For arrays and strings, the length of the object (in units) is encoded as a
-   *reverse VBR* byte sequence, allowing readers to understand how long the array
-   or string is.
+   *reverse VBR* byte sequence, allowing readers to understand how long the
+   array or string is.
 2) All attributes have a one-byte encoding of the "kind" of attribute it is,
    which is described by the `AttributeKind` enum in
    [`MEFEncoding.h`](../include/GraphRT/MEF/MEFEncoding.h).
 3) The value of the attribute is stored in little-endian byte order.
 
 Note that emission of the attribute is always done so that the attribute value
-is naturally aligned, for example that a `si32` value is emitted on a 4-byte alignment.
+is naturally aligned, for example that a `si32` value is emitted on a 4-byte
+alignment.
 
 ***Rationale***
 
 The GraphRT executor needs to refer to attribute values, and since the MEF file
 is designed to be memory mapped in, we can directly use the encoding in memory.
-This means that primitives will need to `bswap` attributes for big-endian systems,
-but they generally have `bswap`'ing loads anyway so this shouldn't impose a
-performance penalty.
+This means that primitives will need to `bswap` attributes for big-endian
+systems, but they generally have `bswap`'ing loads anyway so this shouldn't
+impose a performance penalty.
 
 ### `PRIMITIVE_NAMES` Section
 
@@ -239,10 +240,10 @@ the string table for the primitive name.
 
 ***Rationale***
 
-We want dense indexes from primitives in the `INVOKABLES_BODIES` section, and the
-GraphRT Executor wants to resolve names to primitive implementations at startup
-time anyway, as such, it makes sense for the GraphRT executor to build its own
-mutable array in memory for primitives.
+We want dense indexes from primitives in the `INVOKABLES_BODIES` section, and
+the GraphRT Executor wants to resolve names to primitive implementations at
+startup time anyway, as such, it makes sense for the GraphRT executor to build
+its own mutable array in memory for primitives.
 
 We encode the count of primitive names so the executor can allocate one block
 of memory up front, rather than use a vector-style resizing mechanism.
@@ -258,9 +259,10 @@ of memory up front, rather than use a vector-style resizing mechanism.
 ```
 
 The `INVOKABLES_INDEX` section defines a table of "invokables" in the MEF file,
-including an Offset into the [`INVOKABLES_BODIES_SECTION`](#invokables_bodies-section),
-a primitive name (an Offset into the [`STRINGS_SECTION`](#strings-section), may be empty),
-a symbol name (an Offset into the [`STRINGS_SECTION`](#strings-section), may be empty),
+including an Offset into the
+[`INVOKABLES_BODIES_SECTION`](#invokables_bodies-section), a primitive name (an
+Offset into the [`STRINGS_SECTION`](#strings-section), may be empty), a symbol
+name (an Offset into the [`STRINGS_SECTION`](#strings-section), may be empty),
 an offset to the body, and the number of arguments and results.
 
 ***Rationale***
@@ -400,10 +402,10 @@ two entries, `0x00000001` and `0x00000002`; and there will be three
 ***Rationale***
 
 This record allows us to efficiently form the array of operands and results
-that get passed to a C/C++ function that implements the primitive. When the primitive
-completes, the UsedBy records allow us to efficiently trigger execution of data
-dependent primitives if they are ready, by decrementing the "NumOperands" field
-for the primitive.
+that get passed to a C/C++ function that implements the primitive. When the
+primitive completes, the UsedBy records allow us to efficiently trigger
+execution of data dependent primitives if they are ready, by decrementing the
+"NumOperands" field for the primitive.
 
 ### LocationFilenames Section
 
@@ -445,9 +447,9 @@ LocationFilenames section, and VBRs for the line and column of the position.
   ATTRIBUTE_INDEX_MD_ENTRY   ::= OFFSET<"Attributes">
 ```
 
-The `ATTRIBUTE_INDEX_MD` section specifies the kind of each attribute emitted to the
-attribute section, allowing `MEFToMLIR` conversion by allowing us to know the
-starting offset for each attribute in the file.
+The `ATTRIBUTE_INDEX_MD` section specifies the kind of each attribute emitted
+to the attribute section, allowing `MEFToMLIR` conversion by allowing us to
+know the starting offset for each attribute in the file.
 
 ### `ATTRIBUTE_NAMES_MD` Section
 

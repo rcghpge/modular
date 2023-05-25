@@ -1,9 +1,10 @@
 # `mt` <u>m</u>odular <u>t</u>ool
 
 `mt` is meant to be a driver for functionally *any* framework that we want to
-use. It uses an API defined in [DriverAPI.h](../include/GenericML/Driver/DriverAPI.h)
-to call into frameworks built as dynamic libraries and provide the basic commands
-we expect from a driver like `-execute`, `-inspect`, etc.
+use. It uses an API defined in
+[DriverAPI.h](../include/GenericML/Driver/DriverAPI.h) to call into frameworks
+built as dynamic libraries and provide the basic commands we expect from a
+driver like `-execute`, `-inspect`, etc.
 
 The tool is designed with extensibility at the forefront - anyone who defines
 the correct API can export a dynamic library that `mt` can load and take
@@ -146,9 +147,12 @@ where:
 Input data attributes:
 
 - `Truncate`: file size need not be an exact multiple of the tensor size
-  - If omitted (default), then the file size must be an exact multiple of the tensor size
-- `Cycle`: no limit on the number of times a tensor in the input file can be used
-  - If omitted (default), then no tensor in the input file may be used more than once
+  - If omitted (default), then the file size must be an exact multiple of the
+    tensor size
+- `Cycle`: no limit on the number of times a tensor in the input file can be
+  used
+  - If omitted (default), then no tensor in the input file may be used more than
+    once
 
 For a model with `N` inputs, the `--input-data` switch may be repeated up to `N`
 times, each with a unique tensor index.

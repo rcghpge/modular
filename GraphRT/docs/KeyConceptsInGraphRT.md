@@ -58,10 +58,10 @@ like `grt.if` and `grt.invoke`.
 
 GraphRT benefits from MLIR's ability to compose and intermix dialects together.
 In this case, it allows primitives from "grt" to intermix with the runtime APIs
-for CPU APIs (for example Intel MKL, ruy, etc), framework specific CPU interfaces, as
-well as the CPU side of drivers for diverse accelerators.  It is powerful to be
-able to drive these from a consistent low-level runtime, and being "hackable"
-makes it possible to explore and iterate on new ideas quickly.
+for CPU APIs (for example Intel MKL, ruy, etc), framework specific CPU
+interfaces, as well as the CPU side of drivers for diverse accelerators. It is
+powerful to be able to drive these from a consistent low-level runtime, and
+being "hackable" makes it possible to explore and iterate on new ideas quickly.
 
 This works because GraphRT "doesn't know what it is doing.  Each primitive is
 typically defined as a C++ function and is registered with GraphRT at load time.
@@ -101,12 +101,12 @@ descriptor (queryable with `->isType<T>()`), which allows the primitives to
 be completely dynamically typed if they want.  For example, you don't want a
 different "invoke" primitive for each signature you want to support.
 
-On the other hand, many primitives do have static types they work with, for example
-`grt.add.si32` takes and returns `int32_t` values.  We do all type checking at
-the MLIR level, by defining primitives in ODS and checking their type
-constraints in the verifier.  This shifts the checking burden from runtime to
-compiler, but it also means that MEF is **not** and will never be a memory safe
-"trusted compute" execution format like Java bytecode tried to be.
+On the other hand, many primitives do have static types they work with, for
+example `grt.add.si32` takes and returns `int32_t` values. We do all type
+checking at the MLIR level, by defining primitives in ODS and checking their
+type constraints in the verifier. This shifts the checking burden from runtime
+to compiler, but it also means that MEF is **not** and will never be a memory
+safe "trusted compute" execution format like Java bytecode tried to be.
 
 ## Modular Executor Format ("MEF") File Format
 
@@ -147,12 +147,13 @@ mef.invokable @dataflow_example(%a: i32, %b: i32) -> i32 {
 ```
 
 In GraphRT, each input and output SSA value is implicitly held in an
-`AsyncValue` - this means that the invokable is run with two `AsyncValues`,
-and those values may not be "ready".  Consider if the first operand (`%a`) is
-not ready but the second operand (`%b`) is: in this case, the `grt.add.si32` that
+`AsyncValue` - this means that the invokable is run with two `AsyncValues`, and
+those values may not be "ready". Consider if the first operand (`%a`) is not
+ready but the second operand (`%b`) is: in this case, the `grt.add.si32` that
 produces `%a2` value cannot be run (its operands are not available yet).
-However, the `grt.add.si32` that produces `%b2` value does have all its operands
-available, so it is ready to go and it executes - ahead of the first add.
+However, the `grt.add.si32` that produces `%b2` value does have all its
+operands available, so it is ready to go and it executes - ahead of the first
+add.
 
 Executing the primitives in dataflow order is a powerful feature that allows us
 to work with accelerators and concurrent CPU algorithms efficiently, and makes
@@ -191,9 +192,9 @@ printout.  However, we have a dataflow executor, and as we discussed above, the
 print-outs to come out of order.
 
 The solution to this problem is to explicitly serialize side effects by turning
-the implicit dependencies into explicitly ordered dataflow edges.  We do this
-with a `M::LLCL::Chain` type, which is threaded through the operations.  This is a
-legal MEF dialect program:
+the implicit dependencies into explicitly ordered dataflow edges. We do this
+with a `M::LLCL::Chain` type, which is threaded through the operations. This is
+a legal MEF dialect program:
 
 ```mlir
 mef.invokable @dataflow_example(%a: i32, %b: i32, %ch0: !mef.chain) -> !mef.chain {
@@ -210,10 +211,10 @@ can run in any order (or, indeed, in parallel) but the prints have a data
 dependence between them, so the first runs before the second one.
 
 If you look at the [definition of the
-`M::LLCL::Chain`](../../LLCL/include/LLCL/Support/Chain.h) struct, you'll see that
-it is empty.  What is happening here though is that the `AsyncValue` containing
-the chain is only marked as "ready" when the side effect for the print is
-completed.  This composes naturally with GraphRT's notion of strict and
+`M::LLCL::Chain`](../../LLCL/include/LLCL/Support/Chain.h) struct, you'll see
+that it is empty. What is happening here though is that the `AsyncValue`
+containing the chain is only marked as "ready" when the side effect for the
+print is completed. This composes naturally with GraphRT's notion of strict and
 non-strict primitives
 
 ## Implicit error propagation
@@ -269,25 +270,26 @@ to take longer to execute than "some long latency operation".  In higher level
 machine learning graphs, some operators take a lot less time to execute than
 others - for example some might be accelerated and some might not.
 
-On the other side of the call, the code embodied by `other_invokable` may include
-arbitrarily complicated logic, and some of that logic may only depend on one or
-the other argument to it.  We'd really like to kick off that logic as soon as we
-can, to make sure we keep the CPU thread pool and accelerators as loaded up as
-we can.
+On the other side of the call, the code embodied by `other_invokable` may
+include arbitrarily complicated logic, and some of that logic may only depend
+on one or the other argument to it. We'd really like to kick off that logic as
+soon as we can, to make sure we keep the CPU thread pool and accelerators as
+loaded up as we can.
 
 For this reason, we don't want `grt.invoke` to be a strict primitive that waits
 for both arguments to become available before dispatching the async call to
 `@other_invokable`.  Instead, we want to start the execution as soon as *either*
 argument is available.  As such, we mark `grt.invoke` as a non-strict primitive.
 
-Non-strict primitives are generally useful for control flow operations (for example
-`grt.if` can start execution of its body as soon as the condition resolves (it
-doesn't need all inputs to be available) and `grt.repeat` can start execution
-when the iteration count is known.  It is also useful for some primitives that
-do not use all their operands, for example, consider a [ternary
-operator](https://en.wikipedia.org/wiki/Ternary_operation) like the `cond ? a : b`: there is
-no reason to block on availability of `a` or `b`: as soon as the condition is
-known, the `AsyncValue` for the right side can be forwarded on as the result.
+Non-strict primitives are generally useful for control flow operations (for
+example `grt.if` can start execution of its body as soon as the condition
+resolves (it doesn't need all inputs to be available) and `grt.repeat` can
+start execution when the iteration count is known. It is also useful for some
+primitives that do not use all their operands, for example, consider a [ternary
+operator](https://en.wikipedia.org/wiki/Ternary_operation) like the `cond ? a :
+b`: there is no reason to block on availability of `a` or `b`: as soon as the
+condition is known, the `AsyncValue` for the right side can be forwarded on as
+the result.
 
 A primitive may opt-into non-strict behavior by adopting the `NonStrictOp` trait
 in its MLIR ODS description.  Doing so means it needs to be ready to handle
