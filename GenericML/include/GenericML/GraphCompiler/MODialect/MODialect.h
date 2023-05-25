@@ -7,8 +7,6 @@
 #ifndef GENERICML_GRAPHCOMPILER_MODIALECT_MODIALECT_H
 #define GENERICML_GRAPHCOMPILER_MODIALECT_MODIALECT_H
 
-#include "Support/LLVMCompilerForwardDecls.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Dialect.h"
 
 //===----------------------------------------------------------------------===//
