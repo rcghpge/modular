@@ -62,11 +62,16 @@ enum class FileFormat {
   /// This looks like a PT file (TorchScript module) in pickled form.
   kPTPickle,
 
+  /// This looks like an MLIR file with PyTorch primitives in it.
+  /// Those primitives may be from the ATenP or from the Torch dialect after
+  /// lowering to MGP.
+  kTorchPDialect,
 };
 
 /// Helper to check if a format is within the valid range.
 inline bool isValidFileFormat(FileFormat format) {
-  return (format >= FileFormat::kUnknown) && (format <= FileFormat::kPTPickle);
+  return (format >= FileFormat::kUnknown) &&
+         (format <= FileFormat::kTorchPDialect);
 }
 
 /// Use heuristics to determine what kind of file the input file contents

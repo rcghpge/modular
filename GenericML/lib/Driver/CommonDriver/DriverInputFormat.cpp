@@ -85,7 +85,7 @@ FileFormat M::sniffInputFormat(StringRef fileExtension,
         case CompiledFrameworkLabel::kONNXModel:
           return FileFormat::kMONNXDialect;
         case CompiledFrameworkLabel::kPyTorchModel:
-          return FileFormat::kTorchDialect;
+          return FileFormat::kTorchPDialect;
         }
       }
     }

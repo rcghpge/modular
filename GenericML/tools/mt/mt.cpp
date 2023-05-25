@@ -136,6 +136,8 @@ getFileContentIdentity(const llvm::MemoryBuffer &file, FileFormat format,
     return "input is a PyTorch model in Torch MLIR dialect form";
   case FileFormat::kPTPickle:
     return "input is a PyTorch model in PT pickled form";
+  case FileFormat::kTorchPDialect:
+    return "input is a PyTorch model in MLIR form consisting of primitive ops";
   case FileFormat::kMEFFile: {
     UNWRAP_ERROR(fileHandle, dylib.openBinaryFile(ctxHandle, file));
     return dylib.sniffBinaryFileContents(ctxHandle, fileHandle);
