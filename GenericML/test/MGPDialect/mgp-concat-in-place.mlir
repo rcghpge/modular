@@ -113,13 +113,13 @@ mgp.model @concat_with_shared_input_buffer : tf init {
 }
 
 //
-// @dont_trigger_since_non_triv_chains
+// @non_trivial_chains
 //
 
-// CHECK-LABEL: mgp.model @dont_trigger_since_non_triv_chains
-// CHECK: %{{.*}} = mgp.cpu.buffer.concat %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}
+// CHECK-LABEL: mgp.model @non_trivial_chains
+// CHECK: %{{.*}} = mgp.cpu.buffer.split.borrow
 
-mgp.model @dont_trigger_since_non_triv_chains : tf init {
+mgp.model @non_trivial_chains : tf init {
   %0 = grt.chain.create
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
@@ -137,6 +137,32 @@ mgp.model @dont_trigger_since_non_triv_chains : tf init {
   %14 = mgp.cpu.buffer.alloc.static %12, 64
   %15 = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<16xf32>
   %17 = mgp.cpu.buffer.concat %12, %14, %4, %10 : (!mgp.cpu.buffer<32>, !mgp.cpu.buffer<32>) -> !mgp.cpu.buffer<64>
+  %18 = mgp.cpu.tensor.create %17, %14, %15 : !mgp.cpu.tensor<16xf32>
+  mef.output %ch0, %18 : !mef.chain, !mgp.cpu.tensor<16xf32>
+}
+
+//
+// @dont_trigger_since_duplicate_buffers
+//
+
+// CHECK-LABEL: mgp.model @dont_trigger_since_duplicate_buffers
+// CHECK: %{{.*}} = mgp.cpu.buffer.concat
+
+mgp.model @dont_trigger_since_duplicate_buffers : tf init {
+  %0 = grt.chain.create
+  %1 = mgp.context.create 0
+  mef.output %0, %1 : !mef.chain, !mgp.context
+} execute (%ch0: !mef.chain, %mgp_ctx: !mgp.context) -> (!mef.chain, !mgp.cpu.tensor<16xf32>) {
+  %0 = mgp.cpu.buffer.constant #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
+  %1 = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<8xf32>
+  %2 = mgp.cpu.buffer.constant #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
+  %3 = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<8xf32>
+  %4 = mgp.cpu.buffer.alloc.static %ch0, 32
+  %5 = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<8xf32>
+  %6 = "mop.kernels.add"(%ch0, %0, %1, %2, %3, %4, %5) {numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mef.chain
+  %14 = mgp.cpu.buffer.alloc.static %ch0, 64
+  %15 = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<16xf32>
+  %17 = mgp.cpu.buffer.concat %6, %14, %4, %4 : (!mgp.cpu.buffer<32>, !mgp.cpu.buffer<32>) -> !mgp.cpu.buffer<64>
   %18 = mgp.cpu.tensor.create %17, %14, %15 : !mgp.cpu.tensor<16xf32>
   mef.output %ch0, %18 : !mef.chain, !mgp.cpu.tensor<16xf32>
 }

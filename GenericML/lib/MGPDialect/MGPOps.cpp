@@ -313,6 +313,8 @@ LogicalResult CpuBufferAllocStaticOp::inferReturnTypes(
   return success();
 }
 
+void CpuBufferAllocStaticOp::setInChain(Value chain) { setOperand(chain); }
+
 //===----------------------------------------------------------------------===//
 // CpuBufferAllocDynamicOp
 //===----------------------------------------------------------------------===//
@@ -334,6 +336,8 @@ LogicalResult CpuBufferAllocDynamicOp::inferReturnTypes(
   return success();
 }
 
+void CpuBufferAllocDynamicOp::setInChain(Value chain) { setOperand(0, chain); }
+
 //===----------------------------------------------------------------------===//
 // CpuBufferAllocSpecOp
 //===----------------------------------------------------------------------===//
@@ -354,6 +358,8 @@ LogicalResult CpuBufferAllocSpecOp::inferReturnTypes(
       CpuBufferType::get(context, Optional<uint64_t>()));
   return success();
 }
+
+void CpuBufferAllocSpecOp::setInChain(Value chain) { setOperand(0, chain); }
 
 //===----------------------------------------------------------------------===//
 // CpuBufferReallocStaticOp
@@ -381,6 +387,8 @@ LogicalResult CpuBufferReallocStaticOp::inferReturnTypes(
   return success();
 }
 
+void CpuBufferReallocStaticOp::setInChain(Value chain) { setOperand(0, chain); }
+
 //===----------------------------------------------------------------------===//
 // CpuBufferReallocDynamicOp
 //===----------------------------------------------------------------------===//
@@ -400,6 +408,10 @@ LogicalResult CpuBufferReallocDynamicOp::inferReturnTypes(
   inferredReturnTypes.emplace_back(
       CpuBufferType::get(context, Optional<uint64_t>()));
   return success();
+}
+
+void CpuBufferReallocDynamicOp::setInChain(Value chain) {
+  setOperand(0, chain);
 }
 
 //===----------------------------------------------------------------------===//
@@ -422,6 +434,8 @@ LogicalResult CpuBufferReallocSpecOp::inferReturnTypes(
       CpuBufferType::get(context, Optional<uint64_t>()));
   return success();
 }
+
+void CpuBufferReallocSpecOp::setInChain(Value chain) { setOperand(0, chain); }
 
 //===----------------------------------------------------------------------===//
 // CpuBufferConcatOp
@@ -475,8 +489,7 @@ parseBufferTypesAndRawSizes(AsmParser &p, SmallVectorImpl<Type> &bufferTypes,
 
 /// Prints a list of mgp.cpu.buffer types, ignoring the raw sizes.
 static void
-printBufferTypesAndRawSizes(AsmPrinter &p,
-                            const CpuBufferSplitBorrowOp &op,
+printBufferTypesAndRawSizes(AsmPrinter &p, const CpuBufferSplitBorrowOp &op,
                             mlir::ValueTypeRange<mlir::ResultRange> bufferTypes,
                             IntArrayElementsAttr rawSizes) {
   p.printArrowTypeList(bufferTypes);

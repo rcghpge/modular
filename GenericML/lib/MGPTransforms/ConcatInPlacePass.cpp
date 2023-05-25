@@ -39,15 +39,6 @@ class ConcatInPlacePass
     : public impl::ConcatInPlacePassBase<ConcatInPlacePass> {
   using ConcatInPlacePassBase::ConcatInPlacePassBase;
 
-  /// Returns true if buffer is:
-  ///  1. created by an mgp.cpu.buffer.{re}alloc.* operation...
-  ///  2. ...which is gated on the 'execute' blocks argument chain
-  static bool isAllocatedBuffer(ExecuteState &execState, Value buffer) {
-    if (auto allocOp = buffer.getDefiningOp<MGPBufferAllocInterface>())
-      return allocOp.getInChain() == execState.getRootChain();
-    return false;
-  }
-
   void runOnOperation() override {
     ModelOp model = getOperation();
     ExecuteState execState(model->getContext(), model.getExecuteBlock());
@@ -56,12 +47,30 @@ class ConcatInPlacePass
       if (concatOp.getInBuffers().empty())
         // Ignore trivial concats.
         return;
+
       if (!llvm::all_of(concatOp.getInBuffers(), [&](Value buffer) {
-            return isAllocatedBuffer(execState, buffer);
+            return buffer.getDefiningOp<MGPBufferAllocInterface>();
           }))
-        // The concat input buffers are not explicitly allocated or are read
-        // outside the concat.
+        // The concat input buffers are not explicitly allocated.
         return;
+
+      auto allocOutputOp =
+          concatOp.getOutBuffer().getDefiningOp<MGPBufferAllocInterface>();
+      if (!allocOutputOp)
+        // The concat output buffer is not explicitly allocated.
+        return;
+
+      DenseSet<Value> concatBuffers;
+      for (Value inBuffer : concatOp.getInBuffers())
+        concatBuffers.insert(inBuffer);
+      if (concatBuffers.size() != concatOp.getInBuffers().size())
+        // The concat input buffers are not distinct.
+        return;
+
+      // In the following we'll ignore the chains which guard the inBuffer
+      // alloc ops on the assumption the dependent chains to the concat
+      // indicate when the inBuffers are safe to read, and there's no additional
+      // dependency captured by the alloc chains.
 
       // Collects the raw size attributes for the split, one for every concat
       // input buffer.
@@ -111,6 +120,16 @@ class ConcatInPlacePass
           }
         }
       }
+
+      // We need to ensure the output buffer will be available before any
+      // writers to the split result buffers. The easiest way is to just reset
+      // its input chain to be the root chain.
+      //
+      // TODO(#14781): We could be cleverer, for example by finding or
+      // constructing a pre-dominator chain to all the chains which gate
+      // writing to the split result buffers. That could be done by
+      // DeferAllocsPass
+      allocOutputOp.setInChain(execState.getRootChain());
 
       // We are now ready to create the split op.
       // For the moment, place it before the concat it will replace.
