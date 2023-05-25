@@ -252,10 +252,15 @@ LogicalResult IfOp::verify() {
 //===----------------------------------------------------------------------===//
 
 ParseResult WhileOp::parse(OpAsmParser &parser, OperationState &result) {
-  SmallVector<OpAsmParser::Argument> operandInfo;
-  // Parse the signature.
-  if (parseParenOperandList(parser, result, operandInfo) ||
-      parser.parseOptionalAttrDictWithKeyword(result.attributes))
+  SmallVector<OpAsmParser::Argument> argumentInfo;
+  Region *condRegion = result.addRegion();
+  Region *bodyRegion = result.addRegion();
+
+  if (parseParenOperandListWithShadowing(parser, result, argumentInfo) ||
+      parser.parseOptionalAttrDictWithKeyword(result.attributes) ||
+      parseRegionWithShadowing(parser, argumentInfo, *condRegion) ||
+      parser.parseKeyword("do") ||
+      parseRegionWithShadowing(parser, argumentInfo, *bodyRegion))
     return failure();
 
   // The op's return types match those of the signature arguments.
@@ -263,36 +268,18 @@ ParseResult WhileOp::parse(OpAsmParser &parser, OperationState &result) {
   for (auto operand : result.operands)
     result.types.push_back(operand.getType());
 
-  // Parse the 'cond' region, allowing shadowing of the op argument names.
-  Region *condRegion = result.addRegion();
-  if (parser.parseRegion(*condRegion, operandInfo,
-                         /*enableNameShadowing=*/true))
-    return failure();
-
-  // Parse the 'body' region.
-  Region *bodyRegion = result.addRegion();
-  if (parser.parseKeyword("do") ||
-      parser.parseRegion(*bodyRegion, operandInfo,
-                         /*enableNameShadowing=*/true))
-    return failure();
-
   return success();
 }
 
 void WhileOp::print(OpAsmPrinter &p) {
-  p << " (";
-  llvm::interleaveComma(getInputs(), p,
-                        [&](Value arg) { p << arg << ": " << arg.getType(); });
-  p << ") ";
+  p << ' ';
+  printParenOperandListWithShadowing(p, getInputs(),
+                                     getCondRegion().getArguments());
   p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
-
-  // Reuse the argument names provided to the op for the basic block arg names
-  // within the regions.
-  p.shadowRegionArgs(getCondRegion(), getInputs());
-  p.printRegion(getCondRegion(), /*printEntryBlockArgs=*/false);
+  p << ' ';
+  printRegionWithShadowing(p, getInputs(), getCondRegion());
   p << " do ";
-  p.shadowRegionArgs(getBodyRegion(), getInputs());
-  p.printRegion(getBodyRegion(), /*printEntryBlockArgs=*/false);
+  printRegionWithShadowing(p, getInputs(), getBodyRegion());
 }
 
 LogicalResult WhileOp::verify() {

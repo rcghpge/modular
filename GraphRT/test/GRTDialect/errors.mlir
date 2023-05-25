@@ -9,6 +9,19 @@ mef.invokable @trivial() {
 
 // -----
 
+// CHECK-LABEL: --- Running 'controlflow_if_invalid1':
+mef.invokable @controlflow_if_invalid1(%cond: i1, %x: si32) {
+  // expected-error @+1 {{custom op 'grt.if' has duplicate SSA values in its operand list which have not been renamed apart by 'as' clauses.}}
+  %res = grt.if %cond (%x: si32, %x: si32) -> si32 {
+    mef.output %x : si32
+  } else {
+    mef.output %x : si32
+  }
+  mef.output %res : si32
+}
+
+// -----
+
 // CHECK-LABEL: --- Running 'controlflow_while_invalid1':
 mef.invokable @controlflow_while_invalid1() {
   %i = grt.constant.si32 0
