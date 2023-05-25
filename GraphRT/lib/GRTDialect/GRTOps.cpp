@@ -185,32 +185,6 @@ void IfOp::print(OpAsmPrinter &p) {
   p.printRegion(getElseRegion(), /*printEntryBlockArgs=*/false);
 }
 
-LogicalResult IfOp::verify() {
-  // The 'then' block should accept arguments matching the grt.if signature.
-  auto *thenBlock = &getThenRegion().front();
-  if (failed(
-          checkArgumentTypes(*this, "then", thenBlock, getInputs().getTypes())))
-    return failure();
-
-  // The 'else' block should accept arguments matching the grt.if signature.
-  auto *elseBlock = &getElseRegion().front();
-  if (failed(
-          checkArgumentTypes(*this, "else", elseBlock, getInputs().getTypes())))
-    return failure();
-
-  // The 'then' block should return results matching the grt.if results.
-  auto thenOutput = cast<MEF::OutputOp>(thenBlock->getTerminator());
-  if (failed(checkOperandTypes(thenOutput, getResultTypes())))
-    return failure();
-
-  // The 'else' block should return results matching the grt.if results.
-  auto elseOutput = cast<MEF::OutputOp>(elseBlock->getTerminator());
-  if (failed(checkOperandTypes(elseOutput, getResultTypes())))
-    return failure();
-
-  return success();
-}
-
 //===----------------------------------------------------------------------===//
 // WhileOp
 //===----------------------------------------------------------------------===//
@@ -260,37 +234,20 @@ void WhileOp::print(OpAsmPrinter &p) {
 }
 
 LogicalResult WhileOp::verify() {
-  // The grt.while results must match the signature types.
-  if (failed(checkMatchingTypes(*this, "result", getResultTypes(),
-                                getInputs().getTypes())))
-    return failure();
-
-  // The 'cond' block should accept arguments matching the grt.while signature.
-  auto *condBlock = &getCondRegion().front();
-  if (failed(
-          checkArgumentTypes(*this, "cond", condBlock, getInputs().getTypes())))
-    return failure();
-
-  // The 'body' block should accept arguments matching the grt.while signature.
-  auto *bodyBlock = &getBodyRegion().front();
-  if (failed(
-          checkArgumentTypes(*this, "body", bodyBlock, getInputs().getTypes())))
-    return failure();
-
-  // The 'cond' block should return a result for each grt.while result,
-  // followed by an i1.
+  // The 'cond' block should return an additional i1.
+  Block *condBlock = &getCondRegion().front();
   auto condOutput = cast<MEF::OutputOp>(condBlock->getTerminator());
-  SmallVector<Type> condResultTypes;
-  condResultTypes.reserve(getResultTypes().size() + 1);
-  llvm::append_range(condResultTypes, getResultTypes());
-  condResultTypes.emplace_back(IntegerType::get(getContext(), 1));
-  if (failed(checkOperandTypes(condOutput, condResultTypes)))
-    return failure();
+  if (condOutput->getNumOperands() != getInputs().size() + 1 ||
+      condOutput->getOperand(getInputs().size()).getType() !=
+          IntegerType::get(getContext(), 1))
+    return emitOpError() << "expected 'cond' block to return additional i1 "
+                            "result for loop condition";
 
-  // The 'body' block should return a result for each grt.while result.
-  auto bodyOutput = cast<MEF::OutputOp>(bodyBlock->getTerminator());
-  if (failed(checkOperandTypes(bodyOutput, getResultTypes())))
-    return failure();
+  // The 'body' block should not return any additional results.
+  Block *bodyBlock = &getBodyRegion().front();
+  if (bodyBlock->getNumArguments() != getInputs().size())
+    return emitOpError()
+           << "expected 'body' block to return no additional results";
 
   return success();
 }
@@ -337,22 +294,11 @@ void RepeatI32Op::print(OpAsmPrinter &p) {
 }
 
 LogicalResult RepeatI32Op::verify() {
-  // The grt.repeat.i32 results should match the signature types.
-  if (failed(checkMatchingTypes(*this, "result", getResultTypes(),
-                                getInputs().getTypes())))
-    return failure();
-
-  // The 'body' block should accept arguments matching the grt.repeat.i32
-  // signature.
-  auto *bodyBlock = &getBodyRegion().front();
-  if (failed(
-          checkArgumentTypes(*this, "body", bodyBlock, getInputs().getTypes())))
-    return failure();
-
-  // The 'body' block should return a result for each grt.repeat.i32 result.
-  auto output = cast<MEF::OutputOp>(bodyBlock->getTerminator());
-  if (failed(checkOperandTypes(output, getResultTypes())))
-    return failure();
+  // The 'body' block should not return any additional results.
+  Block *bodyBlock = &getBodyRegion().front();
+  if (bodyBlock->getNumArguments() != getInputs().size())
+    return emitOpError()
+           << "expected 'body' block to return no additional results";
 
   return success();
 }

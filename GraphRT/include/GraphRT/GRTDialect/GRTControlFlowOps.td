@@ -10,6 +10,7 @@
 
 include "GraphRT/MEFDialect/MEFNonStrict.td"
 include "GraphRT/GRTDialect/GRTOpsBase.td"
+include "GraphRT/GRTDialect/GRTControlFlowInterface.td"
 include "mlir/IR/RegionKindInterface.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
@@ -77,7 +78,8 @@ def InvokeOp : GRTOp<"invoke", [DeclareOpInterfaceMethods<SymbolUserOpInterface>
 
 def IfOp : GRTOp<"if",
           [IsolatedFromAbove, SingleBlockImplicitTerminator<"MEF::OutputOp">,
-           NonStrictOp, RegionKindInterface, HasOnlyGraphRegion]> {
+           NonStrictOp, RegionKindInterface, HasOnlyGraphRegion,
+           DeclareOpInterfaceMethods<GRTControlFlowInterface>]> {
   let summary = "if control flow operation";
   let description = [{
     The "grt.if" operation takes an i1 condition, a 'then' block and an 'else'
@@ -112,7 +114,14 @@ def IfOp : GRTOp<"if",
                         SizedRegion<1>:$elseRegion);
 
   let hasCustomAssemblyFormat = 1;
-  let hasVerifier = 1;
+
+  let extraClassDefinition = [{
+    GRT::ControlFlowFlavor IfOp::getFlavor() { return GRT::kBranchLike; }
+    llvm::ArrayRef<mlir::OpOperand> IfOp::getInputOpOperands() {
+      return getOperation()->getOpOperands().drop_front();
+    }
+    llvm::SmallVector<llvm::StringRef> IfOp::getRegionNames() { return {"then", "else"}; }
+  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -121,7 +130,8 @@ def IfOp : GRTOp<"if",
 
 def WhileOp : GRTOp<"while",
           [IsolatedFromAbove, SingleBlockImplicitTerminator<"MEF::OutputOp">,
-           NonStrictOp, RegionKindInterface, HasOnlyGraphRegion]> {
+           NonStrictOp, RegionKindInterface, HasOnlyGraphRegion,
+           DeclareOpInterfaceMethods<GRTControlFlowInterface>]> {
   let summary = "while control flow operation";
   let description = [{
     The "grt.while" operation takes 'cond' and 'body' blocks. While the
@@ -168,6 +178,14 @@ def WhileOp : GRTOp<"while",
 
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
+
+  let extraClassDefinition = [{
+    GRT::ControlFlowFlavor WhileOp::getFlavor() { return GRT::kLoopLike; }
+    llvm::ArrayRef<mlir::OpOperand> WhileOp::getInputOpOperands() {
+      return getOperation()->getOpOperands();
+    }
+    llvm::SmallVector<llvm::StringRef> WhileOp::getRegionNames() { return {"cond", "body"}; }
+  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -176,7 +194,8 @@ def WhileOp : GRTOp<"while",
 
 def RepeatI32Op : GRTOp<"repeat.i32",
          [IsolatedFromAbove, SingleBlockImplicitTerminator<"MEF::OutputOp">,
-          NonStrictOp, RegionKindInterface, HasOnlyGraphRegion]> {
+          NonStrictOp, RegionKindInterface, HasOnlyGraphRegion,
+          DeclareOpInterfaceMethods<GRTControlFlowInterface>]> {
   let summary = "Repeat a body N times";
   let description = [{
     The "grt.repeat.i32" operation is a repeat loop that executes its 'body'
@@ -213,4 +232,12 @@ def RepeatI32Op : GRTOp<"repeat.i32",
 
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
+
+  let extraClassDefinition = [{
+    GRT::ControlFlowFlavor RepeatI32Op::getFlavor() { return GRT::kLoopLike; }
+    llvm::ArrayRef<mlir::OpOperand> RepeatI32Op::getInputOpOperands() {
+      return getOperation()->getOpOperands().drop_front();
+    }
+    llvm::SmallVector<llvm::StringRef> RepeatI32Op::getRegionNames() { return {"body"}; }
+  }];
 }
