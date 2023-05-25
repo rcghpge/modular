@@ -118,6 +118,7 @@ class ConcatInPlacePass
       auto splitOp = execState.builder.create<MGP::CpuBufferSplitBorrowOp>(
           concatOp->getLoc(),
           /*outBuffers=*/bufferTypes,
+          /*inChain=*/execState.getRootChain(),
           /*inBuffer=*/concatOp.getOutBuffer(),
           /*runtimeSizes=*/runtimeSizes,
           /*outBufferRawSizes=*/rawSizes);

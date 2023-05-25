@@ -504,6 +504,13 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   // Lower the outputs to buffers which can then be passed back in as
   // parameters.
+  //
+  // At this stage we gate the allocation only on the overall 'execute' block's
+  // chain. The DeferAllocsPass will change this to use the chain which signals
+  // when all of the operation's input buffers have been written to, thus
+  // ensuring we allocate buffers just-in-time for their writers. Jit compiled
+  // kernels have no shape function and just use the shape infered values
+  // directly and are guarded to only run on static or shape infered ops.
   auto errOr = helper.lowerOutputBuffer(opName, loweringState.getExecuteChain(),
                                         inputTensors);
   if (errOr.isError())
@@ -629,6 +636,7 @@ LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
   auto mgpBufferSplitOp = execBuilder.create<MGP::CpuBufferSplitBorrowOp>(
       loc,
       /*outBuffers=*/outBufTypes,
+      /*inChain=*/execChain,
       /*inBuffer=*/inputBuf,
       /*runtimeSizes=*/runtimeSizes,
       /*outBufferRawSizes=*/rawSizes);
@@ -710,13 +718,9 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // and specs in IR those are passed in.
   auto inputTensors = helper.getLoweredInputs();
 
-  // Allocate buffers to hold all the operation's result tensors. At this stage
-  // we gate the allocation only on the overall 'execute' block's chain. The
-  // PeepholeTensorExtract pass will change this to use the chain which signals
-  // when all of the operation's input buffers have been written to, thus
-  // ensuring we allocate buffers just-in-time for their writers. Jit compiled
-  // kernels have no shape function and just use the shape infered values
-  // directly and are guarded to only run on static or shape infered ops.
+  // Allocate buffers to hold all the operation's result tensors.
+  // Jit compiled kernels have no shape function and just use the shape infered
+  // values directly and are guarded to only run on static or shape infered ops.
   auto errOr = helper.lowerOutputBuffer(
       "jit_compiled", loweringState.getExecuteChain(), inputTensors);
   if (errOr.isError())

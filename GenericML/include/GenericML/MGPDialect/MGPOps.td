@@ -645,11 +645,12 @@ def CpuBufferSplitBorrowOp : MGP_Op<"cpu.buffer.split.borrow"> {
 
     Example:
     ```mlir
+    %ch:  !mef.chain
     %in_buf : !mgp.cpu.buffer<256>
     %size1 : index
     %size2 : index
     %out0_buf, %out1_buf, %out2_buf =
-        mgp.cpu.buffer.split.borrow %in_buf, %size1, %size2
+        mgp.cpu.buffer.split.borrow %ch, %in_buf, %size1, %size2
         : !mgp.cpu.buffer<256> -> (!mgp.cpu.buffer<128>, !mgp.cpu.buffer, !mgp.cpu.buffer)
     %out0_buf : !mgp.cpu.buffer<128>
     %out1_buf : !mgp.cpu.buffer
@@ -657,12 +658,13 @@ def CpuBufferSplitBorrowOp : MGP_Op<"cpu.buffer.split.borrow"> {
     ```
   }];
 
-  let arguments = (ins MGP_CpuBufferType:$inBuffer,
+  let arguments = (ins ChainType:$inChain,
+                       MGP_CpuBufferType:$inBuffer,
                        Variadic<Index>:$runtimeSizes,
                        UI64ArrayElementsAttr:$outBufferRawSizes);
   let results = (outs Variadic<MGP_CpuBufferType>:$outBuffers);
   let assemblyFormat = [{
-    $inBuffer (`,` $runtimeSizes^)? attr-dict
+    $inChain `,` $inBuffer (`,` $runtimeSizes^)? attr-dict
     `:` qualified(type($inBuffer))
         custom<BufferTypesAndRawSizes>(type($outBuffers), $outBufferRawSizes)
   }];

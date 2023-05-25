@@ -297,10 +297,12 @@ static void mgp_cpu_buffer_concat(Chain inChain,
 // mgp.cpu.buffer.split.borrow
 //===----------------------------------------------------------------------===//
 
-static void mgp_cpu_buffer_split_borrow(
-    AsyncValueRef<BufferRef> inBuffer, RemainingArguments runtimeSizes,
-    RemainingResults outBuffers, MEFAttr<ArrayRef<uint64_t>> outBufferRawSizes,
-    Runtime &runtime, EncodedLocation loc) {
+static void
+mgp_cpu_buffer_split_borrow(Chain inChain, AsyncValueRef<BufferRef> inBuffer,
+                            RemainingArguments runtimeSizes,
+                            RemainingResults outBuffers,
+                            MEFAttr<ArrayRef<uint64_t>> outBufferRawSizes,
+                            Runtime &runtime, EncodedLocation loc) {
   TimeTraceScope scope(
       LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.split.borrow"));
   const size_t inSize = inBuffer->getSize();

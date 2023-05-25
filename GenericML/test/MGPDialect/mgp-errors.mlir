@@ -175,17 +175,17 @@ func.func @buffer_concat_sizes(%ch0 : !mef.chain, %out_buf : !mgp.cpu.buffer<192
 // mgp.cpu.buffer.split.borrow
 //
 
-func.func @buffer_split_sizes(%in_buf : !mgp.cpu.buffer<192>) {
+func.func @buffer_split_sizes(%ch0 : !mef.chain, %in_buf : !mgp.cpu.buffer<192>) {
 // expected-error@+1 {{'mgp.cpu.buffer.split.borrow' op expected input buffer type does not match actual input buffer type ('!mgp.cpu.buffer<320>' vs '!mgp.cpu.buffer<192>').}}
-  %buf0, %buf1 = mgp.cpu.buffer.split.borrow %in_buf : !mgp.cpu.buffer<192> -> (!mgp.cpu.buffer<64>, !mgp.cpu.buffer<256>)
+  %buf0, %buf1 = mgp.cpu.buffer.split.borrow %ch0, %in_buf : !mgp.cpu.buffer<192> -> (!mgp.cpu.buffer<64>, !mgp.cpu.buffer<256>)
   mef.output %buf0, %buf1 : !mgp.cpu.buffer<64>, !mgp.cpu.buffer<256>
 }
 
 // -----
 
-func.func @buffer_split_operands(%in_buf : !mgp.cpu.buffer) {
+func.func @buffer_split_operands(%ch0 : !mef.chain, %in_buf : !mgp.cpu.buffer) {
 // expected-error@+1 {{'mgp.cpu.buffer.split.borrow' op expected a runtime size operand for every output buffer without a statically known size (given 0 but need 1).}}
-  %buf0, %buf1 = mgp.cpu.buffer.split.borrow %in_buf : !mgp.cpu.buffer -> (!mgp.cpu.buffer<64>, !mgp.cpu.buffer)
+  %buf0, %buf1 = mgp.cpu.buffer.split.borrow %ch0, %in_buf : !mgp.cpu.buffer -> (!mgp.cpu.buffer<64>, !mgp.cpu.buffer)
   mef.output %buf0, %buf1 : !mgp.cpu.buffer<64>, !mgp.cpu.buffer
 }
 
