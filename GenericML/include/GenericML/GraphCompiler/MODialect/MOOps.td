@@ -40,6 +40,8 @@ class MO_TensorOp<string mnemonic, list<Trait> traits = []>
 def MO_IndexToTensorOp : MO_Op<"index.to_tensor", [Pure]> {
   let summary = "Cast from `index` to scalar-like `!mo.tensor`.";
   let description = [{
+    Return a scalar tensor that contains the input index value.
+
     Example:
 
     ```mlir
@@ -69,6 +71,24 @@ def MO_GraphOp : MO_TensorOp<"graph", [
   // DeclareOpInterfaceMethods<TransformableGraphInterface>
 ]> {
   let summary = "Function that contains a MO graph with other ops mixed in";
+  let description = [{
+    This op represents a computation graph that consists of
+    - input/output shape parameters
+    - input tensors
+    - computations on input tensors and intermediate results
+    - a terminating output op that returns the result tensors
+
+    Example:
+
+    ```mlir
+    mo.graph @example<D1 -> D2>(%arg: !mo.tensor<[D1], f32>) -> (!mo.tensor<[D2], f32>) {
+      // ... intermediate computations ...
+      %res : !mo.tensor<[D3], f32>
+      mo.output<D3> %arg : !mo.tensor<[D3], f32>
+    }
+    ```
+  }];
+
   let arguments = (ins
     TypeAttrOf<KGEN_SignatureType>:$signature,
     TypeAttrOf<FunctionType>:$functionType,
@@ -1396,6 +1416,8 @@ def MOShape_BroadcastToOp : MOShape_Op<"broadcast_to", [
 def MOShape_FromTensorOp : MOShape_Op<"from_tensor", [Pure]> {
   let summary = "Cast from a shape-like `!mo.tensor` to `!mosh.ape`.";
   let description = [{
+    Cast the input shape-like tensor to a shape value.
+
     Example:
 
     ```mlir
@@ -1414,6 +1436,8 @@ def MOShape_FromTensorOp : MOShape_Op<"from_tensor", [Pure]> {
 def MOShape_ToTensorOp : MOShape_Op<"to_tensor", [Pure]> {
   let summary = "Cast from a `!mosh.ape` to a shape-like `!mo.tensor`.";
   let description = [{
+    Cast the input shape value to a shape-like tensor.
+
     Example:
 
     ```mlir
@@ -1448,8 +1472,12 @@ def MOStatic_BroadcastToOp : MOStatic_ShapeModifierOp<"broadcast_to"> {
   let description = [{
     Broadcast the input tensor to the result tensor. The shape of the input and
     result tensors must not be unknown or contain unknown dimensions, but can be
-    parametric. It is not recommended for frontend conversion code to rely on
-    this op (use `mo.broadcast_to` with a constant shape-like tensor instead).
+    parametric.
+
+    This op only has limited compile-time check on the validity of the target
+    shape (we expect the user to add any necessary runtime checks); therefore it
+    is not recommended for frontend conversion code to rely on this op (use
+    `mo.broadcast_to` with a constant shape-like tensor instead).
 
     The broadcasting follows numpy semantics.
 
@@ -1474,9 +1502,12 @@ def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape"> {
   let description = [{
     Return a tensor with the same underlying data, but different shape. The
     shape of the input and result tensors must not be unknown or contain unknown
-    dimensions, but can be parametric. It is not recommended for frontend
-    conversion code to rely on this op (use `mo.reshape` with a constant
-    shape-like tensor instead).
+    dimensions, but can be parametric.
+
+    The op has no compile-time or runtime checks on the validity of the target
+    shape (we expect the user to add any necessary runtime checks); therefore it
+    is not recommended for frontend conversion code to rely on this op (use
+    `mo.reshape` with a constant shape-like tensor instead).
 
     Example:
 
@@ -1505,6 +1536,12 @@ def MO_ConcatOp : MO_TensorOp<"concat", [
   let summary = "Concat Operation";
   let description = [{
     Concatenate the input tensors along a given dimension.
+
+    `mo.concat` concatenates the `inputs` tensors into an output tensor.
+    The input tensors and output tensors all has the same shape except along the
+    concatenation dimension `axis`. The size of the concatenation dimension in
+    output tensor would have be the sum of sizes of the concatenation dimension
+    in input tensors.
 
     Example:
 
@@ -1546,11 +1583,6 @@ def MO_SplitOp : MO_TensorOp<"split", [Pure]> {
     Each of the output tensors has the same shape as `input` except along the
     split dimension `axis`, where the size is given by the corresponding
     element in `splitSizes`.
-
-    `input` is the tensor to split.
-    `splitSizes` is a rank-1 tensor of integers that specifies the size of each
-    output along the split dimension.
-    `axis` is the dimension along which to split the input tensor.
 
     Example:
 
@@ -1606,7 +1638,7 @@ def MO_TransposeOp : MO_TensorOp<"transpose", [
     %perm : !mo.tensor<[3], si32>
     %res = mo.transpose(%input, %perm) : (
       !mo.tensor<[?, 5, ?], f32>, !mo.tensor<[3], si32>
-    ) -> !mo.tensor<[?, 5, ?], f32>
+    ) -> !mo.tensor<[?, ?, 5], f32>
     ```
   }];
 
@@ -1633,8 +1665,8 @@ def MO_TileOp : MO_TensorOp<"tile", [
     Return a new Tensor as the result of copying the input tensor N_i times
     on each dimension, where N_i = tiles[i].
 
-    The output shape of the op will be the shape of the input multiplied
-    by the tiles
+    The i-th dimension of output shape will be the ith dimension of input shape
+    multiplied by N_i.
 
     Example:
 
@@ -1712,7 +1744,7 @@ def MO_GatherOp : MO_TensorOp<"gather", [
 ]> {
   let summary = "Gather Operation";
   let description = [{
-    Gather slices from input' axis according to indices.
+    Gather slices from input's axis according to indices.
 
     If input and indices are statically ranked, the output rank must be
     `inputRank - 1 + indicesRank`. In general, the output satisfies the
