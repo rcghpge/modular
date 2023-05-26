@@ -53,11 +53,10 @@ def MOShape_BroadcastOp : MOSH_Op<"broadcast", [Commutative, Pure]> {
 }
 
 def MOShape_ConcatOp : MOSH_Op<"concat", [Pure]> {
-  let summary = "Concatenate two shapes.";
+  let summary = "Concatenate a variadic number of shapes.";
   let description = [{
-    To keep it simple for now, the semantics are intentionally restricted to
-    support only two inputs. This allows slightly easier folding. If the need
-    arises, we can modify the semantics to support variadic inputs.
+    Return a new shape by concatenating individual dimensions in the input
+    shapes in order.
 
     Example:
 
@@ -86,7 +85,8 @@ def MOShape_ConcatOp : MOSH_Op<"concat", [Pure]> {
 def MOSH_EqualOp : MOSH_Op<"eq", [Pure, Commutative]> {
   let summary = "Check if two shapes are equal.";
   let description = [{
-    Takes two shapes and returns an `i1`.
+    Compare individual dimensions of the input shapes, and return `true` if they
+    are all equal, or `false` otherwise.
 
     Example:
 
@@ -113,6 +113,8 @@ def MOSH_EqualOp : MOSH_Op<"eq", [Pure, Commutative]> {
 def MOShape_GetDimOp : MOSH_Op<"get_dim", [Pure]> {
   let summary = "Operation to extract a dimension from a shape.";
   let description = [{
+    Return the size of the specified dimension in the given shape.
+
     This operation supports dimensions specified by compile time constants only.
     The dimension can be negative in which case Python-like index semantics are
     used (e.g. -2 refers to the second to last dimension).
@@ -148,6 +150,8 @@ def MOShape_GetDimOp : MOSH_Op<"get_dim", [Pure]> {
 def MOSH_GetRankOp : MOSH_Op<"get_rank", [Pure]> {
   let summary = "Operation to get the rank of a shape.";
   let description = [{
+    Return the rank of the given shape.
+
     Example:
 
     ```mlir
@@ -166,7 +170,7 @@ def MOSH_GetRankOp : MOSH_Op<"get_rank", [Pure]> {
 def MOSH_NewOp : MOSH_Op<"new", [Pure]> {
   let summary = "Create a new shape from dimension values.";
   let description = [{
-    The dimension values must be SSA values of `index` type.
+    Return a new shape whose dimensions equal to the given values in order.
 
     Example:
 
