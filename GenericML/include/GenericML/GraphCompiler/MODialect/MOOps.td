@@ -819,7 +819,9 @@ def MO_SliceOp : MO_TensorOp<"slice", [Pure]>{
        "indexing" along that dimension.
     2. Negative indices are supported for `start` and `stop`, e.g., -1
        represents the largest axis.
-    3. `step` must contain nonzero elements.
+    3. Out of bound indices in `start` and `stop` will be clamped to
+       [-dim, dim], where `dim` is the dimension in the corresponding axis.
+    4. `step` must contain nonzero elements.
 
     Example:
       %input: !mo.tensor<[?, ?], f32>
@@ -945,6 +947,9 @@ def MO_MeanOp : MO_ReductionOp<"mean"> {
     Reduce `input` elements across `axis` to their mean value, and change that
     axis's dimension to 1 in the output shape.
 
+    The value of `axis` follows numpy semantics, e.g., -1 represents the last
+    axis.
+
     Example:
 
     ```mlir
@@ -962,6 +967,9 @@ def MO_ReduceMulOp : MO_ReductionOp<"reduce.mul"> {
   let description = [{
     Reduce `input` elements across `axis` to their product, and change that
     axis's dimension to 1 in the output shape.
+
+    The value of `axis` follows numpy semantics, e.g., -1 represents the last
+    axis.
 
     Example:
 
@@ -983,6 +991,9 @@ def MO_ReduceAddOp : MO_ReductionOp<"reduce.add"> {
     Reduce `input` elements across `axis` to their sum, and change that axis's
     dimension to 1 in the output shape.
 
+    The value of `axis` follows numpy semantics, e.g., -1 represents the last
+    axis.
+
     Example:
 
     ```mlir
@@ -1001,6 +1012,9 @@ def MO_ReduceMinOp : MO_ReductionOp<"reduce.min"> {
     Reduce `input` elements across `axis` to their minimum, and change that
     axis's dimension to 1 in the output shape.
 
+    The value of `axis` follows numpy semantics, e.g., -1 represents the last
+    axis.
+
     Example:
 
     ```mlir
@@ -1018,6 +1032,9 @@ def MO_ReduceMaxOp : MO_ReductionOp<"reduce.max"> {
   let description = [{
     Reduce `input` elements across `axis` to their maximum, and change that
     axis's dimension to 1 in the output shape.
+
+    The value of `axis` follows numpy semantics, e.g., -1 represents the last
+    axis.
 
     Example:
 
@@ -1543,6 +1560,9 @@ def MO_ConcatOp : MO_TensorOp<"concat", [
     output tensor would have be the sum of sizes of the concatenation dimension
     in input tensors.
 
+    The value of `axis` follows numpy semantics, e.g., -1 represents the last
+    axis.
+
     Example:
 
     ```mlir
@@ -1583,6 +1603,9 @@ def MO_SplitOp : MO_TensorOp<"split", [Pure]> {
     Each of the output tensors has the same shape as `input` except along the
     split dimension `axis`, where the size is given by the corresponding
     element in `splitSizes`.
+
+    The value of `axis` follows numpy semantics, e.g., -1 represents the last
+    axis.
 
     Example:
 
@@ -1625,6 +1648,8 @@ def MO_TransposeOp : MO_TensorOp<"transpose", [
   let description = [{
     Return a new Tensor as the result of permuting the dimensions of the input
     tensor according to the value of perm.
+
+    Note that `perm` must contain unique values from `[0, input_rank)`.
 
     Example:
 
@@ -1755,6 +1780,9 @@ def MO_GatherOp : MO_TensorOp<"gather", [
     ```
     where `indices` appears at given axis of input.
 
+    The values of `axis` and `indices` follows numpy semantics, e.g., -1
+    represents the last axis.
+
     Example:
 
     ```mlir
@@ -1830,7 +1858,8 @@ def MO_ArgMaxOp : MO_TensorOp<"arg_max", [
     The axis attribute specifies the reduction axis.
 
     Like reductions, the output shape is the same as the input shape, except for
-    the reduced axis which is set to 1.
+    the reduced axis which is set to 1. Moreover, the value of `axis` follows
+    numpy semantics, e.g., -1 represents the last axis.
 
     Example:
 
@@ -1872,6 +1901,10 @@ def MO_RangeOp : MO_TensorOp<"range", [
     The sequence goes from `start` with increments of size `step` up to (but not
     including) `limit`. All arguments are mandatory and must have the same
     element type.
+
+    Note the following restrictions on input values:
+    1. `step` must be non-zero
+    2. `limit - start` must be zero or have the same sign as `step`
 
     Example:
 
