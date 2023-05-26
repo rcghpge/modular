@@ -11,6 +11,7 @@
 #include "Support/LLVMForwardDecls.h"
 #include "Support/ML/DType.h"
 #include "Support/ML/SizeUtils.h"
+#include "Support/ML/TensorShape.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
@@ -238,9 +239,9 @@ LogicalResult
 CpuTensorSpecType::verify(function_ref<InFlightDiagnostic()> emitError,
                           ArrayRef<Optional<uint64_t>> dims,
                           Optional<DType> optDType, ArrayRef<int64_t> shape) {
-  if (shape.size() > getMaximumRank())
-    return emitError() << "shape must have rank between 0 and "
-                       << getMaximumRank() << ".";
+  if (shape.size() > kMaxRank)
+    return emitError() << "shape must have rank between 0 and " << kMaxRank
+                       << ".";
   for (const Optional<uint64_t> &dim : dims) {
     if (!isValidOptSize(dim))
       return emitError() << "shape dimensions must be non-negative or the "

@@ -261,9 +261,6 @@ def MGP_CpuTensorSpecType : MGP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
   let genVerifyDecl = 1;
 
   let extraClassDeclaration = [{
-    /// Returns the maximum supported rank for all tensor specs.
-    static constexpr size_t getMaximumRank() { return 5; }
-
     /// Returns the rank of this tensor spec.
     size_t getRank() const;
 

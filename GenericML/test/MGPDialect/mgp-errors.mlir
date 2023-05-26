@@ -139,8 +139,8 @@ func.func @tensor_extract_mismatched_size(%tensor : !mgp.cpu.tensor<3x5xf32>) {
 // !mgp.cpu.tensor_spec
 //
 
-// expected-error@+1 {{shape must have rank between 0 and 5.}}
-func.func @spec_too_large(%x : !mgp.cpu.tensor_spec<1x2x3x4x5x6xf32>) {}
+// expected-error@+1 {{shape must have rank between 0 and 8.}}
+func.func @spec_too_large(%x : !mgp.cpu.tensor_spec<1x2x3x4x5x6x7x8x9xf32>) {}
 
 // -----
 
