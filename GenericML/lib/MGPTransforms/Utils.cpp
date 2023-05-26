@@ -256,3 +256,65 @@ LogicalResult ExecuteState::alsoWaitForChain(Operation *op,
 
   return success(hasInputChain);
 }
+
+//===----------------------------------------------------------------------===//
+// ValueTestPrinter
+//===----------------------------------------------------------------------===//
+
+ValueTestPrinter::ValueTestPrinter(ModelOp model) : model(model) {
+  blockMap.insert({model.getExecuteBlock(), blockMap.size()});
+  for (auto arg : model.getExecuteBlock()->getArguments())
+    allValues.emplace_back(arg);
+  model.getExecuteBlock()->walk<mlir::WalkOrder::PostOrder>([&](Operation *op) {
+    for (auto result : op->getResults())
+      allValues.emplace_back(result);
+    for (auto &region : op->getRegions()) {
+      Block *block = &region.getBlocks().front();
+      blockMap.insert({block, blockMap.size()});
+      for (auto arg : region.getBlocks().front().getArguments())
+        allValues.emplace_back(arg);
+    }
+  });
+}
+
+void ValueTestPrinter::printModel(llvm::raw_ostream &os) {
+  model.print(os, mlir::OpPrintingFlags().printGenericOpForm());
+  os << "\n\n";
+}
+
+void ValueTestPrinter::printValue(llvm::raw_ostream &os, Value value) {
+  value.printAsOperand(os, mlir::OpPrintingFlags().printGenericOpForm());
+  size_t blockId = blockMap.lookup(value.getParentBlock());
+  if (blockId)
+    os << "[" << blockId << "]";
+}
+
+void ValueTestPrinter::printPredicate(llvm::raw_ostream &os, StringRef predName,
+                                      const std::function<bool(Value)> &pred) {
+  for (size_t i = 0, n = allValues.size(); i < n; ++i) {
+    Value value = allValues[i];
+    if (pred(value)) {
+      os << predName << "(";
+      printValue(os, value);
+      os << ")\n";
+    }
+  }
+}
+
+void ValueTestPrinter::printRelation(
+    llvm::raw_ostream &os, StringRef relName,
+    const std::function<bool(Value, Value)> &rel) {
+  for (size_t i = 0, n = allValues.size(); i < n; ++i) {
+    for (size_t j = 0; j < n; ++j) {
+      Value lhs = allValues[i];
+      Value rhs = allValues[j];
+      if (rel(lhs, rhs)) {
+        os << relName << "(";
+        printValue(os, lhs);
+        os << ", ";
+        printValue(os, rhs);
+        os << ")\n";
+      }
+    }
+  }
+}

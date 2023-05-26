@@ -11,6 +11,16 @@ include "mlir/Pass/PassBase.td"
 include "GenericML/MGPDialect/MGPOps.td"
 
 //===----------------------------------------------------------------------===//
+// AsyncDataflowDependenciesTestPass
+//===----------------------------------------------------------------------===//
+
+def AsyncDataflowDependenciesTestPass : Pass<"async-dataflow-dependencies-test", "MGP::ModelOp"> {
+  let summary = "Prints the sameAs and impliesReady relations for all pairs of "
+                "values in the input model, leaving the model unchanged. "
+                "For testing only.";
+}
+
+//===----------------------------------------------------------------------===//
 // RemoveRedundantTensorExtractsPass
 //===----------------------------------------------------------------------===//
 
