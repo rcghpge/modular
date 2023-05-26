@@ -67,8 +67,6 @@ def MO_GraphOp : MO_TensorOp<"graph", [
   DeclareOpInterfaceMethods<MO_Parameterization>,
   // needed to leverage KGEN parameter infra
   DeclInterface, FuncInterface
-  // TODO : Re-enable TransformableGraphInterface
-  // DeclareOpInterfaceMethods<TransformableGraphInterface>
 ]> {
   let summary = "Function that contains a MO graph with other ops mixed in";
   let description = [{
