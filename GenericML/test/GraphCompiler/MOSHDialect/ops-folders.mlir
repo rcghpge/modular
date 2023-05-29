@@ -56,6 +56,18 @@ kgen.generator @concat_variadic_fold<Sh1: !mosh.ape, D1, D2>(
   kgen.return %v121, %v232 : !mosh.ape, !mosh.ape
 }
 
+// CHECK: kgen.generator @concat_canonicalize<[[SH0:.*]]: !mosh.ape>(%[[SH1:.*]]: !mosh.ape, %[[SH2:.*]]: !mosh.ape) -> (!mosh.ape, !mosh.ape) {
+kgen.generator @concat_canonicalize<Sh0: !mosh.ape>(%sh1: !mosh.ape, %sh2: !mosh.ape) -> (!mosh.ape, !mosh.ape) {
+  // CHECK: %[[V1:.*]] = kgen.param.constant: !mosh.ape = <[[SH0]]>
+  %v1 = kgen.param.constant: !mosh.ape = <Sh0>
+  // CHECK-DAG: %[[C1:.*]] = mosh.concat(%[[V1]], %[[SH2]])
+  // CHECK-DAG: %[[C2:.*]] = mosh.concat(%[[V1]], %[[SH2]], %[[SH1]], %[[V1]])
+  %c1 = mosh.concat(%v1, %sh2)
+  %c2 = mosh.concat(%c1, %sh1, %v1)
+  // CHECK: kgen.return %[[C1]], %[[C2]] : !mosh.ape, !mosh.ape
+  kgen.return %c1, %c2 : !mosh.ape, !mosh.ape
+}
+
 // TODO: implement tests for shapes that do not fold
 //       - becasue of unknown shape arg
 //       - becasue of not broadcastable shapes

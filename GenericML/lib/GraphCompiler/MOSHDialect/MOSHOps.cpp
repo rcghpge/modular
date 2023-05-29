@@ -59,7 +59,7 @@ void ConcatOp::build(OpBuilder &builder, OperationState &state,
 }
 
 OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
-  // Single shape parameter or dimension parameters
+  // Single shape parameter or dimension parameters.
   if (adaptor.getInputs().size() == 1)
     return adaptor.getInputs().front();
 
@@ -73,6 +73,31 @@ OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
   }
   auto shapeTy = ShapeType::get(getContext());
   return ShapeAttr::get(finalDims, shapeTy);
+}
+
+LogicalResult ConcatOp::canonicalize(ConcatOp op, PatternRewriter &rewriter) {
+  auto inputs = op.getInputs();
+  if (inputs.size() == 1) {
+    rewriter.replaceAllUsesWith(op, inputs[0]);
+    return success();
+  }
+
+  SmallVector<Value> newInputs;
+  for (Value arg : inputs) {
+    if (auto precedingOp = arg.getDefiningOp<ConcatOp>()) {
+      auto preInputs = precedingOp.getInputs();
+      newInputs.append(preInputs.begin(), preInputs.end());
+    } else {
+      newInputs.emplace_back(arg);
+    }
+  }
+
+  auto isEqual = [](auto ins) { return std::get<0>(ins) == std::get<1>(ins); };
+  if (llvm::all_of(llvm::zip(inputs, newInputs), isEqual))
+    return failure();
+
+  op.getInputsMutable().assign(newInputs);
+  return success();
 }
 
 TypedAttr EqualOp::asExpression(ShapeAttr shape1, ShapeAttr shape2) {

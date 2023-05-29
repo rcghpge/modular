@@ -80,6 +80,7 @@ def MOShape_ConcatOp : MOSH_Op<"concat", [Pure]> {
   ];
 
   let hasFolder = 1;
+  let hasCanonicalizeMethod = 1;
 }
 
 def MOSH_EqualOp : MOSH_Op<"eq", [Pure, Commutative]> {
