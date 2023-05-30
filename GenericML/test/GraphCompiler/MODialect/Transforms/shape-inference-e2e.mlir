@@ -153,8 +153,8 @@ mo.graph @unresolved_rebinds(
   // CHECK-DAG: kgen.param.declare [[CH0:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "ranks of left and right inputs are not equal" : !kgen.string}, [[COND1]])>
   // CHECK-DAG: kgen.param.declare [[COND2:.*]]: i1 = <ge([[R2]], 3)>
   // CHECK-DAG: kgen.param.declare [[CH1:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "input ranks are not greater than minimum rank for matmul-like" : !kgen.string}, [[COND2]])>
-  // CHECK-DAG: kgen.param.declare [[K:.*]] = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = -1 : index}, [[SH0]])>
-  // CHECK-DAG: kgen.param.declare [[KK:.*]] = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = -2 : index}, [[SH1]])>
+  // CHECK-DAG: kgen.param.declare [[K:.*]] = <apply(:(!mosh.ape, index) -> index "mosh.get_dim", [[SH0]], -1)>
+  // CHECK-DAG: kgen.param.declare [[KK:.*]] = <apply(:(!mosh.ape, index) -> index "mosh.get_dim", [[SH1]], -2)>
   // CHECK-DAG: kgen.param.declare [[COND3:.*]]: i1 =
   // CHECK-SAME: <eq(
   // CHECK-DAG: [[K]]
@@ -166,12 +166,12 @@ mo.graph @unresolved_rebinds(
   // CHECK-DAG: kgen.param.declare [[RBATCH:.*]]: !mosh.ape = <apply(:(!mosh.ape, index, index) -> !mosh.ape "mosh.slice", [[SH1]], 0, -2)>
   // CHECK-DAG: kgen.param.declare [[COND4:.*]]: i1 = <apply(:(!mosh.ape, !mosh.ape) -> i1 "mosh.eq", [[LBATCH]], [[RBATCH]])>
   // CHECK-DAG: kgen.param.declare [[CH3:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "batch sizes of left and right inputs are not equal" : !kgen.string}, [[COND4]])>
-  // CHECK-DAG: kgen.param.declare [[NN:.*]] = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = -1 : index}, [[SH1]])>
+  // CHECK-DAG: kgen.param.declare [[NN:.*]] = <apply(:(!mosh.ape, index) -> index "mosh.get_dim", [[SH1]], -1)>
   // CHECK-DAG: kgen.param.declare [[SH8:.*]]: !mosh.ape = <apply(:(!mosh.ape, !mosh.ape) -> !mosh.ape "mosh.concat", [[LBATCH]], [[[K]], [[NN]]])>
   // CHECK-DAG: %[[ARG1REB2:.*]] = mo.rebind(%[[ARG1]]) : !mo.tensor<[[SH1]], f32> -> !mo.tensor<[[SH8]], f32>
 
-  // CHECK-DAG: kgen.param.declare [[N:.*]] = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = -2 : index}, [[SH0]])>
-  // CHECK-DAG: kgen.param.declare [[M:.*]] = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = -1 : index}, [[SH8]])>
+  // CHECK-DAG: kgen.param.declare [[N:.*]] = <apply(:(!mosh.ape, index) -> index "mosh.get_dim", [[SH0]], -2)>
+  // CHECK-DAG: kgen.param.declare [[M:.*]] = <apply(:(!mosh.ape, index) -> index "mosh.get_dim", [[SH8]], -1)>
   // CHECK-DAG: kgen.param.declare [[SH4:.*]]: !mosh.ape = <apply(:(!mosh.ape, index, index) -> !mosh.ape "mosh.slice", [[SH0]], 0, -2)>
   // CHECK-DAG: kgen.param.declare [[SH5:.*]]: !mosh.ape = <apply(:(!mosh.ape, !mosh.ape) -> !mosh.ape "mosh.concat", [[SH4]], [[[N]], [[M]]])>
 

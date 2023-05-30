@@ -145,18 +145,22 @@ kgen.generator @equal_fold<Sh1: !mosh.ape, D1, D2>() -> (i1, i1, i1, i1, i1) {
 
 // CHECK: kgen.generator @get_dim_fold<[[SH1:.*]]: !mosh.ape, [[D1:.*]]>()
 kgen.generator @get_dim_fold<Sh1: !mosh.ape, D1>() -> (index, index, index, index) {
+  // CHECK-DAG: %[[C0:.*]] = index.constant 0
   // CHECK-DAG: %[[V1:.*]] = kgen.param.constant: !mosh.ape = <[[SH1]]>
-  // CHECK-DAG: %[[D10:.*]] = mosh.get_dim(%[[V1]])[0]
+  // CHECK-DAG: %[[D10:.*]] = mosh.get_dim(%[[V1]])[%[[C0]]]
   // CHECK-DAG: %[[D20:.*]] = kgen.param.constant = <[[D1]]>
   // CHECK-DAG: %[[D21:.*]] = index.constant 42
   // CHECK-DAG: %[[D22:.*]] = index.constant 23
   // CHECK: kgen.return %[[D10]], %[[D20]], %[[D21]], %[[D22]]
+  %idx0 = index.constant 0
+  %idx1 = index.constant 1
+  %idx-1 = index.constant -1
   %v1 = kgen.param.constant: !mosh.ape = <Sh1>
   %v2 = kgen.param.constant: !mosh.ape = <[D1, 42, 23]>
-  %d10 = mosh.get_dim(%v1)[0]
-  %d20 = mosh.get_dim(%v2)[0]
-  %d21 = mosh.get_dim(%v2)[1]
-  %d22 = mosh.get_dim(%v2)[-1]
+  %d10 = mosh.get_dim(%v1)[%idx0]
+  %d20 = mosh.get_dim(%v2)[%idx0]
+  %d21 = mosh.get_dim(%v2)[%idx1]
+  %d22 = mosh.get_dim(%v2)[%idx-1]
   kgen.return %d10, %d20, %d21, %d22 : index, index, index, index
 }
 

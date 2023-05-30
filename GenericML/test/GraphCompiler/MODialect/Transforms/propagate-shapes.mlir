@@ -44,8 +44,8 @@ mo.graph @batch_matmul_without_certain_checks<D0, D1, D2, D3 -> D4, D5, D6>(
   kgen.param.declare P4: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate sgt>}, P2, P0)>
   kgen.param.declare CH1: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "input ranks are not greater than 2" : !kgen.string}, P4)>
   kgen.param.declare P8: !mosh.ape = <apply(:(!mosh.ape, index, index) -> !mosh.ape "mosh.slice", Sh0, 0, -2)>
-  kgen.param.declare P11 = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = -2 : index}, Sh0)>
-  kgen.param.declare P12 = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = -1 : index}, Sh1)>
+  kgen.param.declare P11 = <apply(:(!mosh.ape, index) -> index "mosh.get_dim", Sh0, -2)>
+  kgen.param.declare P12 = <apply(:(!mosh.ape, index) -> index "mosh.get_dim", Sh1, -1)>
   kgen.param.declare P13: !mosh.ape = <[P11, P12]>
   kgen.param.declare P14: !mosh.ape = <apply(:(!mosh.ape, !mosh.ape) -> !mosh.ape "mosh.concat", P8, P13)>
   kgen.param.declare Sh2: !mosh.ape = <P14>
@@ -54,9 +54,9 @@ mo.graph @batch_matmul_without_certain_checks<D0, D1, D2, D3 -> D4, D5, D6>(
   // CHECK-SAME:   !mo.tensor<[[[D0]], [[D2]], [[D3]]], f32>
   // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], [[D3]]], f32>
   %2 = mo.batch_matmul(%0, %1) : (!mo.tensor<Sh0, f32>, !mo.tensor<Sh1, f32>) -> !mo.tensor<Sh2, f32>
-  kgen.param.declare D7 = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = 0 : index}, Sh2)>
-  kgen.param.declare D8 = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = 1 : index}, Sh2)>
-  kgen.param.declare D9 = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = 2 : index}, Sh2)>
+  kgen.param.declare D7 = <apply(:(!mosh.ape, index) -> index "mosh.get_dim", Sh2, 0)>
+  kgen.param.declare D8 = <apply(:(!mosh.ape, index) -> index "mosh.get_dim", Sh2, 1)>
+  kgen.param.declare D9 = <apply(:(!mosh.ape, index) -> index "mosh.get_dim", Sh2, 2)>
   %3 = mo.rebind(%2) : !mo.tensor<Sh2, f32> -> !mo.tensor<[D7, D8, D9], f32>
   // CHECK-NEXT: mo.output %[[OUT]] : !mo.tensor<[[[D0]], [[D1]], [[D3]]], f32>
   mo.output<D7, D8, D9> %3 : !mo.tensor<[D7, D8, D9], f32>
@@ -161,10 +161,10 @@ mo.graph @param_expr_apply_no_cse<Sh0: !mosh.ape -> D2, D3>(
   %arg: !mo.tensor<Sh0, f32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D2]], [[D3]]], f32> {
 ) -> !mo.tensor<[D2, D3], f32> {
-  // CHECK-NEXT: kgen.param.declare [[D5:.*]] = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = 1 : index}, [[SH0]])>
-  // CHECK-NEXT: kgen.param.declare [[D6:.*]] = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = 1 : index}, [[SH0]])>
-  kgen.param.declare D5 = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = 1 : index}, Sh0)>
-  kgen.param.declare D6 = <apply(:(!mosh.ape) -> index "mosh.get_dim"{dim = 1 : index}, Sh0)>
+  // CHECK-NEXT: kgen.param.declare [[D5:.*]] = <apply(:(!mosh.ape, index) -> index "mosh.get_dim", [[SH0]], 1)>
+  // CHECK-NEXT: kgen.param.declare [[D6:.*]] = <apply(:(!mosh.ape, index) -> index "mosh.get_dim", [[SH0]], 1)>
+  kgen.param.declare D5 = <apply(:(!mosh.ape, index) -> index "mosh.get_dim", Sh0, 1)>
+  kgen.param.declare D6 = <apply(:(!mosh.ape, index) -> index "mosh.get_dim", Sh0, 1)>
   // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[ARG]])
   // CHECK-SAME: : !mo.tensor<[[SH0]], f32> -> !mo.tensor<[[[D5]], [[D6]]], f32>
   %res = mo.static.reshape(%arg) : !mo.tensor<Sh0, f32> -> !mo.tensor<[D5, D6], f32>

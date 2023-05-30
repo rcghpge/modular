@@ -124,27 +124,20 @@ def MOShape_GetDimOp : MOSH_Op<"get_dim", [Pure]> {
 
     ```mlir
     %sh : !mosh.ape
-    %firstDim = mosh.get_dim(%sh)[0]
+    %dim : index
+    %firstDim = mosh.get_dim(%sh)[%dim]
     ```
   }];
 
-  let arguments = (ins MOSH_ShapeType:$input, AttrOfType<Index>:$dim);
+  let arguments = (ins MOSH_ShapeType:$input, Index:$dim);
   let results = (outs Index:$result);
 
-  let builders = [
-    OpBuilder<(ins "Value":$input, "int64_t":$dim)>,
-  ];
-
-  let assemblyFormat = [{
-    `(` $input `)` `` `[` custom<IndexParamValue>($dim) `]` attr-dict
-  }];
+  let assemblyFormat = "`(` $input `)` `` `[` $dim `]` attr-dict";
   let hasFolder = 1;
 
   let extraClassDeclaration = [{
-    /// Create a static call to apply(mosh.get_dim[axis], inputShape)
+    /// Create a static call to apply(mosh.get_dim, inputShape, axis)
     static TypedAttr emitStaticCall(TypedAttr inputShape, int64_t axis);
-    /// Helper to get the value of the dim attribute.
-    std::optional<APInt> getDimValue();
   }];
 }
 

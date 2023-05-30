@@ -132,33 +132,18 @@ OpFoldResult EqualOp::fold(FoldAdaptor adaptor) {
   return asExpression(shape1, shape2);
 }
 
-void GetDimOp::build(OpBuilder &builder, OperationState &state, Value input,
-                     int64_t dim) {
-  build(builder, state, input, builder.getIndexAttr(dim));
-}
-
 TypedAttr GetDimOp::emitStaticCall(TypedAttr inputShape, int64_t axis) {
   auto indexTy = IndexType::get(inputShape.getContext());
-  SmallVector<std::pair<StringAttr (*)(mlir::OperationName), Attribute>>
-      attrNameFuncAndArg = {
-          {GetDimOp::getDimAttrName, IntegerAttr::get(indexTy, axis)}};
-  return KGEN::emitMLIROperationCall(GetDimOp::getOperationName(),
-                                     attrNameFuncAndArg, {inputShape}, indexTy);
+  return KGEN::emitMLIROperationCall(
+      GetDimOp::getOperationName(), {},
+      {inputShape, IntegerAttr::get(indexTy, axis)}, indexTy);
 }
 
-std::optional<APInt> GetDimOp::getDimValue() {
-  if (auto intAttr = dyn_cast<IntegerAttr>(getDim()))
-    return intAttr.getValue();
-  return {};
-};
-
 OpFoldResult GetDimOp::fold(FoldAdaptor adaptor) {
-  if (auto input = dyn_cast_or_null<ShapeAttr>(adaptor.getInput())) {
-    if (std::optional<APInt> maybeDim = getDimValue(); maybeDim.has_value()) {
-      int64_t dim = normalizeAxis(maybeDim.value(), input.getRank());
-      return input.getValues()[dim];
-    }
-  }
+  auto input = dyn_cast_or_null<ShapeAttr>(adaptor.getInput());
+  auto dim = dyn_cast_or_null<IntegerAttr>(adaptor.getDim());
+  if (input && dim)
+    return input.getValues()[normalizeAxis(dim.getValue(), input.getRank())];
   return {};
 }
 
@@ -232,9 +217,10 @@ static KGEN::FuncOp buildForwardShapeFunc(Location loc, StringRef fwFuncName,
 
   SmallVector<Value> newDims;
   auto constOne = rewriter.create<Index::ConstantOp>(loc, 1);
-  for (int64_t axis = -smallerRank; axis < 0; ++axis) {
-    auto xDim = rewriter.create<GetDimOp>(loc, xShape, axis);
-    auto yDim = rewriter.create<GetDimOp>(loc, yShape, axis);
+  for (int64_t dim = -smallerRank; dim < 0; ++dim) {
+    auto dimValue = rewriter.create<Index::ConstantOp>(loc, dim);
+    auto xDim = rewriter.create<GetDimOp>(loc, xShape, dimValue);
+    auto yDim = rewriter.create<GetDimOp>(loc, yShape, dimValue);
 
     auto xDimIsOne = rewriter.create<Index::CmpOp>(
         loc, Index::IndexCmpPredicate::EQ, xDim, constOne);
