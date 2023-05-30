@@ -1356,6 +1356,7 @@ class MOShape_Op<string mnemonic, list<Trait> traits = []>
 
 def MOShape_ReshapeOp : MOShape_Op<"reshape", [
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
 ]> {
   let summary = "Reshape operation";
   let description = [{
@@ -1534,13 +1535,6 @@ def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape"> {
   }];
 
   let hasCanonicalizeMethod = 1;
-  let extraClassDeclaration = [{
-   public:
-    /// Returns the forward shape function (building it in the given module if
-    /// necessary).
-    static KGEN::FuncOp getForwardShapeFunc(
-      Location loc, ModuleOp module, mlir::RewriterBase &rewriter);
-  }];
 }
 
 def MO_ConcatOp : MO_TensorOp<"concat", [
