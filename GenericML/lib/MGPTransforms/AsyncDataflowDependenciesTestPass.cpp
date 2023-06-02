@@ -14,7 +14,6 @@
 #include "llvm/ADT/STLExtras.h"
 
 #include "./AsyncDataflowDependencies.h"
-#include "./Utils.h"
 
 using namespace mlir;
 
@@ -37,21 +36,21 @@ class AsyncDataflowDependenciesTestPass
       AsyncDataflowDependenciesTestPassBase;
 
   void runOnOperation() override {
-    ValueTestPrinter printer(getOperation());
+    ModelOp modelOp = getOperation();
+    AsyncDataflowDependencies dependencies(modelOp);
 
-    printer.printModel(llvm::outs());
+    dependencies.index.printModel(llvm::outs());
 
-    AsyncDataflowDependencies dependencies;
-    printer.printRelation(llvm::outs(), "sameAs", [&](Value lhs, Value rhs) {
-      return dependencies.sameAs(lhs, rhs);
-    });
-    printer.printPredicate(llvm::outs(), "isAlwaysReady", [&](Value value) {
-      return dependencies.isAlwaysReady(value);
-    });
-    printer.printRelation(llvm::outs(), "impliesReady",
-                          [&](Value lhs, Value rhs) {
-                            return dependencies.impliesReady(lhs, rhs);
-                          });
+    dependencies.index.printRelation(
+        llvm::outs(), "sameAs",
+        [&](Value lhs, Value rhs) { return dependencies.sameAs(lhs, rhs); });
+    dependencies.index.printPredicate(
+        llvm::outs(), "isAlwaysReady",
+        [&](Value value) { return dependencies.isAlwaysReady(value); });
+    dependencies.index.printRelation(
+        llvm::outs(), "impliesReady", [&](Value lhs, Value rhs) {
+          return dependencies.impliesReady(lhs, rhs);
+        });
   }
 };
 

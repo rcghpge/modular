@@ -11,6 +11,54 @@
 using namespace M;
 using namespace M::MGP;
 
+/// Non-recursively visit inputs of op in dfs order, accumulating post-order
+/// visits into dataflowOrder.
+static void visitInDataflowOrder(Operation *op,
+                                 SmallVectorImpl<Operation *> &dataflowOrder,
+                                 DenseSet<Operation *> &visited) {
+  if (!visited.insert(op).second)
+    return;
+
+  struct Frame {
+    Operation *frameOp;
+    size_t nextOperandIndex;
+    Frame(Operation *frameOp, size_t nextOperandIndex)
+        : frameOp(frameOp), nextOperandIndex(nextOperandIndex) {}
+  };
+  SmallVector<Frame> stack;
+
+  // Start with first operand of op, if any.
+  stack.emplace_back(op, 0);
+
+  while (!stack.empty()) {
+    Frame frame = stack.back();
+    stack.pop_back();
+    if (frame.nextOperandIndex >= frame.frameOp->getNumOperands()) {
+      // We've visited all the inputs of frame.parent
+      dataflowOrder.push_back(frame.frameOp);
+    } else {
+      // We're about to visit frame.parent->getOperand(frame.nextInputIndex),
+      // so remember we need to continue with next operand when done, if any.
+      stack.emplace_back(frame.frameOp, frame.nextOperandIndex + 1);
+
+      Value operand = frame.frameOp->getOperand(frame.nextOperandIndex);
+      if (Operation *inputOp = operand.getDefiningOp()) {
+        if (visited.insert(inputOp).second)
+          // Start with first operand of inputOp, if any.
+          stack.emplace_back(inputOp, 0);
+      }
+    }
+  }
+}
+
+SmallVector<Operation *> M::MGP::getDataflowOrder(Block *block) {
+  SmallVector<Operation *> dataflowOrder;
+  DenseSet<Operation *> visited;
+  for (Operation &op : block->getOperations())
+    visitInDataflowOrder(&op, dataflowOrder, visited);
+  return dataflowOrder;
+}
+
 void M::MGP::remove(SmallVectorImpl<Value> &chains, Value chain) {
   auto itr = llvm::find(chains, chain);
   if (itr != chains.end())
@@ -255,66 +303,4 @@ LogicalResult ExecuteState::alsoWaitForChain(Operation *op,
   }
 
   return success(hasInputChain);
-}
-
-//===----------------------------------------------------------------------===//
-// ValueTestPrinter
-//===----------------------------------------------------------------------===//
-
-ValueTestPrinter::ValueTestPrinter(ModelOp model) : model(model) {
-  blockMap.insert({model.getExecuteBlock(), blockMap.size()});
-  for (auto arg : model.getExecuteBlock()->getArguments())
-    allValues.emplace_back(arg);
-  model.getExecuteBlock()->walk<mlir::WalkOrder::PostOrder>([&](Operation *op) {
-    for (auto result : op->getResults())
-      allValues.emplace_back(result);
-    for (auto &region : op->getRegions()) {
-      Block *block = &region.getBlocks().front();
-      blockMap.insert({block, blockMap.size()});
-      for (auto arg : region.getBlocks().front().getArguments())
-        allValues.emplace_back(arg);
-    }
-  });
-}
-
-void ValueTestPrinter::printModel(llvm::raw_ostream &os) {
-  model.print(os, mlir::OpPrintingFlags().printGenericOpForm());
-  os << "\n\n";
-}
-
-void ValueTestPrinter::printValue(llvm::raw_ostream &os, Value value) {
-  value.printAsOperand(os, mlir::OpPrintingFlags().printGenericOpForm());
-  size_t blockId = blockMap.lookup(value.getParentBlock());
-  if (blockId)
-    os << "[" << blockId << "]";
-}
-
-void ValueTestPrinter::printPredicate(llvm::raw_ostream &os, StringRef predName,
-                                      const std::function<bool(Value)> &pred) {
-  for (size_t i = 0, n = allValues.size(); i < n; ++i) {
-    Value value = allValues[i];
-    if (pred(value)) {
-      os << predName << "(";
-      printValue(os, value);
-      os << ")\n";
-    }
-  }
-}
-
-void ValueTestPrinter::printRelation(
-    llvm::raw_ostream &os, StringRef relName,
-    const std::function<bool(Value, Value)> &rel) {
-  for (size_t i = 0, n = allValues.size(); i < n; ++i) {
-    for (size_t j = 0; j < n; ++j) {
-      Value lhs = allValues[i];
-      Value rhs = allValues[j];
-      if (rel(lhs, rhs)) {
-        os << relName << "(";
-        printValue(os, lhs);
-        os << ", ";
-        printValue(os, rhs);
-        os << ")\n";
-      }
-    }
-  }
 }

@@ -6,10 +6,12 @@
 
 // For reference here's the model with vars matching the checks:
 // CHECK: "mgp.model"() ({
+//              ### Block 0 ###
 // CHECK-NEXT:  %0 = "grt.chain.create"() : () -> !mef.chain
 // CHECK-NEXT:  %1 = "mgp.context.create"() {numSlots = 0 : ui64} : () -> !mgp.context
 // CHECK-NEXT:  "mef.output"(%0, %1) : (!mef.chain, !mgp.context) -> ()
 // CHECK-NEXT:}, {
+//            ### Block 1 ###
 // CHECK-NEXT:^bb0(%arg0: !mef.chain, %arg1: !mgp.context):
 // CHECK-NEXT:  %0 = "grt.chain.create"() : () -> !mef.chain
 // CHECK-NEXT:  %1 = "some.op"(%arg0) : (!mef.chain) -> !mef.chain
@@ -22,44 +24,52 @@
 
 // sameAs is just the identity
 // CHECK: sameAs(%arg0, %arg0)
-// CHECK-NEXT: sameAs(%arg1, %arg1)
-// CHECK-NEXT: sameAs(%0, %0)
-// CHECK-NEXT: sameAs(%1, %1)
-// CHECK-NEXT: sameAs(%2, %2)
-// CHECK-NEXT: sameAs(%3, %3)
-// CHECK-NEXT: sameAs(%4, %4)
-// CHECK-NEXT: sameAs(%5, %5)
+// CHECK: not sameAs(%arg0, %arg1)
+// CHECK: not sameAs(%arg0, %0)
+// CHECK: not sameAs(%arg1, %arg0)
+// CHECK: sameAs(%arg1, %arg1)
+// CHECK: not sameAs(%arg1, %0)
+// CHECK: not sameAs(%0, %arg0)
+// CHECK: not sameAs(%0, %arg1)
+// CHECK: sameAs(%0, %0)
+// etc
 
+// Only %0 is always ready
+// CHECK: not isAlwaysReady(%arg0)
+// CHECK: not isAlwaysReady(%arg1)
 // CHECK: isAlwaysReady(%0)
+// etc
 
+// impliesReady is mostly identity, with transitive closure for some.op args
 // CHECK: impliesReady(%arg0, %arg0)
-// CHECK-NEXT: impliesReady(%arg0, %0)
-// CHECK-NEXT: impliesReady(%arg1, %arg1)
-// CHECK-NEXT: impliesReady(%arg1, %0)
-// CHECK-NEXT: impliesReady(%0, %0)
-// CHECK-NEXT: impliesReady(%1, %arg0)
-// CHECK-NEXT: impliesReady(%1, %0)
-// CHECK-NEXT: impliesReady(%1, %1)
-// CHECK-NEXT: impliesReady(%2, %arg0)
-// CHECK-NEXT: impliesReady(%2, %0)
-// CHECK-NEXT: impliesReady(%2, %1)
-// CHECK-NEXT: impliesReady(%2, %2)
-// CHECK-NOT: impliesReady(%2, %4)
-// CHECK-NEXT: impliesReady(%3, %arg0)
-// CHECK-NEXT: impliesReady(%3, %0)
-// CHECK-NEXT: impliesReady(%3, %3)
-// CHECK-NEXT: impliesReady(%4, %arg0)
-// CHECK-NEXT: impliesReady(%4, %0)
-// CHECK-NOT: impliesReady(%4, %2)
-// CHECK-NEXT: impliesReady(%4, %3)
-// CHECK-NEXT: impliesReady(%4, %4)
-// CHECK-NEXT: impliesReady(%5, %arg0)
-// CHECK-NEXT: impliesReady(%5, %0)
-// CHECK-NEXT: impliesReady(%5, %1)
-// CHECK-NEXT: impliesReady(%5, %2)
-// CHECK-NEXT: impliesReady(%5, %3)
-// CHECK-NEXT: impliesReady(%5, %4)
-// CHECK-NEXT: impliesReady(%5, %5)
+// CHECK: not impliesReady(%arg0, %arg1)
+// CHECK: not impliesReady(%arg0, %0)
+// CHECK: not impliesReady(%arg1, %arg0)
+// CHECK: impliesReady(%arg1, %arg1)
+// CHECK: not impliesReady(%arg1, %0)
+// CHECK: not impliesReady(%0, %arg0)
+// CHECK: not impliesReady(%0, %arg1)
+// CHECK: impliesReady(%0, %0)
+
+// CHECK: impliesReady(%1, %arg0)
+
+// CHECK: impliesReady(%2, %arg0)
+// CHECK: impliesReady(%2, %0)
+// CHECK: impliesReady(%2, %1)
+
+// CHECK: impliesReady(%3, %arg0)
+
+// CHECK: impliesReady(%4, %arg0)
+// CHECK: impliesReady(%4, %0)
+// CHECK: not impliesReady(%4, %2)
+// CHECK: impliesReady(%4, %3)
+
+// CHECK: impliesReady(%5, %arg0)
+// CHECK: impliesReady(%5, %0)
+// CHECK: impliesReady(%5, %1)
+// CHECK: impliesReady(%5, %2)
+// CHECK: impliesReady(%5, %3)
+// CHECK: impliesReady(%5, %4)
 
 mgp.model @simple : tf init {
   %0 = grt.chain.create
@@ -81,10 +91,12 @@ mgp.model @simple : tf init {
 
 // For reference here's the model with vars matching the checks:
 // CHECK: "mgp.model"() ({
+//              ### Block 0 ###
 // CHECK-NEXT:  %0 = "grt.chain.create"() : () -> !mef.chain
 // CHECK-NEXT:  %1 = "mgp.context.create"() {numSlots = 0 : ui64} : () -> !mgp.context
 // CHECK-NEXT:  "mef.output"(%0, %1) : (!mef.chain, !mgp.context) -> ()
 // CHECK-NEXT:}, {
+//            ### Block 1 ###
 // CHECK-NEXT:^bb0(%arg0: !mef.chain, %arg1: !mgp.context):
 // CHECK-NEXT:  %0 = "mgp.cpu.buffer.constant"() {aValue = #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32> : !M.array<32xui8>, bRawAlign = 32 : ui64} : () -> !mgp.cpu.buffer<32>
 // CHECK-NEXT:  %1 = "mgp.cpu.tensor_spec.create"() {aRawDims = #M.dense_array<8> : !M.array<1xui64>, bRawDType = 66 : ui8} : () -> !mgp.cpu.tensor_spec<8xf32>
@@ -122,19 +134,19 @@ mgp.model @simple : tf init {
 
 // Just spot check impliesReady.
 // CHECK: impliesReady(%10, %arg0)
-// CHECK-NEXT: impliesReady(%10, %0)
-// CHECK-NEXT: impliesReady(%10, %1)
-// CHECK-NEXT: impliesReady(%10, %2)
-// CHECK-NEXT: impliesReady(%10, %3)
-// CHECK-NEXT: impliesReady(%10, %4)
-// CHECK-NEXT: impliesReady(%10, %5)
-// CHECK-NEXT: impliesReady(%10, %6#0)
-// CHECK-NEXT: impliesReady(%10, %6#1)
-// CHECK-NEXT: impliesReady(%10, %7#0)
-// CHECK-NEXT: impliesReady(%10, %7#1)
-// CHECK-NEXT: impliesReady(%10, %8)
-// CHECK-NEXT: impliesReady(%10, %9)
-// CHECK-NEXT: impliesReady(%10, %10)
+// CHECK: impliesReady(%10, %0)
+// CHECK: impliesReady(%10, %1)
+// CHECK: impliesReady(%10, %2)
+// CHECK: impliesReady(%10, %3)
+// CHECK: impliesReady(%10, %4)
+// CHECK: impliesReady(%10, %5)
+// CHECK: impliesReady(%10, %6#0)
+// CHECK: impliesReady(%10, %6#1)
+// CHECK: impliesReady(%10, %7#0)
+// CHECK: impliesReady(%10, %7#1)
+// CHECK: impliesReady(%10, %8)
+// CHECK: impliesReady(%10, %9)
+// CHECK: impliesReady(%10, %10)
 
 mgp.model @straightline : tf init {
   %0 = grt.chain.create

@@ -1,4 +1,4 @@
-// RUN: mgp-opt %s --mlir-disable-threading --allow-unregistered-dialect --async-dataflow-dependencies-test
+// RUN: mgp-opt %s --mlir-disable-threading --allow-unregistered-dialect --async-dataflow-dependencies-test | FileCheck %s
 
 //
 // Simple grt.while
@@ -6,20 +6,24 @@
 
 // For reference here's the model with vars matching the checks (modulo the block ids).
 // CHECK: "mgp.model"() ({
+//             ### Block 0 ###
 // CHECK-NEXT:  %0 = "grt.chain.create"() : () -> !mef.chain
 // CHECK-NEXT:  %1 = "mgp.context.create"() {numSlots = 0 : ui64} : () -> !mgp.context
 // CHECK-NEXT:  "mef.output"(%0, %1) : (!mef.chain, !mgp.context) -> ()
 // CHECK-NEXT:}, {
+//            ### Block 1 ###
 // CHECK-NEXT:^bb0(%arg0: !mef.chain, %arg1: !mgp.context):
 // CHECK-NEXT:  %0 = "some.op"(%arg0) : (!mef.chain) -> !mgp.cpu.tensor<f32>
 // CHECK-NEXT:  %1 = "some.op"(%arg0) : (!mef.chain) -> !mgp.cpu.tensor<f32>
 // CHECK-NEXT:  %2:4 = "grt.while"(%arg0, %0, %1, %1) ({
+//              ### Block 2 ###
 // CHECK-NEXT:  ^bb0(%arg2: !mef.chain, %arg3: !mgp.cpu.tensor<f32>, %arg4: !mgp.cpu.tensor<f32>, %arg5: !mgp.cpu.tensor<f32>):
 // CHECK-NEXT:    %4 = "some.op"(%arg2) : (!mef.chain) -> !mgp.cpu.tensor<f32>
 // CHECK-NEXT:    %5 = "some.op"(%arg4) : (!mgp.cpu.tensor<f32>) -> !mgp.cpu.tensor<f32>
 // CHECK-NEXT:    %6 = "some.op"(%arg2) : (!mef.chain) -> i1
 // CHECK-NEXT:    "mef.output"(%arg2, %4, %5, %arg5, %6) : (!mef.chain, !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>, i1) -> ()
 // CHECK-NEXT:  }, {
+//              ### Block 3 ###
 // CHECK-NEXT:  ^bb0(%arg2: !mef.chain, %arg3: !mgp.cpu.tensor<f32>, %arg4: !mgp.cpu.tensor<f32>, %arg5: !mgp.cpu.tensor<f32>):
 // CHECK-NEXT:    %4 = "some.op"(%arg4) : (!mgp.cpu.tensor<f32>) -> !mgp.cpu.tensor<f32>
 // CHECK-NEXT:    "mef.output"(%arg2, %arg3, %4, %arg5) : (!mef.chain, !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>) -> ()
@@ -28,13 +32,38 @@
 // CHECK-NEXT:  "mef.output"(%2#0, %3) : (!mef.chain, !mgp.cpu.tensor<f32>) -> ()
 // CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "simple"} : () -> ()
 
+// CHECK: not sameAs(%arg4[2], %arg5[2])
+// CHECK: not sameAs(%arg4[2], %arg5[3])
 // CHECK: sameAs(%2#3, %1)
-// CHECK-NOT: sameAs(%arg4[1], %arg5[1])
-// CHECK-NOT: sameAs(%arg4[1], %arg5[2])
 
 // CHECK: impliesReady(%2#0, %arg0)
+// CHECK: impliesReady(%2#0, %arg2[2])
+// CHECK: impliesReady(%2#0, %arg2[3])
+// CHECK: impliesReady(%2#0, %2#0)
+// CHECK: impliesReady(%2#1, %arg0)
+// CHECK: impliesReady(%2#1, %arg2[2])
+// CHECK: impliesReady(%2#1, %arg3[2])
+// CHECK: impliesReady(%2#1, %arg2[3])
+// CHECK: impliesReady(%2#1, %2#0)
+// CHECK: impliesReady(%2#1, %2#1)
+// CHECK: impliesReady(%2#2, %arg0)
 // CHECK: impliesReady(%2#2, %1)
+// CHECK: impliesReady(%2#2, %arg2[2])
+// CHECK: impliesReady(%2#2, %arg4[2])
+// CHECK: impliesReady(%2#2, %arg5[2])
+// CHECK: impliesReady(%2#2, %arg2[3])
+// CHECK: impliesReady(%2#2, %arg5[3])
+// CHECK: impliesReady(%2#2, %2#0)
+// CHECK: impliesReady(%2#2, %2#2)
+// CHECK: impliesReady(%2#2, %2#3)
+// CHECK: impliesReady(%2#3, %arg0)
 // CHECK: impliesReady(%2#3, %1)
+// CHECK: impliesReady(%2#3, %arg2[2])
+// CHECK: impliesReady(%2#3, %arg5[2])
+// CHECK: impliesReady(%2#3, %arg2[3])
+// CHECK: impliesReady(%2#3, %arg5[3])
+// CHECK: impliesReady(%2#3, %2#0)
+// CHECK: impliesReady(%2#3, %2#3)
 
 mgp.model @simple : tf init {
   %0 = grt.chain.create
@@ -57,23 +86,27 @@ mgp.model @simple : tf init {
 }
 
 //
-// Can trigger infinite recursion on 'unstable' loops if not careful.
+// Unstable loop
 //
 
 // For reference here's the model with vars matching the checks (modulo the block ids).
 // CHECK: "mgp.model"() ({
+//              ### Block 0 ###
 // CHECK-NEXT:  %0 = "grt.chain.create"() : () -> !mef.chain
 // CHECK-NEXT:  %1 = "mgp.context.create"() {numSlots = 0 : ui64} : () -> !mgp.context
 // CHECK-NEXT:  "mef.output"(%0, %1) : (!mef.chain, !mgp.context) -> ()
 // CHECK-NEXT:}, {
+//            ### Block 1 ###
 // CHECK-NEXT:^bb0(%arg0: !mef.chain, %arg1: !mgp.context):
 // CHECK-NEXT:  %0 = "some.op"(%arg0) : (!mef.chain) -> !mgp.cpu.tensor<f32>
 // CHECK-NEXT:  %1 = "some.op"(%arg0) : (!mef.chain) -> !mgp.cpu.tensor<f32>
 // CHECK-NEXT:  %2:2 = "grt.while"(%0, %1) ({
+//              ### Block 2 ###
 // CHECK-NEXT:  ^bb0(%arg2: !mgp.cpu.tensor<f32>, %arg3: !mgp.cpu.tensor<f32>):
 // CHECK-NEXT:    %4 = "some.op"() : () -> i1
 // CHECK-NEXT:    "mef.output"(%arg2, %arg3, %4) : (!mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>, i1) -> ()
 // CHECK-NEXT:  }, {
+//              ### Block 3 ###
 // CHECK-NEXT:  ^bb0(%arg2: !mgp.cpu.tensor<f32>, %arg3: !mgp.cpu.tensor<f32>):
 // CHECK-NEXT:    "mef.output"(%arg3, %arg2) : (!mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>) -> ()
 // CHECK-NEXT:  }) : (!mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>) -> (!mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>)
@@ -81,10 +114,15 @@ mgp.model @simple : tf init {
 // CHECK-NEXT:  "mef.output"(%arg0, %3) : (!mef.chain, !mgp.cpu.tensor<f32>) -> ()
 // CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "crissCross"} : () -> ()
 
-// CHECK: impliesReady(%4[1], %4[1])
-// CHECK-NEXT: impliesReady(%2#0, %2#0)
-// CHECK-NEXT: impliesReady(%2#1, %2#1)
-// CHECK-NEXT: impliesReady(%arg2[1], %arg2[1])
+// CHECK: impliesReady(%2#0, %arg0)
+// CHECK: impliesReady(%2#0, %arg2[2])
+// CHECK: impliesReady(%2#0, %arg2[3])
+// CHECK: impliesReady(%2#0, %2#0)
+
+// CHECK: impliesReady(%2#1, %arg0)
+// CHECK: impliesReady(%2#1, %arg3[2])
+// CHECK: impliesReady(%2#1, %arg3[3])
+// CHECK: impliesReady(%2#1, %2#1)
 
 mgp.model @crissCross : tf init {
   %0 = grt.chain.create
@@ -104,15 +142,67 @@ mgp.model @crissCross : tf init {
 }
 
 //
+// Loop requiring more than one iteration to reach fixed point.
+//
+
+// For reference here's the model with vars matching the checks (modulo the block ids).
+// CHECK: "mgp.model"() ({
+//              ### Block 0 ###
+// CHECK-NEXT:  %0 = "grt.chain.create"() : () -> !mef.chain
+// CHECK-NEXT:  %1 = "mgp.context.create"() {numSlots = 0 : ui64} : () -> !mgp.context
+// CHECK-NEXT:  "mef.output"(%0, %1) : (!mef.chain, !mgp.context) -> ()
+// CHECK-NEXT:}, {
+//            ### Block 1 ###
+// CHECK-NEXT:^bb0(%arg0: !mef.chain, %arg1: !mgp.context):
+// CHECK-NEXT:  %0 = "some.op"(%arg0) : (!mef.chain) -> !mgp.cpu.tensor<f32>
+// CHECK-NEXT:  %1:3 = "grt.while"(%0, %0, %0) ({
+//              ### Block 2 ###
+// CHECK-NEXT:  ^bb0(%arg2: !mgp.cpu.tensor<f32>, %arg3: !mgp.cpu.tensor<f32>, %arg4: !mgp.cpu.tensor<f32>):
+// CHECK-NEXT:    %3 = "some.op"() : () -> i1
+// CHECK-NEXT:    "mef.output"(%arg2, %arg3, %arg4, %3) : (!mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>, i1) -> ()
+// CHECK-NEXT:  }, {
+//              ### Block 3 ###
+// CHECK-NEXT:  ^bb0(%arg2: !mgp.cpu.tensor<f32>, %arg3: !mgp.cpu.tensor<f32>, %arg4: !mgp.cpu.tensor<f32>):
+// CHECK-NEXT:    %3 = "some.op"() : () -> !mgp.cpu.tensor<f32>
+// CHECK-NEXT:    "mef.output"(%arg3, %arg4, %3) : (!mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>) -> ()
+// CHECK-NEXT:  }) : (!mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>) -> (!mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>)
+// CHECK-NEXT:  %2 = "some.op"(%1#0, %1#1, %1#2) : (!mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>) -> !mgp.cpu.tensor<f32>
+// CHECK-NEXT:  "mef.output"(%arg0, %2) : (!mef.chain, !mgp.cpu.tensor<f32>) -> ()
+// CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "shift"} : () -> ()
+
+// CHECK: not impliesReady(%1#0, %arg0)
+// CHECK: not impliesReady(%1#1, %arg0)
+// CHECK: not impliesReady(%1#2, %arg0)
+
+mgp.model @shift : tf init {
+  %0 = grt.chain.create
+  %1 = mgp.context.create 0
+  mef.output %0, %1 : !mef.chain, !mgp.context
+} execute (%ch0: !mef.chain, %cxt: !mgp.context) -> (!mef.chain, !mgp.cpu.tensor<f32>) {
+  %x = "some.op"(%ch0) : (!mef.chain) -> !mgp.cpu.tensor<f32>
+  %i, %j, %k = grt.while (%x: !mgp.cpu.tensor<f32>, %x as %y: !mgp.cpu.tensor<f32>, %x as %z: !mgp.cpu.tensor<f32>) {
+    %c = "some.op"() : () -> i1
+    mef.output %x, %y, %z, %c : !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>, i1
+  } do {
+    %n = "some.op"() : () -> !mgp.cpu.tensor<f32>
+    mef.output %y, %z, %n: !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>
+  }
+  %l = "some.op"(%i, %j, %k) : (!mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>) -> !mgp.cpu.tensor<f32>
+  mef.output %ch0, %l : !mef.chain, !mgp.cpu.tensor<f32>
+}
+
+//
 // Realistic grt.while with tensors in and out
 //
 
 // For reference here's the model with vars matching the checks (modulo the block ids).
 // CHECK: "mgp.model"() ({
+//              ### Block 0 ###
 // CHECK-NEXT:  %0 = "grt.chain.create"() : () -> !mef.chain
 // CHECK-NEXT:  %1 = "mgp.context.create"() {numSlots = 0 : ui64} : () -> !mgp.context
 // CHECK-NEXT:  "mef.output"(%0, %1) : (!mef.chain, !mgp.context) -> ()
 // CHECK-NEXT:}, {
+//            ### Block 1 ###
 // CHECK-NEXT:^bb0(%arg0: !mef.chain, %arg1: !mgp.context):
 // CHECK-NEXT:  %0 = "mgp.cpu.buffer.constant"() {aValue = #M.aligned_bytes<"0x00000004", align 8> : !M.array<4xui8>, bRawAlign = 8 : ui64} : () -> !mgp.cpu.buffer<4>
 // CHECK-NEXT:  %1 = "mgp.cpu.tensor_spec.create"() {aRawDims = #M.dense_array<> : !M.array<0xui64>, bRawDType = 138 : ui8} : () -> !mgp.cpu.tensor_spec<ui32>
@@ -125,7 +215,7 @@ mgp.model @crissCross : tf init {
 // CHECK-NEXT:  %8 = "mgp.cpu.buffer.set"(%7) {value = 1 : ui8} : (!mgp.cpu.buffer<32>) -> !mef.chain
 // CHECK-NEXT:  %9 = "mgp.cpu.tensor.create"(%8, %7, %5) : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<32xui8>) -> !mgp.cpu.tensor<32xui8>
 // CHECK-NEXT:  %10:4 = "grt.while"(%arg0, %2, %6, %9) ({
-//              ### Block 1 ###
+//              ### Block 2 ###
 // CHECK-NEXT:  ^bb0(%arg2: !mef.chain, %arg3: !mgp.cpu.tensor<ui32>, %arg4: !mgp.cpu.tensor<32xui8>, %arg5: !mgp.cpu.tensor<32xui8>):
 // CHECK-NEXT:    %13 = "mgp.cpu.buffer.constant"() {aValue = #M.aligned_bytes<"0x00000000", align 8> : !M.array<4xui8>, bRawAlign = 8 : ui64} : () -> !mgp.cpu.buffer<4>
 // CHECK-NEXT:    %14:2 = "mgp.cpu.tensor.extract"(%arg3) : (!mgp.cpu.tensor<ui32>) -> (!mgp.cpu.buffer<4>, !mgp.cpu.tensor_spec<ui32>)
@@ -137,7 +227,7 @@ mgp.model @crissCross : tf init {
 // CHECK-NEXT:    %20 = "mgp.to_grt_bool"(%arg2, %19#0) : (!mef.chain, !mgp.cpu.buffer<1>) -> i1
 // CHECK-NEXT:    "mef.output"(%arg2, %arg3, %arg4, %arg5, %20) : (!mef.chain, !mgp.cpu.tensor<ui32>, !mgp.cpu.tensor<32xui8>, !mgp.cpu.tensor<32xui8>, i1) -> ()
 // CHECK-NEXT:  }, {
-//              ### Block 2 ###
+//              ### Block 3 ###
 // CHECK-NEXT:  ^bb0(%arg2: !mef.chain, %arg3: !mgp.cpu.tensor<ui32>, %arg4: !mgp.cpu.tensor<32xui8>, %arg5: !mgp.cpu.tensor<32xui8>):
 // CHECK-NEXT:    %13:2 = "mgp.cpu.tensor.extract"(%arg4) : (!mgp.cpu.tensor<32xui8>) -> (!mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<32xui8>)
 // CHECK-NEXT:    %14:2 = "mgp.cpu.tensor.extract"(%arg5) : (!mgp.cpu.tensor<32xui8>) -> (!mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<32xui8>)
@@ -159,19 +249,9 @@ mgp.model @crissCross : tf init {
 
 
 // CHECK: sameAs(%arg0, %arg0)
-// CHECK-NEXT: sameAs(%arg0, %10#0)
-// CHECK-NEXT: sameAs(%arg0, %arg2[1])
-// CHECK-NEXT: sameAs(%arg0, %arg2[2])
-
-// CHECK: sameAs(%arg3[1], %arg3[1])
-
-// CHECK: sameAs(%arg4[1], %arg4[1])
-
-// %arg5 is passed through
-// CHECK: sameAs(%arg5[1], %9)
-// CHECK-NEXT: sameAs(%arg5[1], %10#3)
-// CHECK-NEXT: sameAs(%arg5[1], %arg5[1])
-// CHECK-NEXT: sameAs(%arg5[1], %arg5[2])
+// CHECK: sameAs(%arg0, %arg2[2])
+// CHECK: sameAs(%arg0, %arg2[3])
+// CHECK: sameAs(%arg0, %10#0)
 
 // CHECK: sameAs(%arg3[2], %arg3[2])
 
@@ -179,59 +259,69 @@ mgp.model @crissCross : tf init {
 
 // %arg5 is passed through
 // CHECK: sameAs(%arg5[2], %9)
-// CHECK-NEXT: sameAs(%arg5[2], %10#3)
-// CHECK-NEXT: sameAs(%arg5[2], %arg5[1])
-// CHECK-NEXT: sameAs(%arg5[2], %arg5[2])
+// CHECK: sameAs(%arg5[2], %arg5[2])
+// CHECK: sameAs(%arg5[2], %arg5[3])
+// CHECK: sameAs(%arg5[2], %10#3)
+
+// CHECK: sameAs(%arg3[3], %arg3[3])
+
+// CHECK: sameAs(%arg4[3], %arg4[3])
+
+// %arg5 is passed through
+// CHECK: sameAs(%arg5[3], %9)
+// CHECK: sameAs(%arg5[3], %arg5[2])
+// CHECK: sameAs(%arg5[3], %arg5[3])
+// CHECK: sameAs(%arg5[3], %10#3)
 
 
 // CHECK: impliesReady(%10#0, %arg0)
-// CHECK-NEXT: impliesReady(%10#0, %10#0)
-// CHECK-NEXT: impliesReady(%10#0, %arg2[1])
-// CHECK-NEXT: impliesReady(%10#0, %arg2[2])
+// CHECK: impliesReady(%10#0, %arg2[2])
+// CHECK: impliesReady(%10#0, %arg2[3])
+// CHECK: impliesReady(%10#0, %10#0)
 
 // CHECK: impliesReady(%10#1, %arg0)
-// CHECK-NEXT: impliesReady(%10#1, %0)
-// CHECK-NEXT: impliesReady(%10#1, %1)
-// CHECK-NEXT: impliesReady(%10#1, %2)
-// CHECK-NEXT: impliesReady(%10#1, %10#0)
-// CHECK-NEXT: impliesReady(%10#1, %10#1)
-// CHECK-NEXT: impliesReady(%10#1, %arg2[1])
-// CHECK-NEXT: impliesReady(%10#1, %arg2[2])
+// CHECK: impliesReady(%10#1, %0)
+// CHECK: impliesReady(%10#1, %1)
+// CHECK: impliesReady(%10#1, %2)
+// CHECK: impliesReady(%10#1, %arg2[2])
+// CHECK: impliesReady(%10#1, %arg2[3])
+// CHECK: impliesReady(%10#1, %10#0)
+// CHECK: impliesReady(%10#1, %10#1)
 
 // CHECK: impliesReady(%10#2, %arg0)
-// CHECK-NEXT: impliesReady(%10#2, %3)
-// CHECK-NEXT: impliesReady(%10#2, %4)
-// CHECK-NEXT: impliesReady(%10#2, %5)
-// CHECK-NEXT: impliesReady(%10#2, %6)
-// CHECK-NEXT: impliesReady(%10#2, %10#0)
-// CHECK-NEXT: impliesReady(%10#2, %10#2)
-// CHECK-NEXT: impliesReady(%10#2, %arg2[1])
-// CHECK-NEXT: impliesReady(%10#2, %arg2[2])
+// CHECK: impliesReady(%10#2, %3)
+// CHECK: impliesReady(%10#2, %4)
+// CHECK: impliesReady(%10#2, %5)
+// CHECK: impliesReady(%10#2, %6)
+// CHECK: impliesReady(%10#2, %arg2[2])
+// CHECK: impliesReady(%10#2, %arg2[3])
+// CHECK: impliesReady(%10#2, %10#0)
+// CHECK: impliesReady(%10#2, %10#2)
 
 // CHECK: impliesReady(%10#3, %arg0)
-// CHECK-NEXT: impliesReady(%10#3, %5)
-// CHECK-NEXT: impliesReady(%10#3, %7)
-// CHECK-NEXT: impliesReady(%10#3, %8)
-// CHECK-NEXT: impliesReady(%10#3, %9)
-// CHECK-NEXT: impliesReady(%10#3, %10#0)
-// CHECK-NEXT: impliesReady(%10#3, %10#3)
-// CHECK-NEXT: impliesReady(%10#3, %arg2[1])
-// CHECK-NEXT: impliesReady(%10#3, %arg5[1])
-// CHECK-NEXT: impliesReady(%10#3, %arg2[2])
-// CHECK-NEXT: impliesReady(%10#3, %arg5[2])
+// CHECK: impliesReady(%10#3, %5)
+// CHECK: impliesReady(%10#3, %7)
+// CHECK: impliesReady(%10#3, %8)
+// CHECK: impliesReady(%10#3, %9)
+// CHECK: impliesReady(%10#3, %arg2[2])
+// CHECK: impliesReady(%10#3, %arg5[2])
+// CHECK: impliesReady(%10#3, %arg2[3])
+// CHECK: impliesReady(%10#3, %arg5[3])
+// CHECK: impliesReady(%10#3, %10#0)
+// CHECK: impliesReady(%10#3, %10#3)
 
 // CHECK: impliesReady(%12, %arg0)
-// CHECK-NEXT: impliesReady(%12, %3)
-// CHECK-NEXT: impliesReady(%12, %4)
-// CHECK-NEXT: impliesReady(%12, %5)
-// CHECK-NEXT: impliesReady(%12, %6)
-// CHECK-NEXT: impliesReady(%12, %10#0)
-// CHECK-NEXT: impliesReady(%12, %10#2)
-// CHECK-NEXT: impliesReady(%12, %arg2[1])
-// CHECK-NEXT: impliesReady(%12, %arg2[2])
-// CHECK-NEXT: impliesReady(%12, %11#0)
-// CHECK-NEXT: impliesReady(%12, %11#1)
-// CHECK-NEXT: impliesReady(%12, %12)
+// CHECK: impliesReady(%12, %3)
+// CHECK: impliesReady(%12, %4)
+// CHECK: impliesReady(%12, %5)
+// CHECK: impliesReady(%12, %6)
+// CHECK: impliesReady(%12, %arg2[2])
+// CHECK: impliesReady(%12, %arg2[3])
+// CHECK: impliesReady(%12, %10#0)
+// CHECK: impliesReady(%12, %10#2)
+// CHECK: impliesReady(%12, %11#0)
+// CHECK: impliesReady(%12, %11#1)
+// CHECK: impliesReady(%12, %12)
 
 mgp.model @while : tf init {
   %0 = grt.chain.create

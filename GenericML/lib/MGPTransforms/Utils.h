@@ -16,6 +16,10 @@
 
 namespace M::MGP {
 
+/// Returns the operations in block in a dataflow order, ie s.t. an operation
+/// does not have operands defined by operations later in the vector.
+SmallVector<Operation *> getDataflowOrder(Block *block);
+
 // Order-preserving set remove for chains.
 void remove(SmallVectorImpl<Value> &chains, Value chain);
 
@@ -118,37 +122,6 @@ struct ExecuteState {
   SmallPtrSet<Operation *, 8> toErase;
 };
 
-// Helper for enumerating and printing values in the 'execute' block of a
-// model, with disambiguation by blocks. For testing only.
-struct ValueTestPrinter {
-  /// Constructs printer for model.
-  ValueTestPrinter(ModelOp model);
-
-  /// Prints the model in a form which will match the values (though without
-  /// the block ids).
-  void printModel(llvm::raw_ostream &os);
-
-  /// Prints value in generic form, with an additional block id if the value
-  /// is not bound in the model's 'execute' block.
-  void printValue(llvm::raw_ostream &os, Value value);
-
-  /// Prints the result of predicate for every value in model.
-  void printPredicate(llvm::raw_ostream &os, StringRef predName,
-                      const std::function<bool(Value)> &pred);
-
-  /// Prints the result of relation for every value in model.
-  void printRelation(llvm::raw_ostream &os, StringRef relName,
-                     const std::function<bool(Value, Value)> &rel);
-
-  /// The model.
-  ModelOp model;
-
-  /// All the values in model, including arguments to nested blocks in
-  /// control flom ops and results of ops in such blocks.
-  SmallVector<Value> allValues;
-  /// The unique pre-order index for every block in model.
-  DenseMap<Block *, size_t> blockMap;
-};
 
 } // namespace M::MGP
 
