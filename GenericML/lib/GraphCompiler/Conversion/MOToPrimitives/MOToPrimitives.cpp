@@ -955,7 +955,7 @@ void MOToPrimitivesPass::runOnOperation() {
   auto &ctx = getContext();
 
   TypeConverter converter;
-  converter.addConversion([&ctx](MO::TensorType t) -> Optional<Type> {
+  converter.addConversion([&ctx](MO::TensorType t) -> std::optional<Type> {
     // TODO: this may fail for some element types.
     return MGP::CpuTensorType::get(&ctx, MGP::createCpuTensorSpec(t));
   });

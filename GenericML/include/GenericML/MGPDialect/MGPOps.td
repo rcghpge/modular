@@ -84,7 +84,7 @@ def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant", [
 
   let extraClassDeclaration = [{
      /// Returns the buffer's alignment.
-     Optional<uint64_t> getOptAlign();
+     std::optional<uint64_t> getOptAlign();
   }];
 
   let builders = [

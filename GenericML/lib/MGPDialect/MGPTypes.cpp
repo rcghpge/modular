@@ -29,7 +29,7 @@ using namespace MGP;
 /// Verifies the buffer size and align constraints are valid.
 LogicalResult
 CpuBufferType::verify(function_ref<InFlightDiagnostic()> emitError,
-                      Optional<uint64_t> optSize) {
+                      std::optional<uint64_t> optSize) {
   if (!isValidOptSize(optSize))
     return emitError() << "buffer size must be strictly positive.";
   return success();
@@ -47,7 +47,7 @@ CpuBufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
 
 CpuBufferType CpuBufferType::get(MLIRContext *context,
                                  IntegerAttr rawSizeOrNull) {
-  Optional<uint64_t> optSize;
+  std::optional<uint64_t> optSize;
   if (rawSizeOrNull)
     optSize = rawSizeToOptSize(rawSizeOrNull.getUInt());
   return CpuBufferType::get(context, optSize);
@@ -100,7 +100,7 @@ constexpr const char *kUnknownDType = "unk";
 
 /// Parses a DType, where 'unk' is represented as the none value, and
 /// 'invalid' is considered illegal.
-static ParseResult parseDType(AsmParser &p, Optional<DType> &optDType) {
+static ParseResult parseDType(AsmParser &p, std::optional<DType> &optDType) {
   StringRef keyword;
   llvm::SMLoc dtypeLoc;
   if (p.getCurrentLocation(&dtypeLoc) || p.parseKeyword(&keyword))
@@ -122,11 +122,11 @@ static ParseResult parseDType(AsmParser &p, Optional<DType> &optDType) {
 }
 
 /// Prints a DType, where the none value is printed as 'unk'.
-static void printDType(AsmPrinter &p, Optional<DType> optDType) {
+static void printDType(AsmPrinter &p, std::optional<DType> optDType) {
   p << (optDType ? optDType->getAsString() : kUnknownDType);
 }
 
-ErrorOr<Optional<DType>> DTypeType::fromMlirType(Type mlirType) {
+ErrorOr<std::optional<DType>> DTypeType::fromMlirType(Type mlirType) {
   if (auto unkType = mlir::dyn_cast<NoneType>(mlirType))
     return std::nullopt; // None denotes unknown.
   if (auto intType = mlir::dyn_cast<IntegerType>(mlirType)) {
@@ -149,7 +149,7 @@ ErrorOr<Optional<DType>> DTypeType::fromMlirType(Type mlirType) {
 }
 
 ErrorOr<Type> DTypeType::toMLIRType(MLIRContext *context,
-                                    Optional<DType> optDtype) {
+                                    std::optional<DType> optDtype) {
   if (!optDtype)
     return NoneType::get(context); // None denotes unknown.
   if (optDtype->isInt() || optDtype->isBool()) {
@@ -166,7 +166,7 @@ ErrorOr<Type> DTypeType::toMLIRType(MLIRContext *context,
                "' as an MLIR type.");
 }
 
-ErrorOrSuccess DTypeType::hasMLIRType(Optional<DType> optDType) {
+ErrorOrSuccess DTypeType::hasMLIRType(std::optional<DType> optDType) {
   if (!optDType)
     return {}; // None denotes unknown.
   if (optDType->isInt() && hasEquivalentIntegerType(*optDType))
@@ -179,13 +179,13 @@ ErrorOrSuccess DTypeType::hasMLIRType(Optional<DType> optDType) {
                "' as an MLIR type.");
 }
 
-uint8_t DTypeType::asRawDType(Optional<DType> optDType) {
+uint8_t DTypeType::asRawDType(std::optional<DType> optDType) {
   return optDType ? optDType->getValue() : DType().getValue();
 }
 
-Optional<DType> DTypeType::fromRawDType(uint8_t rawDType) {
+std::optional<DType> DTypeType::fromRawDType(uint8_t rawDType) {
   DType dtype(rawDType);
-  return dtype.isInvalid() ? Optional<DType>() : dtype;
+  return dtype.isInvalid() ? std::optional<DType>() : dtype;
 }
 
 //===----------------------------------------------------------------------===//
@@ -196,8 +196,8 @@ Optional<DType> DTypeType::fromRawDType(uint8_t rawDType) {
 /// empty dimension and 'unk' as the empty DType. The shope is constructed
 /// to match dims, but using the raw signed form.
 static ParseResult parseDimsAndDType(AsmParser &p,
-                                     SmallVector<Optional<uint64_t>> &dims,
-                                     Optional<DType> &optDType,
+                                     SmallVector<std::optional<uint64_t>> &dims,
+                                     std::optional<DType> &optDType,
                                      SmallVector<int64_t> &shape) {
   llvm::SMLoc loc;
   if (p.getCurrentLocation(&loc) ||
@@ -219,12 +219,13 @@ static ParseResult parseDimsAndDType(AsmParser &p,
 
 /// Prints a list of dimensions followed by a DType, printing an empty
 /// dimension as the '?' and an empty DType as 'unk'. The shape is ignored.
-static void printDimsAndDType(AsmPrinter &p, ArrayRef<Optional<uint64_t>> dims,
-                              Optional<DType> optDType,
+static void printDimsAndDType(AsmPrinter &p,
+                              ArrayRef<std::optional<uint64_t>> dims,
+                              std::optional<DType> optDType,
                               ArrayRef<int64_t> shape) {
   llvm::interleave(
       dims, p.getStream(),
-      [&](const Optional<uint64_t> &dim) {
+      [&](const std::optional<uint64_t> &dim) {
         p << (dim ? std::to_string(*dim) : "?");
       },
       "x");
@@ -237,12 +238,13 @@ static void printDimsAndDType(AsmPrinter &p, ArrayRef<Optional<uint64_t>> dims,
 /// that the element type in DType form is also representable as an MLIR type.
 LogicalResult
 CpuTensorSpecType::verify(function_ref<InFlightDiagnostic()> emitError,
-                          ArrayRef<Optional<uint64_t>> dims,
-                          Optional<DType> optDType, ArrayRef<int64_t> shape) {
+                          ArrayRef<std::optional<uint64_t>> dims,
+                          std::optional<DType> optDType,
+                          ArrayRef<int64_t> shape) {
   if (shape.size() > kMaxRank)
     return emitError() << "shape must have rank between 0 and " << kMaxRank
                        << ".";
-  for (const Optional<uint64_t> &dim : dims) {
+  for (const std::optional<uint64_t> &dim : dims) {
     if (!isValidOptSize(dim))
       return emitError() << "shape dimensions must be non-negative or the "
                             "distinguished '?' unknown dimension.";
@@ -268,28 +270,29 @@ CpuTensorSpecType::verify(function_ref<InFlightDiagnostic()> emitError,
 }
 
 CpuTensorSpecType CpuTensorSpecType::get(MLIRContext *context,
-                                         ArrayRef<Optional<uint64_t>> dims,
-                                         Optional<DType> optDType) {
+                                         ArrayRef<std::optional<uint64_t>> dims,
+                                         std::optional<DType> optDType) {
   SmallVector<int64_t> shape;
   shape.reserve(dims.size());
-  for (const Optional<uint64_t> &dim : dims)
+  for (const std::optional<uint64_t> &dim : dims)
     shape.emplace_back(optSizeToRawSignedSize(dim));
   return CpuTensorSpecType::get(context, dims, optDType, shape);
 }
 
 CpuTensorSpecType CpuTensorSpecType::getChecked(
     function_ref<::mlir::InFlightDiagnostic()> emitError, MLIRContext *context,
-    ArrayRef<Optional<uint64_t>> dims, Optional<DType> optDType) {
+    ArrayRef<std::optional<uint64_t>> dims, std::optional<DType> optDType) {
   return CpuTensorSpecType::get(context, dims, optDType);
 }
 
 CpuTensorSpecType CpuTensorSpecType::get(ArrayRef<int64_t> shape,
                                          Type elementType) {
-  ErrorOr<Optional<DType>> errOrDType = DTypeType::fromMlirType(elementType);
+  ErrorOr<std::optional<DType>> errOrDType =
+      DTypeType::fromMlirType(elementType);
   assert(errOrDType.getError() == nullptr &&
          "element type is not representable as a DType");
 
-  SmallVector<Optional<uint64_t>> dims;
+  SmallVector<std::optional<uint64_t>> dims;
   dims.reserve(shape.size());
   for (auto dim : shape)
     dims.emplace_back(rawSignedSizeToOptSize(dim));
@@ -301,7 +304,8 @@ CpuTensorSpecType CpuTensorSpecType::get(ArrayRef<int64_t> shape,
 CpuTensorSpecType CpuTensorSpecType::getChecked(
     function_ref<::mlir::InFlightDiagnostic()> emitError,
     ArrayRef<int64_t> shape, Type elementType) {
-  ErrorOr<Optional<DType>> errOrDType = DTypeType::fromMlirType(elementType);
+  ErrorOr<std::optional<DType>> errOrDType =
+      DTypeType::fromMlirType(elementType);
   if (const auto *err = errOrDType.getError()) {
     emitError() << err;
     return {};
@@ -312,8 +316,8 @@ CpuTensorSpecType CpuTensorSpecType::getChecked(
 CpuTensorSpecType CpuTensorSpecType::get(MLIRContext *context,
                                          ArrayRef<uint64_t> rawDims,
                                          uint8_t rawDType) {
-  Optional<DType> dtype = DTypeType::fromRawDType(rawDType);
-  SmallVector<Optional<uint64_t>> dims;
+  std::optional<DType> dtype = DTypeType::fromRawDType(rawDType);
+  SmallVector<std::optional<uint64_t>> dims;
   dims.reserve(rawDims.size());
   for (auto dim : rawDims)
     dims.emplace_back(rawSizeToOptSize(dim));
@@ -349,14 +353,14 @@ size_t CpuTensorSpecType::getNumDynamicDims() const {
   return static_cast<size_t>(llvm::count(getDims(), std::nullopt));
 }
 
-Optional<uint64_t> CpuTensorSpecType::operator[](size_t i) const {
+std::optional<uint64_t> CpuTensorSpecType::operator[](size_t i) const {
   assert(i < getDims().size() && "shape index out of range");
   return getDims()[i];
 }
 
-Optional<uint64_t> CpuTensorSpecType::getNumElements() const {
+std::optional<uint64_t> CpuTensorSpecType::getNumElements() const {
   uint64_t prod = 1;
-  for (const Optional<uint64_t> &dim : getDims()) {
+  for (const std::optional<uint64_t> &dim : getDims()) {
     if (!dim)
       return {}; // unknown dimension
     prod *= *dim;
@@ -364,11 +368,11 @@ Optional<uint64_t> CpuTensorSpecType::getNumElements() const {
   return prod;
 }
 
-Optional<uint64_t> CpuTensorSpecType::getSizeInBytes() const {
-  Optional<DType> optDType = getOptDType();
+std::optional<uint64_t> CpuTensorSpecType::getSizeInBytes() const {
+  std::optional<DType> optDType = getOptDType();
   if (!optDType)
     return {}; // unknown element type
-  Optional<uint64_t> numElems = getNumElements();
+  std::optional<uint64_t> numElems = getNumElements();
   if (!numElems)
     return {}; // at least one unknown dimension
   ssize_t bytes = optDType->getSizeInBytes(plainSizeToRuntimeSize(*numElems));
@@ -397,7 +401,7 @@ Type CpuTensorSpecType::getElementType() const {
 IntArrayElementsAttr CpuTensorSpecType::getRawDims() const {
   Type ui64 = IntegerType::get(getContext(), 64, IntegerType::Unsigned);
   SmallVector<APInt> rawDims;
-  for (const Optional<uint64_t> &dim : getDims()) {
+  for (const std::optional<uint64_t> &dim : getDims()) {
     uint64_t rawDim = optSizeToRawSize(dim);
     rawDims.emplace_back(ui64.getIntOrFloatBitWidth(), rawDim,
                          ui64.isSignedInteger());
@@ -422,8 +426,8 @@ CpuBufferType CpuTensorSpecType::getExpectedBufferType() const {
 /// Parses a compact tensor type description.
 static ParseResult parseTensorSpec(AsmParser &p,
                                    CpuTensorSpecType &tensorSpec) {
-  SmallVector<Optional<uint64_t>> dims;
-  Optional<DType> optDType;
+  SmallVector<std::optional<uint64_t>> dims;
+  std::optional<DType> optDType;
   SmallVector<int64_t> shape;
   llvm::SMLoc loc;
   if (p.getCurrentLocation(&loc) || parseDimsAndDType(p, dims, optDType, shape))
@@ -493,7 +497,7 @@ const int64_t CpuBufferType::unknownSize = ShapedType::kDynamic;
 
 /// Implements ShapedType::getShape
 ArrayRef<int64_t> CpuBufferType::getShape() const {
-  Optional<uint64_t> &optSize = getImpl()->optSize;
+  std::optional<uint64_t> &optSize = getImpl()->optSize;
   if (!optSize)
     return ArrayRef<int64_t>(&unknownSize, 1);
   // Convert to raw signed size for assertion side effect.

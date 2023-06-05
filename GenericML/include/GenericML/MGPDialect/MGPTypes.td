@@ -70,7 +70,7 @@ def MGP_CpuBufferType : MGP_Type<"CpuBuffer", "cpu.buffer",
     side-effects over buffers.
 
     The size of a buffer type has two representations:
-     - 'Optional form': an `Optional<uint64_t>`, with none denoting unknown.
+     - 'std::optional form': an `std::optional<uint64_t>`, with none denoting unknown.
      - 'Raw form': An UI64Attr, with ~0 denoting unknown.
 
     Examples:
@@ -80,7 +80,7 @@ def MGP_CpuBufferType : MGP_Type<"CpuBuffer", "cpu.buffer",
     ```
   }];
 
-  let parameters = (ins OptionalParameter<"Optional<uint64_t>">:$optSize);
+  let parameters = (ins OptionalParameter<"std::optional<uint64_t>">:$optSize);
   let assemblyFormat = "(`<` $optSize^ `>`)?";
   let genVerifyDecl = 1;
 
@@ -158,25 +158,25 @@ def MGP_DTypeType : MGP_Type<"DType", "dtype"> {
     /// Returns the DType representing the given MLIR IntegerType, FloatType
     /// or NoneType. The NoneType is represented as unknown. Returns an error
     /// if the MLIR type has no representation as a DType.
-    static ErrorOr<Optional<DType>> fromMlirType(Type mlirType);
+    static ErrorOr<std::optional<DType>> fromMlirType(Type mlirType);
 
     /// Returns the MLIR IntegerType, FloatType or NoneType representing the
     /// given optDType. The unknown value is represented as the NoneType MLIR
     /// type. Returns an error if the DType has no representation as an MLIR
     /// type.
-    static ErrorOr<Type> toMLIRType(MLIRContext *context, Optional<DType> optDType);
+    static ErrorOr<Type> toMLIRType(MLIRContext *context, std::optional<DType> optDType);
 
     /// Returns error if the given optDType cannot be represented as an
     /// MLIR IntegerType, FloatType or NoneType. Otherwise returns success.
-    static ErrorOrSuccess hasMLIRType(Optional<DType> optDType);
+    static ErrorOrSuccess hasMLIRType(std::optional<DType> optDType);
 
     /// Returns the 'raw form' of optDType. This will be 0 if DType is unknown,
     /// otherwise the DType's value.
-    static uint8_t asRawDType(Optional<DType> optDType);
+    static uint8_t asRawDType(std::optional<DType> optDType);
 
     /// Return the 'optional form' of rawDType. This will be none if the
     /// rawDType is 0, otherwise the DType with rawDType as value.
-    static Optional<DType> fromRawDType(uint8_t rawDType);
+    static std::optional<DType> fromRawDType(uint8_t rawDType);
   }];
 }
 
@@ -221,14 +221,14 @@ def MGP_CpuTensorSpecType : MGP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
     This type implements ShapedTypeInterface, using the distinguished
     NoneType to represent an unknown dtype. This means:
      - We use 'dims' to refer to the dimensions in
-       ArrayRef<Optional<uint64_t>> form, but 'shape' to refer to
+       ArrayRef<std::optional<uint64_t>> form, but 'shape' to refer to
        them in ArrayRef<int64_t> form.
      - We use 'dtype' to refer to the dtype in DType form, but
        'elementType' to refer to it in MLIR type form.
 
     The components of tensor spec types have three representation forms:
-     - 'Optional form': an array of Optional<uint64_t> for the dimensions
-       (none denotes unknown dimension) and an Optional<DType> for the dtype
+     - 'std::optional form': an array of std::optional<uint64_t> for the dimensions
+       (none denotes unknown dimension) and an std::optional<DType> for the dtype
        (none denotes unknown). This is the most natural representation
        from the MLIR/C++ side. However, care is taken to ensure only DTypes
        which are also representable as MLIR types are considered valid.
@@ -253,9 +253,9 @@ def MGP_CpuTensorSpecType : MGP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
 
   // NOTE: To support the ShapedType::getShape() method we must maintain
   // the shape in the ArrayRef<int64_t> form as well as our preferred
-  // ArrayRef<Optional<uint64_t>> form.
-  let parameters = (ins ArrayRefParameter<"Optional<uint64_t>">:$dims,
-                        "Optional<DType>":$optDType,
+  // ArrayRef<std::optional<uint64_t>> form.
+  let parameters = (ins ArrayRefParameter<"std::optional<uint64_t>">:$dims,
+                        "std::optional<DType>":$optDType,
                         ArrayRefParameter<"int64_t">:$shape);
   let assemblyFormat = "`<` custom<DimsAndDType>($dims, $optDType, $shape) `>`";
   let genVerifyDecl = 1;
@@ -270,15 +270,15 @@ def MGP_CpuTensorSpecType : MGP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
 
     /// Return the dimension at index i in this spec, or empty if the
     /// dimension is dynamic.
-    Optional<uint64_t> operator[](size_t i) const;
+    std::optional<uint64_t> operator[](size_t i) const;
 
     /// Returns the number of elements in a tensor of this spec, or
     /// empty if the tensor spec is not fully static.
-    Optional<uint64_t> getNumElements() const;
+    std::optional<uint64_t> getNumElements() const;
 
     /// Returns the size of the buffer needed to represent a tensor
     /// of this spec, or empty if the tensor spec is not fully static.
-    Optional<uint64_t> getSizeInBytes() const;
+    std::optional<uint64_t> getSizeInBytes() const;
 
     /// Returns the dimensions of this tensor spec in 'raw form'.
     /// Each element of the result will be an UI64Int, with ~0 denoting
@@ -298,8 +298,8 @@ def MGP_CpuTensorSpecType : MGP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
 
   let builders = [
     /// Constructs a tensor spec from its components in 'optional form'.
-    TypeBuilder<(ins "ArrayRef<Optional<uint64_t>>":$dims,
-                     "Optional<DType>":$optDType)>,
+    TypeBuilder<(ins "ArrayRef<std::optional<uint64_t>>":$dims,
+                     "std::optional<DType>":$optDType)>,
 
     /// Constructs a tensor spec from its components in 'shaped type form'.
     TypeBuilderWithInferredContext<(ins "ArrayRef<int64_t>":$shape,

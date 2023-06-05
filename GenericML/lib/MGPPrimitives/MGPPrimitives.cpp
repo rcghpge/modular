@@ -103,7 +103,7 @@ static void mgp_cpu_buffer_get_cached(Chain inChain, Context &ctx,
   ErrorOr<BufferRef> errOr = stateSlot.getBuffer(/*bufferIndex=*/0);
   if (errOr.isError())
     return std::move(outBuffer).setToError({errOr.takeError(), std::move(loc)});
-  Optional<size_t> expectedSize = getRuntimeSize(*bRawSize);
+  std::optional<size_t> expectedSize = getRuntimeSize(*bRawSize);
   if (expectedSize && errOr->getSize() != *expectedSize)
     return std::move(outBuffer).setToError(
         {Error(Twine("buffer cached at slot ") + Twine(*aSlot) +

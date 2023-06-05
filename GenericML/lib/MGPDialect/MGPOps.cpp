@@ -36,7 +36,8 @@ using namespace MGP;
 ///
 /// TODO(#4424): Would be better to just look for a HasAlignmentAttrInterface
 /// instead of looking for specific attribute types.
-static ErrorOr<Optional<uint64_t>> getImpliedAlignment(ElementsAttr value) {
+static ErrorOr<std::optional<uint64_t>>
+getImpliedAlignment(ElementsAttr value) {
   if (auto resourceAttr = dyn_cast<DenseResourceElementsAttr>(value)) {
     DenseResourceElementsHandle handle = resourceAttr.getRawHandle();
     mlir::AsmResourceBlob *blob = handle.getBlob();
@@ -82,7 +83,7 @@ static ParseResult parseElementsAttrWithAlign(AsmParser &p,
   if (p.getCurrentLocation(&loc) || p.parseAttribute(aValue))
     return failure();
 
-  ErrorOr<Optional<uint64_t>> errOrOptAlign = getImpliedAlignment(aValue);
+  ErrorOr<std::optional<uint64_t>> errOrOptAlign = getImpliedAlignment(aValue);
   if (const char *err = errOrOptAlign.getError())
     return p.emitError(loc) << StringRef(err);
 
@@ -104,7 +105,7 @@ static void printElementsAttrWithAlign(AsmPrinter &p,
 
 /// Get the raw alignment for elements when building a buffer constant.
 static uint64_t getRawAlign(ElementsAttr value) {
-  ErrorOr<Optional<uint64_t>> errOrOptAlign = getImpliedAlignment(value);
+  ErrorOr<std::optional<uint64_t>> errOrOptAlign = getImpliedAlignment(value);
   if (errOrOptAlign.isError())
     return 0;
 
@@ -157,7 +158,7 @@ LogicalResult CpuBufferConstantOp::verify() {
 
   // Only BufferAttr and DenseResourceElementsAttr can convey an align
   // constraint. Check they are valid.
-  ErrorOr<Optional<uint64_t>> errOrOptAlign = getImpliedAlignment(value);
+  ErrorOr<std::optional<uint64_t>> errOrOptAlign = getImpliedAlignment(value);
   if (auto *error = errOrOptAlign.getError())
     return emitOpError() << StringRef(error);
 
@@ -193,7 +194,7 @@ LogicalResult CpuBufferConstantOp::inferReturnTypes(
   return success();
 }
 
-Optional<uint64_t> CpuBufferConstantOp::getOptAlign() {
+std::optional<uint64_t> CpuBufferConstantOp::getOptAlign() {
   return rawSizeToOptSize(getBRawAlign());
 }
 
@@ -248,8 +249,9 @@ LogicalResult CpuBufferGetCachedOp::inferReturnTypes(
 /// Verify any of the 6 alloc primitives.
 static LogicalResult verifyAnyAllocOp(
     MLIRContext *context, llvm::function_ref<InFlightDiagnostic()> emitOpError,
-    Optional<uint64_t> optSize, uint64_t rawAlign, IndexType optRuntimeSizeType,
-    CpuTensorSpecType optRuntimeSpecType, CpuBufferType resultBufferType) {
+    std::optional<uint64_t> optSize, uint64_t rawAlign,
+    IndexType optRuntimeSizeType, CpuTensorSpecType optRuntimeSpecType,
+    CpuBufferType resultBufferType) {
   // First validate our use of the util.
   assert((optRuntimeSizeType != nullptr ? 1 : 0) +
                  (optRuntimeSpecType != nullptr ? 1 : 0) +
@@ -273,7 +275,7 @@ static LogicalResult verifyAnyAllocOp(
 
   // Check the tensor spec operand type is consistent.
   if (optRuntimeSpecType != nullptr) {
-    Optional<uint64_t> bytes = optRuntimeSpecType.getSizeInBytes();
+    std::optional<uint64_t> bytes = optRuntimeSpecType.getSizeInBytes();
     if (bytes)
       return emitOpError() << "expected tensor spec to not have statically "
                               "known size (have "
@@ -307,8 +309,8 @@ LogicalResult CpuBufferAllocStaticOp::inferReturnTypes(
   uint64_t size = sizeAttr.getUInt();
   // If the attribute happens to be invalid we'll still construct a result
   // type, but the verify will reject the overall op.
-  Optional<uint64_t> optSize =
-      isValidPlainSize(size) ? size : Optional<uint64_t>();
+  std::optional<uint64_t> optSize =
+      isValidPlainSize(size) ? size : std::optional<uint64_t>();
   inferredReturnTypes.emplace_back(CpuBufferType::get(context, optSize));
   return success();
 }
@@ -332,7 +334,7 @@ LogicalResult CpuBufferAllocDynamicOp::inferReturnTypes(
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   inferredReturnTypes.emplace_back(
-      CpuBufferType::get(context, Optional<uint64_t>()));
+      CpuBufferType::get(context, std::optional<uint64_t>()));
   return success();
 }
 
@@ -355,7 +357,7 @@ LogicalResult CpuBufferAllocSpecOp::inferReturnTypes(
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   inferredReturnTypes.emplace_back(
-      CpuBufferType::get(context, Optional<uint64_t>()));
+      CpuBufferType::get(context, std::optional<uint64_t>()));
   return success();
 }
 
@@ -382,7 +384,7 @@ LogicalResult CpuBufferReallocStaticOp::inferReturnTypes(
   auto sizeAttr =
       dyn_cast<mlir::IntegerAttr>(attributes.get(getCSizeAttrName(name)));
   assert(sizeAttr != nullptr && "mismatched operand attributes");
-  Optional<uint64_t> size = sizeAttr.getUInt();
+  std::optional<uint64_t> size = sizeAttr.getUInt();
   inferredReturnTypes.emplace_back(CpuBufferType::get(context, size));
   return success();
 }
@@ -406,7 +408,7 @@ LogicalResult CpuBufferReallocDynamicOp::inferReturnTypes(
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   inferredReturnTypes.emplace_back(
-      CpuBufferType::get(context, Optional<uint64_t>()));
+      CpuBufferType::get(context, std::optional<uint64_t>()));
   return success();
 }
 
@@ -431,7 +433,7 @@ LogicalResult CpuBufferReallocSpecOp::inferReturnTypes(
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   inferredReturnTypes.emplace_back(
-      CpuBufferType::get(context, Optional<uint64_t>()));
+      CpuBufferType::get(context, std::optional<uint64_t>()));
   return success();
 }
 
@@ -448,14 +450,14 @@ LogicalResult CpuBufferConcatOp::verify() {
   uint64_t inTotalSize = 0;
   for (const auto &inBuffer : getInBuffers()) {
     auto inBufferType = dyn_cast<CpuBufferType>(inBuffer.getType());
-    Optional<uint64_t> optSize = inBufferType.getOptSize();
+    std::optional<uint64_t> optSize = inBufferType.getOptSize();
     if (!optSize)
       // Not all input buffers have a statically known size.
       return success();
     inTotalSize += *optSize;
   }
   CpuBufferType expectedOutType =
-      CpuBufferType::get(getContext(), Optional<uint64_t>(inTotalSize));
+      CpuBufferType::get(getContext(), std::optional<uint64_t>(inTotalSize));
   if (getOutBuffer().getType() != expectedOutType)
     return emitOpError() << "expected output buffer type does not match actual "
                             "output buffer type ("
@@ -513,14 +515,14 @@ LogicalResult CpuBufferSplitBorrowOp::verify() {
   uint64_t outTotalSize = 0;
   for (const auto &outBuffer : getOutBuffers()) {
     auto outBufferType = dyn_cast<CpuBufferType>(outBuffer.getType());
-    Optional<uint64_t> optSize = outBufferType.getOptSize();
+    std::optional<uint64_t> optSize = outBufferType.getOptSize();
     if (!optSize)
       // Not all output buffers have a statically known size.
       return success();
     outTotalSize += *optSize;
   }
   CpuBufferType expectedInType =
-      CpuBufferType::get(getContext(), Optional<uint64_t>(outTotalSize));
+      CpuBufferType::get(getContext(), std::optional<uint64_t>(outTotalSize));
   if (getInBuffer().getType() != expectedInType)
     return emitOpError() << "expected input buffer type does not match "
                             "actual input buffer type ("

@@ -429,7 +429,7 @@ LowerHelper::lowerOutputBuffer(llvm::StringRef opName, Value inChain,
     if (!ty.hasRank())
       return Error("dynamic output rank not supported");
     MGP::CpuTensorSpecType outSpecType = MGP::createCpuTensorSpec(ty);
-    Optional<uint64_t> bufferSize = outSpecType.getSizeInBytes();
+    std::optional<uint64_t> bufferSize = outSpecType.getSizeInBytes();
     LoweredTensor output;
     if (!bufferSize) {
       UNWRAP_ERROR(out, lowerDynamicOutput(outSpecType, ty, opName, inChain,
@@ -622,7 +622,7 @@ LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
   SmallVector<uint64_t> rawSizes;
   for (TypedValue<MGP::CpuTensorSpecType> outSpec : outSpecs) {
     MGP::CpuTensorSpecType outSpecTy = outSpec.getType();
-    Optional<uint64_t> bufferSize = outSpecTy.getSizeInBytes();
+    std::optional<uint64_t> bufferSize = outSpecTy.getSizeInBytes();
 
     outBufTypes.emplace_back(MGP::CpuBufferType::get(ctx, bufferSize));
     rawSizes.emplace_back(optSizeToRawSize(bufferSize));
