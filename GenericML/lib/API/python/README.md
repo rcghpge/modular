@@ -18,8 +18,7 @@ Here's how to build and install the Python package:
    # Specify your venv root (if using), as this is something you need
    # for the Python API doc build (assuming you'll also want that):
    cmake-modular-release \
-     -DMODULAR_PYTHON_API_BUILD_BINDINGS=ON \
-     -DMODULAR_PYTHON_API_PYTHON_ROOT="${HOME}/.venvs/modular"
+     -DMODULAR_PYTHON_API_BUILD_BINDINGS=ON
    ```
 
 1. Build the Python wheel:

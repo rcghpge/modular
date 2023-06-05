@@ -4,11 +4,6 @@
 #
 ##===----------------------------------------------------------------------===##
 
-include(AddPyEnv)
-
-pyenv_setup_findpython3_variables("${MODULAR_PYTHON_API_PYTHON_VERSION}" "${MODULAR_PYTHON_API_PYTHON_ROOT}")
-find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
-
 execute_process(
   COMMAND ${Python3_EXECUTABLE} -m pip install --root-user-action=ignore -r ${CMAKE_CURRENT_SOURCE_DIR}/requirements.txt
   OUTPUT_QUIET

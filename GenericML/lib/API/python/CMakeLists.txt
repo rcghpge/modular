@@ -15,24 +15,6 @@ if(${DISABLE_ALL_EXTERNAL})
   return()
 endif()
 
-include(AddPyEnv)
-
-set(MODULAR_PYTHON_API_PYTHON_VERSION "3.11.1"
-  CACHE
-  STRING "Python version to use for building Python bindings and wheel."
-)
-set(MODULAR_PYTHON_API_PYTHON_ROOT ""
-  CACHE
-  STRING "Path to Python installation to use for building Python bindings and wheel. Overrides pyenv Python."
-)
-message(STATUS "Python version for Python API build: ${MODULAR_PYTHON_API_PYTHON_VERSION}. "
-  "Overridden if MODULAR_PYTHON_API_PYTHON_ROOT set: ${MODULAR_PYTHON_API_PYTHON_ROOT}."
-)
-pyenv_install("${MODULAR_PYTHON_API_PYTHON_VERSION}" "${MODULAR_PYTHON_API_PYTHON_ROOT}")
-
-# find_package(Python3) has to be called before including pybind11 so that
-# pybind11 picks up the correct Python development paths.
-pyenv_setup_findpython3_variables("${MODULAR_PYTHON_API_PYTHON_VERSION}" "${MODULAR_PYTHON_API_PYTHON_ROOT}")
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
 include(AddPyBind11)
@@ -84,7 +66,7 @@ string(REGEX MATCH "^[^\n]+" WHEEL_BASENAME "${BDIST_WHEEL_OUTPUT}")
 add_custom_target(modular-pybind-ext ALL
   COMMAND ${Python3_EXECUTABLE} -m pip install --root-user-action=ignore --quiet --force-reinstall ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
   DEPENDS ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
-  COMMENT "Installing Modular Python API wheel to CMake-managed pyenv Python."
+  COMMENT "Installing Modular Python API wheel."
 )
 add_dependencies(modular-pybind-ext modular-engine)
 add_subdirectory(bindings/modular/engine)
