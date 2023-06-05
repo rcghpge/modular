@@ -32,38 +32,38 @@
 // CHECK-NEXT:  "mef.output"(%2#0, %3) : (!mef.chain, !mgp.cpu.tensor<f32>) -> ()
 // CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "simple"} : () -> ()
 
-// CHECK: not sameAs(%arg4[2], %arg5[2])
-// CHECK: not sameAs(%arg4[2], %arg5[3])
-// CHECK: sameAs(%2#3, %1)
+// CHECK: sameAs(%arg4[2], %arg5[2]) = false
+// CHECK: sameAs(%arg4[2], %arg5[3]) = false
+// CHECK: sameAs(%2#3, %1) = true
 
-// CHECK: impliesReady(%2#0, %arg0)
-// CHECK: impliesReady(%2#0, %arg2[2])
-// CHECK: impliesReady(%2#0, %arg2[3])
-// CHECK: impliesReady(%2#0, %2#0)
-// CHECK: impliesReady(%2#1, %arg0)
-// CHECK: impliesReady(%2#1, %arg2[2])
-// CHECK: impliesReady(%2#1, %arg3[2])
-// CHECK: impliesReady(%2#1, %arg2[3])
-// CHECK: impliesReady(%2#1, %2#0)
-// CHECK: impliesReady(%2#1, %2#1)
-// CHECK: impliesReady(%2#2, %arg0)
-// CHECK: impliesReady(%2#2, %1)
-// CHECK: impliesReady(%2#2, %arg2[2])
-// CHECK: impliesReady(%2#2, %arg4[2])
-// CHECK: impliesReady(%2#2, %arg5[2])
-// CHECK: impliesReady(%2#2, %arg2[3])
-// CHECK: impliesReady(%2#2, %arg5[3])
-// CHECK: impliesReady(%2#2, %2#0)
-// CHECK: impliesReady(%2#2, %2#2)
-// CHECK: impliesReady(%2#2, %2#3)
-// CHECK: impliesReady(%2#3, %arg0)
-// CHECK: impliesReady(%2#3, %1)
-// CHECK: impliesReady(%2#3, %arg2[2])
-// CHECK: impliesReady(%2#3, %arg5[2])
-// CHECK: impliesReady(%2#3, %arg2[3])
-// CHECK: impliesReady(%2#3, %arg5[3])
-// CHECK: impliesReady(%2#3, %2#0)
-// CHECK: impliesReady(%2#3, %2#3)
+// CHECK: impliesReady(%2#0, %arg0) = true
+// CHECK: impliesReady(%2#0, %arg2[2]) = true
+// CHECK: impliesReady(%2#0, %arg2[3]) = true
+// CHECK: impliesReady(%2#0, %2#0) = true
+// CHECK: impliesReady(%2#1, %arg0) = true
+// CHECK: impliesReady(%2#1, %arg2[2]) = true
+// CHECK: impliesReady(%2#1, %arg3[2]) = true
+// CHECK: impliesReady(%2#1, %arg2[3]) = true
+// CHECK: impliesReady(%2#1, %2#0) = true
+// CHECK: impliesReady(%2#1, %2#1) = true
+// CHECK: impliesReady(%2#2, %arg0) = true
+// CHECK: impliesReady(%2#2, %1) = true
+// CHECK: impliesReady(%2#2, %arg2[2]) = true
+// CHECK: impliesReady(%2#2, %arg4[2]) = true
+// CHECK: impliesReady(%2#2, %arg5[2]) = true
+// CHECK: impliesReady(%2#2, %arg2[3]) = true
+// CHECK: impliesReady(%2#2, %arg5[3]) = true
+// CHECK: impliesReady(%2#2, %2#0) = true
+// CHECK: impliesReady(%2#2, %2#2) = true
+// CHECK: impliesReady(%2#2, %2#3) = true
+// CHECK: impliesReady(%2#3, %arg0) = true
+// CHECK: impliesReady(%2#3, %1) = true
+// CHECK: impliesReady(%2#3, %arg2[2]) = true
+// CHECK: impliesReady(%2#3, %arg5[2]) = true
+// CHECK: impliesReady(%2#3, %arg2[3]) = true
+// CHECK: impliesReady(%2#3, %arg5[3]) = true
+// CHECK: impliesReady(%2#3, %2#0) = true
+// CHECK: impliesReady(%2#3, %2#3) = true
 
 mgp.model @simple : tf init {
   %0 = grt.chain.create
@@ -114,15 +114,15 @@ mgp.model @simple : tf init {
 // CHECK-NEXT:  "mef.output"(%arg0, %3) : (!mef.chain, !mgp.cpu.tensor<f32>) -> ()
 // CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "crissCross"} : () -> ()
 
-// CHECK: impliesReady(%2#0, %arg0)
-// CHECK: impliesReady(%2#0, %arg2[2])
-// CHECK: impliesReady(%2#0, %arg2[3])
-// CHECK: impliesReady(%2#0, %2#0)
+// CHECK: impliesReady(%2#0, %arg0) = true
+// CHECK: impliesReady(%2#0, %arg2[2]) = true
+// CHECK: impliesReady(%2#0, %arg2[3]) = true
+// CHECK: impliesReady(%2#0, %2#0) = true
 
-// CHECK: impliesReady(%2#1, %arg0)
-// CHECK: impliesReady(%2#1, %arg3[2])
-// CHECK: impliesReady(%2#1, %arg3[3])
-// CHECK: impliesReady(%2#1, %2#1)
+// CHECK: impliesReady(%2#1, %arg0) = true
+// CHECK: impliesReady(%2#1, %arg3[2]) = true
+// CHECK: impliesReady(%2#1, %arg3[3]) = true
+// CHECK: impliesReady(%2#1, %2#1) = true
 
 mgp.model @crissCross : tf init {
   %0 = grt.chain.create
@@ -170,9 +170,9 @@ mgp.model @crissCross : tf init {
 // CHECK-NEXT:  "mef.output"(%arg0, %2) : (!mef.chain, !mgp.cpu.tensor<f32>) -> ()
 // CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "shift"} : () -> ()
 
-// CHECK: not impliesReady(%1#0, %arg0)
-// CHECK: not impliesReady(%1#1, %arg0)
-// CHECK: not impliesReady(%1#2, %arg0)
+// CHECK: impliesReady(%1#0, %arg0) = false
+// CHECK: impliesReady(%1#1, %arg0) = false
+// CHECK: impliesReady(%1#2, %arg0) = false
 
 mgp.model @shift : tf init {
   %0 = grt.chain.create
@@ -248,80 +248,80 @@ mgp.model @shift : tf init {
 // CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<32xui8>, sym_name = "while"} : () -> ()
 
 
-// CHECK: sameAs(%arg0, %arg0)
-// CHECK: sameAs(%arg0, %arg2[2])
-// CHECK: sameAs(%arg0, %arg2[3])
-// CHECK: sameAs(%arg0, %10#0)
+// CHECK: sameAs(%arg0, %arg0) = true
+// CHECK: sameAs(%arg0, %arg2[2]) = true
+// CHECK: sameAs(%arg0, %arg2[3]) = true
+// CHECK: sameAs(%arg0, %10#0) = true
 
-// CHECK: sameAs(%arg3[2], %arg3[2])
+// CHECK: sameAs(%arg3[2], %arg3[2]) = true
 
-// CHECK: sameAs(%arg4[2], %arg4[2])
-
-// %arg5 is passed through
-// CHECK: sameAs(%arg5[2], %9)
-// CHECK: sameAs(%arg5[2], %arg5[2])
-// CHECK: sameAs(%arg5[2], %arg5[3])
-// CHECK: sameAs(%arg5[2], %10#3)
-
-// CHECK: sameAs(%arg3[3], %arg3[3])
-
-// CHECK: sameAs(%arg4[3], %arg4[3])
+// CHECK: sameAs(%arg4[2], %arg4[2]) = true
 
 // %arg5 is passed through
-// CHECK: sameAs(%arg5[3], %9)
-// CHECK: sameAs(%arg5[3], %arg5[2])
-// CHECK: sameAs(%arg5[3], %arg5[3])
-// CHECK: sameAs(%arg5[3], %10#3)
+// CHECK: sameAs(%arg5[2], %9) = true
+// CHECK: sameAs(%arg5[2], %arg5[2]) = true
+// CHECK: sameAs(%arg5[2], %arg5[3]) = true
+// CHECK: sameAs(%arg5[2], %10#3) = true
+
+// CHECK: sameAs(%arg3[3], %arg3[3]) = true
+
+// CHECK: sameAs(%arg4[3], %arg4[3]) = true
+
+// %arg5 is passed through
+// CHECK: sameAs(%arg5[3], %9) = true
+// CHECK: sameAs(%arg5[3], %arg5[2]) = true
+// CHECK: sameAs(%arg5[3], %arg5[3]) = true
+// CHECK: sameAs(%arg5[3], %10#3) = true
 
 
-// CHECK: impliesReady(%10#0, %arg0)
-// CHECK: impliesReady(%10#0, %arg2[2])
-// CHECK: impliesReady(%10#0, %arg2[3])
-// CHECK: impliesReady(%10#0, %10#0)
+// CHECK: impliesReady(%10#0, %arg0) = true
+// CHECK: impliesReady(%10#0, %arg2[2]) = true
+// CHECK: impliesReady(%10#0, %arg2[3]) = true
+// CHECK: impliesReady(%10#0, %10#0) = true
 
-// CHECK: impliesReady(%10#1, %arg0)
-// CHECK: impliesReady(%10#1, %0)
-// CHECK: impliesReady(%10#1, %1)
-// CHECK: impliesReady(%10#1, %2)
-// CHECK: impliesReady(%10#1, %arg2[2])
-// CHECK: impliesReady(%10#1, %arg2[3])
-// CHECK: impliesReady(%10#1, %10#0)
-// CHECK: impliesReady(%10#1, %10#1)
+// CHECK: impliesReady(%10#1, %arg0) = true
+// CHECK: impliesReady(%10#1, %0) = true
+// CHECK: impliesReady(%10#1, %1) = true
+// CHECK: impliesReady(%10#1, %2) = true
+// CHECK: impliesReady(%10#1, %arg2[2]) = true
+// CHECK: impliesReady(%10#1, %arg2[3]) = true
+// CHECK: impliesReady(%10#1, %10#0) = true
+// CHECK: impliesReady(%10#1, %10#1) = true
 
-// CHECK: impliesReady(%10#2, %arg0)
-// CHECK: impliesReady(%10#2, %3)
-// CHECK: impliesReady(%10#2, %4)
-// CHECK: impliesReady(%10#2, %5)
-// CHECK: impliesReady(%10#2, %6)
-// CHECK: impliesReady(%10#2, %arg2[2])
-// CHECK: impliesReady(%10#2, %arg2[3])
-// CHECK: impliesReady(%10#2, %10#0)
-// CHECK: impliesReady(%10#2, %10#2)
+// CHECK: impliesReady(%10#2, %arg0) = true
+// CHECK: impliesReady(%10#2, %3) = true
+// CHECK: impliesReady(%10#2, %4) = true
+// CHECK: impliesReady(%10#2, %5) = true
+// CHECK: impliesReady(%10#2, %6) = true
+// CHECK: impliesReady(%10#2, %arg2[2]) = true
+// CHECK: impliesReady(%10#2, %arg2[3]) = true
+// CHECK: impliesReady(%10#2, %10#0) = true
+// CHECK: impliesReady(%10#2, %10#2) = true
 
-// CHECK: impliesReady(%10#3, %arg0)
-// CHECK: impliesReady(%10#3, %5)
-// CHECK: impliesReady(%10#3, %7)
-// CHECK: impliesReady(%10#3, %8)
-// CHECK: impliesReady(%10#3, %9)
-// CHECK: impliesReady(%10#3, %arg2[2])
-// CHECK: impliesReady(%10#3, %arg5[2])
-// CHECK: impliesReady(%10#3, %arg2[3])
-// CHECK: impliesReady(%10#3, %arg5[3])
-// CHECK: impliesReady(%10#3, %10#0)
-// CHECK: impliesReady(%10#3, %10#3)
+// CHECK: impliesReady(%10#3, %arg0) = true
+// CHECK: impliesReady(%10#3, %5) = true
+// CHECK: impliesReady(%10#3, %7) = true
+// CHECK: impliesReady(%10#3, %8) = true
+// CHECK: impliesReady(%10#3, %9) = true
+// CHECK: impliesReady(%10#3, %arg2[2]) = true
+// CHECK: impliesReady(%10#3, %arg5[2]) = true
+// CHECK: impliesReady(%10#3, %arg2[3]) = true
+// CHECK: impliesReady(%10#3, %arg5[3]) = true
+// CHECK: impliesReady(%10#3, %10#0) = true
+// CHECK: impliesReady(%10#3, %10#3) = true
 
-// CHECK: impliesReady(%12, %arg0)
-// CHECK: impliesReady(%12, %3)
-// CHECK: impliesReady(%12, %4)
-// CHECK: impliesReady(%12, %5)
-// CHECK: impliesReady(%12, %6)
-// CHECK: impliesReady(%12, %arg2[2])
-// CHECK: impliesReady(%12, %arg2[3])
-// CHECK: impliesReady(%12, %10#0)
-// CHECK: impliesReady(%12, %10#2)
-// CHECK: impliesReady(%12, %11#0)
-// CHECK: impliesReady(%12, %11#1)
-// CHECK: impliesReady(%12, %12)
+// CHECK: impliesReady(%12, %arg0) = true
+// CHECK: impliesReady(%12, %3) = true
+// CHECK: impliesReady(%12, %4) = true
+// CHECK: impliesReady(%12, %5) = true
+// CHECK: impliesReady(%12, %6) = true
+// CHECK: impliesReady(%12, %arg2[2]) = true
+// CHECK: impliesReady(%12, %arg2[3]) = true
+// CHECK: impliesReady(%12, %10#0) = true
+// CHECK: impliesReady(%12, %10#2) = true
+// CHECK: impliesReady(%12, %11#0) = true
+// CHECK: impliesReady(%12, %11#1) = true
+// CHECK: impliesReady(%12, %12) = true
 
 mgp.model @while : tf init {
   %0 = grt.chain.create

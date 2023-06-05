@@ -37,20 +37,21 @@ class AsyncDataflowDependenciesTestPass
 
   void runOnOperation() override {
     ModelOp modelOp = getOperation();
-    AsyncDataflowDependencies dependencies(modelOp);
+    IndexSet<Value> index = createValueIndexSet(modelOp);
+    AsyncDataflowDependencies dependencies(&index);
 
-    dependencies.index.printModel(llvm::outs());
+    index.printModel(llvm::outs());
 
-    dependencies.index.printRelation(
-        llvm::outs(), "sameAs",
-        [&](Value lhs, Value rhs) { return dependencies.sameAs(lhs, rhs); });
-    dependencies.index.printPredicate(
-        llvm::outs(), "isAlwaysReady",
-        [&](Value value) { return dependencies.isAlwaysReady(value); });
-    dependencies.index.printRelation(
-        llvm::outs(), "impliesReady", [&](Value lhs, Value rhs) {
-          return dependencies.impliesReady(lhs, rhs);
-        });
+    index.printRelation(llvm::outs(), "sameAs", [&](Value lhs, Value rhs) {
+      return dependencies.sameAs(lhs, rhs);
+    });
+    index.printPredicate(llvm::outs(), "isAlwaysReady", [&](Value value) {
+      return dependencies.isAlwaysReady(value);
+    });
+    index.printRelation(llvm::outs(), "impliesReady",
+                        [&](Value lhs, Value rhs) {
+                          return dependencies.impliesReady(lhs, rhs);
+                        });
   }
 };
 
