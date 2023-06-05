@@ -85,28 +85,22 @@ struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
     if (!input || !isa_and_nonnull<MO::ConstantOp>(weight.getDefiningOp()))
       return failure();
 
-    MO::TensorType weightsType = cast<MO::TensorType>(weight.getType());
-    if (!weightsType.hasStaticShape() || weightsType.hasUnknownShape())
-      return failure();
-
     std::string packing_kernel = "mop.kernels.pack_matmul_b";
     if (transpose) {
       if (!perm || validate2DTranspose(perm).failed())
         return rewriter.notifyMatchFailure(op, "invalid transpose");
       packing_kernel = "mop.kernels.pack_matmul_b.transp_b";
     }
-    //   res = matmul(any, const_weight) : [_, _]
+
+    //   res = matmul(any, const_weight) : ...
     // ===>
     //   packed_weight = pack(const_weight) : [?, ?]
-    //   res = matmul_packb(any, packed_weight) : [_, _]
-    // where `_` could be a parameter, integer, or `?`
-    MO::TensorType packedWeightsType = weightsType;
-    if (weightsType.hasRank()) {
-      SmallVector<int64_t> unknownDims(weightsType.getRank(),
-                                       mlir::ShapedType::kDynamic);
-      Type dtype = weightsType.getElementType();
-      packedWeightsType = weightsType.cloneWith(unknownDims, dtype);
-    }
+    //   res = matmul_packb(any, packed_weight) : ...
+    MO::TensorType weightsType = cast<MO::TensorType>(weight.getType());
+    SmallVector<int64_t> unknownDims(weightsType.getRank(),
+                                     mlir::ShapedType::kDynamic);
+    Type dtype = weightsType.getElementType();
+    MO::TensorType packedWeightsType = weightsType.cloneWith(unknownDims, dtype);
     Value packedWeights =
         rewriter
             .create<MOGG::ExtOp>(op->getLoc(),
