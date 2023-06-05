@@ -343,12 +343,6 @@ struct FullyConnectedPattern : public RewritePattern {
   }
 };
 
-struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
-  using PatternFusionBase::PatternFusionBase;
-
-  void runOnOperation() override;
-};
-
 struct ConcatZeroAxisPattern : public RewritePattern {
   ConcatZeroAxisPattern(MLIRContext *ctx)
       : RewritePattern(MatchAnyOpTypeTag{}, 2, ctx) {}
@@ -589,18 +583,22 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<MO::BatchMatmulOp> {
 
 } // namespace
 
-void PatternFusionPass::runOnOperation() {
-  auto *ctx = &getContext();
+struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
+  using PatternFusionBase::PatternFusionBase;
 
-  RewritePatternSet patterns{ctx};
-  patterns
-      .add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
-           FullyConnectedPattern, ConcatZeroAxisPattern, SplitZeroAxisPattern,
-           LayerNormPattern, MatmulConstBPattern, MultiHeadAttentionPattern>(
-          ctx);
+  void runOnOperation() override {
+    MLIRContext *ctx = &getContext();
 
-  if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
-    return signalPassFailure();
-}
+    RewritePatternSet patterns{ctx};
+    patterns
+        .add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
+             FullyConnectedPattern, ConcatZeroAxisPattern, SplitZeroAxisPattern,
+             LayerNormPattern, MatmulConstBPattern, MultiHeadAttentionPattern>(
+            ctx);
+
+    if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
+      return signalPassFailure();
+  }
+};
 
 } // namespace M::MOGG

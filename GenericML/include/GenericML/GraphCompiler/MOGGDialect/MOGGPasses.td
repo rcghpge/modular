@@ -37,6 +37,11 @@ def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
 
 def PatternFusion: Pass<"mo-pattern-fusion", "MO::GraphOp"> {
   let summary = "Fuse kernels based on patterns.";
+  let description = [{
+    This pass includes a variety of pattern rewrites which replaces a series of
+    operations with a primitive call to a hand-fused (instead of synthesized)
+    kernel, or more specific operations (e.g., concat with axis 0).
+  }];
   let dependentDialects = ["M::MOGG::MOGGDialect"];
 }
 
