@@ -13,6 +13,7 @@
 #include "LLCL/Runtime/RuntimeCLOptions.h"
 #include "Support/CommonCLOptions.h"
 #include "Support/ML/TensorShape.h"
+#include "Support/ML/TensorSpec.h"
 #include "llvm/Support/NativeFormatting.h"
 #include "llvm/Support/Process.h"
 
@@ -24,6 +25,13 @@ class MemoryBuffer;
 
 namespace M {
 
+class TensorSpecParser : public llvm::cl::parser<TensorSpec> {
+public:
+  using llvm::cl::parser<TensorSpec>::parser;
+
+  bool parse(llvm::cl::Option &O, StringRef ArgName, StringRef ArgValue,
+             TensorSpec &Val);
+};
 class TensorShapeParser : public llvm::cl::parser<TensorShape> {
 public:
   using llvm::cl::parser<TensorShape>::parser;
@@ -158,6 +166,14 @@ public:
                      "All input tensors are ones")),
       cl::init(InputGenerationKind::kZeros)};
 
+  cl::list<TensorSpec, bool, TensorSpecParser> inputSpecs{
+      "input-specs",
+      cl::desc(
+          "Specify input specifications. Required when the model has "
+          "no or partially fixed shapes or data types. Input shapes "
+          "('--input-shapes') can be provided additionally, but must match the"
+          "model's input specs.")};
+
   cl::list<TensorShape, bool, TensorShapeParser> inputShapes{
       "input-shapes",
       cl::desc("Specify input shapes. Required when the model has "
@@ -220,16 +236,16 @@ enum class DriverCommand {
   printMetadata, // Print model information after conversion to MEF in YAML
                  // format. This command is used by other tools to introspect
                  // the model metadata.
-  printConstantMetadata, // Print information on all the constants contained in
-                         // YAML format.
+  printConstantMetadata, // Print information on all the constants contained
+                         // in YAML format.
   compile,               // Compile the input into a MEF file for execution.
   execute,               // Execute the input file.
   getVersion,    // Print the version string from the framework and exit.
   frameworkHelp, // Print the framework's help string.
 };
 
-/// This class provides the basic driver command options. It essentially exposes
-/// the `DriverCommand` enum with some additional options.
+/// This class provides the basic driver command options. It essentially
+/// exposes the `DriverCommand` enum with some additional options.
 class DriverCommandOptions {
 public:
   cl::opt<DriverCommand> command{
@@ -237,9 +253,9 @@ public:
       cl::values(
           clEnumValN(DriverCommand::inspect, "inspect",
                      "Print information about the input without processing it"),
-          clEnumValN(
-              DriverCommand::printMetadata, "print-metadata",
-              "Print model metadata in YAML format for other tools to use it"),
+          clEnumValN(DriverCommand::printMetadata, "print-metadata",
+                     "Print model metadata in YAML format for other tools "
+                     "to use it"),
           clEnumValN(DriverCommand::printConstantMetadata,
                      "print-constant-metadata",
                      "Print constant metadata in YAML format for other tools "
@@ -288,8 +304,8 @@ public:
 };
 
 /// This class provides additional command line options for the
-/// tfl-graph-verifier, namely the tolerances (rtol and atol) which are used to
-/// determine whether there is an accuracy discrepancy between the TFLP and
+/// tfl-graph-verifier, namely the tolerances (rtol and atol) which are used
+/// to determine whether there is an accuracy discrepancy between the TFLP and
 /// FlatBuffer outputs.
 class VerifyGraphDriverCLOptions : public ExecutorDriverCLOptions {
 public:

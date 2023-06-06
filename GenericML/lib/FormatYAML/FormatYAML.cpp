@@ -60,48 +60,17 @@ struct MappingTraits<M::QuantSpec::ScaleZeroPointPair> {
 /// SmallVector<QuantSpec::ScaleZeroPointPair> type.
 LLVM_YAML_IS_SEQUENCE_VECTOR(M::QuantSpec::ScaleZeroPointPair);
 
-/// Parses a string of the form dim0xdim1x...xDType into a TensorSpec.
-static ErrorOrSuccess parseTensorSpec(llvm::yaml::IO &io, StringRef str,
-                                      TensorSpec &tensorSpec) {
-  // dtype is the portion after the last 'x'.  Shape is the portion before
-  // that.  If there is no 'x', the whole string is the dtype.  (rsplit almost
-  // does this, but the no-'x' case would put the string in shape instead of
-  // dtype.)
-  auto lastXIndex = str.rfind('x');
-  StringRef shapeStr, dtypeStr;
-  if (lastXIndex == StringRef::npos) {
-    shapeStr = "";
-    dtypeStr = str;
-  } else {
-    shapeStr = str.slice(0, lastXIndex);
-    dtypeStr = str.slice(lastXIndex + 1, StringRef::npos);
-  }
-
-  auto shape = TensorShape::parseFromString(shapeStr);
-  if (failed(shape))
-    return Error(Twine("could not parse shape from string: ") + str + ": " +
-                 shape.getError());
-
-  auto dtype = DType::getFromString(dtypeStr);
-  if (failed(dtype))
-    return Error(Twine("could not parse dtype from string: ") + str +
-                 " because " + dtypeStr + " is not a valid DType");
-
-  // Create the tensor spec from the shape and dtype information.
-  tensorSpec = TensorSpec(*shape, *dtype);
-  return success();
-}
-
 /// fromYAML will deserialize a QuantTensorSpec from YAML.
 static void fromYAML(llvm::yaml::IO &io, QuantTensorSpec &quantTensorSpec) {
   // Read the "shape" field and parse it into a TensorSpec.
   std::string shapeStr;
   io.mapRequired("shape", shapeStr);
-  TensorSpec tensorSpec;
-  if (auto err = parseTensorSpec(io, shapeStr, tensorSpec)) {
-    io.setError(err.getError());
+  auto errorOrTensorSpec = TensorSpec::parseFromString(shapeStr);
+  if (failed(errorOrTensorSpec)) {
+    io.setError(errorOrTensorSpec.getError());
     return;
   }
+  TensorSpec tensorSpec = *errorOrTensorSpec;
 
   // Read the "quantized" field. The "quantized" field is optional and so is not
   // required to exist.

@@ -13,6 +13,7 @@
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Support/Profiling.h"
 #include "Support/Error.h"
+#include "Support/ML/SizeUtils.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -64,17 +65,20 @@ M::symbolizeTensorGeneratorFlag(StringRef s) {
 
 bool TensorShapeParser::parse(llvm::cl::Option &options, StringRef argName,
                               StringRef argValue, TensorShape &result) {
-  SmallVector<int64_t, 5> shape;
-  if (!argValue.empty()) {
-    // Empty means scalar.
-    for (StringRef dimStr : llvm::split(argValue, 'x')) {
-      int64_t dim;
-      if (!llvm::to_integer(dimStr, dim))
-        return options.error("invalid shape dimension '" + dimStr + "'");
-      shape.emplace_back(dim);
-    }
-  }
-  result = TensorShape(shape.begin(), shape.end());
+  ErrorOr<TensorShape> errorOrTensorShape =
+      TensorShape::parseFromString(argValue);
+  if (failed(errorOrTensorShape))
+    return options.error(errorOrTensorShape.getError());
+  result = *errorOrTensorShape;
+  return false;
+}
+
+bool TensorSpecParser::parse(llvm::cl::Option &options, StringRef argName,
+                             StringRef argValue, TensorSpec &result) {
+  ErrorOr<TensorSpec> errorOrTensorSpec = TensorSpec::parseFromString(argValue);
+  if (failed(errorOrTensorSpec))
+    return options.error(errorOrTensorSpec.getError());
+  result = *errorOrTensorSpec;
   return false;
 }
 
