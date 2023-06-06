@@ -146,7 +146,9 @@ def MOGG_OutputOp
 def MOGG_MojoRegisterOp : MOGG_Op<"mojo_register", [HasParent<"ModuleOp">]> {
   let summary = "A mapping of all the registered mojo functions";
   let description = [{
-    A module wide library of avaliable mojo functions. This is populated by loading the target Mojo library/libraries.
+    A module wide library of avaliable mojo functions. This is populated by
+    loading the target Mojo library/libraries.
+
     In the future this will be populated by a direct Mojo binding.
   }];
 
@@ -158,23 +160,23 @@ def MOGG_MojoRegisterOp : MOGG_Op<"mojo_register", [HasParent<"ModuleOp">]> {
 
 }
 
-
- def MOGG_KernelOp : MOGG_Op<"kernel", [IsolatedFromAbove,
+def MOGG_KernelOp : MOGG_Op<"kernel", [IsolatedFromAbove,
                                         SingleBlock,
                                         SymbolTable, Pure]> {
   let summary = "A representation of a kernel which can be fused into and compiled";
   let description = [{
     This kernel represents the handover from the MO graph to the KGEN land.
-    The operation itself is a fully legal graph semantic operation which composes
-    with all other operations at the MO level.
 
-    Inside the kernel however the semantics are mirrors of the KGEN semantics. We
-    operate on lambdas and kgen function calls. This lets us have both inline in the
-    same graph while keeping the hard dependencies contained to lowering.
+    The operation itself is a fully legal graph semantic operation which
+    composes with all other operations at the MO level.
 
-    The kernel abstraction also exposes a number of hooks. These hooks are details of
-    the fusion algorithms. They allow this kenrel to express the semantics by which its
-    outputs or inputs may be folded by being fused into.
+    Inside the kernel however the semantics are mirrors of the KGEN semantics.
+    We operate on lambdas and kgen function calls. This lets us have both inline
+    in the same graph while keeping the hard dependencies contained to lowering.
+
+    The kernel abstraction also exposes a number of hooks. These hooks are
+    details of the fusion algorithms. They allow this kenrel to express the
+    semantics by which its outputs or inputs may be folded by being fused into.
 
     Example:
 
@@ -184,9 +186,10 @@ def MOGG_MojoRegisterOp : MOGG_Op<"mojo_register", [HasParent<"ModuleOp">]> {
     } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn", "input_1_fn"], outputFusionInterface = ["output_0_fn"]}
     ```
 
-    This above kernel has a graph semantic %1 and inputs %0, %arg1 which work with the rest of the MO/MOGG operations.
-    Internally it works on `(%arg2: !mo.tensor<[2, 3], f32>, %arg3: !mo.tensor<[2, 3], f32>)` which essentially are the
-    KGEN view of those values.
+    This above kernel has a graph semantic %1 and inputs %0, %arg1 which work
+    with the rest of the MO/MOGG operations.  Internally it works on `(%arg2:
+    !mo.tensor<[2, 3], f32>, %arg3: !mo.tensor<[2, 3], f32>)` which essentially
+    are the KGEN view of those values.
 
     The attributes at the end.
     ```mlir
@@ -195,20 +198,23 @@ def MOGG_MojoRegisterOp : MOGG_Op<"mojo_register", [HasParent<"ModuleOp">]> {
       outputFusionInterface = ["output_0_fn"]
     }
     ```
-    `fusionBodyLambda` Represents the fusable elementwise / view operation body contained with in. This signfies that this kernel is
-    fully implemented by applying this lambda to an otherwise identity operation, therefore we can safely fuse it into a user.
-    Most ops will not have this, only elementwise and view ops. After being fused into an op that doesn't have `fuseHook` it
+    `fusionBodyLambda` Represents the fusable elementwise / view operation body
+    contained with in. This signfies that this kernel is fully implemented by
+    applying this lambda to an otherwise identity operation, therefore we can
+    safely fuse it into a user.  Most ops will not have this, only elementwise
+    and view ops. After being fused into an op that doesn't have `fuseHook` it
     will be lost and can no longer be fused. E.G elementwise into matmul.
 
-    `inputFusionInterface` Represent the lambdas within this kernel that are responsible for loading each input. The name doesn't matter,
-    we know which input this matches by the index in the attr array vs the index of the operand in the block.
+    `inputFusionInterface` Represent the lambdas within this kernel that are
+    responsible for loading each input. The name doesn't matter, we know which
+    input this matches by the index in the attr array vs the index of the
+    operand in the block.
 
     `outputFusionInterface` Same as the above but for storing.
 
-    `isViewOp` This attribute is an easy way for us to check if something can
-               be represented as a view. I.E a broadcast in the form of a view
-               change followed by a copy. We can drop the copy and keep the
-               view change op.
+    `isViewOp` This attribute is an easy way for us to check if something can be
+    represented as a view. I.E a broadcast in the form of a view change followed
+    by a copy. We can drop the copy and keep the view change op.
   }];
 
   let arguments = (ins Variadic<MO_Tensor>:$operands,
@@ -225,28 +231,29 @@ def MOGG_MojoRegisterOp : MOGG_Op<"mojo_register", [HasParent<"ModuleOp">]> {
   }];
 }
 
-
 def MOGG_CallOp : MOGG_Op<"call"> {
   let summary = "Represents a KGEN function to call";
   let description = [{
-    This represents a call to a KGEN function. The kernel target will be a function
-    we retrieve from the MojoRegisterOp. The call can also take an optional list of
-    symbols in the from of `$params`. These are lambdas within this kernel which should
-    be passed as parameters to the KGEN call.
+    This represents a call to a KGEN function. The kernel target will be a
+    function we retrieve from the MojoRegisterOp. The call can also take an
+    optional list of symbols in the from of `$params`. These are lambdas within
+    this kernel which should be passed as parameters to the KGEN call.
 
     Example:
     ```mlir
     mogg.call "fake_op" [@test_lambda, @test_lambda2](%input, %output) : !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>
     ```
 
-    The above will look up `fake_op` in the mojo op register to find the actual mojo symbol for that function
-    and will compile down to a kgen call to that symbol with the lambda functions passed as parameters.
+    The above will look up `fake_op` in the mojo op register to find the actual
+    mojo symbol for that function and will compile down to a kgen call to that
+    symbol with the lambda functions passed as parameters.
 
    ```mlir
     %0 = mogg.call "simd_load"(%input, %indices) : !mo.tensor<[2, 3], f32>, !mogg.indices -> !mogg.simd<f32>
-    ```
+   ```
 
-    These calls can operate on tensors, simd values, and indices, and can return any of those types.
+    These calls can operate on tensors, simd values, and indices, and can return
+    any of those types.
   }];
 
   let arguments = (ins
@@ -263,15 +270,16 @@ def MOGG_CallOp : MOGG_Op<"call"> {
    }];
  }
 
-
 def MOGG_SimdLoadOp : MOGG_Op<"simd_load"> {
   let summary = "Represents a simd load";
   let description = [{
-    Represents the special case of a simd_load. Simd load is a special case because we
-    can lower it to different functions depending on the tensor details. If the tensor is
-    a scalar then it becomes a splat, broadcasted last dim might need a splat, etc.
+    Represents the special case of a simd_load. Simd load is a special case
+    because we can lower it to different functions depending on the tensor
+    details. If the tensor is a scalar then it becomes a splat, broadcasted last
+    dim might need a splat, etc.
 
-    Each load is in a performance critical function so we have to do this ahead of time.
+    Each load is in a performance critical function so we have to do this ahead
+    of time.
 
     Example:
     ```mlir
@@ -291,15 +299,14 @@ def MOGG_SimdLoadOp : MOGG_Op<"simd_load"> {
   }];
 }
 
-
 def MOGG_LambdaInvokeOp : MOGG_Op<"invoke",
    [MemoryEffectsOpInterface]> {
   let summary = "Represents an inlined call to a lambda";
   let description = [{
     Lambda invoke is a direct call of that lambda. This will lower to a
-    kgen.call_param operation. It cannot take in any parameters. It can take in/return
-    only on simd values or indices, not tensors directly. Tensors are just captured
-    from above in the invoked lambda.
+    kgen.call_param operation. It cannot take in any parameters. It can take
+    in/return only on simd values or indices, not tensors directly. Tensors are
+    just captured from above in the invoked lambda.
 
     Example:
     ```mlir
@@ -331,16 +338,15 @@ def MOGG_LambdaInvokeOp : MOGG_Op<"invoke",
   }];
  }
 
-
 def MOGG_LambdaOp : MOGG_Op<"lambda",
     [HasParent<"MOGG::KernelOp">, SingleBlockImplicitTerminator<"OutputOp">,
     Symbol]> {
   let summary = "Represents non-isolated from above lambda";
   let description = [{
-    These lambdas can capture tensors from above by reference and apply
-    KGEN function calls to them. Lambdas can take and return indices and
-    SIMD values only. They compose with other lambdas by `LambdaInvokeOp`
-    and can be used by KGEN calls by the CallOp.
+    These lambdas can capture tensors from above by reference and apply KGEN
+    function calls to them. Lambdas can take and return indices and SIMD values
+    only. They compose with other lambdas by `LambdaInvokeOp` and can be used by
+    KGEN calls by the CallOp.
 
     Example:
     ```mlir
@@ -349,8 +355,8 @@ def MOGG_LambdaOp : MOGG_Op<"lambda",
     }
     ```
 
-    The above exposes a lambda with symbol name `test_lambda` which can then be used in calls to kgen
-    functions or invoked directly.
+    The above exposes a lambda with symbol name `test_lambda` which can then be
+    used in calls to kgen functions or invoked directly.
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name, TypeAttrOf<Builtin_Function>:$func);
@@ -361,22 +367,22 @@ def MOGG_LambdaOp : MOGG_Op<"lambda",
   }];
 }
 
-
 def MOGG_OutputPlaceholdersOp : MOGG_Op<"output_placeholders"> {
   let results = (outs Variadic<MO_Tensor>:$results);
 
   let summary = "Represents buffer semantic SSA values for the outputs";
   let description = [{
-    As the KGEN kernels require the output to be a buffer semantic input to the kernel
-    we need to represent this within the kernel. This op produces a placeholder we can
-    use for each output. During lowering these become inputs to the kernel as KGEN expects.
+    As the KGEN kernels require the output to be a buffer semantic input to the
+    kernel we need to represent this within the kernel. This op produces a
+    placeholder we can use for each output. During lowering these become inputs
+    to the kernel as KGEN expects.
 
     Example:
     ```mlir
       %out = mogg.output_placeholders : !mo.tensor<[2, 3], f32>
     ```
-    This provides a `%out` SSA value which corresponds to the first output which we can now pass
-    into the KGEN calls which expect a buffer.
+    This provides a `%out` SSA value which corresponds to the first output which
+    we can now pass into the KGEN calls which expect a buffer.
   }];
 
   let assemblyFormat = [{
