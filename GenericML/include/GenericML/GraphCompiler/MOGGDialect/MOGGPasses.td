@@ -10,7 +10,15 @@
 include "mlir/Pass/PassBase.td"
 
 def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
-  let summary = "Compile MOGG::JitTargetOps into KGEN calls";
+  let summary = "Replace kernel op with calls into compiled kernel";
+  let description = [{
+    This pass finds all the kernels ops, compile the kernels with the KGEN
+    pipeline, and replaces the orinal kernel ops with calls into the compiled
+    code.
+
+    Note that the compiled kernels are stored as resource blobs, and the pass
+    inserts an op to associate the generated kernel names with those blobs.
+  }];
   let dependentDialects = [
     "M::MDialect",
     "M::MOGG::MOGGDialect",
@@ -45,18 +53,36 @@ def PatternFusion: Pass<"mo-pattern-fusion", "MO::GraphOp"> {
   let dependentDialects = ["M::MOGG::MOGGDialect"];
 }
 
+// TODO update this to account for general view operation (e.g., transpose in
+// addition to broadcast)
 def FuseBroadcasts: Pass<"fuse-bcasts", "MO::GraphOp"> {
-  let summary = "Fuse broadcasts into other kernels.";
+  let summary = "Fuse broadcasts into other kernels";
+  let description = [{
+    This pass identifies kernels that (1). contains only view operations and
+    (2). are consumed by some other non-view kernel; then it fuses the view
+    operations into the consumer kernel, thereby eliminating the copying at the
+    end of the original view kernel.
+  }];
   let dependentDialects = ["M::MOGG::MOGGDialect"];
 }
 
 def FuseConstants: Pass<"fuse-consts", "MO::GraphOp"> {
   let summary = "Fold constants into the jit kernels";
+  let description = [{
+    This pass identifies small constant inputs to a kernel, and fuse those
+    constants into the kernel body, thereby eliminating the need to pass them
+    into the kernel at runtime.
+  }];
   let dependentDialects = ["M::MOGG::MOGGDialect"];
 }
 
 def FuseElementwise: Pass<"fuse-elementwise", "MO::GraphOp"> {
   let summary = "Fuse blocks of elementwise operations if possible";
+  let description = [{
+    This pass identifies non-view kernels that are consumed by some other
+    non-view kernel, and fuses the body lambda of the former into that of the
+    consumer kernel.
+  }];
   let dependentDialects = ["M::MOGG::MOGGDialect"];
   let options = [
     Option<"dumpDotGraph", "dump-dot-graph",
@@ -66,10 +92,11 @@ def FuseElementwise: Pass<"fuse-elementwise", "MO::GraphOp"> {
 }
 
 def LoadMojoLibrary : Pass<"load-mojo-library", "ModuleOp"> {
-  let summary = "Load the mojo library (noop if already loaded).";
+  let summary = "Load the mojo library";
   let description = [{
-    Load the mojo library off the disk and include the available kernels in the
-    MO graph.
+    This pass loads the mojo library off the disk, find all available kernels
+    from the library, and add a `MojoRegisterOp` that includes all those
+    kernels.
   }];
   let dependentDialects = [
     "M::MOGG::MOGGDialect",
@@ -83,7 +110,7 @@ def LoadMojoLibrary : Pass<"load-mojo-library", "ModuleOp"> {
 }
 
 def LowerSimdLoads : Pass<"lower-simd-loads", "ModuleOp"> {
-  let summary = "Lower simd loads to an optimal implementation";
+  let summary = "Lower simd loads to optimal implementations";
   let description = [{
     SIMD loads can be lowered to one of many implementations depending on kernel
     level circumstances. This pass looks at the kernel and picks the best load
@@ -93,7 +120,15 @@ def LowerSimdLoads : Pass<"lower-simd-loads", "ModuleOp"> {
  }
 
 def InlineLambdas: Pass<"inline-lambdas", "MO::GraphOp"> {
-  let summary = "Inline lambda invokes into lambdas and remove unused lambdas";
+  let summary = "Inline lambda invokes and remove unused lambdas";
+  let description = [{
+    This passes replaces individual `LambdaInvokeOp` by inlining the body of the
+    invoked lambda, if the lambda body is not available. It also erases all the
+    lambdas that become unused after inlining.
+
+    Note that this also disables fusion because the lambda hooks will be inlined
+    and erased.
+  }];
   let dependentDialects = ["M::MOGG::MOGGDialect"];
 }
 
