@@ -15,6 +15,7 @@
 
 // Need to include the dialects we use, which includes many KGEN ones.
 #include "Cache/CacheDialect/CacheDialect.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "KGEN/HLCFDialect/HLCFDialect.h"
 #include "KGEN/InitAllDialects.h"
 #include "Support/DebugInfoDialect/IR/DebugInfoDialect.h"
@@ -28,7 +29,7 @@
 namespace M::MOGG {
 
 // Return the mojo registry, adding it if needed.
-FailureOr<MOGG::MojoRegisterOp> getOrLoadMojoLibrary(ModuleOp mod);
+FailureOr<MojoRegisterOp> getOrLoadMojoLibrary(ModuleOp theModule);
 
 //===----------------------------------------------------------------------===//
 // Generated Pass Classes and Registration
