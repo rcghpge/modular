@@ -21,6 +21,16 @@ def AsyncDataflowDependenciesTestPass : Pass<"async-dataflow-dependencies-test",
 }
 
 //===----------------------------------------------------------------------===//
+// TensorBufferAnalysisTestPass
+//===----------------------------------------------------------------------===//
+
+def TensorBufferAnalysisTestPass : Pass<"tensor-buffer-analysis-test", "MGP::ModelOp"> {
+  let summary = "Prints the isTensorCreate and isTensorExtract predicates for "
+                "all values in the input module, leaving the module unchanged. "
+                "For unit testing only.";
+}
+
+//===----------------------------------------------------------------------===//
 // SimplifyChainsPass
 //===----------------------------------------------------------------------===//
 

@@ -74,20 +74,20 @@ public:
   void simplify(SmallVectorImpl<Value> &values) const;
 
 private:
-  /// Grows domainMap to capture the sameAs relation for block. However, the
+  /// Grows domainMap to capture the sameAs relation for operation. However, the
   /// relation will not yet be closed under identity/symmetry/transitivity
   /// since that's very inefficient to compute and represent with the Relation
-  /// representation. Instead, setupSameAs will entries found here to the
+  /// representation. Instead, setupSameAs will add entries found here to the
   /// Equivalence, thus getting identity/symmetry/transitivity very easily.
   /// Sets changed to true if domainMap was changed.
-  void flowPreSameAs(DomainMap &domainMap, Block *block);
+  void flowPreSameAs(Operation *op, DomainMap &domainMap);
 
   /// Sets the sameAsEquivalence for the root 'init' and 'execute' blocks.
   void setupSameAs(ModelOp modelOp);
 
   /// Grows domainMap to capture the always-ready predicate into domainMap for
-  /// block. Sets changed to true if domainMap was changed.
-  void flowAlwaysReady(DomainMap &domainMap, Block *block);
+  /// operation. Sets changed to true if domainMap was changed.
+  void flowAlwaysReady(Operation *op, DomainMap &domainMap);
 
   /// Sets the alwaysReadyRelation for the root 'init' and 'execute' blocks.
   void setupAlwaysReady(ModelOp modelOp);
@@ -95,9 +95,9 @@ private:
   /// Returns true if lhs implies rhs directly.
   static bool primitiveImpliesReady(Value lhs, Value rhs);
 
-  /// Grows domainMap to capture the impliesReady relation for block. Sets
+  /// Grows domainMap to capture the impliesReady relation for operation. Sets
   /// changed to true if domainMap was changed.
-  void flowImpliesReady(DomainMap &domainMap, Block *block);
+  void flowImpliesReady(Operation *op, DomainMap &domainMap);
 
   /// Sets the impliesReadyRelation for the root 'init' and 'execute' blocks.
   void setupImpliesReady(ModelOp modelOp);

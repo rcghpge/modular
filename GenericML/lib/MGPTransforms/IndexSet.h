@@ -183,20 +183,36 @@ protected:
   DenseMap<Block *, size_t> blockIndexMap;
 
   friend void visitValues(IndexSet<Value> &indexSet, Block *block);
+  friend void visitOperands(IndexSet<const OpOperand *> &indexSet,
+                            Block *block);
   friend void printV(IndexSet<Value> &indexSet, llvm::raw_ostream &os,
                      Value value);
+  friend void printV(IndexSet<const OpOperand *> &indexSet,
+                     llvm::raw_ostream &os, const OpOperand *value);
   friend IndexSet<Value> createValueIndexSet(ModelOp model);
+  friend IndexSet<const OpOperand *> createOperandIndexSet(ModelOp model);
 };
 
 /// Visits all the values in block and adds them to indexSet.
 void visitValues(IndexSet<Value> &indexSet, Block *block);
 
-/// Prints a debug representation of value to os, using valueIndexSet for
+/// Prints a debug representation of value to os, using indexSet for
 /// disambiguation.
-void printV(IndexSet<Value> &valueIndexSet, llvm::raw_ostream &os, Value value);
+void printV(IndexSet<Value> &indexSet, llvm::raw_ostream &os, Value value);
 
 /// Returns an IndexSet<Value> for model.
 IndexSet<Value> createValueIndexSet(ModelOp model);
+
+/// Visits all the operands in block and adds them to indexSet.
+void visitOperands(IndexSet<const OpOperand *> &indexSet, Block *block);
+
+/// Prints a debug representation of operand to os, using indexSet for
+/// disambiguation.
+void printV(IndexSet<const OpOperand *> &indexSet, llvm::raw_ostream &os,
+            Value value);
+
+/// Returns an IndexSet<const OpOperand*> for model.
+IndexSet<const OpOperand *> createOperandIndexSet(ModelOp model);
 
 } // namespace M::MGP
 

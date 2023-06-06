@@ -210,6 +210,10 @@ protected:
     }
   }
 
+  /// Grows domainMap for the given operation, calling into the following
+  /// helpers where appropriate.
+  using FlowOp = std::function<void(Operation *, DomainMap &)>;
+
   IndexSet<V> *index;
   Equivalence equivalence;
   bool changed;
@@ -228,30 +232,71 @@ public:
       : RelationDataflowAnalysisBase<Value>(index) {}
 
 protected:
-  using FlowSubBlock = std::function<void(DomainMap &, Block *)>;
-
   /// Grows domainMap for the sub-blocks of control flow op in 'series'.
   /// Sets changed to true if domainMap was changed.
   void flowSequential(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
-                      const FlowSubBlock &flowSubBlock);
+                      const FlowOp &flowOp);
 
   /// Grows domainMap for the sub-blocks of control flow op in 'parallel'.
   /// Sets changed to true if domainMap was changed.
   void flowParallel(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
-                    const FlowSubBlock &flowSubBlock);
+                    const FlowOp &flowOp);
 
-  /// Grows domainMap using the control flow closure rules, using
-  /// processSubBlock to grow the domainMap for each control flow sub-block.
-  /// Sets changed to true if domainMap was changed.
+  /// Grows domainMap using the control flow closure rules. Sets changed to
+  /// true if domainMap was changed.
   void flowControlFlow(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
-                       const FlowSubBlock &flowSubBlock);
+                       const FlowOp &flowOp);
 
   /// Grows domainMap to account for the results of op.
   void flowDefault(Operation *op, DomainMap &domainMap);
 
+  /// Grows domainMap for the given block.
+  void flowBlock(Block *block, DomainMap &domainMap, const FlowOp &flowOp);
+
   /// Grows domainMap for modelOp.
-  void flowModel(ModelOp modelOp, DomainMap &domainMap,
-                 const FlowSubBlock &flowSubBlock);
+  void flowModel(ModelOp modelOp, DomainMap &domainMap, const FlowOp &flowOp);
+};
+
+//===----------------------------------------------------------------------===//
+// BackwardsRelationDataflowAnalysis
+//===----------------------------------------------------------------------===//
+
+/// Base class to supply control flow transfer functions for all backwards
+/// dataflow analyses for relations over operands.
+class BackwardsRelationDataflowAnalysis
+    : public RelationDataflowAnalysisBase<const OpOperand *> {
+public:
+  BackwardsRelationDataflowAnalysis(IndexSet<const OpOperand *> *index)
+      : RelationDataflowAnalysisBase<const OpOperand *>(index) {}
+
+protected:
+  /// Returns the intersection of all the operand occurrences of value
+  /// (possibly none) and the top set.
+  Set operandIntersection(const DomainMap &domainMap, Value value) const;
+
+  /// Grows domainMap for the sub-blocks of control flow op in 'series'.
+  /// Sets changed to true if domainMap was changed.
+  void flowSequential(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
+                      const FlowOp &flowOp);
+
+  /// Grows domainMap for the sub-blocks of control flow op in 'parallel'.
+  /// Sets changed to true if domainMap was changed.
+  void flowParallel(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
+                    const FlowOp &flowOp);
+
+  /// Grows domainMap using the control flow closure rules. Sets changed to
+  /// true if domainMap was changed.
+  void flowControlFlow(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
+                       const FlowOp &flowOp);
+
+  /// Graws domainMap to account for the operands of op.
+  void flowDefault(Operation *op, DomainMap &domainMap);
+
+  /// Grows domainMap for the given block.
+  void flowBlock(Block *block, DomainMap &domainMap, const FlowOp &flowOp);
+
+  /// Grows domainMap for modelOp.
+  void flowModel(ModelOp modelOp, DomainMap &domainMap, const FlowOp &flowOp);
 };
 
 } // namespace M::MGP
