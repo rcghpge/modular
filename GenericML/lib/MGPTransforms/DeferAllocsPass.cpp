@@ -8,16 +8,11 @@
 
 #include "Cache/CacheDialect/CacheAttrs.h"
 #include "GenericML/MGPDialect/MGPOps.h"
-#include "GenericML/MGPDialect/MGPUtils.h"
-#include "GraphRT/GRTDialect/GRTOps.h"
-#include "GraphRT/MEFDialect/MEFOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SetOperations.h"
-#include "llvm/ADT/SmallPtrSet.h"
 
 #include "./Utils.h"
 
@@ -61,9 +56,10 @@ class DeferAllocsPass : public impl::DeferAllocsPassBase<DeferAllocsPass> {
             // The allocation must only be triggered once the writing op's
             // input chain is ready.
             Value writerInChain = writerChainOpOperand->get();
-            assert(
-                succeeded(execState.alsoWaitForChain(allocOp, writerInChain)) &&
-                "Buffer allocation op must have input chain");
+            auto res =
+                alsoWaitForChains(execState.builder, allocOp, {writerInChain});
+            assert(succeeded(res) && "All buffer allocation ops are assumed to "
+                                     "accept an input chain");
           }
         }
       }

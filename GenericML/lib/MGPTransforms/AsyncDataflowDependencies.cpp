@@ -40,11 +40,11 @@ bool AsyncDataflowDependencies::impliesReady(Value lhs, Value rhs) const {
 void AsyncDataflowDependencies::simplify(SmallVectorImpl<Value> &values) const {
   // CAUTION: Don't underflow ip1.
 
-  for (size_t n = values.size(), ip1 = values.size(); ip1 > 0; --ip1) {
+  for (size_t ip1 = values.size(); ip1 > 0; --ip1) {
     size_t i = ip1 - 1;
     bool redundant = isAlwaysReady(values[i]);
     if (!redundant) {
-      for (size_t j = 0; j < n; ++j) {
+      for (size_t j = 0; j < values.size(); ++j) {
         if (j == i)
           continue;
         if (impliesReady(values[j], values[i])) {

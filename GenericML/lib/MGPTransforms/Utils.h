@@ -20,12 +20,6 @@ namespace M::MGP {
 /// does not have operands defined by operations later in the vector.
 SmallVector<Operation *> getDataflowOrder(Block *block);
 
-// Order-preserving set remove for chains.
-void remove(SmallVectorImpl<Value> &chains, Value chain);
-
-// Order-preserving set insert for chains.
-void insert(SmallVectorImpl<Value> &chains, Value chain);
-
 /// Returns all the OpOperands which are 'reading' or 'writing' occurrences
 /// of buffer, depending on the isReading flag.
 SmallVector<OpOperand *> allUsingOpOperands(Value buffer, bool isReading);
@@ -41,12 +35,30 @@ Operation *getUniqueWriter(Value buffer);
 /// one of results as an operand.
 Operation *earliestUsingOp(mlir::ResultRange results);
 
+using ValueSetVector = llvm::SetVector<Value, SmallVector<Value>>;
+
+/// If chain is defined by a grt.chain.merge operation then accumulate
+/// all of its operands into primitiveChains (recursively). Otherwise adds
+/// chain directly to primitiveChains.
+void accumulatePrimitiveChains(ValueSetVector &primitiveChains, Value chain);
+
 /// If targetOp is not before anchorOp, move it. If targetOp then has an
 /// operand that is not before itself, move that also, and so on.
 /// If your graph is not a DAG you're gonna have a bad time.
 /// Though not required for correct MEF execution, it helps the
 /// readability of the generated MLIR.
 void moveAllBefore(Operation *origTargetOp, Operation *origAnchorOp);
+
+/// Returns a chain value which will be ready only when all of chains (which
+/// cannot be empty) are ready.
+Value waitForChains(OpBuilder &builder, mlir::Location loc,
+                    ArrayRef<Value> chains);
+
+/// Mutates op in-place to ensure its input chain is ready only when all of
+/// additionalChains are also ready. Returns failure if op doesn't have any
+/// input chain to merge with.
+LogicalResult alsoWaitForChains(OpBuilder &builder, Operation *op,
+                                ArrayRef<Value> additionalChains);
 
 /// Helper for modifying the 'init' block.
 struct InitState {
@@ -91,37 +103,10 @@ struct ExecuteState {
   /// Erase all the 'toErase' entries.
   void erasePending();
 
-  /// If chain is defined by a grt.chain.merge operation then accumulate
-  /// all of its operands into primitiveChains. Otherwise adds chain directly
-  /// to primitiveChains. The 'root' chain is ignored and will never be
-  /// accumulated, even if chain is the 'root' chain exactly.
-  void accumulatePrimitiveChains(SmallVectorImpl<Value> &primitiveChains,
-                                 Value chain);
-
-  /// Returns a chain which will only be ready when all of the given chains
-  /// are ready. Understands a few special cases:
-  ///  - The 'root' chain does not need to be waited on if we are waiting on
-  ///    any other chain.
-  ///  - Only need a merge operation if two or more chains to wait on.
-  ///  - Don't need to wait on the same chain more than once.
-  ///
-  /// If existingUniqueChainMergeOp is non-null it will be mutated to construct
-  /// the result.
-  Value mergeChains(GRT::ChainMergeOp existingUniqueChainMergeOp,
-                    SmallVector<Value> &chains, Operation *consumingOp);
-
-  /// Ensures the input chain for op (if any) is ready only when
-  /// additionalChain is also ready.
-  ///
-  /// Return failure if `op` doesn't have any input chain to merge with
-  /// a non-root `additionalChain`.
-  LogicalResult alsoWaitForChain(Operation *op, Value additionalChain);
-
   Block *execute;
   OpBuilder builder;
   SmallPtrSet<Operation *, 8> toErase;
 };
-
 
 } // namespace M::MGP
 

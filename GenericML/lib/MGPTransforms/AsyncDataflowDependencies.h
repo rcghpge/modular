@@ -23,8 +23,8 @@
 namespace M::MGP {
 
 /// Implements the sameAs and impliesReady relations, and the isAlwaysReady
-/// set. These can be used to simplify grt.chain.merge operations, and decide
-/// when buffer lifetimes do not intersect.
+/// predicate. These can be used to simplify grt.chain.merge operations, and
+/// decide when buffer lifetimes do not intersect.
 ///
 /// Implemented using forwards, dense dataflow analysis on relations of
 /// values.
@@ -85,11 +85,11 @@ private:
   /// Sets the sameAsEquivalence for the root 'init' and 'execute' blocks.
   void setupSameAs(ModelOp modelOp);
 
-  /// Grows domainMap to capture the always-ready set into domainMap for block.
-  /// Sets changed to true if domainMap was changed.
+  /// Grows domainMap to capture the always-ready predicate into domainMap for
+  /// block. Sets changed to true if domainMap was changed.
   void flowAlwaysReady(DomainMap &domainMap, Block *block);
 
-  // Sets the alwaysReadyRelation for the root 'init' and 'execute' blocks.
+  /// Sets the alwaysReadyRelation for the root 'init' and 'execute' blocks.
   void setupAlwaysReady(ModelOp modelOp);
 
   /// Returns true if lhs implies rhs directly.
@@ -99,14 +99,15 @@ private:
   /// changed to true if domainMap was changed.
   void flowImpliesReady(DomainMap &domainMap, Block *block);
 
-  // Sets the impliesReadyRelation for the root 'init' and 'execute' blocks.
+  /// Sets the impliesReadyRelation for the root 'init' and 'execute' blocks.
   void setupImpliesReady(ModelOp modelOp);
 
-  // The alwaysReady set, encoded as a relation.
+  /// The alwaysReady predicate, encoded as a relation using the distinguished
+  /// value.
   Relation alwaysReadyRelation;
 
-  // The impliesReady relation. Uses canonical values from the sameAs
-  // equivalence.
+  /// The impliesReady relation. Uses canonical values from the sameAs
+  /// equivalence.
   Relation impliesReadyRelation;
 };
 

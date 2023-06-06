@@ -21,6 +21,30 @@ def AsyncDataflowDependenciesTestPass : Pass<"async-dataflow-dependencies-test",
 }
 
 //===----------------------------------------------------------------------===//
+// SimplifyChainsPass
+//===----------------------------------------------------------------------===//
+
+def SimplifyChainsPass : Pass<"simplify-chains", "MGP::ModelOp"> {
+  let summary = "Removed unnecessary chains from grt.chain.merge ops.";
+  let description = [{
+    Given:
+    ```mlir
+      %a = grt.chain.merge (%x, %y, %z)
+    ```
+    where AsyncValueDependencies::impliesReady(%x, %y) then there's no need
+    to include %y and we can rewrite to:
+    ```mlir
+      %a = grt.chain.merge (%x, %z)
+    ```
+
+    If in addition AsyncValueDependencies::impliesReady(%x, %z) then we can
+    simply replace %a for %x and remove the merge.
+
+    If any operand is known to be isAlwaysReady then it can be removed.
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // RemoveRedundantTensorExtractsPass
 //===----------------------------------------------------------------------===//
 

@@ -7,6 +7,7 @@
 #include "./Utils.h"
 
 #include "GenericML/MGPDialect/MGPUtils.h"
+#include "mlir/IR/Visitors.h"
 
 using namespace M;
 using namespace M::MGP;
@@ -57,18 +58,6 @@ SmallVector<Operation *> M::MGP::getDataflowOrder(Block *block) {
   for (Operation &op : block->getOperations())
     visitInDataflowOrder(&op, dataflowOrder, visited);
   return dataflowOrder;
-}
-
-void M::MGP::remove(SmallVectorImpl<Value> &chains, Value chain) {
-  auto itr = llvm::find(chains, chain);
-  if (itr != chains.end())
-    chains.erase(itr);
-}
-
-void M::MGP::insert(SmallVectorImpl<Value> &chains, Value chain) {
-  auto itr = llvm::find(chains, chain);
-  if (itr == chains.end())
-    chains.emplace_back(chain);
 }
 
 SmallVector<OpOperand *> M::MGP::allUsingOpOperands(Value buffer,
@@ -124,6 +113,110 @@ void M::MGP::moveAllBefore(Operation *origTargetOp, Operation *origAnchorOp) {
     for (auto operand : targetOp->getOperands())
       worklist.emplace_front(operand.getDefiningOp(), targetOp);
   }
+}
+
+/// If chain is defined by a grt.chain.merge operation then accumulate
+/// all of its operands into primitiveChains. Otherwise adds chain directly
+/// to primitiveChains.
+void M::MGP::accumulatePrimitiveChains(ValueSetVector &primitiveChains,
+                                       Value chain) {
+  if (auto chainMergeOp = chain.getDefiningOp<GRT::ChainMergeOp>()) {
+    for (auto operand : chainMergeOp.getOperands())
+      accumulatePrimitiveChains(primitiveChains, operand);
+  } else {
+    primitiveChains.insert(chain);
+  }
+}
+
+/// As for waitForChains, but reuse existingUniqueChainMergeOp instead of
+/// creating a new op if it is non-null.
+static Value waitForChainsReusing(OpBuilder &builder, mlir::Location loc,
+                                  GRT::ChainMergeOp existingUniqueChainMergeOp,
+                                  ArrayRef<Value> chains) {
+  assert(!chains.empty());
+
+  if (chains.size() == 1)
+    return chains.front();
+
+  if (existingUniqueChainMergeOp) {
+    // Just update the operands to the existing merge op.
+    existingUniqueChainMergeOp->setOperands(chains);
+    return existingUniqueChainMergeOp.getResult();
+  }
+
+  return builder
+      .create<GRT::ChainMergeOp>(loc,
+                                 /*result=*/chains.front().getType(),
+                                 /*operands=*/chains)
+      .getResult();
+}
+
+Value M::MGP::waitForChains(OpBuilder &builder, mlir::Location loc,
+                            ArrayRef<Value> chains) {
+  return waitForChainsReusing(builder, loc, GRT::ChainMergeOp(), chains);
+}
+
+LogicalResult M::MGP::alsoWaitForChains(OpBuilder &builder, Operation *op,
+                                        ArrayRef<Value> additionalChains) {
+  if (additionalChains.empty())
+    return success();
+
+  auto existingInChainOpOperands = getInputChainOpOperands(op);
+  if (existingInChainOpOperands.empty())
+    return failure();
+
+  for (OpOperand *inChainOpOperand : existingInChainOpOperands) {
+    Value inChain = inChainOpOperand->get();
+
+    // Though the SimplifyChainsPass and CSE can clean things up, a few
+    // simple syntactic tests can avoid unnecessary changes.
+    ValueSetVector existingPrimitiveChains;
+    accumulatePrimitiveChains(existingPrimitiveChains, inChain);
+    ValueSetVector newPrimitiveChains;
+    for (auto additionalChain : additionalChains)
+      accumulatePrimitiveChains(newPrimitiveChains, additionalChain);
+
+    if (llvm::set_is_subset(newPrimitiveChains, existingPrimitiveChains)) {
+      // Nothing to change.
+      continue;
+    }
+
+    if (llvm::set_is_subset(existingPrimitiveChains, newPrimitiveChains) &&
+        additionalChains.size() == 1) {
+      // Just switch to using the additional chain.
+      op->setOperand(inChainOpOperand->getOperandNumber(),
+                     additionalChains.front());
+      continue;
+    }
+
+    // No luck -- we'll need to explicitly merge the existing and new chains.
+    // This may result in duplicate merges for the same set of primitive
+    // chains, and merges over redundant changes. The SimplifyChainsPass and
+    // CSE will clean these up.
+    // NOTE: Can't use llvm::set_union here since SetVector::insert returns
+    // a bool rather than (itr, bool) pair.
+    for (Value newChain : newPrimitiveChains)
+      existingPrimitiveChains.insert(newChain);
+
+    // Is inChain the only use of a grt.chain.merge operation?
+    // If so we can modify that operation directly instead of creating a
+    // new operation.
+    GRT::ChainMergeOp existingUniqueChainMergeOp = nullptr;
+    if (inChain.hasOneUse()) {
+      if (auto chainMergeOp = inChain.getDefiningOp<GRT::ChainMergeOp>())
+        existingUniqueChainMergeOp = chainMergeOp;
+    }
+
+    // Wait on the merge of the accumulated primitive chains.
+    auto insertPoint = builder.saveInsertionPoint();
+    builder.setInsertionPoint(op);
+    Value newInChain =
+        waitForChainsReusing(builder, op->getLoc(), existingUniqueChainMergeOp,
+                             existingPrimitiveChains.takeVector());
+    builder.restoreInsertionPoint(insertPoint);
+    op->setOperand(inChainOpOperand->getOperandNumber(), newInChain);
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -189,118 +282,4 @@ void ExecuteState::erasePending() {
   for (Operation *op : toErase)
     op->erase();
   toErase.clear();
-}
-
-/// If chain is defined by a grt.chain.merge operation then accumulate
-/// all of its operands into primitiveChains. Otherwise adds chain directly
-/// to primitiveChains. The 'root' chain is ignored and will never be
-/// accumulated, even if chain is the 'root' chain exactly.
-void ExecuteState::accumulatePrimitiveChains(
-    SmallVectorImpl<Value> &primitiveChains, Value chain) {
-  if (chain == getRootChain())
-    return;
-  if (auto chainMergeOp = chain.getDefiningOp<GRT::ChainMergeOp>()) {
-    for (auto operand : chainMergeOp.getOperands())
-      accumulatePrimitiveChains(primitiveChains, operand);
-  } else {
-    insert(primitiveChains, chain);
-  }
-}
-
-/// Returns a chain which will only be ready when all of the given chains
-/// are ready. Understands a few special cases:
-///  - The 'root' chain does not need to be waited on if we are waiting on
-///    any other chain.
-///  - Only need a merge operation if two or more chains to wait on.
-///  - Don't need to wait on the same chain more than once.
-///
-/// If existingUniqueChainMergeOp is non-null it will be mutated to construct
-/// the result.
-Value ExecuteState::mergeChains(GRT::ChainMergeOp existingUniqueChainMergeOp,
-                                SmallVector<Value> &chains,
-                                Operation *consumingOp) {
-  if (chains.empty())
-    return getRootChain();
-
-  if (chains.size() == 1)
-    return *chains.begin();
-
-  // Don't bother waiting on the root chain.
-  remove(chains, getRootChain());
-
-  if (chains.size() == 1)
-    return *chains.begin();
-
-  if (existingUniqueChainMergeOp) {
-    // Just update the operands to the existing merge op.
-    existingUniqueChainMergeOp->setOperands(chains);
-    return existingUniqueChainMergeOp.getResult();
-  }
-
-  // Construct a new merge op.
-  builder.setInsertionPoint(consumingOp);
-  return builder
-      .create<GRT::ChainMergeOp>(consumingOp->getLoc(),
-                                 /*result=*/getRootChain().getType(),
-                                 /*operands=*/chains)
-      .getResult();
-}
-
-/// Ensures the input chain for op (if any) is ready only when
-/// additionalChain is also ready.
-///
-/// Return failure if `op` doesn't have any input chain to merge with
-/// a non-root `additionalChain`.
-LogicalResult ExecuteState::alsoWaitForChain(Operation *op,
-                                             Value additionalChain) {
-  if (additionalChain == getRootChain())
-    // Special case: don't wait for the root chain in addition.
-    return success();
-
-  bool hasInputChain = false;
-  for (OpOperand *inChainOpOperand : getInputChainOpOperands(op)) {
-    hasInputChain = true;
-    Value inChain = inChainOpOperand->get();
-    if (inChain == getRootChain()) {
-      // Special case: just switch if currently waiting on the root chain.
-      op->setOperand(inChainOpOperand->getOperandNumber(), additionalChain);
-    } else if (inChain == additionalChain) {
-      // Special case: no-op
-      /* no-op */
-    } else {
-      // Is inChain the only use of an grt.chain.merge operation?
-      // If so we can modify that operation directly instead of creating a
-      // new operation.
-      GRT::ChainMergeOp existingUniqueChainMergeOp = nullptr;
-      if (auto chainMergeOp = inChain.getDefiningOp<GRT::ChainMergeOp>()) {
-        if (chainMergeOp->getBlock() == op->getBlock()) {
-          auto itr = chainMergeOp->getUsers().begin();
-          if (*itr == op && ++itr == chainMergeOp->getUsers().end())
-            existingUniqueChainMergeOp = chainMergeOp;
-        }
-      }
-
-      // Accumulate the primitive chains to wait on from
-      // inChain and additionalChain.
-      SmallVector<Value> primitiveChains;
-      accumulatePrimitiveChains(primitiveChains, inChain);
-      accumulatePrimitiveChains(primitiveChains, additionalChain);
-
-      /// TODO(#7481):
-      ///  - Simplify primitiveChains using a dominates relation. Ie avoid
-      ///    depending on both %x and %y if ready(%x) implies ready(%y).
-      ///  - Avoid creating the duplicate merge operations with the same set
-      ///    of primitive chains.
-      ///  - Handle all of this with control flow ops and their isolated
-      ///    regions. In particular, the 'root' chain can end up being passed
-      ///    into a control flow region but its special status is forgotten.
-
-      // Wait on the merge of the accumulated primitive chains.
-      Value newInChain =
-          mergeChains(existingUniqueChainMergeOp, primitiveChains, op);
-      op->setOperand(inChainOpOperand->getOperandNumber(), newInChain);
-    }
-  }
-
-  return success(hasInputChain);
 }

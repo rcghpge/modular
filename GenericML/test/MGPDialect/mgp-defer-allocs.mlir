@@ -1,4 +1,4 @@
-// RUN: mgp-opt %s --allow-unregistered-dialect --remove-redundant-tensor-extracts --defer-allocs | FileCheck %s
+// RUN: mgp-opt %s --allow-unregistered-dialect --remove-redundant-tensor-extracts --defer-allocs --simplify-chains -cse | FileCheck %s
 
 // Check mgc.cpu.tensor.allocs.* ops are deferred until the writing op is ready.
 
@@ -14,25 +14,19 @@
 
 // CHECK-LABEL: mgp.model @basicMoGraph : tf init {
 // CHECK: execute (%[[CH0:.*]]: !mef.chain,
-// CHECK: %[[IN_BUF_1:.*]] = mgp.cpu.buffer.constant
-// CHECK-NEXT: %[[IN_SPEC_1:.*]] = mgp.cpu.tensor_spec.create
-// CHECK-NEXT: %[[IN_BUF_2:.*]] = mgp.cpu.buffer.constant
-// CHECK-NEXT: %[[IN_SPEC_2:.*]] = mgp.cpu.tensor_spec.create
-// CHECK-NEXT: %[[OUT_SPEC_1:.*]] = mgp.cpu.tensor_spec.create
-// CHECK-NEXT: %[[OUT_BUF_1:.*]] = mgp.cpu.buffer.alloc.static %[[CH0]], 32
-// CHECK-NEXT: %[[CH1:.*]] = "mop.kernels.mul"(%[[CH0]], %[[IN_BUF_1]], %[[IN_SPEC_1]], %[[IN_BUF_2]], %[[IN_SPEC_2]], %[[OUT_BUF_1]], %[[OUT_SPEC_1]])
-// ** Don't alloc sub output till about to mrun it.
-// CHECK-NEXT: %[[OUT_SPEC_2:.*]] = mgp.cpu.tensor_spec.create
-// CHECK-NEXT: %[[OUT_BUF_2:.*]] = mgp.cpu.buffer.alloc.static %[[CH1]], 32
+
+// CHECK: %[[OUT_BUF_1:.*]] = mgp.cpu.buffer.alloc.static %[[CH0]], 32
+// CHECK-NEXT: %[[CH1:.*]] = "mop.kernels.mul"(%[[CH0]], %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %[[OUT_BUF_1]], {{.*}})
+
+// ** Don't alloc sub output till about to run it.
+// CHECK: %[[OUT_BUF_2:.*]] = mgp.cpu.buffer.alloc.static %[[CH1]], 32
 // ** Sub must wait for mul to finish
-// CHECK-NEXT: %[[CH2:.*]] = "mop.kernels.sub"(%[[CH1]], %[[OUT_BUF_1]], %[[OUT_SPEC_1]], %[[IN_BUF_2]], %[[IN_SPEC_2]], %[[OUT_BUF_2]], %[[OUT_SPEC_2]])
-// CHECK-NEXT: %[[OUT_SPEC_3:.*]] = mgp.cpu.tensor_spec.create
-// ** Add must wait for mul and sub to finish.
-// CHECK-NEXT: %[[CH3:.*]] = grt.chain.merge (%[[CH1]], %[[CH2]])
+// CHECK-NEXT: %[[CH2:.*]] = "mop.kernels.sub"(%[[CH1]], %[[OUT_BUF_1]], %{{.*}}, %{{.*}}, %{{.*}}, %[[OUT_BUF_2]], %{{.*}})
+
 // ** Don't alloc add output till about to run it.
-// CHECK-NEXT: %[[OUT_BUF_3:.*]] = mgp.cpu.buffer.alloc.static %[[CH3]], 32
-// CHECK-NEXT: %[[CH4:.*]] = "mop.kernels.add"(%[[CH3]], %[[OUT_BUF_2]], %[[OUT_SPEC_2]], %[[OUT_BUF_1]], %[[OUT_SPEC_1]], %[[OUT_BUF_3]], %[[OUT_SPEC_3]])
-// CHECK-NEXT: %[[OUT_TENSOR:.*]] = mgp.cpu.tensor.create %[[CH4]], %[[OUT_BUF_3]], %[[OUT_SPEC_3]]
+// CHECK: %[[OUT_BUF_3:.*]] = mgp.cpu.buffer.alloc.static %[[CH2]], 32
+// CHECK-NEXT: %[[CH3:.*]] = "mop.kernels.add"(%[[CH2]], %[[OUT_BUF_2]], %{{.*}}, %[[OUT_BUF_1]], %{{.*}}, %[[OUT_BUF_3]], %{{.*}})
+// CHECK-NEXT: %[[OUT_TENSOR:.*]] = mgp.cpu.tensor.create %[[CH3]], %[[OUT_BUF_3]], %{{.*}}
 // CHECK-NEXT: mef.output %[[CH0]], %[[OUT_TENSOR]]
 
 mgp.model @basicMoGraph : tf init {
@@ -74,23 +68,23 @@ mgp.model @basicMoGraph : tf init {
 
 // CHECK-LABEL: mgp.model @DivergentChains
 // CHECK: } execute (%[[CH0:.*]]: !mef.chain
-// CHECK-NEXT: %[[CH1:.*]] = grt.chain.create
-// CHECK-NEXT: %[[CH2:.*]] = grt.chain.create
-// CHECK-NEXT: %[[CH3:.*]] = grt.chain.create
-// CHECK-NEXT: %[[CH4:.*]] = grt.chain.create
+// CHECK-NEXT: %[[CH1:.*]] = "some.op"() : () -> !mef.chain
+// CHECK-NEXT: %[[CH2:.*]] = "some.op"() : () -> !mef.chain
+// CHECK-NEXT: %[[CH3:.*]] = "some.op"() : () -> !mef.chain
+// CHECK-NEXT: %[[CH4:.*]] = "some.op"() : () -> !mef.chain
 
-// CHECK: %[[CH5:.*]] = grt.chain.merge (%[[CH3]], %[[CH4]])
+// CHECK: %[[CH5:.*]] = grt.chain.merge (%[[CH0]], %[[CH3]], %[[CH4]])
 // CHECK-NEXT: %[[OUT_BUF_1:.*]] = mgp.cpu.buffer.alloc.static %[[CH5]], 32
 // CHECK-NEXT: %[[CH6:.*]] = "mop.kernels.mul"(%[[CH5]], %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %[[OUT_BUF_1]], %{{.*}})
 
-// CHECK: %[[CH7:.*]] = grt.chain.merge (%[[CH1]], %[[CH4]], %[[CH6]])
+// CHECK: %[[CH7:.*]] = grt.chain.merge (%[[CH1]], %[[CH6]])
 // CHECK-NEXT: %[[OUT_BUF_2:.*]] = mgp.cpu.buffer.alloc.static %[[CH7]], 32
 // CHECK-NEXT: %[[CH8:.*]] = "mop.kernels.sub"(%[[CH7]], %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %[[OUT_BUF_2]], %{{.*}})
 
-// CHECK: %[[CH9:.*]] = grt.chain.merge (%[[CH1]], %[[CH2]], %[[CH4]], %[[CH8]])
+// CHECK: %[[CH9:.*]] = grt.chain.merge (%[[CH2]], %[[CH8]])
 // CHECK-NEXT: %[[OUT_BUF_3:.*]] = mgp.cpu.buffer.alloc.static %[[CH9]], 32
 // CHECK-NEXT: %[[CH10:.*]] = "mop.kernels.add"(%[[CH9]], %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %[[OUT_BUF_3]], %{{.*}})
-// CHECK-NEXT: %[[OUT_TENSOR:.*]] = mgp.cpu.tensor.create %[[CH10]], %18, %16 : !mgp.cpu.tensor<8xf32>
+// CHECK-NEXT: %[[OUT_TENSOR:.*]] = mgp.cpu.tensor.create %[[CH10]], %[[OUT_BUF_3]], %{{.*}} : !mgp.cpu.tensor<8xf32>
 // CHECK-NEXT: mef.output %[[CH10]], %[[OUT_TENSOR]]
 
 mgp.model @DivergentChains : tf init {
@@ -98,10 +92,10 @@ mgp.model @DivergentChains : tf init {
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context) -> (!mef.chain, !mgp.cpu.tensor<8xf32>) {
-  %ch1 = grt.chain.create
-  %ch2 = grt.chain.create
-  %ch3 = grt.chain.create
-  %ch4 = grt.chain.create
+  %ch1 = "some.op"() : () -> !mef.chain
+  %ch2 = "some.op"() : () -> !mef.chain
+  %ch3 = "some.op"() : () -> !mef.chain
+  %ch4 = "some.op"() : () -> !mef.chain
   %0 = mgp.cpu.buffer.constant #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
   %1 = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<8xf32>
   %2 = mgp.cpu.tensor.create %ch3, %0, %1 : !mgp.cpu.tensor<8xf32>
@@ -131,17 +125,12 @@ mgp.model @DivergentChains : tf init {
 }
 
 // Simply testing for algorithm convergence (in presence of alloc reordering)
-// CHECK: mgp.model @multiple_writers_convergence : tf init {
-// CHECK-NEXT:   %[[CH:.*]] = grt.chain.create
-// CHECK-NEXT:   %[[CTX:.*]] = mgp.context.create 0
-// CHECK-NEXT:   mef.output %[[CH]], %[[CTX]] : !mef.chain, !mgp.context
-// CHECK-NEXT: } execute (%[[CH:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context) -> (!mef.chain, !mgp.cpu.buffer<8>, !mgp.cpu.buffer<8>) {
-// CHECK-NEXT:   %[[SPEC:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<1xsi64>
-// CHECK-NEXT:   %[[BUF0:.*]] = mgp.cpu.buffer.alloc.static %[[CH]], 8, align 8
-// CHECK-NEXT:   %[[BUF1:.*]] = mgp.cpu.buffer.alloc.static %[[CH]], 8, align 16
-// CHECK-NEXT:   %[[OUT_CH:.*]] = "test.write_bufs"(%[[CH]], %[[BUF0]], %[[SPEC]], %[[BUF1]], %[[SPEC]]) {numBackOutputBuffers = 2 : ui32}
-// CHECK-SAME:   : (!mef.chain, !mgp.cpu.buffer<8>, !mgp.cpu.tensor_spec<1xsi64>, !mgp.cpu.buffer<8>, !mgp.cpu.tensor_spec<1xsi64>) -> !mef.chain
-// CHECK-NEXT:   mef.output %[[OUT_CH]], %[[BUF0]], %[[BUF1]] : !mef.chain, !mgp.cpu.buffer<8>, !mgp.cpu.buffer<8>
+// CHECK-LABEL: mgp.model @multiple_writers_convergence
+// CHECK: } execute (%[[CH0:.*]]: !mef.chain
+// CHECK:   %[[BUF0:.*]] = mgp.cpu.buffer.alloc.static %[[CH0]], 8, align 8
+// CHECK-NEXT:   %[[BUF1:.*]] = mgp.cpu.buffer.alloc.static %[[CH0]], 8, align 16
+// CHECK-NEXT:   %[[CH1:.*]] = "test.write_bufs"(%[[CH0]], %[[BUF0]], %{{.*}}, %[[BUF1]], %{{.*}}) {numBackOutputBuffers = 2 : ui32}
+// CHECK-NEXT:   mef.output %[[CH1]], %[[BUF0]], %[[BUF1]]
 // CHECK-NEXT: }
 
 mgp.model @multiple_writers_convergence : tf init {
