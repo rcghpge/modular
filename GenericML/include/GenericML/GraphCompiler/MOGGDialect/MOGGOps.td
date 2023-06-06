@@ -147,8 +147,11 @@ def MOGG_MojoRegisterOp : MOGG_Op<"mojo_register", [HasParent<"ModuleOp">]> {
   let summary = "A mapping of all the registered mojo functions";
   let description = [{
     A module wide library of avaliable mojo functions. This is populated by
-    loading the target Mojo library/libraries.
+    loading the target Mojo library/libraries. The `dict` attribute maps names
+    of MO ops or special instrinsic ops to the symbol name of the corresponding
+    mojo function.
 
+    Note that this is meant to be inserted and used by internal transformations.
     In the future this will be populated by a direct Mojo binding.
   }];
 
@@ -205,16 +208,16 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [IsolatedFromAbove,
     and view ops. After being fused into an op that doesn't have `fuseHook` it
     will be lost and can no longer be fused. E.G elementwise into matmul.
 
-    `inputFusionInterface` Represent the lambdas within this kernel that are
+    `inputFusionInterface` Represents the lambdas within this kernel that are
     responsible for loading each input. The name doesn't matter, we know which
     input this matches by the index in the attr array vs the index of the
     operand in the block.
 
-    `outputFusionInterface` Same as the above but for storing.
+    `outputFusionInterface` Is the same as the above but for storing.
 
-    `isViewOp` This attribute is an easy way for us to check if something can be
-    represented as a view. I.E a broadcast in the form of a view change followed
-    by a copy. We can drop the copy and keep the view change op.
+    `isViewOp` Is an easy way for us to check if something can be represented as
+    a view, e.g., a broadcast in the form of a view change followed by a copy. We
+    can drop the copy and keep the view change op.
   }];
 
   let arguments = (ins Variadic<MO_Tensor>:$operands,
@@ -395,8 +398,11 @@ def MOGG_OutputPlaceholdersOp : MOGG_Op<"output_placeholders"> {
 //===----------------------------------------------------------------------===//
 
 def MOGG_LoadJitKernelOp : MOGG_LowerableOp<"load_compiled_kernel"> {
-  let summary = "Loads a compiled object and all symbols into the JIT runtime.";
+  let summary = "Loads pairs of (symbol, compiled object) into the JIT runtime";
   let description = [{
+    For each of the input symbol/resource pair, and associates the symbol with
+    the resource (a blob of compiled kernel object) in the JIT runtime (so the
+    symbol names can be used by other ops like `ExecuteCompiledOp`).
   }];
 
   let arguments = (ins ArrayAttr:$symbols,
@@ -408,8 +414,18 @@ def MOGG_LoadJitKernelOp : MOGG_LowerableOp<"load_compiled_kernel"> {
 
 
 def MOGG_ExecuteCompiledOp : MOGG_LowerableOp<"execute_kernel"> {
-  let summary = "A compiled KGEN ELF file attached to an op";
-  let description = [{}];
+  let summary = "Executes a compiled kernel";
+  let description = [{
+    Executes a compiled kernel with the given name and operands.
+
+    This will use the kernel name to look up the compiled object (loaded by
+    `LoadJitKernelOp`), and call into the kernel with the lowered operands and
+    other values required by the ABI.
+
+    The `usedParams` attribute represent unique shape parameters used inside the
+    compiled kernel; they will be lowered to runtime values and passed into the
+    kernel, which will use them to reconstruct the tensor shapes.
+  }];
 
   let arguments = (ins Variadic<MO_Tensor>:$operands,
                           StrAttr:$kernelName,
