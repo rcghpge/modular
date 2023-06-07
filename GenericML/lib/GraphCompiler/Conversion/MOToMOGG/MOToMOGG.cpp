@@ -126,13 +126,11 @@ struct MOOpPattern : public RewritePattern {
     // Returns true if a type is compatable with jit.
     auto isTypeAllowed = [&](Type t) {
       auto tensor = dyn_cast<MO::TensorType>(t);
-      bool allowedElementTypes = tensor.getElementType().isF32() ||
-                                 tensor.getElementType().isF64() ||
-                                 tensor.getElementType().isSignedInteger(16) ||
-                                 tensor.getElementType().isSignedInteger(32) ||
-                                 tensor.getElementType().isSignedInteger(64) ||
-                                 tensor.getElementType().isUnsignedInteger(16) ||
-                                 tensor.getElementType().isInteger(1);
+      Type dtype = tensor.getElementType();
+      bool allowedElementTypes =
+          dtype.isF32() || dtype.isF64() || dtype.isSignedInteger(16) ||
+          dtype.isSignedInteger(32) || dtype.isSignedInteger(64) ||
+          dtype.isUnsignedInteger(16) || dtype.isInteger(1);
 
       if (!tensor || !allowedElementTypes || !tensor.hasRank() ||
           tensor.getRank() > 5 || tensor.hasUnknownShape())

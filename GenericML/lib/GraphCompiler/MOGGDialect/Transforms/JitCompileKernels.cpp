@@ -44,20 +44,21 @@ namespace {
 
 std::string getIDForType(mlir::Type t) {
   auto asTensor = cast<MO::TensorType>(t);
+  Type dtype = asTensor.getElementType();
 
-  if (asTensor.getElementType().isF32())
+  if (dtype.isF32())
     return "f32";
-  if (asTensor.getElementType().isF64())
+  if (dtype.isF64())
     return "f64";
-  if (asTensor.getElementType().isSignedInteger(16))
+  if (dtype.isSignedInteger(16))
     return "si16";
-  if (asTensor.getElementType().isSignedInteger(32))
+  if (dtype.isSignedInteger(32))
     return "si32";
-  if (asTensor.getElementType().isSignedInteger(64))
+  if (dtype.isSignedInteger(64))
     return "si64";
-  if (asTensor.getElementType().isUnsignedInteger(16))
+  if (dtype.isUnsignedInteger(16))
     return "ui16";
-  if (asTensor.getElementType().isInteger(1))
+  if (dtype.isInteger(1))
     return "b";
 
   assert(false &&
@@ -145,18 +146,19 @@ std::string mangleBlock(mlir::Block &block,
 
       // Add the actual constant to the soup.
       auto attr = cast<M::ArrayElementsAttr>(cst.getValueAttr());
+      Type dtype = attr.getElementType();
 
-      if (attr.getElementType().isF32())
+      if (dtype.isF32())
         appendConstToString<float>(attr, name);
-      else if (attr.getElementType().isF64())
+      else if (dtype.isF64())
         appendConstToString<double>(attr, name);
-      else if (attr.getElementType().isSignedInteger(16))
+      else if (dtype.isSignedInteger(16))
         appendConstToString<int16_t>(attr, name);
-      else if (attr.getElementType().isSignedInteger(32))
+      else if (dtype.isSignedInteger(32))
         appendConstToString<int32_t>(attr, name);
-      else if (attr.getElementType().isSignedInteger(64))
+      else if (dtype.isSignedInteger(64))
         appendConstToString<int64_t>(attr, name);
-      else if (attr.getElementType().isUnsignedInteger(16))
+      else if (dtype.isUnsignedInteger(16))
         appendConstToString<uint16_t>(attr, name);
       else
         assert(false && "Unreachable: folded constant is "
