@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphRT/GRTDialect/GRTContolFlowInterface.h"
+#include "GraphRT/GRTDialect/GRTControlFlowInterface.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "Support/Compiler/VerifyUtils.h"
 #include "mlir/IR/Operation.h"

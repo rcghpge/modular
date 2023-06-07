@@ -11,7 +11,7 @@
 #ifndef GRAPHRT_GRAPHRTDIALECT_GRTOPS_H
 #define GRAPHRT_GRAPHRTDIALECT_GRTOPS_H
 
-#include "GraphRT/GRTDialect/GRTContolFlowInterface.h"
+#include "GraphRT/GRTDialect/GRTControlFlowInterface.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
 #include "GraphRT/MEFDialect/MEFNonStrict.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
