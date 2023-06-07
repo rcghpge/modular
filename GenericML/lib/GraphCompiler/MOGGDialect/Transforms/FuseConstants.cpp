@@ -51,8 +51,10 @@ struct FuseConstants : public impl::FuseConstantsBase<FuseConstants> {
         return false;
 
       if (!(attr.getElementType().isF32() || attr.getElementType().isF64() ||
+            attr.getElementType().isSignedInteger(16) ||
             attr.getElementType().isSignedInteger(32) ||
-            attr.getElementType().isSignedInteger(64)))
+            attr.getElementType().isSignedInteger(64) ||
+            attr.getElementType().isUnsignedInteger(16)))
         return false;
 
       if (attr.getNumElements() > 16)

@@ -111,6 +111,52 @@ mo.graph @bcasted_si64_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si64
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST2]]
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST1]]
 
+
+// Check broadcasted si16 constants get fused
+mo.graph @bcasted_si16_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si16>) -> !mo.tensor<[D14, D15], si16> {
+  %0 = mo.constant {value = #M.dense_array<1> : tensor<si16>} : !mo.tensor<[], si16>
+  %1 = mo.constant {value = #M.dense_array<6> : tensor<si16>} : !mo.tensor<[], si16>
+  %2 = mo.static.broadcast_to(%0) : !mo.tensor<[], si16> -> !mo.tensor<[D14, D15], si16>
+  %3 = mo.static.broadcast_to(%1) : !mo.tensor<[], si16> -> !mo.tensor<[D14, D15], si16>
+  %4 = mo.add(%2, %arg0) : !mo.tensor<[D14, D15], si16>
+  %5 = mo.div(%4, %3) : !mo.tensor<[D14, D15], si16>
+  mo.output %5 : !mo.tensor<[D14, D15], si16>
+}
+
+// CHECK-LABEL: mo.graph @bcasted_si16_const_fusion
+// CHECK-NEXT: mogg.kernel
+// CHECK-NEXT: mogg.output_placeholders
+
+// Check constants are in kernel and used in broadcasts.
+// CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1>
+// CHECK-NEXT: %[[CST2:.*]] = mo.constant {value = #M.dense_array<6>
+// CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST2]]
+// CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST1]]
+
+
+// Check broadcasted ui16 constants get fused
+mo.graph @bcasted_ui16_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], ui16>) -> !mo.tensor<[D14, D15], ui16> {
+  %0 = mo.constant {value = #M.dense_array<1> : tensor<ui16>} : !mo.tensor<[], ui16>
+  %1 = mo.constant {value = #M.dense_array<6> : tensor<ui16>} : !mo.tensor<[], ui16>
+  %2 = mo.static.broadcast_to(%0) : !mo.tensor<[], ui16> -> !mo.tensor<[D14, D15], ui16>
+  %3 = mo.static.broadcast_to(%1) : !mo.tensor<[], ui16> -> !mo.tensor<[D14, D15], ui16>
+  %4 = mo.add(%2, %arg0) : !mo.tensor<[D14, D15], ui16>
+  %5 = mo.div(%4, %3) : !mo.tensor<[D14, D15], ui16>
+  mo.output %5 : !mo.tensor<[D14, D15], ui16>
+}
+
+// CHECK-LABEL: mo.graph @bcasted_ui16_const_fusion
+// CHECK-NEXT: mogg.kernel
+// CHECK-NEXT: mogg.output_placeholders
+
+// Check constants are in kernel and used in broadcasts.
+// CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1>
+// CHECK-NEXT: %[[CST2:.*]] = mo.constant {value = #M.dense_array<6>
+// CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST2]]
+// CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST1]]
+
+
+// Check transpose permutation gets fused
 mo.graph @transpose_fold_perm<D14, D15, D16>(%arg0: !mo.tensor<[D14, D15, D16], f32>) -> !mo.tensor<[D16, D15, D14], f32> {
   %perm = mo.constant {value = #M.dense_array<2, 1, 0> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
   %trans = mo.transpose(%arg0, %perm) : (!mo.tensor<[D14, D15, D16], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[D16, D15, D14], f32>
@@ -120,5 +166,7 @@ mo.graph @transpose_fold_perm<D14, D15, D16>(%arg0: !mo.tensor<[D14, D15, D16], 
 // CHECK-LABEL: mo.graph @transpose_fold_perm
 // CHECK-NEXT: mogg.kernel
 // CHECK-NEXT: mogg.output_placeholders
+
+// Check permutation is in kernel and used in transpose.
 // CHECK-NEXT: %[[PERM:.*]] = mo.constant {value = #M.dense_array<2, 1, 0> 
 // CHECK-NEXT: mogg.call "mo.transpose"(%[[NULL:.*]], %[[PERM]]

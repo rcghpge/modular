@@ -49,12 +49,17 @@ std::string getIDForType(mlir::Type t) {
     return "f32";
   if (asTensor.getElementType().isF64())
     return "f64";
+  if (asTensor.getElementType().isSignedInteger(16))
+    return "si16";
   if (asTensor.getElementType().isSignedInteger(32))
     return "si32";
   if (asTensor.getElementType().isSignedInteger(64))
     return "si64";
+  if (asTensor.getElementType().isUnsignedInteger(16))
+    return "ui16";
   if (asTensor.getElementType().isInteger(1))
     return "b";
+
   assert(false &&
          "[JITCOMPILEKERNELS] Unreachable. Types should have been guarded.");
   return "unreachable";
@@ -145,10 +150,14 @@ std::string mangleBlock(mlir::Block &block,
         appendConstToString<float>(attr, name);
       else if (attr.getElementType().isF64())
         appendConstToString<double>(attr, name);
+      else if (attr.getElementType().isSignedInteger(16))
+        appendConstToString<int16_t>(attr, name);
       else if (attr.getElementType().isSignedInteger(32))
         appendConstToString<int32_t>(attr, name);
       else if (attr.getElementType().isSignedInteger(64))
         appendConstToString<int64_t>(attr, name);
+      else if (attr.getElementType().isUnsignedInteger(16))
+        appendConstToString<uint16_t>(attr, name);
       else
         assert(false && "Unreachable: folded constant is "
                         "not of supported type.");
