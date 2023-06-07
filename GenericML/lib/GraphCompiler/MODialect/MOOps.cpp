@@ -389,8 +389,55 @@ OpFoldResult BroadcastShapeOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult AddOp::fold(FoldAdaptor adaptor) {
-  return foldElemwiseOp(getType(), adaptor,
-                        [](int64_t x, int64_t y) { return x + y; });
+  auto xAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInputX());
+  auto yAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInputY());
+
+  if (xAttr && yAttr) {
+    return foldElemwiseOp(getType(), adaptor,
+                          [](int64_t x, int64_t y) { return x + y; });
+  } else {
+    // We normally would reject non-constant inputs, but if one of the inputs is
+    // a broadcast of 0 which we can still reason about them.
+    TensorValue lhs = getLhsInput(), rhs = getRhsInput();
+
+    // Check if a given value is the product of a constant of 0 being
+    // broadcasted.
+    auto isValueBroadcasted0Const = [](Value operand) {
+      if (auto bcast = dyn_cast_or_null<Static::BroadcastToOp>(
+              operand.getDefiningOp())) {
+        if (auto constOp = dyn_cast_or_null<MO::ConstantOp>(
+                bcast.getOperand().getDefiningOp())) {
+          TensorType type = cast<TensorType>(constOp.getType());
+          // Interpret as double. Should be ok as integers will be casted to
+          // double.
+          auto data =
+              tryGetConstantBlob<double>(constOp.getValue(), type.getDtype());
+          if (!data.has_value())
+            return false;
+
+          // Check the constant is zero.
+          for (double i : *data) {
+            if (i != 0.0)
+              return false;
+          }
+
+          // We have a match.
+          return true;
+        }
+      }
+      return false;
+    };
+
+    // Check combination of 0 + x
+    if (isValueBroadcasted0Const(lhs))
+      return rhs;
+
+    // Otherwise check x + 0
+    if (isValueBroadcasted0Const(rhs))
+      return lhs;
+  }
+
+  return {};
 }
 
 OpFoldResult DivOp::fold(FoldAdaptor adaptor) {

@@ -65,3 +65,71 @@ mo.graph @fold_div() -> (!mo.tensor<[7], si32>) {
     // CHECK-NEXT: mo.output %[[CST]]
     mo.output %output : !mo.tensor<[7], si32>
 }
+
+
+mo.graph @fold_add0_f64_lhs(%arg0: !mo.tensor<[5, 500, 100], f64>) -> !mo.tensor<[5, 500, 100], f64> {
+    %0 = mo.constant {value = #M.dense_array<0.000000e+00> : tensor<1x1xf64>} : !mo.tensor<[1, 1], f64>
+    %1 = mo.static.broadcast_to(%0) : !mo.tensor<[1, 1], f64> -> !mo.tensor<[5, 500, 100], f64>
+    %2 = mo.add(%1, %arg0) : !mo.tensor<[5, 500, 100], f64>
+    mo.output %2 : !mo.tensor<[5, 500, 100], f64>
+}
+// CHECK-LABEL: mo.graph @fold_add0_f64_lhs
+// CHECK:(%[[ARG0:.*]]: !mo.tensor<
+// CHECK-NEXT: mo.output %[[ARG0]]
+
+mo.graph @fold_add0_f64_rhs(%arg0: !mo.tensor<[5, 500, 100], f64>) -> !mo.tensor<[5, 500, 100], f64> {
+    %0 = mo.constant {value = #M.dense_array<0.000000e+00> : tensor<1x1xf64>} : !mo.tensor<[1, 1], f64>
+    %1 = mo.static.broadcast_to(%0) : !mo.tensor<[1, 1], f64> -> !mo.tensor<[5, 500, 100], f64>
+    %2 = mo.add(%arg0, %1) : !mo.tensor<[5, 500, 100], f64>
+    mo.output %2 : !mo.tensor<[5, 500, 100], f64>
+}
+// CHECK-LABEL: mo.graph @fold_add0_f64_rhs
+// CHECK:(%[[ARG0:.*]]: !mo.tensor<
+// CHECK-NEXT: mo.output %[[ARG0]]
+
+
+mo.graph @fold_add0_si32(%arg0: !mo.tensor<[5, 500, 100], si32>) -> !mo.tensor<[5, 500, 100], si32> {
+    %0 = mo.constant {value = #M.dense_array<0> : tensor<1x1xsi32>} : !mo.tensor<[1, 1], si32>
+    %1 = mo.static.broadcast_to(%0) : !mo.tensor<[1, 1], si32> -> !mo.tensor<[5, 500, 100], si32>
+    %2 = mo.add(%arg0, %1) : !mo.tensor<[5, 500, 100], si32>
+    mo.output %2 : !mo.tensor<[5, 500, 100], si32>
+}
+// CHECK-LABEL: mo.graph @fold_add0_si32
+// CHECK:(%[[ARG0:.*]]: !mo.tensor<
+// CHECK-NEXT: mo.output %[[ARG0]]
+
+
+mo.graph @fold_add0_ui64(%arg0: !mo.tensor<[5, 500, 100], ui64>) -> !mo.tensor<[5, 500, 100], ui64> {
+    %0 = mo.constant {value = #M.dense_array<0> : tensor<1x1xui64>} : !mo.tensor<[1, 1], ui64>
+    %1 = mo.static.broadcast_to(%0) : !mo.tensor<[1, 1], ui64> -> !mo.tensor<[5, 500, 100], ui64>
+    %2 = mo.add(%arg0, %1) : !mo.tensor<[5, 500, 100], ui64>
+    mo.output %2 : !mo.tensor<[5, 500, 100], ui64>
+}
+// CHECK-LABEL: mo.graph @fold_add0_ui64
+// CHECK:(%[[ARG0:.*]]: !mo.tensor<
+// CHECK-NEXT: mo.output %[[ARG0]]
+
+
+mo.graph @fold_add0_no_fold_ui64(%arg0: !mo.tensor<[5, 500, 100], ui64>) -> !mo.tensor<[5, 500, 100], ui64> {
+    %0 = mo.constant {value = #M.dense_array<1> : tensor<1x1xui64>} : !mo.tensor<[1, 1], ui64>
+    %1 = mo.static.broadcast_to(%0) : !mo.tensor<[1, 1], ui64> -> !mo.tensor<[5, 500, 100], ui64>
+    %2 = mo.add(%arg0, %1) : !mo.tensor<[5, 500, 100], ui64>
+    mo.output %2 : !mo.tensor<[5, 500, 100], ui64>
+}
+// CHECK-LABEL: mo.graph @fold_add0_no_fold_ui64
+// CHECK:(%[[ARG0:.*]]: !mo.tensor<
+// CHECK-NEXT: mo.constant
+// CHECK-NEXT: mo.static.broadcast_to
+// CHECK-NEXT: %[[OUT:.*]] = mo.add
+
+mo.graph @fold_add0_no_fold_f64(%arg0: !mo.tensor<[5, 500, 100], f64>) -> !mo.tensor<[5, 500, 100], f64> {
+    %0 = mo.constant {value = #M.dense_array<0.000001e+00> : tensor<1x1xf64>} : !mo.tensor<[1, 1], f64>
+    %1 = mo.static.broadcast_to(%0) : !mo.tensor<[1, 1], f64> -> !mo.tensor<[5, 500, 100], f64>
+    %2 = mo.add(%arg0, %1) : !mo.tensor<[5, 500, 100], f64>
+    mo.output %2 : !mo.tensor<[5, 500, 100], f64>
+}
+// CHECK-LABEL: mo.graph @fold_add0_no_fold_f64
+// CHECK:(%[[ARG0:.*]]: !mo.tensor<
+// CHECK-NEXT: mo.constant
+// CHECK-NEXT: mo.static.broadcast_to
+// CHECK-NEXT: %[[OUT:.*]] = mo.add
