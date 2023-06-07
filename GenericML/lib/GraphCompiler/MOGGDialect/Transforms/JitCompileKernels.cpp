@@ -53,7 +53,8 @@ std::string getIDForType(mlir::Type t) {
     return "si32";
   if (asTensor.getElementType().isSignedInteger(64))
     return "si64";
-
+  if (asTensor.getElementType().isInteger(1))
+    return "b";
   assert(false &&
          "[JITCOMPILEKERNELS] Unreachable. Types should have been guarded.");
   return "unreachable";

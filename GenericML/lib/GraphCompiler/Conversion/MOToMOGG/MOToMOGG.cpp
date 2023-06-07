@@ -129,7 +129,8 @@ struct MOOpPattern : public RewritePattern {
       bool allowedElementTypes = tensor.getElementType().isF32() ||
                                  tensor.getElementType().isF64() ||
                                  tensor.getElementType().isSignedInteger(32) ||
-                                 tensor.getElementType().isSignedInteger(64);
+                                 tensor.getElementType().isSignedInteger(64) ||
+                                 tensor.getElementType().isInteger(1);
 
       if (!tensor || !allowedElementTypes || !tensor.hasRank() ||
           tensor.getRank() > 5 || tensor.hasUnknownShape())
@@ -192,10 +193,10 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_MOJO(MO::DivOp, "mop.kernels.div"),
       MO_TO_MOJO(MO::ErfOp, "mop.kernels.erf"),
       MO_TO_MOJO(MO::ExpOp, "mop.kernels.exp"),
-      MO_SHIM_ONLY(MO::EqualOp, "mop.kernels.equal"),
+      MO_TO_MOJO(MO::EqualOp, "mop.kernels.equal"),
       MO_TO_MOJO(MO::GeluOp, "mop.kernels.gelu"),
-      MO_SHIM_ONLY(MO::GreaterOp, "mop.kernels.greater"),
-      MO_SHIM_ONLY(MO::GreaterEqualOp, "mop.kernels.greater_equal"),
+      MO_TO_MOJO(MO::GreaterOp, "mop.kernels.greater"),
+      MO_TO_MOJO(MO::GreaterEqualOp, "mop.kernels.greater_equal"),
       MO_TO_MOJO(MO::Log1pOp, "None"),
       MO_SHIM_ONLY(MO::LinAlg::BandPartOp, "mop.kernels.linalg.band_part"),
       MO_SHIM_ONLY(MO::LinAlg::SolveOp, "mop.kernels.linalg.solve"),
@@ -207,7 +208,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_SHIM_ONLY(MO::MeanOp, "mop.kernels.mean"),
       MO_SHIM_ONLY(MO::MinOp, "mop.kernels.min"),
       MO_TO_MOJO(MO::MulOp, "mop.kernels.mul"),
-      MO_SHIM_ONLY(MO::NotEqualOp, "mop.kernels.not_equal"),
+      MO_TO_MOJO(MO::NotEqualOp, "mop.kernels.not_equal"),
       MO_SHIM_ONLY(MO::PadOp, "mop.kernels.pad"),
       MO_SHIM_ONLY(MO::ReduceAddOp, "mop.kernels.reduce.add"),
       MO_SHIM_ONLY(MO::ReduceMulOp, "mop.kernels.reduce.mul"),
