@@ -4,16 +4,6 @@
 #
 ##===----------------------------------------------------------------------===##
 
-execute_process(
-  COMMAND ${Python3_EXECUTABLE} -m pip install --root-user-action=ignore -r ${CMAKE_CURRENT_SOURCE_DIR}/requirements.txt
-  OUTPUT_QUIET
-  RESULT_VARIABLE PIP_INSTALL_DEPS_RESULT
-)
-
-if(PIP_INSTALL_DEPS_RESULT)
-  message(FATAL_ERROR "Installation of Python doctest dependencies failed.")
-endif()
-
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
   set(HOST_ARCH x86_64)
 elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
