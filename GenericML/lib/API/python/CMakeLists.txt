@@ -21,7 +21,7 @@ include(AddPyBind11)
 
 # Install tools needed for pyproject.toml parsing and wheel repair.
 execute_process(
-  COMMAND ${Python3_EXECUTABLE} -m pip install --root-user-action=ignore -r ${CMAKE_CURRENT_SOURCE_DIR}/packaging-requirements.txt
+  COMMAND ${Python3_EXECUTABLE} -m pip install -r ${CMAKE_CURRENT_SOURCE_DIR}/packaging-requirements.txt
   OUTPUT_QUIET
   RESULT_VARIABLE PIP_INSTALL_DEPS_RESULT
 )
@@ -64,7 +64,7 @@ string(REGEX MATCH "^[^\n]+" WHEEL_BASENAME "${BDIST_WHEEL_OUTPUT}")
 # Individual pybind11 modules are expected to be dependencies of
 # modular-engine.
 add_custom_target(modular-pybind-ext ALL
-  COMMAND ${Python3_EXECUTABLE} -m pip install --root-user-action=ignore --quiet --force-reinstall ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
+  COMMAND ${Python3_EXECUTABLE} -m pip install --quiet --force-reinstall ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
   DEPENDS ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
   COMMENT "Installing Modular Python API wheel."
 )
