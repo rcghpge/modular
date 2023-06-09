@@ -19,16 +19,6 @@ find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
 include(AddPyBind11)
 
-# Install tools needed for pyproject.toml parsing and wheel repair.
-execute_process(
-  COMMAND ${Python3_EXECUTABLE} -m pip install -r ${CMAKE_CURRENT_SOURCE_DIR}/packaging-requirements.txt
-  OUTPUT_QUIET
-  RESULT_VARIABLE PIP_INSTALL_DEPS_RESULT
-)
-if(PIP_INSTALL_DEPS_RESULT)
-  message(FATAL_ERROR "Installation of Python dependencies failed unexpectedly in Python bindings configuration.")
-endif()
-
 # Use pyproject.toml as a single source of truth for the version of the Modular
 # Python framework.
 execute_process(
