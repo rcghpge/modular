@@ -11,7 +11,7 @@
 
 module {
   mgp.model @basicMoGraph : tf init {
-    %0 = grt.chain.create
+    %0 = grt.chain.create ()
     %1 = mgp.context.create 0
     mef.output %0, %1 : !mef.chain, !mgp.context
   } execute (%arg0: !mef.chain, %arg1: !mgp.context) -> (!mef.chain, !mgp.cpu.tensor<8xf32>) {

@@ -33,7 +33,7 @@ grt.testcase @fib_driver {
   %sixteen = grt.constant.si32 16
   %fib16 = grt.invoke @fib(%sixteen) : (si32) -> (si32)
 
-  %ch0 = grt.chain.create
+  %ch0 = grt.chain.create ()
 
   // CHECK: int32 = 0
   %ch1 = grt.print.si32 %fib0, %ch0

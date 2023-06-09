@@ -16,7 +16,7 @@ grt.testcase @test_cancel {
   %c42 = grt.constant.si32 42
   %a = "test.async.add.i32"(%c1, %c42) : (si32, si32) -> si32
 
-  %ch0 = grt.chain.create
+  %ch0 = grt.chain.create ()
   // expected-error @+1 {{Cancelled!}}
   %ch1 = "test.cancel"(%ch0) : (!mef.chain) -> (!mef.chain)
 

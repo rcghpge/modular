@@ -23,7 +23,7 @@
 namespace M::MGP {
 
 /// Implements the sameAs and impliesReady relations, and the isAlwaysReady
-/// predicate. These can be used to simplify grt.chain.merge operations, and
+/// predicate. These can be used to simplify grt.chain.create operations, and
 /// decide when buffer lifetimes do not intersect.
 ///
 /// Implemented using forwards, dense dataflow analysis on relations of
@@ -44,7 +44,7 @@ public:
 
   /// The isAlwaysReady(%value) predicate is true only if at runtime %x is bound
   /// to a chain with no control dependencies, such as the result of
-  /// grt.chain.create. The predicate may not be complete.
+  /// grt.chain.create (). The predicate may not be complete.
   ///
   /// Note we do NOT consider the 'execute' block's first argument as always
   /// ready.
@@ -66,7 +66,7 @@ public:
   ///  - Remove %x from values if isAlwaysReady(%x).
   ///  - Remove %x from values if %y in values and impliesReady(%y, %x).
   ///
-  /// This can be used to simply the arguments to grt.chain.merge ops. Since
+  /// This can be used to simply the arguments to grt.chain.create ops. Since
   /// impliesReady includes the identity relation this will also remove outright
   /// duplicates.
   ///

@@ -309,13 +309,13 @@ class ExecInvariantCodeMotionPass
         });
 
     // Basically produces the following
-    //   %merged_action_ch = grt.merge %action_ch0, %action_ch1, ...
-    //   %final_ch = grt.merge %original_ch, %cache_out_ch0, %cache_out_ch1, ...
-    //   mef.output %final_ch, ...
-    auto mergedBufferActionChain = initBuilder.create<GRT::ChainMergeOp>(
+    //   %merged_action_ch = grt.chain.create %action_ch0, %action_ch1, ...
+    //   %final_ch = grt.chain.create %original_ch, %cache_out_ch0,
+    //   %cache_out_ch1, ... mef.output %final_ch, ...
+    auto mergedBufferActionChain = initBuilder.create<GRT::ChainCreateOp>(
         outputLoc, potentialBufferActionChains);
     auto mergedFinalOutChain =
-        initBuilder.create<GRT::ChainMergeOp>(outputLoc, finalOutChains);
+        initBuilder.create<GRT::ChainCreateOp>(outputLoc, finalOutChains);
     initState.updateFinalChain(mergedFinalOutChain);
 
     // And update the dummy chain

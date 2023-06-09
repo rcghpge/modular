@@ -208,7 +208,7 @@ func.func @buffer_split_operands(%ch0 : !mef.chain, %in_buf : !mgp.cpu.buffer) {
 // -----
 
 "mgp.model"() ({
-  %ch = grt.chain.create
+  %ch = grt.chain.create ()
   %ctx = mgp.context.create 1
   // expected-error@+1 {{'mef.output' op expected 2 operands, but given 1}}
   mef.output %ch : !mef.chain
@@ -221,7 +221,7 @@ func.func @buffer_split_operands(%ch0 : !mef.chain, %in_buf : !mgp.cpu.buffer) {
 
 // expected-error@+1 {{'mgp.model' op expected the arguments of the 'execute' body to be '!mef.chain', '!mgp.context', 'tensor<3xf32>', but got '!mef.chain', 'tensor<3xf32>', '!mgp.context'.}}
 "mgp.model"() ({
-  %ch = grt.chain.create
+  %ch = grt.chain.create ()
   %ctx = mgp.context.create 1
   mef.output %ch, %ctx : !mef.chain, !mgp.context
 }, {
@@ -233,7 +233,7 @@ func.func @buffer_split_operands(%ch0 : !mef.chain, %in_buf : !mgp.cpu.buffer) {
 
 // expected-error@+1 {{'mgp.model' op expected the arguments of the 'execute' body to be '!mef.chain', '!mgp.context', 'tensor<4xf32>', but got '!mef.chain', '!mgp.context', 'tensor<3xf32>'.}}
 "mgp.model"() ({
-  %ch = grt.chain.create
+  %ch = grt.chain.create ()
   %ctx = mgp.context.create 1
   mef.output %ch, %ctx : !mef.chain, !mgp.context
 }, {
@@ -244,7 +244,7 @@ func.func @buffer_split_operands(%ch0 : !mef.chain, %in_buf : !mgp.cpu.buffer) {
 // -----
 
 "mgp.model"() ({
-  %ch = grt.chain.create
+  %ch = grt.chain.create ()
   %ctx = mgp.context.create 1
   mef.output %ch, %ctx : !mef.chain, !mgp.context
 }, {
@@ -256,7 +256,7 @@ func.func @buffer_split_operands(%ch0 : !mef.chain, %in_buf : !mgp.cpu.buffer) {
 // -----
 
 mgp.model @mismatchedContextType : tfl init {
-  %ch = grt.chain.create
+  %ch = grt.chain.create ()
   %unk = mef.opaque "bogus" [] () : ()->!mef.unknown
   // expected-error@+1 {{'mef.output' op operand #1 has type '!mef.unknown' but expected '!mgp.context'}}
   mef.output %ch, %unk : !mef.chain, !mef.unknown
@@ -268,7 +268,7 @@ mgp.model @mismatchedContextType : tfl init {
 
 // expected-error@+1 {{'mgp.model' op expected the 'execute' entry point to take arguments of ShapedType, but argument 0 is of type 'index'.}}
 mgp.model @invalidExecuteArgType : tfl init {
-  %ch = grt.chain.create
+  %ch = grt.chain.create ()
   %ctx = mgp.context.create 1
   mef.output %ch, %ctx : !mef.chain, !mgp.context
 } execute (%ch: !mef.chain, %ctx: !mgp.context, %x: index) -> (!mef.chain, index) {
@@ -279,7 +279,7 @@ mgp.model @invalidExecuteArgType : tfl init {
 
 // expected-error@+1 {{'mgp.model' op attribute 'frameworkName' failed to satisfy constraint: string attribute must be a recognized framework name.}}
 mgp.model @invalidExecuteArgType : bogus init {
-  %ch = grt.chain.create
+  %ch = grt.chain.create ()
   %ctx = mgp.context.create 1
   mef.output %ch, %ctx : !mef.chain, !mgp.context
 } execute (%ch: !mef.chain, %ctx: !mgp.context, %x: index) -> (!mef.chain, index) {

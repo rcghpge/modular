@@ -19,21 +19,24 @@
 
 using namespace M;
 
-/// Return a new chain that is ready.
-static AsyncValueRef<Chain> chain_create(Runtime &runtime) {
+//===----------------------------------------------------------------------===//
+// grt.chain.create
+//===----------------------------------------------------------------------===//
+
+/// Strictly wait for all the input operands (if any), then return a ready
+/// chain.
+static AsyncValueRef<Chain> grt_chain_create(Runtime &runtime,
+                                             RemainingArguments arguments) {
   return runtime.getReadyChain().copy();
 }
 
-/// Strictly wait for all the input operands, and return a new chain when
-/// they're ready.
-static AsyncValueRef<Chain> chain_merge(Runtime &runtime,
-                                        RemainingArguments arguments) {
-  return runtime.getReadyChain().copy();
-}
+//===----------------------------------------------------------------------===//
+// grt.invoke
+//===----------------------------------------------------------------------===//
 
-static void invoke(RemainingArguments arguments, RemainingResults results,
-                   MEFAttr<MEFSymbolRef> targetName, MEFInvokable *target,
-                   Runtime &runtime) {
+static void grt_invoke(RemainingArguments arguments, RemainingResults results,
+                       MEFAttr<MEFSymbolRef> targetName, MEFInvokable *target,
+                       Runtime &runtime) {
   // We don't use the attrs passed in - it's just the symbol name.
   assert(target->getNumArgs() == arguments.size() && "argument count mismatch");
   assert(target->getNumResults() == results.size() && "result count mismatch");
@@ -354,9 +357,8 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
 
 /// This registers the 'graphrt' dialect primitives for control flow.
 void M::registerGraphRTControlFlowPrimitives(PrimitiveRegistry &registry) {
-  ADD_PRIMITIVE(registry, "grt.chain.create", chain_create);
-  ADD_PRIMITIVE(registry, "grt.chain.merge", chain_merge);
-  ADD_PRIMITIVE(registry, "grt.invoke", invoke);
+  ADD_PRIMITIVE(registry, "grt.chain.create", grt_chain_create);
+  ADD_PRIMITIVE(registry, "grt.invoke", grt_invoke);
   ADD_PRIMITIVE(registry, "grt.if", grt_if);
   ADD_PRIMITIVE(registry, "grt.while", grt_while);
   ADD_PRIMITIVE(registry, "grt.repeat.i32", repeat_i32);

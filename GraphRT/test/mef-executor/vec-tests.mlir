@@ -3,7 +3,7 @@
 
 // CHECK-LABEL: --- Running 'basic_test'
 grt.testcase @basic_test {
-  %ch0 = grt.chain.create
+  %ch0 = grt.chain.create ()
   %v1 = "test.vec.iota"() { size = 5 : si32 } : () -> !test.vec
   %ch1 = "test.vec.print" (%v1, %ch0) : (!test.vec, !mef.chain) -> !mef.chain
   // CHECK-NEXT: vec = 0, 1, 2, 3, 4
@@ -33,7 +33,7 @@ grt.testcase @basic_test {
 
 // CHECK-LABEL: --- Running 'async_add_test'
 grt.testcase @async_add_test {
-  %ch0 = grt.chain.create
+  %ch0 = grt.chain.create ()
   %v1 = "test.vec.iota"() { size = 5 : si32 } : () -> !test.vec
   %ch1 = "test.vec.print" (%v1, %ch0) : (!test.vec, !mef.chain) -> !mef.chain
   // CHECK-NEXT: vec = 0, 1, 2, 3, 4
@@ -63,7 +63,7 @@ grt.testcase @async_add_test {
 
 // CHECK-LABEL: --- Running 'async_add_test_par_foreach'
 grt.testcase @async_add_test_par_foreach {
-  %ch0 = grt.chain.create
+  %ch0 = grt.chain.create ()
   %v1 = "test.vec.iota"() { size = 5 : si32 } : () -> !test.vec
   %ch1 = "test.vec.print" (%v1, %ch0) : (!test.vec, !mef.chain) -> !mef.chain
   // CHECK-NEXT: vec = 0, 1, 2, 3, 4
@@ -83,7 +83,7 @@ grt.testcase @async_add_test_par_foreach {
 
 // CHECK-LABEL: --- Running 'async_accumulate'
 grt.testcase @async_accumulate {
-  %ch0 = grt.chain.create
+  %ch0 = grt.chain.create ()
   %v1 = "test.vec.iota"() { size = 100 : si32 } : () -> !test.vec
 
   %i1 = "test.vec.accumulate"(%v1) : (!test.vec) -> si32
@@ -105,7 +105,7 @@ grt.testcase @async_accumulate {
 
 // CHECK-LABEL: --- Running 'async_softmax'
 grt.testcase @async_softmax {
-  %ch0 = grt.chain.create
+  %ch0 = grt.chain.create ()
   %v1 = "test.vec.f32.iota"() { size = 10 : si32, step = 0.1 : f32 } : () -> !test.vec
   %v2 = "test.vec.f32.softmax.async"(%v1) : (!test.vec) -> !test.vec
   %ch1 = "test.vec.f32.print" (%v2, %ch0) : (!test.vec, !mef.chain) -> !mef.chain

@@ -43,19 +43,17 @@ class SimplifyChainsPass
     IndexSet<Value> index = createValueIndexSet(modelOp);
     AsyncDataflowDependencies dependencies(&index);
 
-    modelOp.walk([&](GRT::ChainMergeOp mergeOp) {
+    modelOp.walk([&](GRT::ChainCreateOp chainCreateOp) {
       ValueSetVector valuesSet;
-      accumulatePrimitiveChains(valuesSet, mergeOp.getResult());
-      if (valuesSet.empty())
-        return;
+      accumulatePrimitiveChains(valuesSet, chainCreateOp.getResult());
       SmallVector<Value> values = valuesSet.takeVector();
       dependencies.simplify(values);
       if (values.size() == 1) {
-        mergeOp.getResult().replaceAllUsesWith(values.front());
-        mergeOp.erase();
+        chainCreateOp.getResult().replaceAllUsesWith(values.front());
+        chainCreateOp.erase();
       } else {
         // Ok for values to now be empty.
-        mergeOp->setOperands(values);
+        chainCreateOp->setOperands(values);
       }
     });
   }

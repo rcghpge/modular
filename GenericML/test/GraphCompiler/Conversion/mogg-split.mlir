@@ -1,7 +1,7 @@
 // RUN: mo-opt %s --mo-to-primitives --allow-unregistered-dialect | FileCheck %s
 
 // CHECK: mgp.model @mogg_split : tf init {
-// CHECK-NEXT:   %[[CH0:.*]] = grt.chain.create
+// CHECK-NEXT:   %[[CH0:.*]] = grt.chain.create ()
 // CHECK-NEXT:   %[[CTX:.*]] = mgp.context.create 1
 // CHECK-NEXT:   %[[CH1:.*]] = "mop.create_jit_context"(%[[CH0]], %[[CTX]]) {slot = 0 : ui32}
 // CHECK-SAME:   : (!mef.chain, !mgp.context) -> !mef.chain

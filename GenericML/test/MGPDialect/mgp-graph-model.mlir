@@ -5,7 +5,7 @@ module {
   mgp.model @upsideDown : tf init {
     %2 = "mop.create_jit_context"(%0, %1) {slot = 0 : ui32} : (!mef.chain, !mgp.context) -> !mef.chain
     %1 = mgp.context.create 1
-    %0 = grt.chain.create
+    %0 = grt.chain.create ()
     mef.output %2, %1 : !mef.chain, !mgp.context
   } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.cpu.tensor<8xf32>) -> (!mef.chain, !mgp.cpu.tensor<8xf32>) {
     %3 = mgp.cpu.tensor.create %2, %0, %1 : !mgp.cpu.tensor<8xf32>

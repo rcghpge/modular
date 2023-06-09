@@ -66,7 +66,7 @@
 // CHECK: impliesReady(%2#3, %2#3) = true
 
 mgp.model @simple : tf init {
-  %0 = grt.chain.create
+  %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %cxt: !mgp.context) -> (!mef.chain, !mgp.cpu.tensor<f32>) {
@@ -125,7 +125,7 @@ mgp.model @simple : tf init {
 // CHECK: impliesReady(%2#1, %2#1) = true
 
 mgp.model @crissCross : tf init {
-  %0 = grt.chain.create
+  %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %cxt: !mgp.context) -> (!mef.chain, !mgp.cpu.tensor<f32>) {
@@ -175,7 +175,7 @@ mgp.model @crissCross : tf init {
 // CHECK: impliesReady(%1#2, %arg0) = false
 
 mgp.model @shift : tf init {
-  %0 = grt.chain.create
+  %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %cxt: !mgp.context) -> (!mef.chain, !mgp.cpu.tensor<f32>) {
@@ -324,7 +324,7 @@ mgp.model @shift : tf init {
 // CHECK: impliesReady(%12, %12) = true
 
 mgp.model @while : tf init {
-  %0 = grt.chain.create
+  %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context) -> (!mef.chain, !mgp.cpu.tensor<32xui8>) {

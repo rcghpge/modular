@@ -115,45 +115,43 @@ void M::MGP::moveAllBefore(Operation *origTargetOp, Operation *origAnchorOp) {
   }
 }
 
-/// If chain is defined by a grt.chain.merge operation then accumulate
+/// If chain is defined by a grt.chain.create operation then accumulate
 /// all of its operands into primitiveChains. Otherwise adds chain directly
 /// to primitiveChains.
 void M::MGP::accumulatePrimitiveChains(ValueSetVector &primitiveChains,
                                        Value chain) {
-  if (auto chainMergeOp = chain.getDefiningOp<GRT::ChainMergeOp>()) {
-    for (auto operand : chainMergeOp.getOperands())
+  if (auto chainCreateOp = chain.getDefiningOp<GRT::ChainCreateOp>()) {
+    for (auto operand : chainCreateOp.getOperands())
       accumulatePrimitiveChains(primitiveChains, operand);
   } else {
     primitiveChains.insert(chain);
   }
 }
 
-/// As for waitForChains, but reuse existingUniqueChainMergeOp instead of
+/// As for waitForChains, but reuse existingUniqueChainCreateOp instead of
 /// creating a new op if it is non-null.
-static Value waitForChainsReusing(OpBuilder &builder, mlir::Location loc,
-                                  GRT::ChainMergeOp existingUniqueChainMergeOp,
-                                  ArrayRef<Value> chains) {
+static Value
+waitForChainsReusing(OpBuilder &builder, mlir::Location loc,
+                     GRT::ChainCreateOp existingUniqueChainCreateOp,
+                     ArrayRef<Value> chains) {
   assert(!chains.empty());
 
   if (chains.size() == 1)
     return chains.front();
 
-  if (existingUniqueChainMergeOp) {
+  if (existingUniqueChainCreateOp) {
     // Just update the operands to the existing merge op.
-    existingUniqueChainMergeOp->setOperands(chains);
-    return existingUniqueChainMergeOp.getResult();
+    existingUniqueChainCreateOp->setOperands(chains);
+    return existingUniqueChainCreateOp.getResult();
   }
 
-  return builder
-      .create<GRT::ChainMergeOp>(loc,
-                                 /*result=*/chains.front().getType(),
-                                 /*operands=*/chains)
-      .getResult();
+  return builder.create<GRT::ChainCreateOp>(loc, chains).getResult();
 }
 
 Value M::MGP::waitForChains(OpBuilder &builder, mlir::Location loc,
                             ArrayRef<Value> chains) {
-  return waitForChainsReusing(builder, loc, GRT::ChainMergeOp(), chains);
+  return waitForChainsReusing(builder, loc, /*existingUniqueChainCreateOp=*/{},
+                              chains);
 }
 
 LogicalResult M::MGP::alsoWaitForChains(OpBuilder &builder, Operation *op,
@@ -198,20 +196,20 @@ LogicalResult M::MGP::alsoWaitForChains(OpBuilder &builder, Operation *op,
     for (Value newChain : newPrimitiveChains)
       existingPrimitiveChains.insert(newChain);
 
-    // Is inChain the only use of a grt.chain.merge operation?
+    // Is inChain the only use of a grt.chain.create operation?
     // If so we can modify that operation directly instead of creating a
     // new operation.
-    GRT::ChainMergeOp existingUniqueChainMergeOp = nullptr;
+    GRT::ChainCreateOp existingUniqueChainCreateOp = nullptr;
     if (inChain.hasOneUse()) {
-      if (auto chainMergeOp = inChain.getDefiningOp<GRT::ChainMergeOp>())
-        existingUniqueChainMergeOp = chainMergeOp;
+      if (auto chainCreateOp = inChain.getDefiningOp<GRT::ChainCreateOp>())
+        existingUniqueChainCreateOp = chainCreateOp;
     }
 
     // Wait on the merge of the accumulated primitive chains.
     auto insertPoint = builder.saveInsertionPoint();
     builder.setInsertionPoint(op);
     Value newInChain =
-        waitForChainsReusing(builder, op->getLoc(), existingUniqueChainMergeOp,
+        waitForChainsReusing(builder, op->getLoc(), existingUniqueChainCreateOp,
                              existingPrimitiveChains.takeVector());
     builder.restoreInsertionPoint(insertPoint);
     op->setOperand(inChainOpOperand->getOperandNumber(), newInChain);

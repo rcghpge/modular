@@ -20,41 +20,31 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 // ChainCreateOp
 //===----------------------------------------------------------------------===//
 
-def ChainCreateOp : GRTOp<"chain.create"> {
-  let summary = "Creates a new !mef.chain";
-
-  let arguments = (ins);
-  let results = (outs ChainType:$result);
-  let assemblyFormat = "attr-dict";
-}
-
-//===----------------------------------------------------------------------===//
-// ChainMergeOp
-//===----------------------------------------------------------------------===//
-
-def ChainMergeOp : GRTOp<"chain.merge", [Pure]> {
-  let summary = "Return a !mef.chain when all inputs are ready";
+def ChainCreateOp : GRTOp<"chain.create", [Pure, Commutative]> {
+  let summary = "Return a ready !mef.chain when all inputs (if any) are ready";
 
   let description = [{
     This operation returns a ready !mef.chain when all of its inputs are ready.
-    It's used to merge multiple data dependencies into a single one on the
-    output chain.
+    If there are no inputs a ready chain is returned immediately. The operands
+    may be of any type, not just !mef.chain. However, non !mef.chain operands
+    must be paired with a type annotation.
 
     Example:
 
     ```mlir
-      %arg1: index
-      %arg2: !mef.chain
-      %arg3: !mef.chain
-      %arg4: i32
-      %ch1 = grt.chain.merge (%arg1: index, %arg2, %arg3: !mef.chain, %arg4: i32)
+      %ch0 = grt.chain.create ()
+      %idx: index
+      %int: i32
+      %ch1 = grt.chain.create (%idx: index, %ch0, %int: i32)
     ```
   }];
 
   let arguments = (ins Variadic<AnyType>:$operands);
   let results = (outs ChainType:$result);
   let hasCustomAssemblyFormat = 1;
-  let hasCanonicalizeMethod = 1;
+  let builders = [
+    OpBuilder<(ins)>
+  ];
 }
 
 //===----------------------------------------------------------------------===//

@@ -41,7 +41,7 @@
 // CHECK: impliesReady(%3#2, %2) = true
 
 mgp.model @simple : tf init {
-  %0 = grt.chain.create
+  %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %cxt: !mgp.context) -> (!mef.chain, !mgp.cpu.tensor<f32>) {
@@ -62,7 +62,7 @@ mgp.model @simple : tf init {
 }
 
 //
-// Lots of redundant grt.chain.merge operands.
+// Lots of redundant grt.chain.create operands.
 //
 
 // CHECK: "mgp.model"() ({
@@ -73,17 +73,17 @@ mgp.model @simple : tf init {
 // CHECK-NEXT:}, {
 //            ### Block 1 ###
 // CHECK-NEXT:^bb0(%arg0: !mef.chain, %arg1: !mgp.context):
-// CHECK-NEXT:  %0 = "grt.chain.merge"(%arg0) : (!mef.chain) -> !mef.chain
-// CHECK-NEXT:  %1 = "grt.chain.merge"(%0, %0) : (!mef.chain, !mef.chain) -> !mef.chain
+// CHECK-NEXT:  %0 = "grt.chain.create"(%arg0) : (!mef.chain) -> !mef.chain
+// CHECK-NEXT:  %1 = "grt.chain.create"(%0, %0) : (!mef.chain, !mef.chain) -> !mef.chain
 // CHECK-NEXT:  %2 = "some.op"(%1) : (!mef.chain) -> !mef.chain
-// CHECK-NEXT:  %3 = "grt.chain.merge"(%arg0, %2) : (!mef.chain, !mef.chain) -> !mef.chain
+// CHECK-NEXT:  %3 = "grt.chain.create"(%arg0, %2) : (!mef.chain, !mef.chain) -> !mef.chain
 // CHECK-NEXT:  %4 = "some.op"(%3) : (!mef.chain) -> !mef.chain
 // CHECK-NEXT:  %5 = "some.op"(%3) : (!mef.chain) -> !mef.chain
 // CHECK-NEXT:  %6 = "some.op"(%3) : (!mef.chain) -> !mef.chain
-// CHECK-NEXT:  %7 = "grt.chain.merge"(%4, %5) : (!mef.chain, !mef.chain) -> !mef.chain
-// CHECK-NEXT:  %8 = "grt.chain.merge"(%3, %7, %6) : (!mef.chain, !mef.chain, !mef.chain) -> !mef.chain
-// CHECK-NEXT:  %9 = "grt.chain.merge"() : () -> !mef.chain
-// CHECK-NEXT:  %10 = "grt.chain.merge"(%9, %8) : (!mef.chain, !mef.chain) -> !mef.chain
+// CHECK-NEXT:  %7 = "grt.chain.create"(%4, %5) : (!mef.chain, !mef.chain) -> !mef.chain
+// CHECK-NEXT:  %8 = "grt.chain.create"(%3, %7, %6) : (!mef.chain, !mef.chain, !mef.chain) -> !mef.chain
+// CHECK-NEXT:  %9 = "grt.chain.create"() : () -> !mef.chain
+// CHECK-NEXT:  %10 = "grt.chain.create"(%9, %8) : (!mef.chain, !mef.chain) -> !mef.chain
 // CHECK-NEXT:  %11 = "some.op"() : () -> i1
 // CHECK-NEXT:  %12 = "grt.if"(%11, %9) ({
 //              ### Block 2 ###
@@ -95,7 +95,7 @@ mgp.model @simple : tf init {
 // CHECK-NEXT:    %14 = "grt.chain.create"() : () -> !mef.chain
 // CHECK-NEXT:    "mef.output"(%14) : (!mef.chain) -> ()
 // CHECK-NEXT:  }) : (i1, !mef.chain) -> !mef.chain
-// CHECK-NEXT:  %13 = "grt.chain.merge"(%9, %10, %12) : (!mef.chain, !mef.chain, !mef.chain) -> !mef.chain
+// CHECK-NEXT:  %13 = "grt.chain.create"(%9, %10, %12) : (!mef.chain, !mef.chain, !mef.chain) -> !mef.chain
 // CHECK-NEXT:  "mef.output"(%13) : (!mef.chain) -> ()
 // CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> (), sym_name = "redundant"} : () -> ()
 
@@ -108,29 +108,29 @@ mgp.model @simple : tf init {
 // CHECK: impliesReady(%2, %arg0) = true
 
 mgp.model @redundant : tf init {
-  %0 = grt.chain.create
+  %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %arg1: !mgp.context) -> !mef.chain {
-  %ch1 = grt.chain.merge (%ch0)
-  %ch2 = grt.chain.merge (%ch1, %ch1)
+  %ch1 = grt.chain.create (%ch0)
+  %ch2 = grt.chain.create (%ch1, %ch1)
   %ch3 = "some.op"(%ch2) : (!mef.chain) -> !mef.chain
-  %ch4 = grt.chain.merge (%ch0, %ch3)
+  %ch4 = grt.chain.create (%ch0, %ch3)
   %ch5 = "some.op"(%ch4) : (!mef.chain) -> !mef.chain
   %ch6 = "some.op"(%ch4) : (!mef.chain) -> !mef.chain
   %ch7 = "some.op"(%ch4) : (!mef.chain) -> !mef.chain
-  %ch8 = grt.chain.merge (%ch5, %ch6)
-  %ch9 = grt.chain.merge (%ch4, %ch8, %ch7)
-  %ch10 = grt.chain.merge ()
-  %ch11 = grt.chain.merge (%ch10, %ch9)
+  %ch8 = grt.chain.create (%ch5, %ch6)
+  %ch9 = grt.chain.create (%ch4, %ch8, %ch7)
+  %ch10 = grt.chain.create ()
+  %ch11 = grt.chain.create (%ch10, %ch9)
   %c = "some.op"() : () -> i1
   %ch12 = grt.if %c (%ch10 : !mef.chain) -> !mef.chain {
     mef.output %ch10 : !mef.chain
   } else {
-    %ch13 = grt.chain.create
+    %ch13 = grt.chain.create ()
     mef.output %ch13 : !mef.chain
   }
-  %ch14 = grt.chain.merge (%ch10, %ch11, %ch12)
+  %ch14 = grt.chain.create (%ch10, %ch11, %ch12)
   mef.output %ch14 : !mef.chain
 }
 
@@ -235,7 +235,7 @@ mgp.model @redundant : tf init {
 // CHECK: impliesReady(%12#1, %12#1) = true
 
 mgp.model @if : tf init {
-  %0 = grt.chain.create
+  %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context) -> (!mef.chain, !mgp.cpu.tensor<32xui8>) {

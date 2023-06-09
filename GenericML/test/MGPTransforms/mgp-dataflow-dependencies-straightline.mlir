@@ -72,11 +72,11 @@
 // CHECK: impliesReady(%5, %4) = true
 
 mgp.model @simple : tf init {
-  %0 = grt.chain.create
+  %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %cxt: !mgp.context) -> !mef.chain {
-  %ch1 = grt.chain.create
+  %ch1 = grt.chain.create ()
   %ch2 = "some.op"(%ch0) : (!mef.chain) -> !mef.chain
   %ch3 = "some.op"(%ch2, %ch1) : (!mef.chain, !mef.chain) -> !mef.chain
   %ch4 = "some.op"(%ch0) : (!mef.chain) -> !mef.chain
@@ -149,7 +149,7 @@ mgp.model @simple : tf init {
 // CHECK: impliesReady(%10, %10) = true
 
 mgp.model @straightline : tf init {
-  %0 = grt.chain.create
+  %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context) -> (!mef.chain, !mgp.cpu.tensor<8xf32>) {

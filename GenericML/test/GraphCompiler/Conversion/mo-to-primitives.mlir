@@ -1,7 +1,7 @@
 // RUN: mo-opt %s --mo-to-primitives --allow-unregistered-dialect | FileCheck %s
 
 // CHECK-LABEL: mgp.model @constants_with_multiple_returns : tf init {
-// CHECK-NEXT:        %0 = grt.chain.create
+// CHECK-NEXT:        %0 = grt.chain.create ()
 // CHECK-NEXT:        %1 = mgp.context.create 1
 // CHECK-NEXT:        %2 = "mop.create_jit_context"(%0, %1) {slot = 0 : ui32}
 // CHECK-NEXT:        mef.output %2, %1 : !mef.chain, !mgp.context
@@ -43,7 +43,7 @@ mo.graph @foo<N>(%arg0: !mo.tensor<[1, N], f32>, %arg1: !mo.tensor<[N], f32>) {
 }
 
 // CHECK-LABEL: mgp.model @scalar_arg : tf init {
-// CHECK-NEXT:    %0 = grt.chain.create
+// CHECK-NEXT:    %0 = grt.chain.create ()
 // CHECK-NEXT:    %1 = mgp.context.create 1
 // CHECK-NEXT:        %2 = "mop.create_jit_context"(%0, %1) {slot = 0 : ui32}
 // CHECK:    mef.output %2, %1 : !mef.chain, !mgp.context

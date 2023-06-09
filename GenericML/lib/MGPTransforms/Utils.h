@@ -37,7 +37,7 @@ Operation *earliestUsingOp(mlir::ResultRange results);
 
 using ValueSetVector = llvm::SetVector<Value, SmallVector<Value>>;
 
-/// If chain is defined by a grt.chain.merge operation then accumulate
+/// If chain is defined by a grt.chain.create operation then accumulate
 /// all of its operands into primitiveChains (recursively). Otherwise adds
 /// chain directly to primitiveChains.
 void accumulatePrimitiveChains(ValueSetVector &primitiveChains, Value chain);

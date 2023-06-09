@@ -108,12 +108,12 @@ mef.invokable @merge_non_chain_inputs(
   %arg0: index
 // CHECK-SAME: ) -> !mef.chain {
 ) -> !mef.chain {
-  // CHECK-NEXT: %[[CH0:.*]] = grt.chain.merge ()
-  %ch0 = grt.chain.merge ()
-  // CHECK-NEXT: %[[CH1:.*]] = grt.chain.merge ()
-  %ch1 = grt.chain.merge ()
-  // CHECK-NEXT: %[[CH2:.*]] = grt.chain.merge (%[[ARG0]]: index, %[[CH1]])
-  %ch2 = grt.chain.merge (%arg0: index, %ch1)
+  // CHECK-NEXT: %[[CH0:.*]] = grt.chain.create ()
+  %ch0 = grt.chain.create ()
+  // CHECK-NEXT: %[[CH1:.*]] = grt.chain.create ()
+  %ch1 = grt.chain.create ()
+  // CHECK-NEXT: %[[CH2:.*]] = grt.chain.create (%[[ARG0]]: index, %[[CH1]])
+  %ch2 = grt.chain.create (%arg0: index, %ch1)
   // CHECK-NEXT: mef.output %[[CH2]] : !mef.chain
   mef.output %ch2 : !mef.chain
 // CHECK-NEXT: }

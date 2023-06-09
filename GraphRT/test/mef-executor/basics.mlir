@@ -8,14 +8,14 @@ mef.invokable @args_results(%a: si32, %b: ui8) -> (ui8, si32) {
 // CHECK-LABEL: Running 'print_test':
 grt.testcase @print_test {
   // CHECK: hello mef executor!
-  %ch0 = grt.chain.create
+  %ch0 = grt.chain.create ()
   "test.print_hello"(%ch0) : (!mef.chain) -> !mef.chain
   mef.output
 }
 
 // CHECK-LABEL: --- Running 'three_print'
 grt.testcase @three_print {
-  %ch0 = grt.chain.create
+  %ch0 = grt.chain.create ()
 
   // CHECK: hello mef executor!
   %ch1 = "test.print_hello"(%ch0) : (!mef.chain) -> !mef.chain
@@ -33,7 +33,7 @@ grt.testcase @three_print {
 mef.invokable @basic.i32() {
   %x = grt.constant.si32 42
 
-  %ch0 = grt.chain.create
+  %ch0 = grt.chain.create ()
 
   // CHECK: int32 = 42
   %ch1 = grt.print.si32 %x, %ch0
@@ -53,7 +53,7 @@ grt.testcase @basic.i32_driver {
 
 // CHECK-LABEL: --- Running 'test_result'
 grt.testcase @test_result {
-  %ch0 = grt.chain.create
+  %ch0 = grt.chain.create ()
   %x = grt.constant.si32 42
   %y = grt.constant.si32 13
   %add = grt.add.si32 %x, %y
@@ -91,7 +91,7 @@ grt.testcase @simple_calls {
 }
 
 mef.invokable @call_print.i32(%x: si32) -> !mef.chain {
-  %ch0 = grt.chain.create
+  %ch0 = grt.chain.create ()
   %ch1 = grt.print.si32 %x, %ch0
   mef.output %ch1 : !mef.chain
 }
@@ -123,7 +123,7 @@ grt.testcase @caller {
 grt.testcase @basic_string_and_arrays {
   %x = "test.get_string"() { value = "bark" } : () -> !test.string
   %y = "test.get_string"() { value = "rarf" } : () -> !test.string
-  %ch0 = grt.chain.create
+  %ch0 = grt.chain.create ()
 
   // CHECK: string = bark
   %ch1 = "test.print_string"(%x, %ch0) : (!test.string, !mef.chain) -> (!mef.chain)
@@ -149,7 +149,7 @@ grt.testcase @basic_string_and_arrays {
 }
 
 grt.testcase @decode_error {
-  %ch0 = grt.chain.create
+  %ch0 = grt.chain.create ()
   // COM: Because we can't do regex in expected-error we have to end the
   // COM: llvm::SmallVector type early here to account for the sizing.
   // expected-error @+1 {{type mismatch, have si32 but caller expected llvm::SmallVector<float}}
@@ -159,7 +159,7 @@ grt.testcase @decode_error {
 
 // CHECK-LABEL: --- Running 'test_types'
 grt.testcase @test_types {
-  %ch0 = grt.chain.create
+  %ch0 = grt.chain.create ()
 
   // CHECK-NEXT: Type attribute: bool
   %ch1 = "test.print_type"(%ch0) {t = i1} : (!mef.chain) -> (!mef.chain)
@@ -218,7 +218,7 @@ grt.testcase @test_types {
 
 // CHECK-LABEL: --- Running 'test_dynamic_attr'
 grt.testcase @test_dynamic_attr {
-  %ch0 = grt.chain.create
+  %ch0 = grt.chain.create ()
 
   // CHECK: int32 = 4
   %ch1 = "test.print.dynamic.attr"(%ch0) {value = 4: si32} : (!mef.chain) -> !mef.chain

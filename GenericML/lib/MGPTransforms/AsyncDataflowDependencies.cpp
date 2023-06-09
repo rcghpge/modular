@@ -80,27 +80,22 @@ void AsyncDataflowDependencies::setupSameAs(ModelOp modelOp) {
 
 /// Implements the rules:
 ///  - Given
-///      %x = grt.chain.create
-///    then isAlwaysReady(%x)
-///  - Given
-///      %x = grt.chain.merge (%y1, ..., %yn)
+///      %x = grt.chain.create (%y1, ..., %yn)
 ///    where isAlwaysReady(%yi) for all i then isAlwaysReady(%x)
 ///  - The control flow rules.
 ///  - Closure under sameAs.
 void AsyncDataflowDependencies::flowAlwaysReady(Operation *op,
                                                 DomainMap &domainMap) {
-  if (auto createOp = dyn_cast<GRT::ChainCreateOp>(op)) {
-    setTrue(domainMap, createOp.getResult());
-  } else if (auto mergeOp = dyn_cast<GRT::ChainMergeOp>(op)) {
+  if (auto chainCreateOp = dyn_cast<GRT::ChainCreateOp>(op)) {
     // This is equivalent to:
     //   if (isTrue(o) for all o in mergeOp.getOperands())
     //     setTrue(mergeOp.getResult())
     // but writen to mirror how flowControlFlow works with the relation.
     Set theIntersection = domainMap.fullSet;
-    for (Value operand : mergeOp.getOperands())
+    for (Value operand : chainCreateOp.getOperands())
       domainMap.setIntersection(theIntersection,
                                 getEntries(domainMap, operand));
-    setEntriesAndId(domainMap, mergeOp.getResult(), theIntersection);
+    setEntriesAndId(domainMap, chainCreateOp.getResult(), theIntersection);
   } else if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op)) {
     flowControlFlow(
         cfOp, domainMap,

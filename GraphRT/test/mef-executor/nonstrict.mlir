@@ -19,7 +19,7 @@ grt.testcase @unused_nonstrict_arg {
   // At this point %v3 is unused, but has not yet been forwarded. Setting %v3
   // must count as a use, otherwise the executor would immediately destroy %v3.
 
-  %ch0 = grt.chain.create
+  %ch0 = grt.chain.create ()
   // CHECK-NEXT: int32 = 1
   %ch1 = grt.print.si32 %x, %ch0
   mef.output
@@ -27,7 +27,7 @@ grt.testcase @unused_nonstrict_arg {
 
 // CHECK-LABEL: --- Running 'many_waiters'
 grt.testcase @many_waiters {
-  %ch0 = grt.chain.create
+  %ch0 = grt.chain.create ()
 
   %v3 = "test.async.many.waiters"() { num = 3 : si32 } : () -> si32
   %ch1 = grt.print.si32 %v3, %ch0
@@ -45,7 +45,7 @@ grt.testcase @many_waiters {
 
 // CHECK-LABEL: --- Running 'test_many_tasks'
 grt.testcase @test_many_tasks {
-  %ch0 = grt.chain.create
+  %ch0 = grt.chain.create ()
 
   %v3 = "test.many.tasks"() { num = 3 : si32 } : () -> si32
   %ch1 = grt.print.si32 %v3, %ch0

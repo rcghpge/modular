@@ -35,16 +35,16 @@ def TensorExtractAnalysisTestPass : Pass<"tensor-extract-analysis-test", "MGP::M
 //===----------------------------------------------------------------------===//
 
 def SimplifyChainsPass : Pass<"simplify-chains", "MGP::ModelOp"> {
-  let summary = "Removed unnecessary chains from grt.chain.merge ops.";
+  let summary = "Removed unnecessary chains from grt.chain.create ops.";
   let description = [{
     Given:
     ```mlir
-      %a = grt.chain.merge (%x, %y, %z)
+      %a = grt.chain.create (%x, %y, %z)
     ```
     where AsyncValueDependencies::impliesReady(%x, %y) then there's no need
     to include %y and we can rewrite to:
     ```mlir
-      %a = grt.chain.merge (%x, %z)
+      %a = grt.chain.create (%x, %z)
     ```
 
     If in addition AsyncValueDependencies::impliesReady(%x, %z) then we can
@@ -78,7 +78,7 @@ def RemoveRedundantTensorExtractsPass : Pass<"remove-redundant-tensor-extracts",
     ```
        becomes:
     ```mlir
-          %ch4 = grt.chain.merge %ch2, %ch0, %ch1
+          %ch4 = grt.chain.create %ch2, %ch0, %ch1
           %ch3 = my.op(%ch4, ...,
                        %inputBuf0, %inputSpec0,  %inputBuf1, %inputSpec1)
     ```
@@ -129,7 +129,7 @@ def RemoveRedundantTensorExtractsPass : Pass<"remove-redundant-tensor-extracts",
           } else {
             ...
           }
-          %ch4 = grt.chain.merge %ch2, %ch1
+          %ch4 = grt.chain.create %ch2, %ch1
           %ch3 = my_op(%ch4, ..., %buf1, %spec1)
           // where %buf1 is in 'read' position
     ```
@@ -152,7 +152,7 @@ def DeferAllocsPass : Pass<"defer-allocs", "MGP::ModelOp"> {
     ```
     becomes:
     ```
-      %ch = grt.chain.merge (%opChain, %bufChain)
+      %ch = grt.chain.create (%opChain, %bufChain)
       %buf = mgp.cpu.buffer.alloc.static %ch, 24
       my_op(%ch, %buf, ...)
     ```
@@ -232,7 +232,7 @@ def ConcatInPlacePass : Pass<"concat-in-place", "MGP::ModelOp"> {
     %in2_ch = ... writer to %in2_buf ...
     %out_spec = ...
     %out_buf = mgp.cpu.buffer.alloc.spec ..., %out_spec
-    %ch1 = grt.chain.merge (%in1_ch, %in2_ch)
+    %ch1 = grt.chain.create (%in1_ch, %in2_ch)
     %ch2 = mgp.cpu.buffer.concat %ch1, %out_buf, %in1_buf, %in2_buf : ...
     // where these are the only uses of %in1_buf and %in2_buf
     ```
@@ -246,7 +246,7 @@ def ConcatInPlacePass : Pass<"concat-in-place", "MGP::ModelOp"> {
     %in1_buf, %in2_buf = mgp.cpu.buffer.split %root_ch, %out_buf, %in2_size : ...
     %in1_ch = ... writer to %in1_buf ...
     %in2_ch = ... writer to %in2_buf ...
-    %ch2 = grt.chain.merge (%in1_ch, %in2_ch)
+    %ch2 = grt.chain.create (%in1_ch, %in2_ch)
     ```
 
     Note that this pass simply assumes that the argument chain to the
@@ -278,7 +278,7 @@ def ExecInvariantCodeMotionPass : Pass<"exec-invariant-code-motion", "MGP::Model
     For example:
     ```mlir
     mgp.model @example : tf init {
-      %ch0 = grt.chain.create
+      %ch0 = grt.chain.create ()
       %ctx = mgp.context.create 1
       mef.output %ch0, %ctx : !mef.chain, !mgp.context
 
@@ -299,7 +299,7 @@ def ExecInvariantCodeMotionPass : Pass<"exec-invariant-code-motion", "MGP::Model
     is rewritten to (note all the clarifying comments):
     ```mlir
     mgp.model @example : tf init {
-      %ch0 = grt.chain.create
+      %ch0 = grt.chain.create ()
       // number of slots increased, to store lifted buffers
       %ctx = mgp.context.create 2
 
