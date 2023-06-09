@@ -9,6 +9,16 @@ mef.invokable @trivial() {
 
 // -----
 
+// CHECK-LABEL: --- Running 'fanout_empty':
+mef.invokable @fanout_empty() {
+  %ch0 = grt.chain.create ()
+  // expected-error @+1 {{'grt.chain.fanout' op expects at least one result}}
+  grt.chain.fanout %ch0, 0
+  mef.output
+}
+
+// -----
+
 // CHECK-LABEL: --- Running 'controlflow_if_invalid1':
 mef.invokable @controlflow_if_invalid1(%cond: i1, %x: si32) {
   // expected-error @+1 {{custom op 'grt.if' has duplicate SSA values in its operand list which have not been renamed apart by 'as' clauses.}}

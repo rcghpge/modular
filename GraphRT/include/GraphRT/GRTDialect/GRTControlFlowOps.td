@@ -48,6 +48,45 @@ def ChainCreateOp : GRTOp<"chain.create", [Pure, Commutative]> {
 }
 
 //===----------------------------------------------------------------------===//
+// ChainFanoutOp
+//===----------------------------------------------------------------------===//
+
+def ChainFanoutOp : GRTOp<"chain.fanout", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "";
+
+  let description = [{
+    This operation returns any number of !mef.chain results which will be ready
+    when the argument !mef.chain is ready. However, if a result chain makes
+    a dependent primitive ready to run then that primitive will be run
+    asynchronously.
+
+    This can be used to ensure high-fanout values to synchronous primitives
+    do not all run sequentially on the same thread.
+
+    Example:
+
+    ```mlir
+      // %in_ch will be ready when %x is ready to be read
+      %in_ch = "some.writing.op"(%x)
+      %out_ch0, %out_ch1 = grt.chain.fanout %in_ch, 2
+      // op{1,2} and op{3,4} will begin execution on separate threads
+      ... = "some.reading.op1"(%out_ch0, %x)
+      ... = "some.reading.op2"(%out_ch0, %x)
+      ... = "some.reading.op3"(%out_ch1, %x)
+      ... = "some.reading.op4"(%out_ch1, %x)
+    ```
+  }];
+
+  let arguments = (ins ChainType:$inChain, UI32Attr:$numResults);
+  let results = (outs Variadic<ChainType>:$outChains);
+  let assemblyFormat = [{
+    $inChain `,` $numResults attr-dict
+  }];
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // InvokeOp
 //===----------------------------------------------------------------------===//
 

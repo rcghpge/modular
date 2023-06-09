@@ -25,9 +25,24 @@ using namespace M;
 
 /// Strictly wait for all the input operands (if any), then return a ready
 /// chain.
-static AsyncValueRef<Chain> grt_chain_create(Runtime &runtime,
-                                             RemainingArguments arguments) {
+static AsyncValueRef<Chain> grt_chain_create(RemainingArguments arguments,
+                                             Runtime &runtime) {
   return runtime.getReadyChain().copy();
+}
+
+//===----------------------------------------------------------------------===//
+// grt.chain.fanout
+//===----------------------------------------------------------------------===//
+
+static void grt_chain_fanout(Chain inChain, RemainingResults results,
+                             MEFAttr<uint32_t> numResults, Runtime &runtime) {
+  assert(static_cast<size_t>(*numResults) == results.size());
+  for (AnyAsyncValueRef &result : results) {
+    result = AsyncValueRef<Chain>::allocate(runtime);
+    LLCL::addTask(runtime, [result = result.copy()]() mutable {
+      std::move(result).emplace<Chain>();
+    });
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -358,6 +373,7 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
 /// This registers the 'graphrt' dialect primitives for control flow.
 void M::registerGraphRTControlFlowPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "grt.chain.create", grt_chain_create);
+  ADD_PRIMITIVE(registry, "grt.chain.fanout", grt_chain_fanout);
   ADD_PRIMITIVE(registry, "grt.invoke", grt_invoke);
   ADD_PRIMITIVE(registry, "grt.if", grt_if);
   ADD_PRIMITIVE(registry, "grt.while", grt_while);

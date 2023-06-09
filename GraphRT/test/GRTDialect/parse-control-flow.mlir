@@ -1,5 +1,14 @@
 // RUN: graphrt-opt -allow-unregistered-dialect %s | graphrt-opt -allow-unregistered-dialect | FileCheck %s
 
+// CHECK-LABEL: mef.invokable @fanout
+// CHECK-SAME: %[[CH0:.*]]: !mef.chain
+mef.invokable @fanout(%ch0: !mef.chain) -> (!mef.chain, !mef.chain) {
+  // CHECK-NEXT: %[[RES:.*]]:2 = grt.chain.fanout %[[CH0]], 2
+  %ch1, %ch2 = grt.chain.fanout %ch0, 2
+  // CHECK-NEXT: mef.output %[[RES]]#0, %[[RES]]#1
+  mef.output %ch1, %ch2 : !mef.chain, !mef.chain
+}
+
 // CHECK-LABEL: mef.invokable @if
 // CHECK-SAME: %[[ARG0:.*]]: i1, %[[ARG1:.*]]: si32, %[[ARG2:.*]]: si32
 mef.invokable @if(%cond: i1, %v1: si32, %v2: si32) -> (si32, si32) {

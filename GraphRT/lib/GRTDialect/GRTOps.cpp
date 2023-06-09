@@ -50,6 +50,32 @@ void ChainCreateOp::print(OpAsmPrinter &p) {
 }
 
 //===----------------------------------------------------------------------===//
+// ChainFanoutOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ChainFanoutOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  assert(operands.size() == 1 && "mismatched operand arity");
+  auto numResultsAttr =
+      dyn_cast<IntegerAttr>(attributes.get(getNumResultsAttrName(name)));
+  assert(numResultsAttr && "mismatched operand types");
+  uint64_t size = numResultsAttr.getUInt();
+  auto chainType = MEF::ChainType::get(context);
+  for (uint64_t i = 0; i < size; ++i)
+    inferredReturnTypes.emplace_back(chainType);
+  return success();
+}
+
+LogicalResult ChainFanoutOp::verify() {
+  if (getNumResults() == 0)
+    return emitOpError("expects at least one result");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // InvokeOp
 //===----------------------------------------------------------------------===//
 
