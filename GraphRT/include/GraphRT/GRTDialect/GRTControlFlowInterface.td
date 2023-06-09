@@ -28,7 +28,8 @@ def GRTControlFlowInterface : OpInterface<"GRTControlFlowInterface"> {
     >,
     InterfaceMethod<
       [{
-        As for getInputs, but returned as an array of OpOperands.
+        As for getInputs, but returned as an array of OpOperands for use
+        by dense, backwards dataflow analyses.
       }],
       "llvm::ArrayRef<::mlir::OpOperand>", "getInputOpOperands", (ins)
     >,
@@ -37,18 +38,22 @@ def GRTControlFlowInterface : OpInterface<"GRTControlFlowInterface"> {
         Returns the 'flavor' of the control flow op.
 
         For a `kLoopLike` op (eg grt.{while, repeat.i32}):
-         - The op inputs match the block arguments.
+         - The op inputs match each sub-block's arguments.
+         - If one sub-block, it is assumed to be executed 0 or more times.
+         - If two sub-blocks, the first sub-block is considered a condition,
+           and may exit the loop. The second sub-block is considered the body,
+           and is only ever run after the condition.
          - The first N results of each of the op's control flow blocks
            represent updated versions of the N op inputs. Blocks may return
            additional outputs, such as a condition value.
          - The updated values are chained from the op inputs through each
-           of the control flow op's blocks and back to the inputs or the
-           control flow op's results.
+           of the sub-blocks and back to the inputs or the control flow op's
+           results.
 
         For a 'kBranchLike` op (eg grt.if):
-         - The op inputs match the block arguments.
-         - Each of the control flow op's blocks are assumed to be distinct
-           control flow paths which all agree on their result types.
+         - The op inputs match each sub-block's arguments.
+         - Exactly one of the sub-blocks is executed.
+         - All the sub-blocks outputs agree with the control flow op results.
       }],
       "M::GRT::ControlFlowFlavor", "getFlavor", (ins)
     >,

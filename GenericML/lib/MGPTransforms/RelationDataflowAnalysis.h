@@ -232,15 +232,26 @@ public:
       : RelationDataflowAnalysisBase<Value>(index) {}
 
 protected:
-  /// Grows domainMap for the sub-blocks of control flow op in 'series'.
-  /// Sets changed to true if domainMap was changed.
-  void flowSequential(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
+  /// Grows domainMap for one iteration of the body sub-block of cfOp, which
+  /// must have one sub-block. Sets changed to true if domainMap was changed.
+  void flowSimpleLoop(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
                       const FlowOp &flowOp);
 
-  /// Grows domainMap for the sub-blocks of control flow op in 'parallel'.
+  /// Grows domainMap for executing the condition sub-block of cfOp, which must
+  /// have two sub-blocks. Sets changed to true if domainMap was changed.
+  void flowCondition(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
+                     const FlowOp &flowOp);
+
+  /// Grows domainMap for executing the body then condition sub-block of cfOp,
+  /// which must have two sub-blocks. Sets changed to true if domainMap was
+  /// changed.
+  void flowConditionedLoop(GRT::GRTControlFlowInterface cfOp,
+                           DomainMap &domainMap, const FlowOp &flowOp);
+
+  /// Grows domainMap for the sub-blocks of branch control flow op.
   /// Sets changed to true if domainMap was changed.
-  void flowParallel(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
-                    const FlowOp &flowOp);
+  void flowBranch(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
+                  const FlowOp &flowOp);
 
   /// Grows domainMap using the control flow closure rules. Sets changed to
   /// true if domainMap was changed.
@@ -274,15 +285,26 @@ protected:
   /// (possibly none) and the top set.
   Set operandIntersection(const DomainMap &domainMap, Value value) const;
 
-  /// Grows domainMap for the sub-blocks of control flow op in 'series'.
-  /// Sets changed to true if domainMap was changed.
-  void flowSequential(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
+  /// Grows domainMap for one iteration of the body sub-block of cfOp, which
+  /// must have one sub-block. Sets changed to true if domainMap was changed.
+  void flowSimpleLoop(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
                       const FlowOp &flowOp);
 
-  /// Grows domainMap for the sub-blocks of control flow op in 'parallel'.
+  /// Grows domainMap for executing the condition sub-block of cfOp, which must
+  /// have two sub-blocks. Sets changed to true if domainMap was changed.
+  void flowCondition(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
+                     const FlowOp &flowOp);
+
+  /// Grows domainMap for executing the body then condition sub-block of cfOp,
+  /// which must have two sub-blocks. Sets changed to true if domainMap was
+  /// changed.
+  void flowConditionedLoop(GRT::GRTControlFlowInterface cfOp,
+                           DomainMap &domainMap, const FlowOp &flowOp);
+
+  /// Grows domainMap for the sub-blocks of branch control flow op.
   /// Sets changed to true if domainMap was changed.
-  void flowParallel(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
-                    const FlowOp &flowOp);
+  void flowBranch(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
+                  const FlowOp &flowOp);
 
   /// Grows domainMap using the control flow closure rules. Sets changed to
   /// true if domainMap was changed.

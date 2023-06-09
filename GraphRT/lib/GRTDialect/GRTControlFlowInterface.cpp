@@ -13,6 +13,17 @@
 mlir::LogicalResult M::GRT::verifyControlFlowInterfaceOp(Operation *op) {
   auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op);
 
+  switch (cfOp.getFlavor()) {
+  case kLoopLike:
+    if (cfOp->getNumRegions() < 1 || cfOp->getNumRegions() > 2)
+      return op->emitOpError("expects one or two sub-regions");
+    break;
+  case kBranchLike:
+    if (cfOp->getNumRegions() == 0)
+      return op->emitOpError("expects at least one sub-region");
+    break;
+  }
+
   if (cfOp.getFlavor() == kLoopLike) {
     // The op's results must match the op's inputs.
     if (failed(checkMatchingTypes(op, "result", op->getResultTypes(),
