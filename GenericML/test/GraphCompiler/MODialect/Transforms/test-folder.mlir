@@ -133,3 +133,81 @@ mo.graph @fold_add0_no_fold_f64(%arg0: !mo.tensor<[5, 500, 100], f64>) -> !mo.te
 // CHECK-NEXT: mo.constant
 // CHECK-NEXT: mo.static.broadcast_to
 // CHECK-NEXT: %[[OUT:.*]] = mo.add
+
+mo.graph @fold_slice(%arg0: !mo.tensor<[5, 500], f64>, 
+    %start: !mo.tensor<[2], si64>,
+    %stop: !mo.tensor<[2], si64>) -> !mo.tensor<[5, 500], f64> {
+    %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %2 = mo.slice(%arg0, %start, %stop, %step) : (!mo.tensor<[5, 500], f64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[5, 500], f64>
+    mo.output %2 : !mo.tensor<[5, 500], f64>
+}
+// CHECK-LABEL: mo.graph @fold_slice
+// CHECK:(%[[ARG0:.*]]: !mo.tensor<[5, 500
+// CHECK-NEXT: mo.output %[[ARG0]] : !mo.tensor<[5, 500], f64>
+
+
+// There is some combination which should be able to produce the equiv of:
+// np.arange(0, 15).reshape(3, 5)[::-1, ::-1]
+// Which is the reverse with the same shape.
+mo.graph @no_fold_slice_reverse(%arg0: !mo.tensor<[5, 500], f64>, 
+    %start: !mo.tensor<[2], si64>,
+    %stop: !mo.tensor<[2], si64>) -> !mo.tensor<[5, 500], f64> {
+    %step = mo.constant {value = #M.dense_array<-1, -1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %2 = mo.slice(%arg0, %start, %stop, %step) : (!mo.tensor<[5, 500], f64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[5, 500], f64>
+    mo.output %2 : !mo.tensor<[5, 500], f64>
+}
+// CHECK-LABEL: mo.graph @no_fold_slice_reverse
+// CHECK:(%[[ARG0:.*]]: !mo.tensor<[5, 500
+// CHECK-NEXT: mo.constant
+// CHECK-NEXT: %[[OUT:.*]] = mo.slice
+// CHECK-NEXT: mo.output %[[OUT]]
+
+
+mo.graph @no_fold_slice_unknown(%arg0: !mo.tensor<[5, ?], f64>, 
+    %start: !mo.tensor<[2], si64>,
+    %stop: !mo.tensor<[2], si64>) -> !mo.tensor<[5, ?], f64> {
+    %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %2 = mo.slice(%arg0, %start, %stop, %step) : (!mo.tensor<[5, ?], f64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[5, ?], f64>
+    mo.output %2 : !mo.tensor<[5, ?], f64>
+}
+// CHECK-LABEL: mo.graph @no_fold_slice_unknown
+// CHECK-NEXT: mo.constant
+// CHECK-NEXT: %[[OUT:.*]] = mo.slice
+// CHECK-NEXT: mo.output %[[OUT]]
+
+mo.graph @no_fold_slice_shape_mismatch(%arg0: !mo.tensor<[5, 500], f64>, 
+    %start: !mo.tensor<[2], si64>,
+    %stop: !mo.tensor<[2], si64>) -> !mo.tensor<[5, 250], f64> {
+    %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %2 = mo.slice(%arg0, %start, %stop, %step) : (!mo.tensor<[5, 500], f64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[5, 250], f64>
+    mo.output %2 : !mo.tensor<[5, 250], f64>
+}
+// CHECK-LABEL: mo.graph @no_fold_slice_shape_mismatch
+// CHECK-NEXT: mo.constant
+// CHECK-NEXT: %[[OUT:.*]] = mo.slice
+// CHECK-NEXT: mo.output %[[OUT]]
+
+
+mo.graph @fold_slice_parameter<N, M>(%arg0: !mo.tensor<[N, M], f64>, 
+    %start: !mo.tensor<[2], si64>,
+    %stop: !mo.tensor<[2], si64>) -> !mo.tensor<[N, M], f64> {
+    %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %2 = mo.slice(%arg0, %start, %stop, %step) : (!mo.tensor<[N, M], f64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[N, M], f64>
+    mo.output %2 : !mo.tensor<[N, M], f64>
+}
+// CHECK-LABEL: mo.graph @fold_slice_parameter<N, M>
+// CHECK:(%[[ARG0:.*]]: !mo.tensor<[N, M
+// CHECK-NEXT: mo.output %[[ARG0]] : !mo.tensor<[N, M], f64>
+
+
+mo.graph @no_fold_slice_parameter<N, M>(%arg0: !mo.tensor<[N, M], f64>, 
+    %start: !mo.tensor<[2], si64>,
+    %stop: !mo.tensor<[2], si64>) -> !mo.tensor<[M, N], f64> {
+    %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %2 = mo.slice(%arg0, %start, %stop, %step) : (!mo.tensor<[N, M], f64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[M, N], f64>
+    mo.output %2 : !mo.tensor<[M, N], f64>
+}
+// CHECK-LABEL: mo.graph @no_fold_slice_parameter<N, M>
+// CHECK-NEXT: mo.constant
+// CHECK-NEXT: %[[OUT:.*]] = mo.slice
+// CHECK-NEXT: mo.output %[[OUT]]

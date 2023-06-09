@@ -843,6 +843,7 @@ def MO_SliceOp : MO_TensorOp<"slice", [Pure]>{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
   let hasVerifier = 1;
+  let hasFolder = 1;
 }
 
 def MO_SubOp : MO_ElementWiseBinaryOp<"sub"> {

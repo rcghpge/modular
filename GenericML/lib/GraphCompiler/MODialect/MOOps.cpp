@@ -1724,6 +1724,36 @@ LogicalResult SliceOp::verify() {
   return success();
 }
 
+OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
+  // We must be able to see the steps are all `1` as a condition of folding.
+  auto steps = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getStep());
+  if (!steps)
+    return {};
+
+  TensorType inputTy = getInput().getType();
+
+  // If the input and the output are the same and neither have ? in them then we
+  // can maybe fold.
+  if (getResult().getType() != inputTy || inputTy.hasUnknownShape())
+    return {};
+
+  // If all of the steps are `1` then this is an identity. We need to check this
+  // as you could produce the same shape by walking backwards through the slice
+  // i.e -1. So we must check they are 1 which means the only way to produce the
+  // same shape as input is through start of 0 and end of -1. I.E an identity.
+  auto stepsData = tryGetConstantBlob<int64_t>(cast<ElementsAttr>(steps),
+                                               getStep().getType().getDtype());
+  if (!stepsData.has_value())
+    return {};
+
+  for (int64_t step : *stepsData) {
+    if (step != 1)
+      return {};
+  }
+
+  return getInput();
+}
+
 //===----------------------------------------------------------------------===//
 // MO_TransposeOp
 //===----------------------------------------------------------------------===//
