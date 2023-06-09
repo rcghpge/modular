@@ -58,51 +58,81 @@ def SimplifyChainsPass : Pass<"simplify-chains", "MGP::ModelOp"> {
 // RemoveRedundantTensorExtractsPass
 //===----------------------------------------------------------------------===//
 
-def RemoveRedundantTensorExtractsPass : Pass<"remove-redundant-tensor-extracts", "MGP::ModelOp"> {
-  let summary = "Removes redundant tensor extract operations from the graph.";
+def RemoveRedundantTensorExtractsPass : Pass<"remove-redundant-tensor-extracts", "ModuleOp"> {
+  let summary = "Removes unnecessary tensor create/extract operations from "
+                "the graph.";
   let description = [{
-    This pass avoid redundant mgp.cpu.tensor.extract operations in two
-    situations:
+    This pass avoid unnecessary mgp.cpu.tensor.{create,extract} operations in
+    two situations:
 
-    1. Ensures 'execute' block argument tensors are fed to at most one
-       mgp.cpu.tensor.extract operation. Eg:
+    1. If the result of a mgp.cpu.tensor.create op is exclusively consumed by
+       mgp.cpu.tensor.extract ops, remove them in favor of the original buffer,
+       tensor spec and chain used by the mgp.cpu.tensor.create. Eg:
     ```mlir
-          execute(%tensor : !mgp.cpu.tensor):
-            %buf, %spec = mgp.cpu.tensor.extract %tensor
-            my_op(..., %buf, %spec, ...)
-            %buf2, %spec2 = mgp.cpu.tensor.extract %tensor
-            my_op(..., %buf2, %spec2, ...)
-    ```
-       becomes:
-    ```mlir
-          execute(%tensor : !mgp.cpu.tensor):
-            %buf, %spec = mgp.cpu.tensor.extract %tensor
-            my_op(..., %buf, %spec, ...)
-            my_op(..., %buf, %spec, ...)
-    ```
-
-    2. Removes mgp.cpu.tensor.create ops which are only subsequently consumed
-       by mgp.cpu.tensor.extract ops. Eg:
-    ```mlir
-          %tensor0 = mgp.cpu.tensor.create %inputChain0, %inputBuf0, %inputSpec0
-          %tensor1 = mgp.cpu.tensor.create %inputChain1, %inputBuf1, %inputSpec1
+          %tensor0 = mgp.cpu.tensor.create %ch0, %inputBuf0, %inputSpec0
+          %tensor1 = mgp.cpu.tensor.create %ch1, %inputBuf1, %inputSpec1
           %buf0, %spec0 = mgp.cpu.tensor.extract %tensor0
           %buf1, %spec1 = mgp.cpu.tensor.extract %tensor1
-          %resultChain = my_op(%opChain, ..., %buf0, %spec0, %buf1, %spec1)
-          // where %buf0, %buf1 are in 'input' positions
+          %ch3 = my.op(%ch2, ..., %buf0, %spec0, %buf1, %spec1)
+          // where %buf0, %buf1 are in 'read' positions
     ```
        becomes:
     ```mlir
-          %ch = grt.chain.merge (%opChain, %inputChain0, %inputChain1)
-          %resultChain = my_op(%ch, ...,
-                               %inputBuf0, %inputSpec0,
-                               %inputBuf1, %inputSpec1)
+          %ch4 = grt.chain.merge %ch2, %ch0, %ch1
+          %ch3 = my.op(%ch4, ...,
+                       %inputBuf0, %inputSpec0,  %inputBuf1, %inputSpec1)
     ```
        Assumes:
         - All buffers passed to mgp.cpu.tensor.create will not be further
           mutated once the chain to that op is ready. This is currently true
           for the GraphCompiler, but need not be true in general.
-        - Ops with buffer operands have "numOutputBuffers" attributes.
+        - Ops have buffer annotations indicating which are in 'write' positions.
+
+    2. Ensures values of type !mgp.cpu.tensor not otherwise the result of an
+       mgp.cpu.tensor.create op (eg block arguments or the results of other
+       primitives) are extracted at most once. Eg:
+    ```mlir
+          execute(%tensor : !mgp.cpu.tensor) {
+            %buf, %spec = mgp.cpu.tensor.extract %tensor
+            my.op(..., %buf, %spec, ...)
+            %buf2, %spec2 = mgp.cpu.tensor.extract %tensor
+            my.op(..., %buf2, %spec2, ...)
+          }
+    ```
+       becomes:
+    ```mlir
+          execute(%tensor : !mgp.cpu.tensor) {
+            %buf, %spec = mgp.cpu.tensor.extract %tensor
+            my.op(..., %buf, %spec, ...)
+            my.op(..., %buf, %spec, ...)
+          }
+    ```
+
+    These rules apply across control flow boundaries. Eg:
+    ```mlir
+          %tensor0 = mgp.cpu.tensor.create %ch0, %inputBuf0, %inputSpec0
+          %ch1, %tensor1 = grt.if %cond (%ch0, %tensor0) -> ... {
+            %buf0, %spec0 = mgp.cpu.tensor.extract %tensor0
+            %tensor1 = mgp.cpu.tensor.create %ch0, %buf0, %spec0
+            mef.output %ch0, %tensor1
+          } else {
+            ...
+          }
+          %buf1, %spec1 = mgp.cpu.tensor.extract %tensor1
+          %ch3 = my.op(%ch2, ..., %buf1, %spec1)
+          // where %buf1 is in 'read' position
+    ```
+    becomes:
+    ```mlir
+          %ch1, %buf1, %spec1 = grt.if %cond (%ch0, %inputBuf0, %inputSpec0) -> ... {
+            mef.output %ch0, %inputBuf0, %inputSpec0
+          } else {
+            ...
+          }
+          %ch4 = grt.chain.merge %ch2, %ch1
+          %ch3 = my_op(%ch4, ..., %buf1, %spec1)
+          // where %buf1 is in 'read' position
+    ```
   }];
 }
 
