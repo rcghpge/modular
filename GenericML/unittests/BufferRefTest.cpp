@@ -87,9 +87,9 @@ TEST(BufferRef, CreateSafeBorrowed) {
     ASSERT_EQ(borrowed.getSize(), 8u);
     ASSERT_EQ(borrowed.getAlignment(), 64u);
     ASSERT_EQ(borrowed.getBuffer(), borrowe.get().getBuffer());
-    ASSERT_EQ(borrowe.getPointer()->getRefCountForDebugging(), 2);
+    ASSERT_EQ(borrowe.getPointer()->getRefCountForDebugging(), 2u);
   }
-  ASSERT_EQ(borrowe.getPointer()->getRefCountForDebugging(), 1);
+  ASSERT_EQ(borrowe.getPointer()->getRefCountForDebugging(), 1u);
 }
 
 TEST(BufferRef, CreateSafeBorrowedSlice) {
