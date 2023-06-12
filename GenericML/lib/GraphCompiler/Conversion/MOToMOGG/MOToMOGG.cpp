@@ -13,6 +13,7 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/Matchers.h"
+#include "Support/ML/TensorShape.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #include "LoweringHelper.h"
@@ -133,7 +134,7 @@ struct MOOpPattern : public RewritePattern {
           dtype.isUnsignedInteger(16) || dtype.isInteger(1);
 
       if (!tensor || !allowedElementTypes || !tensor.hasRank() ||
-          tensor.getRank() > 5 || tensor.hasUnknownShape())
+          tensor.getRank() > kMaxRank || tensor.hasUnknownShape())
         return false;
       return true;
     };
@@ -144,9 +145,9 @@ struct MOOpPattern : public RewritePattern {
     for (Type t : op->getResultTypes())
       shouldUseJit &= isTypeAllowed(t);
 
-    // Check general op level constraints. Currently only ops within the main
-    // block and single result ops are allowed.
-    if (!isa<MO::GraphOp>(op->getParentOp()) || op->getNumResults() != 1)
+    // Check general op level constraints. Currently only single result ops
+    // are allowed.
+    if (op->getNumResults() != 1)
       shouldUseJit = false;
 
     // If we should be using JIT generate a jit target. Otherwise use the shim.

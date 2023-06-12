@@ -64,6 +64,7 @@ struct FuseBroadcastsPass
     if (!edge)
       return false;
 
+    // Only fuse within the same region and not across, i.e, control flow.
     if (edge->getParentRegion() != kernel->getParentRegion())
       return false;
 

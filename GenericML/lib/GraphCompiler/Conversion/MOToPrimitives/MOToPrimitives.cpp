@@ -214,18 +214,23 @@ LogicalResult MOGraphLowering::lowerOutput(MO::OutputOp output) {
   return success();
 }
 
-LogicalResult MOGraphLowering::lowerYield(MO::YieldOp output) {
+LogicalResult MOGraphLowering::lowerYield(MO::YieldOp yield) {
   // Execute phase lowering.
 
   // Figure out what values to return. We always implicitly return the main
   // chain.
   SmallVector<Value> operands;
   operands.push_back(loweringState.getExecuteChain());
-  for (Value operand : output.getOperands())
+
+  // If we are yielding from a while then it will expect the context as well.
+  if (isa<MO::WhileOp>(yield->getParentOp()))
+    operands.push_back(loweringState.getExecuteMgpContext());
+
+  for (Value operand : yield.getOperands())
     operands.push_back(loweringState.lookupExecuteLoweredValue(operand));
 
   // Finally, we can create the mef.output op.
-  loweringState.getExecuteOpBuilder().create<MEF::OutputOp>(output.getLoc(),
+  loweringState.getExecuteOpBuilder().create<MEF::OutputOp>(yield.getLoc(),
                                                             operands);
   return success();
 }
@@ -696,6 +701,7 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
   // in the final grt.while 'cond' and 'body' blocks.
   SmallVector<Value> loweredFreeValues;
   loweredFreeValues.emplace_back(mainChain);
+  loweredFreeValues.emplace_back(loweringState.getExecuteMgpContext());
   for (Value value : whileOp.getInputs())
     loweredFreeValues.emplace_back(
         loweringState.lookupExecuteLoweredValue(value));
@@ -730,12 +736,17 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
         outputRegion.addArgument(mainChain.getType(), whileOp.getLoc());
     loweringState.setExecuteChain(loweredChainArg);
 
+    auto contextArg = outputRegion.addArgument(
+        loweringState.getExecuteMgpContext().getType(), whileOp.getLoc());
+
     // Then an arg for each of the original region args.
     // We'll use the loweredFreeValues since they have the lowered types
-    // already.
-    for (auto [loweredFreeValue, arg] : llvm::zip(
-             llvm::drop_begin(loweredFreeValues), inputRegion.getArguments())) {
-      auto loweredArg =
+    // already. Skip the chain and the context.
+    for (size_t i = 0; i < loweredFreeValues.size() - 2; ++i) {
+      Value loweredFreeValue = loweredFreeValues[2 + i];
+      Value arg = inputRegion.getArguments()[i];
+
+      Value loweredArg =
           outputRegion.addArgument(loweredFreeValue.getType(), arg.getLoc());
       loweringState.emplaceExecuteLoweredValue(arg, loweredArg);
     }
@@ -744,6 +755,15 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
     if (failed(lowerBlock(&inputRegion.getBlocks().front())))
       return failure();
 
+    // Remap any uses of the top level mgp context in the while body with the
+    // one in the region argument.
+    outputRegion.getBlocks().front().walk([&](Operation *op) {
+      for (size_t i = 0, e = op->getNumOperands(); i < e; ++i) {
+        if (op->getOperand(i) == loweringState.getExecuteMgpContext()) {
+          op->setOperand(i, contextArg);
+        }
+      }
+    });
     return success();
   };
 
@@ -765,14 +785,16 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
     return failure();
 
   // Now repair the lowered 'cond' block's mef.output to include all the
-  // additional variables between the output chain and condition, and fix
-  // the condition to be an i1.
+  // additional variables between the output chain, context and, the condition,
+  // and fix the condition to be an i1.
   {
     auto condOutputOp = cast<MEF::OutputOp>(
         loweredWhileOp.getCondRegion().front().getTerminator());
-    assert(condOutputOp->getNumOperands() == 2); // chain and condition
+    assert(condOutputOp->getNumOperands() ==
+           3); // chain, context, and condition
     Value loweredChain = condOutputOp->getOperand(0);
-    Value loweredCondTensor = condOutputOp->getOperand(1);
+    Value loweredContext = condOutputOp->getOperand(1);
+    Value loweredCondTensor = condOutputOp->getOperand(2);
 
     SmallVector<Value> condOutputOpOperands;
     condOutputOpOperands.reserve(loweredWhileOp->getNumResults() + 1);
@@ -799,11 +821,11 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
   }
 
   // Capture the lowered outputs.
-  assert(loweredWhileOp.getNumResults() == whileOp.getNumResults() + 1);
+  assert(loweredWhileOp.getNumResults() == whileOp.getNumResults() + 2);
   loweringState.setExecuteChain(loweredWhileOp.getResult(0));
   for (size_t i = 0, e = whileOp.getNumResults(); i < e; i++) {
     loweringState.emplaceExecuteLoweredValue(whileOp.getResult(i),
-                                             loweredWhileOp.getResult(i + 1));
+                                             loweredWhileOp.getResult(i + 2));
   }
 
   // Since we moved the insertion points for the 'cond' and 'body' blocks,

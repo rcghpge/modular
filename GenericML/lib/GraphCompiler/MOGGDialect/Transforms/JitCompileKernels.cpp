@@ -357,11 +357,11 @@ struct JitCompileKernels
     // Start building up the KGEN kernel.
     Stub::KGENBuilder builder{manager, *kgenModule, registry};
 
+    ErrorOrSuccess error;
+
     // Build stubs for all JIT operations and replace them with symbolic calls
     // to the kernels in the KGEN stub.
-    for (MOGG::KernelOp op :
-         llvm::make_early_inc_range(graph.getOps<MOGG::KernelOp>())) {
-
+    graph.walk([&](MOGG::KernelOp op) {
       // We collect all the parameters used by this operation and track them on
       // the kernel.
       SmallVector<KGEN::ParamDeclRefAttr> usedParameters =
@@ -401,14 +401,18 @@ struct JitCompileKernels
         // Add the new used parameters which may be different than before.
         newOp.setUsedParamsAttr(rewriter.getArrayAttr(usedParamsAsAttr));
 
-        continue;
+        return WalkResult::skip();
       }
 
       // Lower the basic stub function.
-      RETURN_ERROR(builder.startLowering(op, stubKernelName, usedParameters));
+      error = builder.startLowering(op, stubKernelName, usedParameters);
+      if (error.isError())
+        return WalkResult::interrupt();
 
       // Lower the operation using a vectorized map over an elementwise lambda.
-      RETURN_ERROR(builder.lowerToElementwiseLambda(op));
+      error = builder.lowerToElementwiseLambda(op);
+      if (error.isError())
+        return WalkResult::interrupt();
 
       // Replace the original kernel with a call to the compiled jit code.
       MOGG::ExecuteCompiledOp jitExecute =
@@ -419,7 +423,12 @@ struct JitCompileKernels
 
       // Tracking attributes makes it easier to create an array.
       symbolNamesAdded.push_back(jitExecute.getKernelNameAttr());
-    }
+
+      return WalkResult::advance();
+    });
+
+    if (error)
+      return error;
 
     if (dumpStub.getValue())
       builder.dumpStub();

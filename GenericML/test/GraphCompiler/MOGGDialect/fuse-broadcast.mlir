@@ -134,12 +134,15 @@ mo.graph @check_no_fuse_if<N, M>(%cond : !mo.tensor<[], bool>, %arg0: !mo.tensor
 // CHECK-NEXT:  %[[LOAD:.*]] = mogg.invoke @input_0_fn
 // CHECK-NEXT:  mogg.invoke @output_0_fn(%[[INDICES]], %[[LOAD]])
 
+// Check the kernels are compiled unfused.
 // CHECK: mo.if
-// CHECK-NEXT: mogg.ext.op "mop.kernels.add"(%[[BCAST1]], %[[BCAST1]])
-// CHECK-NEXT: mo.yield
+// CHECK-NEXT: mogg.kernel
+// CHECK: mogg.call "mo.add"
+// CHECK: mo.yield
 // CHECK-NEXT: } else {
-// CHECK-NEXT: mogg.ext.op "mop.kernels.mul"(%[[BCAST1]], %[[BCAST1]])
-// CHECK-NEXT: mo.yield
+// CHECK-NEXT: mogg.kernel
+// CHECK: mogg.call "mo.mul"
+// CHECK: mo.yield
 
 // Check everything gets fused together.
 mo.graph @transpose_and_bcast_fused(%arg0 : !mo.tensor<[], si32>) -> !mo.tensor<[5, 4], si32>  {

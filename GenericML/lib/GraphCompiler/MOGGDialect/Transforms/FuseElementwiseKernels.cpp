@@ -263,6 +263,7 @@ struct FuseElementwisePass
       if (!edge)
         continue;
 
+      // Only fuse within the same region and not across, i.e, control flow.
       if (edge->getParentRegion() != leaf->getParentRegion())
         continue;
 

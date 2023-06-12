@@ -199,3 +199,34 @@ mo.graph @fused_si32(%arg0: !mo.tensor<[6], si32>, %arg1: !mo.tensor<[6], si32>)
 // CHECK-NEXT: %[[LOAD2:.*]] = mogg.invoke @input_1_fn
 // CHECK-NEXT: %[[ADD:.*]] = mogg.call "mo.add"(%[[LOAD1]], %[[LOAD2]]) : !mogg.simd<si32>, !mogg.simd<si32> -> !mogg.simd<si32>
 // CHECK-NEXT: %[[RELU:.*]] = mogg.call "mo.relu"(%[[ADD]]) : !mogg.simd<si32> -> !mogg.simd<si32>
+
+
+mo.graph @check_no_fuse_if<N, M>(%cond : !mo.tensor<[], bool>, %arg0: !mo.tensor<[N, M], f32>) -> (!mo.tensor<[N, M], f32>) {
+  %relu = mo.relu(%arg0) : !mo.tensor<[N, M], f32>
+
+  %0 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[N, M], f32> {
+    %1 = mo.add(%relu, %relu) : !mo.tensor<[N, M], f32>
+    mo.yield %1 : !mo.tensor<[N, M], f32>
+  } else {
+    %2 = mo.mul(%relu, %relu) : !mo.tensor<[N, M], f32>
+    mo.yield %2 : !mo.tensor<[N, M], f32>
+  }
+  mo.output %0 : !mo.tensor<[N, M], f32>
+}
+
+// Check all kernels are compiled but unfused.
+
+// CHECK-LABEL: mo.graph @check_no_fuse_if
+
+// CHECK-NEXT: %[[BCAST1:.*]] = mogg.kernel
+// CHECK-NEXT: mogg.output_placeholders
+// CHECK: mogg.call "mo.relu"
+
+// CHECK: mo.if
+// CHECK-NEXT: mogg.kernel
+// CHECK: mogg.call "mo.add"
+// CHECK: mo.yield
+// CHECK-NEXT: } else {
+// CHECK-NEXT: mogg.kernel
+// CHECK: mogg.call "mo.mul"
+// CHECK: mo.yield
