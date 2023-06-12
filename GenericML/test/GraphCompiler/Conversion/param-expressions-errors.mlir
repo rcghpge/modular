@@ -13,8 +13,8 @@ mo.graph @unsupported_expr() {
 
 // -----
 
-mo.graph @unsupported_poc<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
-  // expected-error@+1 {{unsupported POC 'mod'}}
-  kgen.param.declare Z = <mod(X, Y)>
+mo.graph @unsupported_poc<X, Y, B:i1>(%arg0: !mo.tensor<[X, Y], f32>) {
+  // expected-error@+1 {{unsupported POC 'cond'}}
+  kgen.param.declare Z = <cond(B, 1, 2)>
   mo.output
 }
