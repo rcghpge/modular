@@ -804,7 +804,10 @@ def MO_SelectOp : MO_TensorOp<"select", [Pure, MO_SameOperandsAndResultShape]>{
   let hasVerifier = 1;
 }
 
-def MO_SliceOp : MO_TensorOp<"slice", [Pure]>{
+def MO_SliceOp : MO_TensorOp<"slice", [
+  MO_DefaultParameterization,
+  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
+]> {
   let summary = "Slice operation";
   let description = [{
     Return a new tensor with a subset of the elements from an N-dimensional
@@ -837,10 +840,12 @@ def MO_SliceOp : MO_TensorOp<"slice", [Pure]>{
   let arguments = (ins MO_Tensor:$input,
                        MO_IndicesVectorIfRanked:$start,
                        MO_IndicesVectorIfRanked:$stop,
-                       MO_IndicesVectorIfRanked:$step);
+                       MO_IndicesVectorIfRanked:$step,
+                       MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
   }];
   let hasVerifier = 1;
   let hasFolder = 1;

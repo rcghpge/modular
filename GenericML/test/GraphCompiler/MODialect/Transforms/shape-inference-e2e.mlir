@@ -434,3 +434,49 @@ mo.graph @linalg_solve_reused_rhs<D0, D1 -> Sh0: !mosh.ape>(
   mo.output<:!mosh.ape Sh4> %1 : !mo.tensor<Sh4, f32>
 // CHECK-NEXT: }
 }
+
+// CHECK: mo.graph @slice_neg_stop(
+mo.graph @slice_neg_stop(
+  // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[10], f32>
+  %input: !mo.tensor<[10], f32>
+// CHECK-SAME: ) -> !mo.tensor<[3], f32> {
+) -> !mo.tensor<[?], f32> {
+  // CHECK-NEXT: %[[START:.*]] = mo.constant {value = #M.dense_array<3> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  // CHECK-NEXT: %[[STOP:.*]] = mo.constant {value = #M.dense_array<-1> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  // CHECK-NEXT: %[[STEP:.*]] = mo.constant {value = #M.dense_array<2> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %start = mo.constant {value = #M.dense_array<3> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %stop = mo.constant {value = #M.dense_array<-1> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %step = mo.constant {value = #M.dense_array<2> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+
+  // X[3:-1:2] --> [x3, x5, x7]
+  // CHECK-NEXT: %[[RES:.*]] = mo.slice(%[[INPUT]], %[[START]], %[[STOP]], %[[STEP]]) :
+  // CHECK-SAME: (!mo.tensor<[10], f32>, !mo.tensor<[1], si32>, !mo.tensor<[1], si32>, !mo.tensor<[1], si32>) -> !mo.tensor<[3], f32>
+  %result = mo.slice(%input, %start, %stop, %step)
+  : (!mo.tensor<[10], f32>, !mo.tensor<[1], si32>, !mo.tensor<[1], si32>, !mo.tensor<[1], si32>) -> !mo.tensor<[?], f32>
+
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[3], f32>
+  mo.output %result : !mo.tensor<[?], f32>
+}
+
+// CHECK: mo.graph @slice_clamped_start_stop_neg_step(
+mo.graph @slice_clamped_start_stop_neg_step(
+  // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[10], f32>
+  %input: !mo.tensor<[10], f32>
+// CHECK-SAME: ) -> !mo.tensor<[5], f32> {
+) -> !mo.tensor<[?], f32> {
+  // CHECK-NEXT: %[[START:.*]] = mo.constant {value = #M.dense_array<30> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  // CHECK-NEXT: %[[STOP:.*]] = mo.constant {value = #M.dense_array<-20> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  // CHECK-NEXT: %[[STEP:.*]] = mo.constant {value = #M.dense_array<-2> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %start = mo.constant {value = #M.dense_array<30> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %stop = mo.constant {value = #M.dense_array<-20> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %step = mo.constant {value = #M.dense_array<-2> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+
+  // X[30:-20:-2] --> [x9, x7, x5, x3, x1]
+  // CHECK-NEXT: %[[RES:.*]] = mo.slice(%[[INPUT]], %[[START]], %[[STOP]], %[[STEP]]) :
+  // CHECK-SAME: (!mo.tensor<[10], f32>, !mo.tensor<[1], si32>, !mo.tensor<[1], si32>, !mo.tensor<[1], si32>) -> !mo.tensor<[5], f32>
+  %result = mo.slice(%input, %start, %stop, %step)
+  : (!mo.tensor<[10], f32>, !mo.tensor<[1], si32>, !mo.tensor<[1], si32>, !mo.tensor<[1], si32>) -> !mo.tensor<[?], f32>
+
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[5], f32>
+  mo.output %result : !mo.tensor<[?], f32>
+}
