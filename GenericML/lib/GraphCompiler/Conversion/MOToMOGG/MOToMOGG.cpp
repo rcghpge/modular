@@ -65,6 +65,13 @@ struct KernelRecord {
     }                                                                          \
   }
 
+#define MO_MOJO_ONLY(MOOp)                                                     \
+  {                                                                            \
+    TypeID::get<MOOp>(), KernelRecord {                                        \
+      MOOp::getOperationName(), "None", true                                   \
+    }                                                                          \
+  }
+
 // Same as the above but a special case for view ops.
 // MOOps is the C++ class type of the MO op which provides the op name for the
 // map. ShimName is the name of the C++ shim kernel to target in MGP.
@@ -186,30 +193,29 @@ void MOToMOGGPass::runOnOperation() {
       MO_SHIM_ONLY(MO::BatchMatmulOp, "mop.kernels.batch_matmul"),
       MO_SHIM_ONLY(MO::BroadcastShapeOp, "mop.kernels.broadcast_shape"),
       MO_SHIM_ONLY(MO::BroadcastToOp, "mop.kernels.broadcast_to"),
-      MO_TO_MOJO_VIEW(MO::Static::BroadcastToOp,
-                      "mop.kernels.static.broadcast_to"),
+      MO_TO_MOJO_VIEW(MO::Static::BroadcastToOp, "None"),
       MO_TO_MOJO(MO::CastOp, "mop.kernels.cast"),
       MO_SHIM_ONLY(MO::ConcatOp, "mop.kernels.concat"),
       MO_SHIM_ONLY(MO::ConvOp, "mop.kernels.conv"),
       MO_TO_MOJO(MO::DivOp, "mop.kernels.div"),
       MO_TO_MOJO(MO::ErfOp, "mop.kernels.erf"),
-      MO_TO_MOJO(MO::ExpOp, "mop.kernels.exp"),
-      MO_TO_MOJO(MO::EqualOp, "mop.kernels.equal"),
-      MO_TO_MOJO(MO::GeluOp, "mop.kernels.gelu"),
-      MO_TO_MOJO(MO::GreaterOp, "mop.kernels.greater"),
-      MO_TO_MOJO(MO::GreaterEqualOp, "mop.kernels.greater_equal"),
-      MO_TO_MOJO(MO::Log1pOp, "None"),
+      MO_MOJO_ONLY(MO::ExpOp),
+      MO_MOJO_ONLY(MO::EqualOp),
+      MO_MOJO_ONLY(MO::GeluOp),
+      MO_MOJO_ONLY(MO::GreaterOp),
+      MO_MOJO_ONLY(MO::GreaterEqualOp),
+      MO_MOJO_ONLY(MO::Log1pOp),
       MO_SHIM_ONLY(MO::LinAlg::BandPartOp, "mop.kernels.linalg.band_part"),
       MO_SHIM_ONLY(MO::LinAlg::SolveOp, "mop.kernels.linalg.solve"),
       MO_SHIM_ONLY(MO::LogSoftmaxOp, "mop.kernels.logsoftmax"),
       MO_SHIM_ONLY(MO::GatherOp, "mop.kernels.gather"),
       MO_SHIM_ONLY(MO::MatmulOp, "mop.kernels.matmul"),
-      MO_TO_MOJO(MO::MaxOp, "mop.kernels.max"),
+      MO_MOJO_ONLY(MO::MaxOp),
       MO_SHIM_ONLY(MO::MaxPoolOp, "mop.kernels.pool.max"),
       MO_SHIM_ONLY(MO::MeanOp, "mop.kernels.mean"),
-      MO_TO_MOJO(MO::MinOp, "mop.kernels.min"),
+      MO_MOJO_ONLY(MO::MinOp),
       MO_TO_MOJO(MO::MulOp, "mop.kernels.mul"),
-      MO_TO_MOJO(MO::NotEqualOp, "mop.kernels.not_equal"),
+      MO_MOJO_ONLY(MO::NotEqualOp),
       MO_SHIM_ONLY(MO::PadOp, "mop.kernels.pad"),
       MO_SHIM_ONLY(MO::ReduceAddOp, "mop.kernels.reduce.add"),
       MO_SHIM_ONLY(MO::ReduceMulOp, "mop.kernels.reduce.mul"),
@@ -219,7 +225,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_SHIM_ONLY(MO::RangeOp, "mop.kernels.range"),
       MO_TO_MOJO(MO::ReluOp, "mop.kernels.relu"),
       MO_TO_MOJO(MO::RsqrtOp, "mop.kernels.rsqrt"),
-      MO_TO_MOJO(MO::SelectOp, "mop.kernels.select"),
+      MO_MOJO_ONLY(MO::SelectOp),
       MO_SHIM_ONLY(MO::ShapeOfOp, "mop.kernels.shape_of"),
       MO_TO_MOJO(MO::SigmoidOp, "mop.kernels.sigmoid"),
       MO_SHIM_ONLY(MO::SliceOp, "mop.kernels.slice"),
@@ -240,5 +246,6 @@ void MOToMOGGPass::runOnOperation() {
 }
 
 #undef MO_TO_MOJO
+#undef MO_MOJO_ONLY
 #undef MO_SHIM_ONLY
 #undef MO_TO_MOJO_VIEW
