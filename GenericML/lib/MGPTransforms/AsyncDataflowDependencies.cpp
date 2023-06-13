@@ -59,6 +59,12 @@ void AsyncDataflowDependencies::simplify(SmallVectorImpl<Value> &values) const {
   }
 }
 
+void AsyncDataflowDependencies::print(llvm::raw_ostream &os) {
+  printEquivalence(os, "sameAs", equivalence);
+  printPredicate(os, "isAlwaysReady", toStableForm(alwaysReadyRelation));
+  printRelation(os, "impliesReady", toStableForm(impliesReadyRelation));
+}
+
 // Rules are just the control flow rules.
 void AsyncDataflowDependencies::flowPreSameAs(Operation *op,
                                               DomainMap &domainMap) {

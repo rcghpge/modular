@@ -73,6 +73,10 @@ public:
   /// CAUTION: O(values.size()^2) implementation.
   void simplify(SmallVectorImpl<Value> &values) const;
 
+  /// Prints a representation of all equivalences and relations to os.
+  /// For testing only.
+  void print(llvm::raw_ostream &os);
+
 private:
   /// Grows domainMap to capture the sameAs relation for operation. However, the
   /// relation will not yet be closed under identity/symmetry/transitivity

@@ -22,54 +22,20 @@
 // CHECK-NEXT:  "mef.output"(%5) : (!mef.chain) -> ()
 // CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> (), sym_name = "simple"} : () -> ()
 
-// sameAs is just the identity
-// CHECK: sameAs(%arg0, %arg0) = true
-// CHECK: sameAs(%arg0, %arg1) = false
-// CHECK: sameAs(%arg0, %0) = false
-// CHECK: sameAs(%arg1, %arg0) = false
-// CHECK: sameAs(%arg1, %arg1) = true
-// CHECK: sameAs(%arg1, %0) = false
-// CHECK: sameAs(%0, %arg0) = false
-// CHECK: sameAs(%0, %arg1) = false
-// CHECK: sameAs(%0, %0) = true
-// etc
+// sameAs only ties the 'init' results to the 'execute args
+// CHECK: sameAs begin
+// CHECK-NEXT: sameAs end
 
-// Only %0 is always ready
-// CHECK: isAlwaysReady(%arg0) = false
-// CHECK: isAlwaysReady(%arg1) = false
-// CHECK: isAlwaysReady(%0) = true
-// etc
+// CHECK: isAlwaysReady({%0[0], %0})
 
-// impliesReady is mostly identity, with transitive closure for some.op args
-// CHECK: impliesReady(%arg0, %arg0) = true
-// CHECK: impliesReady(%arg0, %arg1) = false
-// CHECK: impliesReady(%arg0, %0) = false
-// CHECK: impliesReady(%arg1, %arg0) = false
-// CHECK: impliesReady(%arg1, %arg1) = true
-// CHECK: impliesReady(%arg1, %0) = false
-// CHECK: impliesReady(%0, %arg0) = false
-// CHECK: impliesReady(%0, %arg1) = false
-// CHECK: impliesReady(%0, %0) = true
-
-// CHECK: impliesReady(%1, %arg0) = true
-
-// CHECK: impliesReady(%2, %arg0) = true
-// CHECK: impliesReady(%2, %0) = true
-// CHECK: impliesReady(%2, %1) = true
-
-// CHECK: impliesReady(%3, %arg0) = true
-
-// CHECK: impliesReady(%4, %arg0) = true
-// CHECK: impliesReady(%4, %0) = true
-// CHECK: impliesReady(%4, %2) = false
-// CHECK: impliesReady(%4, %3) = true
-
-// CHECK: impliesReady(%5, %arg0) = true
-// CHECK: impliesReady(%5, %0) = true
-// CHECK: impliesReady(%5, %1) = true
-// CHECK: impliesReady(%5, %2) = true
-// CHECK: impliesReady(%5, %3) = true
-// CHECK: impliesReady(%5, %4) = true
+// impliesReady captures transitive operand dependencies (plus identity)
+// CHECK: impliesReady begin
+// CHECK-NEXT: %1 |-> {%arg0, %1}
+// CHECK-NEXT: %2 |-> {%arg0, %0, %1, %2}
+// CHECK-NEXT: %3 |-> {%arg0, %3}
+// CHECK-NEXT: %4 |-> {%arg0, %0, %3, %4}
+// CHECK-NEXT: %5 |-> {%arg0, %0, %1, %2, %3, %4, %5}
+// CHECK-NEXT: impliesReady end
 
 mgp.model @simple : tf init {
   %0 = grt.chain.create ()
@@ -125,28 +91,10 @@ mgp.model @simple : tf init {
 // CHECK-NEXT:  "mef.output"(%arg0, %23) : (!mef.chain, !mgp.cpu.tensor<8xf32>) -> ()
 // CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<8xf32>, sym_name = "straightline"} : () -> ()
 
-// sameAs is just the identity, just spot check.
-// CHECK: sameAs(%arg0, %arg0) = true
-// CHECK: sameAs(%arg1, %arg1) = true
-// CHECK: sameAs(%0, %0) = true
-// CHECK: sameAs(%7#0, %7#0) = true
-// CHECK: sameAs(%7#1, %7#1) = true
-
-// Just spot check impliesReady.
-// CHECK: impliesReady(%10, %arg0) = true
-// CHECK: impliesReady(%10, %0) = true
-// CHECK: impliesReady(%10, %1) = true
-// CHECK: impliesReady(%10, %2) = true
-// CHECK: impliesReady(%10, %3) = true
-// CHECK: impliesReady(%10, %4) = true
-// CHECK: impliesReady(%10, %5) = true
-// CHECK: impliesReady(%10, %6#0) = true
-// CHECK: impliesReady(%10, %6#1) = true
-// CHECK: impliesReady(%10, %7#0) = true
-// CHECK: impliesReady(%10, %7#1) = true
-// CHECK: impliesReady(%10, %8) = true
-// CHECK: impliesReady(%10, %9) = true
-// CHECK: impliesReady(%10, %10) = true
+// Spot check impliesReady
+// CHECK: impliesReady begin
+// CHECK: %10 |-> {%arg0, %0, %1, %2, %3, %4, %5, %6#0, %6#1, %7#0, %7#1, %8, %9, %10}
+// CHECK: impliesReady end
 
 mgp.model @straightline : tf init {
   %0 = grt.chain.create ()
