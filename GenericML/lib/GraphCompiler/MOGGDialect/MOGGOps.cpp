@@ -170,20 +170,11 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
   static const llvm::SmallDenseSet<StringRef, 32> elementwise{
       "mop.kernels.abs",     "mop.kernels.add",
       "mop.kernels.div",     "mop.kernels.erf",
-      "mop.kernels.exp",     "mop.kernels.gelu",
-      "mop.kernels.max",     "mop.kernels.min",
       "mop.kernels.mul",     "mop.kernels.linalg.band_part",
       "mop.kernels.pow",     "mop.kernels.relu",
       "mop.kernels.rsqrt",   "mop.kernels.sigmoid",
       "mop.kernels.softmax", "mop.kernels.sqrt",
       "mop.kernels.sub",     "mop.kernels.tanh",
-  };
-
-  static const llvm::SmallDenseSet<StringRef, 8> elementwise_conditional{
-      "mop.kernels.equal",
-      "mop.kernels.greater",
-      "mop.kernels.greater_equal",
-      "mop.kernels.not_equal",
   };
 
   // (arg0Spec, arg1Spec, ..., argNSpec) -> outSpec
@@ -196,7 +187,6 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
       {"mop.kernels.fully_connected", "mop.shape.fully_connected"},
       {"mop.kernels.batch_matmul", "mop.shape.batch_matmul"},
       {"mop.kernels.batch_matmul_adjb", "mop.shape.batch_matmul_adjb"},
-      {"mop.kernels.select", "mop.shape.select"},
       {"mop.kernels.concat_axis_0", "mop.shape.concat_axis_0"},
   };
 
@@ -234,10 +224,6 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
         loweringState.getExecuteOpBuilder()
             .create<MGP::CpuTensorSpecCreateOp>(loc, outSpecType, runtimeDims)
             .getResult();
-  } else if (elementwise_conditional.contains(opName)) {
-    // Get the shape of the first Tensor to compute the output spec
-    output.spec =
-        getOutputSpec("mop.shape.conditional", {inputTensors[0].spec});
   } else if (specNaryShapeFuncs.count(opName)) {
     // Get just the specs for tensors.
     SmallVector<Value> inputSpecs = llvm::map_to_vector(
