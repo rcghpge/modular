@@ -480,3 +480,25 @@ mo.graph @slice_clamped_start_stop_neg_step(
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[5], f32>
   mo.output %result : !mo.tensor<[?], f32>
 }
+
+// CHECK: mo.graph @slice_4d(
+mo.graph @slice_4d(
+  // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[10, 20, 30, 40], f32>
+  %input: !mo.tensor<[10, 20, 30, 40], f32>
+// CHECK-SAME: ) -> !mo.tensor<[3, 3, 8, 8], f32> {
+) -> !mo.tensor<[?, ?, ?, ?], f32> {
+  // CHECK-NEXT: %[[START:.*]] = mo.constant {value = #M.dense_array<3, -2, -100, 200> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+  // CHECK-NEXT: %[[STOP:.*]] = mo.constant {value = #M.dense_array<-1, 10, 200, -100> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+  // CHECK-NEXT: %[[STEP:.*]] = mo.constant {value = #M.dense_array<2, -3, 4, -5> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+  %start = mo.constant {value = #M.dense_array<3, -2, -100, 200> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+  %stop = mo.constant {value = #M.dense_array<-1, 10, 200, -100> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+  %step = mo.constant {value = #M.dense_array<2, -3, 4, -5> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+
+  // CHECK-NEXT: %[[RES:.*]] = mo.slice(%[[INPUT]], %[[START]], %[[STOP]], %[[STEP]]) :
+  // CHECK-SAME: (!mo.tensor<[10, 20, 30, 40], f32>, !mo.tensor<[4], si32>, !mo.tensor<[4], si32>, !mo.tensor<[4], si32>) -> !mo.tensor<[3, 3, 8, 8], f32>
+  %result = mo.slice(%input, %start, %stop, %step)
+  : (!mo.tensor<[10, 20, 30, 40], f32>, !mo.tensor<[4], si32>, !mo.tensor<[4], si32>, !mo.tensor<[4], si32>) -> !mo.tensor<[?, ?, ?, ?], f32>
+
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[3, 3, 8, 8], f32>
+  mo.output %result : !mo.tensor<[?, ?, ?, ?], f32>
+}
