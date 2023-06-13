@@ -551,6 +551,13 @@ LogicalResult Static::BroadcastToOp::canonicalize(Static::BroadcastToOp op,
   if (!inputTy.hasRank() || !resTy.hasRank())
     return failure();
 
+  // If a broadcast has an empty input, it is not equivalent to a reshape.
+  auto resTyAttr = dyn_cast<IntegerAttr>(resTy.getSymbolicNumElements());
+  auto inputTyAttr = dyn_cast<IntegerAttr>(inputTy.getSymbolicNumElements());
+  if ((resTyAttr && resTyAttr.getInt() == 0) ||
+      (inputTyAttr && inputTyAttr.getInt() == 0))
+    return failure();
+
   // If a broadcast does not change the number of elements, it is equivalent to
   // a reshape. This is something we can check symbolically.
   if (resTy.getSymbolicNumElements() == inputTy.getSymbolicNumElements()) {
