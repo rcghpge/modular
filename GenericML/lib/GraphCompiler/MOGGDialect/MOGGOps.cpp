@@ -167,14 +167,11 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
   // and data member of the op class.
 
   // Elementwise shapes are guaranteed to match.
-  static const llvm::SmallDenseSet<StringRef, 32> elementwise{
-      "mop.kernels.abs",     "mop.kernels.add",
-      "mop.kernels.div",     "mop.kernels.erf",
+  static const llvm::SmallDenseSet<StringRef, 8> elementwise{
       "mop.kernels.mul",     "mop.kernels.linalg.band_part",
-      "mop.kernels.pow",     "mop.kernels.relu",
-      "mop.kernels.rsqrt",   "mop.kernels.sigmoid",
-      "mop.kernels.softmax", "mop.kernels.sqrt",
-      "mop.kernels.sub",     "mop.kernels.tanh",
+      "mop.kernels.sigmoid", "mop.kernels.softmax",
+      "mop.kernels.sqrt",    "mop.kernels.sub",
+      "mop.kernels.tanh",
   };
 
   // (arg0Spec, arg1Spec, ..., argNSpec) -> outSpec
@@ -244,20 +241,6 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     output.spec =
         getOutputSpec("mop.shape.gather", {inputTensors[0].spec,
                                            inputTensors[1].spec, target_axis});
-  } else if (opName == "mop.kernels.cast") {
-    auto outType = opBeingLowered->getResultTypes()[0].cast<MO::TensorType>();
-    // Create a fake spec value to use with the shape function. We only need the
-    // dtype, so make it a scalar.
-    // TODO: Use a unit const instead? Are shape functions compatible with it?
-    auto castScalarType = MO::TensorType::get(
-        MOSH::ShapeAttr::get(SmallVector<int64_t>{},
-                             MOSH::ShapeType::get(exeBuilder.getContext())),
-        outType.getElementType());
-    auto castScalarSpec = exeBuilder.create<MGP::CpuTensorSpecCreateOp>(
-        opBeingLowered->getLoc(), MGP::createCpuTensorSpec(castScalarType),
-        SmallVector<Value>{});
-    output.spec =
-        getOutputSpec("mop.shape.cast", {inputTensors[0].spec, castScalarSpec});
   } else if (opName == "mop.kernels.concat") {
     // Ignore axis tensor at the end
     SmallVector<Value> shapeFuncArgs = llvm::map_to_vector(
