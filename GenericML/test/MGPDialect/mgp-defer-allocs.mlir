@@ -73,7 +73,7 @@ mgp.model @basicMoGraph : tf init {
 // CHECK-NEXT: %[[CH3:.*]] = "some.op"() : () -> !mef.chain
 // CHECK-NEXT: %[[CH4:.*]] = "some.op"() : () -> !mef.chain
 
-// CHECK: %[[CH5:.*]] = grt.chain.create (%[[CH0]], %[[CH3]], %[[CH4]])
+// CHECK: %[[CH5:.*]] = grt.chain.create (%[[CH3]], %[[CH4]])
 // CHECK-NEXT: %[[OUT_BUF_1:.*]] = mgp.cpu.buffer.alloc.static %[[CH5]], 32
 // CHECK-NEXT: %[[CH6:.*]] = "mop.kernels.mul"(%[[CH5]], %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %[[OUT_BUF_1]], %{{.*}})
 

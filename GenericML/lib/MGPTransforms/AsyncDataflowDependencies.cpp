@@ -19,6 +19,10 @@ using namespace std::placeholders;
 
 #define DEBUG_TYPE "mgp-dataflow"
 
+//===----------------------------------------------------------------------===//
+// AsyncDataflowDependencies
+//===----------------------------------------------------------------------===//
+
 AsyncDataflowDependencies::AsyncDataflowDependencies(IndexSet<Value> *index)
     : ForwardsRelationDataflowAnalysis(index) {
   setupSameAs(index->model);
@@ -30,6 +34,11 @@ bool AsyncDataflowDependencies::sameAs(Value lhs, Value rhs) const {
   return index->areEquivalent(equivalence, lhs, rhs);
 }
 
+AsyncDataflowDependencies::Set
+AsyncDataflowDependencies::sameAsEquivalenceClass(Value lhs) const {
+  return index->getEquivalenceClass(equivalence, lhs);
+}
+
 bool AsyncDataflowDependencies::isAlwaysReady(Value value) const {
   return isTrue(alwaysReadyRelation, value);
 }
@@ -38,9 +47,19 @@ bool AsyncDataflowDependencies::impliesReady(Value lhs, Value rhs) const {
   return containsEntryOrId(impliesReadyRelation, lhs, rhs);
 }
 
+AsyncDataflowDependencies::Set
+AsyncDataflowDependencies::downwardsImpliesReadySet(Value rhs) const {
+  return getEntries(inverseImpliesReadyRelation, rhs);
+}
+
+AsyncDataflowDependencies::Set
+AsyncDataflowDependencies::upwardsImpliesReadySet(Value lhs) const {
+  return getEntries(impliesReadyRelation, lhs);
+}
+
 void AsyncDataflowDependencies::simplify(SmallVectorImpl<Value> &values) const {
   // CAUTION: Don't underflow ip1.
-
+  // CAUTION: Size of values changes inside loop body.
   for (size_t ip1 = values.size(); ip1 > 0; --ip1) {
     size_t i = ip1 - 1;
     bool redundant = isAlwaysReady(values[i]);
@@ -77,8 +96,9 @@ void AsyncDataflowDependencies::flowPreSameAs(Operation *op,
 }
 
 void AsyncDataflowDependencies::setupSameAs(ModelOp modelOp) {
+  LLVM_DEBUG(llvm::dbgs() << "setupSameAs\n");
   Relation relation;
-  DomainMap domainMap(relation, index->fullSet(), index->emptySet());
+  DomainMap domainMap(relation, index->emptySet(), index->fullSet());
   flowModel(modelOp, domainMap,
             std::bind(&AsyncDataflowDependencies::flowPreSameAs, this, _1, _2));
   addRelationToEquivalence(relation);
@@ -97,11 +117,10 @@ void AsyncDataflowDependencies::flowAlwaysReady(Operation *op,
     //   if (isTrue(o) for all o in mergeOp.getOperands())
     //     setTrue(mergeOp.getResult())
     // but writen to mirror how flowControlFlow works with the relation.
-    Set theIntersection = domainMap.fullSet;
+    Set set = domainMap.fullSet;
     for (Value operand : chainCreateOp.getOperands())
-      domainMap.setIntersection(theIntersection,
-                                getEntries(domainMap, operand));
-    setEntriesAndId(domainMap, chainCreateOp.getResult(), theIntersection);
+      domainMap.setIntersection(set, getEntries(domainMap, operand));
+    setEntriesAndId(domainMap, chainCreateOp.getResult(), set);
   } else if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op)) {
     flowControlFlow(
         cfOp, domainMap,
@@ -112,8 +131,9 @@ void AsyncDataflowDependencies::flowAlwaysReady(Operation *op,
 }
 
 void AsyncDataflowDependencies::setupAlwaysReady(ModelOp modelOp) {
-  DomainMap domainMap(alwaysReadyRelation, index->unitSet(index->distinguished),
-                      index->emptySet());
+  LLVM_DEBUG(llvm::dbgs() << "setupAlwaysReady\n");
+  DomainMap domainMap(alwaysReadyRelation, index->emptySet(),
+                      index->unitSet(index->distinguished));
   flowModel(
       modelOp, domainMap,
       std::bind(&AsyncDataflowDependencies::flowAlwaysReady, this, _1, _2));
@@ -161,9 +181,11 @@ void AsyncDataflowDependencies::flowImpliesReady(Operation *op,
 }
 
 void AsyncDataflowDependencies::setupImpliesReady(ModelOp modelOp) {
-  DomainMap domainMap(impliesReadyRelation, index->fullSet(),
-                      index->emptySet());
+  LLVM_DEBUG(llvm::dbgs() << "setupImpliesReady\n");
+  DomainMap domainMap(impliesReadyRelation, index->emptySet(),
+                      index->fullSet());
   flowModel(
       modelOp, domainMap,
       std::bind(&AsyncDataflowDependencies::flowImpliesReady, this, _1, _2));
+  inverseImpliesReadyRelation = inverse(impliesReadyRelation);
 }

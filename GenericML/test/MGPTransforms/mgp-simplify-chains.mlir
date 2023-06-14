@@ -7,11 +7,15 @@ mgp.model @chains : tf init {
   mef.output %0, %1 : !mef.chain, !mgp.context
 // CHECK: execute (%[[CH0:.*]]: !mef.chain,
 } execute (%ch0: !mef.chain, %arg1: !mgp.context) -> !mef.chain {
-  // %ch1 -> %ch0
+  // TODO: Temporary!
+  // %ch1 -> fresh create
+  // CHECK: %[[CH1:.*]] = grt.chain.create ()
   %ch1 = grt.chain.create (%ch0)
-  // %ch2 -> %ch0
+  // TODO: Temporary!
+  // %ch2 -> %ch1
   %ch2 = grt.chain.create (%ch1, %ch1)
-  // CHECK: %[[CH3:.*]] = "some.op1"(%[[CH0]])
+  // TODO: Temporary!
+  // CHECK: %[[CH3:.*]] = "some.op1"(%[[CH1]])
   %ch3 = "some.op1"(%ch2) : (!mef.chain) -> !mef.chain
   // %ch4 -> %ch3
   %ch4 = grt.chain.create (%ch0, %ch3)

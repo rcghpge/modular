@@ -67,12 +67,12 @@ protected:
   /// these fields.)
   struct DomainMap {
     Relation &relation;
-    Set fullSet;
     Set emptySet;
+    Set fullSet;
 
-    DomainMap(Relation &relation, Set &&fullSet, Set &&emptySet)
-        : relation(relation), fullSet(std::move(fullSet)),
-          emptySet(std::move(emptySet)) {}
+    DomainMap(Relation &relation, Set &&emptySet, Set &&fullSet)
+        : relation(relation), emptySet(std::move(emptySet)),
+          fullSet(std::move(fullSet)) {}
 
     void setIntersection(Set &lhs, const Set &rhs) const { lhs &= rhs; }
     void setUnion(Set &lhs, const Set &rhs) const { lhs |= rhs; }
@@ -81,6 +81,17 @@ protected:
   RelationDataflowAnalysisBase(IndexSet<V> *index)
       : index(index), equivalence(index->identityEquivalence()),
         changed(false) {}
+
+  /// Updates domainMap so that v |-> {v}, up to equivalence. Marks changed true
+  /// if domainMap was changed. Accounts for the above compression rules.
+  void setId(DomainMap &domainMap, V v) {
+    v = index->getCanonical(equivalence, v);
+    auto itr = domainMap.relation.find(v);
+    if (itr != domainMap.relation.end()) {
+      domainMap.relation.erase(itr);
+      changed = true;
+    }
+  }
 
   /// Returns the compressed representation of set, suitable for
   /// storing in a relation map with key v. Returns nullopt if no
@@ -413,7 +424,7 @@ public:
 protected:
   /// Returns the intersection of all the operand occurrences of value
   /// (possibly none) and the top set.
-  Set operandIntersection(const DomainMap &domainMap, Value value) const;
+  Set operandCombination(const DomainMap &domainMap, Value value) const;
 
   /// Grows domainMap for one iteration of the body sub-block of cfOp, which
   /// must have one sub-block. Sets changed to true if domainMap was changed.

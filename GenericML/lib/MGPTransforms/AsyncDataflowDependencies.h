@@ -22,6 +22,10 @@
 
 namespace M::MGP {
 
+//===----------------------------------------------------------------------===//
+// AsyncDataflowDependencies
+//===----------------------------------------------------------------------===//
+
 /// Implements the sameAs and impliesReady relations, and the isAlwaysReady
 /// predicate. These can be used to simplify grt.chain.create operations, and
 /// decide when buffer lifetimes do not intersect.
@@ -42,6 +46,9 @@ public:
   /// complete.
   bool sameAs(Value lhs, Value rhs) const;
 
+  /// Returns { %rhs | sameAs(%lhs, %rhs) }
+  Set sameAsEquivalenceClass(Value lhs) const;
+
   /// The isAlwaysReady(%value) predicate is true only if at runtime %x is bound
   /// to a chain with no control dependencies, such as the result of
   /// grt.chain.create (). The predicate may not be complete.
@@ -54,6 +61,16 @@ public:
   ///   valueOf(%lhs)->isReady() => valueOf(%rhs)->isReady()
   /// under all execution paths. The relation need not be complete.
   bool impliesReady(Value lhs, Value rhs) const;
+
+  /// Returns the set
+  ///   { %lhs | impliesReady(%lhs, %rhs) }
+  /// up to the sameAs equivalence.
+  Set downwardsImpliesReadySet(Value rhs) const;
+
+  /// Returns the set
+  ///   { %rhs | impliesReady(%lhs, %rhs) }
+  /// up to the sameAs equivalence.
+  Set upwardsImpliesReadySet(Value lhs) const;
 
   /// Assuming
   ///   ... = some.op(values)
@@ -103,16 +120,18 @@ private:
   /// changed to true if domainMap was changed.
   void flowImpliesReady(Operation *op, DomainMap &domainMap);
 
-  /// Sets the impliesReadyRelation for the root 'init' and 'execute' blocks.
+  /// Sets the impliesReadyRelation and its inverse for the root 'init' and
+  /// 'execute' blocks.
   void setupImpliesReady(ModelOp modelOp);
 
   /// The alwaysReady predicate, encoded as a relation using the distinguished
   /// value.
   Relation alwaysReadyRelation;
 
-  /// The impliesReady relation. Uses canonical values from the sameAs
-  /// equivalence.
+  /// The impliesReady relation and its inverse. Uses canonical values from the
+  /// sameAs equivalence.
   Relation impliesReadyRelation;
+  Relation inverseImpliesReadyRelation;
 };
 
 } // namespace M::MGP

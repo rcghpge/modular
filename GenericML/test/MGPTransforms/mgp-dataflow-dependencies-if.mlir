@@ -33,7 +33,8 @@
 // CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "simple"} : () -> ()
 
 // CHECK: sameAs begin
-// CHECK-NEXT: {%arg0, %arg2[2], %arg2[3]}
+// CHECK-NEXT: {%0[0], %arg0, %arg2[2], %arg2[3]}
+// CHECK-NEXT: {%1[0], %arg1}
 // CHECK-NEXT: {%1, %arg3[2], %arg3[3]}
 // CHECK-NEXT: {%2, %arg4[2], %arg5[2], %arg4[3], %arg5[3], %3#2}
 // CHECK-NEXT: sameAs end
@@ -41,8 +42,8 @@
 // CHECK: isAlwaysReady({%0[0]})
 
 // CHECK: impliesReady begin
-// CHECK: %3#0 |-> {%arg0, %3#0}
-// CHECK: %3#1 |-> {%arg0, %2, %3#1}
+// CHECK: %3#0 |-> {%0[0], %3#0}
+// CHECK: %3#1 |-> {%0[0], %2, %3#1}
 // CHECK: impliesReady end
 
 mgp.model @simple : tf init {
@@ -108,10 +109,10 @@ mgp.model @simple : tf init {
 // CHECK: {%9, %arg2[2], %arg2[3]}
 // CHECK: sameAs end
 
-// CHECK: isAlwaysReady({%0[0], %9, %14[3], %12})
+// CHECK: isAlwaysReady({%0[0], %0, %1, %9, %14[3], %12})
 
 // CHECK: impliesReady begin
-// CHECK: %2 |-> {%arg0, %0, %1, %2}
+// CHECK: %2 |-> {%0[0], %0, %1, %2}
 // CHECK: impliesReady end
 
 mgp.model @redundant : tf init {
@@ -186,14 +187,14 @@ mgp.model @redundant : tf init {
 
 
 // CHECK: sameAs begin
-// CHECK: {%arg0, %arg2[2], %arg2[3], %12#0}
+// CHECK: {%0[0], %arg0, %arg2[2], %arg2[3], %12#0}
 // CHECK: {%6, %arg3[2], %arg3[3]}
 // CHECK: {%9, %arg4[2], %arg4[3]}
 // CHECK: sameAs end
 
 // CHECK: impliesReady begin
-// CHECK: %16[2] |-> {%arg0, %5, %7, %8, %9, %15#0[2], %15#1[2], %16[2]}
-// CHECK: %16[3] |-> {%arg0, %3, %4, %5, %6, %15#0[3], %15#1[3], %16[3]}
+// CHECK: %16[2] |-> {%0[0], %5, %7, %8, %9, %15#0[2], %15#1[2], %16[2]}
+// CHECK: %16[3] |-> {%0[0], %3, %4, %5, %6, %15#0[3], %15#1[3], %16[3]}
 // CHECK: impliesReady end
 
 mgp.model @if : tf init {
