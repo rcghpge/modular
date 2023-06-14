@@ -50,14 +50,20 @@ std::string getIDForType(mlir::Type t) {
     return "f32";
   if (dtype.isF64())
     return "f64";
+  if (dtype.isSignedInteger(8))
+    return "si8";
   if (dtype.isSignedInteger(16))
     return "si16";
   if (dtype.isSignedInteger(32))
     return "si32";
   if (dtype.isSignedInteger(64))
     return "si64";
+  if (dtype.isUnsignedInteger(32))
+    return "ui32";
   if (dtype.isUnsignedInteger(16))
     return "ui16";
+  if (dtype.isUnsignedInteger(8))
+    return "ui8";
   if (dtype.isInteger(1))
     return "b";
 

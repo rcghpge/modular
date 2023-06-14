@@ -17,6 +17,7 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #include "LoweringHelper.h"
+#include "SupportedMoggTypes.h"
 
 using namespace M;
 using namespace mlir;
@@ -135,10 +136,7 @@ struct MOOpPattern : public RewritePattern {
     auto isTypeAllowed = [&](Type t) {
       auto tensor = dyn_cast<MO::TensorType>(t);
       Type dtype = tensor.getElementType();
-      bool allowedElementTypes =
-          dtype.isF32() || dtype.isF64() || dtype.isSignedInteger(16) ||
-          dtype.isSignedInteger(32) || dtype.isSignedInteger(64) ||
-          dtype.isUnsignedInteger(16) || dtype.isInteger(1);
+      bool allowedElementTypes = MO::isSupportedMOGGType(dtype);
 
       if (!tensor || !allowedElementTypes || !tensor.hasRank() ||
           tensor.getRank() > kMaxRank || tensor.hasUnknownShape())
