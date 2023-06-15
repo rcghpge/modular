@@ -294,6 +294,26 @@ static void mgp_cpu_buffer_concat(Chain inChain,
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.cpu.buffer.section.static.borrow
+//===----------------------------------------------------------------------===//
+
+static void mgp_cpu_buffer_section_static_borrow(
+    Chain inChain, AsyncValueRef<BufferRef> inBuffer,
+    Result<BufferRef> outBuffer, MEFAttr<uint64_t> aOffset,
+    MEFAttr<uint64_t> bSize, Runtime &runtime, EncodedLocation loc) {
+  TimeTraceScope scope(
+      LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.section.static.borrow"));
+  const size_t outOffset = static_cast<size_t>(*aOffset);
+  const size_t outSize = static_cast<size_t>(*bSize);
+
+  // createSafeBorrowedSlice will assert the offset and size are valid.
+  // This is guaranteed by op verify and type system, so no need to guard
+  // with error checking.
+  std::move(outBuffer).emplace(
+      BufferRef::createSafeBorrowedSlice(inBuffer.copy(), outOffset, outSize));
+}
+
+//===----------------------------------------------------------------------===//
 // mgp.cpu.buffer.split.borrow
 //===----------------------------------------------------------------------===//
 
@@ -338,13 +358,16 @@ mgp_cpu_buffer_split_borrow(Chain inChain, AsyncValueRef<BufferRef> inBuffer,
           inBuffer.copy(), totalSize, thisSize));
     totalSize += thisSize;
   }
-  if (totalSize != inBuffer->getSize())
+
+  if (totalSize != inBuffer->getSize()) {
     return std::move(outBuffers)
         .setAllToError(Twine("mgp.cpu.buffer.split.borrow input buffer "
                              "size must be sum of output buffer sizes (") +
                            Twine(inBuffer->getSize()) + " vs " +
                            Twine(totalSize) + ")",
                        loc);
+  }
+
   for (auto [outBuffer, newBuffer] : llvm::zip(outBuffers.get(), newBuffers))
     outBuffer =
         AnyAsyncValueRef::createReady<BufferRef>(runtime, std::move(newBuffer));
@@ -754,6 +777,8 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
                 mgp_cpu_buffer_set_with_index);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.copy", mgp_cpu_buffer_copy);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.concat", mgp_cpu_buffer_concat);
+  ADD_PRIMITIVE(registry, "mgp.cpu.buffer.section.static.borrow",
+                mgp_cpu_buffer_section_static_borrow);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.split.borrow",
                 mgp_cpu_buffer_split_borrow);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.set", mgp_cpu_buffer_set);

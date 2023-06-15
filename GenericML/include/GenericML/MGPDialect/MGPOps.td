@@ -622,26 +622,83 @@ def CpuBufferConcatOp : MGP_Op<"cpu.buffer.concat"> {
 }
 
 //===----------------------------------------------------------------------===//
+// CpuBufferSectionStaticBorrowOp
+//===----------------------------------------------------------------------===//
+
+def CpuBufferSectionStaticBorrowOp : MGP_Op<"cpu.buffer.section.static.borrow", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "Borrows a section with statically known offset and size from "
+                "input buffer.";
+  let description = [{
+    Returns a borrowed buffer who's underlying storage points into a section of
+    the input buffer. The offset and size of the section is given by
+    attributes, and the buffer input and result types must have statically
+    known sizes. Thus this op is really only useful in conjunction with static
+    memory planning. A validation error is triggered if the requested section
+    is out of range of the input buffer.
+
+    Note that no copying is done, and the result buffer merely borrows from
+    the (offset into) the input buffer.
+
+    The result buffer will inherit the mutablity and, if possible, alignment
+    of the input buffer.
+
+    The runtime will guarantee the input buffer will outlive the result buffer.
+    However, currently the runtime does NOT check for overlapping concurrent
+    borrows, or overlapping reads/writes to the same contents, even in debug
+    builds.
+
+    Example:
+    ```mlir
+    %ch:  !mef.chain
+    %in_buf : !mgp.cpu.buffer<256>
+    %out_buf =
+        mgp.cpu.buffer.section.static.borrow %ch, %in_buf, offset 128, size 64
+        : !mgp.cpu.buffer<256>
+    %out_buf : !mgp.cpu.buffer<64>
+    ```
+  }];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins ChainType:$inChain,
+                       MGP_CpuBufferType:$inBuffer,
+                       UI64Attr:$aOffset,
+                       UI64Attr:$bSize);
+  let results = (outs MGP_CpuBufferType:$outBuffer);
+  let assemblyFormat = [{
+    $inChain `,` $inBuffer `,` `offset` $aOffset `,` `size` $bSize attr-dict
+    `:` qualified(type($inBuffer))
+  }];
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // CpuBufferSplitBorrowOp
 //===----------------------------------------------------------------------===//
 
 def CpuBufferSplitBorrowOp : MGP_Op<"cpu.buffer.split.borrow"> {
-  let summary = "Splits an input buffer into multiple borrowed buffer slices "
-                "of its contents.";
+  let summary = "Splits an input buffer into multiple result buffers which "
+                "borrow sections from the input.";
   let description = [{
-    Splits an input buffer into multiple borrowed buffer slices into its
-    contents. An `mgp.cpu.buffer.concat` of those buffers would recover the
-    contents of the input buffer. An index operand must be supplied at runtime
-    for each output buffer which does not have a statically known size. A
-    runtime error will be returned if the actual runtime sizes of input and
-    output buffers and size operands are not consistent.
+    Splits an input buffer into multiple result buffers which borrow sections
+    from the input. An `mgp.cpu.buffer.concat` of the result buffers would
+    recover the contents of the input buffer. The sizes of each result buffer
+    can be supplied either implicitly by the result buffer type's size, or
+    explicitly as an index operand if the result buffer type is unsized.
+
+    A runtime error will be returned if the actual runtime sizes of input and
+    result buffers and size operands are not consistent.
 
     Note that no copying is done, and the result buffers merely borrow from the
-    (offsets into) the input buffer. Currently the runtime will guarantee the
-    input buffer will outlive the result buffers. In the future we'll make it
-    possible to supress this overhead when lifetime analysis can guarantee
-    the last reference to the input buffer will be consumed strictly after
-    the last reference to all result buffers.
+    (offsets into) the input buffer.
+
+    The result buffers will inherit the mutablity and, if possible, alignment
+    of the input buffer.
+
+    The runtime will guarantee the input buffer will outlive the result
+    buffers. However, currently the runtime does NOT check for overlapping
+    reads/writes to the same contents, even in debug builds.
 
     Example:
     ```mlir

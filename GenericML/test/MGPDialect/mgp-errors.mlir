@@ -172,6 +172,26 @@ func.func @buffer_concat_sizes(%ch0 : !mef.chain, %out_buf : !mgp.cpu.buffer<192
 // -----
 
 //
+// mgp.cpu.buffer.section.static.borrow
+//
+
+func.func @buffer_section_static_beyond_end(%ch0 : !mef.chain, %in_buf : !mgp.cpu.buffer<192>) {
+// expected-error@+1 {{'mgp.cpu.buffer.section.static.borrow' op requesting section end 256 which is beyond end of input buffer of size 192.}}
+  %buf = mgp.cpu.buffer.section.static.borrow %ch0, %in_buf, offset 128, size 128: !mgp.cpu.buffer<192>
+  mef.output %buf : !mgp.cpu.buffer<128>
+}
+
+// -----
+
+func.func @buffer_section_static_unsized(%ch0 : !mef.chain, %in_buf : !mgp.cpu.buffer) {
+// expected-error@+1 {{'mgp.cpu.buffer.section.static.borrow' op expected input buffer of type ''!mgp.cpu.buffer'' to have a statically known size.}}
+  %buf = mgp.cpu.buffer.section.static.borrow %ch0, %in_buf, offset 128, size 128: !mgp.cpu.buffer
+  mef.output %buf : !mgp.cpu.buffer<128>
+}
+
+// -----
+
+//
 // mgp.cpu.buffer.split.borrow
 //
 

@@ -467,6 +467,62 @@ LogicalResult CpuBufferConcatOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// CpuBufferSectionStaticBorrowOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CpuBufferSectionStaticBorrowOp::verify() {
+  if (!getInBuffer().getType().getOptSize().has_value()) {
+    return emitOpError() << "expected input buffer of type '"
+                         << getInBuffer().getType()
+                         << "' to have a statically known size.";
+  }
+  uint64_t inSize = *getInBuffer().getType().getOptSize();
+
+  if (getAOffset() > inSize) {
+    return emitOpError() << "requesting section offset " << getAOffset()
+                         << " which is beyond end of input buffer of size "
+                         << inSize << ".";
+  }
+
+  if (getAOffset() + getBSize() > inSize) {
+    return emitOpError() << "requesting section end "
+                         << getAOffset() + getBSize()
+                         << " which is beyond end of input buffer of size "
+                         << inSize << ".";
+  }
+
+  if (!getOutBuffer().getType().getOptSize().has_value()) {
+    return emitOpError() << "expected output buffer of type '"
+                         << getOutBuffer().getType()
+                         << "' to have a statically known size.";
+  }
+  uint64_t outSize = *getOutBuffer().getType().getOptSize();
+
+  if (getBSize() != outSize) {
+    return emitOpError() << "expected output buffer of type '"
+                         << getOutBuffer().getType() << "' to have size "
+                         << getBSize() << ".";
+  }
+
+  return success();
+}
+
+LogicalResult CpuBufferSectionStaticBorrowOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  auto sizeAttr =
+      dyn_cast_if_present<IntegerAttr>(attributes.get(getBSizeAttrName(name)));
+  if (sizeAttr)
+    inferredReturnTypes.emplace_back(CpuBufferType::get(context, sizeAttr));
+  else
+    // Invalid, but will fail in verify.
+    inferredReturnTypes.emplace_back(CpuBufferType::get(context, std::nullopt));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // CpuBufferSplitBorrowOp
 //===----------------------------------------------------------------------===//
 
@@ -509,6 +565,7 @@ LogicalResult CpuBufferSplitBorrowOp::verify() {
                             "buffer without a statically known size (given "
                          << getRuntimeSizes().size() << " but need "
                          << numDynamic << ").";
+
   if (!getInBuffer().getType().getOptSize())
     // Nothing more to check
     return success();
