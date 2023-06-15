@@ -46,6 +46,26 @@
 // CHECK-NEXT: %5 |-> {%0[0], %0, %1, %2, %3, %4, %5}
 // CHECK-NEXT: impliesReady end
 
+// consumedWhenReady captures values in rhs which imply lhs is dead (plus identity)
+// CHECK: consumedWhenReady begin
+// CHECK-NEXT: %0[0] |-> {%0[0], %5}
+// CHECK-NEXT: %0 |-> {%0, %5}
+// CHECK-NEXT: %1 |-> {%1, %2, %5}
+// CHECK-NEXT: %2 |-> {%2, %5}
+// CHECK-NEXT: %3 |-> {%3, %4, %5}
+// CHECK-NEXT: %4 |-> {%4, %5}
+// CHECK-NEXT: consumedWhenReady end
+
+// runsLater for which ops (identified by their result values) run after which
+// CHECK: runsLater begin
+// CHECK-NEXT: %0[0] |-> {%0[0], %1, %2, %3, %4, %5}
+// CHECK-NEXT: %0 |-> {%0, %2, %4, %5}
+// CHECK-NEXT: %1 |-> {%1, %2, %5}
+// CHECK-NEXT: %2 |-> {%2, %5}
+// CHECK-NEXT: %3 |-> {%3, %4, %5}
+// CHECK-NEXT: %4 |-> {%4, %5}
+// CHECK-NEXT: runsLater end
+
 mgp.model @simple : tf init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
@@ -104,6 +124,17 @@ mgp.model @simple : tf init {
 // CHECK: impliesReady begin
 // CHECK: %10 |-> {%0[0], %0, %1, %2, %3, %4, %5, %6#0, %6#1, %7#0, %7#1, %8, %9, %10}
 // CHECK: impliesReady end
+
+// Spot check consumedWhenReady
+// CHECK: consumedWhenReady begin
+// CHECK: %5 |-> {%5, %16, %17, %18#0, %18#1, %22, %23}
+// CHECK: %12#0 |-> {%12#0, %16, %17, %18#0, %18#1, %22, %23}
+// CHECK: consumedWhenReady end
+
+// Spot check runsLater
+// CHECK: runsLater begin
+// CHECK: %12#0 |-> {%12#0, %16, %17, %18#0, %22, %23}
+// CHECK: runsLater end
 
 mgp.model @straightline : tf init {
   %0 = grt.chain.create ()

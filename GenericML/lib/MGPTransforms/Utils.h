@@ -20,6 +20,22 @@ namespace M::MGP {
 /// does not have operands defined by operations later in the vector.
 SmallVector<Operation *> getDataflowOrder(Block *block);
 
+/// Returns the 'indicating results' for op. If ANY indicating result is ready
+/// then the op is known to have completed and is not holding any references
+/// to any of its operands.
+SmallVector<Value> getIndicatingResults(Operation *op);
+
+/// Returns a representative 'indicating result' for op, or returns null if
+/// no such result exists.
+Value getRepresentativeIndicatingResult(Operation *op);
+
+/// Returns the 'gating operands' for op. The op can only begin execution once
+/// ALL gating operands are ready.
+SmallVector<Value> getGatingOperands(Operation *op);
+
+/// Returns true if opOperand is a 'gating operand' for its operation.
+bool isGatingOperand(const OpOperand *opOperand);
+
 /// Returns all the OpOperands which are 'reading' or 'writing' occurrences
 /// of buffer, depending on the isReading flag.
 SmallVector<OpOperand *> allUsingOpOperands(Value buffer, bool isReading);

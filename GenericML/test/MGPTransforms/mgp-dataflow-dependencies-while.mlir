@@ -51,6 +51,14 @@
 // CHECK: %4[3] |-> {%0[0], %1, %arg4[2], %5[2], %4[3]}
 // CHECK: impliesReady end
 
+// CHECK: consumedWhenReady begin
+// CHECK: %arg4[2] |-> {%arg4[2], %3}
+// CHECK: consumedWhenReady end
+
+// CHECK: runsLater begin
+// CHECK: %4[2] |-> {%4[2], %3}
+// CHECK: runsLater end
+
 mgp.model @simple : tf init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0

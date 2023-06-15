@@ -60,6 +60,68 @@ SmallVector<Operation *> M::MGP::getDataflowOrder(Block *block) {
   return dataflowOrder;
 }
 
+SmallVector<Value> M::MGP::getIndicatingResults(Operation *op) {
+  if (isa<GRT::GRTControlFlowInterface>(op) || isa<MEF::OutputOp>(op))
+    // Control flow must be handled specially.
+    return {};
+
+  if (!isa<MEF::NonStrictOp>(op))
+    // All results are indicating for strict ops.
+    return op->getResults();
+
+  // Only chain results, if any, are indicating for non-strict ops.
+  SmallVector<Value> results;
+  for (Value result : op->getResults()) {
+    if (isa<MEF::ChainType>(result.getType()))
+      results.emplace_back(result);
+  }
+  return results;
+}
+
+Value M::MGP::getRepresentativeIndicatingResult(Operation *op) {
+  SmallVector<Value> results = getIndicatingResults(op);
+  if (results.empty())
+    return {};
+  for (Value result : results) {
+    if (isa<MEF::ChainType>(result.getType()))
+      return result;
+  }
+  return results.front();
+}
+
+SmallVector<Value> M::MGP::getGatingOperands(Operation *op) {
+  if (isa<GRT::GRTControlFlowInterface>(op) || isa<MEF::OutputOp>(op))
+    // Control flow must be handled specially.
+    return {};
+
+  if (!isa<MEF::NonStrictOp>(op))
+    // All operands are gating for strict ops.
+    return op->getOperands();
+
+  // Only chain operands, if any, are indicating for non-strict ops.
+  SmallVector<Value> results;
+  for (Value operand : op->getOperands()) {
+    if (isa<MEF::ChainType>(operand.getType()))
+      results.emplace_back(operand);
+  }
+  return results;
+}
+
+bool M::MGP::isGatingOperand(const OpOperand *opOperand) {
+  Operation *op = opOperand->getOwner();
+
+  if (isa<GRT::GRTControlFlowInterface>(op) || isa<MEF::OutputOp>(op))
+    // Control flow must be handled specially.
+    return false;
+
+  if (!isa<MEF::NonStrictOp>(op))
+    // All operands are gating for strict ops.
+    return true;
+
+  // Only chain operands, if any, are indicating for non-strict ops.
+  return isa<MEF::ChainType>(opOperand->get().getType());
+}
+
 SmallVector<OpOperand *> M::MGP::allUsingOpOperands(Value buffer,
                                                     bool isReading) {
   SmallVector<OpOperand *> result;

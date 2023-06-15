@@ -99,6 +99,16 @@ public:
   /// CAUTION: O(values.size()^2) implementation.
   void simplify(SmallVectorImpl<Value> &values) const;
 
+  /// Returns the set:
+  ///   { %indicator | valueOf(%indicator)->isReady() => %value is dead }
+  /// under all execution paths, up to the sameAs equivalence.
+  Set consumedWhenReady(Value value) const;
+
+  /// Returns the set:
+  ///   { %value | valueOf(%indicator)->isReady() => %value is dead }
+  /// under all execution paths, up to the sameAsEquivalence.
+  Set indicatesConsumed(Value indicator) const;
+
   /// Prints a representation of all equivalences and relations to os.
   /// For testing only.
   void print(llvm::raw_ostream &os);
@@ -130,9 +140,6 @@ private:
   /// Sets the alwaysReadyRelation for the root 'init' and 'execute' blocks.
   void setupAlwaysReady(ModelOp modelOp);
 
-  /// Returns true if lhs implies rhs directly.
-  static bool primitiveImpliesReady(Value lhs, Value rhs);
-
   /// Grows domainMap to capture the impliesReady relation for operation. Sets
   /// changed to true if domainMap was changed.
   void flowImpliesReady(Operation *op, DomainMap &domainMap);
@@ -140,6 +147,26 @@ private:
   /// Sets the impliesReadyRelation and its inverse for the root 'init' and
   /// 'execute' blocks.
   void setupImpliesReady(ModelOp modelOp);
+
+  /// Returns the set:
+  ///   { %x | valueOf(%x)->isReady()) => %value is dead }
+  /// under all execution paths, up to the sameAs equivalence. Note that ALL
+  /// values in the result set must be ready for value to be dead. If the
+  /// result is empty then it is not possible to know when value is dead,
+  /// eg for a mef.output operand.
+  Set consumedSet(Value value) const;
+
+  /// Returns the set
+  ///   { %lhs | forall %rhs in values . impliesReady(%lhs, %rhs) }
+  /// The result may be empty. Note that ANY value in the result set may be
+  /// ready for ALL values in the argument set to be ready. If values is
+  /// empty then the result will be empty. Otherwise, if the result is empty
+  /// then it is not possible to known when all argument values are dead.
+  Set impliesAllReadySet(const Set &values) const;
+
+  /// Sets the consumedWhenReadyRelation and its inverse
+  /// indicatesConsumedRelation for all values in the model.
+  void setupConsumedWhenReady();
 
   /// The alwaysReady predicate, encoded as a relation using the distinguished
   /// value.
@@ -154,6 +181,70 @@ private:
   /// sameAs equivalence.
   Relation impliesReadyRelation;
   Relation inverseImpliesReadyRelation;
+
+  /// The consumedWhenReady relation and its inverse. Uses canonical values from
+  /// the sameAs equivalence. An entry (%value, %indicator) is in
+  /// consumedWhenReady only if
+  ///   valueOf(%indicator)->isReady() => %value is dead
+  /// under all execution paths.
+  Relation consumedWhenReadyRelation;
+  Relation indicatesConsumedRelation;
+
+  friend class AsyncOperationDependencies;
+};
+
+//===----------------------------------------------------------------------===//
+// AsyncOperationDependencies
+//===----------------------------------------------------------------------===//
+
+/// Implements the runsLater and runsEarlier relation over operations.
+class AsyncOperationDependencies
+    : public RelationDataflowAnalysisBase<Operation *> {
+public:
+  AsyncOperationDependencies(IndexSet<Operation *> *indexSet,
+                             AsyncDataflowDependencies *valueDependencies);
+
+  /// Returns the set:
+  ///   { laterOp | laterOp can start executing only
+  ///               after earlierOp has finished under all
+  ///               execution paths }
+  Set runsLaterOps(Operation *earlierOp) const;
+
+  /// Returns the set:
+  ///   { earlierOp | laterOp can start executing only
+  ///                 after earlierOp has finished under all
+  ///                 execution paths }
+  Set runsEarlierOps(Operation *laterOp) const;
+
+  /// Returns true if lhsOp and rhsOp can never over overlap in execution
+  /// under all execution paths.
+  bool areDisjoint(Operation *lhsOp, Operation *rhsOp) const;
+
+  /// Prints a representation of all equivalences and relations to os.
+  /// For testing only.
+  void print(llvm::raw_ostream &os);
+
+private:
+  /// Returns the set:
+  ///   { laterOp | %laterOp must begin execution after earlierOp completes }
+  /// under all execution paths.
+  Set runsLaterSet(Operation *earlierOp) const;
+
+  /// Fills the runsLaterRelation for all operations in block and it's
+  /// sub-blocks.
+  void setupRunsLaterForBlock(DomainMap &domainMap, Block *block);
+
+  /// Sets the runsLaterRelation and its inverse for all operations in model.
+  void setupRunsLater(ModelOp modelOp);
+
+  AsyncDataflowDependencies *valueDependencies;
+
+  /// Identity equivalence.
+  Equivalence equivalence;
+
+  /// The runsLater relation and its inverse.
+  Relation runsLaterRelation;
+  Relation runsEarlierRelation;
 };
 
 } // namespace M::MGP

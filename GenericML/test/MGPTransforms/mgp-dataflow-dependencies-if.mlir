@@ -55,6 +55,11 @@
 // CHECK: %3#1 |-> {%0[0], %2, %3#1}
 // CHECK: impliesReady end
 
+// CHECK: runsLater begin
+// CHECK-NEXT: %0[0] |-> {%0[0], %0, %1, %2, %5[2], %6[2], %5[3], %4}
+// CHECK-NEXT: %2 |-> {%2, %6[2], %5[3], %4}
+// CHECK: runsLater end
+
 mgp.model @simple : tf init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
@@ -128,6 +133,14 @@ mgp.model @simple : tf init {
 // CHECK: impliesReady begin
 // CHECK: %2 |-> {%0[0], %0, %1, %2}
 // CHECK: impliesReady end
+
+// CHECK: consumedWhenReady begin
+// CHECK: %6 |-> {%6, %8, %10, %13}
+// CHECK: consumedWhenReady end
+
+// CHECK: runsLater begin
+// CHECK: %6 |-> {%6, %8, %10, %13}
+// CHECK: runsLater end
 
 mgp.model @redundant : tf init {
   %0 = grt.chain.create ()
@@ -214,6 +227,15 @@ mgp.model @redundant : tf init {
 // CHECK: %16[2] |-> {%0[0], %5, %7, %8, %9, %15#0[2], %15#1[2], %16[2]}
 // CHECK: %16[3] |-> {%0[0], %3, %4, %5, %6, %15#0[3], %15#1[3], %16[3]}
 // CHECK: impliesReady end
+
+// CHECK: consumedWhenReady begin
+// CHECK: %16[2] |-> {%16[2], %13#0, %14}
+// CHECK: %12#1 |-> {%12#1, %13#0, %14}
+// CHECK: consumedWhenReady end
+
+// CHECK: runsLater begin
+// CHECK: %5 |-> {%5, %6, %9, %15#0[2], %16[2], %15#0[3], %16[3], %13#0, %14}
+// CHECK: runsLater end
 
 mgp.model @if : tf init {
   %0 = grt.chain.create ()
