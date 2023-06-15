@@ -40,6 +40,13 @@
 // CHECK-NEXT: {%5[2], %arg4[3], %2#2}
 // CHECK-NEXT: sameAs end
 
+// %2# and %0 are now maybe the same because we union the initial and
+// repeated args to the cond block
+// CHECK: maybeSameAs begin
+// CHECK: {%0, %arg3[2], %4[2], %arg3[3], %2#1}
+// CHECK: {%1, %arg4[2], %arg5[2], %arg5[3], %4[3], %2#3}
+// CHECK: maybeSameAs end
+
 // CHECK: impliesReady begin
 // CHECK: %4[3] |-> {%0[0], %1, %arg4[2], %5[2], %4[3]}
 // CHECK: impliesReady end
@@ -98,6 +105,10 @@ mgp.model @simple : tf init {
 // CHECK: {%arg3[2], %arg3[3], %2#1}
 // CHECK: sameAs end
 
+// CHECK: maybeSameAs begin
+// CHECK: {%0, %1, %arg2[2], %arg3[2], %arg2[3], %arg3[3], %2#0, %2#1}
+// CHECK: maybeSameAs end
+
 mgp.model @crissCross : tf init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
@@ -151,6 +162,10 @@ mgp.model @crissCross : tf init {
 // CHECK-NEXT: {%arg3[2], %arg3[3], %1#1}
 // CHECK-NEXT: {%arg4[2], %arg4[3], %1#2}
 // CHECK-NEXT: sameAs end
+
+// CHECK: maybeSameAs begin
+// CHECK: {%0, %arg2[2], %arg3[2], %arg4[2], %arg2[3], %arg3[3], %arg4[3], %3[3], %1#0, %1#1, %1#2}
+// CHECK: maybeSameAs end
 
 // CHECK: impliesReady begin
 // CHECK: %2 |-> {%arg2[2], %arg3[2], %arg4[2], %2}

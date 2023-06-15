@@ -25,36 +25,43 @@ using namespace std::placeholders;
 
 AsyncDataflowDependencies::AsyncDataflowDependencies(IndexSet<Value> *index)
     : ForwardsRelationDataflowAnalysis(index) {
+  sameAsEquivalence = index->identityEquivalence();
+  maybeSameAsEquivalence = index->identityEquivalence();
   setupSameAs(index->model);
+  setupMaybeSameAs(index->model);
   setupAlwaysReady(index->model);
   setupImpliesReady(index->model);
 }
 
 bool AsyncDataflowDependencies::sameAs(Value lhs, Value rhs) const {
-  return index->areEquivalent(equivalence, lhs, rhs);
+  return index->areEquivalent(sameAsEquivalence, lhs, rhs);
 }
 
 AsyncDataflowDependencies::Set
 AsyncDataflowDependencies::sameAsEquivalenceClass(Value lhs) const {
-  return index->getEquivalenceClass(equivalence, lhs);
+  return index->getEquivalenceClass(sameAsEquivalence, lhs);
+}
+
+bool AsyncDataflowDependencies::maybeSameAs(Value lhs, Value rhs) const {
+  return index->areEquivalent(maybeSameAsEquivalence, lhs, rhs);
 }
 
 bool AsyncDataflowDependencies::isAlwaysReady(Value value) const {
-  return isTrue(alwaysReadyRelation, value);
+  return isTrue(sameAsEquivalence, alwaysReadyRelation, value);
 }
 
 bool AsyncDataflowDependencies::impliesReady(Value lhs, Value rhs) const {
-  return containsEntryOrId(impliesReadyRelation, lhs, rhs);
+  return containsEntryOrId(sameAsEquivalence, impliesReadyRelation, lhs, rhs);
 }
 
 AsyncDataflowDependencies::Set
 AsyncDataflowDependencies::downwardsImpliesReadySet(Value rhs) const {
-  return getEntries(inverseImpliesReadyRelation, rhs);
+  return getEntries(sameAsEquivalence, inverseImpliesReadyRelation, rhs);
 }
 
 AsyncDataflowDependencies::Set
 AsyncDataflowDependencies::upwardsImpliesReadySet(Value lhs) const {
-  return getEntries(impliesReadyRelation, lhs);
+  return getEntries(sameAsEquivalence, impliesReadyRelation, lhs);
 }
 
 void AsyncDataflowDependencies::simplify(SmallVectorImpl<Value> &values) const {
@@ -79,9 +86,12 @@ void AsyncDataflowDependencies::simplify(SmallVectorImpl<Value> &values) const {
 }
 
 void AsyncDataflowDependencies::print(llvm::raw_ostream &os) {
-  printEquivalence(os, "sameAs", equivalence);
-  printPredicate(os, "isAlwaysReady", toStableForm(alwaysReadyRelation));
-  printRelation(os, "impliesReady", toStableForm(impliesReadyRelation));
+  printEquivalence(os, "sameAs", sameAsEquivalence);
+  printEquivalence(os, "maybeSameAs", maybeSameAsEquivalence);
+  printPredicate(os, "isAlwaysReady",
+                 toStableForm(sameAsEquivalence, alwaysReadyRelation));
+  printRelation(os, "impliesReady",
+                toStableForm(sameAsEquivalence, impliesReadyRelation));
 }
 
 // Rules are just the control flow rules.
@@ -98,10 +108,33 @@ void AsyncDataflowDependencies::flowPreSameAs(Operation *op,
 void AsyncDataflowDependencies::setupSameAs(ModelOp modelOp) {
   LLVM_DEBUG(llvm::dbgs() << "setupSameAs\n");
   Relation relation;
-  DomainMap domainMap(relation, index->emptySet(), index->fullSet());
+  DomainMap domainMap(sameAsEquivalence, relation, kBottomIsFull,
+                      index->emptySet(), index->fullSet());
   flowModel(modelOp, domainMap,
             std::bind(&AsyncDataflowDependencies::flowPreSameAs, this, _1, _2));
-  addRelationToEquivalence(relation);
+  addRelationToEquivalence(sameAsEquivalence, relation);
+}
+
+// Rules are just the control flow rules.
+void AsyncDataflowDependencies::flowPreMaybeSameAs(Operation *op,
+                                                   DomainMap &domainMap) {
+  if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op))
+    flowControlFlow(
+        cfOp, domainMap,
+        std::bind(&AsyncDataflowDependencies::flowPreSameAs, this, _1, _2));
+  else
+    flowDefault(op, domainMap);
+}
+
+void AsyncDataflowDependencies::setupMaybeSameAs(ModelOp modelOp) {
+  LLVM_DEBUG(llvm::dbgs() << "setupMaybeSameAs\n");
+  Relation relation;
+  DomainMap domainMap(maybeSameAsEquivalence, relation, kBottomIsEmpty,
+                      index->emptySet(), index->fullSet());
+  flowModel(
+      modelOp, domainMap,
+      std::bind(&AsyncDataflowDependencies::flowPreMaybeSameAs, this, _1, _2));
+  addRelationToEquivalence(maybeSameAsEquivalence, relation);
 }
 
 /// Implements the rules:
@@ -117,9 +150,9 @@ void AsyncDataflowDependencies::flowAlwaysReady(Operation *op,
     //   if (isTrue(o) for all o in mergeOp.getOperands())
     //     setTrue(mergeOp.getResult())
     // but writen to mirror how flowControlFlow works with the relation.
-    Set set = domainMap.fullSet;
+    Set set = domainMap.bottom;
     for (Value operand : chainCreateOp.getOperands())
-      domainMap.setIntersection(set, getEntries(domainMap, operand));
+      domainMap.leastUpperBound(set, getEntries(domainMap, operand));
     setEntriesAndId(domainMap, chainCreateOp.getResult(), set);
   } else if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op)) {
     flowControlFlow(
@@ -132,8 +165,8 @@ void AsyncDataflowDependencies::flowAlwaysReady(Operation *op,
 
 void AsyncDataflowDependencies::setupAlwaysReady(ModelOp modelOp) {
   LLVM_DEBUG(llvm::dbgs() << "setupAlwaysReady\n");
-  DomainMap domainMap(alwaysReadyRelation, index->emptySet(),
-                      index->unitSet(index->distinguished));
+  DomainMap domainMap(sameAsEquivalence, alwaysReadyRelation, kBottomIsFull,
+                      index->emptySet(), index->unitSet(index->distinguished));
   flowModel(
       modelOp, domainMap,
       std::bind(&AsyncDataflowDependencies::flowAlwaysReady, this, _1, _2));
@@ -169,21 +202,21 @@ void AsyncDataflowDependencies::flowImpliesReady(Operation *op,
         std::bind(&AsyncDataflowDependencies::flowImpliesReady, this, _1, _2));
   } else {
     for (Value lhs : op->getResults()) {
-      Set theUnion = domainMap.emptySet;
+      Set set = domainMap.top;
       for (Value rhs : op->getOperands()) {
         // Primitive relation relation.
         if (primitiveImpliesReady(lhs, rhs))
-          domainMap.setUnion(theUnion, getEntries(domainMap, rhs));
+          domainMap.greatestLowerBound(set, getEntries(domainMap, rhs));
       }
-      setEntriesAndId(domainMap, lhs, theUnion);
+      setEntriesAndId(domainMap, lhs, set);
     }
   }
 }
 
 void AsyncDataflowDependencies::setupImpliesReady(ModelOp modelOp) {
   LLVM_DEBUG(llvm::dbgs() << "setupImpliesReady\n");
-  DomainMap domainMap(impliesReadyRelation, index->emptySet(),
-                      index->fullSet());
+  DomainMap domainMap(sameAsEquivalence, impliesReadyRelation, kBottomIsFull,
+                      index->emptySet(), index->fullSet());
   flowModel(
       modelOp, domainMap,
       std::bind(&AsyncDataflowDependencies::flowImpliesReady, this, _1, _2));

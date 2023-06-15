@@ -56,40 +56,82 @@ protected:
   ///     (ie the default zero sized bitvector).
   using Relation = DenseMap<V, Set>;
 
-  /// A view of a relation under definition as map from Vs to domain with:
-  ///  - top as the empty set
-  ///  - bottom as the full set (or just a set with just the distinguished V
-  ///    item if we are using the relation to represent a predicate)
-  ///  - least-upper bound as set intersection.
-  ///
-  /// (We may end up also needing the inverted domain, eg for a mayAlias
-  /// predicate. If so we'll capture the domain orientation here and rename
-  /// these fields.)
-  struct DomainMap {
-    Relation &relation;
-    Set emptySet;
-    Set fullSet;
-
-    DomainMap(Relation &relation, Set &&emptySet, Set &&fullSet)
-        : relation(relation), emptySet(std::move(emptySet)),
-          fullSet(std::move(fullSet)) {}
-
-    void setIntersection(Set &lhs, const Set &rhs) const { lhs &= rhs; }
-    void setUnion(Set &lhs, const Set &rhs) const { lhs |= rhs; }
+  /// Orientation for the set domain.
+  enum SetOrientation {
+    // Use when soundness requires over-approximation.
+    //   bottom = {}, top = all elems, lub = union, glb = intersection
+    // It is possible for top to contain just the distinguished value when
+    // trying to solve for a predicate instead of a relation.
+    kBottomIsEmpty,
+    // Use when soundness requires under-approximation.
+    //   bottom = all elems, top = {}, lub = intersection, glb = union
+    // It is possible for bottom to contain just the distinguished value when
+    // trying to solve for a predicate instead of a relation.
+    kBottomIsFull
   };
 
-  RelationDataflowAnalysisBase(IndexSet<V> *index)
-      : index(index), equivalence(index->identityEquivalence()),
-        changed(false) {}
+  /// A view of a relation under definition as map from Vs to domain with a
+  /// bottom, top, lub and glb, all up to the given equivalence. The
+  /// interpretation of the domain values and operations depends on the
+  /// given orientation.
+  struct DomainMap {
+    Equivalence &equivalence;
+    Relation &relation;
+    SetOrientation orientation;
+    Set bottom;
+    Set top;
+    bool changed = false;
+
+    DomainMap(Equivalence &equivalence, Relation &relation,
+              SetOrientation orientation, Set &&emptySet, Set &&fullSet)
+        : equivalence(equivalence), relation(relation),
+          orientation(orientation) {
+      switch (orientation) {
+      case kBottomIsEmpty:
+        bottom = std::move(emptySet);
+        top = std::move(fullSet);
+        break;
+      case kBottomIsFull:
+        bottom = std::move(fullSet);
+        top = std::move(emptySet);
+        break;
+      }
+    }
+
+    void leastUpperBound(Set &lhs, const Set &rhs) const {
+      switch (orientation) {
+      case kBottomIsEmpty:
+        lhs |= rhs;
+        break;
+      case kBottomIsFull:
+        lhs &= rhs;
+        break;
+      }
+    }
+
+    void greatestLowerBound(Set &lhs, const Set &rhs) const {
+      switch (orientation) {
+      case kBottomIsEmpty:
+        lhs &= rhs;
+        break;
+      case kBottomIsFull:
+        lhs |= rhs;
+        break;
+      }
+    }
+  };
+
+  RelationDataflowAnalysisBase(IndexSet<V> *index) : index(index) {}
+
 
   /// Updates domainMap so that v |-> {v}, up to equivalence. Marks changed true
   /// if domainMap was changed. Accounts for the above compression rules.
   void setId(DomainMap &domainMap, V v) {
-    v = index->getCanonical(equivalence, v);
+    v = index->getCanonical(domainMap.equivalence, v);
     auto itr = domainMap.relation.find(v);
     if (itr != domainMap.relation.end()) {
       domainMap.relation.erase(itr);
-      changed = true;
+      domainMap.changed = true;
     }
   }
 
@@ -149,21 +191,21 @@ protected:
       llvm::dbgs() << ")\n";
     });
 
-    v = index->getCanonical(equivalence, v);
+    v = index->getCanonical(domainMap.equivalence, v);
     auto itr = domainMap.relation.find(v);
     std::optional<Set> compressedSet = compress(v, set);
 
     if (!compressedSet) {
       if (itr != domainMap.relation.end()) {
         domainMap.relation.erase(itr);
-        changed = true;
+        domainMap.changed = true;
       }
       return;
     }
 
     if (itr == domainMap.relation.end()) {
       domainMap.relation.insert({v, std::move(*compressedSet)});
-      changed = true;
+      domainMap.changed = true;
       return;
     }
 
@@ -174,7 +216,7 @@ protected:
         llvm::dbgs() << ")\n";
       });
       itr->second = std::move(*compressedSet);
-      changed = true;
+      domainMap.changed = true;
     }
 #undef DEBUG_TYPE
   }
@@ -189,17 +231,17 @@ protected:
       llvm::dbgs() << ")\n";
     });
 
-    v = index->getCanonical(equivalence, v);
+    v = index->getCanonical(domainMap.equivalence, v);
     auto itr = domainMap.relation.find(v);
     if (itr == domainMap.relation.end()) {
       domainMap.relation.insert({v, Set()});
-      changed = true;
+      domainMap.changed = true;
       return;
     }
 
     if (!itr->second.empty()) {
       itr->second = Set();
-      changed = true;
+      domainMap.changed = true;
     }
 #undef DEBUG_TYPE
   }
@@ -207,10 +249,11 @@ protected:
   /// Returns the set bound to v, up to equivalence. Accounts for the
   /// above compression rules.
   Set getEntries(const DomainMap &domainMap, V v) const {
-    return getEntries(domainMap.relation, v);
+    return getEntries(domainMap.equivalence, domainMap.relation, v);
   }
 
-  Set getEntries(const Relation &relation, V v) const {
+  Set getEntries(const Equivalence &equivalence, const Relation &relation,
+                 V v) const {
     v = index->getCanonical(equivalence, v);
     auto itr = relation.find(v);
     if (itr == relation.end())
@@ -221,7 +264,8 @@ protected:
 
   /// If using the relation to represent a predicate, returns true if v is
   /// in the predicate, up to equivalence.
-  bool isTrue(const Relation &relation, V v) const {
+  bool isTrue(const Equivalence &equivalence, const Relation &relation,
+              V v) const {
     v = index->getCanonical(equivalence, v);
     auto itr = relation.find(v);
     if (itr == relation.end())
@@ -234,7 +278,8 @@ protected:
   }
 
   /// Returns true if (lhs, rhs) is in relation, up to equivalence.
-  bool containsEntryOrId(const Relation &relation, V lhs, V rhs) const {
+  bool containsEntryOrId(const Equivalence &equivalence,
+                         const Relation &relation, V lhs, V rhs) const {
     lhs = index->getCanonical(equivalence, lhs);
     rhs = index->getCanonical(equivalence, rhs);
     if (lhs == rhs)
@@ -251,7 +296,8 @@ protected:
   /// Updates equivalence such that if (x, y) is in relation then x and y are
   /// considered equivalent. In other words, makes the equivalence represent
   /// relation closed under reflexivity, symmetry, and transitivity.
-  void addRelationToEquivalence(const Relation &relation) {
+  void addRelationToEquivalence(Equivalence &equivalence,
+                                const Relation &relation) {
     for (const auto &[lhs, compressedSet] : relation) {
       SmallVector<Value> rhss = index->setToVector(expand(lhs, compressedSet));
       for (auto rhs : rhss)
@@ -304,7 +350,8 @@ protected:
 
   /// Converts relation to use stable canonical Vs w.r.t. equivalence. For
   /// testing only.
-  Relation toStableForm(const Relation &relation) {
+  Relation toStableForm(const Equivalence &equivalence,
+                        const Relation &relation) {
     Relation result;
     for (const auto &[v, compressedSet] : relation) {
       Set set = expand(v, compressedSet);
@@ -355,9 +402,6 @@ protected:
   /// Grows domainMap for the given operation, calling into helpers where
   /// appropriate.
   using FlowOp = std::function<void(Operation *, DomainMap &)>;
-
-  Equivalence equivalence;
-  bool changed;
 };
 
 //===----------------------------------------------------------------------===//
@@ -422,7 +466,7 @@ public:
       : RelationDataflowAnalysisBase<const OpOperand *>(index) {}
 
 protected:
-  /// Returns the intersection of all the operand occurrences of value
+  /// Returns the combination of all the operand occurrences of value
   /// (possibly none) and the top set.
   Set operandCombination(const DomainMap &domainMap, Value value) const;
 

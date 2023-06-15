@@ -49,6 +49,13 @@ public:
   /// Returns { %rhs | sameAs(%lhs, %rhs) }
   Set sameAsEquivalenceClass(Value lhs) const;
 
+  /// The maybeSameAs(%lhs, %rhs) equivalence relation is *false* only if ot
+  /// runtime
+  ///   valueOf(%lhs) != valueOf(%rhs)
+  /// (ie pointer inequality) under all execution paths. The relation need not
+  /// be complete.
+  bool maybeSameAs(Value lhs, Value rhs) const;
+
   /// The isAlwaysReady(%value) predicate is true only if at runtime %x is bound
   /// to a chain with no control dependencies, such as the result of
   /// grt.chain.create (). The predicate may not be complete.
@@ -64,12 +71,14 @@ public:
 
   /// Returns the set
   ///   { %lhs | impliesReady(%lhs, %rhs) }
-  /// up to the sameAs equivalence.
+  /// up to the sameAs equivalence. We use 'downwards' because values in the
+  /// result set will be later in a dataflow ordering of the model.
   Set downwardsImpliesReadySet(Value rhs) const;
 
   /// Returns the set
   ///   { %rhs | impliesReady(%lhs, %rhs) }
-  /// up to the sameAs equivalence.
+  /// up to the sameAs equivalence. We use 'upwards' because values in the
+  /// result set will be earlier in a dateflow ordering of the model.
   Set upwardsImpliesReadySet(Value lhs) const;
 
   /// Assuming
@@ -106,6 +115,14 @@ private:
   /// Sets the sameAsEquivalence for the root 'init' and 'execute' blocks.
   void setupSameAs(ModelOp modelOp);
 
+  /// Grows domainMap to capture the maybeSameAs relation for operation. As
+  /// for flowPreSameAs, the relaiton will not yet be closed under
+  /// identity/symmetry/transitivity.
+  void flowPreMaybeSameAs(Operation *op, DomainMap &domainMap);
+
+  /// Sets the maybeSameAsEquivalence for the root 'init' and 'execute' blocks.
+  void setupMaybeSameAs(ModelOp modelOp);
+
   /// Grows domainMap to capture the always-ready predicate into domainMap for
   /// operation. Sets changed to true if domainMap was changed.
   void flowAlwaysReady(Operation *op, DomainMap &domainMap);
@@ -127,6 +144,11 @@ private:
   /// The alwaysReady predicate, encoded as a relation using the distinguished
   /// value.
   Relation alwaysReadyRelation;
+
+  /// The sameAs equivalence.
+  Equivalence sameAsEquivalence;
+  /// The maybeSameAs equivalence.
+  Equivalence maybeSameAsEquivalence;
 
   /// The impliesReady relation and its inverse. Uses canonical values from the
   /// sameAs equivalence.

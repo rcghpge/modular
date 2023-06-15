@@ -43,7 +43,7 @@ void ForwardsRelationDataflowAnalysis::flowSimpleLoop(
   for (const auto [output, result] :
        llvm::zip(outputOp->getOperands(), cfOp->getResults())) {
     Set set = getEntries(domainMap, output);
-    domainMap.setIntersection(set, getEntries(domainMap, result));
+    domainMap.leastUpperBound(set, getEntries(domainMap, result));
     setEntriesAndId(domainMap, result, set);
   }
 }
@@ -91,7 +91,7 @@ void ForwardsRelationDataflowAnalysis::flowConditionedLoop(
   for (const auto [output, arg] :
        llvm::zip(bodyOutputOp->getOperands(), condBlock->getArguments())) {
     Set set = getEntries(domainMap, output);
-    domainMap.setIntersection(set, getEntries(domainMap, arg));
+    domainMap.leastUpperBound(set, getEntries(domainMap, arg));
     setEntriesAndId(domainMap, arg, set);
   }
 
@@ -104,7 +104,7 @@ void ForwardsRelationDataflowAnalysis::flowConditionedLoop(
   for (const auto [output, result] :
        llvm::zip(condOutputOp->getOperands(), cfOp->getResults())) {
     Set set = getEntries(domainMap, output);
-    domainMap.setIntersection(set, getEntries(domainMap, result));
+    domainMap.leastUpperBound(set, getEntries(domainMap, result));
     setEntriesAndId(domainMap, result, set);
   }
 }
@@ -125,12 +125,12 @@ void ForwardsRelationDataflowAnalysis::flowBranch(
   // control flow op results.
   for (size_t i = 0, n = cfOp->getNumResults(); i < n; ++i) {
     Value result = cfOp->getResult(i);
-    Set set = domainMap.fullSet;
+    Set set = domainMap.bottom;
     for (Region &region : cfOp->getRegions()) {
       Block *subBlock = &region.front();
       auto outputOp = cast<MEF::OutputOp>(subBlock->getTerminator());
       Value output = outputOp->getOperand(i);
-      domainMap.setIntersection(set, getEntries(domainMap, output));
+      domainMap.leastUpperBound(set, getEntries(domainMap, output));
     }
     setEntriesAndId(domainMap, result, set);
   }
@@ -210,7 +210,7 @@ void ForwardsRelationDataflowAnalysis::flowControlFlow(
     const FlowOp &flowOp) {
   switch (cfOp.getFlavor()) {
   case GRT::kLoopLike: {
-    bool outerChanged = changed;
+    bool outerChanged = domainMap.changed;
     LLVM_DEBUG(llvm::dbgs() << "fixed point setup...\n");
     if (cfOp->getNumRegions() == 1) {
       // The sub-block may be executed zero times, so flow forwards from
@@ -226,7 +226,7 @@ void ForwardsRelationDataflowAnalysis::flowControlFlow(
     // Until fixed point...
     do {
       LLVM_DEBUG(llvm::dbgs() << "fixed point iteration...\n");
-      changed = false;
+      domainMap.changed = false;
 
       if (cfOp->getNumRegions() == 1) {
         // The sub-block may be executed again.
@@ -236,10 +236,10 @@ void ForwardsRelationDataflowAnalysis::flowControlFlow(
         flowConditionedLoop(cfOp, domainMap, flowOp);
       }
 
-      outerChanged |= changed;
-    } while (changed);
+      outerChanged |= domainMap.changed;
+    } while (domainMap.changed);
     LLVM_DEBUG(llvm::dbgs() << "fixed point reached\n");
-    changed = outerChanged;
+    domainMap.changed = outerChanged;
     break;
   }
   case GRT::kBranchLike: {
@@ -296,9 +296,9 @@ void ForwardsRelationDataflowAnalysis::flowModel(ModelOp modelOp,
 BackwardsRelationDataflowAnalysis::Set
 BackwardsRelationDataflowAnalysis::operandCombination(
     const DomainMap &domainMap, Value value) const {
-  Set set = domainMap.fullSet;
+  Set set = domainMap.bottom;
   for (OpOperand &operand : value.getUses())
-    domainMap.setIntersection(set, getEntries(domainMap, &operand));
+    domainMap.leastUpperBound(set, getEntries(domainMap, &operand));
   return set;
 }
 
@@ -323,7 +323,7 @@ void BackwardsRelationDataflowAnalysis::flowSimpleLoop(
   for (const auto &[arg, input] :
        llvm::zip(bodyBlock->getArguments(), cfOp.getInputOpOperands())) {
     Set set = operandCombination(domainMap, arg);
-    domainMap.setIntersection(set, getEntries(domainMap, &input));
+    domainMap.leastUpperBound(set, getEntries(domainMap, &input));
     setEntriesAndId(domainMap, &input, set);
   }
 }
@@ -371,7 +371,7 @@ void BackwardsRelationDataflowAnalysis::flowConditionedLoop(
   for (const auto &[arg, output] :
        llvm::zip(bodyBlock->getArguments(), condOutputOp->getOpOperands())) {
     Set set = operandCombination(domainMap, arg);
-    domainMap.setIntersection(set, getEntries(domainMap, &output));
+    domainMap.leastUpperBound(set, getEntries(domainMap, &output));
     setEntriesAndId(domainMap, &output, set);
   }
 
@@ -383,7 +383,7 @@ void BackwardsRelationDataflowAnalysis::flowConditionedLoop(
   for (const auto &[arg, input] :
        llvm::zip(condBlock->getArguments(), cfOp.getInputOpOperands())) {
     Set set = operandCombination(domainMap, arg);
-    domainMap.setIntersection(set, getEntries(domainMap, &input));
+    domainMap.leastUpperBound(set, getEntries(domainMap, &input));
     setEntriesAndId(domainMap, &input, set);
   }
 }
@@ -413,10 +413,10 @@ void BackwardsRelationDataflowAnalysis::flowBranch(
   // the control flow op inputs.
   for (size_t i = 0, n = cfOp.getInputs().size(); i < n; ++i) {
     const OpOperand *input = &cfOp.getInputOpOperands()[i];
-    Set set = domainMap.fullSet;
+    Set set = domainMap.bottom;
     for (Region &region : cfOp->getRegions()) {
       Block *subBlock = &region.front();
-      domainMap.setIntersection(
+      domainMap.leastUpperBound(
           set, operandCombination(domainMap, subBlock->getArgument(i)));
     }
     setEntriesAndId(domainMap, input, set);
@@ -428,7 +428,7 @@ void BackwardsRelationDataflowAnalysis::flowControlFlow(
     const FlowOp &flowOp) {
   switch (cfOp.getFlavor()) {
   case GRT::kLoopLike: {
-    bool outerChanged = changed;
+    bool outerChanged = domainMap.changed;
     LLVM_DEBUG(llvm::dbgs() << "fixed point setup...\n");
     if (cfOp->getNumRegions() == 1) {
       // The sub-block may be executed zero times, so flow backwards
@@ -445,7 +445,7 @@ void BackwardsRelationDataflowAnalysis::flowControlFlow(
     // Until fixed point...
     do {
       LLVM_DEBUG(llvm::dbgs() << "fixed point iteration...\n");
-      changed = false;
+      domainMap.changed = false;
 
       if (cfOp->getNumRegions() == 1) {
         // The sub-block may be executed again.
@@ -455,10 +455,10 @@ void BackwardsRelationDataflowAnalysis::flowControlFlow(
         flowConditionedLoop(cfOp, domainMap, flowOp);
       }
 
-      outerChanged |= changed;
-    } while (changed);
+      outerChanged |= domainMap.changed;
+    } while (domainMap.changed);
     LLVM_DEBUG(llvm::dbgs() << "fixed point reached\n");
-    changed = outerChanged;
+    domainMap.changed = outerChanged;
     break;
   }
   case GRT::kBranchLike: {

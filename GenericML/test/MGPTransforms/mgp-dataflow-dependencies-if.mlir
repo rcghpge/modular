@@ -39,6 +39,15 @@
 // CHECK-NEXT: {%2, %arg4[2], %arg5[2], %arg4[3], %arg5[3], %3#2}
 // CHECK-NEXT: sameAs end
 
+// Notice if results now capture both arms
+// CHECK: maybeSameAs begin
+// CHECK-NEXT: {%0[0], %arg0, %arg2[2], %arg2[3]}
+// CHECK-NEXT: {%1[0], %arg1}
+// CHECK-NEXT: {%1, %arg3[2], %5[2], %arg3[3], %3#0}
+// CHECK-NEXT: {%2, %arg4[2], %arg5[2], %arg4[3], %arg5[3], %3#2}
+// CHECK-NEXT: {%6[2], %5[3], %3#1}
+// CHECK-NEXT: maybeSameAs end
+
 // CHECK: isAlwaysReady({%0[0]})
 
 // CHECK: impliesReady begin
@@ -108,6 +117,11 @@ mgp.model @simple : tf init {
 // CHECK: sameAs begin
 // CHECK: {%9, %arg2[2], %arg2[3]}
 // CHECK: sameAs end
+
+// %14[3] shows up here because %9 and %12 maybe be the same.
+// CHECK: maybeSameAs begin
+// CHECK: {%9, %arg2[2], %arg2[3], %14[3], %12}
+// CHECK: maybeSameAs end
 
 // CHECK: isAlwaysReady({%0[0], %0, %1, %9, %14[3], %12})
 
@@ -191,6 +205,10 @@ mgp.model @redundant : tf init {
 // CHECK: {%6, %arg3[2], %arg3[3]}
 // CHECK: {%9, %arg4[2], %arg4[3]}
 // CHECK: sameAs end
+
+// CHECK: maybeSameAs begin
+// CHECK: {%16[2], %16[3], %12#1}
+// CHECK: maybeSameAs end
 
 // CHECK: impliesReady begin
 // CHECK: %16[2] |-> {%0[0], %5, %7, %8, %9, %15#0[2], %15#1[2], %16[2]}

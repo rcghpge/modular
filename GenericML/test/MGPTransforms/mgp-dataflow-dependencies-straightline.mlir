@@ -28,6 +28,12 @@
 // CHECK-NEXT: {%1[0], %arg1}
 // CHECK-NEXT: sameAs end
 
+// maybeSameAs == sameAs
+// CHECK: maybeSameAs begin
+// CHECK-NEXT: {%0[0], %arg0}
+// CHECK-NEXT: {%1[0], %arg1}
+// CHECK-NEXT: maybeSameAs end
+
 // The two always ready chains (this is up to sameAs equivalence)
 // CHECK: isAlwaysReady({%0[0], %0})
 
