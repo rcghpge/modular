@@ -429,6 +429,18 @@ mo.graph @reshape_no_fold_target_shape_neg_one_dim() -> !mo.tensor<[2, -1], si32
 }
 
 //===----------------------------------------------------------------------===//
+// ScatterNdOp
+//===----------------------------------------------------------------------===//
+
+// CHECK: mo.graph @scatter_nd(%[[UPDATES:.*]]: !mo.tensor<[1, 2, 3], f32>, %[[INDICES:.*]]: !mo.tensor<[1, 2, 1], si32>) -> !mo.tensor<[4, 3], f32>
+mo.graph @scatter_nd(%updates: !mo.tensor<[1, 2, 3], f32>, %indices: !mo.tensor<[1, 2, 1], si32>) -> !mo.tensor<[4, 3], f32> {
+  // CHECK: %[[RES:.*]] = mo.scatter_nd(%[[UPDATES]], %[[INDICES]]) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 1], si32>) -> !mo.tensor<[4, 3], f32>
+  %res = mo.scatter_nd(%updates, %indices) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 1], si32>) -> !mo.tensor<[4, 3], f32>
+  // CHECK: mo.output %[[RES]] : !mo.tensor<[4, 3], f32>
+  mo.output %res : !mo.tensor<[4, 3], f32>
+}
+
+//===----------------------------------------------------------------------===//
 // ShapeOfOp
 //===----------------------------------------------------------------------===//
 
