@@ -22,7 +22,8 @@ SmallVector<Operation *> getDataflowOrder(Block *block);
 
 /// Returns the 'indicating results' for op. If ANY indicating result is ready
 /// then the op is known to have completed and is not holding any references
-/// to any of its operands.
+/// to any of its operands. Note that only 'true' operations can have an
+/// indicating result. Control flow ops will always return empty.
 SmallVector<Value> getIndicatingResults(Operation *op);
 
 /// Returns a representative 'indicating result' for op, or returns null if
@@ -30,7 +31,8 @@ SmallVector<Value> getIndicatingResults(Operation *op);
 Value getRepresentativeIndicatingResult(Operation *op);
 
 /// Returns the 'gating operands' for op. The op can only begin execution once
-/// ALL gating operands are ready.
+/// ALL gating operands are ready. Note that only 'true' operations can have
+/// a gating operand. Output and control flow ops will always return empty.
 SmallVector<Value> getGatingOperands(Operation *op);
 
 /// Returns true if opOperand is a 'gating operand' for its operation.

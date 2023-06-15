@@ -31,6 +31,15 @@ def TensorExtractAnalysisTestPass : Pass<"tensor-extract-analysis-test", "MGP::M
 }
 
 //===----------------------------------------------------------------------===//
+// CheckBufferReadWritePass
+//===----------------------------------------------------------------------===//
+
+def CheckBufferReadWritePass : Pass<"check-buffer-read-write", "MGP::ModelOp"> {
+  let summary = "Checks that the same buffer can never be concurrently read or "
+                "written while another write is in progress.";
+}
+
+//===----------------------------------------------------------------------===//
 // SimplifyChainsPass
 //===----------------------------------------------------------------------===//
 

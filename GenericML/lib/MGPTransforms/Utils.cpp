@@ -62,7 +62,7 @@ SmallVector<Operation *> M::MGP::getDataflowOrder(Block *block) {
 
 SmallVector<Value> M::MGP::getIndicatingResults(Operation *op) {
   if (isa<GRT::GRTControlFlowInterface>(op) || isa<MEF::OutputOp>(op))
-    // Control flow must be handled specially.
+    // Control flow ops don't have indicating results.
     return {};
 
   if (!isa<MEF::NonStrictOp>(op))
@@ -91,7 +91,7 @@ Value M::MGP::getRepresentativeIndicatingResult(Operation *op) {
 
 SmallVector<Value> M::MGP::getGatingOperands(Operation *op) {
   if (isa<GRT::GRTControlFlowInterface>(op) || isa<MEF::OutputOp>(op))
-    // Control flow must be handled specially.
+    // Control flow ops don't have gating operands.
     return {};
 
   if (!isa<MEF::NonStrictOp>(op))
