@@ -7,15 +7,11 @@ mgp.model @chains : tf init {
   mef.output %0, %1 : !mef.chain, !mgp.context
 // CHECK: execute (%[[CH0:.*]]: !mef.chain,
 } execute (%ch0: !mef.chain, %arg1: !mgp.context) -> !mef.chain {
-  // TODO: Temporary!
-  // %ch1 -> fresh create
-  // CHECK: %[[CH1:.*]] = grt.chain.create ()
+  // %ch1 -> %ch0
   %ch1 = grt.chain.create (%ch0)
-  // TODO: Temporary!
-  // %ch2 -> %ch1
+  // %ch2 -> %ch0
   %ch2 = grt.chain.create (%ch1, %ch1)
-  // TODO: Temporary!
-  // CHECK: %[[CH3:.*]] = "some.op1"(%[[CH1]])
+  // CHECK: %[[CH3:.*]] = "some.op1"(%[[CH0]])
   %ch3 = "some.op1"(%ch2) : (!mef.chain) -> !mef.chain
   // %ch4 -> %ch3
   %ch4 = grt.chain.create (%ch0, %ch3)
@@ -78,11 +74,10 @@ mgp.model @chain_merge_fold_empty_operands : tf init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
-// CHECK: execute
+// CHECK: execute (%[[CH0:.*]]: !mef.chain
 } execute (%arg0: !mef.chain, %arg1: !mgp.context) -> !mef.chain {
-  // CHECK-NEXT: %[[RES:.*]] = grt.chain.create ()
   %ch1 = grt.chain.create ()
-  // CHECK-NEXT: mef.output %[[RES]] : !mef.chain
+  // CHECK-NEXT: mef.output %[[CH0]] : !mef.chain
   mef.output %ch1 : !mef.chain
 }
 

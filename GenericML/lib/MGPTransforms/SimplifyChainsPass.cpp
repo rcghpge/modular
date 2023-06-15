@@ -35,6 +35,39 @@ class SimplifyChainsPass
     : public impl::SimplifyChainsPassBase<SimplifyChainsPass> {
   using SimplifyChainsPassBase::SimplifyChainsPassBase;
 
+  /// Returns the 'root' block containing op, which is either the 'init' or
+  /// 'execute' block of the model.
+  Block *getRootBlock(ModelOp modelOp, Operation *op) {
+    while (op->getBlock() != modelOp.getInitBlock() &&
+           op->getBlock() != modelOp.getExecuteBlock())
+      op = op->getParentOp();
+    return op->getBlock();
+  }
+
+  /// Returns a block argument in block which is equivalent to value, or null
+  /// if no such argument exists.
+  Value getEquivArgument(const AsyncDataflowDependencies &dependencies,
+                         Block *block, Value value) {
+    for (Value arg : block->getArguments()) {
+      if (dependencies.sameAs(arg, value))
+        return arg;
+    }
+    return {};
+  }
+
+  // Returns a value representing the 'root chain', ie the %arg0 of
+  // the 'execute' block or its local equivalent. Returns null if no
+  // such value can be found.
+  Value getRootChain(const AsyncDataflowDependencies &dependencies,
+                     ModelOp modelOp, Operation *op) {
+    Block *rootBlock = getRootBlock(modelOp, op);
+    if (rootBlock == modelOp.getExecuteBlock()) {
+      return getEquivArgument(dependencies, op->getBlock(),
+                              rootBlock->getArgument(0));
+    }
+    return {};
+  }
+
   void runOnOperation() override {
     ModelOp modelOp = getOperation();
     // Construct the dependencies from the model. The transforms we
@@ -48,11 +81,21 @@ class SimplifyChainsPass
       accumulatePrimitiveChains(valuesSet, chainCreateOp.getResult());
       SmallVector<Value> values = valuesSet.takeVector();
       dependencies.simplify(values);
-      if (values.size() == 1) {
+      if (values.empty()) {
+        // Instead of creating a fresh chain, try to reuse the 'execute'
+        // block's %arg0.
+        Value replacementValue =
+            getRootChain(dependencies, modelOp, chainCreateOp);
+        if (replacementValue) {
+          chainCreateOp.getResult().replaceAllUsesWith(replacementValue);
+          chainCreateOp.erase();
+        } else {
+          chainCreateOp->setOperands(values);
+        }
+      } else if (values.size() == 1) {
         chainCreateOp.getResult().replaceAllUsesWith(values.front());
         chainCreateOp.erase();
       } else {
-        // Ok for values to now be empty.
         chainCreateOp->setOperands(values);
       }
     });
