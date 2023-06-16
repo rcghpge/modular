@@ -35,9 +35,9 @@ namespace {
 // for a given mo type.
 struct KernelRecord {
   KernelRecord(StringLiteral moggID, StringLiteral shimName, bool hasMojo,
-               bool isView = false)
-      : moggID(moggID), shim(shimName), shouldHaveMojo(hasMojo),
-        isView(isView) {}
+               bool isView = false, bool isNonElemwise = false)
+      : moggID(moggID), shim(shimName), shouldHaveMojo(hasMojo), isView(isView),
+        isNonElemwise(isNonElemwise) {}
 
   ~KernelRecord() = default;
 
@@ -53,6 +53,10 @@ struct KernelRecord {
 
   // Does this operation represent a view which then has special lowering code.
   bool isView;
+
+  // Is this operation an actual operation which is *not* implemented by an
+  // elementwise invoke over a lambda body.
+  bool isNonElemwise;
 };
 
 // Helper to add a map to a jit kernel AND a shim kernel for a given mo op.
@@ -63,6 +67,15 @@ struct KernelRecord {
   {                                                                            \
     TypeID::get<MOOp>(), KernelRecord {                                        \
       MOOp::getOperationName(), ShimName, true                                 \
+    }                                                                          \
+  }
+
+// Same as the above but a special case for non-elementwise ops. Eventually this
+// will be replaced through inspecting the mogg kernel.
+#define MO_TO_MOJO_NON_ELEMWISE(MOOp, ShimName)                                \
+  {                                                                            \
+    TypeID::get<MOOp>(), KernelRecord {                                        \
+      MOOp::getOperationName(), ShimName, true, false, true                    \
     }                                                                          \
   }
 
@@ -157,7 +170,8 @@ struct MOOpPattern : public RewritePattern {
 
     // If we should be using JIT generate a jit target. Otherwise use the shim.
     if (shouldUseJit)
-      return helper.lowerToKernel(kernel.moggID, kernel.isView);
+      return helper.lowerToKernel(kernel.moggID, kernel.isView,
+                                  kernel.isNonElemwise);
     else if (kernel.shim != "None")
       return helper.lowerToShim(kernel.shim);
     else
@@ -206,7 +220,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_SHIM_ONLY(MO::LinAlg::BandPartOp, "mop.kernels.linalg.band_part"),
       MO_SHIM_ONLY(MO::LinAlg::SolveOp, "mop.kernels.linalg.solve"),
       MO_SHIM_ONLY(MO::LogSoftmaxOp, "mop.kernels.logsoftmax"),
-      MO_SHIM_ONLY(MO::GatherOp, "mop.kernels.gather"),
+      MO_TO_MOJO_NON_ELEMWISE(MO::GatherOp, "mop.kernels.gather"),
       MO_SHIM_ONLY(MO::MatmulOp, "mop.kernels.matmul"),
       MO_MOJO_ONLY(MO::MaxOp),
       MO_SHIM_ONLY(MO::MaxPoolOp, "mop.kernels.pool.max"),
@@ -245,6 +259,7 @@ void MOToMOGGPass::runOnOperation() {
 }
 
 #undef MO_TO_MOJO
+#undef MO_TO_MOJO_NON_ELEMWISE
 #undef MO_MOJO_ONLY
 #undef MO_SHIM_ONLY
 #undef MO_TO_MOJO_VIEW
