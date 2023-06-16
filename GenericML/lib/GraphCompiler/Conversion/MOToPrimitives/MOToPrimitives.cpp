@@ -793,7 +793,6 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
     assert(condOutputOp->getNumOperands() ==
            3); // chain, context, and condition
     Value loweredChain = condOutputOp->getOperand(0);
-    Value loweredContext = condOutputOp->getOperand(1);
     Value loweredCondTensor = condOutputOp->getOperand(2);
 
     SmallVector<Value> condOutputOpOperands;

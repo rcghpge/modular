@@ -1008,6 +1008,8 @@ def MO_ReduceAddOp : MO_ReductionOp<"reduce.add"> {
       !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
+
+  let hasFolder = 1;
 }
 
 def MO_ReduceMinOp : MO_ReductionOp<"reduce.min"> {

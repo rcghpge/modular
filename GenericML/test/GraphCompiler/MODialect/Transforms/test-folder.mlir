@@ -211,3 +211,47 @@ mo.graph @no_fold_slice_parameter<N, M>(%arg0: !mo.tensor<[N, M], f64>,
 // CHECK-NEXT: mo.constant
 // CHECK-NEXT: %[[OUT:.*]] = mo.slice
 // CHECK-NEXT: mo.output %[[OUT]]
+
+mo.graph @fold_reduce_add(%arg0 : !mo.tensor<[1, 10, 1], f32>) -> !mo.tensor<[1, 10, 1], f32> {
+    %axis = mo.constant {value = #M.dense_array<0> : !M.array<1xsi32>} : !mo.tensor<[], si32>
+    %res = mo.reduce.add(%arg0, %axis) : (!mo.tensor<[1, 10, 1], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[1, 10, 1], f32>
+
+    // CHECK-LABEL: mo.graph @fold_reduce_add
+    // CHECK: (%[[ARG0:.*]]: !mo.tensor<[1, 10, 1], f32>
+    // CHECK-NEXT: mo.output %[[ARG0]] : !mo.tensor<[1, 10, 1], f32>
+    mo.output %res : !mo.tensor<[1, 10, 1], f32>
+}
+
+mo.graph @fold_reduce_add2(%arg0 : !mo.tensor<[1, 10, 1], f32>) -> !mo.tensor<[1, 10, 1], f32> {
+    %axis = mo.constant {value = #M.dense_array<-1> : !M.array<1xsi32>} : !mo.tensor<[], si32>
+    %res = mo.reduce.add(%arg0, %axis) : (!mo.tensor<[1, 10, 1], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[1, 10, 1], f32>
+
+    // CHECK-LABEL: mo.graph @fold_reduce_add2
+    // CHECK: (%[[ARG0:.*]]: !mo.tensor<[1, 10, 1], f32>
+    // CHECK-NEXT: mo.output %[[ARG0]] : !mo.tensor<[1, 10, 1], f32>
+    mo.output %res : !mo.tensor<[1, 10, 1], f32>
+}
+
+mo.graph @no_fold_reduce_add(%arg0 : !mo.tensor<[1, 10, 1], f32>) -> !mo.tensor<[1, 10, 1], f32> {
+    %axis = mo.constant {value = #M.dense_array<1> : !M.array<1xsi32>} : !mo.tensor<[], si32>
+    %res = mo.reduce.add(%arg0, %axis) : (!mo.tensor<[1, 10, 1], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[1, 10, 1], f32>
+
+    // CHECK-LABEL: mo.graph @no_fold_reduce_add
+    // CHECK: (%[[ARG0:.*]]: !mo.tensor<[1, 10, 1], f32>
+    // CHECK-NEXT: mo.constant
+    // CHECK-NEXT: %[[OUT:.*]] = mo.reduce.add
+    // CHECK-NEXT: mo.output %[[OUT]] : !mo.tensor<[1, 10, 1], f32>
+    mo.output %res : !mo.tensor<[1, 10, 1], f32>
+}
+
+mo.graph @no_fold_reduce_add2(%arg0 : !mo.tensor<[1, 10, 1], f32>) -> !mo.tensor<[1, 10, 1], f32> {
+    %axis = mo.constant {value = #M.dense_array<-2> : !M.array<1xsi32>} : !mo.tensor<[], si32>
+    %res = mo.reduce.add(%arg0, %axis) : (!mo.tensor<[1, 10, 1], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[1, 10, 1], f32>
+
+    // CHECK-LABEL: mo.graph @no_fold_reduce_add2
+    // CHECK: (%[[ARG0:.*]]: !mo.tensor<[1, 10, 1], f32>
+    // CHECK-NEXT: mo.constant
+    // CHECK-NEXT: %[[OUT:.*]] = mo.reduce.add
+    // CHECK-NEXT: mo.output %[[OUT]] : !mo.tensor<[1, 10, 1], f32>
+    mo.output %res : !mo.tensor<[1, 10, 1], f32>
+}

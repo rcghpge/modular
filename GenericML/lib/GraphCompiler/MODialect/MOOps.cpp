@@ -1474,6 +1474,27 @@ LogicalResult RebindOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// MO_ReduceAddOp support
+//===----------------------------------------------------------------------===//
+
+OpFoldResult ReduceAddOp::fold(FoldAdaptor adaptor) {
+  auto axisArr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getAxis());
+  TensorType inputTy = getType();
+
+  if (!axisArr || !inputTy.hasRank())
+    return {};
+
+  int64_t axis = getIntBlob(axisArr).front();
+  if (axis < 0)
+    axis = inputTy.getRank() + axis;
+
+  // If we are reducing along a dimension of 1
+  if (inputTy.getIntDim(axis) == 1)
+    return getInput();
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // MO_ReduceMulOp support
 //===----------------------------------------------------------------------===//
 
