@@ -170,3 +170,18 @@ mo.graph @transpose_and_bcast_fused(%arg0 : !mo.tensor<[], si32>) -> !mo.tensor<
 // CHECK-NEXT:  %[[LOAD1:.*]] = mogg.invoke @input_0_fn
 // CHECK-NEXT:  %[[LOAD2:.*]] = mogg.invoke @input_1_fn
 // CHECK-NEXT:  %[[ADD:.*]] = mogg.call "mo.add"(%[[LOAD1]], %[[LOAD2]])
+
+
+mo.graph @transpose_and_gather(%data : !mo.tensor<[3, 4, 2, 1, 2], si32>, %indices :!mo.tensor<[12], ui32>) -> (!mo.tensor<[2, 12, 1, 3, 4], si32>) {
+  %axis = mo.constant {value = #M.dense_array<1> : tensor<ui32>} : !mo.tensor<[], ui32>
+  %perm = mo.constant {value = #M.dense_array<4,2,3,0,1> : tensor<5xsi32>} : !mo.tensor<[5], si32>
+  %trans = mo.transpose(%data, %perm) : (!mo.tensor<[3, 4, 2, 1, 2], si32>, !mo.tensor<[5], si32>) -> !mo.tensor<[2, 2, 1, 3, 4], si32>
+  %res = mo.gather(%trans, %indices, %axis) : (!mo.tensor<[2, 2, 1, 3, 4], si32>, !mo.tensor<[12], ui32>, !mo.tensor<[], ui32>) -> !mo.tensor<[2, 12, 1, 3, 4], si32>
+  mo.output %res : !mo.tensor<[2, 12, 1, 3, 4], si32>
+}
+
+// CHECK-LABEL: mo.graph @transpose_and_gather
+// CHECK: %[[OUT:.*]] = mogg.kernel
+// CHECK: mogg.call "mo.transpose"
+// CHECK: mogg.call "mo.gather"
+// CHECK: mo.output %[[OUT]]

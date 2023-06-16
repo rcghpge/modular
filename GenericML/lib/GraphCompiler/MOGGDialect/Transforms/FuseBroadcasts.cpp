@@ -31,9 +31,16 @@ struct FuseBroadcastsPass
     MO::GraphOp graph = getOperation();
 
     for (MOGG::KernelOp kernel : graph.getOps<MOGG::KernelOp>()) {
-      // Skip non elementwise kernels. We are fusing broadcasts *into* those
-      // kernels.
-      if (!kernel.getFusionBodyLambda() || kernel.getIsViewOp().value_or(false))
+      // Only allow fusion if the kernel exposes an input lambda.
+      // This isn't mechanically necessary. Everything will still work without
+      // this. However the current story is that a kernel without a lambda will
+      // disallow fusion on those inputs. We might want to make this more fine
+      // grained in the future.
+      if (!kernel.getInputFusionInterfaceAttr())
+        continue;
+
+      // Also avoid view ops into view ops for now.
+      if (kernel.getIsViewOp().value_or(false))
         continue;
 
       // For catching the rare case of a broadcast taking a broadcast as arg AND
