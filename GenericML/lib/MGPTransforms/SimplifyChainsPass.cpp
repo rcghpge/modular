@@ -55,15 +55,17 @@ class SimplifyChainsPass
     return {};
   }
 
-  // Returns a value representing the 'root chain', ie the %arg0 of
-  // the 'execute' block or its local equivalent. Returns null if no
-  // such value can be found.
-  Value getRootChain(const AsyncDataflowDependencies &dependencies,
-                     ModelOp modelOp, Operation *op) {
+  // Returns a value representing the always ready 'root chain', ie %arg0 of
+  // the 'execute' block or its local equivalent, provided we have
+  // dependencies.isAlwaysReady for that value. Returns null if no such value
+  // can be found.
+  Value getAlwaysReadyRootChain(const AsyncDataflowDependencies &dependencies,
+                                ModelOp modelOp, Operation *op) {
     Block *rootBlock = getRootBlock(modelOp, op);
     if (rootBlock == modelOp.getExecuteBlock()) {
-      return getEquivArgument(dependencies, op->getBlock(),
-                              rootBlock->getArgument(0));
+      Value rootChain = rootBlock->getArgument(0);
+      if (dependencies.isAlwaysReady(rootChain))
+        return getEquivArgument(dependencies, op->getBlock(), rootChain);
     }
     return {};
   }
@@ -76,6 +78,10 @@ class SimplifyChainsPass
     IndexSet<Value> index = createValueIndexSet(modelOp);
     AsyncDataflowDependencies dependencies(&index);
 
+    // CAUTION: We'll be making in-place updates as we go. However, since
+    // we don't update the dependencies analysis results, we must be careful
+    // to only do rewrites which are invariant w.r.t. that.
+
     modelOp.walk([&](GRT::ChainCreateOp chainCreateOp) {
       ValueSetVector valuesSet;
       accumulatePrimitiveChains(valuesSet, chainCreateOp.getResult());
@@ -83,9 +89,9 @@ class SimplifyChainsPass
       dependencies.simplify(values);
       if (values.empty()) {
         // Instead of creating a fresh chain, try to reuse the 'execute'
-        // block's %arg0.
+        // block's %arg0 if it is also always ready.
         Value replacementValue =
-            getRootChain(dependencies, modelOp, chainCreateOp);
+            getAlwaysReadyRootChain(dependencies, modelOp, chainCreateOp);
         if (replacementValue) {
           chainCreateOp.getResult().replaceAllUsesWith(replacementValue);
           chainCreateOp.erase();

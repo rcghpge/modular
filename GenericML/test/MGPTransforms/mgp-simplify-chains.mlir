@@ -26,17 +26,18 @@ mgp.model @chains : tf init {
   // %ch9 -> grt.chain.create(%ch5, %ch6, %ch7)
   // Dead
   %ch9 = grt.chain.create (%ch4, %ch8, %ch7)
-  // %ch10 is always ready
-  // CHECK: %[[CH10:.*]] = grt.chain.create ()
+  // %ch10 -> %ch0
   %ch10 = grt.chain.create ()
   // Dead
   %ch11 = grt.chain.create (%ch10, %ch9)
   %c = "some.op5"() : () -> i1
   // %ch12 is always ready
+  // CHECK: %[[CH12:.*]] = grt.if %{{.*}} (%[[CH0]]: !mef.chain) -> !mef.chain {
   %ch12 = grt.if %c (%ch10 : !mef.chain) -> !mef.chain {
     mef.output %ch10 : !mef.chain
   } else {
     // %ch13 is always ready
+    // CHECK: %[[CH13:.*]] = grt.chain.create ()
     %ch13 = grt.chain.create ()
     mef.output %ch13 : !mef.chain
   }
@@ -46,6 +47,20 @@ mgp.model @chains : tf init {
   // CHECK: mef.output %[[CH14]]
   mef.output %ch14 : !mef.chain
 }
+
+// CHECK-LABEL: mgp.model @arg0_not_always_ready
+mgp.model @arg0_not_always_ready : tf init {
+  %0 = grt.chain.create ()
+  %1 = mgp.context.create 0
+  %2 = "some.op" (%0) : (!mef.chain) -> !mef.chain
+  mef.output %2, %1 : !mef.chain, !mgp.context
+// CHECK: execute (%[[CH0:.*]]: !mef.chain,
+} execute (%ch0: !mef.chain, %arg1: !mgp.context) -> !mef.chain {
+  // CHECK-NEXT: %{{.*}} = grt.chain.create ()
+  %ch1 = grt.chain.create ()
+  mef.output %ch1 : !mef.chain
+}
+
 
 // CHECK-LABEL: mgp.model @chain_merge_canonicalized
 mgp.model @chain_merge_canonicalized : tf init {
