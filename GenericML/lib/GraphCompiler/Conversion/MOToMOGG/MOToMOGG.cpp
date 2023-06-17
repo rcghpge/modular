@@ -107,9 +107,12 @@ struct KernelRecord {
 using MoToKernelMapTy = SmallDenseMap<mlir::TypeID, KernelRecord, 64>;
 
 struct MOOpPattern : public RewritePattern {
-  MOOpPattern(MLIRContext *ctx, MoToKernelMapTy &moToMojoKernels, bool useJit)
+  MOOpPattern(MLIRContext *ctx, MoToKernelMapTy &moToMojoKernels,
+              MOGG::MojoRegisterOp registry, mlir::ModuleOp kgenMod,
+              bool useJit)
       : RewritePattern(MatchAnyOpTypeTag{}, 1, ctx),
-        moToMojoKernels(moToMojoKernels), useJit(useJit) {}
+        moToMojoKernels(moToMojoKernels), registry(registry),
+        moggBindings(kgenMod), useJit(useJit) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
@@ -136,7 +139,7 @@ struct MOOpPattern : public RewritePattern {
     KernelRecord &kernel = itr->second;
 
     // Helper to encapsulate all the code required to lower to a kernel.
-    MO::KernelLowererHelper helper{op};
+    MO::KernelLowererHelper helper{op, registry, moggBindings};
 
     // Current jit kernel constraints:
     // Ranked.
@@ -180,6 +183,12 @@ struct MOOpPattern : public RewritePattern {
 
   MoToKernelMapTy &moToMojoKernels;
 
+  // The mapping of MO operations to their Mojo kernel.
+  MOGG::MojoRegisterOp registry;
+
+  // The KGEN ir containing the mogg bindings.
+  mlir::ModuleOp moggBindings;
+
   bool useJit;
 };
 
@@ -193,6 +202,24 @@ struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
 
 void MOToMOGGPass::runOnOperation() {
   auto *ctx = &getContext();
+
+  ModuleOp m = getOperation();
+
+  // Load the MOGG registry of mojo ops.
+  auto registryOr = MOGG::getOrLoadMojoLibrary(m);
+  if (failed(registryOr))
+    return signalPassFailure();
+
+  MOGG::MojoRegisterOp registry = *registryOr;
+
+  // Get mlir IR with all the bindings so we can introspect it.
+  auto errOr = MOGG::loadMojoBindings(m->getContext());
+  if (errOr.isError()) {
+    m->emitError() << errOr.getError();
+    return signalPassFailure();
+  }
+
+  OwningOpRef<mlir::ModuleOp> moggBindings = errOr.takeValue();
 
   // A map of MO types to the known implementations. Ops can be backed by two
   // implementations. A C++ shim in the mop primitives and a Mojo kernel which
@@ -252,10 +279,17 @@ void MOToMOGGPass::runOnOperation() {
   };
 
   RewritePatternSet patterns{ctx};
-  patterns.add<MOOpPattern>(ctx, moToMojoKernels, useJit.getValue());
+  patterns.add<MOOpPattern>(ctx, moToMojoKernels, registry, moggBindings.get(),
+                            useJit.getValue());
 
   if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
     return signalPassFailure();
+
+  // Just delete it for now. We should figure out what we want to do with it but
+  // for now it can just be reloaded in the jit. We don't want to have this huge
+  // thing in the IR when we run the other passes. The mojo is all in memory
+  // anyway so should be cheap-ish.
+  registry.erase();
 }
 
 #undef MO_TO_MOJO

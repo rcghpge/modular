@@ -31,6 +31,14 @@ namespace M::MOGG {
 // Return the mojo registry, adding it if needed.
 FailureOr<MojoRegisterOp> getOrLoadMojoLibrary(ModuleOp theModule);
 
+// Return true if the MO op has the given parameter.
+bool kernelHasInputParameter(MOGG::MojoRegisterOp opRegister,
+                             ModuleOp kgenModule, StringRef moOpName,
+                             StringRef parameterName);
+
+// Return the KGEN module containing the MOGG bindings.
+ErrorOr<OwningOpRef<mlir::ModuleOp>> loadMojoBindings(MLIRContext *ctx);
+
 //===----------------------------------------------------------------------===//
 // Generated Pass Classes and Registration
 //===----------------------------------------------------------------------===//

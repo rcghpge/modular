@@ -323,19 +323,12 @@ struct JitCompileKernels
   }
 
   ErrorOr<mlir::OwningOpRef<mlir::ModuleOp>> loadMojoLibrary() {
-
     // Load the module. The stub will be appended to this.
-    llvm::StringRef source{
-        reinterpret_cast<const char *>(MojoMoggBindings::data),
-        MojoMoggBindings::size};
-    mlir::OwningOpRef<mlir::ModuleOp> baseModuleRef =
-        mlir::parseSourceString<mlir::ModuleOp>(source,
-                                                getOperation()->getContext());
+    auto errorOr = loadMojoBindings(getOperation()->getContext());
+    if (errorOr.isError())
+      return errorOr.takeError();
 
-    if (!baseModuleRef) {
-      return Error("[JitCompileKernels] Could not load the embedded MOGG Mojo "
-                   "binding library at path ");
-    }
+    mlir::OwningOpRef<mlir::ModuleOp> baseModuleRef = errorOr.takeValue();
 
     // Strip all the export functions from the imported module.
     baseModuleRef->walk([&](KGEN::ExportOp exportOp) { exportOp.erase(); });
