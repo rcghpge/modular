@@ -126,7 +126,7 @@ std::string mangleBlock(mlir::Block &block,
         valueToPositionInBlock[output] = std::to_string(blockIndex);
 
     } else if (auto call = dyn_cast<MOGG::CallOp>(innerOp)) {
-      name += "call_" + call.getLitKernelTarget().str();
+      name += "call_" + call.getMojoKernelTarget().str();
 
       // If we have parameters we have to mangle those too.
       if (call.getParams()) {
