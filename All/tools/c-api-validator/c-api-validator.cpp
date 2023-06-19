@@ -4,7 +4,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/API/modular/c/CAS/config.h"
 #include "GenericML/API/modular/c/common.h"
 #include "GenericML/API/modular/c/context.h"
 #include "GenericML/API/modular/c/model.h"

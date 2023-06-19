@@ -9,6 +9,5 @@ add_modular_tool(c-api-validator
 
   LINK_LIBS PUBLIC
   modular-framework-common
-  modular-framework-cas-ext
   GenericMLExecutionDriver
 )
