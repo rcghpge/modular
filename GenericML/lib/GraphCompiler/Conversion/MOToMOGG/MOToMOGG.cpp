@@ -157,6 +157,15 @@ struct MOOpPattern : public RewritePattern {
       if (!tensor || !allowedElementTypes || !tensor.hasRank() ||
           tensor.getRank() > kMaxRank || tensor.hasUnknownShape())
         return false;
+
+      // The symbolic shape must be trivial and not a compound expresion. I.E
+      // N*M.
+      for (TypedAttr symbolicDim : tensor.getDims()) {
+        if (!(isa<KGEN::ParamDeclRefAttr>(symbolicDim) ||
+              isa<IntegerAttr>(symbolicDim)))
+          return false;
+      }
+
       return true;
     };
 
