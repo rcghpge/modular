@@ -262,13 +262,14 @@ def MOGG_CallOp : MOGG_Op<"call"> {
   let arguments = (ins
      StrAttr:$mojoKernelTarget,
      Variadic<AnyTypeOf<[MOGG_Simd, MO_Tensor, MOGG_Indices]>>:$operands,
-     OptionalAttr<ArrayAttr>:$params
+     OptionalAttr<ArrayAttr>:$params,
+     OptionalAttr<DictionaryAttr>:$kgenParams
   );
 
    let results = (outs Variadic<AnyTypeOf<[MOGG_Simd, MO_Tensor]>>:$results);
 
    let assemblyFormat = [{
-     $mojoKernelTarget ($params^)? attr-dict `(`($operands^)?`)`
+     $mojoKernelTarget ($params^)? `(`($operands^)?`)` ($kgenParams^)? attr-dict
        (`:` type($operands)^)? (`->` type($results)^)?
    }];
  }

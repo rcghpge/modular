@@ -10,8 +10,8 @@ mo.graph @basicBroadcastFuse<N, M, K>(%arg0: !mo.tensor<[N, M], f32>, %arg1: !mo
 // CHECK:  mo.graph @basicBroadcastFuse<N, M, K>(%[[ARG0:.*]]: !mo.tensor<[N, M], f32>, %[[ARG1:.*]]: !mo.tensor<[K, M], f32>) -> !mo.tensor<[K, M], f32> {
 // CHECK-NEXT:   %[[KERNEL:.*]] = mogg.kernel (%[[ARG1]], %[[ARG0]]) : (%[[IN1:.*]]: !mo.tensor<[K, M], f32>, %[[IN2:.*]]: !mo.tensor<[N, M], f32>) -> !mo.tensor<[K, M], f32>{
 // CHECK-NEXT:   %[[OUT:.*]] = mogg.output_placeholders : !mo.tensor<[K, M], f32>
-// CHECK-NEXT:   %[[BCAST_1:.*]] = mogg.call "mo.static.broadcast_to"(%[[IN2]], %[[OUT]]) : !mo.tensor<[N, M], f32>, !mo.tensor<[K, M], f32> -> !mo.tensor<[K, M], f32>
-// CHECK-NEXT:   %[[BCAST_2:.*]] = mogg.call "mo.static.broadcast_to"(%[[IN1]], %[[OUT]]) : !mo.tensor<[K, M], f32>, !mo.tensor<[K, M], f32> -> !mo.tensor<[K, M], f32>
+// CHECK-NEXT:   %[[BCAST_1:.*]] = mogg.call "mo.static.broadcast_to"(%[[IN2]], %[[OUT]]) {single_thread_blocking_override = false} : !mo.tensor<[N, M], f32>, !mo.tensor<[K, M], f32> -> !mo.tensor<[K, M], f32>
+// CHECK-NEXT:   %[[BCAST_2:.*]] = mogg.call "mo.static.broadcast_to"(%[[IN1]], %[[OUT]]) {single_thread_blocking_override = false} : !mo.tensor<[K, M], f32>, !mo.tensor<[K, M], f32> -> !mo.tensor<[K, M], f32>
 // CHECK-NEXT:   mogg.lambda @input_0_fn = (%[[INDICES:.*]]: !mogg.indices) -> !mogg.simd<f32>{
 // CHECK-NEXT:      %[[LOAD:.*]] = mogg.simd_load(%[[BCAST_1]], %[[INDICES]]) : (!mo.tensor<[K, M], f32>, !mogg.indices) -> !mogg.simd<f32>
 // CHECK-NEXT:      mogg.output %[[LOAD]] : !mogg.simd<f32>
@@ -51,8 +51,8 @@ mo.graph @basicBroadcastIntoElemwise(%arg0: !mo.tensor<[10, 12, 1, 50], f32>, %a
 // CHECK:  mo.graph @basicBroadcastIntoElemwise(%[[ARG0:.*]]: !mo.tensor<[10, 12, 1, 50], f32>, %[[ARG1:.*]]: !mo.tensor<[100, 1], f32>)
 // CHECK-NEXT:   %[[KERNEL:.*]] = mogg.kernel (%[[ARG1]], %[[ARG0]]) : (%[[IN1:.*]]: !mo.tensor<[100, 1], f32>, %[[IN2:.*]]: !mo.tensor<[10, 12, 1, 50], f32>) -> !mo.tensor<[10, 12, 100, 50], f32>
 // CHECK-NEXT:   mogg.output_placeholders
-// CHECK-NEXT:   %[[BCAST_1:.*]] = mogg.call "mo.static.broadcast_to"(%[[IN2]], %[[OUT]]) : !mo.tensor<[10, 12, 1, 50], f32>, !mo.tensor<[10, 12, 100, 50], f32> -> !mo.tensor<[10, 12, 100, 50], f32>
-// CHECK-NEXT:   %[[BCAST_2:.*]] = mogg.call "mo.static.broadcast_to"(%[[IN1]], %[[OUT]]) : !mo.tensor<[100, 1], f32>, !mo.tensor<[10, 12, 100, 50], f32> -> !mo.tensor<[10, 12, 100, 50], f32>
+// CHECK-NEXT:   %[[BCAST_1:.*]] = mogg.call "mo.static.broadcast_to"(%[[IN2]], %[[OUT]]) {single_thread_blocking_override = false} : !mo.tensor<[10, 12, 1, 50], f32>, !mo.tensor<[10, 12, 100, 50], f32> -> !mo.tensor<[10, 12, 100, 50], f32>
+// CHECK-NEXT:   %[[BCAST_2:.*]] = mogg.call "mo.static.broadcast_to"(%[[IN1]], %[[OUT]]) {single_thread_blocking_override = false} : !mo.tensor<[100, 1], f32>, !mo.tensor<[10, 12, 100, 50], f32> -> !mo.tensor<[10, 12, 100, 50], f32>
 
 // Check we load from the bcasts
 // CHECK: mogg.lambda @input_0_fn = (%[[INDICES:.*]]: !mogg.indices)
