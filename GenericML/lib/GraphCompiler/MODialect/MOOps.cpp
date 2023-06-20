@@ -1693,6 +1693,41 @@ OpFoldResult Static::ReshapeOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
+LogicalResult Static::ReshapeOp::verify() {
+  // Best effort verifier. Only really catches when
+  // non-parameterized shapes are incompatible. E.g. [2, 3] and [5].
+
+  TensorType inputTy = getInput().getType();
+  TensorType resultTy = getType();
+  if (!inputTy.hasRank() || !resultTy.hasRank())
+    return success();
+
+  for (auto curResDim : resultTy.getTypedShapeAttr().getValues()) {
+    auto intCurResDim = dyn_cast<IntegerAttr>(curResDim);
+    if (intCurResDim && intCurResDim.getInt() == -1)
+      return emitOpError("static Reshape can not have inferred dimensions");
+  }
+
+  TypedAttr inputNumEles = inputTy.getSymbolicNumElements();
+  TypedAttr resultNumEles = resultTy.getSymbolicNumElements();
+  if (!isa<IntegerAttr>(inputNumEles) || !isa<IntegerAttr>(resultNumEles)) {
+    // Here, one of inputNumEles or resultNumEles has parameters in the expression.
+    // Assume you can always set some parameters to equal the other side.
+    // e.g. 5 * N = 10, N could be 2 to make things valid, we can't check
+    // deeper. Note: as parameters are integers, some expressions could
+    // potentially be invalidated. E.g. 5 * N = 8 is clearly impossible for
+    // integer N. However, for now, this is sufficient.
+    return success();
+  }
+
+  if (inputNumEles != resultNumEles) {
+    return emitOpError("input and output elements do not match: ")
+           << dyn_cast<IntegerAttr>(inputNumEles).getInt() << " vs "
+           << dyn_cast<IntegerAttr>(resultNumEles).getInt();
+  }
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // MO_ShapeOfOp
 //===----------------------------------------------------------------------===//

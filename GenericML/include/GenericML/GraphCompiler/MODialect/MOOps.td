@@ -1526,7 +1526,8 @@ def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape"> {
   let description = [{
     Return a tensor with the same underlying data, but different shape. The
     shape of the input and result tensors must not be unknown or contain unknown
-    dimensions, but can be parametric.
+    dimensions, but can be parametric. We do not allow inferred dimensions 
+    (e.g. -1 in MO_ReshapeOp).
 
     The op has no compile-time or runtime checks on the validity of the target
     shape (we expect the user to add any necessary runtime checks); therefore it
@@ -1542,6 +1543,7 @@ def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape"> {
     ```
   }];
 
+  let hasVerifier = 1;
   let hasCanonicalizeMethod = 1;
 }
 

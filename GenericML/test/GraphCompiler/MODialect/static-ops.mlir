@@ -78,6 +78,14 @@ mo.graph @static_reshape<N>(%from: !mo.tensor<[N, 3], f32>) -> !mo.tensor<[1, 3,
   mo.output %res : !mo.tensor<[1, 3, N], f32>
 }
 
+// CHECK: mo.graph @static_reshape_handle0<[[N:.*]]>(%[[FROM:.*]]: !mo.tensor<[[[N]], 3], f32>)
+mo.graph @static_reshape_handle0<N>(%from: !mo.tensor<[N, 3], f32>) -> !mo.tensor<[1, 3, 0], f32> {
+  // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[FROM]]) : !mo.tensor<[[[N]], 3], f32> -> !mo.tensor<[1, 3, 0], f32>
+  %res = mo.static.reshape(%from) : !mo.tensor<[N, 3], f32> -> !mo.tensor<[1, 3, 0], f32>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[1, 3, 0], f32>
+  mo.output %res : !mo.tensor<[1, 3, 0], f32>
+}
+
 // CHECK: mo.graph @static_reshape_fold_same_static_rank<[[N:.*]]>(%[[FROM:.*]]: !mo.tensor<[[[N]], 3], f32>)
 mo.graph @static_reshape_fold_same_static_rank<N>(%from: !mo.tensor<[N, 3], f32>) -> !mo.tensor<[N, 3], f32> {
   %res = mo.static.reshape(%from) : !mo.tensor<[N, 3], f32> -> !mo.tensor<[N, 3], f32>
@@ -101,16 +109,6 @@ mo.graph @static_reshape_fold_static_out_shape_attr() -> !mo.tensor<[2, 2], si32
   %res = mo.static.reshape(%from) : !mo.tensor<[4], si32> -> !mo.tensor<[2, 2], si32>
   // CHECK-NEXT: mo.output %[[INPUT]] : !mo.tensor<[2, 2], si32>
   mo.output %res : !mo.tensor<[2, 2], si32>
-}
-
-// CHECK: mo.graph @static_reshape_no_fold_neg_one_dim() -> !mo.tensor<[-1], si32> {
-mo.graph @static_reshape_no_fold_neg_one_dim() -> !mo.tensor<[-1], si32> {
-  // CHECK-NEXT: %[[INPUT:.*]] = mo.constant {value = #M.dense_array<1, 2, 3, 4> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
-  %from = mo.constant {value = #M.dense_array<1, 2, 3, 4> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
-  // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[INPUT]]) : !mo.tensor<[2, 2], si32> -> !mo.tensor<[-1], si32>
-  %res = mo.static.reshape(%from) : !mo.tensor<[2, 2], si32> -> !mo.tensor<[-1], si32>
-  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[-1], si32>
-  mo.output %res : !mo.tensor<[-1], si32>
 }
 
 // CHECK: mo.graph @static_reshape_fold_to_rebind_static<[[A:.*]], [[B:.*]]>(
