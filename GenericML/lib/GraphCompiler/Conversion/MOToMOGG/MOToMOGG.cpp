@@ -257,7 +257,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_MOJO_NON_ELEMWISE(MO::LinAlg::SolveOp, "mop.kernels.linalg.solve"),
       MO_SHIM_ONLY(MO::LogSoftmaxOp, "mop.kernels.logsoftmax"),
       MO_TO_MOJO_NON_ELEMWISE(MO::GatherOp, "mop.kernels.gather"),
-      MO_SHIM_ONLY(MO::MatmulOp, "mop.kernels.matmul"),
+      MO_TO_MOJO_NON_ELEMWISE(MO::MatmulOp, "mop.kernels.matmul"),
       MO_MOJO_ONLY(MO::MaxOp),
       MO_SHIM_ONLY(MO::MaxPoolOp, "mop.kernels.pool.max"),
       MO_SHIM_ONLY(MO::MeanOp, "mop.kernels.mean"),
