@@ -91,6 +91,27 @@ def FuseElementwise: Pass<"fuse-elementwise", "MO::GraphOp"> {
   ];
 }
 
+def MarkTrivialKernels: Pass<"mark-trivial-kernels", "MO::GraphOp"> {
+  let summary = "Statically detect if kernels are trivial";
+  let description = [{
+    Check if a kernel is trivial and only contains calls to `single_thread_blocking_override`
+    compatible kernels. If so then we are able to potentially avoid the async overhead.
+    This enables soft fusion of those kernels.
+  }];
+  let dependentDialects = ["M::MOGG::MOGGDialect"];
+}
+
+def AddExplicitChainReady: Pass<"add-explicit-chain-ready", "MO::GraphOp"> {
+  let summary = "Adds a chain ready if needed";
+  let description = [{
+    When we mark kernels as being single thread blocking we are opting them into
+    behaviour which prevents them from setting the chain ready themselves. 
+    Instead the chain ready should be set at the end of a cluster of these
+    calls. This pass will detect when we need to insert such a call.
+  }];
+  let dependentDialects = ["M::MOGG::MOGGDialect"];
+}
+
 def LoadMojoLibrary : Pass<"load-mojo-library", "ModuleOp"> {
   let summary = "Load the mojo library";
   let description = [{

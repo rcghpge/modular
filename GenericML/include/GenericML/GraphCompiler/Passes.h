@@ -58,6 +58,13 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
           "thus sharing the cost of buffer allocation across "
           "calls to execute at the cost of higher memory high water mark."),
       llvm::cl::init(false)};
+  Option<bool> performTrivialKernelOpt{
+      *this, "trivial-kernel-opt",
+      llvm::cl::desc(
+          "If true we will promote trivial kernels to synchronous kernels"
+          "which then can be soft-fused together. This is the default but"
+          "is available as a flag for tests."),
+      llvm::cl::init(true)};
 };
 
 // Registers the end-to-end shape inference pipeline.

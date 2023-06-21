@@ -118,6 +118,15 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
       pm.addPass(MOGG::createFuseConstants());
     }
 
+
+    if (opts.performTrivialKernelOpt) {
+      // Mark trivial kernels as being syncronous.
+      pm.addPass(MOGG::createMarkTrivialKernels());
+
+      // Add explicit chain ready's to the end of fully sync kenrels.
+      pm.addPass(MOGG::createAddExplicitChainReady());
+    }
+
     // If we are jitting then we need to compile the jit kernels as well.
     MOGG::JitCompileKernelsOptions jitOpts;
     jitOpts.useSearch = opts.useKgenSearch;
