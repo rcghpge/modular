@@ -31,7 +31,7 @@ mo.graph @basicBroadcastFuse<N, M, K>(%arg0: !mo.tensor<[N, M], f32>, %arg1: !mo
 // CHECK-NEXT:      mogg.invoke @output_0_fn(%[[INDICES]], %[[ADD]]) : !mogg.indices, !mogg.simd<f32>
 // CHECK-NEXT:      mogg.output
 // CHECK-NEXT:   }
-// CHECK-NEXT:   mogg.call "elementwise" [@elemwise_compute_lambda](%[[OUT]]) : !mo.tensor<[K, M], f32>
+// CHECK-NEXT:   mogg.call "elementwise" [@elemwise_compute_lambda](%[[OUT]]) {single_thread_blocking_override = false} : !mo.tensor<[K, M], f32>
 // CHECK-NEXT:   mogg.output %[[OUT]] : !mo.tensor<[K, M], f32>
 
 // Check the attributes have been stripped so this can no longer be fused.

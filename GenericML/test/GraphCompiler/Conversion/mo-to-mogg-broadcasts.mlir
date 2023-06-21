@@ -32,7 +32,7 @@ mo.graph @bcast_basic<N, L, M, K>(%arg0: !mo.tensor<[N, M, L], f32>) -> (!mo.ten
 // CHECK-NEXT:  }
 
 // Invoke the elementwise copy.
-// CHECK-NEXT:  mogg.call "elementwise" [@elemwise_compute_lambda](%[[OUT]]) : !mo.tensor<[N, M, K], f32>
+// CHECK-NEXT:  mogg.call "elementwise" [@elemwise_compute_lambda](%[[OUT]]) {single_thread_blocking_override = false} : !mo.tensor<[N, M, K], f32>
 // CHECK-NEXT:  mogg.output %[[OUT]] : !mo.tensor<[N, M, K], f32>
 
 // No fusion interfaces but it does have the indcies of the inputs which are broadcast and the isView marking.
