@@ -28,10 +28,15 @@ class MO_Type<string name, string typeMnemonic, list<Trait> traits = []>
 def MO_Tensor : MO_Type<"Tensor", "tensor"> {
   let summary = "Type of tensor specs of statically known rank.";
   let description = [{
-    This type represents the shape and element type of a tensor. The shape is
-    stored as a MOSH::ShapeAttr, while the element type is an M::DType, with
-    `invalid` denoting an unknown type. The type implements a subset of the
-    methods in ShapedTypeInterface.
+    This type represents the shape and element type of a tensor.
+
+    The `shapeAttr` is one of:
+    1. `KGEN::UnknownAttr` for unparameterized shape of unknown rank, e.g., `?`.
+    2. `KGEN::ParamDeclRefAttr` for a a shape parameter, e.g., `Sh0`.
+    3. `MOSH::ShapeAttr` for a shape of known rank, e.g., `[D0, 42, ?]`.
+
+    The element type is an M::DType, with `invalid` denoting an unknown type.
+    The type implements a subset of the methods in ShapedTypeInterface.
 
     Examples:
     ```mlir

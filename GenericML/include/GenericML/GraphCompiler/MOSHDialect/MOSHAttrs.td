@@ -20,6 +20,13 @@ def MOSH_ShapeAttr : KGEN_ExprAttr<"Shape", "ape"> {
     The `#mosh.ape` attribute contains a variable number of `TypedAttr`s, each
     of which have index type. The type of this attribute is always `!mosh.ape`.
 
+    Each dimension `TypedAttr` inside `values` is one of:
+    1. `KGEN::UnknownAttr` for unparameterized dimension, e.g., `?`.
+    2. `KGEN::ParamDeclRefAttr` for a dimension parameter, e.g., `D0`.
+    3. `KGEN::ParamOperatorAttr` for a dimension parameter expression, e.g.,
+    `add(D1, 2)`.
+    4. `IntegerAttr` for a concrete integer dimension, e.g., `42`
+
     Note that -1 can be used as a special dimension value that denotes a
     dimension to be inferred from other dimensions and total number of elements
     in the tensor. At most 1 dimension can be -1.
