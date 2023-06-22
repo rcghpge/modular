@@ -16,6 +16,7 @@
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/DialectInterface.h"
 #include "mlir/IR/OpDefinition.h"
+#include <unordered_map>
 
 namespace M::MGP {
 
