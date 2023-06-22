@@ -118,10 +118,15 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
       pm.addPass(MOGG::createFuseConstants());
     }
 
-
     if (opts.performTrivialKernelOpt) {
       // Mark trivial kernels as being syncronous.
       pm.addPass(MOGG::createMarkTrivialKernels());
+
+      // Soft fuse trivial kernels where possible.
+      if (opts.fuseJitKernels) {
+        pm.addPass(MOGG::createInlineLambdas());
+        pm.addPass(MOGG::createSoftFuse());
+      }
 
       // Add explicit chain ready's to the end of fully sync kenrels.
       pm.addPass(MOGG::createAddExplicitChainReady());

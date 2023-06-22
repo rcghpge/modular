@@ -91,6 +91,15 @@ def FuseElementwise: Pass<"fuse-elementwise", "MO::GraphOp"> {
   ];
 }
 
+def SoftFuse: Pass<"soft-fuse", "MO::GraphOp"> {
+  let summary = "Soft fuse kernels together";
+  let description = [{
+    When we have mogg blocks of trivial kernels we can soft fuse them together.
+    Soft fusion is the process of colocating kernels into the same invocation.
+  }];
+  let dependentDialects = ["M::MOGG::MOGGDialect"];
+}
+
 def MarkTrivialKernels: Pass<"mark-trivial-kernels", "MO::GraphOp"> {
   let summary = "Statically detect if kernels are trivial";
   let description = [{
