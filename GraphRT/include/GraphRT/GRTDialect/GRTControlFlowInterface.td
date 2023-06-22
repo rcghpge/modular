@@ -35,6 +35,14 @@ def GRTControlFlowInterface : OpInterface<"GRTControlFlowInterface"> {
     >,
     InterfaceMethod<
       [{
+        Returns any operands, beyond those covered by getInputs, which are
+        consumed strictly by the control flow operation, such as a condition
+        or trip count.
+      }],
+      "::mlir::Operation::operand_range", "getStrictExtraOperands", (ins)
+    >,
+    InterfaceMethod<
+      [{
         Returns the 'flavor' of the control flow op.
 
         For a `kLoopLike` op (eg grt.{while, repeat.i32}):

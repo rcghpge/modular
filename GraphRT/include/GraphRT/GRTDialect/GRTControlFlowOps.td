@@ -149,6 +149,9 @@ def IfOp : GRTOp<"if",
     llvm::ArrayRef<mlir::OpOperand> IfOp::getInputOpOperands() {
       return getOperation()->getOpOperands().drop_front();
     }
+    mlir::Operation::operand_range IfOp::getStrictExtraOperands() {
+      return getOperation()->getOperands().take_front();
+    }
     llvm::SmallVector<llvm::StringRef> IfOp::getRegionNames() { return {"then", "else"}; }
   }];
 }
@@ -213,6 +216,9 @@ def WhileOp : GRTOp<"while",
     llvm::ArrayRef<mlir::OpOperand> WhileOp::getInputOpOperands() {
       return getOperation()->getOpOperands();
     }
+    mlir::Operation::operand_range WhileOp::getStrictExtraOperands() {
+      return getOperation()->getOperands().take_front(0);
+    }
     llvm::SmallVector<llvm::StringRef> WhileOp::getRegionNames() { return {"cond", "body"}; }
   }];
 }
@@ -266,6 +272,9 @@ def RepeatI32Op : GRTOp<"repeat.i32",
     GRT::ControlFlowFlavor RepeatI32Op::getFlavor() { return GRT::kLoopLike; }
     llvm::ArrayRef<mlir::OpOperand> RepeatI32Op::getInputOpOperands() {
       return getOperation()->getOpOperands().drop_front();
+    }
+    mlir::Operation::operand_range RepeatI32Op::getStrictExtraOperands() {
+      return getOperation()->getOperands().take_front();
     }
     llvm::SmallVector<llvm::StringRef> RepeatI32Op::getRegionNames() { return {"body"}; }
   }];
