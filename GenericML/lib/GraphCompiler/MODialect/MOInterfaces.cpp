@@ -101,8 +101,22 @@ LogicalResult impl::verifyMatmulLike(MatmulLike op) {
 LogicalResult impl::verifyReduction(Reduction op) {
   // TODO: test
   if (failed(verifyMatchingRanks({op.getInput(), op.getResult()})))
-    return op.emitError(
+    return op.emitOpError(
         "input and ranks ranks must be both dynamic, or both static and match");
+
+  TensorValue axisArr = op.getAxis();
+  TensorType inputTy = op.getInput().getType();
+
+  std::optional<int64_t> maybeAxis = tryGetConstantInt(axisArr);
+  if (!maybeAxis.has_value() || !inputTy.hasRank())
+    return success();
+
+  int64_t axis = maybeAxis.value();
+  int64_t rank = inputTy.getRank();
+  if (axis < -rank || axis > rank - 1) {
+    return op.emitOpError() << "axis must be between [-" << rank << ", "
+                            << (rank - 1) << "] found " << axis;
+  }
 
   return success();
 }

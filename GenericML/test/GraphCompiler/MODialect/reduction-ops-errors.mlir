@@ -44,3 +44,21 @@ mo.graph @input_res_rank_mismatch(%input: !mo.tensor<[?, ?, 5], f32>) -> !mo.ten
   %output = mo.reduce.add(%input, %axis) : (!mo.tensor<[?, ?, 5], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?], f32>
   mo.output %output : !mo.tensor<[?, ?], f32>
 }
+
+// -----
+
+mo.graph @axis_too_big(%input: !mo.tensor<[?, ?, 5], f32>) -> !mo.tensor<[?, ?, ?], f32> {
+  %axis = mo.constant {value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  // expected-error @below {{'mo.reduce.add' op axis must be between [-3, 2] found 3}}
+  %output = mo.reduce.add(%input, %axis) : (!mo.tensor<[?, ?, 5], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?, ?], f32>
+  mo.output %output : !mo.tensor<[?, ?, ?], f32>
+}
+
+// -----
+
+mo.graph @axis_too_small(%input: !mo.tensor<[?, ?, 5], f32>) -> !mo.tensor<[?, ?, ?], f32> {
+  %axis = mo.constant {value = #M.dense_array<-4> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  // expected-error @below {{'mo.reduce.add' op axis must be between [-3, 2] found -4}}
+  %output = mo.reduce.add(%input, %axis) : (!mo.tensor<[?, ?, 5], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?, ?], f32>
+  mo.output %output : !mo.tensor<[?, ?, ?], f32>
+}
