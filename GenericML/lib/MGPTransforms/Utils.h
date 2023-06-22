@@ -16,6 +16,28 @@
 
 namespace M::MGP {
 
+/// Inserts and returns a shallow clone of origOp using given resultTypes and
+/// operands. The result will have an empty region for each region of origOp.
+/// The location, attributes and properties of the result are taken from origOp.
+template <typename T>
+T cloneWithArgs(OpBuilder &builder, T origOp, TypeRange resultTypes,
+                ValueRange operands) {
+  assert(!origOp->hasSuccessors());
+  Operation *newOp =
+      Operation::create(/*location=*/origOp->getLoc(),
+                        /*name=*/origOp->getName(),
+                        /*resultTypes=*/resultTypes,
+                        /*operands=*/operands,
+                        /*attributes=*/origOp->getAttrDictionary(),
+                        /*properties=*/origOp->getPropertiesStorage(),
+                        /*successors=*/{},
+                        /*numRegions=*/origOp->getNumRegions());
+  builder.insert(newOp);
+  T result = dyn_cast<T>(newOp);
+  assert(result);
+  return result;
+}
+
 /// Returns the operations in block in a dataflow order, ie s.t. an operation
 /// does not have operands defined by operations later in the vector.
 SmallVector<Operation *> getDataflowOrder(Block *block);
