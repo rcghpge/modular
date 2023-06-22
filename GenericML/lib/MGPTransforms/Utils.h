@@ -42,19 +42,20 @@ T cloneWithArgs(OpBuilder &builder, T origOp, TypeRange resultTypes,
 /// does not have operands defined by operations later in the vector.
 SmallVector<Operation *> getDataflowOrder(Block *block);
 
+/// Returns true if op can be executed at most once in overall model.
+bool isAtMostOnce(Operation *op);
+
 /// Returns the 'indicating results' for op. If ANY indicating result is ready
-/// then the op is known to have completed and is not holding any references
-/// to any of its operands. Note that only 'true' operations can have an
-/// indicating result. Control flow ops will always return empty.
+/// then the op is known to have FINISHED execution and is not holding any
+/// references to any of its operands.
 SmallVector<Value> getIndicatingResults(Operation *op);
 
 /// Returns a representative 'indicating result' for op, or returns null if
 /// no such result exists.
 Value getRepresentativeIndicatingResult(Operation *op);
 
-/// Returns the 'gating operands' for op. The op can only begin execution once
-/// ALL gating operands are ready. Note that only 'true' operations can have
-/// a gating operand. Output and control flow ops will always return empty.
+/// Returns the 'gating operands' for op. The op can only BEGIN execution once
+/// ALL gating operands are ready.
 SmallVector<Value> getGatingOperands(Operation *op);
 
 /// Returns true if opOperand is a 'gating operand' for its operation.
@@ -136,16 +137,8 @@ struct ExecuteState {
   /// Returns the additional arguments to 'execute' block
   iterator_range<mlir::BlockArgument *> getExtraArgs() const;
 
-  /// Schedule op for later erasure. (We can't always erase eagerly if
-  /// we're in the middle of, eg, an iteration over uses/users.)
-  void scheduleErase(Operation *op);
-
-  /// Erase all the 'toErase' entries.
-  void erasePending();
-
   Block *execute;
   OpBuilder builder;
-  SmallPtrSet<Operation *, 8> toErase;
 };
 
 } // namespace M::MGP

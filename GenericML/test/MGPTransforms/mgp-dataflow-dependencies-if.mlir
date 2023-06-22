@@ -56,7 +56,8 @@
 // CHECK: impliesReady end
 
 // CHECK: runsLater begin
-// CHECK-NEXT: %0[0] |-> {%0[0], %0, %1, %2, %5[2], %6[2], %5[3], %4}
+// CHECK-NEXT: %0[0] |-> {%0[0], %0, %1, %2, %3#0, %5[2], %6[2], %5[3], %4}
+// CHECK-NEXT: %0 |-> {%0, %3#0}
 // CHECK-NEXT: %2 |-> {%2, %6[2], %5[3], %4}
 // CHECK: runsLater end
 

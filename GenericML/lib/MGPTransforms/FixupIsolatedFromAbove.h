@@ -17,6 +17,9 @@ namespace M::MGP {
 /// values in sub-blocks are captured by new sub-block arguments, and the
 /// overall control flow ops are rewritten to include (and, for loops, return)
 /// those arguments.
+///
+/// TODO(#15830): Can mildly generalize so can be also used for MO control
+/// flow ops.
 ModelOp fixupIsolatedFromAbove(mlir::OpBuilder &builder, ModelOp inModelOp);
 
 } // namespace M::MGP

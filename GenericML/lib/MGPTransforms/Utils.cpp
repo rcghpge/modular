@@ -60,11 +60,21 @@ SmallVector<Operation *> M::MGP::getDataflowOrder(Block *block) {
   return dataflowOrder;
 }
 
-SmallVector<Value> M::MGP::getIndicatingResults(Operation *op) {
-  if (isa<GRT::GRTControlFlowInterface>(op) || isa<MEF::OutputOp>(op))
-    // Control flow ops don't have indicating results.
-    return {};
+bool M::MGP::isAtMostOnce(Operation *op) {
+  op = op->getParentOp();
+  while (op) {
+    if (auto modelOp = dyn_cast<ModelOp>(op))
+      return true;
+    if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op)) {
+      if (cfOp.getFlavor() == GRT::kLoopLike)
+        return false;
+    }
+    op = op->getParentOp();
+  };
+  return true;
+}
 
+SmallVector<Value> M::MGP::getIndicatingResults(Operation *op) {
   if (!isa<MEF::NonStrictOp>(op))
     // All results are indicating for strict ops.
     return op->getResults();
@@ -90,19 +100,10 @@ Value M::MGP::getRepresentativeIndicatingResult(Operation *op) {
 }
 
 SmallVector<Value> M::MGP::getGatingOperands(Operation *op) {
-  if (isa<GRT::GRTControlFlowInterface>(op) || isa<MEF::OutputOp>(op))
-    // Control flow ops don't have gating operands.
-    return {};
-
-  if (!isa<MEF::NonStrictOp>(op))
-    // All operands are gating for strict ops.
-    return op->getOperands();
-
-  // Only chain operands, if any, are indicating for non-strict ops.
   SmallVector<Value> results;
-  for (Value operand : op->getOperands()) {
-    if (isa<MEF::ChainType>(operand.getType()))
-      results.emplace_back(operand);
+  for (OpOperand &opOperand : op->getOpOperands()) {
+    if (isGatingOperand(&opOperand))
+      results.emplace_back(opOperand.get());
   }
   return results;
 }
@@ -110,8 +111,14 @@ SmallVector<Value> M::MGP::getGatingOperands(Operation *op) {
 bool M::MGP::isGatingOperand(const OpOperand *opOperand) {
   Operation *op = opOperand->getOwner();
 
-  if (isa<GRT::GRTControlFlowInterface>(op) || isa<MEF::OutputOp>(op))
-    // Control flow must be handled specially.
+  if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op)) {
+    // Only the extra strict operands are gating for control flow ops.
+    auto extraOperands = cfOp.getStrictExtraOperands();
+    return llvm::find(extraOperands, opOperand->get()) != extraOperands.end();
+  }
+
+  if (isa<MEF::OutputOp>(op))
+    // Nothing gates a mef.output.
     return false;
 
   if (!isa<MEF::NonStrictOp>(op))
@@ -331,15 +338,4 @@ Value ExecuteState::getContext() const { return execute->getArgument(1); }
 /// Returns the additional arguments to 'execute' block
 iterator_range<mlir::BlockArgument *> ExecuteState::getExtraArgs() const {
   return llvm::drop_begin(execute->getArguments(), 2);
-}
-
-/// Schedule op for later erasure. (We can't always erase eagerly if
-/// we're in the middle of, eg, an iteration over uses/users.)
-void ExecuteState::scheduleErase(Operation *op) { toErase.insert(op); }
-
-/// Erase all the 'toErase' entries.
-void ExecuteState::erasePending() {
-  for (Operation *op : toErase)
-    op->erase();
-  toErase.clear();
 }

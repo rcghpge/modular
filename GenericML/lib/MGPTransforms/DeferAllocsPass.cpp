@@ -64,7 +64,6 @@ class DeferAllocsPass : public impl::DeferAllocsPassBase<DeferAllocsPass> {
         }
       }
     });
-    execState.erasePending();
   }
 };
 
