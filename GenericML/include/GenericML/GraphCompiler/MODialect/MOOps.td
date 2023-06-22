@@ -2022,7 +2022,15 @@ def MO_MatmulOp : MO_DotBase<"matmul"> {
     ```
   }];
 
-  let arguments = (ins MO_Tensor:$input_a, MO_Tensor:$input_b);
+  let arguments = (ins MO_Tensor:$input_a, MO_Tensor:$input_b,
+    OptionalAttr<BoolAttr>:$transpose_b,
+    OptionalAttr<BoolAttr>:$packed_b
+  );
+
+  let builders = [
+    /// Create matmul with default attribute flags off.
+    OpBuilder<(ins "Type":$type, "Value":$input_a, "Value":$input_b)>,
+  ];
 
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)

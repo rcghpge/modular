@@ -62,6 +62,16 @@ LogicalResult impl::checkMatmulCompatibility(Operation *op, TensorValue A,
   if (!aType.hasStaticShape() || !bType.hasStaticShape())
     return success();
 
+  // The op created from the framework should have no attributes and we should
+  // verify those. However we can attach extra attributes to it in the lowering.
+  // They will change some of the shapes (i.e allowing values to be transposed
+  // implicitly).
+  if (auto matmul = dyn_cast<MatmulOp>(op)) {
+    if (matmul.getTransposeB().value_or(false) ||
+        matmul.getPackedB().value_or(false))
+      return success();
+  }
+
   ArrayRef<TypedAttr> aMatShape = aType.getDims().take_back(2);
   ArrayRef<TypedAttr> bMatShape = bType.getDims().take_back(2);
   if (aMatShape[1] != bMatShape[0])

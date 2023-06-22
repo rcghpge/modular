@@ -75,6 +75,14 @@ struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
     Value input = op.getInputA();
     Value weight, perm;
     Operation *transpose = nullptr;
+
+    if (op.getPackedB())
+      return rewriter.notifyMatchFailure(op, "Matmul is already packed");
+
+    if (op.getTransposeB())
+      return rewriter.notifyMatchFailure(op,
+                                         "Transposed op has already been run");
+
     auto weightP = m_MOMatrix(m_Any(&weight));
     if (!m_Optional(m_Op<MO::TransposeOp>(&transpose, weightP,
                                           m_MOVector(m_Any(&perm))),
@@ -110,10 +118,8 @@ struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
                                  /*inputOperands=*/SmallVector<Value>{weight})
             .getResult(0);
 
-    rewriter.replaceOpWithNewOp<MOGG::ExtOp>(
-        op, op->getResultTypes(), "mop.kernels.matmul_packb",
-        SmallVector<Value>{input, packedWeights});
-
+    op.setOperand(1, packedWeights);
+    op.setPackedBAttr(rewriter.getBoolAttr(true));
     return mlir::success();
   }
 };
@@ -124,6 +130,14 @@ struct MatmulTranspBPattern : public OpRewritePattern<MO::MatmulOp> {
   LogicalResult matchAndRewrite(MO::MatmulOp op,
                                 PatternRewriter &rewriter) const override {
     Value input, weight, perm;
+
+    if (op.getTransposeB())
+      return rewriter.notifyMatchFailure(op, "Matmul is already transposed");
+
+    if (op.getPackedB())
+      return rewriter.notifyMatchFailure(
+          op, "The packed optimization has been run already");
+
     if (!m_Op<MO::MatmulOp>(
              m_Any(&input),
              m_Op<MO::TransposeOp>(m_Any(&weight), m_MOVector(m_Any(&perm))))
@@ -134,13 +148,12 @@ struct MatmulTranspBPattern : public OpRewritePattern<MO::MatmulOp> {
       return rewriter.notifyMatchFailure(op, "null input value");
     if (validate2DTranspose(perm).failed())
       return rewriter.notifyMatchFailure(op, "invalid transpose");
-    rewriter.replaceOpWithNewOp<MOGG::ExtOp>(
-        op,
-        /*outputTypes=*/op->getResultTypes(),
-        /*op_name=*/"mop.kernels.matmul_transpb",
-        /*inputOperands=*/
-        SmallVector<Value>{input, weight});
 
+    // Take the non-transposed weight.
+    op.setOperand(1, weight);
+
+    // Mark this matmul as being a tranposed kernel.
+    op.setTransposeBAttr(rewriter.getBoolAttr(true));
     return mlir::success();
   }
 };

@@ -1174,6 +1174,14 @@ LogicalResult MatmulOp::verify() {
   return success();
 }
 
+// Default builder which leaves the attributes empty.
+void MatmulOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                     Type resultTy, Value input_a, Value input_b) {
+  odsState.addOperands(input_a);
+  odsState.addOperands(input_b);
+  odsState.addTypes({resultTy});
+}
+
 LogicalResult BatchMatmulOp::verify() {
   // TODO: improve this verifier
   TensorType aType = getTensorA().getType();
@@ -1711,9 +1719,9 @@ LogicalResult Static::ReshapeOp::verify() {
   TypedAttr inputNumEles = inputTy.getSymbolicNumElements();
   TypedAttr resultNumEles = resultTy.getSymbolicNumElements();
   if (!isa<IntegerAttr>(inputNumEles) || !isa<IntegerAttr>(resultNumEles)) {
-    // Here, one of inputNumEles or resultNumEles has parameters in the expression.
-    // Assume you can always set some parameters to equal the other side.
-    // e.g. 5 * N = 10, N could be 2 to make things valid, we can't check
+    // Here, one of inputNumEles or resultNumEles has parameters in the
+    // expression. Assume you can always set some parameters to equal the other
+    // side. e.g. 5 * N = 10, N could be 2 to make things valid, we can't check
     // deeper. Note: as parameters are integers, some expressions could
     // potentially be invalidated. E.g. 5 * N = 8 is clearly impossible for
     // integer N. However, for now, this is sufficient.

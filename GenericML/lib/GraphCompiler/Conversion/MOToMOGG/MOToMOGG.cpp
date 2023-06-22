@@ -180,12 +180,26 @@ struct MOOpPattern : public RewritePattern {
     if (op->getNumResults() != 1)
       shouldUseJit = false;
 
+    StringRef shimTarget = kernel.shim;
+
+    // We read the matmul attributes to allow finer grained control exactly when
+    // we jit matmuls and to target the specific shims.
+    if (auto matmul = dyn_cast<MO::MatmulOp>(op)) {
+      if (matmul.getTransposeB().value_or(false)) {
+        shimTarget = "mop.kernels.matmul_transpb";
+        shouldUseJit = false;
+      } else if (matmul.getPackedB().value_or(false)) {
+        shimTarget = "mop.kernels.matmul_packb";
+        shouldUseJit = false;
+      }
+    }
+
     // If we should be using JIT generate a jit target. Otherwise use the shim.
     if (shouldUseJit)
       return helper.lowerToKernel(kernel.moggID, kernel.isView,
                                   kernel.isNonElemwise);
-    else if (kernel.shim != "None")
-      return helper.lowerToShim(kernel.shim);
+    else if (shimTarget != "None")
+      return helper.lowerToShim(shimTarget);
     else
       return Error("Attempting to lower a JIT-only kernel to a C++ shim");
   }
