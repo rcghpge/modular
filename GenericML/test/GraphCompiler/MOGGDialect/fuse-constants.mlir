@@ -134,6 +134,50 @@ mo.graph @bcasted_si16_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si16
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST1]]
 
 
+// Check broadcasted si8 constants get fused
+mo.graph @bcasted_si8_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si8>) -> !mo.tensor<[D14, D15], si8> {
+  %0 = mo.constant {value = #M.dense_array<1> : tensor<si8>} : !mo.tensor<[], si8>
+  %1 = mo.constant {value = #M.dense_array<6> : tensor<si8>} : !mo.tensor<[], si8>
+  %2 = mo.static.broadcast_to(%0) : !mo.tensor<[], si8> -> !mo.tensor<[D14, D15], si8>
+  %3 = mo.static.broadcast_to(%1) : !mo.tensor<[], si8> -> !mo.tensor<[D14, D15], si8>
+  %4 = mo.add(%2, %arg0) : !mo.tensor<[D14, D15], si8>
+  %5 = mo.div(%4, %3) : !mo.tensor<[D14, D15], si8>
+  mo.output %5 : !mo.tensor<[D14, D15], si8>
+}
+
+// CHECK-LABEL: mo.graph @bcasted_si8_const_fusion
+// CHECK-NEXT: mogg.kernel
+// CHECK-NEXT: mogg.output_placeholders
+
+// Check constants are in kernel and used in broadcasts.
+// CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1>
+// CHECK-NEXT: %[[CST2:.*]] = mo.constant {value = #M.dense_array<6>
+// CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST2]]
+// CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST1]]
+
+
+// Check broadcasted ui8 constants get fused
+mo.graph @bcasted_ui8_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], ui8>) -> !mo.tensor<[D14, D15], ui8> {
+  %0 = mo.constant {value = #M.dense_array<1> : tensor<ui8>} : !mo.tensor<[], ui8>
+  %1 = mo.constant {value = #M.dense_array<6> : tensor<ui8>} : !mo.tensor<[], ui8>
+  %2 = mo.static.broadcast_to(%0) : !mo.tensor<[], ui8> -> !mo.tensor<[D14, D15], ui8>
+  %3 = mo.static.broadcast_to(%1) : !mo.tensor<[], ui8> -> !mo.tensor<[D14, D15], ui8>
+  %4 = mo.add(%2, %arg0) : !mo.tensor<[D14, D15], ui8>
+  %5 = mo.div(%4, %3) : !mo.tensor<[D14, D15], ui8>
+  mo.output %5 : !mo.tensor<[D14, D15], ui8>
+}
+
+// CHECK-LABEL: mo.graph @bcasted_ui8_const_fusion
+// CHECK-NEXT: mogg.kernel
+// CHECK-NEXT: mogg.output_placeholders
+
+// Check constants are in kernel and used in broadcasts.
+// CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1>
+// CHECK-NEXT: %[[CST2:.*]] = mo.constant {value = #M.dense_array<6>
+// CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST2]]
+// CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST1]]
+
+
 // Check broadcasted ui16 constants get fused
 mo.graph @bcasted_ui16_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], ui16>) -> !mo.tensor<[D14, D15], ui16> {
   %0 = mo.constant {value = #M.dense_array<1> : tensor<ui16>} : !mo.tensor<[], ui16>

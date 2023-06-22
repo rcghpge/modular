@@ -158,12 +158,16 @@ std::string mangleBlock(mlir::Block &block,
         appendConstToString<float>(attr, name);
       else if (dtype.isF64())
         appendConstToString<double>(attr, name);
+      else if (dtype.isSignedInteger(8))
+        appendConstToString<int8_t>(attr, name);
       else if (dtype.isSignedInteger(16))
         appendConstToString<int16_t>(attr, name);
       else if (dtype.isSignedInteger(32))
         appendConstToString<int32_t>(attr, name);
       else if (dtype.isSignedInteger(64))
         appendConstToString<int64_t>(attr, name);
+      else if (dtype.isUnsignedInteger(8))
+        appendConstToString<uint8_t>(attr, name);
       else if (dtype.isUnsignedInteger(16))
         appendConstToString<uint16_t>(attr, name);
       else
