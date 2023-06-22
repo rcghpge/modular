@@ -646,9 +646,14 @@ LogicalResult LoadJitKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   auto syms = kernel.getSymbols();
   std::string combined;
 
+  size_t index = 0;
   // Combine into a list with a terminator character.
-  for (StringRef symbol : syms.getAsValueRange<mlir::StringAttr>())
+  for (StringRef symbol : syms.getAsValueRange<mlir::StringAttr>()) {
     combined += symbol.str() + ";";
+
+    loweringState.trackJitKernel(symbol.str(), index);
+    index++;
+  }
 
   // Drop the last ";".
   combined.pop_back();
@@ -723,9 +728,14 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // Create a call to a custom invoke function we can put in the MEF.
   mlir::OperationState opState{op->getLoc(), "mop.kgen.execute_kernel"};
 
+  uint32_t id = loweringState.getJitKernelId(op.getKernelNameAttr().str());
+
   // For compiled ops add the context as argument and all the metadata needed to
   // extract a compiled kernel from the context.
   operands.insert(operands.begin(), loweringState.getExecuteMgpContext());
+  opState.addAttribute(
+      "kernelIndex",
+      loweringState.getExecuteOpBuilder().getUI32IntegerAttr(id));
   opState.addAttribute("kernelName", op.getKernelNameAttr());
   opState.addAttribute("jitCtxSlot",
                        loweringState.getExecuteOpBuilder().getUI32IntegerAttr(

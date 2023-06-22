@@ -346,6 +346,20 @@ public:
     return runtimeDims;
   }
 
+  /// Track this jit kernels as corresponding to this index in the lookup table.
+  void trackJitKernel(StringRef ref, size_t index) {
+    jitKernelsToIndex[ref.str()] = index;
+  }
+
+  /// Get the index of the kernel in the lookup table.
+  size_t getJitKernelId(StringRef ref) {
+    auto itr = jitKernelsToIndex.find(ref.str());
+    assert(
+        itr != jitKernelsToIndex.end() &&
+        "All kernels must be accounted for through lowering the load kernels.");
+    return itr->second;
+  }
+
 private:
   //===-----------------------------------------------------------------===//
   // Parameter lowering helpers.
@@ -473,6 +487,10 @@ private:
 
   // Arbitrary client state.
   std::unique_ptr<ClientState> clientState;
+
+  /// A map of the name of the jit kernel to their index in the runtime symbol
+  /// lookup table.
+  std::unordered_map<std::string, size_t> jitKernelsToIndex;
 
   /// The state and interface for parameter lowering.
   ParameterLoweringState params;
