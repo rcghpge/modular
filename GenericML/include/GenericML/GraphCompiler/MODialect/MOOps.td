@@ -943,6 +943,8 @@ class MO_ReductionOp<string name, list<Trait> traits = []> : MO_TensorOp<
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
     functional-type(operands, results)
   }];
+
+  let hasFolder = 1;
 }
 
 def MO_MeanOp : MO_ReductionOp<"mean"> {
@@ -985,8 +987,6 @@ def MO_ReduceMulOp : MO_ReductionOp<"reduce.mul"> {
       !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
-
-  let hasFolder = 1;
 }
 
 def MO_ReduceAddOp : MO_ReductionOp<"reduce.add"> {
@@ -1008,8 +1008,6 @@ def MO_ReduceAddOp : MO_ReductionOp<"reduce.add"> {
       !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
-
-  let hasFolder = 1;
 }
 
 def MO_ReduceMinOp : MO_ReductionOp<"reduce.min"> {

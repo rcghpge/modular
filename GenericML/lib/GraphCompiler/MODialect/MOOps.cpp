@@ -1482,23 +1482,39 @@ LogicalResult RebindOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// MO_ReduceAddOp support
+// MO_ReductionOp support
 //===----------------------------------------------------------------------===//
 
-OpFoldResult ReduceAddOp::fold(FoldAdaptor adaptor) {
-  auto axisArr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getAxis());
-  TensorType inputTy = getType();
+template <typename T>
+bool foldStaticNegativeIndicesInPlace(T op, int operandIndex) {
+  // Use at top of T::fold(), which is run before any other canonicalizations.
+  // If successful, then if axis and rank can be gotten at compile time, it is now
+  // guaranteed to be in [0, rank).
+  TensorValue axisArr = op.getAxis();
+  TensorType inputTy = op.getInput().getType();
+  std::optional<int64_t> maybeAxis = tryGetConstantInt(axisArr);
+  if (!maybeAxis.has_value() || !inputTy.hasRank())
+    return false;
 
-  if (!axisArr || !inputTy.hasRank())
-    return {};
+  int64_t axis = maybeAxis.value();
+  if (axis >= 0)
+    return false;
 
-  int64_t axis = getIntBlob(axisArr).front();
-  if (axis < 0)
-    axis = inputTy.getRank() + axis;
+  OpBuilder builder(op);
+  builder.setInsertionPoint(op);
+  int64_t new_axis = axis + inputTy.getRank();
+  auto newAxis = builder.create<ConstantOp>(op.getLoc(), new_axis);
+  op->setOperand(operandIndex, newAxis);
+  return true;
+}
 
-  // If we are reducing along a dimension of 1
-  if (inputTy.getIntDim(axis) == 1)
-    return getInput();
+//===----------------------------------------------------------------------===//
+// MO_MeanOp support
+//===----------------------------------------------------------------------===//
+
+OpFoldResult MeanOp::fold(FoldAdaptor adaptor) {
+  if (foldStaticNegativeIndicesInPlace(*this, 1))
+    return getResult();
   return {};
 }
 
@@ -1507,6 +1523,9 @@ OpFoldResult ReduceAddOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult ReduceMulOp::fold(FoldAdaptor adaptor) {
+  if (foldStaticNegativeIndicesInPlace(*this, 1))
+    return getResult();
+
   // TODO(#10811): support other types and do this using a MOJO kernel?
 
   auto inputArr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInput());
@@ -1535,6 +1554,48 @@ OpFoldResult ReduceMulOp::fold(FoldAdaptor adaptor) {
   SmallVector<APInt> resArr{APInt(64, res, /*isSigned=*/true)};
   auto rankedResTy = RankedTensorType::get({1}, resTy.getElementType());
   return IntArrayElementsAttr::get(rankedResTy, resArr);
+}
+
+//===----------------------------------------------------------------------===//
+// MO_ReduceAddOp support
+//===----------------------------------------------------------------------===//
+
+OpFoldResult ReduceAddOp::fold(FoldAdaptor adaptor) {
+  if (foldStaticNegativeIndicesInPlace(*this, 1))
+    return getResult();
+
+  auto axisArr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getAxis());
+  TensorType inputTy = getType();
+
+  if (!axisArr || !inputTy.hasRank())
+    return {};
+
+  int64_t axis = getIntBlob(axisArr).front();
+
+  // If we are reducing along a dimension of 1
+  if (inputTy.getIntDim(axis) == 1)
+    return getInput();
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
+// MO_ReduceMinOp support
+//===----------------------------------------------------------------------===//
+
+OpFoldResult ReduceMinOp::fold(FoldAdaptor adaptor) {
+  if (foldStaticNegativeIndicesInPlace(*this, 1))
+    return getResult();
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
+// MO_ReduceMaxOp support
+//===----------------------------------------------------------------------===//
+
+OpFoldResult ReduceMaxOp::fold(FoldAdaptor adaptor) {
+  if (foldStaticNegativeIndicesInPlace(*this, 1))
+    return getResult();
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
