@@ -24,6 +24,7 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/BuiltinAttributes.td"
 include "mlir/IR/FunctionInterfaces.td"
 include "mlir/IR/SymbolInterfaces.td"
+include "mlir/IR/RegionKindInterface.td"
 
 // Base class for ops in this dialect.
 class MO_Op<string mnemonic, list<Trait> traits = []>
@@ -64,7 +65,8 @@ def MO_IndexToTensorOp : MO_Op<"index.to_tensor", [Pure]> {
 def MO_GraphOp : MO_TensorOp<"graph", [
   HasParent<"ModuleOp">, FunctionOpInterface, Symbol, SymbolTable,
   IsolatedFromAbove, SingleBlockImplicitTerminator<"OutputOp">,
-  DeclareOpInterfaceMethods<MO_Parameterization>,
+  DeclareOpInterfaceMethods<MO_Parameterization>, 
+  RegionKindInterface, HasOnlyGraphRegion,
   // needed to leverage KGEN parameter infra
   DeclInterface, FuncInterface
 ]> {
