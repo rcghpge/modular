@@ -64,6 +64,23 @@ def SimplifyChainsPass : Pass<"simplify-chains", "MGP::ModelOp"> {
 }
 
 //===----------------------------------------------------------------------===//
+// StaticMemoryPlanerPass
+//===----------------------------------------------------------------------===//
+
+def StaticMemoryPlannerPass : Pass<"static-memory-planner", "ModuleOp"> {
+  let summary = "Replace mgp.cpu.buffer.alloc.static ops with "
+                "mgp.cpu.buffer.section.static.borrow ops using statically "
+                "determined offsets.";
+  let description = [{
+    This pass replaces mgp.cpu.buffer.alloc.static ops with
+    mgp.cpu.buffer.section.static.borrow ops from a pre-allocated buffer.
+    The size of the pre-allocated buffer, and the offset to use for each
+    mgp.cpu.buffer.section.static.borrow op is chosen by this pass so as to
+    ensure no active buffers will ever share the same borrowed memory.
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // RemoveRedundantTensorExtractsPass
 //===----------------------------------------------------------------------===//
 

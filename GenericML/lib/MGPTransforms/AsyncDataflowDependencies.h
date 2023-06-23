@@ -109,6 +109,33 @@ public:
   /// under all execution paths, up to the sameAsEquivalence.
   Set indicatesConsumed(Value indicator) const;
 
+  /// Returns true if value is bound at most once (because its defining
+  /// op can only be executed at most once), or value is known to be dead
+  /// by the time its defining op is (re-)executed (due to some enclosing
+  /// kLoop control flow op).
+  ///
+  /// TODO: Though sound, currently very incomplete, and is to be replaced
+  /// by the actual implementation.
+  bool isNonSelfOverlapping(Value value) const;
+
+  /// Returns the set of values who's underlying AsyncValue lifetimes can never
+  /// overlap with that of indicator, under all execution paths. That is, a
+  /// value is in the result only if it can never point to some AsyncValue
+  /// at the same time as indicator points to some AsyncValue.
+  ///
+  /// Note we are using 'point to AsyncValues' here, rather than 'point to
+  /// ready AsyncValues'. In particular, for:
+  ///    %y = op %x
+  /// with no other uses of %x and op strict, the 'point to AsyncValues'
+  /// definition would consider %x and %y to be possibly overlapping, but the
+  /// 'point to ready AsyncValues' would consider them exclusive. We prefer
+  /// the former so that %y can be created while %x is still being processed.
+  ///
+  /// TODO: Though sound, currently just returns the empty set so is as
+  /// incomplete as you can get, but is to be replaced by the actual
+  /// implementation.
+  Set exclusiveSet(Value value) const;
+
   /// Prints a representation of all equivalences and relations to os.
   /// For testing only.
   void print(llvm::raw_ostream &os);

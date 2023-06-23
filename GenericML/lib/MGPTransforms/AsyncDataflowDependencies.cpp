@@ -96,6 +96,26 @@ AsyncDataflowDependencies::indicatesConsumed(Value lhs) const {
   return getEntries(sameAsEquivalence, indicatesConsumedRelation, lhs);
 }
 
+AsyncDataflowDependencies::Set
+AsyncDataflowDependencies::exclusiveSet(Value indicator) const {
+  // TODO: Implementation pending.
+  return index->emptySet();
+}
+
+bool AsyncDataflowDependencies::isNonSelfOverlapping(Value value) const {
+  Operation *op = value.getDefiningOp();
+  if (!op)
+    // We can only talk about op results.
+    return false;
+
+  if (isAtMostOnce(op))
+    // Structurally impossible to execute op more than once.
+    return true;
+
+  // TODO: Remaining implementation pending.
+  return false;
+}
+
 void AsyncDataflowDependencies::print(llvm::raw_ostream &os) {
   printEquivalence(os, "sameAs", sameAsEquivalence);
   printEquivalence(os, "maybeSameAs", maybeSameAsEquivalence);
