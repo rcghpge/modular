@@ -74,10 +74,10 @@ static void fixup(OpBuilder &builder, Block *inBlock,
         // Include the additional arguments.
         for (Value inFreeValue : freeValues)
           outOperands.emplace_back(mapping.lookup(inFreeValue));
-        builder.create<MEF::OutputOp>(inOp.getLoc(), outOperands);
         if (beforeLastOutput)
           // Rewrite last operand.
           outOperands.emplace_back(mapping.lookup(inOutputOp->getOperand(n)));
+        builder.create<MEF::OutputOp>(inOp.getLoc(), outOperands);
         continue;
       }
     }
