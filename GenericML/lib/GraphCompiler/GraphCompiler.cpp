@@ -9,7 +9,7 @@
 #include "GenericML/GraphCompiler/Conversion/MOToMOGG.h"
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
-#include "GenericML/GraphCompiler/MODialect/MOTransforms.h"
+#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"

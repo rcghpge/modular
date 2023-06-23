@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/MODialect/Transforms/Conversion.h"
+#include "GenericML/GraphCompiler/Conversion/MOTarget/Conversion.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 
 using namespace M;
