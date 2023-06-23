@@ -123,7 +123,6 @@ protected:
 
   RelationDataflowAnalysisBase(IndexSet<V> *index) : index(index) {}
 
-
   /// Updates domainMap so that v |-> {v}, up to equivalence. Marks changed true
   /// if domainMap was changed. Accounts for the above compression rules.
   void setId(DomainMap &domainMap, V v) {
@@ -422,12 +421,7 @@ protected:
   void flowSimpleLoop(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
                       const FlowOp &flowOp);
 
-  /// Grows domainMap for executing the condition sub-block of cfOp, which must
-  /// have two sub-blocks. Sets changed to true if domainMap was changed.
-  void flowCondition(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
-                     const FlowOp &flowOp);
-
-  /// Grows domainMap for executing the body then condition sub-block of cfOp,
+  /// Grows domainMap for executing the condition then body sub-block of cfOp,
   /// which must have two sub-blocks. Sets changed to true if domainMap was
   /// changed.
   void flowConditionedLoop(GRT::GRTControlFlowInterface cfOp,
@@ -475,12 +469,7 @@ protected:
   void flowSimpleLoop(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
                       const FlowOp &flowOp);
 
-  /// Grows domainMap for executing the condition sub-block of cfOp, which must
-  /// have two sub-blocks. Sets changed to true if domainMap was changed.
-  void flowCondition(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
-                     const FlowOp &flowOp);
-
-  /// Grows domainMap for executing the body then condition sub-block of cfOp,
+  /// Grows domainMap for executing the condition then body sub-block of cfOp,
   /// which must have two sub-blocks. Sets changed to true if domainMap was
   /// changed.
   void flowConditionedLoop(GRT::GRTControlFlowInterface cfOp,

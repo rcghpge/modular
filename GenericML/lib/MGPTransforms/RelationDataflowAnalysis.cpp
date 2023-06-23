@@ -28,46 +28,18 @@ void ForwardsRelationDataflowAnalysis::flowSimpleLoop(
   assert(cfOp->getNumRegions() == 1);
   Block *bodyBlock = &cfOp->getRegion(0).front();
 
-  // Flow from the current control flow op results back around to the
-  // sub-block arguments.
-  for (const auto &[result, arg] :
-       llvm::zip(cfOp->getResults(), bodyBlock->getArguments()))
-    setEntriesAndId(domainMap, arg, getEntries(domainMap, result));
-
-  // Flow the sub block.
+  // Flow the body sub block.
   flowBlock(bodyBlock, domainMap, flowOp);
 
-  // Flow from the sub-block outputs forwards to control flow op results, but
+  // Flow from the sub-block outputs back around to sub-block arguments, but
   // combine with existing results.
-  auto outputOp = cast<MEF::OutputOp>(bodyBlock->getTerminator());
-  for (const auto [output, result] :
-       llvm::zip(outputOp->getOperands(), cfOp->getResults())) {
+  for (const auto [output, arg] :
+       llvm::zip(bodyBlock->getTerminator()->getOperands(),
+                 bodyBlock->getArguments())) {
     Set set = getEntries(domainMap, output);
-    domainMap.leastUpperBound(set, getEntries(domainMap, result));
-    setEntriesAndId(domainMap, result, set);
+    domainMap.leastUpperBound(set, getEntries(domainMap, arg));
+    setEntriesAndId(domainMap, arg, set);
   }
-}
-
-void ForwardsRelationDataflowAnalysis::flowCondition(
-    GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
-    const FlowOp &flowOp) {
-  assert(cfOp->getNumRegions() == 2);
-  Block *condBlock = &cfOp->getRegion(0).front();
-
-  // Flow from the control flow op inputs to the
-  // sub-block arguments.
-  for (const auto &[input, arg] :
-       llvm::zip(cfOp.getInputs(), condBlock->getArguments()))
-    setEntriesAndId(domainMap, arg, getEntries(domainMap, input));
-
-  // Flow the sub block.
-  flowBlock(condBlock, domainMap, flowOp);
-
-  // Flow from the sub-block outputs forwards to control flow op results.
-  auto outputOp = cast<MEF::OutputOp>(condBlock->getTerminator());
-  for (const auto [output, result] :
-       llvm::zip(outputOp->getOperands(), cfOp->getResults()))
-    setEntriesAndId(domainMap, result, getEntries(domainMap, output));
 }
 
 void ForwardsRelationDataflowAnalysis::flowConditionedLoop(
@@ -77,35 +49,26 @@ void ForwardsRelationDataflowAnalysis::flowConditionedLoop(
   Block *condBlock = &cfOp->getRegion(0).front();
   Block *bodyBlock = &cfOp->getRegion(1).front();
 
-  // Flow from the control flow op results to the body sub-block arguments.
-  for (const auto &[result, arg] :
-       llvm::zip(cfOp->getResults(), bodyBlock->getArguments()))
-    setEntriesAndId(domainMap, arg, getEntries(domainMap, result));
+  // Flow the cond sub block.
+  flowBlock(condBlock, domainMap, flowOp);
+
+  // Flow from the cond sub-block outputs forwards to body sub-block args.
+  for (const auto [condOutput, bodyArg] :
+       llvm::zip(condBlock->getTerminator()->getOperands(),
+                 bodyBlock->getArguments()))
+    setEntriesAndId(domainMap, bodyArg, getEntries(domainMap, condOutput));
 
   // Flow the body sub block.
   flowBlock(bodyBlock, domainMap, flowOp);
 
   // Flow from the body sub-block outputs back around to the cond sub-block
   // arguments, but combine with existing args.
-  auto bodyOutputOp = cast<MEF::OutputOp>(bodyBlock->getTerminator());
-  for (const auto [output, arg] :
-       llvm::zip(bodyOutputOp->getOperands(), condBlock->getArguments())) {
-    Set set = getEntries(domainMap, output);
-    domainMap.leastUpperBound(set, getEntries(domainMap, arg));
-    setEntriesAndId(domainMap, arg, set);
-  }
-
-  // Flow the cond sub block.
-  flowBlock(condBlock, domainMap, flowOp);
-
-  // Flow from the cond sub-block outputs forwards to control flow op results,
-  // but combine with existing results.
-  auto condOutputOp = cast<MEF::OutputOp>(condBlock->getTerminator());
-  for (const auto [output, result] :
-       llvm::zip(condOutputOp->getOperands(), cfOp->getResults())) {
-    Set set = getEntries(domainMap, output);
-    domainMap.leastUpperBound(set, getEntries(domainMap, result));
-    setEntriesAndId(domainMap, result, set);
+  for (const auto [bodyOutput, condArg] :
+       llvm::zip(bodyBlock->getTerminator()->getOperands(),
+                 condBlock->getArguments())) {
+    Set set = getEntries(domainMap, bodyOutput);
+    domainMap.leastUpperBound(set, getEntries(domainMap, condArg));
+    setEntriesAndId(domainMap, condArg, set);
   }
 }
 
@@ -210,20 +173,14 @@ void ForwardsRelationDataflowAnalysis::flowControlFlow(
     const FlowOp &flowOp) {
   switch (cfOp.getFlavor()) {
   case GRT::kLoopLike: {
-    bool outerChanged = domainMap.changed;
     LLVM_DEBUG(llvm::dbgs() << "fixed point setup...\n");
-    if (cfOp->getNumRegions() == 1) {
-      // The sub-block may be executed zero times, so flow forwards from
-      // inputs to results.
-      for (auto [input, result] :
-           llvm::zip(cfOp.getInputs(), cfOp->getResults()))
-        setEntriesAndId(domainMap, result, getEntries(domainMap, input));
-    } else {
-      // The first sub-block will be executed at least once.
-      flowCondition(cfOp, domainMap, flowOp);
-    }
+    // Flow from control flow inputs to args of first sub-block.
+    for (auto [input, arg] :
+         llvm::zip(cfOp.getInputs(), cfOp->getRegions().front().getArguments()))
+      setEntriesAndId(domainMap, arg, getEntries(domainMap, input));
 
     // Until fixed point...
+    bool outerChanged = domainMap.changed;
     do {
       LLVM_DEBUG(llvm::dbgs() << "fixed point iteration...\n");
       domainMap.changed = false;
@@ -240,6 +197,12 @@ void ForwardsRelationDataflowAnalysis::flowControlFlow(
     } while (domainMap.changed);
     LLVM_DEBUG(llvm::dbgs() << "fixed point reached\n");
     domainMap.changed = outerChanged;
+
+    // Flow from args of last sub-block to control flow outputs.
+    for (auto [arg, result] : llvm::zip(
+             cfOp->getRegions().back().getArguments(), cfOp->getResults()))
+      setEntriesAndId(domainMap, result, getEntries(domainMap, arg));
+
     break;
   }
   case GRT::kBranchLike: {
@@ -277,9 +240,9 @@ void ForwardsRelationDataflowAnalysis::flowModel(ModelOp modelOp,
   flowBlock(initBlock, domainMap, flowOp);
 
   // Flow from 'init' outputs {0, 1} to 'execute' args {0, 1}.
-  auto initOutputOp = cast<MEF::OutputOp>(initBlock->getTerminator());
   for (const auto &[output, arg] :
-       llvm::zip(initOutputOp->getOperands(), executeBlock->getArguments()))
+       llvm::zip(initBlock->getTerminator()->getOperands(),
+                 executeBlock->getArguments()))
     setEntriesAndId(domainMap, arg, getEntries(domainMap, output));
   // Start remaining 'execute' args start.
   for (Value arg : llvm::drop_begin(executeBlock->getArguments(), 2))
@@ -308,45 +271,18 @@ void BackwardsRelationDataflowAnalysis::flowSimpleLoop(
   assert(cfOp->getNumRegions() == 1);
   Block *bodyBlock = &cfOp->getRegion(0).front();
 
-  // Flow from the current control flow op inputs back around to the
-  // sub-block output operands.
-  auto outputOp = cast<MEF::OutputOp>(bodyBlock->getTerminator());
-  for (const auto &[input, output] :
-       llvm::zip(cfOp.getInputOpOperands(), outputOp->getOpOperands()))
-    setEntriesAndId(domainMap, &output, getEntries(domainMap, &input));
-
-  // Flow the sub block.
+  // Flow the body sub block.
   flowBlock(bodyBlock, domainMap, flowOp);
 
-  // Flow from the sub-block arguments backwards to the control flow op
-  // inputs, but combine with the existing inputs.
-  for (const auto &[arg, input] :
-       llvm::zip(bodyBlock->getArguments(), cfOp.getInputOpOperands())) {
+  // Flow from the sub-block arguments back around to the block outputs,
+  // but combine with the existing inputs.
+  for (const auto &[arg, output] :
+       llvm::zip(bodyBlock->getArguments(),
+                 bodyBlock->getTerminator()->getOpOperands())) {
     Set set = operandCombination(domainMap, arg);
-    domainMap.leastUpperBound(set, getEntries(domainMap, &input));
-    setEntriesAndId(domainMap, &input, set);
+    domainMap.leastUpperBound(set, getEntries(domainMap, &output));
+    setEntriesAndId(domainMap, &output, set);
   }
-}
-
-void BackwardsRelationDataflowAnalysis::flowCondition(
-    GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
-    const FlowOp &flowOp) {
-  assert(cfOp->getNumRegions() == 2);
-  Block *condBlock = &cfOp->getRegion(0).front();
-
-  // Flow from the control flow op results to the sub-block outputs.
-  auto outputOp = cast<MEF::OutputOp>(condBlock->getTerminator());
-  for (const auto &[result, output] :
-       llvm::zip(cfOp->getResults(), outputOp->getOpOperands()))
-    setEntriesAndId(domainMap, &output, operandCombination(domainMap, result));
-
-  // Flow the sub block.
-  flowBlock(condBlock, domainMap, flowOp);
-
-  // Flow from the sub-block arguments backwards to control flow op inputs.
-  for (const auto &[arg, input] :
-       llvm::zip(condBlock->getArguments(), cfOp.getInputOpOperands()))
-    setEntriesAndId(domainMap, &input, operandCombination(domainMap, arg));
 }
 
 void BackwardsRelationDataflowAnalysis::flowConditionedLoop(
@@ -356,35 +292,27 @@ void BackwardsRelationDataflowAnalysis::flowConditionedLoop(
   Block *condBlock = &cfOp->getRegion(0).front();
   Block *bodyBlock = &cfOp->getRegion(1).front();
 
-  // Flow from the control flow op inputs to the body sub-block outputs.
-  auto bodyOutputOp = cast<MEF::OutputOp>(bodyBlock->getTerminator());
-  for (const auto &[input, output] :
-       llvm::zip(cfOp.getInputOpOperands(), bodyOutputOp->getOpOperands()))
-    setEntriesAndId(domainMap, &output, getEntries(domainMap, &input));
+  // Flow the cond sub block.
+  flowBlock(condBlock, domainMap, flowOp);
+
+  // Flow from the cond sub-block args backwards to outputs of body block.
+  for (const auto &[condArg, bodyOutput] :
+       llvm::zip(condBlock->getArguments(),
+                 bodyBlock->getTerminator()->getOpOperands()))
+    setEntriesAndId(domainMap, &bodyOutput,
+                    operandCombination(domainMap, condArg));
 
   // Flow the body sub block.
   flowBlock(bodyBlock, domainMap, flowOp);
 
   // Flow from the body sub-block args backwards to the cond sub-block
   // outputs, but combine with existing outputs.
-  auto condOutputOp = cast<MEF::OutputOp>(condBlock->getTerminator());
-  for (const auto &[arg, output] :
-       llvm::zip(bodyBlock->getArguments(), condOutputOp->getOpOperands())) {
-    Set set = operandCombination(domainMap, arg);
-    domainMap.leastUpperBound(set, getEntries(domainMap, &output));
-    setEntriesAndId(domainMap, &output, set);
-  }
-
-  // Flow the cond sub block.
-  flowBlock(condBlock, domainMap, flowOp);
-
-  // Flow from the cond sub-block args backwards to control flow op inputs,
-  // but combine with existing inputs.
-  for (const auto &[arg, input] :
-       llvm::zip(condBlock->getArguments(), cfOp.getInputOpOperands())) {
-    Set set = operandCombination(domainMap, arg);
-    domainMap.leastUpperBound(set, getEntries(domainMap, &input));
-    setEntriesAndId(domainMap, &input, set);
+  for (const auto &[bodyArg, condOutput] :
+       llvm::zip(bodyBlock->getArguments(),
+                 condBlock->getTerminator()->getOpOperands())) {
+    Set set = operandCombination(domainMap, bodyArg);
+    domainMap.leastUpperBound(set, getEntries(domainMap, &condOutput));
+    setEntriesAndId(domainMap, &condOutput, set);
   }
 }
 
@@ -397,8 +325,7 @@ void BackwardsRelationDataflowAnalysis::flowBranch(
     Set set = operandCombination(domainMap, result);
     for (Region &region : cfOp->getRegions()) {
       Block *subBlock = &region.front();
-      auto outputOp = cast<MEF::OutputOp>(subBlock->getTerminator());
-      OpOperand *output = &outputOp->getOpOperand(i);
+      OpOperand *output = &subBlock->getTerminator()->getOpOperand(i);
       setEntriesAndId(domainMap, output, set);
     }
   }
@@ -428,21 +355,19 @@ void BackwardsRelationDataflowAnalysis::flowControlFlow(
     const FlowOp &flowOp) {
   switch (cfOp.getFlavor()) {
   case GRT::kLoopLike: {
-    bool outerChanged = domainMap.changed;
     LLVM_DEBUG(llvm::dbgs() << "fixed point setup...\n");
-    if (cfOp->getNumRegions() == 1) {
-      // The sub-block may be executed zero times, so flow backwards
-      // from results to inputs.
-      for (const auto &[result, input] :
-           llvm::zip(cfOp->getResults(), cfOp.getInputOpOperands()))
-        setEntriesAndId(domainMap, &input,
-                        operandCombination(domainMap, result));
-    } else {
-      // The first sub-block will be executed at least once.
-      flowCondition(cfOp, domainMap, flowOp);
-    }
+    // Flow from control flow op results to outputs of first sub-block.
+    for (const auto &[result, output] :
+         llvm::zip(cfOp->getResults(), cfOp->getRegions()
+                                           .front()
+                                           .front()
+                                           .getTerminator()
+                                           ->getOpOperands()))
+      setEntriesAndId(domainMap, &output,
+                      operandCombination(domainMap, result));
 
     // Until fixed point...
+    bool outerChanged = domainMap.changed;
     do {
       LLVM_DEBUG(llvm::dbgs() << "fixed point iteration...\n");
       domainMap.changed = false;
@@ -459,6 +384,13 @@ void BackwardsRelationDataflowAnalysis::flowControlFlow(
     } while (domainMap.changed);
     LLVM_DEBUG(llvm::dbgs() << "fixed point reached\n");
     domainMap.changed = outerChanged;
+
+    // Flow from args of first sub-block back to control flow op inputs.
+    for (const auto &[arg, input] :
+         llvm::zip(cfOp->getRegions().front().getArguments(),
+                   cfOp.getInputOpOperands()))
+      setEntriesAndId(domainMap, &input, operandCombination(domainMap, arg));
+
     break;
   }
   case GRT::kBranchLike: {
@@ -494,17 +426,16 @@ void BackwardsRelationDataflowAnalysis::flowModel(ModelOp modelOp,
   Block *execBlock = modelOp.getExecuteBlock();
 
   // Start with the 'execute' block outputs.
-  auto executeOutputOp = cast<MEF::OutputOp>(execBlock->getTerminator());
-  for (const OpOperand &output : executeOutputOp->getOpOperands())
+  for (const OpOperand &output : execBlock->getTerminator()->getOpOperands())
     setId(domainMap, &output);
 
   // Flow backwards through 'execute' block.
   flowBlock(execBlock, domainMap, flowOp);
 
   // Flow from 'execute' args {0, 1} backwards to 'init' outputs {0, 1}.
-  auto initOutputOp = cast<MEF::OutputOp>(initBlock->getTerminator());
   for (const auto &[arg, output] :
-       llvm::zip(execBlock->getArguments(), initOutputOp->getOpOperands()))
+       llvm::zip(execBlock->getArguments(),
+                 initBlock->getTerminator()->getOpOperands()))
     setEntriesAndId(domainMap, &output, operandCombination(domainMap, arg));
 
   // Flow backwards through 'init' block.
