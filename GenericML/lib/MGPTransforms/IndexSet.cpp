@@ -76,7 +76,7 @@ void M::MGP::printVImpl(IndexSet<const OpOperand *> &indexSet,
       !value.hasOneUse()) {
     // TODO: Avoid scan.
     size_t occurrenceIndex = 0;
-    for (const OpOperand* otherOperand : indexSet.allVs) {
+    for (const OpOperand *otherOperand : indexSet.allVs) {
       if (otherOperand == indexSet.distinguished)
         continue;
       if (otherOperand == operand)
@@ -111,15 +111,20 @@ void M::MGP::printVImpl(IndexSet<Operation *> &indexSet, llvm::raw_ostream &os,
     os << "DIST";
     return;
   }
-  // Represent an operation by the pretty printed form of it's first result
-  if (op->getNumResults() == 0)
-    os << "[]";
-  else {
+  auto itr = indexSet.blockIndexMap.find(op->getBlock());
+  assert(itr != indexSet.blockIndexMap.end());
+  if (op->getNumResults() == 0) {
+    if (isa<MEF::OutputOp>(op))
+      os << "out";
+    else
+      // Use the op name even though may not be disambiguated by the block
+      // index alone.
+      os << op->getName();
+  } else {
+    // Represent the operation by the pretty printed form of it's first result
     Value result = op->getResult(0);
-    auto itr = indexSet.blockIndexMap.find(result.getParentBlock());
-    assert(itr != indexSet.blockIndexMap.end());
     result.printAsOperand(os, mlir::OpPrintingFlags().printGenericOpForm());
-    if (result.getParentBlock() != indexSet.model.getExecuteBlock())
-      os << "[" << itr->second << "]";
   }
+  if (op->getBlock() != indexSet.model.getExecuteBlock())
+    os << "[" << itr->second << "]";
 }

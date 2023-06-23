@@ -195,6 +195,7 @@ public:
   }
 
   /// Returns copy of set closed under the given equivalence.
+  [[nodiscard]]
   Set closeSetUnderEquivalence(const Equivalence &equivalence,
                                const Set &set) const {
     Set result(set.size());
@@ -204,6 +205,16 @@ public:
            equivItr != equivalence.member_end(); ++equivItr)
         result.set(*equivItr);
     }
+    return result;
+  }
+
+  /// Returns copy of set using only canonical Vs w.r.t. equivalance.
+  [[nodiscard]]
+  Set toCanonicalForm(const Equivalence &equivalence, const Set &set) const {
+    Set result(set.size());
+    for (auto itr = set.set_bits_begin(), e = set.set_bits_end(); itr != e;
+         ++itr)
+      result.set(equivalence.getLeaderValue(*itr));
     return result;
   }
 
