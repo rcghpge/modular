@@ -292,3 +292,39 @@ mo.graph @no_fold_select(%arg0 : !mo.tensor<[5], f32>, %arg1 : !mo.tensor<[5], f
 // CHECK-NEXT: mo.constant
 // CHECK-NEXT: %[[OUT:.*]] = mo.select
 // CHECK-NEXT: mo.output %[[OUT]]
+
+
+mo.graph @fold_concat(%axis : !mo.tensor<[], si64>) -> !mo.tensor<[4], si32> {
+    %v1 = mo.constant {value = #M.dense_array<-1> : !M.array<1xsi32>} : !mo.tensor<[1], si32>
+    %v2 = mo.constant {value = #M.dense_array<-2> : !M.array<1xsi32>} : !mo.tensor<[1], si32>
+    %v3 = mo.constant {value = #M.dense_array<-3> : !M.array<1xsi32>} : !mo.tensor<[1], si32>
+    %v4 = mo.constant {value = #M.dense_array<-4> : !M.array<1xsi32>} : !mo.tensor<[1], si32>
+    %conc = mo.concat[%axis : !mo.tensor<[], si64>] (%v1, %v2, %v3, %v4) : (!mo.tensor<[1], si32>, !mo.tensor<[1], si32>, !mo.tensor<[1], si32>, !mo.tensor<[1], si32>) -> !mo.tensor<[4], si32>
+    mo.output %conc : !mo.tensor<[4], si32>
+}
+// CHECK-LABEL: mo.graph @fold_concat
+// CHECK-NEXT: %[[OUT:.*]] = mo.constant {value = #M.dense_array<-1, -2, -3, -4> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+// CHECK-NEXT: mo.output %[[OUT]]
+
+mo.graph @fold_concat_multidim(%axis : !mo.tensor<[], si64>) -> !mo.tensor<[11], si32> {
+    %v1 = mo.constant {value = #M.dense_array<-1> : !M.array<1xsi32>} : !mo.tensor<[1], si32>
+    %v2 = mo.constant {value = #M.dense_array<-2, -3, -4> : !M.array<3xsi32>} : !mo.tensor<[3], si32>
+    %v3 = mo.constant {value = #M.dense_array<-5, -6, -7, -8, -9> : !M.array<5xsi32>} : !mo.tensor<[5], si32>
+    %v4 = mo.constant {value = #M.dense_array<-10, -11> : !M.array<2xsi32>} : !mo.tensor<[2], si32>
+    %conc = mo.concat[%axis : !mo.tensor<[], si64>] (%v1, %v2, %v3, %v4) : (!mo.tensor<[1], si32>, !mo.tensor<[3], si32>, !mo.tensor<[5], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[11], si32>
+    mo.output %conc : !mo.tensor<[11], si32>
+}
+// CHECK-LABEL: mo.graph @fold_concat_multidim
+// CHECK-NEXT: %[[OUT:.*]] = mo.constant {value = #M.dense_array<-1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -11> : tensor<11xsi32>} : !mo.tensor<[11], si32>
+// CHECK-NEXT: mo.output %[[OUT]]
+
+mo.graph @no_fold_concat_dyn_in(%axis : !mo.tensor<[], si64>, %v4 : !mo.tensor<[2], si32>) -> !mo.tensor<[11], si32> {
+    %v1 = mo.constant {value = #M.dense_array<-1> : !M.array<1xsi32>} : !mo.tensor<[1], si32>
+    %v2 = mo.constant {value = #M.dense_array<-2, -3, -4> : !M.array<3xsi32>} : !mo.tensor<[3], si32>
+    %v3 = mo.constant {value = #M.dense_array<-5, -6, -7, -8, -9> : !M.array<5xsi32>} : !mo.tensor<[5], si32>
+    %conc = mo.concat[%axis : !mo.tensor<[], si64>] (%v1, %v2, %v3, %v4) : (!mo.tensor<[1], si32>, !mo.tensor<[3], si32>, !mo.tensor<[5], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[11], si32>
+    mo.output %conc : !mo.tensor<[11], si32>
+}
+// CHECK-LABEL: mo.graph @no_fold_concat_dyn_in
+// CHECK: %[[OUT:.*]] = mo.concat
+// CHECK-NEXT: mo.output %[[OUT]]

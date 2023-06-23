@@ -703,6 +703,40 @@ void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 // MO_ConcatOp support
 //===----------------------------------------------------------------------===//
 
+OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
+  size_t numInputs = getInputs().size();
+  TensorType outType = getResult().getType();
+
+  // Enforce rank 1 so we don't need to check axis or deal with complex
+  // stride stuff.
+  if (!outType.hasRank() || outType.getRank() != 1 || !outType.hasStaticShape())
+    return {};
+
+  SmallVector<APInt> concatTensor;
+
+  DType outDtype = outType.getDtype();
+  for (Attribute attr : adaptor.getInputs()) {
+    // Enforce that it only runs on ints.
+    auto asIntAttr = dyn_cast_or_null<IntArrayElementsAttr>(attr);
+    if (!asIntAttr)
+      return {};
+
+    auto maybeValue =
+        tryGetConstantBlob<int64_t>(cast<ElementsAttr>(asIntAttr), outDtype);
+    if (!maybeValue)
+      return {};
+
+    // Append the values to the output tensor. We can do this since it is
+    // rank 1.
+    for (size_t idx = 0, e = maybeValue->size(); idx < e; idx++)
+      concatTensor.push_back(APInt(64, (*maybeValue)[idx], true));
+  }
+
+  auto rankedResTy =
+      RankedTensorType::get(outType.getIntDims(), outType.getElementType());
+  return IntArrayElementsAttr::get(rankedResTy, concatTensor);
+}
+
 LogicalResult ConcatOp::verify() {
   size_t numInputs = getInputs().size();
   if (numInputs < 2)

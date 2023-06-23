@@ -1592,6 +1592,7 @@ def MO_ConcatOp : MO_TensorOp<"concat", [
 
   let hasVerifier = 1;
   let hasCanonicalizeMethod = 1;
+  let hasFolder = 1;
 }
 
 def MO_SplitOp : MO_TensorOp<"split", [Pure]> {
