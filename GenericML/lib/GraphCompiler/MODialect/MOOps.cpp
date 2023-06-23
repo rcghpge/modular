@@ -937,14 +937,40 @@ OpFoldResult SelectOp::fold(FoldAdaptor adaptor) {
   // TODO(#10811): support other types and do this using a MOJO kernel?
   // TODO refactor parts of this with other folders
 
+  // If the x and y are the same it's an identity op regardless of condition.
+  if (getX() == getY())
+    return getX();
+
   auto condAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getCond());
   auto xAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getX());
   auto yAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getY());
-  if (!condAttr || !xAttr || !yAttr)
+  if (!condAttr)
     return {};
 
-  TensorType resTy = getType();
   DType condDType = getCond().getType().getDtype();
+
+  // If either or both inputs are unknown we can still fold symbolically. If
+  // the condition is known to be all of one value then we can just return X if
+  // the cond is true or Y if the cond is false.
+  if (!xAttr || !yAttr) {
+    auto maybeCond =
+        tryGetConstantBlob<int64_t>(cast<ElementsAttr>(condAttr), condDType);
+    if (!maybeCond.has_value())
+      return {};
+
+    ArrayRef<int64_t> condArr = *maybeCond;
+
+    int64_t value = condArr[0];
+
+    // Check the values are all the same otherwise exit.
+    for (size_t idx = 1, e = condAttr.size(); idx < e; idx++) {
+      if (value != condArr[idx])
+        return {};
+    }
+    return value ? getX() : getY();
+  }
+
+  TensorType resTy = getType();
   DType resDType = resTy.getDtype();
   auto maybeCond =
       tryGetConstantBlob<int64_t>(cast<ElementsAttr>(condAttr), condDType);
@@ -1488,8 +1514,8 @@ LogicalResult RebindOp::verify() {
 template <typename T>
 bool foldStaticNegativeIndicesInPlace(T op, int operandIndex) {
   // Use at top of T::fold(), which is run before any other canonicalizations.
-  // If successful, then if axis and rank can be gotten at compile time, it is now
-  // guaranteed to be in [0, rank).
+  // If successful, then if axis and rank can be gotten at compile time, it is
+  // now guaranteed to be in [0, rank).
   TensorValue axisArr = op.getAxis();
   TensorType inputTy = op.getInput().getType();
   std::optional<int64_t> maybeAxis = tryGetConstantInt(axisArr);

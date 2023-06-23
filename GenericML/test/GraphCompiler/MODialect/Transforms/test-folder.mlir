@@ -255,3 +255,40 @@ mo.graph @no_fold_reduce_add2(%arg0 : !mo.tensor<[1, 10, 1], f32>) -> !mo.tensor
     // CHECK-NEXT: mo.output %[[OUT]] : !mo.tensor<[1, 10, 1], f32>
     mo.output %res : !mo.tensor<[1, 10, 1], f32>
 }
+
+
+mo.graph @fold_select_same(%cond : !mo.tensor<[5], bool>, %arg0 : !mo.tensor<[5], f32>) -> !mo.tensor<[5], f32> {
+    %res = mo.select(%cond, %arg0, %arg0) : (!mo.tensor<[5], bool>, !mo.tensor<[5], f32>, !mo.tensor<[5], f32>) -> !mo.tensor<[5], f32>
+    mo.output %res : !mo.tensor<[5], f32>
+}
+// CHECK-LABEL: mo.graph @fold_select_same
+// CHECK: (%[[COND:.*]]: !mo.tensor<[5], bool>, %[[ARG0:.*]]: !mo.tensor<[5], f32>
+// CHECK-NEXT: mo.output %[[ARG0]]
+
+mo.graph @fold_select_true(%arg0 : !mo.tensor<[5], f32>, %arg1 : !mo.tensor<[5], f32>) -> !mo.tensor<[5], f32> {
+    %cond = mo.constant {value = #M.dense_array<true, true, true, true, true> : !M.array<5xi1>} : !mo.tensor<[5], bool>
+    %res = mo.select(%cond, %arg0, %arg1) : (!mo.tensor<[5], bool>, !mo.tensor<[5], f32>, !mo.tensor<[5], f32>) -> !mo.tensor<[5], f32>
+    mo.output %res : !mo.tensor<[5], f32>
+}
+// CHECK-LABEL: mo.graph @fold_select_true
+// CHECK: (%[[ARG0:.*]]: !mo.tensor<[5], f32>, %[[ARG1:.*]]: !mo.tensor<[5], f32>
+// CHECK-NEXT: mo.output %[[ARG0]]
+
+mo.graph @fold_select_false(%arg0 : !mo.tensor<[5], f32>, %arg1 : !mo.tensor<[5], f32>) -> !mo.tensor<[5], f32> {
+    %cond = mo.constant {value = #M.dense_array<false, false, false, false, false> : !M.array<5xi1>} : !mo.tensor<[5], bool>
+    %res = mo.select(%cond, %arg0, %arg1) : (!mo.tensor<[5], bool>, !mo.tensor<[5], f32>, !mo.tensor<[5], f32>) -> !mo.tensor<[5], f32>
+    mo.output %res : !mo.tensor<[5], f32>
+}
+// CHECK-LABEL: mo.graph @fold_select_false
+// CHECK: (%[[ARG0:.*]]: !mo.tensor<[5], f32>, %[[ARG1:.*]]: !mo.tensor<[5], f32>
+// CHECK-NEXT: mo.output %[[ARG1]]
+
+mo.graph @no_fold_select(%arg0 : !mo.tensor<[5], f32>, %arg1 : !mo.tensor<[5], f32>) -> !mo.tensor<[5], f32> {
+    %cond = mo.constant {value = #M.dense_array<true, false, true, true, true> : !M.array<5xi1>} : !mo.tensor<[5], bool>
+    %res = mo.select(%cond, %arg0, %arg1) : (!mo.tensor<[5], bool>, !mo.tensor<[5], f32>, !mo.tensor<[5], f32>) -> !mo.tensor<[5], f32>
+    mo.output %res : !mo.tensor<[5], f32>
+}
+// CHECK-LABEL: mo.graph @no_fold_select
+// CHECK-NEXT: mo.constant
+// CHECK-NEXT: %[[OUT:.*]] = mo.select
+// CHECK-NEXT: mo.output %[[OUT]]
