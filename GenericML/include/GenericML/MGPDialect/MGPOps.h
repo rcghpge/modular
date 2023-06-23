@@ -15,6 +15,7 @@
 #include "GenericML/MGPDialect/MGPBufferAllocInterface.h"
 #include "GenericML/MGPDialect/MGPDialect.h"
 #include "GenericML/MGPDialect/MGPTypes.h"
+#include "GraphRT/GRTDialect/GRTExtendsLifetimeInterface.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/MDialect/MAttrs.h"

@@ -21,6 +21,7 @@ include "GenericML/MGPDialect/MGPDialect.td"
 include "GenericML/MGPDialect/MGPTypes.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "GenericML/MGPDialect/MGPBufferAllocInterface.td"
+include "GraphRT/GRTDialect/GRTExtendsLifetimeInterface.td"
 
 // Base class for ops in this dialect.
 class MGP_Op<string mnemonic, list<Trait> traits = []> :
@@ -626,7 +627,8 @@ def CpuBufferConcatOp : MGP_Op<"cpu.buffer.concat"> {
 //===----------------------------------------------------------------------===//
 
 def CpuBufferSectionStaticBorrowOp : MGP_Op<"cpu.buffer.section.static.borrow", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    GRTExtendsLifetimeInterface]> {
   let summary = "Borrows a section with statically known offset and size from "
                 "input buffer.";
   let description = [{
@@ -677,7 +679,8 @@ def CpuBufferSectionStaticBorrowOp : MGP_Op<"cpu.buffer.section.static.borrow", 
 // CpuBufferSplitBorrowOp
 //===----------------------------------------------------------------------===//
 
-def CpuBufferSplitBorrowOp : MGP_Op<"cpu.buffer.split.borrow"> {
+def CpuBufferSplitBorrowOp : MGP_Op<"cpu.buffer.split.borrow", [
+    GRTExtendsLifetimeInterface]> {
   let summary = "Splits an input buffer into multiple result buffers which "
                 "borrow sections from the input.";
   let description = [{
