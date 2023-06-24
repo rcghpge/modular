@@ -8,55 +8,17 @@
 
 #include "GenericML/MGPDialect/MGPUtils.h"
 #include "mlir/IR/Visitors.h"
+#include "mlir/Transforms/TopologicalSortUtils.h"
 
 using namespace M;
 using namespace M::MGP;
 
-/// Non-recursively visit inputs of op in dfs order, accumulating post-order
-/// visits into dataflowOrder.
-static void visitInDataflowOrder(Operation *op,
-                                 SmallVectorImpl<Operation *> &dataflowOrder,
-                                 DenseSet<Operation *> &visited) {
-  if (!visited.insert(op).second)
-    return;
-
-  struct Frame {
-    Operation *frameOp;
-    size_t nextOperandIndex;
-    Frame(Operation *frameOp, size_t nextOperandIndex)
-        : frameOp(frameOp), nextOperandIndex(nextOperandIndex) {}
-  };
-  SmallVector<Frame> stack;
-
-  // Start with first operand of op, if any.
-  stack.emplace_back(op, 0);
-
-  while (!stack.empty()) {
-    Frame frame = stack.back();
-    stack.pop_back();
-    if (frame.nextOperandIndex >= frame.frameOp->getNumOperands()) {
-      // We've visited all the inputs of frame.parent
-      dataflowOrder.push_back(frame.frameOp);
-    } else {
-      // We're about to visit frame.parent->getOperand(frame.nextInputIndex),
-      // so remember we need to continue with next operand when done, if any.
-      stack.emplace_back(frame.frameOp, frame.nextOperandIndex + 1);
-
-      Value operand = frame.frameOp->getOperand(frame.nextOperandIndex);
-      if (Operation *inputOp = operand.getDefiningOp()) {
-        if (visited.insert(inputOp).second)
-          // Start with first operand of inputOp, if any.
-          stack.emplace_back(inputOp, 0);
-      }
-    }
-  }
-}
-
 SmallVector<Operation *> M::MGP::getDataflowOrder(Block *block) {
   SmallVector<Operation *> dataflowOrder;
-  DenseSet<Operation *> visited;
-  for (Operation &op : block->getOperations())
-    visitInDataflowOrder(&op, dataflowOrder, visited);
+  dataflowOrder.reserve(block->getOperations().size());
+  for (auto &op : block->getOperations())
+    dataflowOrder.emplace_back(&op);
+  mlir::computeTopologicalSorting(dataflowOrder);
   return dataflowOrder;
 }
 
@@ -70,7 +32,7 @@ bool M::MGP::isAtMostOnce(Operation *op) {
         return false;
     }
     op = op->getParentOp();
-  };
+  }
   return true;
 }
 

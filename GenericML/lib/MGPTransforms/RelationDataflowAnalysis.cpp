@@ -222,6 +222,7 @@ void ForwardsRelationDataflowAnalysis::flowDefault(Operation *op,
 void ForwardsRelationDataflowAnalysis::flowBlock(Block *block,
                                                  DomainMap &domainMap,
                                                  const FlowOp &flowOp) {
+
   for (Operation *op : getDataflowOrder(block))
     flowOp(op, domainMap);
 }
