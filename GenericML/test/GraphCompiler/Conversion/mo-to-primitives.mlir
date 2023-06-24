@@ -29,7 +29,7 @@ mo.graph @constants_with_multiple_returns(%arg0: !mo.tensor<[2], f32>, %arg1: !m
   mo.output %arg0, %0, %0, %arg1, %arg1, %1 : !mo.tensor<[2], f32>, !mo.tensor<[3], f32>, !mo.tensor<[3], f32>, !mo.tensor<[5, 1], f32>, !mo.tensor<[5, 1], f32>, !mo.tensor<[4], si8>
 }
 
-// CHECK: mgp.model @foo : tf init {
+// CHECK-LABEL: mgp.model @foo : tf init {
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
 // CHECK-SAME: %[[ARG2:.*]]: !mgp.cpu.tensor<1x?xf32>, %[[ARG3:.*]]: !mgp.cpu.tensor<?xf32>) -> !mef.chain {
 // CHECK:   %[[BUF1:.*]], %[[SPEC1:.*]] = mgp.cpu.tensor.extract %[[ARG2]] : !mgp.cpu.tensor<1x?xf32>
@@ -61,3 +61,4 @@ mo.graph @scalar_arg(%arg0: !mo.tensor<[], f32>) -> (!mo.tensor<[], f32>) {
     }
   }
 #-}
+

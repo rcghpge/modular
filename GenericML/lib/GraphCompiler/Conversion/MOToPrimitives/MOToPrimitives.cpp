@@ -17,6 +17,7 @@
 #include "Support/Compiler/OperationUtils.h"
 #include "Support/STLExtras.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
+#include "mlir/Transforms/TopologicalSortUtils.h"
 #include <numeric>
 
 using namespace M;
@@ -835,6 +836,10 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
 }
 
 LogicalResult MOGraphLowering::lowerBlock(Block *block) {
+  // Ensure the block is sorted with operands to operations appearing before
+  // their use. 
+  mlir::sortTopologically(block);
+
   for (Operation &op : *block) {
     if (auto declOp = dyn_cast<KGEN::ParamDeclareOp>(op)) {
       if (failed(lowerParamDeclare(declOp)))
