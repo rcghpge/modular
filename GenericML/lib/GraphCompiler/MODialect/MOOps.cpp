@@ -704,7 +704,6 @@ void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 //===----------------------------------------------------------------------===//
 
 OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
-  size_t numInputs = getInputs().size();
   TensorType outType = getResult().getType();
 
   // Enforce rank 1 so we don't need to check axis or deal with complex
