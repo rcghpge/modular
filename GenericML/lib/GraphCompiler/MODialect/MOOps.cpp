@@ -886,20 +886,67 @@ static ArrayElementsAttr getEmptyArray(Type elTy) {
 
 OpFoldResult GatherOp::fold(FoldAdaptor adaptor) {
   // TODO(#10811): support other types and do this using a MOJO kernel?
-
   if (!getOutputParamDecls().empty())
     return {};
 
+  auto inputElems = dyn_cast_or_null<ElementsAttr>(adaptor.getInput());
+  auto idxElems = dyn_cast_or_null<ElementsAttr>(adaptor.getIndices());
+
   // The verifier should ensure that indices is empty, but we don't check it.
-  if (auto inputElems = dyn_cast_or_null<ElementsAttr>(adaptor.getInput()))
-    if (inputElems.empty())
-      return getEmptyArray(inputElems.getElementType());
+  if (inputElems && inputElems.empty())
+    return getEmptyArray(inputElems.getElementType());
 
-  if (auto idxElems = dyn_cast_or_null<ElementsAttr>(adaptor.getIndices()))
-    if (idxElems.empty())
-      return getEmptyArray(idxElems.getElementType());
+  if (idxElems && idxElems.empty())
+    return getEmptyArray(idxElems.getElementType());
 
-  return {};
+  if (!inputElems || !idxElems)
+    return {};
+
+  TensorType resTy = getResult().getType();
+  TensorType inTy = getInput().getType();
+
+  if (!resTy.hasRank() || !inTy.hasRank())
+    return {};
+
+  // We only perform this on rank 1 gathers.
+  if (resTy.getRank() != inTy.getRank() || inTy.getRank() != 1 ||
+      !resTy.hasStaticShape() || !inTy.hasStaticShape())
+    return {};
+
+  DType dataTy = getInput().getType().getDtype();
+  DType indicesTy = getIndices().getType().getDtype();
+
+  // If the input/indices/axis is known this is something we can fold.
+  // We have to enforce that they are only ints for now.
+  // We only run on rank 1 so we know the only possible value for axis is 1.
+  auto dataAttr = dyn_cast<IntArrayElementsAttr>(inputElems);
+  auto iAttr = dyn_cast<IntArrayElementsAttr>(idxElems);
+  if (!dataAttr || !iAttr)
+    return {};
+
+  auto maybeData =
+      tryGetConstantBlob<int64_t>(cast<ElementsAttr>(dataAttr), dataTy);
+  auto maybeInd =
+      tryGetConstantBlob<int64_t>(cast<ElementsAttr>(iAttr), indicesTy);
+  if (!maybeData.has_value() || !maybeInd.has_value())
+    return {};
+
+  ArrayRef<int64_t> data = *maybeData;
+  ArrayRef<int64_t> indices = *maybeInd;
+
+  SmallVector<APInt> gatheredValues(indices.size());
+  for (size_t idx = 0, e = indices.size(); idx < e; idx++) {
+    int64_t index = indices[idx];
+    if (index < 0 || index > data.size())
+      return {};
+
+    int64_t val = data[index];
+    gatheredValues[idx] = APInt(64, val, /*isSigned=*/true);
+  }
+
+  auto rankedResTy =
+      RankedTensorType::get(resTy.getIntDims(), resTy.getElementType());
+  return IntArrayElementsAttr::get(rankedResTy, gatheredValues);
 }
 
 LogicalResult GatherOp::verify() {
