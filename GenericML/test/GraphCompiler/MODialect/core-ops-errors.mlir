@@ -143,3 +143,9 @@ mo.graph @rebind_same_out_param_bind_to_different_ints<D0>(
   %1 = mo.rebind(%arg2) : !mo.tensor<[42, 24], f32> -> !mo.tensor<[D0, D0], f32>
   mo.output %arg3: !mo.tensor<[D0], f32>
 }
+
+// -----
+// expected-error @below {{invalid dimension, expect all dimensions >= 0 got: -1}}
+mo.graph @tensor_type_neg_dim(%arg0: !mo.tensor<[-1, 10], f32>) -> !mo.tensor<[-1, 10], f32> {
+  mo.output %arg0: !mo.tensor<[-1, 10], f32>
+}

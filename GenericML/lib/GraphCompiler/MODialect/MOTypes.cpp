@@ -104,6 +104,13 @@ LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
   auto attr = llvm::dyn_cast<ShapeAttr>(shapeAttr);
   if (!attr)
     return emitError() << "invalid shape attribute " << shapeAttr;
+
+  for (TypedAttr dimAttr: attr.getValues()) {
+    if (auto dimIntAttr = dimAttr.dyn_cast<IntegerAttr>()) {
+      if (dimIntAttr.getInt() < 0)
+        return emitError() << "invalid dimension, expect all dimensions >= 0 got: " << dimIntAttr.getInt();
+    }
+  }
   return success();
 }
 

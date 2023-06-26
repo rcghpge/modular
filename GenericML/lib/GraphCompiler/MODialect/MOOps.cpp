@@ -1877,12 +1877,6 @@ LogicalResult Static::ReshapeOp::verify() {
   if (!inputTy.hasRank() || !resultTy.hasRank())
     return success();
 
-  for (auto curResDim : resultTy.getTypedShapeAttr().getValues()) {
-    auto intCurResDim = dyn_cast<IntegerAttr>(curResDim);
-    if (intCurResDim && intCurResDim.getInt() == -1)
-      return emitOpError("static Reshape can not have inferred dimensions");
-  }
-
   TypedAttr inputNumEles = inputTy.getSymbolicNumElements();
   TypedAttr resultNumEles = resultTy.getSymbolicNumElements();
   if (!isa<IntegerAttr>(inputNumEles) || !isa<IntegerAttr>(resultNumEles)) {
