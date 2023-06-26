@@ -44,7 +44,7 @@ kgen.func @equal(%sh0: !mosh.ape, %sh1: !mosh.ape) -> i1 {
 kgen.func @get_dim(%sh0: !mosh.ape, %dim: index) -> (index, index) {
   // CHECK: %[[VAL0:.*]] = mosh.get_dim(%[[SH0]])[%[[DIM]]]
   %0 = mosh.get_dim(%sh0)[%dim]
-  kgen.return %0 : index
+  kgen.return %0, %0 : index, index
 }
 
 // CHECK: kgen.func @get_rank(%[[SH0:.*]]: !mosh.ape) -> index {
