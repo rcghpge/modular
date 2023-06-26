@@ -143,23 +143,11 @@ bool ShapeAttr::hasUnknownDims() const {
 
 LogicalResult ShapeAttr::verify(function_ref<InFlightDiagnostic()> emitError,
                                 ArrayRef<TypedAttr> values, ShapeType type) {
-  bool hasEncounteredNegOne = false;
   for (auto [idx, value] : llvm::enumerate(values)) {
     if (!value.getType().isIndex()) {
       return emitError() << "expected all list elements to have type "
                          << IndexType::get(type.getContext()) << " but got "
                          << value.getType() << " at position " << idx;
-    }
-    if (auto intAttr = llvm::dyn_cast<IntegerAttr>(value)) {
-      auto intVal = intAttr.getInt();
-      if (intVal == -1) {
-        if (hasEncounteredNegOne)
-          return emitError() << "at most one -1 dimension is allowed";
-        hasEncounteredNegOne = true;
-      } else if (intVal < 0 && !mlir::ShapedType::isDynamic(intVal)) {
-        return emitError() << "invalid shape dimension: " << intVal
-                           << " at position " << idx;
-      }
     }
   }
   return success();
@@ -259,6 +247,15 @@ ErrorOr<ShapeAttr> ShapeAttr::broadcastShapes(ShapeAttr xSh, ShapeAttr ySh) {
   }
   return ShapeAttr::get(SmallVector<TypedAttr>(llvm::reverse(result)),
                         xSh.getType());
+}
+
+ShapeAttr ShapeAttr::fromInts(ArrayRef<int64_t> values, ShapeType type) {
+  auto idxTy = IndexType::get(type.getContext());
+  SmallVector<TypedAttr> newValues =
+      llvm::map_to_vector(values, [&](int64_t val) -> TypedAttr {
+        return IntegerAttr::get(idxTy, val);
+      });
+  return get(type.getContext(), newValues, type);
 }
 
 //===----------------------------------------------------------------------===//

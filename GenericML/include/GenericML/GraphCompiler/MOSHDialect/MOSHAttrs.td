@@ -86,6 +86,12 @@ def MOSH_ShapeAttr : KGEN_ExprAttr<"Shape", "ape"> {
     /// parametric and unknown shapes, as long as they can be broadcasted
     /// without constraints.
     static ErrorOr<ShapeAttr> broadcastShapes(ShapeAttr xSh, ShapeAttr ySh);
+
+    /// Construct a `ShapeAttr` from given integers and shape type, without
+    /// considering `mlir::ShapedType::kDynamic` (i.e., all dimensions will be
+    /// known integer attributes).
+    /// TODO(#15938) remove once we have a better representation of symbolic ints
+    static ShapeAttr fromInts(ArrayRef<int64_t> values, ShapeType type);
   }];
 
   let genVerifyDecl = 1;
