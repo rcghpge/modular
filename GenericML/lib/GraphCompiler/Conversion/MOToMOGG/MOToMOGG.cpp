@@ -143,7 +143,6 @@ struct MOOpPattern : public RewritePattern {
 
     // Current jit kernel constraints:
     // Ranked.
-    // Rank between 1-5 (due to kernel bug #10551)
     // Dimensions are static or shape infered (i.e not '?')
     // Only within the top level graph and not within e.g control flow.
     bool shouldUseJit = useJit && kernel.shouldHaveMojo;
@@ -274,12 +273,12 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_MOJO_NON_ELEMWISE(MO::BatchMatmulOp, "mop.kernels.batch_matmul"),
       MO_MOJO_ONLY(MO::MaxOp),
       MO_SHIM_ONLY(MO::MaxPoolOp, "mop.kernels.pool.max"),
-      MO_SHIM_ONLY(MO::MeanOp, "mop.kernels.mean"),
+      MO_TO_MOJO_NON_ELEMWISE(MO::MeanOp, "mop.kernels.mean"),
       MO_MOJO_ONLY(MO::MinOp),
       MO_TO_MOJO(MO::MulOp, "mop.kernels.mul"),
       MO_MOJO_ONLY(MO::NotEqualOp),
       MO_SHIM_ONLY(MO::PadOp, "mop.kernels.pad"),
-      MO_SHIM_ONLY(MO::ReduceAddOp, "mop.kernels.reduce.add"),
+      MO_TO_MOJO_NON_ELEMWISE(MO::ReduceAddOp, "mop.kernels.reduce.add"),
       MO_SHIM_ONLY(MO::ReduceMulOp, "mop.kernels.reduce.mul"),
       MO_SHIM_ONLY(MO::ReduceMinOp, "mop.kernels.reduce.min"),
       MO_SHIM_ONLY(MO::ReduceMaxOp, "mop.kernels.reduce.max"),
@@ -319,4 +318,5 @@ void MOToMOGGPass::runOnOperation() {
 #undef MO_TO_MOJO_NON_ELEMWISE
 #undef MO_MOJO_ONLY
 #undef MO_SHIM_ONLY
+#undef MO_TO_MOJO_NON_ELEMWISE
 #undef MO_TO_MOJO_VIEW

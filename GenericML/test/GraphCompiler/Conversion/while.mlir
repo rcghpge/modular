@@ -1,12 +1,12 @@
-// RUN: mo-opt %s --mo-to-mogg=use-jit=true --jit-compile-kernels --mo-to-primitives --allow-unregistered-dialect --strip-buffer-attributes | FileCheck %s
+// RUN: mo-opt %s --mo-to-mogg=use-jit=true --jit-compile-kernels --mo-to-primitives --allow-unregistered-dialect | FileCheck %s
 
 // CHECK: mgp.model @while_op
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context) -> (!mef.chain, !mgp.cpu.tensor<2xf32>) {
 // CHECK: %[[X:.*]] = mgp.cpu.tensor.create %[[CHAIN]], %{{.*}}, %{{.*}}  : !mgp.cpu.tensor<2xf32>
 // CHECK: %[[Y:.*]] = mgp.cpu.tensor.create %[[CHAIN]], %{{.*}}, %{{.*}}  : !mgp.cpu.tensor<f32>
 // CHECK: %[[OUT:.*]]:4 = grt.while (%[[CHAIN]]: !mef.chain, %[[CTX]]: !mgp.context, %[[X]]: !mgp.cpu.tensor<2xf32>, %[[Y]]: !mgp.cpu.tensor<f32>) {
-// CHECK: %[[MEAN:.*]] = "mop.kernels.mean"
-// CHECK: %[[CH1:.*]] = "mop.kgen.execute_kernel"(%[[CHAIN]], %[[CTX]]
+// CHECK: %[[MEAN:.*]] = "mop.kgen.execute_kernel"{{.*}}kernelName = "{{.*}}mo.mean
+// CHECK: %[[CH1:.*]] = "mop.kgen.execute_kernel"{{.*}}kernelName = "{{.*}}mo.greater
 // CHECK-NEXT: %[[COND_TEN:.*]] = mgp.cpu.tensor.create %[[CH1]]
 // CHECK-NEXT: %[[COND_BUF:.*]], {{.*}} = mgp.cpu.tensor.extract %{{.*}} : !mgp.cpu.tensor<bool>
 // CHECK-NEXT: %[[COND_SCALAR:.*]] = mgp.to_grt_bool(%[[CHAIN]], %[[COND_BUF]]) : (!mef.chain, !mgp.cpu.buffer<1>) -> i1
