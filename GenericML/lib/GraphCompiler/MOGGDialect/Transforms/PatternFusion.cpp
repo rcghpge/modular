@@ -13,6 +13,8 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/Support/MathExtras.h"
 
+#include <numeric>
+
 using namespace M;
 using namespace mlir;
 using namespace mlir::matchers;
@@ -23,6 +25,24 @@ namespace M::MOGG {
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
 
 namespace {
+
+// The size which we regard as too small to run the special matmuls.
+constexpr int64_t kTinyMatmulFlops = 4096;
+
+bool isMatmulSmall(MO::MatmulOp matmul) {
+  MO::TensorType aType = matmul.getInputA().getType();
+  MO::TensorType bType = matmul.getInputB().getType();
+
+  if (!aType.hasStaticShape() || !bType.hasStaticShape())
+    return false;
+
+  SmallVector<int64_t> ADims = aType.getIntDims();
+  SmallVector<int64_t> BDims = bType.getIntDims();
+
+  // M * K * N
+  int64_t approxFlops = ADims[0] * ADims[1] * BDims[1];
+  return approxFlops < kTinyMatmulFlops;
+}
 
 struct GatherSumPattern : public OpRewritePattern<MO::ReduceAddOp> {
   GatherSumPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
@@ -75,6 +95,10 @@ struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
     Value input = op.getInputA();
     Value weight, perm;
     Operation *transpose = nullptr;
+
+    // If all matmul sizes kTinyMatmulSize.
+    if (isMatmulSmall(op))
+      return rewriter.notifyMatchFailure(op, "Matmul is too small");
 
     if (op.getPackedB())
       return rewriter.notifyMatchFailure(op, "Matmul is already packed");
@@ -130,6 +154,9 @@ struct MatmulTranspBPattern : public OpRewritePattern<MO::MatmulOp> {
   LogicalResult matchAndRewrite(MO::MatmulOp op,
                                 PatternRewriter &rewriter) const override {
     Value input, weight, perm;
+
+    if (isMatmulSmall(op))
+      return rewriter.notifyMatchFailure(op, "Matmul is too small");
 
     if (op.getTransposeB())
       return rewriter.notifyMatchFailure(op, "Matmul is already transposed");
@@ -273,6 +300,10 @@ struct FullyConnectedPattern : public RewritePattern {
 
     if (!input || !weight || !bias)
       return rewriter.notifyMatchFailure(op, "null input value");
+
+    if (auto mm = dyn_cast_or_null<MO::MatmulOp>(matmul))
+      if (isMatmulSmall(mm))
+        return rewriter.notifyMatchFailure(op, "Matmul is too small");
 
     // NOTE we need this because sometimes the bias comes in the form [1, N],
     // so we must match such cases.
