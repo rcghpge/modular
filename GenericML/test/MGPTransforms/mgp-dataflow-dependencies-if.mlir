@@ -33,32 +33,51 @@
 // CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "simple"} : () -> ()
 
 // CHECK: sameAs begin
-// CHECK-NEXT: {%0[0], %arg0, %arg2[2], %arg2[3]}
-// CHECK-NEXT: {%1[0], %arg1}
-// CHECK-NEXT: {%1, %arg3[2], %arg3[3]}
-// CHECK-NEXT: {%2, %arg4[2], %arg5[2], %arg4[3], %arg5[3], %3#2}
+// CHECK-NEXT: %arg0 |-> {%0[0]}
+// CHECK-NEXT: %arg1 |-> {%1[0]}
+// CHECK-NEXT: %arg2[2] |-> {%0[0], %arg0}
+// CHECK-NEXT: %arg3[2] |-> {%1}
+// CHECK-NEXT: %arg4[2] |-> {%2}
+// CHECK-NEXT: %arg5[2] |-> {%2}
+// CHECK-NEXT: %arg2[3] |-> {%0[0], %arg0}
+// CHECK-NEXT: %arg3[3] |-> {%1}
+// CHECK-NEXT: %arg4[3] |-> {%2}
+// CHECK-NEXT: %arg5[3] |-> {%2}
+// CHECK-NEXT: %3#2 |-> {%2}
 // CHECK-NEXT: sameAs end
 
 // Notice if results now capture both arms
 // CHECK: maybeSameAs begin
-// CHECK-NEXT: {%0[0], %arg0, %arg2[2], %arg2[3]}
-// CHECK-NEXT: {%1[0], %arg1}
-// CHECK-NEXT: {%1, %arg3[2], %5[2], %arg3[3], %3#0}
-// CHECK-NEXT: {%2, %arg4[2], %arg5[2], %arg4[3], %arg5[3], %3#2}
-// CHECK-NEXT: {%6[2], %5[3], %3#1}
+// CHECK-NEXT:  %arg0 |-> {%0[0]}
+// CHECK-NEXT:  %arg1 |-> {%1[0]}
+// CHECK-NEXT:  %arg2[2] |-> {%0[0], %arg0}
+// CHECK-NEXT:  %arg3[2] |-> {%1}
+// CHECK-NEXT:  %arg4[2] |-> {%2}
+// CHECK-NEXT:  %arg5[2] |-> {%2}
+// CHECK-NEXT:  %arg2[3] |-> {%0[0], %arg0}
+// CHECK-NEXT:  %arg3[3] |-> {%1}
+// CHECK-NEXT:  %arg4[3] |-> {%2}
+// CHECK-NEXT:  %arg5[3] |-> {%2}
+// CHECK-NEXT:  %3#0 |-> {%1, %5[2], %arg3[3]}
+// CHECK-NEXT:  %3#1 |-> {%6[2], %5[3]}
+// CHECK-NEXT:  %3#2 |-> {%2, %arg5[2], %arg5[3]}
 // CHECK-NEXT: maybeSameAs end
 
-// CHECK: isAlwaysReady({%0[0]})
+// CHECK: isAlwaysReady({%0[0], %arg0, %arg2[2], %arg2[3]})
 
+// Note that though we know grt.if is strict on the condition, there's
+// nothing in the grt.if result that tells us when the grt.if itself has
+// completed.
 // CHECK: impliesReady begin
-// CHECK: %3#0 |-> {%0[0], %3#0}
-// CHECK: %3#1 |-> {%0[0], %2, %3#1}
+// CHECK: %3#0 |-> {%0[0], %arg0}
+// CHECK: %3#1 |-> {%0[0], %arg0, %2}
+// CHECK: %3#2 |-> {%0[0], %arg0, %2}
 // CHECK: impliesReady end
 
 // CHECK: runsLater begin
-// CHECK-NEXT: %0[0] |-> {%0[0], %0, %1, %2, %3#0, %5[2], %6[2], %5[3], %4}
-// CHECK-NEXT: %0 |-> {%0, %3#0}
-// CHECK-NEXT: %2 |-> {%2, %6[2], %5[3], %4}
+// CHECK-NEXT: %0[0] |-> {%0, %1, %2, %3#0, %5[2], %6[2], %5[3], %4}
+// CHECK-NEXT: %0 |-> {%3#0}
+// CHECK-NEXT: %2 |-> {%6[2], %5[3], %4}
 // CHECK: runsLater end
 
 mgp.model @simple : tf init {
@@ -121,26 +140,22 @@ mgp.model @simple : tf init {
 // CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> (), sym_name = "redundant"} : () -> ()
 
 // CHECK: sameAs begin
-// CHECK: {%9, %arg2[2], %arg2[3]}
+// CHECK: %arg2[2] |-> {%9}
+// CHECK: %arg2[3] |-> {%9}
 // CHECK: sameAs end
 
-// %14[3] shows up here because %9 and %12 maybe be the same.
 // CHECK: maybeSameAs begin
-// CHECK: {%9, %arg2[2], %arg2[3], %14[3], %12}
+// CHECK: %12 |-> {%9, %arg2[2], %14[3]}
 // CHECK: maybeSameAs end
 
-// CHECK: isAlwaysReady({%0[0], %0, %1, %9, %14[3], %12})
+// CHECK: isAlwaysReady({%0[0], %arg0, %0, %1, %9, %arg2[2], %arg2[3], %14[3], %12})
 
 // CHECK: impliesReady begin
-// CHECK: %2 |-> {%0[0], %0, %1, %2}
+// CHECK: %2 |-> {%0[0], %arg0, %0, %1}
 // CHECK: impliesReady end
 
-// CHECK: consumedWhenReady begin
-// CHECK: %6 |-> {%6, %8, %10, %13}
-// CHECK: consumedWhenReady end
-
 // CHECK: runsLater begin
-// CHECK: %6 |-> {%6, %8, %10, %13}
+// CHECK: %6 |-> {%8, %10, %13}
 // CHECK: runsLater end
 
 mgp.model @redundant : tf init {
@@ -213,29 +228,24 @@ mgp.model @redundant : tf init {
 // CHECK-NEXT:  "mef.output"(%12#0, %14) : (!mef.chain, !mgp.cpu.tensor<32xui8>) -> ()
 // CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<32xui8>, sym_name = "if"} : () -> ()
 
-
 // CHECK: sameAs begin
-// CHECK: {%0[0], %arg0, %arg2[2], %arg2[3], %12#0}
-// CHECK: {%6, %arg3[2], %arg3[3]}
-// CHECK: {%9, %arg4[2], %arg4[3]}
+// CHECK: %arg3[2] |-> {%6}
+// CHECK: %arg4[2] |-> {%9}
+// CHECK: %12#0 |-> {%0[0], %arg0}
 // CHECK: sameAs end
 
 // CHECK: maybeSameAs begin
-// CHECK: {%16[2], %16[3], %12#1}
+// CHECK: %12#0 |-> {%0[0], %arg0, %arg2[2], %arg2[3]}
+// CHECK: %12#1 |-> {%16[2], %16[3]}
 // CHECK: maybeSameAs end
 
 // CHECK: impliesReady begin
-// CHECK: %16[2] |-> {%0[0], %5, %7, %8, %9, %15#0[2], %15#1[2], %16[2]}
-// CHECK: %16[3] |-> {%0[0], %3, %4, %5, %6, %15#0[3], %15#1[3], %16[3]}
+// CHECK: %16[2] |-> {%0[0], %arg0, %5, %7, %8, %9, %arg2[2], %arg4[2], %15#0[2], %15#1[2]}
+// CHECK: %16[3] |-> {%0[0], %arg0, %3, %4, %5, %6, %arg2[3], %arg3[3], %15#0[3], %15#1[3]}
 // CHECK: impliesReady end
 
-// CHECK: consumedWhenReady begin
-// CHECK: %16[2] |-> {%16[2], %13#0, %14}
-// CHECK: %12#1 |-> {%12#1, %13#0, %14}
-// CHECK: consumedWhenReady end
-
 // CHECK: runsLater begin
-// CHECK: %5 |-> {%5, %6, %9, %15#0[2], %16[2], %15#0[3], %16[3], %13#0, %14}
+// CHECK: %5 |-> {%6, %9, %15#0[2], %16[2], %15#0[3], %16[3], %13#0, %14}
 // CHECK: runsLater end
 
 mgp.model @if : tf init {

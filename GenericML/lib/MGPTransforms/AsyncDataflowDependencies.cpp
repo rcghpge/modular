@@ -19,50 +19,39 @@ using namespace std::placeholders;
 
 #define DEBUG_TYPE "mgp-dataflow"
 
-//===----------------------------------------------------------------------===//
-// AsyncDataflowDependencies
-//===----------------------------------------------------------------------===//
-
-AsyncDataflowDependencies::AsyncDataflowDependencies(IndexSet<Value> *index)
-    : ForwardsRelationDataflowAnalysis(index) {
-  sameAsEquivalence = index->identityEquivalence();
-  maybeSameAsEquivalence = index->identityEquivalence();
-  setupSameAs(index->model);
-  setupMaybeSameAs(index->model);
-  setupAlwaysReady(index->model);
-  setupImpliesReady(index->model);
-  setupConsumedWhenReady();
+AsyncDataflowDependencies::AsyncDataflowDependencies(
+    IndexSet<Value> *valueIndex, IndexSet<Operation *> *operationIndex)
+    : valueAnalysis(valueIndex), operationAnalysis(operationIndex),
+      sameAsEquivalence(valueIndex->identityEquivalence()),
+      maybeSameAsEquivalence(valueIndex->identityEquivalence()),
+      alwaysReadyPredicate(valueIndex->emptySet()) {
+  setupSameAs();
+  setupMaybeSameAs();
+  setupAlwaysReady();
+  setupImpliesReady();
+  setupRunsLater();
 }
 
 bool AsyncDataflowDependencies::sameAs(Value lhs, Value rhs) const {
-  return index->areEquivalent(sameAsEquivalence, lhs, rhs);
-}
-
-AsyncDataflowDependencies::Set
-AsyncDataflowDependencies::sameAsEquivalenceClass(Value lhs) const {
-  return index->getEquivalenceClass(sameAsEquivalence, lhs);
+  return valueAnalysis.index->areEquivalent(sameAsEquivalence, lhs, rhs);
 }
 
 bool AsyncDataflowDependencies::maybeSameAs(Value lhs, Value rhs) const {
-  return index->areEquivalent(maybeSameAsEquivalence, lhs, rhs);
+  return valueAnalysis.index->areEquivalent(maybeSameAsEquivalence, lhs, rhs);
 }
 
 bool AsyncDataflowDependencies::isAlwaysReady(Value value) const {
-  return isTrue(sameAsEquivalence, alwaysReadyRelation, value);
+  return valueAnalysis.index->setContains(alwaysReadyPredicate, value);
 }
 
 bool AsyncDataflowDependencies::impliesReady(Value lhs, Value rhs) const {
-  return containsEntryOrId(sameAsEquivalence, impliesReadyRelation, lhs, rhs);
+  return lhs == rhs ||
+         valueAnalysis.containsEntry(impliesReadyRelation, lhs, rhs);
 }
 
-AsyncDataflowDependencies::Set
+AsyncDataflowDependencies::ValueSet
 AsyncDataflowDependencies::downwardsImpliesReadySet(Value rhs) const {
-  return getEntries(sameAsEquivalence, inverseImpliesReadyRelation, rhs);
-}
-
-AsyncDataflowDependencies::Set
-AsyncDataflowDependencies::upwardsImpliesReadySet(Value lhs) const {
-  return getEntries(sameAsEquivalence, impliesReadyRelation, lhs);
+  return valueAnalysis.getEntriesAndId(inverseImpliesReadyRelation, rhs);
 }
 
 void AsyncDataflowDependencies::simplify(SmallVectorImpl<Value> &values) const {
@@ -86,20 +75,16 @@ void AsyncDataflowDependencies::simplify(SmallVectorImpl<Value> &values) const {
   }
 }
 
-AsyncDataflowDependencies::Set
-AsyncDataflowDependencies::consumedWhenReady(Value lhs) const {
-  return getEntries(sameAsEquivalence, consumedWhenReadyRelation, lhs);
+bool AsyncDataflowDependencies::areDisjoint(Operation *lhsOp,
+                                            Operation *rhsOp) const {
+  return operationAnalysis.containsEntry(runsLaterRelation, lhsOp, rhsOp) ||
+         operationAnalysis.containsEntry(runsEarlierRelation, lhsOp, rhsOp);
 }
 
-AsyncDataflowDependencies::Set
-AsyncDataflowDependencies::indicatesConsumed(Value lhs) const {
-  return getEntries(sameAsEquivalence, indicatesConsumedRelation, lhs);
-}
-
-AsyncDataflowDependencies::Set
+AsyncDataflowDependencies::ValueSet
 AsyncDataflowDependencies::exclusiveSet(Value indicator) const {
   // TODO: Implementation pending.
-  return index->emptySet();
+  return valueAnalysis.index->emptySet();
 }
 
 bool AsyncDataflowDependencies::isNonSelfOverlapping(Value value) const {
@@ -117,57 +102,57 @@ bool AsyncDataflowDependencies::isNonSelfOverlapping(Value value) const {
 }
 
 void AsyncDataflowDependencies::print(llvm::raw_ostream &os) {
-  printEquivalence(os, "sameAs", sameAsEquivalence);
-  printEquivalence(os, "maybeSameAs", maybeSameAsEquivalence);
-  printPredicate(os, "isAlwaysReady",
-                 toStableForm(sameAsEquivalence, alwaysReadyRelation));
-  printRelation(os, "impliesReady",
-                toStableForm(sameAsEquivalence, impliesReadyRelation));
-  printRelation(os, "consumedWhenReady",
-                toStableForm(sameAsEquivalence, consumedWhenReadyRelation));
+  valueAnalysis.printRelation(os, "sameAs", sameAsRelation);
+  valueAnalysis.printRelation(os, "maybeSameAs", maybeSameAsRelation);
+  valueAnalysis.printPredicate(os, "isAlwaysReady", alwaysReadyPredicate);
+  valueAnalysis.printRelation(os, "impliesReady", impliesReadyRelation);
+  operationAnalysis.printRelation(os, "runsLater", runsLaterRelation);
+  operationAnalysis.printRelation(os, "runsEarlier", runsEarlierRelation);
 }
 
 // Rules are just the control flow rules.
-void AsyncDataflowDependencies::flowPreSameAs(Operation *op,
-                                              DomainMap &domainMap) {
+void AsyncDataflowDependencies::flowSameAs(Operation *op,
+                                           ValueDomainMap &domainMap) {
   if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op))
-    flowControlFlow(
+    valueAnalysis.flowControlFlow(
         cfOp, domainMap,
-        std::bind(&AsyncDataflowDependencies::flowPreSameAs, this, _1, _2));
+        std::bind(&AsyncDataflowDependencies::flowSameAs, this, _1, _2));
   else
-    flowDefault(op, domainMap);
+    valueAnalysis.flowDefault(op, domainMap);
 }
 
-void AsyncDataflowDependencies::setupSameAs(ModelOp modelOp) {
+void AsyncDataflowDependencies::setupSameAs() {
   LLVM_DEBUG(llvm::dbgs() << "setupSameAs\n");
-  Relation relation;
-  DomainMap domainMap(sameAsEquivalence, relation, kBottomIsFull,
-                      index->emptySet(), index->fullSet());
-  flowModel(modelOp, domainMap,
-            std::bind(&AsyncDataflowDependencies::flowPreSameAs, this, _1, _2));
-  addRelationToEquivalence(sameAsEquivalence, relation);
+  ValueAnalysis::DomainMap domainMap(
+      sameAsRelation, ValueAnalysis::kBottomIsFull,
+      valueAnalysis.index->emptySet(), valueAnalysis.index->fullSet());
+  valueAnalysis.flowModel(
+      valueAnalysis.index->model, domainMap,
+      std::bind(&AsyncDataflowDependencies::flowSameAs, this, _1, _2));
+  valueAnalysis.addRelationToEquivalence(sameAsEquivalence, sameAsRelation);
 }
 
 // Rules are just the control flow rules.
-void AsyncDataflowDependencies::flowPreMaybeSameAs(Operation *op,
-                                                   DomainMap &domainMap) {
+void AsyncDataflowDependencies::flowMaybeSameAs(Operation *op,
+                                                ValueDomainMap &domainMap) {
   if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op))
-    flowControlFlow(
+    valueAnalysis.flowControlFlow(
         cfOp, domainMap,
-        std::bind(&AsyncDataflowDependencies::flowPreSameAs, this, _1, _2));
+        std::bind(&AsyncDataflowDependencies::flowMaybeSameAs, this, _1, _2));
   else
-    flowDefault(op, domainMap);
+    valueAnalysis.flowDefault(op, domainMap);
 }
 
-void AsyncDataflowDependencies::setupMaybeSameAs(ModelOp modelOp) {
+void AsyncDataflowDependencies::setupMaybeSameAs() {
   LLVM_DEBUG(llvm::dbgs() << "setupMaybeSameAs\n");
-  Relation relation;
-  DomainMap domainMap(maybeSameAsEquivalence, relation, kBottomIsEmpty,
-                      index->emptySet(), index->fullSet());
-  flowModel(
-      modelOp, domainMap,
-      std::bind(&AsyncDataflowDependencies::flowPreMaybeSameAs, this, _1, _2));
-  addRelationToEquivalence(maybeSameAsEquivalence, relation);
+  ValueDomainMap domainMap(maybeSameAsRelation, ValueAnalysis::kBottomIsEmpty,
+                           valueAnalysis.index->emptySet(),
+                           valueAnalysis.index->fullSet());
+  valueAnalysis.flowModel(
+      valueAnalysis.index->model, domainMap,
+      std::bind(&AsyncDataflowDependencies::flowMaybeSameAs, this, _1, _2));
+  valueAnalysis.addRelationToEquivalence(maybeSameAsEquivalence,
+                                         maybeSameAsRelation);
 }
 
 /// Implements the rules:
@@ -175,34 +160,38 @@ void AsyncDataflowDependencies::setupMaybeSameAs(ModelOp modelOp) {
 ///      %x = grt.chain.create (%y1, ..., %yn)
 ///    where isAlwaysReady(%yi) for all i then isAlwaysReady(%x)
 ///  - The control flow rules.
-///  - Closure under sameAs.
 void AsyncDataflowDependencies::flowAlwaysReady(Operation *op,
-                                                DomainMap &domainMap) {
+                                                ValueDomainMap &domainMap) {
   if (auto chainCreateOp = dyn_cast<GRT::ChainCreateOp>(op)) {
     // This is equivalent to:
     //   if (isTrue(o) for all o in mergeOp.getOperands())
     //     setTrue(mergeOp.getResult())
     // but writen to mirror how flowControlFlow works with the relation.
-    Set set = domainMap.bottom;
+    ValueSet set = domainMap.bottom;
     for (Value operand : chainCreateOp.getOperands())
-      domainMap.leastUpperBound(set, getEntries(domainMap, operand));
-    setEntriesAndId(domainMap, chainCreateOp.getResult(), set);
+      domainMap.leastUpperBound(
+          set, valueAnalysis.getEntriesAndId(domainMap, operand));
+    valueAnalysis.setEntries(domainMap, chainCreateOp.getResult(), set);
   } else if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op)) {
-    flowControlFlow(
+    valueAnalysis.flowControlFlow(
         cfOp, domainMap,
         std::bind(&AsyncDataflowDependencies::flowAlwaysReady, this, _1, _2));
   } else {
-    flowDefault(op, domainMap);
+    valueAnalysis.flowDefault(op, domainMap);
   }
 }
 
-void AsyncDataflowDependencies::setupAlwaysReady(ModelOp modelOp) {
+void AsyncDataflowDependencies::setupAlwaysReady() {
   LLVM_DEBUG(llvm::dbgs() << "setupAlwaysReady\n");
-  DomainMap domainMap(sameAsEquivalence, alwaysReadyRelation, kBottomIsFull,
-                      index->emptySet(), index->unitSet(index->distinguished));
-  flowModel(
-      modelOp, domainMap,
+  ValueRelation alwaysReadyRelation;
+  ValueDomainMap domainMap(
+      alwaysReadyRelation, ValueAnalysis::kBottomIsFull,
+      valueAnalysis.index->emptySet(),
+      valueAnalysis.index->unitSet(valueAnalysis.index->distinguished));
+  valueAnalysis.flowModel(
+      valueAnalysis.index->model, domainMap,
       std::bind(&AsyncDataflowDependencies::flowAlwaysReady, this, _1, _2));
+  valueAnalysis.addToPredicate(alwaysReadyPredicate, alwaysReadyRelation);
 }
 
 /// Implements the rules:
@@ -211,147 +200,64 @@ void AsyncDataflowDependencies::setupAlwaysReady(ModelOp modelOp) {
 ///    if %lhs is an 'indicating result' and %rhs is a 'gating operand'
 ///    then impliesReady(%lhs, %rhs)
 ///  - the control flow rules
-///  - closure under sameAs
 void AsyncDataflowDependencies::flowImpliesReady(Operation *op,
-                                                 DomainMap &domainMap) {
+                                                 ValueDomainMap &domainMap) {
   if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op)) {
-    flowControlFlow(
+    valueAnalysis.flowControlFlow(
         cfOp, domainMap,
         std::bind(&AsyncDataflowDependencies::flowImpliesReady, this, _1, _2));
   } else {
-    for (Value lhs : getIndicatingResults(op)) {
-      Set set = domainMap.top;
-      for (Value rhs : getGatingOperands(op))
-        domainMap.greatestLowerBound(set, getEntries(domainMap, rhs));
-      setEntriesAndId(domainMap, lhs, set);
-    }
+    ValueSet set = domainMap.top;
+    for (Value rhs : getGatingOperands(op))
+      domainMap.greatestLowerBound(
+          set, valueAnalysis.getEntriesAndId(domainMap, rhs));
+    for (Value lhs : getIndicatingResults(op))
+      valueAnalysis.setEntries(domainMap, lhs, set);
   }
 }
 
-void AsyncDataflowDependencies::setupImpliesReady(ModelOp modelOp) {
+void AsyncDataflowDependencies::setupImpliesReady() {
   LLVM_DEBUG(llvm::dbgs() << "setupImpliesReady\n");
-  DomainMap domainMap(sameAsEquivalence, impliesReadyRelation, kBottomIsFull,
-                      index->emptySet(), index->fullSet());
-  flowModel(
-      modelOp, domainMap,
+  ValueDomainMap domainMap(impliesReadyRelation, ValueAnalysis::kBottomIsFull,
+                           valueAnalysis.index->emptySet(),
+                           valueAnalysis.index->fullSet());
+  valueAnalysis.flowModel(
+      valueAnalysis.index->model, domainMap,
       std::bind(&AsyncDataflowDependencies::flowImpliesReady, this, _1, _2));
-  inverseImpliesReadyRelation = inverse(impliesReadyRelation);
+  inverseImpliesReadyRelation = valueAnalysis.inverse(impliesReadyRelation);
 }
 
-AsyncDataflowDependencies::Set
-AsyncDataflowDependencies::consumedSet(Value value) const {
-  Set set = index->emptySet();
-  for (Value maybeSameValue : index->setToVector(
-           index->getEquivalenceClass(maybeSameAsEquivalence, value))) {
-    for (OpOperand &operand : maybeSameValue.getUses()) {
-      if (Value representativeIndicatingResult =
-              getRepresentativeIndicatingResult(operand.getOwner())) {
-        // When representativeIndicatingResult is ready we know this use of
-        // maybeSameValue (which could be the same as value) has been
-        // consumed.
-        // Note that the op may have multiple indicating results, but we don't
-        // want to start trying to represent conjunctions-of-disjunctions or
-        // similar craziness. So heuristically choose just one, typically the
-        // chain result.
-        index->addToSet(set,
-                        index->getCanonical(sameAsEquivalence,
-                                            representativeIndicatingResult));
-      }
-    }
-  }
-  return set;
-}
-
-AsyncDataflowDependencies::Set
-AsyncDataflowDependencies::impliesAllReadySet(const Set &values) const {
-  if (values.count() == 0)
-    return index->emptySet();
-  Set intersection = index->fullSet();
-  for (Value value : index->setToVector(values))
-    intersection &= downwardsImpliesReadySet(value);
-  return intersection;
-}
-
-void AsyncDataflowDependencies::setupConsumedWhenReady() {
-  LLVM_DEBUG(llvm::dbgs() << "setupConsumedWhenReady\n");
-  DomainMap domainMap(sameAsEquivalence, consumedWhenReadyRelation,
-                      kBottomIsEmpty, index->emptySet(), index->fullSet());
-  SmallVector<Value> canons =
-      index->setToVector(index->getAllCanonicalVs(sameAsEquivalence));
-  for (Value lhs : canons)
-    setEntriesAndId(domainMap, lhs, impliesAllReadySet(consumedSet(lhs)));
-  indicatesConsumedRelation = inverse(consumedWhenReadyRelation);
-}
-
-//===----------------------------------------------------------------------===//
-// AsyncOperationDependencies
-//===----------------------------------------------------------------------===//
-
-AsyncOperationDependencies::AsyncOperationDependencies(
-    IndexSet<Operation *> *indexSet,
-    AsyncDataflowDependencies *valueDependencies)
-    : RelationDataflowAnalysisBase(indexSet),
-      valueDependencies(valueDependencies) {
-  setupRunsLater(index->model);
-}
-
-AsyncOperationDependencies::Set
-AsyncOperationDependencies::runsLaterOps(Operation *earlierOp) const {
-  return getEntries(equivalence, runsLaterRelation, earlierOp);
-}
-
-AsyncOperationDependencies::Set
-AsyncOperationDependencies::runsEarlierOps(Operation *laterOp) const {
-  return getEntries(equivalence, runsEarlierRelation, laterOp);
-}
-
-bool AsyncOperationDependencies::areDisjoint(Operation *lhsOp,
-                                             Operation *rhsOp) const {
-  return index->setContains(runsLaterOps(lhsOp), rhsOp) ||
-         index->setContains(runsEarlierOps(lhsOp), rhsOp);
-}
-
-void AsyncOperationDependencies::print(llvm::raw_ostream &os) {
-  printRelation(os, "runsLater", runsLaterRelation);
-}
-
-AsyncOperationDependencies::Set
-AsyncOperationDependencies::runsLaterSet(Operation *earlierOp) const {
-  Set result = index->emptySet();
+AsyncDataflowDependencies::OperationSet
+AsyncDataflowDependencies::runsLaterSet(Operation *earlierOp) const {
+  OperationSet result = operationAnalysis.index->emptySet();
+  // For each result of earlier op which indicates op has FINISHED...
   for (Value indicatingResult : getIndicatingResults(earlierOp)) {
-    // Find all (canonical) values which imply the indicatingResult is ready
-    // (including indicatingResult itself).
-    Set set = valueDependencies->downwardsImpliesReadySet(indicatingResult);
-    // Expand to all values under the sameAs equivalence.
-    set = valueDependencies->index->closeSetUnderEquivalence(
-        valueDependencies->sameAsEquivalence, set);
+    // Find all values which imply the indicatingResult is ready (including
+    // the indicatingResult itself).
+    ValueSet set = downwardsImpliesReadySet(indicatingResult);
     // Any use of a value in that set as a gating operand forces the
-    // using operation to run after earlierOp.
-    for (Value user : valueDependencies->index->setToVector(set)) {
+    // using operation to BEGIN only after earlierOp has FINISHED.
+    for (Value user : valueAnalysis.index->setToVector(set)) {
       for (OpOperand &opOperand : user.getUses()) {
+        if (opOperand.getOwner()->getNumResults() == 0)
+          // Ignore ops with no results since we can't track them.
+          continue;
         if (isGatingOperand(&opOperand))
-          index->addToSet(result, opOperand.getOwner());
+          operationAnalysis.index->addToSet(result, opOperand.getOwner());
       }
     }
   }
   return result;
 }
 
-void AsyncOperationDependencies::setupRunsLaterForBlock(DomainMap &domainMap,
-                                                        Block *block) {
-  for (Operation &op : block->getOperations()) {
-    setEntriesAndId(domainMap, &op, runsLaterSet(&op));
-    for (Region &subRegion : op.getRegions())
-      setupRunsLaterForBlock(domainMap, &subRegion.front());
-  }
-}
-
-void AsyncOperationDependencies::setupRunsLater(ModelOp modelOp) {
-  equivalence = index->identityEquivalence();
-  DomainMap domainMap(equivalence, runsLaterRelation, kBottomIsEmpty,
-                      index->emptySet(), index->fullSet());
+void AsyncDataflowDependencies::setupRunsLater() {
   LLVM_DEBUG(llvm::dbgs() << "setupRunsLater\n");
-  setupRunsLaterForBlock(domainMap, modelOp.getInitBlock());
-  setupRunsLaterForBlock(domainMap, modelOp.getExecuteBlock());
-  runsEarlierRelation = inverse(runsLaterRelation);
+  for (Operation *op : operationAnalysis.index->getAllVs()) {
+    if (op == operationAnalysis.index->distinguished)
+      continue;
+    OperationSet set = runsLaterSet(op);
+    if (set.count())
+      runsLaterRelation.insert({op, set});
+  }
+  runsEarlierRelation = operationAnalysis.inverse(runsLaterRelation);
 }

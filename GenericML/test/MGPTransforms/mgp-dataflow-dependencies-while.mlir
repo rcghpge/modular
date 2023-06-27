@@ -1,5 +1,129 @@
 // RUN: mgp-opt %s --mlir-disable-threading --allow-unregistered-dialect --async-dataflow-dependencies-test --check-buffer-read-write | FileCheck %s
 
+// For reference here's the model with vars matching the checks (modulo the block ids).
+// CHECK: "mgp.model"() ({
+//              ### Block 0 ###
+// CHECK-NEXT:  %0 = "grt.chain.create"() : () -> !mef.chain
+// CHECK-NEXT:  %1 = "mgp.context.create"() {numSlots = 0 : ui64} : () -> !mgp.context
+// CHECK-NEXT:  "mef.output"(%0, %1) : (!mef.chain, !mgp.context) -> ()
+// CHECK-NEXT:}, {
+//            ### Block 1 ###
+// CHECK-NEXT:^bb0(%arg0: !mef.chain, %arg1: !mgp.context):
+// CHECK-NEXT:  %0 = "some.op"(%arg0) : (!mef.chain) -> si32
+// CHECK-NEXT:  %1 = "some.op"(%arg0) : (!mef.chain) -> !mgp.cpu.tensor<f32>
+// CHECK-NEXT:  %2 = "grt.repeat.i32"(%0, %1) ({
+//              ### Block 2 ###
+// CHECK-NEXT:  ^bb0(%arg2: !mgp.cpu.tensor<f32>):
+// CHECK-NEXT:    %4 = "some.op"(%arg2) : (!mgp.cpu.tensor<f32>) -> !mgp.cpu.tensor<f32>
+// CHECK-NEXT:    "mef.output"(%4) : (!mgp.cpu.tensor<f32>) -> ()
+// CHECK-NEXT:  }) : (si32, !mgp.cpu.tensor<f32>) -> !mgp.cpu.tensor<f32>
+// CHECK-NEXT:  %3 = "some.op"(%2) : (!mgp.cpu.tensor<f32>) -> !mgp.cpu.tensor<f32>
+// CHECK-NEXT:  "mef.output"(%arg0, %3) : (!mef.chain, !mgp.cpu.tensor<f32>) -> ()
+// CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "repeat1"} : () -> ()
+
+// CHECK: maybeSameAs begin
+// CHECK: %arg2[2] |-> {%1, %4[2]}
+// CHECK: %2 |-> {%1, %arg2[2], %4[2]}
+// CHECK: maybeSameAs end
+
+mgp.model @repeat1 : tf init {
+  %0 = grt.chain.create ()
+  %1 = mgp.context.create 0
+  mef.output %0, %1 : !mef.chain, !mgp.context
+} execute (%ch0: !mef.chain, %cxt: !mgp.context) -> (!mef.chain, !mgp.cpu.tensor<f32>) {
+  %c = "some.op"(%ch0) : (!mef.chain) -> si32
+  %x = "some.op"(%ch0) : (!mef.chain) -> !mgp.cpu.tensor<f32>
+  %z = grt.repeat.i32 %c (%x : !mgp.cpu.tensor<f32>) {
+    %y = "some.op"(%x) : (!mgp.cpu.tensor<f32>) -> !mgp.cpu.tensor<f32>
+    mef.output %y : !mgp.cpu.tensor<f32>
+  }
+  %out = "some.op"(%z) : (!mgp.cpu.tensor<f32>) -> !mgp.cpu.tensor<f32>
+  mef.output %ch0, %out : !mef.chain, !mgp.cpu.tensor<f32>
+}
+
+// For reference here's the model with vars matching the checks (modulo the block ids).
+// CHECK: "mgp.model"() ({
+//              ### Block 0 ###
+// CHECK-NEXT:  %0 = "grt.chain.create"() : () -> !mef.chain
+// CHECK-NEXT:  %1 = "mgp.context.create"() {numSlots = 0 : ui64} : () -> !mgp.context
+// CHECK-NEXT:  "mef.output"(%0, %1) : (!mef.chain, !mgp.context) -> ()
+// CHECK-NEXT:}, {
+//            ### Block 1 ###
+// CHECK-NEXT:^bb0(%arg0: !mef.chain, %arg1: !mgp.context):
+// CHECK-NEXT:  %0 = "some.op"(%arg0) : (!mef.chain) -> si32
+// CHECK-NEXT:  %1 = "some.op"(%arg0) : (!mef.chain) -> !mgp.cpu.tensor<f32>
+// CHECK-NEXT:  %2 = "grt.repeat.i32"(%0, %1) ({
+//              ### Block 2 ###
+// CHECK-NEXT:  ^bb0(%arg2: !mgp.cpu.tensor<f32>):
+// CHECK-NEXT:    "mef.output"(%arg2) : (!mgp.cpu.tensor<f32>) -> ()
+// CHECK-NEXT:  }) : (si32, !mgp.cpu.tensor<f32>) -> !mgp.cpu.tensor<f32>
+// CHECK-NEXT:  %3 = "some.op"(%2) : (!mgp.cpu.tensor<f32>) -> !mgp.cpu.tensor<f32>
+// CHECK-NEXT:  "mef.output"(%arg0, %3) : (!mef.chain, !mgp.cpu.tensor<f32>) -> ()
+// CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "repeat2"} : () -> ()
+
+// CHECK: maybeSameAs begin
+// CHECK: %arg2[2] |-> {%1, %arg2[2]}
+// CHECK: %2 |-> {%1, %arg2[2]}
+// CHECK: maybeSameAs end
+
+mgp.model @repeat2 : tf init {
+  %0 = grt.chain.create ()
+  %1 = mgp.context.create 0
+  mef.output %0, %1 : !mef.chain, !mgp.context
+} execute (%ch0: !mef.chain, %cxt: !mgp.context) -> (!mef.chain, !mgp.cpu.tensor<f32>) {
+  %c = "some.op"(%ch0) : (!mef.chain) -> si32
+  %x = "some.op"(%ch0) : (!mef.chain) -> !mgp.cpu.tensor<f32>
+  %z = grt.repeat.i32 %c (%x : !mgp.cpu.tensor<f32>) {
+    mef.output %x : !mgp.cpu.tensor<f32>
+  }
+  %out = "some.op"(%z) : (!mgp.cpu.tensor<f32>) -> !mgp.cpu.tensor<f32>
+  mef.output %ch0, %out : !mef.chain, !mgp.cpu.tensor<f32>
+}
+
+// For reference here's the model with vars matching the checks (modulo the block ids).
+// CHECK: "mgp.model"() ({
+//              ### Block 0 ###
+// CHECK-NEXT:  %0 = "grt.chain.create"() : () -> !mef.chain
+// CHECK-NEXT:  %1 = "mgp.context.create"() {numSlots = 0 : ui64} : () -> !mgp.context
+// CHECK-NEXT:  "mef.output"(%0, %1) : (!mef.chain, !mgp.context) -> ()
+// CHECK-NEXT:}, {
+//            ### Block 1 ###
+// CHECK-NEXT:^bb0(%arg0: !mef.chain, %arg1: !mgp.context):
+// CHECK-NEXT:  %0 = "some.op"(%arg0) : (!mef.chain) -> si32
+// CHECK-NEXT:  %1 = "some.op"(%arg0) : (!mef.chain) -> !mgp.cpu.tensor<f32>
+// CHECK-NEXT:  %2:2 = "grt.repeat.i32"(%0, %1, %1) ({
+//              ### Block 2 ###
+// CHECK-NEXT:  ^bb0(%arg2: !mgp.cpu.tensor<f32>, %arg3: !mgp.cpu.tensor<f32>):
+// CHECK-NEXT:    %4 = "some.op"(%arg2) : (!mgp.cpu.tensor<f32>) -> !mgp.cpu.tensor<f32>
+// CHECK-NEXT:    "mef.output"(%4, %arg3) : (!mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>) -> ()
+// CHECK-NEXT:  }) : (si32, !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>) -> (!mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>)
+// CHECK-NEXT:  %3 = "some.op"(%2#0) : (!mgp.cpu.tensor<f32>) -> !mgp.cpu.tensor<f32>
+// CHECK-NEXT:  "mef.output"(%arg0, %3) : (!mef.chain, !mgp.cpu.tensor<f32>) -> ()
+// CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "repeat3"} : () -> ()
+
+// CHECK: maybeSameAs begin
+// CHECK: %arg2[2] |-> {%1, %4[2]}
+// CHECK: %arg3[2] |-> {%1, %arg3[2]}
+// CHECK: %2#0 |-> {%1, %arg2[2], %4[2]}
+// CHECK: %2#1 |-> {%1, %arg3[2]}
+// CHECK: maybeSameAs end
+
+mgp.model @repeat3 : tf init {
+  %0 = grt.chain.create ()
+  %1 = mgp.context.create 0
+  mef.output %0, %1 : !mef.chain, !mgp.context
+} execute (%ch0: !mef.chain, %cxt: !mgp.context) -> (!mef.chain, !mgp.cpu.tensor<f32>) {
+  %c = "some.op"(%ch0) : (!mef.chain) -> si32
+  %x = "some.op"(%ch0) : (!mef.chain) -> !mgp.cpu.tensor<f32>
+  %z, %dummy = grt.repeat.i32 %c (%x as %x0: !mgp.cpu.tensor<f32>, %x as %x1: !mgp.cpu.tensor<f32>)  {
+    %y = "some.op"(%x0) : (!mgp.cpu.tensor<f32>) -> !mgp.cpu.tensor<f32>
+    mef.output %y, %x1 : !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>
+  }
+  %out = "some.op"(%z) : (!mgp.cpu.tensor<f32>) -> !mgp.cpu.tensor<f32>
+  mef.output %ch0, %out : !mef.chain, !mgp.cpu.tensor<f32>
+}
+
+
 //
 // Simple grt.while
 //
@@ -33,30 +157,25 @@
 // CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "simple"} : () -> ()
 
 // CHECK: sameAs begin
-// CHECK-NEXT: {%0[0], %arg0, %arg2[2], %arg2[3], %2#0}
-// CHECK-NEXT: {%1[0], %arg1}
-// CHECK-NEXT: {%1, %arg5[2], %arg5[3], %2#3}
-// CHECK-NEXT: {%4[2], %arg3[3], %2#1}
-// CHECK-NEXT: {%5[2], %arg4[3], %2#2}
-// CHECK-NEXT: sameAs end
+// CHECK: %2#0 |-> {%0[0], %arg0, %arg2[2], %arg2[3]}
+// CHECK: %2#1 |-> {%4[2], %arg3[3]}
+// CHECK: %2#2 |-> {%5[2], %arg4[3]}
+// CHECK: %2#3 |-> {%1, %arg5[2], %arg5[3]}
+// CHECK: sameAs end
 
-// %2# and %0 are now maybe the same because we union the initial and
-// repeated args to the cond block
 // CHECK: maybeSameAs begin
-// CHECK: {%0, %arg3[2], %4[2], %arg3[3], %2#1}
-// CHECK: {%1, %arg4[2], %arg5[2], %arg5[3], %4[3], %2#3}
+// CHECK: %2#0 |-> {%0[0], %arg0, %arg2[2], %arg2[3]}
+// CHECK: %2#1 |-> {%4[2], %arg3[3]}
+// CHECK: %2#2 |-> {%5[2], %arg4[3]}
+// CHECK: %2#3 |-> {%1, %arg5[2], %arg5[3]}
 // CHECK: maybeSameAs end
 
 // CHECK: impliesReady begin
-// CHECK: %4[3] |-> {%0[0], %1, %arg4[2], %5[2], %4[3]}
+// CHECK: %4[3] |-> {%0[0], %arg0, %1, %arg4[2], %5[2], %arg4[3]}
 // CHECK: impliesReady end
 
-// CHECK: consumedWhenReady begin
-// CHECK: %arg4[2] |-> {%arg4[2], %3}
-// CHECK: consumedWhenReady end
-
 // CHECK: runsLater begin
-// CHECK: %4[2] |-> {%4[2], %3}
+// CHECK: %4[2] |-> {%3}
 // CHECK: runsLater end
 
 mgp.model @simple : tf init {
@@ -109,12 +228,13 @@ mgp.model @simple : tf init {
 // CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "crissCross"} : () -> ()
 
 // CHECK: sameAs begin
-// CHECK: {%arg2[2], %arg2[3], %2#0}
-// CHECK: {%arg3[2], %arg3[3], %2#1}
+// CHECK: %2#0 |-> {%arg2[2], %arg2[3]}
+// CHECK: %2#1 |-> {%arg3[2], %arg3[3]}
 // CHECK: sameAs end
 
 // CHECK: maybeSameAs begin
-// CHECK: {%0, %1, %arg2[2], %arg3[2], %arg2[3], %arg3[3], %2#0, %2#1}
+// CHECK: %2#0 |-> {%0, %1, %arg2[2], %arg3[2], %arg2[3], %arg3[3]}
+// CHECK: %2#1 |-> {%0, %1, %arg2[2], %arg3[2], %arg2[3], %arg3[3]}
 // CHECK: maybeSameAs end
 
 mgp.model @crissCross : tf init {
@@ -164,19 +284,19 @@ mgp.model @crissCross : tf init {
 // CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "shift"} : () -> ()
 
 // CHECK: sameAs begin
-// CHECK-NEXT: {%0[0], %arg0}
-// CHECK-NEXT: {%1[0], %arg1}
-// CHECK-NEXT: {%arg2[2], %arg2[3], %1#0}
-// CHECK-NEXT: {%arg3[2], %arg3[3], %1#1}
-// CHECK-NEXT: {%arg4[2], %arg4[3], %1#2}
-// CHECK-NEXT: sameAs end
+// CHECK: %1#0 |-> {%arg2[2], %arg2[3]}
+// CHECK: %1#1 |-> {%arg3[2], %arg3[3]}
+// CHECK: %1#2 |-> {%arg4[2], %arg4[3]}
+// CHECK: sameAs end
 
 // CHECK: maybeSameAs begin
-// CHECK: {%0, %arg2[2], %arg3[2], %arg4[2], %arg2[3], %arg3[3], %arg4[3], %3[3], %1#0, %1#1, %1#2}
+// CHECK: %1#0 |-> {%0, %arg2[2], %arg3[2], %arg4[2], %arg2[3], %arg3[3], %arg4[3], %3[3]}
+// CHECK: %1#1 |-> {%0, %arg3[2], %arg4[2], %arg3[3], %arg4[3], %3[3]}
+// CHECK: %1#2 |-> {%0, %arg4[2], %arg4[3], %3[3]}
 // CHECK: maybeSameAs end
 
 // CHECK: impliesReady begin
-// CHECK: %2 |-> {%arg2[2], %arg3[2], %arg4[2], %2}
+// CHECK: %2 |-> {%arg2[2], %arg3[2], %arg4[2], %arg2[3], %arg3[3], %arg4[3], %1#0, %1#1, %1#2}
 // CHECK: impliesReady end
 
 mgp.model @shift : tf init {
@@ -253,17 +373,17 @@ mgp.model @shift : tf init {
 // CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<32xui8>, sym_name = "while"} : () -> ()
 
 // CHECK: sameAs begin
-// CHECK: {%0[0], %arg0, %arg2[2], %arg2[3], %10#0}
-// CHECK: {%9, %arg5[2], %arg5[3], %10#3}
-// CHECK: {%arg3[2], %arg3[3], %10#1}
-// CHECK: {%arg4[2], %arg4[3], %10#2}
+// CHECK: %10#0 |-> {%0[0], %arg0, %arg2[2], %arg2[3]}
+// CHECK: %10#1 |-> {%arg3[2], %arg3[3]}
+// CHECK: %10#2 |-> {%arg4[2], %arg4[3]}
+// CHECK: %10#3 |-> {%9, %arg5[2], %arg5[3]}
 // CHECK: sameAs end
 
 // CHECK: impliesReady begin
-// CHECK: %9 |-> {%0[0], %5, %7, %8, %9}
-// CHECK: %arg3[2] |-> {%0[0], %0, %1, %2, %arg3[2]}
-// CHECK: %arg4[2] |-> {%0[0], %3, %4, %5, %6, %arg4[2]}
-// CHECK: %12 |-> {%0[0], %3, %4, %5, %6, %arg4[2], %11#0, %11#1, %12}
+// CHECK: %9 |-> {%0[0], %arg0, %5, %7, %8}
+// CHECK: %arg3[2] |-> {%0[0], %arg0, %0, %1, %2}
+// CHECK: %arg4[2] |-> {%0[0], %arg0, %3, %4, %5, %6}
+// CHECK: %12 |-> {%0[0], %arg0, %3, %4, %5, %6, %arg4[2], %arg4[3], %10#2, %11#0, %11#1}
 // CHECK: impliesReady end
 
 mgp.model @while : tf init {

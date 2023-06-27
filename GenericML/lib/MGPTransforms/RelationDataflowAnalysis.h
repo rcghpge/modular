@@ -5,8 +5,7 @@
 //===----------------------------------------------------------------------===//
 //
 // Base classes for building forwards/backwards dense dataflow analyses for
-// relations over values and operands which understand the
-// grt.{if,while,repeat.i32} control flow ops.
+// relations over values and operands which understand control flow operations.
 //
 //===----------------------------------------------------------------------===//
 
@@ -28,15 +27,18 @@ namespace M::MGP {
 //===----------------------------------------------------------------------===//
 
 /// Base class to supply relation domain operations shared by both the forwards
-/// and backwards dataflow analyses.
+/// and backwards dataflow analyses. Captures the index representing the
+/// bijection from Vs to indexes needed by the set (bitvector) and equivalence
+/// (over size_t) representations. Supplies DomainMap to represent the
+/// relation under construction. The same 'Analysis' instance can be used
+/// across multiple DomainMaps.
 template <typename V>
 class RelationDataflowAnalysisBase {
 public:
-  IndexSet<V> *index;
-
-protected:
   using Set = typename IndexSet<V>::Set;
   using Equivalence = typename IndexSet<V>::Equivalence;
+
+  IndexSet<V> *index;
 
   /// A relation R between pair of Vs, represented as:
   ///   (x, y) in R iff x |-> set and y in set.
@@ -46,14 +48,6 @@ protected:
   /// This way we only need to implement one concrete dataflow domain for all
   /// the analyses we need, and we can make all the transfer functions
   /// similarly concrete on that domain.
-  ///
-  /// However we compress the map storage slightly:
-  ///  1. The relation is implicitly reflexive, so if x |-> set then
-  ///     x will not appear in set.
-  ///  2. If, after the above, the set is empty, then the map has no entry
-  ///     for x.
-  ///  3. If the set is just {distinguished} then x maps to the empty set
-  ///     (ie the default zero sized bitvector).
   using Relation = DenseMap<V, Set>;
 
   /// Orientation for the set domain.
@@ -71,21 +65,23 @@ protected:
   };
 
   /// A view of a relation under definition as map from Vs to domain with a
-  /// bottom, top, lub and glb, all up to the given equivalence. The
-  /// interpretation of the domain values and operations depends on the
-  /// given orientation.
+  /// bottom, top, lub and glb. The interpretation of the domain values and
+  /// operations depends on the given orientation.
   struct DomainMap {
-    Equivalence &equivalence;
+    /// The relation under definition.
     Relation &relation;
+    /// How to implement lub and glb.
     SetOrientation orientation;
+    /// Bottom and top elements, consistent with orientation.
     Set bottom;
     Set top;
+
+    /// Set to true whenever relation is changed.
     bool changed = false;
 
-    DomainMap(Equivalence &equivalence, Relation &relation,
-              SetOrientation orientation, Set &&emptySet, Set &&fullSet)
-        : equivalence(equivalence), relation(relation),
-          orientation(orientation) {
+    DomainMap(Relation &relation, SetOrientation orientation, Set &&emptySet,
+              Set &&fullSet)
+        : relation(relation), orientation(orientation) {
       switch (orientation) {
       case kBottomIsEmpty:
         bottom = std::move(emptySet);
@@ -123,10 +119,83 @@ protected:
 
   RelationDataflowAnalysisBase(IndexSet<V> *index) : index(index) {}
 
-  /// Updates domainMap so that v |-> {v}, up to equivalence. Marks changed true
-  /// if domainMap was changed. Accounts for the above compression rules.
-  void setId(DomainMap &domainMap, V v) {
-    v = index->getCanonical(domainMap.equivalence, v);
+  /// Returns the set bound to v.
+  Set getEntries(const DomainMap &domainMap, V v) const {
+    return getEntries(domainMap.relation, v);
+  }
+
+  /// Returns the set bound to v.
+  Set getEntries(const Relation &relation, V v) const {
+    auto itr = relation.find(v);
+    if (itr == relation.end())
+      return index->emptySet();
+    else
+      return itr->second;
+  }
+
+  /// Returns the set bound to v, unioned with v itself.
+  Set getEntriesAndId(const DomainMap &domainMap, V v) const {
+    return getEntriesAndId(domainMap.relation, v);
+  }
+
+  /// Returns the set bound to v, unioned with v itself.
+  Set getEntriesAndId(const Relation &relation, V v) const {
+    Set set = getEntries(relation, v);
+    index->addToSet(set, v);
+    return set;
+  }
+
+  /// If using the relation to represent a predicate, returns true if v is
+  /// in the predicate.
+  bool isTrue(const Relation &relation, V v) const {
+    auto itr = relation.find(v);
+    return itr != relation.end() &&
+           itr->second.test(0); // distinguished always has index 0
+  }
+
+  /// Returns true if (lhs, rhs) is in relation.
+  bool containsEntry(const Relation &relation, V lhs, V rhs) const {
+    auto itr = relation.find(lhs);
+    return itr != relation.end() && index->setContains(itr->second, rhs);
+  }
+
+  /// Updates domainMap so that v |-> set. Marks changed true if domainMap
+  /// was changed.
+  void setEntries(DomainMap &domainMap, V v, const Set &set) const {
+#define DEBUG_TYPE "mgp-dataflow"
+    LLVM_DEBUG({
+      llvm::dbgs() << "setEntries(";
+      index->printV(llvm::dbgs(), v);
+      llvm::dbgs() << ", ";
+      index->printVs(llvm::dbgs(), index->setToVector(set));
+      llvm::dbgs() << ")\n";
+    });
+
+    bool setIsEmpty = set.count() == 0;
+    auto itr = domainMap.relation.find(v);
+    if (itr == domainMap.relation.end()) {
+      if (!setIsEmpty) {
+        domainMap.relation.insert({v, set});
+        domainMap.changed = true;
+      }
+    } else if (setIsEmpty) {
+      domainMap.relation.erase(itr);
+      domainMap.changed = true;
+    } else if (itr->second != set) {
+      LLVM_DEBUG({
+        llvm::dbgs() << "not equal to existing set ";
+        index->printVs(llvm::dbgs(), index->setToVector(itr->second));
+        llvm::dbgs() << ")\n";
+      });
+      itr->second = set;
+      domainMap.changed = true;
+    }
+#undef DEBUG_TYPE
+  }
+
+  /// Updates domainMap so that v |-> {}. Marks changed true
+  /// if domainMap was changed.
+  void setEmpty(DomainMap &domainMap, V v) const {
     auto itr = domainMap.relation.find(v);
     if (itr != domainMap.relation.end()) {
       domainMap.relation.erase(itr);
@@ -134,198 +203,61 @@ protected:
     }
   }
 
-  /// Returns the compressed representation of set, suitable for
-  /// storing in a relation map with key v. Returns nullopt if no
-  /// entry for v should be stored.
-  std::optional<Set> compress(V v, const Set &set) const {
-    assert(set.size() == index->size());
-
-    size_t count = set.count();
-    if (index->setContains(set, v))
-      // No need to explicitly represent reflexivity.
-      --count;
-
-    // Represent {} as no mapping.
-    if (count == 0)
-      return std::nullopt;
-
-    // Represent {distinguished} as the empty bitvector.
-    if (set.test(0) && count == 1) // distinguished always has index 0
-      return Set();
-
-    Set compressedSet = set;
-    // No need to explicitly represent reflexivity.
-    index->removeFromSet(compressedSet, v);
-    return compressedSet;
-  }
-
-  /// Inverse of compress.
-  Set expand(V v, const std::optional<Set> &compressedSet) const {
-    if (!compressedSet)
-      // Recover implicit reflexivity.
-      return index->unitSet(v);
-
-    if (compressedSet->empty()) {
-      // Recover implicit reflexivity and the distinguished entry.
-      Set set = index->unitSet(v);
-      set.set(0); // distinguished always has index 0
-      return set;
-    }
-
-    // Recover implicit reflexivity.
-    Set set = *compressedSet;
-    index->addToSet(set, v);
-    return set;
-  }
-
-  /// Updates domainMap so that v |-> set, up to equivalence. Marks changed true
-  /// if domainMap was changed. Accounts for the above compression rules.
-  void setEntriesAndId(DomainMap &domainMap, V v, const Set &set) {
-#define DEBUG_TYPE "mgp-dataflow"
-    LLVM_DEBUG({
-      llvm::dbgs() << "setEntriesAndId(";
-      index->printV(llvm::dbgs(), v);
-      llvm::dbgs() << ", ";
-      index->printVs(llvm::dbgs(), index->setToVector(set));
-      llvm::dbgs() << ")\n";
-    });
-
-    v = index->getCanonical(domainMap.equivalence, v);
-    auto itr = domainMap.relation.find(v);
-    std::optional<Set> compressedSet = compress(v, set);
-
-    if (!compressedSet) {
-      if (itr != domainMap.relation.end()) {
-        domainMap.relation.erase(itr);
-        domainMap.changed = true;
-      }
-      return;
-    }
-
-    if (itr == domainMap.relation.end()) {
-      domainMap.relation.insert({v, std::move(*compressedSet)});
-      domainMap.changed = true;
-      return;
-    }
-
-    if (itr->second != *compressedSet) {
-      LLVM_DEBUG({
-        llvm::dbgs() << "not equal to existing set ";
-        index->printVs(llvm::dbgs(), index->setToVector(itr->second));
-        llvm::dbgs() << ")\n";
-      });
-      itr->second = std::move(*compressedSet);
-      domainMap.changed = true;
-    }
-#undef DEBUG_TYPE
-  }
-
   /// If using the relation to represent a predicate, includes v in the
-  /// predicate, up to equivalence.
-  void setTrue(DomainMap &domainMap, V v) {
-#define DEBUG_TYPE "mgp-dataflow"
-    LLVM_DEBUG({
-      llvm::dbgs() << "setTrue(";
-      index->printV(llvm::dbgs(), v);
-      llvm::dbgs() << ")\n";
-    });
-
-    v = index->getCanonical(domainMap.equivalence, v);
-    auto itr = domainMap.relation.find(v);
-    if (itr == domainMap.relation.end()) {
-      domainMap.relation.insert({v, Set()});
-      domainMap.changed = true;
-      return;
-    }
-
-    if (!itr->second.empty()) {
-      itr->second = Set();
-      domainMap.changed = true;
-    }
-#undef DEBUG_TYPE
+  /// predicate.
+  void setTrue(DomainMap &domainMap, V v) const {
+    setEntries(domainMap, v, index->unitSet(index->distinguished));
   }
 
-  /// Returns the set bound to v, up to equivalence. Accounts for the
-  /// above compression rules.
-  Set getEntries(const DomainMap &domainMap, V v) const {
-    return getEntries(domainMap.equivalence, domainMap.relation, v);
-  }
-
-  Set getEntries(const Equivalence &equivalence, const Relation &relation,
-                 V v) const {
-    v = index->getCanonical(equivalence, v);
-    auto itr = relation.find(v);
-    if (itr == relation.end())
-      return expand(v, std::nullopt);
-    else
-      return expand(v, itr->second);
-  }
-
-  /// If using the relation to represent a predicate, returns true if v is
-  /// in the predicate, up to equivalence.
-  bool isTrue(const Equivalence &equivalence, const Relation &relation,
-              V v) const {
-    v = index->getCanonical(equivalence, v);
-    auto itr = relation.find(v);
-    if (itr == relation.end())
-      return false;
-    if (itr->second.empty())
-      return true;
-    if (itr->second.test(0)) // distinguished always has index 0
-      return true;
-    return false;
-  }
-
-  /// Returns true if (lhs, rhs) is in relation, up to equivalence.
-  bool containsEntryOrId(const Equivalence &equivalence,
-                         const Relation &relation, V lhs, V rhs) const {
-    lhs = index->getCanonical(equivalence, lhs);
-    rhs = index->getCanonical(equivalence, rhs);
-    if (lhs == rhs)
-      // Relation is implicitly reflexive.
-      return true;
+  /// Add (lhs, rhs) to relation. Marks changed true if relation was changed.
+  void add(Relation &relation, V lhs, V rhs) const {
     auto itr = relation.find(lhs);
     if (itr == relation.end())
-      return false;
-    if (itr->second.empty())
-      return rhs == index->distinguished;
-    return index->setContains(itr->second, rhs);
+      relation.insert({lhs, index->unitSet(rhs)});
+    else if (!index->setContains(itr->second, rhs))
+      index->addToSet(itr->second, rhs);
+  }
+
+  /// Adds { (lhs, rhs) | rhs in set } to relation. Marks changed true
+  /// if relation was changed.
+  void addAll(Relation &relation, V lhs, const Set &set) const {
+    for (V rhs : index->setToVector(set))
+      add(relation, lhs, rhs);
   }
 
   /// Updates equivalence such that if (x, y) is in relation then x and y are
   /// considered equivalent. In other words, makes the equivalence represent
   /// relation closed under reflexivity, symmetry, and transitivity.
   void addRelationToEquivalence(Equivalence &equivalence,
-                                const Relation &relation) {
-    for (const auto &[lhs, compressedSet] : relation) {
-      SmallVector<Value> rhss = index->setToVector(expand(lhs, compressedSet));
-      for (auto rhs : rhss)
+                                const Relation &relation) const {
+    for (const auto &[lhs, set] : relation) {
+      for (auto rhs : index->setToVector(set))
         index->setEquivalent(equivalence, lhs, rhs);
     }
   }
 
   /// Returns inverse of relation.
-  Relation inverse(const Relation &relation) {
-    // First build result in non-compressed form.
-    Relation uncompressed;
-    for (const auto &[lhs, compressedSet] : relation) {
-      Set set = expand(lhs, compressedSet);
-      for (const auto rhs : index->setToVector(set)) {
-        auto itr = uncompressed.find(rhs);
-        if (itr == uncompressed.end())
-          uncompressed.insert({rhs, index->unitSet(lhs)});
-        else
-          index->addToSet(itr->second, lhs);
-      }
-    }
-    // Now compress the relation.
+  [[nodiscard]] Relation inverse(const Relation &relation) const {
     Relation result;
-    for (const auto &[rhs, set] : uncompressed) {
-      std::optional<Set> compressedSet = compress(rhs, set);
-      if (compressedSet)
-        result.insert({rhs, std::move(*compressedSet)});
+    for (const auto &[lhs, set] : relation) {
+      for (const auto rhs : index->setToVector(set))
+        add(result, rhs, lhs);
     }
     return result;
+  }
+
+  /// Updates relation to include union with other.
+  void unionInPlace(Relation &relation, const Relation &other) const {
+    for (const auto &[lhs, set] : other)
+      addAll(relation, lhs, set);
+  }
+
+  /// Adds to set all Vs which are isTrue in relation.
+  void addToPredicate(Set &set, const Relation &relation) const {
+    for (V v : index->getAllVs()) {
+      if (isTrue(relation, v))
+        index->addToSet(set, v);
+    }
   }
 
   /// Pretty-prints equivalence, using the stable form for canonical values.
@@ -347,25 +279,6 @@ protected:
     os << equivName << " end\n";
   }
 
-  /// Converts relation to use stable canonical Vs w.r.t. equivalence. For
-  /// testing only.
-  Relation toStableForm(const Equivalence &equivalence,
-                        const Relation &relation) {
-    Relation result;
-    for (const auto &[v, compressedSet] : relation) {
-      Set set = expand(v, compressedSet);
-      Set stableCanonSet(set.size());
-      for (auto x : index->setToVector(set))
-        index->addToSet(stableCanonSet,
-                        index->getStableCanonical(equivalence, x));
-      Value canonV = index->getStableCanonical(equivalence, v);
-      std::optional<Set> compressedStableSet = compress(canonV, stableCanonSet);
-      if (compressedStableSet)
-        result.insert({canonV, *compressedStableSet});
-    }
-    return result;
-  }
-
   /// Pretty-prints relation in index order. For testing only.
   void printRelation(llvm::raw_ostream &os, StringRef relName,
                      const Relation &relation) {
@@ -377,24 +290,17 @@ protected:
       os << "  ";
       index->printV(os, v);
       os << " |-> ";
-      index->printVs(os, index->setToVector(expand(v, itr->second)));
+      index->printVs(os, index->setToVector(itr->second));
       os << "\n";
     }
     os << relName << " end\n";
   }
 
-  /// Pretty-prints relation encoding a predicate in index order. For testing
-  /// only.
+  /// Pretty-prints predicate (ie set) in index order. For testing only.
   void printPredicate(llvm::raw_ostream &os, StringRef predName,
-                      const Relation &relation) {
-    Set predicate = index->emptySet();
-    for (const auto &[v, compressedSet] : relation) {
-      Set set = expand(v, compressedSet);
-      if (index->setContains(set, index->distinguished))
-        index->addToSet(predicate, v);
-    }
+                      const Set &set) {
     os << predName << "(";
-    index->printVs(os, index->setToVector(predicate));
+    index->printVs(os, index->setToVector(set));
     os << ")\n";
   }
 
@@ -407,15 +313,14 @@ protected:
 // ForwardsRelationDataflowAnalysis
 //===----------------------------------------------------------------------===//
 
-/// Base class to supply control flow transfer functions for all forwards
-/// dataflow analyses for relations over values.
+/// Class to supply control flow transfer functions for all forwards dataflow
+/// analyses for relations over values.
 class ForwardsRelationDataflowAnalysis
     : public RelationDataflowAnalysisBase<Value> {
 public:
   ForwardsRelationDataflowAnalysis(IndexSet<Value> *index)
       : RelationDataflowAnalysisBase<Value>(index) {}
 
-protected:
   /// Grows domainMap for one iteration of the body sub-block of cfOp, which
   /// must have one sub-block. Sets changed to true if domainMap was changed.
   void flowSimpleLoop(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
@@ -451,15 +356,14 @@ protected:
 // BackwardsRelationDataflowAnalysis
 //===----------------------------------------------------------------------===//
 
-/// Base class to supply control flow transfer functions for all backwards
-/// dataflow analyses for relations over operands.
+/// Class to supply control flow transfer functions for all backwards dataflow
+/// analyses for relations over operands.
 class BackwardsRelationDataflowAnalysis
     : public RelationDataflowAnalysisBase<const OpOperand *> {
 public:
   BackwardsRelationDataflowAnalysis(IndexSet<const OpOperand *> *index)
       : RelationDataflowAnalysisBase<const OpOperand *>(index) {}
 
-protected:
   /// Returns the combination of all the operand occurrences of value
   /// (possibly none) and the top set.
   Set operandCombination(const DomainMap &domainMap, Value value) const;

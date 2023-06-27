@@ -37,14 +37,12 @@ class AsyncDataflowDependenciesTestPass
 
   void runOnOperation() override {
     ModelOp modelOp = getOperation();
-    IndexSet<Value> index = createValueIndexSet(modelOp);
-    AsyncDataflowDependencies valueDependencies(&index);
-    IndexSet<Operation *> opIndex = createOperationIndexSet(modelOp);
-    AsyncOperationDependencies opDependencies(&opIndex, &valueDependencies);
+    IndexSet<Value> valueIndex = createValueIndexSet(modelOp);
+    IndexSet<Operation *> operationIndex = createOperationIndexSet(modelOp);
+    AsyncDataflowDependencies dependencies(&valueIndex, &operationIndex);
 
-    index.printModel(llvm::outs());
-    valueDependencies.print(llvm::outs());
-    opDependencies.print(llvm::outs());
+    valueIndex.printModel(llvm::outs());
+    dependencies.print(llvm::outs());
   }
 };
 

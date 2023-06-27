@@ -75,8 +75,9 @@ class SimplifyChainsPass
     // Construct the dependencies from the model. The transforms we
     // do below will preserve these dependencies since we never introduce
     // new bound values or add new dependencies.
-    IndexSet<Value> index = createValueIndexSet(modelOp);
-    AsyncDataflowDependencies dependencies(&index);
+    IndexSet<Value> valueIndex = createValueIndexSet(modelOp);
+    IndexSet<Operation *> operationIndex = createOperationIndexSet(modelOp);
+    AsyncDataflowDependencies dependencies(&valueIndex, &operationIndex);
 
     // CAUTION: We'll be making in-place updates as we go. However, since
     // we don't update the dependencies analysis results, we must be careful

@@ -36,9 +36,9 @@ void ForwardsRelationDataflowAnalysis::flowSimpleLoop(
   for (const auto [output, arg] :
        llvm::zip(bodyBlock->getTerminator()->getOperands(),
                  bodyBlock->getArguments())) {
-    Set set = getEntries(domainMap, output);
+    Set set = getEntriesAndId(domainMap, output);
     domainMap.leastUpperBound(set, getEntries(domainMap, arg));
-    setEntriesAndId(domainMap, arg, set);
+    setEntries(domainMap, arg, set);
   }
 }
 
@@ -56,7 +56,7 @@ void ForwardsRelationDataflowAnalysis::flowConditionedLoop(
   for (const auto [condOutput, bodyArg] :
        llvm::zip(condBlock->getTerminator()->getOperands(),
                  bodyBlock->getArguments()))
-    setEntriesAndId(domainMap, bodyArg, getEntries(domainMap, condOutput));
+    setEntries(domainMap, bodyArg, getEntriesAndId(domainMap, condOutput));
 
   // Flow the body sub block.
   flowBlock(bodyBlock, domainMap, flowOp);
@@ -66,9 +66,9 @@ void ForwardsRelationDataflowAnalysis::flowConditionedLoop(
   for (const auto [bodyOutput, condArg] :
        llvm::zip(bodyBlock->getTerminator()->getOperands(),
                  condBlock->getArguments())) {
-    Set set = getEntries(domainMap, bodyOutput);
+    Set set = getEntriesAndId(domainMap, bodyOutput);
     domainMap.leastUpperBound(set, getEntries(domainMap, condArg));
-    setEntriesAndId(domainMap, condArg, set);
+    setEntries(domainMap, condArg, set);
   }
 }
 
@@ -80,7 +80,7 @@ void ForwardsRelationDataflowAnalysis::flowBranch(
     Block *subBlock = &region.front();
     for (auto [input, arg] :
          llvm::zip(cfOp.getInputs(), subBlock->getArguments()))
-      setEntriesAndId(domainMap, arg, getEntries(domainMap, input));
+      setEntries(domainMap, arg, getEntriesAndId(domainMap, input));
     flowBlock(subBlock, domainMap, flowOp);
   }
 
@@ -91,11 +91,10 @@ void ForwardsRelationDataflowAnalysis::flowBranch(
     Set set = domainMap.bottom;
     for (Region &region : cfOp->getRegions()) {
       Block *subBlock = &region.front();
-      auto outputOp = cast<MEF::OutputOp>(subBlock->getTerminator());
-      Value output = outputOp->getOperand(i);
-      domainMap.leastUpperBound(set, getEntries(domainMap, output));
+      Value output = subBlock->getTerminator()->getOperand(i);
+      domainMap.leastUpperBound(set, getEntriesAndId(domainMap, output));
     }
-    setEntriesAndId(domainMap, result, set);
+    setEntries(domainMap, result, set);
   }
 }
 
@@ -177,7 +176,7 @@ void ForwardsRelationDataflowAnalysis::flowControlFlow(
     // Flow from control flow inputs to args of first sub-block.
     for (auto [input, arg] :
          llvm::zip(cfOp.getInputs(), cfOp->getRegions().front().getArguments()))
-      setEntriesAndId(domainMap, arg, getEntries(domainMap, input));
+      setEntries(domainMap, arg, getEntriesAndId(domainMap, input));
 
     // Until fixed point...
     bool outerChanged = domainMap.changed;
@@ -201,7 +200,7 @@ void ForwardsRelationDataflowAnalysis::flowControlFlow(
     // Flow from args of last sub-block to control flow outputs.
     for (auto [arg, result] : llvm::zip(
              cfOp->getRegions().back().getArguments(), cfOp->getResults()))
-      setEntriesAndId(domainMap, result, getEntries(domainMap, arg));
+      setEntries(domainMap, result, getEntriesAndId(domainMap, arg));
 
     break;
   }
@@ -216,7 +215,7 @@ void ForwardsRelationDataflowAnalysis::flowControlFlow(
 void ForwardsRelationDataflowAnalysis::flowDefault(Operation *op,
                                                    DomainMap &domainMap) {
   for (Value result : op->getResults())
-    setId(domainMap, result);
+    setEmpty(domainMap, result);
 }
 
 void ForwardsRelationDataflowAnalysis::flowBlock(Block *block,
@@ -235,7 +234,7 @@ void ForwardsRelationDataflowAnalysis::flowModel(ModelOp modelOp,
 
   // Start with the 'init' block args.
   for (Value arg : initBlock->getArguments())
-    setId(domainMap, arg);
+    setEmpty(domainMap, arg);
 
   // Flow forwards through 'init' block.
   flowBlock(initBlock, domainMap, flowOp);
@@ -244,10 +243,10 @@ void ForwardsRelationDataflowAnalysis::flowModel(ModelOp modelOp,
   for (const auto &[output, arg] :
        llvm::zip(initBlock->getTerminator()->getOperands(),
                  executeBlock->getArguments()))
-    setEntriesAndId(domainMap, arg, getEntries(domainMap, output));
+    setEntries(domainMap, arg, getEntriesAndId(domainMap, output));
   // Start remaining 'execute' args start.
   for (Value arg : llvm::drop_begin(executeBlock->getArguments(), 2))
-    setId(domainMap, arg);
+    setEmpty(domainMap, arg);
 
   // Flow forwards through 'execute' block.
   flowBlock(executeBlock, domainMap, flowOp);
@@ -262,7 +261,7 @@ BackwardsRelationDataflowAnalysis::operandCombination(
     const DomainMap &domainMap, Value value) const {
   Set set = domainMap.bottom;
   for (OpOperand &operand : value.getUses())
-    domainMap.leastUpperBound(set, getEntries(domainMap, &operand));
+    domainMap.leastUpperBound(set, getEntriesAndId(domainMap, &operand));
   return set;
 }
 
@@ -282,7 +281,7 @@ void BackwardsRelationDataflowAnalysis::flowSimpleLoop(
                  bodyBlock->getTerminator()->getOpOperands())) {
     Set set = operandCombination(domainMap, arg);
     domainMap.leastUpperBound(set, getEntries(domainMap, &output));
-    setEntriesAndId(domainMap, &output, set);
+    setEntries(domainMap, &output, set);
   }
 }
 
@@ -300,8 +299,7 @@ void BackwardsRelationDataflowAnalysis::flowConditionedLoop(
   for (const auto &[condArg, bodyOutput] :
        llvm::zip(condBlock->getArguments(),
                  bodyBlock->getTerminator()->getOpOperands()))
-    setEntriesAndId(domainMap, &bodyOutput,
-                    operandCombination(domainMap, condArg));
+    setEntries(domainMap, &bodyOutput, operandCombination(domainMap, condArg));
 
   // Flow the body sub block.
   flowBlock(bodyBlock, domainMap, flowOp);
@@ -313,7 +311,7 @@ void BackwardsRelationDataflowAnalysis::flowConditionedLoop(
                  condBlock->getTerminator()->getOpOperands())) {
     Set set = operandCombination(domainMap, bodyArg);
     domainMap.leastUpperBound(set, getEntries(domainMap, &condOutput));
-    setEntriesAndId(domainMap, &condOutput, set);
+    setEntries(domainMap, &condOutput, set);
   }
 }
 
@@ -327,7 +325,7 @@ void BackwardsRelationDataflowAnalysis::flowBranch(
     for (Region &region : cfOp->getRegions()) {
       Block *subBlock = &region.front();
       OpOperand *output = &subBlock->getTerminator()->getOpOperand(i);
-      setEntriesAndId(domainMap, output, set);
+      setEntries(domainMap, output, set);
     }
   }
 
@@ -347,7 +345,7 @@ void BackwardsRelationDataflowAnalysis::flowBranch(
       domainMap.leastUpperBound(
           set, operandCombination(domainMap, subBlock->getArgument(i)));
     }
-    setEntriesAndId(domainMap, input, set);
+    setEntries(domainMap, input, set);
   }
 }
 
@@ -364,8 +362,7 @@ void BackwardsRelationDataflowAnalysis::flowControlFlow(
                                            .front()
                                            .getTerminator()
                                            ->getOpOperands()))
-      setEntriesAndId(domainMap, &output,
-                      operandCombination(domainMap, result));
+      setEntries(domainMap, &output, operandCombination(domainMap, result));
 
     // Until fixed point...
     bool outerChanged = domainMap.changed;
@@ -390,7 +387,7 @@ void BackwardsRelationDataflowAnalysis::flowControlFlow(
     for (const auto &[arg, input] :
          llvm::zip(cfOp->getRegions().front().getArguments(),
                    cfOp.getInputOpOperands()))
-      setEntriesAndId(domainMap, &input, operandCombination(domainMap, arg));
+      setEntries(domainMap, &input, operandCombination(domainMap, arg));
 
     break;
   }
@@ -409,7 +406,7 @@ void BackwardsRelationDataflowAnalysis::flowDefault(Operation *op,
     return;
 
   for (const OpOperand &operand : op->getOpOperands())
-    setId(domainMap, &operand);
+    setEmpty(domainMap, &operand);
 }
 
 void BackwardsRelationDataflowAnalysis::flowBlock(Block *block,
@@ -428,7 +425,7 @@ void BackwardsRelationDataflowAnalysis::flowModel(ModelOp modelOp,
 
   // Start with the 'execute' block outputs.
   for (const OpOperand &output : execBlock->getTerminator()->getOpOperands())
-    setId(domainMap, &output);
+    setEmpty(domainMap, &output);
 
   // Flow backwards through 'execute' block.
   flowBlock(execBlock, domainMap, flowOp);
@@ -437,7 +434,7 @@ void BackwardsRelationDataflowAnalysis::flowModel(ModelOp modelOp,
   for (const auto &[arg, output] :
        llvm::zip(execBlock->getArguments(),
                  initBlock->getTerminator()->getOpOperands()))
-    setEntriesAndId(domainMap, &output, operandCombination(domainMap, arg));
+    setEntries(domainMap, &output, operandCombination(domainMap, arg));
 
   // Flow backwards through 'init' block.
   flowBlock(initBlock, domainMap, flowOp);
