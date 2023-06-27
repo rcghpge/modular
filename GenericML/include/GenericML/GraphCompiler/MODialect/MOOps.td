@@ -65,7 +65,7 @@ def MO_IndexToTensorOp : MO_Op<"index.to_tensor", [Pure]> {
 def MO_GraphOp : MO_TensorOp<"graph", [
   HasParent<"ModuleOp">, FunctionOpInterface, Symbol, SymbolTable,
   IsolatedFromAbove, SingleBlockImplicitTerminator<"OutputOp">,
-  DeclareOpInterfaceMethods<MO_Parameterization>, 
+  DeclareOpInterfaceMethods<MO_Parameterization>,
   RegionKindInterface, HasOnlyGraphRegion,
   // needed to leverage KGEN parameter infra
   DeclInterface, FuncInterface
@@ -946,7 +946,7 @@ class MO_ReductionOp<string name, list<Trait> traits = []> : MO_TensorOp<
     functional-type(operands, results)
   }];
 
-  let hasFolder = 1;
+  let hasCanonicalizeMethod = 1;
 }
 
 def MO_MeanOp : MO_ReductionOp<"mean"> {
@@ -989,6 +989,7 @@ def MO_ReduceMulOp : MO_ReductionOp<"reduce.mul"> {
       !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
+  let hasFolder = 1;
 }
 
 def MO_ReduceAddOp : MO_ReductionOp<"reduce.add"> {
@@ -1010,6 +1011,7 @@ def MO_ReduceAddOp : MO_ReductionOp<"reduce.add"> {
       !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
+  let hasFolder = 1;
 }
 
 def MO_ReduceMinOp : MO_ReductionOp<"reduce.min"> {
@@ -1526,7 +1528,7 @@ def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape"> {
   let description = [{
     Return a tensor with the same underlying data, but different shape. The
     shape of the input and result tensors must not be unknown or contain unknown
-    dimensions, but can be parametric. We do not allow inferred dimensions 
+    dimensions, but can be parametric. We do not allow inferred dimensions
     (e.g. -1 in MO_ReshapeOp).
 
     The op has no compile-time or runtime checks on the validity of the target
