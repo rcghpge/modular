@@ -9,11 +9,11 @@
 #include "GenericML/GraphCompiler/Conversion/MOToMOGG.h"
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"
 #include "GenericML/GraphCompiler/Passes.h"
+#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 #include "GenericML/MGPTransforms/MGPTransforms.h"
 #include "GraphRT/MIPDialect/MIPDialect.h"
 #include "Support/LLVMCompilerForwardDecls.h"
@@ -28,6 +28,7 @@
 #include "Cache/CacheDialect/CacheDialect.h"
 #include "KGEN/HLCFDialect/HLCFDialect.h"
 #include "KGEN/InitAllDialects.h"
+#include "KGEN/POPDialect/POPDialect.h"
 #include "Support/DebugInfoDialect/IR/DebugInfoDialect.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -39,8 +40,9 @@ void M::MO::loadDialects(mlir::DialectRegistry &registry) {
   registry.insert<
       MO::MODialect, MOSH::MOSHDialect, MIP::MIPDialect, MOGG::MOGGDialect,
       // The dialects needed for KGEN.
-      KGEN::KGENDialect, DebugInfo::DebugInfoDialect, Cache::CacheDialect,
-      HLCF::HLCFDialect, mlir::index::IndexDialect, mlir::LLVM::LLVMDialect>();
+      KGEN::KGENDialect, KGEN::POP::POPDialect, DebugInfo::DebugInfoDialect,
+      Cache::CacheDialect, HLCF::HLCFDialect, mlir::index::IndexDialect,
+      mlir::LLVM::LLVMDialect>();
 
   // The elaborator requires LLVM lowering to run the generated functions.
   mlir::registerBuiltinDialectTranslation(registry);

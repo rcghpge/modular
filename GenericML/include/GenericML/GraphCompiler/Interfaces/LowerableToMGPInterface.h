@@ -395,6 +395,8 @@ private:
       return MIP::OrOp::getOperationName();
     case KGEN::POC::Xor:
       return MIP::XorOp::getOperationName();
+    case KGEN::POC::Cond:
+      return MIP::SelectOp::getOperationName();
     default:
       return Error(Twine("unsupported POC '") + stringifyPOC(poc) + "'");
     }
@@ -408,6 +410,14 @@ private:
     auto opNameAttr = builder.getStringAttr(mopName);
     Type resTy = opAttr.getType();
 
+    // For non binary op
+    if (opNameAttr == MIP::SelectOp::getOperationName())
+      return builder.create(loc, opNameAttr, operands, {resTy})->getResult(0);
+
+    // For potentially variadic binary ops
+    //   add(a, b, c)
+    //   ===>
+    //   mip.add(mip.add(a, b), c)
     Value res = operands.front();
     do {
       operands = operands.drop_front();

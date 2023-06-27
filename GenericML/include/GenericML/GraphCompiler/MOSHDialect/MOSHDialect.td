@@ -28,6 +28,7 @@ def MOSHDialect : Dialect {
   let dependentDialects = [
     "MDialect",
     "KGEN::KGENDialect",
+    "KGEN::POP::POPDialect",
     "mlir::index::IndexDialect",
     "mlir::arith::ArithDialect",
   ];

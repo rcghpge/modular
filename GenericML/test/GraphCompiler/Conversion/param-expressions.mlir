@@ -101,6 +101,23 @@ mo.graph @le_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   mo.output
 }
 
+// CHECK: mgp.model @cond_expression : tf init {
+// CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[ARG2:.*]]: !mgp.cpu.tensor<?x?xf32>)
+// CHECK:     %[[BUF:.*]], %[[SPEC:.*]] = mgp.cpu.tensor.extract %[[ARG2]] : !mgp.cpu.tensor<?x?xf32>
+// CHECK:     %[[DIMS:.*]]:2 = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.cpu.tensor_spec<?x?xf32>
+// CHECK-DAG: %[[BOOL:.*]] = mip.cmp.le %[[DIMS]]#0, %[[DIMS]]#1
+// CHECK-DAG: %[[VAL1:.*]] = mip.select %[[BOOL]], %[[DIMS]]#0, %[[DIMS]]#1
+// CHECK-DAG: %[[VAL2:.*]] = mip.select %[[BOOL]], %[[DIMS]]#1, %[[DIMS]]#0
+// CHECK-DAG: %[[VAL3:.*]] = mip.constant.index 2
+// CHECK:     %[[VAL4:.*]] = mip.select %[[BOOL]], %[[VAL1]], %[[VAL3]]
+mo.graph @cond_expression<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
+  kgen.param.declare B: i1 = <le(X, Y)>
+  kgen.param.declare M0 = <cond(B, X, Y)>
+  kgen.param.declare M1 = <cond(B, Y, X)>
+  kgen.param.declare M2 = <cond(B, M0, 2)>
+  mo.output
+}
+
 // CHECK: mgp.model @bool_expressions : tf init {
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[ARG2:.*]]: !mgp.cpu.tensor<?x?x?xf32>)
 // CHECK:     %[[BUF:.*]], %[[SPEC:.*]] = mgp.cpu.tensor.extract %[[ARG2]] : !mgp.cpu.tensor<?x?x?xf32>
