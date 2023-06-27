@@ -243,11 +243,14 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
                                            inputTensors[1].spec, target_axis});
   } else if (opName == "mop.kernels.concat") {
     // Ignore axis tensor at the end
-    SmallVector<Value> shapeFuncArgs = llvm::map_to_vector(
-        llvm::drop_end(inputTensors),
-        [](LoweredTensor tensor) -> Value { return tensor.spec; });
+    SmallVector<Value> shapeFuncArgs;
+    shapeFuncArgs.reserve(inputTensors.size() - 1);
+    for (size_t i = 1, e = inputTensors.size(); i < e; ++i)
+      shapeFuncArgs.push_back(inputTensors[i].spec);
+
+    // Put the axis last.
     Value axis = loweringState.lookupExecuteLoweredValue(
-        opBeingLowered->getOperands().back());
+        opBeingLowered->getOperands().front());
     shapeFuncArgs.push_back(axis);
     output.spec = getOutputSpec("mop.shape.concat", shapeFuncArgs);
   } else if (opName == "mop.kernels.gather_sum") {

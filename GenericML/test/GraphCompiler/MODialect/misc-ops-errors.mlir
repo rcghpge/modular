@@ -155,7 +155,7 @@ mo.graph @concat_no_args(%arg0: !mo.tensor<[7], f32>) -> !mo.tensor<[7], f32> {
 
 mo.graph @concat_non_int_axis(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2], f32>) -> !mo.tensor<[9], f32> {
   %ax = mo.constant {value = #M.dense_array<0.0, 2.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
-  // expected-error @below {{'mo.concat' op operand #2 must be ranked scalar index tensor, but got '!mo.tensor<[2], f32>'}}
+  // expected-error @below {{'mo.concat' op operand #0 must be ranked scalar index tensor, but got '!mo.tensor<[2], f32>'}}
   %0 = mo.concat[%ax: !mo.tensor<[2], f32>](%arg0, %arg1) : (!mo.tensor<[7], f32>, !mo.tensor<[2], f32>) -> !mo.tensor<[9], f32>
   mo.output %0 : !mo.tensor<[9], f32>
 }
@@ -164,7 +164,7 @@ mo.graph @concat_non_int_axis(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2]
 
 mo.graph @concat_non_scalar_axis(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2], f32>) -> !mo.tensor<[9], f32> {
   %ax = mo.constant {value = #M.dense_array<0, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  // expected-error @below {{'mo.concat' op operand #2 must be ranked scalar index tensor, but got '!mo.tensor<[2], si64>'}}
+  // expected-error @below {{'mo.concat' op operand #0 must be ranked scalar index tensor, but got '!mo.tensor<[2], si64>'}}
   %0 = mo.concat[%ax: !mo.tensor<[2], si64>](%arg0, %arg1) : (!mo.tensor<[7], f32>, !mo.tensor<[2], f32>) -> !mo.tensor<[9], f32>
   mo.output %0 : !mo.tensor<[9], f32>
 }

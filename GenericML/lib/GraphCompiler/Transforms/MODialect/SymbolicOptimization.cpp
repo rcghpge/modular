@@ -323,8 +323,8 @@ struct FlattenNestedConcatPattern : public OpRewritePattern<ConcatOp> {
     // Replace the old concat with a new concat that operate on the flattened
     // input values. Note that the types are guaranteed to match (shape
     // inference either verified it statically, or dropped runtime asserts).
-    rewriter.replaceOpWithNewOp<ConcatOp>(op, op.getType(), flattenedInputs,
-                                          op.getAxis());
+    rewriter.replaceOpWithNewOp<ConcatOp>(op, op.getType(), op.getAxis(),
+                                          flattenedInputs);
     return mlir::success();
   }
 };

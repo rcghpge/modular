@@ -1581,8 +1581,8 @@ def MO_ConcatOp : MO_TensorOp<"concat", [
   }];
 
   let arguments = (ins
-    Variadic<MO_Tensor>:$inputs,
     MO_RankedScalarIndexTensor:$axis,
+    Variadic<MO_Tensor>:$inputs,
     MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 

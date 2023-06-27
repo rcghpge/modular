@@ -1,6 +1,6 @@
 // RUN: mo-opt %s --mo-to-mogg --mo-to-primitives --allow-unregistered-dialect | FileCheck %s
 
-// CHECK: mgp.model @concat_static_output
+// CHECK-LABEL: mgp.model @concat_static_output
 // CHECK:  } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]
 // CHECK: %[[OUT_CHAIN:.*]] = "mop.kernels.concat"(%[[CHAIN]]
 // CHECK-NEXT: %[[OUTPUT_TENSOR:.*]] =  mgp.cpu.tensor.create %[[OUT_CHAIN]]
@@ -15,9 +15,9 @@ mo.graph @concat_static_output(%arg1 : !mo.tensor<[1], si32>) -> (!mo.tensor<[6]
   mo.output %out : !mo.tensor<[6], si32>
 }
 
-// CHECK: mgp.model @concat_dyn_output
+// CHECK-LABEL: mgp.model @concat_dyn_output
 // CHECK:  } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]
-// CHECK: "mop.shape.concat"({{.*}}, {{.*}}, {{.*}}, {{.*}}) :
+// CHECK: "mop.shape.concat"({{.*}}) :
 // CHECK-SAME: (!mgp.cpu.tensor_spec<1xsi32>, !mgp.cpu.tensor_spec<2xsi32>, !mgp.cpu.tensor_spec<3xsi32>, !mgp.cpu.tensor<si32>) -> !mgp.cpu.tensor_spec<?xsi32>
 // CHECK: %[[OUT_CHAIN:.*]] = "mop.kernels.concat"(%[[CHAIN]]
 // CHECK-NEXT: %[[OUTPUT_TENSOR:.*]] =  mgp.cpu.tensor.create %[[OUT_CHAIN]]
