@@ -937,7 +937,7 @@ OpFoldResult GatherOp::fold(FoldAdaptor adaptor) {
   SmallVector<APInt> gatheredValues(indices.size());
   for (size_t idx = 0, e = indices.size(); idx < e; idx++) {
     int64_t index = indices[idx];
-    if (index < 0 || index > data.size())
+    if (index < 0 || static_cast<size_t>(index) > data.size())
       return {};
 
     int64_t val = data[index];
