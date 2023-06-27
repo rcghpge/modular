@@ -186,7 +186,6 @@ struct MOOpPattern : public RewritePattern {
     if (auto matmul = dyn_cast<MO::MatmulOp>(op)) {
       if (matmul.getTransposeB().value_or(false)) {
         shimTarget = "mop.kernels.matmul_transpb";
-        shouldUseJit = false;
       } else if (matmul.getPackedB().value_or(false)) {
         shimTarget = "mop.kernels.matmul_packb";
         shouldUseJit = false;
