@@ -21,6 +21,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
+#include "GenericML/GraphCompiler/Support/MOGGTypeTraits.h"
 #include "GenericML/Support/Tensor.h"
 
 #include "KGEN/KGENCompiler.h"
@@ -42,53 +43,9 @@ namespace {
 // Directly embed the mojo file rather than loading dynamically.
 #include MOGG_MOJO_BINDING_H
 
-std::string getIDForType(mlir::Type t) {
-  auto asTensor = cast<MO::TensorType>(t);
-  Type dtype = asTensor.getElementType();
-
-  if (dtype.isF32())
-    return "f32";
-  if (dtype.isF64())
-    return "f64";
-  if (dtype.isSignedInteger(8))
-    return "si8";
-  if (dtype.isSignedInteger(16))
-    return "si16";
-  if (dtype.isSignedInteger(32))
-    return "si32";
-  if (dtype.isSignedInteger(64))
-    return "si64";
-  if (dtype.isUnsignedInteger(32))
-    return "ui32";
-  if (dtype.isUnsignedInteger(16))
-    return "ui16";
-  if (dtype.isUnsignedInteger(8))
-    return "ui8";
-  if (dtype.isInteger(1))
-    return "b";
-
-  assert(false &&
-         "[JITCOMPILEKERNELS] Unreachable. Types should have been guarded.");
-  return "unreachable";
-}
-
-template <typename T>
-void appendConstToString(M::ArrayElementsAttr attr, std::string &name) {
-  const T *asDtype = reinterpret_cast<const T *>(attr.getRawData().data());
-  for (int64_t i = 0, e = attr.getNumElements(); i < e; ++i) {
-
-    if (std::is_floating_point<T>::value) {
-      std::stringstream ss;
-      ss << std::scientific << asDtype[i];
-      name += ss.str() + "_";
-    } else {
-      name += std::to_string(asDtype[i]) + "_";
-    }
-  }
-}
-
-std::string mangleBlock(mlir::Block &block,
-                        DenseMap<Value, std::string> &valueToPositionInBlock) {
+ErrorOr<std::string>
+mangleBlock(mlir::Block &block,
+            DenseMap<Value, std::string> &valueToPositionInBlock) {
   std::string name = "";
   size_t blockIndex = 0;
   size_t numConstants = 0;
@@ -110,7 +67,9 @@ std::string mangleBlock(mlir::Block &block,
         valueToPositionInBlock[lambdaBlock.getArgument(argIndex)] =
             "L" + std::to_string(argIndex);
 
-      name += mangleBlock(lambdaBlock, valueToPositionInBlock);
+      UNWRAP_ERROR(mangledLambda,
+                   mangleBlock(lambdaBlock, valueToPositionInBlock));
+      name += mangledLambda;
     } else if (auto out = dyn_cast<MOGG::OutputPlaceholdersOp>(innerOp)) {
       for (Value output : out.getResults())
         valueToPositionInBlock[output] = "O" + std::to_string(blockIndex);
@@ -153,26 +112,8 @@ std::string mangleBlock(mlir::Block &block,
       // Add the actual constant to the soup.
       auto attr = cast<M::ArrayElementsAttr>(cst.getValueAttr());
       Type dtype = attr.getElementType();
-
-      if (dtype.isF32())
-        appendConstToString<float>(attr, name);
-      else if (dtype.isF64())
-        appendConstToString<double>(attr, name);
-      else if (dtype.isSignedInteger(8))
-        appendConstToString<int8_t>(attr, name);
-      else if (dtype.isSignedInteger(16))
-        appendConstToString<int16_t>(attr, name);
-      else if (dtype.isSignedInteger(32))
-        appendConstToString<int32_t>(attr, name);
-      else if (dtype.isSignedInteger(64))
-        appendConstToString<int64_t>(attr, name);
-      else if (dtype.isUnsignedInteger(8))
-        appendConstToString<uint8_t>(attr, name);
-      else if (dtype.isUnsignedInteger(16))
-        appendConstToString<uint16_t>(attr, name);
-      else
-        assert(false && "Unreachable: folded constant is "
-                        "not of supported type.");
+      UNWRAP_ERROR(traits, MOGGTypeTraits::lookupType(dtype));
+      name += traits.toString(attr);
     }
 
     // Add double seperator between operations.
@@ -180,7 +121,7 @@ std::string mangleBlock(mlir::Block &block,
     blockIndex++;
   }
 
-  return name;
+  return {name};
 }
 
 // We lower static dimensions as the dimension directly, obviously, but symbolic
@@ -203,7 +144,7 @@ void addTensorDimsToName(MO::TensorType tensor, std::string &name,
 // inputs, the contents of the block, and which are returned. It needs to be
 // this verbose to ensure we don't recompile for identical blocks but also allow
 // for blocks of the same operations with different returns to compile legally.
-std::string
+ErrorOr<std::string>
 createMangledName(MOGG::KernelOp op,
                   DenseMap<KGEN::ParamDeclRefAttr, size_t> &params) {
   std::string name = "__gen__ins_";
@@ -225,7 +166,8 @@ createMangledName(MOGG::KernelOp op,
     // Mangle the type into the name.
     auto tensor = cast<MO::TensorType>(v.getType());
     addTensorDimsToName(tensor, name, params);
-    name += getIDForType(tensor) + "_";
+    UNWRAP_ERROR(traits, MOGGTypeTraits::lookupType(tensor.getElementType()));
+    name += traits.moggType.getAsString() + "_";
   }
 
   // Add the output type as the kernel could reference this independently.
@@ -233,12 +175,15 @@ createMangledName(MOGG::KernelOp op,
   for (Type res : op->getResultTypes()) {
     auto tensor = cast<MO::TensorType>(res);
     addTensorDimsToName(tensor, name, params);
-    name += getIDForType(tensor) + "_";
+    UNWRAP_ERROR(traits, MOGGTypeTraits::lookupType(tensor.getElementType()));
+    name += traits.moggType.getAsString() + "_";
   }
   name += "_";
 
-  name += mangleBlock(op.getBody().front(), valueToPositionInBlock);
-  return name;
+  UNWRAP_ERROR(mangledBlock,
+               mangleBlock(op.getBody().front(), valueToPositionInBlock));
+  name += mangledBlock;
+  return {name};
 }
 
 SmallVector<KGEN::ParamDeclRefAttr> getUsedParameters(MOGG::KernelOp kernel) {
@@ -386,10 +331,14 @@ struct JitCompileKernels
       }
 
       // Create a unique name for the kernel.
-      std::string stubKernelName = createMangledName(op, paramToIndex);
+      auto stubKernelName = createMangledName(op, paramToIndex);
+      if (stubKernelName.isError()) {
+        error = Error(stubKernelName.takeError());
+        return WalkResult::interrupt();
+      }
 
       // Don't duplicate KGEN kernels for the same call.
-      auto itr = jittedKernels.find(stubKernelName);
+      auto itr = jittedKernels.find(stubKernelName.get());
       if (itr != jittedKernels.end()) {
         MOGG::ExecuteCompiledOp cachedExeOp = itr->second;
 
@@ -408,7 +357,7 @@ struct JitCompileKernels
       }
 
       // Lower the basic stub function.
-      error = builder.startLowering(op, stubKernelName, usedParameters);
+      error = builder.startLowering(op, stubKernelName.get(), usedParameters);
       if (error.isError())
         return WalkResult::interrupt();
 
@@ -418,10 +367,10 @@ struct JitCompileKernels
         return WalkResult::interrupt();
 
       // Replace the original kernel with a call to the compiled jit code.
-      MOGG::ExecuteCompiledOp jitExecute =
-          builder.createExecuteOperation(stubKernelName, usedParamsAsAttr);
+      MOGG::ExecuteCompiledOp jitExecute = builder.createExecuteOperation(
+          stubKernelName.get(), usedParamsAsAttr);
       op->replaceAllUsesWith(jitExecute.getResults());
-      jittedKernels.insert({stubKernelName, jitExecute});
+      jittedKernels.insert({stubKernelName.get(), jitExecute});
       op->erase();
 
       // Tracking attributes makes it easier to create an array.

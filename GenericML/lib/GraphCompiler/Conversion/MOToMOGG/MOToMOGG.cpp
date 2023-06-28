@@ -13,11 +13,11 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/Matchers.h"
+#include "GenericML/GraphCompiler/Support/MOGGTypeTraits.h"
 #include "Support/ML/TensorShape.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #include "LoweringHelper.h"
-#include "SupportedMoggTypes.h"
 
 using namespace M;
 using namespace mlir;
@@ -151,7 +151,8 @@ struct MOOpPattern : public RewritePattern {
     auto isTypeAllowed = [&](Type t) {
       auto tensor = dyn_cast<MO::TensorType>(t);
       Type dtype = tensor.getElementType();
-      bool allowedElementTypes = MO::isSupportedMOGGType(dtype);
+      bool allowedElementTypes =
+          MOGG::MOGGTypeTraits::isSupportedMOGGType(dtype);
 
       if (!tensor || !allowedElementTypes || !tensor.hasRank() ||
           tensor.getRank() > kMaxRank || tensor.hasUnknownShape())

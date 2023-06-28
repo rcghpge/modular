@@ -10,6 +10,7 @@
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
+#include "GenericML/GraphCompiler/Support/MOGGTypeTraits.h"
 #include "GenericML/Support/Tensor.h"
 
 using namespace M;
@@ -51,10 +52,7 @@ struct FuseConstants : public impl::FuseConstantsBase<FuseConstants> {
         return false;
 
       Type dtype = attr.getElementType();
-      if (!(dtype.isF32() || dtype.isF64() || dtype.isSignedInteger(8) ||
-            dtype.isSignedInteger(16) || dtype.isSignedInteger(32) ||
-            dtype.isSignedInteger(64) || dtype.isUnsignedInteger(8) ||
-            dtype.isUnsignedInteger(16)))
+      if (!MOGGTypeTraits::isSupportedMOGGType(dtype))
         return false;
 
       if (attr.getNumElements() > 16)
