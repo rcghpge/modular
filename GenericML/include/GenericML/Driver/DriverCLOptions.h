@@ -219,6 +219,11 @@ public:
                      "Do not display any result details")),
       cl::init(Kernels::ResultOutputStyle::kCompact)};
 
+  cl::opt<unsigned> printPrecision{
+      "print-precision",
+      cl::desc("Specify precision of floating-point outputs (full-mode only)"),
+      cl::init(6)};
+
   /// If set, save the execution time of every non-warmup run to given file.
   cl::opt<std::string> saveTimings{
       "save-timings",

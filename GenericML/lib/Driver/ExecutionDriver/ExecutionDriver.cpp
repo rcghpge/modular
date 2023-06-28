@@ -186,7 +186,8 @@ static LogicalResult printDiagIfError(const AnyAsyncValueRef &res) {
 static LogicalResult
 printTensorResults(const ExecutableModel *model,
                    MutableArrayRef<AnyAsyncValueRef> results,
-                   Kernels::ResultOutputStyle outputStyle) {
+                   Kernels::ResultOutputStyle outputStyle,
+                   unsigned precision) {
   // We expect the first result to be a chain.
   const AnyAsyncValueRef &ch = results.front();
   assert(ch.isReady() && isa<Chain>(ch) &&
@@ -215,7 +216,8 @@ printTensorResults(const ExecutableModel *model,
     else {
       if (auto *tensor = dyn_cast<Tensor>(result)) {
         if (auto err = Kernels::printTensor(tensor->getBuffer(),
-                                            tensor->getSpec(), outputStyle)) {
+                                            tensor->getSpec(),
+                                            outputStyle, precision)) {
           llvm::outs() << "<error: " << err.getError() << '>';
           hasError = true;
         }
@@ -378,7 +380,8 @@ static ErrorOrSuccess executeModel(const Model *model, Runtime &runtime,
       // expected model error output from transient errors running the tool
       // itself.
       if (failed(printTensorResults(executableModel.get(), results,
-                                    options.resultOutputStyle)))
+                                    options.resultOutputStyle,
+                                    options.printPrecision)))
         return Error("repeated model execution failed");
     }
 
