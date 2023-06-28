@@ -40,10 +40,22 @@ def MOGG_Simd : MOGG_Type<"Simd", "simd"> {
 def MOGG_Indices : MOGG_Type<"Indices", "indices"> {
   let summary = "A type representing the indices into a tensor";
   let description = [{
-    This is an abstraction above the LIT indices type which is still
-    somewhat TBD. Whatever that type is in lit this represents it at the
+    This is an abstraction above the Mojo indices type which is still
+    somewhat TBD. Whatever that type is in mojo this represents it at the
     MOGG level. It is used as inputs/outputs of certain lambdas which then
     use these to access tensor data or return modified indices.
+  }];
+}
+
+def MOGG_Shape : MOGG_Type<"Shape", "shape"> {
+  let summary = "A type mapping onto a shape";
+  let description = [{
+    This is the mogg representation of a runtime shape value.
+  }];
+
+  let parameters = (ins "TypedAttr" : $shapeAttr);
+  let assemblyFormat = [{
+    `<` custom<ShapeParam>($shapeAttr) `>`
   }];
 }
 

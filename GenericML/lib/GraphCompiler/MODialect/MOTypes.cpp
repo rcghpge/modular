@@ -65,7 +65,7 @@ static ParseResult parseShapeParam(AsmParser &p, TypedAttr &shapeAttr) {
       return success();
     return p.emitError(p.getCurrentLocation())
            << "TensorType shape parameter must be ShapeAttr or "
-              "ParamDeclRefAttr";
+              "ParamDeclRefAttr, got: " << shapeAttr;
   }
   return p.emitError(p.getCurrentLocation())
          << "couldn't parse shape parameter: expected `?`, shape reference, or "

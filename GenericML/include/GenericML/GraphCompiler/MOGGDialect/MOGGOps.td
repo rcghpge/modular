@@ -234,6 +234,19 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [IsolatedFromAbove,
   }];
 }
 
+def MOGG_ParamShapeToValueOp : MOGG_Op<"param_shape_to_value"> {
+  let summary = "Returns a runtime representation of a given shape";
+  let description = [{
+    Returns a runtime representation for a shape.
+  }];
+
+  let results = (outs MOGG_Shape:$result);
+
+  let assemblyFormat = [{
+    attr-dict `->` type(results)
+  }];
+}
+
 def MOGG_CallOp : MOGG_Op<"call"> {
   let summary = "Represents a KGEN function to call";
   let description = [{
@@ -261,7 +274,7 @@ def MOGG_CallOp : MOGG_Op<"call"> {
 
   let arguments = (ins
      StrAttr:$mojoKernelTarget,
-     Variadic<AnyTypeOf<[MOGG_Simd, MO_Tensor, MOGG_Indices]>>:$operands,
+     Variadic<AnyTypeOf<[MOGG_Simd, MO_Tensor, MOGG_Indices, MOGG_Shape]>>:$operands,
      OptionalAttr<ArrayAttr>:$params,
      OptionalAttr<DictionaryAttr>:$kgenParams
   );
