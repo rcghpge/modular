@@ -1272,6 +1272,7 @@ def MO_ReshapeOp : MO_ShapeModifierOp<"reshape"> {
     ```
   }];
 
+  let hasVerifier = 1;
   let hasCanonicalizeMethod = 1;
   let hasFolder = 1;
 }

@@ -38,3 +38,10 @@ mo.graph @static_reshape_non_matching_dims(%arg0: !mo.tensor<[5, 10], si64>) -> 
   %0 = mo.static.reshape(%arg0) : !mo.tensor<[5, 10], si64> -> !mo.tensor<[45], si64>
   mo.output %0 : !mo.tensor<[45], si64>
 }
+
+// -----
+mo.graph @static_reshape_wrong_dtype(%arg0: !mo.tensor<[5, 10], si64>) -> !mo.tensor<[50], si32> {
+  // expected-error @below {{'mo.static.reshape' op expect input and output dtypes to match}}
+  %0 = mo.static.reshape(%arg0) : !mo.tensor<[5, 10], si64> -> !mo.tensor<[50], si32>
+  mo.output %0 : !mo.tensor<[50], si32>
+}

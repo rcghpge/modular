@@ -1707,6 +1707,77 @@ LogicalResult ReduceMaxOp::canonicalize(ReduceMaxOp op, PatternRewriter& rewrite
 // MO_ReshapeOp support
 //===----------------------------------------------------------------------===//
 
+template <typename T>
+inline LogicalResult checkReshapeInOutTypesCompatible(T op) {
+  // checks whether the input and output shapes are compatible
+  // e.g. may have the same number of elements and same dtype.
+  TensorType inputTy = op.getInput().getType();
+  TensorType resultTy = op.getType();
+  if (inputTy.getDtype() != resultTy.getDtype())
+    return op.emitOpError("expect input and output dtypes to match");
+
+  std::optional<int64_t> inputNumEles = inputTy.getNumElements();
+  std::optional<int64_t> resultNumEles = resultTy.getNumElements();
+  if (!inputNumEles.has_value() || !resultNumEles.has_value()) {
+    // Here, at least one of inputTy or resultTy has parameters in the shape
+    // expression. Assume you can always set some parameters to equal the other
+    // side. e.g. 5 * N = 10, N could be 2 to make things valid, we can't check
+    // deeper. Note: as parameters are integers, some expressions could
+    // potentially be invalidated. E.g. 5 * N = 8 is clearly impossible for
+    // integer N. However, for now, this is sufficient.
+    return success();
+  }
+
+  if (inputNumEles.value() != resultNumEles.value()) {
+    return op.emitOpError("input and output elements do not match: ")
+           << inputNumEles.value() << " vs " << resultNumEles.value();
+  }
+  return success();
+}
+
+LogicalResult ReshapeOp::verify() {
+  LogicalResult result = checkReshapeInOutTypesCompatible(*this);
+  if (result.failed())
+    return result;
+
+  auto shapeInput = dyn_cast_or_null<ConstantOp>(getNewShape().getDefiningOp());
+  if (!shapeInput)
+    return success();
+
+  ElementsAttr attr = shapeInput.getValue();
+  auto dimIntegers =
+      tryGetConstantBlob<int64_t>(attr, getNewShape().getType().getDtype());
+  if (!dimIntegers.has_value())
+    return success();
+
+  int64_t requestedElements = 1;
+  bool requestShapeHasNegOne = false;
+  for (int64_t dim : dimIntegers.value()) {
+    if (dim == -1)
+      requestShapeHasNegOne = true;
+    requestedElements *= dim;
+  }
+
+  std::optional<int64_t> resultElements =
+      getResult().getType().getNumElements();
+  if (resultElements.has_value() &&
+      resultElements.value() != requestedElements && !requestShapeHasNegOne) {
+    return emitOpError("Expected requested shape and output shape to have the "
+                       "same number of elements requested ")
+           << requestedElements << " but expected " << resultElements.value();
+  }
+
+  std::optional<int64_t> inputElements = getInput().getType().getNumElements();
+  if (inputElements.has_value() && inputElements.value() != requestedElements &&
+      !requestShapeHasNegOne) {
+    return emitOpError("Expected requested shape and input shape to have the "
+                       "same number of elements requested ")
+           << requestedElements << " but expected " << inputElements.value();
+  }
+
+  return success();
+}
+
 LogicalResult ReshapeOp::canonicalize(ReshapeOp op, PatternRewriter &rewriter) {
   TensorValue inputVal = op.getInput();
   TensorType inputTy = inputVal.getType();
@@ -1868,31 +1939,20 @@ OpFoldResult Static::ReshapeOp::fold(FoldAdaptor adaptor) {
 }
 
 LogicalResult Static::ReshapeOp::verify() {
-  // Best effort verifier. Only really catches when
-  // non-parameterized shapes are incompatible. E.g. [2, 3] and [5].
-
-  TensorType inputTy = getInput().getType();
-  TensorType resultTy = getType();
-  if (!inputTy.hasRank() || !resultTy.hasRank())
-    return success();
-
-  TypedAttr inputNumEles = inputTy.getSymbolicNumElements();
-  TypedAttr resultNumEles = resultTy.getSymbolicNumElements();
-  if (!isa<IntegerAttr>(inputNumEles) || !isa<IntegerAttr>(resultNumEles)) {
-    // Here, one of inputNumEles or resultNumEles has parameters in the
-    // expression. Assume you can always set some parameters to equal the other
-    // side. e.g. 5 * N = 10, N could be 2 to make things valid, we can't check
-    // deeper. Note: as parameters are integers, some expressions could
-    // potentially be invalidated. E.g. 5 * N = 8 is clearly impossible for
-    // integer N. However, for now, this is sufficient.
-    return success();
+  LogicalResult typesCompatible = checkReshapeInOutTypesCompatible(*this);
+  if (typesCompatible.failed()) {
+    return typesCompatible;
   }
 
-  if (inputNumEles != resultNumEles) {
-    return emitOpError("input and output elements do not match: ")
-           << dyn_cast<IntegerAttr>(inputNumEles).getInt() << " vs "
-           << dyn_cast<IntegerAttr>(resultNumEles).getInt();
+  TensorType resultTy = getResult().getType();
+  if (resultTy.hasRank()) {
+    for (auto curResDim : resultTy.getTypedShapeAttr().getValues()) {
+      auto intCurResDim = dyn_cast<IntegerAttr>(curResDim);
+      if (intCurResDim && intCurResDim.getInt() == -1)
+        return emitOpError("static reshape can not have inferred dimensions");
+    }
   }
+
   return success();
 }
 

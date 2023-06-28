@@ -129,6 +129,11 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     /// expression. Fails if not statically ranked.
     TypedAttr getSymbolicNumElements() const;
 
+    // Returns the number of elements in the tensor if defined. This is when
+    // the rank is known and all dimensions are statically known integers >= 0.
+    // Otherwise returns no value.
+    std::optional<int64_t> getNumElements() const;
+
     /// Computes the common broadcast shape of the shapes of given tensors.
     /// Supports parametric and unknown shapes, but not dynamic rank.
     static ErrorOr<TensorType> broadcastShapes(TensorType x, TensorType y);

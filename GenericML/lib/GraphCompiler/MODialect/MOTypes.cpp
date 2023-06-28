@@ -269,6 +269,23 @@ TypedAttr TensorType::getSymbolicNumElements() const {
   return getTypedShapeAttr().getSymbolicNumElements();
 }
 
+std::optional<int64_t> TensorType::getNumElements() const {
+  if (!hasRank())
+    return {};
+
+  TypedAttr attr = getSymbolicNumElements();
+  auto resultElements = attr.dyn_cast_or_null<IntegerAttr>();
+  if (!resultElements)
+    return {};
+
+  // We allow one -1 dimension for now, which is a fancy parameter.
+  // TODO(15523): maybe remove once -1 is handled more gracefully.
+  if (resultElements.getInt() < 0)
+    return {};
+
+  return resultElements.getInt();
+}
+
 ErrorOr<TensorType> TensorType::broadcastShapes(TensorType x, TensorType y) {
   if (!x.hasRank() || !y.hasRank())
     return Error(Twine("Guards should have rejected unranked inputs."));

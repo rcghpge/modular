@@ -892,4 +892,24 @@ mo.graph @tile_repeats_rank_mismatch(%input: !mo.tensor<[?, ?, ?], f32>) -> !mo.
   mo.output %res : !mo.tensor<[?, ?, ?], f32>
 }
 
+
+
+//===----------------------------------------------------------------------===//
+// ReshapeOp
+//===----------------------------------------------------------------------===//
+
 // -----
+mo.graph @reshape_wrong_dtype(%input: !mo.tensor<[6], f32>) -> !mo.tensor<[2, 3], si32> {
+  %shape = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // expected-error@+1 {{'mo.reshape' op expect input and output dtypes to match}}
+  %res = mo.reshape(%input, %shape) : (!mo.tensor<[6], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 3], si32>
+  mo.output %res : !mo.tensor<[2, 3], si32>
+}
+
+// -----
+mo.graph @reshape_incompatible_shapes(%input: !mo.tensor<[6], f32>) -> !mo.tensor<[2, 3], f32> {
+  %shape = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // expected-error@+1 {{'mo.reshape' op Expected requested shape and output shape to have the same number of elements requested 4 but expected 6}}
+  %res = mo.reshape(%input, %shape) : (!mo.tensor<[6], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 3], f32>
+  mo.output %res : !mo.tensor<[2, 3], f32>
+}
