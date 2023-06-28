@@ -19,6 +19,10 @@ using namespace std::placeholders;
 
 #define DEBUG_TYPE "mgp-dataflow"
 
+//===----------------------------------------------------------------------===//
+// Public API
+//===----------------------------------------------------------------------===//
+
 AsyncDataflowDependencies::AsyncDataflowDependencies(
     IndexSet<Value> *valueIndex, IndexSet<Operation *> *operationIndex)
     : valueAnalysis(valueIndex), operationAnalysis(operationIndex),
@@ -29,6 +33,7 @@ AsyncDataflowDependencies::AsyncDataflowDependencies(
   setupMaybeSameAs();
   setupAlwaysReady();
   setupImpliesReady();
+  setupStructurallyDisjoint();
   setupRunsLater();
 }
 
@@ -38,6 +43,11 @@ bool AsyncDataflowDependencies::sameAs(Value lhs, Value rhs) const {
 
 bool AsyncDataflowDependencies::maybeSameAs(Value lhs, Value rhs) const {
   return valueAnalysis.index->areEquivalent(maybeSameAsEquivalence, lhs, rhs);
+}
+
+AsyncDataflowDependencies::ValueSet
+AsyncDataflowDependencies::maybeSameAsSet(Value lhs) const {
+  return valueAnalysis.index->getEquivalenceClass(maybeSameAsEquivalence, lhs);
 }
 
 bool AsyncDataflowDependencies::isAlwaysReady(Value value) const {
@@ -78,7 +88,9 @@ void AsyncDataflowDependencies::simplify(SmallVectorImpl<Value> &values) const {
 bool AsyncDataflowDependencies::areDisjoint(Operation *lhsOp,
                                             Operation *rhsOp) const {
   return operationAnalysis.containsEntry(runsLaterRelation, lhsOp, rhsOp) ||
-         operationAnalysis.containsEntry(runsEarlierRelation, lhsOp, rhsOp);
+         operationAnalysis.containsEntry(runsEarlierRelation, lhsOp, rhsOp) ||
+         operationAnalysis.containsEntry(structurallyDisjointRelation, lhsOp,
+                                         rhsOp);
 }
 
 AsyncDataflowDependencies::ValueSet
@@ -106,9 +118,15 @@ void AsyncDataflowDependencies::print(llvm::raw_ostream &os) {
   valueAnalysis.printRelation(os, "maybeSameAs", maybeSameAsRelation);
   valueAnalysis.printPredicate(os, "isAlwaysReady", alwaysReadyPredicate);
   valueAnalysis.printRelation(os, "impliesReady", impliesReadyRelation);
+  operationAnalysis.printRelation(os, "structurallyDisjoint",
+                                  structurallyDisjointRelation);
   operationAnalysis.printRelation(os, "runsLater", runsLaterRelation);
   operationAnalysis.printRelation(os, "runsEarlier", runsEarlierRelation);
 }
+
+//===----------------------------------------------------------------------===//
+// Core relations
+//===----------------------------------------------------------------------===//
 
 // Rules are just the control flow rules.
 void AsyncDataflowDependencies::flowSameAs(Operation *op,
@@ -218,13 +236,90 @@ void AsyncDataflowDependencies::flowImpliesReady(Operation *op,
 
 void AsyncDataflowDependencies::setupImpliesReady() {
   LLVM_DEBUG(llvm::dbgs() << "setupImpliesReady\n");
+  // Given:
+  //    %a = if ... {
+  //      %w = ...
+  //      mef.output %x
+  //    } else {
+  //      %y = ...
+  //      mef.output %z
+  //    }
+  // where impliesReady(%z, %y), we have two possibly interpretations of
+  // impliesReady(%a, %y):
+  //  - the relation can only hold if %y was actually created, thus it
+  //    must be false in case the 'then' sub-block was taken.
+  //  - the relation is allowed to hold 'vacuously' if %y was never created,
+  //    thus can be true.
+  //
+  // We take the second interpretation so that impliesReady can give us
+  // more entries in the runsEarlier relation, which in turn gives us more
+  // entries in the exclusive relation.
+  //
+  // Thus, we turn on the handleDisjointBranches option for this dataflow.
   ValueDomainMap domainMap(impliesReadyRelation, ValueAnalysis::kBottomIsFull,
                            valueAnalysis.index->emptySet(),
-                           valueAnalysis.index->fullSet());
+                           valueAnalysis.index->fullSet(),
+                           /*handleDisjointBranches=*/true);
   valueAnalysis.flowModel(
       valueAnalysis.index->model, domainMap,
       std::bind(&AsyncDataflowDependencies::flowImpliesReady, this, _1, _2));
   inverseImpliesReadyRelation = valueAnalysis.inverse(impliesReadyRelation);
+}
+
+void AsyncDataflowDependencies::accumStructurallyDisjointForBlock(
+    OperationRelation &relation, Block *block) {
+  block->walk([&](GRT::GRTControlFlowInterface cfOp) {
+    if (cfOp.getFlavor() != GRT::kBranchLike)
+      return;
+
+    // Collect all the ops for each branch sub-block (including nested
+    // sub-blocks). Note that these ops may be inside loops, including loops on
+    // the outside of this cfOp, and loops between the op and this cfOp.
+    // However, thankfully loops are 'non overlapping', so we know only one
+    // instance of the op can be executing at any one time.
+    SmallVector<SmallVector<Operation *>> allOpsPerBranch;
+    for (Region &region : cfOp->getRegions()) {
+      SmallVector<Operation *> &allOps = allOpsPerBranch.emplace_back();
+      region.walk([&](Operation *op) {
+        if (getIndicatingResults(op).empty())
+          // We are only interested in ops with indicating results since that's
+          // the only way we have to track their execution.
+          return;
+        allOps.emplace_back(op);
+      });
+    }
+
+    // For all pairs of distinct blocks...
+    size_t n = cfOp->getNumRegions();
+    for (size_t i = 0; i < n; ++i) {
+      size_t numLhs = allOpsPerBranch[i].size();
+      for (size_t j = 0; j < n; ++j) {
+        if (i == j)
+          continue;
+        size_t numRhs = allOpsPerBranch[j].size();
+        // For all pairs of ops from disjoint blocks...
+        for (size_t k = 0; k < numLhs; ++k) {
+          Operation *lhsOp = allOpsPerBranch[i][k];
+          for (size_t l = 0; l < numRhs; ++l) {
+            Operation *rhsOp = allOpsPerBranch[j][l];
+            // These ops can never both be spliced into the overall
+            // execution graph.
+            operationAnalysis.add(relation, lhsOp, rhsOp);
+          }
+        }
+      }
+    }
+  });
+}
+
+void AsyncDataflowDependencies::setupStructurallyDisjoint() {
+  LLVM_DEBUG(llvm::dbgs() << "setupStructurallyDisjoint\n");
+  accumStructurallyDisjointForBlock(
+      structurallyDisjointRelation,
+      operationAnalysis.index->model.getInitBlock());
+  accumStructurallyDisjointForBlock(
+      structurallyDisjointRelation,
+      operationAnalysis.index->model.getExecuteBlock());
 }
 
 AsyncDataflowDependencies::OperationSet

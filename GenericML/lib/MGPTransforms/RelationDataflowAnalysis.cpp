@@ -72,6 +72,21 @@ void ForwardsRelationDataflowAnalysis::flowConditionedLoop(
   }
 }
 
+std::pair<ForwardsRelationDataflowAnalysis::Set,
+          ForwardsRelationDataflowAnalysis::Set>
+ForwardsRelationDataflowAnalysis::splitByScope(const Set &set, Block *block) {
+  Set within = index->emptySet();
+  Set without = index->emptySet();
+  for (Value value : index->setToVector(set)) {
+    if (value.getDefiningOp() && block->getParent()->isAncestor(
+                                     value.getDefiningOp()->getParentRegion()))
+      index->addToSet(within, value);
+    else
+      index->addToSet(without, value);
+  }
+  return {within, without};
+}
+
 void ForwardsRelationDataflowAnalysis::flowBranch(
     GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
     const FlowOp &flowOp) {
@@ -85,16 +100,28 @@ void ForwardsRelationDataflowAnalysis::flowBranch(
   }
 
   // Flow from combination of the outputs of each sub-block forwards to the
-  // control flow op results.
+  // control flow op results. However, account for the mutual-exclusivity
+  // between branches if requested.
+  bool shouldSplit = domainMap.handleDisjointBranches && isAtMostOnce(cfOp);
   for (size_t i = 0, n = cfOp->getNumResults(); i < n; ++i) {
     Value result = cfOp->getResult(i);
-    Set set = domainMap.bottom;
+    Set glbOfWithin = domainMap.top;
+    Set lubOfWithout = domainMap.bottom;
     for (Region &region : cfOp->getRegions()) {
       Block *subBlock = &region.front();
       Value output = subBlock->getTerminator()->getOperand(i);
-      domainMap.leastUpperBound(set, getEntriesAndId(domainMap, output));
+      Set set = getEntriesAndId(domainMap, output);
+      if (shouldSplit) {
+        auto [within, without] = splitByScope(set, subBlock);
+        domainMap.greatestLowerBound(glbOfWithin, within);
+        domainMap.leastUpperBound(lubOfWithout, without);
+      } else {
+        domainMap.leastUpperBound(lubOfWithout, set);
+      }
     }
-    setEntries(domainMap, result, set);
+    if (shouldSplit)
+      domainMap.greatestLowerBound(lubOfWithout, glbOfWithin);
+    setEntries(domainMap, result, lubOfWithout);
   }
 }
 
@@ -315,6 +342,22 @@ void BackwardsRelationDataflowAnalysis::flowConditionedLoop(
   }
 }
 
+std::pair<BackwardsRelationDataflowAnalysis::Set,
+          BackwardsRelationDataflowAnalysis::Set>
+BackwardsRelationDataflowAnalysis::splitByScope(const Set &set, Block *block) {
+  Set within = index->emptySet();
+  Set without = index->emptySet();
+  for (const OpOperand *operand : index->setToVector(set)) {
+    if (operand->get().getDefiningOp() &&
+        block->getParent()->isAncestor(
+            operand->get().getDefiningOp()->getParentRegion()))
+      index->addToSet(within, operand);
+    else
+      index->addToSet(without, operand);
+  }
+  return {within, without};
+}
+
 void BackwardsRelationDataflowAnalysis::flowBranch(
     GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
     const FlowOp &flowOp) {
@@ -336,16 +379,27 @@ void BackwardsRelationDataflowAnalysis::flowBranch(
   }
 
   // Flow from the combination of all sub-block arguments backwards to
-  // the control flow op inputs.
+  // the control flow op inputs. However, account for the mutual-exclusivity
+  // between the branches if requested.
+  bool shouldSplit = domainMap.handleDisjointBranches && isAtMostOnce(cfOp);
   for (size_t i = 0, n = cfOp.getInputs().size(); i < n; ++i) {
     const OpOperand *input = &cfOp.getInputOpOperands()[i];
-    Set set = domainMap.bottom;
+    Set glbOfWithin = domainMap.top;
+    Set lubOfWithout = domainMap.bottom;
     for (Region &region : cfOp->getRegions()) {
       Block *subBlock = &region.front();
-      domainMap.leastUpperBound(
-          set, operandCombination(domainMap, subBlock->getArgument(i)));
+      Set set = operandCombination(domainMap, subBlock->getArgument(i));
+      if (shouldSplit) {
+        auto [within, without] = splitByScope(set, subBlock);
+        domainMap.greatestLowerBound(glbOfWithin, within);
+        domainMap.leastUpperBound(lubOfWithout, without);
+      } else {
+        domainMap.leastUpperBound(lubOfWithout, set);
+      }
     }
-    setEntries(domainMap, input, set);
+    if (shouldSplit)
+      domainMap.greatestLowerBound(lubOfWithout, glbOfWithin);
+    setEntries(domainMap, input, lubOfWithout);
   }
 }
 

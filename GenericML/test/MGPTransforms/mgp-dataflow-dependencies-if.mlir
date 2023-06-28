@@ -65,19 +65,33 @@
 
 // CHECK: isAlwaysReady({%0[0], %arg0, %arg2[2], %arg2[3]})
 
+// impliesReady is actually 'implies ready or never bound', so
+// %3#1 captures that either one or other of the if branches will
+// be executed.
 // Note that though we know grt.if is strict on the condition, there's
 // nothing in the grt.if result that tells us when the grt.if itself has
 // completed.
 // CHECK: impliesReady begin
-// CHECK: %3#0 |-> {%0[0], %arg0}
-// CHECK: %3#1 |-> {%0[0], %arg0, %2}
+// CHECK: %3#0 |-> {%0[0], %arg0, %5[2]}
+// CHECK: %3#1 |-> {%0[0], %arg0, %2, %6[2], %5[3]}
 // CHECK: %3#2 |-> {%0[0], %arg0, %2}
 // CHECK: impliesReady end
 
+// Ops in the if branches are structurally disjoint
+// CHECK: structurallyDisjoint begin
+// CHECK-NEXT: %5[2] |-> {%5[3]}
+// CHECK-NEXT: %6[2] |-> {%5[3]}
+// CHECK-NEXT: %5[3] |-> {%5[2], %6[2]}
+// CHECK-NEXT: structurallyDisjoint end
+
+// runsLater is actually 'runs later or never runs'.
 // CHECK: runsLater begin
 // CHECK-NEXT: %0[0] |-> {%0, %1, %2, %3#0, %5[2], %6[2], %5[3], %4}
 // CHECK-NEXT: %0 |-> {%3#0}
 // CHECK-NEXT: %2 |-> {%6[2], %5[3], %4}
+// CHECK-NEXT: %5[2] |-> {%4}
+// CHECK-NEXT: %6[2] |-> {%4}
+// CHECK-NEXT: %5[3] |-> {%4}
 // CHECK: runsLater end
 
 mgp.model @simple : tf init {

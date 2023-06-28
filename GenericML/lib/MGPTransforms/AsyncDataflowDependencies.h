@@ -73,6 +73,7 @@ namespace M::MGP {
 ///  - maybeSameAs equivalence (two values may point to the same AsyncValue)
 ///  - isAlwaysReady predicate (the value is always a ready AsyncValue)
 ///  - impliesReady relation (if one value is ready then so is another)
+///  - structurallyDisjoint relation (two ops can never overlap due to branches)
 ///  - runsLater relation (a later op can begin only after an earlier op
 ///    finishes)
 ///
@@ -89,6 +90,11 @@ public:
   using ValueRelation = ValueAnalysis::Relation;
   using OperationSet = OperationAnalysis::Set;
   using OperationRelation = OperationAnalysis::Relation;
+
+  /// Helpers for working with domain maps and relations over both values and
+  /// operations.
+  ValueAnalysis valueAnalysis;
+  OperationAnalysis operationAnalysis;
 
   /// Performs the dataflow analysis.
   AsyncDataflowDependencies(IndexSet<Value> *valueIndex,
@@ -111,6 +117,9 @@ public:
   /// Note that we need the 'lifetime extends' property to support the
   /// 'exclusive' relation below.
   bool maybeSameAs(Value lhs, Value rhs) const;
+
+  /// Returns the set { %rhs | maybeSameAs(%lhs, %rhs) }.
+  ValueSet maybeSameAsSet(Value lhs) const;
 
   /// The isAlwaysReady(%value) predicate is true only if at runtime
   ///   valueOf(%value)->isReady()
@@ -231,6 +240,14 @@ private:
   /// 'execute' blocks.
   void setupImpliesReady();
 
+  /// Grows relation to capture which operations can never co-execute
+  /// in block and its sub-blocks.
+  void accumStructurallyDisjointForBlock(OperationRelation &relation,
+                                         Block *block);
+
+  /// Sets the structurallyDisjoint relation for all operations in the model.
+  void setupStructurallyDisjoint();
+
   /// Returns the set:
   ///   { laterOp | laterOp can BEGIN execution only after earlierOp FINISHES }
   /// under all execution paths.
@@ -238,11 +255,6 @@ private:
 
   /// Sets the runsLaterRelation and its inverse for all operations in model.
   void setupRunsLater();
-
-  /// Helpers for working with domain maps and relations over both values and
-  /// operations.
-  ValueAnalysis valueAnalysis;
-  OperationAnalysis operationAnalysis;
 
   /// (%lhs, %rhs) is in sameAsRelation only if %lhs points to the same
   /// AsyncValue as %rhs when it is bound.
@@ -271,6 +283,13 @@ private:
   ValueRelation impliesReadyRelation;
   /// Inverse of above.
   ValueRelation inverseImpliesReadyRelation;
+
+  /// (lhsOp, rhsOp) is in structurallyDisjointRelation if lhsOp and rhsOp
+  /// con never overlap in execution because they are distinct branches of
+  /// a kBronch control flow op. Unlike the impliesReady relation, this is a
+  /// purely structural property that does not depend on the dataflow of
+  /// AsyncValues.
+  OperationRelation structurallyDisjointRelation;
 
   /// (lhsOp, rhsOp) is in runsLaterRelation only if rhsOp can BEGIN execution
   /// only after either lhsOp has FINISHED execution, or rhsOp is never

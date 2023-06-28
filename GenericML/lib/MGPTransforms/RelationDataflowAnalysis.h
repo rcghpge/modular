@@ -76,12 +76,43 @@ public:
     Set bottom;
     Set top;
 
+    /// If true, account for the mutual-exclusivity of the sub-blocks of a
+    /// kBranch control flow op which can be executed at most once.
+    ///
+    /// For example, given:
+    ///    %a = ...
+    ///    %b = ...
+    ///    %c = ...
+    ///    %d = if ... (%b, %c) {
+    ///      %w = ...
+    ///      mef.output (%x)
+    ///    } else {
+    ///      %y = ...
+    ///      mef.output (%z)
+    ///    }
+    /// assume we have %x |-> {%x, %w, %b, %a} and %z |-> {%z, %y, %c, %a}.
+    ///
+    /// With handleDisjointBranches false we'll take %d to be:
+    ///    %d |->  {%x, %w, %b, %a} lub {%z, %y, %c, %a}.
+    ///
+    /// However with assumeDisjoint true we'll take %d to be:
+    ///    %d |-> {%x, %w} glb {%z, %y} glb ({%b, %a} lub {%c, %a})
+    /// where the sets for %x and %z have been split according to whether each
+    /// element is bound within vs without the kBronch control flow op
+    /// sub-blocks.
+    ///
+    /// Whether this is semantically meaningful depends on the semantics of
+    /// the relation and how it should account for values which may never be
+    /// bound at runtime.
+    bool handleDisjointBranches;
+
     /// Set to true whenever relation is changed.
     bool changed = false;
 
     DomainMap(Relation &relation, SetOrientation orientation, Set &&emptySet,
-              Set &&fullSet)
-        : relation(relation), orientation(orientation) {
+              Set &&fullSet, bool handleDisjointBranches = false)
+        : relation(relation), orientation(orientation),
+          handleDisjointBranches(handleDisjointBranches) {
       switch (orientation) {
       case kBottomIsEmpty:
         bottom = std::move(emptySet);
@@ -263,7 +294,7 @@ public:
   /// Pretty-prints equivalence, using the stable form for canonical values.
   /// Singleton entries are not printed since implied. For testing only.
   void printEquivalence(llvm::raw_ostream &os, StringRef equivName,
-                        const Equivalence &equivalence) {
+                        const Equivalence &equivalence) const {
     os << equivName << " begin\n";
     for (V canon : index->getAllVs()) {
       if (canon != index->getStableCanonical(equivalence, canon))
@@ -281,7 +312,7 @@ public:
 
   /// Pretty-prints relation in index order. For testing only.
   void printRelation(llvm::raw_ostream &os, StringRef relName,
-                     const Relation &relation) {
+                     const Relation &relation) const {
     os << relName << " begin\n";
     for (V v : index->getAllVs()) {
       auto itr = relation.find(v);
@@ -298,7 +329,7 @@ public:
 
   /// Pretty-prints predicate (ie set) in index order. For testing only.
   void printPredicate(llvm::raw_ostream &os, StringRef predName,
-                      const Set &set) {
+                      const Set &set) const {
     os << predName << "(";
     index->printVs(os, index->setToVector(set));
     os << ")\n";
@@ -331,6 +362,10 @@ public:
   /// changed.
   void flowConditionedLoop(GRT::GRTControlFlowInterface cfOp,
                            DomainMap &domainMap, const FlowOp &flowOp);
+
+  /// Returns partition of set as (within, without) such that %x in within
+  /// iff %x is bound by an op in block or one of its sub-blocks.
+  std::pair<Set, Set> splitByScope(const Set &set, Block *block);
 
   /// Grows domainMap for the sub-blocks of branch control flow op.
   /// Sets changed to true if domainMap was changed.
@@ -378,6 +413,10 @@ public:
   /// changed.
   void flowConditionedLoop(GRT::GRTControlFlowInterface cfOp,
                            DomainMap &domainMap, const FlowOp &flowOp);
+
+  /// Returns partition of set as (within, without) such that operand using %x
+  /// is in within iff %x is bound by an op in block or one of its sub-blocks.
+  std::pair<Set, Set> splitByScope(const Set &set, Block *block);
 
   /// Grows domainMap for the sub-blocks of branch control flow op.
   /// Sets changed to true if domainMap was changed.
