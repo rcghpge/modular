@@ -384,6 +384,26 @@ def MOGG_LambdaOp : MOGG_Op<"lambda",
   }];
 }
 
+def MOGG_AllocateMemoryOp : MOGG_Op<"allocate_tensors"> {
+  let results = (outs Variadic<MO_Tensor>:$results);
+
+  let summary = "This represents an inner kernel allocation of memory";
+  let description = [{
+    This op will be lowered to either a stack or heap allocation of the given 
+    tensor which can then be used as a normal buffer within the kernel.
+
+    Example:
+    ```mlir
+      %alloc = mogg.allocate_tensors : !mo.tensor<[2, 3], f32>
+    ```
+    This returns a tensor with an internal memory allocation.
+  }];
+
+  let assemblyFormat = [{
+   attr-dict `:` type($results)
+  }];
+}
+
 def MOGG_OutputPlaceholdersOp : MOGG_Op<"output_placeholders"> {
   let results = (outs Variadic<MO_Tensor>:$results);
 
