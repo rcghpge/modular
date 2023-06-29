@@ -83,7 +83,7 @@ bool TensorSpecParser::parse(llvm::cl::Option &options, StringRef argName,
 }
 
 // Parse --input-data arg.
-// Format of arg is --input-data=tensor_idx:input_source:input_source_attr_list.
+// Format of arg is --input-data=tensor_idx::input_source::input_source_attr_list.
 //    - tensor_idx: int representing input tensor index
 //    - input_source: can be either:
 //        - input generation function: one of [zeros|random|ones|negones], which
@@ -95,11 +95,11 @@ ErrorOrSuccess InputDataParser::parseImpl(llvm::cl::Option &options,
                                           StringRef argName, StringRef argValue,
                                           InputDataSpec &result) {
   llvm::SmallVector<llvm::StringRef, 3> args;
-  argValue.split(args, ':');
+  argValue.split(args, "::");
   if (args.size() < 2)
-    return Error("--input-data requires `:` separated list of args.");
+    return Error("--input-data requires `::` separated list of args.");
   if (args.size() > 3)
-    return Error("--input-data supports max of 3 args separated by `:`.");
+    return Error("--input-data supports max of 3 args separated by `::`.");
 
   // parse tensor idx field
   auto tensorIdxStr = args[0];

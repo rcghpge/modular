@@ -29,15 +29,15 @@ class TensorSpecParser : public llvm::cl::parser<TensorSpec> {
 public:
   using llvm::cl::parser<TensorSpec>::parser;
 
-  bool parse(llvm::cl::Option &O, StringRef ArgName, StringRef ArgValue,
-             TensorSpec &Val);
+  bool parse(llvm::cl::Option &options, StringRef argName, StringRef argValue,
+             TensorSpec &result);
 };
 class TensorShapeParser : public llvm::cl::parser<TensorShape> {
 public:
   using llvm::cl::parser<TensorShape>::parser;
 
-  bool parse(llvm::cl::Option &O, StringRef ArgName, StringRef ArgValue,
-             TensorShape &Val);
+  bool parse(llvm::cl::Option &options, StringRef argName, StringRef argValue,
+             TensorShape &result);
 };
 
 struct InputDataSpec {
@@ -50,9 +50,9 @@ class InputDataParser : public llvm::cl::parser<InputDataSpec> {
 public:
   using llvm::cl::parser<InputDataSpec>::parser;
 
-  bool parse(llvm::cl::Option &O, StringRef ArgName, StringRef ArgValue,
-             InputDataSpec &Val) {
-    if (auto errOr = parseImpl(O, ArgName, ArgValue, Val)) {
+  bool parse(llvm::cl::Option &options, StringRef argName, StringRef argValue,
+             InputDataSpec &result) {
+    if (auto errOr = parseImpl(options, argName, argValue, result)) {
       llvm::errs() << errOr.getError() << "\n";
       return true;
     }
@@ -61,8 +61,8 @@ public:
 
 private:
   // Use this for cleaner error handling and then pass result to parse()
-  ErrorOrSuccess parseImpl(llvm::cl::Option &O, StringRef ArgName,
-                           StringRef ArgValue, InputDataSpec &Val);
+  ErrorOrSuccess parseImpl(llvm::cl::Option &options, StringRef argName,
+                           StringRef argValue, InputDataSpec &result);
 };
 
 /// Contains the core CLI options for *-executor, so that other executables
@@ -185,7 +185,8 @@ public:
       "input-data",
       cl::desc(
           "Specify custom data to use per input. It is specified as "
-          "--input-data=tensor_idx:input_source:input_source_attr_list where:\n"
+          "--input-data=tensor_idx::input_source::input_source_attr_list "
+          "where:\n"
           "- tensor_idx: int representing the input tensor index\n"
           "- input_source: one of [random|zeros|negones|ones] or the "
           "name of a file containing raw binary tensor data stored in "

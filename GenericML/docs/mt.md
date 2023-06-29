@@ -135,7 +135,7 @@ follows:
 
 ```shell
 # Initialize specific input tensor
-mt --input-data=tensor_idx:input_source:input_source_attr_list
+mt --input-data=tensor_idx::input_source::input_source_attr_list
 ```
 
 where:
