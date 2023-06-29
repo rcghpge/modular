@@ -9,6 +9,7 @@ add_modular_tool(modular-api-executor
 
   LINK_LIBS PUBLIC
   modular-framework-common
+  modular-framework-tf-ext
   ExternalFrameworksSupport
   GenericMLExecutionDriver
   GenericMLSupport
