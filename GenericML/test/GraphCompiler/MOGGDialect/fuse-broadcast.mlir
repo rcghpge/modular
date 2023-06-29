@@ -164,7 +164,7 @@ mo.graph @transpose_and_bcast_fused(%arg0 : !mo.tensor<[], si32>) -> !mo.tensor<
 // CHECK-NEXT:      mogg.simd_load(%[[BCAST]], %[[INDICES]])
 
 // CHECK:   mogg.lambda @input_1_fn = (%[[INDICES:.*]]: !mogg.indices) -> !mogg.simd<si32>{
-// CHECK-NEXT:      mogg.simd_load(%[[TRANSPOSE]], %[[INDICES]]) 
+// CHECK-NEXT:      mogg.simd_load(%[[TRANSPOSE]], %[[INDICES]])
 
 // CHECK: mogg.lambda @elemwise_compute_lambda =
 // CHECK-NEXT:  %[[LOAD1:.*]] = mogg.invoke @input_0_fn
