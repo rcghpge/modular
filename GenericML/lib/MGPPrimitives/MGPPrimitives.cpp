@@ -44,8 +44,12 @@ static void mgp_cpu_buffer_constant(Result<BufferRef> outBuffer,
                                     MEFAttr<ArrayRef<uint8_t>> aValue,
                                     MEFAttr<uint64_t> bRawAlign,
                                     Runtime &runtime) {
-  TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.constant"));
+  TimeTraceScope scope(LLCL::WorkProfilerEntry::create(
+      "mgp.cpu.buffer.constant", [aValue, bRawAlign]() {
+        return ("size:" + Twine(aValue.size()) +
+                "B, align:" + Twine(*bRawAlign) + "B")
+            .str();
+      }));
   std::optional<size_t> optAlign;
   if (hasRawSize(*bRawAlign))
     optAlign = rawSizeToRuntimeSize(*bRawAlign);
@@ -124,8 +128,11 @@ static void mgp_cpu_buffer_alloc_static(Chain inChain, Result<BufferRef> result,
                                         MEFAttr<uint64_t> aSize,
                                         MEFAttr<uint64_t> bRawAlign,
                                         Runtime &runtime) {
-  TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.alloc.static"));
+  TimeTraceScope scope(LLCL::WorkProfilerEntry::create(
+      "mgp.cpu.buffer.alloc.static", [aSize, bRawAlign]() {
+        return ("size:" + Twine(*aSize) + "B, align:" + Twine(*bRawAlign) + "B")
+            .str();
+      }));
   if (!isValidPlainSize(*aSize))
     return std::move(result).setToError("invalid size attribute");
   if (!isValidRawAlign(*bRawAlign))
@@ -139,8 +146,12 @@ static void mgp_cpu_buffer_alloc_dynamic(Chain inChain, size_t runtimeSize,
                                          Result<BufferRef> result,
                                          MEFAttr<uint64_t> rawAlign,
                                          Runtime &runtime) {
-  TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.alloc.dynamic"));
+  TimeTraceScope scope(LLCL::WorkProfilerEntry::create(
+      "mgp.cpu.buffer.alloc.dynamic", [runtimeSize, rawAlign]() {
+        return ("size:" + Twine(runtimeSize) + "B, align:" + Twine(*rawAlign) +
+                "B")
+            .str();
+      }));
   if (!isValidRawAlign(*rawAlign))
     return std::move(result).setToError("invalid align attribute");
   std::move(result).emplace(
@@ -423,14 +434,16 @@ static void mgp_cpu_tensor_spec_create(RemainingArguments runtimeDims,
                                        MEFAttr<ArrayRef<uint64_t>> aRawDims,
                                        MEFAttr<uint8_t> bRawDType,
                                        Runtime &runtime) {
-  TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.tensor_spec.create"));
+  TimeTraceScope scope(LLCL::WorkProfilerEntry::create(
+      "mgp.cpu.tensor_spec.create",
+      [aRawDims]() { return ("rank:" + Twine(aRawDims.size())).str(); }));
   DType dtype(*bRawDType);
   if (dtype.isInvalid())
     return std::move(outSpec).setToError("invalid dtype");
   auto runtimeDimsVec = runtimeDims.takeAsVector();
   auto nextRuntimeDim = runtimeDimsVec.begin();
   SmallVector<uint64_t> shape;
+  shape.reserve(aRawDims.size());
   for (uint64_t dim : *aRawDims) {
     if (hasRawSize(dim))
       shape.push_back(rawSizeToRuntimeSize(dim));
