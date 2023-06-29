@@ -15,6 +15,7 @@
 #include "Support/ML/DType.h"
 
 #include "modular/c/common.h"
+#include "modular/c/tensorflow/config.h"
 #include "modular/cpp/aliases.h"
 
 #include "GenericML/FormatYAML/FormatYAML.h"
@@ -108,6 +109,11 @@ class ModularExecutorDriverCLOptions : public ExecutorDriverCLOptions {
 public:
   using ExecutorDriverCLOptions::ExecutorDriverCLOptions;
 
+  cl::opt<std::string> exportedName{
+      "exported-name",
+      cl::desc("Signature name of TF model in model with multiple signature."),
+      cl::init("")};
+
   cl::opt<std::string> modelSpecificationFile{
       "model-specification", cl::desc("Path to the model specification file.")};
 
@@ -149,11 +155,13 @@ class ModularExecutableModel;
 class ModularModel final : public Model {
 public:
   ModularModel(std::string_view name, std::string_view pathOrId,
-               ModelSpec modelSpec, int32_t numThreads)
+               std::string_view exportedName, ModelSpec modelSpec,
+               int32_t numThreads)
       : Model(modelSpec),           // create a model from the ModelSpec
         spec(std::move(modelSpec)), // move the model spec
         name(name),                 // the name of the the benchmark
-        pathOrId(pathOrId), runtimeContext(nullptr, &M_freeRuntimeContext),
+        pathOrId(pathOrId), exportedName(exportedName),
+        runtimeContext(nullptr, &M_freeRuntimeContext),
         location(LLCL::FileNameLocationDecoder::getEncodedLocation(pathOrId)) {
     if (numThreads < 0) {
       llvm::errs() << "num-threads must be positive, got " << numThreads;
@@ -190,6 +198,7 @@ private:
   ModelSpec spec;
   std::string name;
   std::string pathOrId;
+  std::string exportedName;
   RuntimeContextPtr runtimeContext;
   EncodedLocation location;
 };
@@ -347,6 +356,8 @@ ModularModel::setup(Runtime &runtime) const {
   // Create the executable model.
   CompileConfigPtr compileConfig = {M_newCompileConfig(), &M_freeCompileConfig};
   M_setModelPath(compileConfig.get(), pathOrId.data());
+  if (!exportedName.empty())
+    M_setExportedName(compileConfig.get(), exportedName.data());
   StatusPtr status{M_newStatus(), &M_freeStatus};
   CompiledModelPtr compiledModel{
       M_compileModel(runtimeContext.get(), compileConfig.get(), status.get()),
@@ -374,7 +385,7 @@ int main(int argc, char **argv) {
   // Create the ModularModel. Note that the Model object will outlive
   // the execution.
   auto model = std::make_unique<ModularModel>(
-      clOptions.benchmarkName, clOptions.inputFilename,
+      clOptions.benchmarkName, clOptions.inputFilename, clOptions.exportedName,
       clOptions.readModelSpecificationOrExit(), clOptions.getNumThreads());
 
   // The runtime should run as single threaded. We have already set the
