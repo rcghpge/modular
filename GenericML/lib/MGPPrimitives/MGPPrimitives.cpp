@@ -650,15 +650,19 @@ static void mgp_debug_cpu_spin_wait(Chain inChain, Result<Chain> outChain,
       LLCL::WorkProfilerEntry::create("mgp.debug.cpu.spin_wait", [delay]() {
         return Twine("delay:").concat(Twine(delay.count())).concat("us").str();
       });
-  addTask(runtime, std::move(profilerEntry),
-          [delay, outChain = outChain.copy()]() mutable {
-            size_t numLoops = 0;
-            LLCL::BusyWaitSpinWaiter spinner(delay);
-            while (!spinner.wait())
-              ++numLoops;
-            (void)numLoops;
-            std::move(outChain).emplace();
-          });
+  outChain.copy().andThenSync(
+      [profilerEntry = std::move(profilerEntry)]() mutable {
+        std::move(profilerEntry).record();
+      });
+
+  addTask(runtime, [delay, outChain = outChain.copy()]() mutable {
+    size_t numLoops = 0;
+    LLCL::BusyWaitSpinWaiter spinner(delay);
+    while (!spinner.wait())
+      ++numLoops;
+    (void)numLoops;
+    std::move(outChain).emplace();
+  });
 }
 
 //===----------------------------------------------------------------------===//
