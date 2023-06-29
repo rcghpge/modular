@@ -73,6 +73,15 @@ struct FuseBroadcastsPass
       thisBlock.eraseArgument(index);
     };
 
+    auto hasCompoundParameters = [](MO::TensorType t) {
+      for (TypedAttr symbolicDim : t.getDims()) {
+        if (!(isa<KGEN::ParamDeclRefAttr>(symbolicDim) ||
+              isa<IntegerAttr>(symbolicDim)))
+          return true;
+      }
+      return false;
+    };
+
     // Once we have fused the views we can fuse reshapes into the kernel. This
     // is technically a view but it must come last as it only can reshape
     // contigious inputs and can always be fused regardless of whether or not
@@ -98,6 +107,13 @@ struct FuseBroadcastsPass
         }
 
         if (auto reshape = dyn_cast_or_null<MO::Static::ReshapeOp>(op)) {
+          MO::TensorType outType = reshape.getResult().getType();
+          MO::TensorType inType = reshape.getInput().getType();
+
+          // We can't fuse this if there are any fancy symbolic dims.
+          if (hasCompoundParameters(inType) || hasCompoundParameters(outType))
+            continue;
+
           Block &thisBlock = kernel.getBody().front();
 
           // Insert after the output placeholders.
@@ -107,13 +123,12 @@ struct FuseBroadcastsPass
           // Add the old reshape argument to this kernel.
           kernel->insertOperands(kernel->getNumOperands(),
                                  ValueRange{reshape.getInput()});
-          Value reshapeInput = thisBlock.addArgument(
-              reshape.getInput().getType(), reshape.getInput().getLoc());
+          Value reshapeInput =
+              thisBlock.addArgument(inType, reshape.getInput().getLoc());
 
           // Add the new reshape.
-          MOGG::CallOp newReshape =
-              createMOGGReshape(builder, reshape.getLoc(), reshapeInput,
-                                reshape.getResult().getType());
+          MOGG::CallOp newReshape = createMOGGReshape(builder, reshape.getLoc(),
+                                                      reshapeInput, outType);
 
           // Replace all uses of the old operand and then remove it from this
           // kernel.

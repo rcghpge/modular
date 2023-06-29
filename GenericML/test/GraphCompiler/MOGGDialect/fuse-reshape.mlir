@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg=use-jit=true --fuse-bcasts --canonicalize --cse %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg=use-jit=true --fuse-bcasts --cse %s | FileCheck %s
 
 mo.graph @basicReshapeFuse(%arg0 : !mo.tensor<[50], ui32>, %arg1 : !mo.tensor<[5, 10], ui32>) -> (!mo.tensor<[5, 5, 2], ui32>) {
   %A = mo.static.reshape(%arg0) : !mo.tensor<[50], ui32> -> !mo.tensor<[5, 5, 2], ui32>
@@ -69,3 +69,14 @@ mo.graph @multiReshape<N, L>(%arg0: !mo.tensor<[50], ui32>, %arg1: !mo.tensor<[5
 // CHECK: mogg.simd_load(%[[RESHAPED]]
 // CHECK: mogg.simd_load(%[[RESHAPED]]
 // CHECK: mogg.simd_load(%[[RESHAPED]]
+
+
+mo.graph @dontFuseCompound<N>(%arg0 : !mo.tensor<[add(N, 2)], ui32>, %arg1 : !mo.tensor<[N], ui32>) -> (!mo.tensor<[N], ui32>) {
+  %A = mo.static.reshape(%arg0) : !mo.tensor<[add(N, 2)], ui32> -> !mo.tensor<[N], ui32>
+  %res = mo.add(%A, %arg1) : !mo.tensor<[N], ui32>
+  mo.output %res : !mo.tensor<[N], ui32>
+}
+
+// CHECK-LABEL: mo.graph @dontFuseCompound<N>
+// CHECK-NEXT: %[[RESHAPE:.*]] = mo.static.reshape(%{{.*}}) : !mo.tensor<[add(N, 2)], ui32> -> !mo.tensor<[N], ui32>
+// CHECK-NEXT: mogg.kernel (%[[RESHAPE]], %arg1) : (%{{.*}}: !mo.tensor<[N], ui32>, %{{.*}}: !mo.tensor<[N], ui32>) -> !mo.tensor<[N], ui32>{
