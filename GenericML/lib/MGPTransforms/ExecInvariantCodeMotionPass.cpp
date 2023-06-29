@@ -101,6 +101,7 @@ class ExecInvariantCodeMotionPass
     // cost-model.
     static llvm::SmallDenseSet<StringRef> recomputableOps{
         "mop.shape.pack_matmul_b",
+        "mop.shape.pack_matmul_b.transp_b",
         CpuTensorSpecCreateOp::getOperationName(),
     };
     return recomputableOps.contains(op->getName().getStringRef());
@@ -111,7 +112,9 @@ class ExecInvariantCodeMotionPass
     // TODO(#12270) find a better model for the properties to inspect here
     static llvm::SmallDenseSet<StringRef> unregisteredPureOps{
         "mop.shape.pack_matmul_b",
+        "mop.shape.pack_matmul_b.transp_b",
         "mop.kernels.pack_matmul_b",
+        "mop.kernels.pack_matmul_b.transp_b",
         "mop.kernels.transpose",
         "mop.kgen.execute_kernel",
         CpuBufferAllocSpecOp::getOperationName(),
