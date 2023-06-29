@@ -36,9 +36,6 @@ struct MOGGTypeTraits {
   // The MOGG dtype that this class implements conversion functions for. No two
   // implementations of MOGGTypeTraits should share the same moggType.
   const DType moggType;
-  // Convert array of this dtype to a string representation (values separated by
-  // underscores).
-  std::string toString(M::ArrayElementsAttr) const;
   // Convert array of this dtype to an array of simd values.
   llvm::SmallVector<mlir::TypedAttr>
   convertToSIMD(mlir::MLIRContext *context, M::ArrayElementsAttr attr) const;

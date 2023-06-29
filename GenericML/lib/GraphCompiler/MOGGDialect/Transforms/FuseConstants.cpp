@@ -22,6 +22,10 @@ namespace M::MOGG {
 
 namespace {
 
+// The max number of elements in a constant that we will allow to be fused into
+// the body of a kernel.
+constexpr int64_t kMaxConstantSize = 2048;
+
 struct FuseConstants : public impl::FuseConstantsBase<FuseConstants> {
   using FuseConstantsBase::FuseConstantsBase;
 
@@ -55,7 +59,7 @@ struct FuseConstants : public impl::FuseConstantsBase<FuseConstants> {
       if (!MOGGTypeTraits::isSupportedMOGGType(dtype))
         return false;
 
-      if (attr.getNumElements() > 16)
+      if (attr.getNumElements() > kMaxConstantSize)
         return false;
 
       return true;

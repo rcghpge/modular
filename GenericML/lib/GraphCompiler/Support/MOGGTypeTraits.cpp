@@ -23,28 +23,6 @@ namespace M::MOGG {
 namespace {
 
 template <typename T>
-std::string constToString(M::ArrayElementsAttr attr) {
-  std::stringstream ss;
-  if (std::is_floating_point<T>::value)
-    ss << std::scientific;
-  const T *asDtype = reinterpret_cast<const T *>(attr.getRawData().data());
-  for (int64_t i = 0, e = attr.getNumElements(); i < e; ++i)
-    if (std::is_floating_point<T>::value)
-      ss << asDtype[i] << "_";
-    else
-      ss << std::to_string(asDtype[i]) << "_";
-  return ss.str();
-}
-std::string boolsToString(M::ArrayElementsAttr attr) {
-  std::stringstream ss;
-  const bool *asDtype =
-      reinterpret_cast<const bool *>(attr.getRawData().data());
-  for (int64_t i = 0, e = attr.getNumElements(); i < e; ++i)
-    ss << (asDtype[i] ? "true" : "false") << "_";
-  return ss.str();
-}
-
-template <typename T>
 llvm::SmallVector<mlir::TypedAttr>
 convertFloatsToSIMD(DType moggType, KGEN::KGENDType kgenType,
                     mlir::MLIRContext *context, M::ArrayElementsAttr attr) {
@@ -145,30 +123,6 @@ MOGGTypeTraits b() {
 }
 
 } // namespace
-
-std::string MOGGTypeTraits::toString(M::ArrayElementsAttr attr) const {
-  if (moggType == DType::f32)
-    return constToString<float>(attr);
-  else if (moggType == DType::f64)
-    return constToString<double>(attr);
-  else if (moggType == DType::ui8)
-    return constToString<uint8_t>(attr);
-  else if (moggType == DType::ui16)
-    return constToString<uint16_t>(attr);
-  else if (moggType == DType::ui32)
-    return constToString<uint32_t>(attr);
-  else if (moggType == DType::si8)
-    return constToString<int8_t>(attr);
-  else if (moggType == DType::si16)
-    return constToString<int16_t>(attr);
-  else if (moggType == DType::si32)
-    return constToString<int32_t>(attr);
-  else if (moggType == DType::si64)
-    return constToString<int64_t>(attr);
-  else if (moggType == DType::kBool)
-    return boolsToString(attr);
-  assert(false && "Unimplemented DType");
-}
 
 llvm::SmallVector<mlir::TypedAttr>
 MOGGTypeTraits::convertToSIMD(mlir::MLIRContext *context,

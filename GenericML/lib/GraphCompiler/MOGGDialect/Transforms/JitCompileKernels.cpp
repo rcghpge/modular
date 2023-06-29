@@ -43,9 +43,27 @@ namespace {
 // Directly embed the mojo file rather than loading dynamically.
 #include MOGG_MOJO_BINDING_H
 
+// We lower static dimensions as the dimension directly, obviously, but symbolic
+// dimensions we track by their index in the loaded dimensions i.e <D1314,
+// D2424> will become <P0, P1>. This is so that kernels which use the parameters
+// in the same way, i.e that the parameters maintain the same internal
+// relationship, will match and we avoid compiling a new novel kernel.
+void addTensorDimsToName(MO::TensorType tensor, std::string &name,
+                         DenseMap<KGEN::ParamDeclRefAttr, size_t> &params) {
+  for (auto dim : tensor.getTypedShapeAttr().getValues()) {
+    if (auto asInt = dyn_cast<IntegerAttr>(dim))
+      name += std::to_string(asInt.getInt());
+    else if (auto asSymbolic = dyn_cast<KGEN::ParamDeclRefAttr>(dim))
+      name += "P" + std::to_string(params[asSymbolic]);
+    name += "x";
+  }
+}
+
 ErrorOr<std::string>
 mangleBlock(mlir::Block &block,
-            DenseMap<Value, std::string> &valueToPositionInBlock) {
+            DenseMap<Value, std::string> &valueToPositionInBlock,
+            DenseMap<M::ElementsAttr, size_t> &seenConsts,
+            DenseMap<KGEN::ParamDeclRefAttr, size_t> &params) {
   std::string name = "";
   size_t blockIndex = 0;
   size_t numConstants = 0;
@@ -67,8 +85,9 @@ mangleBlock(mlir::Block &block,
         valueToPositionInBlock[lambdaBlock.getArgument(argIndex)] =
             "L" + std::to_string(argIndex);
 
-      UNWRAP_ERROR(mangledLambda,
-                   mangleBlock(lambdaBlock, valueToPositionInBlock));
+      UNWRAP_ERROR(
+          mangledLambda,
+          mangleBlock(lambdaBlock, valueToPositionInBlock, seenConsts, params));
       name += mangledLambda;
     } else if (auto out = dyn_cast<MOGG::OutputPlaceholdersOp>(innerOp)) {
       for (Value output : out.getResults())
@@ -101,6 +120,7 @@ mangleBlock(mlir::Block &block,
       for (Value output : innerOp.getResults())
         valueToPositionInBlock[output] = std::to_string(blockIndex);
     } else if (auto cst = dyn_cast<MO::ConstantOp>(innerOp)) {
+      // Add the local constant ID. (i.e the constant index within this block).
       std::string constantID = "CST" + std::to_string(numConstants);
       numConstants++;
 
@@ -109,11 +129,23 @@ mangleBlock(mlir::Block &block,
       // Add to the mangling soup.
       name += constantID + "_";
 
-      // Add the actual constant to the soup.
-      auto attr = cast<M::ArrayElementsAttr>(cst.getValueAttr());
-      Type dtype = attr.getElementType();
-      UNWRAP_ERROR(traits, MOGGTypeTraits::lookupType(dtype));
-      name += traits.toString(attr);
+      // Give the constant a unique name based on the hash of the name.
+      auto itr = seenConsts.find(cst.getValueAttr());
+
+      if (itr != seenConsts.end()) {
+        name += std::to_string(itr->second);
+      } else {
+        name += std::to_string(seenConsts.size());
+        seenConsts[cst.getValueAttr()] = seenConsts.size();
+      }
+
+      // Add the type, just incase.
+      name += "_";
+      Type res = cst.getResult().getType();
+      auto tensor = cast<MO::TensorType>(res);
+      addTensorDimsToName(tensor, name, params);
+      UNWRAP_ERROR(traits, MOGGTypeTraits::lookupType(tensor.getElementType()));
+      name += traits.moggType.getAsString() + "_";
     }
 
     // Add double seperator between operations.
@@ -124,29 +156,14 @@ mangleBlock(mlir::Block &block,
   return {name};
 }
 
-// We lower static dimensions as the dimension directly, obviously, but symbolic
-// dimensions we track by their index in the loaded dimensions i.e <D1314,
-// D2424> will become <P0, P1>. This is so that kernels which use the parameters
-// in the same way, i.e that the parameters maintain the same internal
-// relationship, will match and we avoid compiling a new novel kernel.
-void addTensorDimsToName(MO::TensorType tensor, std::string &name,
-                         DenseMap<KGEN::ParamDeclRefAttr, size_t> &params) {
-  for (auto dim : tensor.getTypedShapeAttr().getValues()) {
-    if (auto asInt = dyn_cast<IntegerAttr>(dim))
-      name += std::to_string(asInt.getInt());
-    else if (auto asSymbolic = dyn_cast<KGEN::ParamDeclRefAttr>(dim))
-      name += "P" + std::to_string(params[asSymbolic]);
-    name += "x";
-  }
-}
-
 // We create a mangled name which exactly matches the operation. The number of
 // inputs, the contents of the block, and which are returned. It needs to be
 // this verbose to ensure we don't recompile for identical blocks but also allow
 // for blocks of the same operations with different returns to compile legally.
 ErrorOr<std::string>
 createMangledName(MOGG::KernelOp op,
-                  DenseMap<KGEN::ParamDeclRefAttr, size_t> &params) {
+                  DenseMap<KGEN::ParamDeclRefAttr, size_t> &params,
+                  DenseMap<M::ElementsAttr, size_t> &seenConsts) {
   std::string name = "__gen__ins_";
 
   // Track where each value is in the block order. This is to mangle the returns
@@ -181,7 +198,8 @@ createMangledName(MOGG::KernelOp op,
   name += "_";
 
   UNWRAP_ERROR(mangledBlock,
-               mangleBlock(op.getBody().front(), valueToPositionInBlock));
+               mangleBlock(op.getBody().front(), valueToPositionInBlock,
+                           seenConsts, params));
   name += mangledBlock;
   return {name};
 }
@@ -305,6 +323,9 @@ struct JitCompileKernels
     // Start building up the KGEN kernel.
     Stub::KGENBuilder builder{manager, *kgenModule, registry};
 
+    // Give each unique constant an identifier globally across all kernels.
+    DenseMap<M::ElementsAttr, size_t> seenConsts;
+
     ErrorOrSuccess error;
 
     // Build stubs for all JIT operations and replace them with symbolic calls
@@ -331,7 +352,7 @@ struct JitCompileKernels
       }
 
       // Create a unique name for the kernel.
-      auto stubKernelName = createMangledName(op, paramToIndex);
+      auto stubKernelName = createMangledName(op, paramToIndex, seenConsts);
       if (stubKernelName.isError()) {
         error = Error(stubKernelName.takeError());
         return WalkResult::interrupt();
