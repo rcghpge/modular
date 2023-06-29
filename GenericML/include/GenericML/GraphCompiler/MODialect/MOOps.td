@@ -648,6 +648,34 @@ def MO_PowOp : MO_TensorOp<"pow", [Pure, MO_SameOperandsAndResultShape]> {
   }];
 }
 
+def MO_CeilOp : MO_ElementWiseUnaryOp<"ceil", [Idempotent]> {
+  let summary = "Ceiling operation";
+  let description = [{
+    Returns the smallest largest integer greater than x.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.ceil(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def MO_FloorOp : MO_ElementWiseUnaryOp<"floor", [Idempotent]> {
+  let summary = "Floor operation";
+  let description = [{
+    Returns the elementwise largest integer not greater than x.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.floor(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
 def MO_ReluOp : MO_ElementWiseUnaryOp<"relu", [Idempotent]> {
   let summary = "Rectified linear unit operation";
   let description = [{
