@@ -1618,7 +1618,7 @@ LogicalResult canonicalizeStaticNegativeIndicesInPlace(T op, int operandIndex) {
 // MO_MeanOp support
 //===----------------------------------------------------------------------===//
 
-LogicalResult MeanOp::canonicalize(MeanOp op, PatternRewriter& rewriter) {
+LogicalResult MeanOp::canonicalize(MeanOp op, PatternRewriter &rewriter) {
   return canonicalizeStaticNegativeIndicesInPlace(op, 1);
 }
 
@@ -1626,10 +1626,10 @@ LogicalResult MeanOp::canonicalize(MeanOp op, PatternRewriter& rewriter) {
 // MO_ReduceMulOp support
 //===----------------------------------------------------------------------===//
 
-LogicalResult ReduceMulOp::canonicalize(ReduceMulOp op, PatternRewriter& rewriter) {
+LogicalResult ReduceMulOp::canonicalize(ReduceMulOp op,
+                                        PatternRewriter &rewriter) {
   return canonicalizeStaticNegativeIndicesInPlace(op, 1);
 }
-
 
 OpFoldResult ReduceMulOp::fold(FoldAdaptor adaptor) {
   // TODO(#10811): support other types and do this using a MOJO kernel?
@@ -1666,7 +1666,8 @@ OpFoldResult ReduceMulOp::fold(FoldAdaptor adaptor) {
 // MO_ReduceAddOp support
 //===----------------------------------------------------------------------===//
 
-LogicalResult ReduceAddOp::canonicalize(ReduceAddOp op, PatternRewriter& rewriter) {
+LogicalResult ReduceAddOp::canonicalize(ReduceAddOp op,
+                                        PatternRewriter &rewriter) {
   return canonicalizeStaticNegativeIndicesInPlace(op, 1);
 }
 
@@ -1691,7 +1692,8 @@ OpFoldResult ReduceAddOp::fold(FoldAdaptor adaptor) {
 // MO_ReduceMinOp support
 //===----------------------------------------------------------------------===//
 
-LogicalResult ReduceMinOp::canonicalize(ReduceMinOp op, PatternRewriter& rewriter) {
+LogicalResult ReduceMinOp::canonicalize(ReduceMinOp op,
+                                        PatternRewriter &rewriter) {
   return canonicalizeStaticNegativeIndicesInPlace(op, 1);
 }
 
@@ -1699,7 +1701,8 @@ LogicalResult ReduceMinOp::canonicalize(ReduceMinOp op, PatternRewriter& rewrite
 // MO_ReduceMaxOp support
 //===----------------------------------------------------------------------===//
 
-LogicalResult ReduceMaxOp::canonicalize(ReduceMaxOp op, PatternRewriter& rewriter) {
+LogicalResult ReduceMaxOp::canonicalize(ReduceMaxOp op,
+                                        PatternRewriter &rewriter) {
   return canonicalizeStaticNegativeIndicesInPlace(op, 1);
 }
 
@@ -1811,7 +1814,11 @@ LogicalResult ReshapeOp::canonicalize(ReshapeOp op, PatternRewriter &rewriter) {
     return success();
   }
 
-  return failure();
+  if (resTy.hasUnknownShape() || !op.getOutputParamDecls().empty())
+    return failure();
+
+  rewriter.replaceOpWithNewOp<Static::ReshapeOp>(op, resTy, inputVal);
+  return success();
 }
 
 /// Helper to fold reshape ops.
