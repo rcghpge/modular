@@ -442,6 +442,11 @@ class MO_ComparisonOp<string name, list<Trait> traits = []>
   }];
 }
 
+class MO_ComparisonUnaryOp<string name, list<Trait> traits = []>
+    : MO_ComparisonOp<name, traits> {
+  let arguments = (ins MO_Tensor:$input_x);
+}
+
 class MO_ComparisonBinaryOp<string name, list<Trait> traits = []>
     : MO_ComparisonOp<name, traits> {
   let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y);
@@ -736,6 +741,36 @@ def MO_CastOp : MO_TensorOp<"cast", [Pure, MO_SameOperandsAndResultShape]> {
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
   let hasFolder = 1;
+}
+
+def MO_IsNaNOp : MO_ComparisonUnaryOp<"is_nan"> {
+  let summary = "IsNaN operation";
+  let description = [{
+    Returns true if x is not a number.
+
+    Example:
+
+    ```mlir
+    %x: !mo.tensor<[2, 3], f32>
+    %res = mo.is_nan(%x) : (!mo.tensor<[2, 3], f32>
+                           ) -> !mo.tensor<[2, 3], bool>
+    ```
+  }];
+}
+
+def MO_IsInfOp : MO_ComparisonUnaryOp<"is_inf"> {
+  let summary = "IsInf operation";
+  let description = [{
+    Returns true if x is infinite.
+
+    Example:
+
+    ```mlir
+    %x: !mo.tensor<[2, 3], f32>
+    %res = mo.is_inf(%x) : (!mo.tensor<[2, 3], f32>
+                           ) -> !mo.tensor<[2, 3], bool>
+    ```
+  }];
 }
 
 def MO_EqualOp : MO_ComparisonBinaryOp<"equal", [Commutative]> {

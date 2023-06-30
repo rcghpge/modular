@@ -266,6 +266,8 @@ void MOToMOGGPass::runOnOperation() {
       MO_MOJO_ONLY(MO::GeluOp),
       MO_MOJO_ONLY(MO::GreaterOp),
       MO_MOJO_ONLY(MO::GreaterEqualOp),
+      MO_MOJO_ONLY(MO::IsInfOp),
+      MO_MOJO_ONLY(MO::IsNaNOp),
       MO_MOJO_ONLY(MO::Log1pOp),
       MO_SHIM_ONLY(MO::LinAlg::BandPartOp, "mop.kernels.linalg.band_part"),
       MO_TO_MOJO_NON_ELEMWISE(MO::LinAlg::SolveOp, "mop.kernels.linalg.solve"),

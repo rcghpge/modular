@@ -139,3 +139,17 @@ mo.graph @ceil(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
   mo.output %0 : !mo.tensor<[4, 5], f32>
 }
 
+// CHECK: mo.graph @isnan(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], bool> {
+mo.graph @isnan(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], bool>) {
+  // CHECK-NEXT: mo.is_nan(%[[ARG0]]) :  (!mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], bool>
+  %0 = mo.is_nan(%arg0) : (!mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], bool>
+  mo.output %0 : !mo.tensor<[4, 5], bool>
+}
+
+// CHECK: mo.graph @isinf(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], bool> {
+mo.graph @isinf(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], bool>) {
+  // CHECK-NEXT: mo.is_inf(%[[ARG0]]) :  (!mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], bool>
+  %0 = mo.is_inf(%arg0) : (!mo.tensor<[4, 5], f32>) ->  !mo.tensor<[4, 5], bool>
+  mo.output %0 : !mo.tensor<[4, 5], bool>
+}
+
