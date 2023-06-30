@@ -48,10 +48,6 @@
 // CHECK-NEXT: %5 |-> {%0[0], %arg0, %0, %1, %2, %3, %4}
 // CHECK-NEXT: impliesReady end
 
-// Nothing is structurally disjoint since no control flow
-// CHECK: structurallyDisjoint begin
-// CHECK-NEXT: structurallyDisjoint end
-
 // runsLater for which ops (identified by their result values) run after which
 // CHECK: runsLater begin
 // CHECK-NEXT: %0[0] |-> {%1, %2, %3, %4, %5}
@@ -61,16 +57,6 @@
 // CHECK-NEXT: %3 |-> {%4, %5}
 // CHECK-NEXT: %4 |-> {%5}
 // CHECK-NEXT: runsLater end
-
-// exclusive tells us which values can't have overlapping lifetimes.
-// CHECK: exclusive begin
-// CHECK-NEXT: %0[0] |-> {%5}
-// CHECK-NEXT: %arg0 |-> {%5}
-// CHECK-NEXT: %0 |-> {%5}
-// CHECK-NEXT: %1 |-> {%5}
-// CHECK-NEXT: %3 |-> {%5}
-// CHECK-NEXT: %5 |-> {%0[0], %arg0, %0, %1, %3}
-// CHECK-NEXT: exclusive end
 
 mgp.model @simple : tf init {
   %0 = grt.chain.create ()
@@ -135,12 +121,6 @@ mgp.model @simple : tf init {
 // CHECK: runsLater begin
 // CHECK: %12#0 |-> {%16, %17, %18#0, %22, %23}
 // CHECK: runsLater end
-
-// Spot check exclusive. Note that %5 -> {%7, %13}, and %16 is the earliest
-// point which implies both %7 and %13 are ready.
-// CHECK: exclusive begin
-// CHECK: %5 |-> {%16, %17, %18#0, %18#1, %22, %23}
-// CHECK: exclusive end
 
 mgp.model @straightline : tf init {
   %0 = grt.chain.create ()

@@ -35,7 +35,6 @@ AsyncDataflowDependencies::AsyncDataflowDependencies(
   setupImpliesReady();
   setupStructurallyDisjoint();
   setupRunsLater();
-  setupExclusive();
 }
 
 bool AsyncDataflowDependencies::sameAs(Value lhs, Value rhs) const {
@@ -96,7 +95,8 @@ bool AsyncDataflowDependencies::areDisjoint(Operation *lhsOp,
 
 AsyncDataflowDependencies::ValueSet
 AsyncDataflowDependencies::exclusiveSet(Value indicator) const {
-  return valueAnalysis.getEntries(exclusiveRelation, indicator);
+  // TODO: Implementation pending.
+  return valueAnalysis.index->emptySet();
 }
 
 bool AsyncDataflowDependencies::isNonSelfOverlapping(Value value) const {
@@ -122,7 +122,6 @@ void AsyncDataflowDependencies::print(llvm::raw_ostream &os) {
                                   structurallyDisjointRelation);
   operationAnalysis.printRelation(os, "runsLater", runsLaterRelation);
   operationAnalysis.printRelation(os, "runsEarlier", runsEarlierRelation);
-  valueAnalysis.printRelation(os, "exclusive", exclusiveRelation);
 }
 
 //===----------------------------------------------------------------------===//
@@ -226,7 +225,6 @@ void AsyncDataflowDependencies::flowImpliesReady(Operation *op,
         cfOp, domainMap,
         std::bind(&AsyncDataflowDependencies::flowImpliesReady, this, _1, _2));
   } else {
-    // Default 'gating' to 'indicating' rule.
     ValueSet set = domainMap.top;
     for (Value rhs : getGatingOperands(op))
       domainMap.greatestLowerBound(
@@ -357,274 +355,4 @@ void AsyncDataflowDependencies::setupRunsLater() {
       runsLaterRelation.insert({op, set});
   }
   runsEarlierRelation = operationAnalysis.inverse(runsLaterRelation);
-}
-
-//===----------------------------------------------------------------------===//
-// 'exclusiveSet'
-//
-// The following implements the 'exclusiveSet' relation. We define it directly
-// using the maybeSameAsRelation (tracking possibly aliasing), the
-// impliesReadyRelation (tracking causal ordering of values), and the
-// runsEarlierRelation (tracking causal ordering of ops, but derived from the
-// impliesReadyRelation for convenience).
-//
-// In essence the algorithm is:
-//
-//   1. Given "%x = op ..."
-//   2. Find all the ops "... = op %y" which must already be finished when op
-//      begins (runsEarlier).
-//   3. Find all the values %z which may be aliases of %y (maybeSameAs).
-//   4. If all uses of %z are by ops in 2 then we know %x is exclusive to %z.
-//   5. If impliesReady(%a, %z) we can say the same for %a (impliesReady).
-//
-// Note the use of two closures: 'upwards' for the earlier ops, and 'downwards'
-// for the ready values.
-//
-// Though the three relations already account for kLoop control flow ops,
-// there's a little be of extra structural fiddling we can do to improve
-// the completeness of 'exclusiveSet' for SSA values inside loops. In
-// particular, when considering aliasing in step 3 we can exploit two facts:
-//   1. The SSA value bound by an op can be considered a 'fresh' instance,
-//      distinct from previous values bound in earlier loop iterations.
-//   2. Any in-flight loop has not yet allowed its loop results to escape
-//      into the rest of the graph.
-//
-// In other words, though our notion of 'program point' is for the most part
-// just 'ready AsyncValue' for the core relations, when it comes to step 3
-// we also want a notion of 'program point' representing the overall execution
-// graph state, since only that lets us distinguish 'previous' from 'next'
-// loop iterations.
-//
-// TODO(#15840): Another approach would be to define 'exclusiveSet' by another
-// dataflow analysis, which is how liveness is traditionally done (though
-// for the much simpler situation of program point == operation). I think that
-// would still need something like getFullyConsumedWhenOpBegins, but perhaps
-// using the three primitive relations without closure under loops. I'm leaving
-// this for another day.
-//
-//===----------------------------------------------------------------------===//
-
-Operation *
-AsyncDataflowDependencies::getEffectiveOwner(const OpOperand *opOperand) const {
-  Operation *op = opOperand->getOwner();
-
-  if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op)) {
-    ArrayRef<OpOperand> inputOpOperands = cfOp.getInputOpOperands();
-    if (llvm::find_if(inputOpOperands, [&](const OpOperand &inputOpOperand) {
-          return &inputOpOperand == opOperand;
-        }) != inputOpOperands.end())
-      // Inputs to control flow ops are just plumbing.
-      return nullptr;
-  }
-
-  if (isa<MEF::OutputOp>(op)) {
-    auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op->getParentOp());
-    if (!cfOp || cfOp.getFlavor() != GRT::kLoopLike)
-      // Operands to mef.output outside of loops are just plumbing.
-      return nullptr;
-
-    // Though we don't consider mef.output to be a true 'op' requiring tracking
-    // as a possible consumer of operands, we do need to consider the loop op
-    // itself as a possible future consumer.
-    return cfOp;
-  }
-
-  // Normal case.
-  return op;
-}
-
-bool AsyncDataflowDependencies::allUsesAreByOperationsInSet(
-    const ValueSet &values, const OperationSet &ops) const {
-  for (Value value : valueAnalysis.index->setToVector(values)) {
-    for (OpOperand &opOperand : value.getUses()) {
-      Operation *owningOp = getEffectiveOwner(&opOperand);
-      if (!owningOp)
-        // Ignore 'plumbing' uses.
-        continue;
-      if (!isGatingOperand(&opOperand)) {
-        // We don't know when the op will be done with the operand so must
-        // consider the use still alive.
-        LLVM_DEBUG({
-          valueAnalysis.index->printV(llvm::dbgs(), value);
-          llvm::dbgs() << " not consumed since non-gating arg to ";
-          operationAnalysis.index->printV(llvm::dbgs(), owningOp);
-          llvm::dbgs() << "\n";
-        });
-        return false;
-      }
-      if (!operationAnalysis.index->setContains(ops, owningOp)) {
-        // The operand has a relevant use by an op outside the set, so
-        // must consider the use still alive.
-        LLVM_DEBUG({
-          valueAnalysis.index->printV(llvm::dbgs(), value);
-          llvm::dbgs() << " not consumed since used by unfinished op ";
-          operationAnalysis.index->printV(llvm::dbgs(), owningOp);
-          llvm::dbgs() << "\n";
-        });
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
-AsyncDataflowDependencies::ValueSet
-AsyncDataflowDependencies::getFullyConsumedWhenOpBegins(Operation *op) const {
-  LLVM_DEBUG({
-    llvm::dbgs() << "getFullyConsumedWhenOpBegins(";
-    operationAnalysis.index->printV(llvm::dbgs(), op);
-    llvm::dbgs() << ")\n";
-  });
-
-  // Which ops have definitely finished?
-  OperationSet earlierOps =
-      operationAnalysis.getEntries(runsEarlierRelation, op);
-
-  LLVM_DEBUG({
-    llvm::dbgs() << "earlierOps = ";
-    operationAnalysis.index->printVs(
-        llvm::dbgs(), operationAnalysis.index->setToVector(earlierOps));
-    llvm::dbgs() << "\n";
-  });
-
-  // Collect the candidate SSA values by looking at all the operands of
-  // operations in earlierOps.
-  ValueSet candidates = valueAnalysis.index->emptySet();
-  for (Operation *earlierOp :
-       operationAnalysis.index->setToVector(earlierOps)) {
-    for (Value value : earlierOp->getOperands())
-      valueAnalysis.index->addToSet(candidates, value);
-  }
-
-  LLVM_DEBUG({
-    llvm::dbgs() << "candidates = ";
-    valueAnalysis.index->printVs(llvm::dbgs(),
-                                 valueAnalysis.index->setToVector(candidates));
-    llvm::dbgs() << "\n";
-  });
-
-  // Though we know the candidate SSA values appear to have been consumed, it
-  // is actually the underlying AsyncValues we must show to have no more
-  // references. For that we must expand each candidate into its equivalence
-  // class w.r.t. the maybeSameAs relation.
-  //
-  // TODO: This equivalence is too 'large' since it does not allow us to talk
-  // about loop iterations 'before' and 'following' the current op position.
-
-  // Now, only if ALL the equivalent SSA values have been consumed can we
-  // consider all the equivalent SSA values dead. Note we must do this as a
-  // unit -- it is not sound to just expand candidates by the above equivalence
-  // and filter each one.
-  ValueSet result = valueAnalysis.index->emptySet();
-  for (Value value : valueAnalysis.index->setToVector(candidates)) {
-    ValueSet maybeSameValues =
-        valueAnalysis.index->getEquivalenceClass(maybeSameAsEquivalence, value);
-    LLVM_DEBUG({
-      llvm::dbgs() << "considering candidate ";
-      valueAnalysis.index->printV(llvm::dbgs(), value);
-      llvm::dbgs() << " which is equivalent to ";
-      valueAnalysis.index->printVs(
-          llvm::dbgs(), valueAnalysis.index->setToVector(maybeSameValues));
-      llvm::dbgs() << "\n";
-    });
-    if (allUsesAreByOperationsInSet(maybeSameValues, earlierOps)) {
-      LLVM_DEBUG({
-        llvm::dbgs() << "include because consumed ";
-        valueAnalysis.index->printVs(
-            llvm::dbgs(), valueAnalysis.index->setToVector(maybeSameValues));
-        llvm::dbgs() << "\n";
-      });
-      result |= maybeSameValues;
-    }
-  }
-
-  return result;
-}
-
-void AsyncDataflowDependencies::setupExclusive() {
-  LLVM_DEBUG(llvm::dbgs() << "setupExclusive\n");
-  for (Operation *op : operationAnalysis.index->getAllVs()) {
-    if (op == operationAnalysis.index->distinguished)
-      continue;
-
-    if (op->getNumResults() == 0)
-      // Don't waste time calculating the consumedSet if there's no results
-      // by which to index it.
-      continue;
-
-    // Collect the values which have been created and fully consumed (or were
-    // never created in the first place) when op BEGINS execution.
-    ValueSet consumedSet = getFullyConsumedWhenOpBegins(op);
-
-    // Any value which implies an indicating result of op is ready (including
-    // the indicating result itself) can't overlap with any value in
-    // consumedSet.
-    for (Value indicatingResult : getIndicatingResults(op)) {
-      for (Value alsoReadyIndicatingResult : valueAnalysis.index->setToVector(
-               downwardsImpliesReadySet(indicatingResult))) {
-        LLVM_DEBUG({
-          llvm::dbgs() << "add because consumed ";
-          valueAnalysis.index->printV(llvm::dbgs(), alsoReadyIndicatingResult);
-          llvm::dbgs() << " |-> ";
-          valueAnalysis.index->printVs(
-              llvm::dbgs(), valueAnalysis.index->setToVector(consumedSet));
-          llvm::dbgs() << "\n";
-        });
-        valueAnalysis.addAll(exclusiveRelation, alsoReadyIndicatingResult,
-                             consumedSet);
-      }
-    }
-  }
-
-  // Since the above works only backwards from values bound by ops, we need to
-  // account for the reverse, so just close the relation under symmetry.
-  valueAnalysis.unionInPlace(exclusiveRelation,
-                             valueAnalysis.inverse(exclusiveRelation));
-
-  // Finally, try to exploit operator exclusivity.
-  //
-  // Note that, unlike the above per-op processing loop, it is unsound to
-  // use downwardsImpliesReadySet here. Ie given:
-  //   %x = lhsOp ...
-  //   %y = rhsOp ...
-  //   lhsOp is structurally disjoint from rhsOp
-  //   %z = otherOp ...
-  //   impliesReady(%z, %x)
-  // It is NOT the case that:
-  //   %y and %z are exclusive.
-  //
-  // Note also that, though the structurallyDisjointRelation tells us op and
-  // disjointOp can never execute *simultaneously*, they can still be executed
-  // *repeatedly*. Thus, the lifetimes of their results may still overlap. It
-  // would be nice to detect that by just checking the isNonSelfOverlapping
-  // predicate, but that is defined in terms of the exclusiveRelation we're
-  // trying to define here, so we'd need to build this by iteration till
-  // fixed point. That seems overkill, so instead we'll just use the
-  // isAtMostOnce syntactic check to ensure soundness at the cost of more
-  // incompleteness.
-  for (Operation *op : operationAnalysis.index->getAllVs()) {
-    if (op == operationAnalysis.index->distinguished)
-      continue;
-
-    if (!isAtMostOnce(op))
-      continue;
-
-    for (Operation *disjointOp : operationAnalysis.index->setToVector(
-             operationAnalysis.getEntries(structurallyDisjointRelation, op))) {
-      if (!isAtMostOnce(disjointOp))
-        continue;
-      for (Value opResult : op->getResults()) {
-        for (Value disjointOpResult : disjointOp->getResults()) {
-          LLVM_DEBUG({
-            llvm::dbgs() << "add because disjoint ";
-            valueAnalysis.index->printV(llvm::dbgs(), opResult);
-            llvm::dbgs() << " |-> ";
-            valueAnalysis.index->printV(llvm::dbgs(), disjointOpResult);
-            llvm::dbgs() << "\n";
-          });
-          valueAnalysis.add(exclusiveRelation, opResult, disjointOpResult);
-        }
-      }
-    }
-  }
 }

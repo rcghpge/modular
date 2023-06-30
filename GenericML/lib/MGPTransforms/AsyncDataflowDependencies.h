@@ -76,8 +76,6 @@ namespace M::MGP {
 ///  - structurallyDisjoint relation (two ops can never overlap due to branches)
 ///  - runsLater relation (a later op can begin only after an earlier op
 ///    finishes)
-///  - exclusive relation (the lifetimes of the AsyncValues pointed to by two
-///    values never overlap)
 ///
 /// In the following we'll write valueOf(%x) to mean the AsyncValue pointer
 /// stored in %x at runtime.
@@ -191,6 +189,10 @@ public:
   /// 'point to ready AsyncValues' would consider them exclusive. We prefer
   /// the former so that if %x is known to be exclusive to %y, %y can be
   /// created by the op itself without risk of conflict.
+  ///
+  /// TODO: Though sound, currently just returns the empty set so is as
+  /// incomplete as you can get, but is to be replaced by the actual
+  /// implementation.
   ValueSet exclusiveSet(Value indicator) const;
 
   /// Returns true if value is bound at most once (because its defining
@@ -254,38 +256,6 @@ private:
   /// Sets the runsLaterRelation and its inverse for all operations in model.
   void setupRunsLater();
 
-  /// Returns null if opOperand should be considered just a 'plumbing' use
-  /// for the purposes of finding all possible users of an SSA value. Generally
-  /// inputs to control flow ops and mef.output operands are just 'plumbing'
-  /// since we have accounted for these during the maybeSameAs and other
-  /// relation construction.
-  ///
-  /// But if opOperand is for a mef.output inside a loop sub-block, we
-  /// return the loop op itself to represent a possible future use of the
-  /// opOperand by a future loop iteration.
-  ///
-  /// Otherwise, return the opOperand's owning operation.
-  Operation *getEffectiveOwner(const OpOperand *opOperand) const;
-
-  /// Returns true if every use of value in values (if any) is by an operation
-  /// in ops. However the use must be in a gating operand position
-  /// (otherwise we can't say anything about the actual lifetime of the value
-  /// w.r.t. that operation).
-  bool allUsesAreByOperationsInSet(const ValueSet &values,
-                                   const OperationSet &ops) const;
-
-  /// Returns all the values who's underlying AsyncValues are known to have
-  /// zero references at the point op BEGINs execution.
-  ///
-  /// This means %x will be in the result only if:
-  ///  - maybeSameAs(%x, %y), and %y appears as an operand in at least
-  ///    one operation known to have FINISHED when op BEGINS.
-  ///  - all such %y operands are in gating operand positions for a FINISHED op.
-  ValueSet getFullyConsumedWhenOpBegins(Operation *op) const;
-
-  /// Sets the exclusiveRelation for all values in the model.
-  void setupExclusive();
-
   /// (%lhs, %rhs) is in sameAsRelation only if %lhs points to the same
   /// AsyncValue as %rhs when it is bound.
   ///
@@ -327,16 +297,6 @@ private:
   OperationRelation runsLaterRelation;
   /// Inverse of above.
   OperationRelation runsEarlierRelation;
-
-  /// (%lhs, %rhs) is in exclusiveRelation only if %lhs and %rhs cannot
-  /// simultaneously point to AsyncValues over all execution paths.
-  ///
-  /// This can be because:
-  ///  - by the time %rhs is created all uses of %lhs have been consumed
-  ///  - vise versa
-  ///  - both %lhs and %rhs can never both be created because their creating
-  ///    ops are structurally disjoint.
-  ValueRelation exclusiveRelation;
 };
 
 } // namespace M::MGP
