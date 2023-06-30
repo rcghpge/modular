@@ -14,7 +14,7 @@
 
 #include "mlir/IR/IRMapping.h"
 
-#include "MOGGHelpers.h"
+#include "LambdaUtils.h"
 
 using namespace M;
 
