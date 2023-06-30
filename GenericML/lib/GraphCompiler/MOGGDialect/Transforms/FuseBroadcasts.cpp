@@ -10,8 +10,10 @@
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.h"
 #include "GenericML/Support/Tensor.h"
 
+#include "MOGGHelpers.h"
 #include "mlir/IR/IRMapping.h"
 
 using namespace M;
@@ -29,6 +31,7 @@ struct FuseBroadcastsPass
 
   void runOnOperation() override {
     MO::GraphOp graph = getOperation();
+    MLIRContext *ctx = graph.getContext();
 
     for (MOGG::KernelOp kernel : graph.getOps<MOGG::KernelOp>()) {
       // Only allow fusion if the kernel exposes an input lambda.
@@ -60,6 +63,79 @@ struct FuseBroadcastsPass
         // All legality checking should be performed above so we assume this
         // will perform the fusion or produce a fatal failure.
         fuseInputAtIndex(kernel, index, alreadyFused);
+      }
+    }
+
+    auto replaceArg = [](KernelOp kernel, size_t index, Value newVal) {
+      Block &thisBlock = kernel.getBody().front();
+      thisBlock.getArgument(index).replaceAllUsesWith(newVal);
+      kernel->eraseOperand(index);
+      thisBlock.eraseArgument(index);
+    };
+
+    auto hasCompoundParameters = [](MO::TensorType t) {
+      for (TypedAttr symbolicDim : t.getDims()) {
+        if (!(isa<KGEN::ParamDeclRefAttr>(symbolicDim) ||
+              isa<IntegerAttr>(symbolicDim)))
+          return true;
+      }
+      return false;
+    };
+
+    // Once we have fused the views we can fuse reshapes into the kernel. This
+    // is technically a view but it must come last as it only can reshape
+    // contigious inputs and can always be fused regardless of whether or not
+    // the kernel has opted into fusion or not as it returns a contigious tensor
+    // with the same number of elements.
+    for (MOGG::KernelOp kernel : graph.getOps<MOGG::KernelOp>()) {
+      int32_t preFuseNumOperands = kernel.getNumOperands();
+
+      // For safety we check which have already been fused and won't fuse
+      // something again.
+      DenseMap<Value, Value> alreadyFused;
+
+      // Start from the end so we can safely remove and append arguments.
+      for (int32_t index = preFuseNumOperands - 1; index >= 0; --index) {
+        // Get the creator of this operand.
+        Value operand = kernel.getOperand(index);
+        Operation *op = operand.getDefiningOp();
+
+        auto itr = alreadyFused.find(operand);
+        if (itr != alreadyFused.end()) {
+          replaceArg(kernel, index, itr->second);
+          continue;
+        }
+
+        if (auto reshape = dyn_cast_or_null<MO::Static::ReshapeOp>(op)) {
+          MO::TensorType outType = reshape.getResult().getType();
+          MO::TensorType inType = reshape.getInput().getType();
+
+          // We can't fuse this if there are any fancy symbolic dims.
+          if (hasCompoundParameters(inType) || hasCompoundParameters(outType))
+            continue;
+
+          Block &thisBlock = kernel.getBody().front();
+
+          // Insert after the output placeholders.
+          mlir::OpBuilder builder{ctx};
+          builder.setInsertionPointAfter(&thisBlock.front());
+
+          // Add the old reshape argument to this kernel.
+          kernel->insertOperands(kernel->getNumOperands(),
+                                 ValueRange{reshape.getInput()});
+          Value reshapeInput =
+              thisBlock.addArgument(inType, reshape.getInput().getLoc());
+
+          // Add the new reshape.
+          MOGG::CallOp newReshape = createMOGGReshape(builder, reshape.getLoc(),
+                                                      reshapeInput, outType);
+
+          // Replace all uses of the old operand and then remove it from this
+          // kernel.
+          replaceArg(kernel, index, newReshape->getResult(0));
+
+          alreadyFused[reshape.getResult()] = newReshape->getResult(0);
+        }
       }
     }
   }
