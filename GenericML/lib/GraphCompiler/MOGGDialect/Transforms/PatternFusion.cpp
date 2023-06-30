@@ -155,9 +155,6 @@ struct MatmulTranspBPattern : public OpRewritePattern<MO::MatmulOp> {
                                 PatternRewriter &rewriter) const override {
     Value input, weight, perm;
 
-    if (isMatmulSmall(op))
-      return rewriter.notifyMatchFailure(op, "Matmul is too small");
-
     if (op.getTransposeB())
       return rewriter.notifyMatchFailure(op, "Matmul is already transposed");
 
