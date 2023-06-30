@@ -7,18 +7,129 @@
 #include "./Utils.h"
 
 #include "GenericML/MGPDialect/MGPUtils.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Transforms/TopologicalSortUtils.h"
 
 using namespace M;
 using namespace M::MGP;
 
+#if MODULAR_DEBUG
+/// Finds a cycle starting at op. Recursive, so should only be used as
+/// a diagnostic where we are about to hard fail anyway.
+bool findCycle(SmallVectorImpl<Operation *> &stack, Operation *op) {
+  auto itr = llvm::find(stack, op);
+  if (itr != stack.end()) {
+    llvm::dbgs() << "cycle is:\n";
+    for (Operation *pathOp : stack) {
+      llvm::dbgs() << "  ";
+      pathOp->print(llvm::dbgs(), mlir::OpPrintingFlags().printGenericOpForm());
+      llvm::dbgs() << "\n";
+    }
+    return true;
+  }
+  stack.push_back(op);
+  for (Value operand : op->getOperands()) {
+    if (Operation *nextOp = operand.getDefiningOp()) {
+      if (findCycle(stack, nextOp))
+        return true;
+    }
+  }
+  stack.pop_back();
+  return false;
+}
+#endif
+
+/// Return true if currOp needs to be visited.
+static bool shouldStartVisiting(DenseMap<Operation *, bool> &visited,
+                                Operation *currOp) {
+  auto itr = visited.find(currOp);
+  if (itr == visited.end()) {
+    visited.insert({currOp, false});
+    return true;
+  }
+  if (itr->second)
+    return false;
+#if MODULAR_DEBUG
+  if (!itr->second) {
+    llvm::dbgs() << "model contains a dataflow cycle involving op:\n  ";
+    currOp->print(llvm::dbgs(), mlir::OpPrintingFlags().printGenericOpForm());
+    llvm::dbgs() << "\n";
+  }
+  SmallVector<Operation *> stack;
+  findCycle(stack, currOp);
+  Operation *modelOp = currOp->getParentOp();
+  while (modelOp && !isa<mlir::ModuleOp>(modelOp->getParentOp()))
+    modelOp = modelOp->getParentOp();
+  if (modelOp) {
+    llvm::dbgs() << "within:\n";
+    llvm::dbgs() << "----------------------------------------\n";
+    modelOp->print(llvm::dbgs(), mlir::OpPrintingFlags().printGenericOpForm());
+    llvm::dbgs() << "\n----------------------------------------\n";
+  }
+#endif
+  assert(itr->second && "model contains cycle involving op");
+  return false;
+};
+
+/// Records that currOp has been fully visited.
+static void finishVisiting(DenseMap<Operation *, bool> &visited,
+                           Operation *currOp) {
+  auto itr = visited.find(currOp);
+  assert(itr != visited.end() && "never started visiting op");
+  assert(!itr->second && "finishing already finished op");
+  itr->second = true;
+};
+
+/// Non-recursively visit inputs of op in dfs order, accumulating post-order
+/// visits into dataflowOrder. In debug builds will detect and report cycles.
+/// In release builds will ignore back-arcs in cycles.
+static void visitInDataflowOrder(Operation *op,
+                                 SmallVectorImpl<Operation *> &dataflowOrder,
+                                 DenseMap<Operation *, bool> &visited) {
+
+  if (!shouldStartVisiting(visited, op))
+    return;
+
+  struct Frame {
+    Operation *frameOp;
+    size_t nextOperandIndex;
+    Frame(Operation *frameOp, size_t nextOperandIndex)
+        : frameOp(frameOp), nextOperandIndex(nextOperandIndex) {}
+  };
+  SmallVector<Frame> stack;
+
+  // Start with first operand of op, if any.
+  stack.emplace_back(op, 0);
+
+  while (!stack.empty()) {
+    Frame frame = stack.back();
+    stack.pop_back();
+    if (frame.nextOperandIndex >= frame.frameOp->getNumOperands()) {
+      // We've visited all the inputs of frame.parent
+      finishVisiting(visited, frame.frameOp);
+      dataflowOrder.push_back(frame.frameOp);
+    } else {
+      // We're about to visit frame.parent->getOperand(frame.nextInputIndex),
+      // so remember we need to continue with next operand when done, if any.
+      stack.emplace_back(frame.frameOp, frame.nextOperandIndex + 1);
+
+      Value operand = frame.frameOp->getOperand(frame.nextOperandIndex);
+      if (Operation *inputOp = operand.getDefiningOp()) {
+        if (shouldStartVisiting(visited, inputOp))
+          // Start with first operand of inputOp, if any.
+          stack.emplace_back(inputOp, 0);
+      }
+    }
+  }
+}
+
 SmallVector<Operation *> M::MGP::getDataflowOrder(Block *block) {
   SmallVector<Operation *> dataflowOrder;
-  dataflowOrder.reserve(block->getOperations().size());
-  for (auto &op : block->getOperations())
-    dataflowOrder.emplace_back(&op);
-  mlir::computeTopologicalSorting(dataflowOrder);
+  // Map op to false if starting to visit, true if completed.
+  DenseMap<Operation *, bool> visited;
+  for (Operation &op : block->getOperations())
+    visitInDataflowOrder(&op, dataflowOrder, visited);
   return dataflowOrder;
 }
 

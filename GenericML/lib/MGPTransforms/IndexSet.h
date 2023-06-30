@@ -39,6 +39,8 @@ public:
   /// value.
   size_t size() const { return allVs.size(); }
 
+  bool contains(V v) const { return vIndexMap.contains(v); }
+
   /// Returns the unique index of V in model, or the distinguished value.
   size_t getIndex(V v) const {
     auto itr = vIndexMap.find(v);
