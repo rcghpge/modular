@@ -172,11 +172,17 @@ mgp.model @repeat3 : tf init {
 
 // CHECK: impliesReady begin
 // CHECK: %4[3] |-> {%0[0], %arg0, %1, %arg4[2], %5[2], %arg4[3]}
+// CHECK: %2#0 |-> {%0[0], %arg0, %arg2[2], %arg2[3]}
+
 // CHECK: impliesReady end
 
 // CHECK: runsLater begin
 // CHECK: %4[2] |-> {%3}
 // CHECK: runsLater end
+
+// Nothing is exclusive.
+// CHECK: exclusive begin
+// CHECK-NEXT: exclusive end
 
 mgp.model @simple : tf init {
   %0 = grt.chain.create ()
@@ -383,8 +389,14 @@ mgp.model @shift : tf init {
 // CHECK: %9 |-> {%0[0], %arg0, %5, %7, %8}
 // CHECK: %arg3[2] |-> {%0[0], %arg0, %0, %1, %2}
 // CHECK: %arg4[2] |-> {%0[0], %arg0, %3, %4, %5, %6}
+// TODO: These entries don't exploit knowledge that the while condition must be ready for the while to finish.
+// CHECK: %10#0 |-> {%0[0], %arg0, %arg2[2], %arg2[3]}
 // CHECK: %12 |-> {%0[0], %arg0, %3, %4, %5, %6, %arg4[2], %arg4[3], %10#2, %11#0, %11#1}
 // CHECK: impliesReady end
+
+// CHECK: exclusive begin
+// CHECK: %18[3] |-> {%3, %4, %5, %7, %8, %13#0[3], %13#1[3], %14#0[3], %14#1[3]}
+// CHECK: exclusive end
 
 mgp.model @while : tf init {
   %0 = grt.chain.create ()

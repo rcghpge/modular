@@ -17,9 +17,8 @@ using namespace M::MGP;
 #if MODULAR_DEBUG
 /// Finds a cycle starting at op. Recursive, so should only be used as
 /// a diagnostic where we are about to hard fail anyway.
-bool findCycle(SmallVectorImpl<Operation *> &stack, Operation *op) {
-  auto itr = llvm::find(stack, op);
-  if (itr != stack.end()) {
+static bool findCycle(SmallVectorImpl<Operation *> &stack, Operation *op) {
+  if (llvm::is_contained(stack, op)) {
     llvm::dbgs() << "cycle is:\n";
     for (Operation *pathOp : stack) {
       llvm::dbgs() << "  ";
