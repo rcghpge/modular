@@ -77,7 +77,8 @@ class SimplifyChainsPass
     // new bound values or add new dependencies.
     IndexSet<Value> valueIndex = createValueIndexSet(modelOp);
     IndexSet<Operation *> operationIndex = createOperationIndexSet(modelOp);
-    AsyncDataflowDependencies dependencies(&valueIndex, &operationIndex);
+    AsyncDataflowDependencies dependencies(
+        &valueIndex, &operationIndex, AsyncDataflowDependencies::kImpliesReady);
 
     // CAUTION: We'll be making in-place updates as we go. However, since
     // we don't update the dependencies analysis results, we must be careful

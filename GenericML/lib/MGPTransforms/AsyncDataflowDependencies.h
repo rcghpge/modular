@@ -98,9 +98,20 @@ public:
   ValueAnalysis valueAnalysis;
   OperationAnalysis operationAnalysis;
 
-  /// Performs the dataflow analysis.
+  /// What aspects of the analysis are required.
+  enum AnalysisLevel {
+    /// sameAs, maybeSameAs, isAlwaysReady, impliesReady
+    kImpliesReady,
+    /// areDisjoint
+    kDisjoint,
+    /// exclusiveSet, isNonSelfOverlapping
+    kExclusive,
+  };
+
+  /// Performs the dataflow analysis to the given level.
   AsyncDataflowDependencies(IndexSet<Value> *valueIndex,
-                            IndexSet<Operation *> *operationIndex);
+                            IndexSet<Operation *> *operationIndex,
+                            AnalysisLevel analysisLevel);
 
   /// The sameAs(%lhs, %rhs) equivalence is true only if at runtime:
   ///   valueOf(%lhs) == valueOf(%rhs)

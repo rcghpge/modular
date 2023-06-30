@@ -24,7 +24,8 @@ using namespace std::placeholders;
 //===----------------------------------------------------------------------===//
 
 AsyncDataflowDependencies::AsyncDataflowDependencies(
-    IndexSet<Value> *valueIndex, IndexSet<Operation *> *operationIndex)
+    IndexSet<Value> *valueIndex, IndexSet<Operation *> *operationIndex,
+    AnalysisLevel analysisLevel)
     : valueAnalysis(valueIndex), operationAnalysis(operationIndex),
       sameAsEquivalence(valueIndex->identityEquivalence()),
       maybeSameAsEquivalence(valueIndex->identityEquivalence()),
@@ -33,9 +34,13 @@ AsyncDataflowDependencies::AsyncDataflowDependencies(
   setupMaybeSameAs();
   setupAlwaysReady();
   setupImpliesReady();
-  setupStructurallyDisjoint();
-  setupRunsLater();
-  setupExclusive();
+  if (analysisLevel >= kDisjoint) {
+    setupStructurallyDisjoint();
+    setupRunsLater();
+  }
+  if (analysisLevel >= kExclusive) {
+    setupExclusive();
+  }
 }
 
 bool AsyncDataflowDependencies::sameAs(Value lhs, Value rhs) const {

@@ -39,7 +39,8 @@ class AsyncDataflowDependenciesTestPass
     ModelOp modelOp = getOperation();
     IndexSet<Value> valueIndex = createValueIndexSet(modelOp);
     IndexSet<Operation *> operationIndex = createOperationIndexSet(modelOp);
-    AsyncDataflowDependencies dependencies(&valueIndex, &operationIndex);
+    AsyncDataflowDependencies dependencies(
+        &valueIndex, &operationIndex, AsyncDataflowDependencies::kExclusive);
 
     valueIndex.printModel(llvm::outs());
     dependencies.print(llvm::outs());
