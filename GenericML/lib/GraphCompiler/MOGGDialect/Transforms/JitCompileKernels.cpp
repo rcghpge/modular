@@ -163,8 +163,17 @@ mangleBlock(mlir::Block &block,
 ErrorOr<std::string>
 createMangledName(MOGG::KernelOp op,
                   DenseMap<KGEN::ParamDeclRefAttr, size_t> &params,
-                  DenseMap<M::ElementsAttr, size_t> &seenConsts) {
-  std::string name = "__gen__ins_";
+                  DenseMap<M::ElementsAttr, size_t> &seenConsts,
+                  size_t &kernelsDefiningParams) {
+  std::string name = "__gen__";
+
+  // Each kernel which defines params can be assumed to be unique. No params can
+  // be defined twice.
+  auto outParams = op.getOutputParamDecls();
+  if (!outParams.empty())
+    name += "PDEF_" + std::to_string(kernelsDefiningParams++);
+
+  name += "ins_";
 
   // Track where each value is in the block order. This is to mangle the returns
   // to ensure legality.
@@ -208,6 +217,15 @@ SmallVector<KGEN::ParamDeclRefAttr> getUsedParameters(MOGG::KernelOp kernel) {
   DenseSet<KGEN::ParamDeclRefAttr> seenParams;
   SmallVector<KGEN::ParamDeclRefAttr> usedParameters;
 
+  auto params = kernel.getOutputParamDecls();
+  auto isInOutputParams = [&](StringRef name) {
+    for (KGEN::ParamDeclAttr attr : params) {
+      if (attr.getName().str() == name)
+        return true;
+    }
+    return false;
+  };
+
   // Track all unique parameters from a given tensor that we haven't seen
   // already.
   auto addParamsFromTensor = [&](Type t) {
@@ -218,6 +236,9 @@ SmallVector<KGEN::ParamDeclRefAttr> getUsedParameters(MOGG::KernelOp kernel) {
     for (auto dim : asTensor.getTypedShapeAttr().getValues()) {
       if (auto param = dyn_cast<KGEN::ParamDeclRefAttr>(dim)) {
         if (seenParams.contains(param))
+          continue;
+
+        if (isInOutputParams(param.getName()))
           continue;
 
         seenParams.insert(param);
@@ -328,6 +349,8 @@ struct JitCompileKernels
 
     ErrorOrSuccess error;
 
+    size_t kernelsDefiningParams = 0;
+
     // Build stubs for all JIT operations and replace them with symbolic calls
     // to the kernels in the KGEN stub.
     graph.walk([&](MOGG::KernelOp op) {
@@ -352,7 +375,8 @@ struct JitCompileKernels
       }
 
       // Create a unique name for the kernel.
-      auto stubKernelName = createMangledName(op, paramToIndex, seenConsts);
+      auto stubKernelName = createMangledName(op, paramToIndex, seenConsts,
+                                              kernelsDefiningParams);
       if (stubKernelName.isError()) {
         error = Error(stubKernelName.takeError());
         return WalkResult::interrupt();
@@ -389,7 +413,7 @@ struct JitCompileKernels
 
       // Replace the original kernel with a call to the compiled jit code.
       MOGG::ExecuteCompiledOp jitExecute = builder.createExecuteOperation(
-          stubKernelName.get(), usedParamsAsAttr);
+          stubKernelName.get(), usedParamsAsAttr, op.getOutputParamDeclsAttr());
       op->replaceAllUsesWith(jitExecute.getResults());
       jittedKernels.insert({stubKernelName.get(), jitExecute});
       op->erase();

@@ -88,6 +88,10 @@ struct FuseBroadcastsPass
     // the kernel has opted into fusion or not as it returns a contigious tensor
     // with the same number of elements.
     for (MOGG::KernelOp kernel : graph.getOps<MOGG::KernelOp>()) {
+      // Don't fuse kernels with parameter decls.
+      if (!kernel.getOutputParamDecls().empty())
+        continue;
+
       int32_t preFuseNumOperands = kernel.getNumOperands();
 
       // For safety we check which have already been fused and won't fuse

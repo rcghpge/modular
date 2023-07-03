@@ -13,7 +13,10 @@
 
 include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.td"
 include "GenericML/GraphCompiler/MODialect/MOTypes.td"
+include "GenericML/GraphCompiler/MODialect/MOAttrs.td"
+include "GenericML/GraphCompiler/MODialect/MOInterfaces.td"
 include "GenericML/GraphCompiler/Interfaces/LowerableToMGPInterface.td"
+include "KGEN/KGENDialect/KGENInterfaces.td"
 include "Support/MDialect/MAttrs.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/FunctionInterfaces.td"
@@ -165,7 +168,8 @@ def MOGG_MojoRegisterOp : MOGG_Op<"mojo_register", [HasParent<"ModuleOp">]> {
 
 def MOGG_KernelOp : MOGG_Op<"kernel", [IsolatedFromAbove,
                                         SingleBlock,
-                                        SymbolTable, Pure]> {
+                                        SymbolTable,
+                                        DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
   let summary = "A representation of a kernel which can be fused into and compiled";
   let description = [{
     This kernel represents the handover from the MO graph to the KGEN land.
@@ -194,6 +198,13 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [IsolatedFromAbove,
     !mo.tensor<[2, 3], f32>, %arg3: !mo.tensor<[2, 3], f32>)` which essentially
     are the KGEN view of those values.
 
+    `outputParamDecls` allows this compiled operation to define a parameter
+     values. These values are explicit parameter returns of the kernel. They 
+     cannot be refered to within the kernel other than to set them. When the
+     kernel is executed they will be updated in the MGP parameter map. This is
+     completely seperate from the normal kernel tensor returns. Their values
+     are set within the kernel using `SetParameterOp`.
+
     The attributes at the end.
     ```mlir
     { fusionBodyLambda = "elemwise_compute_lambda",
@@ -221,6 +232,7 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [IsolatedFromAbove,
   }];
 
   let arguments = (ins Variadic<MO_Tensor>:$operands,
+    MO_ParamDecls:$outputParamDecls,
     OptionalAttr<ArrayAttr>:$inputFusionInterface,
     OptionalAttr<ArrayAttr>:$outputFusionInterface,
     OptionalAttr<StrAttr>:$fusionBodyLambda,
@@ -230,7 +242,7 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [IsolatedFromAbove,
   let regions = (region SizedRegion<1>:$body);
 
   let assemblyFormat = [{
-    custom<Kernel>($operands, type($operands), type($results), $body) attr-dict
+    custom<Kernel>($operands, type($operands), type($results), $body, $outputParamDecls) attr-dict
   }];
 }
 
@@ -246,6 +258,33 @@ def MOGG_ParamShapeToValueOp : MOGG_Op<"param_shape_to_value"> {
     attr-dict `->` type(results)
   }];
 }
+
+def MOGG_SetParameterOp : MOGG_Op<"set_param"> {
+  let summary = "Assign a param a value from the shape at index";
+  let description = [{
+    Gives the param the value from the shape at the constant index.
+    `$param = $shape[$index]`
+
+    ```
+    %shape = mogg.param_shape_to_value -> !mogg.shape<[50, 150]>
+    mogg.set_param(%shape : <[50, 150]>) {index = 0 : i64, paramName = "M"}
+    mogg.set_param(%shape : <[50, 150]>) {index = 1 : i64, paramName = "N"}
+    ```
+    This sets `M` to the value from `%shape` at the index `0` which is `50`
+    and set `N` to the value at index `1` which is `150`.
+  }];
+
+  let arguments = (ins
+     MOGG_Shape:$shape,
+     Builtin_StringAttr:$paramName,
+     Builtin_IntegerAttr:$index
+  );
+
+   let assemblyFormat = [{
+      `(` $shape `:` type($shape) `)` attr-dict
+   }];
+}
+
 
 def MOGG_CallOp : MOGG_Op<"call"> {
   let summary = "Represents a KGEN function to call";
@@ -279,7 +318,7 @@ def MOGG_CallOp : MOGG_Op<"call"> {
      OptionalAttr<DictionaryAttr>:$kgenParams
   );
 
-   let results = (outs Variadic<AnyTypeOf<[MOGG_Simd, MO_Tensor]>>:$results);
+   let results = (outs Variadic<AnyTypeOf<[MOGG_Simd, MO_Tensor, MOGG_Shape]>>:$results);
 
    let assemblyFormat = [{
      $mojoKernelTarget ($params^)? `(`($operands^)?`)` ($kgenParams^)? attr-dict
@@ -447,7 +486,8 @@ def MOGG_LoadJitKernelOp : MOGG_LowerableOp<"load_compiled_kernel"> {
 }
 
 
-def MOGG_ExecuteCompiledOp : MOGG_LowerableOp<"execute_kernel"> {
+def MOGG_ExecuteCompiledOp : MOGG_LowerableOp<"execute_kernel",
+  [DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
   let summary = "Executes a compiled kernel";
   let description = [{
     Executes a compiled kernel with the given name and operands.
@@ -459,11 +499,16 @@ def MOGG_ExecuteCompiledOp : MOGG_LowerableOp<"execute_kernel"> {
     The `usedParams` attribute represent unique shape parameters used inside the
     compiled kernel; they will be lowered to runtime values and passed into the
     kernel, which will use them to reconstruct the tensor shapes.
+
+    `outputParamDecls` allows this compiled operation to define a parameter
+     values. These are exported into MGP land where they will be translated
+     into calls into the parameter system.
   }];
 
   let arguments = (ins Variadic<MO_Tensor>:$operands,
                           StrAttr:$kernelName,
-                          ArrayAttr:$usedParams);
+                          ArrayAttr:$usedParams,
+                          MO_ParamDecls:$outputParamDecls);
   let results = (outs Variadic<MO_Tensor>:$results);
 }
 

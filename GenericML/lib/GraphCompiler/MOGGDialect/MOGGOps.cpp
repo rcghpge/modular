@@ -728,6 +728,13 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
     operands.push_back(symbolicDimOr.takeValue());
   }
 
+  SmallVector<Type> returnTypes;
+  returnTypes.push_back(loweringState.getExecuteChain().getType());
+
+  // Add each output parameter as an index return type.
+  for (size_t i = 0, e = getOutputParamDecls().size(); i < e; ++i)
+    returnTypes.push_back(loweringState.getExecuteOpBuilder().getIndexType());
+
   // Create a call to a custom invoke function we can put in the MEF.
   mlir::OperationState opState{op->getLoc(), "mop.kgen.execute_kernel"};
 
@@ -756,9 +763,8 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   operands.insert(operands.begin(), loweringState.getExecuteChain());
   opState.addOperands(operands);
 
-  // The return type is just the chain, other outputs are passed as argument by
-  // their buffer pointers.
-  opState.addTypes({loweringState.getExecuteChain().getType()});
+  // The return type is the chain and any output parameters.
+  opState.addTypes(returnTypes);
 
   // Add it to the MLIR.
   mlir::Operation *invokeOp =
@@ -767,11 +773,41 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // Downstream passes may need to distinguish input from output buffers.
   MGP::setNumBackOutputBuffers(invokeOp, numOutputBuffers);
 
+  KGEN::ParamDeclArrayAttr params = op.getOutputParamDeclsAttr();
+
+  // Each of the index output now map onto a concrete parameter value.
+  for (size_t i = 1, e = invokeOp->getNumResults(); i < e; ++i)
+    loweringState.lowerParamDecl(params[i - 1], invokeOp->getResult(i));
+
   // Create the output tensors once we are sure the operation has finished
   // writing to them.
   helper.allocateOutputTensor(outChain, outputBufferAndSpec);
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Parameter printing/parsing support in form: <P1, P2, P3>
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseParamDecls(OpAsmParser &p,
+                                   KGEN::ParamDeclArrayAttr &paramDecls) {
+  if (succeeded(p.parseOptionalLess()) && failed(p.parseOptionalGreater())) {
+    if (KGEN::parseParamDecls(p, paramDecls) || p.parseGreater())
+      return failure();
+  } else {
+    paramDecls = KGEN::ParamDeclArrayAttr::get(p.getContext(), {});
+  }
+  return success();
+}
+
+static void printParamDecls(OpAsmPrinter &p, Operation *,
+                            KGEN::ParamDeclArrayAttr paramDecls) {
+  if (!paramDecls.empty()) {
+    p << "<";
+    printParamDecls(p, paramDecls);
+    p << '>';
+  }
 }
 
 static ParseResult parseLambda(OpAsmParser &p, StringAttr &name, TypeAttr &func,
@@ -809,25 +845,25 @@ static void printLambda(OpAsmPrinter &p, mlir::Operation *lambda,
   p.printRegion(region, /*printEntryBlockArgs=*/false);
 }
 
-static ParseResult
-parseKernel(OpAsmParser &p,
-            SmallVectorImpl<OpAsmParser::UnresolvedOperand> &operands,
-            SmallVectorImpl<Type> &operandTypes,
-            SmallVectorImpl<Type> &resultTypes, Region &region) {
+static ParseResult parseKernel(
+    OpAsmParser &p, SmallVectorImpl<OpAsmParser::UnresolvedOperand> &operands,
+    SmallVectorImpl<Type> &operandTypes, SmallVectorImpl<Type> &resultTypes,
+    Region &region, KGEN::ParamDeclArrayAttr &resultParams) {
   SmallVector<OpAsmParser::Argument> args;
   llvm::SMLoc loc;
   KGEN::SignatureType sigType;
   FunctionType functionType;
-  KGEN::ParamDeclArrayAttr inputParams, resultParams;
+  KGEN::ParamDeclArrayAttr inputParams, dummyRes;
 
   llvm::SMLoc sigLoc;
-  if (p.parseOperandList(operands, AsmParser::Delimiter::Paren) ||
+  if (parseParamDecls(p, resultParams) ||
+      p.parseOperandList(operands, AsmParser::Delimiter::Paren) ||
       p.parseColon() || p.getCurrentLocation(&sigLoc) ||
-      KGEN::parseFunctionSignature(p, args, inputParams, resultParams,
-                                   functionType, sigType) ||
+      KGEN::parseFunctionSignature(p, args, inputParams, dummyRes, functionType,
+                                   sigType) ||
       p.getCurrentLocation(&loc) || p.parseRegion(region, args))
     return failure();
-  if (!inputParams.empty() || !resultParams.empty())
+  if (!inputParams.empty() || !dummyRes.empty())
     return p.emitError(sigLoc, "unexpected input or result parameters");
 
   for (const OpAsmParser::Argument &arg : args)
@@ -841,7 +877,9 @@ parseKernel(OpAsmParser &p,
 
 static void printKernel(OpAsmPrinter &p, mlir::Operation *kernel,
                         ValueRange operands, TypeRange operandTypes,
-                        TypeRange resultTypes, Region &region) {
+                        TypeRange resultTypes, Region &region,
+                        KGEN::ParamDeclArrayAttr resultParams) {
+  printParamDecls(p, kernel, resultParams);
   p << '(';
   p.printOperands(operands);
   p << ") : ";
