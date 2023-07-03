@@ -70,20 +70,10 @@ std::optional<float> tryGetConstantFloat(TensorValue val);
 /// integer, else return None.
 std::optional<int64_t> tryGetConstantInt(TensorValue val);
 
-/// If `val` comes from a constant boolean scalar tensor (defined by a
-/// ConstantOp or RebindOp that takes in a ConstantOp), convert it to a raw
-/// boolean, else return None.
-std::optional<bool> tryGetConstantBool(TensorValue val);
-
 /// If `val` comes from a constant integer 1D tensor (defined by a ConstantOp or
 /// RebindOp that takes in a ConstantOp), convert it to an integer vector, else
 /// return None.
 std::optional<SmallVector<int64_t>> tryGetConstantIntVector(TensorValue val);
-
-/// If `val` comes from a constant integer 1D tensor (defined by a ConstantOp or
-/// RebindOp that takes in a ConstantOp), convert it to a boolean vector, else
-/// return None.
-std::optional<SmallVector<bool>> tryGetConstantBoolVector(TensorValue val);
 
 /// Returns a parameter constant attribute through a variant of ToTensor ops if
 /// possible. Otherwise returns a null attribute.

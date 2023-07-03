@@ -65,8 +65,7 @@ static ParseResult parseShapeParam(AsmParser &p, TypedAttr &shapeAttr) {
       return success();
     return p.emitError(p.getCurrentLocation())
            << "TensorType shape parameter must be ShapeAttr or "
-              "ParamDeclRefAttr, got: "
-           << shapeAttr;
+              "ParamDeclRefAttr, got: " << shapeAttr;
   }
   return p.emitError(p.getCurrentLocation())
          << "couldn't parse shape parameter: expected `?`, shape reference, or "
@@ -106,12 +105,10 @@ LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
   if (!attr)
     return emitError() << "invalid shape attribute " << shapeAttr;
 
-  for (TypedAttr dimAttr : attr.getValues()) {
+  for (TypedAttr dimAttr: attr.getValues()) {
     if (auto dimIntAttr = dimAttr.dyn_cast<IntegerAttr>()) {
       if (dimIntAttr.getInt() < 0)
-        return emitError()
-               << "invalid dimension, expect all dimensions >= 0 got: "
-               << dimIntAttr.getInt();
+        return emitError() << "invalid dimension, expect all dimensions >= 0 got: " << dimIntAttr.getInt();
     }
   }
   return success();
@@ -173,14 +170,6 @@ TensorType TensorType::get(ArrayRef<TypedAttr> shape, Type elementType,
   auto ctx = elementType.getContext();
   auto newShape = ShapeAttr::get(shape, ShapeType::get(ctx));
   return get(newShape, elementType, metadata);
-}
-
-TensorType TensorType::getVectorSI64Type(MLIRContext *ctx, int64_t size,
-                                         std::optional<Attribute> metadata) {
-  auto si64Ty = IntegerType::get(ctx, 64, IntegerType::Signed);
-  auto idxTy = IndexType::get(ctx);
-  return get(SmallVector<TypedAttr>(1, IntegerAttr::get(idxTy, size)), si64Ty,
-             metadata);
 }
 
 TensorType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,

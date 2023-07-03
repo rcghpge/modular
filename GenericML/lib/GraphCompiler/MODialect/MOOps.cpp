@@ -67,23 +67,10 @@ std::optional<int64_t> M::MO::tryGetConstantInt(TensorValue val) {
   return std::nullopt;
 }
 
-std::optional<bool> M::MO::tryGetConstantBool(TensorValue val) {
-  if (auto maybeIntBlob = tryGetConstantOfRank<int64_t>(val, 0))
-    return maybeIntBlob.value().front();
-  return std::nullopt;
-}
-
 std::optional<SmallVector<int64_t>>
 M::MO::tryGetConstantIntVector(TensorValue val) {
   if (val.getType().getElementType().isIntOrIndex())
     return tryGetConstantOfRank<int64_t>(val, 1);
-  return std::nullopt;
-}
-
-std::optional<SmallVector<bool>>
-M::MO::tryGetConstantBoolVector(TensorValue val) {
-  if (val.getType().getElementType().isInteger(1))
-    return tryGetConstantOfRank<bool>(val, 1);
   return std::nullopt;
 }
 
@@ -665,15 +652,6 @@ void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 }
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                       ArrayRef<bool> values) {
-  auto type =
-      MO::TensorType::get({(int64_t)values.size()}, odsBuilder.getI1Type());
-  auto valueAttr = odsBuilder.getAttr<IntArrayElementsAttr>(
-      values, mlir::IntegerType::Signless);
-  build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
-}
-
-void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                        int64_t value) {
   auto type = MO::TensorType::get(
       SmallVector<int64_t>{}, odsBuilder.getIntegerType(64, /*isSigned=*/true));
@@ -718,15 +696,6 @@ void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   SmallVector<APFloat> data;
   data.emplace_back(value);
   auto valueAttr = FloatArrayElementsAttr::get(data, dtype);
-  build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
-}
-
-void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                       bool value) {
-  auto type =
-      MO::TensorType::get(SmallVector<int64_t>{}, odsBuilder.getI1Type());
-  auto valueAttr = odsBuilder.getAttr<IntArrayElementsAttr>(
-      ArrayRef<bool>(SmallVector<bool>{value}), mlir::IntegerType::Signless);
   build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
 }
 
