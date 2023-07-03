@@ -534,6 +534,35 @@ mo.graph @transpose_non_const_perm_no_fold(
   mo.output %res : !mo.tensor<[2, 2], f32>
 }
 
+// CHECK: mo.graph @transpose_simplify_1_dims_to_reshape(
+mo.graph @transpose_simplify_1_dims_to_reshape(
+  // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[5, 1, 1, 8, 1, 1, 10], f32>
+  %input: !mo.tensor<[5, 1, 1, 8, 1, 1, 10], f32>
+// CHECK-SAME: ) -> !mo.tensor<[1, 1, 5, 8, 10, 1, 1], f32> {
+) -> !mo.tensor<[1, 1, 5, 8, 10, 1, 1], f32> {
+  // CHECK-NEXT: %[[FOLDED:.*]] = mo.static.reshape(%[[INPUT]]) : !mo.tensor<[5, 1, 1, 8, 1, 1, 10], f32>
+  // CHECK-SAME: -> !mo.tensor<[1, 1, 5, 8, 10, 1, 1], f32>
+  %perm = mo.constant {value = #M.dense_array<2, 1, 0, 3, 6, 4, 5> : tensor<7xsi64>} : !mo.tensor<[7], si64>
+  %res = mo.transpose(%input, %perm) : (!mo.tensor<[5, 1, 1, 8, 1, 1, 10], f32>, !mo.tensor<[7], si64>) -> !mo.tensor<[1, 1, 5, 8, 10, 1, 1], f32>
+  // CHECK-NEXT: mo.output %[[FOLDED]] : !mo.tensor<[1, 1, 5, 8, 10, 1, 1], f32>
+  mo.output %res : !mo.tensor<[1, 1, 5, 8, 10, 1, 1], f32>
+}
+
+// tricky case, but still changing relative order of non-1 dims, so no simplify
+// CHECK: mo.graph @transpose_no_simplify_to_reshape_if_ooo(
+mo.graph @transpose_no_simplify_to_reshape_if_ooo(
+  // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[8, 1, 8], f32>
+  %input: !mo.tensor<[8, 1, 8], f32>
+// CHECK-SAME: ) -> !mo.tensor<[8, 1, 8], f32> {
+) -> !mo.tensor<[8, 1, 8], f32> {
+  // CHECK-NEXT: %[[PERM:.*]] = mo.constant {value = #M.dense_array<2, 1, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %perm = mo.constant {value = #M.dense_array<2, 1, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  // CHECK-NEXT: %[[RES:.*]] = mo.transpose(%[[INPUT]], %[[PERM]]) : (!mo.tensor<[8, 1, 8], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[8, 1, 8], f32>
+  %res = mo.transpose(%input, %perm) : (!mo.tensor<[8, 1, 8], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[8, 1, 8], f32>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[8, 1, 8], f32>
+  mo.output %res : !mo.tensor<[8, 1, 8], f32>
+}
+
 //===----------------------------------------------------------------------===//
 // WhereOp
 //===----------------------------------------------------------------------===//

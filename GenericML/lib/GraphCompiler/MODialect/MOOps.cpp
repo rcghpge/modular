@@ -2123,6 +2123,35 @@ LogicalResult TransposeOp::canonicalize(TransposeOp op,
     return success();
   }
 
+  // Transpose == Reshape if the relative order of non-1 dims remains the same
+  // e.g. transpose from shape [8, 1, 1, 5, 1, 1, 1, 50] to
+  // - [8, 1, 1, 5, 1, 1, 50, 1]
+  // - [1, 1, 1, 8, 5, 50, 1, 1]
+  // - [8, 5, 50, 1, 1, 1, 1, 1]
+  // replacing with equivalent reshapes are all allowed
+  int64_t indexLastNonOneDim = -1; // should always be increasing
+  MOSH::ShapeAttr inputShape = op.getInput().getType().getTypedShapeAttr();
+  bool meetsReshapeRewriteCriteria = inputShape != nullptr;
+  for (int64_t inputDimIndex : permVec) {
+    if (!meetsReshapeRewriteCriteria) {
+      break;
+    }
+    int64_t dimInteger = inputShape.getIntDim(inputDimIndex);
+    if (dimInteger == mlir::ShapedType::kDynamic) {
+      // violates static reshape which only allows int dims
+      meetsReshapeRewriteCriteria = false;
+    } else if (dimInteger != 1) {
+      if (inputDimIndex < indexLastNonOneDim)
+        meetsReshapeRewriteCriteria = false;
+      indexLastNonOneDim = inputDimIndex;
+    }
+  }
+  if (meetsReshapeRewriteCriteria) {
+    rewriter.replaceOpWithNewOp<Static::ReshapeOp>(op, op.getType(),
+                                                   op.getInput());
+    return success();
+  }
+
   return failure();
 }
 
