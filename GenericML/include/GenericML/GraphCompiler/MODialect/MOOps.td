@@ -407,6 +407,10 @@ def MO_ConstantOp : MO_TensorOp<"constant", [ConstantLike, Pure]> {
     OpBuilder<(ins "float":$value)>,
     /// Create a new rank-0 (scalar) tensor mo.constant of f64 type.
     OpBuilder<(ins "double":$value)>,
+    /// Create a new rank-1 tensor mo.constant of boolean value.
+    OpBuilder<(ins "ArrayRef<bool>":$values)>,
+    /// Create a new rank-0 (scalar) tensor mo.constant of boolean value.
+    OpBuilder<(ins "bool":$value)>,
   ];
 
 }

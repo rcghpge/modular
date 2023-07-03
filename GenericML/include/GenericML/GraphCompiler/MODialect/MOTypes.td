@@ -137,6 +137,10 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     /// Computes the common broadcast shape of the shapes of given tensors.
     /// Supports parametric and unknown shapes, but not dynamic rank.
     static ErrorOr<TensorType> broadcastShapes(TensorType x, TensorType y);
+
+    /// Short-hand to create a SI64 vector tensor type.
+    static TensorType getVectorSI64Type(MLIRContext *ctx, int64_t size,
+      std::optional<Attribute> metadata = std::nullopt);
   }];
 }
 
