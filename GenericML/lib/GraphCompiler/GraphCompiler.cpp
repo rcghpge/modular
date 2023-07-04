@@ -4,10 +4,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/GraphCompiler.h"
 #include "Cache/CachePasses/CachePasses.h"
 #include "GenericML/GraphCompiler/Conversion/MOToMOGG.h"
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
+#include "GenericML/GraphCompiler/GraphCompiler.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"

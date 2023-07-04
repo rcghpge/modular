@@ -928,6 +928,105 @@ struct SplitAndSqueezesPattern : public OpRewritePattern<SplitOp> {
   }
 };
 
+struct ElementWiseUnaryVectorPattern
+    : public mlir::OpInterfaceRewritePattern<ElementWiseUnary> {
+  ElementWiseUnaryVectorPattern(MLIRContext *ctx)
+      : OpInterfaceRewritePattern(ctx, 2) {}
+
+  LogicalResult matchAndRewrite(MO::ElementWiseUnary op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    Value input = op.getInput();
+
+    auto inType = input.getType().cast<TensorType>();
+
+    if (!(inType.hasStaticShape() && inType.getRank() == 2 &&
+          inType.getIntDim(1) == 1))
+      return rewriter.notifyMatchFailure(op, "failed to match pattern");
+
+    Value opRes = op.getResult();
+
+    TensorType newType = TensorType::get(
+        SmallVector<int64_t>{inType.getIntDim(0)}, inType.getElementType());
+    auto reshape = rewriter.create<Static::ReshapeOp>(loc, newType, input);
+    op.setInput(reshape.getResult());
+    op.getResult().setType(newType);
+    rewriter.setInsertionPointAfter(op);
+    auto out = rewriter.create<Static::ReshapeOp>(loc, inType, op.getResult());
+    rewriter.replaceAllUsesExcept(opRes, out.getResult(), out);
+    return mlir::success();
+  }
+};
+
+struct ElementWiseBinaryVectorPattern
+    : public mlir::OpInterfaceRewritePattern<ElementWiseBinary> {
+  ElementWiseBinaryVectorPattern(MLIRContext *ctx)
+      : OpInterfaceRewritePattern(ctx, 2) {}
+
+  LogicalResult matchAndRewrite(MO::ElementWiseBinary op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    Value a = op.getLhsInput();
+    Value b = op.getRhsInput();
+
+    auto inType = a.getType().cast<TensorType>();
+
+    if (!(inType.hasStaticShape() && inType.getRank() == 2 &&
+          inType.getIntDim(1) == 1))
+      return rewriter.notifyMatchFailure(op, "failed to match pattern");
+
+    Value opRes = op.getResult();
+
+    TensorType newType = TensorType::get(
+        SmallVector<int64_t>{inType.getIntDim(0)}, inType.getElementType());
+    auto reshapeA = rewriter.create<Static::ReshapeOp>(loc, newType, a);
+    auto reshapeB = rewriter.create<Static::ReshapeOp>(loc, newType, b);
+    op.setLhsInput(reshapeA.getResult());
+    op.setRhsInput(reshapeB.getResult());
+    op.getResult().setType(newType);
+    rewriter.setInsertionPointAfter(op);
+    auto out = rewriter.create<Static::ReshapeOp>(loc, inType, op.getResult());
+    rewriter.replaceAllUsesExcept(opRes, out.getResult(), out);
+    return mlir::success();
+  }
+};
+
+struct BroadcastReshapePattern : public OpRewritePattern<Static::ReshapeOp> {
+  BroadcastReshapePattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
+
+  LogicalResult matchAndRewrite(Static::ReshapeOp op,
+                                PatternRewriter &rewriter) const override {
+    Value input;
+
+    if (!m_Op<Static::ReshapeOp>(m_Op<Static::BroadcastToOp>(m_Any(&input)))
+             .match(op))
+      return rewriter.notifyMatchFailure(op, "failed to match pattern");
+
+    if (!input)
+      return rewriter.notifyMatchFailure(op, "null input value");
+
+    TensorType inType = input.getType().cast<TensorType>();
+
+    // Check if the input is a scalar
+    if (!inType.hasRank())
+      return rewriter.notifyMatchFailure(op, "failed to match pattern");
+
+    for (size_t i = 0, e = inType.getRank(); i < e; ++i)
+      if (inType.getIntDim(i) != 1)
+        return rewriter.notifyMatchFailure(op, "failed to match pattern");
+
+    TensorType scalarType =
+        TensorType::get(SmallVector<int64_t>{}, inType.getElementType());
+    auto squash =
+        rewriter.create<Static::ReshapeOp>(op.getLoc(), scalarType, input);
+
+    rewriter.replaceOpWithNewOp<Static::BroadcastToOp>(op, op.getType(),
+                                                       squash);
+
+    return mlir::success();
+  }
+};
+
 struct SymbolicOptimizationPass
     : public MO::impl::SymbolicOptimizationBase<SymbolicOptimizationPass> {
   using SymbolicOptimizationBase::SymbolicOptimizationBase;
@@ -938,7 +1037,8 @@ struct SymbolicOptimizationPass
     patterns.add<CommuteBroadcastWithFlatennedWhere,
                  ConvertBatchMatmulToMatmulPattern, FlattenNestedConcatPattern,
                  Pow2Pattern, Pow3Pattern, GathersToSplitPattern, GeluPattern,
-                 SinkTransposeThroughUnaryOpPattern,
+                 ElementWiseUnaryVectorPattern, ElementWiseBinaryVectorPattern,
+                 BroadcastReshapePattern, SinkTransposeThroughUnaryOpPattern,
                  SinkTransposeThroughBinaryOpPattern,
                  SinkTransposeThroughStaticBroadcastToOpPattern,
                  SplitAndSqueezesPattern>(context);
