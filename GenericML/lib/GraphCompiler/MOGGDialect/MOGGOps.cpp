@@ -776,8 +776,11 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   KGEN::ParamDeclArrayAttr params = op.getOutputParamDeclsAttr();
 
   // Each of the index output now map onto a concrete parameter value.
-  for (size_t i = 1, e = invokeOp->getNumResults(); i < e; ++i)
-    loweringState.lowerParamDecl(params[i - 1], invokeOp->getResult(i));
+  for (size_t i = 1, e = invokeOp->getNumResults(); i < e; ++i) {
+    if (failed(loweringState.lowerParamDecl(params[i - 1],
+                                            invokeOp->getResult(i))))
+      return failure();
+  }
 
   // Create the output tensors once we are sure the operation has finished
   // writing to them.
