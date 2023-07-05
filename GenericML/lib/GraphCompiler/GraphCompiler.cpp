@@ -134,6 +134,9 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
       pm.addPass(MOGG::createAddExplicitChainReady());
     }
 
+    // Add a cleanup pass to catch e.g duplicated constants.
+    pm.addPass(mlir::createCSEPass());
+
     // If we are jitting then we need to compile the jit kernels as well.
     MOGG::JitCompileKernelsOptions jitOpts;
     jitOpts.useSearch = opts.useKgenSearch;

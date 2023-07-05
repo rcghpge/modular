@@ -246,7 +246,7 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [IsolatedFromAbove,
   }];
 }
 
-def MOGG_ParamShapeToValueOp : MOGG_Op<"param_shape_to_value"> {
+def MOGG_ParamShapeToValueOp : MOGG_Op<"param_shape_to_value", [Pure]> {
   let summary = "Returns a runtime representation of a given shape";
   let description = [{
     Returns a runtime representation for a shape.
