@@ -18,6 +18,7 @@
 #include "Support/STLExtras.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/Transforms/TopologicalSortUtils.h"
+#include <cassert>
 #include <numeric>
 
 using namespace M;
@@ -141,13 +142,34 @@ LogicalResult MOGraphLowering::createModelOp() {
 
   // Create the mgp.model and the regions for the init/execute phases.
   b.setInsertionPoint(graph);
-  loweringState.setModelOp(b.create<MGP::ModelOp>(
+  auto modelOp = b.create<MGP::ModelOp>(
       graph.getLoc(),
       /*sym_name=*/graph.getNameAttr(),
       /*frameworkName=*/loweringState.getCompiledFrameworkLabel(),
       /*inputTypes=*/inputTypes,
       /*outputTypes=*/outputTypes,
-      /*inputArgLocs=*/inputLocs));
+      /*inputArgLocs=*/inputLocs);
+
+  // Set the argument and result names attributes `argument_names` and
+  // `result_names` on the `mgp.model` op's `theExtraAttrs` attribute.
+  constexpr std::string_view argNamesAttrName = "argument_names";
+  constexpr std::string_view resultNamesAttrName = "result_names";
+  ArrayAttr argNamesAttr = graph->getAttrOfType<ArrayAttr>(argNamesAttrName);
+  ArrayAttr resultNamesAttr =
+      graph->getAttrOfType<ArrayAttr>(resultNamesAttrName);
+  if (argNamesAttr) {
+    assert(resultNamesAttr &&
+           "expected either both or neither of the `argument_names` and "
+           "`result_names` attributes.");
+    auto namesDict = DictionaryAttr::get(
+        b.getContext(),
+        {NamedAttribute(b.getStringAttr(argNamesAttrName), argNamesAttr),
+         NamedAttribute(b.getStringAttr(resultNamesAttrName),
+                        resultNamesAttr)});
+    modelOp.setTheExtraAttrsAttr(namesDict);
+  }
+
+  loweringState.setModelOp(modelOp);
 
   // Initialize the init state.
   loweringState.getInitOpBuilder().setInsertionPointToEnd(
@@ -837,7 +859,7 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
 
 LogicalResult MOGraphLowering::lowerBlock(Block *block) {
   // Ensure the block is sorted with operands to operations appearing before
-  // their use. 
+  // their use.
   mlir::sortTopologically(block);
 
   for (Operation &op : *block) {
