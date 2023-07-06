@@ -96,6 +96,14 @@ public:
     std::optional<bool> legacyShapeInference;
   };
 
+  // Metric used to verify the accuracy of the model.
+  struct Metric {
+    std::string name;
+    std::optional<double> expected;
+    std::optional<double> atol;
+    std::optional<double> rtol;
+  };
+
   ModelSpec() = default;
   ModelSpec(const ModelSpec &) = default;
   ModelSpec(ModelSpec &&) = default;
@@ -109,8 +117,11 @@ public:
   std::string name;
   std::string task;
   std::string description;
+  std::string data_name;
+  std::string data_description;
   SmallVector<ModelBinary, 3> model;
   SmallVector<ModelIOSpec, 5> inputs, outputs;
+  SmallVector<Metric, 5> metrics;
 };
 } // namespace M
 

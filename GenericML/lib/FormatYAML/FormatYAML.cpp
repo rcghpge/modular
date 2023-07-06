@@ -175,6 +175,26 @@ struct MappingTraits<M::ModelSpec::ModelIOSpec> {
 LLVM_YAML_IS_SEQUENCE_VECTOR(M::ModelSpec::ModelIOSpec);
 
 //===----------------------------------------------------------------------===//
+// MetricSpec
+//===----------------------------------------------------------------------===//
+
+namespace llvm::yaml {
+template <>
+struct MappingTraits<M::ModelSpec::Metric> {
+  static void mapping(IO &io, M::ModelSpec::Metric &metric) {
+    io.mapRequired("name", metric.name);
+    io.mapOptional("expected", metric.expected);
+    io.mapOptional("atol", metric.atol);
+    io.mapOptional("rtol", metric.rtol);
+  }
+};
+} // namespace llvm::yaml
+
+/// Use LLVM_YAML_IS_SEQUENCE_VECTOR to specify SequenceTraits<> on the
+/// SmallVector<Metric> type.
+LLVM_YAML_IS_SEQUENCE_VECTOR(M::ModelSpec::Metric);
+
+//===----------------------------------------------------------------------===//
 // M::ModelSpec::NameSubstitutions
 //===----------------------------------------------------------------------===//
 
@@ -270,9 +290,14 @@ void llvm::yaml::MappingTraits<M::ModelSpec>::mapping(IO &io,
     io.mapOptional("task", modelSpec.task);
   if (!io.outputting() || !modelSpec.description.empty())
     io.mapOptional("description", modelSpec.description);
+  if (!io.outputting() || !modelSpec.data_name.empty())
+    io.mapOptional("data_name", modelSpec.data_name);
+  if (!io.outputting() || !modelSpec.data_description.empty())
+    io.mapOptional("data_description", modelSpec.data_description);
   io.mapRequired("model", modelSpec.model);
   io.mapRequired("inputs", modelSpec.inputs);
   io.mapRequired("outputs", modelSpec.outputs);
+  io.mapOptional("metrics", modelSpec.metrics);
 }
 
 namespace {
