@@ -81,6 +81,36 @@ namespace {
       /*otherParams=*/kgenParams);
 }
 
+
+// Create a call to the slice kernel directly in MOGG.
+[[maybe_unused]] MOGG::CallOp createMOGGSlice(mlir::OpBuilder &builder,
+                                                mlir::Location loc,
+                                                Value tensorIn,
+                                                Type outType,
+                                                const SmallVector<int64_t>& start,
+                                                const SmallVector<int64_t>& stop,
+                                                const SmallVector<int64_t>& step) {
+  // Create a constant for the axis and each of the dimensions being sliced.
+  Value startVal = builder.create<MO::ConstantOp>(loc, start);
+  Value stopVal = builder.create<MO::ConstantOp>(loc, stop);
+  Value stepVal = builder.create<MO::ConstantOp>(loc, step);
+
+  // Add the non-blocking flag.
+  SmallVector<NamedAttribute> attrs;
+  attrs.push_back(builder.getNamedAttr("single_thread_blocking_override",
+                                       builder.getBoolAttr(false)));
+  mlir::DictionaryAttr kgenParams = builder.getDictionaryAttr(attrs);
+
+  // Create the call to the new reshape.
+  return builder.create<MOGG::CallOp>(
+      loc,
+      /*outputTypes=*/TypeRange{outType},
+      /*kernelTarget=*/MO::SliceOp::getOperationName(),
+      /*inputOperands=*/ValueRange{tensorIn, startVal, stopVal, stepVal},
+      /*lambdaParams=*/mlir::ArrayAttr{},
+      /*otherParams=*/kgenParams);
+}
+
 } // namespace
 
 } // namespace M::MOGG
