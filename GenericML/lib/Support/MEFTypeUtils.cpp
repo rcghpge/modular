@@ -35,3 +35,33 @@ M::decodeQuantizedSignature(MEFFunctionType signature,
   RETURN_ERROR(fillArgSpecs(inputTypes, inputSpecs));
   return fillArgSpecs(outputTypes, outputSpecs);
 }
+
+// Decodes a list of names from a `MEFListAttr` in an `MEFDictionaryAttr`.
+// For example, decodes {argument_names = ["arg0", "arg1"]} into
+// SmallVector<StringRef>{"arg0", "arg1"}.
+static ErrorOrSuccess decodeNamesFromAttrList(SmallVectorImpl<StringRef> &names,
+                                              MEFDictionaryAttr attrDictionary,
+                                              std::string_view key) {
+  auto namesAttrOr = attrDictionary.find(key);
+  if (!namesAttrOr)
+    return Error(Twine(key) + " not found in MGP ModelOp attr dict");
+  MEFDynamicAttr &namesAttr = *namesAttrOr;
+
+  llvm::transform(namesAttr.cast<MEFListAttr>(), std::back_inserter(names),
+                  [](MEFDynamicAttr element) {
+                    return element.cast<MEFAttr<StringRef>>().get();
+                  });
+
+  return success();
+}
+
+ErrorOrSuccess M::decodeTensorNames(MEFDictionaryAttr attrDictionary,
+                                    SmallVectorImpl<StringRef> &inputNames,
+                                    SmallVectorImpl<StringRef> &outputNames) {
+  ErrorOrSuccess errOr =
+      decodeNamesFromAttrList(inputNames, attrDictionary, "argument_names");
+  if (errOr.isError())
+    return errOr.takeError();
+
+  return decodeNamesFromAttrList(outputNames, attrDictionary, "result_names");
+}
