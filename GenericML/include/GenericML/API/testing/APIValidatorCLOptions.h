@@ -22,9 +22,17 @@ public:
                                 llvm::cl::Optional};
   cl::opt<size_t> num_threads{"num-threads", cl::desc("Number of threads"),
                               cl::init(0)};
+
+  cl::list<std::string> inputNames{
+      "input-names", cl::desc("Specify input names. This is always required "
+                              "and it must match the model's input names.")};
+
   cl::list<TensorShape, bool, TensorShapeParser> inputShapes{
-      "input-shapes", cl::desc("Specify input shapes. This is always required "
-                               "and it must match the model's input shapes.")};
+      "input-shapes",
+      cl::desc("Specify input shapes. This is always required "
+               "and it must match the model's input shapes. Provided shapes "
+               "must correspond to the tensors denoted by input-names in that "
+               "order.")};
 };
 
 } // namespace M

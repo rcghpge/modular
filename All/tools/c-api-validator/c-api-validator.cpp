@@ -35,9 +35,16 @@ public:
                                 llvm::cl::Optional};
   cl::opt<size_t> numThreads{"num-threads", cl::desc("Number of threads"),
                              cl::init(0)};
+
+  cl::list<std::string> inputNames{
+      "input-names", cl::desc("Specify input names. This is always required "
+                              "and it must match the model's input names")};
+
   cl::list<TensorShape, bool, TensorShapeParser> inputShapes{
       "input-shapes", cl::desc("Specify input shapes. This is always required "
-                               "and it must match the model's input shapes.")};
+                               "and it must match the model's input tensors in "
+                               "the same order as `input-names`")};
+
   cl::opt<bool> threaded{"threaded",
                          cl::desc("If true, 'concurrent' requests are run on "
                                   "separate foreign threads."),
@@ -213,6 +220,7 @@ struct RuntimeContextPhase {
 struct ExternalModel {
   std::string path;
   std::vector<TensorShape> inputShapes;
+  std::vector<std::string> inputNames;
 };
 
 /// We have compiled a model, but not yet initialized it.
@@ -332,6 +340,10 @@ struct ExecutePhase {
 
     const std::vector<TensorShape> &inputShapes =
         initializedModel->compiledModel->externalModel->inputShapes;
+
+    const std::vector<std::string> &inputNames =
+        initializedModel->compiledModel->externalModel->inputNames;
+
     size_t numInputs = inputShapes.size();
     result.inputToModel = M_newAsyncTensorArray(
         initializedModel->compiledModel->runtimeContext->context, numInputs);
@@ -340,13 +352,13 @@ struct ExecutePhase {
     result.inputTensors.reserve(numInputs);
 
     StatusPtr status(M_newStatus(), M_freeStatus);
-    for (auto inputShape : inputShapes) {
+    for (auto [inputShape, inputName] : llvm::zip(inputShapes, inputNames)) {
       SmallVector<int64_t> shape{};
       shape.reserve(inputShape.getRank());
       llvm::copy(inputShape, std::back_inserter(shape));
       // TODO: Currently assume f32 dtypes for all input tensors.
-      M_TensorSpec *inputSpec =
-          M_newTensorSpec(shape.data(), std::size(shape), M_FLOAT32);
+      M_TensorSpec *inputSpec = M_newTensorSpec(shape.data(), std::size(shape),
+                                                M_FLOAT32, inputName.c_str());
       result.inputSpecs.push_back(inputSpec);
 
       // TODO: eventually allow controlling the input values too.
@@ -471,6 +483,8 @@ int main(int argc, char **argv) {
   const std::vector<TensorShape> inputShapes(clOptions.inputShapes.begin(),
                                              clOptions.inputShapes.end());
 
+  const std::vector<std::string> inputNames(clOptions.inputNames.begin(),
+                                            clOptions.inputNames.end());
   // Collect the 'ExternalModels'.
   // TODO: We probably should take paths to model specification YAMLs so
   // as to extract all the metadata we need.
@@ -479,9 +493,15 @@ int main(int argc, char **argv) {
   for (const auto &path : clOptions.paths) {
     ExternalModel &externalModel = externalModels.emplace_back();
     externalModel.path = path;
-    externalModel.inputShapes.reserve(inputShapes.size());
-    std::copy(inputShapes.begin(), inputShapes.end(),
-              std::back_inserter(externalModel.inputShapes));
+    externalModel.inputShapes.resize(inputShapes.size());
+    llvm::copy(inputShapes, externalModel.inputShapes.begin());
+
+    assert(
+        inputNames.size() == inputShapes.size() &&
+        "number of input tensor names does not match number of tensor shapes");
+
+    externalModel.inputNames.resize(inputNames.size());
+    llvm::copy(inputNames, externalModel.inputNames.begin());
   }
 
   std::mutex mu; // protects vectors during concurrent execution.

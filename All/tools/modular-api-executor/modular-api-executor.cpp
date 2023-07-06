@@ -168,6 +168,11 @@ public:
       exit(EXIT_FAILURE);
     }
 
+    llvm::transform(spec.inputs, std::back_inserter(inputNames),
+                    [](const auto &input) { return input.name.c_str(); });
+    llvm::transform(spec.outputs, std::back_inserter(outputNames),
+                    [](const auto &output) { return output.name.c_str(); });
+
     StatusPtr status{M_newStatus(), &M_freeStatus};
     RuntimeConfigPtr runtimeConfig{M_newRuntimeConfig(), &M_freeRuntimeConfig};
     M_setNumThreads(runtimeConfig.get(), numThreads);
@@ -189,6 +194,9 @@ public:
 
   const M_RuntimeContext *getContext() const { return runtimeContext.get(); };
 
+  ArrayRef<std::string> getInputNames() const { return inputNames; }
+  ArrayRef<std::string> getOutputNames() const { return outputNames; }
+
   ErrorOr<std::unique_ptr<ExecutableModel>>
   setup(Runtime &runtime) const override;
 
@@ -199,6 +207,8 @@ private:
   std::string name;
   std::string pathOrId;
   std::string exportedName;
+  SmallVector<std::string> inputNames;
+  SmallVector<std::string> outputNames;
   RuntimeContextPtr runtimeContext;
   EncodedLocation location;
 };
@@ -276,7 +286,8 @@ public:
               inputShape.emplace_back(dim);
             TensorSpecPtr spec{
                 M_newTensorSpec(inputShape.data(), inputShape.size(),
-                                convertToCDataType(inputTensor.getEltType())),
+                                convertToCDataType(inputTensor.getEltType()),
+                                model->getInputNames()[inputIndex].c_str()),
                 &M_freeTensorSpec};
             M_borrowTensorInto(inputTensors.get(), inputTensor.getBuffer(),
                                spec.get(), status.get());
