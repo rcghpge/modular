@@ -1022,7 +1022,43 @@ struct BroadcastReshapePattern : public OpRewritePattern<Static::ReshapeOp> {
 
     rewriter.replaceOpWithNewOp<Static::BroadcastToOp>(op, op.getType(),
                                                        squash);
+    return mlir::success();
+  }
+};
 
+/// A pattern that detects a matmul with a vector weight and a constant
+/// input, and transposes it.
+struct GemvPattern : public OpRewritePattern<MatmulOp> {
+  GemvPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
+
+  LogicalResult matchAndRewrite(MO::MatmulOp op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    Value a = op.getTensorA();
+    Value b = op.getTensorB();
+    auto bType = b.getType().cast<TensorType>();
+
+    if (!(a.getDefiningOp<MO::ConstantOp>() && bType.hasStaticShape() &&
+          bType.getIntDim(1) == 1))
+      return rewriter.notifyMatchFailure(op, "failed to match pattern");
+
+    TensorValue perm =
+        rewriter.create<ConstantOp>(loc, SmallVector<int64_t>{1, 0});
+
+    auto transposeType = [&](Value x) {
+      auto xType = x.getType().cast<TensorType>();
+      return TensorType::get(
+          SmallVector<int64_t>{xType.getIntDim(1), xType.getIntDim(0)},
+          xType.getElementType());
+    };
+    auto transpose = [&](Value x) {
+      auto xTransposeTy = transposeType(x);
+      return rewriter.create<TransposeOp>(loc, xTransposeTy, x, perm);
+    };
+
+    auto matmul = rewriter.create<MatmulOp>(loc, transposeType(op),
+                                            transpose(b), transpose(a));
+    rewriter.replaceOp(op, transpose(matmul));
     return mlir::success();
   }
 };
@@ -1034,14 +1070,14 @@ struct SymbolicOptimizationPass
     MLIRContext *context = &getContext();
 
     RewritePatternSet patterns(context);
-    patterns.add<CommuteBroadcastWithFlatennedWhere,
-                 ConvertBatchMatmulToMatmulPattern, FlattenNestedConcatPattern,
-                 Pow2Pattern, Pow3Pattern, GathersToSplitPattern, GeluPattern,
-                 ElementWiseUnaryVectorPattern, ElementWiseBinaryVectorPattern,
-                 BroadcastReshapePattern, SinkTransposeThroughUnaryOpPattern,
-                 SinkTransposeThroughBinaryOpPattern,
-                 SinkTransposeThroughStaticBroadcastToOpPattern,
-                 SplitAndSqueezesPattern>(context);
+    patterns.add<
+        CommuteBroadcastWithFlatennedWhere, ConvertBatchMatmulToMatmulPattern,
+        FlattenNestedConcatPattern, Pow2Pattern, Pow3Pattern,
+        GathersToSplitPattern, GeluPattern, ElementWiseUnaryVectorPattern,
+        ElementWiseBinaryVectorPattern, BroadcastReshapePattern, GemvPattern,
+        SinkTransposeThroughUnaryOpPattern, SinkTransposeThroughBinaryOpPattern,
+        SinkTransposeThroughStaticBroadcastToOpPattern,
+        SplitAndSqueezesPattern>(context);
     Static::BroadcastToOp::getCanonicalizationPatterns(patterns, context);
     TransposeOp::getCanonicalizationPatterns(patterns, context);
 
