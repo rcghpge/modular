@@ -66,6 +66,14 @@ mo.graph @static_broadcast_no_reshape<N>(%from: !mo.tensor<[N, 1, 0], f32>) -> !
   mo.output %res : !mo.tensor<[N, 10, 0], f32>
 }
 
+// CHECK: mo.graph @static_broadcast_fold_consecutive_broadcast(%[[FROM:.*]]: !mo.tensor<[3, 1], f32>) -> !mo.tensor<[5, 3, 5], f32>
+mo.graph @static_broadcast_fold_consecutive_broadcast(%from: !mo.tensor<[3, 1], f32>) -> !mo.tensor<[5, 3, 5], f32> {
+  // CHECK-NEXT: %[[RES2:.*]] = mo.static.broadcast_to(%[[FROM]]) : !mo.tensor<[3, 1], f32> -> !mo.tensor<[5, 3, 5], f32>
+  %res1 = mo.static.broadcast_to(%from) : !mo.tensor<[3, 1], f32> -> !mo.tensor<[1, 3, 5], f32>
+  %res2 = mo.static.broadcast_to(%res1) : !mo.tensor<[1, 3, 5], f32> -> !mo.tensor<[5, 3, 5], f32>
+  mo.output %res2 : !mo.tensor<[5, 3, 5], f32>
+}
+
 //===----------------------------------------------------------------------===//
 // Static_ReshapeOp
 //===----------------------------------------------------------------------===//
