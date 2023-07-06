@@ -345,8 +345,8 @@ struct ExecutePhase {
         initializedModel->compiledModel->externalModel->inputNames;
 
     size_t numInputs = inputShapes.size();
-    result.inputToModel = M_newAsyncTensorArray(
-        initializedModel->compiledModel->runtimeContext->context, numInputs);
+    result.inputToModel = M_newAsyncTensorMap(
+        initializedModel->compiledModel->runtimeContext->context);
 
     result.inputSpecs.reserve(numInputs);
     result.inputTensors.reserve(numInputs);
@@ -395,9 +395,12 @@ struct ExecutePhase {
     if (numInputs != inputSpecs.size())
       return Error(Twine("expecting ") + Twine(numInputs) +
                    " --inputSpecs to match model arity");
-
+    M_TensorNameArray *outputTensorNames = M_getOutputNames(
+        initializedModel->compiledModel->compiledModel, status.get());
     for (size_t i = 0; i < numOutputs; ++i) {
-      M_AsyncTensor *tensor = M_getTensorByIndexFrom(outputs, i, status.get());
+      const char *outputTensorName = M_getTensorNameAt(outputTensorNames, i);
+      M_AsyncTensor *tensor =
+          M_getTensorByNameFrom(outputs, outputTensorName, status.get());
       RETURN_IF_ERROR(status);
 
       size_t numElements = M_getTensorNumElements(tensor);
@@ -416,14 +419,14 @@ struct ExecutePhase {
   ExecutePhase() = default;
   ~ExecutePhase() {
     if (outputs) {
-      M_freeAsyncTensorArray(outputs);
+      M_freeAsyncTensorMap(outputs);
       outputs = nullptr;
     }
     for (auto inputSpec : inputSpecs)
       M_freeTensorSpec(inputSpec);
     inputSpecs.clear();
     if (inputToModel) {
-      M_freeAsyncTensorArray(inputToModel);
+      M_freeAsyncTensorMap(inputToModel);
       inputToModel = nullptr;
     }
   }
@@ -446,13 +449,13 @@ struct ExecutePhase {
   }
 
   const InitializedModelPhase *initializedModel = nullptr;
-  M_AsyncTensorArray *inputToModel = nullptr;
+  M_AsyncTensorMap *inputToModel = nullptr;
   std::vector<M_TensorSpec *> inputSpecs;
   // We'll hold backing buffers for all the input tensors for the duration
   // of the execute call, and only pass 'borrowed buffers' into the model's
   // 'execute' entry point.
   std::vector<std::vector<float>> inputTensors;
-  M_AsyncTensorArray *outputs = nullptr;
+  M_AsyncTensorMap *outputs = nullptr;
 };
 
 #define EXIT_IF_ERROR(x, e)                                                    \

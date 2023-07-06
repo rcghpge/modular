@@ -273,9 +273,8 @@ public:
         args, [modularModel, model, outputs = std::move(outputCopy),
                &runtime](MutableArrayRef<AnyAsyncValueRef> args) mutable {
           const M_RuntimeContext *context = model->getContext();
-          TensorArrayPtr inputTensors{
-              M_newAsyncTensorArray(context, model->getNumInputs()),
-              &M_freeAsyncTensorArray};
+          TensorMapPtr inputTensors{M_newAsyncTensorMap(context),
+                                    &M_freeAsyncTensorMap};
 
           StatusPtr status{M_newStatus(), &M_freeStatus};
           for (auto &&[inputIndex, input] : llvm::enumerate(args)) {
@@ -297,9 +296,9 @@ public:
             }
           }
 
-          TensorArrayPtr outputTensors = {nullptr, &M_freeAsyncTensorArray};
+          TensorMapPtr outputTensors = {nullptr, &M_freeAsyncTensorMap};
 
-          M_AsyncTensorArray *outputTensorArray = M_executeModelSync(
+          M_AsyncTensorMap *outputTensorMap = M_executeModelSync(
               context, modularModel, inputTensors.get(), status.get());
 
           if (M_isError(status.get())) {
@@ -307,7 +306,7 @@ public:
             exit(EXIT_FAILURE);
           }
 
-          outputTensors.reset(outputTensorArray);
+          outputTensors.reset(outputTensorMap);
 
           // Mark the input chain as ready.
           std::move(outputs[0]).emplace<Chain>();
@@ -318,7 +317,9 @@ public:
             // Get the output tensor. This tensor will be converted
             // to a GenericML tensor.
             TensorPtr outputTensor = {
-                M_getTensorByIndexFrom(outputTensors.get(), i, status.get()),
+                M_getTensorByNameFrom(outputTensors.get(),
+                                      model->getOutputNames()[i].c_str(),
+                                      status.get()),
                 &M_freeTensor};
 
             if (M_isError(status.get())) {
