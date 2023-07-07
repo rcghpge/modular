@@ -443,6 +443,28 @@ def MOGG_AllocateMemoryOp : MOGG_Op<"allocate_tensors"> {
   }];
 }
 
+def MOGG_CreateEmptyTensorsOp : MOGG_Op<"empty_tensors"> {
+  let results = (outs Variadic<MO_Tensor>:$results);
+
+  let summary = "This creates some tensors which have only shape information but no value";
+  let description = [{
+    These tensors will be created with the correct shape and type but will have
+    no memory allocated. These are a temporary construct to allow shape functions
+    to create null tensors without needing to deal with outputs etc.
+
+    Example:
+    ```mlir
+    %alloc = mogg.create_empty_tensors : !mo.tensor<[2, 3], f32>
+    ```
+    This returns a tensor with an internal memory allocation.
+  }];
+
+  let assemblyFormat = [{
+   attr-dict `:` type($results)
+  }];
+}
+
+
 def MOGG_OutputPlaceholdersOp : MOGG_Op<"output_placeholders"> {
   let results = (outs Variadic<MO_Tensor>:$results);
 
