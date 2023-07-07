@@ -50,10 +50,6 @@ bool isAtMostOnce(Operation *op);
 /// references to any of its operands.
 SmallVector<Value> getIndicatingResults(Operation *op);
 
-/// Returns a representative 'indicating result' for op, or returns null if
-/// no such result exists.
-Value getRepresentativeIndicatingResult(Operation *op);
-
 /// Returns the 'gating operands' for op. The op can only BEGIN execution once
 /// ALL gating operands are ready.
 SmallVector<Value> getGatingOperands(Operation *op);

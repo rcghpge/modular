@@ -17,7 +17,7 @@
 
 #include "GraphRT/MLIRToMEF.h"
 #include "GraphRT/MEF/MEFEncoding.h"
-#include "GraphRT/MEFDialect/MEFNonStrict.h"
+#include "GraphRT/MEFDialect/MEFNonStrictInterface.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "Support/ADT/ConcatenationTree.h"
 #include "Support/ErrorOr.h"
@@ -1281,7 +1281,7 @@ void RegionEmitter::emitRegion(Region *region) {
     if (auto opaque = dyn_cast<MEF::OpaqueOp>(op))
       isNonStrict = opaque.getNonstrict();
     else
-      isNonStrict = isa<MEF::NonStrictOp>(op);
+      isNonStrict = isa<MEF::NonStrictInterface>(op);
 
     // Offset of the primitive in the list.
     primitiveList.alignTo(MEF::kPrimitiveEntryAlignment);

@@ -13,7 +13,7 @@
 
 #include "GraphRT/GRTDialect/GRTControlFlowInterface.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
-#include "GraphRT/MEFDialect/MEFNonStrict.h"
+#include "GraphRT/MEFDialect/MEFNonStrictInterface.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/RegionKindInterface.h"

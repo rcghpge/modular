@@ -89,6 +89,7 @@
 // CHECK-NEXT: %0[0] |-> {%0, %1, %2, %3#0, %5[2], %6[2], %5[3], %4}
 // CHECK-NEXT: %0 |-> {%3#0}
 // CHECK-NEXT: %2 |-> {%6[2], %5[3], %4}
+// CHECK-NEXT: %3#0 |-> {%4}
 // CHECK-NEXT: %5[2] |-> {%4}
 // CHECK-NEXT: %6[2] |-> {%4}
 // CHECK-NEXT: %5[3] |-> {%4}
@@ -96,12 +97,11 @@
 
 // exclusive now accounts for nesting and the disjointness of the if branches
 // CHECK: exclusive begin
-// Note that we can't show %0 is consumed by the grt.if since it doesn't return
-// any 'indicating' result (ie a chain).
-// We know the values bound within the if branches don't overlap.
+// CHECK-NEXT: %0 |-> {%4}
 // CHECK-NEXT: %5[2] |-> {%5[3]}
 // CHECK-NEXT: %6[2] |-> {%5[3]}
 // CHECK-NEXT: %5[3] |-> {%5[2], %6[2]}
+// CHECK-NEXT: %4 |-> {%0}
 // CHECK-NEXT: exclusive end
 
 mgp.model @simple : tf init {
@@ -276,11 +276,9 @@ mgp.model @redundant : tf init {
 // CHECK: %5 |-> {%6, %9, %15#0[2], %16[2], %15#0[3], %16[3], %13#0, %14}
 // CHECK: runsLater end
 
-// Note that there's nothing telling us the grt.if condition argument has
-// been consumed by the time the if branches begin execution.
 // CHECK: exclusive begin
 // CHECK: %16[2] |-> {%7, %8, %9, %arg4[2], %arg4[3], %15#0[3], %15#1[3], %16[3], %14}
-// CHECK: %12#1 |-> {%3, %4, %6, %7, %8, %9, %arg3[2], %arg4[2], %arg3[3], %arg4[3], %14}
+// CHECK: %12#1 |-> {%0, %1, %2, %3, %4, %6, %7, %8, %9, %10#0, %arg3[2], %arg4[2], %arg3[3], %arg4[3], %14}
 // CHECK: exclusive end
 
 mgp.model @if : tf init {
@@ -350,9 +348,7 @@ mgp.model @if : tf init {
 // CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<8xf32>, sym_name = "conditional_c"} : () -> ()
 
 // CHECK: exclusive begin
-// TODO: %6 is also exclusive with %arg0 since %4 must be ready, and with %arg2[2]&%arg2[3] since
 // CHECK: %6 |-> {%0, %3, %4, %arg3[2], %arg3[3], %10}
-
 // CHECK: exclusive end
 
 mgp.model @conditional_c : tf init {

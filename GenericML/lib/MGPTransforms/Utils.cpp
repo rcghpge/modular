@@ -7,6 +7,8 @@
 #include "./Utils.h"
 
 #include "GenericML/MGPDialect/MGPUtils.h"
+#include "GraphRT/MEFDialect/MEFChainIndicatesFinishedInterface.h"
+#include "GraphRT/MEFDialect/MEFNonStrictInterface.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Transforms/TopologicalSortUtils.h"
@@ -147,28 +149,21 @@ bool M::MGP::isAtMostOnce(Operation *op) {
 }
 
 SmallVector<Value> M::MGP::getIndicatingResults(Operation *op) {
-  if (!isa<MEF::NonStrictOp>(op))
-    // All results are indicating for strict ops.
+  // Note there's no special case for control flow ops here: we'll consider
+  // the control flow op itself to be finished when any of its results
+  // are ready.
+
+  if (!isa<MEF::ChainIndicatesFinishedInterface>(op))
+    // All results are indicating.
     return op->getResults();
 
-  // Only chain results, if any, are indicating for non-strict ops.
+  // Only chain results, if any, are indicating.
   SmallVector<Value> results;
   for (Value result : op->getResults()) {
     if (isa<MEF::ChainType>(result.getType()))
       results.emplace_back(result);
   }
   return results;
-}
-
-Value M::MGP::getRepresentativeIndicatingResult(Operation *op) {
-  SmallVector<Value> results = getIndicatingResults(op);
-  if (results.empty())
-    return {};
-  for (Value result : results) {
-    if (isa<MEF::ChainType>(result.getType()))
-      return result;
-  }
-  return results.front();
 }
 
 SmallVector<Value> M::MGP::getGatingOperands(Operation *op) {
@@ -193,12 +188,14 @@ bool M::MGP::isGatingOperand(const OpOperand *opOperand) {
     // Nothing gates a mef.output.
     return false;
 
-  if (!isa<MEF::NonStrictOp>(op))
+  if (!isa<MEF::NonStrictInterface>(op))
     // All operands are gating for strict ops.
     return true;
 
-  // Only chain operands, if any, are indicating for non-strict ops.
-  return isa<MEF::ChainType>(opOperand->get().getType());
+  // Nothing gates a non-strict op.
+  // Generally, all such ops require custom handling in any analysis trying to
+  // track the implied control-flow dependencies between ops.
+  return false;
 }
 
 SmallVector<OpOperand *> M::MGP::allUsingOpOperands(Value buffer,

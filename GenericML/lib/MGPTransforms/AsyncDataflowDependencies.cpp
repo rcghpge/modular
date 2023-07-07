@@ -7,7 +7,6 @@
 #include "./AsyncDataflowDependencies.h"
 
 #include "GraphRT/GRTDialect/GRTOps.h"
-#include "GraphRT/MEFDialect/MEFNonStrict.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "llvm/ADT/EquivalenceClasses.h"
 

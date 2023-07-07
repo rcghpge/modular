@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-include "GraphRT/MEFDialect/MEFNonStrict.td"
+include "GraphRT/MEFDialect/MEFNonStrictInterface.td"
 include "GraphRT/GRTDialect/GRTOpsBase.td"
 include "GraphRT/GRTDialect/GRTControlFlowInterface.td"
 include "mlir/IR/RegionKindInterface.td"
@@ -91,7 +91,7 @@ def ChainFanoutOp : GRTOp<"chain.fanout", [
 //===----------------------------------------------------------------------===//
 
 def InvokeOp : GRTOp<"invoke", [DeclareOpInterfaceMethods<SymbolUserOpInterface>,
-                            NonStrictOp]> {
+                                NonStrictInterface]> {
   let summary = "Invoke an invokable (non-strictly).";
 
   let arguments = (ins FlatSymbolRefAttr:$target, Variadic<AnyType>:$operands);
@@ -107,7 +107,7 @@ def InvokeOp : GRTOp<"invoke", [DeclareOpInterfaceMethods<SymbolUserOpInterface>
 
 def IfOp : GRTOp<"if",
           [IsolatedFromAbove, SingleBlockImplicitTerminator<"MEF::OutputOp">,
-           NonStrictOp, RegionKindInterface, HasOnlyGraphRegion,
+           NonStrictInterface, RegionKindInterface, HasOnlyGraphRegion,
            DeclareOpInterfaceMethods<GRTControlFlowInterface>]> {
   let summary = "if control flow operation";
   let description = [{
@@ -162,7 +162,7 @@ def IfOp : GRTOp<"if",
 
 def WhileOp : GRTOp<"while",
           [IsolatedFromAbove, SingleBlockImplicitTerminator<"MEF::OutputOp">,
-           NonStrictOp, RegionKindInterface, HasOnlyGraphRegion,
+           NonStrictInterface, RegionKindInterface, HasOnlyGraphRegion,
            DeclareOpInterfaceMethods<GRTControlFlowInterface>]> {
   let summary = "while control flow operation";
   let description = [{
@@ -229,7 +229,7 @@ def WhileOp : GRTOp<"while",
 
 def RepeatI32Op : GRTOp<"repeat.i32",
          [IsolatedFromAbove, SingleBlockImplicitTerminator<"MEF::OutputOp">,
-          NonStrictOp, RegionKindInterface, HasOnlyGraphRegion,
+          NonStrictInterface, RegionKindInterface, HasOnlyGraphRegion,
           DeclareOpInterfaceMethods<GRTControlFlowInterface>]> {
   let summary = "Repeat a body N times";
   let description = [{

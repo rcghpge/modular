@@ -11,7 +11,8 @@
 #ifndef MEF_TD
 #define MEF_TD
 
-include "GraphRT/MEFDialect/MEFNonStrict.td"
+include "GraphRT/MEFDialect/MEFNonStrictInterface.td"
+include "GraphRT/MEFDialect/MEFChainIndicatesFinishedInterface.td"
 include "GraphRT/MEFDialect/MEFTypes.td"
 include "GraphRT/MEFDialect/MEFOps.td"
 
