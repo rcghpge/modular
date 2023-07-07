@@ -395,10 +395,13 @@ struct ExecutePhase {
     if (numInputs != inputSpecs.size())
       return Error(Twine("expecting ") + Twine(numInputs) +
                    " --inputSpecs to match model arity");
-    M_TensorNameArray *outputTensorNames = M_getOutputNames(
-        initializedModel->compiledModel->compiledModel, status.get());
+    TensorNamesPtr outputTensorNames{
+        M_getOutputNames(initializedModel->compiledModel->compiledModel,
+                         status.get()),
+        M_freeTensorNameArray};
     for (size_t i = 0; i < numOutputs; ++i) {
-      const char *outputTensorName = M_getTensorNameAt(outputTensorNames, i);
+      const char *outputTensorName =
+          M_getTensorNameAt(outputTensorNames.get(), i);
       M_AsyncTensor *tensor =
           M_getTensorByNameFrom(outputs, outputTensorName, status.get());
       RETURN_IF_ERROR(status);
