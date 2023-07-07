@@ -121,6 +121,14 @@ public:
       "framework-version",
       cl::desc("Prints the external framework's version.")};
 
+  cl::list<std::string> inputNames{
+      "input-names", cl::desc("Specify input names. This is always required "
+                              "and it must match the model's input names")};
+
+  cl::list<std::string> outputNames{
+      "output-names", cl::desc("Specify output names. This is always required "
+                               "and it must match the model's output names")};
+
   /// Reads a model specification from the YAML file set via the
   /// "model-specification" option.
   ModelSpec readModelSpecificationOrExit() {
@@ -155,7 +163,9 @@ class ModularExecutableModel;
 class ModularModel final : public Model {
 public:
   ModularModel(std::string_view name, std::string_view pathOrId,
-               std::string_view exportedName, ModelSpec modelSpec,
+               std::string_view exportedName,
+               std::vector<std::string> inputTensorNames,
+               std::vector<std::string> outputTensorNames, ModelSpec modelSpec,
                int32_t numThreads)
       : Model(modelSpec),           // create a model from the ModelSpec
         spec(std::move(modelSpec)), // move the model spec
@@ -168,10 +178,22 @@ public:
       exit(EXIT_FAILURE);
     }
 
-    llvm::transform(spec.inputs, std::back_inserter(inputNames),
-                    [](const auto &input) { return input.name.c_str(); });
-    llvm::transform(spec.outputs, std::back_inserter(outputNames),
-                    [](const auto &output) { return output.name.c_str(); });
+    // Names provided on the command line supersede names in spec
+    if (inputTensorNames.empty()) {
+      llvm::transform(spec.inputs, std::back_inserter(inputNames),
+                      [](const auto &input) { return input.name.c_str(); });
+    } else {
+      llvm::transform(inputTensorNames, std::back_inserter(inputNames),
+                      [](const auto &input) { return input; });
+    }
+
+    if (outputTensorNames.empty()) {
+      llvm::transform(spec.inputs, std::back_inserter(inputNames),
+                      [](const auto &input) { return input.name.c_str(); });
+    } else {
+      llvm::transform(outputTensorNames, std::back_inserter(outputNames),
+                      [](const auto &output) { return output; });
+    }
 
     StatusPtr status{M_newStatus(), &M_freeStatus};
     RuntimeConfigPtr runtimeConfig{M_newRuntimeConfig(), &M_freeRuntimeConfig};
@@ -399,6 +421,7 @@ int main(int argc, char **argv) {
   // the execution.
   auto model = std::make_unique<ModularModel>(
       clOptions.benchmarkName, clOptions.inputFilename, clOptions.exportedName,
+      clOptions.inputNames, clOptions.outputNames,
       clOptions.readModelSpecificationOrExit(), clOptions.getNumThreads());
 
   // The runtime should run as single threaded. We have already set the
