@@ -175,7 +175,7 @@ struct MappingTraits<M::ModelSpec::ModelIOSpec> {
 LLVM_YAML_IS_SEQUENCE_VECTOR(M::ModelSpec::ModelIOSpec);
 
 //===----------------------------------------------------------------------===//
-// MetricSpec
+// M::ModelSpec::MetricSpec
 //===----------------------------------------------------------------------===//
 
 namespace llvm::yaml {
