@@ -101,8 +101,8 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
 
   auto standaloneOr = compiler.produceStandaloneArchiveAttr(
       symTable, exportedSymbols, target, true);
-  if (failed(standaloneOr))
-    return Error("Failed to create archive attribute");
+  if (standaloneOr.isError())
+    return standaloneOr.takeError();
   ElementsAttr archiveAttr = *standaloneOr;
 
   // Add the kernel as a constant.
