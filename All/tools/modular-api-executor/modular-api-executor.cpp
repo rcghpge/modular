@@ -164,13 +164,14 @@ class ModularModel final : public Model {
 public:
   ModularModel(std::string_view name, std::string_view pathOrId,
                std::string_view exportedName,
-               std::vector<std::string> inputTensorNames,
-               std::vector<std::string> outputTensorNames, ModelSpec modelSpec,
+               ArrayRef<std::string> inputTensorNames,
+               ArrayRef<std::string> outputTensorNames, ModelSpec modelSpec,
                int32_t numThreads)
       : Model(modelSpec),           // create a model from the ModelSpec
         spec(std::move(modelSpec)), // move the model spec
         name(name),                 // the name of the the benchmark
         pathOrId(pathOrId), exportedName(exportedName),
+        inputNames(inputTensorNames), outputNames(outputTensorNames),
         runtimeContext(nullptr, &M_freeRuntimeContext),
         location(LLCL::FileNameLocationDecoder::getEncodedLocation(pathOrId)) {
     if (numThreads < 0) {
@@ -178,21 +179,14 @@ public:
       exit(EXIT_FAILURE);
     }
 
-    // Names provided on the command line supersede names in spec
-    if (inputTensorNames.empty()) {
+    if (inputNames.empty()) {
       llvm::transform(spec.inputs, std::back_inserter(inputNames),
-                      [](const auto &input) { return input.name.c_str(); });
-    } else {
-      llvm::transform(inputTensorNames, std::back_inserter(inputNames),
-                      [](const auto &input) { return input; });
+                      [](const auto &input) { return input.name; });
     }
 
-    if (outputTensorNames.empty()) {
-      llvm::transform(spec.inputs, std::back_inserter(inputNames),
-                      [](const auto &input) { return input.name.c_str(); });
-    } else {
-      llvm::transform(outputTensorNames, std::back_inserter(outputNames),
-                      [](const auto &output) { return output; });
+    if (outputNames.empty()) {
+      llvm::transform(spec.outputs, std::back_inserter(outputNames),
+                      [](const auto &output) { return output.name; });
     }
 
     StatusPtr status{M_newStatus(), &M_freeStatus};
