@@ -36,7 +36,7 @@ LogicalResult StubCompiler::elaborateKGEN() {
   llvm::InitializeNativeTargetAsmParser();
   llvm::InitializeNativeTargetAsmPrinter();
 
-  ErrorOr<TargetInfoAttr> target = KGEN::getTargetInfoFor(
+  ErrorOr<TargetInfoAttr> target = M::getTargetInfoFor(
       kgenModule->getContext(), llvm::sys::getDefaultTargetTriple(),
       llvm::sys::getHostCPUName(), getHostCPUFeatures());
   if (target.isError())
