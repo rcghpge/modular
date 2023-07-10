@@ -130,10 +130,10 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
         pm.addPass(MOGG::createInlineLambdas());
         pm.addPass(MOGG::createSoftFuse());
       }
-
-      // Add explicit chain ready's to the end of fully sync kenrels.
-      pm.addPass(MOGG::createAddExplicitChainReady());
     }
+
+    // Add explicit chain ready's to the end of fully sync kenrels.
+    pm.addPass(MOGG::createAddExplicitChainReady());
 
     // Add a cleanup pass to catch e.g duplicated constants.
     pm.addPass(mlir::createCSEPass());
