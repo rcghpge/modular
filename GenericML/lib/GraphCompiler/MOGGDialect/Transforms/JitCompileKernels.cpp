@@ -229,11 +229,20 @@ SmallVector<KGEN::ParamDeclRefAttr> getUsedParameters(MOGG::KernelOp kernel) {
   // Track all unique parameters from a given tensor that we haven't seen
   // already.
   auto addParamsFromTensor = [&](Type t) {
+    MOSH::ShapeAttr shape;
+
+    // The type can either be a shape or a tensor.
     MO::TensorType asTensor = dyn_cast<MO::TensorType>(t);
-    if (!asTensor)
+    if (asTensor)
+      shape = asTensor.getTypedShapeAttr();
+    MOGG::ShapeType asShape = dyn_cast<MOGG::ShapeType>(t);
+    if (asShape)
+      shape = cast<MOSH::ShapeAttr>(asShape.getShapeAttr());
+
+    if (!shape)
       return;
 
-    for (auto dim : asTensor.getTypedShapeAttr().getValues()) {
+    for (auto dim : shape.getValues()) {
       if (auto param = dyn_cast<KGEN::ParamDeclRefAttr>(dim)) {
         if (seenParams.contains(param))
           continue;
@@ -407,7 +416,7 @@ struct JitCompileKernels
         return WalkResult::interrupt();
 
       // Lower the operation using a vectorized map over an elementwise lambda.
-      error = builder.lowerToElementwiseLambda(op);
+      error = builder.lowerToElementwiseLambda(op, usedParameters.size());
       if (error.isError())
         return WalkResult::interrupt();
 
@@ -421,14 +430,14 @@ struct JitCompileKernels
       // Tracking attributes makes it easier to create an array.
       symbolNamesAdded.push_back(jitExecute.getKernelNameAttr());
 
+      if (dumpStub.getValue())
+        builder.dumpStub();
+
       return WalkResult::advance();
     });
 
     if (error)
       return error;
-
-    if (dumpStub.getValue())
-      builder.dumpStub();
 
     if (!symbolNamesAdded.empty()) {
       // Convert our list into a combined attribute.
