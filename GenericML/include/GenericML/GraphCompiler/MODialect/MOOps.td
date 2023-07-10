@@ -1311,7 +1311,6 @@ def MO_BroadcastToOp : MO_ShapeModifierOp<"broadcast_to"> {
     ```
   }];
 
-  let hasCanonicalizeMethod = 1;
   let hasVerifier = 1;
 }
 

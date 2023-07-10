@@ -500,17 +500,6 @@ OpFoldResult NotEqualOp::fold(FoldAdaptor adaptor) {
 // MO_BroadcastToOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult BroadcastToOp::canonicalize(BroadcastToOp op,
-                                          PatternRewriter &rewriter) {
-  if (auto pastBroadcastOp = op.getInput().getDefiningOp<BroadcastToOp>()) {
-    rewriter.replaceOpWithNewOp<BroadcastToOp>(
-        op, op.getType(), pastBroadcastOp.getInput(), op.getNewShape());
-    return success();
-  }
-
-  return failure();
-}
-
 /// Check if the input type can be broadcasted to the result type, assuming both
 /// have static ranks.
 static ErrorOrSuccess verifyBroadcastStaticRanks(TensorType inputTy,

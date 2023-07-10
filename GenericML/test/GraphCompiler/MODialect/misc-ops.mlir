@@ -64,18 +64,6 @@ mo.graph @broadcast_diff_rank(%from: !mo.tensor<[3], f32>) -> !mo.tensor<[2, 3],
   mo.output %res : !mo.tensor<[2, 3], f32>
 }
 
-// CHECK: mo.graph @broadcast_fold(%[[FROM:.*]]: !mo.tensor<[3, 1], f32>) -> !mo.tensor<[5, 3, 5], f32>
-mo.graph @broadcast_fold(%from: !mo.tensor<[3, 1], f32>) -> !mo.tensor<[5, 3, 5], f32> {
-  %to1  = mo.constant {value = #M.dense_array<1, 3, 5> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %res1 = mo.broadcast_to(%from, %to1) : (!mo.tensor<[3, 1], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[1, 3, 5], f32>
-  // CHECK-NEXT: %[[TO2:.*]] = mo.constant {value = #M.dense_array<5, 3, 5> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %to2  = mo.constant {value = #M.dense_array<5, 3, 5> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  // CHECK-NEXT: %[[RES2:.*]] =  mo.broadcast_to(%[[FROM]], %[[TO2]]) : (!mo.tensor<[3, 1], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[5, 3, 5], f32>
-  %res2 = mo.broadcast_to(%res1, %to2) : (!mo.tensor<[1, 3, 5], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[5, 3, 5], f32>
-  // CHECK-NEXT: mo.output %[[RES2]] : !mo.tensor<[5, 3, 5], f32>
-  mo.output %res2 : !mo.tensor<[5, 3, 5], f32>
-}
-
 //===----------------------------------------------------------------------===//
 // ConcatOp
 //===----------------------------------------------------------------------===//
