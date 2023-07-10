@@ -34,6 +34,10 @@ class MO_Op<string mnemonic, list<Trait> traits = []>
 class MO_TensorOp<string mnemonic, list<Trait> traits = []>
   : MO_Op<mnemonic, [MO_TensorOpInterface] # traits>;
 
+// Base class for ops working with control flow
+class MO_ControlOp<string mnemonic, list<Trait> traits = []>
+  : MO_TensorOp<mnemonic, [MO_ControlOpInterface] # traits>;
+
 //===----------------------------------------------------------------------===//
 // IndexToTensorOp
 //===----------------------------------------------------------------------===//
@@ -134,7 +138,7 @@ def MO_GraphOp : MO_TensorOp<"graph", [
 // OutputOp
 //===----------------------------------------------------------------------===//
 
-def MO_OutputOp : MO_TensorOp<"output", [
+def MO_OutputOp : MO_ControlOp<"output", [
   Terminator, ReturnLike, HasParent<"MO::GraphOp">,
   DeclareOpInterfaceMethods<ParamOpInterface>
 ]>, NoParamDecls {
@@ -182,7 +186,7 @@ def MO_OutputOp : MO_TensorOp<"output", [
 // IfOp
 //===----------------------------------------------------------------------===//
 
-def IfOp : MO_TensorOp<"if",
+def IfOp : MO_ControlOp<"if",
           [SingleBlockImplicitTerminator<"MO::YieldOp">]> {
   let summary = "if operation";
   let description = [{
@@ -227,7 +231,7 @@ def IfOp : MO_TensorOp<"if",
 // WhileOp
 //===----------------------------------------------------------------------===//
 
-def WhileOp : MO_TensorOp<"while",
+def WhileOp : MO_ControlOp<"while",
           [SingleBlockImplicitTerminator<"MO::YieldOp">,
           IsolatedFromAbove]> {
   let summary = "while control flow operation";
@@ -287,7 +291,7 @@ def WhileOp : MO_TensorOp<"while",
 //===----------------------------------------------------------------------===//
 
 def MO_YieldOp
-    : MO_TensorOp<"yield", [
+    : MO_ControlOp<"yield", [
         Terminator, ReturnLike, Pure, ParentOneOf<["IfOp", "WhileOp"]>
       ]> {
   let summary = "MO yield operation";
@@ -320,7 +324,7 @@ def MO_YieldOp
 // RebindOp
 //===----------------------------------------------------------------------===//
 
-def MO_RebindOp : MO_TensorOp<"rebind", [
+def MO_RebindOp : MO_ControlOp<"rebind", [
     DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
   let summary = "tensor parameter rebind op";
   let description = [{

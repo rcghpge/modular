@@ -43,6 +43,13 @@ class MO_TensorOpInterfaceBase<string name, list<Interface> baseInterfaces = []>
   let dependentTraits = [MO_TensorOpInterface];
 }
 
+def MO_ControlOpInterface : OpInterface<"MOControlOpInterface"> {
+  let description = [{
+    Interface marking ops that are control flow
+  }];
+  let cppNamespace = "::M::MO";
+}
+
 def MO_Parameterization
     : MO_TensorOpInterfaceBase<"ParameterizationInterface"> {
   let description = [{

@@ -90,4 +90,24 @@ def SymbolicOptimization : Pass<"symbolic-optimize", "GraphOp"> {
   }];
 }
 
+def HoistParameterExpressions : Pass<"hoist-param-exprs", "GraphOp"> {
+  let summary = "Move parameter expressions out of ops and into a preceding alias.";
+  let description = [{
+    Transforms
+    ```
+    %1 = mo.op(%arg: !mo.tensor<[add(N,M)], f32>) : !mo.tensor<[add(N,M)], f32>
+    ```
+    into
+    ```
+    kgen.param.declare param_expr = <add(N,M)>
+    %arg_rebound = mo.rebind(%arg:!mo.tensor<[add(N,M)], f32>) :!mo.tensor<[param_expr], f32>
+    %tmp = mo.op(%arg_rebound: !mo.tensor<[param_expr], f32>) : !mo.tensor<[param_expr], f32>
+    %1 = %mo.rebind(tmp: !mo.tensor<(N,M), f32>): !mo.tensor<[add(N,M)], f32>
+    ```
+    `rebind`s are inserted around the block to ensure that the input and outputs of the block remain the same type.
+
+    This pass is nessesary for MOGG to jit kernels with parameter expressions in thier arguments.
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTRANSFORMS_TD

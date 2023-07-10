@@ -281,7 +281,8 @@ public:
         for (TypedAttr dim : argType.getDims())
           if (auto pDim = dyn_cast<KGEN::ParamDeclRefAttr>(dim))
             paramDims.emplace_back(pDim);
-        assert(dynDims->getNumResults() == paramDims.size());
+        if (dynDims->getNumResults() != paramDims.size())
+          return Error("Expressions in parameter arguments are not supported");
 
         // Only update the parameter mapping the first time.
         for (auto [pDim, dimValue] :
