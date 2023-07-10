@@ -113,6 +113,18 @@ mangleBlock(mlir::Block &block,
           name += sym.getLeafReference().str() + "_";
       }
 
+      // Mangle the kgen parameters into the calls as well.
+      if (call.getKgenParams()) {
+        mlir::NamedAttrList attrs{*call.getKgenParams()};
+        for (NamedAttribute named : attrs) {
+          name += named.getName().str() + "_";
+          auto asBool = dyn_cast<BoolAttr>(named.getValue());
+          assert(asBool && "[JITCOMPILEKERNELS] Only bool attrs are currently "
+                           "supported as extra parameters");
+          name += std::to_string(asBool.getValue()) + "_";
+        }
+      }
+
       for (Value input : innerOp.getOperands())
         name += valueToPositionInBlock[input] + "_";
 
