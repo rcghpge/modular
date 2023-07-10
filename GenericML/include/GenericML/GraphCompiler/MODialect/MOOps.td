@@ -1891,7 +1891,9 @@ def MO_GatherOp : MO_TensorOp<"gather", [
 // ScatterNdOp
 //===----------------------------------------------------------------------===//
 
-def MO_ScatterNdOp : MO_TensorOp<"scatter_nd"> {
+def MO_ScatterNdOp : MO_TensorOp<"scatter_nd", [
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>
+]> {
   let summary = "ScatterND Operation";
   let description = [{
     Scatter slices from updates to output according to indices.
