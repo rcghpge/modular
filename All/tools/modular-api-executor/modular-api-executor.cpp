@@ -85,15 +85,21 @@ static M_Dtype convertToCDataType(DType ty) {
   }
 }
 
-static M::TensorSpec getTensorSpec(M_AsyncTensor *tensor) {
-  M_Dtype dtype = M_getTensorType(tensor);
-  TensorSpecPtr spec = {M_getTensorSpec(tensor), &M_freeTensorSpec};
+/// Convert TensorSpec from API to GenericML TensorSpec.
+static M::TensorSpec getTensorSpec(M_TensorSpec *spec) {
+  M_Dtype dtype = M_getDtype(spec);
   SmallVector<ssize_t> inputShape;
-  size_t numDims = M_getRank(spec.get());
+  size_t numDims = M_getRank(spec);
   inputShape.reserve(numDims);
   for (size_t i = 0; i < numDims; ++i)
-    inputShape.push_back(M_getDimAt(spec.get(), i));
+    inputShape.push_back(M_getDimAt(spec, i));
   return {inputShape, convertToDType(dtype)};
+}
+
+/// Get TensorSpec from a API Tensor.
+static M::TensorSpec getTensorSpec(M_AsyncTensor *tensor) {
+  TensorSpecPtr spec = {M_getTensorSpec(tensor), &M_freeTensorSpec};
+  return getTensorSpec(spec.get());
 }
 
 /// Get size of a tensor in bytes.
@@ -131,53 +137,46 @@ public:
 
   /// Reads a model specification from the YAML file set via the
   /// "model-specification" option.
-  ModelSpec readModelSpecificationOrExit() {
+  ErrorOr<ModelSpec> readModelSpecification() {
     if (modelSpecificationFile.empty())
-      exit(reportError("the model specification file path must be specified."));
+      return Error("the model specification file path must be specified.");
 
     std::error_code errorCode;
     if (!std::filesystem::exists(
             std::filesystem::path{modelSpecificationFile.getValue()},
             errorCode)) {
-      exit(reportError(Twine("the model specification file ") +
-                       modelSpecificationFile + " does not exist."));
+      return Error(Twine("the model specification file ") +
+                   modelSpecificationFile + " does not exist.");
     }
 
     std::string errorMsg;
     auto fileOrErr = llvm::MemoryBuffer::getFile(modelSpecificationFile, true);
     if (std::error_code error = fileOrErr.getError()) {
-      exit(reportError(Twine("cannot open input file ") +
-                       modelSpecificationFile + ": " + error.message()));
+      return Error(Twine("cannot open input file ") + modelSpecificationFile +
+                   ": " + error.message());
     }
 
-    auto modelSpec = loadModelSpecFromYAML(std::move(*fileOrErr));
-    if (modelSpec.isError())
-      exit(reportError(Twine(modelSpec.getError())));
-
-    return modelSpec.takeValue();
+    return loadModelSpecFromYAML(std::move(*fileOrErr));
   }
 };
 
 class ModularExecutableModel;
 
+struct ModelState {
+  M_RuntimeContext *context;
+  M_AsyncCompiledModel *compiledModel;
+};
+
 class ModularModel final : public Model {
 public:
-  ModularModel(std::string_view name, std::string_view pathOrId,
-               std::string_view exportedName,
-               ArrayRef<std::string> inputTensorNames,
+  ModularModel(std::string_view name, ArrayRef<std::string> inputTensorNames,
                ArrayRef<std::string> outputTensorNames, ModelSpec modelSpec,
-               int32_t numThreads)
+               ModelState state, EncodedLocation loc)
       : Model(modelSpec),           // create a model from the ModelSpec
         spec(std::move(modelSpec)), // move the model spec
         name(name),                 // the name of the the benchmark
-        pathOrId(pathOrId), exportedName(exportedName),
         inputNames(inputTensorNames), outputNames(outputTensorNames),
-        runtimeContext(nullptr, &M_freeRuntimeContext),
-        location(LLCL::FileNameLocationDecoder::getEncodedLocation(pathOrId)) {
-    if (numThreads < 0) {
-      llvm::errs() << "num-threads must be positive, got " << numThreads;
-      exit(EXIT_FAILURE);
-    }
+        modelState(state), location(std::move(loc)) {
 
     if (inputNames.empty()) {
       llvm::transform(spec.inputs, std::back_inserter(inputNames),
@@ -188,17 +187,6 @@ public:
       llvm::transform(spec.outputs, std::back_inserter(outputNames),
                       [](const auto &output) { return output.name; });
     }
-
-    StatusPtr status{M_newStatus(), &M_freeStatus};
-    RuntimeConfigPtr runtimeConfig{M_newRuntimeConfig(), &M_freeRuntimeConfig};
-    M_setNumThreads(runtimeConfig.get(), numThreads);
-    runtimeContext.reset(
-        M_newRuntimeContext(runtimeConfig.get(), status.get()));
-
-    if (M_isError(status.get())) {
-      llvm::errs() << "Error: " << M_getError(status.get()) << "\n";
-      exit(EXIT_FAILURE);
-    }
   }
   // Gets the name of the model.
   StringRef getName() const override { return name; }
@@ -208,7 +196,7 @@ public:
   /// Gets the ModelSpec for this model.
   const ModelSpec &getModelSpec() const { return spec; }
 
-  const M_RuntimeContext *getContext() const { return runtimeContext.get(); };
+  const M_RuntimeContext *getContext() const { return modelState.context; };
 
   ArrayRef<std::string> getInputNames() const { return inputNames; }
   ArrayRef<std::string> getOutputNames() const { return outputNames; }
@@ -221,11 +209,9 @@ public:
 private:
   ModelSpec spec;
   std::string name;
-  std::string pathOrId;
-  std::string exportedName;
   SmallVector<std::string> inputNames;
   SmallVector<std::string> outputNames;
-  RuntimeContextPtr runtimeContext;
+  ModelState modelState;
   EncodedLocation location;
 };
 
@@ -234,10 +220,8 @@ private:
 class ModularExecutableModel final : public ExecutableModel {
 public:
   ModularExecutableModel(const ModularModel *model, Runtime &runtime,
-                         CompiledModelPtr compiledModel,
                          ModelPtr initalizedModel)
       : ExecutableModel(model, runtime),
-        compiledModel(std::move(compiledModel)),
         initializedModel(std::move(initalizedModel)) {}
 
   ~ModularExecutableModel() override = default;
@@ -372,7 +356,6 @@ public:
   }
 
 private:
-  CompiledModelPtr compiledModel;
   ModelPtr initializedModel;
 };
 
@@ -383,19 +366,60 @@ private:
 ErrorOr<std::unique_ptr<ExecutableModel>>
 ModularModel::setup(Runtime &runtime) const {
   // Create the executable model.
-  CompileConfigPtr compileConfig = {M_newCompileConfig(), &M_freeCompileConfig};
-  M_setModelPath(compileConfig.get(), pathOrId.data());
-  if (!exportedName.empty())
-    M_setExportedName(compileConfig.get(), exportedName.data());
-  StatusPtr status{M_newStatus(), &M_freeStatus};
-  CompiledModelPtr compiledModel{
-      M_compileModel(runtimeContext.get(), compileConfig.get(), status.get()),
-      &M_freeCompiledModel};
+  StatusPtr status = {M_newStatus(), &M_freeStatus};
   ModelPtr initalizedModel = {
-      M_initModel(runtimeContext.get(), compiledModel.get(), status.get()),
+      M_initModel(modelState.context, modelState.compiledModel, status.get()),
       &M_freeModel};
-  return std::make_unique<ModularExecutableModel>(
-      this, runtime, std::move(compiledModel), std::move(initalizedModel));
+  return std::make_unique<ModularExecutableModel>(this, runtime,
+                                                  std::move(initalizedModel));
+}
+
+template <typename SpecFunc>
+ErrorOr<SmallVector<ModelSpec::ModelIOSpec>>
+convertSpecs(M_AsyncCompiledModel *model, TensorNamesPtr specNames,
+             size_t specCount, SpecFunc func) {
+  SmallVector<ModelSpec::ModelIOSpec> specs;
+  StatusPtr status = {M_newStatus(), &M_freeStatus};
+  for (size_t i = 0; i < specCount; ++i) {
+    std::string specName = M_getTensorNameAt(specNames.get(), i);
+    TensorSpecPtr spec = {func(model, specName.c_str(), status.get()),
+                          &M_freeTensorSpec};
+    if (M_isError(status.get()))
+      return Error(M_getError(status.get()));
+    specs.emplace_back(
+        ModelSpec::ModelIOSpec{specName, getTensorSpec(spec.get())});
+  }
+  return specs;
+}
+
+/// Create ModelSpec from a compiledModel.
+static ErrorOr<ModelSpec> getModelSpec(M_AsyncCompiledModel *model) {
+  ModelSpec modelSpec;
+  StatusPtr status = {M_newStatus(), &M_freeStatus};
+  TensorNamesPtr inputNames = {M_getInputNames(model, status.get()),
+                               &M_freeTensorNameArray};
+  if (M_isError(status.get()))
+    return Error(M_getError(status.get()));
+  size_t inputCount = M_getNumModelInputs(model, status.get());
+  if (M_isError(status.get()))
+    return Error(M_getError(status.get()));
+  UNWRAP_ERROR(inputs, convertSpecs(model, std::move(inputNames), inputCount,
+                                    M_getModelInputSpecByName));
+  modelSpec.inputs = std::move(inputs);
+
+  TensorNamesPtr outputNames = {M_getOutputNames(model, status.get()),
+                                &M_freeTensorNameArray};
+  if (M_isError(status.get()))
+    return Error(M_getError(status.get()));
+
+  size_t outputCount = M_getNumModelOutputs(model, status.get());
+  if (M_isError(status.get()))
+    return Error(M_getError(status.get()));
+  UNWRAP_ERROR(outputs, convertSpecs(model, std::move(outputNames), outputCount,
+                                     M_getModelOutputSpecByName));
+  modelSpec.outputs = std::move(outputs);
+
+  return modelSpec;
 }
 
 int main(int argc, char **argv) {
@@ -411,12 +435,55 @@ int main(int argc, char **argv) {
   // We don't really have a file to load here now.
   std::unique_ptr<llvm::MemoryBuffer> inputFile;
 
+  StatusPtr status{M_newStatus(), &M_freeStatus};
+  RuntimeConfigPtr runtimeConfig{M_newRuntimeConfig(), &M_freeRuntimeConfig};
+  M_setNumThreads(runtimeConfig.get(), clOptions.getNumThreads());
+  RuntimeContextPtr context = {
+      M_newRuntimeContext(runtimeConfig.get(), status.get()),
+      &M_freeRuntimeContext};
+
+  if (M_isError(status.get())) {
+    llvm::errs() << "Error: " << M_getError(status.get()) << "\n";
+    exit(EXIT_FAILURE);
+  }
+
+  CompileConfigPtr compileConfig = {M_newCompileConfig(), &M_freeCompileConfig};
+  M_setModelPath(compileConfig.get(), clOptions.inputFilename.c_str());
+  if (!clOptions.exportedName.empty())
+    M_setExportedName(compileConfig.get(), clOptions.exportedName.c_str());
+  CompiledModelPtr compiledModel{
+      M_compileModel(context.get(), compileConfig.get(), status.get()),
+      &M_freeCompiledModel};
+
+  if (M_isError(status.get())) {
+    llvm::errs() << "Error: " << M_getError(status.get()) << "\n";
+    exit(EXIT_FAILURE);
+  }
+
+  ModelSpec modelSpec;
+  if (clOptions.modelSpecificationFile.empty()) {
+    auto modelSpecOr = getModelSpec(compiledModel.get());
+    if (modelSpecOr.isError())
+      exit(clOptions.reportError(modelSpecOr.getError()));
+    else
+      modelSpec = modelSpecOr.takeValue();
+  } else {
+    auto modelSpecOr = clOptions.readModelSpecification();
+    if (modelSpecOr.isError())
+      exit(clOptions.reportError(modelSpecOr.getError()));
+    else
+      modelSpec = modelSpecOr.takeValue();
+  }
+
+  ModelState state = {context.get(), compiledModel.get()};
+  EncodedLocation loc = LLCL::FileNameLocationDecoder::getEncodedLocation(
+      clOptions.inputFilename);
+
   // Create the ModularModel. Note that the Model object will outlive
   // the execution.
   auto model = std::make_unique<ModularModel>(
-      clOptions.benchmarkName, clOptions.inputFilename, clOptions.exportedName,
-      clOptions.inputNames, clOptions.outputNames,
-      clOptions.readModelSpecificationOrExit(), clOptions.getNumThreads());
+      clOptions.benchmarkName, clOptions.inputNames, clOptions.outputNames,
+      modelSpec, state, std::move(loc));
 
   // The runtime should run as single threaded. We have already set the
   // thread count in framework runtime.
