@@ -43,6 +43,13 @@ def GRTControlFlowInterface : OpInterface<"GRTControlFlowInterface"> {
     >,
     InterfaceMethod<
       [{
+        As for getStrictExtraOperands, but returned as an array of OpOperands
+        for use by dense, backwards dataflow analyses.
+      }],
+      "::llvm::ArrayRef<::mlir::OpOperand>", "getStrictExtraOpOperands", (ins)
+    >,
+    InterfaceMethod<
+      [{
         Returns the 'flavor' of the control flow op.
 
         For a `kLoopLike` op (eg grt.{while, repeat.i32}):

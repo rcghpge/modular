@@ -31,6 +31,28 @@ def TensorExtractAnalysisTestPass : Pass<"tensor-extract-analysis-test", "MGP::M
 }
 
 //===----------------------------------------------------------------------===//
+// CheckOverhangsPass
+//===----------------------------------------------------------------------===//
+
+def CheckOverhangsPass : Pass<"check-overhangs", "MGP::ModelOp"> {
+  let summary = "Checks that all ops will have finished execution when model "
+                "results are ready.";
+  let description = [{
+    This pass checks that every op will be definitely finished when a model's
+    results are ready. That is, execution of an op cannot 'overhang' the
+    apparent completion of the model itself.
+
+    Overhanging ops are not memory safe since context resources they depend
+    on may be torn down before the op has completed, or may be mutated by a
+    subsequent call to 'execute'. Overhanging ops also make memory planning
+    difficult since there's no indication of when a buffer operand is no longer
+    in use.
+
+    The most common cause of overhangs is ignoring the chain result of an op,
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // CheckBufferReadWritePass
 //===----------------------------------------------------------------------===//
 

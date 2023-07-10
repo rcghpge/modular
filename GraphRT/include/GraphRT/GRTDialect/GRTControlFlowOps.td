@@ -152,6 +152,9 @@ def IfOp : GRTOp<"if",
     mlir::Operation::operand_range IfOp::getStrictExtraOperands() {
       return getOperation()->getOperands().take_front();
     }
+    llvm::ArrayRef<mlir::OpOperand> IfOp::getStrictExtraOpOperands() {
+      return getOperation()->getOpOperands().take_front();
+    }
     llvm::SmallVector<llvm::StringRef> IfOp::getRegionNames() { return {"then", "else"}; }
   }];
 }
@@ -217,7 +220,12 @@ def WhileOp : GRTOp<"while",
       return getOperation()->getOpOperands();
     }
     mlir::Operation::operand_range WhileOp::getStrictExtraOperands() {
+      // Ie empty.
       return getOperation()->getOperands().take_front(0);
+    }
+    llvm::ArrayRef<mlir::OpOperand> WhileOp::getStrictExtraOpOperands() {
+      // Ie empty.
+      return getOperation()->getOpOperands().take_front(0);
     }
     llvm::SmallVector<llvm::StringRef> WhileOp::getRegionNames() { return {"cond", "body"}; }
   }];
@@ -275,6 +283,9 @@ def RepeatI32Op : GRTOp<"repeat.i32",
     }
     mlir::Operation::operand_range RepeatI32Op::getStrictExtraOperands() {
       return getOperation()->getOperands().take_front();
+    }
+    llvm::ArrayRef<mlir::OpOperand> RepeatI32Op::getStrictExtraOpOperands() {
+      return getOperation()->getOpOperands().take_front();
     }
     llvm::SmallVector<llvm::StringRef> RepeatI32Op::getRegionNames() { return {"body"}; }
   }];
