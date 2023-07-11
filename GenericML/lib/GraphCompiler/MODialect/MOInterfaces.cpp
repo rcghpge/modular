@@ -277,27 +277,27 @@ LogicalResult impl::defaultDeparameterize(ParamDeclarationInterface op,
   ArrayRef<KGEN::ParamDeclAttr> decls = op.getOutputParamDecls();
   if (decls.empty())
     return failure();
-  op.setOutputParamDecls({});
 
   // The default deparameterization only supports a single result.
   if (op->getNumResults() != 1)
     return failure();
+  Value res = op->getOpResult(0);
 
-  auto resTy = dyn_cast<TensorType>(op->getResult(0).getType());
+  auto resTy = dyn_cast<TensorType>(res.getType());
   if (!resTy)
     return failure();
 
   auto shapeTy = rewriter.getType<ShapeType>();
-  TensorType unknownResTy;
-  if (resTy.hasRank())
-    unknownResTy = resTy.cloneWith(resTy.getIntDims(), resTy.getElementType());
-  else
-    unknownResTy = resTy.cloneWith(KGEN::UnknownAttr::get(shapeTy));
+  TensorType deparameterizedResTy =
+      resTy.hasRank()
+          ? resTy.cloneWith(resTy.getIntDims(), resTy.getElementType())
+          : resTy.cloneWith(KGEN::UnknownAttr::get(shapeTy));
+  res.setType(deparameterizedResTy);
 
-  Operation *newOp = rewriter.create(op.getLoc(), op->getName().getIdentifier(),
-                                     op->getOperands(), {unknownResTy},
-                                     op->getAttrDictionary().getValue());
-  rewriter.replaceOpWithNewOp<RebindOp>(op, resTy, newOp->getResult(0), decls);
+  rewriter.setInsertionPointAfter(op);
+  auto rebindOp = rewriter.create<RebindOp>(op.getLoc(), resTy, res, decls);
+  rewriter.replaceAllUsesExcept(res, rebindOp, rebindOp);
+  op.setOutputParamDecls({});
 
   return success();
 }
