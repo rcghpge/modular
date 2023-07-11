@@ -4,6 +4,10 @@
 #
 # ===----------------------------------------------------------------------=== #
 """Project configuration in addition to pyproject.toml"""
+import os
+import sys
+from glob import glob
+
 from setuptools import setup
 from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
 
@@ -26,8 +30,18 @@ class bdist_wheel(_bdist_wheel):
         self.root_is_pure = False
 
 
+PY_MODULE_EXTENSION = ".pyd" if sys.platform == "win32" else ".so"
+SHARED_LIBS = [
+    os.path.abspath(p)
+    for p in (
+        glob(os.path.join("modular", "lib", "*"))
+        + glob(os.path.join("modular", "engine", f"*{PY_MODULE_EXTENSION}"))
+    )
+]
 setup(
     cmdclass={"bdist_wheel": bdist_wheel},
     name="modular-engine",
+    package_data={"modular.engine": SHARED_LIBS},
     packages=["modular.engine"],
+    include_package_data=True,
 )
