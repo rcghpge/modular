@@ -339,8 +339,10 @@ struct JitCompileKernels
 
     mlir::OwningOpRef<mlir::ModuleOp> baseModuleRef = errorOr.takeValue();
 
-    // Strip all the export functions from the imported module.
-    baseModuleRef->walk([&](KGEN::ExportOp exportOp) { exportOp.erase(); });
+    // Mark all functions as private. The builder will create new exported
+    // functions.
+    for (auto func : baseModuleRef->getOps<KGEN::FuncOp>())
+      func.setNotExported();
 
     return baseModuleRef;
   }
