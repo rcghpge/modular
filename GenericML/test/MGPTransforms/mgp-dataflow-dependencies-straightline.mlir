@@ -173,3 +173,57 @@ mgp.model @straightline : tf init {
   %17 = mgp.cpu.tensor.create %16, %14, %15  : !mgp.cpu.tensor<8xf32>
   mef.output %arg0, %17 : !mef.chain, !mgp.cpu.tensor<8xf32>
 }
+
+//
+// mgp.cpu.buffer.split.borrow implicitly takes reference to argument
+//
+
+// For reference here's the model with vars matching the checks:
+// CHECK: "mgp.model"() ({
+// CHECK-NEXT:  %0 = "grt.chain.create"() : () -> !mef.chain
+// CHECK-NEXT:  %1 = "mgp.context.create"() {numSlots = 0 : ui64} : () -> !mgp.context
+// CHECK-NEXT:  "mef.output"(%0, %1) : (!mef.chain, !mgp.context) -> ()
+// CHECK-NEXT:}, {
+// CHECK-NEXT:^bb0(%arg0: !mef.chain, %arg1: !mgp.context):
+// CHECK-NEXT:  %0 = "mgp.cpu.buffer.alloc.static"(%arg0) {aSize = 6 : ui64, bRawAlign = 18446744073709551615 : ui64} : (!mef.chain) -> !mgp.cpu.buffer<6>
+// CHECK-NEXT:  %1 = "mgp.cpu.buffer.set"(%0) {value = 42 : ui8} : (!mgp.cpu.buffer<6>) -> !mef.chain
+// CHECK-NEXT:  %2:2 = "mgp.cpu.buffer.split.borrow"(%arg0, %0) {outBufferRawSizes = #M.dense_array<2, 4> : !M.array<2xui64>} : (!mef.chain, !mgp.cpu.buffer<6>) -> (!mgp.cpu.buffer<2>, !mgp.cpu.buffer<4>)
+// CHECK-NEXT:  %3 = "mgp.debug.cpu.buffer.print"(%1, %2#0) : (!mef.chain, !mgp.cpu.buffer<2>) -> !mef.chain
+// CHECK-NEXT:  %4 = "mgp.debug.cpu.buffer.print"(%3, %2#1) : (!mef.chain, !mgp.cpu.buffer<4>) -> !mef.chain
+// CHECK-NEXT:  %5 = "mgp.cpu.buffer.alloc.static"(%4) {aSize = 6 : ui64, bRawAlign = 18446744073709551615 : ui64} : (!mef.chain) -> !mgp.cpu.buffer<6>
+// CHECK-NEXT:  %6 = "mgp.cpu.buffer.concat"(%4, %5, %2#0, %2#1) : (!mef.chain, !mgp.cpu.buffer<6>, !mgp.cpu.buffer<2>, !mgp.cpu.buffer<4>) -> !mef.chain
+// CHECK-NEXT:  %7 = "mgp.cpu.tensor_spec.create"() {aRawDims = #M.dense_array<6> : !M.array<1xui64>, bRawDType = 135 : ui8} : () -> !mgp.cpu.tensor_spec<6xsi8>
+// CHECK-NEXT:  %8 = "mgp.cpu.tensor.create"(%6, %5, %7) : (!mef.chain, !mgp.cpu.buffer<6>, !mgp.cpu.tensor_spec<6xsi8>) -> !mgp.cpu.tensor<6xsi8>
+// CHECK-NEXT:  "mef.output"(%6, %8) : (!mef.chain, !mgp.cpu.tensor<6xsi8>) -> ()
+// CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<6xsi8>, sym_name = "safe_split_borrow"} : () -> ()
+
+// CHECK: maybeSameAs begin
+// Note %2#* is considered maybe the same as %0.
+// CHECK: %2#0 |-> {%0[0], %arg0, %0}
+// CHECK: %2#1 |-> {%0[0], %arg0, %0}
+// CHECK: maybeSameAs end
+
+// CHECK: exclusive begin
+// Note %0 could overlap with %3, %4, %5 and %6 if it were not for
+// the implicit lifetime extension.
+// CHECK: %0 |-> {%8}
+// CHECK: exclusive end
+
+mgp.model @safe_split_borrow : tf init {
+  %0 = grt.chain.create ()
+  %1 = mgp.context.create 0
+  mef.output %0, %1 : !mef.chain, !mgp.context
+} execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.cpu.tensor<6xsi8>) {
+  %in_buf = mgp.cpu.buffer.alloc.static %ch0, 6
+  %ch1 = mgp.cpu.buffer.set %in_buf, 42 : !mgp.cpu.buffer<6>
+  %in_buf_borrows:2 = mgp.cpu.buffer.split.borrow %ch0, %in_buf
+    : !mgp.cpu.buffer<6> -> (!mgp.cpu.buffer<2>, !mgp.cpu.buffer<4>)
+  %ch2 = mgp.debug.cpu.buffer.print %ch1, %in_buf_borrows#0 : !mgp.cpu.buffer<2>
+  %ch3 = mgp.debug.cpu.buffer.print %ch2, %in_buf_borrows#1 : !mgp.cpu.buffer<4>
+  %out_buf = mgp.cpu.buffer.alloc.static %ch3, 6
+  %ch4 = mgp.cpu.buffer.concat %ch3, %out_buf, %in_buf_borrows#0, %in_buf_borrows#1 : (!mgp.cpu.buffer<2>, !mgp.cpu.buffer<4>) -> !mgp.cpu.buffer<6>
+  %out_spec = mgp.cpu.tensor_spec.create : !mgp.cpu.tensor_spec<6xsi8>
+  %ten = mgp.cpu.tensor.create %ch4, %out_buf, %out_spec : !mgp.cpu.tensor<6xsi8>
+  mef.output %ch4, %ten  : !mef.chain, !mgp.cpu.tensor<6xsi8>
+}
+

@@ -6,6 +6,8 @@
 
 #include "./AsyncDataflowDependencies.h"
 
+#include "GraphRT/GRTDialect/GRTExtendsLifetimeInterface.h"
+#include "GraphRT/GRTDialect/GRTMayAliasInterface.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "llvm/ADT/EquivalenceClasses.h"
@@ -105,13 +107,15 @@ AsyncDataflowDependencies::exclusiveSet(Value indicator) const {
 
 bool AsyncDataflowDependencies::isNonSelfOverlapping(Value value) const {
   Operation *op = value.getDefiningOp();
-  if (!op)
+  if (!op) {
     // We can only talk about op results.
     return false;
+  }
 
-  if (isAtMostOnce(op))
+  if (isAtMostOnce(op)) {
     // Structurally impossible to execute op more than once.
     return true;
+  }
 
   // TODO: Remaining implementation pending.
   return false;
@@ -136,12 +140,14 @@ void AsyncDataflowDependencies::print(llvm::raw_ostream &os) {
 // Rules are just the control flow rules.
 void AsyncDataflowDependencies::flowSameAs(Operation *op,
                                            ValueDomainMap &domainMap) {
-  if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op))
+  if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op)) {
     valueAnalysis.flowControlFlow(
         cfOp, domainMap,
         std::bind(&AsyncDataflowDependencies::flowSameAs, this, _1, _2));
-  else
+  }
+  else {
     valueAnalysis.flowDefault(op, domainMap);
+  }
 }
 
 void AsyncDataflowDependencies::setupSameAs() {
@@ -155,15 +161,39 @@ void AsyncDataflowDependencies::setupSameAs() {
   valueAnalysis.addRelationToEquivalence(sameAsEquivalence, sameAsRelation);
 }
 
-// Rules are just the control flow rules.
+// Rules are:
+//  - Given
+//      ..., %lhs, ... = op (..., %rhs, ...)
+//    where op has the GRTMayAliasInterface or GRTExtendsLifetimeInterface,
+//    then maybeSameAs(%lhs, %rhs). Note that maybeSameAs does not distinguish
+//    direct aliasing from lifetime extension, so the two interfaces are
+//    currently equivalent.
+//  - The control flow rules.
 void AsyncDataflowDependencies::flowMaybeSameAs(Operation *op,
                                                 ValueDomainMap &domainMap) {
-  if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op))
+  if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op)) {
     valueAnalysis.flowControlFlow(
         cfOp, domainMap,
         std::bind(&AsyncDataflowDependencies::flowMaybeSameAs, this, _1, _2));
-  else
+  } else if (isa<GRT::GRTExtendsLifetimeInterface>(op) ||
+             isa<GRT::GRTMayAliasInterface>(op)) {
+    // If an op declares that its results may alias its arguments, simply
+    // expand the maybeSameAs relation to include that.
+    //
+    // If an op declares that its arguments may be lifetime extended to
+    // account for its results, treat that as if they were possibly aliased.
+    // We thus approximate this by just treating all the results and arguments
+    // to have the same worst-case lifetime.
+    ValueSet set = domainMap.bottom;
+    for (Value operand : op->getOperands()) {
+      domainMap.leastUpperBound(
+          set, valueAnalysis.getEntriesAndId(domainMap, operand));
+    }
+    for (Value result : op->getResults())
+      valueAnalysis.setEntries(domainMap, result, set);
+  } else {
     valueAnalysis.flowDefault(op, domainMap);
+  }
 }
 
 void AsyncDataflowDependencies::setupMaybeSameAs() {
@@ -191,9 +221,10 @@ void AsyncDataflowDependencies::flowAlwaysReady(Operation *op,
     //     setTrue(mergeOp.getResult())
     // but writen to mirror how flowControlFlow works with the relation.
     ValueSet set = domainMap.bottom;
-    for (Value operand : chainCreateOp.getOperands())
+    for (Value operand : chainCreateOp.getOperands()) {
       domainMap.leastUpperBound(
           set, valueAnalysis.getEntriesAndId(domainMap, operand));
+    }
     valueAnalysis.setEntries(domainMap, chainCreateOp.getResult(), set);
   } else if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op)) {
     valueAnalysis.flowControlFlow(
@@ -220,21 +251,66 @@ void AsyncDataflowDependencies::setupAlwaysReady() {
 /// Implements the rules:
 ///  - Given
 ///      ..., %lhs, ... = op(..., %rhs, ...)
-///    if %lhs is an 'indicating result' and %rhs is a 'gating operand'
+///    where %lhs is an 'indicating result' and %rhs is a 'gating operand'
 ///    then impliesReady(%lhs, %rhs)
-///  - the control flow rules
+///  - The control flow rules
+///  - Given
+///      ..., %lhs, ... = grt.if %rhs (...) ...
+///    then impliesReady(%lhs, %rhs), since condition must have been ready
+///    for grt.if to return.
+///  - Given
+///      ..., %lhs, ... = grt.repeat.i32 %rhs (...) ...
+///    then impliesReady(%lhs, %rhs), since trip count must have been ready
+///    for grt.repeat.i32 to return.
+///  - Given
+///      ..., %lhs, ... = grt.repeat.i32 ... {
+///                         ...
+///                         mef.output ..., %rhs, ...
+///                       }
+///    then impliesReady(%lhs, %rhs), since grt.repeat.i32 waits for all
+///    loop body outputs to be ready after splicing it into the execution
+///    graph.
+///  - Given
+///      ..., %lhs, ... = grt.while ... {
+///                         ...
+///                       } do {
+///                         ...
+///                         mef.output ..., %rhs, ...
+///                      }
+///    then impliesReady(%lhs, %rhs), since grt.while waits for all
+///    loop body outputs to be ready after splicing it into the execution
+///    graph.
 void AsyncDataflowDependencies::flowImpliesReady(Operation *op,
                                                  ValueDomainMap &domainMap) {
   if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op)) {
     valueAnalysis.flowControlFlow(
         cfOp, domainMap,
         std::bind(&AsyncDataflowDependencies::flowImpliesReady, this, _1, _2));
+    // Union in the additional relation entries described above.
+    for (Value lhs : cfOp->getResults()) {
+      ValueSet set = valueAnalysis.getEntries(domainMap, lhs);
+      // Condition/trip counts are strict.
+      for (Value rhs : cfOp.getStrictExtraOperands()) {
+        domainMap.greatestLowerBound(
+            set, valueAnalysis.getEntriesAndId(domainMap, rhs));
+      }
+      if (cfOp.getFlavor() == GRT::kLoopLike) {
+        // Loop body outputs are known to be ready.
+        Block *lastBlock = &cfOp->getRegions().back().front();
+        for (Value rhs : lastBlock->getTerminator()->getOperands()) {
+          domainMap.greatestLowerBound(
+              set, valueAnalysis.getEntriesAndId(domainMap, rhs));
+        }
+      }
+      valueAnalysis.setEntries(domainMap, lhs, set);
+    }
   } else {
-    // Default 'gating' to 'indicating' rule.
+    // Default 'gating' to 'indicating' dependency rule.
     ValueSet set = domainMap.top;
-    for (Value rhs : getGatingOperands(op))
+    for (Value rhs : getGatingOperands(op)) {
       domainMap.greatestLowerBound(
           set, valueAnalysis.getEntriesAndId(domainMap, rhs));
+    }
     for (Value lhs : getIndicatingResults(op))
       valueAnalysis.setEntries(domainMap, lhs, set);
   }
@@ -287,10 +363,11 @@ void AsyncDataflowDependencies::accumStructurallyDisjointForBlock(
     for (Region &region : cfOp->getRegions()) {
       SmallVector<Operation *> &allOps = allOpsPerBranch.emplace_back();
       region.walk([&](Operation *op) {
-        if (getIndicatingResults(op).empty())
+        if (getIndicatingResults(op).empty()) {
           // We are only interested in ops with indicating results since that's
           // the only way we have to track their execution.
           return;
+        }
         allOps.emplace_back(op);
       });
     }
@@ -340,9 +417,10 @@ AsyncDataflowDependencies::runsLaterSet(Operation *earlierOp) const {
     // using operation to BEGIN only after earlierOp has FINISHED.
     for (Value user : valueAnalysis.index->setToVector(set)) {
       for (OpOperand &opOperand : user.getUses()) {
-        if (opOperand.getOwner()->getNumResults() == 0)
+        if (opOperand.getOwner()->getNumResults() == 0) {
           // Ignore ops with no results since we can't track them.
           continue;
+        }
         if (isGatingOperand(&opOperand))
           operationAnalysis.index->addToSet(result, opOperand.getOwner());
       }
@@ -416,16 +494,18 @@ AsyncDataflowDependencies::getEffectiveOwner(const OpOperand *opOperand) const {
     ArrayRef<OpOperand> inputOpOperands = cfOp.getInputOpOperands();
     if (llvm::find_if(inputOpOperands, [&](const OpOperand &inputOpOperand) {
           return &inputOpOperand == opOperand;
-        }) != inputOpOperands.end())
+        }) != inputOpOperands.end()) {
       // Inputs to control flow ops are just plumbing.
       return nullptr;
+    }
   }
 
   if (isa<MEF::OutputOp>(op)) {
     auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op->getParentOp());
-    if (!cfOp || cfOp.getFlavor() != GRT::kLoopLike)
+    if (!cfOp || cfOp.getFlavor() != GRT::kLoopLike) {
       // Operands to mef.output outside of loops are just plumbing.
       return nullptr;
+    }
 
     // Though we don't consider mef.output to be a true 'op' requiring tracking
     // as a possible consumer of operands, we do need to consider the loop op
@@ -442,9 +522,10 @@ bool AsyncDataflowDependencies::allUsesAreByOperationsInSet(
   for (Value value : valueAnalysis.index->setToVector(values)) {
     for (OpOperand &opOperand : value.getUses()) {
       Operation *owningOp = getEffectiveOwner(&opOperand);
-      if (!owningOp)
+      if (!owningOp) {
         // Ignore 'plumbing' uses.
         continue;
+      }
       if (!isGatingOperand(&opOperand)) {
         // We don't know when the op will be done with the operand so must
         // consider the use still alive.
@@ -551,10 +632,11 @@ void AsyncDataflowDependencies::setupExclusive() {
     if (op == operationAnalysis.index->distinguished)
       continue;
 
-    if (op->getNumResults() == 0)
+    if (op->getNumResults() == 0) {
       // Don't waste time calculating the consumedSet if there's no results
       // by which to index it.
       continue;
+    }
 
     // Collect the values which have been created and fully consumed (or were
     // never created in the first place) when op BEGINS execution.

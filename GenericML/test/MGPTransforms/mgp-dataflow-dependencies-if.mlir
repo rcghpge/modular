@@ -68,13 +68,11 @@
 // impliesReady is actually 'implies ready or never bound', so
 // %3#1 captures that either one or other of the if branches will
 // be executed.
-// Note that though we know grt.if is strict on the condition, there's
-// nothing in the grt.if result that tells us when the grt.if itself has
-// completed.
+// We know the if condition is ready if any if result is ready.
 // CHECK: impliesReady begin
-// CHECK: %3#0 |-> {%0[0], %arg0, %5[2]}
-// CHECK: %3#1 |-> {%0[0], %arg0, %2, %6[2], %5[3]}
-// CHECK: %3#2 |-> {%0[0], %arg0, %2}
+// CHECK: %3#0 |-> {%0[0], %arg0, %0, %5[2]}
+// CHECK: %3#1 |-> {%0[0], %arg0, %0, %2, %6[2], %5[3]}
+// CHECK: %3#2 |-> {%0[0], %arg0, %0, %2}
 // CHECK: impliesReady end
 
 // Ops in the if branches are structurally disjoint
@@ -87,7 +85,7 @@
 // runsLater is actually 'runs later or never runs'.
 // CHECK: runsLater begin
 // CHECK-NEXT: %0[0] |-> {%0, %1, %2, %3#0, %5[2], %6[2], %5[3], %4}
-// CHECK-NEXT: %0 |-> {%3#0}
+// CHECK-NEXT: %0 |-> {%3#0, %4}
 // CHECK-NEXT: %2 |-> {%6[2], %5[3], %4}
 // CHECK-NEXT: %3#0 |-> {%4}
 // CHECK-NEXT: %5[2] |-> {%4}
@@ -348,7 +346,7 @@ mgp.model @if : tf init {
 // CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<8xf32>, sym_name = "conditional_c"} : () -> ()
 
 // CHECK: exclusive begin
-// CHECK: %6 |-> {%0, %3, %4, %arg3[2], %arg3[3], %10}
+// CHECK: %6 |-> {%0[0], %arg0, %0, %3, %4, %arg2[2], %arg3[2], %arg2[3], %arg3[3], %10}
 // CHECK: exclusive end
 
 mgp.model @conditional_c : tf init {

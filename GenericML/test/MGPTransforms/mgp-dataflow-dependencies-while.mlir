@@ -172,8 +172,7 @@ mgp.model @repeat3 : tf init {
 
 // CHECK: impliesReady begin
 // CHECK: %4[3] |-> {%0[0], %arg0, %1, %arg4[2], %5[2], %arg4[3]}
-// CHECK: %2#0 |-> {%0[0], %arg0, %arg2[2], %arg2[3]}
-
+// CHECK: %2#0 |-> {%0[0], %arg0, %1, %arg2[2], %arg4[2], %arg5[2], %4[2], %5[2], %arg2[3], %arg3[3], %arg4[3], %arg5[3], %4[3]}
 // CHECK: impliesReady end
 
 // CHECK: runsLater begin
@@ -302,7 +301,7 @@ mgp.model @crissCross : tf init {
 // CHECK: maybeSameAs end
 
 // CHECK: impliesReady begin
-// CHECK: %2 |-> {%arg2[2], %arg3[2], %arg4[2], %arg2[3], %arg3[3], %arg4[3], %1#0, %1#1, %1#2}
+// CHECK: %2 |-> {%arg2[2], %arg3[2], %arg4[2], %arg2[3], %arg3[3], %arg4[3], %3[3], %1#0, %1#1, %1#2}
 // CHECK: impliesReady end
 
 mgp.model @shift : tf init {
@@ -389,9 +388,8 @@ mgp.model @shift : tf init {
 // CHECK: %9 |-> {%0[0], %arg0, %5, %7, %8}
 // CHECK: %arg3[2] |-> {%0[0], %arg0, %0, %1, %2}
 // CHECK: %arg4[2] |-> {%0[0], %arg0, %3, %4, %5, %6}
-// TODO: These entries don't exploit knowledge that the while condition must be ready for the while to finish.
-// CHECK: %10#0 |-> {%0[0], %arg0, %arg2[2], %arg2[3]}
-// CHECK: %12 |-> {%0[0], %arg0, %3, %4, %5, %6, %arg4[2], %arg4[3], %10#2, %11#0, %11#1}
+// CHECK: %10#0 |-> {%0[0], %arg0, %0, %1, %2, %3, %4, %5, %6, %7, %8, %9, %arg2[2], %arg3[2], %arg4[2], %arg5[2], %arg2[3], %arg3[3], %arg4[3], %arg5[3], %13#0[3], %13#1[3], %14#0[3], %14#1[3], %15[3], %16[3], %17[3], %18[3], %19[3], %20#0[3], %20#1[3], %21[3], %22[3], %23[3]}
+// CHECK: %12 |-> {%0[0], %arg0, %0, %1, %2, %3, %4, %5, %6, %7, %8, %9, %arg2[2], %arg3[2], %arg4[2], %arg5[2], %arg2[3], %arg3[3], %arg4[3], %arg5[3], %13#0[3], %13#1[3], %14#0[3], %14#1[3], %15[3], %16[3], %17[3], %18[3], %19[3], %20#0[3], %20#1[3], %21[3], %22[3], %23[3], %10#2, %11#0, %11#1}
 // CHECK: impliesReady end
 
 // CHECK: exclusive begin
