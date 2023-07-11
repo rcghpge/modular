@@ -1,5 +1,7 @@
 # Python Packaging
 
+## Build and install
+
 Here's how to build and install the Python package:
 
 1. First be sure you have completed the `modular` repo setup from the
@@ -41,5 +43,12 @@ BTW, you're also all set to build the Python API docs with this command:
 ```shell
 build inference_engine_docs_python
 ```
+
+## Test the `modular.engine` packaging locally
+
+Run `test-modular-engine-wheel` to test the `modular.engine` packaging locally.
+This test runs `packaging/test_packaging.py`, which at a high level builds the
+`modular.engine` wheel locally, then tests the wheel in an isolated
+environment.
 
 Also see the [Python packaging overview on Notion](https://www.notion.so/modularai/Python-Packaging-99d63148865b435993b9551c1b6f6ff4#0f96f88b6a7844749f56f4ad7f928aea).
