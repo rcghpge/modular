@@ -4,10 +4,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GenericML/GraphCompiler/GraphCompiler.h"
 #include "Cache/CachePasses/CachePasses.h"
 #include "GenericML/GraphCompiler/Conversion/MOToMOGG.h"
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
-#include "GenericML/GraphCompiler/GraphCompiler.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
@@ -77,6 +77,12 @@ void M::MO::registerPasses() {
 
 void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
                                  const MoToMgpOptions &opts) {
+  // Create the options for MoToMOGG.
+  MGP::MOToPrimitivesOptions moToPrimOpts;
+  moToPrimOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
+  if (opts.compiledFrameworkLabel.hasValue())
+    moToPrimOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel;
+
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
   if (opts.useShapeInference) {
@@ -141,13 +147,10 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     // If we are jitting then we need to compile the jit kernels as well.
     MOGG::JitCompileKernelsOptions jitOpts;
     jitOpts.useSearch = opts.useKgenSearch;
+    jitOpts.minimumCpuAlignment = moToPrimOpts.minimumCpuAlignment;
     pm.addPass(MOGG::createJitCompileKernels(jitOpts));
   }
 
-  MGP::MOToPrimitivesOptions moToPrimOpts;
-  moToPrimOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
-  if (opts.compiledFrameworkLabel.hasValue())
-    moToPrimOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel;
   pm.addPass(MGP::createMOToPrimitives(moToPrimOpts));
 
   if (opts.cacheBuffersAcrossExecutes)

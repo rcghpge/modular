@@ -40,6 +40,9 @@ def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
             "option toggles on saveTemps.">,
     Option<"dumpStub", "dump-stub", "bool", /*default=*/"false",
             "Prints the generated KGEN stub for use in tests and debugging">,
+    Option<"minimumCpuAlignment", "min-cpu-alignment", "size_t",
+      /*default=*/"kPreferredMemoryAlignment",
+     "Minimum alignment for all CPU buffers (both constants and allocated)">,
   ];
 }
 

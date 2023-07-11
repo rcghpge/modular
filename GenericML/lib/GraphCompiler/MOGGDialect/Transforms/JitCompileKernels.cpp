@@ -363,7 +363,8 @@ struct JitCompileKernels
     SmallVector<mlir::Attribute> symbolNamesAdded;
 
     // Start building up the KGEN kernel.
-    Stub::KGENBuilder builder{manager, *kgenModule, registry};
+    Stub::KGENBuilder builder{manager, *kgenModule, registry,
+                              minimumCpuAlignment.getValue()};
 
     // Give each unique constant an identifier globally across all kernels.
     DenseMap<M::ElementsAttr, size_t> seenConsts;
