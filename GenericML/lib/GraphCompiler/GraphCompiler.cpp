@@ -77,7 +77,7 @@ void M::MO::registerPasses() {
 
 void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
                                  const MoToMgpOptions &opts) {
-  // Create the options for MoToMOGG.
+  // Create the options for MoToPrimitives.
   MGP::MOToPrimitivesOptions moToPrimOpts;
   moToPrimOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
   if (opts.compiledFrameworkLabel.hasValue())
