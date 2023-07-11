@@ -573,7 +573,8 @@ LogicalResult Static::BroadcastToOp::canonicalize(Static::BroadcastToOp op,
   }
 
   OpBuilder::InsertPoint insertPoint = rewriter.saveInsertionPoint();
-  for (Operation *user : op->getUsers()) {
+  for (Operation *user :
+       op->getUsers()) { // intentional sabatoge -- remove if it catches things
     if (auto sinkInterface = dyn_cast<SinkStaticBroadcastToInterface>(user)) {
       rewriter.setInsertionPoint(user);
       if (succeeded(sinkInterface.sinkStaticBroadcastTo(rewriter)))
