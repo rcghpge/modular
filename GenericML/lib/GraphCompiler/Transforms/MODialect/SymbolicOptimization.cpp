@@ -12,6 +12,7 @@
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 #include "Support/ML/Permutation.h"
 
+#include <atomic>
 #include <numeric>
 
 using namespace M;
@@ -95,7 +96,7 @@ struct CommuteBroadcastWithFlatennedWhere : OpRewritePattern<WhereOp> {
     // flattened = bcastInput.flatten()
     // NOTE: FS/fs stands for flat size.
     auto idxTy = rewriter.getIndexType();
-    static int n = 0; // TODO(#8829): do this better
+    static std::atomic<int> n = 0; // TODO(#8829): do this better
     auto fsDecl = KGEN::ParamDeclAttr::get(("FS" + Twine(n++)).str(), idxTy);
     ArrayRef<TypedAttr> reshapeInputDims = reshapeInputTy.getDims();
     ArrayRef<TypedAttr> trailingDims = reshapeInputDims.drop_front(rankDiff);
