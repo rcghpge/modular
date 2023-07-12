@@ -1,7 +1,4 @@
-auditwheel; sys_platform == 'linux'
 build
-delocate
-patchelf; sys_platform == 'linux'
 pytest
 tomli
 wheel
