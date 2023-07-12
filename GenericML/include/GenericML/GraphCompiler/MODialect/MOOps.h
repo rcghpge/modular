@@ -43,21 +43,31 @@ using M::KGEN::SignatureType;
 
 namespace M::MO {
 
-/// If `val` comes from a constant tensor (defined by a ConstantOp or
-/// RebindOp that takes in a ConstantOp), return the defining op
-MO::ConstantOp tryGetConstantOpOfRank(TensorValue val, size_t rank);
+/// If `val` comes from constant tensors (defined by a ConstantOp or
+/// concatenation or identity chain of ConstantOps), return the defining ops.
+SmallVector<MO::ConstantOp> tryGetConstantOpsOfRank(TensorValue val,
+                                                    size_t rank);
 
-/// If `val` is defined by a ConstantOp or a RebindOp that takes in a
-/// ConstantOp with given rank, convert it to an vector of specificed type,
-/// else return None.
+/// If `val` is defined by a ConstantOp, RebindOp, ConcatOp, ReshapeOp or
+/// unrealized conversion (that takes in a ConstantOp with given rank),
+/// convert it to an vector of specificed type, else return None.
 template <typename T>
 static std::optional<SmallVector<T>> tryGetConstantOfRank(TensorValue val,
                                                           size_t rank) {
-  if (ConstantOp constantOp = tryGetConstantOpOfRank(val, rank)) {
-    return tryGetConstantBlob<T>(constantOp.getValueAttr(),
-                                 constantOp.getType().getDtype());
+  SmallVector<ConstantOp> constantOps = tryGetConstantOpsOfRank(val, rank);
+  if (constantOps.empty())
+    return std::nullopt;
+
+  SmallVector<T> vec;
+  // Multiple constant operations: Concatenation of constant ops.
+  for (ConstantOp constantOp : constantOps) {
+    std::optional<SmallVector<T>> blob = tryGetConstantBlob<T>(
+        constantOp.getValueAttr(), constantOp.getType().getDtype());
+    if (!blob.has_value())
+      return std::nullopt;
+    vec.insert(vec.end(), blob.value().begin(), blob.value().end());
   }
-  return std::nullopt;
+  return vec;
 }
 
 /// If `val` comes from a constant float scalar tensor (defined by a

@@ -38,22 +38,57 @@ using namespace MO;
 // Utilities
 //===----------------------------------------------------------------------===//
 
-/// If `val` is defined by a ConstantOp or a RebindOp that takes in a
-/// ConstantOp with given rank, return the ConstantOp, else return null.
-ConstantOp M::MO::tryGetConstantOpOfRank(TensorValue val, size_t rank) {
-  Operation *inputOp = val.getDefiningOp();
-  if (auto rebindOp = dyn_cast_or_null<RebindOp>(inputOp))
-    inputOp = rebindOp.getInput().getDefiningOp();
+SmallVector<ConstantOp> M::MO::tryGetConstantOpsOfRank(TensorValue val,
+                                                       size_t rank) {
+  SmallVector<ConstantOp> constantOps;
 
+  Operation *inputOp = val.getDefiningOp();
+
+  // Handle identity chains.
+  auto isIdentityLike = [&](Operation *op) {
+    if (dyn_cast_or_null<RebindOp>(op)) {
+      return true;
+    } else if (dyn_cast_or_null<mlir::UnrealizedConversionCastOp>(op)) {
+      return true;
+    } else if (dyn_cast_or_null<ReshapeOp>(op)) {
+      // After a ReshapeOp, accept constants of any rank.
+      rank = std::numeric_limits<size_t>::max();
+      return true;
+    }
+    return false;
+  };
+
+  while (isIdentityLike(inputOp))
+    inputOp = inputOp->getOperand(0).getDefiningOp();
+
+  // Handle concatenations of constant tensors.
+  auto concatOp = dyn_cast_or_null<ConcatOp>(inputOp);
+  if (concatOp) {
+    for (unsigned i = 1, e = concatOp->getNumOperands(); i < e; ++i) {
+      TensorValue operand = cast<TensorValue>(concatOp->getOperand(i));
+      SmallVector<ConstantOp> operandConstantOps =
+          tryGetConstantOpsOfRank(operand, rank);
+      if (operandConstantOps.empty())
+        return {};
+      constantOps.insert(constantOps.end(), operandConstantOps.begin(),
+                         operandConstantOps.end());
+    }
+    return constantOps;
+  }
+
+  // Handle ConstantOp last.
   auto constantOp = dyn_cast_or_null<ConstantOp>(inputOp);
   if (!constantOp)
     return {};
 
   MO::TensorType type = constantOp.getType();
-  if (!type.hasRank() || type.getRank() != rank)
+  if (rank != std::numeric_limits<size_t>::max() &&
+      (!type.hasRank() || type.getRank() != rank))
     return {};
 
-  return constantOp;
+  constantOps.push_back(constantOp);
+
+  return constantOps;
 }
 
 std::optional<float> M::MO::tryGetConstantFloat(TensorValue val) {
