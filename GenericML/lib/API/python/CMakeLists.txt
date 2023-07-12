@@ -77,12 +77,7 @@ if(STOCK_TENSORFLOW_FOUND)
   list(APPEND MODULAR_FRAMEWORK_LIBS $<TARGET_FILE:tf>)
 endif()
 
-# When skipping wheel repair, output the final wheel and name it accordingly.
-if (MODULAR_PYTHON_API_REPAIR_WHEEL)
-  set(MODULAR_PACKED_WHEEL_NAME ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl)
-else()
-  set(MODULAR_PACKED_WHEEL_NAME ${WHEEL_DIR}/${WHEEL_BASENAME}.whl)
-endif()
+set(MODULAR_PACKED_WHEEL_NAME ${WHEEL_DIR}/${WHEEL_BASENAME}.whl)
 
 set(modular_python_package_sources
   ${CMAKE_CURRENT_SOURCE_DIR}/modular/engine/api.py
@@ -122,39 +117,3 @@ set_target_properties(modular-engine
 
 add_subdirectory(docs)
 add_subdirectory(notebooks)
-
-if (NOT MODULAR_PYTHON_API_REPAIR_WHEEL)
-  return()
-endif()
-
-if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
-  set(HOST_ARCH x86_64)
-elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
-  set(HOST_ARCH aarch64)
-else()
-  message(FATAL_ERROR "Unsupported target architecture: ${CMAKE_SYSTEM_PROCESSOR}")
-endif()
-
-if(APPLE)
-  set(REPAIR_CMD ${Python3_EXECUTABLE} -m delocate.cmd.delocate_wheel)
-  set(REPAIRED_WHEEL ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl)
-  set(REPAIR_SHARED_LIB_ENV "DYLD_LIBRARY_PATH=${STOCK_TENSORFLOW_INSTALL_LIB_DIR}")
-else()
-  set(REPAIR_CMD ${Python3_EXECUTABLE} -m auditwheel repair --plat linux_${HOST_ARCH} --wheel-dir ${WHEEL_DIR} --strip)
-  set(REPAIRED_WHEEL ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.linux_${HOST_ARCH}.whl)
-  set(REPAIR_SHARED_LIB_ENV "LD_LIBRARY_PATH=${STOCK_TENSORFLOW_INSTALL_LIB_DIR}")
-endif()
-
-# Detect non-system shared library dependencies and copy them into the wheel,
-# updating the RECORDS metadata file.
-add_custom_command(OUTPUT ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
-  COMMAND ${CMAKE_COMMAND} -E env
-    PATH=$ENV{PATH}:${Python3_ROOT_DIR}/bin
-    ${REPAIR_SHARED_LIB_ENV}
-    ${REPAIR_CMD} ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl
-  COMMAND ${CMAKE_COMMAND} -E copy ${REPAIRED_WHEEL} ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
-  DEPENDS ${WHEEL_DIR}/${WHEEL_BASENAME}_packed.whl
-  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-  COMMENT "Repairing Modular Python API wheel."
-  VERBATIM
-)
