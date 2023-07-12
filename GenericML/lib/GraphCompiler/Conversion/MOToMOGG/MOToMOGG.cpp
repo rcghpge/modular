@@ -87,6 +87,15 @@ struct KernelRecord {
     }                                                                          \
   }
 
+// Same as the above but a special case for non-elementwise ops. Eventually this
+// will be replaced through inspecting the mogg kernel.
+#define MO_TO_MOJO_ONLY_NON_ELEMWISE(MOOp)                                     \
+  {                                                                            \
+    TypeID::get<MOOp>(), KernelRecord {                                        \
+      MOOp::getOperationName(), "None", true, false, true                      \
+    }                                                                          \
+  }
+
 // Same as the above but a special case for view ops.
 // MOOps is the C++ class type of the MO op which provides the op name for the
 // map. ShimName is the name of the C++ shim kernel to target in MGP.
@@ -287,6 +296,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_MOJO_ONLY(MO::MinOp),
       MO_TO_MOJO(MO::MulOp, "mop.kernels.mul"),
       MO_MOJO_ONLY(MO::NotEqualOp),
+      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::PackMMWeightsOp),
       MO_SHIM_ONLY(MO::PadOp, "mop.kernels.pad"),
       MO_TO_MOJO_NON_ELEMWISE(MO::ReduceAddOp, "mop.kernels.reduce.add"),
       MO_SHIM_ONLY(MO::ReduceMulOp, "mop.kernels.reduce.mul"),
@@ -328,5 +338,5 @@ void MOToMOGGPass::runOnOperation() {
 #undef MO_TO_MOJO_NON_ELEMWISE
 #undef MO_MOJO_ONLY
 #undef MO_SHIM_ONLY
-#undef MO_TO_MOJO_NON_ELEMWISE
+#undef MO_TO_MOJO_ONLY_NON_ELEMWISE
 #undef MO_TO_MOJO_VIEW

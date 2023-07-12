@@ -2322,4 +2322,28 @@ def MO_InvokeShapeFuncOp : MO_TensorOp<"invoke_shape_func", [
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// MMPacking
+//===----------------------------------------------------------------------===//
+
+// TODO: This is a temporary op to be replaced by larger layout representation
+// work.
+def MO_PackMMWeightsOp : MO_TensorOp<"pack_mm_weights", [Pure]> {
+  let summary = "Returned the packed matmul weights";
+  let description = [{
+    This op will execute and return the matmul weights with the optimal
+    packing as determined by the mojo packing kernel.
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    BoolAttr:$transposed
+  );
+
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = "`(` $input `:` qualified(type($input)) `)` attr-dict `->` qualified(type($result))";
+}
+
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOOPS_TD

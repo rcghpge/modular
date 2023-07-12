@@ -63,35 +63,8 @@ struct PackParamCache {
 Value lowerMatmulPackingFunc(Location loc, PatternRewriter &rewriter,
                              PackParamCache &cache, Value weight,
                              bool transpose) {
-
   MO::TensorType weightsType = cast<MO::TensorType>(weight.getType());
   MO::TensorType packedWeightsType;
-
-  // Helper to lower as a shim.
-  auto getUnknownType = [&]() {
-    MO::TensorType weightsType = cast<MO::TensorType>(weight.getType());
-    SmallVector<int64_t> unknownDims(weightsType.getRank(),
-                                     mlir::ShapedType::kDynamic);
-    Type dtype = weightsType.getElementType();
-    return weightsType.cloneWith(unknownDims, dtype);
-  };
-
-  // Helper to lower as a shim. Borderline unreachable because we are only
-  // packing constants so shapes should be known.. Left here for safety.
-  auto lowerToShim = [&](Type type) {
-    const char *shimName = transpose ? "mop.kernels.pack_matmul_b.transp_b"
-                                     : "mop.kernels.pack_matmul_b";
-    return rewriter
-        .create<MOGG::ExtOp>(loc,
-                             /*outputTypes=*/type,
-                             /*op_name=*/shimName,
-                             /*inputOperands=*/SmallVector<Value>{weight})
-        .getResult(0);
-  };
-
-  // If the weight has an unknown shape we need to escape out to the shims.
-  if (weightsType.hasUnknownShape())
-    return lowerToShim(getUnknownType());
 
   // First we check the cache. If we've already lowered this same tensor &
   // transpose combination then we will want to lower to the exact same
@@ -145,7 +118,10 @@ Value lowerMatmulPackingFunc(Location loc, PatternRewriter &rewriter,
   }
 
   // Pack the mm weights.
-  return lowerToShim(packedWeightsType);
+  return rewriter.create<MO::PackMMWeightsOp>(loc,
+                                              /*outputTypes=*/packedWeightsType,
+                                              weight,
+                                              rewriter.getBoolAttr(transpose));
 }
 
 struct GatherSumPattern : public OpRewritePattern<MO::ReduceAddOp> {
@@ -218,6 +194,10 @@ struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
                     weightP)
              .match(op.getInputB()))
       return failure();
+
+    MO::TensorType weightsType = cast<MO::TensorType>(weight.getType());
+    if (weightsType.hasUnknownShape())
+      return rewriter.notifyMatchFailure(op, "Weights have unknown shape");
 
     if (!input || !isa_and_nonnull<MO::ConstantOp>(weight.getDefiningOp()))
       return failure();
@@ -418,6 +398,10 @@ struct FullyConnectedPattern : public RewritePattern {
                                     SmallVector<Value>{input, weight, bias})
                .getResult(0);
     } else {
+      MO::TensorType weightsType = cast<MO::TensorType>(weight.getType());
+      if (weightsType.hasUnknownShape())
+        return rewriter.notifyMatchFailure(op, "Weights have unknown shape");
+
       Value packedWeights = lowerMatmulPackingFunc(op->getLoc(), rewriter,
                                                    cache, weight, transpose);
 
