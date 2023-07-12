@@ -44,6 +44,110 @@ bool isMatmulSmall(MO::MatmulOp matmul) {
   return approxFlops < kTinyMatmulFlops;
 }
 
+struct PackParamCache {
+  PackParamCache(MLIRContext *ctx) : ctx(ctx) {}
+
+  MLIRContext *ctx;
+
+  // Each packed function will return the same weight type for each MO tensor
+  // (shape + element type). By preserving this information we get better
+  // performance as we are able to recognise and DCE / CSE matching shape / pack
+  // funcs.
+  DenseMap<MO::TensorType, MO::TensorType> knownTypes, knownTypesTransp;
+
+  // Each packed shape function should return a unique shape, we use this atomic
+  // to ensure each gets a unique parameter name.
+  std::atomic<int64_t> paramId = 0;
+};
+
+Value lowerMatmulPackingFunc(Location loc, PatternRewriter &rewriter,
+                             PackParamCache &cache, Value weight,
+                             bool transpose) {
+
+  MO::TensorType weightsType = cast<MO::TensorType>(weight.getType());
+  MO::TensorType packedWeightsType;
+
+  // Helper to lower as a shim.
+  auto getUnknownType = [&]() {
+    MO::TensorType weightsType = cast<MO::TensorType>(weight.getType());
+    SmallVector<int64_t> unknownDims(weightsType.getRank(),
+                                     mlir::ShapedType::kDynamic);
+    Type dtype = weightsType.getElementType();
+    return weightsType.cloneWith(unknownDims, dtype);
+  };
+
+  // Helper to lower as a shim. Borderline unreachable because we are only
+  // packing constants so shapes should be known.. Left here for safety.
+  auto lowerToShim = [&](Type type) {
+    const char *shimName = transpose ? "mop.kernels.pack_matmul_b.transp_b"
+                                     : "mop.kernels.pack_matmul_b";
+    return rewriter
+        .create<MOGG::ExtOp>(loc,
+                             /*outputTypes=*/type,
+                             /*op_name=*/shimName,
+                             /*inputOperands=*/SmallVector<Value>{weight})
+        .getResult(0);
+  };
+
+  // If the weight has an unknown shape we need to escape out to the shims.
+  if (weightsType.hasUnknownShape())
+    return lowerToShim(getUnknownType());
+
+  // First we check the cache. If we've already lowered this same tensor &
+  // transpose combination then we will want to lower to the exact same
+  // parameter type.
+  if (transpose) {
+    auto itr = cache.knownTypesTransp.find(weightsType);
+    if (itr != cache.knownTypesTransp.end())
+      packedWeightsType = itr->second;
+  } else {
+    auto itr = cache.knownTypes.find(weightsType);
+    if (itr != cache.knownTypes.end())
+      packedWeightsType = itr->second;
+  }
+
+  // If we haven't lowered the shape function, lower it now so we have
+  // parameterized shapes.
+  if (!packedWeightsType) {
+    Type paramType = rewriter.getIndexType();
+
+    // Create a pair of parameters for the new type.
+    auto newParams = KGEN::ParamDeclArrayAttr::get(
+        cache.ctx,
+        {KGEN::ParamDeclAttr::get(("MMPackSh" + Twine(cache.paramId++)).str(),
+                                  paramType),
+         KGEN::ParamDeclAttr::get(("MMPackSh" + Twine(cache.paramId++)).str(),
+                                  paramType)});
+
+    // Create the packed B shape function.
+    SmallVector<mlir::NamedAttribute> attrs;
+    attrs.push_back(rewriter.getNamedAttr("transpose_in_0",
+                                          rewriter.getBoolAttr(transpose)));
+    mlir::DictionaryAttr kgenParams = rewriter.getDictionaryAttr(attrs);
+    rewriter.create<MO::InvokeShapeFuncOp>(loc, SmallVector<Value>{weight},
+                                           "pack_matmul_b_shape_func",
+                                           newParams, kgenParams);
+
+    SmallVector<TypedAttr> outputShapeDims;
+    for (KGEN::ParamDeclAttr outputParamDecl : newParams)
+      outputShapeDims.push_back(KGEN::ParamDeclRefAttr::get(outputParamDecl));
+
+    auto moshShapeTy = MOSH::ShapeType::get(cache.ctx);
+    auto shapeAttr = MOSH::ShapeAttr::get(outputShapeDims, moshShapeTy);
+    packedWeightsType =
+        MO::TensorType::get(shapeAttr, weightsType.getElementType());
+
+    // Cache the result so the next type has a hit too.
+    if (transpose)
+      cache.knownTypesTransp[weightsType] = packedWeightsType;
+    else
+      cache.knownTypes[weightsType] = packedWeightsType;
+  }
+
+  // Pack the mm weights.
+  return lowerToShim(packedWeightsType);
+}
+
 struct GatherSumPattern : public OpRewritePattern<MO::ReduceAddOp> {
   GatherSumPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
 
@@ -88,7 +192,8 @@ static LogicalResult validate2DTranspose(Value perm) {
 }
 
 struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
-  MatmulConstBPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 3) {}
+  MatmulConstBPattern(MLIRContext *ctx, PackParamCache &cache)
+      : OpRewritePattern(ctx, 3), cache(cache) {}
 
   LogicalResult matchAndRewrite(MO::MatmulOp op,
                                 PatternRewriter &rewriter) const override {
@@ -117,35 +222,21 @@ struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
     if (!input || !isa_and_nonnull<MO::ConstantOp>(weight.getDefiningOp()))
       return failure();
 
-    std::string packing_kernel = "mop.kernels.pack_matmul_b";
     if (transpose) {
       if (!perm || validate2DTranspose(perm).failed())
         return rewriter.notifyMatchFailure(op, "invalid transpose");
-      packing_kernel = "mop.kernels.pack_matmul_b.transp_b";
     }
 
-    //   res = matmul(any, const_weight) : ...
-    // ===>
-    //   packed_weight = pack(const_weight) : [?, ?]
-    //   res = matmul_packb(any, packed_weight) : ...
-    MO::TensorType weightsType = cast<MO::TensorType>(weight.getType());
-    SmallVector<int64_t> unknownDims(weightsType.getRank(),
-                                     mlir::ShapedType::kDynamic);
-    Type dtype = weightsType.getElementType();
-    MO::TensorType packedWeightsType =
-        weightsType.cloneWith(unknownDims, dtype);
-    Value packedWeights =
-        rewriter
-            .create<MOGG::ExtOp>(op->getLoc(),
-                                 /*outputTypes=*/packedWeightsType,
-                                 /*op_name=*/packing_kernel,
-                                 /*inputOperands=*/SmallVector<Value>{weight})
-            .getResult(0);
+    Value packedWeights = lowerMatmulPackingFunc(op->getLoc(), rewriter, cache,
+                                                 weight, transpose);
 
     op.setOperand(1, packedWeights);
     op.setPackedBAttr(rewriter.getBoolAttr(true));
     return mlir::success();
   }
+
+private:
+  PackParamCache &cache;
 };
 
 struct MatmulTranspBPattern : public OpRewritePattern<MO::MatmulOp> {
@@ -226,8 +317,8 @@ struct BatchMatmulAdjBPattern : public OpRewritePattern<MO::BatchMatmulOp> {
 };
 
 struct FullyConnectedPattern : public RewritePattern {
-  FullyConnectedPattern(MLIRContext *ctx)
-      : RewritePattern(MatchAnyOpTypeTag{}, 3, ctx) {}
+  FullyConnectedPattern(MLIRContext *ctx, PackParamCache &cache)
+      : RewritePattern(MatchAnyOpTypeTag{}, 3, ctx), cache(cache) {}
 
   // Return null if we fail to get a rank-1 shape after squeezing `ty`'s shape
   static MO::TensorType tryGetVectorTyAfterSqueeze(MO::TensorType ty) {
@@ -327,23 +418,8 @@ struct FullyConnectedPattern : public RewritePattern {
                                     SmallVector<Value>{input, weight, bias})
                .getResult(0);
     } else {
-      Value weights = transpose ? transpose->getResult(0) : weight;
-      MO::TensorType weightsType = cast<MO::TensorType>(weights.getType());
-      MO::TensorType packedWeightsType = weightsType;
-      if (weightsType.hasRank()) {
-        SmallVector<int64_t> unknownDims(weightsType.getRank(),
-                                         mlir::ShapedType::kDynamic);
-        Type dtype = weightsType.getElementType();
-        packedWeightsType = weightsType.cloneWith(unknownDims, dtype);
-      }
-      Value packedWeights =
-          rewriter
-              .create<MOGG::ExtOp>(
-                  loc,
-                  /*outputTypes=*/packedWeightsType,
-                  /*op_name=*/"mop.kernels.pack_matmul_b",
-                  /*inputOperands=*/SmallVector<Value>{weights})
-              .getResult(0);
+      Value packedWeights = lowerMatmulPackingFunc(op->getLoc(), rewriter,
+                                                   cache, weight, transpose);
 
       std::string kernel;
       if (gelu_approx_sigmoid)
@@ -377,6 +453,9 @@ struct FullyConnectedPattern : public RewritePattern {
 
     return mlir::success();
   }
+
+private:
+  PackParamCache &cache;
 };
 
 struct ConcatZeroAxisPattern : public RewritePattern {
@@ -516,9 +595,13 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
     MLIRContext *ctx = &getContext();
 
     RewritePatternSet patterns{ctx};
+
+    PackParamCache cache{ctx};
+    patterns.add<FullyConnectedPattern>(ctx, cache);
+    patterns.add<MatmulConstBPattern>(ctx, cache);
+
     patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
-                 FullyConnectedPattern, ConcatZeroAxisPattern,
-                 SplitZeroAxisPattern, LayerNormPattern, MatmulConstBPattern>(
+                 ConcatZeroAxisPattern, SplitZeroAxisPattern, LayerNormPattern>(
         ctx);
 
     if (failed(
