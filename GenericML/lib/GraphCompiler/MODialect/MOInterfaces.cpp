@@ -10,6 +10,7 @@
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
+#include <llvm/Support/ErrorHandling.h>
 #include <mlir/IR/PatternMatch.h>
 
 using namespace M;

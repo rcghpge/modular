@@ -82,6 +82,9 @@ def MO_GraphOp : MO_TensorOp<"graph", [
     - computations on input tensors and intermediate results
     - a terminating output op that returns the result tensors
 
+    The `counter` property will be used to generate new parameter names that are
+    unique among all parameter names inside this graph.
+
     Example:
 
     ```mlir
@@ -99,7 +102,8 @@ def MO_GraphOp : MO_TensorOp<"graph", [
     KGEN_ParamDeclArrayAttr:$inputParams,
     KGEN_ParamDeclArrayAttr:$resultParams,
     OptionalAttr<DictArrayAttr>:$arg_attrs,
-    OptionalAttr<DictArrayAttr>:$res_attrs
+    OptionalAttr<DictArrayAttr>:$res_attrs,
+    IntProperty<"int64_t">:$counter
   );
   let regions = (region SizedRegion<1>:$body);
 
@@ -119,6 +123,27 @@ def MO_GraphOp : MO_TensorOp<"graph", [
     KGEN::AlwaysInlineLevel getAlwaysInlineLevel() {
       return KGEN::AlwaysInlineLevel::Disabled;
     }
+
+    /// Return a new dimension parameter of `IndexType`, with a name that starts
+    /// with `prefix` and differs from existing parameter names inside this
+    /// graph op.
+    KGEN::ParamDeclAttr getNewDimParam(StringRef prefix);
+
+    /// Return a new dimension parameter of `MOSH::ShapeType`, with a name that
+    /// starts with `prefix` and differs from existing parameter names inside
+    /// this graph op.
+    KGEN::ParamDeclAttr getNewShapeParam(StringRef prefix);
+
+    /// Return a new dimension parameter of given type, with a name that starts
+    /// with `prefix` and differs from existing parameter names inside this
+    /// graph op.
+    KGEN::ParamDeclAttr getNewParamOfType(StringRef prefix, Type type);
+
+    /// Return a new name that's unique from existing parameters inside this
+    /// graph op.
+    std::string getNewParamName(StringRef prefix);
+
+   public:
   }];
 
   let builders = [

@@ -23,6 +23,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/FunctionImplementation.h"
 #include "mlir/IR/IRMapping.h"
+#include "mlir/IR/ODSSupport.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "llvm/ADT/SmallVectorExtras.h"
@@ -193,6 +194,25 @@ LogicalResult GraphOp::verify() {
         "Expressions are not (currently) allowed in function signatures");
   }
   return useDefGraph.verify(symtabs, cache);
+}
+
+KGEN::ParamDeclAttr GraphOp::getNewDimParam(StringRef prefix) {
+  return getNewParamOfType(prefix, IndexType::get(getContext()));
+}
+
+KGEN::ParamDeclAttr GraphOp::getNewShapeParam(StringRef prefix) {
+  return getNewParamOfType(prefix, ShapeType::get(getContext()));
+}
+
+KGEN::ParamDeclAttr GraphOp::getNewParamOfType(StringRef prefix, Type type) {
+  return KGEN::ParamDeclAttr::get(getNewParamName(prefix), type);
+}
+
+std::string GraphOp::getNewParamName(StringRef prefix) {
+  // TODO(#8829) avoid duplication with existing parameters in the input graph
+  int64_t newCounter = getProperties().getCounter() + 1;
+  getProperties().setCounter(newCounter);
+  return prefix.str() + std::to_string(newCounter);
 }
 
 //===----------------------------------------------------------------------===//

@@ -62,7 +62,7 @@ ErrorOrSuccess elementwiseSinkStaticBroadcastTo(Operation *op,
 LogicalResult emitFwShapeFuncInvoke(ParamDeclarationInterface op,
                                     KGEN::FuncOp fwFuncOp,
                                     ArrayRef<TypedAttr> operands,
-                                    Twine tmpParamName,
+                                    StringRef paramNamePrefix,
                                     mlir::RewriterBase &rewriter);
 } // namespace impl
 

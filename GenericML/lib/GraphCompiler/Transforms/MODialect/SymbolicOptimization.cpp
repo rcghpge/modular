@@ -12,7 +12,6 @@
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 #include "Support/ML/Permutation.h"
 
-#include <atomic>
 #include <numeric>
 
 using namespace M;
@@ -95,9 +94,8 @@ struct CommuteBroadcastWithFlatennedWhere : OpRewritePattern<WhereOp> {
     // broadcast, i.e. we roughly implement this:
     // flattened = bcastInput.flatten()
     // NOTE: FS/fs stands for flat size.
-    auto idxTy = rewriter.getIndexType();
-    static std::atomic<int> n = 0; // TODO(#8829): do this better
-    auto fsDecl = KGEN::ParamDeclAttr::get(("FS" + Twine(n++)).str(), idxTy);
+    GraphOp graphOp = whereOp->getParentOfType<GraphOp>();
+    KGEN::ParamDeclAttr fsDecl = graphOp.getNewDimParam("FS");
     ArrayRef<TypedAttr> reshapeInputDims = reshapeInputTy.getDims();
     ArrayRef<TypedAttr> trailingDims = reshapeInputDims.drop_front(rankDiff);
     auto fsAttr = KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, trailingDims);
@@ -113,7 +111,7 @@ struct CommuteBroadcastWithFlatennedWhere : OpRewritePattern<WhereOp> {
     // We roughly implement the following:
     // where_res = np.expand_dims(np.where(flattened)[0], axis=1)
     // Note we refer to the number of unique elements as W.
-    auto wDecl = KGEN::ParamDeclAttr::get(("W" + Twine(n++)).str(), idxTy);
+    KGEN::ParamDeclAttr wDecl = graphOp.getNewDimParam("W");
     auto wRef = KGEN::ParamDeclRefAttr::get(wDecl);
     IntegerType si64Ty = rewriter.getIntegerType(64, /*isSigned=*/true);
     SmallVector<TypedAttr> whereDims{wRef, rewriter.getIndexAttr(1)};
@@ -141,7 +139,7 @@ struct CommuteBroadcastWithFlatennedWhere : OpRewritePattern<WhereOp> {
     auto stepT = rewriter.create<IndexToTensorOp>(loc, start.getType(), step);
 
     // We can now construct the range.
-    auto bsDecl = KGEN::ParamDeclAttr::get(("BS" + Twine(n++)).str(), idxTy);
+    KGEN::ParamDeclAttr bsDecl = graphOp.getNewDimParam("BS");
     rewriter.create<KGEN::ParamDeclareOp>(loc, bsDecl, bsAttr);
     auto bsRef = KGEN::ParamDeclRefAttr::get(bsDecl);
     auto rangeTy = TensorType::get(SmallVector<TypedAttr>{bsRef}, si64Ty);

@@ -62,18 +62,6 @@ def MO_Parameterization
       "LogicalResult", "resolveUnknownParameters",
       (ins "mlir::RewriterBase &":$rewriter)>,
   ];
-
-  let extraClassDeclaration = [{
-  private:
-    static size_t numShapeParams;
-    static size_t numDimParam;
-  public:
-    /// Convenience method to generate a new shape parameter declaration.
-    KGEN::ParamDeclAttr getNewShapeParam();
-
-    /// Convenience method to generate a new dimension parameter declaration.
-    KGEN::ParamDeclAttr getNewDimParam();
-  }];
 }
 
 def MO_ParamDeclaration : MO_TensorOpInterfaceBase<"ParamDeclarationInterface",
@@ -105,11 +93,11 @@ def MO_ParamDeclaration : MO_TensorOpInterfaceBase<"ParamDeclarationInterface",
       (ins
         "KGEN::FuncOp":$fwFuncOp,
         "llvm::ArrayRef<mlir::TypedAttr>":$operands,
-        "llvm::Twine":$tmpParamName,
+        "StringRef":$paramNamePrefix,
         "mlir::RewriterBase &":$rewriter), [{}],
       [{
         return impl::emitFwShapeFuncInvoke(
-          $_op, fwFuncOp, operands, tmpParamName, rewriter);
+          $_op, fwFuncOp, operands, paramNamePrefix, rewriter);
       }]>,
   ];
 
