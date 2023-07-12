@@ -144,8 +144,7 @@ void AsyncDataflowDependencies::flowSameAs(Operation *op,
     valueAnalysis.flowControlFlow(
         cfOp, domainMap,
         std::bind(&AsyncDataflowDependencies::flowSameAs, this, _1, _2));
-  }
-  else {
+  } else {
     valueAnalysis.flowDefault(op, domainMap);
   }
 }

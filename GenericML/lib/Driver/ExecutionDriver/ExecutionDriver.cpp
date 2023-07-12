@@ -83,7 +83,8 @@ bool TensorSpecParser::parse(llvm::cl::Option &options, StringRef argName,
 }
 
 // Parse --input-data arg.
-// Format of arg is --input-data=tensor_idx::input_source::input_source_attr_list.
+// Format of arg is
+// --input-data=tensor_idx::input_source::input_source_attr_list.
 //    - tensor_idx: int representing input tensor index
 //    - input_source: can be either:
 //        - input generation function: one of [zeros|random|ones|negones], which
@@ -186,8 +187,7 @@ static LogicalResult printDiagIfError(const AnyAsyncValueRef &res) {
 static LogicalResult
 printTensorResults(const ExecutableModel *model,
                    MutableArrayRef<AnyAsyncValueRef> results,
-                   Kernels::ResultOutputStyle outputStyle,
-                   unsigned precision) {
+                   Kernels::ResultOutputStyle outputStyle, unsigned precision) {
   // We expect the first result to be a chain.
   const AnyAsyncValueRef &ch = results.front();
   assert(ch.isReady() && isa<Chain>(ch) &&
@@ -215,9 +215,9 @@ printTensorResults(const ExecutableModel *model,
       hasError = true;
     else {
       if (auto *tensor = dyn_cast<Tensor>(result)) {
-        if (auto err = Kernels::printTensor(tensor->getBuffer(),
-                                            tensor->getSpec(),
-                                            outputStyle, precision)) {
+        if (auto err =
+                Kernels::printTensor(tensor->getBuffer(), tensor->getSpec(),
+                                     outputStyle, precision)) {
           llvm::outs() << "<error: " << err.getError() << '>';
           hasError = true;
         }
