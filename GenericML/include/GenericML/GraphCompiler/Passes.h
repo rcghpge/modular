@@ -65,6 +65,19 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
           "which then can be soft-fused together. This is the default but"
           "is available as a flag for tests."),
       llvm::cl::init(true)};
+  Option<std::string> saveTempPrefix{
+      *this, "save-temp-prefix",
+      llvm::cl::desc(
+          "The prefix to use when saving temporary mogg files. Setting this"
+          "option to any value will toggle on mogg.saveTemps which will save"
+          "assembly/IR to files this prefix."),
+      llvm::cl::init("")};
+  Option<bool> createMOGGReproducers{
+      *this, "create-mogg-reproducers",
+      llvm::cl::desc(
+          "Prints isolated reproducers of each compiled mogg kernel in"
+          "a newly created mo graph."),
+      llvm::cl::init(false)};
 };
 
 // Registers the end-to-end shape inference pipeline.

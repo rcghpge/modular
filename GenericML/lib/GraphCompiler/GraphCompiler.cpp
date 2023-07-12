@@ -148,6 +148,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     MOGG::JitCompileKernelsOptions jitOpts;
     jitOpts.useSearch = opts.useKgenSearch;
     jitOpts.minimumCpuAlignment = moToPrimOpts.minimumCpuAlignment;
+    jitOpts.saveTempPrefix = opts.saveTempPrefix;
+    jitOpts.createMOGGReproducers = opts.createMOGGReproducers;
     pm.addPass(MOGG::createJitCompileKernels(jitOpts));
   }
 

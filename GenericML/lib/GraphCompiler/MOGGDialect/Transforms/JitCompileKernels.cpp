@@ -28,9 +28,9 @@
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENPasses.h"
 
+#include "mlir/IR/IRMapping.h"
 #include "llvm/ADT/StringExtras.h"
 #include <sstream>
-
 using namespace M;
 
 namespace M::MOGG {
@@ -440,11 +440,51 @@ struct JitCompileKernels
           stubKernelName.get(), usedParamsAsAttr, op.getOutputParamDeclsAttr());
       op->replaceAllUsesWith(jitExecute.getResults());
       jittedKernels.insert({stubKernelName.get(), jitExecute});
-      op->erase();
 
       // Tracking attributes makes it easier to create an array.
       symbolNamesAdded.push_back(jitExecute.getKernelNameAttr());
 
+      if (createMOGGReproducers.getValue()) {
+        ModuleOp modu = cast<ModuleOp>(graph.getParentOp());
+        static size_t i = 0;
+        std::string name = "MOGGReducedGraph_" + std::to_string(i++);
+
+        llvm::errs() << "Graph for generated kernel: \n";
+        llvm::errs() << stubKernelName.get() << "\n";
+        llvm::errs() << "MO Reproducer: \n";
+
+        // Create a new graph.
+        OpBuilder b{modu};
+        b.setInsertionPointToEnd(&modu.getBodyRegion().front());
+        MO::GraphOp toDump = b.create<MO::GraphOp>(
+            graph->getLoc(), name, op->getOperandTypes(), op->getResultTypes());
+
+        // Attach input decls.
+        SmallVector<KGEN::ParamDeclAttr> decls;
+        for (auto param : usedParameters)
+          decls.push_back(
+              KGEN::ParamDeclAttr::get(param.getName(), param.getType()));
+        toDump.setInputParams(
+            KGEN::ParamDeclArrayAttr::get(graph->getContext(), decls));
+        b.setInsertionPointToStart(toDump.getBodyBlock());
+
+        // Clone the kernel into the new graph.
+        mlir::IRMapping mapping;
+        for (auto [oldV, newV] : llvm::zip(
+                 op->getOperands(), toDump.getBodyBlock()->getArguments())) {
+          mapping.map(oldV, newV);
+        }
+        auto cloned = b.clone(*op, mapping);
+        b.create<MO::OutputOp>(graph->getLoc(), cloned->getResults());
+
+        // Print it out.
+        toDump.dump();
+
+        // Remove it so we don't keep traversing.
+        toDump.erase();
+      }
+
+      op->erase();
       if (dumpStub.getValue())
         builder.dumpStub();
 
