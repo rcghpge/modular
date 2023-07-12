@@ -231,8 +231,13 @@ int main(int argc, char **argv) {
     // If the driver command is just `-get-version` then print the version and
     // exit right away. No need to do anything else.
     if (options.command == DriverCommand::getVersion) {
+      // llvm::formatv does not support octal, so do it the hard way.
+      char profilingLevelStr[16];
+      snprintf(profilingLevelStr, sizeof(profilingLevelStr), "%#o",
+               MODULAR_LLCL_MAX_PROFILING_LEVEL);
       llvm::outs() << "mt: " << getModularVersionString()
-                   << "\nFramework: " << dylib.getVersion() << "\n";
+                   << "\nFramework: " << dylib.getVersion()
+                   << "\nmt profiling level: " << profilingLevelStr << "\n";
       return EXIT_SUCCESS;
     }
 
