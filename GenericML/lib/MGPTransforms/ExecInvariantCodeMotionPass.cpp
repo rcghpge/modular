@@ -69,7 +69,7 @@ class ExecInvariantCodeMotionPass
           ExecInvariantCodeMotionPass> {
   using ExecInvariantCodeMotionPassBase::ExecInvariantCodeMotionPassBase;
 
-  static void expandByTransitiveUsers(DenseSet<Operation *> &ops) {
+  static void expandByTransitiveInputs(DenseSet<Operation *> &ops) {
     SmallVector<Operation *> worklist(ops.begin(), ops.end());
     while (!worklist.empty()) {
       Operation *currOp = worklist.pop_back_val();
@@ -85,17 +85,31 @@ class ExecInvariantCodeMotionPass
 
   // NOTE these predicates are intentionally restricted. We will gradually
   // relax and maybe generalize them later.
+
+  /// Predicate for liftable buffer op, i.e., operation which produces a single
+  /// buffer, which can be lifted, cached, and used again in the exec block.
   static bool isLiftableBufferOp(Operation *op) {
-    return op->getNumResults() == 1 &&
-           isa<CpuBufferAllocSpecOp, CpuBufferAllocStaticOp,
-               CpuBufferConstantOp>(op);
+    return isLiftableTrivialBufferOp(op) || isa<CpuBufferAllocSpecOp>(op);
   }
 
+  // Predicate for liftable buffer op that are expected to have trivial cost (so
+  // that lifting them won't save any computation if all of their uses are
+  // unliftable)
+  static bool isLiftableTrivialBufferOp(Operation *op) {
+    return isa<CpuBufferAllocStaticOp, CpuBufferConstantOp>(op);
+  }
+
+  /// Predicate for liftable chain op, i.e., operation which produces a single
+  /// chain type, which can be lifted, merged into the final output chain of
+  /// init block, so that dependency is preserved in the exec block.
   static bool isLiftableChainOp(Operation *op) {
     return op->getNumResults() == 1 &&
            isa<MEF::ChainType>(op->getResultTypes().front());
   }
 
+  /// Predicate for re-computable op, i.e., operation whose results cannpt be
+  /// cached, but we'd like to lift it by re-computing in the exec block,
+  /// because it could enable more lifting.
   static bool isRecomputableOp(Operation *op) {
     // TODO find an alternative to hard-coding this; it might require some
     // cost-model.
@@ -107,6 +121,10 @@ class ExecInvariantCodeMotionPass
     return recomputableOps.contains(op->getName().getStringRef());
   }
 
+  /// Predicate for checking potential side-effect of an op. The term
+  /// "side-effect" is used a bit loosely in our context, e.g., a buffer
+  /// allocation technically has side-effect, but we consider it as side-effect
+  /// free for lifting purposes. TODO consider using a more accurate term.
   static bool doesOpHaveSideEffect(Operation *op) {
     // TODO(#12221) remove hard-coded set once `mop` ops are registered.
     // TODO(#12270) find a better model for the properties to inspect here
@@ -122,6 +140,17 @@ class ExecInvariantCodeMotionPass
     };
     return !isPure(op) &&
            !unregisteredPureOps.contains(op->getName().getStringRef());
+  }
+
+  /// Initializes the following fields
+  /// - `liftableBufferOpToLiftableUseCount`
+  void initLiftableUseCountMaps(ExecuteState &executeState) {
+    for (Operation &op : executeState.execute->getOperations()) {
+      if (isLiftableBufferOp(&op)) {
+        liftableBufferOpToLiftableUseCount[&op] =
+            llvm::range_size(op.getUses());
+      }
+    }
   }
 
   /// Push `op` onto `worklist` if it hasn't been tracked by `unliftableOps`.
@@ -148,8 +177,16 @@ class ExecInvariantCodeMotionPass
       // If input came from an op that produced a single buffer, we allow
       // certain such inputs to be lifted (remaining uses will be updated by
       // leveraging the buffer cache mechanism)
-      if (isLiftableBufferOp(inputOp))
+      if (isLiftableBufferOp(inputOp)) {
+        // For trivial buffers ops, don't lift them (mark as unliftable) if
+        // _all_ of their uses are unliftable, because we don't save any
+        // computation by lifting such buffer ops.
+        int64_t count = --liftableBufferOpToLiftableUseCount[inputOp];
+        assert(count >= 0 && "underflow in liftable buffer op use count");
+        if (count == 0 && isLiftableTrivialBufferOp(inputOp))
+          pushOntoWorklist(inputOp);
         continue;
+      }
 
       // If input came from an op that produced a single chain, we allow
       // certain such inputs to be lifted; the lifted chains will be merged at
@@ -171,7 +208,10 @@ class ExecInvariantCodeMotionPass
     }
   }
 
-  void findLiftableOpsAndOpsToReCompute(ExecuteState &executeState) {
+  /// Initializes the following fields
+  /// - `unliftableOps`
+  /// - `recomputableOps` (partially, only the roots of recomputations)
+  void findUnliftableOpsAndOpsToRecompute(ExecuteState &executeState) {
     // We can't lift any op that uses the extra arguments from execute phase.
     for (BlockArgument extraArg : executeState.getExtraArgs()) {
       for (Operation *user : extraArg.getUsers())
@@ -186,18 +226,6 @@ class ExecInvariantCodeMotionPass
 
     while (!worklist.empty())
       processOpFromWorklist();
-
-    auto isOpUnliftable = [&](Operation *user) {
-      return unliftableOps.contains(user);
-    };
-    // For buffers ops, don't lift them (mark as unliftable) if _all_ of their
-    // uses are unliftable, because we don't save any computation in such cases.
-    for (Operation &op : executeState.execute->getOperations()) {
-      if (isLiftableBufferOp(&op) && !unliftableOps.contains(&op) &&
-          llvm::all_of(op.getUsers(), isOpUnliftable)) {
-        unliftableOps.insert(&op);
-      }
-    }
   }
 
   void cloneOpsToRecompute() {
@@ -207,7 +235,7 @@ class ExecInvariantCodeMotionPass
 
     // Find all the ops that need to be recomputed, because currently
     // `opsToRecompute` might only contain the root of such computations.
-    expandByTransitiveUsers(opsToRecompute);
+    expandByTransitiveInputs(opsToRecompute);
 
     // Clone the re-computed ops and wire up the uses.
     IRMapping irMap;
@@ -331,11 +359,13 @@ class ExecInvariantCodeMotionPass
     unliftableOps.clear();
     worklist.clear();
     opsToRecompute.clear();
+    liftableBufferOpToLiftableUseCount.clear();
 
     ModelOp model = getOperation();
     InitState initState(model.getContext(), model.getInitBlock());
     ExecuteState executeState(model.getContext(), model.getExecuteBlock());
-    findLiftableOpsAndOpsToReCompute(executeState);
+    initLiftableUseCountMaps(executeState);
+    findUnliftableOpsAndOpsToRecompute(executeState);
     cloneOpsToRecompute();
     moveLiftableOps(initState, executeState);
   }
@@ -347,8 +377,12 @@ class ExecInvariantCodeMotionPass
   // each op once, have a way to query for liftability later.
   DenseSet<Operation *> unliftableOps;
   // This contains ops we must re-compute (i.e., compute in both init and exec
-  // phases) so we can enable more lifting.
+  // phases) so we can enable more lifting. TODO(#16768)
   DenseSet<Operation *> opsToRecompute;
+  // Maps each liftable buffer op in the exec block to the # of liftable uses
+  // (not users). Start by assuming all users are liftable, and decrement as we
+  // find unliftable users.
+  DenseMap<Operation *, int64_t> liftableBufferOpToLiftableUseCount;
 };
 
 } // namespace

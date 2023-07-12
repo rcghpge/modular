@@ -367,3 +367,42 @@ mgp.model @constant_buffer_used_in_both_init_and_exec : tf init {
   %out_ch = grt.chain.create (%weight_t_ch, %arg_t_ch)
   mef.output %out_ch, %weight_t_buf, %arg_t_buf : !mef.chain, !mgp.cpu.buffer<1600>, !mgp.cpu.buffer<8>
 }
+
+//
+// @lift_non_trivial_buffer_op_without_liftable_user
+//
+
+// CHECK-LABEL: mgp.model @lift_non_trivial_buffer_op_without_liftable_user : tf init {
+// Old chains and context ops
+// CHECK-NEXT:   %[[CH0:.*]] = grt.chain.create ()
+// CHECK-NEXT:   %[[CTX:.*]] = mgp.context.create 2
+// Dummy chain
+// CHECK-NEXT:   %{{.*}} = grt.chain.create ()
+// Lifted ops
+// CHECK-DAG:   %[[RES:.*]]:3 = "mop.kgen.execute_kernel"(%[[CH0]], %[[CTX]]) : (!mef.chain, !mgp.context) -> (!mef.chain, index, index)
+// CHECK-DAG:   %[[SPEC:.*]] = mgp.cpu.tensor_spec.create %[[RES]]#1, %[[RES]]#2 : !mgp.cpu.tensor_spec<?x?xf64>
+// CHECK-DAG:   %[[BUF:.*]] = mgp.cpu.buffer.alloc.spec %[[CH0]], %[[SPEC]], align 32 : !mgp.cpu.tensor_spec<?x?xf64>
+// (Redundant) Chain merge to preserve control dependencies
+// CHECK-DAG:    %[[BUF_ACTION_CH:.*]] = grt.chain.create ()
+// Buffer caching
+// CHECK-DAG:   %[[CACHE_CH:.*]] = mgp.cpu.buffer.cache %[[BUF_ACTION_CH]], %[[CTX]][1], %[[BUF]] : !mgp.cpu.buffer
+// Chain merge to preserve control dependencies
+// CHECK-DAG:    %[[OUT_CH:.*]] = grt.chain.create (%[[CH0]], %[[CACHE_CH]])
+// CHECK-NEXT:   mef.output %[[OUT_CH]], %[[CTX]] : !mef.chain, !mgp.context
+
+// CHECK-NEXT: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context) -> (!mef.chain, !mgp.cpu.buffer) {
+// Inserted buffer lookup
+// CHECK-NEXT:   %[[BUF:.*]] = mgp.cpu.buffer.get_cached %[[CH0]], %[[CTX]][1] : !mgp.cpu.buffer
+// CHECK-NEXT:   mef.output %[[CH0]], %[[BUF]] : !mef.chain, !mgp.cpu.buffer
+// CHECK-NEXT: }
+
+mgp.model @lift_non_trivial_buffer_op_without_liftable_user : tf init {
+  %ch0 = grt.chain.create ()
+  %ctx = mgp.context.create 1
+  mef.output %ch0, %ctx : !mef.chain, !mgp.context
+} execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.cpu.buffer) {
+  %res:3 = "mop.kgen.execute_kernel"(%ch0, %ctx) : (!mef.chain, !mgp.context) -> (!mef.chain, index, index)
+  %spec = mgp.cpu.tensor_spec.create %res#1, %res#2 : !mgp.cpu.tensor_spec<?x?xf64>
+  %buf = mgp.cpu.buffer.alloc.spec %ch0, %spec, align 32 : !mgp.cpu.tensor_spec<?x?xf64>
+  mef.output %ch0, %buf : !mef.chain, !mgp.cpu.buffer
+}
