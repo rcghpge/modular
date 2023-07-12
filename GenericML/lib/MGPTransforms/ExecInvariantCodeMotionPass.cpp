@@ -268,7 +268,11 @@ class ExecInvariantCodeMotionPass
     // construct the buffer cache ops, and replace it at the end.
     auto dummyBufferCacheInputChain =
         initBuilder.create<GRT::ChainCreateOp>(outputLoc);
-    // We must be careful with control dependencies because
+    // Note that dependencies among lifted ops remain as buffer (e.g., any
+    // buffer writing op still refers to the buffer directly, instead of going
+    // through the cache like remaining uses in the exec block).
+    //
+    // However, we must be careful with control dependencies because
     // 1. buffer caching does a deep copy, requiring actions on buffer to
     //    complete first (thus the `potentialBufferActionChains` list).
     // 2. we must collect the new output dependencies introduced to the init
@@ -292,16 +296,19 @@ class ExecInvariantCodeMotionPass
       execBuilder.setInsertionPoint(&op);
 
       if (isLiftableChainOp(&op)) {
-        // Keep track of this because it _might_ write to the buffer we are
-        // caching.
-        potentialBufferActionChains.push_back(op.getResult(0));
-
         // Replace old uses that will remain in exec block
         op.getResult(0).replaceUsesWithIf(execInputChain,
                                           isOpOperandUnliftable);
 
       } else if (isLiftableBufferOp(&op) &&
                  llvm::any_of(op.getUses(), isOpOperandUnliftable)) {
+        // Collect output chains of any lifted user that writes to this buffer
+        for (OpOperand &use : op.getUses())
+          if (!isOpOperandUnliftable(use) && isBufferWritingOpOperand(use))
+            for (Value res : use.getOwner()->getResults())
+              if (isa<MEF::ChainType>(res.getType()))
+                potentialBufferActionChains.push_back(res);
+
         // If this liftable buffer op has unliftable users, insert
         // - `cpu.buffer.cache` in the init phase
         // - `cpu.buffer.get_cache` in the exec phase
