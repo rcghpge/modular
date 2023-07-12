@@ -178,7 +178,7 @@ struct MOOpPattern : public RewritePattern {
 
     // Check general op level constraints. Currently only single result ops
     // are allowed.
-    if (op->getNumResults() != 1)
+    if (op->getNumResults() > 1)
       shouldUseJit = false;
 
     StringRef shimTarget = kernel.shim;
@@ -195,13 +195,17 @@ struct MOOpPattern : public RewritePattern {
     }
 
     // If we should be using JIT generate a jit target. Otherwise use the shim.
-    if (shouldUseJit)
+    if (shouldUseJit) {
+      if (auto invokeShapeFuncOp = dyn_cast<MO::InvokeShapeFuncOp>(op))
+        return helper.lowerShapeFuncToKernel(invokeShapeFuncOp);
+
       return helper.lowerToKernel(kernel.moggID, kernel.isView,
                                   kernel.isNonElemwise);
-    else if (shimTarget != "None")
+    } else if (shimTarget != "None") {
       return helper.lowerToShim(shimTarget);
-    else
+    } else {
       return Error("Attempting to lower a JIT-only kernel to a C++ shim");
+    }
   }
 
   MoToKernelMapTy &moToMojoKernels;
@@ -267,6 +271,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_MOJO_ONLY(MO::GeluOp),
       MO_MOJO_ONLY(MO::GreaterOp),
       MO_MOJO_ONLY(MO::GreaterEqualOp),
+      MO_MOJO_ONLY(MO::InvokeShapeFuncOp),
       MO_MOJO_ONLY(MO::IsInfOp),
       MO_MOJO_ONLY(MO::IsNaNOp),
       MO_MOJO_ONLY(MO::Log1pOp),

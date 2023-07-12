@@ -2259,4 +2259,42 @@ def MO_SolveOp : MO_LinalgOp<"solve", [
   let hasVerifier = 1;
 }
 
+//===----------------------------------------------------------------------===//
+// Shape function invocation
+//===----------------------------------------------------------------------===//
+
+def MO_InvokeShapeFuncOp : MO_TensorOp<"invoke_shape_func", [
+    DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
+  let summary = "Invokes a shape function to declare the shape parameters";
+  let description = [{
+    Invokes a shape function with given name and bind its return values to the
+    output parameters. Each argument must be a shape-like or integer scalar
+    tensor. The `kgenParams` will be passed along to the shapep function as is.
+
+    Example:
+
+    ```mlir
+    %input : !mo.tensor<[D1, D2], f32>
+    %axis  : !mo.tensor<[], si64>
+    %input_shape = mo.shape_of(%input)
+    : (!mo.tensor<[D1, D2], f32>) -> !mo.tensor<[2], si64>
+
+    mo.invoke_shape_func["shape_func_name"]<() -> D1, D2>(%input_shape, %axis)
+    : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>)
+    ```
+  }];
+
+  let arguments = (ins
+    Variadic<AnyTypeOf<[MO_Tensor, MO_ShapeLike, MO_RankedScalarIndexTensor]>>:$inputs,
+    StrAttr:$shapeFuncName,
+    MO_ParamDecls:$outputParamDecls,
+    OptionalAttr<DictionaryAttr>:$kgenParams
+  );
+
+  let assemblyFormat = [{
+    `[` $shapeFuncName `]` `` custom<ParamDecls>($outputParamDecls)
+    `(` $inputs `)` ($kgenParams^)? attr-dict `:` `(` type($inputs) `)`
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOOPS_TD
