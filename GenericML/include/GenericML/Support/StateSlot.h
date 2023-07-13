@@ -11,20 +11,10 @@
 #include "LLCL/ForwardDecls.h"
 #include "LLCL/Runtime/AnyAsyncValueRef.h"
 #include "LLCL/Runtime/TypeID.h"
-#include "LLCL/Support/RCRef.h"
-#include "Support/AlignedAlloc.h"
+#include "LLCL/Support/GenericUniquePtr.h"
 #include "Support/ErrorOr.h"
 
-#include <atomic>
-#include <limits>
-#include <vector>
-
 namespace M::GML {
-
-namespace Detail {
-template <typename T>
-class ConcreteStateSlot;
-}
 
 /// A type-erased wrapper for all context 'state slots'. Buffer allocations
 /// may be cached within a number of 'buffer slots' determined when the state
@@ -32,32 +22,30 @@ class ConcreteStateSlot;
 /// The payload's destructor will be called when the state slot is destroyed.
 class StateSlot {
 public:
-  /// Destroy this state slot, including its underlying payload.
-  ///
-  /// Note: Though we use the TypeID machinery which captures destructor
-  /// functions, we instead prefer to just pay for a vtable and use virtual
-  /// destructors to avoid surprising interactions with std::unique_ptrs.
-  virtual ~StateSlot() = default;
+  /// Constructs the empty state slot.
+  StateSlot() = default;
 
-  // No implicit copying is allowed.
-  StateSlot(const StateSlot &rhs) = delete;
-  StateSlot &operator=(const StateSlot &rhs) = delete;
-
-  /// Returns a new instance of StateSlot with a freshly constructed payload of
-  /// type T which can hold numBuffers cached buffer allocations.
-  template <typename T, typename... Args>
-  static std::unique_ptr<StateSlot> createStateSlot(size_t numBuffers,
-                                                    Args &&...args) {
-    return std::make_unique<Detail::ConcreteStateSlot<T>>(
-        numBuffers, std::forward<Args>(args)...);
+  /// Establishes state slot to take ownership of payload.
+  /// State slot will have space for numBuffers, initially null.
+  template <typename T>
+  void reset(std::unique_ptr<T> newPayload, size_t numBuffers) {
+    payload.reset(std::move(newPayload));
+    bufferCache.clear();
+    bufferCache.resize(numBuffers);
   }
+
+  /// Destroy this state slot, including its underlying payload.
+  ~StateSlot() = default;
+
+  /// Returns true if have a payload.
+  operator bool() const { return payload; }
 
   /// Returns the payload of type T of this state slot. The static type id for T
   /// must match the type id of the state slot.
   template <typename T>
   T &get() {
-    typeID.assertEqual(LLCL::TypeID::get<T>(), "StateSlot::get");
-    return static_cast<Detail::ConcreteStateSlot<T> *>(this)->payload;
+    assert(payload && "StateSlot has no payload");
+    return *payload.get<T>();
   }
 
   /// Returns a buffer reference to a buffer of size with alignment.
@@ -92,14 +80,7 @@ public:
   ErrorOrSuccess setBuffer(size_t bufferIndex, BufferRef bufferRef);
 
   /// Returns the type id for the value held by this state slot.
-  LLCL::TypeID getTypeID() const { return typeID; }
-
-protected:
-  StateSlot(LLCL::TypeID typeID, size_t numBuffers) : typeID(typeID) {
-    assert(typeID != LLCL::TypeID());
-    for (size_t i = 0; i < numBuffers; ++i)
-      bufferCache.emplace_back();
-  }
+  LLCL::TypeID getTypeID() const { return payload.getTypeID(); }
 
 private:
   /// Ensure the buffer in entry is allocated with size, reallocating
@@ -108,8 +89,8 @@ private:
                                   LLCL::CompactRuntimePtr runtime, size_t size,
                                   std::optional<size_t> alignment);
 
-  /// Type id uniquely describing the type of payload held by this states slot.
-  LLCL::TypeID typeID;
+  /// The state slot payload.
+  LLCL::GenericUniquePtr payload;
 
   /// A place to hold pre-allocated or cached buffers. Tensors and other
   /// more refined types can be constructed from these buffers. Though these
@@ -123,37 +104,8 @@ private:
 /// ops which have no extra state but wish to make use of buffer caching.
 class DefaultStateSlot {};
 
-namespace Detail {
-
-/// A state slot holding a payload of type T. This class should never be
-/// directly accessed by users, and all access to the underlying T should be
-/// via members of StateSlot.
-template <typename T>
-class ConcreteStateSlot : public StateSlot {
-public:
-  template <typename... Args>
-  explicit ConcreteStateSlot(size_t numOutputs, Args &&...args)
-      : StateSlot(LLCL::TypeID::get<T>(), numOutputs),
-        payload(std::forward<Args>(args)...) {}
-
-  ~ConcreteStateSlot() override = default;
-
-  // No implicit copying is allowed
-  ConcreteStateSlot(const ConcreteStateSlot &rhs) = delete;
-  ConcreteStateSlot &operator=(const ConcreteStateSlot &rhs) = delete;
-
-private:
-  /// Payload.
-  T payload;
-
-  // Give StateSlot access to the typeID machinery.
-  friend class StateSlot;
-};
-
-} // namespace Detail
-
 /// A 'mutable borrow' of a state slot payload of type T. This object holds
-/// both the row pointer to the state slot payload, as well as an async
+/// both the raw pointer to the state slot payload, as well as an async
 /// value reference to the outer context for the slot itself. This allows
 /// usage of the state slot payload to safely overhang the overall context.
 ///

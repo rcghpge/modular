@@ -19,16 +19,19 @@ namespace M::GML {
 /// compile time, and the context is reused by each call to the model's
 /// 'execute' phase.
 ///
-/// Typically a state slot corresponds to a unique operation in the graph.
-/// However state slots can also be used to hold other framework-specific
-/// state, such as a framework specific context.
+/// State slots may hold context for specific operations in the model, or
+/// may hold framework or runtime specific state shared across many operations
+/// in the model. State slots also support generically caching buffer
+/// allocations.
 ///
-/// State slots also generically support caching of buffer allocations.
+/// No thread synchronization is enforced. A slot index should be set or
+/// emplaced at most once, which is easy to enforce if the slots are setup
+/// only in the 'init' phase. A state slot's contents should never be
+/// concurrently mutated and/or read, which is easy to enforce if the slot
+/// is used by exactly one operation.
 ///
-/// No thread synchronization is enforced. A slot index should be emplaced at
-/// most once. A state slot's contents should be accessed by one thread at a
-/// time. Both these conditions are easy to satisfy if state slots are unique
-/// for an operation in the overall graph.
+/// Note that the same ExecutableModel can only safely support concurrent
+/// calls to the 'execute' block if all state slots are read only.
 class Context {
 public:
   /// Constructs a new context with numSlots uninitialized state slots.
@@ -38,42 +41,60 @@ public:
   /// Returns the number of state slots in the context.
   size_t getNumStateSlots() const { return stateSlots.size(); }
 
-  /// Returns true if the state slot at slotIndex has been emplaced.
+  /// Returns true if the state slot at slotIndex has been set or emplaced.
   bool hasStateSlot(size_t slotIndex) {
     assert(slotIndex < stateSlots.size() && "slotIndex is out of range");
-    return stateSlots[slotIndex] != nullptr;
+    return stateSlots[slotIndex];
   }
 
   // No implicit copying is allowed.
   Context(const Context &rhs) = delete;
   Context &operator=(const Context &rhs) = delete;
 
+  /// Moves an already constructed (unique pointer to) T into the state slot
+  /// at slotIndex. The state slot must not have been already set or emplaced.
+  /// The state slot will also hold space for numBuffers cached buffer
+  /// allocations, which will all initially be null.
+  template <typename T>
+  T &setStateSlot(size_t slotIndex, std::unique_ptr<T> payload,
+                  size_t numBuffers = 0) {
+    assert(!stateSlots[slotIndex] &&
+           "StateSlot for the given slot has already been set or emplaced.");
+    stateSlots[slotIndex].reset<T>(std::move(payload), numBuffers);
+    return stateSlots[slotIndex].get<T>();
+  }
+
   /// Constructs a T in-place within the state slot at slotIndex. The state
-  /// slot must not have already been emplaced. The state slot will also hold
-  /// space for numBuffers cached buffer allocations, which will all initially
-  /// be null.
+  /// slot must not have already been set or emplaced. The state slot will also
+  /// hold space for numBuffers cached buffer allocations, which will all
+  /// initially be null.
   template <typename T, typename... Args>
   T &emplaceStateSlot(size_t slotIndex, size_t numBuffers, Args &&...args) {
-    assert(stateSlots[slotIndex] == nullptr &&
-           "StateSlot for the given slot already exists.");
-    stateSlots[slotIndex] =
-        StateSlot::createStateSlot<T>(numBuffers, std::forward<Args>(args)...);
-    return getStateSlotPayload<T>(slotIndex);
+    assert(!stateSlots[slotIndex] &&
+           "StateSlot for the given slot has already been set or emplaced.");
+    stateSlots[slotIndex].reset<T>(
+        std::make_unique<T>(std::forward<Args>(args)...), numBuffers);
+    return stateSlots[slotIndex].get<T>();
   }
 
   /// Returns the state slot at slotIndex. The state slot must have already
   /// been emplaced.
-  StateSlot &getStateSlot(size_t slotIndex) const;
+  StateSlot &getStateSlot(size_t slotIndex) {
+    assert(slotIndex < stateSlots.size() && "slotIndex is out of range");
+    assert(stateSlots[slotIndex] &&
+           "StateSlot for the given slot has not been set or emplaced");
+    return stateSlots[slotIndex];
+  }
 
   /// Returns the payload in state slot at slotIndex. The state slot must
   /// have already been emplaced and be of type T.
   template <typename T>
-  T &getStateSlotPayload(size_t slotIndex) const {
-    return getStateSlot(slotIndex).template get<T>();
+  T &getStateSlotPayload(size_t slotIndex) {
+    return getStateSlot(slotIndex).get<T>();
   }
 
 private:
-  std::vector<std::unique_ptr<StateSlot>> stateSlots;
+  std::vector<StateSlot> stateSlots;
 };
 
 } // namespace M::GML

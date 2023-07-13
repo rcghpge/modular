@@ -37,26 +37,20 @@ static LLCL::Runtime *GetRuntime() {
   return runtime;
 }
 
-#ifdef MODULAR_DEBUG
+#ifndef NDEBUG
 TEST(ContextTest, StateSlotDowncastFailTest) {
   Context ctx(/*numSlots=*/1);
   ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, /*numBuffers=*/1, 43);
-  constexpr std::string_view typeA = LLCL::Detail::typeNameFor<PayloadA>();
-  constexpr std::string_view typeB = LLCL::Detail::typeNameFor<PayloadB>();
-  std::string errorMessage = "StateSlot::get: object has actual runtime type '";
-  errorMessage += typeA;
-  errorMessage += "' however it was expected at compile time to have type '";
-  errorMessage += typeB;
-  errorMessage += "'";
   ASSERT_DEATH_IF_SUPPORTED(ctx.getStateSlotPayload<PayloadB>(/*slotIndex=*/0),
-                            errorMessage);
+                            "mismatch between actual and expected type ids");
 }
 #endif
 
 TEST(ContextTest, StateSlotTest) {
   Context ctx(/*numSlots=*/2);
   ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, /*numBuffers=*/1, 43);
-  ctx.emplaceStateSlot<PayloadB>(/*slotIndex=*/1, /*numBuffers=*/1, 'a');
+  ctx.setStateSlot(/*slotIndex=*/1, std::make_unique<PayloadB>('a'),
+                   /*numBuffers=*/1);
 
   EXPECT_EQ(ctx.getStateSlotPayload<PayloadA>(/*slotIndex=*/0).i, 43);
 
