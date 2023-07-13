@@ -11,9 +11,8 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Utils.h"
 #include "GenericML/Support/Tensor.h"
-
-#include "MOGGHelpers.h"
 #include "mlir/IR/IRMapping.h"
 
 using namespace M;
@@ -154,8 +153,11 @@ struct FuseBroadcastsPass
     // Only fuse within the same region and not across, i.e, control flow.
     if (edge->getParentRegion() != kernel->getParentRegion())
       return false;
-
     if (auto otherKernel = dyn_cast<KernelOp>(edge)) {
+      // Should be unreachable.
+      if (otherKernel.getOutputPlaceholder() == nullptr)
+        return false;
+
       // Only fuse view operations.
       if (otherKernel.getIsViewOp().value_or(false))
         return true;
@@ -179,17 +181,9 @@ struct FuseBroadcastsPass
     // broadcast are such that a broadcast can be fused an operation when the
     // output matches the target. Therefor a broadcast to the output is
     // semantically the same.
-    MOGG::OutputPlaceholdersOp leafOuts;
-    for (auto ph : leaf.getOps<MOGG::OutputPlaceholdersOp>()) {
-      assert(!leafOuts && "Only one placeholder expected");
-      leafOuts = ph;
-    }
-
-    MOGG::OutputPlaceholdersOp producerOuts;
-    for (auto ph : producerKernel.getOps<MOGG::OutputPlaceholdersOp>()) {
-      assert(!producerOuts && "Only one placeholder expected");
-      producerOuts = ph;
-    }
+    MOGG::OutputPlaceholdersOp leafOuts = leaf.getOutputPlaceholder();
+    MOGG::OutputPlaceholdersOp producerOuts =
+        producerKernel.getOutputPlaceholder();
 
     // Remap the outputs.
     for (auto [leafOut, producerOut] :

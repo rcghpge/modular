@@ -244,6 +244,19 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [IsolatedFromAbove,
   let assemblyFormat = [{
     custom<Kernel>($operands, type($operands), type($results), $body, $outputParamDecls) attr-dict
   }];
+
+
+  let extraClassDeclaration = [{
+    /// Returns the OutputPlaceholder for this operation or null if it doesn't
+    /// exist.
+    OutputPlaceholdersOp getOutputPlaceholder();
+
+    /// This inlines all lambdas which are only invoked within other lambdas
+    /// and removed any unused lambdas. Returns true if there was any
+    /// modification
+    bool inlineLambdas();
+  }];
+
 }
 
 def MOGG_ParamShapeToValueOp : MOGG_Op<"param_shape_to_value", [Pure]> {

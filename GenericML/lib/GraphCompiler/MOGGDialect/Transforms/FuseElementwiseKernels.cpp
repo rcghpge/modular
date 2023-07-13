@@ -10,11 +10,10 @@
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Utils.h"
 #include "GenericML/Support/Tensor.h"
 
 #include "mlir/IR/IRMapping.h"
-
-#include "MOGGHelpers.h"
 
 using namespace M;
 

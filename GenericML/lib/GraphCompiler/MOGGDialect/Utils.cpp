@@ -3,23 +3,23 @@
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
-#ifndef GENERICML_GRAPH_COMPILER_MOGGDIALECT_MOGG_HELPERS_H
-#define GENERICML_GRAPH_COMPILER_MOGGDIALECT_MOGG_HELPERS_H
+//
+// This file implements the MO dialect operations.
+//
+//===----------------------------------------------------------------------===//
+
+#include "GenericML/GraphCompiler/MOGGDialect/Utils.h"
 
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
-
+#include "KGEN/KGENDialect/KGENUtils.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IRMapping.h"
-
-using namespace M;
+#include "llvm/ADT/SmallVectorExtras.h"
 
 namespace M::MOGG {
 
-namespace {
-
-/// Inline the given lambda into the call site of the invoke and return the new
-/// results which have replaced the old operation.
-[[maybe_unused]] SmallVector<Value> inlineInvoke(MOGG::LambdaInvokeOp invokeOp,
-                                                 MOGG::LambdaOp invokeTarget) {
+SmallVector<Value> inlineInvoke(MOGG::LambdaInvokeOp invokeOp,
+                                MOGG::LambdaOp invokeTarget) {
   IRMapping mapper;
 
   // Remap the values on the call site to the values inside the block.
@@ -53,10 +53,8 @@ namespace {
   return {};
 }
 
-[[maybe_unused]] MOGG::CallOp createMOGGReshape(mlir::OpBuilder &builder,
-                                                mlir::Location loc,
-                                                Value tensorIn,
-                                                MO::TensorType newShape) {
+MOGG::CallOp createMOGGReshape(mlir::OpBuilder &builder, mlir::Location loc,
+                               Value tensorIn, MO::TensorType newShape) {
   MLIRContext *ctx = builder.getContext();
   // Create the new output shape.
   auto shape = MOGG::ShapeType::get(ctx, newShape.getTypedShapeAttr());
@@ -82,11 +80,11 @@ namespace {
 }
 
 // Create a call to the slice kernel directly in MOGG.
-[[maybe_unused]] MOGG::CallOp
-createMOGGSlice(mlir::OpBuilder &builder, mlir::Location loc, Value tensorIn,
-                Type outType, const SmallVector<int64_t> &start,
-                const SmallVector<int64_t> &stop,
-                const SmallVector<int64_t> &step) {
+MOGG::CallOp createMOGGSlice(mlir::OpBuilder &builder, mlir::Location loc,
+                             Value tensorIn, Type outType,
+                             const SmallVector<int64_t> &start,
+                             const SmallVector<int64_t> &stop,
+                             const SmallVector<int64_t> &step) {
   // Create a constant for the axis and each of the dimensions being sliced.
   Value startVal = builder.create<MO::ConstantOp>(loc, start);
   Value stopVal = builder.create<MO::ConstantOp>(loc, stop);
@@ -108,8 +106,4 @@ createMOGGSlice(mlir::OpBuilder &builder, mlir::Location loc, Value tensorIn,
       /*otherParams=*/kgenParams);
 }
 
-} // namespace
-
 } // namespace M::MOGG
-
-#endif // GENERICML_GRAPH_COMPILER_MOGGDIALECT_MOGG_HELPERS_H
