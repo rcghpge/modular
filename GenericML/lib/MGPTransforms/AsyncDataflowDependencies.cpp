@@ -117,8 +117,15 @@ bool AsyncDataflowDependencies::isNonSelfOverlapping(Value value) const {
     return true;
   }
 
-  // TODO: Remaining implementation pending.
-  return false;
+  ValueSet dead = exclusiveSet(value);
+
+  // The only way value could still be alive is if some alias of it is
+  // fed back via some enclosing kLoop control flow op, and that alias
+  // is not dead when value is defined.
+  return llvm::all_of(allLoopBoundArgs(op), [&](Value arg) {
+    return !maybeSameAs(value, arg) ||
+           valueAnalysis.index->setContains(dead, arg);
+  });
 }
 
 void AsyncDataflowDependencies::print(llvm::raw_ostream &os) {
@@ -552,6 +559,65 @@ bool AsyncDataflowDependencies::allUsesAreByOperationsInSet(
   return true;
 }
 
+AsyncDataflowDependencies::ValueEquivalence
+AsyncDataflowDependencies::getEquivalenceAtOp(Operation *op) const {
+  // Collect results of op which are known to be 'fresh', ie cannot alias
+  // with any op operand.
+  ValueSet freshResultValues = valueAnalysis.index->emptySet();
+  if (!isa<GRT::GRTExtendsLifetimeInterface>(op) &&
+      !isa<GRT::GRTMayAliasInterface>(op)) {
+    for (Value result : op->getResults())
+      valueAnalysis.index->addToSet(freshResultValues, result);
+  }
+
+  // Collect all arguments to blocks which may be in a loop.
+  ValueSet loopArgs = valueAnalysis.index->emptySet();
+  for (Value arg : allLoopBoundArgs(op))
+    valueAnalysis.index->addToSet(loopArgs, arg);
+
+  // Collect all results of loop control flow ops containing op.
+  ValueSet loopResults = valueAnalysis.index->emptySet();
+  for (Value res : allLoopResults(op))
+    valueAnalysis.index->addToSet(loopResults, res);
+
+  LLVM_DEBUG({
+    llvm::dbgs() << "freshResultValues = ";
+    valueAnalysis.index->printVs(
+        llvm::dbgs(), valueAnalysis.index->setToVector(freshResultValues));
+    llvm::dbgs() << "\n";
+    llvm::dbgs() << "loopArgs = ";
+    valueAnalysis.index->printVs(llvm::dbgs(),
+                                 valueAnalysis.index->setToVector(loopArgs));
+    llvm::dbgs() << "\n";
+    llvm::dbgs() << "loopResults = ";
+    valueAnalysis.index->printVs(llvm::dbgs(),
+                                 valueAnalysis.index->setToVector(loopResults));
+    llvm::dbgs() << "\n";
+  });
+
+  // Take the symmetric/transitive/reflexive closure of the maybeSameAs
+  // relation. However:
+  //  - entries (%lhs, ...) can be ignored if %lhs is a loop result, since
+  //    the loop is still in flight so alias cannot yet have 'escaped' via
+  //    the loop result.
+  //  - entries (%lhs, %rhs) can be ignored if %lhs is a loop arg and %rhs
+  //    is a fresh result value, since we know %rhs will not be the same
+  //    as the previous version from %lhs.
+  ValueEquivalence equivalence = valueAnalysis.index->identityEquivalence();
+  for (const auto &[lhs, set] : maybeSameAsRelation) {
+    if (valueAnalysis.index->setContains(loopResults, lhs))
+      continue;
+    for (auto rhs : valueAnalysis.index->setToVector(set)) {
+      if (valueAnalysis.index->setContains(loopArgs, lhs) &&
+          valueAnalysis.index->setContains(freshResultValues, rhs))
+        continue;
+      valueAnalysis.index->setEquivalent(equivalence, lhs, rhs);
+    }
+  }
+
+  return equivalence;
+}
+
 AsyncDataflowDependencies::ValueSet
 AsyncDataflowDependencies::getFullyConsumedWhenOpBegins(Operation *op) const {
   LLVM_DEBUG({
@@ -592,8 +658,16 @@ AsyncDataflowDependencies::getFullyConsumedWhenOpBegins(Operation *op) const {
   // references. For that we must expand each candidate into its equivalence
   // class w.r.t. the maybeSameAs relation.
   //
-  // TODO: This equivalence is too 'large' since it does not allow us to talk
-  // about loop iterations 'before' and 'following' the current op position.
+  // However, if op is within a kLoop sub-block it is sound to consider
+  // everything before this op to be from a 'previous' iteration of the loop,
+  // and everything after to be for the 'next' iteration. This means the
+  // equivalence can ignore some entries in the maybeSameAs relation which are
+  // due to tying the loop knot.
+  ValueEquivalence equivalence = getEquivalenceAtOp(op);
+
+  LLVM_DEBUG({
+    valueAnalysis.printEquivalence(llvm::dbgs(), "equivalence", equivalence);
+  });
 
   // Now, only if ALL the equivalent SSA values have been consumed can we
   // consider all the equivalent SSA values dead. Note we must do this as a
@@ -602,7 +676,7 @@ AsyncDataflowDependencies::getFullyConsumedWhenOpBegins(Operation *op) const {
   ValueSet result = valueAnalysis.index->emptySet();
   for (Value value : valueAnalysis.index->setToVector(candidates)) {
     ValueSet maybeSameValues =
-        valueAnalysis.index->getEquivalenceClass(maybeSameAsEquivalence, value);
+        valueAnalysis.index->getEquivalenceClass(equivalence, value);
     LLVM_DEBUG({
       llvm::dbgs() << "considering candidate ";
       valueAnalysis.index->printV(llvm::dbgs(), value);

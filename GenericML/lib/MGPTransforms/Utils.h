@@ -45,6 +45,13 @@ SmallVector<Operation *> getDataflowOrder(Block *block);
 /// Returns true if op can be executed at most once in overall model.
 bool isAtMostOnce(Operation *op);
 
+/// Returns all the block arguments for blocks containing op which could be
+/// 'spliced in' to the overall execution graph more than once.
+SmallVector<Value> allLoopBoundArgs(Operation *op);
+
+/// Returns all the results of kLoop control flow ops containing op.
+SmallVector<Value> allLoopResults(Operation *op);
+
 /// Returns the 'indicating results' for op. If ANY indicating result is ready
 /// then the op is known to have FINISHED execution and is not holding any
 /// references to any of its operands.

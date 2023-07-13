@@ -148,6 +148,32 @@ bool M::MGP::isAtMostOnce(Operation *op) {
   return true;
 }
 
+SmallVector<Value> M::MGP::allLoopBoundArgs(Operation *op) {
+  SmallVector<Value> result;
+  while (op->getBlock()) {
+    if (!isAtMostOnce(op)) {
+      for (Value arg : op->getBlock()->getArguments())
+        result.emplace_back(arg);
+    }
+    op = op->getParentOp();
+  }
+  return result;
+}
+
+SmallVector<Value> M::MGP::allLoopResults(Operation *op) {
+  SmallVector<Value> result;
+  while (op->getBlock()) {
+    if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op->getParentOp())) {
+      if (cfOp.getFlavor() == GRT::kLoopLike) {
+        for (Value res : cfOp->getResults())
+          result.emplace_back(res);
+      }
+    }
+    op = op->getParentOp();
+  }
+  return result;
+}
+
 SmallVector<Value> M::MGP::getIndicatingResults(Operation *op) {
   // Note there's no special case for control flow ops here: we'll consider
   // the control flow op itself to be finished when any of its results

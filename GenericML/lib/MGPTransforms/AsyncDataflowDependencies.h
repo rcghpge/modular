@@ -208,9 +208,6 @@ public:
   /// op can only be executed at most once), or value is known to be dead
   /// by the time its defining op is (re-)executed (due to some enclosing
   /// kLoop control flow op).
-  ///
-  /// TODO: Though sound, currently very incomplete, and is to be replaced
-  /// by the actual implementation.
   bool isNonSelfOverlapping(Value value) const;
 
   /// Prints a representation of all equivalences and relations to os.
@@ -277,6 +274,23 @@ private:
   ///
   /// Otherwise, return the opOperand's owning operation.
   Operation *getEffectiveOwner(const OpOperand *opOperand) const;
+
+  /// Returns the equivalence such that if (%lhs, %rhs) are equivalent then
+  /// %lhs and %rhs could point to the same AsyncValue. It it weren't for
+  /// loops this would just be the global maybeSameAs equivalence defined above.
+  ///
+  /// However, if op could be executed more than once due to enclosing loops
+  /// then we want to account for two facts which make the equivalence smaller:
+  ///  - The results of all enclosing loop control flow ops have not been bound
+  ///    yet, so no aliases can escape via them.
+  ///  - The result of op is fresh, and does not need to be considered an alias
+  ///    of the previous value returned by the same op in a previous loop
+  ///    iteration.
+  ///
+  /// With the above smaller equivalence the getFullyConsumedWhenOpBegins
+  /// method will find more consumed values, and the 'exclusiveSet' will
+  /// be more complete.
+  ValueEquivalence getEquivalenceAtOp(Operation *op) const;
 
   /// Returns true if every use of value in values (if any) is by an operation
   /// in ops. However the use must be in a gating operand position
