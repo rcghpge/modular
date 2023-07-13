@@ -117,3 +117,23 @@ set_target_properties(modular-engine
 
 add_subdirectory(docs)
 add_subdirectory(notebooks)
+
+# Set up wheel directory structure by copying the pyproject.toml and setup.py
+# files needed for setuptools to build the wheel.
+install(FILES pyproject.toml setup.py
+  DESTINATION modular-engine-wheel
+)
+
+# Also copy the `modular.engine` Python files into the wheel.
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/modular
+  DESTINATION modular-engine-wheel
+  FILES_MATCHING
+  PATTERN "*.py*"
+  PATTERN "py.typed"
+)
+
+# Finally, install the built Python extension module shared library into the
+# wheel.
+install(TARGETS core
+  DESTINATION modular-engine-wheel/modular/engine
+)
