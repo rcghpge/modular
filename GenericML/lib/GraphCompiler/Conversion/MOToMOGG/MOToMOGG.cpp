@@ -80,6 +80,14 @@ struct KernelRecord {
     }                                                                          \
   }
 
+// Operations which are handled specially and not lowered to MOGG
+#define MO_NO_LOWER(MOOp)                                                      \
+  {                                                                            \
+    TypeID::get<MOOp>(), KernelRecord {                                        \
+      MOOp::getOperationName(), "None", false                                  \
+    }                                                                          \
+  }
+
 #define MO_MOJO_ONLY(MOOp)                                                     \
   {                                                                            \
     TypeID::get<MOOp>(), KernelRecord {                                        \
@@ -126,13 +134,18 @@ struct MOOpPattern : public RewritePattern {
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-    // skip non-mo ops and container/constant/output mo ops
+    // skip non-mo ops and container/output mo ops
     if (!isa<MO::MODialect>(op->getDialect()) || isa<MO::GraphOp>(op) ||
-        isa<MO::ConstantOp>(op) || isa<MO::OutputOp>(op))
+        isa<MO::OutputOp>(op))
       return failure();
 
-    auto results = selectMOGGOp(op);
+    auto maybeResults = selectMOGGOp(op);
+    if (!maybeResults.has_value())
+      return failure();
+
+    ErrorOr<ValueRange> &results = maybeResults.value();
     if (results.isError()) {
+      op->emitOpError("[MO_TO_MOGG] ") << results.getError();
       return failure();
     } else {
       rewriter.replaceOp(op, results.takeValue());
@@ -140,13 +153,17 @@ struct MOOpPattern : public RewritePattern {
     }
   }
 
-  ErrorOr<ValueRange> selectMOGGOp(Operation *op) const {
+  // nullopt --> expected no lowering. Error --> unexpected error. Else lowering
+  std::optional<ErrorOr<ValueRange>> selectMOGGOp(Operation *op) const {
     // Get the implementation info for this operation.
     auto itr = moToMojoKernels.find(op->getName().getTypeID());
     if (itr == moToMojoKernels.end())
-      return Error("[MO_TO_MOGG] Failed to find a kernel for " +
+      return Error("Failed to find a kernel registration for " +
                    op->getName().getStringRef().str());
     KernelRecord &kernel = itr->second;
+
+    if (!kernel.shouldHaveMojo && kernel.shim == "None")
+      return std::nullopt;
 
     // Helper to encapsulate all the code required to lower to a kernel.
     MO::KernelLowererHelper helper{op, registry, moggBindings};
@@ -156,34 +173,6 @@ struct MOOpPattern : public RewritePattern {
     // Dimensions are static or shape infered (i.e not '?')
     // Only within the top level graph and not within e.g control flow.
     bool shouldUseJit = useJit && kernel.shouldHaveMojo;
-
-    // Returns true if a type is compatable with jit.
-    auto isTypeAllowed = [&](Type t) {
-      auto tensor = dyn_cast<MO::TensorType>(t);
-      Type dtype = tensor.getElementType();
-      bool allowedElementTypes =
-          MOGG::MOGGTypeTraits::isSupportedMOGGType(dtype);
-
-      if (!tensor || !allowedElementTypes || !tensor.hasRank() ||
-          tensor.getRank() > kMaxRank || tensor.hasUnknownShape())
-        return false;
-
-      // The symbolic shape must be trivial and not a compound expresion. I.E
-      // N*M.
-      for (TypedAttr symbolicDim : tensor.getDims()) {
-        if (!(isa<KGEN::ParamDeclRefAttr>(symbolicDim) ||
-              isa<IntegerAttr>(symbolicDim)))
-          return false;
-      }
-
-      return true;
-    };
-
-    for (Type t : op->getOperandTypes())
-      shouldUseJit &= isTypeAllowed(t);
-
-    for (Type t : op->getResultTypes())
-      shouldUseJit &= isTypeAllowed(t);
 
     // Check general op level constraints. Currently only single result ops
     // are allowed.
@@ -203,8 +192,54 @@ struct MOOpPattern : public RewritePattern {
       }
     }
 
-    // If we should be using JIT generate a jit target. Otherwise use the shim.
-    if (shouldUseJit) {
+    auto isDTypeAllowed = [&](Type t) {
+      auto tensor = dyn_cast<MO::TensorType>(t);
+      Type dtype = tensor.getElementType();
+      return MOGG::MOGGTypeTraits::isSupportedMOGGType(dtype);
+    };
+
+    // Returns true if a type is compatable with jit.
+    auto isShapeAllowed = [&](Type t) {
+      auto tensor = dyn_cast<MO::TensorType>(t);
+
+      if (!tensor || !tensor.hasRank() || tensor.getRank() > kMaxRank ||
+          tensor.hasUnknownShape())
+        return false;
+
+      // The symbolic shape must be trivial and not a compound expresion. I.E
+      // N*M.
+      for (TypedAttr symbolicDim : tensor.getDims()) {
+        if (!(isa<KGEN::ParamDeclRefAttr>(symbolicDim) ||
+              isa<IntegerAttr>(symbolicDim)))
+          return false;
+      }
+
+      return true;
+    };
+
+    bool hasCompatibleJITDtypes = true;
+    bool hasCompatibleJITShape = true;
+    for (Type t : op->getOperandTypes()) {
+      hasCompatibleJITDtypes &= isDTypeAllowed(t);
+      hasCompatibleJITShape &= isShapeAllowed(t);
+    }
+    for (Type t : op->getResultTypes()) {
+      hasCompatibleJITDtypes &= isDTypeAllowed(t);
+      hasCompatibleJITShape &= isShapeAllowed(t);
+    }
+
+    if (!hasCompatibleJITDtypes && shouldUseJit) {
+      std::string errStr;
+      llvm::raw_string_ostream os(errStr);
+      os << "Found at least one incompatible DType for a JIT-able operation"
+         << ". Operand types " << op->getOperandTypes()
+         << ". Results Types: " << op->getResultTypes();
+      return Error(errStr);
+    }
+
+    // If we should be using JIT generate a jit target.
+    // Otherwise use the shim but only if the dtype is specially supported.
+    if (shouldUseJit && hasCompatibleJITDtypes && hasCompatibleJITShape) {
       if (auto invokeShapeFuncOp = dyn_cast<MO::InvokeShapeFuncOp>(op))
         return helper.lowerShapeFuncToKernel(invokeShapeFuncOp);
 
@@ -260,6 +295,8 @@ void MOToMOGGPass::runOnOperation() {
   // A map of MO types to the known implementations. Ops can be backed by two
   // implementations. A C++ shim in the mop primitives and a Mojo kernel which
   // will be jit compiled.
+  // clang-format off
+  // ^-- otherwise tries to put 2+ entries per line
   MoToKernelMapTy moToMojoKernels{
       MO_MOJO_ONLY(MO::AbsOp),
       MO_MOJO_ONLY(MO::AddOp),
@@ -318,8 +355,16 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_MOJO(MO::TanhOp, "mop.kernels.tanh"),
       MO_TO_MOJO_VIEW(MO::TransposeOp, "mop.kernels.transpose"),
       MO_SHIM_ONLY(MO::WhereOp, "mop.kernels.where"),
-  };
 
+      // Bookkeeping for gotchas
+      MO_NO_LOWER(MO::ConstantOp),
+      MO_NO_LOWER(MO::RebindOp),
+      MO_NO_LOWER(MO::Static::ReshapeOp),
+      MO_NO_LOWER(MO::IndexToTensorOp),
+      MO_NO_LOWER(MO::Shape::ToTensorOp),
+      MO_NO_LOWER(MO::ReshapeOp)
+  };
+  // clang-format on
   RewritePatternSet patterns{ctx};
   patterns.add<MOOpPattern>(ctx, moToMojoKernels, registry, moggBindings.get(),
                             useJit.getValue());
@@ -337,6 +382,7 @@ void MOToMOGGPass::runOnOperation() {
 #undef MO_TO_MOJO
 #undef MO_TO_MOJO_NON_ELEMWISE
 #undef MO_MOJO_ONLY
+#undef MO_NO_LOWER
 #undef MO_SHIM_ONLY
 #undef MO_TO_MOJO_ONLY_NON_ELEMWISE
 #undef MO_TO_MOJO_VIEW
