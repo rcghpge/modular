@@ -184,12 +184,10 @@ struct MOOpPattern : public RewritePattern {
     // We read the matmul attributes to allow finer grained control exactly when
     // we jit matmuls and to target the specific shims.
     if (auto matmul = dyn_cast<MO::MatmulOp>(op)) {
-      if (matmul.getTransposeB().value_or(false)) {
+      if (matmul.getTransposeB().value_or(false))
         shimTarget = "mop.kernels.matmul_transpb";
-      } else if (matmul.getPackedB().value_or(false)) {
+      else if (matmul.getPackedB().value_or(false))
         shimTarget = "mop.kernels.matmul_packb";
-        shouldUseJit = false;
-      }
     }
 
     auto isDTypeAllowed = [&](Type t) {

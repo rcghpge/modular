@@ -118,6 +118,15 @@ class ExecInvariantCodeMotionPass
         "mop.shape.pack_matmul_b.transp_b",
         CpuTensorSpecCreateOp::getOperationName(),
     };
+    // We allow jit kernels to be recomputed under the condition that they
+    // return an index. Normally they will just return a chain so anything
+    // returning more than that is allocating indices as well.
+    if (op->getName().getStringRef() == "mop.kgen.execute_kernel" &&
+        op->getNumResults() > 1 &&
+        llvm::all_of(op->getResultTypes(), [](Type ty) {
+          return isa<MEF::ChainType, IndexType>(ty);
+        }))
+      return true;
     return recomputableOps.contains(op->getName().getStringRef());
   }
 
