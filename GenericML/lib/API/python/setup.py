@@ -30,6 +30,7 @@ class bdist_wheel(_bdist_wheel):
         self.root_is_pure = False
 
 
+# Copy shared libraries and executables into the wheel.
 PY_MODULE_EXTENSION = ".pyd" if sys.platform == "win32" else ".so"
 SHARED_LIBS = [
     os.path.abspath(p)
@@ -38,10 +39,16 @@ SHARED_LIBS = [
         + glob(os.path.join("modular", "engine", f"*{PY_MODULE_EXTENSION}"))
     )
 ]
+EXECUTABLES = [os.path.abspath(os.path.join("modular", "bin", "*"))]
+# Copy everything under `.kgen_cache` to the wheel.
+KGEN_CACHE = [
+    os.path.abspath(os.path.join("modular", ".kgen_cache", "**", "*"))
+]
+
 setup(
     cmdclass={"bdist_wheel": bdist_wheel},
     name="modular-engine",
-    package_data={"modular.engine": SHARED_LIBS},
+    package_data={"modular.engine": EXECUTABLES + SHARED_LIBS + KGEN_CACHE},
     packages=["modular.engine"],
     include_package_data=True,
 )
