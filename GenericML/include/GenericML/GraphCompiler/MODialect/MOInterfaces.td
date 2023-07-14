@@ -91,13 +91,13 @@ def MO_ParamDeclaration : MO_TensorOpInterfaceBase<"ParamDeclarationInterface",
       "dimension parameters or a new shape parameter.",
       "LogicalResult", "emitFwShapeFuncInvoke",
       (ins
-        "KGEN::FuncOp":$fwFuncOp,
+        "KGEN::FuncInterface":$func,
         "llvm::ArrayRef<mlir::TypedAttr>":$operands,
         "StringRef":$paramNamePrefix,
         "mlir::RewriterBase &":$rewriter), [{}],
       [{
         return impl::emitFwShapeFuncInvoke(
-          $_op, fwFuncOp, operands, paramNamePrefix, rewriter);
+          $_op, func, operands, paramNamePrefix, rewriter);
       }]>,
   ];
 

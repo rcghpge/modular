@@ -60,7 +60,7 @@ ErrorOrSuccess elementwiseSinkStaticBroadcastTo(Operation *op,
                                                 mlir::RewriterBase &rewriter);
 
 LogicalResult emitFwShapeFuncInvoke(ParamDeclarationInterface op,
-                                    KGEN::FuncOp fwFuncOp,
+                                    KGEN::FuncInterface func,
                                     ArrayRef<TypedAttr> operands,
                                     StringRef paramNamePrefix,
                                     mlir::RewriterBase &rewriter);
