@@ -850,6 +850,27 @@ static void printLambda(OpAsmPrinter &p, mlir::Operation *lambda,
 }
 
 //===----------------------------------------------------------------------===//
+// MOGG CallOp
+//===----------------------------------------------------------------------===//
+
+bool CallOp::setKGENParamToValueIfPresent(StringRef name, Attribute value) {
+  // Exit out if we don't have the parameter already (we can't add new ones as
+  // the params come from mojo).
+  std::optional<mlir::DictionaryAttr> dict = getKgenParams();
+  if (!dict)
+    return false;
+
+  mlir::NamedAttrList attributes(*dict);
+  Attribute oldAttr = attributes.set(name, value);
+
+  // Update the dict if it doesn't already have that value.
+  if (oldAttr != value)
+    setKgenParamsAttr(attributes.getDictionary(getContext()));
+
+  return true;
+}
+
+//===----------------------------------------------------------------------===//
 // MOGG KernelOp
 //===----------------------------------------------------------------------===//
 
@@ -895,6 +916,138 @@ bool KernelOp::inlineLambdas() {
   }
 
   return changed;
+}
+
+/// Disables future fusion on this input.
+void KernelOp::disableInputFusionOnInput(size_t index) {
+  std::optional<ArrayAttr> inputLambdas = getInputFusionInterfaceAttr();
+
+  if (inputLambdas.has_value()) {
+    SmallVector<Attribute> lambdaNames;
+
+    // Add all the old attributes to the new one but remove the attribute at the
+    // disabled index.
+    size_t i = 0;
+    for (StringAttr attr : inputLambdas->getAsRange<StringAttr>()) {
+      if (i == index) {
+        lambdaNames.push_back(StringAttr::get(getContext(), ""));
+      } else {
+        lambdaNames.push_back(attr);
+      }
+
+      i++;
+    }
+
+    // Update the attribute.
+    setInputFusionInterfaceAttr(ArrayAttr::get(getContext(), lambdaNames));
+  }
+}
+
+/// Removes an operand at the given index and disables input fusion on that
+/// position if this kernel otherwise supports it.
+void KernelOp::removeOperandAtIndex(size_t index) {
+  (*this)->eraseOperand(index);
+  getBody().front().eraseArgument(index);
+
+  std::optional<ArrayAttr> inputInterfaces = getInputFusionInterface();
+
+  // Update the input fusion interfaces if we have them to remove fusion on this
+  // attr.
+  if (inputInterfaces.has_value()) {
+    SmallVector<Attribute> lambdaNames;
+    size_t i = 0;
+    // Add each of the current input hooks to the list, skipping the input we
+    // just removed.
+    for (StringAttr name : inputInterfaces->getAsRange<StringAttr>()) {
+      if (i != index)
+        lambdaNames.push_back(name);
+      i++;
+    }
+    setInputFusionInterfaceAttr(ArrayAttr::get(getContext(), lambdaNames));
+  }
+}
+
+/// Add an operand to the kernel and adds an argument to the kernel region.
+/// Fixes up the input fusion interfaces to disallow input fusion on this
+/// position. Returns the added kernel argument.
+Value KernelOp::addOperand(Value operand) {
+  (*this)->insertOperands(getNumOperands(), ValueRange{operand});
+  Value blockArg =
+      getBody().front().addArgument(operand.getType(), operand.getLoc());
+
+  std::optional<ArrayAttr> inputInterfaces = getInputFusionInterface();
+
+  // Update the input fusion interfaces if we have them to remove fusion on this
+  // attr.
+  if (inputInterfaces.has_value()) {
+    SmallVector<Attribute> lambdaNames;
+    for (StringAttr name : inputInterfaces->getAsRange<StringAttr>())
+      lambdaNames.push_back(name);
+    // Add an empty lambda name for the operand we just added.
+    lambdaNames.push_back(StringAttr::get(getContext(), ""));
+    setInputFusionInterfaceAttr(ArrayAttr::get(getContext(), lambdaNames));
+  }
+
+  return blockArg;
+}
+
+void KernelOp::setInputFusionInterface(size_t index, StringRef lambdaName) {
+  std::optional<ArrayAttr> inputInterfaces = getInputFusionInterface();
+
+  // Update the input fusion interfaces if we have them to remove fusion on this
+  // attr.
+  if (inputInterfaces.has_value()) {
+    SmallVector<Attribute> lambdaNames;
+    for (StringAttr name : inputInterfaces->getAsRange<StringAttr>()) {
+      if (lambdaNames.size() == index)
+        lambdaNames.push_back(StringAttr::get(getContext(), lambdaName));
+      else
+        lambdaNames.push_back(name);
+    }
+    setInputFusionInterfaceAttr(ArrayAttr::get(getContext(), lambdaNames));
+  }
+}
+
+// Fuse the body of this kernel into another.
+void KernelOp::bodyIntoNew(OpBuilder &builder, mlir::SymbolTable &symTable,
+                           IRMapping &remapper,
+                           llvm::StringMap<StringRef> &oldLambdaNamesToNew) {
+
+  // Clone the incoming kernel into this kernel.
+  for (Operation &op : getBody().front()) {
+    if (isa<MOGG::OutputPlaceholdersOp>(op) || isa<MOGG::OutputOp>(op)) {
+      // Skip placeholders & output, already remapped.
+    } else if (auto lambda = dyn_cast<LambdaOp>(op)) {
+      // Add lambdas seperately so we rename them on insertion. (The
+      // symbol table does this for us).
+      auto newLambda = cast<LambdaOp>(builder.clone(op, remapper));
+      symTable.insert(newLambda, builder.getInsertionPoint());
+      builder.setInsertionPointAfter(newLambda);
+
+      oldLambdaNamesToNew[lambda.getSymName()] = newLambda.getSymName();
+    } else if (auto call = dyn_cast<CallOp>(op)) {
+      // Lambdas will have been inlined. The only place we can have
+      // a lambda reference is in a call.
+      auto newCall = dyn_cast<CallOp>(builder.clone(op, remapper));
+
+      SmallVector<Attribute> newAttrs;
+
+      // Remap any lambda references to point to the new lambda name.
+      std::optional<ArrayAttr> params = newCall.getParams();
+      if (params) {
+        for (SymbolRefAttr sym : params->getAsRange<SymbolRefAttr>()) {
+          StringRef name = sym.getLeafReference().strref();
+          auto itr = oldLambdaNamesToNew.find(name);
+          assert(itr != oldLambdaNamesToNew.end() &&
+                 "First use of lambda inserted before the lambda itself");
+          newAttrs.push_back(FlatSymbolRefAttr::get(getContext(), itr->second));
+        }
+        newCall.setParamsAttr(builder.getArrayAttr(newAttrs));
+      }
+    } else {
+      builder.clone(op, remapper);
+    }
+  }
 }
 
 static ParseResult parseKernel(

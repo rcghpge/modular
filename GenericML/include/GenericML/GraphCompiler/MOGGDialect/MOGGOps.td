@@ -255,6 +255,28 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [IsolatedFromAbove,
     /// and removed any unused lambdas. Returns true if there was any
     /// modification
     bool inlineLambdas();
+
+    /// Disables future fusion on this input.
+    void disableInputFusionOnInput(size_t index);
+
+    /// Removes an operand at the given index and disables input fusion on that
+    /// position if this kernel otherwise supports it.
+    void removeOperandAtIndex(size_t index);
+
+    /// Add an operand to the kernel and adds an argument to the kernel region.
+    /// Fixes up the input fusion interfaces to disallow input fusion on this
+    /// position. Returns the added kernel argument.
+    Value addOperand(Value operand);
+
+    /// Mark a given input as having a lambda fusion interface
+    void setInputFusionInterface(size_t index, StringRef lambdaName);
+
+    /// Fuse this body into the given builder and symbol table, using the
+    /// remapper to update the SSA values and tracking the changed lambda
+    /// names in `oldLambdaNamesToNew`.
+    void bodyIntoNew(OpBuilder& builder, mlir::SymbolTable& symTable,
+        IRMapping& remapper, llvm::StringMap<StringRef>& oldLambdaNamesToNew);
+
   }];
 
 }
@@ -337,7 +359,14 @@ def MOGG_CallOp : MOGG_Op<"call"> {
      $mojoKernelTarget ($params^)? `(`($operands^)?`)` ($kgenParams^)? attr-dict
        (`:` type($operands)^)? (`->` type($results)^)?
    }];
- }
+
+  let extraClassDeclaration = [{
+    /// Changes the value of a given KGEN parameter if it exists. Returns true
+    /// if the parameter exists and the value is now the same as value, false
+    /// if the parameter doesn't exist.
+    bool setKGENParamToValueIfPresent(StringRef name, Attribute value);
+  }];
+}
 
 def MOGG_SimdLoadOp : MOGG_Op<"simd_load"> {
   let summary = "Represents a simd load";

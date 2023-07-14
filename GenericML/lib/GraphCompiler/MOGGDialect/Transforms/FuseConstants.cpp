@@ -91,8 +91,7 @@ struct FuseConstants : public impl::FuseConstantsBase<FuseConstants> {
     block.getArgument(idx).replaceAllUsesWith(newOp->getResult(0));
 
     // Remove the argument.
-    kernel->eraseOperand(idx);
-    block.eraseArgument(idx);
+    kernel.removeOperandAtIndex(idx);
 
     // Kill the constant if that was the last use.
     if (cst->use_empty())

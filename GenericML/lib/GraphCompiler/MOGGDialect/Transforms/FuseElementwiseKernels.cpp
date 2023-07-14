@@ -286,23 +286,6 @@ struct FuseElementwisePass
     return -1;
   }
 
-  /// Remove the input interface attr for the given index.
-  llvm::SmallVector<StringRef>
-  removeIndexFromInputInterface(MOGG::KernelOp leaf, int32_t index) {
-    SmallVector<StringRef> newHooks;
-    ArrayAttr leafHooks = leaf.getInputFusionInterfaceAttr();
-
-    int32_t hookIndex = 0;
-    // Add each of the current input hooks ones to the list.
-    for (StringAttr name : leafHooks.getAsRange<StringAttr>()) {
-      if (hookIndex != index)
-        newHooks.push_back(name.strref());
-      hookIndex++;
-    }
-
-    return newHooks;
-  }
-
   /// Fuse the input of the given index of the kernel into this kernel.
   void fuseInputAtIndex(MOGG::KernelOp leaf, int32_t idx,
                         DenseMap<Value, Value> &alreadyFused) {
@@ -327,11 +310,6 @@ struct FuseElementwisePass
       leafOuts = ph;
     }
 
-    // Each input on the kernel has an associated input lambda which loads that
-    // operand. When we remove the operand we must remove the lambda and update
-    // the list of exposed lambdas to reflect that.
-    SmallVector<StringRef> newHooks = removeIndexFromInputInterface(leaf, idx);
-
     // Symbol tables for the both the incoming kernel and the kernel we are
     // fusing into.
     mlir::SymbolTable leafSymTable{leaf};
@@ -350,18 +328,12 @@ struct FuseElementwisePass
     auto leafElemwiseLambda = cast<LambdaOp>(leafSymTable.lookup(leafMainBody));
 
     // If we've already fused then early exit by just reusing the value we have
-    // replaced.
+    // already replaced.
     auto itr = alreadyFused.find(operandBeingReplaced);
     if (itr != alreadyFused.end()) {
       replaceLoadWithExistingUse(leaf, inputLambdaToReplace, leafElemwiseLambda,
                                  inserter, itr->second);
-
-      // Expose the new updated input hooks.
-      leaf.setInputFusionInterfaceAttr(inserter.getStrArrayAttr(newHooks));
-
-      // Remove the argument.
-      leaf->eraseOperand(idx);
-      leafBlock.eraseArgument(idx);
+      leaf.removeOperandAtIndex(idx);
       return;
     }
 
@@ -403,9 +375,7 @@ struct FuseElementwisePass
         oldNameToNew[otherLambdaLoad.getSymName()] = leafName;
       } else {
         // Add the new operand to the kernel + body.
-        leaf->insertOperands(leaf->getNumOperands(), ValueRange{otherOperand});
-        Value leafBlockArg = leafBlock.addArgument(otherBlockArg.getType(),
-                                                   otherBlockArg.getLoc());
+        Value leafBlockArg = leaf.addOperand(otherOperand);
         remapper.map(otherBlockArg, leafBlockArg);
 
         // As we have added a new input we need to clone the lambda which loads
@@ -416,16 +386,14 @@ struct FuseElementwisePass
         leafSymTable.insert(newLoadLambda, inserter.getInsertionPoint());
 
         // Add to the input interfaces so they can then be fused into later.
-        newHooks.push_back(newLoadLambda.getSymName());
+        leaf.setInputFusionInterface(leaf.getNumOperands() - 1,
+                                     newLoadLambda.getSymName());
 
         // Remap so any uses of the old lambda can be remapped onto the new
         // lambda when we fuse the main elementwise body.
         oldNameToNew[otherLambdaLoad.getSymName()] = newLoadLambda.getSymName();
       }
     }
-
-    // Expose the new updated input hooks.
-    leaf.setInputFusionInterfaceAttr(inserter.getStrArrayAttr(newHooks));
 
     StringRef mainBody = *producerKernel.getFusionBodyLambda();
     auto otherElemwiseLambda =
@@ -507,8 +475,7 @@ struct FuseElementwisePass
     newOp.erase();
 
     // Remove the argument we have effectively inlined.
-    leaf->eraseOperand(idx);
-    leafBlock.eraseArgument(idx);
+    leaf.removeOperandAtIndex(idx);
   }
 
   // Replace all loads from `inputLambdaToReplace` in `leafElemwiseLambda` with

@@ -62,14 +62,15 @@ struct FuseBroadcastsPass
         // All legality checking should be performed above so we assume this
         // will perform the fusion or produce a fatal failure.
         fuseInputAtIndex(kernel, index, alreadyFused);
+
+        kernel.disableInputFusionOnInput(index);
       }
     }
 
     auto replaceArg = [](KernelOp kernel, size_t index, Value newVal) {
       Block &thisBlock = kernel.getBody().front();
       thisBlock.getArgument(index).replaceAllUsesWith(newVal);
-      kernel->eraseOperand(index);
-      thisBlock.eraseArgument(index);
+      kernel.removeOperandAtIndex(index);
     };
 
     auto hasCompoundParameters = [](MO::TensorType t) {
@@ -124,10 +125,7 @@ struct FuseBroadcastsPass
           builder.setInsertionPointAfter(&thisBlock.front());
 
           // Add the old reshape argument to this kernel.
-          kernel->insertOperands(kernel->getNumOperands(),
-                                 ValueRange{reshape.getInput()});
-          Value reshapeInput =
-              thisBlock.addArgument(inType, reshape.getInput().getLoc());
+          Value reshapeInput = kernel.addOperand(reshape.getInput());
 
           // Add the new reshape.
           MOGG::CallOp newReshape = createMOGGReshape(builder, reshape.getLoc(),
@@ -148,6 +146,15 @@ struct FuseBroadcastsPass
     // Block arguments have no defining op and obviously cant be fused.
     Operation *edge = kernel.getOperand(index).getDefiningOp();
     if (!edge)
+      return false;
+
+    ArrayAttr inputFusions = kernel.getInputFusionInterfaceAttr();
+    // Unreachable unsafe state.
+    if (inputFusions.size() != kernel.getNumOperands())
+      return false;
+
+    // Skip empty input lambdas.
+    if (cast<StringAttr>(inputFusions[index]).strref() == "")
       return false;
 
     // Only fuse within the same region and not across, i.e, control flow.
@@ -222,13 +229,8 @@ struct FuseBroadcastsPass
       }
 
       // Add if we don't already have an operand for this.
-      if (!alreadyHasOperand) {
-        leaf->insertOperands(leaf->getNumOperands(), ValueRange{otherOperand});
-
-        Value leafBlockArg = leafBlock.addArgument(otherBlockArg.getType(),
-                                                   otherBlockArg.getLoc());
-        remapper.map(otherBlockArg, leafBlockArg);
-      }
+      if (!alreadyHasOperand)
+        remapper.map(otherBlockArg, leaf.addOperand(otherOperand));
 
       // The mogg kernel has been marked as a view. Search the kernel for the
       // broadcast function.
@@ -271,9 +273,8 @@ struct FuseBroadcastsPass
 
     builder.insert(newOp);
     // Remove the argument and replace all uses of it with the broadcast.
-    leaf->eraseOperand(idx);
     leafBlock.getArgument(idx).replaceAllUsesWith(newOp->getResult(0));
-    leafBlock.eraseArgument(idx);
+    leaf.removeOperandAtIndex(idx);
 
     alreadyFused[operandBeingReplaced] = newOp->getResult(0);
   }
