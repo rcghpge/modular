@@ -9,6 +9,7 @@
 #include "GenericML/Driver/DriverAPI.h"
 #include "GenericML/Driver/DriverInputFormat.h"
 #include "Support/ML/SizeUtils.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/ToolOutputFile.h"
 
 #include <filesystem>
