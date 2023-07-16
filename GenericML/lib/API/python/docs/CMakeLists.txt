@@ -4,6 +4,10 @@
 #
 ##===----------------------------------------------------------------------===##
 
+if (NOT TARGET inference_engine_docs)
+  return()
+endif()
+
 include(FindSphinx)
 
 if(Sphinx_FOUND)
