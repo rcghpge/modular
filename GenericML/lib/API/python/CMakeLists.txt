@@ -4,6 +4,8 @@
 #
 ##===----------------------------------------------------------------------===##
 
+include(AddPython)
+
 # Currently not supporting Python wheel packaging on Windows.
 if(NOT UNIX)
   message(WARNING "Wheel packaging is not supported on Windows yet.")
@@ -15,7 +17,7 @@ if(${DISABLE_ALL_EXTERNAL})
   return()
 endif()
 
-find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+modular_find_python3_development()
 
 include(AddPyBind11)
 
