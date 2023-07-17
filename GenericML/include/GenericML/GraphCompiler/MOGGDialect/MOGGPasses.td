@@ -105,6 +105,15 @@ def SoftFuse: Pass<"soft-fuse", "MO::GraphOp"> {
   let dependentDialects = ["M::MOGG::MOGGDialect"];
 }
 
+def FuseInOutLambdas: Pass<"fuse-in-out-lambdas", "MO::GraphOp"> {
+  let summary = "Fuse kernels into the lambda of their users";
+  let description = [{
+    An elementwise kernel can be directly fused into the lambda body of another
+    kernel. I.E fused directly into a matmul output loop.
+  }];
+  let dependentDialects = ["M::MOGG::MOGGDialect"];
+}
+
 def MarkTrivialKernels: Pass<"mark-trivial-kernels", "MO::GraphOp"> {
   let summary = "Statically detect if kernels are trivial";
   let description = [{

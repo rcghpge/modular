@@ -1009,12 +1009,26 @@ void KernelOp::setInputFusionInterface(size_t index, StringRef lambdaName) {
 }
 
 // Fuse the body of this kernel into another.
-void KernelOp::bodyIntoNew(OpBuilder &builder, mlir::SymbolTable &symTable,
-                           IRMapping &remapper,
-                           llvm::StringMap<StringRef> &oldLambdaNamesToNew) {
+void KernelOp::fuseBodyIntoNew(
+    OpBuilder &builder, mlir::SymbolTable &symTable, IRMapping &remapper,
+    llvm::StringMap<StringRef> &oldLambdaNamesToNew) {
+  auto neverSkip = [](Operation *) { return false; };
+
+  fuseBodyIntoNewWithSkip(builder, symTable, remapper, oldLambdaNamesToNew,
+                          neverSkip);
+}
+
+// Fuse the body of this kernel into another.
+void KernelOp::fuseBodyIntoNewWithSkip(
+    OpBuilder &builder, mlir::SymbolTable &symTable, IRMapping &remapper,
+    llvm::StringMap<StringRef> &oldLambdaNamesToNew,
+    std::function<bool(Operation *)> shouldSkip) {
 
   // Clone the incoming kernel into this kernel.
   for (Operation &op : getBody().front()) {
+    if (shouldSkip(&op))
+      continue;
+
     if (isa<MOGG::OutputPlaceholdersOp>(op) || isa<MOGG::OutputOp>(op)) {
       // Skip placeholders & output, already remapped.
     } else if (auto lambda = dyn_cast<LambdaOp>(op)) {

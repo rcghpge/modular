@@ -62,8 +62,6 @@ struct FuseBroadcastsPass
         // All legality checking should be performed above so we assume this
         // will perform the fusion or produce a fatal failure.
         fuseInputAtIndex(kernel, index, alreadyFused);
-
-        kernel.disableInputFusionOnInput(index);
       }
     }
 

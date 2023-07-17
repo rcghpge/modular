@@ -274,9 +274,14 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [IsolatedFromAbove,
     /// Fuse this body into the given builder and symbol table, using the
     /// remapper to update the SSA values and tracking the changed lambda
     /// names in `oldLambdaNamesToNew`.
-    void bodyIntoNew(OpBuilder& builder, mlir::SymbolTable& symTable,
+    void fuseBodyIntoNew(OpBuilder& builder, mlir::SymbolTable& symTable,
         IRMapping& remapper, llvm::StringMap<StringRef>& oldLambdaNamesToNew);
 
+    /// The same as the above but adds the option to skip an operation in the
+    /// body.
+    void fuseBodyIntoNewWithSkip(OpBuilder& builder, mlir::SymbolTable& symTable,
+        IRMapping& remapper, llvm::StringMap<StringRef>& oldLambdaNamesToNew,
+        std::function<bool(Operation*)> shouldSkip);
   }];
 
 }

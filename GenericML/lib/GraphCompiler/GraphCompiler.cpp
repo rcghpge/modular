@@ -124,6 +124,11 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
       pm.addPass(MOGG::createFuseBroadcasts());
       pm.addPass(mlir::createCanonicalizerPass());
       pm.addPass(mlir::createCSEPass());
+
+      // Fuse into big ops. I.E epilogue fusion into matmul.
+      pm.addPass(MOGG::createFuseInOutLambdas());
+      pm.addPass(mlir::createCSEPass());
+
       pm.addPass(MOGG::createFuseConstants());
     }
 
