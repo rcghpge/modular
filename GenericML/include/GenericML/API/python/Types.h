@@ -29,7 +29,7 @@ M_Dtype mapPybind11Type(pybind11::dtype dtype) {
   else if (dtype.is(pybind11::dtype::of<float>()))
     return M_FLOAT32;
   else if (dtype.is(pybind11::dtype::of<double>()))
-    return M_DOUBLE;
+    return M_FLOAT64;
   else if (dtype.is(pybind11::dtype::of<bool>()))
     return M_BOOL;
   else
@@ -59,7 +59,7 @@ pybind11::dtype mapDType(M_Dtype dtype) {
     return pybind11::dtype::of<float>();
   case M_FLOAT32:
     return pybind11::dtype::of<float>();
-  case M_DOUBLE:
+  case M_FLOAT64:
     return pybind11::dtype::of<double>();
   case M_BOOL:
     return pybind11::dtype::of<bool>();
@@ -90,7 +90,7 @@ std::string printDType(M_Dtype dtype) {
     return "DType.float16";
   case M_FLOAT32:
     return "DType.float32";
-  case M_DOUBLE:
+  case M_FLOAT64:
     return "DType.float64";
   case M_BOOL:
     return "DType.bool";

@@ -24,6 +24,6 @@ TEST_F(APITest, DtypeSize) {
   EXPECT_EQ(M_sizeOf(M_UINT64), sizeof(uint64_t));
   EXPECT_EQ(M_sizeOf(M_FLOAT16), sizeof(uint16_t));
   EXPECT_EQ(M_sizeOf(M_FLOAT32), sizeof(float));
-  EXPECT_EQ(M_sizeOf(M_DOUBLE), sizeof(double));
+  EXPECT_EQ(M_sizeOf(M_FLOAT64), sizeof(double));
   EXPECT_EQ(M_sizeOf(M_BOOL), sizeof(bool));
 }

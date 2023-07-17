@@ -47,7 +47,7 @@ static DType convertToDType(M_Dtype ty) {
     return DType::f16;
   case M_FLOAT32:
     return DType::f32;
-  case M_DOUBLE:
+  case M_FLOAT64:
     return DType::f64;
   case M_BOOL:
     return DType::kBool;
@@ -77,7 +77,7 @@ static M_Dtype convertToCDataType(DType ty) {
   case DType::kBool:
     return M_BOOL;
   case DType::f64:
-    return M_DOUBLE;
+    return M_FLOAT64;
   case DType::invalid:
     [[fallthrough]];
   default:
