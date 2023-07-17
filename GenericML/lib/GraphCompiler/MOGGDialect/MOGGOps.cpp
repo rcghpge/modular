@@ -182,7 +182,6 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
       {"mop.kernels.pack_matmul_b", "mop.shape.pack_matmul_b"},
       {"mop.kernels.pack_matmul_b.transp_b",
        "mop.shape.pack_matmul_b.transp_b"},
-      {"mop.kernels.fully_connected", "mop.shape.fully_connected"},
       {"mop.kernels.batch_matmul", "mop.shape.batch_matmul"},
       {"mop.kernels.batch_matmul_adjb", "mop.shape.batch_matmul_adjb"},
       {"mop.kernels.concat_axis_0", "mop.shape.concat_axis_0"},
