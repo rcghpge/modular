@@ -152,8 +152,8 @@ def MO_ShapeInferenceMaterialization :
   let methods = [
     InterfaceMethod<
       "Materializes and invokes the shape inference functions for the op.",
-      "LogicalResult", "materializeShapeInference",
-      (ins "mlir::RewriterBase &":$rewriter)>,
+    "LogicalResult", "materializeShapeInference",
+    (ins "M::MO::ShapeFuncMaterializationState &":$state)>,
   ];
 }
 

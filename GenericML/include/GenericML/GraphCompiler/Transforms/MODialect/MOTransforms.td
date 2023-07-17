@@ -22,6 +22,18 @@ def ShapeInferenceMaterialization :
     the arguments and results are not allowed), and the shape inference
     functions are not evaluated.
   }];
+
+  let dependentDialects = [
+    "mlir::LLVM::LLVMDialect",
+    "mlir::index::IndexDialect",
+    "M::Cache::CacheDialect",
+    "M::DebugInfo::DebugInfoDialect",
+    "M::HLCF::HLCFDialect",
+    "M::KGEN::KGENDialect",
+    "M::KGEN::LIT::LITDialect",
+    "M::KGEN::POP::POPDialect",
+    "M::MDialect",
+  ];
 }
 
 def InlineShapeFunctions : Pass<"inline-shape-funcs", "ModuleOp"> {
@@ -66,6 +78,19 @@ def StaticizeShapes : Pass<"staticize-shapes", "ModuleOp"> {
     ops or constant shape-like tensors. In particular shape-like (or dim-like)
     arguments provided to the graph are not supported for now.
   }];
+
+  // TODO(#16974) remove once shape materialization is removed from this pass
+  let dependentDialects = [
+    "mlir::LLVM::LLVMDialect",
+    "mlir::index::IndexDialect",
+    "M::Cache::CacheDialect",
+    "M::DebugInfo::DebugInfoDialect",
+    "M::HLCF::HLCFDialect",
+    "M::KGEN::KGENDialect",
+    "M::KGEN::LIT::LITDialect",
+    "M::KGEN::POP::POPDialect",
+    "M::MDialect",
+  ];
 }
 
 def DeparameterizeMoOps : Pass<"deparameterize-mo-ops", "GraphOp"> {

@@ -10,6 +10,17 @@
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Pass/Pass.h"
 
+// Must include dependent dialects
+#include "Cache/CacheDialect/CacheDialect.h"
+#include "KGEN/HLCFDialect/HLCFDialect.h"
+#include "KGEN/KGENDialect/KGENDialect.h"
+#include "KGEN/LITDialect/LITDialect.h"
+#include "KGEN/POPDialect/POPDialect.h"
+#include "Support/DebugInfoDialect/IR/DebugInfoDialect.h"
+#include "Support/MDialect/MDialect.h"
+#include "mlir/Dialect/Index/IR/IndexDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+
 namespace mlir {
 class Pass;
 } // namespace mlir
