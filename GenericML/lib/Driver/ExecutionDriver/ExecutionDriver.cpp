@@ -21,9 +21,11 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/YAMLTraits.h"
 #include "llvm/Support/raw_ostream.h"
-
 #include <chrono>
+#include <filesystem>
+#include <fstream>
 
 using namespace M;
 using mlir::MLIRContext;
@@ -179,16 +181,61 @@ static LogicalResult printDiagIfError(const AnyAsyncValueRef &res) {
   return success();
 }
 
+/// TensorResultInfo struct and corresponding MappingTraits to help write output
+/// information to YAML when --result-output-style=binary.
+namespace {
+struct TensorResultInfo {
+  std::string name;
+  std::string shape;
+};
+} // namespace
+
+LLVM_YAML_IS_SEQUENCE_VECTOR(TensorResultInfo)
+
+template <>
+struct llvm::yaml::MappingTraits<TensorResultInfo> {
+  static void mapping(IO &io, TensorResultInfo &info) {
+    io.mapRequired("name", info.name);
+    io.mapRequired("shape", info.shape);
+  }
+};
+
+/// Helper to wite YAML with tensor result info.
+static LogicalResult
+writeYamlToFile(const std::filesystem::path &yamlFilePath,
+                llvm::SmallVector<TensorResultInfo> &tensorResultsInfo) {
+  std::error_code yamlFileErr;
+  llvm::raw_fd_ostream yamlFile(llvm::StringRef(yamlFilePath.string()),
+                                yamlFileErr);
+  if (yamlFileErr) {
+    llvm::errs() << "Failed to open output tensor yaml: "
+                 << yamlFileErr.message() << "\n";
+    return failure();
+  }
+
+  llvm::yaml::Output yout(yamlFile);
+  yout << tensorResultsInfo;
+
+  return success();
+}
+
 /// This method can be used to print the results of a model in the standard
 /// format for an executor tool. It handles converting framework specific tensor
 /// types into something we can print if needed, and handles printing/reporting
 /// of errors in a way that works with diagnostic verification. It expects the
 /// first argument to be a chain, which is never printed (but it's handled if
 /// it's an error).
+///
+/// outputDir is only used if --result-output-style=binary, in which case this
+/// function will instead create a directory and write one binary file for each
+/// tensor result along with a YAML file containing the name and shape of each
+/// tensor result. The output directory containing these files must be specified
+/// with --binary-output-dir=<output_dir>."
 static LogicalResult
-printTensorResults(const ExecutableModel *model,
-                   MutableArrayRef<AnyAsyncValueRef> results,
-                   Kernels::ResultOutputStyle outputStyle, unsigned precision) {
+outputTensorResults(const ExecutableModel *model,
+                    MutableArrayRef<AnyAsyncValueRef> results,
+                    Kernels::ResultOutputStyle outputStyle, unsigned precision,
+                    StringRef outputDir) {
   // We expect the first result to be a chain.
   const AnyAsyncValueRef &ch = results.front();
   assert(ch.isReady() && isa<Chain>(ch) &&
@@ -201,6 +248,62 @@ printTensorResults(const ExecutableModel *model,
     return success();
 
   convertResultsToGenericTensors(model, results);
+
+  // If --result-output-style=binary, write output tensors to files and return.
+  if (outputStyle == Kernels::ResultOutputStyle::kBinary) {
+
+    // Holds the TensorResultInfo objects for each output tensor.
+    SmallVector<TensorResultInfo> tensorResultsInfo;
+
+    // Create the output directory. If the output directory is not there, then
+    // the directory is created along with all of its parents. If the directory
+    // does exist, then the following is a no-op.
+    if (auto ec =
+            llvm::sys::fs::create_directories(outputDir,
+                                              /* ignoreExisting */ true)) {
+      llvm::errs() << "Failed to create output tensor directories: "
+                   << ec.message() << "\n";
+      return failure();
+    }
+
+    llvm::outs() << "--- Writing Outputs to " << outputDir << "\n";
+
+    for (size_t i = 0; i < results.size(); ++i) {
+      std::string outputName = model->getModel()->getOutputNames()[i];
+      const auto &result = results[i];
+      assert(result.isReady() && "model result must be ready");
+      if (auto *tensor = dyn_cast<Tensor>(result)) {
+        tensorResultsInfo.push_back(
+            {outputName, tensor->getSpec().getAsString()});
+
+        std::ofstream outputFile(
+            (std::filesystem::path(outputDir.str()) / outputName),
+            std::ofstream::binary);
+
+        outputFile.write((const char *)tensor->getBuffer(),
+                         tensor->getSpec().getSizeInBytes());
+
+        if (!outputFile) {
+          llvm::errs() << "Failed to write output tensor file.\n";
+          return failure();
+        }
+
+      } else {
+        tensorResultsInfo.push_back({"unknown result", ""});
+      }
+    }
+    // Write tensor result information to yaml.
+    // This can be used by the model tool to map outputs for verification.
+    if (writeYamlToFile(
+            (std::filesystem::path(outputDir.str()) / "output.yaml"),
+            tensorResultsInfo)
+            .failed()) {
+      llvm::errs() << "Failed to write YAML with result info."
+                   << "\n";
+      return failure();
+    }
+    return success();
+  }
 
   StringRef name = model->getModel()->getName();
   llvm::outs() << "'" << name << "' returned ";
@@ -380,9 +483,9 @@ static ErrorOrSuccess executeModel(const Model *model, Runtime &runtime,
       // of just propagating the error. This helps unit tests distinguish
       // expected model error output from transient errors running the tool
       // itself.
-      if (failed(printTensorResults(executableModel.get(), results,
-                                    options.resultOutputStyle,
-                                    options.printPrecision)))
+      if (failed(outputTensorResults(
+              executableModel.get(), results, options.resultOutputStyle,
+              options.printPrecision, options.binaryOutputDir)))
         return Error("repeated model execution failed");
     }
 

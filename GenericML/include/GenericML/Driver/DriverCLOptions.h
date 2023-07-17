@@ -216,6 +216,13 @@ public:
           clEnumValN(
               Kernels::ResultOutputStyle::kCompact, "compact",
               "Display a few elements at the start and end of each dimension"),
+          clEnumValN(
+              Kernels::ResultOutputStyle::kBinary, "binary",
+              "Save outputs to binary files. This creates a directory "
+              "with one binary file for each output tensor and a YAML file "
+              "containing the name and shape of each output tensor. The "
+              "output directory containing these files must be "
+              "specified with --binary-output-dir=<output_dir>."),
           clEnumValN(Kernels::ResultOutputStyle::kNone, "none",
                      "Do not display any result details")),
       cl::init(Kernels::ResultOutputStyle::kCompact)};
@@ -224,6 +231,12 @@ public:
       "print-precision",
       cl::desc("Specify precision of floating-point outputs (full-mode only)"),
       cl::init(6)};
+
+  cl::opt<std::string> binaryOutputDir{
+      "binary-output-dir",
+      cl::desc(
+          "If --result-output-style=binary, specify the output directory."),
+      cl::init("")};
 
   /// If set, save the execution time of every non-warmup run to given file.
   cl::opt<std::string> saveTimings{
