@@ -1161,10 +1161,15 @@ def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [Pure, MO_SlidingWindow]>{
   let description = [{
     Apply average pooling with the given filter shape, strides, and dilations.
 
+    For now the op only supports 2d avg pooling (so input and filter must be
+    4D), with the following layout assumption:
+    - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
+
     All hyperparameters (i.e. filter_shape, strides, dilations) must be of rank
     1, or unranked. If the input has static rank, all hyperparameters with
-    static shape must have sizes the match the input rank. The input and output
-    data tensors' ranks must match if statically known.
+    static shape must have sizes of `input_rank - 2`. Individual elements in the
+    hyperparameters applies to corresponding dimensions of the input (after
+    ignoring the batch and channel dimensions).
 
     This op currently only supports strides and dilations on the filter.
 
@@ -1182,9 +1187,9 @@ def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [Pure, MO_SlidingWindow]>{
     %res = mo.avg_pool(%arg) [
         filter_shape = %fs, strides = %st, dilations = %di
     ] : (
-      !mo.tensor<[10, 10], f32>, !mo.tensor<[2], si64>,
+      !mo.tensor<[20, 10, 10, 32], f32>, !mo.tensor<[2], si64>,
       !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
-    ) -> !mo.tensor<[9, 5], f32>
+    ) -> !mo.tensor<[20, 9, 5, 32], f32>
     ```
   }];
 
@@ -1209,10 +1214,15 @@ def MO_MaxPoolOp : MO_TensorOp<"max_pool", [Pure, MO_SlidingWindow]>{
   let description = [{
     Apply max pooling with the given filter shape, strides, and dilations.
 
+    For now the op only supports 2d max pooling (so input and filter must be
+    4D), with the following layout assumption:
+    - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
+
     All hyperparameters (i.e. filter_shape, strides, dilations) must be of rank
     1, or unranked. If the input has static rank, all hyperparameters with
-    static shape must have sizes the match the input rank. The input and output
-    data tensors' ranks must match if statically known.
+    static shape must have sizes of `input_rank - 2`. Individual elements in the
+    hyperparameters applies to corresponding dimensions of the input (after
+    ignoring the batch and channel dimensions).
 
     This op currently only supports strides and dilations on the filter.
 
@@ -1228,9 +1238,9 @@ def MO_MaxPoolOp : MO_TensorOp<"max_pool", [Pure, MO_SlidingWindow]>{
     %res = mo.max_pool(%arg) [
         filter_shape = %fs, strides = %st, dilations = %di
     ] : (
-      !mo.tensor<[10, 10], f32>, !mo.tensor<[2], si64>,
+      !mo.tensor<[20, 10, 10, 32], f32>, !mo.tensor<[2], si64>,
       !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
-    ) -> !mo.tensor<[9, 5], f32>
+    ) -> !mo.tensor<[20, 9, 5, 32], f32>
     ```
   }];
 
@@ -1259,24 +1269,32 @@ def MO_ConvOp : MO_TensorOp<"conv", [
     Compute the convolution of the input with the given filter, strides, and
     dilations.
 
+    For now the op only supports 2d convolution (so input and filter must be
+    4D), with the following layout assumptions:
+    - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
+    - filter has layout RSCF, i.e., (height, width, in_channels, out_channels)
+
     All hyperparameters (i.e. strides, dilations) must be of rank 1, or
     unranked. If the input has static rank, all hyperparameters with static
-    shape must have sizes the match the input rank. The input, output and filter
-    tensors' ranks must match if statically known.
+    shape must have sizes of `input_rank - 2`. Individual elements in the
+    hyperparameters applies to corresponding dimensions of the input (after
+    ignoring the batch and channel dimensions).
 
-    This op currently only supports strides and dilations on the filter.
+    The input, output and filter tensors' ranks must match if statically known.
+
+    This op currently only supports strides and dilations on the input.
 
     Example:
 
     ```mlir
-    %st = mo.constant {
-      value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %di = mo.constant {
-      value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %res = mo.conv(%0, %1) [strides = %st, dilations = %di] : (
-      !mo.tensor<[5, 5], f32>, !mo.tensor<[3, 3], f32>,
-      !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
-    ) -> !mo.tensor<[2, 1], f32>
+    %st = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>}
+      : !mo.tensor<[2], si64>
+    %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>}
+      : !mo.tensor<[2], si64>
+    %res = mo.conv(%input, %filter) [strides = %st, dilations = %di] : (
+      !mo.tensor<[10, 5, 5, 32], f32>, !mo.tensor<[2, 2, 32, 64], f32>,
+      !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
+    ) -> !mo.tensor<[10, 4, 4, 64], f32>
     ```
   }];
 
