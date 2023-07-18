@@ -62,6 +62,16 @@ static Chain print_string(const std::string &lhs, Chain chain) {
   return chain;
 }
 
+static void print_string_attribute(Chain inChain, Result<Chain> outChain,
+                                   MEFAttr<StringRef> string) {
+  if (string->empty() || string->back() != '\0')
+    return std::move(outChain).setToError(
+        "expecting string to be null-terminated");
+  fwrite(string->data(), 1, string->size() - 1, stdout);
+  fflush(stdout);
+  std::move(outChain).emplace();
+}
+
 static Chain print_array_i32(Chain chain, MEFAttr<ArrayRef<int32_t>> values) {
   printf("array = [");
   for (size_t i = 0, e = values->size(); i != e; ++i) {
@@ -929,6 +939,8 @@ void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "test.get_string", get_string);
   ADD_PRIMITIVE(registry, "test.append_string", append_string);
   ADD_PRIMITIVE(registry, "test.print_string", print_string);
+  ADD_PRIMITIVE(registry, "test.print_string_attribute",
+                print_string_attribute);
   ADD_PRIMITIVE(registry, "test.print_array_i32", print_array_i32);
   ADD_PRIMITIVE(registry, "test.print_dynamic_array_float",
                 print_dynamic_array_float);

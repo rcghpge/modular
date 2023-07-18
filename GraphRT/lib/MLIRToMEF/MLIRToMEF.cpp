@@ -27,8 +27,10 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/Support/LogicalResult.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/raw_ostream.h"
 #include <climits>
 
 using namespace M;
@@ -671,6 +673,8 @@ private:
   MEFOffset emitArrayAttribute(ArrayAttr value, Location loc);
   MEFOffset emitDictionaryAttribute(DictionaryAttr value, Location loc);
   MEFOffset emitTypeAttribute(Type type, Location loc);
+  MEFOffset emitMultiLineStringAttribute(MultiLineStringAttr attr,
+                                         Location loc);
   EntityTable &entities;
 
   friend class TypeEmitter;
@@ -910,6 +914,19 @@ MEFOffset AttributesEmitter::emitDictionaryAttribute(DictionaryAttr value,
   }
 
   return nameAndOffsetStart;
+}
+
+MEFOffset
+AttributesEmitter::emitMultiLineStringAttribute(MultiLineStringAttr attr,
+                                                Location loc) {
+  std::string storage;
+  llvm::raw_string_ostream os(storage);
+  for (auto stringAttr : attr.getValue()) {
+    os << stringAttr.getValue();
+    os << '\n';
+  }
+  os << '\0';
+  return emitStringAttribute(storage);
 }
 
 namespace {
@@ -1181,6 +1198,9 @@ MEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr,
 
   if (auto typeAttr = dyn_cast<TypeAttr>(attr))
     return emitTypeAttribute(typeAttr.getValue(), loc);
+
+  if (auto multilineAttr = dyn_cast<MultiLineStringAttr>(attr))
+    return emitMultiLineStringAttribute(multilineAttr, loc);
 
   entities.emitError(loc) << "unsupported attribute " << attr;
   return {0};
