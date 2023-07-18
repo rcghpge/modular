@@ -12,5 +12,17 @@ include = '\.pyi?$'
 line-length = 80
 experimental-string-processing = true
 
+[tool.cibuildwheel]
+# {project} is the path to the working directory where `cibuildwheel` is run.
+archs = ["native"]
+before-all = "{project}/utils/build/engine_packaging/scripts/before-all.sh"
+build = "cp310-*"
+build-frontend = "build"
+manylinux-x86_64-image = "manylinux_2_28"
+
+[tool.cibuildwheel.linux]
+# TODO(#11188): Enable `auditwheel`.
+repair-wheel-command = ""
+
 [tool.isort]
 profile = "black"
