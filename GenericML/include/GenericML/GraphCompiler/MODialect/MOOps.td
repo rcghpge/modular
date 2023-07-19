@@ -2336,18 +2336,25 @@ def MO_InvokeShapeFuncOp : MO_TensorOp<"invoke_shape_func", [
     mo.invoke_shape_func["shape_func_name"]<() -> D1, D2>(%input_shape, %axis)
     : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>)
     ```
+
+    `dataDeptTensors` Is an instruction to the lowering that the inputs at
+    these indices should be treated as data dependent tensors. These tensors
+    include things like dyanmic "axis" in reductions or "steps" in slice. Any
+    tensor which needs to have its values read to compute the shape for the op
+    falls into this category.
   }];
 
   let arguments = (ins
     Variadic<AnyTypeOf<[MO_Tensor, MO_ShapeLike, MO_RankedScalarIndexTensor]>>:$inputs,
     StrAttr:$shapeFuncName,
     MO_ParamDecls:$outputParamDecls,
-    OptionalAttr<DictionaryAttr>:$kgenParams
+    OptionalAttr<DictionaryAttr>:$kgenParams,
+    OptionalAttr<ArrayAttr>:$dataDeptTensors
   );
 
   let assemblyFormat = [{
     `[` $shapeFuncName `]` `` custom<ParamDecls>($outputParamDecls)
-    `(` $inputs `)` ($kgenParams^)? attr-dict `:` `(` type($inputs) `)`
+    `(` $inputs `)` attr-dict `:` `(` type($inputs) `)`
   }];
 }
 

@@ -99,7 +99,7 @@ Value lowerMatmulPackingFunc(Location loc, PatternRewriter &rewriter,
     mlir::DictionaryAttr kgenParams = rewriter.getDictionaryAttr(attrs);
     rewriter.create<MO::InvokeShapeFuncOp>(loc, SmallVector<Value>{weight},
                                            "pack_matmul_b_shape_func",
-                                           newParams, kgenParams);
+                                           newParams, kgenParams, ArrayAttr{});
 
     SmallVector<TypedAttr> outputShapeDims;
     for (KGEN::ParamDeclAttr outputParamDecl : newParams)
