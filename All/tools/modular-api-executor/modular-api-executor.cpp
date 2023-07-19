@@ -147,6 +147,10 @@ public:
       "output-names", cl::desc("Specify output names. This is always required "
                                "and it must match the model's output names")};
 
+  cl::opt<bool> printMetadata{"print-metadata",
+                              cl::desc("Display Model Input and output Specs"),
+                              cl::init(false)};
+
   /// Reads a model specification from the YAML file set via the
   /// "model-specification" option.
   ErrorOr<ModelSpec> readModelSpecification() {
@@ -443,6 +447,37 @@ static ErrorOr<ModelSpec> getModelSpec(M_AsyncCompiledModel *model,
   return modelSpec;
 }
 
+/// Print model metadata to the console.
+static void printSpecs(const ModelSpec &modelSpec) {
+  llvm::outs() << "Model Metadata:\n";
+  llvm::outs() << "Inputs:\n";
+
+  auto printSpec = [](const ModelSpec::ModelIOSpec &ioSpec) {
+    llvm::outs() << "- "
+                 << "name: " << ioSpec.name << "\n";
+    llvm::outs() << "  "
+                 << "spec: ";
+    std::string specDim = ioSpec.spec.getAsString();
+
+    // In API variable dimension is represented by -1. So do
+    // the conversion.
+    for (char c : specDim) {
+      if (c == '?')
+        llvm::outs() << "-1";
+      else
+        llvm::outs() << c;
+    }
+    llvm::outs() << "\n";
+  };
+
+  for (const auto &input : modelSpec.inputs)
+    printSpec(input);
+
+  llvm::outs() << "Outputs:\n";
+  for (const auto &output : modelSpec.outputs)
+    printSpec(output);
+}
+
 int main(int argc, char **argv) {
   ModularExecutorDriverCLOptions clOptions(argc, argv);
   llvm::cl::ParseCommandLineOptions(argc, argv,
@@ -487,12 +522,16 @@ int main(int argc, char **argv) {
   }
 
   ModelSpec modelSpec;
-  if (clOptions.modelSpecificationFile.empty()) {
+  if (clOptions.modelSpecificationFile.empty() || clOptions.printMetadata) {
     auto modelSpecOr = getModelSpec(compiledModel.get(), api);
     if (modelSpecOr.isError())
       exit(clOptions.reportError(modelSpecOr.getError()));
     else
       modelSpec = modelSpecOr.takeValue();
+    if (clOptions.printMetadata) {
+      printSpecs(modelSpec);
+      return EXIT_SUCCESS;
+    }
   } else {
     auto modelSpecOr = clOptions.readModelSpecification();
     if (modelSpecOr.isError())
