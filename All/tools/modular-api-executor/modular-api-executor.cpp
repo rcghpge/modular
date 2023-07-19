@@ -17,6 +17,7 @@
 #include "GenericML/FormatYAML/FormatYAML.h"
 
 #include "ModularAPIInterface.h"
+#include "mlir/IR/BuiltinTypes.h"
 
 using namespace M;
 
@@ -83,6 +84,9 @@ static M_Dtype convertToCDataType(DType ty) {
   }
 }
 
+// cannot import anything from C api detail files, so redefine constant here.
+static constexpr int64_t apiDynamicDimension = -1;
+
 /// Convert TensorSpec from API to GenericML TensorSpec.
 static M::TensorSpec getTensorSpec(const ModularAPIInterface &api,
                                    M_TensorSpec *spec) {
@@ -90,8 +94,16 @@ static M::TensorSpec getTensorSpec(const ModularAPIInterface &api,
   SmallVector<ssize_t> inputShape;
   size_t numDims = api.getRank(spec);
   inputShape.reserve(numDims);
-  for (size_t i = 0; i < numDims; ++i)
-    inputShape.push_back(api.getDimAt(spec, i));
+  for (size_t i = 0; i < numDims; ++i) {
+    if (api.getDimAt(spec, i) == apiDynamicDimension) {
+      // Shapes in the M::Tensor layer need to follow MLIR convention where
+      // dynamic dimensions are represented by constant kDynamic which is equal
+      // to std::numeric_limits<int64_t>::min()
+      inputShape.push_back(mlir::ShapedType::kDynamic);
+    } else {
+      inputShape.push_back(api.getDimAt(spec, i));
+    }
+  }
   return {inputShape, convertToDType(dtype)};
 }
 
