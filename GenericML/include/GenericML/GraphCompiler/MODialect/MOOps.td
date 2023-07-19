@@ -1156,7 +1156,11 @@ def MO_ReduceMaxOp : MO_ReductionOp<"reduce.max"> {
 // Sliding window ops
 //===----------------------------------------------------------------------===//
 
-def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [Pure, MO_SlidingWindow]>{
+def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [
+  MO_SlidingWindow,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
+]>{
   let summary = "Average pooling operation";
   let description = [{
     Apply average pooling with the given filter shape, strides, and dilations.
@@ -1197,11 +1201,12 @@ def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [Pure, MO_SlidingWindow]>{
     MO_Tensor:$input,
     MO_ShapeLikeIfRanked:$filter_shape,
     MO_ShapeLikeIfRanked:$strides,
-    MO_ShapeLikeIfRanked:$dilations);
+    MO_ShapeLikeIfRanked:$dilations,
+    MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `(` $input `)` `[` `filter_shape` `=` $filter_shape `,`
+    `` custom<ParamDecls>($outputParamDecls) `(` $input `)` `[` `filter_shape` `=` $filter_shape `,`
     `strides` `=` $strides `,` `dilations` `=` $dilations `]` attr-dict `:`
     functional-type(operands, results)
   }];
@@ -1209,7 +1214,11 @@ def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [Pure, MO_SlidingWindow]>{
   let hasVerifier = 1;
 }
 
-def MO_MaxPoolOp : MO_TensorOp<"max_pool", [Pure, MO_SlidingWindow]>{
+def MO_MaxPoolOp : MO_TensorOp<"max_pool", [
+  MO_SlidingWindow,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
+]>{
   let summary = "Max pooling operation";
   let description = [{
     Apply max pooling with the given filter shape, strides, and dilations.
@@ -1248,11 +1257,12 @@ def MO_MaxPoolOp : MO_TensorOp<"max_pool", [Pure, MO_SlidingWindow]>{
     MO_Tensor:$input,
     MO_ShapeLikeIfRanked:$filter_shape,
     MO_ShapeLikeIfRanked:$strides,
-    MO_ShapeLikeIfRanked:$dilations);
+    MO_ShapeLikeIfRanked:$dilations,
+    MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `(` $input `)` `[` `filter_shape` `=` $filter_shape `,`
+    `` custom<ParamDecls>($outputParamDecls) `(` $input `)` `[` `filter_shape` `=` $filter_shape `,`
     `strides` `=` $strides `,` `dilations` `=` $dilations `]` attr-dict `:`
     functional-type(operands, results)
   }];
