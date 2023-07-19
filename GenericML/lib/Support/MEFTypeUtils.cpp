@@ -13,6 +13,7 @@
 #include "GenericML/Support/QuantSpec.h"
 #include "GraphRT/MEF/MEFTypes.h"
 #include "Support/ErrorOr.h"
+#include "Support/ML/CommonAttributes.h"
 
 using namespace M;
 
@@ -58,10 +59,11 @@ static ErrorOrSuccess decodeNamesFromAttrList(SmallVectorImpl<StringRef> &names,
 ErrorOrSuccess M::decodeTensorNames(MEFDictionaryAttr attrDictionary,
                                     SmallVectorImpl<StringRef> &inputNames,
                                     SmallVectorImpl<StringRef> &outputNames) {
-  ErrorOrSuccess errOr =
-      decodeNamesFromAttrList(inputNames, attrDictionary, "argument_names");
+  ErrorOrSuccess errOr = decodeNamesFromAttrList(inputNames, attrDictionary,
+                                                 kMgpModelArgumentNames);
   if (errOr.isError())
     return errOr.takeError();
 
-  return decodeNamesFromAttrList(outputNames, attrDictionary, "result_names");
+  return decodeNamesFromAttrList(outputNames, attrDictionary,
+                                 kMgpModelResultNames);
 }

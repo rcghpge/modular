@@ -15,6 +15,7 @@
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "Support/Compiler/OperationUtils.h"
+#include "Support/ML/CommonAttributes.h"
 #include "Support/STLExtras.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/Transforms/TopologicalSortUtils.h"
@@ -136,9 +137,30 @@ LogicalResult MOGraphLowering::createModelOp() {
     return graph.emitError("failed to convert mo graph input/output types");
   }
 
+  // Preserve the MO::GraphOp argument locations in the MGP::ModelOp 'execute'
+  // block argument locations.
   SmallVector<Location> inputLocs;
   for (BlockArgument arg : graph.getArguments())
     inputLocs.push_back(arg.getLoc());
+
+  // Collect additional attributes to include with the MGP::ModelOp to guide
+  // the MEF executor.
+  SmallVector<NamedAttribute> extraAttrs;
+  ArrayAttr argNamesAttr =
+      graph->getAttrOfType<ArrayAttr>(kMgpModelArgumentNames);
+  ArrayAttr resultNamesAttr =
+      graph->getAttrOfType<ArrayAttr>(kMgpModelResultNames);
+  if (argNamesAttr) {
+    // Set the argument and result names attributes `argument_names` and
+    // `result_names` on the `mgp.model` op's `theExtraAttrs` attribute.
+    assert(resultNamesAttr &&
+           "expected either both or neither of the `argument_names` and "
+           "`result_names` attributes.");
+    extraAttrs.emplace_back(b.getStringAttr(kMgpModelArgumentNames),
+                            argNamesAttr);
+    extraAttrs.emplace_back(b.getStringAttr(kMgpModelResultNames),
+                            resultNamesAttr);
+  }
 
   // Create the mgp.model and the regions for the init/execute phases.
   b.setInsertionPoint(graph);
@@ -148,26 +170,8 @@ LogicalResult MOGraphLowering::createModelOp() {
       /*frameworkName=*/loweringState.getCompiledFrameworkLabel(),
       /*inputTypes=*/inputTypes,
       /*outputTypes=*/outputTypes,
-      /*inputArgLocs=*/inputLocs);
-
-  // Set the argument and result names attributes `argument_names` and
-  // `result_names` on the `mgp.model` op's `theExtraAttrs` attribute.
-  constexpr std::string_view argNamesAttrName = "argument_names";
-  constexpr std::string_view resultNamesAttrName = "result_names";
-  ArrayAttr argNamesAttr = graph->getAttrOfType<ArrayAttr>(argNamesAttrName);
-  ArrayAttr resultNamesAttr =
-      graph->getAttrOfType<ArrayAttr>(resultNamesAttrName);
-  if (argNamesAttr) {
-    assert(resultNamesAttr &&
-           "expected either both or neither of the `argument_names` and "
-           "`result_names` attributes.");
-    auto namesDict = DictionaryAttr::get(
-        b.getContext(),
-        {NamedAttribute(b.getStringAttr(argNamesAttrName), argNamesAttr),
-         NamedAttribute(b.getStringAttr(resultNamesAttrName),
-                        resultNamesAttr)});
-    modelOp.setTheExtraAttrsAttr(namesDict);
-  }
+      /*inputArgLocs=*/inputLocs,
+      /*extraAttrs=*/extraAttrs);
 
   loweringState.setModelOp(modelOp);
 
