@@ -1,7 +1,7 @@
 // RUN: mo-opt %s --mo-to-mogg --mo-to-primitives --allow-unregistered-dialect | FileCheck %s
 
 // Entry point
-// CHECK: mgp.model @reshape_static_input_static_output : tf init {
+// CHECK: mgp.model @reshape_static_input_static_output : tf {{.*}} init {
 // CHECK-NEXT: %[[INIT_CHAIN:.*]] = grt.chain.create ()
 // CHECK-NEXT: %[[INIT_CTX:.*]] = mgp.context.create 1
 // CHECK-NEXT: %[[JIT_CHAIN:.*]] = "mop.create_jit_context"(%[[INIT_CHAIN]], %[[INIT_CTX]]) {slot = 0 : ui32} : (!mef.chain, !mgp.context) -> !mef.chain
@@ -31,7 +31,7 @@ mo.graph @reshape_static_input_static_output(%arg: !mo.tensor<[4], f32>) -> !mo.
 }
 
 // Entry point
-// CHECK: mgp.model @reshape_dyn_input_dyn_output : tf init {
+// CHECK: mgp.model @reshape_dyn_input_dyn_output : tf {{.*}} init {
 // CHECK-NEXT: %[[INIT_CHAIN:.*]] = grt.chain.create ()
 // CHECK-NEXT: %[[INIT_CTX:.*]] = mgp.context.create 1
 // CHECK-NEXT: %[[JIT_CHAIN:.*]] = "mop.create_jit_context"(%[[INIT_CHAIN]], %[[INIT_CTX]]) {slot = 0 : ui32} : (!mef.chain, !mgp.context) -> !mef.chain
@@ -55,7 +55,7 @@ mo.graph @reshape_dyn_input_dyn_output(%arg: !mo.tensor<[?], f32>, %shape : !mo.
 }
 
 // Entry point
-// CHECK: mgp.model @reshape_dyn_input_static_output : tf init {
+// CHECK: mgp.model @reshape_dyn_input_static_output : tf {{.*}} init {
 // CHECK-NEXT: %[[INIT_CHAIN:.*]] = grt.chain.create ()
 // CHECK-NEXT: %[[INIT_CTX:.*]] = mgp.context.create 1
 // CHECK-NEXT: %[[JIT_CHAIN:.*]] = "mop.create_jit_context"(%[[INIT_CHAIN]], %[[INIT_CTX]]) {slot = 0 : ui32} : (!mef.chain, !mgp.context) -> !mef.chain
@@ -79,7 +79,7 @@ mo.graph @reshape_dyn_input_static_output(%arg: !mo.tensor<[?], f32>, %shape : !
 }
 
 // Entry point
-// CHECK: mgp.model @reshape_static_input_dyn_output : tf init {
+// CHECK: mgp.model @reshape_static_input_dyn_output : tf {{.*}} init {
 // CHECK-NEXT: %[[INIT_CHAIN:.*]] = grt.chain.create ()
 // CHECK-NEXT: %[[INIT_CTX:.*]] = mgp.context.create 1
 // CHECK-NEXT: %[[JIT_CHAIN:.*]] = "mop.create_jit_context"(%[[INIT_CHAIN]], %[[INIT_CTX]]) {slot = 0 : ui32} : (!mef.chain, !mgp.context) -> !mef.chain
