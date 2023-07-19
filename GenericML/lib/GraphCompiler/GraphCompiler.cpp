@@ -188,6 +188,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm) {
   pm.addPass(MO::createResolveUnknownParameters());
   pm.addPass(MO::createShapeInferenceMaterialization());
+  pm.addPass(MO::createAddFallbackShapeFunctions());
+
   // Convert most scalar <--> tensor reshapes into rebind, which will be merged
   // during staticization. Otherwise staticization must look through those
   // reshapes for shape inputs.

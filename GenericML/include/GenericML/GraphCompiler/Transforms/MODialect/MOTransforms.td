@@ -36,6 +36,16 @@ def ShapeInferenceMaterialization :
   ];
 }
 
+def AddFallbackShapeFunctions :
+    Pass<"add-fallback-shape-funcs", "GraphOp"> {
+  let summary = "Adds fallback shape functions to unmaterialized mo ops";
+  let description = [{
+    This ensures all MO operations will have parameterized outputs by checking
+    if they have already been parameterized and if not materializing a fallback
+    shape function which will give them those parameters. 
+  }];
+}
+
 def InlineShapeFunctions : Pass<"inline-shape-funcs", "ModuleOp"> {
   let summary = "Inlines shape functions into the graph.";
   let description = [{
