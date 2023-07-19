@@ -1262,7 +1262,8 @@ def MO_MaxPoolOp : MO_TensorOp<"max_pool", [Pure, MO_SlidingWindow]>{
 
 def MO_ConvOp : MO_TensorOp<"conv", [
   MO_SlidingWindow,
-  DeclareOpInterfaceMethods<MO_DefaultParameterization>
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
 ]>{
   let summary = "Convolution operation";
   let description = [{

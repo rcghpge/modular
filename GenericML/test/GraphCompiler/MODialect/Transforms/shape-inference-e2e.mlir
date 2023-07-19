@@ -501,3 +501,68 @@ mo.graph @scatter_nd_unknown_to_known(
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[10, 1, 1], f32>
   mo.output %res : !mo.tensor<[10, 1, 1], f32>
 }
+
+// CHECK: mo.graph @conv2d_static_input_dims(
+mo.graph @conv2d_static_input_dims(
+  // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[10, 5, 5, 16], f32>
+  %input: !mo.tensor<[10, 5, 5, 16], f32>,
+  // CHECK-SAME: %[[FILTER:.*]]: !mo.tensor<[3, 3, 16, 32], f32>
+  %filter: !mo.tensor<[3, 3, 16, 32], f32>
+// CHECK-SAME: ) -> !mo.tensor<[10, 2, 2, 32], f32> {
+) -> !mo.tensor<[?, ?, ?, ?], f32> {
+
+  // CHECK-DAG: %[[ST:.*]] = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK-DAG: %[[DI:.*]] = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %st = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+
+  // CHECK-NEXT: %[[RES:.*]] = mo.conv(%[[INPUT]], %[[FILTER]]) [strides = %[[ST]], dilations = %[[DI]]] : (
+  // CHECK-SAME:   !mo.tensor<[10, 5, 5, 16], f32>,
+  // CHECK-SAME:   !mo.tensor<[3, 3, 16, 32], f32>,
+  // CHECK-SAME:   !mo.tensor<[2], si64>,
+  // CHECK-SAME:   !mo.tensor<[2], si64>
+  // CHECK-SAME: ) -> !mo.tensor<[10, 2, 2, 32], f32>
+  %0 = mo.conv(%input, %filter) [strides = %st, dilations = %di] : (
+    !mo.tensor<[10, 5, 5, 16], f32>,
+    !mo.tensor<[3, 3, 16, 32], f32>,
+    !mo.tensor<[2], si64>,
+    !mo.tensor<[2], si64>
+  ) -> !mo.tensor<[?, ?, ?, ?], f32>
+
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[10, 2, 2, 32], f32>
+  mo.output %0 : !mo.tensor<[?, ?, ?, ?], f32>
+}
+
+// CHECK: mo.graph @conv2d_dyn_input_dims<[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(
+mo.graph @conv2d_dyn_input_dims(
+  // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]], 20, 30, [[D1]]], f32>
+  %input: !mo.tensor<[?, 20, 30, ?], f32>,
+  // CHECK-SAME: %[[FILTER:.*]]: !mo.tensor<[3, 3, [[D2]], [[D3]]], f32>
+  %filter: !mo.tensor<[3, 3, ?, ?], f32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D0]], 7, 12, [[D3]]], f32> {
+) -> !mo.tensor<[?, ?, ?, ?], f32> {
+
+  // CHECK-DAG: %[[ST:.*]] = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK-DAG: %[[DI:.*]] = mo.constant {value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %st = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %di = mo.constant {value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+
+  // CHECK-DAG: kgen.param.declare [[EQ_BOOL:.*]]: i1 = <eq([[D1]], [[D2]])>
+  // CHECK-DAG: kgen.param.declare [[CH:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "Input and filter channels must match" : !kgen.string}, [[EQ_BOOL]])>
+
+  // CHECK-NEXT: %[[RES:.*]] = mo.conv(%[[INPUT]], %[[FILTER]]) [strides = %[[ST]], dilations = %[[DI]]] : (
+  // CHECK-SAME:   !mo.tensor<[[[D0]], 20, 30, [[D1]]], f32>,
+  // CHECK-SAME:   !mo.tensor<[3, 3, [[D2]], [[D3]]], f32>,
+  // CHECK-SAME:   !mo.tensor<[2], si64>,
+  // CHECK-SAME:   !mo.tensor<[2], si64>
+  // CHECK-SAME: ) -> !mo.tensor<[[[D0]], 7, 12, [[D3]]], f32>
+  %0 = mo.conv(%input, %filter) [strides = %st, dilations = %di] : (
+    !mo.tensor<[?, 20, 30, ?], f32>,
+    !mo.tensor<[3, 3, ?, ?], f32>,
+    !mo.tensor<[2], si64>,
+    !mo.tensor<[2], si64>
+  ) -> !mo.tensor<[?, ?, ?, ?], f32>
+
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[D0]], 7, 12, [[D3]]], f32>
+  mo.output %0 : !mo.tensor<[?, ?, ?, ?], f32>
+}
