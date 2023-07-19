@@ -14,11 +14,9 @@
 #include "LLCL/Support/Profiling.h"
 #include "Support/ML/DType.h"
 
-#include "modular/c/common.h"
-#include "modular/c/tensorflow/config.h"
-#include "modular/cpp/aliases.h"
-
 #include "GenericML/FormatYAML/FormatYAML.h"
+
+#include "ModularAPIInterface.h"
 
 using namespace M;
 
@@ -86,26 +84,28 @@ static M_Dtype convertToCDataType(DType ty) {
 }
 
 /// Convert TensorSpec from API to GenericML TensorSpec.
-static M::TensorSpec getTensorSpec(M_TensorSpec *spec) {
-  M_Dtype dtype = M_getDtype(spec);
+static M::TensorSpec getTensorSpec(const ModularAPIInterface &api,
+                                   M_TensorSpec *spec) {
+  M_Dtype dtype = api.getDtype(spec);
   SmallVector<ssize_t> inputShape;
-  size_t numDims = M_getRank(spec);
+  size_t numDims = api.getRank(spec);
   inputShape.reserve(numDims);
   for (size_t i = 0; i < numDims; ++i)
-    inputShape.push_back(M_getDimAt(spec, i));
+    inputShape.push_back(api.getDimAt(spec, i));
   return {inputShape, convertToDType(dtype)};
 }
 
 /// Get TensorSpec from a API Tensor.
-static M::TensorSpec getTensorSpec(M_AsyncTensor *tensor) {
-  TensorSpecPtr spec = {M_getTensorSpec(tensor), &M_freeTensorSpec};
-  return getTensorSpec(spec.get());
+static M::TensorSpec getTensorSpec(const ModularAPIInterface &api,
+                                   M_AsyncTensor *tensor) {
+  TensorSpecPtr spec = {api.getTensorSpec(tensor), api.freeTensorSpec};
+  return getTensorSpec(api, spec.get());
 }
 
 /// Get size of a tensor in bytes.
-static size_t getSizeOf(M_AsyncTensor *tensor) {
-  M_Dtype dtype = M_getTensorType(tensor);
-  return M_getTensorNumElements(tensor) * M_sizeOf(dtype);
+static size_t getSizeOf(const ModularAPIInterface &api, M_AsyncTensor *tensor) {
+  M_Dtype dtype = api.getTensorType(tensor);
+  return api.getTensorNumElements(tensor) * api.sizeOf(dtype);
 }
 
 namespace {
@@ -169,12 +169,13 @@ struct ModelState {
 
 class ModularModel final : public Model {
 public:
-  ModularModel(std::string_view name, ArrayRef<std::string> inputTensorNames,
+  ModularModel(ModularAPIInterface &apiInterface, std::string_view name,
+               ArrayRef<std::string> inputTensorNames,
                ArrayRef<std::string> outputTensorNames, ModelSpec modelSpec,
                ModelState state, EncodedLocation loc)
-      : Model(modelSpec),           // create a model from the ModelSpec
-        spec(std::move(modelSpec)), // move the model spec
-        name(name),                 // the name of the the benchmark
+      : Model(modelSpec), // create a model from the ModelSpec
+        api(apiInterface), spec(std::move(modelSpec)), // move the model spec
+        name(name), // the name of the the benchmark
         inputNames(inputTensorNames), outputNames(outputTensorNames),
         modelState(state), location(std::move(loc)) {
 
@@ -188,6 +189,8 @@ public:
                       [](const auto &output) { return output.name; });
     }
   }
+
+  const ModularAPIInterface &getApi() const { return api; }
   // Gets the name of the model.
   StringRef getName() const override { return name; }
 
@@ -207,6 +210,7 @@ public:
   ~ModularModel() override = default;
 
 private:
+  ModularAPIInterface &api;
   ModelSpec spec;
   std::string name;
   SmallVector<std::string> inputNames;
@@ -236,6 +240,7 @@ public:
 
     auto model = getModel();
     const auto &modelSpec = model->getModelSpec();
+    const auto &api = model->getApi();
     M_AsyncModel *modularModel = initializedModel.get();
 
     // Create the resulting async values. The output starts with chain async
@@ -270,13 +275,13 @@ public:
 
     // When the args are ready, then we call the following lambda.
     andThenSyncMoving(
-        args, [modularModel, model, outputs = std::move(outputCopy),
-               &runtime](MutableArrayRef<AnyAsyncValueRef> args) mutable {
+        args, [modularModel, model, outputs = std::move(outputCopy), &runtime,
+               &api](MutableArrayRef<AnyAsyncValueRef> args) mutable {
           const M_RuntimeContext *context = model->getContext();
-          TensorMapPtr inputTensors{M_newAsyncTensorMap(context),
-                                    &M_freeAsyncTensorMap};
+          TensorMapPtr inputTensors{api.newAsyncTensorMap(context),
+                                    api.freeAsyncTensorMap};
 
-          StatusPtr status{M_newStatus(), &M_freeStatus};
+          StatusPtr status{api.newStatus(), api.freeStatus};
           for (auto &&[inputIndex, input] : llvm::enumerate(args)) {
             auto &inputTensor = input.get<Tensor>();
 
@@ -284,25 +289,25 @@ public:
             for (const auto &dim : inputTensor.getShape())
               inputShape.emplace_back(dim);
             TensorSpecPtr spec{
-                M_newTensorSpec(inputShape.data(), inputShape.size(),
-                                convertToCDataType(inputTensor.getEltType()),
-                                model->getInputNames()[inputIndex].c_str()),
-                &M_freeTensorSpec};
-            M_borrowTensorInto(inputTensors.get(), inputTensor.getBuffer(),
-                               spec.get(), status.get());
-            if (M_isError(status.get())) {
-              llvm::errs() << "Error: " << M_getError(status.get()) << "\n";
+                api.newTensorSpec(inputShape.data(), inputShape.size(),
+                                  convertToCDataType(inputTensor.getEltType()),
+                                  model->getInputNames()[inputIndex].c_str()),
+                api.freeTensorSpec};
+            api.borrowTensorInto(inputTensors.get(), inputTensor.getBuffer(),
+                                 spec.get(), status.get());
+            if (api.isError(status.get())) {
+              llvm::errs() << "Error: " << api.getError(status.get()) << "\n";
               exit(EXIT_FAILURE);
             }
           }
 
-          TensorMapPtr outputTensors = {nullptr, &M_freeAsyncTensorMap};
+          TensorMapPtr outputTensors = {nullptr, api.freeAsyncTensorMap};
 
-          M_AsyncTensorMap *outputTensorMap = M_executeModelSync(
+          M_AsyncTensorMap *outputTensorMap = api.executeModelSync(
               context, modularModel, inputTensors.get(), status.get());
 
-          if (M_isError(status.get())) {
-            llvm::errs() << "Error: " << M_getError(status.get()) << "\n";
+          if (api.isError(status.get())) {
+            llvm::errs() << "Error: " << api.getError(status.get()) << "\n";
             exit(EXIT_FAILURE);
           }
 
@@ -317,24 +322,24 @@ public:
             // Get the output tensor. This tensor will be converted
             // to a GenericML tensor.
             TensorPtr outputTensor = {
-                M_getTensorByNameFrom(outputTensors.get(),
-                                      model->getOutputNames()[i].c_str(),
-                                      status.get()),
-                &M_freeTensor};
+                api.getTensorByNameFrom(outputTensors.get(),
+                                        model->getOutputNames()[i].c_str(),
+                                        status.get()),
+                api.freeTensor};
 
-            if (M_isError(status.get())) {
-              llvm::errs() << "Error: " << M_getError(status.get()) << "\n";
+            if (api.isError(status.get())) {
+              llvm::errs() << "Error: " << api.getError(status.get()) << "\n";
               exit(EXIT_FAILURE);
             }
             // Create an uninitialized GenericML Tensor to hold the output.
             auto tensor =
-                Tensor::createOwned(getTensorSpec(outputTensor.get()), runtime,
-                                    kPreferredMemoryAlignment);
+                Tensor::createOwned(getTensorSpec(api, outputTensor.get()),
+                                    runtime, kPreferredMemoryAlignment);
 
             // Copy the output data to the output GenericML Tensor
             LLCL::profiledMemcpy(tensor.getMutableBuffer(),
-                                 M_getTensorData(outputTensor.get()),
-                                 getSizeOf(outputTensor.get()));
+                                 api.getTensorData(outputTensor.get()),
+                                 getSizeOf(api, outputTensor.get()));
 
             // Move the output Tensor to the output async value and mark the
             // value as ready.
@@ -348,10 +353,13 @@ public:
   }
 
   ErrorOrSuccess waitForModelSetup() override {
-    StatusPtr status{M_newStatus(), &M_freeStatus};
-    M_waitForModel(initializedModel.get(), status.get());
-    if (M_isError(status.get()))
-      return Error(M_getError(status.get()));
+    auto model = getModel();
+    const auto &api = model->getApi();
+
+    StatusPtr status{api.newStatus(), api.freeStatus};
+    api.waitForModel(initializedModel.get(), status.get());
+    if (api.isError(status.get()))
+      return Error(api.getError(status.get()));
     return success();
   }
 
@@ -366,57 +374,58 @@ private:
 ErrorOr<std::unique_ptr<ExecutableModel>>
 ModularModel::setup(Runtime &runtime) const {
   // Create the executable model.
-  StatusPtr status = {M_newStatus(), &M_freeStatus};
-  ModelPtr initalizedModel = {
-      M_initModel(modelState.context, modelState.compiledModel, status.get()),
-      &M_freeModel};
+  StatusPtr status = {api.newStatus(), api.freeStatus};
+  ModelPtr initializedModel = {
+      api.initModel(modelState.context, modelState.compiledModel, status.get()),
+      api.freeModel};
   return std::make_unique<ModularExecutableModel>(this, runtime,
-                                                  std::move(initalizedModel));
+                                                  std::move(initializedModel));
 }
 
 template <typename SpecFunc>
 ErrorOr<SmallVector<ModelSpec::ModelIOSpec>>
 convertSpecs(M_AsyncCompiledModel *model, TensorNamesPtr specNames,
-             size_t specCount, SpecFunc func) {
+             size_t specCount, SpecFunc func, ModularAPIInterface &api) {
   SmallVector<ModelSpec::ModelIOSpec> specs;
-  StatusPtr status = {M_newStatus(), &M_freeStatus};
+  StatusPtr status = {api.newStatus(), api.freeStatus};
   for (size_t i = 0; i < specCount; ++i) {
-    std::string specName = M_getTensorNameAt(specNames.get(), i);
+    std::string specName = api.getTensorNameAt(specNames.get(), i);
     TensorSpecPtr spec = {func(model, specName.c_str(), status.get()),
-                          &M_freeTensorSpec};
-    if (M_isError(status.get()))
-      return Error(M_getError(status.get()));
+                          api.freeTensorSpec};
+    if (api.isError(status.get()))
+      return Error(api.getError(status.get()));
     specs.emplace_back(
-        ModelSpec::ModelIOSpec{specName, getTensorSpec(spec.get())});
+        ModelSpec::ModelIOSpec{specName, getTensorSpec(api, spec.get())});
   }
   return specs;
 }
 
 /// Create ModelSpec from a compiledModel.
-static ErrorOr<ModelSpec> getModelSpec(M_AsyncCompiledModel *model) {
+static ErrorOr<ModelSpec> getModelSpec(M_AsyncCompiledModel *model,
+                                       ModularAPIInterface &api) {
   ModelSpec modelSpec;
-  StatusPtr status = {M_newStatus(), &M_freeStatus};
-  TensorNamesPtr inputNames = {M_getInputNames(model, status.get()),
-                               &M_freeTensorNameArray};
-  if (M_isError(status.get()))
-    return Error(M_getError(status.get()));
-  size_t inputCount = M_getNumModelInputs(model, status.get());
-  if (M_isError(status.get()))
-    return Error(M_getError(status.get()));
+  StatusPtr status = {api.newStatus(), api.freeStatus};
+  TensorNamesPtr inputNames = {api.getInputNames(model, status.get()),
+                               api.freeTensorNameArray};
+  if (api.isError(status.get()))
+    return Error(api.getError(status.get()));
+  size_t inputCount = api.getNumModelInputs(model, status.get());
+  if (api.isError(status.get()))
+    return Error(api.getError(status.get()));
   UNWRAP_ERROR(inputs, convertSpecs(model, std::move(inputNames), inputCount,
-                                    M_getModelInputSpecByName));
+                                    api.getModelInputSpecByName, api));
   modelSpec.inputs = std::move(inputs);
 
-  TensorNamesPtr outputNames = {M_getOutputNames(model, status.get()),
-                                &M_freeTensorNameArray};
-  if (M_isError(status.get()))
-    return Error(M_getError(status.get()));
+  TensorNamesPtr outputNames = {api.getOutputNames(model, status.get()),
+                                api.freeTensorNameArray};
+  if (api.isError(status.get()))
+    return Error(api.getError(status.get()));
 
-  size_t outputCount = M_getNumModelOutputs(model, status.get());
-  if (M_isError(status.get()))
-    return Error(M_getError(status.get()));
+  size_t outputCount = api.getNumModelOutputs(model, status.get());
+  if (api.isError(status.get()))
+    return Error(api.getError(status.get()));
   UNWRAP_ERROR(outputs, convertSpecs(model, std::move(outputNames), outputCount,
-                                     M_getModelOutputSpecByName));
+                                     api.getModelOutputSpecByName, api));
   modelSpec.outputs = std::move(outputs);
 
   return modelSpec;
@@ -427,42 +436,47 @@ int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv,
                                     "modular-api-executor driver\n");
 
+  M::ModularAPIInterface api;
+  if (auto err = api.loadModularAndInitSymbols())
+    exit(clOptions.reportError(err.getError()));
+
   if (clOptions.frameworkVersion) {
-    llvm::outs() << "Framework version: " << M_version() << "\n";
+    llvm::outs() << "Framework version: " << api.version() << "\n";
     exit(EXIT_SUCCESS);
   }
 
   // We don't really have a file to load here now.
   std::unique_ptr<llvm::MemoryBuffer> inputFile;
 
-  StatusPtr status{M_newStatus(), &M_freeStatus};
-  RuntimeConfigPtr runtimeConfig{M_newRuntimeConfig(), &M_freeRuntimeConfig};
-  M_setNumThreads(runtimeConfig.get(), clOptions.getNumThreads());
+  StatusPtr status{api.newStatus(), api.freeStatus};
+  RuntimeConfigPtr runtimeConfig{api.newRuntimeConfig(), api.freeRuntimeConfig};
+  api.setNumThreads(runtimeConfig.get(), clOptions.getNumThreads());
   RuntimeContextPtr context = {
-      M_newRuntimeContext(runtimeConfig.get(), status.get()),
-      &M_freeRuntimeContext};
+      api.newRuntimeContext(runtimeConfig.get(), status.get()),
+      api.freeRuntimeContext};
 
-  if (M_isError(status.get())) {
-    llvm::errs() << "Error: " << M_getError(status.get()) << "\n";
+  if (api.isError(status.get())) {
+    llvm::errs() << "Error: " << api.getError(status.get()) << "\n";
     exit(EXIT_FAILURE);
   }
 
-  CompileConfigPtr compileConfig = {M_newCompileConfig(), &M_freeCompileConfig};
-  M_setModelPath(compileConfig.get(), clOptions.inputFilename.c_str());
+  CompileConfigPtr compileConfig = {api.newCompileConfig(),
+                                    api.freeCompileConfig};
+  api.setModelPath(compileConfig.get(), clOptions.inputFilename.c_str());
   if (!clOptions.exportedName.empty())
-    M_setExportedName(compileConfig.get(), clOptions.exportedName.c_str());
+    api.setExportedName(compileConfig.get(), clOptions.exportedName.c_str());
   CompiledModelPtr compiledModel{
-      M_compileModel(context.get(), compileConfig.get(), status.get()),
-      &M_freeCompiledModel};
+      api.compileModel(context.get(), compileConfig.get(), status.get()),
+      api.freeCompiledModel};
 
-  if (M_isError(status.get())) {
-    llvm::errs() << "Error: " << M_getError(status.get()) << "\n";
+  if (api.isError(status.get())) {
+    llvm::errs() << "Error: " << api.getError(status.get()) << "\n";
     exit(EXIT_FAILURE);
   }
 
   ModelSpec modelSpec;
   if (clOptions.modelSpecificationFile.empty()) {
-    auto modelSpecOr = getModelSpec(compiledModel.get());
+    auto modelSpecOr = getModelSpec(compiledModel.get(), api);
     if (modelSpecOr.isError())
       exit(clOptions.reportError(modelSpecOr.getError()));
     else
@@ -482,7 +496,7 @@ int main(int argc, char **argv) {
   // Create the ModularModel. Note that the Model object will outlive
   // the execution.
   auto model = std::make_unique<ModularModel>(
-      clOptions.benchmarkName, clOptions.inputNames, clOptions.outputNames,
+      api, clOptions.benchmarkName, clOptions.inputNames, clOptions.outputNames,
       modelSpec, state, std::move(loc));
 
   // The runtime should run as single threaded. We have already set the
