@@ -289,10 +289,6 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     Value step = loweringState.lookupExecuteLoweredValue(
         opBeingLowered->getOperands()[2]);
     output.spec = getOutputSpec("mop.shape.range", {start, limit, step});
-  } else if (opName == "mop.kernels.where") {
-    Value input = loweringState.lookupExecuteLoweredValue(
-        opBeingLowered->getOperands()[0]);
-    output.spec = getOutputSpec("mop.shape.where", {input});
   } else if (opName == "mop.kernels.slice") {
     Value input = inputTensors[0].spec;
     Value start = loweringState.lookupExecuteLoweredValue(
