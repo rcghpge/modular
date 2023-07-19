@@ -207,6 +207,16 @@ public:
           "is 64 bytes for compatability with the stock TensorFlow runtime."),
       cl::init(64)};
 
+  cl::opt<bool> includeHostTargetInfo{
+      "include-host-target-info",
+      cl::desc(
+          "If true, the generated model will capture the TargetInfoAttr of the "
+          "compile-time host within the generated mgp.model. A runtime check "
+          "will "
+          "then be made to ensure the runtime host satisfies the assumptions "
+          "made at compile time."),
+      cl::init(false)};
+
   /// This tells the execution driver how to print output tensors;
   cl::opt<Kernels::ResultOutputStyle> resultOutputStyle{
       "result-output-style", cl::desc("Specify how to display outputs"),

@@ -675,6 +675,7 @@ private:
   MEFOffset emitTypeAttribute(Type type, Location loc);
   MEFOffset emitMultiLineStringAttribute(MultiLineStringAttr attr,
                                          Location loc);
+  MEFOffset emitTargetInfoAttribute(TargetInfoAttr attr, Location loc);
   EntityTable &entities;
 
   friend class TypeEmitter;
@@ -927,6 +928,17 @@ AttributesEmitter::emitMultiLineStringAttribute(MultiLineStringAttr attr,
   }
   os << '\0';
   return emitStringAttribute(storage);
+}
+
+MEFOffset AttributesEmitter::emitTargetInfoAttribute(TargetInfoAttr attr,
+                                                     Location loc) {
+  ErrorOr<std::string> errOrStr = serializeTargetInfoAttrToJSON(attr);
+  if (errOrStr.isError()) {
+    entities.emitError(loc)
+        << "unable to represent TargetInfoAttr: " << errOrStr.getError();
+    return {0};
+  }
+  return emitStringAttribute(*errOrStr);
 }
 
 namespace {
@@ -1201,6 +1213,9 @@ MEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr,
 
   if (auto multilineAttr = dyn_cast<MultiLineStringAttr>(attr))
     return emitMultiLineStringAttribute(multilineAttr, loc);
+
+  if (auto targetInfoAttr = dyn_cast<TargetInfoAttr>(attr))
+    return emitTargetInfoAttribute(targetInfoAttr, loc);
 
   entities.emitError(loc) << "unsupported attribute " << attr;
   return {0};

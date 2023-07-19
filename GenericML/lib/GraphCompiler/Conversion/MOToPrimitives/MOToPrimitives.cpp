@@ -15,6 +15,7 @@
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "Support/Compiler/OperationUtils.h"
+#include "Support/Host.h"
 #include "Support/ML/CommonAttributes.h"
 #include "Support/STLExtras.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
@@ -47,9 +48,9 @@ class MOGraphLowering {
 public:
   MOGraphLowering(MO::GraphOp graph, TypeConverter &typeConverter,
                   llvm::StringRef compiledFrameworkLabel,
-                  size_t minimumCpuAlignment)
+                  size_t minimumCpuAlignment, TargetInfoAttr targetInfo)
       : loweringState(graph, typeConverter, compiledFrameworkLabel,
-                      minimumCpuAlignment) {}
+                      minimumCpuAlignment, targetInfo) {}
 
   /// Lower the mo.graph to mgp.model.
   LogicalResult run();
@@ -146,13 +147,20 @@ LogicalResult MOGraphLowering::createModelOp() {
   // Collect additional attributes to include with the MGP::ModelOp to guide
   // the MEF executor.
   SmallVector<NamedAttribute> extraAttrs;
+  if (loweringState.getTargetInfoAttr()) {
+    // Capture the targetInfoAttr so we can check the runtime host satisfies
+    // its requirements.
+    extraAttrs.emplace_back(b.getStringAttr(kMgpModelTargetInfo),
+                            loweringState.getTargetInfoAttr());
+  }
+
+  // Set the argument and result names attributes `argument_names` and
+  // `result_names` on the `mgp.model` op's `theExtraAttrs` attribute.
   ArrayAttr argNamesAttr =
       graph->getAttrOfType<ArrayAttr>(kMgpModelArgumentNames);
   ArrayAttr resultNamesAttr =
       graph->getAttrOfType<ArrayAttr>(kMgpModelResultNames);
   if (argNamesAttr) {
-    // Set the argument and result names attributes `argument_names` and
-    // `result_names` on the `mgp.model` op's `theExtraAttrs` attribute.
     assert(resultNamesAttr &&
            "expected either both or neither of the `argument_names` and "
            "`result_names` attributes.");
@@ -581,7 +589,6 @@ LogicalResult MOGraphLowering::lowerReshape(MO::ReshapeOp reshapeOp) {
   // get spec from output type (assume static input and output)
   auto outSpecTy = MGP::createCpuTensorSpec(reshapeOp.getType());
   Value outSpecValue;
-  // TODO
   // 1. This isn't unified with `MOGG::ExtOp::lower` because we don't want
   // reshape to allocate extra output buffer. We should refactor this at some
   // point.
@@ -998,9 +1005,40 @@ struct MOToPrimitivesPass
     : public MGP::impl::MOToPrimitivesBase<MOToPrimitivesPass> {
   using MOToPrimitivesBase::MOToPrimitivesBase;
 
+  /// Returns a TargetInfoAttr capturing the assumptions about the runtime
+  /// host architecture made during compilation of the model.
+  ///
+  /// TODO(#17361):
+  ///  - Support cross-compilation.
+  ///  - Cf handling of which runtime so to load in CXXDriverApi.cpp
+  ///    getFeatureSuffixes. Reconcile?
+  ///  - Cf construction of TargetInfoAttr in MArchTarget.cpp
+  ///    getMArchFeatures used by the KGENed kernels. Reconsile?
+  ///  - TargetInfoAttr is directly serialized by MLIRToMEF rather
+  ///    than supported as a first class structured attribute.
+  ///    Support as first-class attribute?
+  ErrorOr<TargetInfoAttr> getTargetInfoAttr(MLIRContext *ctx);
+
   void runOnOperation() override;
 };
 } // namespace
+
+ErrorOr<TargetInfoAttr>
+MOToPrimitivesPass::getTargetInfoAttr(MLIRContext *ctx) {
+  ErrorOr<HostMachineInfo> errOrHost = getHostMachineInfo();
+  if (errOrHost.isError()) {
+    return Error(Twine("unable to determine host machine info: ") +
+                 errOrHost.getError());
+  }
+
+  ErrorOr<TargetInfoAttr> errOrInfo = getTargetInfoFor(ctx, *errOrHost);
+  if (errOrInfo.isError()) {
+    return Error(Twine("unable to construct target info info: ") +
+                 errOrInfo.getError());
+  }
+
+  return *errOrInfo;
+}
 
 void MOToPrimitivesPass::runOnOperation() {
   ModuleOp theModule = getOperation();
@@ -1019,12 +1057,24 @@ void MOToPrimitivesPass::runOnOperation() {
        llvm::make_early_inc_range(theModule.getOps<MOGG::MojoRegisterOp>()))
     reg.erase();
 
+  TargetInfoAttr targetInfoAttr; // default null
+  if (includeHostTargetInfo.getValue()) {
+    // Capture host's target info within the generated mgp.models.
+    ErrorOr<TargetInfoAttr> errOrInfo =
+        getTargetInfoAttr(theModule.getContext());
+    if (errOrInfo.isError()) {
+      theModule->emitError(errOrInfo.getError());
+      return signalPassFailure();
+    }
+    targetInfoAttr = *errOrInfo;
+  }
+
   // Convert each mo.graph into a mgp.model.
   for (auto graphOp :
        llvm::make_early_inc_range(theModule.getOps<MO::GraphOp>())) {
     if (failed(MOGraphLowering(graphOp, converter,
                                compiledFrameworkLabel.getValue(),
-                               minimumCpuAlignment.getValue())
+                               minimumCpuAlignment.getValue(), targetInfoAttr)
                    .run()))
       return signalPassFailure();
   }

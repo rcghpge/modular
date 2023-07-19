@@ -78,6 +78,14 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
           "Prints isolated reproducers of each compiled mogg kernel in"
           "a newly created mo graph."),
       llvm::cl::init(false)};
+  Option<bool> includeHostTargetInfo{
+      *this, "include-host-target-info",
+      llvm::cl::desc(
+          "If true, the generated model will capture the TargetInfoAttr of the "
+          "compile-time host within the generated mgp.model. A runtime check "
+          "will then be made to ensure the runtime host satisfies the "
+          "assumptions made at compile time."),
+      llvm::cl::init(false)};
 };
 
 // Registers the end-to-end shape inference pipeline.

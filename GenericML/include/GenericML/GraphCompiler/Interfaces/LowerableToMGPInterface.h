@@ -28,17 +28,17 @@ class MOGraphLoweringState {
 public:
   MOGraphLoweringState(M::MO::GraphOp graph, TypeConverter &typeConverter,
                        llvm::StringRef compiledFrameworkLabel,
-                       size_t minimumCpuAlignment)
+                       size_t minimumCpuAlignment, TargetInfoAttr targetInfo)
       : graph(graph), typeConverter(typeConverter),
-        common(compiledFrameworkLabel, minimumCpuAlignment),
+        common(compiledFrameworkLabel, minimumCpuAlignment, targetInfo),
         init(graph.getContext()), execute(graph.getContext()) {}
 
   /// Common state used by both the init and execute phases.
   struct CommonState {
     explicit CommonState(llvm::StringRef compiledFrameworkLabel,
-                         size_t minimumCpuAlignment)
+                         size_t minimumCpuAlignment, TargetInfoAttr targetInfo)
         : compiledFrameworkLabel(compiledFrameworkLabel),
-          minimumCpuAlignment(minimumCpuAlignment) {}
+          minimumCpuAlignment(minimumCpuAlignment), targetInfo(targetInfo) {}
 
     /// The top-level mgp.model operation.
     MGP::ModelOp modelOp;
@@ -49,6 +49,12 @@ public:
     /// The minimum alignment for all CPU hosted buffers (constants and
     /// allocated)
     size_t minimumCpuAlignment;
+
+    /// Assumptions about the machine being targeted, including the LLVM
+    /// triple and LLVM CPU features. This is captured within the generated MGP
+    /// model so that we fail gracefully if the runtime host does not match
+    /// the target.
+    TargetInfoAttr targetInfo;
 
     CommonState(const CommonState &) = delete;
     void operator=(const CommonState &) = delete;
@@ -142,6 +148,9 @@ public:
 
   /// Return the graph being lowered.
   MO::GraphOp &getGraph() { return graph; }
+
+  /// Returns information about the target being lowered to.
+  TargetInfoAttr getTargetInfoAttr() const { return common.targetInfo; }
 
   /// Return type converter for lowering known MO types into MGP ones.
   TypeConverter &getTypeConverter() { return typeConverter; }
