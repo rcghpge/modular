@@ -154,13 +154,13 @@ LogicalResult MOGraphLowering::createModelOp() {
                             loweringState.getTargetInfoAttr());
   }
 
-  // Set the argument and result names attributes `argument_names` and
-  // `result_names` on the `mgp.model` op's `theExtraAttrs` attribute.
   ArrayAttr argNamesAttr =
       graph->getAttrOfType<ArrayAttr>(kMgpModelArgumentNames);
   ArrayAttr resultNamesAttr =
       graph->getAttrOfType<ArrayAttr>(kMgpModelResultNames);
   if (argNamesAttr) {
+    // Set the argument and result names attributes `argument_names` and
+    // `result_names` on the `mgp.model` op's `theExtraAttrs` attribute.
     assert(resultNamesAttr &&
            "expected either both or neither of the `argument_names` and "
            "`result_names` attributes.");
@@ -589,6 +589,7 @@ LogicalResult MOGraphLowering::lowerReshape(MO::ReshapeOp reshapeOp) {
   // get spec from output type (assume static input and output)
   auto outSpecTy = MGP::createCpuTensorSpec(reshapeOp.getType());
   Value outSpecValue;
+  // TODO
   // 1. This isn't unified with `MOGG::ExtOp::lower` because we don't want
   // reshape to allocate extra output buffer. We should refactor this at some
   // point.
