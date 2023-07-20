@@ -19,6 +19,7 @@ experimental-string-processing = true
 # {project} is the path to the working directory where `cibuildwheel` is run.
 archs = ["native"]
 before-all = "{project}/utils/build/engine_packaging/scripts/before-all.sh"
+before-build = "{project}/utils/build/engine_packaging/scripts/before-build.sh"
 build = "cp310-manylinux*"
 build-frontend = "build"
 manylinux-x86_64-image = "manylinux_2_28"
