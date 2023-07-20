@@ -48,9 +48,9 @@ namespace {
 // D2424> will become <P0, P1>. This is so that kernels which use the parameters
 // in the same way, i.e that the parameters maintain the same internal
 // relationship, will match and we avoid compiling a new novel kernel.
-void addTensorDimsToName(MO::TensorType tensor, std::string &name,
-                         DenseMap<KGEN::ParamDeclRefAttr, size_t> &params) {
-  for (auto dim : tensor.getTypedShapeAttr().getValues()) {
+void addShapeDimsToName(MOSH::ShapeAttr dims, std::string &name,
+                        DenseMap<KGEN::ParamDeclRefAttr, size_t> &params) {
+  for (auto dim : dims.getValues()) {
     if (auto asInt = dyn_cast<IntegerAttr>(dim))
       name += std::to_string(asInt.getInt());
     else if (auto asSymbolic = dyn_cast<KGEN::ParamDeclRefAttr>(dim))
@@ -92,6 +92,13 @@ mangleBlock(mlir::Block &block,
     } else if (auto out = dyn_cast<MOGG::OutputPlaceholdersOp>(innerOp)) {
       for (Value output : out.getResults())
         valueToPositionInBlock[output] = "O" + std::to_string(blockIndex);
+    } else if (auto out = dyn_cast<MOGG::ParamShapeToValueOp>(innerOp)) {
+      MOSH::ShapeAttr shape =
+          dyn_cast<MOSH::ShapeAttr>(out.getResult().getType().getShapeAttr());
+
+      name += "PV";
+      addShapeDimsToName(shape, name, params);
+      valueToPositionInBlock[out.getResult()] = std::to_string(blockIndex);
     } else if (auto invokeOp = dyn_cast<MOGG::LambdaInvokeOp>(innerOp)) {
       name += "invoke_" + invokeOp.getLambda().getLeafReference().str() + "_";
 
@@ -155,7 +162,7 @@ mangleBlock(mlir::Block &block,
       name += "_";
       Type res = cst.getResult().getType();
       auto tensor = cast<MO::TensorType>(res);
-      addTensorDimsToName(tensor, name, params);
+      addShapeDimsToName(tensor.getTypedShapeAttr(), name, params);
       UNWRAP_ERROR(traits, MOGGTypeTraits::lookupType(tensor.getElementType()));
       name += traits.moggType.getAsString() + "_";
     }
@@ -203,7 +210,7 @@ createMangledName(MOGG::KernelOp op,
 
     // Mangle the type into the name.
     auto tensor = cast<MO::TensorType>(v.getType());
-    addTensorDimsToName(tensor, name, params);
+    addShapeDimsToName(tensor.getTypedShapeAttr(), name, params);
     UNWRAP_ERROR(traits, MOGGTypeTraits::lookupType(tensor.getElementType()));
     name += traits.moggType.getAsString() + "_";
   }
@@ -212,7 +219,7 @@ createMangledName(MOGG::KernelOp op,
   name += "_out_ty_";
   for (Type res : op->getResultTypes()) {
     auto tensor = cast<MO::TensorType>(res);
-    addTensorDimsToName(tensor, name, params);
+    addShapeDimsToName(tensor.getTypedShapeAttr(), name, params);
     UNWRAP_ERROR(traits, MOGGTypeTraits::lookupType(tensor.getElementType()));
     name += traits.moggType.getAsString() + "_";
   }

@@ -10,7 +10,8 @@ mo.graph @bcast_basic<N, L, M, K>(%arg0: !mo.tensor<[N, M, L], f32>) -> (!mo.ten
 // CHECK-NEXT: %[[OUT:.*]] = mogg.output_placeholders : !mo.tensor<[N, M, K], f32>
 
 // We broadcast the tensor.
-// CHECK-NEXT: %[[BCAST:.*]] = mogg.call "mo.static.broadcast_to"(%[[IN1]], %[[OUT]]) {single_thread_blocking_override = false} : !mo.tensor<[N, M, L], f32>, !mo.tensor<[N, M, K], f32> -> !mo.tensor<[N, M, K], f32>
+// CHECK-NEXT: %[[SHAPE:.*]] = mogg.param_shape_to_value -> !mogg.shape<[N, M, K]>
+// CHECK-NEXT: %[[BCAST:.*]] = mogg.call "mo.static.broadcast_to"(%[[IN1]], %[[SHAPE]]) {single_thread_blocking_override = false} : !mo.tensor<[N, M, L], f32>, !mogg.shape<[N, M, K]> -> !mo.tensor<[N, M, K], f32>
 
 // Load the first argument for use in the copy. Loads the broadcasted view.
 // CHECK-NEXT:  mogg.lambda @input_0_fn = (%[[INDICES:.*]]: !mogg.indices) -> !mogg.simd<f32>{

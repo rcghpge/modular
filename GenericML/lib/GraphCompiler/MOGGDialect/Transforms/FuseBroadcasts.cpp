@@ -170,35 +170,21 @@ struct FuseBroadcastsPass
     return false;
   }
 
-  // Fuse at the given index and return the pair of operands used in broadcast.
+  // Fuse at the given index.
   void fuseInputAtIndex(MOGG::KernelOp leaf, int32_t idx,
                         DenseMap<Value, Value> &alreadyFused) {
     IRMapping remapper;
-
     Value operandBeingReplaced = leaf.getOperand(idx);
-
+    mlir::SymbolTable symTable{leaf};
+    llvm::StringMap<StringRef> oldNameToNew;
     KernelOp producerKernel =
         cast<KernelOp>(operandBeingReplaced.getDefiningOp());
     Block &producerBlock = producerKernel.getBody().front();
     Block &leafBlock = leaf.getBody().front();
 
-    // Make the outputPlaceholders remap to each other. The semantics of the
-    // broadcast are such that a broadcast can be fused an operation when the
-    // output matches the target. Therefor a broadcast to the output is
-    // semantically the same.
-    MOGG::OutputPlaceholdersOp leafOuts = leaf.getOutputPlaceholder();
-    MOGG::OutputPlaceholdersOp producerOuts =
-        producerKernel.getOutputPlaceholder();
-
-    // Remap the outputs.
-    for (auto [leafOut, producerOut] :
-         llvm::zip(leafOuts.getResults(), producerOuts.getResults())) {
-      remapper.map(producerOut, leafOut);
-    }
-
     // A view op kernel should contain a view transforming operation followed by
     // a copy into the output. When we fuse we just hoist the view operation and
-    // not the copy. This is to find that view operation.
+    // not the copy.
     MOGG::CallOp viewOp;
 
     // Add the operands of the old kernel to the new one.
@@ -247,34 +233,41 @@ struct FuseBroadcastsPass
     assert(viewOp && "Kernel was marked as a view, it must have a tensor "
                      "semantic view operation.");
 
+    mlir::OpBuilder builder{leaf.getContext()};
     // Insert at the top just after the output placeholders.
-    mlir::OpBuilder builder{leafOuts->getContext()};
+    MOGG::OutputPlaceholdersOp leafOuts = leaf.getOutputPlaceholder();
     builder.setInsertionPointAfter(leafOuts);
-    mlir::Operation *insertPoint = nullptr;
 
-    auto newOp = viewOp->clone(remapper);
+    // Don't fuse in the elementwise kernel invoke or any lambdas. We just
+    // want the view ops at the top.
+    auto skipElementwiseAndLambdas = [](Operation *op) {
+      if (isa<MOGG::LambdaOp>(op))
+        return true;
+      if (auto call = dyn_cast<MOGG::CallOp>(op)) {
+        if (call.getMojoKernelTarget() == "elementwise")
+          return true;
+      }
+      return false;
+    };
 
-    // If the tensor isn't a kernel input we need to insert after the last
-    // occuring input.
-    for (Value operand : newOp->getOperands()) {
+    // Copy the body into the new one.
+    producerKernel.fuseBodyIntoNewWithSkip(
+        builder, symTable, remapper, oldNameToNew, skipElementwiseAndLambdas);
+
+    // Remove the argument and replace all uses of it with the broadcast.
+    Operation *newView = remapper.lookup(viewOp);
+
+    // For incredibly contrived tests we need to check we are in dominator
+    // order. I.E %0 = bcast, %1 = slice(..., %0), %2 = some_kernel(%1, %0)
+    for (Value operand : newView->getOperands()) {
       Operation *definingOp = operand.getDefiningOp();
-      if (definingOp == nullptr)
-        continue;
-
-      // If we don't have an insert point use this otherwise check the order.
-      if (!insertPoint || definingOp->isBeforeInBlock(insertPoint))
-        insertPoint = definingOp;
+      if (definingOp && newView->isBeforeInBlock(definingOp))
+        newView->moveAfter(definingOp);
     }
 
-    if (insertPoint)
-      builder.setInsertionPointAfter(insertPoint);
-
-    builder.insert(newOp);
-    // Remove the argument and replace all uses of it with the broadcast.
-    leafBlock.getArgument(idx).replaceAllUsesWith(newOp->getResult(0));
+    leafBlock.getArgument(idx).replaceAllUsesWith(newView->getResult(0));
     leaf.removeOperandAtIndex(idx);
-
-    alreadyFused[operandBeingReplaced] = newOp->getResult(0);
+    alreadyFused[operandBeingReplaced] = newView->getResult(0);
   }
 };
 
