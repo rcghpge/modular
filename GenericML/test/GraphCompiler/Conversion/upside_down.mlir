@@ -9,7 +9,7 @@ mo.graph @updside_down(
     mo.output %relu : !mo.tensor<[256], f32>
 }
 
-// CHECK-LABEL: mgp.model @updside_down : tf init {
+// CHECK-LABEL: mgp.model @updside_down : tf {{.*}} init {
 // CHECK: "mop.kgen.execute_kernel"{{.*}} kernelName = "{{.*}}mo.mul
 // CHECK: "mop.kgen.execute_kernel"{{.*}} kernelName = "{{.*}}mo.add
 // CHECK: "mop.kgen.execute_kernel"{{.*}} kernelName = "{{.*}}mo.relu

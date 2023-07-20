@@ -215,7 +215,7 @@ public:
           "will "
           "then be made to ensure the runtime host satisfies the assumptions "
           "made at compile time."),
-      cl::init(false)};
+      cl::init(true)};
 
   /// This tells the execution driver how to print output tensors;
   cl::opt<Kernels::ResultOutputStyle> resultOutputStyle{
