@@ -41,16 +41,6 @@ struct Fallback {
     void build(GraphOp &graph, OpBuilder &builder, MOOp op);                   \
   };
 
-// Creates the fallback for this op if it has parameters still needing decls.
-#define CALL_FALLBACK(MOOp)                                                    \
-  if (auto asOp = dyn_cast<MOOp>(op)) {                                        \
-    if (asOp.getOutputParamDecls().empty())                                    \
-      return mlir::WalkResult::advance();                                      \
-    builder.setInsertionPoint(asOp);                                           \
-    Fallback<MOOp>{}.build(graph, builder, asOp);                              \
-    return mlir::WalkResult::advance();                                        \
-  }
-
 #define NEEDS_NO_FALLBACK(MOOp)                                                \
   template <>                                                                  \
   struct Fallback<MOOp> {};
@@ -60,6 +50,13 @@ HAS_FALLBACK(MO::WhereOp)
 // Eventually all ops must be accounted for here. They either must have a
 // fallback or an explict vouch that they need no fallback.
 NEEDS_NO_FALLBACK(MO::Static::BroadcastToOp)
+
+// Creates the fallback for this op if it has parameters still needing decls.
+#define CALL_FALLBACK(MOOp)                                                    \
+  if (auto asOp = dyn_cast<MOOp>(op.getOperation())) {                         \
+    Fallback<MOOp>{}.build(graph, builder, asOp);                              \
+    return mlir::WalkResult::advance();                                        \
+  }
 
 //===----------------------------------------------------------------------===//
 // Fallback creation pass.
@@ -72,8 +69,13 @@ struct AddFallbackShapeFunctions
     MO::GraphOp graph = getOperation();
     OpBuilder builder{graph.getContext()};
 
-    graph.walk([&](Operation *op) {
+    graph.walk([&](ParamDeclarationInterface op) {
+      // Shape function was already materialized or never needed.
+      if (op.getOutputParamDecls().empty())
+        return mlir::WalkResult::advance();
+
       // Call the fallbacks.
+      builder.setInsertionPoint(op);
       CALL_FALLBACK(MO::WhereOp)
 
       return mlir::WalkResult::advance();
@@ -89,8 +91,8 @@ struct AddFallbackShapeFunctions
 // even if those dimensions are static. This simplifies the lowering as without
 // doing this we would need the lowering to know how many should be produced and
 // to which dimension they should be refering to.
-KGEN::ParamDeclArrayAttr
-getNewParameterMapping(GraphOp &graph, OpBuilder &builder, TensorType outTy) {
+KGEN::ParamDeclArrayAttr getNewParameterMapping(GraphOp &graph,
+                                                TensorType outTy) {
   // New attrs. These are either the exact same as the old attribute or a new
   // attribute
   SmallVector<KGEN::ParamDeclAttr> params;
@@ -99,9 +101,9 @@ getNewParameterMapping(GraphOp &graph, OpBuilder &builder, TensorType outTy) {
   // dimension.
   for (auto dim : outTy.getTypedShapeAttr().getValues()) {
     if (auto asSymbolic = dyn_cast<KGEN::ParamDeclRefAttr>(dim)) {
-      // Technically we should check that this is in the output parameters of
-      // the op. I think that is impossible with where this pass is currently
-      // located in the pipeline.
+      // Since this pass happens before shape propagation, for any op that
+      // declares output parameters, the parameters in its output shape must
+      // come from those output parameters.
       params.push_back(
           KGEN::ParamDeclAttr::get(asSymbolic.getName(), asSymbolic.getType()));
     } else {
@@ -119,7 +121,7 @@ getNewParameterMapping(GraphOp &graph, OpBuilder &builder, TensorType outTy) {
 void Fallback<MO::WhereOp>::build(GraphOp &graph, OpBuilder &builder,
                                   MO::WhereOp op) {
   KGEN::ParamDeclArrayAttr params =
-      getNewParameterMapping(graph, builder, op.getResult().getType());
+      getNewParameterMapping(graph, op.getResult().getType());
 
   // Create the shape function.
   builder.create<MO::InvokeShapeFuncOp>(
