@@ -44,24 +44,33 @@ mo.graph @broadcast_shape_partially_ranked<D0>(%arg0: !mo.tensor<[3], si32>, %ar
 // BroadcastToOp
 //===----------------------------------------------------------------------===//
 
-// CHECK: mo.graph @broadcast_same_rank(%[[FROM:.*]]: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[2, 3], f32>
+// CHECK-LABEL: mo.graph @broadcast_same_rank
+// CHECK: (%[[FROM:.*]]: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[2, 3], f32>
 mo.graph @broadcast_same_rank(%from: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[2, 3], f32> {
-  // CHECK: %[[TO:.*]] = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %to  = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  // CHECK: %[[RES:.*]] = mo.broadcast_to(%[[FROM]], %[[TO]]) : (!mo.tensor<[1, 3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 3], f32>
+  // CHECK-NEXT: %[[RES:.*]] = mo.static.broadcast_to(%[[FROM]]) : !mo.tensor<[1, 3], f32> -> !mo.tensor<[2, 3], f32>
   %res = mo.broadcast_to(%from, %to) : (!mo.tensor<[1, 3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 3], f32>
-  // CHECK: mo.output %[[RES]] : !mo.tensor<[2, 3], f32>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[2, 3], f32>
   mo.output %res : !mo.tensor<[2, 3], f32>
 }
 
-// CHECK: mo.graph @broadcast_diff_rank(%[[FROM:.*]]: !mo.tensor<[3], f32>) -> !mo.tensor<[2, 3], f32>
+// CHECK-LABEL: mo.graph @broadcast_diff_rank
+// CHECK: (%[[FROM:.*]]: !mo.tensor<[3], f32>) -> !mo.tensor<[2, 3], f32>
 mo.graph @broadcast_diff_rank(%from: !mo.tensor<[3], f32>) -> !mo.tensor<[2, 3], f32> {
-  // CHECK: %[[TO:.*]] = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %to  = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  // CHECK: %[[RES:.*]] = mo.broadcast_to(%[[FROM]], %[[TO]]) : (!mo.tensor<[3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 3], f32>
+  // CHECK-NEXT: %[[RES:.*]] = mo.static.broadcast_to(%[[FROM]]) : !mo.tensor<[3], f32> -> !mo.tensor<[2, 3], f32>
   %res = mo.broadcast_to(%from, %to) : (!mo.tensor<[3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 3], f32>
-  // CHECK: mo.output %[[RES]] : !mo.tensor<[2, 3], f32>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[2, 3], f32>
   mo.output %res : !mo.tensor<[2, 3], f32>
+}
+
+// CHECK-LABEL: mo.graph @broadcast_dynamic
+// CHECK: (%[[FROM:.*]]: !mo.tensor<[1], f32>, %[[TO:.*]]: !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
+mo.graph @broadcast_dynamic(%from: !mo.tensor<[1], f32>, %to: !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32> {
+  // CHECK-NEXT: %[[RES:.*]] = mo.broadcast_to(%[[FROM]], %[[TO]]) : (!mo.tensor<[1], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
+  %res = mo.broadcast_to(%from, %to) : (!mo.tensor<[1], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[?, ?], f32>
+  mo.output %res : !mo.tensor<[?, ?], f32>
 }
 
 //===----------------------------------------------------------------------===//

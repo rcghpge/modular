@@ -605,6 +605,23 @@ LogicalResult BroadcastToOp::verify() {
   return success();
 }
 
+LogicalResult BroadcastToOp::canonicalize(BroadcastToOp op,
+                                          PatternRewriter &rewriter) {
+  TensorValue inputVal = op.getInput();
+  TensorType inputTy = inputVal.getType();
+  TensorType resTy = op.getType();
+
+  // If we have a known input and an known output with no parameter decls then
+  // we can convert this to static.
+  if (!resTy.hasUnknownShape() && !inputTy.hasUnknownShape() &&
+      op.getOutputParamDecls().empty()) {
+    rewriter.replaceOpWithNewOp<Static::BroadcastToOp>(op, op.getType(),
+                                                       inputVal);
+  }
+
+  return failure();
+}
+
 //===----------------------------------------------------------------------===//
 // MOStatic_BroadcastToOp
 //===----------------------------------------------------------------------===//
