@@ -189,10 +189,9 @@ struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
                                          "Transposed op has already been run");
 
     auto weightP = m_MOMatrix(m_Any(&weight));
-    if (!m_Optional(m_Op<MO::TransposeOp>(&transpose, weightP,
-                                          m_MOVector(m_Any(&perm))),
-                    weightP)
-             .match(op.getInputB()))
+    auto weightTransP =
+        m_Op<MO::TransposeOp>(&transpose, weightP, m_MOVector(m_Any(&perm)));
+    if (!m_Optional(weightTransP, weightP).match(op.getInputB()))
       return failure();
 
     MO::TensorType weightsType = cast<MO::TensorType>(weight.getType());
@@ -233,9 +232,11 @@ struct MatmulTranspBPattern : public OpRewritePattern<MO::MatmulOp> {
       return rewriter.notifyMatchFailure(
           op, "The packed optimization has been run already");
 
+    auto weightTransP =
+        m_Op<MO::TransposeOp>(m_Any(&weight), m_MOVector(m_Any(&perm)));
     if (!m_Op<MO::MatmulOp>(
              m_Any(&input),
-             m_Op<MO::TransposeOp>(m_Any(&weight), m_MOVector(m_Any(&perm))))
+             m_Optional(m_Op<MO::RebindOp>(weightTransP), weightTransP))
              .match(op))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
@@ -259,9 +260,11 @@ struct BatchMatmulAdjBPattern : public OpRewritePattern<MO::BatchMatmulOp> {
   LogicalResult matchAndRewrite(MO::BatchMatmulOp op,
                                 PatternRewriter &rewriter) const override {
     Value input, weight, perm;
+    auto weightTransP =
+        m_Op<MO::TransposeOp>(m_Any(&weight), m_MOVector(m_Any(&perm)));
     if (!m_Op<MO::BatchMatmulOp>(
              m_Any(&input),
-             m_Op<MO::TransposeOp>(m_Any(&weight), m_MOVector(m_Any(&perm))))
+             m_Optional(m_Op<MO::RebindOp>(weightTransP), weightTransP))
              .match(op))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
