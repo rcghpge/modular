@@ -352,7 +352,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_MOJO(MO::SubOp, "mop.kernels.sub"),
       MO_TO_MOJO(MO::TanhOp, "mop.kernels.tanh"),
       MO_TO_MOJO_VIEW(MO::TransposeOp, "mop.kernels.transpose"),
-      MO_SHIM_ONLY(MO::WhereOp, "mop.kernels.where"),
+      MO_TO_MOJO_NON_ELEMWISE(MO::WhereOp, "None"),
 
       // Bookkeeping for gotchas
       MO_NO_LOWER(MO::ConstantOp),
