@@ -167,14 +167,6 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
   // We should refactor it out as a Trait maybe? and make this a method
   // and data member of the op class.
 
-  // Elementwise shapes are guaranteed to match.
-  static const llvm::SmallDenseSet<StringRef, 8> elementwise{
-      "mop.kernels.mul",     "mop.kernels.linalg.band_part",
-      "mop.kernels.sigmoid", "mop.kernels.softmax",
-      "mop.kernels.sqrt",    "mop.kernels.sub",
-      "mop.kernels.tanh",
-  };
-
   // (arg0Spec, arg1Spec, ..., argNSpec) -> outSpec
   static const llvm::StringMap<std::string> specNaryShapeFuncs{
       {"mop.kernels.concat_axis_0", "mop.shape.concat_axis_0"},
@@ -202,11 +194,7 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
 
   // Hackery! Pure Hackery! I'd start setting up classes for this, but
   // again, I don't expect this to survive E
-  if (elementwise.contains(opName)) {
-    // All elementwise kernels are guaranteed to have at least one argument
-    // which is guaranteed to match the output.
-    output.spec = inputTensors[0].spec;
-  } else if (!moType.hasUnknownShape() && !moType.hasStaticShape()) {
+  if (!moType.hasUnknownShape() && !moType.hasStaticShape()) {
     // We get the values corresponding to dynamic dimensions.
     UNWRAP_ERROR(runtimeDims, loweringState.lowerShapeAttrDynDims(
                                   moType.getTypedShapeAttr(), loc));
