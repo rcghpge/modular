@@ -114,8 +114,6 @@ class ExecInvariantCodeMotionPass
     // TODO find an alternative to hard-coding this; it might require some
     // cost-model.
     static llvm::SmallDenseSet<StringRef> recomputableOps{
-        "mop.shape.pack_matmul_b",
-        "mop.shape.pack_matmul_b.transp_b",
         CpuTensorSpecCreateOp::getOperationName(),
     };
     // We allow jit kernels to be recomputed under the condition that they
@@ -138,8 +136,6 @@ class ExecInvariantCodeMotionPass
     // TODO(#12221) remove hard-coded set once `mop` ops are registered.
     // TODO(#12270) find a better model for the properties to inspect here
     static llvm::SmallDenseSet<StringRef> unregisteredPureOps{
-        "mop.shape.pack_matmul_b",
-        "mop.shape.pack_matmul_b.transp_b",
         "mop.kernels.pack_matmul_b",
         "mop.kernels.pack_matmul_b.transp_b",
         "mop.kernels.transpose",
