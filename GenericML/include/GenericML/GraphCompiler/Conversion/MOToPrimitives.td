@@ -23,7 +23,7 @@ def MOToPrimitives : Pass<"mo-to-primitives", "ModuleOp"> {
       /*default=*/"kPreferredMemoryAlignment",
      "Minimum alignment for all CPU buffers (both constants and allocated)">,
     Option<"includeHostTargetInfo", "include-host-target-info", "bool",
-      /*default=*/"true",
+      /*default=*/"false",
      "If true, the generated model will capture the TargetInfoAttr of the "
      "compile-time host within the generated mgp.model. A runtime check will "
      "then be made to ensure the runtime host satisfies the assumptions "

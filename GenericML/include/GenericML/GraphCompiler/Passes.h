@@ -85,7 +85,7 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
           "compile-time host within the generated mgp.model. A runtime check "
           "will then be made to ensure the runtime host satisfies the "
           "assumptions made at compile time."),
-      llvm::cl::init(true)};
+      llvm::cl::init(false)};
 };
 
 // Registers the end-to-end shape inference pipeline.
