@@ -177,13 +177,6 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
 
   // (arg0Spec, arg1Spec, ..., argNSpec) -> outSpec
   static const llvm::StringMap<std::string> specNaryShapeFuncs{
-      {"mop.kernels.matmul", "mop.shape.matmul"},
-      {"mop.kernels.matmul_transpb", "mop.shape.matmul_transpb"},
-      {"mop.kernels.pack_matmul_b", "mop.shape.pack_matmul_b"},
-      {"mop.kernels.pack_matmul_b.transp_b",
-       "mop.shape.pack_matmul_b.transp_b"},
-      {"mop.kernels.batch_matmul", "mop.shape.batch_matmul"},
-      {"mop.kernels.batch_matmul_adjb", "mop.shape.batch_matmul_adjb"},
       {"mop.kernels.concat_axis_0", "mop.shape.concat_axis_0"},
   };
 
