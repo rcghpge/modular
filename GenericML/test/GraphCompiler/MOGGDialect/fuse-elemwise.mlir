@@ -230,3 +230,26 @@ mo.graph @check_no_fuse_if<N, M>(%cond : !mo.tensor<[], bool>, %arg0: !mo.tensor
 // CHECK-NEXT: mogg.kernel
 // CHECK: mogg.call "mo.mul"
 // CHECK: mo.yield
+
+// Here fusion may greedily fuse compute lambda, making some values out of
+// order of the definitions. Test we topographically sort the final compute
+// lambda expressions.
+mo.graph @out_of_order() -> !mo.tensor<[5], f32> {
+  %0 = mo.constant {value = #M.dense_array<-1.000000e+00, 2.000000e+00, -3.000000e+00, -4.000000e+00, 5.000000e+00> : tensor<5xf32>} : !mo.tensor<[5], f32>
+  %1 = mo.constant {value = #M.dense_array<3.000000e+00, 1.000000e+00, -6.000000e+00, 2.000000e+00, 5.000000e+00> : tensor<5xf32>} : !mo.tensor<[5], f32>
+  %2 = mo.add(%0, %1) : !mo.tensor<[5], f32>
+  %3 = mo.mul(%0, %2) : !mo.tensor<[5], f32>
+  %4 = mo.sub(%0, %2) : !mo.tensor<[5], f32>
+  %5 = mo.relu(%4) : !mo.tensor<[5], f32>
+  %6 = mo.add(%5, %2) : !mo.tensor<[5], f32>
+  mo.output %6 : !mo.tensor<[5], f32>
+}
+
+// CHECK-LABEL: mo.graph @out_of_order
+// CHECK: mogg.lambda @elemwise_compute_lambda
+// CHECK-NEXT: %[[V0:.*]] = mogg.invoke
+// CHECK-NEXT: %[[V1:.*]] = mogg.invoke
+// CHECK-NEXT: %[[V2:.*]] = mogg.call "mo.add"
+// CHECK-NEXT: %[[V3:.*]] = mogg.call "mo.sub"
+// CHECK-NEXT: %[[V4:.*]] = mogg.call "mo.relu"
+// CHECK-NEXT: %[[V5:.*]] = mogg.call "mo.add"

@@ -14,6 +14,7 @@
 #include "GenericML/Support/Tensor.h"
 
 #include "mlir/IR/IRMapping.h"
+#include "mlir/Transforms/TopologicalSortUtils.h"
 
 using namespace M;
 
@@ -172,11 +173,11 @@ void ElementwiseGraph::buildGraph(MOGG::KernelOp start) {
 
 // clang-format off
 /*
-%2 = mogg.kernel (%0, %1) : (%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tensor<[4],f32>) -> !mo.tensor<[4], f32>{ 
-  mogg.lambda @input_0_fn_0 ... 
+%2 = mogg.kernel (%0, %1) : (%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tensor<[4],f32>) -> !mo.tensor<[4], f32>{
+  mogg.lambda @input_0_fn_0 ...
   mogg.lambda @input_1_fn_1 ...
   mogg.lambda @output_0_fn ...
-  mogg.lambda @elemwise_compute_lambda ... 
+  mogg.lambda @elemwise_compute_lambda ...
 } {fusionBodyLambda = "elemwise_compute_lambda",
   inputFusionInterface = ["input_0_fn_0", "input_1_fn"],
   outputFusionInterface = ["output_0_fn"]}
@@ -249,6 +250,21 @@ struct FuseElementwisePass
           }
 
           fuseInputAtIndex(leaf, idx, alreadyFused);
+        }
+
+        // The above inline's a producer's compute lambda to the top
+        // of a leaf. Because the search is done greedily in a DFS we may insert
+        // certain computation out of order. E.g. we use a value before it is
+        // defined (though it is guaranteed to be defined later).
+        // We fix this by topologically sorting the fusion body lambda.
+        mlir::SymbolTable leafSymTable{leaf};
+        StringRef lambdaName = leaf.getFusionBodyLambda().value();
+        auto leafElemwiseLambda =
+            cast<LambdaOp>(leafSymTable.lookup(lambdaName));
+        for (mlir::Region &region : leafElemwiseLambda->getRegions()) {
+          for (mlir::Block &blk : region.getBlocks()) {
+            mlir::sortTopologically(&blk);
+          }
         }
       }
     }
