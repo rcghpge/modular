@@ -46,6 +46,7 @@ struct Fallback {
   struct Fallback<MOOp> {};
 
 HAS_FALLBACK(MO::SplitOp)
+HAS_FALLBACK(MO::TransposeOp)
 HAS_FALLBACK(MO::WhereOp)
 
 // Eventually all ops must be accounted for here. They either must have a
@@ -56,6 +57,7 @@ NEEDS_NO_FALLBACK(MO::Static::BroadcastToOp)
 #define CALL_FALLBACK(MOOp)                                                    \
   if (auto asOp = dyn_cast<MOOp>(op.getOperation())) {                         \
     Fallback<MOOp>{}.build(graph, builder, asOp);                              \
+    op.setOutputParamDecls({});                                                \
     return mlir::WalkResult::advance();                                        \
   }
 
@@ -78,6 +80,7 @@ struct AddFallbackShapeFunctions
       // Call the fallbacks.
       builder.setInsertionPoint(op);
       CALL_FALLBACK(MO::SplitOp)
+      CALL_FALLBACK(MO::TransposeOp)
       CALL_FALLBACK(MO::WhereOp)
 
       return mlir::WalkResult::advance();
@@ -120,6 +123,18 @@ KGEN::ParamDeclArrayAttr getNewParameterMapping(GraphOp &graph,
 // Actual fallback implementations
 //===----------------------------------------------------------------------===//
 
+void Fallback<MO::TransposeOp>::build(GraphOp &graph, OpBuilder &builder,
+                                      MO::TransposeOp op) {
+  KGEN::ParamDeclArrayAttr params =
+      getNewParameterMapping(graph, op.getResult().getType());
+
+  // Create the shape function.
+  builder.create<MO::InvokeShapeFuncOp>(
+      op.getLoc(), ValueRange{op.getOperands()}, "transpose_shape", params,
+      /*kgenAttrs*/ DictionaryAttr{},
+      /*Data dependent input indices*/ builder.getI32ArrayAttr({1}));
+}
+
 void Fallback<MO::SplitOp>::build(GraphOp &graph, OpBuilder &builder,
                                   MO::SplitOp op) {
   for (auto [idx, res] : llvm::enumerate(op.getResults())) {
@@ -137,9 +152,6 @@ void Fallback<MO::SplitOp>::build(GraphOp &graph, OpBuilder &builder,
         kgenParams,
         /*Data dependent input indices*/ builder.getI32ArrayAttr({1, 2}));
   }
-
-  // Clear the parameters from the old op.
-  op.setOutputParamDecls({});
 }
 
 void Fallback<MO::WhereOp>::build(GraphOp &graph, OpBuilder &builder,
@@ -152,9 +164,6 @@ void Fallback<MO::WhereOp>::build(GraphOp &graph, OpBuilder &builder,
       op.getLoc(), ValueRange{op.getInput()}, "where_shape", params,
       /*kgenAttrs*/ DictionaryAttr{},
       /*Data dependent input indices*/ builder.getI32ArrayAttr({0}));
-
-  // Clear the parameters from the old op.
-  op.setOutputParamDecls({});
 }
 
 } // namespace
