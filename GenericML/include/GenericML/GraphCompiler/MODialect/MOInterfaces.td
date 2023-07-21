@@ -85,20 +85,7 @@ def MO_ParamDeclaration : MO_TensorOpInterfaceBase<"ParamDeclarationInterface",
       "Deparameterizes the op by materializing rebinds around it.",
       "LogicalResult", "deparameterize",
       (ins "mlir::RewriterBase &":$rewriter), [{}],
-      [{ return impl::defaultDeparameterize($_op, rewriter); }]>,
-    InterfaceMethod<
-      "Emit a forward shape function call for an op that can declare either new"
-      "dimension parameters or a new shape parameter.",
-      "LogicalResult", "emitFwShapeFuncInvoke",
-      (ins
-        "KGEN::FuncInterface":$func,
-        "llvm::ArrayRef<mlir::TypedAttr>":$operands,
-        "StringRef":$paramNamePrefix,
-        "mlir::RewriterBase &":$rewriter), [{}],
-      [{
-        return impl::emitFwShapeFuncInvoke(
-          $_op, func, operands, paramNamePrefix, rewriter);
-      }]>,
+      [{ return impl::defaultDeparameterize($_op, rewriter); }]>
   ];
 
   let extraTraitClassDeclaration = [{

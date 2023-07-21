@@ -62,12 +62,6 @@ LogicalResult defaultDeparameterize(ParamDeclarationInterface op,
 
 ErrorOrSuccess elementwiseSinkStaticBroadcastTo(Operation *op,
                                                 mlir::RewriterBase &rewriter);
-
-LogicalResult emitFwShapeFuncInvoke(ParamDeclarationInterface op,
-                                    KGEN::FuncInterface func,
-                                    ArrayRef<TypedAttr> operands,
-                                    StringRef paramNamePrefix,
-                                    mlir::RewriterBase &rewriter);
 } // namespace impl
 
 template <typename ConcreteType>
