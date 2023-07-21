@@ -831,6 +831,47 @@ void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
   TensorType outType = getResult().getType();
 
+  Value axis = getAxis();
+
+  SplitOp split = nullptr;
+
+  // If the concat is the sole product of a split along the same axis we can
+  // fold and just use the split input.
+  size_t operandIndex = 0;
+  for (Value operand : getInputs()) {
+    auto definingOp = operand.getDefiningOp<MO::SplitOp>();
+    if (!definingOp)
+      break;
+
+    // Check if we have a match, all operands must have the same defining op.
+    if (!split) {
+      split = definingOp;
+    } else if (split != definingOp) {
+      split = nullptr;
+      break;
+    }
+
+    // Split must have same axis.
+    if (definingOp.getAxis() != axis) {
+      split = nullptr;
+      break;
+    }
+
+    if (cast<OpResult>(operand).getResultNumber() != operandIndex) {
+      split = nullptr;
+      break;
+    }
+
+    // Each split operand must be in the same order as they appear here.
+    operandIndex++;
+  }
+
+  // If we are a concat followed by split we can fold and use the split input
+  // directly.
+  if (split && split.getInput().getType() == outType &&
+      split.getNumResults() == getInputs().size())
+    return split.getInput();
+
   // Enforce rank 1 so we don't need to check axis or deal with complex
   // stride stuff.
   if (!outType.hasRank() || outType.getRank() != 1 || !outType.hasStaticShape())
