@@ -45,6 +45,7 @@ struct Fallback {
   template <>                                                                  \
   struct Fallback<MOOp> {};
 
+HAS_FALLBACK(MO::SplitOp)
 HAS_FALLBACK(MO::WhereOp)
 
 // Eventually all ops must be accounted for here. They either must have a
@@ -76,6 +77,7 @@ struct AddFallbackShapeFunctions
 
       // Call the fallbacks.
       builder.setInsertionPoint(op);
+      CALL_FALLBACK(MO::SplitOp)
       CALL_FALLBACK(MO::WhereOp)
 
       return mlir::WalkResult::advance();
@@ -117,6 +119,28 @@ KGEN::ParamDeclArrayAttr getNewParameterMapping(GraphOp &graph,
 //===----------------------------------------------------------------------===//
 // Actual fallback implementations
 //===----------------------------------------------------------------------===//
+
+void Fallback<MO::SplitOp>::build(GraphOp &graph, OpBuilder &builder,
+                                  MO::SplitOp op) {
+  for (auto [idx, res] : llvm::enumerate(op.getResults())) {
+    KGEN::ParamDeclArrayAttr shapeParams =
+        getNewParameterMapping(graph, cast<TensorType>(res.getType()));
+
+    SmallVector<mlir::NamedAttribute> attrs;
+    attrs.push_back(
+        builder.getNamedAttr("output_idx", builder.getIndexAttr(idx)));
+    DictionaryAttr kgenParams = builder.getDictionaryAttr(attrs);
+
+    // Create the shape function.
+    builder.create<MO::InvokeShapeFuncOp>(
+        op.getLoc(), op.getOperands(), "split_ith_output_shape", shapeParams,
+        kgenParams,
+        /*Data dependent input indices*/ builder.getI32ArrayAttr({1, 2}));
+  }
+
+  // Clear the parameters from the old op.
+  op.setOutputParamDecls({});
+}
 
 void Fallback<MO::WhereOp>::build(GraphOp &graph, OpBuilder &builder,
                                   MO::WhereOp op) {

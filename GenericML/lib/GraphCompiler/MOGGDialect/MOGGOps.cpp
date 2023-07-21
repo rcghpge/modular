@@ -363,10 +363,13 @@ LowerHelper::lowerOutputBuffer(llvm::StringRef opName, Value inChain,
 
   SmallVector<MO::TensorType> resultMoTypes =
       castToMoTensorTypes(opBeingLowered->getResultTypes());
-  if (multiOutputShapeFuncs.contains(opName) && !resultMoTypes.empty() &&
-      !resultMoTypes.front().hasStaticShape()) {
-    return lowerMultiOutputShapeFunc(multiOutputShapeFuncs.lookup(opName),
-                                     inChain, inputTensors, resultMoTypes);
+
+  if (multiOutputShapeFuncs.contains(opName) &&
+      llvm::any_of(resultMoTypes, [](MO::TensorType resTy) {
+        return resTy.hasUnknownShape();
+      })) {
+    return lowerMultiOutputShapeFunc(multiOutputShapeFuncs.at(opName), inChain,
+                                     inputTensors, resultMoTypes);
   }
 
   // Proceed with the normal case when there is only one output, or all the

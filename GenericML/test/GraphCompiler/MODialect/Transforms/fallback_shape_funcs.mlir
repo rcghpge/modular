@@ -10,3 +10,38 @@ mo.graph @where<D0 -> D1>(%arg0: !mo.tensor<[D0, 10], f32>) -> !mo.tensor<[D1, 2
 // CHECK-NEXT: mo.invoke_shape_func["where_shape"]<() -> [[WHERE_PARAM:.*]], [[UNUSED_PARAM:.*]]>(%[[IN]]) {dataDeptTensors = [0 : i32]}
 // CHECK-NEXT: %[[WHERE:.*]] = mo.where(%[[IN]]) : (!mo.tensor<[[[IN_PARAM]], 10], f32>) -> !mo.tensor<[[[WHERE_PARAM]], 2], si64>
 // CHECK-NEXT: mo.output<[[WHERE_PARAM]]> %[[WHERE]] : !mo.tensor<[[[WHERE_PARAM]], 2], si64>
+
+mo.graph @split_variadic_output<D0 -> D1>(
+  %input: !mo.tensor<[D0, 10], f32>,
+  %split_sizes: !mo.tensor<[2], si64>
+) -> (!mo.tensor<[D1, 10], f32>, !mo.tensor<[5, 10], f32>) {
+
+  %axis = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
+
+  %res:2 = mo.split<() -> D2>[%axis : !mo.tensor<[], si32>] (%input, %split_sizes) :
+    (!mo.tensor<[D0, 10], f32>, !mo.tensor<[2], si64>) ->
+    (!mo.tensor<[D2, 10], f32>, !mo.tensor<[5, 10], f32>)
+
+  mo.output<D2> %res#0, %res#1 : !mo.tensor<[D2, 10], f32>, !mo.tensor<[5, 10], f32>
+}
+
+// CHECK-LABEL: mo.graph @split
+// CHECK-SAME: <[[D0:.*]] -> [[D1:.*]]>(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[[[D0]], 10], f32>,
+// CHECK-SAME:   %[[SPLIT_SIZES:.*]]: !mo.tensor<[2], si64>
+// CHECK-SAME: ) -> (!mo.tensor<[[[D1]], 10], f32>, !mo.tensor<[5, 10], f32>) {
+//
+// CHECK-NEXT: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
+//
+// CHECK-NEXT: mo.invoke_shape_func["split_ith_output_shape"]<() -> [[D2:.*]], {{.*}}>(%[[INPUT]], %[[SPLIT_SIZES]], %[[AXIS]])
+// CHECK-SAME:  {dataDeptTensors = [1 : i32, 2 : i32], kgenParams = {output_idx = 0 : index}} :
+// CHECK-SAME:  (!mo.tensor<[[[D0]], 10], f32>, !mo.tensor<[2], si64>, !mo.tensor<[], si32>)
+// CHECK-NEXT: mo.invoke_shape_func["split_ith_output_shape"]<() -> {{.*}}, {{.*}}>(%[[INPUT]], %[[SPLIT_SIZES]], %[[AXIS]])
+// CHECK-SAME:  {dataDeptTensors = [1 : i32, 2 : i32], kgenParams = {output_idx = 1 : index}} :
+// CHECK-SAME:  (!mo.tensor<[[[D0]], 10], f32>, !mo.tensor<[2], si64>, !mo.tensor<[], si32>)
+
+// CHECK-NEXT: %[[RES:.*]]:2 = mo.split[%[[AXIS]] : !mo.tensor<[], si32>] (%[[INPUT]], %[[SPLIT_SIZES]]) :
+// CHECK-SAME:    (!mo.tensor<[[[D0]], 10], f32>, !mo.tensor<[2], si64>) ->
+// CHECK-SAME:    (!mo.tensor<[[[D2]], 10], f32>, !mo.tensor<[5, 10], f32>)
+
+// CHECK-NEXT: mo.output<[[D2]]> %[[RES]]#0, %[[RES]]#1 : !mo.tensor<[[[D2]], 10], f32>, !mo.tensor<[5, 10], f32>
