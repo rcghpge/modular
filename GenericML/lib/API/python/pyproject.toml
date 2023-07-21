@@ -23,6 +23,7 @@ before-build = "{project}/utils/build/engine_packaging/scripts/before-build.sh"
 build = "cp310-manylinux*"
 build-frontend = "build"
 manylinux-x86_64-image = "manylinux_2_28"
+manylinux-aarch64-image = "manylinux_2_28"
 # These requirements of numpy and pytest should already be satisfied, but this future-proofs us a bit
 # in case the testing requirements change over time vs. the minimum of what the Python wheel
 # itself requires (numpy) in addition to the implicitly-installed `pytest` package inside the
