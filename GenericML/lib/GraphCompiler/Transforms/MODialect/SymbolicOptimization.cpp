@@ -908,7 +908,8 @@ struct SplitAndSqueezesPattern : public OpRewritePattern<SplitOp> {
       newSplitResTypes.push_back(newResTy);
     }
     auto newSplitOp = rewriter.replaceOpWithNewOp<SplitOp>(
-        op, newSplitResTypes, transposeOp, splitSizes, zeroAxis);
+        op, newSplitResTypes, transposeOp, splitSizes, zeroAxis,
+        op.getOutputParamDecls());
 
     // Rectify rebind consumers because the results dimensions have been
     // permuted. Note that since all rebind users are squeezing reshapes, they

@@ -1724,7 +1724,9 @@ def MO_ConcatOp : MO_TensorOp<"concat", [
   let hasFolder = 1;
 }
 
-def MO_SplitOp : MO_TensorOp<"split", [Pure]> {
+def MO_SplitOp : MO_TensorOp<"split", [
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>
+]> {
   let summary = "Split Operation";
   let description = [{
     Split the input tensor into multiple tensors along a given dimension.
@@ -1758,10 +1760,12 @@ def MO_SplitOp : MO_TensorOp<"split", [Pure]> {
   let arguments = (ins
     MO_Tensor:$input,
     MO_ShapeLikeIfRanked:$splitSizes,
-    MO_RankedScalarIndexTensor:$axis);
+    MO_RankedScalarIndexTensor:$axis,
+    MO_ParamDecls:$outputParamDecls);
   let results = (outs Variadic<MO_Tensor>:$results);
 
   let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls)
     `[` $axis `:` qualified(type($axis)) `]`
     `(` $input `,` $splitSizes `)` attr-dict `:` `(`
       qualified(type($input)) `,` qualified(type($splitSizes))
