@@ -53,31 +53,6 @@ mo.graph @concat_variadic_input<D0, D1, D2, D3 -> D4, D5>(
 // CHECK-NEXT:   mo.output<[[D6]], [[D7]]> %[[RES]] : !mo.tensor<[[[D6]], [[D7]]], f32>
 
 
-mo.graph @where<D0 -> D1>(%arg0: !mo.tensor<[D0, 10], f32>) -> !mo.tensor<[D1, 2], si64> {
-  %0 = mo.where<() -> D2>(%arg0) : (!mo.tensor<[D0, 10], f32>) -> !mo.tensor<[D2, 2], si64>
-  mo.output<D2> %0 : !mo.tensor<[D2, 2], si64>
-}
-// CHECK-LABEL: mo.graph @where
-// CHECK:(%[[IN:.*]]: !mo.tensor<[[[IN_PARAM:.*]], 10], f32>) -> !mo.tensor<[[[OUT_PARAM:.*]], 2], si64>
-// CHECK-NEXT: mo.invoke_shape_func["where_shape"]<() -> [[WHERE_PARAM:.*]], [[UNUSED_PARAM:.*]]>(%[[IN]]) {dataDeptTensors = [0 : i32]}
-// CHECK-NEXT: %[[WHERE:.*]] = mo.where(%[[IN]]) : (!mo.tensor<[[[IN_PARAM]], 10], f32>) -> !mo.tensor<[[[WHERE_PARAM]], 2], si64>
-// CHECK-NEXT: mo.output<[[WHERE_PARAM]]> %[[WHERE]] : !mo.tensor<[[[WHERE_PARAM]], 2], si64>
-
-
-mo.graph @transpose<D1, D2 -> D3, D4>(%arg0: !mo.tensor<[D1, D2], f32>, %arg1: !mo.tensor<[2], si64>) -> !mo.tensor<[D3, D4], f32> {
-  %0 = mo.rebind<() -> D5, D6>(%arg0) : !mo.tensor<[D1, D2], f32> -> !mo.tensor<[D5, D6], f32>
-  %1 = mo.transpose<() -> D7, D8>(%0, %arg1) : (!mo.tensor<[D5, D6], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[D7, D8], f32>
-  %2 = mo.rebind(%1) : !mo.tensor<[D7, D8], f32> -> !mo.tensor<[D3, D4], f32>
-  mo.output<D7, D8> %1 : !mo.tensor<[D7, D8], f32>
-}
-// CHECK-LABEL: mo.graph @transpose
-// CHECK: (%[[I0:.*]]: !mo.tensor<[D1, D2], f32>, %[[I1:.*]]: !mo.tensor<[2], si64>) -> !mo.tensor<[D3, D4], f32>
-// CHECK-NEXT: %[[RB:.*]] = mo.rebind<() -> D5, D6>(%arg0) : !mo.tensor<[D1, D2], f32> -> !mo.tensor<[D5, D6], f32>
-// CHECK-NEXT: mo.invoke_shape_func["transpose_shape"]<() -> D7, D8>(%[[RB]], %[[I1]]) {dataDeptTensors = [1 : i32]} : (!mo.tensor<[D5, D6], f32>, !mo.tensor<[2], si64>)
-// CHECK-NEXT: %[[TRANS:.*]] = mo.transpose(%[[RB]], %[[I1]]) : (!mo.tensor<[D5, D6], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[D7, D8], f32>
-// CHECK: mo.output<D7, D8> %[[TRANS]] : !mo.tensor<[D7, D8], f32>
-
-
 mo.graph @reduce_add_fallback_shape_func<D0, D1 -> D2, D3>(
   %input : !mo.tensor<[D0, D1], f32>,
   %axis: !mo.tensor<[], si32>
@@ -136,3 +111,28 @@ mo.graph @split_variadic_output<D0 -> D1>(
 // CHECK-SAME:    (!mo.tensor<[[[D2]], 10], f32>, !mo.tensor<[5, 10], f32>)
 
 // CHECK-NEXT: mo.output<[[D2]]> %[[RES]]#0, %[[RES]]#1 : !mo.tensor<[[[D2]], 10], f32>, !mo.tensor<[5, 10], f32>
+
+
+mo.graph @transpose<D1, D2 -> D3, D4>(%arg0: !mo.tensor<[D1, D2], f32>, %arg1: !mo.tensor<[2], si64>) -> !mo.tensor<[D3, D4], f32> {
+  %0 = mo.rebind<() -> D5, D6>(%arg0) : !mo.tensor<[D1, D2], f32> -> !mo.tensor<[D5, D6], f32>
+  %1 = mo.transpose<() -> D7, D8>(%0, %arg1) : (!mo.tensor<[D5, D6], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[D7, D8], f32>
+  %2 = mo.rebind(%1) : !mo.tensor<[D7, D8], f32> -> !mo.tensor<[D3, D4], f32>
+  mo.output<D7, D8> %1 : !mo.tensor<[D7, D8], f32>
+}
+// CHECK-LABEL: mo.graph @transpose
+// CHECK: (%[[I0:.*]]: !mo.tensor<[D1, D2], f32>, %[[I1:.*]]: !mo.tensor<[2], si64>) -> !mo.tensor<[D3, D4], f32>
+// CHECK-NEXT: %[[RB:.*]] = mo.rebind<() -> D5, D6>(%arg0) : !mo.tensor<[D1, D2], f32> -> !mo.tensor<[D5, D6], f32>
+// CHECK-NEXT: mo.invoke_shape_func["transpose_shape"]<() -> D7, D8>(%[[RB]], %[[I1]]) {dataDeptTensors = [1 : i32]} : (!mo.tensor<[D5, D6], f32>, !mo.tensor<[2], si64>)
+// CHECK-NEXT: %[[TRANS:.*]] = mo.transpose(%[[RB]], %[[I1]]) : (!mo.tensor<[D5, D6], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[D7, D8], f32>
+// CHECK: mo.output<D7, D8> %[[TRANS]] : !mo.tensor<[D7, D8], f32>
+
+
+mo.graph @where<D0 -> D1>(%arg0: !mo.tensor<[D0, 10], f32>) -> !mo.tensor<[D1, 2], si64> {
+  %0 = mo.where<() -> D2>(%arg0) : (!mo.tensor<[D0, 10], f32>) -> !mo.tensor<[D2, 2], si64>
+  mo.output<D2> %0 : !mo.tensor<[D2, 2], si64>
+}
+// CHECK-LABEL: mo.graph @where
+// CHECK:(%[[IN:.*]]: !mo.tensor<[[[IN_PARAM:.*]], 10], f32>) -> !mo.tensor<[[[OUT_PARAM:.*]], 2], si64>
+// CHECK-NEXT: mo.invoke_shape_func["where_shape"]<() -> [[WHERE_PARAM:.*]], [[UNUSED_PARAM:.*]]>(%[[IN]]) {dataDeptTensors = [0 : i32]}
+// CHECK-NEXT: %[[WHERE:.*]] = mo.where(%[[IN]]) : (!mo.tensor<[[[IN_PARAM]], 10], f32>) -> !mo.tensor<[[[WHERE_PARAM]], 2], si64>
+// CHECK-NEXT: mo.output<[[WHERE_PARAM]]> %[[WHERE]] : !mo.tensor<[[[WHERE_PARAM]], 2], si64>

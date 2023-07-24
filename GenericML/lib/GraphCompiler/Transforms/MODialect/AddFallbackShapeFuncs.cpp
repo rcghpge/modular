@@ -145,7 +145,7 @@ static void buildForReductionOp(GraphOp &graph, OpBuilder &builder,
 
   // Create the shape function.
   builder.create<MO::InvokeShapeFuncOp>(
-      op.getLoc(), ValueRange{op->getOperands()}, "reduce_shape", shapeParams,
+      op.getLoc(), op->getOperands(), "reduce_shape", shapeParams,
       /*kgenAttrs*/ DictionaryAttr{},
       /*Data dependent input indices*/ builder.getI32ArrayAttr({1}));
 }
@@ -174,26 +174,13 @@ void Fallback<MO::ConcatOp>::build(GraphOp &graph, OpBuilder &builder,
 
   // Create the shape function.
   builder.create<MO::InvokeShapeFuncOp>(
-      op.getLoc(), ValueRange{op.getOperands()}, "concat_shape", shapeParams,
-      kgenParams,
+      op.getLoc(), op.getOperands(), "concat_shape", shapeParams, kgenParams,
       /*Data dependent input indices*/ builder.getI32ArrayAttr({0}));
 }
 
 void Fallback<MO::MeanOp>::build(GraphOp &graph, OpBuilder &builder,
                                  MO::MeanOp op) {
   buildForReductionOp(graph, builder, op);
-}
-
-void Fallback<MO::TransposeOp>::build(GraphOp &graph, OpBuilder &builder,
-                                      MO::TransposeOp op) {
-  KGEN::ParamDeclArrayAttr shapeParams =
-      getNewParameterMapping(graph, op.getResult().getType());
-
-  // Create the shape function.
-  builder.create<MO::InvokeShapeFuncOp>(
-      op.getLoc(), ValueRange{op.getOperands()}, "transpose_shape", shapeParams,
-      /*kgenAttrs*/ DictionaryAttr{},
-      /*Data dependent input indices*/ builder.getI32ArrayAttr({1}));
 }
 
 void Fallback<MO::ReduceAddOp>::build(GraphOp &graph, OpBuilder &builder,
@@ -233,6 +220,18 @@ void Fallback<MO::SplitOp>::build(GraphOp &graph, OpBuilder &builder,
         kgenParams,
         /*Data dependent input indices*/ builder.getI32ArrayAttr({1, 2}));
   }
+}
+
+void Fallback<MO::TransposeOp>::build(GraphOp &graph, OpBuilder &builder,
+                                      MO::TransposeOp op) {
+  KGEN::ParamDeclArrayAttr shapeParams =
+      getNewParameterMapping(graph, op.getResult().getType());
+
+  // Create the shape function.
+  builder.create<MO::InvokeShapeFuncOp>(
+      op.getLoc(), op.getOperands(), "transpose_shape", shapeParams,
+      /*kgenAttrs*/ DictionaryAttr{},
+      /*Data dependent input indices*/ builder.getI32ArrayAttr({1}));
 }
 
 void Fallback<MO::WhereOp>::build(GraphOp &graph, OpBuilder &builder,
