@@ -78,7 +78,7 @@ mgp.model @chain_merge_canonicalized : tf init {
   %ch2 = grt.chain.create (%ch0, %ch1)
   %ch3 = grt.chain.create (%ch1, %ch0)
 
-  // CHECK-NEXT: "some.op"(%[[RES]], %[[RES]])
+  // CHECK: %[[CH4:.*]] = "some.op"(%[[RES]], %[[CH3:.*]]) : (!mef.chain, !mef.chain) -> !mef.chain
   %ch4 = "some.op"(%ch2, %ch3) : (!mef.chain, !mef.chain) -> !mef.chain
 
   mef.output %ch4 : !mef.chain
