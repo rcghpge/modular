@@ -112,7 +112,7 @@ SmallVector<Subgraph> ConstantSubgraphs(MO::GraphOp graph) {
          "recursion (which is a bug)");
 
   // Collect subgraphs from equivalence sets.
-  SmallVector<Subgraph, 0> subgraphs;
+  SmallVector<Subgraph> subgraphs;
   for (auto it = const_subgraphs.begin(), end = const_subgraphs.end();
        it != end; ++it) {
     if (!it->isLeader())
