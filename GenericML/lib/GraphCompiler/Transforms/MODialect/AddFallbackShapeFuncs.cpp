@@ -48,6 +48,7 @@ struct Fallback {
 
 HAS_FALLBACK(MO::ArgMaxOp)
 HAS_FALLBACK(MO::ConcatOp)
+HAS_FALLBACK(MO::GatherOp)
 HAS_FALLBACK(MO::MeanOp)
 HAS_FALLBACK(MO::ReduceAddOp)
 HAS_FALLBACK(MO::ReduceMaxOp)
@@ -89,6 +90,7 @@ struct AddFallbackShapeFunctions
       builder.setInsertionPoint(op);
       CALL_FALLBACK(MO::ArgMaxOp)
       CALL_FALLBACK(MO::ConcatOp)
+      CALL_FALLBACK(MO::GatherOp)
       CALL_FALLBACK(MO::MeanOp)
       CALL_FALLBACK(MO::ReduceAddOp)
       CALL_FALLBACK(MO::ReduceMaxOp)
@@ -176,6 +178,24 @@ void Fallback<MO::ConcatOp>::build(GraphOp &graph, OpBuilder &builder,
   builder.create<MO::InvokeShapeFuncOp>(
       op.getLoc(), op.getOperands(), "concat_shape", shapeParams, kgenParams,
       /*Data dependent input indices*/ builder.getI32ArrayAttr({0}));
+}
+
+void Fallback<MO::GatherOp>::build(GraphOp &graph, OpBuilder &builder,
+                                   MO::GatherOp op) {
+  KGEN::ParamDeclArrayAttr shapeParams =
+      getNewParameterMapping(graph, op.getResult().getType());
+
+  SmallVector<mlir::NamedAttribute> attrs;
+  TensorType outputTy = op.getType();
+  assert(outputTy.hasRank() && "Unranked tensor isn't supported");
+  attrs.push_back(builder.getNamedAttr(
+      "output_rank", builder.getIndexAttr(outputTy.getRank())));
+  DictionaryAttr kgenParams = builder.getDictionaryAttr(attrs);
+
+  // Create the shape function.
+  builder.create<MO::InvokeShapeFuncOp>(
+      op.getLoc(), op.getOperands(), "gather_shape", shapeParams, kgenParams,
+      /*Data dependent input indices*/ builder.getI32ArrayAttr({2}));
 }
 
 void Fallback<MO::MeanOp>::build(GraphOp &graph, OpBuilder &builder,

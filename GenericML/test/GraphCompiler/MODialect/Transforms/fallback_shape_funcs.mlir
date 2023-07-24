@@ -53,6 +53,35 @@ mo.graph @concat_variadic_input<D0, D1, D2, D3 -> D4, D5>(
 // CHECK-NEXT:   mo.output<[[D6]], [[D7]]> %[[RES]] : !mo.tensor<[[[D6]], [[D7]]], f32>
 
 
+mo.graph @gather_fallback_shape_func<D0, D1 -> D2, D3, D4>(
+  %input : !mo.tensor<[10, D0], f32>,
+  %indices : !mo.tensor<[D1, 20], si32>,
+  %axis: !mo.tensor<[], si32>
+) -> !mo.tensor<[D2, D3, D4], f32> {
+
+  %res = mo.gather<() -> D5, D6, D7>(%input, %indices, %axis) :
+    (!mo.tensor<[10, D0], f32>, !mo.tensor<[D1, 20], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[D5, D6, D7], f32>
+
+  mo.output<D5, D6, D7> %res : !mo.tensor<[D5, D6, D7], f32>
+}
+// CHECK-LABEL: mo.graph @gather_fallback_shape_func
+// CHECK-SAME: <[[D0:.*]], [[D1:.*]] -> [[D2:.*]], [[D3:.*]], [[D4:.*]]>(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[10, [[D0]]], f32>
+// CHECK-SAME:   %[[INDICES:.*]]: !mo.tensor<[[[D1]], 20], si32>
+// CHECK-SAME:   %[[AXIS:.*]]: !mo.tensor<[], si32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D2]], [[D3]], [[D4]]], f32> {
+//
+// CHECK-NEXT: mo.invoke_shape_func["gather_shape"]<() -> [[D5:.*]], [[D6:.*]], [[D7:.*]]>(%[[INPUT]], %[[INDICES]], %[[AXIS]])
+// CHECK-SAME:   {dataDeptTensors = [2 : i32], kgenParams = {output_rank = 3 : index}} :
+// CHECK-SAME:   (!mo.tensor<[10, [[D0]]], f32>, !mo.tensor<[[[D1]], 20], si32>, !mo.tensor<[], si32>)
+//
+// CHECK-NEXT: %[[RES:.*]] = mo.gather(%[[INPUT]], %[[INDICES]], %[[AXIS]]) :
+// CHECK-SAME:   (!mo.tensor<[10, [[D0]]], f32>, !mo.tensor<[[[D1]], 20], si32>, !mo.tensor<[], si32>)
+// CHECK-SAME:   -> !mo.tensor<[[[D5]], [[D6]], [[D7]]], f32>
+//
+// CHECK-NEXT: mo.output<[[D5]], [[D6]], [[D7]]> %[[RES]] : !mo.tensor<[[[D5]], [[D6]], [[D7]]], f32>
+
+
 mo.graph @reduce_add_fallback_shape_func<D0, D1 -> D2, D3>(
   %input : !mo.tensor<[D0, D1], f32>,
   %axis: !mo.tensor<[], si32>
