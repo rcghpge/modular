@@ -628,3 +628,20 @@ mo.graph @avg_pool2d_dyn_input_dims(
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[D0]], 9, 14, [[D1]]], f32>
   mo.output %0 : !mo.tensor<[?, ?, ?, ?], f32>
 }
+
+// CHECK: mo.graph @arg_max<[[D1:.*]], [[D2:.*]]>(
+// CHECK-SAME: %[[input:.*]]: !mo.tensor<[[[D1]], [[D2]]], si64>
+// CHECK-SAME: ) -> !mo.tensor<[[[D1]], 1], si64> {
+mo.graph @arg_max(%input: !mo.tensor<[?, ?], si64>) -> !mo.tensor<[?, ?], si64> {
+
+  // CHECK-NEXT: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %axis = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+
+  // CHECK-NEXT: %[[RES:.*]] = mo.arg_max(%[[INPUT]], %[[AXIS]]) :
+  // CHECK-SAME: (!mo.tensor<[[[D1]], [[D2]]], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[[[D1]], 1], si64>
+  %res = mo.arg_max(%input, %axis) :
+    (!mo.tensor<[?, ?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?], si64>
+
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[D1]], 1], si64>
+  mo.output %res : !mo.tensor<[?, ?], si64>
+}

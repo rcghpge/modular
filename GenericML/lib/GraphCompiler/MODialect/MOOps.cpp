@@ -151,6 +151,30 @@ OpFoldResult foldElemwiseOp(MO::TensorType resTy, Adaptor adaptor,
   return IntArrayElementsAttr::get(rankedResTy, res);
 }
 
+/// If `op`'s axis is constant and input rank is known, modify `op`'s `axis` to
+/// be the canonical version, i.e., it's guaranteed to be in [0, rank).
+/// NOTE this should be used as the first canonicalization, so other logic in
+/// canonicalization will be able to utilize it.
+LogicalResult canonicalizeStaticNegativeIndicesInPlace(Reduction op,
+                                                       int operandIndex) {
+  TensorValue axisArr = op.getAxis();
+  TensorType inputTy = op.getInput().getType();
+  std::optional<int64_t> maybeAxis = tryGetConstantInt(axisArr);
+  if (!maybeAxis.has_value() || !inputTy.hasRank())
+    return failure();
+
+  int64_t axis = maybeAxis.value();
+  if (axis >= 0)
+    return failure();
+
+  OpBuilder builder(op);
+  builder.setInsertionPoint(op);
+  int64_t new_axis = axis + inputTy.getRank();
+  auto newAxis = builder.create<ConstantOp>(op.getLoc(), new_axis);
+  op->setOperand(operandIndex, newAxis);
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // MO_IndexToTensorOp support
 //===----------------------------------------------------------------------===//
@@ -1316,6 +1340,10 @@ LogicalResult WhereOp::verify() {
 // MO::ArgMaxOp support
 //===----------------------------------------------------------------------===//
 
+LogicalResult ArgMaxOp::canonicalize(ArgMaxOp op, PatternRewriter &rewriter) {
+  return canonicalizeStaticNegativeIndicesInPlace(op, 1);
+}
+
 static LogicalResult verifyWithRankedInput(ArgMaxOp *op, int64_t axis,
                                            int64_t resDim, TensorType inputTy,
                                            size_t &dynamicOutDims,
@@ -1750,33 +1778,6 @@ LogicalResult RebindOp::verify() {
                          "static dimensions");
     }
   }
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// MO_ReductionOp support
-//===----------------------------------------------------------------------===//
-
-template <typename T>
-LogicalResult canonicalizeStaticNegativeIndicesInPlace(T op, int operandIndex) {
-  // Use at top of T::fold(), which is run before any other canonicalizations.
-  // If successful, then if axis and rank can be gotten at compile time, it is
-  // now guaranteed to be in [0, rank).
-  TensorValue axisArr = op.getAxis();
-  TensorType inputTy = op.getInput().getType();
-  std::optional<int64_t> maybeAxis = tryGetConstantInt(axisArr);
-  if (!maybeAxis.has_value() || !inputTy.hasRank())
-    return failure();
-
-  int64_t axis = maybeAxis.value();
-  if (axis >= 0)
-    return failure();
-
-  OpBuilder builder(op);
-  builder.setInsertionPoint(op);
-  int64_t new_axis = axis + inputTy.getRank();
-  auto newAxis = builder.create<ConstantOp>(op.getLoc(), new_axis);
-  op->setOperand(operandIndex, newAxis);
   return success();
 }
 

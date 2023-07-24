@@ -2022,9 +2022,7 @@ def MO_WhereOp : MO_TensorOp<"where", [
 // ArgMaxOp
 //===----------------------------------------------------------------------===//
 
-def MO_ArgMaxOp : MO_TensorOp<"arg_max", [
-  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-]> {
+def MO_ArgMaxOp : MO_ReductionOp<"arg_max"> {
   let summary = "Returns the indices of the maximum value in a tensor";
   let description = [{
     This op is equivalent to reduce_max, but returns indices instead of values.
