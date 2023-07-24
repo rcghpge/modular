@@ -4,6 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
@@ -45,7 +46,13 @@ struct Fallback {
   template <>                                                                  \
   struct Fallback<MOOp> {};
 
+HAS_FALLBACK(MO::ArgMaxOp)
 HAS_FALLBACK(MO::ConcatOp)
+HAS_FALLBACK(MO::MeanOp)
+HAS_FALLBACK(MO::ReduceAddOp)
+HAS_FALLBACK(MO::ReduceMaxOp)
+HAS_FALLBACK(MO::ReduceMinOp)
+HAS_FALLBACK(MO::ReduceMulOp)
 HAS_FALLBACK(MO::SplitOp)
 HAS_FALLBACK(MO::TransposeOp)
 HAS_FALLBACK(MO::WhereOp)
@@ -80,7 +87,13 @@ struct AddFallbackShapeFunctions
 
       // Call the fallbacks.
       builder.setInsertionPoint(op);
+      CALL_FALLBACK(MO::ArgMaxOp)
       CALL_FALLBACK(MO::ConcatOp)
+      CALL_FALLBACK(MO::MeanOp)
+      CALL_FALLBACK(MO::ReduceAddOp)
+      CALL_FALLBACK(MO::ReduceMaxOp)
+      CALL_FALLBACK(MO::ReduceMinOp)
+      CALL_FALLBACK(MO::ReduceMulOp)
       CALL_FALLBACK(MO::SplitOp)
       CALL_FALLBACK(MO::TransposeOp)
       CALL_FALLBACK(MO::WhereOp)
@@ -122,8 +135,29 @@ KGEN::ParamDeclArrayAttr getNewParameterMapping(GraphOp &graph,
 }
 
 //===----------------------------------------------------------------------===//
+// Helpers for fallback implementations
+//===----------------------------------------------------------------------===//
+
+static void buildForReductionOp(GraphOp &graph, OpBuilder &builder,
+                                MO::Reduction op) {
+  KGEN::ParamDeclArrayAttr shapeParams =
+      getNewParameterMapping(graph, op.getResult().getType());
+
+  // Create the shape function.
+  builder.create<MO::InvokeShapeFuncOp>(
+      op.getLoc(), ValueRange{op->getOperands()}, "reduce_shape", shapeParams,
+      /*kgenAttrs*/ DictionaryAttr{},
+      /*Data dependent input indices*/ builder.getI32ArrayAttr({1}));
+}
+
+//===----------------------------------------------------------------------===//
 // Actual fallback implementations
 //===----------------------------------------------------------------------===//
+
+void Fallback<MO::ArgMaxOp>::build(GraphOp &graph, OpBuilder &builder,
+                                   MO::ArgMaxOp op) {
+  buildForReductionOp(graph, builder, op);
+}
 
 void Fallback<MO::ConcatOp>::build(GraphOp &graph, OpBuilder &builder,
                                    MO::ConcatOp op) {
@@ -145,6 +179,11 @@ void Fallback<MO::ConcatOp>::build(GraphOp &graph, OpBuilder &builder,
       /*Data dependent input indices*/ builder.getI32ArrayAttr({0}));
 }
 
+void Fallback<MO::MeanOp>::build(GraphOp &graph, OpBuilder &builder,
+                                 MO::MeanOp op) {
+  buildForReductionOp(graph, builder, op);
+}
+
 void Fallback<MO::TransposeOp>::build(GraphOp &graph, OpBuilder &builder,
                                       MO::TransposeOp op) {
   KGEN::ParamDeclArrayAttr shapeParams =
@@ -155,6 +194,26 @@ void Fallback<MO::TransposeOp>::build(GraphOp &graph, OpBuilder &builder,
       op.getLoc(), ValueRange{op.getOperands()}, "transpose_shape", shapeParams,
       /*kgenAttrs*/ DictionaryAttr{},
       /*Data dependent input indices*/ builder.getI32ArrayAttr({1}));
+}
+
+void Fallback<MO::ReduceAddOp>::build(GraphOp &graph, OpBuilder &builder,
+                                      MO::ReduceAddOp op) {
+  buildForReductionOp(graph, builder, op);
+}
+
+void Fallback<MO::ReduceMaxOp>::build(GraphOp &graph, OpBuilder &builder,
+                                      MO::ReduceMaxOp op) {
+  buildForReductionOp(graph, builder, op);
+}
+
+void Fallback<MO::ReduceMinOp>::build(GraphOp &graph, OpBuilder &builder,
+                                      MO::ReduceMinOp op) {
+  buildForReductionOp(graph, builder, op);
+}
+
+void Fallback<MO::ReduceMulOp>::build(GraphOp &graph, OpBuilder &builder,
+                                      MO::ReduceMulOp op) {
+  buildForReductionOp(graph, builder, op);
 }
 
 void Fallback<MO::SplitOp>::build(GraphOp &graph, OpBuilder &builder,

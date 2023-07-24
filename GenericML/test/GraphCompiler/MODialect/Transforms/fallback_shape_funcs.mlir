@@ -1,5 +1,30 @@
 // RUN: mo-opt %s --add-fallback-shape-funcs | FileCheck %s
 
+mo.graph @arg_max_fallback_shape_func<D0, D1 -> D2, D3>(
+  %input : !mo.tensor<[D0, D1], si64>,
+  %axis: !mo.tensor<[], si64>
+) -> !mo.tensor<[D2, D3], si64> {
+
+  %res = mo.arg_max<() -> D4, D5>(%input, %axis) :
+    (!mo.tensor<[D0, D1], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D4, D5], si64>
+
+  mo.output<D4, D5> %res : !mo.tensor<[D4, D5], si64>
+}
+// CHECK-LABEL: mo.graph @arg_max_fallback_shape_func
+// CHECK-SAME: <[[D0:.*]], [[D1:.*]] -> [[D2:.*]], [[D3:.*]]>(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[[[D0]], [[D1]]], si64>
+// CHECK-SAME:   %[[AXIS:.*]]: !mo.tensor<[], si64>
+// CHECK-SAME: ) -> !mo.tensor<[[[D2]], [[D3]]], si64> {
+//
+// CHECK-NEXT: mo.invoke_shape_func["reduce_shape"]<() -> [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[AXIS]])
+// CHECK-SAME:   {dataDeptTensors = [1 : i32]} : (!mo.tensor<[[[D0]], [[D1]]], si64>, !mo.tensor<[], si64>)
+//
+// CHECK-NEXT: %[[RES:.*]] = mo.arg_max(%[[INPUT]], %[[AXIS]]) :
+// CHECK-SAME:   (!mo.tensor<[[[D0]], [[D1]]], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[[[D4]], [[D5]]], si64>
+//
+// CHECK-NEXT: mo.output<[[D4]], [[D5]]> %[[RES]] : !mo.tensor<[[[D4]], [[D5]]], si64>
+
+
 mo.graph @concat_variadic_input<D0, D1, D2, D3 -> D4, D5>(
   %input1: !mo.tensor<[D0, D1], f32>,
   %input2: !mo.tensor<[D2, D3], f32>,
@@ -51,6 +76,31 @@ mo.graph @transpose<D1, D2 -> D3, D4>(%arg0: !mo.tensor<[D1, D2], f32>, %arg1: !
 // CHECK-NEXT: mo.invoke_shape_func["transpose_shape"]<() -> D7, D8>(%[[RB]], %[[I1]]) {dataDeptTensors = [1 : i32]} : (!mo.tensor<[D5, D6], f32>, !mo.tensor<[2], si64>)
 // CHECK-NEXT: %[[TRANS:.*]] = mo.transpose(%[[RB]], %[[I1]]) : (!mo.tensor<[D5, D6], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[D7, D8], f32>
 // CHECK: mo.output<D7, D8> %[[TRANS]] : !mo.tensor<[D7, D8], f32>
+
+
+mo.graph @reduce_add_fallback_shape_func<D0, D1 -> D2, D3>(
+  %input : !mo.tensor<[D0, D1], f32>,
+  %axis: !mo.tensor<[], si32>
+) -> !mo.tensor<[D2, D3], f32> {
+
+  %res = mo.reduce.add<() -> D4, D5>(%input, %axis) :
+    (!mo.tensor<[D0, D1], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[D4, D5], f32>
+
+  mo.output<D4, D5> %res : !mo.tensor<[D4, D5], f32>
+}
+// CHECK-LABEL: mo.graph @reduce_add_fallback_shape_func
+// CHECK-SAME: <[[D0:.*]], [[D1:.*]] -> [[D2:.*]], [[D3:.*]]>(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[[[D0]], [[D1]]], f32>
+// CHECK-SAME:   %[[AXIS:.*]]: !mo.tensor<[], si32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D2]], [[D3]]], f32> {
+//
+// CHECK-NEXT: mo.invoke_shape_func["reduce_shape"]<() -> [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[AXIS]])
+// CHECK-SAME:   {dataDeptTensors = [1 : i32]} : (!mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[], si32>)
+//
+// CHECK-NEXT: %[[RES:.*]] = mo.reduce.add(%[[INPUT]], %[[AXIS]]) :
+// CHECK-SAME:   (!mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[[[D4]], [[D5]]], f32>
+//
+// CHECK-NEXT: mo.output<[[D4]], [[D5]]> %[[RES]] : !mo.tensor<[[[D4]], [[D5]]], f32>
 
 
 mo.graph @split_variadic_output<D0 -> D1>(
