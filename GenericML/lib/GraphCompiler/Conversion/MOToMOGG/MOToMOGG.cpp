@@ -354,13 +354,20 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_MOJO_VIEW(MO::TransposeOp, "mop.kernels.transpose"),
       MO_TO_MOJO_NON_ELEMWISE(MO::WhereOp, "None"),
 
-      // Bookkeeping for gotchas
+      // Bookkeeping for gotchas -- handled specially elsewhere
       MO_NO_LOWER(MO::ConstantOp),
       MO_NO_LOWER(MO::RebindOp),
       MO_NO_LOWER(MO::Static::ReshapeOp),
       MO_NO_LOWER(MO::IndexToTensorOp),
       MO_NO_LOWER(MO::Shape::ToTensorOp),
-      MO_NO_LOWER(MO::ReshapeOp)
+      MO_NO_LOWER(MO::ReshapeOp),
+
+      // Yield will never be lowered and is informational
+      MO_NO_LOWER(MO::YieldOp),
+
+      // Control flow
+      MO_NO_LOWER(MO::IfOp),
+      MO_NO_LOWER(MO::WhileOp)
   };
   // clang-format on
   RewritePatternSet patterns{ctx};
