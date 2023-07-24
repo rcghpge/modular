@@ -1043,6 +1043,29 @@ void KernelOp::fuseBodyIntoNewWithSkip(
   }
 }
 
+LogicalResult KernelOp::verify() {
+  auto inputInterfaces = getInputFusionInterface();
+  auto outputInterfaces = getOutputFusionInterface();
+
+  if (inputInterfaces.has_value() &&
+      getNumOperands() != inputInterfaces->size()) {
+    return emitError("Number of input fusion interfaces does not match number "
+                     "of inputs")
+           << " (" << inputInterfaces->size() << " vs " << getNumOperands()
+           << ")";
+  }
+
+  if (outputInterfaces.has_value() &&
+      getNumResults() != outputInterfaces->size()) {
+    return emitError("Number of output fusion interfaces does not match number "
+                     "of results")
+           << " (" << outputInterfaces->size() << " vs " << getNumResults()
+           << ")";
+  }
+
+  return success();
+}
+
 static ParseResult parseKernel(
     OpAsmParser &p, SmallVectorImpl<OpAsmParser::UnresolvedOperand> &operands,
     SmallVectorImpl<Type> &operandTypes, SmallVectorImpl<Type> &resultTypes,

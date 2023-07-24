@@ -240,6 +240,7 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [IsolatedFromAbove,
   );
   let results = (outs Variadic<MO_Tensor>:$results);
   let regions = (region SizedRegion<1>:$body);
+  let hasVerifier = 1;
 
   let assemblyFormat = [{
     custom<Kernel>($operands, type($operands), type($results), $body, $outputParamDecls) attr-dict

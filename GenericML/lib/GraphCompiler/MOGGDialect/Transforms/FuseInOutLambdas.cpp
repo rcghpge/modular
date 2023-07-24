@@ -76,10 +76,6 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
       if (!inputInterfaces.has_value())
         return false;
 
-      // Unreachable.
-      if (user.getNumOperands() != inputInterfaces->size())
-        return false;
-
       // It must expose a valid input lambda attribute for every operand which
       // uses this.
       for (auto [operand, attr] : llvm::zip(
@@ -105,7 +101,6 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     MOGG::KernelOp userToFuseIn =
         cast<MOGG::KernelOp>(*originalResult.user_begin());
 
-    Block &blockToFuseInto = kernelToFuseInto.getBody().front();
     Block &userBlock = userToFuseIn.getBody().front();
 
     OutputPlaceholdersOp originalOuts = kernelToFuseInto.getOutputPlaceholder();
@@ -147,10 +142,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
       // Either add a new operand to the kernel or reuse the existing.
       auto itr = seenOperands.find(operand);
       if (itr != seenOperands.end()) {
-        kernelToFuseInto->insertOperands(kernelToFuseInto.getNumOperands(),
-                                         {operand});
-        Value newBlockArg =
-            blockToFuseInto.addArgument(operand.getType(), operand.getLoc());
+        Value newBlockArg = kernelToFuseInto.addOperand(operand);
         oldToNew.map(blockArg, newBlockArg);
         seenOperands[operand] = newBlockArg;
       } else {
