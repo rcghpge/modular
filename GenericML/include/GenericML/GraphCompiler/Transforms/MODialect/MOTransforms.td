@@ -145,4 +145,35 @@ def HoistParameterExpressions : Pass<"hoist-param-exprs", "GraphOp"> {
   }];
 }
 
+def ConstantFold : Pass<"constant-fold", "GraphOp"> {
+  let summary = "Partially evaluate constant subgraphs";
+  let description = [{
+    This pass identifies constant subgraphs and executes them at compile time
+    using exising kernel infrastructure.
+
+    Right now this is only a stub pass. TODO: #16884
+  }];
+}
+
+def ConstantFoldSubgraphTest : Pass<"constant-fold-subgraph-test", "ModuleOp"> {
+  let summary = "Test constant subgraph detection";
+  let description = [{
+    This is a testing only pass. It prints out the constant subgraphs found
+    within a graph so that they can be checked by filecheck. Printed output
+    looks like this:
+    ```
+    mo.graph @const_program() -> !mo.tensor<[2], si32> {
+      %0 = mo.constant {value = #M.dense_array<0, 1> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+      %1 = mo.constant {value = #M.dense_array<6, 3> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+      %2 = mo.mul(%0, %1) : !mo.tensor<[2], si32>
+      %3 = mo.sub(%2, %1) : !mo.tensor<[2], si32>
+      mo.output %3 : !mo.tensor<[2], si32>
+    }
+    subgraph %0 %1 %2 %3
+    ```
+    which is the full graph followed by zero or more occurrences of word
+    'subgraph' with the values that compose a constant subgraph.
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTRANSFORMS_TD
