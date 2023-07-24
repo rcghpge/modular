@@ -73,6 +73,7 @@ void M::MO::registerPasses() {
   mlir::registerSCCPPass();
   mlir::registerCanonicalizerPass();
   mlir::registerSymbolDCE();
+  mlir::registerViewOpGraphPass();
 }
 
 void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
