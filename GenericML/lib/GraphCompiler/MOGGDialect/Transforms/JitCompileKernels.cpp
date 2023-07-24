@@ -125,12 +125,20 @@ mangleBlock(mlir::Block &block,
         mlir::NamedAttrList attrs{*call.getKgenParams()};
         for (NamedAttribute named : attrs) {
           name += named.getName().str() + "_";
-          if (auto asBool = dyn_cast<BoolAttr>(named.getValue()))
+          if (auto asBool = dyn_cast<BoolAttr>(named.getValue())) {
             name += std::to_string(asBool.getValue()) + "_";
-          else if (auto asInt = dyn_cast<IntegerAttr>(named.getValue()))
+
+          } else if (auto asInt = dyn_cast<IntegerAttr>(named.getValue())) {
             name += std::to_string(asInt.getInt()) + "_";
-          else
+
+          } else if (auto asType = dyn_cast<TypeAttr>(named.getValue())) {
+            std::string typeStr;
+            llvm::raw_string_ostream(typeStr) << asType;
+            name += typeStr + "_";
+
+          } else {
             assert(false && "Unsupported parameter attribute type");
+          }
         }
       }
 

@@ -1,5 +1,32 @@
 // RUN: mo-opt %s --add-fallback-shape-funcs | FileCheck %s
 
+mo.graph @concat_variadic_input<D0, D1, D2, D3 -> D4, D5>(
+  %input1: !mo.tensor<[D0, D1], f32>,
+  %input2: !mo.tensor<[D2, D3], f32>,
+  %axis: !mo.tensor<[], si32>
+) -> !mo.tensor<[D4, D5], f32> {
+
+  %res = mo.concat<() -> D6, D7>[%axis : !mo.tensor<[], si32>] (%input1, %input2) :
+    (!mo.tensor<[D0, D1], f32>, !mo.tensor<[D2, D3], f32>) -> !mo.tensor<[D6, D7], f32>
+
+  mo.output<D6, D7> %res : !mo.tensor<[D6, D7], f32>
+}
+// CHECK-LABEL: mo.graph @concat_variadic_input
+// CHECK-SAME: <[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]] -> [[D4:.*]], [[D5:.*]]>(
+// CHECK-SAME:   %[[INPUT1:.*]]: !mo.tensor<[[[D0]], [[D1]]], f32>,
+// CHECK-SAME:   %[[INPUT2:.*]]: !mo.tensor<[[[D2]], [[D3]]], f32>,
+// CHECK-SAME:   %[[AXIS:.*]]: !mo.tensor<[], si32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D4]], [[D5]]], f32> {
+//
+// CHECK-NEXT:   mo.invoke_shape_func["concat_shape"]<() -> [[D6:.*]], [[D7:.*]]>(%[[AXIS]], %[[INPUT1]], %[[INPUT2]])
+// CHECK-SAME:     {dataDeptTensors = [0 : i32], kgenParams = {input_type = f32}} :
+// CHECK-SAME:     (!mo.tensor<[], si32>, !mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[[[D2]], [[D3]]], f32>)
+//
+// CHECK-NEXT:   %[[RES:.*]] = mo.concat[%[[AXIS]] : !mo.tensor<[], si32>] (%[[INPUT1]], %[[INPUT2]]) :
+// CHECK-SAME:     (!mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[[[D2]], [[D3]]], f32>) -> !mo.tensor<[[[D6]], [[D7]]], f32>
+//
+// CHECK-NEXT:   mo.output<[[D6]], [[D7]]> %[[RES]] : !mo.tensor<[[[D6]], [[D7]]], f32>
+
 
 mo.graph @where<D0 -> D1>(%arg0: !mo.tensor<[D0, 10], f32>) -> !mo.tensor<[D1, 2], si64> {
   %0 = mo.where<() -> D2>(%arg0) : (!mo.tensor<[D0, 10], f32>) -> !mo.tensor<[D2, 2], si64>
@@ -10,6 +37,7 @@ mo.graph @where<D0 -> D1>(%arg0: !mo.tensor<[D0, 10], f32>) -> !mo.tensor<[D1, 2
 // CHECK-NEXT: mo.invoke_shape_func["where_shape"]<() -> [[WHERE_PARAM:.*]], [[UNUSED_PARAM:.*]]>(%[[IN]]) {dataDeptTensors = [0 : i32]}
 // CHECK-NEXT: %[[WHERE:.*]] = mo.where(%[[IN]]) : (!mo.tensor<[[[IN_PARAM]], 10], f32>) -> !mo.tensor<[[[WHERE_PARAM]], 2], si64>
 // CHECK-NEXT: mo.output<[[WHERE_PARAM]]> %[[WHERE]] : !mo.tensor<[[[WHERE_PARAM]], 2], si64>
+
 
 mo.graph @transpose<D1, D2 -> D3, D4>(%arg0: !mo.tensor<[D1, D2], f32>, %arg1: !mo.tensor<[2], si64>) -> !mo.tensor<[D3, D4], f32> {
   %0 = mo.rebind<() -> D5, D6>(%arg0) : !mo.tensor<[D1, D2], f32> -> !mo.tensor<[D5, D6], f32>
@@ -38,7 +66,6 @@ mo.graph @split_variadic_output<D0 -> D1>(
 
   mo.output<D2> %res#0, %res#1 : !mo.tensor<[D2, 10], f32>, !mo.tensor<[5, 10], f32>
 }
-
 // CHECK-LABEL: mo.graph @split
 // CHECK-SAME: <[[D0:.*]] -> [[D1:.*]]>(
 // CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[[[D0]], 10], f32>,

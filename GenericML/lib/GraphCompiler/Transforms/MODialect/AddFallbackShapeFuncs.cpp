@@ -45,6 +45,7 @@ struct Fallback {
   template <>                                                                  \
   struct Fallback<MOOp> {};
 
+HAS_FALLBACK(MO::ConcatOp)
 HAS_FALLBACK(MO::SplitOp)
 HAS_FALLBACK(MO::TransposeOp)
 HAS_FALLBACK(MO::WhereOp)
@@ -79,6 +80,7 @@ struct AddFallbackShapeFunctions
 
       // Call the fallbacks.
       builder.setInsertionPoint(op);
+      CALL_FALLBACK(MO::ConcatOp)
       CALL_FALLBACK(MO::SplitOp)
       CALL_FALLBACK(MO::TransposeOp)
       CALL_FALLBACK(MO::WhereOp)
@@ -123,14 +125,34 @@ KGEN::ParamDeclArrayAttr getNewParameterMapping(GraphOp &graph,
 // Actual fallback implementations
 //===----------------------------------------------------------------------===//
 
+void Fallback<MO::ConcatOp>::build(GraphOp &graph, OpBuilder &builder,
+                                   MO::ConcatOp op) {
+  KGEN::ParamDeclArrayAttr shapeParams =
+      getNewParameterMapping(graph, op.getResult().getType());
+
+  // TODO we can't deduce parameter from types of variadic inputs
+  SmallVector<mlir::NamedAttribute> attrs;
+  Type inputDType =
+      cast<TensorType>(op.getInputs().front().getType()).getElementType();
+  attrs.push_back(
+      builder.getNamedAttr("input_type", mlir::TypeAttr::get(inputDType)));
+  DictionaryAttr kgenParams = builder.getDictionaryAttr(attrs);
+
+  // Create the shape function.
+  builder.create<MO::InvokeShapeFuncOp>(
+      op.getLoc(), ValueRange{op.getOperands()}, "concat_shape", shapeParams,
+      kgenParams,
+      /*Data dependent input indices*/ builder.getI32ArrayAttr({0}));
+}
+
 void Fallback<MO::TransposeOp>::build(GraphOp &graph, OpBuilder &builder,
                                       MO::TransposeOp op) {
-  KGEN::ParamDeclArrayAttr params =
+  KGEN::ParamDeclArrayAttr shapeParams =
       getNewParameterMapping(graph, op.getResult().getType());
 
   // Create the shape function.
   builder.create<MO::InvokeShapeFuncOp>(
-      op.getLoc(), ValueRange{op.getOperands()}, "transpose_shape", params,
+      op.getLoc(), ValueRange{op.getOperands()}, "transpose_shape", shapeParams,
       /*kgenAttrs*/ DictionaryAttr{},
       /*Data dependent input indices*/ builder.getI32ArrayAttr({1}));
 }
@@ -156,12 +178,12 @@ void Fallback<MO::SplitOp>::build(GraphOp &graph, OpBuilder &builder,
 
 void Fallback<MO::WhereOp>::build(GraphOp &graph, OpBuilder &builder,
                                   MO::WhereOp op) {
-  KGEN::ParamDeclArrayAttr params =
+  KGEN::ParamDeclArrayAttr shapeParams =
       getNewParameterMapping(graph, op.getResult().getType());
 
   // Create the shape function.
   builder.create<MO::InvokeShapeFuncOp>(
-      op.getLoc(), ValueRange{op.getInput()}, "where_shape", params,
+      op.getLoc(), ValueRange{op.getInput()}, "where_shape", shapeParams,
       /*kgenAttrs*/ DictionaryAttr{},
       /*Data dependent input indices*/ builder.getI32ArrayAttr({0}));
 }
