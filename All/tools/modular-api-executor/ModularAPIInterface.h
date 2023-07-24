@@ -37,6 +37,7 @@ public:
   decltype(&M_setExportedName) setExportedName = nullptr;
   decltype(&M_setNumThreads) setNumThreads = nullptr;
   decltype(&M_compileModel) compileModel = nullptr;
+  decltype(&M_waitForCompilation) waitForCompilation = nullptr;
   decltype(&M_freeCompiledModel) freeCompiledModel = nullptr;
 
   decltype(&M_initModel) initModel = nullptr;

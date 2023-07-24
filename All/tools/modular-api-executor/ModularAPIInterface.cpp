@@ -114,6 +114,7 @@ ErrorOrSuccess M::ModularAPIInterface::loadModularAndInitSymbols() {
   setExportedName = exportedNameOr.takeValue();
 
   GET_SYMBOL(compileModel, M_compileModel);
+  GET_SYMBOL(waitForCompilation, M_waitForCompilation);
   GET_SYMBOL(freeCompiledModel, M_freeCompiledModel);
 
   GET_SYMBOL(initModel, M_initModel);

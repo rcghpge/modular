@@ -516,6 +516,8 @@ int main(int argc, char **argv) {
       api.compileModel(context.get(), compileConfig.get(), status.get()),
       api.freeCompiledModel};
 
+  api.waitForCompilation(compiledModel.get(), status.get());
+
   if (api.isError(status.get())) {
     llvm::errs() << "Error: " << api.getError(status.get()) << "\n";
     exit(EXIT_FAILURE);
