@@ -47,6 +47,7 @@ struct Fallback {
   struct Fallback<MOOp> {};
 
 HAS_FALLBACK(MO::ArgMaxOp)
+HAS_FALLBACK(MO::BroadcastToOp)
 HAS_FALLBACK(MO::ConcatOp)
 HAS_FALLBACK(MO::GatherOp)
 HAS_FALLBACK(MO::MeanOp)
@@ -90,6 +91,7 @@ struct AddFallbackShapeFunctions
       // Call the fallbacks.
       builder.setInsertionPoint(op);
       CALL_FALLBACK(MO::ArgMaxOp)
+      CALL_FALLBACK(MO::BroadcastToOp)
       CALL_FALLBACK(MO::ConcatOp)
       CALL_FALLBACK(MO::GatherOp)
       CALL_FALLBACK(MO::MeanOp)
@@ -161,6 +163,18 @@ static void buildForReductionOp(GraphOp &graph, OpBuilder &builder,
 void Fallback<MO::ArgMaxOp>::build(GraphOp &graph, OpBuilder &builder,
                                    MO::ArgMaxOp op) {
   buildForReductionOp(graph, builder, op);
+}
+
+void Fallback<MO::BroadcastToOp>::build(GraphOp &graph, OpBuilder &builder,
+                                        MO::BroadcastToOp op) {
+  KGEN::ParamDeclArrayAttr shapeParams =
+      getNewParameterMapping(graph, op.getResult().getType());
+
+  // Create the shape function.
+  builder.create<MO::InvokeShapeFuncOp>(
+      op.getLoc(), op.getOperands(), "broadcast_to_shape", shapeParams,
+      /*kgenAttrs*/ DictionaryAttr{},
+      /*Data dependent input indices*/ builder.getI32ArrayAttr({1}));
 }
 
 void Fallback<MO::ConcatOp>::build(GraphOp &graph, OpBuilder &builder,
