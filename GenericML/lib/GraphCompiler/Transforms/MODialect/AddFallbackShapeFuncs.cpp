@@ -158,157 +158,111 @@ static void buildForReductionOp(GraphOp &graph, OpBuilder &builder,
       /*Data dependent input indices*/ builder.getI32ArrayAttr({1}));
 }
 
+void buildForOpResult(GraphOp &graph, OpBuilder &builder, TensorValue res,
+                      StringRef shapeFuncName, ValueRange operands,
+                      ArrayRef<std::pair<StringRef, Attribute>> kgenParams,
+                      ArrayRef<int32_t> dataDepInputIdxs) {
+  KGEN::ParamDeclArrayAttr shapeParams =
+      getNewParameterMapping(graph, res.getType());
+
+  // TODO we can't deduce parameter from types of variadic inputs
+  DictionaryAttr kgenParamAttrs;
+  if (!kgenParams.empty()) {
+    SmallVector<mlir::NamedAttribute> namedAttrs;
+    for (auto [name, attr] : kgenParams)
+      namedAttrs.push_back(builder.getNamedAttr(name, attr));
+    kgenParamAttrs = builder.getDictionaryAttr(namedAttrs);
+  }
+
+  // Create the shape function.
+  Location loc = res.getLoc();
+  builder.create<MO::InvokeShapeFuncOp>(
+      loc, operands, shapeFuncName, shapeParams, kgenParamAttrs,
+      builder.getI32ArrayAttr(dataDepInputIdxs));
+}
+
 //===----------------------------------------------------------------------===//
 // Actual fallback implementations
 //===----------------------------------------------------------------------===//
 
-void Fallback<MO::ArgMaxOp>::build(GraphOp &graph, OpBuilder &builder,
-                                   MO::ArgMaxOp op) {
-  buildForReductionOp(graph, builder, op);
-}
-
 void Fallback<MO::BroadcastToOp>::build(GraphOp &graph, OpBuilder &builder,
                                         MO::BroadcastToOp op) {
-  KGEN::ParamDeclArrayAttr shapeParams =
-      getNewParameterMapping(graph, op.getResult().getType());
-
-  // Create the shape function.
-  builder.create<MO::InvokeShapeFuncOp>(
-      op.getLoc(), op.getOperands(), "broadcast_to_shape", shapeParams,
-      /*kgenAttrs*/ DictionaryAttr{},
-      /*Data dependent input indices*/ builder.getI32ArrayAttr({1}));
+  buildForOpResult(graph, builder, op, "broadcast_to_shape", op.getOperands(),
+                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
 }
 
 void Fallback<MO::ConcatOp>::build(GraphOp &graph, OpBuilder &builder,
                                    MO::ConcatOp op) {
-  KGEN::ParamDeclArrayAttr shapeParams =
-      getNewParameterMapping(graph, op.getResult().getType());
-
   // TODO we can't deduce parameter from types of variadic inputs
-  SmallVector<mlir::NamedAttribute> attrs;
   Type inputDType =
       cast<TensorType>(op.getInputs().front().getType()).getElementType();
-  attrs.push_back(
-      builder.getNamedAttr("input_type", mlir::TypeAttr::get(inputDType)));
-  DictionaryAttr kgenParams = builder.getDictionaryAttr(attrs);
+  auto inputDTypeAttr = mlir::TypeAttr::get(inputDType);
 
-  // Create the shape function.
-  builder.create<MO::InvokeShapeFuncOp>(
-      op.getLoc(), op.getOperands(), "concat_shape", shapeParams, kgenParams,
-      /*Data dependent input indices*/ builder.getI32ArrayAttr({0}));
+  buildForOpResult(graph, builder, op, "concat_shape", op.getOperands(),
+                   /*kgenParams=*/{{"input_type", inputDTypeAttr}},
+                   /*dataDepInputIdxs=*/{0});
 }
 
 void Fallback<MO::GatherOp>::build(GraphOp &graph, OpBuilder &builder,
                                    MO::GatherOp op) {
-  KGEN::ParamDeclArrayAttr shapeParams =
-      getNewParameterMapping(graph, op.getResult().getType());
-
-  SmallVector<mlir::NamedAttribute> attrs;
   TensorType outputTy = op.getType();
   assert(outputTy.hasRank() && "Unranked tensor isn't supported");
-  attrs.push_back(builder.getNamedAttr(
-      "output_rank", builder.getIndexAttr(outputTy.getRank())));
-  DictionaryAttr kgenParams = builder.getDictionaryAttr(attrs);
+  IntegerAttr outputRankAttr = builder.getIndexAttr(outputTy.getRank());
 
-  // Create the shape function.
-  builder.create<MO::InvokeShapeFuncOp>(
-      op.getLoc(), op.getOperands(), "gather_shape", shapeParams, kgenParams,
-      /*Data dependent input indices*/ builder.getI32ArrayAttr({2}));
+  buildForOpResult(graph, builder, op, "gather_shape", op.getOperands(),
+                   /*kgenParams=*/{{"output_rank", outputRankAttr}},
+                   /*dataDepInputIdxs=*/{2});
 }
 
 void Fallback<MO::PadOp>::build(GraphOp &graph, OpBuilder &builder,
                                 MO::PadOp op) {
-  KGEN::ParamDeclArrayAttr shapeParams =
-      getNewParameterMapping(graph, op.getResult().getType());
-
-  // Note that we don't need the value of padded scalar
   SmallVector<Value> shapeFuncInputs({op.getInput(), op.getPaddings()});
-
-  // Create the shape function.
-  builder.create<MO::InvokeShapeFuncOp>(
-      op.getLoc(), shapeFuncInputs, "pad_shape", shapeParams,
-      /*kgenAttrs*/ DictionaryAttr{},
-      /*Data dependent input indices*/ builder.getI32ArrayAttr({1}));
+  buildForOpResult(graph, builder, op, "pad_shape", shapeFuncInputs,
+                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
 }
 
-void Fallback<MO::MeanOp>::build(GraphOp &graph, OpBuilder &builder,
-                                 MO::MeanOp op) {
-  buildForReductionOp(graph, builder, op);
-}
+// Reduction ops
 
-void Fallback<MO::ReduceAddOp>::build(GraphOp &graph, OpBuilder &builder,
-                                      MO::ReduceAddOp op) {
-  buildForReductionOp(graph, builder, op);
-}
+#define BUILD_REDUCTION_OP(OP)                                                 \
+  void Fallback<OP>::build(GraphOp &graph, OpBuilder &builder, OP op) {        \
+    buildForReductionOp(graph, builder, op);                                   \
+  }
 
-void Fallback<MO::ReduceMaxOp>::build(GraphOp &graph, OpBuilder &builder,
-                                      MO::ReduceMaxOp op) {
-  buildForReductionOp(graph, builder, op);
-}
+BUILD_REDUCTION_OP(MO::ArgMaxOp)
+BUILD_REDUCTION_OP(MO::MeanOp)
+BUILD_REDUCTION_OP(MO::ReduceAddOp)
+BUILD_REDUCTION_OP(MO::ReduceMulOp)
+BUILD_REDUCTION_OP(MO::ReduceMaxOp)
+BUILD_REDUCTION_OP(MO::ReduceMinOp)
 
-void Fallback<MO::ReduceMinOp>::build(GraphOp &graph, OpBuilder &builder,
-                                      MO::ReduceMinOp op) {
-  buildForReductionOp(graph, builder, op);
-}
-
-void Fallback<MO::ReduceMulOp>::build(GraphOp &graph, OpBuilder &builder,
-                                      MO::ReduceMulOp op) {
-  buildForReductionOp(graph, builder, op);
-}
+#undef BUILD_REDUCTION_OP
 
 void Fallback<MO::ReshapeOp>::build(GraphOp &graph, OpBuilder &builder,
                                     MO::ReshapeOp op) {
-  KGEN::ParamDeclArrayAttr shapeParams =
-      getNewParameterMapping(graph, op.getResult().getType());
-
-  // Create the shape function.
-  builder.create<MO::InvokeShapeFuncOp>(
-      op.getLoc(), op.getOperands(), "reshape_shape", shapeParams,
-      /*kgenAttrs*/ DictionaryAttr{},
-      /*Data dependent input indices*/ builder.getI32ArrayAttr({1}));
+  buildForOpResult(graph, builder, op, "reshape_shape", op.getOperands(),
+                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
 }
 
 void Fallback<MO::SplitOp>::build(GraphOp &graph, OpBuilder &builder,
                                   MO::SplitOp op) {
   for (auto [idx, res] : llvm::enumerate(op.getResults())) {
-    KGEN::ParamDeclArrayAttr shapeParams =
-        getNewParameterMapping(graph, cast<TensorType>(res.getType()));
-
-    SmallVector<mlir::NamedAttribute> attrs;
-    attrs.push_back(
-        builder.getNamedAttr("output_idx", builder.getIndexAttr(idx)));
-    DictionaryAttr kgenParams = builder.getDictionaryAttr(attrs);
-
-    // Create the shape function.
-    builder.create<MO::InvokeShapeFuncOp>(
-        op.getLoc(), op.getOperands(), "split_ith_output_shape", shapeParams,
-        kgenParams,
-        /*Data dependent input indices*/ builder.getI32ArrayAttr({1, 2}));
+    buildForOpResult(graph, builder, cast<TensorValue>(res),
+                     "split_ith_output_shape", op.getOperands(),
+                     /*kgenParams=*/{{"output_idx", builder.getIndexAttr(idx)}},
+                     /*dataDepInputIdxs=*/{1, 2});
   }
 }
 
 void Fallback<MO::TransposeOp>::build(GraphOp &graph, OpBuilder &builder,
                                       MO::TransposeOp op) {
-  KGEN::ParamDeclArrayAttr shapeParams =
-      getNewParameterMapping(graph, op.getResult().getType());
-
-  // Create the shape function.
-  builder.create<MO::InvokeShapeFuncOp>(
-      op.getLoc(), op.getOperands(), "transpose_shape", shapeParams,
-      /*kgenAttrs*/ DictionaryAttr{},
-      /*Data dependent input indices*/ builder.getI32ArrayAttr({1}));
+  buildForOpResult(graph, builder, op, "transpose_shape", op.getOperands(),
+                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
 }
 
 void Fallback<MO::WhereOp>::build(GraphOp &graph, OpBuilder &builder,
                                   MO::WhereOp op) {
-  KGEN::ParamDeclArrayAttr shapeParams =
-      getNewParameterMapping(graph, op.getResult().getType());
-
-  // Create the shape function.
-  builder.create<MO::InvokeShapeFuncOp>(
-      op.getLoc(), ValueRange{op.getInput()}, "where_shape", shapeParams,
-      /*kgenAttrs*/ DictionaryAttr{},
-      /*Data dependent input indices*/ builder.getI32ArrayAttr({0}));
+  buildForOpResult(graph, builder, op, "where_shape", op->getOperands(),
+                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{0});
 }
 
 } // namespace
