@@ -407,6 +407,26 @@ struct LayerNormPattern : public OpRewritePattern<MO::AddOp> {
 
     if (!input || !beta || !gamma || !eps)
       return rewriter.notifyMatchFailure(op, "null input value");
+
+    // Handle Scalar beta and gamma
+    auto betaType = beta.getType().cast<MO::TensorType>();
+    if (betaType && betaType.getRank() == 0) {
+      beta = rewriter.create<MO::Static::BroadcastToOp>(
+          op.getLoc(),
+          MO::TensorType::get(SmallVector<TypedAttr>{op.getType().getDim(2)},
+                              betaType.getElementType()),
+          beta);
+    }
+
+    auto gammaType = gamma.getType().cast<MO::TensorType>();
+    if (gammaType && gammaType.getRank() == 0) {
+      gamma = rewriter.create<MO::Static::BroadcastToOp>(
+          op.getLoc(),
+          MO::TensorType::get(SmallVector<TypedAttr>{op.getType().getDim(2)},
+                              gammaType.getElementType()),
+          beta);
+    }
+
     if (!skip) {
       rewriter.replaceOpWithNewOp<MOGG::ExtOp>(
           op,
