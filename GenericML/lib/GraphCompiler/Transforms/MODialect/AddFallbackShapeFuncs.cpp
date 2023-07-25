@@ -50,6 +50,7 @@ HAS_FALLBACK(MO::ArgMaxOp)
 HAS_FALLBACK(MO::ConcatOp)
 HAS_FALLBACK(MO::GatherOp)
 HAS_FALLBACK(MO::MeanOp)
+HAS_FALLBACK(MO::PadOp)
 HAS_FALLBACK(MO::ReduceAddOp)
 HAS_FALLBACK(MO::ReduceMaxOp)
 HAS_FALLBACK(MO::ReduceMinOp)
@@ -92,6 +93,7 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::ConcatOp)
       CALL_FALLBACK(MO::GatherOp)
       CALL_FALLBACK(MO::MeanOp)
+      CALL_FALLBACK(MO::PadOp)
       CALL_FALLBACK(MO::ReduceAddOp)
       CALL_FALLBACK(MO::ReduceMaxOp)
       CALL_FALLBACK(MO::ReduceMinOp)
@@ -196,6 +198,21 @@ void Fallback<MO::GatherOp>::build(GraphOp &graph, OpBuilder &builder,
   builder.create<MO::InvokeShapeFuncOp>(
       op.getLoc(), op.getOperands(), "gather_shape", shapeParams, kgenParams,
       /*Data dependent input indices*/ builder.getI32ArrayAttr({2}));
+}
+
+void Fallback<MO::PadOp>::build(GraphOp &graph, OpBuilder &builder,
+                                MO::PadOp op) {
+  KGEN::ParamDeclArrayAttr shapeParams =
+      getNewParameterMapping(graph, op.getResult().getType());
+
+  // Note that we don't need the value of padded scalar
+  SmallVector<Value> shapeFuncInputs({op.getInput(), op.getPaddings()});
+
+  // Create the shape function.
+  builder.create<MO::InvokeShapeFuncOp>(
+      op.getLoc(), shapeFuncInputs, "pad_shape", shapeParams,
+      /*kgenAttrs*/ DictionaryAttr{},
+      /*Data dependent input indices*/ builder.getI32ArrayAttr({1}));
 }
 
 void Fallback<MO::MeanOp>::build(GraphOp &graph, OpBuilder &builder,
