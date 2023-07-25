@@ -161,6 +161,33 @@ mo.graph @reduce_add_fallback_shape_func<D0, D1 -> D2, D3>(
 // CHECK-NEXT: mo.output<[[D4]], [[D5]]> %[[RES]] : !mo.tensor<[[[D4]], [[D5]]], f32>
 
 
+mo.graph @reshape_fallback_shape_func<() -> D0, D1, D2>(
+  %input: !mo.tensor<[1, 3], f32>,
+  %target_shape: !mo.tensor<[3], si32>
+) -> !mo.tensor<[D0, D1, D2], f32> {
+
+  %res = mo.reshape<() -> D3, D4, D5>(%input, %target_shape) :
+    (!mo.tensor<[1, 3], f32>, !mo.tensor<[3], si32>) -> !mo.tensor<[D3, D4, D5], f32>
+
+  mo.output<D3, D4, D5> %res : !mo.tensor<[D3, D4, D5], f32>
+}
+// CHECK-LABEL: mo.graph @reshape_fallback_shape_func
+// CHECK-SAME: <() -> [[D0:.*]], [[D1:.*]], [[D2:.*]]>(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[1, 3], f32>,
+// CHECK-SAME:   %[[TARGET_SHAPE:.*]]: !mo.tensor<[3], si32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], [[D2]]], f32> {
+//
+// CHECK-NEXT: mo.invoke_shape_func["reshape_shape"]<() -> [[D3:.*]], [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[TARGET_SHAPE]])
+// CHECK-SAME:   {dataDeptTensors = [1 : i32]} :
+// CHECK-SAME:   (!mo.tensor<[1, 3], f32>, !mo.tensor<[3], si32>)
+//
+// CHECK-NEXT: %[[RES:.*]] = mo.reshape(%[[INPUT]], %[[TARGET_SHAPE]]) :
+// CHECK-SAME:   (!mo.tensor<[1, 3], f32>, !mo.tensor<[3], si32>)
+// CHECK-SAME:   -> !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32>
+//
+// CHECK-NEXT: mo.output<[[D3]], [[D4]], [[D5]]> %[[RES]] : !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32>
+
+
 mo.graph @split_variadic_output<D0 -> D1>(
   %input: !mo.tensor<[D0, 10], f32>,
   %split_sizes: !mo.tensor<[2], si64>

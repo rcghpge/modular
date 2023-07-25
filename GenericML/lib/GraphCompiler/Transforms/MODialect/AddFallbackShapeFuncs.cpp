@@ -56,6 +56,7 @@ HAS_FALLBACK(MO::ReduceAddOp)
 HAS_FALLBACK(MO::ReduceMaxOp)
 HAS_FALLBACK(MO::ReduceMinOp)
 HAS_FALLBACK(MO::ReduceMulOp)
+HAS_FALLBACK(MO::ReshapeOp)
 HAS_FALLBACK(MO::SplitOp)
 HAS_FALLBACK(MO::TransposeOp)
 HAS_FALLBACK(MO::WhereOp)
@@ -100,6 +101,7 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::ReduceMaxOp)
       CALL_FALLBACK(MO::ReduceMinOp)
       CALL_FALLBACK(MO::ReduceMulOp)
+      CALL_FALLBACK(MO::ReshapeOp)
       CALL_FALLBACK(MO::SplitOp)
       CALL_FALLBACK(MO::TransposeOp)
       CALL_FALLBACK(MO::WhereOp)
@@ -252,6 +254,18 @@ void Fallback<MO::ReduceMinOp>::build(GraphOp &graph, OpBuilder &builder,
 void Fallback<MO::ReduceMulOp>::build(GraphOp &graph, OpBuilder &builder,
                                       MO::ReduceMulOp op) {
   buildForReductionOp(graph, builder, op);
+}
+
+void Fallback<MO::ReshapeOp>::build(GraphOp &graph, OpBuilder &builder,
+                                    MO::ReshapeOp op) {
+  KGEN::ParamDeclArrayAttr shapeParams =
+      getNewParameterMapping(graph, op.getResult().getType());
+
+  // Create the shape function.
+  builder.create<MO::InvokeShapeFuncOp>(
+      op.getLoc(), op.getOperands(), "reshape_shape", shapeParams,
+      /*kgenAttrs*/ DictionaryAttr{},
+      /*Data dependent input indices*/ builder.getI32ArrayAttr({1}));
 }
 
 void Fallback<MO::SplitOp>::build(GraphOp &graph, OpBuilder &builder,
