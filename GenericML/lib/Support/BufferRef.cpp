@@ -64,8 +64,16 @@ BufferRef BufferRef::createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
       size == 0
           ? (void *)&kDummyTargetOfEmptyBuffer
           : runtime->getAllocator()->allocateBytes(size, alignment.value_or(1));
-  if (copyFrom)
+  if (copyFrom) {
     LLCL::profiledMemcpy(buffer, copyFrom, size);
+  } else {
+#if MODULAR_PARANOID
+    // Set the buffer contents to a value which will more obviously
+    // upset tests if used before initialized.
+    if (size)
+      memset(buffer, 0xad, size);
+#endif
+  }
   return BufferRef(buffer, size, /*owningRef=*/{}, makeMaybeAlign(alignment),
                    kOwned, kLocal, kMutable, runtime);
 }
@@ -149,9 +157,15 @@ BufferRef::~BufferRef() {
   case kNull:
     break;
   case kOwned: {
-    if (size)
+    if (size) {
+#if MODULAR_PARANOID
+      // Set the buffer to a known value which will more obviously upset
+      // unit tests if used again.
+      memset(bufferOrObject, 0xfe, size);
+#endif
       nativeOrForeign.runtime->getAllocator()->deallocateBytes(bufferOrObject,
                                                                size);
+    }
     std::move(profilerEntry).record();
     break;
   }
