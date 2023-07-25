@@ -25,12 +25,19 @@ namespace {
 template <typename T>
 llvm::SmallVector<mlir::TypedAttr>
 convertFloatsToSIMD(DType moggType, KGEN::KGENDType kgenType,
-                    mlir::MLIRContext *context, M::ArrayElementsAttr attr) {
+                    mlir::MLIRContext *context, M::ArrayElementsAttr attr,
+                    const llvm::fltSemantics &semantic) {
+  constexpr int numBits = sizeof(T) * CHAR_BIT;
+  static_assert(std::is_integral_v<T>, "Use uintXX_t types as storage.");
+  static_assert(std::is_unsigned_v<T>, "Use uintXX_t types as storage.");
+  static_assert(numBits <= 64, "Only up to 64 bit floats supported right now.");
+
   llvm::SmallVector<mlir::TypedAttr> values;
-  const T *asFloat = reinterpret_cast<const T *>(attr.getRawData().data());
+  const T *data = reinterpret_cast<const T *>(attr.getRawData().data());
   for (int64_t i = 0; i < attr.getNumElements(); ++i) {
+    uint64_t upcast = data[i];
     values.push_back(M::KGEN::POP::SIMDAttr::get(
-        {APFloat(asFloat[i]), kgenType},
+        {APFloat(semantic, APInt(numBits, upcast)), kgenType},
         KGEN::POP::SIMDType::get(context, 1, moggType)));
   }
   return values;
@@ -82,6 +89,14 @@ convertBoolsToSIMD(DType moggType, KGEN::KGENDType kgenType,
   return values;
 }
 
+MOGGTypeTraits bf16() {
+  return MOGGTypeTraits("bfloat16", KGEN::KGENDType::bf16, DType::bf16);
+}
+
+MOGGTypeTraits f16() {
+  return MOGGTypeTraits("float16", KGEN::KGENDType::f16, DType::f16);
+}
+
 MOGGTypeTraits f32() {
   return MOGGTypeTraits("float32", KGEN::KGENDType::f32, DType::f32);
 }
@@ -127,10 +142,18 @@ MOGGTypeTraits b() {
 llvm::SmallVector<mlir::TypedAttr>
 MOGGTypeTraits::convertToSIMD(mlir::MLIRContext *context,
                               M::ArrayElementsAttr attr) const {
-  if (moggType == DType::f32)
-    return convertFloatsToSIMD<float>(moggType, kgenType, context, attr);
+  if (moggType == DType::f16)
+    return convertFloatsToSIMD<uint16_t>(moggType, kgenType, context, attr,
+                                         APFloat::IEEEhalf());
+  else if (moggType == DType::bf16)
+    return convertFloatsToSIMD<uint16_t>(moggType, kgenType, context, attr,
+                                         APFloat::BFloat());
+  else if (moggType == DType::f32)
+    return convertFloatsToSIMD<uint32_t>(moggType, kgenType, context, attr,
+                                         APFloat::IEEEsingle());
   else if (moggType == DType::f64)
-    return convertFloatsToSIMD<double>(moggType, kgenType, context, attr);
+    return convertFloatsToSIMD<uint64_t>(moggType, kgenType, context, attr,
+                                         APFloat::IEEEdouble());
   else if (moggType == DType::ui8)
     return convertIntsToSIMD<uint8_t>(moggType, kgenType, context, attr);
   else if (moggType == DType::ui16)
@@ -151,12 +174,16 @@ MOGGTypeTraits::convertToSIMD(mlir::MLIRContext *context,
 }
 
 llvm::SmallVector<MOGGTypeTraits> allTypeTraits() {
-  return {f32(), f64(),  ui8(),  ui16(), ui32(),
-          si8(), si16(), si32(), si64(), b()};
+  return {f16(),  bf16(), f32(),  f64(),  ui8(),  ui16(),
+          ui32(), si8(),  si16(), si32(), si64(), b()};
 }
 
 ErrorOr<MOGGTypeTraits> MOGGTypeTraits::lookupType(Type type) {
-  if (type.isF32()) {
+  if (type.isF16()) {
+    return f16();
+  } else if (type.isBF16()) {
+    return bf16();
+  } else if (type.isF32()) {
     return f32();
   } else if (type.isF64()) {
     return f64();
@@ -186,7 +213,11 @@ ErrorOr<MOGGTypeTraits> MOGGTypeTraits::lookupType(Type type) {
 }
 
 ErrorOr<MOGGTypeTraits> MOGGTypeTraits::lookupDType(DType dtype) {
-  if (dtype == DType::f32)
+  if (dtype == DType::f16)
+    return f16();
+  else if (dtype == DType::bf16)
+    return bf16();
+  else if (dtype == DType::f32)
     return f32();
   else if (dtype == DType::f64)
     return f64();
