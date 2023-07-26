@@ -49,6 +49,7 @@ struct Fallback {
 HAS_FALLBACK(MO::ArgMaxOp)
 HAS_FALLBACK(MO::BroadcastToOp)
 HAS_FALLBACK(MO::ConcatOp)
+HAS_FALLBACK(MO::ConvOp)
 HAS_FALLBACK(MO::GatherOp)
 HAS_FALLBACK(MO::MeanOp)
 HAS_FALLBACK(MO::PadOp)
@@ -94,6 +95,7 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::ArgMaxOp)
       CALL_FALLBACK(MO::BroadcastToOp)
       CALL_FALLBACK(MO::ConcatOp)
+      CALL_FALLBACK(MO::ConvOp)
       CALL_FALLBACK(MO::GatherOp)
       CALL_FALLBACK(MO::MeanOp)
       CALL_FALLBACK(MO::PadOp)
@@ -201,6 +203,12 @@ void Fallback<MO::ConcatOp>::build(GraphOp &graph, OpBuilder &builder,
   buildForOpResult(graph, builder, op, "concat_shape", op.getOperands(),
                    /*kgenParams=*/{{"input_type", inputDTypeAttr}},
                    /*dataDepInputIdxs=*/{0});
+}
+
+void Fallback<MO::ConvOp>::build(GraphOp &graph, OpBuilder &builder,
+                                 MO::ConvOp op) {
+  buildForOpResult(graph, builder, op, "conv_shape", op.getOperands(),
+                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{2, 3});
 }
 
 void Fallback<MO::GatherOp>::build(GraphOp &graph, OpBuilder &builder,
