@@ -1725,7 +1725,8 @@ def MO_ConcatOp : MO_TensorOp<"concat", [
 }
 
 def MO_SplitOp : MO_TensorOp<"split", [
-  DeclareOpInterfaceMethods<MO_DefaultParameterization>
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
 ]> {
   let summary = "Split Operation";
   let description = [{
