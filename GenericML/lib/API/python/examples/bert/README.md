@@ -1,9 +1,9 @@
-# Inference Engine Python API example
+# AI Engine Python API example
 
 This is a simple API demo using the ["bert-base-uncased"
 model](https://huggingface.co/bert-base-uncased) that does not perform any
 meaningful inference. It's designed simply to show how you can run an inference
-with the Modular Inference Engine Python API.
+with the Modular AI Engine Python API.
 
 First, you need to download the BERT model, which we've provided in a
 TensorFlow SavedModel format here (run this command inside the `examples/bert/`

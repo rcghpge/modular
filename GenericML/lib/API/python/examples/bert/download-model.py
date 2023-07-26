@@ -5,7 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 
 # Downloads a model (HF_MODEL_NAME) from Hugging Face and converts it to
-# TensorFlow SavedModel format suitable for Modular Inference Engine.
+# TensorFlow SavedModel format suitable for Modular AI Engine.
 
 import os
 from transformers import TFAutoModel

@@ -29,7 +29,7 @@ if(Sphinx_FOUND)
       ${CMAKE_SOURCE_DIR}/GenericML/lib/API/python/modular/engine # Source
       ${sphinx_output_dir} # Output
     DEPENDS modular-pybind-ext # ensure the wheel is always up-to-date
-    COMMENT "Generating Sphinx documentation for Inference Engine Python API into ${sphinx_output_dir}."
+    COMMENT "Generating Sphinx documentation for AI Engine Python API into ${sphinx_output_dir}."
     VERBATIM
   )
 
@@ -57,6 +57,6 @@ if(Sphinx_FOUND)
 
   add_dependencies(inference_engine_docs inference_engine_docs_python)
 else()
-  message("Skipping doc generation for Inference Engine Python APIs
+  message("Skipping doc generation for AI Engine Python APIs
            since `sphinx` is not installed.")
 endif()

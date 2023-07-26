@@ -1,4 +1,4 @@
-Modular Inference Engine API
+Modular AI Engine API
 ============================
 
 .. toctree::
