@@ -1063,6 +1063,96 @@ struct GemvPattern : public OpRewritePattern<MatmulOp> {
   }
 };
 
+/// A pattern that detects a matmul with a vector weight and a constant
+/// input, and transposes it.
+struct SplitToSlicePattern : public OpRewritePattern<SplitOp> {
+  SplitToSlicePattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
+
+  LogicalResult matchAndRewrite(MO::SplitOp op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    Value in = op.getInput();
+
+    if (!op.getOutputParamDecls().empty())
+      return rewriter.notifyMatchFailure(op,
+                                         "Op needs a shape function first.");
+
+    TensorType inTy = cast<TensorType>(in.getType());
+    if (inTy.hasUnknownShape() || !inTy.hasRank())
+      return rewriter.notifyMatchFailure(op, "Pattern needs known input shape");
+    size_t rank = inTy.getRank();
+
+    // If all of the users are output ops, don't run as we know they won't be
+    // fused in.
+    for (Value out : op.getResults()) {
+      for (Operation *user : out.getUsers()) {
+        if (isa<MO::OutputOp>(user))
+          return rewriter.notifyMatchFailure(op, "Split used in output.");
+      }
+    }
+
+    // All the output shapes must have a known shape and be of same rank (sanity
+    // check).
+    if (llvm::any_of(op.getResultTypes(), [&](Type type) {
+          auto tensor = cast<TensorType>(type);
+          return tensor.hasUnknownShape() || !tensor.hasRank() ||
+                 tensor.getRank() != rank;
+        }))
+      return rewriter.notifyMatchFailure(op, "Output shape is unknown.");
+
+    // We must have a constant axis.
+    std::optional<int64_t> maybeAxis = tryGetConstantInt(op.getAxis());
+    if (!maybeAxis.has_value())
+      return rewriter.notifyMatchFailure(op, "axis is not constant");
+    int64_t axis = maybeAxis.value();
+    if (axis == 0)
+      return rewriter.notifyMatchFailure(
+          op, "Avoid clashing with MGP optimization when axis == 0");
+    if (axis < 0)
+      axis = inTy.getRank() + axis;
+
+    // We must have constant split sizes.
+    std::optional<SmallVector<int64_t>> maybeSplits =
+        tryGetConstantIntVector(op.getSplitSizes());
+    if (!maybeSplits.has_value())
+      return rewriter.notifyMatchFailure(op, "Splits are not constant");
+    SmallVector<int64_t> splitSizes = *maybeSplits;
+
+    // Step is the same for each slice.
+    SmallVector<int64_t> step(rank, 1);
+    Value stepVal = rewriter.create<MO::ConstantOp>(loc, step);
+
+    int64_t startVal = 0, splitIndex = 0;
+
+    // Replace each result with a split.
+    for (Value result : op.getResults()) {
+      SmallVector<int64_t> start, stop;
+
+      // Build a start / stop combination for each split.
+      for (int64_t i = 0; i < static_cast<int64_t>(rank); ++i) {
+        if (axis == i) {
+          start.push_back(startVal);
+          stop.push_back(startVal + splitSizes[splitIndex]);
+          startVal += splitSizes[splitIndex];
+          splitIndex++;
+        } else {
+          start.push_back(0);
+          stop.push_back(std::numeric_limits<int64_t>::max());
+        }
+      }
+      Value startVal = rewriter.create<MO::ConstantOp>(loc, start);
+      Value stopVal = rewriter.create<MO::ConstantOp>(loc, stop);
+
+      Value split = rewriter.create<MO::SliceOp>(loc, result.getType(), in,
+                                                 startVal, stopVal, stepVal);
+      rewriter.replaceAllUsesWith(result, split);
+    }
+
+    rewriter.eraseOp(op);
+    return mlir::success();
+  }
+};
+
 struct SymbolicOptimizationPass
     : public MO::impl::SymbolicOptimizationBase<SymbolicOptimizationPass> {
   using SymbolicOptimizationBase::SymbolicOptimizationBase;
@@ -1076,8 +1166,8 @@ struct SymbolicOptimizationPass
         GathersToSplitPattern, GeluPattern, ElementWiseUnaryVectorPattern,
         ElementWiseBinaryVectorPattern, BroadcastReshapePattern, GemvPattern,
         SinkTransposeThroughUnaryOpPattern, SinkTransposeThroughBinaryOpPattern,
-        SinkTransposeThroughStaticBroadcastToOpPattern,
-        SplitAndSqueezesPattern>(context);
+        SinkTransposeThroughStaticBroadcastToOpPattern, SplitAndSqueezesPattern,
+        SplitToSlicePattern>(context);
     Static::BroadcastToOp::getCanonicalizationPatterns(patterns, context);
     TransposeOp::getCanonicalizationPatterns(patterns, context);
 

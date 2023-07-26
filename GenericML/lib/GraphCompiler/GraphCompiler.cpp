@@ -92,6 +92,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     pm.addPass(MO::createSymbolicOptimization());
     pm.addPass(MO::createPropagateShapes());
     pm.addPass(MO::createAddFallbackShapeFunctions());
+    pm.addPass(MO::createSymbolicOptimization());
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createCSEPass());
   }
