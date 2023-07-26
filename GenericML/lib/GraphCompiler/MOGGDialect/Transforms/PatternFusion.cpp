@@ -27,7 +27,7 @@ namespace M::MOGG {
 namespace {
 
 // The size which we regard as too small to run the special matmuls.
-constexpr int64_t kTinyMatmulFlops = 4096;
+constexpr int64_t kTinyMatmulFlops = 5000;
 
 bool isMatmulSmall(MO::MatmulOp matmul) {
   MO::TensorType aType = matmul.getInputA().getType();
