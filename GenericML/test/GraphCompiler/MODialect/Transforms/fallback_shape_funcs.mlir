@@ -221,6 +221,39 @@ mo.graph @reshape_fallback_shape_func<() -> D0, D1, D2>(
 // CHECK-NEXT: mo.output<[[D3]], [[D4]], [[D5]]> %[[RES]] : !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32>
 
 
+mo.graph @slice_fallback_shape_func<() -> D0, D1, D2>(
+  %input: !mo.tensor<[1, 2, 3], f32>,
+  %start: !mo.tensor<[3], si32>,
+  %stop: !mo.tensor<[3], si32>,
+  %step: !mo.tensor<[3], si32>
+) -> !mo.tensor<[D0, D1, D2], f32> {
+
+  %res = mo.slice<() -> D3, D4, D5>(%input, %start, %stop, %step) :
+    (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[3], si32>, !mo.tensor<[3], si32>, !mo.tensor<[3], si32>)
+    -> !mo.tensor<[D3, D4, D5], f32>
+
+  mo.output<D3, D4, D5> %res : !mo.tensor<[D3, D4, D5], f32>
+}
+// CHECK-LABEL: mo.graph @slice_fallback_shape_func
+// CHECK-SAME: <() -> [[D0:.*]], [[D1:.*]], [[D2:.*]]>(
+// CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[1, 2, 3], f32>,
+// CHECK-SAME: %[[START:arg1]]: !mo.tensor<[3], si32>,
+// CHECK-SAME: %[[STOP:arg2]]: !mo.tensor<[3], si32>,
+// CHECK-SAME: %[[STEP:.*]]: !mo.tensor<[3], si32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], [[D2]]], f32> {
+//
+// CHECK-NEXT: mo.invoke_shape_func["slice_shape"]<() -> [[D3:.*]], [[D4:.*]], [[D5:.*]]>(
+// CHECK-SAME:   %[[INPUT]], %[[START]], %[[STOP]], %[[STEP]])
+// CHECK-SAME:   {dataDeptTensors = [1 : i32, 2 : i32, 3 : i32]} :
+// CHECK-SAME:   (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[3], si32>, !mo.tensor<[3], si32>, !mo.tensor<[3], si32>)
+//
+// CHECK-NEXT: %[[RES:.*]] = mo.slice(%[[INPUT]], %[[START]], %[[STOP]], %[[STEP]])
+// CHECK-SAME:   (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[3], si32>, !mo.tensor<[3], si32>, !mo.tensor<[3], si32>)
+// CHECK-SAME:   -> !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32>
+//
+// CHECK-NEXT: mo.output<[[D3]], [[D4]], [[D5]]> %[[RES]] : !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32>
+
+
 mo.graph @split_variadic_output<D0 -> D1>(
   %input: !mo.tensor<[D0, 10], f32>,
   %split_sizes: !mo.tensor<[2], si64>

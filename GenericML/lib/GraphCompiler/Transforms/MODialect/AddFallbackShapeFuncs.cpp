@@ -58,6 +58,7 @@ HAS_FALLBACK(MO::ReduceMaxOp)
 HAS_FALLBACK(MO::ReduceMinOp)
 HAS_FALLBACK(MO::ReduceMulOp)
 HAS_FALLBACK(MO::ReshapeOp)
+HAS_FALLBACK(MO::SliceOp)
 HAS_FALLBACK(MO::SplitOp)
 HAS_FALLBACK(MO::TransposeOp)
 HAS_FALLBACK(MO::WhereOp)
@@ -104,6 +105,7 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::ReduceMinOp)
       CALL_FALLBACK(MO::ReduceMulOp)
       CALL_FALLBACK(MO::ReshapeOp)
+      CALL_FALLBACK(MO::SliceOp)
       CALL_FALLBACK(MO::SplitOp)
       CALL_FALLBACK(MO::TransposeOp)
       CALL_FALLBACK(MO::WhereOp)
@@ -249,6 +251,12 @@ void Fallback<MO::ReshapeOp>::build(GraphOp &graph, OpBuilder &builder,
                                     MO::ReshapeOp op) {
   buildForOpResult(graph, builder, op, "reshape_shape", op.getOperands(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
+}
+
+void Fallback<MO::SliceOp>::build(GraphOp &graph, OpBuilder &builder,
+                                  MO::SliceOp op) {
+  buildForOpResult(graph, builder, op, "slice_shape", op.getOperands(),
+                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1, 2, 3});
 }
 
 void Fallback<MO::SplitOp>::build(GraphOp &graph, OpBuilder &builder,
