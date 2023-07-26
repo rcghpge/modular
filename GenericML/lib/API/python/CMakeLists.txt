@@ -63,7 +63,7 @@ add_custom_target(modular-pybind-ext ALL
 add_dependencies(modular-pybind-ext modular-engine)
 add_subdirectory(bindings/modular/engine)
 
-set(MODULAR_FRAMEWORK_LIBS $<TARGET_FILE:monnx> $<TARGET_FILE:tfl>)
+set(MODULAR_FRAMEWORK_LIBS $<TARGET_FILE:monnx>)
 
 # The wheel is built in the build directory.
 # However, setuptools is unaware of the pybind module since CMake built that.
