@@ -253,6 +253,12 @@ public:
   // Executes a single instance of the inference process.
   [[nodiscard]] SmallVector<AnyAsyncValueRef>
   execute(MutableArrayRef<AnyAsyncValueRef> args) const override {
+    // Get the runtime value so that we can construct the output tensors (and
+    // not depend on the current class).
+    Runtime &runtime = getRuntime();
+
+    checkUniqueRuntime(runtime);
+    checkKnownCallingThread(runtime);
 
     auto model = getModel();
     const auto &modelSpec = model->getModelSpec();
@@ -268,12 +274,12 @@ public:
     // output to be a chain. We create a dummy chain here to make the output
     // conform to the expectation of printTensorResults in ExecutionDriver.cpp.
     // TODO: remove this once we make printTensorResults more general.
-    outputs.emplace_back(AsyncValueRef<Chain>::allocate(getRuntime()));
+    outputs.emplace_back(AsyncValueRef<Chain>::allocate(runtime));
 
     // Create the async placeholders for the outputs. The async values will be
     // materialized when the inference is complete.
     for (size_t i = 0, e = modelSpec.outputs.size(); i < e; ++i)
-      outputs.emplace_back(AsyncValueRef<Tensor>::allocate(getRuntime()));
+      outputs.emplace_back(AsyncValueRef<Tensor>::allocate(runtime));
 
     // Hold on to the output async values so that they do not get reclaimed
     // before the inference is complete.
@@ -284,10 +290,6 @@ public:
     outputCopy.reserve(outputs.size());
     for (auto &o : outputs)
       outputCopy.push_back(o.copy());
-
-    // Get the runtime value so that we can construct the output tensors (and
-    // not depend on the current class).
-    Runtime &runtime = getRuntime();
 
     // When the args are ready, then we call the following lambda.
     andThenSyncMoving(
@@ -389,6 +391,8 @@ private:
 /// structures, or whatever else the model needs.  This never blocks.
 ErrorOr<std::unique_ptr<ExecutableModel>>
 ModularModel::setup(Runtime &runtime) const {
+  checkUniqueRuntime(runtime);
+  checkKnownCallingThread(runtime);
   // Create the executable model.
   StatusPtr status = {api.newStatus(), api.freeStatus};
   ModelPtr initializedModel = {
