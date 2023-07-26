@@ -51,15 +51,15 @@ struct FuseConstants : public impl::FuseConstantsBase<FuseConstants> {
 
     // Check it is a small constant with a attribute we understand.
     if (auto cst = dyn_cast<MO::ConstantOp>(edge)) {
-      auto attr = dyn_cast<M::ArrayElementsAttr>(cst.getValueAttr());
-      if (!attr)
+      ElementsAttr elems = cst.getValueAttr();
+      if (elems.getNumElements() > kMaxConstantSize)
         return false;
 
-      Type dtype = attr.getElementType();
+      Type dtype = elems.getElementType();
       if (!MOGGTypeTraits::isSupportedMOGGType(dtype))
         return false;
 
-      if (attr.getNumElements() > kMaxConstantSize)
+      if (!isa<M::ArrayElementsAttr, DenseResourceElementsAttr>(elems))
         return false;
 
       return true;

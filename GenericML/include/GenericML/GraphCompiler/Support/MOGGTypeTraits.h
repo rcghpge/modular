@@ -37,8 +37,9 @@ struct MOGGTypeTraits {
   // implementations of MOGGTypeTraits should share the same moggType.
   const DType moggType;
   // Convert array of this dtype to an array of simd values.
-  llvm::SmallVector<mlir::TypedAttr>
-  convertToSIMD(mlir::MLIRContext *context, M::ArrayElementsAttr attr) const;
+  llvm::SmallVector<mlir::TypedAttr> convertToSIMD(mlir::MLIRContext *context,
+                                                   const void *data,
+                                                   int64_t numElems) const;
 
   // Lookup the traits for a given mlir::Type. This should be an element type,
   // not a tensor type.

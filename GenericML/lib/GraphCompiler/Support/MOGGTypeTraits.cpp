@@ -25,17 +25,17 @@ namespace {
 template <typename T>
 llvm::SmallVector<mlir::TypedAttr>
 convertFloatsToSIMD(DType moggType, KGEN::KGENDType kgenType,
-                    mlir::MLIRContext *context, M::ArrayElementsAttr attr,
-                    const llvm::fltSemantics &semantic) {
+                    mlir::MLIRContext *context, const void *data,
+                    int64_t numElems, const llvm::fltSemantics &semantic) {
   constexpr int numBits = sizeof(T) * CHAR_BIT;
   static_assert(std::is_integral_v<T>, "Use uintXX_t types as storage.");
   static_assert(std::is_unsigned_v<T>, "Use uintXX_t types as storage.");
   static_assert(numBits <= 64, "Only up to 64 bit floats supported right now.");
 
   llvm::SmallVector<mlir::TypedAttr> values;
-  const T *data = reinterpret_cast<const T *>(attr.getRawData().data());
-  for (int64_t i = 0; i < attr.getNumElements(); ++i) {
-    uint64_t upcast = data[i];
+  const T *raw = reinterpret_cast<const T *>(data);
+  for (int64_t i = 0; i < numElems; ++i) {
+    uint64_t upcast = raw[i];
     values.push_back(M::KGEN::POP::SIMDAttr::get(
         {APFloat(semantic, APInt(numBits, upcast)), kgenType},
         KGEN::POP::SIMDType::get(context, 1, moggType)));
@@ -46,14 +46,14 @@ convertFloatsToSIMD(DType moggType, KGEN::KGENDType kgenType,
 template <typename T>
 llvm::SmallVector<mlir::TypedAttr>
 convertIntsToSIMD(DType moggType, KGEN::KGENDType kgenType,
-                  mlir::MLIRContext *context, M::ArrayElementsAttr attr) {
+                  mlir::MLIRContext *context, const void *data,
+                  int64_t numElems) {
   // Retrieving metadata
   size_t typeBits = sizeof(T) * CHAR_BIT;
   size_t isTypeSigned = std::is_signed_v<T>;
-  int64_t numElems = attr.getNumElements();
 
   // Creating simd attributes
-  auto asT = reinterpret_cast<const T *>(attr.getRawData().data());
+  auto asT = reinterpret_cast<const T *>(data);
   llvm::SmallVector<mlir::TypedAttr> values;
   for (int64_t i = 0; i < numElems; ++i) {
     // Convert the type for the APInt constructor.
@@ -70,12 +70,12 @@ convertIntsToSIMD(DType moggType, KGEN::KGENDType kgenType,
 
 llvm::SmallVector<mlir::TypedAttr>
 convertBoolsToSIMD(DType moggType, KGEN::KGENDType kgenType,
-                   mlir::MLIRContext *context, M::ArrayElementsAttr attr) {
+                   mlir::MLIRContext *context, const void *data,
+                   int64_t numElems) {
   size_t typeBits = sizeof(bool) * CHAR_BIT;
-  int64_t numElems = attr.getNumElements();
 
   // Creating simd attributes
-  auto asT = reinterpret_cast<const bool *>(attr.getRawData().data());
+  auto asT = reinterpret_cast<const bool *>(data);
   llvm::SmallVector<mlir::TypedAttr> values;
   for (int64_t i = 0; i < numElems; ++i) {
     // Convert the type for the APInt constructor.
@@ -140,36 +140,43 @@ MOGGTypeTraits b() {
 } // namespace
 
 llvm::SmallVector<mlir::TypedAttr>
-MOGGTypeTraits::convertToSIMD(mlir::MLIRContext *context,
-                              M::ArrayElementsAttr attr) const {
+MOGGTypeTraits::convertToSIMD(mlir::MLIRContext *context, const void *data,
+                              int64_t numElems) const {
   if (moggType == DType::f16)
-    return convertFloatsToSIMD<uint16_t>(moggType, kgenType, context, attr,
-                                         APFloat::IEEEhalf());
+    return convertFloatsToSIMD<uint16_t>(moggType, kgenType, context, data,
+                                         numElems, APFloat::IEEEhalf());
   else if (moggType == DType::bf16)
-    return convertFloatsToSIMD<uint16_t>(moggType, kgenType, context, attr,
-                                         APFloat::BFloat());
+    return convertFloatsToSIMD<uint16_t>(moggType, kgenType, context, data,
+                                         numElems, APFloat::BFloat());
   else if (moggType == DType::f32)
-    return convertFloatsToSIMD<uint32_t>(moggType, kgenType, context, attr,
-                                         APFloat::IEEEsingle());
+    return convertFloatsToSIMD<uint32_t>(moggType, kgenType, context, data,
+                                         numElems, APFloat::IEEEsingle());
   else if (moggType == DType::f64)
-    return convertFloatsToSIMD<uint64_t>(moggType, kgenType, context, attr,
-                                         APFloat::IEEEdouble());
+    return convertFloatsToSIMD<uint64_t>(moggType, kgenType, context, data,
+                                         numElems, APFloat::IEEEdouble());
   else if (moggType == DType::ui8)
-    return convertIntsToSIMD<uint8_t>(moggType, kgenType, context, attr);
+    return convertIntsToSIMD<uint8_t>(moggType, kgenType, context, data,
+                                      numElems);
   else if (moggType == DType::ui16)
-    return convertIntsToSIMD<uint16_t>(moggType, kgenType, context, attr);
+    return convertIntsToSIMD<uint16_t>(moggType, kgenType, context, data,
+                                       numElems);
   else if (moggType == DType::ui32)
-    return convertIntsToSIMD<uint32_t>(moggType, kgenType, context, attr);
+    return convertIntsToSIMD<uint32_t>(moggType, kgenType, context, data,
+                                       numElems);
   else if (moggType == DType::si8)
-    return convertIntsToSIMD<int8_t>(moggType, kgenType, context, attr);
+    return convertIntsToSIMD<int8_t>(moggType, kgenType, context, data,
+                                     numElems);
   else if (moggType == DType::si16)
-    return convertIntsToSIMD<int16_t>(moggType, kgenType, context, attr);
+    return convertIntsToSIMD<int16_t>(moggType, kgenType, context, data,
+                                      numElems);
   else if (moggType == DType::si32)
-    return convertIntsToSIMD<int32_t>(moggType, kgenType, context, attr);
+    return convertIntsToSIMD<int32_t>(moggType, kgenType, context, data,
+                                      numElems);
   else if (moggType == DType::si64)
-    return convertIntsToSIMD<int64_t>(moggType, kgenType, context, attr);
+    return convertIntsToSIMD<int64_t>(moggType, kgenType, context, data,
+                                      numElems);
   else if (moggType == DType::kBool)
-    return convertBoolsToSIMD(moggType, kgenType, context, attr);
+    return convertBoolsToSIMD(moggType, kgenType, context, data, numElems);
   assert(false && "Unimplemented DType");
 }
 
