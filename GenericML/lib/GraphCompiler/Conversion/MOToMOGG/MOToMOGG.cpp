@@ -298,7 +298,7 @@ void MOToMOGGPass::runOnOperation() {
   MoToKernelMapTy moToMojoKernels{
       MO_MOJO_ONLY(MO::AbsOp),
       MO_MOJO_ONLY(MO::AddOp),
-      MO_SHIM_ONLY(MO::ArgMaxOp, "mop.kernels.arg_max"),
+      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::ArgMaxOp),
       MO_SHIM_ONLY(MO::AvgPoolOp, "mop.kernels.pool.avg"),
       MO_SHIM_ONLY(MO::BroadcastShapeOp, "mop.kernels.broadcast_shape"),
       MO_SHIM_ONLY(MO::BroadcastToOp, "mop.kernels.broadcast_to"),

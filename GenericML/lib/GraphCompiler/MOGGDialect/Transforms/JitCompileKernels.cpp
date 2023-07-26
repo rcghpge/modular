@@ -361,6 +361,9 @@ struct JitCompileKernels
     for (auto func : baseModuleRef->getOps<KGEN::FuncOp>())
       func.setNotExported();
 
+    for (auto func : baseModuleRef->getOps<KGEN::GeneratorOp>())
+      func.setNotExported();
+
     return baseModuleRef;
   }
 

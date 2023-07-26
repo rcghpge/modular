@@ -174,7 +174,6 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
 
   // (arg0Spec, arg1) -> outSpec
   static const llvm::StringMap<std::string> specAndTensorBinaryShapeFuncs{
-      {"mop.kernels.arg_max", "mop.shape.arg_reduce"},
       {"mop.kernels.broadcast_to", "mop.shape.broadcast_to"},
       {"mop.kernels.transpose", "mop.shape.transpose"},
       {"mop.kernels.pad", "mop.shape.pad"},
