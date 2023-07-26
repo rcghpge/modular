@@ -178,11 +178,6 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
       {"mop.kernels.broadcast_to", "mop.shape.broadcast_to"},
       {"mop.kernels.transpose", "mop.shape.transpose"},
       {"mop.kernels.pad", "mop.shape.pad"},
-      {"mop.kernels.mean", "mop.shape.reduce"},
-      {"mop.kernels.reduce.add", "mop.shape.reduce"},
-      {"mop.kernels.reduce.mul", "mop.shape.reduce"},
-      {"mop.kernels.reduce.min", "mop.shape.reduce"},
-      {"mop.kernels.reduce.max", "mop.shape.reduce"},
   };
 
   OpBuilder exeBuilder = loweringState.getExecuteOpBuilder();
