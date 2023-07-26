@@ -75,6 +75,11 @@ LogicalResult impl::checkMatmulCompatibility(Operation *op, TensorValue A,
       return success();
   }
 
+  if (auto matmul = dyn_cast<BatchMatmulOp>(op)) {
+    if (matmul.getTransposeB().value_or(false))
+      return success();
+  }
+
   ArrayRef<TypedAttr> aMatShape = aType.getDims().take_back(2);
   ArrayRef<TypedAttr> bMatShape = bType.getDims().take_back(2);
   if (aMatShape[1] != bMatShape[0])

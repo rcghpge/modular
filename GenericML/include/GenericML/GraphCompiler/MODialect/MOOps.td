@@ -2196,7 +2196,14 @@ def MO_BatchMatmulOp : MO_DotBase<"batch_matmul", [
   let arguments = (ins
     MO_Tensor:$input_a,
     MO_Tensor:$input_b,
+    OptionalAttr<BoolAttr>:$transpose_b,
     MO_ParamDecls:$outputParamDecls);
+
+  let builders = [
+    /// Create matmul with default attribute flags off.
+    OpBuilder<(ins "Type":$type, "Value":$input_a, "Value":$input_b)>,
+    OpBuilder<(ins "Type":$type, "Value":$input_a, "Value":$input_b, "ArrayRef<KGEN::ParamDeclAttr>":$decls)>,
+  ];
 
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`

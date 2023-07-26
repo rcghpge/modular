@@ -1482,6 +1482,26 @@ void MatmulOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   odsState.addTypes({resultTy});
 }
 
+void BatchMatmulOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                          Type resultTy, Value input_a, Value input_b) {
+  odsState.addOperands(input_a);
+  odsState.addOperands(input_b);
+  odsState.addTypes({resultTy});
+}
+
+void BatchMatmulOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                          Type resultTy, Value input_a, Value input_b,
+                          ArrayRef<KGEN::ParamDeclAttr> decls) {
+  odsState.addOperands(input_a);
+  odsState.addOperands(input_b);
+  odsState.addTypes({resultTy});
+  if (!decls.empty()) {
+    odsState.addAttribute(
+        getOutputParamDeclsAttrName(odsState.name),
+        KGEN::ParamDeclArrayAttr::get(odsBuilder.getContext(), decls));
+  }
+}
+
 LogicalResult BatchMatmulOp::verify() {
   // TODO: improve this verifier
   TensorType aType = getTensorA().getType();

@@ -288,12 +288,11 @@ struct BatchMatmulAdjBPattern : public OpRewritePattern<MO::BatchMatmulOp> {
       if (permValues[i] != i)
         return rewriter.notifyMatchFailure(op, "perm not adjoint");
 
-    rewriter.replaceOpWithNewOp<MOGG::ExtOp>(
-        op,
-        /*outputTypes=*/op->getResultTypes(),
-        /*op_name=*/"mop.kernels.batch_matmul_adjb",
-        /*inputOperands=*/
-        SmallVector<Value>{input, weight});
+    // Take the non-transposed weight.
+    op.setOperand(1, weight);
+
+    // Mark this matmul as being a tranposed kernel.
+    op.setTransposeBAttr(rewriter.getBoolAttr(true));
 
     return mlir::success();
   }

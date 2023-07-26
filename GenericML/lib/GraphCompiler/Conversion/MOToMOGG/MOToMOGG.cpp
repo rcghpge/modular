@@ -181,15 +181,6 @@ struct MOOpPattern : public RewritePattern {
 
     StringRef shimTarget = kernel.shim;
 
-    // We read the matmul attributes to allow finer grained control exactly when
-    // we jit matmuls and to target the specific shims.
-    if (auto matmul = dyn_cast<MO::MatmulOp>(op)) {
-      if (matmul.getTransposeB().value_or(false))
-        shimTarget = "mop.kernels.matmul_transpb";
-      else if (matmul.getPackedB().value_or(false))
-        shimTarget = "mop.kernels.matmul_packb";
-    }
-
     auto isDTypeAllowed = [&](Type t) {
       auto tensor = dyn_cast<MO::TensorType>(t);
       Type dtype = tensor.getElementType();
@@ -323,8 +314,8 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_MOJO_NON_ELEMWISE(MO::LinAlg::SolveOp, "mop.kernels.linalg.solve"),
       MO_TO_MOJO_NON_ELEMWISE(MO::LogSoftmaxOp, "mop.kernels.logsoftmax"),
       MO_TO_MOJO_NON_ELEMWISE(MO::GatherOp, "mop.kernels.gather"),
-      MO_TO_MOJO_NON_ELEMWISE(MO::MatmulOp, "mop.kernels.matmul"),
-      MO_TO_MOJO_NON_ELEMWISE(MO::BatchMatmulOp, "mop.kernels.batch_matmul"),
+      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::MatmulOp),
+      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::BatchMatmulOp),
       MO_MOJO_ONLY(MO::MaxOp),
       MO_SHIM_ONLY(MO::MaxPoolOp, "mop.kernels.pool.max"),
       MO_TO_MOJO_NON_ELEMWISE(MO::MeanOp, "None"),
