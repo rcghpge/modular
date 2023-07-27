@@ -342,7 +342,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_MOJO_ONLY(MO::MulOp),
       MO_MOJO_ONLY(MO::NotEqualOp),
       MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::PackMMWeightsOp),
-      MO_TO_MOJO_NON_ELEMWISE(MO::PadOp, "mop.kernels.pad"),
+      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::PadOp),
       MO_TO_MOJO_NON_ELEMWISE(MO::ReduceAddOp, "None"),
       MO_TO_MOJO_NON_ELEMWISE(MO::ReduceMulOp, "None"),
       MO_TO_MOJO_NON_ELEMWISE(MO::ReduceMinOp, "None"),

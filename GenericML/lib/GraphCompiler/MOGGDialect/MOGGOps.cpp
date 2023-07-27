@@ -171,7 +171,6 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
   static const llvm::StringMap<std::string> specAndTensorBinaryShapeFuncs{
       {"mop.kernels.broadcast_to", "mop.shape.broadcast_to"},
       {"mop.kernels.transpose", "mop.shape.transpose"},
-      {"mop.kernels.pad", "mop.shape.pad"},
   };
 
   OpBuilder exeBuilder = loweringState.getExecuteOpBuilder();
