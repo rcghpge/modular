@@ -1036,10 +1036,12 @@ struct GemvPattern : public OpRewritePattern<MatmulOp> {
     Location loc = op.getLoc();
     Value a = op.getTensorA();
     Value b = op.getTensorB();
+    auto aType = b.getType().cast<TensorType>();
     auto bType = b.getType().cast<TensorType>();
 
     if (!(a.getDefiningOp<MO::ConstantOp>() && bType.hasStaticShape() &&
-          bType.getIntDim(1) == 1))
+          bType.getIntDim(1) == 1 && op.getType().hasStaticShape() &&
+          aType.hasStaticShape()))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
     TensorValue perm =

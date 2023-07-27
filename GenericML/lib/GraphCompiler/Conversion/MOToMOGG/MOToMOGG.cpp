@@ -35,10 +35,15 @@ namespace {
 // A struct containing the specification we should search for to find a kernel
 // for a given mo type.
 struct KernelRecord {
+  // Overload for an unreachable op which should just assert.
+  KernelRecord(StringLiteral moggID)
+      : moggID(moggID), shim("None"), shouldHaveMojo(false), isView(false),
+        isNonElemwise(false), shouldBeUnreachable(true) {}
+
   KernelRecord(StringLiteral moggID, StringLiteral shimName, bool hasMojo,
                bool isView = false, bool isNonElemwise = false)
       : moggID(moggID), shim(shimName), shouldHaveMojo(hasMojo), isView(isView),
-        isNonElemwise(isNonElemwise) {}
+        isNonElemwise(isNonElemwise), shouldBeUnreachable(false) {}
 
   ~KernelRecord() = default;
 
@@ -58,6 +63,9 @@ struct KernelRecord {
   // Is this operation an actual operation which is *not* implemented by an
   // elementwise invoke over a lambda body.
   bool isNonElemwise;
+
+  // If we should assert when we see this op.
+  bool shouldBeUnreachable;
 };
 
 // Helper to add a map to a jit kernel AND a shim kernel for a given mo op.
@@ -88,6 +96,12 @@ struct KernelRecord {
     }                                                                          \
   }
 
+// Operations which should not exist at this stage of lowering.
+#define MO_UNLOWERABLE_OP(MOOp)                                                \
+  {                                                                            \
+    TypeID::get<MOOp>(), KernelRecord { MOOp::getOperationName() }             \
+  }
+
 #define MO_MOJO_ONLY(MOOp)                                                     \
   {                                                                            \
     TypeID::get<MOOp>(), KernelRecord {                                        \
@@ -106,11 +120,11 @@ struct KernelRecord {
 
 // Same as the above but a special case for view ops.
 // MOOps is the C++ class type of the MO op which provides the op name for the
-// map. ShimName is the name of the C++ shim kernel to target in MGP.
-#define MO_TO_MOJO_VIEW(MOOp, ShimName)                                        \
+// map.
+#define MO_TO_MOJO_VIEW(MOOp)                                                  \
   {                                                                            \
     TypeID::get<MOOp>(), KernelRecord {                                        \
-      MOOp::getOperationName(), ShimName, true, true                           \
+      MOOp::getOperationName(), "None", true, true                             \
     }                                                                          \
   }
 
@@ -161,6 +175,12 @@ struct MOOpPattern : public RewritePattern {
       return Error("Failed to find a kernel registration for " +
                    op->getName().getStringRef().str());
     KernelRecord &kernel = itr->second;
+
+    if (kernel.shouldBeUnreachable) {
+      return Error("Op is has no legal lowering and should have been removed "
+                   "before lowering" +
+                   op->getName().getStringRef().str());
+    }
 
     if (!kernel.shouldHaveMojo && kernel.shim == "None")
       return std::nullopt;
@@ -292,8 +312,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::ArgMaxOp),
       MO_SHIM_ONLY(MO::AvgPoolOp, "mop.kernels.pool.avg"),
       MO_SHIM_ONLY(MO::BroadcastShapeOp, "mop.kernels.broadcast_shape"),
-      MO_SHIM_ONLY(MO::BroadcastToOp, "mop.kernels.broadcast_to"),
-      MO_TO_MOJO_VIEW(MO::Static::BroadcastToOp, "None"),
+      MO_TO_MOJO_VIEW(MO::Static::BroadcastToOp),
       MO_MOJO_ONLY(MO::CastOp),
       MO_MOJO_ONLY(MO::CeilOp),
       MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::ConcatOp),
@@ -336,13 +355,13 @@ void MOToMOGGPass::runOnOperation() {
       MO_MOJO_ONLY(MO::SelectOp),
       MO_SHIM_ONLY(MO::ShapeOfOp, "mop.kernels.shape_of"),
       MO_MOJO_ONLY(MO::SigmoidOp),
-      MO_TO_MOJO_VIEW(MO::SliceOp, "None"),
+      MO_TO_MOJO_VIEW(MO::SliceOp),
       MO_TO_MOJO_NON_ELEMWISE(MO::SoftmaxOp, "mop.kernels.softmax"),
       MO_SHIM_ONLY(MO::SplitOp, "mop.kernels.split"),
       MO_MOJO_ONLY(MO::SqrtOp),
       MO_MOJO_ONLY(MO::SubOp),
       MO_MOJO_ONLY(MO::TanhOp),
-      MO_TO_MOJO_VIEW(MO::TransposeOp, "mop.kernels.transpose"),
+      MO_TO_MOJO_VIEW(MO::TransposeOp),
       MO_TO_MOJO_NON_ELEMWISE(MO::WhereOp, "None"),
 
       // Bookkeeping for gotchas -- handled specially elsewhere
@@ -358,7 +377,10 @@ void MOToMOGGPass::runOnOperation() {
 
       // Control flow
       MO_NO_LOWER(MO::IfOp),
-      MO_NO_LOWER(MO::WhileOp)
+      MO_NO_LOWER(MO::WhileOp),
+
+      // These ops have no legal lowering and should assert on sight.
+      MO_UNLOWERABLE_OP(MO::BroadcastToOp),
   };
   // clang-format on
   RewritePatternSet patterns{ctx};
@@ -379,6 +401,7 @@ void MOToMOGGPass::runOnOperation() {
 #undef MO_TO_MOJO_NON_ELEMWISE
 #undef MO_MOJO_ONLY
 #undef MO_NO_LOWER
+#undef MO_UNLOWERABLE_OP
 #undef MO_SHIM_ONLY
 #undef MO_TO_MOJO_ONLY_NON_ELEMWISE
 #undef MO_TO_MOJO_VIEW
