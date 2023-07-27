@@ -167,11 +167,6 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
   // We should refactor it out as a Trait maybe? and make this a method
   // and data member of the op class.
 
-  // (arg0Spec, arg1Spec, ..., argNSpec) -> outSpec
-  static const llvm::StringMap<std::string> specNaryShapeFuncs{
-      {"mop.kernels.concat_axis_0", "mop.shape.concat_axis_0"},
-  };
-
   // (arg0Spec, arg1) -> outSpec
   static const llvm::StringMap<std::string> specAndTensorBinaryShapeFuncs{
       {"mop.kernels.broadcast_to", "mop.shape.broadcast_to"},
@@ -196,13 +191,7 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
         loweringState.getExecuteOpBuilder()
             .create<MGP::CpuTensorSpecCreateOp>(loc, outSpecType, runtimeDims)
             .getResult();
-  } else if (specNaryShapeFuncs.count(opName)) {
-    // Get just the specs for tensors.
-    SmallVector<Value> inputSpecs = llvm::map_to_vector(
-        inputTensors, [](const LoweredTensor &t) -> Value { return t.spec; });
 
-    // Create a call to a custom invoke function we can put in the MEF.
-    output.spec = getOutputSpec(specNaryShapeFuncs.lookup(opName), inputSpecs);
   } else if (specAndTensorBinaryShapeFuncs.count(opName)) {
     TypedValue<MGP::CpuTensorSpecType> arg0SpecVal = inputTensors[0].spec;
     Value arg1 = opBeingLowered->getOperand(1);
@@ -216,18 +205,6 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     output.spec =
         getOutputSpec("mop.shape.gather", {inputTensors[0].spec,
                                            inputTensors[1].spec, target_axis});
-  } else if (opName == "mop.kernels.concat") {
-    // Ignore axis tensor at the end
-    SmallVector<Value> shapeFuncArgs;
-    shapeFuncArgs.reserve(inputTensors.size() - 1);
-    for (size_t i = 1, e = inputTensors.size(); i < e; ++i)
-      shapeFuncArgs.push_back(inputTensors[i].spec);
-
-    // Put the axis last.
-    Value axis = loweringState.lookupExecuteLoweredValue(
-        opBeingLowered->getOperands().front());
-    shapeFuncArgs.push_back(axis);
-    output.spec = getOutputSpec("mop.shape.concat", shapeFuncArgs);
   } else if (opName == "mop.kernels.gather_sum") {
     // Hackery! Pure Hackery! I'd start setting up classes for this, but
     // again, I don't expect this to survive E
@@ -505,8 +482,7 @@ LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   // Lower the outputs to buffers which can then be passed back in as
   // parameters.
-  auto errOr = helper.lowerOutputBuffer("mop.kernels.concat_axis_0", execChain,
-                                        inputTensors);
+  auto errOr = helper.lowerOutputBuffer("None", execChain, inputTensors);
   if (errOr.isError())
     return failure();
   SmallVector<LoweredTensor> outputBufferAndSpec = errOr.takeValue();
