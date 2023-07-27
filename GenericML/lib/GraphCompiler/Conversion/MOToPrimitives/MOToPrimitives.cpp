@@ -586,34 +586,18 @@ LogicalResult MOGraphLowering::lowerReshape(MO::ReshapeOp reshapeOp) {
   auto extract = exeBuilder.create<MGP::CpuTensorExtractOp>(loc, mgpTensor);
   auto buffer = extract.getBufferResult();
 
-  // get spec from output type (assume static input and output)
-  auto outSpecTy = MGP::createCpuTensorSpec(reshapeOp.getType());
-  Value outSpecValue;
   // TODO
   // 1. This isn't unified with `MOGG::ExtOp::lower` because we don't want
   // reshape to allocate extra output buffer. We should refactor this at some
   // point.
-  // 2. This shape function is pure hackery, and should be removed as soon as we
-  // can lower parametric shapes to the runtime.
-  // 3. Send output shape annotation as a spec to the shape function and check
-  // for compatibility between target shape tensor and static parts of the
-  // annotatation. TODO(#12718)
-  //
-  // NOTE
-  // We need to use the shape function even if the annotated output shape is
-  // static, because we must verify validity of the target shape tensor, and
-  // check (3) in the TODOs above.
-  OperationState opState{loc, "mop.shape.reshape"};
-  Value targetShape =
-      loweringState.lookupExecuteLoweredValue(reshapeOp.getNewShape());
-  // inputs are input specs
-  opState.addOperands({extract.getTensorSpecResult(), targetShape});
-  // The return is the new spec
-  opState.addTypes(cast<Type>(outSpecTy));
+  // 2. Validate user-annotated shape TODO(#12718)
 
-  // Add it to the MLIR.
-  Operation *invokeOp = exeBuilder.create(opState);
-  outSpecValue = invokeOp->getResult(0);
+  auto outSpecTy = MGP::createCpuTensorSpec(reshapeOp.getType());
+  UNWRAP_ERROR(runtimeDims, loweringState.lowerShapeAttrDynDims(
+                                reshapeOp.getType().getTypedShapeAttr(), loc));
+  Value outSpecValue =
+      exeBuilder.create<MGP::CpuTensorSpecCreateOp>(loc, outSpecTy, runtimeDims)
+          .getResult();
 
   // Create an immutable tensor
   auto outTensorTy = exeBuilder.getType<MGP::CpuTensorType>(outSpecTy);
