@@ -199,7 +199,7 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [IsolatedFromAbove,
     are the KGEN view of those values.
 
     `outputParamDecls` allows this compiled operation to define a parameter
-     values. These values are explicit parameter returns of the kernel. They 
+     values. These values are explicit parameter returns of the kernel. They
      cannot be refered to within the kernel other than to set them. When the
      kernel is executed they will be updated in the MGP parameter map. This is
      completely seperate from the normal kernel tensor returns. Their values
@@ -241,6 +241,7 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [IsolatedFromAbove,
   let results = (outs Variadic<MO_Tensor>:$results);
   let regions = (region SizedRegion<1>:$body);
   let hasVerifier = 1;
+  let hasCanonicalizeMethod = 1;
 
   let assemblyFormat = [{
     custom<Kernel>($operands, type($operands), type($results), $body, $outputParamDecls) attr-dict
@@ -476,7 +477,7 @@ def MOGG_AllocateMemoryOp : MOGG_Op<"allocate_tensors"> {
 
   let summary = "This represents an inner kernel allocation of memory";
   let description = [{
-    This op will be lowered to either a stack or heap allocation of the given 
+    This op will be lowered to either a stack or heap allocation of the given
     tensor which can then be used as a normal buffer within the kernel.
 
     Example:

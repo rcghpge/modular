@@ -1057,6 +1057,39 @@ LogicalResult KernelOp::verify() {
            << ")";
   }
 
+  if (getBody().empty()) {
+    return emitError("Region cannot be empty");
+  }
+
+  uint64_t numArguments =
+      std::distance(getBody().args_begin(), getBody().args_end());
+  if (getNumOperands() != numArguments) {
+    return emitError(
+               "Number of operands does not match number of body arguments ")
+           << " (" << getNumOperands() << " vs " << numArguments << ")";
+  }
+
+  return success();
+}
+
+static inline bool allNullFusionInterface(ArrayAttr arr) {
+  auto strArr = arr.getAsRange<StringAttr>();
+  return std::all_of(strArr.begin(), strArr.end(), [](StringAttr strAttr) {
+    return strAttr.strref().empty();
+  });
+}
+
+LogicalResult KernelOp::canonicalize(KernelOp op, PatternRewriter &) {
+  if (op.getInputFusionInterface().has_value() &&
+      allNullFusionInterface(op.getInputFusionInterfaceAttr())) {
+    op.removeInputFusionInterfaceAttr();
+  }
+
+  if (op.getOutputFusionInterface().has_value() &&
+      allNullFusionInterface(op.getOutputFusionInterfaceAttr())) {
+    op.removeOutputFusionInterfaceAttr();
+  }
+
   return success();
 }
 
