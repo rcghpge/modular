@@ -404,3 +404,14 @@ mo.graph @fold_concat_split_no_fold_missmatch_elems(%in : !mo.tensor<[?, ?], f32
 // CHECK-NEXT: mo.split
 // CHECK-NEXT: %[[OUT:.*]] = mo.concat
 // CHECK-NEXT: mo.output %[[OUT]]
+
+mo.graph @fold_concat_split_no_fold_uses_input(%in : !mo.tensor<[?, ?], f32>, %in2 : !mo.tensor<[2, 2], f32>, %axis: !mo.tensor<[], si64>, %splitsizes: !mo.tensor<[6], si64>) -> !mo.tensor<[?, ?], f32> {
+  %split:6 = mo.split[%axis : !mo.tensor<[], si64>] (%in, %splitsizes) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[6], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+  %concat = mo.concat[%axis : !mo.tensor<[], si64>] (%split#0, %split#1, %split#2, %split#3, %in2) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[?, ?], f32>
+  mo.output %concat : !mo.tensor<[?, ?], f32>
+}
+// No folding as not all split outputs are accounted for
+// CHECK-LABEL: mo.graph @fold_concat_split_no_fold_uses_input
+// CHECK-NEXT: mo.split
+// CHECK-NEXT: %[[OUT:.*]] = mo.concat
+// CHECK-NEXT: mo.output %[[OUT]]
