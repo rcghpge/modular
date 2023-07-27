@@ -336,7 +336,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_MOJO_ONLY(MO::SelectOp),
       MO_SHIM_ONLY(MO::ShapeOfOp, "mop.kernels.shape_of"),
       MO_MOJO_ONLY(MO::SigmoidOp),
-      MO_TO_MOJO_VIEW(MO::SliceOp, "mop.kernels.slice"),
+      MO_TO_MOJO_VIEW(MO::SliceOp, "None"),
       MO_TO_MOJO_NON_ELEMWISE(MO::SoftmaxOp, "mop.kernels.softmax"),
       MO_SHIM_ONLY(MO::SplitOp, "mop.kernels.split"),
       MO_MOJO_ONLY(MO::SqrtOp),

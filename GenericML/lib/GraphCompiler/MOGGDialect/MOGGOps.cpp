@@ -241,18 +241,6 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     Value step = loweringState.lookupExecuteLoweredValue(
         opBeingLowered->getOperands()[2]);
     output.spec = getOutputSpec("mop.shape.range", {start, limit, step});
-  } else if (opName == "mop.kernels.slice") {
-    Value input = inputTensors[0].spec;
-    Value start = loweringState.lookupExecuteLoweredValue(
-        opBeingLowered->getOperands()[1]);
-    Value stop = loweringState.lookupExecuteLoweredValue(
-        opBeingLowered->getOperands()[2]);
-    Value step = loweringState.lookupExecuteLoweredValue(
-        opBeingLowered->getOperands()[3]);
-
-    output.spec =
-        getOutputSpec("mop.shape.slice", {loweringState.getExecuteChain(),
-                                          input, start, stop, step});
   } else {
     llvm::Twine dynErr = opName + " requires output to have static shape";
     opBeingLowered->emitOpError(dynErr);
