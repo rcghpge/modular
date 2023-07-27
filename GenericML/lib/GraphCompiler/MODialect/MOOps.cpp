@@ -864,8 +864,10 @@ OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
   size_t operandIndex = 0;
   for (Value operand : getInputs()) {
     auto definingOp = operand.getDefiningOp<MO::SplitOp>();
-    if (!definingOp)
+    if (!definingOp) {
+      split = nullptr;
       break;
+    }
 
     // Check if we have a match, all operands must have the same defining op.
     if (!split) {
