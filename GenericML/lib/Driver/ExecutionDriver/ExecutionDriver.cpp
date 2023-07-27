@@ -385,35 +385,6 @@ buildArgs(Runtime &runtime, ArrayRef<ITensorGeneratorPtr> generators) {
   return args;
 }
 
-/// Call executableModel->execute(args), await the results, and return them.
-/// If checkResults is true, return any error which any result contains.
-/// Otherwise, assume the consumer of the results will check for errors.
-static ErrorOr<SmallVector<AnyAsyncValueRef>>
-executeModelSynchronously(Runtime &runtime, ExecutableModel &executableModel,
-                          MutableArrayRef<AnyAsyncValueRef> args,
-                          bool checkResults) {
-#if MODULAR_PARANOID
-  // Use a distinct lifetime object to represent this 'execute' call.
-  auto lifetime = LLCL::Lifetime::allocate();
-  runtime.getWorkQueue()->pushDefaultLifetime(lifetime.copy());
-#endif
-  auto results = executableModel.execute(args);
-  if (checkResults) {
-    UNWRAP_ERROR(unit, awaitAndCheck(results));
-    (void)unit;
-  } else {
-    await(results);
-  }
-#if MODULAR_PARANOID
-  // Try to catch 'overhanging' tasks for this 'execute' call.
-  // These are tasks which were launched by a kernel whose completion is
-  // not tied back into a result AsyncValue via a dataflow dependence.
-  runtime.getWorkQueue()->popDefaultLifetime(lifetime.copy());
-  lifetime->end();
-#endif
-  return results;
-}
-
 /// Repeatedly evaluate the model (numRuns to be exact) and capture and print
 /// the runtime for each evaluation.
 static ErrorOrSuccess executeModel(const Model *model, Runtime &runtime,
@@ -464,10 +435,9 @@ static ErrorOrSuccess executeModel(const Model *model, Runtime &runtime,
     auto args = buildArgs(runtime, inputTensorGenerators);
 
     // Execute the model synchronously. Propagate any error back to caller.
-    UNWRAP_ERROR(results,
-                 executeModelSynchronously(runtime, *executableModel, args,
-                                           /*checkResults=*/true));
-    (void)results;
+    auto results = executableModel->execute(args);
+    UNWRAP_ERROR(unit, awaitAndCheck(results));
+    (void)unit;
   }
 
   if (numRuns > 0) {
@@ -487,18 +457,24 @@ static ErrorOrSuccess executeModel(const Model *model, Runtime &runtime,
 
     // Execute the model synchronously.
     std::chrono::high_resolution_clock::time_point startTime, endTime;
-    auto entry = ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1)>::create(
-        "executeModel.run");
-    startTime = std::chrono::high_resolution_clock::now();
-    // If not printing any results we need to still check they are error free.
-    // Otherwise, we need only wait for the results and errors will be
-    // reported when printing the results below.
-    UNWRAP_ERROR(results, executeModelSynchronously(
-                              runtime, *executableModel, args,
-                              /*checkResults=*/options.resultOutputStyle ==
-                                  Kernels::ResultOutputStyle::kNone));
-    endTime = std::chrono::high_resolution_clock::now();
-    std::move(entry).record();
+    SmallVector<AnyAsyncValueRef> results;
+    {
+      TIME_PROFILER_SCOPE(Trace::kOther, 1, "executeModel.run");
+
+      startTime = std::chrono::high_resolution_clock::now();
+      results = executableModel->execute(args);
+      if (options.resultOutputStyle == Kernels::ResultOutputStyle::kNone) {
+        // Though we don't want to print the tensor results, we still want to
+        // propagate any error back to the caller.
+        UNWRAP_ERROR(unit, awaitAndCheck(results));
+        (void)unit;
+      } else {
+        // Simply wait for the result chain and all tensor results. We'll
+        // deal with errors when printing below.
+        await(results);
+      }
+      endTime = std::chrono::high_resolution_clock::now();
+    }
 
     if (options.resultOutputStyle != Kernels::ResultOutputStyle::kNone) {
       // Convert and print the result tensors. This is the one place where
@@ -685,15 +661,15 @@ M::runModelWithData(MLIRContext *ctx, const Model *model,
   llvm::outs().flush();
 
   // Execute the model synchronously.
-  UNWRAP_ERROR(results,
-               executeModelSynchronously(runtime, *executableModel, args,
-                                         /*checkResults=*/true));
+  auto results = executableModel->execute(args);
+  UNWRAP_ERROR(unit2, awaitAndCheck(results));
+  (void)unit2;
 
   // Copy results into pre-allocated outputs, which we trust are of the
   // correct size. Propagate any error back to caller.
-  UNWRAP_ERROR(unit2, populateTensorResults(executableModel.get(), results, ctx,
+  UNWRAP_ERROR(unit3, populateTensorResults(executableModel.get(), results, ctx,
                                             outputs));
-  (void)unit2;
+  (void)unit3;
 
   return success();
 }
