@@ -4,4 +4,9 @@ lit_config.load_config(
     config, "@MODULAR_BINARY_DIR@/utils/lit.common.configured"
 )
 
+# Add the path to our testing script so the tests can see it too.
+script_name = "@MO_VS_NUMPY_TEST_SCRIPT@"
+assert os.path.isfile(script_name), "Script used to test mo vs numpy not found"
+config.substitutions.append(('%mo_vs_numpy_py', script_name))
+
 lit_config.load_config(config, "@MODULAR_SOURCE_DIR@/GenericML/integration_test/lit.cfg.py")

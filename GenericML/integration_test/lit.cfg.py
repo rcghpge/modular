@@ -31,4 +31,10 @@ tool_dirs = [
 ]
 tools = ["mo-opt", "mt"]
 
+llvm_config.with_environment(
+    "PYTHONPATH",
+    config.modular_src_root,
+    append_path=True,
+)
+
 llvm_config.add_tool_substitutions(tools, tool_dirs)
