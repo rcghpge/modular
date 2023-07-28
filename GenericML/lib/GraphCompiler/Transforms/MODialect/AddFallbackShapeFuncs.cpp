@@ -47,10 +47,12 @@ struct Fallback {
   struct Fallback<MOOp> {};
 
 HAS_FALLBACK(MO::ArgMaxOp)
+HAS_FALLBACK(MO::AvgPoolOp)
 HAS_FALLBACK(MO::BroadcastToOp)
 HAS_FALLBACK(MO::ConcatOp)
 HAS_FALLBACK(MO::ConvOp)
 HAS_FALLBACK(MO::GatherOp)
+HAS_FALLBACK(MO::MaxPoolOp)
 HAS_FALLBACK(MO::MeanOp)
 HAS_FALLBACK(MO::PadOp)
 HAS_FALLBACK(MO::ReduceAddOp)
@@ -96,10 +98,12 @@ struct AddFallbackShapeFunctions
       // Call the fallbacks.
       builder.setInsertionPoint(op);
       CALL_FALLBACK(MO::ArgMaxOp)
+      CALL_FALLBACK(MO::AvgPoolOp)
       CALL_FALLBACK(MO::BroadcastToOp)
       CALL_FALLBACK(MO::ConcatOp)
       CALL_FALLBACK(MO::ConvOp)
       CALL_FALLBACK(MO::GatherOp)
+      CALL_FALLBACK(MO::MaxPoolOp)
       CALL_FALLBACK(MO::MeanOp)
       CALL_FALLBACK(MO::PadOp)
       CALL_FALLBACK(MO::ReduceAddOp)
@@ -191,6 +195,13 @@ void buildForOpResult(GraphOp &graph, OpBuilder &builder, TensorValue res,
 // Actual fallback implementations
 //===----------------------------------------------------------------------===//
 
+void Fallback<MO::AvgPoolOp>::build(GraphOp &graph, OpBuilder &builder,
+                                    MO::AvgPoolOp op) {
+  buildForOpResult(graph, builder, op, "pool_shape", op.getOperands(),
+                   /*kgenParams=*/{},
+                   /*dataDepInputIdxs=*/{1, 2, 3});
+}
+
 void Fallback<MO::BroadcastToOp>::build(GraphOp &graph, OpBuilder &builder,
                                         MO::BroadcastToOp op) {
   buildForOpResult(graph, builder, op, "broadcast_to_shape", op.getOperands(),
@@ -224,6 +235,13 @@ void Fallback<MO::GatherOp>::build(GraphOp &graph, OpBuilder &builder,
   buildForOpResult(graph, builder, op, "gather_shape", op.getOperands(),
                    /*kgenParams=*/{{"output_rank", outputRankAttr}},
                    /*dataDepInputIdxs=*/{2});
+}
+
+void Fallback<MO::MaxPoolOp>::build(GraphOp &graph, OpBuilder &builder,
+                                    MO::MaxPoolOp op) {
+  buildForOpResult(graph, builder, op, "pool_shape", op.getOperands(),
+                   /*kgenParams=*/{},
+                   /*dataDepInputIdxs=*/{1, 2, 3});
 }
 
 void Fallback<MO::PadOp>::build(GraphOp &graph, OpBuilder &builder,

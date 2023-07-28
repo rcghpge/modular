@@ -24,6 +24,69 @@ mo.graph @arg_max_fallback_shape_func<D0, D1 -> D2, D3>(
 //
 // CHECK-NEXT: mo.output<[[D4]], [[D5]]> %[[RES]] : !mo.tensor<[[[D4]], [[D5]]], si64>
 
+mo.graph @avg_pool_fallback_shape_func<() -> D0, D1, D2, D3>(
+  %input: !mo.tensor<[32, 10, 20, 3], f32>,
+  %filter_shape: !mo.tensor<[2], si64>,
+  %strides: !mo.tensor<[2], si64>,
+  %dilations: !mo.tensor<[2], si64>
+) -> !mo.tensor<[D0, D1, D2, D3], f32> {
+
+  %res = mo.avg_pool<() -> D4, D5, D6, D7>(%input) [filter_shape = %filter_shape, strides = %strides, dilations = %dilations] :
+    (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
+    -> !mo.tensor<[D4, D5, D6, D7], f32>
+
+  mo.output<D4, D5, D6, D7> %res : !mo.tensor<[D4, D5, D6, D7], f32>
+}
+// CHECK-LABEL: mo.graph @avg_pool_fallback_shape_func
+// CHECK-SAME: <() -> [[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(
+// CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[32, 10, 20, 3], f32>,
+// CHECK-SAME: %[[FILTER_SHAPE:arg.]]: !mo.tensor<[2], si64>,
+// CHECK-SAME: %[[STRIDES:.*]]: !mo.tensor<[2], si64>,
+// CHECK-SAME: %[[DILATIONS:.*]]: !mo.tensor<[2], si64>
+// CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32> {
+//
+// CHECK-NEXT: mo.invoke_shape_func["pool_shape"]<() -> [[D4:.*]], [[D5:.*]], [[D6:.*]], [[D7:.*]]>(
+// CHECK-SAME:   %[[INPUT]], %[[FILTER_SHAPE]], %[[STRIDES]], %[[DILATIONS]])
+// CHECK-SAME:   {dataDeptTensors = [1 : i32, 2 : i32, 3 : i32]} :
+// CHECK-SAME:   (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
+//
+// CHECK-NEXT: %[[RES:.*]] = mo.avg_pool(%[[INPUT]]) [filter_shape = %[[FILTER_SHAPE]], strides = %[[STRIDES]], dilations = %[[DILATIONS]]]
+// CHECK-SAME:   (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
+// CHECK-SAME:   -> !mo.tensor<[[[D4]], [[D5]], [[D6]], [[D7]]], f32>
+//
+// CHECK-NEXT: mo.output<[[D4]], [[D5]], [[D6]], [[D7]]> %[[RES]] : !mo.tensor<[[[D4]], [[D5]], [[D6]], [[D7]]], f32>
+
+mo.graph @max_pool_fallback_shape_func<() -> D0, D1, D2, D3>(
+  %input: !mo.tensor<[32, 10, 20, 3], f32>,
+  %filter_shape: !mo.tensor<[2], si64>,
+  %strides: !mo.tensor<[2], si64>,
+  %dilations: !mo.tensor<[2], si64>
+) -> !mo.tensor<[D0, D1, D2, D3], f32> {
+
+  %res = mo.max_pool<() -> D4, D5, D6, D7>(%input) [filter_shape = %filter_shape, strides = %strides, dilations = %dilations] :
+    (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
+    -> !mo.tensor<[D4, D5, D6, D7], f32>
+
+  mo.output<D4, D5, D6, D7> %res : !mo.tensor<[D4, D5, D6, D7], f32>
+}
+// CHECK-LABEL: mo.graph @max_pool_fallback_shape_func
+// CHECK-SAME: <() -> [[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(
+// CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[32, 10, 20, 3], f32>,
+// CHECK-SAME: %[[FILTER_SHAPE:arg.]]: !mo.tensor<[2], si64>,
+// CHECK-SAME: %[[STRIDES:.*]]: !mo.tensor<[2], si64>,
+// CHECK-SAME: %[[DILATIONS:.*]]: !mo.tensor<[2], si64>
+// CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32> {
+//
+// CHECK-NEXT: mo.invoke_shape_func["pool_shape"]<() -> [[D4:.*]], [[D5:.*]], [[D6:.*]], [[D7:.*]]>(
+// CHECK-SAME:   %[[INPUT]], %[[FILTER_SHAPE]], %[[STRIDES]], %[[DILATIONS]])
+// CHECK-SAME:   {dataDeptTensors = [1 : i32, 2 : i32, 3 : i32]} :
+// CHECK-SAME:   (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
+//
+// CHECK-NEXT: %[[RES:.*]] = mo.max_pool(%[[INPUT]]) [filter_shape = %[[FILTER_SHAPE]], strides = %[[STRIDES]], dilations = %[[DILATIONS]]]
+// CHECK-SAME:   (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
+// CHECK-SAME:   -> !mo.tensor<[[[D4]], [[D5]], [[D6]], [[D7]]], f32>
+//
+// CHECK-NEXT: mo.output<[[D4]], [[D5]], [[D6]], [[D7]]> %[[RES]] : !mo.tensor<[[[D4]], [[D5]], [[D6]], [[D7]]], f32>
 
 mo.graph @broadcast_to_fallback_shape_func<() -> D0, D1, D2>(
   %input: !mo.tensor<[1, 3], f32>,
