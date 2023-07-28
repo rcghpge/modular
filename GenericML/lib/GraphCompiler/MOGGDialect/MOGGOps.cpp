@@ -167,12 +167,6 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
   // We should refactor it out as a Trait maybe? and make this a method
   // and data member of the op class.
 
-  // (arg0Spec, arg1) -> outSpec
-  static const llvm::StringMap<std::string> specAndTensorBinaryShapeFuncs{
-      {"mop.kernels.broadcast_to", "mop.shape.broadcast_to"},
-      {"mop.kernels.transpose", "mop.shape.transpose"},
-  };
-
   OpBuilder exeBuilder = loweringState.getExecuteOpBuilder();
   auto getOutputSpec = [&](StringRef opName, ArrayRef<Value> inputs) {
     return invokeLegacyShapeFunc(opName, inputs, {outSpecType}).front();
@@ -190,14 +184,6 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
         loweringState.getExecuteOpBuilder()
             .create<MGP::CpuTensorSpecCreateOp>(loc, outSpecType, runtimeDims)
             .getResult();
-
-  } else if (specAndTensorBinaryShapeFuncs.count(opName)) {
-    TypedValue<MGP::CpuTensorSpecType> arg0SpecVal = inputTensors[0].spec;
-    Value arg1 = opBeingLowered->getOperand(1);
-    Value arg1Val = loweringState.lookupExecuteLoweredValue(arg1);
-    output.spec = getOutputSpec(specAndTensorBinaryShapeFuncs.lookup(opName),
-                                {arg0SpecVal, arg1Val});
-
   } else if (opName == "mop.kernels.conv") {
     Value stride = loweringState.lookupExecuteLoweredValue(
         opBeingLowered->getOperands()[2]);
