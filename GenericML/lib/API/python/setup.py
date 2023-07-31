@@ -44,11 +44,15 @@ EXECUTABLES = [os.path.abspath(os.path.join("modular", "bin", "*"))]
 KGEN_CACHE = [
     os.path.abspath(os.path.join("modular", ".kgen_cache", "**", "*"))
 ]
+# Copy Modular configuration file to the wheel.
+MODULAR_CFG = [os.path.abspath(os.path.join("modular", "modular.cfg"))]
 
 setup(
     cmdclass={"bdist_wheel": bdist_wheel},
     name="modular-engine",
-    package_data={"modular.engine": EXECUTABLES + SHARED_LIBS + KGEN_CACHE},
+    package_data={
+        "modular.engine": EXECUTABLES + SHARED_LIBS + KGEN_CACHE + MODULAR_CFG
+    },
     packages=["modular.engine"],
     include_package_data=True,
 )

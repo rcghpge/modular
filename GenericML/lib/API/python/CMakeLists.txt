@@ -90,6 +90,7 @@ add_custom_command(OUTPUT ${MODULAR_PACKED_WHEEL_NAME}
   COMMAND ${Python3_EXECUTABLE} -m wheel unpack ${WHEEL_DIR}/${WHEEL_BASENAME}.whl --dest ${WHEEL_DIR} > /dev/null
   COMMAND ${CMAKE_COMMAND} -E make_directory ${UNPACKED_WHEEL}/modular/engine
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:core> ${UNPACKED_WHEEL}/modular/engine/
+  COMMAND ${CMAKE_COMMAND} -E copy ${MODULAR_BINARY_DIR}/modular.cfg ${UNPACKED_WHEEL}/modular/
   COMMAND ${CMAKE_COMMAND} -E make_directory ${UNPACKED_WHEEL}/bin
   # NOTE: Use a temporary file so that the copy command succeeds when NOT
   # STOCK_TENSORFLOW_FOUND.
