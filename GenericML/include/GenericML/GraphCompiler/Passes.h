@@ -86,6 +86,11 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
           "will then be made to ensure the runtime host satisfies the "
           "assumptions made at compile time."),
       llvm::cl::init(true)};
+  Option<bool> constantFold{
+      *this, "constant-fold",
+      llvm::cl::desc("Evaluate parts of the program that can be evaluated at "
+                     "compile time."),
+      llvm::cl::init(false)}; // TODO: enable by default #16888
 };
 
 // Registers the end-to-end shape inference pipeline.

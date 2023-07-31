@@ -4,23 +4,147 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "./ConstantFold.h"
+#include "ConstantFold.h"
+#include "GenericML/Driver/CXXDriverAPI.h"
+#include "GenericML/Driver/CompileDriver.h"
+#include "GenericML/GraphCompiler/MODialect/MODialect.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
+#include "GenericML/GraphCompiler/Passes.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
-#include "mlir/Analysis/DataFlow/SparseAnalysis.h"
+#include "GenericML/MGPDialect/MGPDialect.h"
+#include "GenericML/Support/Model.h"
+#include "GraphRT/GRTDialect/GRTDialect.h"
+#include "LLCL/Runtime/Algorithms.h"
+#include "LLCL/Runtime/Runtime.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Value.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Transforms/TopologicalSortUtils.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/EquivalenceClasses.h"
 #include "llvm/ADT/Hashing.h"
+#include "llvm/Support/FileUtilities.h"
+
+#include <numeric>
 
 namespace M::MO {
 #define GEN_PASS_DEF_CONSTANTFOLD
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h.inc"
+
+// Holds all the information necessary to execute and replace a constant
+// subgraph
+struct SubgraphInfo {
+  GraphOp orig;
+  std::string constantSubgraphName;
+  // Need the subgraph for its output values.
+  Subgraph subgraph;
+};
 
 struct ValueCompare {
   bool operator()(const Value &lhs, const Value &rhs) const {
     return hash_value(lhs) < hash_value(rhs);
   }
 };
+
+// Convert a TensorType to a ShapedType so it can be used with functions in
+// Support. TensorType does not implement the ShapedType protocol so this is
+// necessary.
+ShapedType typeToShaped(TensorType type) {
+  auto shapeAttr = dyn_cast<MOSH::ShapeAttr>(type.getShapeAttr());
+  assert(shapeAttr && "Shapes in constants subgraph should all be infered");
+  auto intDims = shapeAttr.getIntDims();
+  int64_t size = std::accumulate(intDims.begin(), intDims.end(), 1,
+                                 std::multiplies<int64_t>());
+  return ArrayType::get(type.getContext(), size, type.getElementType());
+}
+
+/// Rewrite ops to the results of constant folding them.
+struct RewriteConstantOps : public RewritePattern {
+  RewriteConstantOps(MLIRContext *context,
+                     const llvm::DenseMap<Value, ElementsAttr> &constants)
+      : RewritePattern(mlir::Pattern::MatchInterfaceOpTypeTag(),
+                       MO::MOTensorOpInterface::getInterfaceID(), 1, context),
+        constants(constants) {}
+  using RewritePattern::matchAndRewrite;
+  const llvm::DenseMap<Value, ElementsAttr> &constants;
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    if (op->getNumResults() == 0)
+      return rewriter.notifyMatchFailure(op, "Op has no results");
+
+    auto it = constants.find(op->getResult(0));
+    if (it == constants.end())
+      return rewriter.notifyMatchFailure(op, "Op is not constant");
+
+    rewriter.setInsertionPoint(op);
+    llvm::SmallVector<Value> new_results;
+    for (auto r : op->getResults()) {
+      new_results.push_back(rewriter.create<ConstantOp>(
+          op->getLoc(), r.getType(), constants.at(r)));
+    }
+    rewriter.replaceOp(op, new_results);
+    return LogicalResult::success();
+  }
+};
+
+/// Run a Model to get the constant outputs to a subgraph. Returns a mapping
+/// from output Vale to ElementsAttr containing the constant resulting from
+/// folding.
+ErrorOr<llvm::DenseMap<Value, ElementsAttr>>
+executeModel(MLIRContext *ctx, const Model *model, SubgraphInfo subgraphInfo,
+             LLCL::Runtime &runtime) {
+  auto executableModelOr = model->setup(runtime);
+  if (executableModelOr.isError())
+    return executableModelOr.takeError();
+
+  auto executableModel = executableModelOr.takeValue();
+  auto setupErrorOrSuccess = executableModel->waitForModelSetup();
+  if (setupErrorOrSuccess.isError())
+    return Error("Model setup failed, not ready for execution");
+
+  SmallVector<AnyAsyncValueRef> inputTensorsInMEFIndexOrder;
+  auto results = executableModel->execute(inputTensorsInMEFIndexOrder);
+
+  if (results.empty())
+    return Error("Failed to execute model");
+
+  LLCL::await(results);
+  for (auto &result : results)
+    if (result.isError())
+      return Error(result.getDiagnostic().getMessage().get());
+
+  MutableArrayRef<AnyAsyncValueRef> resultCopy(results.data(), results.size());
+  resultCopy = resultCopy.drop_front();
+  llvm::SmallVector<AnyAsyncValueRef> outputTensorRefs;
+  outputTensorRefs.reserve(results.size());
+  for (auto &result : resultCopy) {
+    outputTensorRefs.push_back(
+        executableModel->convertToGenericTensor(std::move(result)));
+  }
+  LLCL::await(outputTensorRefs);
+
+  llvm::DenseMap<Value, ElementsAttr> valuesToTensors;
+  auto resourceManager = DenseResourceElementsHandle::getManagerInterface(ctx);
+  for (auto [outIdx, tensor] : llvm::enumerate(outputTensorRefs)) {
+    if (tensor.isError())
+      return Error(tensor.getDiagnostic().getMessage().get());
+
+    // Copy output tensor into storage. Ideally we could preallocate the
+    // output, but the interface does not support it.
+    assert(tensor.isReady() && "We already awaited, tensor should be ready");
+    Value outValue = subgraphInfo.subgraph.outputs[outIdx];
+    Tensor t = std::move(tensor.get<Tensor>());
+    valuesToTensors[outValue] = getAttrForTensorDataCopy(
+        typeToShaped(dyn_cast<TensorType>(outValue.getType())),
+        subgraphInfo.constantSubgraphName + "_" + std::to_string(outIdx),
+        {reinterpret_cast<const char *>(t.getBuffer()), t.getSizeInBytes()},
+        resourceManager);
+  }
+  return valuesToTensors;
+}
 
 SmallVector<Subgraph> ConstantSubgraphs(MO::GraphOp graph) {
   // Recurse down consumers ConstantOps, marking ops with all constant inputs as
@@ -30,6 +154,7 @@ SmallVector<Subgraph> ConstantSubgraphs(MO::GraphOp graph) {
   // Set containing values that are known to not be constant. That is one or
   // more inputs to the operation creating the values are not constant.
   llvm::DenseSet<Value> non_const;
+
   // Disjoint set containing constant values. A constant value is either a
   // mo.constant or a value whose defining operation has all constant value
   // inputs. Each equivalence class is a connected DAG of values which depend on
@@ -144,12 +269,189 @@ SmallVector<Subgraph> ConstantSubgraphs(MO::GraphOp graph) {
   return subgraphs;
 }
 
+/// Copy a subgraph out of its original GraphOp and into a new GraphOp in a
+/// different module. Adds OutputOps for all the outputs of the subgraph. Return
+/// information to identify the new GraphOp.
+SubgraphInfo cloneSubgraph(OpBuilder builder, GraphOp orig, ModuleOp module,
+                           Subgraph subgraph, int64_t &name_counter) {
+  auto resultTypes = llvm::map_to_vector(subgraph.outputs,
+                                         [](Value v) { return v.getType(); });
+  int64_t counter = orig.getProperties().getCounter();
+  // This name cannot be too long otherwise something breaks :(.
+  auto graphop = builder.create<GraphOp>(
+      module.getLoc(),
+      (orig.getName() + "_subgraph_" + std::to_string(name_counter)).str(),
+      SmallVector<Type>{}, resultTypes);
+  name_counter++;
+  orig.getProperties().setCounter(counter + 1);
+  builder.setInsertionPointToEnd(graphop.getBodyBlock());
+
+  SmallPtrSet<Operation *, 8> ops;
+  for (auto v : subgraph.vals)
+    ops.insert(v.getDefiningOp());
+  SmallVector<Operation *, 8> ops_sorted(ops.begin(), ops.end());
+  // Topologically sort so definitions come before uses.
+  mlir::computeTopologicalSorting(ops_sorted);
+  IRMapping oldToNew;
+  for (auto old_op : ops_sorted)
+    builder.clone(*old_op, oldToNew);
+  auto new_outputs = llvm::map_to_vector(
+      subgraph.outputs, [&](Value v) { return oldToNew.lookup<Value>(v); });
+  builder.create<OutputOp>(module.getLoc(), new_outputs,
+                           KGEN::ParameterExprArrayAttr{});
+  return {orig, std::string(graphop.getName()), subgraph};
+}
+
+// Models need to ensure that their backing buffer lives as long as they do.
+struct ModelsWithBuffer {
+  std::unique_ptr<ModelCollection> models;
+  std::unique_ptr<llvm::MemoryBuffer> buffer;
+};
+
 struct ConstantFoldPass
     : public M::MO::impl::ConstantFoldBase<ConstantFoldPass> {
   using ConstantFoldBase::ConstantFoldBase;
 
   void runOnOperation() override;
+
+private:
+  // Lower a ModuleOp all the way to MGP, export it as MEF, then load it
+  // for execution. Returns the models along with a buffer that needs to
+  // live as long as they do. This needs to be a member of the pass so it
+  // can access runPipeline.
+  ErrorOr<ModelsWithBuffer> lowerSubgraphs(ModuleOp module);
 };
-void ConstantFoldPass::runOnOperation() { return signalPassFailure(); }
+
+ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
+  // Lower module to MGP.
+  mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
+      module.getContext(), mlir::OpPassManager::Nesting::Implicit);
+  MO::MoToMgpOptions moOpts;
+  // Avoid infinite recursion.
+  moOpts.constantFold = false;
+  // Use TF executor for now. TODO: #18076 when mo executor is added, switch to
+  // that.
+  moOpts.compiledFrameworkLabel = "tf";
+  MO::buildMoToMgpPipeline(pm, moOpts);
+  // Run pipeline needs to run on a module.
+  if (failed(runPipeline(pm, module)))
+    return Error("Failed to run MOToMOGG pipeline");
+
+  // Convert to MEF. We write it to a file and then read it back in. LLVM
+  // doesn't seem to provide a way to write and read it directly from a buffer.
+  llvm::SmallString<128> filename;
+  std::error_code e =
+      llvm::sys::fs::createTemporaryFile("mo", "subgraph_mef", filename);
+  if (e.value() != 0)
+    return Error("Cannot open temp file: " + e.message());
+  {
+    std::error_code e;
+    llvm::raw_fd_ostream os(filename, e);
+    if (failed(convertToMEF(module, os, false)))
+      return Error("unable to convert file to a MEF binary");
+  }
+  // Delete file when we leave scope.
+  llvm::FileRemover remover(filename);
+
+  // Load framework specified above.
+  std::string errorMsg;
+  auto file = mlir::openInputFile(filename, llvm::Align(0x4000), &errorMsg);
+  if (!file)
+    return Error(errorMsg);
+  // TF executor needs arguments otherwise it crashes.
+  std::string progName = "constant-fold";
+  char *pname = const_cast<char *>(progName.c_str());
+  std::array<char *, 1> argvArray = {pname};
+  int argc = argvArray.size();
+  char **argv = argvArray.data();
+  // The code below could certainly be simplified by rust's ? operator.
+  auto dylibOr =
+      loadDesiredLibrary(argc, argv, *file, FileFormat::kMEFFile, "");
+  if (failed(dylibOr))
+    return dylibOr.takeError();
+  CXXDriverAPI dylib = *dylibOr;
+
+  auto frameworkCtxOr = dylib.initFrameworkContext(argc, argv);
+  if (failed(frameworkCtxOr))
+    return frameworkCtxOr.takeError();
+  // Load MEF.
+  auto binaryFileOr = dylib.openBinaryFile(*frameworkCtxOr, *file);
+  if (failed(binaryFileOr))
+    return binaryFileOr.takeError();
+  auto modelsOr = dylib.loadModels(frameworkCtxOr.get(),
+                                   file->getMemBufferRef(), binaryFileOr.get());
+  if (failed(modelsOr))
+    return modelsOr.takeError();
+
+  return {ModelsWithBuffer{modelsOr.takeValue(), std::move(file)}};
+}
+
+void ConstantFoldPass::runOnOperation() {
+  // At a high level, this pass:
+  // 1. Extracts all constant subgraphs.
+  // 2. Clones each subgraph into its own GraphOp.
+  // 3. Lowers and executes each GraphOp from the previous step.
+  // 4. Replaces subgraph outputs with outputs from the previous step.
+
+  MLIRContext *ctx = &getContext();
+  OpBuilder builder(ctx);
+  builder.setInsertionPointToStart(getOperation().getBody());
+  // We have to create the copy of each subgraph somewhere under the original
+  // model because passes can't create ops outside of what they are operating
+  // on. We create a nested module in the current module where we do everything.
+  // At the end we remove it.
+  auto module = builder.create<ModuleOp>(getOperation().getLoc());
+
+  // For each constant subgraph, we clone it into our submodule as a new
+  // GraphOp. The outputs of the GraphOp are the outputs of the subgraph.
+  //
+  // An alternative approach could be to combine each subgraph into one large
+  // constant graph so we only have one thing to execute.
+  SmallVector<SubgraphInfo> subgraphReplacements;
+  int64_t name_counter = 0;
+  getOperation().walk([&](GraphOp graph) {
+    auto subgraphs = ConstantSubgraphs(graph);
+    for (auto subgraph : subgraphs) {
+      builder.setInsertionPointToEnd(module.getBody());
+      subgraphReplacements.push_back(
+          cloneSubgraph(builder, graph, module, subgraph, name_counter));
+    }
+  });
+
+  ErrorOr<ModelsWithBuffer> modelsOr = lowerSubgraphs(module);
+  if (failed(modelsOr)) {
+    mlir::emitError(module.getLoc(),
+                    "unable to load models: " + Twine(modelsOr.getError()));
+    return signalPassFailure();
+  }
+
+  // Execute MEF one subgraph at a time.
+  // TODO: #18077 this should be an argument to the pass.
+  LLCL::Runtime runtime(LLCL::createMallocAllocator(),
+                        LLCL::createThreadPoolWorkQueue());
+  for (auto [i, subgraphInfo] : llvm::enumerate(subgraphReplacements)) {
+    const Model *model =
+        modelsOr.get().models->getModelNamed(subgraphInfo.constantSubgraphName);
+    assert(model != nullptr &&
+           "Model should exist, make sure names above match.");
+    ErrorOr<llvm::DenseMap<Value, ElementsAttr>> valuesToTensorsOr =
+        executeModel(ctx, model, subgraphInfo, runtime);
+    if (failed(valuesToTensorsOr)) {
+      mlir::emitError(module.getLoc(),
+                      Twine(valuesToTensorsOr.takeError().get()));
+      return signalPassFailure();
+    }
+
+    // Replace output expressions with constants. Also handles DCE.
+    RewritePatternSet patterns{ctx};
+    patterns.add<RewriteConstantOps>(ctx, valuesToTensorsOr.get());
+    if (failed(applyPatternsAndFoldGreedily(subgraphInfo.orig,
+                                            std::move(patterns))))
+      return signalPassFailure();
+  }
+
+  // Remove module to not clutter the output.
+  module.erase();
+}
 
 } // namespace M::MO
