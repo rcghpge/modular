@@ -298,39 +298,43 @@ struct BatchMatmulAdjBPattern : public OpRewritePattern<MO::BatchMatmulOp> {
   }
 };
 
-struct ConcatZeroAxisPattern : public RewritePattern {
-  ConcatZeroAxisPattern(MLIRContext *ctx)
-      : RewritePattern(MatchAnyOpTypeTag{}, 2, ctx) {}
+struct ConcatZeroAxisPattern : public OpRewritePattern<MO::ConcatOp> {
+  ConcatZeroAxisPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(Operation *op,
+  LogicalResult matchAndRewrite(MO::ConcatOp concat,
                                 PatternRewriter &rewriter) const override {
     // Doing this manually, I don't think the patterns can support variadic
     // inputs yet
-    auto concat = dyn_cast<MO::ConcatOp>(op);
-    if (!concat)
-      return rewriter.notifyMatchFailure(op, "Not a Concat Op");
-
     std::optional<int64_t> axis =
         MO::tryGetConstantInt(cast<MO::TensorValue>(concat.getAxis()));
     if (!axis.has_value() || axis.value() != 0)
-      return rewriter.notifyMatchFailure(op, "axis not constant 0");
+      return rewriter.notifyMatchFailure(concat, "axis not constant 0");
 
+    Block *concatBlock = concat.getResult().getParentBlock();
     for (Value input : concat.getInputs()) {
+      if (!input.hasOneUse())
+        return rewriter.notifyMatchFailure(input.getLoc(), "has extra users");
+      if (input.getParentBlock() != concatBlock) {
+        return rewriter.notifyMatchFailure(
+            input.getLoc(), "concat in a different block than inputs");
+      }
       // ensure inputs aren't constant or used anywhere else
       if (mlir::Operation *iop = input.getDefiningOp()) {
         if (isa<MO::ConstantOp>(iop))
           return rewriter.notifyMatchFailure(iop, "is constant");
-        if (isa<MO::ConcatOp>(iop) || isa<MOGG::ConcatOp>(iop))
+        if (isa<MO::ConcatOp>(iop) || isa<MOGG::ConcatOp>(iop)) {
           return rewriter.notifyMatchFailure(
               iop, "don't currently support nesting in-place concats");
+        }
+      } else {
+        return rewriter.notifyMatchFailure(input.getLoc(),
+                                           "input is a block argument");
       }
-      if (!input.hasOneUse())
-        return rewriter.notifyMatchFailure(input.getLoc(), "has extra users");
     }
 
     rewriter.replaceOpWithNewOp<MOGG::ConcatOp>(
-        op,
-        /*outputTypes=*/op->getResultTypes(),
+        concat,
+        /*outputTypes=*/concat->getResultTypes(),
         /*inputOperands=*/concat.getInputs());
 
     return mlir::success();
