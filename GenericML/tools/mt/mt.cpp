@@ -102,9 +102,10 @@ bool ScenarioParser::parse(llvm::cl::Option &O, StringRef ArgName,
   return false;
 }
 
-/// Get a string that describes the contents of the file. Given that this driver
-/// cannot link the MEF libraries, we have to rely on the symbols provided by
-/// the framework if the input is a MEF file.
+// TODO(#1639): Remove.
+/// Returns a string that describes the contents of the file. Given that this
+/// driver cannot link the MEF libraries, it relies on the symbols provided by
+/// the framework supplied with dylib if the input is a MEF file.
 static M::ErrorOr<std::string>
 getFileContentIdentity(const llvm::MemoryBuffer &file, FileFormat format,
                        FrameworkContextHandle ctxHandle, CXXDriverAPI dylib) {
@@ -127,6 +128,10 @@ getFileContentIdentity(const llvm::MemoryBuffer &file, FileFormat format,
     return "input is a compiled TensorFlow MEF model in MLIR form";
   case FileFormat::kFauxDialect:
     return "input is Faux model in MLIR form";
+  case FileFormat::kMODialect:
+    [[fallthrough]];
+  case FileFormat::kMGPDialect:
+    return "input is a Modular model";
   case FileFormat::kMONNXDialect:
     return "input is an ONNX model in MLIR form";
   case FileFormat::kONNXProtobuf:

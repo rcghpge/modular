@@ -47,6 +47,12 @@ enum class FileFormat {
   /// This is a TensorFlow SavedModel directory.
   kTFSavedModel,
 
+  /// This is a MLIR file with the mo dialect in it.
+  kMODialect,
+
+  /// This is a MLIR file with the mgp dialect and no fallbacks in it.
+  kMGPDialect,
+
   /// This looks like a textual MLIR file with the MONNX graph dialect in it.
   kMONNXDialect,
 
@@ -86,6 +92,7 @@ public:
       "input-format", cl::desc("input file format override"),
       cl::values(clEnumValN(FileFormat::kTFLFlatBuffer, "tflite-flat-buffer",
                             "Input is a TFLite flatbuffer file"),
+                 clEnumValN(FileFormat::kMODialect, "mo", "Input is a MO file"),
                  clEnumValN(FileFormat::kMEFFile, "mef",
                             "Input is an executable MEF file"),
                  clEnumValN(FileFormat::kTFSavedModel, "tf-saved-model",

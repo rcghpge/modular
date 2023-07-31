@@ -13,7 +13,7 @@
 namespace M {
 class DriverConfig {
 public:
-  enum OptionKind { kTF, kTorch };
+  enum OptionKind { kTF, kTorch, kMOF };
 
   DriverConfig(OptionKind kind, llvm::StringLiteral name)
       : Kind(kind), configName(name) {}

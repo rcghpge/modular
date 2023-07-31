@@ -61,6 +61,16 @@ FileFormat M::sniffInputFormat(StringRef fileExtension,
       return FileFormat::kMTFLDialect;
     if (fileContents.contains("monnx.graph"))
       return FileFormat::kMONNXDialect;
+    if (fileContents.contains("func.func") && fileContents.contains("tf."))
+      return FileFormat::kTFDialect;
+    if (fileContents.contains("operator_codes:"))
+      return FileFormat::kTFLFlatBufferJSON;
+    if (fileContents.contains("ir_version: "))
+      return FileFormat::kONNXTextProtobuf;
+    if (fileContents.contains("torch.debug_module_name"))
+      return FileFormat::kTorchDialect;
+    if (fileContents.contains("mo.graph"))
+      return FileFormat::kMODialect;
     if (size_t start = fileContents.find("mgp.model");
         start != StringRef::npos) {
       // For mgp.model our desperation is even worse: we'll just look for
@@ -82,6 +92,8 @@ FileFormat M::sniffInputFormat(StringRef fileExtension,
           return FileFormat::kTFLPDialect;
         case CompiledFrameworkLabel::kFauxModel:
           return FileFormat::kFauxDialect;
+        case CompiledFrameworkLabel::kModularModel:
+          return FileFormat::kMODialect;
         case CompiledFrameworkLabel::kONNXModel:
           return FileFormat::kMONNXDialect;
         case CompiledFrameworkLabel::kPyTorchModel:
@@ -89,18 +101,8 @@ FileFormat M::sniffInputFormat(StringRef fileExtension,
         }
       }
     }
-    if (fileContents.contains("tf."))
-      // Top-level op in a tf graph is func.func, but matching against it
-      // can cause ambiguity. So we check for the presence of any tf Ops.
-      return FileFormat::kTFDialect;
     if (fileContents.contains("faux.testcase"))
       return FileFormat::kFauxDialect;
-    if (fileContents.contains("operator_codes:"))
-      return FileFormat::kTFLFlatBufferJSON;
-    if (fileContents.contains("ir_version: "))
-      return FileFormat::kONNXTextProtobuf;
-    if (fileContents.contains("torch.debug_module_name"))
-      return FileFormat::kTorchDialect;
   } else if (mlir::isBytecode(llvm::MemoryBufferRef(fileContents, ""))) {
     std::match_results<StringRef::iterator> m;
     if (std::regex_search(fileContents.begin(), fileContents.end(), m,
