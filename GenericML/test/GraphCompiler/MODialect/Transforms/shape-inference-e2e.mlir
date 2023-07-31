@@ -645,3 +645,71 @@ mo.graph @arg_max(%input: !mo.tensor<[?, ?], si64>) -> !mo.tensor<[?, ?], si64> 
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[D1]], 1], si64>
   mo.output %res : !mo.tensor<[?, ?], si64>
 }
+
+// CHECK:      mo.graph @concat<[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]], [[D4:.*]], [[D5:.*]]>(
+// CHECK-SAME:   %[[INPUT1:.*]]: !mo.tensor<[[[D0]], 1, [[D1]]], f32>,
+// CHECK-SAME:   %[[INPUT2:.*]]: !mo.tensor<[[[D2]], 2, [[D3]]], f32>,
+// CHECK-SAME:   %[[INPUT3:.*]]: !mo.tensor<[[[D4]], 3, [[D5]]], f32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D0]], 6, [[D1]]], f32> {
+mo.graph @concat(
+  %input1: !mo.tensor<[?, 1, ?], f32>,
+  %input2: !mo.tensor<[?, 2, ?], f32>,
+  %input3: !mo.tensor<[?, 3, ?], f32>
+) -> !mo.tensor<[?, ?, ?], f32> {
+
+  // CHECK-NEXT: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %axis = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+
+  // CHECK-NEXT: kgen.param.declare [[B0:.*]]: i1 = <eq([[D0]], [[D2]])>
+  // CHECK-NEXT: kgen.param.declare [[C0:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "dimensions before axis must be equal" : !kgen.string}, [[B0]])>
+  // CHECK-NEXT: kgen.param.declare [[B1:.*]]: i1 = <eq([[D1]], [[D3]])>
+  // CHECK-NEXT: kgen.param.declare [[C1:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "dimensions after axis must be equal" : !kgen.string}, [[B1]])>
+  // CHECK-NEXT: kgen.param.declare [[B2:.*]]: i1 = <eq([[D0]], [[D4]])>
+  // CHECK-NEXT: kgen.param.declare [[C2:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "dimensions before axis must be equal" : !kgen.string}, [[B2]])>
+  // CHECK-NEXT: kgen.param.declare [[B3:.*]]: i1 = <eq([[D1]], [[D5]])>
+  // CHECK-NEXT: kgen.param.declare [[C3:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "dimensions after axis must be equal" : !kgen.string}, [[B3]])>
+
+  // CHECK-NEXT: %[[RES:.*]] = mo.concat[%[[AXIS:.*]] : !mo.tensor<[], si64>] (%[[INPUT1]], %[[INPUT2]], %[[INPUT3]]) :
+  // CHECK-SAME:   (!mo.tensor<[[[D0]], 1, [[D1]]], f32>, !mo.tensor<[[[D2]], 2, [[D3]]], f32>, !mo.tensor<[[[D4]], 3, [[D5]]], f32>)
+  // CHECK-SAME:   -> !mo.tensor<[[[D0]], 6, [[D1]]], f32>
+  %res = mo.concat[%axis : !mo.tensor<[], si64>](%input1, %input2, %input3) :
+    (!mo.tensor<[?, 1, ?], f32>, !mo.tensor<[?, 2, ?], f32>, !mo.tensor<[?, 3, ?], f32>)
+    -> !mo.tensor<[?, ?, ?], f32>
+
+    // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[D0]], 6, [[D1]]], f32>
+  mo.output %res : !mo.tensor<[?, ?, ?], f32>
+}
+
+// CHECK:      mo.graph @concat_neg_axis<[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]], [[D4:.*]], [[D5:.*]]>(
+// CHECK-SAME:   %[[INPUT1:.*]]: !mo.tensor<[[[D0]], 1, [[D1]]], f32>,
+// CHECK-SAME:   %[[INPUT2:.*]]: !mo.tensor<[[[D2]], 2, [[D3]]], f32>,
+// CHECK-SAME:   %[[INPUT3:.*]]: !mo.tensor<[[[D4]], 3, [[D5]]], f32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D0]], 6, [[D1]]], f32> {
+mo.graph @concat_neg_axis(
+  %input1: !mo.tensor<[?, 1, ?], f32>,
+  %input2: !mo.tensor<[?, 2, ?], f32>,
+  %input3: !mo.tensor<[?, 3, ?], f32>
+) -> !mo.tensor<[?, ?, ?], f32> {
+
+  // CHECK-NEXT: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<-2> : tensor<si64>} : !mo.tensor<[], si64>
+  %axis = mo.constant {value = #M.dense_array<-2> : tensor<si64>} : !mo.tensor<[], si64>
+
+  // CHECK-NEXT: kgen.param.declare [[B0:.*]]: i1 = <eq([[D0]], [[D2]])>
+  // CHECK-NEXT: kgen.param.declare [[C0:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "dimensions before axis must be equal" : !kgen.string}, [[B0]])>
+  // CHECK-NEXT: kgen.param.declare [[B1:.*]]: i1 = <eq([[D1]], [[D3]])>
+  // CHECK-NEXT: kgen.param.declare [[C1:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "dimensions after axis must be equal" : !kgen.string}, [[B1]])>
+  // CHECK-NEXT: kgen.param.declare [[B2:.*]]: i1 = <eq([[D0]], [[D4]])>
+  // CHECK-NEXT: kgen.param.declare [[C2:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "dimensions before axis must be equal" : !kgen.string}, [[B2]])>
+  // CHECK-NEXT: kgen.param.declare [[B3:.*]]: i1 = <eq([[D1]], [[D5]])>
+  // CHECK-NEXT: kgen.param.declare [[C3:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "dimensions after axis must be equal" : !kgen.string}, [[B3]])>
+
+  // CHECK-NEXT: %[[RES:.*]] = mo.concat[%[[AXIS:.*]] : !mo.tensor<[], si64>] (%[[INPUT1]], %[[INPUT2]], %[[INPUT3]]) :
+  // CHECK-SAME:   (!mo.tensor<[[[D0]], 1, [[D1]]], f32>, !mo.tensor<[[[D2]], 2, [[D3]]], f32>, !mo.tensor<[[[D4]], 3, [[D5]]], f32>)
+  // CHECK-SAME:   -> !mo.tensor<[[[D0]], 6, [[D1]]], f32>
+  %res = mo.concat[%axis : !mo.tensor<[], si64>](%input1, %input2, %input3) :
+    (!mo.tensor<[?, 1, ?], f32>, !mo.tensor<[?, 2, ?], f32>, !mo.tensor<[?, 3, ?], f32>)
+    -> !mo.tensor<[?, ?, ?], f32>
+
+    // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[D0]], 6, [[D1]]], f32>
+  mo.output %res : !mo.tensor<[?, ?, ?], f32>
+}
