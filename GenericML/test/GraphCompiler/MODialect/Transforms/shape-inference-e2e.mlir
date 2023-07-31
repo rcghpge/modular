@@ -736,3 +736,20 @@ mo.graph @pad(
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[32, 73], f32>
   mo.output %res : !mo.tensor<[?, ?], f32>
 }
+
+// CHECK: mo.graph @tile(%[[INPUT:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[20, 60], f32> {
+mo.graph @tile(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[?, ?], f32> {
+
+  // CHECK-NEXT: %[[REPEATS:.*]] = mo.constant {value = #M.dense_array<10, 20> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+  %repeats = mo.constant {value = #M.dense_array<10, 20> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+
+  // CHECK-NEXT: %[[RES:.*]] = mo.tile(%[[INPUT]], %[[REPEATS]]) : (
+  // CHECK-SAME:   !mo.tensor<[2, 3], f32>, !mo.tensor<[2], si32>
+  // CHECK-SAME: ) -> !mo.tensor<[20, 60], f32>
+  %res = mo.tile(%input, %repeats) : (
+    !mo.tensor<[2, 3], f32>, !mo.tensor<[2], si32>
+  ) -> !mo.tensor<[?, ?], f32>
+
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[20, 60], f32>
+  mo.output %res : !mo.tensor<[?, ?], f32>
+}
