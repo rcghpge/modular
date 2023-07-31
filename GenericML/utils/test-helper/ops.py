@@ -30,6 +30,15 @@ class NumpyImpl:
     def bmm(self, x, y):
         return np.matmul(x, y)
 
+    def range(self, start, stop, step):
+        return np.arange(start, stop, step)
+
+    def reshape(self, x, shape):
+        return x.reshape(shape)
+
+    def split(self, x, num_splits, axis):
+        return np.split(x, num_splits, axis)
+
 
 # The keras implementation of each primitive.
 class TFImpl:
@@ -41,3 +50,12 @@ class TFImpl:
 
     def bmm(self, x, y):
         return tf.linalg.matmul(x, y)
+
+    def range(self, start, stop, step):
+        return tf.range(start, stop, step)
+
+    def reshape(self, x, shape):
+        return tf.reshape(x, shape)
+
+    def split(self, x, num_splits, axis):
+        return tf.split(x, num_splits, axis)

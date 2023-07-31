@@ -232,6 +232,15 @@ mo.graph @pad_fallback_shape_func<() -> D0, D1, D2>(
 // CHECK-NEXT: mo.output<[[D3]], [[D4]], [[D5]]> %[[RES]] : !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32>
 
 
+mo.graph @range(%start: !mo.tensor<[], si32>, %stop: !mo.tensor<[], si32>, %step: !mo.tensor<[], si32>) -> !mo.tensor<[D1], si32> {
+  %out = mo.range<() -> D1>(%start, %stop, %step) : (!mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[D1], si32>
+  mo.output %out: !mo.tensor<[D1], si32>
+}
+// CHECK-LABEL: mo.graph @range
+// CHECK:(%[[START:.*]]: !mo.tensor<[], si32>, %[[STOP:.*]]: !mo.tensor<[], si32>, %[[STEP:.*]]: !mo.tensor<[], si32>)
+// CHECK-NEXT: mo.invoke_shape_func["range_shape"]<() -> [[RANGE_PARAM:.*]]>(%[[START]], %[[STOP]], %[[STEP]]) {dataDeptTensors = [0 : i32, 1 : i32, 2 : i32]} : (!mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>)
+// CHECK-NEXT: mo.range(%[[START]], %[[STOP]], %[[STEP]]) : (!mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[[[RANGE_PARAM]]], si32>
+
 mo.graph @reduce_add_fallback_shape_func<D0, D1 -> D2, D3>(
   %input : !mo.tensor<[D0, D1], f32>,
   %axis: !mo.tensor<[], si32>

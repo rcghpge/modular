@@ -55,6 +55,7 @@ HAS_FALLBACK(MO::GatherOp)
 HAS_FALLBACK(MO::MaxPoolOp)
 HAS_FALLBACK(MO::MeanOp)
 HAS_FALLBACK(MO::PadOp)
+HAS_FALLBACK(MO::RangeOp)
 HAS_FALLBACK(MO::ReduceAddOp)
 HAS_FALLBACK(MO::ReduceMaxOp)
 HAS_FALLBACK(MO::ReduceMinOp)
@@ -106,6 +107,7 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::MaxPoolOp)
       CALL_FALLBACK(MO::MeanOp)
       CALL_FALLBACK(MO::PadOp)
+      CALL_FALLBACK(MO::RangeOp)
       CALL_FALLBACK(MO::ReduceAddOp)
       CALL_FALLBACK(MO::ReduceMaxOp)
       CALL_FALLBACK(MO::ReduceMinOp)
@@ -249,6 +251,12 @@ void Fallback<MO::PadOp>::build(GraphOp &graph, OpBuilder &builder,
   SmallVector<Value> shapeFuncInputs({op.getInput(), op.getPaddings()});
   buildForOpResult(graph, builder, op, "pad_shape", shapeFuncInputs,
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
+}
+
+void Fallback<MO::RangeOp>::build(GraphOp &graph, OpBuilder &builder,
+                                  MO::RangeOp op) {
+  buildForOpResult(graph, builder, op, "range_shape", op->getOperands(),
+                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{0, 1, 2});
 }
 
 // Reduction ops

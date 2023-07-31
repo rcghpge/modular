@@ -35,7 +35,7 @@ args = parser.parse_args()
 def test_vs_numpy(testCase, file_to_run):
     np.random.seed(42)
 
-    goldenValue = []
+    golden_value = []
 
     inputs = None
     num_inputs = None
@@ -46,7 +46,6 @@ def test_vs_numpy(testCase, file_to_run):
     # Create the input data + golden test values.
     for i in range(testCase.num_runs()):
         ins = testCase.generate_inputs(sizes_to_test[0])
-
         # Create list lazily so we know how many to create.
         if inputs is None:
             num_inputs = len(ins)
@@ -54,8 +53,7 @@ def test_vs_numpy(testCase, file_to_run):
 
         for i in range(num_inputs):
             inputs[i].append(ins[i])
-
-        goldenValue.append(testCase.run(ins, NumpyImpl()))
+        golden_value.append(testCase.run(ins, NumpyImpl()))
 
     if not num_inputs or not inputs:
         print("No inputs to test!")
@@ -116,16 +114,23 @@ def test_vs_numpy(testCase, file_to_run):
         # Check we returned the same number of tensors as the golden value returned.
         assert len(x) == 1
 
-        val_to_compare = goldenValue[output_index]
+        val_to_compare = golden_value[output_index]
 
         # Check the dimensions match.
         for tensor in x:
             mo_shape = tensor.split("x")
             for mo_dim, np_dim in zip(mo_shape, val_to_compare.shape):
                 if int(mo_dim) != np_dim:
+
+                    print(val_to_compare)
+                    print(line_as_str)
+                    print("Inputs: ")
+                    for inp in inputs_as_numpy:
+                        print(inp[output_index])
+
                     print(
-                        f"Dimensions don't match! Mo {mo_shape} vs np"
-                        f" {val_to_compare.shape}"
+                        f"On output {output_index} dimensions don't match! Mo"
+                        f" {mo_shape} vs np {val_to_compare.shape}"
                     )
                     exit(0)
 
@@ -133,7 +138,8 @@ def test_vs_numpy(testCase, file_to_run):
         raw_out = line_as_str[
             line_as_str.find("[") + 1 : line_as_str.find("]")
         ].split(", ")
-        mo_out = np.array(list(raw_out), dtype=np.float32).reshape(
+
+        mo_out = np.array(list(raw_out), dtype=val_to_compare.dtype).reshape(
             val_to_compare.shape
         )
 

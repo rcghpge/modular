@@ -93,6 +93,48 @@ class BatchMatmulTrans(BatchMatmul):
         return impl.bmm(inputs[0], trans)
 
 
+# Test for range
+class Range(TestBase):
+    @staticmethod
+    def compare_results(ours, theirs):
+        return np.array_equal(ours, theirs)
+
+    @staticmethod
+    def num_runs():
+        return 100
+
+    @staticmethod
+    def input_sizes_to_test():
+        return [(3,)]
+
+    @staticmethod
+    def get_input_specs():
+        return [((3,), np.int32)]
+
+    @staticmethod
+    def generate_inputs(shapes):
+        start = np.random.randint(-64, 64)
+        stop = np.random.randint(-64, 64)
+        diff = stop - start
+        if diff == 0:
+            start, stop, step = (-3, 3, 1)
+        elif diff > 0:
+            step = np.random.randint(1, diff) if diff != 1 else 1
+        else:
+            step = np.random.randint(diff, -1) if diff != -1 else -1
+
+        return [np.array([start, stop, step], dtype=np.int32)]
+
+    @staticmethod
+    def run(inputs, impl):
+        # Until `mt` supports the input type we have to slice them out #18187.
+        start, stop, step = impl.split(inputs[0], 3, 0)
+        start = impl.reshape(start, shape=())
+        stop = impl.reshape(stop, shape=())
+        step = impl.reshape(step, shape=())
+        return impl.range(start, stop, step)
+
+
 def get_test_case(target_name):
     for name, obj in inspect.getmembers(sys.modules[__name__]):
         if inspect.isclass(obj):
