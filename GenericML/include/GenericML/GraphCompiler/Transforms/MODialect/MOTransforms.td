@@ -145,51 +145,14 @@ def HoistParameterExpressions : Pass<"hoist-param-exprs", "GraphOp"> {
   }];
 }
 
-def ConstantFold : Pass<"constant-fold", "ModuleOp"> {
+def ConstantFold : Pass<"constant-fold", "GraphOp"> {
   let summary = "Partially evaluate constant subgraphs";
   let description = [{
     This pass identifies constant subgraphs and executes them at compile time
-    using existing kernel infrastructure. Does not explicitly handle control flow.
+    using exising kernel infrastructure.
 
-    Example:
-    ```
-    mo.graph @const_program() -> !mo.tensor<[2], si32> {
-      %0 = mo.constant {value = #M.dense_array<0, 1> : tensor<2xsi32>} : !mo.tensor<[2], si32>
-      %1 = mo.constant {value = #M.dense_array<6, 3> : tensor<2xsi32>} : !mo.tensor<[2], si32>
-      %2 = mo.mul(%0, %1) : !mo.tensor<[2], si32>
-      %3 = mo.sub(%2, %1) : !mo.tensor<[2], si32>
-      mo.output %3 : !mo.tensor<[2], si32>
-    }
-    ```
-    becomes
-    ```
-    mo.graph @const_program() -> !mo.tensor<[2], si32> {
-      %0 = mo.constant {value = #M.dense_array<0, 2> : tensor<2xsi32>} : !mo.tensor<[2], si32>
-      mo.output %0 : !mo.tensor<[2], si32>
-    }
-    ```
-
-    This pass may be non-determininstic in ordering of output nodes.
-
-    This pass run on ModuleOps instead of GraphOps because it 1. needs to call
-    runPipeline(MOToMOGG) which cannot be nested in a GraphOp, and 2. it needs
-    to avoid overhead of doing lowering and model setup multiple times.
+    Right now this is only a stub pass. TODO: #16884
   }];
-  // All these dialects are required to run MOToMOGG from within this pass.
-  let dependentDialects = [
-    "M::MDialect",
-    "M::MOGG::MOGGDialect",
-    "M::MGP::MGPDialect",
-    "M::GRT::GRTDialect",
-    "M::KGEN::KGENDialect",
-    "M::KGEN::LIT::LITDialect",
-    "M::KGEN::POP::POPDialect",
-    "M::HLCF::HLCFDialect",
-    "M::Cache::CacheDialect",
-    "M::DebugInfo::DebugInfoDialect",
-    "mlir::LLVM::LLVMDialect",
-    "mlir::index::IndexDialect",
-  ];
 }
 
 def ConstantFoldSubgraphTest : Pass<"constant-fold-subgraph-test", "ModuleOp"> {

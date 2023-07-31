@@ -112,10 +112,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     pm.addPass(mlir::createCSEPass());
   }
 
-  if (opts.constantFold) {
-    pm.addPass(MO::createConstantFold());
-  }
-
   pm.addPass(MO::createHoistParameterExpressions());
   pm.addPass(MO::createMOToMOGG(moToMoggOpts));
   pm.addPass(mlir::createCanonicalizerPass());
