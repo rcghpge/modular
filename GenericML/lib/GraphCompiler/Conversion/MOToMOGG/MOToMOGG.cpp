@@ -348,7 +348,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_MOJO_NON_ELEMWISE(MO::ReduceMinOp, "None"),
       MO_TO_MOJO_NON_ELEMWISE(MO::ReduceMaxOp, "None"),
       MO_MOJO_ONLY(MO::PowOp),
-      MO_TO_MOJO_NON_ELEMWISE(MO::RangeOp, "mop.kernels.range"),
+      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::RangeOp),
       MO_MOJO_ONLY(MO::ReluOp),
       MO_MOJO_ONLY(MO::RsqrtOp),
       MO_TO_MOJO_NON_ELEMWISE(MO::ScatterNdOp, "None"),

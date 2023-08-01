@@ -202,14 +202,6 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
         opBeingLowered->getOperands()[3]);
     output.spec = getOutputSpec(
         "mop.shape.pool", {inputTensors[0].spec, kernel, stride, dilation});
-  } else if (opName == "mop.kernels.range") {
-    Value start = loweringState.lookupExecuteLoweredValue(
-        opBeingLowered->getOperands()[0]);
-    Value limit = loweringState.lookupExecuteLoweredValue(
-        opBeingLowered->getOperands()[1]);
-    Value step = loweringState.lookupExecuteLoweredValue(
-        opBeingLowered->getOperands()[2]);
-    output.spec = getOutputSpec("mop.shape.range", {start, limit, step});
   } else {
     llvm::Twine dynErr = opName + " requires output to have static shape";
     opBeingLowered->emitOpError(dynErr);
