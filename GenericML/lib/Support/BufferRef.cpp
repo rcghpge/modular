@@ -290,7 +290,7 @@ void BufferRef::reset() {
   // Though the underlying buffer has not been freed, stop the profiling
   // entry since we can no longer track its lifetime.
   std::move(profilerEntry).record();
-#if MODULAR_DEBUG
+#if MODULAR_PARANOID
   // Since the lifetime of the underlying buffer can no longer be tracked,
   // we must consider it freed from the pov of any other borrows.
   if (resource) {
