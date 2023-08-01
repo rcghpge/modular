@@ -129,7 +129,10 @@ class ConcatInPlacePass
       // constructing a pre-dominator chain to all the chains which gate
       // writing to the split result buffers. That could be done by
       // DeferAllocsPass
-      allocOutputOp.setInChain(execState.getRootChain());
+      Value blockRootChain =
+          concatOp.getResult().getParentBlock()->getArgument(0);
+      assert(isa<MEF::ChainType>(blockRootChain.getType()));
+      allocOutputOp.setInChain(blockRootChain);
 
       // We are now ready to create the split op.
       // For the moment, place it before the concat it will replace.
@@ -137,7 +140,7 @@ class ConcatInPlacePass
       auto splitOp = execState.builder.create<MGP::CpuBufferSplitBorrowOp>(
           concatOp->getLoc(),
           /*outBuffers=*/bufferTypes,
-          /*inChain=*/execState.getRootChain(),
+          /*inChain=*/blockRootChain,
           /*inBuffer=*/concatOp.getOutBuffer(),
           /*runtimeSizes=*/runtimeSizes,
           /*outBufferRawSizes=*/rawSizes);
