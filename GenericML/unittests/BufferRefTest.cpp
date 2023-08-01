@@ -244,3 +244,24 @@ TEST(BufferRef, MaybeReleaseForeignObject) {
   ASSERT_FALSE(ref);
   ASSERT_EQ(released, &object);
 }
+
+#if MODULAR_PARANOID
+TEST(BufferRef, TransitiveDataRace_ExpectDeath) {
+  auto runtime = getRuntime();
+  auto parent = AsyncValueRef<BufferRef>::createReady(
+      runtime, BufferRef::createOwned(runtime, /*size=*/42, /*alignment=*/{}));
+  auto childA = AsyncValueRef<BufferRef>::createReady(
+      runtime, BufferRef::createSafeBorrowedSlice(parent.copy(), /*offset=*/8,
+                                                  /*size=*/8));
+  auto childB = AsyncValueRef<BufferRef>::createReady(
+      runtime, BufferRef::createSafeBorrowedSlice(parent.copy(), /*offset=*/8,
+                                                  /*size=*/8));
+  SmallVector<LLCL::ResourceUse> childAUses;
+  childA->collectAccessUses(childAUses, "childA", LLCL::kReadingResourceUse);
+  EXPECT_DEATH_IF_SUPPORTED(
+      childB->collectAccessUses(childAUses, "childB",
+                                LLCL::kWritingResourceUse),
+      "attempting to write to \\(section of\\) resource which is also being "
+      "read");
+}
+#endif // MODULAR_PARANOID

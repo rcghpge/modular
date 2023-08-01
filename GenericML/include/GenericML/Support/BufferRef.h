@@ -12,6 +12,7 @@
 #include "LLCL/Runtime/AnyAsyncValueRef.h"
 #include "LLCL/Runtime/CompactRuntimePtr.h"
 #include "LLCL/Support/Profiling.h"
+#include "LLCL/Support/Resource.h"
 #include "Support/ErrorOr.h"
 
 #include "llvm/Support/Alignment.h"
@@ -276,26 +277,61 @@ public:
   void printDebug(raw_ostream &os) const;
   void swap(BufferRef &rhs);
 
+#if MODULAR_PARANOID
+  /// Adds to uses a fresh use capturing that this buffer reference is being
+  /// read, written or mutated. If this buffer reference is itself a borrow
+  /// of some other buffer reference, then uses will be added for the
+  /// transitive read/write/mutate, and so on to closure. All these uses should
+  /// be held for the duration of the kernel which is performing the access,
+  /// but no longer.
+  void collectAccessUses(
+      SmallVectorImpl<LLCL::ResourceUse> &uses, StringRef name,
+      LLCL::ResourceUseType useType,
+      const LLCL::ResourceSection &section = LLCL::allResourceSection()) const;
+#endif
+
 private:
+  /// Constructs a kOwned or kBorrowed reference.
   BufferRef(void *buffer, size_t size, AnyAsyncValueRef owningRef,
             llvm::MaybeAlign alignment, Ownership ownership, Lifetime lifetime,
-            Mutability mutability, LLCL::CompactRuntimePtr runtime)
+            Mutability mutability, LLCL::CompactRuntimePtr runtime,
+            BufferRefLifetimeProfilerEntry profilerEntry
+#if MODULAR_PARANOID
+            ,
+            LLCL::ResourceRef resource, LLCL::ResourceUse use
+#endif
+            )
       : bufferOrObject(buffer), size(size), owningRef(std::move(owningRef)),
         alignment(alignment), ownership(ownership), lifetime(lifetime),
-        mutability(mutability), nativeOrForeign(runtime) {
-    if (ownership == kOwned)
-      profilerEntry =
-          BufferRefLifetimeProfilerEntry::create("mem.buffer.owned", [this]() {
-            return Twine("size:").concat(Twine(this->size)).concat("B").str();
-          });
+        mutability(mutability), nativeOrForeign(runtime),
+        profilerEntry(std::move(profilerEntry))
+#if MODULAR_PARANOID
+        ,
+        resource(std::move(resource)), use(std::move(use))
+#endif
+  {
   }
 
+  /// Constructs a kForeign reference.
   BufferRef(ForeignBufferInterfaceID id, void *object, size_t size,
             AnyAsyncValueRef owningRef, llvm::MaybeAlign alignment,
-            Ownership ownership, Lifetime lifetime, Mutability mutability)
+            Ownership ownership, Lifetime lifetime, Mutability mutability,
+            BufferRefLifetimeProfilerEntry profilerEntry
+#if MODULAR_PARANOID
+            ,
+            LLCL::ResourceRef resource, LLCL::ResourceUse use
+#endif
+            )
       : bufferOrObject(object), size(size), owningRef(std::move(owningRef)),
         alignment(alignment), ownership(ownership), lifetime(lifetime),
-        mutability(mutability), nativeOrForeign(id) {}
+        mutability(mutability), nativeOrForeign(id),
+        profilerEntry(std::move(profilerEntry))
+#if MODULAR_PARANOID
+        ,
+        resource(std::move(resource)), use(std::move(use))
+#endif
+  {
+  }
 
   // Implicit copying is not allowed.
   BufferRef(const BufferRef &rhs) = delete;
@@ -303,14 +339,7 @@ private:
 
   // Reset the reference to the kNull state. However only the ownership,
   // buffer/object, and size fields are reset.
-  void reset() {
-    ownership = kNull;
-    bufferOrObject = nullptr;
-    size = 0;
-    // Though the underlying buffer has not been freed, stop the profiling
-    // entry since we can no longer track its lifetime.
-    std::move(profilerEntry).record();
-  }
+  void reset();
 
   /// If kOwned or kBorrowed, the underlying buffer.
   /// If kForeign, a pointer to the 'foreign' object backing the buffer.
@@ -350,6 +379,15 @@ private:
   NativeOrForeign nativeOrForeign; // 1 byte
 
   BufferRefLifetimeProfilerEntry profilerEntry;
+
+#if MODULAR_PARANOID
+  /// An abstract 'resource' to represent this buffer. May be 'used' by
+  /// borrows from this buffer.
+  LLCL::ResourceRef resource;
+
+  /// If the buffer is kBorrowed, an abstract 'use' of borrowee. Otherwise null.
+  LLCL::ResourceUse use;
+#endif
 };
 
 inline raw_ostream &operator<<(raw_ostream &os, const BufferRef &value) {

@@ -60,22 +60,38 @@ static const char *mutabilityToStr(BufferRef::Mutability mutability) {
 BufferRef BufferRef::createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
                                  std::optional<size_t> alignment,
                                  const void *copyFrom) {
-  void *buffer =
-      size == 0
-          ? (void *)&kDummyTargetOfEmptyBuffer
-          : runtime->getAllocator()->allocateBytes(size, alignment.value_or(1));
-  if (copyFrom) {
-    LLCL::profiledMemcpy(buffer, copyFrom, size);
-  } else {
+  void *buffer;
+  if (size) {
+    buffer =
+        runtime->getAllocator()->allocateBytes(size, alignment.value_or(1));
+    assert(buffer && "allocator returned null");
+    if (copyFrom) {
+      LLCL::profiledMemcpy(buffer, copyFrom, size);
+    } else {
 #if MODULAR_PARANOID
-    // Set the buffer contents to a value which will more obviously
-    // upset tests if used before initialized.
-    if (size)
+      // Set the buffer contents to a value which will more obviously
+      // upset tests if used before initialized.
       memset(buffer, 0xad, size);
 #endif
+    }
+  } else {
+    buffer = (void *)&kDummyTargetOfEmptyBuffer;
   }
+
+  auto profilerEntry =
+      BufferRefLifetimeProfilerEntry::create("mem.buffer.owned", [size]() {
+        return Twine("size:").concat(Twine(size)).concat("B").str();
+      });
+
   return BufferRef(buffer, size, /*owningRef=*/{}, makeMaybeAlign(alignment),
-                   kOwned, kLocal, kMutable, runtime);
+                   kOwned, kLocal, kMutable, runtime, std::move(profilerEntry)
+#if MODULAR_PARANOID
+                                                          ,
+                   /*resource=*/LLCL::Resource::allocate(
+                       Twine("owned(").concat(Twine(size)).concat("B)").str()),
+                   /*use=*/{}
+#endif
+  );
 }
 
 BufferRef BufferRef::createBorrowed(void *buffer, size_t size,
@@ -89,9 +105,17 @@ BufferRef BufferRef::createBorrowed(void *buffer, size_t size,
   void *borrowedBuffer = size == 0 && buffer == nullptr
                              ? (void *)&kDummyTargetOfEmptyBuffer
                              : buffer;
-  return BufferRef(borrowedBuffer, size, std::move(owningRef),
-                   makeMaybeAlign(alignment), kBorrowed, lifetime, kMutable,
-                   /*runtime=*/{});
+  return BufferRef(
+      borrowedBuffer, size, std::move(owningRef), makeMaybeAlign(alignment),
+      kBorrowed, lifetime, kMutable,
+      /*runtime=*/{}, /*profilerEntry=*/{}
+#if MODULAR_PARANOID
+      ,
+      /*resource=*/LLCL::Resource::allocate(
+          Twine("borrowed(").concat(Twine(size)).concat("B)").str()),
+      /*use=*/{}
+#endif
+  );
 }
 
 BufferRef BufferRef::createBorrowed(const void *buffer, size_t size,
@@ -108,9 +132,17 @@ BufferRef BufferRef::createBorrowed(const void *buffer, size_t size,
   // We make up for the const cast on buffer by setting the reference to
   // be immutable. This will assert fail if a mutable buffer pointer is
   // requested.
-  return BufferRef(const_cast<void *>(borrowedBuffer), size,
-                   std::move(owningRef), makeMaybeAlign(alignment), kBorrowed,
-                   lifetime, kImmutable, /*runtime=*/{});
+  return BufferRef(
+      const_cast<void *>(borrowedBuffer), size, std::move(owningRef),
+      makeMaybeAlign(alignment), kBorrowed, lifetime, kImmutable,
+      /*runtime=*/{}, /*profilerEntry=*/{}
+#if MODULAR_PARANOID
+      ,
+      /*resource=*/LLCL::Resource::allocate(
+          Twine("borrowed(").concat(Twine(size)).concat("B)").str()),
+      /*use=*/{}
+#endif
+  );
 }
 
 BufferRef BufferRef::createForeign(ForeignBufferInterfaceID id, void *object,
@@ -124,8 +156,18 @@ BufferRef BufferRef::createForeign(ForeignBufferInterfaceID id, void *object,
                llvm::Align(*alignment),
                ForeignBufferInterfaceRegistry::getBuffer(id, object)) &&
            "buffer is not aligned as per purported alignment");
-  return BufferRef(id, object, size, {} /*std::move(owningRef)*/,
-                   makeMaybeAlign(alignment), kForeign, kLocal, kImmutable);
+
+  return BufferRef(
+      id, object, size, {} /*std::move(owningRef)*/, makeMaybeAlign(alignment),
+      kForeign, kLocal, kImmutable,
+      /*profilerEntry=*/{}
+#if MODULAR_PARANOID
+      ,
+      /*resource=*/LLCL::Resource::allocate(
+          Twine("foreign(").concat(Twine(size)).concat("B)").str()),
+      /*use=*/{}
+#endif
+  );
 }
 
 BufferRef BufferRef::createSafeBorrowedSlice(AsyncValueRef<BufferRef> borrowe,
@@ -133,6 +175,7 @@ BufferRef BufferRef::createSafeBorrowedSlice(AsyncValueRef<BufferRef> borrowe,
   assert(borrowe.isValueAvailable() &&
          "given AsyncValue reference must be ready and not an error");
   BufferRef &borroweBufferRef = borrowe.get();
+  assert(borroweBufferRef && "cannot borrow from null buffer reference");
   assert(offset <= borroweBufferRef.size && "given offset must be in range");
   if (size == std::numeric_limits<size_t>::max())
     size = borroweBufferRef.size - offset;
@@ -144,15 +187,32 @@ BufferRef BufferRef::createSafeBorrowedSlice(AsyncValueRef<BufferRef> borrowe,
   // We can preserve the borrowe's alignment if the offset is compatible with
   // it. Otherwise fall back to unknown alignment.
   std::optional<size_t> alignment = borroweBufferRef.getAlignment();
-  if (alignment && !llvm::isAddrAligned(llvm::Align(*alignment), newBuffer))
+  if (size && alignment &&
+      !llvm::isAddrAligned(llvm::Align(*alignment), newBuffer))
     alignment = std::nullopt;
 
-  return BufferRef(const_cast<void *>(newBuffer), size, std::move(borrowe),
-                   makeMaybeAlign(alignment), kBorrowed, kLocal,
-                   borroweBufferRef.mutability, /*runtime=*/{});
+  return BufferRef(
+      const_cast<void *>(newBuffer), size, std::move(borrowe),
+      makeMaybeAlign(alignment), kBorrowed, kLocal, borroweBufferRef.mutability,
+      /*runtime=*/{}, /*profilerEntry=*/{}
+#if MODULAR_PARANOID
+      ,
+      /*resource=*/LLCL::Resource::allocate(
+          Twine("borrowed(").concat(Twine(size)).concat("B)").str()),
+      /*use=*/
+      borroweBufferRef.resource->beginUse(
+          "slice", LLCL::kReferencingResourceUse,
+          LLCL::ResourceSection(offset, offset + size))
+#endif
+  );
 }
 
 BufferRef::~BufferRef() {
+#if MODULAR_PARANOID
+  // This buffer should have no active uses.
+  if (resource)
+    resource->markFreed();
+#endif
   switch (ownership) {
   case kNull:
     break;
@@ -189,10 +249,21 @@ ErrorOr<BufferRef> BufferRef::borrowOrError(Lifetime borrowLifetime) const {
   if (ownership == kNull)
     return BufferRef();
   if (ownership == kOwned || ownership == kForeign ||
-      lifetime >= borrowLifetime)
-    return BufferRef(const_cast<void *>(getBuffer()), getSize(),
-                     owningRef.copy(), alignment, kBorrowed, borrowLifetime,
-                     mutability, /*runtime=*/{});
+      lifetime >= borrowLifetime) {
+    return BufferRef(
+        const_cast<void *>(getBuffer()), size, owningRef.copy(), alignment,
+        kBorrowed, borrowLifetime, mutability, /*runtime=*/{},
+        /*profilerEntry=*/{}
+#if MODULAR_PARANOID
+        ,
+        /*resource=*/LLCL::Resource::allocate(
+            Twine("borrowed(").concat(Twine(size)).concat("B)").str()),
+        /*use=*/
+        resource->beginUse("borrow", LLCL::kReferencingResourceUse,
+                           LLCL::ResourceSection(0, size))
+#endif
+    );
+  }
   return Error(
       Twine("attempting to create borrowing reference with lifetime ") +
       lifetimeToStr(borrowLifetime) +
@@ -210,6 +281,24 @@ BufferRef BufferRef::deepCopy(LLCL::CompactRuntimePtr newRuntime) const {
   if (ownership == kNull)
     return {};
   return createOwned(newRuntime, getSize(), getAlignment(), getBuffer());
+}
+
+void BufferRef::reset() {
+  ownership = kNull;
+  bufferOrObject = nullptr;
+  size = 0;
+  // Though the underlying buffer has not been freed, stop the profiling
+  // entry since we can no longer track its lifetime.
+  std::move(profilerEntry).record();
+#if MODULAR_DEBUG
+  // Since the lifetime of the underlying buffer can no longer be tracked,
+  // we must consider it freed from the pov of any other borrows.
+  if (resource) {
+    resource->markFreed();
+    resource.reset();
+  }
+  use.reset();
+#endif
 }
 
 void *BufferRef::releaseMutableBufferIfOwned() {
@@ -273,4 +362,31 @@ void BufferRef::swap(BufferRef &rhs) {
   std::swap(mutability, rhs.mutability);
   std::swap(nativeOrForeign, rhs.nativeOrForeign);
   std::swap(profilerEntry, rhs.profilerEntry);
+#if MODULAR_PARANOID
+  std::swap(resource, rhs.resource);
+  std::swap(use, rhs.use);
+#endif
 }
+
+#if MODULAR_PARANOID
+void BufferRef::collectAccessUses(SmallVectorImpl<LLCL::ResourceUse> &uses,
+                                  StringRef name, LLCL::ResourceUseType useType,
+                                  const LLCL::ResourceSection &section) const {
+  if (!resource)
+    return;
+  // We are using this reference.
+  uses.emplace_back(resource->beginUse(name.str(), useType, section));
+  if (owningRef && owningRef.isType<BufferRef>()) {
+    // By transitivity, we are using (a section of) the owningRef's buffer.
+    // Account for any (offset, size), which will have been captured by our
+    // use.
+    const BufferRef &owningBufferRef = owningRef.get<BufferRef>();
+    LLCL::ResourceSection parentSection =
+        LLCL::isAllResourceSection(section)
+            ? use.getSection()
+            : LLCL::ResourceSection(section.start() + use.getSection().start(),
+                                    section.end() + use.getSection().start());
+    owningBufferRef.collectAccessUses(uses, name, useType, parentSection);
+  }
+}
+#endif

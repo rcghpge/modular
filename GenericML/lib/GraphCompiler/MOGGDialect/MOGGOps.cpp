@@ -642,19 +642,22 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // For compiled ops add the context as argument and all the metadata needed to
   // extract a compiled kernel from the context.
   operands.insert(operands.begin(), loweringState.getExecuteMgpContext());
+  opState.addAttribute("jitCtxSlot",
+                       loweringState.getExecuteOpBuilder().getUI32IntegerAttr(
+                           loweringState.getJitCtxSlot()));
   opState.addAttribute(
       "kernelIndex",
       loweringState.getExecuteOpBuilder().getUI32IntegerAttr(id));
   opState.addAttribute("kernelName", op.getKernelNameAttr());
-  opState.addAttribute("jitCtxSlot",
-                       loweringState.getExecuteOpBuilder().getUI32IntegerAttr(
-                           loweringState.getJitCtxSlot()));
 
-  // Tell the primitive how many of the arguments are buffers so it knows when
-  // to stop reading.
+  // Tell the primitive how many of the arguments are buffers, and how many
+  // of those are output buffers, so it knows how to interpret its operands.
   opState.addAttribute(
       "numBufferArgs",
       loweringState.getExecuteOpBuilder().getUI32IntegerAttr(numBuffers));
+  opState.addAttribute(
+      "numOutputBufferArgs",
+      loweringState.getExecuteOpBuilder().getUI32IntegerAttr(numOutputBuffers));
 
   // The operation's execution will be gated by a chain. As for output
   // allocation above, at this stage use the 'execute' block's chain.

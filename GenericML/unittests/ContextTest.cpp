@@ -65,20 +65,23 @@ TEST(ContextTest, getOrCreateBufferTest) {
     ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, /*numBuffers=*/1, 43);
 
     auto &stateSlot = ctx.getStateSlot(/*slotIndex=*/0);
-    auto buffer = stateSlot.getOrCreateBuffer(
-        /*bufferIndex=*/0, runtime, /*size=*/1, /*alignment=*/{});
-    size_t size = buffer.getSize();
-    EXPECT_EQ(buffer.getOwnership(), GML::BufferRef::kBorrowed);
+    {
+      auto buffer = stateSlot.getOrCreateBuffer(
+          /*bufferIndex=*/0, runtime, /*size=*/1, /*alignment=*/{});
+      EXPECT_EQ(buffer.getOwnership(), GML::BufferRef::kBorrowed);
 
-    // getOrCreateBuffer call with the same slot and the same size returns a
-    // cached buffer.
-    auto buffer2 = stateSlot.getOrCreateBuffer(
-        /*bufferIndex=*/0, runtime, /*size=*/1, /*alignment=*/{});
-    EXPECT_EQ(buffer.getBuffer(), buffer2.getBuffer());
+      // getOrCreateBuffer call with the same slot and the same size returns a
+      // cached buffer.
+      auto buffer2 = stateSlot.getOrCreateBuffer(
+          /*bufferIndex=*/0, runtime, /*size=*/1, /*alignment=*/{});
+      EXPECT_EQ(buffer.getBuffer(), buffer2.getBuffer());
+
+      // We're done with the above buffers, so safe to reallocate.
+    }
 
     // Call with a different size will allocate a new buffer.
     auto buffer3 = stateSlot.getOrCreateBuffer(
         /*bufferIndex=*/0, runtime, /*size=*/2, /*alignment=*/{});
-    EXPECT_NE(buffer3.getSize(), size);
+    EXPECT_NE(buffer3.getSize(), 1UL);
   }
 }
