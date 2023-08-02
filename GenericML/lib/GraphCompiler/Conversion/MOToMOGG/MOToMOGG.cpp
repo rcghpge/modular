@@ -194,11 +194,6 @@ struct MOOpPattern : public RewritePattern {
     // Only within the top level graph and not within e.g control flow.
     bool shouldUseJit = useJit && kernel.shouldHaveMojo;
 
-    // Check general op level constraints. Currently only single result ops
-    // are allowed.
-    if (op->getNumResults() > 1)
-      shouldUseJit = false;
-
     StringRef shimTarget = kernel.shim;
 
     auto isDTypeAllowed = [&](Type t) {
@@ -357,7 +352,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_MOJO_ONLY(MO::SigmoidOp),
       MO_TO_MOJO_VIEW(MO::SliceOp),
       MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::SoftmaxOp),
-      MO_SHIM_ONLY(MO::SplitOp, "mop.kernels.split"),
+      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::SplitOp),
       MO_MOJO_ONLY(MO::SqrtOp),
       MO_MOJO_ONLY(MO::SubOp),
       MO_MOJO_ONLY(MO::TanhOp),
