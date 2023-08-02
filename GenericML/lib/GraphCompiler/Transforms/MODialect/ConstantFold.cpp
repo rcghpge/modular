@@ -253,19 +253,7 @@ SmallVector<Subgraph> ConstantSubgraphs(MO::GraphOp graph) {
     llvm::SetVector<Value> members(const_subgraphs.member_begin(it),
                                    const_subgraphs.member_end());
 
-    llvm::SetVector<Value> outputs;
-    for (auto m : members) {
-      for (auto user : m.getUsers()) {
-        if (user->getNumResults() == 0 ||
-            const_subgraphs.findValue(user->getResult(0)) ==
-                const_subgraphs.end()) {
-          // If any user is not const, then this is an output.
-          outputs.insert(m);
-          break;
-        }
-      }
-    }
-    subgraphs.push_back(Subgraph(members, outputs));
+    subgraphs.push_back(Subgraph(members));
   }
 
   return subgraphs;
@@ -310,11 +298,90 @@ struct ModelsWithBuffer {
   std::unique_ptr<llvm::MemoryBuffer> buffer;
 };
 
+// Interface for controlling whether or not a subgraph is constant folded.
+struct ConstantFoldPolicy {
+  // Determines which subgraphs should be constant folded. Must return the
+  // passed in subgraphs or subsets of each of them. Inputs subgraphs not
+  // included in the output will not be constant folded at all. I.e. only the
+  // returned subgraphs will be constant folded.
+  virtual SmallVector<Subgraph>
+  shouldFold(SmallVector<Subgraph> subgraphs) const = 0;
+  virtual ~ConstantFoldPolicy(){};
+};
+
+// Fold the largest subgraph that does not increase memory used by more than a
+// factor of the space used by the non-folded subgraph.
+struct FactorMemIncrease : public ConstantFoldPolicy {
+  FactorMemIncrease(double factor) : factor(factor) {}
+
+  // A factor of 1 indicates no increase, a factor of 2 indicates 100% more
+  // memory usage max.
+  double factor;
+
+  SmallVector<Subgraph>
+  shouldFold(SmallVector<Subgraph> subgraphs) const override {
+    SmallVector<Subgraph> foldThese;
+    for (auto &subgraph : subgraphs) {
+      int64_t initialMem = constantMemUsage(subgraph);
+      // Greedily remove outputs with the largest size. Might be a smarter way
+      // to do this.
+      while (!subgraph.vals.empty() &&
+             outputMemUsage(subgraph) > initialMem * factor) {
+        // TODO: this is N^2, we should improve it #18475
+        Value maxValue = *std::max_element(
+            subgraph.outputs.begin(), subgraph.outputs.end(),
+            [](Value a, Value b) { return valueSize(a) < valueSize(b); });
+        // TODO: this is N^2, we should improve it #18475
+        subgraph.remove(maxValue);
+      }
+      if (!llvm::all_of(subgraph.outputs,
+                        [](Value v) { return v.getDefiningOp<ConstantOp>(); }))
+        foldThese.push_back(subgraph);
+    }
+    return foldThese;
+  }
+  ~FactorMemIncrease() override {}
+
+  // Size of Value in bytes.
+  static int64_t valueSize(Value v) {
+    auto tensor = dyn_cast<TensorType>(v.getType());
+    return typeToShaped(tensor).getNumElements() *
+           tensor.getDtype().getSizeInBytes();
+  }
+
+  // Size of ConstantOp data in bytes.
+  static int64_t valueSize(ConstantOp op) { return valueSize(op.getResult()); }
+
+  // Calculate the size in bytes of memory used by the outputs of a subgraph.
+  static int64_t outputMemUsage(Subgraph subgraph) {
+    int64_t outputSize = 0;
+    for (auto output : subgraph.outputs)
+      outputSize += valueSize(output);
+    return outputSize;
+  }
+
+  // Calculate the size in bytes of memory used by all constant ops in the
+  // subgraph.
+  static int64_t constantMemUsage(Subgraph subgraph) {
+    int64_t internalSize = 0;
+    for (auto value : subgraph.vals) {
+      if (!subgraph.outputs.contains(value)) {
+        auto constant = value.getDefiningOp<ConstantOp>();
+        if (constant)
+          internalSize += valueSize(constant);
+      }
+    }
+    return internalSize;
+  }
+};
+
 struct ConstantFoldPass
     : public M::MO::impl::ConstantFoldBase<ConstantFoldPass> {
   using ConstantFoldBase::ConstantFoldBase;
 
   void runOnOperation() override;
+
+  ConstantFoldPass() : ConstantFoldBase(), policy(new FactorMemIncrease(2)) {}
 
 private:
   // Lower a ModuleOp all the way to MGP, export it as MEF, then load it
@@ -322,6 +389,8 @@ private:
   // live as long as they do. This needs to be a member of the pass so it
   // can access runPipeline.
   ErrorOr<ModelsWithBuffer> lowerSubgraphs(ModuleOp module);
+
+  std::shared_ptr<const ConstantFoldPolicy> policy;
 };
 
 ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
@@ -389,6 +458,7 @@ void ConstantFoldPass::runOnOperation() {
   int64_t name_counter = 0;
   getOperation().walk([&](GraphOp graph) {
     auto subgraphs = ConstantSubgraphs(graph);
+    subgraphs = policy->shouldFold(subgraphs);
     for (auto subgraph : subgraphs) {
       builder.setInsertionPointToEnd(module.getBody());
       subgraphReplacements.push_back(

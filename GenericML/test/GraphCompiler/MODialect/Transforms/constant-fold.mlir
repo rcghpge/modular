@@ -1,6 +1,8 @@
 // RUN: mo-opt %s --constant-fold --mlir-print-ir-after=mo-to-mogg --allow-unregistered-dialect 2>&1 | FileCheck %s
 
-// These are checks to make sure that the constant subgraphs are lowered instead of being connonicalized.
+// These are checks to make sure that the constant subgraphs are lowered
+// instead of being connonicalized. We inspect the mlir code after mo-to-mogg
+// to make sure that the kernels exist.
 // CHECK: IR Dump After MOToMOGG
 // CHECK-NEXT: module
 // CHECK-NEXT: all_const
@@ -17,8 +19,8 @@
 // CHECK: nested_region
 // CHECK: mo.mul
 
-// CHECK: large_broadcast
-// CHECK: mo.static.broadcast_to
+// No kernel for large_broadcast because it is not constant folded.
+// CHECK-NOT: large_broadcast
 
 // ensure we hit the end of mo-to-mogg ir printing
 // CHECK: module
@@ -102,7 +104,9 @@ mo.graph @nested_region(%g1 : !mo.tensor<[], bool>) -> (!mo.tensor<[2], si32>) {
 
 // CHECK: large_broadcast
 mo.graph @large_broadcast() -> (!mo.tensor<[1024], si8>) {
-  // CHECK-NEXT: %{{.*}} = mo.constant {value = dense_resource<[[large_broadcast_subgraph:.*]]> : !M.array<1024xsi8>
+  // CHECK-NEXT: %{{.*}} = mo.constant {value = #M.dense_array<1024>
+  // CHECK-NEXT: %{{.*}} = mo.constant {value = #M.dense_array<1>
+  // CHECK-NEXT: mo.broadcast
   // CHECK-NEXT: mo.output
   %shape = mo.constant {value = #M.dense_array<1024> : tensor<1xsi32>} :
 			!mo.tensor<[1], si32>
@@ -112,6 +116,3 @@ mo.graph @large_broadcast() -> (!mo.tensor<[1024], si8>) {
      (!mo.tensor<[1], si8>, !mo.tensor<[1], si32>) -> !mo.tensor<[1024], si8>
   mo.output %broadcast : !mo.tensor<[1024], si8>
 }
-
-// CHECK: dialect_resources
-// CHECK: [[large_broadcast_subgraph]]: "0x0100000001010

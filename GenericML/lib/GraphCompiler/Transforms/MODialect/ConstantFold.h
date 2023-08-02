@@ -14,9 +14,31 @@
 namespace M::MO {
 struct Subgraph {
   llvm::SetVector<Value> vals;
+  // Outputs are Value in the constant subgraph that have uses outside of the
+  // subgraph. Outputs may depend on other outputs.
   llvm::SetVector<Value> outputs;
-  Subgraph(llvm::SetVector<Value> vals, llvm::SetVector<Value> outputs)
-      : vals(vals), outputs(outputs) {}
+  Subgraph(llvm::SetVector<Value> vals) : vals(vals) { findOutputs(); }
+
+  void remove(Value v) {
+    vals.remove(v);
+    outputs.clear();
+    findOutputs();
+  }
+
+private:
+  // Set outputs to those Values in vals which have uses outside the subgraph.
+  void findOutputs() {
+    for (auto v : vals) {
+      for (auto user : v.getUsers()) {
+        // If one result is not in the constant subgraph, then they are all not.
+        if (user->getNumResults() == 0 || !vals.contains(user->getResult(0))) {
+          // If any user is not const, then this is an output.
+          outputs.insert(v);
+          break;
+        }
+      }
+    }
+  }
 };
 SmallVector<Subgraph> ConstantSubgraphs(MO::GraphOp graph);
 
