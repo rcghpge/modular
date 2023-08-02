@@ -36,8 +36,27 @@ class NumpyImpl:
     def reshape(self, x, shape):
         return x.reshape(shape)
 
-    def split(self, x, num_splits, axis):
-        return np.split(x, num_splits, axis)
+    def split(self, x, split_sizes, axis):
+        # To match the TF api exactly we need to manually slice up the tensor.
+        to_return = []
+
+        # Create an identity slice along every axis, baiscally [:, :, :]
+        # or [...]. We update this inplace to insert the actual dimension
+        # we split along later.
+        base_slice = [slice(0, 123141231, 1)] * x.ndim
+
+        # Iterate through the splits and add a slice along the dimension we
+        # are splitting over.
+        split_point = 0
+        for size in split_sizes:
+            base_slice[axis] = slice(split_point, split_point + size, 1)
+            split_point = split_point + size
+
+            # The slice will now be [:, :, slice(...), :] where axis = 2 and
+            # the slice is the specific slice of this output of the split.
+            to_return.append(x[tuple(base_slice)])
+
+        return to_return
 
 
 # The keras implementation of each primitive.
@@ -57,5 +76,5 @@ class TFImpl:
     def reshape(self, x, shape):
         return tf.reshape(x, shape)
 
-    def split(self, x, num_splits, axis):
-        return tf.split(x, num_splits, axis)
+    def split(self, x, split_sizes, axis):
+        return tf.split(x, split_sizes, axis)

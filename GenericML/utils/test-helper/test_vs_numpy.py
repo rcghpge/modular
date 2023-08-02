@@ -101,7 +101,12 @@ def test_vs_numpy(testCase, file_to_run):
 
     lines = out.stdout.splitlines()
 
-    output_index = 0
+    # The run index
+    output_index = -1
+
+    # The subtensor within that run for multiple outputs.
+    tensor_within_output = 0
+
     # Iterate over all outputs.
     for line in out.stdout.splitlines()[1:]:
         if len(line) == 0:
@@ -109,12 +114,31 @@ def test_vs_numpy(testCase, file_to_run):
 
         line_as_str = str(line)
 
+        # The first line of a multi input return will contain
+        # `serving_default' returned`. We use this to signal that we are
+        # reading the next input rather than an input within the same return.
+        if line_as_str.startswith("b\"'serving_default' returned"):
+            tensor_within_output = 0
+            output_index += 1
+        else:
+            tensor_within_output += 1
+
         x = re.findall(r"tensor<(\d+(?:x\d+)*)", line_as_str)
 
-        # Check we returned the same number of tensors as the golden value returned.
-        assert len(x) == 1
+        if len(x) != 1:
+            continue
 
         val_to_compare = golden_value[output_index]
+
+        # For multiple return cases.
+        if isinstance(val_to_compare, list):
+            if tensor_within_output >= len(val_to_compare):
+                print(
+                    "MO returned more tensors than numpy expected for output"
+                    f" {output_index}"
+                )
+                exit(0)
+            val_to_compare = val_to_compare[tensor_within_output]
 
         # Check the dimensions match.
         for tensor in x:
@@ -146,8 +170,6 @@ def test_vs_numpy(testCase, file_to_run):
         if not testCase.compare_results(mo_out, val_to_compare):
             print(f"Output at {output_index} does not match!")
             exit(0)
-
-        output_index += 1
 
     print("All MO values match numpy")
 

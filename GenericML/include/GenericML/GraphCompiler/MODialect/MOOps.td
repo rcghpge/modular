@@ -1760,7 +1760,7 @@ def MO_SplitOp : MO_TensorOp<"split", [
 
   let arguments = (ins
     MO_Tensor:$input,
-    MO_ShapeLikeIfRanked:$splitSizes,
+    MO_IndicesVectorIfRanked:$splitSizes,
     MO_RankedScalarIndexTensor:$axis,
     MO_ParamDecls:$outputParamDecls);
   let results = (outs Variadic<MO_Tensor>:$results);

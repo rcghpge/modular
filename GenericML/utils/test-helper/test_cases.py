@@ -128,11 +128,75 @@ class Range(TestBase):
     @staticmethod
     def run(inputs, impl):
         # Until `mt` supports the input type we have to slice them out #18187.
-        start, stop, step = impl.split(inputs[0], 3, 0)
+        start, stop, step = impl.split(inputs[0], [1, 1, 1], 0)
         start = impl.reshape(start, shape=())
         stop = impl.reshape(stop, shape=())
         step = impl.reshape(step, shape=())
         return impl.range(start, stop, step)
+
+
+class Split(TestBase):
+    @staticmethod
+    def compare_results(ours, theirs):
+        return np.array_equal(ours, theirs)
+
+    @staticmethod
+    def num_runs():
+        return 300
+
+    @staticmethod
+    def input_sizes_to_test():
+        return [([20, 12, 12], [6], [1])]
+
+    @staticmethod
+    def get_input_specs():
+        return [
+            ((None, None, None), np.int32),
+            ((6,), np.int32),
+            ((1,), np.int32),
+        ]
+
+    @staticmethod
+    def generate_inputs(shapes):
+        start = np.random.randint(-128, 128, size=shapes[0]).astype(np.int32)
+        axis = np.random.randint(-start.ndim, start.ndim - 1, size=(1,)).astype(
+            np.int32
+        )
+
+        dim_splitting_along = start.shape[axis[0]]
+        split_sizes = []
+        splits_left_to_make = shapes[1][0]
+
+        # Create the vector representing the size along each dimension to split
+        # ensuring we are splitting to at least 1 at each point.
+        for i in range(shapes[1][0] - 1):
+            assert dim_splitting_along > 0
+            assert dim_splitting_along > splits_left_to_make
+            assert splits_left_to_make > 0
+
+            split_size = np.random.randint(
+                1, dim_splitting_along - splits_left_to_make
+            )
+            split_sizes.append(split_size)
+
+            dim_splitting_along -= split_size
+            splits_left_to_make -= 1
+
+        # Last dim is however many are left
+        split_sizes.append(dim_splitting_along)
+
+        # If the first number is big we might end up with all ones so shuffle
+        # a bit so it's not always the first one.
+        np.random.shuffle(split_sizes)
+
+        split_sizes = np.array(split_sizes).astype(np.int32)
+
+        return [start, split_sizes, axis]
+
+    @staticmethod
+    def run(inputs, impl):
+        axis = impl.reshape(inputs[2], shape=())
+        return impl.split(inputs[0], inputs[1], axis)
 
 
 def get_test_case(target_name):

@@ -1046,22 +1046,10 @@ LogicalResult SplitOp::verify() {
 
 LogicalResult SplitOp::fold(FoldAdaptor adaptor,
                             SmallVectorImpl<OpFoldResult> &results) {
-  // If it is a single value 1D tensor then it is trivially foldable as it can
-  // only be an identity. (note scalars are not legal inputs).
-  TensorType inType = getInput().getType();
-  if (inType.hasRank() && inType.getRank() == 1 && inType.getIntDim(0) == 1) {
+  // If the split is splitting into one tensor then it is identity.
+  if (getNumResults() == 1) {
     results.push_back(getInput());
     return success();
-  }
-
-  // If the split is splitting into one tensor then it is identity.
-  auto splits = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getSplitSizes());
-  if (splits) {
-    auto asArr = splits.asArrayRef<int64_t>();
-    if (asArr.size() == 1 && asArr[0] == 1) {
-      results.push_back(getInput());
-      return success();
-    }
   }
 
   return failure();

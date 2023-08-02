@@ -213,7 +213,7 @@ mo.graph @split_non_int_axis(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2],
 
 mo.graph @split_non_shapelike_splits(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2], f32>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>) {
   %ax = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
-  // expected-error @below {{'mo.split' op operand #1 must be rank 1 or unranked with signed 64 integer elements, but got '!mo.tensor<[2], f32>'}}
+  // expected-error @below {{'mo.split' op operand #1 must be rank 1 or unranked with integer or index elements, but got '!mo.tensor<[2], f32>}}
   %0, %1 = mo.split[%ax: !mo.tensor<[], si32>](%arg0, %arg1) : (!mo.tensor<[7], f32>, !mo.tensor<[2], f32>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>)
   mo.output %0, %1 : !mo.tensor<[?], f32>, !mo.tensor<[?], f32>
 }
