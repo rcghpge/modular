@@ -72,6 +72,39 @@ void ForwardsRelationDataflowAnalysis::flowConditionedLoop(
   LLVM_DEBUG(llvm::dbgs() << "flowConditionedLoop end\n");
 }
 
+void ForwardsRelationDataflowAnalysis::flowApproximateConditionedLoop(
+    GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
+    const FlowOp &flowOp) {
+  LLVM_DEBUG(llvm::dbgs() << "flowApproximateConditionedLoop begin\n");
+  assert(cfOp->getNumRegions() == 2);
+
+  // Flow the cond and body sub-blocks in 'parallel'.
+  LLVM_DEBUG(llvm::dbgs() << "flow sub-blocks\n");
+  for (Region &region : cfOp->getRegions()) {
+    Block *subBlock = &region.front();
+    flowBlock(subBlock, domainMap, flowOp);
+  }
+
+  // Flow from combination of the outputs of cond and body sub-blocks bock
+  // around to the cond and body sub-block arguments, but combine with existing
+  // args.
+  LLVM_DEBUG(llvm::dbgs() << "set sub-block args\n");
+  for (size_t i = 0, n = cfOp->getNumResults(); i < n; ++i) {
+    Set lubSet = domainMap.bottom;
+    for (Region &region : cfOp->getRegions()) {
+      Block *subBlock = &region.front();
+      Value output = subBlock->getTerminator()->getOperand(i);
+      domainMap.leastUpperBound(lubSet, getEntriesAndId(domainMap, output));
+    }
+    for (Region &region : cfOp->getRegions()) {
+      Block *subBlock = &region.front();
+      Value arg = subBlock->getArgument(i);
+      leastUpperBoundEntries(domainMap, arg, lubSet);
+    }
+  }
+  LLVM_DEBUG(llvm::dbgs() << "flowApproximateConditionedLoop end\n");
+}
+
 std::pair<ForwardsRelationDataflowAnalysis::Set,
           ForwardsRelationDataflowAnalysis::Set>
 ForwardsRelationDataflowAnalysis::splitByScope(const Set &set, Block *block) {
@@ -200,10 +233,30 @@ void ForwardsRelationDataflowAnalysis::flowControlFlow(
   switch (cfOp.getFlavor()) {
   case GRT::kLoopLike: {
     LLVM_DEBUG(llvm::dbgs() << "fixed point setup...\n");
-    // Flow from control flow inputs to args of first sub-block.
+    // For 1-subregion loops we assume all traces are of the form:
+    //  loop_body*
+    //
+    // For 2-subregion loops without approximateLoops false we assume
+    // all traces are of the form:
+    //  loop_cond (loop_body loop_cond)*
+    //
+    // Finally, if approximateLoops is true we use the much more approximate
+    // trace form of:
+    //  (loop_cond|loop_body)*
+    //
+    // In all cases we tie the knot using the first sub-block's arguments.
+
+    // Flow from control flow inputs to args of first sub-block. For 2-subregion
+    // kLoop control flow ops also flow to inputs of second sub-block since we
+    // will be running them 'in parallel'.
     for (auto [input, arg] :
          llvm::zip(cfOp.getInputs(), cfOp->getRegions().front().getArguments()))
       setEntries(domainMap, arg, getEntriesAndId(domainMap, input));
+    if (cfOp->getNumRegions() == 2 && domainMap.approximateLoops) {
+      for (auto [input, arg] : llvm::zip(
+               cfOp.getInputs(), cfOp->getRegions().back().getArguments()))
+        setEntries(domainMap, arg, getEntries(domainMap, input));
+    }
 
     // Until fixed point...
     bool outerChanged = domainMap.changed;
@@ -214,6 +267,10 @@ void ForwardsRelationDataflowAnalysis::flowControlFlow(
       if (cfOp->getNumRegions() == 1) {
         // The sub-block may be executed again.
         flowSimpleLoop(cfOp, domainMap, flowOp);
+      } else if (domainMap.approximateLoops) {
+        // In approximation mode, pretend either sub-block can be executed,
+        // ie much like a kBronch.
+        flowApproximateConditionedLoop(cfOp, domainMap, flowOp);
       } else {
         // The second sub-block then first-sub block may be executed again.
         flowConditionedLoop(cfOp, domainMap, flowOp);
@@ -225,6 +282,8 @@ void ForwardsRelationDataflowAnalysis::flowControlFlow(
     domainMap.changed = outerChanged;
 
     // Flow from args of last sub-block to control flow outputs.
+    // For 2-subregion loops with approximateLoops true both the cond and
+    // body blocks will have the same outputs, so this is still correct.
     LLVM_DEBUG(llvm::dbgs() << "set control flow results\n");
     for (auto [arg, result] : llvm::zip(
              cfOp->getRegions().back().getArguments(), cfOp->getResults()))
@@ -346,6 +405,38 @@ void BackwardsRelationDataflowAnalysis::flowConditionedLoop(
   LLVM_DEBUG(llvm::dbgs() << "flowConditionedLoop end\n");
 }
 
+void BackwardsRelationDataflowAnalysis::flowApproximateConditionedLoop(
+    GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
+    const FlowOp &flowOp) {
+  LLVM_DEBUG(llvm::dbgs() << "flowApproximateConditionedLoop begin\n");
+  assert(cfOp->getNumRegions() == 2);
+
+  // Flow the cond and body sub-blocks in 'parallel'.
+  LLVM_DEBUG(llvm::dbgs() << "flow sub-blocks\n");
+  for (Region &region : cfOp->getRegions()) {
+    Block *subBlock = &region.front();
+    flowBlock(subBlock, domainMap, flowOp);
+  }
+
+  // Flow from combination of the cond and body sub-block arguments back around
+  // to the cond and body sub-block outputs, but combine with existing args.
+  LLVM_DEBUG(llvm::dbgs() << "set sub-block outputs\n");
+  for (size_t i = 0, n = cfOp.getInputs().size(); i < n; ++i) {
+    Set lubSet = domainMap.bottom;
+    for (Region &region : cfOp->getRegions()) {
+      Block *subBlock = &region.front();
+      domainMap.leastUpperBound(
+          lubSet, operandCombination(domainMap, subBlock->getArgument(i)));
+    }
+    for (Region &region : cfOp->getRegions()) {
+      Block *subBlock = &region.front();
+      OpOperand &output = subBlock->getTerminator()->getOpOperand(i);
+      leastUpperBoundEntries(domainMap, &output, lubSet);
+    }
+  }
+  LLVM_DEBUG(llvm::dbgs() << "flowApproximateConditionedLoop end\n");
+}
+
 std::pair<BackwardsRelationDataflowAnalysis::Set,
           BackwardsRelationDataflowAnalysis::Set>
 BackwardsRelationDataflowAnalysis::splitByScope(const Set &set, Block *block) {
@@ -413,7 +504,9 @@ void BackwardsRelationDataflowAnalysis::flowControlFlow(
   switch (cfOp.getFlavor()) {
   case GRT::kLoopLike: {
     LLVM_DEBUG(llvm::dbgs() << "fixed point setup...\n");
-    // Flow from control flow op results to outputs of first sub-block.
+    // Flow from control flow op results to outputs of first sub-block. For
+    // 2-subregion kLoop control flow ops also flow to outputs of second
+    // sub-block since we will be running them 'in parallel'.
     for (const auto &[result, output] :
          llvm::zip(cfOp->getResults(), cfOp->getRegions()
                                            .front()
@@ -421,6 +514,15 @@ void BackwardsRelationDataflowAnalysis::flowControlFlow(
                                            .getTerminator()
                                            ->getOpOperands()))
       setEntries(domainMap, &output, operandCombination(domainMap, result));
+    if (cfOp->getNumRegions() == 2 && domainMap.approximateLoops) {
+      for (const auto &[result, output] :
+           llvm::zip(cfOp->getResults(), cfOp->getRegions()
+                                             .back()
+                                             .front()
+                                             .getTerminator()
+                                             ->getOpOperands()))
+        setEntries(domainMap, &output, operandCombination(domainMap, result));
+    }
 
     // Until fixed point...
     bool outerChanged = domainMap.changed;
@@ -431,6 +533,10 @@ void BackwardsRelationDataflowAnalysis::flowControlFlow(
       if (cfOp->getNumRegions() == 1) {
         // The sub-block may be executed again.
         flowSimpleLoop(cfOp, domainMap, flowOp);
+      } else if (domainMap.approximateLoops) {
+        // In approximation mode, pretend either sub-block can be executed,
+        // ie much like a kBronch.
+        flowApproximateConditionedLoop(cfOp, domainMap, flowOp);
       } else {
         // The second sub-block then first-sub block may be executed again.
         flowConditionedLoop(cfOp, domainMap, flowOp);
@@ -442,6 +548,8 @@ void BackwardsRelationDataflowAnalysis::flowControlFlow(
     domainMap.changed = outerChanged;
 
     // Flow from args of first sub-block back to control flow op inputs.
+    // For 2-subregion loops with approximateLoops true both the cond and
+    // body blocks will have the same args, so this is still correct.
     LLVM_DEBUG(llvm::dbgs() << "set control flow inputs\n");
     for (const auto &[arg, input] :
          llvm::zip(cfOp->getRegions().front().getArguments(),

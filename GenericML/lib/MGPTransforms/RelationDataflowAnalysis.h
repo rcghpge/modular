@@ -107,13 +107,32 @@ public:
     /// bound at runtime.
     bool handleDisjointBranches;
 
+    /// If true, interpret 2-subregion kLoop control flow ops as if all
+    /// execution traces are of the form:
+    ///   (cond_block | body_block)*
+    /// This interpretation is useful when the results of the analysis may
+    /// cause the type of a loop input, result, sub-block argument or sub-block
+    /// result to change. In that case the change can only be made in one place
+    /// if it can also be made in all other places, otherwise the resulting
+    /// loop would be ill-formed.
+    ///
+    /// Otherwise, interpret 2-subregion kLoop control flom ops as if all
+    /// execution traces are of the form:
+    ///   cond_block (body_block cond_block)*
+    /// This interpretation is more precise than the above, but does not
+    /// guarantee all control flow op input, result, sub-block argument and
+    /// sub-block results have the same domain entry.
+    bool approximateLoops;
+
     /// Set to true whenever relation is changed.
     bool changed = false;
 
     DomainMap(Relation &relation, SetOrientation orientation, Set &&emptySet,
-              Set &&fullSet, bool handleDisjointBranches = false)
+              Set &&fullSet, bool handleDisjointBranches = false,
+              bool approximateLoops = false)
         : relation(relation), orientation(orientation),
-          handleDisjointBranches(handleDisjointBranches) {
+          handleDisjointBranches(handleDisjointBranches),
+          approximateLoops(approximateLoops) {
       switch (orientation) {
       case kLubIsUnion:
         bottom = std::move(emptySet);
@@ -390,6 +409,13 @@ public:
   void flowConditionedLoop(GRT::GRTControlFlowInterface cfOp,
                            DomainMap &domainMap, const FlowOp &flowOp);
 
+  /// Grows domainMap for executing the condition OR body sub-block of cfOp,
+  /// which must have two sub-blocks. Sets changed to true if domainMap was
+  /// changed.
+  void flowApproximateConditionedLoop(GRT::GRTControlFlowInterface cfOp,
+                                      DomainMap &domainMap,
+                                      const FlowOp &flowOp);
+
   /// Returns partition of set as (within, without) such that %x in within
   /// iff %x is bound by an op in block or one of its sub-blocks.
   std::pair<Set, Set> splitByScope(const Set &set, Block *block);
@@ -440,6 +466,13 @@ public:
   /// changed.
   void flowConditionedLoop(GRT::GRTControlFlowInterface cfOp,
                            DomainMap &domainMap, const FlowOp &flowOp);
+
+  /// Grows domainMap for executing the condition OR body sub-block of cfOp,
+  /// which must have two sub-blocks. Sets changed to true if domainMap was
+  /// changed.
+  void flowApproximateConditionedLoop(GRT::GRTControlFlowInterface cfOp,
+                                      DomainMap &domainMap,
+                                      const FlowOp &flowOp);
 
   /// Returns partition of set as (within, without) such that operand using %x
   /// is in within iff %x is bound by an op in block or one of its sub-blocks.

@@ -63,6 +63,23 @@
 // CHECK-NEXT:  %3#2 |-> {%2, %arg5[2], %arg5[3]}
 // CHECK-NEXT: maybeSameAs end
 
+// approximateMaybeSameAs == maybeSameAs
+// CHECK: approximateMaybeSameAs begin
+// CHECK-NEXT:  %arg0 |-> {%0[0]}
+// CHECK-NEXT:  %arg1 |-> {%1[0]}
+// CHECK-NEXT:  %arg2[2] |-> {%0[0], %arg0}
+// CHECK-NEXT:  %arg3[2] |-> {%1}
+// CHECK-NEXT:  %arg4[2] |-> {%2}
+// CHECK-NEXT:  %arg5[2] |-> {%2}
+// CHECK-NEXT:  %arg2[3] |-> {%0[0], %arg0}
+// CHECK-NEXT:  %arg3[3] |-> {%1}
+// CHECK-NEXT:  %arg4[3] |-> {%2}
+// CHECK-NEXT:  %arg5[3] |-> {%2}
+// CHECK-NEXT:  %3#0 |-> {%1, %5[2], %arg3[3]}
+// CHECK-NEXT:  %3#1 |-> {%6[2], %5[3]}
+// CHECK-NEXT:  %3#2 |-> {%2, %arg5[2], %arg5[3]}
+// CHECK-NEXT: approximateMaybeSameAs end
+
 // CHECK: isAlwaysReady({%0[0], %arg0, %arg2[2], %arg2[3]})
 
 // impliesReady is actually 'implies ready or never bound', so

@@ -21,10 +21,18 @@
 // CHECK-NEXT:  "mef.output"(%arg0, %3) : (!mef.chain, !mgp.cpu.tensor<f32>) -> ()
 // CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "repeat1"} : () -> ()
 
+// Note the repeat input, result, sub-block arg and sub-block output are all
+// in the same equivalence class.
 // CHECK: maybeSameAs begin
 // CHECK: %arg2[2] |-> {%1, %4[2]}
 // CHECK: %2 |-> {%1, %arg2[2], %4[2]}
 // CHECK: maybeSameAs end
+
+// approximateMaybeSameAs == maybeSameAs
+// CHECK: approximateMaybeSameAs begin
+// CHECK: %arg2[2] |-> {%1, %4[2]}
+// CHECK: %2 |-> {%1, %arg2[2], %4[2]}
+// CHECK: approximateMaybeSameAs end
 
 mgp.model @repeat1 : tf init {
   %0 = grt.chain.create ()
@@ -169,6 +177,17 @@ mgp.model @repeat3 : tf init {
 // CHECK: %2#2 |-> {%5[2], %arg4[3]}
 // CHECK: %2#3 |-> {%1, %arg5[2], %arg5[3]}
 // CHECK: maybeSameAs end
+
+// Unlike for maybeSameAs, the while loop input, result, sub-block args and
+// sub-block outputs are all in the same equivalence class. Use the equivalence
+// class form instead of the 'raw' relation since easier to see the
+// desired condition holds.
+// CHECK: approximateMaybeSameAsEquivalence begin
+// CHECK-NEXT: {%0[0], %arg0, %arg2[2], %arg2[3], %2#0}
+// CHECK-NEXT: {%1[0], %arg1}
+// CHECK-NEXT: {%0, %arg3[2], %4[2], %arg3[3], %2#1}
+// CHECK-NEXT: {%1, %arg4[2], %arg5[2], %5[2], %arg4[3], %arg5[3], %4[3], %2#2, %2#3}
+// CHECK-NEXT: approximateMaybeSameAsEquivalence end
 
 // CHECK: impliesReady begin
 // CHECK: %4[3] |-> {%0[0], %arg0, %1, %arg4[2], %5[2], %arg4[3]}
@@ -383,6 +402,15 @@ mgp.model @shift : tf init {
 // CHECK: %10#2 |-> {%arg4[2], %arg4[3]}
 // CHECK: %10#3 |-> {%9, %arg5[2], %arg5[3]}
 // CHECK: sameAs end
+
+// The while loop inputs, result, sub-block args and sub-block outputs
+// are all in the same equivalence class.
+// CHECK: approximateMaybeSameAsEquivalence begin
+// CHECK:  {%0[0], %arg0, %arg2[2], %arg2[3], %10#0}
+// CHECK:  {%2, %arg3[2], %arg3[3], %23[3], %10#1}
+// CHECK:  {%6, %arg4[2], %arg4[3], %18[3], %10#2}
+// CHECK:  {%9, %arg5[2], %arg5[3], %10#3}
+// CHECK: approximateMaybeSameAsEquivalence end
 
 // CHECK: impliesReady begin
 // CHECK: %9 |-> {%0[0], %arg0, %5, %7, %8}

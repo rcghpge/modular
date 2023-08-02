@@ -30,9 +30,11 @@ AsyncDataflowDependencies::AsyncDataflowDependencies(
     : valueAnalysis(valueIndex), operationAnalysis(operationIndex),
       sameAsEquivalence(valueIndex->identityEquivalence()),
       maybeSameAsEquivalence(valueIndex->identityEquivalence()),
+      approximateMaybeSameAsEquivalence(valueIndex->identityEquivalence()),
       alwaysReadyPredicate(valueIndex->emptySet()) {
   setupSameAs();
   setupMaybeSameAs();
+  setupApproximateMaybeSameAs();
   setupAlwaysReady();
   setupImpliesReady();
   if (analysisLevel >= kDisjoint) {
@@ -55,6 +57,18 @@ bool AsyncDataflowDependencies::maybeSameAs(Value lhs, Value rhs) const {
 AsyncDataflowDependencies::ValueSet
 AsyncDataflowDependencies::maybeSameAsSet(Value lhs) const {
   return valueAnalysis.index->getEquivalenceClass(maybeSameAsEquivalence, lhs);
+}
+
+bool AsyncDataflowDependencies::approximateMaybeSameAs(Value lhs,
+                                                       Value rhs) const {
+  return valueAnalysis.index->areEquivalent(approximateMaybeSameAsEquivalence,
+                                            lhs, rhs);
+}
+
+AsyncDataflowDependencies::ValueSet
+AsyncDataflowDependencies::approximateMaybeSameAsSet(Value lhs) const {
+  return valueAnalysis.index->getEquivalenceClass(
+      approximateMaybeSameAsEquivalence, lhs);
 }
 
 bool AsyncDataflowDependencies::isAlwaysReady(Value value) const {
@@ -131,6 +145,12 @@ bool AsyncDataflowDependencies::isNonSelfOverlapping(Value value) const {
 void AsyncDataflowDependencies::print(llvm::raw_ostream &os) {
   valueAnalysis.printRelation(os, "sameAs", sameAsRelation);
   valueAnalysis.printRelation(os, "maybeSameAs", maybeSameAsRelation);
+  valueAnalysis.printEquivalence(os, "maybeSameAsEquivalence",
+                                 maybeSameAsEquivalence);
+  valueAnalysis.printRelation(os, "approximateMaybeSameAs",
+                              approximateMaybeSameAsRelation);
+  valueAnalysis.printEquivalence(os, "approximateMaybeSameAsEquivalence",
+                                 approximateMaybeSameAsEquivalence);
   valueAnalysis.printPredicate(os, "isAlwaysReady", alwaysReadyPredicate);
   valueAnalysis.printRelation(os, "impliesReady", impliesReadyRelation);
   operationAnalysis.printRelation(os, "structurallyDisjoint",
@@ -212,6 +232,21 @@ void AsyncDataflowDependencies::setupMaybeSameAs() {
       std::bind(&AsyncDataflowDependencies::flowMaybeSameAs, this, _1, _2));
   valueAnalysis.addRelationToEquivalence(maybeSameAsEquivalence,
                                          maybeSameAsRelation);
+}
+
+void AsyncDataflowDependencies::setupApproximateMaybeSameAs() {
+  LLVM_DEBUG(llvm::dbgs() << "setupApproximateMaybeSameAs\n");
+  ValueDomainMap domainMap(
+      approximateMaybeSameAsRelation, ValueAnalysis::kLubIsUnion,
+      valueAnalysis.index->emptySet(), valueAnalysis.index->fullSet(),
+      /*handleDisjointBranches=*/false, /*approximateLoops=*/true);
+  // Note we can use the same transfer functions as for maybeSameAs, only
+  // the 'approximateLoops' mode needs to be changed.
+  valueAnalysis.flowModel(
+      valueAnalysis.index->model, domainMap,
+      std::bind(&AsyncDataflowDependencies::flowMaybeSameAs, this, _1, _2));
+  valueAnalysis.addRelationToEquivalence(approximateMaybeSameAsEquivalence,
+                                         approximateMaybeSameAsRelation);
 }
 
 /// Implements the rules:

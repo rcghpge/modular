@@ -34,6 +34,12 @@
 // CHECK-NEXT: %arg1 |-> {%1[0]}
 // CHECK-NEXT: maybeSameAs end
 
+// approximateMaybeSameAs == sameAs
+// CHECK: approximateMaybeSameAs begin
+// CHECK-NEXT:  %arg0 |-> {%0[0]}
+// CHECK-NEXT:  %arg1 |-> {%1[0]}
+// CHECK-NEXT: approximateMaybeSameAs end
+
 // The two always ready chains (this is up to sameAs equivalence)
 // CHECK: isAlwaysReady({%0[0], %arg0, %0})
 

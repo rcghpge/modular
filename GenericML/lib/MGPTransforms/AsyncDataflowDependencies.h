@@ -134,6 +134,15 @@ public:
   /// Returns the set { %rhs | maybeSameAs(%lhs, %rhs) }.
   ValueSet maybeSameAsSet(Value lhs) const;
 
+  /// Version of maybeSameAs that considers while loops to have traces:
+  ///   (cond | body)*
+  /// instead of the more precise:
+  ///   cond (body cond)*
+  bool approximateMaybeSameAs(Value lhs, Value rhs) const;
+
+  /// Returns the set { %rhs | approximateMaybeSameAs(%lhs, %rhs) }.
+  ValueSet approximateMaybeSameAsSet(Value lhs) const;
+
   /// The isAlwaysReady(%value) predicate is true only if at runtime
   ///   valueOf(%value)->isReady()
   /// under all execution paths. For example, %value may be the result of a
@@ -231,6 +240,9 @@ private:
   /// Sets the maybeSameAsRelation for the root 'init' and 'execute' blocks.
   void setupMaybeSameAs();
 
+  /// As above, but with the approximateLoops mode enabled.
+  void setupApproximateMaybeSameAs();
+
   /// Grows domainMap to capture the always-ready predicate into domainMap for
   /// operation. Sets changed to true if domainMap was changed.
   void flowAlwaysReady(Operation *op, ValueDomainMap &domainMap);
@@ -327,6 +339,16 @@ private:
   ValueRelation maybeSameAsRelation;
   /// The above closed under symmetry/transitivity/identity.
   ValueEquivalence maybeSameAsEquivalence;
+
+  /// A version of maybeSameAs using the 'approximateLoops' mode. In this mode
+  /// a loop control flow op with multiple blocks (ie a 'cond' and 'body'
+  /// block) will have consistent results for both the cond and the body
+  /// arguments and results. That can help analyses which may need to rewrite
+  /// the arity of types of control flow ops, since such rewrites must be
+  /// done consistently to keep the result valid.
+  ValueRelation approximateMaybeSameAsRelation;
+  /// The above closed under symmetry/transitivity/identity.
+  ValueEquivalence approximateMaybeSameAsEquivalence;
 
   /// %x is in alwaysReadyPredicate only if %x points to an AsyncValue which is
   /// known to be always ready at runtime.
