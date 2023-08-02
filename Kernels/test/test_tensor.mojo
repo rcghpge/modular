@@ -36,6 +36,9 @@ fn test_tensor():
     # CHECK: 3
     print(tensor.spec()[2])
 
+    # CHECK: 3
+    print(tensor.dim(2))
+
 
 # CHECK: test_tensor_indexing
 fn test_tensor_indexing():
