@@ -53,19 +53,20 @@ public:
   /// Orientation for the set domain.
   enum SetOrientation {
     // Use when soundness requires over-approximation.
-    //   bottom = {}, top = all elems, lub = union, glb = intersection
+    //   lub = union, glb = intersection, bottom = {}, top = all elems
     // It is possible for top to contain just the distinguished value when
     // trying to solve for a predicate instead of a relation.
-    kBottomIsEmpty,
+    kLubIsUnion,
     // Use when soundness requires under-approximation.
-    //   bottom = all elems, top = {}, lub = intersection, glb = union
+    //   lub = intersection, glb = union, bottom = all elems, top = {}
     // It is possible for bottom to contain just the distinguished value when
     // trying to solve for a predicate instead of a relation.
-    kBottomIsFull
+    kLubIsIntersection
   };
 
-  /// A view of a relation under definition as map from Vs to domain with a
-  /// bottom, top, lub and glb. The interpretation of the domain values and
+  /// A view of a relation under definition as map from Vs to a lattice domain
+  /// with a bottom, top, lub (least upper bound) operation, and glb (greatest
+  /// lower bound) operation. The interpretation of the domain values and
   /// operations depends on the given orientation.
   struct DomainMap {
     /// The relation under definition.
@@ -114,11 +115,11 @@ public:
         : relation(relation), orientation(orientation),
           handleDisjointBranches(handleDisjointBranches) {
       switch (orientation) {
-      case kBottomIsEmpty:
+      case kLubIsUnion:
         bottom = std::move(emptySet);
         top = std::move(fullSet);
         break;
-      case kBottomIsFull:
+      case kLubIsIntersection:
         bottom = std::move(fullSet);
         top = std::move(emptySet);
         break;
@@ -127,10 +128,10 @@ public:
 
     void leastUpperBound(Set &lhs, const Set &rhs) const {
       switch (orientation) {
-      case kBottomIsEmpty:
+      case kLubIsUnion:
         lhs |= rhs;
         break;
-      case kBottomIsFull:
+      case kLubIsIntersection:
         lhs &= rhs;
         break;
       }
@@ -138,10 +139,10 @@ public:
 
     void greatestLowerBound(Set &lhs, const Set &rhs) const {
       switch (orientation) {
-      case kBottomIsEmpty:
+      case kLubIsUnion:
         lhs &= rhs;
         break;
-      case kBottomIsFull:
+      case kLubIsIntersection:
         lhs |= rhs;
         break;
       }
@@ -206,17 +207,23 @@ public:
     auto itr = domainMap.relation.find(v);
     if (itr == domainMap.relation.end()) {
       if (!setIsEmpty) {
+        LLVM_DEBUG(llvm::dbgs() << "not equal to existing empty set\n");
         domainMap.relation.insert({v, set});
         domainMap.changed = true;
       }
     } else if (setIsEmpty) {
+      LLVM_DEBUG({
+        llvm::dbgs() << "not equal to existing set ";
+        index->printVs(llvm::dbgs(), index->setToVector(itr->second));
+        llvm::dbgs() << "\n";
+      });
       domainMap.relation.erase(itr);
       domainMap.changed = true;
     } else if (itr->second != set) {
       LLVM_DEBUG({
         llvm::dbgs() << "not equal to existing set ";
         index->printVs(llvm::dbgs(), index->setToVector(itr->second));
-        llvm::dbgs() << ")\n";
+        llvm::dbgs() << "\n";
       });
       itr->second = set;
       domainMap.changed = true;
@@ -224,14 +231,34 @@ public:
 #undef DEBUG_TYPE
   }
 
+  /// Given v |-> existing, updates domainMap so that v |-> (set lub existing).
+  /// Marks changed true if domainMap was changed.
+  void leastUpperBoundEntries(DomainMap &domainMap, V v, const Set &set) const {
+    Set newSet = set;
+    domainMap.leastUpperBound(newSet, getEntries(domainMap, v));
+    setEntries(domainMap, v, newSet);
+  }
+
   /// Updates domainMap so that v |-> {}. Marks changed true
   /// if domainMap was changed.
   void setEmpty(DomainMap &domainMap, V v) const {
+#define DEBUG_TYPE "mgp-dataflow"
+    LLVM_DEBUG({
+      llvm::dbgs() << "setEmpty(";
+      index->printV(llvm::dbgs(), v);
+      llvm::dbgs() << ")\n";
+    });
     auto itr = domainMap.relation.find(v);
     if (itr != domainMap.relation.end()) {
+      LLVM_DEBUG({
+        llvm::dbgs() << "not equal to existing set ";
+        index->printVs(llvm::dbgs(), index->setToVector(itr->second));
+        llvm::dbgs() << "\n";
+      });
       domainMap.relation.erase(itr);
       domainMap.changed = true;
     }
+#undef DEBUG_TYPE
   }
 
   /// If using the relation to represent a predicate, includes v in the
@@ -357,7 +384,7 @@ public:
   void flowSimpleLoop(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
                       const FlowOp &flowOp);
 
-  /// Grows domainMap for executing the condition then body sub-block of cfOp,
+  /// Grows domainMap for executing the condition THEN body sub-block of cfOp,
   /// which must have two sub-blocks. Sets changed to true if domainMap was
   /// changed.
   void flowConditionedLoop(GRT::GRTControlFlowInterface cfOp,
@@ -408,7 +435,7 @@ public:
   void flowSimpleLoop(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
                       const FlowOp &flowOp);
 
-  /// Grows domainMap for executing the condition then body sub-block of cfOp,
+  /// Grows domainMap for executing the condition ThEN body sub-block of cfOp,
   /// which must have two sub-blocks. Sets changed to true if domainMap was
   /// changed.
   void flowConditionedLoop(GRT::GRTControlFlowInterface cfOp,

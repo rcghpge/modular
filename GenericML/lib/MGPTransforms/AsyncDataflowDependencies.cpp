@@ -159,7 +159,7 @@ void AsyncDataflowDependencies::flowSameAs(Operation *op,
 void AsyncDataflowDependencies::setupSameAs() {
   LLVM_DEBUG(llvm::dbgs() << "setupSameAs\n");
   ValueAnalysis::DomainMap domainMap(
-      sameAsRelation, ValueAnalysis::kBottomIsFull,
+      sameAsRelation, ValueAnalysis::kLubIsIntersection,
       valueAnalysis.index->emptySet(), valueAnalysis.index->fullSet());
   valueAnalysis.flowModel(
       valueAnalysis.index->model, domainMap,
@@ -204,7 +204,7 @@ void AsyncDataflowDependencies::flowMaybeSameAs(Operation *op,
 
 void AsyncDataflowDependencies::setupMaybeSameAs() {
   LLVM_DEBUG(llvm::dbgs() << "setupMaybeSameAs\n");
-  ValueDomainMap domainMap(maybeSameAsRelation, ValueAnalysis::kBottomIsEmpty,
+  ValueDomainMap domainMap(maybeSameAsRelation, ValueAnalysis::kLubIsUnion,
                            valueAnalysis.index->emptySet(),
                            valueAnalysis.index->fullSet());
   valueAnalysis.flowModel(
@@ -245,7 +245,7 @@ void AsyncDataflowDependencies::setupAlwaysReady() {
   LLVM_DEBUG(llvm::dbgs() << "setupAlwaysReady\n");
   ValueRelation alwaysReadyRelation;
   ValueDomainMap domainMap(
-      alwaysReadyRelation, ValueAnalysis::kBottomIsFull,
+      alwaysReadyRelation, ValueAnalysis::kLubIsIntersection,
       valueAnalysis.index->emptySet(),
       valueAnalysis.index->unitSet(valueAnalysis.index->distinguished));
   valueAnalysis.flowModel(
@@ -344,10 +344,10 @@ void AsyncDataflowDependencies::setupImpliesReady() {
   // entries in the exclusive relation.
   //
   // Thus, we turn on the handleDisjointBranches option for this dataflow.
-  ValueDomainMap domainMap(impliesReadyRelation, ValueAnalysis::kBottomIsFull,
-                           valueAnalysis.index->emptySet(),
-                           valueAnalysis.index->fullSet(),
-                           /*handleDisjointBranches=*/true);
+  ValueDomainMap domainMap(
+      impliesReadyRelation, ValueAnalysis::kLubIsIntersection,
+      valueAnalysis.index->emptySet(), valueAnalysis.index->fullSet(),
+      /*handleDisjointBranches=*/true);
   valueAnalysis.flowModel(
       valueAnalysis.index->model, domainMap,
       std::bind(&AsyncDataflowDependencies::flowImpliesReady, this, _1, _2));
