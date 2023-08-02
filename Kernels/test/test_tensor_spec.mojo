@@ -14,8 +14,17 @@ from Tensor import TensorSpec, TensorShape
 fn test_tensor_shape():
     print("== test_tensor_shape")
 
+    # CHECK: 1
+    print(TensorShape(1).__str__())
+
+    # CHECK: 1x2
+    print(TensorShape(1, 2).__str__())
+
     # CHECK: 1x2x3
     print(TensorShape(1, 2, 3).__str__())
+
+    # CHECK: 1x2x3x4
+    print(TensorShape(1, 2, 3, 4).__str__())
 
     # CHECK: 1x2x3x4x5x6
     print(TensorShape(1, 2, 3, 4, 5, 6).__str__())
