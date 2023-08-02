@@ -14,6 +14,8 @@
 
 #include "./Utils.h"
 
+#define DEBUG_TYPE "mgp-fixup-isolated-from-above"
+
 using namespace M;
 using namespace M::MGP;
 using namespace mlir;
@@ -32,6 +34,35 @@ static void accumFreeValues(SetVector<Value> &outerValues, Block *block,
   }
 }
 
+static SetVector<Value> getValues(Operation *op) {
+  SetVector<Value> result;
+  for (Value value : op->getResults())
+    result.insert(value);
+  for (Value value : op->getOperands())
+    result.insert(value);
+  return result;
+}
+
+/// Returns false if a value is shared between inOp and outOp.
+/// The caller is expected to then assert fail.
+static bool checkRewrite(Operation *inOp, Operation *outOp) {
+#if MODULAR_DEBUG
+  SetVector<Value> inValues = getValues(inOp);
+  SetVector<Value> outValues = getValues(outOp);
+  SetVector<Value> intersection = llvm::set_intersection(inValues, outValues);
+  if (!intersection.empty()) {
+    llvm::errs() << "a rewritten operation is continuing to use values shared "
+                    "with the original operation.\n";
+    llvm::errs() << "input operation:\n" << *inOp << "\n";
+    llvm::errs() << "output operation:\n" << *outOp << "\n";
+    for (Value v : intersection)
+      llvm::errs() << "shared value:\n" << v << "\n";
+    return false;
+  }
+#endif
+  return true;
+}
+
 /// Rewrites inBlock into outBlock, where freeValues will instead be bound
 /// by new arguments in outBlock. If mustAlsoReturn is true, freeValues will
 /// also become new block outputs. If, in addition, beforeLastOutput is true,
@@ -46,20 +77,26 @@ static void fixup(OpBuilder &builder, Block *inBlock,
   IRMapping mapping;
   builder.setInsertionPoint(outBlock, outBlock->begin());
 
+  LLVM_DEBUG(llvm::dbgs() << "fixup begin\n");
+
   // Transfer existing block arguments.
   for (BlockArgument inArg : inBlock->getArguments()) {
     BlockArgument outArg =
         outBlock->addArgument(inArg.getType(), inArg.getLoc());
+    LLVM_DEBUG(llvm::dbgs() << "mapping " << inArg << " to " << outArg << "\n");
     mapping.map(inArg, outArg);
   }
   // Add arguments for each free var.
   for (Value inFreeValue : freeValues) {
     BlockArgument outArg =
         outBlock->addArgument(inFreeValue.getType(), inFreeValue.getLoc());
+    LLVM_DEBUG(llvm::dbgs()
+               << "mapping " << inFreeValue << " to " << outArg << "\n");
     mapping.map(inFreeValue, outArg);
   }
 
-  for (Operation &inOp : inBlock->getOperations()) {
+  for (Operation *inOp : getDataflowOrder(inBlock)) {
+    LLVM_DEBUG(llvm::dbgs() << "looking at op " << *inOp << "\n");
     if (auto inOutputOp = dyn_cast<MEF::OutputOp>(inOp)) {
       if (mustAlsoReturn) {
         SmallVector<Value> outOperands;
@@ -77,7 +114,10 @@ static void fixup(OpBuilder &builder, Block *inBlock,
         if (beforeLastOutput)
           // Rewrite last operand.
           outOperands.emplace_back(mapping.lookup(inOutputOp->getOperand(n)));
-        builder.create<MEF::OutputOp>(inOp.getLoc(), outOperands);
+        Operation *outOutputOp =
+            builder.create<MEF::OutputOp>(inOp->getLoc(), outOperands);
+        assert(checkRewrite(inOutputOp, outOutputOp) &&
+               "invalid rewrite for output op");
         continue;
       }
     }
@@ -123,12 +163,17 @@ static void fixup(OpBuilder &builder, Block *inBlock,
       // Create the new control flow op with empty sub-regions.
       GRT::GRTControlFlowInterface outCfOp =
           cloneWithArgs(builder, inCfOp, outResultTypes, outOperands);
+      assert(checkRewrite(inCfOp, outCfOp) &&
+             "invalid rewrite for control flow op");
 
       // Capture mappings for op results. Any additional results,
       // corresponding to the subOutputValues, can be ignored.
       for (const auto [inResult, outResult] :
-           llvm::zip(inCfOp->getResults(), outCfOp->getResults()))
+           llvm::zip(inCfOp->getResults(), outCfOp->getResults())) {
+        LLVM_DEBUG(llvm::dbgs()
+                   << "mapping " << inResult << " to " << outResult << "\n");
         mapping.map(inResult, outResult);
+      }
 
       // Rewrite the sub-blocks.
       auto insertPoint = builder.saveInsertionPoint();
@@ -148,12 +193,21 @@ static void fixup(OpBuilder &builder, Block *inBlock,
     }
 
     // Default case is just clone the op w.r.t. mapping.
-    builder.clone(inOp, mapping);
+    Operation *outOp = builder.clone(*inOp, mapping);
+    assert(checkRewrite(inOp, outOp) && "invalid rewrite of op");
   }
+
+  LLVM_DEBUG(llvm::dbgs() << "fixup end\n");
 }
 
 ModelOp M::MGP::fixupIsolatedFromAbove(mlir::OpBuilder &builder,
                                        ModelOp inModelOp) {
+  LLVM_DEBUG({
+    llvm::dbgs() << "before fixupIsolatedFromAbove:\n";
+    inModelOp.print(llvm::dbgs(), mlir::OpPrintingFlags().printGenericOpForm());
+    llvm::dbgs() << "\n\n";
+  });
+
   builder.setInsertionPointAfter(inModelOp);
   auto outModelOp = builder.create<MGP::ModelOp>(
       inModelOp.getLoc(),
@@ -161,11 +215,13 @@ ModelOp M::MGP::fixupIsolatedFromAbove(mlir::OpBuilder &builder,
       /*inputOutputTypes=*/inModelOp.getInputOutputTypes(),
       /*sym_name=*/inModelOp.getSymName(),
       /*theExtraAttrs=*/inModelOp.getTheExtraAttrsAttr());
-  fixup(builder, inModelOp.getInitBlock(), /*freeValues=*/{},
-        &outModelOp.getInit().emplaceBlock(),
+  LLVM_DEBUG(llvm::dbgs() << "init\n");
+  fixup(builder, inModelOp.getInitBlock(),
+        /*freeValues=*/{}, &outModelOp.getInit().emplaceBlock(),
         /*mustAlsoReturn=*/false, /*beforeLastOutput=*/false);
-  fixup(builder, inModelOp.getExecuteBlock(), /*freeValues=*/{},
-        &outModelOp.getExecute().emplaceBlock(),
+  LLVM_DEBUG(llvm::dbgs() << "execute\n");
+  fixup(builder, inModelOp.getExecuteBlock(),
+        /*freeValues=*/{}, &outModelOp.getExecute().emplaceBlock(),
         /*mustAlsoReturn=*/false, /*beforeLastOutput=*/false);
   return outModelOp;
 }

@@ -88,6 +88,7 @@ static void finishVisiting(DenseMap<Operation *, bool> &visited,
 static void visitInDataflowOrder(Operation *op,
                                  SmallVectorImpl<Operation *> &dataflowOrder,
                                  DenseMap<Operation *, bool> &visited) {
+  Block *block = op->getBlock();
 
   if (!shouldStartVisiting(visited, op))
     return;
@@ -117,7 +118,8 @@ static void visitInDataflowOrder(Operation *op,
 
       Value operand = frame.frameOp->getOperand(frame.nextOperandIndex);
       if (Operation *inputOp = operand.getDefiningOp()) {
-        if (shouldStartVisiting(visited, inputOp))
+        if (inputOp->getBlock() == block &&
+            shouldStartVisiting(visited, inputOp))
           // Start with first operand of inputOp, if any.
           stack.emplace_back(inputOp, 0);
       }
