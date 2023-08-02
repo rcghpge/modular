@@ -1983,6 +1983,7 @@ def MO_ScatterNdOp : MO_TensorOp<"scatter_nd", [
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

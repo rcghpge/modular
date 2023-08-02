@@ -2173,6 +2173,17 @@ LogicalResult ShapeOfOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// MO_ScatterNDOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ScatterNdOp::verify() {
+  if (getType().hasUnknownShape())
+    return emitError("ScatterND must always have known output shape");
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // MO_SliceOp
 //===----------------------------------------------------------------------===//
 

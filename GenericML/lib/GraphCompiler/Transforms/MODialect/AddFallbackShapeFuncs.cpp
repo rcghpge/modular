@@ -68,9 +68,10 @@ HAS_FALLBACK(MO::WhereOp)
 
 // Eventually all ops must be accounted for here. They either must have a
 // fallback or an explict vouch that they need no fallback.
-NEEDS_NO_FALLBACK(MO::Static::BroadcastToOp)
-NEEDS_NO_FALLBACK(MO::MatmulOp)
 NEEDS_NO_FALLBACK(MO::BatchMatmulOp)
+NEEDS_NO_FALLBACK(MO::MatmulOp)
+NEEDS_NO_FALLBACK(MO::ScatterNdOp)
+NEEDS_NO_FALLBACK(MO::Static::BroadcastToOp)
 
 // Creates the fallback for this op if it has parameters still needing decls.
 #define CALL_FALLBACK(MOOp)                                                    \
