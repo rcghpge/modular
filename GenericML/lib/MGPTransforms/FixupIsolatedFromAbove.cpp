@@ -34,7 +34,7 @@ static void accumFreeValues(SetVector<Value> &outerValues, Block *block,
   }
 }
 
-static SetVector<Value> getValues(Operation *op) {
+[[maybe_unused]] static SetVector<Value> getValues(Operation *op) {
   SetVector<Value> result;
   for (Value value : op->getResults())
     result.insert(value);
