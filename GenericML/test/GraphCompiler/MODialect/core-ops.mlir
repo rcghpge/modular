@@ -88,19 +88,19 @@ mo.graph @invalid_type(%arg0: !mo.tensor<[2, 3], invalid>) -> (!mo.tensor<[2, 3]
   mo.output %arg0 : !mo.tensor<[2, 3], invalid>
 }
 
-// CHECK: mo.graph @tensor_str_metadata(%[[ARG0:.*]]: !mo.tensor<[], si32, "foo">) -> !mo.tensor<[], si32, "foo"> {
-mo.graph @tensor_str_metadata(%arg0: !mo.tensor<[], si32, "foo">) -> !mo.tensor<[], si32, "foo"> {
-  mo.output %arg0 : !mo.tensor<[], si32, "foo">
+// CHECK: mo.graph @tensor_int_metadata(%[[ARG0:.*]]: !mo.tensor<[], si32, {foo = 42 : i64}>) -> !mo.tensor<[], si32, {foo = 42 : i64}> {
+mo.graph @tensor_int_metadata(%arg0: !mo.tensor<[], si32, {foo = 42}>) -> !mo.tensor<[], si32, {foo = 42}> {
+  mo.output %arg0 : !mo.tensor<[], si32, {foo = 42}>
 }
 
-// CHECK: mo.graph @tensor_type_metadata(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32, f16>) -> !mo.tensor<[2, 3], f32, f16> {
-mo.graph @tensor_type_metadata(%arg0: !mo.tensor<[2, 3], f32, f16>) -> !mo.tensor<[2, 3], f32, f16> {
-  mo.output %arg0 : !mo.tensor<[2, 3], f32, f16>
+// CHECK: mo.graph @tensor_str_metadata(%[[ARG0:.*]]: !mo.tensor<[], si32, {bar = "str"}>) -> !mo.tensor<[], si32, {bar = "str"}> {
+  mo.graph @tensor_str_metadata(%arg0: !mo.tensor<[], si32, {bar = "str"}>) -> !mo.tensor<[], si32, {bar = "str"}> {
+  mo.output %arg0 : !mo.tensor<[], si32, {bar = "str"}>
 }
 
-// CHECK: mo.graph @tensor_dict_metadata(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32, {foo = "bar"}>) -> !mo.tensor<[2, 3], f32, {foo = "bar"}> {
-mo.graph @tensor_dict_metadata(%arg0: !mo.tensor<[2, 3], f32, {foo = "bar"}>) -> !mo.tensor<[2, 3], f32, {foo = "bar"}> {
-  mo.output %arg0 : !mo.tensor<[2, 3], f32, {foo = "bar"}>
+// CHECK: mo.graph @tensor_float_metadata(%[[ARG0:.*]]: !mo.tensor<[], si32, {fp = 4.200000e+00 : f64}>) -> !mo.tensor<[], si32, {fp = 4.200000e+00 : f64}> {
+  mo.graph @tensor_float_metadata(%arg0: !mo.tensor<[], si32, {fp = 4.2}>) -> !mo.tensor<[], si32, {fp = 4.2}> {
+  mo.output %arg0 : !mo.tensor<[], si32, {fp = 4.2}>
 }
 
 //===----------------------------------------------------------------------===//

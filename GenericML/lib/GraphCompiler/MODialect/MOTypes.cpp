@@ -51,7 +51,7 @@ static std::string asString(Type type) {
 }
 
 //===----------------------------------------------------------------------===//
-// Tensor
+// TensorType
 //===----------------------------------------------------------------------===//
 
 static ParseResult parseShapeParam(AsmParser &p, TypedAttr &shapeAttr) {
@@ -73,13 +73,60 @@ static ParseResult parseShapeParam(AsmParser &p, TypedAttr &shapeAttr) {
             "literal shape reference (i.e. `[...]`)";
 }
 
-static auto printShapeParam = MOSH::printShapeTypedAttr;
+void TensorType::print(AsmPrinter &p) const {
+  p << '<';
+  MOSH::printShapeTypedAttr(p, getShapeAttr());
+  p << ", " << getDtype().getAsString();
+
+  DictionaryAttr metadata = getMetadata();
+  if (!metadata.empty())
+    p << ", " << metadata;
+
+  p << '>';
+}
+
+Type TensorType::parse(AsmParser &p) {
+  MLIRContext *ctx = p.getContext();
+  mlir::SMLoc loc = p.getCurrentLocation();
+
+  // parse '<'
+  if (p.parseLess())
+    return {};
+
+  // parse shape
+  TypedAttr shapeAttr;
+  if (parseShapeParam(p, shapeAttr))
+    return {};
+
+  // parse dtype
+  if (p.parseComma())
+    return {};
+  FailureOr<DType> dtypeOr = mlir::FieldParser<DType>::parse(p);
+  if (failed(dtypeOr)) {
+    p.emitError(p.getCurrentLocation(), "invalid dtype in MO::TensorType");
+    return {};
+  }
+  DType dtype = dtypeOr.value();
+
+  // parse optional metadata
+  DictionaryAttr metadata;
+  if (succeeded(p.parseOptionalComma()) && p.parseAttribute(metadata))
+    return {};
+  if (!metadata)
+    metadata = DictionaryAttr::get(ctx);
+
+  // parse '>'
+  if (p.parseGreater())
+    return {};
+
+  return p.getChecked<TensorType>(loc, ctx, shapeAttr, dtype, metadata);
+}
 
 /// Verifies that the given dimensions represent a valid tensor shape, and
 /// that the element type in DType form is also representable as an MLIR type.
 LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
                                  TypedAttr shapeAttr, DType dtype,
-                                 std::optional<Attribute> metadata) {
+                                 DictionaryAttr metadata) {
   if (auto unkAttr = llvm::dyn_cast<KGEN::UnknownAttr>(shapeAttr)) {
     if (Type ty = unkAttr.getType(); !llvm::isa<ShapeType>(ty)) {
       return emitError() << "unknown shape attribute must have ShapeType, got "
@@ -149,12 +196,15 @@ ErrorOr<Type> static toMLIRType(MLIRContext *context, DType dType) {
 }
 
 TensorType TensorType::get(TypedAttr shapeAttr, DType dtype,
-                           std::optional<Attribute> metadata) {
-  return get(shapeAttr.getContext(), shapeAttr, dtype, metadata);
+                           DictionaryAttr metadata) {
+  MLIRContext *ctx = shapeAttr.getContext();
+  if (!metadata)
+    metadata = DictionaryAttr::get(ctx);
+  return get(ctx, shapeAttr, dtype, metadata);
 }
 
 TensorType TensorType::get(TypedAttr shapeAttr, Type elementType,
-                           std::optional<Attribute> metadata) {
+                           DictionaryAttr metadata) {
   ErrorOr<DType> errOrDType = fromMLIRType(elementType);
   assert(!errOrDType.isError() &&
          "element type is not representable as a DType");
@@ -162,21 +212,21 @@ TensorType TensorType::get(TypedAttr shapeAttr, Type elementType,
 }
 
 TensorType TensorType::get(ArrayRef<int64_t> shape, Type elementType,
-                           std::optional<Attribute> metadata) {
+                           DictionaryAttr metadata) {
   auto ctx = elementType.getContext();
   auto newShape = ShapeAttr::get(shape, ShapeType::get(ctx));
   return get(newShape, elementType, metadata);
 }
 
 TensorType TensorType::get(ArrayRef<TypedAttr> shape, Type elementType,
-                           std::optional<Attribute> metadata) {
+                           DictionaryAttr metadata) {
   auto ctx = elementType.getContext();
   auto newShape = ShapeAttr::get(shape, ShapeType::get(ctx));
   return get(newShape, elementType, metadata);
 }
 
 TensorType TensorType::getVectorSI64Type(MLIRContext *ctx, int64_t size,
-                                         std::optional<Attribute> metadata) {
+                                         DictionaryAttr metadata) {
   auto si64Ty = IntegerType::get(ctx, 64, IntegerType::Signed);
   auto idxTy = IndexType::get(ctx);
   return get(SmallVector<TypedAttr>(1, IntegerAttr::get(idxTy, size)), si64Ty,
@@ -184,8 +234,7 @@ TensorType TensorType::getVectorSI64Type(MLIRContext *ctx, int64_t size,
 }
 
 TensorType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
-                                 Type dtype,
-                                 std::optional<Attribute> metadata) const {
+                                 Type dtype, DictionaryAttr metadata) const {
   auto shapeTy = ShapeType::get(getContext());
 
   TypedAttr shapeRef;
@@ -197,8 +246,6 @@ TensorType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
   ErrorOr<DType> errOrDType = fromMLIRType(dtype);
   assert(!errOrDType.isError() &&
          "element type is not representable as an M::DType");
-  if (!metadata.has_value())
-    metadata = getMetadata();
   return TensorType::get(shapeRef, *errOrDType, metadata);
 }
 

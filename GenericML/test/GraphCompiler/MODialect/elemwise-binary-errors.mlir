@@ -44,7 +44,7 @@ mo.graph @pow(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[2, 10], f32>) -
 
 // -----
 
-// expected-error@+1 {{failed to parse MO_Tensor parameter 'dtype' which is to be a `DType}}
+// expected-error@+1 {{invalid dtype in MO::TensorType}}
 mo.graph @signless(%arg0: !mo.tensor<[], i32>) -> (!mo.tensor<[], i32>) {
   mo.output %arg0 : !mo.tensor<[], i32>
 }

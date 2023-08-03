@@ -28,7 +28,8 @@ class MO_Type<string name, string typeMnemonic, list<Trait> traits = []>
 def MO_Tensor : MO_Type<"Tensor", "tensor"> {
   let summary = "Type of tensor specs of statically known rank.";
   let description = [{
-    This type represents the shape and element type of a tensor.
+    This type represents the shape and element type of a tensor, plus an
+    optional dictionary of metadata (e.g., layout, device, etc.).
 
     The `shapeAttr` is one of:
     1. `KGEN::UnknownAttr` for unparameterized shape of unknown rank, e.g., `?`.
@@ -52,37 +53,34 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
   let parameters = (ins
     "TypedAttr" : $shapeAttr,
     "DType" : $dtype,
-    DefaultValuedParameter<
-      "std::optional<Attribute>", "std::nullopt"> : $metadata);
+    "DictionaryAttr" : $metadata);
 
   let genVerifyDecl = 1;
-  let assemblyFormat = [{
-    `<` custom<ShapeParam>($shapeAttr) `,` $dtype ( `,` $metadata^)? `>`
-  }];
+  let hasCustomAssemblyFormat = 1;
 
   let builders = [
     TypeBuilderWithInferredContext<(ins
       "TypedAttr" : $shapeAttr,
       "DType" : $dtype,
-      CArg<"std::optional<Attribute>", "std::nullopt"> : $metadata)>,
+      CArg<"DictionaryAttr", "{}"> : $metadata)>,
     TypeBuilderWithInferredContext<(ins
       "TypedAttr" : $shapeAttr,
       "Type" : $elementType,
-      CArg<"std::optional<Attribute>", "std::nullopt"> : $metadata)>,
+      CArg<"DictionaryAttr", "{}"> : $metadata)>,
     TypeBuilderWithInferredContext<(ins
       "ArrayRef<int64_t>" : $shape,
       "Type" : $elementType,
-      CArg<"std::optional<Attribute>", "std::nullopt"> : $metadata)>,
+      CArg<"DictionaryAttr", "{}"> : $metadata)>,
     TypeBuilderWithInferredContext<(ins
       "ArrayRef<TypedAttr>" : $shape,
       "Type" : $elementType,
-      CArg<"std::optional<Attribute>", "std::nullopt"> : $metadata)>];
+      CArg<"DictionaryAttr", "{}"> : $metadata)>];
 
   let extraClassDeclaration = [{
     /// Returns a clone with a new integer shape and element dtype.
     TensorType cloneWith(
       std::optional<ArrayRef<int64_t>> shape, Type dtype,
-      std::optional<Attribute> metadata = std::nullopt) const;
+      DictionaryAttr metadata = {}) const;
 
     /// Returns clone with a new shape attribute.
     TensorType cloneWith(TypedAttr shapeAttr) const;
@@ -140,7 +138,7 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
 
     /// Short-hand to create a SI64 vector tensor type.
     static TensorType getVectorSI64Type(MLIRContext *ctx, int64_t size,
-      std::optional<Attribute> metadata = std::nullopt);
+      DictionaryAttr metadata = {});
   }];
 }
 
