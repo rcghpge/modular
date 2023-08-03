@@ -85,6 +85,9 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     /// Returns clone with a new shape attribute.
     TensorType cloneWith(TypedAttr shapeAttr) const;
 
+    /// Returns a clone with a new layout attribute.
+    TensorType cloneWith(LayoutAttr layoutAttr) const;
+
     /// Checks if the tensor is statically ranked.
     bool hasRank() const;
 
@@ -139,6 +142,10 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     /// Short-hand to create a SI64 vector tensor type.
     static TensorType getVectorSI64Type(MLIRContext *ctx, int64_t size,
       DictionaryAttr metadata = {});
+
+    /// Return the layout attribute carried by this tensor type. If no layout
+    /// attribute is specified, return a null attribute `LayoutAttr{}`.
+    MO::LayoutAttr getLayoutAttr();
   }];
 }
 

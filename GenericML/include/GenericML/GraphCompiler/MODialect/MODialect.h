@@ -10,6 +10,7 @@
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Dialect.h"
+#include "mlir/IR/DialectImplementation.h"
 
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations

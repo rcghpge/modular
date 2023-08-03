@@ -38,6 +38,7 @@ def MODialect : Dialect {
     "MIP::MIPDialect",
   ];
   let hasConstantMaterializer = 1;
+  let useDefaultAttributePrinterParser = 1;
 
   let extraClassDeclaration = [{
   public:

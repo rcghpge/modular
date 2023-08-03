@@ -54,6 +54,10 @@ static std::string asString(Type type) {
 // TensorType
 //===----------------------------------------------------------------------===//
 
+/// A layout attribute will always be stored in the metadata `DictionaryAttr` of
+/// `MO::TensorType` with this name as the key.
+static constexpr StringRef kLayoutMetadataName = "layout";
+
 static ParseResult parseShapeParam(AsmParser &p, TypedAttr &shapeAttr) {
   auto shapeTy = p.getBuilder().getType<ShapeType>();
   OptionalParseResult res = MOSH::parseShapeAttrOrUnknown(p, shapeAttr);
@@ -71,18 +75,6 @@ static ParseResult parseShapeParam(AsmParser &p, TypedAttr &shapeAttr) {
   return p.emitError(p.getCurrentLocation())
          << "couldn't parse shape parameter: expected `?`, shape reference, or "
             "literal shape reference (i.e. `[...]`)";
-}
-
-void TensorType::print(AsmPrinter &p) const {
-  p << '<';
-  MOSH::printShapeTypedAttr(p, getShapeAttr());
-  p << ", " << getDtype().getAsString();
-
-  DictionaryAttr metadata = getMetadata();
-  if (!metadata.empty())
-    p << ", " << metadata;
-
-  p << '>';
 }
 
 Type TensorType::parse(AsmParser &p) {
@@ -120,6 +112,18 @@ Type TensorType::parse(AsmParser &p) {
     return {};
 
   return p.getChecked<TensorType>(loc, ctx, shapeAttr, dtype, metadata);
+}
+
+void TensorType::print(AsmPrinter &p) const {
+  p << '<';
+  MOSH::printShapeTypedAttr(p, getShapeAttr());
+  p << ", " << getDtype().getAsString();
+
+  DictionaryAttr metadata = getMetadata();
+  if (!metadata.empty())
+    p << ", " << metadata;
+
+  p << '>';
 }
 
 /// Verifies that the given dimensions represent a valid tensor shape, and
@@ -233,6 +237,11 @@ TensorType TensorType::getVectorSI64Type(MLIRContext *ctx, int64_t size,
              metadata);
 }
 
+LayoutAttr TensorType::getLayoutAttr() {
+  Attribute layoutAttrOrNull = getMetadata().get(kLayoutMetadataName);
+  return mlir::dyn_cast_or_null<LayoutAttr>(layoutAttrOrNull);
+}
+
 TensorType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
                                  Type dtype, DictionaryAttr metadata) const {
   auto shapeTy = ShapeType::get(getContext());
@@ -252,6 +261,13 @@ TensorType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
 TensorType TensorType::cloneWith(TypedAttr shapeAttr) const {
   return TensorType::get(shapeAttr.getContext(), shapeAttr, getDtype(),
                          getMetadata());
+}
+
+TensorType TensorType::cloneWith(LayoutAttr layoutAttr) const {
+  NamedAttrList namedAttrs(getMetadata());
+  namedAttrs.set(kLayoutMetadataName, layoutAttr);
+  DictionaryAttr newMetadata = namedAttrs.getDictionary(getContext());
+  return TensorType::get(getContext(), getShapeAttr(), getDtype(), newMetadata);
 }
 
 bool TensorType::hasRank() const {

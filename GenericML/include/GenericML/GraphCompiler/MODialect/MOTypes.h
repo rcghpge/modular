@@ -23,6 +23,10 @@ class ShapeAttr;
 class ShapeType;
 } // namespace M::MOSH
 
+namespace M::MO {
+class LayoutAttr;
+} // namespace M::MO
+
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations
 //===----------------------------------------------------------------------===//

@@ -12,6 +12,8 @@
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "mlir/IR/Builders.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 
 using namespace M;
@@ -26,6 +28,63 @@ void MODialect::registerAttributes() {
 #define GET_ATTRDEF_LIST
 #include "GenericML/GraphCompiler/MODialect/MOAttrs.cpp.inc"
       >();
+}
+
+//===----------------------------------------------------------------------===//
+// LayoutAttr
+//===----------------------------------------------------------------------===//
+
+LayoutAttr LayoutAttr::get(MLIRContext *ctx, StringRef formatStr) {
+  return get(ctx, StringAttr::get(ctx, formatStr));
+}
+
+Attribute LayoutAttr::parse(AsmParser &p, Type t) {
+  // parse '<'
+  if (p.parseLess())
+    return {};
+
+  // parse the layout format string
+  StringRef layoutFormat;
+  if (failed(p.parseKeyword(&layoutFormat)))
+    return {};
+
+  // parse '>'
+  if (p.parseGreater())
+    return {};
+
+  MLIRContext *ctx = p.getContext();
+  auto formatAttr = StringAttr::get(ctx, layoutFormat);
+  return p.getChecked<LayoutAttr>(p.getCurrentLocation(), ctx, formatAttr);
+}
+
+void LayoutAttr::print(AsmPrinter &p) const {
+  p << '<' << getFormat().strref() << '>';
+}
+
+LogicalResult
+LayoutAttr::verify(llvm::function_ref<::mlir::InFlightDiagnostic()> emitError,
+                   mlir::StringAttr format) {
+  // TODO(#18622) make this more extensible
+  static StringSet<> kSupportedLayoutStrs = {
+      // conv inputs
+      "NHWC",
+      "NCHW",
+      // conv filter
+      "RSCF",
+      "FCRS",
+      // packed conv filter
+      "FRSCf",
+      // matmul weights
+      "KN",
+      // transposed matmul weights
+      "NK",
+      // packed matmul weights
+      "KNkni",
+  };
+
+  if (!kSupportedLayoutStrs.contains(format.strref()))
+    return emitError() << "invalid layout format: " << format;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

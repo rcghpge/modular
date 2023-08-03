@@ -11,6 +11,9 @@
 #ifndef GENERICML_GRAPHCOMPILER_MODIALECT_MOATTRS_H
 #define GENERICML_GRAPHCOMPILER_MODIALECT_MOATTRS_H
 
+// `MO::LayoutAttr` uses `mlir::StringAttr`
+#include "mlir/IR/Attributes.h"
+
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations
 //===----------------------------------------------------------------------===//
