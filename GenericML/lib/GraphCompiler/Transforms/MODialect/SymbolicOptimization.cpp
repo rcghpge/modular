@@ -19,9 +19,6 @@ using namespace MO;
 using namespace mlir::matchers;
 using mlir::m_Op;
 
-using namespace M;
-using namespace MO;
-
 namespace M::MO {
 #define GEN_PASS_DEF_SYMBOLICOPTIMIZATION
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h.inc"
