@@ -110,8 +110,6 @@ mo.graph @checkNoFuseOutputInterfaceDisabled<N, M, K>(%arg0: !mo.tensor<[M, K], 
 // CHECK: %[[OUT2:.*]] = mogg.kernel (%[[OUT]])
 // CHECK: mo.output %[[OUT2]]
 
-
-
 mo.graph @checkNoFuseNoElementwiseAttr<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !mo.tensor<[K, N], f32>) -> !mo.tensor<[M, N], f32> {
   %0 = mogg.kernel (%arg0, %arg1) : (%arg2: !mo.tensor<[M, K], f32>, %arg3: !mo.tensor<[K, N], f32>) -> !mo.tensor<[M, N], f32>{
     %2 = mogg.output_placeholders : !mo.tensor<[M, N], f32>

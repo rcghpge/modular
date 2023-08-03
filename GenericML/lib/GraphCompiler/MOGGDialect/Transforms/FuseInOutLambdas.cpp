@@ -25,6 +25,172 @@ namespace {
 struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
   using FuseInOutLambdasBase::FuseInOutLambdasBase;
 
+  bool canDoInputFusion(MOGG::KernelOp kernel, ArrayAttr fusionInterfaces,
+                        uint64_t inputIdx) {
+
+    // Should be unreachable sanity check. Ensure this is not an elementwise
+    // kernel (as if it where after fusion we would trigger more fusions).
+    auto isElemwise = kernel.getFusionBodyLambda();
+    if (isElemwise)
+      return false;
+
+    // Input fusion interface must be non null.
+    auto inputFusion = SmallVector<StringAttr>(
+        fusionInterfaces.getAsRange<StringAttr>())[inputIdx];
+    if (!inputFusion.size())
+      return false;
+
+    // Parent must have at most one unique user operation which is the kernel we
+    // are fusing into.
+    auto parentValue = kernel.getOperand(inputIdx);
+    for (auto user : parentValue.getUsers()) {
+      if (user != kernel)
+        return false;
+    }
+
+    // Parent op must be a kernel op.
+    auto parentKernel =
+        dyn_cast_or_null<MOGG::KernelOp>(parentValue.getDefiningOp());
+    if (!parentKernel)
+      return false;
+
+    // Check that the kernel has a single output.
+    if (parentKernel->getNumResults() != 1)
+      return false;
+
+    // Check the kernel is a fusable elementwise.
+    if (!parentKernel.getFusionBodyLambda())
+      return false;
+
+    // Kernel must expose output fusion contract.
+    auto outputInterfaceAttr = parentKernel.getOutputFusionInterface();
+    if (!outputInterfaceAttr)
+      return false;
+
+    // Fusion interface must be non-null.
+    auto outputInterface =
+        *outputInterfaceAttr->getAsRange<StringAttr>().begin();
+    if (!outputInterface.size())
+      return false;
+
+    return true;
+  }
+
+  void fuseIntoInputLambda(MOGG::KernelOp dstKernel, ArrayAttr fusionInterfaces,
+                           uint64_t inputIdx) {
+    MLIRContext *ctx = dstKernel.getContext();
+
+    // We've already guarded that we only have one user. The kernel is cloned in
+    // case it is needed elsewhere.
+    auto srcKernel =
+        cast<MOGG::KernelOp>(dstKernel.getOperand(inputIdx).getDefiningOp())
+            .clone();
+
+    Block &dstKernelBody = dstKernel.getBody().front();
+    Block &srcKernelBody = srcKernel.getBody().front();
+
+    auto fusionArgument = dstKernelBody.getArgument(inputIdx);
+
+    // Remap references to the old outputs to the new values.
+    IRMapping oldToNew;
+    oldToNew.map(srcKernel.getOutputPlaceholder()->getResult(0),
+                 fusionArgument);
+    for (auto [operand, blockArg] :
+         llvm::zip(srcKernel.getOperands(), srcKernelBody.getArguments())) {
+      Value newBlockArg = dstKernel.addOperand(operand);
+      oldToNew.map(blockArg, newBlockArg);
+    }
+
+    // Inline all the lambdas in the op we are pulling in.
+    srcKernel.inlineLambdas();
+
+    auto &dstKernelRegion = dstKernel.getRegion().front();
+    OpBuilder builder{ctx};
+    builder.setInsertionPoint(&dstKernelRegion, dstKernelRegion.begin());
+
+    mlir::SymbolTable symTable{dstKernel};
+
+    IRMapping &remapper = oldToNew;
+
+    // Don't fuse in the elementwise kernel invoke directly.
+    auto skipElementwise = [](Operation *op) {
+      if (auto call = dyn_cast<MOGG::CallOp>(op)) {
+        if (call.getMojoKernelTarget() == "elementwise")
+          return true;
+      }
+      return false;
+    };
+
+    llvm::StringMap<StringRef> oldNameToNew;
+    srcKernel.fuseBodyIntoNewWithSkip(builder, symTable, remapper, oldNameToNew,
+                                      skipElementwise);
+
+    // The kernel we fused in will expose its fusion via the fusion body
+    // attribute. That lambda will now exist in our function with a possibly
+    // remapped name (but probably not) so look through the map to find the new
+    // name.
+    StringRef oldName = *srcKernel.getFusionBodyLambda();
+    auto fusedLambdaName = oldNameToNew[oldName];
+
+    // Find the lambda inside the new body.
+    auto fusedLambda = cast<LambdaOp>(symTable.lookup(fusedLambdaName));
+
+    // Invoke the fused lambda inside the body of the input lambda.
+    auto dstInputLambdaName = SmallVector<StringAttr>(
+        fusionInterfaces.getAsRange<StringAttr>())[inputIdx];
+    auto dstInputLambda = cast<LambdaOp>(symTable.lookup(dstInputLambdaName));
+    Block &lambdaBody = dstInputLambda.getRegion().front();
+    Value indices = lambdaBody.getArgument(0);
+
+    // Invoke the new lambda.
+    builder.setInsertionPoint(&lambdaBody, lambdaBody.begin());
+    auto invoke = builder.create<MOGG::LambdaInvokeOp>(
+        fusedLambda.getLoc(), TypeRange{},
+        SymbolRefAttr::get(ctx, fusedLambdaName, {}), ValueRange{indices},
+        mlir::BoolAttr{});
+
+    // Inline it.
+    auto newValues = inlineInvoke(invoke, fusedLambda);
+    fusedLambda.erase();
+    invoke.erase();
+
+    // Find all the stores that write through the argument that is being fused.
+    SmallVector<MOGG::CallOp> stores;
+    for (auto op : dstInputLambda.getOps<MOGG::CallOp>()) {
+      if (op.getOperand(0) == fusionArgument) {
+        stores.push_back(op);
+      }
+    }
+
+    Value simdValue = stores.back()->getOperand(2);
+
+    // Erase all store ops.
+    for (auto storeOp : stores)
+      storeOp.erase();
+
+    // Replace all load ops that read from the argument that is being fused.
+    for (auto load : llvm::make_early_inc_range(
+             dstInputLambda.getOps<MOGG::SimdLoadOp>())) {
+      if (load.getTensor() == fusionArgument) {
+        load.replaceAllUsesWith(simdValue);
+        load.erase();
+      }
+    }
+
+    // If we have the `lambdas_have_fusion` parameter, a.k.a matmul,
+    // then we should set it to true now.
+    for (auto call : dstKernel.getOps<MOGG::CallOp>()) {
+      BoolAttr trueAttr = BoolAttr::get(ctx, true);
+      call.setKGENParamToValueIfPresent("lambdas_have_fusion", trueAttr);
+    }
+
+    // Delete the <operand, argument> pair from which we fused.
+    dstKernel.removeOperandAtIndex(inputIdx);
+
+    // Delete the cloned kernel.
+    srcKernel.erase();
+  }
+
   /// Returns true if we can fuse into the output lambda. This sanity checks a
   /// number of constraints. Mainly it checks:
   /// 1. We are an op which can be fused into
@@ -49,12 +215,6 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     if (isElemwise)
       return false;
 
-    // Fusion interface is expected to be a string attr.
-    for (Attribute attr : fusionInterface) {
-      if (!isa<StringAttr>(attr))
-        return false;
-    }
-
     // Output can only have one user and that user must be a fusable elementwise
     // kernel.
     for (Value result : kernel.getResults()) {
@@ -67,8 +227,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         return false;
 
       // Check the kernel is a fusable elementwise.
-      auto attr = user.getFusionBodyLambda();
-      if (!attr)
+      if (!user.getFusionBodyLambda())
         return false;
 
       // Kernel must expose input fusion contract.
@@ -145,8 +304,6 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         Value newBlockArg = kernelToFuseInto.addOperand(operand);
         oldToNew.map(blockArg, newBlockArg);
         seenOperands[operand] = newBlockArg;
-      } else {
-        oldToNew.map(blockArg, itr->second);
       }
     }
 
@@ -253,6 +410,22 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         if (canDoOutputFusion(kernelToFuseInto, lambdas)) {
           StringAttr outputLambdaName = cast<StringAttr>(lambdas[0]);
           fuseIntoOutputLambda(kernelToFuseInto, outputLambdaName);
+        }
+      }
+
+      auto inputLambdas = kernelToFuseInto.getInputFusionInterface();
+      if (!inputLambdas) {
+        continue;
+      }
+
+      uint64_t numOperands = kernelToFuseInto.getNumOperands();
+      for (int64_t inputIdx = numOperands - 1; inputIdx >= 0; --inputIdx) {
+        if (canDoInputFusion(kernelToFuseInto,
+                             kernelToFuseInto.getInputFusionInterfaceAttr(),
+                             inputIdx)) {
+          fuseIntoInputLambda(kernelToFuseInto,
+                              kernelToFuseInto.getInputFusionInterfaceAttr(),
+                              inputIdx);
         }
       }
     }
