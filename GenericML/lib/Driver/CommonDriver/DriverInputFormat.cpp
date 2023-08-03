@@ -93,7 +93,7 @@ FileFormat M::sniffInputFormat(StringRef fileExtension,
         case CompiledFrameworkLabel::kFauxModel:
           return FileFormat::kFauxDialect;
         case CompiledFrameworkLabel::kModularModel:
-          return FileFormat::kMODialect;
+          return FileFormat::kMGPDialect;
         case CompiledFrameworkLabel::kONNXModel:
           return FileFormat::kMONNXDialect;
         case CompiledFrameworkLabel::kPyTorchModel:

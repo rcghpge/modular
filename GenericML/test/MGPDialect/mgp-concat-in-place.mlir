@@ -13,7 +13,7 @@
 // CHECK: %[[CH3:.*]] = grt.chain.create (%[[CH1]], %[[CH2]])
 // CHECK: %[[OUT_TENSOR:.*]] = mgp.cpu.tensor.create %[[CH3]], %[[OUT_BUF]], %{{.*}}
 
-mgp.model @static_concat : tf init {
+mgp.model @static_concat : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
@@ -55,7 +55,7 @@ mgp.model @static_concat : tf init {
 // CHECK: %[[CH3:.*]] = grt.chain.create (%[[CH1]], %[[CH2]])
 // CHECK: %[[OUT_TENSOR:.*]] = mgp.cpu.tensor.create %[[CH3]], %[[OUT_BUF]], %{{.*}}
 
-mgp.model @dynamic_concat : tf init {
+mgp.model @dynamic_concat : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
@@ -89,7 +89,7 @@ mgp.model @dynamic_concat : tf init {
 // CHECK-LABEL: mgp.model @concat_with_shared_input_buffer
 // CHECK: %{{.*}} = mgp.cpu.buffer.split.borrow
 
-mgp.model @concat_with_shared_input_buffer : tf init {
+mgp.model @concat_with_shared_input_buffer : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
@@ -119,7 +119,7 @@ mgp.model @concat_with_shared_input_buffer : tf init {
 // CHECK-LABEL: mgp.model @non_trivial_chains
 // CHECK: %{{.*}} = mgp.cpu.buffer.split.borrow
 
-mgp.model @non_trivial_chains : tf init {
+mgp.model @non_trivial_chains : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
@@ -148,7 +148,7 @@ mgp.model @non_trivial_chains : tf init {
 // CHECK-LABEL: mgp.model @dont_trigger_since_duplicate_buffers
 // CHECK: %{{.*}} = mgp.cpu.buffer.concat
 
-mgp.model @dont_trigger_since_duplicate_buffers : tf init {
+mgp.model @dont_trigger_since_duplicate_buffers : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context

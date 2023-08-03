@@ -19,7 +19,7 @@
 // CHECK-NEXT:  }) : (si32, !mgp.cpu.tensor<f32>) -> !mgp.cpu.tensor<f32>
 // CHECK-NEXT:  %3 = "some.op"(%2) : (!mgp.cpu.tensor<f32>) -> !mgp.cpu.tensor<f32>
 // CHECK-NEXT:  "mef.output"(%arg0, %3) : (!mef.chain, !mgp.cpu.tensor<f32>) -> ()
-// CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "repeat1"} : () -> ()
+// CHECK-NEXT:}) {frameworkName = "mof", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "repeat1"} : () -> ()
 
 // Note the repeat input, result, sub-block arg and sub-block output are all
 // in the same equivalence class.
@@ -34,7 +34,7 @@
 // CHECK: %2 |-> {%1, %arg2[2], %4[2]}
 // CHECK: approximateMaybeSameAs end
 
-mgp.model @repeat1 : tf init {
+mgp.model @repeat1 : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
@@ -67,14 +67,14 @@ mgp.model @repeat1 : tf init {
 // CHECK-NEXT:  }) : (si32, !mgp.cpu.tensor<f32>) -> !mgp.cpu.tensor<f32>
 // CHECK-NEXT:  %3 = "some.op"(%2) : (!mgp.cpu.tensor<f32>) -> !mgp.cpu.tensor<f32>
 // CHECK-NEXT:  "mef.output"(%arg0, %3) : (!mef.chain, !mgp.cpu.tensor<f32>) -> ()
-// CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "repeat2"} : () -> ()
+// CHECK-NEXT:}) {frameworkName = "mof", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "repeat2"} : () -> ()
 
 // CHECK: maybeSameAs begin
 // CHECK: %arg2[2] |-> {%1, %arg2[2]}
 // CHECK: %2 |-> {%1, %arg2[2]}
 // CHECK: maybeSameAs end
 
-mgp.model @repeat2 : tf init {
+mgp.model @repeat2 : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
@@ -107,7 +107,7 @@ mgp.model @repeat2 : tf init {
 // CHECK-NEXT:  }) : (si32, !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>) -> (!mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>)
 // CHECK-NEXT:  %3 = "some.op"(%2#0) : (!mgp.cpu.tensor<f32>) -> !mgp.cpu.tensor<f32>
 // CHECK-NEXT:  "mef.output"(%arg0, %3) : (!mef.chain, !mgp.cpu.tensor<f32>) -> ()
-// CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "repeat3"} : () -> ()
+// CHECK-NEXT:}) {frameworkName = "mof", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "repeat3"} : () -> ()
 
 // CHECK: maybeSameAs begin
 // CHECK: %arg2[2] |-> {%1, %4[2]}
@@ -116,7 +116,7 @@ mgp.model @repeat2 : tf init {
 // CHECK: %2#1 |-> {%1, %arg3[2]}
 // CHECK: maybeSameAs end
 
-mgp.model @repeat3 : tf init {
+mgp.model @repeat3 : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
@@ -162,7 +162,7 @@ mgp.model @repeat3 : tf init {
 // CHECK-NEXT:  }) : (!mef.chain, !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>) -> (!mef.chain, !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>)
 // CHECK-NEXT:  %3 = "some.op"(%2#1, %2#2, %2#3) : (!mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>) -> !mgp.cpu.tensor<f32>
 // CHECK-NEXT:  "mef.output"(%2#0, %3) : (!mef.chain, !mgp.cpu.tensor<f32>) -> ()
-// CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "simple"} : () -> ()
+// CHECK-NEXT:}) {frameworkName = "mof", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "simple"} : () -> ()
 
 // CHECK: sameAs begin
 // CHECK: %2#0 |-> {%0[0], %arg0, %arg2[2], %arg2[3]}
@@ -202,7 +202,7 @@ mgp.model @repeat3 : tf init {
 // CHECK: exclusive begin
 // CHECK-NEXT: exclusive end
 
-mgp.model @simple : tf init {
+mgp.model @simple : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
@@ -249,7 +249,7 @@ mgp.model @simple : tf init {
 // CHECK-NEXT:  }) : (!mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>) -> (!mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>)
 // CHECK-NEXT:  %3 = "some.op"(%2#0, %2#1) : (!mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>) -> !mgp.cpu.tensor<f32>
 // CHECK-NEXT:  "mef.output"(%arg0, %3) : (!mef.chain, !mgp.cpu.tensor<f32>) -> ()
-// CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "crissCross"} : () -> ()
+// CHECK-NEXT:}) {frameworkName = "mof", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "crissCross"} : () -> ()
 
 // CHECK: sameAs begin
 // CHECK: %2#0 |-> {%arg2[2], %arg2[3]}
@@ -261,7 +261,7 @@ mgp.model @simple : tf init {
 // CHECK: %2#1 |-> {%0, %1, %arg2[2], %arg3[2], %arg2[3], %arg3[3]}
 // CHECK: maybeSameAs end
 
-mgp.model @crissCross : tf init {
+mgp.model @crissCross : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
@@ -305,7 +305,7 @@ mgp.model @crissCross : tf init {
 // CHECK-NEXT:  }) : (!mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>) -> (!mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>)
 // CHECK-NEXT:  %2 = "some.op"(%1#0, %1#1, %1#2) : (!mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>) -> !mgp.cpu.tensor<f32>
 // CHECK-NEXT:  "mef.output"(%arg0, %2) : (!mef.chain, !mgp.cpu.tensor<f32>) -> ()
-// CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "shift"} : () -> ()
+// CHECK-NEXT:}) {frameworkName = "mof", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "shift"} : () -> ()
 
 // CHECK: sameAs begin
 // CHECK: %1#0 |-> {%arg2[2], %arg2[3]}
@@ -323,7 +323,7 @@ mgp.model @crissCross : tf init {
 // CHECK: %2 |-> {%arg2[2], %arg3[2], %arg4[2], %arg2[3], %arg3[3], %arg4[3], %3[3], %1#0, %1#1, %1#2}
 // CHECK: impliesReady end
 
-mgp.model @shift : tf init {
+mgp.model @shift : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
@@ -394,7 +394,7 @@ mgp.model @shift : tf init {
 // CHECK-NEXT:  %11:2 = "mgp.cpu.tensor.extract"(%10#2) : (!mgp.cpu.tensor<32xui8>) -> (!mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<32xui8>)
 // CHECK-NEXT:  %12 = "mgp.cpu.tensor.create"(%arg0, %11#0, %11#1) : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<32xui8>) -> !mgp.cpu.tensor<32xui8>
 // CHECK-NEXT:  "mef.output"(%10#0, %12) : (!mef.chain, !mgp.cpu.tensor<32xui8>) -> ()
-// CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<32xui8>, sym_name = "while"} : () -> ()
+// CHECK-NEXT:}) {frameworkName = "mof", inputOutputTypes = () -> !mgp.cpu.tensor<32xui8>, sym_name = "while"} : () -> ()
 
 // CHECK: sameAs begin
 // CHECK: %10#0 |-> {%0[0], %arg0, %arg2[2], %arg2[3]}
@@ -424,7 +424,7 @@ mgp.model @shift : tf init {
 // CHECK: %18[3] |-> {%3, %4, %5, %7, %8, %13#0[3], %13#1[3], %14#0[3], %14#1[3]}
 // CHECK: exclusive end
 
-mgp.model @while : tf init {
+mgp.model @while : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context

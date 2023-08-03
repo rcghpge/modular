@@ -12,7 +12,7 @@
 //  mo.output %r : !mo.tensor<[8], f32>
 //}
 
-// CHECK-LABEL: mgp.model @basicMoGraph : tf init {
+// CHECK-LABEL: mgp.model @basicMoGraph : mof init {
 // CHECK: execute (%[[CH0:.*]]: !mef.chain,
 
 // CHECK: %[[OUT_BUF_1:.*]] = mgp.cpu.buffer.alloc.static %[[CH0]], 32
@@ -29,7 +29,7 @@
 // CHECK-NEXT: %[[OUT_TENSOR:.*]] = mgp.cpu.tensor.create %[[CH3]], %[[OUT_BUF_3]], %{{.*}}
 // CHECK-NEXT: mef.output %[[CH0]], %[[OUT_TENSOR]]
 
-mgp.model @basicMoGraph : tf init {
+mgp.model @basicMoGraph : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
@@ -87,7 +87,7 @@ mgp.model @basicMoGraph : tf init {
 // CHECK-NEXT: %[[OUT_TENSOR:.*]] = mgp.cpu.tensor.create %[[CH10]], %[[OUT_BUF_3]], %{{.*}} : !mgp.cpu.tensor<8xf32>
 // CHECK-NEXT: mef.output %[[CH10]], %[[OUT_TENSOR]]
 
-mgp.model @DivergentChains : tf init {
+mgp.model @DivergentChains : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
@@ -133,7 +133,7 @@ mgp.model @DivergentChains : tf init {
 // CHECK-NEXT:   mef.output %[[CH1]], %[[BUF0]], %[[BUF1]]
 // CHECK-NEXT: }
 
-mgp.model @multiple_writers_convergence : tf init {
+mgp.model @multiple_writers_convergence : mof init {
   %ch = grt.chain.create ()
   %ctx = mgp.context.create 0
   mef.output %ch, %ctx : !mef.chain, !mgp.context

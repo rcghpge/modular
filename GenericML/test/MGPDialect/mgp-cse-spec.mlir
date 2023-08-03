@@ -10,7 +10,7 @@
 //}
 
 module {
-  mgp.model @basicMoGraph : tf init {
+  mgp.model @basicMoGraph : mof init {
     %0 = grt.chain.create ()
     %1 = mgp.context.create 0
     mef.output %0, %1 : !mef.chain, !mgp.context

@@ -1,7 +1,7 @@
 // RUN: mgp-opt %s --allow-unregistered-dialect --async-dataflow-dependencies-test --simplify-chains --cse --mlir-disable-threading | FileCheck %s
 
-// CHECK-LABEL: mgp.model @chains : tf init {
-mgp.model @chains : tf init {
+// CHECK-LABEL: mgp.model @chains : mof init {
+mgp.model @chains : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
@@ -49,7 +49,7 @@ mgp.model @chains : tf init {
 }
 
 // CHECK-LABEL: mgp.model @arg0_not_always_ready
-mgp.model @arg0_not_always_ready : tf init {
+mgp.model @arg0_not_always_ready : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   %2 = "some.op" (%0) : (!mef.chain) -> !mef.chain
@@ -63,7 +63,7 @@ mgp.model @arg0_not_always_ready : tf init {
 
 
 // CHECK-LABEL: mgp.model @chain_merge_canonicalized
-mgp.model @chain_merge_canonicalized : tf init {
+mgp.model @chain_merge_canonicalized : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
@@ -85,7 +85,7 @@ mgp.model @chain_merge_canonicalized : tf init {
 }
 
 // CHECK-LABEL: mgp.model @chain_merge_fold_empty_operands
-mgp.model @chain_merge_fold_empty_operands : tf init {
+mgp.model @chain_merge_fold_empty_operands : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
@@ -97,7 +97,7 @@ mgp.model @chain_merge_fold_empty_operands : tf init {
 }
 
 // CHECK-LABEL: mgp.model @chain_merge_fold_consecutive
-mgp.model @chain_merge_fold_consecutive : tf init {
+mgp.model @chain_merge_fold_consecutive : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
@@ -119,7 +119,7 @@ mgp.model @chain_merge_fold_consecutive : tf init {
 }
 
 // CHECK-LABEL: mgp.model @chain_merge_fold_operands_uniqued
-mgp.model @chain_merge_fold_operands_uniqued : tf init {
+mgp.model @chain_merge_fold_operands_uniqued : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context

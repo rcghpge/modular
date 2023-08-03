@@ -20,7 +20,7 @@
 // CHECK-NEXT:  %4 = "some.op"(%3, %0) : (!mef.chain, !mef.chain) -> !mef.chain
 // CHECK-NEXT:  %5 = "some.op"(%2, %4) : (!mef.chain, !mef.chain) -> !mef.chain
 // CHECK-NEXT:  "mef.output"(%5) : (!mef.chain) -> ()
-// CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> (), sym_name = "simple"} : () -> ()
+// CHECK-NEXT:}) {frameworkName = "mof", inputOutputTypes = () -> (), sym_name = "simple"} : () -> ()
 
 // sameAs only ties the 'init' results to the 'execute args
 // CHECK: sameAs begin
@@ -78,7 +78,7 @@
 // CHECK-NEXT: %5 |-> {%0[0], %arg0, %0, %1, %3}
 // CHECK-NEXT: exclusive end
 
-mgp.model @simple : tf init {
+mgp.model @simple : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
@@ -130,7 +130,7 @@ mgp.model @simple : tf init {
 // CHECK-NEXT:  %22 = "mop.kernels.add"(%arg0, %18#0, %18#1, %19#0, %19#1, %20, %21) {numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mef.chain
 // CHECK-NEXT:  %23 = "mgp.cpu.tensor.create"(%22, %20, %21) : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mgp.cpu.tensor<8xf32>
 // CHECK-NEXT:  "mef.output"(%arg0, %23) : (!mef.chain, !mgp.cpu.tensor<8xf32>) -> ()
-// CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<8xf32>, sym_name = "straightline"} : () -> ()
+// CHECK-NEXT:}) {frameworkName = "mof", inputOutputTypes = () -> !mgp.cpu.tensor<8xf32>, sym_name = "straightline"} : () -> ()
 
 // Spot check impliesReady
 // CHECK: impliesReady begin
@@ -148,7 +148,7 @@ mgp.model @simple : tf init {
 // CHECK: %5 |-> {%16, %17, %18#0, %18#1, %22, %23}
 // CHECK: exclusive end
 
-mgp.model @straightline : tf init {
+mgp.model @straightline : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
@@ -201,7 +201,7 @@ mgp.model @straightline : tf init {
 // CHECK-NEXT:  %7 = "mgp.cpu.tensor_spec.create"() {aRawDims = #M.dense_array<6> : !M.array<1xui64>, bRawDType = 135 : ui8} : () -> !mgp.cpu.tensor_spec<6xsi8>
 // CHECK-NEXT:  %8 = "mgp.cpu.tensor.create"(%6, %5, %7) : (!mef.chain, !mgp.cpu.buffer<6>, !mgp.cpu.tensor_spec<6xsi8>) -> !mgp.cpu.tensor<6xsi8>
 // CHECK-NEXT:  "mef.output"(%6, %8) : (!mef.chain, !mgp.cpu.tensor<6xsi8>) -> ()
-// CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<6xsi8>, sym_name = "safe_split_borrow"} : () -> ()
+// CHECK-NEXT:}) {frameworkName = "mof", inputOutputTypes = () -> !mgp.cpu.tensor<6xsi8>, sym_name = "safe_split_borrow"} : () -> ()
 
 // CHECK: maybeSameAs begin
 // Note %2#* is considered maybe the same as %0.
@@ -215,7 +215,7 @@ mgp.model @straightline : tf init {
 // CHECK: %0 |-> {%8}
 // CHECK: exclusive end
 
-mgp.model @safe_split_borrow : tf init {
+mgp.model @safe_split_borrow : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
@@ -232,4 +232,3 @@ mgp.model @safe_split_borrow : tf init {
   %ten = mgp.cpu.tensor.create %ch4, %out_buf, %out_spec : !mgp.cpu.tensor<6xsi8>
   mef.output %ch4, %ten  : !mef.chain, !mgp.cpu.tensor<6xsi8>
 }
-

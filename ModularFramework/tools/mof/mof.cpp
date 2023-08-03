@@ -201,6 +201,8 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
   // Convert the input file to an MLIR module.
   switch (format) {
   case FileFormat::kMODialect:
+    [[fallthrough]];
+  case FileFormat::kMGPDialect:
     module = parseMODialect(file.getBuffer(), &ctx);
     break;
 

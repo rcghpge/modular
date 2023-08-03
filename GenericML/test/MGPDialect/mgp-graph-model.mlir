@@ -2,7 +2,7 @@
 // RUN: mgp-opt %s --allow-unregistered-dialect
 
 module {
-  mgp.model @upsideDown : tf init {
+  mgp.model @upsideDown : mof init {
     %2 = "mop.create_jit_context"(%0, %1) {slot = 0 : ui32} : (!mef.chain, !mgp.context) -> !mef.chain
     %1 = mgp.context.create 1
     %0 = grt.chain.create ()

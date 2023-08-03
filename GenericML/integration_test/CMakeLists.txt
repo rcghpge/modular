@@ -23,5 +23,6 @@ add_modular_testsuite(check-genericml-integration
 
   DEPENDS
   tf
+  mof
   )
 endif()

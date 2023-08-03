@@ -4,7 +4,7 @@
 // @kgen_execute_kernel
 //
 
-// CHECK-LABEL: mgp.model @kgen_execute_kernel : tf init {
+// CHECK-LABEL: mgp.model @kgen_execute_kernel : mof init {
 // CHECK-NEXT:   %[[CH0:.*]] = grt.chain.create ()
 // CHECK-NEXT:   %[[CTX:.*]] = mgp.context.create 2
 // Dummy chain
@@ -31,7 +31,7 @@
 // CHECK-NEXT:   mef.output %[[CH0]], %[[BUF]] : !mef.chain, !mgp.cpu.buffer<37632>
 // CHECK-NEXT: }
 
-mgp.model @kgen_execute_kernel : tf init {
+mgp.model @kgen_execute_kernel : mof init {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
   mef.output %ch0, %ctx : !mef.chain, !mgp.context
@@ -50,7 +50,7 @@ mgp.model @kgen_execute_kernel : tf init {
 // @matmul_packb
 //
 
-// CHECK-LABEL: mgp.model @matmul_packb : tf init {
+// CHECK-LABEL: mgp.model @matmul_packb : mof init {
 // CHECK-NEXT:  %[[CH0:.*]] = grt.chain.create ()
 // CHECK-NEXT:  %[[CTX:.*]] = mgp.context.create 2
 // CHECK-NEXT:  %[[CH1:.*]] = "mop.create_jit_context"(%[[CH0]], %[[CTX]]) {slot = 0 : ui32} : (!mef.chain, !mgp.context) -> !mef.chain
@@ -88,7 +88,7 @@ mgp.model @kgen_execute_kernel : tf init {
 // CHECK-NEXT:  mef.output %[[CH0]], %[[OUT_TENSOR]] : !mef.chain, !mgp.cpu.tensor<?x2xf32>
 // CHECK-NEXT:}
 
-mgp.model @matmul_packb : tf init {
+mgp.model @matmul_packb : mof init {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
   %ch1 = "mop.create_jit_context"(%ch0, %ctx) {slot = 0 : ui32} : (!mef.chain, !mgp.context) -> !mef.chain
@@ -117,7 +117,7 @@ mgp.model @matmul_packb : tf init {
 // @non_pure_op
 //
 
-// CHECK-LABEL: mgp.model @non_pure_op : tf init {
+// CHECK-LABEL: mgp.model @non_pure_op : mof init {
 // CHECK-NEXT:  %[[CH0:.*]] = grt.chain.create ()
 // CHECK-NEXT:  %[[CTX:.*]] = mgp.context.create 1
 // CHECK-NEXT:  %[[CH1:.*]] = "mop.create_jit_context"(%[[CH0]], %[[CTX]]) {slot = 0 : ui32} : (!mef.chain, !mgp.context) -> !mef.chain
@@ -142,7 +142,7 @@ mgp.model @matmul_packb : tf init {
 // CHECK-NEXT:  mef.output %[[CH0]], %[[OUT_TENSOR]] : !mef.chain, !mgp.cpu.tensor<?x?xf32>
 // CHECK-NEXT:}
 
-mgp.model @non_pure_op : tf init {
+mgp.model @non_pure_op : mof init {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
   %ch1 = "mop.create_jit_context"(%ch0, %ctx) {slot = 0 : ui32} : (!mef.chain, !mgp.context) -> !mef.chain
@@ -162,7 +162,7 @@ mgp.model @non_pure_op : tf init {
 // @weight_transpose
 //
 
-// CHECK-LABEL: mgp.model @weight_transpose : tf init {
+// CHECK-LABEL: mgp.model @weight_transpose : mof init {
 // CHECK-NEXT:   %[[CH0:.*]] = grt.chain.create ()
 // CHECK-NEXT:   %[[CTX:.*]] = mgp.context.create 2
 // Dummy chain
@@ -189,7 +189,7 @@ mgp.model @non_pure_op : tf init {
 // CHECK-NEXT:   mef.output %[[CH0]], %[[BUF]] : !mef.chain, !mgp.cpu.buffer<37632>
 // CHECK-NEXT: }
 
-mgp.model @weight_transpose : tf init {
+mgp.model @weight_transpose : mof init {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
   mef.output %ch0, %ctx : !mef.chain, !mgp.context
@@ -208,7 +208,7 @@ mgp.model @weight_transpose : tf init {
 // @dont_lift_if_no_computation_saved
 //
 
-// CHECK-LABEL: mgp.model @dont_lift_if_no_computation_saved : tf init {
+// CHECK-LABEL: mgp.model @dont_lift_if_no_computation_saved : mof init {
 // CHECK-NEXT:   %[[CH0:.*]] = grt.chain.create ()
 // CHECK-NEXT:   %[[CTX:.*]] = mgp.context.create 1
 // Dummy chain
@@ -224,7 +224,7 @@ mgp.model @weight_transpose : tf init {
 // CHECK-NEXT:   mef.output %[[CH0]], %[[OUT_BUF]] : !mef.chain, !mgp.cpu.buffer<0>
 // CHECK-NEXT: }
 
-mgp.model @dont_lift_if_no_computation_saved : tf init {
+mgp.model @dont_lift_if_no_computation_saved : mof init {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
   mef.output %ch0, %ctx : !mef.chain, !mgp.context
@@ -237,7 +237,7 @@ mgp.model @dont_lift_if_no_computation_saved : tf init {
 // @intermediate_buffer
 //
 
-// CHECK-LABEL: mgp.model @intermediate_buffer : tf init {
+// CHECK-LABEL: mgp.model @intermediate_buffer : mof init {
 // CHECK-NEXT:   %[[CH0:.*]] = grt.chain.create ()
 // CHECK-NEXT:   %[[CTX:.*]] = mgp.context.create 2
 // Dummy chain
@@ -272,7 +272,7 @@ mgp.model @dont_lift_if_no_computation_saved : tf init {
 // CHECK-NEXT:   mef.output %[[CH0]], %[[BUF]] : !mef.chain, !mgp.cpu.buffer
 // CHECK-NEXT: }
 
-mgp.model @intermediate_buffer : tf init {
+mgp.model @intermediate_buffer : mof init {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
   mef.output %ch0, %ctx : !mef.chain, !mgp.context
@@ -303,7 +303,7 @@ mgp.model @intermediate_buffer : tf init {
 // @constant_buffer_used_in_both_init_and_exec
 //
 
-// CHECK-LABEL: mgp.model @constant_buffer_used_in_both_init_and_exec : tf init {
+// CHECK-LABEL: mgp.model @constant_buffer_used_in_both_init_and_exec : mof init {
 // Lifted constant buffers
 // Old chains and context ops
 // CHECK-NEXT:   %[[CH0:.*]] = grt.chain.create ()
@@ -346,7 +346,7 @@ mgp.model @intermediate_buffer : tf init {
 // CHECK-NEXT: mef.output %[[OUT_CH]], %[[WEIGHT_T_BUF]], %[[ARG_T_BUF]] : !mef.chain, !mgp.cpu.buffer<1600>, !mgp.cpu.buffer<8>
 // CHECK-NEXT: }
 
-mgp.model @constant_buffer_used_in_both_init_and_exec : tf init {
+mgp.model @constant_buffer_used_in_both_init_and_exec : mof init {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 0
   mef.output %ch0, %ctx : !mef.chain, !mgp.context
@@ -379,7 +379,7 @@ mgp.model @constant_buffer_used_in_both_init_and_exec : tf init {
 // @lift_non_trivial_buffer_op_without_liftable_user
 //
 
-// CHECK-LABEL: mgp.model @lift_non_trivial_buffer_op_without_liftable_user : tf init {
+// CHECK-LABEL: mgp.model @lift_non_trivial_buffer_op_without_liftable_user : mof init {
 // Old chains and context ops
 // CHECK-NEXT:   %[[CH0:.*]] = grt.chain.create ()
 // CHECK-NEXT:   %[[CTX:.*]] = mgp.context.create 2
@@ -403,7 +403,7 @@ mgp.model @constant_buffer_used_in_both_init_and_exec : tf init {
 // CHECK-NEXT:   mef.output %[[CH0]], %[[BUF]] : !mef.chain, !mgp.cpu.buffer
 // CHECK-NEXT: }
 
-mgp.model @lift_non_trivial_buffer_op_without_liftable_user : tf init {
+mgp.model @lift_non_trivial_buffer_op_without_liftable_user : mof init {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
   mef.output %ch0, %ctx : !mef.chain, !mgp.context
@@ -418,7 +418,7 @@ mgp.model @lift_non_trivial_buffer_op_without_liftable_user : tf init {
 // @collect_write_chains_for_lifted_buffer
 //
 
-// CHECK-LABEL: mgp.model @collect_write_chains_for_lifted_buffer : tf init {
+// CHECK-LABEL: mgp.model @collect_write_chains_for_lifted_buffer : mof init {
 // Old chains and context ops
 // CHECK-NEXT:   %[[CH0:.*]] = grt.chain.create ()
 // CHECK-NEXT:   %[[CTX:.*]] = mgp.context.create 3
@@ -445,7 +445,7 @@ mgp.model @lift_non_trivial_buffer_op_without_liftable_user : tf init {
 // CHECK-NEXT:   mef.output %[[CH0]], %[[BUF]], %[[OUT_BUF]] : !mef.chain, !mgp.cpu.buffer<100>, !mgp.cpu.buffer
 // CHECK-NEXT: }
 
-mgp.model @collect_write_chains_for_lifted_buffer : tf init {
+mgp.model @collect_write_chains_for_lifted_buffer : mof init {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
   mef.output %ch0, %ctx : !mef.chain, !mgp.context

@@ -30,7 +30,7 @@
 // CHECK-NEXT:  }) : (i1, !mef.chain, !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>) -> (!mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>)
 // CHECK-NEXT:  %4 = "some.op"(%3#0, %3#1, %3#2) : (!mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>, !mgp.cpu.tensor<f32>) -> !mgp.cpu.tensor<f32>
 // CHECK-NEXT:  "mef.output"(%arg0, %4) : (!mef.chain, !mgp.cpu.tensor<f32>) -> ()
-// CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "simple"} : () -> ()
+// CHECK-NEXT:}) {frameworkName = "mof", inputOutputTypes = () -> !mgp.cpu.tensor<f32>, sym_name = "simple"} : () -> ()
 
 // CHECK: sameAs begin
 // CHECK-NEXT: %arg0 |-> {%0[0]}
@@ -119,7 +119,7 @@
 // CHECK-NEXT: %4 |-> {%0}
 // CHECK-NEXT: exclusive end
 
-mgp.model @simple : tf init {
+mgp.model @simple : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
@@ -176,7 +176,7 @@ mgp.model @simple : tf init {
 // CHECK-NEXT:  }) : (i1, !mef.chain) -> !mef.chain
 // CHECK-NEXT:  %13 = "grt.chain.create"(%9, %10, %12) : (!mef.chain, !mef.chain, !mef.chain) -> !mef.chain
 // CHECK-NEXT:  "mef.output"(%13) : (!mef.chain) -> ()
-// CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> (), sym_name = "redundant"} : () -> ()
+// CHECK-NEXT:}) {frameworkName = "mof", inputOutputTypes = () -> (), sym_name = "redundant"} : () -> ()
 
 // CHECK: sameAs begin
 // CHECK: %arg2[2] |-> {%9}
@@ -201,7 +201,7 @@ mgp.model @simple : tf init {
 // CHECK: %6 |-> {%0[0], %arg0, %0, %1, %2, %10, %13}
 // CHECK: exclusive end
 
-mgp.model @redundant : tf init {
+mgp.model @redundant : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
@@ -269,7 +269,7 @@ mgp.model @redundant : tf init {
 // CHECK-NEXT:  %13:2 = "mgp.cpu.tensor.extract"(%12#1) : (!mgp.cpu.tensor<32xui8>) -> (!mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<32xui8>)
 // CHECK-NEXT:  %14 = "mgp.cpu.tensor.create"(%12#0, %13#0, %13#1) : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<32xui8>) -> !mgp.cpu.tensor<32xui8>
 // CHECK-NEXT:  "mef.output"(%12#0, %14) : (!mef.chain, !mgp.cpu.tensor<32xui8>) -> ()
-// CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<32xui8>, sym_name = "if"} : () -> ()
+// CHECK-NEXT:}) {frameworkName = "mof", inputOutputTypes = () -> !mgp.cpu.tensor<32xui8>, sym_name = "if"} : () -> ()
 
 // CHECK: sameAs begin
 // CHECK: %arg3[2] |-> {%6}
@@ -296,7 +296,7 @@ mgp.model @redundant : tf init {
 // CHECK: %12#1 |-> {%0, %1, %2, %3, %4, %6, %7, %8, %9, %10#0, %arg3[2], %arg4[2], %arg3[3], %arg4[3], %14}
 // CHECK: exclusive end
 
-mgp.model @if : tf init {
+mgp.model @if : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
@@ -360,13 +360,13 @@ mgp.model @if : tf init {
 // CHECK-NEXT:  %9 = "mop.kernels.add"(%7, %6, %1, %2, %1, %8, %1) {numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mef.chain
 // CHECK-NEXT:  %10 = "mgp.cpu.tensor.create"(%9, %8, %1) : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mgp.cpu.tensor<8xf32>
 // CHECK-NEXT:  "mef.output"(%9, %10) : (!mef.chain, !mgp.cpu.tensor<8xf32>) -> ()
-// CHECK-NEXT:}) {frameworkName = "tf", inputOutputTypes = () -> !mgp.cpu.tensor<8xf32>, sym_name = "conditional_c"} : () -> ()
+// CHECK-NEXT:}) {frameworkName = "mof", inputOutputTypes = () -> !mgp.cpu.tensor<8xf32>, sym_name = "conditional_c"} : () -> ()
 
 // CHECK: exclusive begin
 // CHECK: %6 |-> {%0[0], %arg0, %0, %3, %4, %arg2[2], %arg3[2], %arg2[3], %arg3[3], %10}
 // CHECK: exclusive end
 
-mgp.model @conditional_c : tf init {
+mgp.model @conditional_c : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1 : !mef.chain, !mgp.context
@@ -392,4 +392,3 @@ mgp.model @conditional_c : tf init {
   %out = mgp.cpu.tensor.create %ch3, %e, %spec  : !mgp.cpu.tensor<8xf32>
   mef.output %ch3, %out : !mef.chain, !mgp.cpu.tensor<8xf32>
 }
-

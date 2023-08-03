@@ -325,7 +325,7 @@ def ExecInvariantCodeMotionPass : Pass<"exec-invariant-code-motion", "MGP::Model
 
     For example:
     ```mlir
-    mgp.model @example : tf init {
+    mgp.model @example : mof init {
       %ch0 = grt.chain.create ()
       %ctx = mgp.context.create 1
       mef.output %ch0, %ctx : !mef.chain, !mgp.context
@@ -346,7 +346,7 @@ def ExecInvariantCodeMotionPass : Pass<"exec-invariant-code-motion", "MGP::Model
     ```
     is rewritten to (note all the clarifying comments):
     ```mlir
-    mgp.model @example : tf init {
+    mgp.model @example : mof init {
       %ch0 = grt.chain.create ()
       // number of slots increased, to store lifted buffers
       %ctx = mgp.context.create 2
