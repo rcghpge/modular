@@ -311,7 +311,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_MOJO_ONLY(MO::CastOp),
       MO_MOJO_ONLY(MO::CeilOp),
       MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::ConcatOp),
-      MO_SHIM_ONLY(MO::ConvOp, "mop.kernels.conv"),
+      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::ConvOp),
       MO_MOJO_ONLY(MO::DivOp),
       MO_MOJO_ONLY(MO::ErfOp),
       MO_MOJO_ONLY(MO::ExpOp),
