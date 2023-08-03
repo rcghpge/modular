@@ -12,6 +12,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/Support/MOGGTypeTraits.h"
 #include "GenericML/Support/Tensor.h"
+#include "mlir/Transforms/TopologicalSortUtils.h"
 
 using namespace M;
 
@@ -40,6 +41,9 @@ struct FuseConstants : public impl::FuseConstantsBase<FuseConstants> {
         if (canFuseOperand(kernel, index))
           fuseInputAtIndex(kernel, index);
       }
+
+      if (static_cast<size_t>(preFuseNumOperands) != kernel.getNumOperands())
+        mlir::sortTopologically(&kernel.getBody().front());
     }
   }
 
