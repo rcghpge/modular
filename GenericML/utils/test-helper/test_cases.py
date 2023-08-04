@@ -4,7 +4,9 @@
 #
 # ===----------------------------------------------------------------------=== #
 
-import sys, inspect
+import inspect
+import sys
+
 import numpy as np
 
 """
@@ -15,6 +17,7 @@ python export_mo_graph.py -n BasicTranspose
 
 Will pick up the class named `BasicTranspose` in this file.
 """
+
 
 # Inherit from this to get some sensible defaults.
 class TestBase:
@@ -205,3 +208,37 @@ def get_test_case(target_name):
             if name == target_name:
                 return obj
     raise Exception(f"No object of name {name} found")
+
+
+class TransposeReduce(TestBase):
+    @staticmethod
+    def num_runs():
+        # TODO (#18676): increase when axis is an input, currently there is no additional coverage for more runs
+        return 1
+
+    @staticmethod
+    def input_sizes_to_test():
+        return [
+            ([65, 68, 15, 73],),
+        ]
+
+    @staticmethod
+    def get_input_specs():
+        return [
+            ((None, None, None, None), np.float32),
+        ]
+
+    @staticmethod
+    def generate_inputs(shapes):
+        return [
+            np.random.uniform(-5.0, 5.0, shapes[0]).astype(np.float32),
+        ]
+
+    @staticmethod
+    def run(inputs, impl):
+        permute = impl.constant((3, 1, 2, 0))
+        # TODO (#18676): should provide axis as an argument to get better coverage
+        # but currently getting an assertion running the generated graph
+        axis = impl.constant((1))
+        trans = impl.transpose(inputs[0], permute)
+        return impl.sum(trans, axis)

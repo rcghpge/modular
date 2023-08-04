@@ -58,6 +58,9 @@ class NumpyImpl:
 
         return to_return
 
+    def sum(self, x, axis):
+        return np.sum(x, axis=axis)
+
 
 # The keras implementation of each primitive.
 class TFImpl:
@@ -78,3 +81,6 @@ class TFImpl:
 
     def split(self, x, split_sizes, axis):
         return tf.split(x, split_sizes, axis)
+
+    def sum(self, x, axis):
+        return tf.reduce_sum(x, axis=axis)
