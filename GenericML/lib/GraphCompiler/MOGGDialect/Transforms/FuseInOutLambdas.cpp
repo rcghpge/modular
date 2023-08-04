@@ -104,7 +104,6 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // Inline all the lambdas in the op we are pulling in.
     srcKernel.inlineLambdas();
 
-    auto &dstKernelRegion = dstKernel.getRegion().front();
     OpBuilder builder{ctx};
     dstKernel.setInsertionPointToTop(builder);
     mlir::SymbolTable symTable{dstKernel};
