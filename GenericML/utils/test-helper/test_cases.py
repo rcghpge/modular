@@ -213,32 +213,35 @@ def get_test_case(target_name):
 class TransposeReduce(TestBase):
     @staticmethod
     def num_runs():
-        # TODO (#18676): increase when axis is an input, currently there is no additional coverage for more runs
-        return 1
+        return 20
 
     @staticmethod
     def input_sizes_to_test():
         return [
-            ([65, 68, 15, 73],),
+            ([65, 67, 3, 17], [1], [4]),
         ]
 
     @staticmethod
     def get_input_specs():
         return [
             ((None, None, None, None), np.float32),
+            ((1,), np.int32),
+            ((4,), np.int32),
         ]
 
     @staticmethod
     def generate_inputs(shapes):
+        permute = np.arange(len(shapes[0])).astype(np.int32)
+        permute = np.random.permutation(permute)
+        # use randint for input to avoid fp tolerance issues
+        input = np.random.randint(-5, 5, size=shapes[0]).astype(np.float32)
         return [
-            np.random.uniform(-5.0, 5.0, shapes[0]).astype(np.float32),
+            input,
+            np.random.randint(0, len(shapes[0]), size=(1,)).astype(np.int32),
+            permute,
         ]
 
     @staticmethod
     def run(inputs, impl):
-        permute = impl.constant((3, 1, 2, 0))
-        # TODO (#18676): should provide axis as an argument to get better coverage
-        # but currently getting an assertion running the generated graph
-        axis = impl.constant((1))
-        trans = impl.transpose(inputs[0], permute)
-        return impl.sum(trans, axis)
+        trans = impl.transpose(inputs[0], inputs[2])
+        return impl.sum(trans, inputs[1])
