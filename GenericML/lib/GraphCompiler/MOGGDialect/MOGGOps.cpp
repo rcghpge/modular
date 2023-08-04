@@ -19,7 +19,6 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/IR/FunctionImplementation.h"
-#include "mlir/IR/IRMapping.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/StringMap.h"
 
@@ -783,6 +782,16 @@ OutputPlaceholdersOp KernelOp::getOutputPlaceholder() {
     out = ph;
   }
   return out;
+}
+
+void KernelOp::setInsertionPointToTop(OpBuilder &builder) {
+  OutputPlaceholdersOp outputPh = getOutputPlaceholder();
+
+  // Not everything has to have an input placeholder, e.g a shape function.
+  if (outputPh)
+    builder.setInsertionPointAfter(outputPh);
+  else
+    builder.setInsertionPointToStart(&getRegion().front());
 }
 
 bool KernelOp::inlineLambdas() {

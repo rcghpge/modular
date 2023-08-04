@@ -116,11 +116,9 @@ struct FuseBroadcastsPass
           if (hasCompoundParameters(inType) || hasCompoundParameters(outType))
             continue;
 
-          Block &thisBlock = kernel.getBody().front();
-
           // Insert after the output placeholders.
           mlir::OpBuilder builder{ctx};
-          builder.setInsertionPointAfter(&thisBlock.front());
+          kernel.setInsertionPointToTop(builder);
 
           // Add the old reshape argument to this kernel.
           Value reshapeInput = kernel.addOperand(reshape.getInput());
@@ -235,8 +233,7 @@ struct FuseBroadcastsPass
 
     mlir::OpBuilder builder{leaf.getContext()};
     // Insert at the top just after the output placeholders.
-    MOGG::OutputPlaceholdersOp leafOuts = leaf.getOutputPlaceholder();
-    builder.setInsertionPointAfter(leafOuts);
+    leaf.setInsertionPointToTop(builder);
 
     // Don't fuse in the elementwise kernel invoke or any lambdas. We just
     // want the view ops at the top.

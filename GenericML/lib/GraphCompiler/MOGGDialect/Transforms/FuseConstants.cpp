@@ -79,19 +79,7 @@ struct FuseConstants : public impl::FuseConstantsBase<FuseConstants> {
     Block &block = kernel.getBody().front();
 
     mlir::OpBuilder builder{kernel->getContext()};
-
-    // We insert after the output placeholders
-    MOGG::OutputPlaceholdersOp outputPh;
-    for (auto ph : kernel.getOps<MOGG::OutputPlaceholdersOp>()) {
-      assert(!outputPh && "Only one placeholder expected");
-      outputPh = ph;
-    }
-
-    // Not everything has to have an input placeholder, e.g a shape function.
-    if (outputPh)
-      builder.setInsertionPointAfter(outputPh);
-    else
-      builder.setInsertionPointToStart(&block);
+    kernel.setInsertionPointToTop(builder);
 
     // Clone the constant and add it to the kernel.
     auto newOp = cst->clone();

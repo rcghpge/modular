@@ -106,8 +106,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     auto &dstKernelRegion = dstKernel.getRegion().front();
     OpBuilder builder{ctx};
-    builder.setInsertionPoint(&dstKernelRegion, dstKernelRegion.begin());
-
+    dstKernel.setInsertionPointToTop(builder);
     mlir::SymbolTable symTable{dstKernel};
 
     IRMapping &remapper = oldToNew;
@@ -311,7 +310,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     userToFuseIn.inlineLambdas();
 
     OpBuilder builder{ctx};
-    builder.setInsertionPointAfter(originalOuts);
+    kernelToFuseInto.setInsertionPointToTop(builder);
 
     mlir::SymbolTable symTable{kernelToFuseInto};
     llvm::StringMap<StringRef> oldNameToNew;

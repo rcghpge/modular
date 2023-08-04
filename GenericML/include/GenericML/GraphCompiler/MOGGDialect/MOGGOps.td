@@ -284,6 +284,12 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [IsolatedFromAbove,
     void fuseBodyIntoNewWithSkip(OpBuilder& builder, mlir::SymbolTable& symTable,
         IRMapping& remapper, llvm::StringMap<StringRef>& oldLambdaNamesToNew,
         std::function<bool(Operation*)> shouldSkip);
+
+    /// Sets the insertion point to the start of the kernel. This may not be
+    /// the precise start as it will place the operation after the output
+    /// placeholders if they exist. 
+    void setInsertionPointToTop(OpBuilder& builder);
+
   }];
 
 }

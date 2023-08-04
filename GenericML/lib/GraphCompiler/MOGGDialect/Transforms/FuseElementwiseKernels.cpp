@@ -337,7 +337,7 @@ struct FuseElementwisePass
     // Add the new lambdas to the top of the leaf kernel after the output
     // placeholders.
     mlir::OpBuilder inserter{leafOuts->getContext()};
-    inserter.setInsertionPointAfter(leafOuts);
+    leaf.setInsertionPointToTop(inserter);
 
     // Get the main elementwise block in the kernel we are fusing into.
     StringRef leafMainBody = *leaf.getFusionBodyLambda();
