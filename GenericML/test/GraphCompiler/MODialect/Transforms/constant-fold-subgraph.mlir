@@ -84,5 +84,24 @@ mo.graph @nested_region(%g1 : !mo.tensor<[], bool>) -> (!mo.tensor<[2], si32>) {
   mo.output %g2 : !mo.tensor<[2], si32>
 }
 
+// Output parameters should not be constant folded.
+// CHECK-LABEL: parameter_outputs
+// CHECK-NOT: subgraph
+mo.graph @parameter_outputs<M>() -> (!mo.tensor<[M], si8>) {
+  %data = mo.constant {value = #M.dense_array<1024> : tensor<1xsi8>} :
+			!mo.tensor<[1], si8>
+  %broadcast = mo.static.broadcast_to(%data) :!mo.tensor<[1], si8> -> !mo.tensor<[M], si8>
+  mo.output %broadcast : !mo.tensor<[M], si8>
+}
+
+// Dont constant fold constant parameters (for now?).
+// CHECK-LABEL: param_as_root
+// CHECK-NOT: subgraph
+mo.graph @param_as_root() -> (!mo.tensor<[], si32>) {
+    %index = kgen.param.constant = <1>
+    %0 = mo.index.to_tensor(%index) -> !mo.tensor<[], si32>
+    mo.output %0 : !mo.tensor<[], si32>
+}
+
 // make sure that we are not matching anything in the mlir of the result
 // CHECK: module

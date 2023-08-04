@@ -206,18 +206,43 @@ SmallVector<Subgraph> ConstantSubgraphs(MO::GraphOp graph) {
       continue;
     }
 
+    // We have hit a root op (does not have input operands). For now we treat
+    // this as a non-const. Currently includes kgen.param.constant.
+    if (op->getNumOperands() == 0) {
+      non_const.insert(v);
+      continue;
+    }
+
+    // If an op declares parameters then it is not constant.
+    auto paramDeclInterface = dyn_cast<ParamDeclarationInterface>(op);
+    if (paramDeclInterface &&
+        paramDeclInterface.getOutputParamDecls().size() != 0) {
+      non_const.insert(v);
+      continue;
+    }
+
+    // Non constant output shapes are not constant.
+    if (!dyn_cast<TensorType>(v.getType()).hasStaticShape()) {
+      non_const.insert(v);
+      continue;
+    }
+
     llvm::DenseSet<Value> unvisited;
+    bool foundNonConst = false;
     for (auto operand : op->getOperands()) {
       // If any operand is non-const then this op/value is also non-const
       if (non_const.contains(operand)) {
         non_const.insert(v);
-        continue;
+        foundNonConst = true;
+        break;
       }
       if (const_subgraphs.findValue(operand) == const_subgraphs.end()) {
         // Operand has not been visited yet.
         unvisited.insert(operand);
       }
     }
+    if (foundNonConst)
+      continue;
 
     if (!unvisited.empty()) {
       // All operands have not been visited, push the current value, then the
@@ -229,7 +254,7 @@ SmallVector<Subgraph> ConstantSubgraphs(MO::GraphOp graph) {
     }
 
     // All operands are const, union this value with all operands.
-    for (auto operand : v.getDefiningOp()->getOperands())
+    for (auto operand : op->getOperands())
       const_subgraphs.unionSets(v, operand);
   }
   assert(iter < bound_for_maximum_iterations &&
