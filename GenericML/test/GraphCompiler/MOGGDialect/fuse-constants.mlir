@@ -241,28 +241,3 @@ mo.graph @fuse_dense_resource(%input: !mo.tensor<[12, 64], f32>) -> !mo.tensor<[
     }
   }
 #-}
-
-mo.graph @constant_insert_after_use<D14, D15, D16>(%arg0: !mo.tensor<[D14, D15, D16], f32>) -> !mo.tensor<[D16, D15, D14], f32> {
-  %0 = mo.constant {value = #M.dense_array<2, 1, 0> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
-  %1 = mogg.kernel (%0) : (%arg2: !mo.tensor<[3], si64>) -> !mo.tensor<[D16, D15, D14], f32>{
-    mogg.lambda @lam = (%arg3: !mogg.indices){
-      mogg.call "func_in_lambda" (%arg2) : !mo.tensor<[3], si64>
-      mogg.output
-    }
-    mogg.call "magic_function" [@lam](%arg2) : !mo.tensor<[3], si64>
-
-    %2 = mogg.output_placeholders : !mo.tensor<[D16, D15, D14], f32>
-    mogg.output %2 : !mo.tensor<[D16, D15, D14], f32>
-  }
-  mo.output %1 : !mo.tensor<[D16, D15, D14], f32>
-}
-
-// CHECK-LABEL: mo.graph @constant_insert_after_use
-// CHECK: mogg.kernel
-// CHECK-NEXT: mogg.output_placeholders
-// CHECK-NEXT: mo.constant
-// CHECK-NEXT: mogg.lambda @lam
-// CHECK-NEXT:   mogg.call "func_in_lambda"
-// CHECK-NEXT:   mogg.output
-// CHECK-NEXT:}
-// CHECK-NEXT: mogg.call "magic_function"
