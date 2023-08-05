@@ -11,6 +11,7 @@
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
+#include "GenericML/GraphCompiler/MOQDialect/MOQDialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"
 #include "GenericML/GraphCompiler/Passes.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
@@ -37,12 +38,13 @@ using namespace M;
 using namespace MO;
 
 void M::MO::loadDialects(mlir::DialectRegistry &registry) {
-  registry.insert<
-      MO::MODialect, MOSH::MOSHDialect, MIP::MIPDialect, MOGG::MOGGDialect,
-      // The dialects needed for KGEN.
-      KGEN::KGENDialect, KGEN::POP::POPDialect, DebugInfo::DebugInfoDialect,
-      Cache::CacheDialect, HLCF::HLCFDialect, mlir::index::IndexDialect,
-      mlir::LLVM::LLVMDialect>();
+  registry.insert<MO::MODialect, MOQ::MOQDialect, MOSH::MOSHDialect,
+                  MIP::MIPDialect, MOGG::MOGGDialect,
+                  // The dialects needed for KGEN.
+                  KGEN::KGENDialect, KGEN::POP::POPDialect,
+                  DebugInfo::DebugInfoDialect, Cache::CacheDialect,
+                  HLCF::HLCFDialect, mlir::index::IndexDialect,
+                  mlir::LLVM::LLVMDialect>();
 
   // The elaborator requires LLVM lowering to run the generated functions.
   mlir::registerBuiltinDialectTranslation(registry);

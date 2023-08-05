@@ -166,6 +166,10 @@ class MO_HasAnyRankOfPred<list<int> ranks> : And<[
 class HasRankIfRankedPred<int N> :
   Or<[Neg<MO_HasRankPred>, MO_HasAnyRankOfPred<[N]>]>;
 
+/// Checks if a MO_TensorType has float elements.
+def FloatElementTypePred : CPred<
+  "llvm::isa<FloatType>($_self.cast<::M::MO::TensorType>().getElementType())">;
+
 /// Checks if a MO_TensorType has int or index elements.
 def IntOrIndexElementTypePred : CPred<
   "$_self.cast<::M::MO::TensorType>().getElementType().isIntOrIndex()">;
@@ -200,9 +204,25 @@ def MO_RankedScalarIndexTensor : MO_ConfinedTensor<
   [MO_HasAnyRankOfPred<[0]>, IntOrIndexElementTypePred],
   "ranked scalar index tensor">;
 
+/// Confines the MO_TensorType so that it's a scalar float.
+def MO_RankedScalarFloatTensor : MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[0]>, FloatElementTypePred],
+  "ranked scalar floating point tensor">;
+
+/// Confines the MO_TensorType so that it has floats.
+def MO_FloatTensor : MO_ConfinedTensor<[FloatElementTypePred], "floating point tensor">;
+
 /// Confines the MO_TensorType so that it's either unranked or a non-scalar.
 def MO_NonScalarIfRanked: MO_ConfinedTensor<
   [Neg<MO_HasAnyRankOfPred<[0]>>], "unranked or non-scalar tensor">;
+
+/// Confines the MO_TensorType so it is a rank 1 floating point tensor.
+def MO_Rank1FloatTensor: MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[1]>, FloatElementTypePred], "rank-1 tensor with floats.">;
+
+/// Confines the MO_TensorType so it is a rank 1 int or index tensor.
+def MO_Rank1IndexTensor: MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[1]>, IntOrIndexElementTypePred], "rank-1 tensor with indices.">;
 
 /// Confines the MO_TensorType so that it has int or index elements.
 def MO_IndicesTensor : MO_ConfinedTensor<
