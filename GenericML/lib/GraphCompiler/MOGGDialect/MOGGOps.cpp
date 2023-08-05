@@ -776,12 +776,11 @@ bool CallOp::setKGENParamToValueIfPresent(StringRef name, Attribute value) {
 //===----------------------------------------------------------------------===//
 
 OutputPlaceholdersOp KernelOp::getOutputPlaceholder() {
-  OutputPlaceholdersOp out = nullptr;
-  for (auto ph : this->getOps<MOGG::OutputPlaceholdersOp>()) {
-    assert(!out && "Only one placeholder expected");
-    out = ph;
-  }
-  return out;
+  auto placeholder = this->getOps<MOGG::OutputPlaceholdersOp>();
+  if (placeholder.empty())
+    return nullptr;
+
+  return *placeholder.begin();
 }
 
 void KernelOp::setInsertionPointToTop(OpBuilder &builder) {
@@ -976,6 +975,9 @@ void KernelOp::fuseBodyIntoNewWithSkip(
 }
 
 LogicalResult KernelOp::verify() {
+  if (llvm::range_size(getOps<MOGG::OutputPlaceholdersOp>()) > 1)
+    return emitError("A KernelOp must have at most one output placeholder op");
+
   auto inputInterfaces = getInputFusionInterface();
   auto outputInterfaces = getOutputFusionInterface();
 
@@ -995,12 +997,34 @@ LogicalResult KernelOp::verify() {
            << ")";
   }
 
+  mlir::SymbolTable symTable{*this};
+  if (inputInterfaces.has_value()) {
+    for (auto interface : inputInterfaces->getAsValueRange<StringAttr>()) {
+      if (!interface.empty() &&
+          !dyn_cast_or_null<LambdaOp>(symTable.lookup(interface))) {
+        return emitError("Could not find lambda op specified in the input "
+                         "fusion interface as \"")
+               << interface.str() << "\"";
+      }
+    }
+  }
+
+  if (outputInterfaces.has_value()) {
+    for (auto interface : outputInterfaces->getAsValueRange<StringAttr>()) {
+      if (!interface.empty() &&
+          !dyn_cast_or_null<LambdaOp>(symTable.lookup(interface))) {
+        return emitError("Could not find lambda op specified in the output "
+                         "fusion interface as \"")
+               << interface.str() << "\"";
+      }
+    }
+  }
+
   if (getBody().empty()) {
     return emitError("Region cannot be empty");
   }
 
-  uint64_t numArguments =
-      std::distance(getBody().args_begin(), getBody().args_end());
+  uint64_t numArguments = llvm::range_size(getBody().getArguments());
   if (getNumOperands() != numArguments) {
     return emitError(
                "Number of operands does not match number of body arguments ")

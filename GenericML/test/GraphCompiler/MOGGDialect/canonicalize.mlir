@@ -48,8 +48,12 @@ mo.graph @noInterfaces(%arg0: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32> {
 
 mo.graph @partiallyNullInterface(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32> {
   %0 = mogg.kernel (%arg0, %arg1) : (%arg2: !mo.tensor<[2], f32>, %arg3: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32> {
+    mogg.lambda @input_0_fn = (%arg4: !mogg.indices) -> !mogg.simd<f32>{
+      %9 = mogg.simd_load(%arg2, %arg4) : (!mo.tensor<[2], f32>, !mogg.indices) -> !mogg.simd<f32>
+      mogg.output %9 : !mogg.simd<f32>
+    }
     mogg.output %arg2 : !mo.tensor<[2], f32>
-  } {inputFusionInterface = ["", "foo"]}
+  } {inputFusionInterface = ["", "input_0_fn"]}
   mo.output %0 : !mo.tensor<[2], f32>
 }
 
