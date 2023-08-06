@@ -107,3 +107,21 @@ mo.graph @reduce_max_negative_index_canonicalization(%input: !mo.tensor<[?, ?, 5
   %output = mo.reduce.max(%input, %axis) : (!mo.tensor<[?, ?, 5], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?, 1], f32>
   mo.output %output : !mo.tensor<[?, ?, 1], f32>
 }
+
+// CHECK: mo.graph @arg_max(%[[INPUT:.*]]: !mo.tensor<[?, ?, 5], f32>) -> !mo.tensor<[?, ?, 1], si64> {
+mo.graph @arg_max(%input: !mo.tensor<[?, ?, 5], f32>) -> (!mo.tensor<[?, ?, 1], si64>) {
+  // CHECK: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %axis = mo.constant {value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  // CHECK-NEXT: mo.arg_max(%[[INPUT]], %[[AXIS]]) : (!mo.tensor<[?, ?, 5], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?, 1], si64>
+  %output = mo.arg_max(%input, %axis) : (!mo.tensor<[?, ?, 5], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?, 1], si64>
+  mo.output %output : !mo.tensor<[?, ?, 1], si64>
+}
+
+// CHECK: mo.graph @arg_min(%[[INPUT:.*]]: !mo.tensor<[?, ?, 5], f32>) -> !mo.tensor<[?, ?, 1], si64> {
+mo.graph @arg_min(%input: !mo.tensor<[?, ?, 5], f32>) -> (!mo.tensor<[?, ?, 1], si64>) {
+  // CHECK: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %axis = mo.constant {value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  // CHECK-NEXT: mo.arg_min(%[[INPUT]], %[[AXIS]]) : (!mo.tensor<[?, ?, 5], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?, 1], si64>
+  %output = mo.arg_min(%input, %axis) : (!mo.tensor<[?, ?, 5], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?, 1], si64>
+  mo.output %output : !mo.tensor<[?, ?, 1], si64>
+}

@@ -1330,14 +1330,10 @@ LogicalResult WhereOp::verify() {
 // MO::ArgMaxOp support
 //===----------------------------------------------------------------------===//
 
-LogicalResult ArgMaxOp::canonicalize(ArgMaxOp op, PatternRewriter &rewriter) {
-  return canonicalizeStaticNegativeIndicesInPlace(op, 1);
-}
-
-static LogicalResult verifyWithRankedInput(ArgMaxOp *op, int64_t axis,
-                                           int64_t resDim, TensorType inputTy,
-                                           size_t &dynamicOutDims,
-                                           size_t &reducedDims) {
+template <typename Op>
+static LogicalResult
+verifyWithRankedInput(Op *op, int64_t axis, int64_t resDim, TensorType inputTy,
+                      size_t &dynamicOutDims, size_t &reducedDims) {
   auto inDim = inputTy.getTypedShapeAttr().getIntDim(axis);
   if (mlir::ShapedType::isDynamic(resDim) ||
       mlir::ShapedType::isDynamic(inDim)) {
@@ -1366,22 +1362,27 @@ static void verifyWithUnrankedInput(int64_t axis, int64_t resDim,
     reducedDims++;
 };
 
-LogicalResult ArgMaxOp::verify() {
-  TensorType resTy = getResult().getType();
-  TensorType inputTy = getInput().getType();
-  TensorType axisTy = getAxis().getType();
+template <typename Op>
+static LogicalResult argVerify(Op *op) {
+  static_assert(std::is_same_v<Op, ArgMaxOp> || std::is_same_v<Op, ArgMinOp>,
+                "input op must be either an ArgMax or ArgMin op");
+
+  TensorType resTy = op->getResult().getType();
+  TensorType inputTy = op->getInput().getType();
+  TensorType axisTy = op->getAxis().getType();
 
   // TODO(#12939): Refactor this into verifyReduction.
 
   if (!axisTy.getElementType().isSignedInteger(64))
-    return emitOpError("axis type must be si64");
+    return op->emitOpError("axis type must be si64");
 
   if ((inputTy.hasRank() && resTy.hasRank()) &&
       (inputTy.getRank() != resTy.getRank()))
-    return emitOpError("mo.arg_max: output rank must match input rank");
+    return op->emitOpError(Op::getOperationName() +
+                           ": output rank must match input rank");
 
   if (resTy.hasRank()) {
-    auto optAxis = tryGetConstantInt(getAxis());
+    auto optAxis = tryGetConstantInt(op->getAxis());
     size_t reducedDims = 0;
     size_t dynamicOutDims = 0;
 
@@ -1390,13 +1391,15 @@ LogicalResult ArgMaxOp::verify() {
 
       if (optAxis.has_value() && (axis == optAxis.value()) && (resDim != 1) &&
           !mlir::ShapedType::isDynamic(resDim))
-        return emitOpError(
-            "mo.arg_max: output dimensions must be 1 at the reduction axis");
+        return op->emitOpError(
+            Op::getOperationName() +
+            ": output dimensions must be 1 at the reduction axis");
+
       // Note: we don't check that non-reduction axes match directly. The code
       // below does it, which handles the dynamic cases as well.
 
       if (inputTy.hasRank()) {
-        if (failed(verifyWithRankedInput(this, axis, resDim, inputTy,
+        if (failed(verifyWithRankedInput(op, axis, resDim, inputTy,
                                          dynamicOutDims, reducedDims)))
           return failure();
       } else {
@@ -1405,14 +1408,31 @@ LogicalResult ArgMaxOp::verify() {
     }
 
     if ((reducedDims > 1) || (!reducedDims && !dynamicOutDims)) {
-      return emitOpError(
-          "mo.arg_max: output dimensions must match input "
+      return op->emitOpError(
+          Op::getOperationName() +
+          ": output dimensions must match input "
           "dimensions, except for exactly one dimension, the reduction axis");
     }
   }
 
   return success();
 }
+
+LogicalResult ArgMaxOp::canonicalize(ArgMaxOp op, PatternRewriter &rewriter) {
+  return canonicalizeStaticNegativeIndicesInPlace(op, 1);
+}
+
+LogicalResult ArgMaxOp::verify() { return argVerify(this); }
+
+//===----------------------------------------------------------------------===//
+// MO::ArgMinOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ArgMinOp::canonicalize(ArgMinOp op, PatternRewriter &rewriter) {
+  return canonicalizeStaticNegativeIndicesInPlace(op, 1);
+}
+
+LogicalResult ArgMinOp::verify() { return argVerify(this); }
 
 //===----------------------------------------------------------------------===//
 // Windowed ops

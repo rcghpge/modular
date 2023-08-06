@@ -47,6 +47,7 @@ struct Fallback {
   struct Fallback<MOOp> {};
 
 HAS_FALLBACK(MO::ArgMaxOp)
+HAS_FALLBACK(MO::ArgMinOp)
 HAS_FALLBACK(MO::AvgPoolOp)
 HAS_FALLBACK(MO::BroadcastToOp)
 HAS_FALLBACK(MO::ConcatOp)
@@ -100,6 +101,7 @@ struct AddFallbackShapeFunctions
       // Call the fallbacks.
       builder.setInsertionPoint(op);
       CALL_FALLBACK(MO::ArgMaxOp)
+      CALL_FALLBACK(MO::ArgMinOp)
       CALL_FALLBACK(MO::AvgPoolOp)
       CALL_FALLBACK(MO::BroadcastToOp)
       CALL_FALLBACK(MO::ConcatOp)
@@ -268,6 +270,7 @@ void Fallback<MO::RangeOp>::build(GraphOp &graph, OpBuilder &builder,
   }
 
 BUILD_REDUCTION_OP(MO::ArgMaxOp)
+BUILD_REDUCTION_OP(MO::ArgMinOp)
 BUILD_REDUCTION_OP(MO::MeanOp)
 BUILD_REDUCTION_OP(MO::ReduceAddOp)
 BUILD_REDUCTION_OP(MO::ReduceMulOp)

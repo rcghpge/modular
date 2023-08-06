@@ -2021,10 +2021,25 @@ def MO_WhereOp : MO_TensorOp<"where", [
 }
 
 //===----------------------------------------------------------------------===//
-// ArgMaxOp
+// ArgMaxOp / ArgMinOp
 //===----------------------------------------------------------------------===//
 
-def MO_ArgMaxOp : MO_ReductionOp<"arg_max"> {
+// Base class for ArgMin and ArgMax.
+class MO_ArgMinMaxOp<string mnemonic> : MO_ReductionOp<mnemonic> {
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_RankedScalarIndexTensor:$axis,
+    MO_ParamDecls:$outputParamDecls);
+
+  let results = (outs MO_I64Tensor:$result);
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
+  let hasVerifier = 1;
+}
+
+def MO_ArgMaxOp : MO_ArgMinMaxOp<"arg_max"> {
   let summary = "Returns the indices of the maximum value in a tensor";
   let description = [{
     This op is equivalent to reduce_max, but returns indices instead of values.
@@ -2047,18 +2062,31 @@ def MO_ArgMaxOp : MO_ReductionOp<"arg_max"> {
     %1 = mo.arg_max(%0, %axis) : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
     ```
     }];
+}
 
-  let arguments = (ins
-    MO_Tensor:$input,
-    MO_RankedScalarIndexTensor:$axis,
-    MO_ParamDecls:$outputParamDecls);
+def MO_ArgMinOp : MO_ArgMinMaxOp<"arg_min"> {
+  let summary = "Returns the indices of the minimum value in a tensor";
+  let description = [{
+    This op is equivalent to reduce_min, but returns indices instead of values.
 
-  let results = (outs MO_I64Tensor:$result);
-  let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
-    functional-type(operands, results)
-  }];
-  let hasVerifier = 1;
+    The axis attribute specifies the reduction axis.
+
+    Like reductions, the output shape is the same as the input shape, except for
+    the reduced axis which is set to 1. Moreover, the value of `axis` follows
+    numpy semantics, e.g., -1 represents the last axis.
+
+    Example:
+
+    ```mlir
+    %0 = mo.constant {
+      value = #M.dense_array<0, 1, 3, 2> : tensor<2x2xsi32>
+    } : !mo.tensor<[2, 2], si32>
+    %axis = mo.constant {
+      value = #M.dense_array<1> : tensor<si32>
+    } : !mo.tensor<[], si32>
+    %1 = mo.arg_min(%0, %axis) : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
+    ```
+    }];
 }
 
 //===----------------------------------------------------------------------===//

@@ -673,6 +673,51 @@ mo.graph @arg_max_2d_inner_axis_dynamic_rank(%arg: !mo.tensor<?, f32>) -> !mo.te
   mo.output %res : !mo.tensor<?, si64>
 }
 
+
+//===----------------------------------------------------------------------===//
+// ArgMinOp
+//===----------------------------------------------------------------------===//
+
+// CHECK: mo.graph @arg_min_2d_inner_axis(%[[ARG:.*]]: !mo.tensor<[7, 3], f32>) -> !mo.tensor<[7, 1], si64>
+mo.graph @arg_min_2d_inner_axis(%arg: !mo.tensor<[7, 3], f32>) -> !mo.tensor<[7, 1], si64> {
+  // CHECK-NEXT: %[[AXIS:.*]] = mo.constant
+  %axis = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  // CHECK-NEXT: %[[RES:.*]] = mo.arg_min(%[[ARG]], %[[AXIS]]) : (!mo.tensor<[7, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[7, 1], si64>
+  %res = mo.arg_min(%arg, %axis) : (!mo.tensor<[7, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[7, 1], si64>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[7, 1], si64>
+  mo.output %res : !mo.tensor<[7, 1], si64>
+}
+
+// CHECK: mo.graph @arg_min_2d_inner_axis_dynamic_shape(%[[ARG:.*]]: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, 1], si64>
+mo.graph @arg_min_2d_inner_axis_dynamic_shape(%arg: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, 1], si64> {
+  // CHECK-NEXT: %[[AXIS:.*]] = mo.constant
+  %axis = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  // CHECK-NEXT: %[[RES:.*]] = mo.arg_min(%[[ARG]], %[[AXIS]]) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, 1], si64>
+  %res = mo.arg_min(%arg, %axis) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, 1], si64>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[?, 1], si64>
+  mo.output %res : !mo.tensor<[?, 1], si64>
+}
+
+// CHECK: mo.graph @arg_min_2d_inner_axis_dynamic_reduced_dim(%[[ARG:.*]]: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, ?], si64>
+mo.graph @arg_min_2d_inner_axis_dynamic_reduced_dim(%arg: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, ?], si64> {
+  // CHECK-NEXT: %[[AXIS:.*]] = mo.constant
+  %axis = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  // CHECK-NEXT: %[[RES:.*]] = mo.arg_min(%[[ARG]], %[[AXIS]]) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?], si64>
+  %res = mo.arg_min(%arg, %axis) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?], si64>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[?, ?], si64>
+  mo.output %res : !mo.tensor<[?, ?], si64>
+}
+
+// CHECK: mo.graph @arg_min_2d_inner_axis_dynamic_rank(%[[ARG:.*]]: !mo.tensor<?, f32>) -> !mo.tensor<?, si64>
+mo.graph @arg_min_2d_inner_axis_dynamic_rank(%arg: !mo.tensor<?, f32>) -> !mo.tensor<?, si64> {
+  // CHECK-NEXT: %[[AXIS:.*]] = mo.constant
+  %axis = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  // CHECK-NEXT: %[[RES:.*]] = mo.arg_min(%[[ARG]], %[[AXIS]]) : (!mo.tensor<?, f32>, !mo.tensor<[], si64>) -> !mo.tensor<?, si64>
+  %res = mo.arg_min(%arg, %axis) : (!mo.tensor<?, f32>, !mo.tensor<[], si64>) -> !mo.tensor<?, si64>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<?, si64>
+  mo.output %res : !mo.tensor<?, si64>
+}
+
 //===----------------------------------------------------------------------===//
 // TileOp
 //===----------------------------------------------------------------------===//

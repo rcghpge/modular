@@ -305,6 +305,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_MOJO_ONLY(MO::AbsOp),
       MO_MOJO_ONLY(MO::AddOp),
       MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::ArgMaxOp),
+      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::ArgMinOp),
       MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::AvgPoolOp),
       MO_SHIM_ONLY(MO::BroadcastShapeOp, "mop.kernels.broadcast_shape"),
       MO_TO_MOJO_VIEW(MO::Static::BroadcastToOp),
