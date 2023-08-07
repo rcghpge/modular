@@ -68,23 +68,32 @@ struct KernelRecord {
   bool shouldBeUnreachable;
 };
 
-// Helper to add a map to a jit kernel AND a shim kernel for a given mo op.
-// Add the ( to the name so we only match direct function matches.
+// Helper to add a map to a jit kernel for a given mo op.
 // MOOps is the C++ class type of the MO op which provides the op name for the
-// map. ShimName is the name of the C++ shim kernel to target in MGP.
-#define MO_TO_MOJO(MOOp, ShimName)                                             \
+// map.
+#define MO_TO_ELEMWISE(MOOp)                                                   \
   {                                                                            \
     TypeID::get<MOOp>(), KernelRecord {                                        \
-      MOOp::getOperationName(), ShimName, true                                 \
+      MOOp::getOperationName(), "None", true                                   \
     }                                                                          \
   }
 
 // Same as the above but a special case for non-elementwise ops. Eventually this
 // will be replaced through inspecting the mogg kernel.
-#define MO_TO_MOJO_NON_ELEMWISE(MOOp, ShimName)                                \
+#define MO_TO_KERNEL(MOOp)                                                     \
   {                                                                            \
     TypeID::get<MOOp>(), KernelRecord {                                        \
-      MOOp::getOperationName(), ShimName, true, false, true                    \
+      MOOp::getOperationName(), "None", true, false, true                      \
+    }                                                                          \
+  }
+
+// Same as the above but a special case for view ops.
+// MOOps is the C++ class type of the MO op which provides the op name for the
+// map.
+#define MO_TO_VIEW(MOOp)                                                       \
+  {                                                                            \
+    TypeID::get<MOOp>(), KernelRecord {                                        \
+      MOOp::getOperationName(), "None", true, true                             \
     }                                                                          \
   }
 
@@ -100,32 +109,6 @@ struct KernelRecord {
 #define MO_UNLOWERABLE_OP(MOOp)                                                \
   {                                                                            \
     TypeID::get<MOOp>(), KernelRecord { MOOp::getOperationName() }             \
-  }
-
-#define MO_MOJO_ONLY(MOOp)                                                     \
-  {                                                                            \
-    TypeID::get<MOOp>(), KernelRecord {                                        \
-      MOOp::getOperationName(), "None", true                                   \
-    }                                                                          \
-  }
-
-// Same as the above but a special case for non-elementwise ops. Eventually this
-// will be replaced through inspecting the mogg kernel.
-#define MO_TO_MOJO_ONLY_NON_ELEMWISE(MOOp)                                     \
-  {                                                                            \
-    TypeID::get<MOOp>(), KernelRecord {                                        \
-      MOOp::getOperationName(), "None", true, false, true                      \
-    }                                                                          \
-  }
-
-// Same as the above but a special case for view ops.
-// MOOps is the C++ class type of the MO op which provides the op name for the
-// map.
-#define MO_TO_MOJO_VIEW(MOOp)                                                  \
-  {                                                                            \
-    TypeID::get<MOOp>(), KernelRecord {                                        \
-      MOOp::getOperationName(), "None", true, true                             \
-    }                                                                          \
   }
 
 // Helper to add a map to a shim kernel for a given mo op.
@@ -302,63 +285,65 @@ void MOToMOGGPass::runOnOperation() {
   // clang-format off
   // ^-- otherwise tries to put 2+ entries per line
   MoToKernelMapTy moToMojoKernels{
-      MO_MOJO_ONLY(MO::AbsOp),
-      MO_MOJO_ONLY(MO::AddOp),
-      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::ArgMaxOp),
-      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::ArgMinOp),
-      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::AvgPoolOp),
+      MO_TO_ELEMWISE(MO::AbsOp),
+      MO_TO_ELEMWISE(MO::AddOp),
+      MO_TO_KERNEL(MO::ArgMaxOp),
+      MO_TO_KERNEL(MO::ArgMinOp),
+      MO_TO_KERNEL(MO::AvgPoolOp),
+      MO_TO_VIEW(MO::Static::BroadcastToOp),
+      MO_TO_ELEMWISE(MO::CastOp),
+      MO_TO_ELEMWISE(MO::CeilOp),
+      MO_TO_KERNEL(MO::ConcatOp),
+      MO_TO_KERNEL(MO::ConvOp),
+      MO_TO_ELEMWISE(MO::DivOp),
+      MO_TO_ELEMWISE(MO::ErfOp),
+      MO_TO_ELEMWISE(MO::ExpOp),
+      MO_TO_ELEMWISE(MO::EqualOp),
+      MO_TO_ELEMWISE(MO::FloorOp),
+      MO_TO_ELEMWISE(MO::GeluOp),
+      MO_TO_ELEMWISE(MO::GreaterOp),
+      MO_TO_ELEMWISE(MO::GreaterEqualOp),
+      MO_TO_ELEMWISE(MO::InvokeShapeFuncOp),
+      MO_TO_ELEMWISE(MO::IsInfOp),
+      MO_TO_ELEMWISE(MO::IsNaNOp),
+      MO_TO_ELEMWISE(MO::Log1pOp),
+      MO_TO_KERNEL(MO::LinAlg::BandPartOp),
+      MO_TO_KERNEL(MO::LinAlg::SolveOp),
+      MO_TO_KERNEL(MO::LogSoftmaxOp),
+      MO_TO_KERNEL(MO::MatmulOp),
+      MO_TO_KERNEL(MO::BatchMatmulOp),
+      MO_TO_KERNEL(MO::GatherOp),
+      MO_TO_ELEMWISE(MO::MaxOp),
+      MO_TO_KERNEL(MO::MaxPoolOp),
+      MO_TO_KERNEL(MO::MeanOp),
+      MO_TO_ELEMWISE(MO::MinOp),
+      MO_TO_ELEMWISE(MO::MulOp),
+      MO_TO_ELEMWISE(MO::NotEqualOp),
+      MO_TO_KERNEL(MO::PackMMWeightsOp),
+      MO_TO_KERNEL(MO::PadOp),
+      MO_TO_KERNEL(MO::ReduceAddOp),
+      MO_TO_KERNEL(MO::ReduceMulOp),
+      MO_TO_KERNEL(MO::ReduceMinOp),
+      MO_TO_KERNEL(MO::ReduceMaxOp),
+      MO_TO_ELEMWISE(MO::PowOp),
+      MO_TO_KERNEL(MO::RangeOp),
+      MO_TO_ELEMWISE(MO::ReluOp),
+      MO_TO_ELEMWISE(MO::RsqrtOp),
+      MO_TO_KERNEL(MO::ScatterNdOp),
+      MO_TO_ELEMWISE(MO::SelectOp),
+      MO_TO_ELEMWISE(MO::SigmoidOp),
+      MO_TO_VIEW(MO::SliceOp),
+      MO_TO_KERNEL(MO::SoftmaxOp),
+      MO_TO_KERNEL(MO::SplitOp),
+      MO_TO_ELEMWISE(MO::SqrtOp),
+      MO_TO_ELEMWISE(MO::SubOp),
+      MO_TO_ELEMWISE(MO::TanhOp),
+      MO_TO_VIEW(MO::TransposeOp),
+      MO_TO_KERNEL(MO::WhereOp),
+
+      // These kernels we don't jit but we almost certainly never actually call them.
       MO_SHIM_ONLY(MO::BroadcastShapeOp, "mop.kernels.broadcast_shape"),
-      MO_TO_MOJO_VIEW(MO::Static::BroadcastToOp),
-      MO_MOJO_ONLY(MO::CastOp),
-      MO_MOJO_ONLY(MO::CeilOp),
-      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::ConcatOp),
-      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::ConvOp),
-      MO_MOJO_ONLY(MO::DivOp),
-      MO_MOJO_ONLY(MO::ErfOp),
-      MO_MOJO_ONLY(MO::ExpOp),
-      MO_MOJO_ONLY(MO::EqualOp),
-      MO_MOJO_ONLY(MO::FloorOp),
-      MO_MOJO_ONLY(MO::GeluOp),
-      MO_MOJO_ONLY(MO::GreaterOp),
-      MO_MOJO_ONLY(MO::GreaterEqualOp),
-      MO_MOJO_ONLY(MO::InvokeShapeFuncOp),
-      MO_MOJO_ONLY(MO::IsInfOp),
-      MO_MOJO_ONLY(MO::IsNaNOp),
-      MO_MOJO_ONLY(MO::Log1pOp),
-      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::LinAlg::BandPartOp),
-      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::LinAlg::SolveOp),
-      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::LogSoftmaxOp),
-      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::MatmulOp),
-      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::BatchMatmulOp),
-      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::GatherOp),
-      MO_MOJO_ONLY(MO::MaxOp),
-      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::MaxPoolOp),
-      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::MeanOp),
-      MO_MOJO_ONLY(MO::MinOp),
-      MO_MOJO_ONLY(MO::MulOp),
-      MO_MOJO_ONLY(MO::NotEqualOp),
-      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::PackMMWeightsOp),
-      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::PadOp),
-      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::ReduceAddOp),
-      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::ReduceMulOp),
-      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::ReduceMinOp),
-      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::ReduceMaxOp),
-      MO_MOJO_ONLY(MO::PowOp),
-      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::RangeOp),
-      MO_MOJO_ONLY(MO::ReluOp),
-      MO_MOJO_ONLY(MO::RsqrtOp),
-      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::ScatterNdOp),
-      MO_MOJO_ONLY(MO::SelectOp),
       MO_SHIM_ONLY(MO::ShapeOfOp, "mop.kernels.shape_of"),
-      MO_MOJO_ONLY(MO::SigmoidOp),
-      MO_TO_MOJO_VIEW(MO::SliceOp),
-      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::SoftmaxOp),
-      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::SplitOp),
-      MO_MOJO_ONLY(MO::SqrtOp),
-      MO_MOJO_ONLY(MO::SubOp),
-      MO_MOJO_ONLY(MO::TanhOp),
-      MO_TO_MOJO_VIEW(MO::TransposeOp),
-      MO_TO_MOJO_ONLY_NON_ELEMWISE(MO::WhereOp),
 
       // Bookkeeping for gotchas -- handled specially elsewhere
       MO_NO_LOWER(MO::ConstantOp),
@@ -393,11 +378,9 @@ void MOToMOGGPass::runOnOperation() {
   registry.erase();
 }
 
-#undef MO_TO_MOJO
-#undef MO_TO_MOJO_NON_ELEMWISE
-#undef MO_MOJO_ONLY
+#undef MO_TO_ELEMWISE
+#undef MO_TO_KERNEL
+#undef MO_TO_VIEW
 #undef MO_NO_LOWER
 #undef MO_UNLOWERABLE_OP
 #undef MO_SHIM_ONLY
-#undef MO_TO_MOJO_ONLY_NON_ELEMWISE
-#undef MO_TO_MOJO_VIEW
