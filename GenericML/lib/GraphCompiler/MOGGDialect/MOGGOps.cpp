@@ -103,13 +103,6 @@ private:
   lowerDynamicOutput(MGP::CpuTensorSpecType outSpecType, MO::TensorType moType,
                      llvm::StringRef opName, Value inChain,
                      const SmallVector<LoweredTensor> &inputTensors);
-
-  /// Lower outputs whose shape function needs to return multiple output specs
-  /// in one invokation.
-  ErrorOr<SmallVector<LoweredTensor>>
-  lowerMultiOutputShapeFunc(StringRef shapeFuncName, Value inChain,
-                            ArrayRef<LoweredTensor> inputTensors,
-                            ArrayRef<MO::TensorType> resultMoTypes);
 };
 
 SmallVector<LoweredTensor> LowerHelper::getLoweredInputs() {
@@ -160,22 +153,10 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
     MGP::CpuTensorSpecType outSpecType, MO::TensorType moType,
     llvm::StringRef opName, Value inChain,
     const SmallVector<LoweredTensor> &inputTensors) {
-  // Dynamic Case
-  // TODO: This is hacky, hacky, hacky, remove as soon as we can lower
-  // parametric shapes to the runtime
-  // TODO: If we decide we want this longer term (say, for MLAS kernels)
-  // We should refactor it out as a Trait maybe? and make this a method
-  // and data member of the op class.
-
   OpBuilder exeBuilder = loweringState.getExecuteOpBuilder();
-  auto getOutputSpec = [&](StringRef opName, ArrayRef<Value> inputs) {
-    return invokeLegacyShapeFunc(opName, inputs, {outSpecType}).front();
-  };
 
   LoweredTensor output;
 
-  // Hackery! Pure Hackery! I'd start setting up classes for this, but
-  // again, I don't expect this to survive E
   if (!moType.hasUnknownShape() && !moType.hasStaticShape()) {
     // We get the values corresponding to dynamic dimensions.
     UNWRAP_ERROR(runtimeDims, loweringState.lowerShapeAttrDynDims(
@@ -184,24 +165,6 @@ ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
         loweringState.getExecuteOpBuilder()
             .create<MGP::CpuTensorSpecCreateOp>(loc, outSpecType, runtimeDims)
             .getResult();
-  } else if (opName == "mop.kernels.conv") {
-    Value stride = loweringState.lookupExecuteLoweredValue(
-        opBeingLowered->getOperands()[2]);
-    Value dilation = loweringState.lookupExecuteLoweredValue(
-        opBeingLowered->getOperands()[3]);
-    output.spec = getOutputSpec(
-        "mop.shape.conv",
-        {inputTensors[0].spec, inputTensors[1].spec, stride, dilation});
-  } else if (opName == "mop.kernels.pool.max" ||
-             opName == "mop.kernels.pool.avg") {
-    Value kernel = loweringState.lookupExecuteLoweredValue(
-        opBeingLowered->getOperands()[1]);
-    Value stride = loweringState.lookupExecuteLoweredValue(
-        opBeingLowered->getOperands()[2]);
-    Value dilation = loweringState.lookupExecuteLoweredValue(
-        opBeingLowered->getOperands()[3]);
-    output.spec = getOutputSpec(
-        "mop.shape.pool", {inputTensors[0].spec, kernel, stride, dilation});
   } else {
     llvm::Twine dynErr = opName + " requires output to have static shape";
     opBeingLowered->emitOpError(dynErr);
@@ -237,60 +200,10 @@ SmallVector<Value> LowerHelper::getOperands(SmallVector<LoweredTensor> &ins,
 }
 
 ErrorOr<SmallVector<LoweredTensor>>
-LowerHelper::lowerMultiOutputShapeFunc(StringRef shapeFuncName, Value inChain,
-                                       ArrayRef<LoweredTensor> inputTensors,
-                                       ArrayRef<MO::TensorType> resultMoTypes) {
-  SmallVector<LoweredTensor> outputBuffersAndSpecs;
-  SmallVector<TypedValue<MGP::CpuTensorSpecType>> outputSpecs;
-  if (shapeFuncName == "mop.shape.split") {
-    // Get inputs for "mop.shape.split"(%inputSpec, %splitSizes, %axis)
-    Value inputSpec = inputTensors[0].spec;
-    Value splitSizes = loweringState.lookupExecuteLoweredValue(
-        opBeingLowered->getOperands()[1]);
-    Value axis = loweringState.lookupExecuteLoweredValue(
-        opBeingLowered->getOperands()[2]);
-    outputSpecs = invokeLegacyShapeFunc(
-        shapeFuncName, {inputSpec, splitSizes, axis}, resultMoTypes);
-  } else {
-    opBeingLowered->emitError("multi-output shape func not supported");
-    return Error("multi-output shape func not supported");
-  }
-
-  // Create output buffers from specs.
-  for (const auto &outSpec : outputSpecs) {
-    auto buffer = loweringState.getExecuteOpBuilder()
-                      .create<MGP::CpuBufferAllocSpecOp>(
-                          loc,
-                          /*inChain=*/inChain,
-                          /*runtimeSpec=*/outSpec,
-                          /*rawAlign=*/loweringState.getMinimumCpuAlignment())
-                      .getOutBuffer();
-    outputBuffersAndSpecs.push_back({buffer, outSpec});
-  }
-
-  return outputBuffersAndSpecs;
-}
-
-ErrorOr<SmallVector<LoweredTensor>>
 LowerHelper::lowerOutputBuffer(llvm::StringRef opName, Value inChain,
                                const SmallVector<LoweredTensor> &inputTensors) {
-  // Handle ops with shape functions that return multiple outputs.
-  // For example, mop.shape.split returns a variable number of outputs, so it
-  // takes a slightly different lowering path.
-  static const llvm::StringMap<StringRef> multiOutputShapeFuncs{
-      {"mop.kernels.split", "mop.shape.split"},
-  };
-
   SmallVector<MO::TensorType> resultMoTypes =
       castToMoTensorTypes(opBeingLowered->getResultTypes());
-
-  if (multiOutputShapeFuncs.contains(opName) &&
-      llvm::any_of(resultMoTypes, [](MO::TensorType resTy) {
-        return resTy.hasUnknownShape();
-      })) {
-    return lowerMultiOutputShapeFunc(multiOutputShapeFuncs.at(opName), inChain,
-                                     inputTensors, resultMoTypes);
-  }
 
   // Proceed with the normal case when there is only one output, or all the
   // output shapes are known statically.
