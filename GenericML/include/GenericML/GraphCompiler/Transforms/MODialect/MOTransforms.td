@@ -125,6 +125,16 @@ def SymbolicOptimization : Pass<"symbolic-optimize", "GraphOp"> {
   }];
 }
 
+def InferLayouts : Pass<"infer-layouts", "GraphOp"> {
+  let summary = "Infer layouts of tensor values";
+  let description = [{
+    This pass tries to infer the layout of tensor values in a `mo.graph`, based
+    on constraints of relevant MO ops, e.g., before layout transformations,
+    `mo.conv` assumes input has `NHWC` layout. At the end of the inference, the
+    pass will annotate the tensor types with inferred layout attributes.
+  }];
+}
+
 def HoistParameterExpressions : Pass<"hoist-param-exprs", "GraphOp"> {
   let summary = "Move parameter expressions out of ops and into a preceding alias.";
   let description = [{

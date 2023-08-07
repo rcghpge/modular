@@ -175,6 +175,35 @@ LogicalResult canonicalizeStaticNegativeIndicesInPlace(Reduction op,
   return success();
 }
 
+void M::MO::synchronizeMetadataUpdates(GraphOp op) {
+  MLIRContext *ctx = op.getContext();
+  TypeRange newArgTypes = op.getBody().getArgumentTypes();
+  SmallVector<Type> newResTypes;
+
+  for (auto [newOutTy, funcOutTy] :
+       llvm::zip(op.getOutputOp().getOperandTypes(), op.getResultTypes())) {
+    // By default, assume nothing changed.
+    Type newResTy = funcOutTy;
+
+    if (auto funcOutTensorTy = dyn_cast<TensorType>(funcOutTy)) {
+      auto newOutTensorTy = cast<TensorType>(newOutTy);
+      DictionaryAttr newMetadata = newOutTensorTy.getMetadata();
+      if (funcOutTensorTy.getMetadata() != newMetadata)
+        newResTy = funcOutTensorTy.cloneWith(newMetadata);
+    }
+
+    newResTypes.push_back(newResTy);
+  }
+
+  auto funcType = FunctionType::get(ctx, newArgTypes, newResTypes);
+  SignatureType signature = KGEN::IndexRefRemapper::remapToSignature(
+      op.getInputParams(), op.getResultParams(), funcType);
+  NamedAttrList attrs = op->getAttrDictionary();
+  attrs.set(op.getSignatureAttrName(), TypeAttr::get(signature));
+  attrs.set(op.getFunctionTypeAttrName(), TypeAttr::get(funcType));
+  op->setAttrs(attrs.getDictionary(ctx));
+}
+
 //===----------------------------------------------------------------------===//
 // MO_IndexToTensorOp support
 //===----------------------------------------------------------------------===//

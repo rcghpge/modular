@@ -85,11 +85,14 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     /// Returns clone with a new shape attribute.
     TensorType cloneWith(TypedAttr shapeAttr) const;
 
+    /// Returns clone with a new dtype attribute.
+    TensorType cloneWith(DType dtype) const;
+
     /// Returns a clone with a new layout attribute.
     TensorType cloneWith(LayoutAttr layoutAttr) const;
 
-    /// Returns clone with a new dtype attribute.
-    TensorType cloneWith(DType dtype) const;
+    /// Returns clone with a new metadata attribute.
+    TensorType cloneWith(DictionaryAttr metadataAttr) const;
 
     /// Returns clone with a shape of unknown rank.
     TensorType cloneWithUnknownRank() const;

@@ -108,6 +108,10 @@ static TypedAttr getParamConstThrough(TensorValue inputVal) {
   return {};
 }
 
+/// If any of the input/output tensor type's metadata changed, update the given
+/// GraphOp's function type and signature to reflect those changes as well.
+void synchronizeMetadataUpdates(GraphOp op);
+
 } // namespace M::MO
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOOPS_H

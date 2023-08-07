@@ -258,13 +258,6 @@ TensorType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
   return TensorType::get(shapeRef, *errOrDType, metadata);
 }
 
-TensorType TensorType::cloneWith(LayoutAttr layoutAttr) const {
-  NamedAttrList namedAttrs(getMetadata());
-  namedAttrs.set(kLayoutMetadataName, layoutAttr);
-  DictionaryAttr newMetadata = namedAttrs.getDictionary(getContext());
-  return TensorType::get(getContext(), getShapeAttr(), getDtype(), newMetadata);
-}
-
 TensorType TensorType::cloneWith(TypedAttr shapeAttr) const {
   return TensorType::get(shapeAttr.getContext(), shapeAttr, getDtype(),
                          getMetadata());
@@ -272,6 +265,18 @@ TensorType TensorType::cloneWith(TypedAttr shapeAttr) const {
 
 TensorType TensorType::cloneWith(DType dtype) const {
   return TensorType::get(getContext(), getShapeAttr(), dtype, getMetadata());
+}
+
+TensorType TensorType::cloneWith(LayoutAttr layoutAttr) const {
+  NamedAttrList namedAttrs(getMetadata());
+  namedAttrs.set(kLayoutMetadataName, layoutAttr);
+  DictionaryAttr newMetadata = namedAttrs.getDictionary(getContext());
+  return TensorType::get(getContext(), getShapeAttr(), getDtype(), newMetadata);
+}
+
+TensorType TensorType::cloneWith(DictionaryAttr metadataAttr) const {
+  return TensorType::get(getContext(), getShapeAttr(), getDtype(),
+                         metadataAttr);
 }
 
 TensorType TensorType::cloneWithUnknownRank() const {
