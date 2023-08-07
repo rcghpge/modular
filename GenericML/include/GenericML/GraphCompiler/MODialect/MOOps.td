@@ -774,6 +774,11 @@ def MO_CastOp : MO_TensorOp<"cast", [Pure, MO_SameOperandsAndResultShape]> {
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
   let hasFolder = 1;
+
+  let builders = [
+    /// Cast DType interface
+    OpBuilder<(ins "TensorValue":$input, "DType":$dtype)>,
+  ];
 }
 
 def MO_IsNaNOp : MO_ComparisonUnaryOp<"is_nan"> {
@@ -1364,9 +1369,18 @@ def MO_BroadcastToOp : MO_ShapeModifierOp<"broadcast_to"> {
       !mo.tensor<[3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 3], f32>
     ```
   }];
-
   let hasCanonicalizeMethod = 1;
   let hasVerifier = 1;
+
+  let builders = [
+    /// Create a ShapeOf + BroadcastToOp with a "BroadcastLike" interface.
+    /// The second argument is not the shape to broadcast to, but a tensor
+    /// whose shape we want to broadcast to.
+    /// The third optional parameter should represent the shape of the
+    /// second arg (e.g. from ShapeOfOp). If not given a ShapeOfOp will be
+    /// inserted. It is provided to avoid Op duplication before CSE.
+    OpBuilder<(ins "TensorValue":$input, "TensorValue":$broadcastLike, CArg<"TensorValue", "{}">:$shapeOfInput)>,
+  ];
 }
 
 def MO_ReshapeOp : MO_ShapeModifierOp<"reshape"> {
@@ -1429,6 +1443,11 @@ def MO_ShapeOfOp : MO_TensorOp<"shape_of", [
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
     functional-type(operands, results)
   }];
+
+  let builders = [
+    /// Create a shape-of of op on the given SSA value.
+    OpBuilder<(ins "TensorValue":$input)>,
+  ];
 
   let hasVerifier = 1;
 }

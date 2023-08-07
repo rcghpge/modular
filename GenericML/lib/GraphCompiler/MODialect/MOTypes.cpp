@@ -258,16 +258,34 @@ TensorType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
   return TensorType::get(shapeRef, *errOrDType, metadata);
 }
 
-TensorType TensorType::cloneWith(TypedAttr shapeAttr) const {
-  return TensorType::get(shapeAttr.getContext(), shapeAttr, getDtype(),
-                         getMetadata());
-}
-
 TensorType TensorType::cloneWith(LayoutAttr layoutAttr) const {
   NamedAttrList namedAttrs(getMetadata());
   namedAttrs.set(kLayoutMetadataName, layoutAttr);
   DictionaryAttr newMetadata = namedAttrs.getDictionary(getContext());
   return TensorType::get(getContext(), getShapeAttr(), getDtype(), newMetadata);
+}
+
+TensorType TensorType::cloneWith(TypedAttr shapeAttr) const {
+  return TensorType::get(shapeAttr.getContext(), shapeAttr, getDtype(),
+                         getMetadata());
+}
+
+TensorType TensorType::cloneWith(DType dtype) const {
+  return TensorType::get(getContext(), getShapeAttr(), dtype, getMetadata());
+}
+
+TensorType TensorType::cloneWithUnknownRank() const {
+  return TensorType::get(getContext(),
+                         KGEN::UnknownAttr::get(ShapeType::get(getContext())),
+                         getDtype(), getMetadata());
+}
+
+TensorType TensorType::cloneWithUnknownDims(int64_t rank) const {
+  SmallVector<TypedAttr> shapes(
+      rank, KGEN::UnknownAttr::get(IndexType::get(getContext())));
+  return TensorType::get(
+      getContext(), MOSH::ShapeAttr::get(shapes, ShapeType::get(getContext())),
+      getDtype(), getMetadata());
 }
 
 bool TensorType::hasRank() const {

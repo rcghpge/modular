@@ -646,6 +646,19 @@ LogicalResult BroadcastToOp::canonicalize(BroadcastToOp op,
   return failure();
 }
 
+void BroadcastToOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                          TensorValue input, TensorValue broadcastLike,
+                          TensorValue broadcastShape) {
+  TensorType resultTy =
+      input.getType().cloneWith(broadcastLike.getType().getShapeAttr());
+
+  // Note broadcastShape may be null
+  if (!broadcastShape)
+    broadcastShape = odsBuilder.create<MO::ShapeOfOp>(input.getLoc(), input);
+
+  build(odsBuilder, odsState, resultTy, input, broadcastShape);
+}
+
 //===----------------------------------------------------------------------===//
 // MOStatic_BroadcastToOp
 //===----------------------------------------------------------------------===//
@@ -1187,6 +1200,11 @@ OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
   }
 
   return {};
+}
+
+void CastOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                   TensorValue input, DType dtype) {
+  build(odsBuilder, odsState, input.getType().cloneWith(dtype), input);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2178,6 +2196,18 @@ LogicalResult ShapeOfOp::verify() {
   if (inputTy.hasRank())
     return emitError("input must have dynamic rank if result has unknown size");
   return success();
+}
+
+void ShapeOfOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                      TensorValue input) {
+  Type si32Ty = odsBuilder.getIntegerType(32, /*isSigned=*/true);
+
+  int64_t outputSize = mlir::ShapedType::kDynamic;
+  if (input.getType().hasRank())
+    outputSize = input.getType().getRank();
+
+  // TODO(#18749): don't introduce `?` with operations.
+  build(odsBuilder, odsState, MO::TensorType::get({outputSize}, si32Ty), input);
 }
 
 //===----------------------------------------------------------------------===//

@@ -15,6 +15,7 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"
 #include "GenericML/GraphCompiler/Passes.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
+#include "GenericML/GraphCompiler/Transforms/MOQDialect/MOQTransforms.h"
 #include "GenericML/MGPTransforms/MGPTransforms.h"
 #include "GraphRT/MIPDialect/MIPDialect.h"
 #include "Support/LLVMCompilerForwardDecls.h"
@@ -70,6 +71,8 @@ void M::MO::registerPasses() {
   Cache::registerDeflateConstants();
   MGP::registerMGPTransformsPasses();
   MOGG::registerPasses();
+
+  MOQ::registerLegalizeMOQOpsToMOPass();
 
   mlir::registerCSEPass();
   mlir::registerSCCPPass();

@@ -88,6 +88,15 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     /// Returns a clone with a new layout attribute.
     TensorType cloneWith(LayoutAttr layoutAttr) const;
 
+    /// Returns clone with a new dtype attribute.
+    TensorType cloneWith(DType dtype) const;
+
+    /// Returns clone with a shape of unknown rank.
+    TensorType cloneWithUnknownRank() const;
+
+    /// Returns clone with a shape of known rank, but unknown dims
+    TensorType cloneWithUnknownDims(int64_t rank) const;
+
     /// Checks if the tensor is statically ranked.
     bool hasRank() const;
 
