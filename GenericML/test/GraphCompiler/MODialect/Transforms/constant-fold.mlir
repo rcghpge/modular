@@ -8,6 +8,7 @@
 // CHECK-NEXT: all_const
 // CHECK-DAG: mo.mul
 // CHECK-DAG: mo.sub
+// CHECK-DAG: mo.add
 
 // CHECK: multiple_subgraphs
 // CHECK-DAG: mo.mul
@@ -26,7 +27,7 @@
 // CHECK: module
 
 // CHECK: all_const
-// CHECK-NEXT: %[[S1:.*]] = mo.constant {value = #M.dense_array<0, 2>
+// CHECK-NEXT: %[[S1:.*]] = mo.constant {value = #M.dense_array<0, 5>
 // CHECK-NEXT: mo.output %[[S1]]
 mo.graph @all_const() -> (!mo.tensor<[2], si32>) {
   %s1 = mo.constant {value = #M.dense_array<0, 1> : tensor<2xsi32>} :
@@ -36,7 +37,8 @@ mo.graph @all_const() -> (!mo.tensor<[2], si32>) {
 
   %s3 = mo.mul(%s1, %s2) : !mo.tensor<[2], si32>
   %s4 = mo.sub(%s3, %s1) : !mo.tensor<[2], si32>
-  mo.output %s4 : !mo.tensor<[2], si32>
+  %s5 = mo.add(%s4, %s3) : !mo.tensor<[2], si32>
+  mo.output %s5 : !mo.tensor<[2], si32>
 }
 
 // CHECK: multiple_subgraphs(%[[R1:.*]]:

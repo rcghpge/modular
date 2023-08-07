@@ -256,6 +256,12 @@ SmallVector<Subgraph> ConstantSubgraphs(MO::GraphOp graph) {
     // All operands are const, union this value with all operands.
     for (auto operand : op->getOperands())
       const_subgraphs.unionSets(v, operand);
+
+    // Check if users of this now constant value are themselves constant.
+    for (auto result : op->getResults())
+      for (auto user : result.getUsers())
+        for (auto user_result : user->getResults())
+          work_queue.push_back(user_result);
   }
   assert(iter < bound_for_maximum_iterations &&
          "Hit bound on maximum number of iterations for detecting constant "
