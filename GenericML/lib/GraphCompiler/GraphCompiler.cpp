@@ -102,6 +102,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     pm.addPass(mlir::createCSEPass());
   }
   pm.addPass(MO::createDeparameterizeMoOps());
+  pm.addPass(MO::createInferLayouts());
 
   if (opts.usePatterns) {
     pm.addPass(MOGG::createPatternFusion());
