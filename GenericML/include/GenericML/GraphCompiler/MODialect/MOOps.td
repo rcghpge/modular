@@ -2440,5 +2440,25 @@ def MO_PackMMWeightsOp : MO_TensorOp<"pack_mm_weights", [Pure]> {
   let assemblyFormat = "`(` $input `:` qualified(type($input)) `)` attr-dict `->` qualified(type($result))";
 }
 
+def MO_LayoutTransformOp : MO_TensorOp<"layout.transform", [Pure]> {
+  let summary = "Transform the layout of input tensor";
+  let description = [{
+    This op will transform the layout of input tensor to the layout specified in
+    the output type.
+
+    It requires both the input and output tensor types to contain layout
+    annotations.
+  }];
+
+  let arguments = (ins MO_Tensor:$input);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `(` $input `)` attr-dict `:` qualified(type($input)) `->` qualified(type($result))
+  }];
+
+  let hasCanonicalizeMethod = 1;
+  let hasVerifier = 1;
+}
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOOPS_TD

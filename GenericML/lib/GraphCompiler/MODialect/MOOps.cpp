@@ -2508,6 +2508,31 @@ OpFoldResult Shape::ToTensorOp::fold(FoldAdaptor adaptor) {
 }
 
 //===----------------------------------------------------------------------===//
+// MO_LayoutTransformOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult LayoutTransformOp::verify() {
+  if (!getInput().getType().getLayoutAttr())
+    return emitError() << "input type must contain layout annotation";
+
+  if (!getResult().getType().getLayoutAttr())
+    return emitError() << "output type must contain layout annotation";
+
+  return success();
+}
+
+LogicalResult LayoutTransformOp::canonicalize(LayoutTransformOp op,
+                                              PatternRewriter &rewriter) {
+  LayoutAttr inputLayout = op.getInput().getType().getLayoutAttr();
+  LayoutAttr outputLayout = op.getResult().getType().getLayoutAttr();
+  if (inputLayout == outputLayout) {
+    rewriter.replaceOp(op, op.getInput());
+    return success();
+  }
+  return failure();
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 
