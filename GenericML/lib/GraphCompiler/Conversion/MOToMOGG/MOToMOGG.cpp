@@ -230,6 +230,9 @@ struct MOOpPattern : public RewritePattern {
       if (auto invokeShapeFuncOp = dyn_cast<MO::InvokeShapeFuncOp>(op))
         return helper.lowerShapeFuncToKernel(invokeShapeFuncOp);
 
+      if (auto layoutTransformOp = dyn_cast<MO::LayoutTransformOp>(op))
+        return helper.lowerLayoutTransformToKernel(layoutTransformOp);
+
       return helper.lowerToKernel(kernel.moggID, kernel.isView,
                                   kernel.isNonElemwise);
     } else if (shimTarget != "None") {
@@ -307,6 +310,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_ELEMWISE(MO::IsInfOp),
       MO_TO_ELEMWISE(MO::IsNaNOp),
       MO_TO_ELEMWISE(MO::Log1pOp),
+      MO_TO_KERNEL(MO::LayoutTransformOp),
       MO_TO_KERNEL(MO::LinAlg::BandPartOp),
       MO_TO_KERNEL(MO::LinAlg::SolveOp),
       MO_TO_KERNEL(MO::LogSoftmaxOp),
