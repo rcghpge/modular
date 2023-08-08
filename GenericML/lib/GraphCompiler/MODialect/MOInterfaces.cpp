@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GenericML/GraphCompiler/MODialect/MOAttrs.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
@@ -79,6 +80,14 @@ LogicalResult impl::checkMatmulCompatibility(Operation *op, TensorValue A,
     if (matmul.getTransposeB().value_or(false))
       return success();
   }
+
+  // The op created from the framework should have no layout attributes and we
+  // should verify those. However we can add layouts annotations in the
+  // lowering. They will change some of the shapes (i.e allowing values to be
+  // transposed implicitly). For now we disable shape verifications in those
+  // cases.
+  if (aType.getLayoutAttr() || bType.getLayoutAttr())
+    return success();
 
   ArrayRef<TypedAttr> aMatShape = aType.getDims().take_back(2);
   ArrayRef<TypedAttr> bMatShape = bType.getDims().take_back(2);

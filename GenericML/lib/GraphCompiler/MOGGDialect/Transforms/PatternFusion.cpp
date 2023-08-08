@@ -4,6 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GenericML/GraphCompiler/MODialect/MOAttrs.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
@@ -93,6 +94,7 @@ Value lowerMatmulPackingFunc(Location loc, PatternRewriter &rewriter,
                                   paramType)});
 
     // Create the packed B shape function.
+    // TODO(#18770) Find a better registration mechanism.
     SmallVector<mlir::NamedAttribute> attrs;
     attrs.push_back(rewriter.getNamedAttr("transpose_in_0",
                                           rewriter.getBoolAttr(transpose)));
@@ -107,8 +109,9 @@ Value lowerMatmulPackingFunc(Location loc, PatternRewriter &rewriter,
 
     auto moshShapeTy = MOSH::ShapeType::get(cache.ctx);
     auto shapeAttr = MOSH::ShapeAttr::get(outputShapeDims, moshShapeTy);
+    auto packedWeightsLayout = rewriter.getAttr<MO::LayoutAttr>("KNkni");
     packedWeightsType =
-        MO::TensorType::get(shapeAttr, weightsType.getElementType());
+        weightsType.cloneWith(shapeAttr).cloneWith(packedWeightsLayout);
 
     // Cache the result so the next type has a hit too.
     if (transpose)
@@ -118,10 +121,8 @@ Value lowerMatmulPackingFunc(Location loc, PatternRewriter &rewriter,
   }
 
   // Pack the mm weights.
-  return rewriter.create<MO::PackMMWeightsOp>(loc,
-                                              /*outputTypes=*/packedWeightsType,
-                                              weight,
-                                              rewriter.getBoolAttr(transpose));
+  return rewriter.create<MO::LayoutTransformOp>(
+      loc, /*outputTypes=*/packedWeightsType, weight);
 }
 
 struct GatherSumPattern : public OpRewritePattern<MO::ReduceAddOp> {
@@ -181,13 +182,6 @@ struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
     if (isMatmulSmall(op))
       return rewriter.notifyMatchFailure(op, "Matmul is too small");
 
-    if (op.getPackedB())
-      return rewriter.notifyMatchFailure(op, "Matmul is already packed");
-
-    if (op.getTransposeB())
-      return rewriter.notifyMatchFailure(op,
-                                         "Transposed op has already been run");
-
     auto weightP = m_MOMatrix(m_Any(&weight));
     auto weightTransP =
         m_Op<MO::TransposeOp>(&transpose, weightP, m_MOVector(m_Any(&perm)));
@@ -195,6 +189,14 @@ struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
       return failure();
 
     MO::TensorType weightsType = cast<MO::TensorType>(weight.getType());
+    MO::LayoutAttr weightsLayout = op.getInputB().getType().getLayoutAttr();
+    if (weightsLayout.getFormat() == "KNkni")
+      return rewriter.notifyMatchFailure(op, "Matmul is already packed");
+
+    if (weightsLayout.getFormat() == "NK")
+      return rewriter.notifyMatchFailure(op,
+                                         "Transposed op has already been run");
+
     if (weightsType.hasUnknownShape())
       return rewriter.notifyMatchFailure(op, "Weights have unknown shape");
 
@@ -206,11 +208,21 @@ struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
         return rewriter.notifyMatchFailure(op, "invalid transpose");
     }
 
+    // TODO once we have layout inference across transpose op, we can remove
+    // this check and layout annotation; or we might remove this `transpose`
+    // flag from the packing shape function altogether.
+    if (transpose) {
+      if (!weight.hasOneUse())
+        return rewriter.notifyMatchFailure(
+            op, "pre-transposed weights have multiple uses");
+      auto preTranspWeightsLayout = rewriter.getAttr<MO::LayoutAttr>("NK");
+      weight.setType(weightsType.cloneWith(preTranspWeightsLayout));
+    }
+
     Value packedWeights = lowerMatmulPackingFunc(op->getLoc(), rewriter, cache,
                                                  weight, transpose);
 
     op.setOperand(1, packedWeights);
-    op.setPackedBAttr(rewriter.getBoolAttr(true));
     return mlir::success();
   }
 
@@ -225,13 +237,6 @@ struct MatmulTranspBPattern : public OpRewritePattern<MO::MatmulOp> {
                                 PatternRewriter &rewriter) const override {
     Value input, weight, perm;
 
-    if (op.getTransposeB())
-      return rewriter.notifyMatchFailure(op, "Matmul is already transposed");
-
-    if (op.getPackedB())
-      return rewriter.notifyMatchFailure(
-          op, "The packed optimization has been run already");
-
     auto weightTransP =
         m_Op<MO::TransposeOp>(m_Any(&weight), m_MOVector(m_Any(&perm)));
     if (!m_Op<MO::MatmulOp>(
@@ -245,11 +250,24 @@ struct MatmulTranspBPattern : public OpRewritePattern<MO::MatmulOp> {
     if (validate2DTranspose(perm).failed())
       return rewriter.notifyMatchFailure(op, "invalid transpose");
 
+    MO::LayoutAttr weightsLayout = op.getInputB().getType().getLayoutAttr();
+    if (weightsLayout.getFormat() == "NK")
+      return rewriter.notifyMatchFailure(op, "Matmul is already transposed");
+
+    if (weightsLayout.getFormat() == "KNkni")
+      return rewriter.notifyMatchFailure(
+          op, "The packed optimization has been run already");
+
+    // TODO once we have layout inference across transpose op, we can remove
+    // this check and layout annotation.
+    if (!weight.hasOneUse())
+      return rewriter.notifyMatchFailure(op, "weights have multiple uses");
     // Take the non-transposed weight.
     op.setOperand(1, weight);
+    auto preTranspWeightsLayout = rewriter.getAttr<MO::LayoutAttr>("NK");
+    weight.setType(cast<MO::TensorType>(weight.getType())
+                       .cloneWith(preTranspWeightsLayout));
 
-    // Mark this matmul as being a tranposed kernel.
-    op.setTransposeBAttr(rewriter.getBoolAttr(true));
     return mlir::success();
   }
 };
@@ -467,9 +485,10 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
                  ConcatZeroAxisPattern, SplitZeroAxisPattern, LayerNormPattern>(
         ctx);
 
-    if (failed(
-            applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
+    MO::GraphOp graphOp = getOperation();
+    if (failed(applyPatternsAndFoldGreedily(graphOp, std::move(patterns))))
       return signalPassFailure();
+    MO::synchronizeMetadataUpdates(graphOp);
   }
 };
 
