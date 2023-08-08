@@ -6,13 +6,14 @@
 # RUN: %mojo %s | FileCheck %s
 
 from DType import DType
+from Index import Index
 from Index import StaticIntTuple, Index
 from IO import print
+from Math import sqrt
 from Random import rand, seed
 from Range import range
+from SIMD import Float64, Float32
 from Tensor import Tensor, TensorShape
-from Math import sqrt
-from SIMD import Float64
 
 
 # CHECK: test_tensor
@@ -157,6 +158,46 @@ fn test_euclidean_distance():
     print(sqrt(accum))
 
 
+# CHECK: test_image_negate
+# COM: This example comes from the change log.
+fn test_image_negate():
+    print("== test_image_negate")
+
+    let height = 256
+    let width = 256
+    let channels = 3
+
+    # Create the tensor of dimensions height, width, channels and fill.
+    var image = Tensor[DType.float32](height, width, channels)
+    let num_elements = image.num_elements()
+    for x in range(height):
+        for y in range(width):
+            for c in range(channels):
+                image[Index(x, y, c)] = (
+                    Float32((x * width + y) * channels + c) / num_elements
+                )
+
+    # Declare the grayscale image.
+    var gray_scale_image = Tensor[DType.float32](height, width)
+
+    # Perform the RGB to grayscale transform.
+    for y in range(height):
+        for x in range(width):
+            let r = image[y, x, 0]
+            let g = image[y, x, 1]
+            let b = image[y, x, 2]
+            gray_scale_image[Index(y, x)] = 0.299 * r + 0.587 * g + 0.114 * b
+
+    # CHECK: 4.1453{{.*}}e-06
+    print(gray_scale_image[0, 0])
+    # CHECK: 0.0392192
+    print(gray_scale_image[10, 10])
+    # CHECK: 0.38676
+    print(gray_scale_image[99, 3])
+    # CHECK: 0.99998
+    print(gray_scale_image[255, 255])
+
+
 fn main():
     test_tensor()
     test_tensor_indexing()
@@ -164,3 +205,4 @@ fn main():
     test_tensor_fill()
     test_tensor_rand()
     test_euclidean_distance()
+    test_image_negate()
