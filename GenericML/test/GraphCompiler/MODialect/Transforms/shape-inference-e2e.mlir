@@ -753,3 +753,22 @@ mo.graph @tile(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[?, ?], f32> {
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[20, 60], f32>
   mo.output %res : !mo.tensor<[?, ?], f32>
 }
+
+// CHECK:      mo.graph @partially_parameterized_signature<[[IN:.*]], [[D0:.*]], [[D1:.*]]>(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[[[IN]], [[D0]], [[D1]]], f32>
+// CHECK-SAME: ) -> !mo.tensor<[[[IN]], 1, [[D1]]], f32> {
+mo.graph @partially_parameterized_signature<in>(
+  %input: !mo.tensor<[in, ?, ?], f32>
+) -> !mo.tensor<[?, ?, ?], f32> {
+
+  // CHECK-NEXT: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %axis = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+
+  // CHECK-NEXT: %[[RES:.*]]  = mo.reduce.mul(%[[INPUT]], %[[AXIS]])
+  // CHECK-SAME:   : (!mo.tensor<[[[IN]], [[D0]], [[D1]]], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[[[IN]], 1, [[D1]]], f32>
+  %res  = mo.reduce.mul(%input, %axis)
+    : (!mo.tensor<[in, ?, ?], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?, ?], f32>
+
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[IN]], 1, [[D1]]], f32>
+  mo.output %res : !mo.tensor<[?, ?, ?], f32>
+}
