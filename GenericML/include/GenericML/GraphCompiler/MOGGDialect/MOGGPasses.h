@@ -37,6 +37,14 @@ bool kernelHasInputParameter(MOGG::MojoRegisterOp opRegister,
                              ModuleOp kgenModule, StringRef moOpName,
                              StringRef parameterName);
 
+// Returns true if the kernel is an elementwise kernel.
+bool kernelIsElementwise(MOGG::MojoRegisterOp opRegister, ModuleOp kgenModule,
+                         StringRef moOpName);
+
+// Returns true if the kernel is a view operation.
+bool kernelIsViewOp(MOGG::MojoRegisterOp opRegister, ModuleOp kgenModule,
+                    StringRef moOpName);
+
 // Return the KGEN module containing the MOGG bindings.
 ErrorOr<OwningOpRef<mlir::ModuleOp>> loadMojoBindings(MLIRContext *ctx);
 

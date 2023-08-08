@@ -37,12 +37,15 @@ namespace {
 struct KernelRecord {
   // Overload for an unreachable op which should just assert.
   KernelRecord(StringLiteral moggID)
-      : moggID(moggID), shim("None"), shouldHaveMojo(false), isView(false),
+      : moggID(moggID), shim("None"), shouldHaveMojo(false),
         isNonElemwise(false), shouldBeUnreachable(true) {}
 
-  KernelRecord(StringLiteral moggID, StringLiteral shimName, bool hasMojo,
-               bool isView = false, bool isNonElemwise = false)
-      : moggID(moggID), shim(shimName), shouldHaveMojo(hasMojo), isView(isView),
+  KernelRecord(StringLiteral moggID, StringLiteral shimName)
+      : moggID(moggID), shim(shimName), shouldHaveMojo(false),
+        isNonElemwise(false), shouldBeUnreachable(false) {}
+
+  KernelRecord(StringLiteral moggID, bool isNonElemwise)
+      : moggID(moggID), shim("None"), shouldHaveMojo(true),
         isNonElemwise(isNonElemwise), shouldBeUnreachable(false) {}
 
   ~KernelRecord() = default;
@@ -57,9 +60,6 @@ struct KernelRecord {
   // Should we have a mojo kernel for this?
   bool shouldHaveMojo;
 
-  // Does this operation represent a view which then has special lowering code.
-  bool isView;
-
   // Is this operation an actual operation which is *not* implemented by an
   // elementwise invoke over a lambda body.
   bool isNonElemwise;
@@ -73,35 +73,21 @@ struct KernelRecord {
 // map.
 #define MO_TO_ELEMWISE(MOOp)                                                   \
   {                                                                            \
-    TypeID::get<MOOp>(), KernelRecord {                                        \
-      MOOp::getOperationName(), "None", true                                   \
-    }                                                                          \
+    TypeID::get<MOOp>(), KernelRecord { MOOp::getOperationName(), false }      \
   }
 
 // Same as the above but a special case for non-elementwise ops. Eventually this
 // will be replaced through inspecting the mogg kernel.
 #define MO_TO_KERNEL(MOOp)                                                     \
   {                                                                            \
-    TypeID::get<MOOp>(), KernelRecord {                                        \
-      MOOp::getOperationName(), "None", true, false, true                      \
-    }                                                                          \
-  }
-
-// Same as the above but a special case for view ops.
-// MOOps is the C++ class type of the MO op which provides the op name for the
-// map.
-#define MO_TO_VIEW(MOOp)                                                       \
-  {                                                                            \
-    TypeID::get<MOOp>(), KernelRecord {                                        \
-      MOOp::getOperationName(), "None", true, true                             \
-    }                                                                          \
+    TypeID::get<MOOp>(), KernelRecord { MOOp::getOperationName(), true }       \
   }
 
 // Operations which are handled specially and not lowered to MOGG
 #define MO_NO_LOWER(MOOp)                                                      \
   {                                                                            \
     TypeID::get<MOOp>(), KernelRecord {                                        \
-      MOOp::getOperationName(), "None", false                                  \
+      MOOp::getOperationName(), StringLiteral { "None" }                       \
     }                                                                          \
   }
 
@@ -116,7 +102,9 @@ struct KernelRecord {
 // map. ShimName is the name of the C++ shim kernel to target in MGP.
 #define MO_SHIM_ONLY(MOOp, ShimName)                                           \
   {                                                                            \
-    TypeID::get<MOOp>(), KernelRecord { "", ShimName, false }                  \
+    TypeID::get<MOOp>(), KernelRecord {                                        \
+      MOOp::getOperationName(), StringLiteral { ShimName }                     \
+    }                                                                          \
   }
 
 using MoToKernelMapTy = SmallDenseMap<mlir::TypeID, KernelRecord, 64>;
@@ -229,12 +217,10 @@ struct MOOpPattern : public RewritePattern {
     if (shouldUseJit && hasCompatibleJITDtypes && hasCompatibleJITShape) {
       if (auto invokeShapeFuncOp = dyn_cast<MO::InvokeShapeFuncOp>(op))
         return helper.lowerShapeFuncToKernel(invokeShapeFuncOp);
-
       if (auto layoutTransformOp = dyn_cast<MO::LayoutTransformOp>(op))
         return helper.lowerLayoutTransformToKernel(layoutTransformOp);
 
-      return helper.lowerToKernel(kernel.moggID, kernel.isView,
-                                  kernel.isNonElemwise);
+      return helper.lowerToKernel(kernel.moggID, kernel.isNonElemwise);
     } else if (shimTarget != "None") {
       return helper.lowerToShim(shimTarget);
     } else {
@@ -293,7 +279,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_KERNEL(MO::ArgMaxOp),
       MO_TO_KERNEL(MO::ArgMinOp),
       MO_TO_KERNEL(MO::AvgPoolOp),
-      MO_TO_VIEW(MO::Static::BroadcastToOp),
+      MO_TO_KERNEL(MO::Static::BroadcastToOp),
       MO_TO_ELEMWISE(MO::CastOp),
       MO_TO_ELEMWISE(MO::CeilOp),
       MO_TO_KERNEL(MO::ConcatOp),
@@ -336,13 +322,13 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_KERNEL(MO::ScatterNdOp),
       MO_TO_ELEMWISE(MO::SelectOp),
       MO_TO_ELEMWISE(MO::SigmoidOp),
-      MO_TO_VIEW(MO::SliceOp),
+      MO_TO_KERNEL(MO::SliceOp),
       MO_TO_KERNEL(MO::SoftmaxOp),
       MO_TO_KERNEL(MO::SplitOp),
       MO_TO_ELEMWISE(MO::SqrtOp),
       MO_TO_ELEMWISE(MO::SubOp),
       MO_TO_ELEMWISE(MO::TanhOp),
-      MO_TO_VIEW(MO::TransposeOp),
+      MO_TO_KERNEL(MO::TransposeOp),
       MO_TO_KERNEL(MO::WhereOp),
 
       // These kernels we don't jit but we almost certainly never actually call them.
@@ -384,7 +370,6 @@ void MOToMOGGPass::runOnOperation() {
 
 #undef MO_TO_ELEMWISE
 #undef MO_TO_KERNEL
-#undef MO_TO_VIEW
 #undef MO_NO_LOWER
 #undef MO_UNLOWERABLE_OP
 #undef MO_SHIM_ONLY
