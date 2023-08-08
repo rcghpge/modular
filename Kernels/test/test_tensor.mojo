@@ -158,10 +158,10 @@ fn test_euclidean_distance():
     print(sqrt(accum))
 
 
-# CHECK: test_image_negate
+# CHECK: test_image_to_grayscale
 # COM: This example comes from the change log.
-fn test_image_negate():
-    print("== test_image_negate")
+fn test_image_to_grayscale():
+    print("== test_image_to_grayscale")
 
     let height = 256
     let width = 256
@@ -205,4 +205,4 @@ fn main():
     test_tensor_fill()
     test_tensor_rand()
     test_euclidean_distance()
-    test_image_negate()
+    test_image_to_grayscale()
