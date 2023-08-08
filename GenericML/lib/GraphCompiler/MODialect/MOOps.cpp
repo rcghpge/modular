@@ -683,7 +683,8 @@ void BroadcastToOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 
   // Note broadcastShape may be null
   if (!broadcastShape)
-    broadcastShape = odsBuilder.create<MO::ShapeOfOp>(input.getLoc(), input);
+    broadcastShape =
+        odsBuilder.create<MO::ShapeOfOp>(input.getLoc(), broadcastLike);
 
   build(odsBuilder, odsState, resultTy, input, broadcastShape);
 }
