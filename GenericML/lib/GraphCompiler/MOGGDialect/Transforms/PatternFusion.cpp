@@ -30,7 +30,7 @@ namespace {
 // The size which we regard as too small to run the special matmuls.
 constexpr int64_t kTinyMatmulFlops = 5000;
 
-bool isMatmulSmall(MO::MatmulOp matmul) {
+static bool isMatmulSmall(MO::MatmulOp matmul) {
   MO::TensorType aType = matmul.getInputA().getType();
   MO::TensorType bType = matmul.getInputB().getType();
 
@@ -43,6 +43,25 @@ bool isMatmulSmall(MO::MatmulOp matmul) {
   // M * K * N
   int64_t approxFlops = ADims[0] * ADims[1] * BDims[1];
   return approxFlops < kTinyMatmulFlops;
+}
+
+/// Returns true if `val` comes from a series of constant computation (e.g.,
+/// static reshape, transpose with constant permutation).
+static bool isConstant(Value val) {
+  while (Operation *definingOp = val.getDefiningOp()) {
+    if (auto reshapeOp = dyn_cast<MO::Static::ReshapeOp>(definingOp)) {
+      val = reshapeOp.getInput();
+
+    } else if (auto transposeOp = dyn_cast<MO::TransposeOp>(definingOp)) {
+      if (!transposeOp.getPerm().getDefiningOp<MO::ConstantOp>())
+        return false;
+      val = transposeOp.getInput();
+
+    } else {
+      return isa<MO::ConstantOp>(definingOp);
+    }
+  }
+  return false;
 }
 
 struct PackParamCache {
@@ -171,25 +190,6 @@ static LogicalResult validate2DTranspose(Value perm) {
 struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
   MatmulConstBPattern(MLIRContext *ctx, PackParamCache &cache)
       : OpRewritePattern(ctx, 3), cache(cache) {}
-
-  /// Returns true if `val` comes from a series of constant computation (e.g.,
-  /// static reshape, transpose with constant permutation).
-  static bool isConstant(Value val) {
-    while (Operation *definingOp = val.getDefiningOp()) {
-      if (auto reshapeOp = dyn_cast<MO::Static::ReshapeOp>(definingOp)) {
-        val = reshapeOp.getInput();
-
-      } else if (auto transposeOp = dyn_cast<MO::TransposeOp>(definingOp)) {
-        if (!transposeOp.getPerm().getDefiningOp<MO::ConstantOp>())
-          return false;
-        val = transposeOp.getInput();
-
-      } else {
-        return isa<MO::ConstantOp>(definingOp);
-      }
-    }
-    return false;
-  }
 
   LogicalResult matchAndRewrite(MO::MatmulOp op,
                                 PatternRewriter &rewriter) const override {
@@ -383,6 +383,55 @@ struct ConcatZeroAxisPattern : public OpRewritePattern<MO::ConcatOp> {
   }
 };
 
+struct ConvConstFilterPattern : public OpRewritePattern<MO::ConvOp> {
+  ConvConstFilterPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 3) {}
+
+  LogicalResult matchAndRewrite(MO::ConvOp op,
+                                PatternRewriter &rewriter) const override {
+    // Define some meta variables.
+    MLIRContext *ctx = op.getContext();
+    Location loc = op.getLoc();
+    MO::TensorValue filter = op.getFilter();
+    MO::TensorType filterType = filter.getType();
+    MO::LayoutAttr filterLayout = filterType.getLayoutAttr();
+    if (filterLayout.getFormat() == "FRSCf")
+      return rewriter.notifyMatchFailure(op, "filter is already packed");
+
+    if (!isConstant(filter))
+      return rewriter.notifyMatchFailure(op, "filter isn't constant");
+
+    // Create shape parameters for the new type.
+    SmallVector<KGEN::ParamDeclAttr> paramDecls;
+    auto graphOp = op->getParentOfType<MO::GraphOp>();
+    for (StringRef name : {"F", "R", "S", "C", "f"})
+      paramDecls.push_back(graphOp.getNewDimParam(name));
+    auto paramDeclsAttr = KGEN::ParamDeclArrayAttr::get(ctx, paramDecls);
+
+    // Invoke the pack filter fallback shape function.
+    // TODO(#18770) Find a better registration mechanism.
+    SmallVector<mlir::NamedAttribute> attrs;
+    rewriter.create<MO::InvokeShapeFuncOp>(
+        loc, SmallVector<Value>{filter}, "pack_conv_filter_shape",
+        paramDeclsAttr, DictionaryAttr{}, ArrayAttr{});
+
+    // Construct type (new shape and layout) for the packed filter.
+    SmallVector<TypedAttr> outputParams;
+    for (KGEN::ParamDeclAttr outputParamDecl : paramDecls)
+      outputParams.push_back(KGEN::ParamDeclRefAttr::get(outputParamDecl));
+    auto moshShapeTy = MOSH::ShapeType::get(ctx);
+    auto shapeAttr = MOSH::ShapeAttr::get(outputParams, moshShapeTy);
+    auto packedFilterLayout = rewriter.getAttr<MO::LayoutAttr>("FRSCf");
+    auto packedFilterType =
+        filterType.cloneWith(shapeAttr).cloneWith(packedFilterLayout);
+
+    // Pack the filter.
+    auto packedFilter = rewriter.create<MO::LayoutTransformOp>(
+        loc, /*outputTypes=*/packedFilterType, filter);
+    op.setOperand(1, packedFilter);
+    return mlir::success();
+  }
+};
+
 struct SplitZeroAxisPattern : public OpRewritePattern<MO::SplitOp> {
   SplitZeroAxisPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
 
@@ -506,8 +555,8 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
     patterns.add<MatmulConstBPattern>(ctx, cache);
 
     patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
-                 ConcatZeroAxisPattern, SplitZeroAxisPattern, LayerNormPattern>(
-        ctx);
+                 ConcatZeroAxisPattern, ConvConstFilterPattern,
+                 SplitZeroAxisPattern, LayerNormPattern>(ctx);
 
     MO::GraphOp graphOp = getOperation();
     if (failed(applyPatternsAndFoldGreedily(graphOp, std::move(patterns))))

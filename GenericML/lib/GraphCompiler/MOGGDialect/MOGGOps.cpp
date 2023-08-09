@@ -675,6 +675,10 @@ bool CallOp::setKGENParamToValueIfPresent(StringRef name, Attribute value) {
     return false;
 
   mlir::NamedAttrList attributes(*dict);
+  // Exit if the parameter doesn't exist in the dictionary attr.
+  if (!attributes.getNamed(name).has_value())
+    return false;
+
   Attribute oldAttr = attributes.set(name, value);
 
   // Update the dict if it doesn't already have that value.

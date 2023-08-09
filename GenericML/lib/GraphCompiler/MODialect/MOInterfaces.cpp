@@ -25,9 +25,15 @@ using namespace MO;
 
 LogicalResult impl::verifyMatchingRanks(ArrayRef<TensorValue> values) {
   SmallVector<size_t> staticRanks;
-  for (auto v : values)
-    if (TensorType t = v.getType(); t.hasRank())
+  for (auto v : values) {
+    TensorType t = v.getType();
+    // NOTE we relax the static shape verifier if layout annotation has been
+    // added to any of the tensor types.
+    if (t.getLayoutAttr())
+      return success();
+    else if (t.hasRank())
       staticRanks.emplace_back(t.getRank());
+  }
 
   bool allStaticRanks = staticRanks.size() == values.size();
   if (allStaticRanks)
