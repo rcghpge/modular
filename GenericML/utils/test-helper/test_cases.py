@@ -96,6 +96,13 @@ class BatchMatmulTrans(BatchMatmul):
         return impl.bmm(inputs[0], trans)
 
 
+class BatchMatmulRelu(BatchMatmul):
+    @staticmethod
+    def run(inputs, impl):
+        x = impl.bmm(inputs[0], inputs[1])
+        return impl.max(x, 0)
+
+
 # Test for range
 class Range(TestBase):
     @staticmethod

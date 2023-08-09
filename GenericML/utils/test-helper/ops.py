@@ -61,6 +61,9 @@ class NumpyImpl:
     def sum(self, x, axis):
         return np.sum(x, axis=axis[0], keepdims=True)
 
+    def max(self, x, y):
+        return np.maximum(x, y)
+
 
 # The keras implementation of each primitive.
 class TFImpl:
@@ -84,3 +87,6 @@ class TFImpl:
 
     def sum(self, x, axis):
         return tf.reduce_sum(x, axis=axis, keepdims=True)
+
+    def max(self, x, y):
+        return tf.math.maximum(x, y)
