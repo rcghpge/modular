@@ -172,6 +172,25 @@ struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
   MatmulConstBPattern(MLIRContext *ctx, PackParamCache &cache)
       : OpRewritePattern(ctx, 3), cache(cache) {}
 
+  /// Returns true if `val` comes from a series of constant computation (e.g.,
+  /// static reshape, transpose with constant permutation).
+  static bool isConstant(Value val) {
+    while (Operation *definingOp = val.getDefiningOp()) {
+      if (auto reshapeOp = dyn_cast<MO::Static::ReshapeOp>(definingOp)) {
+        val = reshapeOp.getInput();
+
+      } else if (auto transposeOp = dyn_cast<MO::TransposeOp>(definingOp)) {
+        if (!transposeOp.getPerm().getDefiningOp<MO::ConstantOp>())
+          return false;
+        val = transposeOp.getInput();
+
+      } else {
+        return isa<MO::ConstantOp>(definingOp);
+      }
+    }
+    return false;
+  }
+
   LogicalResult matchAndRewrite(MO::MatmulOp op,
                                 PatternRewriter &rewriter) const override {
     Value input = op.getInputA();
@@ -200,7 +219,7 @@ struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
     if (weightsType.hasUnknownShape())
       return rewriter.notifyMatchFailure(op, "Weights have unknown shape");
 
-    if (!input || !isa_and_nonnull<MO::ConstantOp>(weight.getDefiningOp()))
+    if (!input || !isConstant(weight))
       return failure();
 
     if (transpose) {
@@ -211,6 +230,11 @@ struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
     // TODO once we have layout inference across transpose op, we can remove
     // this check and layout annotation; or we might remove this `transpose`
     // flag from the packing shape function altogether.
+    // TODO in order to recover the transpose in a `reshape(transpose(weight))`,
+    // we'll need to sink transpose through reshape, but we'll punt on that
+    // since (1). this sequence of computations will be hoisted in MGP anyway so
+    // we don't gain anything, and (2). the transpose checking here might be
+    // replaced by more general view fusion into matmul.
     if (transpose) {
       if (!weight.hasOneUse())
         return rewriter.notifyMatchFailure(
