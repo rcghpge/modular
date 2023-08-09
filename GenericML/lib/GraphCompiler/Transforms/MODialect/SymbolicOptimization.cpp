@@ -269,6 +269,84 @@ struct ConvertBatchMatmulToMatmulPattern
   }
 };
 
+/// A pattern that detects `mo.conv` with 1x1 filter, 1s for strides and
+/// dilations, and rewrites it into a matmul with some static reshapes.
+///
+/// Example:
+///
+/// input  : tensor<[N, H, W, Ci]>
+/// filter : tensor<[1, 1, Ci, Co]>
+///
+///   res = conv(input, filter)[strides = {1, ...}, dilations = {1, ...}] : Sh
+/// ===>
+///   input'  = reshape(input)  : tensor<[N, H, W, Ci]> -> tensor<[N*H*W, Ci]>
+///   filter' = reshape(filter) : tensor<[1, 1, Ci, Co]> -> tensor<[Ci, Co]>
+///   matmul  = matmul(input', filter')
+///   res     = reshape(matmul) : ... -> Sh
+struct ConvToMatmulPattern : public OpRewritePattern<ConvOp> {
+  ConvToMatmulPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
+
+  LogicalResult matchAndRewrite(ConvOp op,
+                                PatternRewriter &rewriter) const override {
+    // Declare some meta variables.
+    TensorValue input = op.getInput();
+    TensorValue filter = op.getFilter();
+    TensorType opTy = op.getType();
+    Location loc = op.getLoc();
+
+    // Check rank
+    TensorType inputTy = input.getType();
+    TensorType filterTy = filter.getType();
+    if (!inputTy.hasRank() || inputTy.getRank() != 4)
+      return rewriter.notifyMatchFailure(op, "input rank must be 4");
+
+    // Check filter size
+    ArrayRef<TypedAttr> inputDims = inputTy.getTypedShapeAttr().getValues();
+    ArrayRef<TypedAttr> filterDims = filterTy.getTypedShapeAttr().getValues();
+    IntegerAttr intOneAttr = rewriter.getIndexAttr(1);
+    if (filterDims[0] != intOneAttr || filterDims[1] != intOneAttr)
+      return rewriter.notifyMatchFailure(op, "filter size must be 1x1");
+
+    // Check strides and dilations
+    auto areConstantOnes = [](TensorValue val) {
+      std::optional<SmallVector<int64_t>> maybeInts =
+          tryGetConstantIntVector(val);
+      return maybeInts.has_value() &&
+             llvm::all_of(maybeInts.value(), [](int64_t n) { return n == 1; });
+    };
+    if (!areConstantOnes(op.getStrides()))
+      return rewriter.notifyMatchFailure(op, "strides must be all 1s");
+    if (!areConstantOnes(op.getStrides()))
+      return rewriter.notifyMatchFailure(op, "dilations must be all 1s");
+
+    // Insert reshapes for conv input and filter
+    auto shapeTy = rewriter.getType<MOSH::ShapeType>();
+    // TODO provide a better API for symbolic dimension manipulations
+    auto matmulDimM =
+        KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, inputDims.slice(0, 3));
+    TypedAttr matmulDimK = inputDims.back();
+    TypedAttr matmulDimN = filterDims.back();
+    auto matmulInputShape =
+        MOSH::ShapeAttr::get({matmulDimM, matmulDimK}, shapeTy);
+    auto matmulWeightShape =
+        MOSH::ShapeAttr::get({matmulDimK, matmulDimN}, shapeTy);
+    auto matmulShape = MOSH::ShapeAttr::get({matmulDimM, matmulDimN}, shapeTy);
+    auto matmulInputTy = inputTy.cloneWith(matmulInputShape);
+    auto matmulWeightTy = filterTy.cloneWith(matmulWeightShape);
+    auto matmulTy = opTy.cloneWith(matmulShape);
+    auto matmulInput =
+        rewriter.create<MO::Static::ReshapeOp>(loc, matmulInputTy, input);
+    auto matmulWeight =
+        rewriter.create<MO::Static::ReshapeOp>(loc, matmulWeightTy, filter);
+
+    // Replace convolution with a newly created matmul
+    auto matmul =
+        rewriter.create<MO::MatmulOp>(loc, matmulTy, matmulInput, matmulWeight);
+    rewriter.replaceOpWithNewOp<MO::Static::ReshapeOp>(op, opTy, matmul);
+    return mlir::success();
+  }
+};
+
 /// A pattern that detects nested `mo.concat` with the same axis, and flatten
 /// them into a single `mo.concat` with all the concatenated input values, if
 /// the nested concat isn't used by anything else.
@@ -1395,9 +1473,10 @@ struct SymbolicOptimizationPass
     RewritePatternSet patterns(context);
     patterns.add<
         CommuteBroadcastWithFlatennedWhere, ConvertBatchMatmulToMatmulPattern,
-        FlattenNestedConcatPattern, Pow2Pattern, Pow3Pattern,
-        GathersToSplitPattern, GeluPattern, ElementWiseUnaryVectorPattern,
-        ElementWiseBinaryVectorPattern, BroadcastReshapePattern, GemvPattern,
+        ConvToMatmulPattern, FlattenNestedConcatPattern, Pow2Pattern,
+        Pow3Pattern, GathersToSplitPattern, GeluPattern,
+        ElementWiseUnaryVectorPattern, ElementWiseBinaryVectorPattern,
+        BroadcastReshapePattern, GemvPattern,
         SinkSameReshapesThroughElementwiseBinaryOp,
         SinkReshapeThroughBroadcastedElementwiseUnaryOp,
         SinkReshapeThroughBroadcastedElementwiseBinaryOp,
