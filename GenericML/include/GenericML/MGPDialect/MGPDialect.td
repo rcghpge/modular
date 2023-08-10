@@ -77,7 +77,7 @@ def MGPDialect : Dialect {
        shapes.
     5. [Pending for D] Provides a `mgp.kgen.invoke` primitive for invoking
        KGENed ops whose signatures, due to fusion, may not be known until model
-       compile time. The implementations are drawn from the kgen_cache and
+       compile time. The implementations are drawn from the mojo_cache and
        stored in object form in the MEF file. Shim code is also generated at
        model compile time to mediate between the MEF Frame and the ops native
        calling convention (as per an ABI), and similarly stored in object form

@@ -88,7 +88,7 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
   if (!saveTempsPrefix.empty())
     compilationOptions.setSaveTemps(saveTempsPrefix);
 
-  auto compilerOr = KGEN::ObjectCompiler::create(runtime, mgr, ".kgen_cache",
+  auto compilerOr = KGEN::ObjectCompiler::create(runtime, mgr, ".mojo_cache",
                                                  compilationOptions);
   if (compilerOr.isError())
     return compilerOr.takeError();

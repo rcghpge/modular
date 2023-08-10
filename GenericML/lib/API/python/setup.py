@@ -40,9 +40,9 @@ SHARED_LIBS = [
     )
 ]
 EXECUTABLES = [os.path.abspath(os.path.join("modular", "bin", "*"))]
-# Copy everything under `.kgen_cache` to the wheel.
+# Copy everything under `.mojo_cache` to the wheel.
 KGEN_CACHE = [
-    os.path.abspath(os.path.join("modular", ".kgen_cache", "**", "*"))
+    os.path.abspath(os.path.join("modular", ".mojo_cache", "**", "*"))
 ]
 # Copy Modular configuration file to the wheel.
 MODULAR_CFG = [os.path.abspath(os.path.join("modular", "modular.cfg"))]
