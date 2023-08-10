@@ -68,9 +68,8 @@ public:
   LoweredTensor getLoweredTensorForValue(Value val);
 
   // Lower the output buffer which will get passed into the input.
-  ErrorOr<SmallVector<LoweredTensor>>
-  lowerOutputBuffer(llvm::StringRef opName, Value inChain,
-                    const SmallVector<LoweredTensor> &inputTensors);
+  ErrorOr<SmallVector<LoweredTensor>> lowerOutputBuffer(llvm::StringRef opName,
+                                                        Value inChain);
 
   // Emit instructions to invoke the legacy primitive shape function that has
   // the given name, input values, and returns tensor spec of types
@@ -99,10 +98,10 @@ private:
   mlir::Operation *opBeingLowered;
   mlir::Location loc;
 
-  ErrorOr<LoweredTensor>
-  lowerDynamicOutput(MGP::CpuTensorSpecType outSpecType, MO::TensorType moType,
-                     llvm::StringRef opName, Value inChain,
-                     const SmallVector<LoweredTensor> &inputTensors);
+  ErrorOr<LoweredTensor> lowerDynamicOutput(MGP::CpuTensorSpecType outSpecType,
+                                            MO::TensorType moType,
+                                            llvm::StringRef opName,
+                                            Value inChain);
 };
 
 SmallVector<LoweredTensor> LowerHelper::getLoweredInputs() {
@@ -149,10 +148,10 @@ void LowerHelper::allocateOutputTensor(
   }
 }
 
-ErrorOr<LoweredTensor> LowerHelper::lowerDynamicOutput(
-    MGP::CpuTensorSpecType outSpecType, MO::TensorType moType,
-    llvm::StringRef opName, Value inChain,
-    const SmallVector<LoweredTensor> &inputTensors) {
+ErrorOr<LoweredTensor>
+LowerHelper::lowerDynamicOutput(MGP::CpuTensorSpecType outSpecType,
+                                MO::TensorType moType, llvm::StringRef opName,
+                                Value inChain) {
   OpBuilder exeBuilder = loweringState.getExecuteOpBuilder();
 
   LoweredTensor output;
@@ -200,8 +199,7 @@ SmallVector<Value> LowerHelper::getOperands(SmallVector<LoweredTensor> &ins,
 }
 
 ErrorOr<SmallVector<LoweredTensor>>
-LowerHelper::lowerOutputBuffer(llvm::StringRef opName, Value inChain,
-                               const SmallVector<LoweredTensor> &inputTensors) {
+LowerHelper::lowerOutputBuffer(llvm::StringRef opName, Value inChain) {
   SmallVector<MO::TensorType> resultMoTypes =
       castToMoTensorTypes(opBeingLowered->getResultTypes());
 
@@ -217,8 +215,7 @@ LowerHelper::lowerOutputBuffer(llvm::StringRef opName, Value inChain,
     std::optional<uint64_t> bufferSize = outSpecType.getSizeInBytes();
     LoweredTensor output;
     if (!bufferSize) {
-      UNWRAP_ERROR(out, lowerDynamicOutput(outSpecType, ty, opName, inChain,
-                                           inputTensors));
+      UNWRAP_ERROR(out, lowerDynamicOutput(outSpecType, ty, opName, inChain));
       output = out;
     } else {
       // Static Case
@@ -296,8 +293,8 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // ensuring we allocate buffers just-in-time for their writers. Jit compiled
   // kernels have no shape function and just use the shape infered values
   // directly and are guarded to only run on static or shape infered ops.
-  auto errOr = helper.lowerOutputBuffer(opName, loweringState.getExecuteChain(),
-                                        inputTensors);
+  auto errOr =
+      helper.lowerOutputBuffer(opName, loweringState.getExecuteChain());
   if (errOr.isError())
     return failure();
   SmallVector<LoweredTensor> outputBufferAndSpec = errOr.takeValue();
@@ -344,7 +341,7 @@ LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   // Lower the outputs to buffers which can then be passed back in as
   // parameters.
-  auto errOr = helper.lowerOutputBuffer("None", execChain, inputTensors);
+  auto errOr = helper.lowerOutputBuffer("mogg.concat_op", execChain);
   if (errOr.isError())
     return failure();
   SmallVector<LoweredTensor> outputBufferAndSpec = errOr.takeValue();
@@ -510,8 +507,8 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // Allocate buffers to hold all the operation's result tensors.
   // Jit compiled kernels have no shape function and just use the shape infered
   // values directly and are guarded to only run on static or shape infered ops.
-  auto errOr = helper.lowerOutputBuffer(
-      "jit_compiled", loweringState.getExecuteChain(), inputTensors);
+  auto errOr =
+      helper.lowerOutputBuffer("jit_compiled", loweringState.getExecuteChain());
   if (errOr.isError())
     return failure();
   SmallVector<LoweredTensor> outputBufferAndSpec = errOr.takeValue();
