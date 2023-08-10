@@ -284,12 +284,6 @@ struct MatmulTranspBPattern : public OpRewritePattern<MO::MatmulOp> {
 
     MO::TensorType weightType = cast<MO::TensorType>(weight.getType());
     auto preTranspWeightLayout = rewriter.getAttr<MO::LayoutAttr>("NK");
-    // TODO once we have layout inference across transpose op, we can remove
-    // this check and layout annotation.
-    if (MO::LayoutAttr weightLayout = weightType.getLayoutAttr();
-        weightLayout && weightLayout != preTranspWeightLayout)
-      return rewriter.notifyMatchFailure(op, "weight has different layout");
-
     // TODO This is to prevent breaking type system, e.g., if `weight` came from
     // a `mo.mul`. Once we have layout inference across transpose op, we can
     // remove the check.
@@ -299,8 +293,12 @@ struct MatmulTranspBPattern : public OpRewritePattern<MO::MatmulOp> {
           op, "can't update layout for non-constant");
     }
     // Let matmul take in the non-transposed weight, and update weight layout
-    op.setOperand(1, weight);
-    weight.setType(weightType.cloneWith(preTranspWeightLayout));
+
+    // TODO once we have layout inference across transpose op, we can remove
+    // this layout annotation.
+    auto rebWeight = rewriter.create<MO::RebindOp>(
+        op.getLoc(), weightType.cloneWith(preTranspWeightLayout), weight);
+    op.setOperand(1, rebWeight);
 
     return mlir::success();
   }
