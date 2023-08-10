@@ -2174,7 +2174,6 @@ def MO_RangeOp : MO_TensorOp<"range", [
 
 class MO_DotBase<string name, list<Trait> traits = []> :
     MO_TensorOp<name, traits # [
-    MO_SameOperandsAndResultElementType,
     MO_MatmulLike,
     DeclareOpInterfaceMethods<MO_Parameterization>,
     DeclareOpInterfaceMethods<MO_ParamDeclaration>,
@@ -2222,6 +2221,7 @@ def MO_MatmulOp : MO_DotBase<"matmul"> {
 
 def MO_BatchMatmulOp : MO_DotBase<"batch_matmul", [
   DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
+  MO_SameOperandsAndResultElementType
 ]> {
   let summary = "Batched matrix-matrix multiplication";
   let description = [{

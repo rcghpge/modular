@@ -58,3 +58,17 @@ mo.graph @matmul_dyndim_K(%arg0: !mo.tensor<[10, ?], f32>, %arg1: !mo.tensor<[?,
   %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[10, ?], f32>, !mo.tensor<[?, 5], f32>) -> !mo.tensor<[10, 5], f32>
   mo.output %0 : !mo.tensor<[10, 5], f32>
 }
+
+// CHECK: mo.graph @matmul_fp16_mixed_precision
+mo.graph @matmul_fp16_mixed_precision(%arg0: !mo.tensor<[10, ?], f16>, %arg1: !mo.tensor<[?, 5], f16>) -> (!mo.tensor<[10, 5], f32>) {
+  // CHECK-NEXT: mo.matmul(%[[ARG0]], %[[ARG1]]) : (!mo.tensor<[10, ?], f16>, !mo.tensor<[?, 5], f16>) -> !mo.tensor<[10, 5], f32>
+  %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[10, ?], f16>, !mo.tensor<[?, 5], f16>) -> !mo.tensor<[10, 5], f32>
+  mo.output %0 : !mo.tensor<[10, 5], f32>
+}
+
+// CHECK: mo.graph @matmul_si8_ui8_si32_mixed_precision
+mo.graph @matmul_si8_ui8_si32_mixed_precision(%arg0: !mo.tensor<[10, ?], si8>, %arg1: !mo.tensor<[?, 5], ui8>) -> (!mo.tensor<[10, 5], si32>) {
+  // CHECK-NEXT: mo.matmul(%[[ARG0]], %[[ARG1]]) : (!mo.tensor<[10, ?], si8>, !mo.tensor<[?, 5], ui8>) -> !mo.tensor<[10, 5], si32>
+  %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[10, ?], si8>, !mo.tensor<[?, 5], ui8>) -> !mo.tensor<[10, 5], si32>
+  mo.output %0 : !mo.tensor<[10, 5], si32>
+}
