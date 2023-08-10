@@ -274,23 +274,33 @@ struct MatmulTranspBPattern : public OpRewritePattern<MO::MatmulOp> {
     if (validate2DTranspose(perm).failed())
       return rewriter.notifyMatchFailure(op, "invalid transpose");
 
-    MO::LayoutAttr weightsLayout = op.getInputB().getType().getLayoutAttr();
-    if (weightsLayout.getFormat() == "NK")
+    MO::LayoutAttr weightLayout = op.getInputB().getType().getLayoutAttr();
+    if (weightLayout.getFormat() == "NK")
       return rewriter.notifyMatchFailure(op, "Matmul is already transposed");
 
-    if (weightsLayout.getFormat() == "KNkni")
+    if (weightLayout.getFormat() == "KNkni")
       return rewriter.notifyMatchFailure(
           op, "The packed optimization has been run already");
 
+    MO::TensorType weightType = cast<MO::TensorType>(weight.getType());
+    auto preTranspWeightLayout = rewriter.getAttr<MO::LayoutAttr>("NK");
     // TODO once we have layout inference across transpose op, we can remove
     // this check and layout annotation.
-    if (!weight.hasOneUse())
-      return rewriter.notifyMatchFailure(op, "weights have multiple uses");
-    // Take the non-transposed weight.
+    if (MO::LayoutAttr weightLayout = weightType.getLayoutAttr();
+        weightLayout && weightLayout != preTranspWeightLayout)
+      return rewriter.notifyMatchFailure(op, "weight has different layout");
+
+    // TODO This is to prevent breaking type system, e.g., if `weight` came from
+    // a `mo.mul`. Once we have layout inference across transpose op, we can
+    // remove the check.
+    if (auto weightDefOp = weight.getDefiningOp();
+        weightDefOp && !isa<MO::ConstantOp>(weightDefOp)) {
+      return rewriter.notifyMatchFailure(
+          op, "can't update layout for non-constant");
+    }
+    // Let matmul take in the non-transposed weight, and update weight layout
     op.setOperand(1, weight);
-    auto preTranspWeightsLayout = rewriter.getAttr<MO::LayoutAttr>("NK");
-    weight.setType(cast<MO::TensorType>(weight.getType())
-                       .cloneWith(preTranspWeightsLayout));
+    weight.setType(weightType.cloneWith(preTranspWeightLayout));
 
     return mlir::success();
   }
