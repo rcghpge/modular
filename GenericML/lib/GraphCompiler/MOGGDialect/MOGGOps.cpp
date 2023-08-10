@@ -377,23 +377,21 @@ LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // Get lowered input tensor's buffer and spec
   LoweredTensor loweredInputTensor =
       helper.getLoweredTensorForValue(op.getInput());
-  Value inputSpec = loweredInputTensor.spec;
   Value inputBuf = loweredInputTensor.buffer;
 
   // TODO Enable this.
   if (inputBuf.getDefiningOp<MGP::CpuBufferConstantOp>())
     return op.emitError("constant input buffer is unsupported");
 
-  // Get lowered split size tensor value
-  Value splitSizes =
-      loweringState.lookupExecuteLoweredValue(op.getSplitSizes());
+  // Create output buffers and specs
+  auto errOr = helper.lowerOutputBuffer("mogg.split_op", execChain);
+  if (errOr.isError())
+    return failure();
+  SmallVector<LoweredTensor> outTensors = errOr.takeValue();
 
   // Get output tensor specs
   SmallVector<MO::TensorType> resultMoTypes =
       castToMoTensorTypes(op->getResultTypes());
-  SmallVector<TypedValue<MGP::CpuTensorSpecType>> outSpecs =
-      helper.invokeLegacyShapeFunc("mop.shape.split_axis_0",
-                                   {inputSpec, splitSizes}, resultMoTypes);
 
   // Build/collect inputs to the MGP buffer split op
   Location loc = op.getLoc();
@@ -401,7 +399,8 @@ LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
   SmallVector<Type> outBufTypes;
   SmallVector<Value> runtimeSizes;
   SmallVector<uint64_t> rawSizes;
-  for (TypedValue<MGP::CpuTensorSpecType> outSpec : outSpecs) {
+  for (LoweredTensor &outTensor : outTensors) {
+    TypedValue<MGP::CpuTensorSpecType> &outSpec = outTensor.spec;
     MGP::CpuTensorSpecType outSpecTy = outSpec.getType();
     std::optional<uint64_t> bufferSize = outSpecTy.getSizeInBytes();
 
@@ -423,10 +422,11 @@ LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
       /*outBufferRawSizes=*/rawSizes);
 
   // Associate each result MO tensor with a new MGP tensor
-  for (auto [outIdx, outSpec, outBuf] :
-       llvm::enumerate(outSpecs, mgpBufferSplitOp.getResults())) {
+  for (auto [outIdx, outTensor, outBuf] :
+       llvm::enumerate(outTensors, mgpBufferSplitOp.getResults())) {
     // Get the type of the spec and infer the type of the tensor from that.
-    auto outSpecTy = cast<MGP::CpuTensorSpecType>(outSpec.getType());
+    TypedValue<MGP::CpuTensorSpecType> &outSpec = outTensor.spec;
+    MGP::CpuTensorSpecType outSpecTy = outSpec.getType();
     auto outTensorTy = MGP::CpuTensorType::get(ctx, outSpecTy);
 
     // Associate the result MO tensor with a new MGP tensor
@@ -439,6 +439,11 @@ LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
     loweringState.emplaceExecuteLoweredValue(op.getResult(outIdx),
                                              tensorCreateOp.getResult());
   }
+
+  // Clean up the created buffers since they are never used.
+  // TODO avoid allocating these buffers in the first place.
+  for (LoweredTensor &outTensor : outTensors)
+    outTensor.buffer.getDefiningOp()->erase();
 
   return success();
 }
