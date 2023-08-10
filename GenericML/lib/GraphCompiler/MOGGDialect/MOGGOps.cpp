@@ -71,19 +71,6 @@ public:
   ErrorOr<SmallVector<LoweredTensor>> lowerOutputBuffer(llvm::StringRef opName,
                                                         Value inChain);
 
-  // Emit instructions to invoke the legacy primitive shape function that has
-  // the given name, input values, and returns tensor spec of types
-  // corresponding to `resultMoTypes`.
-  SmallVector<TypedValue<MGP::CpuTensorSpecType>>
-  invokeLegacyShapeFunc(StringRef shapeFuncName, ArrayRef<Value> inputs,
-                        ArrayRef<MO::TensorType> resultMoTypes);
-
-  // Emit instructions to invoke the legacy primitive shape function that has
-  // the given name, input values, and returns tensor spec of given types.
-  SmallVector<TypedValue<MGP::CpuTensorSpecType>>
-  invokeLegacyShapeFunc(StringRef shapeFuncName, ArrayRef<Value> inputs,
-                        ArrayRef<MGP::CpuTensorSpecType> resultSpecTypes);
-
   // Convert the tensors to a list of buffer/spec value pairs.
   SmallVector<Value> getOperands(SmallVector<LoweredTensor> &in,
                                  SmallVector<LoweredTensor> &outs);
@@ -242,33 +229,6 @@ LowerHelper::lowerOutputBuffer(llvm::StringRef opName, Value inChain) {
 
   return outputBufferAndSpec;
 }
-
-SmallVector<TypedValue<MGP::CpuTensorSpecType>>
-LowerHelper::invokeLegacyShapeFunc(StringRef shapeFuncName,
-                                   ArrayRef<Value> inputs,
-                                   ArrayRef<MO::TensorType> resultMoTypes) {
-  SmallVector<MGP::CpuTensorSpecType> resultSpecTypes =
-      llvm::map_to_vector(resultMoTypes, [](MO::TensorType t) {
-        return MGP::createCpuTensorSpec(t);
-      });
-  return invokeLegacyShapeFunc(shapeFuncName, inputs, resultSpecTypes);
-};
-
-SmallVector<TypedValue<MGP::CpuTensorSpecType>>
-LowerHelper::invokeLegacyShapeFunc(
-    StringRef shapeFuncName, ArrayRef<Value> inputs,
-    ArrayRef<MGP::CpuTensorSpecType> resultSpecTypes) {
-  OperationState opState(loc, shapeFuncName);
-  opState.addOperands(inputs);
-  opState.addTypes(resultSpecTypes);
-
-  Operation *invokeOp = loweringState.getExecuteOpBuilder().create(opState);
-
-  // Return the output specs.
-  return llvm::map_to_vector(invokeOp->getResults(), [](Value v) {
-    return cast<TypedValue<MGP::CpuTensorSpecType>>(v);
-  });
-};
 
 } // namespace
 
