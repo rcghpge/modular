@@ -9,7 +9,7 @@ from DType import DType
 from Index import Index
 from Index import StaticIntTuple, Index
 from IO import print
-from Math import sqrt
+from math import sqrt
 from Random import rand, seed
 from Range import range
 from SIMD import Float64, Float32
