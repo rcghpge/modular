@@ -141,8 +141,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
       // Fuse into big ops. I.E epilogue fusion into matmul.
       pm.addPass(MOGG::createFuseInOutLambdas());
       pm.addPass(mlir::createCSEPass());
-
-      pm.addPass(MOGG::createFuseConstants());
     }
 
     if (opts.performTrivialKernelOpt) {
@@ -158,6 +156,11 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
     // Add explicit chain ready's to the end of fully sync kenrels.
     pm.addPass(MOGG::createAddExplicitChainReady());
+
+    // Fuse constants last as they don't enable any extra fusions directly and
+    // should be fused as late as possible to catch all cases of constants.
+    if (opts.fuseJitKernels)
+      pm.addPass(MOGG::createFuseConstants());
 
     // Add a cleanup pass to catch e.g duplicated constants.
     pm.addPass(mlir::createCSEPass());
