@@ -15,7 +15,7 @@ mo.graph @conv_layouts(
 // CHECK-SAME:   %{{.*}}: !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<RSCF>}>,
 // CHECK-SAME:   %{{.*}}: !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<FCRS>}>,
 // CHECK-SAME:   %{{.*}}: !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<FRSCf>}>
-// CHECK-SAME: ) {
+// CHECK-SAME: ) no_inline {
 // CHECK-NEXT:   mo.output
 // CHECK-NEXT: }
 
@@ -31,6 +31,6 @@ mo.graph @matmul_layouts(
 // CHECK-SAME:   %{{.*}}: !mo.tensor<[?, ?], f32, {layout = #mo.layout<KN>}>,
 // CHECK-SAME:   %{{.*}}: !mo.tensor<[?, ?], f32, {layout = #mo.layout<NK>}>,
 // CHECK-SAME:   %{{.*}}: !mo.tensor<[?, ?, ?, ?, ?], f32, {layout = #mo.layout<KNkni>}>
-// CHECK-SAME: ) {
+// CHECK-SAME: ) no_inline {
 // CHECK-NEXT:   mo.output
 // CHECK-NEXT: }

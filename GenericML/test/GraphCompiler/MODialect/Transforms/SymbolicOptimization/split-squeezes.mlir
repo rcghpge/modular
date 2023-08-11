@@ -4,7 +4,7 @@
 mo.graph @split_squeezes<D0 -> D1, D2>(
   // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]], 2, 10], f32>
   %input: !mo.tensor<[D0, 2, 10], f32>
-// CHECK-SAME: ) -> (!mo.tensor<[[[D1]], 10], f32>, !mo.tensor<[[[D2]], 10], f32>)  {
+// CHECK-SAME: ) -> (!mo.tensor<[[[D1]], 10], f32>, !mo.tensor<[[[D2]], 10], f32>) no_inline {
 ) -> (!mo.tensor<[D1, 10], f32>, !mo.tensor<[D2, 10], f32>)  {
 
   // CHECK-DAG: %[[SPLIT_SIZES:.*]] = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
@@ -52,7 +52,7 @@ mo.graph @split_squeezes_dyn_axis<D0 -> D1, D2>(
   %input: !mo.tensor<[D0, 2, 10], f32>,
   // CHECK-SAME: %[[AXIS:.*]]: !mo.tensor<[], si32>
   %axis: !mo.tensor<[], si32>
-// CHECK-SAME: ) -> (!mo.tensor<[[[D1]], 10], f32>, !mo.tensor<[[[D2]], 10], f32>)  {
+// CHECK-SAME: ) -> (!mo.tensor<[[[D1]], 10], f32>, !mo.tensor<[[[D2]], 10], f32>) no_inline {
 ) -> (!mo.tensor<[D1, 10], f32>, !mo.tensor<[D2, 10], f32>)  {
 
   // CHECK-DAG: %[[SPLIT_SIZES:.*]] = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
@@ -87,7 +87,7 @@ mo.graph @split_squeezes_dyn_axis<D0 -> D1, D2>(
 mo.graph @split_squeezes_split_sizes_not_all_ones<D0 -> D1, D2>(
   // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]], 2, 10], f32>
   %input: !mo.tensor<[D0, 2, 10], f32>
-// CHECK-SAME: ) -> (!mo.tensor<[[[D1]], 10], f32>, !mo.tensor<[[[D2]], 10], f32>)  {
+// CHECK-SAME: ) -> (!mo.tensor<[[[D1]], 10], f32>, !mo.tensor<[[[D2]], 10], f32>) no_inline {
 ) -> (!mo.tensor<[D1, 10], f32>, !mo.tensor<[D2, 10], f32>)  {
 
   // CHECK-DAG: %[[SPLIT_SIZES:.*]] = mo.constant {value = #M.dense_array<2, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
@@ -125,7 +125,7 @@ mo.graph @split_squeezes_split_sizes_not_all_ones<D0 -> D1, D2>(
 mo.graph @split_squeezes_non_squeezing_reshape<D0 -> D1, D2>(
   // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]], 2, 10], f32>
   %input: !mo.tensor<[D0, 2, 10], f32>
-// CHECK-SAME: ) -> (!mo.tensor<[[[D1]]], f32>, !mo.tensor<[[[D2]], 10], f32>)  {
+// CHECK-SAME: ) -> (!mo.tensor<[[[D1]]], f32>, !mo.tensor<[[[D2]], 10], f32>) no_inline {
 ) -> (!mo.tensor<[D1], f32>, !mo.tensor<[D2, 10], f32>)  {
 
   // CHECK-DAG: %[[SPLIT_SIZES:.*]] = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>

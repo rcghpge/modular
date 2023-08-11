@@ -1,13 +1,13 @@
 // RUN: mo-opt %s --canonicalize | FileCheck %s
 
-// CHECK: mo.graph @select(%[[COND:.*]]: !mo.tensor<[2, 3], bool>, %[[ARG0:.*]]: !mo.tensor<[2, 3], f32>, %[[ARG1:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32> {
+// CHECK: mo.graph @select(%[[COND:.*]]: !mo.tensor<[2, 3], bool>, %[[ARG0:.*]]: !mo.tensor<[2, 3], f32>, %[[ARG1:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32> no_inline {
 mo.graph @select(%cond: !mo.tensor<[2, 3], bool>, %x: !mo.tensor<[2, 3], f32>, %y: !mo.tensor<[2, 3], f32>) -> (!mo.tensor<[2, 3], f32>) {
   // CHECK-NEXT: mo.select(%[[COND]], %[[ARG0]], %[[ARG1]]) : (!mo.tensor<[2, 3], bool>, !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
   %0 = mo.select(%cond, %x, %y) : (!mo.tensor<[2, 3], bool>, !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
   mo.output %0 : !mo.tensor<[2, 3], f32>
 }
 
-// CHECK: mo.graph @select_int_folder() -> !mo.tensor<[2, 3], si32> {
+// CHECK: mo.graph @select_int_folder() -> !mo.tensor<[2, 3], si32> no_inline {
 mo.graph @select_int_folder() -> (!mo.tensor<[2, 3], si32>) {
   // CHECK: %[[RES:.*]] = mo.constant {value = #M.dense_array<1, 8, 9, 4, 11, 6> : tensor<2x3xsi32>} : !mo.tensor<[2, 3], si32>
   %cond = mo.constant {value = #M.dense_array<1, 0, 0, 1, 0, 1> : tensor<2x3xi1>} : !mo.tensor<[2, 3], bool>

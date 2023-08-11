@@ -1,6 +1,6 @@
 // RUN: mo-opt %s | mo-opt | FileCheck %s
 
-// CHECK: mo.graph @rebind_w_params(%[[ARG0:.*]]: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[], si8> {
+// CHECK: mo.graph @rebind_w_params(%[[ARG0:.*]]: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[], si8> no_inline {
 mo.graph @rebind_w_params(%arg0: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[], si8> {
   // CHECK: %[[VAL0:.*]] = mo.rebind<() -> [[N:.*]], [[M:.*]]>(%[[ARG0]]) :
   // CHECK-SAME: !mo.tensor<[?, ?], f32> -> !mo.tensor<[[[N]], [[M]]], f32>
@@ -13,7 +13,7 @@ mo.graph @rebind_w_params(%arg0: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[], si8>
   mo.output %2 : !mo.tensor<[], si8>
 }
 
-// CHECK: mo.graph @rebind_in_if(%[[ARG0:.*]]: !mo.tensor<[?, ?], f32>, %[[COND:.*]]: !mo.tensor<[], bool>) {
+// CHECK: mo.graph @rebind_in_if(%[[ARG0:.*]]: !mo.tensor<[?, ?], f32>, %[[COND:.*]]: !mo.tensor<[], bool>) no_inline {
 mo.graph @rebind_in_if(%arg0: !mo.tensor<[?, ?], f32>, %cond : !mo.tensor<[], bool>) {
   // CHECK-NEXT: %[[VAL5:.*]] = mo.if(%[[COND]] : !mo.tensor<[], bool>) -> !mo.tensor<[?, ?], f32> {
   %5 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[?, ?], f32> {

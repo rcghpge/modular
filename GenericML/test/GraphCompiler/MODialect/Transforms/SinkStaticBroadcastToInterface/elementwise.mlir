@@ -4,7 +4,7 @@
 mo.graph @binary_static_rank<A, B -> C, D>(
   // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[[A]], [[B]]], f32>, %[[ARG1:.*]]: !mo.tensor<[[[A]], [[B]]], f32>
   %arg0: !mo.tensor<[A, B], f32>, %arg1: !mo.tensor<[A, B], f32>
-// CHECK-SAME: ) -> !mo.tensor<[2, [[C]], [[D]]], f32> {
+// CHECK-SAME: ) -> !mo.tensor<[2, [[C]], [[D]]], f32> no_inline {
 ) -> !mo.tensor<[2, C, D], f32>{
   %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[A, B], f32> -> !mo.tensor<[2, A, B], f32>
   %1 = mo.static.broadcast_to(%arg1) : !mo.tensor<[A, B], f32> -> !mo.tensor<[2, A, B], f32>
@@ -19,7 +19,7 @@ mo.graph @binary_static_rank<A, B -> C, D>(
 mo.graph @binary_no_common_shape<A -> B>(
   // CHECK-SAME: %[[ARG0]]: !mo.tensor<[[[A]]], f32>, %[[ARG1]]: !mo.tensor<[2, [[A]]], f32>
   %arg0: !mo.tensor<[A], f32>, %arg1: !mo.tensor<[2, A], f32>
-// CHECK-SAME: ) -> !mo.tensor<[3, 2, [[B]]], f32> {
+// CHECK-SAME: ) -> !mo.tensor<[3, 2, [[B]]], f32> no_inline {
 ) -> !mo.tensor<[3, 2, B], f32>{
   // CHECK-DAG: %[[ARG0BCAST:.*]] = mo.static.broadcast_to(%[[ARG0]]) : !mo.tensor<[[[A]]], f32> -> !mo.tensor<[3, 2, [[A]]], f32>
   // CHECK-DAG: %[[ARG1BCAST:.*]] = mo.static.broadcast_to(%[[ARG1]]) : !mo.tensor<[2, [[A]]], f32> -> !mo.tensor<[3, 2, [[A]]], f32>
@@ -35,7 +35,7 @@ mo.graph @binary_no_common_shape<A -> B>(
 mo.graph @binary_dyn_rank_common<Sh0: !mosh.ape, Sh1: !mosh.ape -> Sh2: !mosh.ape>(
   // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[SH0]], f32>, %[[ARG1:.*]]: !mo.tensor<[[SH0]], f32>
   %arg0: !mo.tensor<Sh0, f32>, %arg1: !mo.tensor<Sh0, f32>
-// CHECK-SAME: ) -> !mo.tensor<[[SH2]], f32> {
+// CHECK-SAME: ) -> !mo.tensor<[[SH2]], f32> no_inline {
 ) -> !mo.tensor<Sh2, f32>{
   %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<Sh0, f32> -> !mo.tensor<Sh1, f32>
   %1 = mo.static.broadcast_to(%arg1) : !mo.tensor<Sh0, f32> -> !mo.tensor<Sh1, f32>
@@ -50,7 +50,7 @@ mo.graph @binary_dyn_rank_common<Sh0: !mosh.ape, Sh1: !mosh.ape -> Sh2: !mosh.ap
 mo.graph @binary_dyn_rank_not_common<Sh0: !mosh.ape, Sh1: !mosh.ape, Sh2: !mosh.ape -> Sh3: !mosh.ape>(
   // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[SH0]], f32>, %[[ARG1:.*]]: !mo.tensor<[[SH1]], f32>
   %arg0: !mo.tensor<Sh0, f32>, %arg1: !mo.tensor<Sh1, f32>
-// CHECK-SAME: ) -> !mo.tensor<[[SH3]], f32> {
+// CHECK-SAME: ) -> !mo.tensor<[[SH3]], f32> no_inline {
 ) -> !mo.tensor<Sh3, f32>{
   // CHECK-DAG: %[[ARG0BCAST:.*]] = mo.static.broadcast_to(%[[ARG0]]) : !mo.tensor<[[SH0]], f32> -> !mo.tensor<[[SH2]], f32>
   // CHECK-DAG: %[[ARG1BCAST:.*]] = mo.static.broadcast_to(%[[ARG1]]) : !mo.tensor<[[SH1]], f32> -> !mo.tensor<[[SH2]], f32>
@@ -66,7 +66,7 @@ mo.graph @binary_dyn_rank_not_common<Sh0: !mosh.ape, Sh1: !mosh.ape, Sh2: !mosh.
 mo.graph @binary_static_dyn_rank_mixed<Sh0: !mosh.ape>(
   // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[SH0]], f32>, %[[ARG1:.*]]: !mo.tensor<[1, 3], f32>
   %arg0: !mo.tensor<Sh0, f32>, %arg1: !mo.tensor<[1, 3], f32>
-// CHECK-SAME: ) -> !mo.tensor<[2, 3], f32> {
+// CHECK-SAME: ) -> !mo.tensor<[2, 3], f32> no_inline {
 ) -> !mo.tensor<[2, 3], f32> {
   // CHECK-DAG: %[[ARG0BCAST:.*]] = mo.static.broadcast_to(%[[ARG0]]) : !mo.tensor<[[SH0]], f32> -> !mo.tensor<[2, 3], f32>
   // CHECK-DAG: %[[ARG1BCAST:.*]] = mo.static.broadcast_to(%[[ARG1]]) : !mo.tensor<[1, 3], f32> -> !mo.tensor<[2, 3], f32>
@@ -80,7 +80,7 @@ mo.graph @binary_static_dyn_rank_mixed<Sh0: !mosh.ape>(
 
 // CHECK: mo.graph @unary_static_rank<[[A:.*]], [[B:.*]] -> [[C:.*]], [[D:.*]]>(
 mo.graph @unary_static_rank<A, B -> C, D>(
-  // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[[A]], [[B]]], f32>) -> !mo.tensor<[2, [[C]], [[D]]], f32> {
+  // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[[A]], [[B]]], f32>) -> !mo.tensor<[2, [[C]], [[D]]], f32> no_inline {
     %arg0: !mo.tensor<[A, B], f32>) -> !mo.tensor<[2, C, D], f32>{
   %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[A, B], f32> -> !mo.tensor<[2, A, B], f32>
   // CHECK-NEXT: %[[RES:.*]] = mo.exp(%[[ARG0]]) : !mo.tensor<[[[A]], [[B]]], f32>
@@ -92,7 +92,7 @@ mo.graph @unary_static_rank<A, B -> C, D>(
 
 // CHECK: mo.graph @unary_dyn_rank<[[SH0:.*]]: !mosh.ape, [[SH1:.*]]: !mosh.ape -> [[SH2:.*]]: !mosh.ape>(
 mo.graph @unary_dyn_rank<Sh0: !mosh.ape, Sh1: !mosh.ape -> Sh2: !mosh.ape>(
-    // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[SH0]], f32>) -> !mo.tensor<[[SH2]], f32> {
+    // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[SH0]], f32>) -> !mo.tensor<[[SH2]], f32> no_inline {
     %arg0: !mo.tensor<Sh0, f32>) -> !mo.tensor<Sh2, f32>{
   %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<Sh0, f32> -> !mo.tensor<Sh1, f32>
   // CHECK-NEXT: %[[RES:.*]] = mo.relu(%[[ARG0]]) : !mo.tensor<[[SH0]], f32>

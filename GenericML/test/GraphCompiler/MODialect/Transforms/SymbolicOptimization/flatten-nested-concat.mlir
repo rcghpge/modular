@@ -4,7 +4,7 @@
 mo.graph @nested_concat(
   // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[10, 20], f32>
   %arg0: !mo.tensor<[10, 20], f32>
-// CHECK-SAME: ) -> !mo.tensor<[30, 20], f32> {
+// CHECK-SAME: ) -> !mo.tensor<[30, 20], f32> no_inline {
 ) -> !mo.tensor<[30, 20], f32> {
   // concat axis
   // CHECK-NEXT: %[[AX0:.*]] = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
@@ -37,7 +37,7 @@ mo.graph @nested_concat_dyn_axis(
   %arg0: !mo.tensor<[10, 20], f32>,
   // CHECK-SAME: %[[AX0:.*]]: !mo.tensor<[], si64>
   %ax0 : !mo.tensor<[], si64>
-// CHECK-SAME: ) -> !mo.tensor<[30, 20], f32> {
+// CHECK-SAME: ) -> !mo.tensor<[30, 20], f32> no_inline {
 ) -> !mo.tensor<[30, 20], f32> {
   // concat inputs
   // CHECK-NEXT: %[[T0:.*]] = mo.add(%[[ARG0]], %[[ARG0]]) : !mo.tensor<[10, 20], f32>
@@ -68,7 +68,7 @@ mo.graph @nested_concat_dyn_axis(
 mo.graph @nested_concat_no_nested_concat(
   // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[10, 20], f32>
   %arg0: !mo.tensor<[10, 20], f32>
-// CHECK-SAME: ) -> !mo.tensor<[30, 20], f32> {
+// CHECK-SAME: ) -> !mo.tensor<[30, 20], f32> no_inline {
 ) -> !mo.tensor<[30, 20], f32> {
   // concat axis
   // CHECK-NEXT: %[[AX0:.*]] = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
@@ -97,7 +97,7 @@ mo.graph @nested_concat_no_nested_concat(
 mo.graph @nested_concat_multi_user_input(
   // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[10, 20], f32>
   %arg0: !mo.tensor<[10, 20], f32>
-// CHECK-SAME: ) -> (!mo.tensor<[30, 20], f32>, !mo.tensor<[20, 20], f32>) {
+// CHECK-SAME: ) -> (!mo.tensor<[30, 20], f32>, !mo.tensor<[20, 20], f32>) no_inline {
 ) -> (!mo.tensor<[30, 20], f32>, !mo.tensor<[20, 20], f32>) {
   // concat axis
   // CHECK-NEXT: %[[AX0:.*]] = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>

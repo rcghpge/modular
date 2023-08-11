@@ -4,7 +4,7 @@
 mo.graph @bcast_low_rank<A, B, C -> D, E, F>(
   // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[], f32>, %[[NUMLOWER:.*]]: !mo.tensor<[], si32>, %[[NUMUPPER:.*]]: !mo.tensor<[], si32>, %[[EXCLUDE:.*]]: !mo.tensor<[], bool>
   %arg0: !mo.tensor<[], f32>, %numLower: !mo.tensor<[], si32>, %numUpper: !mo.tensor<[], si32>, %exclude: !mo.tensor<[], bool>
-// CHECK-SAME: ) -> !mo.tensor<[[[D]], [[E]], [[F]]], f32> {
+// CHECK-SAME: ) -> !mo.tensor<[[[D]], [[E]], [[F]]], f32> no_inline {
 ) -> !mo.tensor<[D, E, F], f32> {
   // CHECK-NEXT: %[[VAL0:.*]] = mo.static.broadcast_to(%[[ARG0]]) : !mo.tensor<[], f32> -> !mo.tensor<[[[B]], [[C]]], f32>
   %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[], f32> -> !mo.tensor<[A, B, C], f32>
@@ -20,7 +20,7 @@ mo.graph @bcast_low_rank<A, B, C -> D, E, F>(
 mo.graph @bcast_batch_dims<A, B, C -> D>(
   // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[[A]], 1, 1], f32>, %[[NUMLOWER:.*]]: !mo.tensor<[], si32>, %[[NUMUPPER:.*]]: !mo.tensor<[], si32>, %[[EXCLUDE:.*]]: !mo.tensor<[], bool>
   %arg0: !mo.tensor<[A, 1, 1], f32>, %numLower: !mo.tensor<[], si32>, %numUpper: !mo.tensor<[], si32>, %exclude: !mo.tensor<[], bool>
-// CHECK-SAME: ) -> !mo.tensor<[[[D]], [[D]], [[D]], 5], f32> {
+// CHECK-SAME: ) -> !mo.tensor<[[[D]], [[D]], [[D]], 5], f32> no_inline {
 ) -> !mo.tensor<[D, D, D, 5], f32> {
   // CHECK-NEXT: %[[VAL0:.*]] = mo.static.broadcast_to(%[[ARG0]]) : !mo.tensor<[[[A]], 1, 1], f32> -> !mo.tensor<[[[A]], [[B]], 5], f32>
   %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[A, 1, 1], f32> -> !mo.tensor<[B, B, B, 5], f32>
@@ -36,7 +36,7 @@ mo.graph @bcast_batch_dims<A, B, C -> D>(
 mo.graph @multiple_users<A, B, C -> D>(
   // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[[A]], 1, 1], f32>, %[[NUMLOWER:.*]]: !mo.tensor<[], si32>, %[[NUMUPPER:.*]]: !mo.tensor<[], si32>, %[[EXCLUDE:.*]]: !mo.tensor<[], bool>
   %arg0: !mo.tensor<[A, 1, 1], f32>, %numLower: !mo.tensor<[], si32>, %numUpper: !mo.tensor<[], si32>, %exclude: !mo.tensor<[], bool>
-// CHECK-SAME: ) -> (!mo.tensor<[[[D]], [[D]], [[D]], 5], f32>, !mo.tensor<[[[D]], [[D]], [[D]], 5], f32>) {
+// CHECK-SAME: ) -> (!mo.tensor<[[[D]], [[D]], [[D]], 5], f32>, !mo.tensor<[[[D]], [[D]], [[D]], 5], f32>) no_inline {
 ) -> (!mo.tensor<[D, D, D, 5], f32>, !mo.tensor<[D, D, D, 5], f32>) {
   // CHECK-NEXT: %[[VAL0:.*]] = mo.static.broadcast_to(%[[ARG0]]) : !mo.tensor<[[[A]], 1, 1], f32> -> !mo.tensor<[[[A]], [[B]], 5], f32>
   %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[A, 1, 1], f32> -> !mo.tensor<[B, B, B, 5], f32>
@@ -57,7 +57,7 @@ mo.graph @multiple_users<A, B, C -> D>(
 mo.graph @no_match_dyn_rank_bcast_in<A, B, C, Sh0: !mosh.ape -> D, E, F>(
   // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[SH0]], f32>, %[[NUMLOWER:.*]]: !mo.tensor<[], si32>, %[[NUMUPPER:.*]]: !mo.tensor<[], si32>, %[[EXCLUDE:.*]]: !mo.tensor<[], bool>
   %arg0: !mo.tensor<Sh0, f32>, %numLower: !mo.tensor<[], si32>, %numUpper: !mo.tensor<[], si32>, %exclude: !mo.tensor<[], bool>
-// CHECK-SAME: ) -> !mo.tensor<[[[D]], [[E]], [[F]]], f32> {
+// CHECK-SAME: ) -> !mo.tensor<[[[D]], [[E]], [[F]]], f32> no_inline {
 ) -> !mo.tensor<[D, E, F], f32> {
   // CHECK-NEXT: %[[VAL0:.*]] = mo.static.broadcast_to(%[[ARG0]]) : !mo.tensor<[[SH0]], f32> -> !mo.tensor<[[[A]], [[B]], [[C]]], f32>
   %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<Sh0, f32> -> !mo.tensor<[A, B, C], f32>
@@ -72,7 +72,7 @@ mo.graph @no_match_dyn_rank_bcast_in<A, B, C, Sh0: !mosh.ape -> D, E, F>(
 mo.graph @no_match_dyn_rank<A, B, C, Sh0: !mosh.ape -> Sh1: !mosh.ape>(
   // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[[A]], [[B]], [[C]]], f32>, %[[NUMLOWER:.*]]: !mo.tensor<[], si32>, %[[NUMUPPER:.*]]: !mo.tensor<[], si32>, %[[EXCLUDE:.*]]: !mo.tensor<[], bool>
   %arg0: !mo.tensor<[A, B, C], f32>, %numLower: !mo.tensor<[], si32>, %numUpper: !mo.tensor<[], si32>, %exclude: !mo.tensor<[], bool>
-// CHECK-SAME: ) -> !mo.tensor<[[SH1]], f32> {
+// CHECK-SAME: ) -> !mo.tensor<[[SH1]], f32> no_inline {
 ) -> !mo.tensor<Sh1, f32> {
   // CHECK-NEXT: %[[VAL0:.*]] = mo.static.broadcast_to(%[[ARG0]]) : !mo.tensor<[[[A]], [[B]], [[C]]], f32> -> !mo.tensor<[[SH0]], f32>
   %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[A, B, C], f32> -> !mo.tensor<Sh0, f32>
@@ -87,7 +87,7 @@ mo.graph @no_match_dyn_rank<A, B, C, Sh0: !mosh.ape -> Sh1: !mosh.ape>(
 mo.graph @intermediate_variable_dominance<A, B, C -> D, E, F>(
   // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[], f32>, %[[NUMLOWER:.*]]: !mo.tensor<[], si32>, %[[EXCLUDE:.*]]: !mo.tensor<[], bool>
   %arg0: !mo.tensor<[], f32>, %numLower: !mo.tensor<[], si32>, %exclude: !mo.tensor<[], bool>
-// CHECK-SAME: ) -> !mo.tensor<[[[D]], [[E]], [[F]]], f32> {
+// CHECK-SAME: ) -> !mo.tensor<[[[D]], [[E]], [[F]]], f32> no_inline {
 ) -> !mo.tensor<[D, E, F], f32> {
   // Note that new instructions are inserted after `%numUpper`, before `%res`,
   // instead of before `%bcast`.

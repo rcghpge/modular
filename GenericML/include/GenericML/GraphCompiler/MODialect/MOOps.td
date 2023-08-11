@@ -120,8 +120,8 @@ def MO_GraphOp : MO_TensorOp<"graph", [
     ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
 
     /// We aren't using always_inline functionality in MO.
-    KGEN::AlwaysInlineLevel getAlwaysInlineLevel() {
-      return KGEN::AlwaysInlineLevel::Disabled;
+    KGEN::InlineLevel getInlineLevel() {
+      return KGEN::InlineLevel::Never;
     }
 
     /// Return a new dimension parameter of `IndexType`, with a name that starts

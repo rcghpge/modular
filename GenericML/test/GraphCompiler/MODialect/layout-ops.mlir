@@ -6,7 +6,7 @@
 
 // CHECK:      mo.graph @layout_transform_different_layout(
 // CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<NHWC>}>
-// CHECK-SAME: ) -> !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<NCHW>}> {
+// CHECK-SAME: ) -> !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<NCHW>}> no_inline {
 mo.graph @layout_transform_different_layout(
   %input: !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<NHWC>}>
 ) -> !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<NCHW>}> {
@@ -24,7 +24,7 @@ mo.graph @layout_transform_different_layout(
 
 // CHECK:      mo.graph @layout_transform_same_layout_folded(
 // CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<NHWC>}>
-// CHECK-SAME: ) -> !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<NHWC>}> {
+// CHECK-SAME: ) -> !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<NHWC>}> no_inline {
 mo.graph @layout_transform_same_layout_folded(
   %input: !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<NHWC>}>
 ) -> !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<NHWC>}> {

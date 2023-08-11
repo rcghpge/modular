@@ -1,6 +1,6 @@
 // RUN: mo-opt %s --canonicalize | FileCheck %s
 
-// CHECK: mo.graph @abs(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> {
+// CHECK: mo.graph @abs(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> no_inline {
 mo.graph @abs(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
   // CHECK-NEXT: mo.abs(%[[ARG0]]) : !mo.tensor<[4, 5], f32>
   %0 = mo.abs(%arg0) : !mo.tensor<[4, 5], f32>
@@ -17,63 +17,63 @@ mo.graph @add_folder() -> (!mo.tensor<[2, 2], si32>) {
   mo.output %2 : !mo.tensor<[2, 2], si32>
 }
 
-// CHECK: mo.graph @relu(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> {
+// CHECK: mo.graph @relu(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> no_inline {
 mo.graph @relu(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
   // CHECK-NEXT: mo.relu(%[[ARG0]]) : !mo.tensor<[4, 5], f32>
   %0 = mo.relu(%arg0) : !mo.tensor<[4, 5], f32>
   mo.output %0 : !mo.tensor<[4, 5], f32>
 }
 
-// CHECK: mo.graph @gelu(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> {
+// CHECK: mo.graph @gelu(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> no_inline {
 mo.graph @gelu(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
   // CHECK-NEXT: mo.gelu(%[[ARG0]]) : !mo.tensor<[4, 5], f32>
   %0 = mo.gelu(%arg0) : !mo.tensor<[4, 5], f32>
   mo.output %0 : !mo.tensor<[4, 5], f32>
 }
 
-// CHECK: mo.graph @erf(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> {
+// CHECK: mo.graph @erf(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> no_inline {
 mo.graph @erf(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
   // CHECK-NEXT: mo.erf(%[[ARG0]]) : !mo.tensor<[4, 5], f32>
   %0 = mo.erf(%arg0) : !mo.tensor<[4, 5], f32>
   mo.output %0 : !mo.tensor<[4, 5], f32>
 }
 
-// CHECK: mo.graph @tanh(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> {
+// CHECK: mo.graph @tanh(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> no_inline {
 mo.graph @tanh(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
   // CHECK-NEXT: mo.tanh(%[[ARG0]]) : !mo.tensor<[4, 5], f32>
   %0 = mo.tanh(%arg0) : !mo.tensor<[4, 5], f32>
   mo.output %0 : !mo.tensor<[4, 5], f32>
 }
 
-// CHECK: mo.graph @exp(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> {
+// CHECK: mo.graph @exp(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> no_inline {
 mo.graph @exp(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
   // CHECK-NEXT: mo.exp(%[[ARG0]]) : !mo.tensor<[4, 5], f32>
   %0 = mo.exp(%arg0) : !mo.tensor<[4, 5], f32>
   mo.output %0 : !mo.tensor<[4, 5], f32>
 }
 
-// CHECK: mo.graph @sigmoid(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> {
+// CHECK: mo.graph @sigmoid(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> no_inline {
 mo.graph @sigmoid(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
   // CHECK-NEXT: mo.sigmoid(%[[ARG0]]) : !mo.tensor<[4, 5], f32>
   %0 = mo.sigmoid(%arg0) : !mo.tensor<[4, 5], f32>
   mo.output %0 : !mo.tensor<[4, 5], f32>
 }
 
-// CHECK: mo.graph @rsqrt(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> {
+// CHECK: mo.graph @rsqrt(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> no_inline {
 mo.graph @rsqrt(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
   // CHECK-NEXT: mo.rsqrt(%[[ARG0]]) : !mo.tensor<[4, 5], f32>
   %0 = mo.rsqrt(%arg0) : !mo.tensor<[4, 5], f32>
   mo.output %0 : !mo.tensor<[4, 5], f32>
 }
 
-// CHECK: mo.graph @sqrt(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> {
+// CHECK: mo.graph @sqrt(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> no_inline {
 mo.graph @sqrt(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
   // CHECK-NEXT: mo.sqrt(%[[ARG0]]) : !mo.tensor<[4, 5], f32>
   %0 = mo.sqrt(%arg0) : !mo.tensor<[4, 5], f32>
   mo.output %0 : !mo.tensor<[4, 5], f32>
 }
 
-// CHECK: mo.graph @cast(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], si32> {
+// CHECK: mo.graph @cast(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], si32> no_inline {
 mo.graph @cast(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], si32>) {
   // CHECK-NEXT: mo.cast(%[[ARG0]]) : (!mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], si32>
   %0 = mo.cast(%arg0) : (!mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], si32>
@@ -118,35 +118,35 @@ mo.graph @cast_int_float_mixed_folder() -> (!mo.tensor<[2], f32>, !mo.tensor<[3]
   mo.output %1, %3 : !mo.tensor<[2], f32>, !mo.tensor<[3], f64>
 }
 
-// CHECK: mo.graph @log1p(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> {
+// CHECK: mo.graph @log1p(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> no_inline {
 mo.graph @log1p(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
   // CHECK-NEXT: mo.log1p(%[[ARG0]]) : !mo.tensor<[4, 5], f32>
   %0 = mo.log1p(%arg0) : !mo.tensor<[4, 5], f32>
   mo.output %0 : !mo.tensor<[4, 5], f32>
 }
 
-// CHECK: mo.graph @floor(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> {
+// CHECK: mo.graph @floor(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> no_inline {
 mo.graph @floor(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
   // CHECK-NEXT: mo.floor(%[[ARG0]]) : !mo.tensor<[4, 5], f32>
   %0 = mo.floor(%arg0) : !mo.tensor<[4, 5], f32>
   mo.output %0 : !mo.tensor<[4, 5], f32>
 }
 
-// CHECK: mo.graph @ceil(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> {
+// CHECK: mo.graph @ceil(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> no_inline {
 mo.graph @ceil(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
   // CHECK-NEXT: mo.ceil(%[[ARG0]]) : !mo.tensor<[4, 5], f32>
   %0 = mo.ceil(%arg0) : !mo.tensor<[4, 5], f32>
   mo.output %0 : !mo.tensor<[4, 5], f32>
 }
 
-// CHECK: mo.graph @isnan(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], bool> {
+// CHECK: mo.graph @isnan(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], bool> no_inline {
 mo.graph @isnan(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], bool>) {
   // CHECK-NEXT: mo.is_nan(%[[ARG0]]) :  (!mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], bool>
   %0 = mo.is_nan(%arg0) : (!mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], bool>
   mo.output %0 : !mo.tensor<[4, 5], bool>
 }
 
-// CHECK: mo.graph @isinf(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], bool> {
+// CHECK: mo.graph @isinf(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], bool> no_inline {
 mo.graph @isinf(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], bool>) {
   // CHECK-NEXT: mo.is_inf(%[[ARG0]]) :  (!mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], bool>
   %0 = mo.is_inf(%arg0) : (!mo.tensor<[4, 5], f32>) ->  !mo.tensor<[4, 5], bool>

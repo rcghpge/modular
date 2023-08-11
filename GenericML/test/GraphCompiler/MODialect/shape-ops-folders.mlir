@@ -6,7 +6,7 @@
 // FromTensorOp
 //===----------------------------------------------------------------------===//
 
-// CHECK: mo.graph @from_tensor_fold() -> !mosh.ape {
+// CHECK: mo.graph @from_tensor_fold() -> !mosh.ape no_inline {
 mo.graph @from_tensor_fold() -> !mosh.ape {
   // CHECK: %[[RES:.*]] = kgen.param.constant: !mosh.ape = <[2, 3]>
   %sh1 = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
@@ -44,7 +44,7 @@ mo.graph @to_tensor_fold<D0, Sh0: !mosh.ape -> D1>() -> (
   mo.output<D0> %0, %1, %2, %3, %4 : !mo.tensor<[?], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[1], si32>, !mo.tensor<[D0], si32>
 }
 
-// CHECK: mo.graph @to_tensor_fold_unknown<[[K:.*]]>() -> !mo.tensor<[?], si32> {
+// CHECK: mo.graph @to_tensor_fold_unknown<[[K:.*]]>() -> !mo.tensor<[?], si32> no_inline {
 mo.graph @to_tensor_fold_unknown<K>() -> !mo.tensor<[?], si32> {
   // CHECK: %[[VAL0:.*]] = kgen.param.constant: !mosh.ape = <[[[K]]]>
   %0 = kgen.param.constant: !mosh.ape = <[K]>

@@ -1,6 +1,6 @@
 // RUN: mo-opt %s --symbolic-optimize --propagate-shapes --canonicalize -cse | FileCheck %s
 
-// CHECK: mo.graph @static_shape<() -> [[M:.*]]>(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[[[M]], 1], si64> {
+// CHECK: mo.graph @static_shape<() -> [[M:.*]]>(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[[[M]], 1], si64> no_inline {
 mo.graph @static_shape<() -> M>(%arg0: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[M, 1], si64> {
   // CHECK-DAG: %[[RANGE:.*]] = mo.constant {value = #M.dense_array<0, 6, 12, 18, 24> : tensor<5x1xsi64>} : !mo.tensor<[5, 1], si64>
   // CHECK-DAG: %[[PERM:.*]] = mo.constant {value = #M.dense_array<1, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
@@ -19,7 +19,7 @@ mo.graph @static_shape<() -> M>(%arg0: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[M
   mo.output<K> %2 : !mo.tensor<[K, 1], si64>
 }
 
-// CHECK: mo.graph @dynamic_shape<[[A:.*]], [[B:.*]] -> [[M:.*]]>(%[[ARG:.*]]: !mo.tensor<[2, [[A]]], f32>) -> !mo.tensor<[[[M]], 1], si64> {
+// CHECK: mo.graph @dynamic_shape<[[A:.*]], [[B:.*]] -> [[M:.*]]>(%[[ARG:.*]]: !mo.tensor<[2, [[A]]], f32>) -> !mo.tensor<[[[M]], 1], si64> no_inline {
 mo.graph @dynamic_shape<A, B -> M>(%arg0: !mo.tensor<[2, A], f32>) -> !mo.tensor<[M, 1], si64> {
   // CHECK-DAG: %[[C0:.*]] = kgen.param.constant = <mul_nuw([[A]], [[A]], [[B]], 2)>
   // CHECK-DAG: %[[C1:.*]] = kgen.param.constant = <mul_nuw([[A]], 2)>
@@ -47,7 +47,7 @@ mo.graph @dynamic_shape<A, B -> M>(%arg0: !mo.tensor<[2, A], f32>) -> !mo.tensor
   mo.output<K> %2 : !mo.tensor<[K, 1], si64>
 }
 
-// CHECK: mo.graph @non_flat_input<() -> M>(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[M, 2], si64> {
+// CHECK: mo.graph @non_flat_input<() -> M>(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[M, 2], si64> no_inline {
 mo.graph @non_flat_input<() -> M>(%arg0: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[M, 2], si64> {
   // CHECK-NEXT: %[[BCASTARG0:.*]] = mo.static.broadcast_to(%[[ARG0]]) : !mo.tensor<[2, 3], f32> -> !mo.tensor<[5, 2, 3], f32>
   // CHECK-NEXT: %[[RESHAPE:.*]] = mo.static.reshape(%[[BCASTARG0]]) : !mo.tensor<[5, 2, 3], f32> -> !mo.tensor<[5, 6], f32>
@@ -59,7 +59,7 @@ mo.graph @non_flat_input<() -> M>(%arg0: !mo.tensor<[2, 3], f32>) -> !mo.tensor<
   mo.output<K> %2 : !mo.tensor<[K, 2], si64>
 }
 
-// CHECK: mo.graph @no_reshape<[[A:.*]], [[B:.*]] -> [[M:.*]]>(%[[ARG0:.*]]: !mo.tensor<[[[A]]], f32>) -> !mo.tensor<[[[M]], 1], si64> {
+// CHECK: mo.graph @no_reshape<[[A:.*]], [[B:.*]] -> [[M:.*]]>(%[[ARG0:.*]]: !mo.tensor<[[[A]]], f32>) -> !mo.tensor<[[[M]], 1], si64> no_inline {
 mo.graph @no_reshape<A, B -> M>(%arg0: !mo.tensor<[A], f32>) -> !mo.tensor<[M, 1], si64> {
   // CHECK-NEXT: %[[BCASTARG0:.*]] = mo.static.broadcast_to(%[[ARG0]]) : !mo.tensor<[[[A]]], f32> -> !mo.tensor<[[[B]]], f32>
   %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[A], f32> -> !mo.tensor<[B], f32>
@@ -70,7 +70,7 @@ mo.graph @no_reshape<A, B -> M>(%arg0: !mo.tensor<[A], f32>) -> !mo.tensor<[M, 1
 }
 
 // CHECK: mo.graph @reshape_dynamic_input<[[A:.*]], [[SH0:.*]]: !mosh.ape -> [[M:.*]]>(
-// CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[[[M]], 1], si64> {
+// CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[[[M]], 1], si64> no_inline {
 mo.graph @reshape_dynamic_input<A, Sh0: !mosh.ape -> M>(%arg0: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[M, 1], si64> {
   // CHECK-NEXT: %[[BCASTARG0:.*]] = mo.static.broadcast_to(%[[ARG0]]) : !mo.tensor<[2, 3], f32> -> !mo.tensor<[[SH0]], f32>
   %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[2, 3], f32> -> !mo.tensor<Sh0, f32>
@@ -83,7 +83,7 @@ mo.graph @reshape_dynamic_input<A, Sh0: !mosh.ape -> M>(%arg0: !mo.tensor<[2, 3]
 }
 
 // CHECK: mo.graph @bcast_dynamic_input<[[A:.*]], [[B:.*]], [[SH0:.*]]: !mosh.ape -> [[M:.*]]>(
-// CHECk-SAME: %[[ARG0]]: !mo.tensor<[[SH0]], f32>) -> !mo.tensor<[[[M]], 1], si64> {
+// CHECk-SAME: %[[ARG0]]: !mo.tensor<[[SH0]], f32>) -> !mo.tensor<[[[M]], 1], si64> no_inline {
 mo.graph @bcast_dynamic_input<A, B, Sh0: !mosh.ape -> M>(%arg0: !mo.tensor<Sh0, f32>) -> !mo.tensor<[M, 1], si64> {
   // CHECK-NEXT: %[[BCASTARG0:.*]] = mo.static.broadcast_to(%[[ARG0]]) : !mo.tensor<[[SH0]], f32> -> !mo.tensor<[[[B]], [[B]]], f32>
   %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<Sh0, f32> -> !mo.tensor<[B, B], f32>
