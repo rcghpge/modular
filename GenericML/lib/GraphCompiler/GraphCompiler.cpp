@@ -166,7 +166,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     if (opts.fuseJitKernels)
       pm.addPass(MOGG::createFuseConstants());
 
-    // Add a cleanup pass to catch e.g duplicated constants.
+    // Add cleanup passes to catch e.g used/duplicated constants.
+    pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createCSEPass());
 
     // If we are jitting then we need to compile the jit kernels as well.

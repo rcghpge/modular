@@ -29,6 +29,16 @@ constexpr int64_t kMaxConstantSize = 2048;
 struct FuseConstants : public impl::FuseConstantsBase<FuseConstants> {
   using FuseConstantsBase::FuseConstantsBase;
 
+  /// Try to get the original constant op that produced `val`, with optional
+  /// rebind (i.e., reinterpret cast) in the way.
+  static MO::ConstantOp tryGetConstantOp(Value val) {
+    // Look through potential rebind op
+    if (auto rebindOp = val.getDefiningOp<MO::RebindOp>())
+      val = rebindOp.getInput();
+
+    return val.getDefiningOp<MO::ConstantOp>();
+  }
+
   void runOnOperation() override {
     MO::GraphOp graph = getOperation();
 
@@ -45,12 +55,8 @@ struct FuseConstants : public impl::FuseConstantsBase<FuseConstants> {
 
   /// We only fuse constants here.
   bool canFuseOperand(MOGG::KernelOp kernel, int32_t index) {
-    Operation *edge = kernel.getOperand(index).getDefiningOp();
-    if (!edge)
-      return false;
-
     // Check it is a small constant with a attribute we understand.
-    if (auto cst = dyn_cast<MO::ConstantOp>(edge)) {
+    if (MO::ConstantOp cst = tryGetConstantOp(kernel.getOperand(index))) {
       ElementsAttr elems = cst.getValueAttr();
       if (elems.getNumElements() > kMaxConstantSize)
         return false;
@@ -70,7 +76,8 @@ struct FuseConstants : public impl::FuseConstantsBase<FuseConstants> {
 
   /// Fold the constant into the operation.
   void fuseInputAtIndex(MOGG::KernelOp kernel, int32_t idx) {
-    auto cst = cast<MO::ConstantOp>(kernel.getOperand(idx).getDefiningOp());
+    Value inputVal = kernel.getOperand(idx);
+    MO::ConstantOp cst = tryGetConstantOp(inputVal);
 
     Block &block = kernel.getBody().front();
 
@@ -78,11 +85,13 @@ struct FuseConstants : public impl::FuseConstantsBase<FuseConstants> {
     kernel.setInsertionPointToTop(builder);
 
     // Clone the constant and add it to the kernel.
-    auto newOp = cst->clone();
+    MO::ConstantOp newOp = cst.clone();
+    newOp.getResult().setType(cast<MO::TensorType>(inputVal.getType()));
+
     builder.insert(newOp);
 
     // Replace all uses of it with the now in-kernel constant.
-    block.getArgument(idx).replaceAllUsesWith(newOp->getResult(0));
+    block.getArgument(idx).replaceAllUsesWith(newOp.getResult());
 
     // Remove the argument.
     kernel.removeOperandAtIndex(idx);

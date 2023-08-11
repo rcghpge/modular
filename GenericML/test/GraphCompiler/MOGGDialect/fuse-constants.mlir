@@ -233,6 +233,22 @@ mo.graph @fuse_dense_resource(%input: !mo.tensor<[12, 64], f32>) -> !mo.tensor<[
 // CHECK: mogg.kernel
 // CHECK: mo.constant
 
+mo.graph @fuse_rebind(%input: !mo.tensor<[2, 2], si32>) -> (!mo.tensor<[2, 2], si32>, !mo.tensor<[2, 2], si32>) {
+  %cst = mo.constant {value = #M.dense_array<0, 1, 2, 3> : !M.array<4xsi32>} : !mo.tensor<[2, 2], si32, {layout = #mo.layout<KN>}>
+  %cst_reb = mo.rebind(%cst) : !mo.tensor<[2, 2], si32, {layout = #mo.layout<KN>}> -> !mo.tensor<[2, 2], si32, {layout = #mo.layout<NK>}>
+  %mm1 = mo.matmul(%input, %cst) : (!mo.tensor<[2, 2], si32>, !mo.tensor<[2, 2], si32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[2, 2], si32>
+  %mm2 = mo.matmul(%input, %cst_reb) : (!mo.tensor<[2, 2], si32>, !mo.tensor<[2, 2], si32, {layout = #mo.layout<NK>}>) -> !mo.tensor<[2, 2], si32>
+  mo.output %mm1, %mm2 : !mo.tensor<[2, 2], si32>, !mo.tensor<[2, 2], si32>
+}
+
+// Check constants are in kernels
+// CHECK-LABEL: mo.graph @fuse_rebind
+// CHECK: mogg.kernel
+// CHECK: mo.constant
+// CHECK: mogg.output
+// CHECK: mogg.kernel
+// CHECK: mo.constant
+// CHECK: mogg.output
 
 {-#
   dialect_resources: {
