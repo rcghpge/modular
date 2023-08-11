@@ -129,14 +129,14 @@ mo.graph @check_no_fuse_if<N, M>(%cond : !mo.tensor<[], bool>, %arg0: !mo.tensor
 
 // Check the bcasts still become standalone kernels
 // CHECK-NEXT: %[[BCAST1:.*]] = mogg.kernel
-// CHECK-NEXT: mogg.output_placeholders
+// CHECK-NEXT: %[[OUT:.*]] = mogg.output_placeholders
 // CHECK-NEXT: mogg.param_shape_to_value
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"
 
 // Check that the elementwise kernel is a straight up copy, i.e an unfused broadcast.
-// CHECK:  mogg.lambda @elemwise_compute_lambda = (%[[INDICES:.*]]: !mogg.indices)
-// CHECK-NEXT:  %[[LOAD:.*]] = mogg.invoke @input_0_fn
-// CHECK-NEXT:  mogg.invoke @output_0_fn(%[[INDICES]], %[[LOAD]])
+// CHECK:  mogg.lambda @copy_view = (%[[INDICES:.*]]: !mogg.indices)
+// CHECK-NEXT:  %[[LOAD:.*]] = mogg.simd_load
+// CHECK-NEXT:  mogg.call "simd_store"(%[[OUT]], %[[INDICES]], %[[LOAD]])
 
 // Check the kernels are compiled unfused.
 // CHECK: mo.if

@@ -45,6 +45,10 @@ bool kernelIsElementwise(MOGG::MojoRegisterOp opRegister, ModuleOp kgenModule,
 bool kernelIsViewOp(MOGG::MojoRegisterOp opRegister, ModuleOp kgenModule,
                     StringRef moOpName);
 
+// Returns the KGEN signature of the kernel.
+KGEN::SignatureType kernelGetSignature(MOGG::MojoRegisterOp opRegister,
+                                       ModuleOp kgenModule, StringRef moOpName);
+
 // Return the KGEN module containing the MOGG bindings.
 ErrorOr<OwningOpRef<mlir::ModuleOp>> loadMojoBindings(MLIRContext *ctx);
 

@@ -220,7 +220,7 @@ struct MOOpPattern : public RewritePattern {
       if (auto layoutTransformOp = dyn_cast<MO::LayoutTransformOp>(op))
         return helper.lowerLayoutTransformToKernel(layoutTransformOp);
 
-      return helper.lowerToKernel(kernel.moggID, kernel.isNonElemwise);
+      return helper.lowerToKernel(kernel.isNonElemwise);
     } else if (shimTarget != "None") {
       return helper.lowerToShim(shimTarget);
     } else {
