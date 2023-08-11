@@ -118,3 +118,21 @@ mo.graph @large_broadcast() -> (!mo.tensor<[1024], si8>) {
      (!mo.tensor<[1], si8>, !mo.tensor<[1], si32>) -> !mo.tensor<[1024], si8>
   mo.output %broadcast : !mo.tensor<[1024], si8>
 }
+
+// CHECK: repeated_application
+mo.graph @repeated_application(%e0 : !mo.tensor<[], si32>) -> !mo.tensor<[], si32> {
+  // CHECK-NEXT: %{{.*}} = mo.constant {value = #M.dense_array<4>
+  // CHECK-NEXT: mo.output
+  %e1 = mo.constant {value = #M.dense_array<3> : tensor<1xsi32>} :
+				!mo.tensor<[], si32>
+  %e2 = mo.constant {value = #M.dense_array<2> : tensor<1xsi32>} :
+				!mo.tensor<[], si32>
+  %e3 = mo.add(%e1, %e1) : !mo.tensor<[], si32>
+  %e4 = mo.greater_equal(%e3, %e2) :(!mo.tensor<[], si32>, !mo.tensor<[], si32>)
+    -> !mo.tensor<[], bool>
+  %e5 = mo.select(%e4, %e3, %e0) :
+    (!mo.tensor<[], bool>, !mo.tensor<[], si32>, !mo.tensor<[], si32>)
+    -> !mo.tensor<[], si32>
+  %e6 = mo.sub(%e5, %e2) : !mo.tensor<[], si32>
+  mo.output %e6 : !mo.tensor<[], si32>
+}

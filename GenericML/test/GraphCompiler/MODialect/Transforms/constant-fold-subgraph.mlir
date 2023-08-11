@@ -7,6 +7,7 @@
 // CHECK-NEXT: %[[S4:.*]] = mo.sub
 // CHECK-NEXT: %[[S5:.*]] = mo.add
 // CHECK: subgraph %[[S1]] %[[S2]] %[[S3]] %[[S4]] %[[S5]]
+// CHECK: outputs %[[S5]]
 // CHECK-NOT: module
 mo.graph @all_const() -> (!mo.tensor<[2], si32>) {
   %s1 = mo.constant {value = #M.dense_array<0, 1> : tensor<2xsi32>} :
@@ -29,7 +30,9 @@ mo.graph @all_const() -> (!mo.tensor<[2], si32>) {
 // CHECK-NEXT: %[[R7:.*]] = mo.sub
 // CHECK-NEXT: %[[R8:.*]] = mo.sub
 // CHECK-DAG: subgraph %[[R2]] %[[R4]]
+// CHECK-DAG: outputs %[[R4]]
 // CHECK-DAG: subgraph %[[R3]] %[[R5]]
+// CHECK-DAG: outputs %[[R5]]
 // CHECK-NOT: module
 mo.graph @multiple_subgraphs(%r1 : !mo.tensor<[2], si32>) -> (!mo.tensor<[2], si32>) {
   %r2 = mo.constant {value = #M.dense_array<0, 1> : tensor<2xsi32>} :
@@ -51,7 +54,8 @@ mo.graph @multiple_subgraphs(%r1 : !mo.tensor<[2], si32>) -> (!mo.tensor<[2], si
 // CHECK-NEXT: %[[E4:.*]] = mo.if
 // CHECK-NEXT: %[[E5:.*]] = mo.mul
 // CHECK-DAG: %[[E6:.*]] = mo.add
-// CHECK-DAG: subgraph %[[E2]] %[[E5]] %[[E6]]
+// CHECK: subgraph %[[E2]] %[[E5]] %[[E6]]
+// CHECK: outputs %[[E5]] %[[E6]]
 mo.graph @if_not_handled(%e1 : !mo.tensor<[2], si32>) -> (!mo.tensor<[2], si32>) {
   %e2 = mo.constant {value = #M.dense_array<0, 1> : tensor<2xsi32>} :
 				!mo.tensor<[2], si32>
@@ -72,6 +76,7 @@ mo.graph @if_not_handled(%e1 : !mo.tensor<[2], si32>) -> (!mo.tensor<[2], si32>)
 // CHECK: %[[G3:.*]] = mo.constant {value = #M.dense_array<0, 1>
 // CHECK-NEXT: %[[G4:.*]] = mo.mul
 // CHECK: subgraph %[[G3]] %[[G4]]
+// CHECK: outputs %[[G4]]
 mo.graph @nested_region(%g1 : !mo.tensor<[], bool>) -> (!mo.tensor<[2], si32>) {
   %g2 = mo.if(%g1 : !mo.tensor<[], bool>) -> !mo.tensor<[2], si32> {
     %g3 = mo.constant {value = #M.dense_array<0, 1> : tensor<2xsi32>} :
@@ -103,6 +108,30 @@ mo.graph @param_as_root() -> (!mo.tensor<[], si32>) {
     %index = kgen.param.constant = <1>
     %0 = mo.index.to_tensor(%index) -> !mo.tensor<[], si32>
     mo.output %0 : !mo.tensor<[], si32>
+}
+
+// CHECK-LABEL: repeated_application
+// CHECK: %[[E1:.*]] = mo.constant {value = #M.dense_array<3>
+// CHECK: %[[E2:.*]] = mo.constant {value = #M.dense_array<2>
+// CHECK: %[[E3:.*]] = mo.add(%[[E1]], %[[E1]])
+// CHECK: %[[E4:.*]] = mo.greater_equal(%[[E3]], %[[E2]])
+// CHECK: %[[E5:.*]] = mo.select(%[[E4]], %[[E3]]
+// CHECK: %[[E6:.*]] = mo.sub(%[[E5]], %[[E2]])
+// CHECK: subgraph %[[E1]] %[[E2]] %[[E3]] %[[E4]]
+// CHECK: outputs %[[E3]] %[[E4]]
+mo.graph @repeated_application(%e0 : !mo.tensor<[], si32>) -> !mo.tensor<[], si32> {
+  %e1 = mo.constant {value = #M.dense_array<3> : tensor<1xsi32>} :
+				!mo.tensor<[], si32>
+  %e2 = mo.constant {value = #M.dense_array<2> : tensor<1xsi32>} :
+				!mo.tensor<[], si32>
+  %e3 = mo.add(%e1, %e1) : !mo.tensor<[], si32>
+  %e4 = mo.greater_equal(%e3, %e2) :(!mo.tensor<[], si32>, !mo.tensor<[], si32>)
+    -> !mo.tensor<[], bool>
+  %e5 = mo.select(%e4, %e3, %e0) :
+    (!mo.tensor<[], bool>, !mo.tensor<[], si32>, !mo.tensor<[], si32>)
+    -> !mo.tensor<[], si32>
+  %e6 = mo.sub(%e5, %e2) : !mo.tensor<[], si32>
+  mo.output %e6 : !mo.tensor<[], si32>
 }
 
 // make sure that we are not matching anything in the mlir of the result

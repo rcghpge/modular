@@ -119,6 +119,10 @@ executeModel(MLIRContext *ctx, const Model *model, SubgraphInfo subgraphInfo,
       return Error(result.getDiagnostic().getMessage().get());
 
   MutableArrayRef<AnyAsyncValueRef> resultCopy(results.data(), results.size());
+
+  const AnyAsyncValueRef &ch = resultCopy.front();
+  assert(ch.isReady() && isa<Chain>(ch) &&
+         "first result must be a ready chain");
   resultCopy = resultCopy.drop_front();
   llvm::SmallVector<AnyAsyncValueRef> outputTensorRefs;
   outputTensorRefs.reserve(results.size());
@@ -130,7 +134,8 @@ executeModel(MLIRContext *ctx, const Model *model, SubgraphInfo subgraphInfo,
 
   llvm::DenseMap<Value, ElementsAttr> valuesToTensors;
   auto resourceManager = DenseResourceElementsHandle::getManagerInterface(ctx);
-  for (auto [outIdx, tensor] : llvm::enumerate(outputTensorRefs)) {
+  for (size_t outIdx = 0; outIdx < outputTensorRefs.size(); outIdx++) {
+    const auto &tensor = outputTensorRefs[outIdx];
     if (tensor.isError())
       return Error(tensor.getDiagnostic().getMessage().get());
 
@@ -138,11 +143,12 @@ executeModel(MLIRContext *ctx, const Model *model, SubgraphInfo subgraphInfo,
     // output, but the interface does not support it.
     assert(tensor.isReady() && "We already awaited, tensor should be ready");
     Value outValue = subgraphInfo.subgraph.outputs[outIdx];
-    Tensor t = std::move(tensor.get<Tensor>());
+    auto *t = dyn_cast<Tensor>(tensor);
+    assert(t && "Output from subgraph execution should be a tensor");
     valuesToTensors[outValue] = getAttrForTensorDataCopy(
         typeToShaped(dyn_cast<TensorType>(outValue.getType())),
         subgraphInfo.constantSubgraphName + "_" + std::to_string(outIdx),
-        {reinterpret_cast<const char *>(t.getBuffer()), t.getSizeInBytes()},
+        {reinterpret_cast<const char *>(t->getBuffer()), t->getSizeInBytes()},
         resourceManager);
   }
   return valuesToTensors;
@@ -222,7 +228,8 @@ SmallVector<Subgraph> ConstantSubgraphs(MO::GraphOp graph) {
     }
 
     // Non constant output shapes are not constant.
-    if (!dyn_cast<TensorType>(v.getType()).hasStaticShape()) {
+    auto tensor_type = dyn_cast<TensorType>(v.getType());
+    if (!tensor_type || !tensor_type.hasStaticShape()) {
       non_const.insert(v);
       continue;
     }
@@ -343,11 +350,14 @@ struct ConstantFoldPolicy {
 // Fold the largest subgraph that does not increase memory used by more than a
 // factor of the space used by the non-folded subgraph.
 struct FactorMemIncrease : public ConstantFoldPolicy {
-  FactorMemIncrease(double factor) : factor(factor) {}
+  FactorMemIncrease(double factor, int64_t threshold)
+      : factor(factor), threshold(threshold) {}
 
   // A factor of 1 indicates no increase, a factor of 2 indicates 100% more
   // memory usage max.
   double factor;
+  /// Fold everything under this size in bytes.
+  int64_t threshold;
 
   SmallVector<Subgraph>
   shouldFold(SmallVector<Subgraph> subgraphs) const override {
@@ -356,14 +366,16 @@ struct FactorMemIncrease : public ConstantFoldPolicy {
       int64_t initialMem = constantMemUsage(subgraph);
       // Greedily remove outputs with the largest size. Might be a smarter way
       // to do this.
-      while (!subgraph.vals.empty() &&
-             outputMemUsage(subgraph) > initialMem * factor) {
+      int64_t outputMem = outputMemUsage(subgraph);
+      while (!subgraph.outputs.empty() && outputMem > initialMem * factor &&
+             outputMem > threshold) {
         // TODO: this is N^2, we should improve it #18475
         Value maxValue = *std::max_element(
             subgraph.outputs.begin(), subgraph.outputs.end(),
             [](Value a, Value b) { return valueSize(a) < valueSize(b); });
         // TODO: this is N^2, we should improve it #18475
         subgraph.remove(maxValue);
+        outputMem = outputMemUsage(subgraph);
       }
       if (!llvm::all_of(subgraph.outputs,
                         [](Value v) { return v.getDefiningOp<ConstantOp>(); }))
@@ -412,7 +424,8 @@ struct ConstantFoldPass
 
   void runOnOperation() override;
 
-  ConstantFoldPass() : ConstantFoldBase(), policy(new FactorMemIncrease(2)) {}
+  ConstantFoldPass()
+      : ConstantFoldBase(), policy(new FactorMemIncrease(2, 100)) {}
 
 private:
   // Lower a ModuleOp all the way to MGP, export it as MEF, then load it
@@ -436,7 +449,7 @@ ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
   MO::buildMoToMgpPipeline(pm, moOpts);
   // Run pipeline needs to run on a module.
   if (failed(runPipeline(pm, module)))
-    return Error("Failed to run MOToMOGG pipeline");
+    return Error("Failed to run MOToMGP pipeline");
 
   // Convert to MEF. We write it to a file and then read it back in. LLVM
   // doesn't seem to provide a way to write and read it directly from a buffer.
@@ -472,65 +485,78 @@ void ConstantFoldPass::runOnOperation() {
   // 4. Replaces subgraph outputs with outputs from the previous step.
 
   MLIRContext *ctx = &getContext();
-  OpBuilder builder(ctx);
-  builder.setInsertionPointToStart(getOperation().getBody());
-  // We have to create the copy of each subgraph somewhere under the original
-  // model because passes can't create ops outside of what they are operating
-  // on. We create a nested module in the current module where we do everything.
-  // At the end we remove it.
-  auto module = builder.create<ModuleOp>(getOperation().getLoc());
 
-  // For each constant subgraph, we clone it into our submodule as a new
-  // GraphOp. The outputs of the GraphOp are the outputs of the subgraph.
-  //
-  // An alternative approach could be to combine each subgraph into one large
-  // constant graph so we only have one thing to execute.
-  SmallVector<SubgraphInfo> subgraphReplacements;
-  int64_t name_counter = 0;
-  getOperation().walk([&](GraphOp graph) {
-    auto subgraphs = ConstantSubgraphs(graph);
-    subgraphs = policy->shouldFold(subgraphs);
-    for (auto subgraph : subgraphs) {
-      builder.setInsertionPointToEnd(module.getBody());
-      subgraphReplacements.push_back(
-          cloneSubgraph(builder, graph, module, subgraph, name_counter));
+  for (int i = 0; i < iterations.getValue(); i++) {
+    OpBuilder builder(ctx);
+    builder.setInsertionPointToStart(getOperation().getBody());
+    // We have to create the copy of each subgraph somewhere under the original
+    // model because passes can't create ops outside of what they are operating
+    // on. We create a nested module in the current module where we do
+    // everything. At the end we remove it.
+    auto module = builder.create<ModuleOp>(getOperation().getLoc(),
+                                           "constant_fold_subgraphs");
+
+    // For each constant subgraph, we clone it into our submodule as a new
+    // GraphOp. The outputs of the GraphOp are the outputs of the subgraph.
+    //
+    // An alternative approach could be to combine each subgraph into one large
+    // constant graph so we only have one thing to execute.
+    SmallVector<SubgraphInfo> subgraphReplacements;
+    int64_t name_counter = 0;
+    getOperation().walk([&](GraphOp graph) {
+      auto subgraphs = ConstantSubgraphs(graph);
+      if (subgraphs.empty())
+        return mlir::WalkResult::advance();
+      subgraphs = policy->shouldFold(subgraphs);
+      for (auto subgraph : subgraphs) {
+        builder.setInsertionPointToEnd(module.getBody());
+        subgraphReplacements.push_back(
+            cloneSubgraph(builder, graph, module, subgraph, name_counter));
+      }
+      return WalkResult::advance();
+    });
+
+    if (module.getBody()->getOperations().empty()) {
+      // Remove module to not clutter the output.
+      module.erase();
+      return;
     }
-  });
 
-  ErrorOr<ModelsWithBuffer> modelsOr = lowerSubgraphs(module);
-  if (failed(modelsOr)) {
-    mlir::emitError(module.getLoc(),
-                    "unable to load models: " + Twine(modelsOr.getError()));
-    return signalPassFailure();
-  }
-
-  // Execute MEF one subgraph at a time.
-  // TODO: #18077 this should be an argument to the pass.
-  LLCL::Runtime runtime(LLCL::createMallocAllocator(),
-                        LLCL::createThreadPoolWorkQueue());
-  for (auto [i, subgraphInfo] : llvm::enumerate(subgraphReplacements)) {
-    const Model *model =
-        modelsOr.get().models->getModelNamed(subgraphInfo.constantSubgraphName);
-    assert(model != nullptr &&
-           "Model should exist, make sure names above match.");
-    ErrorOr<llvm::DenseMap<Value, ElementsAttr>> valuesToTensorsOr =
-        executeModel(ctx, model, subgraphInfo, runtime);
-    if (failed(valuesToTensorsOr)) {
+    ErrorOr<ModelsWithBuffer> modelsOr = lowerSubgraphs(module);
+    if (failed(modelsOr)) {
       mlir::emitError(module.getLoc(),
-                      Twine(valuesToTensorsOr.takeError().get()));
+                      "unable to load models: " + Twine(modelsOr.getError()));
       return signalPassFailure();
     }
 
-    // Replace output expressions with constants. Also handles DCE.
-    RewritePatternSet patterns{ctx};
-    patterns.add<RewriteConstantOps>(ctx, valuesToTensorsOr.get());
-    if (failed(applyPatternsAndFoldGreedily(subgraphInfo.orig,
-                                            std::move(patterns))))
-      return signalPassFailure();
-  }
+    // Execute MEF one subgraph at a time.
+    // TODO: #18077 this should be an argument to the pass.
+    LLCL::Runtime runtime(LLCL::createMallocAllocator(),
+                          LLCL::createThreadPoolWorkQueue());
+    for (auto [i, subgraphInfo] : llvm::enumerate(subgraphReplacements)) {
+      const Model *model = modelsOr.get().models->getModelNamed(
+          subgraphInfo.constantSubgraphName);
+      assert(model != nullptr &&
+             "Model should exist, make sure names above match.");
+      ErrorOr<llvm::DenseMap<Value, ElementsAttr>> valuesToTensorsOr =
+          executeModel(ctx, model, subgraphInfo, runtime);
+      if (failed(valuesToTensorsOr)) {
+        mlir::emitError(module.getLoc(),
+                        Twine(valuesToTensorsOr.takeError().get()));
+        return signalPassFailure();
+      }
 
-  // Remove module to not clutter the output.
-  module.erase();
+      // Replace output expressions with constants. Also handles DCE.
+      RewritePatternSet patterns{ctx};
+      patterns.add<RewriteConstantOps>(ctx, valuesToTensorsOr.get());
+      if (failed(applyPatternsAndFoldGreedily(subgraphInfo.orig,
+                                              std::move(patterns))))
+        return signalPassFailure();
+    }
+
+    // Remove module to not clutter the output.
+    module.erase();
+  }
 }
 
 } // namespace M::MO

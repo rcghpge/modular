@@ -200,6 +200,9 @@ def ConstantFold : Pass<"constant-fold", "ModuleOp"> {
     "mlir::LLVM::LLVMDialect",
     "mlir::index::IndexDialect",
   ];
+  let options = [
+    Option<"iterations", "iterations", "int", "2", "Number of times to run constant folding back to back">,
+  ];
 }
 
 def ConstantFoldSubgraphTest : Pass<"constant-fold-subgraph-test", "ModuleOp"> {

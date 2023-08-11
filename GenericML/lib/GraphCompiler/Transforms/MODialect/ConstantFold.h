@@ -29,6 +29,9 @@ private:
   // Set outputs to those Values in vals which have uses outside the subgraph.
   void findOutputs() {
     for (auto v : vals) {
+      // Constant ops cant be outputs
+      if (v.getDefiningOp<ConstantOp>())
+        continue;
       for (auto user : v.getUsers()) {
         // If one result is not in the constant subgraph, then they are all not.
         if (user->getNumResults() == 0 || !vals.contains(user->getResult(0))) {

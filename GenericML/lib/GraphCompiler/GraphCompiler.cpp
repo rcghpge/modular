@@ -93,6 +93,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
   if (opts.useShapeInference) {
+    if (opts.constantFold)
+      pm.addPass(MO::createConstantFold());
     buildShapeInferencePipeline(pm);
     pm.addPass(MO::createSymbolicOptimization());
     pm.addPass(MO::createPropagateShapes());
@@ -101,6 +103,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createCSEPass());
   }
+  if (opts.constantFold)
+    pm.addPass(MO::createConstantFold());
   pm.addPass(MO::createDeparameterizeMoOps());
   pm.addPass(MO::createInferLayouts());
 
