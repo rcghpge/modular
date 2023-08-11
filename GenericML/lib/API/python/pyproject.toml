@@ -23,6 +23,12 @@ before-all = "{project}/utils/build/engine_packaging/scripts/before-all.sh"
 before-build = "{project}/utils/build/engine_packaging/scripts/before-build.sh"
 build = "cp{38,39,310,311}-manylinux*"
 build-frontend = "build"
+environment-pass = [
+  "AWS_ACCESS_KEY_ID",
+  "AWS_SECRET_ACCESS_KEY",
+  "AWS_DEFAULT_REGION",
+  "CI", # so we don't set `AWS_PROFILE` in `start-modular.sh`
+]
 manylinux-x86_64-image = "ghcr.io/modularml/modular/ai-engine-packaging-x86_64:main"
 manylinux-aarch64-image = "ghcr.io/modularml/modular/ai-engine-packaging-aarch64:main"
 skip = ["cp36-* cp37-*, *-manylinux_i686", "*-musllinux*"]
