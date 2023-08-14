@@ -1499,20 +1499,28 @@ struct SymbolicOptimizationPass
     MLIRContext *context = &getContext();
 
     RewritePatternSet patterns(context);
-    patterns.add<
-        CommuteBroadcastWithFlatennedWhere, ConvertBatchMatmulToMatmulPattern,
-        ConvToMatmulPattern, FlattenNestedConcatPattern, Pow2Pattern,
-        Pow3Pattern, GathersToSplitPattern, GeluPattern,
-        ElementWiseUnaryVectorPattern, ElementWiseBinaryVectorPattern,
-        BroadcastReshapePattern, GemvPattern,
-        SinkSameReshapesThroughElementwiseBinaryOp,
-        SinkReshapeThroughBroadcastedElementwiseUnaryOp,
-        SinkReshapeThroughBroadcastedElementwiseBinaryOp,
-        SinkTransposeThroughUnaryOpPattern, SinkTransposeThroughBinaryOpPattern,
-        SinkTransposeThroughStaticBroadcastToOpPattern, SplitAndSqueezesPattern,
-        SplitToSlicePattern>(context);
-    Static::BroadcastToOp::getCanonicalizationPatterns(patterns, context);
+    // Transpose swimming.
+    patterns.add<SinkTransposeThroughUnaryOpPattern,
+                 SinkTransposeThroughBinaryOpPattern,
+                 SinkTransposeThroughStaticBroadcastToOpPattern>(context);
     TransposeOp::getCanonicalizationPatterns(patterns, context);
+
+    // Reshape insertion/swimming.
+    patterns.add<ElementWiseUnaryVectorPattern, ElementWiseBinaryVectorPattern,
+                 BroadcastReshapePattern,
+                 SinkReshapeThroughBroadcastedElementwiseUnaryOp,
+                 SinkReshapeThroughBroadcastedElementwiseBinaryOp,
+                 SinkSameReshapesThroughElementwiseBinaryOp>(context);
+
+    // Broadcast swimming.
+    patterns.add<CommuteBroadcastWithFlatennedWhere>(context);
+    Static::BroadcastToOp::getCanonicalizationPatterns(patterns, context);
+
+    // Miscellaneous rewrites.
+    patterns.add<ConvertBatchMatmulToMatmulPattern, ConvToMatmulPattern,
+                 FlattenNestedConcatPattern, Pow2Pattern, Pow3Pattern,
+                 GathersToSplitPattern, GeluPattern, GemvPattern,
+                 SplitAndSqueezesPattern, SplitToSlicePattern>(context);
 
     if (failed(
             applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
