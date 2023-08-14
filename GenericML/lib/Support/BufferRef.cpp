@@ -83,13 +83,14 @@ BufferRef BufferRef::createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
         return Twine("size:").concat(Twine(size)).concat("B").str();
       });
 
-  return BufferRef(buffer, size, /*owningRef=*/{}, makeMaybeAlign(alignment),
-                   kOwned, kLocal, kMutable, runtime, std::move(profilerEntry)
+  return BufferRef(
+      buffer, size, /*owningRef=*/{}, makeMaybeAlign(alignment), kOwned, kLocal,
+      kMutable, runtime, std::move(profilerEntry)
 #if MODULAR_PARANOID
-                                                          ,
-                   /*resource=*/LLCL::Resource::allocate(
-                       Twine("owned(").concat(Twine(size)).concat("B)").str()),
-                   /*use=*/{}
+                             ,
+      /*resource=*/LLCL::Resource::allocate(
+          Twine("owned(size=").concat(Twine(size)).concat("B)").str()),
+      /*use=*/{}
 #endif
   );
 }
@@ -112,7 +113,7 @@ BufferRef BufferRef::createBorrowed(void *buffer, size_t size,
 #if MODULAR_PARANOID
       ,
       /*resource=*/LLCL::Resource::allocate(
-          Twine("borrowed(").concat(Twine(size)).concat("B)").str()),
+          Twine("borrowed(size=").concat(Twine(size)).concat("B)").str()),
       /*use=*/{}
 #endif
   );
@@ -139,7 +140,7 @@ BufferRef BufferRef::createBorrowed(const void *buffer, size_t size,
 #if MODULAR_PARANOID
       ,
       /*resource=*/LLCL::Resource::allocate(
-          Twine("borrowed(").concat(Twine(size)).concat("B)").str()),
+          Twine("borrowed(size=").concat(Twine(size)).concat("B)").str()),
       /*use=*/{}
 #endif
   );
@@ -164,17 +165,18 @@ BufferRef BufferRef::createForeign(ForeignBufferInterfaceID id, void *object,
 #if MODULAR_PARANOID
       ,
       /*resource=*/LLCL::Resource::allocate(
-          Twine("foreign(").concat(Twine(size)).concat("B)").str()),
+          Twine("foreign(size=").concat(Twine(size)).concat("B)").str()),
       /*use=*/{}
 #endif
   );
 }
 
-BufferRef BufferRef::createSafeBorrowedSlice(AsyncValueRef<BufferRef> borrowe,
+BufferRef BufferRef::createSafeBorrowedSlice(AsyncValueRef<BufferRef> borrow,
+                                             const LLCL::EncodedLocation &loc,
                                              size_t offset, size_t size) {
-  assert(borrowe.isValueAvailable() &&
+  assert(borrow.isValueAvailable() &&
          "given AsyncValue reference must be ready and not an error");
-  BufferRef &borroweBufferRef = borrowe.get();
+  BufferRef &borroweBufferRef = borrow.get();
   assert(borroweBufferRef && "cannot borrow from null buffer reference");
   assert(offset <= borroweBufferRef.size && "given offset must be in range");
   if (size == std::numeric_limits<size_t>::max())
@@ -184,7 +186,7 @@ BufferRef BufferRef::createSafeBorrowedSlice(AsyncValueRef<BufferRef> borrowe,
 
   const void *newBuffer = borroweBufferRef.getBuffer<uint8_t>() + offset;
 
-  // We can preserve the borrowe's alignment if the offset is compatible with
+  // We can preserve the borrow's alignment if the offset is compatible with
   // it. Otherwise fall back to unknown alignment.
   std::optional<size_t> alignment = borroweBufferRef.getAlignment();
   if (size && alignment &&
@@ -192,16 +194,19 @@ BufferRef BufferRef::createSafeBorrowedSlice(AsyncValueRef<BufferRef> borrowe,
     alignment = std::nullopt;
 
   return BufferRef(
-      const_cast<void *>(newBuffer), size, std::move(borrowe),
+      const_cast<void *>(newBuffer), size, std::move(borrow),
       makeMaybeAlign(alignment), kBorrowed, kLocal, borroweBufferRef.mutability,
       /*runtime=*/{}, /*profilerEntry=*/{}
 #if MODULAR_PARANOID
       ,
       /*resource=*/LLCL::Resource::allocate(
-          Twine("borrowed(").concat(Twine(size)).concat("B)").str()),
+          (Twine("borrowed(size=") + Twine(size) +
+           "B, line=" + Twine(loc.decode().line) + ")")
+              .str()),
       /*use=*/
       borroweBufferRef.resource->beginUse(
-          "slice", LLCL::kReferencingResourceUse,
+          (Twine("slice(line=") + Twine(loc.decode().line) + ")").str(),
+          LLCL::kReferencingResourceUse,
           LLCL::ResourceSection(offset, offset + size))
 #endif
   );
@@ -257,7 +262,7 @@ ErrorOr<BufferRef> BufferRef::borrowOrError(Lifetime borrowLifetime) const {
 #if MODULAR_PARANOID
         ,
         /*resource=*/LLCL::Resource::allocate(
-            Twine("borrowed(").concat(Twine(size)).concat("B)").str()),
+            Twine("borrowed(size=").concat(Twine(size)).concat("B)").str()),
         /*use=*/
         resource->beginUse("borrow", LLCL::kReferencingResourceUse,
                            LLCL::ResourceSection(0, size))

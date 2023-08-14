@@ -165,13 +165,14 @@ public:
                                   AnyAsyncValueRef owningRef = {});
 
   /// Creates a 'borrowing' reference to (a slice of) the buffer given
-  /// by borrowe (which must be ready and not an error). The result
+  /// by borrow (which must be ready and not an error). The result
   /// starts at the given offset (default zero), and has the given size
-  /// (default the remainder of the borrowee). The result reference is
-  /// guaranteed not to outlive the borrowe, has the same mutablity as
-  /// borrowe, and has kLocal lifetime.
+  /// (default the remainder of the borrow). The result reference is
+  /// guaranteed not to outlive the borrow, has the same mutablity as
+  /// borrow, and has kLocal lifetime.
   static BufferRef
-  createSafeBorrowedSlice(AsyncValueRef<BufferRef> borrowe, size_t offset = 0,
+  createSafeBorrowedSlice(AsyncValueRef<BufferRef> borrow,
+                          const LLCL::EncodedLocation &loc, size_t offset = 0,
                           size_t size = std::numeric_limits<size_t>::max());
 
   /// Creates a 'foreign' reference to the already allocated foreign buffer

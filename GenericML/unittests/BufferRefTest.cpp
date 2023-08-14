@@ -8,11 +8,17 @@
 
 #include "LLCL/Runtime/Allocator.h"
 #include "LLCL/Runtime/Runtime.h"
+#include "LLCL/Support/Location.h"
+#include "LLCL/Support/UnknownLocationDecoder.h"
 
 #include "gtest/gtest.h"
 
 using namespace M;
 using namespace M::GML;
+
+static LLCL::EncodedLocation unknownLoc() {
+  return LLCL::UnknownLocationDecoder::getEncodedLocation();
+}
 
 static LLCL::Runtime *getRuntime() {
   static LLCL::Runtime *runtime = []() {
@@ -80,29 +86,30 @@ TEST(BufferRef, CreateSafeBorrowed) {
   auto runtime = getRuntime();
   BufferRef owned =
       BufferRef::createOwned(runtime, /*size=*/8, /*alignment=*/64);
-  auto borrowe =
+  auto borrow =
       AsyncValueRef<BufferRef>::createReady(runtime, std::move(owned));
   {
-    BufferRef borrowed = BufferRef::createSafeBorrowedSlice(borrowe.copy());
+    BufferRef borrowed =
+        BufferRef::createSafeBorrowedSlice(borrow.copy(), unknownLoc());
     ASSERT_EQ(borrowed.getSize(), 8u);
     ASSERT_EQ(borrowed.getAlignment(), 64u);
-    ASSERT_EQ(borrowed.getBuffer(), borrowe.get().getBuffer());
-    ASSERT_EQ(borrowe.getPointer()->getRefCountForDebugging(), 2u);
+    ASSERT_EQ(borrowed.getBuffer(), borrow.get().getBuffer());
+    ASSERT_EQ(borrow.getPointer()->getRefCountForDebugging(), 2u);
   }
-  ASSERT_EQ(borrowe.getPointer()->getRefCountForDebugging(), 1u);
+  ASSERT_EQ(borrow.getPointer()->getRefCountForDebugging(), 1u);
 }
 
 TEST(BufferRef, CreateSafeBorrowedSlice) {
   auto runtime = getRuntime();
   BufferRef owned =
       BufferRef::createOwned(runtime, /*size=*/8, /*alignment=*/64);
-  auto borrowe =
+  auto borrow =
       AsyncValueRef<BufferRef>::createReady(runtime, std::move(owned));
   BufferRef borrowed = BufferRef::createSafeBorrowedSlice(
-      borrowe.copy(), /*offset=*/2, /*size=*/4);
+      borrow.copy(), unknownLoc(), /*offset=*/2, /*size=*/4);
   ASSERT_EQ(borrowed.getSize(), 4u);
   ASSERT_EQ(borrowed.getAlignment(), std::nullopt);
-  ASSERT_EQ(borrowed.getBuffer(), borrowe.get().getBuffer<uint8_t>() + 2);
+  ASSERT_EQ(borrowed.getBuffer(), borrow.get().getBuffer<uint8_t>() + 2);
 }
 
 TEST(BufferRef, Move) {
@@ -251,17 +258,20 @@ TEST(BufferRef, TransitiveDataRace_ExpectDeath) {
   auto parent = AsyncValueRef<BufferRef>::createReady(
       runtime, BufferRef::createOwned(runtime, /*size=*/42, /*alignment=*/{}));
   auto childA = AsyncValueRef<BufferRef>::createReady(
-      runtime, BufferRef::createSafeBorrowedSlice(parent.copy(), /*offset=*/8,
+      runtime, BufferRef::createSafeBorrowedSlice(parent.copy(), unknownLoc(),
+                                                  /*offset=*/8,
                                                   /*size=*/8));
   auto childB = AsyncValueRef<BufferRef>::createReady(
-      runtime, BufferRef::createSafeBorrowedSlice(parent.copy(), /*offset=*/8,
+      runtime, BufferRef::createSafeBorrowedSlice(parent.copy(), unknownLoc(),
+                                                  /*offset=*/8,
                                                   /*size=*/8));
   SmallVector<LLCL::ResourceUse> childAUses;
   childA->collectAccessUses(childAUses, "childA", LLCL::kReadingResourceUse);
   EXPECT_DEATH_IF_SUPPORTED(
       childB->collectAccessUses(childAUses, "childB",
                                 LLCL::kWritingResourceUse),
-      "attempting to write to \\(section of\\) resource which is also being "
-      "read");
+      "requested section for writing overlaps with existing section \\[8, "
+      "16\\) "
+      "for reading with active uses \\{'childA'\\}");
 }
 #endif // MODULAR_PARANOID

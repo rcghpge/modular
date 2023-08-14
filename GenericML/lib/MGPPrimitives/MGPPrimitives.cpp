@@ -320,8 +320,8 @@ static void mgp_cpu_buffer_section_static_borrow(
   // createSafeBorrowedSlice will assert the offset and size are valid.
   // This is guaranteed by op verify and type system, so no need to guard
   // with error checking.
-  std::move(outBuffer).emplace(
-      BufferRef::createSafeBorrowedSlice(inBuffer.copy(), outOffset, outSize));
+  std::move(outBuffer).emplace(BufferRef::createSafeBorrowedSlice(
+      inBuffer.copy(), loc, outOffset, outSize));
 }
 
 //===----------------------------------------------------------------------===//
@@ -366,7 +366,7 @@ mgp_cpu_buffer_split_borrow(Chain inChain, AsyncValueRef<BufferRef> inBuffer,
     // lifetime will exceed each borrow.
     if (totalSize + thisSize <= inSize)
       newBuffers.emplace_back(BufferRef::createSafeBorrowedSlice(
-          inBuffer.copy(), totalSize, thisSize));
+          inBuffer.copy(), loc, totalSize, thisSize));
     totalSize += thisSize;
   }
 

@@ -179,7 +179,7 @@ def CpuBufferGetCachedOp : MGP_Op<"cpu.buffer.get_cached", [
 //    mgp.cpu.buffer.realloc.static  %ch, %ctx[5,1], 64
 //  CpuBufferReallocDynamicOp: Re-alloc with dynamic size
 //    mgp.cpu.buffer.realloc.dynamic %ch, %ctx[5,1], %size
-//  CpuBufferReallocDynamicOp: Re-alloc with dynamic tensor spec
+//  CpuBufferReallocSpecOp: Re-alloc with dynamic tensor spec
 //    mgp.cpu.buffer.realloc.spec    %ch, %ctx[5,1], %spec
 //
 //===----------------------------------------------------------------------===//
@@ -646,9 +646,8 @@ def CpuBufferSectionStaticBorrowOp : MGP_Op<"cpu.buffer.section.static.borrow", 
     of the input buffer.
 
     The runtime will guarantee the input buffer will outlive the result buffer.
-    However, currently the runtime does NOT check for overlapping concurrent
-    borrows, or overlapping reads/writes to the same contents, even in debug
-    builds.
+    However, the runtime only checks for overlapping concurrent borrows, or
+    overlapping reads/writes to the same contents, in debug builds.
 
     Example:
     ```mlir
