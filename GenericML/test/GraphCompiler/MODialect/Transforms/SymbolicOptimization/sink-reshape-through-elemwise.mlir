@@ -122,3 +122,59 @@ mo.graph @sink_consecutive_elemwise_with_parameters<D8431, P49533, P49878>(
 // CHECK-DAG: %[[MUL3:.*]] = mo.mul
 // CHECK-NEXT: %[[RESHAPE_AT_END:.*]] = mo.static.reshape(%[[MUL3]])
 // CHECK-NEXT: mo.output %[[RESHAPE_AT_END]]
+
+mo.graph @dont_sink_unary_reshape_that_squeezes_final_dim(
+    %input: !mo.tensor<[2, 1], f32>
+) -> !mo.tensor<[2], f32> {
+    %reshaped_input = mo.static.reshape(%input) : !mo.tensor<[2, 1], f32> -> !mo.tensor<[2], f32>
+    %exp = mo.exp(%reshaped_input) : !mo.tensor<[2], f32>
+    mo.output %exp : !mo.tensor<[2], f32>
+}
+// No change.
+// CHECK: mo.graph @dont_sink_unary_reshape_that_squeezes_final_dim(
+// CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[2, 1], f32>
+// CHECK-SAME: ) -> !mo.tensor<[2], f32>
+//
+// CHECK-NEXT: %[[RESHAPED_INPUT:.*]] = mo.static.reshape(%[[INPUT]]) : !mo.tensor<[2, 1], f32> -> !mo.tensor<[2], f32>
+// CHECK-NEXT: %[[EXP:.*]] = mo.exp(%[[RESHAPED_INPUT]]) : !mo.tensor<[2], f32>
+// CHECK-NEXT: mo.output %[[EXP]] : !mo.tensor<[2], f32>
+
+mo.graph @dont_sink_binary_reshape_that_squeezes_final_dim(
+    %lhs: !mo.tensor<[2, 1], f32>,
+    %rhs: !mo.tensor<[2, 1], f32>
+) -> !mo.tensor<[2], f32> {
+    %reshaped_lhs = mo.static.reshape(%lhs) : !mo.tensor<[2, 1], f32> -> !mo.tensor<[2], f32>
+    %reshaped_rhs = mo.static.reshape(%rhs) : !mo.tensor<[2, 1], f32> -> !mo.tensor<[2], f32>
+    %add = mo.add(%reshaped_lhs, %reshaped_rhs) : !mo.tensor<[2], f32>
+    mo.output %add : !mo.tensor<[2], f32>
+}
+// No change.
+// CHECK: mo.graph @dont_sink_binary_reshape_that_squeezes_final_dim(
+// CHECK-SAME: %[[LHS:.*]]: !mo.tensor<[2, 1], f32>,
+// CHECK-SAME: %[[RHS:.*]]: !mo.tensor<[2, 1], f32>
+// CHECK-SAME: ) -> !mo.tensor<[2], f32>
+//
+// CHECK-NEXT: %[[RESHAPED_LHS:.*]] = mo.static.reshape(%[[LHS]]) : !mo.tensor<[2, 1], f32> -> !mo.tensor<[2], f32>
+// CHECK-NEXT: %[[RESHAPED_RHS:.*]] = mo.static.reshape(%[[RHS]]) : !mo.tensor<[2, 1], f32> -> !mo.tensor<[2], f32>
+// CHECK-NEXT: %[[ADD:.*]] = mo.add(%[[RESHAPED_LHS]], %[[RESHAPED_RHS]]) : !mo.tensor<[2], f32>
+// CHECK-NEXT: mo.output %[[ADD]] : !mo.tensor<[2], f32>
+
+mo.graph @dont_sink_binary_bcast_reshape_that_squeezes_final_dim(
+    %lhs: !mo.tensor<[2, 1], f32>,
+    %rhs: !mo.tensor<[], f32>
+) -> !mo.tensor<[2], f32> {
+    %reshaped_lhs = mo.static.reshape(%lhs) : !mo.tensor<[2, 1], f32> -> !mo.tensor<[2], f32>
+    %bcast_rhs = mo.static.broadcast_to(%rhs) : !mo.tensor<[], f32> -> !mo.tensor<[2], f32>
+    %add = mo.add(%reshaped_lhs, %bcast_rhs) : !mo.tensor<[2], f32>
+    mo.output %add : !mo.tensor<[2], f32>
+}
+// No change.
+// CHECK: mo.graph @dont_sink_binary_bcast_reshape_that_squeezes_final_dim(
+// CHECK-SAME: %[[LHS:.*]]: !mo.tensor<[2, 1], f32>,
+// CHECK-SAME: %[[RHS:.*]]: !mo.tensor<[], f32>
+// CHECK-SAME: ) -> !mo.tensor<[2], f32>
+//
+// CHECK-NEXT: %[[RESHAPED_LHS:.*]] = mo.static.reshape(%[[LHS]]) : !mo.tensor<[2, 1], f32> -> !mo.tensor<[2], f32>
+// CHECK-NEXT: %[[BCAST_RHS:.*]] = mo.static.broadcast_to(%[[RHS]]) : !mo.tensor<[], f32> -> !mo.tensor<[2], f32>
+// CHECK-NEXT: %[[ADD:.*]] = mo.add(%[[RESHAPED_LHS]], %[[BCAST_RHS]]) : !mo.tensor<[2], f32>
+// CHECK-NEXT: mo.output %[[ADD]] : !mo.tensor<[2], f32>

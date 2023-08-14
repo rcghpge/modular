@@ -828,6 +828,33 @@ struct SinkTransposeThroughStaticBroadcastToOpPattern
   }
 };
 
+/// Check whether `val` comes from a reshape that eliminates the trailing 1s
+/// from input's shape.
+static bool isValueFromReshapeThatSqueezesFinalDims(Value val) {
+  TensorType inputTy, outputTy;
+  if (auto reshapeOp = val.getDefiningOp<MO::Static::ReshapeOp>()) {
+    inputTy = reshapeOp.getInput().getType();
+    outputTy = reshapeOp.getType();
+  } else if (auto reshapeOp = val.getDefiningOp<MO::Static::ReshapeOp>()) {
+    inputTy = reshapeOp.getInput().getType();
+    outputTy = reshapeOp.getType();
+  } else {
+    return false;
+  }
+
+  auto inputShape = dyn_cast<MO::ShapeAttr>(inputTy.getShapeAttr());
+  auto outputShape = dyn_cast<MO::ShapeAttr>(outputTy.getShapeAttr());
+
+  auto inputShapeHasTrailingOne = inputShape && inputShape.getRank() > 0 &&
+                                  inputShape.getIntDims().back() == 1;
+
+  auto outputShapeHasNoTrailingOne =
+      outputShape &&
+      (outputShape.getRank() == 0 || outputShape.getIntDims().back() != 1);
+
+  return inputShapeHasTrailingOne && outputShapeHasNoTrailingOne;
+}
+
 /// A pattern that detects binary operator where one operand is a reshape
 /// and the other a broadcast. We attempt to move the binary operator to
 /// occur before the reshape for better fusion opportunities.
@@ -864,11 +891,6 @@ struct SinkReshapeThroughBroadcastedElementwiseBinaryOp
 
   LogicalResult matchAndRewrite(ElementWiseBinary op,
                                 PatternRewriter &rewriter) const override {
-    for (const Operation *user : op.getResult().getUsers())
-      if (dyn_cast<Static::ReshapeOp>(user) || dyn_cast<ReshapeOp>(user))
-        return rewriter.notifyMatchFailure(
-            op, "Do not rewrite when users are Reshapes to avoid infinite "
-                "loops in pattern. See issue #18823");
 
     // Match pattern and get results.
     TensorValue inputTensor, elemwiseTensor;
@@ -893,6 +915,12 @@ struct SinkReshapeThroughBroadcastedElementwiseBinaryOp
     }
     if (!inputTensor || !elemwiseTensor || !reshapedTensor || !broadcastTensor)
       return rewriter.notifyMatchFailure(op, "Null values found in pattern.");
+
+    // TODO(#18823) find a more general solution
+    if (isValueFromReshapeThatSqueezesFinalDims(reshapedTensor)) {
+      return rewriter.notifyMatchFailure(
+          op, "Don't sink reshape that squeezes final dim.");
+    }
 
     // Ensure the smallest rank tensor is `elemwise`
     TensorType reshapedTensorTy = reshapedTensor.getType();
@@ -979,15 +1007,8 @@ struct SinkReshapeThroughBroadcastedElementwiseUnaryOp
 
   LogicalResult matchAndRewrite(ElementWiseUnary op,
                                 PatternRewriter &rewriter) const override {
-    for (const Operation *user : op.getResult().getUsers())
-      if (dyn_cast<Static::ReshapeOp>(user) || dyn_cast<ReshapeOp>(user))
-        return rewriter.notifyMatchFailure(
-            op, "Do not rewrite when users are Reshapes to avoid infinite "
-                "loops in pattern. See issue #18823");
-
     TensorValue inputTensor;
     auto reshapeP = m_Op<Static::ReshapeOp>(m_Any(&inputTensor));
-
     auto elemwiseOpP = m_Op<ElementWiseUnary>(reshapeP);
 
     if (!elemwiseOpP.match(op))
@@ -995,6 +1016,12 @@ struct SinkReshapeThroughBroadcastedElementwiseUnaryOp
 
     if (!inputTensor)
       return rewriter.notifyMatchFailure(op, "Null values found in pattern.");
+
+    // TODO(#18823) find a more general solution
+    if (isValueFromReshapeThatSqueezesFinalDims(op.getInput())) {
+      return rewriter.notifyMatchFailure(
+          op, "Don't sink reshape that squeezes final dim.");
+    }
 
     auto newOp = cast<ElementWiseUnary>(rewriter.clone(*op));
     newOp.setInput(inputTensor);
@@ -1029,12 +1056,6 @@ struct SinkSameReshapesThroughElementwiseBinaryOp
 
   LogicalResult matchAndRewrite(ElementWiseBinary op,
                                 PatternRewriter &rewriter) const override {
-    for (const Operation *user : op.getResult().getUsers())
-      if (dyn_cast<Static::ReshapeOp>(user) || dyn_cast<ReshapeOp>(user))
-        return rewriter.notifyMatchFailure(
-            op, "Do not rewrite when users are Reshapes to avoid infinite "
-                "loops in pattern. See issue #18823");
-
     TensorValue input1Tensor, input2Tensor;
     auto reshapeP1 = m_Op<Static::ReshapeOp>(m_Any(&input1Tensor));
     auto reshapeP2 = m_Op<Static::ReshapeOp>(m_Any(&input2Tensor));
@@ -1049,6 +1070,13 @@ struct SinkSameReshapesThroughElementwiseBinaryOp
     if (input1Tensor.getType().getDims() != input2Tensor.getType().getDims())
       return rewriter.notifyMatchFailure(
           op, "Inputs are not the same shape. Not compatible.");
+
+    // TODO(#18823) find a more general solution
+    if (isValueFromReshapeThatSqueezesFinalDims(op.getLhsInput()) ||
+        isValueFromReshapeThatSqueezesFinalDims(op.getRhsInput())) {
+      return rewriter.notifyMatchFailure(
+          op, "Don't sink reshape that squeezes final dim.");
+    }
 
     auto newOp = cast<ElementWiseBinary>(rewriter.clone(*op));
     newOp.setLhsInput(input1Tensor);
@@ -1250,7 +1278,7 @@ struct ElementWiseUnaryVectorPattern
     auto inType = input.getType().cast<TensorType>();
 
     if (!(inType.hasStaticShape() && inType.getRank() == 2 &&
-          inType.getIntDim(1) == 1))
+          inType.getIntDim(0) != 1 && inType.getIntDim(1) == 1))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
     Value opRes = op.getResult();
@@ -1281,7 +1309,7 @@ struct ElementWiseBinaryVectorPattern
     auto inType = a.getType().cast<TensorType>();
 
     if (!(inType.hasStaticShape() && inType.getRank() == 2 &&
-          inType.getIntDim(1) == 1))
+          inType.getIntDim(0) != 1 && inType.getIntDim(1) == 1))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
     Value opRes = op.getResult();

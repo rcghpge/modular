@@ -32,6 +32,26 @@ mo.graph @erf_non_vector(%arg0 : !mo.tensor<[64, 4], f32>) -> !mo.tensor<[64, 4]
 // CHECK: }
 }
 
+// No effect
+// CHECK: mo.graph @erf_unit_square_matrix(%[[ARG0:.*]]: !mo.tensor<[1, 1], f32>) -> !mo.tensor<[1, 1], f32> no_inline {
+mo.graph @erf_unit_square_matrix(%arg0 : !mo.tensor<[1, 1], f32>) -> !mo.tensor<[1, 1], f32>{
+  // CHECK: %[[VAL0:.*]] = mo.erf(%[[ARG0]]) : !mo.tensor<[1, 1], f32>
+  %out = mo.erf(%arg0) : !mo.tensor<[1, 1], f32>
+  // CHECK: mo.output %[[VAL0]] : !mo.tensor<[1, 1], f32>
+  mo.output %out : !mo.tensor<[1, 1], f32>
+// CHECK: }
+}
+
+// No effect
+// CHECK: mo.graph @add_unit_square_matrix(%[[ARG0:.*]]: !mo.tensor<[1, 1], f32>) -> !mo.tensor<[1, 1], f32> no_inline {
+mo.graph @add_unit_square_matrix(%arg0 : !mo.tensor<[1, 1], f32>) -> !mo.tensor<[1, 1], f32>{
+  // CHECK: %[[VAL0:.*]] = mo.add(%[[ARG0]], %[[ARG0]]) : !mo.tensor<[1, 1], f32>
+  %out = mo.add(%arg0, %arg0) : !mo.tensor<[1, 1], f32>
+  // CHECK: mo.output %[[VAL0]] : !mo.tensor<[1, 1], f32>
+  mo.output %out : !mo.tensor<[1, 1], f32>
+// CHECK: }
+}
+
 // CHECK: mo.graph @add_bs1(%[[ARG0:.*]]: !mo.tensor<[1, 64], f32>) -> !mo.tensor<[1, 64], f32> no_inline {
 mo.graph @add_bs1(%arg0 : !mo.tensor<[1, 64], f32>) -> !mo.tensor<[1, 64], f32>{
   // CHECK: %[[VAL0:.*]] = mo.add(%[[ARG0]], %[[ARG0]]) : !mo.tensor<[1, 64], f32>
