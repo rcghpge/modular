@@ -2204,15 +2204,7 @@ def MO_MatmulOp : MO_DotBase<"matmul"> {
     ```
   }];
 
-  let arguments = (ins MO_Tensor:$input_a, MO_Tensor:$input_b,
-    OptionalAttr<BoolAttr>:$transpose_b,
-    OptionalAttr<BoolAttr>:$packed_b
-  );
-
-  let builders = [
-    /// Create matmul with default attribute flags off.
-    OpBuilder<(ins "Type":$type, "Value":$input_a, "Value":$input_b)>,
-  ];
+  let arguments = (ins MO_Tensor:$input_a, MO_Tensor:$input_b);
 
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
@@ -2418,27 +2410,8 @@ def MO_InvokeShapeFuncOp : MO_TensorOp<"invoke_shape_func", [
 }
 
 //===----------------------------------------------------------------------===//
-// MMPacking
+// Layout Transform
 //===----------------------------------------------------------------------===//
-
-// TODO: This is a temporary op to be replaced by larger layout representation
-// work.
-def MO_PackMMWeightsOp : MO_TensorOp<"pack_mm_weights", [Pure]> {
-  let summary = "Returned the packed matmul weights";
-  let description = [{
-    This op will execute and return the matmul weights with the optimal
-    packing as determined by the mojo packing kernel.
-  }];
-
-  let arguments = (ins
-    MO_Tensor:$input,
-    BoolAttr:$transposed
-  );
-
-  let results = (outs MO_Tensor:$result);
-
-  let assemblyFormat = "`(` $input `:` qualified(type($input)) `)` attr-dict `->` qualified(type($result))";
-}
 
 def MO_LayoutTransformOp : MO_TensorOp<"layout.transform", [Pure]> {
   let summary = "Transform the layout of input tensor";

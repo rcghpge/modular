@@ -76,16 +76,9 @@ LogicalResult impl::checkMatmulCompatibility(Operation *op, TensorValue A,
   // verify those. However we can attach extra attributes to it in the lowering.
   // They will change some of the shapes (i.e allowing values to be transposed
   // implicitly).
-  if (auto matmul = dyn_cast<MatmulOp>(op)) {
-    if (matmul.getTransposeB().value_or(false) ||
-        matmul.getPackedB().value_or(false))
+  if (auto bmm = dyn_cast<BatchMatmulOp>(op))
+    if (bmm.getTransposeB().value_or(false))
       return success();
-  }
-
-  if (auto matmul = dyn_cast<BatchMatmulOp>(op)) {
-    if (matmul.getTransposeB().value_or(false))
-      return success();
-  }
 
   // The op created from the framework should have no layout attributes and we
   // should verify those. However we can add layouts annotations in the

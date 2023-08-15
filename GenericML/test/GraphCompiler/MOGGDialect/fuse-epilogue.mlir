@@ -1,7 +1,7 @@
 // RUN: mo-opt --mo-to-mogg=use-jit=true --fuse-elementwise --cse --fuse-bcasts --cse --fuse-in-out-lambdas --cse %s | FileCheck %s
 
-mo.graph @basicMatmul<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !mo.tensor<[K, N], f32>, %arg3: !mo.tensor<[], f32>) -> (!mo.tensor<[M, N], f32>) {
-  %mm = mo.matmul(%arg0, %arg1) : (!mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32>)  -> !mo.tensor<[M, N], f32>
+mo.graph @basicMatmul<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !mo.tensor<[K, N], f32, {layout = #mo.layout<KN>}>, %arg3: !mo.tensor<[], f32>) -> (!mo.tensor<[M, N], f32>) {
+  %mm = mo.matmul(%arg0, %arg1) : (!mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32, {layout = #mo.layout<KN>}>)  -> !mo.tensor<[M, N], f32>
   %bcast = mo.static.broadcast_to(%arg3) : !mo.tensor<[], f32> -> !mo.tensor<[M, N], f32>
   %1 = mo.add(%mm, %bcast) : !mo.tensor<[M, N], f32>
   mo.output %1 : !mo.tensor<[M, N], f32>
@@ -21,8 +21,8 @@ mo.graph @basicMatmul<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !mo.tensor
 // CHECK-NEXT: mogg.call "mo.matmul" [@output_0_fn{{.*}}{lambdas_have_fusion = true
 // CHECK: mo.output %[[OUT]]
 
-mo.graph @noFuseMultiUse<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !mo.tensor<[K, N], f32>, %arg3: !mo.tensor<[], f32>, %arg4: !mo.tensor<[], f32>) -> (!mo.tensor<[M, N], f32>, !mo.tensor<[M, N], f32>) {
-  %mm = mo.matmul(%arg0, %arg1) : (!mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32>)  -> !mo.tensor<[M, N], f32>
+mo.graph @noFuseMultiUse<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !mo.tensor<[K, N], f32, {layout = #mo.layout<KN>}>, %arg3: !mo.tensor<[], f32>, %arg4: !mo.tensor<[], f32>) -> (!mo.tensor<[M, N], f32>, !mo.tensor<[M, N], f32>) {
+  %mm = mo.matmul(%arg0, %arg1) : (!mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32, {layout = #mo.layout<KN>}>)  -> !mo.tensor<[M, N], f32>
   %bcast = mo.static.broadcast_to(%arg3) : !mo.tensor<[], f32> -> !mo.tensor<[M, N], f32>
   %1 = mo.add(%mm, %bcast) : !mo.tensor<[M, N], f32>
   %bcast2 = mo.static.broadcast_to(%arg4) : !mo.tensor<[], f32> -> !mo.tensor<[M, N], f32>

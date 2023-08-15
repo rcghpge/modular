@@ -309,7 +309,6 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_ELEMWISE(MO::MinOp),
       MO_TO_ELEMWISE(MO::MulOp),
       MO_TO_ELEMWISE(MO::NotEqualOp),
-      MO_TO_KERNEL(MO::PackMMWeightsOp),
       MO_TO_KERNEL(MO::PadOp),
       MO_TO_KERNEL(MO::ReduceAddOp),
       MO_TO_KERNEL(MO::ReduceMulOp),

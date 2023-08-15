@@ -1532,14 +1532,6 @@ LogicalResult MatmulOp::verify() {
   return success();
 }
 
-// Default builder which leaves the attributes empty.
-void MatmulOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                     Type resultTy, Value input_a, Value input_b) {
-  odsState.addOperands(input_a);
-  odsState.addOperands(input_b);
-  odsState.addTypes({resultTy});
-}
-
 void BatchMatmulOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                           Type resultTy, Value input_a, Value input_b) {
   odsState.addOperands(input_a);
