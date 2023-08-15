@@ -64,6 +64,9 @@ class NumpyImpl:
     def max(self, x, y):
         return np.maximum(x, y)
 
+    def gather(self, x, indices, axis):
+        return np.take(x, indices, axis=axis)
+
 
 # The keras implementation of each primitive.
 class TFImpl:
@@ -90,3 +93,6 @@ class TFImpl:
 
     def max(self, x, y):
         return tf.math.maximum(x, y)
+
+    def gather(self, x, indices, axis):
+        return tf.gather(x, indices, axis)

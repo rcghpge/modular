@@ -219,10 +219,6 @@ def get_test_case(target_name):
 
 class TransposeReduce(TestBase):
     @staticmethod
-    def num_runs():
-        return 20
-
-    @staticmethod
     def input_sizes_to_test():
         return [
             ([65, 67, 3, 17], [1], [4]),
@@ -252,3 +248,32 @@ class TransposeReduce(TestBase):
     def run(inputs, impl):
         trans = impl.transpose(inputs[0], inputs[2])
         return impl.sum(trans, inputs[1])
+
+
+class GatherReduceConstAxis(TestBase):
+    @staticmethod
+    def input_sizes_to_test():
+        return [
+            ([30, 20], [10, 20]),
+        ]
+
+    @staticmethod
+    def get_input_specs():
+        return [
+            ((None, None), np.float32),
+            ((None, None), np.int32),
+        ]
+
+    @staticmethod
+    def generate_inputs(shapes):
+        return [
+            # Use randint for input to avoid fp tolerance issues
+            np.random.randint(-5, 5, size=shapes[0]).astype(np.float32),
+            np.random.randint(0, shapes[0][0], size=shapes[1]).astype(np.int32),
+        ]
+
+    @staticmethod
+    def run(inputs, impl):
+        reduce_axis = impl.constant((1,))
+        gathered = impl.gather(inputs[0], inputs[1], 0)
+        return impl.sum(gathered, reduce_axis)
