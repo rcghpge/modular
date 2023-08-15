@@ -145,12 +145,43 @@ void ElementwiseGraph::buildGraph(MOGG::KernelOp start) {
 
     // Traverse down the graph. If any operation exits into a non-elementwise
     // kernel then it is a leaf node.
-    for (Operation *user : op->getUsers())
-      process(op, user, leaves);
+    for (OpOperand &operand : op->getUses()) {
+      if (auto isKernel = dyn_cast<MOGG::KernelOp>(operand.getOwner())) {
+        unsigned index = operand.getOperandNumber();
+
+        // We have to check that the kernel can accept a fusion on this operand.
+        if (!isKernel.getInputFusionInterfaceAttr())
+          continue;
+
+        auto str =
+            cast<StringAttr>(isKernel.getInputFusionInterfaceAttr()[index]);
+        if (str == "")
+          continue;
+
+        // If it can then add it to the graph.
+        process(op, isKernel, leaves);
+      } else {
+        // If it is used by any non kernel op then it is a leaf.
+        leaves.insert(op);
+      }
+    }
+
+    // If we have no fusion interface then we cannot search through those
+    // operands.
+    if (!op.getInputFusionInterfaceAttr()) {
+      roots.insert(op);
+      continue;
+    }
 
     // Traverse upwards.
-    for (Value operand : op.getOperands()) {
+    for (auto [operand, attr] :
+         llvm::zip(op.getOperands(), op.getInputFusionInterfaceAttr())) {
       Operation *edge = operand.getDefiningOp();
+
+      // If the fusion interface is null then we shouldn't fuse through these
+      // operands.
+      if (cast<StringAttr>(attr) == "")
+        continue;
 
       // Block arguments will appear as null.
       if (edge)
@@ -214,7 +245,9 @@ struct FuseElementwisePass
     // just will just no longer be used in that kernel.
     for (MOGG::KernelOp kernel : graph.getOps<MOGG::KernelOp>()) {
       // Skip non elementwise kernels.
-      if (!kernel.getFusionBodyLambda() || kernel.getIsViewOp().value_or(false))
+      if (!kernel.getFusionBodyLambda() ||
+          kernel.getIsViewOp().value_or(false) ||
+          !kernel.getInputFusionInterface())
         continue;
 
       // The graph of reachable elementwise ops from this kernel
@@ -280,6 +313,10 @@ struct FuseElementwisePass
 
       // Only fuse within the same region and not across, i.e, control flow.
       if (edge->getParentRegion() != leaf->getParentRegion())
+        continue;
+
+      // The kernel must expose an input lambda to fuse into.
+      if (cast<StringAttr>(leaf.getInputFusionInterfaceAttr()[index]) == "")
         continue;
 
       // If the input operation is a kernel and is implemented by a lambda then
@@ -372,9 +409,15 @@ struct FuseElementwisePass
       Value otherOperand = producerKernel->getOperand(i);
       Value otherBlockArg = oldBlock.getArgument(i);
 
-      // Get the lambda which loads this operand in the other kernel.
-      StringRef name = cast<StringAttr>(otherInputLambdas[i]).getValue();
-      auto otherLambdaLoad = cast<LambdaOp>(producerSymTable.lookup(name));
+      // Get the lambda which loads this operand in the other kernel. If the
+      // kernel doesn't expose any input attributes or only exposes null
+      // attributes then we should add the null attribute.
+      LambdaOp otherLambdaLoad = nullptr;
+      if (otherInputLambdas) {
+        StringRef name = cast<StringAttr>(otherInputLambdas[i]).getValue();
+        if (name != "")
+          otherLambdaLoad = cast<LambdaOp>(producerSymTable.lookup(name));
+      }
 
       auto itr = leafOperands.find(otherOperand);
 
@@ -388,11 +431,20 @@ struct FuseElementwisePass
         // in this kernel.
         StringRef leafName =
             cast<StringAttr>(leafInputLambdas[leafInIndex]).getValue();
-        oldNameToNew[otherLambdaLoad.getSymName()] = leafName;
+
+        if (otherLambdaLoad)
+          oldNameToNew[otherLambdaLoad.getSymName()] = leafName;
+        else
+          leaf.setInputFusionInterface(leaf.getNumOperands() - 1, "");
       } else {
         // Add the new operand to the kernel + body.
         Value leafBlockArg = leaf.addOperand(otherOperand);
         remapper.map(otherBlockArg, leafBlockArg);
+
+        if (!otherLambdaLoad) {
+          leaf.setInputFusionInterface(leaf.getNumOperands() - 1, "");
+          continue;
+        }
 
         // As we have added a new input we need to clone the lambda which loads
         // that input.

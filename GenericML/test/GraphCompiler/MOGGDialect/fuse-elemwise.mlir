@@ -253,3 +253,148 @@ mo.graph @out_of_order() -> !mo.tensor<[5], f32> {
 // CHECK-NEXT: %[[V3:.*]] = mogg.call "mo.sub"
 // CHECK-NEXT: %[[V4:.*]] = mogg.call "mo.relu"
 // CHECK-NEXT: %[[V5:.*]] = mogg.call "mo.add"
+
+
+// Synthized from this with annotations manually removed.
+//mo.graph @test(%arg0: !mo.tensor<[10], ui32>) -> (!mo.tensor<[10], ui32>) {
+//  %o0 = mo.exp(%arg0): !mo.tensor<[10], ui32>
+//  %o1 = mo.relu(%o0): !mo.tensor<[10], ui32>
+//  %o2 = mo.exp(%o0): !mo.tensor<[10], ui32>
+//  %o3 = mo.mul(%o1, %o2): !mo.tensor<[10], ui32>
+//  %o4 = mo.relu(%o3): !mo.tensor<[10], ui32>
+//  mo.output %o4 : !mo.tensor<[10], ui32>
+//}
+//
+// The input fusion interface has been removed from the 2nd `exp` which
+// should prevent the first `exp` from being fused into that relu but
+// should still fuse the other subgraph.
+//
+
+mo.graph @missingInputFusionInterface(%arg0: !mo.tensor<[10], ui32>) -> !mo.tensor<[10], ui32> no_inline {
+  %0 = mogg.kernel (%arg0) : (%arg1: !mo.tensor<[10], ui32>) -> !mo.tensor<[10], ui32>{
+    %5 = mogg.output_placeholders : !mo.tensor<[10], ui32>
+    mogg.lambda @input_0_fn = (%arg2: !mogg.indices) -> !mogg.simd<ui32>{
+      %6 = mogg.simd_load(%arg1, %arg2) : (!mo.tensor<[10], ui32>, !mogg.indices) -> !mogg.simd<ui32>
+      mogg.output %6 : !mogg.simd<ui32>
+    }
+    mogg.lambda @output_0_fn = (%arg2: !mogg.indices, %arg3: !mogg.simd<ui32>){
+      mogg.call "simd_store"(%5, %arg2, %arg3) : !mo.tensor<[10], ui32>, !mogg.indices, !mogg.simd<ui32>
+      mogg.output
+    }
+    mogg.lambda @elemwise_compute_lambda = (%arg2: !mogg.indices){
+      %6 = mogg.invoke @input_0_fn(%arg2) {readOnly = true} : !mogg.indices -> !mogg.simd<ui32>
+      %7 = mogg.call "mo.exp"(%6) : !mogg.simd<ui32> -> !mogg.simd<ui32>
+      mogg.invoke @output_0_fn(%arg2, %7) : !mogg.indices, !mogg.simd<ui32>
+      mogg.output
+    }
+    mogg.call "elementwise" [@elemwise_compute_lambda](%5) {single_thread_blocking_override = false} : !mo.tensor<[10], ui32>
+    mogg.output %5 : !mo.tensor<[10], ui32>
+  } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn"], outputFusionInterface = ["output_0_fn"]}
+  
+  
+  %1 = mogg.kernel (%0) : (%arg1: !mo.tensor<[10], ui32>) -> !mo.tensor<[10], ui32>{
+    %5 = mogg.output_placeholders : !mo.tensor<[10], ui32>
+    mogg.lambda @input_0_fn = (%arg2: !mogg.indices) -> !mogg.simd<ui32>{
+      %6 = mogg.simd_load(%arg1, %arg2) : (!mo.tensor<[10], ui32>, !mogg.indices) -> !mogg.simd<ui32>
+      mogg.output %6 : !mogg.simd<ui32>
+    }
+    mogg.lambda @output_0_fn = (%arg2: !mogg.indices, %arg3: !mogg.simd<ui32>){
+      mogg.call "simd_store"(%5, %arg2, %arg3) : !mo.tensor<[10], ui32>, !mogg.indices, !mogg.simd<ui32>
+      mogg.output
+    }
+    mogg.lambda @elemwise_compute_lambda = (%arg2: !mogg.indices){
+      %6 = mogg.invoke @input_0_fn(%arg2) {readOnly = true} : !mogg.indices -> !mogg.simd<ui32>
+      %7 = mogg.call "mo.relu"(%6) : !mogg.simd<ui32> -> !mogg.simd<ui32>
+      mogg.invoke @output_0_fn(%arg2, %7) : !mogg.indices, !mogg.simd<ui32>
+      mogg.output
+    }
+    mogg.call "elementwise" [@elemwise_compute_lambda](%5) {single_thread_blocking_override = false} : !mo.tensor<[10], ui32>
+    mogg.output %5 : !mo.tensor<[10], ui32>
+  } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn"], outputFusionInterface = ["output_0_fn"]}
+  
+  
+  %2 = mogg.kernel (%0) : (%arg1: !mo.tensor<[10], ui32>) -> !mo.tensor<[10], ui32>{
+    %5 = mogg.output_placeholders : !mo.tensor<[10], ui32>
+    mogg.lambda @output_0_fn = (%arg2: !mogg.indices, %arg3: !mogg.simd<ui32>){
+      mogg.call "simd_store"(%5, %arg2, %arg3) : !mo.tensor<[10], ui32>, !mogg.indices, !mogg.simd<ui32>
+      mogg.output
+    }
+    mogg.lambda @elemwise_compute_lambda = (%arg2: !mogg.indices){
+      %6 = mogg.simd_load(%arg1, %arg2) : (!mo.tensor<[10], ui32>, !mogg.indices) -> !mogg.simd<ui32>
+      %7 = mogg.call "mo.exp"(%6) : !mogg.simd<ui32> -> !mogg.simd<ui32>
+      mogg.invoke @output_0_fn(%arg2, %7) : !mogg.indices, !mogg.simd<ui32>
+      mogg.output
+    }
+    mogg.call "elementwise" [@elemwise_compute_lambda](%5) {single_thread_blocking_override = false} : !mo.tensor<[10], ui32>
+    mogg.output %5 : !mo.tensor<[10], ui32>
+  } {fusionBodyLambda = "elemwise_compute_lambda", outputFusionInterface = ["output_0_fn"]}
+  
+  
+  %3 = mogg.kernel (%1, %2) : (%arg1: !mo.tensor<[10], ui32>, %arg2: !mo.tensor<[10], ui32>) -> !mo.tensor<[10], ui32>{
+    %5 = mogg.output_placeholders : !mo.tensor<[10], ui32>
+    mogg.lambda @input_0_fn = (%arg3: !mogg.indices) -> !mogg.simd<ui32>{
+      %6 = mogg.simd_load(%arg1, %arg3) : (!mo.tensor<[10], ui32>, !mogg.indices) -> !mogg.simd<ui32>
+      mogg.output %6 : !mogg.simd<ui32>
+    }
+    mogg.lambda @input_1_fn = (%arg3: !mogg.indices) -> !mogg.simd<ui32>{
+      %6 = mogg.simd_load(%arg2, %arg3) : (!mo.tensor<[10], ui32>, !mogg.indices) -> !mogg.simd<ui32>
+      mogg.output %6 : !mogg.simd<ui32>
+    }
+    mogg.lambda @output_0_fn = (%arg3: !mogg.indices, %arg4: !mogg.simd<ui32>){
+      mogg.call "simd_store"(%5, %arg3, %arg4) : !mo.tensor<[10], ui32>, !mogg.indices, !mogg.simd<ui32>
+      mogg.output
+    }
+    mogg.lambda @elemwise_compute_lambda = (%arg3: !mogg.indices){
+      %6 = mogg.invoke @input_0_fn(%arg3) {readOnly = true} : !mogg.indices -> !mogg.simd<ui32>
+      %7 = mogg.invoke @input_1_fn(%arg3) {readOnly = true} : !mogg.indices -> !mogg.simd<ui32>
+      %8 = mogg.call "mo.mul"(%6, %7) : !mogg.simd<ui32>, !mogg.simd<ui32> -> !mogg.simd<ui32>
+      mogg.invoke @output_0_fn(%arg3, %8) : !mogg.indices, !mogg.simd<ui32>
+      mogg.output
+    }
+    mogg.call "elementwise" [@elemwise_compute_lambda](%5) {single_thread_blocking_override = false} : !mo.tensor<[10], ui32>
+    mogg.output %5 : !mo.tensor<[10], ui32>
+  } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn", "input_1_fn"], outputFusionInterface = ["output_0_fn"]}
+
+
+  %4 = mogg.kernel (%3) : (%arg1: !mo.tensor<[10], ui32>) -> !mo.tensor<[10], ui32>{
+    %5 = mogg.output_placeholders : !mo.tensor<[10], ui32>
+    mogg.lambda @input_0_fn = (%arg2: !mogg.indices) -> !mogg.simd<ui32>{
+      %6 = mogg.simd_load(%arg1, %arg2) : (!mo.tensor<[10], ui32>, !mogg.indices) -> !mogg.simd<ui32>
+      mogg.output %6 : !mogg.simd<ui32>
+    }
+    mogg.lambda @output_0_fn = (%arg2: !mogg.indices, %arg3: !mogg.simd<ui32>){
+      mogg.call "simd_store"(%5, %arg2, %arg3) : !mo.tensor<[10], ui32>, !mogg.indices, !mogg.simd<ui32>
+      mogg.output
+    }
+    mogg.lambda @elemwise_compute_lambda = (%arg2: !mogg.indices){
+      %6 = mogg.invoke @input_0_fn(%arg2) {readOnly = true} : !mogg.indices -> !mogg.simd<ui32>
+      %7 = mogg.call "mo.relu"(%6) : !mogg.simd<ui32> -> !mogg.simd<ui32>
+      mogg.invoke @output_0_fn(%arg2, %7) : !mogg.indices, !mogg.simd<ui32>
+      mogg.output
+    }
+    mogg.call "elementwise" [@elemwise_compute_lambda](%5) {single_thread_blocking_override = false} : !mo.tensor<[10], ui32>
+    mogg.output %5 : !mo.tensor<[10], ui32>
+  } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn"], outputFusionInterface = ["output_0_fn"]}
+  
+  mo.output %4 : !mo.tensor<[10], ui32>
+}
+
+// CHECK-LABEL: mo.graph @missingInputFusionInterface
+// CHECK: %[[OUT:.*]] = mogg.kernel
+// CHECK: mogg.lambda @elemwise_compute_lambda
+// CHECK-NEXT: mogg.invoke @input_0_fn
+// CHECK-NEXT: mogg.call "mo.exp"
+// CHECK-NEXT: mogg.invoke @output_0_fn
+// CHECK-NEXT: mogg.output
+
+// CHECK: mogg.kernel (%[[OUT]])
+// CHECK: mogg.lambda @elemwise_compute_lambda
+// CHECK-NEXT: mogg.invoke @input
+// CHECK-NEXT: mogg.call "mo.relu"
+// CHECK-NEXT: mogg.simd_load
+// CHECK-NEXT: mogg.call "mo.exp"
+// CHECK-NEXT: mogg.call "mo.mul"
+// CHECK-NEXT: mogg.call "mo.relu"
+// CHECK-NEXT: mogg.invoke @output_0_fn
+// CHECK-NEXT: mogg.output
+
