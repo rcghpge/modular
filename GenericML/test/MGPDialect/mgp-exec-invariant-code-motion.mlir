@@ -62,7 +62,7 @@ mgp.model @kgen_execute_kernel : mof init {
 // CHECK-NEXT:  %[[RES:.*]]:3 = "mop.kgen.execute_kernel"(%[[CH1]], %[[CTX]]) {kernelName = "matmul_pack_shape_func"} : (!mef.chain, !mgp.context) -> (!mef.chain, index, index)
 // CHECK-NEXT:  %[[PACKED_SPEC:.*]] = mgp.cpu.tensor_spec.create %[[RES]]#1, %[[RES]]#2 : !mgp.cpu.tensor_spec<?x?xf32>
 // CHECK-DAG:  %[[PACKED_BUF:.*]] = mgp.cpu.buffer.alloc.spec %[[CH1]], %[[PACKED_SPEC]], align 16 : !mgp.cpu.tensor_spec<?x?xf32>
-// CHECK-DAG:  %[[PACK_CH:.*]] = "mop.kernels.pack_matmul_b"(%[[CH1]], %[[CONST_BUF]], %[[CONST_SPEC]], %[[PACKED_BUF]], %[[PACKED_SPEC]]) {numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<16>, !mgp.cpu.tensor_spec<2x2xf32>, !mgp.cpu.buffer, !mgp.cpu.tensor_spec<?x?xf32>) -> !mef.chain
+// CHECK-DAG:  %[[PACK_CH:.*]] = "mop.kgen.execute_kernel"(%[[CH1]], %[[CONST_BUF]], %[[CONST_SPEC]], %[[PACKED_BUF]], %[[PACKED_SPEC]]) {kernelName = "pack_b_ndbuffer", numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<16>, !mgp.cpu.tensor_spec<2x2xf32>, !mgp.cpu.buffer, !mgp.cpu.tensor_spec<?x?xf32>) -> !mef.chain
 // Chain merge to preserve control dependencies
 // CHECK-DAG:  %[[BUF_ACTION_CH:.*]] = grt.chain.create (%[[PACK_CH]])
 // Buffer caching
@@ -82,7 +82,7 @@ mgp.model @kgen_execute_kernel : mof init {
 // CHECK-NEXT:  %[[ARG2_DIM0:.*]] = mgp.cpu.tensor_spec.dims.dynamic %[[ARG2_SPEC]] : !mgp.cpu.tensor_spec<?x2xf32>
 // CHECK-NEXT:  %[[OUT_SPEC:.*]] = mgp.cpu.tensor_spec.create %[[ARG2_DIM0]] : !mgp.cpu.tensor_spec<?x2xf32>
 // CHECK-NEXT:  %[[OUT_BUF:.*]] = mgp.cpu.buffer.alloc.spec %[[CH0]], %[[OUT_SPEC]], align 16 : !mgp.cpu.tensor_spec<?x2xf32>
-// CHECK-NEXT:  %[[CH2:.*]] = "mop.kernels.matmul_packb"(%[[CH0]], %[[ARG2_BUF]], %[[ARG2_SPEC]], %[[PACKED_BUF]], %[[PACKED_SPEC]], %[[OUT_BUF]], %[[OUT_SPEC]])
+// CHECK-NEXT:  %[[CH2:.*]] = "mop.kgen.execute_kernel"(%[[CH0]], %[[ARG2_BUF]], %[[ARG2_SPEC]], %[[PACKED_BUF]], %[[PACKED_SPEC]], %[[OUT_BUF]], %[[OUT_SPEC]]) {kernelName = "matmul", numBackOutputBuffers = 1 : ui32}
 // CHECK-SAME:    : (!mef.chain, !mgp.cpu.buffer, !mgp.cpu.tensor_spec<?x2xf32>, !mgp.cpu.buffer, !mgp.cpu.tensor_spec<?x?xf32>, !mgp.cpu.buffer, !mgp.cpu.tensor_spec<?x2xf32>) -> !mef.chain
 // CHECK-NEXT:  %[[OUT_TENSOR:.*]] = mgp.cpu.tensor.create %[[CH2]], %[[OUT_BUF]], %[[OUT_SPEC]]  : !mgp.cpu.tensor<?x2xf32>
 // CHECK-NEXT:  mef.output %[[CH0]], %[[OUT_TENSOR]] : !mef.chain, !mgp.cpu.tensor<?x2xf32>
@@ -101,13 +101,13 @@ mgp.model @matmul_packb : mof init {
   %res:3 = "mop.kgen.execute_kernel"(%ch0, %ctx) {kernelName = "matmul_pack_shape_func"} : (!mef.chain, !mgp.context) -> (!mef.chain, index, index)
   %packed_spec = mgp.cpu.tensor_spec.create %res#1, %res#2 : !mgp.cpu.tensor_spec<?x?xf32>
   %packed_buf = mgp.cpu.buffer.alloc.spec %ch0, %packed_spec, align 16 : !mgp.cpu.tensor_spec<?x?xf32>
-  %ch1 = "mop.kernels.pack_matmul_b"(%ch0, %const_buf, %const_spec, %packed_buf, %packed_spec) {numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<16>, !mgp.cpu.tensor_spec<2x2xf32>, !mgp.cpu.buffer, !mgp.cpu.tensor_spec<?x?xf32>) -> !mef.chain
+  %ch1 = "mop.kgen.execute_kernel"(%ch0, %const_buf, %const_spec, %packed_buf, %packed_spec) {kernelName = "pack_b_ndbuffer", numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<16>, !mgp.cpu.tensor_spec<2x2xf32>, !mgp.cpu.buffer, !mgp.cpu.tensor_spec<?x?xf32>) -> !mef.chain
 
   %arg2_buf, %arg2_spec = mgp.cpu.tensor.extract %arg2 : !mgp.cpu.tensor<?x2xf32>
   %arg2_dim0 = mgp.cpu.tensor_spec.dims.dynamic %arg2_spec : !mgp.cpu.tensor_spec<?x2xf32>
   %out_spec = mgp.cpu.tensor_spec.create %arg2_dim0 : !mgp.cpu.tensor_spec<?x2xf32>
   %out_buf = mgp.cpu.buffer.alloc.spec %ch1, %out_spec, align 16 : !mgp.cpu.tensor_spec<?x2xf32>
-  %ch2 = "mop.kernels.matmul_packb"(%ch1, %arg2_buf, %arg2_spec, %packed_buf, %packed_spec, %out_buf, %out_spec)
+  %ch2 = "mop.kgen.execute_kernel"(%ch1, %arg2_buf, %arg2_spec, %packed_buf, %packed_spec, %out_buf, %out_spec) {kernelName = "matmul", numBackOutputBuffers = 1 : ui32}
   : (!mef.chain, !mgp.cpu.buffer, !mgp.cpu.tensor_spec<?x2xf32>, !mgp.cpu.buffer, !mgp.cpu.tensor_spec<?x?xf32>, !mgp.cpu.buffer, !mgp.cpu.tensor_spec<?x2xf32>) -> !mef.chain
   %out_tensor = mgp.cpu.tensor.create %ch2, %out_buf, %out_spec  : !mgp.cpu.tensor<?x2xf32>
   mef.output %ch0, %out_tensor : !mef.chain, !mgp.cpu.tensor<?x2xf32>
@@ -174,7 +174,7 @@ mgp.model @non_pure_op : mof init {
 // CHECK-NEXT:   %[[WEIGHT_SPEC:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<64x3x7x7xf32>
 // CHECK-DAG:    %[[OUT_SPEC:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<7x7x3x64xf32>
 // CHECK-DAG:    %[[OUT_BUF:.*]] = mgp.cpu.buffer.alloc.static %[[CH0]], 37632, align 16
-// CHECK-DAG:    %[[TRANSPOSE_CH:.*]] = "mop.kernels.transpose"(%[[CH0]], %[[WEIGHT_BUF]], %[[WEIGHT_SPEC]], %[[PERM_BUF]], %[[PERM_SPEC]], %[[OUT_BUF]], %[[OUT_SPEC]]) {numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<37632>, !mgp.cpu.tensor_spec<64x3x7x7xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<4xsi64>, !mgp.cpu.buffer<37632>, !mgp.cpu.tensor_spec<7x7x3x64xf32>) -> !mef.chain
+// CHECK-DAG:    %[[TRANSPOSE_CH:.*]] = "mop.kgen.execute_kernel"(%[[CH0]], %[[WEIGHT_BUF]], %[[WEIGHT_SPEC]], %[[PERM_BUF]], %[[PERM_SPEC]], %[[OUT_BUF]], %[[OUT_SPEC]]) {kernelName = "transpose", numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<37632>, !mgp.cpu.tensor_spec<64x3x7x7xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<4xsi64>, !mgp.cpu.buffer<37632>, !mgp.cpu.tensor_spec<7x7x3x64xf32>) -> !mef.chain
 // Chain merge to preserve control dependencies
 // CHECK-DAG:    %[[BUF_ACTION_CH:.*]] = grt.chain.create (%[[TRANSPOSE_CH]])
 // Buffer caching
@@ -200,7 +200,7 @@ mgp.model @weight_transpose : mof init {
   %weight_spec = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<64x3x7x7xf32>
   %out_buf = mgp.cpu.buffer.alloc.static %ch0, 37632, align 16
   %out_spec = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<7x7x3x64xf32>
-  %out_ch = "mop.kernels.transpose"(%ch0, %weight_buf, %weight_spec, %perm_buf, %perm_spec, %out_buf, %out_spec) {numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<37632>, !mgp.cpu.tensor_spec<64x3x7x7xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<4xsi64>, !mgp.cpu.buffer<37632>, !mgp.cpu.tensor_spec<7x7x3x64xf32>) -> !mef.chain
+  %out_ch = "mop.kgen.execute_kernel"(%ch0, %weight_buf, %weight_spec, %perm_buf, %perm_spec, %out_buf, %out_spec) {kernelName = "transpose", numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<37632>, !mgp.cpu.tensor_spec<64x3x7x7xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<4xsi64>, !mgp.cpu.buffer<37632>, !mgp.cpu.tensor_spec<7x7x3x64xf32>) -> !mef.chain
   mef.output %out_ch, %out_buf : !mef.chain, !mgp.cpu.buffer<37632>
 }
 
@@ -252,12 +252,12 @@ mgp.model @dont_lift_if_no_computation_saved : mof init {
 //   transpose
 // CHECK-DAG:    %[[TRANSPOSE_BUF:.*]] = mgp.cpu.buffer.alloc.static %[[CH0]], 1600, align 16
 // CHECK-DAG:    %[[TRANSPOSE_SPEC:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<20x10xf32>
-// CHECK-DAG:    %[[TRANSPOSE_CH:.*]] = "mop.kernels.transpose"(%[[CH0]], %[[WEIGHT_BUF]], %[[WEIGHT_SPEC]], %[[PERM_BUF]], %[[PERM_SPEC]], %[[TRANSPOSE_BUF]], %[[TRANSPOSE_SPEC]]) {numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<1600>, !mgp.cpu.tensor_spec<10x20xf32>, !mgp.cpu.buffer<16>, !mgp.cpu.tensor_spec<2xsi64>, !mgp.cpu.buffer<1600>, !mgp.cpu.tensor_spec<20x10xf32>) -> !mef.chain
+// CHECK-DAG:    %[[TRANSPOSE_CH:.*]] = "mop.kgen.execute_kernel"(%[[CH0]], %[[WEIGHT_BUF]], %[[WEIGHT_SPEC]], %[[PERM_BUF]], %[[PERM_SPEC]], %[[TRANSPOSE_BUF]], %[[TRANSPOSE_SPEC]]) {kernelName = "transpose", numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<1600>, !mgp.cpu.tensor_spec<10x20xf32>, !mgp.cpu.buffer<16>, !mgp.cpu.tensor_spec<2xsi64>, !mgp.cpu.buffer<1600>, !mgp.cpu.tensor_spec<20x10xf32>) -> !mef.chain
 //   matmul weights packing
 // CHECK-DAG:    %[[RES:.*]]:3 = "mop.kgen.execute_kernel"(%[[CH0]], %[[CTX]]) {kernelName = "matmul_pack_shape_func"} : (!mef.chain, !mgp.context) -> (!mef.chain, index, index)
 // CHECK-DAG:    %[[PACK_SPEC:.*]] = mgp.cpu.tensor_spec.create %[[RES]]#1, %[[RES]]#2 : !mgp.cpu.tensor_spec<?x?xf32>
 // CHECK-DAG:    %[[PACK_BUF:.*]] = mgp.cpu.buffer.alloc.spec %[[CH0]], %[[PACK_SPEC]], align 16 : !mgp.cpu.tensor_spec<?x?xf32>
-// CHECK-DAG:    %[[PACK_CH:.*]] = "mop.kernels.pack_matmul_b"(%[[TRANSPOSE_CH]], %[[TRANSPOSE_BUF]], %[[TRANSPOSE_SPEC]], %[[PACK_BUF]], %[[PACK_SPEC]]) {numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<1600>, !mgp.cpu.tensor_spec<20x10xf32>, !mgp.cpu.buffer, !mgp.cpu.tensor_spec<?x?xf32>) -> !mef.chain
+// CHECK-DAG:    %[[PACK_CH:.*]] = "mop.kgen.execute_kernel"(%[[TRANSPOSE_CH]], %[[TRANSPOSE_BUF]], %[[TRANSPOSE_SPEC]], %[[PACK_BUF]], %[[PACK_SPEC]]) {kernelName = "pack_b_ndbuffer", numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<1600>, !mgp.cpu.tensor_spec<20x10xf32>, !mgp.cpu.buffer, !mgp.cpu.tensor_spec<?x?xf32>) -> !mef.chain
 // Chain merge to preserve control dependencies
 // CHECK-DAG:    %[[BUF_ACTION_CH:.*]] = grt.chain.create (%[[PACK_CH]])
 // Buffer caching (NOTE: transpose buffer isn't cache, since it's used inside init phase only)
@@ -288,13 +288,13 @@ mgp.model @intermediate_buffer : mof init {
   // transpose
   %transpose_buf = mgp.cpu.buffer.alloc.static %ch0, 1600, align 16
   %transpose_spec = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<20x10xf32>
-  %transpose_ch = "mop.kernels.transpose"(%ch0, %weight_buf, %weight_spec, %perm_buf, %perm_spec, %transpose_buf, %transpose_spec) {numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<1600>, !mgp.cpu.tensor_spec<10x20xf32>, !mgp.cpu.buffer<16>, !mgp.cpu.tensor_spec<2xsi64>, !mgp.cpu.buffer<1600>, !mgp.cpu.tensor_spec<20x10xf32>) -> !mef.chain
+  %transpose_ch = "mop.kgen.execute_kernel"(%ch0, %weight_buf, %weight_spec, %perm_buf, %perm_spec, %transpose_buf, %transpose_spec) {kernelName = "transpose", numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<1600>, !mgp.cpu.tensor_spec<10x20xf32>, !mgp.cpu.buffer<16>, !mgp.cpu.tensor_spec<2xsi64>, !mgp.cpu.buffer<1600>, !mgp.cpu.tensor_spec<20x10xf32>) -> !mef.chain
 
   // matmul weights packing
   %res:3 = "mop.kgen.execute_kernel"(%ch0, %ctx) {kernelName = "matmul_pack_shape_func"} : (!mef.chain, !mgp.context) -> (!mef.chain, index, index)
   %packed_spec = mgp.cpu.tensor_spec.create %res#1, %res#2 : !mgp.cpu.tensor_spec<?x?xf32>
   %packed_buf = mgp.cpu.buffer.alloc.spec %ch0, %packed_spec, align 16 : !mgp.cpu.tensor_spec<?x?xf32>
-  %packed_ch = "mop.kernels.pack_matmul_b"(%transpose_ch, %transpose_buf, %transpose_spec, %packed_buf, %packed_spec) {numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<1600>, !mgp.cpu.tensor_spec<20x10xf32>, !mgp.cpu.buffer, !mgp.cpu.tensor_spec<?x?xf32>) -> !mef.chain
+  %packed_ch = "mop.kgen.execute_kernel"(%transpose_ch, %transpose_buf, %transpose_spec, %packed_buf, %packed_spec) {kernelName = "pack_b_ndbuffer", numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<1600>, !mgp.cpu.tensor_spec<20x10xf32>, !mgp.cpu.buffer, !mgp.cpu.tensor_spec<?x?xf32>) -> !mef.chain
 
   mef.output %packed_ch, %packed_buf : !mef.chain, !mgp.cpu.buffer
 }
@@ -320,7 +320,7 @@ mgp.model @intermediate_buffer : mof init {
 //   transpose
 // CHECK-DAG:    %[[WEIGHT_T_BUF:.*]] = mgp.cpu.buffer.alloc.static %[[CH0]], 1600, align 16
 // CHECK-DAG:    %[[WEIGHT_T_SPEC:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<20x10xf32>
-// CHECK-DAG:    %[[WEIGHT_T_CH:.*]] = "mop.kernels.transpose"(%[[CH0]], %[[WEIGHT_BUF]], %[[WEIGHT_SPEC]], %[[PERM_BUF]], %[[PERM_SPEC]], %[[WEIGHT_T_BUF]], %[[WEIGHT_T_SPEC]]) {numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<1600>, !mgp.cpu.tensor_spec<10x20xf32>, !mgp.cpu.buffer<16>, !mgp.cpu.tensor_spec<2xsi64>, !mgp.cpu.buffer<1600>, !mgp.cpu.tensor_spec<20x10xf32>) -> !mef.chain
+// CHECK-DAG:    %[[WEIGHT_T_CH:.*]] = "mop.kgen.execute_kernel"(%[[CH0]], %[[WEIGHT_BUF]], %[[WEIGHT_SPEC]], %[[PERM_BUF]], %[[PERM_SPEC]], %[[WEIGHT_T_BUF]], %[[WEIGHT_T_SPEC]]) {kernelName = "transpose", numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<1600>, !mgp.cpu.tensor_spec<10x20xf32>, !mgp.cpu.buffer<16>, !mgp.cpu.tensor_spec<2xsi64>, !mgp.cpu.buffer<1600>, !mgp.cpu.tensor_spec<20x10xf32>) -> !mef.chain
 // Chain merge to preserve control dependencies
 // CHECK-DAG:    %[[BUF_ACTION_CH:.*]] = grt.chain.create (%[[WEIGHT_T_CH]])
 // Buffer caching
@@ -340,7 +340,7 @@ mgp.model @intermediate_buffer : mof init {
 // Note that all references to lifted chain got updated to input chain
 // CHECK-NEXT:   %[[ARG_T_SPEC:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<2x1xf32>
 // CHECK-NEXT:   %[[ARG_T_BUF:.*]] = mgp.cpu.buffer.alloc.static %[[CH0]], 8, align 16
-// CHECK-NEXT:   %[[ARG_T_CH:.*]] = "mop.kernels.transpose"(%[[CH0]], %[[ARG_BUF]], %[[ARG_SPEC]], %[[PERM_BUF]], %[[PERM_SPEC]], %[[ARG_T_BUF]], %[[ARG_T_SPEC]]) {numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<8>, !mgp.cpu.tensor_spec<1x2xf32>, !mgp.cpu.buffer<16>, !mgp.cpu.tensor_spec<2xsi64>, !mgp.cpu.buffer<8>, !mgp.cpu.tensor_spec<2x1xf32>) -> !mef.chain
+// CHECK-NEXT:   %[[ARG_T_CH:.*]] = "mop.kgen.execute_kernel"(%[[CH0]], %[[ARG_BUF]], %[[ARG_SPEC]], %[[PERM_BUF]], %[[PERM_SPEC]], %[[ARG_T_BUF]], %[[ARG_T_SPEC]]) {kernelName = "transpose", numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<8>, !mgp.cpu.tensor_spec<1x2xf32>, !mgp.cpu.buffer<16>, !mgp.cpu.tensor_spec<2xsi64>, !mgp.cpu.buffer<8>, !mgp.cpu.tensor_spec<2x1xf32>) -> !mef.chain
 // Final output
 // CHECK-NEXT: %[[OUT_CH:.*]] = grt.chain.create (%[[CH0]], %[[ARG_T_CH]])
 // CHECK-NEXT: mef.output %[[OUT_CH]], %[[WEIGHT_T_BUF]], %[[ARG_T_BUF]] : !mef.chain, !mgp.cpu.buffer<1600>, !mgp.cpu.buffer<8>
@@ -364,12 +364,12 @@ mgp.model @constant_buffer_used_in_both_init_and_exec : mof init {
   // constant weight transpose
   %weight_t_buf = mgp.cpu.buffer.alloc.static %ch0, 1600, align 16
   %weight_t_spec = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<20x10xf32>
-  %weight_t_ch = "mop.kernels.transpose"(%ch0, %weight_buf, %weight_spec, %perm_buf, %perm_spec, %weight_t_buf, %weight_t_spec) {numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<1600>, !mgp.cpu.tensor_spec<10x20xf32>, !mgp.cpu.buffer<16>, !mgp.cpu.tensor_spec<2xsi64>, !mgp.cpu.buffer<1600>, !mgp.cpu.tensor_spec<20x10xf32>) -> !mef.chain
+  %weight_t_ch = "mop.kgen.execute_kernel"(%ch0, %weight_buf, %weight_spec, %perm_buf, %perm_spec, %weight_t_buf, %weight_t_spec) {kernelName = "transpose", numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<1600>, !mgp.cpu.tensor_spec<10x20xf32>, !mgp.cpu.buffer<16>, !mgp.cpu.tensor_spec<2xsi64>, !mgp.cpu.buffer<1600>, !mgp.cpu.tensor_spec<20x10xf32>) -> !mef.chain
 
   // non-constant arg transpose
   %arg_t_spec = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<2x1xf32>
   %arg_t_buf = mgp.cpu.buffer.alloc.static %ch0, 8, align 16
-  %arg_t_ch = "mop.kernels.transpose"(%ch0, %arg_buf, %arg_spec, %perm_buf, %perm_spec, %arg_t_buf, %arg_t_spec) {numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<8>, !mgp.cpu.tensor_spec<1x2xf32>, !mgp.cpu.buffer<16>, !mgp.cpu.tensor_spec<2xsi64>, !mgp.cpu.buffer<8>, !mgp.cpu.tensor_spec<2x1xf32>) -> !mef.chain
+  %arg_t_ch = "mop.kgen.execute_kernel"(%ch0, %arg_buf, %arg_spec, %perm_buf, %perm_spec, %arg_t_buf, %arg_t_spec) {kernelName = "transpose", numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<8>, !mgp.cpu.tensor_spec<1x2xf32>, !mgp.cpu.buffer<16>, !mgp.cpu.tensor_spec<2xsi64>, !mgp.cpu.buffer<8>, !mgp.cpu.tensor_spec<2x1xf32>) -> !mef.chain
 
   %out_ch = grt.chain.create (%weight_t_ch, %arg_t_ch)
   mef.output %out_ch, %weight_t_buf, %arg_t_buf : !mef.chain, !mgp.cpu.buffer<1600>, !mgp.cpu.buffer<8>

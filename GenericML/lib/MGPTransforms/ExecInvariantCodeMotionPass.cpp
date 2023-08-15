@@ -117,8 +117,8 @@ class ExecInvariantCodeMotionPass
         CpuTensorSpecCreateOp::getOperationName(),
     };
     // We allow jit kernels to be recomputed under the condition that they
-    // return an index. Normally they will just return a chain so anything
-    // returning more than that is allocating indices as well.
+    // return indices (jitted shape functions). Normally they will just return a
+    // chain so anything returning more than that is allocating indices as well.
     if (op->getName().getStringRef() == "mop.kgen.execute_kernel" &&
         op->getNumResults() > 1 &&
         llvm::all_of(op->getResultTypes(), [](Type ty) {
@@ -136,9 +136,6 @@ class ExecInvariantCodeMotionPass
     // TODO(#12221) remove hard-coded set once `mop` ops are registered.
     // TODO(#12270) find a better model for the properties to inspect here
     static llvm::SmallDenseSet<StringRef> unregisteredPureOps{
-        "mop.kernels.pack_matmul_b",
-        "mop.kernels.pack_matmul_b.transp_b",
-        "mop.kernels.transpose",
         "mop.kgen.execute_kernel",
         CpuBufferAllocSpecOp::getOperationName(),
         CpuBufferAllocStaticOp::getOperationName(),
