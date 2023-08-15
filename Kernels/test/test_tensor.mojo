@@ -5,7 +5,6 @@
 # ===----------------------------------------------------------------------=== #
 # RUN: %mojo %s | FileCheck %s
 
-from DType import DType
 from Index import Index
 from Index import StaticIntTuple, Index
 from IO import print

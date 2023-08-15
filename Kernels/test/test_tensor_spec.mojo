@@ -6,7 +6,6 @@
 # RUN: %mojo -debug-level full %s | FileCheck %s
 
 from IO import print
-from DType import DType
 from Tensor import TensorSpec, TensorShape
 
 
