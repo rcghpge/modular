@@ -407,4 +407,36 @@ def ReallocBuffersPass : Pass<"realloc-buffers", "MGP::ModelOp"> {
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// PredicateAssertDependencies
+//===----------------------------------------------------------------------===//
+
+def PredicateAssertDependenciesPass : Pass<"predicate-asserts-deps", "MGP::ModelOp"> {
+  let summary = "Predicates the execution of operations that directly or "
+                "indirectly depend the result of an assert operation.";
+  let description = [{
+    For each block in the IR, any operation that takes in a chain and uses a
+    value that contributed to at least one assert will have to depend on the
+    chains of those asserts.
+
+    Before
+    ------
+    %0 = some_op
+    %1 = mgp.assert %0
+    some_user %ch, %0
+
+    After
+    ------
+    %0 = some_op
+    %1 = mgp.assert %0
+    %ch2 = grt.chain.create %ch, %1
+    some_user %ch2, %0
+
+    Operations that do not take in a chain will ignore asserts meaning they no
+    additional dependency is inserted. The result of those operations could
+    still be dependent on the assert which would be invalid if the assertion
+    fails.
+  }];
+}
+
 #endif // GENERICML_MGPDIALECT_MGPTRANSFORMS_TD

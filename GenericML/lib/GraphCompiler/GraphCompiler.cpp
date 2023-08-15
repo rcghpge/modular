@@ -180,6 +180,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   }
 
   pm.addPass(MGP::createMOToPrimitives(moToPrimOpts));
+  pm.addPass(MGP::createPredicateAssertDependenciesPass());
 
   if (opts.cacheBuffersAcrossExecutes)
     pm.addPass(MGP::createReallocBuffersPass());
