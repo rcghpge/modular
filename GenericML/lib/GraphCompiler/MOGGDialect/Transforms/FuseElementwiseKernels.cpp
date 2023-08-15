@@ -150,13 +150,17 @@ void ElementwiseGraph::buildGraph(MOGG::KernelOp start) {
         unsigned index = operand.getOperandNumber();
 
         // We have to check that the kernel can accept a fusion on this operand.
-        if (!isKernel.getInputFusionInterfaceAttr())
+        if (!isKernel.getInputFusionInterfaceAttr()) {
+          leaves.insert(op);
           continue;
+        }
 
         auto str =
             cast<StringAttr>(isKernel.getInputFusionInterfaceAttr()[index]);
-        if (str == "")
+        if (str == "") {
+          leaves.insert(op);
           continue;
+        }
 
         // If it can then add it to the graph.
         process(op, isKernel, leaves);
@@ -434,8 +438,6 @@ struct FuseElementwisePass
 
         if (otherLambdaLoad)
           oldNameToNew[otherLambdaLoad.getSymName()] = leafName;
-        else
-          leaf.setInputFusionInterface(leaf.getNumOperands() - 1, "");
       } else {
         // Add the new operand to the kernel + body.
         Value leafBlockArg = leaf.addOperand(otherOperand);

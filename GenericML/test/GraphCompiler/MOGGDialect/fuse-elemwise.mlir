@@ -398,3 +398,34 @@ mo.graph @missingInputFusionInterface(%arg0: !mo.tensor<[10], ui32>) -> !mo.tens
 // CHECK-NEXT: mogg.invoke @output_0_fn
 // CHECK-NEXT: mogg.output
 
+
+// Check the broadcast at the end doesn't mess with the fusion graph identification.
+mo.graph @with_bcasts(%arg0 : !mo.tensor<[], si32>) -> !mo.tensor<[500, 5, 4], si32>  {
+  %0 = mo.constant {value = #M.dense_array<1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20> : tensor<20xsi32>} : !mo.tensor<[4, 5], si32>
+  %perm = mo.constant {value = #M.dense_array<1, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+  %trans = mo.transpose(%0, %perm) : (!mo.tensor<[4, 5], si32>, !mo.tensor<[2], si64>) -> !mo.tensor<[5, 4], si32>
+  %bcast = mo.static.broadcast_to(%arg0) : !mo.tensor<[], si32> -> !mo.tensor<[5, 4], si32>
+  %add = mo.add(%bcast, %trans) : !mo.tensor<[5, 4], si32>
+  %relu = mo.relu(%add) : !mo.tensor<[5, 4], si32>
+  %mul = mo.mul(%relu, %relu) : !mo.tensor<[5, 4], si32>
+  %B = mo.static.broadcast_to(%mul) : !mo.tensor<[5, 4], si32> -> !mo.tensor<[500, 5, 4], si32>
+  mo.output %B : !mo.tensor<[500, 5, 4], si32>
+}
+
+// CHECK-LABEL: mo.graph @with_bcasts
+
+// CHECK: mogg.kernel
+// CHECK: mogg.call "mo.transpose"
+// CHECK: mogg.kernel
+// CHECK: mogg.call "mo.static.broadcast_to"
+
+// CHECK: mogg.kernel
+// CHECK: mogg.lambda @elemwise_compute_lambda
+// CHECK-NEXT: mogg.invoke @input_0_fn
+// CHECK-NEXT: mogg.invoke @input_1_fn
+// CHECK-NEXT: mogg.call "mo.add"
+// CHECK-NEXT: mogg.call "mo.relu"
+// CHECK-NEXT: mogg.call "mo.mul"
+
+// CHECK: mogg.kernel
+// CHECK: mogg.call "mo.static.broadcast_to"
