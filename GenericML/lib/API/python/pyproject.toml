@@ -25,9 +25,20 @@ build = "cp{38,39,310,311}-manylinux*"
 build-frontend = "build"
 environment-pass = [
   "AWS_ACCESS_KEY_ID",
-  "AWS_SECRET_ACCESS_KEY",
   "AWS_DEFAULT_REGION",
-  "CI", # so we don't set `AWS_PROFILE` in `start-modular.sh`
+  "AWS_REGION",
+  "AWS_SECRET_ACCESS_KEY",
+  "CI",
+  "SCCACHE_BUCKET",
+  "SCCACHE_CACHE_SIZE",
+  "SCCACHE_C_CUSTOM_CACHE_BUSTER",
+  "SCCACHE_DIR",
+  "SCCACHE_GHA_ENABLED",
+  "SCCACHE_IDLE_TIMEOUT",
+  "SCCACHE_LOG",
+  "SCCACHE_PATH",
+  "SCCACHE_REGION",
+  "SCCACHE_S3_KEY_PREFIX",
 ]
 manylinux-x86_64-image = "ghcr.io/modularml/modular/ai-engine-packaging-x86_64:main"
 manylinux-aarch64-image = "ghcr.io/modularml/modular/ai-engine-packaging-aarch64:main"
