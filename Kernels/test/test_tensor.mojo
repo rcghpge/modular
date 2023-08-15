@@ -11,7 +11,7 @@ from IO import print
 from math import sqrt
 from Random import rand, seed
 from Range import range
-from Tensor import Tensor, TensorShape
+from tensor import Tensor, TensorShape
 
 
 # CHECK: test_tensor

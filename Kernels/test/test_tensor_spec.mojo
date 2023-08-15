@@ -6,7 +6,7 @@
 # RUN: %mojo -debug-level full %s | FileCheck %s
 
 from IO import print
-from Tensor import TensorSpec, TensorShape
+from tensor import TensorSpec, TensorShape
 
 
 # CHECK: test_tensor_shape
