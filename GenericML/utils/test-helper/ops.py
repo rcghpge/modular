@@ -59,7 +59,7 @@ class NumpyImpl:
         return to_return
 
     def sum(self, x, axis):
-        return np.sum(x, axis=axis[0], keepdims=True)
+        return np.sum(x, axis=axis, keepdims=True)
 
     def max(self, x, y):
         return np.maximum(x, y)
@@ -95,4 +95,4 @@ class TFImpl:
         return tf.math.maximum(x, y)
 
     def gather(self, x, indices, axis):
-        return tf.gather(x, indices, axis)
+        return tf.gather(x, indices, axis=axis)

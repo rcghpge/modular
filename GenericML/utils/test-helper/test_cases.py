@@ -246,8 +246,9 @@ class TransposeReduce(TestBase):
 
     @staticmethod
     def run(inputs, impl):
+        reduce_axis = impl.reshape(inputs[1], shape=())
         trans = impl.transpose(inputs[0], inputs[2])
-        return impl.sum(trans, inputs[1])
+        return impl.sum(trans, reduce_axis)
 
 
 class GatherReduceConstAxis(TestBase):
@@ -274,6 +275,99 @@ class GatherReduceConstAxis(TestBase):
 
     @staticmethod
     def run(inputs, impl):
-        reduce_axis = impl.constant((1,))
+        reduce_axis = impl.reshape(impl.constant((1,)), shape=())
         gathered = impl.gather(inputs[0], inputs[1], 0)
         return impl.sum(gathered, reduce_axis)
+
+
+class GatherReduceDynamicAxes(TestBase):
+    @staticmethod
+    def num_runs():
+        return 100
+
+    @staticmethod
+    def input_sizes_to_test():
+        return [
+            ([30, 20], [10, 20], [1], [1]),
+        ]
+
+    @staticmethod
+    def get_input_specs():
+        return [
+            ((None, None), np.float32),
+            ((None, None), np.int32),
+            ((1,), np.int32),
+            ((1,), np.int32),
+        ]
+
+    @staticmethod
+    def generate_inputs(shapes):
+        gather_axis = np.random.randint(
+            -len(shapes[0]), len(shapes[0]), size=(1,)
+        ).astype(np.int32)
+
+        # Gather can increase the number of dimensions
+        num_dims = len(shapes[0]) + len(shapes[1]) - 1
+        reduce_axis = np.random.randint(-num_dims, num_dims, size=(1,)).astype(
+            np.int32
+        )
+        return [
+            # Use randint for input to avoid fp tolerance issues
+            np.random.randint(-5, 5, size=shapes[0]).astype(np.float32),
+            np.random.randint(
+                0, shapes[0][gather_axis[0]], size=shapes[1]
+            ).astype(np.int32),
+            gather_axis,
+            reduce_axis,
+        ]
+
+    @staticmethod
+    def run(inputs, impl):
+        gather_axis = impl.reshape(inputs[-2], shape=())
+        reduce_axis = impl.reshape(inputs[-1], shape=())
+        gathered = impl.gather(inputs[0], inputs[1], gather_axis)
+        return impl.sum(gathered, reduce_axis)
+
+
+class GatherOfGathers(TestBase):
+    @staticmethod
+    def input_sizes_to_test():
+        # 1st array to gather from, 2nd first indices to gather, then indices to gather from that.. and so on. Last input is the axis
+        return [
+            ([300, 100], [50], [25], [10], [1], [1]),
+        ]
+
+    @staticmethod
+    def get_input_specs():
+        return [
+            ((None, None), np.float32),
+            ((50,), np.int32),
+            ((25,), np.int32),
+            ((10,), np.int32),
+            ((1,), np.int32),
+            ((1,), np.int32),
+        ]
+
+    @staticmethod
+    def generate_inputs(shapes):
+        axis = np.random.randint(
+            -len(shapes[0]), len(shapes[0]), size=(1,)
+        ).astype(np.int32)
+        return [
+            np.random.randint(-1000, 1000, size=shapes[0]).astype(np.float32),
+            np.random.randint(0, shapes[0][axis[0]], size=shapes[1]).astype(
+                np.int32
+            ),
+            np.random.randint(0, shapes[1][0], size=shapes[2]).astype(np.int32),
+            np.random.randint(0, shapes[2][0], size=shapes[3]).astype(np.int32),
+            np.random.randint(0, shapes[3][0], size=shapes[4]).astype(np.int32),
+            axis,
+        ]
+
+    @staticmethod
+    def run(inputs, impl):
+        axis = impl.reshape(inputs[-1], shape=())
+        g_1 = impl.gather(inputs[0], inputs[1], axis)
+        g_2 = impl.gather(g_1, inputs[2], axis)
+        g_3 = impl.gather(g_2, inputs[3], axis)
+        return impl.gather(g_3, inputs[4], axis)
