@@ -11,7 +11,6 @@ from IO import print
 from math import sqrt
 from Random import rand, seed
 from Range import range
-from SIMD import Float64, Float32
 from Tensor import Tensor, TensorShape
 
 
