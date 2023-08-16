@@ -269,6 +269,10 @@ struct FuseElementwisePass
         // %2 = op(%0, %1)
         // We don't want to have multiple copies of %0 fused in.
 
+        // Skip any node which exposes no interface op
+        if (!leaf.getInputFusionInterface())
+          continue;
+
         DenseMap<Value, Value> alreadyFused;
 
         // On each leaf in the graph we will continuously fuse until nothing is

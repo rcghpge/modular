@@ -41,6 +41,10 @@ bool kernelHasInputParameter(MOGG::MojoRegisterOp opRegister,
 bool kernelIsElementwise(MOGG::MojoRegisterOp opRegister, ModuleOp kgenModule,
                          StringRef moOpName);
 
+// Returns true if the kernel is expecting to take indices as last arg.
+bool kernelTakesIndices(MOGG::MojoRegisterOp opRegister, ModuleOp kgenModule,
+                        StringRef moOpName);
+
 // Returns true if the kernel is a view operation.
 bool kernelIsViewOp(MOGG::MojoRegisterOp opRegister, ModuleOp kgenModule,
                     StringRef moOpName);
