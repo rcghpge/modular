@@ -21,7 +21,7 @@ config.test_source_root = os.path.dirname(__file__)
 
 # test_exec_root: The root path where tests should be run.
 config.test_exec_root = os.path.join(
-    config.modular_obj_root, "GenericML", "integration_test"
+    config.modular_obj_root, "GenericML", "integration-test"
 )
 
 tool_dirs = [

@@ -48,10 +48,10 @@ skip = ["cp36-* cp37-*, *-manylinux_i686", "*-musllinux*"]
 # in case the testing requirements change over time vs. the minimum of what the Python wheel
 # itself requires (numpy) in addition to the implicitly-installed `pytest` package inside the
 # `cibuildwheel` testing environment.
-before-test = "pip install -r {project}/TensorFlow/integration_tests/API/python/pytests/requirements.txt"
+before-test = "pip install -r {project}/TensorFlow/integration-test/API/python/pytests/requirements.txt"
 
 # These tests use generated models from `MODULAR_DERIVED_PATH` and require this environment variable to be set
-test-command = "MODULAR_DERIVED_PATH={project}/.derived pytest {project}/TensorFlow/integration_tests/API/python/pytests"
+test-command = "MODULAR_DERIVED_PATH={project}/.derived pytest {project}/TensorFlow/integration-test/API/python/pytests"
 
 [tool.cibuildwheel.linux]
 # TODO(#11188): Enable `auditwheel`.
