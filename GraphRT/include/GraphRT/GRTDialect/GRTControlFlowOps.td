@@ -186,12 +186,12 @@ def WhileOp : GRTOp<"while",
     side-effecting condition code. In particular, it is possible to thread a
     chain through all 'cond' and 'body' block execution.
 
-    This operation is 'nonstrict'. The 'cond' block is merged into the overall
-    dataflow graph without waiting for any arguments to become ready. When its
-    condition result is true, the 'body' block is similarly merged into the
-    overall dataflow graph, followed by the 'cond' for the next iteration. In
-    this way the 'cond' block may control how much asynchrony is permitted in
-    the loop.
+    Though this operation is 'nonstrict' on its inputs, execution waits
+    for all results of the 'cond' and 'body' blocks to be ready before
+    proceeding (either from the 'cond' to the 'body' block, or going around
+    the loop again). This ensures we cannot have an unbounded number of
+    sub-tasks launched by a while loop, and greatly simplifies asynchronous
+    dataflow analysis.
 
     Example:
 
@@ -252,12 +252,11 @@ def RepeatI32Op : GRTOp<"repeat.i32",
     executed 'body' block, or the "grt.repeat.i32" signature arguments directly
     if 'tripCount' is <= 0.
 
-    This operation is 'nonstrict'. Once the 'tripCount' operand is ready and
-    > 0 then the 'body' block is merged into the overall dataflow graph.
-    However, each subsequent execution of the 'body' block is only merged
-    once all results of the previous iteration are ready. (This is a policy
-    decision to avoid unrolling the loop body into a potentially very large
-    dataflow graph.)
+    Though this operation is 'nonstrict' on its inputs, execution waits
+    for all results of the 'body' block to be ready before proceeding with
+    the next loop iteration. This ensures we cannot have an unbounded number
+    of sub-tasks launched by a repeat loop, and greatly simplifies asynchronous
+    dataflow analysis.
 
     Example:
 

@@ -392,7 +392,6 @@ static ErrorOr<SmallVector<AnyAsyncValueRef>>
 executeModelSynchronously(Runtime &runtime, ExecutableModel &executableModel,
                           MutableArrayRef<AnyAsyncValueRef> args,
                           bool checkResults) {
-  checkKnownCallingThread(runtime);
 #if MODULAR_PARANOID
   // Create an abstract 'resource' to represent this execution.
   auto resource = LLCL::Resource::allocate(

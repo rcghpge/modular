@@ -179,40 +179,35 @@ static void grt_while(RemainingArguments args, RemainingResults results,
         std::move(whileResult).resolveIndirect(std::move(currentOperand));
     }
 
-    /// Returns a copy of currentOperands. An invokable is free to take its
-    /// arguments, so we peel off a copy before each call to the 'cond' or
-    /// 'body' invokables.
-    SmallVector<AnyAsyncValueRef> getCurrentOperandsCopy() {
-      SmallVector<AnyAsyncValueRef> result;
-      result.reserve(currentOperands.size());
-      for (const auto &operand : currentOperands)
-        result.emplace_back(operand.copy());
-      return result;
-    }
-
     /// Evaluate the 'cond' block to decide if we need to execute the 'body'
     /// block (again).
     void evalCond() && {
-      // Start executing the 'cond' block, copying the current operands since
-      // they may be needed by the 'body' block.
-      SmallVector<AnyAsyncValueRef> operands = getCurrentOperandsCopy();
-      SmallVector<AnyAsyncValueRef, 1> condResults;
+      // Start executing the 'cond' block, consuming the current operands.
+      SmallVector<AnyAsyncValueRef> condResults;
       condResults.resize(whileResults.size() + 1);
-      condInvokable->invoke(operands, condResults, runtime);
+      condInvokable->invoke(currentOperands, condResults, runtime);
 
-      // The 'cond' block results (except the last condition result) are the
-      // new current operands (though they need not be ready yet).
-      for (auto [currentOperand, bodyResult] :
-           llvm::zip(currentOperands, llvm::drop_end(condResults)))
-        currentOperand = std::move(bodyResult);
-
-      // Wait for the last condition result of the 'cond' block to be ready.
-      std::move(condResults.back())
-          .andThenSync([state = std::move(*this)](
-                           AnyAsyncValueRef &&condResult) mutable {
+      // When all the results of the 'cond' block complete, look at the
+      // condition to decide if we should proceed to the 'body'. We could
+      // just wait for the condition only, which would increase parallelism,
+      // but that means we can have an unbounded number of sub-tasks and
+      // greatly complicated async dataflow analysis.
+      andThenSyncMoving(
+          condResults,
+          [state = std::move(*this)](
+              MutableArrayRef<AnyAsyncValueRef> condResults) mutable {
             // If the execution is canceled, give up.
             if (AsyncValue *cancelValue = state.runtime.getCancelValue())
               return std::move(state).fail(copyRCRef(cancelValue));
+
+            // The 'cond' block results (except the last condition result) are
+            // the new current operands.
+            for (auto [currentOperand, condResult] :
+                 llvm::zip(state.currentOperands, llvm::drop_end(condResults)))
+              currentOperand = std::move(condResult);
+
+            AnyAsyncValueRef condResult = std::move(condResults.back());
+
             // If the condition yielded an error, give up.
             if (condResult.isError())
               return std::move(state).fail(std::move(condResult));
@@ -234,16 +229,28 @@ static void grt_while(RemainingArguments args, RemainingResults results,
       bodyResults.resize(whileResults.size());
       bodyInvokable->invoke(currentOperands, bodyResults, runtime);
 
-      // The 'body' block results are the new current operands (though they
-      // need not be ready yet).
-      for (auto [currentOperand, bodyResult] :
-           llvm::zip(currentOperands, bodyResults))
-        currentOperand = std::move(bodyResult);
+      // When all results of the 'body' block are ready, go around again
+      // with the 'cond' block. We could directly proceed with the 'cond' block
+      // without waiting for results, but that greatly complicates async
+      // dataflow analysis.
+      andThenSyncMoving(
+          bodyResults,
+          [state = std::move(*this)](
+              MutableArrayRef<AnyAsyncValueRef> bodyResults) mutable {
+            // If the execution is canceled, give up.
+            if (AsyncValue *cancelValue = state.runtime.getCancelValue())
+              return std::move(state).fail(copyRCRef(cancelValue));
 
-      // And we'll need to go around again to eval the condition.
-      // Note that we don't andThenSync on the body results, and instead just
-      // let the 'cond' block control execution.
-      std::move(*this).evalCond();
+            // The 'body' block results are the new current operands.
+            for (auto [currentOperand, bodyResult] :
+                 llvm::zip(state.currentOperands, bodyResults))
+              currentOperand = std::move(bodyResult);
+
+            // And we'll need to go around again to eval the condition.
+            addTask(state.runtime, [state = std::move(state)]() mutable {
+              std::move(state).evalCond();
+            });
+          });
     }
   };
 
@@ -263,16 +270,16 @@ static void grt_while(RemainingArguments args, RemainingResults results,
 /// "Repeat N times" loop.  This takes a single int32_T iteration count, plus
 /// arguments that are passed to the body and eventually returned.
 ///
-/// This takes the count as an AsyncValue because this is a nonstrict primitive,
-/// and the count may not be available yet.
+/// This takes the count as an AsyncValue because this is a nonstrict
+/// primitive, and the count may not be available yet.
 static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
                        RemainingResults results, MEFInvokable *body,
                        Runtime &runtime) {
   assert(args.size() == results.size() && args.size() == body->getNumArgs() &&
          results.size() == body->getNumResults());
 
-  // Define results as IndirectAsync values.  The actual results are set in the
-  // last iteration of the loop.
+  // Define results as IndirectAsync values.  The actual results are set in
+  // the last iteration of the loop.
   results.allocateIndirectResults();
 
   /// Capture and add-ref each argument and result AsyncValue into a state we
@@ -299,10 +306,10 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
         std::move(repeatResult).resolveIndirect(std::move(currentOperand));
     }
 
-    /// This method is invoked when the AsyncValue for count resolves.  The rest
-    /// of the operands may still be unavailable, but repeatResults are filled
-    /// in with the IndirectAsyncValue results returned from the repeat loop
-    /// overall.
+    /// This method is invoked when the AsyncValue for count resolves.  The
+    /// rest of the operands may still be unavailable, but repeatResults are
+    /// filled in with the IndirectAsyncValue results returned from the repeat
+    /// loop overall.
     void runWhenCountResolves(AsyncValueRef<int32_t> &&count) && {
       // If we have an error, then we can force propagate errors to all the
       // results.
@@ -337,10 +344,10 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
       bodyResults.resize(repeatResults.size());
       bodyInvokable->invoke(currentOperands, bodyResults, runtime);
 
-      // When all the results of the previous computation complete, kick off the
-      // next iteration.  Note that this is a policy decision - we could just
-      // "unroll the loop" completely, which would increase parallelism.  This
-      // is conservatively correct though.
+      // When all the results of the previous computation complete, kick off
+      // the next iteration. We could just "unroll the loop" completely, which
+      // would increase parallelism, but that means we can have an unbounded
+      // number of sub-tasks and greatly complicated async dataflow analysis.
       andThenSyncMoving(
           bodyResults, [state = std::move(*this)](
                            MutableArrayRef<AnyAsyncValueRef> values) mutable {
