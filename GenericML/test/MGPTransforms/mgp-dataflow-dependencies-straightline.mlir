@@ -54,9 +54,11 @@
 // CHECK-NEXT: %5 |-> {%0[0], %arg0, %0, %1, %2, %3, %4}
 // CHECK-NEXT: impliesReady end
 
-// Nothing is structurally disjoint since no control flow
-// CHECK: structurallyDisjoint begin
-// CHECK-NEXT: structurallyDisjoint end
+// No control flow so nothing in these relations.
+// CHECK: structurallyAtMostOne begin
+// CHECK-NEXT: structurallyAtMostOne end
+// CHECK: structurallyCannotOverlapRelation begin
+// CHECK-NEXT: structurallyCannotOverlapRelation end
 
 // runsLater for which ops (identified by their result values) run after which
 // CHECK: runsLater begin
@@ -145,7 +147,7 @@ mgp.model @simple : mof init {
 // Spot check exclusive. Note that %5 -> {%7, %13}, and %16 is the earliest
 // point which implies both %7 and %13 are ready.
 // CHECK: exclusive begin
-// CHECK: %5 |-> {%16, %17, %18#0, %18#1, %22, %23}
+// CHECK: %5 |-> {%17, %18#0, %18#1, %22, %23}
 // CHECK: exclusive end
 
 mgp.model @straightline : mof init {
@@ -204,9 +206,9 @@ mgp.model @straightline : mof init {
 // CHECK-NEXT:}) {frameworkName = "mof", inputOutputTypes = () -> !mgp.cpu.tensor<6xsi8>, sym_name = "safe_split_borrow"} : () -> ()
 
 // CHECK: maybeSameAs begin
-// Note %2#* is considered maybe the same as %0.
-// CHECK: %2#0 |-> {%0[0], %arg0, %0}
-// CHECK: %2#1 |-> {%0[0], %arg0, %0}
+// Note %2#1 is considered maybe the same as %0.
+// CHECK: %2#0 |-> {%0}
+// CHECK: %2#1 |-> {%0}
 // CHECK: maybeSameAs end
 
 // CHECK: exclusive begin

@@ -38,42 +38,45 @@ namespace M::MGP {
 ///     result, we don't need to distinguish between ops which emplace and
 ///     return their result AsyncValues immediately vs those which launch an
 ///     asynchronous sub-task.
-///  3. Branching control flow ops will only 'splice in' one of their
-///     sub-blocks. Thus it is possible for some ops to never be executed.
-///     It is not the case that the sub-block ops are finished when the branch
-///     block 'returns'.
+///  3. Control flow ops will only 'splice in' one of their sub-blocks at a
+///     time. For a kBranch this is obviously because only one of the branches
+///     is taken. For a kLoop this is because all results of the loop sub-block
+///     must be ready for another loop sub-block begins execution. Thus it is
+///     possible for some ops to never be executed, and it is possible that
+///     two ops can never overlap in execution irrespective of any dataflow
+///     between them (if any).
 ///  4. Looping control flow ops may obviously cause some ops to be executed
 ///     more than once, and the results from an earlier loop iteration may find
-///     their way into the next iteration. However, unlike branching control
-///     flow, loops are assumed to only 'splice in' sub-blocks for the next
-///     loop iteration strictly after all results from the previous iteration
-///     are ready. Ie only when all the ops in the previous iteration have
-///     finished. This greatly simplifies reasoning about overlapping
-///     operations.
+///     their way into the next iteration. However, thanks to 3 we never have
+///     two instances of the same call being executed concurrently.
 ///
 /// We assume the model is 'overhang free': if all the results of the model
-/// are ready then no ops can still be executing. Thus any op which launches
-/// asynchronous computation must signal completion of that computation via
-/// an indicating result, and that result cannot be ignored.
+/// and any sub-block are ready then no ops can still be executing. Thus any
+/// op which launches asynchronous computation must signal completion of that
+/// computation via an indicating result, and that result cannot be ignored.
 ///
 /// Ops are allowed to return results which 'lifetime extend' their arguments.
 /// This means a result AsyncValue may contain a pointer to an argument
 /// AsyncValue. Such ops must implement GRTExtendsLifetimeInterface.
 ///
 /// Similarly, ops are allowed to return results which 'alias' their arguments.
-/// This means a result may be a pointer to an argument AsyncValue. Such ops
-/// must implement GRTMayAliasInterface. Any possible aliasing or sharing
-/// *within* AsyncValues can be considered as aliasing of the AsyncValues
-/// themselves and signalled with the same interface. For this analysis,
-/// GRTExtendsLifetimeInterface and GRTMayAliasInterface are treated
-/// identically.
+/// This means a result may be a pointer to an argument AsyncValue, or some
+/// part thereof. Such ops must implement GRTMayAliasInterface. Any possible
+/// aliasing or sharing *within* AsyncValues can be considered as aliasing
+/// of the AsyncValues themselves and signalled with the same interface. For
+/// this analysis, GRTExtendsLifetimeInterface and GRTMayAliasInterface are
+/// treated identically.
 ///
 /// To make sense of all this we use:
 ///  - sameAs equivalence (two values always point to the same AsyncValue)
 ///  - maybeSameAs equivalence (two values may point to the same AsyncValue)
 ///  - isAlwaysReady predicate (the value is always a ready AsyncValue)
 ///  - impliesReady relation (if one value is ready then so is another)
-///  - structurallyDisjoint relation (two ops can never overlap due to branches)
+///  - structurallyAtMostOne relation (two ops can never both be executed due
+///    to being in distinct arms of a kBranch)
+///  - structurallyCannotOverlapRelation (two ops can never both be executing
+///    simultaneously due to being in distinct sub-blocks of a kBronch or
+///    kLoop)
 ///  - runsLater relation (a later op can begin only after an earlier op
 ///    finishes)
 ///  - exclusive relation (the lifetimes of the AsyncValues pointed to by two
@@ -193,9 +196,10 @@ public:
   ///
   /// Ops may be disjoint because lhsOp and rhsOp can never both be
   /// incorporated into the execution graph at the same time (eg because they
-  /// are in distinct arms of an kBronch), or because the execution of lhsOp and
-  /// rhsOp are known to be strictly sequenced by AsyncValue dataflow
-  /// dependencies. The relation may not be complete.
+  /// are in distinct arms of an kBronch, or in distinct parts of conditioned
+  /// kLoop), or because the execution of lhsOp and rhsOp are known to be
+  /// strictly sequenced by AsyncValue dataflow dependencies. The relation
+  /// may not be complete.
   bool areDisjoint(Operation *lhsOp, Operation *rhsOp) const;
 
   /// Returns the set of values who's underlying AsyncValue lifetimes can never
@@ -258,12 +262,15 @@ private:
   /// 'execute' blocks.
   void setupImpliesReady();
 
-  /// Grows relation to capture which operations can never co-execute
-  /// in block and its sub-blocks.
-  void accumStructurallyDisjointForBlock(OperationRelation &relation,
-                                         Block *block);
+  /// Adds to relation all pairs (lhs, rhs) where lhs and rhs are drawn from
+  /// distinct entries in opsPerSubBlock.
+  void
+  addCrossProduct(AsyncDataflowDependencies::OperationRelation &relation,
+                  const SmallVector<SmallVector<Operation *>> &opsPerSubBlock);
 
-  /// Sets the structurallyDisjoint relation for all operations in the model.
+  /// Sets the structurallyAtMostOneRelation and
+  /// structurallyCannotOverlapRelation relations for all operations in the
+  /// model.
   void setupStructurallyDisjoint();
 
   /// Returns the set:
@@ -295,9 +302,9 @@ private:
   /// then we want to account for two facts which make the equivalence smaller:
   ///  - The results of all enclosing loop control flow ops have not been bound
   ///    yet, so no aliases can escape via them.
-  ///  - The result of op is fresh, and does not need to be considered an alias
-  ///    of the previous value returned by the same op in a previous loop
-  ///    iteration.
+  ///  - The result of op may be 'fresh', in which case it does not need to be
+  ///    considered an alias of the previous value returned by the same op in
+  ///    a previous loop iteration.
   ///
   /// With the above smaller equivalence the getFullyConsumedWhenOpBegins
   /// method will find more consumed values, and the 'exclusiveSet' will
@@ -361,12 +368,21 @@ private:
   /// Inverse of above.
   ValueRelation inverseImpliesReadyRelation;
 
-  /// (lhsOp, rhsOp) is in structurallyDisjointRelation if lhsOp and rhsOp
-  /// con never overlap in execution because they are distinct branches of
-  /// a kBronch control flow op. Unlike the impliesReady relation, this is a
-  /// purely structural property that does not depend on the dataflow of
-  /// AsyncValues.
-  OperationRelation structurallyDisjointRelation;
+  /// (lhsOp, rhsOp) is in structurallyAtMostOneRelation if at most one
+  /// can be executed for the lifetime of the entire graph (including both
+  /// 'init' and 'execute' blocks). For ops within kBranch sub-blocks which
+  /// are not within kLoops this account for the obvious rule that at most
+  /// arm of the branch is ever 'spliced in' during execution.
+  OperationRelation structurallyAtMostOneRelation;
+
+  /// (lhsOp, rhsOp) is in structurallyCannotOverlapRelation if their execution
+  /// can never overlap because they are in distinct sub-blocks of a control
+  /// flow op. For ops within kBronch sub-blocks this accounts for the obvious
+  /// rule that only one arm of the branch is 'spliced in' at a time. For ops
+  /// within kLoop sub-blocks this accounts for the runtime waiting for
+  /// all outputs of each loop sub-block to be ready before 'splicing in'
+  /// the next loop sub-block.
+  OperationRelation structurallyCannotOverlapRelation;
 
   /// (lhsOp, rhsOp) is in runsLaterRelation only if rhsOp can BEGIN execution
   /// only after either lhsOp has FINISHED execution, or rhsOp is never
@@ -376,7 +392,8 @@ private:
   OperationRelation runsEarlierRelation;
 
   /// (%lhs, %rhs) is in exclusiveRelation only if %lhs and %rhs cannot
-  /// simultaneously point to AsyncValues over all execution paths.
+  /// simultaneously point to or otherwise alias the same AsyncValue over all
+  /// execution paths.
   ///
   /// This can be because:
   ///  - by the time %rhs is created all uses of %lhs have been consumed

@@ -93,11 +93,17 @@
 // CHECK: impliesReady end
 
 // Ops in the if branches are structurally disjoint
-// CHECK: structurallyDisjoint begin
+// CHECK: structurallyAtMostOne begin
 // CHECK-NEXT: %5[2] |-> {%5[3]}
 // CHECK-NEXT: %6[2] |-> {%5[3]}
 // CHECK-NEXT: %5[3] |-> {%5[2], %6[2]}
-// CHECK-NEXT: structurallyDisjoint end
+// CHECK-NEXT: structurallyAtMostOne end
+
+// CHECK: structurallyCannotOverlapRelation begin
+// CHECK-NEXT: %5[2] |-> {%5[3]}
+// CHECK-NEXT: %6[2] |-> {%5[3]}
+// CHECK-NEXT: %5[3] |-> {%5[2], %6[2]}
+// CHECK-NEXT: structurallyCannotOverlapRelation end
 
 // runsLater is actually 'runs later or never runs'.
 // CHECK: runsLater begin
@@ -279,7 +285,8 @@ mgp.model @redundant : mof init {
 
 // CHECK: maybeSameAs begin
 // CHECK: %12#0 |-> {%0[0], %arg0, %arg2[2], %arg2[3]}
-// CHECK: %12#1 |-> {%16[2], %16[3]}
+// The second if result may alias via the tensor.{create,extract}s.
+// CHECK: %12#1 |-> {%3, %6, %7, %9, %arg4[2], %15#0[2], %16[2], %arg3[3], %15#0[3], %16[3]}
 // CHECK: maybeSameAs end
 
 // CHECK: impliesReady begin
@@ -292,8 +299,9 @@ mgp.model @redundant : mof init {
 // CHECK: runsLater end
 
 // CHECK: exclusive begin
-// CHECK: %16[2] |-> {%7, %8, %9, %arg4[2], %arg4[3], %15#0[3], %15#1[3], %16[3], %14}
-// CHECK: %12#1 |-> {%0, %1, %2, %3, %4, %6, %7, %8, %9, %10#0, %arg3[2], %arg4[2], %arg3[3], %arg4[3], %14}
+// The tensor.{create,extract} aliasing excludes many exclusive entries.
+// CHECK: %16[2] |-> {%8, %15#0[3], %15#1[3], %16[3]}
+// CHECK: %12#1 |-> {%0, %1, %2, %4, %8, %10#0}
 // CHECK: exclusive end
 
 mgp.model @if : mof init {

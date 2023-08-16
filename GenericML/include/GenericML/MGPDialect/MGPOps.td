@@ -11,17 +11,18 @@
 #ifndef GENERICML_MGPDIALECT_MGPOPS_TD
 #define GENERICML_MGPDIALECT_MGPOPS_TD
 
+include "GenericML/MGPDialect/MGPBufferAllocInterface.td"
+include "GenericML/MGPDialect/MGPDialect.td"
+include "GenericML/MGPDialect/MGPTypes.td"
+include "GraphRT/GRTDialect/GRTExtendsLifetimeInterface.td"
+include "GraphRT/GRTDialect/GRTMayAliasInterface.td"
 include "GraphRT/MEFDialect/MEFTypes.td"
 include "Support/MDialect/MAttrs.td"
 include "mlir/IR/AttrTypeBase.td"
-include "mlir/IR/SymbolInterfaces.td"
 include "mlir/IR/RegionKindInterface.td"
+include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
-include "GenericML/MGPDialect/MGPDialect.td"
-include "GenericML/MGPDialect/MGPTypes.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
-include "GenericML/MGPDialect/MGPBufferAllocInterface.td"
-include "GraphRT/GRTDialect/GRTExtendsLifetimeInterface.td"
 
 // Base class for ops in this dialect.
 class MGP_Op<string mnemonic, list<Trait> traits = []> :
@@ -628,7 +629,7 @@ def CpuBufferConcatOp : MGP_Op<"cpu.buffer.concat"> {
 
 def CpuBufferSectionStaticBorrowOp : MGP_Op<"cpu.buffer.section.static.borrow", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    GRTExtendsLifetimeInterface]> {
+    DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>]> {
   let summary = "Borrows a section with statically known offset and size from "
                 "input buffer.";
   let description = [{
@@ -671,6 +672,13 @@ def CpuBufferSectionStaticBorrowOp : MGP_Op<"cpu.buffer.section.static.borrow", 
     $inChain `,` $inBuffer `,` `offset` $aOffset `,` `size` $bSize attr-dict
     `:` qualified(type($inBuffer))
   }];
+
+  let extraClassDefinition = [{
+    bool CpuBufferSectionStaticBorrowOp::extendsLifetime(size_t operandIndex, size_t resultIndex) {
+      return operandIndex == 1;
+    }
+  }];
+
   let hasVerifier = 1;
 }
 
@@ -679,7 +687,7 @@ def CpuBufferSectionStaticBorrowOp : MGP_Op<"cpu.buffer.section.static.borrow", 
 //===----------------------------------------------------------------------===//
 
 def CpuBufferSplitBorrowOp : MGP_Op<"cpu.buffer.split.borrow", [
-    GRTExtendsLifetimeInterface]> {
+    DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>]> {
   let summary = "Splits an input buffer into multiple result buffers which "
                 "borrow sections from the input.";
   let description = [{
@@ -727,6 +735,13 @@ def CpuBufferSplitBorrowOp : MGP_Op<"cpu.buffer.split.borrow", [
     `:` qualified(type($inBuffer))
         custom<BufferTypesAndRawSizes>(type($outBuffers), $outBufferRawSizes)
   }];
+
+  let extraClassDefinition = [{
+    bool CpuBufferSplitBorrowOp::extendsLifetime(size_t operandIndex, size_t resultIndex) {
+      return operandIndex == 1;
+    }
+  }];
+
   let hasVerifier = 1;
 }
 
@@ -1041,6 +1056,7 @@ def CpuTensorSpecDTypeOp : MGP_Op<"cpu.tensor_spec.dtype"> {
 // TODO: Look into representing dynamic buffers more explicitly.
 // E.g. !mgp.cpu.buffer<?> instead of just !mgp.cpu.buffer.
 def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
+    DeclareOpInterfaceMethods<GRTMayAliasInterface>, // since operand buffer may be moved into result
     TypesMatchWith<"tensorSpec operand must match result tensor type spec",
                    "result", "tensorSpec",
                    "$_self.cast<CpuTensorType>().getTensorSpec()">]> {
@@ -1116,6 +1132,13 @@ def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
     $inChain `,` $buffer `,` $tensorSpec attr-dict
     custom<MayBeDynamicBuffer>(type($buffer), type($result))
   }];
+
+  let extraClassDefinition = [{
+    bool CpuTensorCreateOp::mayAlias(size_t operandIndex, size_t resultIndex) {
+      return operandIndex == 1;
+    }
+  }];
+
   let hasVerifier = 1;
 }
 
@@ -1124,7 +1147,9 @@ def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
 //===----------------------------------------------------------------------===//
 
 def CpuTensorExtractOp : MGP_Op<"cpu.tensor.extract", [
-    Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    Pure,
+    DeclareOpInterfaceMethods<GRTMayAliasInterface>, // since operand's buffer may be moved into result
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Extracts the tensor spec and buffer of a CPU tensor.";
   let description = [{
     Returns the tensor spec and buffer components of a CPU tensor. The
@@ -1181,6 +1206,13 @@ def CpuTensorExtractOp : MGP_Op<"cpu.tensor.extract", [
   let results = (outs MGP_CpuBufferType: $bufferResult,
                       MGP_CpuTensorSpecType: $tensorSpecResult);
   let assemblyFormat = "$tensor attr-dict `:` qualified(type($tensor))";
+
+  let extraClassDefinition = [{
+    bool CpuTensorExtractOp::mayAlias(size_t operandIndex, size_t resultIndex) {
+      return resultIndex == 0;
+    }
+  }];
+
   let hasVerifier = 1;
 }
 

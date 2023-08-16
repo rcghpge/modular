@@ -20,6 +20,28 @@ using namespace std::placeholders;
 
 #define DEBUG_TYPE "mgp-dataflow"
 
+/// Look for the special interfaces on op and call the helper with
+/// arguments.
+static bool considerMaybeSameAs(Operation *op, size_t operandIndex,
+                                size_t resultIndex) {
+  if (auto extends = dyn_cast<GRT::GRTExtendsLifetimeInterface>(op))
+    return extends.extendsLifetime(operandIndex, resultIndex);
+  else if (auto mayAlias = dyn_cast<GRT::GRTMayAliasInterface>(op))
+    return mayAlias.mayAlias(operandIndex, resultIndex);
+  else
+    return false;
+}
+
+static bool considerMaybeSameAsForAnyOperand(Operation *op,
+                                             size_t resultIndex) {
+  for (size_t operandIndex = 0, numOperands = op->getNumOperands();
+       operandIndex < numOperands; ++operandIndex) {
+    if (considerMaybeSameAs(op, operandIndex, resultIndex))
+      return true;
+  }
+  return false;
+}
+
 //===----------------------------------------------------------------------===//
 // Public API
 //===----------------------------------------------------------------------===//
@@ -110,8 +132,8 @@ bool AsyncDataflowDependencies::areDisjoint(Operation *lhsOp,
                                             Operation *rhsOp) const {
   return operationAnalysis.containsEntry(runsLaterRelation, lhsOp, rhsOp) ||
          operationAnalysis.containsEntry(runsEarlierRelation, lhsOp, rhsOp) ||
-         operationAnalysis.containsEntry(structurallyDisjointRelation, lhsOp,
-                                         rhsOp);
+         operationAnalysis.containsEntry(structurallyCannotOverlapRelation,
+                                         lhsOp, rhsOp);
 }
 
 AsyncDataflowDependencies::ValueSet
@@ -153,8 +175,10 @@ void AsyncDataflowDependencies::print(llvm::raw_ostream &os) {
                                  approximateMaybeSameAsEquivalence);
   valueAnalysis.printPredicate(os, "isAlwaysReady", alwaysReadyPredicate);
   valueAnalysis.printRelation(os, "impliesReady", impliesReadyRelation);
-  operationAnalysis.printRelation(os, "structurallyDisjoint",
-                                  structurallyDisjointRelation);
+  operationAnalysis.printRelation(os, "structurallyAtMostOne",
+                                  structurallyAtMostOneRelation);
+  operationAnalysis.printRelation(os, "structurallyCannotOverlapRelation",
+                                  structurallyCannotOverlapRelation);
   operationAnalysis.printRelation(os, "runsLater", runsLaterRelation);
   operationAnalysis.printRelation(os, "runsEarlier", runsEarlierRelation);
   valueAnalysis.printRelation(os, "exclusive", exclusiveRelation);
@@ -191,8 +215,9 @@ void AsyncDataflowDependencies::setupSameAs() {
 //  - Given
 //      ..., %lhs, ... = op (..., %rhs, ...)
 //    where op has the GRTMayAliasInterface or GRTExtendsLifetimeInterface,
-//    then maybeSameAs(%lhs, %rhs). Note that maybeSameAs does not distinguish
-//    direct aliasing from lifetime extension, so the two interfaces are
+//    then maybeSameAs(%lhs, %rhs) if the interface method returns true for
+//    those operands and result indexes. Note that maybeSameAs does not
+//    distinguish aliasing from lifetime extension, so the two interfaces are
 //    currently equivalent.
 //  - The control flow rules.
 void AsyncDataflowDependencies::flowMaybeSameAs(Operation *op,
@@ -210,13 +235,18 @@ void AsyncDataflowDependencies::flowMaybeSameAs(Operation *op,
     // account for its results, treat that as if they were possibly aliased.
     // We thus approximate this by just treating all the results and arguments
     // to have the same worst-case lifetime.
-    ValueSet set = domainMap.bottom;
-    for (Value operand : op->getOperands()) {
-      domainMap.leastUpperBound(
-          set, valueAnalysis.getEntriesAndId(domainMap, operand));
+    for (size_t resultIndex = 0, numResults = op->getNumResults();
+         resultIndex < numResults; ++resultIndex) {
+      ValueSet set = domainMap.bottom;
+      for (size_t operandIndex = 0, numOperands = op->getNumOperands();
+           operandIndex < numOperands; ++operandIndex) {
+        if (considerMaybeSameAs(op, operandIndex, resultIndex))
+          domainMap.leastUpperBound(
+              set, valueAnalysis.getEntriesAndId(domainMap,
+                                                 op->getOperand(operandIndex)));
+      }
+      valueAnalysis.setEntries(domainMap, op->getResult(resultIndex), set);
     }
-    for (Value result : op->getResults())
-      valueAnalysis.setEntries(domainMap, result, set);
   } else {
     valueAnalysis.flowDefault(op, domainMap);
   }
@@ -389,20 +419,78 @@ void AsyncDataflowDependencies::setupImpliesReady() {
   inverseImpliesReadyRelation = valueAnalysis.inverse(impliesReadyRelation);
 }
 
-void AsyncDataflowDependencies::accumStructurallyDisjointForBlock(
-    OperationRelation &relation, Block *block) {
-  block->walk([&](GRT::GRTControlFlowInterface cfOp) {
-    if (cfOp.getFlavor() != GRT::kBranchLike)
+void AsyncDataflowDependencies::addCrossProduct(
+    AsyncDataflowDependencies::OperationRelation &relation,
+    const SmallVector<SmallVector<Operation *>> &opsPerSubBlock) {
+  // For all pairs of distinct blocks...
+  size_t n = opsPerSubBlock.size();
+  for (size_t i = 0; i < n; ++i) {
+    size_t numLhs = opsPerSubBlock[i].size();
+    for (size_t j = 0; j < n; ++j) {
+      if (i == j)
+        continue;
+      size_t numRhs = opsPerSubBlock[j].size();
+      // For all pairs of ops from disjoint blocks...
+      for (size_t k = 0; k < numLhs; ++k) {
+        Operation *lhsOp = opsPerSubBlock[i][k];
+        for (size_t l = 0; l < numRhs; ++l) {
+          Operation *rhsOp = opsPerSubBlock[j][l];
+          operationAnalysis.add(relation, lhsOp, rhsOp);
+        }
+      }
+    }
+  }
+}
+
+void AsyncDataflowDependencies::setupStructurallyDisjoint() {
+  LLVM_DEBUG(llvm::dbgs() << "setupStructurallyDisjoint\n");
+
+  /// The structurallyAtMostOneRelation is just for kBranches.
+  valueAnalysis.index->model->walk([&](GRT::GRTControlFlowInterface cfOp) {
+    if (cfOp->getNumRegions() <= 1 || cfOp.getFlavor() != GRT::kBranchLike) {
+      // Not a multi-armed kBranch.
+      return;
+    }
+
+    if (!isAtMostOnce(cfOp)) {
+      // kBranch could be executed more than once.
+      return;
+    }
+
+    // Collect ops which can be executed at most once in each of the sub-blocks
+    // (including nested sub-blocks).
+    SmallVector<SmallVector<Operation *>> opsPerBranch;
+    for (Region &region : cfOp->getRegions()) {
+      SmallVector<Operation *> &allOps = opsPerBranch.emplace_back();
+      region.walk([&](Operation *op) {
+        if (getIndicatingResults(op).empty()) {
+          // We are only interested in ops with indicating results since that's
+          // the only way we have to track their execution.
+          return;
+        }
+        if (!isAtMostOnce(op)) {
+          // Sub-block containing op could be executed more than once.
+          return;
+        }
+        allOps.emplace_back(op);
+      });
+    }
+
+    addCrossProduct(structurallyAtMostOneRelation, opsPerBranch);
+  });
+
+  /// The structurallyCannotOverlapRelation
+  valueAnalysis.index->model->walk([&](GRT::GRTControlFlowInterface cfOp) {
+    if (cfOp->getNumRegions() <= 1)
+      // Not a multi-subblock control flow op.
       return;
 
-    // Collect all the ops for each branch sub-block (including nested
-    // sub-blocks). Note that these ops may be inside loops, including loops on
-    // the outside of this cfOp, and loops between the op and this cfOp.
-    // However, thankfully loops are 'non overlapping', so we know only one
-    // instance of the op can be executing at any one time.
-    SmallVector<SmallVector<Operation *>> allOpsPerBranch;
+    // Collect all the ops from each sub-block (including nested sub-blocks).
+    // We don't care whether these ops can be executed multiple times due to
+    // loops since even if so they cannot overlap in execution.
+    SmallVector<SmallVector<Operation *>> allOpsPerSubBlock;
     for (Region &region : cfOp->getRegions()) {
-      SmallVector<Operation *> &allOps = allOpsPerBranch.emplace_back();
+      SmallVector<Operation *> &allOps = allOpsPerSubBlock.emplace_back();
       region.walk([&](Operation *op) {
         if (getIndicatingResults(op).empty()) {
           // We are only interested in ops with indicating results since that's
@@ -413,37 +501,8 @@ void AsyncDataflowDependencies::accumStructurallyDisjointForBlock(
       });
     }
 
-    // For all pairs of distinct blocks...
-    size_t n = cfOp->getNumRegions();
-    for (size_t i = 0; i < n; ++i) {
-      size_t numLhs = allOpsPerBranch[i].size();
-      for (size_t j = 0; j < n; ++j) {
-        if (i == j)
-          continue;
-        size_t numRhs = allOpsPerBranch[j].size();
-        // For all pairs of ops from disjoint blocks...
-        for (size_t k = 0; k < numLhs; ++k) {
-          Operation *lhsOp = allOpsPerBranch[i][k];
-          for (size_t l = 0; l < numRhs; ++l) {
-            Operation *rhsOp = allOpsPerBranch[j][l];
-            // These ops can never both be spliced into the overall
-            // execution graph.
-            operationAnalysis.add(relation, lhsOp, rhsOp);
-          }
-        }
-      }
-    }
+    addCrossProduct(structurallyCannotOverlapRelation, allOpsPerSubBlock);
   });
-}
-
-void AsyncDataflowDependencies::setupStructurallyDisjoint() {
-  LLVM_DEBUG(llvm::dbgs() << "setupStructurallyDisjoint\n");
-  accumStructurallyDisjointForBlock(
-      structurallyDisjointRelation,
-      operationAnalysis.index->model.getInitBlock());
-  accumStructurallyDisjointForBlock(
-      structurallyDisjointRelation,
-      operationAnalysis.index->model.getExecuteBlock());
 }
 
 AsyncDataflowDependencies::OperationSet
@@ -504,10 +563,10 @@ void AsyncDataflowDependencies::setupRunsLater() {
 // for the ready values.
 //
 // Though the three relations already account for kLoop control flow ops,
-// there's a little be of extra structural fiddling we can do to improve
+// there's a little bit of extra structural fiddling we can do to improve
 // the completeness of 'exclusiveSet' for SSA values inside loops. In
 // particular, when considering aliasing in step 3 we can exploit two facts:
-//   1. The SSA value bound by an op can be considered a 'fresh' instance,
+//   1. The SSA value bound by an op may be considered a 'fresh' instance,
 //      distinct from previous values bound in earlier loop iterations.
 //   2. Any in-flight loop has not yet allowed its loop results to escape
 //      into the rest of the graph.
@@ -599,10 +658,20 @@ AsyncDataflowDependencies::getEquivalenceAtOp(Operation *op) const {
   // Collect results of op which are known to be 'fresh', ie cannot alias
   // with any op operand.
   ValueSet freshResultValues = valueAnalysis.index->emptySet();
-  if (!isa<GRT::GRTExtendsLifetimeInterface>(op) &&
-      !isa<GRT::GRTMayAliasInterface>(op)) {
-    for (Value result : op->getResults())
+  if ((isa<GRT::GRTExtendsLifetimeInterface>(op) ||
+       isa<GRT::GRTMayAliasInterface>(op))) {
+    // Only results not subject to aliasing etc are 'fresh'.
+    for (size_t resultIndex = 0, numResults = op->getNumResults();
+         resultIndex < numResults; ++resultIndex) {
+      if (!considerMaybeSameAsForAnyOperand(op, resultIndex))
+        valueAnalysis.index->addToSet(freshResultValues,
+                                      op->getResult(resultIndex));
+    }
+  } else {
+    // All results are 'fresh'.
+    for (Value result : op->getResults()) {
       valueAnalysis.index->addToSet(freshResultValues, result);
+    }
   }
 
   // Collect all arguments to blocks which may be in a loop.
@@ -775,38 +844,30 @@ void AsyncDataflowDependencies::setupExclusive() {
   valueAnalysis.unionInPlace(exclusiveRelation,
                              valueAnalysis.inverse(exclusiveRelation));
 
-  // Finally, try to exploit operator exclusivity.
+  // Finally, try to exploit that distinct arms of branches may never
+  // both be executed, thus their results can never simultaneously be alive,
+  // irrespective of dataflow.
   //
-  // Note that, unlike the above per-op processing loop, it is unsound to
+  // Note we must use structurallyAtMostOneRelation here, and not
+  // structurallyCannotOverlapRelation. Though two ops may never be able
+  // to execute simultaneously, if they could be executed repeatedly then
+  // their results could have overlapping lifetimes.
+  //
+  // Note also that, unlike the above per-op processing loop, it is unsound to
   // use downwardsImpliesReadySet here. Ie given:
   //   %x = lhsOp ...
   //   %y = rhsOp ...
-  //   lhsOp is structurally disjoint from rhsOp
+  //   (lhsOp, rhsOp) in structurallyAtMostOneRelation
   //   %z = otherOp ...
   //   impliesReady(%z, %x)
   // It is NOT the case that:
-  //   %y and %z are exclusive.
-  //
-  // Note also that, though the structurallyDisjointRelation tells us op and
-  // disjointOp can never execute *simultaneously*, they can still be executed
-  // *repeatedly*. Thus, the lifetimes of their results may still overlap. It
-  // would be nice to detect that by just checking the isNonSelfOverlapping
-  // predicate, but that is defined in terms of the exclusiveRelation we're
-  // trying to define here, so we'd need to build this by iteration till
-  // fixed point. That seems overkill, so instead we'll just use the
-  // isAtMostOnce syntactic check to ensure soundness at the cost of more
-  // incompleteness.
+  //   (%y, %z) in exclusiveRelation.
   for (Operation *op : operationAnalysis.index->getAllVs()) {
     if (op == operationAnalysis.index->distinguished)
       continue;
 
-    if (!isAtMostOnce(op))
-      continue;
-
     for (Operation *disjointOp : operationAnalysis.index->setToVector(
-             operationAnalysis.getEntries(structurallyDisjointRelation, op))) {
-      if (!isAtMostOnce(disjointOp))
-        continue;
+             operationAnalysis.getEntries(structurallyAtMostOneRelation, op))) {
       for (Value opResult : op->getResults()) {
         for (Value disjointOpResult : disjointOp->getResults()) {
           LLVM_DEBUG({

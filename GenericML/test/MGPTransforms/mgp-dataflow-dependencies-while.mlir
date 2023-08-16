@@ -194,6 +194,18 @@ mgp.model @repeat3 : mof init {
 // CHECK: %2#0 |-> {%0[0], %arg0, %1, %arg2[2], %arg4[2], %arg5[2], %4[2], %5[2], %arg2[3], %arg3[3], %arg4[3], %arg5[3], %4[3]}
 // CHECK: impliesReady end
 
+// No branches, so this relation is empty.
+// CHECK: structurallyAtMostOne begin
+// CHECK-NEXT: structurallyAtMostOne end
+
+// But the loop cond and body blocks are known not to overlap.
+// CHECK: structurallyCannotOverlapRelation begin
+// CHECK-NEXT: %4[2] |-> {%4[3]}
+// CHECK-NEXT: %5[2] |-> {%4[3]}
+// CHECK-NEXT: %6[2] |-> {%4[3]}
+// CHECK-NEXT: %4[3] |-> {%4[2], %5[2], %6[2]}
+// CHECK-NEXT: structurallyCannotOverlapRelation end
+
 // CHECK: runsLater begin
 // CHECK: %4[2] |-> {%3}
 // CHECK: runsLater end
@@ -404,12 +416,13 @@ mgp.model @shift : mof init {
 // CHECK: sameAs end
 
 // The while loop inputs, result, sub-block args and sub-block outputs
-// are all in the same equivalence class.
+// are all in the same equivalence class, along with the aliases via
+// tensor.{create,extract}.
 // CHECK: approximateMaybeSameAsEquivalence begin
-// CHECK:  {%0[0], %arg0, %arg2[2], %arg2[3], %10#0}
-// CHECK:  {%2, %arg3[2], %arg3[3], %23[3], %10#1}
-// CHECK:  {%6, %arg4[2], %arg4[3], %18[3], %10#2}
-// CHECK:  {%9, %arg5[2], %arg5[3], %10#3}
+// CHECK: {%0[0], %arg0, %arg2[2], %arg2[3], %10#0}
+// CHECK: {%0, %2, %arg3[2], %14#0[2], %arg3[3], %20#0[3], %21[3], %23[3], %10#1}
+// CHECK: {%3, %6, %arg4[2], %arg4[3], %13#0[3], %15[3], %18[3], %10#2, %11#0, %12}
+// CHECK: {%7, %9, %arg5[2], %arg5[3], %14#0[3], %10#3}
 // CHECK: approximateMaybeSameAsEquivalence end
 
 // CHECK: impliesReady begin
@@ -420,8 +433,9 @@ mgp.model @shift : mof init {
 // CHECK: %12 |-> {%0[0], %arg0, %0, %1, %2, %3, %4, %5, %6, %7, %8, %9, %arg2[2], %arg3[2], %arg4[2], %arg5[2], %arg2[3], %arg3[3], %arg4[3], %arg5[3], %13#0[3], %13#1[3], %14#0[3], %14#1[3], %15[3], %16[3], %17[3], %18[3], %19[3], %20#0[3], %20#1[3], %21[3], %22[3], %23[3], %10#2, %11#0, %11#1}
 // CHECK: impliesReady end
 
+// The tensor.{create,extract} aliasing excludes entries.
 // CHECK: exclusive begin
-// CHECK: %18[3] |-> {%3, %4, %5, %7, %8, %13#0[3], %13#1[3], %14#0[3], %14#1[3]}
+// CHECK: %18[3] |-> {%4, %5, %8, %13#1[3], %14#1[3]}
 // CHECK: exclusive end
 
 mgp.model @while : mof init {
