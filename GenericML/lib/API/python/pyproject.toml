@@ -11,6 +11,12 @@ dependencies = [
 ]
 requires-python = ">=3.8"
 
+[tool.setuptools]
+license-files = [
+  "EAP-Software-License",
+  "Third-Party-Notices",
+]
+
 [tool.black]
 include = '\.pyi?$'
 line-length = 80
