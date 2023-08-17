@@ -38,7 +38,7 @@ options are passed into the loaded framework. For example:
 ```shell
 $  mt --execute .derived/models/tflite/MobileBert-float-384-20200602.tflite \
       --load=libstock-tflite-plugin.dylib \
-      --model-specification=Models/TFLite/MobileBert-float-384-20200602.yaml \
+      --model-specification=Models/model_spec.yaml \
       --delegate=xnnpack
 ```
 
@@ -57,11 +57,11 @@ framework, along with their CMake target to simplify building the target.
 > standard for simplicity - please insert your platform's dynamic library
 > prefix/suffix where appropriate.
 
-| CMake target | Binary | Framework |
-|--------------|--------|-----------|
-| `tf` | `libtf.so` | Modular TensorFlow |
-| `tfl` | `libtfl.so` | Modular TFLite |
-| `stock-tflite-plugin` | `libstock-tflite-plugin.so` | Stock TFLite |
+| CMake target          | Binary                      | Framework          |
+| --------------------- | --------------------------- | ------------------ |
+| `tf`                  | `libtf.so`                  | Modular TensorFlow |
+| `tfl`                 | `libtfl.so`                 | Modular TFLite     |
+| `stock-tflite-plugin` | `libstock-tflite-plugin.so` | Stock TFLite       |
 
 Another consequence is that `mt --help` cannot work the way many users expect
 it to. Passing the help option to `mt` will result in getting the `mt` help,
