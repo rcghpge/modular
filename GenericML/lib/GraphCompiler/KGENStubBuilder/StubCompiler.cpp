@@ -77,8 +77,7 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
   LLCL::Runtime runtime(
       LLCL::createLeakCheckAllocator(LLCL::createMallocAllocator()),
       LLCL::createThreadPoolWorkQueue(
-          /*numThreads=*/
-          M::getHostMachineInfo()->numPhysicalCores));
+          /*numThreads=*/M::getHostMachineInfo()->numPhysicalCores));
   mlir::PassManager mgr(ctx);
 
   // Compile to LLVM.
@@ -88,8 +87,8 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
   if (!saveTempsPrefix.empty())
     compilationOptions.setSaveTemps(saveTempsPrefix);
 
-  auto compilerOr = KGEN::ObjectCompiler::create(runtime, mgr, ".mojo_cache",
-                                                 compilationOptions);
+  auto compilerOr = KGEN::ObjectCompiler::create(
+      runtime, mgr, ".mojo_cache", compilationOptions, /*isJIT=*/true);
   if (compilerOr.isError())
     return compilerOr.takeError();
   llvm::MapVector<StringAttr, KGEN::ExportedSymbol> exportedSymbols =
@@ -99,8 +98,8 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
 
   TargetInfoAttr target = getTargetInfo(kgenModule);
 
-  auto standaloneOr = compiler.produceStandaloneArchiveAttr(
-      symTable, exportedSymbols, target, true);
+  auto standaloneOr =
+      compiler.produceStandaloneArchiveAttr(symTable, exportedSymbols, target);
   if (standaloneOr.isError())
     return standaloneOr.takeError();
   ElementsAttr archiveAttr = *standaloneOr;
