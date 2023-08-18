@@ -125,11 +125,13 @@ add_subdirectory(notebooks)
 # files needed for setuptools to build the wheel.
 install(FILES pyproject.toml setup.py
   DESTINATION modular-engine-wheel
+  COMPONENT ai-engine-wheel
 )
 
 # Also copy the `modular.engine` Python files into the wheel.
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/modular
   DESTINATION modular-engine-wheel
+  COMPONENT ai-engine-wheel
   FILES_MATCHING
   PATTERN "*.py*"
   PATTERN "py.typed"
@@ -139,4 +141,5 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/modular
 # wheel.
 install(TARGETS core
   DESTINATION modular-engine-wheel/modular/engine
+  COMPONENT ai-engine-wheel 
 )
