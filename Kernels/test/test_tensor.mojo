@@ -7,7 +7,6 @@
 
 from Index import Index
 from Index import StaticIntTuple, Index
-from IO import print
 from math import sqrt
 from Random import rand, seed
 from Range import range
