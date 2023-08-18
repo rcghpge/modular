@@ -142,10 +142,10 @@ mo.graph @repeated_application(%e0 : !mo.tensor<[], si32>) -> !mo.tensor<[], si3
 // CHECK: mo.output %[[A1]]
 mo.graph @shape_func() -> (!mo.tensor<[?, ?], f32>) {
   %1 = mo.constant {value = #M.dense_array<1.> : tensor<1xf32>} : !mo.tensor<[1], f32>
-  %2 = mo.static.broadcast_to(%1):!mo.tensor<[1], f32> -> !mo.tensor<[768,768], f32>
-  mo.invoke_shape_func["pack_matmul_b_shape_func"]<() -> MMPackSh0, MMPackSh1>(%2) {kgenParams = {transpose_in_0 = false}} : (!mo.tensor<[768, 768], f32>)
-  %3 = mo.pack_mm_weights(%2 : !mo.tensor<[768, 768], f32>) {transposed = false} -> !mo.tensor<[MMPackSh0, MMPackSh1], f32>
-  %4 = mo.rebind(%3): !mo.tensor<[MMPackSh0, MMPackSh1], f32> -> !mo.tensor<[?, ?], f32>
+  %2 = mo.static.broadcast_to(%1):!mo.tensor<[1], f32> -> !mo.tensor<[768,768], f32, {layout = #mo.layout<KN>}>
+  mo.invoke_shape_func["pack_matmul_b_shape_func"]<() -> MMPackSh0, MMPackSh1>(%2) {kgenParams = {transpose_in_0 = false}} : (!mo.tensor<[768, 768], f32, {layout = #mo.layout<KN>}>)
+  %3 = mo.layout.transform(%2) : !mo.tensor<[768, 768], f32, {layout = #mo.layout<KN>}> -> !mo.tensor<[MMPackSh0, MMPackSh1], f32, {layout = #mo.layout<KNkni>}>
+  %4 = mo.rebind(%3): !mo.tensor<[MMPackSh0, MMPackSh1], f32, {layout = #mo.layout<KNkni>}> -> !mo.tensor<[?, ?], f32>
   mo.output %4: !mo.tensor<[?, ?], f32>
 }
 
