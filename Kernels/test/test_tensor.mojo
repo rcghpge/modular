@@ -9,7 +9,6 @@ from Index import Index
 from Index import StaticIntTuple, Index
 from math import sqrt
 from Random import rand, seed
-from Range import range
 from tensor import Tensor, TensorShape
 
 
