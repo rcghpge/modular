@@ -12,6 +12,7 @@
 #include "GenericML/GraphCompiler/Interfaces/LowerableToMGPInterface.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/MGPTransforms/FixupIsolatedFromAbove.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "Support/Compiler/OperationUtils.h"
@@ -976,8 +977,16 @@ LogicalResult MOGraphLowering::run() {
   // Lower all of the operations in the graph.
   if (failed(lowerBlock(graph.getBodyBlock())))
     return failure();
+
+  OpBuilder b(graph);
+  MGP::ModelOp model = loweringState.getModelOp();
+  mlir::sortTopologically(model.getInitBlock());
+  mlir::sortTopologically(model.getExecuteBlock());
+  MGP::fixupIsolatedFromAbove(b, model);
   // Ok, we're done with the original mo.graph, so remove it.
   graph.erase();
+  // We've fixed up the MGP model, so remove the old one.
+  model.erase();
   return success();
 }
 

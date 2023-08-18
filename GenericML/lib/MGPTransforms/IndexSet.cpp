@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "./IndexSet.h"
+#include "GenericML/MGPTransforms/IndexSet.h"
 #include "./Utils.h"
 
 using namespace M;

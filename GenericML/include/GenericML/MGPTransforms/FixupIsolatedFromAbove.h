@@ -10,7 +10,7 @@
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "mlir/IR/Builders.h"
 
-#include "./IndexSet.h"
+#include "GenericML/MGPTransforms/IndexSet.h"
 
 namespace M::MGP {
 

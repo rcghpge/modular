@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "./FixupIsolatedFromAbove.h"
+#include "GenericML/MGPTransforms/FixupIsolatedFromAbove.h"
 
 #include "GraphRT/GRTDialect/GRTControlFlowInterface.h"
 #include "GraphRT/MEFDialect/MEFOps.h"

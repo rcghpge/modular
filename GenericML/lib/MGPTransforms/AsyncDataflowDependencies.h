@@ -13,11 +13,11 @@
 #define GENERICML_MGPTRANSFORMS_ASYNCVALUEDEPENDENCIES_H
 
 #include "GenericML/MGPDialect/MGPOps.h"
+#include "GenericML/MGPTransforms/IndexSet.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/Builders.h"
 
-#include "./IndexSet.h"
 #include "./RelationDataflowAnalysis.h"
 
 namespace M::MGP {

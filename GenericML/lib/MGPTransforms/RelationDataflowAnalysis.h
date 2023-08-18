@@ -13,12 +13,11 @@
 #define GENERICML_MGPTRANSFORMS_BACKWARDSDATAFLOWANALYSIS_H
 
 #include "GenericML/MGPDialect/MGPOps.h"
+#include "GenericML/MGPTransforms/IndexSet.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/Builders.h"
 #include "llvm/Support/Debug.h"
-
-#include "./IndexSet.h"
 
 namespace M::MGP {
 
