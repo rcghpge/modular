@@ -55,11 +55,24 @@ string(REGEX MATCH "^[^\n]+" WHEEL_BASENAME "${BDIST_WHEEL_OUTPUT}")
 # Add a custom target to build and install the Python bindings and wheel.
 # Individual pybind11 modules are expected to be dependencies of
 # modular-engine.
-add_custom_target(modular-pybind-ext ALL
+# As a step in this process we compute a hash of the wheel file to avoid
+# rerunning pip install when there are no changes to the wheel file.
+set(MODULAR_PACKED_WHEEL_NAME ${WHEEL_DIR}/${WHEEL_BASENAME}.whl)
+set(MODULAR_PACKED_WHEEL_HASH_FILE "${CMAKE_CURRENT_BINARY_DIR}/${WHEEL_BASENAME}.whl.hash")
+
+add_custom_command(
+  OUTPUT ${MODULAR_PACKED_WHEEL_HASH_FILE}
+  # Compute and store the current hash of the .whl file
+  COMMAND sha256sum ${MODULAR_PACKED_WHEEL_NAME} | cut -d ' ' -f 1 > ${MODULAR_PACKED_WHEEL_HASH_FILE}.current
+
   COMMAND ${Python3_EXECUTABLE} -m pip install --quiet --force-reinstall ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
-  DEPENDS ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
+  COMMAND mv ${MODULAR_PACKED_WHEEL_HASH_FILE}.current ${MODULAR_PACKED_WHEEL_HASH_FILE}
+
+  DEPENDS ${MODULAR_PACKED_WHEEL_NAME}
   COMMENT "Installing Modular Python API wheel."
 )
+add_custom_target(modular-pybind-ext ALL DEPENDS ${MODULAR_PACKED_WHEEL_HASH_FILE})
+
 add_dependencies(modular-pybind-ext modular-engine)
 add_subdirectory(bindings/modular/engine)
 
@@ -78,8 +91,6 @@ if(STOCK_TENSORFLOW_FOUND)
       "${MODULAR_DERIVED_DIR}/third-party/bin/external-tf-opt")
   list(APPEND MODULAR_FRAMEWORK_LIBS $<TARGET_FILE:tf>)
 endif()
-
-set(MODULAR_PACKED_WHEEL_NAME ${WHEEL_DIR}/${WHEEL_BASENAME}.whl)
 
 set(modular_python_package_sources
   ${CMAKE_CURRENT_SOURCE_DIR}/modular/engine/api.py
