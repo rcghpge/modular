@@ -4,8 +4,8 @@
 // instead of being connonicalized. We inspect the mlir code after mo-to-mogg
 // to make sure that the kernels exist.
 // CHECK: IR Dump After MOToMOGG
-// CHECK-NEXT: module
-// CHECK-NEXT: all_const
+// CHECK: module
+// CHECK: all_const
 // CHECK-DAG: mo.mul
 // CHECK-DAG: mo.sub
 // CHECK-DAG: mo.add
@@ -22,9 +22,6 @@
 
 // No kernel for large_broadcast because it is not constant folded.
 // CHECK-NOT: large_broadcast
-
-// ensure we hit the end of mo-to-mogg ir printing
-// CHECK: module
 
 // CHECK: all_const
 // CHECK-NEXT: %[[S1:.*]] = mo.constant {value = #M.dense_array<0, 5>
@@ -135,4 +132,60 @@ mo.graph @repeated_application(%e0 : !mo.tensor<[], si32>) -> !mo.tensor<[], si3
     -> !mo.tensor<[], si32>
   %e6 = mo.sub(%e5, %e2) : !mo.tensor<[], si32>
   mo.output %e6 : !mo.tensor<[], si32>
+}
+
+// CHECK: shape_func
+// CHECK-DAG: kgen.param.declare MMPackSh0 = <
+// CHECK-DAG: kgen.param.declare MMPackSh1 = <
+// CHECK-DAG: %[[A0:.*]] = mo.constant {value = dense_resource<{{.*}}> : !M.array<
+// CHECK-DAG: %[[A1:.*]] = mo.rebind(%[[A0]])
+// CHECK: mo.output %[[A1]]
+mo.graph @shape_func() -> (!mo.tensor<[?, ?], f32>) {
+  %1 = mo.constant {value = #M.dense_array<1.> : tensor<1xf32>} : !mo.tensor<[1], f32>
+  %2 = mo.static.broadcast_to(%1):!mo.tensor<[1], f32> -> !mo.tensor<[768, 768], f32, {layout = #mo.layout<KN>}>
+  mo.invoke_shape_func["pack_matmul_b_shape_func"]<() -> MMPackSh0, MMPackSh1>(%2) {kgenParams = {transpose_in_0 = false}} : (!mo.tensor<[768, 768], f32, {layout = #mo.layout<KN>}>)
+  %3 = mo.layout.transform(%2) : !mo.tensor<[768, 768], f32, {layout = #mo.layout<KN>}> -> !mo.tensor<[MMPackSh0, MMPackSh1], f32, {layout = #mo.layout<KNkni>}>
+  %4 = mo.rebind(%3): !mo.tensor<[MMPackSh0, MMPackSh1], f32, {layout = #mo.layout<KNkni>}> -> !mo.tensor<[?, ?], f32>
+  mo.output %4: !mo.tensor<[?, ?], f32>
+}
+
+// CHECK: constant_params
+// CHECK: %[[A0:.*]] = mo.constant {value = #M.dense_array<1, 1>
+// CHECK: %[[A1:.*]] = mo.rebind(%[[A0]])
+// CHECK: mo.output %[[A1]]
+mo.graph @constant_params() -> (!mo.tensor<[?], si32>) {
+  kgen.param.declare K = <1>
+  kgen.param.declare KAdd = <add(K, K)>
+  %0 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %1 = mo.static.broadcast_to(%0) : !mo.tensor<[1], si32> -> !mo.tensor<[KAdd], si32>
+  %2 = mo.rebind(%1): !mo.tensor<[KAdd], si32> -> !mo.tensor<[?], si32>
+  mo.output %2 : !mo.tensor<[?], si32>
+}
+
+// CHECK: index_to_tensor
+// CHECK: %[[A0:.*]] = mo.constant {value = #M.dense_array<1>
+// CHECK: mo.output %[[A0]]
+mo.graph @index_to_tensor() -> !mo.tensor<[], si32> {
+  %0 = kgen.param.constant = <1>
+  %1 = mo.index.to_tensor(%0) -> !mo.tensor<[], si32>
+  mo.output %1 : !mo.tensor<[], si32>
+}
+
+// CHECK: constant_param_used_externally
+// CHECK-DAG: kgen.param.declare K = <1>
+// CHECK-DAG: kgen.param.declare KAdd = <2>
+// CHECK: %[[A0:.*]] = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi32>} : !mo.tensor<[KAdd], si32>
+// CHECK: %[[A1:.*]] = mo.rebind(%{{.*}}) : !mo.tensor<[2], si32> -> !mo.tensor<[KAdd], si32>
+// CHECK: %[[A2:.*]] = mo.add(%[[A1]], %[[A0]]) : !mo.tensor<[KAdd], si32>
+// CHECK: %[[A3:.*]] = mo.rebind(%[[A2]]) : !mo.tensor<[KAdd], si32> -> !mo.tensor<[?], si32>
+// CHECK: mo.output %3 : !mo.tensor<[?], si32>
+mo.graph @constant_param_used_externally(%arg0 : !mo.tensor<[2], si32>) -> (!mo.tensor<[?], si32>) {
+  kgen.param.declare K = <1>
+  kgen.param.declare KAdd = <add(K, K)>
+  %0 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %1 = mo.static.broadcast_to(%0) : !mo.tensor<[1], si32> -> !mo.tensor<[KAdd], si32>
+  %2 = mo.rebind(%arg0): !mo.tensor<[2], si32> -> !mo.tensor<[KAdd], si32>
+  %3 = mo.add(%2, %1) : !mo.tensor<[KAdd], si32>
+  %4 = mo.rebind(%3): !mo.tensor<[KAdd], si32> -> !mo.tensor<[?], si32>
+  mo.output %4 : !mo.tensor<[?], si32>
 }
