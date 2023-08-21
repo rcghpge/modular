@@ -63,7 +63,7 @@ set(MODULAR_PACKED_WHEEL_HASH_FILE "${CMAKE_CURRENT_BINARY_DIR}/${WHEEL_BASENAME
 add_custom_command(
   OUTPUT ${MODULAR_PACKED_WHEEL_HASH_FILE}
   # Compute and store the current hash of the .whl file
-  COMMAND sha256sum ${MODULAR_PACKED_WHEEL_NAME} | cut -d ' ' -f 1 > ${MODULAR_PACKED_WHEEL_HASH_FILE}.current
+  COMMAND ${CMAKE_COMMAND} -E sha256sum ${MODULAR_PACKED_WHEEL_NAME} | cut -d ' ' -f 1 > ${MODULAR_PACKED_WHEEL_HASH_FILE}.current
 
   COMMAND ${Python3_EXECUTABLE} -m pip install --quiet --force-reinstall ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
   COMMAND mv ${MODULAR_PACKED_WHEEL_HASH_FILE}.current ${MODULAR_PACKED_WHEEL_HASH_FILE}
