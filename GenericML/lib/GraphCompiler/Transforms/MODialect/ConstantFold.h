@@ -8,54 +8,42 @@
 #define GENERICML_GRAPHCOMPILER_TRANSFORMS_MODIALECT_CONSTANTFOLD_H
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
-#include "KGEN/KGENDialect/KGENParameters.h"
 #include "mlir/Analysis/DataFlow/SparseAnalysis.h"
 #include "mlir/IR/Value.h"
 
 namespace M::MO {
 struct Subgraph {
-  llvm::SetVector<Operation *> ops;
+  llvm::SetVector<Value> vals;
   // Outputs are Value in the constant subgraph that have uses outside of the
   // subgraph. Outputs may depend on other outputs.
-  llvm::SetVector<Operation *> outputs;
-  Subgraph(llvm::SetVector<Operation *> ops) : ops(ops) { findOutputs(); }
+  llvm::SetVector<Value> outputs;
+  Subgraph(llvm::SetVector<Value> vals) : vals(vals) { findOutputs(); }
 
-  void remove(Operation *op) {
-    ops.remove(op);
+  void remove(Value v) {
+    vals.remove(v);
     outputs.clear();
     findOutputs();
   }
 
-  /// Is the Value completely internal to this subgraph.
-  bool fullyContains(Value v) const {
-    return llvm::all_of(v.getUsers(),
-                        [this](Operation *user) { return ops.contains(user); });
-  }
-
-  /// List of parameters declared and used in this subgraph. Parameters are
-  /// returned in topological order.
-  llvm::SetVector<StringAttr> paramDeclarations() const;
-
 private:
   // Set outputs to those Values in vals which have uses outside the subgraph.
   void findOutputs() {
-    for (Operation *op : ops) {
+    for (auto v : vals) {
       // Constant ops cant be outputs
-      if (dyn_cast<ConstantOp>(op))
+      if (v.getDefiningOp<ConstantOp>())
         continue;
-      for (auto user : op->getUsers()) {
-        if (dyn_cast<MOControlOpInterface>(user) || !ops.contains(user)) {
+      for (auto user : v.getUsers()) {
+        // If one result is not in the constant subgraph, then they are all not.
+        if (user->getNumResults() == 0 || !vals.contains(user->getResult(0))) {
           // If any user is not const, then this is an output.
-          outputs.insert(op);
+          outputs.insert(v);
           break;
         }
       }
     }
   }
 };
-SmallVector<Subgraph>
-constantSubgraphs(MO::GraphOp graph,
-                  KGEN::ParameterCollector::Analysis &paramCache);
+SmallVector<Subgraph> ConstantSubgraphs(MO::GraphOp graph);
 
 } // namespace M::MO
 

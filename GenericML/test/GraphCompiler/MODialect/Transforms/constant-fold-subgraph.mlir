@@ -101,11 +101,9 @@ mo.graph @parameter_outputs<M>() -> (!mo.tensor<[M], si8>) {
   mo.output %broadcast : !mo.tensor<[M], si8>
 }
 
+// Dont constant fold constant parameters (for now?).
 // CHECK-LABEL: param_as_root
-// CHECK: %[[IDX:.*]] = kgen.param.constant = <1>
-// CHECK: %[[A0:.*]] = mo.index.to_tensor(%[[IDX]]) -> !mo.tensor<[], si32>
-// CHECK: subgraph %[[A0]] %[[IDX]]
-// CHECK: outputs %[[A0]]
+// CHECK-NOT: subgraph
 mo.graph @param_as_root() -> (!mo.tensor<[], si32>) {
     %index = kgen.param.constant = <1>
     %0 = mo.index.to_tensor(%index) -> !mo.tensor<[], si32>
@@ -135,21 +133,3 @@ mo.graph @repeated_application(%e0 : !mo.tensor<[], si32>) -> !mo.tensor<[], si3
   %e6 = mo.sub(%e5, %e2) : !mo.tensor<[], si32>
   mo.output %e6 : !mo.tensor<[], si32>
 }
-
-// CHECK-LABEL: shape_func
-// CHECK: %[[G1:.*]] = mo.constant {value = #M.dense_array<1.
-// CHECK: %[[G2:.*]] = mo.static.broadcast_to(%[[G1]])
-// CHECK: %[[G3:.*]] = mo.layout.transform(%[[G2]]
-// CHECK: subgraph %[[G1]] %[[G2]] %[[G3]]
-// CHECK: outputs %[[G3]]
-mo.graph @shape_func() -> (!mo.tensor<[?, ?], f32>) {
-  %g1 = mo.constant {value = #M.dense_array<1.> : tensor<1xf32>} : !mo.tensor<[1], f32>
-  %g2 = mo.static.broadcast_to(%g1):!mo.tensor<[1], f32> -> !mo.tensor<[768,768], f32, {layout = #mo.layout<KN>}>
-  mo.invoke_shape_func["pack_matmul_b_shape_func"]<() -> MMPackSh0, MMPackSh1>(%g2) {kgenParams = {transpose_in_0 = false}} : (!mo.tensor<[768, 768], f32, {layout = #mo.layout<KN>}>)
-  %g3 = mo.layout.transform(%g2) : !mo.tensor<[768, 768], f32, {layout = #mo.layout<KN>}> -> !mo.tensor<[MMPackSh0, MMPackSh1], f32, {layout = #mo.layout<KNkni>}>
-  %g4 = mo.rebind(%g3): !mo.tensor<[MMPackSh0, MMPackSh1], f32, {layout = #mo.layout<KNkni>}> -> !mo.tensor<[?, ?], f32>
-  mo.output %g4: !mo.tensor<[?, ?], f32>
-}
-
-// make sure that we are not matching anything in the mlir of the result
-// CHECK: module
