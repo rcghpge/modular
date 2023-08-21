@@ -5,8 +5,8 @@
 # ===----------------------------------------------------------------------=== #
 # RUN: %mojo -debug-level full %s | FileCheck %s
 
-from Index import Index
-from Index import StaticIntTuple, Index
+from utils.index import Index
+from utils.index import StaticIntTuple, Index
 from math import sqrt
 from random import rand, seed
 from tensor import Tensor, TensorShape
