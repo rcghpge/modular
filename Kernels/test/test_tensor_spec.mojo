@@ -5,8 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 # RUN: %mojo -debug-level full %s | FileCheck %s
 
-from tensor import TensorSpec, TensorShape
-
+from tensor import TensorShape, TensorSpec
 
 # CHECK: test_tensor_shape
 fn test_tensor_shape():
