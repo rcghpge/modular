@@ -48,12 +48,14 @@ static bool considerMaybeSameAsForAnyOperand(Operation *op,
 
 AsyncDataflowDependencies::AsyncDataflowDependencies(
     IndexSet<Value> *valueIndex, IndexSet<Operation *> *operationIndex,
-    AnalysisLevel analysisLevel)
+    AnalysisLevel analysisLevel,
+    llvm::unique_function<bool(Operation *)> exclusiveOpsFilter)
     : valueAnalysis(valueIndex), operationAnalysis(operationIndex),
       sameAsEquivalence(valueIndex->identityEquivalence()),
       maybeSameAsEquivalence(valueIndex->identityEquivalence()),
       approximateMaybeSameAsEquivalence(valueIndex->identityEquivalence()),
-      alwaysReadyPredicate(valueIndex->emptySet()) {
+      alwaysReadyPredicate(valueIndex->emptySet()),
+      exclusiveOpsFilter(std::move(exclusiveOpsFilter)) {
   setupSameAs();
   setupMaybeSameAs();
   setupApproximateMaybeSameAs();
@@ -767,10 +769,18 @@ AsyncDataflowDependencies::getFullyConsumedWhenOpBegins(Operation *op) const {
   // and everything after to be for the 'next' iteration. This means the
   // equivalence can ignore some entries in the maybeSameAs relation which are
   // due to tying the loop knot.
-  ValueEquivalence equivalence = getEquivalenceAtOp(op);
+  std::unique_ptr<ValueEquivalence> equivalenceAtOp;
+  const ValueEquivalence *equivalence;
+  if (isAtMostOnce(op)) {
+    equivalence = &maybeSameAsEquivalence;
+  } else {
+    equivalenceAtOp =
+        std::make_unique<ValueEquivalence>(getEquivalenceAtOp(op));
+    equivalence = equivalenceAtOp.get();
+  }
 
   LLVM_DEBUG({
-    valueAnalysis.printEquivalence(llvm::dbgs(), "equivalence", equivalence);
+    valueAnalysis.printEquivalence(llvm::dbgs(), "equivalence", *equivalence);
   });
 
   // Now, only if ALL the equivalent SSA values have been consumed can we
@@ -778,12 +788,18 @@ AsyncDataflowDependencies::getFullyConsumedWhenOpBegins(Operation *op) const {
   // unit -- it is not sound to just expand candidates by the above equivalence
   // and filter each one.
   ValueSet result = valueAnalysis.index->emptySet();
-  for (Value value : valueAnalysis.index->setToVector(candidates)) {
-    ValueSet maybeSameValues =
-        valueAnalysis.index->getEquivalenceClass(equivalence, value);
+  for (auto candidateItr = candidates.set_bits_begin(),
+            endCandidateItr = candidates.set_bits_end();
+       candidateItr != endCandidateItr; ++candidateItr) {
+    ValueSet maybeSameValues = valueAnalysis.index->emptySet();
+    for (auto equivItr = equivalence->findLeader(*candidateItr),
+              endEquivItr = equivalence->member_end();
+         equivItr != endEquivItr; ++equivItr)
+      maybeSameValues.set(*equivItr);
     LLVM_DEBUG({
       llvm::dbgs() << "considering candidate ";
-      valueAnalysis.index->printV(llvm::dbgs(), value);
+      valueAnalysis.index->printV(llvm::dbgs(),
+                                  valueAnalysis.index->getV(*candidateItr));
       llvm::dbgs() << " which is equivalent to ";
       valueAnalysis.index->printVs(
           llvm::dbgs(), valueAnalysis.index->setToVector(maybeSameValues));
@@ -809,6 +825,11 @@ void AsyncDataflowDependencies::setupExclusive() {
     if (op == operationAnalysis.index->distinguished)
       continue;
 
+    if (!exclusiveOpsFilter(op)) {
+      // This op is not of interest.
+      continue;
+    }
+
     if (op->getNumResults() == 0) {
       // Don't waste time calculating the consumedSet if there's no results
       // by which to index it.
@@ -819,12 +840,26 @@ void AsyncDataflowDependencies::setupExclusive() {
     // never created in the first place) when op BEGINS execution.
     ValueSet consumedSet = getFullyConsumedWhenOpBegins(op);
 
+    for (Value consumedValue : valueAnalysis.index->setToVector(consumedSet)) {
+      if (consumedValue.getDefiningOp() &&
+          !exclusiveOpsFilter(consumedValue.getDefiningOp())) {
+        // The consumed value is the result of an op which is not of interest.
+        valueAnalysis.index->removeFromSet(consumedSet, consumedValue);
+      }
+    }
+
     // Any value which implies an indicating result of op is ready (including
     // the indicating result itself) can't overlap with any value in
     // consumedSet.
     for (Value indicatingResult : getIndicatingResults(op)) {
       for (Value alsoReadyIndicatingResult : valueAnalysis.index->setToVector(
                downwardsImpliesReadySet(indicatingResult))) {
+        if (alsoReadyIndicatingResult.getDefiningOp() &&
+            !exclusiveOpsFilter(alsoReadyIndicatingResult.getDefiningOp())) {
+          // Also-ready value is the result of an op which is not of interest.
+          continue;
+        }
+
         LLVM_DEBUG({
           llvm::dbgs() << "add because consumed ";
           valueAnalysis.index->printV(llvm::dbgs(), alsoReadyIndicatingResult);
@@ -866,8 +901,18 @@ void AsyncDataflowDependencies::setupExclusive() {
     if (op == operationAnalysis.index->distinguished)
       continue;
 
+    if (!exclusiveOpsFilter(op)) {
+      // This op is not of interest.
+      continue;
+    }
+
     for (Operation *disjointOp : operationAnalysis.index->setToVector(
              operationAnalysis.getEntries(structurallyAtMostOneRelation, op))) {
+      if (!exclusiveOpsFilter(disjointOp)) {
+        // The disjoint op is not of interest.
+        continue;
+      }
+
       for (Value opResult : op->getResults()) {
         for (Value disjointOpResult : disjointOp->getResults()) {
           LLVM_DEBUG({

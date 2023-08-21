@@ -89,6 +89,8 @@ private:
   using ValueAnalysis = ForwardsRelationDataflowAnalysis;
   using OperationAnalysis = RelationDataflowAnalysisBase<Operation *>;
 
+  static bool allOperationsFilter(Operation *op) { return true; }
+
 public:
   using ValueSet = ValueAnalysis::Set;
   using ValueEquivalence = ValueAnalysis::Equivalence;
@@ -114,7 +116,9 @@ public:
   /// Performs the dataflow analysis to the given level.
   AsyncDataflowDependencies(IndexSet<Value> *valueIndex,
                             IndexSet<Operation *> *operationIndex,
-                            AnalysisLevel analysisLevel);
+                            AnalysisLevel analysisLevel,
+                            llvm::unique_function<bool(Operation *)>
+                                exclusiveOpsFilter = allOperationsFilter);
 
   /// The sameAs(%lhs, %rhs) equivalence is true only if at runtime:
   ///   valueOf(%lhs) == valueOf(%rhs)
@@ -390,6 +394,9 @@ private:
   OperationRelation runsLaterRelation;
   /// Inverse of above.
   OperationRelation runsEarlierRelation;
+
+  /// Indicates which operations are of interest for the exclusiveRelation.
+  llvm::unique_function<bool(Operation *)> exclusiveOpsFilter;
 
   /// (%lhs, %rhs) is in exclusiveRelation only if %lhs and %rhs cannot
   /// simultaneously point to or otherwise alias the same AsyncValue over all

@@ -19,8 +19,6 @@ def GRTMayAliasInterface : OpInterface<"GRTMayAliasInterface"> {
          shares an underlying resource with an operand AsyncValue. For example,
          an op to create a tensor from a buffer which may move the buffer if
          it has no other references.
-    However `!mef.chain` operands and results are never considered to be
-    aliasable.
 
     The AsyncDataflowDependencies analysis requires this information so as
     to soundly approximate the 'exclusive' relation between SSA values.

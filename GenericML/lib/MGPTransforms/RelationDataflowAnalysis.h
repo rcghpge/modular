@@ -285,20 +285,24 @@ public:
     setEntries(domainMap, v, index->unitSet(index->distinguished));
   }
 
-  /// Add (lhs, rhs) to relation. Marks changed true if relation was changed.
+  /// Add (lhs, rhs) to relation.
   void add(Relation &relation, V lhs, V rhs) const {
     auto itr = relation.find(lhs);
     if (itr == relation.end())
       relation.insert({lhs, index->unitSet(rhs)});
-    else if (!index->setContains(itr->second, rhs))
+    else
       index->addToSet(itr->second, rhs);
   }
 
-  /// Adds { (lhs, rhs) | rhs in set } to relation. Marks changed true
-  /// if relation was changed.
+  /// Adds { (lhs, rhs) | rhs in set } to relation.
   void addAll(Relation &relation, V lhs, const Set &set) const {
-    for (V rhs : index->setToVector(set))
-      add(relation, lhs, rhs);
+    auto itr = relation.find(lhs);
+    if (itr == relation.end()) {
+      if (set.count())
+        relation.insert({lhs, set});
+      return;
+    }
+    itr->second |= set;
   }
 
   /// Updates equivalence such that if (x, y) is in relation then x and y are
