@@ -268,28 +268,32 @@ outputTensorResults(const ExecutableModel *model,
 
     llvm::outs() << "--- Writing Outputs to " << outputDir << "\n";
 
+    bool hasError = false;
     for (size_t i = 0; i < results.size(); ++i) {
       std::string outputName = model->getModel()->getOutputNames()[i];
       const auto &result = results[i];
       assert(result.isReady() && "model result must be ready");
-      if (auto *tensor = dyn_cast<Tensor>(result)) {
-        tensorResultsInfo.push_back(
-            {outputName, tensor->getSpec().getAsString()});
+      if (failed(printDiagIfError(result)))
+        hasError = true;
+      else {
+        if (auto *tensor = dyn_cast<Tensor>(result)) {
+          tensorResultsInfo.push_back(
+              {outputName, tensor->getSpec().getAsString()});
 
-        std::ofstream outputFile(
-            (std::filesystem::path(outputDir.str()) / outputName),
-            std::ofstream::binary);
+          std::ofstream outputFile(
+              (std::filesystem::path(outputDir.str()) / outputName),
+              std::ofstream::binary);
 
-        outputFile.write((const char *)tensor->getBuffer(),
-                         tensor->getSpec().getSizeInBytes());
+          outputFile.write((const char *)tensor->getBuffer(),
+                           tensor->getSpec().getSizeInBytes());
 
-        if (!outputFile) {
-          llvm::errs() << "Failed to write output tensor file.\n";
-          return failure();
+          if (!outputFile) {
+            llvm::errs() << "Failed to write output tensor file.\n";
+            return failure();
+          }
+        } else {
+          tensorResultsInfo.push_back({"unknown result", ""});
         }
-
-      } else {
-        tensorResultsInfo.push_back({"unknown result", ""});
       }
     }
     // Write tensor result information to yaml.
@@ -300,9 +304,8 @@ outputTensorResults(const ExecutableModel *model,
             .failed()) {
       llvm::errs() << "Failed to write YAML with result info."
                    << "\n";
-      return failure();
     }
-    return success();
+    return failure(hasError);
   }
 
   StringRef name = model->getModel()->getName();
