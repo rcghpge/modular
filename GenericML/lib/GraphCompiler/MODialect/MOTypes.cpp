@@ -186,7 +186,7 @@ ErrorOr<DType> static fromMLIRType(Type mlirType) {
                "' as an M::DType type.");
 }
 
-ErrorOr<Type> static toMLIRType(MLIRContext *context, DType dType) {
+ErrorOr<Type> M::MO::toMLIRType(MLIRContext *context, DType dType) {
   if (!dType.isValid())
     return NoneType::get(context); // None denotes unknown.
   if (dType.isInt() || dType.isBool())

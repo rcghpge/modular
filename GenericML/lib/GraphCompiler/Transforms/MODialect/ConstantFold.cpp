@@ -8,6 +8,7 @@
 #include "GenericML/Driver/CXXDriverAPI.h"
 #include "GenericML/Driver/CompileDriver.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
+#include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
@@ -158,8 +159,19 @@ struct RewriteConstantOps : public RewritePattern {
         rewriter.setInsertionPoint(op);
         llvm::SmallVector<Value> new_results;
         for (auto r : op->getResults()) {
-          new_results.push_back(rewriter.create<ConstantOp>(
-              op->getLoc(), r.getType(), constants.at(r)));
+          // Each result can either be a tensor or a shape.
+          if (r.getType().isa<TensorType>()) {
+            new_results.push_back(rewriter.create<ConstantOp>(
+                op->getLoc(), r.getType(), constants.at(r)));
+          } else if (r.getType().isa<ShapeType>()) {
+            auto intElems = dyn_cast<IntArrayElementsAttr>(constants.at(r));
+            new_results.push_back(rewriter.create<KGEN::ParamConstantOp>(
+                op->getLoc(),
+                ShapeAttr::get(intElems.asArrayRef<int64_t>(),
+                               MOSH::ShapeType::get(op->getContext()))));
+          } else {
+            assert(false && "constants must be tensors or shapes");
+          }
         }
         rewriter.replaceOp(op, new_results);
         return LogicalResult::success();
@@ -245,8 +257,7 @@ ErrorOr<ModelResult> executeModel(MLIRContext *ctx, const Model *model,
       int64_t size = std::accumulate(shape.begin(), shape.end(), 1,
                                      std::multiplies<int64_t>());
       ArrayType arrayType = ArrayType::get(
-          op->getContext(), size,
-          dyn_cast<TensorType>(result.getType()).getElementType());
+          op->getContext(), size, toMLIRType(ctx, t->getEltType()).get());
       valuesToTensors[result] = getAttrForTensorDataCopy(
           arrayType,
           subgraphInfo.constantSubgraphName + "_" + std::to_string(outIdx),
@@ -318,9 +329,8 @@ constantSubgraphs(MO::GraphOp graph,
       workQueue.push_back(user);
   });
   graph.walk([&](KGEN::ParamConstantOp op) {
-    constSubgraphs.insert(op);
-    for (auto user : op.getResult().getUsers())
-      workQueue.push_back(user);
+    // ParamConstantOp can have parameters that are not constant...
+    workQueue.push_back(op);
   });
 
   // Parameters are not SSA values so we need to construct our own use-def graph
@@ -379,50 +389,46 @@ constantSubgraphs(MO::GraphOp graph,
 
     // Check that all new definitions are const
     llvm::SetVector<Operation *> paramOperands;
+    auto walkDeclRef = [&](KGEN::ParamDeclRefAttr paramRef) {
+      Operation *def = lookupParamDef(paramUseDef, paramRef.getName());
+      if (nonConst.contains(def)) {
+        nonConst.insert(op);
+        foundNonConst = true;
+        return WalkResult::interrupt();
+      }
+      paramOperands.insert(def);
+      // Skip params that are defined by this op.
+      if (def != op && constSubgraphs.findValue(def) == constSubgraphs.end())
+        unvisited.insert(def);
+      return WalkResult::advance();
+    };
     auto paramOpInterface = dyn_cast<KGEN::ParamOpInterface>(op);
     if (paramOpInterface) {
-      paramOpInterface.walkDefinitions([&](KGEN::ParamDeclAttr param,
-                                           ParamDefValue val) {
-        for (auto expr : val.exprs) {
-          expr.walk([&](KGEN::ParamDeclRefAttr paramRef) {
-            Operation *def = lookupParamDef(paramUseDef, paramRef.getName());
-            if (nonConst.contains(def)) {
-              nonConst.insert(op);
-              foundNonConst = true;
-              return WalkResult::interrupt();
+      paramOpInterface.walkDefinitions(
+          [&](KGEN::ParamDeclAttr param, ParamDefValue val) {
+            for (auto expr : val.exprs) {
+              expr.walk(walkDeclRef);
+              if (foundNonConst)
+                break;
             }
-            paramOperands.insert(def);
-            if (def != op &&
-                constSubgraphs.findValue(def) == constSubgraphs.end())
-              unvisited.insert(def);
-            return WalkResult::advance();
           });
-        }
-      });
+      if (foundNonConst)
+        continue;
     }
 
     // Go through all parameters and make sure they are const. We only do
     // this for outputs as inputs were already checked by their defining op.
     for (auto resultType : op->getResultTypes()) {
-      resultType.walk([&](KGEN::ParamDeclRefAttr paramDecl) {
-        StringAttr param = paramDecl.getName();
-        Operation *def = lookupParamDef(paramUseDef, param);
-
-        if (nonConst.contains(def)) {
-          nonConst.insert(op);
-          foundNonConst = true;
-        }
-        paramOperands.insert(def);
-        // Skip params that are defined by this op.
-        if (def != op &&
-            constSubgraphs.findValue(def) == constSubgraphs.end()) {
-          unvisited.insert(def);
-        }
-      });
+      resultType.walk(walkDeclRef);
       if (foundNonConst)
         break;
     }
+    if (foundNonConst)
+      continue;
 
+    // Check that all parameters in attrs are const.
+    for (auto attr : op->getAttrs())
+      attr.getValue().walk(walkDeclRef);
     if (foundNonConst)
       continue;
 
@@ -512,6 +518,14 @@ SubgraphInfo cloneSubgraph(OpBuilder builder, GraphOp orig, ModuleOp module,
   for (auto op : subgraph.outputs) {
     for (auto result : op->getResults()) {
       Value newOutput = oldToNew.lookup<Value>(result);
+      if (newOutput.getType().isa<MOSH::ShapeType>()) {
+        // Can't output shapes so we convert it to a tensor of unknown size.
+        newOutput = builder.create<Shape::ToTensorOp>(
+            loc,
+            TensorType::get({KGEN::UnknownAttr::get(newOutput.getType())},
+                            DType::si64),
+            newOutput);
+      }
       newOutput.getType().walk([&](KGEN::ParamDeclRefAttr ref) {
         outputParams.insert(KGEN::ParamDeclAttr::get(
             ref.getContext(), ref.getName(), ref.getType()));
@@ -602,8 +616,12 @@ struct FactorMemIncrease : public ConstantFoldPolicy {
   // Size of Value in bytes.
   static int64_t valueSize(Value v) {
     auto tensor = dyn_cast<TensorType>(v.getType());
-    return typeToShaped(tensor).getNumElements() *
-           tensor.getDtype().getSizeInBytes();
+    if (tensor)
+      return typeToShaped(tensor).getNumElements() *
+             tensor.getDtype().getSizeInBytes();
+
+    // index or shape have nominal sizes
+    return 0;
   }
 
   static int64_t valueSize(const Subgraph &subgraph, Operation *op) {
@@ -760,6 +778,12 @@ void ConstantFoldPass::runOnOperation() {
     // TODO: #18077 this should be an argument to the pass.
     LLCL::Runtime runtime(LLCL::createMallocAllocator(),
                           LLCL::createThreadPoolWorkQueue());
+
+    // We have to consolidate rewrites to the same graphop as the rewrites of
+    // one subgraph may invalidate ops in another subgraph (due to fold hooks).
+    llvm::DenseMap<GraphOp,
+                   llvm::SmallVector<std::pair<ModelResult, SubgraphInfo>>>
+        executionResults;
     for (size_t i = 0; i < subgraphReplacements.size(); i++) {
       SubgraphInfo subgraphInfo = subgraphReplacements[i];
       const Model *model = modelsOr.get().models->getModelNamed(
@@ -773,29 +797,47 @@ void ConstantFoldPass::runOnOperation() {
                         Twine(valuesToTensorsOr.takeError().get()));
         return signalPassFailure();
       }
+      auto it = executionResults.find(subgraphInfo.orig);
+      if (it != executionResults.end()) {
+        it->second.push_back({valuesToTensorsOr.takeValue(), subgraphInfo});
+      } else {
+        executionResults[subgraphInfo.orig] = {
+            {valuesToTensorsOr.takeValue(), subgraphInfo}};
+      }
+    }
 
-      // Replace output expressions with constants. Also handles DCE.
-      auto filtered = llvm::make_filter_range(
-          subgraphInfo.subgraph.ops, [&](Operation *op) {
-            return llvm::all_of(op->getResults(), [&](OpResult r) {
-              return subgraphInfo.subgraph.fullyContains(r);
+    // Replace output expressions with constants. Also handles DCE.
+    for (auto [graph, results] : executionResults) {
+      llvm::SetVector<Operation *> internalOps;
+      for (auto r : results) {
+        SubgraphInfo &subgraphInfo = r.second;
+        auto filtered = llvm::make_filter_range(
+            subgraphInfo.subgraph.ops, [&](Operation *op) {
+              return llvm::all_of(op->getResults(), [&](OpResult r) {
+                return subgraphInfo.subgraph.fullyContains(r);
+              });
             });
-          });
-      llvm::SetVector<Operation *> internalOps(filtered.begin(),
-                                               filtered.end());
+        internalOps.insert(filtered.begin(), filtered.end());
+      }
+
+      llvm::DenseMap<Value, ElementsAttr> constants;
+      llvm::DenseMap<StringAttr, int64_t> params;
+      for (auto r : results) {
+        constants.insert(r.first.constants.begin(), r.first.constants.end());
+        params.insert(r.first.parameters.begin(), r.first.parameters.end());
+      }
+
       RewritePatternSet patterns{ctx};
-      patterns.add<RewriteConstantOps>(ctx, valuesToTensorsOr.get().constants,
-                                       internalOps);
-      if (failed(applyPatternsAndFoldGreedily(subgraphInfo.orig,
-                                              std::move(patterns))))
+      patterns.add<RewriteConstantOps>(ctx, constants, internalOps);
+      if (failed(applyPatternsAndFoldGreedily(graph, std::move(patterns))))
         return signalPassFailure();
 
       // Add parameters that were defined in the subgraph.
       OpBuilder builder(ctx);
-      builder.setInsertionPointToStart(subgraphInfo.orig.getBodyBlock());
-      for (auto [name, val] : valuesToTensorsOr.get().parameters) {
+      builder.setInsertionPointToStart(graph.getBodyBlock());
+      for (auto [name, val] : params) {
         builder.create<KGEN::ParamDeclareOp>(
-            subgraphInfo.orig.getLoc(),
+            graph.getLoc(),
             KGEN::ParamDeclAttr::get(ctx, name, IndexType::get(ctx)),
             builder.getIndexAttr(val));
       }

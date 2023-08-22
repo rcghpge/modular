@@ -39,6 +39,8 @@ using ChainType = MOSH::ChainType;
 using ShapeAttr = MOSH::ShapeAttr;
 using ShapeType = MOSH::ShapeType;
 using TensorValue = M::TypedValue<M::MO::TensorType>;
+
+ErrorOr<Type> toMLIRType(MLIRContext *context, DType dType);
 } // namespace M::MO
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTYPES_H
