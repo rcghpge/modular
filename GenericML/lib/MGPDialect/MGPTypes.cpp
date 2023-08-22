@@ -368,6 +368,16 @@ std::optional<uint64_t> CpuTensorSpecType::getNumElements() const {
   return prod;
 }
 
+uint64_t CpuTensorSpecType::getPreScaledNumElements() const {
+  uint64_t prod = 1;
+  for (const std::optional<uint64_t> &dim : getDims()) {
+    if (!dim)
+      continue;
+    prod *= *dim;
+  }
+  return prod;
+}
+
 std::optional<uint64_t> CpuTensorSpecType::getSizeInBytes() const {
   std::optional<DType> optDType = getOptDType();
   if (!optDType)
@@ -377,6 +387,16 @@ std::optional<uint64_t> CpuTensorSpecType::getSizeInBytes() const {
     return {}; // at least one unknown dimension
   ssize_t bytes = optDType->getSizeInBytes(plainSizeToRuntimeSize(*numElems));
   assert(bytes >= 0 && "overflow in getSizeInBytes");
+  return static_cast<uint64_t>(bytes);
+}
+
+std::optional<uint64_t> CpuTensorSpecType::getPreScaledSizeInBytes() const {
+  std::optional<DType> optDType = getOptDType();
+  if (!optDType)
+    return {}; // unknown element type
+  uint64_t numElems = getPreScaledNumElements();
+  ssize_t bytes = optDType->getSizeInBytes(plainSizeToRuntimeSize(numElems));
+  assert(bytes >= 0 && "overflow in getPreScaledSizeInBytes");
   return static_cast<uint64_t>(bytes);
 }
 

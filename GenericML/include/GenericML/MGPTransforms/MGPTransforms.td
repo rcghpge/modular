@@ -94,12 +94,35 @@ def StaticMemoryPlannerPass : Pass<"static-memory-planner", "ModuleOp"> {
                 "mgp.cpu.buffer.section.static.borrow ops using statically "
                 "determined offsets.";
   let description = [{
-    This pass replaces mgp.cpu.buffer.alloc.static ops with
-    mgp.cpu.buffer.section.static.borrow ops from a pre-allocated buffer.
-    The size of the pre-allocated buffer, and the offset to use for each
-    mgp.cpu.buffer.section.static.borrow op is chosen by this pass so as to
-    ensure no active buffers will ever share the same borrowed memory.
+    This pass replaces mgp.cpu.buffer.alloc.{static,spec} ops with
+    mgp.cpu.buffer.section.{static,dynamic}.borrow ops from (pre-allocated)
+    shared buffers. The size of the shared buffers, and the offset to use for
+    each mgp.cpu.buffer.section.{static,dynamic}.borrow op, is chosen by
+    this pass so as to ensure no active buffers will ever overlap in their
+    borrowed memory.
+
+    The mgp.cpu.buffer.alloc.spec ops can be replaced only when their shape has
+    a single dynamic dimension (eg for a dynamic batch size). Planning is done
+    in groups for each SSA value supplying the single runtime dynamic dimension.
+    The mgp.cpu.buffer.alloc.static ops are planning in their own group.
+
+    Heuristics are used to decide when planning is worthwhile, and to choose
+    offsets within the shared buffers.
   }];
+
+  let options = [
+    Option<"minBuffers", "min-buffers", "size_t", "10",
+           "The minimum number of buffers within a planning group to "
+           "consider static memory planning worthwhile. If zero then "
+           "static memory planning is disabled. If one then no restriction.">,
+    Option<"maxHighWaterMarkPercentage", "max-highwatermark-percentage",
+           "double", "50.0",
+           "The maximum high-watermark percentage to consider planning "
+           "worthwhile. This percentage is the reduction in maximum memory "
+           "usage using memory planned buffers as compared with simply "
+           "pre-allocating every buffer at the beginning of execution. "
+           "If zero then no restriction.">,
+  ];
 }
 
 //===----------------------------------------------------------------------===//

@@ -268,17 +268,26 @@ def MGP_CpuTensorSpecType : MGP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
     /// this tensor spec.
     size_t getNumDynamicDims() const;
 
-    /// Return the dimension at index i in this spec, or empty if the
+    /// Return the dimension at index i in this spec, or nullopt if the
     /// dimension is dynamic.
     std::optional<uint64_t> operator[](size_t i) const;
 
     /// Returns the number of elements in a tensor of this spec, or
-    /// empty if the tensor spec is not fully static.
+    /// nullopt if the tensor spec is not fully static.
     std::optional<uint64_t> getNumElements() const;
 
+    /// Returns the number of elements for the known dimensions of this spec.
+    /// The actual number of elements will be this value multiplied by the
+    /// runtime dimensions of all dynamic dimensions.
+    uint64_t getPreScaledNumElements() const;
+
     /// Returns the size of the buffer needed to represent a tensor
-    /// of this spec, or empty if the tensor spec is not fully static.
+    /// of this spec, or nullopt if the tensor spec is not fully static.
     std::optional<uint64_t> getSizeInBytes() const;
+
+    /// Returns the byte size needed to represent getNumPreScaledElements(),
+    /// or nullopt if the tensor spec does not have a statically known dtype.
+    std::optional<uint64_t> getPreScaledSizeInBytes() const;
 
     /// Returns the dimensions of this tensor spec in 'raw form'.
     /// Each element of the result will be an UI64Int, with ~0 denoting
