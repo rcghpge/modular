@@ -22,6 +22,17 @@ namespace M::MOGG {
 
 namespace {
 
+// TODO(19870): Remove checks when matmul supports full fusion
+bool hasMatmulCall(MOGG::KernelOp kernel) {
+  for (auto call : kernel.getOps<MOGG::CallOp>()) {
+    if (call.getMojoKernelTarget() == "mo.matmul")
+      return true;
+    if (call.getMojoKernelTarget() == "mo.batch_matmul")
+      return true;
+  }
+  return false;
+}
+
 struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
   using FuseInOutLambdasBase::FuseInOutLambdasBase;
 
@@ -52,6 +63,12 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     auto parentKernel =
         dyn_cast_or_null<MOGG::KernelOp>(parentValue.getDefiningOp());
     if (!parentKernel)
+      return false;
+
+    // Can only fuse with kernels which maintain the same output type for
+    // matmul epilogue fusion.
+    if ((hasMatmulCall(kernel) || hasMatmulCall(parentKernel)) &&
+        parentKernel->getResultTypes() != kernel->getResultTypes())
       return false;
 
     // Check that the kernel has a single output.
@@ -222,6 +239,11 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
       // Check it's a kernel.
       MOGG::KernelOp user = dyn_cast<MOGG::KernelOp>(*result.user_begin());
       if (!user)
+        return false;
+
+      // Can only fuse with kernels which maintain the same output type.
+      if ((hasMatmulCall(kernel) || hasMatmulCall(user)) &&
+          user->getResultTypes() != kernel->getResultTypes())
         return false;
 
       // Check the kernel is a fusable elementwise.

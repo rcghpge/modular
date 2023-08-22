@@ -146,3 +146,49 @@ mo.graph @checkNoFuseNoElementwiseAttr<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, 
 // CHECK: %[[OUT:.*]] = mogg.kernel
 // CHECK: %[[OUT2:.*]] = mogg.kernel (%[[OUT]])
 // CHECK: mo.output %[[OUT2]]
+
+// Check when fusing two kernels with different output dtypes, we only do input fusion
+mo.graph @checkNoFuseDifferentOutDTypes() -> !mo.tensor<[3, 3], f32> {
+  %0 = mo.constant {value = #M.dense_array<1, 2, 3, 4, 5, 6, 7, 8, 9> : tensor<3x3xsi32>} : !mo.tensor<[3, 3], si32, {layout = #mo.layout<KN>}>
+  %1 = mo.constant {value = #M.dense_array<1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00, 7.000000e+00, 8.000000e+00, 9.000000e+00> : tensor<3x3xf32>} : !mo.tensor<[3, 3], f32>
+  %2 = mogg.kernel (%0, %0) : (%arg0: !mo.tensor<[3, 3], si32, {layout = #mo.layout<KN>}>, %arg1: !mo.tensor<[3, 3], si32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[3, 3], si32>{
+    %4 = mogg.output_placeholders : !mo.tensor<[3, 3], si32>
+    mogg.lambda @output_0_fn = (%arg2: !mogg.indices, %arg3: !mogg.simd<si32>){
+      mogg.call "simd_store"(%4, %arg2, %arg3) : !mo.tensor<[3, 3], si32>, !mogg.indices, !mogg.simd<si32>
+      mogg.output
+    }
+    mogg.call "mo.matmul" [@output_0_fn](%arg0, %arg1, %4) {lambdas_have_fusion = false, packed_in_1 = false, single_thread_blocking_override = false, transpose_in_1 = false} : !mo.tensor<[3, 3], si32, {layout = #mo.layout<KN>}>, !mo.tensor<[3, 3], si32, {layout = #mo.layout<KN>}>, !mo.tensor<[3, 3], si32>
+    mogg.output %4 : !mo.tensor<[3, 3], si32>
+  } {outputFusionInterface = ["output_0_fn"]}
+  %3 = mogg.kernel (%1, %2) : (%arg0: !mo.tensor<[3, 3], f32>, %arg1: !mo.tensor<[3, 3], si32>) -> !mo.tensor<[3, 3], f32>{
+    %4 = mogg.output_placeholders : !mo.tensor<[3, 3], f32>
+    mogg.lambda @input_0_fn_0 = (%arg2: !mogg.indices) -> !mogg.simd<si32>{
+      %5 = mogg.simd_load(%arg1, %arg2) : (!mo.tensor<[3, 3], si32>, !mogg.indices) -> !mogg.simd<si32>
+      mogg.output %5 : !mogg.simd<si32>
+    }
+    mogg.lambda @input_1_fn = (%arg2: !mogg.indices) -> !mogg.simd<f32>{
+      %5 = mogg.simd_load(%arg0, %arg2) : (!mo.tensor<[3, 3], f32>, !mogg.indices) -> !mogg.simd<f32>
+      mogg.output %5 : !mogg.simd<f32>
+    }
+    mogg.lambda @output_0_fn = (%arg2: !mogg.indices, %arg3: !mogg.simd<f32>){
+      mogg.call "simd_store"(%4, %arg2, %arg3) : !mo.tensor<[3, 3], f32>, !mogg.indices, !mogg.simd<f32>
+      mogg.output
+    }
+    mogg.lambda @elemwise_compute_lambda = (%arg2: !mogg.indices){
+      %5 = mogg.invoke @input_0_fn_0(%arg2) {readOnly = true} : !mogg.indices -> !mogg.simd<si32>
+      %6 = mogg.call "mo.cast"(%5) : !mogg.simd<si32> -> !mogg.simd<f32>
+      %7 = mogg.invoke @input_1_fn(%arg2) {readOnly = true} : !mogg.indices -> !mogg.simd<f32>
+      %8 = mogg.call "mo.add"(%6, %7) : !mogg.simd<f32>, !mogg.simd<f32> -> !mogg.simd<f32>
+      mogg.invoke @output_0_fn(%arg2, %8) : !mogg.indices, !mogg.simd<f32>
+      mogg.output
+    }
+    mogg.call "elementwise" [@elemwise_compute_lambda](%4) {single_thread_blocking_override = false} : !mo.tensor<[3, 3], f32>
+    mogg.output %4 : !mo.tensor<[3, 3], f32>
+  } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_1_fn", "input_0_fn_0"], outputFusionInterface = ["output_0_fn"]}
+  mo.output %3 : !mo.tensor<[3, 3], f32>
+}
+
+// CHECK-LABEL: @checkNoFuseDifferentOutDTypes
+// CHECK: %[[OUT:.*]] = mogg.kernel
+// CHECK: %[[OUT2:.*]] = mogg.kernel (%[[CONSTANT:.*]], %[[OUT]])
+// CHECK: mo.output %[[OUT2]]
