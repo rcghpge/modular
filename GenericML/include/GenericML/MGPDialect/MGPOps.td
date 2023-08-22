@@ -624,10 +624,10 @@ def CpuBufferConcatOp : MGP_Op<"cpu.buffer.concat"> {
 }
 
 //===----------------------------------------------------------------------===//
-// CpuBufferSectionStaticBorrowOp
+// CpuBufferSectionBorrowStaticOp
 //===----------------------------------------------------------------------===//
 
-def CpuBufferSectionStaticBorrowOp : MGP_Op<"cpu.buffer.section.static.borrow", [
+def CpuBufferSectionBorrowStaticOp : MGP_Op<"cpu.buffer.section.borrow.static", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>]> {
   let summary = "Borrows a section with statically known offset and size from "
@@ -655,7 +655,7 @@ def CpuBufferSectionStaticBorrowOp : MGP_Op<"cpu.buffer.section.static.borrow", 
     %ch:  !mef.chain
     %in_buf : !mgp.cpu.buffer<256>
     %out_buf =
-        mgp.cpu.buffer.section.static.borrow %ch, %in_buf, offset 128, size 64
+        mgp.cpu.buffer.section.borrow.static %ch, %in_buf, offset 128, size 64
         : !mgp.cpu.buffer<256>
     %out_buf : !mgp.cpu.buffer<64>
     ```
@@ -674,7 +674,70 @@ def CpuBufferSectionStaticBorrowOp : MGP_Op<"cpu.buffer.section.static.borrow", 
   }];
 
   let extraClassDefinition = [{
-    bool CpuBufferSectionStaticBorrowOp::extendsLifetime(size_t operandIndex, size_t resultIndex) {
+    bool CpuBufferSectionBorrowStaticOp::extendsLifetime(size_t operandIndex, size_t resultIndex) {
+      return operandIndex == 1;
+    }
+  }];
+
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// CpuBufferSectionBorrowDynamicOp
+//===----------------------------------------------------------------------===//
+
+def CpuBufferSectionBorrowDynamicOp : MGP_Op<"cpu.buffer.section.borrow.dynamic", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>]> {
+  let summary = "Borrows a section with dynamically known offset and size from "
+                "input buffer.";
+  let description = [{
+    Returns a borrowed buffer who's underlying storage points into a section of
+    the input buffer. The offset and size of the section is given by
+    attributes, which are then scaled by a single `index` operand. The input
+    and output buffers must have unknown size. Thus this op is really only
+    useful in conjunction with static memory planning when a set of buffers
+    all share the same dependence on a single runtime dimension (such as for the
+    dynamic batch size). A runtime error is triggered if the requested section
+    is out of range of the input buffer.
+
+    Note that no copying is done, and the result buffer merely borrows from
+    the (offset into) the input buffer.
+
+    The result buffer will inherit the mutablity and, if possible, alignment
+    of the input buffer.
+
+    The runtime will guarantee the input buffer will outlive the result buffer.
+    However, the runtime only checks for overlapping concurrent
+    borrows, or overlapping reads/writes to the same contents, in debug builds.
+
+    Example:
+    ```mlir
+    %ch:  !mef.chain
+    %in_buf : !mgp.cpu.buffer
+    %scale : index
+    %out_buf =
+        mgp.cpu.buffer.section.borrow.dynamic %ch, %in_buf, %scale,
+          offset 128, size 64
+    %out_buf : !mgp.cpu.buffer
+    ```
+  }];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins ChainType:$inChain,
+                       MGP_CpuBufferType:$inBuffer,
+                       Index:$scale,
+                       UI64Attr:$aUnscaledOffset,
+                       UI64Attr:$bUnscaledSize);
+  let results = (outs MGP_CpuBufferType:$outBuffer);
+  let assemblyFormat = [{
+    $inChain `,` $inBuffer `,` $scale `,` `offset` $aUnscaledOffset `,`
+    `size` $bUnscaledSize attr-dict `:` qualified(type($inBuffer))
+  }];
+
+  let extraClassDefinition = [{
+    bool CpuBufferSectionBorrowDynamicOp::extendsLifetime(size_t operandIndex, size_t resultIndex) {
       return operandIndex == 1;
     }
   }];

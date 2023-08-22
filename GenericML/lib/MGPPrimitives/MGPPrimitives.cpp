@@ -305,21 +305,52 @@ static void mgp_cpu_buffer_concat(Chain inChain,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.cpu.buffer.section.static.borrow
+// mgp.cpu.buffer.section.borrow.static
 //===----------------------------------------------------------------------===//
 
-static void mgp_cpu_buffer_section_static_borrow(
+static void mgp_cpu_buffer_section_borrow_static(
     Chain inChain, AsyncValueRef<BufferRef> inBuffer,
     Result<BufferRef> outBuffer, MEFAttr<uint64_t> aOffset,
     MEFAttr<uint64_t> bSize, Runtime &runtime, EncodedLocation loc) {
   TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.section.static.borrow"));
+      LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.section.borrow.static"));
   const size_t outOffset = static_cast<size_t>(*aOffset);
   const size_t outSize = static_cast<size_t>(*bSize);
 
   // createSafeBorrowedSlice will assert the offset and size are valid.
   // This is guaranteed by op verify and type system, so no need to guard
   // with error checking.
+  std::move(outBuffer).emplace(BufferRef::createSafeBorrowedSlice(
+      inBuffer.copy(), loc, outOffset, outSize));
+}
+
+//===----------------------------------------------------------------------===//
+// mgp.cpu.buffer.section.borrow.dynamic
+//===----------------------------------------------------------------------===//
+
+static void mgp_cpu_buffer_section_borrow_dynamic(
+    Chain inChain, AsyncValueRef<BufferRef> inBuffer, size_t scale,
+    Result<BufferRef> outBuffer, MEFAttr<uint64_t> aUnscaledOffset,
+    MEFAttr<uint64_t> bUnscaledSize, Runtime &runtime, EncodedLocation loc) {
+  TimeTraceScope scope(
+      LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.section.borrow.dynamic"));
+  const size_t outOffset = static_cast<size_t>(*aUnscaledOffset) * scale;
+  const size_t outSize = static_cast<size_t>(*bUnscaledSize) * scale;
+  const size_t outEndOffset = outOffset + outSize;
+
+  // Unlike for mgp_cpu_buffer_section_borrow_static we're on the hook for
+  // checking the offset and size are sensible w.r.t. the input buffer.
+  // Note we'll not check for scale being sensible, but will watch for overflow
+  // of the offsets.
+  if (outEndOffset < outOffset || outEndOffset > inBuffer->getSize()) {
+    return std::move(outBuffer).setToError(
+        Twine("mgp.cpu.buffer.section.borrow.dynamic is "
+              "requesting a section of ") +
+        Twine(outSize) + " bytes, starting at offset " + Twine(outOffset) +
+        ", which is outside the range of the input buffer of " +
+        Twine(inBuffer->getSize()) + " bytes");
+  }
+
   std::move(outBuffer).emplace(BufferRef::createSafeBorrowedSlice(
       inBuffer.copy(), loc, outOffset, outSize));
 }
@@ -794,8 +825,10 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
                 mgp_cpu_buffer_set_with_index);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.copy", mgp_cpu_buffer_copy);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.concat", mgp_cpu_buffer_concat);
-  ADD_PRIMITIVE(registry, "mgp.cpu.buffer.section.static.borrow",
-                mgp_cpu_buffer_section_static_borrow);
+  ADD_PRIMITIVE(registry, "mgp.cpu.buffer.section.borrow.static",
+                mgp_cpu_buffer_section_borrow_static);
+  ADD_PRIMITIVE(registry, "mgp.cpu.buffer.section.borrow.dynamic",
+                mgp_cpu_buffer_section_borrow_dynamic);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.split.borrow",
                 mgp_cpu_buffer_split_borrow);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.set", mgp_cpu_buffer_set);

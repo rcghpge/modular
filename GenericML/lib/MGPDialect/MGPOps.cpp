@@ -467,10 +467,10 @@ LogicalResult CpuBufferConcatOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// CpuBufferSectionStaticBorrowOp
+// CpuBufferSectionBorrowStaticOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult CpuBufferSectionStaticBorrowOp::verify() {
+LogicalResult CpuBufferSectionBorrowStaticOp::verify() {
   if (!getInBuffer().getType().getOptSize().has_value()) {
     return emitOpError() << "expected input buffer of type '"
                          << getInBuffer().getType()
@@ -507,7 +507,7 @@ LogicalResult CpuBufferSectionStaticBorrowOp::verify() {
   return success();
 }
 
-LogicalResult CpuBufferSectionStaticBorrowOp::inferReturnTypes(
+LogicalResult CpuBufferSectionBorrowStaticOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
@@ -519,6 +519,32 @@ LogicalResult CpuBufferSectionStaticBorrowOp::inferReturnTypes(
   else
     // Invalid, but will fail in verify.
     inferredReturnTypes.emplace_back(CpuBufferType::get(context, std::nullopt));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CpuBufferSectionBorrowDynamicOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CpuBufferSectionBorrowDynamicOp::verify() {
+  if (getInBuffer().getType().getOptSize().has_value()) {
+    return emitOpError() << "expected input buffer of type '"
+                         << getInBuffer().getType()
+                         << "' to have a statically unknown size.";
+  }
+  if (getOutBuffer().getType().getOptSize().has_value()) {
+    return emitOpError() << "expected output buffer of type '"
+                         << getOutBuffer().getType()
+                         << "' to have a statically unknown size.";
+  }
+  return success();
+}
+
+LogicalResult CpuBufferSectionBorrowDynamicOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  inferredReturnTypes.emplace_back(CpuBufferType::get(context, std::nullopt));
   return success();
 }
 

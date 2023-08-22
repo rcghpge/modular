@@ -237,11 +237,12 @@ outputTensorResults(const ExecutableModel *model,
                     Kernels::ResultOutputStyle outputStyle, unsigned precision,
                     StringRef outputDir) {
   // We expect the first result to be a chain.
+  assert(!results.empty() && "must have at least one result");
   const AnyAsyncValueRef &ch = results.front();
-  assert(ch.isReady() && isa<Chain>(ch) &&
-         "first result must be a ready chain");
   if (failed(printDiagIfError(ch)))
     return mlir::failure();
+  assert(ch.isValueAvailable() && isa<Chain>(ch) &&
+         "first result must be a chain");
   results = results.drop_front();
 
   if (results.empty())
