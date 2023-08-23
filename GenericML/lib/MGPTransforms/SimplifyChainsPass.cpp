@@ -100,7 +100,10 @@ class SimplifyChainsPass
         } else {
           chainCreateOp->setOperands(values);
         }
-      } else if (values.size() == 1) {
+      } else if (values.size() == 1 &&
+                 isa<MEF::ChainType>(values[0].getType())) {
+        // Since grt.chain.create can accept arguments of non mef.chain
+        // type, we have to be careful with singleton calls.
         chainCreateOp.getResult().replaceAllUsesWith(values.front());
         chainCreateOp.erase();
       } else {

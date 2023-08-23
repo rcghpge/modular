@@ -134,3 +134,20 @@ mgp.model @chain_merge_fold_operands_uniqued : mof init {
   // CHECK-NEXT: mef.output %[[RES]] : !mef.chain
   mef.output %ch2 : !mef.chain
 }
+
+// CHECK-LABEL: mgp.model @chain_singletons
+mgp.model @chain_singletons : mof init {
+  %0 = grt.chain.create ()
+  %1 = mgp.context.create 0
+  mef.output %0, %1 : !mef.chain, !mgp.context
+// CHECK: execute (%[[ARG0:.*]]: !mef.chain,
+} execute (%arg0: !mef.chain, %arg1: !mgp.context) -> !mef.chain {
+  %ch1 = grt.chain.create (%arg0)
+  // CHECK-NEXT: %[[X:.*]] = "some.op"() : () -> tensor<1xf32>
+  %x = "some.op"() : () -> tensor<1xf32>
+  // CHECK-NEXT: %[[CH2:.*]] = grt.chain.create (%[[X]]: tensor<1xf32>)
+  %ch2 = grt.chain.create (%x : tensor<1xf32>)
+  %ch3 = grt.chain.create (%ch1, %ch2)
+  // CHECK-NEXT: mef.output %[[CH2]] : !mef.chain
+  mef.output %ch3 : !mef.chain
+}
