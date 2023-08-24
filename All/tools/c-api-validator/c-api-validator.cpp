@@ -13,6 +13,7 @@
 #include "Support/CommonCLOptions.h"
 #include "Support/ErrorOr.h"
 #include "Support/ML/TensorShape.h"
+#include "TensorFlow/API/modular/c/tensorflow/config.h"
 
 #include "llvm/ADT/STLExtras.h"
 
@@ -49,22 +50,31 @@ public:
                          cl::desc("If true, 'concurrent' requests are run on "
                                   "separate foreign threads."),
                          cl::init(false)};
+
   cl::opt<size_t> numInitialized{
       "num-initialized",
       cl::desc(
           "Number of concurrent 'initialized' models for each model in paths."),
       cl::init(1)};
+
   cl::opt<size_t> numConcurrentRequesters{
       "num-concurrent-requesters",
       cl::desc("Number of concurrent 'execute' request "
                "threads to fire on each 'initialized' model. CAUTION: This "
                "is currently not safe for tf and tfl models."),
       cl::init(1)};
+
   cl::opt<size_t> numSequentialRequests{
       "num-sequential-requests",
       cl::desc("Number of sequential 'executes' to "
                "perform in each concurrent request thread."),
       cl::init(1)};
+
+  cl::opt<bool> useMoOps{
+      "use-mo-ops",
+      cl::desc("Whether to lower to MO ops. Default true. Only valid for "
+               "models using the tf compiler and runtime."),
+      cl::init(true)};
 };
 
 /// serializes console output
@@ -226,7 +236,8 @@ struct ExternalModel {
 /// We have compiled a model, but not yet initialized it.
 struct CompiledModelPhase {
   static ErrorOr<CompiledModelPhase>
-  createCompiledModel(bool threaded, const RuntimeContextPhase *runtimeContext,
+  createCompiledModel(bool threaded, bool useMoOps,
+                      const RuntimeContextPhase *runtimeContext,
                       const ExternalModel *externalModel) {
     CompiledModelPhase result;
     result.runtimeContext = runtimeContext;
@@ -234,6 +245,10 @@ struct CompiledModelPhase {
 
     result.compileConfig = M_newCompileConfig();
     M_setModelPath(result.compileConfig, externalModel->path.c_str());
+    if (!useMoOps) {
+      M_enableCompatibilityMode(result.compileConfig,
+                                /*compatibilityMode=*/true);
+    }
 
     // TODO: We need to make framework loading thread safe before we can overlap
     // compilation of models.
@@ -523,9 +538,10 @@ int main(int argc, char **argv) {
     TaskGroup tg(numPaths);
     for (const auto &externalModel : externalModels) {
       tg.add_task([&]() {
-        THREAD_RETURN_IF_ERROR(tg, compiledModel,
-                               CompiledModelPhase::createCompiledModel(
-                                   threaded, &runtimeContext, &externalModel));
+        THREAD_RETURN_IF_ERROR(
+            tg, compiledModel,
+            CompiledModelPhase::createCompiledModel(
+                threaded, clOptions.useMoOps, &runtimeContext, &externalModel));
         std::lock_guard<std::mutex> l(mu);
         compiledModels.emplace_back(std::move(compiledModel));
       });
