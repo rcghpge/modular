@@ -9,6 +9,7 @@
 #include "GenericML/Driver/DriverAPI.h"
 #include "GenericML/Driver/DriverInputFormat.h"
 #include "Support/ML/SizeUtils.h"
+#include "Support/Process.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/ToolOutputFile.h"
 
@@ -159,6 +160,11 @@ int main(int argc, char **argv) {
   GenericDriverCLOptions options(argc, argv);
 
   llvm::cl::ParseCommandLineOptions(argc, argv, "Modular Tool (mt)\n");
+
+  if (options.disableTFOneDNN) {
+    // TODO(#20024): Disable TF's oneDNN replacement kernels. Better solution?
+    (void)setProcessEnv("TF_ENABLE_ONEDNN_OPTS", "0");
+  }
 
   struct InputInfo {
     // If we don't have a regular input file (and we're attempting to run

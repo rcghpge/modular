@@ -13,6 +13,7 @@
 #include "Support/CommonCLOptions.h"
 #include "Support/ErrorOr.h"
 #include "Support/ML/TensorShape.h"
+#include "Support/Process.h"
 #include "TensorFlow/API/modular/c/tensorflow/config.h"
 
 #include "llvm/ADT/STLExtras.h"
@@ -75,6 +76,13 @@ public:
       cl::desc("Whether to lower to MO ops. Default true. Only valid for "
                "models using the tf compiler and runtime."),
       cl::init(true)};
+
+  // TODO(#20024): Until we have a better solution we need to disable oneDNN
+  // optimizations in stock tf since they appear to be incompatible with the
+  // tf eager C API.
+  cl::opt<bool> disableTFOneDNN{
+      "disable-tf-onednn",
+      cl::desc("Disable the stock TF oneDNN optimizations."), cl::init(false)};
 };
 
 /// serializes console output
@@ -499,6 +507,12 @@ int main(int argc, char **argv) {
   APICLOptions clOptions(argc, argv);
 
   llvm::cl::ParseCommandLineOptions(argc, argv, "generic C API test driver\n");
+
+  if (clOptions.disableTFOneDNN) {
+    // TODO(#20024): Disable TF's oneDNN replacement kernels. Better solution?
+    (void)setProcessEnv("TF_ENABLE_ONEDNN_OPTS", "0");
+  }
+
   const size_t numPaths = clOptions.paths.size();
   const bool threaded = clOptions.threaded;
   const std::vector<TensorShape> inputShapes(clOptions.inputShapes.begin(),
