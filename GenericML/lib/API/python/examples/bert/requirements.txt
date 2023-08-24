@@ -1,3 +1,5 @@
 numpy
 tensorflow
 transformers
+
+safetensors==0.3.2
