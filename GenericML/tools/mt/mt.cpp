@@ -145,8 +145,10 @@ getFileContentIdentity(const llvm::MemoryBuffer &file, FileFormat format,
   case FileFormat::kTorchPDialect:
     return "input is a PyTorch model in MLIR form consisting of primitive ops";
   case FileFormat::kMEFFile: {
-    UNWRAP_ERROR(fileHandle, dylib.openBinaryFile(ctxHandle, file));
-    return dylib.sniffBinaryFileContents(ctxHandle, fileHandle);
+    auto fileHandleOr = dylib.openBinaryFile(ctxHandle, file);
+    if (fileHandleOr.isError())
+      return fileHandleOr.takeError();
+    return dylib.sniffBinaryFileContents(ctxHandle, std::move(*fileHandleOr));
   }
   }
 }

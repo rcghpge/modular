@@ -87,8 +87,9 @@ static ErrorOr<Tensor> allocateInput(const QuantTensorSpec &modelSpec,
 static ErrorOrSuccess fillInput(InputGenerationKind inputGenKind,
                                 const QuantTensorSpec &modelSpec,
                                 Tensor &tensor) {
-  RETURN_ERROR(
-      fillWithElements(tensor, inputGenKind, modelSpec.getQuantSpec()));
+  if (auto err =
+          fillWithElements(tensor, inputGenKind, modelSpec.getQuantSpec()))
+    return err.takeError();
   return success();
 }
 
@@ -96,8 +97,12 @@ static ErrorOr<Tensor> allocateAndFillInput(InputGenerationKind inputGenKind,
                                             const QuantTensorSpec &modelSpec,
                                             Runtime &runtime,
                                             size_t alignment) {
-  UNWRAP_ERROR(result, allocateInput(modelSpec, runtime, alignment));
-  RETURN_ERROR(fillInput(inputGenKind, modelSpec, result));
+  auto resultOr = allocateInput(modelSpec, runtime, alignment);
+  if (resultOr.isError())
+    return resultOr.takeError();
+  auto result = std::move(*resultOr);
+  if (auto err = fillInput(inputGenKind, modelSpec, result))
+    return err.takeError();
   return result;
 }
 
@@ -108,9 +113,11 @@ public:
                                                const QuantTensorSpec &modelSpec,
                                                Runtime &runtime,
                                                size_t alignment) {
-    UNWRAP_ERROR(tensor,
-                 allocateAndFillInput(genKind, modelSpec, runtime, alignment));
-    return FilledTensorGenerator(std::move(tensor));
+    auto tensorOr =
+        allocateAndFillInput(genKind, modelSpec, runtime, alignment);
+    if (tensorOr.isError())
+      return tensorOr.takeError();
+    return FilledTensorGenerator(std::move(*tensorOr));
   }
 
   const Tensor &getNextTensor() final { return tensor; }
@@ -213,18 +220,21 @@ M::createTensorGenerator(size_t tensorIdx, InputGenerationKind defaultGen,
     defaultGen = std::get<InputGenerationKind>(spec->inputGen);
 
   if (!spec || std::holds_alternative<InputGenerationKind>(spec->inputGen)) {
-    UNWRAP_ERROR(filledGenerator,
-                 FilledTensorGenerator::create(defaultGen, modelSpec, runtime,
-                                               minimumCpuAlignment));
-    return std::make_unique<FilledTensorGenerator>(std::move(filledGenerator));
+    auto filledGeneratorOr = FilledTensorGenerator::create(
+        defaultGen, modelSpec, runtime, minimumCpuAlignment);
+    if (filledGeneratorOr.isError())
+      return filledGeneratorOr.takeError();
+    return std::make_unique<FilledTensorGenerator>(
+        std::move(*filledGeneratorOr));
   }
 
   auto filename = std::get<std::filesystem::path>(spec->inputGen);
   // pack vector of flags into single int
-  UNWRAP_ERROR(fileGenerator, FileTensorGenerator::create(
-                                  filename, modelSpec, runtime,
-                                  minimumCpuAlignment, spec->genFlags));
-  return std::make_unique<FileTensorGenerator>(std::move(fileGenerator));
+  auto fileGeneratorOr = FileTensorGenerator::create(
+      filename, modelSpec, runtime, minimumCpuAlignment, spec->genFlags);
+  if (fileGeneratorOr.isError())
+    return fileGeneratorOr.takeError();
+  return std::make_unique<FileTensorGenerator>(std::move(*fileGeneratorOr));
 }
 
 ErrorOr<SmallVector<ITensorGeneratorPtr, 3>>

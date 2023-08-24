@@ -309,8 +309,11 @@ public:
   /// to the provided hook (using the execute state's builder and the provided
   /// location).
   ErrorOr<Value> lowerExpression(Location loc, TypedAttr attr) {
-    UNWRAP_ERROR(newVal, params.lowerExpression(getExecuteOpBuilder(), loc,
-                                                attr, lowerExpressionImpl))
+    auto newValOr = params.lowerExpression(getExecuteOpBuilder(), loc, attr,
+                                           lowerExpressionImpl);
+    if (newValOr.isError())
+      return newValOr.takeError();
+    auto newVal = std::move(*newValOr);
 
     // If we got a placeholder, we need to remember it, in case we map an SSA
     // value to it.
@@ -350,8 +353,10 @@ public:
     SmallVector<Value> runtimeDims;
     for (TypedAttr dim : shapeAttr.getValues()) {
       if (!isa<IntegerAttr>(dim)) {
-        UNWRAP_ERROR(v, lowerExpression(loc, dim));
-        runtimeDims.emplace_back(v);
+        auto vOr = lowerExpression(loc, dim);
+        if (vOr.isError())
+          return vOr.takeError();
+        runtimeDims.emplace_back(std::move(*vOr));
       }
     }
     return runtimeDims;
@@ -416,8 +421,10 @@ private:
   static ErrorOr<Value> lowerParamOperator(OpBuilder &builder, Location loc,
                                            KGEN::ParamOperatorAttr opAttr,
                                            ValueRange operands) {
-    UNWRAP_ERROR(mopName, pocToMopIndexOp(opAttr.getOpcode()));
-    auto opNameAttr = builder.getStringAttr(mopName);
+    auto mopNameOr = pocToMopIndexOp(opAttr.getOpcode());
+    if (mopNameOr.isError())
+      return mopNameOr.takeError();
+    auto opNameAttr = builder.getStringAttr(*mopNameOr);
     Type resTy = opAttr.getType();
 
     // For non binary op
@@ -474,9 +481,11 @@ private:
       // Lower dimensions recursively.
       SmallVector<Value> dimVals;
       for (TypedAttr dim : shapeAttr.getValues()) {
-        UNWRAP_ERROR(dimVal, state.lowerExpression(builder, loc, dim,
-                                                   lowerExpressionImpl));
-        dimVals.emplace_back(dimVal);
+        auto dimValOr =
+            state.lowerExpression(builder, loc, dim, lowerExpressionImpl);
+        if (dimValOr.isError())
+          return dimValOr.takeError();
+        dimVals.emplace_back(std::move(*dimValOr));
       }
 
       // There is no runtime shape type in MGP, so we map shape attributes to a

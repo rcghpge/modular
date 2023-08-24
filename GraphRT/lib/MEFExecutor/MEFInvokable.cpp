@@ -337,7 +337,8 @@ static ErrorOrSuccess decodePrimitiveTables(
       return std::move(*decoder.mefFormatError);
     if (!registerInfo)
       continue;
-    RETURN_ERROR(registerInfo(numUses));
+    if (auto err = registerInfo(numUses))
+      return err.takeError();
   }
 
   for (size_t i = 0; i != decoder.numPrimitives; ++i) {
@@ -347,7 +348,8 @@ static ErrorOrSuccess decodePrimitiveTables(
       return std::move(*decoder.mefFormatError);
     if (!primitiveInfo)
       continue;
-    RETURN_ERROR(primitiveInfo(offset, numOperandsBeforeExecuting));
+    if (auto err = primitiveInfo(offset, numOperandsBeforeExecuting))
+      return err.takeError();
   }
 
   auto numResults = decoder.inv.getNumResults();
@@ -359,7 +361,8 @@ static ErrorOrSuccess decodePrimitiveTables(
       return Error("invalid result register #");
     if (!resultRegs)
       continue;
-    RETURN_ERROR(resultRegs(registerIndex));
+    if (auto err = resultRegs(registerIndex))
+      return err.takeError();
   }
 
   // Align to where the invokable body is.
@@ -839,13 +842,14 @@ ErrorOrSuccess MEFInvokableImpl::walkPrimitives(
   // Decode the primitive tables.
   ArrayRef<uint32_t> funcBody;
   SmallVector<size_t> primitiveOffsets;
-  RETURN_ERROR(decodePrimitiveTables(
-      decoder, funcBody, nullptr,
-      [&](size_t offset, size_t numOperands) {
-        primitiveOffsets.push_back(offset);
-        return success();
-      },
-      nullptr));
+  if (auto err = decodePrimitiveTables(
+          decoder, funcBody, nullptr,
+          [&](size_t offset, size_t numOperands) {
+            primitiveOffsets.push_back(offset);
+            return success();
+          },
+          nullptr))
+    return err.takeError();
 
   // Now we have to parse the primitive names.
   std::optional<Error> mefReaderError;
@@ -896,7 +900,8 @@ ErrorOrSuccess MEFInvokableImpl::walkPrimitives(
     for (auto invokableIndex : primDecoder.invokableRefIndices)
       descriptorBuilder.addInvokable(owner->getInvokableByID(invokableIndex));
 
-    RETURN_ERROR(visitor(primitiveName, descriptorBuilder));
+    if (auto err = visitor(primitiveName, descriptorBuilder))
+      return err.takeError();
   }
 
   return success();
@@ -910,14 +915,17 @@ ErrorOrSuccess MEFInvokable::recursePrimitives(
       [&](StringRef primitiveName,
           const PrimitiveDescriptor &descriptor) -> ErrorOrSuccess {
         if (order == kPreOrder)
-          RETURN_ERROR(visitor(primitiveName, descriptor));
+          if (auto err = visitor(primitiveName, descriptor))
+            return err.takeError();
 
         for (size_t i = 0, e = descriptor.getNumInvokables(); i != e; ++i)
-          RETURN_ERROR(
-              descriptor.getInvokable(i)->recursePrimitives(order, visitor));
+          if (auto err =
+                  descriptor.getInvokable(i)->recursePrimitives(order, visitor))
+            return err.takeError();
 
         if (order == kPostOrder)
-          RETURN_ERROR(visitor(primitiveName, descriptor));
+          if (auto err = visitor(primitiveName, descriptor))
+            return err.takeError();
 
         return success();
       });

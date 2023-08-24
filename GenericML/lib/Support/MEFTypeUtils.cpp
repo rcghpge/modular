@@ -27,13 +27,16 @@ M::decodeQuantizedSignature(MEFFunctionType signature,
   auto fillArgSpecs = [](ArrayRef<MEFType> argTypes,
                          auto &argSpecs) -> ErrorOrSuccess {
     for (auto type : argTypes) {
-      UNWRAP_ERROR(spec, QuantTensorSpec::get(type));
-      argSpecs.push_back(spec);
+      auto specOr = QuantTensorSpec::get(type);
+      if (specOr.isError())
+        return specOr.takeError();
+      argSpecs.push_back(std::move(*specOr));
     }
     return success();
   };
 
-  RETURN_ERROR(fillArgSpecs(inputTypes, inputSpecs));
+  if (auto err = fillArgSpecs(inputTypes, inputSpecs))
+    return err.takeError();
   return fillArgSpecs(outputTypes, outputSpecs);
 }
 

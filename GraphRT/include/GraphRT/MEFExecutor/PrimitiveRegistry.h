@@ -629,8 +629,10 @@ public:
     // leave it intact.
     auto valueToDecode =
         Detail::MEFAttrDynCastRet<EncodedType>::getValue(*rawAttrValue);
-    UNWRAP_ERROR(decodedValue, MEFDecoder<ValueType>::decode(valueToDecode));
-    *result = std::move(decodedValue);
+    auto decodedValueOr = MEFDecoder<ValueType>::decode(valueToDecode);
+    if (decodedValueOr.isError())
+      return decodedValueOr.takeError();
+    *result = std::move(*decodedValueOr);
     return success();
   }
 
@@ -751,7 +753,8 @@ struct MEFDecoder<SmallVector<EltType, Size>> {
     result.reserve(value.size());
     for (auto element : value) {
       EltType resultElt;
-      RETURN_ERROR(element.decode(&resultElt));
+      if (auto err = element.decode(&resultElt))
+        return err.takeError();
       result.push_back(resultElt);
     }
     return result;
@@ -771,7 +774,8 @@ struct MEFDecoder<SmallVector<EltType>> {
     result.reserve(value.size());
     for (auto element : value) {
       EltType resultElt{};
-      RETURN_ERROR(element.decode(&resultElt));
+      if (auto err = element.decode(&resultElt))
+        return err.takeError();
       result.push_back(resultElt);
     }
     return result;

@@ -422,8 +422,10 @@ executeModelSynchronously(Runtime &runtime, ExecutableModel &executableModel,
   std::this_thread::sleep_for(std::chrono::milliseconds(1));
 #endif
   if (checkResults) {
-    UNWRAP_ERROR(unit, awaitAndCheck(results));
-    (void)unit;
+    auto unitOr = awaitAndCheck(results);
+    if (unitOr.isError())
+      return unitOr.takeError();
+    // Ignore value.
   } else {
     await(results);
   }
@@ -459,7 +461,10 @@ static ErrorOrSuccess executeModel(const Model *model, Runtime &runtime,
   std::unique_ptr<ExecutableModel> executableModel;
   {
     TIME_PROFILER_SCOPE(Trace::kOther, 1, "executeModel.setup");
-    UNWRAP_ERROR(executableModel1, model->setup(runtime));
+    auto executableModel1Or = model->setup(runtime);
+    if (executableModel1Or.isError())
+      return executableModel1Or.takeError();
+    auto executableModel1 = std::move(*executableModel1Or);
     auto errorOrSuccess = executableModel1->waitForModelSetup();
     if (errorOrSuccess.isError())
       return errorOrSuccess.takeError();
@@ -469,10 +474,12 @@ static ErrorOrSuccess executeModel(const Model *model, Runtime &runtime,
   // Establish a tensor generator for each model input as per command line
   // options and shapes. Each tensor generator holds one or more M::Tensor's
   // with lifetime matching the generator itself.
-  UNWRAP_ERROR(inputTensorGenerators,
-               createTensorGenerators(options.inputGenKind, inputSpecs,
-                                      options.inputData,
-                                      options.minimumCpuAlignment, runtime));
+  auto inputTensorGeneratorsOr = createTensorGenerators(
+      options.inputGenKind, inputSpecs, options.inputData,
+      options.minimumCpuAlignment, runtime);
+  if (inputTensorGeneratorsOr.isError())
+    return inputTensorGeneratorsOr.takeError();
+  auto inputTensorGenerators = std::move(*inputTensorGeneratorsOr);
 
   // Run the model numWarmup times to warmup the execution. This is performed to
   // remove any added overhead due to initial setup of the model.
@@ -486,10 +493,11 @@ static ErrorOrSuccess executeModel(const Model *model, Runtime &runtime,
     auto args = buildArgs(runtime, inputTensorGenerators);
 
     // Execute the model synchronously. Propagate any error back to caller.
-    UNWRAP_ERROR(results,
-                 executeModelSynchronously(runtime, *executableModel, args,
-                                           /*checkResults=*/true));
-    (void)results;
+    auto resultsOr = executeModelSynchronously(runtime, *executableModel, args,
+                                               /*checkResults=*/true);
+    if (resultsOr.isError())
+      return resultsOr.takeError();
+    // Ignore results value.
   }
 
   if (numRuns > 0) {
@@ -515,10 +523,13 @@ static ErrorOrSuccess executeModel(const Model *model, Runtime &runtime,
     // If not printing any results we need to still check they are error free.
     // Otherwise, we need only wait for the results and errors will be
     // reported when printing the results below.
-    UNWRAP_ERROR(results, executeModelSynchronously(
-                              runtime, *executableModel, args,
-                              /*checkResults=*/options.resultOutputStyle ==
-                                  Kernels::ResultOutputStyle::kNone));
+    auto resultsOr =
+        executeModelSynchronously(runtime, *executableModel, args,
+                                  /*checkResults=*/options.resultOutputStyle ==
+                                      Kernels::ResultOutputStyle::kNone);
+    if (resultsOr.isError())
+      return resultsOr.takeError();
+    auto results = std::move(*resultsOr);
     endTime = std::chrono::high_resolution_clock::now();
     std::move(entry).record();
 
@@ -677,9 +688,13 @@ M::runModelWithData(MLIRContext *ctx, const Model *model,
          "Wrong number of inputs to the model.");
 
   // Setup the model.
-  UNWRAP_ERROR(executableModel, model->setup(runtime));
-  UNWRAP_ERROR(unit, executableModel->waitForModelSetup());
-  (void)unit;
+  auto executableModelOr = model->setup(runtime);
+  if (executableModelOr.isError())
+    return executableModelOr.takeError();
+  auto executableModel = std::move(*executableModelOr);
+  auto unitOr = executableModel->waitForModelSetup();
+  if (unitOr.isError())
+    return unitOr.takeError();
 
   // The runModel() entrypoint supports runtime override for input shapes,
   // but that's not available here. Verify that the user isn't trying to do so.
@@ -707,15 +722,18 @@ M::runModelWithData(MLIRContext *ctx, const Model *model,
   llvm::outs().flush();
 
   // Execute the model synchronously.
-  UNWRAP_ERROR(results,
-               executeModelSynchronously(runtime, *executableModel, args,
-                                         /*checkResults=*/true));
+  auto resultsOr = executeModelSynchronously(runtime, *executableModel, args,
+                                             /*checkResults=*/true);
+  if (resultsOr.isError())
+    return resultsOr.takeError();
+  auto results = std::move(*resultsOr);
 
   // Copy results into pre-allocated outputs, which we trust are of the
   // correct size. Propagate any error back to caller.
-  UNWRAP_ERROR(unit2, populateTensorResults(executableModel.get(), results, ctx,
-                                            outputs));
-  (void)unit2;
+  auto unit2Or =
+      populateTensorResults(executableModel.get(), results, ctx, outputs);
+  if (unit2Or.isError())
+    return unit2Or.takeError();
 
   return success();
 }

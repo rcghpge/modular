@@ -358,8 +358,12 @@ ErrorOrSuccess MEFFile::installPrimitives(const PrimitiveRegistry &registry) {
 /// holding memory buffers.
 ErrorOr<RCRef<MEFFile>> MEFFile::open(StringRef file,
                                       const PrimitiveRegistry &registry) {
-  UNWRAP_ERROR(result, open(file));
-  RETURN_ERROR(result->installPrimitives(registry));
+  auto resultOr = open(file);
+  if (resultOr.isError())
+    return resultOr.takeError();
+  auto result = std::move(*resultOr);
+  if (auto err = result->installPrimitives(registry))
+    return err.takeError();
   return result;
 }
 

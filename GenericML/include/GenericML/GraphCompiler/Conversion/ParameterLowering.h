@@ -53,11 +53,19 @@ public:
         newOpAttr = operands.front();
         operands = operands.drop_front();
       }
-      UNWRAP_ERROR(newOperands, lowerOperands(b, loc, operands, func));
-      UNWRAP_ERROR_OR_SET(newValue,
-                          func(*this, b, loc, newOpAttr, newOperands));
+      auto newOperandsOr = lowerOperands(b, loc, operands, func);
+      if (newOperandsOr.isError())
+        return newOperandsOr.takeError();
+      auto newOperands = std::move(*newOperandsOr);
+      auto newValueOr = func(*this, b, loc, newOpAttr, newOperands);
+      if (newValueOr.isError())
+        return newValueOr.takeError();
+      newValue = std::move(*newValueOr);
     } else {
-      UNWRAP_ERROR_OR_SET(newValue, func(*this, b, loc, attr, {}));
+      auto newValueOr = func(*this, b, loc, attr, {});
+      if (newValueOr.isError())
+        return newValueOr.takeError();
+      newValue = std::move(*newValueOr);
     }
 
     // We update the map and return the lowered value.
@@ -96,8 +104,10 @@ private:
     SmallVector<Value> newOperands;
     for (TypedAttr operand : operands) {
       // Expressions can be nested, so we lower the operands recursively.
-      UNWRAP_ERROR(newOperand, lowerExpression(b, loc, operand, func));
-      newOperands.emplace_back(newOperand);
+      auto newOperandOr = lowerExpression(b, loc, operand, func);
+      if (newOperandOr.isError())
+        return newOperandOr.takeError();
+      newOperands.emplace_back(std::move(*newOperandOr));
     }
     return newOperands;
   }

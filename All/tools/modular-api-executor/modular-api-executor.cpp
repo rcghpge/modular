@@ -432,9 +432,11 @@ static ErrorOr<ModelSpec> getModelSpec(M_AsyncCompiledModel *model,
   size_t inputCount = api.getNumModelInputs(model, status.get());
   if (api.isError(status.get()))
     return Error(api.getError(status.get()));
-  UNWRAP_ERROR(inputs, convertSpecs(model, std::move(inputNames), inputCount,
-                                    api.getModelInputSpecByName, api));
-  modelSpec.inputs = std::move(inputs);
+  auto inputsOr = convertSpecs(model, std::move(inputNames), inputCount,
+                               api.getModelInputSpecByName, api);
+  if (inputsOr.isError())
+    return inputsOr.takeError();
+  modelSpec.inputs = std::move(*inputsOr);
 
   TensorNamesPtr outputNames = {api.getOutputNames(model, status.get()),
                                 api.freeTensorNameArray};
@@ -444,9 +446,11 @@ static ErrorOr<ModelSpec> getModelSpec(M_AsyncCompiledModel *model,
   size_t outputCount = api.getNumModelOutputs(model, status.get());
   if (api.isError(status.get()))
     return Error(api.getError(status.get()));
-  UNWRAP_ERROR(outputs, convertSpecs(model, std::move(outputNames), outputCount,
-                                     api.getModelOutputSpecByName, api));
-  modelSpec.outputs = std::move(outputs);
+  auto outputsOr = convertSpecs(model, std::move(outputNames), outputCount,
+                                api.getModelOutputSpecByName, api);
+  if (outputsOr.isError())
+    return outputsOr.takeError();
+  modelSpec.outputs = std::move(*outputsOr);
 
   return modelSpec;
 }

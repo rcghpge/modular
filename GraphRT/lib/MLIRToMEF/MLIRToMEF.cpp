@@ -1009,9 +1009,10 @@ ErrorOr<MEF::TypeKind> TypeEmitter::getIntFPComplexTypeEncoding(Type type) {
   if (auto intType = dyn_cast<IntegerType>(type))
     return getIntegerTypeEncoding(intType);
   if (auto complexType = dyn_cast<mlir::ComplexType>(type)) {
-    UNWRAP_ERROR(eltType,
-                 getIntFPComplexTypeEncoding(complexType.getElementType()));
-    return MEF::TypeKind(DType::getComplex(eltType).getValue());
+    auto eltTypeOr = getIntFPComplexTypeEncoding(complexType.getElementType());
+    if (eltTypeOr.isError())
+      return eltTypeOr.takeError();
+    return MEF::TypeKind(DType::getComplex(*eltTypeOr).getValue());
   }
 
   return Error("numerical type cannot be encoded in MEF");

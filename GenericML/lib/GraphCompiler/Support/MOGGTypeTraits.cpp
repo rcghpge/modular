@@ -256,8 +256,10 @@ bool MOGGTypeTraits::isSupportedMOGGType(Type type) {
 ErrorOr<Type> MOGGTypeTraits::simdTypeForTensor(Type type) {
   auto asTensor = cast<MO::TensorType>(type);
   Type dtype = asTensor.getElementType();
-  UNWRAP_ERROR(traits, lookupType(dtype));
-  return {MOGG::SimdType::get(type.getContext(), traits.moggType)};
+  auto traitsOr = lookupType(dtype);
+  if (traitsOr.isError())
+    return traitsOr.takeError();
+  return {MOGG::SimdType::get(type.getContext(), traitsOr->moggType)};
 }
 
 } // namespace M::MOGG

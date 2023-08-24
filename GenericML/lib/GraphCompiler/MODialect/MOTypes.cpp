@@ -387,10 +387,12 @@ ErrorOr<TensorType> TensorType::broadcastShapes(TensorType x, TensorType y) {
   if (!x.hasRank() || !y.hasRank())
     return Error(Twine("Guards should have rejected unranked inputs."));
 
-  UNWRAP_ERROR(result, ShapeAttr::broadcastShapes(x.getTypedShapeAttr(),
-                                                  y.getTypedShapeAttr()));
+  auto resultOr =
+      ShapeAttr::broadcastShapes(x.getTypedShapeAttr(), y.getTypedShapeAttr());
+  if (resultOr.isError())
+    return resultOr.takeError();
 
-  return MO::TensorType::get(result, x.getElementType());
+  return MO::TensorType::get(std::move(*resultOr), x.getElementType());
 }
 
 //===----------------------------------------------------------------------===//

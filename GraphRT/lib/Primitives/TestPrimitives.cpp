@@ -99,7 +99,8 @@ static Chain print_array_uint8_hex(Chain chain,
 static ErrorOr<Chain> print_dynamic_array_float(Chain chain,
                                                 MEFDynamicAttr value) {
   SmallVector<float> floats;
-  RETURN_ERROR(value.decode(&floats));
+  if (auto err = value.decode(&floats))
+    return err.takeError();
 
   printf("array = [");
   for (size_t i = 0, e = floats.size(); i != e; ++i) {

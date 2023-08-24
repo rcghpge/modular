@@ -715,9 +715,13 @@ ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
       mlir::openInputFile(filename, llvm::Align(0x4000), &errorMsg);
   if (!file)
     return Error(errorMsg);
-  UNWRAP_ERROR(mefFile, MEFFile::open(file->getBuffer()));
-  UNWRAP_ERROR(models, loadMGPMEFFile(std::move(mefFile)));
-  return {ModelsWithBuffer{std::move(models), std::move(file)}};
+  auto mefFileOr = MEFFile::open(file->getBuffer());
+  if (mefFileOr.isError())
+    return mefFileOr.takeError();
+  auto modelsOr = loadMGPMEFFile(std::move(*mefFileOr));
+  if (modelsOr.isError())
+    return modelsOr.takeError();
+  return {ModelsWithBuffer{std::move(*modelsOr), std::move(file)}};
 }
 
 void ConstantFoldPass::runOnOperation() {

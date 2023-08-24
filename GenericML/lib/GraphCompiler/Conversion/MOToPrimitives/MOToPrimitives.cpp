@@ -594,8 +594,11 @@ LogicalResult MOGraphLowering::lowerReshape(MO::ReshapeOp reshapeOp) {
   // 2. Validate user-annotated shape TODO(#12718)
 
   auto outSpecTy = MGP::createCpuTensorSpec(reshapeOp.getType());
-  UNWRAP_ERROR(runtimeDims, loweringState.lowerShapeAttrDynDims(
-                                reshapeOp.getType().getTypedShapeAttr(), loc));
+  auto runtimeDimsOr = loweringState.lowerShapeAttrDynDims(
+      reshapeOp.getType().getTypedShapeAttr(), loc);
+  if (runtimeDimsOr.isError())
+    return runtimeDimsOr.takeError();
+  auto runtimeDims = std::move(*runtimeDimsOr);
   Value outSpecValue =
       exeBuilder.create<MGP::CpuTensorSpecCreateOp>(loc, outSpecTy, runtimeDims)
           .getResult();

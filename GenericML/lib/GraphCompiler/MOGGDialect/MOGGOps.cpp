@@ -145,8 +145,11 @@ LowerHelper::lowerDynamicOutput(MGP::CpuTensorSpecType outSpecType,
 
   if (!moType.hasUnknownShape() && !moType.hasStaticShape()) {
     // We get the values corresponding to dynamic dimensions.
-    UNWRAP_ERROR(runtimeDims, loweringState.lowerShapeAttrDynDims(
-                                  moType.getTypedShapeAttr(), loc));
+    auto runtimeDimsOr =
+        loweringState.lowerShapeAttrDynDims(moType.getTypedShapeAttr(), loc);
+    if (runtimeDimsOr.isError())
+      return runtimeDimsOr.takeError();
+    auto runtimeDims = std::move(*runtimeDimsOr);
     output.spec =
         loweringState.getExecuteOpBuilder()
             .create<MGP::CpuTensorSpecCreateOp>(loc, outSpecType, runtimeDims)
@@ -202,8 +205,10 @@ LowerHelper::lowerOutputBuffer(llvm::StringRef opName, Value inChain) {
     std::optional<uint64_t> bufferSize = outSpecType.getSizeInBytes();
     LoweredTensor output;
     if (!bufferSize) {
-      UNWRAP_ERROR(out, lowerDynamicOutput(outSpecType, ty, opName, inChain));
-      output = out;
+      auto outOr = lowerDynamicOutput(outSpecType, ty, opName, inChain);
+      if (outOr.isError())
+        return outOr.takeError();
+      output = std::move(*outOr);
     } else {
       // Static Case
       // Allocate the buffer for the output.

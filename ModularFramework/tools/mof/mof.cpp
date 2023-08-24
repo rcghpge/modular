@@ -207,8 +207,10 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
     break;
 
   default: {
-    UNWRAP_ERROR(identity, getFileContentIdentity(file, format));
-    return Error("cannot compile input with format " + identity);
+    auto identityOr = getFileContentIdentity(file, format);
+    if (identityOr.isError())
+      return identityOr.takeError();
+    return Error("cannot compile input with format " + *identityOr);
   }
   }
 
@@ -242,7 +244,10 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
     break;
   }
   default:
-    UNWRAP_ERROR(identity, getFileContentIdentity(file, format));
+    auto identityOr = getFileContentIdentity(file, format);
+    if (identityOr.isError())
+      return identityOr.takeError();
+    auto identity = std::move(*identityOr);
     return Error("cannot lower to MEF data of format " + identity);
   }
 
@@ -263,8 +268,10 @@ ErrorOrSuccess M_getMetadataFromBinary(FrameworkContextHandle ctx,
 ErrorOrSuccess M_openBinaryFile(FrameworkContextHandle ctx,
                                 const llvm::MemoryBuffer &file,
                                 DriverHandle *modelBinaryHandle) {
-  UNWRAP_ERROR(mefFile, MEFFile::open(file.getBuffer()));
-  *modelBinaryHandle = DriverHandle{std::move(mefFile).release()};
+  auto mefFileOr = MEFFile::open(file.getBuffer());
+  if (mefFileOr.isError())
+    return mefFileOr.takeError();
+  *modelBinaryHandle = DriverHandle{std::move(*mefFileOr).release()};
   return success();
 }
 
@@ -299,8 +306,10 @@ ErrorOrSuccess M_loadModels(FrameworkContextHandle ctx,
                             llvm::MemoryBufferRef fileBuffer,
                             DriverHandle handle,
                             std::unique_ptr<ModelCollection> &modelsPtr) {
-  UNWRAP_ERROR_OR_SET(modelsPtr,
-                      loadMGPMEFFile(copyRCRef(handle.unwrap<MEFFile>())));
+  auto modelsPtrOr = loadMGPMEFFile(copyRCRef(handle.unwrap<MEFFile>()));
+  if (modelsPtrOr.isError())
+    return modelsPtrOr.takeError();
+  modelsPtr = std::move(*modelsPtrOr);
   return success();
 }
 

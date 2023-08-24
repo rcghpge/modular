@@ -85,10 +85,11 @@ mangleBlock(mlir::Block &block,
         valueToPositionInBlock[lambdaBlock.getArgument(argIndex)] =
             "L" + std::to_string(argIndex);
 
-      UNWRAP_ERROR(
-          mangledLambda,
-          mangleBlock(lambdaBlock, valueToPositionInBlock, seenConsts, params));
-      name += mangledLambda;
+      auto mangledLambdaOr =
+          mangleBlock(lambdaBlock, valueToPositionInBlock, seenConsts, params);
+      if (mangledLambdaOr.isError())
+        return mangledLambdaOr.takeError();
+      name += *mangledLambdaOr;
     } else if (auto out = dyn_cast<MOGG::OutputPlaceholdersOp>(innerOp)) {
       for (Value output : out.getResults())
         valueToPositionInBlock[output] = "O" + std::to_string(blockIndex);
@@ -173,8 +174,10 @@ mangleBlock(mlir::Block &block,
       Type res = cst.getResult().getType();
       auto tensor = cast<MO::TensorType>(res);
       addShapeDimsToName(tensor.getTypedShapeAttr(), name, params);
-      UNWRAP_ERROR(traits, MOGGTypeTraits::lookupType(tensor.getElementType()));
-      name += traits.moggType.getAsString() + "_";
+      auto traitsOr = MOGGTypeTraits::lookupType(tensor.getElementType());
+      if (traitsOr.isError())
+        return traitsOr.takeError();
+      name += traitsOr->moggType.getAsString() + "_";
     }
 
     // Add double seperator between operations.
@@ -221,8 +224,10 @@ createMangledName(MOGG::KernelOp op,
     // Mangle the type into the name.
     auto tensor = cast<MO::TensorType>(v.getType());
     addShapeDimsToName(tensor.getTypedShapeAttr(), name, params);
-    UNWRAP_ERROR(traits, MOGGTypeTraits::lookupType(tensor.getElementType()));
-    name += traits.moggType.getAsString() + "_";
+    auto traitsOr = MOGGTypeTraits::lookupType(tensor.getElementType());
+    if (traitsOr.isError())
+      return traitsOr.takeError();
+    name += traitsOr->moggType.getAsString() + "_";
   }
 
   // Add the output type as the kernel could reference this independently.
@@ -230,15 +235,18 @@ createMangledName(MOGG::KernelOp op,
   for (Type res : op->getResultTypes()) {
     auto tensor = cast<MO::TensorType>(res);
     addShapeDimsToName(tensor.getTypedShapeAttr(), name, params);
-    UNWRAP_ERROR(traits, MOGGTypeTraits::lookupType(tensor.getElementType()));
-    name += traits.moggType.getAsString() + "_";
+    auto traitsOr = MOGGTypeTraits::lookupType(tensor.getElementType());
+    if (traitsOr.isError())
+      return traitsOr.takeError();
+    name += traitsOr->moggType.getAsString() + "_";
   }
   name += "_";
 
-  UNWRAP_ERROR(mangledBlock,
-               mangleBlock(op.getBody().front(), valueToPositionInBlock,
-                           seenConsts, params));
-  name += mangledBlock;
+  auto mangledBlockOr = mangleBlock(op.getBody().front(),
+                                    valueToPositionInBlock, seenConsts, params);
+  if (mangledBlockOr.isError())
+    return mangledBlockOr.takeError();
+  name += *mangledBlockOr;
   return {name};
 }
 
@@ -371,7 +379,10 @@ struct JitCompileKernels
     // Load the mojo library. We use this KGEN module as the starting point to
     // build up the stub functions. It contains all the kernels and functions we
     // will need to call.
-    UNWRAP_ERROR(kgenModule, loadMojoLibrary());
+    auto kgenModuleOr = loadMojoLibrary();
+    if (kgenModuleOr.isError())
+      return kgenModuleOr.takeError();
+    auto kgenModule = std::move(*kgenModuleOr);
 
     // Helper to track all the types to prevent constant reallocation.
     Stub::TypeManager manager{graph.getContext()};
@@ -522,7 +533,8 @@ struct JitCompileKernels
       // Add the compiled binary to the file.
       Stub::StubCompiler compiler{*kgenModule, graph, useSearch.getValue(),
                                   saveTempPrefix.getValue()};
-      RETURN_ERROR(compiler.compile(allSyms));
+      if (auto err = compiler.compile(allSyms))
+        return err.takeError();
     }
     return success();
   }
