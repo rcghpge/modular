@@ -41,7 +41,7 @@ SHARED_LIBS = [
 ]
 EXECUTABLES = [os.path.abspath(os.path.join("modular", "bin", "*"))]
 # Copy everything under `.mojo_cache` to the wheel.
-KGEN_CACHE = [
+MOJO_CACHE = [
     os.path.abspath(os.path.join("modular", ".mojo_cache", "**", "*"))
 ]
 # Copy Modular configuration file to the wheel.
@@ -51,7 +51,7 @@ setup(
     cmdclass={"bdist_wheel": bdist_wheel},
     name="modular-engine",
     package_data={
-        "modular.engine": EXECUTABLES + SHARED_LIBS + KGEN_CACHE + MODULAR_CFG
+        "modular.engine": EXECUTABLES + SHARED_LIBS + MOJO_CACHE + MODULAR_CFG
     },
     packages=["modular.engine"],
     include_package_data=True,
