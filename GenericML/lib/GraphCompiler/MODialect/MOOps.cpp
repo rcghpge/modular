@@ -2318,21 +2318,27 @@ OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
 
 LogicalResult TransposeOp::canonicalize(TransposeOp op,
                                         PatternRewriter &rewriter) {
+  // Nothing we can do if op is dynamically ranked.
+  if (!op.getType().hasRank())
+    return failure();
+  size_t opRank = op.getType().getRank();
+
+  // Extract constant permutation.
   auto maybePermVec = tryGetConstantIntVector(op.getPerm());
   if (!maybePermVec.has_value())
     return failure();
-
-  if (!op.getType().hasRank())
-    return failure();
-
-  size_t opRank = op.getType().getRank();
   ArrayRef<int64_t> permVec(maybePermVec.value());
+
+  // Fold away identity permutation, e.g., [0, 1, 2] for 3D transpose.
   auto identityPerm = llvm::iota_range<int64_t>(0, opRank, /*Inclusive=*/false);
   if (llvm::equal(permVec, identityPerm)) {
     rewriter.replaceOpWithNewOp<RebindOp>(op, op.getType(), op.getInput(),
                                           op.getOutputParamDecls());
     return success();
   }
+
+  // NOTE The following (transposes merging or transpose-->reshape) assumes the
+  // verifier checks against invalid permutations.
 
   // Merge consecutive transposes by merging their constant permutations
   if (auto inputTransposeOp = op.getInput().getDefiningOp<TransposeOp>()) {
@@ -2341,9 +2347,9 @@ LogicalResult TransposeOp::canonicalize(TransposeOp op,
     if (!maybeInputPermVec.has_value())
       return failure();
     ArrayRef<int64_t> inputPermVec(maybeInputPermVec.value());
-    // TODO(#14270) check `perm` must contain unique elements here
-    // In general we might need a more principled way of erroring on invalid
-    // inputs during constant folding.
+
+    // Compute the merged permutation, and replace the consecutive transpose
+    // with a new transpose with the merged permutation.
     SmallVector<int64_t> mergedPerm = permute(inputPermVec, permVec);
     auto mergedPermVal = rewriter.create<ConstantOp>(op.getLoc(), mergedPerm);
     rewriter.replaceOpWithNewOp<TransposeOp>(
@@ -2403,12 +2409,24 @@ LogicalResult TransposeOp::verify() {
                      "has known shape");
   }
 
-  if (inputTy.getRank() != resTy.getRank())
+  size_t opRank = resTy.getRank();
+  if (inputTy.getRank() != opRank)
     return emitError("input and result ranks do not match");
 
   // ODS constraints ensure that perm has rank = 1.
-  if ((int64_t)resTy.getRank() != permTy.getIntDim(0))
+  if ((int64_t)opRank != permTy.getIntDim(0))
     return emitError("input and result ranks do not match perm size");
+
+  // A valid perm must be a permutation of [0, ..., rank - 1].
+  if (auto maybePermVec = tryGetConstantIntVector(getPerm())) {
+    auto identityPerm =
+        llvm::iota_range<int64_t>(0, opRank, /*Inclusive=*/false);
+    SmallVector<int64_t> sortedPerm(maybePermVec.value());
+    llvm::sort(sortedPerm);
+    if (!llvm::equal(sortedPerm, identityPerm))
+      return emitError("invalid permutations");
+  }
+
   return success();
 }
 

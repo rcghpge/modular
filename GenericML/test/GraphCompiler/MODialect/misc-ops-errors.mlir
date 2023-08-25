@@ -731,6 +731,24 @@ mo.graph @transpose_perm_rank_mismatch(%input: !mo.tensor<[?, ?, ?], f32>) -> !m
 
 // -----
 
+mo.graph @transpose_duplicated_perm(%input: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?, ?, ?], f32> {
+  %perm = mo.constant {value = #M.dense_array<1, 1, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  // expected-error@+1 {{invalid permutation}}
+  %res = mo.transpose(%input, %perm) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[?, ?, ?], f32>
+  mo.output %res : !mo.tensor<[?, ?, ?], f32>
+}
+
+// -----
+
+mo.graph @transpose_out_of_bound_perm(%input: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?, ?, ?], f32> {
+  %perm = mo.constant {value = #M.dense_array<-1, 3, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  // expected-error@+1 {{invalid permutation}}
+  %res = mo.transpose(%input, %perm) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[?, ?, ?], f32>
+  mo.output %res : !mo.tensor<[?, ?, ?], f32>
+}
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // WhereOp
 //===----------------------------------------------------------------------===//
