@@ -287,13 +287,17 @@ private:
 
   /// Returns null if opOperand should be considered just a 'plumbing' use
   /// for the purposes of finding all possible users of an SSA value. Generally
-  /// inputs to control flow ops and mef.output operands are just 'plumbing'
-  /// since we have accounted for these during the maybeSameAs and other
-  /// relation construction.
+  /// inputs to control flow ops and inner mef.output operands are just
+  /// 'plumbing' since we have accounted for these during the maybeSameAs and
+  /// other relation construction.
   ///
-  /// But if opOperand is for a mef.output inside a loop sub-block, we
-  /// return the loop op itself to represent a possible future use of the
-  /// opOperand by a future loop iteration.
+  /// The two exceptions are:
+  ///  - if opOperand is a top-level mef.output, we return the overall model
+  ///    to represent a possible future use of the opOperand by the caller
+  ///    of the model's 'init' or 'execute' entry points.
+  ///  - if opOperand is for a mef.output inside a loop sub-block, we return
+  ///    the loop op itself to represent a possible future use of the opOperand
+  ///    by a future loop iteration.
   ///
   /// Otherwise, return the opOperand's owning operation.
   Operation *getEffectiveOwner(const OpOperand *opOperand) const;

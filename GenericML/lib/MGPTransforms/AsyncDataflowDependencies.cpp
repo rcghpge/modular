@@ -603,16 +603,23 @@ AsyncDataflowDependencies::getEffectiveOwner(const OpOperand *opOperand) const {
   }
 
   if (isa<MEF::OutputOp>(op)) {
-    auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op->getParentOp());
-    if (!cfOp || cfOp.getFlavor() != GRT::kLoopLike) {
-      // Operands to mef.output outside of loops are just plumbing.
-      return nullptr;
+    if (auto modelOp = dyn_cast<ModelOp>(op->getParentOp())) {
+      // Return the model op itself to represent the caller of the 'init' or
+      // 'execute' entry points.
+      return modelOp;
     }
 
-    // Though we don't consider mef.output to be a true 'op' requiring tracking
-    // as a possible consumer of operands, we do need to consider the loop op
-    // itself as a possible future consumer.
-    return cfOp;
+    if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op->getParentOp())) {
+      if (cfOp.getFlavor() == GRT::kLoopLike) {
+        // Return the loop op itself to represent future iterations of the
+        // loop.
+        return cfOp;
+      }
+    }
+
+    // Operands to mef.output outside of loops and the top-level are just
+    // plumbing.
+    return nullptr;
   }
 
   // Normal case.

@@ -204,7 +204,7 @@ mgp.model @simple : mof init {
 // CHECK: runsLater end
 
 // CHECK: exclusive begin
-// CHECK: %6 |-> {%0[0], %arg0, %0, %1, %2, %10, %13}
+// CHECK: %6 |-> {%0, %1, %2, %10, %13}
 // CHECK: exclusive end
 
 mgp.model @redundant : mof init {
@@ -371,7 +371,7 @@ mgp.model @if : mof init {
 // CHECK-NEXT:}) {frameworkName = "mof", inputOutputTypes = () -> !mgp.cpu.tensor<8xf32>, sym_name = "conditional_c"} : () -> ()
 
 // CHECK: exclusive begin
-// CHECK: %6 |-> {%0[0], %arg0, %0, %3, %4, %arg2[2], %arg3[2], %arg2[3], %arg3[3], %10}
+// CHECK: %6 |-> {%0, %3, %4, %arg3[2], %arg3[3], %10}
 // CHECK: exclusive end
 
 mgp.model @conditional_c : mof init {
