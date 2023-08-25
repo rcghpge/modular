@@ -11,6 +11,7 @@
 #include "GenericML/Support/StateSlot.h"
 #include "GenericML/Support/Tensor.h"
 #include "GraphRT/MEFExecutor/PrimitiveRegistry.h"
+#include "Kernels/Misc.h"
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/AsyncValue.h"
 #include "LLCL/Runtime/AsyncValueRef.h"
@@ -635,10 +636,19 @@ static void mgp_cpu_tensor_extract(AsyncValueRef<Tensor> tensor,
 
 static void mgp_debug_cpu_tensor_print(Chain inChain, const Tensor &tensor,
                                        Result<Chain> outChain,
+                                       MEFAttr<StringRef> label,
                                        Runtime &runtime) {
   TimeTraceScope scope(
       LLCL::WorkProfilerEntry::create("mgp.debug.cpu.tensor.print"));
-  llvm::outs() << tensor << "\n";
+  if (label->empty()) {
+    llvm::outs() << tensor << "\n";
+  } else {
+    llvm::outs() << *label << " = ";
+    if (auto errOr = Kernels::printTensor(tensor.getBuffer(), tensor.getSpec(),
+                                          Kernels::ResultOutputStyle::kCompact))
+      return std::move(outChain).setToError(errOr.takeError());
+    llvm::outs() << "\n";
+  }
   llvm::outs().flush();
   std::move(outChain).emplace();
 }
@@ -649,10 +659,31 @@ static void mgp_debug_cpu_tensor_print(Chain inChain, const Tensor &tensor,
 
 static void mgp_debug_cpu_buffer_print(Chain inChain, const BufferRef &buffer,
                                        Result<Chain> outChain,
+                                       MEFAttr<StringRef> label,
                                        Runtime &runtime) {
   TimeTraceScope scope(
       LLCL::WorkProfilerEntry::create("mgp.debug.cpu.buffer.print"));
-  llvm::outs() << buffer << "\n";
+  if (label->empty()) {
+    llvm::outs() << buffer << "\n";
+  } else {
+    llvm::outs() << *label << " = ";
+    TensorSpec spec;
+    if (buffer.getSize() % sizeof(uint64_t) == 0) {
+      spec = TensorSpec(
+          {buffer.getSize() / sizeof(uint64_t)},
+          DType::getInt(sizeof(uint64_t) * 8, /*isSigned=*/false).value());
+    } else if (buffer.getSize() % sizeof(uint32_t) == 0) {
+      spec = TensorSpec(
+          {buffer.getSize() / sizeof(uint32_t)},
+          DType::getInt(sizeof(uint32_t) * 8, /*isSigned=*/false).value());
+    } else {
+      spec = TensorSpec({buffer.getSize()},
+                        DType::getInt(8, /*isSigned=*/false).value());
+    }
+    if (auto errOr = Kernels::printTensor(buffer.getBuffer(), spec,
+                                          Kernels::ResultOutputStyle::kCompact))
+      return std::move(outChain).setToError(errOr.takeError());
+  }
   llvm::outs().flush();
   std::move(outChain).emplace();
 }

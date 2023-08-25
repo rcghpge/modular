@@ -1287,7 +1287,9 @@ def DebugCpuTensorPrintOp : MGP_Op<"debug.cpu.tensor.print"> {
   let summary = "Prints a debug representation of argument tensor. For "
                 "debugging and testing only.";
   let description = [{
-    Prints a debug representation of argument tensor. For lit unit tests.
+    Prints a debug representation of argument tensor. If a label attribute
+    is supplied the tensor contents is printed with that label. Otherwise
+    just the tensor metadata is printed. For debugging and testing only.
 
     Example:
     ```mlir
@@ -1295,12 +1297,20 @@ def DebugCpuTensorPrintOp : MGP_Op<"debug.cpu.tensor.print"> {
     %ch0 : !mef.chain
     %ch1 = mgp.debug.cpu.tensor.print %ch0, %tensor : !mgp.cpu.tensor<8x64xf32>
     %ch1 : !mef.chain
+
+    %tensor : !mgp.cpu.tensor<8x64xf32>
+    %ch0 : !mef.chain
+    %ch1 = mgp.debug.cpu.tensor.print %ch0, %tensor, "label" : !mgp.cpu.tensor<8x64xf32>
+    %ch1 : !mef.chain
     ```
   }];
 
-  let arguments = (ins ChainType:$inChain, MGP_CpuTensorType: $tensor);
+  let arguments = (ins ChainType:$inChain, MGP_CpuTensorType: $tensor,
+                       DefaultValuedAttr<StrAttr, "\"\"">: $label);
   let results = (outs ChainType: $outChain);
-  let assemblyFormat = "$inChain `,` $tensor attr-dict `:` qualified(type($tensor))";
+  let assemblyFormat = [{
+    $inChain `,` $tensor (`,` $label^)? attr-dict `:` qualified(type($tensor))
+  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -1311,7 +1321,9 @@ def DebugCpuBufferPrintOp : MGP_Op<"debug.cpu.buffer.print"> {
   let summary = "Prints a debug representation of argument buffer. For "
                 "debugging and testing only.";
   let description = [{
-    Prints a debug representation of argument buffer. For lit unit tests.
+    Prints a debug representation of argument buffer. If a label attribute
+    is supplied the buffer contents is printed with that label. Otherwise
+    just the buffer metadata is printed. For debugging and testing only.
 
     Example:
     ```mlir
@@ -1319,12 +1331,20 @@ def DebugCpuBufferPrintOp : MGP_Op<"debug.cpu.buffer.print"> {
     %ch0 : !mef.chain
     %ch1 = mgp.debug.cpu.buffer.print %ch0, %buf : !mgp.cpu.buffer<8>
     %ch1 : !mef.chain
+
+    %buf : !mgp.cpu.buffer<8>
+    %ch0 : !mef.chain
+    %ch1 = mgp.debug.cpu.buffer.print %ch0, %buf, "label" : !mgp.cpu.buffer<8>
+    %ch1 : !mef.chain
     ```
   }];
 
-  let arguments = (ins ChainType:$inChain, MGP_CpuBufferType: $buffer);
+  let arguments = (ins ChainType:$inChain, MGP_CpuBufferType: $buffer,
+                       DefaultValuedAttr<StrAttr, "\"\"">: $label);
   let results = (outs ChainType: $outChain);
-  let assemblyFormat = "$inChain `,` $buffer attr-dict `:` qualified(type($buffer))";
+  let assemblyFormat = [{
+    $inChain `,` $buffer (`,` $label^)? attr-dict `:` qualified(type($buffer))
+  }];
 }
 
 
