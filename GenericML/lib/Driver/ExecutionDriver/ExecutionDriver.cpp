@@ -434,6 +434,18 @@ executeModelSynchronously(Runtime &runtime, ExecutableModel &executableModel,
   // Indicate that the call to execute has completed, and that no tasks launched
   // by it should still be in-flight.
   resource->markFreed();
+  // Simulate the caller concurrently accessing all the results. This will
+  // assert fail if any of them overlap, which could happen if there's a
+  // compiler bug in memory planning or concat-in-place.
+  SmallVector<LLCL::ResourceUse> uses;
+  for (size_t i = 1, n = results.size(); i < n; ++i) {
+    const AnyAsyncValueRef &result = results[i];
+    if (auto *tensor = dyn_cast<Tensor>(result)) {
+      tensor->collectAccessUses(uses,
+                                (Twine("output(") + Twine(i - 1) + ")").str(),
+                                LLCL::kReadingResourceUse);
+    }
+  }
 #endif
   return results;
 }
