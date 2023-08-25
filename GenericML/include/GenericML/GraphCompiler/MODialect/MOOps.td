@@ -1048,6 +1048,12 @@ class MO_ReductionOp<string name, list<Trait> traits = []> : MO_TensorOp<
   }];
 
   let hasCanonicalizeMethod = 1;
+
+  let builders = [
+    /// Build reduction op and automatically infer output type if it is not given.
+    OpBuilder<(ins "TensorValue":$input, "TensorValue":$axis, CArg<"TensorType", "{}">:$outputTy)>,
+    OpBuilder<(ins "TensorValue":$input, "int64_t":$axis, CArg<"TensorType", "{}">:$outputTy)>
+  ];
 }
 
 def MO_MeanOp : MO_ReductionOp<"mean"> {

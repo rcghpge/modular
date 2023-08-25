@@ -1466,11 +1466,41 @@ static LogicalResult argVerify(Op *op) {
   return success();
 }
 
+template <typename TOp>
+void buildReductionOp(OpBuilder &odsBuilder, OperationState &odsState,
+                      TensorValue input, TensorValue axis,
+                      TensorType outputTy) {
+  if (input.getType().hasRank() && !outputTy) {
+    outputTy = input.getType().cloneWithUnknownDims(input.getType().getRank());
+  } else if (!outputTy) {
+    outputTy = input.getType().cloneWithUnknownRank();
+  }
+
+  TOp::build(odsBuilder, odsState, outputTy, input, axis);
+}
+
+template <typename TOp>
+void buildReductionOp(OpBuilder &odsBuilder, OperationState &odsState,
+                      TensorValue input, int64_t axis, TensorType outputTy) {
+  buildReductionOp<TOp>(odsBuilder, odsState, input,
+                        odsBuilder.create<ConstantOp>(input.getLoc(), axis),
+                        outputTy);
+}
+
 LogicalResult ArgMaxOp::canonicalize(ArgMaxOp op, PatternRewriter &rewriter) {
   return canonicalizeStaticNegativeIndicesInPlace(op, 1);
 }
 
 LogicalResult ArgMaxOp::verify() { return argVerify(this); }
+
+void ArgMaxOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                     TensorValue input, TensorValue axis, TensorType outputTy) {
+  buildReductionOp<ArgMaxOp>(odsBuilder, odsState, input, axis, outputTy);
+}
+void ArgMaxOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                     TensorValue input, int64_t axis, TensorType outputTy) {
+  buildReductionOp<ArgMaxOp>(odsBuilder, odsState, input, axis, outputTy);
+}
 
 //===----------------------------------------------------------------------===//
 // MO::ArgMinOp
@@ -1481,6 +1511,15 @@ LogicalResult ArgMinOp::canonicalize(ArgMinOp op, PatternRewriter &rewriter) {
 }
 
 LogicalResult ArgMinOp::verify() { return argVerify(this); }
+
+void ArgMinOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                     TensorValue input, TensorValue axis, TensorType outputTy) {
+  buildReductionOp<ArgMinOp>(odsBuilder, odsState, input, axis, outputTy);
+}
+void ArgMinOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                     TensorValue input, int64_t axis, TensorType outputTy) {
+  buildReductionOp<ArgMinOp>(odsBuilder, odsState, input, axis, outputTy);
+}
 
 //===----------------------------------------------------------------------===//
 // Windowed ops
@@ -1859,6 +1898,15 @@ LogicalResult MeanOp::canonicalize(MeanOp op, PatternRewriter &rewriter) {
   return canonicalizeStaticNegativeIndicesInPlace(op, 1);
 }
 
+void MeanOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                   TensorValue input, TensorValue axis, TensorType outputTy) {
+  buildReductionOp<MeanOp>(odsBuilder, odsState, input, axis, outputTy);
+}
+void MeanOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                   TensorValue input, int64_t axis, TensorType outputTy) {
+  buildReductionOp<MeanOp>(odsBuilder, odsState, input, axis, outputTy);
+}
+
 //===----------------------------------------------------------------------===//
 // MO_ReduceMulOp support
 //===----------------------------------------------------------------------===//
@@ -1899,6 +1947,16 @@ OpFoldResult ReduceMulOp::fold(FoldAdaptor adaptor) {
   return IntArrayElementsAttr::get(rankedResTy, resArr);
 }
 
+void ReduceMulOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                        TensorValue input, TensorValue axis,
+                        TensorType outputTy) {
+  buildReductionOp<ReduceMulOp>(odsBuilder, odsState, input, axis, outputTy);
+}
+void ReduceMulOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                        TensorValue input, int64_t axis, TensorType outputTy) {
+  buildReductionOp<ReduceMulOp>(odsBuilder, odsState, input, axis, outputTy);
+}
+
 //===----------------------------------------------------------------------===//
 // MO_ReduceAddOp support
 //===----------------------------------------------------------------------===//
@@ -1925,6 +1983,16 @@ OpFoldResult ReduceAddOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
+void ReduceAddOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                        TensorValue input, TensorValue axis,
+                        TensorType outputTy) {
+  buildReductionOp<ReduceAddOp>(odsBuilder, odsState, input, axis, outputTy);
+}
+void ReduceAddOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                        TensorValue input, int64_t axis, TensorType outputTy) {
+  buildReductionOp<ReduceAddOp>(odsBuilder, odsState, input, axis, outputTy);
+}
+
 //===----------------------------------------------------------------------===//
 // MO_ReduceMinOp support
 //===----------------------------------------------------------------------===//
@@ -1934,6 +2002,17 @@ LogicalResult ReduceMinOp::canonicalize(ReduceMinOp op,
   return canonicalizeStaticNegativeIndicesInPlace(op, 1);
 }
 
+void ReduceMinOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                        TensorValue input, TensorValue axis,
+                        TensorType outputTy) {
+  buildReductionOp<ReduceMinOp>(odsBuilder, odsState, input, axis, outputTy);
+}
+
+void ReduceMinOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                        TensorValue input, int64_t axis, TensorType outputTy) {
+  buildReductionOp<ReduceMinOp>(odsBuilder, odsState, input, axis, outputTy);
+}
+
 //===----------------------------------------------------------------------===//
 // MO_ReduceMaxOp support
 //===----------------------------------------------------------------------===//
@@ -1941,6 +2020,16 @@ LogicalResult ReduceMinOp::canonicalize(ReduceMinOp op,
 LogicalResult ReduceMaxOp::canonicalize(ReduceMaxOp op,
                                         PatternRewriter &rewriter) {
   return canonicalizeStaticNegativeIndicesInPlace(op, 1);
+}
+
+void ReduceMaxOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                        TensorValue input, TensorValue axis,
+                        TensorType outputTy) {
+  buildReductionOp<ReduceMaxOp>(odsBuilder, odsState, input, axis, outputTy);
+}
+void ReduceMaxOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                        TensorValue input, int64_t axis, TensorType outputTy) {
+  buildReductionOp<ReduceMaxOp>(odsBuilder, odsState, input, axis, outputTy);
 }
 
 //===----------------------------------------------------------------------===//
