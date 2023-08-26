@@ -13,8 +13,8 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
-#include <llvm/Support/ErrorHandling.h>
-#include <mlir/IR/PatternMatch.h>
+#include "mlir/IR/PatternMatch.h"
+#include "llvm/Support/ErrorHandling.h"
 
 using namespace M;
 using namespace MO;

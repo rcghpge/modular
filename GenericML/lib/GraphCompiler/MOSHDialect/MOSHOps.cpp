@@ -19,9 +19,9 @@
 #include "mlir/Dialect/Index/IR/IndexAttrs.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
-#include <llvm/ADT/STLExtras.h>
-#include <mlir/IR/PatternMatch.h>
+#include "llvm/ADT/STLExtras.h"
 
 using namespace M;
 using namespace MOSH;

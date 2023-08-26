@@ -8,7 +8,7 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"
 #include "GraphRT/MIPDialect/MIPDialect.h"
-#include <mlir/Parser/Parser.h>
+#include "mlir/Parser/Parser.h"
 
 // Directly embed the mojo file rather than loading dynamically.
 #include MOSH_MOJO_BINDING_H

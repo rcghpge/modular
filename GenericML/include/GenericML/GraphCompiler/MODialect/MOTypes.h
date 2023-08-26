@@ -13,9 +13,9 @@
 
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/ML/DType.h"
-#include <mlir/IR/Attributes.h>
-#include <mlir/IR/BuiltinAttributes.h>
-#include <mlir/IR/Types.h>
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/Types.h"
 
 namespace M::MOSH {
 class ChainType;

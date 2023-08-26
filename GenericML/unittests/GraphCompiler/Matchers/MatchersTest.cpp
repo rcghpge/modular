@@ -9,8 +9,8 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "Support/MDialect/MDialect.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "gtest/gtest.h"
-#include <mlir/IR/BuiltinOps.h>
 #include <numeric>
 
 using namespace M;

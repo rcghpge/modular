@@ -26,9 +26,9 @@
 #include "mlir/IR/ODSSupport.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/SmallVectorExtras.h"
-#include <llvm/ADT/APFloat.h>
-#include <llvm/ADT/APInt.h>
 #include <numeric>
 
 using namespace M;

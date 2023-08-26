@@ -10,8 +10,8 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "Support/MDialect/MDialect.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "gtest/gtest.h"
-#include <mlir/IR/BuiltinOps.h>
 #include <numeric>
 
 using namespace M;
