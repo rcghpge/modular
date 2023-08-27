@@ -107,12 +107,17 @@ QuantSpec QuantSpec::getUniformPerAxis(uint8_t quantDim, ArrayRef<float> scales,
 }
 
 ErrorOr<QuantTensorSpec> QuantTensorSpec::get(MEFType type) {
-  SmallVector<int64_t> dims;
   auto tensorType = dyn_cast<MEFTensorType>(type);
   if (!tensorType)
     return Error("MEFType cannot be cast to MEFTensorType");
 
-  auto mefType = tensorType->decode(dims);
+  bool hasRank;
+  SmallVector<int64_t> dims;
+  auto mefType = tensorType->decode(hasRank, dims);
+  if (!hasRank)
+    return Error("MEFTensorType has dynamic rank which cannot be represented "
+                 "by QuantTensorSpec");
+
   if (auto qType = dyn_cast<MEFQuantizedType>(mefType)) {
     float scale;
     int64_t zeroPoint;

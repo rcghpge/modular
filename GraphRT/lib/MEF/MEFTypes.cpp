@@ -89,34 +89,56 @@ void MEFFunctionType::decode(SmallVectorImpl<MEFType> &inputs,
 /// Decode the inputs and results of a MEFTensorType into the specified
 /// vector and return the encoded size of the type.
 static size_t decodeTensorType(const uint8_t *pointer, const uint8_t *attrEnd,
-                               MEFType &elementType,
+                               MEFType &elementType, bool &hasRank,
                                SmallVectorImpl<int64_t> &dims) {
   auto *dataPtr = pointer;
   assert(pointer <= attrEnd &&
          "MEF datum not within bounds of the MEF Attribute Section");
+  // Tensor type tag.
   assert(MEF::TypeKind(dataPtr[0]) == MEF::TypeKind::tensor);
   ++dataPtr;
+  // Element type.
   size_t attrSize = MEFType(dataPtr, attrEnd).getEncodedSizeInBytes();
   elementType = MEFType(dataPtr, pointer + attrSize);
   dataPtr += attrSize;
+  // Rank.
+  static_assert(std::numeric_limits<uint8_t>::max() > kMaxRank);
   uint8_t rank = *dataPtr++;
-
-  while (rank--)
-    dims.push_back(MEF::parseVBR(dataPtr));
+  if (rank == std::numeric_limits<uint8_t>::max()) {
+    // Unranked
+    hasRank = false;
+  } else {
+    assert(rank <= kMaxRank);
+    hasRank = true;
+    // Dimensions.
+    while (rank--)
+      dims.push_back(MEF::parseVBR(dataPtr));
+  }
   return dataPtr - pointer;
 }
 
-MEFType MEFTensorType::decode(SmallVectorImpl<int64_t> &dims) const {
+MEFType MEFTensorType::decodeStatic(SmallVectorImpl<int64_t> &dims) const {
+  bool hasRank;
+  MEFType elementType = decode(hasRank, dims);
+  assert(hasRank && "concrete tensor types must have statically known ranks");
+  assert(llvm::all_of(dims, [](int64_t dim) { return dim >= 0; }) &&
+         "concrete tensor types must have statically known dimensions");
+  return elementType;
+}
+
+MEFType MEFTensorType::decode(bool &hasRank,
+                              SmallVectorImpl<int64_t> &dims) const {
   MEFType elementType(nullptr, nullptr);
-  (void)decodeTensorType(pointer, attrEnd, elementType, dims);
+  (void)decodeTensorType(pointer, attrEnd, elementType, hasRank, dims);
   return elementType;
 }
 
 /// Return the encoded size of this type in the MEF file, in bytes.
 size_t MEFTensorType::getEncodedSizeInBytes() const {
   MEFType elementType(nullptr, nullptr);
+  bool hasRank;
   SmallVector<int64_t> dims;
-  return decodeTensorType(pointer, attrEnd, elementType, dims);
+  return decodeTensorType(pointer, attrEnd, elementType, hasRank, dims);
 }
 
 //===----------------------------------------------------------------------===//

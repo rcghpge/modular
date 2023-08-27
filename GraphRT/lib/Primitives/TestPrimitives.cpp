@@ -161,11 +161,20 @@ static void printType(MEFType type) {
     if (results.size() != 1)
       printf(")");
   } else if (auto tensorType = dyn_cast<MEFTensorType>(type)) {
+    bool hasRank;
     SmallVector<int64_t> dims;
-    MEFType elementType = tensorType->decode(dims);
+    MEFType elementType = tensorType->decode(hasRank, dims);
     printf("tensor<");
-    for (int64_t dim : dims)
-      printf("%lldx", (long long)dim);
+    if (hasRank) {
+      for (int64_t dim : dims) {
+        if (dim < 0)
+          printf("?x");
+        else
+          printf("%lldx", (long long)dim);
+      }
+    } else {
+      printf("*x");
+    }
     printType(elementType);
     printf(">");
   } else if (auto qType = dyn_cast<MEFQuantizedType>(type)) {

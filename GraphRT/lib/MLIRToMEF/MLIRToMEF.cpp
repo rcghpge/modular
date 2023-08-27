@@ -23,12 +23,12 @@
 #include "Support/ErrorOr.h"
 #include "Support/MDialect/MAttrs.h"
 #include "Support/ML/SizeUtils.h"
+#include "Support/ML/TensorShape.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/raw_ostream.h"
 #include <climits>
@@ -1015,7 +1015,10 @@ ErrorOr<MEF::TypeKind> TypeEmitter::getIntFPComplexTypeEncoding(Type type) {
     return MEF::TypeKind(DType::getComplex(*eltTypeOr).getValue());
   }
 
-  return Error("numerical type cannot be encoded in MEF");
+  std::string str;
+  llvm::raw_string_ostream os(str);
+  os << "the MLIR type " << type << " is not supported by MEF";
+  return Error(str);
 }
 
 /// Emit an int, float, or complex type.
@@ -1029,29 +1032,33 @@ LogicalResult TypeEmitter::emitIntFPComplexType(Type type) {
   return success();
 }
 
-/// emitShapedType emits a ranked shaped type with the supported element type
-/// as a tensor in the form of `tensor<1x3xf32>` into MEF. The type is encoded
-/// in the following form:
-///   TypeKind::tensor | element TypeKind | shape size | shape elements in
-///   VBR encoded shape elements
+/// Emits a shaped type, such as `tensor<1x3xf32>`, into MEF.
+/// The type is encoded in the following form:
+///   TypeKind::tensor | element TypeKind | rank | VBR encoded dims
 /// For the example tensor above, the output format would look like this:
 ///   TypeKind::tensor | TypeKind::f32 | 2 | 1, 3
+/// Unranked tensors are encoded with a rank of
+/// std::numeric_limits<uint8_t>::max() and no dimension entries.
 LogicalResult TypeEmitter::emitShapedType(ShapedType type) {
-  if (!type.hasRank())
-    return failure();
-
   emitter->emitByte(MEF::TypeKind::tensor);
   Type elementType = type.getElementType();
 
   if (failed(emitType(elementType)))
     return failure();
 
-  ArrayRef<int64_t> shape = type.getShape();
-  emitter->emitByte((uint8_t)shape.size());
-
-  for (int64_t value : shape)
-    emitter->emitVBR(static_cast<size_t>(value));
-
+  if (type.hasRank()) {
+    ArrayRef<int64_t> shape = type.getShape();
+    assert(shape.size() <= kMaxRank);
+    emitter->emitByte((uint8_t)shape.size());
+    for (int64_t dimOrDynamic : shape) {
+      // Note that dimOrDynamic may be ShapedType::kDynamic, which will be
+      // encoded in unsigned form, then decoded back to ssize_t at runtime.
+      emitter->emitVBR(static_cast<size_t>(dimOrDynamic));
+    }
+  } else {
+    static_assert(std::numeric_limits<uint8_t>::max() > kMaxRank);
+    emitter->emitByte(std::numeric_limits<uint8_t>::max());
+  }
   return success();
 }
 
@@ -1130,13 +1137,15 @@ LogicalResult TypeEmitter::emitFunctionType(FunctionType type) {
   emitter->emitByte(MEF::TypeKind::function);
   emitter->emitByte(type.getNumInputs());
   emitter->emitByte(type.getNumResults());
-  for (auto input : type.getInputs())
+  for (auto input : type.getInputs()) {
     if (failed(emitType(input)))
       return failure();
+  }
 
-  for (auto result : type.getResults())
+  for (auto result : type.getResults()) {
     if (failed(emitType(result)))
       return failure();
+  }
   return success();
 }
 
@@ -1174,8 +1183,10 @@ MEFOffset AttributesEmitter::emitTypeAttribute(Type type, Location loc) {
   MEFOffset startOffset = getOffset();
 
   TypeEmitter typeEmitter(this, loc);
-  if (failed(typeEmitter.emitType(type)))
+  if (failed(typeEmitter.emitType(type))) {
+    // The emitter will have recorded a diagnostic at the origin of failure.
     return {0};
+  }
   return startOffset;
 }
 
@@ -1699,7 +1710,8 @@ ConcatenationTree M::translateMLIRToMEF(ModuleOp module,
     emitter.emitTypesMD(typeStringsMDSection);
   }
 
-  // Emitting the attributes can fail if there's an unsupported attribute.
+  // Emitting the attributes can fail if there's an unsupported attribute or
+  // attribute type. The diagnostic will be recorded and reported by MLIR.
   emitter.emitAttributes(attrIndexMDSection);
 
   emitter.emitPrimitiveNames();

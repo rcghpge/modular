@@ -119,8 +119,16 @@ public:
   MEFTensorType(const uint8_t *pointer, const uint8_t *attrEnd)
       : MEFType(pointer, attrEnd) {}
 
-  /// Decode the dimensions and return the element type for the tensor.
-  MEFType decode(SmallVectorImpl<int64_t> &dims) const;
+  /// Decode the rank and dimensions and return the element type for the tensor.
+  /// This will assert fail if the tensor is dynamically ranked or has an
+  /// unknown dimension.
+  MEFType decodeStatic(SmallVectorImpl<int64_t> &dims) const;
+
+  /// Decode the rank and dimensions and return the element type for the tensor.
+  /// If the tensor is dynamically ranked then hasRank will be fales and dims
+  /// will be left empty. If the tensor contains unknown dimensions then they
+  /// be be represented as kUnknownSignedSize.
+  MEFType decode(bool &hasRank, SmallVectorImpl<int64_t> &dims) const;
 
   /// Return the encoded size of this type in the MEF file, in bytes.
   size_t getEncodedSizeInBytes() const;

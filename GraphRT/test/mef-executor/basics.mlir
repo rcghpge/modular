@@ -199,8 +199,17 @@ grt.testcase @test_types {
   // CHECK-NEXT: Type attribute: tensor<4x0x123xf32>
   %ch16 = "test.print_type"(%ch15) {t = tensor<4x0x123xf32>} : (!mef.chain) -> (!mef.chain)
 
+  // CHECK-NEXT: Type attribute: tensor<*xf32>
+  %ch16b = "test.print_type"(%ch16) {t = tensor<*xf32>} : (!mef.chain) -> (!mef.chain)
+
+  // CHECK-NEXT: Type attribute: tensor<4x?x7xf32>
+  %ch16c = "test.print_type"(%ch16b) {t = tensor<4x?x7xf32>} : (!mef.chain) -> (!mef.chain)
+
+  // CHECK-NEXT: Type attribute: tensor<f32>
+  %ch16d = "test.print_type"(%ch16c) {t = tensor<f32>} : (!mef.chain) -> (!mef.chain)
+
   // CHECK-NEXT: Type attribute: quant<si8:f32, 0.100000:-128>
-  %ch17 = "test.print_type"(%ch16) {t = !quant.uniform<i8:f32, 0.1:-128>} : (!mef.chain) -> (!mef.chain)
+  %ch17 = "test.print_type"(%ch16d) {t = !quant.uniform<i8:f32, 0.1:-128>} : (!mef.chain) -> (!mef.chain)
 
   // CHECK-NEXT: Type attribute: quantPerAxis<si16:f32:1, {0.200000:128, 0.100000:-128}>
   %ch18 = "test.print_type"(%ch17) {t = !quant.uniform<i16:f32:1, {0.2:128, 0.1:-128}>} : (!mef.chain) -> (!mef.chain)
