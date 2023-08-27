@@ -31,6 +31,14 @@ func.func @buffer_alloc_static_spec(%ch : !mef.chain, %spec : !mgp.cpu.tensor_sp
 
 // -----
 
+func.func @buffer_alloc_dynamic_rank_spec(%ch : !mef.chain, %spec : !mgp.cpu.tensor_spec<*xf32>) {
+  // expected-error@+1 {{'mgp.cpu.buffer.alloc.spec' op expected tensor spec to have statically known rank.}}
+  %0 = mgp.cpu.buffer.alloc.spec %ch, %spec, align 64 : !mgp.cpu.tensor_spec<*xf32>
+  mef.output %0 : !mgp.cpu.buffer
+}
+
+// -----
+
 //
 // mgp.cpu.tensor_spec.create{.dynamic}
 //
@@ -83,6 +91,22 @@ func.func @spec_create_dynamic_known_elem_type(%dim : index, %dtype : !mgp.dtype
 
 // -----
 
+func.func @spec_create_dynamic_rank(%dim : index) {
+  // expected-error@+1 {{custom op 'mgp.cpu.tensor_spec.create' expected !mgp.cpu.tensor_spec type to have a statically known rank.}}
+  %0 = mgp.cpu.tensor_spec.create %dim : !mgp.cpu.tensor_spec<*xf32>
+  mef.output %0 : !mgp.cpu.tensor_spec<*xf32>
+}
+
+// -----
+
+func.func @spec_create_dynamic_dynamic_rank(%dim : index, %dtype : !mgp.dtype) {
+  // expected-error@+1 {{custom op 'mgp.cpu.tensor_spec.create.dynamic' expected !mgp.cpu.tensor_spec type to have a statically known rank.}}
+  %0 = mgp.cpu.tensor_spec.create.dynamic %dtype, %dim : !mgp.cpu.tensor_spec<*xunk>
+  mef.output %0 : !mgp.cpu.tensor_spec<*xunk>
+}
+
+// -----
+
 //
 // mgp.cpu.tensor_spec.dims.dynamic
 //
@@ -90,6 +114,14 @@ func.func @spec_create_dynamic_known_elem_type(%dim : index, %dtype : !mgp.dtype
 func.func @spec_dims_mismatched_dims(%spec : !mgp.cpu.tensor_spec<?x64x?xf32>) {
   // expected-error@+1 {{operation defines 2 results but was provided 1 to bind}}
   %dim0 = mgp.cpu.tensor_spec.dims.dynamic %spec : !mgp.cpu.tensor_spec<?x64x?xf32>
+  mef.output %dim0 : index
+}
+
+// -----
+
+func.func @spec_dims_dynamic_rank(%spec : !mgp.cpu.tensor_spec<*xf32>) {
+  // expected-error@+1 {{custom op 'mgp.cpu.tensor_spec.dims.dynamic' expected !mgp.cpu.tensor_spec type to have a statically known rank.}}
+  %dim0 = mgp.cpu.tensor_spec.dims.dynamic %spec : !mgp.cpu.tensor_spec<*xf32>
   mef.output %dim0 : index
 }
 
@@ -139,7 +171,7 @@ func.func @tensor_extract_mismatched_size(%tensor : !mgp.cpu.tensor<3x5xf32>) {
 // !mgp.cpu.tensor_spec
 //
 
-// expected-error@+1 {{shape must have rank between 0 and 8.}}
+// expected-error@+1 {{tensor spec must have a rank between 0 and 8.}}
 func.func @spec_too_large(%x : !mgp.cpu.tensor_spec<1x2x3x4x5x6x7x8x9xf32>) {}
 
 // -----

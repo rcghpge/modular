@@ -275,6 +275,10 @@ static LogicalResult verifyAnyAllocOp(
 
   // Check the tensor spec operand type is consistent.
   if (optRuntimeSpecType != nullptr) {
+    if (!optRuntimeSpecType.hasRank())
+      return emitOpError()
+             << "expected tensor spec to have statically known rank.";
+
     std::optional<uint64_t> bytes = optRuntimeSpecType.getSizeInBytes();
     if (bytes)
       return emitOpError() << "expected tensor spec to not have statically "
@@ -615,12 +619,6 @@ LogicalResult CpuBufferSplitBorrowOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// ContextCreateOp
-//===----------------------------------------------------------------------===//
-
-// Nothing to implement.
-
-//===----------------------------------------------------------------------===//
 // CpuTensorSpecCreateOp
 //===----------------------------------------------------------------------===//
 
@@ -628,6 +626,8 @@ void CpuTensorSpecCreateOp::build(OpBuilder &odsBuilder,
                                   OperationState &odsState,
                                   CpuTensorSpecType spec,
                                   ValueRange runtimeDims) {
+  assert(spec.hasRank() && "can only construct an mgp.cpu.tensor_spec.create "
+                           "for tensor specs of statically known rank");
   CpuTensorSpecCreateOp::build(odsBuilder, odsState,
                                /*runtimeDims=*/runtimeDims,
                                /*aRawDims=*/spec.getRawDims(),
@@ -646,6 +646,9 @@ static ParseResult parseRawDimsAndDType(AsmParser &p,
   auto tensorSpec = dyn_cast<CpuTensorSpecType>(type);
   if (tensorSpec == nullptr)
     return p.emitError(loc) << "expected a !mgp.cpu.tensor_spec type.";
+  if (!tensorSpec.hasRank())
+    return p.emitError(loc) << "expected !mgp.cpu.tensor_spec type to have a "
+                               "statically known rank.";
   if (!tensorSpec.getOptDType())
     return p.emitError(loc) << "expected !mgp.cpu.tensor_spec type to have a "
                                "known element type.";
@@ -669,6 +672,7 @@ LogicalResult CpuTensorSpecCreateOp::verify() {
       getBRawDType());
   if (impliedSpecType == nullptr)
     return failure();
+  assert(impliedSpecType.hasRank());
   CpuTensorSpecType actualSpecType = getResult().getType();
   if (actualSpecType != impliedSpecType)
     return emitOpError()
@@ -712,6 +716,9 @@ static ParseResult parseRawDims(AsmParser &p, IntArrayElementsAttr &rawDims) {
   auto tensorSpec = dyn_cast<CpuTensorSpecType>(type);
   if (tensorSpec == nullptr)
     return p.emitError(loc) << "expected a !mgp.cpu.tensor_spec type.";
+  if (!tensorSpec.hasRank())
+    return p.emitError(loc) << "expected !mgp.cpu.tensor_spec type to have a "
+                               "statically known rank.";
   if (tensorSpec.getOptDType())
     return p.emitError(loc) << "expected !mgp.cpu.tensor_spec type to have an "
                                "unknown element type.";
@@ -759,7 +766,7 @@ LogicalResult CpuTensorSpecCreateDynamicOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
-// SpecExtractShapeOp
+// CpuTensorSpecDimsDynamicOp
 //===----------------------------------------------------------------------===//
 
 /// Parses a !mgp.cpu.tensor_spec type, however also sets the rawDims to
@@ -772,7 +779,10 @@ parseTensorSpecTypeWithRawDims(AsmParser &p, Type &specType,
     return failure();
   auto tensorSpec = dyn_cast<CpuTensorSpecType>(specType);
   if (tensorSpec == nullptr)
-    p.emitError(loc) << "expected !mgp.cpu.tensor_spec type";
+    return p.emitError(loc) << "expected !mgp.cpu.tensor_spec type.";
+  if (!tensorSpec.hasRank())
+    return p.emitError(loc) << "expected !mgp.cpu.tensor_spec type to have a "
+                               "statically known rank.";
   rawDims = tensorSpec.getRawDims();
   return success();
 }
@@ -788,6 +798,7 @@ LogicalResult CpuTensorSpecDimsDynamicOp::verify() {
   CpuTensorSpecType actualSpecType = getSpec().getType();
   CpuTensorSpecType impliedSpecType = CpuTensorSpecType::get(
       getContext(), getRawDims(), actualSpecType.getRawDType().getUInt());
+  assert(impliedSpecType.hasRank());
   if (actualSpecType != impliedSpecType)
     return emitOpError() << "expected tensor spec type is " << actualSpecType
                          << ", but static dimensions arguments "
@@ -814,25 +825,7 @@ LogicalResult CpuTensorSpecDimsDynamicOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
-// SpecSizeOp
-//===----------------------------------------------------------------------===//
-
-// Nothing to implement.
-
-//===----------------------------------------------------------------------===//
-// SpecNumElemsOp
-//===----------------------------------------------------------------------===//
-
-// Nothing to implement.
-
-//===----------------------------------------------------------------------===//
-// SpecDTypeOp
-//===----------------------------------------------------------------------===//
-
-// Nothing to implement.
-
-//===----------------------------------------------------------------------===//
-// TensorCreateOp
+// CpuTensorCreateOp
 //===----------------------------------------------------------------------===//
 
 /// Parses the expected result tensor type, but also derives the appropriate
@@ -911,7 +904,7 @@ LogicalResult CpuTensorCreateOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// TensorExtractOp
+// CpuTensorExtractOp
 //===----------------------------------------------------------------------===//
 
 LogicalResult CpuTensorExtractOp::verify() {

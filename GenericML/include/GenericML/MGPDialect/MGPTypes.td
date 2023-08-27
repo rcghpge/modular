@@ -186,27 +186,28 @@ def MGP_DTypeType : MGP_Type<"DType", "dtype"> {
 
 def MGP_CpuTensorSpecType : MGP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
     DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
-  let summary = "Type of tensor specs of statically known rank.";
+  let summary = "Type of tensor specs.";
   let description = [{
-    This type represents the shape and dtype of a tensor hosted on
-    the CPU. The rank must be between one and five. Each dimension must be
-    a strictly positive integer value, or the distinguished '?' dimension
-    denoting unknown. The dtype must be a DType, or none denoting unknown.
+    This type represents the shape and dtype of a concrete tensor. The
+    tensor could be an !mgp.cpu.tensor, or some other tensor representation.
 
-    This type does not support:
-     - Dynamic ranks.
-     - Symbolic dimensions or dtypes.
+    TODO: Remove 'cpu' prefix.
+
+    Both static and dynamic (aka unknown) aspects are supported:
+     - The rank may be static (implied by the number of dimensions, ie the
+       number of `x` delimiters) or dynamic (denoted by `*`). Only ranks up to
+       kMaxRank are supported (currently 8). A rank of zero denotes 'scalars',
+       though in practice this has the same runtime representation as rank 1,
+       dimension 1.
+     - For static ranks, each dimension may be static (an unsigned integer
+       literal) or dynamic (denoted by `?`). Symbolic dimensions are not
+       expressible in MGP.
+     - The dtype may be static (using the DType::getFromString syntax) or
+       dynamic (denoted by`unk`).
 
     Tensor specs are represented by M::TensorSpec in the Modular runtime.
-    The runtime value will agree with the rank, known shape dimensions,
-    and known dtype of the tensor spec type.
-
-    For convenience this type may be denoted using the same body syntax
-    as the built-in tensor type. However, the dtype is parsed using
-    the M::DType string parser, or may be 'unk' to denote unknown.
-
-    Rank-0 Tensors that represent scalars are allowed; they are stored
-    identically to rank 1 tensors of length 1.
+    The runtime tensor spec for a concrete tensor should refine its compile-time
+    tensor spec.
 
     DTypes can represent most variations of MLIR IntegerType and FloatTypes.
     However:
@@ -214,84 +215,112 @@ def MGP_CpuTensorSpecType : MGP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
        representation.
      - The complex and a few float DTypes have no MLIR Type representation.
      - The 'invalid' (zero) DType is never permitted.
-    If a tensor spec is given a DType we also check it is representable as
+    If a tensor spec is given a DType we also require it to be representable as
     an MLIR type.
     TODO(#4718): Are these discrepancies something we should redress?
 
-    This type implements ShapedTypeInterface, using the distinguished
-    NoneType to represent an unknown dtype. This means:
-     - We use 'dims' to refer to the dimensions in
-       ArrayRef<std::optional<uint64_t>> form, but 'shape' to refer to
-       them in ArrayRef<int64_t> form.
-     - We use 'dtype' to refer to the dtype in DType form, but
-       'elementType' to refer to it in MLIR type form.
+    This type implements ShapedTypeInterface. We'll use 'dims'/'dtype' when
+    referring to our internal representation, and 'shape'/'element type' when
+    referring to the ShapedTypeInterface representation.
 
-    The components of tensor spec types have three representation forms:
-     - 'std::optional form': an array of std::optional<uint64_t> for the dimensions
-       (none denotes unknown dimension) and an std::optional<DType> for the dtype
-       (none denotes unknown). This is the most natural representation
-       from the MLIR/C++ side. However, care is taken to ensure only DTypes
-       which are also representable as MLIR types are considered valid.
-     - 'Shaped type form': an array of int64_t for the shape
-       (ShapedType::kDynamicSize denotes unknown dimension) and an MLIR
-       type for the element type (NoneType denotes unknown). This supports
-       the ShapedTypeInterface, but not all IntegerTypes and FloatTypes have
-       a DType representation.
-     - 'Raw form': an IntArrayElementsAttr of uint64_ts for the dimensions
-       (~0 denotes unknown dimension), and a IntegerAttr of a 8-bit unsigned
-       integer for the dtype (using the DType::value encoding, but
-       with the 'invalid' (zero) DType denoting unknown). This supports ops
-       which must, in effect, encode tensor spec types into their argument
-       attributes using only the built-in MEF attributes.
+    Here are all the different representations in flight:
+     - For dimensions:
+        - 'optional' form: std::optional<uint64_t>, where nullopt denotes
+          a dynamic dimension. God's own representation.
+        - 'signed' form: int64_t, where ShapedType::kDynamicSize denotes
+          a dynamic dimension. As used by ShapedTypeInterface.
+        - 'raw' form: uint64_t, where ~0 denotes a dynamic dimension. Used
+          when dimensions need to be encoded into MEF ops via attributes.
+     - For shapes:
+        - 'optional' form: std::optional<ArrayRef<std::optional<uint64_t>>>,
+          where nullopt denotes a dynamic rank.
+        - 'shaped type' form: ArrayRef<int64_t>, as used by ShapedTypeInterface.
+        - 'raw' form: IntArrayElementsAttr of UI64Ints.
+     - For dtypes:
+        - 'optional' form: std::optional<DType>, where nullopt denotes a
+          dynamic dtype.
+        - 'shaped type' form: An MLIR type, where NoneType denotes a dynamic
+          dtype.
+        - 'raw' form: uint8_t, where 0 (ie invalid) denotes a dynamic dtype.
 
     Examples:
     ```mlir
     !mgp.cpu.tensor_spec<4x16xf32>
-    !mgp.cpu.tensor_spec<?x?xunk>
+    !mgp.cpu.tensor_spec<?x3xunk>
+    !mgp.cpu.tensor_spec<*xi32>
     ```
   }];
 
-  // NOTE: To support the ShapedType::getShape() method we must maintain
-  // the shape in the ArrayRef<int64_t> form as well as our preferred
-  // ArrayRef<std::optional<uint64_t>> form.
-  let parameters = (ins ArrayRefParameter<"std::optional<uint64_t>">:$dims,
+  // NOTE: To support the ShapedTypeInterface::getShape() method we maintain
+  // 'optional' (dimsOrEmpty) and 'shaped type' (shapeOrEmpty) forms.
+  // See the builders for the smart constructors.
+  let parameters = (ins "bool":$hasRank,
+                        ArrayRefParameter<"std::optional<uint64_t>">:$dimsOrEmpty,
                         "std::optional<DType>":$optDType,
-                        ArrayRefParameter<"int64_t">:$shape);
-  let assemblyFormat = "`<` custom<DimsAndDType>($dims, $optDType, $shape) `>`";
+                        ArrayRefParameter<"int64_t">:$shapeOrEmpty);
+  let assemblyFormat = "`<` custom<DimsAndDType>($hasRank, $dimsOrEmpty, $optDType, $shapeOrEmpty) `>`";
   let genVerifyDecl = 1;
 
   let extraClassDeclaration = [{
+    /// For the ShapedTypeInterface we implement:
+    ///   bool hasRank();
+    ///   ShapedType cloneWith(std::optional<ArrayRef<int64_t>> shape,
+    ///                        Type elementType);
+    ///   Type getElementType();
+    ///   ArrayRef<int64_t> getShape(); // requires hasRank().
+    /// CAUTION: Most of the following methods require hasRank() and will
+    ///          assert fail otherwise. Take care.
+
+    /// Returns the dimensions of this tensor spec, or nullopt if dynamic
+    /// ranked.
+    /// Dynamic ranked safe.
+    std::optional<ArrayRef<std::optional<uint64_t>>> getOptDims() const;
+
+    /// Returns the dimensions of this tensor spec.
+    /// Requires hasRank().
+    ArrayRef<std::optional<uint64_t>> getDims() const;
+
     /// Returns the rank of this tensor spec.
+    /// Requires hasRank().
     size_t getRank() const;
 
     /// Returns the number of unknown, aka 'dynamic' dimensions in
     /// this tensor spec.
+    /// Requires hasRank().
     size_t getNumDynamicDims() const;
 
     /// Return the dimension at index i in this spec, or nullopt if the
     /// dimension is dynamic.
+    /// Requires hasRank().
     std::optional<uint64_t> operator[](size_t i) const;
 
     /// Returns the number of elements in a tensor of this spec, or
-    /// nullopt if the tensor spec is not fully static.
+    /// nullopt if the tensor shape is not fully static (ie dynamic rank,
+    /// or at least one dynamic dimension).
+    /// Dynamic ranked safe.
     std::optional<uint64_t> getNumElements() const;
 
     /// Returns the number of elements for the known dimensions of this spec.
     /// The actual number of elements will be this value multiplied by the
     /// runtime dimensions of all dynamic dimensions.
+    /// Requires hasRank().
     uint64_t getPreScaledNumElements() const;
 
     /// Returns the size of the buffer needed to represent a tensor
-    /// of this spec, or nullopt if the tensor spec is not fully static.
+    /// of this spec, or nullopt if the tensor spec is not fully static
+    /// (ie dynamic rank, at least one dynamic dimension, or dynamic dtype).
+    /// Dynamic ranked safe.
     std::optional<uint64_t> getSizeInBytes() const;
 
     /// Returns the byte size needed to represent getNumPreScaledElements(),
     /// or nullopt if the tensor spec does not have a statically known dtype.
+    /// Requires hasRank().
     std::optional<uint64_t> getPreScaledSizeInBytes() const;
 
     /// Returns the dimensions of this tensor spec in 'raw form'.
     /// Each element of the result will be an UI64Int, with ~0 denoting
     /// an unknown dimension.
+    /// Requires hasRank().
     IntArrayElementsAttr getRawDims() const;
 
     /// Returns the dtype of this tensor spec in 'raw form'.
@@ -301,26 +330,29 @@ def MGP_CpuTensorSpecType : MGP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
 
     /// Returns a CpuBufferType which captures the required size for this
     /// tensor. The result will only have a size constraint if the tensor's
-    /// spec is fully static.
+    /// spec is fully static (rank, dims and dtype).
+    /// Dynamic ranked safe.
     CpuBufferType getExpectedBufferType() const;
   }];
 
   let builders = [
-    /// Constructs a tensor spec from its components in 'optional form'.
-    TypeBuilder<(ins "ArrayRef<std::optional<uint64_t>>":$dims,
+    /// Constructs a tensor spec from its components in 'optional' form.
+    TypeBuilder<(ins "std::optional<ArrayRef<std::optional<uint64_t>>>":$optDims,
                      "std::optional<DType>":$optDType)>,
 
-    /// Constructs a tensor spec from its components in 'shaped type form'.
+    /// Constructs a tensor spec from its components in 'shaped type' form.
+    /// Only supports statically known ranks.
     TypeBuilderWithInferredContext<(ins "ArrayRef<int64_t>":$shape,
                                         "Type":$elementType)>,
 
     /// Construct a tensor spec from its components in 'raw form',
-    /// using underlying integer values.
+    /// using underlying integer values. Only supports statically known ranks.
     TypeBuilder<(ins "ArrayRef<uint64_t>":$rawDims, "uint8_t":$rawDType)>,
 
-    /// Construct a tensor spec from its components in 'raw form'.
-    /// As a convenience, the null dtype attribute is taken to denote the
-    /// unknown element type.
+    /// Construct a tensor spec from its components in 'raw form', using
+    /// actual attributes. As a convenience, the null dtype attribute is taken
+    /// to denote the unknown element type. Only supports statically known
+    /// ranks.
     TypeBuilderWithInferredContext<(ins "IntArrayElementsAttr":$rawDims,
                                         "IntegerAttr":$rawDTypeOrNull)>,
   ];
@@ -330,24 +362,21 @@ def MGP_CpuTensorSpecType : MGP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
 // CpuTensorType
 //===----------------------------------------------------------------------===//
 
-// TODO: See also zap.ndbuffer.
 def MGP_CpuTensorType : MGP_Type<"CpuTensor", "cpu.tensor", [
     DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
   let summary = "Type of CPU-hosted tensors whose underlying buffer is in "
                 "dense row-major order according to a tensor spec.";
   let description = [{
-    This type is for dense CPU-friendly, immutable tensors of statically known
-    rank, partially or fully statically known shape, and possibly statically
-    known element type. It is parameterized over a tensor spec type. Values of
-    this type consist of a runtime tensor spec and an underlying buffer. The
-    elements in the buffer are in dense row-major order according to the
-    runtime tensor spec, with endianness according to the target architecture.
+    This type is for dense CPU-friendly, immutable tensors. It is parameterized
+    over a tensor spec type. Values of this type consist of a runtime tensor
+    spec and an underlying buffer. The elements in the buffer are in dense
+    row-major order according to the runtime tensor spec, with endianness
+    according to the target architecture.
 
     Tensors are represented by M::Tensor in the modular runtime.
 
     Unlike the MLIR builtin tensor type this type:
      - Only supports a DType-representable element types.
-     - Only supports shapes of known rank.
      - Does not support quantization attributes on the element type.
      - Does not support affine maps for describing layout.
      - Is explicitly backed by the M::Tensor type.
@@ -361,6 +390,7 @@ def MGP_CpuTensorType : MGP_Type<"CpuTensor", "cpu.tensor", [
     ```mlir
     !mgp.cpu.tensor<4x16xf32>
     !mgp.cpu.tensor<?x?xui8>
+    !mgp.cpu.tensor<*xi32>
     ```
   }];
 
