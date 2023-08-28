@@ -13,7 +13,6 @@
 
 #include "GraphRT/MEF/MEFReader.h"
 #include "GraphRT/MEFExecutor/PrimitiveDescriptor.h"
-#include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/AsyncValue.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "MEFFileImpl.h"
@@ -409,7 +408,6 @@ void MEFExecutor::execute(const MEFInvokableImpl &invokable,
                           MutableArrayRef<AnyAsyncValueRef> arguments,
                           MutableArrayRef<AnyAsyncValueRef> results,
                           ArrayRef<unsigned> resultRegIndex) {
-
   // Now that the executor is all set up and ready to go, kick off the ready
   // primitives.
 
@@ -793,11 +791,6 @@ void MEFInvokableImpl::invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
          "incorrect number of argument to an invokable");
   assert(results.size() == getNumResults() &&
          "incorrect number of results for an invokable");
-
-  // Now that we are starting primitive execution, check if this is one
-  // of our own threads. We do not want any foreign threads running this
-  // code.
-  checkKnownCallingThread(runtime);
 
   MEFInvokableDecoder decoder(*this);
   bool headerParseFailure = decoder.decodeHeader();
