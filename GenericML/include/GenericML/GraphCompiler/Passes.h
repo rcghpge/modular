@@ -94,6 +94,10 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       llvm::cl::desc("Evaluate parts of the program that can be evaluated at "
                      "compile time."),
       llvm::cl::init(false)}; // TODO: enable by default #16888
+  Option<bool> lowerQDQOperators{
+      *this, "lower-quantized-operators",
+      llvm::cl::desc("Dispatch to quantized operations around Q-DQ regions."),
+      llvm::cl::init(false)};
 };
 
 // Registers the end-to-end shape inference pipeline.

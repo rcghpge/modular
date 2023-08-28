@@ -73,6 +73,7 @@ void M::MO::registerPasses() {
   MOGG::registerPasses();
 
   MOQ::registerLegalizeMOQOpsToMOPass();
+  MOQ::registerLowerQDQOperatorsToMOPass();
 
   mlir::registerCSEPass();
   mlir::registerSCCPPass();
@@ -92,6 +93,13 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
+
+  if (opts.lowerQDQOperators)
+    pm.addPass(MOQ::createLowerQDQOperatorsToMO());
+  pm.addPass(MOQ::createLegalizeMOQOpsToMO());
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
+
   if (opts.useShapeInference) {
     if (opts.constantFold)
       pm.addPass(MO::createConstantFold());
