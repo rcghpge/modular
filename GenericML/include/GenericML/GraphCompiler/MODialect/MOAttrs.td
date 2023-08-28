@@ -46,4 +46,20 @@ def MO_LayoutAttr : MOAttr<"Layout", "layout"> {
   ];
 }
 
+def MO_DTypeAttr : MOAttr<"DType", "dtype"> {
+  let summary = "An attribute that represents a M::DType";
+  let description = [{
+    This attribute holds a M::DType known at compile time.
+  }];
+
+  let parameters = (ins "DType":$dtype);
+  let assemblyFormat = [{
+    `<` $dtype `>`
+  }];
+
+  let builders = [
+    AttrBuilder<(ins "DType" : $dtype)>,
+  ];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOATTRS_TD

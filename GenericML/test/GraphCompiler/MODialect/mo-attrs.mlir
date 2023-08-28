@@ -1,4 +1,4 @@
-// RUN: mo-opt %s | FileCheck %s
+// RUN: mo-opt %s --allow-unregistered-dialect | FileCheck %s
 
 mo.graph @conv_layouts(
   %nhwc_input: !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<NHWC>}>,
@@ -34,3 +34,19 @@ mo.graph @matmul_layouts(
 // CHECK-SAME: ) no_inline {
 // CHECK-NEXT:   mo.output
 // CHECK-NEXT: }
+
+
+mo.graph @dtype_attr() {
+  // No ops defined which eat DType attributes
+  %foo1 = "fakedialect.bar_op" () {dtype = #mo.dtype<si8>}: () -> (!mo.tensor<[], f32>)
+  %foo2 = "fakedialect.bar_op" () {dtype = #mo.dtype<f16>}: () -> (!mo.tensor<[], f32>)
+  %foo3 = "fakedialect.bar_op" () {dtype = #mo.dtype<bf16>}: () -> (!mo.tensor<[], f32>)
+  %foo4 = "fakedialect.bar_op" () {dtype = #mo.dtype<f32>}: () -> (!mo.tensor<[], f32>)
+  mo.output
+}
+// CHECK: mo.graph @dtype_attr(
+// CHECK-DAG: dtype = #mo.dtype<si8>
+// CHECK-DAG: dtype = #mo.dtype<f16>
+// CHECK-DAG: dtype = #mo.dtype<bf16>
+// CHECK-DAG: dtype = #mo.dtype<f32>
+// CHECK-NEXT: mo.output
