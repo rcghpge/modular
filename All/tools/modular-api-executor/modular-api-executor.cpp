@@ -258,8 +258,6 @@ public:
     Runtime &runtime = getRuntime();
 
     checkUniqueRuntime(runtime);
-    checkKnownCallingThread(runtime);
-
     auto model = getModel();
     const auto &modelSpec = model->getModelSpec();
     const auto &api = model->getApi();
@@ -392,7 +390,6 @@ private:
 ErrorOr<std::unique_ptr<ExecutableModel>>
 ModularModel::setup(Runtime &runtime) const {
   checkUniqueRuntime(runtime);
-  checkKnownCallingThread(runtime);
   // Create the executable model.
   StatusPtr status = {api.newStatus(), api.freeStatus};
   ModelPtr initializedModel = {
