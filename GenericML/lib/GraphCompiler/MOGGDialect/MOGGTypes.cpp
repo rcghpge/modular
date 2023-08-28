@@ -25,20 +25,6 @@
 using namespace M;
 using namespace MOGG;
 
-namespace mlir {
-/// Parse a dtype.
-template <>
-struct FieldParser<DType> {
-  static FailureOr<DType> parse(AsmParser &parser) {
-    StringRef value;
-    if (parser.parseKeyword(&value))
-      return failure();
-    return DType::getFromString(value);
-  }
-};
-
-} // namespace mlir
-
 // Printer and parser for shape attributes.
 static ParseResult parseShapeParam(AsmParser &p, TypedAttr &shapeAttr) {
   auto shapeTy = p.getBuilder().getType<MOSH::ShapeType>();

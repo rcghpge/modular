@@ -12,6 +12,7 @@
 #define GENERICML_GRAPHCOMPILER_MODIALECT_MOATTRS_H
 
 // `MO::LayoutAttr` uses `mlir::StringAttr`
+#include "Support/ML/DType.h"
 #include "mlir/IR/Attributes.h"
 
 //===----------------------------------------------------------------------===//

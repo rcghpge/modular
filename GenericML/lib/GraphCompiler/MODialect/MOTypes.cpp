@@ -26,22 +26,16 @@
 using namespace M;
 using namespace MO;
 
+FailureOr<DType> mlir::FieldParser<DType>::parse(AsmParser &parser) {
+  StringRef value;
+  if (parser.parseKeyword(&value))
+    return failure();
+  return DType::getFromString(value);
+}
+
 //===----------------------------------------------------------------------===//
 // ODS Boilerplate
 //===----------------------------------------------------------------------===//
-namespace mlir {
-/// Parse a dtype.
-template <>
-struct FieldParser<DType> {
-  static FailureOr<DType> parse(AsmParser &parser) {
-    StringRef value;
-    if (parser.parseKeyword(&value))
-      return failure();
-    return DType::getFromString(value);
-  }
-};
-
-} // namespace mlir
 
 static std::string asString(Type type) {
   std::string str;

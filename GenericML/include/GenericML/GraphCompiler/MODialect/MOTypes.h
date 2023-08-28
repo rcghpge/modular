@@ -15,6 +15,7 @@
 #include "Support/ML/DType.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/Types.h"
 
 namespace M::MOSH {
@@ -26,6 +27,14 @@ class ShapeType;
 namespace M::MO {
 class LayoutAttr;
 } // namespace M::MO
+
+namespace mlir {
+/// For automated parsing of M::DType.
+template <>
+struct FieldParser<M::DType> {
+  static FailureOr<M::DType> parse(AsmParser &parser);
+};
+} // namespace mlir
 
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations
