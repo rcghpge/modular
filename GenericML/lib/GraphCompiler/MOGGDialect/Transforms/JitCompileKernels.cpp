@@ -333,7 +333,8 @@ struct JitCompileKernels
     mlir::ModuleOp m = getOperation();
 
     // Load the mojo kernel library info.
-    FailureOr<MOGG::MojoRegisterOp> registryOr = getOrLoadMojoLibrary(m);
+    FailureOr<MOGG::MojoRegisterOp> registryOr =
+        getOrLoadMojoLibrary(m, extraLibPaths.getValue());
     if (failed(registryOr)) {
       m.emitError() << "[JitCompileKernels] Couldn't load mojo kernel registry";
       return signalPassFailure();
@@ -358,7 +359,8 @@ struct JitCompileKernels
 
   ErrorOr<mlir::OwningOpRef<mlir::ModuleOp>> loadMojoLibrary() {
     // Load the module. The stub will be appended to this.
-    auto errorOr = loadMojoBindings(getOperation()->getContext());
+    auto errorOr = loadMojoBindings(getOperation()->getContext(),
+                                    extraLibPaths.getValue());
     if (errorOr.isError())
       return errorOr.takeError();
 

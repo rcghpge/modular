@@ -116,6 +116,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   MO::MOToMOGGOptions moToMoggOpts;
   moToMoggOpts.useJit = opts.useJit;
+  moToMoggOpts.extraLibPaths = opts.extraLibPaths;
   // If jiting simplify broadcast patterns to a single op that we can jit.
   if (opts.useJit) {
     pm.addPass(mlir::createCanonicalizerPass());
@@ -176,6 +177,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     jitOpts.minimumCpuAlignment = moToPrimOpts.minimumCpuAlignment;
     jitOpts.saveTempPrefix = opts.saveTempPrefix;
     jitOpts.createMOGGReproducers = opts.createMOGGReproducers;
+    jitOpts.extraLibPaths = opts.extraLibPaths;
     pm.addPass(MOGG::createJitCompileKernels(jitOpts));
   }
 

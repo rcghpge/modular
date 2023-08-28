@@ -236,6 +236,9 @@ struct MOOpPattern : public RewritePattern {
   // The KGEN ir containing the mogg bindings.
   mlir::ModuleOp moggBindings;
 
+  // Extra libraries to source kernels from.
+  std::string extraLibPaths;
+
   bool useJit;
 };
 
@@ -253,14 +256,15 @@ void MOToMOGGPass::runOnOperation() {
   ModuleOp m = getOperation();
 
   // Load the MOGG registry of mojo ops.
-  auto registryOr = MOGG::getOrLoadMojoLibrary(m);
+  auto registryOr = MOGG::getOrLoadMojoLibrary(m, extraLibPaths.getValue());
   if (failed(registryOr))
     return signalPassFailure();
 
   MOGG::MojoRegisterOp registry = *registryOr;
 
   // Get mlir IR with all the bindings so we can introspect it.
-  auto errOr = MOGG::loadMojoBindings(m->getContext());
+  auto errOr =
+      MOGG::loadMojoBindings(m->getContext(), extraLibPaths.getValue());
   if (errOr.isError()) {
     m->emitError() << errOr.getError();
     return signalPassFailure();

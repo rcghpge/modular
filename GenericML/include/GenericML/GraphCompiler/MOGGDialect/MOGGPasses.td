@@ -42,6 +42,8 @@ def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
             "Prints the generated KGEN stub for use in tests and debugging">,
     Option<"createMOGGReproducers", "create-mogg-reproducers", "bool", /*default=*/"false",
             "Creates isolated reproducers of each kernel in a new mo graph.">,
+    Option<"extraLibPaths", "extra-lib-paths", "std::string", /*default=*/"",
+            "Path to load extra libraries from.">,
     Option<"minimumCpuAlignment", "min-cpu-alignment", "size_t",
       /*default=*/"kPreferredMemoryAlignment",
      "Minimum alignment for all CPU buffers (both constants and allocated)">,
@@ -151,6 +153,12 @@ def LoadMojoLibrary : Pass<"load-mojo-library", "ModuleOp"> {
     "M::DebugInfo::DebugInfoDialect",
     "M::HLCF::HLCFDialect",
   ];
+
+  let options = [
+    Option<"extraLibPaths", "extra-lib-paths", "std::string", /*default=*/"",
+            "Path to load extra libraries from.">
+  ];
+
 }
 
 def LowerSimdLoads : Pass<"lower-simd-loads", "ModuleOp"> {

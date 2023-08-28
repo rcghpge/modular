@@ -9,4 +9,8 @@ script_name = "@MO_VS_NUMPY_TEST_SCRIPT@"
 assert os.path.isfile(script_name), "Script used to test mo vs numpy not found"
 config.substitutions.append(('%mo_vs_numpy_py', script_name))
 
+
+config.substitutions.append(('%extra_test_lib', "@MOGG_TESTS_MOJO_BINDINGS_PATH@"))
+
+
 lit_config.load_config(config, "@MODULAR_SOURCE_DIR@/GenericML/integration-test/lit.cfg.py")
