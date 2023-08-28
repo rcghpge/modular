@@ -136,6 +136,9 @@ struct AddFallbackShapeFunctions
 // to which dimension they should be refering to.
 KGEN::ParamDeclArrayAttr getNewParameterMapping(GraphOp &graph,
                                                 TensorType outTy) {
+  // TODO(#20169)
+  assert(outTy.hasRank() && "dynamic rank isn't supported");
+
   // New attrs. These are either the exact same as the old attribute or a new
   // attribute
   SmallVector<KGEN::ParamDeclAttr> params;
