@@ -121,8 +121,6 @@ mo.graph @nested_div_mul_simplification<D0, D1 -> D2>(
   %arg: !mo.tensor<[D0, D1, 20], f32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], 4, 5], f32> no_inline {
 ) -> !mo.tensor<[D0, D2, 4, 5], f32> {
-  // CHECK-NEXT: kgen.param.declare [[NUM:.*]] = <mul_nuw([[D0]], [[D1]], 20)>
-  // CHECK-NEXT: kgen.param.declare [[DENOM:.*]] = <mul_nuw([[D0]], 20)>
   kgen.param.declare NUM = <mul_nuw(D0, D1, 20)>
   kgen.param.declare DENOM = <mul_nuw(D0, 4, 5)>
   kgen.param.declare DIV = <div(NUM, DENOM)>
@@ -140,7 +138,6 @@ mo.graph @param_expr_cse<D0, D1 -> D2, D3, D4>(
 // CHECK-SAME: ) -> !mo.tensor<[[[D2]], 42, [[D4]]], f32> no_inline {
 ) -> !mo.tensor<[D2, D3, D4], f32> {
   // CHECK-NEXT: kgen.param.declare [[D5:.*]] = <mul_nuw([[D0]], 20)>
-  // CHECK-NEXT: kgen.param.declare [[D6:.*]] = <mul_nuw([[D0]], 20)>
   // CHECK-NEXT: kgen.param.declare [[D7:.*]] = <add([[D0]], 20)>
   kgen.param.declare D5 = <mul_nuw(D0, 20)>
   kgen.param.declare D6 = <mul_nuw(D0, 20)>
@@ -170,4 +167,20 @@ mo.graph @param_expr_apply_no_cse<Sh0: !mosh.ape -> D2, D3>(
   %res = mo.static.reshape(%arg) : !mo.tensor<Sh0, f32> -> !mo.tensor<[D5, D6], f32>
   // CHECK-NEXT: mo.output<[[D5]], [[D6]]> %[[RES]] : !mo.tensor<[[[D5]], [[D6]]], f32>
   mo.output<D5, D6> %res : !mo.tensor<[D5, D6], f32>
+}
+
+// CHECK:      mo.graph @param_expr_dce<[[D0:.*]]>(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[[[D0]]], f32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D0]]], f32> no_inline {
+mo.graph @param_expr_dce<D0 -> D1>(
+  %input: !mo.tensor<[D0], f32>
+) -> !mo.tensor<[D1], f32> {
+
+  // These are trivial and DCEed away
+  kgen.param.declare D2 = <add(D0, 4)>
+  kgen.param.declare D3 = <sub(D2, 4)>
+  %res = mo.static.reshape(%input) : !mo.tensor<[D0], f32> -> !mo.tensor<[D3], f32>
+
+  // CHECK-NEXT: mo.output %[[INPUT]] : !mo.tensor<[[[D0]]], f32>
+  mo.output<D3> %res : !mo.tensor<[D3], f32>
 }
