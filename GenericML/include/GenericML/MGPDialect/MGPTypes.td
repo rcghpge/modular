@@ -345,6 +345,9 @@ def MGP_CpuTensorSpecType : MGP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
     TypeBuilderWithInferredContext<(ins "ArrayRef<int64_t>":$shape,
                                         "Type":$elementType)>,
 
+    /// Constructs a dynamically ranked tensor spec with the given element type.
+    TypeBuilderWithInferredContext<(ins "Type":$elementType)>,
+
     /// Construct a tensor spec from its components in 'raw form',
     /// using underlying integer values. Only supports statically known ranks.
     TypeBuilder<(ins "ArrayRef<uint64_t>":$rawDims, "uint8_t":$rawDType)>,

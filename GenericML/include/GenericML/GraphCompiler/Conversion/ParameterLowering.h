@@ -113,6 +113,9 @@ private:
   }
 
   /// Tracks what parameters attributes (e.g. expressions) are lowered to.
+  ///  - Dimension parameter attributes are lowered to values of type `index`.
+  ///  - Shape parameter attributes are lowered to values of type
+  ///    `mgp.cpu.tensor_spec<...xunk>`.
   DenseMap<Attribute, Value> loweredParams;
 };
 

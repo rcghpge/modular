@@ -243,6 +243,12 @@ public:
         loc, spec, spec.getType().getRawDims());
   }
 
+  /// Helper to extract the 'shape' of an MGP tensor.
+  MGP::CpuTensorExtractShapeOp getShape(Value mgpTensor, Location loc) {
+    OpBuilder &exeBuilder = getExecuteOpBuilder();
+    return exeBuilder.create<MGP::CpuTensorExtractShapeOp>(loc, mgpTensor);
+  }
+
   /// Helper to create a new runtime tensor from the given buffer, chain, and
   /// tensor type.
   template <typename TensorTy>
@@ -259,55 +265,72 @@ public:
                                                      buffer, specOp);
   }
 
-  /// Lower the given graph argument using the provided builder and hook. The
-  /// hook (using the execute state's builder and the given argument) is
-  /// responsible for updating the value mapping.
-  ErrorOr<bool> lowerArg(BlockArgument &arg, BlockArgument &exeArg) {
+  /// The given MO inArg (a !mo.tensor) has been lowered to the given MGP
+  /// outArg (an !mgp.tensor). If inArg is subject to any dynamic shapes
+  /// (rank or dimensions), update the parameter map to capture the MGP values
+  /// they are represented by, either indexes or !mgp.cpu.tensor_specs. Returns
+  /// true if any parameters were mapped.
+  ErrorOr<bool> lowerArg(BlockArgument &inArg, BlockArgument &outArg) {
     bool hasParams = false;
-    Location loc = arg.getLoc();
-    if (auto tensorArg = dyn_cast<MO::TensorValue>(arg)) {
-      MO::TensorType argType = tensorArg.getType();
-      // We check if the tensor is parameterized. If it has unknown shape/rank
-      // or static shape, we skip it.
-      if (!argType.hasUnknownShape() && !argType.hasStaticShape()) {
-        // Dynamic ranks are currently not supported.
-        if (isa<KGEN::ParamDeclRefAttr>(argType.getShapeAttr()))
-          return Error("Shape parameters are not supported");
-
-        // At this point, we must be dealing with a statically ranked,
-        // parameterized argument. We lower to some MGP ops, but only update
-        // mappings the first time we encounter a parameter. The unused MGP ops
-        // can be cleaned up using DCE.
+    Location loc = inArg.getLoc();
+    if (auto inTensorArg = dyn_cast<MO::TensorValue>(inArg)) {
+      MO::TensorType argType = inTensorArg.getType();
+      if (argType.hasStaticShape()) {
+        // No parameters to deal with.
+      } else if (argType.hasUnknownShape()) {
+        // Also no parameters to deal with, however this argument won't be
+        // usable by any MO ops.
+      } else if (auto inShapeParam =
+                     dyn_cast<KGEN::ParamDeclRefAttr>(argType.getShapeAttr())) {
+        // Argument has dynamic rank. The parameter needs to be represented by
+        // the runtime MGP 'shape' of the tensor, ie a tensor_spec with unknown
+        // dtype. However, we only need to capture the mapping for the first
+        // occurrence of the parameter.
         hasParams = true;
-        MGP::CpuTensorSpecDimsDynamicOp dynDims = getDynamicDims(exeArg, loc);
-
-        // The semantics of CpuTensorSpecDimsDynamicOp are quirky: it returns
-        // only dynamic runtime dimensions, so we filter for parametric
-        // dimensions in the argument shape. Notably, we do not allow general
-        // expressions in the signature (yet).
-        SmallVector<KGEN::ParamDeclRefAttr> paramDims;
-        // TODO(#14531) handle param expr
-        for (TypedAttr dim : argType.getDims())
-          if (auto pDim = dyn_cast<KGEN::ParamDeclRefAttr>(dim))
-            paramDims.emplace_back(pDim);
-        if (dynDims->getNumResults() != paramDims.size())
+        if (!params.lookupLowered(inShapeParam)) {
+          auto extractShapeOp =
+              getExecuteOpBuilder().create<MGP::CpuTensorExtractShapeOp>(
+                  loc, outArg);
+          params.emplaceLowered(inShapeParam, extractShapeOp.getResult());
+        }
+      } else {
+        // Argument has at least one dynamic dimension. The parameters need to
+        // be represented by the corresponding runtime dimensions. Since
+        // parameters may be shared we only update the parameter map for the
+        // first occurrence of each parameter. However, since dimensions are
+        // extract as a group, we always do the extraction, and rely on DCE to
+        // cleanup if all the parameters turn out to have already been mapped.
+        hasParams = true;
+        MGP::CpuTensorSpecDimsDynamicOp dynDimsOp = getDynamicDims(outArg, loc);
+        // CpuTensorSpecDimsDynamicOp returns indexes only for dimensions
+        // which are unknown at compile time. So build the corresponding
+        // vector of parameters. Note we do not support arbitrary expressions in
+        // the MO shape signature.
+        SmallVector<KGEN::ParamDeclRefAttr> inDimParams;
+        for (TypedAttr inDim : argType.getDims()) {
+          if (auto inDimParam = dyn_cast<KGEN::ParamDeclRefAttr>(inDim))
+            inDimParams.emplace_back(inDimParam);
+        }
+        if (dynDimsOp->getNumResults() != inDimParams.size()) {
+          // TODO(#14531) handle param expr
           return Error("Expressions in parameter arguments are not supported");
-
-        // Only update the parameter mapping the first time.
-        for (auto [pDim, dimValue] :
-             llvm::zip(paramDims, dynDims->getResults()))
-          if (!params.lookupLowered(pDim))
-            params.emplaceLowered(pDim, dimValue);
+        }
+        for (auto [inDimParam, outDim] :
+             llvm::zip(inDimParams, dynDimsOp->getResults()))
+          // Only update the parameter mapping for the first parameter
+          // occurrence.
+          if (!params.lookupLowered(inDimParam))
+            params.emplaceLowered(inDimParam, outDim);
       }
     }
     return hasParams;
   }
 
-  /// Returns a lowered value for the parameter expression attribute. Parameter
-  /// references not seen before are lowered to a placeholder, parameter
-  /// operators are lowered recursively, and all other attributes are delegated
-  /// to the provided hook (using the execute state's builder and the provided
-  /// location).
+  /// Returns a lowered value for the parameter expression attribute.
+  /// Parameter references not seen before are lowered to a placeholder,
+  /// parameter operators are lowered recursively, and all other attributes
+  /// are delegated to the provided hook (using the execute state's builder
+  /// and the provided location).
   ErrorOr<Value> lowerExpression(Location loc, TypedAttr attr) {
     auto newValOr = params.lowerExpression(getExecuteOpBuilder(), loc, attr,
                                            lowerExpressionImpl);
@@ -324,7 +347,8 @@ public:
   }
 
   /// Lower a parameter declaration, resolving the placeholder if necessary. A
-  /// declaration can only be lowered once, and an error is returned otherwise.
+  /// declaration can only be lowered once, and an error is returned
+  /// otherwise.
   ErrorOrSuccess lowerParamDecl(KGEN::ParamDeclAttr declAttr, Value value) {
     Value maybePlaceholder = params.lowerParamDecl(declAttr, value);
 
@@ -362,7 +386,8 @@ public:
     return runtimeDims;
   }
 
-  /// Track this jit kernels as corresponding to this index in the lookup table.
+  /// Track this jit kernels as corresponding to this index in the lookup
+  /// table.
   void trackJitKernel(StringRef ref, size_t index) {
     jitKernelsToIndex[ref.str()] = index;
   }
@@ -370,9 +395,9 @@ public:
   /// Get the index of the kernel in the lookup table.
   size_t getJitKernelId(StringRef ref) {
     auto itr = jitKernelsToIndex.find(ref.str());
-    assert(
-        itr != jitKernelsToIndex.end() &&
-        "All kernels must be accounted for through lowering the load kernels.");
+    assert(itr != jitKernelsToIndex.end() &&
+           "All kernels must be accounted for through lowering the load "
+           "kernels.");
     return itr->second;
   }
 
@@ -488,8 +513,8 @@ private:
         dimVals.emplace_back(std::move(*dimValOr));
       }
 
-      // There is no runtime shape type in MGP, so we map shape attributes to a
-      // fully dynamic spec.
+      // There is no runtime shape type in MGP, so we map shape attributes to
+      // a fully dynamic spec.
       SmallVector<std::optional<uint64_t>> dummyShape(dimVals.size());
       auto specTy = MGP::CpuTensorSpecType::get(loc.getContext(), dummyShape,
                                                 DType::si64);

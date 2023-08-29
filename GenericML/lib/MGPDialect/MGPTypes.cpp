@@ -335,6 +335,26 @@ CpuTensorSpecType CpuTensorSpecType::getChecked(
   return CpuTensorSpecType::get(shape, elementType);
 }
 
+CpuTensorSpecType CpuTensorSpecType::get(Type elementType) {
+  ErrorOr<std::optional<DType>> errOrDType =
+      DTypeType::fromMlirType(elementType);
+  assert(errOrDType.getError() == nullptr &&
+         "element type is not representable as a DType");
+  return CpuTensorSpecType::get(elementType.getContext(),
+                                /*hasRank=*/false, {}, *errOrDType, {});
+}
+
+CpuTensorSpecType CpuTensorSpecType::getChecked(
+    function_ref<::mlir::InFlightDiagnostic()> emitError, Type elementType) {
+  ErrorOr<std::optional<DType>> errOrDType =
+      DTypeType::fromMlirType(elementType);
+  if (const auto *err = errOrDType.getError()) {
+    emitError() << err;
+    return {};
+  }
+  return get(elementType);
+}
+
 CpuTensorSpecType CpuTensorSpecType::get(MLIRContext *context,
                                          ArrayRef<uint64_t> rawDims,
                                          uint8_t rawDType) {
