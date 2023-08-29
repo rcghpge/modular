@@ -163,7 +163,7 @@ LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
 }
 
 // TODO : These are shamelessly copied out of MGP. Need to align
-ErrorOr<DType> static fromMLIRType(Type mlirType) {
+ErrorOr<DType> M::MO::fromMLIRType(Type mlirType) {
   if (auto unkType = mlir::dyn_cast<NoneType>(mlirType))
     return DType(); // invalid denotes unknown.
   if (auto intType = mlir::dyn_cast<IntegerType>(mlirType)) {

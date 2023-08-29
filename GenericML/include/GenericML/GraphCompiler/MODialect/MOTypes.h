@@ -49,6 +49,7 @@ using ShapeAttr = MOSH::ShapeAttr;
 using ShapeType = MOSH::ShapeType;
 using TensorValue = M::TypedValue<M::MO::TensorType>;
 
+ErrorOr<DType> fromMLIRType(Type mlirType);
 ErrorOr<Type> toMLIRType(MLIRContext *context, DType dType);
 } // namespace M::MO
 
