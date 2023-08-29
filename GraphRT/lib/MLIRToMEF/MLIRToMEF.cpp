@@ -1049,15 +1049,14 @@ LogicalResult TypeEmitter::emitShapedType(ShapedType type) {
   if (type.hasRank()) {
     ArrayRef<int64_t> shape = type.getShape();
     assert(shape.size() <= kMaxRank);
-    emitter->emitByte((uint8_t)shape.size());
+    emitter->emitByte(static_cast<uint8_t>(shape.size()));
     for (int64_t dimOrDynamic : shape) {
       // Note that dimOrDynamic may be ShapedType::kDynamic, which will be
       // encoded in unsigned form, then decoded back to ssize_t at runtime.
       emitter->emitVBR(static_cast<size_t>(dimOrDynamic));
     }
   } else {
-    static_assert(std::numeric_limits<uint8_t>::max() > kMaxRank);
-    emitter->emitByte(std::numeric_limits<uint8_t>::max());
+    emitter->emitByte(Detail::kDynamicRank);
   }
   return success();
 }

@@ -102,9 +102,8 @@ static size_t decodeTensorType(const uint8_t *pointer, const uint8_t *attrEnd,
   elementType = MEFType(dataPtr, pointer + attrSize);
   dataPtr += attrSize;
   // Rank.
-  static_assert(std::numeric_limits<uint8_t>::max() > kMaxRank);
   uint8_t rank = *dataPtr++;
-  if (rank == std::numeric_limits<uint8_t>::max()) {
+  if (rank == Detail::kDynamicRank) {
     // Unranked
     hasRank = false;
   } else {

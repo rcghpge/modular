@@ -114,15 +114,13 @@ ErrorOr<QuantTensorSpec> QuantTensorSpec::get(MEFType type) {
   bool hasRank;
   SmallVector<int64_t> dims;
   auto mefType = tensorType->decode(hasRank, dims);
-  if (!hasRank)
-    return Error("MEFTensorType has dynamic rank which cannot be represented "
-                 "by QuantTensorSpec");
+  TensorRankStyle style = hasRank ? kStaticallyRanked : kDynamicallyRanked;
 
   if (auto qType = dyn_cast<MEFQuantizedType>(mefType)) {
     float scale;
     int64_t zeroPoint;
     auto [storageType, expressedType] = qType->decode(scale, zeroPoint);
-    return QuantTensorSpec(TensorSpec(dims, storageType.getKind()),
+    return QuantTensorSpec(TensorSpec(dims, style, storageType.getKind()),
                            QuantSpec::getUniform(scale, zeroPoint));
   }
   if (auto qType = dyn_cast<MEFQuantizedPerAxisType>(mefType)) {
@@ -133,9 +131,9 @@ ErrorOr<QuantTensorSpec> QuantTensorSpec::get(MEFType type) {
         qType->decode(scales, zeroPoints, quantDim);
 
     return QuantTensorSpec(
-        TensorSpec(dims, storageType.getKind()),
+        TensorSpec(dims, style, storageType.getKind()),
         QuantSpec::getUniformPerAxis(quantDim, scales, zeroPoints));
   }
   // MEFType are GenericML DType kinds.
-  return QuantTensorSpec(TensorSpec(dims, mefType.getKind()), {});
+  return QuantTensorSpec(TensorSpec(dims, style, mefType.getKind()), {});
 }

@@ -599,30 +599,9 @@ getResolvedInputShapes(ArrayRef<QuantTensorSpec> compiledShapes,
   for (unsigned i = 0; i < numInputTensors; ++i) {
     auto userShape = userInputShapes[i];
     auto compiledShape = compiledShapes[i];
-
-    // Verify that ranks match.
-    if (userShape.getRank() != compiledShape.getRank()) {
-      return Error(Twine("Specified shape ") + userShape.getAsString() +
-                   " doesn't match the rank of model input shape " +
-                   compiledShape.getAsString());
-    }
-
-    // Validate given dimensions.
-    for (const auto &[userDim, modelDim] :
-         llvm::zip(userShape, compiledShape)) {
-      if (mlir::ShapedType::isDynamic(modelDim)) {
-        if (mlir::ShapedType::isDynamic(userDim)) {
-          return Error(
-              Twine("Must specify a fixed input shape for model input shape ") +
-              compiledShape.getAsString());
-        }
-      } else if (userDim != modelDim) {
-        return Error(Twine("Specified dimension ") + Twine(userDim) +
-                     " doesn't match model input dimension " + Twine(modelDim) +
-                     " for shape " + compiledShape.getAsString());
-      }
-    }
-
+    // Check the userShape isStatic and agrees with compiledShape.
+    if (auto errOr = compiledShape.isRefinedBy(userShape))
+      return errOr.takeError();
     // Build new TensorSpec
     ret.push_back(compiledShape.cloneWithNewShape(userShape));
   }
