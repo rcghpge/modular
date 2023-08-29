@@ -1918,6 +1918,7 @@ def MO_PadOp : MO_TensorOp<"pad", [
     functional-type(operands, results)
   }];
 
+  let hasCanonicalizeMethod = 1;
   let hasVerifier = 1;
 }
 

@@ -1609,6 +1609,26 @@ LogicalResult BatchMatmulOp::verify() {
 // MO_PadOp support
 //===----------------------------------------------------------------------===//
 
+LogicalResult PadOp::canonicalize(PadOp op, PatternRewriter &rewriter) {
+  // Try to extract constant paddings
+  auto maybePaddings = tryGetConstantOfRank<int64_t>(op.getPaddings(), 2);
+  if (!maybePaddings.has_value())
+    return failure();
+  ArrayRef<int64_t> paddings = maybePaddings.value();
+
+  // If paddings are all 0s, the pad operation is identity. We replace it with a
+  // rebind from the input because the output shape of `mo.pad` might not always
+  // equal to the input shape, e.g., it could be fully dynamic from the
+  // frontends, e.g.,
+  //     mo.pad(input, zeros, val) : ... -> tensor<[?, ?, ?], f32>
+  if (llvm::all_of(paddings, [](int64_t n) { return n == 0; })) {
+    rewriter.replaceOpWithNewOp<RebindOp>(op, op.getType(), op.getInput());
+    return success();
+  }
+
+  return failure();
+}
+
 LogicalResult PadOp::verify() {
   TensorType inputTy = getInput().getType();
   TensorType paddingsTy = getPaddings().getType();
