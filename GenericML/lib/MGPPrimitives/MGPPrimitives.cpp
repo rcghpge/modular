@@ -517,6 +517,22 @@ static void mgp_cpu_tensor_spec_create_dynamic(
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.cpu.tensor_spec.with_dtype
+//===----------------------------------------------------------------------===//
+
+static void mgp_cpu_tensor_spec_with_dtype(const TensorSpec &tensorSpec,
+                                           Result<TensorSpec> outSpec,
+                                           MEFAttr<uint8_t> rawDType,
+                                           Runtime &runtime) {
+  TimeTraceScope scope(
+      LLCL::WorkProfilerEntry::create("mgp.cpu.tensor_spec.with_dtype"));
+  DType dtype(*rawDType);
+  if (dtype.isInvalid())
+    return std::move(outSpec).setToError("invalid dtype");
+  std::move(outSpec).emplace(TensorSpec(tensorSpec.getDimsCopy(), dtype));
+}
+
+//===----------------------------------------------------------------------===//
 // mgp.cpu.tensor_spec.dims.dynamic
 //===----------------------------------------------------------------------===//
 
@@ -628,6 +644,18 @@ static void mgp_cpu_tensor_extract(AsyncValueRef<Tensor> tensor,
     // Otherwise we must take a copy of the buffer to protect the input tensor
     // from side-effects.
     std::move(outBuffer).emplace(tensor->deepCopyBuffer(runtime));
+}
+
+//===----------------------------------------------------------------------===//
+// mgp.cpu.tensor.extract.shape
+//===----------------------------------------------------------------------===//
+
+static void mgp_cpu_tensor_extract_shape(AsyncValueRef<Tensor> tensor,
+                                         Result<TensorSpec> outTensorSpec,
+                                         Runtime &runtime) {
+  TimeTraceScope scope(
+      LLCL::WorkProfilerEntry::create("mgp.cpu.tensor.extract.shape"));
+  std::move(outTensorSpec).emplace(tensor->getSpec().getDimsCopy(), DType());
 }
 
 //===----------------------------------------------------------------------===//
@@ -869,6 +897,8 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
                 mgp_cpu_tensor_spec_create);
   ADD_PRIMITIVE(registry, "mgp.cpu.tensor_spec.create.dynamic",
                 mgp_cpu_tensor_spec_create_dynamic);
+  ADD_PRIMITIVE(registry, "mgp.cpu.tensor_spec.with_dtype",
+                mgp_cpu_tensor_spec_with_dtype);
   ADD_PRIMITIVE(registry, "mgp.cpu.tensor_spec.dims.dynamic",
                 mgp_cpu_tensor_spec_dims_dynamic);
   ADD_PRIMITIVE(registry, "mgp.cpu.tensor_spec.size", mgp_cpu_tensor_spec_size);
@@ -878,6 +908,8 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
                 mgp_cpu_tensor_spec_dtype);
   ADD_PRIMITIVE(registry, "mgp.cpu.tensor.create", mgp_cpu_tensor_create);
   ADD_PRIMITIVE(registry, "mgp.cpu.tensor.extract", mgp_cpu_tensor_extract);
+  ADD_PRIMITIVE(registry, "mgp.cpu.tensor.extract.shape",
+                mgp_cpu_tensor_extract_shape);
   ADD_PRIMITIVE(registry, "mgp.debug.cpu.tensor.print",
                 mgp_debug_cpu_tensor_print);
   ADD_PRIMITIVE(registry, "mgp.debug.cpu.buffer.print",

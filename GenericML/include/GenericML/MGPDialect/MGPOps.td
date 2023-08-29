@@ -994,6 +994,37 @@ def CpuTensorSpecCreateDynamicOp : MGP_Op<"cpu.tensor_spec.create.dynamic", [
 }
 
 //===----------------------------------------------------------------------===//
+// CpuTensorSpecWithDTypeOp
+//===----------------------------------------------------------------------===//
+
+def CpuTensorSpecWithDTypeOp : MGP_Op<"cpu.tensor_spec.with_dtype", [
+    Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = [{
+    Creates a CPU tensor spec from a copy of an existing spec but with
+    statically known dtype.
+  ]};
+  let description = [{
+    Creates a CPU tensor spec as a copy of an existing spec but with a
+    statically known dtype. The existing spec must have an unknown dtype.
+
+    Example:
+    ```mlir
+    %shape : !mgp.cpu.tensor_spec<?x3xunk>
+    %spec = mgp.cpu.tensor_spec.with_dtype %shape : !mgp.cpu.tensor_spec<?x3xf32>
+    %spec : !mgp.cpu.tensor_spec<?x3xf32>
+    ```
+  }];
+
+  let arguments = (ins MGP_CpuTensorSpecType:$tensorSpec,
+                   UI8Attr:$rawDType);
+  let results = (outs MGP_CpuTensorSpecType:$result);
+  let assemblyFormat = [{
+    $tensorSpec attr-dict `:` custom<RawDType>(type($tensorSpec), $rawDType)
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // CpuTensorSpecDimsDynamicOp
 //===----------------------------------------------------------------------===//
 
@@ -1224,12 +1255,12 @@ def CpuTensorExtractOp : MGP_Op<"cpu.tensor.extract", [
     %tensor : !mgp.cpu.tensor<8x64xf32>
     %buf, %spec = mgp.cpu.tensor.extract %tensor : !mgp.cpu.tensor<8x64xf32>
     %buf : !mgp.cpu.buffer<2048>
-    %spec : !mgp.cpu.tensor_spec<8x64>
+    %spec : !mgp.cpu.tensor_spec<8x64xf32>
 
     %tensor : !mgp.cpu.tensor<?x64xf32>
     %buf, %spec = mgp.cpu.tensor.extract %tensor : !mgp.cpu.tensor<?x64xf32>
     %buf : !mgp.cpu.buffer<>
-    %spec : !mgp.cpu.tensor_spec<?x64>
+    %spec : !mgp.cpu.tensor_spec<?x64xf32>
     ```
 
     Tensors are immutable, but buffers are mutable. This means the
@@ -1277,6 +1308,32 @@ def CpuTensorExtractOp : MGP_Op<"cpu.tensor.extract", [
   }];
 
   let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// CpuTensorExtractShapeOp
+//===----------------------------------------------------------------------===//
+
+def CpuTensorExtractShapeOp : MGP_Op<"cpu.tensor.extract.shape", [
+    Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "Extracts the tensor shape of a CPU tensor.";
+  let description = [{
+    Returns the tensor shape of a CPU tensor. The shape is represented as
+    an `!mgp.cpu.tensor_spec` with unknown dtype, such as
+    `!mgp.cpu.tensor_spec<3x?xunk>` or `!mgp.cpu.tensor_spec<*xunk>`.
+
+    Example:
+    ```mlir
+    %tensor : !mgp.cpu.tensor<8x64xf32>
+    %shape = mgp.cpu.tensor.extract.shape %tensor : !mgp.cpu.tensor<8x64xf32>
+    %shape : !mgp.cpu.tensor_spec<8x64xunk>
+    ```
+  }];
+
+  let arguments = (ins MGP_CpuTensorType: $tensor);
+  let results = (outs MGP_CpuTensorSpecType: $result);
+  let assemblyFormat = "$tensor attr-dict `:` qualified(type($tensor))";
 }
 
 //===----------------------------------------------------------------------===//

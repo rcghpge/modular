@@ -766,6 +766,64 @@ LogicalResult CpuTensorSpecCreateDynamicOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
+// CpuTensorSpecWithDTypeOp
+//===----------------------------------------------------------------------===//
+
+/// Parses a !mgp.cpu.tensor_spec type where the element type is extracted
+/// into the rawDType attribute.
+static ParseResult parseRawDType(AsmParser &p, Type &tensorSpec,
+                                 IntegerAttr &rawDType) {
+  Type type;
+  llvm::SMLoc loc;
+  if (p.getCurrentLocation(&loc) || p.parseType(type))
+    return failure();
+  auto parsedTensorSpec = dyn_cast<CpuTensorSpecType>(type);
+  if (parsedTensorSpec == nullptr)
+    return p.emitError(loc) << "expected a !mgp.cpu.tensor_spec type.";
+  if (!parsedTensorSpec.getOptDType())
+    return p.emitError(loc)
+           << "expected an !mgp.cpu.tensor_spec type with known dtype.";
+  // The parsed type gives us the requested dtype, which we capture in the
+  // rawDType.
+  Type ui8 = IntegerType::get(p.getContext(), 8, IntegerType::Unsigned);
+  APInt apint(ui8.getIntOrFloatBitWidth(),
+              DTypeType::asRawDType(parsedTensorSpec.getOptDType()),
+              ui8.isSignedInteger());
+  rawDType = IntegerAttr::get(ui8, apint);
+  // The tensor spec operand, however, must have an unknown dtype.
+  tensorSpec = CpuTensorSpecType::get(
+      p.getContext(), parsedTensorSpec.getOptDims(), std::nullopt);
+  return success();
+}
+
+/// Prints a !mgp.cpu.tensor_spec type.
+static void printRawDType(AsmPrinter &p, const CpuTensorSpecWithDTypeOp op,
+                          CpuTensorSpecType tensorSpec, IntegerAttr rawDType) {
+  // Print as the tensor spec operand type, but with dtype taken from rawDType.
+  p.getStream() << CpuTensorSpecType::get(
+      op->getContext(), tensorSpec.getOptDims(),
+      DTypeType::fromRawDType(rawDType.getUInt()));
+}
+
+LogicalResult CpuTensorSpecWithDTypeOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  assert(operands.size() == 1 && "mismatched operand arity");
+  auto tensorSpec = dyn_cast<CpuTensorSpecType>(operands[0].getType());
+  assert(tensorSpec && "mismatched operand type");
+  auto rawDTypeAttr =
+      dyn_cast<IntegerAttr>(attributes.get(getRawDTypeAttrName(name)));
+  assert(rawDTypeAttr && "mismatched operand type");
+  // Result type is the tensor spec operand type but with rawDType as its dtype.
+  inferredReturnTypes.emplace_back(
+      CpuTensorSpecType::get(context, tensorSpec.getOptDims(),
+                             DTypeType::fromRawDType(rawDTypeAttr.getUInt())));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // CpuTensorSpecDimsDynamicOp
 //===----------------------------------------------------------------------===//
 
@@ -933,6 +991,23 @@ LogicalResult CpuTensorExtractOp::inferReturnTypes(
   inferredReturnTypes.emplace_back(
       tensorType.getTensorSpec().getExpectedBufferType());
   inferredReturnTypes.emplace_back(tensorType.getTensorSpec());
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CpuTensorExtractShapeOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CpuTensorExtractShapeOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  assert(operands.size() == 1 && "mismatched operand arity");
+  auto tensorType = dyn_cast<CpuTensorType>(operands[0].getType());
+  assert(tensorType && "mismatched operand type");
+  // Result type is tensor operand's tensor spec type but with unknown dtype.
+  inferredReturnTypes.emplace_back(CpuTensorSpecType::get(
+      context, tensorType.getTensorSpec().getOptDims(), std::nullopt));
   return success();
 }
 

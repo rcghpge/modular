@@ -108,6 +108,26 @@ func.func @spec_create_dynamic_dynamic_rank(%dim : index, %dtype : !mgp.dtype) {
 // -----
 
 //
+// mgp.cpu.tensor_spec.with_dtype
+//
+
+func.func @spec_with_known_dtype(%shape : !mgp.cpu.tensor_spec<?x3xf32>) { //  expected-note {{prior use here}}
+  // expected-error@+1 {{use of value '%shape' expects different type than prior uses: '!mgp.cpu.tensor_spec<?x3xunk>' vs '!mgp.cpu.tensor_spec<?x3xf32>'}}
+  %0 = mgp.cpu.tensor_spec.with_dtype %shape : !mgp.cpu.tensor_spec<?x3xf32>
+  mef.output %0 : !mgp.cpu.tensor_spec<?x3xf32>
+}
+
+// -----
+
+func.func @spec_with_unknown_dtype(%shape : !mgp.cpu.tensor_spec<?x3xunk>) {
+  // expected-error@+1 {{custom op 'mgp.cpu.tensor_spec.with_dtype' expected an !mgp.cpu.tensor_spec type with known dtype.}}
+  %0 = mgp.cpu.tensor_spec.with_dtype %shape : !mgp.cpu.tensor_spec<?x3xunk>
+  mef.output %0 : !mgp.cpu.tensor_spec<?x3xunk>
+}
+
+// -----
+
+//
 // mgp.cpu.tensor_spec.dims.dynamic
 //
 
