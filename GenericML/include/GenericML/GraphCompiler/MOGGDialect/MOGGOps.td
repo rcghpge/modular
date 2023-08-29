@@ -366,7 +366,7 @@ def MOGG_CallOp : MOGG_Op<"call"> {
      OptionalAttr<DictionaryAttr>:$kgenParams
   );
 
-   let results = (outs Variadic<AnyTypeOf<[MOGG_Simd, MO_Tensor, MOGG_Shape]>>:$results);
+   let results = (outs Variadic<AnyTypeOf<[MOGG_Simd, MOGG_Indices, MO_Tensor, MOGG_Shape]>>:$results);
 
    let assemblyFormat = [{
      $mojoKernelTarget ($params^)? `(`($operands^)?`)` ($kgenParams^)? attr-dict
