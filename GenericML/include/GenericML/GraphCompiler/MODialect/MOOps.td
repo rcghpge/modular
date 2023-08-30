@@ -378,13 +378,6 @@ def MO_RebindOp : MO_ControlOp<"rebind", [
 
   let hasCanonicalizeMethod = 1;
   let hasVerifier = 1;
-
-  let extraClassDeclaration = [{
-    /// Deparameterization for rebind always fails since we lower them to MGP.
-    LogicalResult deparameterize(mlir::RewriterBase &rewriter) {
-      return failure();
-    }
-  }];
 }
 
 //===----------------------------------------------------------------------===//

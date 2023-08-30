@@ -57,9 +57,6 @@ LogicalResult
 materializeReductionShapeInference(Reduction op,
                                    ShapeFuncMaterializationState &state);
 
-LogicalResult defaultDeparameterize(ParamDeclarationInterface op,
-                                    mlir::RewriterBase &rewriter);
-
 ErrorOrSuccess elementwiseSinkStaticBroadcastTo(Operation *op,
                                                 mlir::RewriterBase &rewriter);
 } // namespace impl

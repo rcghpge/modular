@@ -286,69 +286,6 @@ LogicalResult impl::verifyMOSameOperandsElementType(Operation *op) {
 }
 
 //===----------------------------------------------------------------------===//
-// Deparameterization
-//===----------------------------------------------------------------------===//
-
-LogicalResult impl::defaultDeparameterize(ParamDeclarationInterface op,
-                                          mlir::RewriterBase &rewriter) {
-  ArrayRef<KGEN::ParamDeclAttr> decls = op.getOutputParamDecls();
-  if (decls.empty())
-    return failure();
-
-  // Skip ops without outputs, e.g., call to fallback shape function
-  if (op->getResults().empty())
-    return failure();
-
-  auto shapeTy = rewriter.getType<ShapeType>();
-  // Track parameters that still need to be declared, to avoid duplicated
-  // declaration when we have such cases (it's practically unlikely, but the
-  // algorithm doesn't assume anything):
-  //   mo.op<() -> D0>(...) : ... -> [D0, ...], [D0, ...]
-  DenseMap<KGEN::ParamDeclRefAttr, KGEN::ParamDeclAttr> toBeDeclaredRefToDecl;
-  for (KGEN::ParamDeclAttr decl : decls)
-    toBeDeclaredRefToDecl[KGEN::ParamDeclRefAttr::get(decl)] = decl;
-
-  for (Value res : op->getResults()) {
-    if (auto resTy = dyn_cast<TensorType>(res.getType())) {
-      // Again, only collect parameters that haven't been declared by rebind
-      // from previous outputs.
-      SmallVector<KGEN::ParamDeclAttr> undeclaredDeclsInResTy;
-      if (resTy.hasRank()) {
-        for (TypedAttr dimAttr : resTy.getTypedShapeAttr().getValues()) {
-          auto dimDeclRef = dyn_cast<KGEN::ParamDeclRefAttr>(dimAttr);
-          if (dimDeclRef && toBeDeclaredRefToDecl.contains(dimDeclRef)) {
-            auto dimDecl = toBeDeclaredRefToDecl.at(dimDeclRef);
-            undeclaredDeclsInResTy.push_back(dimDecl);
-            toBeDeclaredRefToDecl.erase(dimDeclRef);
-          }
-        }
-      } else { // else we know for sure it's a shape parameter
-        auto shapeDeclRef = cast<KGEN::ParamDeclRefAttr>(resTy.getShapeAttr());
-        if (toBeDeclaredRefToDecl.contains(shapeDeclRef)) {
-          auto shapeDecl = toBeDeclaredRefToDecl.at(shapeDeclRef);
-          undeclaredDeclsInResTy.push_back(shapeDecl);
-          toBeDeclaredRefToDecl.erase(shapeDeclRef);
-        }
-      }
-
-      TensorType deparameterizedResTy =
-          resTy.hasRank()
-              ? resTy.cloneWith(resTy.getIntDims(), resTy.getElementType())
-              : resTy.cloneWith(KGEN::UnknownAttr::get(shapeTy));
-      res.setType(deparameterizedResTy);
-
-      rewriter.setInsertionPointAfter(op);
-      auto rebindOp = rewriter.create<RebindOp>(op.getLoc(), resTy, res,
-                                                undeclaredDeclsInResTy);
-      rewriter.replaceAllUsesExcept(res, rebindOp, rebindOp);
-    }
-  }
-
-  op.setOutputParamDecls({});
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // ShapeFuncMaterializationState
 //===----------------------------------------------------------------------===//
 

@@ -103,15 +103,6 @@ def StaticizeShapes : Pass<"staticize-shapes", "ModuleOp"> {
   ];
 }
 
-def DeparameterizeMoOps : Pass<"deparameterize-mo-ops", "GraphOp"> {
-  let summary = "Lower parameter declarations in MO ops into rebinds.";
-  let description = [{
-    This pass lowers all parameter declarations in ops that could not be
-    resolved using shape inference materialization. The pass fails if any of the
-    ops don't support deparameterization and are still declaring parameters.
-  }];
-}
-
 def SymbolicOptimization : Pass<"symbolic-optimize", "GraphOp"> {
   let summary = "Optimize the graph using symbolic reasoning.";
   let description = [{
