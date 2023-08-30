@@ -2069,6 +2069,8 @@ def MO_ArgMaxOp : MO_ArgMinMaxOp<"arg_max"> {
     the reduced axis which is set to 1. Moreover, the value of `axis` follows
     numpy semantics, e.g., -1 represents the last axis.
 
+    For identical maximum values, the lowest index is returned.
+
     Example:
 
     ```mlir
@@ -2093,6 +2095,8 @@ def MO_ArgMinOp : MO_ArgMinMaxOp<"arg_min"> {
     Like reductions, the output shape is the same as the input shape, except for
     the reduced axis which is set to 1. Moreover, the value of `axis` follows
     numpy semantics, e.g., -1 represents the last axis.
+
+    For identical minimum values, the lowest index is returned.
 
     Example:
 
