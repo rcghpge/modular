@@ -353,6 +353,9 @@ void MOToMOGGPass::runOnOperation() {
       MO_NO_LOWER(MO::IfOp),
       MO_NO_LOWER(MO::WhileOp),
 
+      // Printing
+      MO_NO_LOWER(MO::DebugTensorPrintOp),
+
       // These ops have no legal lowering and should assert on sight.
       MO_UNLOWERABLE_OP(MO::BroadcastToOp),
   };

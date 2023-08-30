@@ -2434,4 +2434,30 @@ def MO_LayoutTransformOp : MO_TensorOp<"layout.transform", [Pure]> {
   let hasVerifier = 1;
 }
 
+//===----------------------------------------------------------------------===//
+// Print
+//===----------------------------------------------------------------------===//
+
+def DebugTensorPrintOp : MO_TensorOp<"debug.tensor.print"> {
+  let summary = "Prints a debug representation of argument input";
+  let description = [{
+    Prints a debug representation of argument input. If a label attribute
+    is supplied the tensor contents is printed with that label. Otherwise
+    just the tensor metadata is printed. For debugging and testing only.
+
+    Example:
+    ```mlir
+    %arg: !mo.tensor<[5], f32>
+    mo.debug.tensor.print(%arg) {label = "label"} : !mo.tensor<[5], f32>
+    ```
+  }];
+
+  let arguments = (ins MO_Tensor: $input,
+                   DefaultValuedAttr<StrAttr, "\"\"">: $label);
+  let assemblyFormat = [{
+    `(` $input `)` attr-dict `:` qualified(type($input))
+  }];
+}
+
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOOPS_TD

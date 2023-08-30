@@ -106,6 +106,9 @@ public:
   /// Lowers mo.static.reshape op.
   LogicalResult lowerStaticReshape(MO::Static::ReshapeOp reshapeOp);
 
+  /// Lowers mo.debug.tensor.print op.
+  LogicalResult lowerDebugTensorPrint(MO::DebugTensorPrintOp printOp);
+
   /// Lowers mo.if op.
   LogicalResult lowerIf(MO::IfOp ifOp);
 
@@ -615,6 +618,23 @@ LogicalResult MOGraphLowering::lowerReshape(MO::ReshapeOp reshapeOp) {
   return success();
 }
 
+LogicalResult
+MOGraphLowering::lowerDebugTensorPrint(MO::DebugTensorPrintOp printOp) {
+  auto loc = printOp.getLoc();
+
+  auto mgpTensor = loweringState.lookupExecuteLoweredValue(printOp.getInput());
+
+  Value chain = loweringState.getExecuteOpBuilder()
+                    .create<MGP::DebugCpuTensorPrintOp>(
+                        loc, loweringState.getExecuteChain(), mgpTensor,
+                        printOp.getLabelAttr())
+                    .getResult();
+
+  loweringState.setExecuteChain(chain);
+
+  return success();
+}
+
 LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
   auto loc = ifOp->getLoc();
   OpBuilder &builder = loweringState.getExecuteOpBuilder();
@@ -907,6 +927,12 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
 
     if (auto reshapeOp = dyn_cast<MO::Static::ReshapeOp>(op)) {
       if (failed(lowerStaticReshape(reshapeOp)))
+        return failure();
+      continue;
+    }
+
+    if (auto debugTensorPrintOp = dyn_cast<MO::DebugTensorPrintOp>(op)) {
+      if (failed(lowerDebugTensorPrint(debugTensorPrintOp)))
         return failure();
       continue;
     }
