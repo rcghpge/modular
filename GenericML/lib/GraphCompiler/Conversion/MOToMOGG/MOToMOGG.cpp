@@ -296,6 +296,8 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_ELEMWISE(MO::InvokeShapeFuncOp),
       MO_TO_ELEMWISE(MO::IsInfOp),
       MO_TO_ELEMWISE(MO::IsNaNOp),
+      MO_TO_KERNEL(MO::LayerNormOp),
+      MO_TO_KERNEL(MO::LayerNormSkipOp),
       MO_TO_ELEMWISE(MO::Log1pOp),
       MO_TO_KERNEL(MO::LayoutTransformOp),
       MO_TO_KERNEL(MO::LinAlg::BandPartOp),

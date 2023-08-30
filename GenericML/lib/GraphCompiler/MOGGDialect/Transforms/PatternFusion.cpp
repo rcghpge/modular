@@ -526,17 +526,15 @@ struct LayerNormPattern : public OpRewritePattern<MO::AddOp> {
     }
 
     if (!skip) {
-      rewriter.replaceOpWithNewOp<MOGG::ExtOp>(
+      rewriter.replaceOpWithNewOp<MO::LayerNormOp>(
           op,
           /*outputTypes=*/op->getResultTypes(),
-          /*op_name=*/"mop.kernels.layer_norm",
           /*inputOperands=*/
           SmallVector<Value>{input, gamma, beta, eps});
     } else {
-      rewriter.replaceOpWithNewOp<MOGG::ExtOp>(
+      rewriter.replaceOpWithNewOp<MO::LayerNormSkipOp>(
           op,
           /*outputTypes=*/op->getResultTypes(),
-          /*op_name=*/"mop.kernels.layer_norm.skip",
           /*inputOperands=*/
           SmallVector<Value>{input, gamma, beta, eps, skip});
     }

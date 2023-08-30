@@ -2451,6 +2451,31 @@ def MO_LayoutTransformOp : MO_TensorOp<"layout.transform", [Pure]> {
   let hasVerifier = 1;
 }
 
+
+//===----------------------------------------------------------------------===//
+// Temp layer norm ops
+//===----------------------------------------------------------------------===//
+
+def MO_LayerNormOp : MO_TensorOp<"layer_norm"> {
+  let summary = "Layer norm";
+  let description = [{
+    Layer norm target for the pattern matcher
+  }];
+
+  let arguments = (ins MO_Tensor:$input, MO_Tensor:$gamma, MO_Tensor:$beta, MO_Tensor:$epsilon);
+  let results = (outs MO_Tensor:$result);
+}
+
+def MO_LayerNormSkipOp : MO_TensorOp<"layer_norm_skip"> {
+  let summary = "Layer norm with skip";
+  let description = [{
+    Layer norm with skip target for the pattern matcher
+  }];
+
+  let arguments = (ins MO_Tensor:$input, MO_Tensor:$gamma, MO_Tensor:$beta, MO_Tensor:$epsilon, MO_Tensor:$skip);
+  let results = (outs MO_Tensor:$result);
+}
+
 //===----------------------------------------------------------------------===//
 // Print
 //===----------------------------------------------------------------------===//
