@@ -122,13 +122,10 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   }
 
   MO::MOToMOGGOptions moToMoggOpts;
-  moToMoggOpts.useJit = opts.useJit;
   moToMoggOpts.extraLibPaths = opts.extraLibPaths;
   // If jiting simplify broadcast patterns to a single op that we can jit.
-  if (opts.useJit) {
-    pm.addPass(mlir::createCanonicalizerPass());
-    pm.addPass(mlir::createCSEPass());
-  }
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
 
   if (opts.constantFold)
     pm.addPass(MO::createConstantFold());
@@ -138,55 +135,53 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
-  if (opts.useJit) {
-    // Fuse connected elementwise kernels.
-    if (opts.fuseJitKernels) {
-      pm.addPass(MOGG::createFuseElementwise());
-      pm.addPass(mlir::createCanonicalizerPass());
-      pm.addPass(mlir::createCSEPass());
-
-      // Fuse broadcasts.
-      pm.addPass(MOGG::createFuseBroadcasts());
-      pm.addPass(mlir::createCanonicalizerPass());
-      pm.addPass(mlir::createCSEPass());
-
-      // Fuse into big ops. I.E epilogue fusion into matmul.
-      pm.addPass(MOGG::createFuseInOutLambdas());
-      pm.addPass(mlir::createCSEPass());
-    }
-
-    if (opts.performTrivialKernelOpt) {
-      // Mark trivial kernels as being syncronous.
-      pm.addPass(MOGG::createMarkTrivialKernels());
-
-      // Soft fuse trivial kernels where possible.
-      if (opts.fuseJitKernels) {
-        pm.addPass(MOGG::createInlineLambdas());
-        pm.addPass(MOGG::createSoftFuse());
-      }
-    }
-
-    // Add explicit chain ready's to the end of fully sync kenrels.
-    pm.addPass(MOGG::createAddExplicitChainReady());
-
-    // Fuse constants last as they don't enable any extra fusions directly and
-    // should be fused as late as possible to catch all cases of constants.
-    if (opts.fuseJitKernels)
-      pm.addPass(MOGG::createFuseConstants());
-
-    // Add cleanup passes to catch e.g used/duplicated constants.
+  // Fuse connected elementwise kernels.
+  if (opts.fuseJitKernels) {
+    pm.addPass(MOGG::createFuseElementwise());
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createCSEPass());
 
-    // If we are jitting then we need to compile the jit kernels as well.
-    MOGG::JitCompileKernelsOptions jitOpts;
-    jitOpts.useSearch = opts.useKgenSearch;
-    jitOpts.minimumCpuAlignment = moToPrimOpts.minimumCpuAlignment;
-    jitOpts.saveTempPrefix = opts.saveTempPrefix;
-    jitOpts.createMOGGReproducers = opts.createMOGGReproducers;
-    jitOpts.extraLibPaths = opts.extraLibPaths;
-    pm.addPass(MOGG::createJitCompileKernels(jitOpts));
+    // Fuse broadcasts.
+    pm.addPass(MOGG::createFuseBroadcasts());
+    pm.addPass(mlir::createCanonicalizerPass());
+    pm.addPass(mlir::createCSEPass());
+
+    // Fuse into big ops. I.E epilogue fusion into matmul.
+    pm.addPass(MOGG::createFuseInOutLambdas());
+    pm.addPass(mlir::createCSEPass());
   }
+
+  if (opts.performTrivialKernelOpt) {
+    // Mark trivial kernels as being syncronous.
+    pm.addPass(MOGG::createMarkTrivialKernels());
+
+    // Soft fuse trivial kernels where possible.
+    if (opts.fuseJitKernels) {
+      pm.addPass(MOGG::createInlineLambdas());
+      pm.addPass(MOGG::createSoftFuse());
+    }
+  }
+
+  // Add explicit chain ready's to the end of fully sync kenrels.
+  pm.addPass(MOGG::createAddExplicitChainReady());
+
+  // Fuse constants last as they don't enable any extra fusions directly and
+  // should be fused as late as possible to catch all cases of constants.
+  if (opts.fuseJitKernels)
+    pm.addPass(MOGG::createFuseConstants());
+
+  // Add cleanup passes to catch e.g used/duplicated constants.
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
+
+  // If we are jitting then we need to compile the jit kernels as well.
+  MOGG::JitCompileKernelsOptions jitOpts;
+  jitOpts.useSearch = opts.useKgenSearch;
+  jitOpts.minimumCpuAlignment = moToPrimOpts.minimumCpuAlignment;
+  jitOpts.saveTempPrefix = opts.saveTempPrefix;
+  jitOpts.createMOGGReproducers = opts.createMOGGReproducers;
+  jitOpts.extraLibPaths = opts.extraLibPaths;
+  pm.addPass(MOGG::createJitCompileKernels(jitOpts));
 
   pm.addPass(MGP::createMOToPrimitives(moToPrimOpts));
   pm.addPass(MGP::createPredicateAssertDependenciesPass());

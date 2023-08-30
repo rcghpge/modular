@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg=use-jit=true --fuse-elementwise --cse --fuse-bcasts --cse --fuse-in-out-lambdas --cse %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg --fuse-elementwise --cse --fuse-bcasts --cse --fuse-in-out-lambdas --cse %s | FileCheck %s
 
 mo.graph @basicMatmul<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !mo.tensor<[K, N], f32, {layout = #mo.layout<KN>}>, %arg3: !mo.tensor<[], f32>) -> (!mo.tensor<[M, N], f32>) {
   %mm = mo.matmul(%arg0, %arg1) : (!mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32, {layout = #mo.layout<KN>}>)  -> !mo.tensor<[M, N], f32>

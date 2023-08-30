@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg=use-jit=true --fuse-elementwise --canonicalize --cse --fuse-bcasts --canonicalize --cse --fuse-consts %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg --fuse-elementwise --canonicalize --cse --fuse-bcasts --canonicalize --cse --fuse-consts %s | FileCheck %s
 
 mo.graph @basic_constant_fuse(%arg0: !mo.tensor<[2, 2, 4], f32>) -> (!mo.tensor<[2, 2, 4], f32>) {
   %cst1 = mo.constant {value = #M.dense_array<1.500000e-01, 1.500000e-01, 2.500000e-01, 3.500000e-01, 4.500000e-01, 5.500000e-01, 6.500000e-01, 7.500000e-01, 1.500000e-01, 1.500000e-01, 2.500000e-01, 3.500000e-01, 4.500000e-01, 5.500000e-01, 6.500000e-01, 7.500000e-01> : tensor<16xf32>} : !mo.tensor<[2, 2, 4], f32>

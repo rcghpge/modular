@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg=use-jit=true --fuse-elementwise --canonicalize --cse %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg --fuse-elementwise --canonicalize --cse %s | FileCheck %s
 
 // If we need to materialize a kernel then that should prevent it from being
 // folded into subsequent fusions to prevent duplicate compute.

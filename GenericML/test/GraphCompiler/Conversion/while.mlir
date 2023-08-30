@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg=use-jit=true --jit-compile-kernels --mo-to-primitives --allow-unregistered-dialect | FileCheck %s
+// RUN: mo-opt %s --mo-to-mogg --jit-compile-kernels --mo-to-primitives --allow-unregistered-dialect | FileCheck %s
 
 // CHECK: mgp.model @while_op
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context) -> (!mef.chain, !mgp.cpu.tensor<2xf32>) {

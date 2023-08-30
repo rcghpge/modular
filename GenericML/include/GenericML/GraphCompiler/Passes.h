@@ -23,10 +23,6 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       *this, "minimum-cpu-alignment",
       llvm::cl::desc("Alignment for all CPU-allocated buffers."),
       llvm::cl::init(kPreferredMemoryAlignment)};
-  Option<bool> useJit{*this, "use-jit",
-                      llvm::cl::desc("Should we compile kernels on the fly, if "
-                                     "not will use the C++ shims."),
-                      llvm::cl::init(true)};
   Option<bool> useKgenSearch{
       *this, "use-kgen-search",
       llvm::cl::desc("When jitting kernels should we enable the KGEN search."),

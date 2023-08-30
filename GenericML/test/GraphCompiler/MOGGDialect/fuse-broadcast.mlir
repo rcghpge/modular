@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg=use-jit=true --fuse-elementwise --canonicalize --cse --fuse-bcasts --canonicalize --cse %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg --fuse-elementwise --canonicalize --cse --fuse-bcasts --canonicalize --cse %s | FileCheck %s
 
 mo.graph @basicBroadcastFuse<N, M, K>(%arg0: !mo.tensor<[N, M], f32>, %arg1: !mo.tensor<[K, M], f32>) -> (!mo.tensor<[K, M], f32>) {
   %bcast1 = mo.static.broadcast_to(%arg0) : !mo.tensor<[N, M], f32> -> !mo.tensor<[K, M], f32>

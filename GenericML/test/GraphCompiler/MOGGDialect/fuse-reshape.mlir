@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg=use-jit=true --fuse-bcasts --cse %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg --fuse-bcasts --cse %s | FileCheck %s
 
 mo.graph @basicReshapeFuse(%arg0 : !mo.tensor<[50], ui32>, %arg1 : !mo.tensor<[5, 10], ui32>) -> (!mo.tensor<[5, 5, 2], ui32>) {
   %A = mo.static.reshape(%arg0) : !mo.tensor<[50], ui32> -> !mo.tensor<[5, 5, 2], ui32>

@@ -111,11 +111,10 @@ using MoToKernelMapTy = SmallDenseMap<mlir::TypeID, KernelRecord, 64>;
 
 struct MOOpPattern : public RewritePattern {
   MOOpPattern(MLIRContext *ctx, MoToKernelMapTy &moToMojoKernels,
-              MOGG::MojoRegisterOp registry, mlir::ModuleOp kgenMod,
-              bool useJit)
+              MOGG::MojoRegisterOp registry, mlir::ModuleOp kgenMod)
       : RewritePattern(MatchAnyOpTypeTag{}, 1, ctx),
         moToMojoKernels(moToMojoKernels), registry(registry),
-        moggBindings(kgenMod), useJit(useJit) {}
+        moggBindings(kgenMod) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
@@ -163,7 +162,7 @@ struct MOOpPattern : public RewritePattern {
     // Ranked.
     // Dimensions are static or shape infered (i.e not '?')
     // Only within the top level graph and not within e.g control flow.
-    bool shouldUseJit = useJit && kernel.shouldHaveMojo;
+    bool shouldUseJit = kernel.shouldHaveMojo;
 
     StringRef shimTarget = kernel.shim;
 
@@ -238,8 +237,6 @@ struct MOOpPattern : public RewritePattern {
 
   // Extra libraries to source kernels from.
   std::string extraLibPaths;
-
-  bool useJit;
 };
 
 struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
@@ -362,8 +359,7 @@ void MOToMOGGPass::runOnOperation() {
   };
   // clang-format on
   RewritePatternSet patterns{ctx};
-  patterns.add<MOOpPattern>(ctx, moToMojoKernels, registry, moggBindings.get(),
-                            useJit.getValue());
+  patterns.add<MOOpPattern>(ctx, moToMojoKernels, registry, moggBindings.get());
 
   if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
     return signalPassFailure();

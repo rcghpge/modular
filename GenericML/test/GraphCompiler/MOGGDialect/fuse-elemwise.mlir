@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg=use-jit=true --fuse-elementwise --canonicalize --cse %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg --fuse-elementwise --canonicalize --cse %s | FileCheck %s
 
 
 mo.graph @simpleDoubleUse(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) {

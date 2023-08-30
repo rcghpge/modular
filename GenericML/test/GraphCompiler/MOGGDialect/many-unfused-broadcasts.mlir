@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg=use-jit=true --fuse-elementwise --cse --canonicalize --fuse-bcasts --cse --canonicalize --jit-compile-kernels %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg --fuse-elementwise --cse --canonicalize --fuse-bcasts --cse --canonicalize --jit-compile-kernels %s | FileCheck %s
 
 // Check that with many broadcasts of the same value we still produce a unique kernel for each
 
