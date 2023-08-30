@@ -1966,6 +1966,19 @@ def MO_GatherOp : MO_TensorOp<"gather", [
   let hasFolder = 1;
 }
 
+// TODO(#20442): Remove with generic gather fusion.
+def MO_GatherSumOp : MO_TensorOp<"gather_sum"> {
+  let summary = "Gather sum op";
+  let description = [{
+    A temporary op for the gather sum pattern to target.
+    Implicitly gather axis 0 and reduce axis 1.
+  }];
+
+  let arguments = (ins MO_NonScalarIfRanked:$input,
+                       MO_IndicesTensor:$indices);
+  let results = (outs MO_Tensor:$result);
+}
+
 //===----------------------------------------------------------------------===//
 // ScatterNdOp
 //===----------------------------------------------------------------------===//

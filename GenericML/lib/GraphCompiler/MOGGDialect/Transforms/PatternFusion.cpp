@@ -162,12 +162,8 @@ struct GatherSumPattern : public OpRewritePattern<MO::ReduceAddOp> {
     if (!input || !indices || !gatherAxis || !reduceAxis)
       return rewriter.notifyMatchFailure(op, "null input value");
 
-    rewriter.replaceOpWithNewOp<MOGG::ExtOp>(
-        op,
-        /*outputTypes=*/op->getResultTypes(),
-        /*op_name=*/"mop.kernels.gather_sum",
-        /*inputOperands=*/
-        SmallVector<Value>{input, indices, gatherAxis, reduceAxis});
+    rewriter.replaceOpWithNewOp<MO::GatherSumOp>(
+        op, op->getResultTypes(), SmallVector<Value>{input, indices});
 
     return mlir::success();
   }
