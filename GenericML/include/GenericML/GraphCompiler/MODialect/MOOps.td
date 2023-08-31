@@ -640,6 +640,24 @@ def MO_MinOp : MO_ElementWiseBinaryOp<"min", [Commutative]> {
   }];
 }
 
+def MO_ModOp : MO_ElementWiseBinaryOp<"mod"> {
+  let summary = "Mod operation";
+  let description = [{
+    Returns x mod y, where x and y are input tensors.
+
+    The inputs must be integer types.
+
+    Example:
+
+    ```mlir
+    %lhs: !mo.tensor<[2, 3], si32>
+    %rhs: !mo.tensor<[2, 3], si32>
+    %res = mo.add(%lhs, %rhs) : !mo.tensor<[2, 3], si32>
+    ```
+  }];
+  let hasVerifier = 1;
+}
+
 def MO_MulOp : MO_ElementWiseBinaryOp<"mul", [Commutative]> {
   let summary = "Multiply operation";
   let description = [{

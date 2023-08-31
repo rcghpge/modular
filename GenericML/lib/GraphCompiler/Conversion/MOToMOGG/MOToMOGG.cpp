@@ -312,6 +312,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_KERNEL(MO::MaxPoolOp),
       MO_TO_KERNEL(MO::MeanOp),
       MO_TO_ELEMWISE(MO::MinOp),
+      MO_TO_ELEMWISE(MO::ModOp),
       MO_TO_ELEMWISE(MO::MulOp),
       MO_TO_ELEMWISE(MO::NotEqualOp),
       MO_TO_KERNEL(MO::PadOp),

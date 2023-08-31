@@ -137,3 +137,10 @@ mo.graph @xor(%arg0: !mo.tensor<[2, 3], bool>, %arg1: !mo.tensor<[2, 3], bool>) 
   %0 = mo.xor(%arg0, %arg1) : !mo.tensor<[2, 3], bool>
   mo.output %0 : !mo.tensor<[2, 3], bool>
 }
+
+// CHECK: mo.graph @mod(%[[ARG0:.*]]: !mo.tensor<[2, 3], si32>, %[[ARG1:.*]]: !mo.tensor<[2, 3], si32>) -> !mo.tensor<[2, 3], si32>
+mo.graph @mod(%arg0: !mo.tensor<[2, 3], si32>, %arg1: !mo.tensor<[2, 3], si32>) -> (!mo.tensor<[2, 3], si32>) {
+  // CHECK-NEXT: mo.mod(%[[ARG0]], %[[ARG1]]) : !mo.tensor<[2, 3], si32>
+  %0 = mo.mod(%arg0, %arg1) : !mo.tensor<[2, 3], si32>
+  mo.output %0 : !mo.tensor<[2, 3], si32>
+}

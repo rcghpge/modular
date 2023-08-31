@@ -27,6 +27,14 @@ mo.graph @mul(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[2, 10], f32>) -
 
 // -----
 
+mo.graph @mod_float(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[2, 3], f32>) -> (!mo.tensor<[2, 3], f32>) {
+  // expected-error@+1 {{expect integer type}}
+  %0 = mo.mod(%arg0, %arg1) : !mo.tensor<[2, 3], f32>
+  mo.output %0 : !mo.tensor<[2, 3], f32>
+}
+
+// -----
+
 // expected-note@+1 {{prior use here}}
 mo.graph @div(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[2, 10], f32>) -> (!mo.tensor<[2, 3], f32>) {
   // expected-error@+1 {{use of value '%arg1' expects different type than prior uses}}

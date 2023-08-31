@@ -1928,6 +1928,17 @@ void MeanOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 }
 
 //===----------------------------------------------------------------------===//
+// MO_ModOp support
+//===----------------------------------------------------------------------===//
+
+LogicalResult ModOp::verify() {
+  if (!isa<IntegerType>(getType().getElementType()))
+    return emitError("expect integer type");
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // MO_ReduceMulOp support
 //===----------------------------------------------------------------------===//
 
