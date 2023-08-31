@@ -478,6 +478,17 @@ class MO_ComparisonBinaryOp<string name, list<Trait> traits = []>
   let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y);
 }
 
+class MO_LogicalBinaryOp<string name, list<Trait> traits = []>
+    : MO_TensorOp<name, traits # [
+  Commutative, Pure, MO_SameOperandsAndResultType, MO_ElementWiseBinary
+]> {
+  let arguments = (ins MO_BooleanMask:$input_x, MO_BooleanMask:$input_y);
+  let results = (outs MO_BooleanMask:$result);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` qualified(type($result))
+  }];
+}
+
 def MO_AddOp : MO_ElementWiseBinaryOp<"add", [Commutative]> {
   let summary = "Add operation";
   let description = [{
@@ -874,6 +885,43 @@ def MO_NotEqualOp : MO_ComparisonBinaryOp<"not_equal", [Commutative]> {
     ```
   }];
   let hasFolder = 1;
+}
+
+def MO_AndOp : MO_LogicalBinaryOp<"and"> {
+  let summary = "Logical And operation";
+  let description = [{
+    Returns elementwise x `and` y, where x and y are input boolean tensors, and
+    the resulting element is true if both the lhs and rhs elements are true.
+
+    Example:
+
+    ```mlir
+    %lhs: !mo.tensor<[2, 3], bool>
+    %rhs: !mo.tensor<[2, 3], bool>
+    %res = mo.and(%lhs, %rhs) : (!mo.tensor<[2, 3], bool>,
+                                 !mo.tensor<[2, 3], bool>
+                                ) -> !mo.tensor<[2, 3], bool>
+    ```
+  }];
+}
+
+def MO_XorOp : MO_LogicalBinaryOp<"xor"> {
+  let summary = "Logical Xor operation";
+  let description = [{
+    Returns elementwise x `xor` y, where x and y are input boolean tensors, and
+    the resulting element is true if only one of the lhs and rhs elements is
+    true.
+
+    Example:
+
+    ```mlir
+    %lhs: !mo.tensor<[2, 3], bool>
+    %rhs: !mo.tensor<[2, 3], bool>
+    %res = mo.xor(%lhs, %rhs) : (!mo.tensor<[2, 3], bool>,
+                                 !mo.tensor<[2, 3], bool>
+                                ) -> !mo.tensor<[2, 3], bool>
+    ```
+  }];
 }
 
 // TODO: Use an AllElementTypesMatch<["x", "y", "result"]> trait for MO_Tensor.

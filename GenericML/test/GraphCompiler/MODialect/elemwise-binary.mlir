@@ -123,3 +123,17 @@ mo.graph @not_equal_int_folder() -> (!mo.tensor<[2, 3], bool>) {
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[2, 3], bool>
   mo.output %0 : !mo.tensor<[2, 3], bool>
 }
+
+// CHECK: mo.graph @and(%[[ARG0:.*]]: !mo.tensor<[2, 3], bool>, %[[ARG1:.*]]: !mo.tensor<[2, 3], bool>) -> !mo.tensor<[2, 3], bool>
+mo.graph @and(%arg0: !mo.tensor<[2, 3], bool>, %arg1: !mo.tensor<[2, 3], bool>) -> (!mo.tensor<[2, 3], bool>) {
+  // CHECK-NEXT: mo.and(%[[ARG0]], %[[ARG1]]) : !mo.tensor<[2, 3], bool>
+  %0 = mo.and(%arg0, %arg1) : !mo.tensor<[2, 3], bool>
+  mo.output %0 : !mo.tensor<[2, 3], bool>
+}
+
+// CHECK: mo.graph @xor(%[[ARG0:.*]]: !mo.tensor<[2, 3], bool>, %[[ARG1:.*]]: !mo.tensor<[2, 3], bool>) -> !mo.tensor<[2, 3], bool>
+mo.graph @xor(%arg0: !mo.tensor<[2, 3], bool>, %arg1: !mo.tensor<[2, 3], bool>) -> (!mo.tensor<[2, 3], bool>) {
+  // CHECK-NEXT: mo.xor(%[[ARG0]], %[[ARG1]]) : !mo.tensor<[2, 3], bool>
+  %0 = mo.xor(%arg0, %arg1) : !mo.tensor<[2, 3], bool>
+  mo.output %0 : !mo.tensor<[2, 3], bool>
+}

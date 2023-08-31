@@ -772,3 +772,28 @@ mo.graph @partially_parameterized_signature<in>(
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[IN]], 1, [[D1]]], f32>
   mo.output %res : !mo.tensor<[?, ?, ?], f32>
 }
+
+// CHECK:      mo.graph @binary_logical_op<[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(
+// CHECK-SAME:   %[[LHS:.*]]: !mo.tensor<[[[D0]], [[D1]]], bool>,
+// CHECK-SAME:   %[[RHS:.*]]: !mo.tensor<[[[D2]], [[D3]]], bool>
+// CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]]], bool>
+mo.graph @binary_logical_op(
+  %lhs: !mo.tensor<[?, ?], bool>,
+  %rhs: !mo.tensor<[?, ?], bool>
+) -> !mo.tensor<[?, ?], bool> {
+
+  // CHECK-NEXT: %[[RHS_REB:.*]] = mo.rebind(%[[RHS]]) : !mo.tensor<[[[D2]], [[D3]]], bool> -> !mo.tensor<[[[D0]], [[D1]]], bool>
+
+  // CHECK-NEXT: kgen.param.declare [[EQ0:.*]]: i1 = <and(eq([[D3]], [[D1]]), eq([[D0]], [[D2]]))>
+  // CHECK-NEXT: kgen.param.declare [[CH0:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "input shapes must match" : !kgen.string}, [[EQ0]])>
+  // CHECK-NEXT: %[[AND:.*]] = mo.and(%[[LHS]], %[[RHS_REB]]) : !mo.tensor<[[[D0]], [[D1]]], bool>
+  %and = mo.and(%lhs, %rhs) : !mo.tensor<[?, ?], bool>
+
+  // CHECK-NEXT: kgen.param.declare [[EQ1:.*]]: i1 = <and(eq([[D3]], [[D1]]), eq([[D0]], [[D2]]))>
+  // CHECK-NEXT: kgen.param.declare [[CH1:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "input shapes must match" : !kgen.string}, [[EQ1]])>
+  // CHECK-NEXT: %[[XOR:.*]] = mo.xor(%[[AND]], %[[RHS_REB]]) : !mo.tensor<[[[D0]], [[D1]]], bool>
+  %xor = mo.xor(%and, %rhs) : !mo.tensor<[?, ?], bool>
+
+  // CHECK-NEXT: mo.output %[[XOR]] : !mo.tensor<[[[D0]], [[D1]]], bool>
+  mo.output %xor : !mo.tensor<[?, ?], bool>
+}
