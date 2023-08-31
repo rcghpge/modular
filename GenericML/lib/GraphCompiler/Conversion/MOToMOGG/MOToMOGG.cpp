@@ -277,6 +277,7 @@ void MOToMOGGPass::runOnOperation() {
   MoToKernelMapTy moToMojoKernels{
       MO_TO_ELEMWISE(MO::AbsOp),
       MO_TO_ELEMWISE(MO::AddOp),
+      MO_TO_ELEMWISE(MO::AndOp),
       MO_TO_KERNEL(MO::ArgMaxOp),
       MO_TO_KERNEL(MO::ArgMinOp),
       MO_TO_KERNEL(MO::AvgPoolOp),
@@ -333,6 +334,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_ELEMWISE(MO::TanhOp),
       MO_TO_KERNEL(MO::TransposeOp),
       MO_TO_KERNEL(MO::WhereOp),
+      MO_TO_ELEMWISE(MO::XorOp),
 
       // These kernels we don't jit but we almost certainly never actually call them.
       MO_SHIM_ONLY(MO::BroadcastShapeOp, "mop.kernels.broadcast_shape"),
