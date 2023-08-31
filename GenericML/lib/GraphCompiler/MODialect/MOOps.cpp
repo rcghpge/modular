@@ -973,8 +973,8 @@ OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
 
 LogicalResult ConcatOp::verify() {
   size_t numInputs = getInputs().size();
-  if (numInputs < 2)
-    return emitError("concat must have at least 2 input tensors");
+  if (numInputs < 1)
+    return emitError("concat must have at least 1 input tensor");
 
   SmallVector<TensorValue> tensors;
   for (Value input : getInputs())

@@ -1751,11 +1751,11 @@ def MO_ConcatOp : MO_TensorOp<"concat", [
   let description = [{
     Concatenate the input tensors along a given dimension.
 
-    `mo.concat` concatenates the `inputs` tensors into an output tensor.
-    The input tensors and output tensors all has the same shape except along the
-    concatenation dimension `axis`. The size of the concatenation dimension in
-    output tensor would have be the sum of sizes of the concatenation dimension
-    in input tensors.
+    `mo.concat` concatenates the `inputs` tensors into an output tensor. There
+    must be at least 1 input tensor. The input tensors and output tensors all
+    has the same shape except along the concatenation dimension `axis`. The size
+    of the concatenation dimension in output tensor would have be the sum of
+    sizes of the concatenation dimension in input tensors.
 
     The value of `axis` follows numpy semantics, e.g., -1 represents the last
     axis.

@@ -144,10 +144,10 @@ mo.graph @broadcast_input_res_not_broadcastable(
 // ConcatOp
 //===----------------------------------------------------------------------===//
 
-mo.graph @concat_no_args(%arg0: !mo.tensor<[7], f32>) -> !mo.tensor<[7], f32> {
+mo.graph @concat_no_args() -> !mo.tensor<[7], f32> {
   %ax = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  // expected-error@+1 {{concat must have at least 2 input tensors}}
-  %0 = mo.concat[%ax: !mo.tensor<[], si64>](%arg0) : (!mo.tensor<[7], f32>) -> !mo.tensor<[7], f32>
+  // expected-error@+1 {{concat must have at least 1 input tensor}}
+  %0 = mo.concat[%ax: !mo.tensor<[], si64>]() : () -> !mo.tensor<[7], f32>
   mo.output %0 : !mo.tensor<[7], f32>
 }
 

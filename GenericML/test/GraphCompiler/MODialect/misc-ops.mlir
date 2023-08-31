@@ -122,6 +122,18 @@ mo.graph @concat_canonicalize_to_rebind<N, K -> M>(
   mo.output<K> %0 : !mo.tensor<[2, K], f32>
 }
 
+// CHECK:      mo.graph @concat_canonicalize_single_input(
+// CHECK-SAME:   %[[ARG0:.*]]: !mo.tensor<[2, ?], f32>, %[[AX:.*]]: !mo.tensor<[], si64>
+// CHECK-SAME: ) -> !mo.tensor<[2, ?], f32>
+mo.graph @concat_canonicalize_single_input(
+  %arg0: !mo.tensor<[2, ?], f32>,  %ax: !mo.tensor<[], si64>
+) -> !mo.tensor<[2, ?], f32> {
+
+  // CHECK-NEXT: mo.output %[[ARG0]] : !mo.tensor<[2, ?], f32>
+  %0 = mo.concat[%ax: !mo.tensor<[], si64>](%arg0) : (!mo.tensor<[2, ?], f32>) -> !mo.tensor<[2, ?], f32>
+  mo.output %0 : !mo.tensor<[2, ?], f32>
+}
+
 //===----------------------------------------------------------------------===//
 // SplitOp
 //===----------------------------------------------------------------------===//
