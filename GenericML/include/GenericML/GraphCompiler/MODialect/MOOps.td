@@ -923,6 +923,28 @@ def MO_AndOp : MO_LogicalBinaryOp<"and"> {
   }];
 }
 
+def MO_NotOp : MO_TensorOp<"not", [
+  Pure, MO_SameOperandsAndResultType, MO_ElementWiseUnary
+]> {
+  let summary = "Logical Not operation";
+  let description = [{
+    Returns elementwise `not` on given input, where input is a boolean tensor,
+    and the resulting element is true if the input element is false.
+
+    Example:
+
+    ```mlir
+    %in: !mo.tensor<[2, 3], bool>
+    %res = mo.not(%in) : (!mo.tensor<[2, 3], bool>) -> !mo.tensor<[2, 3], bool>
+    ```
+  }];
+  let arguments = (ins MO_BooleanMask:$input);
+  let results = (outs MO_BooleanMask:$result);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` qualified(type($result))
+  }];
+}
+
 def MO_XorOp : MO_LogicalBinaryOp<"xor"> {
   let summary = "Logical Xor operation";
   let description = [{

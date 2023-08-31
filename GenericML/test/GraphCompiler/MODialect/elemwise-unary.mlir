@@ -153,3 +153,9 @@ mo.graph @isinf(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], bool>) {
   mo.output %0 : !mo.tensor<[4, 5], bool>
 }
 
+// CHECK: mo.graph @not(%[[ARG0:.*]]: !mo.tensor<[4, 5], bool>) -> !mo.tensor<[4, 5], bool> no_inline {
+mo.graph @not(%arg0: !mo.tensor<[4, 5], bool>) -> (!mo.tensor<[4, 5], bool>) {
+  // CHECK-NEXT: mo.not(%[[ARG0]]) : !mo.tensor<[4, 5], bool>
+  %0 = mo.not(%arg0) : !mo.tensor<[4, 5], bool>
+  mo.output %0 : !mo.tensor<[4, 5], bool>
+}
