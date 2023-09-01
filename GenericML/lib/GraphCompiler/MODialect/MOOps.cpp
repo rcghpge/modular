@@ -13,6 +13,7 @@
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
+#include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/Compiler/ParserUtils.h"

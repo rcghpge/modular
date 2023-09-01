@@ -13,6 +13,7 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
+#include "KGEN/KGENDialect/KGENOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "llvm/Support/ErrorHandling.h"
 
@@ -312,7 +313,7 @@ void ShapeFuncMaterializationState::markShapeFuncAsUsed(
   usedShapeFuncNames.insert(func.getNameAttr());
 }
 
-SmallVector<KGEN::FuncOp>
+SmallVector<KGEN::FuncOp, 4>
 ShapeFuncMaterializationState::getUsedShapeFuncsAfterElaboration() {
   SmallVector<KGEN::FuncOp> funcs;
   for (StringAttr name : usedShapeFuncNames) {

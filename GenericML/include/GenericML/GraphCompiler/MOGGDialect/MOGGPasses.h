@@ -19,6 +19,8 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "KGEN/HLCFDialect/HLCFDialect.h"
 #include "KGEN/InitAllDialects.h"
+#include "KGEN/LITDialect/LITDialect.h"
+#include "KGEN/POPDialect/POPDialect.h"
 #include "Support/DebugInfoDialect/IR/DebugInfoDialect.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"

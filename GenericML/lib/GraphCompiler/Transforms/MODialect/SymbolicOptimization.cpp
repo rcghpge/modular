@@ -10,6 +10,7 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GenericML/GraphCompiler/Matchers.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
+#include "KGEN/KGENDialect/KGENOps.h"
 #include "Support/ML/Permutation.h"
 
 #include <numeric>

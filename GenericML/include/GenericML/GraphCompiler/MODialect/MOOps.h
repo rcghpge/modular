@@ -15,7 +15,9 @@
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MODialect/MOUtils.h"
 #include "KGEN/KGENDialect/KGENTypes.h"
+#include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/IR/FunctionInterfaces.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
@@ -100,10 +102,9 @@ std::optional<SmallVector<bool>> tryGetConstantBoolVector(TensorValue val);
 template <typename ToTensorOpTy>
 static TypedAttr getParamConstThrough(TensorValue inputVal) {
   if (auto toTensorOp = inputVal.template getDefiningOp<ToTensorOpTy>()) {
-    if (auto constOp = toTensorOp.getInput()
-                           .template getDefiningOp<KGEN::ParamConstantOp>()) {
-      return constOp.getValue();
-    }
+    TypedAttr value;
+    if (mlir::matchPattern(toTensorOp.getInput(), mlir::m_Constant(&value)))
+      return value;
   }
   return {};
 }

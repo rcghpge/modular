@@ -12,7 +12,7 @@
 #define GENERICML_GRAPHCOMPILER_MOSHDIALECT_MOSHOPS_H
 
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
-#include "KGEN/KGENDialect/KGENOps.h"
+#include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 
 namespace mlir {
@@ -21,7 +21,11 @@ class RewriterBase;
 
 namespace M::MOSH {
 class ShapeAttr;
-}
+} // namespace M::MOSH
+
+namespace M::KGEN {
+class FuncOp;
+} // namespace M::KGEN
 
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations

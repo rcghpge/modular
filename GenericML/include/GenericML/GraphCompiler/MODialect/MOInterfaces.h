@@ -8,8 +8,10 @@
 #define GENERICML_GRAPHCOMPILER_MODIALECT_MOINTERFACES_H
 
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
-#include "KGEN/KGENDialect/KGENOps.h"
+#include "KGEN/KGENDialect/KGENAttrs.h"
+#include "KGEN/KGENDialect/KGENInterfaces.h"
 #include "Support/LLVMCompilerForwardDecls.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Value.h"
@@ -19,6 +21,11 @@
 namespace mlir {
 class RewriterBase;
 } // namespace mlir
+
+namespace M::KGEN {
+class FuncOp;
+class GeneratorOp;
+} // namespace M::KGEN
 
 namespace M::MO {
 class ElementWiseBinary;
@@ -115,7 +122,7 @@ public:
 
   /// ASSUME elaboration has run on the shape function module, return all the
   /// used shape functions.
-  SmallVector<KGEN::FuncOp> getUsedShapeFuncsAfterElaboration();
+  SmallVector<KGEN::FuncOp, 4> getUsedShapeFuncsAfterElaboration();
 
 private:
   // A module that contains the following (as pre-elaboration KGEN IR)

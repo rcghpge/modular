@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "Cache/CacheDialect/CacheDialect.h"
 #include "Faux/Dialect/FauxDialect.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
@@ -24,6 +25,8 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Index/IR/IndexDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MLProgram/IR/MLProgram.h"
 #include "mlir/Dialect/Quant/QuantOps.h"
 #include "mlir/IR/Dialect.h"

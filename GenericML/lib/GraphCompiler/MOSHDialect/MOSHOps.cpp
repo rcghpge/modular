@@ -13,6 +13,7 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/ShapeFuncHelpers.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
+#include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/STLExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
