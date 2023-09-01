@@ -15,6 +15,7 @@
 #include "LLCL/Support/RCRef.h"
 #include "Support/ForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"
+#include "Support/ML/CompiledFrameworkLabel.h"
 #include <memory>
 
 namespace M {
@@ -35,22 +36,26 @@ loadMGPMEFFile(RCRef<MEFFile> mefFile);
 /// takes and returns.
 class ModularModel final : public Model {
 public:
-  ModularModel(std::string name, const MEFInvokable *initFn,
-               const MEFInvokable *executeFn,
+  ModularModel(std::string name, CompiledFrameworkLabel frameworkLabel,
+               const MEFInvokable *initFn, const MEFInvokable *executeFn,
                ArrayRef<QuantTensorSpec> inputSpecs,
                ArrayRef<QuantTensorSpec> outputSpecs, EncodedLocation location)
       : Model(inputSpecs, outputSpecs), name(std::move(name)), initFn(initFn),
-        executeFn(executeFn), location(std::move(location)) {}
+        executeFn(executeFn), location(std::move(location)) {
+    assert(frameworkLabel == CompiledFrameworkLabel::kModularModel);
+  }
 
-  ModularModel(std::string name, const MEFInvokable *initFn,
-               const MEFInvokable *executeFn,
+  ModularModel(std::string name, CompiledFrameworkLabel frameworkLabel,
+               const MEFInvokable *initFn, const MEFInvokable *executeFn,
                ArrayRef<QuantTensorSpec> inputSpecs,
                ArrayRef<QuantTensorSpec> outputSpecs,
                ArrayRef<StringRef> inputNames, ArrayRef<StringRef> outputNames,
                EncodedLocation location)
       : Model(inputSpecs, outputSpecs, inputNames, outputNames),
         name(std::move(name)), initFn(initFn), executeFn(executeFn),
-        location(std::move(location)) {}
+        location(std::move(location)) {
+    assert(frameworkLabel == CompiledFrameworkLabel::kModularModel);
+  }
 
   /// Returns a ModularModel from an mgp.model descriptor.
   static ErrorOr<std::unique_ptr<ModularModel>>
