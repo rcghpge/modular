@@ -118,6 +118,13 @@ mo.graph @cast_int_float_mixed_folder() -> (!mo.tensor<[2], f32>, !mo.tensor<[3]
   mo.output %1, %3 : !mo.tensor<[2], f32>, !mo.tensor<[3], f64>
 }
 
+// CHECK: mo.graph @log(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> no_inline {
+mo.graph @log(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
+  // CHECK-NEXT: mo.log(%[[ARG0]]) : !mo.tensor<[4, 5], f32>
+  %0 = mo.log(%arg0) : !mo.tensor<[4, 5], f32>
+  mo.output %0 : !mo.tensor<[4, 5], f32>
+}
+
 // CHECK: mo.graph @log1p(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> no_inline {
 mo.graph @log1p(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
   // CHECK-NEXT: mo.log1p(%[[ARG0]]) : !mo.tensor<[4, 5], f32>

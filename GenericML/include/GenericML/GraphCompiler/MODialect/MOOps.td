@@ -580,6 +580,20 @@ def MO_GeluOp : MO_ElementWiseUnaryOp<"gelu"> {
   }];
 }
 
+def MO_LogOp : MO_ElementWiseUnaryOp<"log"> {
+  let summary = "Natural Logarithm";
+  let description = [{
+    Computes the natural logorithm `log(x)`.
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.log(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
 def MO_Log1pOp : MO_ElementWiseUnaryOp<"log1p"> {
   let summary = "Natural Logarithm of 1 + x";
   let description = [{
