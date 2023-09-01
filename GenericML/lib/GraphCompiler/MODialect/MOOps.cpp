@@ -1318,10 +1318,10 @@ LogicalResult SelectOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// MO_WhereOp support
+// MO_ArgNonzeroOp support
 //===----------------------------------------------------------------------===//
 
-OpFoldResult WhereOp::fold(FoldAdaptor adaptor) {
+OpFoldResult ArgNonzeroOp::fold(FoldAdaptor adaptor) {
   TensorType inTy = getInput().getType();
   TensorType outTy = getType();
 
@@ -1360,16 +1360,17 @@ OpFoldResult WhereOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
-LogicalResult WhereOp::verify() {
+LogicalResult ArgNonzeroOp::verify() {
   TensorType resTy = getResult().getType();
   TensorType inputTy = getInput().getType();
 
   if (!resTy.hasRank() || resTy.getRank() != 2)
-    return emitError("mo.where: invalid output shape: rank must be 2");
+    return emitError("mo.arg_nonzero: invalid output shape: rank must be 2");
 
   if ((inputTy.hasRank() && resTy.getIntDim(1) != (int64_t)inputTy.getRank()) ||
       (!inputTy.hasRank() && !ShapedType::isDynamic(resTy.getIntDim(1))))
-    return emitError("mo.where: invalid output shape: inner_dim != input_rank");
+    return emitError(
+        "mo.arg_nonzero: invalid output shape: inner_dim != input_rank");
 
   return success();
 }

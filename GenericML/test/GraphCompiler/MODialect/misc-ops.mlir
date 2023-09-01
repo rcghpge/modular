@@ -597,58 +597,58 @@ mo.graph @transpose_no_simplify_to_reshape_if_ooo(
 }
 
 //===----------------------------------------------------------------------===//
-// WhereOp
+// ArgNonzeroOp
 //===----------------------------------------------------------------------===//
 
-// CHECK: mo.graph @where_1d(%[[ARG:.*]]: !mo.tensor<[7], f32>) -> !mo.tensor<[?, 1], si64> no_inline
-mo.graph @where_1d(%arg: !mo.tensor<[7], f32>) -> !mo.tensor<[?, 1], si64> {
-  // CHECK-NEXT: %[[RES:.*]] = mo.where(%[[ARG]]) : (!mo.tensor<[7], f32>) -> !mo.tensor<[?, 1], si64>
-  %res = mo.where(%arg) : (!mo.tensor<[7], f32>) -> !mo.tensor<[?, 1], si64>
+// CHECK: mo.graph @arg_nonzero_1d(%[[ARG:.*]]: !mo.tensor<[7], f32>) -> !mo.tensor<[?, 1], si64> no_inline
+mo.graph @arg_nonzero_1d(%arg: !mo.tensor<[7], f32>) -> !mo.tensor<[?, 1], si64> {
+  // CHECK-NEXT: %[[RES:.*]] = mo.arg_nonzero(%[[ARG]]) : (!mo.tensor<[7], f32>) -> !mo.tensor<[?, 1], si64>
+  %res = mo.arg_nonzero(%arg) : (!mo.tensor<[7], f32>) -> !mo.tensor<[?, 1], si64>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[?, 1], si64>
   mo.output %res : !mo.tensor<[?, 1], si64>
 }
 
-// CHECK: mo.graph @where_2d(%[[ARG:.*]]: !mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 2], si64> no_inline
-mo.graph @where_2d(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 2], si64> {
-  // CHECK-NEXT: %[[RES:.*]] = mo.where(%[[ARG]]) : (!mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 2], si64>
-  %res = mo.where(%arg) : (!mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 2], si64>
+// CHECK: mo.graph @arg_nonzero_2d(%[[ARG:.*]]: !mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 2], si64> no_inline
+mo.graph @arg_nonzero_2d(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 2], si64> {
+  // CHECK-NEXT: %[[RES:.*]] = mo.arg_nonzero(%[[ARG]]) : (!mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 2], si64>
+  %res = mo.arg_nonzero(%arg) : (!mo.tensor<[7, 7], f32>) -> !mo.tensor<[?, 2], si64>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[?, 2], si64>
   mo.output %res : !mo.tensor<[?, 2], si64>
 }
 
-// CHECK: mo.graph @where_2d_dynamic_shape(%[[ARG:.*]]: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, 2], si64> no_inline
-mo.graph @where_2d_dynamic_shape(%arg: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, 2], si64> {
-  // CHECK-NEXT: %[[RES:.*]] = mo.where(%[[ARG]]) : (!mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, 2], si64>
-  %res = mo.where(%arg) : (!mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, 2], si64>
+// CHECK: mo.graph @arg_nonzero_2d_dynamic_shape(%[[ARG:.*]]: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, 2], si64> no_inline
+mo.graph @arg_nonzero_2d_dynamic_shape(%arg: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, 2], si64> {
+  // CHECK-NEXT: %[[RES:.*]] = mo.arg_nonzero(%[[ARG]]) : (!mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, 2], si64>
+  %res = mo.arg_nonzero(%arg) : (!mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, 2], si64>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[?, 2], si64>
   mo.output %res : !mo.tensor<[?, 2], si64>
 }
 
-// CHECK: mo.graph @where_dynamic_rank(%[[ARG:.*]]: !mo.tensor<?, f32>) -> !mo.tensor<[?, ?], si64> no_inline
-mo.graph @where_dynamic_rank(%arg: !mo.tensor<?, f32>) -> !mo.tensor<[?, ?], si64> {
-  // CHECK-NEXT: %[[RES:.*]] = mo.where(%[[ARG]]) : (!mo.tensor<?, f32>) -> !mo.tensor<[?, ?], si64>
-  %res = mo.where(%arg) : (!mo.tensor<?, f32>) -> !mo.tensor<[?, ?], si64>
+// CHECK: mo.graph @arg_nonzero_dynamic_rank(%[[ARG:.*]]: !mo.tensor<?, f32>) -> !mo.tensor<[?, ?], si64> no_inline
+mo.graph @arg_nonzero_dynamic_rank(%arg: !mo.tensor<?, f32>) -> !mo.tensor<[?, ?], si64> {
+  // CHECK-NEXT: %[[RES:.*]] = mo.arg_nonzero(%[[ARG]]) : (!mo.tensor<?, f32>) -> !mo.tensor<[?, ?], si64>
+  %res = mo.arg_nonzero(%arg) : (!mo.tensor<?, f32>) -> !mo.tensor<[?, ?], si64>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[?, ?], si64>
   mo.output %res : !mo.tensor<[?, ?], si64>
 }
 
-// CHECK: mo.graph @where_1d_fold() -> !mo.tensor<[?, 1], si64> no_inline
-mo.graph @where_1d_fold() -> !mo.tensor<[?, 1], si64> {
+// CHECK: mo.graph @arg_nonzero_1d_fold() -> !mo.tensor<[?, 1], si64> no_inline
+mo.graph @arg_nonzero_1d_fold() -> !mo.tensor<[?, 1], si64> {
   %input = mo.constant {value = #M.dense_array<1.0, 0.0, 1.0> : tensor<3xf32>} : !mo.tensor<[3], f32>
   // CHECK-NEXT: %[[RES:.*]] = mo.constant {value = #M.dense_array<0, 2> : tensor<2x1xsi64>} : !mo.tensor<[2, 1], si64>
   // CHECK-NEXT: %[[REB:.*]] = mo.rebind(%[[RES]]) : !mo.tensor<[2, 1], si64> -> !mo.tensor<[?, 1], si64>
-  %res = mo.where(%input) : (!mo.tensor<[3], f32>) -> !mo.tensor<[?, 1], si64>
+  %res = mo.arg_nonzero(%input) : (!mo.tensor<[3], f32>) -> !mo.tensor<[?, 1], si64>
   // CHECK-NEXT: mo.output %[[REB]] : !mo.tensor<[?, 1], si64>
   mo.output %res : !mo.tensor<[?, 1], si64>
 }
 
-// CHECK: mo.graph @where_1d_parameterized_fold<() -> [[D0:.*]]>() -> !mo.tensor<[[[D0]], 1], si64> no_inline
-mo.graph @where_1d_parameterized_fold<() -> D0>() -> !mo.tensor<[D0, 1], si64> {
+// CHECK: mo.graph @arg_nonzero_1d_parameterized_fold<() -> [[D0:.*]]>() -> !mo.tensor<[[[D0]], 1], si64> no_inline
+mo.graph @arg_nonzero_1d_parameterized_fold<() -> D0>() -> !mo.tensor<[D0, 1], si64> {
   %input = mo.constant {value = #M.dense_array<1.0, 0.0, 1.0> : tensor<3xf32>} : !mo.tensor<[3], f32>
   // CHECK-NEXT: %[[RES:.*]] = mo.constant {value = #M.dense_array<0, 2> : tensor<2x1xsi64>} : !mo.tensor<[2, 1], si64>
   // CHECK-NEXT: kgen.param.declare [[D1:.*]] = <2>
   // CHECK-NEXT: %[[REB:.*]] = mo.rebind(%[[RES]]) : !mo.tensor<[2, 1], si64> -> !mo.tensor<[D1, 1], si64>
-  %res = mo.where<() -> D1>(%input) : (!mo.tensor<[3], f32>) -> !mo.tensor<[D1, 1], si64>
+  %res = mo.arg_nonzero<() -> D1>(%input) : (!mo.tensor<[3], f32>) -> !mo.tensor<[D1, 1], si64>
   // CHECK-NEXT: mo.output<[[D1]]> %[[REB]] : !mo.tensor<[[[D1]], 1], si64>
   mo.output<D1> %res : !mo.tensor<[D1, 1], si64>
 }

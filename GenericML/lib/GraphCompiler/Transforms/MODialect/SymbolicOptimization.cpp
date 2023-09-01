@@ -27,12 +27,12 @@ namespace M::MO {
 
 namespace {
 
-/// A pattern that detects `mo.where` ops preceded by a flattening reshape and a
-/// rank-increasing broadcast, and rewrites them so that the broadcast happens
-/// after the `mo.where` op.
+/// A pattern that detects `mo.arg_nonzero` ops preceded by a flattening reshape
+/// and a rank-increasing broadcast, and rewrites them so that the broadcast
+/// happens after the `mo.arg_nonzero` op.
 ///
-/// This decreases the workload on `mo.where` and improves the compilers ability
-/// to constant fold before and fuse after the where op.
+/// This decreases the workload on `mo.arg_nonzero` and improves the compilers
+/// ability to constant fold before and fuse after the arg_nonzero op.
 ///
 /// Example:
 ///
@@ -40,19 +40,20 @@ namespace {
 ///
 ///   bcast = broadcast(input) : ... -> tensor<[5, 2, 3]>
 ///   flat  = reshape(bcast)   : ... -> tensor<[30]>
-///   res   = where(flat)      : ...
+///   res   = arg_nonzero(flat)      : ...
 /// ===>
-///   flat  = reshape(input)   : ... -> tensor<[6]>
-///   where = where(flat)      : ...
-///   res   = where + broadcast(range(...)))
-struct CommuteBroadcastWithFlatennedWhere : OpRewritePattern<WhereOp> {
+///   flat        = reshape(input)   : ... -> tensor<[6]>
+///   arg_nonzero = arg_nonzero(flat)      : ...
+///   res         = arg_nonzero + broadcast(range(...)))
+struct CommuteBroadcastWithFlatennedArgNonzero
+    : OpRewritePattern<ArgNonzeroOp> {
   using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(MO::WhereOp whereOp,
+  LogicalResult matchAndRewrite(MO::ArgNonzeroOp argNonzeroOp,
                                 PatternRewriter &rewriter) const override {
-    Location loc = whereOp.getLoc();
+    Location loc = argNonzeroOp.getLoc();
 
-    TensorValue inputVal = whereOp.getInput();
+    TensorValue inputVal = argNonzeroOp.getInput();
     TensorType inputTy = inputVal.getType();
     if (!inputTy.hasRank() || inputTy.getRank() != 1)
       return rewriter.notifyMatchFailure(loc, "input is not rank-1");
@@ -91,7 +92,7 @@ struct CommuteBroadcastWithFlatennedWhere : OpRewritePattern<WhereOp> {
     // broadcast, i.e. we roughly implement this:
     // flattened = bcastInput.flatten()
     // NOTE: FS/fs stands for flat size.
-    GraphOp graphOp = whereOp->getParentOfType<GraphOp>();
+    GraphOp graphOp = argNonzeroOp->getParentOfType<GraphOp>();
     KGEN::ParamDeclAttr fsDecl = graphOp.getNewDimParam("FS");
     ArrayRef<TypedAttr> reshapeInputDims = reshapeInputTy.getDims();
     ArrayRef<TypedAttr> trailingDims = reshapeInputDims.drop_front(rankDiff);
@@ -106,15 +107,15 @@ struct CommuteBroadcastWithFlatennedWhere : OpRewritePattern<WhereOp> {
 
     // We now find the nonzero elements in the flattened (unbroadcasted) input.
     // We roughly implement the following:
-    // where_res = np.expand_dims(np.where(flattened)[0], axis=1)
+    // argNonzero_res = np.expand_dims(np.argNonzero(flattened)[0], axis=1)
     // Note we refer to the number of unique elements as W.
     KGEN::ParamDeclAttr wDecl = graphOp.getNewDimParam("W");
     auto wRef = KGEN::ParamDeclRefAttr::get(wDecl);
     IntegerType si64Ty = rewriter.getIntegerType(64, /*isSigned=*/true);
-    SmallVector<TypedAttr> whereDims{wRef, rewriter.getIndexAttr(1)};
-    auto whereTy = TensorType::get(whereDims, si64Ty);
-    auto newWhereOp = rewriter.create<WhereOp>(loc, whereTy, flattened,
-                                               ParamDeclArrayAttr::get(wDecl));
+    SmallVector<TypedAttr> argNonzeroDims{wRef, rewriter.getIndexAttr(1)};
+    auto argNonzeroTy = TensorType::get(argNonzeroDims, si64Ty);
+    auto newArgNonzeroOp = rewriter.create<ArgNonzeroOp>(
+        loc, argNonzeroTy, flattened, ParamDeclArrayAttr::get(wDecl));
 
     // Next we create the first auxiliary value, roughly the following range:
     // range = np.arange(0, FS*BS, FS)
@@ -149,19 +150,19 @@ struct CommuteBroadcastWithFlatennedWhere : OpRewritePattern<WhereOp> {
     auto rangeExpanded =
         rewriter.create<Static::ReshapeOp>(loc, expandedTy, range);
 
-    // We will now add the expanded range to the transpose of the new where op's
-    // output, more or less like this:
-    // commonShape = np.broadcast_shapes(where_res.T.shape, aux2.shape)
-    // indexes = np.broadcast_to(where_res.T, commonShape)
+    // We will now add the expanded range to the transpose of the new argNonzero
+    // op's output, more or less like this: commonShape =
+    // np.broadcast_shapes(argNonzero_res.T.shape, aux2.shape) indexes =
+    // np.broadcast_to(argNonzero_res.T, commonShape)
     //            + np.broadcast_to(aux2, commonShape)
     // Notice that the common shape is always [BS, W].
 
-    // We start with transposing the result of where.
+    // We start with transposing the result of argNonzero.
     auto perm = rewriter.create<ConstantOp>(loc, SmallVector<int64_t>{1, 0});
     auto transposeTy = TensorType::get(
-        SmallVector<TypedAttr>{whereDims[1], whereDims[0]}, si64Ty);
+        SmallVector<TypedAttr>{argNonzeroDims[1], argNonzeroDims[0]}, si64Ty);
     auto wTranspose =
-        rewriter.create<TransposeOp>(loc, transposeTy, newWhereOp, perm);
+        rewriter.create<TransposeOp>(loc, transposeTy, newArgNonzeroOp, perm);
 
     // Then we add the broadcasted transposed indexed and the broadcasted
     // expanded range.
@@ -172,17 +173,19 @@ struct CommuteBroadcastWithFlatennedWhere : OpRewritePattern<WhereOp> {
         rewriter.create<Static::BroadcastToOp>(loc, bcastResTy, wTranspose),
         rewriter.create<Static::BroadcastToOp>(loc, bcastResTy, rangeExpanded));
 
-    // Make sure we don't drop parameter declarations from the original where.
-    ArrayRef<ParamDeclAttr> oldDecls = whereOp.getOutputParamDecls();
-    assert(oldDecls.size() == 1 && "mo.where declares more than one new param");
-    whereOp.setOutputParamDecls({});
+    // Make sure we don't drop parameter declarations from the original
+    // argNonzero.
+    ArrayRef<ParamDeclAttr> oldDecls = argNonzeroOp.getOutputParamDecls();
+    assert(oldDecls.size() == 1 &&
+           "mo.argNonzero declares more than one new param");
+    argNonzeroOp.setOutputParamDecls({});
     auto numResAttr = KGEN::ParamOperatorAttr::get(
         KGEN::POC::MulNuw, SmallVector<TypedAttr>{bsAttr, wRef});
     rewriter.create<KGEN::ParamDeclareOp>(loc, oldDecls[0], numResAttr);
 
-    // Replace the original where op, with the new result.
-    rewriter.replaceOpWithNewOp<Static::ReshapeOp>(whereOp, whereOp.getType(),
-                                                   indexes);
+    // Replace the original argNonzero op, with the new result.
+    rewriter.replaceOpWithNewOp<Static::ReshapeOp>(
+        argNonzeroOp, argNonzeroOp.getType(), indexes);
     return success();
   }
 };
@@ -1513,7 +1516,7 @@ struct SymbolicOptimizationPass
                  SinkSameReshapesThroughElementwiseBinaryOp>(context);
 
     // Broadcast swimming.
-    patterns.add<CommuteBroadcastWithFlatennedWhere>(context);
+    patterns.add<CommuteBroadcastWithFlatennedArgNonzero>(context);
     Static::BroadcastToOp::getCanonicalizationPatterns(patterns, context);
 
     // Miscellaneous rewrites.

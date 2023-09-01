@@ -2107,10 +2107,10 @@ def MO_ScatterNdOp : MO_TensorOp<"scatter_nd", [
 }
 
 //===----------------------------------------------------------------------===//
-// WhereOp
+// ArgNonzeroOp
 //===----------------------------------------------------------------------===//
 
-def MO_WhereOp : MO_TensorOp<"where", [
+def MO_ArgNonzeroOp : MO_TensorOp<"arg_nonzero", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>
 ]> {
   let summary = "Returns locations of nonzero values in a tensor";
@@ -2126,7 +2126,7 @@ def MO_WhereOp : MO_TensorOp<"where", [
     %0 = mo.constant {
       value = #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8> : tensor<3x3xsi32>
     } : !mo.tensor<[3, 3], si32>
-    %1 = mo.where(%0) : (!mo.tensor<[3, 3], si32>) -> !mo.tensor<[?, 2], si32>
+    %1 = mo.arg_nonzero(%0) : (!mo.tensor<[3, 3], si32>) -> !mo.tensor<[?, 2], si32>
     ```
     }];
 

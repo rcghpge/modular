@@ -335,7 +335,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_ELEMWISE(MO::SubOp),
       MO_TO_ELEMWISE(MO::TanhOp),
       MO_TO_KERNEL(MO::TransposeOp),
-      MO_TO_KERNEL(MO::WhereOp),
+      MO_TO_KERNEL(MO::ArgNonzeroOp),
       MO_TO_ELEMWISE(MO::XorOp),
 
       // These kernels we don't jit but we almost certainly never actually call them.

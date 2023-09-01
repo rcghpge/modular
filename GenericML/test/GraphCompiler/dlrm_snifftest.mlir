@@ -251,7 +251,7 @@ mo.graph @dlrm(%arg0: !mo.tensor<[?, 8, 100], si32>, %arg1: !mo.tensor<[?, 256],
   %243 = mo.broadcast_to(%17, %230) : (!mo.tensor<[], f32>, !mo.tensor<[3], si32>) -> !mo.tensor<[?, ?, ?], f32>
   %244 = mo.linalg.band_part(%243, %3, %20, %6) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], bool>) -> !mo.tensor<[?, ?, ?], f32>
   %245 = mo.reshape(%244, %18) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[1], si32>) -> !mo.tensor<[?], f32>
-  %246 = mo.where(%245) : (!mo.tensor<[?], f32>) -> !mo.tensor<[?, 1], si64>
+  %246 = mo.arg_nonzero(%245) : (!mo.tensor<[?], f32>) -> !mo.tensor<[?, 1], si64>
   %247 = mo.shape_of(%246) : (!mo.tensor<[?, 1], si64>) -> !mo.tensor<[2], si64>
   %248 = mo.shape_of(%247) : (!mo.tensor<[2], si64>) -> !mo.tensor<[1], si32>
   %249 = mo.static.reshape(%248) : !mo.tensor<[1], si32> -> !mo.tensor<[], si32>

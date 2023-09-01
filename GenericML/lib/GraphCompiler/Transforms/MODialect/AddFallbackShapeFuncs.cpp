@@ -65,7 +65,7 @@ HAS_FALLBACK(MO::ReshapeOp)
 HAS_FALLBACK(MO::SliceOp)
 HAS_FALLBACK(MO::SplitOp)
 HAS_FALLBACK(MO::TransposeOp)
-HAS_FALLBACK(MO::WhereOp)
+HAS_FALLBACK(MO::ArgNonzeroOp)
 
 // Eventually all ops must be accounted for here. They either must have a
 // fallback or an explict vouch that they need no fallback.
@@ -119,7 +119,7 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::SliceOp)
       CALL_FALLBACK(MO::SplitOp)
       CALL_FALLBACK(MO::TransposeOp)
-      CALL_FALLBACK(MO::WhereOp)
+      CALL_FALLBACK(MO::ArgNonzeroOp)
 
       return mlir::WalkResult::advance();
     });
@@ -310,9 +310,9 @@ void Fallback<MO::TransposeOp>::build(GraphOp &graph, OpBuilder &builder,
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
 }
 
-void Fallback<MO::WhereOp>::build(GraphOp &graph, OpBuilder &builder,
-                                  MO::WhereOp op) {
-  buildForOpResult(graph, builder, op, "where_shape", op->getOperands(),
+void Fallback<MO::ArgNonzeroOp>::build(GraphOp &graph, OpBuilder &builder,
+                                       MO::ArgNonzeroOp op) {
+  buildForOpResult(graph, builder, op, "arg_nonzero_shape", op->getOperands(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{0});
 }
 
