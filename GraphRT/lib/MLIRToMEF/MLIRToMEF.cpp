@@ -932,13 +932,13 @@ AttributesEmitter::emitMultiLineStringAttribute(MultiLineStringAttr attr,
 
 MEFOffset AttributesEmitter::emitTargetInfoAttribute(TargetInfoAttr attr,
                                                      Location loc) {
-  ErrorOr<std::string> errOrStr = serializeTargetInfoAttrToJSON(attr);
-  if (errOrStr.isError()) {
-    entities.emitError(loc)
-        << "unable to represent TargetInfoAttr: " << errOrStr.getError();
+  auto runtimeTargetInfoOr = toRuntimeTargetInfo(attr);
+  if (runtimeTargetInfoOr) {
+    entities.emitError(loc) << "unable to represent TargetInfoAttr: "
+                            << runtimeTargetInfoOr.getError();
     return {0};
   }
-  return emitStringAttribute(*errOrStr);
+  return emitStringAttribute(runtimeTargetInfoOr->serializeToJSON());
 }
 
 namespace {

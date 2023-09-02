@@ -17,6 +17,7 @@
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "Support/Compiler/OperationUtils.h"
 #include "Support/Host.h"
+#include "Support/MArchTarget/MArchTarget.h"
 #include "Support/ML/CommonAttributes.h"
 #include "Support/STLExtras.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
@@ -1046,21 +1047,16 @@ struct MOToPrimitivesPass
 };
 } // namespace
 
+// CAUTION: About to be refactored.
 ErrorOr<TargetInfoAttr>
 MOToPrimitivesPass::getTargetInfoAttr(MLIRContext *ctx) {
-  ErrorOr<HostMachineInfo> errOrHost = getHostMachineInfo();
-  if (errOrHost.isError()) {
-    return Error(Twine("unable to determine host machine info: ") +
-                 errOrHost.getError());
+  ErrorOr<TargetInfo> infoOrErr = getHostTargetInfo();
+  if (infoOrErr) {
+    return Error(Twine("unable to construct target info: ") +
+                 infoOrErr.getError());
   }
 
-  ErrorOr<TargetInfoAttr> errOrInfo = getTargetInfoFor(ctx, *errOrHost);
-  if (errOrInfo.isError()) {
-    return Error(Twine("unable to construct target info info: ") +
-                 errOrInfo.getError());
-  }
-
-  return *errOrInfo;
+  return fromRuntimeTargetInfo(ctx, *infoOrErr);
 }
 
 void MOToPrimitivesPass::runOnOperation() {
