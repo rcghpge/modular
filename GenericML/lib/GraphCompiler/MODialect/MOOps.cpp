@@ -21,6 +21,7 @@
 #include "Support/MDialect/MAttrs.h"
 #include "Support/ML/Permutation.h"
 #include "Support/ML/RangeUtils.h"
+#include "mlir/Analysis/SymbolTableAnalysis.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/FunctionImplementation.h"
 #include "mlir/IR/IRMapping.h"
