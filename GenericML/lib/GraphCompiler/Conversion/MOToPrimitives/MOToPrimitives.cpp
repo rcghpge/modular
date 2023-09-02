@@ -50,13 +50,16 @@ class MOGraphLowering {
 public:
   MOGraphLowering(MO::GraphOp graph, TypeConverter &typeConverter,
                   llvm::StringRef compiledFrameworkLabel,
-                  size_t minimumCpuAlignment, TargetInfoAttr targetInfo)
+                  size_t minimumCpuAlignment,
+                  DeviceSpecCollectionAttr deviceSpecCollectionAttr)
       : loweringState(graph, typeConverter, compiledFrameworkLabel,
-                      minimumCpuAlignment, targetInfo) {}
+                      minimumCpuAlignment, deviceSpecCollectionAttr) {}
 
   /// Lower the mo.graph to mgp.model.
   LogicalResult run();
 
+  LogicalResult setupJitContext(Location loc);
+  LogicalResult setupCheckRuntime(Location loc);
   LogicalResult createModelOp();
 
   /// Lowers the mo.output op to the mef.output for the final results.
@@ -129,6 +132,46 @@ private:
 // Creation of the init/execute invokables
 //===----------------------------------------------------------------------===//
 
+LogicalResult MOGraphLowering::setupJitContext(Location loc) {
+  // Setup the JIT context, which will hold function pointers for the loaded
+  // kernels. This requires an !mgp.context slot.
+  uint64_t slot = loweringState.getInitMgpContext().getNumSlots();
+
+  mlir::OperationState opState{loc, "mop.create_jit_context"};
+  opState.addAttribute(
+      "slot", loweringState.getInitOpBuilder().getUI32IntegerAttr(slot));
+  opState.addOperands(
+      {loweringState.getInitChain(), loweringState.getInitMgpContext()});
+  opState.addTypes({loweringState.getInitChain().getType()});
+  Operation *createJitContextOp =
+      loweringState.getInitOpBuilder().create(opState);
+
+  loweringState.setJitCtx(createJitContextOp);
+  loweringState.setJitCtxSlot(slot);
+  loweringState.getInitMgpContext().setNumSlots(slot + 1);
+  loweringState.setInitChain(createJitContextOp->getResult(0));
+  return success();
+}
+
+LogicalResult MOGraphLowering::setupCheckRuntime(Location loc) {
+  if (loweringState.getDeviceSpecCollection()) {
+    // Emit code into the 'init' block to check the runtime environment
+    // satisfies all the compile-time device specs. This requires an
+    // !mgp.context slot to hold the calculated device spec map.
+    uint64_t slot = loweringState.getInitMgpContext().getNumSlots();
+    auto checkRuntimeOp =
+        loweringState.getInitOpBuilder().create<MGP::CheckRuntimeOp>(
+            loc,
+            /*inChain=*/loweringState.getInitChain(),
+            /*theContext=*/loweringState.getInitMgpContext(),
+            /*aSlot=*/slot,
+            /*bDevices=*/loweringState.getDeviceSpecCollection());
+    loweringState.getInitMgpContext().setNumSlots(slot + 1);
+    loweringState.setInitChain(checkRuntimeOp.getOutChain());
+  }
+  return success();
+}
+
 // Create the mgp.model and the regions for the init/execute phases.
 LogicalResult MOGraphLowering::createModelOp() {
   MO::GraphOp &graph = loweringState.getGraph();
@@ -152,23 +195,16 @@ LogicalResult MOGraphLowering::createModelOp() {
   // Collect additional attributes to include with the MGP::ModelOp to guide
   // the MEF executor.
   SmallVector<NamedAttribute> extraAttrs;
-  if (loweringState.getTargetInfoAttr()) {
-    // Capture the targetInfoAttr so we can check the runtime host satisfies
-    // its requirements.
-    extraAttrs.emplace_back(b.getStringAttr(kMgpModelTargetInfo),
-                            loweringState.getTargetInfoAttr());
-  }
 
   ArrayAttr argNamesAttr =
       graph->getAttrOfType<ArrayAttr>(kMgpModelArgumentNames);
   ArrayAttr resultNamesAttr =
       graph->getAttrOfType<ArrayAttr>(kMgpModelResultNames);
+  assert((argNamesAttr == nullptr) == (resultNamesAttr == nullptr) &&
+         "expected either both or neither of the `argument_names` and "
+         "`result_names` attributes.");
   if (argNamesAttr) {
-    // Set the argument and result names attributes `argument_names` and
-    // `result_names` on the `mgp.model` op's `theExtraAttrs` attribute.
-    assert(resultNamesAttr &&
-           "expected either both or neither of the `argument_names` and "
-           "`result_names` attributes.");
+    // Set the `argument_names` and `result_names` attributes.
     extraAttrs.emplace_back(b.getStringAttr(kMgpModelArgumentNames),
                             argNamesAttr);
     extraAttrs.emplace_back(b.getStringAttr(kMgpModelResultNames),
@@ -197,28 +233,22 @@ LogicalResult MOGraphLowering::createModelOp() {
       loweringState.getInitOpBuilder().create<GRT::ChainCreateOp>(
           graph.getLoc()));
 
+  // Create the !mgp.context. Its numSlots attribute will be incremented
+  // as needed.
   loweringState.setInitMgpContext(
       loweringState.getInitOpBuilder().create<MGP::ContextCreateOp>(
-          graph.getLoc(), 1));
+          graph.getLoc(), /*numSlots=*/0));
 
-  // The slot in the mgp context reserved for the JIT context which loads the
-  // compiled binaries.
-  loweringState.setJitCtxSlot(0);
+  // Setup the JIT context, which will hold function pointers for the loaded
+  // kernels. This requires an !mgp.context slot.
+  if (failed(setupJitContext(graph.getLoc())))
+    return failure();
 
-  // Build up the MLIR state for the global JIT context.
-  mlir::OperationState opState{graph.getLoc(), "mop.create_jit_context"};
-  opState.addAttribute("slot",
-                       loweringState.getInitOpBuilder().getUI32IntegerAttr(
-                           loweringState.getJitCtxSlot()));
-  opState.addOperands(
-      {loweringState.getInitChain(), loweringState.getInitMgpContext()});
-  opState.addTypes({loweringState.getInitChain().getType()});
-
-  // Create the context building op.
-  mlir::Operation *jit = loweringState.getInitOpBuilder().create(opState);
-
-  loweringState.setJitCtx(jit);
-  loweringState.setInitChain(jit->getResult(0));
+  // Emit code into the 'init' block to check the runtime environment
+  // satisfies all the compile-time device specs. This requires an
+  // !mgp.context slot to hold the calculated device spec map.
+  if (failed(setupCheckRuntime(graph.getLoc())))
+    return failure();
 
   // Initialize the execute state.
   Block *executeBlock = loweringState.getModelOp().getExecuteBlock();
@@ -1010,8 +1040,6 @@ LogicalResult MOGraphLowering::run() {
 
   OpBuilder b(graph);
   MGP::ModelOp model = loweringState.getModelOp();
-  mlir::sortTopologically(model.getInitBlock());
-  mlir::sortTopologically(model.getExecuteBlock());
   MGP::fixupIsolatedFromAbove(b, model);
   // Ok, we're done with the original mo.graph, so remove it.
   graph.erase();
@@ -1029,35 +1057,9 @@ struct MOToPrimitivesPass
     : public MGP::impl::MOToPrimitivesBase<MOToPrimitivesPass> {
   using MOToPrimitivesBase::MOToPrimitivesBase;
 
-  /// Returns a TargetInfoAttr capturing the assumptions about the runtime
-  /// host architecture made during compilation of the model.
-  ///
-  /// TODO(#17361):
-  ///  - Support cross-compilation.
-  ///  - Cf handling of which runtime so to load in CXXDriverApi.cpp
-  ///    getFeatureSuffixes. Reconcile?
-  ///  - Cf construction of TargetInfoAttr in MArchTarget.cpp
-  ///    getMArchFeatures used by the KGENed kernels. Reconsile?
-  ///  - TargetInfoAttr is directly serialized by MLIRToMEF rather
-  ///    than supported as a first class structured attribute.
-  ///    Support as first-class attribute?
-  ErrorOr<TargetInfoAttr> getTargetInfoAttr(MLIRContext *ctx);
-
   void runOnOperation() override;
 };
 } // namespace
-
-// CAUTION: About to be refactored.
-ErrorOr<TargetInfoAttr>
-MOToPrimitivesPass::getTargetInfoAttr(MLIRContext *ctx) {
-  ErrorOr<TargetInfo> infoOrErr = getHostTargetInfo();
-  if (infoOrErr) {
-    return Error(Twine("unable to construct target info: ") +
-                 infoOrErr.getError());
-  }
-
-  return fromRuntimeTargetInfo(ctx, *infoOrErr);
-}
 
 void MOToPrimitivesPass::runOnOperation() {
   ModuleOp theModule = getOperation();
@@ -1076,24 +1078,26 @@ void MOToPrimitivesPass::runOnOperation() {
        llvm::make_early_inc_range(theModule.getOps<MOGG::MojoRegisterOp>()))
     reg.erase();
 
-  TargetInfoAttr targetInfoAttr; // default null
-  if (includeHostTargetInfo.getValue()) {
-    // Capture host's target info within the generated mgp.models.
-    ErrorOr<TargetInfoAttr> errOrInfo =
-        getTargetInfoAttr(theModule.getContext());
-    if (errOrInfo.isError()) {
-      theModule->emitError(errOrInfo.getError());
-      return signalPassFailure();
-    }
-    targetInfoAttr = *errOrInfo;
+  // TEMPORARY: Until mo.graphs convey a DeviceSpecCollectionAttr we create a
+  // default one representing the current CPU host. In this way any assumptions
+  // baked into our code due to the use of -march=native can be checked
+  // before the model is executed.
+  ErrorOr<DeviceSpecCollection> defaultDeviceSpecCollectionOr =
+      getHostDeviceSpecCollection();
+  if (defaultDeviceSpecCollectionOr) {
+    theModule->emitError(defaultDeviceSpecCollectionOr.getError());
+    return signalPassFailure();
   }
+  DeviceSpecCollectionAttr defaultDeviceSpecCollectionAttr =
+      fromRuntimeDeviceSpecs(&ctx, *defaultDeviceSpecCollectionOr);
 
   // Convert each mo.graph into a mgp.model.
   for (auto graphOp :
        llvm::make_early_inc_range(theModule.getOps<MO::GraphOp>())) {
     if (failed(MOGraphLowering(graphOp, converter,
                                compiledFrameworkLabel.getValue(),
-                               minimumCpuAlignment.getValue(), targetInfoAttr)
+                               minimumCpuAlignment.getValue(),
+                               defaultDeviceSpecCollectionAttr)
                    .run()))
       return signalPassFailure();
   }

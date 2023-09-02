@@ -16,6 +16,8 @@
 #include "LLCL/Runtime/AsyncValue.h"
 #include "LLCL/Runtime/AsyncValueRef.h"
 #include "LLCL/Support/SpinWaiter.h"
+#include "Support/DeviceSpecs.h"
+#include "Support/MArchTarget/MArchTarget.h"
 #include "Support/ML/SizeUtils.h"
 #include "Support/ML/TensorShape.h"
 #include "llvm/Support/Debug.h"
@@ -452,6 +454,39 @@ static Chain mgp_state_slot_create(Chain inChain, Context &ctx,
       LLCL::WorkProfilerEntry::create("mgp.state_slot.create"));
   ctx.emplaceStateSlot<DefaultStateSlot>(*slot, *numBuffers);
   return {};
+}
+
+//===----------------------------------------------------------------------===//
+// mgp.create_runtime
+//===----------------------------------------------------------------------===//
+
+static void mgp_check_runtime(Chain inChain, Context &ctx,
+                              Result<Chain> outChain, MEFAttr<uint64_t> aSlot,
+                              MEFAttr<StringRef> bDevicesJSON) {
+  TimeTraceScope scope(LLCL::WorkProfilerEntry::create("mgp.check_runtime"));
+
+  ErrorOr<DeviceSpecCollection> requiredDeviceSpecsOr =
+      DeviceSpecCollection::deserializeFromJSON(*bDevicesJSON);
+  if (requiredDeviceSpecsOr)
+    return std::move(outChain).setToError(requiredDeviceSpecsOr.takeError());
+
+  // TODO: Merge in other exotic devices without strong coupling.
+  ErrorOr<DeviceSpecCollection> providedDeviceSpecsOr =
+      getHostDeviceSpecCollection();
+  if (providedDeviceSpecsOr)
+    return std::move(outChain).setToError(providedDeviceSpecsOr.takeError());
+
+  ErrorOr<DeviceSpecMap> deviceSpecMapOr =
+      providedDeviceSpecsOr->reconcileDeviceSpecs(*requiredDeviceSpecsOr);
+  if (deviceSpecMapOr) {
+    return std::move(outChain).setToError(
+        Error(Twine("model cannot be executed in the current environment: ") +
+              deviceSpecMapOr.getError()));
+  }
+
+  ctx.emplaceStateSlot<DeviceSpecMap>(*aSlot, /*numBuffers=*/0,
+                                      std::move(*deviceSpecMapOr));
+  std::move(outChain).emplace();
 }
 
 //===----------------------------------------------------------------------===//
@@ -893,6 +928,7 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.set", mgp_cpu_buffer_set);
   ADD_PRIMITIVE(registry, "mgp.context.create", mgp_context_create);
   ADD_PRIMITIVE(registry, "mgp.state_slot.create", mgp_state_slot_create);
+  ADD_PRIMITIVE(registry, "mgp.check_runtime", mgp_check_runtime);
   ADD_PRIMITIVE(registry, "mgp.cpu.tensor_spec.create",
                 mgp_cpu_tensor_spec_create);
   ADD_PRIMITIVE(registry, "mgp.cpu.tensor_spec.create.dynamic",

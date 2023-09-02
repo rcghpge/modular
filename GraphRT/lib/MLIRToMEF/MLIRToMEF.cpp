@@ -675,7 +675,8 @@ private:
   MEFOffset emitTypeAttribute(Type type, Location loc);
   MEFOffset emitMultiLineStringAttribute(MultiLineStringAttr attr,
                                          Location loc);
-  MEFOffset emitTargetInfoAttribute(TargetInfoAttr attr, Location loc);
+  MEFOffset emitDeviceSpecCollectionAttribute(DeviceSpecCollectionAttr attr,
+                                              Location loc);
   EntityTable &entities;
 
   friend class TypeEmitter;
@@ -930,15 +931,17 @@ AttributesEmitter::emitMultiLineStringAttribute(MultiLineStringAttr attr,
   return emitStringAttribute(storage);
 }
 
-MEFOffset AttributesEmitter::emitTargetInfoAttribute(TargetInfoAttr attr,
-                                                     Location loc) {
-  auto runtimeTargetInfoOr = toRuntimeTargetInfo(attr);
-  if (runtimeTargetInfoOr) {
-    entities.emitError(loc) << "unable to represent TargetInfoAttr: "
-                            << runtimeTargetInfoOr.getError();
+MEFOffset AttributesEmitter::emitDeviceSpecCollectionAttribute(
+    DeviceSpecCollectionAttr attr, Location loc) {
+  ErrorOr<DeviceSpecCollection> deviceSpecsOr = toRuntimeDeviceSpecs(attr);
+  if (deviceSpecsOr) {
+    entities.emitError(loc)
+        << "unable to represent DeviceSpecsAttr: " << deviceSpecsOr.getError();
     return {0};
   }
-  return emitStringAttribute(runtimeTargetInfoOr->serializeToJSON());
+  // Encode the attribute in JSON. We'll decode at runtime into a
+  // DeviceSpecCollection.
+  return emitStringAttribute(deviceSpecsOr->serializeToJSON());
 }
 
 namespace {
@@ -1225,8 +1228,8 @@ MEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr,
   if (auto multilineAttr = dyn_cast<MultiLineStringAttr>(attr))
     return emitMultiLineStringAttribute(multilineAttr, loc);
 
-  if (auto targetInfoAttr = dyn_cast<TargetInfoAttr>(attr))
-    return emitTargetInfoAttribute(targetInfoAttr, loc);
+  if (auto deviceSpecCollectionAttr = dyn_cast<DeviceSpecCollectionAttr>(attr))
+    return emitDeviceSpecCollectionAttribute(deviceSpecCollectionAttr, loc);
 
   entities.emitError(loc) << "unsupported attribute " << attr;
   return {0};

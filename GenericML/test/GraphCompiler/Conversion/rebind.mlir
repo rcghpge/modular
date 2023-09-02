@@ -1,6 +1,6 @@
 // RUN: mo-opt %s --mo-to-mogg --mo-to-primitives --allow-unregistered-dialect --cse --canonicalize | FileCheck %s
 
-// CHECK: mgp.model @static_ranks_int_to_unknown : tf {{.*}} init {
+// CHECK: mgp.model @static_ranks_int_to_unknown : tf init {
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
 // CHECK-SAME: %[[ARG2:.*]]: !mgp.cpu.tensor<42x?xf32>) -> (!mef.chain, !mgp.cpu.tensor<?x?xf32>) {
 // CHECK:   %[[CDIM:.*]] = mip.constant.index 42
@@ -17,7 +17,7 @@ mo.graph @static_ranks_int_to_unknown<D0, D1>(
   mo.output %res : !mo.tensor<[?, D0], f32>
 }
 
-// CHECK: mgp.model @static_ranks_unknown_to_int : tf {{.*}} init {
+// CHECK: mgp.model @static_ranks_unknown_to_int : tf init {
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
 // CHECK-SAME: %[[ARG2:.*]]: !mgp.cpu.tensor<?x?xf32>) -> (!mef.chain, !mgp.cpu.tensor<42x?xf32>) {
 // CHECK:   %[[BUF:.*]], %[[SPEC:.*]] = mgp.cpu.tensor.extract %[[ARG2]] : !mgp.cpu.tensor<?x?xf32>
@@ -33,7 +33,7 @@ mo.graph @static_ranks_unknown_to_int<D0, D1 -> ()>(
   mo.output %res : !mo.tensor<[42, D0], f32>
 }
 
-// CHECK: mgp.model @static_ranks_unknown_to_static : tf {{.*}} init {
+// CHECK: mgp.model @static_ranks_unknown_to_static : tf init {
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
 // CHECK-SAME: %[[ARG2:.*]]: !mgp.cpu.tensor<?x?xf32>) -> (!mef.chain, !mgp.cpu.tensor<42x10xf32>) {
 // CHECK:   %[[BUF:.*]], %[[SPEC:.*]] = mgp.cpu.tensor.extract %[[ARG2]] : !mgp.cpu.tensor<?x?xf32>

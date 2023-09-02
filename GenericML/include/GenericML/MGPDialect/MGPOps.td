@@ -898,6 +898,49 @@ def StateSlotCreateOp : MGP_Op<"state_slot.create"> {
 }
 
 //===----------------------------------------------------------------------===//
+// CheckRuntimeOp
+//===----------------------------------------------------------------------===//
+
+def CheckRuntimeOp : MGP_Op<"check_runtime"> {
+  let summary = "Reconcile the devices available at runtime with those assumed "
+                "at compile time.";
+  let description = [{
+    This op probes the execution environment to confirm all the computation
+    devices required by the model are available. The model requirements are
+    expressed as an `#M.device_spec_collection` attribute. The resulting
+    device specification map (a C++ `DeviceSpecMap`) is made available for use
+    by other primitives within the given `!mgp.context` slot. An error is
+    raised if a requirement cannot be met.
+
+    Example:
+    ```mlir
+    %ch0 : !mef.chain
+    %ctx : !mgp.context
+    %ch1 = mgp.check_runtime %ch0, %cxt[3],
+             #M.device_spec_collection<
+               host = <"cpu", 0>,
+               devices = [
+                 <ref = <"cpu", 0>,
+                  target = <triple="x86_64-unknown-linux-gnu", cpu="znver3", features="+avx2">>,
+                 <ref = <"cuda", 0>,
+                  target = <triple="nvptx64-nvidia-cuda", features="+compute_80">>]>
+    %ch1 : !mef.chain
+    ```
+  }];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins ChainType:$inChain,
+                       MGP_ContextType:$theContext,
+                       UI64Attr:$aSlot,                       // 0
+                       M_DeviceSpecCollectionAttr:$bDevices); // 1
+  let results = (outs ChainType:$outChain);
+  let assemblyFormat = [{
+    $inChain `,` $theContext `[` $aSlot `]` `,` $bDevices attr-dict
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // CpuTensorSpecCreateOp
 //===----------------------------------------------------------------------===//
 
@@ -1660,10 +1703,13 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">, Symbol,
     tools can inspect to determine which API to establish to mediate
     between framework-specific values and representations used by the model.
 
-    The input and result types in the signature cannot depend on any
-    framework- or mgp-specific types, and must instead use only MLIR builtin
-    (eg tensor), Modular (eg !M.array) and MEF (eg !mef.unknown) types.
-    (Perhaps we need a !mef.anyasyncvalue type?).
+    Currently only input and result types which implement the `ShapedType`
+    interface are supported.
+
+    Additional attributes may be supplied. Currently the following attribute
+    names have special meaning:
+     - argument_names
+     - result_names
 
     Example:
     ```mlir

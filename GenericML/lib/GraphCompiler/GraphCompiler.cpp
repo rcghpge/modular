@@ -87,7 +87,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   // Create the options for MoToPrimitives.
   MGP::MOToPrimitivesOptions moToPrimOpts;
   moToPrimOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
-  moToPrimOpts.includeHostTargetInfo = opts.includeHostTargetInfo;
   if (opts.compiledFrameworkLabel.hasValue())
     moToPrimOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel;
 

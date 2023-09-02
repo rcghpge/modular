@@ -28,17 +28,21 @@ class MOGraphLoweringState {
 public:
   MOGraphLoweringState(M::MO::GraphOp graph, TypeConverter &typeConverter,
                        llvm::StringRef compiledFrameworkLabel,
-                       size_t minimumCpuAlignment, TargetInfoAttr targetInfo)
+                       size_t minimumCpuAlignment,
+                       DeviceSpecCollectionAttr deviceSpecCollectionAttr)
       : graph(graph), typeConverter(typeConverter),
-        common(compiledFrameworkLabel, minimumCpuAlignment, targetInfo),
+        common(compiledFrameworkLabel, minimumCpuAlignment,
+               deviceSpecCollectionAttr),
         init(graph.getContext()), execute(graph.getContext()) {}
 
   /// Common state used by both the init and execute phases.
   struct CommonState {
     explicit CommonState(llvm::StringRef compiledFrameworkLabel,
-                         size_t minimumCpuAlignment, TargetInfoAttr targetInfo)
+                         size_t minimumCpuAlignment,
+                         DeviceSpecCollectionAttr deviceSpecCollectionAttr)
         : compiledFrameworkLabel(compiledFrameworkLabel),
-          minimumCpuAlignment(minimumCpuAlignment), targetInfo(targetInfo) {}
+          minimumCpuAlignment(minimumCpuAlignment),
+          deviceSpecCollectionAttr(deviceSpecCollectionAttr) {}
 
     /// The top-level mgp.model operation.
     MGP::ModelOp modelOp;
@@ -50,11 +54,8 @@ public:
     /// allocated)
     size_t minimumCpuAlignment;
 
-    /// Assumptions about the machine being targeted, including the LLVM
-    /// triple and LLVM CPU features. This is captured within the generated MGP
-    /// model so that we fail gracefully if the runtime host does not match
-    /// the target.
-    TargetInfoAttr targetInfo;
+    /// Devices expected to be available at runtime.
+    DeviceSpecCollectionAttr deviceSpecCollectionAttr;
 
     CommonState(const CommonState &) = delete;
     void operator=(const CommonState &) = delete;
@@ -149,8 +150,10 @@ public:
   /// Return the graph being lowered.
   MO::GraphOp &getGraph() { return graph; }
 
-  /// Returns information about the target being lowered to.
-  TargetInfoAttr getTargetInfoAttr() const { return common.targetInfo; }
+  /// Returns information about the devices we expect at runtime.
+  DeviceSpecCollectionAttr getDeviceSpecCollection() const {
+    return common.deviceSpecCollectionAttr;
+  }
 
   /// Return type converter for lowering known MO types into MGP ones.
   TypeConverter &getTypeConverter() { return typeConverter; }

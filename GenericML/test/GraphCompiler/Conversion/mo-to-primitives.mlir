@@ -1,11 +1,7 @@
 // RUN: mo-opt %s --mo-to-primitives --allow-unregistered-dialect | FileCheck %s
 
-// CHECK-LABEL: mgp.model @constants_with_multiple_returns : tf {{.*}} init {
-// CHECK-NEXT:        %0 = grt.chain.create ()
-// CHECK-NEXT:        %1 = mgp.context.create 1
-// CHECK-NEXT:        %2 = "mop.create_jit_context"(%0, %1) {slot = 0 : ui32}
-// CHECK-NEXT:        mef.output %2, %1 : !mef.chain, !mgp.context
-// CHECK-NEXT:      } execute (
+// CHECK-LABEL: mgp.model @constants_with_multiple_returns : tf init {
+// CHECK:      } execute (
 // CHECK-SAME:   %[[ARG0:.*]]: !mef.chain, %[[ARG1:.*]]: !mgp.context,
 // CHECK-SAME:   %[[ARG2:.*]]: !mgp.cpu.tensor<2xf32>, %[[ARG3:.*]]: !mgp.cpu.tensor<5x1xf32>
 // CHECK-SAME: ) -> (
@@ -29,7 +25,7 @@ mo.graph @constants_with_multiple_returns(%arg0: !mo.tensor<[2], f32>, %arg1: !m
   mo.output %arg0, %0, %0, %arg1, %arg1, %1 : !mo.tensor<[2], f32>, !mo.tensor<[3], f32>, !mo.tensor<[3], f32>, !mo.tensor<[5, 1], f32>, !mo.tensor<[5, 1], f32>, !mo.tensor<[4], si8>
 }
 
-// CHECK-LABEL: mgp.model @foo : tf {{.*}} init {
+// CHECK-LABEL: mgp.model @foo : tf init {
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
 // CHECK-SAME: %[[ARG2:.*]]: !mgp.cpu.tensor<1x?xf32>, %[[ARG3:.*]]: !mgp.cpu.tensor<?xf32>) -> !mef.chain {
 // CHECK:   %[[BUF1:.*]], %[[SPEC1:.*]] = mgp.cpu.tensor.extract %[[ARG2]] : !mgp.cpu.tensor<1x?xf32>
@@ -42,11 +38,7 @@ mo.graph @foo<N>(%arg0: !mo.tensor<[1, N], f32>, %arg1: !mo.tensor<[N], f32>) {
   mo.output
 }
 
-// CHECK-LABEL: mgp.model @scalar_arg : tf {{.*}} init {
-// CHECK-NEXT:    %0 = grt.chain.create ()
-// CHECK-NEXT:    %1 = mgp.context.create 1
-// CHECK-NEXT:        %2 = "mop.create_jit_context"(%0, %1) {slot = 0 : ui32}
-// CHECK:    mef.output %2, %1 : !mef.chain, !mgp.context
+// CHECK-LABEL: mgp.model @scalar_arg : tf init {
 // CHECK:  } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.cpu.tensor<f32>) -> (!mef.chain, !mgp.cpu.tensor<f32>) {
 // CHECK:    mef.output %arg0, %arg2 : !mef.chain, !mgp.cpu.tensor<f32>
 // CHECK:  }
