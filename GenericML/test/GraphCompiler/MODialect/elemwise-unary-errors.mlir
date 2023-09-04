@@ -51,3 +51,43 @@ mo.graph @tanh(%arg0: !mo.tensor<[2, 3], f32>) -> (!mo.tensor<[4], f32>) {
   %0 = mo.tanh(%arg0) : !mo.tensor<[4], f32>
   mo.output %0 : !mo.tensor<[4], f32>
 }
+
+// -----
+
+mo.graph @floor(%arg0: !mo.tensor<[4, 5], si32>) -> (!mo.tensor<[4, 5], si32>) {
+  // expected-error@+1 {{'mo.floor' op operand #0 must be floating point tensor, but got '!mo.tensor<[4, 5], si32>'}}
+  %0 = mo.floor(%arg0) : !mo.tensor<[4, 5], si32>
+  mo.output %0 : !mo.tensor<[4, 5], si32>
+}
+
+// -----
+
+mo.graph @ceil(%arg0: !mo.tensor<[4, 5], si32>) -> (!mo.tensor<[4, 5], si32>) {
+  // expected-error@+1 {{'mo.ceil' op operand #0 must be floating point tensor, but got '!mo.tensor<[4, 5], si32>'}}
+  %0 = mo.ceil(%arg0) : !mo.tensor<[4, 5], si32>
+  mo.output %0 : !mo.tensor<[4, 5], si32>
+}
+
+// -----
+
+mo.graph @trunc(%arg0: !mo.tensor<[4, 5], si32>) -> (!mo.tensor<[4, 5], si32>) {
+  // expected-error@+1 {{'mo.trunc' op operand #0 must be floating point tensor, but got '!mo.tensor<[4, 5], si32>'}}
+  %0 = mo.trunc(%arg0) : !mo.tensor<[4, 5], si32>
+  mo.output %0 : !mo.tensor<[4, 5], si32>
+}
+
+// -----
+
+mo.graph @round(%arg0: !mo.tensor<[4, 5], si32>) -> (!mo.tensor<[4, 5], si32>) {
+  // expected-error@+1 {{'mo.round' op operand #0 must be floating point tensor, but got '!mo.tensor<[4, 5], si32>'}}
+  %0 = mo.round(%arg0) : !mo.tensor<[4, 5], si32>
+  mo.output %0 : !mo.tensor<[4, 5], si32>
+}
+
+// -----
+
+mo.graph @roundeven(%arg0: !mo.tensor<[4, 5], si32>) -> (!mo.tensor<[4, 5], si32>) {
+  // expected-error@+1 {{'mo.roundeven' op operand #0 must be floating point tensor, but got '!mo.tensor<[4, 5], si32>'}}
+  %0 = mo.roundeven(%arg0) : !mo.tensor<[4, 5], si32>
+  mo.output %0 : !mo.tensor<[4, 5], si32>
+}

@@ -146,6 +146,27 @@ mo.graph @ceil(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
   mo.output %0 : !mo.tensor<[4, 5], f32>
 }
 
+// CHECK: mo.graph @trunc(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
+mo.graph @trunc(%arg0: !mo.tensor<[2, 3], f32>) -> (!mo.tensor<[2, 3], f32>) {
+  // CHECK-NEXT: mo.trunc(%[[ARG0]]) : !mo.tensor<[2, 3], f32>
+  %0 = mo.trunc(%arg0) : !mo.tensor<[2, 3], f32>
+  mo.output %0 : !mo.tensor<[2, 3], f32>
+}
+
+// CHECK: mo.graph @round(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
+mo.graph @round(%arg0: !mo.tensor<[2, 3], f32>) -> (!mo.tensor<[2, 3], f32>) {
+  // CHECK-NEXT: mo.round(%[[ARG0]]) : !mo.tensor<[2, 3], f32>
+  %0 = mo.round(%arg0) : !mo.tensor<[2, 3], f32>
+  mo.output %0 : !mo.tensor<[2, 3], f32>
+}
+
+// CHECK: mo.graph @roundeven(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
+mo.graph @roundeven(%arg0: !mo.tensor<[2, 3], f32>) -> (!mo.tensor<[2, 3], f32>) {
+  // CHECK-NEXT: mo.roundeven(%[[ARG0]]) : !mo.tensor<[2, 3], f32>
+  %0 = mo.roundeven(%arg0) : !mo.tensor<[2, 3], f32>
+  mo.output %0 : !mo.tensor<[2, 3], f32>
+}
+
 // CHECK: mo.graph @isnan(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], bool> no_inline {
 mo.graph @isnan(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], bool>) {
   // CHECK-NEXT: mo.is_nan(%[[ARG0]]) :  (!mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], bool>

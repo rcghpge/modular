@@ -454,6 +454,11 @@ class MO_ElementWiseUnaryOp<string name, list<Trait> traits = []>
   let arguments = (ins MO_Tensor:$input);
 }
 
+class MO_ElementWiseFloatUnaryOp<string name, list<Trait> traits = []>
+    : MO_ElementWiseUnaryOp<name, traits> {
+  let arguments = (ins MO_FloatTensor:$input);
+}
+
 class MO_ElementWiseBinaryOp<string name, list<Trait> traits = []>
     : MO_ElementWiseOp<name, traits # [MO_ElementWiseBinary]> {
   let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y);
@@ -722,10 +727,14 @@ def MO_PowOp : MO_TensorOp<"pow", [Pure, MO_SameOperandsAndResultShape]> {
   }];
 }
 
-def MO_CeilOp : MO_ElementWiseUnaryOp<"ceil", [Idempotent]> {
+def MO_CeilOp : MO_ElementWiseFloatUnaryOp<"ceil", [Idempotent]> {
   let summary = "Ceiling operation";
   let description = [{
     Returns the smallest largest integer greater than x.
+
+    E.g.
+       -3.5 --> -3
+        3.5 -->  4
 
     Example:
 
@@ -736,16 +745,72 @@ def MO_CeilOp : MO_ElementWiseUnaryOp<"ceil", [Idempotent]> {
   }];
 }
 
-def MO_FloorOp : MO_ElementWiseUnaryOp<"floor", [Idempotent]> {
+def MO_FloorOp : MO_ElementWiseFloatUnaryOp<"floor", [Idempotent]> {
   let summary = "Floor operation";
   let description = [{
     Returns the elementwise largest integer not greater than x.
 
-    Example:
+    E.g.
+       -3.5 --> -4
+        3.5 -->  3
 
     ```mlir
     %arg: !mo.tensor<[2, 3], f32>
     %res = mo.floor(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def MO_TruncOp : MO_ElementWiseFloatUnaryOp<"trunc", [Idempotent]> {
+  let summary = "Truncation operation";
+  let description = [{
+    Returns the elementwise integer from truncating the decimal. Also known
+    as round-toward-zero.
+
+    E.g.
+       -3.5 --> -3
+        3.5 -->  3
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.trunc(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def MO_RoundOp : MO_ElementWiseFloatUnaryOp<"round", [Idempotent]> {
+  let summary = "Round operation";
+  let description = [{
+    Returns the elementwise nearest integer, with ties going away from zero.
+
+    E.g.
+       -3.5 --> -4
+       -2.5 --> -3
+        2.5 -->  3
+        3.5 -->  4
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.round(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def MO_RoundEvenOp : MO_ElementWiseFloatUnaryOp<"roundeven", [Idempotent]> {
+  let summary = "Round even operation";
+  let description = [{
+    Returns the elementwise neareset integer, with ties going toward the
+    nearest even number.
+
+    E.g.
+       -3.5 --> -4
+       -2.5 --> -2
+        2.5 -->  2
+        3.5 -->  4
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.roundeven(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
