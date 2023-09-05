@@ -118,6 +118,30 @@ mo.graph @cast_int_float_mixed_folder() -> (!mo.tensor<[2], f32>, !mo.tensor<[3]
   mo.output %1, %3 : !mo.tensor<[2], f32>, !mo.tensor<[3], f64>
 }
 
+// Check casting between signed and unsigned types to see if sign extension works.
+// CHECK: mo.graph @cast_int_between_signs() -> (!mo.tensor<[4], si32>, !mo.tensor<[4], ui32>, !mo.tensor<[7], si32>, !mo.tensor<[7], ui32>) no_inline {
+mo.graph @cast_int_between_signs() -> (!mo.tensor<[4], si32>, !mo.tensor<[4], ui32>, !mo.tensor<[7], si32>, !mo.tensor<[7], ui32>) {
+  // Each of these is the maximum and minimum value for the dtype, and a few other numbers
+  %ui8 = mo.constant {value = #M.dense_array<255, 100, 1, 0> : tensor<4xui8>} : !mo.tensor<[4], ui8>
+  %si8 = mo.constant {value = #M.dense_array<127, 100, 1, 0, -128, -100, -1> : tensor<7xsi8>} : !mo.tensor<[7], si8>
+
+  // CHECK-DAG: %[[UI8_TO_SI32:.*]] = mo.constant {value = #M.dense_array<255, 100, 1, 0> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+  %ui8_to_si32 = mo.cast(%ui8): (!mo.tensor<[4], ui8>) -> !mo.tensor<[4], si32>
+
+  // CHECK-DAG: %[[UI8_TO_UI32:.*]] = mo.constant {value = #M.dense_array<255, 100, 1, 0> : tensor<4xui32>} : !mo.tensor<[4], ui32>
+  %ui8_to_ui32 = mo.cast(%ui8): (!mo.tensor<[4], ui8>) -> !mo.tensor<[4], ui32>
+
+  // CHECK-DAG: %[[SI8_TO_SI32:.*]] = mo.constant {value = #M.dense_array<127, 100, 1, 0, -128, -100, -1> : tensor<7xsi32>} : !mo.tensor<[7], si32>
+  %si8_to_si32 = mo.cast(%si8): (!mo.tensor<[7], si8>) -> !mo.tensor<[7], si32>
+
+  // Note casting negative elements to positive is undefined behavior so we don't check it
+  // CHECK-DAG: %[[SI8_TO_UI32:.*]] = mo.constant {value = #M.dense_array<127, 100, 1, 0
+  %si8_to_ui32 = mo.cast(%si8): (!mo.tensor<[7], si8>) -> !mo.tensor<[7], ui32>
+
+  // CHECK: mo.output %[[UI8_TO_SI32]], %[[UI8_TO_UI32]], %[[SI8_TO_SI32]], %[[SI8_TO_UI32]]
+  mo.output %ui8_to_si32, %ui8_to_ui32, %si8_to_si32, %si8_to_ui32: !mo.tensor<[4], si32>, !mo.tensor<[4], ui32>, !mo.tensor<[7], si32>, !mo.tensor<[7], ui32>
+}
+
 // CHECK: mo.graph @log(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> no_inline {
 mo.graph @log(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
   // CHECK-NEXT: mo.log(%[[ARG0]]) : !mo.tensor<[4, 5], f32>

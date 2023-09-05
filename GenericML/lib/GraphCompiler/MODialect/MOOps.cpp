@@ -1223,8 +1223,12 @@ OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
     if (isa<IntegerType>(resElemTy)) {
       // This is inefficient, but simple.
       SmallVector<APInt> res = llvm::map_to_vector(
-          intElemsAttr.getValues(), [](const llvm::APInt &dim) {
-            return APInt(64, dim.getSExtValue(), /*isSigned=*/true);
+          intElemsAttr.getValues(), [&](const llvm::APInt &dim) {
+            if (inTy.getDtype().isSInt())
+              return APInt(64, dim.getSExtValue(), /*isSigned=*/true);
+
+            // Else is unsigned integer.
+            return APInt(64, dim.getZExtValue(), /*isSigned=*/false);
           });
 
       return IntArrayElementsAttr::get(rankedResTy, res);
