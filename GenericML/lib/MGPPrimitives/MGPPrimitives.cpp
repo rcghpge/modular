@@ -5,7 +5,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MGPPrimitives/MGPPrimitives.h"
-#include "CASStateSlot.h"
 #include "GenericML/MOPrimitives/MOPrimitives.h"
 #include "GenericML/Support/Context.h"
 #include "GenericML/Support/StateSlot.h"
@@ -21,6 +20,11 @@
 #include "Support/ML/SizeUtils.h"
 #include "Support/ML/TensorShape.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/Target/TargetMachine.h"
+
+#include "./CASStateSlot.h"
+#include "./CompiledKernelsContext.h"
 
 #define DEBUG_TYPE "mgp"
 
@@ -887,6 +891,219 @@ static ErrorOr<Chain> mgp_assert(bool cond, MEFAttr<StringRef> message) {
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.cpu.kernel.create_context
+//===----------------------------------------------------------------------===//
+
+static void mgp_cpu_kernel_create_context(Chain inChain, Context &ctx,
+                                          Result<Chain> outChain,
+                                          MEFAttr<uint64_t> slot,
+                                          Runtime &runtime) {
+  TimeTraceScope scope(
+      LLCL::WorkProfilerEntry::create("mgp.cpu.kernel.create_context"));
+
+  // Establish an execution engine, to be shared amongst all loaded models.
+  ErrorOr<KGEN::ExecutionEngine *> engineOr =
+      runtime.createContextIfMissing<KGEN::ExecutionEngine>(
+          []() -> ErrorOr<std::unique_ptr<KGEN::ExecutionEngine>> {
+            // Initialize the host target.
+            llvm::InitializeNativeTarget();
+            llvm::InitializeNativeTargetAsmParser();
+            llvm::InitializeNativeTargetAsmPrinter();
+
+            // Create the execution engine.
+            auto targetMachineOr = getTargetMachineForHost();
+            if (targetMachineOr.isError())
+              return targetMachineOr.takeError();
+
+            return KGEN::ExecutionEngine::createWithStandardLayers(
+                /*options=*/{}, **targetMachineOr);
+          });
+
+  if (engineOr.isError())
+    return std::move(outChain).setToError(engineOr.takeError());
+
+  // Establish the context for this executing model.
+  ctx.emplaceStateSlot<CompiledKernelsContext>(
+      /*slotIndex=*/static_cast<size_t>(*slot),
+      /*numBuffers=*/0, *engineOr);
+
+  std::move(outChain).emplace();
+}
+
+//===----------------------------------------------------------------------===//
+// mgp.cpu.kernel.load_archive
+//===----------------------------------------------------------------------===//
+
+static void mgp_cpu_kernel_load_archive(Chain inChain, Context &ctx,
+                                        Result<Chain> outChain,
+                                        MEFAttr<uint64_t> aSlot,
+                                        MEFAttr<ArrayRef<uint8_t>> bArchive,
+                                        MEFAttr<StringRef> cKernelNames) {
+  TimeTraceScope scope(
+      LLCL::WorkProfilerEntry::create("mgp.cpu.kernel.load_archive"));
+  CompiledKernelsContext &kernelsCtx =
+      ctx.getStateSlotPayload<CompiledKernelsContext>(
+          static_cast<size_t>(*aSlot));
+
+  // Split the combined kernel names into a list of individual kernel names.
+  SmallVector<StringRef> kernelNames;
+  StringRef combined = *cKernelNames;
+  size_t start = 0;
+  size_t end = combined.size();
+  while (start < end) {
+    size_t next = combined.find('\n', start);
+    if (next == std::string::npos) {
+      size_t len = end - start;
+      kernelNames.emplace_back(combined.data() + start, len);
+      break;
+    } else {
+      size_t len = next - start;
+      if (len)
+        kernelNames.emplace_back(combined.data() + start, len);
+      start = next + 1;
+    }
+  }
+  if (kernelNames.empty())
+    return std::move(outChain).setToError(
+        "expecting at least one kernel symbol to load");
+
+  // Load the binary.
+  ErrorOrSuccess errOr = kernelsCtx.load(*bArchive, kernelNames);
+  if (errOr)
+    return std::move(outChain).setToError(errOr.takeError());
+
+  std::move(outChain).emplace();
+}
+
+//===----------------------------------------------------------------------===//
+// mgp.cpu.kernel.execute
+//===----------------------------------------------------------------------===//
+
+static void mgp_cpu_kernel_execute(
+    Chain inChain, Context &ctx, RemainingArguments operands,
+    Result<Chain> outChain, RemainingResults outputParams,
+    MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bKernelIndex,
+    MEFAttr<StringRef> cInOutSignature, MEFAttr<uint64_t> dNumOutDimensions,
+    MEFAttr<StringRef> eKernelName, Runtime &runtime, EncodedLocation loc) {
+  TimeTraceScope scope(
+      LLCL::WorkProfilerEntry::create("mgp.cpu.kernel.execute"));
+  CompiledKernelsContext &kernelsCtx =
+      ctx.getStateSlotPayload<CompiledKernelsContext>(
+          static_cast<size_t>(*aSlot));
+  size_t kernelIndex = static_cast<size_t>(*bKernelIndex);
+  CompiledKernelFn *kernelPtr = kernelsCtx.getKernel(kernelIndex);
+
+  // The kernel name is redundant since it can be retrieved using the
+  // kernel index, however we retain it for debuggability and unit testing.
+  // At least check it is consistent.
+  assert(*eKernelName == kernelsCtx.getKernelName(kernelIndex) &&
+         "kernel name is inconsistent with kernel index");
+
+  // The operands are:
+  //  [buffer_1, ..., inputBuffer_numBufferArgs,
+  //   inDimension_1, ..., inDimension_numInDimension]
+  size_t numBuffers = cInOutSignature->size();
+  assert(numBuffers <= operands.size() && "invalid buffer signature arity");
+  size_t numInDimensions = operands.size() - numBuffers;
+
+  // The outputParams are:
+  //  [outDimension_1, ..., outDimension_numOutDimensions]
+  size_t numOutDimensions = static_cast<size_t>(*dNumOutDimensions);
+  assert(numOutDimensions == outputParams.size() &&
+         "invalid out dimensions count attribute");
+  for (size_t i = 0; i < numOutDimensions; ++i)
+    outputParams[i] = AsyncValueRef<size_t>::allocate(runtime);
+
+  // Create an OutputChain to manage the kernel's asynchronous execution.
+  KGEN::OutputChain outputChain(outChain.copy(), outChain.copyLocation());
+
+  // Hold on to all the operands until the kernel completes.
+  outputChain.transfer(operands.copyAsVector());
+
+  // Put the buffers into the ABI void* array. This will mix the input
+  // and output buffers.
+  SmallVector<void *, 8> bufferPointers;
+  StringRef inOutSignature = *cInOutSignature;
+  bufferPointers.reserve(numBuffers);
+  for (size_t i = 0; i < numBuffers; ++i) {
+    switch (inOutSignature[i]) {
+    case 'i': {
+      auto &buffer = operands[i].get<GML::BufferRef>();
+      // Forget the const here since the ABI mixes input and output.
+      bufferPointers.push_back(const_cast<void *>(buffer.getBuffer()));
+#if MODULAR_PARANOID
+      // Record that we'll be reading this buffer while the kernel is in-flight.
+      buffer.collectAccessUses(
+          outputChain.uses,
+          (Twine("kernel(line=") + Twine(loc.decode().line) + ")").str(),
+          LLCL::kReadingResourceUse);
+#endif
+      break;
+    }
+    case 'o': {
+      auto &buffer = operands[i].get<GML::BufferRef>();
+      bufferPointers.push_back(buffer.getMutableBuffer());
+#if MODULAR_PARANOID
+      // Record that we'll be writing this buffers while the kernel is
+      // in-flight.
+      buffer.collectAccessUses(
+          outputChain.uses,
+          (Twine("kernel(line=") + Twine(loc.decode().line) + ")").str(),
+          LLCL::kWritingResourceUse);
+#endif
+      break;
+    }
+    default:
+      llvm::llvm_unreachable_internal("invalid in/out signature");
+    }
+  }
+
+  // Put the runtime dimensions, corresponding to each kernel 'parameter',
+  // into the ABI ssize_t array. This will mix the input and output
+  // dimensions.
+  SmallVector<ssize_t, 16> dimensions;
+  dimensions.reserve(numInDimensions + numOutDimensions);
+  for (size_t i = 0; i < numInDimensions; ++i)
+    dimensions.push_back(operands[numBuffers + i].get<size_t>());
+  for (size_t i = 0; i < numOutDimensions; ++i)
+    dimensions.push_back(0);
+
+  // Since we have the kernel name available, and since it's tedious to
+  // plumb it into the compiled kernel, start the tracing now. This profiling
+  // entry may be augmented by additional details on the Mojo side.
+  outputChain.trace(*eKernelName);
+
+  // Execute the kernel:
+  //  - Asynchronous kernels will have copied everything out of the three
+  //    pointer arguments by the time this call returns.
+  //  - Synchronous kernels wil have completed upon return.
+  //  - The dimensions of the bufferPointers and dimensions vectors are known
+  //    at kernel compile time and do not need to be passed at runtime.
+  kernelPtr(bufferPointers.data(), dimensions.data(), &outputChain);
+
+  // If the kernel has output dimensions then it must be synchronous and those
+  // values can be copied out now.
+  for (size_t i = 0; i < numOutDimensions; ++i)
+    std::move(outputParams[i]).emplace<size_t>(dimensions[numInDimensions + i]);
+
+#if MODULAR_PARANOID
+  // If the kernel is asynchronous but accidentally depends on the stack
+  // at the time sub-tasks were launched, deliberately clobber that.
+  // Pick a modest size to clobber to avoid stack overflow.
+  const size_t s = 256;
+  void *p = alloca(s);
+  memset(p, 0xef, s);
+#endif
+
+  // If the kernel is asynchronous then it will have 'forked' the
+  // output chain and launched sub-tasks to do the actual work. We can
+  // thus stop profiling the 'main' kernel.
+  // If the kernel is synchronous then profiling is already finished and
+  // this call will be a no-op.
+  std::move(outputChain).recordProfilerEntry();
+}
+
+//===----------------------------------------------------------------------===//
 // mgp.model
 //===----------------------------------------------------------------------===//
 
@@ -957,8 +1174,14 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.cas.store", mgp_cas_store);
   ADD_PRIMITIVE(registry, "mgp.to_grt_bool", mgp_to_grt_bool);
   ADD_PRIMITIVE(registry, "mgp.assert", mgp_assert);
+  ADD_PRIMITIVE(registry, "mgp.cpu.kernel.create_context",
+                mgp_cpu_kernel_create_context);
+  ADD_PRIMITIVE(registry, "mpg.cpu.kernel.load_archive",
+                mgp_cpu_kernel_load_archive);
+  ADD_PRIMITIVE(registry, "mgp.cpu.kernel.execute", mgp_cpu_kernel_execute);
   ADD_PRIMITIVE(registry, "mgp.model", mgp_model);
 
   // Have the MO primitives be registered wherever MGP is registered.
+  // CAUTION: To be removed.
   registerMOPrimitives(registry);
 }
