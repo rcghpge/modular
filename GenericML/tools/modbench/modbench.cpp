@@ -4,59 +4,33 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "Config/Version.h"
+#include "GenericML/API/modular/c/common.h"
 #include "Support/CommandLine.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/ToolOutputFile.h"
+#include "Support/CrashReporting.h"
+#include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/raw_ostream.h"
-#include <filesystem>
 
-using namespace llvm;
+using namespace M;
 
-struct ModBenchCLOptions {
-  llvm::cl::opt<std::string> outputFilename{
-      "o", llvm::cl::desc("Output filename"), llvm::cl::value_desc("filename"),
-      llvm::cl::init("-")};
-};
-
-void writeReport(llvm::raw_ostream &os) {
-  os << "This will one day be the modbench report!";
-  os.flush();
-}
-
-static int reportError(Twine errorMessage) {
-  llvm::errs() << "modbench: " << errorMessage << "\n";
-  return EXIT_FAILURE;
-}
+static constexpr const char *kModbenchProductName = "modbench";
 
 int main(int argc, char **argv) {
-  ModBenchCLOptions cli;
+  llvm::InitLLVM initLLVM(argc, argv);
+  initCrashpadForProgram(argv[0], kModbenchProductName);
+  llvm::setBugReportMsg(
+      "Please submit a bug report to eap@modular.com and include the crash "
+      "backtrace along with your command line invocation.\n");
 
-  llvm::cl::ParseCommandLineOptions(argc, argv, "ModBench Tool");
-  auto outFilePathStr = cli.outputFilename.getValue();
+  llvm::cl::SetVersionPrinter([](llvm::raw_ostream &os) {
+    ModularVersion version = getModularVersion();
+    os << llvm::formatv("{0} {1}.{2}.{3}{4} ({5})\n", kModbenchProductName,
+                        version.major, version.minor, version.patch,
+                        version.label, version.revision);
+    os << "Modular version " << M_version() << "\n";
+  });
+  llvm::cl::ParseCommandLineOptions(argc, argv, kModbenchProductName);
 
-  std::error_code ec;
-  if (outFilePathStr != "-" && !std::filesystem::exists(outFilePathStr, ec) &&
-      !ec) {
-    auto outFilePath = std::filesystem::path(outFilePathStr);
-    if (outFilePath.has_parent_path())
-      std::filesystem::create_directories(outFilePath.parent_path(), ec);
-  }
-
-  // If anything failed, report the failure.
-  if (ec) {
-    exit(reportError("std::filesystem: " + ec.message() + ": " +
-                     outFilePathStr));
-  }
-
-  std::error_code error;
-  auto outputFile = std::make_unique<llvm::ToolOutputFile>(
-      outFilePathStr, error, llvm::sys::fs::OF_None);
-  if (error)
-    exit(reportError("Cannot open output file: '" + outFilePathStr +
-                     "': " + error.message()));
-
-  auto &os = outputFile ? outputFile->os() : llvm::outs();
-  writeReport(os);
-  outputFile->keep();
   return EXIT_SUCCESS;
 }
