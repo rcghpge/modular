@@ -677,6 +677,7 @@ private:
                                          Location loc);
   MEFOffset emitDeviceSpecCollectionAttribute(DeviceSpecCollectionAttr attr,
                                               Location loc);
+  MEFOffset emitInOutSignatureAttribute(InOutSignatureAttr attr, Location loc);
   EntityTable &entities;
 
   friend class TypeEmitter;
@@ -942,6 +943,13 @@ MEFOffset AttributesEmitter::emitDeviceSpecCollectionAttribute(
   // Encode the attribute in JSON. We'll decode at runtime into a
   // DeviceSpecCollection.
   return emitStringAttribute(deviceSpecsOr->serializeToJSON());
+}
+
+MEFOffset
+AttributesEmitter::emitInOutSignatureAttribute(InOutSignatureAttr attr,
+                                               Location loc) {
+  // Just use the underlying signature string directly.
+  return emitStringAttribute(attr.getSignature());
 }
 
 namespace {
@@ -1230,6 +1238,9 @@ MEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr,
 
   if (auto deviceSpecCollectionAttr = dyn_cast<DeviceSpecCollectionAttr>(attr))
     return emitDeviceSpecCollectionAttribute(deviceSpecCollectionAttr, loc);
+
+  if (auto inOutSigAttr = dyn_cast<InOutSignatureAttr>(attr))
+    return emitInOutSignatureAttribute(inOutSigAttr, loc);
 
   entities.emitError(loc) << "unsupported attribute " << attr;
   return {0};
