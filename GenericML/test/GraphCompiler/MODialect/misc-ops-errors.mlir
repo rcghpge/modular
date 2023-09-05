@@ -934,8 +934,13 @@ mo.graph @reshape_incompatible_shapes(%input: !mo.tensor<[6], f32>) -> !mo.tenso
 
 // -----
 
-mo.graph @illegal_scatternd(%in1: !mo.tensor<[9, 2, 1, 3], f32>, %in2: !mo.tensor<[?, ?, ?], si32>) -> !mo.tensor<[?, ?, ?], f32> {
+mo.graph @illegal_scatternd(
+  %input: !mo.tensor<[?, ?, ?], f32>,
+  %updates: !mo.tensor<[9, 2, 1, 3], f32>,
+  %indices: !mo.tensor<[?, ?, ?], si32>
+) -> !mo.tensor<[?, ?, ?], f32> {
   // expected-error@+1 {{ScatterND must always have known output shape}}
-  %0 = mo.scatter_nd(%in1, %in2) : (!mo.tensor<[9, 2, 1, 3], f32>, !mo.tensor<[?, ?, ?], si32>) -> !mo.tensor<[?, ?, ?], f32>
+  %0 = mo.scatter_nd(%input, %updates, %indices)
+  : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[9, 2, 1, 3], f32>, !mo.tensor<[?, ?, ?], si32>) -> !mo.tensor<[?, ?, ?], f32>
   mo.output %0 : !mo.tensor<[?, ?, ?], f32>
 }

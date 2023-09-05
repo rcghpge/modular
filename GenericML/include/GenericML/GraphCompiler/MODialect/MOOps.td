@@ -2158,28 +2158,32 @@ def MO_ScatterNdOp : MO_TensorOp<"scatter_nd", [
 ]> {
   let summary = "ScatterND Operation";
   let description = [{
-    Scatter slices from updates to output according to indices.
+    Produces an output tensor by scattering slices from updates to input
+    according to indices.
 
-    TODO(#15445): See this issue for missing support from this operator to make
-    it generally useful.
+    Specifically, it treats the last dimension of indices as a vector of
+    integers used to index into a copy of the input, and it replaces that
+    resulting slice (or scalar) with corresponding slice (or scalar) from
+    the updates tensor.
 
-    The current implementation allocates an output tensor of the shape set on
-    the result type and the kernel zero initializes this tensor. When this
-    operator is refactored, mo.scatter_nd should be given an input tensor that
-    is initialized. The output is then either a copy of this input or an in
-    place update.
+    Note that the `slice` shows up in case where the index vector length is
+    shorter than the rank of input tensor, i.e., the op will slice the leading
+    dimensions.
 
     Example:
 
     ```mlir
-    %updates : !mo.tensor<[1, 3, 2], f32>
+    %input:   !mo.tensor<[4, 2], f32>
+    %updates: !mo.tensor<[1, 3, 2], f32>
     %indices: !mo.tensor<[1, 3, 1], si64>
-    %res = mo.scatter_nd(%updates, %indices) : (
-      !mo.tensor<[1, 3, 2], f32>, !mo.tensor<[1, 3, 1], si64>) -> !mo.tensor<[4, 3], f32>
+    %res = mo.scatter_nd(%inputs, %updates, %indices) : (
+      !mo.tensor<[4, 2], f32>, !mo.tensor<[1, 3, 2], f32>, !mo.tensor<[1, 3, 1], si64>
+    ) -> !mo.tensor<[4, 2], f32>
     ```
   }];
 
-  let arguments = (ins MO_NonScalarIfRanked:$input,
+  let arguments = (ins MO_Tensor:$input,
+                       MO_NonScalarIfRanked:$updates,
                        MO_IndicesTensor:$indices);
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{

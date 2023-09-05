@@ -428,10 +428,20 @@ mo.graph @reshape_fold_multi_dims() -> !mo.tensor<[2, 2], si32> {
 // ScatterNdOp
 //===----------------------------------------------------------------------===//
 
-// CHECK: mo.graph @scatter_nd(%[[UPDATES:.*]]: !mo.tensor<[1, 2, 3], f32>, %[[INDICES:.*]]: !mo.tensor<[1, 2, 1], si32>) -> !mo.tensor<[4, 3], f32> no_inline
-mo.graph @scatter_nd(%updates: !mo.tensor<[1, 2, 3], f32>, %indices: !mo.tensor<[1, 2, 1], si32>) -> !mo.tensor<[4, 3], f32> {
-  // CHECK: %[[RES:.*]] = mo.scatter_nd(%[[UPDATES]], %[[INDICES]]) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 1], si32>) -> !mo.tensor<[4, 3], f32>
-  %res = mo.scatter_nd(%updates, %indices) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 1], si32>) -> !mo.tensor<[4, 3], f32>
+// CHECK:      mo.graph @scatter_nd(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[4, 3], f32>,
+// CHECK-SAME:   %[[UPDATES:.*]]: !mo.tensor<[1, 2, 3], f32>,
+// CHECK-SAME:   %[[INDICES:.*]]: !mo.tensor<[1, 2, 1], si32>
+// CHECK-SAME: ) -> !mo.tensor<[4, 3], f32> no_inline
+mo.graph @scatter_nd(
+  %input: !mo.tensor<[4, 3], f32>,
+  %updates: !mo.tensor<[1, 2, 3], f32>,
+  %indices: !mo.tensor<[1, 2, 1], si32>
+) -> !mo.tensor<[4, 3], f32> {
+  // CHECK: %[[RES:.*]] = mo.scatter_nd(%[[INPUT]], %[[UPDATES]], %[[INDICES]])
+  // CHECK-SAME: : (!mo.tensor<[4, 3], f32>, !mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 1], si32>) -> !mo.tensor<[4, 3], f32>
+  %res = mo.scatter_nd(%input, %updates, %indices)
+  : (!mo.tensor<[4, 3], f32>, !mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 1], si32>) -> !mo.tensor<[4, 3], f32>
   // CHECK: mo.output %[[RES]] : !mo.tensor<[4, 3], f32>
   mo.output %res : !mo.tensor<[4, 3], f32>
 }
