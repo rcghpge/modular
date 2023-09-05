@@ -1070,6 +1070,115 @@ static void printBase64(AsmPrinter &printer, const CASStoreOp &op,
 }
 
 //===----------------------------------------------------------------------===//
+// CpuKernelExecuteOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult
+parseBufferSignature(OpAsmParser &p,
+                     SmallVectorImpl<OpAsmParser::UnresolvedOperand> &buffers,
+                     SmallVectorImpl<Type> &bufferTypes,
+                     InOutSignatureAttr &inOutSignatureAttr) {
+  SmallVector<InOutSignatureAttr::InOutSemantics> semantics;
+  auto parseOperandFn = [&]() -> ParseResult {
+    llvm::SMLoc loc;
+
+    // Parse the in/out/mut keyword.
+    StringRef inOutMut;
+    if (p.getCurrentLocation(&loc) || p.parseKeyword(&inOutMut))
+      return failure();
+    if (inOutMut == "in") {
+      semantics.emplace_back(InOutSignatureAttr::kIn);
+    } else if (inOutMut == "out") {
+      semantics.emplace_back(InOutSignatureAttr::kOut);
+    } else if (inOutMut == "mut") {
+      semantics.emplace_back(InOutSignatureAttr::kMut);
+    } else {
+      return p.emitError(loc) << "expecting 'in', 'out' or 'mut' keyword";
+    }
+
+    // Parse the operand proper.
+    OpAsmParser::UnresolvedOperand &unresolvedOperand = buffers.emplace_back();
+    if (p.parseOperand(unresolvedOperand, /*allowResultNumber=*/false))
+      return failure();
+
+    // Parse the type annotation.
+    Type &bufferType = bufferTypes.emplace_back();
+    if (p.parseColon() || p.parseType(bufferType))
+      return failure();
+
+    return success();
+  };
+
+  if (p.parseCommaSeparatedList(OpAsmParser::Delimiter::Paren, parseOperandFn,
+                                "in buffer operand list"))
+    return failure();
+
+  inOutSignatureAttr = InOutSignatureAttr::get(p.getContext(), semantics);
+
+  return success();
+}
+
+static void printBufferSignature(OpAsmPrinter &p, const CpuKernelExecuteOp &op,
+                                 ValueRange buffers, TypeRange bufferTypes,
+                                 InOutSignatureAttr inOutSignatureAttr) {
+  size_t arity = inOutSignatureAttr.size();
+  assert(buffers.size() == arity);
+  assert(bufferTypes.size() == arity);
+  p << "(";
+  for (size_t i = 0; i < arity; ++i) {
+    if (i > 0)
+      p << ", ";
+    switch (inOutSignatureAttr[i]) {
+    case InOutSignatureAttr::kNone:
+      llvm::llvm_unreachable_internal(
+          "unexpected kNone buffer semantics in signature");
+      break;
+    case InOutSignatureAttr::kIn:
+      p << "in ";
+      break;
+    case InOutSignatureAttr::kOut:
+      p << "out ";
+      break;
+    case InOutSignatureAttr::kMut:
+      p << "mut ";
+      break;
+    }
+    p << buffers[i];
+    p << " : ";
+    p << bufferTypes[i];
+  }
+  p << ")";
+}
+
+LogicalResult CpuKernelExecuteOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  auto dNumOutDimensionsAttr =
+      dyn_cast<IntegerAttr>(attributes.get(getENumOutDimensionsAttrName(name)));
+  assert(dNumOutDimensionsAttr && "mismatched operand types");
+  uint64_t n = dNumOutDimensionsAttr.getUInt();
+  inferredReturnTypes.emplace_back(MEF::ChainType::get(context));
+  while (n-- > 0)
+    inferredReturnTypes.emplace_back(IndexType::get(context));
+  return success();
+}
+
+LogicalResult CpuKernelExecuteOp::verify() {
+  if (getCInOutSignature().size() != getBuffers().size())
+    return emitOpError() << "expected in/out signature attribute to have arity "
+                         << getBuffers().size() << " but given "
+                         << getCInOutSignature().size() << ".";
+  if (getENumOutDimensions() != getOutDimensions().size())
+    return emitOpError()
+           << "expected number of output dimensions attribute to be "
+           << getOutDimensions().size() << " but given "
+           << getENumOutDimensions() << ".";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ModelOp
 //===----------------------------------------------------------------------===//
 

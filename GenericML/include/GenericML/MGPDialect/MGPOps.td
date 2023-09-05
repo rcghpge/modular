@@ -14,6 +14,7 @@
 include "GenericML/MGPDialect/MGPBufferAllocInterface.td"
 include "GenericML/MGPDialect/MGPDialect.td"
 include "GenericML/MGPDialect/MGPTypes.td"
+include "GenericML/MGPDialect/MGPAttrs.td"
 include "GraphRT/GRTDialect/GRTExtendsLifetimeInterface.td"
 include "GraphRT/GRTDialect/GRTMayAliasInterface.td"
 include "GraphRT/MEFDialect/MEFTypes.td"
@@ -1662,6 +1663,125 @@ def AssertOp : MGP_Op<"assert"> {
   let arguments = (ins I1:$cond, StrAttr:$message);
   let results = (outs ChainType:$outChain);
   let assemblyFormat = "$cond `,` $message attr-dict";
+}
+
+//===----------------------------------------------------------------------===//
+// CpuKernelCreateContextOp
+//===----------------------------------------------------------------------===//
+
+def CpuKernelCreateContextOp : MGP_Op<"cpu.kernel.create_context"> {
+  let summary = "Creates a context for managing compiled kernels.";
+  let description = [{
+    Creates a context within the given slot of the `!mgp.context` to hold loaded
+    compiled kernels.
+
+    Example:
+    ```mlir
+    %ch0 : !mef.chain
+    %ctx : !mgp.context
+    %ch1 = mgp.cpu.kernel.create_context %ch0, %ctx[3]
+    %ch1 : !mef.chain
+    ```
+  }];
+
+  let arguments = (ins ChainType:$inChain,
+                       MGP_ContextType:$theContext,
+                       UI64Attr:$slot);
+  let results = (outs ChainType:$outChain);
+  let assemblyFormat = "$inChain `,` $theContext `[` $slot `]` attr-dict";
+}
+
+//===----------------------------------------------------------------------===//
+// CpuKernelLoadArchiveOp
+//===----------------------------------------------------------------------===//
+
+def CpuKernelLoadArchiveOp : MGP_Op<"cpu.kernel.load_archive"> {
+  let summary = "Loads a binary archive into the compiled kernel context.";
+  let description = [{
+    Loads a binary archive into the compiled kernel context created at the
+    given slot of the `!mgp.context`. The archive's kernel symbols are given
+    as an `#M.multiline` string, and kernels may be executed using the base-0
+    index into that implied array.
+
+    Example:
+    ```mlir
+    %ch0 : !mef.chain
+    %ctx : !mgp.context
+    %ch1 = mgp.cpu.kernel.load_archive %ch0, %ctx[3],
+             dense_resource<archive_name>:!M.aligned_bytes<4, align 8>,
+             ["kernel1", "kernel2", "kernel3"]
+    %ch1 : !mef.chain
+    ```
+  }];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins ChainType:$inChain,
+                       MGP_ContextType:$theContext,
+                       UI64Attr:$aSlot,                      // 0
+                       ElementsAttr:$bArchive,               // 1
+                       M_MultiLineStringAttr:$cKernelNames); // 2
+  let results = (outs ChainType:$outChain);
+  let assemblyFormat = [{
+    $inChain `,` $theContext `[` $aSlot `]` `,` $bArchive `,` $cKernelNames
+    attr-dict
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// CpuKernelExecute
+//===----------------------------------------------------------------------===//
+
+def CpuKernelExecuteOp : MGP_Op<"cpu.kernel.execute", [
+    AttrSizedOperandSegments,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "Executes a kernel loaded into the compiled kernel context.";
+  let description = [{
+    Executes a kernel already loaded into the compiled kernel context at the
+    given slot within the `!mgp.context`.
+
+    Example:
+    ```mlir
+    %ch0 : !mef.chain
+    %ctx : !mgp.context
+    %buf0 : !mgp.cpu.buffer
+    %buf1 : !mgp.cpu.buffer<8>
+    %buf2 : !mgp.cpu.buffer<48>
+    %dim0 : index
+    %dim1 : index
+    // Compiled kernels have been loaded into slot 3.
+    // The compiled kernel to execute is at index 7.
+    %ch1, %dim2 = mgp.cpu.kernel.execute %ch0, %ctx[3, 7],
+                    (in %buf0 : !mgp.cpu.buffer,
+                     in %buf1 : !mgp.cpu.buffer<8>,
+                     out %buf2 : !mgp.cpu.buffer<48>),
+                    (%dim0, %dim1), "kernel1", out_dims 1
+    %ch1 : !mef.chain
+    %dim2 : index
+    ```
+  }];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins ChainType:$inChain,
+                       MGP_ContextType:$theContext,
+                       Variadic<MGP_CpuBufferType>:$buffers,
+                       Variadic<Index>:$inDimensions,
+                       UI64Attr:$aSlot,                                      // 0
+                       UI64Attr:$bKernelIndex,                               // 1
+                       M_InOutSignatureAttr:$cInOutSignature,                // 2
+                       StrAttr:$dKernelName,                                 // 3
+                       DefaultValuedAttr<UI64Attr, "0">:$eNumOutDimensions); // 4
+  let results = (outs ChainType:$outChain,
+                      Variadic<Index>:$outDimensions);
+  let assemblyFormat = [{
+    $inChain `,` $theContext `[` $aSlot `,` $bKernelIndex `]` `,`
+    custom<BufferSignature>($buffers, type($buffers), $cInOutSignature) `,`
+    `(` $inDimensions `)` `,` $dKernelName
+     (  `,` `out_dims` $eNumOutDimensions^ )? attr-dict
+  }];
+
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

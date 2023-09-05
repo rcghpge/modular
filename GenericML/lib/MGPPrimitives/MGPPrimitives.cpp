@@ -979,12 +979,14 @@ static void mgp_cpu_kernel_load_archive(Chain inChain, Context &ctx,
 // mgp.cpu.kernel.execute
 //===----------------------------------------------------------------------===//
 
-static void mgp_cpu_kernel_execute(
-    Chain inChain, Context &ctx, RemainingArguments operands,
-    Result<Chain> outChain, RemainingResults outputParams,
-    MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bKernelIndex,
-    MEFAttr<StringRef> cInOutSignature, MEFAttr<uint64_t> dNumOutDimensions,
-    MEFAttr<StringRef> eKernelName, Runtime &runtime, EncodedLocation loc) {
+static void
+mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
+                       Result<Chain> outChain, RemainingResults outputParams,
+                       MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bKernelIndex,
+                       MEFAttr<StringRef> cInOutSignature,
+                       MEFAttr<StringRef> dKernelName,
+                       MEFAttr<uint64_t> eNumOutDimensions, Runtime &runtime,
+                       EncodedLocation loc) {
   TimeTraceScope scope(
       LLCL::WorkProfilerEntry::create("mgp.cpu.kernel.execute"));
   CompiledKernelsContext &kernelsCtx =
@@ -996,7 +998,7 @@ static void mgp_cpu_kernel_execute(
   // The kernel name is redundant since it can be retrieved using the
   // kernel index, however we retain it for debuggability and unit testing.
   // At least check it is consistent.
-  assert(*eKernelName == kernelsCtx.getKernelName(kernelIndex) &&
+  assert(*dKernelName == kernelsCtx.getKernelName(kernelIndex) &&
          "kernel name is inconsistent with kernel index");
 
   // The operands are:
@@ -1008,7 +1010,7 @@ static void mgp_cpu_kernel_execute(
 
   // The outputParams are:
   //  [outDimension_1, ..., outDimension_numOutDimensions]
-  size_t numOutDimensions = static_cast<size_t>(*dNumOutDimensions);
+  size_t numOutDimensions = static_cast<size_t>(*eNumOutDimensions);
   assert(numOutDimensions == outputParams.size() &&
          "invalid out dimensions count attribute");
   for (size_t i = 0; i < numOutDimensions; ++i)
@@ -1071,7 +1073,7 @@ static void mgp_cpu_kernel_execute(
   // Since we have the kernel name available, and since it's tedious to
   // plumb it into the compiled kernel, start the tracing now. This profiling
   // entry may be augmented by additional details on the Mojo side.
-  outputChain.trace(*eKernelName);
+  outputChain.trace(*dKernelName);
 
   // Execute the kernel:
   //  - Asynchronous kernels will have copied everything out of the three
