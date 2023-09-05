@@ -18,13 +18,13 @@ include "GenericML/GraphCompiler/MODialect/MOInterfaces.td"
 include "GenericML/GraphCompiler/MODialect/MOTypes.td"
 include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.td"
 include "Support/MDialect/MAttrs.td"
-include "mlir/Interfaces/ControlFlowInterfaces.td"
-include "mlir/Interfaces/InferTypeOpInterface.td"
-include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/BuiltinAttributes.td"
-include "mlir/IR/FunctionInterfaces.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/IR/RegionKindInterface.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/FunctionInterfaces.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 
 // Base class for ops in this dialect.
 class MO_Op<string mnemonic, list<Trait> traits = []>
@@ -118,6 +118,9 @@ def MO_GraphOp : MO_TensorOp<"graph", [
 
     /// Returns the result types of this function.
     ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
+
+    /// Returns the callable region of this function.
+    Region *getCallableRegion() { return &getBodyRegion(); }
 
     /// We aren't using always_inline functionality in MO.
     KGEN::InlineLevel getInlineLevel() {

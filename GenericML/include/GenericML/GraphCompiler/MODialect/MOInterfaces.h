@@ -122,7 +122,7 @@ public:
 
   /// ASSUME elaboration has run on the shape function module, return all the
   /// used shape functions.
-  SmallVector<KGEN::FuncOp, 4> getUsedShapeFuncsAfterElaboration();
+  SmallVector<KGEN::FuncOp, 6> getUsedShapeFuncsAfterElaboration();
 
 private:
   // A module that contains the following (as pre-elaboration KGEN IR)

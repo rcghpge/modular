@@ -314,7 +314,7 @@ void ShapeFuncMaterializationState::markShapeFuncAsUsed(
   usedShapeFuncNames.insert(func.getNameAttr());
 }
 
-SmallVector<KGEN::FuncOp, 4>
+SmallVector<KGEN::FuncOp, 6>
 ShapeFuncMaterializationState::getUsedShapeFuncsAfterElaboration() {
   SmallVector<KGEN::FuncOp> funcs;
   for (StringAttr name : usedShapeFuncNames) {

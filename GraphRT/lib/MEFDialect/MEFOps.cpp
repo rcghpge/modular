@@ -11,7 +11,7 @@
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "Support/Compiler/VerifyUtils.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/FunctionImplementation.h"
+#include "mlir/Interfaces/FunctionImplementation.h"
 
 using namespace M;
 using namespace MEF;

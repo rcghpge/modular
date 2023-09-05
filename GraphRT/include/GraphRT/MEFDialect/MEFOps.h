@@ -13,10 +13,10 @@
 
 #include "GraphRT/MEFDialect/MEFDialect.h"
 #include "Support/LLVMCompilerForwardDecls.h"
-#include "mlir/IR/FunctionInterfaces.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
 
 namespace mlir {
 class ModuleOp;

@@ -13,8 +13,8 @@
 #include "Support/Compiler/VerifyUtils.h"
 #include "Support/LLVMForwardDecls.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/FunctionImplementation.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Interfaces/FunctionImplementation.h"
 #include "llvm/ADT/SmallPtrSet.h"
 
 using namespace M;

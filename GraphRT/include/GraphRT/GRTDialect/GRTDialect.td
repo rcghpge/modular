@@ -27,6 +27,8 @@ def GRTDialect : Dialect {
 
   // We depend on the MEF dialect for the chain type.
   let dependentDialects = ["::M::MEF::MEFDialect"];
+  // TODO: Remove this once dialects have been updated to use properties.
+  let usePropertiesForAttributes = 0;
 }
 
 #endif // GRAPHRT_GRTDIALECT_GRTDIALECT_TD

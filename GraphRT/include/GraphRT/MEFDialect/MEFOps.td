@@ -9,9 +9,9 @@
 //===----------------------------------------------------------------------===//
 
 include "GraphRT/MEFDialect/MEFDialect.td"
-include "mlir/IR/FunctionInterfaces.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/FunctionInterfaces.td"
 
 // Base class for the operation in this dialect.
 class MEFOp<string mnemonic, list<Trait> traits = []> :
@@ -45,6 +45,8 @@ def InvokableOp
 
     /// Returns the result types of this invokable.
     ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
+
+    Region *getCallableRegion() { return &getFunctionBody(); }
   }];
 
   let builders = [

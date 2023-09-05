@@ -18,11 +18,11 @@ include "GenericML/GraphCompiler/MODialect/MOInterfaces.td"
 include "GenericML/GraphCompiler/Interfaces/LowerableToMGPInterface.td"
 include "KGEN/KGENDialect/KGENInterfaces.td"
 include "Support/MDialect/MAttrs.td"
-include "mlir/Interfaces/SideEffectInterfaces.td"
-include "mlir/IR/FunctionInterfaces.td"
-include "mlir/IR/SymbolInterfaces.td"
 include "mlir/IR/BuiltinAttributes.td"
 include "mlir/IR/BuiltinTypes.td"
+include "mlir/IR/SymbolInterfaces.td"
+include "mlir/Interfaces/FunctionInterfaces.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 
 // Base class for ops in this dialect.
 class MOGG_Op<string mnemonic, list<Trait> traits = []>
