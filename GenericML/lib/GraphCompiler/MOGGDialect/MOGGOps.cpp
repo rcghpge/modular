@@ -585,7 +585,7 @@ static void printLambda(OpAsmPrinter &p, mlir::Operation *lambda,
 
   auto sigTy = KGEN::SignatureType::get(lambda->getContext(), func.getInputs(),
                                         func.getResults());
-  KGEN::printFunctionSignature(p, region, {}, {}, func, sigTy);
+  KGEN::printFunctionSignature(p, &region, {}, {}, func, sigTy);
   p.printRegion(region, /*printEntryBlockArgs=*/false);
 }
 
@@ -940,7 +940,7 @@ static void printKernel(OpAsmPrinter &p, mlir::Operation *kernel,
   auto functionType =
       FunctionType::get(kernel->getContext(), operandTypes, resultTypes);
 
-  KGEN::printFunctionSignature(p, region, {}, {}, functionType,
+  KGEN::printFunctionSignature(p, &region, {}, {}, functionType,
                                SignatureType::get(functionType));
   p.printRegion(region, /*printEntryBlockArgs=*/false);
 }
