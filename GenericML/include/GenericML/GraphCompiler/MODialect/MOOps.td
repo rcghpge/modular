@@ -2173,7 +2173,8 @@ def MO_GatherSumOp : MO_TensorOp<"gather_sum"> {
 //===----------------------------------------------------------------------===//
 
 def MO_ScatterNdOp : MO_TensorOp<"scatter_nd", [
-  DeclareOpInterfaceMethods<MO_DefaultParameterization>
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
 ]> {
   let summary = "ScatterND Operation";
   let description = [{
@@ -2203,7 +2204,8 @@ def MO_ScatterNdOp : MO_TensorOp<"scatter_nd", [
 
   let arguments = (ins MO_Tensor:$input,
                        MO_NonScalarIfRanked:$updates,
-                       MO_IndicesTensor:$indices);
+                       MO_IndicesTensor:$indices,
+                       MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)

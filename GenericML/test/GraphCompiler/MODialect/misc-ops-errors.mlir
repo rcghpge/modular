@@ -934,13 +934,26 @@ mo.graph @reshape_incompatible_shapes(%input: !mo.tensor<[6], f32>) -> !mo.tenso
 
 // -----
 
-mo.graph @illegal_scatternd(
+mo.graph @scatter_nd_rank_mismatch(
   %input: !mo.tensor<[?, ?, ?], f32>,
   %updates: !mo.tensor<[9, 2, 1, 3], f32>,
   %indices: !mo.tensor<[?, ?, ?], si32>
-) -> !mo.tensor<[?, ?, ?], f32> {
-  // expected-error@+1 {{ScatterND must always have known output shape}}
+) -> !mo.tensor<[?, ?], f32> {
+  // expected-error@+1 {{input and result ranks must match if both static}}
   %0 = mo.scatter_nd(%input, %updates, %indices)
-  : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[9, 2, 1, 3], f32>, !mo.tensor<[?, ?, ?], si32>) -> !mo.tensor<[?, ?, ?], f32>
-  mo.output %0 : !mo.tensor<[?, ?, ?], f32>
+  : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[9, 2, 1, 3], f32>, !mo.tensor<[?, ?, ?], si32>) -> !mo.tensor<[?, ?], f32>
+  mo.output %0 : !mo.tensor<[?, ?], f32>
+}
+
+// -----
+
+mo.graph @scatter_nd_shape_mismatch(
+  %input: !mo.tensor<[10, 1, 3], f32>,
+  %updates: !mo.tensor<[9, 2, 1, 3], f32>,
+  %indices: !mo.tensor<[?, ?, ?], si32>
+) -> !mo.tensor<[10, 2, 3], f32> {
+  // expected-error@+1 {{input and result shapes must match if both static}}
+  %0 = mo.scatter_nd(%input, %updates, %indices)
+  : (!mo.tensor<[10, 1, 3], f32>, !mo.tensor<[9, 2, 1, 3], f32>, !mo.tensor<[?, ?, ?], si32>) -> !mo.tensor<[10, 2, 3], f32>
+  mo.output %0 : !mo.tensor<[10, 2, 3], f32>
 }
