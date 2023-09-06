@@ -1343,15 +1343,16 @@ def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [
     4D), with the following layout assumption:
     - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
 
-    All hyperparameters (i.e. filter_shape, strides, dilations) must be of rank
-    1, or unranked. If the input has static rank, all hyperparameters with
-    static shape must have sizes of `input_rank - 2`. Individual elements in the
-    hyperparameters applies to corresponding dimensions of the input (after
-    ignoring the batch and channel dimensions).
-
+    All hyperparameters (i.e. strides, dilations, padding) must be of rank 1, or
+    unranked. If the input has static rank, all hyperparameters with static
+    shape must have sizes of `input_rank - 2`, except padding, which must have size 
+    `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to 
+    corresponding dimensions of the input (after ignoring the batch and channel dimensions),
+    with padding representing a before/after pair for each axis. The padding values 
+    are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
+    pad_dim2_after...). In 2D Convolution, dim1 here repesents H and dim2 represents W.
+    
     This op currently only supports strides and dilations on the filter.
-
-    TODO: Clarify how AvgPool should work with padding.
 
     Example:
 
@@ -1362,11 +1363,13 @@ def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [
       value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
     %di = mo.constant {
       value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %pa = mo.constant {
+      value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
     %res = mo.avg_pool(%arg) [
-        filter_shape = %fs, strides = %st, dilations = %di
+        filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa
     ] : (
       !mo.tensor<[20, 10, 10, 32], f32>, !mo.tensor<[2], si64>,
-      !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
+      !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
     ) -> !mo.tensor<[20, 9, 5, 32], f32>
     ```
   }];
@@ -1376,12 +1379,14 @@ def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [
     MO_ShapeLikeIfRanked:$filter_shape,
     MO_ShapeLikeIfRanked:$strides,
     MO_ShapeLikeIfRanked:$dilations,
+    MO_ShapeLikeIfRanked:$paddings,
     MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) `(` $input `)` `[` `filter_shape` `=` $filter_shape `,`
-    `strides` `=` $strides `,` `dilations` `=` $dilations `]` attr-dict `:`
+    `` custom<ParamDecls>($outputParamDecls) `(` $input `)` 
+    `[` `filter_shape` `=` $filter_shape `,` `strides` `=` $strides `,`
+        `dilations` `=` $dilations `,` `paddings` `=` $paddings `]` attr-dict `:`
     functional-type(operands, results)
   }];
 
@@ -1401,12 +1406,15 @@ def MO_MaxPoolOp : MO_TensorOp<"max_pool", [
     4D), with the following layout assumption:
     - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
 
-    All hyperparameters (i.e. filter_shape, strides, dilations) must be of rank
-    1, or unranked. If the input has static rank, all hyperparameters with
-    static shape must have sizes of `input_rank - 2`. Individual elements in the
-    hyperparameters applies to corresponding dimensions of the input (after
-    ignoring the batch and channel dimensions).
-
+    All hyperparameters (i.e. strides, dilations, padding) must be of rank 1, or
+    unranked. If the input has static rank, all hyperparameters with static
+    shape must have sizes of `input_rank - 2`, except padding, which must have size 
+    `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to 
+    corresponding dimensions of the input (after ignoring the batch and channel dimensions),
+    with padding representing a before/after pair for each axis. The padding values 
+    are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
+    pad_dim2_after...). In 2D Convolution, dim1 here repesents H and dim2 represents W.
+    
     This op currently only supports strides and dilations on the filter.
 
     Example:
@@ -1418,11 +1426,13 @@ def MO_MaxPoolOp : MO_TensorOp<"max_pool", [
       value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
     %di = mo.constant {
       value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %pa = mo.constant {
+      value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
     %res = mo.max_pool(%arg) [
-        filter_shape = %fs, strides = %st, dilations = %di
+        filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa
     ] : (
       !mo.tensor<[20, 10, 10, 32], f32>, !mo.tensor<[2], si64>,
-      !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
+      !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
     ) -> !mo.tensor<[20, 9, 5, 32], f32>
     ```
   }];
@@ -1432,12 +1442,14 @@ def MO_MaxPoolOp : MO_TensorOp<"max_pool", [
     MO_ShapeLikeIfRanked:$filter_shape,
     MO_ShapeLikeIfRanked:$strides,
     MO_ShapeLikeIfRanked:$dilations,
+    MO_ShapeLikeIfRanked:$paddings,
     MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) `(` $input `)` `[` `filter_shape` `=` $filter_shape `,`
-    `strides` `=` $strides `,` `dilations` `=` $dilations `]` attr-dict `:`
+    `` custom<ParamDecls>($outputParamDecls) `(` $input `)` 
+    `[` `filter_shape` `=` $filter_shape `,` `strides` `=` $strides `,`
+        `dilations` `=` $dilations `,` `paddings` `=` $paddings `]` attr-dict `:`
     functional-type(operands, results)
   }];
 
@@ -1459,11 +1471,14 @@ def MO_ConvOp : MO_TensorOp<"conv", [
     - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
     - filter has layout RSCF, i.e., (height, width, in_channels, out_channels)
 
-    All hyperparameters (i.e. strides, dilations) must be of rank 1, or
+    All hyperparameters (i.e. strides, dilations, padding) must be of rank 1, or
     unranked. If the input has static rank, all hyperparameters with static
-    shape must have sizes of `input_rank - 2`. Individual elements in the
-    hyperparameters applies to corresponding dimensions of the input (after
-    ignoring the batch and channel dimensions).
+    shape must have sizes of `input_rank - 2`, except padding, which must have size 
+    `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to 
+    corresponding dimensions of the input (after ignoring the batch and channel dimensions),
+    with padding representing a before/after pair for each axis. The padding values 
+    are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
+    pad_dim2_after...). In 2D Convolution, dim1 here repesents H and dim2 represents W.
 
     The input, output and filter tensors' ranks must match if statically known.
 
@@ -1476,9 +1491,11 @@ def MO_ConvOp : MO_TensorOp<"conv", [
       : !mo.tensor<[2], si64>
     %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>}
       : !mo.tensor<[2], si64>
-    %res = mo.conv(%input, %filter) [strides = %st, dilations = %di] : (
+    %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>}
+      : !mo.tensor<[4], si64>
+    %res = mo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa] : (
       !mo.tensor<[10, 5, 5, 32], f32>, !mo.tensor<[2, 2, 32, 64], f32>,
-      !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
+      !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
     ) -> !mo.tensor<[10, 4, 4, 64], f32>
     ```
   }];
@@ -1488,12 +1505,14 @@ def MO_ConvOp : MO_TensorOp<"conv", [
     MO_Tensor:$filter,
     MO_ShapeLikeIfRanked:$strides,
     MO_ShapeLikeIfRanked:$dilations,
+    MO_ShapeLikeIfRanked:$paddings,
     MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` $input `,` $filter `)`
-    `[` `strides` `=` $strides `,` `dilations` `=` $dilations `]` attr-dict `:`
+    `[` `strides` `=` $strides `,` `dilations` `=` $dilations `,`
+                    `paddings` `=` $paddings `]` attr-dict `:`
     functional-type(operands, results)
   }];
 

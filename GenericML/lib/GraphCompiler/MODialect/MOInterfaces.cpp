@@ -159,10 +159,18 @@ LogicalResult SlidingWindow::verifyWindowParamShape(TensorValue windowParam,
       cast<MOTensorOpInterface>(this->getOperation()).getInputTensor(0);
   if (TensorType inputTy = input.getType(); inputTy.hasRank()) {
     if (TensorType windowParamTy = windowParam.getType();
-        windowParamTy.hasStaticShape())
-      if (static_cast<size_t>(windowParamTy.getIntDim(0)) !=
-          inputTy.getRank() - 2)
+        windowParamTy.hasStaticShape()) {
+      if (name == "paddings") {
+        if (static_cast<size_t>(windowParamTy.getIntDim(0)) !=
+            2 * (inputTy.getRank() - 2)) {
+          return emitError(name)
+                 << " with static size must match 2 * (input rank - 2)";
+        }
+      } else if (static_cast<size_t>(windowParamTy.getIntDim(0)) !=
+                 inputTy.getRank() - 2) {
         return emitError(name) << " with static size must match input rank - 2";
+      }
+    }
   }
   return success();
 }
@@ -184,6 +192,8 @@ LogicalResult impl::verifySlidingWindow(SlidingWindow op) {
   if (failed(op.verifyWindowParamShape(op.getStrides(), "strides")))
     return failure();
   if (failed(op.verifyWindowParamShape(op.getDilations(), "dilations")))
+    return failure();
+  if (failed(op.verifyWindowParamShape(op.getPaddings(), "paddings")))
     return failure();
 
   auto moOp = cast<MOTensorOpInterface>(op.getOperation());

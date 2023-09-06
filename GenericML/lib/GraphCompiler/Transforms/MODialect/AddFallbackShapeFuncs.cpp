@@ -207,7 +207,7 @@ void Fallback<MO::AvgPoolOp>::build(GraphOp &graph, OpBuilder &builder,
                                     MO::AvgPoolOp op) {
   buildForOpResult(graph, builder, op, "pool_shape", op.getOperands(),
                    /*kgenParams=*/{},
-                   /*dataDepInputIdxs=*/{1, 2, 3});
+                   /*dataDepInputIdxs=*/{1, 2, 3, 4});
 }
 
 void Fallback<MO::BroadcastToOp>::build(GraphOp &graph, OpBuilder &builder,
@@ -231,7 +231,7 @@ void Fallback<MO::ConcatOp>::build(GraphOp &graph, OpBuilder &builder,
 void Fallback<MO::ConvOp>::build(GraphOp &graph, OpBuilder &builder,
                                  MO::ConvOp op) {
   buildForOpResult(graph, builder, op, "conv_shape", op.getOperands(),
-                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{2, 3});
+                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{2, 3, 4});
 }
 
 void Fallback<MO::GatherOp>::build(GraphOp &graph, OpBuilder &builder,
@@ -249,7 +249,7 @@ void Fallback<MO::MaxPoolOp>::build(GraphOp &graph, OpBuilder &builder,
                                     MO::MaxPoolOp op) {
   buildForOpResult(graph, builder, op, "pool_shape", op.getOperands(),
                    /*kgenParams=*/{},
-                   /*dataDepInputIdxs=*/{1, 2, 3});
+                   /*dataDepInputIdxs=*/{1, 2, 3, 4});
 }
 
 void Fallback<MO::PadOp>::build(GraphOp &graph, OpBuilder &builder,

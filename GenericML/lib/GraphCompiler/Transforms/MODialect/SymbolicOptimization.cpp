@@ -312,16 +312,19 @@ struct ConvToMatmulPattern : public OpRewritePattern<ConvOp> {
       return rewriter.notifyMatchFailure(op, "filter size must be 1x1");
 
     // Check strides and dilations
-    auto areConstantOnes = [](TensorValue val) {
+    auto areConstant = [](TensorValue val, int64_t check) {
       std::optional<SmallVector<int64_t>> maybeInts =
           tryGetConstantIntVector(val);
       return maybeInts.has_value() &&
-             llvm::all_of(maybeInts.value(), [](int64_t n) { return n == 1; });
+             llvm::all_of(maybeInts.value(),
+                          [&check](int64_t n) { return n == check; });
     };
-    if (!areConstantOnes(op.getStrides()))
+    if (!areConstant(op.getStrides(), 1))
       return rewriter.notifyMatchFailure(op, "strides must be all 1s");
-    if (!areConstantOnes(op.getStrides()))
+    if (!areConstant(op.getStrides(), 1))
       return rewriter.notifyMatchFailure(op, "dilations must be all 1s");
+    if (!areConstant(op.getPaddings(), 0))
+      return rewriter.notifyMatchFailure(op, "paddings must be all 0s");
 
     // Insert reshapes for conv input and filter
     auto shapeTy = rewriter.getType<MOSH::ShapeType>();
