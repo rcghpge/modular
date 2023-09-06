@@ -58,8 +58,16 @@ public:
   /// Lower the mo.graph to mgp.model.
   LogicalResult run();
 
-  LogicalResult setupJitContext(Location loc);
+  // Emit code into the 'init' block to setup the compiled kernels context,
+  // which will hold function pointers for the loaded kernels. This requires
+  // an !mgp.context slot.
+  LogicalResult setupCompiledKernelsContext(Location loc);
+
+  // Emit code into the 'init' block to check the runtime environment
+  // satisfies all the compile-time device specs. This requires an
+  // !mgp.context slot to hold the calculated device spec map.
   LogicalResult setupCheckRuntime(Location loc);
+
   LogicalResult createModelOp();
 
   /// Lowers the mo.output op to the mef.output for the final results.
@@ -132,32 +140,22 @@ private:
 // Creation of the init/execute invokables
 //===----------------------------------------------------------------------===//
 
-LogicalResult MOGraphLowering::setupJitContext(Location loc) {
-  // Setup the JIT context, which will hold function pointers for the loaded
-  // kernels. This requires an !mgp.context slot.
+LogicalResult MOGraphLowering::setupCompiledKernelsContext(Location loc) {
   uint64_t slot = loweringState.getInitMgpContext().getNumSlots();
-
-  mlir::OperationState opState{loc, "mop.create_jit_context"};
-  opState.addAttribute(
-      "slot", loweringState.getInitOpBuilder().getUI32IntegerAttr(slot));
-  opState.addOperands(
-      {loweringState.getInitChain(), loweringState.getInitMgpContext()});
-  opState.addTypes({loweringState.getInitChain().getType()});
-  Operation *createJitContextOp =
-      loweringState.getInitOpBuilder().create(opState);
-
-  loweringState.setJitCtx(createJitContextOp);
-  loweringState.setJitCtxSlot(slot);
+  auto createContextOp =
+      loweringState.getInitOpBuilder().create<MGP::CpuKernelCreateContextOp>(
+          loc,
+          /*inChain=*/loweringState.getInitChain(),
+          /*theContext=*/loweringState.getInitMgpContext(),
+          /*slot=*/slot);
+  loweringState.setCompiledKernelsContext(createContextOp);
   loweringState.getInitMgpContext().setNumSlots(slot + 1);
-  loweringState.setInitChain(createJitContextOp->getResult(0));
+  loweringState.setInitChain(createContextOp.getOutChain());
   return success();
 }
 
 LogicalResult MOGraphLowering::setupCheckRuntime(Location loc) {
   if (loweringState.getDeviceSpecCollection()) {
-    // Emit code into the 'init' block to check the runtime environment
-    // satisfies all the compile-time device specs. This requires an
-    // !mgp.context slot to hold the calculated device spec map.
     uint64_t slot = loweringState.getInitMgpContext().getNumSlots();
     auto checkRuntimeOp =
         loweringState.getInitOpBuilder().create<MGP::CheckRuntimeOp>(
@@ -239,14 +237,11 @@ LogicalResult MOGraphLowering::createModelOp() {
       loweringState.getInitOpBuilder().create<MGP::ContextCreateOp>(
           graph.getLoc(), /*numSlots=*/0));
 
-  // Setup the JIT context, which will hold function pointers for the loaded
-  // kernels. This requires an !mgp.context slot.
-  if (failed(setupJitContext(graph.getLoc())))
+  // Setup the compiled kernels context.
+  if (failed(setupCompiledKernelsContext(graph.getLoc())))
     return failure();
 
-  // Emit code into the 'init' block to check the runtime environment
-  // satisfies all the compile-time device specs. This requires an
-  // !mgp.context slot to hold the calculated device spec map.
+  // Check the runtime environment.
   if (failed(setupCheckRuntime(graph.getLoc())))
     return failure();
 

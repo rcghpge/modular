@@ -71,13 +71,9 @@ public:
     /// This op creates and returns the overall MGP context.
     MGP::ContextCreateOp mgpContext;
 
-    /// This operation is the context for all compiled code in the graph.
-    /// The current implementation stores the context as a state slot within the
-    /// mgp context.
-    mlir::Operation *jitContext;
-
-    /// The slot inside the MGP context which contains the jit context.
-    uint32_t jitContextSlot;
+    /// This operation creates the context for all compiled kernels in the
+    /// graph within a slot of the !mgp.context.
+    MGP::CpuKernelCreateContextOp compiledKernelsContext;
 
     /// This is a builder appending operations to the end of the invokable.
     OpBuilder builder;
@@ -220,21 +216,17 @@ public:
   /// Return and increment the next available constant identifier.
   size_t getExecuteNextConstId() { return execute.nextConstId++; }
 
-  /// Set the jit context. Should only be accessed during init and referred to
-  /// by the context slot in execute.
-  void setJitCtx(mlir::Operation *op) { init.jitContext = op; }
+  /// Set the compiled kernels context. Should only be accessed during init
+  /// and referred to by the context slot in execute.
+  void setCompiledKernelsContext(MGP::CpuKernelCreateContextOp op) {
+    init.compiledKernelsContext = op;
+  }
 
-  /// Get the jit context. Should only be accessed during init and referred to
-  /// by the context slot in execute.
-  mlir::Operation *getJitCtx() { return init.jitContext; }
-
-  /// The JIT context is stored in one of the "slots" of the context. This sets
-  /// the index of that slot.
-  void setJitCtxSlot(uint32_t slot) { init.jitContextSlot = slot; }
-
-  /// The JIT context is stored in one of the "slots" of the context. This
-  /// returns the index of the slot which contains it.
-  uint32_t getJitCtxSlot() { return init.jitContextSlot; }
+  /// Get the compiled kernels context. Should only be accessed during init
+  /// and referred to by the context slot in execute.
+  MGP::CpuKernelCreateContextOp getCompiledKernelsContext() {
+    return init.compiledKernelsContext;
+  }
 
   /// Helper to extract the dynamic dimensions for an MGP tensor.
   MGP::CpuTensorSpecDimsDynamicOp getDynamicDims(Value mgpTensor,
@@ -389,16 +381,16 @@ public:
     return runtimeDims;
   }
 
-  /// Track this jit kernels as corresponding to this index in the lookup
-  /// table.
-  void trackJitKernel(StringRef ref, size_t index) {
-    jitKernelsToIndex[ref.str()] = index;
+  /// Track this compiled kernel as corresponding to this index in the
+  /// compiled kernels context.
+  void trackCompiledKernel(StringRef ref, size_t index) {
+    compiledKernelsToIndex[ref.str()] = index;
   }
 
-  /// Get the index of the kernel in the lookup table.
-  size_t getJitKernelId(StringRef ref) {
-    auto itr = jitKernelsToIndex.find(ref.str());
-    assert(itr != jitKernelsToIndex.end() &&
+  /// Get the index of the kernel in the compiled kernels context.
+  size_t getCompiledKernelIndex(StringRef ref) {
+    auto itr = compiledKernelsToIndex.find(ref.str());
+    assert(itr != compiledKernelsToIndex.end() &&
            "All kernels must be accounted for through lowering the load "
            "kernels.");
     return itr->second;
@@ -546,9 +538,9 @@ private:
   // Arbitrary client state.
   std::unique_ptr<ClientState> clientState;
 
-  /// A map of the name of the jit kernel to their index in the runtime symbol
-  /// lookup table.
-  std::unordered_map<std::string, size_t> jitKernelsToIndex;
+  /// A map of the name of the compiled kernel to their index in the
+  /// compiled kernel context.
+  std::unordered_map<std::string, size_t> compiledKernelsToIndex;
 
   /// The state and interface for parameter lowering.
   ParameterLoweringState params;

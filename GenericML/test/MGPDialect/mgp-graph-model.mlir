@@ -3,7 +3,7 @@
 
 module {
   mgp.model @upsideDown : mof init {
-    %2 = "mop.create_jit_context"(%0, %1) {slot = 0 : ui32} : (!mef.chain, !mgp.context) -> !mef.chain
+    %2 = mgp.cpu.kernel.create_context %0, %1[0]
     %1 = mgp.context.create 1
     %0 = grt.chain.create ()
     mef.output %2, %1 : !mef.chain, !mgp.context

@@ -547,11 +547,11 @@ def MOGG_OutputPlaceholdersOp : MOGG_Op<"output_placeholders"> {
 // MOGG Runtime compiled code representation ops.
 //===----------------------------------------------------------------------===//
 
-def MOGG_LoadJitKernelOp : MOGG_LowerableOp<"load_compiled_kernel"> {
-  let summary = "Loads pairs of (symbol, compiled object) into the JIT runtime";
+def MOGG_LoadCompiledKernelOp : MOGG_LowerableOp<"load_compiled_kernel"> {
+  let summary = "Loads pairs of (symbol, compiled object) into the runtime context.";
   let description = [{
     For each of the input symbol/resource pair, and associates the symbol with
-    the resource (a blob of compiled kernel object) in the JIT runtime (so the
+    the resource (a blob of compiled kernel object) in the runtime (so the
     symbol names can be used by other ops like `ExecuteCompiledOp`).
   }];
 
@@ -570,7 +570,7 @@ def MOGG_ExecuteCompiledOp : MOGG_LowerableOp<"execute_kernel",
     Executes a compiled kernel with the given name and operands.
 
     This will use the kernel name to look up the compiled object (loaded by
-    `LoadJitKernelOp`), and call into the kernel with the lowered operands and
+    `LoadCompiledKernelOp`), and call into the kernel with the lowered operands and
     other values required by the ABI.
 
     The `usedParams` attribute represent unique shape parameters used inside the

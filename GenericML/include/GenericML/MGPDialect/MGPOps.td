@@ -1755,7 +1755,7 @@ def CpuKernelExecuteOp : MGP_Op<"cpu.kernel.execute", [
                     (in %buf0 : !mgp.cpu.buffer,
                      in %buf1 : !mgp.cpu.buffer<8>,
                      out %buf2 : !mgp.cpu.buffer<48>),
-                    (%dim0, %dim1), "kernel1", out_dims 1
+                    (%dim0, %dim1), name "kernel1", out_dims 1
     %ch1 : !mef.chain
     %dim2 : index
     ```
@@ -1777,8 +1777,9 @@ def CpuKernelExecuteOp : MGP_Op<"cpu.kernel.execute", [
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $aSlot `,` $bKernelIndex `]` `,`
     custom<BufferSignature>($buffers, type($buffers), $cInOutSignature) `,`
-    `(` $inDimensions `)` `,` $dKernelName
-     (  `,` `out_dims` $eNumOutDimensions^ )? attr-dict
+    ( `(` $inDimensions^ `)` `,` )?
+    `name` $dKernelName
+    ( `,` `out_dims` $eNumOutDimensions^ )? attr-dict
   }];
 
   let hasVerifier = 1;

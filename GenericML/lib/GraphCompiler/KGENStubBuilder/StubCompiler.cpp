@@ -105,8 +105,8 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
   ElementsAttr archiveAttr = *standaloneOr;
 
   // Add the kernel as a constant.
-  moggBuilder.create<MOGG::LoadJitKernelOp>(loc, combinedSymbolName,
-                                            archiveAttr);
+  moggBuilder.create<MOGG::LoadCompiledKernelOp>(loc, combinedSymbolName,
+                                                 archiveAttr);
   return success();
 }
 

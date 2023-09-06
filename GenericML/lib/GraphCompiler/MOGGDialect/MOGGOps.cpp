@@ -255,7 +255,7 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // At this stage we gate the allocation only on the overall 'execute' block's
   // chain. The DeferAllocsPass will change this to use the chain which signals
   // when all of the operation's input buffers have been written to, thus
-  // ensuring we allocate buffers just-in-time for their writers. Jit compiled
+  // ensuring we allocate buffers just-in-time for their writers. Compiled
   // kernels have no shape function and just use the shape infered values
   // directly and are guarded to only run on static or shape infered ops.
   auto errOr =
@@ -413,54 +413,33 @@ LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
   return success();
 }
 
-LogicalResult LoadJitKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
-  MOGG::LoadJitKernelOp kernel = *this;
+LogicalResult
+LoadCompiledKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
+  MOGG::LoadCompiledKernelOp op = *this;
+  OpBuilder &builder = loweringState.getInitOpBuilder();
 
-  SmallVector<Value> operands{
-      loweringState.getInitChain(),
-      loweringState.getInitMgpContext(),
-  };
-
-  // MEF can't currently work with arrays of strings. To circumvent this
-  // restriction we pass in the combined symbol as a string with a ";". This is
-  // the setup time load so performance should be less of an issue (though at
-  // runtime it is just string ref operations anyway).
-  auto syms = kernel.getSymbols();
-  std::string combined;
-
+  // Collect the symbols into an #M.multiline attribute, and keep track
+  // of their symbol-to-index mappings.
+  auto syms = op.getSymbols();
+  SmallVector<StringAttr> kernelNames;
   size_t index = 0;
-  // Combine into a list with a terminator character.
   for (StringRef symbol : syms.getAsValueRange<mlir::StringAttr>()) {
-    combined += symbol.str() + ";";
-
-    loweringState.trackJitKernel(symbol.str(), index);
+    kernelNames.emplace_back(builder.getStringAttr(symbol));
+    loweringState.trackCompiledKernel(symbol, index);
     index++;
   }
 
-  // Drop the last ";".
-  combined.pop_back();
-  auto newSymAttrs = loweringState.getInitOpBuilder().getStringAttr(combined);
+  auto loadArchiveOp =
+      loweringState.getInitOpBuilder().create<MGP::CpuKernelLoadArchiveOp>(
+          op.getLoc(),
+          /*inChain=*/loweringState.getInitChain(),
+          /*theContext=*/loweringState.getInitMgpContext(),
+          /*aSlot=*/loweringState.getCompiledKernelsContext().getSlot(),
+          /*bArchive=*/op.getValue(),
+          /*cKernelNames=*/
+          MultiLineStringAttr::get(op.getContext(), kernelNames));
 
-  // Create a call to a custom invoke function we can put in the MEF.
-  mlir::OperationState opState{kernel.getLoc(), "mop.load_jit_archive"};
-  opState.addOperands(operands);
-
-  // This will load and store the kernel at the given index into memory. The
-  // address will be tracked in the symbol table and it can then be accessed by
-  // refering to the index in the table. IMPORTANT! Order in MEF is alphabetical
-  // by attribute name.
-  opState.addAttribute("archiveData", kernel.getValue());
-  opState.addAttribute("jitCtxSlot",
-                       loweringState.getInitOpBuilder().getUI32IntegerAttr(
-                           loweringState.getJitCtxSlot()));
-  opState.addAttribute("kernelName", newSymAttrs);
-
-  opState.addTypes({loweringState.getInitChain().getType()});
-
-  // Kernel will be loaded by the context inside the JIT.
-  mlir::Operation *kernelInGraph =
-      loweringState.getInitOpBuilder().create(opState);
-  loweringState.setInitChain(kernelInGraph->getResult(0));
+  loweringState.setInitChain(loadArchiveOp.getOutChain());
 
   return success();
 }
@@ -470,97 +449,77 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   ExecuteCompiledOp op = *this;
   LowerHelper helper{loweringState, op};
 
-  // Operands to pass to the operation. Input tensors are expanded to buffers
-  // and specs in IR those are passed in.
+  // Input tensors are expanded to buffers and specs in IR those are passed in.
   auto inputTensors = helper.getLoweredInputs();
 
   // Allocate buffers to hold all the operation's result tensors.
-  // Jit compiled kernels have no shape function and just use the shape infered
+  // Compiled kernels have no shape function and just use the shape infered
   // values directly and are guarded to only run on static or shape infered ops.
-  auto errOr =
-      helper.lowerOutputBuffer("jit_compiled", loweringState.getExecuteChain());
+  auto errOr = helper.lowerOutputBuffer("execute_kernel",
+                                        loweringState.getExecuteChain());
   if (errOr.isError())
     return failure();
   SmallVector<LoweredTensor> outputBufferAndSpec = errOr.takeValue();
 
-  size_t numOutputBuffers = outputBufferAndSpec.size();
-  size_t numBuffers = inputTensors.size() + outputBufferAndSpec.size();
+  size_t numOutBuffers = outputBufferAndSpec.size();
+  size_t numBuffers = inputTensors.size() + numOutBuffers;
 
   // We only take the input buffers, we don't need the specs as we just read the
   // used parameters directly.
-  SmallVector<Value> operands;
-  operands.reserve(numBuffers);
+  SmallVector<Value> buffers;
+  SmallVector<InOutSignatureAttr::InOutSemantics> inOutSemantics;
+  buffers.reserve(numBuffers);
+  inOutSemantics.reserve(numBuffers);
 
   // Collect the buffers from the input/output tensors.
-  for (LoweredTensor &tensor : inputTensors)
-    operands.push_back(tensor.buffer);
-  for (LoweredTensor &tensor : outputBufferAndSpec)
-    operands.push_back(tensor.buffer);
+  for (LoweredTensor &tensor : inputTensors) {
+    buffers.push_back(tensor.buffer);
+    inOutSemantics.emplace_back(InOutSignatureAttr::kIn);
+  }
+  for (LoweredTensor &tensor : outputBufferAndSpec) {
+    buffers.push_back(tensor.buffer);
+    inOutSemantics.emplace_back(InOutSignatureAttr::kOut);
+  }
 
   // Add the used kernel parameters.
+  SmallVector<Value> inDimensions;
   ArrayAttr usedParams = op.getUsedParamsAttr();
   for (auto param : usedParams.getAsRange<KGEN::ParamDeclRefAttr>()) {
     auto symbolicDimOr = loweringState.lowerExpression(op->getLoc(), param);
     if (symbolicDimOr.isError())
       return failure();
-
-    operands.push_back(symbolicDimOr.takeValue());
+    inDimensions.push_back(symbolicDimOr.takeValue());
   }
 
-  SmallVector<Type> returnTypes;
-  returnTypes.push_back(loweringState.getExecuteChain().getType());
+  uint64_t slot = loweringState.getCompiledKernelsContext().getSlot();
+  uint64_t index = loweringState.getCompiledKernelIndex(op.getKernelName());
 
-  // Add each output parameter as an index return type.
-  for (size_t i = 0, e = getOutputParamDecls().size(); i < e; ++i)
-    returnTypes.push_back(loweringState.getExecuteOpBuilder().getIndexType());
+  auto executeOp =
+      loweringState.getExecuteOpBuilder().create<MGP::CpuKernelExecuteOp>(
+          op.getLoc(),
+          /*inChain=*/loweringState.getExecuteChain(),
+          /*theContext=*/loweringState.getExecuteMgpContext(),
+          /*buffers=*/buffers,
+          /*inDimensions=*/inDimensions,
+          /*aSlot=*/slot,
+          /*bKernelIndex=*/index,
+          /*cInOutSignature=*/
+          InOutSignatureAttr::get(op->getContext(), inOutSemantics),
+          /*dKernelName=*/op.getKernelName(),
+          /*eNumOutDimensions=*/
+          static_cast<uint64_t>(getOutputParamDecls().size()));
 
-  // Create a call to a custom invoke function we can put in the MEF.
-  mlir::OperationState opState{op->getLoc(), "mop.kgen.execute_kernel"};
-
-  uint32_t id = loweringState.getJitKernelId(op.getKernelNameAttr().str());
-
-  // For compiled ops add the context as argument and all the metadata needed to
-  // extract a compiled kernel from the context.
-  operands.insert(operands.begin(), loweringState.getExecuteMgpContext());
-  opState.addAttribute("jitCtxSlot",
-                       loweringState.getExecuteOpBuilder().getUI32IntegerAttr(
-                           loweringState.getJitCtxSlot()));
-  opState.addAttribute(
-      "kernelIndex",
-      loweringState.getExecuteOpBuilder().getUI32IntegerAttr(id));
-  opState.addAttribute("kernelName", op.getKernelNameAttr());
-
-  // Tell the primitive how many of the arguments are buffers, and how many
-  // of those are output buffers, so it knows how to interpret its operands.
-  opState.addAttribute(
-      "numBufferArgs",
-      loweringState.getExecuteOpBuilder().getUI32IntegerAttr(numBuffers));
-  opState.addAttribute(
-      "numOutputBufferArgs",
-      loweringState.getExecuteOpBuilder().getUI32IntegerAttr(numOutputBuffers));
-
-  // The operation's execution will be gated by a chain. As for output
-  // allocation above, at this stage use the 'execute' block's chain.
-  // The PeepholeTensorExtract will change this.
-  operands.insert(operands.begin(), loweringState.getExecuteChain());
-  opState.addOperands(operands);
-
-  // The return type is the chain and any output parameters.
-  opState.addTypes(returnTypes);
-
-  // Add it to the MLIR.
-  mlir::Operation *invokeOp =
-      loweringState.getExecuteOpBuilder().create(opState);
-  Value outChain = invokeOp->getResult(0);
+  Value outChain = executeOp.getOutChain();
   // Downstream passes may need to distinguish input from output buffers.
-  MGP::setNumBackOutputBuffers(invokeOp, numOutputBuffers);
+  // TODO: Redundant with in/out signature, will be removed
+  // once transitioned away from num{Front,Back}OutputBuffers
+  // convention.
+  MGP::setNumBackOutputBuffers(executeOp, numOutBuffers);
 
-  KGEN::ParamDeclArrayAttr params = op.getOutputParamDeclsAttr();
-
-  // Each of the index output now map onto a concrete parameter value.
-  for (size_t i = 1, e = invokeOp->getNumResults(); i < e; ++i) {
-    if (failed(loweringState.lowerParamDecl(params[i - 1],
-                                            invokeOp->getResult(i))))
+  // Each of the parameter outputs now maps onto a concrete dimension value.
+  for (const auto &[param, value] :
+       llvm::zip(op.getOutputParamDecls(), executeOp.getOutDimensions())) {
+    if (failed(loweringState.lowerParamDecl(param, value)))
       return failure();
   }
 

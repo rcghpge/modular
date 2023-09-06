@@ -186,8 +186,8 @@ LogicalResult CpuBufferConstantOp::inferReturnTypes(
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
   assert(operands.empty() && "mismatched operand arity");
-  auto elementsAttr =
-      dyn_cast<ElementsAttr>(attributes.get(getAValueAttrName(name)));
+  auto elementsAttr = dyn_cast_if_present<ElementsAttr>(
+      attributes.get(getAValueAttrName(name)));
   assert(elementsAttr && "mismatched operand types");
   int64_t size = elementsAttr.size();
   inferredReturnTypes.emplace_back(CpuBufferType::get(context, size));
@@ -235,8 +235,8 @@ LogicalResult CpuBufferGetCachedOp::inferReturnTypes(
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
-  auto rawSizeAttr =
-      dyn_cast<IntegerAttr>(attributes.get(getBRawSizeAttrName(name)));
+  auto rawSizeAttr = dyn_cast_if_present<IntegerAttr>(
+      attributes.get(getBRawSizeAttrName(name)));
   assert(rawSizeAttr && "mismatched operand types");
   inferredReturnTypes.emplace_back(CpuBufferType::get(context, rawSizeAttr));
   return success();
@@ -307,8 +307,8 @@ LogicalResult CpuBufferAllocStaticOp::inferReturnTypes(
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
-  auto sizeAttr =
-      dyn_cast<mlir::IntegerAttr>(attributes.get(getASizeAttrName(name)));
+  auto sizeAttr = dyn_cast_if_present<mlir::IntegerAttr>(
+      attributes.get(getASizeAttrName(name)));
   assert(sizeAttr != nullptr && "mismatched operand attributes");
   uint64_t size = sizeAttr.getUInt();
   // If the attribute happens to be invalid we'll still construct a result
@@ -385,8 +385,8 @@ LogicalResult CpuBufferReallocStaticOp::inferReturnTypes(
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
-  auto sizeAttr =
-      dyn_cast<mlir::IntegerAttr>(attributes.get(getCSizeAttrName(name)));
+  auto sizeAttr = dyn_cast_if_present<mlir::IntegerAttr>(
+      attributes.get(getCSizeAttrName(name)));
   assert(sizeAttr != nullptr && "mismatched operand attributes");
   std::optional<uint64_t> size = sizeAttr.getUInt();
   inferredReturnTypes.emplace_back(CpuBufferType::get(context, size));
@@ -692,10 +692,10 @@ LogicalResult CpuTensorSpecCreateOp::inferReturnTypes(
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
-  auto rawDimsAttr =
-      dyn_cast<IntArrayElementsAttr>(attributes.get(getARawDimsAttrName(name)));
-  auto rawDTypeAttr =
-      dyn_cast<IntegerAttr>(attributes.get(getBRawDTypeAttrName(name)));
+  auto rawDimsAttr = dyn_cast_if_present<IntArrayElementsAttr>(
+      attributes.get(getARawDimsAttrName(name)));
+  auto rawDTypeAttr = dyn_cast_if_present<IntegerAttr>(
+      attributes.get(getBRawDTypeAttrName(name)));
   assert(rawDimsAttr && rawDTypeAttr && "mismatched operand type");
   inferredReturnTypes.emplace_back(
       CpuTensorSpecType::get(rawDimsAttr, rawDTypeAttr));
@@ -757,8 +757,8 @@ LogicalResult CpuTensorSpecCreateDynamicOp::inferReturnTypes(
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
-  auto rawDimsAttr =
-      dyn_cast<IntArrayElementsAttr>(attributes.get(getRawDimsAttrName(name)));
+  auto rawDimsAttr = dyn_cast_if_present<IntArrayElementsAttr>(
+      attributes.get(getRawDimsAttrName(name)));
   assert(rawDimsAttr && "mismatched operand type");
   inferredReturnTypes.emplace_back(
       CpuTensorSpecType::get(rawDimsAttr, /*rawDTypeOrNull=*/{}));
@@ -813,8 +813,8 @@ LogicalResult CpuTensorSpecWithDTypeOp::inferReturnTypes(
   assert(operands.size() == 1 && "mismatched operand arity");
   auto tensorSpec = dyn_cast<CpuTensorSpecType>(operands[0].getType());
   assert(tensorSpec && "mismatched operand type");
-  auto rawDTypeAttr =
-      dyn_cast<IntegerAttr>(attributes.get(getRawDTypeAttrName(name)));
+  auto rawDTypeAttr = dyn_cast_if_present<IntegerAttr>(
+      attributes.get(getRawDTypeAttrName(name)));
   assert(rawDTypeAttr && "mismatched operand type");
   // Result type is the tensor spec operand type but with rawDType as its dtype.
   inferredReturnTypes.emplace_back(
@@ -1044,8 +1044,8 @@ LogicalResult CASLookupOp::inferReturnTypes(
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
-  auto rawSizeAttr =
-      dyn_cast<IntegerAttr>(attributes.get(getCRawSizeAttrName(name)));
+  auto rawSizeAttr = dyn_cast_if_present<IntegerAttr>(
+      attributes.get(getCRawSizeAttrName(name)));
   assert(rawSizeAttr && "mismatched operand types");
   inferredReturnTypes.emplace_back(CpuBufferType::get(context, rawSizeAttr));
   return success();
@@ -1098,7 +1098,7 @@ parseBufferSignature(OpAsmParser &p,
 
     // Parse the operand proper.
     OpAsmParser::UnresolvedOperand &unresolvedOperand = buffers.emplace_back();
-    if (p.parseOperand(unresolvedOperand, /*allowResultNumber=*/false))
+    if (p.parseOperand(unresolvedOperand))
       return failure();
 
     // Parse the type annotation.
@@ -1155,12 +1155,14 @@ LogicalResult CpuKernelExecuteOp::inferReturnTypes(
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
-  auto dNumOutDimensionsAttr =
-      dyn_cast<IntegerAttr>(attributes.get(getENumOutDimensionsAttrName(name)));
-  assert(dNumOutDimensionsAttr && "mismatched operand types");
-  uint64_t n = dNumOutDimensionsAttr.getUInt();
+  uint64_t numOutDimensions = 0;
+  if (auto attr = attributes.get(getENumOutDimensionsAttrName(name))) {
+    auto dNumOutDimensionsAttr = dyn_cast<IntegerAttr>(attr);
+    assert(dNumOutDimensionsAttr && "mismatched operand types");
+    numOutDimensions = dNumOutDimensionsAttr.getUInt();
+  }
   inferredReturnTypes.emplace_back(MEF::ChainType::get(context));
-  while (n-- > 0)
+  while (numOutDimensions-- > 0)
     inferredReturnTypes.emplace_back(IndexType::get(context));
   return success();
 }

@@ -18,14 +18,15 @@
 // CHECK-NEXT:   %bufferResult_4, %tensorSpecResult_5 = mgp.cpu.tensor.extract %arg3 : !mgp.cpu.tensor<?x?xf32>
 // CHECK-NEXT:   %6 = mgp.cpu.tensor_spec.create %0#0, %0#1 : !mgp.cpu.tensor_spec<?x?xf32>
 // CHECK-NEXT:   %7 = mgp.cpu.buffer.alloc.spec %5, %6, align 16 : !mgp.cpu.tensor_spec<?x?xf32>
-// CHECK-NEXT:   %8 = "mop.kgen.execute_kernel"(%arg0, %arg1, %bufferResult_2, %bufferResult_4, %7, %0#0, %0#1) : (!mef.chain, !mgp.context, !mgp.cpu.buffer, !mgp.cpu.buffer, !mgp.cpu.buffer, index, index) -> !mef.chain
-// CHECK-NEXT:   %9 = mgp.cpu.tensor.create %8, %7, %6  : !mgp.cpu.tensor<?x?xf32>
-// CHECK-NEXT:   mef.output %arg0, %9 : !mef.chain, !mgp.cpu.tensor<?x?xf32>
+// CHECK-NEXT:   %[[OUT_CH:.*]] = mgp.cpu.kernel.execute %arg0, %arg1[0, 0], (in %bufferResult_2 : {{.*}}, in %bufferResult_4 : {{.*}}, out %7 : {{.*}}), (%0#0, %0#1), name "foo"
+// CHECK-NEXT:   %[[OUT_TEN:.*]] = mgp.cpu.tensor.create %[[OUT_CH]], %7, %6  : !mgp.cpu.tensor<?x?xf32>
+// CHECK-NEXT:   mef.output %arg0, %[[OUT_TEN]] : !mef.chain, !mgp.cpu.tensor<?x?xf32>
 // CHECK-NEXT: }
 
 mgp.model @simple_case : mof init {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
+  // Don't bother setting up the compiled kernel context
   mef.output %ch0, %ctx : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.cpu.tensor<?x?xf32>, %arg3: !mgp.cpu.tensor<?x?xf32>) -> (!mef.chain, !mgp.cpu.tensor<?x?xf32>) {
   %bufferResult, %tensorSpecResult = mgp.cpu.tensor.extract %arg2 : !mgp.cpu.tensor<?x?xf32>
@@ -40,7 +41,7 @@ mgp.model @simple_case : mof init {
   %bufferResult_4, %tensorSpecResult_5 = mgp.cpu.tensor.extract %arg3 : !mgp.cpu.tensor<?x?xf32>
   %6 = mgp.cpu.tensor_spec.create %0#0, %0#1 : !mgp.cpu.tensor_spec<?x?xf32>
   %7 = mgp.cpu.buffer.alloc.spec %arg0, %6, align 16 : !mgp.cpu.tensor_spec<?x?xf32>
-  %8 = "mop.kgen.execute_kernel"(%arg0, %arg1, %bufferResult_2, %bufferResult_4, %7, %0#0, %0#1) {} : (!mef.chain, !mgp.context, !mgp.cpu.buffer, !mgp.cpu.buffer, !mgp.cpu.buffer, index, index) -> !mef.chain
+  %8 = mgp.cpu.kernel.execute %arg0, %arg1[0, 0], (in %bufferResult_2 : !mgp.cpu.buffer, in %bufferResult_4 : !mgp.cpu.buffer, out %7 : !mgp.cpu.buffer), (%0#0, %0#1), name "foo"
   %9 = mgp.cpu.tensor.create %8, %7, %6  : !mgp.cpu.tensor<?x?xf32>
   mef.output %arg0, %9 : !mef.chain, !mgp.cpu.tensor<?x?xf32>
 }
@@ -64,14 +65,15 @@ mgp.model @simple_case : mof init {
 // CHECK-NEXT:   %7 = mgp.cpu.tensor_spec.create %0#0, %0#1 : !mgp.cpu.tensor_spec<?x?xf32>
 // CHECK-NEXT:   %8 = grt.chain.create ({{%5, %6|%6, %5}})
 // CHECK-NEXT:   %9 = mgp.cpu.buffer.alloc.spec %8, %7, align 16 : !mgp.cpu.tensor_spec<?x?xf32>
-// CHECK-NEXT:   %10 = "mop.kgen.execute_kernel"(%arg0, %arg1, %bufferResult_2, %bufferResult_4, %9, %0#0, %0#1) : (!mef.chain, !mgp.context, !mgp.cpu.buffer, !mgp.cpu.buffer, !mgp.cpu.buffer, index, index) -> !mef.chain
-// CHECK-NEXT:   %11 = mgp.cpu.tensor.create %10, %9, %7  : !mgp.cpu.tensor<?x?xf32>
-// CHECK-NEXT:   mef.output %arg0, %11 : !mef.chain, !mgp.cpu.tensor<?x?xf32>
+// CHECK-NEXT:   %[[OUT_CH:.*]] = mgp.cpu.kernel.execute %arg0, %arg1[0, 0], (in %bufferResult_2 : {{.*}}, in %bufferResult_4 : {{.*}}, out %9 : {{.*}}), (%0#0, %0#1), name "foo"
+// CHECK-NEXT:   %[[OUT_TEN:.*]] = mgp.cpu.tensor.create %[[OUT_CH]], %9, %7  : !mgp.cpu.tensor<?x?xf32>
+// CHECK-NEXT:   mef.output %arg0, %[[OUT_TEN]] : !mef.chain, !mgp.cpu.tensor<?x?xf32>
 // CHECK-NEXT: }
 
 mgp.model @two_asserts : mof init {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
+  // Don't bother setting up the compiled kernel context
   mef.output %ch0, %ctx : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.cpu.tensor<?x?xf32>, %arg3: !mgp.cpu.tensor<?x?xf32>) -> (!mef.chain, !mgp.cpu.tensor<?x?xf32>) {
   %bufferResult, %tensorSpecResult = mgp.cpu.tensor.extract %arg2 : !mgp.cpu.tensor<?x?xf32>
@@ -87,7 +89,7 @@ mgp.model @two_asserts : mof init {
   %bufferResult_4, %tensorSpecResult_5 = mgp.cpu.tensor.extract %arg3 : !mgp.cpu.tensor<?x?xf32>
   %6 = mgp.cpu.tensor_spec.create %0#0, %0#1 : !mgp.cpu.tensor_spec<?x?xf32>
   %7 = mgp.cpu.buffer.alloc.spec %arg0, %6, align 16 : !mgp.cpu.tensor_spec<?x?xf32>
-  %8 = "mop.kgen.execute_kernel"(%arg0, %arg1, %bufferResult_2, %bufferResult_4, %7, %0#0, %0#1) {} : (!mef.chain, !mgp.context, !mgp.cpu.buffer, !mgp.cpu.buffer, !mgp.cpu.buffer, index, index) -> !mef.chain
+  %8 = mgp.cpu.kernel.execute %arg0, %arg1[0, 0], (in %bufferResult_2 : !mgp.cpu.buffer, in %bufferResult_4 : !mgp.cpu.buffer, out %7 : !mgp.cpu.buffer), (%0#0, %0#1), name "foo"
   %9 = mgp.cpu.tensor.create %8, %7, %6  : !mgp.cpu.tensor<?x?xf32>
   mef.output %arg0, %9 : !mef.chain, !mgp.cpu.tensor<?x?xf32>
 }
@@ -114,14 +116,15 @@ mgp.model @two_asserts : mof init {
 // CHECK-NEXT:   %bufferResult_4, %tensorSpecResult_5 = mgp.cpu.tensor.extract %arg3 : !mgp.cpu.tensor<?x?xf32>
 // CHECK-NEXT:   %7 = mgp.cpu.tensor_spec.create %0#0, %0#1 : !mgp.cpu.tensor_spec<?x?xf32>
 // CHECK-NEXT:   %8 = mgp.cpu.buffer.alloc.spec %6, %7, align 16 : !mgp.cpu.tensor_spec<?x?xf32>
-// CHECK-NEXT:   %9 = "mop.kgen.execute_kernel"(%arg0, %arg1, %bufferResult_2, %bufferResult_4, %8, %0#0, %0#1) : (!mef.chain, !mgp.context, !mgp.cpu.buffer, !mgp.cpu.buffer, !mgp.cpu.buffer, index, index) -> !mef.chain
-// CHECK-NEXT:   %10 = mgp.cpu.tensor.create %9, %8, %7  : !mgp.cpu.tensor<?x?xf32>
-// CHECK-NEXT:   mef.output %arg0, %10 : !mef.chain, !mgp.cpu.tensor<?x?xf32>
+// CHECK-NEXT:   %[[OUT_CH:.*]] = mgp.cpu.kernel.execute %arg0, %arg1[0, 0], (in %bufferResult_2 : {{.*}}, in %bufferResult_4 : {{.*}}, out %8 : {{.*}}), (%0#0, %0#1), name "foo"
+// CHECK-NEXT:   %[[OUT_TEN:.*]] = mgp.cpu.tensor.create %[[OUT_CH]], %8, %7  : !mgp.cpu.tensor<?x?xf32>
+// CHECK-NEXT:   mef.output %arg0, %[[OUT_TEN]] : !mef.chain, !mgp.cpu.tensor<?x?xf32>
 // CHECK-NEXT: }
 
 mgp.model @assert_depends_on_control_flow : mof init {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
+  // Don't bother setting up the compiled kernel context
   mef.output %ch0, %ctx : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.cpu.tensor<?x?xf32>, %arg3: !mgp.cpu.tensor<?x?xf32>) -> (!mef.chain, !mgp.cpu.tensor<?x?xf32>) {
   %bufferResult, %tensorSpecResult = mgp.cpu.tensor.extract %arg2 : !mgp.cpu.tensor<?x?xf32>
@@ -141,7 +144,7 @@ mgp.model @assert_depends_on_control_flow : mof init {
   %bufferResult_4, %tensorSpecResult_5 = mgp.cpu.tensor.extract %arg3 : !mgp.cpu.tensor<?x?xf32>
   %6 = mgp.cpu.tensor_spec.create %0#0, %0#1 : !mgp.cpu.tensor_spec<?x?xf32>
   %7 = mgp.cpu.buffer.alloc.spec %arg0, %6, align 16 : !mgp.cpu.tensor_spec<?x?xf32>
-  %8 = "mop.kgen.execute_kernel"(%arg0, %arg1, %bufferResult_2, %bufferResult_4, %7, %0#0, %0#1) {} : (!mef.chain, !mgp.context, !mgp.cpu.buffer, !mgp.cpu.buffer, !mgp.cpu.buffer, index, index) -> !mef.chain
+  %8 = mgp.cpu.kernel.execute %arg0, %arg1[0, 0], (in %bufferResult_2 : !mgp.cpu.buffer, in %bufferResult_4 : !mgp.cpu.buffer, out %7 : !mgp.cpu.buffer), (%0#0, %0#1), name "foo"
   %9 = mgp.cpu.tensor.create %8, %7, %6  : !mgp.cpu.tensor<?x?xf32>
   mef.output %arg0, %9 : !mef.chain, !mgp.cpu.tensor<?x?xf32>
 }
@@ -159,8 +162,8 @@ mgp.model @assert_depends_on_control_flow : mof init {
 // CHECK-NEXT:   %3 = mip.cmp.eq %0#1, %1#1
 // CHECK-NEXT:   %4 = mip.bool.and %2, %3
 // CHECK-NEXT:   %5 = grt.if %4 (%2: i1, %3: i1, %arg0: !mef.chain) -> !mef.chain {
-// CHECK-NEXT:     %10 = mgp.assert %2, "dimensions must match"
-// CHECK-NEXT:     mef.output %10 : !mef.chain
+// CHECK-NEXT:     %9 = mgp.assert %2, "dimensions must match"
+// CHECK-NEXT:     mef.output %9 : !mef.chain
 // CHECK-NEXT:   } else {
 // CHECK-NEXT:     mef.output %arg0 : !mef.chain
 // CHECK-NEXT:   }
@@ -168,14 +171,15 @@ mgp.model @assert_depends_on_control_flow : mof init {
 // CHECK-NEXT:   %bufferResult_4, %tensorSpecResult_5 = mgp.cpu.tensor.extract %arg3 : !mgp.cpu.tensor<?x?xf32>
 // CHECK-NEXT:   %6 = mgp.cpu.tensor_spec.create %0#0, %0#1 : !mgp.cpu.tensor_spec<?x?xf32>
 // CHECK-NEXT:   %7 = mgp.cpu.buffer.alloc.spec %arg0, %6, align 16 : !mgp.cpu.tensor_spec<?x?xf32>
-// CHECK-NEXT:   %8 = "mop.kgen.execute_kernel"(%arg0, %arg1, %bufferResult_2, %bufferResult_4, %7, %0#0, %0#1) : (!mef.chain, !mgp.context, !mgp.cpu.buffer, !mgp.cpu.buffer, !mgp.cpu.buffer, index, index) -> !mef.chain
-// CHECK-NEXT:   %9 = mgp.cpu.tensor.create %8, %7, %6  : !mgp.cpu.tensor<?x?xf32>
-// CHECK-NEXT:   mef.output %arg0, %9 : !mef.chain, !mgp.cpu.tensor<?x?xf32>
+// CHECK-NEXT:   %[[OUT_CH:.*]] = mgp.cpu.kernel.execute %arg0, %arg1[0, 0], (in %bufferResult_2 : {{.*}}, in %bufferResult_4 : {{.*}}, out %7 : {{.*}}), (%0#0, %0#1), name "foo"
+// CHECK-NEXT:   %[[OUT_TEN:.*]] = mgp.cpu.tensor.create %[[OUT_CH]], %7, %6  : !mgp.cpu.tensor<?x?xf32>
+// CHECK-NEXT:   mef.output %arg0, %[[OUT_TEN]] : !mef.chain, !mgp.cpu.tensor<?x?xf32>
 // CHECK-NEXT: }
 
 mgp.model @assert_in_control_flow : mof init {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
+  // Don't bother setting up the compiled kernel context
   mef.output %ch0, %ctx : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.cpu.tensor<?x?xf32>, %arg3: !mgp.cpu.tensor<?x?xf32>) -> (!mef.chain, !mgp.cpu.tensor<?x?xf32>) {
   %bufferResult, %tensorSpecResult = mgp.cpu.tensor.extract %arg2 : !mgp.cpu.tensor<?x?xf32>
@@ -195,7 +199,7 @@ mgp.model @assert_in_control_flow : mof init {
   %bufferResult_4, %tensorSpecResult_5 = mgp.cpu.tensor.extract %arg3 : !mgp.cpu.tensor<?x?xf32>
   %6 = mgp.cpu.tensor_spec.create %0#0, %0#1 : !mgp.cpu.tensor_spec<?x?xf32>
   %7 = mgp.cpu.buffer.alloc.spec %arg0, %6, align 16 : !mgp.cpu.tensor_spec<?x?xf32>
-  %8 = "mop.kgen.execute_kernel"(%arg0, %arg1, %bufferResult_2, %bufferResult_4, %7, %0#0, %0#1) {} : (!mef.chain, !mgp.context, !mgp.cpu.buffer, !mgp.cpu.buffer, !mgp.cpu.buffer, index, index) -> !mef.chain
+  %8 = mgp.cpu.kernel.execute %arg0, %arg1[0, 0], (in %bufferResult_2 : !mgp.cpu.buffer, in %bufferResult_4 : !mgp.cpu.buffer, out %7 : !mgp.cpu.buffer), (%0#0, %0#1), name "foo"
   %9 = mgp.cpu.tensor.create %8, %7, %6  : !mgp.cpu.tensor<?x?xf32>
   mef.output %arg0, %9 : !mef.chain, !mgp.cpu.tensor<?x?xf32>
 }

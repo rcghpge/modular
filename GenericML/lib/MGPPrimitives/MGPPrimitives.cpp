@@ -946,6 +946,8 @@ static void mgp_cpu_kernel_load_archive(Chain inChain, Context &ctx,
           static_cast<size_t>(*aSlot));
 
   // Split the combined kernel names into a list of individual kernel names.
+  // Remember that M.multiline strings are explicitly null-terminated when
+  // encoded into MEF.
   SmallVector<StringRef> kernelNames;
   StringRef combined = *cKernelNames;
   size_t start = 0;
@@ -953,8 +955,7 @@ static void mgp_cpu_kernel_load_archive(Chain inChain, Context &ctx,
   while (start < end) {
     size_t next = combined.find('\n', start);
     if (next == std::string::npos) {
-      size_t len = end - start;
-      kernelNames.emplace_back(combined.data() + start, len);
+      assert(start + 1 == end && combined[start] == '\0');
       break;
     } else {
       size_t len = next - start;
@@ -981,7 +982,7 @@ static void mgp_cpu_kernel_load_archive(Chain inChain, Context &ctx,
 
 static void
 mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
-                       Result<Chain> outChain, RemainingResults outputParams,
+                       Result<Chain> outChain, RemainingResults outDimensions,
                        MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bKernelIndex,
                        MEFAttr<StringRef> cInOutSignature,
                        MEFAttr<StringRef> dKernelName,
@@ -1008,13 +1009,13 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
   assert(numBuffers <= operands.size() && "invalid buffer signature arity");
   size_t numInDimensions = operands.size() - numBuffers;
 
-  // The outputParams are:
+  // The outDimensions are:
   //  [outDimension_1, ..., outDimension_numOutDimensions]
   size_t numOutDimensions = static_cast<size_t>(*eNumOutDimensions);
-  assert(numOutDimensions == outputParams.size() &&
+  assert(numOutDimensions == outDimensions.size() &&
          "invalid out dimensions count attribute");
-  for (size_t i = 0; i < numOutDimensions; ++i)
-    outputParams[i] = AsyncValueRef<size_t>::allocate(runtime);
+  for (auto &outDimension : outDimensions)
+    outDimension = AsyncValueRef<size_t>::allocate(runtime);
 
   // Create an OutputChain to manage the kernel's asynchronous execution.
   KGEN::OutputChain outputChain(outChain.copy(), outChain.copyLocation());
@@ -1085,8 +1086,11 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
 
   // If the kernel has output dimensions then it must be synchronous and those
   // values can be copied out now.
-  for (size_t i = 0; i < numOutDimensions; ++i)
-    std::move(outputParams[i]).emplace<size_t>(dimensions[numInDimensions + i]);
+  for (size_t i = 0; i < numOutDimensions; ++i) {
+    // Note we must copy rather than move the result reference since it is
+    // needed by the MEF executor.
+    outDimensions[i].copy().emplace<size_t>(dimensions[numInDimensions + i]);
+  }
 
 #if MODULAR_PARANOID
   // If the kernel is asynchronous but accidentally depends on the stack
@@ -1178,7 +1182,7 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.assert", mgp_assert);
   ADD_PRIMITIVE(registry, "mgp.cpu.kernel.create_context",
                 mgp_cpu_kernel_create_context);
-  ADD_PRIMITIVE(registry, "mpg.cpu.kernel.load_archive",
+  ADD_PRIMITIVE(registry, "mgp.cpu.kernel.load_archive",
                 mgp_cpu_kernel_load_archive);
   ADD_PRIMITIVE(registry, "mgp.cpu.kernel.execute", mgp_cpu_kernel_execute);
   ADD_PRIMITIVE(registry, "mgp.model", mgp_model);

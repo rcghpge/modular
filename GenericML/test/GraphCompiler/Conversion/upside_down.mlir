@@ -10,7 +10,7 @@ mo.graph @updside_down(
 }
 
 // CHECK-LABEL: mgp.model @updside_down : tf init {
-// CHECK: "mop.kgen.execute_kernel"{{.*}} kernelName = "{{.*}}mo.mul
-// CHECK: "mop.kgen.execute_kernel"{{.*}} kernelName = "{{.*}}mo.add
-// CHECK: "mop.kgen.execute_kernel"{{.*}} kernelName = "{{.*}}mo.relu
+// CHECK: mgp.cpu.kernel.execute {{.*}}, name "{{.*}}mo.mul{{.*}}"
+// CHECK: mgp.cpu.kernel.execute {{.*}}, name "{{.*}}mo.add{{.*}}"
+// CHECK: mgp.cpu.kernel.execute {{.*}}, name "{{.*}}mo.relu{{.*}}"
 

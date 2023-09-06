@@ -29,6 +29,7 @@
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/raw_ostream.h"
 #include <climits>
@@ -45,6 +46,24 @@ struct MEFOffset {
 struct RegionSignature {
   size_t numArguments, numResults;
 };
+
+/// Which attributes names should never be emitted into MEF because they
+/// are not needed at runtime (and may not be encodable).
+/// We need to drop these here rather than in a cleanup pass because the
+/// ops which use them will generally fail validation if the attributes
+/// are erased.
+const llvm::StringSet<> &ignoredAttributes() {
+  static const llvm::StringSet<> *set = []() {
+    auto *set = new llvm::StringSet<>();
+    // The 'function_type' for MEF::InvokableOp.
+    set->insert("function_type");
+    // The 'operandSegmentSizes' of AttrSizedOperandSegments, which
+    // is only needed to support generic MLIR parsing.
+    set->insert("operandSegmentSizes");
+    return set;
+  }();
+  return *set;
+}
 
 //===----------------------------------------------------------------------===//
 // MEFEmitter
@@ -551,12 +570,14 @@ bool EntityTable::collect(ModuleOp module, bool enableMEFMetadata) {
           // Recurse into ArrayAttr/DictionaryAttr. Perform a post-order
           // traversal so that we can use the offsets from the values inside
           // the collection when emitting the collection.
-          if (auto arrayAttr = dyn_cast<ArrayAttr>(attr))
+          if (auto arrayAttr = dyn_cast<ArrayAttr>(attr)) {
             for (Attribute element : arrayAttr)
               processAttr(StringAttr::get(op->getContext()), element, true);
-          if (auto dictAttr = dyn_cast<DictionaryAttr>(attr))
+          }
+          if (auto dictAttr = dyn_cast<DictionaryAttr>(attr)) {
             for (NamedAttribute namedAttr : dictAttr)
               processAttr(namedAttr.getName(), namedAttr.getValue(), true);
+          }
 
           // If we're handling a dictionary, then insert the name into the
           // attributes list.
@@ -590,9 +611,8 @@ bool EntityTable::collect(ModuleOp module, bool enableMEFMetadata) {
       // Keep track of any attributes used by this op. If the attr is the
       // function type attr that symbols have, then don't write that.
       for (auto attr : op->getAttrs()) {
-        if (attr.getName() == "function_type")
+        if (ignoredAttributes().contains(attr.getName().getValue()))
           continue;
-
         processAttr(attr.getName(), attr.getValue(), false);
       }
     }
@@ -1481,10 +1501,8 @@ void RegionEmitter::emitPrimitive(Operation *op,
       processAttr(StringAttr::get(op->getContext()), attr);
   } else {
     for (auto attrNamePair : op->getAttrs()) {
-      // Don't emit the function type attr.
-      if (attrNamePair.getName() == "function_type")
+      if (ignoredAttributes().contains(attrNamePair.getName()))
         continue;
-
       processAttr(attrNamePair.getName(), attrNamePair.getValue());
     }
   }
