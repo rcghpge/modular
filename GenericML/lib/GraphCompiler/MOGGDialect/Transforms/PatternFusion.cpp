@@ -29,6 +29,7 @@ namespace {
 
 // The size which we regard as too small to run the special matmuls.
 constexpr int64_t kTinyMatmulFlops = 5000;
+constexpr int64_t kTinyBMMatmulFlops = 512;
 
 static bool isMatmulSmall(MO::MatmulOp matmul) {
   MO::TensorType aType = matmul.getInputA().getType();
@@ -43,6 +44,27 @@ static bool isMatmulSmall(MO::MatmulOp matmul) {
   // M * K * N
   int64_t approxFlops = ADims[0] * ADims[1] * BDims[1];
   return approxFlops < kTinyMatmulFlops;
+}
+
+static bool isBMMSmall(MO::BatchMatmulOp matmul) {
+  MO::TensorType aType = matmul.getInputA().getType();
+  MO::TensorType bType = matmul.getInputB().getType();
+
+  if (!aType.hasStaticShape() || !bType.hasStaticShape())
+    return false;
+
+  SmallVector<int64_t> ADims = aType.getIntDims();
+  SmallVector<int64_t> BDims = bType.getIntDims();
+
+  size_t rank = aType.getRank();
+  int64_t batch_size = 1;
+  for (size_t i = 0; i < ADims.size() - 2; ++i)
+    batch_size *= ADims[i];
+
+  // M * K * N
+  int64_t approxFlops =
+      batch_size * (ADims[rank - 2] * ADims[rank - 1] * BDims[rank - 1]);
+  return approxFlops < kTinyBMMatmulFlops;
 }
 
 /// Returns true if `val` comes from a series of constant computation (e.g.,
@@ -306,6 +328,10 @@ struct BatchMatmulAdjBPattern : public OpRewritePattern<MO::BatchMatmulOp> {
   LogicalResult matchAndRewrite(MO::BatchMatmulOp op,
                                 PatternRewriter &rewriter) const override {
     Value input, weight, perm;
+
+    if (isBMMSmall(op))
+      return rewriter.notifyMatchFailure(op, "BatchedMatmul is too small");
+
     auto weightTransP =
         m_Op<MO::TransposeOp>(m_Any(&weight), m_MOVector(m_Any(&perm)));
     if (!m_Op<MO::BatchMatmulOp>(
