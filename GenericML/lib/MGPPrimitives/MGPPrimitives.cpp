@@ -7,6 +7,7 @@
 #include "GenericML/MGPPrimitives/MGPPrimitives.h"
 #include "GenericML/MOPrimitives/MOPrimitives.h"
 #include "GenericML/Support/Context.h"
+#include "GenericML/Support/HostDeviceSpecs.h"
 #include "GenericML/Support/StateSlot.h"
 #include "GenericML/Support/Tensor.h"
 #include "GraphRT/MEFExecutor/PrimitiveRegistry.h"
@@ -30,6 +31,10 @@
 
 using namespace M;
 using namespace M::GML;
+
+//===----------------------------------------------------------------------===//
+// Helpers
+//===----------------------------------------------------------------------===//
 
 static std::optional<size_t> getRuntimeSize(uint64_t rawSize) {
   return hasRawSize(rawSize)
@@ -466,22 +471,25 @@ static Chain mgp_state_slot_create(Chain inChain, Context &ctx,
 
 static void mgp_check_runtime(Chain inChain, Context &ctx,
                               Result<Chain> outChain, MEFAttr<uint64_t> aSlot,
-                              MEFAttr<StringRef> bDevicesJSON) {
+                              MEFAttr<StringRef> bDevicesJSON,
+                              Runtime &runtime) {
   TimeTraceScope scope(LLCL::WorkProfilerEntry::create("mgp.check_runtime"));
+
+  auto providedDeviceSpecsOr =
+      runtime.createContextIfMissing<DeviceSpecCollection>(
+          [&runtime]() { return GML::getHostDeviceSpecs(runtime); });
+  if (providedDeviceSpecsOr)
+    return std::move(outChain).setToError(providedDeviceSpecsOr.takeError());
 
   ErrorOr<DeviceSpecCollection> requiredDeviceSpecsOr =
       DeviceSpecCollection::deserializeFromJSON(*bDevicesJSON);
   if (requiredDeviceSpecsOr)
     return std::move(outChain).setToError(requiredDeviceSpecsOr.takeError());
 
-  // TODO: Merge in other exotic devices without strong coupling.
-  ErrorOr<DeviceSpecCollection> providedDeviceSpecsOr =
-      getHostDeviceSpecCollection();
-  if (providedDeviceSpecsOr)
-    return std::move(outChain).setToError(providedDeviceSpecsOr.takeError());
-
+  // Reconcile the model's required devices against the runtime's provided
+  // devices.
   ErrorOr<DeviceSpecMap> deviceSpecMapOr =
-      providedDeviceSpecsOr->reconcileDeviceSpecs(*requiredDeviceSpecsOr);
+      (*providedDeviceSpecsOr)->reconcileDeviceSpecs(*requiredDeviceSpecsOr);
   if (deviceSpecMapOr) {
     return std::move(outChain).setToError(
         Error(Twine("model cannot be executed in the current environment: ") +
@@ -1118,7 +1126,7 @@ static void mgp_model() {
 }
 
 //===----------------------------------------------------------------------===//
-// Primitive registration
+// registerMGPPrimitives
 //===----------------------------------------------------------------------===//
 
 void M::registerMGPPrimitives(PrimitiveRegistry &registry) {

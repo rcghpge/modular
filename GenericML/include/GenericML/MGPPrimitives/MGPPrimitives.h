@@ -10,7 +10,7 @@
 namespace M {
 class PrimitiveRegistry;
 
-/// This registers the 'mgp' dialect primitives.
+/// Registers all the 'mgp' dialect primitives.
 void registerMGPPrimitives(PrimitiveRegistry &registry);
 
 } // namespace M

@@ -5,13 +5,17 @@
 //===----------------------------------------------------------------------===//
 
 #include "Config/Version.h"
+#include "GPU/CUDA/Support/CUDARuntimeOptions.h"
+#include "GPU/CUDA/Support/CUDASetup.h"
 #include "GenericML/Driver/CompileDriver.h"
 #include "GenericML/Driver/DriverAPI.h"
 #include "GenericML/Driver/DriverCLOptions.h"
 #include "GenericML/Driver/DriverInputFormat.h"
 #include "GenericML/Driver/Utils.h"
 #include "GenericML/GraphCompiler/GraphCompilerCLOptions.h"
+#include "GenericML/MGPPrimitives/MGPPrimitives.h"
 #include "GenericML/Support/CASConfig.h"
+#include "GenericML/Support/HostDeviceSpecs.h"
 #include "GenericML/Support/ModelCollection.h"
 #include "GraphRT/MEFExecutor/MEFFile.h"
 #include "MOF/Driver/DriverConfig.h"
@@ -22,7 +26,9 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/Threading.h"
 #include "llvm/Support/ToolOutputFile.h"
+
 #include <string>
 #include <utility>
 
@@ -34,7 +40,8 @@ using llvm::MemoryBuffer;
 namespace {
 
 class MOFDriverCLOptions : public DriverCLOptions,
-                           public MO::GraphCompilerCLOptions {
+                           public MO::GraphCompilerCLOptions,
+                           public GPU::CUDA::CUDARuntimeCLOptions {
 public:
   using DriverCLOptions::DriverCLOptions;
 
@@ -89,8 +96,26 @@ public:
       llvm::cl::ResetCommandLineParser();
   }
 
+  /// Add (copies of) POD options to runtime as context objects.
+  void copyOptionsIntoRuntime(Runtime &runtime) {
+    runtime.setContext(
+        std::make_unique<GPU::CUDA::CUDARuntimeOptions>(*cudaRuntimeOptions));
+  }
+
 private:
-  void setConfigFromOptions() {}
+  void setConfigFromOptions() {
+    // Extract CL options into POD options.
+    cudaRuntimeOptions = std::make_unique<GPU::CUDA::CUDARuntimeOptions>();
+    clOptions->overrideCUDARuntimeOptions(*cudaRuntimeOptions);
+
+    // Register device setup functions.
+    static llvm::once_flag onceFlag;
+    llvm::call_once(onceFlag, []() {
+      GML::registerAddDeviceSpecsFn(GPU::CUDA::addCUDADevices);
+    });
+  }
+
+  std::unique_ptr<GPU::CUDA::CUDARuntimeOptions> cudaRuntimeOptions;
   std::unique_ptr<MOFDriverCLOptions> clOptions;
   CASConfig commonCasConfig;
 };
@@ -316,17 +341,21 @@ ErrorOrSuccess M_loadModels(FrameworkContextHandle ctx,
 int M_runBinaryFile(FrameworkContextHandle ctx,
                     std::unique_ptr<llvm::MemoryBuffer> &&fileBuffer,
                     DriverHandle modelBinaryHandle) {
-  auto *opts = ctx.unwrap<MOFContext>()->getOptions();
+  auto *mofCtx = ctx.unwrap<MOFContext>();
+  auto *clOptions = mofCtx->getOptions();
   std::unique_ptr<ModelCollection> models;
   if (auto err = M_loadModels(ctx, fileBuffer->getMemBufferRef(),
                               modelBinaryHandle, models)) {
-    return opts->reportError("unable to load models: " + Twine(err.getError()));
+    return clOptions->reportError("unable to load models: " +
+                                  Twine(err.getError()));
   }
 
-  auto runModels = [&](Runtime &runtime, MLIRContext *ctx) -> LogicalResult {
+  auto runModels = [mofCtx, clOptions, models = models.get()](
+                       Runtime &runtime, MLIRContext *ctx) -> LogicalResult {
+    mofCtx->copyOptionsIntoRuntime(runtime);
     for (const auto &model : (*models)) {
-      if (failed(runModel(ctx, model.get(), runtime, *opts))) {
-        if (opts->stopOnFirstError())
+      if (failed(runModel(ctx, model.get(), runtime, *clOptions))) {
+        if (clOptions->stopOnFirstError())
           return failure();
       }
     }
@@ -335,21 +364,24 @@ int M_runBinaryFile(FrameworkContextHandle ctx,
 
   // Run it.
   return setupMLIRAndRunWithLeakCheckedRuntime(
-      *opts, "Modular model", std::move(fileBuffer), runModels);
+      *clOptions, "Modular model", std::move(fileBuffer), runModels);
 }
 
 int M_runModelWithData(FrameworkContextHandle ctx,
                        std::unique_ptr<llvm::MemoryBuffer> &&fileBuffer,
                        const M::Model *model, DriverHandle inputsHandle,
                        DriverHandle outputsHandle) {
-  auto *opts = ctx.unwrap<MOFContext>()->getOptions();
+  auto *mofCtx = ctx.unwrap<MOFContext>();
+  auto *clOptions = mofCtx->getOptions();
   auto inputs = inputsHandle.unwrap<llvm::SmallVector<const void *>>();
   auto outputs = outputsHandle.unwrap<llvm::SmallVector<void *>>();
 
-  auto runModels = [&](Runtime &runtime, MLIRContext *ctx) -> LogicalResult {
-    if (runModelWithData(ctx, model, runtime, *opts, *inputs, *outputs)
+  auto runModels = [mofCtx, clOptions, model, inputs, outputs](
+                       Runtime &runtime, MLIRContext *ctx) -> LogicalResult {
+    mofCtx->copyOptionsIntoRuntime(runtime);
+    if (runModelWithData(ctx, model, runtime, *clOptions, *inputs, *outputs)
             .isError()) {
-      if (opts->stopOnFirstError())
+      if (clOptions->stopOnFirstError())
         return failure();
     }
 
@@ -358,7 +390,7 @@ int M_runModelWithData(FrameworkContextHandle ctx,
 
   // Run it.
   return setupMLIRAndRunWithLeakCheckedRuntime(
-      *opts, "Modular model", std::move(fileBuffer), runModels);
+      *clOptions, "Modular model", std::move(fileBuffer), runModels);
 }
 
 ErrorOrSuccess M_openPath(M::FrameworkContextHandle ctx,

@@ -13,6 +13,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/MGPTransforms/FixupIsolatedFromAbove.h"
+#include "GenericML/Support/HostDeviceSpecs.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "Support/Compiler/OperationUtils.h"
@@ -1077,14 +1078,14 @@ void MOToPrimitivesPass::runOnOperation() {
   // default one representing the current CPU host. In this way any assumptions
   // baked into our code due to the use of -march=native can be checked
   // before the model is executed.
-  ErrorOr<DeviceSpecCollection> defaultDeviceSpecCollectionOr =
-      getHostDeviceSpecCollection();
-  if (defaultDeviceSpecCollectionOr) {
-    theModule->emitError(defaultDeviceSpecCollectionOr.getError());
+  ErrorOr<std::unique_ptr<DeviceSpecCollection>> defaultHostDeviceSpecsOr =
+      GML::getHostCPUDeviceSpecs();
+  if (defaultHostDeviceSpecsOr) {
+    theModule->emitError(defaultHostDeviceSpecsOr.getError());
     return signalPassFailure();
   }
   DeviceSpecCollectionAttr defaultDeviceSpecCollectionAttr =
-      fromRuntimeDeviceSpecs(&ctx, *defaultDeviceSpecCollectionOr);
+      fromRuntimeDeviceSpecs(&ctx, **defaultHostDeviceSpecsOr);
 
   // Convert each mo.graph into a mgp.model.
   for (auto graphOp :

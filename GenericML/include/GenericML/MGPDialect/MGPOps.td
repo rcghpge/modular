@@ -918,13 +918,12 @@ def CheckRuntimeOp : MGP_Op<"check_runtime"> {
     %ch0 : !mef.chain
     %ctx : !mgp.context
     %ch1 = mgp.check_runtime %ch0, %cxt[3],
-             #M.device_spec_collection<
-               host = <"cpu", 0>,
-               devices = [
-                 <ref = <"cpu", 0>,
-                  target = <triple="x86_64-unknown-linux-gnu", cpu="znver3", features="+avx2">>,
-                 <ref = <"cuda", 0>,
-                  target = <triple="nvptx64-nvidia-cuda", features="+compute_80">>]>
+             <host = <"cpu", 0>,
+              devices = [
+               <ref = <"cpu", 0>,
+                target = <triple="x86_64-unknown-linux-gnu", cpu="znver3", features="+avx2">>,
+               <ref = <"cuda", 0>,
+                target = <triple="nvptx64-nvidia-cuda", features="+compute_80">>]>
     %ch1 : !mef.chain
     ```
   }];
