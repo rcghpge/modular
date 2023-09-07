@@ -815,3 +815,35 @@ mo.graph @binary_logical_op(
   // CHECK-NEXT: mo.output %[[XOR]] : !mo.tensor<[[[D0]], [[D1]]], bool>
   mo.output %xor : !mo.tensor<[?, ?], bool>
 }
+
+// CHECK-LABEL: mo.graph @top_k
+// CHECK-NEXT:   %[[IN:.*]] = mo.constant
+// CHECK-NEXT:   %[[K:.*]] = mo.constant
+// CHECK-NEXT:   %[[AXIS:.*]] = mo.constant
+// CHECK-NEXT:   %[[VALUES:.*]], %[[INDICES:.*]] = mo.top_k(%[[IN]], %[[K]], %[[AXIS]]) : (!mo.tensor<[5, 5], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> (!mo.tensor<[5, 3], si64>, !mo.tensor<[5, 3], si64>)
+// CHECK-NEXT:   mo.output %[[VALUES]], %[[INDICES]] : !mo.tensor<[5, 3], si64>, !mo.tensor<[5, 3], si64>
+// CHECK-NEXT: }
+mo.graph @top_k(%input : !mo.tensor<[5, 5], si64>) -> (!mo.tensor<[?, ?], si64>, !mo.tensor<[?, ?], si64>) {
+  %in = "mo.constant"() {value = #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24> : tensor<5x5xsi64>} : () -> !mo.tensor<[5, 5], si64>
+  %K = "mo.constant"() {value = #M.dense_array<3> : tensor<si64>} : () -> !mo.tensor<[], si64>
+  %axis = "mo.constant"() {value = #M.dense_array<1> : tensor<si64>} : () -> !mo.tensor<[], si64>
+  %values, %indices = mo.top_k(%in, %K, %axis) : (
+    !mo.tensor<[5, 5], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> (!mo.tensor<[?, ?], si64>, !mo.tensor<[?, ?], si64>)
+  mo.output %values, %indices : !mo.tensor<[?, ?], si64>, !mo.tensor<[?, ?], si64>
+}
+
+// CHECK-LABEL: mo.graph @bottom_k
+// CHECK-NEXT:   %[[IN:.*]] = mo.constant
+// CHECK-NEXT:   %[[K:.*]] = mo.constant
+// CHECK-NEXT:   %[[AXIS:.*]] = mo.constant
+// CHECK-NEXT:   %[[VALUES:.*]], %[[INDICES:.*]] = mo.bottom_k(%[[IN]], %[[K]], %[[AXIS]]) : (!mo.tensor<[5, 5], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> (!mo.tensor<[5, 3], si64>, !mo.tensor<[5, 3], si64>)
+// CHECK-NEXT:   mo.output %[[VALUES]], %[[INDICES]] : !mo.tensor<[5, 3], si64>, !mo.tensor<[5, 3], si64>
+// CHECK-NEXT: }
+mo.graph @bottom_k(%input : !mo.tensor<[5, 5], si64>) -> (!mo.tensor<[?, ?], si64>, !mo.tensor<[?, ?], si64>) {
+  %in = "mo.constant"() {value = #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24> : tensor<5x5xsi64>} : () -> !mo.tensor<[5, 5], si64>
+  %K = "mo.constant"() {value = #M.dense_array<3> : tensor<si64>} : () -> !mo.tensor<[], si64>
+  %axis = "mo.constant"() {value = #M.dense_array<1> : tensor<si64>} : () -> !mo.tensor<[], si64>
+  %values, %indices = mo.bottom_k(%in, %K, %axis) : (
+    !mo.tensor<[5, 5], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> (!mo.tensor<[?, ?], si64>, !mo.tensor<[?, ?], si64>)
+  mo.output %values, %indices : !mo.tensor<[?, ?], si64>, !mo.tensor<[?, ?], si64>
+}

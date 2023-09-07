@@ -372,3 +372,43 @@ mo.graph @arg_nonzero<D0 -> D1>(%arg0: !mo.tensor<[D0, 10], f32>) -> !mo.tensor<
 // CHECK-NEXT: mo.invoke_shape_func["arg_nonzero_shape"]<() -> [[WHERE_PARAM:.*]], [[UNUSED_PARAM:.*]]>(%[[IN]]) {dataDeptTensors = [0 : i32]}
 // CHECK-NEXT: %[[WHERE:.*]] = mo.arg_nonzero(%[[IN]]) : (!mo.tensor<[[[IN_PARAM]], 10], f32>) -> !mo.tensor<[[[WHERE_PARAM]], 2], si64>
 // CHECK-NEXT: mo.output<[[WHERE_PARAM]]> %[[WHERE]] : !mo.tensor<[[[WHERE_PARAM]], 2], si64>
+
+mo.graph @top_k_fallback_shape_func<() -> D0, D1, D2, D3, D4, D5, D6, D7>(
+  %input: !mo.tensor<[32, 10, 20, 3], f32>,
+  %K: !mo.tensor<[], si64>,
+  %axis: !mo.tensor<[], si64>
+) -> (!mo.tensor<[D0, D1, D2, D3], f32>, !mo.tensor<[D4, D5, D6, D7], si64>) {
+
+  %res:2 = mo.top_k<() -> D8, D9, D10, D11, D12, D13, D14, D15>(%input, %K, %axis) :
+    (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>)
+    -> (!mo.tensor<[D8, D9, D10, D11], f32>, !mo.tensor<[D12, D13, D14, D15], si64>)
+
+  mo.output<D8, D9, D10, D11, D12, D13, D14, D15> %res#0, %res#1 : !mo.tensor<[D8, D9, D10, D11], f32>, !mo.tensor<[D12, D13, D14, D15], si64>
+}
+
+// CHECK-LABEL: mo.graph @top_k_fallback_shape_func
+// CHECK-NEXT:   mo.invoke_shape_func["top_k_shape"]<() -> [[D8:.*]], [[D9:.*]], [[D10:.*]], [[D11:.*]]>(%arg0, %arg1, %arg2) {dataDeptTensors = [1 : i32, 2 : i32]} : (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>)
+// CHECK-NEXT:   mo.invoke_shape_func["top_k_shape"]<() -> [[D12:.*]], [[D13:.*]], [[D14:.*]], [[D15:.*]]>(%arg0, %arg1, %arg2) {dataDeptTensors = [1 : i32, 2 : i32]} : (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>)
+// CHECK-NEXT:   %[[VALUES:.*]], %[[INDICES:.*]] = mo.top_k(%arg0, %arg1, %arg2) : (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> (!mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>, !mo.tensor<[[[D12]], [[D13]], [[D14]], [[D15]]], si64>)
+// CHECK-NEXT:   mo.output<[[D8]], [[D9]], [[D10]], [[D11]], [[D12]], [[D13]], [[D14]], [[D15]]> %[[VALUES]], %[[INDICES]] : !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>, !mo.tensor<[[[D12]], [[D13]], [[D14]], [[D15]]], si64>
+// CHECK-NEXT: }
+
+mo.graph @bottom_k_fallback_shape_func<() -> D0, D1, D2, D3, D4, D5, D6, D7>(
+  %input: !mo.tensor<[32, 10, 20, 3], f32>,
+  %K: !mo.tensor<[], si64>,
+  %axis: !mo.tensor<[], si64>
+) -> (!mo.tensor<[D0, D1, D2, D3], f32>, !mo.tensor<[D4, D5, D6, D7], si64>) {
+
+  %res:2 = mo.bottom_k<() -> D8, D9, D10, D11, D12, D13, D14, D15>(%input, %K, %axis) :
+    (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>)
+    -> (!mo.tensor<[D8, D9, D10, D11], f32>, !mo.tensor<[D12, D13, D14, D15], si64>)
+
+  mo.output<D8, D9, D10, D11, D12, D13, D14, D15> %res#0, %res#1 : !mo.tensor<[D8, D9, D10, D11], f32>, !mo.tensor<[D12, D13, D14, D15], si64>
+}
+
+// CHECK-LABEL: mo.graph @bottom_k_fallback_shape_func
+// CHECK-NEXT:   mo.invoke_shape_func["top_k_shape"]<() -> [[D8:.*]], [[D9:.*]], [[D10:.*]], [[D11:.*]]>(%arg0, %arg1, %arg2) {dataDeptTensors = [1 : i32, 2 : i32]} : (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>)
+// CHECK-NEXT:   mo.invoke_shape_func["top_k_shape"]<() -> [[D12:.*]], [[D13:.*]], [[D14:.*]], [[D15:.*]]>(%arg0, %arg1, %arg2) {dataDeptTensors = [1 : i32, 2 : i32]} : (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>)
+// CHECK-NEXT:   %[[VALUES:.*]], %[[INDICES:.*]] = mo.bottom_k(%arg0, %arg1, %arg2) : (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> (!mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>, !mo.tensor<[[[D12]], [[D13]], [[D14]], [[D15]]], si64>)
+// CHECK-NEXT:   mo.output<[[D8]], [[D9]], [[D10]], [[D11]], [[D12]], [[D13]], [[D14]], [[D15]]> %[[VALUES]], %[[INDICES]] : !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>, !mo.tensor<[[[D12]], [[D13]], [[D14]], [[D15]]], si64>
+// CHECK-NEXT: }

@@ -1345,13 +1345,13 @@ def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [
 
     All hyperparameters (i.e. strides, dilations, padding) must be of rank 1, or
     unranked. If the input has static rank, all hyperparameters with static
-    shape must have sizes of `input_rank - 2`, except padding, which must have size 
-    `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to 
+    shape must have sizes of `input_rank - 2`, except padding, which must have size
+    `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to
     corresponding dimensions of the input (after ignoring the batch and channel dimensions),
-    with padding representing a before/after pair for each axis. The padding values 
+    with padding representing a before/after pair for each axis. The padding values
     are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
     pad_dim2_after...). In 2D Convolution, dim1 here repesents H and dim2 represents W.
-    
+
     This op currently only supports strides and dilations on the filter.
 
     Example:
@@ -1384,7 +1384,7 @@ def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) `(` $input `)` 
+    `` custom<ParamDecls>($outputParamDecls) `(` $input `)`
     `[` `filter_shape` `=` $filter_shape `,` `strides` `=` $strides `,`
         `dilations` `=` $dilations `,` `paddings` `=` $paddings `]` attr-dict `:`
     functional-type(operands, results)
@@ -1408,13 +1408,13 @@ def MO_MaxPoolOp : MO_TensorOp<"max_pool", [
 
     All hyperparameters (i.e. strides, dilations, padding) must be of rank 1, or
     unranked. If the input has static rank, all hyperparameters with static
-    shape must have sizes of `input_rank - 2`, except padding, which must have size 
-    `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to 
+    shape must have sizes of `input_rank - 2`, except padding, which must have size
+    `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to
     corresponding dimensions of the input (after ignoring the batch and channel dimensions),
-    with padding representing a before/after pair for each axis. The padding values 
+    with padding representing a before/after pair for each axis. The padding values
     are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
     pad_dim2_after...). In 2D Convolution, dim1 here repesents H and dim2 represents W.
-    
+
     This op currently only supports strides and dilations on the filter.
 
     Example:
@@ -1447,7 +1447,7 @@ def MO_MaxPoolOp : MO_TensorOp<"max_pool", [
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) `(` $input `)` 
+    `` custom<ParamDecls>($outputParamDecls) `(` $input `)`
     `[` `filter_shape` `=` $filter_shape `,` `strides` `=` $strides `,`
         `dilations` `=` $dilations `,` `paddings` `=` $paddings `]` attr-dict `:`
     functional-type(operands, results)
@@ -1473,10 +1473,10 @@ def MO_ConvOp : MO_TensorOp<"conv", [
 
     All hyperparameters (i.e. strides, dilations, padding) must be of rank 1, or
     unranked. If the input has static rank, all hyperparameters with static
-    shape must have sizes of `input_rank - 2`, except padding, which must have size 
-    `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to 
+    shape must have sizes of `input_rank - 2`, except padding, which must have size
+    `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to
     corresponding dimensions of the input (after ignoring the batch and channel dimensions),
-    with padding representing a before/after pair for each axis. The padding values 
+    with padding representing a before/after pair for each axis. The padding values
     are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
     pad_dim2_after...). In 2D Convolution, dim1 here repesents H and dim2 represents W.
 
@@ -2693,6 +2693,80 @@ def DebugTensorPrintOp : MO_TensorOp<"debug.tensor.print"> {
                    DefaultValuedAttr<StrAttr, "\"\"">: $label);
   let assemblyFormat = [{
     `(` $input `)` attr-dict `:` qualified(type($input))
+  }];
+}
+
+def MO_TopKOp : MO_TensorOp<"top_k", [
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
+]> {
+  let summary = "Top K values and indices along an axis";
+  let description = [{
+    Computes the largest values and their corresponding indices in a tensor
+    along a specified axis. Returned values along the axis are always sorted
+    (stable).
+
+    Example:
+    ```mlir
+    %in = "mo.constant"() {value =
+      #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11> : tensor<2x6xsi64>} :
+      () -> !mo.tensor<[2, 6], si64>
+    %K = "mo.constant"() {value = #M.dense_array<3> : tensor<si64>} : () ->
+      !mo.tensor<[], si64>
+    %axis = "mo.constant"() {value = #M.dense_array<1> : tensor<si64>} : () ->
+      !mo.tensor<[], si64>
+    %values, %indices = mo.top_k(%in, %K, %axis) : (
+      !mo.tensor<[2, 6], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) ->
+        (!mo.tensor<[2, 3], si64>, !mo.tensor<[2, 3], si64>)
+    ```
+  }];
+
+  let arguments = (ins MO_Tensor:$input,
+                       MO_RankedScalarIndexTensor:$K,
+                       MO_RankedScalarIndexTensor:$axis,
+                       MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$values,
+                      MO_I64Tensor:$indices);
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
+def MO_BottomKOp : MO_TensorOp<"bottom_k", [
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
+]> {
+  let summary = "Bottom K values and indices along an axis";
+  let description = [{
+    Computes the bottom (lowest) values and their corresponding indices in a
+    tensor along a specified axis. Returned values along the axis are always
+    sorted (stable).
+
+    Example:
+    ```mlir
+    %in = "mo.constant"() {value =
+      #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11> : tensor<2x6xsi64>} :
+      () -> !mo.tensor<[2, 6], si64>
+    %K = "mo.constant"() {value = #M.dense_array<3> : tensor<si64>} : () ->
+      !mo.tensor<[], si64>
+    %axis = "mo.constant"() {value = #M.dense_array<1> : tensor<si64>} : () ->
+      !mo.tensor<[], si64>
+    %values, %indices = mo.bottom_k(%in, %K, %axis) : (
+      !mo.tensor<[2, 6], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) ->
+        (!mo.tensor<[2, 3], si64>, !mo.tensor<[2, 3], si64>)
+    ```
+  }];
+
+  let arguments = (ins MO_Tensor:$input,
+                       MO_RankedScalarIndexTensor:$K,
+                       MO_RankedScalarIndexTensor:$axis,
+                       MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$values,
+                      MO_I64Tensor:$indices);
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 

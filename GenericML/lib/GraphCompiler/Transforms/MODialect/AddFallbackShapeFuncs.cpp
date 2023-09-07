@@ -49,6 +49,7 @@ struct Fallback {
 HAS_FALLBACK(MO::ArgMaxOp)
 HAS_FALLBACK(MO::ArgMinOp)
 HAS_FALLBACK(MO::AvgPoolOp)
+HAS_FALLBACK(MO::BottomKOp)
 HAS_FALLBACK(MO::BroadcastToOp)
 HAS_FALLBACK(MO::ConcatOp)
 HAS_FALLBACK(MO::ConvOp)
@@ -64,6 +65,7 @@ HAS_FALLBACK(MO::ReduceMulOp)
 HAS_FALLBACK(MO::ReshapeOp)
 HAS_FALLBACK(MO::SliceOp)
 HAS_FALLBACK(MO::SplitOp)
+HAS_FALLBACK(MO::TopKOp)
 HAS_FALLBACK(MO::TransposeOp)
 HAS_FALLBACK(MO::ArgNonzeroOp)
 
@@ -103,6 +105,7 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::ArgMaxOp)
       CALL_FALLBACK(MO::ArgMinOp)
       CALL_FALLBACK(MO::AvgPoolOp)
+      CALL_FALLBACK(MO::BottomKOp)
       CALL_FALLBACK(MO::BroadcastToOp)
       CALL_FALLBACK(MO::ConcatOp)
       CALL_FALLBACK(MO::ConvOp)
@@ -118,6 +121,7 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::ReshapeOp)
       CALL_FALLBACK(MO::SliceOp)
       CALL_FALLBACK(MO::SplitOp)
+      CALL_FALLBACK(MO::TopKOp)
       CALL_FALLBACK(MO::TransposeOp)
       CALL_FALLBACK(MO::ArgNonzeroOp)
 
@@ -208,6 +212,16 @@ void Fallback<MO::AvgPoolOp>::build(GraphOp &graph, OpBuilder &builder,
   buildForOpResult(graph, builder, op, "pool_shape", op.getOperands(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/{1, 2, 3, 4});
+}
+
+void Fallback<MO::BottomKOp>::build(GraphOp &graph, OpBuilder &builder,
+                                    MO::BottomKOp op) {
+  buildForOpResult(graph, builder, op.getValues(), "top_k_shape",
+                   op.getOperands(),
+                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1, 2});
+  buildForOpResult(graph, builder, op.getIndices(), "top_k_shape",
+                   op.getOperands(),
+                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1, 2});
 }
 
 void Fallback<MO::BroadcastToOp>::build(GraphOp &graph, OpBuilder &builder,
@@ -302,6 +316,16 @@ void Fallback<MO::SplitOp>::build(GraphOp &graph, OpBuilder &builder,
                      /*kgenParams=*/{{"output_idx", builder.getIndexAttr(idx)}},
                      /*dataDepInputIdxs=*/{1, 2});
   }
+}
+
+void Fallback<MO::TopKOp>::build(GraphOp &graph, OpBuilder &builder,
+                                 MO::TopKOp op) {
+  buildForOpResult(graph, builder, op.getValues(), "top_k_shape",
+                   op.getOperands(),
+                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1, 2});
+  buildForOpResult(graph, builder, op.getIndices(), "top_k_shape",
+                   op.getOperands(),
+                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1, 2});
 }
 
 void Fallback<MO::TransposeOp>::build(GraphOp &graph, OpBuilder &builder,
