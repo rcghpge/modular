@@ -154,7 +154,7 @@ private:
 
 /// Statically switch to a Value matcher.
 template <typename MatcherClass>
-std::enable_if_t<llvm::is_detected<detail::has_operation_or_value_matcher_t,
+std::enable_if_t<llvm::is_detected<detail::has_compatible_matcher_t,
                                    MatcherClass, Value>::value,
                  bool>
 matchOperandOrValue(Value op, MatcherClass &matcher) {
@@ -163,7 +163,7 @@ matchOperandOrValue(Value op, MatcherClass &matcher) {
 
 /// Statically switch to an Operation matcher.
 template <typename MatcherClass>
-std::enable_if_t<llvm::is_detected<detail::has_operation_or_value_matcher_t,
+std::enable_if_t<llvm::is_detected<detail::has_compatible_matcher_t,
                                    MatcherClass, Operation *>::value,
                  bool>
 matchOperandOrValue(Value op, MatcherClass &matcher) {
