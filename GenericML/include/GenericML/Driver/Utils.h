@@ -10,6 +10,7 @@
 #include "GenericML/Driver/DriverCLOptions.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "LLCL/Runtime/Utils.h"
+#include "LLCL/Support/GenericUniquePtrSet.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 
 namespace M {
@@ -23,12 +24,14 @@ using BodyFn = std::function<LogicalResult(Runtime &, MLIRContext *)>;
 /// Run the given body function with a leak checked runtime.
 int setupMLIRAndRunWithLeakCheckedRuntime(
     const ExecutorDriverCLOptions &options, const char *testName,
-    std::unique_ptr<llvm::MemoryBuffer> &&file, BodyFn &&bodyFn) {
+    std::unique_ptr<llvm::MemoryBuffer> &&file, BodyFn &&bodyFn,
+    RCRef<LLCL::SharedGenericUniquePtrSet> globalContextObjects = {}) {
   if (failed(options.configureMLIRContextAndExecute(
           std::move(file), [&](MLIRContext *ctx) {
             return LLCL::runWithLeakCheckedRuntime(
                 options, testName,
-                [&](Runtime &runtime) { return bodyFn(runtime, ctx); });
+                [&](Runtime &runtime) { return bodyFn(runtime, ctx); },
+                std::move(globalContextObjects));
           })))
     return EXIT_FAILURE;
   return EXIT_SUCCESS;

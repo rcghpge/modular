@@ -56,7 +56,7 @@ public:
       : clOptions(std::make_unique<MOFDriverCLOptions>(argc, argv,
                                                        /*skipInitLLVM=*/true)),
         commonCasConfig{} {
-    setConfigFromOptions();
+    setupGlobalContext();
   }
 
   MOFContext() : clOptions(nullptr) {}
@@ -71,6 +71,8 @@ public:
 
     // Reset all option occurrences every time this is called.
     llvm::cl::ResetAllOptionOccurrences();
+    globalContextObjects.reset();
+
     // Parse the options one at a time, so we don't have to combine the list of
     // strings.
     for (StringRef opt : opts) {
@@ -79,7 +81,7 @@ public:
         return Error("unable to parse argument: " + opt);
     }
 
-    setConfigFromOptions();
+    setupGlobalContext();
 
     return success();
   }
@@ -96,17 +98,20 @@ public:
       llvm::cl::ResetCommandLineParser();
   }
 
-  /// Add (copies of) POD options to runtime as context objects.
-  void copyOptionsIntoRuntime(Runtime &runtime) {
-    runtime.setContext(
-        std::make_unique<GPU::CUDA::CUDARuntimeOptions>(*cudaRuntimeOptions));
+  RCRef<SharedGenericUniquePtrSet> getGlobalContextObjects() const {
+    assert(globalContextObjects && "not yet called setConfigFromOptions");
+    return globalContextObjects.copy();
   }
 
 private:
-  void setConfigFromOptions() {
-    // Extract CL options into POD options.
-    cudaRuntimeOptions = std::make_unique<GPU::CUDA::CUDARuntimeOptions>();
-    clOptions->overrideCUDARuntimeOptions(*cudaRuntimeOptions);
+  void setupGlobalContext() {
+    assert(!globalContextObjects && "already called setConfigFromOptions");
+    globalContextObjects = RCRef<SharedGenericUniquePtrSet>::create();
+
+    if (clOptions) {
+      clOptions->overrideCUDARuntimeOptions(
+          globalContextObjects->emplace<GPU::CUDA::CUDARuntimeOptions>());
+    }
 
     // Register device setup functions.
     static llvm::once_flag onceFlag;
@@ -115,7 +120,10 @@ private:
     });
   }
 
-  std::unique_ptr<GPU::CUDA::CUDARuntimeOptions> cudaRuntimeOptions;
+  /// Holds all the configuration objects derived from the environment,
+  /// command-line arguments, API-provided config, and so on.
+  /// Made available to each Runtime as created.
+  RCRef<SharedGenericUniquePtrSet> globalContextObjects;
   std::unique_ptr<MOFDriverCLOptions> clOptions;
   CASConfig commonCasConfig;
 };
@@ -350,9 +358,8 @@ int M_runBinaryFile(FrameworkContextHandle ctx,
                                   Twine(err.getError()));
   }
 
-  auto runModels = [mofCtx, clOptions, models = models.get()](
+  auto runModels = [clOptions, models = models.get()](
                        Runtime &runtime, MLIRContext *ctx) -> LogicalResult {
-    mofCtx->copyOptionsIntoRuntime(runtime);
     for (const auto &model : (*models)) {
       if (failed(runModel(ctx, model.get(), runtime, *clOptions))) {
         if (clOptions->stopOnFirstError())
@@ -364,7 +371,8 @@ int M_runBinaryFile(FrameworkContextHandle ctx,
 
   // Run it.
   return setupMLIRAndRunWithLeakCheckedRuntime(
-      *clOptions, "Modular model", std::move(fileBuffer), runModels);
+      *clOptions, "Modular model", std::move(fileBuffer), runModels,
+      mofCtx->getGlobalContextObjects());
 }
 
 int M_runModelWithData(FrameworkContextHandle ctx,
@@ -376,9 +384,8 @@ int M_runModelWithData(FrameworkContextHandle ctx,
   auto inputs = inputsHandle.unwrap<llvm::SmallVector<const void *>>();
   auto outputs = outputsHandle.unwrap<llvm::SmallVector<void *>>();
 
-  auto runModels = [mofCtx, clOptions, model, inputs, outputs](
+  auto runModels = [clOptions, model, inputs, outputs](
                        Runtime &runtime, MLIRContext *ctx) -> LogicalResult {
-    mofCtx->copyOptionsIntoRuntime(runtime);
     if (runModelWithData(ctx, model, runtime, *clOptions, *inputs, *outputs)
             .isError()) {
       if (clOptions->stopOnFirstError())
@@ -390,7 +397,8 @@ int M_runModelWithData(FrameworkContextHandle ctx,
 
   // Run it.
   return setupMLIRAndRunWithLeakCheckedRuntime(
-      *clOptions, "Modular model", std::move(fileBuffer), runModels);
+      *clOptions, "Modular model", std::move(fileBuffer), runModels,
+      mofCtx->getGlobalContextObjects());
 }
 
 ErrorOrSuccess M_openPath(M::FrameworkContextHandle ctx,
