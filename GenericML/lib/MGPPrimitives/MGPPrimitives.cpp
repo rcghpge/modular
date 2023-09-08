@@ -32,6 +32,8 @@
 using namespace M;
 using namespace M::GML;
 
+using MGPProfilerEntry = LLCL::WorkProfilerEntry;
+
 //===----------------------------------------------------------------------===//
 // Helpers
 //===----------------------------------------------------------------------===//
@@ -56,7 +58,7 @@ static void mgp_cpu_buffer_constant(Result<BufferRef> outBuffer,
                                     MEFAttr<ArrayRef<uint8_t>> aValue,
                                     MEFAttr<uint64_t> bRawAlign,
                                     Runtime &runtime) {
-  TimeTraceScope scope(LLCL::WorkProfilerEntry::create(
+  TimeTraceScope scope(MGPProfilerEntry::create(
       "mgp.cpu.buffer.constant", [aValue, bRawAlign]() {
         return ("size:" + Twine(aValue.size()) +
                 "B, align:" + Twine(*bRawAlign) + "B")
@@ -77,7 +79,7 @@ static void mgp_cpu_buffer_cache(Chain inChain, Context &ctx,
                                  AsyncValueRef<BufferRef> buffer,
                                  Result<Chain> outChain, MEFAttr<uint64_t> slot,
                                  Runtime &runtime, EncodedLocation loc) {
-  TimeTraceScope scope(LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.cache"));
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.buffer.cache"));
   ctx.emplaceStateSlot<DefaultStateSlot>(*slot, /*numBuffers=*/1);
   auto &defaultStateSlot = ctx.getStateSlot(*slot);
   ErrorOrSuccess errOr;
@@ -113,8 +115,7 @@ static void mgp_cpu_buffer_get_cached(Chain inChain, Context &ctx,
                                       MEFAttr<uint64_t> aSlot,
                                       MEFAttr<uint64_t> bRawSize,
                                       Runtime &runtime, EncodedLocation loc) {
-  TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.get_cached"));
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.buffer.get_cached"));
   auto &stateSlot = ctx.getStateSlot(*aSlot);
   ErrorOr<BufferRef> errOr = stateSlot.getBuffer(/*bufferIndex=*/0);
   if (errOr.isError())
@@ -140,7 +141,7 @@ static void mgp_cpu_buffer_alloc_static(Chain inChain, Result<BufferRef> result,
                                         MEFAttr<uint64_t> aSize,
                                         MEFAttr<uint64_t> bRawAlign,
                                         Runtime &runtime) {
-  TimeTraceScope scope(LLCL::WorkProfilerEntry::create(
+  TimeTraceScope scope(MGPProfilerEntry::create(
       "mgp.cpu.buffer.alloc.static", [aSize, bRawAlign]() {
         return ("size:" + Twine(*aSize) + "B, align:" + Twine(*bRawAlign) + "B")
             .str();
@@ -158,7 +159,7 @@ static void mgp_cpu_buffer_alloc_dynamic(Chain inChain, size_t runtimeSize,
                                          Result<BufferRef> result,
                                          MEFAttr<uint64_t> rawAlign,
                                          Runtime &runtime) {
-  TimeTraceScope scope(LLCL::WorkProfilerEntry::create(
+  TimeTraceScope scope(MGPProfilerEntry::create(
       "mgp.cpu.buffer.alloc.dynamic", [runtimeSize, rawAlign]() {
         return ("size:" + Twine(runtimeSize) + "B, align:" + Twine(*rawAlign) +
                 "B")
@@ -174,8 +175,7 @@ static void mgp_cpu_buffer_alloc_spec(Chain inChain, const TensorSpec &spec,
                                       Result<BufferRef> result,
                                       MEFAttr<uint64_t> rawAlign,
                                       Runtime &runtime) {
-  TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.alloc.spec"));
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.buffer.alloc.spec"));
   if (!isValidRawAlign(*rawAlign))
     return std::move(result).setToError("invalid align attribute");
   std::move(result).emplace(BufferRef::createOwned(
@@ -202,7 +202,7 @@ static void mgp_cpu_buffer_realloc_static(
     MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bBuffer, MEFAttr<uint64_t> cSize,
     MEFAttr<uint64_t> dRawAlign, Runtime &runtime) {
   TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.realloc.static"));
+      MGPProfilerEntry::create("mgp.cpu.buffer.realloc.static"));
   if (!isValidPlainSize(*cSize))
     return std::move(result).setToError("invalid size attribute");
   if (!isValidRawAlign(*dRawAlign))
@@ -218,7 +218,7 @@ static void mgp_cpu_buffer_realloc_dynamic(
     MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bBuffer,
     MEFAttr<uint64_t> cRawAlign, Runtime &runtime) {
   TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.realloc.dynamic"));
+      MGPProfilerEntry::create("mgp.cpu.buffer.realloc.dynamic"));
   if (!isValidRawAlign(*cRawAlign))
     return std::move(result).setToError("invalid align attribute");
   StateSlot &stateSlot = ctx.getStateSlot(*aSlot);
@@ -231,8 +231,7 @@ mgp_cpu_buffer_realloc_spec(Chain inChain, Context &ctx, const TensorSpec &spec,
                             Result<BufferRef> result, MEFAttr<uint64_t> aSlot,
                             MEFAttr<uint64_t> bBuffer,
                             MEFAttr<uint64_t> cRawAlign, Runtime &runtime) {
-  TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.realloc.spec"));
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.buffer.realloc.spec"));
   if (!isValidRawAlign(*cRawAlign))
     return std::move(result).setToError("invalid align attribute");
   StateSlot &stateSlot = ctx.getStateSlot(*aSlot);
@@ -283,7 +282,7 @@ mgp_cpu_buffer_set_with_index(BufferRef &buffer, RemainingArguments idxValues) {
 
 static void mgp_cpu_buffer_copy(Context &ctx, AsyncValueRef<BufferRef> inBuffer,
                                 Result<BufferRef> outBuffer, Runtime &runtime) {
-  TimeTraceScope scope(LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.copy"));
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.buffer.copy"));
   std::move(outBuffer).emplace(inBuffer->deepCopy(runtime));
 }
 
@@ -295,8 +294,7 @@ static void mgp_cpu_buffer_concat(Chain inChain,
                                   AsyncValueRef<BufferRef> outBuffer,
                                   RemainingArguments inBuffers,
                                   Result<Chain> outChain, Runtime &runtime) {
-  TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.concat"));
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.buffer.concat"));
   uint8_t *const out = outBuffer->getMutableBuffer<uint8_t>();
   const size_t outSize = outBuffer->getSize();
   size_t totalSize = 0; // total size of all input buffers processed so far
@@ -325,7 +323,7 @@ static void mgp_cpu_buffer_section_borrow_static(
     Result<BufferRef> outBuffer, MEFAttr<uint64_t> aOffset,
     MEFAttr<uint64_t> bSize, Runtime &runtime, EncodedLocation loc) {
   TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.section.borrow.static"));
+      MGPProfilerEntry::create("mgp.cpu.buffer.section.borrow.static"));
   const size_t outOffset = static_cast<size_t>(*aOffset);
   const size_t outSize = static_cast<size_t>(*bSize);
 
@@ -345,7 +343,7 @@ static void mgp_cpu_buffer_section_borrow_dynamic(
     Result<BufferRef> outBuffer, MEFAttr<uint64_t> aUnscaledOffset,
     MEFAttr<uint64_t> bUnscaledSize, Runtime &runtime, EncodedLocation loc) {
   TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.section.borrow.dynamic"));
+      MGPProfilerEntry::create("mgp.cpu.buffer.section.borrow.dynamic"));
   const size_t outOffset = static_cast<size_t>(*aUnscaledOffset) * scale;
   const size_t outSize = static_cast<size_t>(*bUnscaledSize) * scale;
   const size_t outEndOffset = outOffset + outSize;
@@ -377,8 +375,7 @@ mgp_cpu_buffer_split_borrow(Chain inChain, AsyncValueRef<BufferRef> inBuffer,
                             RemainingResults outBuffers,
                             MEFAttr<ArrayRef<uint64_t>> outBufferRawSizes,
                             Runtime &runtime, EncodedLocation loc) {
-  TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.split.borrow"));
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.buffer.split.borrow"));
   const size_t inSize = inBuffer->getSize();
   size_t totalSize = 0; // total size of all output buffers processed so far
   size_t runtimeSizeIndex = 0; // index of next runtimeSizes operand to use
@@ -433,7 +430,7 @@ mgp_cpu_buffer_split_borrow(Chain inChain, AsyncValueRef<BufferRef> inBuffer,
 
 /// Set each byte of the given inBuffer with the given Value, returns chain.
 static Chain mgp_cpu_buffer_set(BufferRef &buffer, MEFAttr<uint8_t> value) {
-  TimeTraceScope scope(LLCL::WorkProfilerEntry::create("mgp.cpu.buffer.set"));
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.buffer.set"));
   memset(buffer.getMutableBuffer(), *value, buffer.getSize());
   return {};
 }
@@ -446,7 +443,7 @@ static Chain mgp_cpu_buffer_set(BufferRef &buffer, MEFAttr<uint8_t> value) {
 /// primitive contexts.
 static void mgp_context_create(Result<Context> result,
                                MEFAttr<uint64_t> numSlots) {
-  TimeTraceScope scope(LLCL::WorkProfilerEntry::create("mgp.context.create"));
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.context.create"));
   std::move(result).emplace(*numSlots);
 }
 
@@ -459,8 +456,7 @@ static void mgp_context_create(Result<Context> result,
 static Chain mgp_state_slot_create(Chain inChain, Context &ctx,
                                    MEFAttr<uint64_t> numBuffers,
                                    MEFAttr<uint64_t> slot) {
-  TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.state_slot.create"));
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.state_slot.create"));
   ctx.emplaceStateSlot<DefaultStateSlot>(*slot, *numBuffers);
   return {};
 }
@@ -473,7 +469,7 @@ static void mgp_check_runtime(Chain inChain, Context &ctx,
                               Result<Chain> outChain, MEFAttr<uint64_t> aSlot,
                               MEFAttr<StringRef> bDevicesJSON,
                               Runtime &runtime) {
-  TimeTraceScope scope(LLCL::WorkProfilerEntry::create("mgp.check_runtime"));
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.check_runtime"));
 
   auto providedDeviceSpecsOr =
       runtime.createContextIfMissing<DeviceSpecCollection>(
@@ -513,9 +509,10 @@ static void mgp_cpu_tensor_spec_create(RemainingArguments runtimeDims,
                                        MEFAttr<ArrayRef<uint64_t>> aRawDims,
                                        MEFAttr<uint8_t> bRawDType,
                                        Runtime &runtime) {
-  TimeTraceScope scope(LLCL::WorkProfilerEntry::create(
-      "mgp.cpu.tensor_spec.create",
-      [aRawDims]() { return ("rank:" + Twine(aRawDims.size())).str(); }));
+  TimeTraceScope scope(
+      MGPProfilerEntry::create("mgp.cpu.tensor_spec.create", [aRawDims]() {
+        return ("rank:" + Twine(aRawDims.size())).str();
+      }));
   DType dtype(*bRawDType);
   if (dtype.isInvalid())
     return std::move(outSpec).setToError("invalid dtype");
@@ -546,7 +543,7 @@ static void mgp_cpu_tensor_spec_create_dynamic(
     Result<TensorSpec> outSpec, MEFAttr<ArrayRef<uint64_t>> rawDims,
     Runtime &runtime) {
   TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.tensor_spec.create.dynamic"));
+      MGPProfilerEntry::create("mgp.cpu.tensor_spec.create.dynamic"));
   if (runtimeDType.isInvalid())
     return std::move(outSpec).setToError("invalid dtype");
   auto runtimeDimsVec = runtimeDims.takeAsVector();
@@ -572,7 +569,7 @@ static void mgp_cpu_tensor_spec_with_dtype(const TensorSpec &tensorSpec,
                                            MEFAttr<uint8_t> rawDType,
                                            Runtime &runtime) {
   TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.tensor_spec.with_dtype"));
+      MGPProfilerEntry::create("mgp.cpu.tensor_spec.with_dtype"));
   DType dtype(*rawDType);
   if (dtype.isInvalid())
     return std::move(outSpec).setToError("invalid dtype");
@@ -589,7 +586,7 @@ static void mgp_cpu_tensor_spec_dims_dynamic(
     const TensorSpec &tensorSpec, RemainingResults results,
     MEFAttr<ArrayRef<uint64_t>> rawDims, Runtime &runtime) {
   TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.tensor_spec.dims.dynamic"));
+      MGPProfilerEntry::create("mgp.cpu.tensor_spec.dims.dynamic"));
   // All of the results are created as size_t.
   for (auto &result : results)
     result = AsyncValueRef<size_t>::allocate(runtime);
@@ -606,8 +603,7 @@ static void mgp_cpu_tensor_spec_dims_dynamic(
 
 static void mgp_cpu_tensor_spec_size(const TensorSpec &tensorSpec,
                                      Result<size_t> result) {
-  TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.tensor_spec.size"));
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.tensor_spec.size"));
   std::move(result).emplace(tensorSpec.getSizeInBytes());
 }
 
@@ -618,7 +614,7 @@ static void mgp_cpu_tensor_spec_size(const TensorSpec &tensorSpec,
 static void mgp_cpu_tensor_spec_num_elems(const TensorSpec &tensorSpec,
                                           Result<size_t> result) {
   TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.tensor_spec.num_elems"));
+      MGPProfilerEntry::create("mgp.cpu.tensor_spec.num_elems"));
   std::move(result).emplace(tensorSpec.getNumElements());
 }
 
@@ -628,8 +624,7 @@ static void mgp_cpu_tensor_spec_num_elems(const TensorSpec &tensorSpec,
 
 static void mgp_cpu_tensor_spec_dtype(const TensorSpec &tensorSpec,
                                       Result<DType> result) {
-  TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.tensor_spec.dtype"));
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.tensor_spec.dtype"));
   std::move(result).emplace(tensorSpec.getEltType());
 }
 
@@ -644,8 +639,7 @@ static void mgp_cpu_tensor_create(Chain inChain,
                                   const TensorSpec &tensorSpec,
                                   Result<Tensor> outTensor, Runtime &runtime,
                                   EncodedLocation loc) {
-  TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.tensor.create"));
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.tensor.create"));
   size_t expectedSize = tensorSpec.getSizeInBytes();
   size_t actualSize = bufferRef.get().getSize();
   if (expectedSize != actualSize)
@@ -680,8 +674,7 @@ static void mgp_cpu_tensor_extract(AsyncValueRef<Tensor> tensor,
                                    Result<BufferRef> outBuffer,
                                    Result<TensorSpec> outTensorSpec,
                                    Runtime &runtime) {
-  TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.tensor.extract"));
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.tensor.extract"));
   std::move(outTensorSpec).emplace(tensor->getSpec());
   if (tensor.getPointer()->isUnique())
     // If this is the only reference to the input tensor then it cannot
@@ -701,7 +694,7 @@ static void mgp_cpu_tensor_extract_shape(AsyncValueRef<Tensor> tensor,
                                          Result<TensorSpec> outTensorSpec,
                                          Runtime &runtime) {
   TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.tensor.extract.shape"));
+      MGPProfilerEntry::create("mgp.cpu.tensor.extract.shape"));
   std::move(outTensorSpec).emplace(tensor->getSpec().getDimsCopy(), DType());
 }
 
@@ -713,8 +706,7 @@ static void mgp_debug_cpu_tensor_print(Chain inChain, const Tensor &tensor,
                                        Result<Chain> outChain,
                                        MEFAttr<StringRef> label,
                                        Runtime &runtime) {
-  TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.debug.cpu.tensor.print"));
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.debug.cpu.tensor.print"));
   if (label->empty()) {
     llvm::outs() << tensor << "\n";
   } else {
@@ -736,8 +728,7 @@ static void mgp_debug_cpu_buffer_print(Chain inChain, const BufferRef &buffer,
                                        Result<Chain> outChain,
                                        MEFAttr<StringRef> label,
                                        Runtime &runtime) {
-  TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.debug.cpu.buffer.print"));
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.debug.cpu.buffer.print"));
   if (label->empty()) {
     llvm::outs() << buffer << "\n";
   } else {
@@ -769,7 +760,7 @@ static void mgp_debug_cpu_buffer_print(Chain inChain, const BufferRef &buffer,
 
 static void mgp_debug_bool_print(Chain inChain, const bool &cond,
                                  Result<Chain> outChain, Runtime &runtime) {
-  TimeTraceScope scope(LLCL::WorkProfilerEntry::create("mgp.debug.bool.print"));
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.debug.bool.print"));
   llvm::outs() << cond << "\n";
   llvm::outs().flush();
   std::move(outChain).emplace();
@@ -784,7 +775,7 @@ static void mgp_debug_cpu_spin_wait(Chain inChain, Result<Chain> outChain,
                                     Runtime &runtime) {
   std::chrono::microseconds delay(*delayUs);
   auto profilerEntry =
-      LLCL::WorkProfilerEntry::create("mgp.debug.cpu.spin_wait", [delay]() {
+      MGPProfilerEntry::create("mgp.debug.cpu.spin_wait", [delay]() {
         return Twine("delay:").concat(Twine(delay.count())).concat("us").str();
       });
   outChain.copy().andThenSync(
@@ -811,8 +802,7 @@ static void mgp_cas_create_instance(Chain inChain, Context &ctx,
                                     MEFAttr<uint64_t> aSlot,
                                     MEFAttr<StringRef> bCacheDir,
                                     Runtime &runtime) {
-  TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cas.create_instance"));
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.cas.create_instance"));
   auto &stateSlot = ctx.emplaceStateSlot<CASStateSlot>(
       *aSlot, /*numBuffers=*/0, std::string(*bCacheDir), runtime);
   // The CASStateSlot must be setup.
@@ -829,7 +819,7 @@ static void mgp_cas_lookup(Chain inChain, Context &ctx,
                            Result<BufferRef> result, MEFAttr<uint64_t> aSlot,
                            MEFAttr<StringRef> bKey, MEFAttr<uint64_t> cRawSize,
                            MEFAttr<uint64_t> dRawAlign, EncodedLocation loc) {
-  TimeTraceScope scope(LLCL::WorkProfilerEntry::create("mgp.cas.lookup"));
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.cas.lookup"));
   auto &stateSlot = ctx.getStateSlotPayload<CASStateSlot>(*aSlot);
   if (!stateSlot.isValid())
     return std::move(result).setToError(
@@ -869,7 +859,7 @@ static AsyncValueRef<Chain>
 mgp_cas_store(Chain inChain, Context &ctx, const BufferRef &bufferRef,
               MEFAttr<uint64_t> aSlot, MEFAttr<StringRef> bKey,
               EncodedLocation loc, Runtime &runtime) {
-  TimeTraceScope scope(LLCL::WorkProfilerEntry::create("mgp.cas.store"));
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.cas.store"));
   auto &stateSlot = ctx.getStateSlotPayload<CASStateSlot>(*aSlot);
   if (!stateSlot.isValid())
     return AsyncValueRef<Chain>::createError(
@@ -883,7 +873,7 @@ mgp_cas_store(Chain inChain, Context &ctx, const BufferRef &bufferRef,
 
 static void mgp_to_grt_bool(Chain inChain, AsyncValueRef<BufferRef> bufferRef,
                             Result<bool> result, Runtime &runtime) {
-  TimeTraceScope scope(LLCL::WorkProfilerEntry::create("mgp.to_grt_bool"));
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.to_grt_bool"));
   std::move(result).emplace(
       *static_cast<const bool *>(bufferRef.get().getBuffer()) != 0);
 }
@@ -907,7 +897,7 @@ static void mgp_cpu_kernel_create_context(Chain inChain, Context &ctx,
                                           MEFAttr<uint64_t> slot,
                                           Runtime &runtime) {
   TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.kernel.create_context"));
+      MGPProfilerEntry::create("mgp.cpu.kernel.create_context"));
 
   // Establish an execution engine, to be shared amongst all loaded models.
   ErrorOr<KGEN::ExecutionEngine *> engineOr =
@@ -947,8 +937,7 @@ static void mgp_cpu_kernel_load_archive(Chain inChain, Context &ctx,
                                         MEFAttr<uint64_t> aSlot,
                                         MEFAttr<ArrayRef<uint8_t>> bArchive,
                                         MEFAttr<StringRef> cKernelNames) {
-  TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.kernel.load_archive"));
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.kernel.load_archive"));
   CompiledKernelsContext &kernelsCtx =
       ctx.getStateSlotPayload<CompiledKernelsContext>(
           static_cast<size_t>(*aSlot));
@@ -996,8 +985,7 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
                        MEFAttr<StringRef> dKernelName,
                        MEFAttr<uint64_t> eNumOutDimensions, Runtime &runtime,
                        EncodedLocation loc) {
-  TimeTraceScope scope(
-      LLCL::WorkProfilerEntry::create("mgp.cpu.kernel.execute"));
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.kernel.execute"));
   CompiledKernelsContext &kernelsCtx =
       ctx.getStateSlotPayload<CompiledKernelsContext>(
           static_cast<size_t>(*aSlot));
@@ -1013,7 +1001,8 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
   // The operands are:
   //  [buffer_1, ..., inputBuffer_numBufferArgs,
   //   inDimension_1, ..., inDimension_numInDimension]
-  size_t numBuffers = cInOutSignature->size();
+  StringRef inOutSignature = *cInOutSignature;
+  size_t numBuffers = inOutSignature.size();
   assert(numBuffers <= operands.size() && "invalid buffer signature arity");
   size_t numInDimensions = operands.size() - numBuffers;
 
@@ -1034,7 +1023,6 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
   // Put the buffers into the ABI void* array. This will mix the input
   // and output buffers.
   SmallVector<void *, 8> bufferPointers;
-  StringRef inOutSignature = *cInOutSignature;
   bufferPointers.reserve(numBuffers);
   for (size_t i = 0; i < numBuffers; ++i) {
     switch (inOutSignature[i]) {

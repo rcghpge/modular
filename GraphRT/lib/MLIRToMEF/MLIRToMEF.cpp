@@ -944,10 +944,8 @@ AttributesEmitter::emitMultiLineStringAttribute(MultiLineStringAttr attr,
                                                 Location loc) {
   std::string storage;
   llvm::raw_string_ostream os(storage);
-  for (auto stringAttr : attr.getValue()) {
-    os << stringAttr.getValue();
-    os << '\n';
-  }
+  for (auto stringAttr : attr.getValue())
+    os << stringAttr.getValue() << '\n';
   os << '\0';
   return emitStringAttribute(storage);
 }

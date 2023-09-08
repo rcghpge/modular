@@ -31,14 +31,6 @@ func.func @buffer_alloc_static_spec(%ch : !mef.chain, %spec : !mgp.cpu.tensor_sp
 
 // -----
 
-func.func @buffer_alloc_dynamic_rank_spec(%ch : !mef.chain, %spec : !mgp.cpu.tensor_spec<*xf32>) {
-  // expected-error@+1 {{'mgp.cpu.buffer.alloc.spec' op expected tensor spec to have statically known rank.}}
-  %0 = mgp.cpu.buffer.alloc.spec %ch, %spec, align 64 : !mgp.cpu.tensor_spec<*xf32>
-  mef.output %0 : !mgp.cpu.buffer
-}
-
-// -----
-
 //
 // mgp.cpu.tensor_spec.create{.dynamic}
 //

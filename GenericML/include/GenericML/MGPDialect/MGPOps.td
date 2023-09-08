@@ -213,7 +213,7 @@ def CpuBufferAllocStaticOp : MGP_Op<"cpu.buffer.alloc.static", [
     ```mlir
     %ch : !mef.chain
 
-    %buf = mgp.cpu.buffer.alloc.static %ch, 64 align 8
+    %buf = mgp.cpu.buffer.alloc.static %ch, 64, align 8
     %buf : !mgp.cpu.buffer<64>  // 64 bytes aligned to 8 bytes
 
     %buf = mgp.cpu.buffer.alloc.static %ch, 64

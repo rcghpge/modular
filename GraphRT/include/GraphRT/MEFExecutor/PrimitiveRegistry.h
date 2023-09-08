@@ -152,6 +152,15 @@ public:
     return result;
   }
 
+  /// Return the AsyncValues as a std::vector where every element is moved out.
+  std::vector<AnyAsyncValueRef> takeAsStdVector() {
+    std::vector<AnyAsyncValueRef> result;
+    result.reserve(arguments.size());
+    for (auto &a : arguments)
+      result.push_back(std::move(a));
+    return result;
+  }
+
   /// Return the AsyncValues as a SmallVector where every element is copied out.
   SmallVector<AnyAsyncValueRef> copyAsVector() {
     SmallVector<AnyAsyncValueRef> result;
