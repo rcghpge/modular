@@ -992,25 +992,31 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
   size_t kernelIndex = static_cast<size_t>(*bKernelIndex);
   CompiledKernelFn *kernelPtr = kernelsCtx.getKernel(kernelIndex);
 
+#if MODULAR_PARANOID
   // The kernel name is redundant since it can be retrieved using the
   // kernel index, however we retain it for debuggability and unit testing.
   // At least check it is consistent.
   assert(*dKernelName == kernelsCtx.getKernelName(kernelIndex) &&
          "kernel name is inconsistent with kernel index");
+#endif
 
   // The operands are:
   //  [buffer_1, ..., inputBuffer_numBufferArgs,
   //   inDimension_1, ..., inDimension_numInDimension]
   StringRef inOutSignature = *cInOutSignature;
   size_t numBuffers = inOutSignature.size();
+#if MODULAR_PARANOID
   assert(numBuffers <= operands.size() && "invalid buffer signature arity");
+#endif
   size_t numInDimensions = operands.size() - numBuffers;
 
   // The outDimensions are:
   //  [outDimension_1, ..., outDimension_numOutDimensions]
   size_t numOutDimensions = static_cast<size_t>(*eNumOutDimensions);
+#if MODULAR_PARANOID
   assert(numOutDimensions == outDimensions.size() &&
          "invalid out dimensions count attribute");
+#endif
   for (auto &outDimension : outDimensions)
     outDimension = AsyncValueRef<size_t>::allocate(runtime);
 
@@ -1025,47 +1031,50 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
   SmallVector<void *, 8> bufferPointers;
   bufferPointers.reserve(numBuffers);
   for (size_t i = 0; i < numBuffers; ++i) {
+#if MODULAR_PARANOID
     switch (inOutSignature[i]) {
     case 'i': {
       auto &buffer = operands[i].get<GML::BufferRef>();
       // Forget the const here since the ABI mixes input and output.
       bufferPointers.push_back(const_cast<void *>(buffer.getBuffer()));
-#if MODULAR_PARANOID
       // Record that we'll be reading this buffer while the kernel is in-flight.
       buffer.collectAccessUses(
           outputChain.uses,
           (Twine("kernel(line=") + Twine(loc.decode().line) + ")").str(),
           LLCL::kReadingResourceUse);
-#endif
       break;
     }
     case 'o': {
       auto &buffer = operands[i].get<GML::BufferRef>();
       bufferPointers.push_back(buffer.getMutableBuffer());
-#if MODULAR_PARANOID
       // Record that we'll be writing this buffers while the kernel is
       // in-flight.
       buffer.collectAccessUses(
           outputChain.uses,
           (Twine("kernel(line=") + Twine(loc.decode().line) + ")").str(),
           LLCL::kWritingResourceUse);
-#endif
       break;
     }
     default:
       llvm::llvm_unreachable_internal("invalid in/out signature");
     }
+#else // ! MODULAR_PARANOID
+    const void *ptr = operands[i].get<GML::BufferRef>().getBuffer();
+    bufferPointers.push_back(const_cast<void *>(ptr));
+#endif
   }
 
   // Put the runtime dimensions, corresponding to each kernel 'parameter',
   // into the ABI ssize_t array. This will mix the input and output
   // dimensions.
   SmallVector<ssize_t, 16> dimensions;
-  dimensions.reserve(numInDimensions + numOutDimensions);
+  dimensions.resize(numInDimensions + numOutDimensions);
   for (size_t i = 0; i < numInDimensions; ++i)
-    dimensions.push_back(operands[numBuffers + i].get<size_t>());
+    dimensions[i] = operands[numBuffers + i].get<size_t>();
+#if MODULAR_PARANOID
   for (size_t i = 0; i < numOutDimensions; ++i)
-    dimensions.push_back(0);
+    dimensions[numInDimensions + i] = -1;
+#endif
 
   // Since we have the kernel name available, and since it's tedious to
   // plumb it into the compiled kernel, start the tracing now. This profiling
