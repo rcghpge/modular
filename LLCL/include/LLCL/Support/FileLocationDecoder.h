@@ -13,8 +13,8 @@
 #define LLCL_SUPPORT_FILELOCATIONDECODER_H
 
 #include "LLCL/Support/Location.h"
-#include "LLCL/Support/ReferenceCounted.h"
 #include "Support/LLVMForwardDecls.h"
+#include "Support/ReferenceCounted.h"
 #include <string>
 
 namespace M::LLCL {

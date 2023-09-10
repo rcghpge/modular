@@ -8,10 +8,10 @@
 #define GRAPHRT_MEFEXECUTOR_MEFFILE_H
 
 #include "LLCL/ForwardDecls.h"
-#include "LLCL/Support/ReferenceCounted.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"
 #include "Support/ML/CompiledFrameworkLabel.h"
+#include "Support/ReferenceCounted.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -22,7 +22,7 @@ class PrimitiveDescriptor;
 
 /// Instances of this class represent opened and decoded MEF files, allowing
 /// clients to interact with the invokable list, etc.
-class MEFFile : public LLCL::ReferenceCounted<MEFFile> {
+class MEFFile : public ReferenceCounted<MEFFile> {
 public:
   virtual ~MEFFile();
 

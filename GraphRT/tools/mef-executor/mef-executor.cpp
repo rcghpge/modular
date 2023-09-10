@@ -150,8 +150,7 @@ int main(int argc, char **argv) {
   registerAllGraphRTPrimitives(primitives);
   primitives.finalize();
 
-  LLCL::verifyNoLiveReferenceCountedObjects(
-      "No objects should start allocated");
+  verifyNoLiveReferenceCountedObjects("No objects should start allocated");
 
   if constexpr (AsyncValue::isAllocationTrackingEnabled())
     assert(AsyncValue::getNumAllocatedInstances() == 0 &&
