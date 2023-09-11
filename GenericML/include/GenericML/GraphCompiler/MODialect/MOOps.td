@@ -2211,6 +2211,132 @@ def MO_ScatterNdOp : MO_TensorOp<"scatter_nd", [
   let hasVerifier = 1;
 }
 
+class MO_ScatterNdReductionOp<string name, list<Trait> traits = []> : MO_TensorOp<
+  "scatter_nd." # name, traits
+> {
+  let arguments = (ins MO_Tensor:$input,
+                       MO_NonScalarIfRanked:$updates,
+                       MO_IndicesTensor:$indices,
+                       MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
+def MO_ScatterNdAddOp : MO_ScatterNdReductionOp<"add"> {
+  let summary = "ScatterND operation with addition as reduction function";
+  let description = [{
+    Produces an output tensor by scattering slices from updates to input
+    according to indices, and it stores the sum of any duplicate indices.
+
+    Specifically, it treats the last dimension of indices as a vector of
+    integers used to index into a copy of the input, and it replaces that
+    resulting slice (or scalar) with corresponding slice (or scalar) from
+    the updates tensor.
+
+    Note that the `slice` shows up in case where the index vector length is
+    shorter than the rank of input tensor, i.e., the op will slice the leading
+    dimensions.
+
+    Example:
+
+    ```mlir
+    %input:   !mo.tensor<[4, 2], f32>
+    %updates: !mo.tensor<[1, 3, 2], f32>
+    %indices: !mo.tensor<[1, 3, 1], si64>
+    %res = mo.scatter_nd.add(%inputs, %updates, %indices) : (
+      !mo.tensor<[4, 2], f32>, !mo.tensor<[1, 3, 2], f32>, !mo.tensor<[1, 3, 1], si64>
+    ) -> !mo.tensor<[4, 2], f32>
+    ```
+  }];
+}
+
+def MO_ScatterNdMaxOp : MO_ScatterNdReductionOp<"max"> {
+  let summary = "ScatterND operation with maximum as reduction function";
+  let description = [{
+    Produces an output tensor by scattering slices from updates to input
+    according to indices, and it stores the maximum of any duplicate indices.
+
+    Specifically, it treats the last dimension of indices as a vector of
+    integers used to index into a copy of the input, and it replaces that
+    resulting slice (or scalar) with corresponding slice (or scalar) from
+    the updates tensor.
+
+    Note that the `slice` shows up in case where the index vector length is
+    shorter than the rank of input tensor, i.e., the op will slice the leading
+    dimensions.
+
+    Example:
+
+    ```mlir
+    %input:   !mo.tensor<[4, 2], f32>
+    %updates: !mo.tensor<[1, 3, 2], f32>
+    %indices: !mo.tensor<[1, 3, 1], si64>
+    %res = mo.scatter_nd.max(%inputs, %updates, %indices) : (
+      !mo.tensor<[4, 2], f32>, !mo.tensor<[1, 3, 2], f32>, !mo.tensor<[1, 3, 1], si64>
+    ) -> !mo.tensor<[4, 2], f32>
+    ```
+  }];
+}
+
+def MO_ScatterNdMinOp : MO_ScatterNdReductionOp<"min"> {
+  let summary = "ScatterND operation with minimum as reduction function";
+  let description = [{
+    Produces an output tensor by scattering slices from updates to input
+    according to indices, and it stores the minimum of any duplicate indices.
+
+    Specifically, it treats the last dimension of indices as a vector of
+    integers used to index into a copy of the input, and it replaces that
+    resulting slice (or scalar) with corresponding slice (or scalar) from
+    the updates tensor.
+
+    Note that the `slice` shows up in case where the index vector length is
+    shorter than the rank of input tensor, i.e., the op will slice the leading
+    dimensions.
+
+    Example:
+
+    ```mlir
+    %input:   !mo.tensor<[4, 2], f32>
+    %updates: !mo.tensor<[1, 3, 2], f32>
+    %indices: !mo.tensor<[1, 3, 1], si64>
+    %res = mo.scatter_nd.min(%inputs, %updates, %indices) : (
+      !mo.tensor<[4, 2], f32>, !mo.tensor<[1, 3, 2], f32>, !mo.tensor<[1, 3, 1], si64>
+    ) -> !mo.tensor<[4, 2], f32>
+    ```
+  }];
+}
+
+def MO_ScatterNdMulOp : MO_ScatterNdReductionOp<"mul"> {
+  let summary = "ScatterND operation with multiplication as reduction function";
+  let description = [{
+    Produces an output tensor by scattering slices from updates to input
+    according to indices, and it stores the product of any duplicate indices.
+
+    Specifically, it treats the last dimension of indices as a vector of
+    integers used to index into a copy of the input, and it replaces that
+    resulting slice (or scalar) with corresponding slice (or scalar) from
+    the updates tensor.
+
+    Note that the `slice` shows up in case where the index vector length is
+    shorter than the rank of input tensor, i.e., the op will slice the leading
+    dimensions.
+
+    Example:
+
+    ```mlir
+    %input:   !mo.tensor<[4, 2], f32>
+    %updates: !mo.tensor<[1, 3, 2], f32>
+    %indices: !mo.tensor<[1, 3, 1], si64>
+    %res = mo.scatter_nd.mul(%inputs, %updates, %indices) : (
+      !mo.tensor<[4, 2], f32>, !mo.tensor<[1, 3, 2], f32>, !mo.tensor<[1, 3, 1], si64>
+    ) -> !mo.tensor<[4, 2], f32>
+    ```
+  }];
+}
+
 //===----------------------------------------------------------------------===//
 // ArgNonzeroOp
 //===----------------------------------------------------------------------===//
