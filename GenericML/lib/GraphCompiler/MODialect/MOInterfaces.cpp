@@ -150,6 +150,27 @@ LogicalResult impl::verifyReduction(Reduction op) {
 }
 
 //===----------------------------------------------------------------------===//
+// ScatterNdLike
+//===----------------------------------------------------------------------===//
+
+LogicalResult impl::verifyScatterNdLike(ScatterNdLike op) {
+  TensorType inputTy = op.getInput().getType();
+  TensorType resTy = op.getResult().getType();
+
+  // Basic static rank checks
+  if (inputTy.hasRank() && resTy.hasRank() &&
+      inputTy.getRank() != resTy.getRank())
+    return op.emitError("input and result ranks must match if both static");
+
+  // Basic static shape checks
+  if (inputTy.hasStaticShape() && resTy.hasStaticShape() &&
+      inputTy.getShapeAttr() != resTy.getTypedShapeAttr())
+    return op.emitError("input and result shapes must match if both static");
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // SlidingWindow
 //===----------------------------------------------------------------------===//
 

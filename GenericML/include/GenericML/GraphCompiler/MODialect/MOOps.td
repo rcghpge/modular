@@ -2170,10 +2170,7 @@ def MO_GatherSumOp : MO_TensorOp<"gather_sum"> {
 // ScatterNdOp
 //===----------------------------------------------------------------------===//
 
-def MO_ScatterNdOp : MO_TensorOp<"scatter_nd", [
-  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
-]> {
+def MO_ScatterNdOp : MO_TensorOp<"scatter_nd", [MO_ScatterNdLikeTraits]> {
   let summary = "ScatterND Operation";
   let description = [{
     Produces an output tensor by scattering slices from updates to input
@@ -2208,11 +2205,10 @@ def MO_ScatterNdOp : MO_TensorOp<"scatter_nd", [
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
-  let hasVerifier = 1;
 }
 
 class MO_ScatterNdReductionOp<string name, list<Trait> traits = []> : MO_TensorOp<
-  "scatter_nd." # name, traits
+  "scatter_nd." # name, traits # [MO_ScatterNdLikeTraits]
 > {
   let arguments = (ins MO_Tensor:$input,
                        MO_NonScalarIfRanked:$updates,

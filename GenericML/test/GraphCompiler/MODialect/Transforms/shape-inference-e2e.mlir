@@ -506,6 +506,31 @@ mo.graph @scatter_nd(
   mo.output %res : !mo.tensor<[?, ?, ?], f32>
 }
 
+// CHECK: mo.graph @scatter_nd_add(
+mo.graph @scatter_nd_add(
+  // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[10, 1, 1], f32>,
+  %input: !mo.tensor<[10, 1, 1], f32>,
+  // CHECK-SAME: %[[UPDATES:.*]]: !mo.tensor<[5, 1, 1], f32>
+  %updates: !mo.tensor<[5, 1, 1], f32>,
+  // CHECK-SAME: %[[INDICES_1D:.*]]: !mo.tensor<[5], si32>
+  %indices_1d: !mo.tensor<[5], si32>
+// CHECK-SAME: ) -> !mo.tensor<[10, 1, 1], f32> no_inline {
+) -> !mo.tensor<[?, ?, ?], f32> {
+
+  // CHECK-NEXT: %[[INDICES:.*]] = mo.static.reshape(%[[INDICES_1D]]) : !mo.tensor<[5], si32> -> !mo.tensor<[5, 1], si32>
+  %shape = mo.constant {value = #M.dense_array<5, 1> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+  %indices = mo.reshape(%indices_1d, %shape) : (!mo.tensor<[5], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[?, ?], si32>
+
+  // CHECK-NEXT: %[[RES:.*]] = mo.scatter_nd.add(%[[INPUT]], %[[UPDATES]], %[[INDICES]])
+  // CHECK-SAME: : (!mo.tensor<[10, 1, 1], f32>, !mo.tensor<[5, 1, 1], f32>, !mo.tensor<[5, 1], si32>) -> !mo.tensor<[10, 1, 1], f32>
+  %res = mo.scatter_nd.add(%input, %updates, %indices)
+  : (!mo.tensor<[10, 1, 1], f32>, !mo.tensor<[5, 1, 1], f32>, !mo.tensor<[?, ?], si32>) -> !mo.tensor<[?, ?, ?], f32>
+
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[10, 1, 1], f32>
+  mo.output %res : !mo.tensor<[?, ?, ?], f32>
+}
+
+
 // CHECK: mo.graph @conv2d_static_input_dims(
 mo.graph @conv2d_static_input_dims(
   // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[10, 5, 5, 16], f32>

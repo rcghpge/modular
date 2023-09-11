@@ -447,6 +447,94 @@ mo.graph @scatter_nd(
 }
 
 //===----------------------------------------------------------------------===//
+// ScatterNdAddOp
+//===----------------------------------------------------------------------===//
+
+// CHECK:      mo.graph @scatter_nd.add(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[4, 3], f32>,
+// CHECK-SAME:   %[[UPDATES:.*]]: !mo.tensor<[1, 2, 3], f32>,
+// CHECK-SAME:   %[[INDICES:.*]]: !mo.tensor<[1, 2, 1], si32>
+// CHECK-SAME: ) -> !mo.tensor<[4, 3], f32> no_inline
+mo.graph @scatter_nd.add(
+  %input: !mo.tensor<[4, 3], f32>,
+  %updates: !mo.tensor<[1, 2, 3], f32>,
+  %indices: !mo.tensor<[1, 2, 1], si32>
+) -> !mo.tensor<[4, 3], f32> {
+  // CHECK: %[[RES:.*]] = mo.scatter_nd.add(%[[INPUT]], %[[UPDATES]], %[[INDICES]])
+  // CHECK-SAME: : (!mo.tensor<[4, 3], f32>, !mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 1], si32>) -> !mo.tensor<[4, 3], f32>
+  %res = mo.scatter_nd.add(%input, %updates, %indices)
+  : (!mo.tensor<[4, 3], f32>, !mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 1], si32>) -> !mo.tensor<[4, 3], f32>
+  // CHECK: mo.output %[[RES]] : !mo.tensor<[4, 3], f32>
+  mo.output %res : !mo.tensor<[4, 3], f32>
+}
+
+//===----------------------------------------------------------------------===//
+// ScatterNdMaxOp
+//===----------------------------------------------------------------------===//
+
+// CHECK:      mo.graph @scatter_nd.max(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[4, 3], f32>,
+// CHECK-SAME:   %[[UPDATES:.*]]: !mo.tensor<[1, 2, 3], f32>,
+// CHECK-SAME:   %[[INDICES:.*]]: !mo.tensor<[1, 2, 1], si32>
+// CHECK-SAME: ) -> !mo.tensor<[4, 3], f32> no_inline
+mo.graph @scatter_nd.max(
+  %input: !mo.tensor<[4, 3], f32>,
+  %updates: !mo.tensor<[1, 2, 3], f32>,
+  %indices: !mo.tensor<[1, 2, 1], si32>
+) -> !mo.tensor<[4, 3], f32> {
+  // CHECK: %[[RES:.*]] = mo.scatter_nd.max(%[[INPUT]], %[[UPDATES]], %[[INDICES]])
+  // CHECK-SAME: : (!mo.tensor<[4, 3], f32>, !mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 1], si32>) -> !mo.tensor<[4, 3], f32>
+  %res = mo.scatter_nd.max(%input, %updates, %indices)
+  : (!mo.tensor<[4, 3], f32>, !mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 1], si32>) -> !mo.tensor<[4, 3], f32>
+  // CHECK: mo.output %[[RES]] : !mo.tensor<[4, 3], f32>
+  mo.output %res : !mo.tensor<[4, 3], f32>
+}
+
+//===----------------------------------------------------------------------===//
+// ScatterNdMinOp
+//===----------------------------------------------------------------------===//
+
+// CHECK:      mo.graph @scatter_nd.min(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[4, 3], f32>,
+// CHECK-SAME:   %[[UPDATES:.*]]: !mo.tensor<[1, 2, 3], f32>,
+// CHECK-SAME:   %[[INDICES:.*]]: !mo.tensor<[1, 2, 1], si32>
+// CHECK-SAME: ) -> !mo.tensor<[4, 3], f32> no_inline
+mo.graph @scatter_nd.min(
+  %input: !mo.tensor<[4, 3], f32>,
+  %updates: !mo.tensor<[1, 2, 3], f32>,
+  %indices: !mo.tensor<[1, 2, 1], si32>
+) -> !mo.tensor<[4, 3], f32> {
+  // CHECK: %[[RES:.*]] = mo.scatter_nd.min(%[[INPUT]], %[[UPDATES]], %[[INDICES]])
+  // CHECK-SAME: : (!mo.tensor<[4, 3], f32>, !mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 1], si32>) -> !mo.tensor<[4, 3], f32>
+  %res = mo.scatter_nd.min(%input, %updates, %indices)
+  : (!mo.tensor<[4, 3], f32>, !mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 1], si32>) -> !mo.tensor<[4, 3], f32>
+  // CHECK: mo.output %[[RES]] : !mo.tensor<[4, 3], f32>
+  mo.output %res : !mo.tensor<[4, 3], f32>
+}
+
+//===----------------------------------------------------------------------===//
+// ScatterNdSubOp
+//===----------------------------------------------------------------------===//
+
+// CHECK:      mo.graph @scatter_nd.mul(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[4, 3], f32>,
+// CHECK-SAME:   %[[UPDATES:.*]]: !mo.tensor<[1, 2, 3], f32>,
+// CHECK-SAME:   %[[INDICES:.*]]: !mo.tensor<[1, 2, 1], si32>
+// CHECK-SAME: ) -> !mo.tensor<[4, 3], f32> no_inline
+mo.graph @scatter_nd.mul(
+  %input: !mo.tensor<[4, 3], f32>,
+  %updates: !mo.tensor<[1, 2, 3], f32>,
+  %indices: !mo.tensor<[1, 2, 1], si32>
+) -> !mo.tensor<[4, 3], f32> {
+  // CHECK: %[[RES:.*]] = mo.scatter_nd.mul(%[[INPUT]], %[[UPDATES]], %[[INDICES]])
+  // CHECK-SAME: : (!mo.tensor<[4, 3], f32>, !mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 1], si32>) -> !mo.tensor<[4, 3], f32>
+  %res = mo.scatter_nd.mul(%input, %updates, %indices)
+  : (!mo.tensor<[4, 3], f32>, !mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 1], si32>) -> !mo.tensor<[4, 3], f32>
+  // CHECK: mo.output %[[RES]] : !mo.tensor<[4, 3], f32>
+  mo.output %res : !mo.tensor<[4, 3], f32>
+}
+
+//===----------------------------------------------------------------------===//
 // ShapeOfOp
 //===----------------------------------------------------------------------===//
 

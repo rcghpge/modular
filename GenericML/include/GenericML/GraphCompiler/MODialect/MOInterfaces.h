@@ -33,6 +33,7 @@ class MatmulLike;
 class ParamDeclarationInterface;
 class ParameterizationInterface;
 class Reduction;
+class ScatterNdLike;
 class SlidingWindow;
 class ShapeFuncMaterializationState;
 
@@ -49,6 +50,7 @@ LogicalResult checkMatmulCompatibility(Operation *op, TensorValue A,
 
 LogicalResult verifyMatmulLike(MatmulLike op);
 LogicalResult verifyReduction(Reduction op);
+LogicalResult verifyScatterNdLike(ScatterNdLike op);
 LogicalResult verifySlidingWindow(SlidingWindow op);
 LogicalResult verifyMOSameOperandsAndResultElementType(Operation *op);
 LogicalResult verifyMOSameOperandsAndResultShapeAttr(Operation *op);
@@ -63,6 +65,9 @@ LogicalResult resolveSameOperandsAndResultShapeUnknownParameters(
 LogicalResult
 materializeReductionShapeInference(Reduction op,
                                    ShapeFuncMaterializationState &state);
+LogicalResult
+materializeScatterNdLikeShapeInference(ScatterNdLike op,
+                                       ShapeFuncMaterializationState &state);
 
 ErrorOrSuccess elementwiseSinkStaticBroadcastTo(Operation *op,
                                                 mlir::RewriterBase &rewriter);
@@ -155,6 +160,18 @@ public:
   materializeShapeInference(ShapeFuncMaterializationState &state) {
     auto reduction = mlir::cast<Reduction>(this->getOperation());
     return impl::materializeReductionShapeInference(reduction, state);
+  }
+};
+
+template <typename ConcreteType>
+class ScatterNdLikeShapeInferenceMaterialization
+    : public mlir::OpTrait::TraitBase<
+          ConcreteType, ScatterNdLikeShapeInferenceMaterialization> {
+public:
+  LogicalResult
+  materializeShapeInference(ShapeFuncMaterializationState &state) {
+    auto reduction = mlir::cast<ScatterNdLike>(this->getOperation());
+    return impl::materializeScatterNdLikeShapeInference(reduction, state);
   }
 };
 

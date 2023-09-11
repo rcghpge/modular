@@ -2349,27 +2349,6 @@ void ShapeOfOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 }
 
 //===----------------------------------------------------------------------===//
-// MO_ScatterNDOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult ScatterNdOp::verify() {
-  TensorType inputTy = getInput().getType();
-  TensorType resTy = getResult().getType();
-
-  // Basic static rank checks
-  if (inputTy.hasRank() && resTy.hasRank() &&
-      inputTy.getRank() != resTy.getRank())
-    return emitError("input and result ranks must match if both static");
-
-  // Basic static shape checks
-  if (inputTy.hasStaticShape() && resTy.hasStaticShape() &&
-      inputTy.getShapeAttr() != resTy.getTypedShapeAttr())
-    return emitError("input and result shapes must match if both static");
-
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // MO_SliceOp
 //===----------------------------------------------------------------------===//
 

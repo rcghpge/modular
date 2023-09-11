@@ -282,6 +282,33 @@ def MO_Reduction : MO_TensorOpInterfaceBase<"Reduction",
   let verify = [{ return impl::verifyReduction(cast<Reduction>($_op)); }];
 }
 
+def MO_ScatterNdLike : MO_TensorOpInterfaceBase<"ScatterNdLike",
+    [MO_ParamDeclaration]> {
+  let description = [{
+    Interface for modeling ScatterND-like operations (i.e., regular ScatterND
+    and ScatterND with reductions).
+  }];
+
+  let methods = [
+    InterfaceMethod<"Get input tensor as a TypedValue",
+      "TensorValue", "getInput", (ins)>,
+    InterfaceMethod<"Get input tensor as a MutableOperandRange",
+      "MutableOperandRange", "getInputMutable", (ins)>,
+    InterfaceMethod<"Get the updates tensor as a TypedValue",
+      "TensorValue", "getUpdates", (ins)>,
+    InterfaceMethod<"Get the updates tensor as a MutableOperandRange",
+      "MutableOperandRange", "getUpdatesMutable", (ins)>,
+    InterfaceMethod<"Get indices tensor as a TypedValue",
+      "TensorValue", "getIndices", (ins)>,
+    InterfaceMethod<"Get indices tensor as a MutableOperandRange",
+      "MutableOperandRange", "getIndicesMutable", (ins)>,
+    InterfaceMethod<"Get result tensor as a TypedValue",
+      "TensorValue", "getResult", (ins)>
+  ];
+
+  let verify = [{ return impl::verifyScatterNdLike(cast<ScatterNdLike>($_op)); }];
+}
+
 def MO_DefaultParameterization : MO_TensorOpInterfaceBase<
   "DefaultParameterization", [MO_Parameterization, MO_ParamDeclaration]
 > {
@@ -356,6 +383,18 @@ def MO_ReductionTraits: TraitList<[
   MO_ShapeInferenceMaterialization,
   MO_DefaultParameterization,
   _MO_ReductionShapeInferenceMaterialization
+]>;
+
+/// Should not be used outside this file.
+def _MO_ScatterNdLikeShapeInferenceMaterialization
+  : MO_OpTrait<"ScatterNdLikeShapeInferenceMaterialization">;
+
+/// All traits that ScatterND-like ops should have.
+def MO_ScatterNdLikeTraits: TraitList<[
+  MO_ScatterNdLike,
+  MO_ShapeInferenceMaterialization,
+  MO_DefaultParameterization,
+  _MO_ScatterNdLikeShapeInferenceMaterialization
 ]>;
 
 /// Logically similar to the builtin SameOperandsAndResultElementType, but this
