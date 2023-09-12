@@ -142,13 +142,15 @@ ShapedType typeToShaped(TensorType type) {
 
 /// Rewrite ops to the results of constant folding them.
 struct RewriteConstantOps : public RewritePattern {
-  RewriteConstantOps(MLIRContext *context,
-                     const llvm::DenseMap<Value, ElementsAttr> &constants,
-                     const llvm::SetVector<Operation *> &constantOps)
+  RewriteConstantOps(
+      MLIRContext *context,
+      const llvm::DenseMap<Value, std::pair<ElementsAttr, TensorShape>>
+          &constants,
+      const llvm::SetVector<Operation *> &constantOps)
       : RewritePattern(MatchAnyOpTypeTag(), 1, context), constants(constants),
         constantOps(constantOps) {}
   using RewritePattern::matchAndRewrite;
-  const llvm::DenseMap<Value, ElementsAttr> &constants;
+  const llvm::DenseMap<Value, std::pair<ElementsAttr, TensorShape>> &constants;
   const llvm::SetVector<Operation *> &constantOps;
 
   LogicalResult matchAndRewrite(Operation *op,
@@ -161,10 +163,31 @@ struct RewriteConstantOps : public RewritePattern {
         for (auto r : op->getResults()) {
           // Each result can either be a tensor or a shape.
           if (r.getType().isa<TensorType>()) {
-            new_results.push_back(rewriter.create<ConstantOp>(
-                op->getLoc(), r.getType(), constants.at(r)));
+            auto [constant, shape] = constants.at(r);
+            Type type = r.getType();
+            // Resolve instances where the output shape is not statically
+            // known (mo.tensor<[?], f32> for example) by using the size of
+            // the output.
+            if (dyn_cast<TensorType>(type).hasUnknownShape()) {
+              auto resolvedType = TensorType::get(
+                  MOSH::ShapeAttr::get(
+                      SmallVector<int64_t>(shape.begin(), shape.end()),
+                      MOSH::ShapeType::get(op->getContext())),
+                  dyn_cast<TensorType>(r.getType()).getDtype());
+              auto constantOp = rewriter.create<ConstantOp>(
+                  op->getLoc(), resolvedType, constant);
+              // Rebind the shape so it matches what is expected. For example,
+              // transform [1, 2] to [1, A] so that types shapes with parameters
+              // match.
+              new_results.push_back(
+                  rewriter.create<RebindOp>(op->getLoc(), type, constantOp));
+            } else {
+              new_results.push_back(
+                  rewriter.create<ConstantOp>(op->getLoc(), type, constant));
+            }
           } else if (r.getType().isa<ShapeType>()) {
-            auto intElems = dyn_cast<IntArrayElementsAttr>(constants.at(r));
+            auto intElems =
+                dyn_cast<IntArrayElementsAttr>(constants.at(r).first);
             new_results.push_back(rewriter.create<KGEN::ParamConstantOp>(
                 op->getLoc(),
                 ShapeAttr::get(intElems.asArrayRef<int64_t>(),
@@ -180,7 +203,13 @@ struct RewriteConstantOps : public RewritePattern {
     // Match any op that was not replaced with a constant to check if it should
     // be DCEd.
     if (constantOps.contains(op)) {
-      rewriter.eraseOp(op);
+      if (llvm::all_of(op->getUsers(), [&](Operation *user) {
+            return constantOps.contains(user) ||
+                   llvm::all_of(user->getResults(), [&](Value result) {
+                     return constants.contains(result);
+                   });
+          }))
+        rewriter.eraseOp(op);
       return LogicalResult::success();
     }
     return rewriter.notifyMatchFailure(op, "Op is not constant");
@@ -190,8 +219,9 @@ struct RewriteConstantOps : public RewritePattern {
 /// Simple struct holding results of a model execution.
 struct ModelResult {
   /// Mapping from subgraph output value to the constants that should replace
-  /// it.
-  llvm::DenseMap<Value, ElementsAttr> constants;
+  /// it. Also includes the output shape so that unknown shapes in the constant
+  /// graph can be resolved.
+  llvm::DenseMap<Value, std::pair<ElementsAttr, TensorShape>> constants;
   /// Mapping from parameter name in subgraph to the value that it should be
   /// defined as.
   llvm::DenseMap<StringAttr, int64_t> parameters;
@@ -238,7 +268,7 @@ ErrorOr<ModelResult> executeModel(MLIRContext *ctx, const Model *model,
   LLCL::await(outputTensorRefs);
 
   // Get the constant values.
-  llvm::DenseMap<Value, ElementsAttr> valuesToTensors;
+  llvm::DenseMap<Value, std::pair<ElementsAttr, TensorShape>> valuesToTensors;
   auto resourceManager = DenseResourceElementsHandle::getManagerInterface(ctx);
   size_t outIdx = 0;
   for (auto op : subgraphInfo.subgraph.outputs) {
@@ -258,11 +288,14 @@ ErrorOr<ModelResult> executeModel(MLIRContext *ctx, const Model *model,
                                      std::multiplies<int64_t>());
       ArrayType arrayType = ArrayType::get(
           op->getContext(), size, toMLIRType(ctx, t->getEltType()).get());
-      valuesToTensors[result] = getAttrForTensorDataCopy(
-          arrayType,
-          subgraphInfo.constantSubgraphName + "_" + std::to_string(outIdx),
-          {reinterpret_cast<const char *>(t->getBuffer()), t->getSizeInBytes()},
-          resourceManager);
+      valuesToTensors[result] = {
+          getAttrForTensorDataCopy(
+              arrayType,
+              subgraphInfo.constantSubgraphName + "_" + std::to_string(outIdx),
+              {reinterpret_cast<const char *>(t->getBuffer()),
+               t->getSizeInBytes()},
+              resourceManager),
+          shape};
       outIdx++;
     }
   }
@@ -824,7 +857,7 @@ void ConstantFoldPass::runOnOperation() {
         internalOps.insert(filtered.begin(), filtered.end());
       }
 
-      llvm::DenseMap<Value, ElementsAttr> constants;
+      llvm::DenseMap<Value, std::pair<ElementsAttr, TensorShape>> constants;
       llvm::DenseMap<StringAttr, int64_t> params;
       for (auto r : results) {
         constants.insert(r.first.constants.begin(), r.first.constants.end());
@@ -833,8 +866,11 @@ void ConstantFoldPass::runOnOperation() {
 
       RewritePatternSet patterns{ctx};
       patterns.add<RewriteConstantOps>(ctx, constants, internalOps);
-      if (failed(applyPatternsAndFoldGreedily(graph, std::move(patterns))))
+      if (failed(applyPatternsAndFoldGreedily(graph, std::move(patterns)))) {
+        mlir::emitError(module.getLoc(),
+                        "Failed to rewrite ops into their constant values.");
         return signalPassFailure();
+      }
 
       // Add parameters that were defined in the subgraph.
       OpBuilder builder(ctx);

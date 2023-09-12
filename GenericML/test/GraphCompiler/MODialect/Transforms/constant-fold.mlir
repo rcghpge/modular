@@ -214,3 +214,29 @@ mo.graph @to_tensor_fold<D0, Sh0: !mosh.ape -> D1>() -> (
   // CHECK-NEXT: mo.output<[[D0]]> %[[VAL3]], %[[VAL4]], %[[VAL0]], %[[VAL5]], %[[VAL6]] : !mo.tensor<[?], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[1], si32>, !mo.tensor<[D0], si32>
   mo.output<D0> %0, %1, %2, %3, %4 : !mo.tensor<[?], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[1], si32>, !mo.tensor<[D0], si32>
 }
+
+// CHECK: mo.graph @reshape_to_unknown
+mo.graph @reshape_to_unknown() -> !mo.tensor<[1, ?], si8> {
+  // CHECK: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi8>} : !mo.tensor<[1, 2], si8>
+  // CHECK: %[[VAL1:.*]] = mo.rebind(%[[VAL0]])
+  // CHECK: mo.output %[[VAL1]]
+  %0 = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+  %1 = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi8>} : !mo.tensor<[2], si8>
+  %2 = mo.reshape(%1, %0) : (!mo.tensor<[2], si8>, !mo.tensor<[2], si32>) -> !mo.tensor<[1, ?], si8>
+  mo.output %2 : !mo.tensor<[1, ?], si8>
+}
+
+// CHECK: mo.graph @reshape_to_unknown_with_param
+mo.graph @reshape_to_unknown_with_param(%arg0 : !mo.tensor<[2], si8>) -> !mo.tensor<[1, ?], si8> {
+  // CHECK: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi8>} : !mo.tensor<[1, 2], si8>
+  // CHECK: %[[VAL1:.*]] = mo.rebind(%[[VAL0]])
+  // CHECK: mo.add(%[[VAL1]]
+  kgen.param.declare A = <2>
+  %0 = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+  %1 = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi8>} : !mo.tensor<[2], si8>
+  %2 = mo.reshape(%1, %0) : (!mo.tensor<[2], si8>, !mo.tensor<[2], si32>) -> !mo.tensor<[?, A], si8>
+  %r = mo.reshape(%arg0, %0): (!mo.tensor<[2], si8>, !mo.tensor<[2], si32>) -> !mo.tensor<[?, A], si8>
+  %3 = mo.add(%2, %r) : !mo.tensor<[?, A], si8>
+  %4 = mo.rebind(%3) : !mo.tensor<[?, A], si8> -> !mo.tensor<[1, ?], si8>
+  mo.output %4 : !mo.tensor<[1, ?], si8>
+}
