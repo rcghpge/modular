@@ -63,6 +63,45 @@ def MO_IndexToTensorOp : MO_Op<"index.to_tensor", [Pure]> {
 }
 
 //===----------------------------------------------------------------------===//
+// TransferOp
+//===----------------------------------------------------------------------===//
+
+def MO_TransferOp : MO_Op<"transfer", [
+    Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>
+]> {
+  let summary = "Make an operand tensor available on a specified (virtual) "
+                "device.";
+  let description = [{
+    Represents a possible copy or aliasing operation to make the contents of the
+    operand tensor available on the (virtual) device given by the operand
+    `#M.device_ref` attribute. The result tensor type is identical to the
+    operand tensor type except for the device annotation.
+
+    The operand tensor type must have a device annotation. It is valid for the
+    source and destination devices to be identical. It is implementation defined
+    as to whether the result tensor is a copy or alias of the operand tensor.
+
+    Example:
+    ```mlir
+    %arg : !mo.tensor<[N, 8], f32> { device = #M.device_ref<"cuda", 3> }
+    %res = mo.transfer %arg : !mo.tensor<!mo.tensor<[N, 8], f32>
+             { device = #M.device_ref<"cuda", 3> } to <"cuda", 1>
+    %res : !mo.tensor<[N, 8], f32> { device = #M.device_ref<"cuda", 1> }
+    ```
+  }];
+
+  let arguments = (ins MO_Tensor:$input, M_DeviceRefAttr:$destDevice);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    $input `:` qualified(type($input)) `to` $destDevice attr-dict
+  }];
+
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // GraphOp
 //===----------------------------------------------------------------------===//
 
@@ -146,7 +185,13 @@ def MO_GraphOp : MO_TensorOp<"graph", [
     /// graph op.
     std::string getNewParamName(StringRef prefix);
 
-   public:
+    /// Returns the #M.device_spec_collection annotation for this graph op, or
+    /// null if no such annotation.
+    DeviceSpecCollectionAttr getDeviceSpecs();
+
+    /// Sets the #M.device_spec_collection annotation for this graph op,
+    /// overwriting any existing annotation.
+    void setDeviceSpecs(DeviceSpecCollectionAttr deviceSpecs);
   }];
 
   let builders = [

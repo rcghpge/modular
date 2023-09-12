@@ -28,10 +28,31 @@ def MO_TensorOpInterface : OpInterface<"MOTensorOpInterface"> {
       "TensorValue", "getInputTensor",
       (ins "unsigned int":$idx), [{}],
       [{ return ::llvm::cast<TensorValue>($_op->getOperand(idx)); }]>,
+
     InterfaceMethod<"Get an output tensor as a TypedValue",
       "TensorValue", "getOutputTensor",
       (ins "unsigned int":$idx), [{}],
-      [{ return ::llvm::cast<TensorValue>($_op->getResult(idx)); }]>
+      [{ return ::llvm::cast<TensorValue>($_op->getResult(idx)); }]>,
+
+    InterfaceMethod<
+      [{
+        Returns the #M.device_ref annotation for this operation, or null if
+        no such annotation.
+      }],
+      "DeviceRefAttr", "getDeviceRef", (ins ), [{}],
+      [{ return dyn_cast_if_present<DeviceRefAttr>($_op->getAttr(kOperationDeviceRefAttrName)); }]
+    >,
+
+    InterfaceMethod<
+      [{
+        Sets the #M.device_ref annotation for this operation, overwriting any
+        existing annotation.
+      }],
+      "void", "setDeviceRef", (ins "DeviceRefAttr":$device), [{}],
+      [{
+        $_op->setAttr(kOperationDeviceRefAttrName, device);
+      }]
+    >
   ];
 }
 

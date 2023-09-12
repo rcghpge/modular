@@ -44,7 +44,7 @@ void M::MO::loadDialects(mlir::DialectRegistry &registry) {
                   // The dialects needed for KGEN.
                   KGEN::KGENDialect, KGEN::POP::POPDialect,
                   DebugInfo::DebugInfoDialect, Cache::CacheDialect,
-                  HLCF::HLCFDialect, mlir::index::IndexDialect,
+                  HLCF::HLCFDialect, mlir::index::IndexDialect, M::MDialect,
                   mlir::LLVM::LLVMDialect>();
 
   // The elaborator requires LLVM lowering to run the generated functions.

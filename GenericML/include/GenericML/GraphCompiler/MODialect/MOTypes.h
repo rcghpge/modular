@@ -12,6 +12,7 @@
 #define GENERICML_GRAPHCOMPILER_MODIALECT_MOTYPES_H
 
 #include "Support/LLVMCompilerForwardDecls.h"
+#include "Support/MDialect/MAttrs.h"
 #include "Support/ML/DType.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"

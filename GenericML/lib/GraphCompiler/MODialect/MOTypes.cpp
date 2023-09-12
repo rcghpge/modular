@@ -52,6 +52,10 @@ static std::string asString(Type type) {
 /// `MO::TensorType` with this name as the key.
 static constexpr StringRef kLayoutMetadataName = "layout";
 
+/// Name of optional attribute holding the #M.device_ref on which a MO
+/// tensor should be stored.
+constexpr StringRef kTypeDeviceRefAttrName = "device";
+
 static ParseResult parseShapeParam(AsmParser &p, TypedAttr &shapeAttr) {
   auto shapeTy = p.getBuilder().getType<ShapeType>();
   OptionalParseResult res = MOSH::parseShapeAttrOrUnknown(p, shapeAttr);
@@ -287,6 +291,13 @@ TensorType TensorType::cloneWithUnknownDims(int64_t rank) const {
       getDtype(), getMetadata());
 }
 
+TensorType TensorType::cloneWith(DeviceRefAttr device) const {
+  NamedAttrList namedAttrs(getMetadata());
+  namedAttrs.set(kTypeDeviceRefAttrName, device);
+  DictionaryAttr newMetadata = namedAttrs.getDictionary(getContext());
+  return TensorType::get(getContext(), getShapeAttr(), getDtype(), newMetadata);
+}
+
 bool TensorType::hasRank() const {
   // Rank is only known if we have a concrete attribute
   if (llvm::isa<KGEN::UnknownAttr, KGEN::ParamDeclRefAttr>(getShapeAttr()))
@@ -387,6 +398,11 @@ ErrorOr<TensorType> TensorType::broadcastShapes(TensorType x, TensorType y) {
     return resultOr.takeError();
 
   return MO::TensorType::get(std::move(*resultOr), x.getElementType());
+}
+
+DeviceRefAttr TensorType::getDeviceRef() const {
+  return dyn_cast_if_present<DeviceRefAttr>(
+      getMetadata().get(kTypeDeviceRefAttrName));
 }
 
 //===----------------------------------------------------------------------===//

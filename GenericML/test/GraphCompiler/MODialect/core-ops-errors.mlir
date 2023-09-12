@@ -62,7 +62,7 @@ mo.graph @if_op_type_mismatch(%arg0: !mo.tensor<[2, ?, 1], f32>, %arg1: !mo.tens
 
 mo.graph @while_op_type_mismatch_cond(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[3], f32>, %cond : !mo.tensor<[], bool>) -> !mo.tensor<[2], f32> {
   %0:2 = mo.while (%arg0 : !mo.tensor<[2], f32>, %cond: !mo.tensor<[], bool>) {
-    // expected-error@+1 {{'mo.yield' op operand #0 has type '!mo.tensor<[2], f32>' but expected '!mo.tensor<[], bool>'}}
+    // expected-error@+1 {{'mo.yield' op expected single operand of type '!mo.tensor<[], bool>'.}}
     mo.yield %arg0 : !mo.tensor<[2], f32>
   } do {
     mo.yield %arg0, %cond : !mo.tensor<[2], f32>, !mo.tensor<[], bool>
@@ -145,7 +145,16 @@ mo.graph @rebind_same_out_param_bind_to_different_ints<D0>(
 }
 
 // -----
+
 // expected-error @below {{invalid dimension, expect all dimensions >= 0 got: -1}}
 mo.graph @tensor_type_neg_dim(%arg0: !mo.tensor<[-1, 10], f32>) -> !mo.tensor<[-1, 10], f32> {
   mo.output %arg0: !mo.tensor<[-1, 10], f32>
+}
+
+// -----
+
+mo.graph @transfer_missing_annot(%arg0 : !mo.tensor<[3, 2], f32>) -> !mo.tensor<[3, 2], f32, { device = #M.device_ref<"cpu", 0> }> {
+  // expected-error @below {{expected input tensor type to have a #M.device_ref annotation}}
+  %0 = mo.transfer %arg0 : !mo.tensor<[3, 2], f32> to <"cpu", 0>
+  mo.output %0 : !mo.tensor<[3, 2], f32, { device = #M.device_ref<"cpu", 0> }>
 }

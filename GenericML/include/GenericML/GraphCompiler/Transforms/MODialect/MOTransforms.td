@@ -217,4 +217,31 @@ def ConstantFoldSubgraphTest : Pass<"constant-fold-subgraph-test", "ModuleOp"> {
   }];
 }
 
+def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
+  let summary = "Assigns an `#M.device_spec` annotation to every operation "
+                "and tensor.";
+  let description = [{
+    This pass assigns an `#M.device_spec` annotation to every operation and
+    tensor in the graph, respecting any existing annotations. New `mo.transfer`
+    ops are inserted where required for consistency. The pass uses a simple
+    eager assignment algorithm and does not attempt any form of global
+    optimization.
+
+    The rules are:
+     - Ops are processed in reverse dataflow order, ie from outputs to inputs.
+     - Unless already annotated, graph input and output tensors are annotated
+       to be stored on the graph's host device.
+     - Unless already annotated, an operation is annotated to execute on the
+       device of it's first annotated result tensor.
+     - Unless already annotated, the operand and result tensors of an operation
+       are annotated to match the operation.
+     - Conflicts are resolved by inserting a mo.transfer op.
+     - The results of a `mo.transfer` op may be shared, and `mo.transfer` has
+       the expected transitivity and reflexivity rules.
+
+    Note that this pass has no understanding of the devices themselves, and
+    simply works on uninterpreted `#M.device_ref`s.
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTRANSFORMS_TD

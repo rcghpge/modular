@@ -100,6 +100,10 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     /// Returns clone with a shape of known rank, but unknown dims
     TensorType cloneWithUnknownDims(int64_t rank) const;
 
+    /// Returns a clone of type with given #M.device_ref annotation. The
+    /// type must not already have such an annotation.
+    TensorType cloneWith(DeviceRefAttr device) const;
+
     /// Checks if the tensor is statically ranked.
     bool hasRank() const;
 
@@ -158,6 +162,10 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     /// Return the layout attribute carried by this tensor type. If no layout
     /// attribute is specified, return a null attribute `LayoutAttr{}`.
     MO::LayoutAttr getLayoutAttr();
+
+    /// Returns the #M.device_ref annotation for this type, or null if no
+    /// such annotation.
+    DeviceRefAttr getDeviceRef() const;
   }];
 }
 

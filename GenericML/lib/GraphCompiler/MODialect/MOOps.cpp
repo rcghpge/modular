@@ -207,6 +207,40 @@ void M::MO::synchronizeMetadataUpdates(GraphOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// TransferOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TransferOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  assert(operands.size() == 1 && "mismatched operand arity");
+  auto sourceType = dyn_cast<TensorType>(operands[0].getType());
+  assert(sourceType && "mismatched operand types");
+  auto destDeviceAttr = dyn_cast_if_present<DeviceRefAttr>(
+      attributes.get(getDestDeviceAttrName(name)));
+  assert(destDeviceAttr && "mismatched operand types");
+  inferredReturnTypes.emplace_back(sourceType.cloneWith(destDeviceAttr));
+  return success();
+}
+
+LogicalResult TransferOp::verify() {
+  if (!getInput().getType().getDeviceRef())
+    return emitError()
+           << "expected input tensor type to have a #M.device_ref annotation";
+  if (!getResult().getType().getDeviceRef())
+    return emitError()
+           << "expected result tensor type to have a #M.device_ref annotation";
+  if (getResult().getType().getDeviceRef() != getDestDeviceAttr())
+    return emitError() << "expected result tensor type to have same "
+                          "#M.device_ref annotation as transfer destination ("
+                       << getDestDeviceAttr() << " vs "
+                       << getResult().getType().getDeviceRef() << ").";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // MO_IndexToTensorOp support
 //===----------------------------------------------------------------------===//
 
@@ -223,6 +257,10 @@ OpFoldResult IndexToTensorOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 // MO_GraphOp support
 //===----------------------------------------------------------------------===//
+
+/// Name of optional attribute holding the #M.device_spec_collection describing
+/// the (virtual) devices available to the graph.
+constexpr StringRef kGraphDeviceSpecCollectionAttrName = "device_specs";
 
 void GraphOp::build(OpBuilder &builder, OperationState &state, StringRef name,
                     TypeRange inputTypes, TypeRange resultTypes) {
@@ -303,6 +341,15 @@ std::string GraphOp::getNewParamName(StringRef prefix) {
   int64_t newCounter = getProperties().getCounter() + 1;
   getProperties().setCounter(newCounter);
   return prefix.str() + std::to_string(newCounter);
+}
+
+DeviceSpecCollectionAttr GraphOp::getDeviceSpecs() {
+  return dyn_cast_if_present<DeviceSpecCollectionAttr>(
+      getOperation()->getAttr(kGraphDeviceSpecCollectionAttrName));
+}
+
+void GraphOp::setDeviceSpecs(DeviceSpecCollectionAttr deviceSpecs) {
+  getOperation()->setAttr(kGraphDeviceSpecCollectionAttrName, deviceSpecs);
 }
 
 //===----------------------------------------------------------------------===//
@@ -419,6 +466,21 @@ void WhileOp::print(OpAsmPrinter &p) {
   printRegionWithShadowing(p, getInputs(), getBodyRegion());
 }
 
+/// Returns success if yieldOp's single operand is of the MO scalar boolean
+/// type.
+static LogicalResult outputsOneBool(YieldOp yieldOp) {
+  if (yieldOp->getNumOperands() != 1)
+    return failure();
+  auto tensorType = dyn_cast<TensorType>(yieldOp->getOperand(0).getType());
+  if (!tensorType)
+    return failure();
+  if (!tensorType.hasRank() || tensorType.getRank() != 0)
+    return failure();
+  if (tensorType.getElementType() != IntegerType::get(yieldOp->getContext(), 1))
+    return failure();
+  return success();
+}
+
 LogicalResult WhileOp::verify() {
   // The grt.while results must match the signature types.
   if (failed(checkMatchingTypes(*this, "result", getResultTypes(),
@@ -438,12 +500,13 @@ LogicalResult WhileOp::verify() {
     return failure();
 
   // The 'cond' block returns a single 'scalar' boolean.
+  // We don't construct a scalar bool type and use checkOperandTypes because
+  // it is valid for the type to have additional type attributes (such as
+  // for a storage device).
   auto condOutput = cast<MO::YieldOp>(condBlock->getTerminator());
-  SmallVector<Type, 1> expectedTypes;
-  expectedTypes.emplace_back(MO::TensorType::get(
-      SmallVector<int64_t, 0>(), IntegerType::get(getContext(), 1)));
-  if (failed(checkOperandTypes(condOutput, expectedTypes)))
-    return failure();
+  if (failed(outputsOneBool(condOutput)))
+    condOutput->emitOpError()
+        << "expected single operand of type '!mo.tensor<[], bool>'.";
 
   // The 'body' block returns a result for each mo.while result.
   auto bodyOutput = cast<MO::YieldOp>(bodyBlock->getTerminator());

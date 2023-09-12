@@ -11,6 +11,7 @@
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENInterfaces.h"
 #include "Support/LLVMCompilerForwardDecls.h"
+#include "Support/MDialect/MAttrs.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -39,6 +40,10 @@ class ShapeFuncMaterializationState;
 
 using M::KGEN::ParamDeclAttr;
 using M::KGEN::ParamDefValue;
+
+/// Name of optional attribute holding the #M.device_ref on which a MO
+/// op should be executed.
+constexpr StringRef kOperationDeviceRefAttrName = "device";
 
 namespace impl {
 /// Verify that ranks are either all static and match or all dynamic.
