@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --split-input-file --verify-diagnostics
+// RUN: mo-opt %s --split-input-file --canonicalize --verify-diagnostics
 
 // NOTE: Keep the tests grouped by op, and the order of ops alphabetical.
 
@@ -982,4 +982,30 @@ mo.graph @scatter_nd_min_shape_mismatch(
   %0 = mo.scatter_nd.min(%input, %updates, %indices)
   : (!mo.tensor<[10, 1, 3], f32>, !mo.tensor<[9, 2, 1, 3], f32>, !mo.tensor<[?, ?, ?], si32>) -> !mo.tensor<[10, 2, 3], f32>
   mo.output %0 : !mo.tensor<[10, 2, 3], f32>
+}
+
+//===----------------------------------------------------------------------===//
+// UnsqueezeOp
+//===----------------------------------------------------------------------===//
+
+// -----
+
+mo.graph @unsqueeze_shape_changed_dtypes(%input_shape: !mo.tensor<[4], si32>) -> !mo.tensor<[7], si64> {
+  %indices = mo.constant {value = #M.dense_array<0, 2, 6> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+
+  // Input and output dtypes should match
+  // expected-error@+1 {{'mo.unsqueeze_shape' op Expect in and out DTypes to be the same type}}
+  %res = mo.unsqueeze_shape(%input_shape, %indices) : (!mo.tensor<[4], si32>, !mo.tensor<[3], si64>) -> !mo.tensor<[7], si64>
+  mo.output %res : !mo.tensor<[7], si64>
+}
+
+// -----
+
+mo.graph @unsqueeze_same_indices(%input_shape: !mo.tensor<[4], si32>) -> !mo.tensor<[7], si32> {
+  %indices = mo.constant {value = #M.dense_array<0, 2, -7> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+
+  // 0, and -7 map to the same dimension (index 0)
+  // expected-error@+1 {{'mo.unsqueeze_shape' op Padding indices pad the same dimension twice}}
+  %res = mo.unsqueeze_shape(%input_shape, %indices) : (!mo.tensor<[4], si32>, !mo.tensor<[3], si64>) -> !mo.tensor<[7], si32>
+  mo.output %res : !mo.tensor<[7], si32>
 }

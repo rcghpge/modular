@@ -345,6 +345,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_ELEMWISE(MO::TruncOp),
       MO_TO_KERNEL(MO::TopKOp),
       MO_TO_KERNEL(MO::TransposeOp),
+      MO_TO_KERNEL(MO::UnsqueezeShapeOp),
       MO_TO_KERNEL(MO::ArgNonzeroOp),
       MO_TO_ELEMWISE(MO::XorOp),
 

@@ -1648,6 +1648,46 @@ def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [DeclareOpInterfaceMethods<MO_P
   let hasFolder = 1;
 }
 
+def MO_UnsqueezeShapeOp : MO_ShapeModifierOp<"unsqueeze_shape"> {
+  let summary = "Calculates the resulting shape for unsqueeze-type ops.";
+  let description = [{
+    Calculates the shape from unsqueeze like operators. Given an input shape
+    vector representing a tensor of rank `N`, and a list of indices of length
+    `M`, returns a new shape vector representing a tensor of rank `N + M`.
+
+    The indices in the given list map to the new vector of length `N + M` where
+    the indicated dimensions are replaced with `1`. The remaining dimension in
+    the original input shape vector are copied over in the non-1 dimensions.
+
+    This operator supports negative indexing. Example:
+
+    $input_shape: [10, 11, 12]
+    $padding_indices: [-6, 3, 5] # -6 is equivalent to 0
+    $result: [1, 10, 11, 1, 12, 1]
+
+    ```mlir
+      %input_shape : !mo.tensor<[3], si32>
+      %indices : !mo.tensor<[4], si32>
+      %res = mo.unsqueeze_shape(%input_shape, %indices) : (!mo.tensor<[4], si32>, !mo.tensor<[3], si32>) -> !mo.tensor<[7], si32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_ShapeLike:$input_shape,
+    MO_ShapeLike:$padding_indices,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_ShapeLike:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
+
+  let hasVerifier = 1;
+
+  let hasCanonicalizeMethod = 1;
+}
+
 def MO_ShapeOfOp : MO_TensorOp<"shape_of", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>
 ]> {

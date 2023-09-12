@@ -2278,6 +2278,80 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
 }
 
 //===----------------------------------------------------------------------===//
+// MO_UnsqueezeShapeOp support
+//===----------------------------------------------------------------------===//
+LogicalResult UnsqueezeShapeOp::verify() {
+  if (getInputShape().getType().getDtype() != getResult().getType().getDtype())
+    return emitOpError("Expect in and out DTypes to be the same type");
+
+  // Check indices don't point to the same index
+  std::optional<SmallVector<int64_t>> maybeIndices =
+      tryGetConstantIntVector(getPaddingIndices());
+  if (maybeIndices) {
+    SmallVector<int64_t> &indices = maybeIndices.value();
+    llvm::sort(indices);
+    for (size_t i = 0; i < indices.size() - 1; i++) {
+      if (indices[i] == indices[i + 1])
+        return emitOpError("Padding indices pad the same dimension twice");
+    }
+  }
+
+  // Check out number of elements equal to sum of size of input elements
+  std::optional<int64_t> inputShapeSize =
+      getInputShape().getType().getNumElements();
+  std::optional<int64_t> paddingIndicesSize =
+      getPaddingIndices().getType().getNumElements();
+  std::optional<int64_t> outputSize = getResult().getType().getNumElements();
+  if (inputShapeSize.has_value() && paddingIndicesSize.has_value() &&
+      outputSize.has_value() &&
+      inputShapeSize.value() + paddingIndicesSize.value() !=
+          outputSize.value()) {
+    return emitOpError("Output size is not the sum of the input sizes");
+  }
+
+  return success();
+}
+
+LogicalResult UnsqueezeShapeOp::canonicalize(UnsqueezeShapeOp op,
+                                             PatternRewriter &rewriter) {
+  // Normalize negative indices and make result in sorted order
+  TensorValue indicesValue = op.getPaddingIndices();
+  TensorType inputShapeType = op.getInputShape().getType();
+  std::optional<SmallVector<int64_t>> maybeIndices =
+      tryGetConstantIntVector(indicesValue);
+  if (!maybeIndices || !inputShapeType.getNumElements().has_value())
+    return failure();
+
+  SmallVector<int64_t> &indices = maybeIndices.value();
+  bool changedIndices = false;
+  for (int64_t &index : indices) {
+    if (index < 0) {
+      index += inputShapeType.getNumElements().value() + indices.size();
+      changedIndices = true;
+    }
+  }
+
+  bool isSorted = true;
+  for (size_t i = 0; i < indices.size() - 1 && isSorted; i++)
+    isSorted = indices[i] <= indices[i + 1];
+  if (!isSorted) {
+    llvm::sort(indices);
+    changedIndices = true;
+  }
+
+  if (!changedIndices)
+    return failure();
+
+  // Construct new op with same dtypes for indices
+  TensorValue newIndices = rewriter.create<ConstantOp>(op->getLoc(), indices);
+  newIndices = rewriter.create<CastOp>(op->getLoc(), newIndices,
+                                       indicesValue.getType().getDtype());
+  rewriter.replaceOpWithNewOp<UnsqueezeShapeOp>(op, op.getResult().getType(),
+                                                op.getInputShape(), newIndices);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // MOStatic_ReshapeOp
 //===----------------------------------------------------------------------===//
 
