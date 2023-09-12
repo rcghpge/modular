@@ -29,7 +29,7 @@ tool_dirs = [
     config.mlir_tools_dir,
     config.llvm_tools_dir,
 ]
-tools = ["mo-opt", "mt"]
+tools = ["mo-opt", "modbench", "mt"]
 
 llvm_config.with_environment(
     "PYTHONPATH",

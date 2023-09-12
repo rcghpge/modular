@@ -18,6 +18,7 @@ add_modular_testsuite(check-genericml-integration
   TOOLS
   FileCheck
   mo-opt
+  modbench
   mt
   tf-opt
 
