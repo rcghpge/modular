@@ -1614,7 +1614,7 @@ def MO_BroadcastToOp : MO_ShapeModifierOp<"broadcast_to"> {
   ];
 }
 
-def MO_ReshapeOp : MO_ShapeModifierOp<"reshape"> {
+def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [DeclareOpInterfaceMethods<MO_Parameterization>]> {
   let summary = "Reshape operation";
   let description = [{
     Return a tensor with the same underlying data, but different shape.
