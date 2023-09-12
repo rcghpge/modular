@@ -120,6 +120,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     pm.addPass(mlir::createCSEPass());
   }
 
+  pm.addPass(MO::createAssignDevicesPass());
+
   MO::MOToMOGGOptions moToMoggOpts;
   moToMoggOpts.extraLibPaths = opts.extraLibPaths;
   // If jiting simplify broadcast patterns to a single op that we can jit.

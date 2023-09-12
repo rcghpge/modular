@@ -221,7 +221,7 @@ def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
   let summary = "Assigns an `#M.device_spec` annotation to every operation "
                 "and tensor.";
   let description = [{
-    This pass assigns an `#M.device_spec` annotation to every operation and
+    This pass assigns a `#M.device_spec` annotation to every operation and
     tensor in the graph, respecting any existing annotations. New `mo.transfer`
     ops are inserted where required for consistency. The pass uses a simple
     eager assignment algorithm and does not attempt any form of global
@@ -232,7 +232,11 @@ def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
      - Unless already annotated, graph input and output tensors are annotated
        to be stored on the graph's host device.
      - Unless already annotated, an operation is annotated to execute on the
-       device of it's first annotated result tensor.
+       device found by the following search:
+         - the first result or operand tensor with a device annotation;
+         - the annotation on the overall graph op;
+         - the 'host' device given by the graph op's
+           `#M.device_spec_collection' attribute.
      - Unless already annotated, the operand and result tensors of an operation
        are annotated to match the operation.
      - Conflicts are resolved by inserting a mo.transfer op.
@@ -241,6 +245,9 @@ def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
 
     Note that this pass has no understanding of the devices themselves, and
     simply works on uninterpreted `#M.device_ref`s.
+
+    The pass is a no-op if the graph op has no `#M.device_spec_collection`
+    attribute, or the collection contains just the 'host' device.
   }];
 }
 
