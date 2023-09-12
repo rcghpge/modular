@@ -159,14 +159,27 @@ LogicalResult impl::verifyScatterNdLike(ScatterNdLike op) {
   TensorType resTy = op.getResult().getType();
 
   // Basic static rank checks
-  if (inputTy.hasRank() && resTy.hasRank() &&
-      inputTy.getRank() != resTy.getRank())
-    return op.emitError("input and result ranks must match if both static");
+  if (!inputTy.hasRank() || !resTy.hasRank())
+    return success();
+  size_t inputRank = inputTy.getRank();
+  size_t resRank = resTy.getRank();
+  if (inputRank != resRank) {
+    return op.emitError()
+           << "input and result ranks must match if both static: "
+           << "input rank = " << inputRank << ", result rank = " << resRank;
+  }
 
   // Basic static shape checks
-  if (inputTy.hasStaticShape() && resTy.hasStaticShape() &&
-      inputTy.getShapeAttr() != resTy.getTypedShapeAttr())
-    return op.emitError("input and result shapes must match if both static");
+  if (!inputTy.hasStaticShape() || !resTy.hasStaticShape())
+    return success();
+  TypedAttr inputShapeAttr = inputTy.getShapeAttr();
+  TypedAttr resShapeAttr = resTy.getShapeAttr();
+  if (inputShapeAttr != resShapeAttr) {
+    return op.emitError()
+           << "input and result shapes must match if both static: "
+           << "input shape = " << MOSH::shapeTypedAttrToStr(inputShapeAttr)
+           << ", result shape = " << MOSH::shapeTypedAttrToStr(resShapeAttr);
+  }
 
   return success();
 }

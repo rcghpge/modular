@@ -12,6 +12,7 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
+#include "Support/Compiler/ParserUtils.h"
 #include "mlir/IR/Builders.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -75,6 +76,14 @@ void M::MOSH::printShapeTypedAttr(AsmPrinter &p, TypedAttr shapeAttr) {
     printShapeValue(p, cast<ShapeAttr>(shapeAttr).getValues());
     p << "]";
   }
+}
+
+std::string M::MOSH::shapeTypedAttrToStr(TypedAttr attr) {
+  std::string str;
+  llvm::raw_string_ostream os(str);
+  StreamAsmPrinter printer(os);
+  MOSH::printShapeTypedAttr(printer, attr);
+  return str;
 }
 
 int64_t M::MOSH::findDeclIdx(ShapeAttr shape, KGEN::ParamDeclAttr decl) {

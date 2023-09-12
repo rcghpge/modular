@@ -26,6 +26,9 @@ OptionalParseResult parseShapeAttrOrUnknown(AsmParser &p, TypedAttr &shapeAttr);
 /// Print an attribute that has MOSH::ShapeType.
 void printShapeTypedAttr(AsmPrinter &p, TypedAttr shapeAttr);
 
+/// Convert an attribute that has MOSH::ShapeType to string.
+std::string shapeTypedAttrToStr(TypedAttr attr);
+
 /// Helper to find the location of a parameter in a shape. Returns -1 if the
 /// parameter does not appear in the shape.
 int64_t findDeclIdx(ShapeAttr shape, KGEN::ParamDeclAttr decl);
