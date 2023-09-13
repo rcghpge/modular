@@ -48,7 +48,7 @@ class PredicateAssertDependenciesPass
       // First, build a mapping of values and the assertions that they
       // contribute to.
       // TODO(#19098): This map is valid within a block.
-      DenseMap<Value, DenseSet<AssertOp>> valuesThatFeedAsserts;
+      llvm::MapVector<Value, llvm::SetVector<AssertOp>> valuesThatFeedAsserts;
       for (auto assertOp : block->getOps<AssertOp>()) {
         DenseSet<Operation *> visited;
         std::function<void(Value)> propagateUp = [&](Value val) {
@@ -79,9 +79,10 @@ class PredicateAssertDependenciesPass
 
       // TODO(#19098): Propagate the assert dependencies on all users of the
       // values that contributed to the assertions in the current block.
-      DenseMap<Operation *, DenseSet<AssertOp>> operationsThatDependOnAsserts;
-      const std::function<void(Value, DenseSet<AssertOp>)> propagateDown =
-          [&](Value val, const DenseSet<AssertOp> &asserts) {
+      llvm::MapVector<Operation *, llvm::SetVector<AssertOp>>
+          operationsThatDependOnAsserts;
+      const std::function<void(Value, llvm::SetVector<AssertOp>)>
+          propagateDown = [&](Value val, const SetVector<AssertOp> &asserts) {
             // These types should be excluded because they will create false
             // dependencies.
             auto op = val.getDefiningOp();
@@ -126,7 +127,7 @@ class PredicateAssertDependenciesPass
         if (inputChains.empty())
           continue;
 
-        DenseSet<AssertOp> diff = asserts;
+        llvm::SetVector<AssertOp> diff = asserts;
         if (op->getNumResults()) {
           auto it = valuesThatFeedAsserts.find(op->getResult(0));
           if (it != valuesThatFeedAsserts.end())
