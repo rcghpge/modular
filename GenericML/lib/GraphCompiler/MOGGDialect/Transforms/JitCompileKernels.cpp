@@ -26,7 +26,7 @@
 
 #include "KGEN/Compiler/KGENCompiler.h"
 #include "KGEN/KGENDialect/KGENOps.h"
-#include "KGEN/KGENPasses.h"
+#include "KGEN/ToolCommon/KGENPasses.h"
 
 #include "mlir/IR/IRMapping.h"
 #include "llvm/ADT/StringExtras.h"

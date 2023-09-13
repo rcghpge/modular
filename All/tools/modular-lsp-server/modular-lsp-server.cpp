@@ -16,7 +16,7 @@
 #include "GenericML/MLASPDialect/MLASPDialect.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
 #include "GraphRT/MEFDialect/MEFDialect.h"
-#include "KGEN/InitAllDialects.h"
+#include "KGEN/ToolCommon/InitAllDialects.h"
 #include "Support/DebugInfoDialect/IR/DebugInfoDialect.h"
 #include "Support/MDialect/MDialect.h"
 #include "TFLite/MTFLDialect/MTFLDialect.h"
