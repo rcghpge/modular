@@ -738,6 +738,21 @@ def MO_MulOp : MO_ElementWiseBinaryOp<"mul", [Commutative]> {
   }];
 }
 
+def MO_NegativeOp : MO_ElementWiseUnaryOp<"negative"> {
+  let summary = "Returns the negative of the input.";
+  let description = [{
+    Negates the argument: -x
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %res = mo.negative(%arg) : !mo.tensor<[2, 3], f32>
+  }];
+
+  let arguments = (ins MO_SignedTensor:$input);
+}
+
 def MO_PowOp : MO_TensorOp<"pow", [Pure, MO_SameOperandsAndResultShape]> {
   let summary = "Power operation";
   let description = [{

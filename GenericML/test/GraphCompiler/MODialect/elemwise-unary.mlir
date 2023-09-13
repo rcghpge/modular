@@ -211,3 +211,10 @@ mo.graph @not(%arg0: !mo.tensor<[4, 5], bool>) -> (!mo.tensor<[4, 5], bool>) {
   %0 = mo.not(%arg0) : !mo.tensor<[4, 5], bool>
   mo.output %0 : !mo.tensor<[4, 5], bool>
 }
+
+// CHECK: mo.graph @negative(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> no_inline {
+mo.graph @negative(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
+  // CHECK-NEXT: mo.negative(%[[ARG0]]) : !mo.tensor<[4, 5], f32>
+  %0 = mo.negative(%arg0) : !mo.tensor<[4, 5], f32>
+  mo.output %0 : !mo.tensor<[4, 5], f32>
+}

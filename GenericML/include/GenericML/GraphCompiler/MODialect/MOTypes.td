@@ -194,6 +194,11 @@ def FloatElementTypePred : CPred<
 def IntOrIndexElementTypePred : CPred<
   "$_self.cast<::M::MO::TensorType>().getElementType().isIntOrIndex()">;
 
+// Checks if a MO_TensorType has signed elements.
+def SignedElementTypePred : CPred<
+  "!$_self.cast<::M::MO::TensorType>().getElementType().isUnsignedInteger() && "
+  "!$_self.cast<::M::MO::TensorType>().getDtype().isBool()">;
+
 /// Checks if a MO_TensorType has SI64 elements.
 def HasSI64ElementTypePred : SubstLeaves<
   "$_self", "cast<M::MO::TensorType>($_self).getElementType()", SI64.predicate>;
@@ -247,6 +252,10 @@ def MO_Rank1IndexTensor: MO_ConfinedTensor<
 /// Confines the MO_TensorType so that it has int or index elements.
 def MO_IndicesTensor : MO_ConfinedTensor<
   [IntOrIndexElementTypePred], "tensor with integer or index elements">;
+
+/// Confines the MO_TensorType so that it has signed elements.
+def MO_SignedTensor : MO_ConfinedTensor<
+  [SignedElementTypePred], "tensor with signed elements">;
 
 /// Confines the MO_TensorType so that it has SI32 or SI64 elements and rank 1.
 def MO_ShapeLike : MO_ConfinedTensor<

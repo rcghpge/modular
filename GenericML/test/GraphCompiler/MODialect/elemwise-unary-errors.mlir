@@ -91,3 +91,20 @@ mo.graph @roundeven(%arg0: !mo.tensor<[4, 5], si32>) -> (!mo.tensor<[4, 5], si32
   %0 = mo.roundeven(%arg0) : !mo.tensor<[4, 5], si32>
   mo.output %0 : !mo.tensor<[4, 5], si32>
 }
+
+
+// -----
+
+mo.graph @negative(%arg0: !mo.tensor<[4, 5], ui32>) -> (!mo.tensor<[4, 5], ui32>) {
+  // expected-error@+1 {{'mo.negative' op operand #0 must be tensor with signed elements, but got '!mo.tensor<[4, 5], ui32>'}}
+  %0 = mo.negative(%arg0) : !mo.tensor<[4, 5], ui32>
+  mo.output %0 : !mo.tensor<[4, 5], ui32>
+}
+
+// -----
+
+mo.graph @negative(%arg0: !mo.tensor<[4, 5], bool>) -> (!mo.tensor<[4, 5], bool>) {
+  // expected-error@+1 {{'mo.negative' op operand #0 must be tensor with signed elements, but got '!mo.tensor<[4, 5], bool>'}}
+  %0 = mo.negative(%arg0) : !mo.tensor<[4, 5], bool>
+  mo.output %0 : !mo.tensor<[4, 5], bool>
+}
