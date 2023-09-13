@@ -1663,7 +1663,7 @@ def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [DeclareOpInterfaceMethods<MO_P
   let hasFolder = 1;
 }
 
-def MO_UnsqueezeShapeOp : MO_ShapeModifierOp<"unsqueeze_shape"> {
+def MO_UnsqueezeShapeOp : MO_ShapeModifierOp<"unsqueeze_shape", [DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>]> {
   let summary = "Calculates the resulting shape for unsqueeze-type ops.";
   let description = [{
     Calculates the shape from unsqueeze like operators. Given an input shape
