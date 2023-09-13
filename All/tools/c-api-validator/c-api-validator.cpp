@@ -11,6 +11,8 @@
 #include "GenericML/API/modular/cpp/aliases.h"
 #include "GenericML/Driver/DriverCLOptions.h"
 #include "Support/CommonCLOptions.h"
+#include "Support/Configuration.h"
+#include "Support/CrashReporting.h"
 #include "Support/ErrorOr.h"
 #include "Support/ML/TensorShape.h"
 #include "Support/Process.h"
@@ -34,6 +36,9 @@ public:
   cl::list<std::string> paths{"paths", cl::desc("Paths of models")};
   cl::opt<std::string> cacheDir{"cache-dir",
                                 cl::desc("Filesystem path of CAS cache"),
+                                llvm::cl::Optional};
+  cl::opt<std::string> crashDir{"crash-dir",
+                                cl::desc("Filesystem path of crash dump dir"),
                                 llvm::cl::Optional};
   cl::opt<size_t> numThreads{"num-threads", cl::desc("Number of threads"),
                              cl::init(0)};
@@ -193,6 +198,10 @@ struct RuntimeContextPhase {
     if (!clOptions.cacheDir.empty()) {
       M_setArtifactPath(result.runtimeConfig, clOptions.cacheDir.c_str(),
                         status.get());
+      RETURN_IF_ERROR(status);
+    }
+    if (!clOptions.crashDir.empty()) {
+      M_enableCrashLog(result.runtimeConfig, clOptions.crashDir.c_str());
       RETURN_IF_ERROR(status);
     }
 

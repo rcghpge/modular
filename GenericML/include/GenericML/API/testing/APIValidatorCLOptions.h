@@ -20,6 +20,9 @@ public:
   cl::opt<std::string> cacheDir{"cache-dir",
                                 cl::desc("Filesystem path of CAS cache"),
                                 llvm::cl::Optional};
+  cl::opt<std::string> crashDir{"crash-dir",
+                                cl::desc("Filesystem path of crash dump dir"),
+                                llvm::cl::Optional};
   cl::opt<size_t> num_threads{"num-threads", cl::desc("Number of threads"),
                               cl::init(0)};
 
