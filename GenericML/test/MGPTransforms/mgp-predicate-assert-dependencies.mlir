@@ -63,9 +63,9 @@ mgp.model @simple_case : mof init {
 // CHECK-NEXT:    %bufferResult_2, %tensorSpecResult_3 = mgp.cpu.tensor.extract %arg2 : !mgp.cpu.tensor<?x?xf32>
 // CHECK-NEXT:    %bufferResult_4, %tensorSpecResult_5 = mgp.cpu.tensor.extract %arg3 : !mgp.cpu.tensor<?x?xf32>
 // CHECK-NEXT:    %7 = mgp.cpu.tensor_spec.create %0#0, %0#1 : !mgp.cpu.tensor_spec<?x?xf32>
-// CHECK-NEXT:    %8 = grt.chain.create (%5, %6)
+// CHECK-NEXT:    %8 = grt.chain.create ({{%5, %6|%6, %5}})
 // CHECK-NEXT:    %9 = mgp.cpu.buffer.alloc.spec %8, %7, align 16 : !mgp.cpu.tensor_spec<?x?xf32>
-// CHECK-NEXT:    %10 = grt.chain.create (%5, %6)
+// CHECK-NEXT:    %10 = grt.chain.create ({{%5, %6|%6, %5}})
 // CHECK-NEXT:    %[[OUT_CH:.*]] = mgp.cpu.kernel.execute %10, %arg1[0, 0], (in %bufferResult_2 : !mgp.cpu.buffer, in %bufferResult_4 : !mgp.cpu.buffer, out %9 : !mgp.cpu.buffer), (%0#0, %0#1), name "foo"
 // CHECK-NEXT:    %[[OUT_TEN:.*]] = mgp.cpu.tensor.create %[[OUT_CH]], %9, %7  : !mgp.cpu.tensor<?x?xf32>
 // CHECK-NEXT:    mef.output %arg0, %[[OUT_TEN]] : !mef.chain, !mgp.cpu.tensor<?x?xf32>
