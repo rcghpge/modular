@@ -9,7 +9,7 @@
 
 #include "KGEN/CompilerRT/OutputChain.h"
 #include "KGEN/ExecutionEngine.h"
-#include "KGEN/LowerToObject.h"
+#include "KGEN/ObjectCompiler.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/BLAKE3.h"
 

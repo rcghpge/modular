@@ -16,7 +16,7 @@
 #include "KGEN/KGENCompiler.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
-#include "KGEN/LowerToObject.h"
+#include "KGEN/ObjectCompiler.h"
 #include "Support/Host.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ToolOutputFile.h"
