@@ -15,7 +15,6 @@
 
 #include "./Utils.h"
 
-#define EXCLUDED_OPS MIP::ConstantBoolOp, MIP::ConstantIndexOp
 #define EXCLUDED_TYPES MGP::ContextType, MEF::ChainType
 
 using namespace mlir;
@@ -61,10 +60,6 @@ class PredicateAssertDependenciesPass
             return;
           }
 
-          // Constants shoud be ignored.
-          if (llvm::isa<EXCLUDED_OPS>(op))
-            return;
-
           // Skip if already visited.
           if (!visited.insert(op).second)
             return;
@@ -89,9 +84,6 @@ class PredicateAssertDependenciesPass
           [&](Value val, const DenseSet<AssertOp> &asserts) {
             // These types should be excluded because they will create false
             // dependencies.
-            if (val.getType().isa<EXCLUDED_TYPES>())
-              return;
-
             auto op = val.getDefiningOp();
             if (op) {
               auto &assertsItDependsOn = operationsThatDependOnAsserts[op];
@@ -116,9 +108,12 @@ class PredicateAssertDependenciesPass
                 return;
             }
 
+            if (val.getType().isa<EXCLUDED_TYPES>())
+              return;
+
             for (auto user : val.getUsers()) {
-              for (auto &use : user->getUses())
-                propagateDown(use.get(), asserts);
+              for (auto result : user->getResults())
+                propagateDown(result, asserts);
             }
           };
 
