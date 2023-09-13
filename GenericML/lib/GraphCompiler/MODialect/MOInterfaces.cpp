@@ -150,21 +150,18 @@ LogicalResult impl::verifyReduction(Reduction op) {
   return success();
 }
 
-//===----------------------------------------------------------------------===//
-// ScatterNdLike
-//===----------------------------------------------------------------------===//
-
-LogicalResult impl::verifyScatterNdLike(ScatterNdLike op) {
-  TensorType inputTy = op.getInput().getType();
-  TensorType resTy = op.getResult().getType();
-
+/// Common input and output shape verification logic for ScatterLike and
+/// ScatterNdLike ops.
+static LogicalResult verifyGenericScatterInputOutputShapes(Operation *op,
+                                                           TensorType inputTy,
+                                                           TensorType resTy) {
   // Basic static rank checks
   if (!inputTy.hasRank() || !resTy.hasRank())
     return success();
   size_t inputRank = inputTy.getRank();
   size_t resRank = resTy.getRank();
   if (inputRank != resRank) {
-    return op.emitError()
+    return op->emitError()
            << "input and result ranks must match if both static: "
            << "input rank = " << inputRank << ", result rank = " << resRank;
   }
@@ -175,13 +172,31 @@ LogicalResult impl::verifyScatterNdLike(ScatterNdLike op) {
   TypedAttr inputShapeAttr = inputTy.getShapeAttr();
   TypedAttr resShapeAttr = resTy.getShapeAttr();
   if (inputShapeAttr != resShapeAttr) {
-    return op.emitError()
+    return op->emitError()
            << "input and result shapes must match if both static: "
            << "input shape = " << MOSH::shapeTypedAttrToStr(inputShapeAttr)
            << ", result shape = " << MOSH::shapeTypedAttrToStr(resShapeAttr);
   }
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ScatterLike
+//===----------------------------------------------------------------------===//
+
+LogicalResult impl::verifyScatterLike(ScatterLike op) {
+  return verifyGenericScatterInputOutputShapes(op, op.getInput().getType(),
+                                               op.getResult().getType());
+}
+
+//===----------------------------------------------------------------------===//
+// ScatterNdLike
+//===----------------------------------------------------------------------===//
+
+LogicalResult impl::verifyScatterNdLike(ScatterNdLike op) {
+  return verifyGenericScatterInputOutputShapes(op, op.getInput().getType(),
+                                               op.getResult().getType());
 }
 
 //===----------------------------------------------------------------------===//

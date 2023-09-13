@@ -303,6 +303,38 @@ def MO_Reduction : MO_TensorOpInterfaceBase<"Reduction",
   let verify = [{ return impl::verifyReduction(cast<Reduction>($_op)); }];
 }
 
+
+def MO_ScatterLike : MO_TensorOpInterfaceBase<"ScatterLike",
+    [MO_ParamDeclaration]> {
+  let description = [{
+    Interface for modeling Scatter-like operations (i.e., regular Scatter
+    and Scatter with reductions).
+  }];
+
+  let methods = [
+    InterfaceMethod<"Get input tensor as a TypedValue",
+      "TensorValue", "getInput", (ins)>,
+    InterfaceMethod<"Get input tensor as a MutableOperandRange",
+      "MutableOperandRange", "getInputMutable", (ins)>,
+    InterfaceMethod<"Get the updates tensor as a TypedValue",
+      "TensorValue", "getUpdates", (ins)>,
+    InterfaceMethod<"Get the updates tensor as a MutableOperandRange",
+      "MutableOperandRange", "getUpdatesMutable", (ins)>,
+    InterfaceMethod<"Get indices tensor as a TypedValue",
+      "TensorValue", "getIndices", (ins)>,
+    InterfaceMethod<"Get indices tensor as a MutableOperandRange",
+      "MutableOperandRange", "getIndicesMutable", (ins)>,
+    InterfaceMethod<"Get axis tensor as a TypedValue",
+      "TensorValue", "getAxis", (ins)>,
+    InterfaceMethod<"Get axis tensor as a MutableOperandRange",
+      "MutableOperandRange", "getAxisMutable", (ins)>,
+    InterfaceMethod<"Get result tensor as a TypedValue",
+      "TensorValue", "getResult", (ins)>
+  ];
+
+  let verify = [{ return impl::verifyScatterLike(cast<ScatterLike>($_op)); }];
+}
+
 def MO_ScatterNdLike : MO_TensorOpInterfaceBase<"ScatterNdLike",
     [MO_ParamDeclaration]> {
   let description = [{
@@ -404,6 +436,12 @@ def MO_ReductionTraits: TraitList<[
   MO_ShapeInferenceMaterialization,
   MO_DefaultParameterization,
   _MO_ReductionShapeInferenceMaterialization
+]>;
+
+/// All traits that ScatterND-like ops should have.
+def MO_ScatterLikeTraits: TraitList<[
+  MO_ScatterLike,
+  MO_DefaultParameterization,
 ]>;
 
 /// Should not be used outside this file.

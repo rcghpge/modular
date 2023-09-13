@@ -2267,6 +2267,215 @@ def MO_GatherSumOp : MO_TensorOp<"gather_sum"> {
 }
 
 //===----------------------------------------------------------------------===//
+// ScatterOp
+//===----------------------------------------------------------------------===//
+
+def MO_ScatterOp : MO_TensorOp<"scatter", [MO_ScatterLikeTraits]> {
+  let summary = "Scatter Operation";
+  let description = [{
+    Produces an output tensor by scattering elements from updates to input
+    according to indices.
+
+    It takes in `input`, `updates` and `indices` tensors of the same rank, and a
+    scalar axis. The output is a copy of the input, with certain elements
+    updated based on `updates` and `indices`.
+
+    For each entry in `indices`, the target index for `input` is obtained by
+    making a copy of the entry's own index, and then updating the `axis`
+    dimension with the value of the `indices` entry. Then the element at this
+    target index is updated to the corresponding entry in `updates`.
+
+    For instance, in a 2D tensor case, the update corresponding to the [i][j] entry
+    is performed as below:
+    ```
+      output[indices[i][j]][j] = updates[i][j] if axis = 0,
+      output[i][indices[i][j]] = updates[i][j] if axis = 1,
+    ```
+
+    Example:
+
+    ```mlir
+    %input:   !mo.tensor<[4, 4], f32>
+    %updates: !mo.tensor<[2, 3], f32>
+    %indices: !mo.tensor<[2, 3], si64>
+    %res = mo.scatter(%inputs, %updates, %indices) : (
+      !mo.tensor<[4, 4], f32>, !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], si64>
+    ) -> !mo.tensor<[4, 4], f32>
+    ```
+  }];
+
+  let arguments = (ins MO_Tensor:$input,
+                       MO_NonScalarIfRanked:$updates,
+                       MO_IndicesTensor:$indices,
+                       MO_RankedScalarIndexTensor:$axis,
+                       MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
+class MO_ScatterReductionOp<string name, list<Trait> traits = []> : MO_TensorOp<
+  "scatter." # name, traits # [MO_ScatterLikeTraits]
+> {
+  let arguments = (ins MO_Tensor:$input,
+                       MO_NonScalarIfRanked:$updates,
+                       MO_IndicesTensor:$indices,
+                       MO_RankedScalarIndexTensor:$axis,
+                       MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
+def MO_ScatterAddOp : MO_ScatterReductionOp<"add"> {
+  let summary = "Scatter operation with addition as reduction function";
+  let description = [{
+    Produces an output tensor by scattering elements from updates to input
+    according to indices, and it stores the sum of elements with duplicate
+    indices.
+
+    It takes in `input`, `updates` and `indices` tensors of the same rank, and a
+    scalar axis. The output is a copy of the input, with certain elements
+    updated based on `updates` and `indices`.
+
+    For each entry in `indices`, the target index for `input` is obtained by
+    making a copy of the entry's own index, and then updating the `axis`
+    dimension with the value of the `indices` entry. Then the element at this
+    target index is combined with existing element via addition.
+
+    For instance, in a 2D tensor case, the update corresponding to the [i][j] entry
+    is performed as below:
+    ```
+      output[indices[i][j]][j] += updates[i][j] if axis = 0,
+      output[i][indices[i][j]] += updates[i][j] if axis = 1,
+    ```
+
+    Example:
+
+    ```mlir
+    %input:   !mo.tensor<[4, 4], f32>
+    %updates: !mo.tensor<[2, 3], f32>
+    %indices: !mo.tensor<[2, 3], si64>
+    %res = mo.scatter_nd.add(%inputs, %updates, %indices) : (
+      !mo.tensor<[4, 4], f32>, !mo.tensor<[1, 3], f32>, !mo.tensor<[1, 3], si64>
+    ) -> !mo.tensor<[4, 4], f32>
+    ```
+  }];
+}
+
+def MO_ScatterMaxOp : MO_ScatterReductionOp<"max"> {
+  let summary = "Scatter operation with maximum as reduction function";
+  let description = [{
+    Produces an output tensor by scattering elements from updates to input
+    according to indices, and it stores the maximum of elements with duplicate
+    indices.
+
+    It takes in `input`, `updates` and `indices` tensors of the same rank, and a
+    scalar axis. The output is a copy of the input, with certain elements
+    updated based on `updates` and `indices`.
+
+    For each entry in `indices`, the target index for `input` is obtained by
+    making a copy of the entry's own index, and then updating the `axis`
+    dimension with the value of the `indices` entry. Then the element at this
+    target index is combined with existing element via maximum.
+
+    For instance, in a 2D tensor case, the update corresponding to the [i][j] entry
+    is performed as below:
+    ```
+      output[indices[i][j]][j] = max(output[indices[i][j]][j], updates[i][j]) if axis = 0,
+      output[i][indices[i][j]] = max(output[i][indices[i][j]], updates[i][j]) if axis = 1,
+    ```
+
+    Example:
+
+    ```mlir
+    %input:   !mo.tensor<[4, 4], f32>
+    %updates: !mo.tensor<[2, 3], f32>
+    %indices: !mo.tensor<[2, 3], si64>
+    %res = mo.scatter_nd.max(%inputs, %updates, %indices) : (
+      !mo.tensor<[4, 4], f32>, !mo.tensor<[1, 3], f32>, !mo.tensor<[1, 3], si64>
+    ) -> !mo.tensor<[4, 4], f32>
+    ```
+  }];
+}
+
+def MO_ScatterMinOp : MO_ScatterReductionOp<"min"> {
+  let summary = "Scatter operation with minimum as reduction function";
+  let description = [{
+    Produces an output tensor by scattering elements from updates to input
+    according to indices, and it stores the minimum of elements with duplicate
+    indices.
+
+    It takes in `input`, `updates` and `indices` tensors of the same rank, and a
+    scalar axis. The output is a copy of the input, with certain elements
+    updated based on `updates` and `indices`.
+
+    For each entry in `indices`, the target index for `input` is obtained by
+    making a copy of the entry's own index, and then updating the `axis`
+    dimension with the value of the `indices` entry. Then the element at this
+    target index is combined with existing element via minimum.
+
+    For instance, in a 2D tensor case, the update corresponding to the [i][j] entry
+    is performed as below:
+    ```
+      output[indices[i][j]][j] = min(output[indices[i][j]][j], updates[i][j]) if axis = 0,
+      output[i][indices[i][j]] = min(output[i][indices[i][j]], updates[i][j]) if axis = 1,
+    ```
+
+    Example:
+
+    ```mlir
+    %input:   !mo.tensor<[4, 4], f32>
+    %updates: !mo.tensor<[2, 3], f32>
+    %indices: !mo.tensor<[2, 3], si64>
+    %res = mo.scatter_nd.min(%inputs, %updates, %indices) : (
+      !mo.tensor<[4, 4], f32>, !mo.tensor<[1, 3], f32>, !mo.tensor<[1, 3], si64>
+    ) -> !mo.tensor<[4, 4], f32>
+    ```
+  }];
+}
+
+def MO_ScatterMulOp : MO_ScatterReductionOp<"mul"> {
+  let summary = "Scatter operation with multiplication as reduction function";
+  let description = [{
+    Produces an output tensor by scattering elements from updates to input
+    according to indices, and it stores the product of elements with duplicate
+    indices.
+
+    It takes in `input`, `updates` and `indices` tensors of the same rank, and a
+    scalar axis. The output is a copy of the input, with certain elements
+    updated based on `updates` and `indices`.
+
+    For each entry in `indices`, the target index for `input` is obtained by
+    making a copy of the entry's own index, and then updating the `axis`
+    dimension with the value of the `indices` entry. Then the element at this
+    target index is combined with existing element via multiplication.
+
+    For instance, in a 2D tensor case, the update corresponding to the [i][j] entry
+    is performed as below:
+    ```
+      output[indices[i][j]][j] *= updates[i][j] if axis = 0,
+      output[i][indices[i][j]] *= updates[i][j] if axis = 1,
+    ```
+
+    Example:
+
+    ```mlir
+    %input:   !mo.tensor<[4, 4], f32>
+    %updates: !mo.tensor<[2, 3], f32>
+    %indices: !mo.tensor<[2, 3], si64>
+    %res = mo.scatter_nd.mul(%inputs, %updates, %indices) : (
+      !mo.tensor<[4, 4], f32>, !mo.tensor<[1, 3], f32>, !mo.tensor<[1, 3], si64>
+    ) -> !mo.tensor<[4, 4], f32>
+    ```
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // ScatterNdOp
 //===----------------------------------------------------------------------===//
 

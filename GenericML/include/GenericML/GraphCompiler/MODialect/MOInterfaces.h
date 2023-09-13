@@ -34,6 +34,7 @@ class MatmulLike;
 class ParamDeclarationInterface;
 class ParameterizationInterface;
 class Reduction;
+class ScatterLike;
 class ScatterNdLike;
 class SlidingWindow;
 class ShapeFuncMaterializationState;
@@ -55,6 +56,7 @@ LogicalResult checkMatmulCompatibility(Operation *op, TensorValue A,
 
 LogicalResult verifyMatmulLike(MatmulLike op);
 LogicalResult verifyReduction(Reduction op);
+LogicalResult verifyScatterLike(ScatterLike op);
 LogicalResult verifyScatterNdLike(ScatterNdLike op);
 LogicalResult verifySlidingWindow(SlidingWindow op);
 LogicalResult verifyMOSameOperandsAndResultElementType(Operation *op);
