@@ -7,9 +7,9 @@
 #ifndef GENERICML_MGPPRIMITIVES_COMPILEDKERNELSCONTEXT_H
 #define GENERICML_MGPPRIMITIVES_COMPILEDKERNELSCONTEXT_H
 
+#include "KGEN/Compiler/ExecutionEngine.h"
+#include "KGEN/Compiler/ObjectCompiler.h"
 #include "KGEN/CompilerRT/OutputChain.h"
-#include "KGEN/ExecutionEngine.h"
-#include "KGEN/ObjectCompiler.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/BLAKE3.h"
 

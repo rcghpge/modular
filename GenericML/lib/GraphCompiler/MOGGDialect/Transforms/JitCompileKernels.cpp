@@ -24,7 +24,7 @@
 #include "GenericML/GraphCompiler/Support/MOGGTypeTraits.h"
 #include "GenericML/Support/Tensor.h"
 
-#include "KGEN/KGENCompiler.h"
+#include "KGEN/Compiler/KGENCompiler.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENPasses.h"
 
