@@ -63,6 +63,11 @@ HAS_FALLBACK(MO::ReduceMaxOp)
 HAS_FALLBACK(MO::ReduceMinOp)
 HAS_FALLBACK(MO::ReduceMulOp)
 HAS_FALLBACK(MO::ReshapeOp)
+HAS_FALLBACK(MO::ScatterOp)
+HAS_FALLBACK(MO::ScatterAddOp)
+HAS_FALLBACK(MO::ScatterMaxOp)
+HAS_FALLBACK(MO::ScatterMinOp)
+HAS_FALLBACK(MO::ScatterMulOp)
 HAS_FALLBACK(MO::SliceOp)
 HAS_FALLBACK(MO::SplitOp)
 HAS_FALLBACK(MO::TopKOp)
@@ -119,6 +124,11 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::ReduceMinOp)
       CALL_FALLBACK(MO::ReduceMulOp)
       CALL_FALLBACK(MO::ReshapeOp)
+      CALL_FALLBACK(MO::ScatterOp)
+      CALL_FALLBACK(MO::ScatterAddOp)
+      CALL_FALLBACK(MO::ScatterMaxOp)
+      CALL_FALLBACK(MO::ScatterMinOp)
+      CALL_FALLBACK(MO::ScatterMulOp)
       CALL_FALLBACK(MO::SliceOp)
       CALL_FALLBACK(MO::SplitOp)
       CALL_FALLBACK(MO::TopKOp)
@@ -178,6 +188,18 @@ static void buildForReductionOp(GraphOp &graph, OpBuilder &builder,
       op.getLoc(), op->getOperands(), "reduce_shape", shapeParams,
       /*kgenAttrs*/ DictionaryAttr{},
       /*Data dependent input indices*/ builder.getI32ArrayAttr({1}));
+}
+
+static void buildForScatterLikeOp(GraphOp &graph, OpBuilder &builder,
+                                  MO::ScatterLike op) {
+  KGEN::ParamDeclArrayAttr shapeParams =
+      getNewParameterMapping(graph, op.getResult().getType());
+
+  // Create the shape function.
+  builder.create<MO::InvokeShapeFuncOp>(
+      op.getLoc(), op->getOperands(), "scatter_elements_shape", shapeParams,
+      /*kgenAttrs*/ DictionaryAttr{},
+      /*Data dependent input indices*/ builder.getI32ArrayAttr({3}));
 }
 
 void buildForOpResult(GraphOp &graph, OpBuilder &builder, TensorValue res,
@@ -301,6 +323,21 @@ void Fallback<MO::ReshapeOp>::build(GraphOp &graph, OpBuilder &builder,
   buildForOpResult(graph, builder, op, "reshape_shape", op.getOperands(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
 }
+
+// ScatterLike ops
+
+#define BUILD_SCATTER_LIKE_OP(OP)                                              \
+  void Fallback<OP>::build(GraphOp &graph, OpBuilder &builder, OP op) {        \
+    buildForScatterLikeOp(graph, builder, op);                                 \
+  }
+
+BUILD_SCATTER_LIKE_OP(MO::ScatterOp)
+BUILD_SCATTER_LIKE_OP(MO::ScatterAddOp)
+BUILD_SCATTER_LIKE_OP(MO::ScatterMaxOp)
+BUILD_SCATTER_LIKE_OP(MO::ScatterMinOp)
+BUILD_SCATTER_LIKE_OP(MO::ScatterMulOp)
+
+#undef BUILD_SCATTER_LIKE_OP
 
 void Fallback<MO::SliceOp>::build(GraphOp &graph, OpBuilder &builder,
                                   MO::SliceOp op) {
