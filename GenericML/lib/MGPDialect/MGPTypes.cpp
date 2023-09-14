@@ -23,6 +23,118 @@ using namespace M;
 using namespace MGP;
 
 //===----------------------------------------------------------------------===//
+// Utils
+//===----------------------------------------------------------------------===//
+
+/// The distinguished keyword for the unknown dtype.
+constexpr const char *kUnknownDType = "unk";
+
+/// Parses a DType, where 'unk' is represented as the none value, and
+/// 'invalid' is considered illegal.
+static ParseResult parseDType(AsmParser &p, std::optional<DType> &optDType) {
+  StringRef keyword;
+  llvm::SMLoc dtypeLoc;
+  if (p.getCurrentLocation(&dtypeLoc) || p.parseKeyword(&keyword))
+    return failure();
+
+  if (keyword == kUnknownDType)
+    return success();
+
+  FailureOr<DType> failOrDType = DType::getFromString(keyword);
+  if (failed(failOrDType))
+    return p.emitError(dtypeLoc) << "unrecognized dtype '" << keyword << "'.";
+  if (failOrDType->isInvalid()) {
+    // Invalid is not legal.
+    return p.emitError(dtypeLoc) << "invalid dtype.";
+  }
+
+  optDType.emplace(*failOrDType);
+  return success();
+}
+
+/// Prints a DType, where the none value is printed as 'unk'.
+static void printDType(AsmPrinter &p, std::optional<DType> optDType) {
+  p << (optDType ? optDType->getAsString() : kUnknownDType);
+}
+
+/// Parses (((<int> | '?') 'x')* | '*' 'x') (<dtype> | 'unk')
+static ParseResult
+parseDimsAndDType(AsmParser &p, bool &hasRank,
+                  SmallVector<std::optional<uint64_t>> &dimsOrEmpty,
+                  std::optional<DType> &optDType,
+                  SmallVector<int64_t> &shapeOrEmpty) {
+  llvm::SMLoc loc;
+  if (p.getCurrentLocation(&loc))
+    return failure();
+
+  if (succeeded(p.parseOptionalStar())) {
+    if (p.parseXInDimensionList())
+      return failure();
+    hasRank = false;
+  } else if (succeeded(p.parseDimensionList(shapeOrEmpty, /*allowDynamic=*/true,
+                                            /*withTrailingX=*/true))) {
+    hasRank = true;
+    dimsOrEmpty.reserve(shapeOrEmpty.size());
+    for (int64_t dim : shapeOrEmpty) {
+      if (!isValidRawSignedSize(dim))
+        return p.emitError(loc)
+               << "shape dimensions must be non-negative or the "
+                  "distinguished '?' unknown dimension.";
+      dimsOrEmpty.emplace_back(rawSignedSizeToOptSize(dim));
+    }
+  } else {
+    return failure();
+  }
+
+  if (p.getCurrentLocation(&loc) || parseDType(p, optDType))
+    return failure();
+
+  return success();
+}
+
+/// Prints a list of dimensions followed by a DType, printing an empty
+/// dimension as the '?' and an empty DType as 'unk'. The shape is ignored.
+static void printDimsAndDType(AsmPrinter &p, bool hasRank,
+                              ArrayRef<std::optional<uint64_t>> dimsOrEmpty,
+                              std::optional<DType> optDType,
+                              ArrayRef<int64_t> shapeOrEmpty) {
+  if (hasRank) {
+    for (const auto &dim : dimsOrEmpty)
+      p.getStream() << (dim ? std::to_string(*dim) : "?") << "x";
+  } else {
+    p.getStream() << "*x";
+  }
+  printDType(p, optDType);
+}
+
+ParseResult M::MGP::parseTensorSpec(AsmParser &p,
+                                    CpuTensorSpecType &tensorSpec) {
+  bool hasRank;
+  SmallVector<std::optional<uint64_t>> dims;
+  std::optional<DType> optDType;
+  SmallVector<int64_t> shape;
+  llvm::SMLoc loc;
+  if (p.getCurrentLocation(&loc) ||
+      parseDimsAndDType(p, hasRank, dims, optDType, shape))
+    return failure();
+
+  // Though the following get calls will invoke verify, the resulting errors
+  // will be locationless and trigger a core dump. Try to be friendlier.
+  if (failed(CpuTensorSpecType::verify([&]() { return p.emitError(loc); },
+                                       hasRank, dims, optDType, shape)))
+    return failure();
+
+  tensorSpec =
+      CpuTensorSpecType::get(p.getContext(), hasRank, dims, optDType, shape);
+  return success();
+}
+
+void M::MGP::printTensorSpec(AsmPrinter &p, CpuTensorSpecType tensorSpec) {
+  printDimsAndDType(p, tensorSpec.getHasRank(), tensorSpec.getDimsOrEmpty(),
+                    tensorSpec.getOptDType(), tensorSpec.getShapeOrEmpty());
+}
+
+//===----------------------------------------------------------------------===//
 // CpuBufferType
 //===----------------------------------------------------------------------===//
 
@@ -57,6 +169,16 @@ CpuBufferType
 CpuBufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
                           MLIRContext *context, IntegerAttr rawSizeOrNull) {
   return CpuBufferType::get(context, rawSizeOrNull);
+}
+
+CpuBufferType CpuBufferType::get(M::MGP::CpuTensorSpecType specType) {
+  return CpuBufferType::get(specType.getContext(), specType.getSizeInBytes());
+}
+
+CpuBufferType
+CpuBufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
+                          M::MGP::CpuTensorSpecType specType) {
+  return get(specType);
 }
 
 IntegerAttr CpuBufferType::getRawSize() const {
@@ -94,37 +216,6 @@ bool CpuBufferType::hasRank() const { return true; }
 //===----------------------------------------------------------------------===//
 // DTypeType
 //===----------------------------------------------------------------------===//
-
-/// The distinguished keyword for the unknown dtype.
-constexpr const char *kUnknownDType = "unk";
-
-/// Parses a DType, where 'unk' is represented as the none value, and
-/// 'invalid' is considered illegal.
-static ParseResult parseDType(AsmParser &p, std::optional<DType> &optDType) {
-  StringRef keyword;
-  llvm::SMLoc dtypeLoc;
-  if (p.getCurrentLocation(&dtypeLoc) || p.parseKeyword(&keyword))
-    return failure();
-
-  if (keyword == kUnknownDType)
-    return success();
-
-  FailureOr<DType> failOrDType = DType::getFromString(keyword);
-  if (failed(failOrDType))
-    return p.emitError(dtypeLoc) << "unrecognized dtype '" << keyword << "'.";
-  if (failOrDType->isInvalid()) {
-    // Invalid is not legal.
-    return p.emitError(dtypeLoc) << "invalid dtype.";
-  }
-
-  optDType.emplace(*failOrDType);
-  return success();
-}
-
-/// Prints a DType, where the none value is printed as 'unk'.
-static void printDType(AsmPrinter &p, std::optional<DType> optDType) {
-  p << (optDType ? optDType->getAsString() : kUnknownDType);
-}
 
 ErrorOr<std::optional<DType>> DTypeType::fromMlirType(Type mlirType) {
   if (auto unkType = mlir::dyn_cast<NoneType>(mlirType))
@@ -191,56 +282,6 @@ std::optional<DType> DTypeType::fromRawDType(uint8_t rawDType) {
 //===----------------------------------------------------------------------===//
 // CpuTensorSpecType
 //===----------------------------------------------------------------------===//
-
-/// Parses (((<int> | '?') 'x')* | '*' 'x') (<dtype> | 'unk')
-static ParseResult
-parseDimsAndDType(AsmParser &p, bool &hasRank,
-                  SmallVector<std::optional<uint64_t>> &dimsOrEmpty,
-                  std::optional<DType> &optDType,
-                  SmallVector<int64_t> &shapeOrEmpty) {
-  llvm::SMLoc loc;
-  if (p.getCurrentLocation(&loc))
-    return failure();
-
-  if (succeeded(p.parseOptionalStar())) {
-    if (p.parseXInDimensionList())
-      return failure();
-    hasRank = false;
-  } else if (succeeded(p.parseDimensionList(shapeOrEmpty, /*allowDynamic=*/true,
-                                            /*withTrailingX=*/true))) {
-    hasRank = true;
-    dimsOrEmpty.reserve(shapeOrEmpty.size());
-    for (int64_t dim : shapeOrEmpty) {
-      if (!isValidRawSignedSize(dim))
-        return p.emitError(loc)
-               << "shape dimensions must be non-negative or the "
-                  "distinguished '?' unknown dimension.";
-      dimsOrEmpty.emplace_back(rawSignedSizeToOptSize(dim));
-    }
-  } else {
-    return failure();
-  }
-
-  if (p.getCurrentLocation(&loc) || parseDType(p, optDType))
-    return failure();
-
-  return success();
-}
-
-/// Prints a list of dimensions followed by a DType, printing an empty
-/// dimension as the '?' and an empty DType as 'unk'. The shape is ignored.
-static void printDimsAndDType(AsmPrinter &p, bool hasRank,
-                              ArrayRef<std::optional<uint64_t>> dimsOrEmpty,
-                              std::optional<DType> optDType,
-                              ArrayRef<int64_t> shapeOrEmpty) {
-  if (hasRank) {
-    for (const auto &dim : dimsOrEmpty)
-      p.getStream() << (dim ? std::to_string(*dim) : "?") << "x";
-  } else {
-    p.getStream() << "*x";
-  }
-  printDType(p, optDType);
-}
 
 /// Verifies that the given dimensions represent a valid tensor shape, and
 /// that the element type in DType form is also representable as an MLIR type.
@@ -500,42 +541,9 @@ IntegerAttr CpuTensorSpecType::getRawDType() const {
   return IntegerAttr::get(ui8, DTypeType::asRawDType(getOptDType()));
 }
 
-CpuBufferType CpuTensorSpecType::getExpectedBufferType() const {
-  return CpuBufferType::get(getContext(), getSizeInBytes());
-}
-
 //===----------------------------------------------------------------------===//
 // CpuTensorType
 //===----------------------------------------------------------------------===//
-
-/// Parses a compact tensor type description.
-static ParseResult parseTensorSpec(AsmParser &p,
-                                   CpuTensorSpecType &tensorSpec) {
-  bool hasRank;
-  SmallVector<std::optional<uint64_t>> dims;
-  std::optional<DType> optDType;
-  SmallVector<int64_t> shape;
-  llvm::SMLoc loc;
-  if (p.getCurrentLocation(&loc) ||
-      parseDimsAndDType(p, hasRank, dims, optDType, shape))
-    return failure();
-
-  // Though the following get calls will invoke verify, the resulting errors
-  // will be locationless and trigger a core dump. Try to be friendlier.
-  if (failed(CpuTensorSpecType::verify([&]() { return p.emitError(loc); },
-                                       hasRank, dims, optDType, shape)))
-    return failure();
-
-  tensorSpec =
-      CpuTensorSpecType::get(p.getContext(), hasRank, dims, optDType, shape);
-  return success();
-}
-
-/// Prints a compact tensor type description.
-static void printTensorSpec(AsmPrinter &p, CpuTensorSpecType tensorSpec) {
-  printDimsAndDType(p, tensorSpec.getHasRank(), tensorSpec.getDimsOrEmpty(),
-                    tensorSpec.getOptDType(), tensorSpec.getShapeOrEmpty());
-}
 
 /// ShapedTypeInterface::cloneWith.
 ShapedType CpuTensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,

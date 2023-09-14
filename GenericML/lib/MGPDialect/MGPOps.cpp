@@ -908,7 +908,7 @@ static ParseResult parseMayBeDynamicBuffer(AsmParser &parser,
   if (!hasBufferTypeAnnotation) {
     // No buffer type annotation -- buffer operand's type is uniquely determined
     // from the result tensor type.
-    bufferRawType = resultTensorType.getTensorSpec().getExpectedBufferType();
+    bufferRawType = CpuBufferType::get(resultTensorType.getTensorSpec());
   }
   return success();
 }
@@ -919,7 +919,7 @@ static void printMayBeDynamicBuffer(AsmPrinter &printer,
                                     const CpuTensorCreateOp &op,
                                     CpuBufferType bufferType,
                                     CpuTensorType resultType) {
-  if (resultType.getTensorSpec().getExpectedBufferType() != bufferType)
+  if (CpuBufferType::get(resultType.getTensorSpec()) != bufferType)
     printer.printType(bufferType);
   printer.getStream() << " : ";
   printer.printType(resultType);
@@ -930,7 +930,7 @@ static void printMayBeDynamicBuffer(AsmPrinter &printer,
 LogicalResult CpuTensorCreateOp::verify() {
   CpuTensorSpecType tensorSpecType = getTensorSpec().getType();
   CpuBufferType actualBufferType = getBuffer().getType();
-  CpuBufferType expectedBufferType = tensorSpecType.getExpectedBufferType();
+  CpuBufferType expectedBufferType = CpuBufferType::get(tensorSpecType);
   CpuTensorType tensorType = getResult().getType();
 
   if (tensorSpecType != tensorType.getTensorSpec())
@@ -969,7 +969,7 @@ LogicalResult CpuTensorExtractOp::verify() {
                          << " (" << getTensorSpecResult().getType() << " vs "
                          << tensorType.getTensorSpec() << ")";
   CpuBufferType impliedBufferType =
-      tensorType.getTensorSpec().getExpectedBufferType();
+      CpuBufferType::get(tensorType.getTensorSpec());
   if (impliedBufferType != getBufferResult().getType())
     return emitOpError() << "expected the result buffer to match the type "
                             "implied by the tensor type ("
@@ -986,7 +986,7 @@ LogicalResult CpuTensorExtractOp::inferReturnTypes(
   auto tensorType = dyn_cast<CpuTensorType>(operands[0].getType());
   assert(tensorType && "mismatched operand type");
   inferredReturnTypes.emplace_back(
-      tensorType.getTensorSpec().getExpectedBufferType());
+      CpuBufferType::get(tensorType.getTensorSpec()));
   inferredReturnTypes.emplace_back(tensorType.getTensorSpec());
   return success();
 }

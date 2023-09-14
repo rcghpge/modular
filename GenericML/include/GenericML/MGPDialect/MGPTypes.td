@@ -103,6 +103,11 @@ def MGP_CpuBufferType : MGP_Type<"CpuBuffer", "cpu.buffer",
 
     /// Constructs a buffer type from its size in 'raw form'.
     TypeBuilder<(ins "uint64_t":$rawSize)>,
+
+    /// Constructs a buffer type which matches the required size for the given
+    /// tensor spec type. The buffer will have unknown size if the tensor spec
+    /// has dynamic rank, dimensions or dtype.
+    TypeBuilderWithInferredContext<(ins "CpuTensorSpecType":$specType)>,
   ];
 }
 
@@ -327,12 +332,6 @@ def MGP_CpuTensorSpecType : MGP_Type<"CpuTensorSpec", "cpu.tensor_spec", [
     /// The result will be a UI8Int using the DType::value encoding,
     /// with 0 denoting the unknown dtype.
     IntegerAttr getRawDType() const;
-
-    /// Returns a CpuBufferType which captures the required size for this
-    /// tensor. The result will only have a size constraint if the tensor's
-    /// spec is fully static (rank, dims and dtype).
-    /// Dynamic ranked safe.
-    CpuBufferType getExpectedBufferType() const;
   }];
 
   let builders = [

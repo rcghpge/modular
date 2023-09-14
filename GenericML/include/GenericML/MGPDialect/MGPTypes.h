@@ -30,4 +30,18 @@ class DType;
 #define GET_TYPEDEF_CLASSES
 #include "GenericML/MGPDialect/MGPTypes.h.inc"
 
+namespace M::MGP {
+
+//===----------------------------------------------------------------------===//
+// Utils
+//===----------------------------------------------------------------------===//
+
+/// Parses a compact tensor type description.
+ParseResult parseTensorSpec(AsmParser &p, CpuTensorSpecType &tensorSpec);
+
+/// Prints a compact tensor type description.
+void printTensorSpec(AsmPrinter &p, CpuTensorSpecType tensorSpec);
+
+} // namespace M::MGP
+
 #endif // GENERICML_MGPDIALECT_MGPTYPES_H
