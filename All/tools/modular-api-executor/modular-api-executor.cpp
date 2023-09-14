@@ -96,7 +96,7 @@ static M::TensorSpec getTensorSpec(const ModularAPIInterface &api,
   inputShape.reserve(numDims);
   for (size_t i = 0; i < numDims; ++i) {
     if (api.getDimAt(spec, i) == apiDynamicDimension) {
-      // Shapes in the M::Tensor layer need to follow MLIR convention where
+      // Shapes in the GML::Tensor layer need to follow MLIR convention where
       // dynamic dimensions are represented by constant kDynamic which is equal
       // to std::numeric_limits<int64_t>::min()
       inputShape.push_back(mlir::ShapedType::kDynamic);
@@ -279,7 +279,7 @@ public:
     // Create the async placeholders for the outputs. The async values will be
     // materialized when the inference is complete.
     for (size_t i = 0, e = modelSpec.outputs.size(); i < e; ++i)
-      outputs.emplace_back(AsyncValueRef<Tensor>::allocate(runtime));
+      outputs.emplace_back(AsyncValueRef<GML::Tensor>::allocate(runtime));
 
     // Hold on to the output async values so that they do not get reclaimed
     // before the inference is complete.
@@ -301,7 +301,7 @@ public:
 
           StatusPtr status{api.newStatus(), api.freeStatus};
           for (auto &&[inputIndex, input] : llvm::enumerate(args)) {
-            auto &inputTensor = input.get<Tensor>();
+            auto &inputTensor = input.get<GML::Tensor>();
 
             SmallVector<int64_t> inputShape;
             for (const auto &dim : inputTensor.getShape())
@@ -351,8 +351,8 @@ public:
             }
             // Create an uninitialized GenericML Tensor to hold the output.
             auto tensor =
-                Tensor::createOwned(getTensorSpec(api, outputTensor.get()),
-                                    runtime, kPreferredMemoryAlignment);
+                GML::Tensor::createOwned(getTensorSpec(api, outputTensor.get()),
+                                         runtime, kPreferredMemoryAlignment);
 
             // Copy the output data to the output GenericML Tensor
             LLCL::profiledMemcpy(tensor.getMutableBuffer(),
@@ -361,7 +361,7 @@ public:
 
             // Move the output Tensor to the output async value and mark the
             // value as ready.
-            std::move(outputs[i + 1]).emplace<Tensor>(std::move(tensor));
+            std::move(outputs[i + 1]).emplace<GML::Tensor>(std::move(tensor));
           }
         });
     // Return the output async values. Note that the output async values might

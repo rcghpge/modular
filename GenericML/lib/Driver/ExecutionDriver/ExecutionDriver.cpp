@@ -146,14 +146,14 @@ ErrorOrSuccess InputDataParser::parseImpl(llvm::cl::Option &options,
   return success();
 }
 
-/// Replace any non M::Tensor tensors in results with their M::Tensor
+/// Replace any non GML::Tensor tensors in results with their GML::Tensor
 /// equivalents.
 static void
 convertResultsToGenericTensors(const ExecutableModel *model,
                                MutableArrayRef<AnyAsyncValueRef> results) {
   for (auto &result : results) {
     assert(result.isReady() && "tensor result should be ready");
-    if (result.isError() || result.isType<Tensor>())
+    if (result.isError() || result.isType<GML::Tensor>())
       continue;
     result = model->convertToGenericTensor(std::move(result));
     await(result);
@@ -277,7 +277,7 @@ outputTensorResults(const ExecutableModel *model,
       if (failed(printDiagIfError(result)))
         hasError = true;
       else {
-        if (auto *tensor = dyn_cast<Tensor>(result)) {
+        if (auto *tensor = dyn_cast<GML::Tensor>(result)) {
           tensorResultsInfo.push_back(
               {outputName, tensor->getSpec().getAsString()});
 
@@ -322,7 +322,7 @@ outputTensorResults(const ExecutableModel *model,
     if (failed(printDiagIfError(result)))
       hasError = true;
     else {
-      if (auto *tensor = dyn_cast<Tensor>(result)) {
+      if (auto *tensor = dyn_cast<GML::Tensor>(result)) {
         if (auto err =
                 Kernels::printTensor(tensor->getBuffer(), tensor->getSpec(),
                                      outputStyle, precision)) {
@@ -361,12 +361,13 @@ static ErrorOrSuccess populateTensorResults(
   for (const AnyAsyncValueRef &result : results) {
     assert(result.isReady() && !result.isError() &&
            "model result must be ready and non-error");
-    auto *tensor = dyn_cast<Tensor>(result);
+    auto *tensor = dyn_cast<GML::Tensor>(result);
     if (!tensor)
-      return Error("model result is not a Tensor");
+      return Error("model result is not a GML::Tensor");
     DEBUG_WITH_TYPE("modular_memcpy",
-                    llvm::dbgs() << "memcpy " << tensor->getSizeInBytes()
-                                 << " bytes from M::Tensor to output buffer\n");
+                    llvm::dbgs()
+                        << "memcpy " << tensor->getSizeInBytes()
+                        << " bytes from GML::Tensor to output buffer\n");
     /// TODO(#5867): Support an API which can avoid copy-on-output.
     LLCL::profiledMemcpy(outputs[outIdx], tensor->getBuffer(),
                          tensor->getSizeInBytes());
@@ -375,7 +376,7 @@ static ErrorOrSuccess populateTensorResults(
   return success();
 }
 
-// Returns a ready AsyncValueRef<Tensor> for every given generator, ready
+// Returns a ready AsyncValueRef<GML::Tensor> for every given generator, ready
 // to be passed to the model's execute function. Each tensor will borrow,
 // at 'execute' scope, from the underlying generotar's 'next' tensor.
 static SmallVector<AnyAsyncValueRef, 3>
@@ -383,7 +384,7 @@ buildArgs(Runtime &runtime, ArrayRef<ITensorGeneratorPtr> generators) {
   SmallVector<AnyAsyncValueRef, 3> args;
   args.reserve(generators.size());
   for (const auto &generator : generators) {
-    args.emplace_back(AsyncValueRef<Tensor>::createReady(
+    args.emplace_back(AsyncValueRef<GML::Tensor>::createReady(
         runtime, generator->getNextTensor().borrow(GML::BufferRef::kExecute)));
   }
   return args;
@@ -440,10 +441,10 @@ executeModelSynchronously(Runtime &runtime, ExecutableModel &executableModel,
   SmallVector<LLCL::ResourceUse> uses;
   for (size_t i = 1, n = results.size(); i < n; ++i) {
     const AnyAsyncValueRef &result = results[i];
-    if (auto *tensor = dyn_cast<Tensor>(result)) {
-      tensor->collectAccessUses(uses,
-                                (Twine("output(") + Twine(i - 1) + ")").str(),
-                                LLCL::kReadingResourceUse);
+    if (auto *tensor = dyn_cast<GML::Tensor>(result)) {
+      tensor->getBufferRef().collectAccessUses(
+          uses, (Twine("output(") + Twine(i - 1) + ")").str(),
+          LLCL::kReadingResourceUse);
     }
   }
 #endif
@@ -484,7 +485,7 @@ static ErrorOrSuccess executeModel(const Model *model, Runtime &runtime,
   }
 
   // Establish a tensor generator for each model input as per command line
-  // options and shapes. Each tensor generator holds one or more M::Tensor's
+  // options and shapes. Each tensor generator holds one or more GML::Tensor's
   // with lifetime matching the generator itself.
   auto inputTensorGeneratorsOr = createTensorGenerators(
       options.inputGenKind, inputSpecs, options.inputData,
@@ -703,9 +704,9 @@ M::runModelWithData(MLIRContext *ctx, const Model *model,
     // However they will be held alive for the duration of the execute call.
     // TODO(#5867): Support API which allows ownership of inputs to be
     // transferred to execute call.
-    args.emplace_back(AsyncValueRef<Tensor>::createReady(
-        runtime, Tensor::createBorrowed(input, spec, /*alignment=*/{},
-                                        GML::BufferRef::kExecute)));
+    args.emplace_back(AsyncValueRef<GML::Tensor>::createReady(
+        runtime, GML::Tensor::createBorrowed(input, spec, /*alignment=*/{},
+                                             GML::BufferRef::kExecute)));
   }
 
   llvm::outs() << "--- Running and collecting outputs for '"

@@ -1208,6 +1208,8 @@ def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
     correctly inferred from the spec types, the user must annotate this op with
     the correct buffer type.
 
+    Tensors are represented by `GML::Tensor` in the modular runtime.
+
     Example:
     ```mlir
     %ch : !mef.chain

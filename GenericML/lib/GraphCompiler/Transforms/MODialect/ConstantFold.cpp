@@ -279,7 +279,7 @@ ErrorOr<ModelResult> executeModel(MLIRContext *ctx, const Model *model,
 
       // Copy output tensor into storage.
       assert(tensor.isReady() && "We already awaited, tensor should be ready");
-      auto *t = dyn_cast<Tensor>(tensor);
+      auto *t = dyn_cast<GML::Tensor>(tensor);
       assert(t && "Output from subgraph execution should be a tensor");
       // Output shape has runtime-dependent size so we need to read out what
       // the size is.
@@ -307,7 +307,7 @@ ErrorOr<ModelResult> executeModel(MLIRContext *ctx, const Model *model,
     if (tensor.isError())
       return Error(tensor.getDiagnostic().getMessage().get());
     assert(tensor.isReady() && "We already awaited, tensor should be ready");
-    auto *t = dyn_cast<Tensor>(tensor);
+    auto *t = dyn_cast<GML::Tensor>(tensor);
     assert(t && "Output from subgraph execution should be a tensor");
     params[paramName] = reinterpret_cast<const int64_t *>(t->getBuffer())[0];
     outIdx++;

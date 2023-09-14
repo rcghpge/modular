@@ -62,7 +62,7 @@ def MGPDialect : Dialect {
        wrapper types. Buffers may also be cached in ‘buffer slots’ within
        state slots, thus giving every operation the ability to re-use already
        allocated buffers for temporary and output results if desired.
-    4. Provides a generic `!mgp.cpu.tensor` type, backed by `M::Tensor`,
+    4. Provides a generic `!mgp.cpu.tensor` type, backed by `GML::Tensor`,
        which provides an uncontroversial CPU-only runtime representation for
        a statically-ranked tensor with a shape, dtype and underlying buffer.
        Ops (including the implementations of MO ops) and conversions (see

@@ -636,7 +636,7 @@ static void mgp_cpu_tensor_spec_dtype(const TensorSpec &tensorSpec,
 /// the buffer.
 static void mgp_cpu_tensor_create(Chain inChain,
                                   AsyncValueRef<BufferRef> bufferRef,
-                                  const TensorSpec &tensorSpec,
+                                  TensorSpec tensorSpec,
                                   Result<Tensor> outTensor, Runtime &runtime,
                                   EncodedLocation loc) {
   TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.tensor.create"));
@@ -649,18 +649,19 @@ static void mgp_cpu_tensor_create(Chain inChain,
   if (bufferRef.getPointer()->isUnique()) {
     // If this is the only reference to the input buffer then it cannot be
     // further mutated, so we can move it into the result tensor.
-    LLVM_DEBUG(llvm::dbgs() << "mgp.cpu.tensor.create: Creating M::Tensor, "
+    LLVM_DEBUG(llvm::dbgs() << "mgp.cpu.tensor.create: Creating GML::Tensor, "
                                "taking ownership of buffer\n");
-    std::move(outTensor).emplace(std::move(*bufferRef), tensorSpec);
+    std::move(outTensor).emplace(std::move(*bufferRef), std::move(tensorSpec));
   } else {
     // Otherwise we must take a copy of the buffer to protect the result
     // tensor from side-effects.
     LLVM_DEBUG(llvm::dbgs()
-               << "mgp.cpu.tensor.create: Creating M::Tensor from copy of "
+               << "mgp.cpu.tensor.create: Creating GML::Tensor from copy of "
                   "buffer since still has "
                << bufferRef.getPointer()->getRefCountForDebugging()
                << " users\n");
-    std::move(outTensor).emplace(bufferRef->deepCopy(runtime), tensorSpec);
+    std::move(outTensor).emplace(bufferRef->deepCopy(runtime),
+                                 std::move(tensorSpec));
   }
 }
 

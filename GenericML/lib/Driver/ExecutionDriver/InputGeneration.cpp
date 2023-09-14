@@ -29,7 +29,7 @@
 
 using namespace M;
 
-static ErrorOrSuccess fillWithElements(Tensor &tensor,
+static ErrorOrSuccess fillWithElements(GML::Tensor &tensor,
                                        InputGenerationKind inputGenKind,
                                        const QuantSpec &quantSpec) {
   uint8_t elementBuffer[DType::kMaxElementSizeInBytes];
@@ -78,25 +78,25 @@ static ErrorOrSuccess fillWithElements(Tensor &tensor,
                                   elementBuffer);
 }
 
-static ErrorOr<Tensor> allocateInput(const QuantTensorSpec &modelSpec,
-                                     Runtime &runtime, size_t alignment) {
-  return Tensor::createOwned({modelSpec, modelSpec.getEltType()}, runtime,
-                             alignment);
+static ErrorOr<GML::Tensor> allocateInput(const QuantTensorSpec &modelSpec,
+                                          Runtime &runtime, size_t alignment) {
+  return GML::Tensor::createOwned({modelSpec, modelSpec.getEltType()}, runtime,
+                                  alignment);
 }
 
 static ErrorOrSuccess fillInput(InputGenerationKind inputGenKind,
                                 const QuantTensorSpec &modelSpec,
-                                Tensor &tensor) {
+                                GML::Tensor &tensor) {
   if (auto err =
           fillWithElements(tensor, inputGenKind, modelSpec.getQuantSpec()))
     return err.takeError();
   return success();
 }
 
-static ErrorOr<Tensor> allocateAndFillInput(InputGenerationKind inputGenKind,
-                                            const QuantTensorSpec &modelSpec,
-                                            Runtime &runtime,
-                                            size_t alignment) {
+static ErrorOr<GML::Tensor>
+allocateAndFillInput(InputGenerationKind inputGenKind,
+                     const QuantTensorSpec &modelSpec, Runtime &runtime,
+                     size_t alignment) {
   auto resultOr = allocateInput(modelSpec, runtime, alignment);
   if (resultOr.isError())
     return resultOr.takeError();
@@ -120,17 +120,17 @@ public:
     return FilledTensorGenerator(std::move(*tensorOr));
   }
 
-  const Tensor &getNextTensor() final { return tensor; }
+  const GML::Tensor &getNextTensor() final { return tensor; }
 
-  const Tensor &getTensor(size_t sampleIdx) const final { return tensor; }
+  const GML::Tensor &getTensor(size_t sampleIdx) const final { return tensor; }
 
   size_t getSampleCount() const final { return 1; }
 
   bool isCycled() const final { return true; }
 
 private:
-  FilledTensorGenerator(Tensor &&tensor) : tensor(std::move(tensor)) {}
-  Tensor tensor;
+  FilledTensorGenerator(GML::Tensor &&tensor) : tensor(std::move(tensor)) {}
+  GML::Tensor tensor;
 };
 
 // Represents Tensor backed by a file.
@@ -141,7 +141,7 @@ public:
   static ErrorOr<FileTensorGenerator>
   create(const std::filesystem::path &filename, const QuantTensorSpec &spec,
          Runtime &runtime, size_t alignment, TensorGeneratorFlag flags) {
-    std::vector<Tensor> tensors;
+    std::vector<GML::Tensor> tensors;
     std::string errorMsg;
     auto data = mlir::openInputFile(filename.string(), llvm::Align(alignment),
                                     &errorMsg);
@@ -157,8 +157,8 @@ public:
     }
     auto dataStart = data->getBufferStart();
     for (size_t i = 0, n = data->getBufferSize() / stride; i < n; i++) {
-      auto tensor =
-          Tensor::createOwned({spec, spec.getEltType()}, runtime, alignment);
+      auto tensor = GML::Tensor::createOwned({spec, spec.getEltType()}, runtime,
+                                             alignment);
       auto tensorBuf = static_cast<char *>(tensor.getMutableBuffer());
       std::memcpy(tensorBuf, dataStart + i * stride, tensor.getSizeInBytes());
       tensors.push_back(std::move(tensor));
@@ -169,7 +169,7 @@ public:
 
     return FileTensorGenerator(std::move(tensors), flags);
   }
-  const Tensor &getNextTensor() final {
+  const GML::Tensor &getNextTensor() final {
     assert((isSet(flags, TensorGeneratorFlag::kCycle) || !repeated) &&
            "All tensors in FileTensor have already been generated. "
            "Add Cycle attribute to --input-data to loop over "
@@ -181,7 +181,7 @@ public:
     return tensors[curr];
   }
 
-  const Tensor &getTensor(size_t sampleIdx) const final {
+  const GML::Tensor &getTensor(size_t sampleIdx) const final {
     if (!isCycled())
       assert(sampleIdx < tensors.size() && "Requested sampleIdx out of range");
     return tensors[sampleIdx % tensors.size()];
@@ -194,12 +194,14 @@ public:
   }
 
 private:
-  FileTensorGenerator(std::vector<Tensor> &&tensors, TensorGeneratorFlag flags)
+  FileTensorGenerator(std::vector<GML::Tensor> &&tensors,
+                      TensorGeneratorFlag flags)
       : tensors(std::move(tensors)), flags(flags) {}
 
   size_t pos{0};
-  std::vector<Tensor> tensors; // each tensor holds a reference to a position in
-                               // data so this shouldn't be too big
+  std::vector<GML::Tensor>
+      tensors; // each tensor holds a reference to a position in
+               // data so this shouldn't be too big
   TensorGeneratorFlag flags;
   bool repeated{false};
 };

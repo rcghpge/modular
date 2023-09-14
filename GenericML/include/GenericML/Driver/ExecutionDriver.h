@@ -18,9 +18,12 @@
 #include "llvm/ADT/SmallVector.h"
 #include <cstddef>
 
+namespace M::GML {
+class Tensor;
+}
+
 namespace M {
 class Model;
-class Tensor;
 class ExecutorDriverCLOptions;
 
 enum class InputGenerationKind {
