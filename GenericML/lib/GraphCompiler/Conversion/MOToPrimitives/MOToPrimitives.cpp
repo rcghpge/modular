@@ -387,20 +387,18 @@ MOGraphLowering::lowerParamConstant(KGEN::ParamConstantOp paramConstOp) {
 }
 
 /// Helper to allocate buffer for scalar and shape-like tensors.
-static TypedValue<MGP::CpuBufferType>
-allocateStaticBuffer(MO::TensorType resTy,
-                     MGP::MOGraphLoweringState &loweringState, Location loc) {
+static Value allocateStaticBuffer(MO::TensorType resTy,
+                                  MGP::MOGraphLoweringState &loweringState,
+                                  Location loc) {
   OpBuilder &exeBuilder = loweringState.getExecuteOpBuilder();
 
   SmallVector<int64_t> dims = resTy.getIntDims();
   int64_t numEl =
       std::accumulate(dims.begin(), dims.end(), 1, std::multiplies<>());
   uint64_t bufferSize = numEl * resTy.getDtype().getSizeInBytes(1);
-
-  auto bufferAllocOp = exeBuilder.create<MGP::CpuBufferAllocStaticOp>(
-      loc, loweringState.getExecuteChain(), bufferSize,
+  return loweringState.bufferizer.createBufferStatic(
+      exeBuilder, loc, loweringState.getExecuteChain(), bufferSize,
       loweringState.getMinimumCpuAlignment());
-  return bufferAllocOp.getOutBuffer();
 }
 
 LogicalResult
@@ -409,8 +407,8 @@ MOGraphLowering::lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp) {
   OpBuilder &exeBuilder = loweringState.getExecuteOpBuilder();
 
   // We first allocate a buffer for the result tensor.
-  TypedValue<MGP::CpuBufferType> buffer = allocateStaticBuffer(
-      toTensorOp.getResult().getType(), loweringState, loc);
+  Value buffer = allocateStaticBuffer(toTensorOp.getResult().getType(),
+                                      loweringState, loc);
 
   // We populate the buffer with the index value.
   Value mgpIndexVal =
@@ -418,11 +416,11 @@ MOGraphLowering::lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp) {
   auto bufferSetOp =
       exeBuilder.create<MGP::CpuBufferSetWithIndexOp>(loc, buffer, mgpIndexVal);
 
-  // Finally we create an MGP tensor we can map to.
-  MGP::CpuTensorCreateOp tensorCreateOp = loweringState.createNewMgpTensor(
+  // Finally we create a lowered tensor we can map to.
+  Value loweredTensor = loweringState.createLoweredTensor(
       bufferSetOp.getOutChain(), buffer, toTensorOp.getType(), loc);
   loweringState.emplaceExecuteLoweredValue(toTensorOp.getResult(),
-                                           tensorCreateOp.getResult());
+                                           loweredTensor);
   return success();
 }
 
@@ -436,8 +434,7 @@ MOGraphLowering::lowerShapeToTensorOp(MO::Shape::ToTensorOp toTensorOp) {
     toTensorOp.emitOpError("dynamic ranks not supported");
 
   // We first allocate a buffer for the result tensor.
-  TypedValue<MGP::CpuBufferType> buffer =
-      allocateStaticBuffer(resTy, loweringState, loc);
+  Value buffer = allocateStaticBuffer(resTy, loweringState, loc);
 
   // Then we populate the buffer with the runtime dimensions.
   Value mgpShapeVal =
@@ -448,15 +445,15 @@ MOGraphLowering::lowerShapeToTensorOp(MO::Shape::ToTensorOp toTensorOp) {
   auto bufferSetOp = exeBuilder.create<MGP::CpuBufferSetWithIndexOp>(
       loc, buffer, dynDimsOp.getResults());
 
-  // Finally we create an MGP tensor we can map to.
-  MGP::CpuTensorCreateOp tensorCreateOp = loweringState.createNewMgpTensor(
+  // Finally we create a lowered tensor we can map to.
+  Value loweredTensor = loweringState.createLoweredTensor(
       bufferSetOp.getOutChain(), buffer, toTensorOp.getType(), loc);
   loweringState.emplaceExecuteLoweredValue(toTensorOp.getResult(),
-                                           tensorCreateOp.getResult());
+                                           loweredTensor);
   return success();
 }
 
-/// Returns the MGP tensor that the rebind's result should map to.
+/// Returns the lowered tensor that the rebind's result should map to.
 static Value getRebindResMgpTensor(MO::RebindOp rebindOp,
                                    MGP::MOGraphLoweringState &loweringState) {
   MO::TensorValue inputTensor = rebindOp.getInput();
@@ -465,11 +462,11 @@ static Value getRebindResMgpTensor(MO::RebindOp rebindOp,
 
   // If the input and output specs are the same, we can just map to the already
   // lowered tensor.
-  auto outSpecTy = MGP::createCpuTensorSpec(resTy);
-  auto inSpecTy = MGP::createCpuTensorSpec(inputTy);
-  Value mgpInput = loweringState.lookupExecuteLoweredValue(inputTensor);
+  auto outSpecTy = MGP::createCpuTensorSpecType(resTy);
+  auto inSpecTy = MGP::createCpuTensorSpecType(inputTy);
+  Value loweredInput = loweringState.lookupExecuteLoweredValue(inputTensor);
   if (outSpecTy == inSpecTy)
-    return mgpInput;
+    return loweredInput;
 
   // We will collect the runtime dimensions for the result spec.
   SmallVector<Value> runtimeDims;
@@ -497,7 +494,7 @@ static Value getRebindResMgpTensor(MO::RebindOp rebindOp,
     // At this point we are dealing with dynamic input and result dimensions.
     // We extract the dynamic dimensions only once.
     if (!dynDimsOp)
-      dynDimsOp = loweringState.getDynamicDims(mgpInput, loc);
+      dynDimsOp = loweringState.getDynamicDims(loweredInput, loc);
 
     // Forward the appropriate dynamic dimension from the input.
     runtimeDims.emplace_back(
@@ -505,10 +502,11 @@ static Value getRebindResMgpTensor(MO::RebindOp rebindOp,
   }
 
   // We create a new spec, then a new tensor from it and the input buffer.
-  auto extractOp = exeBuilder.create<MGP::CpuTensorExtractOp>(loc, mgpInput);
-  return loweringState.createNewMgpTensor(loweringState.getExecuteChain(),
-                                          extractOp.getBufferResult(), resTy,
-                                          loc, runtimeDims);
+  MGP::BufferizedTensor bufferized =
+      loweringState.bufferizer.extract(exeBuilder, loc, loweredInput);
+  return loweringState.createLoweredTensor(loweringState.getExecuteChain(),
+                                           bufferized.buffer, resTy, loc,
+                                           runtimeDims);
 }
 
 LogicalResult MOGraphLowering::lowerRebind(MO::RebindOp rebindOp) {
@@ -566,12 +564,10 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
 
   // We create the tensor op itself using the spec and the buffer. The result
   // of this op is what we remember.
-  MGP::CpuTensorCreateOp tensorCreateOp = loweringState.createNewMgpTensor(
+  Value loweredTensor = loweringState.createLoweredTensor(
       loweringState.getExecuteChain(), bufferOp,
       cast<mlir::ShapedType>(convertedType), loc);
-
-  loweringState.emplaceExecuteLoweredValue(constOp.getResult(),
-                                           tensorCreateOp.getResult());
+  loweringState.emplaceExecuteLoweredValue(constOp.getResult(), loweredTensor);
   return success();
 }
 
@@ -579,12 +575,11 @@ LogicalResult
 MOGraphLowering::lowerStaticReshape(MO::Static::ReshapeOp reshapeOp) {
   auto loc = reshapeOp.getLoc();
 
-  auto mgpTensor =
+  auto loweredInput =
       loweringState.lookupExecuteLoweredValue(reshapeOp.getInput());
-  auto extract =
-      loweringState.getExecuteOpBuilder().create<MGP::CpuTensorExtractOp>(
-          loc, mgpTensor);
-  auto buffer = extract.getBufferResult();
+  MGP::BufferizedTensor bufferizedInput = loweringState.bufferizer.extract(
+      loweringState.getExecuteOpBuilder(), loc, loweredInput);
+  Value buffer = bufferizedInput.buffer;
 
   MO::TensorType resTy = reshapeOp.getType();
   if (!resTy.hasRank())
@@ -597,12 +592,12 @@ MOGraphLowering::lowerStaticReshape(MO::Static::ReshapeOp reshapeOp) {
     return reshapeOp->emitError(runtimeDimsOr.getError());
 
   // Create an immutable tensor
-  MGP::CpuTensorCreateOp tensorCreateOp = loweringState.createNewMgpTensor(
+  Value loweredTensor = loweringState.createLoweredTensor(
       loweringState.getExecuteChain(), buffer, resTy, loc, *runtimeDimsOr);
 
   // Update the MO tensor to now refer to this mgp tensor.
   loweringState.emplaceExecuteLoweredValue(reshapeOp.getResult(),
-                                           tensorCreateOp.getResult());
+                                           loweredTensor);
 
   return success();
 }
@@ -612,10 +607,11 @@ LogicalResult MOGraphLowering::lowerReshape(MO::ReshapeOp reshapeOp) {
   OpBuilder exeBuilder = loweringState.getExecuteOpBuilder();
 
   // get input tensor buffer
-  auto mgpTensor =
+  auto loweredInput =
       loweringState.lookupExecuteLoweredValue(reshapeOp.getInput());
-  auto extract = exeBuilder.create<MGP::CpuTensorExtractOp>(loc, mgpTensor);
-  auto buffer = extract.getBufferResult();
+  MGP::BufferizedTensor bufferizedInput =
+      loweringState.bufferizer.extract(exeBuilder, loc, loweredInput);
+  Value buffer = bufferizedInput.buffer;
 
   // TODO
   // 1. This isn't unified with `MOGG::ExtOp::lower` because we don't want
@@ -623,24 +619,19 @@ LogicalResult MOGraphLowering::lowerReshape(MO::ReshapeOp reshapeOp) {
   // point.
   // 2. Validate user-annotated shape TODO(#12718)
 
-  auto outSpecTy = MGP::createCpuTensorSpec(reshapeOp.getType());
-  auto runtimeDimsOr = loweringState.lowerShapeAttrDynDims(
-      reshapeOp.getType().getTypedShapeAttr(), loc);
-  if (runtimeDimsOr.isError())
-    return runtimeDimsOr.takeError();
-  auto runtimeDims = std::move(*runtimeDimsOr);
-  Value outSpecValue =
-      exeBuilder.create<MGP::CpuTensorSpecCreateOp>(loc, outSpecTy, runtimeDims)
-          .getResult();
+  ErrorOr<TypedValue<MGP::CpuTensorSpecType>> outSpecValueOr =
+      loweringState.createTensorSpec(exeBuilder, loc, reshapeOp.getType());
+  if (outSpecValueOr)
+    return failure();
+  TypedValue<MGP::CpuTensorSpecType> outSpecValue = *outSpecValueOr;
 
   // Create an immutable tensor
-  auto outTensorTy = exeBuilder.getType<MGP::CpuTensorType>(outSpecTy);
-  auto tensorCreateOp = exeBuilder.create<MGP::CpuTensorCreateOp>(
-      loc, outTensorTy, loweringState.getExecuteChain(), buffer, outSpecValue);
-
+  MGP::BufferizedTensor bufferizedOutput(buffer, outSpecValue);
+  Value loweredOutput = loweringState.bufferizer.createTensor(
+      exeBuilder, loc, loweringState.getExecuteChain(), bufferizedOutput);
   // Update the MO tensor to now refer to this mgp tensor.
   loweringState.emplaceExecuteLoweredValue(reshapeOp.getResult(),
-                                           tensorCreateOp.getResult());
+                                           loweredOutput);
 
   return success();
 }
@@ -670,10 +661,10 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
 
   // Lower Cond
   Value condTensor = loweringState.lookupExecuteLoweredValue(ifOp.getCond());
-  auto condExtract = builder.create<MGP::CpuTensorExtractOp>(loc, condTensor);
-
+  MGP::BufferizedTensor bufferizedCond =
+      loweringState.bufferizer.extract(builder, loc, condTensor);
   auto cond = builder.create<MGP::ToGRTBoolOp>(
-      loc, loweringState.getExecuteChain(), condExtract.getBufferResult());
+      loc, loweringState.getExecuteChain(), bufferizedCond.buffer);
 
   SmallVector<Value> operands;
   operands.push_back(cond.getResult());
@@ -878,11 +869,11 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
 
     // i1 condition
     builder.setInsertionPoint(condOutputOp);
-    auto loweredCondExtract =
-        builder.create<MGP::CpuTensorExtractOp>(loc, loweredCondTensor);
+    MGP::BufferizedTensor bufferizedCond =
+        loweringState.bufferizer.extract(builder, loc, loweredCondTensor);
     Value loweredInputChain = loweredWhileOp.getCondRegion().getArgument(0);
     auto loweredCondI1 = builder.create<MGP::ToGRTBoolOp>(
-        loc, loweredInputChain, loweredCondExtract.getBufferResult());
+        loc, loweredInputChain, bufferizedCond.buffer);
     condOutputOpOperands.emplace_back(loweredCondI1);
 
     condOutputOp.getOperandsMutable().clear();
@@ -1064,7 +1055,7 @@ void MOToPrimitivesPass::runOnOperation() {
   TypeConverter converter;
   converter.addConversion([&ctx](MO::TensorType t) -> std::optional<Type> {
     // TODO: this may fail for some element types.
-    return MGP::CpuTensorType::get(&ctx, MGP::createCpuTensorSpec(t));
+    return MGP::CpuTensorType::get(&ctx, MGP::createCpuTensorSpecType(t));
   });
 
   // The mojo kernels will already be composed into novel jit kernels at this
