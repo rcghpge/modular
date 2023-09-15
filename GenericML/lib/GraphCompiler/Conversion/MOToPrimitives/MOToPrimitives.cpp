@@ -17,7 +17,7 @@
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "Support/Compiler/OperationUtils.h"
-#include "Support/Host.h"
+#include "Support/MArchTarget/Host.h"
 #include "Support/MArchTarget/MArchTarget.h"
 #include "Support/ML/CommonAttributes.h"
 #include "Support/STLExtras.h"
