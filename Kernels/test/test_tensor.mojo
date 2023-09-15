@@ -37,6 +37,48 @@ fn test_tensor():
     print(tensor.dim(2))
 
 
+# CHECK-LABEL: test_tensor_equality
+fn test_tensor_equality():
+    print("== test_tensor_equality")
+
+    var t1 = Tensor[DType.float32](TensorShape(2, 3))
+    var t2 = Tensor[DType.float32](TensorShape(2, 2))
+    var t3 = Tensor[DType.float32](TensorShape(2, 3))
+
+    for i in range(2):
+        for j in range(3):
+            t1[Index(i, j)] = 1
+            t3[Index(i, j)] = 3
+
+    for i in range(2):
+        for j in range(2):
+            t2[Index(i, j)] = 2
+
+    # CHECK: True
+    print(t1 == t1)
+    # CHECK: True
+    print(t2 == t2)
+
+    # CHECK: False
+    print(t1 == t2)
+    # CHECK: True
+    print(t1 != t2)
+
+    # CHECK: False
+    print(t1 == t3)
+    # CHECK: True
+    print(t1 != t3)
+
+    for i in range(2):
+        for j in range(3):
+            t3[Index(i, j)] = 1
+
+    # CHECK: True
+    print(t1 == t3)
+    # CHECK: False
+    print(t1 != t3)
+
+
 # CHECK: test_tensor_indexing
 fn test_tensor_indexing():
     print("== test_tensor_indexing")
@@ -196,6 +238,7 @@ fn test_image_to_grayscale():
 
 fn main():
     test_tensor()
+    test_tensor_equality()
     test_tensor_indexing()
     test_tensor_indexing2()
     test_tensor_fill()
