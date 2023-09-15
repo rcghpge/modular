@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "./CompiledKernelsContext.h"
+#include "GenericML/Support/CompiledKernelsContext.h"
 
 using namespace M;
 using namespace M::GML;

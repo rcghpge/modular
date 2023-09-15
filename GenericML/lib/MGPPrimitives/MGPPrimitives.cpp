@@ -6,6 +6,7 @@
 
 #include "GenericML/MGPPrimitives/MGPPrimitives.h"
 #include "GenericML/MOPrimitives/MOPrimitives.h"
+#include "GenericML/Support/CompiledKernelsContext.h"
 #include "GenericML/Support/Context.h"
 #include "GenericML/Support/HostDeviceSpecs.h"
 #include "GenericML/Support/StateSlot.h"
@@ -25,7 +26,6 @@
 #include "llvm/Target/TargetMachine.h"
 
 #include "./CASStateSlot.h"
-#include "./CompiledKernelsContext.h"
 
 #define DEBUG_TYPE "mgp"
 

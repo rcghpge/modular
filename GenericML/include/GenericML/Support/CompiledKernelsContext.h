@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_MGPPRIMITIVES_COMPILEDKERNELSCONTEXT_H
-#define GENERICML_MGPPRIMITIVES_COMPILEDKERNELSCONTEXT_H
+#ifndef GENERICML_SUPPORT_COMPILEDKERNELSCONTEXT_H
+#define GENERICML_SUPPORT_COMPILEDKERNELSCONTEXT_H
 
 #include "KGEN/Compiler/ExecutionEngine.h"
 #include "KGEN/Compiler/ObjectCompiler.h"
@@ -78,4 +78,4 @@ private:
 
 } // namespace M::GML
 
-#endif // GENERICML_MGPPRIMITIVES_COMPILEDKERNELSCONTEXT_H
+#endif // GENERICML_SUPPORT_COMPILEDKERNELSCONTEXT_H
