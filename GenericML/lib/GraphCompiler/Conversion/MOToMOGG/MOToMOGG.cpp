@@ -310,6 +310,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_KERNEL(MO::BatchMatmulOp),
       MO_TO_KERNEL(MO::GatherSumOp),
       MO_TO_KERNEL(MO::GatherOp),
+      MO_TO_KERNEL(MO::GatherNdOp),
       MO_TO_ELEMWISE(MO::NotOp),
       MO_TO_ELEMWISE(MO::MaxOp),
       MO_TO_KERNEL(MO::MaxPoolOp),

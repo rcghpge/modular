@@ -897,3 +897,24 @@ mo.graph @unsqueeze_shape_dynamic_shape_with_reshape(%input_tensor: !mo.tensor<[
   %res = mo.reshape(%input_tensor, %result_shape) : (!mo.tensor<[?, ?, ?], si32>, !mo.tensor<[?], si32>) -> !mo.tensor<?, si32>
   mo.output %res : !mo.tensor<?, si32>
 }
+
+// CHECK-LABEL:  mo.graph @gather_nd
+// CHECK:         kgen.param.declare [[P30:.*]] = <add([[D5:.*]], 1)>
+// CHECK-NEXT:    kgen.param.declare [[P31:.*]]: !mosh.ape = <apply(:(!mosh.ape, index, index) -> !mosh.ape "mosh.slice", [[[D1:.*]], [[D2:.*]], [[D3:.*]]], [[P30]], 3)>
+// CHECK-NEXT:    kgen.param.declare [[P32:.*]]: !mosh.ape = <apply(:(!mosh.ape, !mosh.ape, !mosh.ape) -> !mosh.ape "mosh.concat", [[[D4:.*]]], [], [[P31]])>
+// CHECK-NEXT:    %[[GATHER:.*]] = mo.gather_nd({{.*}}) {batchDims = 1 : i64} : (!mo.tensor<[[[D1:.*]], [[D2:.*]], [[D3:.*]]], si64>, !mo.tensor<[[[D4]], [[D5]]], si64>) -> !mo.tensor<[[P32]], si64>
+// CHECK-NEXT:    mo.output<:!mosh.ape [[P32]]> %0 : !mo.tensor<[[P32]], si64>
+mo.graph @gather_nd(%input: !mo.tensor<[?, ?, ?], si64>, %indices: !mo.tensor<[?, ?], si64>) -> !mo.tensor<?, si64> {
+  %result = mo.gather_nd(%input, %indices) {batchDims = 1} :
+    (!mo.tensor<[?, ?, ?], si64>, !mo.tensor<[?, ?], si64>) -> !mo.tensor<?, si64>
+  mo.output %result : !mo.tensor<?, si64>
+}
+
+// CHECK-LABEL:  mo.graph @gather_nd
+// CHECK-NEXT:    %[[GATHER:.*]] = mo.gather_nd({{.*}}) {batchDims = 1 : i64} : (!mo.tensor<[[[D1:.*]], [[D2:.*]], [[D3:.*]]], si64>, !mo.tensor<[[[D4:.*]], 1], si64>) -> !mo.tensor<[[[D4]], [[D3]]], si64>
+// CHECK-NEXT:    mo.output %[[GATHER]] : !mo.tensor<[[[D4]], [[D3]]], si64>
+mo.graph @gather_nd_with_last_dim(%input: !mo.tensor<[?, ?, ?], si64>, %indices: !mo.tensor<[?, 1], si64>) -> !mo.tensor<?, si64> {
+  %result = mo.gather_nd(%input, %indices) {batchDims = 1} :
+    (!mo.tensor<[?, ?, ?], si64>, !mo.tensor<[?, 1], si64>) -> !mo.tensor<?, si64>
+  mo.output %result : !mo.tensor<?, si64>
+}

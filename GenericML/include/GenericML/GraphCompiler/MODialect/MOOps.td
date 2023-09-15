@@ -2266,6 +2266,53 @@ def MO_GatherSumOp : MO_TensorOp<"gather_sum"> {
   let results = (outs MO_Tensor:$result);
 }
 
+def MO_GatherNdOp : MO_TensorOp<"gather_nd", [
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
+]> {
+  let summary = "Gather ND op which gathers values at the specified indices.";
+  let description = [{
+    Indices are multidimensional. The last dimension stores the index whereas
+    the outer dimensions act like batch dimensions. The size of the last
+    dimension is at most the rank of the input. When the dimension size is less
+    than the rank of the input, slices of the input are gathered, starting from
+    the leftmost dimension.
+
+    output_shape = (
+        batch_dims_shape + list(indices.shape)[batch_dims:-1]
+        if (indices.shape[-1] == data_rank - batch_dims)
+        else batch_dims_shape
+        + list(indices.shape)[batch_dims:-1]
+        + list(data.shape)[batch_dims + indices.shape[-1] :]
+    )
+
+    ```mlir
+    %input = mo.constant {value =
+      #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15> :
+      tensor<2x2x4xsi64>} : !mo.tensor<[2, 2, 4], si64>
+    %indices = mo.constant {value = #M.dense_array<0, 0, 0> : tensor<3xsi64>} :
+      !mo.tensor<[3], si64>
+
+    %result = mo.gather_nd(%input, %indices) {batchDims = 0} :
+      (!mo.tensor<[2, 2, 4], si64>, !mo.tensor<[3], si64>) ->
+      !mo.tensor<[], si64>
+    ```
+  }];
+
+  let arguments = (ins MO_NonScalarIfRanked:$input,
+                       MO_IndicesTensor:$indices,
+                       // TODO(#21324): Support dynamic batchDims
+                       Builtin_IntegerAttr:$batchDims,
+                       MO_ParamDecls:$outputParamDecls);
+
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
 //===----------------------------------------------------------------------===//
 // ScatterOp
 //===----------------------------------------------------------------------===//

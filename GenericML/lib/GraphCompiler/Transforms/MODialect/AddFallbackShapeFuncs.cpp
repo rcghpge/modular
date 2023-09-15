@@ -80,6 +80,7 @@ NEEDS_NO_FALLBACK(MO::BatchMatmulOp)
 NEEDS_NO_FALLBACK(MO::MatmulOp)
 NEEDS_NO_FALLBACK(MO::ScatterNdOp)
 NEEDS_NO_FALLBACK(MO::Static::BroadcastToOp)
+NEEDS_NO_FALLBACK(MO::GatherNdOp)
 
 // Creates the fallback for this op if it has parameters still needing decls.
 #define CALL_FALLBACK(MOOp)                                                    \

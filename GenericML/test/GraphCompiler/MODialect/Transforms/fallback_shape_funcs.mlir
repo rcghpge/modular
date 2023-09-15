@@ -191,7 +191,6 @@ mo.graph @gather_fallback_shape_func<D0, D1 -> D2, D3, D4>(
 //
 // CHECK-NEXT: mo.output<[[D5]], [[D6]], [[D7]]> %[[RES]] : !mo.tensor<[[[D5]], [[D6]], [[D7]]], f32>
 
-
 mo.graph @pad_fallback_shape_func<() -> D0, D1, D2>(
   %input : !mo.tensor<[1, 2, 3], f32>,
   %paddings : !mo.tensor<[3, 2], si32>,

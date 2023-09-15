@@ -195,7 +195,7 @@ def MO_SlidingWindow : MO_TensorOpInterfaceBase<"SlidingWindow"> {
     InterfaceMethod<"Get the strides as a TypedValue",
       "TensorValue", "getStrides", (ins)>,
     InterfaceMethod<"Get the dilations as a TypedValue",
-      "TensorValue", "getDilations", (ins)>, 
+      "TensorValue", "getDilations", (ins)>,
     InterfaceMethod<"Get the paddings as a TypedValue",
       "TensorValue", "getPaddings", (ins)>
   ];
