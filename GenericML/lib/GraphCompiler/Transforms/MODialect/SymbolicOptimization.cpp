@@ -500,8 +500,10 @@ struct GathersToSplitPattern : public OpRewritePattern<GatherOp> {
 
     // Get input's 0-axis dimension
     int64_t inputAxis0Dim = inputTy.getIntDim(0);
-    if (mlir::ShapedType::isDynamic(inputAxis0Dim))
-      return rewriter.notifyMatchFailure(op, "input axis 0 isn't static");
+    if (inputAxis0Dim <= 0) {
+      return rewriter.notifyMatchFailure(
+          op, "input axis 0 isn't static and positive");
+    }
 
     // Collect N gather users of input (with axis = 0, indices = [0] or ...)
     SmallDenseMap<size_t, GatherOp> idxToGather;

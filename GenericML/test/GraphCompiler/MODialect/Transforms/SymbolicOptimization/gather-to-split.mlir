@@ -141,3 +141,21 @@ mo.graph @gather_to_split_control_flow(
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[2, 3], f32>
   mo.output %res : !mo.tensor<[2, 3], f32>
 }
+
+// CHECK:      mo.graph @gather_empty(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[0], si64>,
+// CHECK-SAME:   %[[INDICES:.*]]: !mo.tensor<[0], si64>
+// CHECK-SAME: ) -> !mo.tensor<[0], si64> no_inline {
+mo.graph @gather_empty(
+  %input: !mo.tensor<[0], si64>,
+  %indices: !mo.tensor<[0], si64>
+) -> !mo.tensor<[0], si64> {
+
+  // CHECK-NEXT: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
+  // CHECK-NEXT: %[[GATHER:.*]] = mo.gather(%[[INPUT]], %[[INDICES]], %[[AXIS]]) : (!mo.tensor<[0], si64>, !mo.tensor<[0], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[0], si64>
+  %axis = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
+  %gather = mo.gather(%input, %indices, %axis) : (!mo.tensor<[0], si64>, !mo.tensor<[0], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[0], si64>
+
+  // CHECK-NEXT: mo.output %[[GATHER]] : !mo.tensor<[0], si64>
+  mo.output %gather : !mo.tensor<[0], si64>
+}
