@@ -910,8 +910,8 @@ mo.graph @gather_nd(%input: !mo.tensor<[?, ?, ?], si64>, %indices: !mo.tensor<[?
   mo.output %result : !mo.tensor<?, si64>
 }
 
-// CHECK-LABEL:  mo.graph @gather_nd
-// CHECK-NEXT:    %[[GATHER:.*]] = mo.gather_nd({{.*}}) {batchDims = 1 : i64} : (!mo.tensor<[[[D1:.*]], [[D2:.*]], [[D3:.*]]], si64>, !mo.tensor<[[[D4:.*]], 1], si64>) -> !mo.tensor<[[[D4]], [[D3]]], si64>
+// CHECK-LABEL:  mo.graph @gather_nd_with_last_dim
+// CHECK:         %[[GATHER:.*]] = mo.gather_nd({{.*}}) {batchDims = 1 : i64} : (!mo.tensor<[[[D1:.*]], [[D2:.*]], [[D3:.*]]], si64>, !mo.tensor<[[[D4:.*]], 1], si64>) -> !mo.tensor<[[[D4]], [[D3]]], si64>
 // CHECK-NEXT:    mo.output %[[GATHER]] : !mo.tensor<[[[D4]], [[D3]]], si64>
 mo.graph @gather_nd_with_last_dim(%input: !mo.tensor<[?, ?, ?], si64>, %indices: !mo.tensor<[?, 1], si64>) -> !mo.tensor<?, si64> {
   %result = mo.gather_nd(%input, %indices) {batchDims = 1} :
