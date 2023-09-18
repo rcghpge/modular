@@ -104,10 +104,15 @@ def MGP_CpuBufferType : MGP_Type<"CpuBuffer", "cpu.buffer",
     /// Constructs a buffer type from its size in 'raw form'.
     TypeBuilder<(ins "uint64_t":$rawSize)>,
 
-    /// Constructs a buffer type which matches the required size for the given
+    /// Constructs a buffer type which matches the require size of the given
     /// tensor spec type. The buffer will have unknown size if the tensor spec
     /// has dynamic rank, dimensions or dtype.
-    TypeBuilderWithInferredContext<(ins "CpuTensorSpecType":$specType)>,
+    TypeBuilderWithInferredContext<(ins "CpuTensorSpecType":$tensorSpecType)>,
+
+    /// Constructs a buffer type which matches the required size and any other
+    /// properties of the given tensor type. The buffer will have unknown size
+    /// if the tensor has dynamic rank, dimensions or dtype.
+    TypeBuilderWithInferredContext<(ins "CpuTensorType":$tensorType)>,
   ];
 }
 

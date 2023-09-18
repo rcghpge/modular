@@ -10,6 +10,7 @@
 
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "Cache/CacheDialect/CacheAttrs.h"
+#include "GenericML/MGPDialect/BufferBuilder.h"
 #include "Support/Compiler/ParserUtils.h"
 #include "Support/Compiler/VerifyUtils.h"
 #include "Support/ErrorOr.h"
@@ -883,79 +884,25 @@ LogicalResult CpuTensorSpecDimsDynamicOp::inferReturnTypes(
 // CpuTensorCreateOp
 //===----------------------------------------------------------------------===//
 
-/// Parses the expected result tensor type, but also derives the appropriate
-/// buffer operand's type based on an buffer type annotation.
 static ParseResult parseMayBeDynamicBuffer(AsmParser &parser,
                                            Type &bufferRawType,
                                            Type &resultRawType) {
-  mlir::SMLoc loc;
-  if (parser.getCurrentLocation(&loc))
-    return failure();
-  OptionalParseResult parseResult = parser.parseOptionalType(bufferRawType);
-  bool hasBufferTypeAnnotation = parseResult.has_value();
-  if (hasBufferTypeAnnotation) {
-    if (failed(parseResult.value()))
-      return failure();
-    if (!isa<CpuBufferType>(bufferRawType))
-      return parser.emitError(loc) << "expecting !mgp.cpu.buffer type";
-  }
-
-  if (parser.parseColon() || parser.parseType(resultRawType))
-    return failure();
-  auto resultTensorType = dyn_cast<CpuTensorType>(resultRawType);
-  if (resultTensorType == nullptr)
-    return parser.emitError(loc) << "expecting !mgp.cpu.tensor type";
-  if (!hasBufferTypeAnnotation) {
-    // No buffer type annotation -- buffer operand's type is uniquely determined
-    // from the result tensor type.
-    bufferRawType = CpuBufferType::get(resultTensorType.getTensorSpec());
-  }
-  return success();
+  return genericParseMayBeDynamicBuffer<CpuBufferType, CpuTensorType>(
+      parser, bufferRawType, resultRawType);
 }
 
-/// Prints the actual result tensor type, but also prints an optional buffer
-/// type annotation if the actual buffer type suggests it.
 static void printMayBeDynamicBuffer(AsmPrinter &printer,
                                     const CpuTensorCreateOp &op,
                                     CpuBufferType bufferType,
                                     CpuTensorType resultType) {
-  if (CpuBufferType::get(resultType.getTensorSpec()) != bufferType)
-    printer.printType(bufferType);
-  printer.getStream() << " : ";
-  printer.printType(resultType);
+  genericPrintMayBeDynamicBuffer<CpuBufferType, CpuTensorType>(
+      printer, op, bufferType, resultType);
 }
 
-/// Checks the tensor spec, buffer type and result tensor types are
-/// consistent.
 LogicalResult CpuTensorCreateOp::verify() {
-  CpuTensorSpecType tensorSpecType = getTensorSpec().getType();
-  CpuBufferType actualBufferType = getBuffer().getType();
-  CpuBufferType expectedBufferType = CpuBufferType::get(tensorSpecType);
-  CpuTensorType tensorType = getResult().getType();
-
-  if (tensorSpecType != tensorType.getTensorSpec())
-    return emitOpError() << "expected spec to match result tensor spec"
-                         << " (" << tensorSpecType << " vs "
-                         << tensorType.getTensorSpec() << ")";
-
-  bool actualBufferIsStatic = actualBufferType.getOptSize().has_value();
-  bool expectedBufferIsStatic = expectedBufferType.getOptSize().has_value();
-  if (actualBufferIsStatic != expectedBufferIsStatic) {
-    // This is the 'dynamic' case, where either the input or the output buffer
-    // has unknown size. This can happen when lowering reshapes involving
-    // dynamic dimensions, eg:
-    //    reshape %x, %y : (tensor<?x?xf32>, tensor<2xui32>) -> tensor<8x16xf32>
-    //    reshape %x, %y : (tensor<8x4xf32>, tensor<2xui32>) -> tensor<?x?xf32>
-    // Here the buffer backing the tensor with dynamic shape will have unknown
-    // size, and in the first case, we wish to assert the input buffer has size
-    // 512 bytes at runtime when constructing the result tensor.
-    // no-op
-  } else if (actualBufferType != expectedBufferType) {
-    return emitOpError()
-           << "expected buffer type to match type implied by tensor spec ("
-           << actualBufferType << " vs " << expectedBufferType << ").";
-  }
-  return success();
+  return genericTensorCreateVerify<CpuBufferType, CpuTensorType>(
+      *this, getBuffer().getType(), getTensorSpec().getType(),
+      getResult().getType());
 }
 
 //===----------------------------------------------------------------------===//
@@ -963,19 +910,9 @@ LogicalResult CpuTensorCreateOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult CpuTensorExtractOp::verify() {
-  CpuTensorType tensorType = getTensor().getType();
-  if (tensorType.getTensorSpec() != getTensorSpecResult().getType())
-    return emitOpError() << "expected the result spec to match tensor's spec"
-                         << " (" << getTensorSpecResult().getType() << " vs "
-                         << tensorType.getTensorSpec() << ")";
-  CpuBufferType impliedBufferType =
-      CpuBufferType::get(tensorType.getTensorSpec());
-  if (impliedBufferType != getBufferResult().getType())
-    return emitOpError() << "expected the result buffer to match the type "
-                            "implied by the tensor type ("
-                         << getBufferResult().getType() << " vs "
-                         << impliedBufferType << ").";
-  return success();
+  return MGP::genericTensorExtractVerify<CpuBufferType, CpuTensorType>(
+      *this, getTensor().getType(), getBufferResult().getType(),
+      getTensorSpecResult().getType());
 }
 
 LogicalResult CpuTensorExtractOp::inferReturnTypes(
@@ -985,8 +922,7 @@ LogicalResult CpuTensorExtractOp::inferReturnTypes(
   assert(operands.size() == 1 && "mismatched operand arity");
   auto tensorType = dyn_cast<CpuTensorType>(operands[0].getType());
   assert(tensorType && "mismatched operand type");
-  inferredReturnTypes.emplace_back(
-      CpuBufferType::get(tensorType.getTensorSpec()));
+  inferredReturnTypes.emplace_back(CpuBufferType::get(tensorType));
   inferredReturnTypes.emplace_back(tensorType.getTensorSpec());
   return success();
 }

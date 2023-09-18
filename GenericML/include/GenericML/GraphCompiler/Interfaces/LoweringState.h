@@ -16,6 +16,7 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
+#include "GenericML/MGPDialect/BufferBuilder.h"
 #include "GraphRT/MIPDialect/MIPOps.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/DialectInterface.h"
@@ -23,69 +24,6 @@
 #include <unordered_map>
 
 namespace M::MGP {
-
-//===----------------------------------------------------------------------===//
-// BufferizedTensor
-//===----------------------------------------------------------------------===//
-
-/// A representation of a lowered tensor as a pair of a buffer and its
-/// tensor spec.
-struct BufferizedTensor {
-  /// The buffer holding the lowered tensor's contents. Will be written into
-  /// by the producing op, then read by all consuming ops. The actual type
-  /// representing the buffer (mgp.cpu.buffer, cuda.buffer, etc) depends
-  /// on the device it is to be stored on.
-  Value buffer;
-
-  /// The mgp.cpu.tensor_spec describing the shape and dtype of tensor
-  /// at runtime.
-  ///
-  /// TODO(|#17379): Avoid committing to a tensor spec, and instead just
-  /// capture the index-typed values holding dynamic dimensions, or the
-  /// 'shape' (ie a spec with unknown dtype) if the tensor has dynamic rank.
-  /// I think this change is best done when finishing supprot for dynamic
-  /// ranked MO tensors.
-  TypedValue<MGP::CpuTensorSpecType> spec;
-
-  BufferizedTensor() = default;
-
-  BufferizedTensor(Value buffer, TypedValue<MGP::CpuTensorSpecType> spec)
-      : buffer(buffer), spec(spec) {}
-};
-
-//===----------------------------------------------------------------------===//
-// Bufferizer
-//===----------------------------------------------------------------------===//
-
-/// Provides methods to work with device-dependent buffers and lowered tensors.
-///
-/// TODO: Currently concrete class, will become abstract base class when
-/// generalize to device-dependent lowering.
-class Bufferizer {
-public:
-  /// Given a lowered tensor, return it in (buffer, spec) form.
-  BufferizedTensor extract(OpBuilder &builder, Location loc,
-                           Value loweredTensor);
-
-  /// Given a lowered tensor, return its 'shape' as a mgp.tensor_spec
-  /// with unknown dtype.
-  Value getShape(OpBuilder &builder, Location loc, Value loweredTensor);
-
-  /// Given a (buffer, spec), return it as a lowered tensor.
-  Value createTensor(OpBuilder &builder, Location loc, Value inChain,
-                     BufferizedTensor &bufferized);
-
-  /// Given a statically known size, return a freshly allocated buffer of that
-  /// size.
-  Value createBufferStatic(OpBuilder &builder, Location loc, Value inChain,
-                           uint64_t size, uint64_t alignment);
-
-  /// Given a spec, return a (buffer, spec) where the buffer is freshly
-  /// allocated to match the spec.
-  BufferizedTensor createBuffer(OpBuilder &builder, Location loc, Value inChain,
-                                TypedValue<MGP::CpuTensorSpecType> spec,
-                                uint64_t alignment);
-};
 
 //===----------------------------------------------------------------------===//
 // MOGraphLoweringState
@@ -97,7 +35,7 @@ public:
 /// LowerableToMGPInterface). The state is gradually built as ops are lowered.
 class MOGraphLoweringState {
 public:
-  Bufferizer bufferizer;
+  CpuBufferBuilder bufferBuilder;
 
   MOGraphLoweringState(M::MO::GraphOp graph, TypeConverter &typeConverter,
                        llvm::StringRef compiledFrameworkLabel,
@@ -301,34 +239,14 @@ public:
     return init.compiledKernelsContext;
   }
 
-  /// Helper to extract the dynamic dimensions for a lowered tensor.
-  MGP::CpuTensorSpecDimsDynamicOp getDynamicDims(Value loweredTensor,
-                                                 Location loc);
+  /// Returns the shape of a lowered tensor.
+  TypedValue<MGP::CpuTensorSpecType> getShape(Location loc,
+                                              Value loweredTensor);
 
-  /// Helper to extract the 'shape' of an lowered tensor.
-  Value getShape(Value loweredTensor, Location loc);
-
-  /// Returns an !mpg.cpu.tensor_spec matching the given !mo.tensor type. If
-  /// the MO tensor type has dynamic dimensions or dynamic rank the tensor spec
-  /// will capture those dimensions. Otherwise the tensor spec will be created
-  /// without any additional runtime arguments, and may end up being DCE if
-  /// not needed.
-  ErrorOr<TypedValue<MGP::CpuTensorSpecType>>
-  createTensorSpec(OpBuilder &builder, Location loc,
-                   MO::TensorType moTensorType);
-
-  /// Helper to create a lowered tensor from the given buffer, chain, and
-  /// MO tensor type.
-  template <typename TensorTy>
-  Value createLoweredTensor(Value chain, Value buffer, TensorTy resTy,
-                            Location loc, ValueRange runtimeDims = {}) {
-    OpBuilder &exeBuilder = getExecuteOpBuilder();
-    MGP::CpuTensorSpecType outSpecTy = MGP::createCpuTensorSpecType(resTy);
-    auto specOp = exeBuilder.create<MGP::CpuTensorSpecCreateOp>(loc, outSpecTy,
-                                                                runtimeDims);
-    BufferizedTensor bufferized(buffer, specOp.getResult());
-    return bufferizer.createTensor(exeBuilder, loc, chain, bufferized);
-  }
+  /// Returns the (op which produces the) dynamic dimensions for the given
+  /// lowered tensor.
+  MGP::CpuTensorSpecDimsDynamicOp getDynamicDims(Location loc,
+                                                 Value loweredTensor);
 
   /// The given MO inArg (a !mo.tensor) has been lowered to the given MGP
   /// outArg (an !mgp.tensor). If inArg is subject to any dynamic shapes
@@ -430,11 +348,56 @@ inline SmallVector<MO::TensorType> castToMoTensorTypes(TypeRange types) {
 
 /// Helper class for managing the value-semantic to buffer-semantic transition
 /// when lowering a single MO op.
-class MOOpLoweringState {
-public:
+struct MOOpLoweringState {
+  MOGraphLoweringState &loweringState;
+  OpBuilder &builder;
+  mlir::Operation *opBeingLowered;
+  mlir::Location loc;
+
   MOOpLoweringState(MGP::MOGraphLoweringState &loweringState,
                     mlir::Operation *op)
-      : loweringState(loweringState), opBeingLowered(op), loc(op->getLoc()) {}
+      : loweringState(loweringState),
+        builder(loweringState.getExecuteOpBuilder()), opBeingLowered(op),
+        loc(op->getLoc()) {}
+
+  //
+  // The following methods redirect to the loweringState.bufferBuilder, but
+  // use the builder and location from this builder state.
+  //
+
+  Value bufferConstant(ElementsAttr value) {
+    return loweringState.bufferBuilder.bufferConstant(builder, loc, value);
+  }
+  std::pair<Value, TypedValue<CpuTensorSpecType>>
+  tensorExtract(Value loweredTensor) {
+    return loweringState.bufferBuilder.tensorExtract(builder, loc,
+                                                     loweredTensor);
+  }
+  TypedValue<CpuTensorSpecType> tensorExtractShape(Value loweredTensor) {
+    return loweringState.bufferBuilder.tensorExtractShape(builder, loc,
+                                                          loweredTensor);
+  }
+  Value tensorCreate(Value inChain, Value buffer,
+                     TypedValue<CpuTensorSpecType> tensorSpec) {
+    return loweringState.bufferBuilder.tensorCreate(builder, loc, inChain,
+                                                    buffer, tensorSpec);
+  }
+  Value bufferAllocStatic(Value inChain, uint64_t size) {
+    return loweringState.bufferBuilder.bufferAllocStatic(
+        builder, loc, inChain, size, loweringState.getMinimumCpuAlignment());
+  }
+  Value bufferAllocSpec(Value inChain,
+                        TypedValue<MGP::CpuTensorSpecType> tensorSpec) {
+    return loweringState.bufferBuilder.bufferAllocSpec(
+        builder, loc, inChain, tensorSpec,
+        loweringState.getMinimumCpuAlignment());
+  }
+
+  /// Creates an operation of specific op type at the current insertion point.
+  template <typename OpTy, typename... Args>
+  OpTy create(Args &&...args) {
+    return builder.create<OpTy, Args...>(loc, std::forward<Args>(args)...);
+  }
 
   /// Returns the bufferized form for the MO tensor value.
   BufferizedTensor getBufferizedInput(Value moTensor);
@@ -442,30 +405,38 @@ public:
   /// Returns the bufferized form for all of the op operands.
   SmallVector<BufferizedTensor> getBufferizedInputs();
 
-  /// Create specs to represent all the op's outputs. No corresponding buffers
-  /// are allocated.
-  ErrorOr<SmallVector<TypedValue<MGP::CpuTensorSpecType>>> createOutputSpecs();
+  /// Returns the tensor spec to represent the given MO tensor type, accounting
+  /// for any dynamic ranks or dimensions.
+  FailureOr<TypedValue<MGP::CpuTensorSpecType>>
+  createTensorSpec(MO::TensorType moTensorType);
 
-  /// Allocate buffers to hold the op's outputs, representing them in bufferized
-  /// form.
-  ErrorOr<SmallVector<BufferizedTensor>> createOutputBuffers(Value inChain);
+  /// Returns the tensor specs to represent all the op's outputs.
+  FailureOr<SmallVector<TypedValue<MGP::CpuTensorSpecType>>>
+  createOutputTensorSpecs();
+
+  /// Returns the bufferized form for a buffer sizes to match the given
+  /// tensor spec.
+  BufferizedTensor createBuffer(Value inChain,
+                                TypedValue<CpuTensorSpecType> tensorSpec);
+
+  /// Returns the bufferized form for the op's outputs.
+  FailureOr<SmallVector<BufferizedTensor>> createOutputBuffers(Value inChain);
+
+  /// Creates a tensor from the given buffer and tensor spec, and associates it
+  /// with the given original MO tensor.
+  void createOutputTensor(Value moTensor, Value inChain, Value buffer,
+                          TypedValue<MGP::CpuTensorSpecType> tensorSpec);
 
   /// Create tensors matching all the op outputs with given tensor specs and
-  /// buffers, and associate them with the original MO tensor results.
+  /// buffers, and associated them with the original MO tensor results.
   void createOutputTensors(
-      Value inChain,
-      SmallVector<TypedValue<MGP::CpuTensorSpecType>> &outputSpecs,
-      SmallVector<Value> &outputBuffers);
+      Value inChain, SmallVector<Value> &buffers,
+      SmallVector<TypedValue<MGP::CpuTensorSpecType>> &tensorSpecs);
 
   /// Create tensors matching all the op outputs in bufferized form, and
-  /// associate them with the original MO tensor results.
+  /// associates them with the original MO tensor results.
   void createOutputTensors(Value inChain,
                            SmallVector<BufferizedTensor> &bufferizedOutputs);
-
-private:
-  MOGraphLoweringState &loweringState;
-  mlir::Operation *opBeingLowered;
-  mlir::Location loc;
 };
 
 } // namespace M::MGP

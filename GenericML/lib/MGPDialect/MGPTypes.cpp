@@ -171,14 +171,26 @@ CpuBufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
   return CpuBufferType::get(context, rawSizeOrNull);
 }
 
-CpuBufferType CpuBufferType::get(M::MGP::CpuTensorSpecType specType) {
-  return CpuBufferType::get(specType.getContext(), specType.getSizeInBytes());
+CpuBufferType CpuBufferType::get(CpuTensorSpecType tensorSpecType) {
+  return CpuBufferType::get(tensorSpecType.getContext(),
+                            tensorSpecType.getSizeInBytes());
 }
 
 CpuBufferType
 CpuBufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
-                          M::MGP::CpuTensorSpecType specType) {
-  return get(specType);
+                          CpuTensorSpecType tensorSpecType) {
+  return get(tensorSpecType);
+}
+
+CpuBufferType CpuBufferType::get(CpuTensorType tensorType) {
+  return CpuBufferType::get(tensorType.getContext(),
+                            tensorType.getTensorSpec().getSizeInBytes());
+}
+
+CpuBufferType
+CpuBufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
+                          CpuTensorType tensorType) {
+  return get(tensorType);
 }
 
 IntegerAttr CpuBufferType::getRawSize() const {

@@ -10,101 +10,25 @@ using namespace M;
 using namespace M::MGP;
 
 //===----------------------------------------------------------------------===//
-// Bufferizer
-//===----------------------------------------------------------------------===//
-
-BufferizedTensor Bufferizer::extract(OpBuilder &builder, Location loc,
-                                     Value loweredTensor) {
-  auto extractOp = builder.create<MGP::CpuTensorExtractOp>(loc, loweredTensor);
-  return BufferizedTensor(extractOp.getBufferResult(),
-                          extractOp.getTensorSpecResult());
-}
-
-Value Bufferizer::getShape(OpBuilder &builder, Location loc,
-                           Value loweredTensor) {
-  return builder.create<MGP::CpuTensorExtractShapeOp>(loc, loweredTensor);
-}
-
-Value Bufferizer::createTensor(OpBuilder &builder, Location loc, Value inChain,
-                               BufferizedTensor &bufferized) {
-  auto tensorSpecType = cast<MGP::CpuTensorSpecType>(bufferized.spec.getType());
-  auto tensorType =
-      MGP::CpuTensorType::get(builder.getContext(), tensorSpecType);
-  return builder.create<MGP::CpuTensorCreateOp>(loc,
-                                                /*result=*/tensorType,
-                                                /*inChain=*/inChain,
-                                                /*buffer=*/bufferized.buffer,
-                                                /*tensorSpec=*/bufferized.spec);
-}
-
-Value Bufferizer::createBufferStatic(OpBuilder &builder, Location loc,
-                                     Value inChain, uint64_t size,
-                                     uint64_t alignment) {
-  return builder.create<MGP::CpuBufferAllocStaticOp>(loc,
-                                                     /*inChain=*/inChain,
-                                                     /*aSize=*/size,
-                                                     /*bRawAlign=*/alignment);
-}
-
-BufferizedTensor
-Bufferizer::createBuffer(OpBuilder &builder, Location loc, Value inChain,
-                         TypedValue<MGP::CpuTensorSpecType> spec,
-                         uint64_t alignment) {
-  std::optional<uint64_t> optSize = spec.getType().getSizeInBytes();
-  if (optSize) {
-    // We don't actually need the spec to allocate. It may end up being
-    // eliminated by DCE.
-    return BufferizedTensor(
-        createBufferStatic(builder, loc, inChain, *optSize, alignment), spec);
-  } else {
-    auto allocOp =
-        builder.create<MGP::CpuBufferAllocSpecOp>(loc,
-                                                  /*inChain=*/inChain,
-                                                  /*runtimeSpec=*/spec,
-                                                  /*rawAlign=*/alignment);
-    return BufferizedTensor(allocOp.getOutBuffer(), spec);
-  }
-}
-
-//===----------------------------------------------------------------------===//
 // MOGraphLoweringState
 //===----------------------------------------------------------------------===//
 
+TypedValue<MGP::CpuTensorSpecType>
+MOGraphLoweringState::getShape(Location loc, Value loweredTensor) {
+  OpBuilder &builder = getExecuteOpBuilder();
+  return bufferBuilder.tensorExtractShape(builder, loc, loweredTensor);
+}
+
 MGP::CpuTensorSpecDimsDynamicOp
-MOGraphLoweringState::getDynamicDims(Value loweredTensor, Location loc) {
-  BufferizedTensor bufferized =
-      bufferizer.extract(getExecuteOpBuilder(), loc, loweredTensor);
-  // NOTE: We ignore the extracted buffer.
-  return getExecuteOpBuilder().create<MGP::CpuTensorSpecDimsDynamicOp>(
-      loc, bufferized.spec, bufferized.spec.getType().getRawDims());
-}
-
-Value MOGraphLoweringState::getShape(Value loweredTensor, Location loc) {
-  return bufferizer.getShape(getExecuteOpBuilder(), loc, loweredTensor);
-}
-
-ErrorOr<TypedValue<MGP::CpuTensorSpecType>>
-MOGraphLoweringState::createTensorSpec(OpBuilder &builder, Location loc,
-                                       MO::TensorType moTensorType) {
-  if (!moTensorType.hasRank())
-    return Error("dynamically ranked MO tensors not supported");
-  MGP::CpuTensorSpecType mgpSpecType =
-      MGP::createCpuTensorSpecType(moTensorType);
-  if (mgpSpecType.getSizeInBytes()) {
-    // Statically shaped.
-    return builder.create<MGP::CpuTensorSpecCreateOp>(loc,
-                                                      /*spec=*/mgpSpecType);
-  }
-
-  // Dynamically shaped.
-  auto runtimeDimsOr =
-      lowerShapeAttrDynDims(moTensorType.getTypedShapeAttr(), loc);
-  if (runtimeDimsOr.isError())
-    return runtimeDimsOr.takeError();
-  return builder.create<MGP::CpuTensorSpecCreateOp>(
-      loc,
-      /*spec=*/mgpSpecType,
-      /*runtimeDims=*/*runtimeDimsOr);
+MOGraphLoweringState::getDynamicDims(Location loc, Value loweredTensor) {
+  OpBuilder &builder = getExecuteOpBuilder();
+  // NOTE: We could use getShape here, however usually we'll also require the
+  // loweredTensor's buffer also, in which case we'll be emitting a full
+  // tensor.extract op anyway.
+  TypedValue<MGP::CpuTensorSpecType> tensorSpec =
+      bufferBuilder.tensorExtract(builder, loc, loweredTensor).second;
+  return builder.create<MGP::CpuTensorSpecDimsDynamicOp>(
+      loc, /*spec=*/tensorSpec, /*rawDims=*/tensorSpec.getType().getRawDims());
 }
 
 ErrorOr<bool> MOGraphLoweringState::lowerArg(BlockArgument &inArg,
@@ -115,9 +39,11 @@ ErrorOr<bool> MOGraphLoweringState::lowerArg(BlockArgument &inArg,
     MO::TensorType argType = inTensorArg.getType();
     if (argType.hasStaticShape()) {
       // No parameters to deal with.
+      /* no-op */
     } else if (argType.hasUnknownShape()) {
       // Also no parameters to deal with, however this argument won't be
       // usable by any MO ops.
+      /* no-op */
     } else if (auto inShapeParam =
                    dyn_cast<KGEN::ParamDeclRefAttr>(argType.getShapeAttr())) {
       // Argument has dynamic rank. The parameter needs to be represented by
@@ -126,7 +52,7 @@ ErrorOr<bool> MOGraphLoweringState::lowerArg(BlockArgument &inArg,
       // occurrence of the parameter.
       hasParams = true;
       if (!params.lookupLowered(inShapeParam))
-        params.emplaceLowered(inShapeParam, getShape(outArg, loc));
+        params.emplaceLowered(inShapeParam, getShape(loc, outArg));
     } else {
       // Argument has at least one dynamic dimension. The parameters need to
       // be represented by the corresponding runtime dimensions. Since
@@ -135,7 +61,7 @@ ErrorOr<bool> MOGraphLoweringState::lowerArg(BlockArgument &inArg,
       // extract as a group, we always do the extraction, and rely on DCE to
       // cleanup if all the parameters turn out to have already been mapped.
       hasParams = true;
-      MGP::CpuTensorSpecDimsDynamicOp dynDimsOp = getDynamicDims(outArg, loc);
+      MGP::CpuTensorSpecDimsDynamicOp dynDimsOp = getDynamicDims(loc, outArg);
       // CpuTensorSpecDimsDynamicOp returns indexes only for dimensions
       // which are unknown at compile time. So build the corresponding
       // vector of parameters. Note we do not support arbitrary expressions in
@@ -338,12 +264,10 @@ MOGraphLoweringState::lowerExpressionImpl(ParameterLoweringState &state,
 //===----------------------------------------------------------------------===//
 
 BufferizedTensor MOOpLoweringState::getBufferizedInput(Value moTensor) {
-  // Find the lowered form for the MO tensor value.
-  mlir::Value loweredTensor = loweringState.lookupExecuteLoweredValue(moTensor);
-  assert(loweredTensor != nullptr &&
-         "referenced SSA value has not been lowered");
-  return loweringState.bufferizer.extract(loweringState.getExecuteOpBuilder(),
-                                          loc, loweredTensor);
+  Value loweredTensor = loweringState.lookupExecuteLoweredValue(moTensor);
+  assert(loweredTensor && "referenced SSA value has not been lowered");
+  auto [buffer, tensorSpec] = tensorExtract(loweredTensor);
+  return BufferizedTensor(buffer, tensorSpec);
 }
 
 SmallVector<BufferizedTensor> MOOpLoweringState::getBufferizedInputs() {
@@ -352,59 +276,98 @@ SmallVector<BufferizedTensor> MOOpLoweringState::getBufferizedInputs() {
       [&](Value moTensor) { return getBufferizedInput(moTensor); });
 }
 
-ErrorOr<SmallVector<TypedValue<MGP::CpuTensorSpecType>>>
-MOOpLoweringState::createOutputSpecs() {
-  SmallVector<MO::TensorType> resultMoTypes =
-      castToMoTensorTypes(opBeingLowered->getResultTypes());
-  SmallVector<TypedValue<MGP::CpuTensorSpecType>> specs;
-  specs.reserve(resultMoTypes.size());
-  for (MO::TensorType ty : resultMoTypes) {
-    ErrorOr<TypedValue<MGP::CpuTensorSpecType>> specOr =
-        loweringState.createTensorSpec(loweringState.getExecuteOpBuilder(), loc,
-                                       ty);
-    if (specOr)
-      return specOr.takeError();
-    specs.emplace_back(*specOr);
+FailureOr<TypedValue<MGP::CpuTensorSpecType>>
+MOOpLoweringState::createTensorSpec(MO::TensorType moTensorType) {
+  if (!moTensorType.hasRank()) {
+    opBeingLowered->emitOpError(
+        "dynamically ranked MO tensors are not yet supported");
+    return failure();
   }
-  return specs;
+  MGP::CpuTensorSpecType tensorSpecType =
+      MGP::createCpuTensorSpecType(moTensorType);
+  if (tensorSpecType.getSizeInBytes()) {
+    // Statically shaped.
+    return builder
+        .create<MGP::CpuTensorSpecCreateOp>(loc,
+                                            /*spec=*/tensorSpecType)
+        .getResult();
+  }
+
+  // Dynamically shaped.
+  auto runtimeDimsOr = loweringState.lowerShapeAttrDynDims(
+      moTensorType.getTypedShapeAttr(), loc);
+  if (runtimeDimsOr) {
+    opBeingLowered->emitOpError(runtimeDimsOr.getError());
+    return failure();
+  }
+  return builder
+      .create<MGP::CpuTensorSpecCreateOp>(loc,
+                                          /*spec=*/tensorSpecType,
+                                          /*runtimeDims=*/*runtimeDimsOr)
+      .getResult();
 }
 
-ErrorOr<SmallVector<BufferizedTensor>>
+FailureOr<SmallVector<TypedValue<MGP::CpuTensorSpecType>>>
+MOOpLoweringState::createOutputTensorSpecs() {
+  SmallVector<TypedValue<MGP::CpuTensorSpecType>> tensorSpecs;
+  tensorSpecs.reserve(opBeingLowered->getNumResults());
+  for (Type type : opBeingLowered->getResults().getType()) {
+    auto moTensorType = dyn_cast<MO::TensorType>(type);
+    assert(moTensorType && "expected op to return only MO tensor types");
+    FailureOr<TypedValue<MGP::CpuTensorSpecType>> tensorSpecOr =
+        createTensorSpec(moTensorType);
+    if (failed(tensorSpecOr))
+      return failure();
+    tensorSpecs.emplace_back(*tensorSpecOr);
+  }
+  return tensorSpecs;
+}
+
+BufferizedTensor
+MOOpLoweringState::createBuffer(Value inChain,
+                                TypedValue<CpuTensorSpecType> tensorSpec) {
+  std::optional<uint64_t> optSize = tensorSpec.getType().getSizeInBytes();
+  if (optSize) {
+    // Statically sized. We don't actually need the tensor spec value to
+    // allocate, and it may end up being eliminated by DCE.
+    return BufferizedTensor(bufferAllocStatic(inChain, *optSize), tensorSpec);
+  } else {
+    // Dynamically sized.
+    return BufferizedTensor(bufferAllocSpec(inChain, tensorSpec), tensorSpec);
+  }
+}
+
+FailureOr<SmallVector<BufferizedTensor>>
 MOOpLoweringState::createOutputBuffers(Value inChain) {
-  ErrorOr<SmallVector<TypedValue<MGP::CpuTensorSpecType>>> specsOr =
-      createOutputSpecs();
-  if (specsOr)
-    return specsOr.takeError();
+  FailureOr<SmallVector<TypedValue<MGP::CpuTensorSpecType>>> tensorSpecsOr =
+      createOutputTensorSpecs();
+  if (failed(tensorSpecsOr))
+    return failure();
   return llvm::map_to_vector(
-      *specsOr, [&](TypedValue<MGP::CpuTensorSpecType> spec) {
-        return loweringState.bufferizer.createBuffer(
-            loweringState.getExecuteOpBuilder(), loc, inChain, spec,
-            loweringState.getMinimumCpuAlignment());
+      *tensorSpecsOr, [&](TypedValue<MGP::CpuTensorSpecType> tensorSpec) {
+        return createBuffer(inChain, tensorSpec);
       });
 }
 
+void MOOpLoweringState::createOutputTensor(
+    Value moTensor, Value inChain, Value buffer,
+    TypedValue<MGP::CpuTensorSpecType> tensorSpec) {
+  Value loweredTensor = tensorCreate(inChain, buffer, tensorSpec);
+  loweringState.emplaceExecuteLoweredValue(moTensor, loweredTensor);
+}
+
 void MOOpLoweringState::createOutputTensors(
-    Value inChain, SmallVector<TypedValue<MGP::CpuTensorSpecType>> &outputSpecs,
-    SmallVector<Value> &outputBuffers) {
-  for (const auto &[idx, spec, buffer] :
-       llvm::enumerate(outputSpecs, outputBuffers)) {
-    BufferizedTensor bufferizedOutput(buffer, spec);
-    Value loweredTensor = loweringState.bufferizer.createTensor(
-        loweringState.getExecuteOpBuilder(), loc, inChain, bufferizedOutput);
-    // Update the MO tensor to now refer to this lowered tensor.
-    loweringState.emplaceExecuteLoweredValue(opBeingLowered->getResult(idx),
-                                             loweredTensor);
-  }
+    Value inChain, SmallVector<Value> &buffers,
+    SmallVector<TypedValue<MGP::CpuTensorSpecType>> &tensorSpecs) {
+  for (const auto &[idx, buffer, tensorSpec] :
+       llvm::enumerate(buffers, tensorSpecs))
+    createOutputTensor(opBeingLowered->getResult(idx), inChain, buffer,
+                       tensorSpec);
 }
 
 void MOOpLoweringState::createOutputTensors(
     Value inChain, SmallVector<BufferizedTensor> &bufferizedOutputs) {
-  for (const auto &[idx, bufferizedOutput] :
-       llvm::enumerate(bufferizedOutputs)) {
-    Value loweredTensor = loweringState.bufferizer.createTensor(
-        loweringState.getExecuteOpBuilder(), loc, inChain, bufferizedOutput);
-    // Update the MO tensor to now refer to this lowered tensor.
-    loweringState.emplaceExecuteLoweredValue(opBeingLowered->getResult(idx),
-                                             loweredTensor);
-  }
+  for (const auto &[idx, bufferizedOutput] : llvm::enumerate(bufferizedOutputs))
+    createOutputTensor(opBeingLowered->getResult(idx), inChain,
+                       bufferizedOutput.buffer, bufferizedOutput.tensorSpec);
 }
