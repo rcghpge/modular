@@ -20,7 +20,7 @@ ErrorOrSuccess CompiledKernelsContext::load(ArrayRef<uint8_t> binary,
   // ensure that the dylib is created exactly once.
   auto hash = llvm::BLAKE3::hash(binary);
   std::string dylibName = llvm::toHex(hash);
-  auto buf = Cache::Buffer::get(
+  auto buf = Buffer::get(
       StringRef(reinterpret_cast<const char *>(binary.data()), binary.size()));
   if (auto err = engine->addIfAbsent<KGEN::StaticArchiveLayer>(dylibName,
                                                                std::move(buf)))

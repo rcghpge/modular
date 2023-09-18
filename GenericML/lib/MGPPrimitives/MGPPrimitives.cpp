@@ -52,9 +52,9 @@ static std::optional<size_t> getRuntimeAlign(uint64_t rawAlign) {
 // mgp.cpu.buffer.constant
 //===----------------------------------------------------------------------===//
 
-/// Fulfills the result with the borrowed BufferRef whose data is backed by
+/// Fulfills the result with the borrowed GML::BufferRef whose data is backed by
 /// the given constant.
-static void mgp_cpu_buffer_constant(Result<BufferRef> outBuffer,
+static void mgp_cpu_buffer_constant(Result<GML::BufferRef> outBuffer,
                                     MEFAttr<ArrayRef<uint8_t>> aValue,
                                     MEFAttr<uint64_t> bRawAlign,
                                     Runtime &runtime) {
@@ -68,7 +68,7 @@ static void mgp_cpu_buffer_constant(Result<BufferRef> outBuffer,
   if (hasRawSize(*bRawAlign))
     optAlign = rawSizeToRuntimeSize(*bRawAlign);
   std::move(outBuffer).emplace(GML::BufferRef::createBorrowed(
-      aValue->data(), aValue->size(), optAlign, BufferRef::kConstant));
+      aValue->data(), aValue->size(), optAlign, GML::BufferRef::kConstant));
 }
 
 //===----------------------------------------------------------------------===//
@@ -76,7 +76,7 @@ static void mgp_cpu_buffer_constant(Result<BufferRef> outBuffer,
 //===----------------------------------------------------------------------===//
 
 static void mgp_cpu_buffer_cache(Chain inChain, Context &ctx,
-                                 AsyncValueRef<BufferRef> buffer,
+                                 AsyncValueRef<GML::BufferRef> buffer,
                                  Result<Chain> outChain, MEFAttr<uint64_t> slot,
                                  Runtime &runtime, EncodedLocation loc) {
   TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.buffer.cache"));
@@ -89,11 +89,11 @@ static void mgp_cpu_buffer_cache(Chain inChain, Context &ctx,
     // move it into the cache slot.
     errOr = defaultStateSlot.setBuffer(
         /*bufferIndex=*/0, std::move(buffer.get()));
-  } else if (buffer.get().getMutability() == BufferRef::kImmutable) {
+  } else if (buffer.get().getMutability() == GML::BufferRef::kImmutable) {
     // Since the buffer is immutable we can just borrow it. It must have at
     // least 'execute' lifetime.
     errOr = defaultStateSlot.setBuffer(
-        /*bufferIndex=*/0, buffer.get().borrow(BufferRef::kExecute));
+        /*bufferIndex=*/0, buffer.get().borrow(GML::BufferRef::kExecute));
   } else {
     // Since the buffer is mutable we must protect against mutations from
     // other references by taking a deep copy.
@@ -111,13 +111,13 @@ static void mgp_cpu_buffer_cache(Chain inChain, Context &ctx,
 //===----------------------------------------------------------------------===//
 
 static void mgp_cpu_buffer_get_cached(Chain inChain, Context &ctx,
-                                      Result<BufferRef> outBuffer,
+                                      Result<GML::BufferRef> outBuffer,
                                       MEFAttr<uint64_t> aSlot,
                                       MEFAttr<uint64_t> bRawSize,
                                       Runtime &runtime, EncodedLocation loc) {
   TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.buffer.get_cached"));
   auto &stateSlot = ctx.getStateSlot(*aSlot);
-  ErrorOr<BufferRef> errOr = stateSlot.getBuffer(/*bufferIndex=*/0);
+  ErrorOr<GML::BufferRef> errOr = stateSlot.getBuffer(/*bufferIndex=*/0);
   if (errOr.isError())
     return std::move(outBuffer).setToError({errOr.takeError(), std::move(loc)});
   std::optional<size_t> expectedSize = getRuntimeSize(*bRawSize);
@@ -134,10 +134,11 @@ static void mgp_cpu_buffer_get_cached(Chain inChain, Context &ctx,
 // mgp.cpu.buffer.alloc.*
 //===----------------------------------------------------------------------===//
 
-/// Returns in result a freshly allocated BufferRef. The size can be provided
-/// statically, via an runtime size argument, or via a runtime TensorSpec.
-/// Any alignment attribute is respected.
-static void mgp_cpu_buffer_alloc_static(Chain inChain, Result<BufferRef> result,
+/// Returns in result a freshly allocated GML::BufferRef. The size can be
+/// provided/// statically, via an runtime size argument, or via a runtime
+/// TensorSpec./// Any alignment attribute is respected.
+static void mgp_cpu_buffer_alloc_static(Chain inChain,
+                                        Result<GML::BufferRef> result,
                                         MEFAttr<uint64_t> aSize,
                                         MEFAttr<uint64_t> bRawAlign,
                                         Runtime &runtime) {
@@ -151,12 +152,12 @@ static void mgp_cpu_buffer_alloc_static(Chain inChain, Result<BufferRef> result,
   if (!isValidRawAlign(*bRawAlign))
     return std::move(result).setToError("invalid align attribute");
   size_t runtimeSize = plainSizeToRuntimeSize(*aSize);
-  std::move(result).emplace(BufferRef::createOwned(
+  std::move(result).emplace(GML::BufferRef::createOwned(
       runtime, runtimeSize, getRuntimeAlign(*bRawAlign)));
 }
 
 static void mgp_cpu_buffer_alloc_dynamic(Chain inChain, size_t runtimeSize,
-                                         Result<BufferRef> result,
+                                         Result<GML::BufferRef> result,
                                          MEFAttr<uint64_t> rawAlign,
                                          Runtime &runtime) {
   TimeTraceScope scope(MGPProfilerEntry::create(
@@ -167,18 +168,18 @@ static void mgp_cpu_buffer_alloc_dynamic(Chain inChain, size_t runtimeSize,
       }));
   if (!isValidRawAlign(*rawAlign))
     return std::move(result).setToError("invalid align attribute");
-  std::move(result).emplace(
-      BufferRef::createOwned(runtime, runtimeSize, getRuntimeAlign(*rawAlign)));
+  std::move(result).emplace(GML::BufferRef::createOwned(
+      runtime, runtimeSize, getRuntimeAlign(*rawAlign)));
 }
 
 static void mgp_cpu_buffer_alloc_spec(Chain inChain, const TensorSpec &spec,
-                                      Result<BufferRef> result,
+                                      Result<GML::BufferRef> result,
                                       MEFAttr<uint64_t> rawAlign,
                                       Runtime &runtime) {
   TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.buffer.alloc.spec"));
   if (!isValidRawAlign(*rawAlign))
     return std::move(result).setToError("invalid align attribute");
-  std::move(result).emplace(BufferRef::createOwned(
+  std::move(result).emplace(GML::BufferRef::createOwned(
       runtime, spec.getSizeInBytes(), getRuntimeAlign(*rawAlign)));
 }
 
@@ -186,19 +187,20 @@ static void mgp_cpu_buffer_alloc_spec(Chain inChain, const TensorSpec &spec,
 // mgp.cpu.buffer.realloc.*
 //===----------------------------------------------------------------------===//
 
-/// Returns a mutable borrow BufferRef of a cached buffer. The buffer is cached
-/// at the buffer index given by bBuffer in the state slot index given by aSlot
-/// in ctx. The size can be provided statically, via a runtime size argument, or
-/// via a runtime TensorSpec. If the cache is empty a fresh buffer is allocated
-/// and cached. If the cache has a buffer of different size then it is freed
-/// and a fresh buffer is allocated. Otherwise the existing cached buffer is
-/// reused. The result BufferRef will borrow from the cached buffer.
+/// Returns a mutable borrow GML::BufferRef of a cached buffer. The buffer is
+/// cached/// at the buffer index given by bBuffer in the state slot index given
+/// by aSlot/// in ctx. The size can be provided statically, via a runtime size
+/// argument, or via a runtime TensorSpec. If the cache is empty a fresh buffer
+/// is allocated and cached. If the cache has a buffer of different size then it
+/// is freed and a fresh buffer is allocated. Otherwise the existing cached
+/// buffer is reused. The result GML::BufferRef will borrow from the cached
+/// buffer.
 ///
 /// Any alignment attribute is respected on allocation, however alignment
 /// is ignored when considering whether an existing cached buffer matches the
 /// requested size.
 static void mgp_cpu_buffer_realloc_static(
-    Chain inChain, Context &ctx, Result<BufferRef> result,
+    Chain inChain, Context &ctx, Result<GML::BufferRef> result,
     MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bBuffer, MEFAttr<uint64_t> cSize,
     MEFAttr<uint64_t> dRawAlign, Runtime &runtime) {
   TimeTraceScope scope(
@@ -214,9 +216,9 @@ static void mgp_cpu_buffer_realloc_static(
 }
 
 static void mgp_cpu_buffer_realloc_dynamic(
-    Chain inChain, Context &ctx, size_t runtimeSize, Result<BufferRef> result,
-    MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bBuffer,
-    MEFAttr<uint64_t> cRawAlign, Runtime &runtime) {
+    Chain inChain, Context &ctx, size_t runtimeSize,
+    Result<GML::BufferRef> result, MEFAttr<uint64_t> aSlot,
+    MEFAttr<uint64_t> bBuffer, MEFAttr<uint64_t> cRawAlign, Runtime &runtime) {
   TimeTraceScope scope(
       MGPProfilerEntry::create("mgp.cpu.buffer.realloc.dynamic"));
   if (!isValidRawAlign(*cRawAlign))
@@ -228,8 +230,8 @@ static void mgp_cpu_buffer_realloc_dynamic(
 
 static void
 mgp_cpu_buffer_realloc_spec(Chain inChain, Context &ctx, const TensorSpec &spec,
-                            Result<BufferRef> result, MEFAttr<uint64_t> aSlot,
-                            MEFAttr<uint64_t> bBuffer,
+                            Result<GML::BufferRef> result,
+                            MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bBuffer,
                             MEFAttr<uint64_t> cRawAlign, Runtime &runtime) {
   TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.buffer.realloc.spec"));
   if (!isValidRawAlign(*cRawAlign))
@@ -245,14 +247,15 @@ mgp_cpu_buffer_realloc_spec(Chain inChain, Context &ctx, const TensorSpec &spec,
 
 /// Helper to fill the buffer with the given index values.
 template <typename T>
-static void fillBuffer(BufferRef &buffer, RemainingArguments idxValues) {
+static void fillBuffer(GML::BufferRef &buffer, RemainingArguments idxValues) {
   T *target = buffer.getMutableBuffer<T>();
   for (const auto &asyncIdx : idxValues)
     *(target++) = static_cast<T>(asyncIdx.get<size_t>());
 }
 
 static ErrorOr<Chain>
-mgp_cpu_buffer_set_with_index(BufferRef &buffer, RemainingArguments idxValues) {
+mgp_cpu_buffer_set_with_index(GML::BufferRef &buffer,
+                              RemainingArguments idxValues) {
   size_t bufSize = buffer.getSize();
   size_t numArgs = idxValues.size();
 
@@ -280,8 +283,10 @@ mgp_cpu_buffer_set_with_index(BufferRef &buffer, RemainingArguments idxValues) {
 // mgp.cpu.buffer.copy
 //===----------------------------------------------------------------------===//
 
-static void mgp_cpu_buffer_copy(Context &ctx, AsyncValueRef<BufferRef> inBuffer,
-                                Result<BufferRef> outBuffer, Runtime &runtime) {
+static void mgp_cpu_buffer_copy(Context &ctx,
+                                AsyncValueRef<GML::BufferRef> inBuffer,
+                                Result<GML::BufferRef> outBuffer,
+                                Runtime &runtime) {
   TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.buffer.copy"));
   std::move(outBuffer).emplace(inBuffer->deepCopy(runtime));
 }
@@ -291,7 +296,7 @@ static void mgp_cpu_buffer_copy(Context &ctx, AsyncValueRef<BufferRef> inBuffer,
 //===----------------------------------------------------------------------===//
 
 static void mgp_cpu_buffer_concat(Chain inChain,
-                                  AsyncValueRef<BufferRef> outBuffer,
+                                  AsyncValueRef<GML::BufferRef> outBuffer,
                                   RemainingArguments inBuffers,
                                   Result<Chain> outChain, Runtime &runtime) {
   TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.buffer.concat"));
@@ -299,7 +304,7 @@ static void mgp_cpu_buffer_concat(Chain inChain,
   const size_t outSize = outBuffer->getSize();
   size_t totalSize = 0; // total size of all input buffers processed so far
   for (const auto &inBuffer : inBuffers) {
-    const BufferRef &ref = inBuffer.get<BufferRef>();
+    const GML::BufferRef &ref = inBuffer.get<GML::BufferRef>();
     const size_t thisSize = ref.getSize();
     if (totalSize + thisSize <= outSize)
       // Just stop copying if it turns out the sizes don't line up.
@@ -319,8 +324,8 @@ static void mgp_cpu_buffer_concat(Chain inChain,
 //===----------------------------------------------------------------------===//
 
 static void mgp_cpu_buffer_section_borrow_static(
-    Chain inChain, AsyncValueRef<BufferRef> inBuffer,
-    Result<BufferRef> outBuffer, MEFAttr<uint64_t> aOffset,
+    Chain inChain, AsyncValueRef<GML::BufferRef> inBuffer,
+    Result<GML::BufferRef> outBuffer, MEFAttr<uint64_t> aOffset,
     MEFAttr<uint64_t> bSize, Runtime &runtime, EncodedLocation loc) {
   TimeTraceScope scope(
       MGPProfilerEntry::create("mgp.cpu.buffer.section.borrow.static"));
@@ -330,7 +335,7 @@ static void mgp_cpu_buffer_section_borrow_static(
   // createSafeBorrowedSlice will assert the offset and size are valid.
   // This is guaranteed by op verify and type system, so no need to guard
   // with error checking.
-  std::move(outBuffer).emplace(BufferRef::createSafeBorrowedSlice(
+  std::move(outBuffer).emplace(GML::BufferRef::createSafeBorrowedSlice(
       inBuffer.copy(), loc, outOffset, outSize));
 }
 
@@ -339,8 +344,8 @@ static void mgp_cpu_buffer_section_borrow_static(
 //===----------------------------------------------------------------------===//
 
 static void mgp_cpu_buffer_section_borrow_dynamic(
-    Chain inChain, AsyncValueRef<BufferRef> inBuffer, size_t scale,
-    Result<BufferRef> outBuffer, MEFAttr<uint64_t> aUnscaledOffset,
+    Chain inChain, AsyncValueRef<GML::BufferRef> inBuffer, size_t scale,
+    Result<GML::BufferRef> outBuffer, MEFAttr<uint64_t> aUnscaledOffset,
     MEFAttr<uint64_t> bUnscaledSize, Runtime &runtime, EncodedLocation loc) {
   TimeTraceScope scope(
       MGPProfilerEntry::create("mgp.cpu.buffer.section.borrow.dynamic"));
@@ -361,7 +366,7 @@ static void mgp_cpu_buffer_section_borrow_dynamic(
         Twine(inBuffer->getSize()) + " bytes");
   }
 
-  std::move(outBuffer).emplace(BufferRef::createSafeBorrowedSlice(
+  std::move(outBuffer).emplace(GML::BufferRef::createSafeBorrowedSlice(
       inBuffer.copy(), loc, outOffset, outSize));
 }
 
@@ -369,17 +374,16 @@ static void mgp_cpu_buffer_section_borrow_dynamic(
 // mgp.cpu.buffer.split.borrow
 //===----------------------------------------------------------------------===//
 
-static void
-mgp_cpu_buffer_split_borrow(Chain inChain, AsyncValueRef<BufferRef> inBuffer,
-                            RemainingArguments runtimeSizes,
-                            RemainingResults outBuffers,
-                            MEFAttr<ArrayRef<uint64_t>> outBufferRawSizes,
-                            Runtime &runtime, EncodedLocation loc) {
+static void mgp_cpu_buffer_split_borrow(
+    Chain inChain, AsyncValueRef<GML::BufferRef> inBuffer,
+    RemainingArguments runtimeSizes, RemainingResults outBuffers,
+    MEFAttr<ArrayRef<uint64_t>> outBufferRawSizes, Runtime &runtime,
+    EncodedLocation loc) {
   TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.buffer.split.borrow"));
   const size_t inSize = inBuffer->getSize();
   size_t totalSize = 0; // total size of all output buffers processed so far
   size_t runtimeSizeIndex = 0; // index of next runtimeSizes operand to use
-  SmallVector<BufferRef> newBuffers;
+  SmallVector<GML::BufferRef> newBuffers;
   // We'll have an entry in outBufferRawSizes for each output buffer, which
   // will be either the output buffer's compile time size or the distinguished
   // 'no value' value.
@@ -405,7 +409,7 @@ mgp_cpu_buffer_split_borrow(Chain inChain, AsyncValueRef<BufferRef> inBuffer,
     // Each borrow will take a reference to inBuffer, thus guaranteeing its
     // lifetime will exceed each borrow.
     if (totalSize + thisSize <= inSize)
-      newBuffers.emplace_back(BufferRef::createSafeBorrowedSlice(
+      newBuffers.emplace_back(GML::BufferRef::createSafeBorrowedSlice(
           inBuffer.copy(), loc, totalSize, thisSize));
     totalSize += thisSize;
   }
@@ -420,8 +424,8 @@ mgp_cpu_buffer_split_borrow(Chain inChain, AsyncValueRef<BufferRef> inBuffer,
   }
 
   for (auto [outBuffer, newBuffer] : llvm::zip(outBuffers.get(), newBuffers))
-    outBuffer =
-        AnyAsyncValueRef::createReady<BufferRef>(runtime, std::move(newBuffer));
+    outBuffer = AnyAsyncValueRef::createReady<GML::BufferRef>(
+        runtime, std::move(newBuffer));
 }
 
 //===----------------------------------------------------------------------===//
@@ -429,7 +433,8 @@ mgp_cpu_buffer_split_borrow(Chain inChain, AsyncValueRef<BufferRef> inBuffer,
 //===----------------------------------------------------------------------===//
 
 /// Set each byte of the given inBuffer with the given Value, returns chain.
-static Chain mgp_cpu_buffer_set(BufferRef &buffer, MEFAttr<uint8_t> value) {
+static Chain mgp_cpu_buffer_set(GML::BufferRef &buffer,
+                                MEFAttr<uint8_t> value) {
   TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.buffer.set"));
   memset(buffer.getMutableBuffer(), *value, buffer.getSize());
   return {};
@@ -635,7 +640,7 @@ static void mgp_cpu_tensor_spec_dtype(const TensorSpec &tensorSpec,
 /// Fulfills the outTensor by creating a tensor from the given tensor spec and
 /// the buffer.
 static void mgp_cpu_tensor_create(Chain inChain,
-                                  AsyncValueRef<BufferRef> bufferRef,
+                                  AsyncValueRef<GML::BufferRef> bufferRef,
                                   TensorSpec tensorSpec,
                                   Result<Tensor> outTensor, Runtime &runtime,
                                   EncodedLocation loc) {
@@ -672,7 +677,7 @@ static void mgp_cpu_tensor_create(Chain inChain,
 /// fulfills the outTensorSpec and outBuffer with the corresponding tensor spec
 /// and buffer from the input tensor.
 static void mgp_cpu_tensor_extract(AsyncValueRef<Tensor> tensor,
-                                   Result<BufferRef> outBuffer,
+                                   Result<GML::BufferRef> outBuffer,
                                    Result<TensorSpec> outTensorSpec,
                                    Runtime &runtime) {
   TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.tensor.extract"));
@@ -725,7 +730,8 @@ static void mgp_debug_cpu_tensor_print(Chain inChain, const Tensor &tensor,
 // mgp.debug.cpu.buffer.print
 //===----------------------------------------------------------------------===//
 
-static void mgp_debug_cpu_buffer_print(Chain inChain, const BufferRef &buffer,
+static void mgp_debug_cpu_buffer_print(Chain inChain,
+                                       const GML::BufferRef &buffer,
                                        Result<Chain> outChain,
                                        MEFAttr<StringRef> label,
                                        Runtime &runtime) {
@@ -817,8 +823,9 @@ static void mgp_cas_create_instance(Chain inChain, Context &ctx,
 //===----------------------------------------------------------------------===//
 
 static void mgp_cas_lookup(Chain inChain, Context &ctx,
-                           Result<BufferRef> result, MEFAttr<uint64_t> aSlot,
-                           MEFAttr<StringRef> bKey, MEFAttr<uint64_t> cRawSize,
+                           Result<GML::BufferRef> result,
+                           MEFAttr<uint64_t> aSlot, MEFAttr<StringRef> bKey,
+                           MEFAttr<uint64_t> cRawSize,
                            MEFAttr<uint64_t> dRawAlign, EncodedLocation loc) {
   TimeTraceScope scope(MGPProfilerEntry::create("mgp.cas.lookup"));
   auto &stateSlot = ctx.getStateSlotPayload<CASStateSlot>(*aSlot);
@@ -827,12 +834,12 @@ static void mgp_cas_lookup(Chain inChain, Context &ctx,
         {"CAS instance has not been established", std::move(loc)});
   std::optional<size_t> expectedSize = getRuntimeSize(*cRawSize);
   std::optional<size_t> alignment = getRuntimeAlign(*dRawAlign);
-  AsyncValueRef<BufferRef> lookupResult =
+  AsyncValueRef<GML::BufferRef> lookupResult =
       stateSlot.lookup(*bKey, expectedSize, alignment, loc.copy());
   std::move(lookupResult)
       .andThenSync([expectedSize, slot = *aSlot, result = result.copy(),
                     key = *bKey, loc = std::move(loc)](
-                       AsyncValueRef<BufferRef> &&lookupResult) mutable {
+                       AsyncValueRef<GML::BufferRef> &&lookupResult) mutable {
         if (lookupResult.isError()) {
           // We'll construct our own error so that we can report the key
           // in base64 form.
@@ -857,7 +864,7 @@ static void mgp_cas_lookup(Chain inChain, Context &ctx,
 //===----------------------------------------------------------------------===//
 
 static AsyncValueRef<Chain>
-mgp_cas_store(Chain inChain, Context &ctx, const BufferRef &bufferRef,
+mgp_cas_store(Chain inChain, Context &ctx, const GML::BufferRef &bufferRef,
               MEFAttr<uint64_t> aSlot, MEFAttr<StringRef> bKey,
               EncodedLocation loc, Runtime &runtime) {
   TimeTraceScope scope(MGPProfilerEntry::create("mgp.cas.store"));
@@ -872,7 +879,8 @@ mgp_cas_store(Chain inChain, Context &ctx, const BufferRef &bufferRef,
 // mgp.to_grt_bool
 //===----------------------------------------------------------------------===//
 
-static void mgp_to_grt_bool(Chain inChain, AsyncValueRef<BufferRef> bufferRef,
+static void mgp_to_grt_bool(Chain inChain,
+                            AsyncValueRef<GML::BufferRef> bufferRef,
                             Result<bool> result, Runtime &runtime) {
   TimeTraceScope scope(MGPProfilerEntry::create("mgp.to_grt_bool"));
   std::move(result).emplace(
