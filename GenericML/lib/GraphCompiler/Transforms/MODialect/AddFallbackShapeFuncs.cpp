@@ -56,6 +56,7 @@ HAS_FALLBACK(MO::ConvOp)
 HAS_FALLBACK(MO::GatherOp)
 HAS_FALLBACK(MO::MaxPoolOp)
 HAS_FALLBACK(MO::MeanOp)
+HAS_FALLBACK(MO::NonMaximumSuppressionOp)
 HAS_FALLBACK(MO::PadOp)
 HAS_FALLBACK(MO::RangeOp)
 HAS_FALLBACK(MO::ReduceAddOp)
@@ -118,6 +119,7 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::GatherOp)
       CALL_FALLBACK(MO::MaxPoolOp)
       CALL_FALLBACK(MO::MeanOp)
+      CALL_FALLBACK(MO::NonMaximumSuppressionOp)
       CALL_FALLBACK(MO::PadOp)
       CALL_FALLBACK(MO::RangeOp)
       CALL_FALLBACK(MO::ReduceAddOp)
@@ -287,6 +289,14 @@ void Fallback<MO::MaxPoolOp>::build(GraphOp &graph, OpBuilder &builder,
   buildForOpResult(graph, builder, op, "pool_shape", op.getOperands(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/{1, 2, 3, 4});
+}
+
+void Fallback<MO::NonMaximumSuppressionOp>::build(
+    GraphOp &graph, OpBuilder &builder, MO::NonMaximumSuppressionOp op) {
+  SmallVector<Value> shapeFuncInputs({});
+  buildForOpResult(graph, builder, op, "non_maximum_suppression_shape",
+                   op.getOperands(),
+                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{0, 1, 2, 3, 4});
 }
 
 void Fallback<MO::PadOp>::build(GraphOp &graph, OpBuilder &builder,

@@ -2690,6 +2690,40 @@ def MO_ScatterNdMulOp : MO_ScatterNdReductionOp<"mul"> {
 }
 
 //===----------------------------------------------------------------------===//
+// NonMaximumSuppressionOp
+//===----------------------------------------------------------------------===//
+
+def MO_NonMaximumSuppressionOp : MO_TensorOp<"non_maximum_suppression",
+    [DeclareOpInterfaceMethods<MO_DefaultParameterization>]> {
+  let summary = "Perform non maximum supression on a tensor.";
+  let description = [{
+    Filter out boxes that have high intersection-over-union (IOU).
+
+    Example:
+
+    ```mlir
+    %boxes : !mo.tensor<[1, 6, 4], f32>
+    %scores : !mo.tensor<[1, 1, 6], f32>
+    %maxOutputBoxesPerClass : !mo.tensor<[], si64>
+    %iouThreshold : !mo.tensor<[], si64>
+    %scoreThreshold : !mo.tensor<[], si64>
+    %res = mo.non_maximum_suppression(%boxes, %scores, %maxOutputBoxesPerClass, %iouThreshold, %scoreThreshold) : (!mo.tensor<[1, 6, 4], f32>, !mo.tensor<[1, 1, 6], f32>, !mo.tensor<[], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[?, ?], si64>
+    ```
+  }];
+  // TODO(#21506): Allow any ranked tensors as inputs.
+  let arguments = (ins MO_Rank3Tensor:$boxes,
+                       MO_Rank3Tensor:$scores,
+                       MO_RankedScalarIndexTensor:$maxOutputBoxesPerClass,
+                       MO_RankedScalarFloatTensor:$iouThreshold,
+                       MO_RankedScalarFloatTensor:$scoreThreshold,
+                       MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Rank2IndexTensor: $output);
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // ArgNonzeroOp
 //===----------------------------------------------------------------------===//
 

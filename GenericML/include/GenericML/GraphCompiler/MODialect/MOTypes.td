@@ -243,11 +243,19 @@ def MO_NonScalarIfRanked: MO_ConfinedTensor<
 
 /// Confines the MO_TensorType so it is a rank 1 floating point tensor.
 def MO_Rank1FloatTensor: MO_ConfinedTensor<
-  [MO_HasAnyRankOfPred<[1]>, FloatElementTypePred], "rank-1 tensor with floats.">;
+  [MO_HasAnyRankOfPred<[1]>, FloatElementTypePred], "rank-1 tensor with floats">;
 
 /// Confines the MO_TensorType so it is a rank 1 int or index tensor.
 def MO_Rank1IndexTensor: MO_ConfinedTensor<
-  [MO_HasAnyRankOfPred<[1]>, IntOrIndexElementTypePred], "rank-1 tensor with indices.">;
+  [MO_HasAnyRankOfPred<[1]>, IntOrIndexElementTypePred], "rank-1 tensor with indices">;
+
+/// Confines the MO_TensorType so it is rank 2.
+def MO_Rank2IndexTensor: MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[2]>, IntOrIndexElementTypePred], "rank-2 index tensor">;
+
+/// Confines the MO_TensorType so it is rank 3.
+def MO_Rank3Tensor: MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[3]>], "rank-3 tensor">;
 
 /// Confines the MO_TensorType so that it has int or index elements.
 def MO_IndicesTensor : MO_ConfinedTensor<
