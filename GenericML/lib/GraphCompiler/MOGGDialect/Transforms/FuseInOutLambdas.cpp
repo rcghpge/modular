@@ -22,17 +22,6 @@ namespace M::MOGG {
 
 namespace {
 
-// TODO(19870): Remove checks when matmul supports full fusion
-bool hasMatmulCall(MOGG::KernelOp kernel) {
-  for (auto call : kernel.getOps<MOGG::CallOp>()) {
-    if (call.getMojoKernelTarget() == "mo.matmul")
-      return true;
-    if (call.getMojoKernelTarget() == "mo.batch_matmul")
-      return true;
-  }
-  return false;
-}
-
 struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
   using FuseInOutLambdasBase::FuseInOutLambdasBase;
 
@@ -65,14 +54,13 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     if (!parentKernel)
       return false;
 
-    // Can only fuse with kernels which maintain the same output type for
-    // matmul epilogue fusion.
-    if ((hasMatmulCall(kernel) || hasMatmulCall(parentKernel)) &&
-        parentKernel->getResultTypes() != kernel->getResultTypes())
+    // Check that the kernel has a single output.
+    if (parentKernel->getNumResults() > 1)
       return false;
 
-    // Check that the kernel has a single output.
-    if (parentKernel->getNumResults() != 1)
+    // TODO(#21380)
+    // If there is a data type change in a lambda, it is unsupported.
+    if (parentKernel.getType(0) != kernel.getOperandTypes()[inputIdx])
       return false;
 
     // Check the kernel is a fusable elementwise.
@@ -232,36 +220,39 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     // Output can only have one user and that user must be a fusable elementwise
     // kernel.
-    for (Value result : kernel.getResults()) {
-      if (!result.hasOneUse())
-        return false;
+    Value result = kernel.getResult(0);
+    if (llvm::range_size(result.getUsers()) > 1)
+      return false;
 
-      // Check it's a kernel.
-      MOGG::KernelOp user = dyn_cast<MOGG::KernelOp>(*result.user_begin());
-      if (!user)
-        return false;
+    // Check it's a kernel.
+    MOGG::KernelOp user = dyn_cast<MOGG::KernelOp>(*result.user_begin());
+    if (!user)
+      return false;
 
-      // Can only fuse with kernels which maintain the same output type.
-      if ((hasMatmulCall(kernel) || hasMatmulCall(user)) &&
-          user->getResultTypes() != kernel->getResultTypes())
-        return false;
+    // Check that it has a single output.
+    if (user->getNumResults() != 1)
+      return false;
 
-      // Check the kernel is a fusable elementwise.
-      if (!user.getFusionBodyLambda())
-        return false;
+    // TODO(#21380)
+    // If there is a data type change in a lambda, it is unsupported.
+    if (result.getType() != user.getType(0))
+      return false;
 
-      // Kernel must expose input fusion contract.
-      std::optional<ArrayAttr> inputInterfaces = user.getInputFusionInterface();
-      if (!inputInterfaces.has_value())
-        return false;
+    // Check the kernel is a fusable elementwise.
+    if (!user.getFusionBodyLambda())
+      return false;
 
-      // It must expose a valid input lambda attribute for every operand which
-      // uses this.
-      for (auto [operand, attr] : llvm::zip(
-               user.getOperands(), inputInterfaces->getAsRange<StringAttr>())) {
-        if (operand == kernel.getResult(0) && attr.strref() == "")
-          return false;
-      }
+    // Kernel must expose input fusion contract.
+    std::optional<ArrayAttr> inputInterfaces = user.getInputFusionInterface();
+    if (!inputInterfaces.has_value())
+      return false;
+
+    // It must expose a valid input lambda attribute for every operand which
+    // uses this.
+    for (auto [operand, attr] : llvm::zip(
+             user.getOperands(), inputInterfaces->getAsRange<StringAttr>())) {
+      if (operand == result && attr.strref() == "")
+        return false;
     }
 
     return true;
