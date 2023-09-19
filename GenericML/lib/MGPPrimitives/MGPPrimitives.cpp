@@ -5,7 +5,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MGPPrimitives/MGPPrimitives.h"
-#include "GenericML/MOPrimitives/MOPrimitives.h"
 #include "GenericML/Support/CompiledKernelsContext.h"
 #include "GenericML/Support/Context.h"
 #include "GenericML/Support/HostDeviceSpecs.h"
@@ -1200,8 +1199,4 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
                 mgp_cpu_kernel_load_archive);
   ADD_PRIMITIVE(registry, "mgp.cpu.kernel.execute", mgp_cpu_kernel_execute);
   ADD_PRIMITIVE(registry, "mgp.model", mgp_model);
-
-  // Have the MO primitives be registered wherever MGP is registered.
-  // CAUTION: To be removed.
-  registerMOPrimitives(registry);
 }

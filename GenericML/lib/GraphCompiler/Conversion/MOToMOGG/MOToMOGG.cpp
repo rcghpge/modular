@@ -282,6 +282,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_KERNEL(MO::ArgMinOp),
       MO_TO_KERNEL(MO::AvgPoolOp),
       MO_TO_KERNEL(MO::BottomKOp),
+      MO_TO_KERNEL(MO::BroadcastShapeOp),
       MO_TO_KERNEL(MO::Static::BroadcastToOp),
       MO_TO_ELEMWISE(MO::CastOp),
       MO_TO_ELEMWISE(MO::CeilOp),
@@ -358,10 +359,6 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_KERNEL(MO::UnsqueezeShapeOp),
       MO_TO_KERNEL(MO::ArgNonzeroOp),
       MO_TO_ELEMWISE(MO::XorOp),
-
-      // These kernels we don't jit but we almost certainly never actually call them.
-      MO_SHIM_ONLY(MO::BroadcastShapeOp, "mop.kernels.broadcast_shape"),
-      MO_SHIM_ONLY(MO::ShapeOfOp, "mop.kernels.shape_of"),
 
       // Bookkeeping for gotchas -- handled specially elsewhere
       MO_NO_LOWER(MO::ConstantOp),
