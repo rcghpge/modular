@@ -108,3 +108,19 @@ mo.graph @negative(%arg0: !mo.tensor<[4, 5], bool>) -> (!mo.tensor<[4, 5], bool>
   %0 = mo.negative(%arg0) : !mo.tensor<[4, 5], bool>
   mo.output %0 : !mo.tensor<[4, 5], bool>
 }
+
+// -----
+
+mo.graph @sin(%arg0 : !mo.tensor<[4, 5], si64>) -> (!mo.tensor<[4, 5], si64>) {
+  // expected-error@+1 {{'mo.sin' op operand #0 must be floating point tensor, but got '!mo.tensor<[4, 5], si64>'}}
+  %0 = mo.sin(%arg0) : !mo.tensor<[4, 5], si64>
+  mo.output %0 : !mo.tensor<[4, 5], si64>
+}
+
+// -----
+
+mo.graph @cos(%arg0 : !mo.tensor<[4, 5], si64>) -> (!mo.tensor<[4, 5], si64>) {
+  // expected-error@+1 {{'mo.cos' op operand #0 must be floating point tensor, but got '!mo.tensor<[4, 5], si64>'}}
+  %0 = mo.cos(%arg0) : !mo.tensor<[4, 5], si64>
+  mo.output %0 : !mo.tensor<[4, 5], si64>
+}

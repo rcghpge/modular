@@ -218,3 +218,17 @@ mo.graph @negative(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) 
   %0 = mo.negative(%arg0) : !mo.tensor<[4, 5], f32>
   mo.output %0 : !mo.tensor<[4, 5], f32>
 }
+
+// CHECK: mo.graph @sin(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> no_inline {
+mo.graph @sin(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
+  // CHECK-NEXT: mo.sin(%[[ARG0]]) : !mo.tensor<[4, 5], f32>
+  %0 = mo.sin(%arg0) : !mo.tensor<[4, 5], f32>
+  mo.output %0 : !mo.tensor<[4, 5], f32>
+}
+
+// CHECK: mo.graph @cos(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> no_inline {
+mo.graph @cos(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
+  // CHECK-NEXT: mo.cos(%[[ARG0]]) : !mo.tensor<[4, 5], f32>
+  %0 = mo.cos(%arg0) : !mo.tensor<[4, 5], f32>
+  mo.output %0 : !mo.tensor<[4, 5], f32>
+}

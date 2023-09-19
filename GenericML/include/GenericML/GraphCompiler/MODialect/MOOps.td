@@ -788,6 +788,32 @@ def MO_PowOp : MO_TensorOp<"pow", [Pure, MO_SameOperandsAndResultShape]> {
   }];
 }
 
+def MO_SinOp : MO_ElementWiseUnaryOp<"sin"> {
+  let summary = "Returns the sine of the input.";
+  let description = [{
+    Computes the sine of the input: sin(x).
+
+    Example:
+    ```mlir
+    %arg : !mo.tensor<[2, 3], f32>
+    %res = mo.sin(%arg) : !mo.tensor<[2, 3], f32>
+  }];
+  let arguments = (ins MO_FloatTensor:$input);
+}
+
+def MO_CosOp : MO_ElementWiseUnaryOp<"cos"> {
+  let summary = "Returns the cosine of the input.";
+  let description = [{
+    Computes the cosine of the input: cos(x).
+
+    Example:
+    ```mlir
+    %arg : !mo.tensor<[2, 3], f32>
+    %res = mo.cos(%arg) : !mo.tensor<[2, 3], f32>
+  }];
+  let arguments = (ins MO_FloatTensor:$input);
+}
+
 def MO_CeilOp : MO_ElementWiseFloatUnaryOp<"ceil", [Idempotent]> {
   let summary = "Ceiling operation";
   let description = [{
