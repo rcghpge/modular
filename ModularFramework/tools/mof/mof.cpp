@@ -13,6 +13,7 @@
 #include "GenericML/Driver/DriverInputFormat.h"
 #include "GenericML/Driver/Utils.h"
 #include "GenericML/GraphCompiler/GraphCompilerCLOptions.h"
+#include "GenericML/GraphCompiler/Passes.h"
 #include "GenericML/MGPPrimitives/MGPPrimitives.h"
 #include "GenericML/Support/CASConfig.h"
 #include "GenericML/Support/HostDeviceSpecs.h"
@@ -118,6 +119,7 @@ public:
 
 private:
   void setupGlobalContext() {
+    // Establish runtime options.
     assert(!globalContextObjects && "already called setConfigFromOptions");
     globalContextObjects = RCRef<SharedGenericUniquePtrSet>::create();
 
@@ -240,8 +242,9 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
                                  const llvm::MemoryBufferRef &file,
                                  raw_ostream &os, FileFormat &format) {
   // CAUTION: Options will be null for C API calls.
-  auto *options = ctxHandle.unwrap<MOFContext>()->getOptions();
-  auto casConfig = ctxHandle.unwrap<MOFContext>()->getCasConfig();
+  auto *mofContext = ctxHandle.unwrap<MOFContext>();
+  auto *options = mofContext->getOptions();
+  auto casConfig = mofContext->getCasConfig();
   mlir::MLIRContext ctx;
   mlir::OwningOpRef<mlir::ModuleOp> module;
 
@@ -278,10 +281,15 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
     writeIntermediateFileIfRequested("mo");
 
     // The MO graph dialect can be lowered to TFP, which is MEF emittable.
-    // TODO: Set the options flags.
-    if (failed(lowerMOToMGP(
-            module.get(),
-            /*userOpPath=*/ctxHandle.unwrap<MOFContext>()->getCustomOpsPath())))
+    MO::MoToMgpOptions moToMgpOptions;
+    moToMgpOptions.compiledFrameworkLabel = "mof";
+    if (options) {
+      moToMgpOptions.minimumCpuAlignment.setValue(options->minimumCpuAlignment);
+      moToMgpOptions.cacheDir.setValue(options->cacheDir);
+    }
+    if (mofContext->getCustomOpsPath())
+      moToMgpOptions.extraLibPaths = mofContext->getCustomOpsPath()->string();
+    if (failed(lowerMOToMGP(module.get(), moToMgpOptions)))
       return Error("unable to lower MO to MGP");
 
     writeIntermediateFileIfRequested("mgp");
