@@ -217,6 +217,17 @@ def ConstantFoldSubgraphTest : Pass<"constant-fold-subgraph-test", "ModuleOp"> {
   }];
 }
 
+def AddDevicesPass : Pass<"add-devices", "GraphOp"> {
+  let summary = "Adds a `device_specs` attribute to the `mo.graph` if required.";
+  let description = [{
+    This pass ensures the `mo.graph` has a `device_specs` attribute describing
+    the intended runtime target. By default the runtime 'host' will match
+    the currently host machine.
+
+    TEMPORARY until we have proper compilation configuration handling.
+  }];
+}
+
 def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
   let summary = "Assigns an `#M.device_spec` annotation to every operation "
                 "and tensor.";

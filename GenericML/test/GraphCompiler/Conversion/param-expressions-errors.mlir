@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg --mo-to-primitives --split-input-file --verify-diagnostics --allow-unregistered-dialect
+// RUN: mo-opt %s --add-devices --mo-to-mogg --mo-to-primitives --split-input-file --verify-diagnostics --allow-unregistered-dialect
 
 kgen.func @foo() -> index {
   %c = index.constant 42

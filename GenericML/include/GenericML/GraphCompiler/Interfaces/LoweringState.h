@@ -21,6 +21,7 @@
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/DialectInterface.h"
 #include "mlir/IR/OpDefinition.h"
+#include "llvm/ADT/DenseMap.h"
 #include <unordered_map>
 
 namespace M::MGP {
@@ -35,25 +36,19 @@ namespace M::MGP {
 /// LowerableToMGPInterface). The state is gradually built as ops are lowered.
 class MOGraphLoweringState {
 public:
-  CpuBufferBuilder bufferBuilder;
-
   MOGraphLoweringState(M::MO::GraphOp graph, TypeConverter &typeConverter,
                        llvm::StringRef compiledFrameworkLabel,
-                       size_t minimumCpuAlignment,
-                       DeviceSpecCollectionAttr deviceSpecCollectionAttr)
+                       size_t minimumCpuAlignment)
       : graph(graph), typeConverter(typeConverter),
-        common(compiledFrameworkLabel, minimumCpuAlignment,
-               deviceSpecCollectionAttr),
+        common(compiledFrameworkLabel, minimumCpuAlignment),
         init(graph.getContext()), execute(graph.getContext()) {}
 
   /// Common state used by both the init and execute phases.
   struct CommonState {
     explicit CommonState(llvm::StringRef compiledFrameworkLabel,
-                         size_t minimumCpuAlignment,
-                         DeviceSpecCollectionAttr deviceSpecCollectionAttr)
+                         size_t minimumCpuAlignment)
         : compiledFrameworkLabel(compiledFrameworkLabel),
-          minimumCpuAlignment(minimumCpuAlignment),
-          deviceSpecCollectionAttr(deviceSpecCollectionAttr) {}
+          minimumCpuAlignment(minimumCpuAlignment) {}
 
     /// The top-level mgp.model operation.
     MGP::ModelOp modelOp;
@@ -64,9 +59,6 @@ public:
     /// The minimum alignment for all CPU hosted buffers (constants and
     /// allocated)
     size_t minimumCpuAlignment;
-
-    /// Devices expected to be available at runtime.
-    DeviceSpecCollectionAttr deviceSpecCollectionAttr;
 
     CommonState(const CommonState &) = delete;
     void operator=(const CommonState &) = delete;
@@ -81,6 +73,10 @@ public:
 
     /// This op creates and returns the overall MGP context.
     MGP::ContextCreateOp mgpContext;
+
+    /// This operation checks the available runtime devices match the required
+    /// devices.
+    MGP::CheckRuntimeOp checkRuntimeOp;
 
     /// This operation creates the context for all compiled kernels in the
     /// graph within a slot of the !mgp.context.
@@ -157,11 +153,6 @@ public:
   /// Return the graph being lowered.
   MO::GraphOp &getGraph() { return graph; }
 
-  /// Returns information about the devices we expect at runtime.
-  DeviceSpecCollectionAttr getDeviceSpecCollection() const {
-    return common.deviceSpecCollectionAttr;
-  }
-
   /// Return type converter for lowering known MO types into MGP ones.
   TypeConverter &getTypeConverter() { return typeConverter; }
 
@@ -227,6 +218,17 @@ public:
   /// Return and increment the next available constant identifier.
   size_t getExecuteNextConstId() { return execute.nextConstId++; }
 
+  /// Set the check runtime op.
+  void setCheckRuntimeOp(MGP::CheckRuntimeOp checkRuntimeOp) {
+    init.checkRuntimeOp = checkRuntimeOp;
+  }
+
+  /// Returns the check runtime op.
+  MGP::CheckRuntimeOp getCheckRuntimeOp() {
+    assert(init.checkRuntimeOp && "no mgp.check.runtime op has been emitted");
+    return init.checkRuntimeOp;
+  }
+
   /// Set the compiled kernels context. Should only be accessed during init
   /// and referred to by the context slot in execute.
   void setCompiledKernelsContext(MGP::CpuKernelCreateContextOp op) {
@@ -239,14 +241,14 @@ public:
     return init.compiledKernelsContext;
   }
 
-  /// Returns the shape of a lowered tensor.
-  TypedValue<MGP::CpuTensorSpecType> getShape(Location loc,
-                                              Value loweredTensor);
+  /// Returns the shape of a lowered tensor which is on the given device.
+  TypedValue<MGP::CpuTensorSpecType> getShape(Location loc, Value loweredTensor,
+                                              DeviceRefAttr device);
 
   /// Returns the (op which produces the) dynamic dimensions for the given
-  /// lowered tensor.
-  MGP::CpuTensorSpecDimsDynamicOp getDynamicDims(Location loc,
-                                                 Value loweredTensor);
+  /// lowered tensor on the given device.
+  MGP::CpuTensorSpecDimsDynamicOp
+  getDynamicDims(Location loc, Value loweredTensor, DeviceRefAttr device);
 
   /// The given MO inArg (a !mo.tensor) has been lowered to the given MGP
   /// outArg (an !mgp.tensor). If inArg is subject to any dynamic shapes
@@ -287,6 +289,32 @@ public:
     return itr->second;
   }
 
+  /// Register the given buffer builder for the given device.
+  void registerBufferBuilder(DeviceRefAttr device,
+                             std::unique_ptr<BufferBuilder> bufferBuilder) {
+    bool inserted =
+        bufferBuilderMap.insert({device, std::move(bufferBuilder)}).second;
+    assert(inserted &&
+           "a buffer builder has already been registered for device");
+  }
+
+  /// Returns the buffer builder to use for device. The builder is owned by
+  /// this object. Can only be called
+  BufferBuilder *getBufferBuilder(DeviceRefAttr device) {
+    auto itr = bufferBuilderMap.find(device);
+    assert(itr != bufferBuilderMap.end() &&
+           "no buffer builder has been registered for device");
+    return itr->second.get();
+  }
+
+  /// Return the 'host' device for this graph.
+  DeviceRefAttr getHostDevice() { return MO::getHostDevice(graph); }
+
+  /// Returns the buffer builder to use for the 'host' device.
+  BufferBuilder *getHostBufferBuilder() {
+    return getBufferBuilder(MO::getHostDevice(graph));
+  }
+
 private:
   //===-----------------------------------------------------------------===//
   // Parameter lowering helpers.
@@ -318,6 +346,10 @@ private:
   MO::GraphOp graph;
   /// Type converter for lowering known MO types into MGP ones.
   TypeConverter &typeConverter;
+
+  /// The buffer builder to use for each device.
+  llvm::DenseMap<DeviceRefAttr, std::unique_ptr<BufferBuilder>>
+      bufferBuilderMap;
 
   CommonState common;
   InitState init;
@@ -353,12 +385,14 @@ struct MOOpLoweringState {
   OpBuilder &builder;
   mlir::Operation *opBeingLowered;
   mlir::Location loc;
+  BufferBuilder *bufferBuilder;
 
   MOOpLoweringState(MGP::MOGraphLoweringState &loweringState,
-                    mlir::Operation *op)
+                    mlir::Operation *op, DeviceRefAttr device)
       : loweringState(loweringState),
         builder(loweringState.getExecuteOpBuilder()), opBeingLowered(op),
-        loc(op->getLoc()) {}
+        loc(op->getLoc()),
+        bufferBuilder(loweringState.getBufferBuilder(device)) {}
 
   //
   // The following methods redirect to the loweringState.bufferBuilder, but
@@ -366,29 +400,27 @@ struct MOOpLoweringState {
   //
 
   Value bufferConstant(ElementsAttr value) {
-    return loweringState.bufferBuilder.bufferConstant(builder, loc, value);
+    return bufferBuilder->bufferConstant(builder, loc, value);
   }
   std::pair<Value, TypedValue<CpuTensorSpecType>>
   tensorExtract(Value loweredTensor) {
-    return loweringState.bufferBuilder.tensorExtract(builder, loc,
-                                                     loweredTensor);
+    return bufferBuilder->tensorExtract(builder, loc, loweredTensor);
   }
   TypedValue<CpuTensorSpecType> tensorExtractShape(Value loweredTensor) {
-    return loweringState.bufferBuilder.tensorExtractShape(builder, loc,
-                                                          loweredTensor);
+    return bufferBuilder->tensorExtractShape(builder, loc, loweredTensor);
   }
   Value tensorCreate(Value inChain, Value buffer,
                      TypedValue<CpuTensorSpecType> tensorSpec) {
-    return loweringState.bufferBuilder.tensorCreate(builder, loc, inChain,
-                                                    buffer, tensorSpec);
+    return bufferBuilder->tensorCreate(builder, loc, inChain, buffer,
+                                       tensorSpec);
   }
   Value bufferAllocStatic(Value inChain, uint64_t size) {
-    return loweringState.bufferBuilder.bufferAllocStatic(
+    return bufferBuilder->bufferAllocStatic(
         builder, loc, inChain, size, loweringState.getMinimumCpuAlignment());
   }
   Value bufferAllocSpec(Value inChain,
                         TypedValue<MGP::CpuTensorSpecType> tensorSpec) {
-    return loweringState.bufferBuilder.bufferAllocSpec(
+    return bufferBuilder->bufferAllocSpec(
         builder, loc, inChain, tensorSpec,
         loweringState.getMinimumCpuAlignment());
   }

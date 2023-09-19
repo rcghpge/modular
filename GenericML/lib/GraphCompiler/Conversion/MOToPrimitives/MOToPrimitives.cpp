@@ -9,7 +9,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
+#include "GenericML/GraphCompiler/Conversion/DeviceBufferizationRegistry.h"
 #include "GenericML/GraphCompiler/Interfaces/LowerableToMGPInterface.h"
+#include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/MGPTransforms/FixupIsolatedFromAbove.h"
@@ -51,10 +53,9 @@ class MOGraphLowering {
 public:
   MOGraphLowering(MO::GraphOp graph, TypeConverter &typeConverter,
                   llvm::StringRef compiledFrameworkLabel,
-                  size_t minimumCpuAlignment,
-                  DeviceSpecCollectionAttr deviceSpecCollectionAttr)
+                  size_t minimumCpuAlignment)
       : loweringState(graph, typeConverter, compiledFrameworkLabel,
-                      minimumCpuAlignment, deviceSpecCollectionAttr) {}
+                      minimumCpuAlignment) {}
 
   /// Lower the mo.graph to mgp.model.
   LogicalResult run();
@@ -68,6 +69,10 @@ public:
   // satisfies all the compile-time device specs. This requires an
   // !mgp.context slot to hold the calculated device spec map.
   LogicalResult setupCheckRuntime(Location loc);
+
+  // Establish buffer builders for all the (virtual) devices needed by the
+  // model. This may require emitting device-specific setup code.
+  LogicalResult setupForAllDevices(Location loc);
 
   LogicalResult createModelOp();
 
@@ -156,17 +161,47 @@ LogicalResult MOGraphLowering::setupCompiledKernelsContext(Location loc) {
 }
 
 LogicalResult MOGraphLowering::setupCheckRuntime(Location loc) {
-  if (loweringState.getDeviceSpecCollection()) {
-    uint64_t slot = loweringState.getInitMgpContext().getNumSlots();
-    auto checkRuntimeOp =
-        loweringState.getInitOpBuilder().create<MGP::CheckRuntimeOp>(
-            loc,
-            /*inChain=*/loweringState.getInitChain(),
-            /*theContext=*/loweringState.getInitMgpContext(),
-            /*aSlot=*/slot,
-            /*bDevices=*/loweringState.getDeviceSpecCollection());
-    loweringState.getInitMgpContext().setNumSlots(slot + 1);
-    loweringState.setInitChain(checkRuntimeOp.getOutChain());
+  DeviceSpecCollectionAttr deviceSpecs =
+      loweringState.getGraph().getDeviceSpecs();
+  if (!deviceSpecs) {
+    return loweringState.getGraph().emitOpError("requires a '")
+           << MO::kGraphDeviceSpecCollectionAttrName << "' attribute";
+  }
+
+  uint64_t slot = loweringState.getInitMgpContext().getNumSlots();
+  auto checkRuntimeOp =
+      loweringState.getInitOpBuilder().create<MGP::CheckRuntimeOp>(
+          loc,
+          /*inChain=*/loweringState.getInitChain(),
+          /*theContext=*/loweringState.getInitMgpContext(),
+          /*aSlot=*/slot,
+          /*bDevices=*/deviceSpecs);
+  loweringState.setCheckRuntimeOp(checkRuntimeOp);
+  loweringState.getInitMgpContext().setNumSlots(slot + 1);
+  loweringState.setInitChain(checkRuntimeOp.getOutChain());
+  return success();
+}
+
+LogicalResult MOGraphLowering::setupForAllDevices(Location loc) {
+  DeviceSpecCollectionAttr deviceSpecs =
+      loweringState.getGraph().getDeviceSpecs();
+  if (!deviceSpecs) {
+    return loweringState.getGraph().emitOpError("requires a '")
+           << MO::kGraphDeviceSpecCollectionAttrName << "' attribute";
+  }
+
+  for (DeviceSpecAttr deviceSpec : deviceSpecs.getDevices()) {
+    if (deviceSpec.getRef().getLabel() == GML::kCPULabel) {
+      // We know how to work with MGP buffers and tensors for the CPU.
+      loweringState.registerBufferBuilder(
+          deviceSpec.getRef(), std::make_unique<MGP::CpuBufferBuilder>());
+    } else {
+      // Rely on the registered 'makeBufferBuilder' function for this device.
+      // It may inject setup code into the 'init' block as required, and
+      // then register a BufferBuilder for the device spec's device reference.
+      if (failed(MO::makeBufferBuilder(deviceSpec, loweringState)))
+        return failure();
+    }
   }
   return success();
 }
@@ -244,6 +279,11 @@ LogicalResult MOGraphLowering::createModelOp() {
 
   // Check the runtime environment.
   if (failed(setupCheckRuntime(graph.getLoc())))
+    return failure();
+
+  // Establish buffer builder for all the devices. This may require some
+  // extra device-specific setup in the 'init' block.
+  if (failed(setupForAllDevices(graph.getLoc())))
     return failure();
 
   // Initialize the execute state.
@@ -388,7 +428,8 @@ MOGraphLowering::lowerParamConstant(KGEN::ParamConstantOp paramConstOp) {
 LogicalResult
 MOGraphLowering::lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp) {
   // NOTE: This op is for CPU only.
-  MGP::MOOpLoweringState opLoweringState(loweringState, toTensorOp);
+  MGP::MOOpLoweringState opLoweringState(loweringState, toTensorOp,
+                                         loweringState.getHostDevice());
 
   // Setup output buffer.
   FailureOr<SmallVector<MGP::BufferizedTensor>> bufferizedOutputsOr =
@@ -414,7 +455,8 @@ MOGraphLowering::lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp) {
 LogicalResult
 MOGraphLowering::lowerShapeToTensorOp(MO::Shape::ToTensorOp toTensorOp) {
   // NOTE: This op is for CPU only.
-  MGP::MOOpLoweringState opLoweringState(loweringState, toTensorOp);
+  MGP::MOOpLoweringState opLoweringState(loweringState, toTensorOp,
+                                         loweringState.getHostDevice());
 
   // Setup output buffer.
   FailureOr<SmallVector<MGP::BufferizedTensor>> bufferizedOutputsOr =
@@ -449,7 +491,8 @@ MOGraphLowering::lowerShapeToTensorOp(MO::Shape::ToTensorOp toTensorOp) {
 /// Returns the lowered tensor that the rebind's result should map to.
 static Value getRebindResMgpTensor(MO::RebindOp rebindOp,
                                    MGP::MOGraphLoweringState &loweringState) {
-  MGP::MOOpLoweringState opLoweringState(loweringState, rebindOp);
+  MGP::MOOpLoweringState opLoweringState(loweringState, rebindOp,
+                                         getDeviceOrDefault(rebindOp));
 
   MO::TensorValue inputTensor = rebindOp.getInput();
   MO::TensorType inputTy = inputTensor.getType();
@@ -489,7 +532,9 @@ static Value getRebindResMgpTensor(MO::RebindOp rebindOp,
     // At this point we are dealing with dynamic input and result dimensions.
     // We extract the dynamic dimensions only once.
     if (!dynDimsOp)
-      dynDimsOp = loweringState.getDynamicDims(loc, loweredInput);
+      dynDimsOp = loweringState.getDynamicDims(
+          loc, loweredInput,
+          MO::getDeviceOrDefault(loweringState.getGraph(), inputTy));
 
     // Forward the appropriate dynamic dimension from the input.
     runtimeDims.emplace_back(
@@ -524,8 +569,9 @@ LogicalResult MOGraphLowering::lowerRebind(MO::RebindOp rebindOp) {
   // as operands to a tensor_spec.create op.
   ArrayRef<KGEN::ParamDeclAttr> decls = rebindOp.getOutputParamDecls();
   if (!decls.empty()) {
-    MGP::CpuTensorSpecDimsDynamicOp dynDims =
-        loweringState.getDynamicDims(rebindOp.getLoc(), loweredOutput);
+    MGP::CpuTensorSpecDimsDynamicOp dynDims = loweringState.getDynamicDims(
+        rebindOp.getLoc(), loweredOutput,
+        MO::getDeviceOrDefault(loweringState.getGraph(), resTy));
 
     MOSH::ShapeAttr resShape = resTy.getTypedShapeAttr();
     for (KGEN::ParamDeclAttr decl : decls) {
@@ -546,7 +592,8 @@ LogicalResult MOGraphLowering::lowerRebind(MO::RebindOp rebindOp) {
 }
 
 LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
-  MGP::MOOpLoweringState opLoweringState(loweringState, constOp);
+  MGP::MOOpLoweringState opLoweringState(loweringState, constOp,
+                                         getDeviceOrDefault(constOp));
 
   ErrorOr<ElementsAttr> elementsOr = lowerElementsAttr(constOp.getValue());
   if (elementsOr)
@@ -565,7 +612,8 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
 
 LogicalResult
 MOGraphLowering::lowerStaticReshape(MO::Static::ReshapeOp reshapeOp) {
-  MGP::MOOpLoweringState opLoweringState(loweringState, reshapeOp);
+  MGP::MOOpLoweringState opLoweringState(loweringState, reshapeOp,
+                                         getDeviceOrDefault(reshapeOp));
 
   // Get the bufferized input.
   SmallVector<MGP::BufferizedTensor> bufferizedInputs =
@@ -586,7 +634,8 @@ MOGraphLowering::lowerStaticReshape(MO::Static::ReshapeOp reshapeOp) {
 LogicalResult MOGraphLowering::lowerReshape(MO::ReshapeOp reshapeOp) {
   // Note the lowering is currently identical to Static::ReshapeOp.
   // TODO(#12718): Validate user-annotated shape.
-  MGP::MOOpLoweringState opLoweringState(loweringState, reshapeOp);
+  MGP::MOOpLoweringState opLoweringState(loweringState, reshapeOp,
+                                         getDeviceOrDefault(reshapeOp));
 
   // Get the bufferized input.
   SmallVector<MGP::BufferizedTensor> bufferizedInputs =
@@ -605,8 +654,13 @@ LogicalResult MOGraphLowering::lowerReshape(MO::ReshapeOp reshapeOp) {
 
 LogicalResult
 MOGraphLowering::lowerDebugTensorPrint(MO::DebugTensorPrintOp printOp) {
-  // TODO: Generalize from CPU
-  MGP::MOOpLoweringState opLoweringState(loweringState, printOp);
+  if (getDeviceOrDefault(printOp) != loweringState.getHostDevice()) {
+    printOp->emitOpError("op must be assigned to the host");
+    return failure();
+  }
+
+  MGP::MOOpLoweringState opLoweringState(loweringState, printOp,
+                                         getDeviceOrDefault(printOp));
   auto loweredTensor =
       loweringState.lookupExecuteLoweredValue(printOp.getInput());
   Value chain = opLoweringState
@@ -619,7 +673,13 @@ MOGraphLowering::lowerDebugTensorPrint(MO::DebugTensorPrintOp printOp) {
 }
 
 LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
-  MGP::MOOpLoweringState opLoweringState(loweringState, ifOp);
+  if (getDeviceOrDefault(ifOp) != loweringState.getHostDevice()) {
+    ifOp->emitOpError("op must be assigned to the host");
+    return failure();
+  }
+
+  MGP::MOOpLoweringState opLoweringState(loweringState, ifOp,
+                                         getDeviceOrDefault(ifOp));
   Value mainChain = loweringState.getExecuteChain();
 
   // Lower the condition.
@@ -708,7 +768,13 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
 }
 
 LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
-  MGP::MOOpLoweringState opLoweringState(loweringState, whileOp);
+  if (getDeviceOrDefault(whileOp) != loweringState.getHostDevice()) {
+    whileOp->emitOpError("op must be assigned to the host");
+    return failure();
+  }
+
+  MGP::MOOpLoweringState opLoweringState(loweringState, whileOp,
+                                         getDeviceOrDefault(whileOp));
 
   // We'll need to thread the 'execute' chain through the while loop's 'cond'
   // and 'body' blocks.
@@ -1009,7 +1075,10 @@ void MOToPrimitivesPass::runOnOperation() {
 
   TypeConverter converter;
   converter.addConversion([&ctx](MO::TensorType t) -> std::optional<Type> {
-    // TODO: this may fail for some element types.
+    // TODO: Currently only supports "cpu" devices, need TypeBuilder interface
+    // analogous to BufferBuilder.
+    DeviceRefAttr device = t.getDeviceRef();
+    assert(!device || device.getLabel() == GML::kCPULabel);
     return MGP::CpuTensorType::get(&ctx, MGP::createCpuTensorSpecType(t));
   });
 
@@ -1020,26 +1089,12 @@ void MOToPrimitivesPass::runOnOperation() {
        llvm::make_early_inc_range(theModule.getOps<MOGG::MojoRegisterOp>()))
     reg.erase();
 
-  // TEMPORARY: Until mo.graphs convey a DeviceSpecCollectionAttr we create a
-  // default one representing the current CPU host. In this way any assumptions
-  // baked into our code due to the use of -march=native can be checked
-  // before the model is executed.
-  ErrorOr<std::unique_ptr<DeviceSpecCollection>> defaultHostDeviceSpecsOr =
-      GML::getHostCPUDeviceSpecs();
-  if (defaultHostDeviceSpecsOr) {
-    theModule->emitOpError(defaultHostDeviceSpecsOr.getError());
-    return signalPassFailure();
-  }
-  DeviceSpecCollectionAttr defaultDeviceSpecCollectionAttr =
-      fromRuntimeDeviceSpecs(&ctx, **defaultHostDeviceSpecsOr);
-
   // Convert each mo.graph into a mgp.model.
   for (auto graphOp :
        llvm::make_early_inc_range(theModule.getOps<MO::GraphOp>())) {
     if (failed(MOGraphLowering(graphOp, converter,
                                compiledFrameworkLabel.getValue(),
-                               minimumCpuAlignment.getValue(),
-                               defaultDeviceSpecCollectionAttr)
+                               minimumCpuAlignment.getValue())
                    .run()))
       return signalPassFailure();
   }

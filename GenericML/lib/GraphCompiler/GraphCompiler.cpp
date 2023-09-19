@@ -113,6 +113,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   if (opts.constantFold)
     pm.addPass(MO::createConstantFold());
 
+  pm.addPass(MO::createAddDevicesPass());
+
   pm.addPass(MO::createAssignDevicesPass());
 
   pm.addPass(MO::createInferLayouts());

@@ -28,7 +28,9 @@ using namespace M;
 using namespace MOGG;
 
 LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
-  MGP::MOOpLoweringState opLoweringState(loweringState, *this);
+  // TODO: Propagate device annotations from MO.
+  MGP::MOOpLoweringState opLoweringState(loweringState, *this,
+                                         loweringState.getHostDevice());
 
   // Gather the input buffers.
   SmallVector<MGP::BufferizedTensor> bufferizedInputs =
@@ -81,11 +83,18 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
 // ConcatOp
 
 LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
-  MGP::MOOpLoweringState opLoweringState(loweringState, *this);
+  // TODO: Currently must be on host device.
+  MGP::MOOpLoweringState opLoweringState(loweringState, *this,
+                                         loweringState.getHostDevice());
 
   // Gather the input buffers.
   SmallVector<MGP::BufferizedTensor> bufferizedInputs =
       opLoweringState.getBufferizedInputs();
+  assert(llvm::all_of(bufferizedInputs,
+                      [](const MGP::BufferizedTensor bt) {
+                        return isa<MGP::CpuBufferType>(bt.buffer.getType());
+                      }) &&
+         "input tensors must be on the CPU");
 
   // Allocate the output buffers.
   FailureOr<SmallVector<MGP::BufferizedTensor>> bufferizedOutputsOr =
@@ -93,6 +102,11 @@ LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
   if (failed(bufferizedOutputsOr))
     return failure();
   SmallVector<MGP::BufferizedTensor> &bufferizedOutputs = *bufferizedOutputsOr;
+  assert(llvm::all_of(bufferizedOutputs,
+                      [](const MGP::BufferizedTensor bt) {
+                        return isa<MGP::CpuBufferType>(bt.buffer.getType());
+                      }) &&
+         "output tensors must be on the CPU");
 
   SmallVector<Value> operands;
   for (auto &bufferizedInput : bufferizedInputs)
@@ -117,11 +131,14 @@ LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
 // SplitOp
 
 LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
-  // TODO: Plum device annotations from MO to MOGG. This assumes host.
-  MGP::MOOpLoweringState opLoweringState(loweringState, *this);
+  // TODO: Currently must be on host device.
+  MGP::MOOpLoweringState opLoweringState(loweringState, *this,
+                                         loweringState.getHostDevice());
 
   // Gather the input buffer.
   Value inputBuffer = opLoweringState.getBufferizedInput(getInput()).buffer;
+  assert(isa<MGP::CpuBufferType>(inputBuffer.getType()) &&
+         "input tensor must be on the CPU");
 
   // TODO Enable this.
   if (inputBuffer.getDefiningOp<MGP::CpuBufferConstantOp>())
@@ -203,7 +220,9 @@ LoadCompiledKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
 LogicalResult
 ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
-  MGP::MOOpLoweringState opLoweringState(loweringState, *this);
+  // TODO: Propagate device annotations from MO.
+  MGP::MOOpLoweringState opLoweringState(loweringState, *this,
+                                         loweringState.getHostDevice());
 
   // Gather the input buffers.
   SmallVector<MGP::BufferizedTensor> bufferizedInputs =
@@ -254,6 +273,8 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   uint64_t slot = loweringState.getCompiledKernelsContext().getSlot();
   uint64_t index = loweringState.getCompiledKernelIndex(getKernelName());
 
+  // TODO: Make this part of BufferBuilder? Or specialize ExecuteCompiledOp to
+  // CPU?
   auto executeOp = opLoweringState.create<MGP::CpuKernelExecuteOp>(
       /*inChain=*/loweringState.getExecuteChain(),
       /*theContext=*/loweringState.getExecuteMgpContext(),

@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg --mo-to-primitives --allow-unregistered-dialect | FileCheck %s
+// RUN: mo-opt %s --add-devices --mo-to-mogg --mo-to-primitives --allow-unregistered-dialect | FileCheck %s
 
 // CHECK: mgp.model @if_op
 // CHECK:  } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context

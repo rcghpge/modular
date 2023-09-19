@@ -14,19 +14,24 @@ using namespace M::MGP;
 //===----------------------------------------------------------------------===//
 
 TypedValue<MGP::CpuTensorSpecType>
-MOGraphLoweringState::getShape(Location loc, Value loweredTensor) {
+MOGraphLoweringState::getShape(Location loc, Value loweredTensor,
+                               DeviceRefAttr device) {
   OpBuilder &builder = getExecuteOpBuilder();
-  return bufferBuilder.tensorExtractShape(builder, loc, loweredTensor);
+  return getBufferBuilder(device)->tensorExtractShape(builder, loc,
+                                                      loweredTensor);
 }
 
 MGP::CpuTensorSpecDimsDynamicOp
-MOGraphLoweringState::getDynamicDims(Location loc, Value loweredTensor) {
+MOGraphLoweringState::getDynamicDims(Location loc, Value loweredTensor,
+                                     DeviceRefAttr device) {
   OpBuilder &builder = getExecuteOpBuilder();
   // NOTE: We could use getShape here, however usually we'll also require the
-  // loweredTensor's buffer also, in which case we'll be emitting a full
+  // loweredTensor's buffer in which case we'll be emitting a full
   // tensor.extract op anyway.
   TypedValue<MGP::CpuTensorSpecType> tensorSpec =
-      bufferBuilder.tensorExtract(builder, loc, loweredTensor).second;
+      getBufferBuilder(device)
+          ->tensorExtract(builder, loc, loweredTensor)
+          .second;
   return builder.create<MGP::CpuTensorSpecDimsDynamicOp>(
       loc, /*spec=*/tensorSpec, /*rawDims=*/tensorSpec.getType().getRawDims());
 }
@@ -37,6 +42,7 @@ ErrorOr<bool> MOGraphLoweringState::lowerArg(BlockArgument &inArg,
   Location loc = inArg.getLoc();
   if (auto inTensorArg = dyn_cast<MO::TensorValue>(inArg)) {
     MO::TensorType argType = inTensorArg.getType();
+    DeviceRefAttr argDevice = MO::getDeviceOrDefault(graph, argType);
     if (argType.hasStaticShape()) {
       // No parameters to deal with.
       /* no-op */
@@ -52,7 +58,7 @@ ErrorOr<bool> MOGraphLoweringState::lowerArg(BlockArgument &inArg,
       // occurrence of the parameter.
       hasParams = true;
       if (!params.lookupLowered(inShapeParam))
-        params.emplaceLowered(inShapeParam, getShape(loc, outArg));
+        params.emplaceLowered(inShapeParam, getShape(loc, outArg, argDevice));
     } else {
       // Argument has at least one dynamic dimension. The parameters need to
       // be represented by the corresponding runtime dimensions. Since
@@ -61,7 +67,8 @@ ErrorOr<bool> MOGraphLoweringState::lowerArg(BlockArgument &inArg,
       // extract as a group, we always do the extraction, and rely on DCE to
       // cleanup if all the parameters turn out to have already been mapped.
       hasParams = true;
-      MGP::CpuTensorSpecDimsDynamicOp dynDimsOp = getDynamicDims(loc, outArg);
+      MGP::CpuTensorSpecDimsDynamicOp dynDimsOp =
+          getDynamicDims(loc, outArg, argDevice);
       // CpuTensorSpecDimsDynamicOp returns indexes only for dimensions
       // which are unknown at compile time. So build the corresponding
       // vector of parameters. Note we do not support arbitrary expressions in
