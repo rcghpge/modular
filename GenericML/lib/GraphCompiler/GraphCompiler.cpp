@@ -112,6 +112,9 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   }
   if (opts.constantFold)
     pm.addPass(MO::createConstantFold());
+
+  pm.addPass(MO::createAssignDevicesPass());
+
   pm.addPass(MO::createInferLayouts());
 
   if (opts.usePatterns) {
@@ -119,8 +122,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createCSEPass());
   }
-
-  pm.addPass(MO::createAssignDevicesPass());
 
   MO::MOToMOGGOptions moToMoggOpts;
   moToMoggOpts.extraLibPaths = opts.extraLibPaths;

@@ -31,6 +31,7 @@
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/SmallVectorExtras.h"
+
 #include <numeric>
 
 using namespace M;
@@ -39,6 +40,34 @@ using namespace MO;
 //===----------------------------------------------------------------------===//
 // Utilities
 //===----------------------------------------------------------------------===//
+
+DeviceRefAttr MO::getDeviceOrDefault(MOTensorOpInterface op) {
+  // Check the op annotation.
+  DeviceRefAttr device = op.getDeviceRef();
+  if (device)
+    return device;
+
+  // Fallback to the 'host' device.
+  GraphOp graphOp = op->getParentOfType<GraphOp>();
+  assert(graphOp && "missing containing GraphOp");
+  return getHostDevice(graphOp);
+}
+
+DeviceRefAttr MO::getDeviceOrDefault(GraphOp graphOp, TensorType type) {
+  // Check the type annotation.
+  DeviceRefAttr device = type.getDeviceRef();
+  if (device)
+    return device;
+
+  // Fallback to the 'host' device.
+  return getHostDevice(graphOp);
+}
+
+DeviceRefAttr MO::getHostDevice(GraphOp graphOp) {
+  DeviceSpecCollectionAttr deviceSpecs = graphOp.getDeviceSpecs();
+  assert(deviceSpecs && "missing device_specs annotation on MO graph");
+  return deviceSpecs.getHost();
+}
 
 SmallVector<ConstantOp> M::MO::tryGetConstantOpsOfRank(TensorValue val,
                                                        size_t rank) {
@@ -257,10 +286,6 @@ OpFoldResult IndexToTensorOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 // MO_GraphOp support
 //===----------------------------------------------------------------------===//
-
-/// Name of optional attribute holding the #M.device_spec_collection describing
-/// the (virtual) devices available to the graph.
-constexpr StringRef kGraphDeviceSpecCollectionAttrName = "device_specs";
 
 void GraphOp::build(OpBuilder &builder, OperationState &state, StringRef name,
                     TypeRange inputTypes, TypeRange resultTypes) {

@@ -45,6 +45,25 @@ using M::KGEN::SignatureType;
 
 namespace M::MO {
 
+/// Name of optional attribute holding the #M.device_spec_collection describing
+/// the (virtual) devices available to the graph.
+constexpr StringRef kGraphDeviceSpecCollectionAttrName = "device_specs";
+
+/// Returns the #M.device_ref annotation for op, or the 'host' device
+/// if there is no such annotation on the op itself. The op's containing
+/// MOGraphOp must have a device spec collection annotation.
+DeviceRefAttr getDeviceOrDefault(MOTensorOpInterface op);
+
+/// Returns the #M.device_ref annotation for type which appears in the
+/// the given MO graphOp. Returns the 'host' device if there is no such
+/// annotation on the type itself. The graphOp must have a device spec
+/// collection annotation.
+DeviceRefAttr getDeviceOrDefault(GraphOp graphOp, TensorType type);
+
+/// Returns the #M.device_ref for the 'host' device. The graphOp must have a
+/// device spec collection annotation.
+DeviceRefAttr getHostDevice(GraphOp graphOp);
+
 /// If `val` comes from constant tensors (defined by a ConstantOp or
 /// concatenation or identity chain of ConstantOps), return the defining ops.
 SmallVector<MO::ConstantOp> tryGetConstantOpsOfRank(TensorValue val,
