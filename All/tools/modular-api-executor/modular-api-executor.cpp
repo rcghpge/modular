@@ -151,6 +151,9 @@ public:
                               cl::desc("Display Model Input and output Specs"),
                               cl::init(false)};
 
+  cl::opt<std::string> customOpsPath{
+      "user-ops", cl::desc("Replace MO ops with given ops"), cl::init("")};
+
   /// Reads a model specification from the YAML file set via the
   /// "model-specification" option.
   ErrorOr<ModelSpec> readModelSpecification() {
@@ -520,6 +523,16 @@ int main(int argc, char **argv) {
   api.setModelPath(compileConfig.get(), clOptions.inputFilename.c_str());
   if (!clOptions.exportedName.empty())
     api.setExportedName(compileConfig.get(), clOptions.exportedName.c_str());
+
+  if (api.useKernelsFrom && !clOptions.customOpsPath.empty()) {
+    api.useKernelsFrom(compileConfig.get(), clOptions.customOpsPath.c_str(),
+                       status.get());
+  }
+
+  if (api.isError(status.get())) {
+    llvm::errs() << "Error: " << api.getError(status.get()) << "\n";
+    exit(EXIT_FAILURE);
+  }
   CompiledModelPtr compiledModel{
       api.compileModel(context.get(), compileConfig.get(), status.get()),
       api.freeCompiledModel};

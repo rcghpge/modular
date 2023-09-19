@@ -9,6 +9,7 @@
 
 #include "Support/ErrorOr.h"
 #include "modular/c/common.h"
+#include "modular/c/experimental/custom_ops.h"
 #include "modular/c/tensorflow/config.h"
 #include "modular/cpp/aliases.h"
 
@@ -34,6 +35,7 @@ public:
   decltype(&M_newCompileConfig) newCompileConfig = nullptr;
   decltype(&M_freeCompileConfig) freeCompileConfig = nullptr;
   decltype(&M_setModelPath) setModelPath = nullptr;
+  decltype(&M_useKernelsFrom) useKernelsFrom = nullptr;
   decltype(&M_setExportedName) setExportedName = nullptr;
   decltype(&M_setNumThreads) setNumThreads = nullptr;
   decltype(&M_compileModel) compileModel = nullptr;

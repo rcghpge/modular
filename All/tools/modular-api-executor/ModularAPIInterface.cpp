@@ -107,6 +107,13 @@ ErrorOrSuccess M::ModularAPIInterface::loadModularAndInitSymbols() {
   GET_SYMBOL(setNumThreads, M_setNumThreads);
   GET_SYMBOL(setModelPath, M_setModelPath);
 
+  auto useKernelsOr =
+      fallibleGetSymbol(dylib, "M_useKernelsFrom", useKernelsFrom);
+
+  // This is an experimental feature and is okay to not be present.
+  if (!useKernelsOr.isError())
+    useKernelsFrom = useKernelsOr.takeValue();
+
   auto exportedNameOr =
       fallibleGetSymbol(tfLib, "M_setExportedName", setExportedName);
   if (exportedNameOr.isError())

@@ -48,6 +48,8 @@ public:
   cl::opt<bool> enableJitKernels{"enable-jit-kernels",
                                  cl::desc("Enable jitting of MOGG kernels."),
                                  cl::init(true)};
+  cl::opt<std::string> customOpsPath{
+      "user-ops", cl::desc("Replace MO ops with give ops"), cl::init("")};
 };
 
 class MOFContext {
@@ -56,6 +58,8 @@ public:
       : clOptions(std::make_unique<MOFDriverCLOptions>(argc, argv,
                                                        /*skipInitLLVM=*/true)),
         commonCasConfig{} {
+    if (!(clOptions->customOpsPath.empty()))
+      userOpsPath = clOptions->customOpsPath.getValue();
     setupGlobalContext();
   }
 
@@ -87,9 +91,14 @@ public:
   }
 
   void setCasConfig(const CASConfig &casConfig) { commonCasConfig = casConfig; }
+
   CASConfig getCasConfig() { return commonCasConfig; }
 
   ErrorOrSuccess setConfigs(ArrayRef<std::unique_ptr<DriverConfig>> configs) {
+    for (auto &config : configs) {
+      if (auto customOpConfig = dyn_cast<CustomOpsDriverConfig>(config.get()))
+        userOpsPath = customOpConfig->getPath();
+    }
     return success();
   }
 
@@ -101,6 +110,10 @@ public:
   RCRef<SharedGenericUniquePtrSet> getGlobalContextObjects() const {
     assert(globalContextObjects && "not yet called setConfigFromOptions");
     return globalContextObjects.copy();
+  }
+
+  std::optional<std::filesystem::path> getCustomOpsPath() const {
+    return userOpsPath;
   }
 
 private:
@@ -126,6 +139,7 @@ private:
   RCRef<SharedGenericUniquePtrSet> globalContextObjects;
   std::unique_ptr<MOFDriverCLOptions> clOptions;
   CASConfig commonCasConfig;
+  std::optional<std::filesystem::path> userOpsPath = std::nullopt;
 };
 
 } // namespace
@@ -265,7 +279,9 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
 
     // The MO graph dialect can be lowered to TFP, which is MEF emittable.
     // TODO: Set the options flags.
-    if (failed(lowerMOToMGP(module.get())))
+    if (failed(lowerMOToMGP(
+            module.get(),
+            /*userOpPath=*/ctxHandle.unwrap<MOFContext>()->getCustomOpsPath())))
       return Error("unable to lower MO to MGP");
 
     writeIntermediateFileIfRequested("mgp");
