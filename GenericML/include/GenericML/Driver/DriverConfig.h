@@ -24,6 +24,8 @@ public:
 
   llvm::StringLiteral getConfigName() const { return configName; }
 
+  virtual ~DriverConfig() = default;
+
 private:
   const OptionKind Kind;
   const llvm::StringLiteral configName;
@@ -32,15 +34,15 @@ private:
 class CustomOpsDriverConfig : public DriverConfig {
 
 public:
-  CustomOpsDriverConfig(const std::filesystem::path &path)
+  CustomOpsDriverConfig(std::filesystem::path path)
       : DriverConfig(OptionKind::kCustomOps, "custom-ops-path"),
-        customOpsPath(path) {}
+        customOpsPath(std::move(path)) {}
 
   static bool classof(const DriverConfig *config) {
     return config->getKind() == OptionKind::kCustomOps;
   }
 
-  std::filesystem::path getPath() const { return customOpsPath; }
+  const std::filesystem::path &getPath() const { return customOpsPath; }
 
 private:
   std::filesystem::path customOpsPath;

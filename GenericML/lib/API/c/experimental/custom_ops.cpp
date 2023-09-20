@@ -16,7 +16,7 @@ using namespace M;
 void M_useKernelsFrom(M_CompileConfig *compileConfig, const char *path,
                       M_Status *status) {
 
-  auto customOpsPath = std::filesystem::path(path);
+  auto customOpsPath = std::filesystem::path(std::string(path));
   std::error_code ec;
   if (!std::filesystem::exists(customOpsPath, ec)) {
     detail::setError(status,
@@ -25,5 +25,5 @@ void M_useKernelsFrom(M_CompileConfig *compileConfig, const char *path,
   }
 
   auto &config = compileConfig->config;
-  config.setCustomOpsPath(customOpsPath);
+  config.setCustomOpsPath(std::move(customOpsPath));
 }
