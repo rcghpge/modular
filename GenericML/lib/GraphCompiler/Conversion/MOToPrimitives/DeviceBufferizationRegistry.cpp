@@ -10,21 +10,40 @@ using namespace M;
 using namespace M::MO;
 
 void DeviceBufferizationRegistry::add(
-    StringRef label, MakeBufferBuilderFn &&makeBufferBuilderFn) {
+    StringRef label,
+    std::unique_ptr<DeviceSpecificDialect> deviceSpecificDialect) {
   std::lock_guard<std::mutex> guard(mu);
-  bool inserted = map.insert({label, std::move(makeBufferBuilderFn)}).second;
+  bool inserted = map.insert({label, std::move(deviceSpecificDialect)}).second;
   assert(inserted && "builder for label has already been registered");
 }
 
-LogicalResult DeviceBufferizationRegistry::call(
+void DeviceBufferizationRegistry::callAllRegisterDialects(
+    DialectRegistry &registry) {
+  std::lock_guard<std::mutex> guard(mu);
+  for (const auto &pair : map)
+    pair.second->registerDialect(registry);
+}
+
+LogicalResult DeviceBufferizationRegistry::callMakeTypeBuilder(
     DeviceSpecAttr deviceSpec, MGP::MOGraphLoweringState &loweringState) const {
   std::lock_guard<std::mutex> guard(mu);
   auto itr = map.find(deviceSpec.getRef().getLabel());
   if (itr == map.end()) {
-    return loweringState.getGraph().emitOpError("no builder for label '")
+    return loweringState.getGraph().emitOpError("no type builder for label '")
            << deviceSpec.getRef().getLabel() << "' has been registered.";
   }
-  return itr->second(deviceSpec, loweringState);
+  return itr->second->makeTypeBuilder(deviceSpec, loweringState);
+}
+
+LogicalResult DeviceBufferizationRegistry::callMakeBufferBuilder(
+    DeviceSpecAttr deviceSpec, MGP::MOGraphLoweringState &loweringState) const {
+  std::lock_guard<std::mutex> guard(mu);
+  auto itr = map.find(deviceSpec.getRef().getLabel());
+  if (itr == map.end()) {
+    return loweringState.getGraph().emitOpError("no buffer builder for label '")
+           << deviceSpec.getRef().getLabel() << "' has been registered.";
+  }
+  return itr->second->makeBufferBuilder(deviceSpec, loweringState);
 }
 
 //  TODO: May need to move into dedicated 'globals' shared library.
@@ -39,12 +58,22 @@ static DeviceBufferizationRegistry &getRegistry() {
       [] { return new DeviceBufferizationRegistry(); });
 }
 
-void MO::registerMakeBufferBuilder(StringRef label,
-                                   MakeBufferBuilderFn &&makeBufferBuilderFn) {
-  return getRegistry().add(label, std::move(makeBufferBuilderFn));
+void MO::registerDeviceSpecificDialect(
+    StringRef label,
+    std::unique_ptr<DeviceSpecificDialect> deviceSpecificDialect) {
+  return getRegistry().add(label, std::move(deviceSpecificDialect));
+}
+
+void MO::registerAllDeviceDialects(DialectRegistry &registry) {
+  getRegistry().callAllRegisterDialects(registry);
+}
+
+LogicalResult MO::makeTypeBuilder(DeviceSpecAttr deviceSpec,
+                                  MGP::MOGraphLoweringState &loweringState) {
+  return getRegistry().callMakeTypeBuilder(deviceSpec, loweringState);
 }
 
 LogicalResult MO::makeBufferBuilder(DeviceSpecAttr deviceSpec,
                                     MGP::MOGraphLoweringState &loweringState) {
-  return getRegistry().call(deviceSpec, loweringState);
+  return getRegistry().callMakeBufferBuilder(deviceSpec, loweringState);
 }

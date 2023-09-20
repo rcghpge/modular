@@ -21,6 +21,7 @@
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/DialectInterface.h"
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/DenseMap.h"
 #include <unordered_map>
 
@@ -36,12 +37,18 @@ namespace M::MGP {
 /// LowerableToMGPInterface). The state is gradually built as ops are lowered.
 class MOGraphLoweringState {
 public:
-  MOGraphLoweringState(M::MO::GraphOp graph, TypeConverter &typeConverter,
+  MOGraphLoweringState(M::MO::GraphOp graph,
                        llvm::StringRef compiledFrameworkLabel,
                        size_t minimumCpuAlignment)
-      : graph(graph), typeConverter(typeConverter),
-        common(compiledFrameworkLabel, minimumCpuAlignment),
-        init(graph.getContext()), execute(graph.getContext()) {}
+      : graph(graph), common(compiledFrameworkLabel, minimumCpuAlignment),
+        init(graph.getContext()), execute(graph.getContext()) {
+    typeConverter.addConversion(
+        [this](MO::TensorType type) -> std::optional<Type> {
+          return getTypeBuilder(MO::getDeviceOrDefault(this->graph, type))
+              ->tensorType(this->graph.getContext(),
+                           MGP::createCpuTensorSpecType(type));
+        });
+  }
 
   /// Common state used by both the init and execute phases.
   struct CommonState {
@@ -152,6 +159,9 @@ public:
 
   /// Return the graph being lowered.
   MO::GraphOp &getGraph() { return graph; }
+
+  /// Returns the graph's device_specs annotation.
+  FailureOr<DeviceSpecCollectionAttr> getDeviceSpecs();
 
   /// Return type converter for lowering known MO types into MGP ones.
   TypeConverter &getTypeConverter() { return typeConverter; }
@@ -289,6 +299,23 @@ public:
     return itr->second;
   }
 
+  /// Register the given type builder for the given device.
+  void registerTypeBuilder(DeviceRefAttr device,
+                           std::unique_ptr<TypeBuilder> typeBuilder) {
+    bool inserted =
+        typeBuilderMap.insert({device, std::move(typeBuilder)}).second;
+    assert(inserted && "a type builder has already been registered for device");
+  }
+
+  /// Returns the type builder to use for device. The builder is owned by
+  /// this object.
+  TypeBuilder *getTypeBuilder(DeviceRefAttr device) {
+    auto itr = typeBuilderMap.find(device);
+    assert(itr != typeBuilderMap.end() &&
+           "no type builder has been registered for device");
+    return itr->second.get();
+  }
+
   /// Register the given buffer builder for the given device.
   void registerBufferBuilder(DeviceRefAttr device,
                              std::unique_ptr<BufferBuilder> bufferBuilder) {
@@ -299,7 +326,7 @@ public:
   }
 
   /// Returns the buffer builder to use for device. The builder is owned by
-  /// this object. Can only be called
+  /// this object.
   BufferBuilder *getBufferBuilder(DeviceRefAttr device) {
     auto itr = bufferBuilderMap.find(device);
     assert(itr != bufferBuilderMap.end() &&
@@ -344,8 +371,12 @@ private:
 
   /// The graph being lowered.
   MO::GraphOp graph;
-  /// Type converter for lowering known MO types into MGP ones.
-  TypeConverter &typeConverter;
+  /// Type converter for lowering from MO types to MGP and other
+  /// device-specific types.
+  TypeConverter typeConverter;
+
+  /// The type builder to use for each device.
+  llvm::DenseMap<DeviceRefAttr, std::unique_ptr<TypeBuilder>> typeBuilderMap;
 
   /// The buffer builder to use for each device.
   llvm::DenseMap<DeviceRefAttr, std::unique_ptr<BufferBuilder>>

@@ -19,14 +19,12 @@
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "Support/Compiler/OperationUtils.h"
-#include "Support/Host.h"
 #include "Support/MArchTarget/MArchTarget.h"
 #include "Support/ML/CommonAttributes.h"
 #include "Support/STLExtras.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/Transforms/TopologicalSortUtils.h"
 #include <cassert>
-#include <numeric>
 
 using namespace M;
 
@@ -51,11 +49,9 @@ namespace {
 /// is lowered.
 class MOGraphLowering {
 public:
-  MOGraphLowering(MO::GraphOp graph, TypeConverter &typeConverter,
-                  llvm::StringRef compiledFrameworkLabel,
+  MOGraphLowering(MO::GraphOp graph, llvm::StringRef compiledFrameworkLabel,
                   size_t minimumCpuAlignment)
-      : loweringState(graph, typeConverter, compiledFrameworkLabel,
-                      minimumCpuAlignment) {}
+      : loweringState(graph, compiledFrameworkLabel, minimumCpuAlignment) {}
 
   /// Lower the mo.graph to mgp.model.
   LogicalResult run();
@@ -70,9 +66,13 @@ public:
   // !mgp.context slot to hold the calculated device spec map.
   LogicalResult setupCheckRuntime(Location loc);
 
+  // Establish type builders for all the (virtual) devices needed by the
+  // model. These will be available via the lowering state's type converter.
+  LogicalResult setupTypeBuildersForAllDevices();
+
   // Establish buffer builders for all the (virtual) devices needed by the
   // model. This may require emitting device-specific setup code.
-  LogicalResult setupForAllDevices(Location loc);
+  LogicalResult setupBufferBuildersForAllDevices(Location loc);
 
   LogicalResult createModelOp();
 
@@ -161,12 +161,10 @@ LogicalResult MOGraphLowering::setupCompiledKernelsContext(Location loc) {
 }
 
 LogicalResult MOGraphLowering::setupCheckRuntime(Location loc) {
-  DeviceSpecCollectionAttr deviceSpecs =
-      loweringState.getGraph().getDeviceSpecs();
-  if (!deviceSpecs) {
-    return loweringState.getGraph().emitOpError("requires a '")
-           << MO::kGraphDeviceSpecCollectionAttrName << "' attribute";
-  }
+  FailureOr<DeviceSpecCollectionAttr> deviceSpecsOr =
+      loweringState.getDeviceSpecs();
+  if (failed(deviceSpecsOr))
+    return failure();
 
   uint64_t slot = loweringState.getInitMgpContext().getNumSlots();
   auto checkRuntimeOp =
@@ -175,22 +173,40 @@ LogicalResult MOGraphLowering::setupCheckRuntime(Location loc) {
           /*inChain=*/loweringState.getInitChain(),
           /*theContext=*/loweringState.getInitMgpContext(),
           /*aSlot=*/slot,
-          /*bDevices=*/deviceSpecs);
+          /*bDevices=*/*deviceSpecsOr);
   loweringState.setCheckRuntimeOp(checkRuntimeOp);
   loweringState.getInitMgpContext().setNumSlots(slot + 1);
   loweringState.setInitChain(checkRuntimeOp.getOutChain());
   return success();
 }
 
-LogicalResult MOGraphLowering::setupForAllDevices(Location loc) {
-  DeviceSpecCollectionAttr deviceSpecs =
-      loweringState.getGraph().getDeviceSpecs();
-  if (!deviceSpecs) {
-    return loweringState.getGraph().emitOpError("requires a '")
-           << MO::kGraphDeviceSpecCollectionAttrName << "' attribute";
-  }
+LogicalResult MOGraphLowering::setupTypeBuildersForAllDevices() {
+  FailureOr<DeviceSpecCollectionAttr> deviceSpecsOr =
+      loweringState.getDeviceSpecs();
+  if (failed(deviceSpecsOr))
+    return failure();
 
-  for (DeviceSpecAttr deviceSpec : deviceSpecs.getDevices()) {
+  for (DeviceSpecAttr deviceSpec : deviceSpecsOr->getDevices()) {
+    if (deviceSpec.getRef().getLabel() == GML::kCPULabel) {
+      // We know how to work with MGP tensors for the CPU.
+      loweringState.registerTypeBuilder(
+          deviceSpec.getRef(), std::make_unique<MGP::CpuTypeBuilder>());
+    } else {
+      // Rely on the registered 'makeTypeBuilder' function for this device.
+      if (failed(MO::makeTypeBuilder(deviceSpec, loweringState)))
+        return failure();
+    }
+  }
+  return success();
+}
+
+LogicalResult MOGraphLowering::setupBufferBuildersForAllDevices(Location loc) {
+  FailureOr<DeviceSpecCollectionAttr> deviceSpecsOr =
+      loweringState.getDeviceSpecs();
+  if (failed(deviceSpecsOr))
+    return failure();
+
+  for (DeviceSpecAttr deviceSpec : deviceSpecsOr->getDevices()) {
     if (deviceSpec.getRef().getLabel() == GML::kCPULabel) {
       // We know how to work with MGP buffers and tensors for the CPU.
       loweringState.registerBufferBuilder(
@@ -210,6 +226,11 @@ LogicalResult MOGraphLowering::setupForAllDevices(Location loc) {
 LogicalResult MOGraphLowering::createModelOp() {
   MO::GraphOp &graph = loweringState.getGraph();
   OpBuilder b(graph);
+
+  // Establish type builders for all the devices. We can't convert any types
+  // until this is done.
+  if (failed(setupTypeBuildersForAllDevices()))
+    return failure();
 
   // Convert the tensor types for the model signature over.
   SmallVector<Type> inputTypes, outputTypes;
@@ -281,9 +302,10 @@ LogicalResult MOGraphLowering::createModelOp() {
   if (failed(setupCheckRuntime(graph.getLoc())))
     return failure();
 
-  // Establish buffer builder for all the devices. This may require some
-  // extra device-specific setup in the 'init' block.
-  if (failed(setupForAllDevices(graph.getLoc())))
+  // Establish buffer builders for all the devices. This may require some
+  // extra device-specific setup in the 'init' block. We can't create any
+  // device-specific ops until this is done.
+  if (failed(setupBufferBuildersForAllDevices(graph.getLoc())))
     return failure();
 
   // Initialize the execute state.
@@ -1066,21 +1088,19 @@ struct MOToPrimitivesPass
   using MOToPrimitivesBase::MOToPrimitivesBase;
 
   void runOnOperation() override;
+
+  void getDependentDialects(::mlir::DialectRegistry &registry) const override;
 };
 } // namespace
 
+void MOToPrimitivesPass::getDependentDialects(DialectRegistry &registry) const {
+  MOToPrimitivesBase::getDependentDialects(registry);
+  // Bring in all the device-specific dialects.
+  MO::registerAllDeviceDialects(registry);
+}
+
 void MOToPrimitivesPass::runOnOperation() {
   ModuleOp theModule = getOperation();
-  auto &ctx = getContext();
-
-  TypeConverter converter;
-  converter.addConversion([&ctx](MO::TensorType t) -> std::optional<Type> {
-    // TODO: Currently only supports "cpu" devices, need TypeBuilder interface
-    // analogous to BufferBuilder.
-    DeviceRefAttr device = t.getDeviceRef();
-    assert(!device || device.getLabel() == GML::kCPULabel);
-    return MGP::CpuTensorType::get(&ctx, MGP::createCpuTensorSpecType(t));
-  });
 
   // The mojo kernels will already be composed into novel jit kernels at this
   // point so there is no lowering for the MojoRegisterOp which is just a helper
@@ -1092,8 +1112,7 @@ void MOToPrimitivesPass::runOnOperation() {
   // Convert each mo.graph into a mgp.model.
   for (auto graphOp :
        llvm::make_early_inc_range(theModule.getOps<MO::GraphOp>())) {
-    if (failed(MOGraphLowering(graphOp, converter,
-                               compiledFrameworkLabel.getValue(),
+    if (failed(MOGraphLowering(graphOp, compiledFrameworkLabel.getValue(),
                                minimumCpuAlignment.getValue())
                    .run()))
       return signalPassFailure();

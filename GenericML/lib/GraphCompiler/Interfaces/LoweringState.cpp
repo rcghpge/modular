@@ -13,6 +13,16 @@ using namespace M::MGP;
 // MOGraphLoweringState
 //===----------------------------------------------------------------------===//
 
+FailureOr<DeviceSpecCollectionAttr> MOGraphLoweringState::getDeviceSpecs() {
+  DeviceSpecCollectionAttr deviceSpecs = graph.getDeviceSpecs();
+  if (!deviceSpecs) {
+    return graph.emitOpError("requires a '")
+           << MO::kGraphDeviceSpecCollectionAttrName
+           << "' attribute to guide lowering";
+  }
+  return deviceSpecs;
+}
+
 TypedValue<MGP::CpuTensorSpecType>
 MOGraphLoweringState::getShape(Location loc, Value loweredTensor,
                                DeviceRefAttr device) {

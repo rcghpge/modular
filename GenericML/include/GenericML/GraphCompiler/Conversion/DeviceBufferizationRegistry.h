@@ -29,43 +29,75 @@
 
 namespace M::MO {
 
-/// Type of functions which, given an #M.device_spec, registers a
-/// MGP::BufferBuilder appropriate for the device specification within
-/// loweringState. As a side effect, the function may also emit code into
-/// the 'init' block for the given loweringState, for example to establish
-/// !mgp.context entries appropriate for the device. These functions are
-/// called once the lowered 'init' block has been established but before any
-/// MO ops are lowered.
-using MakeBufferBuilderFn = llvm::unique_function<LogicalResult(
-    DeviceSpecAttr deviceSpec, MGP::MOGraphLoweringState &loweringState) const>;
+struct DeviceSpecificDialect {
+  virtual ~DeviceSpecificDialect() = default;
 
-/// Holds all the registered bufferization helpers.
+  // Registers a device-specific dialect with the given registry. This function
+  // is called when the MOToPrimitives pass is created.
+  virtual void registerDialect(DialectRegistry &registry) = 0;
+
+  /// Given an #M.device_spec, registers a MGP::TypeBuilder appropriate for
+  /// the device specification within loweringState. This function is called
+  /// during lowering before any MO types are lowered.
+  virtual LogicalResult
+  makeTypeBuilder(DeviceSpecAttr deviceSpec,
+                  MGP::MOGraphLoweringState &loweringState) = 0;
+
+  /// Given an #M.device_spec, registers a MGP::BufferBuilder appropriate for
+  /// the device specification within loweringState. As a side effect, the
+  /// function may also emit code into the 'init' block for the given
+  /// loweringState, for example to establish !mgp.context entries appropriate
+  /// for the device. This function is called once the lowered 'init' block
+  /// has been established but before any MO ops are lowered.
+  virtual LogicalResult
+  makeBufferBuilder(DeviceSpecAttr deviceSpec,
+                    MGP::MOGraphLoweringState &loweringState) = 0;
+};
+
+/// Holds all the registered DeviceSpecificDialects.
 class DeviceBufferizationRegistry {
 public:
   DeviceBufferizationRegistry() = default;
   ~DeviceBufferizationRegistry() = default;
 
-  /// Adds makeBufferBuilderFn into the registry for devices with the given
-  /// label. At most one builder can be registered per label.
-  void add(StringRef label, MakeBufferBuilderFn &&makeBufferBuilderFn);
+  /// Adds DeviceSpecificDialect to registry for given label. Each label can
+  /// be registered at most once.
+  void add(StringRef label,
+           std::unique_ptr<DeviceSpecificDialect> deviceSpecificDialect);
 
-  /// Calls the registered buffer builder appropriate for given args.
-  /// A builder for the device spec's label must have been registered.
-  LogicalResult call(DeviceSpecAttr deviceSpec,
-                     MGP::MOGraphLoweringState &loweringState) const;
+  /// Calls all registerDialect functions.
+  void callAllRegisterDialects(DialectRegistry &registry);
+
+  /// Calls the makeTypeBuilder function appropriate for given args.
+  LogicalResult
+  callMakeTypeBuilder(DeviceSpecAttr deviceSpec,
+                      MGP::MOGraphLoweringState &loweringState) const;
+
+  /// Calls the makeBufferBuilder function appropriate for given args.
+  LogicalResult
+  callMakeBufferBuilder(DeviceSpecAttr deviceSpec,
+                        MGP::MOGraphLoweringState &loweringState) const;
 
 private:
   /// Protects map.
   mutable std::mutex mu;
-  llvm::StringMap<MakeBufferBuilderFn> map;
+  llvm::StringMap<std::unique_ptr<DeviceSpecificDialect>> map;
 };
 
-/// Registers makeBufferBuilderFn to be called by the MOToPrimitives lowering
-/// pass for devices with the given label.
-void registerMakeBufferBuilder(StringRef label,
-                               MakeBufferBuilderFn &&makeBufferBuilderFn);
+/// Registers the device-specific dialect helpers to be called by the
+/// MOToPrimitives lowering/ pass for devices with the given label.
+void registerDeviceSpecificDialect(
+    StringRef label,
+    std::unique_ptr<DeviceSpecificDialect> deviceSpecificDialect);
 
-/// Call the registered buffer builder appropriate for given args.
+/// Adds all device-specific dialects to registry.
+void registerAllDeviceDialects(DialectRegistry &registry);
+
+/// Call the registered make type builder function appropriate for given args.
+LogicalResult makeTypeBuilder(DeviceSpecAttr deviceSpec,
+                              MGP::MOGraphLoweringState &loweringState);
+
+/// Call the registered make buffer builder function appropriate for given args.
 LogicalResult makeBufferBuilder(DeviceSpecAttr deviceSpec,
                                 MGP::MOGraphLoweringState &loweringState);
 

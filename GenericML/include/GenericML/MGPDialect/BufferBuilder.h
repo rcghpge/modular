@@ -4,7 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Support for working with device-dependent buffer and tensor types.
+// Support for working with device-dependent buffer and tensor values and
+// types.
 //
 //===----------------------------------------------------------------------===//
 
@@ -132,6 +133,38 @@ genericTensorExtractVerify(Operation *op, TensorType tensorType,
            << resultBufferType << " vs " << expectedBufferType << ").";
   return success();
 }
+
+//===----------------------------------------------------------------------===//
+// TypeBuilder
+//===----------------------------------------------------------------------===//
+
+/// A TypeBuilder provides methods for building device specific tensor types.
+/// It is only needed during lowering when lowered types must be provided
+/// ahead of lowering itself.
+class TypeBuilder {
+public:
+  virtual ~TypeBuilder() = default;
+
+  /// Returns Type representing device specific tensor with given tensor spec
+  /// type.
+  virtual Type tensorType(MLIRContext *ctx,
+                          CpuTensorSpecType tensorSpecType) = 0;
+};
+
+//===----------------------------------------------------------------------===//
+// CpuTypeBuilder
+//===----------------------------------------------------------------------===//
+
+class CpuTypeBuilder : public TypeBuilder {
+public:
+  using TensorType = CpuTensorType;
+
+  ~CpuTypeBuilder() override = default;
+
+  Type tensorType(MLIRContext *ctx, CpuTensorSpecType tensorSpecType) override {
+    return CpuTensorType::get(ctx, tensorSpecType);
+  }
+};
 
 //===----------------------------------------------------------------------===//
 // BufferBuilder
