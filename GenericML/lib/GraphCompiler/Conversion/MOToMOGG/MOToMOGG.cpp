@@ -180,7 +180,7 @@ struct MOOpPattern : public RewritePattern {
           tensor.hasUnknownShape())
         return false;
 
-      // The symbolic shape must be trivial and not a compound expresion. I.E
+      // The symbolic shape must be trivial and not a compound expression. I.E
       // N*M.
       for (TypedAttr symbolicDim : tensor.getDims()) {
         if (!(isa<KGEN::ParamDeclRefAttr>(symbolicDim) ||
