@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp  --allow-unregistered-dialect | FileCheck %s
+// RUN: mo-opt %s --mo-to-mgp | FileCheck %s
 
 // Just check we can compile it.
 

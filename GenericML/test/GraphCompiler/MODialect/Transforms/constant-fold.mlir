@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --constant-fold --mlir-print-ir-after=mo-to-mogg --allow-unregistered-dialect 2>&1 | FileCheck %s
+// RUN: mo-opt %s --constant-fold --mlir-print-ir-after=mo-to-mogg 2>&1 | FileCheck %s
 
 // These are checks to make sure that the constant subgraphs are lowered
 // instead of being connonicalized. We inspect the mlir code after mo-to-mogg

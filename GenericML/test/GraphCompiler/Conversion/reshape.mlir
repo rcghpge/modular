@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp --allow-unregistered-dialect | FileCheck %s
+// RUN: mo-opt %s --mo-to-mgp | FileCheck %s
 
 // Entry point
 // CHECK: mgp.model @reshape_static_input_static_output

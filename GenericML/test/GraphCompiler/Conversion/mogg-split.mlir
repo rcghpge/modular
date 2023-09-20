@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --add-devices --mo-to-primitives --allow-unregistered-dialect --canonicalize | FileCheck %s
+// RUN: mo-opt %s --add-devices --mo-to-primitives --canonicalize | FileCheck %s
 
 // CHECK: mgp.model @mogg_split : tf init {
 // CHECK: } execute (

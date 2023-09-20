@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --add-devices --mo-to-primitives --allow-unregistered-dialect | FileCheck %s
+// RUN: mo-opt %s --add-devices --mo-to-primitives | FileCheck %s
 
 // CHECK-LABEL: mgp.model @constants_with_multiple_returns : tf init {
 // CHECK:      } execute (

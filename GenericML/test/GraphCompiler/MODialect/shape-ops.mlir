@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --allow-unregistered-dialect | FileCheck %s
+// RUN: mo-opt %s | FileCheck %s
 
 // CHECK: mo.graph @broadcast_to(%[[FROM:.*]]: !mo.tensor<[3], f32>, %[[TO:.*]]: !mosh.ape) -> !mo.tensor<[2, 3], f32> no_inline {
 mo.graph @broadcast_to(%from: !mo.tensor<[3], f32>, %to: !mosh.ape) -> !mo.tensor<[2, 3], f32> {
@@ -60,18 +60,21 @@ mo.graph @invoke_shape_func_slice<D1, D2 -> D3, D4>(
 
 // CHECK-LABEL: mo.graph @invoke_shape_func_matmul_packing
 mo.graph @invoke_shape_func_matmul_packing<D1, D2 -> D3, D4, D5>(
-  %input: !mo.tensor<[D1, D2], f32>
-) -> !mo.tensor<[D3, D4, D5], f32> {
+  %input: !mo.tensor<[D1, D2], f32, {layout = #mo.layout<KN>}>
+) -> !mo.tensor<[D3, D4, D5], f32, {layout = #mo.layout<KNkni>}> {
 
-  %input_shape = mo.shape_of(%input) : (!mo.tensor<[D1, D2], f32>) -> !mo.tensor<[2], si32>
+  %input_shape = mo.shape_of(%input) : (!mo.tensor<[D1, D2], f32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[2], si32>
 
   // CHECK: mo.invoke_shape_func["pack_matmul_b_shape_func"]<() -> D6, D7, D8>
   mo.invoke_shape_func["pack_matmul_b_shape_func"]<() -> D6, D7, D8>(%input_shape)
   {transpose = true} : (!mo.tensor<[2], si32>)
 
-  // CHECK: "mop.kernels.pack_matmul_b_transp"{{.*}}(!mo.tensor<[D1, D2], f32>) -> !mo.tensor<[D6, D7, D8], f32>
-  %out = "mop.kernels.pack_matmul_b_transp"(%input)
-  : (!mo.tensor<[D1, D2], f32>) -> !mo.tensor<[D6, D7, D8], f32>
+  // CHECK: mo.layout.transform({{.*}}) :
+  // CHECK-SAME:  !mo.tensor<[D1, D2], f32, {layout = #mo.layout<KN>}> ->
+  // CHECK-SAME:  !mo.tensor<[D6, D7, D8], f32, {layout = #mo.layout<KNkni>}>
+  %out = mo.layout.transform(%input) :
+    !mo.tensor<[D1, D2], f32, {layout = #mo.layout<KN>}> ->
+    !mo.tensor<[D6, D7, D8], f32, {layout = #mo.layout<KNkni>}>
 
-  mo.output<D6, D7, D8> %out : !mo.tensor<[D6, D7, D8], f32>
+  mo.output<D6, D7, D8> %out : !mo.tensor<[D6, D7, D8], f32, {layout = #mo.layout<KNkni>}>
 }
