@@ -32,6 +32,19 @@ namespace {
 struct ClOptions {
   cl::opt<std::string> modelPath{llvm::cl::Positional, llvm::cl::Required,
                                  cl::desc("Path to model file/directory")};
+  cl::opt<mlperf::TestScenario> mlPerfScenario{
+      "mlperf-scenario",
+      cl::desc("MLPerf Inference scenario to test (see "
+               "https://mlcommons.org/en/inference-datacenter-30/"
+               "#scenarios-and-metrics for definitions)"),
+      cl::init(mlperf::TestScenario::SingleStream),
+      cl::values(
+          clEnumValN(mlperf::TestScenario::SingleStream, "single-stream",
+                     "Single stream"),
+          clEnumValN(mlperf::TestScenario::MultiStream, "multiple-stream-2.0",
+                     "Multiple Stream 2.0"),
+          clEnumValN(mlperf::TestScenario::Server, "server", "Server"),
+          clEnumValN(mlperf::TestScenario::Offline, "offline", "Offline"))};
 };
 
 class LoadedSample final {
@@ -104,6 +117,21 @@ private:
 };
 
 } // namespace
+
+static llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                                     mlperf::TestScenario scenario) {
+  switch (scenario) {
+  case mlperf::TestScenario::SingleStream:
+    return os << "Single Stream";
+  case mlperf::TestScenario::MultiStream:
+    return os << "Multiple Stream 2.0";
+  case mlperf::TestScenario::Server:
+    return os << "Server";
+  case mlperf::TestScenario::Offline:
+    return os << "Offline";
+  }
+  llvm::report_fatal_error("Unknown mlperf::TestScenario value");
+}
 
 static ErrorOr<RuntimeContextPtr> makeRuntimeContext(M_Status *status) {
   RuntimeConfigPtr runtimeConfig(M_newRuntimeConfig(), M_freeRuntimeConfig);
@@ -300,6 +328,9 @@ int main(int argc, char **argv) {
   }
   RuntimeContextPtr runtimeContext = std::move(*runtimeContextOr);
 
+  llvm::outs() << "MLPerf scenario: " << opts.mlPerfScenario
+               << " (use --mlperf-scenario to change)\n";
+
   CompiledModelPtr compiledModel(nullptr, M_freeCompiledModel);
   llvm::outs() << "Compiling model... ";
   {
@@ -333,6 +364,7 @@ int main(int argc, char **argv) {
   QuerySampleLibrary qsl(1000);
   SystemUnderTest sut(&qsl, runtimeContext.get(), model.get());
   mlperf::TestSettings mlperfTestSettings;
+  mlperfTestSettings.scenario = opts.mlPerfScenario;
   mlperf::LogSettings mlperfLogSettings;
   mlperfLogSettings.log_output.copy_summary_to_stdout = true;
 

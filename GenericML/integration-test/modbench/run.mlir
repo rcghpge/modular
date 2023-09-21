@@ -1,6 +1,7 @@
 // RUN: modbench %S/testdata/relu100x100x3 | FileCheck %s
 // CHECK: Modular Benchmarking Tool
 // CHECK: Modular version: {{.+}}
+// CHECK: MLPerf scenario: Single Stream (use --mlperf-scenario to change)
 // CHECK: Compiling model... OK (took {{.+}})
 // CHECK: Benchmarking
 // CHECK: QPS w/ loadgen overhead : {{[0-9.e+-]+}}
