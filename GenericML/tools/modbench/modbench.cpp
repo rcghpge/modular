@@ -13,10 +13,15 @@
 #include "Support/CommandLine.h"
 #include "Support/CrashReporting.h"
 #include "Support/ErrorOr.h"
+#include "mlperf-loadgen/loadgen.h"
+#include "mlperf-loadgen/query_sample_library.h"
+#include "mlperf-loadgen/system_under_test.h"
+#include "mlperf-loadgen/test_settings.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/raw_ostream.h"
+#include <iostream>
 
 using namespace M;
 
@@ -27,6 +32,75 @@ namespace {
 struct ClOptions {
   cl::opt<std::string> modelPath{llvm::cl::Positional, llvm::cl::Required,
                                  cl::desc("Path to model file/directory")};
+};
+
+class LoadedSample final {
+public:
+  static ErrorOr<LoadedSample *> Create();
+  ~LoadedSample() = default;
+
+  M_TensorSpec *getSpec() const { return spec.get(); }
+  void *getData() const { return data.get(); }
+
+private:
+  LoadedSample() = default;
+
+  TensorSpecPtr spec = TensorSpecPtr(nullptr, M_freeTensorSpec);
+  std::unique_ptr<float[]> data;
+};
+
+class QuerySampleLibrary final : public mlperf::QuerySampleLibrary {
+public:
+  explicit QuerySampleLibrary(size_t sampleCount);
+  ~QuerySampleLibrary();
+
+  std::string &Name() const override {
+    static std::string *name = new std::string(kModbenchProductName);
+    return *name;
+  }
+
+  size_t TotalSampleCount() override { return sampleCount; }
+
+  size_t PerformanceSampleCount() override { return TotalSampleCount(); }
+
+  void LoadSamplesToRam(
+      const std::vector<mlperf::QuerySampleIndex> &samples) override;
+  void UnloadSamplesFromRam(
+      const std::vector<mlperf::QuerySampleIndex> &samples) override;
+
+  LoadedSample *getLoadedSample(mlperf::QuerySampleIndex index) {
+    return loadedSamples[index].load();
+  }
+
+private:
+  void loadSample(mlperf::QuerySampleIndex index);
+  void unloadSample(mlperf::QuerySampleIndex index);
+
+  std::unique_ptr<std::atomic<LoadedSample *>[]> loadedSamples;
+  std::size_t sampleCount;
+};
+
+class SystemUnderTest final : public mlperf::SystemUnderTest {
+public:
+  explicit SystemUnderTest(QuerySampleLibrary *qsl,
+                           M_RuntimeContext *runtimeContext,
+                           M_AsyncModel *model);
+
+  std::string &Name() const override {
+    static std::string *name = new std::string(kModbenchProductName);
+    return *name;
+  }
+
+  void IssueQuery(const std::vector<mlperf::QuerySample> &samples) override;
+  void FlushQueries() override;
+
+private:
+  ErrorOrSuccess
+  issueQueryFallible(const std::vector<mlperf::QuerySample> &samples);
+
+  QuerySampleLibrary *qsl;
+  M_RuntimeContext *runtimeContext;
+  M_AsyncModel *model;
 };
 
 } // namespace
@@ -73,25 +147,122 @@ static ErrorOr<ModelPtr> prepareModel(M_RuntimeContext *runtimeContext,
   return std::move(model);
 }
 
-static ErrorOr<std::tuple<TensorMapPtr, std::unique_ptr<float[]>>>
-prepareInput(M_RuntimeContext *runtimeContext, M_Status *status) {
-  TensorSpecPtr spec(
+static ErrorOr<TensorMapPtr> prepareInput(M_RuntimeContext *runtimeContext,
+                                          M_Status *status,
+                                          LoadedSample *sample) {
+  TensorMapPtr atm(M_newAsyncTensorMap(runtimeContext), M_freeAsyncTensorMap);
+  if (!atm)
+    return Error("Failed to create M_AsyncTensorMap (out of memory?)");
+  M_borrowTensorInto(atm.get(), sample->getData(), sample->getSpec(), status);
+  if (M_isError(status))
+    return Error(llvm::Twine("When borrowing tensor into input map: ") +
+                 M_getError(status));
+  return std::move(atm);
+}
+
+ErrorOr<LoadedSample *> LoadedSample::Create() {
+  std::unique_ptr<LoadedSample> sample(new LoadedSample);
+  sample->spec = TensorSpecPtr(
       M_newTensorSpec(
           std::initializer_list<std::int64_t>{1, 100, 100, 3}.begin(), 4,
           M_FLOAT32, "inputs"),
       M_freeTensorSpec);
-  if (!spec)
+  if (!sample->spec)
     return Error("Failed to create M_TensorSpec (out of memory?)");
-  std::unique_ptr<float[]> data = std::make_unique<float[]>(1 * 100 * 100 * 3);
-  std::fill(data.get(), data.get() + 1 * 100 * 100 * 3, 0.0f);
-  TensorMapPtr atm(M_newAsyncTensorMap(runtimeContext), M_freeAsyncTensorMap);
-  if (!atm)
-    return Error("Failed to create M_AsyncTensorMap (out of memory?)");
-  M_borrowTensorInto(atm.get(), data.get(), spec.get(), status);
-  if (M_isError(status))
-    return Error(llvm::Twine("When borrowing tensor into input map: ") +
-                 M_getError(status));
-  return std::make_tuple(std::move(atm), std::move(data));
+  sample->data = std::make_unique<float[]>(1 * 100 * 100 * 3);
+  std::fill(sample->data.get(), sample->data.get() + 1 * 100 * 100 * 3, 0.0f);
+  return sample.release();
+}
+
+QuerySampleLibrary::QuerySampleLibrary(size_t sampleCount)
+    : loadedSamples(
+          std::make_unique<std::atomic<LoadedSample *>[]>(sampleCount)),
+      sampleCount(sampleCount) {}
+QuerySampleLibrary::~QuerySampleLibrary() {
+  for (size_t i = 0; i < sampleCount; ++i)
+    unloadSample(i);
+}
+
+void QuerySampleLibrary::LoadSamplesToRam(
+    const std::vector<mlperf::QuerySampleIndex> &samples) {
+  for (mlperf::QuerySampleIndex i : samples)
+    loadSample(i);
+}
+void QuerySampleLibrary::UnloadSamplesFromRam(
+    const std::vector<mlperf::QuerySampleIndex> &samples) {
+  for (mlperf::QuerySampleIndex i : samples)
+    unloadSample(i);
+}
+
+void QuerySampleLibrary::loadSample(mlperf::QuerySampleIndex index) {
+  assert(index >= 0 && index < sampleCount);
+  auto sampleOr = LoadedSample::Create();
+  if (sampleOr.isError()) {
+    llvm::errs() << "Error loading sample " << index << ": "
+                 << sampleOr.getError() << "\n";
+    mlperf::AbortTest();
+    return;
+  }
+  delete loadedSamples[index].exchange(*sampleOr);
+}
+
+void QuerySampleLibrary::unloadSample(mlperf::QuerySampleIndex index) {
+  assert(index >= 0 && index < sampleCount);
+  delete loadedSamples[index].exchange(nullptr);
+}
+
+SystemUnderTest::SystemUnderTest(QuerySampleLibrary *qsl,
+                                 M_RuntimeContext *runtimeContext,
+                                 M_AsyncModel *model)
+    : qsl(qsl), runtimeContext(runtimeContext), model(model) {}
+
+void SystemUnderTest::IssueQuery(
+    const std::vector<mlperf::QuerySample> &samples) {
+  ErrorOrSuccess result = issueQueryFallible(samples);
+  if (result.isError()) {
+    llvm::errs() << "Error issuing query: " << result.getError() << "\n";
+    mlperf::AbortTest();
+  }
+}
+
+ErrorOrSuccess SystemUnderTest::issueQueryFallible(
+    const std::vector<mlperf::QuerySample> &samples) {
+  StatusPtr status(M_newStatus(), M_freeStatus);
+  if (!status)
+    return Error("Failed to create M_Status (out of memory?)");
+  std::vector<mlperf::QuerySampleResponse> responses{};
+  std::vector<TensorMapPtr> outputATMs;
+  responses.resize(samples.size());
+  outputATMs.reserve(samples.size());
+  for (size_t i = 0; i < samples.size(); ++i) {
+    const mlperf::QuerySample &sample = samples[i];
+    LoadedSample *loadedSample = qsl->getLoadedSample(sample.index);
+    if (loadedSample == nullptr)
+      return Error("Query issued on unloaded sample");
+    auto inputATMOr = prepareInput(runtimeContext, status.get(), loadedSample);
+    if (inputATMOr.isError())
+      return Error(llvm::Twine("When preparing input ATM: ") +
+                   inputATMOr.getError());
+    TensorMapPtr outputATM(M_executeModelSync(runtimeContext, model,
+                                              inputATMOr->get(), status.get()),
+                           M_freeAsyncTensorMap);
+    if (!outputATM)
+      return Error(llvm::Twine("When executing inference: ") +
+                   M_getError(status.get()));
+    outputATMs.emplace_back(std::move(outputATM));
+
+    mlperf::QuerySampleResponse &response = responses[i];
+    response.id = sample.id;
+    static char dummyData = 1;
+    response.data = reinterpret_cast<uintptr_t>(&dummyData);
+    response.size = 1;
+  }
+  mlperf::QuerySamplesComplete(responses.data(), responses.size());
+  return success();
+}
+
+void SystemUnderTest::FlushQueries() {
+  // Don't need to do anything here, since Modular does not batch queries.
 }
 
 int main(int argc, char **argv) {
@@ -159,42 +330,20 @@ int main(int argc, char **argv) {
     model = std::move(*modelOr);
   }
 
-  auto preparedInputOr = prepareInput(runtimeContext.get(), status.get());
-  if (preparedInputOr.isError()) {
-    llvm::errs() << "Error preparing input: " << preparedInputOr.getError()
-                 << "\n";
-    return EXIT_FAILURE;
-  }
-  auto [inputATM, inputData] = std::move(*preparedInputOr);
+  QuerySampleLibrary qsl(1000);
+  SystemUnderTest sut(&qsl, runtimeContext.get(), model.get());
+  mlperf::TestSettings mlperfTestSettings;
+  mlperf::LogSettings mlperfLogSettings;
+  mlperfLogSettings.log_output.copy_summary_to_stdout = true;
 
   llvm::outs() << "Benchmarking\n";
-  double qps;
-  {
-    constexpr int kIterations = 100;
-    auto start = std::chrono::steady_clock::now();
-    for (int i = 0; i < kIterations; ++i) {
-      M_AsyncTensorMap *outputATM = M_executeModelSync(
-          runtimeContext.get(), model.get(), inputATM.get(), status.get());
-      if (!outputATM) {
-        if (i > 0)
-          llvm::outs() << '\n';
-        llvm::errs() << "Error encountered during model execution: "
-                     << M_getError(status.get()) << "\n";
-        return EXIT_FAILURE;
-      }
-      M_freeAsyncTensorMap(outputATM);
-      llvm::outs() << '.';
-    }
-    auto end = std::chrono::steady_clock::now();
-    llvm::outs() << '\n';
-    double duration =
-        std::chrono::duration_cast<std::chrono::microseconds>(end - start)
-            .count() *
-        1.0e-6;
-    qps = kIterations / duration;
-  }
+  // MLPerf uses C++ <iostream> for IO.  To prevent incorrect interleaving, we
+  // need to flush LLVM outs before mlperf::StartTest and flush C++ <iostream>
+  // after.
+  llvm::outs().flush();
+  mlperf::StartTest(&sut, &qsl, mlperfTestSettings, mlperfLogSettings);
+  std::cout << std::flush;
   llvm::outs() << "Benchmark finished\n";
-  llvm::outs() << "Average QPS: " << qps << "\n";
 
   return EXIT_SUCCESS;
 }

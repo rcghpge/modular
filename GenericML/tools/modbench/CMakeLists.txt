@@ -10,5 +10,6 @@ add_modular_tool(modbench
   LINK_LIBS PRIVATE
   MCrashReporting
   MSupport
+  mlperf-loadgen
   modular-framework-common
 )

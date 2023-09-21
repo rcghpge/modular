@@ -3,5 +3,9 @@
 // CHECK: Modular version: {{.+}}
 // CHECK: Compiling model... OK (took {{.+}})
 // CHECK: Benchmarking
+// CHECK: QPS w/ loadgen overhead : {{[0-9.e+-]+}}
+// CHECK: Min latency (ns) : {{[0-9]+}}
+// CHECK: Max latency (ns) : {{[0-9]+}}
+// CHECK: 50.00 percentile latency (ns) : {{[0-9]+}}
+// CHECK: 99.00 percentile latency (ns) : {{[0-9]+}}
 // CHECK: Benchmark finished
-// CHECK: Average QPS: {{[0-9.]+}}
