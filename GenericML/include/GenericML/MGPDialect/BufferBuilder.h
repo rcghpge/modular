@@ -171,7 +171,8 @@ public:
 //===----------------------------------------------------------------------===//
 
 /// A BufferBuilder provides methods for building device-dependent buffer and
-/// tensor operations.
+/// tensor operations. Note that all chain (input and output) must be
+/// !mef.chains.
 class BufferBuilder {
 public:
   virtual ~BufferBuilder() = default;
@@ -208,6 +209,25 @@ public:
   virtual Value bufferAllocSpec(OpBuilder &builder, Location loc, Value inChain,
                                 TypedValue<MGP::CpuTensorSpecType> tensorSpec,
                                 uint64_t alignment) = 0;
+
+  /// Returns the chain indicating when srcBuffer on the host device has been
+  /// transferred to dstBuffer on this builder's device.
+  virtual Value bufferTransferFromHost(OpBuilder &builder, Location loc,
+                                       Value inChain,
+                                       TypedValue<MGP::CpuBufferType> srcBuffer,
+                                       Value dstBuffer) = 0;
+
+  /// Returns the chain indicating when srcBuffer on this builder's device has
+  /// been transferred to dstBuffer on the dstDevice.
+  virtual Value
+  bufferTransferToHost(OpBuilder &builder, Location loc, Value inChain,
+                       Value srcBuffer,
+                       TypedValue<MGP::CpuBufferType> dstBuffer) = 0;
+
+  /// Return the chain indicating tensor has been printed.
+  virtual Value debugTensorPrint(OpBuilder &builder, Location loc,
+                                 Value inChain, Value tensor,
+                                 StringAttr label) = 0;
 };
 
 //===----------------------------------------------------------------------===//
@@ -240,6 +260,17 @@ public:
   Value bufferAllocSpec(OpBuilder &builder, Location loc, Value inChain,
                         TypedValue<MGP::CpuTensorSpecType> tensorSpec,
                         uint64_t alignment) override;
+
+  Value bufferTransferFromHost(OpBuilder &builder, Location loc, Value inChain,
+                               TypedValue<MGP::CpuBufferType> srcBuffer,
+                               Value dstBuffer) override;
+
+  Value bufferTransferToHost(OpBuilder &builder, Location loc, Value inChain,
+                             Value srcBuffer,
+                             TypedValue<MGP::CpuBufferType> dstBuffer) override;
+
+  Value debugTensorPrint(OpBuilder &builder, Location loc, Value inChain,
+                         Value tensor, StringAttr label) override;
 };
 
 //===----------------------------------------------------------------------===//

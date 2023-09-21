@@ -127,6 +127,9 @@ public:
   /// Lowers mo.debug.tensor.print op.
   LogicalResult lowerDebugTensorPrint(MO::DebugTensorPrintOp printOp);
 
+  /// Lowers mo.transfer op.
+  LogicalResult lowerTransfer(MO::TransferOp transferOp);
+
   /// Lowers mo.if op.
   LogicalResult lowerIf(MO::IfOp ifOp);
 
@@ -227,8 +230,8 @@ LogicalResult MOGraphLowering::createModelOp() {
   MO::GraphOp &graph = loweringState.getGraph();
   OpBuilder b(graph);
 
-  // Establish type builders for all the devices. We can't convert any types
-  // until this is done.
+  // Establish type builders for all the devices.
+  // CAUTION: Must be done before any types are lowered, eg the next paragraph.
   if (failed(setupTypeBuildersForAllDevices()))
     return failure();
 
@@ -302,19 +305,21 @@ LogicalResult MOGraphLowering::createModelOp() {
   if (failed(setupCheckRuntime(graph.getLoc())))
     return failure();
 
-  // Establish buffer builders for all the devices. This may require some
-  // extra device-specific setup in the 'init' block. We can't create any
-  // device-specific ops until this is done.
-  if (failed(setupBufferBuildersForAllDevices(graph.getLoc())))
-    return failure();
-
   // Initialize the execute state.
   Block *executeBlock = loweringState.getModelOp().getExecuteBlock();
   loweringState.getExecuteOpBuilder().setInsertionPointToEnd(executeBlock);
 
   // Extract chain and MGP context from arguments
   loweringState.setExecuteChain(executeBlock->getArgument(0));
-  loweringState.setExecuteMgpContext(executeBlock->getArgument(1));
+  loweringState.setExecuteMgpContext(
+      cast<TypedValue<MGP::ContextType>>(executeBlock->getArgument(1)));
+
+  // Establish buffer builders for all the devices. This may require some
+  // extra device-specific setup in the 'init' block.
+  // CAUTION: Must be done after the 'init' and 'execute' mgp.contexts have
+  // been established, but before we lower any device-specific ops.
+  if (failed(setupBufferBuildersForAllDevices(graph.getLoc())))
+    return failure();
 
   return success();
 }
@@ -676,21 +681,61 @@ LogicalResult MOGraphLowering::lowerReshape(MO::ReshapeOp reshapeOp) {
 
 LogicalResult
 MOGraphLowering::lowerDebugTensorPrint(MO::DebugTensorPrintOp printOp) {
-  if (getDeviceOrDefault(printOp) != loweringState.getHostDevice()) {
-    printOp->emitOpError("op must be assigned to the host");
-    return failure();
-  }
-
   MGP::MOOpLoweringState opLoweringState(loweringState, printOp,
                                          getDeviceOrDefault(printOp));
   auto loweredTensor =
       loweringState.lookupExecuteLoweredValue(printOp.getInput());
-  Value chain = opLoweringState
-                    .create<MGP::DebugCpuTensorPrintOp>(
-                        loweringState.getExecuteChain(), loweredTensor,
-                        printOp.getLabelAttr())
-                    .getResult();
-  loweringState.setExecuteChain(chain);
+  Value outChain = opLoweringState.debugTensorPrint(
+      loweringState.getExecuteChain(), loweredTensor, printOp.getLabelAttr());
+  loweringState.setExecuteChain(outChain);
+  return success();
+}
+
+LogicalResult MOGraphLowering::lowerTransfer(MO::TransferOp transferOp) {
+  DeviceRefAttr srcDevice = transferOp.getInput().getType().getDeviceRef();
+  if (!srcDevice) {
+    return transferOp->emitOpError(
+        "requires operand tensor type to be annotated with the source device.");
+  }
+  DeviceRefAttr dstDevice = transferOp.getDestDeviceAttr();
+  DeviceRefAttr hostDevice = loweringState.getHostDevice();
+  if (srcDevice == dstDevice) {
+    return transferOp->emitOpError("transfer between the same device ")
+           << srcDevice << " is not supported.";
+  }
+
+  MGP::MOOpLoweringState opSrcLoweringState(loweringState, transferOp,
+                                            srcDevice);
+  MGP::BufferizedTensor bufferizedInput =
+      opSrcLoweringState.getBufferizedInput(transferOp.getInput());
+
+  MGP::MOOpLoweringState opDstLoweringState(loweringState, transferOp,
+                                            dstDevice);
+  FailureOr<SmallVector<MGP::BufferizedTensor>> bufferizedOutputsOr =
+      opDstLoweringState.createOutputBuffers(loweringState.getExecuteChain());
+  if (failed(bufferizedOutputsOr))
+    return failure();
+  SmallVector<MGP::BufferizedTensor> &bufferizedOutputs = *bufferizedOutputsOr;
+
+  Value outChain;
+  if (srcDevice == hostDevice) {
+    outChain = opDstLoweringState.bufferTransferFromHost(
+        loweringState.getExecuteChain(),
+        cast<TypedValue<MGP::CpuBufferType>>(bufferizedInput.buffer),
+        bufferizedOutputs[0].buffer);
+  } else if (dstDevice == hostDevice) {
+    outChain = opSrcLoweringState.bufferTransferToHost(
+        loweringState.getExecuteChain(), bufferizedInput.buffer,
+        cast<TypedValue<MGP::CpuBufferType>>(bufferizedOutputs[0].buffer));
+  } else {
+    return transferOp->emitOpError("transfer from ")
+           << srcDevice << " to " << dstDevice
+           << " is not currently supported: either the source or destination "
+              "device must be the host device "
+           << hostDevice << ".";
+  }
+
+  opDstLoweringState.createOutputTensors(outChain, bufferizedOutputs);
   return success();
 }
 
@@ -994,6 +1039,12 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
 
     if (auto debugTensorPrintOp = dyn_cast<MO::DebugTensorPrintOp>(op)) {
       if (failed(lowerDebugTensorPrint(debugTensorPrintOp)))
+        return failure();
+      continue;
+    }
+
+    if (auto transferOp = dyn_cast<MO::TransferOp>(op)) {
+      if (failed(lowerTransfer(transferOp)))
         return failure();
       continue;
     }

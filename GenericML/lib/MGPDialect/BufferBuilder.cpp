@@ -61,3 +61,23 @@ Value CpuBufferBuilder::bufferAllocSpec(
                                               /*runtimeSpec=*/tensorSpec,
                                               /*rawAlign=*/alignment);
 }
+
+Value CpuBufferBuilder::bufferTransferFromHost(
+    OpBuilder &builder, Location loc, Value inChain,
+    TypedValue<M::MGP::CpuBufferType> srcBuffer, Value dstBuffer) {
+  llvm::llvm_unreachable_internal("not implemented");
+}
+
+Value CpuBufferBuilder::bufferTransferToHost(
+    OpBuilder &builder, Location loc, Value inChain, Value srcBuffer,
+    TypedValue<M::MGP::CpuBufferType> dstBuffer) {
+  llvm::llvm_unreachable_internal("not implemented");
+}
+
+Value CpuBufferBuilder::debugTensorPrint(OpBuilder &builder, Location loc,
+                                         Value inChain, Value tensor,
+                                         StringAttr label) {
+  return builder.create<DebugCpuTensorPrintOp>(loc, /*inChain=*/inChain,
+                                               /*tensor=*/tensor,
+                                               /*label=*/label);
+}

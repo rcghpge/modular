@@ -108,7 +108,7 @@ public:
     Value chain;
 
     /// The MGP context, passed in as the second argument.
-    Value mgpContext;
+    TypedValue<MGP::ContextType> mgpContext;
 
     /// Keeps track of what runtime SSA values the graph SSA values lower to.
     DenseMap<Value, Value> loweredValues;
@@ -186,13 +186,15 @@ public:
   /// Return the builder for appending operations to the end of the invokable.
   OpBuilder &getExecuteOpBuilder() { return execute.builder; }
 
-  /// Return the MGP context.
-  void setExecuteMgpContext(Value mgpContext) {
+  /// Set the MGP context for use in the 'execute' block.
+  void setExecuteMgpContext(TypedValue<MGP::ContextType> mgpContext) {
     execute.mgpContext = mgpContext;
   }
 
-  /// Return the MGP context.
-  Value getExecuteMgpContext() { return execute.mgpContext; }
+  /// Return the MGP context appropriate for the 'execute' block.
+  TypedValue<MGP::ContextType> getExecuteMgpContext() {
+    return execute.mgpContext;
+  }
 
   // Global side effect chain, currently reserved exclusively for asserts.
   // Consumers of tensor specs must block on this chain. This is not intended
@@ -454,6 +456,21 @@ struct MOOpLoweringState {
     return bufferBuilder->bufferAllocSpec(
         builder, loc, inChain, tensorSpec,
         loweringState.getMinimumCpuAlignment());
+  }
+  Value bufferTransferFromHost(Value inChain,
+                               TypedValue<MGP::CpuBufferType> srcBuffer,
+                               Value dstBuffer) {
+    return bufferBuilder->bufferTransferFromHost(builder, loc, inChain,
+                                                 srcBuffer, dstBuffer);
+  }
+  Value bufferTransferToHost(Value inChain, Value srcBuffer,
+                             TypedValue<MGP::CpuBufferType> dstBuffer) {
+    return bufferBuilder->bufferTransferToHost(builder, loc, inChain, srcBuffer,
+                                               dstBuffer);
+  }
+  Value debugTensorPrint(Value inChain, Value tensor, StringAttr label) {
+    return bufferBuilder->debugTensorPrint(builder, loc, inChain, tensor,
+                                           label);
   }
 
   /// Creates an operation of specific op type at the current insertion point.

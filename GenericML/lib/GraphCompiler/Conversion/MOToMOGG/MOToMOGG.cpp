@@ -367,6 +367,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_NO_LOWER(MO::IndexToTensorOp),
       MO_NO_LOWER(MO::Shape::ToTensorOp),
       MO_NO_LOWER(MO::ReshapeOp),
+      MO_NO_LOWER(MO::TransferOp),
 
       // Yield will never be lowered and is informational
       MO_NO_LOWER(MO::YieldOp),
