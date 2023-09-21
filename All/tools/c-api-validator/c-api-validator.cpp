@@ -263,8 +263,7 @@ struct CompiledModelPhase {
     result.compileConfig = M_newCompileConfig();
     M_setModelPath(result.compileConfig, externalModel->path.c_str());
     if (!useMoOps) {
-      M_enableCompatibilityMode(result.compileConfig,
-                                /*compatibilityMode=*/true);
+      M_enableCompatibilityMode(result.compileConfig);
     }
 
     // TODO: We need to make framework loading thread safe before we can overlap
