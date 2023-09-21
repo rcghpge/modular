@@ -86,6 +86,10 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       *this, "lower-quantized-operators",
       llvm::cl::desc("Dispatch to quantized operations around Q-DQ regions."),
       llvm::cl::init(false)};
+  Option<bool> enableCuda{
+      *this, "enable-cuda",
+      llvm::cl::desc("Enable CUDA support for a single CUDA device."),
+      llvm::cl::init(false)};
 };
 
 // Registers the end-to-end shape inference pipeline.

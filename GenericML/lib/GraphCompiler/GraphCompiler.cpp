@@ -113,7 +113,9 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   if (opts.constantFold)
     pm.addPass(MO::createConstantFold());
 
-  pm.addPass(MO::createAddDevicesPass());
+  MO::AddDevicesPassOptions addDevicesOpts;
+  addDevicesOpts.enableCUDA = opts.enableCuda;
+  pm.addPass(MO::createAddDevicesPass(addDevicesOpts));
 
   pm.addPass(MO::createAssignDevicesPass());
 

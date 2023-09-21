@@ -5,8 +5,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "Config/Version.h"
+#include "GPU/CUDA/Registration/Registration.h"
 #include "GPU/CUDA/Support/CUDARuntimeOptions.h"
-#include "GPU/CUDA/Support/CUDASetup.h"
 #include "GenericML/Driver/CompileDriver.h"
 #include "GenericML/Driver/DriverAPI.h"
 #include "GenericML/Driver/DriverCLOptions.h"
@@ -128,11 +128,9 @@ private:
           globalContextObjects->emplace<GPU::CUDA::CUDARuntimeOptions>());
     }
 
-    // Register device setup functions.
+    // Register the extra compile-time and runtime support.
     static llvm::once_flag onceFlag;
-    llvm::call_once(onceFlag, []() {
-      GML::registerAddDeviceSpecsFn(GPU::CUDA::addCUDADevices);
-    });
+    llvm::call_once(onceFlag, []() { M::GPU::CUDA::registerCUDA(); });
   }
 
   /// Holds all the configuration objects derived from the environment,
@@ -286,6 +284,7 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
     if (options) {
       moToMgpOptions.minimumCpuAlignment.setValue(options->minimumCpuAlignment);
       moToMgpOptions.cacheDir.setValue(options->cacheDir);
+      moToMgpOptions.enableCuda.setValue(options->enableCuda);
     }
     if (mofContext->getCustomOpsPath())
       moToMgpOptions.extraLibPaths = mofContext->getCustomOpsPath()->string();

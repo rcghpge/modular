@@ -22,6 +22,10 @@ public:
                "constants from the same instance at model 'init' time. "
                "Default empty (ie disabled)."),
       cl::init("")};
+
+  cl::opt<bool> enableCuda{
+      "enable-cuda", cl::desc("Enable CUDA support for a single CUDA device."),
+      cl::init(false)};
 };
 
 } // namespace M::MO
