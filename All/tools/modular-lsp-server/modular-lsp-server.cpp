@@ -13,7 +13,6 @@
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/MGPDialect/MGPDialect.h"
-#include "GenericML/MLASPDialect/MLASPDialect.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
 #include "GraphRT/MEFDialect/MEFDialect.h"
 #include "KGEN/ToolCommon/InitAllDialects.h"
@@ -44,8 +43,7 @@ int main(int argc, char **argv) {
       // Add the Modular Dialects.
       MEF::MEFDialect, Cache::CacheDialect, DebugInfo::DebugInfoDialect,
       Faux::FauxDialect, GRT::GRTDialect, MDialect, MGP::MGPDialect,
-      MLASP::MLASPDialect, MO::MODialect, MOGG::MOGGDialect, TFL::MTFLDialect,
-      TFLP::TFLPDialect>();
+      MO::MODialect, MOGG::MOGGDialect, TFL::MTFLDialect, TFLP::TFLPDialect>();
   // Add the KGEN Dialects.
   registerAllKGENDialects(registry);
   TF::registerAllDialects(registry);

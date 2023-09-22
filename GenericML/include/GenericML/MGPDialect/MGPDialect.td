@@ -20,9 +20,8 @@ def MGPDialect : Dialect {
                 "glue.";
   let description = [{
     The MGP (pronounced "em-goop") dialect is intended to provide the 'glue'
-    for binding framework-specific (eg `mtfl.add`), third-party
-    (eg `mlasp.conv2d`) and KGENned kernels/ops together into a single
-    executable model.
+    for binding framework-specific (eg `mtfl.add`) and KGENned kernels/ops
+    together into a single executable model.
 
     MGP itself does not provide any op implementations. MGP is directly
     translatable to MEF (see MLIRToMEF.cpp) without any additional passes,
@@ -34,8 +33,7 @@ def MGPDialect : Dialect {
     style (take buffers, some of which are pre-allocated to hold outputs).
 
     Currently MGP is focused exclusively on CPU with a view to allowing both
-    tfl and tf models to mix their native ops with a small number of MLAS and
-    KGEN ops.
+    tfl and tf models to mix their native ops with KGEN ops.
 
     MGP has five aspects:
     1. Provides a generic `mgp.model` op holding the compiled model’s ‘init’ and
@@ -93,14 +91,6 @@ def MGPDialect : Dialect {
       in general these conversions may need to copy or transform buffers.
     - A subclass of `M::Model`, such as `M::TFLModel`, to ensure model
       arguments and results match the native framework representation.
-
-    And, obviously, MGP needs actual op implementations to glue together, such
-    as provided by the MLASP dialect and `MLASPPrimitives.cpp`.
-
-    An example of mixing this all together for TFLite can be seen in the
-    `MTFLToPrimitives.cpp` pass. (This pass is currently written in 'big step'
-    form, and will be refactored as MO and more graph compiler passes come
-    online.)
 
     MGP does not include:
     - Primitives/kernals, such as `MGP.add`. These must be supplied by a
