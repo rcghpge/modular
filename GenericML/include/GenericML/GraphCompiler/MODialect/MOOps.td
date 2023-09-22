@@ -3311,6 +3311,7 @@ def MO_TopKOp : MO_TensorOp<"top_k", [
   let arguments = (ins MO_Tensor:$input,
                        MO_RankedScalarIndexTensor:$K,
                        MO_RankedScalarIndexTensor:$axis,
+                       MO_CondLike:$sorted,
                        MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$values,
                       MO_I64Tensor:$indices);
@@ -3348,6 +3349,7 @@ def MO_BottomKOp : MO_TensorOp<"bottom_k", [
   let arguments = (ins MO_Tensor:$input,
                        MO_RankedScalarIndexTensor:$K,
                        MO_RankedScalarIndexTensor:$axis,
+                       MO_CondLike:$sorted,
                        MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$values,
                       MO_I64Tensor:$indices);
