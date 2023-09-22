@@ -18,11 +18,10 @@
 #include "GenericML/GraphCompiler/Transforms/MOQDialect/MOQTransforms.h"
 #include "GenericML/MGPTransforms/MGPTransforms.h"
 #include "GraphRT/MIPDialect/MIPDialect.h"
+#include "KGEN/ToolCommon/InitAllDialects.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
-#include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
-#include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "mlir/Transforms/Passes.h"
 
@@ -40,16 +39,9 @@ using namespace MO;
 
 void M::MO::loadDialects(mlir::DialectRegistry &registry) {
   registry.insert<MO::MODialect, MOQ::MOQDialect, MOSH::MOSHDialect,
-                  MIP::MIPDialect, MOGG::MOGGDialect,
-                  // The dialects needed for KGEN.
-                  KGEN::KGENDialect, KGEN::POP::POPDialect,
-                  DebugInfo::DebugInfoDialect, Cache::CacheDialect,
-                  HLCF::HLCFDialect, mlir::index::IndexDialect, M::MDialect,
-                  mlir::LLVM::LLVMDialect>();
-
-  // The elaborator requires LLVM lowering to run the generated functions.
-  mlir::registerBuiltinDialectTranslation(registry);
-  mlir::registerLLVMDialectTranslation(registry);
+                  MIP::MIPDialect, MOGG::MOGGDialect>();
+  M::registerAllKGENDialects(registry);
+  M::registerKGENToLLVMTranslation(registry);
 }
 
 void M::MO::registerShapeInferencePipeline() {
