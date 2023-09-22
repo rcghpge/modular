@@ -57,9 +57,15 @@ void M::MO::registerShapeInferencePipeline() {
       "shape-inference", "Run the end-to-end shape inference pipeline.",
       buildShapeInferencePipeline);
 }
+
+static void buildMoToMgpPipelineNoRuntime(mlir::OpPassManager &pm,
+                                          const MoToMgpOptions &opts) {
+  buildMoToMgpPipeline(pm, opts);
+}
+
 void M::MO::registerMoToMgpPipeline() {
   mlir::PassPipelineRegistration<MoToMgpOptions>(
-      "mo-to-mgp", "Lower MO to MGP.", buildMoToMgpPipeline);
+      "mo-to-mgp", "Lower MO to MGP.", buildMoToMgpPipelineNoRuntime);
 }
 
 void M::MO::registerPasses() {
@@ -83,7 +89,8 @@ void M::MO::registerPasses() {
 }
 
 void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
-                                 const MoToMgpOptions &opts) {
+                                 const MoToMgpOptions &opts,
+                                 Runtime *optRuntime) {
   // Create the options for MoToPrimitives.
   MGP::MOToPrimitivesOptions moToPrimOpts;
   moToPrimOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
@@ -113,12 +120,9 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   if (opts.constantFold)
     pm.addPass(MO::createConstantFold());
 
-  MO::AddDevicesPassOptions addDevicesOpts;
-  addDevicesOpts.enableCUDA = opts.enableCuda;
-  pm.addPass(MO::createAddDevicesPass(addDevicesOpts));
+  pm.addPass(MO::createAddDevicesPass(optRuntime));
 
   pm.addPass(MO::createAssignDevicesPass());
-
   pm.addPass(MO::createInferLayouts());
 
   if (opts.usePatterns) {

@@ -10,6 +10,7 @@
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/GraphCompiler.h"
 #include "GenericML/GraphCompiler/GraphCompilerCLOptions.h"
+#include "LLCL/ForwardDecls.h"
 
 namespace M::MO {
 
@@ -86,17 +87,16 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       *this, "lower-quantized-operators",
       llvm::cl::desc("Dispatch to quantized operations around Q-DQ regions."),
       llvm::cl::init(false)};
-  Option<bool> enableCuda{
-      *this, "enable-cuda",
-      llvm::cl::desc("Enable CUDA support for a single CUDA device."),
-      llvm::cl::init(false)};
 };
 
 // Registers the end-to-end shape inference pipeline.
 void registerMoToMgpPipeline();
 
-// Create the canonical MO pipeline for the given options.
-void buildMoToMgpPipeline(mlir::OpPassManager &pm, const MoToMgpOptions &opts);
+// Create the canonical MO pipeline for the given options. If a runtime is
+// provided it may be used by passes to derive runtime context information and
+// run compilation sub-tasks.
+void buildMoToMgpPipeline(mlir::OpPassManager &pm, const MoToMgpOptions &opts,
+                          Runtime *optRuntime = nullptr);
 
 // Registers the end-to-end shape inference pipeline.
 void registerShapeInferencePipeline();

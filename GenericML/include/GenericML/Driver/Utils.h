@@ -24,14 +24,12 @@ using BodyFn = std::function<LogicalResult(Runtime &, MLIRContext *)>;
 /// Run the given body function with a leak checked runtime.
 int setupMLIRAndRunWithLeakCheckedRuntime(
     const ExecutorDriverCLOptions &options, const char *testName,
-    std::unique_ptr<llvm::MemoryBuffer> &&file, BodyFn &&bodyFn,
-    RCRef<LLCL::SharedGenericUniquePtrSet> globalContextObjects = {}) {
+    std::unique_ptr<llvm::MemoryBuffer> &&file, BodyFn &&bodyFn) {
   if (failed(options.configureMLIRContextAndExecute(
           std::move(file), [&](MLIRContext *ctx) {
             return LLCL::runWithLeakCheckedRuntime(
                 options, testName,
-                [&](Runtime &runtime) { return bodyFn(runtime, ctx); },
-                std::move(globalContextObjects));
+                [&](Runtime &runtime) { return bodyFn(runtime, ctx); });
           })))
     return EXIT_FAILURE;
   return EXIT_SUCCESS;

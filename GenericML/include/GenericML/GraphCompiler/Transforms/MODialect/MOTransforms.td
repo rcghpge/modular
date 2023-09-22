@@ -221,17 +221,12 @@ def AddDevicesPass : Pass<"add-devices", "GraphOp"> {
   let summary = "Adds a `device_specs` attribute to the `mo.graph` if required.";
   let description = [{
     This pass ensures the `mo.graph` has a `device_specs` attribute describing
-    the intended runtime target. By default the runtime 'host' will match
-    the currently host machine. If enabled, an additional device for CUDA
-    will be added.
+    the intended runtime target. By default that will be identical to the
+    current host machine, including the CPU 'host' device specification and
+    any additional non-CPU devices.
 
     TODO(#21801): TEMPORARY until we have proper compilation configuration handling.
   }];
-
-  let options = [
-    Option<"enableCUDA", "enable-cuda", "bool", "false",
-           "Assume runtime will have a single CUDA device.">,
-  ];
 }
 
 def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
