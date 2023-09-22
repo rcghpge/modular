@@ -2479,6 +2479,21 @@ LogicalResult Static::ReshapeOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// MO_ResizeOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ResizeNearestOp::verify() {
+  int64_t roundMode = getRoundMode().getInt();
+  int64_t coordTransformMode = getCoordinateTransformMode().getInt();
+  if (roundMode < 0 || roundMode > 3)
+    return emitOpError("round_mode attribute must be between 0 and 3");
+  if (coordTransformMode < 0 || coordTransformMode > 2)
+    return emitOpError(
+        "coordinate_transform_mode attribute must be between 0 and 2");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // MO_ShapeOfOp
 //===----------------------------------------------------------------------===//
 

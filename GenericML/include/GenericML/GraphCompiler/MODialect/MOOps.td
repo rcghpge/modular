@@ -2915,6 +2915,57 @@ def MO_RangeOp : MO_TensorOp<"range", [
   let hasFolder = 1;
 }
 
+//===----------------------------------------------------------------------===//
+// Resize op
+//===----------------------------------------------------------------------===//
+
+def MO_ResizeNearestOp : MO_TensorOp<"resize.nearest",
+  [DeclareOpInterfaceMethods<MO_DefaultParameterization>]> {
+  let summary = "Resize a tensor using the nearest-neighbor algorithm.";
+  let description = [{
+    Resize a tensor to a new shape using the nearest-neighbor algorithm.
+
+    The values for coordinate transform mode are:
+      - 0: HalfPixel
+      - 1: AlignCorners
+      - 2: Asymmetric
+
+    Coordinate transform mode is HalfPixel (0) by default.
+
+    The values for round mode are:
+      - 0: HalfDown
+      - 1: HalfUp
+      - 2: Floor
+      - 3: Ceil
+
+    Round mode is HalfDown (0) by default.
+
+    Example:
+    ```mlir
+    %input : !mo.tensor<[1, 1, 2, 2], f32>
+    %size = mo.constant {
+      value = #M.dense_array<1, 1, 7, 8> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+    %res = mo.resize.nearest(%input, %size) {
+      coordinate_transform_mode = 0,
+      round_mode = 2}:
+      (!mo.tensor<[1, 1, 2, 2], f32>, !mo.tensor<[4], si64>) ->
+        !mo.tensor<[1, 1, 7, 8], f32>
+    ```
+  }];
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_IndicesTensor:$size,
+    Builtin_IntegerAttr:$coordinate_transform_mode,
+    Builtin_IntegerAttr:$round_mode,
+    MO_ParamDecls:$outputParamDecls);
+
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+  let hasVerifier = 1;
+}
 
 //===----------------------------------------------------------------------===//
 // Matmul related ops
