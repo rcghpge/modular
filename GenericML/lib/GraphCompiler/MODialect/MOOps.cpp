@@ -2483,8 +2483,8 @@ LogicalResult Static::ReshapeOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ResizeNearestOp::verify() {
-  int64_t roundMode = getRoundMode().getInt();
-  int64_t coordTransformMode = getCoordinateTransformMode().getInt();
+  int64_t roundMode = getRoundMode();
+  int64_t coordTransformMode = getCoordinateTransformMode();
   if (roundMode < 0 || roundMode > 3)
     return emitOpError("round_mode attribute must be between 0 and 3");
   if (coordTransformMode < 0 || coordTransformMode > 2)

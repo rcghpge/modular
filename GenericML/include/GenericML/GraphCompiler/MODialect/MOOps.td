@@ -2955,8 +2955,8 @@ def MO_ResizeNearestOp : MO_TensorOp<"resize.nearest",
   let arguments = (ins
     MO_Tensor:$input,
     MO_IndicesTensor:$size,
-    Builtin_IntegerAttr:$coordinate_transform_mode,
-    Builtin_IntegerAttr:$round_mode,
+    DefaultValuedAttr<I64Attr, "0">:$coordinate_transform_mode,
+    DefaultValuedAttr<I64Attr, "0">:$round_mode,
     MO_ParamDecls:$outputParamDecls);
 
   let results = (outs MO_Tensor:$result);
