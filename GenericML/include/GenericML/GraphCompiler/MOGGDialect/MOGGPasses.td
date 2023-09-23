@@ -29,6 +29,7 @@ def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
     "M::Cache::CacheDialect",
     "M::DebugInfo::DebugInfoDialect",
     "mlir::LLVM::LLVMDialect",
+    "mlir::NVVM::NVVMDialect",
     "mlir::index::IndexDialect",
   ];
 

@@ -11,6 +11,7 @@
 #include "GenericML/GraphCompiler/KGENStubBuilder/StubCompiler.h"
 
 #include "mlir/Dialect/Index/IR/IndexOps.h"
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Parser/Parser.h"

@@ -25,6 +25,7 @@ def ShapeInferenceMaterialization :
 
   let dependentDialects = [
     "mlir::LLVM::LLVMDialect",
+    "mlir::NVVM::NVVMDialect",
     "mlir::index::IndexDialect",
     "M::Cache::CacheDialect",
     "M::DebugInfo::DebugInfoDialect",
@@ -42,7 +43,7 @@ def AddFallbackShapeFunctions :
   let description = [{
     This ensures all MO operations will have parameterized outputs by checking
     if they have already been parameterized and if not materializing a fallback
-    shape function which will give them those parameters. 
+    shape function which will give them those parameters.
   }];
 }
 
@@ -92,6 +93,7 @@ def StaticizeShapes : Pass<"staticize-shapes", "ModuleOp"> {
   // TODO(#16974) remove once shape materialization is removed from this pass
   let dependentDialects = [
     "mlir::LLVM::LLVMDialect",
+    "mlir::NVVM::NVVMDialect",
     "mlir::index::IndexDialect",
     "M::Cache::CacheDialect",
     "M::DebugInfo::DebugInfoDialect",
@@ -189,6 +191,7 @@ def ConstantFold : Pass<"constant-fold", "ModuleOp"> {
     "M::Cache::CacheDialect",
     "M::DebugInfo::DebugInfoDialect",
     "mlir::LLVM::LLVMDialect",
+    "mlir::NVVM::NVVMDialect",
     "mlir::index::IndexDialect",
   ];
   let options = [
