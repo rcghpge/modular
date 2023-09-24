@@ -1759,6 +1759,7 @@ def MO_ShapeOfOp : MO_TensorOp<"shape_of", [
   let builders = [
     /// Create a shape-of of op on the given SSA value.
     OpBuilder<(ins "TensorValue":$input)>,
+    OpBuilder<(ins "TensorValue":$input, "int64_t":$width)>,
   ];
 
   let hasVerifier = 1;

@@ -2514,15 +2514,22 @@ LogicalResult ShapeOfOp::verify() {
 }
 
 void ShapeOfOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                      TensorValue input) {
-  Type si32Ty = odsBuilder.getIntegerType(32, /*isSigned=*/true);
+                      TensorValue input, int64_t width) {
+  assert((width == 32) ||
+         (width == 64) && "`mo.shape_of` returns si32 or si64");
+  Type intTy = odsBuilder.getIntegerType(width, /*isSigned=*/true);
 
   int64_t outputSize = mlir::ShapedType::kDynamic;
   if (input.getType().hasRank())
     outputSize = input.getType().getRank();
 
   // TODO(#18749): don't introduce `?` with operations.
-  build(odsBuilder, odsState, MO::TensorType::get({outputSize}, si32Ty), input);
+  build(odsBuilder, odsState, MO::TensorType::get({outputSize}, intTy), input);
+}
+
+void ShapeOfOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                      TensorValue input) {
+  build(odsBuilder, odsState, input, /*width=*/32);
 }
 
 //===----------------------------------------------------------------------===//
