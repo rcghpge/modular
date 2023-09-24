@@ -47,6 +47,11 @@ reifyImplicitBroadcasting(OpBuilder &builder, Location loc, TensorValue x,
 TensorValue broadcastTo(OpBuilder &builder, Location loc, TensorValue x,
                         TensorValue y);
 
+/// Broadcasts a float `scalar` to `toVal`'s shape.
+/// Does so via a `ConstantOp` with the same float element type as `toVal`.
+TensorValue broadcastFloatTo(OpBuilder &builder, Location loc,
+                             const APFloat &scalar, TensorValue toVal);
+
 } // namespace M::MO
 
 #endif // GENERICML_GRAPHCOMPILER_CONVERSION_MOSUPPORT_BROADCAST_H

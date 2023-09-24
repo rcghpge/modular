@@ -126,4 +126,14 @@ TensorValue broadcastTo(OpBuilder &builder, Location loc, TensorValue x,
   return newX;
 }
 
+TensorValue broadcastFloatTo(OpBuilder &builder, Location loc,
+                             const APFloat &scalar, TensorValue toVal) {
+  auto toTy = cast<TensorType>(toVal.getType());
+  auto toShape = builder.create<ShapeOfOp>(loc, toVal);
+
+  auto scalarConst =
+      builder.create<ConstantOp>(loc, scalar, toTy.getElementType());
+  return builder.create<BroadcastToOp>(loc, toTy, scalarConst, toShape);
+}
+
 } // namespace M::MO
