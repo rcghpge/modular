@@ -91,9 +91,8 @@ A MEF file is formed as a byte stream whose top-level structure is a list of
   the reader, for example as is the case with the primitives and types tables.
 
 MEF files can be created by an arbitrary producer, but the standard ways is to
-use the [MLIRToMEF](../lib/MLIRToMEF)
-translation library (or standalone tool), which turns an MLIR representation of
-a program into a MEF file.
+use the [MLIRToMEF](../lib/MLIRToMEF) translation library (or standalone tool),
+which turns an MLIR representation of a program into a MEF file.
 
 The `MEFToMLIR` translation library performs the reverse translation from MEF
 file to MLIR representation of the program. It is useful for writing MEF
@@ -118,9 +117,8 @@ over entirely by the reader) and an optional alignment for the contents of the
 section.
 
 Section IDs and other fundamental constants are defined in
-[`MEFEncoding.h`](../include/GraphRT/MEF/MEFEncoding.h),
-and utilities for decoding the basic file structures like VBR integers are
-defined in
+[`MEFEncoding.h`](../include/GraphRT/MEF/MEFEncoding.h), and utilities for
+decoding the basic file structures like VBR integers are defined in
 [`MEFReader.h`](../include/GraphRT/MEF/MEFReader.h).
 
 The `LENGTH_AND_ALIGNMENT` contains `SECTION_LENGTH` and

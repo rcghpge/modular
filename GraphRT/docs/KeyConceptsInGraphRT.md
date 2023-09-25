@@ -131,7 +131,7 @@ when their dataflow graph inputs are available, not according to their lexical
 order in the invokable.  Recall that each primitive takes and returns
 asynchronous values and may have unpredictable latency.  Because we cannot (in
 general) know how long each operation in the program will take, the compiler
-cannot produce a reasonable static schedule for a invokable.
+cannot produce a reasonable static schedule for an invokable.
 
 Instead, GraphRT uses a dataflow executor that trigger execution of strict
 primitives once all their inputs are available.  For example, consider
@@ -215,7 +215,7 @@ If you look at the [definition of the
 that it is empty. What is happening here though is that the `AsyncValue`
 containing the chain is only marked as "ready" when the side effect for the
 print is completed. This composes naturally with GraphRT's notion of strict and
-non-strict primitives
+non-strict primitives.
 
 ## Implicit error propagation
 
@@ -248,12 +248,12 @@ other more advanced use cases (like control flow operators) that want to kick
 off an operation before all the inputs are available: these are called
 "non-strict" primitives.
 
-Instances of "non-strict" primitives are handle differently than "strict"
+Instances of "non-strict" primitives are handled differently than "strict"
 primitives by the MEF executor: instead of triggering the primitive when *all*
 operands becomes available, it triggers the primitive when *any* operands are
 available.
 
-As a concrete example, consider an invocable invocation:
+As a concrete example, consider the following invocation:
 
 ```mlir
 mef.invokable @dataflow_example(%a: i32, %b: i32) -> i32 {
