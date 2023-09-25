@@ -24,7 +24,7 @@
 
 namespace M::MOGG::Stub {
 
-LogicalResult StubCompiler::elaborateKGEN() {
+LogicalResult StubCompiler::elaborateKGEN(bool useCuda) {
   // Create a runtime for KGEN to evaluate the kernels.
   LLCL::Runtime runtime(
       LLCL::createLeakCheckAllocator(LLCL::createMallocAllocator()),
@@ -32,13 +32,17 @@ LogicalResult StubCompiler::elaborateKGEN() {
           /*numThreads=*/
           M::getHostMachineInfo()->numPhysicalCores));
 
-  llvm::InitializeNativeTarget();
-  llvm::InitializeNativeTargetAsmParser();
-  llvm::InitializeNativeTargetAsmPrinter();
+  ErrorOr<TargetInfoAttr> target = Error("Unreachable");
 
-  ErrorOr<TargetInfoAttr> target = M::getTargetInfoFor(
-      kgenModule->getContext(), llvm::sys::getDefaultTargetTriple(),
-      llvm::sys::getHostCPUName(), getHostCPUFeatures());
+  if (useCuda) {
+    target = M::getTargetInfoFor(kgenModule->getContext(),
+                                 "nvptx64-nvidia-cuda", "", "");
+  } else {
+    target = M::getTargetInfoFor(
+        kgenModule->getContext(), llvm::sys::getDefaultTargetTriple(),
+        llvm::sys::getHostCPUName(), getHostCPUFeatures());
+  }
+
   if (target.isError())
     return mlir::emitError(kgenModule.getLoc(), target.getError());
 
@@ -84,6 +88,12 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
   mlir::SymbolTable symTable{kgenModule};
   KGEN::CompilationOptions compilationOptions;
 
+  TargetInfoAttr target = getTargetInfo(kgenModule);
+
+  compilationOptions.targetTriple = target.getTripleStr();
+  compilationOptions.targetCpu = target.getCpu();
+  compilationOptions.targetFeatures = target.getFeatures();
+
   if (!saveTempsPrefix.empty())
     compilationOptions.setSaveTemps(saveTempsPrefix);
 
@@ -95,8 +105,6 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
       KGEN::getExportedSymbols(kgenModule);
 
   KGEN::ObjectCompiler compiler = compilerOr.takeValue();
-
-  TargetInfoAttr target = getTargetInfo(kgenModule);
 
   auto standaloneOr =
       compiler.produceStandaloneArchiveAttr(symTable, exportedSymbols, target);
@@ -110,10 +118,18 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
   return success();
 }
 
-ErrorOrSuccess StubCompiler::compile(mlir::ArrayAttr combinedSymbolName) {
-  LogicalResult ok = elaborateKGEN();
+ErrorOrSuccess StubCompiler::compile(mlir::ArrayAttr combinedSymbolName,
+                                     bool useCuda) {
+  llvm::InitializeAllTargets();
+  llvm::InitializeAllTargetInfos();
+  llvm::InitializeAllTargetMCs();
+  llvm::InitializeAllAsmParsers();
+  llvm::InitializeAllAsmPrinters();
+
+  LogicalResult ok = elaborateKGEN(useCuda);
   if (ok.failed())
     return Error("KGEN elaboration failed");
+
   return compileToLLVM(combinedSymbolName);
 }
 

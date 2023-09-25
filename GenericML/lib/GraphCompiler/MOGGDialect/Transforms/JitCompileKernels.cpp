@@ -536,7 +536,7 @@ struct JitCompileKernels
       // Add the compiled binary to the file.
       Stub::StubCompiler compiler{*kgenModule, graph, useSearch.getValue(),
                                   saveTempPrefix.getValue()};
-      if (auto err = compiler.compile(allSyms))
+      if (auto err = compiler.compile(allSyms, /*useCuda=*/false))
         return err.takeError();
     }
     return success();
