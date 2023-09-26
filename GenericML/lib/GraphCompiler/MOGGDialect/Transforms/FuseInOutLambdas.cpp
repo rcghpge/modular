@@ -37,7 +37,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // Input fusion interface must be non null.
     auto inputFusion = SmallVector<StringAttr>(
         fusionInterfaces.getAsRange<StringAttr>())[inputIdx];
-    if (!inputFusion.size())
+    if (inputFusion.empty())
       return false;
 
     // Parent must have at most one unique user operation which is the kernel we
@@ -75,7 +75,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // Fusion interface must be non-null.
     auto outputInterface =
         *outputInterfaceAttr->getAsRange<StringAttr>().begin();
-    if (!outputInterface.size())
+    if (outputInterface.empty())
       return false;
 
     return true;
@@ -251,7 +251,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // uses this.
     for (auto [operand, attr] : llvm::zip(
              user.getOperands(), inputInterfaces->getAsRange<StringAttr>())) {
-      if (operand == result && attr.strref() == "")
+      if (operand == result && attr.strref().empty())
         return false;
     }
 
