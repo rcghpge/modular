@@ -918,3 +918,28 @@ mo.graph @gather_nd_with_last_dim(%input: !mo.tensor<[?, ?, ?], si64>, %indices:
     (!mo.tensor<[?, ?, ?], si64>, !mo.tensor<[?, 1], si64>) -> !mo.tensor<?, si64>
   mo.output %result : !mo.tensor<?, si64>
 }
+
+// CHECK-LABEL: mo.graph @squeeze_shape_dynamic_shape
+// CHECK-SAME: <[[D1:.*]], [[D2:.*]] -> [[D3:.*]]>(
+// CHECK: kgen.param.declare [[P1:.*]] = <add(mul([[D2]], -1), [[D1]])>
+// CHECK: %[[OUT:.*]] = mo.squeeze_shape(%[[__:.*]], %[[__:.*]]) : (!mo.tensor<[[[D1]]], si32>, !mo.tensor<[[[D2]]], si32>) -> !mo.tensor<[[[P1]]], si32>
+// CHECK-NEXT: mo.output<[[P1]]> %[[OUT]]
+mo.graph @squeeze_shape_dynamic_shape(%input_shape: !mo.tensor<[?], si32>, %indices: !mo.tensor<[?], si32>) -> !mo.tensor<[?], si32> {
+  %res = mo.squeeze_shape(%input_shape, %indices) : (!mo.tensor<[?], si32>, !mo.tensor<[?], si32>) -> !mo.tensor<[?], si32>
+  mo.output %res : !mo.tensor<[?], si32>
+}
+
+// CHECK-LABEL: mo.graph @squeeze_shape_dynamic_shape_with_reshape
+// CHECK: <[[D1:.*]], [[D2:.*]], [[D3:.*]], [[D4:.*]] -> [[D5:.*]]>(
+// CHECK: %[[RESULT0:.*]] = kgen.param.constant: !mosh.ape = <[[[D1]], [[D2]], [[D3]]]>
+// CHECK-NEXT: %[[RESULT1:.*]] = mo.shape.to_tensor(%[[RESULT0]])
+// CHECK-NEXT: kgen.param.declare [[P1:.*]] = <add(mul([[D4]], -1), 3)>
+// CHECK: %[[RESULT_SHAPE:.*]] = mo.squeeze_shape(%[[RESULT1]], %[[__:.*]]) : (!mo.tensor<[3], si32>, !mo.tensor<[[[D4]]], si32>) -> !mo.tensor<[[[P1]]], si32>
+// CHECK: %[[OUT:.*]] = mo.reshape<() -> [[SH1:.*]]: !mosh.ape>(%[[___:.*]], %[[RESULT_SHAPE]])
+// CHECK-NEXT: mo.output<:!mosh.ape [[SH1]]> %[[OUT]]
+mo.graph @squeeze_shape_dynamic_shape_with_reshape(%input_tensor: !mo.tensor<[?, ?, ?], si32>, %indices: !mo.tensor<[?], si32>) -> !mo.tensor<?, si32> {
+  %shape_tensor = mo.shape_of(%input_tensor) : (!mo.tensor<[?, ?, ?], si32>) -> !mo.tensor<[3], si32>
+  %result_shape = mo.squeeze_shape(%shape_tensor, %indices) : (!mo.tensor<[3], si32>, !mo.tensor<[?], si32>) -> !mo.tensor<[?], si32>
+  %res = mo.reshape(%input_tensor, %result_shape) : (!mo.tensor<[?, ?, ?], si32>, !mo.tensor<[?], si32>) -> !mo.tensor<?, si32>
+  mo.output %res : !mo.tensor<?, si32>
+}

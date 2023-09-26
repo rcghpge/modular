@@ -1689,8 +1689,8 @@ def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [DeclareOpInterfaceMethods<MO_P
   let hasFolder = 1;
 }
 
-def MO_SqueezeShapeOp : MO_ShapeModifierOp<"squeeze_shape"> {
-  let summary = "Calculates the shape for squeeze-type ops.";
+def MO_SqueezeShapeOp : MO_ShapeModifierOp<"squeeze_shape", [DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>]> {
+  let summary = "Calculates the resulting shape for squeeze-type ops.";
   let description = [{
     Calculates the shape from squeeze like operators. Given an input shape
     vector representing a tensor of rank `N`, and a list of indices of length
