@@ -184,3 +184,26 @@ mo.graph @param_expr_dce<D0 -> D1>(
   // CHECK-NEXT: mo.output %[[INPUT]] : !mo.tensor<[[[D0]]], f32>
   mo.output<D3> %res : !mo.tensor<[D3], f32>
 }
+
+// CHECK:      mo.graph @fold_nested_max<[[D0:.*]], [[BS:.*]] -> [[OUT:.*]]>(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[[[D0]]], f32>,
+// CHECK-SAME:   %[[DUMMY:.*]]: !mo.tensor<[[[BS]]], f32>
+// CHECK-SAME: ) -> !mo.tensor<[[[OUT]], 768], f32> no_inline {
+mo.graph @fold_nested_max<D0, bs -> out>(
+  %input: !mo.tensor<[D0], f32>,
+  %dummy: !mo.tensor<[bs], f32> // this is used solely to help define `bs`
+) -> !mo.tensor<[out, 768], f32> {
+
+  // CHECK-NEXT: kgen.param.declare [[D1:.*]] = <max([[BS]], 1)>
+  kgen.param.declare D1 = <max(bs, 1)>
+  kgen.param.declare D2 = <max(D1, bs)>
+
+  // CHECK-NEXT: %[[INPUT_RS:.*]] = mo.static.reshape(%[[INPUT]]) : !mo.tensor<[[[D0]]], f32> -> !mo.tensor<[[[D1]], 768], f32>
+  %input_rs = mo.static.reshape(%input) : !mo.tensor<[D0], f32> -> !mo.tensor<[D1, 768], f32>
+
+  // Simplified and removed.
+  %res = mo.static.broadcast_to(%input_rs) : !mo.tensor<[D1, 768], f32> -> !mo.tensor<[D2, 768], f32>
+
+  // CHECK-NEXT: mo.output<[[D1]]> %[[INPUT_RS]] : !mo.tensor<[[[D1]], 768], f32>
+  mo.output<D2> %res : !mo.tensor<[D2, 768], f32>
+}
