@@ -218,9 +218,11 @@ struct ConvertBatchMatmulToMatmulPattern
                                 PatternRewriter &rewriter) const override {
     Value input, weight;
     Operation *broadcast;
-    if (!m_Op<BatchMatmulOp>(m_Any(&input),
-                             m_Op<Static::BroadcastToOp>(
-                                 &broadcast, m_MOMatrix(m_Any(&weight))))
+    auto weightBcastP =
+        m_Op<Static::BroadcastToOp>(&broadcast, m_MOMatrix(m_Any(&weight)));
+    if (!m_Op<BatchMatmulOp>(
+             m_Any(&input),
+             m_Optional(m_Op<RebindOp>(weightBcastP), weightBcastP))
              .match(op))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
