@@ -41,6 +41,24 @@ TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
   return reshapeAndBroadcastTo(builder, loc, from, reshapeType, to);
 }
 
+TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
+                                  TensorValue from, TensorType reshapeType,
+                                  TensorValue reshapeShape, TensorValue to) {
+  auto reshapedValue =
+      builder.create<MO::ReshapeOp>(loc, reshapeType, from, reshapeShape);
+  return broadcastTo(builder, loc, reshapedValue, to);
+}
+
+TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
+                                  TensorValue from,
+                                  ArrayRef<int64_t> reshapeDims,
+                                  TensorValue reshapeShape, TensorValue to) {
+  auto reshapedValue = builder.create<MO::ReshapeOp>(
+      loc, MO::TensorType::get(reshapeDims, from.getType().getElementType()),
+      from, reshapeShape);
+  return broadcastTo(builder, loc, reshapedValue, to);
+}
+
 /// Function that ensures tensor types before and after broadcast are
 /// comparable, by ensuring the `TensorType` is statically shaped.
 static TensorType unifyShapeType(TensorType type) {

@@ -31,6 +31,19 @@ TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
                                   ArrayRef<int64_t> reshapeShape,
                                   TensorValue to);
 
+/// Reshape the `from` tensor using an intermediate shape (which can be
+/// dynamic), then attempt to broadcast to the shape of the `to` tensor.
+TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
+                                  TensorValue from, TensorType reshapeType,
+                                  TensorValue reshapeShape, TensorValue to);
+
+/// Reshape the `from` tensor using an intermediate shape (which can be
+/// dynamic), then attempt to broadcast to the shape of the `to` tensor.
+TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
+                                  TensorValue from,
+                                  ArrayRef<int64_t> reshapeDims,
+                                  TensorValue reshapeShape, TensorValue to);
+
 /// Broadcast tensor `x` to the shape of `s`. Works with static shapes only.
 TensorValue broadcastToStaticShape(OpBuilder &builder, Location loc,
                                    TensorValue x, TensorType s);
