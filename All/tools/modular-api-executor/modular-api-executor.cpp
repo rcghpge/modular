@@ -195,17 +195,18 @@ public:
       : Model(modelSpec), // create a model from the ModelSpec
         api(apiInterface), spec(std::move(modelSpec)), // move the model spec
         name(name), // the name of the the benchmark
+        inputNames(inputTensorNames), outputNames(outputTensorNames),
         modelState(state), location(std::move(loc)) {
-    inputNames = SmallVector<std::string>(inputTensorNames);
-    outputNames = SmallVector<std::string>(outputTensorNames);
 
-    if (inputNames.empty())
+    if (inputNames.empty()) {
       llvm::transform(spec.inputs, std::back_inserter(inputNames),
                       [](const auto &input) { return input.name; });
+    }
 
-    if (outputNames.empty())
+    if (outputNames.empty()) {
       llvm::transform(spec.outputs, std::back_inserter(outputNames),
                       [](const auto &output) { return output.name; });
+    }
   }
 
   const ModularAPIInterface &getApi() const { return api; }
@@ -219,6 +220,9 @@ public:
 
   const M_RuntimeContext *getContext() const { return modelState.context; };
 
+  ArrayRef<std::string> getInputNames() const { return inputNames; }
+  ArrayRef<std::string> getOutputNames() const { return outputNames; }
+
   ErrorOr<std::unique_ptr<ExecutableModel>>
   setup(Runtime &runtime) const override;
 
@@ -228,6 +232,8 @@ private:
   ModularAPIInterface &api;
   ModelSpec spec;
   std::string name;
+  SmallVector<std::string> inputNames;
+  SmallVector<std::string> outputNames;
   ModelState modelState;
   EncodedLocation location;
 };
