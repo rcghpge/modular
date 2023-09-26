@@ -26,6 +26,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <numeric>
 
 using namespace M;
 using mlir::MLIRContext;
@@ -314,7 +315,19 @@ outputTensorResults(const ExecutableModel *model,
 
   bool first = true;
   bool hasError = false;
-  for (const auto &result : results) {
+
+  // Before printing out the results, sort them by the output name.
+  const auto &outputNames = model->getModel()->getOutputNames();
+  size_t numResults = outputNames.size();
+  std::vector<size_t> sortedIndices(numResults);
+  std::iota(sortedIndices.begin(), sortedIndices.end(), 0);
+  std::sort(sortedIndices.begin(), sortedIndices.end(),
+            [&outputNames](size_t i1, size_t i2) {
+              return outputNames[i1] < outputNames[i2];
+            });
+
+  for (size_t idx : sortedIndices) {
+    const auto &result = results[idx];
     assert(result.isReady() && "model result must be ready");
     if (!first)
       llvm::outs() << ", ";
