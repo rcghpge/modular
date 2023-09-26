@@ -9,7 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/Interfaces/LowerableToMGPInterface.h"
 #include "GenericML/GraphCompiler/Interfaces/LoweringState.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Utils.h"
