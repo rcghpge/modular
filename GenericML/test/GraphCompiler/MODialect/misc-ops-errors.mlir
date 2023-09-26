@@ -985,6 +985,33 @@ mo.graph @scatter_nd_min_shape_mismatch(
 }
 
 //===----------------------------------------------------------------------===//
+// SqueezeOp
+//===----------------------------------------------------------------------===//
+
+// -----
+
+mo.graph @squeeze_shape_changed_dtypes(%input_shape: !mo.tensor<[4], si32>) -> !mo.tensor<[7], si64> {
+  %indices = mo.constant {value = #M.dense_array<0, 2, 6> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+
+  // Input and output dtypes should match
+  // expected-error@+1 {{'mo.squeeze_shape' op Expect in and out DTypes to be the same type}}
+  %res = mo.squeeze_shape(%input_shape, %indices) : (!mo.tensor<[4], si32>, !mo.tensor<[3], si64>) -> !mo.tensor<[7], si64>
+  mo.output %res : !mo.tensor<[7], si64>
+}
+
+// -----
+
+mo.graph @squeeze_same_indices(%input_shape: !mo.tensor<[4], si32>) -> !mo.tensor<[2], si32> {
+  %indices = mo.constant {value = #M.dense_array<0, -4> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+
+  // 0, and -4 map to the same dimension (index 0)
+  // expected-error@+1 {{'mo.squeeze_shape' op Padding indices pad the same dimension twice}}
+  %res = mo.squeeze_shape(%input_shape, %indices) : (!mo.tensor<[4], si32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2], si32>
+  mo.output %res : !mo.tensor<[2], si32>
+}
+
+
+//===----------------------------------------------------------------------===//
 // UnsqueezeOp
 //===----------------------------------------------------------------------===//
 

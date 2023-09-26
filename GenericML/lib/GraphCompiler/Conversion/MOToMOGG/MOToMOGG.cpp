@@ -352,6 +352,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_KERNEL(MO::SoftmaxOp),
       MO_TO_KERNEL(MO::SplitOp),
       MO_TO_ELEMWISE(MO::SqrtOp),
+      MO_TO_KERNEL(MO::SqueezeShapeOp),
       MO_TO_ELEMWISE(MO::SubOp),
       MO_TO_ELEMWISE(MO::TanhOp),
       MO_TO_ELEMWISE(MO::TruncOp),

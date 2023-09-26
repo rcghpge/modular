@@ -425,6 +425,35 @@ mo.graph @reshape_fold_multi_dims() -> !mo.tensor<[2, 2], si32> {
 }
 
 //===----------------------------------------------------------------------===//
+// SqueezeOp
+//===----------------------------------------------------------------------===//
+
+// CHECK: mo.graph @squeeze_shape
+// CHECK-NEXT: %[[RESULT1:.*]] = mo.constant {value = #M.dense_array<0, 2, 6> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+// CHECK-NEXT: %[[RESULT2:.*]] = mo.squeeze_shape(%[[___:.*]], %[[RESULT1]]) : (!mo.tensor<[4], si32>, !mo.tensor<[3], si64>) -> !mo.tensor<[1], si32>
+// CHECK-NEXT: mo.output %1 : !mo.tensor<[1], si32>
+mo.graph @squeeze_shape(%input_shape: !mo.tensor<[4], si32>) -> !mo.tensor<[1], si32> {
+  %indices = mo.constant {value = #M.dense_array<0, 2, 6> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %res = mo.squeeze_shape(%input_shape, %indices) : (!mo.tensor<[4], si32>, !mo.tensor<[3], si64>) -> !mo.tensor<[1], si32>
+  mo.output %res : !mo.tensor<[1], si32>
+}
+
+// CHECK: mo.graph @squeeze_dynamic_shape
+mo.graph @squeeze_dynamic_shape(%input_shape: !mo.tensor<[?], si32>, %indices: !mo.tensor<[?], si32>) -> !mo.tensor<[?], si32> {
+  %res = mo.squeeze_shape(%input_shape, %indices) : (!mo.tensor<[?], si32>, !mo.tensor<[?], si32>) -> !mo.tensor<[?], si32>
+  mo.output %res : !mo.tensor<[?], si32>
+}
+
+// CHECK: mo.graph @squeeze_shape_canonicalize
+// CHECK-NEXT: %[[RESULT1:.*]] = mo.constant {value = #M.dense_array<0, 1, 3> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+mo.graph @squeeze_shape_canonicalize(%input_shape: !mo.tensor<[4], si32>) -> !mo.tensor<[1], si32> {
+  // -1 refers to index 3, -3 refers to index 1 (aka <0, 1, 3>)
+  %indices = mo.constant {value = #M.dense_array<-1, -3, 0> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+  %res = mo.squeeze_shape(%input_shape, %indices) : (!mo.tensor<[4], si32>, !mo.tensor<[3], si32>) -> !mo.tensor<[1], si32>
+  mo.output %res : !mo.tensor<[1], si32>
+}
+
+//===----------------------------------------------------------------------===//
 // UnsqueezeOp
 //===----------------------------------------------------------------------===//
 

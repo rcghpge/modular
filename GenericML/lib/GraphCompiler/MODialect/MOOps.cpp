@@ -2377,6 +2377,83 @@ LogicalResult UnsqueezeShapeOp::canonicalize(UnsqueezeShapeOp op,
 }
 
 //===----------------------------------------------------------------------===//
+// MO_SqueezeShapeOp support
+//===----------------------------------------------------------------------===//
+
+LogicalResult SqueezeShapeOp::verify() {
+  if (getInputShape().getType().getDtype() != getResult().getType().getDtype())
+    return emitOpError("Expect in and out DTypes to be the same type");
+
+  // Check indices don't point to the same index
+  std::optional<SmallVector<int64_t>> maybeIndices =
+      tryGetConstantIntVector(getRemoveIndices());
+  if (maybeIndices) {
+    SmallVector<int64_t> &indices = maybeIndices.value();
+    llvm::sort(indices);
+
+    // Note: canonicalize will change negative indices into positive if possible
+    // which will catch the case where negative and positive indices point to
+    // the same index.
+    for (size_t i = 0, e = indices.size() - 1; i < e; ++i)
+      if (indices[i] == indices[i + 1])
+        return emitOpError("Padding indices pad the same dimension twice");
+  }
+
+  // Check number of elements equal to difference of input element sizes
+  std::optional<int64_t> inputShapeSize =
+      getInputShape().getType().getNumElements();
+  std::optional<int64_t> paddingIndicesSize =
+      getRemoveIndices().getType().getNumElements();
+  std::optional<int64_t> outputSize = getResult().getType().getNumElements();
+  if (inputShapeSize && paddingIndicesSize && outputSize &&
+      inputShapeSize.value() - paddingIndicesSize.value() !=
+          outputSize.value()) {
+    return emitOpError("Output size is not the difference of the input sizes");
+  }
+
+  return success();
+}
+
+LogicalResult SqueezeShapeOp::canonicalize(SqueezeShapeOp op,
+                                           PatternRewriter &rewriter) {
+  // Normalize negative indices and make result in sorted order
+  TensorValue indicesValue = op.getRemoveIndices();
+  TensorType inputShapeType = op.getInputShape().getType();
+  std::optional<SmallVector<int64_t>> maybeIndices =
+      tryGetConstantIntVector(indicesValue);
+  if (!maybeIndices || !inputShapeType.getNumElements().has_value())
+    return failure();
+
+  SmallVector<int64_t> &indices = maybeIndices.value();
+  bool changedIndices = false;
+  for (int64_t &index : indices) {
+    if (index < 0) {
+      index += inputShapeType.getNumElements().value();
+      changedIndices = true;
+    }
+  }
+
+  bool isSorted = true;
+  for (size_t i = 0, e = indices.size() - 1; i < e; ++i)
+    isSorted = indices[i] <= indices[i + 1];
+  if (!isSorted) {
+    llvm::sort(indices);
+    changedIndices = true;
+  }
+
+  if (!changedIndices)
+    return failure();
+
+  // Construct new op with same dtypes for indices
+  TensorValue newIndices = rewriter.create<ConstantOp>(op->getLoc(), indices);
+  newIndices = rewriter.create<CastOp>(op->getLoc(), newIndices,
+                                       indicesValue.getType().getDtype());
+  rewriter.replaceOpWithNewOp<SqueezeShapeOp>(op, op.getResult().getType(),
+                                              op.getInputShape(), newIndices);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // MOStatic_ReshapeOp
 //===----------------------------------------------------------------------===//
 
@@ -2579,15 +2656,16 @@ OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
 
   TensorType inputTy = getInput().getType();
 
-  // If the input and the output are the same and neither have ? in them then we
-  // can maybe fold.
+  // If the input and the output are the same and neither have ? in them then
+  // we can maybe fold.
   if (getResult().getType() != inputTy || inputTy.hasUnknownShape())
     return {};
 
-  // If all of the steps are `1` then this is an identity. We need to check this
-  // as you could produce the same shape by walking backwards through the slice
-  // i.e -1. So we must check they are 1 which means the only way to produce the
-  // same shape as input is through start of 0 and end of -1. I.E an identity.
+  // If all of the steps are `1` then this is an identity. We need to check
+  // this as you could produce the same shape by walking backwards through the
+  // slice i.e -1. So we must check they are 1 which means the only way to
+  // produce the same shape as input is through start of 0 and end of -1. I.E
+  // an identity.
   auto stepsData = tryGetConstantBlob<int64_t>(cast<ElementsAttr>(steps),
                                                getStep().getType().getDtype());
   if (!stepsData.has_value())
@@ -2626,8 +2704,8 @@ LogicalResult TransposeOp::canonicalize(TransposeOp op,
     return success();
   }
 
-  // NOTE The following (transposes merging or transpose-->reshape) assumes the
-  // verifier checks against invalid permutations.
+  // NOTE The following (transposes merging or transpose-->reshape) assumes
+  // the verifier checks against invalid permutations.
 
   // Merge consecutive transposes by merging their constant permutations
   if (auto inputTransposeOp = op.getInput().getDefiningOp<TransposeOp>()) {
