@@ -814,6 +814,57 @@ def MO_CosOp : MO_ElementWiseUnaryOp<"cos"> {
   let arguments = (ins MO_FloatTensor:$input);
 }
 
+def MO_CumSumOp : MO_TensorOp<"cumsum", [
+  DeclareOpInterfaceMethods<MO_Parameterization>,
+  DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
+  let summary = "Cumulative summation op.";
+  let description = [{
+    Performs cumulative summation of input tensors along an axis. By default,
+    it copies the first element as is. If the exclusive attribute is set to 1,
+    then the first element is excluded. The reverse attribute causes the
+    summation to be done in the opposite direction of the axis.
+
+    The value of `axis` follows numpy sematics, e.g., -1 represents the last
+    axis.
+
+    Example of outputs:
+    ```
+    input_x = [1, 2, 3]
+    axis=0
+    output = [1, 3, 6]
+    exclusive=1
+    output = [0, 1, 3]
+    exclusive=0
+    reverse=1
+    output = [6, 5, 3]
+    exclusive=1
+    reverse=1
+    output = [5, 3, 0]
+    ```
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %axis: !mo.tensor<[], i64>
+    %res = mo.cumsum(%arg, %axis) {exclusive = 1 : i64, reverse = 0 : bool} : (
+      !mo.tensor<[2, 3], f32>., !mo.tensor<[], i64>) -> !mo.tensor<[2, 3], f32>
+    ```
+  }];
+
+  let arguments = (ins MO_Tensor:$input,
+                       MO_RankedScalarIndexTensor:$axis,
+                       Builtin_IntegerAttr:$exclusive,
+                       Builtin_IntegerAttr:$reverse);
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `(` $input `,` $axis `)` attr-dict
+    `:` functional-type(operands, results)
+  }];
+
+  let hasVerifier = 1;
+}
+
 def MO_CeilOp : MO_ElementWiseFloatUnaryOp<"ceil", [Idempotent]> {
   let summary = "Ceiling operation";
   let description = [{

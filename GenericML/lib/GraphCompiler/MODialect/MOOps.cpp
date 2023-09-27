@@ -1617,6 +1617,30 @@ void ArgMinOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 }
 
 //===----------------------------------------------------------------------===//
+// MO::CumSumOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CumSumOp::verify() {
+  auto inputType = getInput().getType();
+  auto resultType = getResult().getType();
+  if (inputType.getDtype() != resultType.getDtype())
+    return emitOpError("Expect input and result DTypes to be the same.");
+
+  auto inDimAttrs = dyn_cast<ShapeAttr>(inputType.getShapeAttr());
+  auto outDimAttrs = dyn_cast<ShapeAttr>(resultType.getShapeAttr());
+  if (inDimAttrs && outDimAttrs) {
+    for (auto [inDimAttr, outDimAttr] :
+         llvm::zip(inDimAttrs.getValues(), outDimAttrs.getValues())) {
+      auto inDimIntAttr = dyn_cast<IntegerAttr>(inDimAttr);
+      auto outDimIntAttr = dyn_cast<IntegerAttr>(outDimAttr);
+      if (inDimIntAttr && outDimIntAttr && inDimIntAttr != outDimIntAttr)
+        return emitError("statically known dimensions must match");
+    }
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // Windowed ops
 //===----------------------------------------------------------------------===//
 
