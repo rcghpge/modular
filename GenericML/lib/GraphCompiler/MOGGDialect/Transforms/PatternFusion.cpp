@@ -14,6 +14,7 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/Support/MathExtras.h"
 
+#include <mlir/IR/BuiltinAttributes.h>
 #include <numeric>
 
 using namespace M;
@@ -104,6 +105,7 @@ struct PackParamCache {
 
 Value lowerMatmulPackingFunc(Location loc, PatternRewriter &rewriter,
                              PackParamCache &cache, Value weight,
+                             Type inputDtype, Type resultDtype,
                              bool transpose) {
   MO::TensorType weightsType = cast<MO::TensorType>(weight.getType());
   MO::TensorType packedWeightsType;
@@ -121,6 +123,10 @@ Value lowerMatmulPackingFunc(Location loc, PatternRewriter &rewriter,
       packedWeightsType = itr->second;
   }
 
+  SmallVector<mlir::NamedAttribute> attrs;
+  attrs.push_back(rewriter.getNamedAttr("a_type", TypeAttr::get(inputDtype)));
+  attrs.push_back(rewriter.getNamedAttr("c_type", TypeAttr::get(resultDtype)));
+
   // If we haven't lowered the shape function, lower it now so we have
   // parameterized shapes.
   if (!packedWeightsType) {
@@ -136,10 +142,11 @@ Value lowerMatmulPackingFunc(Location loc, PatternRewriter &rewriter,
 
     // Create the packed B shape function.
     // TODO(#18770) Find a better registration mechanism.
-    SmallVector<mlir::NamedAttribute> attrs;
-    attrs.push_back(rewriter.getNamedAttr("transpose_in_0",
-                                          rewriter.getBoolAttr(transpose)));
-    mlir::DictionaryAttr kgenParams = rewriter.getDictionaryAttr(attrs);
+    SmallVector<mlir::NamedAttribute> shapeFuncAttrs = attrs;
+    shapeFuncAttrs.push_back(rewriter.getNamedAttr(
+        "transpose_in_0", rewriter.getBoolAttr(transpose)));
+    mlir::DictionaryAttr kgenParams =
+        rewriter.getDictionaryAttr(shapeFuncAttrs);
     rewriter.create<MO::InvokeShapeFuncOp>(loc, SmallVector<Value>{weight},
                                            "pack_matmul_b_shape_func",
                                            newParams, kgenParams, ArrayAttr{});
@@ -161,9 +168,10 @@ Value lowerMatmulPackingFunc(Location loc, PatternRewriter &rewriter,
       cache.knownTypes[weightsType] = packedWeightsType;
   }
 
+  mlir::DictionaryAttr kgenParams = rewriter.getDictionaryAttr(attrs);
   // Pack the mm weights.
   return rewriter.create<MO::LayoutTransformOp>(
-      loc, /*outputTypes=*/packedWeightsType, weight);
+      loc, /*outputTypes=*/packedWeightsType, weight, kgenParams);
 }
 
 struct GatherSumPattern : public OpRewritePattern<MO::ReduceAddOp> {
@@ -261,8 +269,11 @@ struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
       weight.setType(weightsType.cloneWith(preTranspWeightsLayout));
     }
 
-    Value packedWeights = lowerMatmulPackingFunc(op->getLoc(), rewriter, cache,
-                                                 weight, transpose);
+    Type inputDtype = op.getInputA().getType().getElementType();
+    Type resultDtype = op.getType().getElementType();
+    Value packedWeights =
+        lowerMatmulPackingFunc(op->getLoc(), rewriter, cache, weight,
+                               inputDtype, resultDtype, transpose);
 
     op.setOperand(1, packedWeights);
     return mlir::success();

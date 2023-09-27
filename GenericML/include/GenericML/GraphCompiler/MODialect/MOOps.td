@@ -3263,13 +3263,14 @@ def MO_LayoutTransformOp : MO_TensorOp<"layout.transform", [Pure]> {
   let summary = "Transform the layout of input tensor";
   let description = [{
     This op will transform the layout of input tensor to the layout specified in
-    the output type.
+    the output type. The `kgenParams` will be passed along as named parameters
+    to the underlying mojo kernel.
 
     It requires both the input and output tensor types to contain layout
     annotations.
   }];
 
-  let arguments = (ins MO_Tensor:$input);
+  let arguments = (ins MO_Tensor:$input, OptionalAttr<DictionaryAttr>:$kgenParams);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
