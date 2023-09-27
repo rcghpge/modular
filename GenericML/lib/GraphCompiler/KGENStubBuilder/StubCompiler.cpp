@@ -91,7 +91,7 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
   TargetInfoAttr target = getTargetInfo(kgenModule);
 
   compilationOptions.targetTriple = target.getTripleStr();
-  compilationOptions.targetCpu = target.getCpu();
+  compilationOptions.targetCpu = target.getArch();
   compilationOptions.targetFeatures = target.getFeatures();
 
   if (!saveTempsPrefix.empty())
