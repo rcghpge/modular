@@ -282,8 +282,15 @@ outputTensorResults(const ExecutableModel *model,
           tensorResultsInfo.push_back(
               {outputName, tensor->getSpec().getAsString()});
 
+          // If the output name has illegal symbols, replace them with '_'.
+          const std::string illegalChars = "\\/:?\"<>|";
+          std::string sanitizedName = outputName;
+          std::replace_if(
+              sanitizedName.begin(), sanitizedName.end(),
+              [&](char c) { return illegalChars.find(c) != std::string::npos; },
+              '_');
           std::ofstream outputFile(
-              (std::filesystem::path(outputDir.str()) / outputName),
+              (std::filesystem::path(outputDir.str()) / sanitizedName),
               std::ofstream::binary);
 
           outputFile.write((const char *)tensor->getBuffer(),
