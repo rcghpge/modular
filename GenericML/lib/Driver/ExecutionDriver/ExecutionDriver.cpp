@@ -599,7 +599,7 @@ static ErrorOrSuccess executeModel(const Model *model, Runtime &runtime,
 /// override shapes, return an updated array of QuantTensorSpecs.
 static ErrorOr<SmallVector<QuantTensorSpec>>
 getResolvedInputShapes(ArrayRef<QuantTensorSpec> compiledShapes,
-                       ArrayRef<TensorShape> userInputShapes) {
+                       ArrayRef<TensorSpec> userInputShapes) {
   SmallVector<QuantTensorSpec> ret;
   auto numInputTensors = compiledShapes.size();
 
@@ -624,6 +624,8 @@ getResolvedInputShapes(ArrayRef<QuantTensorSpec> compiledShapes,
     if (auto errOr = compiledShape.isRefinedBy(userShape))
       return errOr.takeError();
     // Build new TensorSpec
+    if (compiledShape.getEltType() == DType::invalid)
+      compiledShape.setEltType(userShape.getEltType());
     ret.push_back(compiledShape.cloneWithNewShape(userShape));
   }
 
@@ -643,9 +645,18 @@ LogicalResult M::runModel(MLIRContext *ctx, const Model *model,
                           LLCL::Runtime &runtime,
                           const ExecutorDriverCLOptions &options) {
 
+  SmallVector<TensorSpec> userInputSpecs;
+  if (!options.inputSpecs.empty()) {
+    userInputSpecs = SmallVector<TensorSpec>(options.inputSpecs.begin(),
+                                             options.inputSpecs.end());
+  } else if (!options.inputShapes.empty()) {
+    for (auto [modelSpec, userShape] :
+         llvm::zip(model->getInputSpecs(), options.inputShapes))
+      userInputSpecs.emplace_back(userShape, modelSpec.getEltType());
+  }
   // Get fully resolved input shapes
   auto shapesOrErr =
-      getResolvedInputShapes(model->getInputSpecs(), options.inputShapes);
+      getResolvedInputShapes(model->getInputSpecs(), userInputSpecs);
   if (shapesOrErr.isError()) {
     return failure(options.reportError(shapesOrErr.getError()));
   }

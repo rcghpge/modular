@@ -15,6 +15,7 @@ size_t MEFType::getEncodedSizeInBytes() const {
   auto typeID = getKind().stripComplex();
 
   switch (typeID.getValue()) {
+  case MEF::TypeKind::invalid:
   case MEF::TypeKind::f16:
   case MEF::TypeKind::bf16:
   case MEF::TypeKind::f32:
