@@ -42,6 +42,8 @@ def MOGG_ExtOp : MOGG_LowerableOp<"ext.op", [Pure]> {
 
     It contains the name of the kernel, variadic inputs and outputs, and a body
     region for holding the externally called library for lowering.
+
+    These kernel libraries must always be on the 'host' device.
   }];
 
   let arguments = (ins
@@ -76,6 +78,9 @@ def MOGG_ConcatOp : MOGG_LowerableOp<"concat", []> {
       !mo.tensor<[3, 3], f32>, !mo.tensor<[2, 3], f32>
     ) -> !mo.tensor<[5, 3], f32>
     ```
+
+    Currently only for the 'host' device.
+    TODO: Generalize to arbitrary devices.
   }];
 
   let arguments = (ins Variadic<MO_Tensor>:$inputs);
@@ -104,6 +109,9 @@ def MOGG_SplitOp : MOGG_LowerableOp<"split", []> {
       !mo.tensor<[9, 8], f32>, !mo.tensor<[3], si64>
     ) -> (!mo.tensor<[2, 3], f32>, !mo.tensor<[3, 3], f32>, !mo.tensor<[4, 3], f32>)
     ```
+
+    Currently only for the 'host' device.
+    TODO: Generalize to arbitrary devices.
   }];
 
   let arguments = (ins
@@ -166,10 +174,12 @@ def MOGG_MojoRegisterOp : MOGG_Op<"mojo_register", [HasParent<"ModuleOp">]> {
 
 }
 
-def MOGG_KernelOp : MOGG_Op<"kernel", [IsolatedFromAbove,
-                                        SingleBlock,
-                                        SymbolTable,
-                                        DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
+def MOGG_KernelOp : MOGG_Op<"kernel", [
+    IsolatedFromAbove,
+    SingleBlock,
+    SymbolTable,
+    DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+    MO_HasDeviceInterface]> {
   let summary = "A representation of a kernel which can be fused into and compiled";
   let description = [{
     This kernel represents the handover from the MO graph to the KGEN land.
@@ -229,6 +239,8 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [IsolatedFromAbove,
     `isViewOp` Is an easy way for us to check if something can be represented as
     a view, e.g., a broadcast in the form of a view change followed by a copy. We
     can drop the copy and keep the view change op.
+
+    Kernels preserve the device of their original MO op.
   }];
 
   let arguments = (ins Variadic<MO_Tensor>:$operands,
@@ -547,25 +559,33 @@ def MOGG_OutputPlaceholdersOp : MOGG_Op<"output_placeholders"> {
 // MOGG Runtime compiled code representation ops.
 //===----------------------------------------------------------------------===//
 
-def MOGG_LoadCompiledKernelOp : MOGG_LowerableOp<"load_compiled_kernel"> {
-  let summary = "Loads pairs of (symbol, compiled object) into the runtime context.";
+def MOGG_LoadCompiledKernelOp : MOGG_LowerableOp<"load_compiled_kernel", [
+    MO_HasDeviceInterface]> {
+  let summary = "Loads pairs of (symbol, compiled object) into the runtime "
+                "for a given device.";
   let description = [{
-    For each of the input symbol/resource pair, and associates the symbol with
+    For each of the input symbol/resource pair, associates the symbol with
     the resource (a blob of compiled kernel object) in the runtime (so the
     symbol names can be used by other ops like `ExecuteCompiledOp`).
+
+    The compiled objects are with respect to the op's device attribute. The
+    final representation for the compiled objects, and how they are registered
+    with the runtime, depends on the device.
   }];
 
   let arguments = (ins ArrayAttr:$symbols,
     ConfinedAttr<
       ElementsAttr,
       [AnyAttrOf<[Builtin_DenseResourceElementsAttr]>]
-    >:$value);
+    >:$value
+  );
 }
 
 
-def MOGG_ExecuteCompiledOp : MOGG_LowerableOp<"execute_kernel",
-  [DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
-  let summary = "Executes a compiled kernel";
+def MOGG_ExecuteCompiledOp : MOGG_LowerableOp<"execute_kernel", [
+   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+   MO_HasDeviceInterface]> {
+  let summary = "Executes a compiled kernel on a given device.";
   let description = [{
     Executes a compiled kernel with the given name and operands.
 
@@ -578,14 +598,16 @@ def MOGG_ExecuteCompiledOp : MOGG_LowerableOp<"execute_kernel",
     kernel, which will use them to reconstruct the tensor shapes.
 
     `outputParamDecls` allows this compiled operation to define a parameter
-     values. These are exported into MGP land where they will be translated
-     into calls into the parameter system.
+    values. These are exported into MGP land where they will be translated
+    into calls into the parameter system.
+
+    The ABI and calling primitive depend on the device.
   }];
 
   let arguments = (ins Variadic<MO_Tensor>:$operands,
-                          StrAttr:$kernelName,
-                          ArrayAttr:$usedParams,
-                          MO_ParamDecls:$outputParamDecls);
+                       StrAttr:$kernelName,
+                       ArrayAttr:$usedParams,
+                       MO_ParamDecls:$outputParamDecls);
   let results = (outs Variadic<MO_Tensor>:$results);
 }
 

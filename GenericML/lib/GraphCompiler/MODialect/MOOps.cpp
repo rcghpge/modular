@@ -13,6 +13,7 @@
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
+#include "GenericML/Support/HostDeviceSpecs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
@@ -41,13 +42,22 @@ using namespace MO;
 // Utilities
 //===----------------------------------------------------------------------===//
 
-DeviceRefAttr MO::getDeviceOrDefault(MOTensorOpInterface op) {
+DeviceRefAttr MO::getDeviceOrDefault(MOHasDeviceInterface op) {
   // Check the op annotation.
   DeviceRefAttr device = op.getDeviceRef();
   if (device)
     return device;
 
   // Fallback to the 'host' device.
+  GraphOp graphOp = op->getParentOfType<GraphOp>();
+  assert(graphOp && "missing containing GraphOp");
+  return getHostDevice(graphOp);
+}
+
+DeviceRefAttr MO::getDeviceOrDefaultAny(Operation *op) {
+  if (auto hasDeviceOp = dyn_cast<MOHasDeviceInterface>(op))
+    return getDeviceOrDefault(hasDeviceOp);
+
   GraphOp graphOp = op->getParentOfType<GraphOp>();
   assert(graphOp && "missing containing GraphOp");
   return getHostDevice(graphOp);
@@ -64,9 +74,29 @@ DeviceRefAttr MO::getDeviceOrDefault(GraphOp graphOp, TensorType type) {
 }
 
 DeviceRefAttr MO::getHostDevice(GraphOp graphOp) {
+  // Check the device specs annotation.
   DeviceSpecCollectionAttr deviceSpecs = graphOp.getDeviceSpecs();
-  assert(deviceSpecs && "missing device_specs annotation on MO graph");
-  return deviceSpecs.getHost();
+  if (deviceSpecs)
+    return deviceSpecs.getHost();
+
+  // Fall back to 'cpu'.
+  return DeviceRefAttr::get(graphOp.getContext(), GML::kCPULabel, 0);
+}
+
+ErrorOr<DeviceSpecCollectionAttr> MO::getDeviceSpecsOrDefault(GraphOp graphOp) {
+  // Check the device specs annotation.
+  DeviceSpecCollectionAttr deviceSpecs = graphOp.getDeviceSpecs();
+  if (deviceSpecs)
+    return deviceSpecs;
+
+  // Fallback to a description of the host CPU.
+  // CAUTION: Unlike AddDevicesPass, no additional devices will be included.
+  // This is to support unit tests which don't want to deal with devices.
+  ErrorOr<std::unique_ptr<DeviceSpecCollection>> runtimeDeviceSpecsOr =
+      GML::getHostCPUDeviceSpecs();
+  if (runtimeDeviceSpecsOr)
+    return runtimeDeviceSpecsOr.takeError();
+  return fromRuntimeDeviceSpecs(graphOp.getContext(), **runtimeDeviceSpecsOr);
 }
 
 SmallVector<ConstantOp> M::MO::tryGetConstantOpsOfRank(TensorValue val,

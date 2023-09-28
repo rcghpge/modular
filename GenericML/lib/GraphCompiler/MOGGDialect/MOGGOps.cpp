@@ -26,8 +26,12 @@
 using namespace M;
 using namespace MOGG;
 
+//===----------------------------------------------------------------------===//
+// MOGG ExtOp
+//===----------------------------------------------------------------------===//
+
 LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
-  // TODO: Propagate device annotations from MO.
+  // This op is always on the 'host' device.
   MGP::MOOpLoweringState opLoweringState(loweringState, *this,
                                          loweringState.getHostDevice());
 
@@ -79,10 +83,12 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
   return success();
 }
 
-// ConcatOp
+//===----------------------------------------------------------------------===//
+// MOGG ConcatOp
+//===----------------------------------------------------------------------===//
 
 LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
-  // TODO: Currently must be on host device.
+  // TODO: Currently this op is always on the 'host' device.
   MGP::MOOpLoweringState opLoweringState(loweringState, *this,
                                          loweringState.getHostDevice());
 
@@ -127,10 +133,12 @@ LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
   return success();
 }
 
-// SplitOp
+//===----------------------------------------------------------------------===//
+// MOGG SplitOp
+//===----------------------------------------------------------------------===//
 
 LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
-  // TODO: Currently must be on host device.
+  // TODO: Currently this op is always on the 'host' device.
   MGP::MOOpLoweringState opLoweringState(loweringState, *this,
                                          loweringState.getHostDevice());
 
@@ -186,8 +194,13 @@ LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// MOGG LoadCompiledKernelOp
+//===----------------------------------------------------------------------===//
+
 LogicalResult
 LoadCompiledKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
+  // TODO: Use the op's device annotation to guide lowering.
   MOGG::LoadCompiledKernelOp op = *this;
   OpBuilder &builder = loweringState.getInitOpBuilder();
 
@@ -217,11 +230,13 @@ LoadCompiledKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// MOGG ExecuteCompiledOp
+//===----------------------------------------------------------------------===//
+
 LogicalResult
 ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
-  // TODO: Propagate device annotations from MO.
-  MGP::MOOpLoweringState opLoweringState(loweringState, *this,
-                                         loweringState.getHostDevice());
+  MGP::MOOpLoweringState opLoweringState(loweringState, *this, getDeviceRef());
 
   // Gather the input buffers.
   SmallVector<MGP::BufferizedTensor> bufferizedInputs =
@@ -244,18 +259,18 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // We only take the input buffers, we don't need the specs as we just read the
   // used parameters directly.
   SmallVector<Value> buffers;
-  SmallVector<InOutSignatureAttr::InOutSemantics> inOutSemantics;
+  SmallVector<InOutSignatureAttr::InOutSemantics> bufferSemantics;
   buffers.reserve(numBuffers);
-  inOutSemantics.reserve(numBuffers);
+  bufferSemantics.reserve(numBuffers);
 
   // Collect the buffers from the input/output tensors.
   for (MGP::BufferizedTensor &bufferizedInput : bufferizedInputs) {
     buffers.push_back(bufferizedInput.buffer);
-    inOutSemantics.emplace_back(InOutSignatureAttr::kIn);
+    bufferSemantics.emplace_back(InOutSignatureAttr::kIn);
   }
   for (MGP::BufferizedTensor &bufferizedOutput : bufferizedOutputs) {
     buffers.push_back(bufferizedOutput.buffer);
-    inOutSemantics.emplace_back(InOutSignatureAttr::kOut);
+    bufferSemantics.emplace_back(InOutSignatureAttr::kOut);
   }
 
   // Add the used kernel parameters.
@@ -269,11 +284,10 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
     inDimensions.push_back(symbolicDimOr.takeValue());
   }
 
+  // TODO: Use the ops device annotation to guide lowering.
   uint64_t slot = loweringState.getCompiledKernelsContext().getSlot();
   uint64_t index = loweringState.getCompiledKernelIndex(getKernelName());
 
-  // TODO: Make this part of BufferBuilder? Or specialize ExecuteCompiledOp to
-  // CPU?
   auto executeOp = opLoweringState.create<MGP::CpuKernelExecuteOp>(
       /*inChain=*/loweringState.getExecuteChain(),
       /*theContext=*/loweringState.getExecuteMgpContext(),
@@ -282,7 +296,7 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
       /*aSlot=*/slot,
       /*bKernelIndex=*/index,
       /*cInOutSignature=*/
-      InOutSignatureAttr::get(getContext(), inOutSemantics),
+      InOutSignatureAttr::get(getContext(), bufferSemantics),
       /*dKernelName=*/getKernelName(),
       /*eNumOutDimensions=*/
       static_cast<uint64_t>(getOutputParamDecls().size()));

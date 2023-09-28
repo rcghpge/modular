@@ -11,6 +11,7 @@
 
 #include "LLCL/Runtime/Runtime.h"
 
+#include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "KGEN/Compiler/KGENCompiler.h"
 #include "KGEN/Compiler/ObjectCompiler.h"
@@ -18,13 +19,14 @@
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "KGEN/ToolCommon/CLOptions.h"
 #include "Support/MArchTarget/Host.h"
+#include "Support/MDialect/MAttrs.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/TargetParser/Host.h"
 
 namespace M::MOGG::Stub {
 
-LogicalResult StubCompiler::elaborateKGEN(bool useCuda) {
+LogicalResult StubCompiler::elaborateKGEN() {
   // Create a runtime for KGEN to evaluate the kernels.
   LLCL::Runtime runtime(
       LLCL::createLeakCheckAllocator(LLCL::createMallocAllocator()),
@@ -32,25 +34,25 @@ LogicalResult StubCompiler::elaborateKGEN(bool useCuda) {
           /*numThreads=*/
           M::getHostMachineInfo()->numPhysicalCores));
 
-  ErrorOr<TargetInfoAttr> target = Error("Unreachable");
-
-  if (useCuda) {
-    target = M::getTargetInfoFor(kgenModule->getContext(),
-                                 "nvptx64-nvidia-cuda", "", "");
-  } else {
-    target = M::getTargetInfoFor(
-        kgenModule->getContext(), llvm::sys::getDefaultTargetTriple(),
-        llvm::sys::getHostCPUName(), getHostCPUFeatures());
-  }
-
-  if (target.isError())
-    return mlir::emitError(kgenModule.getLoc(), target.getError());
+  llvm::InitializeNativeTarget();
+  llvm::InitializeNativeTargetAsmParser();
+  llvm::InitializeNativeTargetAsmPrinter();
 
   BuildInfoAttr buildInfo =
       BuildInfoAttr::getForCurrentBuild(kgenModule->getContext());
 
   mlir::PassManager pm(kgenModule->getContext());
-  KGEN::populateElaborateModulePasses(pm, runtime, *target, buildInfo,
+
+  // Retrieve the target info from the device spec, however 'complete' it with
+  // additional fields derived from the 'core' fields.
+  ErrorOr<TargetInfoAttr> targetInfoOr = getTargetInfoFor(
+      kgenModule->getContext(), deviceSpec.getTarget().getTripleStr(),
+      deviceSpec.getTarget().getArch(), deviceSpec.getTarget().getFeatures(),
+      deviceSpec.getTarget().getTuneCpu());
+  if (targetInfoOr)
+    return kgenModule->emitError(targetInfoOr.getError());
+
+  KGEN::populateElaborateModulePasses(pm, runtime, *targetInfoOr, buildInfo,
                                       {shouldSearch});
 
   if (!saveTempsPrefix.empty()) {
@@ -86,19 +88,21 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
 
   // Compile to LLVM.
   mlir::SymbolTable symTable{kgenModule};
-  KGEN::CompilationOptions compilationOptions;
-
   TargetInfoAttr target = getTargetInfo(kgenModule);
-
+  KGEN::CompilationOptions compilationOptions;
   compilationOptions.targetTriple = target.getTripleStr();
   compilationOptions.targetCpu = target.getArch();
   compilationOptions.targetFeatures = target.getFeatures();
+
+  llvm::InitializeNativeTarget();
+  llvm::InitializeNativeTargetAsmParser();
+  llvm::InitializeNativeTargetAsmPrinter();
 
   if (!saveTempsPrefix.empty())
     compilationOptions.setSaveTemps(saveTempsPrefix);
 
   auto compilerOr = KGEN::ObjectCompiler::create(
-      runtime, mgr, ".mojo_cache", compilationOptions, /*isJIT=*/true);
+      runtime, mgr, ".mojo_cache", compilationOptions, /*isJit=*/true);
   if (compilerOr.isError())
     return compilerOr.takeError();
   llvm::MapVector<StringAttr, KGEN::ExportedSymbol> exportedSymbols =
@@ -112,21 +116,26 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
     return standaloneOr.takeError();
   ElementsAttr archiveAttr = *standaloneOr;
 
-  // Add the kernel as a constant.
-  moggBuilder.create<MOGG::LoadCompiledKernelOp>(loc, combinedSymbolName,
-                                                 archiveAttr);
+  // Add the compiled kernels as a constant.
+  auto loadCompiledOp = moggBuilder.create<MOGG::LoadCompiledKernelOp>(
+      loc, /*symbols=*/combinedSymbolName, /*value=*/archiveAttr);
+
+  // If working with multiple devices, remember the device these kernels are
+  // to be executed on.
+  if (graphOp.getDeviceSpecs())
+    loadCompiledOp.setDeviceRef(deviceSpec.getRef());
+
   return success();
 }
 
-ErrorOrSuccess StubCompiler::compile(mlir::ArrayAttr combinedSymbolName,
-                                     bool useCuda) {
+ErrorOrSuccess StubCompiler::compile(mlir::ArrayAttr combinedSymbolName) {
   llvm::InitializeAllTargets();
   llvm::InitializeAllTargetInfos();
   llvm::InitializeAllTargetMCs();
   llvm::InitializeAllAsmParsers();
   llvm::InitializeAllAsmPrinters();
 
-  LogicalResult ok = elaborateKGEN(useCuda);
+  LogicalResult ok = elaborateKGEN();
   if (ok.failed())
     return Error("KGEN elaboration failed");
 

@@ -119,8 +119,10 @@ void ElementwiseGraph::buildGraph(MOGG::KernelOp start) {
                   region](KernelOp current, Operation *userOrProducer,
                           llvm::SetVector<KernelOp> &endpoint) {
     // Must be in same region to be connected.
-    if (region != userOrProducer->getParentRegion())
+    if (region != userOrProducer->getParentRegion()) {
       endpoint.insert(current);
+      return;
+    }
 
     if (auto useOrP = dyn_cast<KernelOp>(userOrProducer)) {
       // If the user or producer is anything but an elementwise kernel then we

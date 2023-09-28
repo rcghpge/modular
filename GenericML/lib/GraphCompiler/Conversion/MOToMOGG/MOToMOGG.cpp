@@ -100,6 +100,9 @@ struct KernelRecord {
 // Helper to add a map to a shim kernel for a given mo op.
 // MOOps is the C++ class type of the MO op which provides the op name for the
 // map. ShimName is the name of the C++ shim kernel to target in MGP.
+//
+// CAUTION: AssignDevicesPass must also consider this MOOp to be explicitly or
+// implicitly host only.
 #define MO_SHIM_ONLY(MOOp, ShimName)                                           \
   {                                                                            \
     TypeID::get<MOOp>(), KernelRecord {                                        \
@@ -111,10 +114,10 @@ using MoToKernelMapTy = SmallDenseMap<mlir::TypeID, KernelRecord, 64>;
 
 struct MOOpPattern : public RewritePattern {
   MOOpPattern(MLIRContext *ctx, MoToKernelMapTy &moToMojoKernels,
-              MOGG::MojoRegisterOp registry, mlir::ModuleOp kgenMod)
+              MOGG::MojoRegisterOp registry, mlir::ModuleOp moggBindings)
       : RewritePattern(MatchAnyOpTypeTag{}, 1, ctx),
         moToMojoKernels(moToMojoKernels), registry(registry),
-        moggBindings(kgenMod) {}
+        moggBindings(moggBindings) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {

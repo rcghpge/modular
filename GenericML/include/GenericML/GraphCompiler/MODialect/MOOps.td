@@ -32,7 +32,7 @@ class MO_Op<string mnemonic, list<Trait> traits = []>
 
 // Base class for ops that work with tensors in the MO dialect.
 class MO_TensorOp<string mnemonic, list<Trait> traits = []>
-  : MO_Op<mnemonic, [MO_TensorOpInterface] # traits>;
+  : MO_Op<mnemonic, [MO_TensorOpInterface, MO_HasDeviceInterface] # traits>;
 
 // Base class for ops working with control flow
 class MO_ControlOp<string mnemonic, list<Trait> traits = []>

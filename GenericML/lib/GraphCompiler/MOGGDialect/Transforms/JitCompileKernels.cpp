@@ -200,6 +200,8 @@ createMangledName(MOGG::KernelOp op,
                   size_t &kernelsDefiningParams) {
   std::string name = "__gen__";
 
+  // TODO: Is this device sensitive?
+
   // Each kernel which defines params can be assumed to be unique. No params can
   // be defined twice.
   auto outParams = op.getOutputParamDecls();
@@ -379,165 +381,189 @@ struct JitCompileKernels
   }
 
   ErrorOrSuccess runPass(MO::GraphOp graph, MOGG::MojoRegisterOp registry) {
-    // Load the mojo library. We use this KGEN module as the starting point to
-    // build up the stub functions. It contains all the kernels and functions we
-    // will need to call.
-    auto kgenModuleOr = loadMojoLibrary();
-    if (kgenModuleOr.isError())
-      return kgenModuleOr.takeError();
-    auto kgenModule = std::move(*kgenModuleOr);
+    ErrorOr<DeviceSpecCollectionAttr> deviceSpecsOr =
+        MO::getDeviceSpecsOrDefault(graph);
+    if (deviceSpecsOr)
+      return deviceSpecsOr.takeError();
+    DeviceSpecAttr hostDeviceSpec = deviceSpecsOr->getHostDeviceSpec();
 
-    // Helper to track all the types to prevent constant reallocation.
-    Stub::TypeManager manager{graph.getContext()};
+    // For each (virtual) device used by the graph...
+    for (DeviceSpecAttr deviceSpec : deviceSpecsOr->getDevices()) {
 
-    // Map operations with the same output sizes onto the same kernel. Longer
-    // term we may want fancier optimizations like unifying aliased inputs but
-    // this is legal for now.
-    std::unordered_map<std::string, MOGG::ExecuteCompiledOp> jittedKernels;
+      // Load the mojo library. We use this KGEN module as the starting point to
+      // build up the stub functions. It contains all the kernels and functions
+      // we will need to call.
+      // TODO: Starting module is create from scratch for each device.
+      auto kgenModuleOr = loadMojoLibrary();
+      if (kgenModuleOr.isError())
+        return kgenModuleOr.takeError();
+      auto kgenModule = std::move(*kgenModuleOr);
 
-    // Track all the attributes we have added.
-    SmallVector<mlir::Attribute> symbolNamesAdded;
+      // Helper to track all the types to prevent constant reallocation.
+      Stub::TypeManager manager{graph.getContext()};
 
-    // Start building up the KGEN kernel.
-    Stub::KGENBuilder builder{manager, *kgenModule, registry,
-                              minimumCpuAlignment.getValue()};
+      // Map operations with the same output sizes onto the same kernel. Longer
+      // term we may want fancier optimizations like unifying aliased inputs but
+      // this is legal for now.
+      std::unordered_map<std::string, MOGG::ExecuteCompiledOp> jittedKernels;
 
-    // Give each unique constant an identifier globally across all kernels.
-    DenseMap<M::ElementsAttr, size_t> seenConsts;
+      // Track all the attributes we have added.
+      SmallVector<mlir::Attribute> symbolNamesAdded;
 
-    ErrorOrSuccess error;
+      // Start building up the KGEN kernels for the current device.
+      Stub::KGENBuilder builder(graph, manager, *kgenModule, registry,
+                                minimumCpuAlignment.getValue(),
+                                deviceSpec.getRef());
 
-    size_t kernelsDefiningParams = 0;
+      // Give each unique constant an identifier globally across all kernels.
+      DenseMap<M::ElementsAttr, size_t> seenConsts;
 
-    // Build stubs for all JIT operations and replace them with symbolic calls
-    // to the kernels in the KGEN stub.
-    graph.walk([&](MOGG::KernelOp op) {
-      // We collect all the parameters used by this operation and track them on
-      // the kernel.
-      SmallVector<KGEN::ParamDeclRefAttr> usedParameters =
-          getUsedParameters(op);
+      ErrorOrSuccess error;
 
-      // Helper so we can make arrays from it.
-      SmallVector<Attribute> usedParamsAsAttr;
-      usedParamsAsAttr.reserve(usedParameters.size());
+      size_t kernelsDefiningParams = 0;
 
-      // Parameters will be passed in as an array so we need to relate to them
-      // by their index in that array (which is the same order as the above
-      // vector).
-      DenseMap<KGEN::ParamDeclRefAttr, size_t> paramToIndex;
+      // Build stubs for all JIT operations and replace them with symbolic calls
+      // to the kernels in the KGEN stub.
+      graph.walk([&](MOGG::KernelOp op) {
+        // Only consider kernels for the current device.
+        if (MO::getDeviceOrDefault(op) != deviceSpec.getRef())
+          return WalkResult::skip();
 
-      size_t paramIndex = 0;
-      for (auto param : usedParameters) {
-        paramToIndex[param] = paramIndex++;
-        usedParamsAsAttr.push_back(param);
-      }
+        // We collect all the parameters used by this operation and track them
+        // on the kernel.
+        SmallVector<KGEN::ParamDeclRefAttr> usedParameters =
+            getUsedParameters(op);
 
-      // Create a unique name for the kernel.
-      auto stubKernelName = createMangledName(op, paramToIndex, seenConsts,
-                                              kernelsDefiningParams);
-      if (stubKernelName.isError()) {
-        error = Error(stubKernelName.takeError());
-        return WalkResult::interrupt();
-      }
+        // Helper so we can make arrays from it.
+        SmallVector<Attribute> usedParamsAsAttr;
+        usedParamsAsAttr.reserve(usedParameters.size());
 
-      // Don't duplicate KGEN kernels for the same call.
-      auto itr = jittedKernels.find(stubKernelName.get());
-      if (itr != jittedKernels.end()) {
-        MOGG::ExecuteCompiledOp cachedExeOp = itr->second;
+        // Parameters will be passed in as an array so we need to relate to them
+        // by their index in that array (which is the same order as the above
+        // vector).
+        DenseMap<KGEN::ParamDeclRefAttr, size_t> paramToIndex;
 
-        // We cannot just clone the cached operation because its result type may
-        // be different from the currently processed kernel's result type, if
-        // they are parameterized.
-        mlir::IRRewriter rewriter{OpBuilder(op)};
-        auto newOp = rewriter.replaceOpWithNewOp<MOGG::ExecuteCompiledOp>(
-            op, op->getResultTypes(), op->getOperands(),
-            cachedExeOp->getAttrDictionary().getValue());
-
-        // Add the new used parameters which may be different than before.
-        newOp.setUsedParamsAttr(rewriter.getArrayAttr(usedParamsAsAttr));
-
-        return WalkResult::skip();
-      }
-
-      // Lower the basic stub function.
-      error = builder.startLowering(op, stubKernelName.get(), usedParameters);
-      if (error.isError())
-        return WalkResult::interrupt();
-
-      // Lower the operation using a vectorized map over an elementwise lambda.
-      error = builder.lowerToElementwiseLambda(op, usedParameters.size());
-      if (error.isError())
-        return WalkResult::interrupt();
-
-      // Replace the original kernel with a call to the compiled jit code.
-      MOGG::ExecuteCompiledOp jitExecute = builder.createExecuteOperation(
-          stubKernelName.get(), usedParamsAsAttr, op.getOutputParamDeclsAttr());
-      op->replaceAllUsesWith(jitExecute.getResults());
-      jittedKernels.insert({stubKernelName.get(), jitExecute});
-
-      // Tracking attributes makes it easier to create an array.
-      symbolNamesAdded.push_back(jitExecute.getKernelNameAttr());
-
-      if (createMOGGReproducers.getValue()) {
-        ModuleOp modu = cast<ModuleOp>(graph.getParentOp());
-        static size_t i = 0;
-        std::string name = "MOGGReducedGraph_" + std::to_string(i++);
-
-        llvm::errs() << "Graph for generated kernel: \n";
-        llvm::errs() << stubKernelName.get() << "\n";
-        llvm::errs() << "MO Reproducer: \n";
-
-        // Create a new graph.
-        OpBuilder b{modu};
-        b.setInsertionPointToEnd(&modu.getBodyRegion().front());
-        MO::GraphOp toDump = b.create<MO::GraphOp>(
-            graph->getLoc(), name, op->getOperandTypes(), op->getResultTypes());
-
-        // Attach input decls.
-        SmallVector<KGEN::ParamDeclAttr> decls;
-        for (auto param : usedParameters)
-          decls.push_back(
-              KGEN::ParamDeclAttr::get(param.getName(), param.getType()));
-        toDump.setInputParams(
-            KGEN::ParamDeclArrayAttr::get(graph->getContext(), decls));
-        b.setInsertionPointToStart(toDump.getBodyBlock());
-
-        // Clone the kernel into the new graph.
-        mlir::IRMapping mapping;
-        for (auto [oldV, newV] : llvm::zip(
-                 op->getOperands(), toDump.getBodyBlock()->getArguments())) {
-          mapping.map(oldV, newV);
+        size_t paramIndex = 0;
+        for (auto param : usedParameters) {
+          paramToIndex[param] = paramIndex++;
+          usedParamsAsAttr.push_back(param);
         }
-        auto cloned = b.clone(*op, mapping);
-        b.create<MO::OutputOp>(graph->getLoc(), cloned->getResults());
 
-        // Print it out.
-        toDump.dump();
+        // Create a unique name for the kernel.
+        auto stubKernelName = createMangledName(op, paramToIndex, seenConsts,
+                                                kernelsDefiningParams);
+        if (stubKernelName.isError()) {
+          error = Error(stubKernelName.takeError());
+          return WalkResult::interrupt();
+        }
 
-        // Remove it so we don't keep traversing.
-        toDump.erase();
+        // Don't duplicate KGEN kernels for the same call.
+        auto itr = jittedKernels.find(stubKernelName.get());
+        if (itr != jittedKernels.end()) {
+          MOGG::ExecuteCompiledOp cachedExeOp = itr->second;
+
+          // We cannot just clone the cached operation because its result type
+          // may be different from the currently processed kernel's result type,
+          // if they are parameterized.
+          mlir::IRRewriter rewriter{OpBuilder(op)};
+          auto newOp = rewriter.replaceOpWithNewOp<MOGG::ExecuteCompiledOp>(
+              op, op->getResultTypes(), op->getOperands(),
+              cachedExeOp->getAttrDictionary().getValue());
+
+          // Add the new used parameters which may be different than before.
+          newOp.setUsedParamsAttr(rewriter.getArrayAttr(usedParamsAsAttr));
+
+          // Bring over any device annotation.
+          if (op.getDeviceRef())
+            newOp.setDeviceRef(op.getDeviceRef());
+
+          return WalkResult::skip();
+        }
+
+        // Lower the basic stub function.
+        error = builder.startLowering(op, stubKernelName.get(), usedParameters);
+        if (error.isError())
+          return WalkResult::interrupt();
+
+        // Lower the operation using a vectorized map over an elementwise
+        // lambda.
+        error = builder.lowerToElementwiseLambda(op, usedParameters.size());
+        if (error.isError())
+          return WalkResult::interrupt();
+
+        // Replace the original kernel with a call to the compiled jit code.
+        MOGG::ExecuteCompiledOp jitExecute = builder.createExecuteOperation(
+            stubKernelName.get(), usedParamsAsAttr,
+            op.getOutputParamDeclsAttr());
+        op->replaceAllUsesWith(jitExecute.getResults());
+        jittedKernels.insert({stubKernelName.get(), jitExecute});
+
+        // Tracking attributes makes it easier to create an array.
+        symbolNamesAdded.push_back(jitExecute.getKernelNameAttr());
+
+        if (createMOGGReproducers.getValue()) {
+          ModuleOp modu = cast<ModuleOp>(graph.getParentOp());
+          static size_t i = 0;
+          std::string name = "MOGGReducedGraph_" + std::to_string(i++);
+
+          llvm::errs() << "Graph for generated kernel: \n";
+          llvm::errs() << stubKernelName.get() << "\n";
+          llvm::errs() << "MO Reproducer: \n";
+
+          // Create a new graph.
+          OpBuilder b{modu};
+          b.setInsertionPointToEnd(&modu.getBodyRegion().front());
+          MO::GraphOp toDump = b.create<MO::GraphOp>(graph->getLoc(), name,
+                                                     op->getOperandTypes(),
+                                                     op->getResultTypes());
+
+          // Attach input decls.
+          SmallVector<KGEN::ParamDeclAttr> decls;
+          for (auto param : usedParameters)
+            decls.push_back(
+                KGEN::ParamDeclAttr::get(param.getName(), param.getType()));
+          toDump.setInputParams(
+              KGEN::ParamDeclArrayAttr::get(graph->getContext(), decls));
+          b.setInsertionPointToStart(toDump.getBodyBlock());
+
+          // Clone the kernel into the new graph.
+          mlir::IRMapping mapping;
+          for (auto [oldV, newV] : llvm::zip(
+                   op->getOperands(), toDump.getBodyBlock()->getArguments())) {
+            mapping.map(oldV, newV);
+          }
+          auto cloned = b.clone(*op, mapping);
+          b.create<MO::OutputOp>(graph->getLoc(), cloned->getResults());
+
+          // Print it out.
+          toDump.dump();
+
+          // Remove it so we don't keep traversing.
+          toDump.erase();
+        }
+
+        op->erase();
+        if (dumpStub.getValue())
+          builder.dumpStub();
+
+        return WalkResult::advance();
+      });
+
+      if (error)
+        return error;
+
+      if (!symbolNamesAdded.empty()) {
+        // Convert our list into a combined attribute.
+        auto allSyms =
+            mlir::ArrayAttr::get(graph->getContext(), symbolNamesAdded);
+
+        // Add the compiled binary to the file.
+        Stub::StubCompiler compiler(*kgenModule, graph, useSearch.getValue(),
+                                    saveTempPrefix.getValue(), deviceSpec,
+                                    hostDeviceSpec);
+        if (auto err = compiler.compile(allSyms))
+          return err.takeError();
       }
-
-      op->erase();
-      if (dumpStub.getValue())
-        builder.dumpStub();
-
-      return WalkResult::advance();
-    });
-
-    if (error)
-      return error;
-
-    if (!symbolNamesAdded.empty()) {
-      // Convert our list into a combined attribute.
-      auto allSyms =
-          mlir::ArrayAttr::get(graph->getContext(), symbolNamesAdded);
-
-      // Add the compiled binary to the file.
-      Stub::StubCompiler compiler{*kgenModule, graph, useSearch.getValue(),
-                                  saveTempPrefix.getValue()};
-      if (auto err = compiler.compile(allSyms, /*useCuda=*/false))
-        return err.takeError();
     }
     return success();
   }

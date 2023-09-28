@@ -21,25 +21,30 @@ namespace M::MOGG::Stub {
 /// binary stuff from the KGEN stub creation process.
 class StubCompiler {
 public:
-  StubCompiler(mlir::ModuleOp kgenStubs, MO::GraphOp graph, bool shouldSearch,
-               std::string saveTempsPrefix)
-      : ctx(graph.getContext()), kgenModule(kgenStubs), loc(graph.getLoc()),
-        moggBuilder(&graph.getBody().front(), graph.getBody().front().begin()),
-        saveTempsPrefix(saveTempsPrefix), shouldSearch(shouldSearch) {}
+  StubCompiler(mlir::ModuleOp kgenStubs, MO::GraphOp graphOp, bool shouldSearch,
+               std::string saveTempsPrefix, DeviceSpecAttr deviceSpec,
+               DeviceSpecAttr hostDeviceSpec)
+      : ctx(graphOp.getContext()), graphOp(graphOp), kgenModule(kgenStubs),
+        loc(graphOp.getLoc()), moggBuilder(&graphOp.getBody().front(),
+                                           graphOp.getBody().front().begin()),
+        saveTempsPrefix(saveTempsPrefix), shouldSearch(shouldSearch),
+        deviceSpec(deviceSpec), hostDeviceSpec(hostDeviceSpec) {}
 
   /// Compile to binary object. Tell the jit all of the given symbols as symbols
   /// within it that can be executed at runtime.
-  ErrorOrSuccess compile(mlir::ArrayAttr combinedSymbolName,
-                         bool useCuda = false);
+  ErrorOrSuccess compile(mlir::ArrayAttr combinedSymbolName);
 
 private:
   /// Run the KGEN elaboration passes on the module.
-  LogicalResult elaborateKGEN(bool useCuda);
+  LogicalResult elaborateKGEN();
 
   /// Lower to an binary object.
   ErrorOrSuccess compileToLLVM(mlir::ArrayAttr combinedSymbolName);
 
   MLIRContext *ctx;
+
+  /// The MO graph containing the ops we are compiling.
+  MO::GraphOp graphOp;
 
   /// The KGEN module with all the stubs in it.
   mlir::ModuleOp kgenModule;
@@ -58,6 +63,12 @@ private:
 
   /// Should tell KGEN to search.
   bool shouldSearch;
+
+  /// Device specification for where the kernels will execute.
+  DeviceSpecAttr deviceSpec;
+
+  /// Device specification for the 'host' device.
+  DeviceSpecAttr hostDeviceSpec;
 };
 
 } // namespace M::MOGG::Stub

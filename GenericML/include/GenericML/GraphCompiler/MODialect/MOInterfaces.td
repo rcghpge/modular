@@ -32,11 +32,22 @@ def MO_TensorOpInterface : OpInterface<"MOTensorOpInterface"> {
     InterfaceMethod<"Get an output tensor as a TypedValue",
       "TensorValue", "getOutputTensor",
       (ins "unsigned int":$idx), [{}],
-      [{ return ::llvm::cast<TensorValue>($_op->getResult(idx)); }]>,
+      [{ return ::llvm::cast<TensorValue>($_op->getResult(idx)); }]>
+  ];
+}
 
+def MO_HasDeviceInterface : OpInterface<"MOHasDeviceInterface"> {
+  let description = [{
+    Interface for ops with an optional `#M.device_ref` attribute describing the
+    intended execution device. The reference must resolve to an `#M.device_spec`
+    in the op's containing `mo.graph` 'device_specs' attribute.
+  }];
+  let cppNamespace = "::M::MO";
+
+  let methods = [
     InterfaceMethod<
       [{
-        Returns the #M.device_ref annotation for this operation, or null if
+        Returns the `#M.device_ref` annotation for this operation, or null if
         no such annotation.
       }],
       "DeviceRefAttr", "getDeviceRef", (ins ), [{}],
@@ -45,7 +56,7 @@ def MO_TensorOpInterface : OpInterface<"MOTensorOpInterface"> {
 
     InterfaceMethod<
       [{
-        Sets the #M.device_ref annotation for this operation, overwriting any
+        Sets the `#M.device_ref` annotation for this operation, overwriting any
         existing annotation.
       }],
       "void", "setDeviceRef", (ins "DeviceRefAttr":$device), [{}],
@@ -55,6 +66,7 @@ def MO_TensorOpInterface : OpInterface<"MOTensorOpInterface"> {
     >
   ];
 }
+
 
 /// MO interfaces should inherit from this to ensure they are in the right
 /// namespace and have the right dependencies.
