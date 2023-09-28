@@ -14,7 +14,7 @@
 
 #include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"
-#include "llvm/Support/YAMLTraits.h"
+#include "Support/LLVMYAMLForwardDecls.h"
 
 namespace llvm {
 class MemoryBuffer;
@@ -38,6 +38,10 @@ struct MappingTraits<M::ModelSpec> {
 } // namespace llvm::yaml
 
 /// Provide the QuantTensorSpec mapping trait for YAML conversion.
-LLVM_YAML_DECLARE_MAPPING_TRAITS(M::QuantTensorSpec);
+LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::QuantTensorSpec);
+
+/// Use LLVM_YAML_IS_SEQUENCE_VECTOR to specify SequenceTraits<> on the
+/// SmallVector<QuantTensorSpec> type.
+LLVM_FWD_YAML_IS_SEQUENCE_VECTOR(M::QuantTensorSpec);
 
 #endif // GENERICML_FORMATYAML_H
