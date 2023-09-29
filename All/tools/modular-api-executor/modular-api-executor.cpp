@@ -24,6 +24,7 @@ using namespace M;
 /// Translates a modular C data type to GenericML DType.
 static DType convertToDType(M_Dtype ty) {
   switch (ty) {
+  default:
   case M_UNKNOWN:
     return DType::invalid;
   case M_INT8:

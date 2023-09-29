@@ -498,7 +498,7 @@ struct ExecutePhase {
     log(threaded, "ERROR: %s", errOr##x.getError());                           \
     exit(EXIT_FAILURE);                                                        \
   }                                                                            \
-  auto(x) = std::move(*errOr##x)
+  auto x = std::move(*errOr##x)
 
 #define THREAD_RETURN_IF_ERROR(tg, x, e)                                       \
   auto errOr##x = (e);                                                         \
@@ -507,7 +507,7 @@ struct ExecutePhase {
     (tg).setError(errOr##x.getError());                                        \
     return;                                                                    \
   }                                                                            \
-  auto(x) = std::move(*errOr##x)
+  auto x = std::move(*errOr##x)
 
 } // namespace
 

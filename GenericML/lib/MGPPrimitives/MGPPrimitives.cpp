@@ -81,7 +81,7 @@ static void mgp_cpu_buffer_cache(Chain inChain, Context &ctx,
   TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.buffer.cache"));
   ctx.emplaceStateSlot<DefaultStateSlot>(*slot, /*numBuffers=*/1);
   auto &defaultStateSlot = ctx.getStateSlot(*slot);
-  ErrorOrSuccess errOr;
+  ErrorOrSuccess errOr{};
 
   if (buffer.getPointer()->isUnique()) {
     // Since this is the only remaining reference to the buffer, so we can just
