@@ -223,7 +223,7 @@ void QuerySampleLibrary::UnloadSamplesFromRam(
 }
 
 void QuerySampleLibrary::loadSample(mlperf::QuerySampleIndex index) {
-  assert(index >= 0 && index < sampleCount);
+  assert(index < sampleCount);
   auto sampleOr = LoadedSample::Create();
   if (sampleOr.isError()) {
     llvm::errs() << "Error loading sample " << index << ": "
@@ -235,7 +235,7 @@ void QuerySampleLibrary::loadSample(mlperf::QuerySampleIndex index) {
 }
 
 void QuerySampleLibrary::unloadSample(mlperf::QuerySampleIndex index) {
-  assert(index >= 0 && index < sampleCount);
+  assert(index < sampleCount);
   delete loadedSamples[index].exchange(nullptr);
 }
 

@@ -2646,8 +2646,8 @@ LogicalResult ShapeOfOp::verify() {
 
 void ShapeOfOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                       TensorValue input, int64_t width) {
-  assert((width == 32) ||
-         (width == 64) && "`mo.shape_of` returns si32 or si64");
+  assert(llvm::is_contained({32, 64}, width) &&
+         "`mo.shape_of` returns si32 or si64");
   Type intTy = odsBuilder.getIntegerType(width, /*isSigned=*/true);
 
   int64_t outputSize = mlir::ShapedType::kDynamic;

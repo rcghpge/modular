@@ -81,7 +81,14 @@ static void mgp_cpu_buffer_cache(Chain inChain, Context &ctx,
   TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.buffer.cache"));
   ctx.emplaceStateSlot<DefaultStateSlot>(*slot, /*numBuffers=*/1);
   auto &defaultStateSlot = ctx.getStateSlot(*slot);
-  ErrorOrSuccess errOr{};
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
+  ErrorOrSuccess errOr;
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
   if (buffer.getPointer()->isUnique()) {
     // Since this is the only remaining reference to the buffer, so we can just
