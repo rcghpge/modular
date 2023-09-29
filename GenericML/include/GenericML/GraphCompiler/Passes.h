@@ -86,7 +86,7 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
   Option<bool> lowerQDQOperators{
       *this, "lower-quantized-operators",
       llvm::cl::desc("Dispatch to quantized operations around Q-DQ regions."),
-      llvm::cl::init(false)};
+      llvm::cl::init(true)};
 };
 
 // Registers the end-to-end shape inference pipeline.
