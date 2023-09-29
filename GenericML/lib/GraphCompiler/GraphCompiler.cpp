@@ -80,6 +80,24 @@ void M::MO::registerPasses() {
   mlir::registerViewOpGraphPass();
 }
 
+static inline void
+maybeApplyShapeInferencePipeline(mlir::OpPassManager &pm,
+                                 const MoToMgpOptions &opts) {
+  // Adds passes to perform shape inference and resulting optimizations if
+  // relevant flags are on.
+  if (!opts.useShapeInference)
+    return;
+  if (opts.constantFold)
+    pm.addPass(MO::createConstantFold());
+  buildShapeInferencePipeline(pm);
+  pm.addPass(MO::createSymbolicOptimization());
+  pm.addPass(MO::createPropagateShapes());
+  pm.addPass(MO::createAddFallbackShapeFunctions());
+  pm.addPass(MO::createSymbolicOptimization());
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
+}
+
 void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
                                  const MoToMgpOptions &opts,
                                  Runtime *optRuntime) {
@@ -92,23 +110,18 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
-  if (opts.lowerQDQOperators)
+  if (opts.lowerQDQOperators) {
+    // Right now we depend on symbolic optimization to handle batch matmul.
+    // See #22204 for blockers on removing this.
+    maybeApplyShapeInferencePipeline(pm, opts);
     pm.addPass(MOQ::createLowerQDQOperatorsToMO());
+  }
+
   pm.addPass(MOQ::createLegalizeMOQOpsToMO());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
-  if (opts.useShapeInference) {
-    if (opts.constantFold)
-      pm.addPass(MO::createConstantFold());
-    buildShapeInferencePipeline(pm);
-    pm.addPass(MO::createSymbolicOptimization());
-    pm.addPass(MO::createPropagateShapes());
-    pm.addPass(MO::createAddFallbackShapeFunctions());
-    pm.addPass(MO::createSymbolicOptimization());
-    pm.addPass(mlir::createCanonicalizerPass());
-    pm.addPass(mlir::createCSEPass());
-  }
+  maybeApplyShapeInferencePipeline(pm, opts);
   if (opts.constantFold)
     pm.addPass(MO::createConstantFold());
 
