@@ -87,14 +87,28 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       *this, "lower-quantized-operators",
       llvm::cl::desc("Dispatch to quantized operations around Q-DQ regions."),
       llvm::cl::init(true)};
+  Option<bool> enableExtraDevices{
+      *this, "enable-extra-devices",
+      llvm::cl::desc("Include all host devices instead of just the CPU during "
+                     "compilation."),
+      llvm::cl::init(false)};
 };
 
-// Registers the end-to-end shape inference pipeline.
+// Registers a runtime for use by the MO-to-MGP pipeline when invoked via the
+// MlirOptMain testing driver. The main entry point should call this before
+// MlirOptMain if required.
+//
+// FOR TESTING ONLY: Production compilation paths should call
+// buildMoToMgpPipeline directly with the appropriate options and runtime
+// arguments.
+void registerMoToMgpRuntimeForTesting(Runtime &runtime);
+
+// Registers the MO-to-MGP pipeline for use by testing tools.
 void registerMoToMgpPipeline();
 
-// Create the canonical MO pipeline for the given options. If a runtime is
-// provided it may be used by passes to derive runtime context information and
-// run compilation sub-tasks.
+// Creates the canonical MO-to-MGP pipeline for the given options. If a runtime
+// is provided it may be used by passes to derive runtime context information
+// and run compilation sub-tasks.
 void buildMoToMgpPipeline(mlir::OpPassManager &pm, const MoToMgpOptions &opts,
                           Runtime *optRuntime = nullptr);
 

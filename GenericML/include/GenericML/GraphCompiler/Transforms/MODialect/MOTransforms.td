@@ -230,6 +230,11 @@ def AddDevicesPass : Pass<"add-devices", "GraphOp"> {
 
     TODO(#21801): TEMPORARY until we have proper compilation configuration handling.
   }];
+
+  let options = [
+    Option<"enableExtraDevices", "enable-extra-devices", "bool", "false",
+           "Include all host devices instead of just the CPU during compilation.">
+  ];
 }
 
 def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {

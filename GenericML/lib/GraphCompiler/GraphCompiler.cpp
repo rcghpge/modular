@@ -50,14 +50,23 @@ void M::MO::registerShapeInferencePipeline() {
       buildShapeInferencePipeline);
 }
 
-static void buildMoToMgpPipelineNoRuntime(mlir::OpPassManager &pm,
-                                          const MoToMgpOptions &opts) {
-  buildMoToMgpPipeline(pm, opts);
+static Runtime *&getMoToMgpRuntime() {
+  static Runtime *theRuntime = nullptr;
+  return theRuntime;
+}
+
+void M::MO::registerMoToMgpRuntimeForTesting(Runtime &runtime) {
+  getMoToMgpRuntime() = &runtime;
+}
+
+static void buildMoToMgpPipelineDefaultRuntime(mlir::OpPassManager &pm,
+                                               const MoToMgpOptions &opts) {
+  buildMoToMgpPipeline(pm, opts, getMoToMgpRuntime());
 }
 
 void M::MO::registerMoToMgpPipeline() {
   mlir::PassPipelineRegistration<MoToMgpOptions>(
-      "mo-to-mgp", "Lower MO to MGP.", buildMoToMgpPipelineNoRuntime);
+      "mo-to-mgp", "Lower MO to MGP.", buildMoToMgpPipelineDefaultRuntime);
 }
 
 void M::MO::registerPasses() {
@@ -125,7 +134,9 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   if (opts.constantFold)
     pm.addPass(MO::createConstantFold());
 
-  pm.addPass(MO::createAddDevicesPass(optRuntime));
+  MO::AddDevicesPassOptions addDevicesOpts;
+  addDevicesOpts.enableExtraDevices = opts.enableExtraDevices;
+  pm.addPass(MO::createAddDevicesPass(addDevicesOpts, optRuntime));
 
   pm.addPass(MO::createAssignDevicesPass());
   pm.addPass(MO::createInferLayouts());

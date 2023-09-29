@@ -293,18 +293,19 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
     if (options) {
       moToMgpOptions.minimumCpuAlignment.setValue(options->minimumCpuAlignment);
       moToMgpOptions.cacheDir.setValue(options->cacheDir);
+      moToMgpOptions.enableExtraDevices.setValue(options->enableExtraDevices);
     }
     if (mofCtx->getCustomOpsPath())
       moToMgpOptions.extraLibPaths = mofCtx->getCustomOpsPath()->string();
 
     std::unique_ptr<Runtime> runtime;
-    if (options && options->enableCuda) {
+    if (options) {
       // Create a runtime to use during compilation. It will convey global
       // options to the passes which need them.
       // TODO: Would prefer to just call mofCtx->run, however we have a
       // std::unique_ptr<MemoryBuffer> vs llvm::MemoryBufferRef mismatch.
       // So need to first refactor to use M::BufferRef throughout.
-      runtime = mofCtx->getOptions()->createRuntime();
+      runtime = options->createRuntime();
       mofCtx->setRuntimeContextObjects(*runtime);
     }
 

@@ -23,8 +23,12 @@ public:
                "Default empty (ie disabled)."),
       cl::init("")};
 
-  cl::opt<bool> enableCuda{
-      "enable-cuda", cl::desc("Enable CUDA support for a single CUDA device."),
+  cl::opt<bool> enableExtraDevices{
+      "enable-extra-devices",
+      cl::desc("If true, account for all host devices during compilation, "
+               "including any host GPUs in addition to the CPU. The resulting "
+               "model will only be runnable on a similarly provisioned host. "
+               "Default is false, which will include just the host CPU."),
       cl::init(false)};
 };
 
