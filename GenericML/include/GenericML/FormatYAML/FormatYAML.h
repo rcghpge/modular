@@ -15,6 +15,7 @@
 #include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"
 #include "Support/LLVMYAMLForwardDecls.h"
+#include <string>
 
 namespace llvm {
 class MemoryBuffer;
