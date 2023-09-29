@@ -412,6 +412,25 @@ def MO_SameInputOutputShapesParameterization : MO_TensorOpInterfaceBase<
   }];
 }
 
+def MO_SameFirstArgumentOutputShapesParameterization : MO_TensorOpInterfaceBase<
+  "SameFirstArgumentOutputShapesParameterization",
+  [MO_Parameterization, MO_ParamDeclaration]
+> {
+  let description = [{
+    Interface providing a default parameterization for ops that should have the
+    same output shape as the first operand.
+  }];
+
+  let extraTraitClassDeclaration = [{
+    LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter) {
+      auto paramInterface =
+        mlir::cast<ParameterizationInterface>(this->getOperation());
+      return impl::resolveSameFirstOperandAndResultShapeUnknownParameters(
+        paramInterface, rewriter);
+    }
+  }];
+}
+
 //===----------------------------------------------------------------------===//
 // Traits
 //===----------------------------------------------------------------------===//

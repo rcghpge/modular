@@ -68,6 +68,8 @@ LogicalResult defaultResolveUnknownParameters(ParameterizationInterface op,
                                               mlir::RewriterBase &rewriter);
 LogicalResult resolveSameOperandsAndResultShapeUnknownParameters(
     ParameterizationInterface op, mlir::RewriterBase &rewriter);
+LogicalResult resolveSameFirstOperandAndResultShapeUnknownParameters(
+    ParameterizationInterface op, mlir::RewriterBase &rewriter);
 
 LogicalResult
 materializeReductionShapeInference(Reduction op,
