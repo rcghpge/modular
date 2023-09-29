@@ -466,6 +466,7 @@ struct JitCompileKernels
           // may be different from the currently processed kernel's result type,
           // if they are parameterized.
           mlir::IRRewriter rewriter{OpBuilder(op)};
+          DeviceRefAttr devAttr = op.getDeviceRef();
           auto newOp = rewriter.replaceOpWithNewOp<MOGG::ExecuteCompiledOp>(
               op, op->getResultTypes(), op->getOperands(),
               cachedExeOp->getAttrDictionary().getValue());
@@ -474,8 +475,8 @@ struct JitCompileKernels
           newOp.setUsedParamsAttr(rewriter.getArrayAttr(usedParamsAsAttr));
 
           // Bring over any device annotation.
-          if (op.getDeviceRef())
-            newOp.setDeviceRef(op.getDeviceRef());
+          if (devAttr)
+            newOp.setDeviceRef(devAttr);
 
           return WalkResult::skip();
         }
