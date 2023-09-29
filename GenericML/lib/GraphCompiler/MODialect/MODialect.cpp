@@ -7,6 +7,7 @@
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"
+#include "GenericML/Interfaces/GraphInterfaces.h"
 #include "GraphRT/MIPDialect/MIPDialect.h"
 #include "mlir/Parser/Parser.h"
 
@@ -48,6 +49,22 @@ ModuleOp MODialect::getShapeFuncModule() {
   }
   return *shapeFuncModule;
 }
+
+//===----------------------------------------------------------------------===//
+// MOGraphSummarizerInterface
+//===----------------------------------------------------------------------===//
+namespace {
+struct MOGraphSummarizerInterface : public GraphVisualizationInterface {
+
+  using GraphVisualizationInterface::GraphVisualizationInterface;
+
+  FailureOr<VisualizationInfo>
+  populateVisualizationInfo(Operation *op) override {
+    return VisualizationInfo{op->getName().getStringRef(),
+                             /* isModularOp = */ true};
+  }
+};
+} // namespace
 
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
