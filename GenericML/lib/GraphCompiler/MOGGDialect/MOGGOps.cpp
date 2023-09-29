@@ -200,33 +200,17 @@ LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
 LogicalResult
 LoadCompiledKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
-  // TODO: Use the op's device annotation to guide lowering.
-  MOGG::LoadCompiledKernelOp op = *this;
   OpBuilder &builder = loweringState.getInitOpBuilder();
-
-  // Collect the symbols into an #M.multiline attribute, and keep track
-  // of their symbol-to-index mappings.
-  auto syms = op.getSymbols();
-  SmallVector<StringAttr> kernelNames;
-  size_t index = 0;
-  for (StringRef symbol : syms.getAsValueRange<mlir::StringAttr>()) {
-    kernelNames.emplace_back(builder.getStringAttr(symbol));
-    loweringState.trackCompiledKernel(symbol, index);
-    index++;
-  }
-
-  auto loadArchiveOp =
-      loweringState.getInitOpBuilder().create<MGP::CpuKernelLoadArchiveOp>(
-          op.getLoc(),
-          /*inChain=*/loweringState.getInitChain(),
-          /*theContext=*/loweringState.getInitMgpContext(),
-          /*aSlot=*/loweringState.getCompiledKernelsContext().getSlot(),
-          /*bArchive=*/op.getValue(),
-          /*cKernelNames=*/
-          MultiLineStringAttr::get(op.getContext(), kernelNames));
-
-  loweringState.setInitChain(loadArchiveOp.getOutChain());
-
+  MGP::BufferBuilder *bufferBuilder =
+      loweringState.getBufferBuilder(getDeviceRef());
+  Value outChain = bufferBuilder->kernelLoadArchive(
+      builder, getLoc(),
+      /*inChain=*/loweringState.getInitChain(),
+      /*initContext=*/loweringState.getInitMgpContext(),
+      /*archive=*/getValue(),
+      /*kernelNames=*/getSymbols(),
+      /*constantNames=*/{});
+  loweringState.setInitChain(outChain);
   return success();
 }
 
@@ -284,39 +268,26 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
     inDimensions.push_back(symbolicDimOr.takeValue());
   }
 
-  // TODO: Use the ops device annotation to guide lowering.
-  uint64_t slot = loweringState.getCompiledKernelsContext().getSlot();
-  uint64_t index = loweringState.getCompiledKernelIndex(getKernelName());
-
-  auto executeOp = opLoweringState.create<MGP::CpuKernelExecuteOp>(
+  SmallVector<Value> outDimensions;
+  auto outChain = opLoweringState.kernelExecute(
+      /*kernelName=*/getKernelName(),
       /*inChain=*/loweringState.getExecuteChain(),
-      /*theContext=*/loweringState.getExecuteMgpContext(),
+      /*execContext=*/loweringState.getExecuteMgpContext(),
       /*buffers=*/buffers,
+      /*bufferSemantics=*/bufferSemantics,
       /*inDimensions=*/inDimensions,
-      /*aSlot=*/slot,
-      /*bKernelIndex=*/index,
-      /*cInOutSignature=*/
-      InOutSignatureAttr::get(getContext(), bufferSemantics),
-      /*dKernelName=*/getKernelName(),
-      /*eNumOutDimensions=*/
-      static_cast<uint64_t>(getOutputParamDecls().size()));
-
-  // Downstream passes may need to distinguish input from output buffers.
-  // TODO: Redundant with in/out signature, will be removed
-  // once transitioned away from num{Front,Back}OutputBuffers
-  // convention.
-  MGP::setNumBackOutputBuffers(executeOp, numOutBuffers);
+      /*numOutDimensions=*/static_cast<uint64_t>(getOutputParamDecls().size()),
+      /*outDimensions*/ outDimensions);
 
   // Each of the parameter outputs now maps onto a concrete dimension value.
   for (const auto &[param, value] :
-       llvm::zip(getOutputParamDecls(), executeOp.getOutDimensions())) {
+       llvm::zip(getOutputParamDecls(), outDimensions)) {
     if (failed(loweringState.lowerParamDecl(param, value)))
       return failure();
   }
 
   // Create the output tensors, but only once the op has completed.
-  opLoweringState.createOutputTensors(executeOp.getOutChain(),
-                                      bufferizedOutputs);
+  opLoweringState.createOutputTensors(outChain, bufferizedOutputs);
 
   return success();
 }

@@ -12,6 +12,7 @@
 #ifndef GENERICML_MGPDIALECT_BUFFERBUILDER_H
 #define GENERICML_MGPDIALECT_BUFFERBUILDER_H
 
+#include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPTypes.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/Builders.h"
@@ -149,6 +150,8 @@ public:
   /// type.
   virtual Type tensorType(MLIRContext *ctx,
                           CpuTensorSpecType tensorSpecType) = 0;
+
+  virtual void vtableAnchor();
 };
 
 //===----------------------------------------------------------------------===//
@@ -170,9 +173,11 @@ public:
 // BufferBuilder
 //===----------------------------------------------------------------------===//
 
-/// A BufferBuilder provides methods for building device-dependent buffer and
-/// tensor operations. Note that all chain (input and output) must be
-/// !mef.chains.
+/// A BufferBuilder provides methods for building device-dependent buffer,
+/// tensor and kernel. All chains (input and output) must be !mef.chains, even
+/// if the device has a device-specific 'chain' like type. Since an instance
+/// of this class is created for each device in the model, derived classes may
+/// accumulate device-specific lowering state therein.
 class BufferBuilder {
 public:
   virtual ~BufferBuilder() = default;
@@ -228,6 +233,25 @@ public:
   virtual Value debugTensorPrint(OpBuilder &builder, Location loc,
                                  Value inChain, Value tensor,
                                  StringAttr label) = 0;
+
+  /// Returns the chain indicating the given archive with given kernel and
+  /// constant names has been loaded into the runtime.
+  virtual Value kernelLoadArchive(OpBuilder &builder, Location loc,
+                                  Value inChain,
+                                  TypedValue<MGP::ContextType> initContext,
+                                  ElementsAttr archive, ArrayAttr kernelNames,
+                                  ArrayAttr constantNames) = 0;
+
+  /// Returns the chain indicating the given kernel has completed execution.
+  virtual Value
+  kernelExecute(OpBuilder &builder, Location loc, StringRef kernelName,
+                Value inChain, TypedValue<MGP::ContextType> execContext,
+                SmallVector<Value> buffers,
+                ArrayRef<InOutSignatureAttr::InOutSemantics> bufferSemantics,
+                SmallVector<Value> inDimensions, uint64_t numOutDimensions,
+                SmallVectorImpl<Value> &outDimensions) = 0;
+
+  virtual void vtableAnchor();
 };
 
 //===----------------------------------------------------------------------===//
@@ -236,9 +260,7 @@ public:
 
 class CpuBufferBuilder : public BufferBuilder {
 public:
-  using BufferType = CpuBufferType;
-  using TensorType = CpuTensorType;
-
+  CpuBufferBuilder(uint64_t slot) : slot(slot) {}
   ~CpuBufferBuilder() override = default;
 
   Value bufferConstant(OpBuilder &builder, Location loc,
@@ -271,6 +293,41 @@ public:
 
   Value debugTensorPrint(OpBuilder &builder, Location loc, Value inChain,
                          Value tensor, StringAttr label) override;
+
+  Value kernelLoadArchive(OpBuilder &builder, Location loc, Value inChain,
+                          TypedValue<MGP::ContextType> initContext,
+                          ElementsAttr archive, ArrayAttr kernelNames,
+                          ArrayAttr constantNames) override;
+
+  Value
+  kernelExecute(OpBuilder &builder, Location loc, StringRef kernelName,
+                Value inChain, TypedValue<MGP::ContextType> execContext,
+                SmallVector<Value> buffers,
+                ArrayRef<InOutSignatureAttr::InOutSemantics> bufferSemantics,
+                SmallVector<Value> inDimensions, uint64_t numOutDimensions,
+                SmallVectorImpl<Value> &outDimensions) override;
+
+private:
+  /// Track this compiled kernel as corresponding to this index in the
+  /// compiled kernels context.
+  void trackCompiledKernel(StringRef name, size_t index) {
+    compiledKernelsToIndex[name] = index;
+  }
+
+  /// Get the index of the kernel in the compiled kernels context.
+  size_t getCompiledKernelIndex(StringRef name) {
+    auto itr = compiledKernelsToIndex.find(name);
+    assert(itr != compiledKernelsToIndex.end() &&
+           "All kernels must be accounted for through lowering the load "
+           "kernels.");
+    return itr->second;
+  }
+
+  /// Maps the name of each compiled kernel to its index in the compiled kernel
+  /// context.
+  llvm::StringMap<size_t> compiledKernelsToIndex;
+  /// The slot holding the compiled kernels context in the !mgp.context.
+  uint64_t slot;
 };
 
 //===----------------------------------------------------------------------===//

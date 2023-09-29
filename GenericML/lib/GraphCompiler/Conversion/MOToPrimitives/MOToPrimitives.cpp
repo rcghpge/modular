@@ -57,11 +57,6 @@ public:
   /// Lower the mo.graph to mgp.model.
   LogicalResult run();
 
-  // Emit code into the 'init' block to setup the compiled kernels context,
-  // which will hold function pointers for the loaded kernels. This requires
-  // an !mgp.context slot.
-  LogicalResult setupCompiledKernelsContext(Location loc);
-
   // Emit code into the 'init' block to check the runtime environment
   // satisfies all the compile-time device specs. This requires an
   // !mgp.context slot to hold the calculated device spec map.
@@ -70,6 +65,9 @@ public:
   // Establish type builders for all the (virtual) devices needed by the
   // model. These will be available via the lowering state's type converter.
   LogicalResult setupTypeBuildersForAllDevices();
+
+  // Establisnh a buffer builder for the 'host' (ie CPU) device.
+  LogicalResult makeCPUBufferBuilder(DeviceSpecAttr deviceSpec);
 
   // Establish buffer builders for all the (virtual) devices needed by the
   // model. This may require emitting device-specific setup code.
@@ -150,20 +148,6 @@ private:
 // Creation of the init/execute invokables
 //===----------------------------------------------------------------------===//
 
-LogicalResult MOGraphLowering::setupCompiledKernelsContext(Location loc) {
-  uint64_t slot = loweringState.getInitMgpContext().getNumSlots();
-  auto createContextOp =
-      loweringState.getInitOpBuilder().create<MGP::CpuKernelCreateContextOp>(
-          loc,
-          /*inChain=*/loweringState.getInitChain(),
-          /*theContext=*/loweringState.getInitMgpContext(),
-          /*slot=*/slot);
-  loweringState.setCompiledKernelsContext(createContextOp);
-  loweringState.getInitMgpContext().setNumSlots(slot + 1);
-  loweringState.setInitChain(createContextOp.getOutChain());
-  return success();
-}
-
 LogicalResult MOGraphLowering::setupCheckRuntime(Location loc) {
   FailureOr<DeviceSpecCollectionAttr> deviceSpecsOr =
       loweringState.getDeviceSpecs();
@@ -204,6 +188,25 @@ LogicalResult MOGraphLowering::setupTypeBuildersForAllDevices() {
   return success();
 }
 
+LogicalResult MOGraphLowering::makeCPUBufferBuilder(DeviceSpecAttr deviceSpec) {
+  // Setup the compiled kernel context for all CPU kernels.
+  uint64_t slot = loweringState.getInitMgpContext().getNumSlots();
+  auto createContextOp =
+      loweringState.getInitOpBuilder().create<MGP::CpuKernelCreateContextOp>(
+          loweringState.getGraph().getLoc(),
+          /*inChain=*/loweringState.getInitChain(),
+          /*theContext=*/loweringState.getInitMgpContext(),
+          /*slot=*/slot);
+  loweringState.getInitMgpContext().setNumSlots(slot + 1);
+  loweringState.setInitChain(createContextOp.getOutChain());
+
+  // Register the builder for CPU.
+  loweringState.registerBufferBuilder(
+      deviceSpec.getRef(), std::make_unique<MGP::CpuBufferBuilder>(slot));
+
+  return success();
+}
+
 LogicalResult MOGraphLowering::setupBufferBuildersForAllDevices(Location loc) {
   FailureOr<DeviceSpecCollectionAttr> deviceSpecsOr =
       loweringState.getDeviceSpecs();
@@ -212,9 +215,12 @@ LogicalResult MOGraphLowering::setupBufferBuildersForAllDevices(Location loc) {
 
   for (DeviceSpecAttr deviceSpec : deviceSpecsOr->getDevices()) {
     if (deviceSpec.getRef().getLabel() == GML::kCPULabel) {
-      // We know how to work with MGP buffers and tensors for the CPU.
-      loweringState.registerBufferBuilder(
-          deviceSpec.getRef(), std::make_unique<MGP::CpuBufferBuilder>());
+      assert(deviceSpec.getRef() ==
+                 MO::getHostDevice(loweringState.getGraph()) &&
+             "The 'host' device must be a CPU");
+      // We always know how to work with CPU device.
+      if (failed(makeCPUBufferBuilder(deviceSpec)))
+        return failure();
     } else {
       // Rely on the registered 'makeBufferBuilder' function for this device.
       // It may inject setup code into the 'init' block as required, and
@@ -297,10 +303,6 @@ LogicalResult MOGraphLowering::createModelOp() {
   loweringState.setInitMgpContext(
       loweringState.getInitOpBuilder().create<MGP::ContextCreateOp>(
           graph.getLoc(), /*numSlots=*/0));
-
-  // Setup the compiled kernels context.
-  if (failed(setupCompiledKernelsContext(graph.getLoc())))
-    return failure();
 
   // Check the runtime environment.
   if (failed(setupCheckRuntime(graph.getLoc())))

@@ -84,10 +84,10 @@ def MO_TransferOp : MO_Op<"transfer", [
 
     Example:
     ```mlir
-    %arg : !mo.tensor<[N, 8], f32> { device = #M.device_ref<"cuda", 3> }
-    %res = mo.transfer %arg : !mo.tensor<!mo.tensor<[N, 8], f32>
-             { device = #M.device_ref<"cuda", 3> } to <"cuda", 1>
-    %res : !mo.tensor<[N, 8], f32> { device = #M.device_ref<"cuda", 1> }
+    %arg : !mo.tensor<[N, 8], f32, { device = #M.device_ref<"cuda", 3> }>
+    %res = mo.transfer %arg : !mo.tensor<[N, 8], f32,
+             { device = #M.device_ref<"cuda", 3> }> to <"cuda", 1>
+    %res : !mo.tensor<[N, 8], f32, { device = #M.device_ref<"cuda", 1> }>
     ```
   }];
 

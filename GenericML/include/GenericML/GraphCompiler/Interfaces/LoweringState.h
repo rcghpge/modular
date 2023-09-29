@@ -85,10 +85,6 @@ public:
     /// devices.
     MGP::CheckRuntimeOp checkRuntimeOp;
 
-    /// This operation creates the context for all compiled kernels in the
-    /// graph within a slot of the !mgp.context.
-    MGP::CpuKernelCreateContextOp compiledKernelsContext;
-
     /// This is a builder appending operations to the end of the invokable.
     OpBuilder builder;
 
@@ -241,18 +237,6 @@ public:
     return init.checkRuntimeOp;
   }
 
-  /// Set the compiled kernels context. Should only be accessed during init
-  /// and referred to by the context slot in execute.
-  void setCompiledKernelsContext(MGP::CpuKernelCreateContextOp op) {
-    init.compiledKernelsContext = op;
-  }
-
-  /// Get the compiled kernels context. Should only be accessed during init
-  /// and referred to by the context slot in execute.
-  MGP::CpuKernelCreateContextOp getCompiledKernelsContext() {
-    return init.compiledKernelsContext;
-  }
-
   /// Returns the shape of a lowered tensor which is on the given device.
   TypedValue<MGP::CpuTensorSpecType> getShape(Location loc, Value loweredTensor,
                                               DeviceRefAttr device);
@@ -286,21 +270,6 @@ public:
   ErrorOr<SmallVector<Value>> lowerShapeAttrDynDims(MOSH::ShapeAttr shapeAttr,
                                                     Location loc);
 
-  /// Track this compiled kernel as corresponding to this index in the
-  /// compiled kernels context.
-  void trackCompiledKernel(StringRef ref, size_t index) {
-    compiledKernelsToIndex[ref.str()] = index;
-  }
-
-  /// Get the index of the kernel in the compiled kernels context.
-  size_t getCompiledKernelIndex(StringRef ref) {
-    auto itr = compiledKernelsToIndex.find(ref.str());
-    assert(itr != compiledKernelsToIndex.end() &&
-           "All kernels must be accounted for through lowering the load "
-           "kernels.");
-    return itr->second;
-  }
-
   /// Register the given type builder for the given device.
   void registerTypeBuilder(DeviceRefAttr device,
                            std::unique_ptr<TypeBuilder> typeBuilder) {
@@ -331,6 +300,12 @@ public:
   /// this object.
   BufferBuilder *getBufferBuilder(DeviceRefAttr device) {
     auto itr = bufferBuilderMap.find(device);
+#if MODULAR_DEBUG
+    if (itr == bufferBuilderMap.end()) {
+      llvm::errs() << "no buffer builder has been registered for device "
+                   << device << "\n";
+    }
+#endif
     assert(itr != bufferBuilderMap.end() &&
            "no buffer builder has been registered for device");
     return itr->second.get();
@@ -391,10 +366,6 @@ private:
   // Arbitrary client state.
   std::unique_ptr<ClientState> clientState;
 
-  /// A map of the name of the compiled kernel to their index in the
-  /// compiled kernel context.
-  std::unordered_map<std::string, size_t> compiledKernelsToIndex;
-
   /// The state and interface for parameter lowering.
   ParameterLoweringState params;
 
@@ -430,6 +401,8 @@ struct MOOpLoweringState {
   //
   // The following methods redirect to the loweringState.bufferBuilder, but
   // use the builder and location from this builder state.
+  // However, loadKernelArchive is not implemented since it does not apply to
+  // a single MO op.
   //
 
   Value bufferConstant(ElementsAttr value) {
@@ -471,6 +444,17 @@ struct MOOpLoweringState {
   Value debugTensorPrint(Value inChain, Value tensor, StringAttr label) {
     return bufferBuilder->debugTensorPrint(builder, loc, inChain, tensor,
                                            label);
+  }
+  Value
+  kernelExecute(StringRef kernelName, Value inChain,
+                TypedValue<MGP::ContextType> execContext,
+                SmallVector<Value> buffers,
+                ArrayRef<InOutSignatureAttr::InOutSemantics> bufferSemantics,
+                SmallVector<Value> inDimensions, uint64_t numOutDimensions,
+                SmallVectorImpl<Value> &outDimensions) {
+    return bufferBuilder->kernelExecute(
+        builder, loc, kernelName, inChain, execContext, buffers,
+        bufferSemantics, inDimensions, numOutDimensions, outDimensions);
   }
 
   /// Creates an operation of specific op type at the current insertion point.
