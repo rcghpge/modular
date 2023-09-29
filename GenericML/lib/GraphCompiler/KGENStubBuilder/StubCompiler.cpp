@@ -61,7 +61,7 @@ LogicalResult StubCompiler::elaborateKGEN() {
     if (!outFile)
       return failure();
 
-    outFile->os() << kgenModule;
+    kgenModule->print(outFile->os());
     outFile->keep();
   }
 
@@ -72,7 +72,7 @@ LogicalResult StubCompiler::elaborateKGEN() {
     auto outFile = mlir::openOutputFile(outPath);
     if (!outFile)
       return failure();
-    outFile->os() << kgenModule;
+    kgenModule->print(outFile->os());
     outFile->keep();
   }
 
