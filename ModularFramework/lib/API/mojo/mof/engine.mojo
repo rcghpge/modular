@@ -7,8 +7,7 @@
 from os import getenv
 from sys import external_call
 from sys.ffi import RTLD, DLHandle
-
-alias _si8_ptr = __mlir_type.`!kgen.pointer<scalar<si8>>`
+from memory.unsafe import DTypePointer
 
 
 struct AIEngine:
@@ -32,9 +31,9 @@ struct AIEngine:
         Returns:
             Version as string.
         """
-        let version_string = self.lib.get_function[fn () -> _si8_ptr](
-            self.VersionFnName
-        )()
+        let version_string = self.lib.get_function[
+            fn () -> DTypePointer[DType.int8]
+        ](self.VersionFnName)()
         return String(version_string)
 
     fn __del__(owned self):
