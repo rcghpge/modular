@@ -7,6 +7,7 @@
 
 from tensor import TensorShape, TensorSpec
 
+
 # CHECK: test_tensor_shape
 fn test_tensor_shape():
     print("== test_tensor_shape")
