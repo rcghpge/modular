@@ -101,8 +101,11 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
   if (!saveTempsPrefix.empty())
     compilationOptions.setSaveTemps(saveTempsPrefix);
 
-  auto compilerOr = KGEN::ObjectCompiler::create(
-      runtime, mgr, ".mojo_cache", compilationOptions, /*isJit=*/true);
+  // HACK HACK HACK
+  bool isJit = deviceSpec == hostDeviceSpec;
+
+  auto compilerOr = KGEN::ObjectCompiler::create(runtime, mgr, ".mojo_cache",
+                                                 compilationOptions, isJit);
   if (compilerOr.isError())
     return compilerOr.takeError();
   llvm::MapVector<StringAttr, KGEN::ExportedSymbol> exportedSymbols =
@@ -138,6 +141,23 @@ ErrorOrSuccess StubCompiler::compile(mlir::ArrayAttr combinedSymbolName) {
   LogicalResult ok = elaborateKGEN();
   if (ok.failed())
     return Error("KGEN elaboration failed");
+
+  // HACK HACK HACK
+  if (deviceSpec.getRef().getLabel() == "cuda") {
+    // Promote address spaces.
+    for (KGEN::FuncOp func : kgenModule.getOps<KGEN::FuncOp>()) {
+      mlir::AttrTypeReplacer walker;
+
+      walker.addReplacement(
+          [&](KGEN::PointerType ptrTy) -> std::optional<KGEN::PointerType> {
+            return KGEN::PointerType::get(ptrTy.getElementType(), 1);
+          });
+
+      walker.recursivelyReplaceElementsIn(func, /*replaceAttrs=*/true,
+                                          /*replaceLocs=*/false,
+                                          /*replaceTypes=*/true);
+    }
+  }
 
   return compileToLLVM(combinedSymbolName);
 }

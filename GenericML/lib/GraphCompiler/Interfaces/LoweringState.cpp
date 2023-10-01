@@ -14,13 +14,13 @@ using namespace M::MGP;
 //===----------------------------------------------------------------------===//
 
 FailureOr<DeviceSpecCollectionAttr> MOGraphLoweringState::getDeviceSpecs() {
-  DeviceSpecCollectionAttr deviceSpecs = graph.getDeviceSpecs();
-  if (!deviceSpecs) {
-    return graph.emitOpError("requires a '")
-           << MO::kGraphDeviceSpecCollectionAttrName
-           << "' attribute to guide lowering";
-  }
-  return deviceSpecs;
+  ErrorOr<DeviceSpecCollectionAttr> deviceSpecsOr =
+      MO::getDeviceSpecsOrDefault(graph);
+  if (deviceSpecsOr)
+    return graph.emitOpError(
+               "unable to determine the devices specs for graph: ")
+           << deviceSpecsOr.getError() << "\n";
+  return *deviceSpecsOr;
 }
 
 TypedValue<MGP::CpuTensorSpecType>

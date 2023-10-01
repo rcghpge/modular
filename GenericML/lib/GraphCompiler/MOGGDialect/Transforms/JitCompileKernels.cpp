@@ -60,11 +60,25 @@ void addShapeDimsToName(MOSH::ShapeAttr dims, std::string &name,
   }
 }
 
+/// Appends name to str, but in a form legal for device.
+static void appendName(std::string &str, DeviceRefAttr device, StringRef name) {
+  size_t start = str.size();
+  str += name;
+
+  // HACK HACK HACK
+  // PTX names don't accept all the same characters as MLIR names.
+  if (device.getLabel() == "cuda") {
+    std::replace_if(
+        str.begin() + start, str.end(), [](char c) { return c == '.'; }, '_');
+  }
+}
+
 ErrorOr<std::string>
-mangleBlock(mlir::Block &block,
+mangleBlock(mlir::Block &block, DeviceRefAttr device,
             DenseMap<Value, std::string> &valueToPositionInBlock,
             DenseMap<M::ElementsAttr, size_t> &seenConsts,
             DenseMap<KGEN::ParamDeclRefAttr, size_t> &params) {
+
   std::string name = "";
   size_t blockIndex = 0;
   size_t numConstants = 0;
@@ -86,8 +100,8 @@ mangleBlock(mlir::Block &block,
         valueToPositionInBlock[lambdaBlock.getArgument(argIndex)] =
             "L" + std::to_string(argIndex);
 
-      auto mangledLambdaOr =
-          mangleBlock(lambdaBlock, valueToPositionInBlock, seenConsts, params);
+      auto mangledLambdaOr = mangleBlock(
+          lambdaBlock, device, valueToPositionInBlock, seenConsts, params);
       if (mangledLambdaOr.isError())
         return mangledLambdaOr.takeError();
       name += *mangledLambdaOr;
@@ -102,7 +116,9 @@ mangleBlock(mlir::Block &block,
       addShapeDimsToName(shape, name, params);
       valueToPositionInBlock[out.getResult()] = std::to_string(blockIndex);
     } else if (auto invokeOp = dyn_cast<MOGG::LambdaInvokeOp>(innerOp)) {
-      name += "invoke_" + invokeOp.getLambda().getLeafReference().str() + "_";
+      name += "invoke_";
+      appendName(name, device, invokeOp.getLambda().getLeafReference());
+      name += "_";
 
       // Add operands to the mangling.
       for (Value input : innerOp.getOperands())
@@ -113,20 +129,24 @@ mangleBlock(mlir::Block &block,
         valueToPositionInBlock[output] = std::to_string(blockIndex);
 
     } else if (auto call = dyn_cast<MOGG::CallOp>(innerOp)) {
-      name += "call_" + call.getMojoKernelTarget().str();
+      name += "call_";
+      appendName(name, device, call.getMojoKernelTarget());
 
       // If we have parameters we have to mangle those too.
       if (call.getParams()) {
         for (SymbolRefAttr sym :
-             call.getParamsAttr().getAsRange<SymbolRefAttr>())
-          name += sym.getLeafReference().str() + "_";
+             call.getParamsAttr().getAsRange<SymbolRefAttr>()) {
+          appendName(name, device, sym.getLeafReference());
+          name += "_";
+        }
       }
 
       // Mangle the kgen parameters into the calls as well.
       if (call.getKgenParams()) {
         mlir::NamedAttrList attrs{*call.getKgenParams()};
         for (NamedAttribute named : attrs) {
-          name += named.getName().str() + "_";
+          appendName(name, device, named.getName());
+          name += "_";
           if (auto asBool = dyn_cast<BoolAttr>(named.getValue())) {
             name += std::to_string(asBool.getValue()) + "_";
 
@@ -198,9 +218,11 @@ createMangledName(MOGG::KernelOp op,
                   DenseMap<KGEN::ParamDeclRefAttr, size_t> &params,
                   DenseMap<M::ElementsAttr, size_t> &seenConsts,
                   size_t &kernelsDefiningParams) {
-  std::string name = "__gen__";
+  // Some mangling conventions need to be changed depending on the
+  // target device.
+  DeviceRefAttr device = MO::getDeviceOrDefault(op);
 
-  // TODO: Is this device sensitive?
+  std::string name = "__gen__";
 
   // Each kernel which defines params can be assumed to be unique. No params can
   // be defined twice.
@@ -245,7 +267,7 @@ createMangledName(MOGG::KernelOp op,
   }
   name += "_";
 
-  auto mangledBlockOr = mangleBlock(op.getBody().front(),
+  auto mangledBlockOr = mangleBlock(op.getBody().front(), device,
                                     valueToPositionInBlock, seenConsts, params);
   if (mangledBlockOr.isError())
     return mangledBlockOr.takeError();
