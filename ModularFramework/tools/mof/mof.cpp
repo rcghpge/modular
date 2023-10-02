@@ -5,8 +5,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "Config/Version.h"
-#include "GPU/CUDA/Registration/Registration.h"
-#include "GPU/CUDA/Support/CUDARuntimeOptions.h"
+#include "GenericML/CUDARegistration/CUDARegistration.h"
+#include "GenericML/CUDASupport/CUDARuntimeOptions.h"
 #include "GenericML/Driver/CompileDriver.h"
 #include "GenericML/Driver/DriverAPI.h"
 #include "GenericML/Driver/DriverCLOptions.h"

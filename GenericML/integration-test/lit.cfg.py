@@ -5,13 +5,14 @@
 # ===----------------------------------------------------------------------=== #
 
 import os
+import subprocess
 
 from lit.llvm import llvm_config
 
 # Configuration file for the 'lit' test runner.
 
 # name: The name of this test suite.
-config.name = "GenericML Integration with TF"
+config.name = "GenericML Integration Tests"
 
 # suffixes: A list of file extensions to treat as test files.
 config.suffixes = [".mlir"]
@@ -29,7 +30,15 @@ tool_dirs = [
     config.mlir_tools_dir,
     config.llvm_tools_dir,
 ]
-tools = ["mo-opt", "modbench", "mt"]
+tools = [
+    "mo-opt",
+    "modbench",
+    "mt",
+    "is-cuda-available",
+    "mo-cuda-opt",
+    "hello_cuda_default",
+    "hello_cuda_async_events",
+]
 
 llvm_config.with_environment(
     "PYTHONPATH",
@@ -38,3 +47,7 @@ llvm_config.with_environment(
 )
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)
+
+output = subprocess.run("is-cuda-available")
+if output.returncode == 0:
+    config.available_features.add("cuda")
