@@ -6,7 +6,7 @@
 
 from os import getenv
 from sys import external_call
-from sys.ffi import RTLD, DLHandle
+from sys.ffi import DLHandle
 from memory.unsafe import DTypePointer
 
 
@@ -23,7 +23,7 @@ struct AIEngine:
         if engine_lib == "":
             raise "cannot find ai engine library. Please set MODULAR_AI_ENGINE_LIB_PATH."
 
-        self.lib = DLHandle(engine_lib, RTLD.NOW | RTLD.GLOBAL)
+        self.lib = DLHandle(engine_lib)
 
     fn get_version(self) -> String:
         """Returns version of modular AI engine.
