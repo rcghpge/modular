@@ -11,6 +11,7 @@
 
 #include "LLCL/Runtime/Runtime.h"
 
+#include "Cache/CacheDialect/CachedTransform.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "KGEN/Compiler/KGENCompiler.h"
@@ -18,8 +19,10 @@
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "KGEN/ToolCommon/CLOptions.h"
+#include "LLCL/Runtime/Algorithms.h"
 #include "Support/MArchTarget/Host.h"
 #include "Support/MDialect/MAttrs.h"
+#include "Support/Telemetry/Telemetry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/TargetParser/Host.h"
@@ -65,7 +68,36 @@ LogicalResult StubCompiler::elaborateKGEN() {
     outFile->keep();
   }
 
-  auto res = pm.run(kgenModule);
+  LogicalResult res = success();
+  {
+    [[maybe_unused]] auto timeScope =
+        runtime.emplaceContextIfMissing<M::Telemetry::TelemetryContext>()
+            .createUInt64Timer<std::chrono::milliseconds>(
+                "mogg.kgen.elaboration.time", M::Telemetry::Level::L2);
+
+    auto cacheBackends = KGEN::getMojoCacheBackends(runtime);
+    if (cacheBackends.isError()) {
+      // Just run the passes.
+      res = pm.run(kgenModule);
+    } else {
+      setTargetInfo(kgenModule, *targetInfoOr);
+      LLCL::AnyAsyncValueRef ready = Cache::cachedTransform(
+          kgenModule,
+          RCRef<Cache::RegionCache>::create(std::move(cacheBackends->first)),
+          RCRef<Cache::TransformCache>::create(
+              std::move(cacheBackends->second)),
+          runtime.getReadyChain().copy(), pm, /*deflateTarget=*/false);
+      LLCL::await(ready);
+      if (ready.isError()) {
+        LLCL::EncodedDiagnostic diag = ready.takeDiagnostic();
+        LLCL::DecodedLocation loc = diag.decodeLocation();
+        mlir::emitError(FileLineColLoc::get(kgenModule.getContext(),
+                                            loc.filename, loc.line, loc.column),
+                        diag.getMessage().get());
+        res = failure();
+      }
+    }
+  }
 
   if (!saveTempsPrefix.empty()) {
     std::string outPath = saveTempsPrefix + ".kgen.elaborated.mlir";
