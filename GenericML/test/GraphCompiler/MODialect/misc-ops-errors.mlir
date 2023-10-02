@@ -809,9 +809,9 @@ mo.graph @arg_nonzero_fp_result_type(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tenso
 
 // -----
 
-mo.graph @arg_max_bad_axis_type(%arg: !mo.tensor<[7, 7], f32>, %axis: !mo.tensor<[], si32>) -> !mo.tensor<[7, 1], si64> {
-  // expected-error@+1 {{axis type must be si64}}
-  %res = mo.arg_max(%arg, %axis) : (!mo.tensor<[7, 7], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[7, 1], si64>
+mo.graph @arg_max_bad_axis_type(%arg: !mo.tensor<[7, 7], f32>, %axis: !mo.tensor<[], si8>) -> !mo.tensor<[7, 1], si64> {
+  // expected-error@+1 {{op axis type must be si32 or si64}}
+  %res = mo.arg_max(%arg, %axis) : (!mo.tensor<[7, 7], f32>, !mo.tensor<[], si8>) -> !mo.tensor<[7, 1], si64>
   mo.output %res : !mo.tensor<[7, 1], si64>
 }
 

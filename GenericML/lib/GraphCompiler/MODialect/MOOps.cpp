@@ -1546,8 +1546,9 @@ static LogicalResult argVerify(Op *op) {
 
   // TODO(#12939): Refactor this into verifyReduction.
 
-  if (!axisTy.getElementType().isSignedInteger(64))
-    return op->emitOpError("axis type must be si64");
+  if (!axisTy.getElementType().isSignedInteger(32) &&
+      !axisTy.getElementType().isSignedInteger(64))
+    return op->emitOpError("axis type must be si32 or si64");
 
   if ((inputTy.hasRank() && resTy.hasRank()) &&
       (inputTy.getRank() != resTy.getRank()))
