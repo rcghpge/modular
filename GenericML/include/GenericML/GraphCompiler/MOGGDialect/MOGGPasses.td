@@ -51,6 +51,16 @@ def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
   ];
 }
 
+def TestRunningMogg: Pass<"test-run-mogg", "ModuleOp"> {
+  let summary = "A pass which executes and prints the given graph";
+  let description = [{
+    A pass to test we can execute a kernel directly without MGP.
+
+    This has no other purpose than a test target.
+  }];
+}
+
+
 def PatternFusion: Pass<"mo-pattern-fusion", "MO::GraphOp"> {
   let summary = "Fuse kernels based on patterns.";
   let description = [{
