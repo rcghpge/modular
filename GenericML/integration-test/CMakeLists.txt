@@ -19,7 +19,6 @@ if (NOT BENCHMARKING)
 add_modular_testsuite(check-genericml-integration
   TOOLS
   FileCheck
-  mo-opt
   modbench
   mt
   tf-opt
@@ -29,6 +28,5 @@ add_modular_testsuite(check-genericml-integration
 
   DEPENDS
   tf
-  mof
   )
 endif()

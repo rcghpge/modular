@@ -1,6 +1,6 @@
 // RUN: mo-opt %s --add-devices --mo-to-primitives --canonicalize | FileCheck %s
 
-// CHECK: mgp.model @mogg_split : tf init {
+// CHECK: mgp.model @mogg_split : mof init {
 // CHECK: } execute (
 // CHECK-SAME:   %[[CH:.*]]: !mef.chain,
 // CHECK-SAME:   %[[CTX:.*]]: !mgp.context,
