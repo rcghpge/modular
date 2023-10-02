@@ -36,7 +36,6 @@ tools = [
     "mt",
     "is-cuda-available",
     "mo-cuda-opt",
-    "hello_cuda_default",
     "hello_cuda_async_events",
 ]
 

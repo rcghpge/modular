@@ -4,9 +4,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "CUDASupport/CUDARuntimeOptions.h"
 #include "Config/Version.h"
 #include "GenericML/CUDARegistration/CUDARegistration.h"
-#include "GenericML/CUDASupport/CUDARuntimeOptions.h"
 #include "GenericML/Driver/CompileDriver.h"
 #include "GenericML/Driver/DriverAPI.h"
 #include "GenericML/Driver/DriverCLOptions.h"
@@ -42,7 +42,7 @@ namespace {
 
 class MOFDriverCLOptions : public DriverCLOptions,
                            public MO::GraphCompilerCLOptions,
-                           public GPU::CUDA::CUDARuntimeCLOptions {
+                           public CUDA::CUDARuntimeCLOptions {
 public:
   using DriverCLOptions::DriverCLOptions;
 
@@ -107,13 +107,13 @@ public:
   const std::optional<std::filesystem::path> &getCustomOpsPath() const {
     return userOpsPath;
   }
-  const GPU::CUDA::CUDARuntimeOptions &getCUDARuntimeOptions() const {
+  const CUDA::CUDARuntimeOptions &getCUDARuntimeOptions() const {
     return cudaRuntimeOptions;
   }
 
   // Transfer options from this context into the runtime.
   void setRuntimeContextObjects(Runtime &runtime) {
-    runtime.emplaceContextIfMissing<GPU::CUDA::CUDARuntimeOptions>(
+    runtime.emplaceContextIfMissing<CUDA::CUDARuntimeOptions>(
         cudaRuntimeOptions);
   }
 
@@ -137,7 +137,7 @@ private:
 
     // Register the extra compile-time and runtime support.
     static llvm::once_flag onceFlag;
-    llvm::call_once(onceFlag, []() { M::GPU::CUDA::registerCUDA(); });
+    llvm::call_once(onceFlag, []() { M::CUDA::registerCUDA(); });
   }
 
   /// If invoked from the command line, all the command line options relevant
@@ -148,7 +148,7 @@ private:
   /// either from the command line options or set programatically.
   std::optional<std::filesystem::path> userOpsPath;
   CASConfig commonCasConfig;
-  GPU::CUDA::CUDARuntimeOptions cudaRuntimeOptions;
+  CUDA::CUDARuntimeOptions cudaRuntimeOptions;
 };
 
 } // namespace
