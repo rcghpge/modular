@@ -238,7 +238,7 @@ struct FuseBroadcastsPass
     // Don't fuse in the elementwise kernel invoke or any lambdas. We just
     // want the view ops at the top.
     auto skipElementwiseAndLambdas = [](Operation *op) {
-      if (isa<MOGG::LambdaOp>(op))
+      if (isa<MOGG::LambdaOp, MOGG::OutputPlaceholdersOp>(op))
         return true;
       if (auto call = dyn_cast<MOGG::CallOp>(op)) {
         if (call.getMojoKernelTarget() == "elementwise")

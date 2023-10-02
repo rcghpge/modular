@@ -544,7 +544,7 @@ void KernelOp::fuseBodyIntoNewWithSkip(
     if (shouldSkip(&op))
       continue;
 
-    if (isa<MOGG::OutputPlaceholdersOp>(op) || isa<MOGG::OutputOp>(op)) {
+    if (isa<MOGG::OutputOp>(op)) {
       // Skip placeholders & output, already remapped.
     } else if (auto lambda = dyn_cast<LambdaOp>(op)) {
       // Add lambdas seperately so we rename them on insertion. (The

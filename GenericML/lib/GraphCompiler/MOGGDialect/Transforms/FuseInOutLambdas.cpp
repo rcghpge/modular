@@ -22,6 +22,19 @@ namespace M::MOGG {
 
 namespace {
 
+// TODO(#22349): Remove checks when matmul/conv kernels respect the fusion
+// contract.
+static bool containsMatmulOrConvolution(MOGG::KernelOp kernel) {
+  for (auto call : kernel.getOps<MOGG::CallOp>()) {
+    auto target = call.getMojoKernelTarget();
+    if (target == MO::MatmulOp::getOperationName() ||
+        target == MO::BatchMatmulOp::getOperationName() ||
+        target == MO::ConvOp::getOperationName())
+      return true;
+  }
+  return false;
+}
+
 struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
   using FuseInOutLambdasBase::FuseInOutLambdasBase;
 
@@ -56,11 +69,6 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     // Check that the kernel has a single output.
     if (parentKernel->getNumResults() > 1)
-      return false;
-
-    // TODO(#21380)
-    // If there is a data type change in a lambda, it is unsupported.
-    if (parentKernel.getType(0) != kernel.getOperandTypes()[inputIdx])
       return false;
 
     // Check the kernel is a fusable elementwise.
@@ -116,17 +124,21 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     IRMapping &remapper = oldToNew;
 
     // Don't fuse in the elementwise kernel invoke directly.
-    auto skipElementwise = [](Operation *op) {
+    auto skip = [](Operation *op) {
       if (auto call = dyn_cast<MOGG::CallOp>(op)) {
         if (call.getMojoKernelTarget() == "elementwise")
           return true;
       }
+
+      if (isa<MOGG::OutputPlaceholdersOp>(op))
+        return true;
+
       return false;
     };
 
     llvm::StringMap<StringRef> oldNameToNew;
     srcKernel.fuseBodyIntoNewWithSkip(builder, symTable, remapper, oldNameToNew,
-                                      skipElementwise);
+                                      skip);
 
     // The kernel we fused in will expose its fusion via the fusion body
     // attribute. That lambda will now exist in our function with a possibly
@@ -233,11 +245,6 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     if (user->getNumResults() != 1)
       return false;
 
-    // TODO(#21380)
-    // If there is a data type change in a lambda, it is unsupported.
-    if (result.getType() != user.getType(0))
-      return false;
-
     // Check the kernel is a fusable elementwise.
     if (!user.getFusionBodyLambda())
       return false;
@@ -278,10 +285,22 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     IRMapping oldToNew;
 
-    // Remap references to the old outputs to the new values.
-    for (auto [oldOut, newOut] :
-         llvm::zip(oldOuts.getResults(), originalOuts.getResults()))
-      oldToNew.map(oldOut, newOut);
+    const bool isMatmulOrConvolution =
+        containsMatmulOrConvolution(kernelToFuseInto);
+    // Elementwise fusion expects shapes to be identical but data types can
+    // change.
+    const bool isMixedPrecision =
+        originalOuts.getResult(0).getType() != oldOuts.getResult(0).getType();
+
+    // TODO(#22349)
+    // If this is not a matmul/convolution kernel or if it isn't mixed
+    // precision, remap references to the old outputs to the new values. This
+    // effectively gets rid of the output placeholder of `kernelToFuseInto`
+    // after mergning the kernels.
+    if (!isMatmulOrConvolution)
+      oldToNew.map(originalOuts.getResult(0), oldOuts.getResult(0));
+    else if (!isMixedPrecision)
+      oldToNew.map(oldOuts.getResult(0), originalOuts.getResult(0));
 
     // Mapping of the graph level kernel argument to the inner block
     // arg. `mogg.kernel(%graph) : (%inner : tensor<...>) {
@@ -342,11 +361,20 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     }
 
     // Don't fuse in the elementwise kernel invoke directly.
-    auto skipElementwise = [](Operation *op) {
+    auto skipElementwise = [&](Operation *op) {
       if (auto call = dyn_cast<MOGG::CallOp>(op)) {
         if (call.getMojoKernelTarget() == "elementwise")
           return true;
       }
+
+      // TODO(#22349)
+      // If we are fusing into a matmul/conv and it isn't mixed precision, then
+      // skip the placeholder.
+      if (isMatmulOrConvolution && !isMixedPrecision &&
+          isa<MOGG::OutputPlaceholdersOp>(op)) {
+        return true;
+      }
+
       return false;
     };
 
@@ -398,12 +426,79 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
       BoolAttr trueAttr = BoolAttr::get(ctx, true);
       call.setKGENParamToValueIfPresent("lambdas_have_fusion", trueAttr);
     }
-    // Finally replace all uses of the thing we fused in with this
-    // kernel.
-    userToFuseIn.replaceAllUsesWith(kernelToFuseInto);
 
     // Disable future output fusion.
     kernelToFuseInto.removeOutputFusionInterfaceAttr();
+
+    // Finding the old output op.
+    MOGG::OutputOp oldOutputOp = nullptr;
+    for (auto op : kernelToFuseInto.getOps<MOGG::OutputOp>()) {
+      if (op->getOperand(0).getDefiningOp() == originalOuts) {
+        oldOutputOp = op;
+        break;
+      }
+    }
+    assert(oldOutputOp);
+
+    // Finding the new placeholder that was inserted earlier.
+    MOGG::OutputPlaceholdersOp newPlaceholder = nullptr;
+    for (auto op : kernelToFuseInto.getOps<MOGG::OutputPlaceholdersOp>()) {
+      if (op != originalOuts) {
+        newPlaceholder = op;
+        break;
+      }
+    }
+    assert((isMatmulOrConvolution && !isMixedPrecision) || newPlaceholder);
+
+    Location loc = kernelToFuseInto.getLoc();
+    // TODO(#22349)
+    // Three cases:
+    // Not a matmul/conv (good case): Simply create a new output op (in case
+    // data types change) and change the output type of `kernelToFuseInto`.
+    if (!isMatmulOrConvolution) {
+      builder.setInsertionPoint(oldOutputOp);
+      builder.create<MOGG::OutputOp>(loc, newPlaceholder->getResult(0));
+      kernelToFuseInto.getResult(0).setType(
+          newPlaceholder->getResult(0).getType());
+      oldOutputOp.erase();
+      originalOuts.erase();
+      userToFuseIn.replaceAllUsesWith(kernelToFuseInto);
+      // Matmul with mixed precision (bad case): Matmul kernels actually take in
+      // an output buffer despite having a lambda. Therefore, in mixed
+      // precision, we need another buffer to do the accumulation. This results
+      // in the kernel op having two return values to trigger allocations in
+      // later passes.
+    } else if (isMixedPrecision) {
+      builder.setInsertionPoint(originalOuts);
+      auto combinedPlaceholders = builder.create<MOGG::OutputPlaceholdersOp>(
+          loc, ArrayRef<Type>{newPlaceholder->getResult(0).getType(),
+                              originalOuts->getResult(0).getType()});
+
+      builder.setInsertionPoint(oldOutputOp);
+      builder.create<MOGG::OutputOp>(loc, combinedPlaceholders->getResults());
+      newPlaceholder.getResult(0).replaceAllUsesWith(
+          combinedPlaceholders.getResult(0));
+      originalOuts.getResult(0).replaceAllUsesWith(
+          combinedPlaceholders.getResult(1));
+      newPlaceholder.erase();
+      oldOutputOp.erase();
+      originalOuts.erase();
+
+      builder.setInsertionPoint(kernelToFuseInto);
+      auto newDstKernel = builder.create<MOGG::KernelOp>(
+          loc, combinedPlaceholders.getResultTypes(),
+          kernelToFuseInto.getOperands());
+      newDstKernel.getBody().takeBody(kernelToFuseInto.getBody());
+      userToFuseIn.getResult(0).replaceAllUsesWith(newDstKernel.getResult(0));
+      userToFuseIn.erase();
+      kernelToFuseInto.erase();
+      // Matmul without mixed precision (ugly case): Return value is unchanged
+      // and there is a single output placeholder. Nothing to do. The reason
+      // there is a third case at all is because performance is slightly better
+      // than having two outputs.
+    } else {
+      userToFuseIn.replaceAllUsesWith(kernelToFuseInto);
+    }
   }
 
   void runOnOperation() override {
