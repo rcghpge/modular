@@ -2625,6 +2625,15 @@ LogicalResult ResizeNearestOp::verify() {
   return success();
 }
 
+// TODO: This is the same logic as above, figure out how to reuse code
+LogicalResult ResizeLinearOp::verify() {
+  int64_t coordTransformMode = getCoordinateTransformMode();
+  if (coordTransformMode < 0 || coordTransformMode > 2)
+    return emitOpError(
+        "coordinate_transform_mode attribute must be between 0 and 2");
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // MO_ShapeOfOp
 //===----------------------------------------------------------------------===//

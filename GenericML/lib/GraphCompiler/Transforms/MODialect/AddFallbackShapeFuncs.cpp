@@ -64,6 +64,7 @@ HAS_FALLBACK(MO::ReduceMaxOp)
 HAS_FALLBACK(MO::ReduceMinOp)
 HAS_FALLBACK(MO::ReduceMulOp)
 HAS_FALLBACK(MO::ReshapeOp)
+HAS_FALLBACK(MO::ResizeLinearOp)
 HAS_FALLBACK(MO::ResizeNearestOp)
 HAS_FALLBACK(MO::ScatterOp)
 HAS_FALLBACK(MO::ScatterAddOp)
@@ -128,6 +129,7 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::ReduceMinOp)
       CALL_FALLBACK(MO::ReduceMulOp)
       CALL_FALLBACK(MO::ReshapeOp)
+      CALL_FALLBACK(MO::ResizeLinearOp)
       CALL_FALLBACK(MO::ResizeNearestOp)
       CALL_FALLBACK(MO::ScatterOp)
       CALL_FALLBACK(MO::ScatterAddOp)
@@ -339,6 +341,12 @@ void Fallback<MO::ReshapeOp>::build(GraphOp &graph, OpBuilder &builder,
 
 void Fallback<MO::ResizeNearestOp>::build(GraphOp &graph, OpBuilder &builder,
                                           MO::ResizeNearestOp op) {
+  buildForOpResult(graph, builder, op, "resize_shape", op.getOperands(),
+                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
+}
+
+void Fallback<MO::ResizeLinearOp>::build(GraphOp &graph, OpBuilder &builder,
+                                         MO::ResizeLinearOp op) {
   buildForOpResult(graph, builder, op, "resize_shape", op.getOperands(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
 }

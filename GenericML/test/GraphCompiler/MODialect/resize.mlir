@@ -31,3 +31,12 @@ mo.graph @resize.nearest3(%arg0 : !mo.tensor<[1, 1, 2, 2], f32>) -> !mo.tensor<[
     %output = mo.resize.nearest(%arg0, %size) {coordinate_transform_mode = 1 : i64}: (!mo.tensor<[1, 1, 2, 2], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 1, 7, 8], f32>
     mo.output %output : !mo.tensor<[1, 1, 7, 8], f32>
 }
+
+// CHECK:   mo.graph @resize_linear(%arg0: !mo.tensor<[1, 1, 2, 2], f32>) -> !mo.tensor<[1, 1, 4, 4], f32> no_inline {
+mo.graph @resize_linear(%arg0 : !mo.tensor<[1, 1, 2, 2], f32>) -> !mo.tensor<[1, 1, 4, 4], f32> {
+    // CHECK-NEXT: %[[ARG1:.*]] = mo.constant {value = #M.dense_array<1, 1, 4, 4> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+    %size = mo.constant {value = #M.dense_array<1, 1, 4, 4> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+    // CHECK-NEXT: %1 = mo.resize.linear(%[[ARG0]], %[[ARG1]]) {antialias = false, coordinate_transform_mode = 1 : i64} : (!mo.tensor<[1, 1, 2, 2], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 1, 4, 4], f32>
+    %output = mo.resize.linear(%arg0, %size) {coordinate_transform_mode = 1, antialias = false}: (!mo.tensor<[1, 1, 2, 2], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 1, 4, 4], f32>
+    mo.output %output : !mo.tensor<[1, 1, 4, 4], f32>
+}

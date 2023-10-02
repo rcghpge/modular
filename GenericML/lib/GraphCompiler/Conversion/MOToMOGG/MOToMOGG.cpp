@@ -336,6 +336,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_KERNEL(MO::RangeOp),
       MO_TO_ELEMWISE(MO::ReluOp),
       MO_TO_KERNEL(MO::ResizeNearestOp),
+      MO_TO_KERNEL(MO::ResizeLinearOp),
       MO_TO_ELEMWISE(MO::RoundOp),
       MO_TO_ELEMWISE(MO::RoundEvenOp),
       MO_TO_ELEMWISE(MO::RsqrtOp),
