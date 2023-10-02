@@ -2823,6 +2823,10 @@ def MO_NonMaximumSuppressionOp : MO_TensorOp<"non_maximum_suppression",
   let description = [{
     Filter out boxes that have high intersection-over-union (IOU).
 
+   `boxes` is supplied as [y1, x1, y2, x2] where (y1, x1) and (y2, x2) are the
+   coordinates of any diagonal pair of box corners and the coordinates can be
+   provided as normalized (i.e., lying in the interval [0, 1]) or absolute.
+
     Example:
 
     ```mlir
