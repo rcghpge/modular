@@ -227,6 +227,30 @@ TensorType TensorType::get(ArrayRef<TypedAttr> shape, Type elementType,
   return get(newShape, elementType, metadata);
 }
 
+TensorType TensorType::getScalarF32Type(MLIRContext *ctx,
+                                        DictionaryAttr metadata) {
+  return get(SmallVector<TypedAttr>{}, Float32Type::get(ctx), metadata);
+}
+
+TensorType TensorType::getScalarF64Type(MLIRContext *ctx,
+                                        DictionaryAttr metadata) {
+  return get(SmallVector<TypedAttr>{}, Float64Type::get(ctx), metadata);
+}
+
+TensorType TensorType::getScalarSI32Type(MLIRContext *ctx,
+                                         DictionaryAttr metadata) {
+  auto si32Ty =
+      IntegerType::get(ctx, /*width=*/32, /*signedness=*/IntegerType::Signed);
+  return get(SmallVector<TypedAttr>{}, si32Ty, metadata);
+}
+
+TensorType TensorType::getScalarSI64Type(MLIRContext *ctx,
+                                         DictionaryAttr metadata) {
+  auto si64Ty =
+      IntegerType::get(ctx, /*width=*/64, /*signedness=*/IntegerType::Signed);
+  return get(SmallVector<TypedAttr>{}, si64Ty, metadata);
+}
+
 TensorType TensorType::getVectorSI64Type(MLIRContext *ctx, int64_t size,
                                          DictionaryAttr metadata) {
   auto si64Ty = IntegerType::get(ctx, 64, IntegerType::Signed);

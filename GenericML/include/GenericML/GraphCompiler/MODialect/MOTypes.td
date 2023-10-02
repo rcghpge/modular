@@ -155,6 +155,22 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     /// Supports parametric and unknown shapes, but not dynamic rank.
     static ErrorOr<TensorType> broadcastShapes(TensorType x, TensorType y);
 
+    /// Short-hand to create an SI32 scalar tensor type.
+    static TensorType getScalarSI32Type(MLIRContext *ctx,
+      DictionaryAttr metadata = {});
+
+    /// Short-hand to create an SI64 scalar tensor type.
+    static TensorType getScalarSI64Type(MLIRContext *ctx,
+      DictionaryAttr metadata = {});
+
+    /// Short-hand to create an F32 scalar tensor type.
+    static TensorType getScalarF32Type(MLIRContext *ctx,
+      DictionaryAttr metadata = {});
+
+    /// Short-hand to create an F64 scalar tensor type.
+    static TensorType getScalarF64Type(MLIRContext *ctx,
+      DictionaryAttr metadata = {});
+
     /// Short-hand to create a SI64 vector tensor type.
     static TensorType getVectorSI64Type(MLIRContext *ctx, int64_t size,
       DictionaryAttr metadata = {});
