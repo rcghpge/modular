@@ -429,6 +429,14 @@ DeviceRefAttr TensorType::getDeviceRef() const {
       getMetadata().get(kTypeDeviceRefAttrName));
 }
 
+TensorType TensorType::cloneWithNewDim(uint64_t dim, uint64_t size) {
+  SmallVector<TypedAttr> shape(getDims());
+  shape[dim] = mlir::IntegerAttr::get(shape.front().getType(), size);
+  auto shapeAttr = ShapeAttr::get(shape, ShapeType::get(getContext()));
+
+  return cloneWith(shapeAttr);
+}
+
 //===----------------------------------------------------------------------===//
 // MODialect type support
 //===----------------------------------------------------------------------===//

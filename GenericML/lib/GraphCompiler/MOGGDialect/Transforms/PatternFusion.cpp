@@ -11,6 +11,7 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "GenericML/GraphCompiler/Matchers.h"
+#include "GenericML/Support/DataflowUtils.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/Support/MathExtras.h"
 
@@ -66,25 +67,6 @@ static bool isBMMSmall(MO::BatchMatmulOp matmul) {
   int64_t approxFlops =
       batch_size * (ADims[rank - 2] * ADims[rank - 1] * BDims[rank - 1]);
   return approxFlops < kTinyBMMatmulFlops;
-}
-
-/// Returns true if `val` comes from a series of constant computation (e.g.,
-/// static reshape, transpose with constant permutation).
-static bool isConstant(Value val) {
-  while (Operation *definingOp = val.getDefiningOp()) {
-    if (auto reshapeOp = dyn_cast<MO::Static::ReshapeOp>(definingOp)) {
-      val = reshapeOp.getInput();
-
-    } else if (auto transposeOp = dyn_cast<MO::TransposeOp>(definingOp)) {
-      if (!transposeOp.getPerm().getDefiningOp<MO::ConstantOp>())
-        return false;
-      val = transposeOp.getInput();
-
-    } else {
-      return isa<MO::ConstantOp>(definingOp);
-    }
-  }
-  return false;
 }
 
 struct PackParamCache {
@@ -245,7 +227,8 @@ struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
     if (weightsType.hasUnknownShape())
       return rewriter.notifyMatchFailure(op, "Weights have unknown shape");
 
-    if (!input || !isConstant(weight))
+    if (!input ||
+        !dependsOnConstantsOnly<MO::ConstantOp>(weight.getDefiningOp()))
       return failure();
 
     if (transpose) {
@@ -438,7 +421,7 @@ struct ConvConstFilterPattern : public OpRewritePattern<MO::ConvOp> {
     if (filterLayout.getFormat() == "FRSCf")
       return rewriter.notifyMatchFailure(op, "filter is already packed");
 
-    if (!isConstant(filter))
+    if (!dependsOnConstantsOnly<MO::ConstantOp>(filter.getDefiningOp()))
       return rewriter.notifyMatchFailure(op, "filter isn't constant");
 
     // Create shape parameters for the new type.

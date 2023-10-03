@@ -1,0 +1,172 @@
+// RUN: mo-opt --symbolic-optimize %s | FileCheck %s
+
+ // CHECK-LABEL: mo.graph @unary_elementwise
+ // CHECK-NEXT:   %[[AXIS:.*]] = mo.constant
+ // CHECK-NEXT:   %[[SIZES:.*]] = mo.constant
+ // CHECK-NEXT:   %[[EXP:.*]] = mo.exp({{.*}}) : !mo.tensor<[2, 4], f32>
+ // CHECK-NEXT:   %[[SPLIT:.*]]:2 = mo.split[%[[AXIS]] : !mo.tensor<[], si32>] (%[[EXP]], %[[SIZES]])
+ // CHECK-NEXT:   mo.output %[[SPLIT]]#0, %[[SPLIT]]#1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
+
+mo.graph @unary_elementwise(%in: !mo.tensor<[2, 4], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
+  %0 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %1 = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %2:2 = mo.split[%0 : !mo.tensor<[], si32>] (%in, %1) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+  %3 = mo.exp(%2#0) : !mo.tensor<[2, 2], f32>
+  %4 = mo.exp(%2#1) : !mo.tensor<[2, 2], f32>
+  mo.output %3, %4 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
+}
+
+// CHECK-LABEL:  mo.graph @binary_elementwise
+// CHECK-NEXT:    %[[AXIS_CONCAT:.*]] = mo.constant
+// CHECK-NEXT:    %[[AXIS_SPLIT:.*]] = mo.constant
+// CHECK-NEXT:    %[[SIZES:.*]] = mo.constant
+// CHECK-NEXT:    %[[CST:.*]] = mo.constant
+// CHECK-NEXT:    %[[CONCAT:.*]] = mo.concat[%[[AXIS_CONCAT]] : !mo.tensor<[], si64>] (%[[CST]], %[[CST]]) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 4], f32>
+// CHECK-NEXT:    %[[ADD:.*]] = mo.add(%[[CONCAT]], %{{.*}}) : !mo.tensor<[2, 4], f32>
+// CHECK-NEXT:    %[[SPLIT:.*]]:2 = mo.split[%[[AXIS_SPLIT]] : !mo.tensor<[], si32>] (%[[ADD]], %[[SIZES]]) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+// CHECK-NEXT:    mo.output %[[SPLIT]]#0, %[[SPLIT]]#1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
+
+mo.graph @binary_elementwise(%in: !mo.tensor<[2, 4], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
+  %0 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %1 = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %cst = mo.constant {value = #M.dense_array<0., 1., 2., 3.> : tensor<4xf32>} : !mo.tensor<[2, 2], f32>
+  %2:2 = mo.split[%0 : !mo.tensor<[], si32>] (%in, %1) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+  %3 = mo.add(%2#0, %cst) : !mo.tensor<[2, 2], f32>
+  %4 = mo.add(%2#1, %cst) : !mo.tensor<[2, 2], f32>
+  mo.output %3, %4 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
+}
+
+// CHECK-LABEL:  mo.graph @binary_elementwise_with_broadcast
+// CHECK-NEXT:    %[[AXIS_CONCAT:.*]] = mo.constant
+// CHECK-NEXT:    %[[AXIS_SPLIT:.*]] = mo.constant
+// CHECK-NEXT:    %[[SIZES:.*]] = mo.constant
+// CHECK-NEXT:    %[[CST:.*]] = mo.constant
+// CHECK-NEXT:    %[[CONCAT:.*]] = mo.concat[%[[AXIS_CONCAT]] : !mo.tensor<[], si64>] (%[[CST]], %[[CST]])
+// CHECK-NEXT:    %[[BCAST:.*]] = mo.static.broadcast_to(%[[CONCAT]])
+// CHECK-NEXT:    %[[ADD:.*]] = mo.add(%[[BCAST]], %{{.*}}) : !mo.tensor<[2, 4], f32>
+// CHECK-NEXT:    %[[SPLIT:.*]]:2 = mo.split[%[[AXIS_SPLIT]] : !mo.tensor<[], si32>] (%[[ADD]], %[[SIZES]]) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+// CHECK-NEXT:    mo.output %[[SPLIT]]#0, %[[SPLIT]]#1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
+
+mo.graph @binary_elementwise_with_broadcast(%in: !mo.tensor<[2, 4], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
+  %0 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %1 = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %cst = mo.constant {value = #M.dense_array<0., 1.> : tensor<2xf32>} : !mo.tensor<[2], f32>
+  %bcast = mo.static.broadcast_to(%cst) : !mo.tensor<[2], f32> -> !mo.tensor<[2, 2], f32>
+  %2:2 = mo.split[%0 : !mo.tensor<[], si32>] (%in, %1) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+  %3 = mo.add(%2#0, %bcast) : !mo.tensor<[2, 2], f32>
+  %4 = mo.add(%2#1, %bcast) : !mo.tensor<[2, 2], f32>
+  mo.output %3, %4 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
+}
+
+// CHECK-LABEL:  mo.graph @no_sinking_binary_elementwise_different_index
+// CHECK:         mo.slice
+// CHECK-NEXT:    mo.slice
+// CHECK-NEXT:    mo.sub
+// CHECK-NEXT:    mo.sub
+
+mo.graph @no_sinking_binary_elementwise_different_index(%in: !mo.tensor<[2, 4], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
+  %0 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %1 = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %cst = mo.constant {value = #M.dense_array<0., 1., 2., 3.> : tensor<4xf32>} : !mo.tensor<[2, 2], f32>
+  %2:2 = mo.split[%0 : !mo.tensor<[], si32>] (%in, %1) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+  %3 = mo.sub(%2#0, %cst) : !mo.tensor<[2, 2], f32>
+  %4 = mo.sub(%cst, %2#1) : !mo.tensor<[2, 2], f32>
+  mo.output %3, %4 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
+}
+
+// CHECK-LABEL:  mo.graph @no_sinking_binary_elementwise_different_ops
+// CHECK:         mo.slice
+// CHECK-NEXT:    mo.slice
+// CHECK-NEXT:    mo.sub
+// CHECK-NEXT:    mo.add
+
+mo.graph @no_sinking_binary_elementwise_different_ops(%in: !mo.tensor<[2, 4], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
+  %0 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %1 = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %cst = mo.constant {value = #M.dense_array<0., 1., 2., 3.> : tensor<4xf32>} : !mo.tensor<[2, 2], f32>
+  %2:2 = mo.split[%0 : !mo.tensor<[], si32>] (%in, %1) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+  %3 = mo.sub(%2#0, %cst) : !mo.tensor<[2, 2], f32>
+  %4 = mo.add(%cst, %2#1) : !mo.tensor<[2, 2], f32>
+  mo.output %3, %4 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
+}
+
+// CHECK-LABEL:  mo.graph @no_sinking_binary_elementwise_diff_broadcast
+// CHECK:         mo.slice
+// CHECK-NEXT:    mo.slice
+// CHECK-NEXT:    mo.add
+// CHECK-NEXT:    mo.add
+
+mo.graph @no_sinking_binary_elementwise_diff_broadcast(%in: !mo.tensor<[2, 4], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
+  %0 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %1 = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %cst1 = mo.constant {value = #M.dense_array<0., 1.> : tensor<2xf32>} : !mo.tensor<[2], f32>
+  %cst2 = mo.constant {value = #M.dense_array<2.> : tensor<1xf32>} : !mo.tensor<[1], f32>
+  %bcast1 = mo.static.broadcast_to(%cst1) : !mo.tensor<[2], f32> -> !mo.tensor<[2, 2], f32>
+  %bcast2 = mo.static.broadcast_to(%cst2) : !mo.tensor<[1], f32> -> !mo.tensor<[2, 2], f32>
+  %2:2 = mo.split[%0 : !mo.tensor<[], si32>] (%in, %1) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+  %3 = mo.add(%2#0, %bcast1) : !mo.tensor<[2, 2], f32>
+  %4 = mo.add(%2#1, %bcast2) : !mo.tensor<[2, 2], f32>
+  mo.output %3, %4 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
+}
+
+// CHECK-LABEL:  mo.graph @reshape
+// CHECK-NEXT:    %[[AXIS:.*]] = mo.constant {value = #M.dense_array<2> : !M.array<1xsi64>} : !mo.tensor<[], si64>
+// CHECK-NEXT:    %[[SIZES:.*]] = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+// CHECK-NEXT:    %[[RESHAPE:.*]] = mo.static.reshape(%arg0) : !mo.tensor<[2, 4], f32> -> !mo.tensor<[1, 2, 4], f32>
+// CHECK-NEXT:    %[[SPLIT:.*]]:2 = mo.split[%[[AXIS]] : !mo.tensor<[], si64>] (%[[RESHAPE]], %[[SIZES]]) : (!mo.tensor<[1, 2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[1, 2, 2], f32>, !mo.tensor<[1, 2, 2], f32>)
+// CHECK-NEXT:    mo.output %[[SPLIT]]#0, %[[SPLIT]]#1 : !mo.tensor<[1, 2, 2], f32>, !mo.tensor<[1, 2, 2], f32>
+
+mo.graph @reshape(%in: !mo.tensor<[2, 4], f32>) -> (!mo.tensor<[1, 2, 2], f32>, !mo.tensor<[1, 2, 2], f32>) {
+  %0 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %1 = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %2:2 = mo.split[%0 : !mo.tensor<[], si32>] (%in, %1) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+  %3 = mo.static.reshape(%2#0) : !mo.tensor<[2, 2], f32> -> !mo.tensor<[1, 2, 2], f32>
+  %4 = mo.static.reshape(%2#1) : !mo.tensor<[2, 2], f32> -> !mo.tensor<[1, 2, 2], f32>
+  mo.output %3, %4 : !mo.tensor<[1, 2, 2], f32>, !mo.tensor<[1, 2, 2], f32>
+}
+
+// CHECK-LABEL:  mo.graph @no_sinking_different_reshapes
+// CHECK:         mo.slice
+// CHECK-NEXT:    mo.slice
+// CHECK-NEXT:    mo.static.reshape
+// CHECK-NEXT:    mo.static.reshape
+
+mo.graph @no_sinking_different_reshapes(%in: !mo.tensor<[2, 4], f32>) -> (!mo.tensor<[1, 2, 2], f32>, !mo.tensor<[4], f32>) {
+  %0 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %1 = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %2:2 = mo.split[%0 : !mo.tensor<[], si32>] (%in, %1) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+  %3 = mo.static.reshape(%2#0) : !mo.tensor<[2, 2], f32> -> !mo.tensor<[1, 2, 2], f32>
+  %4 = mo.static.reshape(%2#1) : !mo.tensor<[2, 2], f32> -> !mo.tensor<[4], f32>
+  mo.output %3, %4 : !mo.tensor<[1, 2, 2], f32>, !mo.tensor<[4], f32>
+}
+
+// CHECK-LABEL:  mo.graph @no_sinking_reshape_changed_last_dim
+// CHECK:         mo.slice
+// CHECK-NEXT:    mo.slice
+// CHECK-NEXT:    mo.static.reshape
+// CHECK-NEXT:    mo.static.reshape
+
+mo.graph @no_sinking_reshape_changed_last_dim(%in: !mo.tensor<[2, 4], f32>) -> (!mo.tensor<[4], f32>, !mo.tensor<[4], f32>) {
+  %0 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %1 = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %2:2 = mo.split[%0 : !mo.tensor<[], si32>] (%in, %1) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+  %3 = mo.static.reshape(%2#0) : !mo.tensor<[2, 2], f32> -> !mo.tensor<[4], f32>
+  %4 = mo.static.reshape(%2#1) : !mo.tensor<[2, 2], f32> -> !mo.tensor<[4], f32>
+  mo.output %3, %4 : !mo.tensor<[4], f32>, !mo.tensor<[4], f32>
+}
+
+// CHECK-LABEL:  mo.graph @rebind
+// CHECK-NEXT:    %[[AXIS:.*]] = mo.constant {value = #M.dense_array<2> : !M.array<1xsi64>} : !mo.tensor<[], si64>
+// CHECK-NEXT:    %[[SIZES:.*]] = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+// CHECK-NEXT:    %[[REBIND:.*]] = mo.rebind({{.*}}) : !mo.tensor<[D0, 2, 4], f32> -> !mo.tensor<[D1, 2, 4], f32>
+// CHECK-NEXT:    %[[SPLIT:.*]]:2 = mo.split[%[[AXIS]] : !mo.tensor<[], si64>] (%[[REBIND]], %[[SIZES]]) : (!mo.tensor<[D1, 2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[D1, 2, 2], f32>, !mo.tensor<[D1, 2, 2], f32>)
+// CHECK-NEXT:    mo.output %[[SPLIT]]#0, %[[SPLIT]]#1 : !mo.tensor<[D1, 2, 2], f32>, !mo.tensor<[D1, 2, 2], f32>
+
+mo.graph @rebind<D0, D1>(%in: !mo.tensor<[D0, 2, 4], f32>) -> (!mo.tensor<[D1, 2, 2], f32>, !mo.tensor<[D1, 2, 2], f32>) {
+  %0 = mo.constant {value = #M.dense_array<2> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %1 = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %2:2 = mo.split[%0 : !mo.tensor<[], si32>] (%in, %1) : (!mo.tensor<[D0, 2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[D0, 2, 2], f32>, !mo.tensor<[D0, 2, 2], f32>)
+  %3 = mo.rebind(%2#0) : !mo.tensor<[D0, 2, 2], f32> -> !mo.tensor<[D1, 2, 2], f32>
+  %4 = mo.rebind(%2#1) : !mo.tensor<[D0, 2, 2], f32> -> !mo.tensor<[D1, 2, 2], f32>
+  mo.output %3, %4 : !mo.tensor<[D1, 2, 2], f32>, !mo.tensor<[D1, 2, 2], f32>
+}

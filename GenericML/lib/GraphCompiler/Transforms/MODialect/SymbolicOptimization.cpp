@@ -10,6 +10,7 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GenericML/GraphCompiler/Matchers.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
+#include "GenericML/Support/DataflowUtils.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "Support/ML/Permutation.h"
 
@@ -1412,8 +1413,7 @@ struct GemvPattern : public OpRewritePattern<MatmulOp> {
   }
 };
 
-/// A pattern that detects a matmul with a vector weight and a constant
-/// input, and transposes it.
+/// A pattern that replaces a split with several slices to enable fusion.
 struct SplitToSlicePattern : public OpRewritePattern<SplitOp> {
   SplitToSlicePattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
 
@@ -1473,11 +1473,11 @@ struct SplitToSlicePattern : public OpRewritePattern<SplitOp> {
 
     int64_t startVal = 0, splitIndex = 0;
 
-    // Replace each result with a split.
+    // Replace each result with a slice.
     for (Value result : op.getResults()) {
       SmallVector<int64_t> start, stop;
 
-      // Build a start / stop combination for each split.
+      // Build a start / stop combination for each slice.
       for (int64_t i = 0; i < static_cast<int64_t>(rank); ++i) {
         if (axis == i) {
           start.push_back(startVal);
@@ -1499,6 +1499,419 @@ struct SplitToSlicePattern : public OpRewritePattern<SplitOp> {
 
     rewriter.eraseOp(op);
     return mlir::success();
+  }
+};
+
+// clang-format off
+/// A pattern that detects a matmuls that use the same activations and merges
+/// them to increase throughput.
+/// BEFORE:
+/// matmul(A, B1) -> C1
+/// matmul(A, B2) -> C2
+/// matmul(A, B3) -> C3
+/// AFTER:
+/// matmul(A, concat(B1, B2, B3)) -> C -> split -> C1
+///                                            |-> C2
+///                                            |-> C3
+// clang-format on
+template <typename MatmulOpType>
+struct MergeParallelMatmulPattern : public OpRewritePattern<MatmulOpType> {
+  MergeParallelMatmulPattern(MLIRContext *ctx)
+      : OpRewritePattern<MatmulOpType>(ctx, 2) {}
+
+  LogicalResult matchAndRewrite(MatmulOpType op,
+                                PatternRewriter &rewriter) const override {
+    // Gather all matmul operations that use the same activations.
+    Value activations = op.getInputA();
+    SmallVector<MatmulOpType> matmulUsers;
+    for (Operation *user : activations.getUsers()) {
+      if (auto matmulOp = dyn_cast<MatmulOpType>(user))
+        matmulUsers.push_back(matmulOp);
+    }
+
+    if (matmulUsers.size() == 1)
+      return rewriter.notifyMatchFailure(op, "No parallel matmuls");
+
+    if (llvm::all_of(matmulUsers, [](MatmulOpType matmul) {
+          return llvm::all_of(matmul->getUsers(), [](Operation *user) {
+            return isa<OutputOp>(user);
+          });
+        })) {
+      // A return op will force the materialization of the split which ends up
+      // slowing down the program.
+      return rewriter.notifyMatchFailure(
+          op, "Matmuls are all feeding into output ops");
+    }
+
+    // Ensure that all matmuls have the same number of rows and that weights are
+    // constants.
+    auto oldMatmulType = op.getType().template cast<TensorType>();
+    TypedAttr expectedNumberOfRows =
+        oldMatmulType.getDim(oldMatmulType.getRank() - 2);
+    if (!llvm::all_of(matmulUsers, [&](MatmulOpType matmulOp) {
+          auto resultType = matmulOp.getType();
+
+          if (!resultType.hasRank())
+            return false;
+
+          if (resultType.getDim(0) != expectedNumberOfRows)
+            return false;
+
+          if (mlir::ShapedType::isDynamic(resultType.getIntDim(1)))
+            return false;
+
+          if (!dependsOnConstantsOnly<ConstantOp>(
+                  matmulOp.getInputB().getDefiningOp()))
+            return false;
+
+          return true;
+        })) {
+      return rewriter.notifyMatchFailure(
+          op, "Parallel matmuls must have the same number of rows, a static "
+              "number of columns and constant weights");
+    }
+
+    Location loc = op.getLoc();
+    rewriter.setInsertionPoint(op);
+
+    SmallVector<Value> weightsToConcatenate;
+    SmallVector<Type> matmulTypes;
+    SmallVector<int64_t> columnsInEachMatmul;
+    int64_t totalColumns = 0;
+    for (MatmulOpType matmulOp : matmulUsers) {
+      weightsToConcatenate.push_back(matmulOp.getInputB());
+      TensorType matmulType = matmulOp.getType();
+      matmulTypes.push_back(matmulType);
+      columnsInEachMatmul.push_back(matmulType.getIntDims().back());
+      totalColumns += columnsInEachMatmul.back();
+    }
+
+    // Concatenate the weights.
+    auto concatType =
+        op.getInputB().getType().template cast<TensorType>().cloneWithNewDim(
+            oldMatmulType.getRank() - 1, totalColumns);
+    Value concatAxis = rewriter.create<ConstantOp>(loc, 1);
+    Value concatenatedWeights =
+        rewriter
+            .create<ConcatOp>(loc, concatType, concatAxis, weightsToConcatenate)
+            .getResult();
+
+    // Create a single larger matmul.
+    auto newMatmulType = oldMatmulType.cloneWithNewDim(
+        oldMatmulType.getRank() - 1, totalColumns);
+    Value newMatmul = rewriter
+                          .create<MatmulOpType>(loc, newMatmulType, activations,
+                                                concatenatedWeights)
+                          .getResult();
+
+    // Split the output.
+    Value splitSizes = rewriter.create<ConstantOp>(loc, columnsInEachMatmul);
+    auto splitOp = rewriter.create<SplitOp>(loc, matmulTypes, newMatmul,
+                                            splitSizes, concatAxis);
+
+    for (uint64_t idx = 0; idx < matmulUsers.size(); ++idx) {
+      rewriter.replaceAllUsesWith(matmulUsers[idx].getResult(),
+                                  splitOp.getResult(idx));
+      // Erase to avoid re-doing the same optimization on the other matmuls.
+      rewriter.eraseOp(matmulUsers[idx]);
+    }
+
+    return mlir::success();
+  }
+};
+
+/// A pattern that will move a split/ operation after identical elementwise
+/// operations if certain conditions are met
+/// CONDITIONS:
+/// - Split must be uniform (same size).
+/// - Elementwise must be the same.
+/// - Elementwise operand use must be the same.
+/// - Elementwise are fed with a constant or a constant and a broadcast.
+/// - The innermost dimension must be unchanged after the broadcast.
+/// - All broadcasts must be the same.
+/// BEFORE:
+/// -> split -> elemwise ->
+///          -> elemwise ->
+///          -> elemwise ->
+/// AFTER:
+/// -> elemwise -> split ->
+struct SinkSplitThroughElementwisePattern : public OpRewritePattern<SplitOp> {
+  SinkSplitThroughElementwisePattern(MLIRContext *ctx)
+      : OpRewritePattern(ctx, 2) {}
+
+  LogicalResult matchAndRewrite(SplitOp op,
+                                PatternRewriter &rewriter) const override {
+    auto inputType = op.getInput().getType().cast<TensorType>();
+    if (!inputType.hasRank())
+      return rewriter.notifyMatchFailure(op, "Input must be statically ranked");
+
+    auto axisOr = tryGetConstantInt(op.getAxis());
+    if (!axisOr)
+      return rewriter.notifyMatchFailure(op, "Split axis is not a constant");
+
+    uint64_t lastAxis = inputType.getRank() - 1;
+    uint64_t axis = *axisOr;
+    if (axis != lastAxis)
+      return rewriter.notifyMatchFailure(op, "Split axis must be the last dim");
+
+    if (op.getNumResults() != llvm::range_size(op->getUsers()))
+      return rewriter.notifyMatchFailure(op, "Not all results are used");
+
+    auto firstResultType = op.getResults().front().getType();
+    SmallVector<Value> elementwiseValues;
+    for (auto result : op.getResults()) {
+      if (!result.hasOneUse()) {
+        return rewriter.notifyMatchFailure(op,
+                                           "Split results must have one use");
+      }
+
+      if (result.getType() != firstResultType) {
+        return rewriter.notifyMatchFailure(
+            op, "Split results don't have the same size");
+      }
+
+      auto user = result.getUses().begin()->getOwner();
+      if (!isa<ElementWiseUnary, ElementWiseBinary>(user)) {
+        return rewriter.notifyMatchFailure(
+            op, "Split result use is not an elementwise operation");
+      }
+
+      elementwiseValues.push_back(user->getResult(0));
+    }
+
+    auto &firstUse = *op->getResult(0).getUses().begin();
+    uint64_t firstUseIndex = firstUse.getOperandNumber();
+    Operation *firstOwner = firstUse.getOwner();
+
+    SmallVector<Value> constantsToConcatenate;
+    Static::BroadcastToOp broadcastOp;
+    for (auto result : op.getResults()) {
+      auto &use = *result.getUses().begin();
+
+      uint64_t index = use.getOperandNumber();
+      if (index != firstUseIndex) {
+        return rewriter.notifyMatchFailure(
+            op, "Split result use is not at the same operand index");
+      }
+
+      Operation *owner = use.getOwner();
+      if (owner->getName() != firstOwner->getName()) {
+        return rewriter.notifyMatchFailure(
+            op, "Split results users are not all the same operation");
+      }
+
+      if (isa<ElementWiseBinary>(owner)) {
+        uint64_t otherIndex = 1 - index;
+        auto firstOtherOperandOp =
+            firstOwner->getOperand(otherIndex).getDefiningOp();
+        auto ownerOtherOperandOp =
+            owner->getOperand(otherIndex).getDefiningOp();
+        if (firstOtherOperandOp->getName() != ownerOtherOperandOp->getName()) {
+          return rewriter.notifyMatchFailure(
+              op, "Operations that feed the elementwise don't match");
+        }
+
+        if (!isa<ConstantOp, Static::BroadcastToOp>(ownerOtherOperandOp)) {
+          return rewriter.notifyMatchFailure(
+              op, "Operations that feed the elementwise must be constants or "
+                  "static broadcasts");
+        }
+
+        auto constantOp = dyn_cast<ConstantOp>(ownerOtherOperandOp);
+        if ((broadcastOp =
+                 dyn_cast<Static::BroadcastToOp>(ownerOtherOperandOp))) {
+          constantOp = dyn_cast<ConstantOp>(
+              ownerOtherOperandOp->getOperand(0).getDefiningOp());
+          if (!constantOp) {
+            return rewriter.notifyMatchFailure(
+                op, "Input to the static broadcast must be a constant");
+          }
+        }
+        assert(constantOp);
+
+        constantsToConcatenate.push_back(constantOp.getResult());
+        if (constantsToConcatenate.front()
+                .getType()
+                .cast<TensorType>()
+                .getDims()
+                .back() !=
+            op.getResultTypes().front().cast<TensorType>().getDims().back()) {
+          return rewriter.notifyMatchFailure(
+              op, "Unsupported broadcasting that would duplicate data");
+        }
+      }
+    }
+
+    if (!llvm::all_of(constantsToConcatenate, [&](auto constantOp) {
+          return constantOp.getType() ==
+                 constantsToConcatenate.front().getType();
+        })) {
+      return rewriter.notifyMatchFailure(
+          op, "Constants are being broadcasted differently");
+    }
+
+    Location loc = op.getLoc();
+    rewriter.setInsertionPoint(op);
+    uint64_t lastDimSize =
+        inputType.getDims().back().cast<IntegerAttr>().getInt();
+
+    SmallVector<Value, 2> elementwiseOperands;
+    if (!constantsToConcatenate.empty()) {
+      TensorType constantType =
+          constantsToConcatenate.front().getType().cast<TensorType>();
+      auto concatType =
+          constantType.cloneWithNewDim(constantType.getRank() - 1, lastDimSize);
+      Value concatAxis =
+          rewriter.create<ConstantOp>(loc, int64_t(constantType.getRank() - 1));
+      Value concatenatedConstants =
+          rewriter
+              .create<ConcatOp>(loc, concatType, concatAxis,
+                                constantsToConcatenate)
+              .getResult();
+
+      Value broadcast = concatenatedConstants;
+      if (broadcastOp) {
+        auto broadcastType =
+            broadcastOp.getType().cloneWithNewDim(lastAxis, lastDimSize);
+        broadcast = rewriter
+                        .create<Static::BroadcastToOp>(loc, broadcastType,
+                                                       concatenatedConstants)
+                        .getResult();
+      }
+
+      elementwiseOperands.resize(2);
+      elementwiseOperands[firstUseIndex] = broadcast;
+      elementwiseOperands[1 - firstUseIndex] = op.getInput();
+    } else {
+      elementwiseOperands.push_back(op.getInput());
+    }
+
+    auto elementwiseType =
+        firstOwner->getResultTypes().front().cast<TensorType>().cloneWithNewDim(
+            lastAxis, lastDimSize);
+    OperationState elementwiseOpState(loc, firstOwner->getName(),
+                                      elementwiseOperands, elementwiseType);
+    auto newElementwise = rewriter.create(elementwiseOpState)->getResult(0);
+
+    SmallVector<Type> newSplitTypes;
+    for (auto val : elementwiseValues)
+      newSplitTypes.push_back(val.getType());
+    SmallVector<Value> newSplitOpOperands = op.getOperands();
+    newSplitOpOperands[0] = newElementwise;
+    OperationState splitOpState(loc, op->getName(), newSplitOpOperands,
+                                newSplitTypes, op->getAttrs(),
+                                op->getSuccessors());
+    auto newSplit = rewriter.create(splitOpState)->getResults();
+
+    for (auto [elemwise, split] : llvm::zip(op->getUsers(), newSplit)) {
+      rewriter.replaceAllUsesWith(elemwise->getResult(0), split);
+      rewriter.eraseOp(elemwise);
+    }
+
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+};
+
+/// A pattern that will sink a split operation through a reshape-like operation
+/// such as Static::ReshapeOp and RebindOp.
+template <typename ReshapeOpType>
+struct SinkSplitThroughReshapeLikeOpsPattern
+    : public OpRewritePattern<SplitOp> {
+  SinkSplitThroughReshapeLikeOpsPattern(MLIRContext *ctx)
+      : OpRewritePattern(ctx, 2) {}
+
+  LogicalResult matchAndRewrite(SplitOp op,
+                                PatternRewriter &rewriter) const override {
+    auto inputType = op.getInput().getType().cast<TensorType>();
+    if (!inputType.hasRank())
+      return rewriter.notifyMatchFailure(op, "Input must be statically ranked");
+
+    auto axisOr = tryGetConstantInt(op.getAxis());
+    if (!axisOr)
+      return rewriter.notifyMatchFailure(op, "Split axis is not a constant");
+    uint64_t axis = *axisOr;
+
+    uint64_t lastAxis = inputType.getRank() - 1;
+    if (axis != lastAxis)
+      return rewriter.notifyMatchFailure(op, "Split axis must be the last dim");
+
+    auto users = op->getUsers();
+    if (llvm::range_size(users) != op.getNumResults())
+      return rewriter.notifyMatchFailure(op, "Not all results are used");
+
+    if (!llvm::all_of(users, [](Operation *user) {
+          return llvm::isa<ReshapeOpType>(user);
+        })) {
+      return rewriter.notifyMatchFailure(op, "Users are not reshapes");
+    }
+
+    auto firstReshapeOutputType =
+        users.begin()->getResultTypes().front().cast<TensorType>();
+    auto firstReshapeOutputShape = firstReshapeOutputType.getDims();
+    if (!llvm::all_of(users, [&](Operation *reshape) {
+          auto otherReshapeOutputShape =
+              reshape->getResultTypes().front().cast<TensorType>().getDims();
+          if (otherReshapeOutputShape.empty()) {
+            return false;
+          }
+
+          return firstReshapeOutputShape.drop_back() ==
+                 otherReshapeOutputShape.drop_back();
+        })) {
+      return rewriter.notifyMatchFailure(
+          op, "Reshapes are not identical on other dimensions or they have "
+              "scalar inputs or outputs");
+    }
+
+    if (llvm::any_of(llvm::zip(op.getResults(), users), [&](auto result_user) {
+          auto [result, user] = result_user;
+          return user->getResult(0)
+                     .getType()
+                     .template cast<TensorType>()
+                     .getDims()
+                     .back() !=
+                 result.getType().template cast<TensorType>().getDims().back();
+        })) {
+      return rewriter.notifyMatchFailure(
+          op, "Reshape is tempering with the split dimension");
+    }
+
+    Location loc = op->getLoc();
+    rewriter.setInsertionPoint(op);
+
+    auto newReshapeType = firstReshapeOutputType.cloneWithNewDim(
+        firstReshapeOutputType.getRank() - 1,
+        inputType.getDims().back().cast<IntegerAttr>().getInt());
+    auto newReshape =
+        rewriter.create<ReshapeOpType>(loc, newReshapeType, op.getInput())
+            .getResult();
+
+    SmallVector<Type> newSplitTypes;
+    for (Operation *user : users)
+      newSplitTypes.push_back(user->getResult(0).getType());
+    SmallVector<Value> newSplitOpOperands = op.getOperands();
+    newSplitOpOperands[0] = newReshape;
+    newSplitOpOperands[2] =
+        rewriter
+            .create<ConstantOp>(loc,
+                                int64_t(firstReshapeOutputType.getRank() - 1))
+            .getResult();
+    OperationState splitOpState(loc, op->getName(), newSplitOpOperands,
+                                newSplitTypes, op->getAttrs(),
+                                op->getSuccessors());
+    auto newSplit = rewriter.create(splitOpState);
+
+    for (auto [reshape, split] :
+         llvm::zip(op->getUsers(), newSplit->getResults())) {
+      rewriter.replaceAllUsesWith(reshape->getResult(0), split);
+      rewriter.eraseOp(reshape);
+    }
+
+    rewriter.eraseOp(op);
+
+    return success();
   }
 };
 
@@ -1526,9 +1939,18 @@ struct SymbolicOptimizationPass
     patterns.add<CommuteBroadcastWithFlatennedArgNonzero>(context);
     Static::BroadcastToOp::getCanonicalizationPatterns(patterns, context);
 
-    // Miscellaneous rewrites.
+    // Matmul rewrites.
     patterns.add<ConvertBatchMatmulToMatmulPattern, ConvToMatmulPattern,
-                 FlattenNestedConcatPattern, Pow2Pattern, Pow3Pattern,
+                 MergeParallelMatmulPattern<MatmulOp>,
+                 MergeParallelMatmulPattern<BatchMatmulOp>>(context);
+
+    // Split swimming.
+    patterns.add<SinkSplitThroughReshapeLikeOpsPattern<Static::ReshapeOp>,
+                 SinkSplitThroughReshapeLikeOpsPattern<RebindOp>,
+                 SinkSplitThroughElementwisePattern>(context);
+
+    // Miscellaneous rewrites.
+    patterns.add<FlattenNestedConcatPattern, Pow2Pattern, Pow3Pattern,
                  GathersToSplitPattern, GeluPattern, GemvPattern,
                  SplitAndSqueezesPattern, SplitToSlicePattern>(context);
 

@@ -102,6 +102,8 @@ maybeApplyShapeInferencePipeline(mlir::OpPassManager &pm,
   pm.addPass(MO::createSymbolicOptimization());
   pm.addPass(MO::createPropagateShapes());
   pm.addPass(MO::createAddFallbackShapeFunctions());
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
   pm.addPass(MO::createSymbolicOptimization());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
@@ -210,7 +212,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MOGG::createJitCompileKernels(jitOpts));
 
   pm.addPass(MGP::createMOToPrimitives(moToPrimOpts));
-  pm.addPass(MGP::createPredicateAssertDependenciesPass());
 
   if (opts.cacheBuffersAcrossExecutes)
     pm.addPass(MGP::createReallocBuffersPass());
@@ -231,6 +232,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MGP::createConcatInPlacePass());
   pm.addPass(MGP::createDeferAllocsPass());
   pm.addPass(MGP::createExecInvariantCodeMotionPass());
+  pm.addPass(MGP::createPredicateAssertDependenciesPass());
   pm.addPass(MGP::createStripBufferAttributesPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(MGP::createSimplifyChainsPass());

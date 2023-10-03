@@ -182,6 +182,9 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     /// Returns the #M.device_ref annotation for this type, or null if no
     /// such annotation.
     DeviceRefAttr getDeviceRef() const;
+
+    /// Duplicates a tensor type but with a dimension set to a new value.
+    TensorType cloneWithNewDim(uint64_t dim, uint64_t size);
   }];
 }
 
