@@ -272,3 +272,17 @@ mo.graph @large_op(%arg0: !mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 2], f32>
   %19 = mo.static.reshape(%18) : !mo.tensor<[2, 2, 1], f32> -> !mo.tensor<[2, 2], f32>
   mo.output %19 : !mo.tensor<[2, 2], f32>
 }
+
+// CHECK: mo.graph @multiple_internal_ops(%[[ARG0:.*]]:
+// CHECK-NEXT: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<{{.*}}> : !M.array<6xf32>} : !mo.tensor<[3, 2], f32>
+// CHECK-NEXT: %[[VAL1:.*]] = mo.matmul(%[[ARG0]], %[[VAL0]])
+// CHECK-NEXT: mo.output %[[VAL1]]
+mo.graph @multiple_internal_ops(%arg0: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[1, 2], f32> {
+  %c1 = mo.constant {value = #M.dense_array<-1.0> : tensor<1xf32>} : !mo.tensor<[1], f32>
+  %1 = mo.static.broadcast_to(%c1) : !mo.tensor<[1], f32> -> !mo.tensor<[1, 3], f32>
+  %3 = mo.constant {value = #M.dense_array<1, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+  %4 = mo.static.broadcast_to(%c1) : !mo.tensor<[1], f32> -> !mo.tensor<[2, 3], f32>
+  %16 = mo.transpose(%4, %3) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[3, 2], f32>
+  %17 = mo.matmul(%arg0, %16) : (!mo.tensor<[1, 3], f32>, !mo.tensor<[3, 2], f32>) -> !mo.tensor<[1, 2], f32>
+  mo.output %17 : !mo.tensor<[1, 2], f32>
+}

@@ -481,10 +481,14 @@ SubgraphInfo cloneSubgraph(OpBuilder builder, GraphOp orig, ModuleOp module,
     for (auto result : op->getResults()) {
       Value newOutput = oldToNew.lookup<Value>(result);
       if (newOutput.getType().isa<MOSH::ShapeType>()) {
-        // Can't output shapes so we convert it to a tensor of unknown size.
+        // Can't output shapes so we convert it to a rank 1 tensor of unknown
+        // size.
         newOutput = builder.create<Shape::ToTensorOp>(
             loc,
-            TensorType::get({KGEN::UnknownAttr::get(newOutput.getType())},
+            TensorType::get(MOSH::ShapeAttr::get(
+                                SmallVector<TypedAttr>({KGEN::UnknownAttr::get(
+                                    builder.getIndexType())}),
+                                MOSH::ShapeType::get(ctx)),
                             DType::si64),
             newOutput);
       }
@@ -531,12 +535,18 @@ void replaceConstantOps(GraphOp graph, OpBuilder &builder,
                         const ModelResult &modelResult,
                         const SubgraphInfo &subgraphInfo) {
   MLIRContext *ctx = graph.getContext();
-  auto internalOps =
+  // Find ops that are not used outside of the subgraph. Collect them now before
+  // we have removed anything, then remove them later when they are not depended
+  // on.
+  auto filtered =
       llvm::make_filter_range(subgraphInfo.subgraph.ops, [&](Operation *op) {
         return llvm::all_of(op->getResults(), [&](OpResult r) {
           return subgraphInfo.subgraph.fullyContains(r);
         });
       });
+  llvm::SmallVector<Operation *> internalOps(filtered.begin(), filtered.end());
+  mlir::computeTopologicalSorting(internalOps);
+
   for (auto [op, tensors] : modelResult.constants) {
     builder.setInsertionPoint(op);
     llvm::SmallVector<Value> new_results;
@@ -578,9 +588,10 @@ void replaceConstantOps(GraphOp graph, OpBuilder &builder,
     op->replaceAllUsesWith(new_results);
     op->erase();
   }
-  // Remove internal ops (DCE).
-  for (auto op : internalOps)
-    op->erase();
+  // Remove internal ops (DCE). Ops are removed in reverse topological ordering
+  // so we don't erase a dependency of another op.
+  for (auto op = internalOps.rbegin(); op < internalOps.rend(); op++)
+    (*op)->erase();
 
   // Add parameters that were defined in the subgraph.
   builder.setInsertionPointToStart(graph.getBodyBlock());
