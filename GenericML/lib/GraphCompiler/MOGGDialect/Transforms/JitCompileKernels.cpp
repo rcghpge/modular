@@ -67,7 +67,7 @@ static void appendName(std::string &str, DeviceRefAttr device, StringRef name) {
 
   // HACK HACK HACK
   // PTX names don't accept all the same characters as MLIR names.
-  if (device.getLabel() == "cuda") {
+  if (device.getLabel() == kCUDALabel) {
     std::replace_if(
         str.begin() + start, str.end(), [](char c) { return c == '.'; }, '_');
   }
@@ -213,15 +213,14 @@ mangleBlock(mlir::Block &block, DeviceRefAttr device,
 // inputs, the contents of the block, and which are returned. It needs to be
 // this verbose to ensure we don't recompile for identical blocks but also allow
 // for blocks of the same operations with different returns to compile legally.
+//
+// If the op is to be executed via the 'host', the device will be the host
+// device and not necessarily the op's device annotation.
 ErrorOr<std::string>
-createMangledName(MOGG::KernelOp op,
+createMangledName(MOGG::KernelOp op, DeviceRefAttr device,
                   DenseMap<KGEN::ParamDeclRefAttr, size_t> &params,
                   DenseMap<M::ElementsAttr, size_t> &seenConsts,
                   size_t &kernelsDefiningParams) {
-  // Some mangling conventions need to be changed depending on the
-  // target device.
-  DeviceRefAttr device = MO::getDeviceOrDefault(op);
-
   std::string name = "__gen__";
 
   // Each kernel which defines params can be assumed to be unique. No params can
@@ -433,6 +432,7 @@ struct JitCompileKernels
       SmallVector<mlir::Attribute> symbolNamesAdded;
 
       // Start building up the KGEN kernels for the current device.
+      // Shared for all kernels.
       Stub::KGENBuilder builder(graph, manager, *kgenModule, registry,
                                 minimumCpuAlignment.getValue(),
                                 deviceSpec.getRef());
@@ -447,7 +447,6 @@ struct JitCompileKernels
       // Build stubs for all JIT operations and replace them with symbolic calls
       // to the kernels in the KGEN stub.
       graph.walk([&](MOGG::KernelOp op) {
-        // Only consider kernels for the current device.
         if (MO::getDeviceOrDefault(op) != deviceSpec.getRef())
           return WalkResult::skip();
 
@@ -472,8 +471,9 @@ struct JitCompileKernels
         }
 
         // Create a unique name for the kernel.
-        auto stubKernelName = createMangledName(op, paramToIndex, seenConsts,
-                                                kernelsDefiningParams);
+        auto stubKernelName =
+            createMangledName(op, deviceSpec.getRef(), paramToIndex, seenConsts,
+                              kernelsDefiningParams);
         if (stubKernelName.isError()) {
           error = Error(stubKernelName.takeError());
           return WalkResult::interrupt();
@@ -488,7 +488,8 @@ struct JitCompileKernels
           // may be different from the currently processed kernel's result type,
           // if they are parameterized.
           mlir::IRRewriter rewriter{OpBuilder(op)};
-          DeviceRefAttr devAttr = op.getDeviceRef();
+          DeviceRefAttr origDevice = op.getDeviceRef();
+          bool origIsViaCpu = op.isViaHost();
           auto newOp = rewriter.replaceOpWithNewOp<MOGG::ExecuteCompiledOp>(
               op, op->getResultTypes(), op->getOperands(),
               cachedExeOp->getAttrDictionary().getValue());
@@ -496,14 +497,17 @@ struct JitCompileKernels
           // Add the new used parameters which may be different than before.
           newOp.setUsedParamsAttr(rewriter.getArrayAttr(usedParamsAsAttr));
 
-          // Bring over any device annotation.
-          if (devAttr)
-            newOp.setDeviceRef(devAttr);
+          // Bring over any device-related attributes.
+          if (origDevice)
+            newOp.setDeviceRef(origDevice);
+          if (origIsViaCpu)
+            newOp.setIsViaHost();
 
           return WalkResult::skip();
         }
 
-        // Lower the basic stub function.
+        // Lower the basic stub function. This sets up the builder for the
+        // current kernel.
         error = builder.startLowering(op, stubKernelName.get(), usedParameters);
         if (error.isError())
           return WalkResult::interrupt();

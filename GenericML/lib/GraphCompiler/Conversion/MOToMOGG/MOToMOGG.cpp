@@ -15,6 +15,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/Matchers.h"
 #include "GenericML/GraphCompiler/Support/MOGGTypeTraits.h"
+#include "Support/DeviceSpecs.h"
 #include "Support/ML/TensorShape.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -32,70 +33,70 @@ namespace M::MO {
 
 namespace {
 
-// A struct containing the specification we should search for to find a kernel
-// for a given mo type.
+/// Various ways to lower a MO operation.
+enum Flavor {
+  /// The MO op should not be lowered here, and will be dealt with downstream.
+  kIgnore,
+
+  /// The MO op has no implementation.
+  kUnimplemented,
+
+  /// The MO op is implemented by a MEF primitive with name given by 'shim'.
+  /// It thus always executes on the 'host'.
+  kShim,
+
+  /// The MO op is implemented directly in Mojo, without any MOGG wrapper.
+  /// The MO op name is mapped to the corresponding Mojo name using the
+  /// MojoRegisterOp.
+  kDirect,
+
+  /// The MO op is implemented by a MOGG wrapper supporting elementwise
+  /// fusion. The MO op name is used to derive the elementwise operator.
+  kMOGGElemwise,
+};
+
+// Guides lowering for each MO operation.
 struct KernelRecord {
-  // Overload for an unreachable op which should just assert.
-  KernelRecord(StringLiteral moggID)
-      : moggID(moggID), shim("None"), shouldHaveMojo(false),
-        isNonElemwise(false), shouldBeUnreachable(true) {}
+  /// How should we lower the MO operation?
+  Flavor flavor;
 
-  KernelRecord(StringLiteral moggID, StringLiteral shimName)
-      : moggID(moggID), shim(shimName), shouldHaveMojo(false),
-        isNonElemwise(false), shouldBeUnreachable(false) {}
-
-  KernelRecord(StringLiteral moggID, bool isNonElemwise)
-      : moggID(moggID), shim("None"), shouldHaveMojo(true),
-        isNonElemwise(isNonElemwise), shouldBeUnreachable(false) {}
-
-  ~KernelRecord() = default;
-
-  // The begining of the name. May have multiple matches we distinguish between
-  // using the number of arguments.
-  StringLiteral moggID;
-
-  // The C++ shim which implements this (i.e non-jitted kernel path).
+  /// If flavor==kShim: The name of the MEF primitive which directly implements
+  /// the MO operation.
   StringLiteral shim;
 
-  // Should we have a mojo kernel for this?
-  bool shouldHaveMojo;
+  KernelRecord(Flavor flavor) : flavor(flavor), shim("None") {
+    assert(flavor != kShim);
+  }
 
-  // Is this operation an actual operation which is *not* implemented by an
-  // elementwise invoke over a lambda body.
-  bool isNonElemwise;
+  KernelRecord(Flavor flavor, StringLiteral shim) : flavor(flavor), shim(shim) {
+    assert(flavor == kShim);
+  }
 
-  // If we should assert when we see this op.
-  bool shouldBeUnreachable;
+  bool shouldUseJit() const {
+    return flavor == kDirect || flavor == kMOGGElemwise;
+  }
+
+  bool isNonElemwise() const { return flavor != kMOGGElemwise; }
 };
 
 // Helper to add a map to a jit kernel for a given mo op.
 // MOOps is the C++ class type of the MO op which provides the op name for the
 // map.
 #define MO_TO_ELEMWISE(MOOp)                                                   \
-  {                                                                            \
-    TypeID::get<MOOp>(), KernelRecord { MOOp::getOperationName(), false }      \
-  }
+  { TypeID::get<MOOp>(), KernelRecord(kMOGGElemwise) }
 
 // Same as the above but a special case for non-elementwise ops. Eventually this
 // will be replaced through inspecting the mogg kernel.
 #define MO_TO_KERNEL(MOOp)                                                     \
-  {                                                                            \
-    TypeID::get<MOOp>(), KernelRecord { MOOp::getOperationName(), true }       \
-  }
+  { TypeID::get<MOOp>(), KernelRecord(kDirect) }
 
 // Operations which are handled specially and not lowered to MOGG
 #define MO_NO_LOWER(MOOp)                                                      \
-  {                                                                            \
-    TypeID::get<MOOp>(), KernelRecord {                                        \
-      MOOp::getOperationName(), StringLiteral { "None" }                       \
-    }                                                                          \
-  }
+  { TypeID::get<MOOp>(), KernelRecord(kIgnore) }
 
 // Operations which should not exist at this stage of lowering.
 #define MO_UNLOWERABLE_OP(MOOp)                                                \
-  {                                                                            \
-    TypeID::get<MOOp>(), KernelRecord { MOOp::getOperationName() }             \
-  }
+  { TypeID::get<MOOp>(), KernelRecord(kUnimplemented) }
 
 // Helper to add a map to a shim kernel for a given mo op.
 // MOOps is the C++ class type of the MO op which provides the op name for the
@@ -104,12 +105,10 @@ struct KernelRecord {
 // CAUTION: AssignDevicesPass must also consider this MOOp to be explicitly or
 // implicitly host only.
 #define MO_SHIM_ONLY(MOOp, ShimName)                                           \
-  {                                                                            \
-    TypeID::get<MOOp>(), KernelRecord {                                        \
-      MOOp::getOperationName(), StringLiteral { ShimName }                     \
-    }                                                                          \
-  }
+  { TypeID::get<MOOp>(), KernelRecord(kShim, ShimName) }
 
+/// Maps MO ops TypeID to the record describing how to lower it for a
+/// particular device label.
 using MoToKernelMapTy = SmallDenseMap<mlir::TypeID, KernelRecord, 64>;
 
 struct MOOpPattern : public RewritePattern {
@@ -145,29 +144,30 @@ struct MOOpPattern : public RewritePattern {
     // Get the implementation info for this operation.
     auto itr = moToMojoKernels.find(op->getName().getTypeID());
     if (itr == moToMojoKernels.end())
-      return Error("Failed to find a kernel registration for " +
-                   op->getName().getStringRef().str());
-    KernelRecord &kernel = itr->second;
+      return Error(Twine("Failed to find a kernel registration for op '") +
+                   op->getName().getStringRef() + "'");
+    const KernelRecord &record = itr->second;
 
-    if (kernel.shouldBeUnreachable) {
-      return Error("Op is has no legal lowering and should have been removed "
-                   "before lowering" +
-                   op->getName().getStringRef().str());
+    if (record.flavor == kUnimplemented) {
+      return Error(
+          Twine("Op '") + op->getName().getStringRef() +
+          "' has no legal lowering and should have already been removed");
     }
 
-    if (!kernel.shouldHaveMojo && kernel.shim == "None")
+    if (record.flavor == kIgnore) {
+      // Leave for a downstream pass.
       return std::nullopt;
+    }
 
     // Helper to encapsulate all the code required to lower to a kernel.
-    MO::KernelLowererHelper helper{op, registry, moggBindings};
+    MO::KernelLowererHelper helper(op, record.isNonElemwise(), registry,
+                                   moggBindings);
 
     // Current jit kernel constraints:
     // Ranked.
     // Dimensions are static or shape infered (i.e not '?')
     // Only within the top level graph and not within e.g control flow.
-    bool shouldUseJit = kernel.shouldHaveMojo;
-
-    StringRef shimTarget = kernel.shim;
+    bool shouldUseJit = record.shouldUseJit();
 
     auto isDTypeAllowed = [&](Type t) {
       auto tensor = dyn_cast<MO::TensorType>(t);
@@ -205,28 +205,28 @@ struct MOOpPattern : public RewritePattern {
       hasCompatibleJITShape &= isShapeAllowed(t);
     }
 
-    if (!hasCompatibleJITDtypes && shouldUseJit) {
+    if (shouldUseJit && !(hasCompatibleJITDtypes && hasCompatibleJITShape)) {
       std::string errStr;
       llvm::raw_string_ostream os(errStr);
-      os << "Found at least one incompatible DType for a JIT-able operation"
-         << ". Operand types " << op->getOperandTypes()
+      os << "Found at least one incompatible DType or shape for a JIT-able "
+            "operation which is not supported"
+         << ". Operand types: " << op->getOperandTypes()
          << ". Results Types: " << op->getResultTypes();
       return Error(errStr);
     }
 
     // If we should be using JIT generate a jit target.
     // Otherwise use the shim but only if the dtype is specially supported.
-    if (shouldUseJit && hasCompatibleJITDtypes && hasCompatibleJITShape) {
+    if (shouldUseJit) {
       if (auto invokeShapeFuncOp = dyn_cast<MO::InvokeShapeFuncOp>(op))
         return helper.lowerShapeFuncToKernel(invokeShapeFuncOp);
       if (auto layoutTransformOp = dyn_cast<MO::LayoutTransformOp>(op))
         return helper.lowerLayoutTransformToKernel(layoutTransformOp);
 
-      return helper.lowerToKernel(kernel.isNonElemwise);
-    } else if (shimTarget != "None") {
-      return helper.lowerToShim(shimTarget);
+      return helper.lowerToKernel();
     } else {
-      return Error("Attempting to lower a JIT-only kernel to a C++ shim");
+      assert(record.flavor == kShim && "Unexpected op flavor");
+      return helper.lowerToShim(record.shim);
     }
   }
 
@@ -272,9 +272,8 @@ void MOToMOGGPass::runOnOperation() {
 
   OwningOpRef<mlir::ModuleOp> moggBindings = errOr.takeValue();
 
-  // A map of MO types to the known implementations. Ops can be backed by two
-  // implementations. A C++ shim in the mop primitives and a Mojo kernel which
-  // will be jit compiled.
+  // A map from MO op type ids to a record describing how to lower them for
+  // 'cpu' devices.
   // clang-format off
   // ^-- otherwise tries to put 2+ entries per line
   MoToKernelMapTy moToMojoKernels{
@@ -389,6 +388,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_UNLOWERABLE_OP(MO::BroadcastToOp),
   };
   // clang-format on
+
   RewritePatternSet patterns{ctx};
   patterns.add<MOOpPattern>(ctx, moToMojoKernels, registry, moggBindings.get());
 

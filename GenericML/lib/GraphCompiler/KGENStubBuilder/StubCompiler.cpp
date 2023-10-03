@@ -175,7 +175,7 @@ ErrorOrSuccess StubCompiler::compile(mlir::ArrayAttr combinedSymbolName) {
     return Error("KGEN elaboration failed");
 
   // HACK HACK HACK
-  if (deviceSpec.getRef().getLabel() == "cuda") {
+  if (deviceSpec.getRef().getLabel() == kCUDALabel) {
     // Promote address spaces.
     for (KGEN::FuncOp func : kgenModule.getOps<KGEN::FuncOp>()) {
       mlir::AttrTypeReplacer walker;
