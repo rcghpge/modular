@@ -502,7 +502,7 @@ struct LayerNormPattern : public OpRewritePattern<MO::AddOp> {
 
   LogicalResult matchAndRewrite(MO::AddOp op,
                                 PatternRewriter &rewriter) const override {
-    // x = input + skip
+    // x = input
     // layernorm = gamma * (x - mean(x)) / sqrt(var(x) + eps) + beta
     Value gamma, beta, eps;
     auto gam = m_Op<MO::Static::BroadcastToOp>(m_Any(&gamma));
@@ -512,11 +512,8 @@ struct LayerNormPattern : public OpRewritePattern<MO::AddOp> {
     auto last_axis = m_Optional(m_ScalarConstant(2), m_ScalarConstant(-1));
     // TODO: Current capture system can't distinguish multiple uses of the same
     // value in the pattern, need to fix, this might be slightly risky
-    Value input, skip;
-    auto x =
-        m_Optional(m_BinaryCommutativeOp<MO::AddOp>(m_Ranked(3, m_Any(&input)),
-                                                    m_Ranked(3, m_Any(&skip))),
-                   m_Ranked(3, m_Any(&input)));
+    Value input;
+    auto x = m_Ranked(3, m_Any(&input));
     auto mean = m_Op<MO::Static::BroadcastToOp>(m_Op<MO::MeanOp>(x, last_axis));
     auto diff = m_Op<MO::SubOp>(x, mean);
     auto var = m_Op<MO::MeanOp>(m_Op<MO::MulOp>(diff, diff), last_axis);
@@ -562,21 +559,12 @@ struct LayerNormPattern : public OpRewritePattern<MO::AddOp> {
           beta);
     }
 
-    if (!skip) {
-      rewriter.replaceOpWithNewOp<MO::LayerNormOp>(
-          op,
-          /*outputTypes=*/op->getResultTypes(),
-          /*inputOperands=*/
-          SmallVector<Value>{input, gamma, beta, eps});
-    } else {
-      rewriter.replaceOpWithNewOp<MO::LayerNormSkipOp>(
-          op,
-          /*outputTypes=*/op->getResultTypes(),
-          /*inputOperands=*/
-          SmallVector<Value>{input, gamma, beta, eps, skip});
-    }
+    rewriter.replaceOpWithNewOp<MO::LayerNormOp>(
+        op,
+        /*outputTypes=*/op->getResultTypes(),
+        /*inputOperands=*/
+        SmallVector<Value>{input, gamma, beta, eps});
     return mlir::success();
-    return failure();
   }
 };
 
