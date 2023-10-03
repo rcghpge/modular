@@ -56,6 +56,9 @@ DeviceRefAttr getDeviceOrDefault(MOHasDeviceInterface op);
 /// As above, but for any operation.
 DeviceRefAttr getDeviceOrDefaultAny(Operation *op);
 
+/// Returns true if op should be executed via the host.
+bool isViaHostAny(Operation *op);
+
 /// Returns the #M.device_ref annotation for type which appears in the
 /// the given MO graphOp. Returns the 'host' device if there is no such
 /// annotation on the type itself.

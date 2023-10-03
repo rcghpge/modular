@@ -50,7 +50,7 @@ struct DeviceSpecificDialect {
   /// for the device. This function is called once the lowered 'init' block
   /// has been established but before any MO ops are lowered.
   virtual LogicalResult
-  makeBufferBuilder(DeviceSpecAttr deviceSpec,
+  makeBufferBuilder(DeviceRefAttr hostDevice, DeviceSpecAttr deviceSpec,
                     MGP::MOGraphLoweringState &loweringState) = 0;
 };
 
@@ -75,7 +75,7 @@ public:
 
   /// Calls the makeBufferBuilder function appropriate for given args.
   LogicalResult
-  callMakeBufferBuilder(DeviceSpecAttr deviceSpec,
+  callMakeBufferBuilder(DeviceRefAttr hostDevice, DeviceSpecAttr deviceSpec,
                         MGP::MOGraphLoweringState &loweringState) const;
 
 private:
@@ -98,7 +98,8 @@ LogicalResult makeTypeBuilder(DeviceSpecAttr deviceSpec,
                               MGP::MOGraphLoweringState &loweringState);
 
 /// Call the registered make buffer builder function appropriate for given args.
-LogicalResult makeBufferBuilder(DeviceSpecAttr deviceSpec,
+LogicalResult makeBufferBuilder(DeviceRefAttr hostDevice,
+                                DeviceSpecAttr deviceSpec,
                                 MGP::MOGraphLoweringState &loweringState);
 
 } // namespace M::MO

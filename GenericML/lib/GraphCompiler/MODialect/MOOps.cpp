@@ -63,6 +63,13 @@ DeviceRefAttr MO::getDeviceOrDefaultAny(Operation *op) {
   return getHostDevice(graphOp);
 }
 
+bool MO::isViaHostAny(Operation *op) {
+  if (auto hasDeviceOp = dyn_cast<MOHasDeviceInterface>(op))
+    return hasDeviceOp.isViaHost();
+
+  return false;
+}
+
 DeviceRefAttr MO::getDeviceOrDefault(GraphOp graphOp, TensorType type) {
   // Check the type annotation.
   DeviceRefAttr device = type.getDeviceRef();
@@ -80,7 +87,7 @@ DeviceRefAttr MO::getHostDevice(GraphOp graphOp) {
     return deviceSpecs.getHost();
 
   // Fall back to 'cpu'.
-  return DeviceRefAttr::get(graphOp.getContext(), GML::kCPULabel, 0);
+  return DeviceRefAttr::get(graphOp.getContext(), kCPULabel, 0);
 }
 
 ErrorOr<DeviceSpecCollectionAttr> MO::getDeviceSpecsOrDefault(GraphOp graphOp) {

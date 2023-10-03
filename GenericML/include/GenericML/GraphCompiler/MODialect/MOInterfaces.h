@@ -42,9 +42,14 @@ class ShapeFuncMaterializationState;
 using M::KGEN::ParamDeclAttr;
 using M::KGEN::ParamDefValue;
 
-/// Name of optional attribute holding the #M.device_ref on which a MO
+/// Name of optional attribute holding the #M.device_ref on which a MO or MOGG
 /// op should be executed.
 constexpr StringRef kOperationDeviceRefAttrName = "device";
+
+/// Name of optional attribute signalling that a MO or MOGG op is to be called
+/// via a 'host' shim, which in turn calls a implementation on device matching
+/// the 'device' attribute.
+constexpr StringRef kOperationViaHostAttrName = "via_host";
 
 namespace impl {
 /// Verify that ranks are either all static and match or all dynamic.

@@ -63,7 +63,30 @@ def MO_HasDeviceInterface : OpInterface<"MOHasDeviceInterface"> {
       [{
         $_op->setAttr(kOperationDeviceRefAttrName, device);
       }]
-    >
+    >,
+
+    InterfaceMethod<
+      [{
+        Returns true if operation has been annotated to execute via the 'host'.
+        If so, the op is represented by a CPU shim, which in turn calls the
+        underlying implementation to executed according to the 'device'
+        annotation.
+      }],
+      "bool", "isViaHost", (ins ), [{}],
+      [{
+        return $_op->hasAttr(kOperationViaHostAttrName);
+      }]
+    >,
+
+    InterfaceMethod<
+      [{
+        Marks operation to be executed via the 'host'.
+      }],
+      "void", "setIsViaHost", (ins ), [{}],
+      [{
+        $_op->setAttr(kOperationViaHostAttrName, mlir::UnitAttr::get($_op->getContext()));
+      }]
+    >,
   ];
 }
 

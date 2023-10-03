@@ -36,14 +36,15 @@ LogicalResult DeviceBufferizationRegistry::callMakeTypeBuilder(
 }
 
 LogicalResult DeviceBufferizationRegistry::callMakeBufferBuilder(
-    DeviceSpecAttr deviceSpec, MGP::MOGraphLoweringState &loweringState) const {
+    DeviceRefAttr hostDevice, DeviceSpecAttr deviceSpec,
+    MGP::MOGraphLoweringState &loweringState) const {
   std::lock_guard<std::mutex> guard(mu);
   auto itr = map.find(deviceSpec.getRef().getLabel());
   if (itr == map.end()) {
     return loweringState.getGraph().emitOpError("no buffer builder for label '")
            << deviceSpec.getRef().getLabel() << "' has been registered.";
   }
-  return itr->second->makeBufferBuilder(deviceSpec, loweringState);
+  return itr->second->makeBufferBuilder(hostDevice, deviceSpec, loweringState);
 }
 
 //  TODO: May need to move into dedicated 'globals' shared library.
@@ -73,7 +74,9 @@ LogicalResult MO::makeTypeBuilder(DeviceSpecAttr deviceSpec,
   return getRegistry().callMakeTypeBuilder(deviceSpec, loweringState);
 }
 
-LogicalResult MO::makeBufferBuilder(DeviceSpecAttr deviceSpec,
+LogicalResult MO::makeBufferBuilder(DeviceRefAttr hostDevice,
+                                    DeviceSpecAttr deviceSpec,
                                     MGP::MOGraphLoweringState &loweringState) {
-  return getRegistry().callMakeBufferBuilder(deviceSpec, loweringState);
+  return getRegistry().callMakeBufferBuilder(hostDevice, deviceSpec,
+                                             loweringState);
 }

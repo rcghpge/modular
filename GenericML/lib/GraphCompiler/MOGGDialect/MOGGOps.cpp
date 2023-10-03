@@ -202,7 +202,7 @@ LogicalResult
 LoadCompiledKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   OpBuilder &builder = loweringState.getInitOpBuilder();
   MGP::BufferBuilder *bufferBuilder =
-      loweringState.getBufferBuilder(getDeviceRef());
+      loweringState.getBufferBuilder(MO::getDeviceOrDefault(*this));
   Value outChain = bufferBuilder->kernelLoadArchive(
       builder, getLoc(),
       /*inChain=*/loweringState.getInitChain(),
@@ -220,7 +220,8 @@ LoadCompiledKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
 LogicalResult
 ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
-  MGP::MOOpLoweringState opLoweringState(loweringState, *this, getDeviceRef());
+  MGP::MOOpLoweringState opLoweringState(loweringState, *this,
+                                         MO::getDeviceOrDefault(*this));
 
   // Gather the input buffers.
   SmallVector<MGP::BufferizedTensor> bufferizedInputs =
@@ -271,6 +272,7 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   SmallVector<Value> outDimensions;
   auto outChain = opLoweringState.kernelExecute(
       /*kernelName=*/getKernelName(),
+      /*isViaHost=*/isViaHost(),
       /*inChain=*/loweringState.getExecuteChain(),
       /*execContext=*/loweringState.getExecuteMgpContext(),
       /*buffers=*/buffers,

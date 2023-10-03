@@ -242,10 +242,22 @@ public:
                                   ElementsAttr archive, ArrayAttr kernelNames,
                                   ArrayAttr constantNames) = 0;
 
-  /// Returns the chain indicating the given kernel has completed execution.
+  /// Returns the chain indicating the given kernel has completed execution
+  /// on the given operands. Type parameters from the operand !mo.tensor types
+  /// must have already been lowered to their index typed dimensios. It is
+  /// possible for the kernel to return output dimensions, however this is
+  /// only used by synchronous shape functions.
+  ///
+  /// If isViaHost is true, the kernel is implemented in two parts:
+  ///  - the host side kernel, which is given arguments so as to be able
+  ///    to call/launch...
+  ///  - the device side kernel
+  /// The kernelExecute will just setup the correct execution op for the
+  /// host side kernel.
   virtual Value
   kernelExecute(OpBuilder &builder, Location loc, StringRef kernelName,
-                Value inChain, TypedValue<MGP::ContextType> execContext,
+                bool isViaHost, Value inChain,
+                TypedValue<MGP::ContextType> execContext,
                 SmallVector<Value> buffers,
                 ArrayRef<InOutSignatureAttr::InOutSemantics> bufferSemantics,
                 SmallVector<Value> inDimensions, uint64_t numOutDimensions,
@@ -301,13 +313,13 @@ public:
 
   Value
   kernelExecute(OpBuilder &builder, Location loc, StringRef kernelName,
-                Value inChain, TypedValue<MGP::ContextType> execContext,
+                bool isViaHost, Value inChain,
+                TypedValue<MGP::ContextType> execContext,
                 SmallVector<Value> buffers,
                 ArrayRef<InOutSignatureAttr::InOutSemantics> bufferSemantics,
                 SmallVector<Value> inDimensions, uint64_t numOutDimensions,
                 SmallVectorImpl<Value> &outDimensions) override;
 
-private:
   /// Track this compiled kernel as corresponding to this index in the
   /// compiled kernels context.
   void trackCompiledKernel(StringRef name, size_t index) {
@@ -323,6 +335,10 @@ private:
     return itr->second;
   }
 
+  /// Returns the slot holding the compiled kernels context in the !mgp.context.
+  uint64_t getSlot() const { return slot; }
+
+private:
   /// Maps the name of each compiled kernel to its index in the compiled kernel
   /// context.
   llvm::StringMap<size_t> compiledKernelsToIndex;

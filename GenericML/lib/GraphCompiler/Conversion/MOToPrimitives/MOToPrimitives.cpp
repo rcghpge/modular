@@ -175,7 +175,7 @@ LogicalResult MOGraphLowering::setupTypeBuildersForAllDevices() {
     return failure();
 
   for (DeviceSpecAttr deviceSpec : deviceSpecsOr->getDevices()) {
-    if (deviceSpec.getRef().getLabel() == GML::kCPULabel) {
+    if (deviceSpec.getRef().getLabel() == kCPULabel) {
       // We know how to work with MGP tensors for the CPU.
       loweringState.registerTypeBuilder(
           deviceSpec.getRef(), std::make_unique<MGP::CpuTypeBuilder>());
@@ -213,21 +213,28 @@ LogicalResult MOGraphLowering::setupBufferBuildersForAllDevices(Location loc) {
   if (failed(deviceSpecsOr))
     return failure();
 
+  // We must always establish the buffer builder for the 'host' first,
+  // since it may be needed by other device-specific builders.
+  DeviceSpecAttr hostDeviceSpec = deviceSpecsOr->getHostDeviceSpec();
+  assert(hostDeviceSpec.getRef() == getHostDevice(loweringState.getGraph()) &&
+         "The 'host' device must be a CPU");
+  // We always know how to work with the host CPU device.
+  if (failed(makeCPUBufferBuilder(hostDeviceSpec)))
+    return failure();
+
+  // Now we can establish buffer builders for all the other devices, if any.
   for (DeviceSpecAttr deviceSpec : deviceSpecsOr->getDevices()) {
-    if (deviceSpec.getRef().getLabel() == GML::kCPULabel) {
-      assert(deviceSpec.getRef() ==
-                 MO::getHostDevice(loweringState.getGraph()) &&
-             "The 'host' device must be a CPU");
-      // We always know how to work with CPU device.
-      if (failed(makeCPUBufferBuilder(deviceSpec)))
-        return failure();
-    } else {
-      // Rely on the registered 'makeBufferBuilder' function for this device.
-      // It may inject setup code into the 'init' block as required, and
-      // then register a BufferBuilder for the device spec's device reference.
-      if (failed(MO::makeBufferBuilder(deviceSpec, loweringState)))
-        return failure();
-    }
+    if (deviceSpec.getRef() == hostDeviceSpec.getRef())
+      continue;
+
+    // Rely on the registered 'makeBufferBuilder' function for this device.
+    // It may inject setup code into the 'init' block as required, and
+    // then register a BufferBuilder for the device spec's device reference.
+    // It may also grab the 'host' buffer builder to handle ops which execute
+    // via the host.
+    if (failed(MO::makeBufferBuilder(hostDeviceSpec.getRef(), deviceSpec,
+                                     loweringState)))
+      return failure();
   }
   return success();
 }
@@ -564,7 +571,7 @@ static Value getRebindResMgpTensor(MO::RebindOp rebindOp,
     if (!dynDimsOp)
       dynDimsOp = loweringState.getDynamicDims(
           loc, loweredInput,
-          MO::getDeviceOrDefault(loweringState.getGraph(), inputTy));
+          getDeviceOrDefault(loweringState.getGraph(), inputTy));
 
     // Forward the appropriate dynamic dimension from the input.
     runtimeDims.emplace_back(
@@ -601,7 +608,7 @@ LogicalResult MOGraphLowering::lowerRebind(MO::RebindOp rebindOp) {
   if (!decls.empty()) {
     MGP::CpuTensorSpecDimsDynamicOp dynDims = loweringState.getDynamicDims(
         rebindOp.getLoc(), loweredOutput,
-        MO::getDeviceOrDefault(loweringState.getGraph(), resTy));
+        getDeviceOrDefault(loweringState.getGraph(), resTy));
 
     MOSH::ShapeAttr resShape = resTy.getTypedShapeAttr();
     for (KGEN::ParamDeclAttr decl : decls) {
@@ -695,7 +702,8 @@ MOGraphLowering::lowerDebugTensorPrint(MO::DebugTensorPrintOp printOp) {
 }
 
 LogicalResult MOGraphLowering::lowerTransfer(MO::TransferOp transferOp) {
-  DeviceRefAttr srcDevice = transferOp.getInput().getType().getDeviceRef();
+  DeviceRefAttr srcDevice = getDeviceOrDefault(loweringState.getGraph(),
+                                               transferOp.getInput().getType());
   if (!srcDevice) {
     return transferOp->emitOpError(
         "requires operand tensor type to be annotated with the source device.");
