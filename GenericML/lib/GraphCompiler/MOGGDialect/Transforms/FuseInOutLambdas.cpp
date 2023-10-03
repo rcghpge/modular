@@ -266,8 +266,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
   }
 
   // Fuse the use of this kernel into the output lambda.
-  void fuseIntoOutputLambda(KernelOp kernelToFuseInto,
-                            StringAttr outputLambdaName) {
+  KernelOp fuseIntoOutputLambda(KernelOp kernelToFuseInto,
+                                StringAttr outputLambdaName) {
     MLIRContext *ctx = kernelToFuseInto.getContext();
 
     // Guarded to only fuse 1 output kernels.
@@ -463,12 +463,15 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
       oldOutputOp.erase();
       originalOuts.erase();
       userToFuseIn.replaceAllUsesWith(kernelToFuseInto);
-      // Matmul with mixed precision (bad case): Matmul kernels actually take in
-      // an output buffer despite having a lambda. Therefore, in mixed
-      // precision, we need another buffer to do the accumulation. This results
-      // in the kernel op having two return values to trigger allocations in
-      // later passes.
-    } else if (isMixedPrecision) {
+
+      return kernelToFuseInto;
+    }
+    // Matmul with mixed precision (bad case): Matmul kernels actually take in
+    // an output buffer despite having a lambda. Therefore, in mixed
+    // precision, we need another buffer to do the accumulation. This results
+    // in the kernel op having two return values to trigger allocations in
+    // later passes.
+    if (isMixedPrecision) {
       builder.setInsertionPoint(originalOuts);
       auto combinedPlaceholders = builder.create<MOGG::OutputPlaceholdersOp>(
           loc, ArrayRef<Type>{newPlaceholder->getResult(0).getType(),
@@ -487,18 +490,26 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
       builder.setInsertionPoint(kernelToFuseInto);
       auto newDstKernel = builder.create<MOGG::KernelOp>(
           loc, combinedPlaceholders.getResultTypes(),
-          kernelToFuseInto.getOperands());
+          kernelToFuseInto.getOperands(),
+          kernelToFuseInto.getOutputParamDeclsAttr(),
+          kernelToFuseInto.getInputFusionInterfaceAttr(),
+          kernelToFuseInto.getOutputFusionInterfaceAttr(),
+          kernelToFuseInto.getFusionBodyLambdaAttr(),
+          kernelToFuseInto.getIsViewOpAttr());
       newDstKernel.getBody().takeBody(kernelToFuseInto.getBody());
       userToFuseIn.getResult(0).replaceAllUsesWith(newDstKernel.getResult(0));
       userToFuseIn.erase();
       kernelToFuseInto.erase();
-      // Matmul without mixed precision (ugly case): Return value is unchanged
-      // and there is a single output placeholder. Nothing to do. The reason
-      // there is a third case at all is because performance is slightly better
-      // than having two outputs.
-    } else {
-      userToFuseIn.replaceAllUsesWith(kernelToFuseInto);
+
+      return newDstKernel;
     }
+    // Matmul without mixed precision (ugly case): Return value is unchanged
+    // and there is a single output placeholder. Nothing to do. The reason
+    // there is a third case at all is because performance is slightly better
+    // than having two outputs.
+    userToFuseIn.replaceAllUsesWith(kernelToFuseInto);
+
+    return kernelToFuseInto;
   }
 
   void runOnOperation() override {
@@ -515,7 +526,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         // Fuse into the output lambdas if possible.
         if (canDoOutputFusion(kernelToFuseInto, lambdas)) {
           StringAttr outputLambdaName = cast<StringAttr>(lambdas[0]);
-          fuseIntoOutputLambda(kernelToFuseInto, outputLambdaName);
+          kernelToFuseInto =
+              fuseIntoOutputLambda(kernelToFuseInto, outputLambdaName);
         }
       }
 
