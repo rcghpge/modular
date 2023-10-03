@@ -1611,9 +1611,28 @@ def MO_ConvOp : MO_TensorOp<"conv", [
     shape must have sizes of `input_rank - 2`, except padding, which must have size
     `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to
     corresponding dimensions of the input (after ignoring the batch and channel dimensions),
-    with padding representing a before/after pair for each axis. The padding values
-    are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
-    pad_dim2_after...). In 2D Convolution, dim1 here repesents H and dim2 represents W.
+    with padding representing a before/after pair for each axis.
+
+    The padding values are expected to take the form (pad_dim1_before,
+    pad_dim1_after, pad_dim2_before, pad_dim2_after...) and represent padding
+    0's before and after the indicated *spatial* dimensions in `input`. In 2D
+    Convolution, dim1 here repesents H and dim2 represents W. In python like
+    syntax, padding a 2x3 spatial `input` with [0, 1, 2, 1] would yield:
+
+    ```python
+    input = [
+      [1, 2, 3],
+      [4, 5, 6]
+    ]
+    # Shape is 2x3
+
+    padded_input = [
+      [0, 0, 1, 2, 3, 0],
+      [0, 0, 4, 5, 6, 0]
+      [0, 0, 0, 0, 0, 0]
+    ]
+    # Shape is 3x6
+    ```
 
     The input, output and filter tensors' ranks must match if statically known.
 
