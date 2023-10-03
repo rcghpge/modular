@@ -6,6 +6,7 @@
 # RUN: %mojo -debug-level full %s | FileCheck %s
 
 from tensor import TensorShape, TensorSpec
+from utils.vector import DynamicVector
 
 
 # CHECK: test_tensor_shape
@@ -42,6 +43,15 @@ fn test_tensor_shape():
     # CHECK: False
     print(TensorShape(1, 2, 3, 4) == TensorShape(1, 4, 5, 1))
 
+    var shape_vec = DynamicVector[Int]()
+    for i in range(1, 5):
+        shape_vec.push_back(i)
+
+    # CHECK: True
+    print(TensorShape(shapes=shape_vec) == TensorShape(1, 2, 3, 4))
+
+    shape_vec._del_old()
+
 
 # CHECK: test_tensor_spec
 fn test_tensor_spec():
@@ -70,6 +80,15 @@ fn test_tensor_spec():
         TensorSpec(DType.float32, 1, 2, 3, 4)
         == TensorSpec(DType.float32, 1, 4, 5, 1)
     )
+
+    var shape_vec = DynamicVector[Int]()
+    for i in range(1, 5):
+        shape_vec.push_back(i)
+
+    # CHECK: 1x2x3x4xfloat32
+    print(TensorSpec(DType.float32, shape_vec).__str__())
+
+    shape_vec._del_old()
 
 
 fn main():
