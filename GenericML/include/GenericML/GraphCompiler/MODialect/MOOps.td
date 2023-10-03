@@ -2896,7 +2896,7 @@ class MO_ArgMinMaxOp<string mnemonic> : MO_ReductionOp<mnemonic> {
     MO_RankedScalarIndexTensor:$axis,
     MO_ParamDecls:$outputParamDecls);
 
-  let results = (outs MO_I64Tensor:$result);
+  let results = (outs MO_IndicesTensor:$result);
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
     functional-type(operands, results)

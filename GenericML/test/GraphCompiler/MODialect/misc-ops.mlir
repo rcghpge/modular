@@ -853,6 +853,15 @@ mo.graph @arg_max_2d_inner_axis_dynamic_rank(%arg: !mo.tensor<?, f32>) -> !mo.te
   mo.output %res : !mo.tensor<?, si64>
 }
 
+// CHECK: mo.graph @arg_max_2d_inner_axis_int32(%[[ARG:.*]]: !mo.tensor<[7, 3], si32>) -> !mo.tensor<[7, 1], si32> no_inline
+mo.graph @arg_max_2d_inner_axis_int32(%arg: !mo.tensor<[7, 3], si32>) -> !mo.tensor<[7, 1], si32> {
+  // CHECK-NEXT: %[[AXIS:.*]] = mo.constant
+  %axis = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
+  // CHECK-NEXT: %[[RES:.*]] = mo.arg_max(%[[ARG]], %[[AXIS]]) : (!mo.tensor<[7, 3], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[7, 1], si32>
+  %res = mo.arg_max(%arg, %axis) : (!mo.tensor<[7, 3], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[7, 1], si32>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[7, 1], si32>
+  mo.output %res : !mo.tensor<[7, 1], si32>
+}
 
 //===----------------------------------------------------------------------===//
 // ArgMinOp
