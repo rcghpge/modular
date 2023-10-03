@@ -8,6 +8,8 @@ from os import getenv
 from sys import external_call
 from sys.ffi import DLHandle
 from memory.unsafe import DTypePointer
+from ._status import Status
+from ._utils import *
 
 
 struct AIEngine:
@@ -31,10 +33,12 @@ struct AIEngine:
         Returns:
             Version as string.
         """
-        let version_string = self.lib.get_function[
-            fn () -> DTypePointer[DType.int8]
-        ](self.VersionFnName)()
-        return String(version_string)
+        let version = call_dylib_func[CString](self.lib, Self.VersionFnName)
+        return version.__str__()
+
+    fn get_status(self) -> Status:
+        """Creates a Status object."""
+        return Status(self.lib)
 
     fn __del__(owned self):
         self.lib._del_old()
