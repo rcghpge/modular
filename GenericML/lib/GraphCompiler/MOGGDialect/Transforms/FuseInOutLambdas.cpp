@@ -267,7 +267,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
   // Fuse the use of this kernel into the output lambda.
   KernelOp fuseIntoOutputLambda(KernelOp kernelToFuseInto,
-                                StringAttr outputLambdaName) {
+                                StringAttr outputLambdaName,
+                                SmallVector<KernelOp> &opsToErase) {
     MLIRContext *ctx = kernelToFuseInto.getContext();
 
     // Guarded to only fuse 1 output kernels.
@@ -498,8 +499,9 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
           kernelToFuseInto.getIsViewOpAttr());
       newDstKernel.getBody().takeBody(kernelToFuseInto.getBody());
       userToFuseIn.getResult(0).replaceAllUsesWith(newDstKernel.getResult(0));
-      userToFuseIn.erase();
-      kernelToFuseInto.erase();
+
+      opsToErase.push_back(userToFuseIn);
+      opsToErase.push_back(kernelToFuseInto);
 
       return newDstKernel;
     }
@@ -515,6 +517,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
   void runOnOperation() override {
     MO::GraphOp moGraph = getOperation();
 
+    SmallVector<MOGG::KernelOp> kernelOpsToErase;
     for (MOGG::KernelOp kernelToFuseInto : moGraph.getOps<MOGG::KernelOp>()) {
       std::optional<ArrayAttr> outputLambdas =
           kernelToFuseInto.getOutputFusionInterface();
@@ -526,8 +529,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         // Fuse into the output lambdas if possible.
         if (canDoOutputFusion(kernelToFuseInto, lambdas)) {
           StringAttr outputLambdaName = cast<StringAttr>(lambdas[0]);
-          kernelToFuseInto =
-              fuseIntoOutputLambda(kernelToFuseInto, outputLambdaName);
+          kernelToFuseInto = fuseIntoOutputLambda(
+              kernelToFuseInto, outputLambdaName, kernelOpsToErase);
         }
       }
 
@@ -547,6 +550,9 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         }
       }
     }
+
+    for (KernelOp kernelOp : kernelOpsToErase)
+      kernelOp.erase();
   }
 };
 
