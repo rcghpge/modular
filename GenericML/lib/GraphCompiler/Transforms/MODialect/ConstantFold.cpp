@@ -141,6 +141,16 @@ ShapedType typeToShaped(TensorType type) {
   return ArrayType::get(type.getContext(), size, type.getElementType());
 }
 
+/// Marker for ops that are constant foldable. Currently MO ops and KGEN param
+/// ops.
+bool isConstantFoldable(Operation *op) {
+  return (isa<MO::MODialect>(op->getDialect()) ||
+          dyn_cast<KGEN::ParamOpInterface>(op) ||
+          dyn_cast<KGEN::ParamConstantOp>(op) ||
+          dyn_cast<KGEN::ParamDeclareOp>(op)) &&
+         !dyn_cast<MOControlOpInterface>(op);
+}
+
 /// Simple struct holding results of a model execution.
 struct ModelResult {
   /// Mapping from subgraph output operaation to the constants that should
@@ -325,8 +335,8 @@ constantSubgraphs(MO::GraphOp graph,
       continue;
     }
 
-    // Skip yield, return, etc.
-    if (dyn_cast<MOControlOpInterface>(op)) {
+    // Skip non-foldable ops
+    if (!isConstantFoldable(op)) {
       nonConst.insert(op);
       continue;
     }
