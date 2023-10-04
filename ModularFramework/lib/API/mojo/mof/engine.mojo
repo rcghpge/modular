@@ -17,6 +17,7 @@ struct AIEngine:
 
     """Handle to Modular AI Engine library."""
     var lib: DLHandle
+    var can_close_lib: Bool
 
     alias VersionFnName = "M_version"
 
@@ -26,6 +27,11 @@ struct AIEngine:
             raise "cannot find ai engine library. Please set MODULAR_AI_ENGINE_LIB_PATH."
 
         self.lib = DLHandle(engine_lib)
+        self.can_close_lib = True
+
+    fn __moveinit__(inout self, owned existing: Self):
+        self.lib = existing.lib
+        self.can_close_lib = exchange[Bool](existing.can_close_lib, False)
 
     fn get_version(self) -> String:
         """Returns version of modular AI engine.
@@ -40,5 +46,9 @@ struct AIEngine:
         """Creates a Status object."""
         return Status(self.lib)
 
+    fn __enter__(owned self) -> Self:
+        return self ^
+
     fn __del__(owned self):
-        self.lib._del_old()
+        if self.can_close_lib:
+            self.lib._del_old()

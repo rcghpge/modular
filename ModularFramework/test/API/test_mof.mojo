@@ -23,16 +23,14 @@ fn test_status() raises:
     # CHECK: test_status
     print("====test_status")
 
-    let engine = AIEngine()
-    let status = engine.get_status()
+    with AIEngine() as engine:
+        let status = engine.get_status()
 
-    # CHECK: No Error!
-    if status:
-        print(status.__str__())
-    else:
-        print("No Error!")
-
-    _ = engine ^
+        # CHECK: No Error!
+        if status:
+            print(status.__str__())
+        else:
+            print("No Error!")
 
 
 fn main() raises:
