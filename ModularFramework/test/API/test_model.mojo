@@ -29,6 +29,25 @@ fn test_model_compilation() raises:
             # CHECK: 1
             print(compiled_model.num_model_inputs())
 
+            let input_names = compiled_model.get_model_input_names()
+            # CHECK: input
+            for name in input_names:
+                print(name)
+
+            # CHECK: input
+            print(input_names[0])
+
+            # CHECK: 1
+            print(compiled_model.num_model_outputs())
+
+            let output_names = compiled_model.get_model_output_names()
+            # CHECK: output
+            for name in output_names:
+                print(name)
+
+            # CHECK: output
+            print(output_names[0])
+
 
 fn main() raises:
     test_model_compilation()

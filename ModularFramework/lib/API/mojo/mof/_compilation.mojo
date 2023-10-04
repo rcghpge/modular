@@ -9,6 +9,7 @@ from sys.ffi import DLHandle
 from ._utils import *
 from ._status import *
 from ._context import *
+from ._model_specs import *
 
 
 @value
@@ -74,6 +75,7 @@ struct CCompiledModel:
 
     alias FreeCompiledModelFnName = "M_freeCompiledModel"
     alias GetNumInputsFnName = "M_getNumModelInputs"
+    alias GetNumOutputsFnName = "M_getNumModelInputs"
 
     fn num_model_inputs(self, borrowed lib: DLHandle) raises -> Int:
         """Gets the number of inputs of the model."""
@@ -86,6 +88,17 @@ struct CCompiledModel:
             raise Error(status.__str__())
         return num_inputs
 
+    fn num_model_outputs(self, borrowed lib: DLHandle) raises -> Int:
+        """Gets the number of inputs of the model."""
+
+        let status = Status(lib)
+        let num_outputs = call_dylib_func[Int](
+            lib, Self.GetNumOutputsFnName, self, status.ptr
+        )
+        if status:
+            raise Error(status.__str__())
+        return num_outputs
+
     fn free(self, borrowed lib: DLHandle):
         call_dylib_func(lib, Self.FreeCompiledModelFnName, self)
 
@@ -97,6 +110,8 @@ struct CompiledModel:
     var lib: DLHandle
 
     alias CompileModelFnName = "M_compileModelSync"
+    alias GetModelInputSpecByNameFnName = "M_getModelInputSpecByName"
+    alias GetModelOutputSpecByNameFnName = "M_getModelOutputSpecByName"
 
     fn __init__(
         inout self,
@@ -129,6 +144,21 @@ struct CompiledModel:
         """Gets the number of inputs of the model."""
 
         return self.ptr.num_model_inputs(self.lib)
+
+    fn get_model_input_names(self) raises -> InputTensorNames:
+        """Gets the names of model inputs."""
+
+        return InputTensorNames(self.ptr, self.num_model_inputs(), self.lib)
+
+    fn num_model_outputs(self) raises -> Int:
+        """Gets the number of inputs of the model."""
+
+        return self.ptr.num_model_outputs(self.lib)
+
+    fn get_model_output_names(self) raises -> OutputTensorNames:
+        """Gets the names of model outputs."""
+
+        return OutputTensorNames(self.ptr, self.num_model_outputs(), self.lib)
 
     fn __del__(owned self):
         self.ptr.free(self.lib)
