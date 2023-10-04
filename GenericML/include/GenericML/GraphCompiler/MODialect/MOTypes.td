@@ -299,8 +299,9 @@ def MO_PaddingLike : MO_ConfinedTensor<
 /// Confines the MO_TensorType so that it has SI64 elements, and rank 1 if the
 /// rank is static.
 def MO_ShapeLikeIfRanked : MO_ConfinedTensor<
-  [HasRankIfRankedPred<1>, HasSI64ElementTypePred],
-  "rank 1 or unranked with signed 64 integer elements">;
+  [HasRankIfRankedPred<1>, Or<[HasSI64ElementTypePred,
+                               HasSI32ElementTypePred]>],
+  "rank 1 or unranked with signed 64 or signed 32 integer elements">;
 
 /// Confines the MO_TensorType so that it has rank 1 if rank is static.
 def MO_VectorIfRanked : MO_ConfinedTensor<
