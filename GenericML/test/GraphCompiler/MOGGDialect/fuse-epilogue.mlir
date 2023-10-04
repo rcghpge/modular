@@ -62,7 +62,7 @@ mo.graph @checkNoFuseInputInterfaceDisabled<N, M, K>(%arg0: !mo.tensor<[M, K], f
     mogg.invoke @output_0_fn(%arg3, %4) : !mogg.indices, !mogg.simd<f32>
     mogg.output
   }
-    mogg.call "elementwise" [@elemwise_compute_lambda](%2) {single_thread_blocking_override = false} : !mo.tensor<[M, N], f32>
+    mogg.call "elementwise" [@elemwise_compute_lambda](%2) {single_thread_blocking_override = false, target = "cpu"} : !mo.tensor<[M, N], f32>
     mogg.output %2 : !mo.tensor<[M, N], f32>
   } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = [""], outputFusionInterface = ["output_0_fn"]}
   mo.output %1 : !mo.tensor<[M, N], f32>
@@ -99,7 +99,7 @@ mo.graph @checkNoFuseOutputInterfaceDisabled<N, M, K>(%arg0: !mo.tensor<[M, K], 
     mogg.invoke @output_0_fn(%arg3, %4) : !mogg.indices, !mogg.simd<f32>
     mogg.output
   }
-    mogg.call "elementwise" [@elemwise_compute_lambda](%2) {single_thread_blocking_override = false} : !mo.tensor<[M, N], f32>
+    mogg.call "elementwise" [@elemwise_compute_lambda](%2) {single_thread_blocking_override = false, target = "cpu"} : !mo.tensor<[M, N], f32>
     mogg.output %2 : !mo.tensor<[M, N], f32>
   } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn"], outputFusionInterface = ["output_0_fn"]}
   mo.output %1 : !mo.tensor<[M, N], f32>
@@ -136,7 +136,7 @@ mo.graph @checkNoFuseNoElementwiseAttr<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, 
     mogg.invoke @output_0_fn(%arg3, %4) : !mogg.indices, !mogg.simd<f32>
     mogg.output
   }
-    mogg.call "elementwise" [@elemwise_compute_lambda](%2) {single_thread_blocking_override = false} : !mo.tensor<[M, N], f32>
+    mogg.call "elementwise" [@elemwise_compute_lambda](%2) {single_thread_blocking_override = false, target = "cpu"} : !mo.tensor<[M, N], f32>
     mogg.output %2 : !mo.tensor<[M, N], f32>
   } {inputFusionInterface = ["input_0_fn"], outputFusionInterface = ["output_0_fn"]}
   mo.output %1 : !mo.tensor<[M, N], f32>
@@ -173,7 +173,7 @@ mo.graph @mixed_precision(%arg0: !mo.tensor<[2, 2], ui32>, %arg1: !mo.tensor<[2,
       mogg.invoke @output_0_fn(%arg3, %4) : !mogg.indices, !mogg.simd<f32>
       mogg.output
     }
-    mogg.call "elementwise" [@elemwise_compute_lambda](%2) {single_thread_blocking_override = false} : !mo.tensor<[2, 2], f32>
+    mogg.call "elementwise" [@elemwise_compute_lambda](%2) {single_thread_blocking_override = false, target = "cpu"} : !mo.tensor<[2, 2], f32>
     mogg.output %2 : !mo.tensor<[2, 2], f32>
   } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn"], outputFusionInterface = ["output_0_fn"]}
   mo.output %1 : !mo.tensor<[2, 2], f32>

@@ -76,7 +76,7 @@ struct KernelRecord {
     return flavor == kDirect || flavor == kMOGGElemwise;
   }
 
-  bool isNonElemwise() const { return flavor != kMOGGElemwise; }
+  bool isElementwise() const { return flavor == kMOGGElemwise; }
 };
 
 // Helper to add a map to a jit kernel for a given mo op.
@@ -160,7 +160,7 @@ struct MOOpPattern : public RewritePattern {
     }
 
     // Helper to encapsulate all the code required to lower to a kernel.
-    MO::KernelLowererHelper helper(op, record.isNonElemwise(), registry,
+    MO::KernelLowererHelper helper(op, record.isElementwise(), registry,
                                    moggBindings);
 
     // Current jit kernel constraints:

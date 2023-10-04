@@ -158,8 +158,16 @@ mangleBlock(mlir::Block &block, DeviceRefAttr device,
             llvm::raw_string_ostream(typeStr) << asType;
             name += typeStr + "_";
 
+          } else if (auto asString = dyn_cast<StringAttr>(named.getValue())) {
+            name += asString.getValue();
+            name += "_";
+
           } else {
-            assert(false && "Unsupported parameter attribute type");
+            std::string errStr;
+            llvm::raw_string_ostream os(errStr);
+            os << "Unsupported parameter '" << named.getName().getValue()
+               << "' with value " << named.getValue();
+            return Error(errStr);
           }
         }
       }
@@ -401,6 +409,24 @@ struct JitCompileKernels
     return baseModuleRef;
   }
 
+  /// Returns true if we should compile the MOGG::KernelOp for the given
+  /// deviceSpec.
+  bool shouldProcessKernelOpForDevice(DeviceSpecAttr hostDeviceSpec,
+                                      DeviceSpecAttr deviceSpec,
+                                      MOGG::KernelOp op) {
+    if (op.isViaHost()) {
+      // Though the op's device annotation may be for some other device,
+      // it will be called via the 'host' device. So only compile for this
+      // op if the current device spec is the host.
+      // We must now be very careful to distinguish deviceSpec.getRef() from
+      // op.getDeviceRef().
+      return deviceSpec.getRef() == hostDeviceSpec.getRef();
+    } else {
+      // The op will be compiled for its device.
+      return MO::getDeviceOrDefault(op) == deviceSpec.getRef();
+    }
+  }
+
   ErrorOrSuccess runPass(MO::GraphOp graph, MOGG::MojoRegisterOp registry) {
     ErrorOr<DeviceSpecCollectionAttr> deviceSpecsOr =
         MO::getDeviceSpecsOrDefault(graph);
@@ -447,7 +473,7 @@ struct JitCompileKernels
       // Build stubs for all JIT operations and replace them with symbolic calls
       // to the kernels in the KGEN stub.
       graph.walk([&](MOGG::KernelOp op) {
-        if (MO::getDeviceOrDefault(op) != deviceSpec.getRef())
+        if (!shouldProcessKernelOpForDevice(hostDeviceSpec, deviceSpec, op))
           return WalkResult::skip();
 
         // We collect all the parameters used by this operation and track them
