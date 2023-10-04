@@ -160,5 +160,8 @@ struct CompiledModel:
 
         return OutputTensorNames(self.ptr, self.num_model_outputs(), self.lib)
 
+    fn borrow_ptr(self) -> CCompiledModel:
+        return self.ptr
+
     fn __del__(owned self):
         self.ptr.free(self.lib)

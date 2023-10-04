@@ -11,6 +11,7 @@ from sys import argv
 
 
 fn test_model_compilation() raises:
+    # CHECK: test_model_compilation
     print("====test_model_compilation")
 
     let args = argv()
@@ -49,5 +50,25 @@ fn test_model_compilation() raises:
             print(output_names[0])
 
 
+fn test_model() raises:
+    # CHECK: test_model
+    print("====test_model")
+
+    let args = argv()
+
+    # CHECK: 2
+    print(len(args))
+
+    # CHECK: mo.model
+    print(args[1])
+
+    let model_path = args[1]
+
+    with AIEngine() as engine:
+        with engine.get_session() as session:
+            let model = session.load_model(model_path)
+
+
 fn main() raises:
     test_model_compilation()
+    test_model()

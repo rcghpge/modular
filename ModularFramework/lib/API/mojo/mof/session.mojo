@@ -8,6 +8,7 @@ from ._context import *
 from ._status import *
 from sys.ffi import DLHandle
 from ._compilation import CompiledModel
+from ._model import Model
 
 
 struct InferenceSession:
@@ -31,3 +32,15 @@ struct InferenceSession:
         Compiles the model given model path.
         """
         return CompiledModel(self.context.borrow_ptr(), model_path, self.lib)
+
+    fn load_model(self, model_path: StringRef) raises -> Model:
+        """
+        Compiles and initializes model given path.
+        """
+        let compiled_model = self.compile_model(model_path)
+        let model = Model(
+            self.context.borrow_ptr(), compiled_model.borrow_ptr(), self.lib
+        )
+        # Keep compiled model alive until model has been awaited.
+        _ = compiled_model ^
+        return model ^
