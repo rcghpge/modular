@@ -30,14 +30,7 @@ tool_dirs = [
     config.mlir_tools_dir,
     config.llvm_tools_dir,
 ]
-tools = [
-    "mo-opt",
-    "modbench",
-    "mt",
-    "is-cuda-available",
-    "mo-cuda-opt",
-    "hello_cuda_async_events",
-]
+tools = ["modbench", "mt"]
 
 llvm_config.with_environment(
     "PYTHONPATH",
@@ -46,7 +39,3 @@ llvm_config.with_environment(
 )
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)
-
-output = subprocess.run("is-cuda-available")
-if output.returncode == 0:
-    config.available_features.add("cuda")
