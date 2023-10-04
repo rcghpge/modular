@@ -207,3 +207,16 @@ mo.graph @fold_nested_max<D0, bs -> out>(
   // CHECK-NEXT: mo.output<[[D1]]> %[[INPUT_RS]] : !mo.tensor<[[[D1]], 768], f32>
   mo.output<D2> %res : !mo.tensor<[D2, 768], f32>
 }
+
+// CHECK:      mo.graph @non_mo_tensor_input<[[D0:.*]]>(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[[[D0]]], f32>,
+// CHECK-SAME:   %[[SHAPE:.*]]: !mosh.ape
+// CHECK-SAME: ) -> (!mo.tensor<[[[D0]]], f32>, !mosh.ape) no_inline {
+mo.graph @non_mo_tensor_input<D0 -> D1>(
+  %input: !mo.tensor<[D0], f32>,
+  %shape: !mosh.ape
+) -> (!mo.tensor<[D1], f32>, !mosh.ape) {
+
+  // CHECK-NEXT: mo.output %[[INPUT]], %[[SHAPE]] : !mo.tensor<[[[D0]]], f32>, !mosh.ape
+  mo.output<D0> %input, %shape : !mo.tensor<[D0], f32>, !mosh.ape
+}
