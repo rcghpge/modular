@@ -87,5 +87,8 @@ struct RuntimeContext:
         )
         self.lib = existing.lib
 
+    fn borrow_ptr(self) -> CRuntimeContext:
+        return self.ptr
+
     fn __del__(owned self):
         self.ptr.free(self.lib)

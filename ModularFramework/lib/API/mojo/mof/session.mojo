@@ -7,6 +7,7 @@
 from ._context import *
 from ._status import *
 from sys.ffi import DLHandle
+from ._compilation import CompiledModel
 
 
 struct InferenceSession:
@@ -24,3 +25,9 @@ struct InferenceSession:
 
     fn __enter__(owned self) -> Self:
         return self ^
+
+    fn compile_model(self, model_path: StringRef) raises -> CompiledModel:
+        """
+        Compiles the model given model path.
+        """
+        return CompiledModel(self.context.borrow_ptr(), model_path, self.lib)
