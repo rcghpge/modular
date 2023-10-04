@@ -10,6 +10,7 @@ from sys.ffi import DLHandle
 from memory.unsafe import DTypePointer
 from ._status import Status
 from ._utils import *
+from .session import InferenceSession
 
 
 struct AIEngine:
@@ -48,6 +49,12 @@ struct AIEngine:
 
     fn __enter__(owned self) -> Self:
         return self ^
+
+    fn get_session(self) raises -> InferenceSession:
+        """
+        Gets an InferenceSession Object.
+        """
+        return InferenceSession(self.lib)
 
     fn __del__(owned self):
         if self.can_close_lib:

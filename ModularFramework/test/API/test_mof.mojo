@@ -33,6 +33,15 @@ fn test_status() raises:
             print("No Error!")
 
 
+fn test_session() raises:
+    # CHECK: test_session
+    print("====test_session")
+
+    with AIEngine() as engine:
+        let session = engine.get_session()
+
+
 fn main() raises:
     test_mof_version()
     test_status()
+    test_session()

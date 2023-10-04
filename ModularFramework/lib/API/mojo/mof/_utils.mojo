@@ -57,6 +57,16 @@ struct SingleArgCallable[ResultTy: AnyType, ArgTy: AnyType]:
         return self.func(arg)
 
 
+@value
+@register_passable("trivial")
+struct TwoArgCallable[ResultTy: AnyType, Arg1Ty: AnyType, Arg2Ty: AnyType]:
+    var func: fn (Arg1Ty, Arg2Ty) -> ResultTy
+
+    @always_inline("nodebug")
+    fn __call__(self, arg1: Arg1Ty, arg2: Arg2Ty) -> ResultTy:
+        return self.func(arg1, arg2)
+
+
 @always_inline("nodebug")
 fn call_dylib_func[
     ResultTy: AnyType
@@ -79,3 +89,15 @@ fn call_dylib_func[
 ](borrowed lib: DLHandle, name: StringRef, arg: ArgTy) -> ResultTy:
     """Call function `name` in dylib with one result and one argument."""
     return lib.get_function[SingleArgCallable[ResultTy, ArgTy]](name)(arg)
+
+
+@always_inline("nodebug")
+fn call_dylib_func[
+    ResultTy: AnyType, Arg1Ty: AnyType, Arg2Ty: AnyType
+](
+    borrowed lib: DLHandle, name: StringRef, arg1: Arg1Ty, arg2: Arg2Ty
+) -> ResultTy:
+    """Call function `name` in dylib with one result and two arguments."""
+    return lib.get_function[TwoArgCallable[ResultTy, Arg1Ty, Arg2Ty]](name)(
+        arg1, arg2
+    )
