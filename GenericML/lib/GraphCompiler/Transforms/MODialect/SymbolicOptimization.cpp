@@ -1801,11 +1801,14 @@ struct SinkSplitThroughElementwisePattern : public OpRewritePattern<SplitOp> {
     OperationState splitOpState(loc, op->getName(), newSplitOpOperands,
                                 newSplitTypes, op->getAttrs(),
                                 op->getSuccessors());
-    auto newSplit = rewriter.create(splitOpState)->getResults();
+    auto newSplit = rewriter.create(splitOpState);
 
-    for (auto [elemwise, split] : llvm::zip(op->getUsers(), newSplit)) {
-      rewriter.replaceAllUsesWith(elemwise->getResult(0), split);
-      rewriter.eraseOp(elemwise);
+    SmallVector<Operation *> elemwiseOps(op->getUsers());
+    SmallVector<Value> splitResults(newSplit->getResults());
+    for (uint64_t i = 0; i < elemwiseOps.size(); ++i) {
+      rewriter.replaceAllUsesWith(elemwiseOps[i]->getResult(0),
+                                  splitResults[i]);
+      rewriter.eraseOp(elemwiseOps[i]);
     }
 
     rewriter.eraseOp(op);
@@ -1903,10 +1906,11 @@ struct SinkSplitThroughReshapeLikeOpsPattern
                                 op->getSuccessors());
     auto newSplit = rewriter.create(splitOpState);
 
-    for (auto [reshape, split] :
-         llvm::zip(op->getUsers(), newSplit->getResults())) {
-      rewriter.replaceAllUsesWith(reshape->getResult(0), split);
-      rewriter.eraseOp(reshape);
+    SmallVector<Operation *> reshapeOps(op->getUsers());
+    SmallVector<Value> splitResults(newSplit->getResults());
+    for (uint64_t i = 0; i < reshapeOps.size(); ++i) {
+      rewriter.replaceAllUsesWith(reshapeOps[i]->getResult(0), splitResults[i]);
+      rewriter.eraseOp(reshapeOps[i]);
     }
 
     rewriter.eraseOp(op);
