@@ -75,6 +75,15 @@ struct Builder:
         # Or does that only work with things statically linked into compiler?
         self.lib = DLHandle(mof_lib, RTLD.NOW | RTLD.GLOBAL)
 
+    fn __copyinit__(inout self, other: Builder):
+        self.lib = other.lib
+
+    fn __del__(owned self):
+        # TODO: self.lib._del_old() when we have refcounts.
+        # For now, we leak this handle, in exchange for the ability to freely
+        # copy Builders around.
+        pass
+
     ### Graph helpers
 
     fn new_graph(
@@ -127,9 +136,6 @@ struct Builder:
             "MOBI_debugPrintModule"
         )(module)
 
-    fn __del__(owned self):
-        self.lib._del_old()
-
     ### Symbol helers
 
     fn new_tuple(inout self) raises -> TuplePtr:
@@ -139,6 +145,13 @@ struct Builder:
         return self.lib.get_function[fn (TuplePtr, SymbolPtr) -> NoneType](
             "MOBI_extendTuple"
         )(t, s)
+
+    fn get_tuple_item(
+        inout self, inout t: TuplePtr, pos: UInt32
+    ) raises -> SymbolPtr:
+        return self.lib.get_function[fn (TuplePtr, UInt32) -> SymbolPtr](
+            "MOBI_getTupleItem"
+        )(t, pos)
 
     ### Type helers
 

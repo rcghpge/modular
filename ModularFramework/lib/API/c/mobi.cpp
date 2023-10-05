@@ -77,6 +77,10 @@ MODULAR_API_EXPORT void MOBI_extendTuple(M_Tuple *t, M_Symbol *s) {
   t->tuple.add(s->symbol);
 }
 
+MODULAR_API_EXPORT M_Symbol *MOBI_getTupleItem(M_Tuple *t, uint32_t pos) {
+  return new M_Symbol{t->tuple.getItem(pos)};
+}
+
 /// Type
 
 MODULAR_API_EXPORT M_Type *MOBI_si32Scalar(M_Module *m) {
