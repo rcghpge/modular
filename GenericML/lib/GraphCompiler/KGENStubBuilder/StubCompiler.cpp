@@ -44,6 +44,7 @@ LogicalResult StubCompiler::elaborateKGEN() {
 
   BuildInfoAttr buildInfo =
       BuildInfoAttr::getForCurrentBuild(kgenModule->getContext());
+  setBuildInfo(kgenModule, buildInfo);
 
   mlir::PassManager pm(kgenModule->getContext());
 
