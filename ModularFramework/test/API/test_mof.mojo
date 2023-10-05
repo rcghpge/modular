@@ -6,7 +6,7 @@
 # UNSUPPORTED: windows
 # RUN: %mojo -I %mof_pkg_dir %s | FileCheck %s
 
-from mof import AIEngine
+from mof import AIEngine, MOFDtype
 
 
 fn test_mof_version() raises:
@@ -41,7 +41,19 @@ fn test_session() raises:
         let session = engine.get_session()
 
 
+fn test_dtype() raises:
+    # CHECK: test_dtype
+    print("====test_dtype")
+
+    # CHECK: True
+    print(MOFDtype(DType.int8) == MOFDtype.int8)
+
+    # CHECK: True
+    print(MOFDtype(DType.int8).to_dtype() == DType.int8)
+
+
 fn main() raises:
     test_mof_version()
     test_status()
     test_session()
+    test_dtype()

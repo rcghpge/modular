@@ -6,3 +6,4 @@
 """Implements the mof package."""
 
 from .engine import AIEngine
+from ._dtypes import MOFDtype
