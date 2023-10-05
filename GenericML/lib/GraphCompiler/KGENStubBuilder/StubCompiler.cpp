@@ -18,6 +18,7 @@
 #include "KGEN/Compiler/ObjectCompiler.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
+#include "KGEN/Package/Package.h"
 #include "KGEN/ToolCommon/CLOptions.h"
 #include "LLCL/Runtime/Algorithms.h"
 #include "Support/MArchTarget/Host.h"
@@ -55,8 +56,9 @@ LogicalResult StubCompiler::elaborateKGEN() {
   if (targetInfoOr)
     return kgenModule->emitError(targetInfoOr.getError());
 
+  KGEN::CompilationOptions compileOptions = {shouldSearch};
   KGEN::populateElaborateModulePasses(pm, runtime, *targetInfoOr, buildInfo,
-                                      {shouldSearch});
+                                      compileOptions);
 
   if (!saveTempsPrefix.empty()) {
     std::string outPath = saveTempsPrefix + ".kgen.prelaboration.mlir";
