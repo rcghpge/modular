@@ -11,6 +11,8 @@ from memory.unsafe import DTypePointer
 from ._status import Status
 from ._utils import *
 from .session import InferenceSession
+from ._tensor_spec import MOFTensorSpec
+from tensor import TensorSpec
 
 
 struct AIEngine:
@@ -55,6 +57,11 @@ struct AIEngine:
         Gets an InferenceSession Object.
         """
         return InferenceSession(self.lib)
+
+    fn get_as_engine_tensor_spec(
+        self, name: StringRef, spec: TensorSpec
+    ) -> MOFTensorSpec:
+        return MOFTensorSpec(name, spec, self.lib)
 
     fn __del__(owned self):
         if self.can_close_lib:

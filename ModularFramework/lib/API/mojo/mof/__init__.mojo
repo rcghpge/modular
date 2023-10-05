@@ -7,3 +7,4 @@
 
 from .engine import AIEngine
 from ._dtypes import MOFDtype
+from ._tensor_spec import MOFTensorSpec

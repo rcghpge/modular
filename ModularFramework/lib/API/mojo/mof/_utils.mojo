@@ -79,6 +79,24 @@ struct ThreeArgCallable[
         return self.func(arg1, arg2, arg3)
 
 
+@value
+@register_passable("trivial")
+struct FourArgCallable[
+    ResultTy: AnyType,
+    Arg1Ty: AnyType,
+    Arg2Ty: AnyType,
+    Arg3Ty: AnyType,
+    Arg4Ty: AnyType,
+]:
+    var func: fn (Arg1Ty, Arg2Ty, Arg3Ty, Arg4Ty) -> ResultTy
+
+    @always_inline("nodebug")
+    fn __call__(
+        self, arg1: Arg1Ty, arg2: Arg2Ty, arg3: Arg3Ty, arg4: Arg4Ty
+    ) -> ResultTy:
+        return self.func(arg1, arg2, arg3, arg4)
+
+
 @always_inline("nodebug")
 fn call_dylib_func[
     ResultTy: AnyType
@@ -137,3 +155,24 @@ fn call_dylib_func[
     return lib.get_function[ThreeArgCallable[ResultTy, Arg1Ty, Arg2Ty, Arg3Ty]](
         name
     )(arg1, arg2, arg3)
+
+
+@always_inline("nodebug")
+fn call_dylib_func[
+    ResultTy: AnyType,
+    Arg1Ty: AnyType,
+    Arg2Ty: AnyType,
+    Arg3Ty: AnyType,
+    Arg4Ty: AnyType,
+](
+    borrowed lib: DLHandle,
+    name: StringRef,
+    arg1: Arg1Ty,
+    arg2: Arg2Ty,
+    arg3: Arg3Ty,
+    arg4: Arg4Ty,
+) -> ResultTy:
+    """Call function `name` in dylib with one result and four arguments."""
+    return lib.get_function[
+        FourArgCallable[ResultTy, Arg1Ty, Arg2Ty, Arg3Ty, Arg4Ty]
+    ](name)(arg1, arg2, arg3, arg4)
