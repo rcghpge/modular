@@ -10,6 +10,7 @@ from ._utils import *
 from ._status import *
 from ._context import *
 from ._compilation import CCompiledModel
+from ._tensormap import *
 
 
 @value
@@ -39,10 +40,12 @@ struct CModel:
 struct Model:
     """Memory managed CModel."""
 
+    var ctx: CRuntimeContext
     var ptr: CModel
     var lib: DLHandle
 
     alias InitModelFnName = "M_initModel"
+    alias ExecuteFnName = "M_executeModelSync"
 
     fn __init__(
         inout self,
@@ -50,6 +53,7 @@ struct Model:
         source: CCompiledModel,
         lib: DLHandle,
     ) raises:
+        self.ctx = context
         let status = Status(lib)
         self.ptr = call_dylib_func[CModel](
             lib, Self.InitModelFnName, context, source, status.borrow_ptr()
@@ -61,10 +65,25 @@ struct Model:
         self.lib = lib
 
     fn __moveinit__(inout self, owned existing: Self):
+        self.ctx = existing.ctx
         self.ptr = exchange[CModel](
             existing.ptr, DTypePointer[DType.invalid].get_null()
         )
         self.lib = existing.lib
+
+    fn execute(self, inputs: MOFTensorMap) raises -> MOFTensorMap:
+        let status = Status(self.lib)
+        let outputs = call_dylib_func[CTensorMap](
+            self.lib,
+            Self.ExecuteFnName,
+            self.ctx,
+            self.ptr,
+            inputs.borrow_ptr(),
+            status.borrow_ptr(),
+        )
+        if status:
+            raise status.__str__()
+        return MOFTensorMap(outputs, self.lib)
 
     fn __del__(owned self):
         self.ptr.free(self.lib)

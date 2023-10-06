@@ -6,8 +6,9 @@
 # UNSUPPORTED: windows
 # RUN: %mojo -I %engine_pkg_dir %s %S/mo.model | FileCheck %s
 
-from aiengine import AIEngine
+from aiengine import AIEngine, MOFTensorMap
 from sys import argv
+from tensor import Tensor, TensorShape
 
 
 fn test_model_compilation() raises:
@@ -67,6 +68,32 @@ fn test_model() raises:
     with AIEngine() as engine:
         with engine.get_session() as session:
             let model = session.load_model(model_path)
+            var input_tensor = Tensor[DType.float32](5)
+
+            for i in range(5):
+                input_tensor[i] = 1.0
+
+            # TODO: Hide tensor map from user
+            let input_map = session.new_tensor_map()
+            input_map.borrow("input", input_tensor)
+            let outputs = model.execute(input_map)
+            _ = input_tensor ^  # Keep inputs alive
+            let output_tensor = outputs.get[DType.float32]("output")
+
+            # CHECK: 5xfloat32
+            print(output_tensor.spec().__str__())
+
+            var expected_output = Tensor[DType.float32](5)
+
+            expected_output[0] = 4.0
+            expected_output[1] = 2.0
+            expected_output[2] = -5.0
+            expected_output[3] = 3.0
+            expected_output[4] = 6.0
+
+            for i in range(5):
+                # CHECK-NOT: False
+                print(expected_output[i] == output_tensor[i])
 
 
 fn main() raises:
