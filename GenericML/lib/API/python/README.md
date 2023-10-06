@@ -17,10 +17,7 @@ Here's how to build and install the Python package:
 1. Configure the build:
 
    ```shell
-   # Specify your venv root (if using), as this is something you need
-   # for the Python API doc build (assuming you'll also want that):
-   cmake-modular-release \
-     -DMODULAR_PYTHON_API_BUILD_BINDINGS=ON
+   cmake-modular-release
    ```
 
 1. Build the Python wheel:
