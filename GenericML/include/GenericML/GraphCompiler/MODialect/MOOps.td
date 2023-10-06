@@ -288,7 +288,7 @@ def IfOp : MO_ControlOp<"if",
   }];
 
   let arguments = (ins MO_CondLike:$cond);
-  let results = (outs Variadic<MO_Tensor>:$results);
+  let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$thenRegion,
                         SizedRegion<1>:$elseRegion);
 
@@ -345,8 +345,8 @@ def WhileOp : MO_ControlOp<"while",
     ```
   }];
 
-  let arguments = (ins Variadic<MO_Tensor>:$inputs);
-  let results = (outs Variadic<MO_Tensor>:$results);
+  let arguments = (ins Variadic<AnyType>:$inputs);
+  let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$condRegion,
                         SizedRegion<1>:$bodyRegion);
 
@@ -384,7 +384,7 @@ def MO_YieldOp
     ```
   }];
 
-  let arguments = (ins Variadic<MO_Tensor>:$operands);
+  let arguments = (ins Variadic<AnyType>:$operands);
 
   let assemblyFormat = [{
     `` attr-dict ($operands^ `:` type($operands))?
