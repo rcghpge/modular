@@ -71,13 +71,6 @@ struct MOFTensor:
         return self.ptr.data(self.lib)
 
     fn data[type: DType](self) raises -> DTypePointer[type]:
-        if type != self.dtype():
-            raise (
-                "Requested: "
-                + type.__str__()
-                + "Actual: "
-                + self.dtype().__str__()
-            )
         let ptr = self.data()
         return bitcast[type](ptr)
 

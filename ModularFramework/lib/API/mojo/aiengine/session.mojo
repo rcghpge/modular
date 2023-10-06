@@ -9,6 +9,7 @@ from ._status import *
 from sys.ffi import DLHandle
 from ._compilation import CompiledModel
 from ._model import Model
+from ._tensormap import *
 
 
 struct InferenceSession:
@@ -44,3 +45,6 @@ struct InferenceSession:
         # Keep compiled model alive until model has been awaited.
         _ = compiled_model ^
         return model ^
+
+    fn new_tensor_map(self) -> MOFTensorMap:
+        return MOFTensorMap(self.context.borrow_ptr(), self.lib)
