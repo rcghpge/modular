@@ -57,6 +57,7 @@ LogicalResult StubCompiler::elaborateKGEN() {
   if (targetInfoOr)
     return kgenModule->emitError(targetInfoOr.getError());
 
+  KGEN::CompilationOptions compileOptions = {shouldSearch};
   KGEN::populateElaborateModulePasses(pm, runtime, *targetInfoOr, buildInfo,
                                       {shouldSearch});
 
