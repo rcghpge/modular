@@ -13,6 +13,7 @@
 
 #include "GenericML/GraphCompiler/Conversion/MGPSupport.h"
 #include "GenericML/GraphCompiler/Conversion/ParameterLowering.h"
+#include "GenericML/GraphCompiler/Interfaces/ConvertibleToMGPTypeInterface.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
@@ -42,12 +43,19 @@ public:
                        size_t minimumCpuAlignment)
       : graph(graph), common(compiledFrameworkLabel, minimumCpuAlignment),
         init(graph.getContext()), execute(graph.getContext()) {
+    // Add converters for MO native types.
     typeConverter.addConversion(
         [this](MO::TensorType type) -> std::optional<Type> {
           return getTypeBuilder(MO::getDeviceOrDefault(this->graph, type))
               ->tensorType(this->graph.getContext(),
                            MGP::createCpuTensorSpecType(type));
         });
+    // Add converters for foreign types via the ConvertibleToMGPTypeInterface.
+    typeConverter.addConversion([](Type type) -> std::optional<Type> {
+      if (auto interface = dyn_cast<ConvertibleToMGPTypeInterface>(type))
+        return interface.convertType();
+      return {};
+    });
   }
 
   /// Common state used by both the init and execute phases.
