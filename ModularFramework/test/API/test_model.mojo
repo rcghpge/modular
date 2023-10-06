@@ -4,9 +4,9 @@
 #
 # ===----------------------------------------------------------------------=== #
 # UNSUPPORTED: windows
-# RUN: %mojo -I %mof_pkg_dir %s %S/mo.model | FileCheck %s
+# RUN: %mojo -I %engine_pkg_dir %s %S/mo.model | FileCheck %s
 
-from mof import AIEngine
+from aiengine import AIEngine
 from sys import argv
 
 

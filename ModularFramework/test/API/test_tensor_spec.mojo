@@ -4,9 +4,9 @@
 #
 # ===----------------------------------------------------------------------=== #
 # UNSUPPORTED: windows
-# RUN: %mojo -I %mof_pkg_dir %s | FileCheck %s
+# RUN: %mojo -I %engine_pkg_dir %s | FileCheck %s
 
-from mof import AIEngine, MOFDtype, MOFTensorSpec
+from aiengine import AIEngine, MOFDtype, MOFTensorSpec
 from tensor import TensorSpec
 
 

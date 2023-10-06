@@ -4,14 +4,14 @@
 #
 # ===----------------------------------------------------------------------=== #
 # UNSUPPORTED: windows
-# RUN: %mojo -I %mof_pkg_dir %s | FileCheck %s
+# RUN: %mojo -I %engine_pkg_dir %s | FileCheck %s
 
-from mof import AIEngine, MOFDtype
+from aiengine import AIEngine, MOFDtype
 
 
-fn test_mof_version() raises:
-    # CHECK: test_mof
-    print("====test_mof")
+fn test_engine_version() raises:
+    # CHECK: test_engine
+    print("====test_engine")
 
     let engine = AIEngine()
 
@@ -53,7 +53,7 @@ fn test_dtype() raises:
 
 
 fn main() raises:
-    test_mof_version()
+    test_engine_version()
     test_status()
     test_session()
     test_dtype()
