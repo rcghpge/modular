@@ -1657,7 +1657,7 @@ struct SinkSplitThroughElementwisePattern : public OpRewritePattern<SplitOp> {
     if (op.getNumResults() != llvm::range_size(op->getUsers()))
       return rewriter.notifyMatchFailure(op, "Not all results are used");
 
-    auto firstResultType = op.getResults().front().getType();
+    auto firstResultType = op.getResults().front().getType().cast<TensorType>();
     SmallVector<Value> elementwiseValues;
     for (auto result : op.getResults()) {
       if (!result.hasOneUse()) {
@@ -1730,12 +1730,10 @@ struct SinkSplitThroughElementwisePattern : public OpRewritePattern<SplitOp> {
         assert(constantOp);
 
         constantsToConcatenate.push_back(constantOp.getResult());
-        if (constantsToConcatenate.front()
-                .getType()
-                .cast<TensorType>()
-                .getDims()
-                .back() !=
-            op.getResultTypes().front().cast<TensorType>().getDims().back()) {
+        auto constantOpType = constantOp.getType().cast<TensorType>();
+        if (constantOpType.getRank() == 0 ||
+            constantOpType.getDims().back() !=
+                firstResultType.getDims().back()) {
           return rewriter.notifyMatchFailure(
               op, "Unsupported broadcasting that would duplicate data");
         }
