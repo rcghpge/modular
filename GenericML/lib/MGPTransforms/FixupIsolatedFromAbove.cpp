@@ -21,12 +21,13 @@ using namespace M::MGP;
 using namespace mlir;
 
 /// Accumulates all the values in block (and its sub-blocks) which are bound
-/// outside of bindingBlock.
+/// by a proper ancestor of bindingBlock.
 static void accumFreeValues(SetVector<Value> &outerValues, Block *block,
                             Block *bindingBlock) {
   for (Operation &inOp : block->getOperations()) {
     for (Value inValue : inOp.getOperands()) {
-      if (inValue.getParentBlock() != bindingBlock)
+      if (inValue.getParentRegion()->isProperAncestor(
+              bindingBlock->getParent()))
         outerValues.insert(inValue);
     }
     for (Region &subRegion : inOp.getRegions())
