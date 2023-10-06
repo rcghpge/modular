@@ -51,6 +51,10 @@ struct MOFTensorSpec:
 
     alias NewTensorSpecFnName = "M_newTensorSpec"
 
+    fn __init__(inout self, ptr: CTensorSpec, lib: DLHandle):
+        self.ptr = ptr
+        self.lib = lib
+
     fn __init__(inout self, name: StringRef, spec: TensorSpec, lib: DLHandle):
         let dtype: MOFDtype = spec.dtype()
         let rank = spec.rank()
