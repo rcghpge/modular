@@ -38,6 +38,16 @@ fn test_tensor():
     print(tensor.dim(2))
 
 
+# CHECK: test_tensor_init
+fn test_tensor_init():
+    print("== test_tensor_init")
+
+    let tensor = Tensor[DType.float32](TensorShape(1, 2, 3))
+
+    # CHECK: 0.0
+    print(tensor[0, 0, 0])
+
+
 # CHECK-LABEL: test_tensor_equality
 fn test_tensor_equality():
     print("== test_tensor_equality")
@@ -239,6 +249,7 @@ fn test_image_to_grayscale():
 
 fn main():
     test_tensor()
+    test_tensor_init()
     test_tensor_equality()
     test_tensor_indexing()
     test_tensor_indexing2()
