@@ -4,11 +4,12 @@
 #
 # ===----------------------------------------------------------------------=== #
 # UNSUPPORTED: windows
-# RUN: %mojo -I %engine_pkg_dir %s %S/mo.model | FileCheck %s
+# RUN: %mojo -I %engine_pkg_dir -I %test_utils_pkg_dir %s %S/mo.model | FileCheck %s
 
 from aiengine import AIEngine, MOFTensorMap
 from sys import argv
 from tensor import Tensor, TensorShape
+from test_utils import linear_fill
 
 
 fn test_model_compilation() raises:
@@ -84,16 +85,9 @@ fn test_model() raises:
             print(output_tensor.spec().__str__())
 
             var expected_output = Tensor[DType.float32](5)
-
-            expected_output[0] = 4.0
-            expected_output[1] = 2.0
-            expected_output[2] = -5.0
-            expected_output[3] = 3.0
-            expected_output[4] = 6.0
-
-            for i in range(5):
-                # CHECK-NOT: False
-                print(expected_output[i] == output_tensor[i])
+            linear_fill(expected_output, 4.0, 2.0, -5.0, 3.0, 6.0)
+            # CHECK: True
+            print(expected_output == output_tensor)
 
 
 fn main() raises:
