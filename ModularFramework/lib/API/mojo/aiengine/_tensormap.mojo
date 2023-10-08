@@ -40,7 +40,7 @@ struct CTensorMap:
     fn borrow_tensor_by_name(
         self,
         ptr: DTypePointer[DType.invalid],
-        spec: MOFTensorSpec,
+        spec: EngineTensorSpec,
         lib: DLHandle,
     ) raises:
         let status = Status(lib)
@@ -71,7 +71,7 @@ struct CTensorMap:
         call_dylib_func(lib, Self.FreeAsyncTensorMapFnName, self)
 
 
-struct MOFTensorMap:
+struct TensorMap:
     var ptr: CTensorMap
     var lib: DLHandle
 
@@ -94,14 +94,14 @@ struct MOFTensorMap:
         self.lib = existing.lib
 
     fn borrow[type: DType](self, key: StringRef, value: Tensor[type]) raises:
-        let spec = MOFTensorSpec(key, value.spec(), self.lib)
+        let spec = EngineTensorSpec(key, value.spec(), self.lib)
         self.ptr.borrow_tensor_by_name(
             bitcast[DType.invalid](value.data()), spec, self.lib
         )
 
     fn get[type: DType](self, key: StringRef) raises -> Tensor[type]:
         let tensor_ptr = self.ptr.get_tensor_by_name(key.data, self.lib)
-        let mof_tensor = MOFTensor(tensor_ptr, self.lib)
+        let mof_tensor = EngineTensor(tensor_ptr, self.lib)
         let tensor = mof_tensor.tensor[type]()
         return tensor ^
 

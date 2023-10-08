@@ -6,7 +6,7 @@
 # UNSUPPORTED: windows
 # RUN: %mojo -I %engine_pkg_dir %s | FileCheck %s
 
-from aiengine import AIEngine, MOFDtype
+from aiengine import AIEngine, EngineDType
 
 
 fn test_engine_version() raises:
@@ -46,10 +46,10 @@ fn test_dtype() raises:
     print("====test_dtype")
 
     # CHECK: True
-    print(MOFDtype(DType.int8) == MOFDtype.int8)
+    print(EngineDType(DType.int8) == EngineDType.int8)
 
     # CHECK: True
-    print(MOFDtype(DType.int8).to_dtype() == DType.int8)
+    print(EngineDType(DType.int8).to_dtype() == DType.int8)
 
 
 fn main() raises:

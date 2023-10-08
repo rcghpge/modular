@@ -6,7 +6,7 @@
 # UNSUPPORTED: windows
 # RUN: %mojo -I %engine_pkg_dir %s | FileCheck %s
 
-from aiengine import AIEngine, MOFDtype, MOFTensorSpec
+from aiengine import AIEngine, EngineDType, EngineTensorSpec
 from tensor import TensorSpec
 
 

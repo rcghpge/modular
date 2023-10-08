@@ -71,7 +71,7 @@ struct Model:
         )
         self.lib = existing.lib
 
-    fn execute(self, inputs: MOFTensorMap) raises -> MOFTensorMap:
+    fn execute(self, inputs: TensorMap) raises -> TensorMap:
         let status = Status(self.lib)
         let outputs = call_dylib_func[CTensorMap](
             self.lib,
@@ -83,7 +83,7 @@ struct Model:
         )
         if status:
             raise status.__str__()
-        return MOFTensorMap(outputs, self.lib)
+        return TensorMap(outputs, self.lib)
 
     fn __del__(owned self):
         self.ptr.free(self.lib)

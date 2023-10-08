@@ -46,5 +46,5 @@ struct InferenceSession:
         _ = compiled_model ^
         return model ^
 
-    fn new_tensor_map(self) -> MOFTensorMap:
-        return MOFTensorMap(self.context.borrow_ptr(), self.lib)
+    fn new_tensor_map(self) -> TensorMap:
+        return TensorMap(self.context.borrow_ptr(), self.lib)

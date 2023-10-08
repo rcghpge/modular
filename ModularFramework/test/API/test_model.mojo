@@ -6,7 +6,7 @@
 # UNSUPPORTED: windows
 # RUN: %mojo -I %engine_pkg_dir -I %test_utils_pkg_dir %s %S/mo.model | FileCheck %s
 
-from aiengine import AIEngine, MOFTensorMap
+from aiengine import AIEngine, TensorMap
 from sys import argv
 from tensor import Tensor, TensorShape
 from test_utils import linear_fill

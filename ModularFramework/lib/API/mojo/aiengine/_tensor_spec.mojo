@@ -9,7 +9,7 @@ from sys.ffi import DLHandle
 from ._utils import *
 from ._status import *
 from tensor import TensorSpec
-from ._dtypes import MOFDtype
+from ._dtypes import EngineDType
 from utils.vector import DynamicVector
 
 
@@ -38,14 +38,14 @@ struct CTensorSpec:
         let name = call_dylib_func[CString](lib, Self.GetNameFnName, self)
         return name.__str__()
 
-    fn get_dtype(self, lib: DLHandle) -> MOFDtype:
-        return call_dylib_func[MOFDtype](lib, Self.GetDTypeFnName, self)
+    fn get_dtype(self, lib: DLHandle) -> EngineDType:
+        return call_dylib_func[EngineDType](lib, Self.GetDTypeFnName, self)
 
     fn free(self, borrowed lib: DLHandle):
         call_dylib_func(lib, Self.FreeTensorSpecFnName, self)
 
 
-struct MOFTensorSpec:
+struct EngineTensorSpec:
     var ptr: CTensorSpec
     var lib: DLHandle
 
@@ -56,7 +56,7 @@ struct MOFTensorSpec:
         self.lib = lib
 
     fn __init__(inout self, name: StringRef, spec: TensorSpec, lib: DLHandle):
-        let dtype: MOFDtype = spec.dtype()
+        let dtype: EngineDType = spec.dtype()
         let rank = spec.rank()
         var shape = DynamicVector[Int64]()
         let name_str: CString = name.data

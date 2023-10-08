@@ -29,19 +29,21 @@ struct CTensor:
     fn size(self, borrowed lib: DLHandle) -> Int:
         return call_dylib_func[Int](lib, Self.GetTensorNumElementsFnName, self)
 
-    fn dtype(self, borrowed lib: DLHandle) -> MOFDtype:
-        return call_dylib_func[MOFDtype](lib, Self.GetTensorDTypeFnName, self)
+    fn dtype(self, borrowed lib: DLHandle) -> EngineDType:
+        return call_dylib_func[EngineDType](
+            lib, Self.GetTensorDTypeFnName, self
+        )
 
     fn data(self, borrowed lib: DLHandle) -> DTypePointer[DType.invalid]:
         return call_dylib_func[DTypePointer[DType.invalid]](
             lib, Self.GetTensorDataFnName, self
         )
 
-    fn get_tensor_spec(self, borrowed lib: DLHandle) -> MOFTensorSpec:
+    fn get_tensor_spec(self, borrowed lib: DLHandle) -> EngineTensorSpec:
         let spec = call_dylib_func[CTensorSpec](
             lib, Self.GetTensorSpecFnName, self
         )
-        return MOFTensorSpec(spec, lib)
+        return EngineTensorSpec(spec, lib)
 
     fn free(self, borrowed lib: DLHandle):
         """
@@ -50,7 +52,7 @@ struct CTensor:
         call_dylib_func(lib, Self.FreeTensorFnName, self)
 
 
-struct MOFTensor:
+struct EngineTensor:
     var ptr: CTensor
     var lib: DLHandle
 

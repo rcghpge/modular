@@ -6,6 +6,6 @@
 """Implements the engine package."""
 
 from .engine import AIEngine
-from ._dtypes import MOFDtype
-from ._tensor_spec import MOFTensorSpec
-from ._tensormap import MOFTensorMap
+from ._dtypes import EngineDType
+from ._tensor_spec import EngineTensorSpec
+from ._tensormap import TensorMap
