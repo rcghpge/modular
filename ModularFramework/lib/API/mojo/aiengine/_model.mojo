@@ -11,6 +11,8 @@ from ._status import *
 from ._context import *
 from ._compilation import CCompiledModel
 from ._tensormap import *
+from ._tensor import *
+from utils.list import VariadicList
 
 
 @value
@@ -84,6 +86,34 @@ struct Model:
         if status:
             raise status.__str__()
         return TensorMap(outputs, self.lib)
+
+    fn execute(
+        self, *inputs: Tuple[StringRef, EngineTensorView]
+    ) raises -> TensorMap:
+        let input_map = TensorMap(self.ctx, self.lib)
+        let inputs_list = VariadicList[Tuple[StringRef, EngineTensorView]](
+            inputs
+        )
+        for i in range(inputs_list.__len__()):
+            let pair = inputs_list[i]
+            input_map.borrow(
+                pair.get[0, StringRef](), pair.get[1, EngineTensorView]()
+            )
+        return self.execute(input_map)
+
+    fn execute(
+        self, *inputs: Tuple[StringLiteral, EngineTensorView]
+    ) raises -> TensorMap:
+        let input_map = TensorMap(self.ctx, self.lib)
+        let inputs_list = VariadicList[Tuple[StringLiteral, EngineTensorView]](
+            inputs
+        )
+        for i in range(inputs_list.__len__()):
+            let pair = inputs_list[i]
+            input_map.borrow(
+                pair.get[0, StringLiteral](), pair.get[1, EngineTensorView]()
+            )
+        return self.execute(input_map)
 
     fn __del__(owned self):
         self.ptr.free(self.lib)

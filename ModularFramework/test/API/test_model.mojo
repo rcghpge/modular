@@ -6,7 +6,7 @@
 # UNSUPPORTED: windows
 # RUN: %mojo -I %engine_pkg_dir -I %test_utils_pkg_dir %s %S/mo.model | FileCheck %s
 
-from aiengine import AIEngine, TensorMap
+from aiengine import AIEngine, TensorMap, EngineTensorView
 from sys import argv
 from tensor import Tensor, TensorShape
 from test_utils import linear_fill
@@ -90,6 +90,44 @@ fn test_model() raises:
             print(expected_output == output_tensor)
 
 
+fn test_model_tuple_input() raises:
+    # CHECK: test_model
+    print("====test_model")
+
+    let args = argv()
+
+    # CHECK: 2
+    print(len(args))
+
+    # CHECK: mo.model
+    print(args[1])
+
+    let model_path = args[1]
+
+    var input_tensor = Tensor[DType.float32](5)
+
+    for i in range(5):
+        input_tensor[i] = 1.0
+
+    with AIEngine() as engine:
+        with engine.get_session() as session:
+            let model = session.load_model(model_path)
+            let outputs = model.execute(
+                ("input", EngineTensorView(input_tensor))
+            )
+            _ = input_tensor ^
+            let output_tensor = outputs.get[DType.float32]("output")
+
+            # CHECK: 5xfloat32
+            print(output_tensor.spec().__str__())
+
+            var expected_output = Tensor[DType.float32](5)
+            linear_fill(expected_output, 4.0, 2.0, -5.0, 3.0, 6.0)
+            # CHECK: True
+            print(expected_output == output_tensor)
+
+
 fn main() raises:
     test_model_compilation()
     test_model()
+    test_model_tuple_input()
