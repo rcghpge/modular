@@ -89,6 +89,7 @@ public:
     std::string size;
     std::string sha1sum;
     std::string metadata;
+    SmallVector<std::string, 1> dependencies;
     NameSubstitutions inputSubstitutions;
     NameSubstitutions outputSubstitutions;
     /// TODO: This is a temporary flag that is used as we bring up mo shape

@@ -250,6 +250,9 @@ struct MappingTraits<M::ModelSpec::ModelBinary> {
     if (!io.outputting() || !binary.metadata.empty())
       io.mapOptional("metadata", binary.metadata);
 
+    if (!io.outputting() || !binary.dependencies.empty())
+      io.mapOptional("dependencies", binary.dependencies);
+
     io.mapOptional("input_substitutions", binary.inputSubstitutions);
     io.mapOptional("output_substitutions", binary.outputSubstitutions);
   }
