@@ -9,7 +9,7 @@ from sys.ffi import DLHandle
 from ._utils import *
 from ._dtypes import *
 from ._tensor_spec import *
-from memory.unsafe import bitcast
+from memory.unsafe import bitcast, Pointer
 from tensor import Tensor
 
 
@@ -101,3 +101,72 @@ struct EngineTensor:
 
     fn __del__(owned self):
         self.ptr.free(self.lib)
+
+
+@register_passable
+struct EngineTensorView:
+    """A non-owning register_passable view of a tensor
+    that does runtime type checking.
+
+    CAUTION: Make sure the source tensor outlives the view.
+    """
+
+    var ptr: Pointer[Tensor[DType.invalid]]
+    var data_ptr: DTypePointer[DType.invalid]
+    var dtype: DType
+
+    fn __init__[type: DType](inout tensor: Tensor[type]) -> Self:
+        return Self {
+            ptr: bitcast[Tensor[DType.invalid]](
+                Pointer[Tensor[type]].address_of(tensor)
+            ),
+            data_ptr: bitcast[DType.invalid](tensor.data()),
+            dtype: type,
+        }
+
+    fn data[type: DType](self) raises -> DTypePointer[type]:
+        if type != self.dtype:
+            raise String("Expected type: ") + self.dtype.__str__()
+        return bitcast[type](self.data_ptr)
+
+    fn data(self) -> DTypePointer[DType.invalid]:
+        return self.data_ptr
+
+    fn spec(self) raises -> TensorSpec:
+        @always_inline
+        @parameter
+        fn get_spec[ty: DType]() -> TensorSpec:
+            return self._get_value[ty]().spec()
+
+        if self.dtype.is_int8():
+            return get_spec[DType.int8]()
+        if self.dtype.is_int16():
+            return get_spec[DType.int16]()
+        if self.dtype.is_int32():
+            return get_spec[DType.int32]()
+        if self.dtype.is_int64():
+            return get_spec[DType.int64]()
+
+        if self.dtype.is_uint8():
+            return get_spec[DType.uint8]()
+        if self.dtype.is_uint16():
+            return get_spec[DType.uint16]()
+        if self.dtype.is_uint32():
+            return get_spec[DType.uint32]()
+        if self.dtype.is_uint64():
+            return get_spec[DType.uint64]()
+
+        if self.dtype.is_float16():
+            return get_spec[DType.float16]()
+        if self.dtype.is_float32():
+            return get_spec[DType.float32]()
+        if self.dtype.is_float64():
+            return get_spec[DType.float64]()
+        if self.dtype.is_bool():
+            return get_spec[DType.bool]()
+
+        raise String("Expected type: ") + self.dtype.__str__()
+
+    @always_inline("nodebug")
+    fn _get_value[type: DType](self) -> Tensor[type]:
+        return __get_address_as_lvalue(bitcast[Tensor[type]](self.ptr).address)
