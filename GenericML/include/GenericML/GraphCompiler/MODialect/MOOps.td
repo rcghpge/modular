@@ -14,6 +14,7 @@
 include "KGEN/KGENDialect/KGENAttrs.td"
 include "KGEN/KGENDialect/KGENInterfaces.td"
 include "KGEN/KGENDialect/KGENTypes.td"
+include "GenericML/GraphCompiler/MODialect/MOEnums.td"
 include "GenericML/GraphCompiler/MODialect/MOInterfaces.td"
 include "GenericML/GraphCompiler/MODialect/MOTypes.td"
 include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.td"
@@ -3040,18 +3041,14 @@ def MO_RangeOp : MO_TensorOp<"range", [
 // Resize op
 //===----------------------------------------------------------------------===//
 
+
 def MO_ResizeLinearOp : MO_TensorOp<"resize.linear",
   [DeclareOpInterfaceMethods<MO_DefaultParameterization>]> {
   let summary = "Resize a tensor using the linear algorithm.";
   let description = [{
     Resize a tensor to a new shape using the linear algorithm.
 
-    The values for coordinate transform mode are:
-      - 0: HalfPixel
-      - 1: AlignCorners
-      - 2: Asymmetric
-
-    Coordinate transform mode is HalfPixel (0) by default.
+    The coordinate transform mode can be half-pixel, align-corners or asymmetric.
 
     When set to true, the antialias attribute causes an antialiasing filter to be applied
     when downscaling.
@@ -3070,7 +3067,7 @@ def MO_ResizeLinearOp : MO_TensorOp<"resize.linear",
   let arguments = (ins
     MO_Tensor:$input,
     MO_IndicesTensor:$size,
-    DefaultValuedAttr<I64Attr, "0">:$coordinate_transform_mode,
+    MO_CoordinateTransformModeAttr:$coordinate_transform_mode,
     BoolAttr:$antialias,
     MO_ParamDecls:$outputParamDecls);
 
@@ -3079,7 +3076,6 @@ def MO_ResizeLinearOp : MO_TensorOp<"resize.linear",
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
-  let hasVerifier = 1;
 }
 
 
@@ -3089,12 +3085,7 @@ def MO_ResizeNearestOp : MO_TensorOp<"resize.nearest",
   let description = [{
     Resize a tensor to a new shape using the nearest-neighbor algorithm.
 
-    The values for coordinate transform mode are:
-      - 0: HalfPixel
-      - 1: AlignCorners
-      - 2: Asymmetric
-
-    Coordinate transform mode is HalfPixel (0) by default.
+    The coordinate transform mode can be half-pixel, align-corners or asymmetric.
 
     The values for round mode are:
       - 0: HalfDown
@@ -3119,7 +3110,7 @@ def MO_ResizeNearestOp : MO_TensorOp<"resize.nearest",
   let arguments = (ins
     MO_Tensor:$input,
     MO_IndicesTensor:$size,
-    DefaultValuedAttr<I64Attr, "0">:$coordinate_transform_mode,
+    MO_CoordinateTransformModeAttr:$coordinate_transform_mode,
     DefaultValuedAttr<I64Attr, "0">:$round_mode,
     MO_ParamDecls:$outputParamDecls);
 
@@ -3128,7 +3119,6 @@ def MO_ResizeNearestOp : MO_TensorOp<"resize.nearest",
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
-  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

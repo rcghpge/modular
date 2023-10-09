@@ -19,6 +19,8 @@
 using namespace M;
 using namespace MO;
 
+#include "GenericML/GraphCompiler/MODialect/MOEnums.cpp.inc"
+
 //===----------------------------------------------------------------------===//
 // MODialect attribute support
 //===----------------------------------------------------------------------===//

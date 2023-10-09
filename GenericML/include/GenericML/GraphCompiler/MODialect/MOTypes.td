@@ -14,6 +14,7 @@
 include "GenericML/GraphCompiler/MODialect/MODialect.td"
 include "Support/Compiler/TensorUtils.td"
 include "mlir/IR/BuiltinTypeInterfaces.td"
+include "mlir/IR/EnumAttr.td"
 
 // Base class for types in this dialect.
 class MO_Type<string name, string typeMnemonic, list<Trait> traits = []>

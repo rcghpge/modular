@@ -11,6 +11,7 @@
 #ifndef GENERICML_GRAPHCOMPILER_MODIALECT_MOTYPES_H
 #define GENERICML_GRAPHCOMPILER_MODIALECT_MOTYPES_H
 
+#include "GenericML/GraphCompiler/MODialect/MOEnums.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/MDialect/MAttrs.h"
 #include "Support/ML/DType.h"

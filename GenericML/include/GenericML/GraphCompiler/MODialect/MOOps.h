@@ -36,6 +36,10 @@ using M::KGEN::SignatureType;
 // ODS-Generated Declarations
 //===----------------------------------------------------------------------===//
 
+namespace M::MO {
+class CoordinateTransformModeAttr;
+} // namespace M::MO
+
 #define GET_OP_CLASSES
 #include "GenericML/GraphCompiler/MODialect/MO.h.inc"
 
