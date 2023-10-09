@@ -20,7 +20,12 @@ struct Subgraph {
   llvm::SetVector<Operation *> outputs;
   Subgraph(llvm::SetVector<Operation *> ops) : ops(ops) { findOutputs(); }
 
+  /// Remove operation from subgraph. Also removes any dependents in the
+  /// subgraph.
   void remove(Operation *op) {
+    for (auto dep : op->getUsers())
+      if (ops.contains(dep))
+        ops.remove(dep);
     ops.remove(op);
     outputs.clear();
     findOutputs();

@@ -286,3 +286,24 @@ mo.graph @multiple_internal_ops(%arg0: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[1
   %17 = mo.matmul(%arg0, %16) : (!mo.tensor<[1, 3], f32>, !mo.tensor<[3, 2], f32>) -> !mo.tensor<[1, 2], f32>
   mo.output %17 : !mo.tensor<[1, 2], f32>
 }
+
+// Checks the case that removing an output from a subgraph also removes its dependencies.
+// CHECK: mo.graph @subgraph_dependent_outputs
+// CHECK: mo.output %13
+mo.graph @subgraph_dependent_outputs(%arg0: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, 10], f32> {
+  %0 = mo.constant {value = #M.dense_array<1.000000e+00> : !M.array<1xf32>} : !mo.tensor<[], f32>
+  %1 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32> -> !mo.tensor<[300], f32>
+  %2 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32> -> !mo.tensor<[300, 10], f32>
+  %3 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32> -> !mo.tensor<[100, 300], f32>
+  %4 = mo.matmul(%arg0, %3) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[100, 300], f32>) -> !mo.tensor<[?, 300], f32>
+  %5 = mo.shape_of(%4) : (!mo.tensor<[?, 300], f32>) -> !mo.tensor<[2], si64>
+  %6 = mo.shape_of(%1) : (!mo.tensor<[300], f32>) -> !mo.tensor<[1], si64>
+  %7 = mo.broadcast_shape(%5, %6) : (!mo.tensor<[2], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
+  %8 = mo.broadcast_to(%4, %7) : (!mo.tensor<[?, 300], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, 300], f32>
+  %9 = mo.broadcast_to(%1, %7) : (!mo.tensor<[300], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, 300], f32>
+  %10 = mo.add(%8, %9) : !mo.tensor<[?, 300], f32>
+  %11 = mo.relu(%10) : !mo.tensor<[?, 300], f32>
+  %12 = mo.matmul(%11, %2) : (!mo.tensor<[?, 300], f32>, !mo.tensor<[300, 10], f32>) -> !mo.tensor<[?, 10], f32>
+  %13 = mo.softmax(%12) : (!mo.tensor<[?, 10], f32>) -> !mo.tensor<[?, 10], f32>
+  mo.output %13 : !mo.tensor<[?, 10], f32>
+}
