@@ -65,7 +65,7 @@ static void appendName(std::string &str, DeviceRefAttr device, StringRef name) {
   size_t start = str.size();
   str += name;
 
-  // HACK HACK HACK
+  // HACK HACK HACK https://github.com/modularml/modular/issues/22959
   // PTX names don't accept all the same characters as MLIR names.
   if (device.getLabel() == kCUDALabel) {
     std::replace_if(

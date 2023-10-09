@@ -55,7 +55,7 @@ struct FuseConstants : public impl::FuseConstantsBase<FuseConstants> {
 
   /// We only fuse constants here.
   bool canFuseOperand(MOGG::KernelOp kernel, int32_t index) {
-    // HACK HACK HACK
+    // HACK HACK HACK https://github.com/modularml/modular/issues/22959
     if (MO::getDeviceOrDefault(kernel).getLabel() == kCUDALabel) {
       // Don't fuse constants into CUDA kernels.
       // TEMPORARY until constant lowering fixed.

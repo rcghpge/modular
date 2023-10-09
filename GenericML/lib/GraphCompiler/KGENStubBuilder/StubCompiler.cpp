@@ -135,7 +135,7 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
   if (!saveTempsPrefix.empty())
     compilationOptions.setSaveTemps(saveTempsPrefix);
 
-  // HACK HACK HACK
+  // HACK HACK HACK https://github.com/modularml/modular/issues/22959
   bool isJit = deviceSpec == hostDeviceSpec;
 
   auto compilerOr = KGEN::ObjectCompiler::create(runtime, mgr, ".mojo_cache",
@@ -176,7 +176,7 @@ ErrorOrSuccess StubCompiler::compile(mlir::ArrayAttr combinedSymbolName) {
   if (ok.failed())
     return Error("KGEN elaboration failed");
 
-  // HACK HACK HACK
+  // HACK HACK HACK https://github.com/modularml/modular/issues/22959
   if (deviceSpec.getRef().getLabel() == kCUDALabel) {
     // Promote address spaces.
     for (KGEN::FuncOp func : kgenModule.getOps<KGEN::FuncOp>()) {
