@@ -27,7 +27,7 @@ public:
       : ctx(graphOp.getContext()), graphOp(graphOp), kgenModule(kgenStubs),
         loc(graphOp.getLoc()), moggBuilder(&graphOp.getBody().front(),
                                            graphOp.getBody().front().begin()),
-        saveTempsPrefix(saveTempsPrefix), shouldSearch(shouldSearch),
+        saveTempsPrefix(std::move(saveTempsPrefix)), shouldSearch(shouldSearch),
         deviceSpec(deviceSpec), hostDeviceSpec(hostDeviceSpec) {}
 
   /// Compile to binary object. Tell the jit all of the given symbols as symbols

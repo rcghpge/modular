@@ -136,6 +136,7 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
     compilationOptions.setSaveTemps(saveTempsPrefix);
 
   // HACK HACK HACK https://github.com/modularml/modular/issues/22959
+  // Remove since not going to support direct CUDA calls.
   bool isJit = deviceSpec == hostDeviceSpec;
 
   auto compilerOr = KGEN::ObjectCompiler::create(runtime, mgr, ".mojo_cache",
@@ -177,6 +178,7 @@ ErrorOrSuccess StubCompiler::compile(mlir::ArrayAttr combinedSymbolName) {
     return Error("KGEN elaboration failed");
 
   // HACK HACK HACK https://github.com/modularml/modular/issues/22959
+  // Remove since not going to support direct CUDA calls.
   if (deviceSpec.getRef().getLabel() == kCUDALabel) {
     // Promote address spaces.
     for (KGEN::FuncOp func : kgenModule.getOps<KGEN::FuncOp>()) {
