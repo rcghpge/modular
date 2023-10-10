@@ -31,7 +31,7 @@ fn test_identity_graph() raises:
         m.types(m.i32_scalar()),
         m.types(m.i32_scalar()),
     )
-    _ = g.op("mo.output", g.values(g.input(0)), m.void())
+    _ = g.op("mo.output", g.values(g[0]), m.void())
 
     # CHECK: module {
     # CHECK:   mo.graph @identity_graph([[arg:.*]]: !mo.tensor<[], si32>) -> !mo.tensor<[], si32>
@@ -48,9 +48,7 @@ fn test_basic_add() raises:
         m.types(m.i32_scalar(), m.i32_scalar()),
         m.types(m.i32_scalar()),
     )
-    let y = g.op(
-        "mo.add", g.values(g.input(0), g.input(1)), m.types(m.i32_scalar())
-    )
+    let y = g.op("mo.add", g.values(g[0], g[1]), m.types(m.i32_scalar()))
     _ = g.op("mo.output", y, m.void())
 
     # CHECK-LABEL: @basic_add
@@ -58,21 +56,24 @@ fn test_basic_add() raises:
     _ = m.debug_print()
 
 
-fn test_basic_add_sugary() raises:
+fn test_add_constant() raises:
     var m = mobi.Module()
     var g = m.graph(
-        "basic_add_sugary",
-        m.types(m.scalar[DType.int32](), m.scalar[DType.int32]()),
-        m.types(m.scalar[DType.int32]()),
+        "add_constant",
+        m.types(m.i32_scalar()),
+        m.types(m.i32_scalar()),
     )
-    let y = g.op(
-        "mo.add",
-        g.values(g.inputs[0], g.inputs[1]),
-        m.types(m.scalar[DType.int32]()),
+    var x = g.op(
+        "mo.constant",
+        g.no_value(),
+        m.types(m.i32_scalar()),
+        m.attrs(m.i32_scalar_attr("value", 1)),
     )
+    let y = g.op("mo.add", g.values(g[0], x[0]), m.types(m.i32_scalar()))
     _ = g.op("mo.output", y, m.void())
 
-    # CHECK-LABEL: @basic_add_sugary
+    # CHECK-LABEL: @add_constant
+    # CHECK: mo.constant {value = #M.dense_array<1> : tensor<si32>}
     # CHECK: mo.add
     _ = m.debug_print()
 
@@ -81,4 +82,4 @@ fn main() raises:
     test_empty_graph()
     test_identity_graph()
     test_basic_add()
-    test_basic_add_sugary()
+    test_add_constant()

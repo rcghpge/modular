@@ -12,6 +12,14 @@
 #include "MOF/MOBI/Symbol.h"
 #include "MOF/MOBI/Type.h"
 
+struct M_Attr {
+  M::MOF::Builder::Attr attr;
+};
+
+struct M_AttrMap {
+  M::MOF::Builder::AttrMap map;
+};
+
 struct M_Graph {
   M::MOF::Builder::Graph graph;
 };

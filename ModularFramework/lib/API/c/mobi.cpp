@@ -7,6 +7,7 @@
 
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "MOF/API/c/detail/mobi.h"
+#include "MOF/MOBI/Attr.h"
 #include "MOF/MOBI/Graph.h"
 #include "MOF/MOBI/Loc.h"
 #include "MOF/MOBI/Module.h"
@@ -20,6 +21,30 @@ using namespace mlir;
 
 using namespace M::MOF::Builder;
 
+/// Attr
+
+MODULAR_API_EXPORT M_Attr *MOBI_tensorAttr(M_Module *m, StringRef name,
+                                           void *data, M_Type *t) {
+  auto moType = dyn_cast<M::MO::TensorType>(t->type.getVal());
+  auto dims = moType.getIntDims();
+  int64_t size = moType.getDtype().getSizeInBytes();
+  for (auto d : dims) {
+    assert(d >= 0 && "the caller should enforce this");
+    size *= d;
+  }
+  return new M_Attr{
+      m->module.tensorAttr(name,
+                           ArrayRef<uint8_t>(reinterpret_cast<uint8_t *>(data),
+                                             static_cast<size_t>(size)),
+                           t->type)};
+}
+
+MODULAR_API_EXPORT M_AttrMap *MOBI_newAttrMap() { return new M_AttrMap(); }
+
+MODULAR_API_EXPORT void MOBI_addAttr(M_AttrMap *m, M_Attr *a) {
+  m->map.add(a->attr);
+}
+
 /// Graph
 
 MODULAR_API_EXPORT M_Graph *MOBI_newGraph(M_Module *m, M_Loc *l,
@@ -30,16 +55,15 @@ MODULAR_API_EXPORT M_Graph *MOBI_newGraph(M_Module *m, M_Loc *l,
       m->module.newGraph(l->loc, name, inTypes->arity, outTypes->arity)};
 }
 
-MODULAR_API_EXPORT M_Symbol *MOBI_getGraphInput(M_Graph *g, uint32_t pos) {
+MODULAR_API_EXPORT M_Symbol *MOBI_getInput(M_Graph *g, uint32_t pos) {
   return new M_Symbol{g->graph.getArg(pos)};
 }
 
-MODULAR_API_EXPORT M_Tuple *MOBI_newOp(M_Graph *g, M_Loc *l,
-                                       llvm::StringRef name,
-                                       const M_Tuple *inputs,
-                                       const M_Arity *outTypes) {
+MODULAR_API_EXPORT M_Tuple *
+MOBI_newOp(M_Graph *g, M_Loc *l, llvm::StringRef name, const M_Tuple *inputs,
+           const M_Arity *outTypes, const M_AttrMap *attrs) {
   return new M_Tuple{
-      g->graph.newOp(l->loc, name, inputs->tuple, outTypes->arity)};
+      g->graph.newOp(l->loc, name, inputs->tuple, outTypes->arity, attrs->map)};
 }
 
 /// Location
@@ -73,11 +97,11 @@ MODULAR_API_EXPORT void MOBI_debugPrintModule(const M_Module *const m) {
 
 MODULAR_API_EXPORT M_Tuple *MOBI_newTuple() { return new M_Tuple{Tuple()}; }
 
-MODULAR_API_EXPORT void MOBI_extendTuple(M_Tuple *t, M_Symbol *s) {
+MODULAR_API_EXPORT void MOBI_addSymbol(M_Tuple *t, M_Symbol *s) {
   t->tuple.add(s->symbol);
 }
 
-MODULAR_API_EXPORT M_Symbol *MOBI_getTupleItem(M_Tuple *t, uint32_t pos) {
+MODULAR_API_EXPORT M_Symbol *MOBI_getSymbol(M_Tuple *t, uint32_t pos) {
   return new M_Symbol{t->tuple.getItem(pos)};
 }
 
@@ -89,6 +113,6 @@ MODULAR_API_EXPORT M_Type *MOBI_si32Scalar(M_Module *m) {
 
 MODULAR_API_EXPORT M_Arity *MOBI_newArity() { return new M_Arity{Arity()}; }
 
-MODULAR_API_EXPORT void MOBI_increaseArity(M_Arity *a, M_Type *t) {
+MODULAR_API_EXPORT void MOBI_addType(M_Arity *a, M_Type *t) {
   a->arity.add(t->type);
 }

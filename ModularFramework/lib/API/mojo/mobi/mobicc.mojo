@@ -10,6 +10,18 @@ from sys import external_call
 from sys.ffi import RTLD, DLHandle
 
 
+struct _Attr:
+    """Opaque data type mapping to M_Attr in the Builder C API."""
+
+    pass
+
+
+struct _AttrMap:
+    """Opaque data type mapping to M_AttrMap in the Builder C API."""
+
+    pass
+
+
 struct _Graph:
     """Opaque data type mapping to M_Graph in the Builder C API."""
 
@@ -52,6 +64,8 @@ struct _Type:
     pass
 
 
+alias AttrPtr = Pointer[_Attr]
+alias AttrMapPtr = Pointer[_AttrMap]
 alias GraphPtr = Pointer[_Graph]
 alias LocPtr = Pointer[_Loc]
 alias ModulePtr = Pointer[_Module]
@@ -84,6 +98,27 @@ struct Builder:
         # copy Builders around.
         pass
 
+    ### Attr helers
+
+    fn tensor_attr(
+        inout self,
+        inout module: ModulePtr,
+        name: StringRef,
+        data: Pointer[AnyType],
+        type: TypePtr,
+    ) raises -> AttrPtr:
+        return self.lib.get_function[
+            fn (ModulePtr, StringRef, Pointer[AnyType], TypePtr) -> AttrPtr
+        ]("MOBI_tensorAttr")(module, name, data, type)
+
+    fn new_attr_map(inout self) raises -> AttrMapPtr:
+        return self.lib.get_function[fn () -> AttrMapPtr]("MOBI_newAttrMap")()
+
+    fn add_attr(inout self, inout map: AttrMapPtr, inout a: AttrPtr) raises:
+        return self.lib.get_function[fn (AttrMapPtr, AttrPtr) -> NoneType](
+            "MOBI_addAttr"
+        )(map, a)
+
     ### Graph helpers
 
     fn new_graph(
@@ -98,13 +133,13 @@ struct Builder:
             fn (ModulePtr, LocPtr, StringRef, ArityPtr, ArityPtr) -> GraphPtr
         ]("MOBI_newGraph")(module, loc, name, inTypes, outTypes)
 
-    fn get_graph_input(
+    fn get_input(
         inout self,
         inout graph: GraphPtr,
         pos: UInt32,
     ) raises -> SymbolPtr:
         return self.lib.get_function[fn (GraphPtr, UInt32) -> SymbolPtr](
-            "MOBI_getGraphInput"
+            "MOBI_getInput"
         )(graph, pos)
 
     fn new_op(
@@ -114,10 +149,13 @@ struct Builder:
         name: StringRef,
         inputs: TuplePtr,
         outTypes: ArityPtr,
+        attrs: AttrMapPtr,
     ) raises -> TuplePtr:
         return self.lib.get_function[
-            fn (GraphPtr, LocPtr, StringRef, TuplePtr, ArityPtr) -> TuplePtr
-        ]("MOBI_newOp")(graph, loc, name, inputs, outTypes)
+            fn (
+                GraphPtr, LocPtr, StringRef, TuplePtr, ArityPtr, AttrMapPtr
+            ) -> TuplePtr
+        ]("MOBI_newOp")(graph, loc, name, inputs, outTypes, attrs)
 
     ### Location helpers
 
@@ -141,16 +179,16 @@ struct Builder:
     fn new_tuple(inout self) raises -> TuplePtr:
         return self.lib.get_function[fn () -> TuplePtr]("MOBI_newTuple")()
 
-    fn ext_tuple(inout self, inout t: TuplePtr, inout s: SymbolPtr) raises:
+    fn add_symbol(inout self, inout t: TuplePtr, inout s: SymbolPtr) raises:
         return self.lib.get_function[fn (TuplePtr, SymbolPtr) -> NoneType](
-            "MOBI_extendTuple"
+            "MOBI_addSymbol"
         )(t, s)
 
-    fn get_tuple_item(
+    fn get_symbol(
         inout self, inout t: TuplePtr, pos: UInt32
     ) raises -> SymbolPtr:
         return self.lib.get_function[fn (TuplePtr, UInt32) -> SymbolPtr](
-            "MOBI_getTupleItem"
+            "MOBI_getSymbol"
         )(t, pos)
 
     ### Type helers
@@ -163,7 +201,7 @@ struct Builder:
     fn new_arity(inout self) raises -> ArityPtr:
         return self.lib.get_function[fn () -> ArityPtr]("MOBI_newArity")()
 
-    fn inc_arity(inout self, inout arity: ArityPtr, inout t: TypePtr) raises:
+    fn add_type(inout self, inout arity: ArityPtr, inout t: TypePtr) raises:
         return self.lib.get_function[fn (ArityPtr, TypePtr) -> NoneType](
-            "MOBI_increaseArity"
+            "MOBI_addType"
         )(arity, t)
