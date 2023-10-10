@@ -28,12 +28,6 @@
 // CHECK: %2 |-> {%1, %arg2[2], %4[2]}
 // CHECK: maybeSameAs end
 
-// approximateMaybeSameAs == maybeSameAs
-// CHECK: approximateMaybeSameAs begin
-// CHECK: %arg2[2] |-> {%1, %4[2]}
-// CHECK: %2 |-> {%1, %arg2[2], %4[2]}
-// CHECK: approximateMaybeSameAs end
-
 mgp.model @repeat1 : mof init {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
@@ -177,17 +171,6 @@ mgp.model @repeat3 : mof init {
 // CHECK: %2#2 |-> {%5[2], %arg4[3]}
 // CHECK: %2#3 |-> {%1, %arg5[2], %arg5[3]}
 // CHECK: maybeSameAs end
-
-// Unlike for maybeSameAs, the while loop input, result, sub-block args and
-// sub-block outputs are all in the same equivalence class. Use the equivalence
-// class form instead of the 'raw' relation since easier to see the
-// desired condition holds.
-// CHECK: approximateMaybeSameAsEquivalence begin
-// CHECK-NEXT: {%0[0], %arg0, %arg2[2], %arg2[3], %2#0}
-// CHECK-NEXT: {%1[0], %arg1}
-// CHECK-NEXT: {%0, %arg3[2], %4[2], %arg3[3], %2#1}
-// CHECK-NEXT: {%1, %arg4[2], %arg5[2], %5[2], %arg4[3], %arg5[3], %4[3], %2#2, %2#3}
-// CHECK-NEXT: approximateMaybeSameAsEquivalence end
 
 // CHECK: impliesReady begin
 // CHECK: %4[3] |-> {%0[0], %arg0, %1, %arg4[2], %5[2], %arg4[3]}
@@ -414,16 +397,6 @@ mgp.model @shift : mof init {
 // CHECK: %10#2 |-> {%arg4[2], %arg4[3]}
 // CHECK: %10#3 |-> {%9, %arg5[2], %arg5[3]}
 // CHECK: sameAs end
-
-// The while loop inputs, result, sub-block args and sub-block outputs
-// are all in the same equivalence class, along with the aliases via
-// tensor.{create,extract}.
-// CHECK: approximateMaybeSameAsEquivalence begin
-// CHECK: {%0[0], %arg0, %arg2[2], %arg2[3], %10#0}
-// CHECK: {%0, %2, %arg3[2], %14#0[2], %arg3[3], %20#0[3], %21[3], %23[3], %10#1}
-// CHECK: {%3, %6, %arg4[2], %arg4[3], %13#0[3], %15[3], %18[3], %10#2, %11#0, %12}
-// CHECK: {%7, %9, %arg5[2], %arg5[3], %14#0[3], %10#3}
-// CHECK: approximateMaybeSameAsEquivalence end
 
 // CHECK: impliesReady begin
 // CHECK: %9 |-> {%0[0], %arg0, %5, %7, %8}

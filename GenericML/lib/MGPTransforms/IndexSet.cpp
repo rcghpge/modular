@@ -107,6 +107,11 @@ IndexSet<Operation *> M::MGP::createOperationIndexSet(ModelOp model) {
 
 void M::MGP::printVImpl(IndexSet<Operation *> &indexSet, llvm::raw_ostream &os,
                         Operation *op) {
+  if (isa<MGP::ModelOp>(op)) {
+    // This can happen because we sometimes take the parent of an op.
+    os << "MODEL";
+    return;
+  }
   if (op == indexSet.distinguished) {
     os << "DIST";
     return;
