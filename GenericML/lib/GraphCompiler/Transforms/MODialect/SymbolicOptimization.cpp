@@ -895,9 +895,10 @@ static bool isValueFromReshapeThatSqueezesFinalDims(Value val) {
 /// `reshape` we can prove `elemwise` has the least rank `r`. Then we can look
 /// at the last `r` dims of `broadcast`, `input`, and `reshape` and see if the
 /// dimensions are the same.
-struct SinkReshapeThroughBroadcastedElementwiseBinaryOp
+template <typename ReshapeOpType>
+struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp
     : public mlir::OpInterfaceRewritePattern<ElementWiseBinary> {
-  SinkReshapeThroughBroadcastedElementwiseBinaryOp(MLIRContext *ctx)
+  SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp(MLIRContext *ctx)
       : OpInterfaceRewritePattern(ctx, 2) {}
 
   LogicalResult matchAndRewrite(ElementWiseBinary op,
@@ -905,7 +906,7 @@ struct SinkReshapeThroughBroadcastedElementwiseBinaryOp
 
     // Match pattern and get results.
     TensorValue inputTensor, elemwiseTensor;
-    auto reshapeP = m_Op<Static::ReshapeOp>(m_Any(&inputTensor));
+    auto reshapeP = m_Op<ReshapeOpType>(m_Any(&inputTensor));
     auto broadcastP = m_Op<Static::BroadcastToOp>(m_Any(&elemwiseTensor));
     auto elemwiseOpP1 = m_Op<ElementWiseBinary>(reshapeP, broadcastP);
     auto elemwiseOpP2 = m_Op<ElementWiseBinary>(broadcastP, reshapeP);
@@ -933,11 +934,14 @@ struct SinkReshapeThroughBroadcastedElementwiseBinaryOp
           op, "Don't sink reshape that squeezes final dim.");
     }
 
+    TensorType inputTensorTy = inputTensor.getType();
+    if (inputTensorTy.hasUnknownShape())
+      return rewriter.notifyMatchFailure(op, "Shape must be known");
+
     // Ensure the smallest rank tensor is `elemwise`
     TensorType reshapedTensorTy = reshapedTensor.getType();
     TensorType elemwiseTensorTy = elemwiseTensor.getType();
     TensorType broadcastTensorTy = broadcastTensor.getType();
-    TensorType inputTensorTy = inputTensor.getType();
     if (!reshapedTensorTy.hasRank() || !elemwiseTensorTy.hasRank() ||
         !inputTensorTy.hasRank() || !broadcastTensorTy.hasRank())
       return rewriter.notifyMatchFailure(
@@ -989,15 +993,15 @@ struct SinkReshapeThroughBroadcastedElementwiseBinaryOp
     }
     newOp.getResult().setType(inputTensor.getType());
 
-    TensorValue output = rewriter.create<Static::ReshapeOp>(
-        op->getLoc(), oldType, newOp.getResult());
+    TensorValue output = rewriter.create<ReshapeOpType>(op->getLoc(), oldType,
+                                                        newOp.getResult());
 
     rewriter.replaceAllUsesWith(op.getResult(), output);
     return mlir::success();
   }
 };
 
-/// Drops reshapes through Elementwise Unary Ops.
+/// Drops reshapes-like ops through Elementwise Unary Ops.
 ///                    ┌─────┐     ┌─────┐
 ///                    │input│     │input│
 ///                    └──┬──┘     └──┬──┘
@@ -1011,15 +1015,16 @@ struct SinkReshapeThroughBroadcastedElementwiseBinaryOp
 ///                    ┌──┴───┐    ┌──┴───┐
 ///                    │output│    │output│
 ///                    └──────┘    └──────┘
-struct SinkReshapeThroughBroadcastedElementwiseUnaryOp
+template <typename ReshapeOpType>
+struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseUnaryOp
     : public mlir::OpInterfaceRewritePattern<ElementWiseUnary> {
-  SinkReshapeThroughBroadcastedElementwiseUnaryOp(MLIRContext *ctx)
+  SinkStaticReshapeLikeOpThroughBroadcastedElementwiseUnaryOp(MLIRContext *ctx)
       : OpInterfaceRewritePattern(ctx, 2) {}
 
   LogicalResult matchAndRewrite(ElementWiseUnary op,
                                 PatternRewriter &rewriter) const override {
     TensorValue inputTensor;
-    auto reshapeP = m_Op<Static::ReshapeOp>(m_Any(&inputTensor));
+    auto reshapeP = m_Op<ReshapeOpType>(m_Any(&inputTensor));
     auto elemwiseOpP = m_Op<ElementWiseUnary>(reshapeP);
 
     if (!elemwiseOpP.match(op))
@@ -1034,10 +1039,14 @@ struct SinkReshapeThroughBroadcastedElementwiseUnaryOp
           op, "Don't sink reshape that squeezes final dim.");
     }
 
+    auto inputType = inputTensor.getType().cast<TensorType>();
+    if (inputType.hasUnknownShape())
+      return rewriter.notifyMatchFailure(op, "Shape must be known");
+
     auto newOp = cast<ElementWiseUnary>(rewriter.clone(*op));
     newOp.setInput(inputTensor);
-    newOp.getResult().setType(inputTensor.getType());
-    TensorValue output = rewriter.create<Static::ReshapeOp>(
+    newOp.getResult().setType(inputType);
+    TensorValue output = rewriter.create<ReshapeOpType>(
         op->getLoc(), op.getResult().getType(), newOp.getResult());
 
     rewriter.replaceAllUsesWith(op.getResult(), output);
@@ -1060,16 +1069,17 @@ struct SinkReshapeThroughBroadcastedElementwiseUnaryOp
 ///       ┌───┴──┐                 ┌──┴───┐
 ///       │output│                 │output│
 ///       └──────┘                 └──────┘
-struct SinkSameReshapesThroughElementwiseBinaryOp
+template <typename ReshapeOpType>
+struct SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp
     : public mlir::OpInterfaceRewritePattern<ElementWiseBinary> {
-  SinkSameReshapesThroughElementwiseBinaryOp(MLIRContext *ctx)
+  SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp(MLIRContext *ctx)
       : OpInterfaceRewritePattern(ctx, 2) {}
 
   LogicalResult matchAndRewrite(ElementWiseBinary op,
                                 PatternRewriter &rewriter) const override {
     TensorValue input1Tensor, input2Tensor;
-    auto reshapeP1 = m_Op<Static::ReshapeOp>(m_Any(&input1Tensor));
-    auto reshapeP2 = m_Op<Static::ReshapeOp>(m_Any(&input2Tensor));
+    auto reshapeP1 = m_Op<ReshapeOpType>(m_Any(&input1Tensor));
+    auto reshapeP2 = m_Op<ReshapeOpType>(m_Any(&input2Tensor));
     auto elemwiseOpP = m_Op<ElementWiseBinary>(reshapeP1, reshapeP2);
 
     if (!elemwiseOpP.match(op))
@@ -1089,11 +1099,15 @@ struct SinkSameReshapesThroughElementwiseBinaryOp
           op, "Don't sink reshape that squeezes final dim.");
     }
 
+    auto inputType = input1Tensor.getType().cast<TensorType>();
+    if (inputType.hasUnknownShape())
+      return rewriter.notifyMatchFailure(op, "Shape must be known");
+
     auto newOp = cast<ElementWiseBinary>(rewriter.clone(*op));
     newOp.setLhsInput(input1Tensor);
     newOp.setRhsInput(input2Tensor);
-    newOp.getResult().setType(input1Tensor.getType());
-    TensorValue output = rewriter.create<Static::ReshapeOp>(
+    newOp.getResult().setType(inputType);
+    TensorValue output = rewriter.create<ReshapeOpType>(
         op->getLoc(), op.getResult().getType(), newOp.getResult());
 
     rewriter.replaceAllUsesWith(op.getResult(), output);
@@ -1818,9 +1832,9 @@ struct SinkSplitThroughElementwisePattern : public OpRewritePattern<SplitOp> {
 /// A pattern that will sink a split operation through a reshape-like operation
 /// such as Static::ReshapeOp and RebindOp.
 template <typename ReshapeOpType>
-struct SinkSplitThroughReshapeLikeOpsPattern
+struct SinkSplitThroughStaticReshapeLikeOpsPattern
     : public OpRewritePattern<SplitOp> {
-  SinkSplitThroughReshapeLikeOpsPattern(MLIRContext *ctx)
+  SinkSplitThroughStaticReshapeLikeOpsPattern(MLIRContext *ctx)
       : OpRewritePattern(ctx, 2) {}
 
   LogicalResult matchAndRewrite(SplitOp op,
@@ -1920,7 +1934,11 @@ struct SinkSplitThroughReshapeLikeOpsPattern
 struct SymbolicOptimizationPass
     : public MO::impl::SymbolicOptimizationBase<SymbolicOptimizationPass> {
   using SymbolicOptimizationBase::SymbolicOptimizationBase;
-  void runOnOperation() override {
+
+  // Runs all default patterns plus the ones provided in the template
+  // parameters.
+  template <typename... PatternTypes>
+  void optimizeWithPattern() {
     MLIRContext *context = &getContext();
 
     RewritePatternSet patterns(context);
@@ -1930,12 +1948,20 @@ struct SymbolicOptimizationPass
                  SinkTransposeThroughStaticBroadcastToOpPattern>(context);
     TransposeOp::getCanonicalizationPatterns(patterns, context);
 
-    // Reshape insertion/swimming.
-    patterns.add<ElementWiseUnaryVectorPattern, ElementWiseBinaryVectorPattern,
-                 BroadcastReshapePattern,
-                 SinkReshapeThroughBroadcastedElementwiseUnaryOp,
-                 SinkReshapeThroughBroadcastedElementwiseBinaryOp,
-                 SinkSameReshapesThroughElementwiseBinaryOp>(context);
+    // Reshape/Rebind insertion/swimming.
+    patterns.add<
+        ElementWiseUnaryVectorPattern, ElementWiseBinaryVectorPattern,
+        BroadcastReshapePattern,
+        SinkStaticReshapeLikeOpThroughBroadcastedElementwiseUnaryOp<
+            Static::ReshapeOp>,
+        SinkStaticReshapeLikeOpThroughBroadcastedElementwiseUnaryOp<RebindOp>,
+        SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp<
+            Static::ReshapeOp>,
+        SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp<RebindOp>,
+        SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp<
+            Static::ReshapeOp>,
+        SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp<RebindOp>>(
+        context);
 
     // Broadcast swimming.
     patterns.add<CommuteBroadcastWithFlatennedArgNonzero>(context);
@@ -1947,18 +1973,30 @@ struct SymbolicOptimizationPass
                  MergeParallelMatmulPattern<BatchMatmulOp>>(context);
 
     // Split swimming.
-    patterns.add<SinkSplitThroughReshapeLikeOpsPattern<Static::ReshapeOp>,
-                 SinkSplitThroughReshapeLikeOpsPattern<RebindOp>,
+    patterns.add<SinkSplitThroughStaticReshapeLikeOpsPattern<Static::ReshapeOp>,
+                 SinkSplitThroughStaticReshapeLikeOpsPattern<RebindOp>,
                  SinkSplitThroughElementwisePattern>(context);
 
     // Miscellaneous rewrites.
     patterns.add<FlattenNestedConcatPattern, Pow2Pattern, Pow3Pattern,
                  GathersToSplitPattern, GeluPattern, GemvPattern,
-                 SplitAndSqueezesPattern, SplitToSlicePattern>(context);
+                 SplitAndSqueezesPattern>(context);
+
+    if constexpr (sizeof...(PatternTypes))
+      // Pattern that should execute now.
+      patterns.add<PatternTypes...>(context);
 
     if (failed(
             applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
       return signalPassFailure();
+  }
+  void runOnOperation() override {
+    // First run all the default optimizations.
+    optimizeWithPattern();
+    // Once all split operation patterns have run, convert them to slice and run
+    // all of the other patterns too. This prevents this pattern from preventing
+    // split patterns from occuring because of ordering.
+    optimizeWithPattern<SplitToSlicePattern>();
   }
 };
 

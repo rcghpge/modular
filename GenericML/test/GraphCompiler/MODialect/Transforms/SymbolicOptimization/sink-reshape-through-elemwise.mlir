@@ -178,3 +178,14 @@ mo.graph @dont_sink_binary_bcast_reshape_that_squeezes_final_dim(
 // CHECK-NEXT: %[[BCAST_RHS:.*]] = mo.static.broadcast_to(%[[RHS]]) : !mo.tensor<[], f32> -> !mo.tensor<[2], f32>
 // CHECK-NEXT: %[[ADD:.*]] = mo.add(%[[RESHAPED_LHS]], %[[BCAST_RHS]]) : !mo.tensor<[2], f32>
 // CHECK-NEXT: mo.output %[[ADD]] : !mo.tensor<[2], f32>
+
+mo.graph @sink_rebind_through_unary_elemwise<D0, D1>(%in: !mo.tensor<[D0, 2, 4], f32>) -> !mo.tensor<[D1, 2, 4], f32> {
+  %0 = mo.rebind(%in) : !mo.tensor<[D0, 2, 4], f32> -> !mo.tensor<[D1, 2, 4], f32>
+  %1 = mo.exp(%0) : !mo.tensor<[D1, 2, 4], f32>
+  mo.output %1 : !mo.tensor<[D1, 2, 4], f32>
+}
+
+// CHECK:       mo.graph @sink_rebind_through_unary_elemwise<[[D0:.*]], [[D1:.*]]>(%[[ARG0:.*]]: !mo.tensor<[[[D0]], 2, 4], f32>) -> !mo.tensor<[[[D1]], 2, 4], f32>
+// CHECK-NEXT:    %[[EXP:.*]] = mo.exp(%[[ARG0]]) : !mo.tensor<[[[D0]], 2, 4], f32>
+// CHECK-NEXT:    %[[REBIND:.*]] = mo.rebind(%[[EXP]]) : !mo.tensor<[[[D0]], 2, 4], f32> -> !mo.tensor<[[[D1]], 2, 4], f32>
+// CHECK-NEXT:    mo.output %[[REBIND]] : !mo.tensor<[[[D1]], 2, 4], f32>

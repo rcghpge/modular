@@ -115,15 +115,15 @@ mo.graph @no_sinking_binary_elementwise_diff_broadcast(%in: !mo.tensor<[2, 4], f
 // CHECK-NEXT:    mo.add
 // CHECK-NEXT:    mo.add
 
-mo.graph @no_sinking_binary_elementwise_scalar(%in: !mo.tensor<[2, 4], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
+mo.graph @no_sinking_binary_elementwise_scalar(%in: !mo.tensor<[2, 2000], f32>) -> (!mo.tensor<[2, 1000], f32>, !mo.tensor<[2, 1000], f32>) {
   %0 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
-  %1 = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %1 = mo.constant {value = #M.dense_array<1000, 1000> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %cst = mo.constant {value = #M.dense_array<1.> : tensor<f32>} : !mo.tensor<[], f32>
-  %bcast = mo.static.broadcast_to(%cst) : !mo.tensor<[], f32> -> !mo.tensor<[2, 2], f32>
-  %2:2 = mo.split[%0 : !mo.tensor<[], si32>] (%in, %1) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
-  %3 = mo.add(%2#0, %bcast) : !mo.tensor<[2, 2], f32>
-  %4 = mo.add(%2#1, %bcast) : !mo.tensor<[2, 2], f32>
-  mo.output %3, %4 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
+  %bcast = mo.static.broadcast_to(%cst) : !mo.tensor<[], f32> -> !mo.tensor<[2, 1000], f32>
+  %2:2 = mo.split[%0 : !mo.tensor<[], si32>] (%in, %1) : (!mo.tensor<[2, 2000], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 1000], f32>, !mo.tensor<[2, 1000], f32>)
+  %3 = mo.add(%2#0, %bcast) : !mo.tensor<[2, 1000], f32>
+  %4 = mo.add(%2#1, %bcast) : !mo.tensor<[2, 1000], f32>
+  mo.output %3, %4 : !mo.tensor<[2, 1000], f32>, !mo.tensor<[2, 1000], f32>
 }
 
 // CHECK-LABEL:  mo.graph @reshape
