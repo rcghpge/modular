@@ -274,7 +274,7 @@ void Fallback<MO::ConcatOp>::build(GraphOp &graph, OpBuilder &builder,
 void Fallback<MO::ConvOp>::build(GraphOp &graph, OpBuilder &builder,
                                  MO::ConvOp op) {
   buildForOpResult(graph, builder, op, "conv_shape", op.getOperands(),
-                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{2, 3, 4});
+                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{2, 3, 4, 5});
 }
 
 void Fallback<MO::GatherOp>::build(GraphOp &graph, OpBuilder &builder,

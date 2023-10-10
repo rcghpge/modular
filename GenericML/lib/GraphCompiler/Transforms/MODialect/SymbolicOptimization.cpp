@@ -277,14 +277,17 @@ struct ConvertBatchMatmulToMatmulPattern
 };
 
 /// A pattern that detects `mo.conv` with 1x1 filter, 1s for strides and
-/// dilations, and rewrites it into a matmul with some static reshapes.
+/// dilations, 0s for paddings, and num_groups=1 and rewrites it into a matmul
+/// with some static reshapes.
 ///
 /// Example:
 ///
 /// input  : tensor<[N, H, W, Ci]>
 /// filter : tensor<[1, 1, Ci, Co]>
 ///
-///   res = conv(input, filter)[strides = {1, ...}, dilations = {1, ...}] : Sh
+///   res = conv(input, filter)[
+///     strides = {1, ...}, dilations = {1, ...}, paddings = {0, ...},
+///     num_groups = 1] : Sh
 /// ===>
 ///   input'  = reshape(input)  : tensor<[N, H, W, Ci]> -> tensor<[N*H*W, Ci]>
 ///   filter' = reshape(filter) : tensor<[1, 1, Ci, Co]> -> tensor<[Ci, Co]>
@@ -323,10 +326,16 @@ struct ConvToMatmulPattern : public OpRewritePattern<ConvOp> {
              llvm::all_of(maybeInts.value(),
                           [&check](int64_t n) { return n == check; });
     };
+    auto isConstant = [](TensorValue val, int64_t check) {
+      std::optional<int64_t> maybeInt = tryGetConstantInt(val);
+      return maybeInt && (maybeInt == check);
+    };
     if (!areConstant(op.getStrides(), 1))
       return rewriter.notifyMatchFailure(op, "strides must be all 1s");
     if (!areConstant(op.getPaddings(), 0))
       return rewriter.notifyMatchFailure(op, "paddings must be all 0s");
+    if (!isConstant(op.getNumGroups(), 1))
+      return rewriter.notifyMatchFailure(op, "num_groups must be 1");
 
     // Insert reshapes for conv input and filter
     auto shapeTy = rewriter.getType<MOSH::ShapeType>();

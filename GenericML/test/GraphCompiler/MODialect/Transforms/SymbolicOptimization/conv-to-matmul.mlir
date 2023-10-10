@@ -7,10 +7,11 @@ mo.graph @conv_to_matmul_static_dims(
 
   %ones = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %pads = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %num_groups = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 
-  %res = mo.conv(%input, %filter) [strides = %ones, dilations = %ones, paddings = %pads] : (
+  %res = mo.conv(%input, %filter) [strides = %ones, dilations = %ones, paddings = %pads, num_groups = %num_groups] : (
     !mo.tensor<[32, 10, 10, 3], f32>, !mo.tensor<[1, 1, 3, 9], f32>,
-    !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
+    !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[32, 10, 10, 9], f32>
 
   mo.output %res : !mo.tensor<[32, 10, 10, 9], f32>
@@ -38,10 +39,11 @@ mo.graph @conv_to_matmul_dynamic_dims<N, H, W, CI, CO>(
 
   %ones = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %pads = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %num_groups = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 
-  %res = mo.conv(%input, %filter) [strides = %ones, dilations = %ones, paddings = %pads] : (
+  %res = mo.conv(%input, %filter) [strides = %ones, dilations = %ones, paddings = %pads, num_groups = %num_groups] : (
     !mo.tensor<[N, H, W, CI], f32>, !mo.tensor<[1, 1, CI, CO], f32>,
-    !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
+    !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[N, H, W, CO], f32>
 
   mo.output %res : !mo.tensor<[N, H, W, CO], f32>
@@ -73,10 +75,11 @@ mo.graph @conv_to_matmul_non_1x1_filter(
 
   %ones = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %pads = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %num_groups = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 
-  %res = mo.conv(%input, %filter) [strides = %ones, dilations = %ones, paddings = %pads] : (
+  %res = mo.conv(%input, %filter) [strides = %ones, dilations = %ones, paddings = %pads, num_groups = %num_groups] : (
     !mo.tensor<[32, 10, 10, 3], f32>, !mo.tensor<[3, 3, 3, 9], f32>,
-    !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
+    !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[32, 8, 8, 9], f32>
 
   mo.output %res : !mo.tensor<[32, 8, 8, 9], f32>
@@ -89,10 +92,11 @@ mo.graph @conv_to_matmul_non_1x1_filter(
 //
 // CHECK-NEXT:   %[[ONES:.*]] = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
 // CHECK-NEXT:   %[[PADDINGS:.*]] = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+// CHECK-NEXT:   %[[NUM_GROUPS:.*]] = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 //
-// CHECK-NEXT:   %[[RES:.*]] = mo.conv(%[[INPUT]], %[[FILTER]]) [strides = %[[ONES]], dilations = %[[ONES]], paddings = %[[PADDINGS]]] : (
+// CHECK-NEXT:   %[[RES:.*]] = mo.conv(%[[INPUT]], %[[FILTER]]) [strides = %[[ONES]], dilations = %[[ONES]], paddings = %[[PADDINGS]], num_groups = %[[NUM_GROUPS]]] : (
 // CHECK-SAME:     !mo.tensor<[32, 10, 10, 3], f32>, !mo.tensor<[3, 3, 3, 9], f32>,
-// CHECK-SAME:     !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
+// CHECK-SAME:     !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
 // CHECK-SAME:   ) -> !mo.tensor<[32, 8, 8, 9], f32>
 //
 // CHECK-NEXT:   mo.output %[[RES]] : !mo.tensor<[32, 8, 8, 9], f32>
@@ -107,10 +111,11 @@ mo.graph @conv_to_matmul_non_ones_strides(
   %strides = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %dilations = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %pads = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %num_groups = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 
-  %res = mo.conv(%input, %filter) [strides = %strides, dilations = %dilations, paddings = %pads] : (
+  %res = mo.conv(%input, %filter) [strides = %strides, dilations = %dilations, paddings = %pads, num_groups = %num_groups] : (
     !mo.tensor<[32, 10, 10, 3], f32>, !mo.tensor<[1, 1, 3, 9], f32>,
-    !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
+    !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[32, 10, 5, 9], f32>
 
   mo.output %res : !mo.tensor<[32, 10, 5, 9], f32>
@@ -124,10 +129,11 @@ mo.graph @conv_to_matmul_non_ones_strides(
 // CHECK-NEXT:   %[[STRIDES:.*]] = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
 // CHECK-NEXT:   %[[DILATIONS:.*]] = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
 // CHECK-NEXT:   %[[PADDINGS:.*]] = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+// CHECK-NEXT:   %[[NUM_GROUPS:.*]] = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 //
-// CHECK-NEXT:   %[[RES:.*]] = mo.conv(%[[INPUT]], %[[FILTER]]) [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]]] : (
+// CHECK-NEXT:   %[[RES:.*]] = mo.conv(%[[INPUT]], %[[FILTER]]) [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], num_groups = %[[NUM_GROUPS]]] : (
 // CHECK-SAME:     !mo.tensor<[32, 10, 10, 3], f32>, !mo.tensor<[1, 1, 3, 9], f32>,
-// CHECK-SAME:     !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
+// CHECK-SAME:     !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
 // CHECK-SAME:   ) -> !mo.tensor<[32, 10, 5, 9], f32>
 //
 // CHECK-NEXT:   mo.output %[[RES]] : !mo.tensor<[32, 10, 5, 9], f32>
@@ -142,10 +148,11 @@ mo.graph @conv_to_matmul_non_ones_dilations(
   %strides = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %dilations = mo.constant {value = #M.dense_array<2, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %pads = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %num_groups = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 
-  %res = mo.conv(%input, %filter) [strides = %strides, dilations = %dilations, paddings = %pads] : (
+  %res = mo.conv(%input, %filter) [strides = %strides, dilations = %dilations, paddings = %pads, num_groups = %num_groups] : (
     !mo.tensor<[32, 10, 10, 3], f32>, !mo.tensor<[1, 1, 3, 9], f32>,
-    !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
+    !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[32, 10, 10, 9], f32>
 
   mo.output %res : !mo.tensor<[32, 10, 10, 9], f32>
@@ -173,10 +180,11 @@ mo.graph @conv_to_matmul_non_zero_pads(
 
   %ones = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %pads = mo.constant {value = #M.dense_array<0, 1, 0, 1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %num_groups = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 
-  %res = mo.conv(%input, %filter) [strides = %ones, dilations = %ones, paddings = %pads] : (
+  %res = mo.conv(%input, %filter) [strides = %ones, dilations = %ones, paddings = %pads, num_groups = %num_groups] : (
     !mo.tensor<[32, 10, 10, 3], f32>, !mo.tensor<[1, 1, 3, 9], f32>,
-    !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
+    !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[32, 11, 11, 9], f32>
 
   mo.output %res : !mo.tensor<[32, 11, 11, 9], f32>
@@ -189,11 +197,33 @@ mo.graph @conv_to_matmul_non_zero_pads(
 //
 // CHECK-NEXT:   %[[ONES:.*]] = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
 // CHECK-NEXT:   %[[PADDINGS:.*]] = mo.constant {value = #M.dense_array<0, 1, 0, 1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+// CHECK-NEXT:   %[[NUM_GROUPS:.*]] = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 //
-// CHECK-NEXT:   %[[RES:.*]] = mo.conv(%[[INPUT]], %[[FILTER]]) [strides = %[[ONES]], dilations = %[[ONES]], paddings = %[[PADDINGS]]] : (
+// CHECK-NEXT:   %[[RES:.*]] = mo.conv(%[[INPUT]], %[[FILTER]]) [strides = %[[ONES]], dilations = %[[ONES]], paddings = %[[PADDINGS]], num_groups = %[[NUM_GROUPS]]] : (
 // CHECK-SAME:     !mo.tensor<[32, 10, 10, 3], f32>, !mo.tensor<[1, 1, 3, 9], f32>,
-// CHECK-SAME:     !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
+// CHECK-SAME:     !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
 // CHECK-SAME:   ) -> !mo.tensor<[32, 11, 11, 9], f32>
 //
 // CHECK-NEXT:   mo.output %[[RES]] : !mo.tensor<[32, 11, 11, 9], f32>
 // CHECK-NEXT: }
+
+mo.graph @conv_to_matmul_nontrivial_num_groups(
+  %input: !mo.tensor<[32, 10, 10, 3], f32>,
+  %filter: !mo.tensor<[1, 1, 1, 9], f32>
+) -> !mo.tensor<[32, 10, 10, 9], f32> {
+
+  %ones = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %pads = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %num_groups = mo.constant {value = #M.dense_array<3> : tensor<si64>} : !mo.tensor<[], si64>
+
+  %res = mo.conv(%input, %filter) [strides = %ones, dilations = %ones, paddings = %pads, num_groups = %num_groups] : (
+    !mo.tensor<[32, 10, 10, 3], f32>, !mo.tensor<[1, 1, 1, 9], f32>,
+    !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
+  ) -> !mo.tensor<[32, 10, 10, 9], f32>
+
+  mo.output %res : !mo.tensor<[32, 10, 10, 9], f32>
+}
+
+// CHECK-LABEL: mo.graph @conv_to_matmul_nontrivial_num_groups
+// CHECK-NOT: mo.matmul
+// CHECK: mo.conv

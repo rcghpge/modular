@@ -7,11 +7,11 @@
 //===----------------------------------------------------------------------===//
 
 mo.graph @conv_window_param_size_mismatch(
-  %arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>, %st: !mo.tensor<[3], si64>, %di: !mo.tensor<[2], si64>, %pa: !mo.tensor<[4], si64>
+  %arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>, %st: !mo.tensor<[3], si64>, %di: !mo.tensor<[2], si64>, %pa: !mo.tensor<[4], si64>, %ng: !mo.tensor<[], si64>
 ) -> !mo.tensor<?, f32> {
   // expected-error@+1 {{window parameter sizes must match if static}}
-  %0 = mo.conv(%arg0, %arg1) [strides = %st, dilations = %di, paddings = %pa] : (
-    !mo.tensor<?, f32>, !mo.tensor<?, f32>, !mo.tensor<[3], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<?, f32>
+  %0 = mo.conv(%arg0, %arg1) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
+    !mo.tensor<?, f32>, !mo.tensor<?, f32>, !mo.tensor<[3], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %0 : !mo.tensor<?, f32>
 }
 

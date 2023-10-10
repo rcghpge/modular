@@ -1599,20 +1599,22 @@ def MO_ConvOp : MO_TensorOp<"conv", [
 ]>{
   let summary = "Convolution operation";
   let description = [{
-    Compute the convolution of the input with the given filter, strides, and
-    dilations.
+    Compute the convolution of the input with the given filter, strides,
+    dilations, paddings, and groups.
 
     For now the op only supports 2d convolution (so input and filter must be
     4D), with the following layout assumptions:
     - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
-    - filter has layout RSCF, i.e., (height, width, in_channels, out_channels)
+    - filter has layout RSCF, i.e.,
+      (height, width, in_channels / num_groups, out_channels)
 
-    All hyperparameters (i.e. strides, dilations, padding) must be of rank 1, or
-    unranked. If the input has static rank, all hyperparameters with static
-    shape must have sizes of `input_rank - 2`, except padding, which must have size
-    `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to
-    corresponding dimensions of the input (after ignoring the batch and channel dimensions),
-    with padding representing a before/after pair for each axis.
+    `strides`, `dilations`, and `padding` must be of rank 1, or unranked.
+    If the input has static rank, all hyperparameters with static shape must
+    have sizes of `input_rank - 2`, except padding, which must have
+    size `2 * (input_rank - 2)`. Individual elements in the hyperparameters
+    apply to corresponding dimensions of the input (after ignoring the batch
+    and channel dimensions), with padding representing a before/after pair for
+    each axis.
 
     The padding values are expected to take the form (pad_dim1_before,
     pad_dim1_after, pad_dim2_before, pad_dim2_after...) and represent padding
@@ -1637,6 +1639,9 @@ def MO_ConvOp : MO_TensorOp<"conv", [
 
     The input, output and filter tensors' ranks must match if statically known.
 
+    `num_groups` must be a ranked scalar. The number of input and output
+    channels must both be divisible by the number of groups `num_groups`.
+
     This op currently only supports strides and dilations on the input.
 
     Example:
@@ -1648,9 +1653,11 @@ def MO_ConvOp : MO_TensorOp<"conv", [
       : !mo.tensor<[2], si64>
     %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>}
       : !mo.tensor<[4], si64>
-    %res = mo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa] : (
+    %ng = mo.constant {value = #M.dense_array<1> : tensor<si64>}
+      : %!mo.tensor<[], si64>
+    %res = mo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
       !mo.tensor<[10, 5, 5, 32], f32>, !mo.tensor<[2, 2, 32, 64], f32>,
-      !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
+      !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
     ) -> !mo.tensor<[10, 4, 4, 64], f32>
     ```
   }];
@@ -1661,13 +1668,15 @@ def MO_ConvOp : MO_TensorOp<"conv", [
     MO_ShapeLikeIfRanked:$strides,
     MO_ShapeLikeIfRanked:$dilations,
     MO_ShapeLikeIfRanked:$paddings,
+    MO_RankedScalarIndexTensor:$num_groups,
     MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` $input `,` $filter `)`
     `[` `strides` `=` $strides `,` `dilations` `=` $dilations `,`
-                    `paddings` `=` $paddings `]` attr-dict `:`
+                    `paddings` `=` $paddings `,`
+                    `num_groups` `=` $num_groups `]` attr-dict `:`
     functional-type(operands, results)
   }];
 
