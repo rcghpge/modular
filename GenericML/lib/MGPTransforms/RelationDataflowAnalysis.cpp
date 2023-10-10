@@ -232,8 +232,6 @@ void ForwardsRelationDataflowAnalysis::flowControlFlow(
         // The second sub-block then first-sub block may be executed again.
         flowConditionedLoop(cfOp, domainMap, flowOp);
       }
-
-      outerChanged |= domainMap.changed;
     } while (domainMap.changed);
     LLVM_DEBUG(llvm::dbgs() << "fixed point reached\n");
     domainMap.changed = outerChanged;
@@ -458,8 +456,6 @@ void BackwardsRelationDataflowAnalysis::flowControlFlow(
         // The second sub-block then first-sub block may be executed again.
         flowConditionedLoop(cfOp, domainMap, flowOp);
       }
-
-      outerChanged |= domainMap.changed;
     } while (domainMap.changed);
     LLVM_DEBUG(llvm::dbgs() << "fixed point reached\n");
     domainMap.changed = outerChanged;
