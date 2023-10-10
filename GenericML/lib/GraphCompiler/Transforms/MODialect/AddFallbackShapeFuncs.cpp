@@ -53,6 +53,7 @@ HAS_FALLBACK(MO::BottomKOp)
 HAS_FALLBACK(MO::BroadcastToOp)
 HAS_FALLBACK(MO::ConcatOp)
 HAS_FALLBACK(MO::ConvOp)
+HAS_FALLBACK(MO::ConvTransposeOp)
 HAS_FALLBACK(MO::GatherOp)
 HAS_FALLBACK(MO::MaxPoolOp)
 HAS_FALLBACK(MO::MeanOp)
@@ -118,6 +119,7 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::BroadcastToOp)
       CALL_FALLBACK(MO::ConcatOp)
       CALL_FALLBACK(MO::ConvOp)
+      CALL_FALLBACK(MO::ConvTransposeOp)
       CALL_FALLBACK(MO::GatherOp)
       CALL_FALLBACK(MO::MaxPoolOp)
       CALL_FALLBACK(MO::MeanOp)
@@ -274,6 +276,12 @@ void Fallback<MO::ConcatOp>::build(GraphOp &graph, OpBuilder &builder,
 void Fallback<MO::ConvOp>::build(GraphOp &graph, OpBuilder &builder,
                                  MO::ConvOp op) {
   buildForOpResult(graph, builder, op, "conv_shape", op.getOperands(),
+                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{2, 3, 4, 5});
+}
+
+void Fallback<MO::ConvTransposeOp>::build(GraphOp &graph, OpBuilder &builder,
+                                          MO::ConvTransposeOp op) {
+  buildForOpResult(graph, builder, op, "conv_transpose_shape", op.getOperands(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{2, 3, 4, 5});
 }
 

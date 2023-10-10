@@ -1683,6 +1683,99 @@ def MO_ConvOp : MO_TensorOp<"conv", [
   let hasVerifier = 1;
 }
 
+def MO_ConvTransposeOp : MO_TensorOp<"conv_transpose", [
+  MO_SlidingWindow,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+]>{
+  let summary = "Convolution transpose operation";
+  let description = [{
+    This operation effectively computes the gradient of a convolution with
+    respect to its input (as if the original convolution operation had the same
+    filter and hyperparameters as this op). A visualization of the computation
+    can be found in https://d2l.ai/chapter_computer-vision/transposed-conv.html.
+
+    For now the op only supports 2D spatial dimensions (so input and filter must
+    be 4D), with the following layout assumptions (note the `out_channel` is
+    w.r.t. the original convolution):
+    - input has layout NHWC, i.e., (batch_size, height, width, out_channels)
+    - filter has layout RSCF, i.e., (height, width, in_channels, out_channels)
+
+    All hyperparameters (i.e. strides, dilations, padding, output_paddings) must
+    be of rank 1, or unranked. If the input has static rank, all hyperparameters
+    with static shape must have sizes of `input_rank - 2`, except padding, which
+    must have size `2 * (input_rank - 2)`. Individual elements in the
+    hyperparameters applies to corresponding dimensions of the input (after
+    ignoring the batch and channel dimensions), with padding representing a
+    before/after pair for each axis.
+
+    The padding values are expected to take the form (pad_dim1_before,
+    pad_dim1_after, pad_dim2_before, pad_dim2_after...) and represent padding
+    0's before and after the indicated *spatial* dimensions in `input`. In 2D
+    Convolution, dim1 here repesents H and dim2 represents W. In python like
+    syntax, padding a 2x3 spatial `input` with [0, 1, 2, 1] would yield:
+
+    ```python
+    input = [
+      [1, 2, 3],
+      [4, 5, 6]
+    ]
+    # Shape is 2x3
+
+    padded_input = [
+      [0, 0, 1, 2, 3, 0],
+      [0, 0, 4, 5, 6, 0]
+      [0, 0, 0, 0, 0, 0]
+    ]
+    # Shape is 3x6
+    ```
+
+    The `output_paddings` argument is meant to resolve the ambiguity of multiple
+    potential output shapes when any stride is greater than 1. Basically,
+    we'll add `output_paddings[i]` number of zeros at the end of output's ith
+    axis.
+
+    The input, output and filter tensors' ranks must match if statically known.
+
+    Example:
+
+    ```mlir
+    %st = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>}
+      : !mo.tensor<[2], si64>
+    %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>}
+      : !mo.tensor<[2], si64>
+    %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>}
+      : !mo.tensor<[4], si64>
+    %op = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>}
+      : !mo.tensor<[2], si64>
+    %res = mo.conv(%input, %filter)
+      [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
+      !mo.tensor<[10, 4, 4, 64], f32>, !mo.tensor<[2, 2, 32, 64], f32>,
+      !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>,
+      !mo.tensor<[2], si64>
+    ) -> !mo.tensor<[10, 5, 5, 32], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_Tensor:$filter,
+    MO_ShapeLikeIfRanked:$strides,
+    MO_ShapeLikeIfRanked:$dilations,
+    MO_ShapeLikeIfRanked:$paddings,
+    MO_ShapeLikeIfRanked:$output_paddings,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` $input `,` $filter `)`
+    `[` `strides` `=` $strides `,` `dilations` `=` $dilations `,`
+        `paddings` `=` $paddings `,` `output_paddings` `=` $output_paddings`]` attr-dict `:`
+    functional-type(operands, results)
+  }];
+
+  let hasVerifier = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // Shape related ops
 //===----------------------------------------------------------------------===//

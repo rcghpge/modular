@@ -164,6 +164,37 @@ mo.graph @conv_fallback_shape_func<() -> D0, D1, D2, D3>(
 // CHECK-NEXT: mo.output<[[D4]], [[D5]], [[D6]], [[D7]]> %[[RES]] : !mo.tensor<[[[D4]], [[D5]], [[D6]], [[D7]]], f32>
 
 
+mo.graph @conv_transpose_fallback_shape_func<() -> D0, D1, D2, D3>(
+  %input: !mo.tensor<[32, 10, 20, 3], f32>,
+  %filter: !mo.tensor<[2, 2, 3, 1], f32>,
+  %strides: !mo.tensor<[2], si64>,
+  %dilations: !mo.tensor<[2], si64>,
+  %paddings: !mo.tensor<[4], si64>,
+  %out_paddings: !mo.tensor<[2], si64>
+) -> !mo.tensor<[D0, D1, D2, D3], f32> {
+
+  %res = mo.conv_transpose<() -> D4, D5, D6, D7>(%input, %filter)
+    [strides = %strides, dilations = %dilations, paddings = %paddings, output_paddings = %out_paddings] :
+    (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2, 2, 3, 1], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[2], si64>)
+    -> !mo.tensor<[D4, D5, D6, D7], f32>
+
+  mo.output<D4, D5, D6, D7> %res : !mo.tensor<[D4, D5, D6, D7], f32>
+}
+// CHECK-LABEL: mo.graph @conv_transpose_fallback_shape_func
+// CHECK-SAME: <() -> [[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(%[[INPUT:.*]]: !mo.tensor<[32, 10, 20, 3], f32>, %[[FILTER:.*]]: !mo.tensor<[2, 2, 3, 1], f32>, %[[STRIDES:.*]]: !mo.tensor<[2], si64>, %[[DILATIONS:.*]]: !mo.tensor<[2], si64>, %[[PADDINGS:.*]]: !mo.tensor<[4], si64>, %[[OUTPUT_PADDINGS:.*]]: !mo.tensor<[2], si64>) -> !mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32> no_inline {
+//
+// CHECK-NEXT: mo.invoke_shape_func["conv_transpose_shape"]<() -> [[D4:.*]], [[D5:.*]], [[D6:.*]], [[D7:.*]]>(
+// CHECK-SAME:   %[[INPUT]], %[[FILTER]], %[[STRIDES]], %[[DILATIONS]], %[[PADDINGS]], %[[OUTPUT_PADDINGS]])
+// CHECK-SAME:   {dataDeptTensors = [2 : i32, 3 : i32, 4 : i32, 5 : i32]} :
+// CHECK-SAME:   (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2, 2, 3, 1], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[2], si64>)
+//
+// CHECK-NEXT: %[[RES:.*]] = mo.conv_transpose(%[[INPUT]], %[[FILTER]]) [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], output_paddings = %[[OUTPUT_PADDINGS]]]
+// CHECK-SAME:   (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2, 2, 3, 1], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[2], si64>)
+// CHECK-SAME:   -> !mo.tensor<[[[D4]], [[D5]], [[D6]], [[D7]]], f32>
+//
+// CHECK-NEXT: mo.output<[[D4]], [[D5]], [[D6]], [[D7]]> %[[RES]] : !mo.tensor<[[[D4]], [[D5]], [[D6]], [[D7]]], f32>
+
+
 mo.graph @gather_fallback_shape_func<D0, D1 -> D2, D3, D4>(
   %input : !mo.tensor<[10, D0], f32>,
   %indices : !mo.tensor<[D1, 20], si32>,

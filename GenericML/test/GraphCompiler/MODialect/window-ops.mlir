@@ -50,6 +50,58 @@ mo.graph @conv_dyn_rank(
 }
 
 //===----------------------------------------------------------------------===//
+// ConvTransposeOp
+//===----------------------------------------------------------------------===//
+
+// CHECK: mo.graph @conv_transpose2d(
+// CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[10, 2, 2, 32], f32>,
+// CHECK-SAME: %[[FILTER:.*]]: !mo.tensor<[3, 3, 16, 32], f32>) -> !mo.tensor<[10, 4, 4, 16], f32> no_inline {
+mo.graph @conv_transpose2d(
+  %input: !mo.tensor<[10, 2, 2, 32], f32>,
+  %filter: !mo.tensor<[3, 3, 16, 32], f32>
+) -> !mo.tensor<[10, 4, 4, 16], f32> {
+  // CHECK-DAG: %[[ST:.*]] = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK-DAG: %[[DI:.*]] = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK-DAG: %[[PA:.*]] = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  // CHECK-DAG: %[[OP:.*]] = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %st = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %op = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK: mo.conv_transpose(%[[INPUT]], %[[FILTER]])
+  // CHECK-SAME: [strides = %[[ST]], dilations = %[[DI]], paddings = %[[PA]], output_paddings = %[[OP]]]
+  %0 = mo.conv_transpose(%input, %filter)
+    [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
+    !mo.tensor<[10, 2, 2, 32], f32>, !mo.tensor<[3, 3, 16, 32], f32>,
+    !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[2], si64>
+  ) -> !mo.tensor<[10, 4, 4, 16], f32>
+  mo.output %0 : !mo.tensor<[10, 4, 4, 16], f32>
+}
+
+// CHECK: mo.graph @conv_transpose_dyn_rank(
+// CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<?, f32>, %[[FILTER:.*]]: !mo.tensor<?, f32>,
+// CHECK-SAME: %[[ST:.*]]: !mo.tensor<?, si64>,
+// CHECK-SAME: %[[DI:.*]]: !mo.tensor<[?], si64>, %[[PA:.*]]: !mo.tensor<[?], si64>, %[[OP:.*]]: !mo.tensor<[?], si64>
+// CHECK-SAME:) -> !mo.tensor<?, f32> no_inline {
+mo.graph @conv_transpose_dyn_rank(
+  %input: !mo.tensor<?, f32>,
+  %filter: !mo.tensor<?, f32>,
+  %st: !mo.tensor<?, si64>,
+  %di: !mo.tensor<[?], si64>,
+  %pa: !mo.tensor<[?], si64>,
+  %op: !mo.tensor<[?], si64>
+) -> !mo.tensor<?, f32> {
+  // CHECK: mo.conv_transpose(%[[INPUT]], %[[FILTER]])
+  // CHECK-SAME: [strides = %[[ST]], dilations = %[[DI]], paddings = %[[PA]], output_paddings = %[[OP]]]
+  %0 = mo.conv_transpose(%input, %filter)
+    [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
+    !mo.tensor<?, f32>, !mo.tensor<?, f32>,
+    !mo.tensor<?, si64>, !mo.tensor<[?], si64>, !mo.tensor<[?], si64>,  !mo.tensor<[?], si64>
+  ) -> !mo.tensor<?, f32>
+  mo.output %0 : !mo.tensor<?, f32>
+}
+
+//===----------------------------------------------------------------------===//
 // AvgPoolOp
 //===----------------------------------------------------------------------===//
 

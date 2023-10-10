@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/MODialect/MOAttrs.h"
+#include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 

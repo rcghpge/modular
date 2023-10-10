@@ -290,6 +290,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_ELEMWISE(MO::CeilOp),
       MO_TO_KERNEL(MO::ConcatOp),
       MO_TO_KERNEL(MO::ConvOp),
+      MO_TO_KERNEL(MO::ConvTransposeOp),
       MO_TO_ELEMWISE(MO::CosOp),
       MO_TO_KERNEL(MO::CumSumOp),
       MO_TO_ELEMWISE(MO::DivOp),
