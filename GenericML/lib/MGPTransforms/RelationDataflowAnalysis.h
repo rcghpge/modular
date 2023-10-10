@@ -33,6 +33,7 @@ namespace M::MGP {
 /// across multiple DomainMaps.
 template <typename V>
 class RelationDataflowAnalysisBase {
+#define DEBUG_TYPE "mgp-dataflow"
 public:
   using Set = typename IndexSet<V>::Set;
   using Equivalence = typename IndexSet<V>::Equivalence;
@@ -150,23 +151,34 @@ public:
 
   RelationDataflowAnalysisBase(IndexSet<V> *index) : index(index) {}
 
-  /// Returns the set bound to v.
-  Set getEntries(const DomainMap &domainMap, V v) const {
-    return getEntries(domainMap.relation, v);
+  /// Returns the relation with v |-> {} for all vs.
+  Relation emptyRelation() const {
+    Relation relation;
+    for (V v : index->getAllVs()) {
+      if (v == index->distinguished)
+        continue;
+      relation.insert({v, index->emptySet()});
+    }
+    return relation;
   }
 
   /// Returns the set bound to v.
   Set getEntries(const Relation &relation, V v) const {
     auto itr = relation.find(v);
-    if (itr == relation.end())
-      return index->emptySet();
-    else
-      return itr->second;
+    LLVM_DEBUG({
+      if (itr == relation.end()) {
+        llvm::dbgs() << "getEntries: no entry for ";
+        index->printV(llvm::dbgs(), v);
+        llvm::dbgs() << "\n";
+      }
+    });
+
+    assert(itr != relation.end());
+    return itr->second;
   }
 
-  /// Returns the set bound to v, unioned with v itself.
-  Set getEntriesAndId(const DomainMap &domainMap, V v) const {
-    return getEntriesAndId(domainMap.relation, v);
+  Set getEntries(const DomainMap &domainMap, V v) const {
+    return getEntries(domainMap.relation, v);
   }
 
   /// Returns the set bound to v, unioned with v itself.
@@ -176,24 +188,41 @@ public:
     return set;
   }
 
+  Set getEntriesAndId(const DomainMap &domainMap, V v) const {
+    return getEntriesAndId(domainMap.relation, v);
+  }
+
   /// If using the relation to represent a predicate, returns true if v is
   /// in the predicate.
   bool isTrue(const Relation &relation, V v) const {
     auto itr = relation.find(v);
-    return itr != relation.end() &&
-           itr->second.test(0); // distinguished always has index 0
+    LLVM_DEBUG({
+      if (itr == relation.end()) {
+        llvm::dbgs() << "isTrue: no entry for ";
+        index->printV(llvm::dbgs(), v);
+        llvm::dbgs() << "\n";
+      }
+    });
+    assert(itr != relation.end());
+    return itr->second.test(0); // distinguished always has index 0
   }
 
   /// Returns true if (lhs, rhs) is in relation.
   bool containsEntry(const Relation &relation, V lhs, V rhs) const {
     auto itr = relation.find(lhs);
-    return itr != relation.end() && index->setContains(itr->second, rhs);
+    LLVM_DEBUG({
+      if (itr == relation.end()) {
+        llvm::dbgs() << "containsEntry: no entry for ";
+        index->printV(llvm::dbgs(), lhs);
+        llvm::dbgs() << "\n";
+      }
+    });
+    assert(itr != relation.end());
+    return index->setContains(itr->second, rhs);
   }
 
-  /// Updates domainMap so that v |-> set. Marks changed true if domainMap
-  /// was changed.
-  void setEntries(DomainMap &domainMap, V v, const Set &set) const {
-#define DEBUG_TYPE "mgp-dataflow"
+  /// Updates relation so that v |-> set.
+  void setEntries(Relation &relation, V v, const Set &set) const {
     LLVM_DEBUG({
       llvm::dbgs() << "setEntries(";
       index->printV(llvm::dbgs(), v);
@@ -202,87 +231,110 @@ public:
       llvm::dbgs() << ")\n";
     });
 
-    bool setIsEmpty = set.count() == 0;
-    auto itr = domainMap.relation.find(v);
-    if (itr == domainMap.relation.end()) {
-      if (!setIsEmpty) {
-        LLVM_DEBUG(llvm::dbgs() << "not equal to existing empty set\n");
-        domainMap.relation.insert({v, set});
-        domainMap.changed = true;
-      }
-    } else if (setIsEmpty) {
-      LLVM_DEBUG({
-        llvm::dbgs() << "not equal to existing set ";
-        index->printVs(llvm::dbgs(), index->setToVector(itr->second));
-        llvm::dbgs() << "\n";
-      });
-      domainMap.relation.erase(itr);
-      domainMap.changed = true;
-    } else if (itr->second != set) {
-      LLVM_DEBUG({
-        llvm::dbgs() << "not equal to existing set ";
-        index->printVs(llvm::dbgs(), index->setToVector(itr->second));
-        llvm::dbgs() << "\n";
-      });
+    auto itr = relation.find(v);
+    if (itr == relation.end()) {
+      relation.insert({v, set});
+    } else {
+      // Since may be setting within a fixed-point iteration, it is valid
+      // for itr->second to not equal set.
       itr->second = set;
-      domainMap.changed = true;
     }
-#undef DEBUG_TYPE
   }
 
-  /// Given v |-> existing, updates domainMap so that v |-> (set lub existing).
-  /// Marks changed true if domainMap was changed.
-  void leastUpperBoundEntries(DomainMap &domainMap, V v, const Set &set) const {
-    Set newSet = set;
-    domainMap.leastUpperBound(newSet, getEntries(domainMap, v));
-    setEntries(domainMap, v, newSet);
+  void setEntries(DomainMap &domainMap, V v, const Set &set) const {
+    setEntries(domainMap.relation, v, set);
   }
 
-  /// Updates domainMap so that v |-> {}. Marks changed true
-  /// if domainMap was changed.
-  void setEmpty(DomainMap &domainMap, V v) const {
-#define DEBUG_TYPE "mgp-dataflow"
+  /// Updates relation so that v |-> {}.
+  void setEmpty(Relation &relation, V v) const {
     LLVM_DEBUG({
       llvm::dbgs() << "setEmpty(";
       index->printV(llvm::dbgs(), v);
       llvm::dbgs() << ")\n";
     });
+
+    auto itr = relation.find(v);
+    if (itr == relation.end()) {
+      relation.insert({v, index->emptySet()});
+    } else {
+      // Even if we are setting to empty within a fixed-point iteration, an
+      // empty entry must always be empty.
+      assert(itr->second.count() == 0);
+    }
+  }
+
+  void setEmpty(DomainMap &domainMap, V v) const {
+    setEmpty(domainMap.relation, v);
+  }
+
+  /// Given entry v |-> existing, updates domainMap so that
+  /// v |-> (set lub existing), and sets the domainMap.changed to true
+  /// if the new value is different from the old.
+  void leastUpperBoundEntries(DomainMap &domainMap, V v, const Set &set) const {
     auto itr = domainMap.relation.find(v);
-    if (itr != domainMap.relation.end()) {
-      LLVM_DEBUG({
-        llvm::dbgs() << "not equal to existing set ";
-        index->printVs(llvm::dbgs(), index->setToVector(itr->second));
+    LLVM_DEBUG({
+      if (itr == domainMap.relation.end()) {
+        llvm::dbgs() << "leastUpperBoundEntries: no entry for ";
+        index->printV(llvm::dbgs(), v);
         llvm::dbgs() << "\n";
-      });
-      domainMap.relation.erase(itr);
+      }
+    });
+    assert(itr != domainMap.relation.end());
+
+    LLVM_DEBUG({
+      llvm::dbgs() << "leastUpperBoundEntries(";
+      index->printV(llvm::dbgs(), v);
+      llvm::dbgs() << ", ";
+      index->printVs(llvm::dbgs(), index->setToVector(set));
+      llvm::dbgs() << ") with existing ";
+      index->printVs(llvm::dbgs(), index->setToVector(itr->second));
+      llvm::dbgs() << "\n";
+    });
+
+    size_t before = itr->second.count();
+    domainMap.leastUpperBound(itr->second, set);
+    size_t after = itr->second.count();
+    if (after != before) {
+      LLVM_DEBUG(llvm::dbgs() << "^^^ changed!\n");
       domainMap.changed = true;
     }
-#undef DEBUG_TYPE
   }
 
   /// If using the relation to represent a predicate, includes v in the
   /// predicate.
+  void setTrue(Relation &relaiton, V v) const {
+    setEntries(relaiton, v, index->unitSet(index->distinguished));
+  }
+
   void setTrue(DomainMap &domainMap, V v) const {
-    setEntries(domainMap, v, index->unitSet(index->distinguished));
+    setTrue(domainMap.relation, v);
   }
 
   /// Add (lhs, rhs) to relation.
   void add(Relation &relation, V lhs, V rhs) const {
     auto itr = relation.find(lhs);
-    if (itr == relation.end())
-      relation.insert({lhs, index->unitSet(rhs)});
-    else
-      index->addToSet(itr->second, rhs);
+    LLVM_DEBUG({
+      if (itr == relation.end()) {
+        llvm::dbgs() << "add: no entry for ";
+        index->printV(llvm::dbgs(), lhs);
+        llvm::dbgs() << "\n";
+      }
+    });
+    assert(itr != relation.end());
+    index->addToSet(itr->second, rhs);
   }
 
   /// Adds { (lhs, rhs) | rhs in set } to relation.
   void addAll(Relation &relation, V lhs, const Set &set) const {
     auto itr = relation.find(lhs);
-    if (itr == relation.end()) {
-      if (set.count())
-        relation.insert({lhs, set});
-      return;
-    }
+    LLVM_DEBUG({
+      if (itr == relation.end()) {
+        llvm::dbgs() << "addAll: no entry for ";
+        index->printV(llvm::dbgs(), lhs);
+        llvm::dbgs() << "\n";
+      }
+    });
+    assert(itr != relation.end());
     itr->second |= set;
   }
 
@@ -299,7 +351,7 @@ public:
 
   /// Returns inverse of relation.
   [[nodiscard]] Relation inverse(const Relation &relation) const {
-    Relation result;
+    Relation result = emptyRelation();
     for (const auto &[lhs, set] : relation) {
       for (const auto rhs : index->setToVector(set))
         add(result, rhs, lhs);
@@ -316,6 +368,8 @@ public:
   /// Adds to set all Vs which are isTrue in relation.
   void addToPredicate(Set &set, const Relation &relation) const {
     for (V v : index->getAllVs()) {
+      if (v == index->distinguished)
+        continue;
       if (isTrue(relation, v))
         index->addToSet(set, v);
     }
@@ -346,7 +400,7 @@ public:
     os << relName << " begin\n";
     for (V v : index->getAllVs()) {
       auto itr = relation.find(v);
-      if (itr == relation.end())
+      if (itr == relation.end() || itr->second.count() == 0)
         continue;
       os << "  ";
       index->printV(os, v);
@@ -368,6 +422,8 @@ public:
   /// Grows domainMap for the given operation, calling into helpers where
   /// appropriate.
   using FlowOp = std::function<void(Operation *, DomainMap &)>;
+
+#undef DEBUG_TYPE
 };
 
 //===----------------------------------------------------------------------===//

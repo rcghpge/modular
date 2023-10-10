@@ -415,6 +415,7 @@ void AsyncDataflowDependencies::setupStructurallyDisjoint() {
   LLVM_DEBUG(llvm::dbgs() << "setupStructurallyDisjoint\n");
 
   /// The structurallyAtMostOneRelation is just for kBranches.
+  structurallyAtMostOneRelation = operationAnalysis.emptyRelation();
   valueAnalysis.index->model->walk([&](GRT::GRTControlFlowInterface cfOp) {
     if (cfOp->getNumRegions() <= 1 || cfOp.getFlavor() != GRT::kBranchLike) {
       // Not a multi-armed kBranch.
@@ -449,6 +450,7 @@ void AsyncDataflowDependencies::setupStructurallyDisjoint() {
   });
 
   /// The structurallyCannotOverlapRelation
+  structurallyCannotOverlapRelation = operationAnalysis.emptyRelation();
   valueAnalysis.index->model->walk([&](GRT::GRTControlFlowInterface cfOp) {
     if (cfOp->getNumRegions() <= 1)
       // Not a multi-subblock control flow op.
@@ -504,8 +506,7 @@ void AsyncDataflowDependencies::setupRunsLater() {
     if (op == operationAnalysis.index->distinguished)
       continue;
     OperationSet set = runsLaterSet(op);
-    if (set.count())
-      runsLaterRelation.insert({op, set});
+    runsLaterRelation.insert({op, set});
   }
   runsEarlierRelation = operationAnalysis.inverse(runsLaterRelation);
 }
@@ -795,6 +796,8 @@ AsyncDataflowDependencies::getFullyConsumedWhenOpBegins(Operation *op) const {
 
 void AsyncDataflowDependencies::setupExclusive() {
   LLVM_DEBUG(llvm::dbgs() << "setupExclusive\n");
+  exclusiveRelation = valueAnalysis.emptyRelation();
+
   for (Operation *op : operationAnalysis.index->getAllVs()) {
     if (op == operationAnalysis.index->distinguished)
       continue;

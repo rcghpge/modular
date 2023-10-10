@@ -70,31 +70,8 @@ class SimplifyChainsPass
     return {};
   }
 
-  // Returns true if nested control flow has been detected.
-  bool containsNestedControlFlow(Operation *op, bool controlFlowDetected) {
-    bool isControlFlowOp = isa<GRT::IfOp>(op) || isa<GRT::WhileOp>(op);
-
-    if (controlFlowDetected && isControlFlowOp)
-      return true;
-    controlFlowDetected |= isControlFlowOp;
-    for (auto &region : op->getRegions()) {
-      for (auto &block : region) {
-        for (auto &nestedOp : block) {
-          if (containsNestedControlFlow(&nestedOp, controlFlowDetected))
-            return true;
-        }
-      }
-    }
-
-    return false;
-  }
-
   void runOnOperation() override {
     ModelOp modelOp = getOperation();
-
-    // TODO(#22475): Fix `AsyncDataflowDependencies` for nested control flow.
-    if (containsNestedControlFlow(modelOp, false))
-      return;
 
     // Construct the dependencies from the model. The transforms we
     // do below will preserve these dependencies since we never introduce
