@@ -67,6 +67,12 @@ class NumpyImpl:
     def gather(self, x, indices, axis):
         return np.take(x, indices, axis=axis)
 
+    def strided_slice(self, x, start, stop, step):
+        slice_to_apply = []
+        for i in range(len(start)):
+            slice_to_apply.append(slice(start[i], stop[i], step[i]))
+        return x[tuple(slice_to_apply)]
+
 
 # The keras implementation of each primitive.
 class TFImpl:
@@ -96,3 +102,6 @@ class TFImpl:
 
     def gather(self, x, indices, axis):
         return tf.gather(x, indices, axis=axis)
+
+    def strided_slice(self, x, start, stop, step):
+        return tf.strided_slice(x, start, stop, step)

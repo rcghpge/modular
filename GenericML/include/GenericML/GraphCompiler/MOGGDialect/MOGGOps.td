@@ -261,6 +261,18 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [
 
 
   let extraClassDeclaration = [{
+
+    /// Sometimes it is necessary to temporarily pretend that a kernel has
+    /// fusion enabled however we still need to distinguish between those
+    /// which have fusion disabled by the user and those which we have
+    /// temporarily marked. These must be removed before the verifier runs.
+    static constexpr StringLiteral getTempLambdaName() {
+      return "__TMP__FUSE_HOOK";
+    }
+
+    /// Strip any of the temporary fusion lambda markers.
+    void removeTemporaryFusionMarks();
+
     /// Returns the OutputPlaceholder for this operation or null if it doesn't
     /// exist.
     OutputPlaceholdersOp getOutputPlaceholder();

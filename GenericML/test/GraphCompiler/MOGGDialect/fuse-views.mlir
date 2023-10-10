@@ -190,3 +190,17 @@ mo.graph @transpose_and_gather(%data : !mo.tensor<[3, 4, 2, 1, 2], si32>, %indic
 // CHECK: mogg.call "mo.transpose"
 // CHECK: mogg.call "mo.gather"
 // CHECK: mo.output %[[OUT]]
+
+
+mo.graph @fuse_into_view<D1, D2>(%arg0: !mo.tensor<[D1, D2], f32>, %start: !mo.tensor<[2], si64>, %end: !mo.tensor<[2], si64>, %stride: !mo.tensor<[2], si64>, %perm: !mo.tensor<[2], si64>) -> !mo.tensor<[D2, D1], f32> {
+  %sliced = mo.slice(%arg0, %start, %end, %stride) : (!mo.tensor<[D1, D2], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[D1, D2], f32>
+  %trans = mo.transpose(%sliced, %perm) : (!mo.tensor<[D1, D2], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[D2, D1], f32>
+  %10 = mo.relu(%trans): !mo.tensor<[D2, D1], f32>
+  mo.output %10 : !mo.tensor<[D2, D1], f32>
+}
+
+// CHECK-LABEL: mo.graph @fuse_into_view
+// CHECK: %[[OUT:.*]] = mogg.kernel
+// CHECK: mogg.call "mo.slice"
+// CHECK: mogg.call "mo.transpose"
+// CHECK: mo.output %[[OUT]]

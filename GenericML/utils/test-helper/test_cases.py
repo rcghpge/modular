@@ -371,3 +371,60 @@ class GatherOfGathers(TestBase):
         g_2 = impl.gather(g_1, inputs[2], axis)
         g_3 = impl.gather(g_2, inputs[3], axis)
         return impl.gather(g_3, inputs[4], axis)
+
+
+class MultiViewFusion(TestBase):
+    @staticmethod
+    def num_runs():
+        return 100
+
+    @staticmethod
+    def input_sizes_to_test():
+        # Input, transpose permutation, slice indices
+        return [
+            ([5, 10, 5], [3], [3], [3], [3]),
+        ]
+
+    @staticmethod
+    def get_input_specs():
+        return [
+            ((None, None, None), np.float32),
+            ((3,), np.int32),
+            ((3,), np.int32),
+            ((3,), np.int32),
+            ((3,), np.int32),
+        ]
+
+    @staticmethod
+    def generate_inputs(shapes):
+        num_dims = len(shapes[0])
+
+        # Create a transpose permutation.
+        permute = np.arange(num_dims).astype(np.int32)
+        permute = np.random.permutation(permute)
+
+        # Get random data for the slice. Ensure we always step at least once
+        step = np.random.randint(1, 3, size=(num_dims,), dtype=np.int32)
+        start = np.random.randint(
+            [0] * num_dims, shapes[0] - step, size=(num_dims,), dtype=np.int32
+        )
+
+        random_factor = np.random.randint(
+            [1] * num_dims, shapes[0], size=(num_dims,), dtype=np.int32
+        )
+        stop = start + step * random_factor
+
+        return [
+            np.random.uniform(-2.0, 2.0, shapes[0]).astype(np.float32),
+            start,
+            stop,
+            step,
+            permute,
+        ]
+
+    @staticmethod
+    def run(inputs, impl):
+        # Slice input
+        sliced = impl.strided_slice(inputs[0], inputs[1], inputs[2], inputs[3])
+        transposed = impl.transpose(sliced, inputs[-1])
+        return transposed + transposed

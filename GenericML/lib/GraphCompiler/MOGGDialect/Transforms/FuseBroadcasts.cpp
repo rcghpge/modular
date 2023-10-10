@@ -49,20 +49,27 @@ struct FuseBroadcastsPass
       // this kernel taking both as arg.
       DenseMap<Value, Value> alreadyFused;
 
-      // Fuse broadcasts into this block. We only iterate over one layer. I.E we
-      // don't fuse the inputs of the broadcasts as well due to the present
-      // danger.
-      int32_t preFuseNumOperands = kernel.getNumOperands();
+      // Fuse broadcasts into this block.
+      int32_t index = kernel.getNumOperands() - 1;
+      bool fusionOccurred = false;
 
       // Traverse from the back to simplify removing operands.
-      for (int32_t index = preFuseNumOperands - 1; index >= 0; --index) {
-        if (!canFuseOperand(index, kernel))
+      while (index >= 0) {
+        if (!canFuseOperand(index, kernel)) {
+          index--;
           continue;
+        }
 
         // All legality checking should be performed above so we assume this
         // will perform the fusion or produce a fatal failure.
         fuseInputAtIndex(kernel, index, alreadyFused);
+        index = kernel.getNumOperands() - 1;
+        fusionOccurred = true;
       }
+
+      // Strip all temporarily added fusion hooks.
+      if (fusionOccurred)
+        kernel.removeTemporaryFusionMarks();
     }
 
     auto replaceArg = [](KernelOp kernel, size_t index, Value newVal) {
@@ -211,8 +218,17 @@ struct FuseBroadcastsPass
       }
 
       // Add if we don't already have an operand for this.
-      if (!alreadyHasOperand)
+      if (!alreadyHasOperand) {
         remapper.map(otherBlockArg, leaf.addOperand(otherOperand));
+
+        // In order to "trick" the fusion algorithm to run on the inputs of the
+        // thing we have just fused in we pretend it has a fusion lambda. We
+        // will remove this at the end this is just so the fusion runs again.
+        // This is so we can distinguish between views which we know we can
+        // fuse again and ops which have opted out of fusion.
+        leaf.setInputFusionInterface(leaf.getNumOperands() - 1,
+                                     KernelOp::getTempLambdaName());
+      }
 
       // The mogg kernel has been marked as a view. Search the kernel for the
       // broadcast function.

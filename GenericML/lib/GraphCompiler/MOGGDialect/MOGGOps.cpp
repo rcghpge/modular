@@ -460,6 +460,20 @@ void KernelOp::disableInputFusionOnInput(size_t index) {
   }
 }
 
+void KernelOp::removeTemporaryFusionMarks() {
+  SmallVector<Attribute> lambdaNames;
+  size_t i = 0;
+  for (StringAttr attr : getInputFusionInterface()->getAsRange<StringAttr>()) {
+    // If this is the temporary string then replace it with null.
+    if (attr == KernelOp::getTempLambdaName())
+      lambdaNames.push_back(StringAttr::get(getContext(), ""));
+    else
+      lambdaNames.push_back(attr);
+    i++;
+  }
+  setInputFusionInterfaceAttr(ArrayAttr::get(getContext(), lambdaNames));
+}
+
 /// Removes an operand at the given index and disables input fusion on that
 /// position if this kernel otherwise supports it.
 void KernelOp::removeOperandAtIndex(size_t index) {
