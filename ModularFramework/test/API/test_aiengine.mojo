@@ -6,7 +6,11 @@
 # UNSUPPORTED: windows
 # RUN: %mojo -I %engine_pkg_dir %s | FileCheck %s
 
-from aiengine import get_version, EngineDType, InferenceSession
+from aiengine import (
+    get_version,
+    EngineDType,
+    InferenceSession,
+)
 
 
 fn test_engine_version() raises:
@@ -15,20 +19,6 @@ fn test_engine_version() raises:
 
     # CHECK: Version: {{.*}}
     print("Version:", get_version())
-
-
-fn test_status() raises:
-    # CHECK: test_status
-    print("====test_status")
-
-    with InferenceSession() as session:
-        let status = session.get_status()
-
-        # CHECK: No Error!
-        if status:
-            print(status.__str__())
-        else:
-            print("No Error!")
 
 
 fn test_session() raises:
@@ -51,6 +41,5 @@ fn test_dtype() raises:
 
 fn main() raises:
     test_engine_version()
-    test_status()
     test_session()
     test_dtype()

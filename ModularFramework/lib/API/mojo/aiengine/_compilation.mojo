@@ -10,6 +10,7 @@ from ._utils import *
 from ._status import *
 from ._context import *
 from ._model_specs import *
+from .session import InferenceSession
 
 
 @value
@@ -108,6 +109,7 @@ struct CompiledModel:
 
     var ptr: CCompiledModel
     var lib: DLHandle
+    var session: InferenceSession
 
     alias CompileModelFnName = "M_compileModelSync"
     alias GetModelInputSpecByNameFnName = "M_getModelInputSpecByName"
@@ -118,6 +120,7 @@ struct CompiledModel:
         borrowed ctx: CRuntimeContext,
         path: StringRef,
         borrowed lib: DLHandle,
+        owned session: InferenceSession,
     ) raises:
         let config = CompileConfig(lib)
         config.set_model_path(path)
@@ -133,12 +136,14 @@ struct CompiledModel:
         if status:
             raise Error(status.__str__())
         self.lib = lib
+        self.session = session ^
 
     fn __moveinit__(inout self, owned existing: Self):
         self.ptr = exchange[CCompiledModel](
             existing.ptr, DTypePointer[DType.invalid].get_null()
         )
         self.lib = existing.lib
+        self.session = existing.session ^
 
     fn num_model_inputs(self) raises -> Int:
         """Gets the number of inputs of the model."""

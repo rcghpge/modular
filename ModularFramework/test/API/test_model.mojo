@@ -6,7 +6,11 @@
 # UNSUPPORTED: windows
 # RUN: %mojo -I %engine_pkg_dir -I %test_utils_pkg_dir %s %S/mo.model | FileCheck %s
 
-from aiengine import InferenceSession, TensorMap, EngineTensorView
+from aiengine import (
+    InferenceSession,
+    TensorMap,
+    EngineTensorView,
+)
 from sys import argv
 from tensor import Tensor, TensorShape
 from test_utils import linear_fill
@@ -26,29 +30,29 @@ fn test_model_compilation() raises:
 
     let model_path = args[1]
 
-    with InferenceSession() as session:
-        let compiled_model = session.compile_model(model_path)
-        # CHECK: 1
-        print(compiled_model.num_model_inputs())
+    let session = InferenceSession()
+    let compiled_model = session.compile_model(model_path)
+    # CHECK: 1
+    print(compiled_model.num_model_inputs())
 
-        let input_names = compiled_model.get_model_input_names()
-        # CHECK: input
-        for name in input_names:
-            print(name)
+    let input_names = compiled_model.get_model_input_names()
+    # CHECK: input
+    for name in input_names:
+        print(name)
 
-        # CHECK: input
-        print(input_names[0])
+    # CHECK: input
+    print(input_names[0])
 
-        # CHECK: 1
-        print(compiled_model.num_model_outputs())
+    # CHECK: 1
+    print(compiled_model.num_model_outputs())
 
-        let output_names = compiled_model.get_model_output_names()
-        # CHECK: output
-        for name in output_names:
-            print(name)
+    let output_names = compiled_model.get_model_output_names()
+    # CHECK: output
+    for name in output_names:
+        print(name)
 
-        # CHECK: output
-        print(output_names[0])
+    # CHECK: output
+    print(output_names[0])
 
 
 fn test_model() raises:
@@ -65,32 +69,32 @@ fn test_model() raises:
 
     let model_path = args[1]
 
-    with InferenceSession() as session:
-        let model = session.load_model(model_path)
-        var input_tensor = Tensor[DType.float32](5)
+    let session = InferenceSession()
+    let model = session.load_model(model_path)
+    var input_tensor = Tensor[DType.float32](5)
 
-        for i in range(5):
-            input_tensor[i] = 1.0
+    for i in range(5):
+        input_tensor[i] = 1.0
 
-        # TODO: Hide tensor map from user
-        let input_map = session.new_tensor_map()
-        input_map.borrow("input", input_tensor)
-        let outputs = model.execute(input_map)
-        _ = input_tensor ^  # Keep inputs alive
-        let output_tensor = outputs.get[DType.float32]("output")
+    # TODO: Hide tensor map from user
+    let input_map = session.new_tensor_map()
+    input_map.borrow("input", input_tensor)
+    let outputs = model.execute(input_map)
+    _ = input_tensor ^  # Keep inputs alive
+    let output_tensor = outputs.get[DType.float32]("output")
 
-        # CHECK: 5xfloat32
-        print(output_tensor.spec().__str__())
+    # CHECK: 5xfloat32
+    print(output_tensor.spec().__str__())
 
-        var expected_output = Tensor[DType.float32](5)
-        linear_fill(expected_output, 4.0, 2.0, -5.0, 3.0, 6.0)
-        # CHECK: True
-        print(expected_output == output_tensor)
+    var expected_output = Tensor[DType.float32](5)
+    linear_fill(expected_output, 4.0, 2.0, -5.0, 3.0, 6.0)
+    # CHECK: True
+    print(expected_output == output_tensor)
 
 
 fn test_model_tuple_input() raises:
-    # CHECK: test_model
-    print("====test_model")
+    # CHECK: test_model_tuple_input
+    print("====test_model_tuple_input")
 
     let args = argv()
 
@@ -107,19 +111,19 @@ fn test_model_tuple_input() raises:
     for i in range(5):
         input_tensor[i] = 1.0
 
-    with InferenceSession() as session:
-        let model = session.load_model(model_path)
-        let outputs = model.execute(("input", EngineTensorView(input_tensor)))
-        _ = input_tensor ^
-        let output_tensor = outputs.get[DType.float32]("output")
+    let session = InferenceSession()
+    let model = session.load_model(model_path)
+    let outputs = model.execute(("input", EngineTensorView(input_tensor)))
+    _ = input_tensor ^
+    let output_tensor = outputs.get[DType.float32]("output")
 
-        # CHECK: 5xfloat32
-        print(output_tensor.spec().__str__())
+    # CHECK: 5xfloat32
+    print(output_tensor.spec().__str__())
 
-        var expected_output = Tensor[DType.float32](5)
-        linear_fill(expected_output, 4.0, 2.0, -5.0, 3.0, 6.0)
-        # CHECK: True
-        print(expected_output == output_tensor)
+    var expected_output = Tensor[DType.float32](5)
+    linear_fill(expected_output, 4.0, 2.0, -5.0, 3.0, 6.0)
+    # CHECK: True
+    print(expected_output == output_tensor)
 
 
 fn main() raises:

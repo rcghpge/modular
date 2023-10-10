@@ -10,7 +10,6 @@ from sys.ffi import DLHandle
 from memory.unsafe import DTypePointer
 from ._status import Status
 from ._utils import *
-from .session import InferenceSession
 from ._tensor_spec import EngineTensorSpec
 from tensor import TensorSpec
 

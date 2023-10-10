@@ -14,6 +14,7 @@ from tensor import Tensor, TensorShape
 from ._tensor import *
 from ._tensor_spec import *
 from ._context import *
+from .session import InferenceSession
 
 
 @value
@@ -74,38 +75,56 @@ struct CTensorMap:
 struct TensorMap:
     var ptr: CTensorMap
     var lib: DLHandle
+    var session: InferenceSession
 
     alias NewTensorMapFnName = "M_newAsyncTensorMap"
 
-    fn __init__(inout self, ctx: CRuntimeContext, lib: DLHandle):
+    fn __init__(
+        inout self,
+        ctx: CRuntimeContext,
+        lib: DLHandle,
+        owned session: InferenceSession,
+    ):
         self.ptr = call_dylib_func[CTensorMap](
             lib, Self.NewTensorMapFnName, ctx
         )
         self.lib = lib
+        self.session = session ^
 
-    fn __init__(inout self, ptr: CTensorMap, lib: DLHandle):
+    fn __init__(
+        inout self,
+        ptr: CTensorMap,
+        lib: DLHandle,
+        owned session: InferenceSession,
+    ):
         self.ptr = ptr
         self.lib = lib
+        self.session = session ^
 
     fn __moveinit__(inout self, owned existing: Self):
         self.ptr = exchange[CTensorMap](
             existing.ptr, DTypePointer[DType.invalid]()
         )
         self.lib = existing.lib
+        self.session = existing.session ^
 
     fn borrow[type: DType](self, key: StringRef, value: Tensor[type]) raises:
-        let spec = EngineTensorSpec(key, value.spec(), self.lib)
+        let spec = EngineTensorSpec(
+            key, value.spec(), self.lib, self.session.copy()
+        )
         self.ptr.borrow_tensor_by_name(
             bitcast[DType.invalid](value.data()), spec, self.lib
         )
 
     fn borrow(self, key: StringRef, value: EngineTensorView) raises:
-        let spec = EngineTensorSpec(key, value.spec(), self.lib)
+        let spec = EngineTensorSpec(
+            key, value.spec(), self.lib, self.session.copy()
+        )
         self.ptr.borrow_tensor_by_name(value.data(), spec, self.lib)
 
     fn get[type: DType](self, key: StringRef) raises -> Tensor[type]:
         let tensor_ptr = self.ptr.get_tensor_by_name(key.data, self.lib)
-        let mof_tensor = EngineTensor(tensor_ptr, self.lib)
+        let mof_tensor = EngineTensor(tensor_ptr, self.lib, self.session.copy())
         let tensor = mof_tensor.tensor[type]()
         return tensor ^
 
@@ -117,3 +136,4 @@ struct TensorMap:
 
     fn __del__(owned self):
         self.ptr.free(self.lib)
+        _ = self.session ^

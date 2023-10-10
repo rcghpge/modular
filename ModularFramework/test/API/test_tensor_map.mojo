@@ -21,28 +21,28 @@ fn test_tensor_map() raises:
         for j in range(3):
             t1[Index(i, j)] = 1
 
-    with InferenceSession() as session:
-        let map = session.new_tensor_map()
+    let session = InferenceSession()
+    let map = session.new_tensor_map()
 
-        # CHECK: 0
-        print(map.__len__())
+    # CHECK: 0
+    print(map.__len__())
 
-        map.borrow("tensor", t1)
+    map.borrow("tensor", t1)
 
-        # CHECK: 1
-        print(map.__len__())
-        let t2 = map.get[DType.float32]("tensor")
+    # CHECK: 1
+    print(map.__len__())
+    let t2 = map.get[DType.float32]("tensor")
 
-        # CHECK: 1
-        print(map.__len__())
+    # CHECK: 1
+    print(map.__len__())
 
-        let t3 = map.get[DType.float32]("tensor")
+    let t3 = map.get[DType.float32]("tensor")
 
-        # CHECK: True
-        print(t1 == t2)
+    # CHECK: True
+    print(t1 == t2)
 
-        # CHECK: True
-        print(t1 == t3)
+    # CHECK: True
+    print(t1 == t3)
 
 
 fn main() raises:

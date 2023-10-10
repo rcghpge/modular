@@ -11,6 +11,7 @@ from ._dtypes import *
 from ._tensor_spec import *
 from memory.unsafe import bitcast, Pointer
 from tensor import Tensor
+from .session import InferenceSession
 
 
 @value
@@ -39,11 +40,13 @@ struct CTensor:
             lib, Self.GetTensorDataFnName, self
         )
 
-    fn get_tensor_spec(self, borrowed lib: DLHandle) -> EngineTensorSpec:
+    fn get_tensor_spec(
+        self, borrowed lib: DLHandle, owned session: InferenceSession
+    ) -> EngineTensorSpec:
         let spec = call_dylib_func[CTensorSpec](
             lib, Self.GetTensorSpecFnName, self
         )
-        return EngineTensorSpec(spec, lib)
+        return EngineTensorSpec(spec, lib, session ^)
 
     fn free(self, borrowed lib: DLHandle):
         """
@@ -55,16 +58,24 @@ struct CTensor:
 struct EngineTensor:
     var ptr: CTensor
     var lib: DLHandle
+    var session: InferenceSession
 
-    fn __init__(inout self, ptr: CTensor, lib: DLHandle):
+    fn __init__(
+        inout self,
+        ptr: CTensor,
+        lib: DLHandle,
+        owned session: InferenceSession,
+    ):
         self.ptr = ptr
         self.lib = lib
+        self.session = session ^
 
     fn __moveinit__(inout self, owned existing: Self):
         self.ptr = exchange[CTensor](
             existing.ptr, DTypePointer[DType.invalid]()
         )
         self.lib = existing.lib
+        self.session = existing.session ^
 
     fn __len__(self) -> Int:
         return self.ptr.size(self.lib)
@@ -80,7 +91,9 @@ struct EngineTensor:
         return self.ptr.dtype(self.lib).to_dtype()
 
     fn spec(self) -> TensorSpec:
-        return self.ptr.get_tensor_spec(self.lib).get_as_tensor_spec()
+        return self.ptr.get_tensor_spec(
+            self.lib, self.session.copy()
+        ).get_as_tensor_spec()
 
     fn buffer[type: DType](self) raises -> Buffer[Dim(), type]:
         return Buffer[Dim(), type](self.data[type](), self.__len__())

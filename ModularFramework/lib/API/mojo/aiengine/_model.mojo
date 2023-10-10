@@ -13,6 +13,7 @@ from ._compilation import CCompiledModel
 from ._tensormap import *
 from ._tensor import *
 from utils.list import VariadicList
+from .session import InferenceSession
 
 
 @value
@@ -45,6 +46,7 @@ struct Model:
     var ctx: CRuntimeContext
     var ptr: CModel
     var lib: DLHandle
+    var session: InferenceSession
 
     alias InitModelFnName = "M_initModel"
     alias ExecuteFnName = "M_executeModelSync"
@@ -54,6 +56,7 @@ struct Model:
         context: CRuntimeContext,
         source: CCompiledModel,
         lib: DLHandle,
+        owned session: InferenceSession,
     ) raises:
         self.ctx = context
         let status = Status(lib)
@@ -65,6 +68,7 @@ struct Model:
 
         self.ptr.await_model(lib)
         self.lib = lib
+        self.session = session ^
 
     fn __moveinit__(inout self, owned existing: Self):
         self.ctx = existing.ctx
@@ -72,6 +76,7 @@ struct Model:
             existing.ptr, DTypePointer[DType.invalid].get_null()
         )
         self.lib = existing.lib
+        self.session = existing.session ^
 
     fn execute(self, inputs: TensorMap) raises -> TensorMap:
         let status = Status(self.lib)
@@ -85,12 +90,12 @@ struct Model:
         )
         if status:
             raise status.__str__()
-        return TensorMap(outputs, self.lib)
+        return TensorMap(outputs, self.lib, self.session.copy())
 
     fn execute(
         self, *inputs: Tuple[StringRef, EngineTensorView]
     ) raises -> TensorMap:
-        let input_map = TensorMap(self.ctx, self.lib)
+        let input_map = TensorMap(self.ctx, self.lib, self.session.copy())
         let inputs_list = VariadicList[Tuple[StringRef, EngineTensorView]](
             inputs
         )
@@ -104,7 +109,7 @@ struct Model:
     fn execute(
         self, *inputs: Tuple[StringLiteral, EngineTensorView]
     ) raises -> TensorMap:
-        let input_map = TensorMap(self.ctx, self.lib)
+        let input_map = TensorMap(self.ctx, self.lib, self.session.copy())
         let inputs_list = VariadicList[Tuple[StringLiteral, EngineTensorView]](
             inputs
         )

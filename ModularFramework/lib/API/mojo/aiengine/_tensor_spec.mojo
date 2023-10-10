@@ -11,6 +11,7 @@ from ._status import *
 from tensor import TensorSpec
 from ._dtypes import EngineDType
 from utils.vector import DynamicVector
+from .session import InferenceSession
 
 
 @value
@@ -48,14 +49,27 @@ struct CTensorSpec:
 struct EngineTensorSpec:
     var ptr: CTensorSpec
     var lib: DLHandle
+    var session: InferenceSession
 
     alias NewTensorSpecFnName = "M_newTensorSpec"
 
-    fn __init__(inout self, ptr: CTensorSpec, lib: DLHandle):
+    fn __init__(
+        inout self,
+        ptr: CTensorSpec,
+        lib: DLHandle,
+        owned session: InferenceSession,
+    ):
         self.ptr = ptr
         self.lib = lib
+        self.session = session ^
 
-    fn __init__(inout self, name: StringRef, spec: TensorSpec, lib: DLHandle):
+    fn __init__(
+        inout self,
+        name: StringRef,
+        spec: TensorSpec,
+        lib: DLHandle,
+        owned session: InferenceSession,
+    ):
         let dtype: EngineDType = spec.dtype()
         let rank = spec.rank()
         var shape = DynamicVector[Int64]()
@@ -69,6 +83,7 @@ struct EngineTensorSpec:
         _ = name
         shape._del_old()
         self.lib = lib
+        self.session = session ^
 
     fn __getitem__(self, idx: Int) -> Int:
         return self.ptr.get_dim_at(idx, self.lib)
