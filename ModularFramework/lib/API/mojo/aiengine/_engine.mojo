@@ -15,7 +15,7 @@ from ._tensor_spec import EngineTensorSpec
 from tensor import TensorSpec
 
 
-struct AIEngine:
+struct _EngineImpl:
     """Represents an instance of Modular AI Engine."""
 
     """Handle to Modular AI Engine library."""
@@ -45,24 +45,18 @@ struct AIEngine:
         let version = call_dylib_func[CString](self.lib, Self.VersionFnName)
         return version.__str__()
 
-    fn get_status(self) -> Status:
-        """Creates a Status object."""
-        return Status(self.lib)
-
     fn __enter__(owned self) -> Self:
         return self ^
-
-    fn get_session(self) raises -> InferenceSession:
-        """
-        Gets an InferenceSession Object.
-        """
-        return InferenceSession(self.lib)
-
-    fn get_as_engine_tensor_spec(
-        self, name: StringRef, spec: TensorSpec
-    ) -> EngineTensorSpec:
-        return EngineTensorSpec(name, spec, self.lib)
 
     fn __del__(owned self):
         if self.can_close_lib:
             self.lib._del_old()
+
+
+fn get_version() raises -> String:
+    """Returns version of modular AI engine.
+
+    Returns:
+        Version as string.
+    """
+    return _EngineImpl().get_version()

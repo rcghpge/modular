@@ -6,7 +6,7 @@
 # UNSUPPORTED: windows
 # RUN: %mojo -I %engine_pkg_dir %s | FileCheck %s
 
-from aiengine import AIEngine, EngineDType, EngineTensorSpec
+from aiengine import InferenceSession, EngineDType, EngineTensorSpec
 from tensor import TensorSpec
 
 
@@ -14,9 +14,9 @@ fn test_tensor_spec() raises:
     # CHECK: test_tensor_spec
     print("====test_tensor_spec")
 
-    with AIEngine() as engine:
+    with InferenceSession() as session:
         let spec = TensorSpec(DType.float32, 1, 2, 3)
-        let engine_spec = engine.get_as_engine_tensor_spec("tensor", spec)
+        let engine_spec = session.get_as_engine_tensor_spec("tensor", spec)
 
         # CHECK: 1
         print(engine_spec[0])
