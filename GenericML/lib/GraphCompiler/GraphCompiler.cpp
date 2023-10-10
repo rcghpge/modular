@@ -81,6 +81,7 @@ void M::MO::registerPasses() {
 
   MOQ::registerLegalizeMOQOpsToMOPass();
   MOQ::registerLowerQDQOperatorsToMOPass();
+  MOQ::registerSimplifyQDQPatternsPass();
 
   mlir::registerCSEPass();
   mlir::registerSCCPPass();
@@ -126,6 +127,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     // See #22204 for blockers on removing this.
     maybeApplyShapeInferencePipeline(pm, opts);
     pm.addPass(MOQ::createLowerQDQOperatorsToMO());
+    pm.addPass(MOQ::createSimplifyQDQPatterns());
   }
 
   pm.addPass(MOQ::createLegalizeMOQOpsToMO());
