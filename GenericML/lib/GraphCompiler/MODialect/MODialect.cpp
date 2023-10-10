@@ -51,10 +51,10 @@ ModuleOp MODialect::getShapeFuncModule() {
 }
 
 //===----------------------------------------------------------------------===//
-// MOGraphSummarizerInterface
+// MOGraphVisualizationInterface
 //===----------------------------------------------------------------------===//
 namespace {
-struct MOGraphSummarizerInterface : public GraphVisualizationInterface {
+struct MOGraphVisualizationInterface : public GraphVisualizationInterface {
 
   using GraphVisualizationInterface::GraphVisualizationInterface;
 
