@@ -4,7 +4,8 @@
 #
 # ===----------------------------------------------------------------------=== #
 
-from .mobicc import ModulePtr, Builder, TypePtr, GraphPtr, SymbolPtr, TuplePtr
+from .misc import Arity
+from .mobicc import ModulePtr, Builder, TypePtr, GraphPtr
 from utils.list import VariadicList
 
 
@@ -30,29 +31,26 @@ struct Module:
         # TODO: Just pass it down generically.
         raise "add more dtypes"
 
-    fn types(inout self, *values: TypePtr) raises -> VariadicList[TypePtr]:
-        return VariadicList(values)
+    fn types(inout self, *types: TypePtr) raises -> Arity:
+        let l = VariadicList(types)
+        var a = self.builder.new_arity()
+        for i in range(len(l)):
+            var t = l[i]
+            self.builder.inc_arity(a, t)
+        return Arity(a, len(l))
 
-    fn void(inout self) raises -> VariadicList[TypePtr]:
-        return VariadicList[TypePtr]()
+    fn void(inout self) raises -> Arity:
+        let a = self.builder.new_arity()
+        return Arity(a, 0)
 
     fn graph(
         inout self,
         name: StringRef,
-        inTypes: VariadicList[TypePtr],
-        outTypes: VariadicList[TypePtr],
+        inTypes: Arity,
+        outTypes: Arity,
     ) raises -> Graph:
-        var ins = self.builder.new_arity()
-        for i in range(len(inTypes)):
-            var t = inTypes[i]
-            self.builder.inc_arity(ins, t)
-        var outs = self.builder.new_arity()
-        for i in range(len(outTypes)):
-            var t = outTypes[i]
-            self.builder.inc_arity(outs, t)
         var unknown = self.builder.unknown_loc(self.m)
-        return Graph(
-            self.builder.new_graph(self.m, unknown, name, ins, outs),
-            self.m,
-            self.builder,
+        let g = self.builder.new_graph(
+            self.m, unknown, name, inTypes.a, outTypes.a
         )
+        return Graph(g, self.m, self.builder)

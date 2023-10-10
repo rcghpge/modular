@@ -7,6 +7,7 @@
 add_mojo_package(mobi-mojo-api
   PRIVATE
   graph
+  misc
   module
   mobicc
 )

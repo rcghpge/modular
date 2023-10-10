@@ -4,15 +4,8 @@
 #
 # ===----------------------------------------------------------------------=== #
 
-from .mobicc import (
-    ModulePtr,
-    Builder,
-    TypePtr,
-    GraphPtr,
-    SymbolPtr,
-    TuplePtr,
-    LocPtr,
-)
+from .misc import Arity, Tup
+from .mobicc import Builder, ModulePtr, GraphPtr, SymbolPtr
 from utils.list import VariadicList
 
 
@@ -46,11 +39,17 @@ struct Graph:
 
     # TODO: Add __str__/__repr__.
 
-    fn values(inout self, *values: SymbolPtr) -> VariadicList[SymbolPtr]:
-        return VariadicList(values)
+    fn values(inout self, *values: SymbolPtr) raises -> Tup:
+        let l = VariadicList(values)
+        var t = self.builder.new_tuple()
+        for i in range(len(l)):
+            var v = l[i]
+            self.builder.ext_tuple(t, v)
+        return Tup(t, len(l))
 
-    fn no_value(inout self) -> VariadicList[SymbolPtr]:
-        return VariadicList[SymbolPtr]()
+    fn no_value(inout self) raises -> Tup:
+        let t = self.builder.new_tuple()
+        return Tup(t, 0)
 
     fn input(
         inout self,
@@ -58,37 +57,14 @@ struct Graph:
     ) raises -> SymbolPtr:
         return self.builder.get_graph_input(self.g, pos)
 
-    fn _new_op(
+    fn op(
         inout self,
         name: StringRef,
-        inputs: VariadicList[SymbolPtr],
-        outTypes: VariadicList[TypePtr],
-    ) raises -> TuplePtr:
-        var ins = self.builder.new_tuple()
-        for i in range(len(inputs)):
-            var t = inputs[i]
-            self.builder.ext_tuple(ins, t)
-        var outs = self.builder.new_arity()
-        for i in range(len(outTypes)):
-            var t = outTypes[i]
-            self.builder.inc_arity(outs, t)
+        inputs: Tup,
+        outTypes: Arity,
+    ) raises -> Tup:
         var loc = self.builder.unknown_loc(self.m)
-        # TODO: Why crash when trying to return VariadicList[SymbolPtr]?
-        return self.builder.new_op(self.g, loc, name, ins, outs)
-
-    fn void_op(
-        inout self,
-        name: StringRef,
-        inputs: VariadicList[SymbolPtr],
-        outTypes: VariadicList[TypePtr],
-    ) raises:
-        _ = self._new_op(name, inputs, outTypes)
-
-    fn single_op(
-        inout self,
-        name: StringRef,
-        inputs: VariadicList[SymbolPtr],
-        outTypes: VariadicList[TypePtr],
-    ) raises -> SymbolPtr:
-        var retTuple = self._new_op(name, inputs, outTypes)
-        return self.builder.get_tuple_item(retTuple, 0)
+        let outputs = self.builder.new_op(
+            self.g, loc, name, inputs.t, outTypes.a
+        )
+        return Tup(outputs, outTypes.l)
