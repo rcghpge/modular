@@ -424,6 +424,13 @@ struct ConvConstFilterPattern : public OpRewritePattern<MO::ConvOp> {
     if (!dependsOnConstantsOnly<MO::ConstantOp>(filter.getDefiningOp()))
       return rewriter.notifyMatchFailure(op, "filter isn't constant");
 
+    auto maybeNumGroups = MO::tryGetConstantInt(op.getNumGroups());
+    if (!maybeNumGroups) {
+      return rewriter.notifyMatchFailure(
+          op, "currently only pack constant num_groups");
+    }
+    int64_t numGroups = *maybeNumGroups;
+
     // Create shape parameters for the new type.
     SmallVector<KGEN::ParamDeclAttr> paramDecls;
     auto graphOp = op->getParentOfType<MO::GraphOp>();
@@ -431,12 +438,20 @@ struct ConvConstFilterPattern : public OpRewritePattern<MO::ConvOp> {
       paramDecls.push_back(graphOp.getNewDimParam(name));
     auto paramDeclsAttr = KGEN::ParamDeclArrayAttr::get(ctx, paramDecls);
 
+    // Pass `num_groups` as a parameter to the `pack_conv_filter_shape` and
+    // `pack_conv_filter` kernels.
+    // Do so through the `kgenParams` attribute dictionary, which `mogg.call`
+    // passes to the KGEN function call as parameters.
+    auto numGroupsAttr =
+        rewriter.getNamedAttr("num_groups", rewriter.getIndexAttr(numGroups));
+    DictionaryAttr kgenParams = rewriter.getDictionaryAttr({numGroupsAttr});
+
     // Invoke the pack filter fallback shape function.
     // TODO(#18770) Find a better registration mechanism.
     SmallVector<mlir::NamedAttribute> attrs;
     rewriter.create<MO::InvokeShapeFuncOp>(
         loc, SmallVector<Value>{filter}, "pack_conv_filter_shape",
-        paramDeclsAttr, DictionaryAttr{}, ArrayAttr{});
+        paramDeclsAttr, kgenParams, ArrayAttr{});
 
     // Construct type (new shape and layout) for the packed filter.
     SmallVector<TypedAttr> outputParams;
@@ -450,7 +465,7 @@ struct ConvConstFilterPattern : public OpRewritePattern<MO::ConvOp> {
 
     // Pack the filter.
     auto packedFilter = rewriter.create<MO::LayoutTransformOp>(
-        loc, /*outputTypes=*/packedFilterType, filter);
+        loc, /*outputTypes=*/packedFilterType, filter, kgenParams);
     op.setOperand(1, packedFilter);
     return mlir::success();
   }
