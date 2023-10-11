@@ -82,7 +82,7 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       *this, "constant-fold",
       llvm::cl::desc("Evaluate parts of the program that can be evaluated at "
                      "compile time."),
-      llvm::cl::init(false)}; // TODO: enable by default #16888
+      llvm::cl::init(true)};
   Option<bool> lowerQDQOperators{
       *this, "lower-quantized-operators",
       llvm::cl::desc("Dispatch to quantized operations around Q-DQ regions."),

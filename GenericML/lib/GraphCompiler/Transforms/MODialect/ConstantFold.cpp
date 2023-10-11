@@ -802,6 +802,9 @@ void ConstantFoldPass::runOnOperation() {
     SmallVector<SubgraphInfo> subgraphReplacements;
     int64_t name_counter = 0;
     getOperation().walk([&](GraphOp graph) {
+      // Can't constant fold cuda yet
+      if (graph.getDeviceRef() && graph.getDeviceRef().getLabel() != kCPULabel)
+        return mlir::WalkResult::skip();
       auto subgraphs = constantSubgraphs(
           graph, getAnalysis<KGEN::ParameterCollector::Analysis>());
       if (subgraphs.empty())
