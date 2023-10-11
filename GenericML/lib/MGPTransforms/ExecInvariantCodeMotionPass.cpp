@@ -73,10 +73,21 @@ class ExecInvariantCodeMotionPass
     SmallVector<Operation *> worklist(ops.begin(), ops.end());
     while (!worklist.empty()) {
       Operation *currOp = worklist.pop_back_val();
-      ops.insert(currOp);
+
+      // Recompute only if there are no other ways of hoisting the
+      // operation.
+      if (!isLiftableBufferOp(currOp) && !isLiftableChainOp(currOp))
+        ops.insert(currOp);
+
       for (Value input : currOp->getOperands()) {
         if (Operation *inputOp = input.getDefiningOp()) {
-          if (auto [_, inserted] = ops.insert(inputOp); inserted)
+          // Recompute only if there are no other ways of hoisting the
+          // operation.
+          if (inputOp && !isLiftableBufferOp(inputOp) &&
+              !isLiftableChainOp(inputOp)) {
+            ops.insert(inputOp);
+          }
+          if (inputOp)
             worklist.push_back(inputOp);
         }
       }
