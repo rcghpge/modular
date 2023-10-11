@@ -365,6 +365,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_KERNEL(MO::UnsqueezeShapeOp),
       MO_TO_KERNEL(MO::ArgNonzeroOp),
       MO_TO_ELEMWISE(MO::XorOp),
+      MO_TO_KERNEL(MO::TileOp),
 
       // Bookkeeping for gotchas -- handled specially elsewhere
       MO_NO_LOWER(MO::ConstantOp),
