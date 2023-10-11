@@ -438,6 +438,35 @@ TensorType TensorType::cloneWithNewDim(uint64_t dim, uint64_t size) {
 }
 
 //===----------------------------------------------------------------------===//
+// ListType
+//===----------------------------------------------------------------------===//
+
+LogicalResult ListType::verify(function_ref<InFlightDiagnostic()> emitError,
+                               Type elementType) {
+  // check against things like `!mo.list<f32>`
+  auto tensorTy = llvm::dyn_cast<TensorType>(elementType);
+  if (!tensorTy) {
+    return emitError() << "list can only contain tensor elements, but got "
+                       << elementType;
+  }
+
+  // check against things like `!mo.list<!mo.tensor<Sh0, f32>>`
+  auto shapeAttr = tensorTy.getShapeAttr();
+  if (llvm::isa<KGEN::ParamDeclRefAttr>(shapeAttr))
+    return emitError() << "tensor element shape cannot be a parameter";
+
+  // check against things like `!mo.list<!mo.tensor<[20, D0], f32>>`
+  if (auto dimsAttr = llvm::dyn_cast<MOSH::ShapeAttr>(shapeAttr)) {
+    for (TypedAttr dimAttr : dimsAttr.getValues()) {
+      if (llvm::isa<KGEN::ParamDeclRefAttr>(dimAttr))
+        return emitError() << "tensor element dimensions cannot have parameter";
+    }
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // MODialect type support
 //===----------------------------------------------------------------------===//
 

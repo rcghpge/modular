@@ -190,6 +190,22 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
 }
 
 //===----------------------------------------------------------------------===//
+// MO_List
+//===----------------------------------------------------------------------===//
+
+def MO_List : MO_Type<"List", "list"> {
+  let summary = "Type of immutable list container.";
+  let description = [{
+    This type represents an immutable list of elements (currently restricted to
+    `!mo.tensor`).
+  }];
+
+  let parameters = (ins "Type":$elementType);
+  let assemblyFormat = "`<` $elementType `>`";
+  let genVerifyDecl = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // ODS constraints to inject verifier logic via type annotation.
 //===----------------------------------------------------------------------===//
 
