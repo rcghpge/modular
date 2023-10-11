@@ -3606,5 +3606,36 @@ def MO_BottomKOp : MO_TensorOp<"bottom_k", [
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// List ops
+//===----------------------------------------------------------------------===//
+
+def MO_ListCreateOp : MO_TensorOp<"list.create", []> {
+  let summary = "List create Operation";
+  let description = [{
+    Create a new list which contains the given inputs (currently limited to
+    tensors).
+
+    Example:
+
+    ```mlir
+    %arg0: !mo.tensor<[2, 3], f32>
+    %arg1: !mo.tensor<[2, 5], f32>
+
+    %list = mo.list.create(%arg0, %arg1) : (
+      !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 5], f32>
+    ) -> !mo.list<!mo.tensor<[2, ?], f32>>
+    ```
+  }];
+
+  let arguments = (ins Variadic<MO_Tensor>:$inputs);
+  let results = (outs MO_List:$result);
+
+  let assemblyFormat = [{
+    `(` $inputs `)` attr-dict `:` functional-type($inputs, results)
+  }];
+
+  let hasVerifier = 1;
+}
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOOPS_TD

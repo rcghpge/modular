@@ -2971,6 +2971,77 @@ LogicalResult LayoutTransformOp::canonicalize(LayoutTransformOp op,
 }
 
 //===----------------------------------------------------------------------===//
+// List ops
+//===----------------------------------------------------------------------===//
+
+/// Return whether `ty1` is a subtype of `ty2`, i.e., the set of possible
+/// tensors represented by `ty1` is a subset for that of `ty2`.
+static bool isSubtype(TensorType ty1, TensorType ty2) {
+  // !mo.tensor<..., {layout = #mo.layout<KN>}>  v.s. !mo.tensor<..., {layout =
+  // #mo.layout<NK>}>
+  if (ty1.getMetadata() != ty2.getMetadata())
+    return false;
+
+  // !mo.tensor<..., f32>  v.s. !mo.tensor<..., si32>
+  if (ty1.getDtype() != ty2.getDtype())
+    return false;
+
+  TypedAttr shapeAttr1 = ty1.getShapeAttr();
+  TypedAttr shapeAttr2 = ty2.getShapeAttr();
+
+  if (!ty2.hasRank()) { // ty2: !mo.tensor<?|Sh0, f32>
+    // If `ty2` has unknown shape `?`, any `ty1` will be a subtype of `ty2`;
+    // otherwise the shape must match textually, e.g., `Sh0 == Sh0`.
+    if (isa<KGEN::UnknownAttr>(shapeAttr2))
+      return true;
+    else
+      return shapeAttr1 != shapeAttr2;
+  }
+
+  // Otherwise `ty2` is ranked, i.e., ty2: !mo.tensor<[...], f32>
+
+  // ty1: !mo.tensor<?, f32>
+  if (!ty1.hasRank())
+    return false;
+
+  // ty1: !mo.tensor<[...], f32>
+  // 1. Make sure # of dims match.
+  if (ty1.getRank() != ty2.getRank())
+    return false;
+
+  // 2. Make sure lhs' individual dims are more general.
+  for (auto [dimAttr1, dimAttr2] :
+       llvm::zip(cast<ShapeAttr>(shapeAttr1).getValues(),
+                 cast<ShapeAttr>(shapeAttr2).getValues())) {
+    // If `dimAttr2` is an unknown dimension `?`, `dimAttr1` can be anything in
+    // order for `ty1` to be a subtype of `ty2`; otherwise the dimensions must
+    // match textually, e.g., `42 == 42`.
+    if (!isa<KGEN::UnknownAttr>(dimAttr2) && dimAttr1 != dimAttr2)
+      return false;
+  }
+
+  return true;
+}
+
+LogicalResult ListCreateOp::verify() {
+  auto resTy = dyn_cast<TensorType>(getType().getElementType());
+  if (!resTy) {
+    return emitError() << "output list must contain tensors, but got: "
+                       << resTy;
+  }
+
+  for (Value input : getOperands()) {
+    auto inTy = cast<TensorType>(input.getType());
+    if (!isSubtype(inTy, resTy)) {
+      return emitError()
+             << "input type must be a subtype of list element type: " << inTy
+             << " v.s. " << resTy;
+    }
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 
