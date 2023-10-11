@@ -11,30 +11,30 @@
 #include "LLCL/ForwardDecls.h"
 #include "LLCL/Runtime/AnyAsyncValueRef.h"
 #include "LLCL/Runtime/TypeID.h"
-#include "LLCL/Support/GenericUniquePtr.h"
+#include "LLCL/Support/GenericRCRef.h"
 #include "Support/ErrorOr.h"
 
 namespace M::GML {
 
 /// A type-erased wrapper for all context 'state slots'. Buffer allocations
 /// may be cached within a number of 'buffer slots' determined when the state
-/// slot is constructed. The state slot may also hold an arbitrary payload.
-/// The payload's destructor will be called when the state slot is destroyed.
+/// slot is constructed. The state slot may also hold an arbitrary reference
+/// counted payload (which should derive from ReferenceCounted).
 class StateSlot {
 public:
   /// Constructs the empty state slot.
   StateSlot() = default;
 
-  /// Establishes state slot to take ownership of payload.
-  /// State slot will have space for numBuffers, initially null.
+  /// Establishes state slot to take reference to payload. State slot will have
+  /// space for numBuffers, initially all null.
   template <typename T>
-  void reset(std::unique_ptr<T> newPayload, size_t numBuffers) {
-    payload.reset(std::move(newPayload));
+  void reset(RCRef<T> &&newPayload, size_t numBuffers) {
+    payload = LLCL::GenericRCRef::fromRCRef<T>(std::move(newPayload));
     bufferCache.clear();
     bufferCache.resize(numBuffers);
   }
 
-  /// Destroy this state slot, including its underlying payload.
+  /// Destroy this state slot, dropping the reference to its payload.
   ~StateSlot() = default;
 
   /// Returns true if have a payload.
@@ -90,7 +90,7 @@ private:
                                   std::optional<size_t> alignment);
 
   /// The state slot payload.
-  LLCL::GenericUniquePtr payload;
+  LLCL::GenericRCRef payload;
 
   /// A place to hold pre-allocated or cached buffers. Tensors and other
   /// more refined types can be constructed from these buffers. Though these
@@ -102,7 +102,7 @@ private:
 
 /// A state slot with no extra payload state. Useful for testing and for
 /// ops which have no extra state but wish to make use of buffer caching.
-class DefaultStateSlot {};
+class DefaultStateSlot : public ReferenceCounted<DefaultStateSlot> {};
 
 /// A 'mutable borrow' of a state slot payload of type T. This object holds
 /// both the raw pointer to the state slot payload, as well as an async

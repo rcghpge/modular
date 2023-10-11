@@ -503,8 +503,8 @@ static void mgp_check_runtime(Chain inChain, Context &ctx,
               deviceSpecMapOr.getError()));
   }
 
-  ctx.emplaceStateSlot<DeviceSpecMap>(*aSlot, /*numBuffers=*/0,
-                                      std::move(*deviceSpecMapOr));
+  ctx.emplaceStateSlot<RuntimeDeviceSpecMap>(*aSlot, /*numBuffers=*/0,
+                                             std::move(*deviceSpecMapOr));
   std::move(outChain).emplace();
 }
 

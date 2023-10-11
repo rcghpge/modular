@@ -14,10 +14,10 @@ namespace M::GML {
 
 /// A context holds a number of 'state slots'. The number of state slots is
 /// set at construction time and cannot be changed. Each state slot can hold
-/// an arbitrary C++ type. Generally the context is created during a model's
-/// 'init' phase, each slot is setup using unique slot indexes determined at
-/// compile time, and the context is reused by each call to the model's
-/// 'execute' phase.
+/// an arbitrary, reference counted payload (which should derive from
+/// ReferenceCounted). Generally the context is created during a model's 'init'
+/// phase, each slot is setup using unique slot indexes determined at compile
+/// time, and the context is reused by each call to the model's 'execute' phase.
 ///
 /// State slots may hold context for specific operations in the model, or
 /// may hold framework or runtime specific state shared across many operations
@@ -36,6 +36,8 @@ class Context {
 public:
   /// Constructs a new context with numSlots uninitialized state slots.
   explicit Context(size_t numSlots) : stateSlots(numSlots) {}
+
+  /// Destroys all state slots in the context.
   ~Context() = default;
 
   /// Returns the number of state slots in the context.
@@ -51,13 +53,12 @@ public:
   Context(const Context &rhs) = delete;
   Context &operator=(const Context &rhs) = delete;
 
-  /// Moves an already constructed (unique pointer to) T into the state slot
+  /// Moves an already constructed reference to T into the state slot
   /// at slotIndex. The state slot must not have been already set or emplaced.
   /// The state slot will also hold space for numBuffers cached buffer
   /// allocations, which will all initially be null.
   template <typename T>
-  T &setStateSlot(size_t slotIndex, std::unique_ptr<T> payload,
-                  size_t numBuffers = 0) {
+  T &setStateSlot(size_t slotIndex, RCRef<T> payload, size_t numBuffers = 0) {
     assert(!stateSlots[slotIndex] &&
            "StateSlot for the given slot has already been set or emplaced.");
     stateSlots[slotIndex].reset<T>(std::move(payload), numBuffers);
@@ -73,7 +74,7 @@ public:
     assert(!stateSlots[slotIndex] &&
            "StateSlot for the given slot has already been set or emplaced.");
     stateSlots[slotIndex].reset<T>(
-        std::make_unique<T>(std::forward<Args>(args)...), numBuffers);
+        RCRef<T>::create(std::forward<Args>(args)...), numBuffers);
     return stateSlots[slotIndex].get<T>();
   }
 

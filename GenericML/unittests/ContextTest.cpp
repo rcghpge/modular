@@ -14,14 +14,14 @@
 using namespace M;
 using namespace M::GML;
 
-struct PayloadA {
+struct PayloadA : public ReferenceCounted<PayloadA> {
   explicit PayloadA(int i) : i(i) { resource = malloc(1); }
   ~PayloadA() { free(resource); }
   int i;
   void *resource;
 };
 
-struct PayloadB {
+struct PayloadB : public ReferenceCounted<PayloadB> {
   explicit PayloadB(char c) : c(c) {}
   char c;
 };
@@ -49,7 +49,7 @@ TEST(ContextTest, StateSlotDowncastFailTest) {
 TEST(ContextTest, StateSlotTest) {
   Context ctx(/*numSlots=*/2);
   ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, /*numBuffers=*/1, 43);
-  ctx.setStateSlot(/*slotIndex=*/1, std::make_unique<PayloadB>('a'),
+  ctx.setStateSlot(/*slotIndex=*/1, RCRef<PayloadB>::create('a'),
                    /*numBuffers=*/1);
 
   EXPECT_EQ(ctx.getStateSlotPayload<PayloadA>(/*slotIndex=*/0).i, 43);

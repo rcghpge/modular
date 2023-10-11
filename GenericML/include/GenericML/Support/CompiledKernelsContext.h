@@ -34,7 +34,7 @@ using CompiledKernelFn = void(void **, ssize_t *, KGEN::OutputChain *);
 
 // Holds all the loaded compiled kernels. Will be held within a state slot
 // of the mgp.context.
-class CompiledKernelsContext {
+class CompiledKernelsContext : public ReferenceCounted<CompiledKernelsContext> {
 public:
   CompiledKernelsContext(KGEN::ExecutionEngine *engine) : engine(engine) {}
 
