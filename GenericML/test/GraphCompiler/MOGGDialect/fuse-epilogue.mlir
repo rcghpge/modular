@@ -13,7 +13,7 @@ mo.graph @basicMatmul<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !mo.tensor
 // CHECK-NEXT: mogg.param_shape_to_value
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"
 // CHECK-NEXT: mogg.lambda @output_0_fn
-// CHECK-NEXT: mogg.simd_load
+// CHECK-NEXT: mogg.call "simd_load"
 // CHECK-NEXT: mogg.call "mo.add"
 // CHECK-NEXT: mogg.call "simd_store"
 // CHECK-NEXT: mogg.output
@@ -49,7 +49,7 @@ mo.graph @checkNoFuseInputInterfaceDisabled<N, M, K>(%arg0: !mo.tensor<[M, K], f
   %1 = mogg.kernel (%0) : (%arg2: !mo.tensor<[M, N], f32>) -> !mo.tensor<[M, N], f32>{
     %2 = mogg.output_placeholders : !mo.tensor<[M, N], f32>
     mogg.lambda @input_0_fn = (%arg3: !mogg.indices) -> !mogg.simd<f32>{
-        %3 = mogg.simd_load(%arg2, %arg3) : (!mo.tensor<[M, N], f32>, !mogg.indices) -> !mogg.simd<f32>
+        %3 = mogg.call "simd_load"(%arg2, %arg3) : !mo.tensor<[M, N], f32>, !mogg.indices -> !mogg.simd<f32>
         mogg.output %3 : !mogg.simd<f32>
     }
     mogg.lambda @output_0_fn = (%arg3: !mogg.indices, %arg4: !mogg.simd<f32>){
@@ -86,7 +86,7 @@ mo.graph @checkNoFuseOutputInterfaceDisabled<N, M, K>(%arg0: !mo.tensor<[M, K], 
   %1 = mogg.kernel (%0) : (%arg2: !mo.tensor<[M, N], f32>) -> !mo.tensor<[M, N], f32>{
     %2 = mogg.output_placeholders : !mo.tensor<[M, N], f32>
     mogg.lambda @input_0_fn = (%arg3: !mogg.indices) -> !mogg.simd<f32>{
-        %3 = mogg.simd_load(%arg2, %arg3) : (!mo.tensor<[M, N], f32>, !mogg.indices) -> !mogg.simd<f32>
+        %3 = mogg.call "simd_load"(%arg2, %arg3) : !mo.tensor<[M, N], f32>, !mogg.indices -> !mogg.simd<f32>
         mogg.output %3 : !mogg.simd<f32>
     }
     mogg.lambda @output_0_fn = (%arg3: !mogg.indices, %arg4: !mogg.simd<f32>){
@@ -123,7 +123,7 @@ mo.graph @checkNoFuseNoElementwiseAttr<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, 
   %1 = mogg.kernel (%0) : (%arg2: !mo.tensor<[M, N], f32>) -> !mo.tensor<[M, N], f32>{
     %2 = mogg.output_placeholders : !mo.tensor<[M, N], f32>
     mogg.lambda @input_0_fn = (%arg3: !mogg.indices) -> !mogg.simd<f32>{
-        %3 = mogg.simd_load(%arg2, %arg3) : (!mo.tensor<[M, N], f32>, !mogg.indices) -> !mogg.simd<f32>
+        %3 = mogg.call "simd_load"(%arg2, %arg3) : !mo.tensor<[M, N], f32>, !mogg.indices -> !mogg.simd<f32>
         mogg.output %3 : !mogg.simd<f32>
     }
     mogg.lambda @output_0_fn = (%arg3: !mogg.indices, %arg4: !mogg.simd<f32>){
@@ -160,7 +160,7 @@ mo.graph @mixed_precision(%arg0: !mo.tensor<[2, 2], ui32>, %arg1: !mo.tensor<[2,
   %1 = mogg.kernel (%0) : (%arg2: !mo.tensor<[2, 2], ui32>) -> !mo.tensor<[2, 2], f32>{
     %2 = mogg.output_placeholders : !mo.tensor<[2, 2], f32>
     mogg.lambda @input_0_fn = (%arg3: !mogg.indices) -> !mogg.simd<ui32>{
-      %3 = mogg.simd_load(%arg2, %arg3) : (!mo.tensor<[2, 2], ui32>, !mogg.indices) -> !mogg.simd<ui32>
+      %3 = mogg.call "simd_load"(%arg2, %arg3) : !mo.tensor<[2, 2], ui32>, !mogg.indices -> !mogg.simd<ui32>
       mogg.output %3 : !mogg.simd<ui32>
     }
     mogg.lambda @output_0_fn = (%arg3: !mogg.indices, %arg4: !mogg.simd<f32>){

@@ -172,7 +172,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // Find all the stores that write through the argument that is being fused.
     SmallVector<MOGG::CallOp> stores;
     for (auto op : dstInputLambda.getOps<MOGG::CallOp>()) {
-      if (op.getOperand(0) == fusionArgument) {
+      if (op.getMojoKernelTarget() == "simd_store" &&
+          op.getOperand(0) == fusionArgument) {
         stores.push_back(op);
       }
     }
@@ -183,11 +184,17 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     for (auto storeOp : stores)
       storeOp.erase();
 
+    llvm::errs() << "Entering the loop\n;";
+
     // Replace all load ops that read from the argument that is being fused.
-    for (auto load : llvm::make_early_inc_range(
-             dstInputLambda.getOps<MOGG::SimdLoadOp>())) {
-      if (load.getTensor() == fusionArgument) {
-        load.replaceAllUsesWith(simdValue);
+    for (auto load :
+         llvm::make_early_inc_range(dstInputLambda.getOps<MOGG::CallOp>())) {
+      // Skip non simd loads.
+      if (load.getMojoKernelTarget() != "simd_load")
+        continue;
+
+      if (load.getOperand(0) == fusionArgument) {
+        load.replaceAllUsesWith(ValueRange{simdValue});
         load.erase();
       }
     }
@@ -412,11 +419,15 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     // Replace any SIMD loads of the output with the value.
     for (auto load : llvm::make_early_inc_range(
-             outputLambdaToFuseInto.getOps<MOGG::SimdLoadOp>())) {
+             outputLambdaToFuseInto.getOps<MOGG::CallOp>())) {
+      // Skip non simd loads.
+      if (load.getMojoKernelTarget() != "simd_load")
+        continue;
+
       // Anything which loads the output is a reference to lambda simd
       // value parameter.
-      if (load.getTensor() == originalOuts->getResult(0)) {
-        load.replaceAllUsesWith(simdValue);
+      if (load.getOperand(0) == originalOuts->getResult(0)) {
+        load.replaceAllUsesWith(ValueRange{simdValue});
         load.erase();
       }
     }

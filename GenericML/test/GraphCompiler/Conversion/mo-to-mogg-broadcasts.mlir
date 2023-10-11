@@ -15,7 +15,7 @@ mo.graph @bcast_basic<N, L, M, K>(%arg0: !mo.tensor<[N, M, L], f32>) -> (!mo.ten
 
 // The copy is implemented with the elementwise kernel as before.
 // CHECK-NEXT:  mogg.lambda @copy_view = (%[[INDICES:.*]]: !mogg.indices){
-// CHECK-NEXT:    %[[LOAD:.*]] = mogg.simd_load(%[[BCAST]], %[[INDICES]]) : (!mo.tensor<[N, M, K], f32>, !mogg.indices) -> !mogg.simd<f32>
+// CHECK-NEXT:    %[[LOAD:.*]] = mogg.call "simd_load"(%[[BCAST]], %[[INDICES]]) : !mo.tensor<[N, M, K], f32>, !mogg.indices -> !mogg.simd<f32>
 // CHECK-NEXT:    mogg.call "simd_store"(%[[OUT]], %[[INDICES]], %[[LOAD]]) : !mo.tensor<[N, M, K], f32>, !mogg.indices, !mogg.simd<f32>
 // CHECK-NEXT:    mogg.output
 // CHECK-NEXT:  }

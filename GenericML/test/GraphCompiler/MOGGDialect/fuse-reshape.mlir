@@ -16,8 +16,8 @@ mo.graph @basicReshapeFuse(%arg0 : !mo.tensor<[50], ui32>, %arg1 : !mo.tensor<[5
 // CHECK-NEXT: %[[NEW_1:.*]] = mogg.call "mo.static.reshape"(%[[IN0]], %[[SHAPE]])
 
 
-// CHECK: mogg.simd_load(%[[NEW_0]]
-// CHECK: mogg.simd_load(%[[NEW_1]]
+// CHECK: mogg.call "simd_load"(%[[NEW_0]]
+// CHECK: mogg.call "simd_load"(%[[NEW_1]]
 
 
 mo.graph @basicReshapeDyn<N, L>(%arg0 : !mo.tensor<[50], ui32>, %arg1 : !mo.tensor<[5, 10], ui32>) -> (!mo.tensor<[N, 5, L], ui32>) {
@@ -35,8 +35,8 @@ mo.graph @basicReshapeDyn<N, L>(%arg0 : !mo.tensor<[50], ui32>, %arg1 : !mo.tens
 
 // CHECK-NEXT: %[[NEW_1:.*]] = mogg.call "mo.static.reshape"(%[[IN0]], %[[SHAPE]])
 
-// CHECK: mogg.simd_load(%[[NEW_0]]
-// CHECK: mogg.simd_load(%[[NEW_1]]
+// CHECK: mogg.call "simd_load"(%[[NEW_0]]
+// CHECK: mogg.call "simd_load"(%[[NEW_1]]
 
 
 
@@ -47,9 +47,9 @@ mo.graph @multiReshape<N, L>(%arg0: !mo.tensor<[50], ui32>, %arg1: !mo.tensor<[5
         %3 = mogg.output_placeholders : !mo.tensor<[N, 5, L], ui32>
 
         mogg.lambda @elemwise_compute_lambda = (%indices: !mogg.indices){
-            %4 = mogg.simd_load(%arg2, %indices) : (!mo.tensor<[N, 5, L], ui32>, !mogg.indices) -> !mogg.simd<ui32>
-            %5 = mogg.simd_load(%arg3, %indices) : (!mo.tensor<[N, 5, L], ui32>, !mogg.indices) -> !mogg.simd<ui32>
-            %6 = mogg.simd_load(%arg4, %indices) : (!mo.tensor<[N, 5, L], ui32>, !mogg.indices) -> !mogg.simd<ui32>
+            %4 = mogg.call "simd_load"(%arg2, %indices) : !mo.tensor<[N, 5, L], ui32>, !mogg.indices -> !mogg.simd<ui32>
+            %5 = mogg.call "simd_load"(%arg3, %indices) : !mo.tensor<[N, 5, L], ui32>, !mogg.indices -> !mogg.simd<ui32>
+            %6 = mogg.call "simd_load"(%arg4, %indices) : !mo.tensor<[N, 5, L], ui32>, !mogg.indices -> !mogg.simd<ui32>
             mogg.output
         }
         mogg.output %3 : !mo.tensor<[N, 5, L], ui32>
@@ -64,9 +64,9 @@ mo.graph @multiReshape<N, L>(%arg0: !mo.tensor<[50], ui32>, %arg1: !mo.tensor<[5
 // CHECK: %[[SHAPE:.*]] = mogg.param_shape_to_value -> !mogg.shape<[N, 5, L]>
 // CHECK: %[[RESHAPED:.*]] = mogg.call "mo.static.reshape"(%[[IN0]], %[[SHAPE]])
 
-// CHECK: mogg.simd_load(%[[RESHAPED]]
-// CHECK: mogg.simd_load(%[[RESHAPED]]
-// CHECK: mogg.simd_load(%[[RESHAPED]]
+// CHECK: mogg.call "simd_load"(%[[RESHAPED]]
+// CHECK: mogg.call "simd_load"(%[[RESHAPED]]
+// CHECK: mogg.call "simd_load"(%[[RESHAPED]]
 
 
 mo.graph @dontFuseCompound<N, M>(%arg0 : !mo.tensor<[M], ui32>, %arg1 : !mo.tensor<[N], ui32>) -> (!mo.tensor<[N], ui32>) {

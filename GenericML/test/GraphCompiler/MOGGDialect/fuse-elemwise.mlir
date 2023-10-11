@@ -274,7 +274,7 @@ mo.graph @missingInputFusionInterface(%arg0: !mo.tensor<[10], ui32>) -> !mo.tens
   %0 = mogg.kernel (%arg0) : (%arg1: !mo.tensor<[10], ui32>) -> !mo.tensor<[10], ui32>{
     %5 = mogg.output_placeholders : !mo.tensor<[10], ui32>
     mogg.lambda @input_0_fn = (%arg2: !mogg.indices) -> !mogg.simd<ui32>{
-      %6 = mogg.simd_load(%arg1, %arg2) : (!mo.tensor<[10], ui32>, !mogg.indices) -> !mogg.simd<ui32>
+      %6 = mogg.call "simd_load"(%arg1, %arg2) : !mo.tensor<[10], ui32>, !mogg.indices -> !mogg.simd<ui32>
       mogg.output %6 : !mogg.simd<ui32>
     }
     mogg.lambda @output_0_fn = (%arg2: !mogg.indices, %arg3: !mogg.simd<ui32>){
@@ -295,7 +295,7 @@ mo.graph @missingInputFusionInterface(%arg0: !mo.tensor<[10], ui32>) -> !mo.tens
   %1 = mogg.kernel (%0) : (%arg1: !mo.tensor<[10], ui32>) -> !mo.tensor<[10], ui32>{
     %5 = mogg.output_placeholders : !mo.tensor<[10], ui32>
     mogg.lambda @input_0_fn = (%arg2: !mogg.indices) -> !mogg.simd<ui32>{
-      %6 = mogg.simd_load(%arg1, %arg2) : (!mo.tensor<[10], ui32>, !mogg.indices) -> !mogg.simd<ui32>
+      %6 = mogg.call "simd_load"(%arg1, %arg2) : !mo.tensor<[10], ui32>, !mogg.indices -> !mogg.simd<ui32>
       mogg.output %6 : !mogg.simd<ui32>
     }
     mogg.lambda @output_0_fn = (%arg2: !mogg.indices, %arg3: !mogg.simd<ui32>){
@@ -320,7 +320,7 @@ mo.graph @missingInputFusionInterface(%arg0: !mo.tensor<[10], ui32>) -> !mo.tens
       mogg.output
     }
     mogg.lambda @elemwise_compute_lambda = (%arg2: !mogg.indices){
-      %6 = mogg.simd_load(%arg1, %arg2) : (!mo.tensor<[10], ui32>, !mogg.indices) -> !mogg.simd<ui32>
+      %6 = mogg.call "simd_load"(%arg1, %arg2) : !mo.tensor<[10], ui32>, !mogg.indices -> !mogg.simd<ui32>
       %7 = mogg.call "mo.exp"(%6) : !mogg.simd<ui32> -> !mogg.simd<ui32>
       mogg.invoke @output_0_fn(%arg2, %7) : !mogg.indices, !mogg.simd<ui32>
       mogg.output
@@ -333,11 +333,11 @@ mo.graph @missingInputFusionInterface(%arg0: !mo.tensor<[10], ui32>) -> !mo.tens
   %3 = mogg.kernel (%1, %2) : (%arg1: !mo.tensor<[10], ui32>, %arg2: !mo.tensor<[10], ui32>) -> !mo.tensor<[10], ui32>{
     %5 = mogg.output_placeholders : !mo.tensor<[10], ui32>
     mogg.lambda @input_0_fn = (%arg3: !mogg.indices) -> !mogg.simd<ui32>{
-      %6 = mogg.simd_load(%arg1, %arg3) : (!mo.tensor<[10], ui32>, !mogg.indices) -> !mogg.simd<ui32>
+      %6 = mogg.call "simd_load"(%arg1, %arg3) : !mo.tensor<[10], ui32>, !mogg.indices -> !mogg.simd<ui32>
       mogg.output %6 : !mogg.simd<ui32>
     }
     mogg.lambda @input_1_fn = (%arg3: !mogg.indices) -> !mogg.simd<ui32>{
-      %6 = mogg.simd_load(%arg2, %arg3) : (!mo.tensor<[10], ui32>, !mogg.indices) -> !mogg.simd<ui32>
+      %6 = mogg.call "simd_load"(%arg2, %arg3) : !mo.tensor<[10], ui32>, !mogg.indices -> !mogg.simd<ui32>
       mogg.output %6 : !mogg.simd<ui32>
     }
     mogg.lambda @output_0_fn = (%arg3: !mogg.indices, %arg4: !mogg.simd<ui32>){
@@ -359,7 +359,7 @@ mo.graph @missingInputFusionInterface(%arg0: !mo.tensor<[10], ui32>) -> !mo.tens
   %4 = mogg.kernel (%3) : (%arg1: !mo.tensor<[10], ui32>) -> !mo.tensor<[10], ui32>{
     %5 = mogg.output_placeholders : !mo.tensor<[10], ui32>
     mogg.lambda @input_0_fn = (%arg2: !mogg.indices) -> !mogg.simd<ui32>{
-      %6 = mogg.simd_load(%arg1, %arg2) : (!mo.tensor<[10], ui32>, !mogg.indices) -> !mogg.simd<ui32>
+      %6 = mogg.call "simd_load"(%arg1, %arg2) : !mo.tensor<[10], ui32>, !mogg.indices -> !mogg.simd<ui32>
       mogg.output %6 : !mogg.simd<ui32>
     }
     mogg.lambda @output_0_fn = (%arg2: !mogg.indices, %arg3: !mogg.simd<ui32>){
@@ -391,7 +391,7 @@ mo.graph @missingInputFusionInterface(%arg0: !mo.tensor<[10], ui32>) -> !mo.tens
 // CHECK: mogg.lambda @elemwise_compute_lambda
 // CHECK-NEXT: mogg.invoke @input
 // CHECK-NEXT: mogg.call "mo.relu"
-// CHECK-NEXT: mogg.simd_load
+// CHECK-NEXT: mogg.call "simd_load"
 // CHECK-NEXT: mogg.call "mo.exp"
 // CHECK-NEXT: mogg.call "mo.mul"
 // CHECK-NEXT: mogg.call "mo.relu"
