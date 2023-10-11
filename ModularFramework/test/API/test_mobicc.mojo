@@ -23,9 +23,9 @@ fn test_empty_graph() raises:
 
     var m = builder.new_module()
 
-    var ins = builder.new_arity()
+    let ins = builder.new_arity()
 
-    var outs = builder.new_arity()
+    let outs = builder.new_arity()
 
     var unknown = builder.unknown_loc(m)
     _ = builder.new_graph(m, unknown, "empty_graph", ins, outs)
@@ -55,9 +55,9 @@ fn test_identity_graph() raises:
     var arg0 = builder.get_input(g, 0)
     builder.add_symbol(rets, arg0)
 
-    var void = builder.new_arity()
+    let void = builder.new_arity()
 
-    var attrs = builder.new_attr_map()
+    let attrs = builder.new_attr_map()
 
     _ = builder.new_op(g, unknown, "mo.output", rets, void, attrs)
 
@@ -89,9 +89,9 @@ fn test_tuple_copy() raises:
     var el = builder.get_symbol(t, 0)
     builder.add_symbol(t2, el)
 
-    var void = builder.new_arity()
+    let void = builder.new_arity()
 
-    var attrs = builder.new_attr_map()
+    let attrs = builder.new_attr_map()
 
     _ = builder.new_op(g, unknown, "mo.output", t2, void, attrs)
 
@@ -105,7 +105,7 @@ fn test_const_op() raises:
 
     var m = builder.new_module()
 
-    var void = builder.new_arity()
+    let void = builder.new_arity()
 
     var outs = builder.new_arity()
     var intScalar = builder.si32_scalar(m)
@@ -128,7 +128,7 @@ fn test_const_op() raises:
     var x0 = builder.get_symbol(x, 0)
     builder.add_symbol(rets, x0)
 
-    var noAttrs = builder.new_attr_map()
+    let noAttrs = builder.new_attr_map()
 
     _ = builder.new_op(g, unknown, "mo.output", rets, void, noAttrs)
 
@@ -137,9 +137,44 @@ fn test_const_op() raises:
     builder.debug_print_module(m)
 
 
+fn test_execution() raises:
+    var builder = mobi.Builder()
+
+    var m = builder.new_module()
+
+    var ins = builder.new_arity()
+    var intScalar = builder.si32_scalar(m)
+    builder.add_type(ins, intScalar)
+
+    var outs = builder.new_arity()
+    builder.add_type(outs, intScalar)
+
+    var unknown = builder.unknown_loc(m)
+    var g = builder.new_graph(m, unknown, "identity_graph", ins, outs)
+
+    var rets = builder.new_tuple()
+    var arg0 = builder.get_input(g, 0)
+    builder.add_symbol(rets, arg0)
+
+    var void = builder.new_arity()
+
+    var attrs = builder.new_attr_map()
+
+    _ = builder.new_op(g, unknown, "mo.output", rets, void, attrs)
+
+    var rtArgs = builder.new_rt_tuple()
+    builder.add_si32_rt_scalar(rtArgs, 1)
+    var rtOuts = builder.new_rt_tuple()
+    _ = builder.execute_module(m, rtArgs, rtOuts)
+
+    # CHECK{LITERAL}: tensor([[1]], dtype=si32, shape=[])
+    builder.debug_print_rt(rtOuts)
+
+
 fn main() raises:
     test_empty_module()
     test_empty_graph()
     test_identity_graph()
     test_tuple_copy()
     test_const_op()
+    test_execution()

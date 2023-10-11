@@ -77,6 +77,9 @@ fn test_add_constant() raises:
     # CHECK: mo.add
     _ = m.debug_print()
 
+    # CHECK{LITERAL}: tensor([[2]], dtype=si32, shape=[])
+    m.debug_print_execute(1)
+
 
 fn main() raises:
     test_empty_graph()

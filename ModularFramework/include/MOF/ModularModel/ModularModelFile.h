@@ -22,7 +22,7 @@ namespace M::MOF {
 /// holds them compiled to MEF format. Assumes the
 /// MemoryBuffer will outlive the ModelCollection.
 ErrorOr<std::unique_ptr<ModelCollection>>
-loadMGPMEFFile(RCRef<MEFFile> mefFile);
+loadMGPMEFFile(RCRef<M::MEFFile> mefFile);
 
 } // namespace M::MOF
 

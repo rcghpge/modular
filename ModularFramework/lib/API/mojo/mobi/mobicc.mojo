@@ -64,6 +64,12 @@ struct _Type:
     pass
 
 
+struct _TensorTuple:
+    """Opaque data type mapping to M_TensorTuple in the MOF C API."""
+
+    pass
+
+
 alias AttrPtr = Pointer[_Attr]
 alias AttrMapPtr = Pointer[_AttrMap]
 alias GraphPtr = Pointer[_Graph]
@@ -73,6 +79,7 @@ alias TuplePtr = Pointer[_Tuple]
 alias SymbolPtr = Pointer[_Symbol]
 alias ArityPtr = Pointer[_Arity]
 alias TypePtr = Pointer[_Type]
+alias TensorTuplePtr = Pointer[_TensorTuple]
 
 
 struct Builder:
@@ -193,10 +200,35 @@ struct Builder:
 
     ### Type helers
 
+    fn dynamic_dim(inout self, inout module: ModulePtr) raises -> Int64:
+        return self.lib.get_function[fn (ModulePtr) -> Int64](
+            "MOBI_dynamicDim"
+        )(module)
+
     fn si32_scalar(inout self, inout module: ModulePtr) raises -> TypePtr:
         return self.lib.get_function[fn (ModulePtr) -> TypePtr](
             "MOBI_si32Scalar"
         )(module)
+
+    fn f32(
+        inout self,
+        inout module: ModulePtr,
+        dims: Pointer[Int64],
+        rank: Int64,
+    ) raises -> TypePtr:
+        return self.lib.get_function[
+            fn (ModulePtr, Pointer[Int64], Int64) -> TypePtr
+        ]("MOBI_f32")(module, dims, rank)
+
+    fn i32(
+        inout self,
+        inout module: ModulePtr,
+        dims: Pointer[Int64],
+        rank: Int64,
+    ) raises -> TypePtr:
+        return self.lib.get_function[
+            fn (ModulePtr, Pointer[Int64], Int64) -> TypePtr
+        ]("MOBI_si32")(module, dims, rank)
 
     fn new_arity(inout self) raises -> ArityPtr:
         return self.lib.get_function[fn () -> ArityPtr]("MOBI_newArity")()
@@ -205,3 +237,34 @@ struct Builder:
         return self.lib.get_function[fn (ArityPtr, TypePtr) -> NoneType](
             "MOBI_addType"
         )(arity, t)
+
+    ### Execution helpers
+
+    # TODO: Merge with engine API
+
+    fn new_rt_tuple(inout self) raises -> TensorTuplePtr:
+        return self.lib.get_function[fn () -> TensorTuplePtr](
+            "MOF_newTensorTuple"
+        )()
+
+    fn add_si32_rt_scalar(
+        inout self, inout t: TensorTuplePtr, value: Int32
+    ) raises:
+        self.lib.get_function[fn (TensorTuplePtr, Int32) -> NoneType](
+            "MOF_addI32Scalar"
+        )(t, value)
+
+    fn execute_module(
+        inout self,
+        inout module: ModulePtr,
+        inout args: TensorTuplePtr,
+        inout outs: TensorTuplePtr,
+    ) raises -> UInt32:
+        return self.lib.get_function[
+            fn (ModulePtr, TensorTuplePtr, TensorTuplePtr) -> UInt32
+        ]("MOF_executeModule")(module, args, outs)
+
+    fn debug_print_rt(inout self, inout t: TensorTuplePtr) raises:
+        self.lib.get_function[fn (TensorTuplePtr) -> NoneType](
+            "MOF_debugPrintTensors"
+        )(t)

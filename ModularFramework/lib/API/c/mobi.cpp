@@ -3,10 +3,12 @@
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
+
 #include "MOF/API/c/mobi.h"
 
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "MOF/API/c/detail/mobi.h"
+#include "MOF/InitAllDialects.h"
 #include "MOF/MOBI/Attr.h"
 #include "MOF/MOBI/Graph.h"
 #include "MOF/MOBI/Loc.h"
@@ -18,8 +20,6 @@
 using namespace M::MOF::Builder;
 using namespace llvm;
 using namespace mlir;
-
-using namespace M::MOF::Builder;
 
 /// Attr
 
@@ -77,7 +77,10 @@ MODULAR_API_EXPORT M_Loc *MOBI_unknownLoc(M_Module *m) {
 static MLIRContext *newContext() {
   // TODO: Attach the context to modules instead? Let user control it?
   static MLIRContext ctx;
-  ctx.loadDialect<M::MO::MODialect>();
+  mlir::DialectRegistry registry;
+  M::MOF::registerAllDialects(registry);
+  ctx.appendDialectRegistry(registry);
+  ctx.loadAllAvailableDialects();
   return &ctx;
 }
 
@@ -107,8 +110,20 @@ MODULAR_API_EXPORT M_Symbol *MOBI_getSymbol(M_Tuple *t, uint32_t pos) {
 
 /// Type
 
+MODULAR_API_EXPORT int64_t MOBI_dynamicDim(M_Module *m) {
+  return m->module.dynamicDim();
+}
+
 MODULAR_API_EXPORT M_Type *MOBI_si32Scalar(M_Module *m) {
   return new M_Type{m->module.si32Scalar()};
+}
+
+MODULAR_API_EXPORT M_Type *MOBI_f32(M_Module *m, int64_t *dims, int64_t rank) {
+  return new M_Type{m->module.f32(ArrayRef<int64_t>(dims, rank))};
+}
+
+MODULAR_API_EXPORT M_Type *MOBI_si32(M_Module *m, int64_t *dims, int64_t rank) {
+  return new M_Type{m->module.si32(ArrayRef<int64_t>(dims, rank))};
 }
 
 MODULAR_API_EXPORT M_Arity *MOBI_newArity() { return new M_Arity{Arity()}; }
