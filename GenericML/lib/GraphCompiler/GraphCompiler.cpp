@@ -92,12 +92,13 @@ void M::MO::registerPasses() {
 
 static inline void
 maybeApplyShapeInferencePipeline(mlir::OpPassManager &pm,
-                                 const MoToMgpOptions &opts) {
+                                 const MoToMgpOptions &opts,
+                                 bool disableConstantFolding = false) {
   // Adds passes to perform shape inference and resulting optimizations if
   // relevant flags are on.
   if (!opts.useShapeInference)
     return;
-  if (opts.constantFold)
+  if (opts.constantFold && !disableConstantFolding)
     pm.addPass(MO::createConstantFold());
   buildShapeInferencePipeline(pm);
   pm.addPass(MO::createSymbolicOptimization());
@@ -125,7 +126,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   if (opts.lowerQDQOperators) {
     // Right now we depend on symbolic optimization to handle batch matmul.
     // See #22204 for blockers on removing this.
-    maybeApplyShapeInferencePipeline(pm, opts);
+    // Avoid running constant folding to avoid simplifying q-dq patterns
+    maybeApplyShapeInferencePipeline(pm, opts, true /*disableConstantFolding*/);
     pm.addPass(MOQ::createLowerQDQOperatorsToMO());
     pm.addPass(MOQ::createSimplifyQDQPatterns());
   }
