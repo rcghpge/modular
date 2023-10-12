@@ -122,6 +122,12 @@ struct TensorMap:
         )
         self.ptr.borrow_tensor_by_name(value.data(), spec, self.lib)
 
+    fn borrow(self, key: StringRef, value: EngineNumpyView) raises:
+        let spec = EngineTensorSpec(
+            key, value.spec(), self.lib, self.session.copy()
+        )
+        self.ptr.borrow_tensor_by_name(value.data(), spec, self.lib)
+
     fn get[type: DType](self, key: StringRef) raises -> Tensor[type]:
         let tensor_ptr = self.ptr.get_tensor_by_name(key.data, self.lib)
         let mof_tensor = EngineTensor(tensor_ptr, self.lib, self.session.copy())

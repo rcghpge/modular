@@ -92,10 +92,10 @@ struct Model:
             raise status.__str__()
         return TensorMap(outputs, self.lib, self.session.copy())
 
-    fn _execute_tensor_view[
-        key_type: AnyType
+    fn _execute_view[
+        key_type: AnyType, value_type: AnyType
     ](
-        self, inputs: VariadicList[Tuple[key_type, EngineTensorView]]
+        self, inputs: VariadicList[Tuple[key_type, value_type]]
     ) raises -> TensorMap:
         let input_map = TensorMap(self.ctx, self.lib, self.session.copy())
         for i in range(inputs.__len__()):
@@ -103,27 +103,50 @@ struct Model:
 
             @parameter
             if key_type == StringRef:
-                input_map.borrow(
-                    pair.get[0, StringRef](), pair.get[1, EngineTensorView]()
-                )
+
+                @parameter
+                if value_type == EngineTensorView:
+                    input_map.borrow(
+                        pair.get[0, StringRef](),
+                        pair.get[1, EngineTensorView](),
+                    )
+                elif value_type == EngineNumpyView:
+                    input_map.borrow(
+                        pair.get[0, StringRef](), pair.get[1, EngineNumpyView]()
+                    )
+
             elif key_type == StringLiteral:
-                input_map.borrow(
-                    pair.get[0, StringLiteral](),
-                    pair.get[1, EngineTensorView](),
-                )
+
+                @parameter
+                if value_type == EngineTensorView:
+                    input_map.borrow(
+                        pair.get[0, StringLiteral](),
+                        pair.get[1, EngineTensorView](),
+                    )
+                elif value_type == EngineNumpyView:
+                    input_map.borrow(
+                        pair.get[0, StringLiteral](),
+                        pair.get[1, EngineNumpyView](),
+                    )
         return self.execute(input_map)
 
     fn execute(
         self, *inputs: Tuple[StringRef, EngineTensorView]
     ) raises -> TensorMap:
         let inputs_list = VariadicList(inputs)
-        return self._execute_tensor_view[StringRef](inputs_list)
+        return self._execute_view[StringRef, EngineTensorView](inputs_list)
 
     fn execute(
         self, *inputs: Tuple[StringLiteral, EngineTensorView]
     ) raises -> TensorMap:
         let inputs_list = VariadicList(inputs)
-        return self._execute_tensor_view[StringLiteral](inputs_list)
+        return self._execute_view[StringLiteral, EngineTensorView](inputs_list)
+
+    fn execute(
+        self, *inputs: Tuple[StringLiteral, EngineNumpyView]
+    ) raises -> TensorMap:
+        let inputs_list = VariadicList(inputs)
+        return self._execute_view[StringLiteral, EngineNumpyView](inputs_list)
 
     fn __del__(owned self):
         self.ptr.free(self.lib)
