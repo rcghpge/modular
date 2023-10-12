@@ -3638,4 +3638,33 @@ def MO_ListCreateOp : MO_TensorOp<"list.create", []> {
   let hasVerifier = 1;
 }
 
+def MO_ListGetOp : MO_TensorOp<"list.get", []> {
+  let summary = "List get Operation";
+  let description = [{
+    Retrive the element at given (base zero) index of the list. The index can be
+    negative, with numpy indexing semantics, i.e., `-1` means the last element,
+    `-2` means the second to last element, etc.
+
+    Example:
+
+    ```mlir
+    %list: !mo.list<!mo.tensor<[2, 2], f32>>
+    %idx:  !mo.tensor<[], si32>
+
+    %tensor = mo.list.get(%list, %idx) : (
+      !mo.list<!mo.tensor<[2, 2], f32>>, !mo.tensor<[], si32>
+    ) -> !mo.tensor<[2, 2], f32>
+    ```
+  }];
+
+  let arguments = (ins MO_List:$input, MO_RankedScalarIndexTensor:$index);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+
+  let hasVerifier = 1;
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOOPS_TD

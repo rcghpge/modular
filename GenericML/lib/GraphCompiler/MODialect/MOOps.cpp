@@ -3041,6 +3041,16 @@ LogicalResult ListCreateOp::verify() {
   return success();
 }
 
+LogicalResult ListGetOp::verify() {
+  Type listElementTy = getInput().getType().getElementType();
+  Type outputTy = getType();
+  if (listElementTy != outputTy) {
+    return emitError() << "list element type must match output type: "
+                       << listElementTy << " v.s. " << outputTy;
+  }
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
