@@ -3051,6 +3051,25 @@ LogicalResult ListGetOp::verify() {
   return success();
 }
 
+LogicalResult ListInsertOp::verify() {
+  Type inputListElementTy = getInput().getType().getElementType();
+  Type outputListElementTy = getType().getElementType();
+  if (inputListElementTy != outputListElementTy) {
+    return emitError() << "input/output list element type must match: "
+                       << inputListElementTy << " v.s. " << outputListElementTy;
+  }
+
+  TensorType listElementTy = cast<TensorType>(inputListElementTy);
+  TensorType newElementTy = getElement().getType();
+  if (!isSubtype(newElementTy, listElementTy)) {
+    return emitError()
+           << "new element type must be a subtype of list element type: "
+           << newElementTy << " v.s. " << listElementTy;
+  }
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//

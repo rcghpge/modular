@@ -3667,4 +3667,43 @@ def MO_ListGetOp : MO_TensorOp<"list.get", []> {
   let hasVerifier = 1;
 }
 
+def MO_ListInsertOp : MO_TensorOp<"list.insert", []> {
+  let summary = "List insert Operation";
+  let description = [{
+    Creates a new list that's the result of inserting an element at given (base
+    zero) index of a copy of the list (i.e., the op is value semantics and
+    doesn't affect the input list).
+
+    The index can be negative, with numpy indexing semantics, i.e., `-1` means
+    the last element, `-2` means the second to last element, etc.
+
+    It will push any existing element at the index to after the inserted element
+    (which will now be at the index). If the index equals the length of the
+    list, the op effectively appends the element to the list.
+
+    Example:
+
+    ```mlir
+    %list:   !mo.list<!mo.tensor<[2, 2], f32>>
+    %tensor: !mo.tensor<[2, 2], f32>
+    %index:  !mo.tensor<[], si32>
+
+    %tensor = mo.list.insert(%list, %tensor, %index) : (
+      !mo.list<!mo.tensor<[2, 2], f32>>, !mo.tensor<[2, 2], f32>, !mo.tensor<[], si32>
+    ) -> !mo.list<!mo.tensor<[2, 2], f32>>
+    ```
+  }];
+
+  let arguments = (ins MO_List:$input,
+                       MO_Tensor:$element,
+                       MO_RankedScalarIndexTensor:$index);
+  let results = (outs MO_List:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+
+  let hasVerifier = 1;
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOOPS_TD
