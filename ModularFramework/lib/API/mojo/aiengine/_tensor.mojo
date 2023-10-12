@@ -12,6 +12,9 @@ from ._tensor_spec import *
 from memory.unsafe import bitcast, Pointer
 from tensor import Tensor
 from .session import InferenceSession
+from python import PythonObject
+from python import Python
+from utils.vector import DynamicVector
 
 
 @value
@@ -183,3 +186,92 @@ struct EngineTensorView:
     @always_inline("nodebug")
     fn _get_value[type: DType](self) -> Tensor[type]:
         return __get_address_as_lvalue(bitcast[Tensor[type]](self.ptr).address)
+
+
+@register_passable
+struct _Numpy:
+    var np: Pointer[PythonObject]
+
+    fn __init__() raises -> Self:
+        let np_ptr = Pointer[PythonObject].alloc(1)
+        __get_address_as_uninit_lvalue(np_ptr.address) = Python.import_module(
+            "numpy"
+        )
+
+        return Self {np: np_ptr}
+
+    fn __getattr__(self, attr: StringLiteral) raises -> PythonObject:
+        return __get_address_as_lvalue(self.np.address).__getattr__(attr)
+
+    fn __del__(owned self):
+        _ = __get_address_as_owned_value(self.np.address)
+        self.np.free()
+
+
+@register_passable
+struct EngineNumpyView:
+    """A non-owning register_passable view of a numpy array.
+
+    CAUTION: Make sure the source array outlives the view.
+    """
+
+    var np: _Numpy
+    var ptr: Pointer[PythonObject]
+
+    fn __init__(inout tensor: PythonObject) raises -> Self:
+        return Self {
+            np: _Numpy(), ptr: Pointer[PythonObject].address_of(tensor)
+        }
+
+    fn data(self) raises -> DTypePointer[DType.invalid]:
+        let data_ptr = __get_address_as_lvalue(
+            self.ptr.address
+        ).ctypes.data.__index__()
+        return bitcast[DType.invalid](data_ptr)
+
+    fn dtype(self) raises -> DType:
+        let self_type = __get_address_as_lvalue(self.ptr.address).dtype
+        if self_type == self.np.float32:
+            return DType.float32
+        raise "Unknown datatype"
+
+    fn spec(self) raises -> TensorSpec:
+        @always_inline
+        @parameter
+        fn get_spec[ty: DType]() raises -> TensorSpec:
+            var shape = DynamicVector[Int]()
+            var array_shape = __get_address_as_lvalue(self.ptr.address).shape
+            for dim in array_shape:
+                shape.push_back(dim.__index__())
+            let spec = TensorSpec(ty, shape)
+            shape._del_old()
+            return spec ^
+
+        if self.dtype().is_int8():
+            return get_spec[DType.int8]()
+        if self.dtype().is_int16():
+            return get_spec[DType.int16]()
+        if self.dtype().is_int32():
+            return get_spec[DType.int32]()
+        if self.dtype().is_int64():
+            return get_spec[DType.int64]()
+
+        if self.dtype().is_uint8():
+            return get_spec[DType.uint8]()
+        if self.dtype().is_uint16():
+            return get_spec[DType.uint16]()
+        if self.dtype().is_uint32():
+            return get_spec[DType.uint32]()
+        if self.dtype().is_uint64():
+            return get_spec[DType.uint64]()
+
+        if self.dtype().is_float16():
+            return get_spec[DType.float16]()
+        if self.dtype().is_float32():
+            return get_spec[DType.float32]()
+        if self.dtype().is_float64():
+            return get_spec[DType.float64]()
+        if self.dtype().is_bool():
+            return get_spec[DType.bool]()
+
+        raise String("Expected type: ") + self.dtype().__str__()

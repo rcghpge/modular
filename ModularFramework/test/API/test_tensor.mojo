@@ -9,6 +9,7 @@
 from aiengine import EngineTensorView
 from tensor import Tensor
 from test_utils import linear_fill
+from python import Python
 
 
 fn test_tensor_view() raises:
