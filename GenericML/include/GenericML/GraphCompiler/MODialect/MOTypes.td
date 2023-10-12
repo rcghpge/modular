@@ -285,13 +285,21 @@ def MO_Rank1FloatTensor: MO_ConfinedTensor<
 def MO_Rank1IndexTensor: MO_ConfinedTensor<
   [MO_HasAnyRankOfPred<[1]>, IntOrIndexElementTypePred], "rank-1 tensor with indices">;
 
-/// Confines the MO_TensorType so it is rank 2.
+/// Confines the MO_TensorType so it is rank 2 and has index dtype.
 def MO_Rank2IndexTensor: MO_ConfinedTensor<
   [MO_HasAnyRankOfPred<[2]>, IntOrIndexElementTypePred], "rank-2 index tensor">;
+
+/// Confines the MO_TensorType so it is rank 2.
+def MO_Rank2Tensor: MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[2]>], "rank-2 tensor">;
 
 /// Confines the MO_TensorType so it is rank 3.
 def MO_Rank3Tensor: MO_ConfinedTensor<
   [MO_HasAnyRankOfPred<[3]>], "rank-3 tensor">;
+
+/// Confines the MO_TensorType so it is rank 4.
+def MO_Rank4Tensor: MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[4]>], "rank-4 tensor">;
 
 /// Confines the MO_TensorType so that it has int or index elements.
 def MO_IndicesTensor : MO_ConfinedTensor<

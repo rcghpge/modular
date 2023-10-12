@@ -3215,6 +3215,54 @@ def MO_ResizeNearestOp : MO_TensorOp<"resize.nearest",
 }
 
 //===----------------------------------------------------------------------===//
+// ROI align op
+//===----------------------------------------------------------------------===//
+
+def MO_RoiAlignOp : MO_TensorOp<"roi_align", [
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
+    let summary = "Perform ROI (Region of Interest) Align on a tensor.";
+    let description = [{
+      ROI align consumes an input tensor and regions of interest in which to apply pooling.
+
+      Example:
+      ```mlir
+      %inp: !mo.tensor<[1, 10, 10, 1], f32>
+      %rois: !mo.tensor<[1, 5], f32>
+      %output_height = mo.constant {value = #M.dense_array<5> : tensor<1xsi64>} : !mo.tensor<[], si64>
+      %spatial_scale = mo.constant {value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[], f32>
+      %sampling_ratio = mo.constant {value = #M.dense_array<2.0> : tensor<1xf32>} : !mo.tensor<[], f32>
+
+      %res = mo.roi_align(%inp, %rois, %output_height, %output_height, %spatial_scale, %sampling_ratio)
+        {aligned = false,  mode = "AVG"}
+        : (!mo.tensor<[1, 10, 10, 1], f32>,
+           !mo.tensor<[1, 5], f32>,
+           !mo.tensor<[], si64>,
+           !mo.tensor<[], si64>,
+           !mo.tensor<[], f32>,
+           !mo.tensor<[], f32>) -> !mo.tensor<[1, 5, 5, 1], f32>
+
+    }];
+    let arguments = (ins
+      MO_Rank4Tensor:$input,
+      MO_Rank2Tensor:$rois,
+      MO_RankedScalarIndexTensor:$output_height,
+      MO_RankedScalarIndexTensor:$output_width,
+      MO_RankedScalarFloatTensor:$spatial_scale,
+      MO_RankedScalarFloatTensor:$sampling_ratio,
+      BoolAttr:$aligned,
+      Builtin_StringAttr:$mode,
+      MO_ParamDecls:$outputParamDecls);
+
+    let results = (outs MO_Rank4Tensor:$result);
+
+    let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:` functional-type(operands, results)
+    }];
+    // TODO: add verifier that checks that 2nd rois dimension is 4
+  }
+
+//===----------------------------------------------------------------------===//
 // Matmul related ops
 //===----------------------------------------------------------------------===//
 

@@ -65,6 +65,7 @@ HAS_FALLBACK(MO::ReduceMaxOp)
 HAS_FALLBACK(MO::ReduceMinOp)
 HAS_FALLBACK(MO::ReduceMulOp)
 HAS_FALLBACK(MO::ReshapeOp)
+HAS_FALLBACK(MO::RoiAlignOp)
 HAS_FALLBACK(MO::ResizeLinearOp)
 HAS_FALLBACK(MO::ResizeNearestOp)
 HAS_FALLBACK(MO::ScatterOp)
@@ -131,6 +132,7 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::ReduceMinOp)
       CALL_FALLBACK(MO::ReduceMulOp)
       CALL_FALLBACK(MO::ReshapeOp)
+      CALL_FALLBACK(MO::RoiAlignOp)
       CALL_FALLBACK(MO::ResizeLinearOp)
       CALL_FALLBACK(MO::ResizeNearestOp)
       CALL_FALLBACK(MO::ScatterOp)
@@ -357,6 +359,12 @@ void Fallback<MO::ResizeLinearOp>::build(GraphOp &graph, OpBuilder &builder,
                                          MO::ResizeLinearOp op) {
   buildForOpResult(graph, builder, op, "resize_shape", op.getOperands(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
+}
+
+void Fallback<MO::RoiAlignOp>::build(GraphOp &graph, OpBuilder &builder,
+                                     MO::RoiAlignOp op) {
+  buildForOpResult(graph, builder, op, "roi_align_shape", op.getOperands(),
+                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{2, 3});
 }
 
 // ScatterLike ops
