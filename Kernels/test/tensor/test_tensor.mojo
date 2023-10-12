@@ -13,7 +13,7 @@ from tensor import Tensor, TensorShape
 from utils.index import Index, StaticIntTuple
 
 
-# CHECK: test_tensor
+# CHECK-LABEL: test_tensor
 fn test_tensor():
     print("== test_tensor")
 
@@ -38,8 +38,8 @@ fn test_tensor():
     print(tensor.dim(2))
 
 
-# CHECK: test_tensor_init
-fn test_tensor_init():
+# CHECK-LABEL: test_tensor_init
+def test_tensor_init():
     print("== test_tensor_init")
 
     let tensor = Tensor[DType.float32](TensorShape(1, 2, 3))
@@ -49,7 +49,7 @@ fn test_tensor_init():
 
 
 # CHECK-LABEL: test_tensor_equality
-fn test_tensor_equality():
+def test_tensor_equality():
     print("== test_tensor_equality")
 
     var t1 = Tensor[DType.float32](TensorShape(2, 3))
@@ -90,7 +90,7 @@ fn test_tensor_equality():
     print(t1 != t3)
 
 
-# CHECK: test_tensor_indexing
+# CHECK-LABEL: test_tensor_indexing
 fn test_tensor_indexing():
     print("== test_tensor_indexing")
 
@@ -145,8 +145,8 @@ fn test_tensor_indexing():
     print(tensor._compute_linear_offset(3, 1, 2))
 
 
-# CHECK: test_tensor_indexing2
-fn test_tensor_indexing2():
+# CHECK-LABEL: test_tensor_indexing2
+def test_tensor_indexing2():
     print("== test_tensor_indexing2")
     let tensor = Tensor[DType.float32](TensorShape(30, 20, 10))
 
@@ -154,8 +154,8 @@ fn test_tensor_indexing2():
     print(tensor._compute_linear_offset(1, 2, 3))
 
 
-# CHECK: test_tensor_fill
-fn test_tensor_fill():
+# CHECK-LABEL: test_tensor_fill
+def test_tensor_fill():
     print("== test_tensor_fill")
 
     var tensor = Tensor[DType.float32](TensorShape(4, 5, 6))
@@ -173,8 +173,8 @@ fn test_tensor_fill():
                     print("ERROR: invalid index fill")
 
 
-# CHECK: test_tensor_rand
-fn test_tensor_rand():
+# CHECK-LABEL: test_tensor_rand
+def test_tensor_rand():
     print("== test_tensor_rand")
 
     let tensor = rand[DType.float32](3, 3, 3)
@@ -185,8 +185,8 @@ fn test_tensor_rand():
                 print(tensor[i, j, k])
 
 
-# CHECK: test_euclidean_distance
-fn test_euclidean_distance():
+# CHECK-LABEL: test_euclidean_distance
+def test_euclidean_distance():
     print("== test_euclidean_distance")
 
     let num_elements = 100
@@ -207,9 +207,9 @@ fn test_euclidean_distance():
     print(sqrt(accum))
 
 
-# CHECK: test_image_to_grayscale
+# CHECK-LABEL: test_image_to_grayscale
 # COM: This example comes from the change log.
-fn test_image_to_grayscale():
+def test_image_to_grayscale():
     print("== test_image_to_grayscale")
 
     let height = 256
@@ -247,7 +247,31 @@ fn test_image_to_grayscale():
     print(gray_scale_image[255, 255])
 
 
-fn main():
+# CHECK-LABEL: test_tensor_access
+fn test_tensor_access():
+    var tensor = Tensor[DType.float32](3, 4)
+    print("== test_tensor_access")
+
+    try:
+        _ = tensor[1]
+    except e:
+        # CHECK: Invalid dimension axis. The tensor is of rank 2 but the indexing dimension is of length 1
+        print(e)
+
+    try:
+        _ = tensor[1, 2, 3]
+    except e:
+        # CHECK: Invalid dimension axis. The tensor is of rank 2 but the indexing dimension is of length 3
+        print(e)
+
+    try:
+        tensor[Index(1, 2, 3, 4)] = 4
+    except e:
+        # CHECK: Invalid dimension axis. The tensor is of rank 2 but the indexing dimension is of length 4
+        print(e)
+
+
+def main():
     test_tensor()
     test_tensor_init()
     test_tensor_equality()
@@ -257,3 +281,4 @@ fn main():
     test_tensor_rand()
     test_euclidean_distance()
     test_image_to_grayscale()
+    test_tensor_access()
