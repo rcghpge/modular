@@ -92,33 +92,38 @@ struct Model:
             raise status.__str__()
         return TensorMap(outputs, self.lib, self.session.copy())
 
+    fn _execute_tensor_view[
+        key_type: AnyType
+    ](
+        self, inputs: VariadicList[Tuple[key_type, EngineTensorView]]
+    ) raises -> TensorMap:
+        let input_map = TensorMap(self.ctx, self.lib, self.session.copy())
+        for i in range(inputs.__len__()):
+            let pair = inputs[i]
+
+            @parameter
+            if key_type == StringRef:
+                input_map.borrow(
+                    pair.get[0, StringRef](), pair.get[1, EngineTensorView]()
+                )
+            elif key_type == StringLiteral:
+                input_map.borrow(
+                    pair.get[0, StringLiteral](),
+                    pair.get[1, EngineTensorView](),
+                )
+        return self.execute(input_map)
+
     fn execute(
         self, *inputs: Tuple[StringRef, EngineTensorView]
     ) raises -> TensorMap:
-        let input_map = TensorMap(self.ctx, self.lib, self.session.copy())
-        let inputs_list = VariadicList[Tuple[StringRef, EngineTensorView]](
-            inputs
-        )
-        for i in range(inputs_list.__len__()):
-            let pair = inputs_list[i]
-            input_map.borrow(
-                pair.get[0, StringRef](), pair.get[1, EngineTensorView]()
-            )
-        return self.execute(input_map)
+        let inputs_list = VariadicList(inputs)
+        return self._execute_tensor_view[StringRef](inputs_list)
 
     fn execute(
         self, *inputs: Tuple[StringLiteral, EngineTensorView]
     ) raises -> TensorMap:
-        let input_map = TensorMap(self.ctx, self.lib, self.session.copy())
-        let inputs_list = VariadicList[Tuple[StringLiteral, EngineTensorView]](
-            inputs
-        )
-        for i in range(inputs_list.__len__()):
-            let pair = inputs_list[i]
-            input_map.borrow(
-                pair.get[0, StringLiteral](), pair.get[1, EngineTensorView]()
-            )
-        return self.execute(input_map)
+        let inputs_list = VariadicList(inputs)
+        return self._execute_tensor_view[StringLiteral](inputs_list)
 
     fn __del__(owned self):
         self.ptr.free(self.lib)
