@@ -92,6 +92,11 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       llvm::cl::desc("Include all host devices instead of just the CPU during "
                      "compilation."),
       llvm::cl::init(false)};
+  Option<bool> enableMemoryPlanning{
+      *this, "enable-memory-planning",
+      llvm::cl::desc("If true, statically plan as many buffer allocations as "
+                     "possible."),
+      llvm::cl::init(false)};
 };
 
 // Registers a runtime for use by the MO-to-MGP pipeline when invoked via the

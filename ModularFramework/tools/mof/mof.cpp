@@ -240,6 +240,8 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
       moToMgpOptions.minimumCpuAlignment.setValue(options->minimumCpuAlignment);
       moToMgpOptions.cacheDir.setValue(options->cacheDir);
       moToMgpOptions.enableExtraDevices.setValue(options->enableExtraDevices);
+      moToMgpOptions.enableMemoryPlanning.setValue(
+          options->enableMemoryPlanning);
     }
     if (mofCtx->getCustomOpsPath())
       moToMgpOptions.extraLibPaths = mofCtx->getCustomOpsPath()->string();

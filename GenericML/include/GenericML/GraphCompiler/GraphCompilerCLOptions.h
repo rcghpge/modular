@@ -30,6 +30,12 @@ public:
                "model will only be runnable on a similarly provisioned host. "
                "Default is false, which will include just the host CPU."),
       cl::init(false)};
+
+  cl::opt<bool> enableMemoryPlanning{
+      "enable-memory-planning",
+      cl::desc("If true, statically plan as many buffer allocations as "
+               "possible."),
+      cl::init(false)};
 };
 
 } // namespace M::MO
