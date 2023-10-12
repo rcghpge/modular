@@ -106,9 +106,10 @@ struct InferLayoutPass : public impl::InferLayoutsBase<InferLayoutPass> {
         affectedOps.push_back(definingOp);
 
       for (Operation *op : affectedOps) {
-        // For now we only look at ops with this trait, but we might propagate
-        // layout through more ops like transpose.
-        if (op->hasTrait<mlir::OpTrait::SameOperandsAndResultType>()) {
+        // For now we only look at ops with this trait and mo.transfer, but
+        // we might propagate layout through more ops like transpose.
+        if (isa<MO::TransferOp>(op) ||
+            op->hasTrait<mlir::OpTrait::SameOperandsAndResultType>()) {
           // For some reason `llvm::concat` produces null values.
           SmallVector<Value> inputAndOutputs(op->getOperands());
           llvm::append_range(inputAndOutputs, op->getResults());

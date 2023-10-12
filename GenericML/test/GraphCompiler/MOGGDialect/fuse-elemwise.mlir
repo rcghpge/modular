@@ -287,7 +287,7 @@ mo.graph @missingInputFusionInterface(%arg0: !mo.tensor<[10], ui32>) -> !mo.tens
       mogg.invoke @output_0_fn(%arg2, %7) : !mogg.indices, !mogg.simd<ui32>
       mogg.output
     }
-    mogg.call "elementwise" [@elemwise_compute_lambda](%5) {single_thread_blocking_override = false, target = "cpu"} : !mo.tensor<[10], ui32>
+    mogg.call "elementwise" [@elemwise_compute_lambda](%5) {single_thread_blocking_override = false} : !mo.tensor<[10], ui32>
     mogg.output %5 : !mo.tensor<[10], ui32>
   } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn"], outputFusionInterface = ["output_0_fn"]}
   
@@ -308,7 +308,7 @@ mo.graph @missingInputFusionInterface(%arg0: !mo.tensor<[10], ui32>) -> !mo.tens
       mogg.invoke @output_0_fn(%arg2, %7) : !mogg.indices, !mogg.simd<ui32>
       mogg.output
     }
-    mogg.call "elementwise" [@elemwise_compute_lambda](%5) {single_thread_blocking_override = false, target = "cpu"} : !mo.tensor<[10], ui32>
+    mogg.call "elementwise" [@elemwise_compute_lambda](%5) {single_thread_blocking_override = false} : !mo.tensor<[10], ui32>
     mogg.output %5 : !mo.tensor<[10], ui32>
   } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn"], outputFusionInterface = ["output_0_fn"]}
   
@@ -325,7 +325,7 @@ mo.graph @missingInputFusionInterface(%arg0: !mo.tensor<[10], ui32>) -> !mo.tens
       mogg.invoke @output_0_fn(%arg2, %7) : !mogg.indices, !mogg.simd<ui32>
       mogg.output
     }
-    mogg.call "elementwise" [@elemwise_compute_lambda](%5) {single_thread_blocking_override = false, target = "cpu"} : !mo.tensor<[10], ui32>
+    mogg.call "elementwise" [@elemwise_compute_lambda](%5) {single_thread_blocking_override = false} : !mo.tensor<[10], ui32>
     mogg.output %5 : !mo.tensor<[10], ui32>
   } {fusionBodyLambda = "elemwise_compute_lambda", outputFusionInterface = ["output_0_fn"]}
   
@@ -351,7 +351,7 @@ mo.graph @missingInputFusionInterface(%arg0: !mo.tensor<[10], ui32>) -> !mo.tens
       mogg.invoke @output_0_fn(%arg3, %8) : !mogg.indices, !mogg.simd<ui32>
       mogg.output
     }
-    mogg.call "elementwise" [@elemwise_compute_lambda](%5) {single_thread_blocking_override = false, target = "cpu"} : !mo.tensor<[10], ui32>
+    mogg.call "elementwise" [@elemwise_compute_lambda](%5) {single_thread_blocking_override = false} : !mo.tensor<[10], ui32>
     mogg.output %5 : !mo.tensor<[10], ui32>
   } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn", "input_1_fn"], outputFusionInterface = ["output_0_fn"]}
 
@@ -372,7 +372,7 @@ mo.graph @missingInputFusionInterface(%arg0: !mo.tensor<[10], ui32>) -> !mo.tens
       mogg.invoke @output_0_fn(%arg2, %7) : !mogg.indices, !mogg.simd<ui32>
       mogg.output
     }
-    mogg.call "elementwise" [@elemwise_compute_lambda](%5) {single_thread_blocking_override = false, target = "cpu"} : !mo.tensor<[10], ui32>
+    mogg.call "elementwise" [@elemwise_compute_lambda](%5) {single_thread_blocking_override = false} : !mo.tensor<[10], ui32>
     mogg.output %5 : !mo.tensor<[10], ui32>
   } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn"], outputFusionInterface = ["output_0_fn"]}
   
