@@ -166,7 +166,7 @@ mangleBlock(mlir::Block &block, DeviceRefAttr device,
           } else if (auto asIntArray = dyn_cast<DenseIntElementsAttr>(value)) {
             for (APInt i : asIntArray) {
               int64_t val = i.getSExtValue();
-              if (val != mlir::ShapedType::kDynamic) {
+              if (val == mlir::ShapedType::kDynamic) {
                 name += "DYN_";
               } else if (val < 0) {
                 name += "N";
