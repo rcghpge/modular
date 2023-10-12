@@ -72,8 +72,8 @@ static TensorType unifyShapeType(TensorType type) {
 
 /// Broadcast `x` and `y` to a common dynamic shape given by `bcastCommonShape`.
 static std::pair<TensorValue, TensorValue>
-broadcastToCommonShape(OpBuilder &builder, TensorValue x, TensorValue y,
-                       TensorType bcastCommonShape) {
+broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
+                        ShapeAttr bcastCommonShape) {
   auto intType = builder.getIntegerType(64, /*isSigned=*/true);
   auto shape = TensorType::get({(int64_t)bcastCommonShape.getRank()}, intType);
 
@@ -93,16 +93,17 @@ broadcastToCommonShape(OpBuilder &builder, TensorValue x, TensorValue y,
       x.getLoc(), shape, xShape.getShape(), yShape.getShape());
 
   auto bcastXOp = builder.create<MO::BroadcastToOp>(
-      x.getLoc(), bcastCommonShape, x, bcastShape);
+      x.getLoc(), x.getType().cloneWith(bcastCommonShape), x, bcastShape);
   auto bcastYOp = builder.create<MO::BroadcastToOp>(
-      x.getLoc(), bcastCommonShape, y, bcastShape);
+      y.getLoc(), y.getType().cloneWith(bcastCommonShape), y, bcastShape);
   return {bcastXOp, bcastYOp};
 }
 
 TensorValue broadcastToStaticShape(OpBuilder &builder, Location loc,
-                                   TensorValue x, TensorType s) {
+                                   TensorValue x, ShapeAttr s) {
   auto constOp = builder.create<MO::ConstantOp>(loc, s.getIntDims());
-  return builder.create<MO::BroadcastToOp>(loc, s, x, constOp);
+  return builder.create<MO::BroadcastToOp>(loc, x.getType().cloneWith(s), x,
+                                           constOp);
 }
 
 std::pair<TensorValue, TensorValue>
@@ -113,23 +114,23 @@ reifyImplicitBroadcasting(OpBuilder &builder, Location loc, TensorValue x,
   if ((xShape == yShape) && (xShape.hasStaticShape()))
     return {x, y};
 
-  ErrorOr<TensorType> errorOrBcastCommonShape =
-      TensorType::broadcastShapes(xShape, yShape);
+  assert(xShape.hasRank() && yShape.hasRank() &&
+         "broadcasting does not support dynamic rank");
 
-  assert(!errorOrBcastCommonShape.isError() &&
-         "cannot compute static broadcast shape");
+  ErrorOr<ShapeAttr> errorOrBcastCommonShape = ShapeAttr::broadcastShapes(
+      xShape.getTypedShapeAttr(), yShape.getTypedShapeAttr());
 
-  TensorType bcastCommonShape = *errorOrBcastCommonShape;
+  assert(!errorOrBcastCommonShape.isError() && "the shapes are incompatible");
 
-  assert(bcastCommonShape.hasRank() &&
-         "guards should have rejected dynamic ranks");
-  if (!bcastCommonShape.hasStaticShape())
-    return broadcastToCommonShape(builder, x, y, bcastCommonShape);
+  ShapeAttr bcastCommonShape = *errorOrBcastCommonShape;
+
+  if (!bcastCommonShape.isStatic())
+    return broadcastToDynamicShape(builder, x, y, bcastCommonShape);
 
   // Static broadcast, can potentially elide some broadcasts.
-  if (xShape != bcastCommonShape)
+  if (xShape.getTypedShapeAttr() != bcastCommonShape)
     x = broadcastToStaticShape(builder, loc, x, bcastCommonShape);
-  if (yShape != bcastCommonShape)
+  if (yShape.getTypedShapeAttr() != bcastCommonShape)
     y = broadcastToStaticShape(builder, loc, y, bcastCommonShape);
   return {x, y};
 }
