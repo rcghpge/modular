@@ -587,8 +587,6 @@ def MO_DivOp : MO_ElementWiseBinaryOp<"div"> {
     %res = mo.div(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
     ```
   }];
-
-  let hasFolder = 1;
 }
 
 def MO_ExpOp : MO_ElementWiseUnaryOp<"exp"> {
@@ -1066,7 +1064,6 @@ def MO_EqualOp : MO_ComparisonBinaryOp<"equal", [Commutative]> {
                                   ) -> !mo.tensor<[2, 3], bool>
     ```
   }];
-  let hasFolder = 1;
 }
 
 def MO_GreaterOp : MO_ComparisonBinaryOp<"greater"> {
@@ -1084,7 +1081,6 @@ def MO_GreaterOp : MO_ComparisonBinaryOp<"greater"> {
                                     ) -> !mo.tensor<[2, 3], bool>
     ```
   }];
-  let hasFolder = 1;
 }
 
 def MO_GreaterEqualOp : MO_ComparisonBinaryOp<"greater_equal"> {
@@ -1102,7 +1098,6 @@ def MO_GreaterEqualOp : MO_ComparisonBinaryOp<"greater_equal"> {
                                           ) -> !mo.tensor<[2, 3], bool>
     ```
   }];
-  let hasFolder = 1;
 }
 
 def MO_NotEqualOp : MO_ComparisonBinaryOp<"not_equal", [Commutative]> {
@@ -1120,7 +1115,6 @@ def MO_NotEqualOp : MO_ComparisonBinaryOp<"not_equal", [Commutative]> {
                                       ) -> !mo.tensor<[2, 3], bool>
     ```
   }];
-  let hasFolder = 1;
 }
 
 def MO_AndOp : MO_LogicalBinaryOp<"and"> {
@@ -1395,7 +1389,6 @@ def MO_ReduceMulOp : MO_ReductionOp<"reduce.mul"> {
       !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
-  let hasFolder = 1;
 }
 
 def MO_ReduceAddOp : MO_ReductionOp<"reduce.add"> {
@@ -2032,7 +2025,6 @@ def MO_BroadcastShapeOp : MO_TensorOp<"broadcast_shape", [
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
     functional-type(operands, results)
   }];
-  let hasFolder = 1;
   let hasVerifier = 1;
 }
 
@@ -2168,7 +2160,6 @@ class MOStatic_ShapeModifierOp<string mnemonic, list<Trait> traits = []>
     `(` operands `)` attr-dict `:`
     qualified(type($input)) `->` qualified(type($result))
   }];
-  let hasFolder = 1;
 }
 
 def MOStatic_BroadcastToOp : MOStatic_ShapeModifierOp<"broadcast_to"> {
@@ -2225,6 +2216,7 @@ def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape"> {
 
   let hasVerifier = 1;
   let hasCanonicalizeMethod = 1;
+  let hasFolder = 1;
 }
 
 def MO_ConcatOp : MO_TensorOp<"concat", [
@@ -3004,7 +2996,6 @@ def MO_ArgNonzeroOp : MO_TensorOp<"arg_nonzero", [
     functional-type(operands, results)
   }];
   let hasVerifier = 1;
-  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//

@@ -619,116 +619,52 @@ LogicalResult BroadcastShapeOp::verify() {
   return success();
 }
 
-OpFoldResult BroadcastShapeOp::fold(FoldAdaptor adaptor) {
-  auto xIntDims = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInputX());
-  auto yIntDims = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInputY());
-  if (xIntDims && yIntDims) {
-    // This is an inefficient way of doing this, but since this op would be
-    // usually lowered to `mosh.broadcast`, it should be folded rarely.
-    auto shapeTy = ShapeType::get(getContext());
-    auto xShape = ShapeAttr::get(xIntDims, shapeTy);
-    auto yShape = ShapeAttr::get(yIntDims, shapeTy);
-    ErrorOr<ShapeAttr> shapeOr = ShapeAttr::broadcastShapes(xShape, yShape);
-    if (!shapeOr.isError()) {
-      // Ensure we return with the appropriate element type.
-      auto getResAttrs = [&](auto values) {
-        return IntArrayElementsAttr::get(
-            getContext(), values, IntegerType::SignednessSemantics::Signed);
-      };
-      if (getType().getElementType().getIntOrFloatBitWidth() == 32) {
-        SmallVector<int32_t> dims = llvm::map_to_vector(
-            shapeOr->getIntDims(), [](int64_t dim) -> int32_t { return dim; });
-        return getResAttrs(ArrayRef<int32_t>{dims});
-      }
-      return getResAttrs(ArrayRef<int64_t>{shapeOr->getIntDims()});
-    }
-  }
-  return {};
-}
-
 //===----------------------------------------------------------------------===//
 // Elementwise folder support
 //===----------------------------------------------------------------------===//
 
 OpFoldResult AddOp::fold(FoldAdaptor adaptor) {
-  auto xAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInputX());
-  auto yAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInputY());
+  // We normally would reject non-constant inputs, but if one of the inputs is
+  // a broadcast of 0 which we can still reason about them.
+  TensorValue lhs = getLhsInput(), rhs = getRhsInput();
 
-  if (xAttr && yAttr) {
-    return foldElemwiseOp(getType(), adaptor,
-                          [](int64_t x, int64_t y) { return x + y; });
-  } else {
-    // We normally would reject non-constant inputs, but if one of the inputs is
-    // a broadcast of 0 which we can still reason about them.
-    TensorValue lhs = getLhsInput(), rhs = getRhsInput();
+  // Check if a given value is the product of a constant of 0 being
+  // broadcasted.
+  auto isValueBroadcasted0Const = [](Value operand) {
+    if (auto bcast =
+            dyn_cast_or_null<Static::BroadcastToOp>(operand.getDefiningOp())) {
+      if (auto constOp = dyn_cast_or_null<MO::ConstantOp>(
+              bcast.getOperand().getDefiningOp())) {
+        TensorType type = cast<TensorType>(constOp.getType());
+        // Interpret as double. Should be ok as integers will be casted to
+        // double.
+        auto data =
+            tryGetConstantBlob<double>(constOp.getValue(), type.getDtype());
+        if (!data.has_value())
+          return false;
 
-    // Check if a given value is the product of a constant of 0 being
-    // broadcasted.
-    auto isValueBroadcasted0Const = [](Value operand) {
-      if (auto bcast = dyn_cast_or_null<Static::BroadcastToOp>(
-              operand.getDefiningOp())) {
-        if (auto constOp = dyn_cast_or_null<MO::ConstantOp>(
-                bcast.getOperand().getDefiningOp())) {
-          TensorType type = cast<TensorType>(constOp.getType());
-          // Interpret as double. Should be ok as integers will be casted to
-          // double.
-          auto data =
-              tryGetConstantBlob<double>(constOp.getValue(), type.getDtype());
-          if (!data.has_value())
+        // Check the constant is zero.
+        for (double i : *data) {
+          if (i != 0.0)
             return false;
-
-          // Check the constant is zero.
-          for (double i : *data) {
-            if (i != 0.0)
-              return false;
-          }
-
-          // We have a match.
-          return true;
         }
+
+        // We have a match.
+        return true;
       }
-      return false;
-    };
+    }
+    return false;
+  };
 
-    // Check combination of 0 + x
-    if (isValueBroadcasted0Const(lhs))
-      return rhs;
+  // Check combination of 0 + x
+  if (isValueBroadcasted0Const(lhs))
+    return rhs;
 
-    // Otherwise check x + 0
-    if (isValueBroadcasted0Const(rhs))
-      return lhs;
-  }
+  // Otherwise check x + 0
+  if (isValueBroadcasted0Const(rhs))
+    return lhs;
 
   return {};
-}
-
-OpFoldResult DivOp::fold(FoldAdaptor adaptor) {
-  return foldElemwiseOp(getType(), adaptor,
-                        [](int64_t x, int64_t y) { return x / y; });
-}
-
-OpFoldResult GreaterEqualOp::fold(FoldAdaptor adaptor) {
-  return foldElemwiseOp(
-      getType(), adaptor, [](int64_t x, int64_t y) { return x >= y; },
-      /*bitwidth=*/1, /*isSigned=*/false);
-}
-
-OpFoldResult GreaterOp::fold(FoldAdaptor adaptor) {
-  return foldElemwiseOp(
-      getType(), adaptor, [](int64_t x, int64_t y) { return x > y; },
-      /*bitwidth=*/1, /*isSigned=*/false);
-}
-
-OpFoldResult EqualOp::fold(FoldAdaptor adaptor) {
-  return foldElemwiseOp(
-      getType(), adaptor, [](int64_t x, int64_t y) { return x == y; },
-      /*bitwidth=*/1, /*isSigned=*/false);
-}
-
-OpFoldResult NotEqualOp::fold(FoldAdaptor adaptor) {
-  return foldElemwiseOp(
-      getType(), adaptor, [](int64_t x, int64_t y) { return x != y; },
-      /*bitwidth=*/1, /*isSigned=*/false);
 }
 
 //===----------------------------------------------------------------------===//
@@ -867,31 +803,6 @@ LogicalResult Static::BroadcastToOp::canonicalize(Static::BroadcastToOp op,
   }
 
   return failure();
-}
-
-OpFoldResult Static::BroadcastToOp::fold(FoldAdaptor adaptor) {
-  // TODO(#10811): support other types and do this using a MOJO kernel?
-  TensorType outTy = getType();
-  auto floatInputAttr =
-      dyn_cast_or_null<FloatArrayElementsAttr>(adaptor.getInput());
-  if (floatInputAttr && floatInputAttr.getNumElements() == 1 &&
-      outTy.hasStaticShape() && outTy.getElementType().isF32()) {
-    float inputScalar = getFloatBlob(floatInputAttr).front();
-
-    // TODO consider lifting this into a TensorType util.
-    SmallVector<int64_t> outIntDims = outTy.getIntDims();
-    int64_t outNumElems = std::accumulate(outIntDims.begin(), outIntDims.end(),
-                                          1, std::multiplies<int64_t>());
-    if (outNumElems > 10)
-      return {};
-
-    SmallVector<APFloat> res(outNumElems, APFloat(inputScalar));
-
-    auto rankedResTy =
-        RankedTensorType::get(outIntDims, outTy.getElementType());
-    return FloatArrayElementsAttr::get(rankedResTy, res);
-  }
-  return {};
 }
 
 LogicalResult Static::BroadcastToOp::verify() {
@@ -1336,7 +1247,8 @@ OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
   if (inTy == resTy)
     return getInput();
 
-  // TODO(#10811): support other types and do this using a MOJO kernel?
+  // TODO(#10811): support other types and do this using a MOJO kernel? Waiting
+  // on #23197
   Attribute inputAttr = adaptor.getInput();
   if (!inputAttr)
     return {};
@@ -1451,45 +1363,6 @@ LogicalResult SelectOp::verify() {
 //===----------------------------------------------------------------------===//
 // MO_ArgNonzeroOp support
 //===----------------------------------------------------------------------===//
-
-OpFoldResult ArgNonzeroOp::fold(FoldAdaptor adaptor) {
-  TensorType inTy = getInput().getType();
-  TensorType outTy = getType();
-
-  // TODO(#10811): support other types and do this using a MOJO kernel?
-  auto floatInputAttr =
-      dyn_cast_or_null<FloatArrayElementsAttr>(adaptor.getInput());
-  bool inputIsF32Vector =
-      inTy.hasRank() && inTy.getRank() == 1 && inTy.getElementType().isF32();
-  if (floatInputAttr && inputIsF32Vector) {
-    SmallVector<APInt> res;
-    for (auto [idx, val] : llvm::enumerate(getFloatBlob(floatInputAttr)))
-      if (val != 0)
-        res.push_back(APInt(64, idx, /*isSigned=*/false));
-
-    SmallVector<int64_t> outShape{static_cast<int64_t>(res.size()), 1};
-    auto rankedOutTy = RankedTensorType::get(outShape, outTy.getElementType());
-    auto foldedAttr = IntArrayElementsAttr::get(rankedOutTy, res);
-
-    if (outTy.hasStaticShape()) {
-      assert(outTy.getIntDims() == outShape &&
-             "Annotated output type doesn't match folded output type");
-      return foldedAttr;
-    }
-
-    // TODO refactor with `RangeOp::fold`
-    Location loc = getLoc();
-    OpBuilder builder(*this); // insert before this op
-    auto resTy = TensorType::get(outShape, outTy.getElementType());
-    auto constantOp =
-        builder.create<ConstantOp>(loc, resTy, cast<ElementsAttr>(foldedAttr));
-    auto rebindOp =
-        builder.create<RebindOp>(loc, outTy, constantOp, getOutputParamDecls());
-    setOutputParamDecls({});
-    return rebindOp.getResult();
-  }
-  return {};
-}
 
 LogicalResult ArgNonzeroOp::verify() {
   TensorType resTy = getResult().getType();
@@ -2104,37 +1977,6 @@ void MeanOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 LogicalResult ReduceMulOp::canonicalize(ReduceMulOp op,
                                         PatternRewriter &rewriter) {
   return canonicalizeStaticNegativeIndicesInPlace(op, 1);
-}
-
-OpFoldResult ReduceMulOp::fold(FoldAdaptor adaptor) {
-  // TODO(#10811): support other types and do this using a MOJO kernel?
-
-  auto inputArr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInput());
-  auto axisArr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getAxis());
-  if (!inputArr || !axisArr)
-    return {};
-
-  // We only support rank-1 integers (i.e. shape-like).
-  if (inputArr.getType().getRank() != 1)
-    return {};
-
-  int64_t axis = getIntBlob(axisArr).front();
-  if (axis != 0)
-    return {};
-
-  TensorType resTy = getType();
-  auto maybeInput = tryGetConstantBlob<int64_t>(cast<ElementsAttr>(inputArr),
-                                                resTy.getDtype());
-  if (!maybeInput.has_value())
-    return {};
-
-  ArrayRef<int64_t> inputs = *maybeInput;
-  int64_t res =
-      std::accumulate(inputs.begin(), inputs.end(), 1, std::multiplies<>());
-
-  SmallVector<APInt> resArr{APInt(64, res, /*isSigned=*/true)};
-  auto rankedResTy = RankedTensorType::get({1}, resTy.getElementType());
-  return IntArrayElementsAttr::get(rankedResTy, resArr);
 }
 
 void ReduceMulOp::build(OpBuilder &odsBuilder, OperationState &odsState,

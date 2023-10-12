@@ -36,29 +36,6 @@ mo.graph @static_broadcast_to_fold_same_dyn_rank<Sh0: !mosh.ape -> Sh1: !mosh.ap
   mo.output<:!mosh.ape Sh0> %res : !mo.tensor<Sh0, f32>
 }
 
-// CHECK: mo.graph @static_broadcast_to_fold_scalar_input() -> !mo.tensor<[2, 2], f32> no_inline {
-mo.graph @static_broadcast_to_fold_scalar_input() -> !mo.tensor<[2, 2], f32> {
-  %from = mo.constant {value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[1], f32>
-  // CHECK-NEXT: %[[FROM:.*]] = mo.constant {value = #M.dense_array<1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32>
-  %res = mo.static.broadcast_to(%from) : !mo.tensor<[1], f32> -> !mo.tensor<[2, 2], f32>
-  // CHECK-NEXT: mo.output %[[FROM]] : !mo.tensor<[2, 2], f32>
-  mo.output %res : !mo.tensor<[2, 2], f32>
-}
-
-// CHECK: mo.graph @static_broadcast_to_no_fold<[[D0:.*]], [[D1:.*]]>(
-mo.graph @static_broadcast_to_no_fold<D0, D1>(
-  // CHECK-SAME: %[[FROM:.*]]: !mo.tensor<[[[D0]], 3], f32>,
-  %from: !mo.tensor<[D0, 3], f32>,
-  // CHECK-SAME: %[[TO:.*]]: !mo.tensor<[[[D1]], 3], f32>
-  %to: !mo.tensor<[D1, 3], f32>
-// CHECK-SAME: ) -> !mo.tensor<[[[D1]], 3], f32> no_inline {
-) -> !mo.tensor<[D1, 3], f32> {
-  // CHECK-NEXT: %[[RES:.*]] = mo.static.broadcast_to(%[[FROM]]) : !mo.tensor<[[[D0]], 3], f32> -> !mo.tensor<[[[D1]], 3], f32>
-  %res = mo.static.broadcast_to(%from) : !mo.tensor<[D0, 3], f32> -> !mo.tensor<[D1, 3], f32>
-  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[D1]], 3], f32>
-  mo.output %res : !mo.tensor<[D1, 3], f32>
-}
-
 // CHECK: mo.graph @static_broadcast_no_reshape<[[N:.*]]>(%[[FROM:.*]]: !mo.tensor<[[[N]], 1, 0], f32>) -> !mo.tensor<[[[N]], 10, 0], f32> no_inline {
 mo.graph @static_broadcast_no_reshape<N>(%from: !mo.tensor<[N, 1, 0], f32>) -> !mo.tensor<[N, 10, 0], f32> {
   // CHECK: [[RES:.*]] = mo.static.broadcast_to(%[[FROM]]) : !mo.tensor<[[[N]], 1, 0], f32> -> !mo.tensor<[[[N]], 10, 0], f32>

@@ -63,30 +63,10 @@ mo.graph @equal(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[2, 3], f32>) 
   mo.output %0 : !mo.tensor<[2, 3], bool>
 }
 
-// CHECK: mo.graph @equal_int_folder() -> !mo.tensor<[2, 3], bool> no_inline {
-mo.graph @equal_int_folder() -> (!mo.tensor<[2, 3], bool>) {
-  // CHECK: %[[RES:.*]] = mo.constant {value = #M.dense_array<false, true, false, false, false, true> : tensor<2x3xi1>} : !mo.tensor<[2, 3], bool>
-  %lhs = mo.constant {value = #M.dense_array<0, -1, 2, -2, 4, 5> : tensor<2x3xsi32>} : !mo.tensor<[2, 3], si32>
-  %rhs = mo.constant {value = #M.dense_array<2, -1, 1, 4, -4, 5> : tensor<2x3xsi32>} : !mo.tensor<[2, 3], si32>
-  %0 = mo.equal(%lhs, %rhs) : (!mo.tensor<[2, 3], si32>, !mo.tensor<[2, 3], si32>) -> !mo.tensor<[2, 3], bool>
-  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[2, 3], bool>
-  mo.output %0 : !mo.tensor<[2, 3], bool>
-}
-
 // CHECK: mo.graph @greater(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>, %[[ARG1:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], bool> no_inline {
 mo.graph @greater(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[2, 3], f32>) -> (!mo.tensor<[2, 3], bool>) {
   // CHECK-NEXT: mo.greater(%[[ARG0]], %[[ARG1]]) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], bool>
   %0 = mo.greater(%arg0, %arg1) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], bool>
-  mo.output %0 : !mo.tensor<[2, 3], bool>
-}
-
-// CHECK: mo.graph @greater_int_folder() -> !mo.tensor<[2, 3], bool> no_inline {
-mo.graph @greater_int_folder() -> (!mo.tensor<[2, 3], bool>) {
-  // CHECK: %[[RES:.*]] = mo.constant {value = #M.dense_array<false, false, true, false, true, false> : tensor<2x3xi1>} : !mo.tensor<[2, 3], bool>
-  %lhs = mo.constant {value = #M.dense_array<0, -1, 2, -2, 4, 5> : tensor<2x3xsi32>} : !mo.tensor<[2, 3], si32>
-  %rhs = mo.constant {value = #M.dense_array<2, -1, 1, 4, -4, 5> : tensor<2x3xsi32>} : !mo.tensor<[2, 3], si32>
-  %0 = mo.greater(%lhs, %rhs) : (!mo.tensor<[2, 3], si32>, !mo.tensor<[2, 3], si32>) -> !mo.tensor<[2, 3], bool>
-  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[2, 3], bool>
   mo.output %0 : !mo.tensor<[2, 3], bool>
 }
 
@@ -97,30 +77,10 @@ mo.graph @greater_equal(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[2, 3]
   mo.output %0 : !mo.tensor<[2, 3], bool>
 }
 
-// CHECK: mo.graph @greater_equal_int_folder() -> !mo.tensor<[2, 3], bool> no_inline {
-mo.graph @greater_equal_int_folder() -> (!mo.tensor<[2, 3], bool>) {
-  // CHECK: %[[RES:.*]] = mo.constant {value = #M.dense_array<false, true, true, false, true, true> : tensor<2x3xi1>} : !mo.tensor<[2, 3], bool>
-  %lhs = mo.constant {value = #M.dense_array<0, -1, 2, -2, 4, 5> : tensor<2x3xsi32>} : !mo.tensor<[2, 3], si32>
-  %rhs = mo.constant {value = #M.dense_array<2, -1, 1, 4, -4, 5> : tensor<2x3xsi32>} : !mo.tensor<[2, 3], si32>
-  %0 = mo.greater_equal(%lhs, %rhs) : (!mo.tensor<[2, 3], si32>, !mo.tensor<[2, 3], si32>) -> !mo.tensor<[2, 3], bool>
-  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[2, 3], bool>
-  mo.output %0 : !mo.tensor<[2, 3], bool>
-}
-
 // CHECK: mo.graph @not_equal(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>, %[[ARG1:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], bool> no_inline {
 mo.graph @not_equal(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[2, 3], f32>) -> (!mo.tensor<[2, 3], bool>) {
   // CHECK-NEXT: mo.not_equal(%[[ARG0]], %[[ARG1]]) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], bool>
   %0 = mo.not_equal(%arg0, %arg1) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], bool>
-  mo.output %0 : !mo.tensor<[2, 3], bool>
-}
-
-// CHECK: mo.graph @not_equal_int_folder() -> !mo.tensor<[2, 3], bool> no_inline {
-mo.graph @not_equal_int_folder() -> (!mo.tensor<[2, 3], bool>) {
-  // CHECK: %[[RES:.*]] = mo.constant {value = #M.dense_array<true, false, true, true, true, false> : tensor<2x3xi1>} : !mo.tensor<[2, 3], bool>
-  %lhs = mo.constant {value = #M.dense_array<0, -1, 2, -2, 4, 5> : tensor<2x3xsi32>} : !mo.tensor<[2, 3], si32>
-  %rhs = mo.constant {value = #M.dense_array<2, -1, 1, 4, -4, 5> : tensor<2x3xsi32>} : !mo.tensor<[2, 3], si32>
-  %0 = mo.not_equal(%lhs, %rhs) : (!mo.tensor<[2, 3], si32>, !mo.tensor<[2, 3], si32>) -> !mo.tensor<[2, 3], bool>
-  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[2, 3], bool>
   mo.output %0 : !mo.tensor<[2, 3], bool>
 }
 

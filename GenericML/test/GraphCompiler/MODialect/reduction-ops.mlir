@@ -36,16 +36,6 @@ mo.graph @reduce_mul_negative_index_canonicalization(%input: !mo.tensor<[?, ?, 5
   mo.output %output : !mo.tensor<[?, ?, 1], f32>
 }
 
-// CHECK: mo.graph @reduce_mul_fold() -> !mo.tensor<[1], si64> no_inline {
-mo.graph @reduce_mul_fold() -> !mo.tensor<[1], si64> {
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %input = mo.constant {value = #M.dense_array<2, 3, 4> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  // CHECK-NEXT: %[[RES:.*]] = mo.constant {value = #M.dense_array<24> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %output = mo.reduce.mul(%input, %axis) : (!mo.tensor<[3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[1], si64>
-  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[1], si64>
-  mo.output %output : !mo.tensor<[1], si64>
-}
-
 // CHECK: mo.graph @reduce_add(%[[INPUT:.*]]: !mo.tensor<[?, ?, 5], f32>) -> !mo.tensor<[?, ?, 1], f32> no_inline {
 mo.graph @reduce_add(%input: !mo.tensor<[?, ?, 5], f32>) -> (!mo.tensor<[?, ?, 1], f32>) {
   // CHECK: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<2> : !M.array<1xsi64>} : !mo.tensor<[], si64>
