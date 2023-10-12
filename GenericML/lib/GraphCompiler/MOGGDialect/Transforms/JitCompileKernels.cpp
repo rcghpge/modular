@@ -147,21 +147,34 @@ mangleBlock(mlir::Block &block, DeviceRefAttr device,
         for (NamedAttribute named : attrs) {
           appendName(name, device, named.getName());
           name += "_";
-          if (auto asBool = dyn_cast<BoolAttr>(named.getValue())) {
+          Attribute value = named.getValue();
+          if (auto asBool = dyn_cast<BoolAttr>(value)) {
             name += std::to_string(asBool.getValue()) + "_";
 
-          } else if (auto asInt = dyn_cast<IntegerAttr>(named.getValue())) {
+          } else if (auto asInt = dyn_cast<IntegerAttr>(value)) {
             name += std::to_string(asInt.getInt()) + "_";
 
-          } else if (auto asType = dyn_cast<TypeAttr>(named.getValue())) {
+          } else if (auto asType = dyn_cast<TypeAttr>(value)) {
             std::string typeStr;
             llvm::raw_string_ostream(typeStr) << asType;
             name += typeStr + "_";
 
-          } else if (auto asString = dyn_cast<StringAttr>(named.getValue())) {
+          } else if (auto asString = dyn_cast<StringAttr>(value)) {
             name += asString.getValue();
             name += "_";
 
+          } else if (auto asIntArray = dyn_cast<DenseIntElementsAttr>(value)) {
+            for (APInt i : asIntArray) {
+              int64_t val = i.getSExtValue();
+              if (val != mlir::ShapedType::kDynamic) {
+                name += "DYN_";
+              } else if (val < 0) {
+                name += "N";
+                name += std::to_string(std::abs(val)) + "_";
+              } else {
+                name += std::to_string(val) + "_";
+              }
+            }
           } else {
             std::string errStr;
             llvm::raw_string_ostream os(errStr);
