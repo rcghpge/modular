@@ -8,6 +8,7 @@
 #define GENERICML_DRIVER_UTILS_H
 
 #include "GenericML/Driver/DriverCLOptions.h"
+#include "GraphRT/MEFExecutor/MEFFile.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "LLCL/Runtime/Utils.h"
 #include "LLCL/Support/GenericUniquePtrSet.h"
@@ -33,6 +34,53 @@ int setupMLIRAndRunWithLeakCheckedRuntime(
           })))
     return EXIT_FAILURE;
   return EXIT_SUCCESS;
+}
+
+// FIXME: We have to duplicate this here because of #1639. Remove this when
+//        possible to do so.
+ErrorOr<std::string> getFileContentIdentity(const llvm::MemoryBufferRef &file,
+                                            FileFormat format) {
+  switch (format) {
+  default:
+    return "input has unknown contents";
+  case FileFormat::kTFLFlatBuffer:
+    return "input is a binary TFLite flatbuffer file";
+  case FileFormat::kTFLFlatBufferJSON:
+    return "input is a TFLite flatbuffer file in JSON format";
+  case FileFormat::kMTFLDialect:
+    return "input is TFLite model in MLIR form";
+  case FileFormat::kTFLPDialect:
+    return "input is a compiled TFLite MEF model in MLIR form";
+  case FileFormat::kTFDialect:
+    return "input is a TensorFlow model in MLIR form";
+  case FileFormat::kTFSavedModel:
+    return "input is a TensorFlow model in SavedModel form";
+  case FileFormat::kTFPDialect:
+    return "input is a compiled TensorFlow MEF model in MLIR form";
+  case FileFormat::kFauxDialect:
+    return "input is Faux model in MLIR form";
+  case FileFormat::kMONNXDialect:
+    return "input is an ONNX model in MLIR form";
+  case FileFormat::kONNXProtobuf:
+    return "input is an ONNX model in binary protobuf form";
+  case FileFormat::kONNXTextProtobuf:
+    return "input is an ONNX model in text protobuf form";
+  case FileFormat::kTorchDialect:
+    return "input is a PyTorch model in Torch MLIR dialect form";
+  case FileFormat::kPTPickle:
+    return "input is a PyTorch model in PT pickled form";
+  case FileFormat::kTorchPDialect:
+    return "input is a PyTorch model in MLIR form consisting of primitive ops";
+  case FileFormat::kMEFFile: {
+    ErrorOr<RCRef<MEFFile>> mefFileOr = MEFFile::open(file.getBuffer());
+    if (failed(mefFileOr))
+      return Error(mefFileOr.getError());
+
+    auto mefContents = mefFileOr.get()->sniffFileContents();
+    return std::string("input is a MEF file containing a ") +
+           mefContents.getAsString();
+  }
+  }
 }
 
 } // namespace M
