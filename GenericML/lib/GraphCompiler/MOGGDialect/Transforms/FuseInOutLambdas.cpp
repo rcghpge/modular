@@ -184,8 +184,6 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     for (auto storeOp : stores)
       storeOp.erase();
 
-    llvm::errs() << "Entering the loop\n;";
-
     // Replace all load ops that read from the argument that is being fused.
     for (auto load :
          llvm::make_early_inc_range(dstInputLambda.getOps<MOGG::CallOp>())) {
