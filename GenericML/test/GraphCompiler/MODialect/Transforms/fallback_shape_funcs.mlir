@@ -476,3 +476,29 @@ mo.graph @bottom_k_fallback_shape_func<() -> D0, D1, D2, D3, D4, D5, D6, D7>(
 // CHECK-NEXT:   mo.invoke_shape_func["top_k_shape"]<() -> [[D12:.*]], [[D13:.*]], [[D14:.*]], [[D15:.*]]>({{.*}}) {dataDeptTensors = [1 : i32, 2 : i32]} : (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>)
 // CHECK-NEXT:   %[[VALUES:.*]], %[[INDICES:.*]] = mo.bottom_k(%[[INPUT:.*]], %[[K:.*]], %[[AXIS:.*]], %[[SORTED:.*]]) : (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>) -> (!mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>, !mo.tensor<[[[D12]], [[D13]], [[D14]], [[D15]]], si64>)
 // CHECK-NEXT:   mo.output<[[D8]], [[D9]], [[D10]], [[D11]], [[D12]], [[D13]], [[D14]], [[D15]]> %[[VALUES]], %[[INDICES]] : !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>, !mo.tensor<[[[D12]], [[D13]], [[D14]], [[D15]]], si64>
+
+mo.graph @tile_fallback_shape_func<() -> D0, D1, D2, D3>(
+  %input: !mo.tensor<[2, 3, 7, 11], f32>,
+  %repeats: !mo.tensor<[4], si64>
+) -> !mo.tensor<[D0, D1, D2, D3], f32> {
+
+  %res = mo.tile<() -> D4, D5, D6, D7>(%input, %repeats) :
+    (!mo.tensor<[2, 3, 7, 11], f32>, !mo.tensor<[4], si64>)
+    -> !mo.tensor<[D4, D5, D6, D7], f32>
+
+  mo.output<D4, D5, D6, D7> %res : !mo.tensor<[D4, D5, D6, D7], f32>
+}
+
+// CHECK-LABEL: mo.graph @tile_fallback_shape_func
+// CHECK-SAME: <() -> [[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(%[[INPUT:.*]]: !mo.tensor<[2, 3, 7, 11], f32>, %[[REPEATS:.*]]: !mo.tensor<[4], si64>) -> !mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32> no_inline {
+//
+// CHECK-NEXT: mo.invoke_shape_func["tile_shape"]<() -> [[D4:.*]], [[D5:.*]], [[D6:.*]], [[D7:.*]]>(
+// CHECK-SAME:   %[[INPUT]], %[[REPEATS]])
+// CHECK-SAME:   {dataDeptTensors = [1 : i32]} :
+// CHECK-SAME:   (!mo.tensor<[2, 3, 7, 11], f32>, !mo.tensor<[4], si64>)
+//
+// CHECK-NEXT: %[[RES:.*]] = mo.tile(%[[INPUT]], %[[REPEATS]])
+// CHECK-SAME:   (!mo.tensor<[2, 3, 7, 11], f32>, !mo.tensor<[4], si64>)
+// CHECK-SAME:   -> !mo.tensor<[[[D4]], [[D5]], [[D6]], [[D7]]], f32>
+//
+// CHECK-NEXT: mo.output<[[D4]], [[D5]], [[D6]], [[D7]]> %[[RES]] : !mo.tensor<[[[D4]], [[D5]], [[D6]], [[D7]]], f32>
