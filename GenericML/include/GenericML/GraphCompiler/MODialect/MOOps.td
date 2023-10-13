@@ -1098,6 +1098,8 @@ def MO_GreaterEqualOp : MO_ComparisonBinaryOp<"greater_equal"> {
                                           ) -> !mo.tensor<[2, 3], bool>
     ```
   }];
+  // TODO(#23221): remove folder once underlying bug is fixed for faster-rcnn-inception-resnet-v2
+  let hasFolder = 1;
 }
 
 def MO_NotEqualOp : MO_ComparisonBinaryOp<"not_equal", [Commutative]> {

@@ -628,48 +628,66 @@ LogicalResult BroadcastShapeOp::verify() {
 // Elementwise folder support
 //===----------------------------------------------------------------------===//
 
+// TODO(#23221): update folder once underlying bug is fixed for
+// faster-rcnn-inception-resnet-v2
 OpFoldResult AddOp::fold(FoldAdaptor adaptor) {
-  // We normally would reject non-constant inputs, but if one of the inputs is
-  // a broadcast of 0 which we can still reason about them.
-  TensorValue lhs = getLhsInput(), rhs = getRhsInput();
+  auto xAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInputX());
+  auto yAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInputY());
 
-  // Check if a given value is the product of a constant of 0 being
-  // broadcasted.
-  auto isValueBroadcasted0Const = [](Value operand) {
-    if (auto bcast =
-            dyn_cast_or_null<Static::BroadcastToOp>(operand.getDefiningOp())) {
-      if (auto constOp = dyn_cast_or_null<MO::ConstantOp>(
-              bcast.getOperand().getDefiningOp())) {
-        TensorType type = cast<TensorType>(constOp.getType());
-        // Interpret as double. Should be ok as integers will be casted to
-        // double.
-        auto data =
-            tryGetConstantBlob<double>(constOp.getValue(), type.getDtype());
-        if (!data.has_value())
-          return false;
+  if (xAttr && yAttr) {
+    return foldElemwiseOp(getType(), adaptor,
+                          [](int64_t x, int64_t y) { return x + y; });
+  } else {
+    // We normally would reject non-constant inputs, but if one of the inputs is
+    // a broadcast of 0 which we can still reason about them.
+    TensorValue lhs = getLhsInput(), rhs = getRhsInput();
 
-        // Check the constant is zero.
-        for (double i : *data) {
-          if (i != 0.0)
+    // Check if a given value is the product of a constant of 0 being
+    // broadcasted.
+    auto isValueBroadcasted0Const = [](Value operand) {
+      if (auto bcast = dyn_cast_or_null<Static::BroadcastToOp>(
+              operand.getDefiningOp())) {
+        if (auto constOp = dyn_cast_or_null<MO::ConstantOp>(
+                bcast.getOperand().getDefiningOp())) {
+          TensorType type = cast<TensorType>(constOp.getType());
+          // Interpret as double. Should be ok as integers will be casted to
+          // double.
+          auto data =
+              tryGetConstantBlob<double>(constOp.getValue(), type.getDtype());
+          if (!data.has_value())
             return false;
+
+          // Check the constant is zero.
+          for (double i : *data) {
+            if (i != 0.0)
+              return false;
+          }
+
+          // We have a match.
+          return true;
         }
-
-        // We have a match.
-        return true;
       }
-    }
-    return false;
-  };
+      return false;
+    };
 
-  // Check combination of 0 + x
-  if (isValueBroadcasted0Const(lhs))
-    return rhs;
+    // Check combination of 0 + x
+    if (isValueBroadcasted0Const(lhs))
+      return rhs;
 
-  // Otherwise check x + 0
-  if (isValueBroadcasted0Const(rhs))
-    return lhs;
+    // Otherwise check x + 0
+    if (isValueBroadcasted0Const(rhs))
+      return lhs;
+  }
 
   return {};
+}
+
+// TODO(#23221): remove folder once underlying bug is fixed for
+// faster-rcnn-inception-resnet-v2
+OpFoldResult GreaterEqualOp::fold(FoldAdaptor adaptor) {
+  return foldElemwiseOp(
+      getType(), adaptor, [](int64_t x, int64_t y) { return x >= y; },
+      /*bitwidth=*/1, /*isSigned=*/false);
 }
 
 //===----------------------------------------------------------------------===//
