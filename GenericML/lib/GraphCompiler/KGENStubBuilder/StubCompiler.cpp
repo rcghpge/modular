@@ -135,12 +135,8 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
   if (!saveTempsPrefix.empty())
     compilationOptions.setSaveTemps(saveTempsPrefix);
 
-  // HACK HACK HACK https://github.com/modularml/modular/issues/22959
-  // Remove since not going to support direct CUDA calls.
-  bool isJit = deviceSpec == hostDeviceSpec;
-
-  auto compilerOr = KGEN::ObjectCompiler::create(runtime, mgr, ".mojo_cache",
-                                                 compilationOptions, isJit);
+  auto compilerOr = KGEN::ObjectCompiler::create(
+      runtime, mgr, ".mojo_cache", compilationOptions, /*isJit=*/true);
   if (compilerOr.isError())
     return compilerOr.takeError();
   llvm::MapVector<StringAttr, KGEN::ExportedSymbol> exportedSymbols =
@@ -176,24 +172,6 @@ ErrorOrSuccess StubCompiler::compile(mlir::ArrayAttr combinedSymbolName) {
   LogicalResult ok = elaborateKGEN();
   if (ok.failed())
     return Error("KGEN elaboration failed");
-
-  // HACK HACK HACK https://github.com/modularml/modular/issues/22959
-  // Remove since not going to support direct CUDA calls.
-  if (deviceSpec.getRef().getLabel() == kCUDALabel) {
-    // Promote address spaces.
-    for (KGEN::FuncOp func : kgenModule.getOps<KGEN::FuncOp>()) {
-      mlir::AttrTypeReplacer walker;
-
-      walker.addReplacement(
-          [&](KGEN::PointerType ptrTy) -> std::optional<KGEN::PointerType> {
-            return KGEN::PointerType::get(ptrTy.getElementType(), 1);
-          });
-
-      walker.recursivelyReplaceElementsIn(func, /*replaceAttrs=*/true,
-                                          /*replaceLocs=*/false,
-                                          /*replaceTypes=*/true);
-    }
-  }
 
   return compileToLLVM(combinedSymbolName);
 }

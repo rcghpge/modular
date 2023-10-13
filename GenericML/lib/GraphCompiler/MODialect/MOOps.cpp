@@ -90,6 +90,11 @@ DeviceRefAttr MO::getHostDevice(GraphOp graphOp) {
   return DeviceRefAttr::get(graphOp.getContext(), kCPULabel, 0);
 }
 
+bool MO::isOnHost(Operation *op) {
+  return getDeviceOrDefaultAny(op) ==
+         getHostDevice(op->getParentOfType<GraphOp>());
+}
+
 ErrorOr<DeviceSpecCollectionAttr> MO::getDeviceSpecsOrDefault(GraphOp graphOp) {
   // Check the device specs annotation.
   DeviceSpecCollectionAttr deviceSpecs = graphOp.getDeviceSpecs();

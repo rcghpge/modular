@@ -152,6 +152,7 @@ Value lowerMatmulPackingFunc(Location loc, PatternRewriter &rewriter,
 
   mlir::DictionaryAttr kgenParams = rewriter.getDictionaryAttr(attrs);
   // Pack the mm weights.
+  // TODO: Need to propagate any device annotations.
   return rewriter.create<MO::LayoutTransformOp>(
       loc, /*outputTypes=*/packedWeightsType, weight, kgenParams);
 }
@@ -201,6 +202,13 @@ struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
 
   LogicalResult matchAndRewrite(MO::MatmulOp op,
                                 PatternRewriter &rewriter) const override {
+    // HACK HACK HACK https://github.com/modularml/modular/issues/22959
+    // Restrict to host only.
+    if (!MO::isOnHost(op))
+      return rewriter.notifyMatchFailure(
+          op, Twine("Matmul will execute on device '") +
+                  MO::getDeviceOrDefault(op).getLabel() + "'");
+
     Value input = op.getInputA();
     Value weight, perm;
     Operation *transpose = nullptr;
