@@ -1036,6 +1036,154 @@ LogicalResult CpuKernelExecuteOp::verify() {
   return success();
 }
 
+/// Return whether `ty1` is a subtype of `ty2`, i.e., the set of possible
+/// tensors represented by `ty1` is a subset for that of `ty2`.
+static bool isSubtype(CpuTensorType ty1, CpuTensorType ty2) {
+  // !mgp.cpu.tensor<...xf32>  v.s. !mgp.cpu.tensor<...xsi32>
+  if (ty1.getElementType() != ty2.getElementType())
+    return false;
+
+  // Any shape is a subtype of a dynamically ranked shape.
+  if (!ty2.hasRank())
+    return true;
+
+  // If ty2 is ranked, ty1 must be ranked as well
+  if (!ty1.hasRank())
+    return false;
+
+  // 1. Make sure # of dims match.
+  if (ty1.getRank() != ty2.getRank())
+    return false;
+
+  // 2. Make sure ty1's individual dims are subtypes to the corresponding
+  // dimensions in ty2.
+  ArrayRef<std::optional<uint64_t>> dims1 = ty1.getTensorSpec().getDims();
+  ArrayRef<std::optional<uint64_t>> dims2 = ty2.getTensorSpec().getDims();
+  for (auto [dim1, dim2] : llvm::zip(dims1, dims2)) {
+    // If `dim2` is unknown `?`, `dim1` can be anything in order for `ty1` to be
+    // a subtype of `ty2`; otherwise the dimensions must match.
+    if (dim2.has_value() && dim1 != dim2)
+      return false;
+  }
+
+  return true;
+}
+
+/// Return whether `ty1` is a subtype of `ty2`, i.e., the set of possible
+/// tensors represented by `ty1` is a subset for that of `ty2`. Currently only
+/// support nontrivial subtyping for `CpuTensorType`.
+static bool isSubtype(Type ty1, Type ty2) {
+  auto cpuTensorTy1 = dyn_cast<CpuTensorType>(ty1);
+  auto cpuTensorTy2 = dyn_cast<CpuTensorType>(ty2);
+  if (cpuTensorTy1 && cpuTensorTy2)
+    return isSubtype(cpuTensorTy1, cpuTensorTy2);
+
+  return ty1 == ty2;
+}
+
+//===----------------------------------------------------------------------===//
+// ListCreateOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ListCreateOp::verify() {
+  Type resElemTy = getType().getElementType();
+  for (Value input : getOperands()) {
+    Type inTy = input.getType();
+    if (!isSubtype(inTy, resElemTy)) {
+      return emitError()
+             << "input type must be a subtype of list element type: " << inTy
+             << " v.s. " << resElemTy;
+    }
+  }
+  return success();
+}
+
+bool ListCreateOp::mayAlias(size_t operandIndex, size_t resultIndex) {
+  // The resulting list holds shallow copies of all input values.
+  return true;
+}
+
+//===----------------------------------------------------------------------===//
+// ListGetOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ListGetOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  Type inputListElemTy = cast<ListType>(operands[0].getType()).getElementType();
+  inferredReturnTypes.emplace_back(inputListElemTy);
+  return success();
+}
+
+LogicalResult ListGetOp::verify() {
+  // Check index tensor type.
+  CpuTensorType indexTensorTy = getIndex().getType();
+  Type indexDtype = indexTensorTy.getElementType();
+  if (!indexDtype.isInteger(32) && !indexDtype.isInteger(64)) {
+    return emitOpError()
+           << "expect index tensor to have dtype si32 or si64, but got: "
+           << indexDtype;
+  }
+
+  if (indexTensorTy.getTensorSpec().getNumElements() != 1) {
+    return emitOpError() << "expect index tensor to have 1 element, but got: "
+                         << indexTensorTy;
+  }
+  return success();
+}
+
+bool ListGetOp::mayAlias(size_t operandIndex, size_t resultIndex) {
+  // The resulting value is a shallow copy of the specified element in the input
+  // list.
+  return operandIndex == 0;
+}
+
+//===----------------------------------------------------------------------===//
+// ListInsertOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ListInsertOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  Type inputListTy = operands[0].getType();
+  inferredReturnTypes.emplace_back(inputListTy);
+  return success();
+}
+
+LogicalResult ListInsertOp::verify() {
+  // Check new element type against list element type.
+  Type listElemTy = getType().getElementType();
+  Type newElemTy = getElement().getType();
+  if (!isSubtype(newElemTy, listElemTy)) {
+    return emitError()
+           << "new element type must be a subtype of list element type: "
+           << newElemTy << " v.s. " << listElemTy;
+  }
+
+  // Check index tensor type.
+  CpuTensorType indexTensorTy = getIndex().getType();
+  Type indexDtype = indexTensorTy.getElementType();
+  if (!indexDtype.isInteger(32) && !indexDtype.isInteger(64)) {
+    return emitOpError()
+           << "expect index tensor to have dtype si32 or si64, but got: "
+           << indexDtype;
+  }
+
+  if (indexTensorTy.getTensorSpec().getNumElements() != 1) {
+    return emitOpError() << "expect index tensor to have 1 element, but got: "
+                         << indexTensorTy;
+  }
+  return success();
+}
+
+bool ListInsertOp::mayAlias(size_t operandIndex, size_t resultIndex) {
+  // The resulting list contains a shallow copies of input list elements and the
+  // inserted element.
+  return true;
+}
+
 //===----------------------------------------------------------------------===//
 // ModelOp
 //===----------------------------------------------------------------------===//

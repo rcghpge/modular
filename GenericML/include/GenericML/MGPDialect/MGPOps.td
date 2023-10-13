@@ -1787,6 +1787,115 @@ def CpuKernelExecuteOp : MGP_Op<"cpu.kernel.execute", [
 }
 
 //===----------------------------------------------------------------------===//
+// ListCreate
+//===----------------------------------------------------------------------===//
+
+def ListCreateOp : MGP_Op<"list.create", [
+  DeclareOpInterfaceMethods<GRTMayAliasInterface>, // The inputs are shallow copied into the output list
+]> {
+  let summary = "Create a new list with given elements.";
+  let description = [{
+    Creates a new `!mgp.list` with the inputs as elements in the same order.
+
+    Example:
+    ```mlir
+    %t1 : !mgp.cpu.tensor<3x5xf32>,
+    %t2 : !mgp.cpu.tensor<3x10xf32>
+    %l = mgp.list.create(%t1, %t2) : (
+      !mgp.cpu.tensor<3x5xf32>, !mgp.cpu.tensor<3x10xf32>
+    ) -> !mgp.list<!mgp.cpu.tensor<3x?xf32>>
+    ```
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$inputs);
+  let results = (outs MGP_List:$result);
+  let assemblyFormat = [{
+    ` ` $inputs ` ` attr-dict `:` functional-type($inputs, results)
+  }];
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// ListGet
+//===----------------------------------------------------------------------===//
+
+def MGP_ListGetOp : MGP_Op<"list.get", [
+  DeclareOpInterfaceMethods<GRTMayAliasInterface>, // The retrieved element is shallow copied
+  DeclareOpInterfaceMethods<InferTypeOpInterface>,
+]> {
+  let summary = "List get Operation.";
+  let description = [{
+    Retrive the element at given (base zero) index of the list. The index can be
+    negative, with numpy indexing semantics, i.e., `-1` means the last element,
+    `-2` means the second to last element, etc.
+
+    Example:
+
+    ```mlir
+    %lst : !mgp.list<!mgp.cpu.tensor<3x?xf32>>,
+    %idx : !mgp.cpu.tensor<si32>
+    %t = mgp.list.get(%lst, %idx) :
+      !mgp.list<!mgp.cpu.tensor<3x?xf32>>, !mgp.cpu.tensor<si32>
+    ```
+  }];
+
+  let arguments = (ins MGP_List:$input, MGP_CpuTensorType:$index);
+  let results = (outs AnyType:$result);
+
+  let assemblyFormat = [{
+    ` ` operands ` ` attr-dict `:` qualified(type(operands))
+  }];
+
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// ListInsert
+//===----------------------------------------------------------------------===//
+
+def MGP_ListInsertOp : MGP_Op<"list.insert", [
+  // The input list elements and inserted element are all shallow copied into
+  // the output list.
+  DeclareOpInterfaceMethods<GRTMayAliasInterface>,
+  DeclareOpInterfaceMethods<InferTypeOpInterface>,
+]> {
+  let summary = "List insert Operation.";
+  let description = [{
+    Creates a new list that's the result of inserting an element at given (base
+    zero) index of a copy of the list (i.e., the op is value semantics and
+    doesn't affect the input list).
+
+    The index can be negative, with numpy indexing semantics, i.e., `-1` means
+    the last element, `-2` means the second to last element, etc.
+
+    It will push any existing element at the index to after the inserted element
+    (which will now be at the index). If the index equals the length of the
+    list, the op effectively appends the element to the list.
+
+    Example:
+
+    ```mlir
+    %lst : !mgp.list<!mgp.cpu.tensor<3x?xf32>>,
+    %tns : !mgp.cpu.tensor<3x?xf32>,
+    %idx : !mgp.cpu.tensor<si32>
+    %t = mgp.list.insert(%lst, %tns, %idx) :
+      !mgp.list<!mgp.cpu.tensor<3x?xf32>>, !mgp.cpu.tensor<3x?xf32>, !mgp.cpu.tensor<si32>
+    ```
+  }];
+
+  let arguments = (ins MGP_List:$input,
+                       AnyType:$element,
+                       MGP_CpuTensorType:$index);
+  let results = (outs MGP_List:$result);
+
+  let assemblyFormat = [{
+    ` ` operands ` ` attr-dict `:` qualified(type(operands))
+  }];
+
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // ModelOp
 //===----------------------------------------------------------------------===//
 

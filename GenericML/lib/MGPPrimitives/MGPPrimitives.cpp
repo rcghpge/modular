@@ -1129,6 +1129,98 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
   std::move(outputChain).recordProfilerEntry();
 }
 
+/// A runtime representation for `!mgp.list`.
+struct List {
+  SmallVector<AnyAsyncValueRef> elements;
+
+  List copy() {
+    List listCopy;
+    for (const AnyAsyncValueRef &val : elements) {
+      listCopy.elements.push_back(val.copy());
+    }
+    return listCopy;
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// mgp.list.create
+//===----------------------------------------------------------------------===//
+
+static void mgp_list_create(RemainingArguments operands,
+                            Result<List> outputList) {
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.list.create"));
+  std::move(outputList).emplace(List{operands.copyAsVector()});
+}
+
+//===----------------------------------------------------------------------===//
+// mgp.list.get
+//===----------------------------------------------------------------------===//
+
+static void mgp_list_get(List &inputList, Tensor &idxTensor,
+                         RemainingResults outputs, EncodedLocation loc) {
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.list.get"));
+
+  // We must unbox the index value from the tensor.
+  idxTensor.getEltType()
+      .dispatch<void>(idxTensor.getBuffer())
+      .template when<DType::si32, DType::si64>([&](auto *idxDataPtr) {
+        auto idx = *idxDataPtr;
+
+        // Check index is in bound.
+        int64_t listSize = inputList.elements.size();
+        if (idx < -listSize || listSize <= idx) {
+          return std::move(outputs).setAllToError(
+              Twine("index ") + Twine(idx) +
+                  " is out of bound for list of size " + Twine(listSize),
+              loc);
+        }
+
+        // Normalize index.
+        if (idx < 0)
+          idx += listSize;
+
+        // We must set the output this way because
+        // (1). list can contain arbitray types of values, so we can't put a
+        // single type into `Result<...>`> (2). we want to share the underlying
+        // value as `AsyncValueRef` to avoid deep copying expensive objects like
+        // `GML::Tensor`.
+        *outputs.begin() = inputList.elements[idx].copy();
+      });
+}
+
+//===----------------------------------------------------------------------===//
+// mgp.list.insert
+//===----------------------------------------------------------------------===//
+
+static void mgp_list_insert(List &inputList, AnyAsyncValueRef element,
+                            Tensor &idxTensor, Result<List> output) {
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.list.insert"));
+
+  // We must unbox the index value from the tensor.
+  idxTensor.getEltType()
+      .dispatch<void>(idxTensor.getBuffer())
+      .template when<DType::si32, DType::si64>([&](auto *idxDataPtr) {
+        auto idx = *idxDataPtr;
+
+        // Check index is in bound.
+        int64_t listSize = inputList.elements.size();
+        if (idx < -listSize || listSize < idx) {
+          return std::move(output).setToError(
+              Twine("index ") + Twine(idx) +
+              " is out of bound for list of size " + Twine(listSize));
+        }
+
+        // Normalize index.
+        if (idx < 0)
+          idx += listSize;
+
+        // Copy input list then insert element into it.
+        List newList = inputList.copy();
+        newList.elements.insert(newList.elements.begin() + idx, element.copy());
+        std::move(output).emplace(std::move(newList));
+      });
+}
+
 //===----------------------------------------------------------------------===//
 // mgp.model
 //===----------------------------------------------------------------------===//
@@ -1205,5 +1297,8 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.cpu.kernel.load_archive",
                 mgp_cpu_kernel_load_archive);
   ADD_PRIMITIVE(registry, "mgp.cpu.kernel.execute", mgp_cpu_kernel_execute);
+  ADD_PRIMITIVE(registry, "mgp.list.create", mgp_list_create);
+  ADD_PRIMITIVE(registry, "mgp.list.get", mgp_list_get);
+  ADD_PRIMITIVE(registry, "mgp.list.insert", mgp_list_insert);
   ADD_PRIMITIVE(registry, "mgp.model", mgp_model);
 }

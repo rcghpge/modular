@@ -405,4 +405,18 @@ def MGP_CpuTensorType : MGP_Type<"CpuTensor", "cpu.tensor", [
   let assemblyFormat = "`<` custom<TensorSpec>($tensorSpec) `>`";
 }
 
+//===----------------------------------------------------------------------===//
+// ListType
+//===----------------------------------------------------------------------===//
+
+def MGP_List : MGP_Type<"List", "list"> {
+  let summary = "Type of immutable list container.";
+  let description = [{
+    This type represents an immutable list of elements.
+  }];
+
+  let parameters = (ins "Type":$elementType);
+  let assemblyFormat = "`<` $elementType `>`";
+}
+
 #endif  // GENERICML_MGPDIALECT_MGPTYPES_TD
