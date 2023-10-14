@@ -14,7 +14,11 @@
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "Support/ML/Permutation.h"
 
+#include "./Utils.h"
+
 #include <numeric>
+
+#define DEBUG_TYPE "symbolic-optimization"
 
 using namespace M;
 using namespace MO;
@@ -217,6 +221,13 @@ struct ConvertBatchMatmulToMatmulPattern
 
   LogicalResult matchAndRewrite(MO::BatchMatmulOp op,
                                 PatternRewriter &rewriter) const override {
+    // HACK HACK HACK https://github.com/modularml/modular/issues/22959
+    // Only for host.
+    if (!isOnHost(op)) {
+      return rewriter.notifyMatchFailure(
+          op, "not rewriting for batch matmul since not on host default");
+    }
+
     Value input, weight;
     Operation *broadcast;
     auto weightBcastP =
@@ -298,6 +309,13 @@ struct ConvToMatmulPattern : public OpRewritePattern<ConvOp> {
 
   LogicalResult matchAndRewrite(ConvOp op,
                                 PatternRewriter &rewriter) const override {
+    // HACK HACK HACK https://github.com/modularml/modular/issues/22959
+    // Only for host.
+    if (!isOnHost(op)) {
+      return rewriter.notifyMatchFailure(
+          op, "not rewriting for conv since not on host device");
+    }
+
     // Declare some meta variables.
     TensorValue input = op.getInput();
     TensorValue filter = op.getFilter();
@@ -1404,6 +1422,13 @@ struct GemvPattern : public OpRewritePattern<MatmulOp> {
 
   LogicalResult matchAndRewrite(MO::MatmulOp op,
                                 PatternRewriter &rewriter) const override {
+    // HACK HACK HACK https://github.com/modularml/modular/issues/22959
+    // Only for host.
+    if (!isOnHost(op)) {
+      return rewriter.notifyMatchFailure(
+          op, "not rewriting for vector matmul since not on host device");
+    }
+
     Location loc = op.getLoc();
     Value a = op.getTensorA();
     Value b = op.getTensorB();
@@ -1554,6 +1579,14 @@ struct MergeParallelMatmulPattern : public OpRewritePattern<MatmulOpType> {
 
     if (matmulUsers.size() == 1)
       return rewriter.notifyMatchFailure(op, "No parallel matmuls");
+
+    // HACK HACK HACK https://github.com/modularml/modular/issues/22959
+    // Only for host.
+    if (llvm::any_of(matmulUsers,
+                     [](MatmulOpType subOp) { return !isOnHost(subOp); })) {
+      return rewriter.notifyMatchFailure(
+          op, "not rewriting for parallel matmuls since not on host device");
+    }
 
     if (llvm::all_of(matmulUsers, [](MatmulOpType matmul) {
           return llvm::all_of(matmul->getUsers(), [](Operation *user) {
@@ -2000,12 +2033,26 @@ struct SymbolicOptimizationPass
       return signalPassFailure();
   }
   void runOnOperation() override {
+    GraphOp graphOp = getOperation();
+
+    LLVM_DEBUG({
+      llvm::dbgs() << "-------- before SymbolicOptimization ----------\n";
+      printGraph(llvm::dbgs(), graphOp);
+      llvm::dbgs() << "--------------------------------------------\n";
+    });
+
     // First run all the default optimizations.
     optimizeWithPattern();
     // Once all split operation patterns have run, convert them to slice and run
     // all of the other patterns too. This prevents this pattern from preventing
     // split patterns from occuring because of ordering.
     optimizeWithPattern<SplitToSlicePattern>();
+
+    LLVM_DEBUG({
+      llvm::dbgs() << "-------- after SymbolicOptimization ----------\n";
+      printGraph(llvm::dbgs(), graphOp);
+      llvm::dbgs() << "--------------------------------------------\n";
+    });
   }
 };
 
