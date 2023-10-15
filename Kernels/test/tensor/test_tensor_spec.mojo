@@ -6,8 +6,8 @@
 # RUN: %mojo -debug-level full %s | FileCheck %s
 
 from tensor import TensorShape, TensorSpec
-from utils.vector import DynamicVector
 
+from utils.vector import DynamicVector
 
 # CHECK: test_tensor_shape
 fn test_tensor_shape():

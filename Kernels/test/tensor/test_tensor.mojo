@@ -12,7 +12,6 @@ from tensor import Tensor, TensorShape
 
 from utils.index import Index, StaticIntTuple
 
-
 # CHECK: test_tensor
 fn test_tensor():
     print("== test_tensor")
