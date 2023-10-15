@@ -69,10 +69,10 @@ fn my_sqrt[
 
 For using this kernel in the model first step is to register the kernel as
 implementation of a op, In this case `mo.sqrt`. For this user will import
-the relevant decorators from `MOGGDecorators` (This will be a public facing package)
+the relevant decorators from `utils._annotations` (This will be a public facing package)
 
 ```mojo
-from MOGGDecorators import *
+from utils._annotations import *
 ```
 
 Next step is mark the existing mojo function. That is given as follows
