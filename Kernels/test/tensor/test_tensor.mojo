@@ -5,12 +5,13 @@
 # ===----------------------------------------------------------------------=== #
 # RUN: %mojo -debug-level full %s | FileCheck %s
 
-from math import sqrt
+from math import sqrt, iota
 from random import rand, seed
 
 from tensor import Tensor, TensorShape
 
 from utils.index import Index, StaticIntTuple
+
 
 # CHECK: test_tensor
 fn test_tensor():
@@ -246,6 +247,43 @@ fn test_image_to_grayscale():
     print(gray_scale_image[255, 255])
 
 
+# CHECK-LABEL: test_print
+fn test_print():
+    print("== test_print")
+    # CHECK{LITERAL}: Tensor([[[0, 0, 0],
+    # CHECK{LITERAL}: [0, 0, 0]],
+    # CHECK{LITERAL}: [[0, 0, 0],
+    # CHECK{LITERAL}: [0, 0, 0]]], dtype=index, shape=2x2x3)
+    let tensor = Tensor[DType.index](2, 2, 3)
+    print(tensor)
+
+
+# CHECK-LABEL: test_print_small
+fn test_print_small():
+    print("== test_print_small")
+    # CHECK{LITERAL}: Tensor([[[0, 1, 2],
+    # CHECK{LITERAL}: [3, 4, 5]],
+    # CHECK{LITERAL}: [[6, 7, 8],
+    # CHECK{LITERAL}: [9, 10, 11]]], dtype=index, shape=2x2x3)
+    let tensor = Tensor[DType.index](2, 2, 3)
+    iota(tensor.data(), tensor.num_elements())
+    print(tensor.__str__())
+
+
+# CHECK-LABEL: test_print_large
+fn test_print_large():
+    print("== test_print_large")
+    # CHECK{LITERAL}: Tensor([[[0, 1, 2, ..., 330, 331, 332],
+    # CHECK-NEXT: [333, 334, 335, ..., 663, 664, 665],
+    # CHECK-NEXT: [666, 667, 668, ..., 996, 997, 998],
+    # CHECK-NEXT: ...,
+    # CHECK: 5994, 5995, 5996, ..., 6324, 6325, 6326],
+    # CHECK{LITERAL}: [1482183, 1482184, 1482185, ..., 1482513, 1482514, 1482515]]], dtype=index, shape=212x21x333)
+    let tensor = Tensor[DType.index](212, 21, 333)
+    iota(tensor.data(), tensor.num_elements())
+    print(tensor.__str__())
+
+
 fn main():
     test_tensor()
     test_tensor_init()
@@ -256,3 +294,6 @@ fn main():
     test_tensor_rand()
     test_euclidean_distance()
     test_image_to_grayscale()
+    test_print()
+    test_print_small()
+    test_print_large()
