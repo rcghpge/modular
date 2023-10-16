@@ -71,6 +71,7 @@ static TensorType unifyShapeType(TensorType type) {
 }
 
 /// Broadcast `x` and `y` to a common dynamic shape given by `bcastCommonShape`.
+/// All inputs must have a static rank.
 static std::pair<TensorValue, TensorValue>
 broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
                         ShapeAttr bcastCommonShape) {
@@ -97,6 +98,45 @@ broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
   auto bcastYOp = builder.create<MO::BroadcastToOp>(
       y.getLoc(), y.getType().cloneWith(bcastCommonShape), y, bcastShape);
   return {bcastXOp, bcastYOp};
+}
+
+/// Broadcast `x`, `y` and `z` to a common dynamic shape given by
+/// `bcastCommonShape`.
+/// All inputs must have a static rank.
+static std::tuple<TensorValue, TensorValue, TensorValue>
+broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
+                        TensorValue z, ShapeAttr bcastCommonShape) {
+  auto intType = builder.getIntegerType(64, /*isSigned=*/true);
+  auto shape = TensorType::get({(int64_t)bcastCommonShape.getRank()}, intType);
+
+  // Get the shapes of the inputs at runtime
+  TensorType xType = x.getType();
+  assert(xType.hasRank());
+  auto xShape = builder.create<MO::ShapeOfOp>(
+      x.getLoc(), TensorType::get({(int64_t)xType.getRank()}, intType), x);
+
+  TensorType yType = y.getType();
+  assert(yType.hasRank());
+  auto yShape = builder.create<MO::ShapeOfOp>(
+      y.getLoc(), TensorType::get({(int64_t)yType.getRank()}, intType), y);
+
+  TensorType zType = z.getType();
+  assert(zType.hasRank());
+  auto zShape = builder.create<MO::ShapeOfOp>(
+      z.getLoc(), TensorType::get({(int64_t)zType.getRank()}, intType), z);
+
+  auto bcastXYShape = builder.create<MO::BroadcastShapeOp>(
+      x.getLoc(), shape, xShape.getShape(), yShape.getShape());
+  auto bcastShape = builder.create<MO::BroadcastShapeOp>(
+      x.getLoc(), shape, bcastXYShape.getShape(), zShape.getShape());
+
+  auto bcastXOp = builder.create<MO::BroadcastToOp>(
+      x.getLoc(), x.getType().cloneWith(bcastCommonShape), x, bcastShape);
+  auto bcastYOp = builder.create<MO::BroadcastToOp>(
+      y.getLoc(), y.getType().cloneWith(bcastCommonShape), y, bcastShape);
+  auto bcastZOp = builder.create<MO::BroadcastToOp>(
+      z.getLoc(), z.getType().cloneWith(bcastCommonShape), z, bcastShape);
+  return {bcastXOp, bcastYOp, bcastZOp};
 }
 
 TensorValue broadcastToStaticShape(OpBuilder &builder, Location loc,
@@ -133,6 +173,42 @@ reifyImplicitBroadcasting(OpBuilder &builder, Location loc, TensorValue x,
   if (yShape.getTypedShapeAttr() != bcastCommonShape)
     y = broadcastToStaticShape(builder, loc, y, bcastCommonShape);
   return {x, y};
+}
+
+std::tuple<TensorValue, TensorValue, TensorValue>
+reifyImplicitBroadcasting(OpBuilder &builder, Location loc, TensorValue x,
+                          TensorValue y, TensorValue z) {
+  TensorType xShape = x.getType();
+  TensorType yShape = y.getType();
+  TensorType zShape = z.getType();
+  if ((xShape == yShape) && (yShape == zShape) && (xShape.hasStaticShape()))
+    return {x, y, z};
+
+  assert(xShape.hasRank() && yShape.hasRank() && zShape.hasRank() &&
+         "broadcasting does not support dynamic rank");
+
+  ErrorOr<ShapeAttr> errorOrXYBcastCommonShape = ShapeAttr::broadcastShapes(
+      xShape.getTypedShapeAttr(), yShape.getTypedShapeAttr());
+  assert(!errorOrXYBcastCommonShape.isError() && "the shapes are incompatible");
+
+  ErrorOr<ShapeAttr> errorOrBcastCommonShape = ShapeAttr::broadcastShapes(
+      *errorOrXYBcastCommonShape, zShape.getTypedShapeAttr());
+
+  assert(!errorOrBcastCommonShape.isError() && "the shapes are incompatible");
+
+  ShapeAttr bcastCommonShape = *errorOrBcastCommonShape;
+
+  if (!bcastCommonShape.isStatic())
+    return broadcastToDynamicShape(builder, x, y, z, bcastCommonShape);
+
+  // Static broadcast, can potentially elide some broadcasts.
+  if (xShape.getTypedShapeAttr() != bcastCommonShape)
+    x = broadcastToStaticShape(builder, loc, x, bcastCommonShape);
+  if (yShape.getTypedShapeAttr() != bcastCommonShape)
+    y = broadcastToStaticShape(builder, loc, y, bcastCommonShape);
+  if (zShape.getTypedShapeAttr() != bcastCommonShape)
+    z = broadcastToStaticShape(builder, loc, z, bcastCommonShape);
+  return {x, y, z};
 }
 
 TensorValue broadcastTo(OpBuilder &builder, Location loc, TensorValue x,

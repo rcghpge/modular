@@ -51,9 +51,18 @@ TensorValue broadcastToStaticShape(OpBuilder &builder, Location loc,
 /// Broadcast tensor `x` and `y` to each other, such that they have the same
 /// shape after broadcasting. The method broadcasts statically, if the input
 /// shapes are static, or dynamically otherwise.
+/// All inputs must have a static rank and compatible shapes.
 std::pair<TensorValue, TensorValue>
 reifyImplicitBroadcasting(OpBuilder &builder, Location loc, TensorValue x,
                           TensorValue y);
+
+/// Broadcast tensor `x`, `y` and `z` to each other, such that they have the
+/// same shape after broadcasting. The method broadcasts statically, if the
+/// input shapes are static, or dynamically otherwise.
+/// All inputs must have a static rank and compatible shapes.
+std::tuple<TensorValue, TensorValue, TensorValue>
+reifyImplicitBroadcasting(OpBuilder &builder, Location loc, TensorValue x,
+                          TensorValue y, TensorValue z);
 
 /// Broadcast tensor `x` to `y`. Requires that `x` can be broadcast
 /// unidirectionally to `y`.
