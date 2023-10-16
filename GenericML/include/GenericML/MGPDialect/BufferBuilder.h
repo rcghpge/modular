@@ -258,9 +258,9 @@ public:
   kernelExecute(OpBuilder &builder, Location loc, StringRef kernelName,
                 bool isViaHost, Value inChain,
                 TypedValue<MGP::ContextType> execContext,
-                SmallVector<Value> buffers,
+                ArrayRef<Value> buffers,
                 ArrayRef<InOutSignatureAttr::InOutSemantics> bufferSemantics,
-                SmallVector<Value> inDimensions, uint64_t numOutDimensions,
+                ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
                 SmallVectorImpl<Value> &outDimensions) = 0;
 
   virtual void vtableAnchor();
@@ -315,9 +315,9 @@ public:
   kernelExecute(OpBuilder &builder, Location loc, StringRef kernelName,
                 bool isViaHost, Value inChain,
                 TypedValue<MGP::ContextType> execContext,
-                SmallVector<Value> buffers,
+                ArrayRef<Value> buffers,
                 ArrayRef<InOutSignatureAttr::InOutSemantics> bufferSemantics,
-                SmallVector<Value> inDimensions, uint64_t numOutDimensions,
+                ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
                 SmallVectorImpl<Value> &outDimensions) override;
 
   /// Track this compiled kernel as corresponding to this index in the

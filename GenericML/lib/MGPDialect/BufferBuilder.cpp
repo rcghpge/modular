@@ -126,9 +126,9 @@ Value CpuBufferBuilder::kernelLoadArchive(
 Value CpuBufferBuilder::kernelExecute(
     OpBuilder &builder, Location loc, StringRef kernelName, bool isViaHost,
     Value inChain, TypedValue<MGP::ContextType> execContext,
-    SmallVector<Value> buffers,
+    ArrayRef<Value> buffers,
     ArrayRef<InOutSignatureAttr::InOutSemantics> bufferSemantics,
-    SmallVector<Value> inDimensions, uint64_t numOutDimensions,
+    ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
     SmallVectorImpl<Value> &outDimensions) {
   uint64_t index = getCompiledKernelIndex(kernelName);
 
