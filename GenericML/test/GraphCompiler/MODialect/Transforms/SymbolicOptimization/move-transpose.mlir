@@ -25,6 +25,26 @@ mo.graph @sink_transpose_through_binary_ops(
   mo.output %add2 : !mo.tensor<[2, 2, 2], f32>
 }
 
+// CHECK: mo.graph @sink_transpose_through_binary_ops_different_dtypes(
+mo.graph @sink_transpose_through_binary_ops_different_dtypes(
+  // CHECK-SAME: %[[INPUT1:.*]]: !mo.tensor<[2, 3, 4], f32>,
+  %input1: !mo.tensor<[2, 3, 4], f32>,
+  // CHECK-SAME: %[[INPUT2:.*]]: !mo.tensor<[2, 3, 4], si32>
+  %input2: !mo.tensor<[2, 3, 4], si32>
+// CHECK-SAME: ) -> !mo.tensor<[4, 3, 2], f32> no_inline {
+) -> !mo.tensor<[4, 3, 2], f32> {
+  // CHECK-NEXT: %[[PERM:.*]] = mo.constant {value = #M.dense_array<2, 1, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %perm = mo.constant {value = #M.dense_array<2, 1, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  // CHECK-NEXT: %[[POW:.*]] = mo.pow(%[[INPUT1]] : !mo.tensor<[2, 3, 4], f32>, %[[INPUT2]] : !mo.tensor<[2, 3, 4], si32>) : !mo.tensor<[2, 3, 4], f32>
+  // CHECK-NEXT: %[[TRANSPOSE:.*]] = mo.transpose(%[[POW]], %[[PERM]])
+  // CHECK-SAME: : (!mo.tensor<[2, 3, 4], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[4, 3, 2], f32>
+  %transpose1 = mo.transpose(%input1, %perm) : (!mo.tensor<[2, 3, 4], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[4, 3, 2], f32>
+  %transpose2 = mo.transpose(%input2, %perm) : (!mo.tensor<[2, 3, 4], si32>, !mo.tensor<[3], si64>) -> !mo.tensor<[4, 3, 2], si32>
+  %pow = mo.pow(%transpose1: !mo.tensor<[4, 3, 2], f32>, %transpose2: !mo.tensor<[4, 3, 2], si32>) : !mo.tensor<[4, 3, 2], f32>
+  // CHECK-NEXT: mo.output %[[TRANSPOSE]] : !mo.tensor<[4, 3, 2], f32>
+  mo.output %pow : !mo.tensor<[4, 3, 2], f32>
+}
+
 // CHECK: mo.graph @sink_transpose_through_broadcast_ops<[[D0:.*]], [[D1:.*]], [[D2:.*]]>(
 mo.graph @sink_transpose_through_broadcast_ops<D0, D1, D2>(
   // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[2, 2, 2], f32>
@@ -83,4 +103,23 @@ mo.graph @sink_transpose_through_unary_ops(
   %abs = mo.abs(%relu) : !mo.tensor<[2, 2, 2], f32>
   // CHECK-NEXT: mo.output %[[TRANSPOSE]] : !mo.tensor<[2, 2, 2], f32>
   mo.output %abs : !mo.tensor<[2, 2, 2], f32>
+}
+
+// CHECK: mo.graph @sink_transpose_through_unary_ops_different_output_dtype(
+mo.graph @sink_transpose_through_unary_ops_different_output_dtype(
+  // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[2, 3, 4], f32>
+  %input: !mo.tensor<[2, 3, 4], f32>
+// CHECK-SAME: ) -> !mo.tensor<[4, 3, 2], f64> no_inline {
+) -> !mo.tensor<[4, 3, 2], f64> {
+  // CHECK-NEXT: %[[PERM:.*]] = mo.constant {value = #M.dense_array<2, 1, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %perm = mo.constant {value = #M.dense_array<2, 1, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  // CHECK-NEXT: %[[RELU:.*]] = mo.relu(%[[INPUT]]) : !mo.tensor<[2, 3, 4], f32>
+  // CHECK-NEXT: %[[CAST:.*]] = mo.cast(%[[RELU]]) : (!mo.tensor<[2, 3, 4], f32>) -> !mo.tensor<[2, 3, 4], f64>
+  // CHECK-NEXT: %[[TRANSPOSE:.*]] = mo.transpose(%[[CAST]], %[[PERM]])
+  // CHECK-SAME: : (!mo.tensor<[2, 3, 4], f64>, !mo.tensor<[3], si64>) -> !mo.tensor<[4, 3, 2], f64>
+  %transpose = mo.transpose(%input, %perm) : (!mo.tensor<[2, 3, 4], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[4, 3, 2], f32>
+  %relu = mo.relu(%transpose) : !mo.tensor<[4, 3, 2], f32>
+  %cast = mo.cast(%relu) : (!mo.tensor<[4, 3, 2], f32>) -> !mo.tensor<[4, 3, 2], f64>
+  // CHECK-NEXT: mo.output %[[TRANSPOSE]] : !mo.tensor<[4, 3, 2], f64>
+  mo.output %cast : !mo.tensor<[4, 3, 2], f64>
 }

@@ -769,7 +769,7 @@ def MO_NegativeOp : MO_ElementWiseUnaryMonoTypeOp<"negative"> {
   let arguments = (ins MO_SignedTensor:$input);
 }
 
-def MO_PowOp : MO_TensorOp<"pow", [Pure, MO_SameOperandsAndResultShape]> {
+def MO_PowOp : MO_ElementWiseBinaryOp<"pow", [Pure]> {
   let summary = "Power operation";
   let description = [{
     Computes elementwise x ** y, where x is the base tensor and y is the
@@ -1012,7 +1012,7 @@ def MO_SqrtOp : MO_ElementWiseUnaryFloatMonoTypeOp<"sqrt"> {
   }];
 }
 
-def MO_CastOp : MO_TensorOp<"cast", [Pure, MO_SameOperandsAndResultShape]> {
+def MO_CastOp : MO_ElementWiseUnaryOp<"cast", [Pure]> {
   let summary = "Cast operation";
   let description = [{
     Return cast[dtype](x), where x is the input tensor.

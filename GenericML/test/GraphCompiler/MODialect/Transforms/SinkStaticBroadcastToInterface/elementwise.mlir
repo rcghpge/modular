@@ -15,6 +15,21 @@ mo.graph @binary_static_rank<A, B -> C, D>(
   mo.output<A, B> %2 : !mo.tensor<[2, A, B], f32>
 }
 
+// CHECK: mo.graph @binary_static_rank_change_dtypes<[[A:.*]], [[B:.*]] -> [[C:.*]], [[D:.*]]>(
+mo.graph @binary_static_rank_change_dtypes<A, B -> C, D>(
+  // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[[A]], [[B]]], f32>, %[[ARG1:.*]]: !mo.tensor<[[[A]], [[B]]], si32>
+  %arg0: !mo.tensor<[A, B], f32>, %arg1: !mo.tensor<[A, B], si32>
+// CHECK-SAME: ) -> !mo.tensor<[2, [[C]], [[D]]], f32> no_inline {
+) -> !mo.tensor<[2, C, D], f32>{
+  %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[A, B], f32> -> !mo.tensor<[2, A, B], f32>
+  %1 = mo.static.broadcast_to(%arg1) : !mo.tensor<[A, B], si32> -> !mo.tensor<[2, A, B], si32>
+  // CHECK-NEXT: %[[RES:.*]] = mo.pow(%[[ARG0]] : !mo.tensor<[[[A]], [[B]]], f32>, %[[ARG1]] : !mo.tensor<[[[A]], [[B]]], si32>) : !mo.tensor<[[[A]], [[B]]], f32>
+  %2 = mo.pow(%0: !mo.tensor<[2, A, B], f32>, %1: !mo.tensor<[2, A, B], si32>) : !mo.tensor<[2, A, B], f32>
+  // CHECK-NEXT: %[[RESBCAST:.*]] = mo.static.broadcast_to(%[[RES]]) : !mo.tensor<[[[A]], [[B]]], f32> -> !mo.tensor<[2, [[A]], [[B]]], f32>
+  // CHECK-NEXT: mo.output<[[A]], [[B]]> %[[RESBCAST]] : !mo.tensor<[2, [[A]], [[B]]], f32>
+  mo.output<A, B> %2 : !mo.tensor<[2, A, B], f32>
+}
+
 // CHECK: mo.graph @binary_no_common_shape<[[A:.*]] -> [[B:.*]]>(
 mo.graph @binary_no_common_shape<A -> B>(
   // CHECK-SAME: %[[ARG0]]: !mo.tensor<[[[A]]], f32>, %[[ARG1]]: !mo.tensor<[2, [[A]]], f32>
@@ -76,6 +91,18 @@ mo.graph @binary_static_dyn_rank_mixed<Sh0: !mosh.ape>(
   %2 = mo.min(%0, %1) : !mo.tensor<[2, 3], f32>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[2, 3], f32>
   mo.output %2 : !mo.tensor<[2, 3], f32>
+}
+
+// CHECK: mo.graph @unary_static_rank_change_dtype<[[A:.*]], [[B:.*]] -> [[C:.*]], [[D:.*]]>(
+mo.graph @unary_static_rank_change_dtype<A, B -> C, D>(
+  // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[[A]], [[B]]], f32>) -> !mo.tensor<[2, [[C]], [[D]]], si32> no_inline {
+    %arg0: !mo.tensor<[A, B], f32>) -> !mo.tensor<[2, C, D], si32>{
+  %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[A, B], f32> -> !mo.tensor<[2, A, B], f32>
+  // CHECK-NEXT: %[[RES:.*]] = mo.cast(%[[ARG0]]) : (!mo.tensor<[A, B], f32>) -> !mo.tensor<[A, B], si32>
+  %1 = mo.cast(%0) : (!mo.tensor<[2, A, B], f32>) -> !mo.tensor<[2, A, B], si32>
+  // CHECK-NEXT: %[[RESBCAST:.*]] = mo.static.broadcast_to(%[[RES]]) : !mo.tensor<[[[A]], [[B]]], si32> -> !mo.tensor<[2, [[A]], [[B]]], si32>
+  // CHECK-NEXT: mo.output<[[A]], [[B]]> %[[RESBCAST]] : !mo.tensor<[2, [[A]], [[B]]], si32>
+  mo.output<A, B> %1 : !mo.tensor<[2, A, B], si32>
 }
 
 // CHECK: mo.graph @unary_static_rank<[[A:.*]], [[B:.*]] -> [[C:.*]], [[D:.*]]>(

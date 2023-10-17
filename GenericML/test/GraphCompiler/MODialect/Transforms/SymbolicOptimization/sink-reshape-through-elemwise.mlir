@@ -6,11 +6,22 @@ mo.graph @sink_reshape_through_binary_elemwise(%input: !mo.tensor<[50, 50, 30], 
     %add = mo.add(%reshape, %broadcast) : !mo.tensor<[2500, 30], f32>
     mo.output %add : !mo.tensor<[2500, 30], f32>
 }
-
 // CHECK: mo.graph @sink_reshape_through_binary_elemwise(%[[INPUT:.*]]: !mo.tensor<[50, 50, 30], f32>, %[[ELEMWISE:.*]]: !mo.tensor<[30], f32>) -> !mo.tensor<[2500, 30], f32>
 // CHECK-NEXT: %[[NEW_BROADCAST:.*]] = mo.static.broadcast_to(%[[ELEMWISE]]) : !mo.tensor<[30], f32> -> !mo.tensor<[50, 50, 30], f32>
 // CHECK-NEXT: %[[NEW_ADD:.*]] = mo.add(%[[INPUT]], %[[NEW_BROADCAST]]) : !mo.tensor<[50, 50, 30], f32>
 // CHECK-NEXT: %[[NEW_RESHAPE:.*]] = mo.static.reshape(%[[NEW_ADD]]) : !mo.tensor<[50, 50, 30], f32> -> !mo.tensor<[2500, 30], f32>
+// CHECK-NEXT: mo.output %[[NEW_RESHAPE]] : !mo.tensor<[2500, 30], f32>
+
+mo.graph @sink_reshape_through_binary_elemwise_different_dtypes(%input: !mo.tensor<[50, 50, 30], f32>, %elemwise: !mo.tensor<[30], si32>) -> !mo.tensor<[2500, 30], f32>{
+    %reshape = mo.static.reshape(%input) : !mo.tensor<[50, 50, 30], f32> -> !mo.tensor<[2500, 30], f32>
+    %broadcast = mo.static.broadcast_to(%elemwise) : !mo.tensor<[30], si32> -> !mo.tensor<[2500, 30], si32>
+    %pow = mo.pow(%reshape: !mo.tensor<[2500, 30], f32>, %broadcast: !mo.tensor<[2500, 30], si32>): !mo.tensor<[2500, 30], f32>
+    mo.output %pow : !mo.tensor<[2500, 30], f32>
+}
+// CHECK: mo.graph @sink_reshape_through_binary_elemwise_different_dtypes(%[[INPUT:.*]]: !mo.tensor<[50, 50, 30], f32>, %[[ELEMWISE:.*]]: !mo.tensor<[30], si32>) -> !mo.tensor<[2500, 30], f32>
+// CHECK-NEXT: %[[NEW_BROADCAST:.*]] = mo.static.broadcast_to(%[[ELEMWISE]]) : !mo.tensor<[30], si32> -> !mo.tensor<[50, 50, 30], si32>
+// CHECK-NEXT: %[[NEW_POW:.*]] = mo.pow(%[[INPUT]] : !mo.tensor<[50, 50, 30], f32>, %[[NEW_BROADCAST]] : !mo.tensor<[50, 50, 30], si32>) : !mo.tensor<[50, 50, 30], f32>
+// CHECK-NEXT: %[[NEW_RESHAPE:.*]] = mo.static.reshape(%[[NEW_POW]]) : !mo.tensor<[50, 50, 30], f32> -> !mo.tensor<[2500, 30], f32>
 // CHECK-NEXT: mo.output %[[NEW_RESHAPE]] : !mo.tensor<[2500, 30], f32>
 
 // Above tests matching against mo.add(%a, %b). We test against mo.add(%b, %a) too
@@ -21,7 +32,6 @@ mo.graph @sink_reshape_through_binary_elemwise_flipped_operands(%input: !mo.tens
     %add = mo.add(%broadcast, %reshape) : !mo.tensor<[2500, 30], f32>
     mo.output %add : !mo.tensor<[2500, 30], f32>
 }
-
 // CHECK: mo.graph @sink_reshape_through_binary_elemwise_flipped_operands(%[[INPUT:.*]]: !mo.tensor<[50, 50, 30], f32>, %[[ELEMWISE:.*]]: !mo.tensor<[30], f32>) -> !mo.tensor<[2500, 30], f32>
 // CHECK-NEXT: %[[NEW_BROADCAST:.*]] = mo.static.broadcast_to(%[[ELEMWISE]]) : !mo.tensor<[30], f32> -> !mo.tensor<[50, 50, 30], f32>
 // CHECK-NEXT: %[[NEW_ADD:.*]] = mo.add(%[[NEW_BROADCAST]], %[[INPUT]]) : !mo.tensor<[50, 50, 30], f32>
@@ -53,6 +63,17 @@ mo.graph @sink_double_reshape_through_binary_elemwise(%input1: !mo.tensor<[10, 5
 // CHECK-NEXT: %[[RESHAPE:.*]] = mo.static.reshape(%[[MUL]]) : !mo.tensor<[10, 5], f32> -> !mo.tensor<[50], f32>
 // CHECK-NEXT: mo.output %[[RESHAPE]]
 
+mo.graph @sink_double_reshape_through_binary_elemwise_different_input_dtypes(%input1: !mo.tensor<[10, 5], f32>, %input2: !mo.tensor<[10, 5], si32>) -> !mo.tensor<[50], f32>{
+    %reshape1 = mo.static.reshape(%input1) : !mo.tensor<[10, 5], f32> -> !mo.tensor<[50], f32>
+    %reshape2 = mo.static.reshape(%input2) : !mo.tensor<[10, 5], si32> -> !mo.tensor<[50], si32>
+    %result = mo.pow(%reshape1 : !mo.tensor<[50], f32>, %reshape2: !mo.tensor<[50], si32>) : !mo.tensor<[50], f32>
+    mo.output %result : !mo.tensor<[50], f32>
+}
+// CHECK: mo.graph @sink_double_reshape_through_binary_elemwise_different_input_dtypes(%[[INPUT1:.*]]: !mo.tensor<[10, 5], f32>, %[[INPUT2:.*]]: !mo.tensor<[10, 5], si32>) -> !mo.tensor<[50], f32>
+// CHECK-NEXT: %[[MUL:.*]] = mo.pow(%[[INPUT1]] : !mo.tensor<[10, 5], f32>, %[[INPUT2]] : !mo.tensor<[10, 5], si32>) : !mo.tensor<[10, 5], f32>
+// CHECK-NEXT: %[[RESHAPE:.*]] = mo.static.reshape(%[[MUL]]) : !mo.tensor<[10, 5], f32> -> !mo.tensor<[50], f32>
+// CHECK-NEXT: mo.output %[[RESHAPE]]
+
 // initial shapes are not compatible so cannot sink
 mo.graph @dont_sink_double_reshape_through_binary_elemwise(%input1: !mo.tensor<[10, 5], f32>, %input2: !mo.tensor<[5, 10], f32>) -> !mo.tensor<[50], f32>{
     %reshape1 = mo.static.reshape(%input1) : !mo.tensor<[10, 5], f32> -> !mo.tensor<[50], f32>
@@ -77,6 +98,16 @@ mo.graph @sink_reshape_through_unary_elemwise(%input: !mo.tensor<[10, 5], f32>) 
 // CHECK-NEXT: %[[NEW_ERF:.*]] = mo.erf(%[[INPUT]]) : !mo.tensor<[10, 5], f32>
 // CHECK-NEXT: %[[NEW_RESHAPE:.*]] = mo.static.reshape(%[[NEW_ERF]]) : !mo.tensor<[10, 5], f32> -> !mo.tensor<[50], f32>
 // CHECK-NEXT: mo.output %[[NEW_RESHAPE]] : !mo.tensor<[50], f32>
+
+mo.graph @sink_reshape_through_unary_elemwise_different_output_dtype(%input: !mo.tensor<[10, 5], f32>) -> !mo.tensor<[50], f64>{
+    %reshape = mo.static.reshape(%input) : !mo.tensor<[10, 5], f32> -> !mo.tensor<[50], f32>
+    %result = mo.cast(%reshape) : (!mo.tensor<[50], f32>) -> !mo.tensor<[50], f64>
+    mo.output %result : !mo.tensor<[50], f64>
+}
+// CHECK: mo.graph @sink_reshape_through_unary_elemwise_different_output_dtype(%[[INPUT:.*]]: !mo.tensor<[10, 5], f32>) -> !mo.tensor<[50], f64>
+// CHECK-NEXT: %[[NEW_CAST:.*]] = mo.cast(%[[INPUT]]) : (!mo.tensor<[10, 5], f32>) -> !mo.tensor<[10, 5], f64>
+// CHECK-NEXT: %[[NEW_RESHAPE:.*]] = mo.static.reshape(%[[NEW_CAST]]) : !mo.tensor<[10, 5], f64> -> !mo.tensor<[50], f64>
+// CHECK-NEXT: mo.output %[[NEW_RESHAPE]] : !mo.tensor<[50], f64>
 
 // See https://github.com/modularml/modular/issues/17518
 // This was the initial motivation behind these passes.

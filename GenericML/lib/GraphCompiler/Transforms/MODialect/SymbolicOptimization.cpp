@@ -689,14 +689,18 @@ struct SinkTransposeThroughUnaryOpPattern
     if (!transpose.hasOneUse())
       return rewriter.notifyMatchFailure(op, "transpose op has multiple uses");
 
+    TensorType finalOutputType = op.getResult().getType();
     auto transposeOp = cast<TransposeOp>(opaqueTransposeOp);
     TensorValue input = transposeOp.getInput();
     TensorValue opRes = op.getResult();
     rewriter.replaceAllUsesWith(op->getResults(), transposeOp.getResult());
     op.setInput(input);
-    opRes.setType(input.getType());
+
+    DType unaryResultDType = opRes.getType().getDtype();
+    opRes.setType(input.getType().cloneWith(unaryResultDType));
     transposeOp.getInputMutable().assign(opRes);
     transposeOp->moveAfter(op);
+    transposeOp.getResult().setType(finalOutputType);
 
     return mlir::success();
   }
@@ -730,7 +734,7 @@ struct SinkTransposeThroughBinaryOpPattern
 
   LogicalResult matchAndRewrite(ElementWiseBinary op,
                                 PatternRewriter &rewriter) const override {
-    Value input1, input2, perm1, perm2;
+    TensorValue input1, input2, perm1, perm2;
     auto transpose1P = m_Op<TransposeOp>(m_Any(&input1), m_Any(&perm1));
     auto transpose2P = m_Op<TransposeOp>(m_Any(&input2), m_Any(&perm2));
     auto binaryP = m_Op<ElementWiseBinary>(transpose1P, transpose2P);
@@ -752,15 +756,17 @@ struct SinkTransposeThroughBinaryOpPattern
     if (perm1 != perm2)
       return rewriter.notifyMatchFailure(op, "permutations are different");
 
-    Type input1Ty = input1.getType();
-    if (input1Ty != input2.getType())
-      return rewriter.notifyMatchFailure(op, "input types are different");
+    TensorType input1Ty = input1.getType();
+    TensorType input2Ty = input2.getType();
+    if (input1Ty.getShapeAttr() != input2Ty.getShapeAttr())
+      return rewriter.notifyMatchFailure(op, "input shapes are different");
 
     TensorValue opRes = op.getResult();
     op.setLhsInput(input1);
     op.setRhsInput(input2);
-    Type oldOpResTy = opRes.getType();
-    opRes.setType(cast<MO::TensorType>(input1Ty));
+    TensorType oldOpResTy = opRes.getType();
+
+    opRes.setType(input1Ty.cloneWith(oldOpResTy.getDtype()));
     rewriter.setInsertionPointAfter(op);
     auto finalTransposeOp =
         rewriter.create<TransposeOp>(op->getLoc(), oldOpResTy, opRes, perm1);
@@ -1004,8 +1010,10 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp
     //  - we know slices across the trailing dimension will have the same
     //     corresponding elemwise operands.
     //  - we know the trailing dimensions before and after reshape are the same
+    DType broadcastDType = elemwiseTensor.getType().getDtype();
     TensorValue newBroadcast = rewriter.create<Static::BroadcastToOp>(
-        op->getLoc(), inputTensor.getType(), elemwiseTensor);
+        op->getLoc(), inputTensor.getType().cloneWith(broadcastDType),
+        elemwiseTensor);
     TensorType oldType = op.getResult().getType();
 
     auto newOp = cast<ElementWiseBinary>(rewriter.clone(*op));
@@ -1071,8 +1079,11 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseUnaryOp
       return rewriter.notifyMatchFailure(op, "Shape must be known");
 
     auto newOp = cast<ElementWiseUnary>(rewriter.clone(*op));
+
+    // We cannot assume output will be the same dtype as input (e.g. mo.cast)
+    DType outputDType = newOp.getResult().getType().getDtype();
     newOp.setInput(inputTensor);
-    newOp.getResult().setType(inputType);
+    newOp.getResult().setType(inputTensor.getType().cloneWith(outputDType));
     TensorValue output = rewriter.create<ReshapeOpType>(
         op->getLoc(), op.getResult().getType(), newOp.getResult());
 
@@ -1126,16 +1137,14 @@ struct SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp
           op, "Don't sink reshape that squeezes final dim.");
     }
 
-    auto inputType = input1Tensor.getType().cast<TensorType>();
-    if (inputType.hasUnknownShape())
-      return rewriter.notifyMatchFailure(op, "Shape must be known");
-
+    TensorType finalOutputType = op.getResult().getType();
     auto newOp = cast<ElementWiseBinary>(rewriter.clone(*op));
     newOp.setLhsInput(input1Tensor);
     newOp.setRhsInput(input2Tensor);
-    newOp.getResult().setType(inputType);
+    newOp.getResult().setType(
+        input1Tensor.getType().cloneWith(finalOutputType.getDtype()));
     TensorValue output = rewriter.create<ReshapeOpType>(
-        op->getLoc(), op.getResult().getType(), newOp.getResult());
+        op->getLoc(), finalOutputType, newOp.getResult());
 
     rewriter.replaceAllUsesWith(op.getResult(), output);
     return mlir::success();
@@ -1325,7 +1334,7 @@ struct ElementWiseUnaryVectorPattern
   LogicalResult matchAndRewrite(MO::ElementWiseUnary op,
                                 PatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
-    Value input = op.getInput();
+    TensorValue input = op.getInput();
 
     auto inType = input.getType().cast<TensorType>();
 
@@ -1335,13 +1344,17 @@ struct ElementWiseUnaryVectorPattern
 
     Value opRes = op.getResult();
 
-    TensorType newType = TensorType::get(
+    TensorType finalOutputType = op.getResult().getType();
+    TensorType newTypeShape = TensorType::get(
         SmallVector<int64_t>{inType.getIntDim(0)}, inType.getElementType());
-    auto reshape = rewriter.create<Static::ReshapeOp>(loc, newType, input);
+    auto reshape = rewriter.create<Static::ReshapeOp>(
+        loc, newTypeShape.cloneWith(input.getType().getDtype()), input);
     op.setInput(reshape.getResult());
-    op.getResult().setType(newType);
+    op.getResult().setType(
+        newTypeShape.cloneWith(op.getResult().getType().getDtype()));
     rewriter.setInsertionPointAfter(op);
-    auto out = rewriter.create<Static::ReshapeOp>(loc, inType, op.getResult());
+    auto out = rewriter.create<Static::ReshapeOp>(loc, finalOutputType,
+                                                  op.getResult());
     rewriter.replaceAllUsesExcept(opRes, out.getResult(), out);
     return mlir::success();
   }
@@ -1355,8 +1368,8 @@ struct ElementWiseBinaryVectorPattern
   LogicalResult matchAndRewrite(MO::ElementWiseBinary op,
                                 PatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
-    Value a = op.getLhsInput();
-    Value b = op.getRhsInput();
+    TensorValue a = op.getLhsInput();
+    TensorValue b = op.getRhsInput();
 
     auto inType = a.getType().cast<TensorType>();
 
@@ -1364,17 +1377,20 @@ struct ElementWiseBinaryVectorPattern
           inType.getIntDim(0) != 1 && inType.getIntDim(1) == 1))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
-    Value opRes = op.getResult();
-
-    TensorType newType = TensorType::get(
+    TensorValue opRes = op.getResult();
+    TensorType oldTensorType = opRes.getType();
+    TensorType newTypeShape = TensorType::get(
         SmallVector<int64_t>{inType.getIntDim(0)}, inType.getElementType());
-    auto reshapeA = rewriter.create<Static::ReshapeOp>(loc, newType, a);
-    auto reshapeB = rewriter.create<Static::ReshapeOp>(loc, newType, b);
+    auto reshapeA = rewriter.create<Static::ReshapeOp>(
+        loc, newTypeShape.cloneWith(a.getType().getDtype()), a);
+    auto reshapeB = rewriter.create<Static::ReshapeOp>(
+        loc, newTypeShape.cloneWith(b.getType().getDtype()), b);
     op.setLhsInput(reshapeA.getResult());
     op.setRhsInput(reshapeB.getResult());
-    op.getResult().setType(newType);
+    op.getResult().setType(newTypeShape.cloneWith(oldTensorType.getDtype()));
     rewriter.setInsertionPointAfter(op);
-    auto out = rewriter.create<Static::ReshapeOp>(loc, inType, op.getResult());
+    auto out =
+        rewriter.create<Static::ReshapeOp>(loc, oldTensorType, op.getResult());
     rewriter.replaceAllUsesExcept(opRes, out.getResult(), out);
     return mlir::success();
   }
