@@ -4,6 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "benchmark.h"
 #include "Config/Version.h"
 #include "GenericML/API/modular/c/common.h"
 #include "GenericML/API/modular/c/context.h"
@@ -11,7 +12,6 @@
 #include "GenericML/API/modular/c/tensor.h"
 #include "GenericML/API/modular/cpp/aliases.h"
 #include "Support/CommandLine.h"
-#include "Support/CrashReporting.h"
 #include "Support/ErrorOr.h"
 #include "mlperf-loadgen/loadgen.h"
 #include "mlperf-loadgen/query_sample_library.h"
@@ -19,13 +19,13 @@
 #include "mlperf-loadgen/test_settings.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/raw_ostream.h"
+#include <chrono>
 #include <iostream>
 
 using namespace M;
 
-static constexpr const char *kModbenchProductName = "modbench";
+static constexpr const char *kMoxBenchProductName = "mox benchmark";
 
 namespace {
 
@@ -68,7 +68,7 @@ public:
   ~QuerySampleLibrary();
 
   std::string &Name() const override {
-    static std::string *name = new std::string(kModbenchProductName);
+    static std::string *name = new std::string(kMoxBenchProductName);
     return *name;
   }
 
@@ -100,7 +100,7 @@ public:
                            M_AsyncModel *model);
 
   std::string &Name() const override {
-    static std::string *name = new std::string(kModbenchProductName);
+    static std::string *name = new std::string(kMoxBenchProductName);
     return *name;
   }
 
@@ -293,23 +293,17 @@ void SystemUnderTest::FlushQueries() {
   // Don't need to do anything here, since Modular does not batch queries.
 }
 
-int main(int argc, char **argv) {
-  llvm::InitLLVM initLLVM(argc, argv);
-  initCrashpadForProgram(argv[0], kModbenchProductName);
-  llvm::setBugReportMsg(
-      "Please submit a bug report to eap@modular.com and include the crash "
-      "backtrace along with your command line invocation.\n");
-
+int M::moxBenchmarkMain(int argc, char **argv) {
   ClOptions opts;
 
   llvm::cl::SetVersionPrinter([](llvm::raw_ostream &os) {
     ModularVersion version = getModularVersion();
-    os << llvm::formatv("{0} {1}.{2}.{3}{4} ({5})\n", kModbenchProductName,
+    os << llvm::formatv("{0} {1}.{2}.{3}{4} ({5})\n", kMoxBenchProductName,
                         version.major, version.minor, version.patch,
                         version.label, version.revision);
     os << "Modular version " << M_version() << "\n";
   });
-  llvm::cl::ParseCommandLineOptions(argc, argv, kModbenchProductName);
+  llvm::cl::ParseCommandLineOptions(argc, argv, kMoxBenchProductName);
 
   llvm::outs() << "Modular Benchmarking Tool\n";
   llvm::outs() << "Modular version: " << M_version() << "\n";

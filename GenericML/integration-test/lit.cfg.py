@@ -30,7 +30,7 @@ tool_dirs = [
     config.mlir_tools_dir,
     config.llvm_tools_dir,
 ]
-tools = ["modbench", "mt"]
+tools = ["mox", "mt"]
 
 llvm_config.with_environment(
     "PYTHONPATH",

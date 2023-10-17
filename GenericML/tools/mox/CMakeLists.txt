@@ -4,8 +4,9 @@
 #
 ##===----------------------------------------------------------------------===##
 
-add_modular_tool(modbench
-  modbench.cpp
+add_modular_tool(mox
+  Benchmark/benchmark.cpp
+  mox.cpp
 
   LINK_LIBS PRIVATE
   MCrashReporting
