@@ -2900,6 +2900,25 @@ static bool isSubtype(Type ty1, Type ty2) {
   return ty1 == ty2;
 }
 
+LogicalResult ListAppendOp::verify() {
+  Type inputListElementTy = getInput().getType().getElementType();
+  Type outputListElementTy = getType().getElementType();
+  if (!isSubtype(inputListElementTy, outputListElementTy)) {
+    return emitError() << "input list element type must be a subtype of output "
+                          "list element type: "
+                       << inputListElementTy << " v.s. " << outputListElementTy;
+  }
+
+  TensorType newElementTy = getElement().getType();
+  if (!isSubtype(newElementTy, outputListElementTy)) {
+    return emitError()
+           << "new element type must be a subtype of output list element type: "
+           << newElementTy << " v.s. " << outputListElementTy;
+  }
+
+  return success();
+}
+
 LogicalResult ListCreateOp::verify() {
   auto resTy = dyn_cast<TensorType>(getType().getElementType());
   if (!resTy) {

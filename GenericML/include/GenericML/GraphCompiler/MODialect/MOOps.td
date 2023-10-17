@@ -3669,6 +3669,36 @@ def MO_BottomKOp : MO_TensorOp<"bottom_k", [
 // List ops
 //===----------------------------------------------------------------------===//
 
+def MO_ListAppendOp : MO_TensorOp<"list.append", []> {
+  let summary = "List append Operation";
+  let description = [{
+    Creates a new list that's the result of appending an element to the end of a
+    copy of the input list (i.e., the op is value semantics and doesn't affect
+    the input list).
+
+    Example:
+
+    ```mlir
+    %list:   !mo.list<!mo.tensor<[2, 2], f32>>
+    %tensor: !mo.tensor<[2, 3], f32>
+
+    %tensor = mo.list.append(%list, %tensor) : (
+      !mo.list<!mo.tensor<[2, 2], f32>>, !mo.tensor<[2, 3], f32>
+    ) -> !mo.list<!mo.tensor<[2, ?], f32>>
+    ```
+  }];
+
+  let arguments = (ins MO_List:$input,
+                       MO_Tensor:$element);
+  let results = (outs MO_List:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+
+  let hasVerifier = 1;
+}
+
 def MO_ListCreateOp : MO_TensorOp<"list.create", []> {
   let summary = "List create Operation";
   let description = [{
