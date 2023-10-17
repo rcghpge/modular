@@ -15,6 +15,7 @@
 #include "MOF/MOBI/Module.h"
 #include "MOF/MOBI/Symbol.h"
 #include "MOF/MOBI/Type.h"
+#include "Support/Buffer.h"
 #include "mlir/IR/MLIRContext.h"
 
 using namespace M::MOF::Builder;
@@ -37,6 +38,36 @@ MODULAR_API_EXPORT M_Attr *MOBI_tensorAttr(M_Module *m, StringRef name,
                            ArrayRef<uint8_t>(reinterpret_cast<uint8_t *>(data),
                                              static_cast<size_t>(size)),
                            t->type)};
+}
+
+MODULAR_API_EXPORT M_Attr *MOBI_tensorAttrFromFile(M_Module *m, StringRef name,
+                                                   StringRef fileName,
+                                                   M_Type *t) {
+  auto moType = dyn_cast<M::MO::TensorType>(t->type.getVal());
+  auto dims = moType.getIntDims();
+  int64_t size = moType.getDtype().getSizeInBytes();
+  for (auto d : dims) {
+    assert(d >= 0 && "the caller should enforce this");
+    size *= d;
+  }
+
+  auto buff = M::Buffer::getFile(std::filesystem::path{fileName.str()});
+  if (buff.isError()) {
+    errs() << buff.takeError() << "\n";
+  }
+  assert(!buff.isError());
+  auto buff_size = static_cast<int64_t>((*buff)->getBufferSize());
+  if (buff_size != size) {
+    errs() << "Size mismatch, want " << size << " got " << buff_size << "\n";
+  }
+  assert(buff_size == size);
+  auto data = (*buff)->getBufferStart();
+
+  return new M_Attr{m->module.tensorAttr(
+      name,
+      ArrayRef<uint8_t>(reinterpret_cast<const uint8_t *>(data),
+                        static_cast<size_t>(size)),
+      t->type)};
 }
 
 MODULAR_API_EXPORT M_AttrMap *MOBI_newAttrMap() { return new M_AttrMap(); }
@@ -92,6 +123,17 @@ MODULAR_API_EXPORT M_Module *MOBI_newModule() {
   return m;
 }
 
+MODULAR_API_EXPORT char *MOBI_moduleToString(const M_Module *const m) {
+  SmallVector<char> buffer;
+  raw_svector_ostream os(buffer);
+  m->module.getModuleOp()->print(os);
+
+  // TODO: Do it without so many copies.
+  void *copy = std::malloc(buffer.size());
+  memcpy(copy, buffer.data(), buffer.size());
+  return reinterpret_cast<char *>(copy);
+}
+
 MODULAR_API_EXPORT void MOBI_debugPrintModule(const M_Module *const m) {
   m->module.getModuleOp()->print(outs());
 }
@@ -114,16 +156,20 @@ MODULAR_API_EXPORT int64_t MOBI_dynamicDim(M_Module *m) {
   return m->module.dynamicDim();
 }
 
-MODULAR_API_EXPORT M_Type *MOBI_si32Scalar(M_Module *m) {
-  return new M_Type{m->module.si32Scalar()};
-}
-
 MODULAR_API_EXPORT M_Type *MOBI_f32(M_Module *m, int64_t *dims, int64_t rank) {
   return new M_Type{m->module.f32(ArrayRef<int64_t>(dims, rank))};
 }
 
 MODULAR_API_EXPORT M_Type *MOBI_si32(M_Module *m, int64_t *dims, int64_t rank) {
   return new M_Type{m->module.si32(ArrayRef<int64_t>(dims, rank))};
+}
+
+MODULAR_API_EXPORT M_Type *MOBI_si64(M_Module *m, int64_t *dims, int64_t rank) {
+  return new M_Type{m->module.si64(ArrayRef<int64_t>(dims, rank))};
+}
+
+MODULAR_API_EXPORT M_Type *MOBI_bool(M_Module *m, int64_t *dims, int64_t rank) {
+  return new M_Type{m->module.boolType(ArrayRef<int64_t>(dims, rank))};
 }
 
 MODULAR_API_EXPORT M_Arity *MOBI_newArity() { return new M_Arity{Arity()}; }

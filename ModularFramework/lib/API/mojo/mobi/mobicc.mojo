@@ -7,6 +7,7 @@
 from memory.unsafe import Pointer
 from os import getenv
 from sys import external_call
+from tensor import Tensor
 from sys.ffi import RTLD, DLHandle
 
 
@@ -118,6 +119,30 @@ struct Builder:
             fn (ModulePtr, StringRef, Pointer[AnyType], TypePtr) -> AttrPtr
         ]("MOBI_tensorAttr")(module, name, data, type)
 
+    fn tensor_attr(
+        inout self,
+        inout module: ModulePtr,
+        name: StringRef,
+        data: DTypePointer[DType.invalid],
+        type: TypePtr,
+    ) raises -> AttrPtr:
+        return self.lib.get_function[
+            fn (
+                ModulePtr, StringRef, DTypePointer[DType.invalid], TypePtr
+            ) -> AttrPtr
+        ]("MOBI_tensorAttr")(module, name, data, type)
+
+    fn tensor_attr_from_file(
+        inout self,
+        inout module: ModulePtr,
+        name: StringRef,
+        fileName: StringRef,
+        type: TypePtr,
+    ) raises -> AttrPtr:
+        return self.lib.get_function[
+            fn (ModulePtr, StringRef, StringRef, TypePtr) -> AttrPtr
+        ]("MOBI_tensorAttrFromFile")(module, name, fileName, type)
+
     fn new_attr_map(inout self) raises -> AttrMapPtr:
         return self.lib.get_function[fn () -> AttrMapPtr]("MOBI_newAttrMap")()
 
@@ -181,6 +206,14 @@ struct Builder:
             "MOBI_debugPrintModule"
         )(module)
 
+    fn module_to_string(inout self, inout module: ModulePtr) raises -> String:
+        let ret = self.lib.get_function[
+            fn (ModulePtr) -> DTypePointer[DType.int8]
+        ]("MOBI_moduleToString")(module)
+        let sRet = String(ret)
+        ret.free()
+        return sRet
+
     ### Symbol helers
 
     fn new_tuple(inout self) raises -> TuplePtr:
@@ -205,11 +238,6 @@ struct Builder:
             "MOBI_dynamicDim"
         )(module)
 
-    fn si32_scalar(inout self, inout module: ModulePtr) raises -> TypePtr:
-        return self.lib.get_function[fn (ModulePtr) -> TypePtr](
-            "MOBI_si32Scalar"
-        )(module)
-
     fn f32(
         inout self,
         inout module: ModulePtr,
@@ -229,6 +257,26 @@ struct Builder:
         return self.lib.get_function[
             fn (ModulePtr, Pointer[Int64], Int64) -> TypePtr
         ]("MOBI_si32")(module, dims, rank)
+
+    fn i64(
+        inout self,
+        inout module: ModulePtr,
+        dims: Pointer[Int64],
+        rank: Int64,
+    ) raises -> TypePtr:
+        return self.lib.get_function[
+            fn (ModulePtr, Pointer[Int64], Int64) -> TypePtr
+        ]("MOBI_si64")(module, dims, rank)
+
+    fn bool(
+        inout self,
+        inout module: ModulePtr,
+        dims: Pointer[Int64],
+        rank: Int64,
+    ) raises -> TypePtr:
+        return self.lib.get_function[
+            fn (ModulePtr, Pointer[Int64], Int64) -> TypePtr
+        ]("MOBI_bool")(module, dims, rank)
 
     fn new_arity(inout self) raises -> ArityPtr:
         return self.lib.get_function[fn () -> ArityPtr]("MOBI_newArity")()
@@ -254,6 +302,33 @@ struct Builder:
             "MOF_addI32Scalar"
         )(t, value)
 
+    fn add_f32_tensor(
+        inout self,
+        inout t: TensorTuplePtr,
+        data: DTypePointer[DType.invalid],
+        dims: Pointer[Int64],
+        rank: Int64,
+    ) raises:
+        self.lib.get_function[
+            fn (
+                TensorTuplePtr,
+                DTypePointer[DType.invalid],
+                Pointer[Int64],
+                Int64,
+            ) -> NoneType
+        ]("MOF_addF32Tensor")(t, data, dims, rank)
+
+    fn add_f32_tensor_from_file(
+        inout self,
+        inout t: TensorTuplePtr,
+        fileName: StringRef,
+        dims: Pointer[Int64],
+        rank: Int64,
+    ) raises:
+        self.lib.get_function[
+            fn (TensorTuplePtr, StringRef, Pointer[Int64], Int64) -> NoneType
+        ]("MOF_addF32TensorFromFile")(t, fileName, dims, rank)
+
     fn execute_module(
         inout self,
         inout module: ModulePtr,
@@ -264,7 +339,7 @@ struct Builder:
             fn (ModulePtr, TensorTuplePtr, TensorTuplePtr) -> UInt32
         ]("MOF_executeModule")(module, args, outs)
 
-    fn debug_print_rt(inout self, inout t: TensorTuplePtr) raises:
+    fn debug_print_tensors(inout self, inout t: TensorTuplePtr) raises:
         self.lib.get_function[fn (TensorTuplePtr) -> NoneType](
             "MOF_debugPrintTensors"
         )(t)

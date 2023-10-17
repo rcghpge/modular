@@ -32,9 +32,10 @@ public:
 
   int64_t dynamicDim();
 
-  Type si32Scalar();
   Type f32(llvm::ArrayRef<int64_t> shape);
   Type si32(llvm::ArrayRef<int64_t> shape);
+  Type si64(llvm::ArrayRef<int64_t> shape);
+  Type boolType(llvm::ArrayRef<int64_t> shape);
 
   Attr tensorAttr(llvm::StringRef name, llvm::ArrayRef<uint8_t> data, Type t);
 

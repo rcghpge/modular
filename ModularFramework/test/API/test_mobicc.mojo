@@ -15,7 +15,7 @@ fn test_empty_module() raises:
 
     var m = builder.new_module()
     # CHECK: module {
-    builder.debug_print_module(m)
+    print(builder.module_to_string(m))
 
 
 fn test_empty_graph() raises:
@@ -33,7 +33,7 @@ fn test_empty_graph() raises:
     # CHECK: builtin.module
     # CHECK: mo.graph
     # CHECK: sym_name = "empty_graph"
-    builder.debug_print_module(m)
+    print(builder.module_to_string(m))
 
 
 fn test_identity_graph() raises:
@@ -42,7 +42,8 @@ fn test_identity_graph() raises:
     var m = builder.new_module()
 
     var ins = builder.new_arity()
-    var intScalar = builder.si32_scalar(m)
+    var scalarShape = DynamicVector[Int64]()
+    var intScalar = builder.i32(m, scalarShape.data, scalarShape.__len__())
     builder.add_type(ins, intScalar)
 
     var outs = builder.new_arity()
@@ -63,7 +64,7 @@ fn test_identity_graph() raises:
 
     # CHECK: mo.graph @identity_graph
     # CHECK: mo.output
-    builder.debug_print_module(m)
+    print(builder.module_to_string(m))
 
 
 fn test_tuple_copy() raises:
@@ -72,7 +73,8 @@ fn test_tuple_copy() raises:
     var m = builder.new_module()
 
     var ins = builder.new_arity()
-    var intScalar = builder.si32_scalar(m)
+    var scalarShape = DynamicVector[Int64]()
+    var intScalar = builder.i32(m, scalarShape.data, scalarShape.__len__())
     builder.add_type(ins, intScalar)
 
     var outs = builder.new_arity()
@@ -97,7 +99,7 @@ fn test_tuple_copy() raises:
 
     # CHECK: mo.graph @tuple_copy_test
     # CHECK: mo.output
-    builder.debug_print_module(m)
+    print(builder.module_to_string(m))
 
 
 fn test_const_op() raises:
@@ -108,7 +110,8 @@ fn test_const_op() raises:
     let void = builder.new_arity()
 
     var outs = builder.new_arity()
-    var intScalar = builder.si32_scalar(m)
+    var scalarShape = DynamicVector[Int64]()
+    var intScalar = builder.i32(m, scalarShape.data, scalarShape.__len__())
     builder.add_type(outs, intScalar)
 
     var unknown = builder.unknown_loc(m)
@@ -134,7 +137,7 @@ fn test_const_op() raises:
 
     # CHECK: mo.graph @const_op
     # CHECK: mo.constant
-    builder.debug_print_module(m)
+    print(builder.module_to_string(m))
 
 
 fn test_execution() raises:
@@ -143,7 +146,8 @@ fn test_execution() raises:
     var m = builder.new_module()
 
     var ins = builder.new_arity()
-    var intScalar = builder.si32_scalar(m)
+    var scalarShape = DynamicVector[Int64]()
+    var intScalar = builder.i32(m, scalarShape.data, scalarShape.__len__())
     builder.add_type(ins, intScalar)
 
     var outs = builder.new_arity()
@@ -168,7 +172,7 @@ fn test_execution() raises:
     _ = builder.execute_module(m, rtArgs, rtOuts)
 
     # CHECK{LITERAL}: tensor([[1]], dtype=si32, shape=[])
-    builder.debug_print_rt(rtOuts)
+    builder.debug_print_tensors(rtOuts)
 
 
 fn main() raises:

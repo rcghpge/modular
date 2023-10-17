@@ -5,7 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from .misc import Arity, AttrMap, Tup
-from .mobicc import Builder, ModulePtr, GraphPtr, SymbolPtr
+from .mobicc import Builder, ModulePtr, GraphPtr, SymbolPtr, TuplePtr
 from utils.list import VariadicList
 
 
@@ -34,32 +34,28 @@ struct Graph:
             self.builder.add_symbol(t, v)
         return Tup(t, len(l), self.builder)
 
-    fn no_value(inout self) raises -> Tup:
-        let t = self.builder.new_tuple()
-        return Tup(t, 0, self.builder)
-
     fn op(
         inout self,
         name: StringRef,
         inputs: Tup,
-        outTypes: Arity,
+        out_types: Arity,
     ) raises -> Tup:
         var loc = self.builder.unknown_loc(self.m)
         let attrs = self.builder.new_attr_map()
         let outputs = self.builder.new_op(
-            self.g, loc, name, inputs.t, outTypes.a, attrs
+            self.g, loc, name, inputs.t, out_types.a, attrs
         )
-        return Tup(outputs, outTypes.l, self.builder)
+        return Tup(outputs, out_types.l, self.builder)
 
     fn op(
         inout self,
         name: StringRef,
         inputs: Tup,
-        outTypes: Arity,
+        out_types: Arity,
         attrs: AttrMap,
     ) raises -> Tup:
         var loc = self.builder.unknown_loc(self.m)
         let outputs = self.builder.new_op(
-            self.g, loc, name, inputs.t, outTypes.a, attrs.m
+            self.g, loc, name, inputs.t, out_types.a, attrs.m
         )
-        return Tup(outputs, outTypes.l, self.builder)
+        return Tup(outputs, out_types.l, self.builder)
