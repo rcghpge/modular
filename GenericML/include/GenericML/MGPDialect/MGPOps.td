@@ -1857,7 +1857,6 @@ def MGP_ListInsertOp : MGP_Op<"list.insert", [
   // The input list elements and inserted element are all shallow copied into
   // the output list.
   DeclareOpInterfaceMethods<GRTMayAliasInterface>,
-  DeclareOpInterfaceMethods<InferTypeOpInterface>,
 ]> {
   let summary = "List insert Operation.";
   let description = [{
@@ -1875,11 +1874,12 @@ def MGP_ListInsertOp : MGP_Op<"list.insert", [
     Example:
 
     ```mlir
-    %lst : !mgp.list<!mgp.cpu.tensor<3x?xf32>>,
-    %tns : !mgp.cpu.tensor<3x?xf32>,
+    %lst : !mgp.list<!mgp.cpu.tensor<3x3xf32>>,
+    %tns : !mgp.cpu.tensor<3x4xf32>,
     %idx : !mgp.cpu.tensor<si32>
-    %t = mgp.list.insert(%lst, %tns, %idx) :
-      !mgp.list<!mgp.cpu.tensor<3x?xf32>>, !mgp.cpu.tensor<3x?xf32>, !mgp.cpu.tensor<si32>
+    %t = mgp.list.insert(%lst, %tns, %idx) : (
+      !mgp.list<!mgp.cpu.tensor<3x3xf32>>, !mgp.cpu.tensor<3x4xf32>, !mgp.cpu.tensor<si32>
+    ) -> !mgp.list<!mgp.cpu.tensor<3x?xf32>>
     ```
   }];
 
@@ -1889,7 +1889,7 @@ def MGP_ListInsertOp : MGP_Op<"list.insert", [
   let results = (outs MGP_List:$result);
 
   let assemblyFormat = [{
-    ` ` operands ` ` attr-dict `:` qualified(type(operands))
+    ` ` operands ` ` attr-dict `:` functional-type(operands, results)
   }];
 
   let hasVerifier = 1;

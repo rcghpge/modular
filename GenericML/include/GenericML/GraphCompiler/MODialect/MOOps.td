@@ -3744,12 +3744,12 @@ def MO_ListInsertOp : MO_TensorOp<"list.insert", []> {
 
     ```mlir
     %list:   !mo.list<!mo.tensor<[2, 2], f32>>
-    %tensor: !mo.tensor<[2, 2], f32>
+    %tensor: !mo.tensor<[2, 3], f32>
     %index:  !mo.tensor<[], si32>
 
     %tensor = mo.list.insert(%list, %tensor, %index) : (
-      !mo.list<!mo.tensor<[2, 2], f32>>, !mo.tensor<[2, 2], f32>, !mo.tensor<[], si32>
-    ) -> !mo.list<!mo.tensor<[2, 2], f32>>
+      !mo.list<!mo.tensor<[2, 2], f32>>, !mo.tensor<[2, 3], f32>, !mo.tensor<[], si32>
+    ) -> !mo.list<!mo.tensor<[2, ?], f32>>
     ```
   }];
 

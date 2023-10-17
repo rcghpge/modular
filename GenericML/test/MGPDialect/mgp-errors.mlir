@@ -472,7 +472,7 @@ func.func @list_insert_invalid_index_dtype(
   %idx : !mgp.cpu.tensor<si16>
 ) {
   // expected-error@+1 {{'mgp.list.insert' op expect index tensor to have dtype si32 or si64, but got: 'si16'}}
-  %t = mgp.list.insert %lst, %tsr, %idx : !mgp.list<!mgp.cpu.tensor<3x3xf32>>, !mgp.cpu.tensor<3x3xf32>, !mgp.cpu.tensor<si16>
+  %t = mgp.list.insert %lst, %tsr, %idx : (!mgp.list<!mgp.cpu.tensor<3x3xf32>>, !mgp.cpu.tensor<3x3xf32>, !mgp.cpu.tensor<si16>) -> !mgp.list<!mgp.cpu.tensor<3x3xf32>>
   mef.output %t : !mgp.list<!mgp.cpu.tensor<3x3xf32>>
 }
 
@@ -485,7 +485,7 @@ func.func @list_insert_non_scalar_index(
   %idx : !mgp.cpu.tensor<2xsi32>
 ) {
   // expected-error@+1 {{'mgp.list.insert' op expect index tensor to have 1 element, but got: '!mgp.cpu.tensor<2xsi32>'}}
-  %t = mgp.list.insert %lst, %tsr, %idx : !mgp.list<!mgp.cpu.tensor<3x3xf32>>, !mgp.cpu.tensor<3x3xf32>, !mgp.cpu.tensor<2xsi32>
+  %t = mgp.list.insert %lst, %tsr, %idx : (!mgp.list<!mgp.cpu.tensor<3x3xf32>>, !mgp.cpu.tensor<3x3xf32>, !mgp.cpu.tensor<2xsi32>) -> !mgp.list<!mgp.cpu.tensor<3x3xf32>>
   mef.output %t : !mgp.list<!mgp.cpu.tensor<3x3xf32>>
 }
 
@@ -497,8 +497,8 @@ func.func @list_insert_mismatch_element_type(
   %tsr : !mgp.cpu.tensor<3x3xsi32>,
   %idx : !mgp.cpu.tensor<si32>
 ) {
-  // expected-error@+1 {{new element type must be a subtype of list element type: '!mgp.cpu.tensor<3x3xsi32>' v.s. '!mgp.cpu.tensor<3x3xf32>'}}
-  %t = mgp.list.insert %lst, %tsr, %idx : !mgp.list<!mgp.cpu.tensor<3x3xf32>>, !mgp.cpu.tensor<3x3xsi32>, !mgp.cpu.tensor<si32>
+  // expected-error@+1 {{new element type must be a subtype of output element type: '!mgp.cpu.tensor<3x3xsi32>' v.s. '!mgp.cpu.tensor<3x3xf32>'}}
+  %t = mgp.list.insert %lst, %tsr, %idx : (!mgp.list<!mgp.cpu.tensor<3x3xf32>>, !mgp.cpu.tensor<3x3xsi32>, !mgp.cpu.tensor<si32>) -> !mgp.list<!mgp.cpu.tensor<3x3xf32>>
   mef.output %t : !mgp.list<!mgp.cpu.tensor<3x3xf32>>
 }
 
@@ -510,8 +510,8 @@ func.func @list_insert_mismatch_rank(
   %tsr : !mgp.cpu.tensor<1x3x3xf32>,
   %idx : !mgp.cpu.tensor<si32>
 ) {
-  // expected-error@+1 {{new element type must be a subtype of list element type: '!mgp.cpu.tensor<1x3x3xf32>' v.s. '!mgp.cpu.tensor<3x3xf32>'}}
-  %t = mgp.list.insert %lst, %tsr, %idx : !mgp.list<!mgp.cpu.tensor<3x3xf32>>, !mgp.cpu.tensor<1x3x3xf32>, !mgp.cpu.tensor<si32>
+  // expected-error@+1 {{new element type must be a subtype of output element type: '!mgp.cpu.tensor<1x3x3xf32>' v.s. '!mgp.cpu.tensor<3x3xf32>'}}
+  %t = mgp.list.insert %lst, %tsr, %idx : (!mgp.list<!mgp.cpu.tensor<3x3xf32>>, !mgp.cpu.tensor<1x3x3xf32>, !mgp.cpu.tensor<si32>) -> !mgp.list<!mgp.cpu.tensor<3x3xf32>>
   mef.output %t : !mgp.list<!mgp.cpu.tensor<3x3xf32>>
 }
 
@@ -523,7 +523,7 @@ func.func @list_insert_mismatch_dim(
   %tsr : !mgp.cpu.tensor<?x3xf32>,
   %idx : !mgp.cpu.tensor<si32>
 ) {
-  // expected-error@+1 {{new element type must be a subtype of list element type: '!mgp.cpu.tensor<?x3xf32>' v.s. '!mgp.cpu.tensor<3x3xf32>'}}
-  %t = mgp.list.insert %lst, %tsr, %idx : !mgp.list<!mgp.cpu.tensor<3x3xf32>>, !mgp.cpu.tensor<?x3xf32>, !mgp.cpu.tensor<si32>
+  // expected-error@+1 {{new element type must be a subtype of output element type: '!mgp.cpu.tensor<?x3xf32>' v.s. '!mgp.cpu.tensor<3x3xf32>'}}
+  %t = mgp.list.insert %lst, %tsr, %idx : (!mgp.list<!mgp.cpu.tensor<3x3xf32>>, !mgp.cpu.tensor<?x3xf32>, !mgp.cpu.tensor<si32>) -> !mgp.list<!mgp.cpu.tensor<3x3xf32>>
   mef.output %t : !mgp.list<!mgp.cpu.tensor<3x3xf32>>
 }

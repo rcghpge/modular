@@ -2888,6 +2888,18 @@ static bool isSubtype(TensorType ty1, TensorType ty2) {
   return true;
 }
 
+/// Return whether `ty1` is a subtype of `ty2`, i.e., the set of possible
+/// values represented by `ty1` is a subset for that of `ty2`. Currently only
+/// support nontrivial subtyping for `TensorType`.
+static bool isSubtype(Type ty1, Type ty2) {
+  auto tensorTy1 = dyn_cast<TensorType>(ty1);
+  auto tensorTy2 = dyn_cast<TensorType>(ty2);
+  if (tensorTy1 && tensorTy2)
+    return isSubtype(tensorTy1, tensorTy2);
+
+  return ty1 == ty2;
+}
+
 LogicalResult ListCreateOp::verify() {
   auto resTy = dyn_cast<TensorType>(getType().getElementType());
   if (!resTy) {
@@ -2919,17 +2931,17 @@ LogicalResult ListGetOp::verify() {
 LogicalResult ListInsertOp::verify() {
   Type inputListElementTy = getInput().getType().getElementType();
   Type outputListElementTy = getType().getElementType();
-  if (inputListElementTy != outputListElementTy) {
-    return emitError() << "input/output list element type must match: "
+  if (!isSubtype(inputListElementTy, outputListElementTy)) {
+    return emitError() << "input list element type must be a subtype of output "
+                          "list element type: "
                        << inputListElementTy << " v.s. " << outputListElementTy;
   }
 
-  TensorType listElementTy = cast<TensorType>(inputListElementTy);
   TensorType newElementTy = getElement().getType();
-  if (!isSubtype(newElementTy, listElementTy)) {
+  if (!isSubtype(newElementTy, outputListElementTy)) {
     return emitError()
-           << "new element type must be a subtype of list element type: "
-           << newElementTy << " v.s. " << listElementTy;
+           << "new element type must be a subtype of output list element type: "
+           << newElementTy << " v.s. " << outputListElementTy;
   }
 
   return success();

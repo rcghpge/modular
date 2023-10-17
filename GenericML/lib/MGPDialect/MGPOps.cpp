@@ -1143,23 +1143,22 @@ bool ListGetOp::mayAlias(size_t operandIndex, size_t resultIndex) {
 // ListInsertOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult ListInsertOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  Type inputListTy = operands[0].getType();
-  inferredReturnTypes.emplace_back(inputListTy);
-  return success();
-}
-
 LogicalResult ListInsertOp::verify() {
-  // Check new element type against list element type.
-  Type listElemTy = getType().getElementType();
-  Type newElemTy = getElement().getType();
-  if (!isSubtype(newElemTy, listElemTy)) {
+  // Check input element type against output element type.
+  Type inputElemTy = getInput().getType().getElementType();
+  Type outputElemTy = getType().getElementType();
+  if (!isSubtype(inputElemTy, outputElemTy)) {
     return emitError()
-           << "new element type must be a subtype of list element type: "
-           << newElemTy << " v.s. " << listElemTy;
+           << "input element type must be a subtype of output element type: "
+           << inputElemTy << " v.s. " << outputElemTy;
+  }
+
+  // Check new element type against list element type.
+  Type newElemTy = getElement().getType();
+  if (!isSubtype(newElemTy, outputElemTy)) {
+    return emitError()
+           << "new element type must be a subtype of output element type: "
+           << newElemTy << " v.s. " << outputElemTy;
   }
 
   // Check index tensor type.

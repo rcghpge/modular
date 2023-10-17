@@ -75,6 +75,9 @@ public:
 
   LogicalResult createModelOp();
 
+  /// Lowers a MO::ListType to a MGP::ListType.
+  MGP::ListType lowerListType(MO::ListType listTy);
+
   /// Lowers the mo.output op to the mef.output for the final results.
   LogicalResult lowerOutput(MO::OutputOp output);
 
@@ -341,6 +344,21 @@ LogicalResult MOGraphLowering::createModelOp() {
     return failure();
 
   return success();
+}
+
+MGP::ListType MOGraphLowering::lowerListType(MO::ListType listTy) {
+  auto outputTensorTy = dyn_cast<MO::TensorType>(listTy.getElementType());
+  // TODO support other element type
+  assert(outputTensorTy && "only support lowering list of tensors");
+
+  MLIRContext *ctx = listTy.getContext();
+  MGP::CpuTensorSpecType outputTensorSpecTy =
+      MGP::createCpuTensorSpecType(outputTensorTy);
+  DeviceRefAttr tensorDeviceRef =
+      MO::getDeviceOrDefault(loweringState.getGraph(), outputTensorTy);
+  MGP::TypeBuilder *typeBuilder = loweringState.getTypeBuilder(tensorDeviceRef);
+  auto mgpOutputTensorTy = typeBuilder->tensorType(ctx, outputTensorSpecTy);
+  return MGP::ListType::get(ctx, mgpOutputTensorTy);
 }
 
 LogicalResult MOGraphLowering::lowerOutput(MO::OutputOp output) {
@@ -767,22 +785,11 @@ LogicalResult MOGraphLowering::lowerListCreate(MO::ListCreateOp listCreateOp) {
   }
 
   // Construct output mgp list type
-  MGP::MOOpLoweringState opLoweringState(loweringState, listCreateOp,
-                                         getDeviceOrDefault(listCreateOp));
-  auto outputTensorTy =
-      cast<MO::TensorType>(listCreateOp.getType().getElementType());
-  MGP::CpuTensorSpecType outputTensorSpecTy =
-      MGP::createCpuTensorSpecType(outputTensorTy);
-  MLIRContext *ctx = listCreateOp.getContext();
-  // NOTE `mo.list.create` ensures all the input/output tensors are on the same
-  // device.
-  DeviceRefAttr tensorDeviceRef =
-      MO::getDeviceOrDefault(loweringState.getGraph(), outputTensorTy);
-  MGP::TypeBuilder *typeBuilder = loweringState.getTypeBuilder(tensorDeviceRef);
-  auto mgpOutputTensorTy = typeBuilder->tensorType(ctx, outputTensorSpecTy);
-  auto mgpOutputListTy = MGP::ListType::get(ctx, mgpOutputTensorTy);
+  MGP::ListType mgpOutputListTy = lowerListType(listCreateOp.getType());
 
   // Construct the corresponding mgp.list.create op
+  MGP::MOOpLoweringState opLoweringState(loweringState, listCreateOp,
+                                         getDeviceOrDefault(listCreateOp));
   Value mgpOutputList = opLoweringState.create<MGP::ListCreateOp>(
       mgpOutputListTy, mgpInputTensors);
   loweringState.emplaceExecuteLoweredValue(listCreateOp, mgpOutputList);
@@ -816,11 +823,14 @@ LogicalResult MOGraphLowering::lowerListInsert(MO::ListInsertOp listInsertOp) {
   Value mgpIndexTensor =
       loweringState.lookupExecuteLoweredValue(listInsertOp.getIndex());
 
+  // Construct output mgp list type
+  MGP::ListType mgpOutputListTy = lowerListType(listInsertOp.getType());
+
   // Construct the corresponding mgp.list.insert op
   MGP::MOOpLoweringState opLoweringState(loweringState, listInsertOp,
                                          getDeviceOrDefault(listInsertOp));
   Value mgpOutputTensor = opLoweringState.create<MGP::ListInsertOp>(
-      mgpInputList, mgpElementTensor, mgpIndexTensor);
+      mgpOutputListTy, mgpInputList, mgpElementTensor, mgpIndexTensor);
   loweringState.emplaceExecuteLoweredValue(listInsertOp, mgpOutputTensor);
 
   return success();
