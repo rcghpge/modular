@@ -5,13 +5,12 @@
 # ===----------------------------------------------------------------------=== #
 # RUN: %mojo -debug-level full %s | FileCheck %s
 
-from math import sqrt, iota
+from math import iota, sqrt
 from random import rand, seed
 
 from tensor import Tensor, TensorShape
 
 from utils.index import Index, StaticIntTuple
-
 
 # CHECK: test_tensor
 fn test_tensor():
