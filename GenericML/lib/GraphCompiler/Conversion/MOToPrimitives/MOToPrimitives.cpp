@@ -135,6 +135,15 @@ public:
   /// Lowers mo.while op.
   LogicalResult lowerWhile(MO::WhileOp whileOp);
 
+  /// Lowers mo.list.create op.
+  LogicalResult lowerListCreate(MO::ListCreateOp listCreateOp);
+
+  /// Lowers mo.list.get op.
+  LogicalResult lowerListGet(MO::ListGetOp listGetOp);
+
+  /// Lowers mo.list.insert op.
+  LogicalResult lowerListInsert(MO::ListInsertOp listInsertOp);
+
 private:
   /// Lowers a Block
   LogicalResult lowerBlock(mlir::Block *block);
@@ -750,6 +759,73 @@ LogicalResult MOGraphLowering::lowerTransfer(MO::TransferOp transferOp) {
   return success();
 }
 
+LogicalResult MOGraphLowering::lowerListCreate(MO::ListCreateOp listCreateOp) {
+  // Collect lowered input tensors
+  SmallVector<Value> mgpInputTensors;
+  for (Value input : listCreateOp.getInputs()) {
+    mgpInputTensors.push_back(loweringState.lookupExecuteLoweredValue(input));
+  }
+
+  // Construct output mgp list type
+  MGP::MOOpLoweringState opLoweringState(loweringState, listCreateOp,
+                                         getDeviceOrDefault(listCreateOp));
+  auto outputTensorTy =
+      cast<MO::TensorType>(listCreateOp.getType().getElementType());
+  MGP::CpuTensorSpecType outputTensorSpecTy =
+      MGP::createCpuTensorSpecType(outputTensorTy);
+  MLIRContext *ctx = listCreateOp.getContext();
+  // NOTE `mo.list.create` ensures all the input/output tensors are on the same
+  // device.
+  DeviceRefAttr tensorDeviceRef =
+      MO::getDeviceOrDefault(loweringState.getGraph(), outputTensorTy);
+  MGP::TypeBuilder *typeBuilder = loweringState.getTypeBuilder(tensorDeviceRef);
+  auto mgpOutputTensorTy = typeBuilder->tensorType(ctx, outputTensorSpecTy);
+  auto mgpOutputListTy = MGP::ListType::get(ctx, mgpOutputTensorTy);
+
+  // Construct the corresponding mgp.list.create op
+  Value mgpOutputList = opLoweringState.create<MGP::ListCreateOp>(
+      mgpOutputListTy, mgpInputTensors);
+  loweringState.emplaceExecuteLoweredValue(listCreateOp, mgpOutputList);
+
+  return success();
+}
+
+LogicalResult MOGraphLowering::lowerListGet(MO::ListGetOp listGetOp) {
+  // Collect lowered input tensors
+  Value mgpInputList =
+      loweringState.lookupExecuteLoweredValue(listGetOp.getInput());
+  Value mgpIndexTensor =
+      loweringState.lookupExecuteLoweredValue(listGetOp.getIndex());
+
+  // Construct the corresponding mgp.list.create op
+  MGP::MOOpLoweringState opLoweringState(loweringState, listGetOp,
+                                         getDeviceOrDefault(listGetOp));
+  Value mgpOutputTensor =
+      opLoweringState.create<MGP::ListGetOp>(mgpInputList, mgpIndexTensor);
+  loweringState.emplaceExecuteLoweredValue(listGetOp, mgpOutputTensor);
+
+  return success();
+}
+
+LogicalResult MOGraphLowering::lowerListInsert(MO::ListInsertOp listInsertOp) {
+  // Collect lowered input tensors
+  Value mgpInputList =
+      loweringState.lookupExecuteLoweredValue(listInsertOp.getInput());
+  Value mgpElementTensor =
+      loweringState.lookupExecuteLoweredValue(listInsertOp.getElement());
+  Value mgpIndexTensor =
+      loweringState.lookupExecuteLoweredValue(listInsertOp.getIndex());
+
+  // Construct the corresponding mgp.list.insert op
+  MGP::MOOpLoweringState opLoweringState(loweringState, listInsertOp,
+                                         getDeviceOrDefault(listInsertOp));
+  Value mgpOutputTensor = opLoweringState.create<MGP::ListInsertOp>(
+      mgpInputList, mgpElementTensor, mgpIndexTensor);
+  loweringState.emplaceExecuteLoweredValue(listInsertOp, mgpOutputTensor);
+
+  return success();
+}
+
 LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
   if (getDeviceOrDefault(ifOp) != loweringState.getHostDevice()) {
     ifOp->emitOpError("op must be assigned to the host");
@@ -1056,6 +1132,24 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
 
     if (auto transferOp = dyn_cast<MO::TransferOp>(op)) {
       if (failed(lowerTransfer(transferOp)))
+        return failure();
+      continue;
+    }
+
+    if (auto listCreateOp = dyn_cast<MO::ListCreateOp>(op)) {
+      if (failed(lowerListCreate(listCreateOp)))
+        return failure();
+      continue;
+    }
+
+    if (auto listGetOp = dyn_cast<MO::ListGetOp>(op)) {
+      if (failed(lowerListGet(listGetOp)))
+        return failure();
+      continue;
+    }
+
+    if (auto listInsertOp = dyn_cast<MO::ListInsertOp>(op)) {
+      if (failed(lowerListInsert(listInsertOp)))
         return failure();
       continue;
     }

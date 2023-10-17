@@ -377,6 +377,13 @@ void MOToMOGGPass::runOnOperation() {
       MO_NO_LOWER(MO::ReshapeOp),
       MO_NO_LOWER(MO::TransferOp),
 
+      // Currently list ops are lowered directly to MGP. Making them lower to mojo
+      // kernels would require some ABI changes (specifically we need to be able
+      // to _return_ values like list and tensor from mojo kernels).
+      MO_NO_LOWER(MO::ListCreateOp),
+      MO_NO_LOWER(MO::ListGetOp),
+      MO_NO_LOWER(MO::ListInsertOp),
+
       // Yield will never be lowered and is informational
       MO_NO_LOWER(MO::YieldOp),
 
