@@ -60,13 +60,11 @@ void addShapeDimsToName(MOSH::ShapeAttr dims, std::string &name,
   }
 }
 
-/// Appends name to str, but in a form legal for device.
-static void appendName(std::string &str, DeviceRefAttr device, StringRef name) {
-  str += name;
-}
+/// Appends name to str.
+void appendName(std::string &str, StringRef name) { str += name; }
 
 ErrorOr<std::string>
-mangleBlock(mlir::Block &block, DeviceRefAttr device,
+mangleBlock(mlir::Block &block,
             DenseMap<Value, std::string> &valueToPositionInBlock,
             DenseMap<M::ElementsAttr, size_t> &seenConsts,
             DenseMap<KGEN::ParamDeclRefAttr, size_t> &params) {
@@ -92,8 +90,8 @@ mangleBlock(mlir::Block &block, DeviceRefAttr device,
         valueToPositionInBlock[lambdaBlock.getArgument(argIndex)] =
             "L" + std::to_string(argIndex);
 
-      auto mangledLambdaOr = mangleBlock(
-          lambdaBlock, device, valueToPositionInBlock, seenConsts, params);
+      auto mangledLambdaOr =
+          mangleBlock(lambdaBlock, valueToPositionInBlock, seenConsts, params);
       if (mangledLambdaOr.isError())
         return mangledLambdaOr.takeError();
       name += *mangledLambdaOr;
@@ -109,7 +107,7 @@ mangleBlock(mlir::Block &block, DeviceRefAttr device,
       valueToPositionInBlock[out.getResult()] = std::to_string(blockIndex);
     } else if (auto invokeOp = dyn_cast<MOGG::LambdaInvokeOp>(innerOp)) {
       name += "invoke_";
-      appendName(name, device, invokeOp.getLambda().getLeafReference());
+      appendName(name, invokeOp.getLambda().getLeafReference());
       name += "_";
 
       // Add operands to the mangling.
@@ -122,13 +120,13 @@ mangleBlock(mlir::Block &block, DeviceRefAttr device,
 
     } else if (auto call = dyn_cast<MOGG::CallOp>(innerOp)) {
       name += "call_";
-      appendName(name, device, call.getMojoKernelTarget());
+      appendName(name, call.getMojoKernelTarget());
 
       // If we have parameters we have to mangle those too.
       if (call.getParams()) {
         for (SymbolRefAttr sym :
              call.getParamsAttr().getAsRange<SymbolRefAttr>()) {
-          appendName(name, device, sym.getLeafReference());
+          appendName(name, sym.getLeafReference());
           name += "_";
         }
       }
@@ -137,7 +135,7 @@ mangleBlock(mlir::Block &block, DeviceRefAttr device,
       if (call.getKgenParams()) {
         mlir::NamedAttrList attrs{*call.getKgenParams()};
         for (NamedAttribute named : attrs) {
-          appendName(name, device, named.getName());
+          appendName(name, named.getName());
           name += "_";
           Attribute value = named.getValue();
           if (auto asBool = dyn_cast<BoolAttr>(value)) {
@@ -230,7 +228,7 @@ mangleBlock(mlir::Block &block, DeviceRefAttr device,
 // If the op is to be executed via the 'host', the device will be the host
 // device and not necessarily the op's device annotation.
 ErrorOr<std::string>
-createMangledName(MOGG::KernelOp op, DeviceRefAttr device,
+createMangledName(MOGG::KernelOp op,
                   DenseMap<KGEN::ParamDeclRefAttr, size_t> &params,
                   DenseMap<M::ElementsAttr, size_t> &seenConsts,
                   size_t &kernelsDefiningParams) {
@@ -279,11 +277,19 @@ createMangledName(MOGG::KernelOp op, DeviceRefAttr device,
   }
   name += "_";
 
-  auto mangledBlockOr = mangleBlock(op.getBody().front(), device,
+  auto mangledBlockOr = mangleBlock(op.getBody().front(),
                                     valueToPositionInBlock, seenConsts, params);
   if (mangledBlockOr.isError())
     return mangledBlockOr.takeError();
   name += *mangledBlockOr;
+
+  if (MO::getDeviceOrDefault(op).getLabel() == kCUDALabel) {
+    // HACK HACK HACK https://github.com/modularml/modular/issues/22959
+    // This name may end up within PTX, which does not accept periods.
+    std::replace_if(
+        name.begin(), name.end(), [](char c) { return c == '.'; }, '_');
+  }
+
   return {name};
 }
 
@@ -501,9 +507,8 @@ struct JitCompileKernels
         }
 
         // Create a unique name for the kernel.
-        auto stubKernelName =
-            createMangledName(op, deviceSpec.getRef(), paramToIndex, seenConsts,
-                              kernelsDefiningParams);
+        auto stubKernelName = createMangledName(op, paramToIndex, seenConsts,
+                                                kernelsDefiningParams);
         if (stubKernelName.isError()) {
           error = Error(stubKernelName.takeError());
           return WalkResult::interrupt();
