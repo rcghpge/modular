@@ -40,13 +40,13 @@ namespace M::MO {
 #define GEN_PASS_DEF_CONSTANTFOLD
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h.inc"
 
-// Holds all the information necessary to execute and replace a constant
-// subgraph
-struct SubgraphInfo {
+// Holds all the information necessary to execute and replace all constant
+// subgraphs in a single graph op.
+struct SubgraphsInfo {
   GraphOp orig;
   std::string constantSubgraphName;
   // Need the subgraph for its output values.
-  Subgraph subgraph;
+  SmallVector<Subgraph> subgraphs;
 };
 
 struct ValueParamCompare {
@@ -174,7 +174,7 @@ struct ModelResult {
 /// from output Vale to ElementsAttr containing the constant resulting from
 /// folding.
 ErrorOr<ModelResult> executeModel(MLIRContext *ctx, const Model *model,
-                                  SubgraphInfo subgraphInfo,
+                                  SubgraphsInfo subgraphsInfo,
                                   LLCL::Runtime &runtime) {
   auto executableModelOr = model->setup(runtime);
   if (executableModelOr.isError())
@@ -186,20 +186,23 @@ ErrorOr<ModelResult> executeModel(MLIRContext *ctx, const Model *model,
     return Error("Model setup failed, not ready for execution");
 
   SmallVector<AnyAsyncValueRef> inputTensorsInMEFIndexOrder;
-  for (ConstantOp constant : subgraphInfo.subgraph.constants()) {
-    auto denseElems =
-        dyn_cast<DenseResourceElementsAttr>(constant.getValueAttr());
-    if (denseElems) {
-      auto blob = denseElems.getRawHandle().getBlob();
-      TensorType ttype = dyn_cast<TensorType>(constant.getType());
-      TensorSpec spec(
-          dyn_cast<MOSH::ShapeAttr>(ttype.getShapeAttr()).getIntDims(),
-          ttype.getDtype());
-      GML::Tensor tensor = GML::Tensor::createBorrowed(
-          blob->getData().data(), spec, blob->getDataAlignment(),
-          GML::BufferRef::Lifetime::kConstant);
-      inputTensorsInMEFIndexOrder.push_back(
-          AsyncValueRef<GML::Tensor>::createReady(runtime, std::move(tensor)));
+  for (auto subgraph : subgraphsInfo.subgraphs) {
+    for (ConstantOp constant : subgraph.constants()) {
+      auto denseElems =
+          dyn_cast<DenseResourceElementsAttr>(constant.getValueAttr());
+      if (denseElems) {
+        auto blob = denseElems.getRawHandle().getBlob();
+        TensorType ttype = dyn_cast<TensorType>(constant.getType());
+        TensorSpec spec(
+            dyn_cast<MOSH::ShapeAttr>(ttype.getShapeAttr()).getIntDims(),
+            ttype.getDtype());
+        GML::Tensor tensor = GML::Tensor::createBorrowed(
+            blob->getData().data(), spec, blob->getDataAlignment(),
+            GML::BufferRef::Lifetime::kConstant);
+        inputTensorsInMEFIndexOrder.push_back(
+            AsyncValueRef<GML::Tensor>::createReady(runtime,
+                                                    std::move(tensor)));
+      }
     }
   }
   auto results = executableModel->execute(inputTensorsInMEFIndexOrder);
@@ -231,48 +234,53 @@ ErrorOr<ModelResult> executeModel(MLIRContext *ctx, const Model *model,
       opToTensors;
   auto resourceManager = DenseResourceElementsHandle::getManagerInterface(ctx);
   size_t outIdx = 0;
-  for (auto op : subgraphInfo.subgraph.outputs) {
-    SmallVector<std::pair<ElementsAttr, TensorShape>> opTensors;
-    for (size_t i = 0; i < op->getNumResults(); i++) {
-      const auto &tensor = outputTensorRefs[outIdx];
-      if (tensor.isError())
-        return Error(tensor.getDiagnostic().getMessage().get());
+  for (auto subgraph : subgraphsInfo.subgraphs) {
+    for (auto op : subgraph.outputs) {
+      SmallVector<std::pair<ElementsAttr, TensorShape>> opTensors;
+      for (size_t i = 0; i < op->getNumResults(); i++) {
+        const auto &tensor = outputTensorRefs[outIdx];
+        if (tensor.isError())
+          return Error(tensor.getDiagnostic().getMessage().get());
 
-      // Copy output tensor into storage.
-      assert(tensor.isReady() && "We already awaited, tensor should be ready");
-      auto *t = dyn_cast<GML::Tensor>(tensor);
-      assert(t && "Output from subgraph execution should be a tensor");
-      // Output shape has runtime-dependent size so we need to read out what
-      // the size is.
-      TensorShape shape = t->getShape();
-      int64_t size = std::accumulate(shape.begin(), shape.end(), 1,
-                                     std::multiplies<int64_t>());
-      ArrayType arrayType = ArrayType::get(
-          op->getContext(), size, toMLIRType(ctx, t->getEltType()).get());
-      opTensors.push_back(
-          {getAttrForTensorDataCopy(
-               arrayType,
-               subgraphInfo.constantSubgraphName + "_" + std::to_string(outIdx),
-               {reinterpret_cast<const char *>(t->getBuffer()),
-                t->getSizeInBytes()},
-               resourceManager),
-           shape});
-      outIdx++;
+        // Copy output tensor into storage.
+        assert(tensor.isReady() &&
+               "We already awaited, tensor should be ready");
+        auto *t = dyn_cast<GML::Tensor>(tensor);
+        assert(t && "Output from subgraph execution should be a tensor");
+        // Output shape has runtime-dependent size so we need to read out what
+        // the size is.
+        TensorShape shape = t->getShape();
+        ArrayType arrayType =
+            ArrayType::get(op->getContext(), shape.getNumElements(),
+                           toMLIRType(ctx, t->getEltType()).get());
+        opTensors.push_back(
+            {getAttrForTensorDataCopy(
+                 arrayType,
+                 subgraphsInfo.constantSubgraphName + "_" +
+                     std::to_string(outIdx),
+                 {reinterpret_cast<const char *>(t->getBuffer()),
+                  t->getSizeInBytes()},
+                 resourceManager),
+             shape});
+        outIdx++;
+      }
+      opToTensors[op] = opTensors;
     }
-    opToTensors[op] = opTensors;
   }
 
   // Get parameters now. They come after the constants.
   llvm::DenseMap<StringAttr, int64_t> params;
-  for (auto paramName : subgraphInfo.subgraph.paramDeclarations()) {
-    const auto &tensor = outputTensorRefs[outIdx];
-    if (tensor.isError())
-      return Error(tensor.getDiagnostic().getMessage().get());
-    assert(tensor.isReady() && "We already awaited, tensor should be ready");
-    auto *t = dyn_cast<GML::Tensor>(tensor);
-    assert(t && "Output from subgraph execution should be a tensor");
-    params[paramName] = reinterpret_cast<const int64_t *>(t->getBuffer())[0];
-    outIdx++;
+  for (auto subgraph : subgraphsInfo.subgraphs) {
+    for (auto paramName : subgraph.paramDeclarations()) {
+      const auto &tensor = outputTensorRefs[outIdx];
+      if (tensor.isError())
+        return Error(tensor.getDiagnostic().getMessage().get());
+      assert(tensor.isReady() && "We already awaited, tensor should be ready");
+      auto *t = dyn_cast<GML::Tensor>(tensor);
+      assert(t && "Output from subgraph execution should be a tensor");
+      params[paramName] = reinterpret_cast<const int64_t *>(t->getBuffer())[0];
+      outIdx++;
+    }
   }
   return ModelResult{opToTensors, params};
 }
@@ -483,41 +491,48 @@ constantSubgraphs(MO::GraphOp graph,
 /// Return information to identify the new GraphOp.
 /// Large constants in the subgraph are transformed into inputs to the new
 /// graph.
-SubgraphInfo cloneSubgraph(OpBuilder builder, GraphOp orig, ModuleOp module,
-                           Subgraph subgraph, int64_t &name_counter) {
+SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig, ModuleOp module,
+                             SmallVector<Subgraph> subgraphs,
+                             int64_t &name_counter) {
   // Add large constants as inputs
   llvm::SmallVector<Type> argTypes;
-  for (ConstantOp constant : subgraph.constants()) {
-    auto dense = dyn_cast<DenseResourceElementsAttr>(constant.getValueAttr());
-    if (dense)
-      argTypes.push_back(constant.getType());
+  for (auto subgraph : subgraphs) {
+    for (ConstantOp constant : subgraph.constants()) {
+      auto dense = dyn_cast<DenseResourceElementsAttr>(constant.getValueAttr());
+      if (dense)
+        argTypes.push_back(constant.getType());
+    }
   }
   llvm::SmallVector<Type> resultTypes;
-  for (auto op : subgraph.outputs)
-    for (auto result : op->getResults())
-      resultTypes.push_back(result.getType());
-  int64_t counter = orig.getProperties().getCounter();
+  for (Subgraph subgraph : subgraphs) {
+    for (auto op : subgraph.outputs) {
+      for (auto result : op->getResults()) {
+        resultTypes.push_back(result.getType());
+      }
+    }
+  }
   // This name cannot be too long otherwise something breaks :(.
-  GraphOp graphop = builder.create<GraphOp>(
-      module.getLoc(),
-      (orig.getName() + "_subgraph_" + std::to_string(name_counter)).str(),
-      argTypes, resultTypes);
-  name_counter++;
-  orig.getProperties().setCounter(counter + 1);
+  auto graphop = builder.create<GraphOp>(
+      module.getLoc(), (orig.getName() + "_constant_subgraphs").str(), argTypes,
+      resultTypes);
   builder.setInsertionPointToEnd(graphop.getBodyBlock());
 
   llvm::MapVector<ConstantOp, BlockArgument> inputConstants;
   int64_t idx = 0;
-  for (ConstantOp constant : subgraph.constants()) {
-    auto dense = dyn_cast<DenseResourceElementsAttr>(constant.getValueAttr());
-    if (dense) {
-      inputConstants[constant] = graphop.getBody().getArgument(idx);
-      idx++;
+  for (auto subgraph : subgraphs) {
+    for (ConstantOp constant : subgraph.constants()) {
+      auto dense = dyn_cast<DenseResourceElementsAttr>(constant.getValueAttr());
+      if (dense) {
+        inputConstants[constant] = graphop.getBody().getArgument(idx);
+        idx++;
+      }
     }
   }
 
-  SmallVector<Operation *, 8> opsSorted(subgraph.ops.begin(),
-                                        subgraph.ops.end());
+  SmallVector<Operation *, 8> opsSorted;
+  for (Subgraph subgraph : subgraphs)
+    for (auto op : subgraph.ops)
+      opsSorted.push_back(op);
   // Topologically sort so definitions come before uses.
   // Sort param first, doesn't necessarily maintain topological order.
   MLIRContext *ctx = module.getContext();
@@ -539,40 +554,45 @@ SubgraphInfo cloneSubgraph(OpBuilder builder, GraphOp orig, ModuleOp module,
   }
   llvm::SmallVector<Value> newOutputs;
   llvm::SetVector<KGEN::ParamDeclAttr> outputParams;
-  for (auto op : subgraph.outputs) {
-    for (auto result : op->getResults()) {
-      Value newOutput = oldToNew.lookup<Value>(result);
-      if (newOutput.getType().isa<MOSH::ShapeType>()) {
-        // Can't output shapes so we convert it to a rank 1 tensor of unknown
-        // size.
-        newOutput = builder.create<Shape::ToTensorOp>(
-            loc,
-            TensorType::get(MOSH::ShapeAttr::get(
-                                SmallVector<TypedAttr>({KGEN::UnknownAttr::get(
-                                    builder.getIndexType())}),
-                                MOSH::ShapeType::get(ctx)),
-                            DType::si64),
-            newOutput);
+  for (auto subgraph : subgraphs) {
+    for (auto op : subgraph.outputs) {
+      for (auto result : op->getResults()) {
+        Value newOutput = oldToNew.lookup<Value>(result);
+        if (newOutput.getType().isa<MOSH::ShapeType>()) {
+          // Can't output shapes so we convert it to a rank 1 tensor of unknown
+          // size.
+          newOutput = builder.create<Shape::ToTensorOp>(
+              loc,
+              TensorType::get(
+                  MOSH::ShapeAttr::get(
+                      SmallVector<TypedAttr>(
+                          {KGEN::UnknownAttr::get(builder.getIndexType())}),
+                      MOSH::ShapeType::get(ctx)),
+                  DType::si64),
+              newOutput);
+        }
+        newOutput.getType().walk([&](KGEN::ParamDeclRefAttr ref) {
+          outputParams.insert(KGEN::ParamDeclAttr::get(
+              ref.getContext(), ref.getName(), ref.getType()));
+        });
+        newOutputs.push_back(newOutput);
       }
-      newOutput.getType().walk([&](KGEN::ParamDeclRefAttr ref) {
-        outputParams.insert(KGEN::ParamDeclAttr::get(
-            ref.getContext(), ref.getName(), ref.getType()));
-      });
-      newOutputs.push_back(newOutput);
     }
   }
 
   // Add parameter declaration/definitions that are used in the subgraph. They
   // are converted to indexes and then to tensors so that we can output them.
   Type indexType = IndexType::get(ctx);
-  for (auto param : subgraph.paramDeclarations()) {
-    Value index = builder.create<KGEN::ParamConstantOp>(
-        loc, indexType, KGEN::ParamDeclRefAttr::get(ctx, param, indexType));
-    newOutputs.push_back(builder.create<IndexToTensorOp>(
-        loc,
-        TensorType::get(ArrayRef<int64_t>({}),
-                        IntegerType::get(ctx, 64, IntegerType::Unsigned)),
-        index));
+  for (auto subgraph : subgraphs) {
+    for (auto param : subgraph.paramDeclarations()) {
+      Value index = builder.create<KGEN::ParamConstantOp>(
+          loc, indexType, KGEN::ParamDeclRefAttr::get(ctx, param, indexType));
+      newOutputs.push_back(builder.create<IndexToTensorOp>(
+          loc,
+          TensorType::get(ArrayRef<int64_t>({}),
+                          IntegerType::get(ctx, 64, IntegerType::Unsigned)),
+          index));
+    }
   }
   // No output parameters because we bind them all locally.
   auto out =
@@ -582,7 +602,7 @@ SubgraphInfo cloneSubgraph(OpBuilder builder, GraphOp orig, ModuleOp module,
       SignatureType::get(ctx, argTypes, out.getOperandTypes()));
   graphop.setFunctionType(
       mlir::FunctionType::get(ctx, argTypes, out.getOperandTypes()));
-  return {orig, std::string(graphop.getName()), subgraph};
+  return {orig, std::string(graphop.getName()), subgraphs};
 }
 
 // Models need to ensure that their backing buffer lives as long as they do.
@@ -596,17 +616,22 @@ struct ModelsWithBuffer {
 /// parameters defined within the subgraph.
 void replaceConstantOps(GraphOp graph, OpBuilder &builder,
                         const ModelResult &modelResult,
-                        const SubgraphInfo &subgraphInfo) {
+                        const SubgraphsInfo &subgraphsInfo) {
   MLIRContext *ctx = graph.getContext();
   // Find ops that are not used outside of the subgraph. Collect them now before
   // we have removed anything, then remove them later when they are not depended
   // on.
-  auto filtered =
-      llvm::make_filter_range(subgraphInfo.subgraph.ops, [&](Operation *op) {
-        return llvm::all_of(op->getResults(), [&](OpResult r) {
-          return subgraphInfo.subgraph.fullyContains(r);
-        });
+  SmallVector<Operation *> allOps;
+  for (auto subgraph : subgraphsInfo.subgraphs)
+    for (auto op : subgraph.ops)
+      allOps.push_back(op);
+  auto filtered = llvm::make_filter_range(allOps, [&](Operation *op) {
+    return llvm::all_of(op->getResults(), [&](OpResult r) {
+      return llvm::all_of(subgraphsInfo.subgraphs, [&](Subgraph subgraph) {
+        return subgraph.fullyContains(r);
       });
+    });
+  });
   llvm::SmallVector<Operation *> internalOps(filtered.begin(), filtered.end());
   mlir::computeTopologicalSorting(internalOps);
 
@@ -709,8 +734,10 @@ struct FactorMemIncrease : public ConstantFoldPolicy {
         subgraph.remove(maxValue);
         outputMem = outputMemUsage(subgraph);
       }
-      if (!llvm::all_of(subgraph.outputs,
-                        [](Operation *op) { return dyn_cast<ConstantOp>(op); }))
+      if (!llvm::all_of(subgraph.outputs, [](Operation *op) {
+            return dyn_cast<ConstantOp>(op) ||
+                   dyn_cast<KGEN::ParamDeclareOp>(op);
+          }))
         foldThese.push_back(subgraph);
     }
     return foldThese;
@@ -852,7 +879,7 @@ void ConstantFoldPass::runOnOperation() {
     //
     // An alternative approach could be to combine each subgraph into one
     // large constant graph so we only have one thing to execute.
-    SmallVector<SubgraphInfo> subgraphReplacements;
+    SmallVector<SubgraphsInfo> subgraphReplacements;
     int64_t name_counter = 0;
     getOperation().walk([&](GraphOp graph) {
       // Can't constant fold cuda yet
@@ -863,11 +890,11 @@ void ConstantFoldPass::runOnOperation() {
       if (subgraphs.empty())
         return mlir::WalkResult::advance();
       subgraphs = policy->shouldFold(subgraphs);
-      for (auto subgraph : subgraphs) {
-        builder.setInsertionPointToEnd(module.getBody());
-        subgraphReplacements.push_back(
-            cloneSubgraph(builder, graph, module, subgraph, name_counter));
-      }
+      if (subgraphs.empty())
+        return mlir::WalkResult::advance();
+      builder.setInsertionPointToEnd(module.getBody());
+      subgraphReplacements.push_back(
+          cloneSubgraphs(builder, graph, module, subgraphs, name_counter));
       return WalkResult::advance();
     });
 
@@ -892,27 +919,27 @@ void ConstantFoldPass::runOnOperation() {
     // We have to consolidate rewrites to the same graphop as the rewrites of
     // one subgraph may invalidate ops in another subgraph (due to fold hooks).
     llvm::DenseMap<GraphOp,
-                   llvm::SmallVector<std::pair<ModelResult, SubgraphInfo>>>
+                   llvm::SmallVector<std::pair<ModelResult, SubgraphsInfo>>>
         executionResults;
     for (size_t i = 0; i < subgraphReplacements.size(); i++) {
-      SubgraphInfo subgraphInfo = subgraphReplacements[i];
+      SubgraphsInfo subgraphsInfo = subgraphReplacements[i];
       const Model *model = modelsOr.get().models->getModelNamed(
-          subgraphInfo.constantSubgraphName);
+          subgraphsInfo.constantSubgraphName);
       assert(model != nullptr &&
              "Model should exist, make sure names above match.");
       ErrorOr<ModelResult> valuesToTensorsOr =
-          executeModel(ctx, model, subgraphInfo, runtime);
+          executeModel(ctx, model, subgraphsInfo, runtime);
       if (failed(valuesToTensorsOr)) {
         mlir::emitError(module.getLoc(),
                         Twine(valuesToTensorsOr.takeError().get()));
         return signalPassFailure();
       }
-      auto it = executionResults.find(subgraphInfo.orig);
+      auto it = executionResults.find(subgraphsInfo.orig);
       if (it != executionResults.end()) {
-        it->second.push_back({valuesToTensorsOr.takeValue(), subgraphInfo});
+        it->second.push_back({valuesToTensorsOr.takeValue(), subgraphsInfo});
       } else {
-        executionResults[subgraphInfo.orig] = {
-            {valuesToTensorsOr.takeValue(), subgraphInfo}};
+        executionResults[subgraphsInfo.orig] = {
+            {valuesToTensorsOr.takeValue(), subgraphsInfo}};
       }
     }
 
@@ -920,8 +947,8 @@ void ConstantFoldPass::runOnOperation() {
     for (auto [graph, results] : executionResults) {
       for (auto r : results) {
         ModelResult &modelResult = r.first;
-        SubgraphInfo &subgraphInfo = r.second;
-        replaceConstantOps(graph, builder, modelResult, subgraphInfo);
+        SubgraphsInfo &subgraphsInfo = r.second;
+        replaceConstantOps(graph, builder, modelResult, subgraphsInfo);
       }
     }
 
