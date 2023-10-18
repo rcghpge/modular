@@ -1143,6 +1143,20 @@ struct List {
 };
 
 //===----------------------------------------------------------------------===//
+// mgp.list.append
+//===----------------------------------------------------------------------===//
+
+static void mgp_list_append(List &inputList, AnyAsyncValueRef element,
+                            Result<List> output) {
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.list.append"));
+
+  // Copy input list then append element into it.
+  List newList = inputList.copy();
+  newList.elements.push_back(element.copy());
+  std::move(output).emplace(std::move(newList));
+}
+
+//===----------------------------------------------------------------------===//
 // mgp.list.create
 //===----------------------------------------------------------------------===//
 
@@ -1297,6 +1311,7 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.cpu.kernel.load_archive",
                 mgp_cpu_kernel_load_archive);
   ADD_PRIMITIVE(registry, "mgp.cpu.kernel.execute", mgp_cpu_kernel_execute);
+  ADD_PRIMITIVE(registry, "mgp.list.append", mgp_list_append);
   ADD_PRIMITIVE(registry, "mgp.list.create", mgp_list_create);
   ADD_PRIMITIVE(registry, "mgp.list.get", mgp_list_get);
   ADD_PRIMITIVE(registry, "mgp.list.insert", mgp_list_insert);

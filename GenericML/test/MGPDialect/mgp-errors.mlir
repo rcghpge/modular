@@ -527,3 +527,43 @@ func.func @list_insert_mismatch_dim(
   %t = mgp.list.insert %lst, %tsr, %idx : (!mgp.list<!mgp.cpu.tensor<3x3xf32>>, !mgp.cpu.tensor<?x3xf32>, !mgp.cpu.tensor<si32>) -> !mgp.list<!mgp.cpu.tensor<3x3xf32>>
   mef.output %t : !mgp.list<!mgp.cpu.tensor<3x3xf32>>
 }
+
+// -----
+
+//
+// mgp.list.append
+//
+
+// CHECK-LABEL: @list_append_mismatch_element_type
+func.func @list_append_mismatch_element_type(
+  %lst : !mgp.list<!mgp.cpu.tensor<3x3xf32>>,
+  %tsr : !mgp.cpu.tensor<3x3xsi32>
+) {
+  // expected-error@+1 {{new element type must be a subtype of output element type: '!mgp.cpu.tensor<3x3xsi32>' v.s. '!mgp.cpu.tensor<3x3xf32>'}}
+  %t = mgp.list.append %lst, %tsr : (!mgp.list<!mgp.cpu.tensor<3x3xf32>>, !mgp.cpu.tensor<3x3xsi32>) -> !mgp.list<!mgp.cpu.tensor<3x3xf32>>
+  mef.output %t : !mgp.list<!mgp.cpu.tensor<3x3xf32>>
+}
+
+// -----
+
+// CHECK-LABEL: @list_append_mismatch_rank
+func.func @list_append_mismatch_rank(
+  %lst : !mgp.list<!mgp.cpu.tensor<3x3xf32>>,
+  %tsr : !mgp.cpu.tensor<1x3x3xf32>
+) {
+  // expected-error@+1 {{new element type must be a subtype of output element type: '!mgp.cpu.tensor<1x3x3xf32>' v.s. '!mgp.cpu.tensor<3x3xf32>'}}
+  %t = mgp.list.append %lst, %tsr : (!mgp.list<!mgp.cpu.tensor<3x3xf32>>, !mgp.cpu.tensor<1x3x3xf32>) -> !mgp.list<!mgp.cpu.tensor<3x3xf32>>
+  mef.output %t : !mgp.list<!mgp.cpu.tensor<3x3xf32>>
+}
+
+// -----
+
+// CHECK-LABEL: @list_append_mismatch_dim
+func.func @list_append_mismatch_dim(
+  %lst : !mgp.list<!mgp.cpu.tensor<3x3xf32>>,
+  %tsr : !mgp.cpu.tensor<?x3xf32>
+) {
+  // expected-error@+1 {{new element type must be a subtype of output element type: '!mgp.cpu.tensor<?x3xf32>' v.s. '!mgp.cpu.tensor<3x3xf32>'}}
+  %t = mgp.list.append %lst, %tsr : (!mgp.list<!mgp.cpu.tensor<3x3xf32>>, !mgp.cpu.tensor<?x3xf32>) -> !mgp.list<!mgp.cpu.tensor<3x3xf32>>
+  mef.output %t : !mgp.list<!mgp.cpu.tensor<3x3xf32>>
+}

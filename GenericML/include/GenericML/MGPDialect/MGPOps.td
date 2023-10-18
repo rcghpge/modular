@@ -1787,6 +1787,43 @@ def CpuKernelExecuteOp : MGP_Op<"cpu.kernel.execute", [
 }
 
 //===----------------------------------------------------------------------===//
+// ListAppend
+//===----------------------------------------------------------------------===//
+
+def MGP_ListAppendOp : MGP_Op<"list.append", [
+  // The input list elements and appended element are all shallow copied into
+  // the output list.
+  DeclareOpInterfaceMethods<GRTMayAliasInterface>,
+]> {
+  let summary = "List append Operation.";
+  let description = [{
+    Creates a new list that's the result of appending an element to the end of a
+    copy of the input list (i.e., the op is value semantics and doesn't affect
+    the input list).
+
+    Example:
+
+    ```mlir
+    %lst : !mgp.list<!mgp.cpu.tensor<3x3xf32>>,
+    %tns : !mgp.cpu.tensor<3x4xf32>,
+    %t = mgp.list.append(%lst, %tns) : (
+      !mgp.list<!mgp.cpu.tensor<3x3xf32>>, !mgp.cpu.tensor<3x4xf32>
+    ) -> !mgp.list<!mgp.cpu.tensor<3x?xf32>>
+    ```
+  }];
+
+  let arguments = (ins MGP_List:$input,
+                       AnyType:$element);
+  let results = (outs MGP_List:$result);
+
+  let assemblyFormat = [{
+    ` ` operands ` ` attr-dict `:` functional-type(operands, results)
+  }];
+
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // ListCreate
 //===----------------------------------------------------------------------===//
 

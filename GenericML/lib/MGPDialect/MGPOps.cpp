@@ -1082,6 +1082,36 @@ static bool isSubtype(Type ty1, Type ty2) {
 }
 
 //===----------------------------------------------------------------------===//
+// ListAppendOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ListAppendOp::verify() {
+  // Check input element type against output element type.
+  Type inputElemTy = getInput().getType().getElementType();
+  Type outputElemTy = getType().getElementType();
+  if (!isSubtype(inputElemTy, outputElemTy)) {
+    return emitError()
+           << "input element type must be a subtype of output element type: "
+           << inputElemTy << " v.s. " << outputElemTy;
+  }
+
+  // Check new element type against list element type.
+  Type newElemTy = getElement().getType();
+  if (!isSubtype(newElemTy, outputElemTy)) {
+    return emitError()
+           << "new element type must be a subtype of output element type: "
+           << newElemTy << " v.s. " << outputElemTy;
+  }
+  return success();
+}
+
+bool ListAppendOp::mayAlias(size_t operandIndex, size_t resultIndex) {
+  // The resulting list contains shallow copies of input list elements and the
+  // appended element.
+  return true;
+}
+
+//===----------------------------------------------------------------------===//
 // ListCreateOp
 //===----------------------------------------------------------------------===//
 
