@@ -132,20 +132,17 @@ struct Model:
     fn execute(
         self, *inputs: Tuple[StringRef, EngineTensorView]
     ) raises -> TensorMap:
-        let inputs_list = VariadicList(inputs)
-        return self._execute_view[StringRef, EngineTensorView](inputs_list)
+        return self._execute_view[StringRef, EngineTensorView](inputs)
 
     fn execute(
         self, *inputs: Tuple[StringLiteral, EngineTensorView]
     ) raises -> TensorMap:
-        let inputs_list = VariadicList(inputs)
-        return self._execute_view[StringLiteral, EngineTensorView](inputs_list)
+        return self._execute_view[StringLiteral, EngineTensorView](inputs)
 
     fn execute(
         self, *inputs: Tuple[StringLiteral, EngineNumpyView]
     ) raises -> TensorMap:
-        let inputs_list = VariadicList(inputs)
-        return self._execute_view[StringLiteral, EngineNumpyView](inputs_list)
+        return self._execute_view[StringLiteral, EngineNumpyView](inputs)
 
     fn __del__(owned self):
         self.ptr.free(self.lib)

@@ -26,12 +26,11 @@ struct Graph:
         return self.builder.get_input(self.g, pos)
 
     fn values(inout self, *values: SymbolPtr) raises -> Tup:
-        let l = VariadicList(values)
         var t = self.builder.new_tuple()
-        for i in range(len(l)):
-            var v = l[i]
+        for i in range(len(values)):
+            var v = values[i]
             self.builder.add_symbol(t, v)
-        return Tup(t, len(l), self.builder)
+        return Tup(t, len(values), self.builder)
 
     fn op(
         inout self,

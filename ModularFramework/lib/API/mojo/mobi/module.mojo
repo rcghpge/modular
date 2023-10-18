@@ -55,10 +55,9 @@ struct Module:
     fn i32_attr(
         inout self, name: StringRef, t: TypePtr, *elements: Int32
     ) raises -> AttrPtr:
-        let l = VariadicList(elements)
         var data = DynamicVector[Int32]()
-        for i in range(len(l)):
-            data.push_back(l[i])
+        for i in range(len(elements)):
+            data.push_back(elements[i])
         return self.builder.tensor_attr(
             self.m, name, data.data.bitcast[AnyType](), t
         )
@@ -66,10 +65,9 @@ struct Module:
     fn i64_attr(
         inout self, name: StringRef, t: TypePtr, *elements: Int64
     ) raises -> AttrPtr:
-        let l = VariadicList(elements)
         var data = DynamicVector[Int64]()
-        for i in range(len(l)):
-            data.push_back(l[i])
+        for i in range(len(elements)):
+            data.push_back(elements[i])
         return self.builder.tensor_attr(
             self.m, name, data.data.bitcast[AnyType](), t
         )
@@ -77,10 +75,9 @@ struct Module:
     fn f32_attr(
         inout self, name: StringRef, t: TypePtr, *elements: Float32
     ) raises -> AttrPtr:
-        let l = VariadicList(elements)
         var data = DynamicVector[Float32]()
-        for i in range(len(l)):
-            data.push_back(l[i])
+        for i in range(len(elements)):
+            data.push_back(elements[i])
         return self.builder.tensor_attr(
             self.m, name, data.data.bitcast[AnyType](), t
         )
@@ -98,12 +95,11 @@ struct Module:
         return self.builder.tensor_attr_from_file(self.m, name, fileName, t)
 
     fn attrs(inout self, *attrs: AttrPtr) raises -> AttrMap:
-        let l = VariadicList(attrs)
         var m = self.builder.new_attr_map()
-        for i in range(len(l)):
-            var a = l[i]
+        for i in range(len(attrs)):
+            var a = attrs[i]
             self.builder.add_attr(m, a)
-        return AttrMap(m, len(l))
+        return AttrMap(m, len(attrs))
 
     # TODO: Support TensorSpec overload.
 
@@ -111,40 +107,35 @@ struct Module:
         return self.builder.dynamic_dim(self.m)
 
     fn i32(inout self, *dims: Int64) raises -> TypePtr:
-        let l = VariadicList(dims)
         var shape = DynamicVector[Int64]()
-        for i in range(len(l)):
-            shape.push_back(l[i])
+        for i in range(len(dims)):
+            shape.push_back(dims[i])
         return self.builder.i32(self.m, shape.data, shape.__len__())
 
     fn i64(inout self, *dims: Int64) raises -> TypePtr:
-        let l = VariadicList(dims)
         var shape = DynamicVector[Int64]()
-        for i in range(len(l)):
-            shape.push_back(l[i])
+        for i in range(len(dims)):
+            shape.push_back(dims[i])
         return self.builder.i64(self.m, shape.data, shape.__len__())
 
     fn f32(inout self, *dims: Int64) raises -> TypePtr:
-        let l = VariadicList(dims)
         var shape = DynamicVector[Int64]()
-        for i in range(len(l)):
-            shape.push_back(l[i])
+        for i in range(len(dims)):
+            shape.push_back(dims[i])
         return self.builder.f32(self.m, shape.data, shape.__len__())
 
     fn bool(inout self, *dims: Int64) raises -> TypePtr:
-        let l = VariadicList(dims)
         var shape = DynamicVector[Int64]()
-        for i in range(len(l)):
-            shape.push_back(l[i])
+        for i in range(len(dims)):
+            shape.push_back(dims[i])
         return self.builder.bool(self.m, shape.data, shape.__len__())
 
     fn types(inout self, *types: TypePtr) raises -> Arity:
-        let l = VariadicList(types)
         var a = self.builder.new_arity()
-        for i in range(len(l)):
-            var t = l[i]
+        for i in range(len(types)):
+            var t = types[i]
             self.builder.add_type(a, t)
-        return Arity(a, len(l))
+        return Arity(a, len(types))
 
     fn graph(
         inout self,
