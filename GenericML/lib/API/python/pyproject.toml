@@ -1,6 +1,6 @@
 # Use the setuptools build backend
 [build-system]
-requires = ["wheel", "setuptools", "setuptools-scm"]
+requires = ["wheel", "setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
