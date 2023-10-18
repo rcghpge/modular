@@ -142,6 +142,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   MO::AddDevicesPassOptions addDevicesOpts;
   addDevicesOpts.enableExtraDevices = opts.enableExtraDevices;
+  addDevicesOpts.defaultDeviceLabel = opts.defaultDeviceLabel;
   pm.addPass(MO::createAddDevicesPass(addDevicesOpts, optRuntime));
 
   pm.addPass(MO::createAssignDevicesPass());

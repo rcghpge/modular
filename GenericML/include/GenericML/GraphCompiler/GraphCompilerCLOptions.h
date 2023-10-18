@@ -31,6 +31,12 @@ public:
                "Default is false, which will include just the host CPU."),
       cl::init(false)};
 
+  cl::opt<std::string> defaultDeviceLabel{
+      "default-device-label",
+      cl::desc("If non-empty, assign as many ops as possible to the device "
+               "with the given label (and device id zero)."),
+      cl::init("")};
+
   cl::opt<bool> enableMemoryPlanning{
       "enable-memory-planning",
       cl::desc("If true, statically plan as many buffer allocations as "

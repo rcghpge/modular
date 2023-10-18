@@ -92,6 +92,12 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       llvm::cl::desc("Include all host devices instead of just the CPU during "
                      "compilation."),
       llvm::cl::init(false)};
+  Option<std::string> defaultDeviceLabel{
+      *this, "default-device-label",
+      llvm::cl::desc(
+          "If non-empty, assign as many ops as possible to the device "
+          "with the given label (and device id zero)."),
+      llvm::cl::init("")};
   Option<bool> enableMemoryPlanning{
       *this, "enable-memory-planning",
       llvm::cl::desc("If true, statically plan as many buffer allocations as "
