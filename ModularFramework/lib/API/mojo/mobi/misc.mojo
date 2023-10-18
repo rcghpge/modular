@@ -5,7 +5,6 @@
 # ===----------------------------------------------------------------------=== #
 
 from .mobicc import AttrMapPtr, ArityPtr, TuplePtr, SymbolPtr
-from utils.list import VariadicList
 
 
 struct AttrMap:

@@ -7,7 +7,6 @@
 from .misc import Arity, AttrMap
 from .mobicc import AttrPtr, AttrMapPtr, ModulePtr, Builder, TypePtr, GraphPtr
 from tensor import Tensor, TensorSpec
-from utils.list import VariadicList
 
 # TODO: DynamicVectors all need a _del_old() call.
 

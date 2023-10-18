@@ -6,7 +6,6 @@
 
 from .misc import Arity, AttrMap, Tup
 from .mobicc import Builder, ModulePtr, GraphPtr, SymbolPtr, TuplePtr
-from utils.list import VariadicList
 
 
 struct Graph:

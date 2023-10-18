@@ -12,7 +12,6 @@ from ._context import *
 from ._compilation import CCompiledModel
 from ._tensormap import *
 from ._tensor import *
-from utils.list import VariadicList
 from .session import InferenceSession
 
 
