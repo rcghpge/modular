@@ -12,11 +12,6 @@ if(NOT UNIX)
   return()
 endif()
 
-if(${DISABLE_ALL_EXTERNAL})
-  message(WARNING "Cannot build Python C++ bindings since PyBind11 is not available.")
-  return()
-endif()
-
 modular_find_python3_development()
 
 include(AddPyBind11)
