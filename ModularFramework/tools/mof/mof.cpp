@@ -282,14 +282,6 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
   return success();
 }
 
-ErrorOrSuccess M_getMetadataFromBinary(FrameworkContextHandle ctx,
-                                       DriverHandle modelBinaryHandle,
-                                       llvm::ToolOutputFile &outputFile,
-                                       int command) {
-
-  return Error("Not implemented");
-}
-
 ErrorOrSuccess M_openBinaryFile(FrameworkContextHandle ctx,
                                 const llvm::MemoryBuffer &file,
                                 DriverHandle *modelBinaryHandle) {

@@ -360,16 +360,6 @@ int main(int argc, char **argv) {
     if (auto err = dylib.checkExpectedContents(frameworkCtx, binaryFile))
       return options.reportError(err.getError());
 
-    // If we're just getting information, then get and print it.
-    if (options.command == DriverCommand::printMetadata ||
-        options.command == DriverCommand::printConstantMetadata) {
-      if (auto err = dylib.getMetadataFromBinary(frameworkCtx, binaryFile,
-                                                 *options.getOutputFile(false),
-                                                 options.command.getValue()))
-        return options.reportError(err.getError());
-      return EXIT_SUCCESS;
-    }
-
     // Hand off the MEFFileHandle and the file buffer to the framework to
     // actually run the thing with all the various diagnostics.
     if (options.scenarios.empty())

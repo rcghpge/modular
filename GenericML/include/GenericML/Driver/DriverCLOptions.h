@@ -272,13 +272,6 @@ public:
       cl::values(
           clEnumValN(DriverCommand::inspect, "inspect",
                      "Print information about the input without processing it"),
-          clEnumValN(DriverCommand::printMetadata, "print-metadata",
-                     "Print model metadata in YAML format for other tools "
-                     "to use it"),
-          clEnumValN(DriverCommand::printConstantMetadata,
-                     "print-constant-metadata",
-                     "Print constant metadata in YAML format for other tools "
-                     "to use it"),
           clEnumValN(DriverCommand::compile, "compile",
                      "Compile the input into a MEF file for execution"),
           clEnumValN(DriverCommand::execute, "execute",
