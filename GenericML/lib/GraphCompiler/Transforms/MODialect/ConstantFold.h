@@ -41,6 +41,9 @@ struct Subgraph {
   /// returned in topological order.
   llvm::SetVector<StringAttr> paramDeclarations() const;
 
+  /// List of all constants contained in this subgraph.
+  llvm::SmallVector<ConstantOp> constants() const;
+
 private:
   // Set outputs to those Values in vals which have uses outside the subgraph.
   void findOutputs() {

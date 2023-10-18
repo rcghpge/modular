@@ -70,6 +70,13 @@ llvm::SetVector<StringAttr> Subgraph::paramDeclarations() const {
   return params;
 }
 
+llvm::SmallVector<ConstantOp> Subgraph::constants() const {
+  auto filtered = llvm::make_filter_range(
+      ops, [](Operation *op) { return dyn_cast<ConstantOp>(op); });
+  return llvm::to_vector(llvm::map_range(
+      filtered, [](Operation *op) { return dyn_cast<ConstantOp>(op); }));
+}
+
 /// Topologically sort parameters in a list of ops.
 llvm::SmallVector<Operation *> sortParams(llvm::ArrayRef<Operation *> ops) {
   // ParameterUseDefGraph doesn't map from parameter to operations using it, so
@@ -179,6 +186,22 @@ ErrorOr<ModelResult> executeModel(MLIRContext *ctx, const Model *model,
     return Error("Model setup failed, not ready for execution");
 
   SmallVector<AnyAsyncValueRef> inputTensorsInMEFIndexOrder;
+  for (ConstantOp constant : subgraphInfo.subgraph.constants()) {
+    auto denseElems =
+        dyn_cast<DenseResourceElementsAttr>(constant.getValueAttr());
+    if (denseElems) {
+      auto blob = denseElems.getRawHandle().getBlob();
+      TensorType ttype = dyn_cast<TensorType>(constant.getType());
+      TensorSpec spec(
+          dyn_cast<MOSH::ShapeAttr>(ttype.getShapeAttr()).getIntDims(),
+          ttype.getDtype());
+      GML::Tensor tensor = GML::Tensor::createBorrowed(
+          blob->getData().data(), spec, blob->getDataAlignment(),
+          GML::BufferRef::Lifetime::kConstant);
+      inputTensorsInMEFIndexOrder.push_back(
+          AsyncValueRef<GML::Tensor>::createReady(runtime, std::move(tensor)));
+    }
+  }
   auto results = executableModel->execute(inputTensorsInMEFIndexOrder);
 
   if (results.empty())
@@ -458,21 +481,40 @@ constantSubgraphs(MO::GraphOp graph,
 /// Copy a subgraph out of its original GraphOp and into a new GraphOp in a
 /// different module. Adds OutputOps for all the outputs of the subgraph.
 /// Return information to identify the new GraphOp.
+/// Large constants in the subgraph are transformed into inputs to the new
+/// graph.
 SubgraphInfo cloneSubgraph(OpBuilder builder, GraphOp orig, ModuleOp module,
                            Subgraph subgraph, int64_t &name_counter) {
+  // Add large constants as inputs
+  llvm::SmallVector<Type> argTypes;
+  for (ConstantOp constant : subgraph.constants()) {
+    auto dense = dyn_cast<DenseResourceElementsAttr>(constant.getValueAttr());
+    if (dense)
+      argTypes.push_back(constant.getType());
+  }
   llvm::SmallVector<Type> resultTypes;
   for (auto op : subgraph.outputs)
     for (auto result : op->getResults())
       resultTypes.push_back(result.getType());
   int64_t counter = orig.getProperties().getCounter();
   // This name cannot be too long otherwise something breaks :(.
-  auto graphop = builder.create<GraphOp>(
+  GraphOp graphop = builder.create<GraphOp>(
       module.getLoc(),
       (orig.getName() + "_subgraph_" + std::to_string(name_counter)).str(),
-      SmallVector<Type>{}, resultTypes);
+      argTypes, resultTypes);
   name_counter++;
   orig.getProperties().setCounter(counter + 1);
   builder.setInsertionPointToEnd(graphop.getBodyBlock());
+
+  llvm::MapVector<ConstantOp, BlockArgument> inputConstants;
+  int64_t idx = 0;
+  for (ConstantOp constant : subgraph.constants()) {
+    auto dense = dyn_cast<DenseResourceElementsAttr>(constant.getValueAttr());
+    if (dense) {
+      inputConstants[constant] = graphop.getBody().getArgument(idx);
+      idx++;
+    }
+  }
 
   SmallVector<Operation *, 8> opsSorted(subgraph.ops.begin(),
                                         subgraph.ops.end());
@@ -483,8 +525,18 @@ SubgraphInfo cloneSubgraph(OpBuilder builder, GraphOp orig, ModuleOp module,
   opsSorted = sortParams(opsSorted);
   mlir::computeTopologicalSorting(opsSorted);
   IRMapping oldToNew;
-  for (auto old_op : opsSorted)
-    builder.clone(*old_op, oldToNew);
+  for (auto oldOp : opsSorted) {
+    ConstantOp oldConst = dyn_cast<ConstantOp>(oldOp);
+    // Replace large constants with the inputs to this new graph
+    if (oldConst) {
+      auto it = inputConstants.find(oldConst);
+      if (it != inputConstants.end()) {
+        oldToNew.map(oldOp->getResult(0), it->second);
+        continue;
+      }
+    }
+    builder.clone(*oldOp, oldToNew);
+  }
   llvm::SmallVector<Value> newOutputs;
   llvm::SetVector<KGEN::ParamDeclAttr> outputParams;
   for (auto op : subgraph.outputs) {
@@ -526,9 +578,10 @@ SubgraphInfo cloneSubgraph(OpBuilder builder, GraphOp orig, ModuleOp module,
   auto out =
       builder.create<OutputOp>(loc, newOutputs, KGEN::ParameterExprArrayAttr{});
   // Have to update the GraphOp's signature.
-  graphop.setSignature(SignatureType::get(ctx, {}, out.getOperandTypes()));
+  graphop.setSignature(
+      SignatureType::get(ctx, argTypes, out.getOperandTypes()));
   graphop.setFunctionType(
-      mlir::FunctionType::get(ctx, {}, out.getOperandTypes()));
+      mlir::FunctionType::get(ctx, argTypes, out.getOperandTypes()));
   return {orig, std::string(graphop.getName()), subgraph};
 }
 
@@ -875,7 +928,7 @@ void ConstantFoldPass::runOnOperation() {
     // Remove module to not clutter the output.
     module.erase();
 
-    // Run cannonicalization to uncover more constant folding.
+    // Run canonicalization to uncover more constant folding.
     mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
         ctx, mlir::OpPassManager::Nesting::Implicit);
     pm.addPass(mlir::createCanonicalizerPass());
