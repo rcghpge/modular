@@ -138,6 +138,9 @@ public:
   /// Lowers mo.while op.
   LogicalResult lowerWhile(MO::WhileOp whileOp);
 
+  /// Lowers mo.list.append op.
+  LogicalResult lowerListAppend(MO::ListAppendOp listAppendOp);
+
   /// Lowers mo.list.create op.
   LogicalResult lowerListCreate(MO::ListCreateOp listCreateOp);
 
@@ -777,6 +780,26 @@ LogicalResult MOGraphLowering::lowerTransfer(MO::TransferOp transferOp) {
   return success();
 }
 
+LogicalResult MOGraphLowering::lowerListAppend(MO::ListAppendOp listAppendOp) {
+  // Collect lowered input tensors
+  Value mgpInputList =
+      loweringState.lookupExecuteLoweredValue(listAppendOp.getInput());
+  Value mgpElementTensor =
+      loweringState.lookupExecuteLoweredValue(listAppendOp.getElement());
+
+  // Construct output mgp list type
+  MGP::ListType mgpOutputListTy = lowerListType(listAppendOp.getType());
+
+  // Construct the corresponding mgp.list.insert op
+  MGP::MOOpLoweringState opLoweringState(loweringState, listAppendOp,
+                                         getDeviceOrDefault(listAppendOp));
+  Value mgpOutputTensor = opLoweringState.create<MGP::ListAppendOp>(
+      mgpOutputListTy, mgpInputList, mgpElementTensor);
+  loweringState.emplaceExecuteLoweredValue(listAppendOp, mgpOutputTensor);
+
+  return success();
+}
+
 LogicalResult MOGraphLowering::lowerListCreate(MO::ListCreateOp listCreateOp) {
   // Collect lowered input tensors
   SmallVector<Value> mgpInputTensors;
@@ -1142,6 +1165,12 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
 
     if (auto transferOp = dyn_cast<MO::TransferOp>(op)) {
       if (failed(lowerTransfer(transferOp)))
+        return failure();
+      continue;
+    }
+
+    if (auto listAppendOp = dyn_cast<MO::ListAppendOp>(op)) {
+      if (failed(lowerListAppend(listAppendOp)))
         return failure();
       continue;
     }
