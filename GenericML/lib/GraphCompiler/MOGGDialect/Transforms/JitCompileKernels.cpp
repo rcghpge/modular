@@ -120,7 +120,8 @@ mangleBlock(mlir::Block &block,
 
     } else if (auto call = dyn_cast<MOGG::CallOp>(innerOp)) {
       name += "call_";
-      appendName(name, call.getMojoKernelTarget());
+      for (char c : call.getMojoKernelTarget())
+        name.push_back(c == '.' ? '_' : c);
 
       // If we have parameters we have to mangle those too.
       if (call.getParams()) {
@@ -227,7 +228,7 @@ mangleBlock(mlir::Block &block,
 //
 // If the op is to be executed via the 'host', the device will be the host
 // device and not necessarily the op's device annotation.
-ErrorOr<std::string>
+static ErrorOr<std::string>
 createMangledName(MOGG::KernelOp op,
                   DenseMap<KGEN::ParamDeclRefAttr, size_t> &params,
                   DenseMap<M::ElementsAttr, size_t> &seenConsts,
@@ -282,13 +283,6 @@ createMangledName(MOGG::KernelOp op,
   if (mangledBlockOr.isError())
     return mangledBlockOr.takeError();
   name += *mangledBlockOr;
-
-  if (MO::getDeviceOrDefault(op).getLabel() == kCUDALabel) {
-    // HACK HACK HACK https://github.com/modularml/modular/issues/22959
-    // This name may end up within PTX, which does not accept periods.
-    std::replace_if(
-        name.begin(), name.end(), [](char c) { return c == '.'; }, '_');
-  }
 
   return {name};
 }
