@@ -690,6 +690,10 @@ OpFoldResult GreaterEqualOp::fold(FoldAdaptor adaptor) {
       /*bitwidth=*/1, /*isSigned=*/false);
 }
 
+OpFoldResult DivOp::fold(FoldAdaptor adaptor) {
+  return foldElemwiseOp(getType(), adaptor,
+                        [](int64_t x, int64_t y) { return x / y; });
+}
 //===----------------------------------------------------------------------===//
 // MO_BroadcastToOp
 //===----------------------------------------------------------------------===//

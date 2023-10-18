@@ -604,6 +604,8 @@ def MO_DivOp : MO_ElementWiseBinaryMonoTypeOp<"div"> {
     %res = mo.div(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
     ```
   }];
+
+  let hasFolder = 1;
 }
 
 def MO_ExpOp : MO_ElementWiseUnaryMonoTypeOp<"exp"> {
