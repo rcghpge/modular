@@ -955,7 +955,7 @@ mo.graph @squeeze_shape_dynamic_shape_with_reshape(%input_tensor: !mo.tensor<[?,
 mo.graph @slice_output_partial_inference(%arg0: !mo.tensor<[10, ?, 20], f32>) -> (!mo.tensor<[?, ?, ?], f32>) {
 
   // CHECK-DAG: %[[START:.*]] = mo.constant {value = #M.dense_array<0, 0, 0> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
-  // CHECK-DAG: %[[PARAMS:.*]] = kgen.param.constant: !mosh.ape = <[10, D6, 20]>
+  // CHECK-DAG: %[[PARAMS:.*]] = kgen.param.constant: !mosh.ape = <[10, [[D0]], 20]>
   // CHECK-DAG: %[[STOP:.*]] = mo.shape.to_tensor(%[[PARAMS]]) -> !mo.tensor<[3], si64>
   // CHECK-DAG: %[[STEP:.*]] = mo.constant {value = #M.dense_array<1, 1, 1> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
   %axis0 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si32>
@@ -976,4 +976,48 @@ mo.graph @slice_output_partial_inference(%arg0: !mo.tensor<[10, ?, 20], f32>) ->
 
   // CHECK: mo.output<[[OUT_DIM]]> %[[RES]] : !mo.tensor<[10, [[OUT_DIM]], 20], f32>
   mo.output %output : !mo.tensor<[?, ?, ?], f32>
+}
+
+// Taken from clip-dynamic-per-tensor-weight-type-quint8-optimized
+// CHECK-LABEL: mo.graph @slice_out_a_third
+// CHECK-SAME: <[[D0:.*]] -> [[D1:.*]]>(%[[INPUT:.*]]: !mo.tensor<[50, [[D0]], 2304], f32>) -> !mo.tensor<[50, [[D1]], 768], f32>
+mo.graph @slice_out_a_third(
+  %1207: !mo.tensor<[50, ?, 2304], f32>
+) -> !mo.tensor<[?, ?, ?], f32> {
+
+  // CHECK-DAG: %[[START:.*]] = mo.constant {value = #M.dense_array<0, 0, 768> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  // CHECK-DAG: %[[PARAMS:.*]] = kgen.param.constant: !mosh.ape = <[50, [[D0]], 1536]>
+  // CHECK-DAG: %[[STOP:.*]] = mo.shape.to_tensor(%[[PARAMS]]) -> !mo.tensor<[3], si64>
+  // CHECK-DAG: %[[STEP:.*]] = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %2 = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %4 = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %12 = mo.constant {value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %16 = mo.constant {value = #M.dense_array<50> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
+  %19 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi32>} : !mo.tensor<[], si32>
+  %23 = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
+  %24 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
+  %32 = mo.constant {value = #M.dense_array<2, 3, 1, 0> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
+  %34 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
+  %241 = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %243 = mo.constant {value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+
+  %1210 = mo.shape_of(%1207) : (!mo.tensor<[50, ?, 2304], f32>) -> !mo.tensor<[3], si64>
+  %1213 = mo.gather(%1210, %241, %34) : (!mo.tensor<[3], si64>, !mo.tensor<[1], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[1], si64>
+  %1215 = mo.add(%1213, %12) : !mo.tensor<[1], si64>
+  %1218 = mo.div(%1215, %243) : !mo.tensor<[1], si64>
+  %1220 = mo.mul(%1218, %12) : !mo.tensor<[1], si64>
+  %1230 = mo.shape_of(%1207) : (!mo.tensor<[50, ?, 2304], f32>) -> !mo.tensor<[3], si32>
+  %1231 = mo.gather(%1230, %23, %19) : (!mo.tensor<[3], si32>, !mo.tensor<[1], si64>, !mo.tensor<[], si32>) -> !mo.tensor<[1], si32>
+  %1232 = mo.concat[%19 : !mo.tensor<[], si32>] (%16, %1231) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si32>) -> !mo.tensor<[2], si64>
+  %1233 = mo.gather(%1218, %24, %19) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[], si32>) -> !mo.tensor<[1], si64>
+  %1234 = mo.gather(%1220, %24, %19) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[], si32>) -> !mo.tensor<[1], si64>
+  %1235 = mo.concat[%19 : !mo.tensor<[], si32>] (%4, %1233) : (!mo.tensor<[2], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[3], si64>
+  %1236 = mo.concat[%19 : !mo.tensor<[], si32>] (%1232, %1234) : (!mo.tensor<[2], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[3], si64>
+
+  // CHECK: %[[RES:.*]] = mo.slice(%[[INPUT]], %[[START]], %[[STOP]], %[[STEP]])
+  // CHECK-SAME: : (!mo.tensor<[50, [[D0]], 2304], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[50, [[OUT_DIM:.*]], 768], f32>
+  %1237 = mo.slice(%1207, %1235, %1236, %2) : (!mo.tensor<[50, ?, 2304], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[?, ?, ?], f32>
+
+  // CHECK: mo.output<[[OUT_DIM]]> %[[RES]] : !mo.tensor<[50, [[OUT_DIM]], 768], f32>
+  mo.output %1237 : !mo.tensor<[?, ?, ?], f32>
 }
