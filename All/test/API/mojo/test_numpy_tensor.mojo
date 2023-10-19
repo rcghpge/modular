@@ -5,6 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 # UNSUPPORTED: windows
 # UNSUPPORTED: address
+# REQUIRES: numpy
 # RUN: %mojo -I %engine_pkg_dir -I %test_utils_pkg_dir %s | FileCheck %s
 
 from aiengine import EngineNumpyView
