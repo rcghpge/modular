@@ -907,7 +907,8 @@ void ConstantFoldPass::runOnOperation() {
     ErrorOr<ModelsWithBuffer> modelsOr = lowerSubgraphs(module);
     if (failed(modelsOr)) {
       mlir::emitError(module.getLoc(),
-                      "unable to load models: " + Twine(modelsOr.getError()));
+                      "[ConstantFold] Unable to load models: " +
+                          Twine(modelsOr.getError()));
       return signalPassFailure();
     }
 
@@ -931,7 +932,8 @@ void ConstantFoldPass::runOnOperation() {
           executeModel(ctx, model, subgraphsInfo, runtime);
       if (failed(valuesToTensorsOr)) {
         mlir::emitError(module.getLoc(),
-                        Twine(valuesToTensorsOr.takeError().get()));
+                        "[ConstantFold] " +
+                            Twine(valuesToTensorsOr.takeError().get()));
         return signalPassFailure();
       }
       auto it = executionResults.find(subgraphsInfo.orig);
@@ -961,7 +963,7 @@ void ConstantFoldPass::runOnOperation() {
     pm.addPass(mlir::createCanonicalizerPass());
     if (failed(runPipeline(pm, getOperation()))) {
       mlir::emitError(getOperation().getLoc(),
-                      "Failed to run cannonicalization pass");
+                      "[ConstantFold] Failed to run cannonicalization pass");
       return;
     }
   }
