@@ -68,6 +68,7 @@ LogicalResult verifyMOSameOperandsAndResultElementType(Operation *op);
 LogicalResult verifyMOSameOperandsAndResultShapeAttr(Operation *op);
 LogicalResult verifyMOSameOperandsAndResultShape(Operation *op);
 LogicalResult verifyMOSameOperandsElementType(Operation *op);
+LogicalResult verifyMOSameFirstOperandAndResultsElementType(Operation *op);
 
 LogicalResult defaultResolveUnknownParameters(ParameterizationInterface op,
                                               mlir::RewriterBase &rewriter);
@@ -113,6 +114,16 @@ class MOSameOperandsElementType
 public:
   static LogicalResult verifyTrait(Operation *op) {
     return impl::verifyMOSameOperandsElementType(op);
+  }
+};
+
+template <typename ConcreteType>
+class MOSameFirstOperandAndResultsElementType
+    : public mlir::OpTrait::TraitBase<ConcreteType,
+                                      MOSameFirstOperandAndResultsElementType> {
+public:
+  static LogicalResult verifyTrait(Operation *op) {
+    return impl::verifyMOSameFirstOperandAndResultsElementType(op);
   }
 };
 

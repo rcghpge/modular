@@ -2101,8 +2101,6 @@ inline LogicalResult checkReshapeInOutTypesCompatible(T op) {
   // e.g. may have the same number of elements and same dtype.
   TensorType inputTy = op.getInput().getType();
   TensorType resultTy = op.getType();
-  if (inputTy.getDtype() != resultTy.getDtype())
-    return op.emitOpError("expect input and output dtypes to match");
 
   std::optional<int64_t> inputNumEles = inputTy.getNumElements();
   std::optional<int64_t> resultNumEles = resultTy.getNumElements();

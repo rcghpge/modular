@@ -522,4 +522,13 @@ def MO_SameOperandsAndResultElementType :
 def MO_SameOperandsElementType :
     MO_OpTrait<"MOSameOperandsElementType">;
 
+/// Checks the results of an op have the same dtype as the first operand.
+/// This is useful for shape-like operators like reshape, squeeze, etc.
+/// which typically take in an input tensor, some additional operands
+/// describing how to change the input shape, and produce a newly shaped
+/// output tensor. The dtype of the original tensor should not change in
+/// the transformation.
+def MO_SameFirstOperandAndResultsElementType :
+    MO_OpTrait<"MOSameFirstOperandAndResultsElementType">;
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOINTERFACES_TD

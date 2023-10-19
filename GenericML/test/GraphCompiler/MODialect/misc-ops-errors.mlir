@@ -90,6 +90,14 @@ mo.graph @broadcast_to_bad_type(%from: !mo.tensor<?, f32>, %to: !mo.tensor<[?], 
 
 // -----
 
+mo.graph @broadcast_to_change_dtype(%from: !mo.tensor<?, f32>, %to: !mo.tensor<[?], si32>) -> !mo.tensor<?, f64> {
+  // expected-error@+1 {{'mo.broadcast_to' op requires the element type of results match first operand}}
+  %res = mo.broadcast_to(%from, %to) : (!mo.tensor<?, f32>, !mo.tensor<[?], si32>) -> !mo.tensor<?, f64>
+  mo.output %res : !mo.tensor<?, f64>
+}
+
+// -----
+
 mo.graph @broadcast_new_shape_size_res_unranked(
   %from: !mo.tensor<?, f32>, %to: !mo.tensor<[2], si32>
 ) -> !mo.tensor<?, f32> {
@@ -923,7 +931,7 @@ mo.graph @tile_repeats_rank_mismatch(%input: !mo.tensor<[?, ?, ?], f32>) -> !mo.
 // -----
 mo.graph @reshape_wrong_dtype(%input: !mo.tensor<[6], f32>) -> !mo.tensor<[2, 3], si32> {
   %shape = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  // expected-error@+1 {{'mo.reshape' op expect input and output dtypes to match}}
+  // expected-error@+1 {{'mo.reshape' op requires the element type of results match first operand.}}
   %res = mo.reshape(%input, %shape) : (!mo.tensor<[6], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 3], si32>
   mo.output %res : !mo.tensor<[2, 3], si32>
 }
@@ -998,7 +1006,7 @@ mo.graph @squeeze_shape_changed_dtypes(%input_shape: !mo.tensor<[4], si32>) -> !
   %indices = mo.constant {value = #M.dense_array<0, 2, 6> : tensor<3xsi64>} : !mo.tensor<[3], si64>
 
   // Input and output dtypes should match
-  // expected-error@+1 {{'mo.squeeze_shape' op Expect in and out DTypes to be the same type}}
+  // expected-error@+1 {{'mo.squeeze_shape' op requires the element type of results match first operand.}}
   %res = mo.squeeze_shape(%input_shape, %indices) : (!mo.tensor<[4], si32>, !mo.tensor<[3], si64>) -> !mo.tensor<[7], si64>
   mo.output %res : !mo.tensor<[7], si64>
 }
@@ -1025,7 +1033,7 @@ mo.graph @unsqueeze_shape_changed_dtypes(%input_shape: !mo.tensor<[4], si32>) ->
   %indices = mo.constant {value = #M.dense_array<0, 2, 6> : tensor<3xsi64>} : !mo.tensor<[3], si64>
 
   // Input and output dtypes should match
-  // expected-error@+1 {{'mo.unsqueeze_shape' op Expect in and out DTypes to be the same type}}
+  // expected-error@+1 {{'mo.unsqueeze_shape' op requires the element type of results match first operand.}}
   %res = mo.unsqueeze_shape(%input_shape, %indices) : (!mo.tensor<[4], si32>, !mo.tensor<[3], si64>) -> !mo.tensor<[7], si64>
   mo.output %res : !mo.tensor<[7], si64>
 }

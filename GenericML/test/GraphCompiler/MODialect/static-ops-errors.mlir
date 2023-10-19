@@ -28,6 +28,14 @@ mo.graph @static_broadcast_input_shape_rank_res_rank(%from: !mo.tensor<[1, 2, 3]
   mo.output %res : !mo.tensor<[2, 3], f32>
 }
 
+// -----
+
+mo.graph @static_broadcast_change_dtype(%from: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[1, 2, 3], si32> {
+  // expected-error@+1 {{'mo.static.broadcast_to' op requires the element type of results match first operand.}}
+  %res = mo.static.broadcast_to(%from) : !mo.tensor<[2, 3], f32> -> !mo.tensor<[1, 2, 3], si32>
+  mo.output %res : !mo.tensor<[1, 2, 3], si32>
+}
+
 //===----------------------------------------------------------------------===//
 // Static_ReshapeOp
 //===----------------------------------------------------------------------===//
@@ -41,7 +49,7 @@ mo.graph @static_reshape_non_matching_dims(%arg0: !mo.tensor<[5, 10], si64>) -> 
 
 // -----
 mo.graph @static_reshape_wrong_dtype(%arg0: !mo.tensor<[5, 10], si64>) -> !mo.tensor<[50], si32> {
-  // expected-error @below {{'mo.static.reshape' op expect input and output dtypes to match}}
+  // expected-error @below {{'mo.static.reshape' op requires the element type of results match first operand.}}
   %0 = mo.static.reshape(%arg0) : !mo.tensor<[5, 10], si64> -> !mo.tensor<[50], si32>
   mo.output %0 : !mo.tensor<[50], si32>
 }

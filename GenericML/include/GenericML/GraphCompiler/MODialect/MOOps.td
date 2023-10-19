@@ -1797,7 +1797,7 @@ def MO_ConvTransposeOp : MO_TensorOp<"conv_transpose", [
 
 class MO_ShapeModifierOp<string mnemonic, list<Trait> traits = []>
   : MO_TensorOp<mnemonic,
-    traits # [DeclareOpInterfaceMethods<MO_DefaultParameterization>]
+    traits # [DeclareOpInterfaceMethods<MO_DefaultParameterization>, MO_SameFirstOperandAndResultsElementType]
 > {
   let arguments = (ins
     MO_Tensor:$input,
@@ -2172,7 +2172,7 @@ def MOShape_ToTensorOp : MOShape_Op<"to_tensor", [Pure]> {
 }
 
 class MOStatic_ShapeModifierOp<string mnemonic, list<Trait> traits = []>
-    : MO_TensorOp<"static." # mnemonic, traits # [Pure]> {
+    : MO_TensorOp<"static." # mnemonic, traits # [Pure, MO_SameFirstOperandAndResultsElementType]> {
   string cppNamespace = MODialect.cppNamespace # "::Static";
 
   let arguments = (ins MO_KnownTensor:$input);
