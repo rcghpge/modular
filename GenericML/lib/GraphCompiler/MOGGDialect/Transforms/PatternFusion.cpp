@@ -418,6 +418,21 @@ struct ConcatZeroAxisPattern : public OpRewritePattern<MO::ConcatOp> {
 struct ConvConstFilterPattern : public OpRewritePattern<MO::ConvOp> {
   ConvConstFilterPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 3) {}
 
+  /// Return an integer attribute that represents the output width of `op`, or
+  /// -1 if output width is dynamic.
+  static IntegerAttr tryGetOutputWidth(MO::ConvOp op) {
+    MO::TensorType resTy = op.getType();
+    // NOTE we assume output has NHWC layout here
+    if (resTy.hasRank()) {
+      if (auto attr =
+              dyn_cast<IntegerAttr>(resTy.getTypedShapeAttr().getValues()[2])) {
+        return attr;
+      }
+    }
+
+    return IntegerAttr::get(IndexType::get(op.getContext()), -1);
+  }
+
   LogicalResult matchAndRewrite(MO::ConvOp op,
                                 PatternRewriter &rewriter) const override {
     // Define some meta variables.
@@ -447,19 +462,27 @@ struct ConvConstFilterPattern : public OpRewritePattern<MO::ConvOp> {
     auto paramDeclsAttr = KGEN::ParamDeclArrayAttr::get(ctx, paramDecls);
 
     // Pass `num_groups` as a parameter to the `pack_conv_filter_shape` and
-    // `pack_conv_filter` kernels.
+    // `pack_conv_filter` kernels, and optionally pass static output width to
+    // pack_conv_filter_shape.
+    //
     // Do so through the `kgenParams` attribute dictionary, which `mogg.call`
     // passes to the KGEN function call as parameters.
     auto numGroupsAttr =
         rewriter.getNamedAttr("num_groups", rewriter.getIndexAttr(numGroups));
-    DictionaryAttr kgenParams = rewriter.getDictionaryAttr({numGroupsAttr});
+    SmallVector<NamedAttribute> namedParams{numGroupsAttr};
+    DictionaryAttr kernelKgenParams = rewriter.getDictionaryAttr(namedParams);
+
+    IntegerAttr outWidthAttr = tryGetOutputWidth(op);
+    namedParams.push_back(rewriter.getNamedAttr("WO", outWidthAttr));
+    DictionaryAttr shapeFuncKgenParams =
+        rewriter.getDictionaryAttr(namedParams);
 
     // Invoke the pack filter fallback shape function.
     // TODO(#18770) Find a better registration mechanism.
     SmallVector<mlir::NamedAttribute> attrs;
     rewriter.create<MO::InvokeShapeFuncOp>(
         loc, SmallVector<Value>{filter}, "pack_conv_filter_shape",
-        paramDeclsAttr, kgenParams, ArrayAttr{});
+        paramDeclsAttr, shapeFuncKgenParams, ArrayAttr{});
 
     // Construct type (new shape and layout) for the packed filter.
     SmallVector<TypedAttr> outputParams;
@@ -473,7 +496,7 @@ struct ConvConstFilterPattern : public OpRewritePattern<MO::ConvOp> {
 
     // Pack the filter.
     auto packedFilter = rewriter.create<MO::LayoutTransformOp>(
-        loc, /*outputTypes=*/packedFilterType, filter, kgenParams);
+        loc, /*outputTypes=*/packedFilterType, filter, kernelKgenParams);
     op.setOperand(1, packedFilter);
     return mlir::success();
   }

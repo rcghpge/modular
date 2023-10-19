@@ -132,6 +132,16 @@ mangleBlock(mlir::Block &block,
         }
       }
 
+      auto mangleInt = [](int64_t val) -> std::string {
+        if (val == mlir::ShapedType::kDynamic)
+          return "DYN";
+
+        if (val < 0)
+          return "N" + std::to_string(std::abs(val));
+
+        return std::to_string(val);
+      };
+
       // Mangle the kgen parameters into the calls as well.
       if (call.getKgenParams()) {
         mlir::NamedAttrList attrs{*call.getKgenParams()};
@@ -143,7 +153,7 @@ mangleBlock(mlir::Block &block,
             name += std::to_string(asBool.getValue()) + "_";
 
           } else if (auto asInt = dyn_cast<IntegerAttr>(value)) {
-            name += std::to_string(asInt.getInt()) + "_";
+            name += mangleInt(asInt.getInt()) + "_";
 
           } else if (auto asType = dyn_cast<TypeAttr>(value)) {
             std::string typeStr;
@@ -155,17 +165,8 @@ mangleBlock(mlir::Block &block,
             name += "_";
 
           } else if (auto asIntArray = dyn_cast<DenseIntElementsAttr>(value)) {
-            for (APInt i : asIntArray) {
-              int64_t val = i.getSExtValue();
-              if (val == mlir::ShapedType::kDynamic) {
-                name += "DYN_";
-              } else if (val < 0) {
-                name += "N";
-                name += std::to_string(std::abs(val)) + "_";
-              } else {
-                name += std::to_string(val) + "_";
-              }
-            }
+            for (APInt i : asIntArray)
+              name += mangleInt(i.getSExtValue()) + "_";
           } else {
             std::string errStr;
             llvm::raw_string_ostream os(errStr);
