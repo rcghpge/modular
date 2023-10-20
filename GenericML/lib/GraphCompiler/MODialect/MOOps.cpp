@@ -957,6 +957,37 @@ void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 }
 
 //===----------------------------------------------------------------------===//
+// MO_ConstantScalarOp support
+//===----------------------------------------------------------------------===//
+
+OpFoldResult ConstantScalarOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
+  assert(operands.empty() && "constant.scalar has no operands");
+  return getValueAttr();
+}
+
+LogicalResult ConstantScalarOp::verify() {
+  auto scalarDType = cast<MO::ScalarType>(getType()).getDType();
+  if (auto value = dyn_cast<IntegerAttr>(getValue())) {
+    if (!isa<IntegerType>(scalarDType))
+      return emitError(
+          "mo.constant.scalar expected the dtype to be an integer");
+    if (value.getType().getIntOrFloatBitWidth() !=
+        scalarDType.getIntOrFloatBitWidth())
+      return emitError("mo.constant.scalar expected bitwidth of the dtype and "
+                       "attribute to match");
+  } else if (auto value = dyn_cast<FloatAttr>(getValue())) {
+    if (!isa<FloatType>(scalarDType))
+      return emitError("mo.constant.scalar expected the dtype to be a float");
+    if (value.getType().getIntOrFloatBitWidth() !=
+        scalarDType.getIntOrFloatBitWidth())
+      return emitError("mo.constant.scalar expected bitwidth of the dtype and "
+                       "attribute to match");
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // MO_ConcatOp support
 //===----------------------------------------------------------------------===//
 

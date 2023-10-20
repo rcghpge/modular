@@ -206,6 +206,28 @@ def MO_List : MO_Type<"List", "list"> {
 }
 
 //===----------------------------------------------------------------------===//
+// MO_Scalar
+//===----------------------------------------------------------------------===//
+
+def MO_Scalar : MO_Type<"Scalar", "scalar"> {
+  let summary = "Type of scalars.";
+  let description = [{
+    This type represents scalars.
+
+  }];
+
+  let parameters = (ins
+    "DType" : $dtype);
+
+  let assemblyFormat = "`<` $dtype `>`";
+
+  let extraClassDeclaration = [{
+    /// Get the mlir element type of the tensor.
+    Type getDType() const;
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // ODS constraints to inject verifier logic via type annotation.
 //===----------------------------------------------------------------------===//
 

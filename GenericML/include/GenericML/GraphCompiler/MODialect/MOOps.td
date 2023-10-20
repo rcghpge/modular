@@ -486,6 +486,51 @@ def MO_ConstantOp : MO_TensorOp<"constant", [ConstantLike, Pure]> {
 
 }
 
+
+def MO_ConstantScalarOp : MO_TensorOp<"constant.scalar", [ConstantLike, Pure]> {
+  let summary = "constant scalar MO operation";
+  let description = [{
+    Op to store constant scalars in model.
+
+    Example:
+
+    ```mlir
+    %0 = mo.constant {
+      value = 3 : si64
+    } : !mo.scalar<si64>
+    ```
+  }];
+
+  let arguments = (ins
+      AnyAttrOf<[
+                  Builtin_IntegerAttr,
+                  BoolAttr,
+                  Builtin_FloatAttr,
+                  ]>:$value);
+  let results = (outs MO_Scalar:$result);
+
+  let assemblyFormat = "attr-dict `:` qualified(type($result))";
+
+  let hasFolder = 1;
+  let hasVerifier = true;
+
+  let builders = [
+    /// Create a new mo.constant.scalar of int32 value.
+    OpBuilder<(ins "int32_t":$value)>,
+    /// Create a new mo.constant.scalar of int64 value.
+    OpBuilder<(ins "int64_t":$value)>,
+    /// Create a new mo.constant.scalar of boolean value.
+    OpBuilder<(ins "bool":$value)>,
+    /// Create a new mo.constant.scalar of f32 type.
+    OpBuilder<(ins "float":$value)>,
+    /// Create a new mo.constant.scalar of f64 type.
+    OpBuilder<(ins "double":$value)>,
+  ];
+
+}
+
+
+
 //===----------------------------------------------------------------------===//
 // Elementwise ops
 //===----------------------------------------------------------------------===//

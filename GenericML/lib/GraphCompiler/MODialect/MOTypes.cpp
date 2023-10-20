@@ -470,6 +470,17 @@ LogicalResult ListType::verify(function_ref<InFlightDiagnostic()> emitError,
 }
 
 //===----------------------------------------------------------------------===//
+// ScalarType
+//===----------------------------------------------------------------------===//
+
+Type ScalarType::getDType() const {
+  ErrorOr<Type> errOrType = toMLIRType(getContext(), getDtype());
+  assert(!errOrType.isError() &&
+         "scalar type is not representable as an mlir Type");
+  return *errOrType;
+}
+
+//===----------------------------------------------------------------------===//
 // MODialect type support
 //===----------------------------------------------------------------------===//
 
