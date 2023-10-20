@@ -7,7 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 mo.graph @batch_matmul_too_low_rank(%arg0: !mo.tensor<[10, 20], f32>, %arg1: !mo.tensor<[20, 5], f32>) -> !mo.tensor<[10, 5], f32> {
-  // expected-error@+1 {{batch_matmul input tensors must be at least rank 3, got: 2}}
+  // expected-error@+1 {{All operands and results must be of at least rank 3.}}
   %0 = mo.batch_matmul(%arg0, %arg1) : (!mo.tensor<[10, 20], f32>, !mo.tensor<[20, 5], f32>) -> !mo.tensor<[10, 5], f32>
   mo.output %0 : !mo.tensor<[10, 5], f32>
 }
@@ -46,12 +46,20 @@ mo.graph @batch_matmul_ranked_input_unranked_output(%arg0: !mo.tensor<[?, ?, ?],
 
 // -----
 
+mo.graph @batch_matmul_mismatched_ranks(%arg0: !mo.tensor<[1, 10, 10], f32>, %arg1: !mo.tensor<[1, 1, 10, 10], f32>) -> !mo.tensor<[1, 10, 10], f32> {
+  // expected-error @below {{input and output ranks must be all dynamic, or all static and match}}
+  %0 = mo.batch_matmul(%arg0, %arg1) : (!mo.tensor<[1, 10, 10], f32>, !mo.tensor<[1, 1, 10, 10], f32>) -> !mo.tensor<[1, 10, 10], f32>
+  mo.output %0 : !mo.tensor<[1, 10, 10], f32>
+}
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // MatmulOp
 //===----------------------------------------------------------------------===//
 
 mo.graph @rank_too_low(%arg0: !mo.tensor<[10], f32>, %arg1: !mo.tensor<[10], f32>) -> !mo.tensor<[10], f32> {
-  // expected-error@+1 {{'mo.matmul' op expected input tensors to have at least rank 2, got 1}}
+  // expected-error@+1 {{'mo.matmul' op operand #0 must be rank-2 tensor, but got '!mo.tensor<[10], f32>'}}
   %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[10], f32>, !mo.tensor<[10], f32>) -> !mo.tensor<[10], f32>
   mo.output %0 : !mo.tensor<[10], f32>
 }
@@ -59,7 +67,7 @@ mo.graph @rank_too_low(%arg0: !mo.tensor<[10], f32>, %arg1: !mo.tensor<[10], f32
 // -----
 
 mo.graph @different_input_ranks(%arg0: !mo.tensor<[10, 10, 20], f32>, %arg1: !mo.tensor<[20, 5], f32>) -> !mo.tensor<[10, 5], f32> {
-  // expected-error @below {{input and output ranks must be all dynamic, or all static and match}}
+  // expected-error @below {{'mo.matmul' op operand #0 must be rank-2 tensor, but got '!mo.tensor<[10, 10, 20], f32>'}}
   %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[10, 10, 20], f32>, !mo.tensor<[20, 5], f32>) -> !mo.tensor<[10, 5], f32>
   mo.output %0 : !mo.tensor<[10, 5], f32>
 }
@@ -83,7 +91,7 @@ mo.graph @output_wrong_shape(%arg0: !mo.tensor<[10, 20], f32>, %arg1: !mo.tensor
 // -----
 
 mo.graph @output_wrong_rank(%arg0: !mo.tensor<[10, 20], f32>, %arg1: !mo.tensor<[20, 5], f32>) -> !mo.tensor<[10], f32> {
-  // expected-error @below {{input and output ranks must be all dynamic, or all static and match}}
+  // expected-error @below {{'mo.matmul' op result #0 must be rank-2 tensor, but got '!mo.tensor<[10], f32>'}}
   %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[10, 20], f32>, !mo.tensor<[20, 5], f32>) -> !mo.tensor<[10], f32>
   mo.output %0 : !mo.tensor<[10], f32>
 }
@@ -91,7 +99,7 @@ mo.graph @output_wrong_rank(%arg0: !mo.tensor<[10, 20], f32>, %arg1: !mo.tensor<
 // -----
 
 mo.graph @matmul_too_high_rank(%arg0: !mo.tensor<[10, 10, 20], f32>, %arg1: !mo.tensor<[10, 20, 5], f32>) -> !mo.tensor<[10, 10, 5], f32> {
-  // expected-error@+1 {{matmul input tensors must be rank 2, got: 3}}
+  // expected-error@+1 {{'mo.matmul' op operand #0 must be rank-2 tensor, but got '!mo.tensor<[10, 10, 20], f32>'}}
   %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[10, 10, 20], f32>, !mo.tensor<[10, 20, 5], f32>) -> !mo.tensor<[10, 10, 5], f32>
   mo.output %0 : !mo.tensor<[10, 10, 5], f32>
 }

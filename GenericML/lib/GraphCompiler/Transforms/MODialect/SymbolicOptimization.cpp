@@ -240,18 +240,15 @@ struct ConvertBatchMatmulToMatmulPattern
 
     if (!input || !weight)
       return rewriter.notifyMatchFailure(op, "null input value");
-
     auto inputTy = cast<MO::TensorType>(input.getType());
     auto weightTy = cast<MO::TensorType>(weight.getType());
     auto broadcastTy = cast<MO::TensorType>(broadcast->getResult(0).getType());
     auto bmmTy = cast<MO::TensorType>(op->getResult(0).getType());
-
     if (inputTy.hasUnknownShape() || weightTy.hasUnknownShape() ||
         bmmTy.hasUnknownShape() || !bmmTy.hasRank()) {
       return rewriter.notifyMatchFailure(
           op, "ops aren't parameterized, can't rewrite");
     }
-
     ArrayRef<TypedAttr> outDims =
         broadcastTy.getDims().drop_front(broadcastTy.getRank() - 2);
     ArrayRef<TypedAttr> inDims = weightTy.getDims();
@@ -259,7 +256,6 @@ struct ConvertBatchMatmulToMatmulPattern
     if (!inDims.equals(outDims)) {
       return rewriter.notifyMatchFailure(op, "Broadcast not on batch axis");
     }
-
     ArrayRef<TypedAttr> oldShape = inputTy.getDims();
     ArrayRef<TypedAttr> kVec = oldShape.take_back();
     TypedAttr batch =
@@ -274,8 +270,8 @@ struct ConvertBatchMatmulToMatmulPattern
             .getResult();
 
     ArrayRef<TypedAttr> weightShape = weightTy.getDims();
-    MO::TensorType matmulTy = inputTy.cloneWith(
-        ShapeAttr::get({newShape[0], weightShape[1]}, shapeTy));
+    MO::TensorType matmulTy =
+        bmmTy.cloneWith(ShapeAttr::get({newShape[0], weightShape[1]}, shapeTy));
 
     Value matmul =
         rewriter.create<MatmulOp>(op->getLoc(), matmulTy, reshape, weight)

@@ -20,6 +20,13 @@ mo.graph @batch_matmul_4D(%arg0: !mo.tensor<[7, 3, 10, 20], f32>, %arg1: !mo.ten
   mo.output %0 : !mo.tensor<[?, ?, 10, 5], f32>
 }
 
+// CHECK: mo.graph @batch_matmul_mixed_precision(%[[ARG0:.*]]: !mo.tensor<[3, 10, 20], ui8>, %[[ARG1:.*]]: !mo.tensor<[3, 20, 5], si8>) -> !mo.tensor<[3, 10, 5], si32> no_inline {
+mo.graph @batch_matmul_mixed_precision(%arg0: !mo.tensor<[3, 10, 20], ui8>, %arg1: !mo.tensor<[3, 20, 5], si8>) -> !mo.tensor<[3, 10, 5], si32> {
+  // CHECK-NEXT: mo.batch_matmul(%[[ARG0]], %[[ARG1]]) : (!mo.tensor<[3, 10, 20], ui8>, !mo.tensor<[3, 20, 5], si8>) -> !mo.tensor<[3, 10, 5], si32>
+  %0 = mo.batch_matmul(%arg0, %arg1) : (!mo.tensor<[3, 10, 20], ui8>, !mo.tensor<[3, 20, 5], si8>) -> !mo.tensor<[3, 10, 5], si32>
+  mo.output %0 : !mo.tensor<[3, 10, 5], si32>
+}
+
 //===----------------------------------------------------------------------===//
 // MatmulOp
 //===----------------------------------------------------------------------===//

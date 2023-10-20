@@ -3298,10 +3298,6 @@ class MO_DotBase<string name, list<Trait> traits = []> :
     Base class for all generic dot products (i.e. tensor contractions with two
     inputs), for example matmuls.
   }];
-
-  let results = (outs MO_Tensor:$result);
-
-  let hasVerifier = 1;
 }
 
 def MO_MatmulOp : MO_DotBase<"matmul"> {
@@ -3320,7 +3316,8 @@ def MO_MatmulOp : MO_DotBase<"matmul"> {
     ```
   }];
 
-  let arguments = (ins MO_Tensor:$input_a, MO_Tensor:$input_b);
+  let arguments = (ins MO_Rank2Tensor:$input_a, MO_Rank2Tensor:$input_b);
+  let results = (outs MO_Rank2Tensor:$result);
 
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
@@ -3328,8 +3325,7 @@ def MO_MatmulOp : MO_DotBase<"matmul"> {
 }
 
 def MO_BatchMatmulOp : MO_DotBase<"batch_matmul", [
-  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
-  MO_SameOperandsAndResultElementType
+  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
 ]> {
   let summary = "Batched matrix-matrix multiplication";
   let description = [{
@@ -3354,6 +3350,7 @@ def MO_BatchMatmulOp : MO_DotBase<"batch_matmul", [
     MO_Tensor:$input_b,
     OptionalAttr<BoolAttr>:$transpose_b,
     MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
 
   let builders = [
     /// Create matmul with default attribute flags off.
@@ -3365,6 +3362,8 @@ def MO_BatchMatmulOp : MO_DotBase<"batch_matmul", [
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
     functional-type(operands, results)
   }];
+
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

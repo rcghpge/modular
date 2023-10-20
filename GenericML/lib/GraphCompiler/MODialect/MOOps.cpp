@@ -1628,19 +1628,6 @@ LogicalResult ConvTransposeOp::verify() {
 //===----------------------------------------------------------------------===//
 // Matmul definitions.
 //===----------------------------------------------------------------------===//
-
-LogicalResult MatmulOp::verify() {
-  TensorType aType = getTensorA().getType();
-
-  // Check we have 2D * 2D tensors as input.
-  if (aType.getRank() != 2) {
-    return emitError("matmul input tensors must be rank 2, got: ")
-           << aType.getRank();
-  }
-
-  return success();
-}
-
 void BatchMatmulOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                           Type resultTy, Value input_a, Value input_b) {
   odsState.addOperands(input_a);
@@ -1662,14 +1649,18 @@ void BatchMatmulOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 }
 
 LogicalResult BatchMatmulOp::verify() {
-  // TODO: improve this verifier
   TensorType aType = getTensorA().getType();
+  TensorType bType = getTensorB().getType();
+  TensorType cType = getTensorResult().getType();
 
-  // Check we have at least 3d tensors
-  if (aType.hasRank() && aType.getRank() < 3) {
-    return emitError(
-               "batch_matmul input tensors must be at least rank 3, got: ")
-           << aType.getRank();
+  // Note MO_MatmulLike interface verifies ranks are consistent between ops.
+  // Ensure all ranked tensors are rank >= 3
+  auto violatedRankProperty = [&](TensorType ty) -> bool {
+    return ty.hasRank() && ty.getRank() < 3;
+  };
+  if (violatedRankProperty(aType) || violatedRankProperty(bType) ||
+      violatedRankProperty(cType)) {
+    return emitError("All operands and results must be of at least rank 3.");
   }
 
   return success();
