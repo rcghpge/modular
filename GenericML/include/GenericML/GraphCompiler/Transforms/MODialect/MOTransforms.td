@@ -45,6 +45,23 @@ def AddFallbackShapeFunctions :
     if they have already been parameterized and if not materializing a fallback
     shape function which will give them those parameters.
   }];
+
+  let options = [
+    Option<"extraLibPaths", "extra-lib-paths", "std::string", /*default=*/"",
+           "Path to load extra libraries from.">
+  ];
+
+  let dependentDialects = [
+    "mlir::LLVM::LLVMDialect",
+    "mlir::index::IndexDialect",
+    "M::Cache::CacheDialect",
+    "M::DebugInfo::DebugInfoDialect",
+    "M::HLCF::HLCFDialect",
+    "M::KGEN::KGENDialect",
+    "M::KGEN::LIT::LITDialect",
+    "M::KGEN::POP::POPDialect",
+    "M::MDialect",
+  ];
 }
 
 def InlineShapeFunctions : Pass<"inline-shape-funcs", "ModuleOp"> {

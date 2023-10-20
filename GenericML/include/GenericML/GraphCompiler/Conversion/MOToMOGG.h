@@ -18,6 +18,11 @@
 // the list of avaliable MOGG operations.
 #include "Cache/CacheDialect/CacheDialect.h"
 #include "KGEN/HLCFDialect/HLCFDialect.h"
+#include "KGEN/KGENDialect/KGENOps.h"
+#include "KGEN/LITDialect/LITAttrs.h"
+#include "KGEN/LITDialect/LITDialect.h"
+#include "KGEN/LITDialect/LITOps.h"
+#include "KGEN/POPDialect/POPDialect.h"
 #include "KGEN/ToolCommon/InitAllDialects.h"
 #include "Support/DebugInfoDialect/IR/DebugInfoDialect.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
