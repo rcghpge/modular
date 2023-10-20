@@ -4,9 +4,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Benchmark/benchmark.h"
 #include "Config/Version.h"
 #include "GenericML/API/modular/c/common.h"
+#include "GenericML/ModexBenchmark/Main.h"
 #include "Support/CrashReporting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/InitLLVM.h"
@@ -15,10 +15,10 @@
 
 using namespace M;
 
-static constexpr const char *kMoxProductName = "mox";
+static constexpr const char *kModexProductName = "modex";
 
 static void usage(llvm::raw_ostream &os) {
-  os << "usage: " << kMoxProductName
+  os << "usage: " << kModexProductName
      << " <subcommand> <args...>\n"
         "Available subcommands:\n"
         "  benchmark - Benchmark a model with the Modular AI Engine\n";
@@ -31,7 +31,7 @@ static int handleHelp(int argc, char **argv) {
 
 static int handleVersion(int argc, char **argv) {
   ModularVersion version = getModularVersion();
-  llvm::outs() << llvm::formatv("{0} {1}.{2}.{3}{4} ({5})\n", kMoxProductName,
+  llvm::outs() << llvm::formatv("{0} {1}.{2}.{3}{4} ({5})\n", kModexProductName,
                                 version.major, version.minor, version.patch,
                                 version.label, version.revision);
   llvm::outs() << "Modular version " << M_version() << "\n";
@@ -46,7 +46,7 @@ static int handleUnknownSubcommand(int argc, char **argv) {
 
 int main(int argc, char **argv) {
   llvm::InitLLVM initLLVM(argc, argv);
-  initCrashpadForProgram(argv[0], kMoxProductName);
+  initCrashpadForProgram(argv[0], kModexProductName);
   llvm::setBugReportMsg(
       "Please submit a bug report to eap@modular.com and include the crash "
       "backtrace along with your command line invocation.\n");
@@ -61,7 +61,7 @@ int main(int argc, char **argv) {
   auto handler = llvm::StringSwitch<HandlerFunc>(argv[1])
                      .Case("--help", handleHelp)
                      .Case("--version", handleVersion)
-                     .Case("benchmark", moxBenchmarkMain)
+                     .Case("benchmark", modexBenchmarkMain)
                      .Default(handleUnknownSubcommand);
   return handler(argc - 1, argv + 1);
 }

@@ -4,8 +4,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifndef GENERICML_MODEX_BENCHMARK_MAIN_H
+#define GENERICML_MODEX_BENCHMARK_MAIN_H
+
 namespace M {
 
-int moxBenchmarkMain(int argc, char **argv);
+int modexBenchmarkMain(int argc, char **argv);
 
 } // namespace M
+
+#endif // GENERICML_MODEX_BENCHMARK_MAIN_H

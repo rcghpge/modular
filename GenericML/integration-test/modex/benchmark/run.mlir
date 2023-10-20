@@ -1,4 +1,4 @@
-// RUN: mox benchmark %S/testdata/relu100x100x3 | FileCheck %s
+// RUN: modex benchmark %S/testdata/relu100x100x3 | FileCheck %s
 // CHECK: Modular Benchmarking Tool
 // CHECK: Modular version: {{.+}}
 // CHECK: MLPerf scenario: Single Stream (use --mlperf-scenario to change)

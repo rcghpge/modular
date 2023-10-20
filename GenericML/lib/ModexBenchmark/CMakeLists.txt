@@ -4,12 +4,10 @@
 #
 ##===----------------------------------------------------------------------===##
 
-add_modular_tool(mox
-  Benchmark/benchmark.cpp
-  mox.cpp
+add_genericml_library(ModexBenchmark
+  Main.cpp
 
-  LINK_LIBS PRIVATE
-  MCrashReporting
+  LINK_LIBS PUBLIC
   MSupport
   mlperf-loadgen
   modular-framework-common

@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "benchmark.h"
+#include "GenericML/ModexBenchmark/Main.h"
 #include "Config/Version.h"
 #include "GenericML/API/modular/c/common.h"
 #include "GenericML/API/modular/c/context.h"
@@ -25,7 +25,7 @@
 
 using namespace M;
 
-static constexpr const char *kMoxBenchProductName = "mox benchmark";
+static constexpr const char *kModexBenchProductName = "modex benchmark";
 
 namespace {
 
@@ -68,7 +68,7 @@ public:
   ~QuerySampleLibrary();
 
   std::string &Name() const override {
-    static std::string *name = new std::string(kMoxBenchProductName);
+    static std::string *name = new std::string(kModexBenchProductName);
     return *name;
   }
 
@@ -100,7 +100,7 @@ public:
                            M_AsyncModel *model);
 
   std::string &Name() const override {
-    static std::string *name = new std::string(kMoxBenchProductName);
+    static std::string *name = new std::string(kModexBenchProductName);
     return *name;
   }
 
@@ -293,17 +293,17 @@ void SystemUnderTest::FlushQueries() {
   // Don't need to do anything here, since Modular does not batch queries.
 }
 
-int M::moxBenchmarkMain(int argc, char **argv) {
+int M::modexBenchmarkMain(int argc, char **argv) {
   ClOptions opts;
 
   llvm::cl::SetVersionPrinter([](llvm::raw_ostream &os) {
     ModularVersion version = getModularVersion();
-    os << llvm::formatv("{0} {1}.{2}.{3}{4} ({5})\n", kMoxBenchProductName,
+    os << llvm::formatv("{0} {1}.{2}.{3}{4} ({5})\n", kModexBenchProductName,
                         version.major, version.minor, version.patch,
                         version.label, version.revision);
     os << "Modular version " << M_version() << "\n";
   });
-  llvm::cl::ParseCommandLineOptions(argc, argv, kMoxBenchProductName);
+  llvm::cl::ParseCommandLineOptions(argc, argv, kModexBenchProductName);
 
   llvm::outs() << "Modular Benchmarking Tool\n";
   llvm::outs() << "Modular version: " << M_version() << "\n";
