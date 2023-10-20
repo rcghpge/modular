@@ -102,7 +102,7 @@ maybeApplyShapeInferencePipeline(mlir::OpPassManager &pm,
   buildShapeInferencePipeline(pm);
   pm.addPass(MO::createSymbolicOptimization());
   pm.addPass(MO::createPropagateShapes());
-  pm.addPass(MO::createAddFallbackShapeFunctions({opts.extraLibPaths}));
+  pm.addPass(MO::createAddFallbackShapeFunctions());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(MO::createSymbolicOptimization());
@@ -149,6 +149,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     pm.addPass(mlir::createCSEPass());
   }
 
+  MO::MOToMOGGOptions moToMoggOpts;
+  moToMoggOpts.extraLibPaths = opts.extraLibPaths;
   // If jiting simplify broadcast patterns to a single op that we can jit.
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
@@ -157,7 +159,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     pm.addPass(MO::createConstantFold());
 
   pm.addPass(MO::createHoistParameterExpressions());
-  pm.addPass(MO::createMOToMOGG({opts.extraLibPaths}));
+  pm.addPass(MO::createMOToMOGG(moToMoggOpts));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 

@@ -6,12 +6,8 @@
 
 #include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
-#include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
-
-#include <numeric>
 
 namespace M::MO {
 
@@ -84,12 +80,6 @@ HAS_FALLBACK(MO::TransposeOp)
 HAS_FALLBACK(MO::ArgNonzeroOp)
 HAS_FALLBACK(MO::TileOp)
 
-template <>
-struct Fallback<MO::CustomOp> {
-  void build(GraphOp &graph, OpBuilder &builder, MO::CustomOp op,
-             MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis);
-};
-
 // Eventually all ops must be accounted for here. They either must have a
 // fallback or an explict vouch that they need no fallback.
 NEEDS_NO_FALLBACK(MO::BatchMatmulOp)
@@ -113,19 +103,9 @@ NEEDS_NO_FALLBACK(MO::GatherNdOp)
 struct AddFallbackShapeFunctions
     : public impl::AddFallbackShapeFunctionsBase<AddFallbackShapeFunctions> {
 
-  AddFallbackShapeFunctions() : AddFallbackShapeFunctionsBase({""}) {}
-
-  AddFallbackShapeFunctions(const AddFallbackShapeFunctionsOptions &opts)
-      : AddFallbackShapeFunctionsBase(opts) {}
-
   void runOnOperation() override {
     MO::GraphOp graph = getOperation();
     OpBuilder builder{graph.getContext()};
-
-    auto mojoLibraryAnalysis =
-        MOGG::MojoLibraryAnalysis::get(graph.getContext(), extraLibPaths);
-    if (mojoLibraryAnalysis.isError())
-      return signalPassFailure();
 
     graph.walk([&](ParamDeclarationInterface op) {
       // Shape function was already materialized or never needed.
@@ -167,12 +147,6 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::TransposeOp)
       CALL_FALLBACK(MO::ArgNonzeroOp)
       CALL_FALLBACK(MO::TileOp)
-
-      if (auto asOp = dyn_cast<MO::CustomOp>(op.getOperation())) {
-        Fallback<MO::CustomOp>{}.build(graph, builder, asOp,
-                                       *mojoLibraryAnalysis);
-        op.setOutputParamDecls({});
-      }
 
       return mlir::WalkResult::advance();
     });
@@ -313,25 +287,6 @@ void Fallback<MO::ConvTransposeOp>::build(GraphOp &graph, OpBuilder &builder,
                                           MO::ConvTransposeOp op) {
   buildForOpResult(graph, builder, op, "conv_transpose_shape", op.getOperands(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{2, 3, 4, 5});
-}
-
-void Fallback<MO::CustomOp>::build(
-    GraphOp &graph, OpBuilder &builder, MO::CustomOp op,
-    MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
-  auto shapeFunction =
-      mojoLibraryAnalysis.getRegisteredMojoShapeFunctionFor(op.getSymbol());
-  assert(shapeFunction);
-  auto shapeFunctionName = shapeFunction.getName();
-
-  SmallVector<int32_t> dataDepInputIdxs(op->getNumOperands());
-  std::iota(dataDepInputIdxs.begin(), dataDepInputIdxs.end(), 0);
-
-  for (auto [idx, res] : llvm::enumerate(op.getResults())) {
-    buildForOpResult(graph, builder, cast<TensorValue>(res), shapeFunctionName,
-                     op.getOperands(),
-                     /*kgenParams=*/{{"output_idx", builder.getIndexAttr(idx)}},
-                     /*dataDepInputIdxs=*/dataDepInputIdxs);
-  }
 }
 
 void Fallback<MO::GatherOp>::build(GraphOp &graph, OpBuilder &builder,

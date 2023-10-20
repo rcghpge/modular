@@ -19,8 +19,8 @@ def MOToMOGG : Pass<"mo-to-mogg", "ModuleOp"> {
   }];
 
   let options = [
-    Option<"extraLibPaths", "extra-lib-paths", "std::string", /*default=*/"",
-           "Path to load extra Mojo libraries from.">
+      Option<"extraLibPaths", "extra-lib-paths", "std::string", /*default=*/"",
+              "Path to load extra libraries from.">,
   ];
 
   let dependentDialects = [

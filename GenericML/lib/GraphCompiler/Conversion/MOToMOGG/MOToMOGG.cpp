@@ -12,7 +12,6 @@
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/Matchers.h"
 #include "GenericML/GraphCompiler/Support/MOGGTypeTraits.h"
@@ -48,7 +47,7 @@ enum Flavor {
 
   /// The MO op is implemented directly in Mojo, without any MOGG wrapper.
   /// The MO op name is mapped to the corresponding Mojo name using the
-  /// registration decorators.
+  /// MojoRegisterOp.
   kDirect,
 
   /// The MO op is implemented by a MOGG wrapper supporting elementwise
@@ -114,10 +113,10 @@ using MoToKernelMapTy = SmallDenseMap<mlir::TypeID, KernelRecord, 64>;
 
 struct MOOpPattern : public RewritePattern {
   MOOpPattern(MLIRContext *ctx, MoToKernelMapTy &moToMojoKernels,
-              MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis)
+              MOGG::MojoRegisterOp registry, mlir::ModuleOp moggBindings)
       : RewritePattern(MatchAnyOpTypeTag{}, 1, ctx),
-        moToMojoKernels(moToMojoKernels),
-        mojoLibraryAnalysis(mojoLibraryAnalysis) {}
+        moToMojoKernels(moToMojoKernels), registry(registry),
+        moggBindings(moggBindings) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
@@ -160,15 +159,9 @@ struct MOOpPattern : public RewritePattern {
       return std::nullopt;
     }
 
-    // Custom operations and regular MO operations differ only by the name of
-    // the symbol.
-    auto kernelName = op->getName().getStringRef();
-    if (auto customOp = dyn_cast<MO::CustomOp>(op))
-      kernelName = customOp.getSymbol();
-
     // Helper to encapsulate all the code required to lower to a kernel.
-    MO::KernelLowererHelper helper(op, record.isElementwise(), kernelName,
-                                   mojoLibraryAnalysis);
+    MO::KernelLowererHelper helper(op, record.isElementwise(), registry,
+                                   moggBindings);
 
     // Current jit kernel constraints:
     // Ranked.
@@ -239,7 +232,11 @@ struct MOOpPattern : public RewritePattern {
 
   MoToKernelMapTy &moToMojoKernels;
 
-  MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis;
+  // The mapping of MO operations to their Mojo kernel.
+  MOGG::MojoRegisterOp registry;
+
+  // The KGEN ir containing the mogg bindings.
+  mlir::ModuleOp moggBindings;
 
   // Extra libraries to source kernels from.
   std::string extraLibPaths;
@@ -254,11 +251,31 @@ struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
 } // namespace
 
 void MOToMOGGPass::runOnOperation() {
+  auto *ctx = &getContext();
+
+  ModuleOp m = getOperation();
+
+  // Load the MOGG registry of mojo ops.
+  auto registryOr = MOGG::getOrLoadMojoLibrary(m, extraLibPaths.getValue());
+  if (failed(registryOr))
+    return signalPassFailure();
+
+  MOGG::MojoRegisterOp registry = *registryOr;
+
+  // Get mlir IR with all the bindings so we can introspect it.
+  auto errOr =
+      MOGG::loadMojoBindings(m->getContext(), extraLibPaths.getValue());
+  if (errOr.isError()) {
+    m->emitError() << errOr.getError();
+    return signalPassFailure();
+  }
+
+  OwningOpRef<mlir::ModuleOp> moggBindings = errOr.takeValue();
+
   // A map from MO op type ids to a record describing how to lower them for
   // 'cpu' devices.
   // clang-format off
   // ^-- otherwise tries to put 2+ entries per line
-  // TODO(#23802): Get rid of this mapping.
   MoToKernelMapTy moToMojoKernels{
       MO_TO_ELEMWISE(MO::AbsOp),
       MO_TO_ELEMWISE(MO::AddOp),
@@ -276,7 +293,6 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_KERNEL(MO::ConvTransposeOp),
       MO_TO_ELEMWISE(MO::CosOp),
       MO_TO_KERNEL(MO::CumSumOp),
-      MO_TO_KERNEL(MO::CustomOp),
       MO_TO_ELEMWISE(MO::DivOp),
       MO_TO_ELEMWISE(MO::ErfOp),
       MO_TO_ELEMWISE(MO::ExpOp),
@@ -383,15 +399,17 @@ void MOToMOGGPass::runOnOperation() {
   };
   // clang-format on
 
-  auto *ctx = &getContext();
   RewritePatternSet patterns{ctx};
-  auto mojoLibraryAnalysis = MOGG::MojoLibraryAnalysis::get(ctx, extraLibPaths);
-  if (mojoLibraryAnalysis.isError())
-    return signalPassFailure();
-  patterns.add<MOOpPattern>(ctx, moToMojoKernels, *mojoLibraryAnalysis);
+  patterns.add<MOOpPattern>(ctx, moToMojoKernels, registry, moggBindings.get());
 
   if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
     return signalPassFailure();
+
+  // Just delete it for now. We should figure out what we want to do with it but
+  // for now it can just be reloaded in the jit. We don't want to have this huge
+  // thing in the IR when we run the other passes. The mojo is all in memory
+  // anyway so should be cheap-ish.
+  registry.erase();
 }
 
 #undef MO_TO_ELEMWISE
