@@ -154,26 +154,6 @@ def MOGG_OutputOp
 // MOGG abstract compiled components representation
 //===----------------------------------------------------------------------===//
 
-def MOGG_MojoRegisterOp : MOGG_Op<"mojo_register", [HasParent<"ModuleOp">]> {
-  let summary = "A mapping of all the registered mojo functions";
-  let description = [{
-    A module wide library of avaliable mojo functions. This is populated by
-    loading the target Mojo library/libraries. The `dict` attribute maps names
-    of MO ops or special instrinsic ops to the symbol name of the corresponding
-    mojo function.
-
-    Note that this is meant to be inserted and used by internal transformations.
-    In the future this will be populated by a direct Mojo binding.
-  }];
-
-  let arguments = (ins DictionaryAttr:$dict);
-
-  let assemblyFormat = [{
-    attr-dict
-  }];
-
-}
-
 def MOGG_KernelOp : MOGG_Op<"kernel", [
     IsolatedFromAbove,
     SingleBlock,
@@ -311,7 +291,7 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [
 
     /// Sets the insertion point to the start of the kernel. This may not be
     /// the precise start as it will place the operation after the output
-    /// placeholders if they exist. 
+    /// placeholders if they exist.
     void setInsertionPointToTop(OpBuilder& builder);
 
   }];
@@ -362,7 +342,7 @@ def MOGG_CallOp : MOGG_Op<"call"> {
   let summary = "Represents a KGEN function to call";
   let description = [{
     This represents a call to a KGEN function. The kernel target will be a
-    function we retrieve from the MojoRegisterOp. The call can also take an
+    function we retrieve from the registered ops. The call can also take an
     optional list of symbols in the from of `$params`. These are lambdas within
     this kernel which should be passed as parameters to the KGEN call.
 

@@ -44,7 +44,7 @@ def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
     Option<"createMOGGReproducers", "create-mogg-reproducers", "bool", /*default=*/"false",
             "Creates isolated reproducers of each kernel in a new mo graph.">,
     Option<"extraLibPaths", "extra-lib-paths", "std::string", /*default=*/"",
-            "Path to load extra libraries from.">,
+      "Path to load extra libraries from.">,
     Option<"minimumCpuAlignment", "min-cpu-alignment", "size_t",
       /*default=*/"kPreferredMemoryAlignment",
      "Minimum alignment for all CPU buffers (both constants and allocated)">,
@@ -146,30 +146,6 @@ def AddExplicitChainReady: Pass<"add-explicit-chain-ready", "MO::GraphOp"> {
     calls. This pass will detect when we need to insert such a call.
   }];
   let dependentDialects = ["M::MOGG::MOGGDialect"];
-}
-
-def LoadMojoLibrary : Pass<"load-mojo-library", "ModuleOp"> {
-  let summary = "Load the mojo library";
-  let description = [{
-    This pass loads the mojo library off the disk, find all available kernels
-    from the library, and add a `MojoRegisterOp` that includes all those
-    kernels.
-  }];
-  let dependentDialects = [
-    "M::MOGG::MOGGDialect",
-    "M::KGEN::KGENDialect",
-    "M::KGEN::LIT::LITDialect",
-    "M::KGEN::POP::POPDialect",
-    "mlir::index::IndexDialect",
-    "M::DebugInfo::DebugInfoDialect",
-    "M::HLCF::HLCFDialect",
-  ];
-
-  let options = [
-    Option<"extraLibPaths", "extra-lib-paths", "std::string", /*default=*/"",
-            "Path to load extra libraries from.">
-  ];
-
 }
 
 def InlineLambdas: Pass<"inline-lambdas", "MO::GraphOp"> {
