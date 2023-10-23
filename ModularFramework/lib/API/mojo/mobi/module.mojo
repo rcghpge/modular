@@ -6,9 +6,23 @@
 
 from .misc import Arity, AttrMap
 from .mobicc import AttrPtr, AttrMapPtr, ModulePtr, Builder, TypePtr, GraphPtr
-from tensor import Tensor, TensorSpec
+from tensor import Tensor, TensorSpec, TensorShape
 
 # TODO: DynamicVectors all need a _del_old() call.
+
+
+fn _dynamic_vector(shape: TensorShape) -> DynamicVector[Int64]:
+    var v = DynamicVector[Int64]()
+    for i in range(shape.rank()):
+        v.push_back(shape[i])
+    return v
+
+
+fn _dynamic_vector(shape: VariadicList[Int64]) -> DynamicVector[Int64]:
+    var v = DynamicVector[Int64]()
+    for i in range(len(shape)):
+        v.push_back(shape[i])
+    return v
 
 
 struct Module:
@@ -18,6 +32,10 @@ struct Module:
     fn __init__(inout self) raises:
         self.builder = Builder()
         self.m = self.builder.new_module()
+
+    fn __init__(inout self, borrowed m: ModulePtr, borrowed builder: Builder):
+        self.m = m
+        self.builder = builder
 
     fn __str__(inout self) raises -> String:
         return self.builder.module_to_string(self.m)
@@ -94,6 +112,26 @@ struct Module:
     ) raises -> AttrPtr:
         return self.builder.tensor_attr_from_file(self.m, name, fileName, t)
 
+    fn tensor_attr[
+        dtype: DType
+    ](
+        inout self, name: StringRef, t: TypePtr, value: Tensor[dtype]
+    ) raises -> AttrPtr:
+        return self.builder.tensor_attr(
+            self.m, name, value.data().bitcast[DType.invalid](), t
+        )
+
+    fn type_of[dtype: DType](inout self, t: Tensor[dtype]) raises -> TypePtr:
+        if dtype == DType.float32:
+            return self.f32(t.shape())
+        elif dtype == DType.uint32:
+            return self.i32(t.shape())
+        elif dtype == DType.uint32:
+            return self.i64(t.shape())
+        else:
+            raise Error("not implemented")
+        return self.f32()
+
     fn attrs(inout self, *attrs: AttrPtr) raises -> AttrMap:
         var m = self.builder.new_attr_map()
         for i in range(len(attrs)):
@@ -107,28 +145,32 @@ struct Module:
         return self.builder.dynamic_dim(self.m)
 
     fn i32(inout self, *dims: Int64) raises -> TypePtr:
-        var shape = DynamicVector[Int64]()
-        for i in range(len(dims)):
-            shape.push_back(dims[i])
-        return self.builder.i32(self.m, shape.data, shape.__len__())
+        let shape = _dynamic_vector(dims)
+        return self.builder.i32(self.m, shape.data, len(shape))
+
+    fn i32(inout self, dims: TensorShape) raises -> TypePtr:
+        let shape = _dynamic_vector(dims)
+        return self.builder.i32(self.m, shape.data, len(shape))
 
     fn i64(inout self, *dims: Int64) raises -> TypePtr:
-        var shape = DynamicVector[Int64]()
-        for i in range(len(dims)):
-            shape.push_back(dims[i])
-        return self.builder.i64(self.m, shape.data, shape.__len__())
+        let shape = _dynamic_vector(dims)
+        return self.builder.i64(self.m, shape.data, len(shape))
+
+    fn i64(inout self, dims: TensorShape) raises -> TypePtr:
+        let shape = _dynamic_vector(dims)
+        return self.builder.i64(self.m, shape.data, len(shape))
 
     fn f32(inout self, *dims: Int64) raises -> TypePtr:
-        var shape = DynamicVector[Int64]()
-        for i in range(len(dims)):
-            shape.push_back(dims[i])
-        return self.builder.f32(self.m, shape.data, shape.__len__())
+        let shape = _dynamic_vector(dims)
+        return self.builder.f32(self.m, shape.data, len(shape))
+
+    fn f32(inout self, dims: TensorShape) raises -> TypePtr:
+        let shape = _dynamic_vector(dims)
+        return self.builder.f32(self.m, shape.data, len(shape))
 
     fn bool(inout self, *dims: Int64) raises -> TypePtr:
-        var shape = DynamicVector[Int64]()
-        for i in range(len(dims)):
-            shape.push_back(dims[i])
-        return self.builder.bool(self.m, shape.data, shape.__len__())
+        let shape = _dynamic_vector(dims)
+        return self.builder.bool(self.m, shape.data, len(shape))
 
     fn types(inout self, *types: TypePtr) raises -> Arity:
         var a = self.builder.new_arity()

@@ -41,6 +41,13 @@ struct Tup:
         self.l = l
         self.builder = builder
 
+    # Request: @unique_value decorator for types
+    # which acts like Value but only implements __moveinit__
+    fn __moveinit__(inout self, owned existing: Self):
+        self.t = existing.t ^
+        self.l = existing.l
+        self.builder = existing.builder ^
+
     fn __getitem__(inout self, pos: UInt32) raises -> SymbolPtr:
         return self.builder.get_symbol(self.t, pos)
 
