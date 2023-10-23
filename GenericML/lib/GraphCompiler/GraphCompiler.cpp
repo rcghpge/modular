@@ -128,6 +128,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   }
 
   pm.addPass(MOQ::createLegalizeMOQOpsToMO());
+
+  maybeApplyShapeInferencePipeline(pm, opts);
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
