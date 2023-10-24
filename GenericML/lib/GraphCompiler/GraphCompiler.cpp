@@ -79,6 +79,7 @@ void M::MO::registerPasses() {
   MGP::registerMGPTransformsPasses();
   MOGG::registerPasses();
 
+  MOQ::registerFixupMOQOpDTypesPass();
   MOQ::registerLegalizeMOQOpsToMOPass();
   MOQ::registerLowerQDQOperatorsToMOPass();
   MOQ::registerSimplifyQDQPatternsPass();
@@ -124,9 +125,9 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   if (opts.lowerQDQOperators) {
     pm.addPass(MOQ::createLowerQDQOperatorsToMO());
+    pm.addPass(MOQ::createFixupMOQOpDTypes());
     pm.addPass(MOQ::createSimplifyQDQPatterns());
   }
-
   pm.addPass(MOQ::createLegalizeMOQOpsToMO());
 
   maybeApplyShapeInferencePipeline(pm, opts);
