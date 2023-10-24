@@ -41,6 +41,9 @@ namespace M::MOGG {
 
 namespace {
 
+// Directly embed the mojo file rather than loading dynamically.
+#include MOGG_MOJO_BINDING_H
+
 // We lower static dimensions as the dimension directly, obviously, but symbolic
 // dimensions we track by their index in the loaded dimensions i.e <D1314,
 // D2424> will become <P0, P1>. This is so that kernels which use the parameters
@@ -366,20 +369,24 @@ struct JitCompileKernels
 
   void runOnOperation() override {
     mlir::ModuleOp m = getOperation();
-    MLIRContext *ctx = m.getContext();
 
-    auto mojoLibraryAnalysis =
-        MOGG::MojoLibraryAnalysis::get(ctx, extraLibPaths);
-    assert(!mojoLibraryAnalysis.isError());
+    // Load the mojo kernel library info.
+    FailureOr<MOGG::MojoRegisterOp> registryOr =
+        getOrLoadMojoLibrary(m, extraLibPaths.getValue());
+    if (failed(registryOr)) {
+      m.emitError() << "[JitCompileKernels] Couldn't load mojo kernel registry";
+      return signalPassFailure();
+    }
+    MOGG::MojoRegisterOp registry = *registryOr;
 
     // Run the jit required passes.
-    mlir::PassManager pm(ctx);
+    mlir::PassManager pm(m->getContext());
     pm.addNestedPass<MO::GraphOp>(createInlineLambdas());
     if (failed(pm.run(m)))
       return signalPassFailure();
 
     for (auto graph : m.getOps<MO::GraphOp>()) {
-      auto errOr = this->runPass(graph, *mojoLibraryAnalysis);
+      auto errOr = this->runPass(graph, registry);
       if (errOr.isError()) {
         graph.emitError() << "[JitCompileKernels] " << errOr.getError();
         return signalPassFailure();
@@ -387,14 +394,24 @@ struct JitCompileKernels
     }
   }
 
-  void setMojoBindingsToNotExported(ModuleOp module) {
+  ErrorOr<mlir::OwningOpRef<mlir::ModuleOp>> loadMojoLibrary() {
+    // Load the module. The stub will be appended to this.
+    auto errorOr = loadMojoBindings(getOperation()->getContext(),
+                                    extraLibPaths.getValue());
+    if (errorOr.isError())
+      return errorOr.takeError();
+
+    mlir::OwningOpRef<mlir::ModuleOp> baseModuleRef = errorOr.takeValue();
+
     // Mark all functions as private. The builder will create new exported
     // functions.
-    for (auto func : module.getOps<KGEN::FuncOp>())
+    for (auto func : baseModuleRef->getOps<KGEN::FuncOp>())
       func.setNotExported();
 
-    for (auto func : module.getOps<KGEN::GeneratorOp>())
+    for (auto func : baseModuleRef->getOps<KGEN::GeneratorOp>())
       func.setNotExported();
+
+    return baseModuleRef;
   }
 
   /// Returns true if we should compile the MOGG::KernelOp for the given
@@ -415,8 +432,7 @@ struct JitCompileKernels
     }
   }
 
-  ErrorOrSuccess runPass(MO::GraphOp graph,
-                         MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
+  ErrorOrSuccess runPass(MO::GraphOp graph, MOGG::MojoRegisterOp registry) {
     ErrorOr<DeviceSpecCollectionAttr> deviceSpecsOr =
         MO::getDeviceSpecsOrDefault(graph);
     if (deviceSpecsOr)
@@ -430,8 +446,10 @@ struct JitCompileKernels
       // build up the stub functions. It contains all the kernels and functions
       // we will need to call.
       // TODO: Starting module is create from scratch for each device.
-      auto kgenModule = mojoLibraryAnalysis.mojoBindings->clone();
-      setMojoBindingsToNotExported(kgenModule);
+      auto kgenModuleOr = loadMojoLibrary();
+      if (kgenModuleOr.isError())
+        return kgenModuleOr.takeError();
+      auto kgenModule = std::move(*kgenModuleOr);
 
       // Helper to track all the types to prevent constant reallocation.
       Stub::TypeManager manager{graph.getContext()};
@@ -446,9 +464,9 @@ struct JitCompileKernels
 
       // Start building up the KGEN kernels for the current device.
       // Shared for all kernels.
-      Stub::KGENBuilder builder(graph, manager, kgenModule,
+      Stub::KGENBuilder builder(graph, manager, *kgenModule, registry,
                                 minimumCpuAlignment.getValue(),
-                                deviceSpec.getRef(), mojoLibraryAnalysis);
+                                deviceSpec.getRef());
 
       // Give each unique constant an identifier globally across all kernels.
       DenseMap<M::ElementsAttr, size_t> seenConsts;
@@ -597,14 +615,12 @@ struct JitCompileKernels
             mlir::ArrayAttr::get(graph->getContext(), symbolNamesAdded);
 
         // Add the compiled binary to the file.
-        Stub::StubCompiler compiler(kgenModule, graph, useSearch.getValue(),
+        Stub::StubCompiler compiler(*kgenModule, graph, useSearch.getValue(),
                                     saveTempPrefix.getValue(), deviceSpec,
                                     hostDeviceSpec);
         if (auto err = compiler.compile(allSyms))
           return err.takeError();
       }
-
-      kgenModule.erase();
     }
     return success();
   }
