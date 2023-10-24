@@ -11,6 +11,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Utils.h"
 
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MojoParameters.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IRMapping.h"
@@ -65,8 +66,9 @@ MOGG::CallOp createMOGGReshape(mlir::OpBuilder &builder, mlir::Location loc,
 
   // Add the non-blocking flag.
   SmallVector<NamedAttribute> attrs;
-  attrs.push_back(builder.getNamedAttr("single_thread_blocking_override",
-                                       builder.getBoolAttr(true)));
+  attrs.push_back(
+      builder.getNamedAttr(MOGG::PARAMETER_SINGLE_THREAD_BLOCKING_OVERRIDE,
+                           builder.getBoolAttr(true)));
   mlir::DictionaryAttr kgenParams = builder.getDictionaryAttr(attrs);
 
   // Create the call to the new reshape.
@@ -92,8 +94,9 @@ MOGG::CallOp createMOGGSlice(mlir::OpBuilder &builder, mlir::Location loc,
 
   // Add the non-blocking flag.
   SmallVector<NamedAttribute> attrs;
-  attrs.push_back(builder.getNamedAttr("single_thread_blocking_override",
-                                       builder.getBoolAttr(true)));
+  attrs.push_back(
+      builder.getNamedAttr(MOGG::PARAMETER_SINGLE_THREAD_BLOCKING_OVERRIDE,
+                           builder.getBoolAttr(true)));
   mlir::DictionaryAttr kgenParams = builder.getDictionaryAttr(attrs);
 
   // Create the call to the new reshape.

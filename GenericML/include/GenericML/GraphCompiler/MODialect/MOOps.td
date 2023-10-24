@@ -3841,4 +3841,43 @@ def MO_ListInsertOp : MO_TensorOp<"list.insert", []> {
   let hasVerifier = 1;
 }
 
+def MO_CustomOp : MO_TensorOp<"custom", [
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>
+]> {
+  let summary = "Encapsulates a user defined operation";
+  let description = [{
+    This is the entry point to having custom implementations of an operation
+    that may or may not be represented by the rest of MO.
+
+    This operation's semantics are opaque. The only information the compiler has
+    access to for optimization is its signature. The symbol attribute specifies
+    which underlying Mojo kernel implements this operation. This kernel must be
+    decorated with the appropriate decorator with the exact same symbol string.
+
+    Example:
+
+    ```mlir
+    %0 = mo.custom {symbol = "test_custom_op"}(%arg0)
+      (!mo.tensor<[?], f32>) -> !mo.tensor<[?], f32>
+    ```
+
+    In Mojo:
+    ```mojo
+    @mogg_register("test_custom_op")
+    fn foo(...):
+      pass
+    ```
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$operands,
+                       StrAttr:$symbol,
+                       MO_ParamDecls:$outputParamDecls);
+  let results = (outs Variadic<AnyType>:$results);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) attr-dict `(` operands `)`
+       functional-type(operands, results)
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOOPS_TD
