@@ -5,6 +5,7 @@
 ##===----------------------------------------------------------------------===##
 
 add_genericml_library(ModexBenchmark
+  InputGenerationSchema.cpp
   Main.cpp
 
   LINK_LIBS PUBLIC

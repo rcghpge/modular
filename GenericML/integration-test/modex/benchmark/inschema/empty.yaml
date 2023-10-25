@@ -1,0 +1,13 @@
+##===----------------------------------------------------------------------===##
+#
+# This file is Modular Inc proprietary.
+#
+##===----------------------------------------------------------------------===##
+
+# RUN: modex benchmark --input-generation-schema=%s --round-trip-input-generation-schema %t | FileCheck %s
+# CHECK: Input generation schema is valid
+# CHECK-NEXT: Round-tripped input generation schema:
+# CHECK-NEXT: ---
+# CHECK-NEXT: {}
+# CHECK-NEXT: ...
+# CHECK-EMPTY:

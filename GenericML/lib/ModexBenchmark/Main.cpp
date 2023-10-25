@@ -11,6 +11,7 @@
 #include "GenericML/API/modular/c/model.h"
 #include "GenericML/API/modular/c/tensor.h"
 #include "GenericML/API/modular/cpp/aliases.h"
+#include "GenericML/ModexBenchmark/InputGenerationSchema.h"
 #include "Support/CommandLine.h"
 #include "Support/ErrorOr.h"
 #include "mlperf-loadgen/loadgen.h"
@@ -24,6 +25,7 @@
 #include <iostream>
 
 using namespace M;
+using namespace M::ModexBench;
 
 static constexpr const char *kModexBenchProductName = "modex benchmark";
 
@@ -45,6 +47,14 @@ struct ClOptions {
                      "Multiple Stream 2.0"),
           clEnumValN(mlperf::TestScenario::Server, "server", "Server"),
           clEnumValN(mlperf::TestScenario::Offline, "offline", "Offline"))};
+  cl::opt<std::string> inputGenerationSchemaPath{
+      "input-generation-schema",
+      cl::desc("Path to input generation schema file")};
+  cl::opt<bool> roundTripInputGenerationSchema{
+      "round-trip-input-generation-schema",
+      cl::desc("Validate and round trip the provided input generation schema "
+               "and do not proceed to run benchmarking"),
+      llvm::cl::Hidden};
 };
 
 class LoadedSample final {
@@ -118,6 +128,7 @@ private:
 
 } // namespace
 
+namespace mlperf {
 static llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
                                      mlperf::TestScenario scenario) {
   switch (scenario) {
@@ -132,6 +143,7 @@ static llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
   }
   llvm::report_fatal_error("Unknown mlperf::TestScenario value");
 }
+} // namespace mlperf
 
 static ErrorOr<RuntimeContextPtr> makeRuntimeContext(M_Status *status) {
   RuntimeConfigPtr runtimeConfig(M_newRuntimeConfig(), M_freeRuntimeConfig);
@@ -307,6 +319,12 @@ int M::modexBenchmarkMain(int argc, char **argv) {
 
   llvm::outs() << "Modular Benchmarking Tool\n";
   llvm::outs() << "Modular version: " << M_version() << "\n";
+
+  if (opts.roundTripInputGenerationSchema) {
+    if (!roundTripInputGenerationSchema(opts.inputGenerationSchemaPath))
+      return EXIT_FAILURE;
+    return EXIT_SUCCESS;
+  }
 
   StatusPtr status(M_newStatus(), M_freeStatus);
   if (!status) {
