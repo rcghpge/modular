@@ -101,28 +101,28 @@ struct Model:
             let pair = inputs[i]
 
             @parameter
-            if key_type == StringRef:
+            if type_eq[key_type, StringRef]():
 
                 @parameter
-                if value_type == EngineTensorView:
+                if type_eq[value_type, EngineTensorView]():
                     input_map.borrow(
                         pair.get[0, StringRef](),
                         pair.get[1, EngineTensorView](),
                     )
-                elif value_type == EngineNumpyView:
+                elif type_eq[value_type, EngineNumpyView]():
                     input_map.borrow(
                         pair.get[0, StringRef](), pair.get[1, EngineNumpyView]()
                     )
 
-            elif key_type == StringLiteral:
+            elif type_eq[key_type, StringLiteral]():
 
                 @parameter
-                if value_type == EngineTensorView:
+                if type_eq[value_type, EngineTensorView]():
                     input_map.borrow(
                         pair.get[0, StringLiteral](),
                         pair.get[1, EngineTensorView](),
                     )
-                elif value_type == EngineNumpyView:
+                elif type_eq[value_type, EngineNumpyView]():
                     input_map.borrow(
                         pair.get[0, StringLiteral](),
                         pair.get[1, EngineNumpyView](),
