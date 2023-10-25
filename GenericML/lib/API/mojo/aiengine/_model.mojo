@@ -6,6 +6,7 @@
 
 from memory.unsafe import DTypePointer
 from sys.ffi import DLHandle
+from sys.intrinsics import _mlirtype_is_eq
 from ._utils import *
 from ._status import *
 from ._context import *
@@ -101,28 +102,28 @@ struct Model:
             let pair = inputs[i]
 
             @parameter
-            if type_eq[key_type, StringRef]():
+            if _mlirtype_is_eq[key_type, StringRef]():
 
                 @parameter
-                if type_eq[value_type, EngineTensorView]():
+                if _mlirtype_is_eq[value_type, EngineTensorView]():
                     input_map.borrow(
                         pair.get[0, StringRef](),
                         pair.get[1, EngineTensorView](),
                     )
-                elif type_eq[value_type, EngineNumpyView]():
+                elif _mlirtype_is_eq[value_type, EngineNumpyView]():
                     input_map.borrow(
                         pair.get[0, StringRef](), pair.get[1, EngineNumpyView]()
                     )
 
-            elif type_eq[key_type, StringLiteral]():
+            elif _mlirtype_is_eq[key_type, StringLiteral]():
 
                 @parameter
-                if type_eq[value_type, EngineTensorView]():
+                if _mlirtype_is_eq[value_type, EngineTensorView]():
                     input_map.borrow(
                         pair.get[0, StringLiteral](),
                         pair.get[1, EngineTensorView](),
                     )
-                elif type_eq[value_type, EngineNumpyView]():
+                elif _mlirtype_is_eq[value_type, EngineNumpyView]():
                     input_map.borrow(
                         pair.get[0, StringLiteral](),
                         pair.get[1, EngineNumpyView](),
