@@ -373,7 +373,7 @@ class GatherOfGathers(TestBase):
         return impl.gather(g_3, inputs[4], axis)
 
 
-class MultiViewFusion(TestBase):
+class MultiViewFusionBase(TestBase):
     @staticmethod
     def num_runs():
         return 100
@@ -422,9 +422,19 @@ class MultiViewFusion(TestBase):
             permute,
         ]
 
+
+class MultiViewFusion(MultiViewFusionBase):
     @staticmethod
     def run(inputs, impl):
         # Slice input
         sliced = impl.strided_slice(inputs[0], inputs[1], inputs[2], inputs[3])
         transposed = impl.transpose(sliced, inputs[-1])
         return transposed + transposed
+
+
+class MultiViewFusionNoAdd(MultiViewFusionBase):
+    @staticmethod
+    def run(inputs, impl):
+        # Slice input
+        sliced = impl.strided_slice(inputs[0], inputs[1], inputs[2], inputs[3])
+        return impl.transpose(sliced, inputs[-1])

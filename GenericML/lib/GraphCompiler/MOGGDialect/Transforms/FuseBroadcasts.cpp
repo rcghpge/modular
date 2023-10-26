@@ -14,6 +14,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Utils.h"
 #include "GenericML/Support/Tensor.h"
 #include "mlir/IR/IRMapping.h"
+#include "mlir/Transforms/TopologicalSortUtils.h"
 
 using namespace M;
 
@@ -33,16 +34,14 @@ struct FuseBroadcastsPass
     MLIRContext *ctx = graph.getContext();
 
     for (MOGG::KernelOp kernel : graph.getOps<MOGG::KernelOp>()) {
-      // Only allow fusion if the kernel exposes an input lambda.
+      bool isView = kernel.getIsViewOp().value_or(false);
+
+      // Only allow fusion if the kernel exposes an input lambda or is a view.
       // This isn't mechanically necessary. Everything will still work without
       // this. However the current story is that a kernel without a lambda will
       // disallow fusion on those inputs. We might want to make this more fine
       // grained in the future.
-      if (!kernel.getInputFusionInterfaceAttr())
-        continue;
-
-      // Also avoid view ops into view ops for now.
-      if (kernel.getIsViewOp().value_or(false))
+      if (!kernel.getInputFusionInterfaceAttr() && !isView)
         continue;
 
       // For catching the rare case of a broadcast taking a broadcast as arg AND
@@ -68,7 +67,7 @@ struct FuseBroadcastsPass
       }
 
       // Strip all temporarily added fusion hooks.
-      if (fusionOccurred)
+      if (fusionOccurred && !isView)
         kernel.removeTemporaryFusionMarks();
     }
 
@@ -151,14 +150,17 @@ struct FuseBroadcastsPass
     if (!edge)
       return false;
 
-    ArrayAttr inputFusions = kernel.getInputFusionInterfaceAttr();
-    // Unreachable unsafe state.
-    if (inputFusions.size() != kernel.getNumOperands())
-      return false;
+    // Currently view ops don't have to have the input fusion interface.
+    if (!kernel.getIsViewOp().value_or(false)) {
+      ArrayAttr inputFusions = kernel.getInputFusionInterfaceAttr();
+      // Unreachable unsafe state.
+      if (inputFusions.size() != kernel.getNumOperands())
+        return false;
 
-    // Skip empty input lambdas.
-    if (cast<StringAttr>(inputFusions[index]).strref() == "")
-      return false;
+      // Skip empty input lambdas.
+      if (cast<StringAttr>(inputFusions[index]).strref() == "")
+        return false;
+    }
 
     // Only fuse within the same region and not across, i.e, control flow.
     if (edge->getParentRegion() != kernel->getParentRegion())
@@ -226,26 +228,12 @@ struct FuseBroadcastsPass
         // will remove this at the end this is just so the fusion runs again.
         // This is so we can distinguish between views which we know we can
         // fuse again and ops which have opted out of fusion.
-        leaf.setInputFusionInterface(leaf.getNumOperands() - 1,
-                                     KernelOp::getTempLambdaName());
-      }
-
-      // The mogg kernel has been marked as a view. Search the kernel for the
-      // broadcast function.
-      for (Operation *user : otherBlockArg.getUsers()) {
-        auto call = dyn_cast<MOGG::CallOp>(user);
-        if (call) {
-          if (viewOp) {
-            assert(viewOp == call &&
-                   "More than one view op in kernel being fused.");
-          }
-          viewOp = call;
+        if (!leaf.getIsViewOp().value_or(false)) {
+          leaf.setInputFusionInterface(leaf.getNumOperands() - 1,
+                                       KernelOp::getTempLambdaName());
         }
       }
     }
-
-    assert(viewOp && "Kernel was marked as a view, it must have a tensor "
-                     "semantic view operation.");
 
     mlir::OpBuilder builder{leaf.getContext()};
     // Insert at the top just after the output placeholders.
@@ -267,20 +255,28 @@ struct FuseBroadcastsPass
     producerKernel.fuseBodyIntoNewWithSkip(
         builder, symTable, remapper, oldNameToNew, skipElementwiseAndLambdas);
 
-    // Remove the argument and replace all uses of it with the broadcast.
-    Operation *newView = remapper.lookup(viewOp);
-
-    // For incredibly contrived tests we need to check we are in dominator
-    // order. I.E %0 = bcast, %1 = slice(..., %0), %2 = some_kernel(%1, %0)
-    for (Value operand : newView->getOperands()) {
-      Operation *definingOp = operand.getDefiningOp();
-      if (definingOp && newView->isBeforeInBlock(definingOp))
-        newView->moveAfter(definingOp);
+    // Find "The view" being fused in. The view we just fused in will be the
+    // operation which has a return but that has no use (since it was previously
+    // used in a lambda which we haven't fused). With improved composability in
+    // the future we won't need this hack.
+    Operation *newView = nullptr;
+    for (auto op : leaf.getOps<MOGG::CallOp>()) {
+      if (op->getNumResults() == 1 && op->getResult(0).use_empty()) {
+        assert(newView == nullptr &&
+               "More than one view op detected in kernel being fused.");
+        newView = op;
+      }
     }
+    assert(newView &&
+           "Kernel was marked as a view but could not find a view op");
 
     leafBlock.getArgument(idx).replaceAllUsesWith(newView->getResult(0));
     leaf.removeOperandAtIndex(idx);
     alreadyFused[operandBeingReplaced] = newView->getResult(0);
+
+    // Ensure the block is in topologically sorted order. This is needed for
+    // somewhat contrived test cases.
+    mlir::sortTopologically(&leafBlock);
   }
 };
 

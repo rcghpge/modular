@@ -201,6 +201,22 @@ mo.graph @fuse_into_view<D1, D2>(%arg0: !mo.tensor<[D1, D2], f32>, %start: !mo.t
 
 // CHECK-LABEL: mo.graph @fuse_into_view
 // CHECK: %[[OUT:.*]] = mogg.kernel
-// CHECK: mogg.call "mo.slice"
-// CHECK: mogg.call "mo.transpose"
+// CHECK-NEXT: mogg.output_placeholders
+// CHECK-NEXT: mogg.call "mo.slice"
+// CHECK-NEXT: mogg.call "mo.transpose"
 // CHECK: mo.output %[[OUT]]
+
+
+mo.graph @fuse_view_into_view<D1, D2, D3>(%arg0: !mo.tensor<[D1, D2, D3], f32>, %arg3: !mo.tensor<[3], si32>, %arg2: !mo.tensor<[3], si32>, %arg1: !mo.tensor<[3], si32>, %arg4: !mo.tensor<[3], si32>) -> !mo.tensor<[D2, D1, D3], f32> {
+    %0 = mo.slice(%arg0, %arg3, %arg2, %arg1) : (!mo.tensor<[D1, D2, D3], f32>, !mo.tensor<[3], si32>, !mo.tensor<[3], si32>, !mo.tensor<[3], si32>) -> !mo.tensor<[D1, D2, D3], f32>
+    %1 = mo.transpose(%0, %arg4) : (!mo.tensor<[D1, D2, D3], f32>, !mo.tensor<[3], si32>) -> !mo.tensor<[D2, D1, D3], f32>
+    mo.output %1 : !mo.tensor<[D2, D1, D3], f32>
+}
+
+// CHECK-LABEL: mo.graph @fuse_view_into_view
+// CHECK: %[[OUT:.*]] = mogg.kernel
+// CHECK-NEXT: mogg.output_placeholders
+// CHECK-NEXT: mogg.call "mo.slice"
+// CHECK-NEXT: mogg.call "mo.transpose"
+// CHECK: mo.output %[[OUT]]
+
