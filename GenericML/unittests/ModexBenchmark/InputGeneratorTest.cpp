@@ -78,7 +78,8 @@ TEST(UniformInputRandomDistribution, F32Default) {
   InputGenerationRandomUniform spec;
   auto dist =
       createUniformInputRandomDistribution(DType::f32, spec, errorReporter);
-  ASSERT_TRUE(errorReporter.reportedNoErrors());
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
+  ASSERT_NE(dist, nullptr);
   std::array<float, 500> samples;
   std::fill(samples.begin(), samples.end(),
             std::numeric_limits<float>::quiet_NaN());
@@ -110,7 +111,8 @@ TEST(UniformInputRandomDistribution, F32Explicit) {
   spec.max = "20";
   auto dist =
       createUniformInputRandomDistribution(DType::f32, spec, errorReporter);
-  ASSERT_TRUE(errorReporter.reportedNoErrors());
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
+  ASSERT_NE(dist, nullptr);
   std::array<float, 500> samples;
   std::fill(samples.begin(), samples.end(),
             std::numeric_limits<float>::quiet_NaN());
@@ -147,9 +149,9 @@ TEST(UniformInputRandomDistribution, F32ParseError) {
   auto dist =
       createUniformInputRandomDistribution(DType::f32, spec, errorReporter);
   EXPECT_EQ(nullptr, dist);
-  std::vector<ReportedError> expectedErrors{
-      {{"min"}, "Unable to parse 'sea urchin' as f32 value"}};
-  EXPECT_EQ(expectedErrors, errorReporter.errors);
+  EXPECT_EQ((std::vector<ReportedError>{
+                {{"min"}, "Unable to parse 'sea urchin' as f32 value"}}),
+            errorReporter.errors);
 }
 
 TEST(UniformInputRandomDistribution, F32InvertedError) {
