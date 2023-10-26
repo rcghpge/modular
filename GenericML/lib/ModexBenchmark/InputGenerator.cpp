@@ -101,3 +101,42 @@ M::ModexBench::createUniformInputRandomDistribution(
   return std::make_unique<Detail::UniformInputRandomDistribution>(dtype, min,
                                                                   max);
 }
+
+std::unique_ptr<InputRandomDistribution>
+M::ModexBench::createNormalInputRandomDistribution(
+    DType dtype, const InputGenerationRandomNormal &spec,
+    InputSchemaErrorReporter &errorReporter) {
+  errorReporter.reportError("Normal distribution not yet implemented");
+  return nullptr;
+}
+
+std::unique_ptr<InputRandomDistribution>
+M::ModexBench::createInputRandomDistribution(
+    DType dtype, const InputGenerationRandom &spec,
+    InputSchemaErrorReporter &errorReporter) {
+  int numSpecified = 0;
+  std::unique_ptr<InputRandomDistribution> dist;
+  if (spec.uniform) {
+    ++numSpecified;
+    errorReporter.enterScope("uniform");
+    dist = createUniformInputRandomDistribution(dtype, *spec.uniform,
+                                                errorReporter);
+    errorReporter.exitScope("uniform");
+  }
+  if (spec.normal) {
+    ++numSpecified;
+    errorReporter.enterScope("normal");
+    dist =
+        createNormalInputRandomDistribution(dtype, *spec.normal, errorReporter);
+    errorReporter.exitScope("normal");
+  }
+  if (numSpecified == 0) {
+    errorReporter.reportError("No random distribution specified");
+    return nullptr;
+  }
+  if (numSpecified > 1) {
+    errorReporter.reportError("Only one random distribution may be specified");
+    return nullptr;
+  }
+  return dist;
+}

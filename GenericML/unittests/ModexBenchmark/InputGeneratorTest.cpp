@@ -165,3 +165,71 @@ TEST(UniformInputRandomDistribution, F32InvertedError) {
   EXPECT_EQ((std::vector<ReportedError>{{{}, "'min' is greater than 'max'"}}),
             errorReporter.errors);
 }
+
+TEST(UniformInputRandomDistribution, NonF32) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationRandomUniform spec;
+  auto dist =
+      createUniformInputRandomDistribution(DType::si32, spec, errorReporter);
+  EXPECT_EQ(nullptr, dist);
+  EXPECT_EQ(
+      (std::vector<ReportedError>{{{}, "Only f32 supported at this time"}}),
+      errorReporter.errors);
+}
+
+TEST(NormalInputRandomDistribution, Unimplemented) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationRandomNormal spec;
+  auto dist =
+      createNormalInputRandomDistribution(DType::f32, spec, errorReporter);
+  EXPECT_EQ(nullptr, dist);
+  EXPECT_EQ((std::vector<ReportedError>{
+                {{}, "Normal distribution not yet implemented"}}),
+            errorReporter.errors);
+}
+
+TEST(InputRandomDistribution, None) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationRandom spec;
+  // TODO: The None case should default to a reasonable distribution for the
+  // dtype instead of erroring.
+  auto dist = createInputRandomDistribution(DType::f32, spec, errorReporter);
+  EXPECT_EQ(nullptr, dist);
+  EXPECT_EQ(
+      (std::vector<ReportedError>{{{}, "No random distribution specified"}}),
+      errorReporter.errors);
+}
+
+TEST(InputRandomDistribution, Uniform) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationRandom spec;
+  spec.uniform = InputGenerationRandomUniform{};
+  auto dist = createInputRandomDistribution(DType::f32, spec, errorReporter);
+  EXPECT_NE(nullptr, dist);
+  // TODO: Would be good to test that this is a uniform distribution as
+  // expected.
+}
+
+TEST(InputRandomDistribution, Normal) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationRandom spec;
+  spec.normal = InputGenerationRandomNormal{};
+  auto dist = createInputRandomDistribution(DType::f32, spec, errorReporter);
+  EXPECT_EQ(nullptr, dist);
+  EXPECT_EQ((std::vector<ReportedError>{
+                {{"normal"}, "Normal distribution not yet implemented"}}),
+            errorReporter.errors);
+}
+
+TEST(InputRandomDistribution, Multiple) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationRandom spec;
+  spec.uniform = InputGenerationRandomUniform{};
+  spec.normal = InputGenerationRandomNormal{};
+  auto dist = createInputRandomDistribution(DType::f32, spec, errorReporter);
+  EXPECT_EQ(nullptr, dist);
+  EXPECT_EQ((std::vector<ReportedError>{
+                {{"normal"}, "Normal distribution not yet implemented"},
+                {{}, "Only one random distribution may be specified"}}),
+            errorReporter.errors);
+}
