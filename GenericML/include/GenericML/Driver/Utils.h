@@ -13,6 +13,8 @@
 #include "LLCL/Runtime/Utils.h"
 #include "LLCL/Support/GenericUniquePtrSet.h"
 #include "Support/LLVMCompilerForwardDecls.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "llvm/Support/ToolOutputFile.h"
 
 namespace M {
 
@@ -80,6 +82,20 @@ ErrorOr<std::string> getFileContentIdentity(const llvm::MemoryBufferRef &file,
     return std::string("input is a MEF file containing a ") +
            mefContents.getAsString();
   }
+  }
+}
+
+/// Saves an intermediate file with a dump of `module` if --saved-temps is set.
+inline void
+writeIntermediateFileIfRequested(const std::string &identifier, ModuleOp module,
+                                 CommonCLOptions *options,
+                                 const llvm::MemoryBufferRef &file) {
+  std::string ext = "." + identifier + ".mlir";
+  if (options && options->saveTemps) {
+    std::unique_ptr<llvm::ToolOutputFile> intermediateFile =
+        options->getIntermediateFile(file.getBufferIdentifier(), ext);
+    module->print(intermediateFile->os());
+    intermediateFile->keep();
   }
 }
 

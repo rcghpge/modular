@@ -220,18 +220,7 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
   // We have an MLIR model, try to lower it to a MEF-capable encoding.
   switch (format) {
   case FileFormat::kMODialect: {
-
-    auto writeIntermediateFileIfRequested = [&](const std::string &identifier) {
-      std::string ext = "." + identifier + ".mlir";
-      if (options && options->saveTemps) {
-        std::unique_ptr<llvm::ToolOutputFile> intermediateFile =
-            options->getIntermediateFile(file.getBufferIdentifier(), ext);
-        module->print(intermediateFile->os());
-        intermediateFile->keep();
-      }
-    };
-
-    writeIntermediateFileIfRequested("mo");
+    writeIntermediateFileIfRequested("mo", module.get(), options, file);
 
     // The MO graph dialect can be lowered to TFP, which is MEF emittable.
     MO::MoToMgpOptions moToMgpOptions;
@@ -260,7 +249,7 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
 
     if (failed(lowerMOToMGP(module.get(), moToMgpOptions, runtime.get())))
       return Error("unable to lower MO to MGP");
-    writeIntermediateFileIfRequested("mgp");
+    writeIntermediateFileIfRequested("mgp", module.get(), options, file);
 
     format = FileFormat::kMGPDialect;
     break;
