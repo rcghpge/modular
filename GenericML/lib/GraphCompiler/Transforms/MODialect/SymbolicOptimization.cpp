@@ -6,6 +6,7 @@
 
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
+#include "GenericML/GraphCompiler/MODialect/MODevices.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GenericML/GraphCompiler/Matchers.h"
@@ -55,8 +56,10 @@ struct CommuteBroadcastWithFlatennedArgNonzero
     : OpRewritePattern<ArgNonzeroOp> {
   using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(MO::ArgNonzeroOp argNonzeroOp,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(MO::ArgNonzeroOp argNonzeroOp,
+                  PatternRewriter &commonRewriter) const override {
+    DeviceAwareRewriter rewriter(argNonzeroOp, commonRewriter);
     Location loc = argNonzeroOp.getLoc();
 
     TensorValue inputVal = argNonzeroOp.getInput();
@@ -92,6 +95,11 @@ struct CommuteBroadcastWithFlatennedArgNonzero
     if (rankDiff <= 0) {
       return rewriter.notifyMatchFailure(
           loc, "preceding static bcast does not increase rank");
+    }
+
+    if (!rewriter.addOps({reshapeOp, bcastOp})) {
+      return rewriter.notifyMatchFailure(
+          loc, "matched ops have inconsistent devices");
     }
 
     // The pattern is now matched. We start by flattening the input of the
@@ -219,22 +227,19 @@ struct ConvertBatchMatmulToMatmulPattern
   ConvertBatchMatmulToMatmulPattern(MLIRContext *ctx)
       : OpRewritePattern(ctx, 4) {}
 
-  LogicalResult matchAndRewrite(MO::BatchMatmulOp op,
-                                PatternRewriter &rewriter) const override {
-    // HACK HACK HACK https://github.com/modularml/modular/issues/22959
-    // Only for host.
-    if (!isOnHost(op)) {
-      return rewriter.notifyMatchFailure(
-          op, "not rewriting for batch matmul since not on host default");
-    }
+  LogicalResult
+  matchAndRewrite(MO::BatchMatmulOp op,
+                  PatternRewriter &commonRewriter) const override {
+    DeviceAwareRewriter rewriter(op, commonRewriter);
 
     Value input, weight;
-    Operation *broadcast;
+    Operation *broadcast = nullptr, *optRebindOp = nullptr;
     auto weightBcastP =
         m_Op<Static::BroadcastToOp>(&broadcast, m_MOMatrix(m_Any(&weight)));
     if (!m_Op<BatchMatmulOp>(
              m_Any(&input),
-             m_Optional(m_Op<RebindOp>(weightBcastP), weightBcastP))
+             m_Optional(m_Op<RebindOp>(&optRebindOp, weightBcastP),
+                        weightBcastP))
              .match(op))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
@@ -256,6 +261,12 @@ struct ConvertBatchMatmulToMatmulPattern
     if (!inDims.equals(outDims)) {
       return rewriter.notifyMatchFailure(op, "Broadcast not on batch axis");
     }
+
+    if (!rewriter.addOps({broadcast, optRebindOp})) {
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
+    }
+
     ArrayRef<TypedAttr> oldShape = inputTy.getDims();
     ArrayRef<TypedAttr> kVec = oldShape.take_back();
     TypedAttr batch =
@@ -303,14 +314,9 @@ struct ConvertBatchMatmulToMatmulPattern
 struct ConvToMatmulPattern : public OpRewritePattern<ConvOp> {
   ConvToMatmulPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(ConvOp op,
-                                PatternRewriter &rewriter) const override {
-    // HACK HACK HACK https://github.com/modularml/modular/issues/22959
-    // Only for host.
-    if (!isOnHost(op)) {
-      return rewriter.notifyMatchFailure(
-          op, "not rewriting for conv since not on host device");
-    }
+  LogicalResult
+  matchAndRewrite(ConvOp op, PatternRewriter &commonRewriter) const override {
+    DeviceAwareRewriter rewriter(op, commonRewriter);
 
     // Declare some meta variables.
     TensorValue input = op.getInput();
@@ -396,8 +402,9 @@ struct ConvToMatmulPattern : public OpRewritePattern<ConvOp> {
 struct FlattenNestedConcatPattern : public OpRewritePattern<ConcatOp> {
   FlattenNestedConcatPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(ConcatOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(ConcatOp op, PatternRewriter &commonRewriter) const override {
+    DeviceAwareRewriter rewriter(op, commonRewriter);
 
     // Requires constant axis
     std::optional<int64_t> maybeAxis = tryGetConstantInt(op.getAxis());
@@ -413,6 +420,10 @@ struct FlattenNestedConcatPattern : public OpRewritePattern<ConcatOp> {
       auto nestedConcatOp = input.getDefiningOp<ConcatOp>();
       if (nestedConcatOp && nestedConcatOp->hasOneUse() &&
           tryGetConstantInt(nestedConcatOp.getAxis()) == axis) {
+        if (!rewriter.addOp(nestedConcatOp)) {
+          return rewriter.notifyMatchFailure(
+              op, "matched ops have inconsistent devices");
+        }
         llvm::append_range(flattenedInputs, nestedConcatOp.getInputs());
         foundSingleUserNestedConcat = true;
       } else {
@@ -448,17 +459,24 @@ struct FlattenNestedConcatPattern : public OpRewritePattern<ConcatOp> {
 struct Pow2Pattern : public OpRewritePattern<PowOp> {
   Pow2Pattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(MO::PowOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(MO::PowOp op,
+                  PatternRewriter &commonRewriter) const override {
+    DeviceAwareRewriter rewriter(op, commonRewriter);
     Value input;
-
-    if (!m_Op<PowOp>(m_Any(&input),
-                     m_Op<Static::BroadcastToOp>(m_ScalarConstant(2.0)))
+    Operation *broadcastOp = nullptr;
+    if (!m_Op<PowOp>(m_Any(&input), m_Op<Static::BroadcastToOp>(
+                                        &broadcastOp, m_ScalarConstant(2.0)))
              .match(op))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
     if (!input)
       return rewriter.notifyMatchFailure(op, "null input value");
+
+    if (!rewriter.addOp(broadcastOp)) {
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
+    }
 
     rewriter.replaceOpWithNewOp<MulOp>(op, input, input);
 
@@ -479,17 +497,25 @@ struct Pow2Pattern : public OpRewritePattern<PowOp> {
 struct Pow3Pattern : public OpRewritePattern<PowOp> {
   Pow3Pattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(MO::PowOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(MO::PowOp op,
+                  PatternRewriter &commonRewriter) const override {
+    DeviceAwareRewriter rewriter(op, commonRewriter);
     Value input;
-
-    if (!m_Op<PowOp>(m_Any(&input),
-                     m_Op<Static::BroadcastToOp>(m_ScalarConstant(3.0)))
+    Operation *broadcastOp = nullptr;
+    if (!m_Op<PowOp>(m_Any(&input), m_Op<Static::BroadcastToOp>(
+                                        &broadcastOp, m_ScalarConstant(3.0)))
              .match(op))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
     if (!input)
       return rewriter.notifyMatchFailure(op, "null input value");
+
+    if (!rewriter.addOp(broadcastOp)) {
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
+    }
+
     Value sq = rewriter.create<MulOp>(op->getLoc(), input, input).getResult();
     rewriter.replaceOpWithNewOp<MulOp>(op, sq, input);
 
@@ -517,8 +543,10 @@ struct Pow3Pattern : public OpRewritePattern<PowOp> {
 struct GathersToSplitPattern : public OpRewritePattern<GatherOp> {
   GathersToSplitPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(GatherOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(GatherOp op, PatternRewriter &commonRewriter) const override {
+    DeviceAwareRewriter rewriter(op, commonRewriter);
+
     TensorValue input = op.getInput();
     TensorType inputTy = input.getType();
     if (!inputTy.hasRank())
@@ -553,6 +581,10 @@ struct GathersToSplitPattern : public OpRewritePattern<GatherOp> {
 
       int64_t idx = maybeIndices.value().front();
       if (idx < 0 || idx >= inputAxis0Dim || idxToGather.contains(idx))
+        continue;
+
+      // Device annotations must be consistent.
+      if (!rewriter.addOp(userGatherOp))
         continue;
 
       // Update dominant gather and make sure all gathers are in the same block
@@ -613,28 +645,39 @@ struct GathersToSplitPattern : public OpRewritePattern<GatherOp> {
 struct GeluPattern : public OpRewritePattern<MulOp> {
   GeluPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 4) {}
 
-  LogicalResult matchAndRewrite(MO::MulOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(MO::MulOp op,
+                  PatternRewriter &commonRewriter) const override {
+    DeviceAwareRewriter rewriter(op, commonRewriter);
+
     Value input, input_erf;
+    Operation *sqrt2Broadcast = nullptr, *invSqrt2Broadcast = nullptr,
+              *erfOp = nullptr, *divOp = nullptr, *mulOp = nullptr,
+              *oneBroadcastOp = nullptr, *addOp = nullptr,
+              *halfBroadcastOp = nullptr, *mul1Op = nullptr, *mul2Op = nullptr;
     // gelu = x * 1/2 * (1 + erf(x/sqrt(2)))
-    auto sq2 =
-        m_Op<Static::BroadcastToOp>(m_ScalarConstant(llvm::numbers::sqrt2f));
+    auto sq2 = m_Op<Static::BroadcastToOp>(
+        &sqrt2Broadcast, m_ScalarConstant(llvm::numbers::sqrt2f));
     auto divsq2 = m_Op<Static::BroadcastToOp>(
-        m_ScalarConstant(llvm::numbers::inv_sqrt2f));
+        &invSqrt2Broadcast, m_ScalarConstant(llvm::numbers::inv_sqrt2f));
 
     auto x_erf = m_Any(&input_erf);
-    auto erf = m_Op<ErfOp>(m_Optional(
-        m_Op<DivOp>(x_erf, sq2), m_BinaryCommutativeOp<MulOp>(x_erf, divsq2)));
-    auto one = m_Op<Static::BroadcastToOp>(m_ScalarConstant(1.0f));
-    auto add = m_BinaryCommutativeOp<AddOp>(one, erf);
+    auto erf = m_Op<ErfOp>(&erfOp, m_Optional(m_Op<DivOp>(&divOp, x_erf, sq2),
+                                              m_BinaryCommutativeOp<MulOp>(
+                                                  &mulOp, x_erf, divsq2)));
+    auto one =
+        m_Op<Static::BroadcastToOp>(&oneBroadcastOp, m_ScalarConstant(1.0f));
+    auto add = m_BinaryCommutativeOp<AddOp>(&addOp, one, erf);
 
-    auto half = m_Op<Static::BroadcastToOp>(m_ScalarConstant(0.5f));
+    auto half =
+        m_Op<Static::BroadcastToOp>(&halfBroadcastOp, m_ScalarConstant(0.5f));
     auto x = m_Any(&input);
     // TODO: write an associative commutative matcher?
-    auto gelu = m_Optional(m_BinaryCommutativeOp<MulOp>(
-                               m_BinaryCommutativeOp<MulOp>(x, half), add),
-                           m_BinaryCommutativeOp<MulOp>(
-                               half, m_BinaryCommutativeOp<MulOp>(x, add)));
+    auto gelu = m_Optional(
+        m_BinaryCommutativeOp<MulOp>(
+            &mul1Op, m_BinaryCommutativeOp<MulOp>(&mul2Op, x, half), add),
+        m_BinaryCommutativeOp<MulOp>(
+            &mul1Op, half, m_BinaryCommutativeOp<MulOp>(&mul2Op, x, add)));
 
     if (!gelu.match(op->getResult(0)))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
@@ -643,6 +686,13 @@ struct GeluPattern : public OpRewritePattern<MulOp> {
       return rewriter.notifyMatchFailure(op, "null input value");
     if (!(input == input_erf))
       return rewriter.notifyMatchFailure(op, "inputs don't match");
+
+    if (!rewriter.addOps({sqrt2Broadcast, invSqrt2Broadcast, erfOp, divOp,
+                          mulOp, oneBroadcastOp, addOp, halfBroadcastOp, mul1Op,
+                          mul2Op})) {
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
+    }
 
     rewriter.replaceOpWithNewOp<GeluOp>(op, input);
 
@@ -667,10 +717,12 @@ struct SinkTransposeThroughUnaryOpPattern
   SinkTransposeThroughUnaryOpPattern(MLIRContext *ctx)
       : OpInterfaceRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(ElementWiseUnary op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(ElementWiseUnary op,
+                  PatternRewriter &commonRewriter) const override {
+    DeviceAwareRewriter rewriter(op, commonRewriter);
     Value perm;
-    Operation *opaqueTransposeOp;
+    Operation *opaqueTransposeOp = nullptr;
     auto unaryP = m_Op<ElementWiseUnary>(
         m_Op<TransposeOp>(&opaqueTransposeOp, m_Any(), m_Any(&perm)));
     if (!unaryP.match(op))
@@ -684,6 +736,11 @@ struct SinkTransposeThroughUnaryOpPattern
     Value transpose = opaqueTransposeOp->getResult(0);
     if (!transpose.hasOneUse())
       return rewriter.notifyMatchFailure(op, "transpose op has multiple uses");
+
+    if (!rewriter.addOp(opaqueTransposeOp)) {
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
+    }
 
     TensorType finalOutputType = op.getResult().getType();
     auto transposeOp = cast<TransposeOp>(opaqueTransposeOp);
@@ -728,11 +785,16 @@ struct SinkTransposeThroughBinaryOpPattern
   SinkTransposeThroughBinaryOpPattern(MLIRContext *ctx)
       : OpInterfaceRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(ElementWiseBinary op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(ElementWiseBinary op,
+                  PatternRewriter &commonRewriter) const override {
+    DeviceAwareRewriter rewriter(op, commonRewriter);
     TensorValue input1, input2, perm1, perm2;
-    auto transpose1P = m_Op<TransposeOp>(m_Any(&input1), m_Any(&perm1));
-    auto transpose2P = m_Op<TransposeOp>(m_Any(&input2), m_Any(&perm2));
+    Operation *leftTransposeOp = nullptr, *rightTransposeOp = nullptr;
+    auto transpose1P =
+        m_Op<TransposeOp>(&leftTransposeOp, m_Any(&input1), m_Any(&perm1));
+    auto transpose2P =
+        m_Op<TransposeOp>(&rightTransposeOp, m_Any(&input2), m_Any(&perm2));
     auto binaryP = m_Op<ElementWiseBinary>(transpose1P, transpose2P);
     if (!binaryP.match(op))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
@@ -756,6 +818,11 @@ struct SinkTransposeThroughBinaryOpPattern
     TensorType input2Ty = input2.getType();
     if (input1Ty.getShapeAttr() != input2Ty.getShapeAttr())
       return rewriter.notifyMatchFailure(op, "input shapes are different");
+
+    if (!rewriter.addOps({leftTransposeOp, rightTransposeOp})) {
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
+    }
 
     TensorValue opRes = op.getResult();
     op.setLhsInput(input1);
@@ -800,10 +867,12 @@ struct SinkTransposeThroughStaticBroadcastToOpPattern
     return result;
   }
 
-  LogicalResult matchAndRewrite(Static::BroadcastToOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(Static::BroadcastToOp op,
+                  PatternRewriter &commonRewriter) const override {
+    DeviceAwareRewriter rewriter(op, commonRewriter);
     Value input, perm;
-    Operation *opaqueTransposeOp;
+    Operation *opaqueTransposeOp = nullptr;
     auto broadcastP = m_Op<Static::BroadcastToOp>(
         m_Op<TransposeOp>(&opaqueTransposeOp, m_Any(&input), m_Any(&perm)));
     if (!broadcastP.match(op))
@@ -828,6 +897,12 @@ struct SinkTransposeThroughStaticBroadcastToOpPattern
     auto maybePermVec = tryGetConstantIntVector(cast<TensorValue>(perm));
     if (!maybePermVec.has_value())
       return rewriter.notifyMatchFailure(op, "permutation isn't constant");
+
+    if (!rewriter.addOp(opaqueTransposeOp)) {
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
+    }
+
     SmallVector<int64_t> permVec = maybePermVec.value();
     // Broadcast is rank-increasing, so we must pad the permutation vector to
     // account for the added dimensions. For instance, if we have
@@ -930,15 +1005,22 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp
   SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp(MLIRContext *ctx)
       : OpInterfaceRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(ElementWiseBinary op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(ElementWiseBinary op,
+                  PatternRewriter &commonRewriter) const override {
+    DeviceAwareRewriter rewriter(op, commonRewriter);
 
     // Match pattern and get results.
     TensorValue inputTensor, elemwiseTensor;
-    auto reshapeP = m_Op<ReshapeOpType>(m_Any(&inputTensor));
-    auto broadcastP = m_Op<Static::BroadcastToOp>(m_Any(&elemwiseTensor));
-    auto elemwiseOpP1 = m_Op<ElementWiseBinary>(reshapeP, broadcastP);
-    auto elemwiseOpP2 = m_Op<ElementWiseBinary>(broadcastP, reshapeP);
+    Operation *reshapeOp = nullptr, *broadcastOp = nullptr,
+              *elementwiseOp1 = nullptr, *elementwiseOp2 = nullptr;
+    auto reshapeP = m_Op<ReshapeOpType>(&reshapeOp, m_Any(&inputTensor));
+    auto broadcastP =
+        m_Op<Static::BroadcastToOp>(&broadcastOp, m_Any(&elemwiseTensor));
+    auto elemwiseOpP1 =
+        m_Op<ElementWiseBinary>(&elementwiseOp1, reshapeP, broadcastP);
+    auto elemwiseOpP2 =
+        m_Op<ElementWiseBinary>(&elementwiseOp2, broadcastP, reshapeP);
 
     // whether the reshaped argument was the LHS or RHS
     bool reshapedWasLeftOriginally;
@@ -1001,6 +1083,12 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp
                 "tensor do not match.");
     }
 
+    if (!rewriter.addOps(
+            {reshapeOp, broadcastOp, elementwiseOp1, elementwiseOp2})) {
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
+    }
+
     // Now we are sure moving the broadcast up will not change results.
     // Intuition:
     //  - we know slices across the trailing dimension will have the same
@@ -1052,10 +1140,13 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseUnaryOp
   SinkStaticReshapeLikeOpThroughBroadcastedElementwiseUnaryOp(MLIRContext *ctx)
       : OpInterfaceRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(ElementWiseUnary op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(ElementWiseUnary op,
+                  PatternRewriter &commonRewriter) const override {
+    DeviceAwareRewriter rewriter(op, commonRewriter);
     TensorValue inputTensor;
-    auto reshapeP = m_Op<ReshapeOpType>(m_Any(&inputTensor));
+    Operation *reshapeOp = nullptr;
+    auto reshapeP = m_Op<ReshapeOpType>(&reshapeOp, m_Any(&inputTensor));
     auto elemwiseOpP = m_Op<ElementWiseUnary>(reshapeP);
 
     if (!elemwiseOpP.match(op))
@@ -1073,6 +1164,11 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseUnaryOp
     auto inputType = inputTensor.getType().cast<TensorType>();
     if (inputType.hasUnknownShape())
       return rewriter.notifyMatchFailure(op, "Shape must be known");
+
+    if (!rewriter.addOp(reshapeOp)) {
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
+    }
 
     auto newOp = cast<ElementWiseUnary>(rewriter.clone(*op));
 
@@ -1109,11 +1205,14 @@ struct SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp
   SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp(MLIRContext *ctx)
       : OpInterfaceRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(ElementWiseBinary op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(ElementWiseBinary op,
+                  PatternRewriter &commonRewriter) const override {
+    DeviceAwareRewriter rewriter(op, commonRewriter);
     TensorValue input1Tensor, input2Tensor;
-    auto reshapeP1 = m_Op<ReshapeOpType>(m_Any(&input1Tensor));
-    auto reshapeP2 = m_Op<ReshapeOpType>(m_Any(&input2Tensor));
+    Operation *reshapeOp1 = nullptr, *reshapeOp2 = nullptr;
+    auto reshapeP1 = m_Op<ReshapeOpType>(&reshapeOp1, m_Any(&input1Tensor));
+    auto reshapeP2 = m_Op<ReshapeOpType>(&reshapeOp2, m_Any(&input2Tensor));
     auto elemwiseOpP = m_Op<ElementWiseBinary>(reshapeP1, reshapeP2);
 
     if (!elemwiseOpP.match(op))
@@ -1131,6 +1230,11 @@ struct SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp
         isValueFromReshapeThatSqueezesFinalDims(op.getRhsInput())) {
       return rewriter.notifyMatchFailure(
           op, "Don't sink reshape that squeezes final dim.");
+    }
+
+    if (!rewriter.addOps({reshapeOp1, reshapeOp2})) {
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
     }
 
     TensorType finalOutputType = op.getResult().getType();
@@ -1176,14 +1280,19 @@ struct SplitAndSqueezesPattern : public OpRewritePattern<SplitOp> {
 
   // Check whether `op` is a `mo.static.reshape` (or rebind followed by a
   // reshape) that effectively squeezes the given axis `squeezeAxis`.
-  static bool isSqueezingReshape(Operation *op,
+  static bool isSqueezingReshape(DeviceAwareRewriter &rewriter, Operation *op,
                                  ArrayRef<TypedAttr> inferredInDims,
                                  size_t squeezeAxis) {
+    if (!rewriter.addOp(op))
+      return false;
+
     // TODO(#13348) remove this check once we have shape inference for SplitOp
     if (auto rebindOp = dyn_cast<RebindOp>(op)) {
       if (!rebindOp->hasOneUse())
         return false;
       op = *rebindOp->user_begin();
+      if (!rewriter.addOp(op))
+        return false;
     }
 
     auto reshapeOp = dyn_cast<Static::ReshapeOp>(op);
@@ -1226,8 +1335,9 @@ struct SplitAndSqueezesPattern : public OpRewritePattern<SplitOp> {
     return ty.cloneWith(ShapeAttr::get(permutedDims, shapeTy));
   }
 
-  LogicalResult matchAndRewrite(SplitOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(SplitOp op, PatternRewriter &commonRewriter) const override {
+    DeviceAwareRewriter rewriter(op, commonRewriter);
     TensorValue input = op.getInput();
     TensorType inputTy = input.getType();
     if (!inputTy.hasRank())
@@ -1275,7 +1385,8 @@ struct SplitAndSqueezesPattern : public OpRewritePattern<SplitOp> {
       if (!res.hasOneUse())
         return rewriter.notifyMatchFailure(op, "a result has multiple users");
 
-      if (!isSqueezingReshape(*res.user_begin(), inferredResDims, splitAxis)) {
+      if (!isSqueezingReshape(rewriter, *res.user_begin(), inferredResDims,
+                              splitAxis)) {
         return rewriter.notifyMatchFailure(
             op, "a result isn't consumed by a reshape that squeezes");
       }
@@ -1327,8 +1438,10 @@ struct ElementWiseUnaryVectorPattern
   ElementWiseUnaryVectorPattern(MLIRContext *ctx)
       : OpInterfaceRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(MO::ElementWiseUnary op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(MO::ElementWiseUnary op,
+                  PatternRewriter &commonRewriter) const override {
+    DeviceAwareRewriter rewriter(op, commonRewriter);
     Location loc = op.getLoc();
     TensorValue input = op.getInput();
 
@@ -1361,8 +1474,10 @@ struct ElementWiseBinaryVectorPattern
   ElementWiseBinaryVectorPattern(MLIRContext *ctx)
       : OpInterfaceRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(MO::ElementWiseBinary op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(MO::ElementWiseBinary op,
+                  PatternRewriter &commonRewriter) const override {
+    DeviceAwareRewriter rewriter(op, commonRewriter);
     Location loc = op.getLoc();
     TensorValue a = op.getLhsInput();
     TensorValue b = op.getRhsInput();
@@ -1395,11 +1510,14 @@ struct ElementWiseBinaryVectorPattern
 struct BroadcastReshapePattern : public OpRewritePattern<Static::ReshapeOp> {
   BroadcastReshapePattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(Static::ReshapeOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(Static::ReshapeOp op,
+                  PatternRewriter &commonRewriter) const override {
+    DeviceAwareRewriter rewriter(op, commonRewriter);
     Value input;
-
-    if (!m_Op<Static::ReshapeOp>(m_Op<Static::BroadcastToOp>(m_Any(&input)))
+    Operation *broadcastOp = nullptr;
+    if (!m_Op<Static::ReshapeOp>(
+             m_Op<Static::BroadcastToOp>(&broadcastOp, m_Any(&input)))
              .match(op))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
@@ -1415,6 +1533,11 @@ struct BroadcastReshapePattern : public OpRewritePattern<Static::ReshapeOp> {
     for (size_t i = 0, e = inType.getRank(); i < e; ++i)
       if (inType.getIntDim(i) != 1)
         return rewriter.notifyMatchFailure(op, "failed to match pattern");
+
+    if (!rewriter.addOp(broadcastOp)) {
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
+    }
 
     TensorType scalarType =
         TensorType::get(SmallVector<int64_t>{}, inType.getElementType());
@@ -1432,15 +1555,10 @@ struct BroadcastReshapePattern : public OpRewritePattern<Static::ReshapeOp> {
 struct GemvPattern : public OpRewritePattern<MatmulOp> {
   GemvPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(MO::MatmulOp op,
-                                PatternRewriter &rewriter) const override {
-    // HACK HACK HACK https://github.com/modularml/modular/issues/22959
-    // Only for host.
-    if (!isOnHost(op)) {
-      return rewriter.notifyMatchFailure(
-          op, "not rewriting for vector matmul since not on host device");
-    }
-
+  LogicalResult
+  matchAndRewrite(MO::MatmulOp op,
+                  PatternRewriter &commonRewriter) const override {
+    DeviceAwareRewriter rewriter(op, commonRewriter);
     Location loc = op.getLoc();
     Value a = op.getTensorA();
     Value b = op.getTensorB();
@@ -1477,8 +1595,10 @@ struct GemvPattern : public OpRewritePattern<MatmulOp> {
 struct SplitToSlicePattern : public OpRewritePattern<SplitOp> {
   SplitToSlicePattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(MO::SplitOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(MO::SplitOp op,
+                  PatternRewriter &commonRewriter) const override {
+    DeviceAwareRewriter rewriter(op, commonRewriter);
     Location loc = op.getLoc();
     Value in = op.getInput();
 
@@ -1579,26 +1699,25 @@ struct MergeParallelMatmulPattern : public OpRewritePattern<MatmulOpType> {
   MergeParallelMatmulPattern(MLIRContext *ctx)
       : OpRewritePattern<MatmulOpType>(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(MatmulOpType op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(MatmulOpType op,
+                  PatternRewriter &commonRewriter) const override {
+    DeviceAwareRewriter rewriter(op, commonRewriter);
     // Gather all matmul operations that use the same activations.
     Value activations = op.getInputA();
     SmallVector<MatmulOpType> matmulUsers;
     for (Operation *user : activations.getUsers()) {
-      if (auto matmulOp = dyn_cast<MatmulOpType>(user))
+      if (auto matmulOp = dyn_cast<MatmulOpType>(user)) {
+        if (!rewriter.addOp(matmulOp)) {
+          return rewriter.notifyMatchFailure(
+              op, "matched ops have inconsistent devices");
+        }
         matmulUsers.push_back(matmulOp);
+      }
     }
 
     if (matmulUsers.size() == 1)
       return rewriter.notifyMatchFailure(op, "No parallel matmuls");
-
-    // HACK HACK HACK https://github.com/modularml/modular/issues/22959
-    // Only for host.
-    if (llvm::any_of(matmulUsers,
-                     [](MatmulOpType subOp) { return !isOnHost(subOp); })) {
-      return rewriter.notifyMatchFailure(
-          op, "not rewriting for parallel matmuls since not on host device");
-    }
 
     if (llvm::all_of(matmulUsers, [](MatmulOpType matmul) {
           return llvm::all_of(matmul->getUsers(), [](Operation *user) {
@@ -1707,8 +1826,9 @@ struct SinkSplitThroughElementwisePattern : public OpRewritePattern<SplitOp> {
   SinkSplitThroughElementwisePattern(MLIRContext *ctx)
       : OpRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(SplitOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(SplitOp op, PatternRewriter &commonRewriter) const override {
+    DeviceAwareRewriter rewriter(op, commonRewriter);
     auto inputType = op.getInput().getType().cast<TensorType>();
     if (!inputType.hasRank())
       return rewriter.notifyMatchFailure(op, "Input must be statically ranked");
@@ -1738,10 +1858,14 @@ struct SinkSplitThroughElementwisePattern : public OpRewritePattern<SplitOp> {
             op, "Split results don't have the same size");
       }
 
-      auto user = result.getUses().begin()->getOwner();
+      Operation *user = result.getUses().begin()->getOwner();
       if (!isa<ElementWiseUnary, ElementWiseBinary>(user)) {
         return rewriter.notifyMatchFailure(
             op, "Split result use is not an elementwise operation");
+      }
+      if (!rewriter.addOp(user)) {
+        return rewriter.notifyMatchFailure(
+            op, "matched ops have inconsistent devices");
       }
 
       elementwiseValues.push_back(user->getResult(0));
@@ -1891,8 +2015,9 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
   SinkSplitThroughStaticReshapeLikeOpsPattern(MLIRContext *ctx)
       : OpRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(SplitOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(SplitOp op, PatternRewriter &commonRewriter) const override {
+    DeviceAwareRewriter rewriter(op, commonRewriter);
     auto inputType = op.getInput().getType().cast<TensorType>();
     if (!inputType.hasRank())
       return rewriter.notifyMatchFailure(op, "Input must be statically ranked");
@@ -1945,6 +2070,13 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
         })) {
       return rewriter.notifyMatchFailure(
           op, "Reshape is tempering with the split dimension");
+    }
+
+    for (Operation *user : users) {
+      if (!rewriter.addOp(user)) {
+        return rewriter.notifyMatchFailure(
+            op, "matched ops have inconsistent devices");
+      }
     }
 
     Location loc = op->getLoc();

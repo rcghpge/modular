@@ -14,6 +14,7 @@
 #include "GenericML/GraphCompiler/Conversion/MGPSupport.h"
 #include "GenericML/GraphCompiler/Conversion/ParameterLowering.h"
 #include "GenericML/GraphCompiler/Interfaces/ConvertibleToMGPTypeInterface.h"
+#include "GenericML/GraphCompiler/MODialect/MODevices.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"

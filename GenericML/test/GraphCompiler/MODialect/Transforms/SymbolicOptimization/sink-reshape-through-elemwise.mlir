@@ -12,6 +12,19 @@ mo.graph @sink_reshape_through_binary_elemwise(%input: !mo.tensor<[50, 50, 30], 
 // CHECK-NEXT: %[[NEW_RESHAPE:.*]] = mo.static.reshape(%[[NEW_ADD]]) : !mo.tensor<[50, 50, 30], f32> -> !mo.tensor<[2500, 30], f32>
 // CHECK-NEXT: mo.output %[[NEW_RESHAPE]] : !mo.tensor<[2500, 30], f32>
 
+mo.graph @sink_reshape_through_binary_elemwise_with_device(%input: !mo.tensor<[50, 50, 30], f32>, %elemwise: !mo.tensor<[30], f32>) -> !mo.tensor<[2500, 30], f32>{
+    %reshape = mo.static.reshape(%input) : !mo.tensor<[50, 50, 30], f32> -> !mo.tensor<[2500, 30], f32>
+    %broadcast = mo.static.broadcast_to(%elemwise) : !mo.tensor<[30], f32> -> !mo.tensor<[2500, 30], f32>
+    %add = mo.add(%reshape, %broadcast) { device = #M.device_ref<"dev", 0> } : !mo.tensor<[2500, 30], f32>
+    mo.output %add : !mo.tensor<[2500, 30], f32>
+}
+// CHECK: mo.graph @sink_reshape_through_binary_elemwise_with_device(%[[INPUT:.*]]: !mo.tensor<[50, 50, 30], f32>, %[[ELEMWISE:.*]]: !mo.tensor<[30], f32>) -> !mo.tensor<[2500, 30], f32>
+// CHECK-NEXT: %[[NEW_BROADCAST:.*]] = mo.static.broadcast_to(%[[ELEMWISE]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[30], f32> -> !mo.tensor<[50, 50, 30], f32>
+// CHECK-NEXT: %[[NEW_ADD:.*]] = mo.add(%[[INPUT]], %[[NEW_BROADCAST]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[50, 50, 30], f32>
+// CHECK-NEXT: %[[NEW_RESHAPE:.*]] = mo.static.reshape(%[[NEW_ADD]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[50, 50, 30], f32> -> !mo.tensor<[2500, 30], f32>
+// CHECK-NEXT: mo.output %[[NEW_RESHAPE]] : !mo.tensor<[2500, 30], f32>
+
+
 mo.graph @sink_reshape_through_binary_elemwise_different_dtypes(%input: !mo.tensor<[50, 50, 30], f32>, %elemwise: !mo.tensor<[30], si32>) -> !mo.tensor<[2500, 30], f32>{
     %reshape = mo.static.reshape(%input) : !mo.tensor<[50, 50, 30], f32> -> !mo.tensor<[2500, 30], f32>
     %broadcast = mo.static.broadcast_to(%elemwise) : !mo.tensor<[30], si32> -> !mo.tensor<[2500, 30], si32>

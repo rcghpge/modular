@@ -49,41 +49,6 @@ class CoordinateTransformModeAttr;
 
 namespace M::MO {
 
-/// Name of optional attribute holding the #M.device_spec_collection describing
-/// the (virtual) devices available to the graph.
-constexpr StringRef kGraphDeviceSpecCollectionAttrName = "device_specs";
-
-/// Returns the #M.device_ref annotation for op, or the 'host' device
-/// if there is no such annotation on the op itself.
-DeviceRefAttr getDeviceOrDefault(MOHasDeviceInterface op);
-
-/// As above, but for any operation.
-DeviceRefAttr getDeviceOrDefaultAny(Operation *op);
-
-/// Returns true if op is annotated to execute via the host. In this case
-/// the op will have both a host and device-specific implementation.
-bool isViaHostAny(Operation *op);
-
-/// Returns the #M.device_ref annotation for type which appears in the
-/// the given MO graphOp. Returns the 'host' device if there is no such
-/// annotation on the type itself.
-DeviceRefAttr getDeviceOrDefault(GraphOp graphOp, TensorType type);
-
-/// Returns the #M.device_ref for the 'host' device of graphOp from its device
-/// specs annotation, or <"cpu", 0> if the graph has no such annotation.
-DeviceRefAttr getHostDevice(GraphOp graphOp);
-
-/// Returns true if op should execute on the 'host'.
-bool isOnHost(Operation *op);
-
-/// Returns the #M.device_spec_collection annotation for graphOp, or a
-/// description of the current host CPU if it has no such annotation.
-///
-/// NOTE: AddDevicesPass will fill in the device specs annotation on the graph
-/// based on all available devices. This helper is to support units tests which
-/// don't want to have to deal with devices.
-ErrorOr<DeviceSpecCollectionAttr> getDeviceSpecsOrDefault(GraphOp graphOp);
-
 /// If `val` comes from constant tensors (defined by a ConstantOp or
 /// concatenation or identity chain of ConstantOps), return the defining ops.
 SmallVector<MO::ConstantOp> tryGetConstantOpsOfRank(TensorValue val,

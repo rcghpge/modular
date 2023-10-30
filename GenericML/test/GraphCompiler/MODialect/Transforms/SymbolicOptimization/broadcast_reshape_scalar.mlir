@@ -10,6 +10,16 @@ mo.graph @broadcast_reshape_scalar(%arg0 : !mo.tensor<[], f32>) -> !mo.tensor<[6
 // CHECK: }
 }
 
+// CHECK: mo.graph @broadcast_with_device(%[[ARG0:.*]]: !mo.tensor<[], f32>) -> !mo.tensor<[64], f32> no_inline {
+mo.graph @broadcast_with_device(%arg0 : !mo.tensor<[], f32>) -> !mo.tensor<[64], f32>{
+  // CHECK: %[[VAL0:.*]] = mo.static.broadcast_to(%[[ARG0]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[], f32> -> !mo.tensor<[64], f32>
+  %0 = mo.static.broadcast_to(%arg0) { device = #M.device_ref<"dev", 0> } : !mo.tensor<[], f32> -> !mo.tensor<[64, 1], f32>
+  %1 = mo.static.reshape(%0) : !mo.tensor<[64, 1], f32> -> !mo.tensor<[64], f32>
+  // CHECK: mo.output %[[VAL0]] : !mo.tensor<[64], f32>
+  mo.output %1 : !mo.tensor<[64], f32>
+// CHECK: }
+}
+
 // CHECK: mo.graph @broadcast_reshape_scalar_vector(%[[ARG0:.*]]: !mo.tensor<[1], f32>) -> !mo.tensor<[64], f32> no_inline {
 mo.graph @broadcast_reshape_scalar_vector(%arg0 : !mo.tensor<[1], f32>) -> !mo.tensor<[64], f32>{
   // CHECK: %[[VAL0:.*]] = mo.static.reshape(%[[ARG0]]) : !mo.tensor<[1], f32> -> !mo.tensor<[], f32>

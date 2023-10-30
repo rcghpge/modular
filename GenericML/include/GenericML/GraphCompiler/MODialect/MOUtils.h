@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares utility function that don't depend on MO directly, but
+// This file declares utility functions that don't depend on MO directly, but
 // users of MO (including the dialect itself) may find useful. It is expected
 // that some of these utilities may move to more accessible places (e.g.
 // `Support`) over time.
@@ -15,6 +15,7 @@
 #define GENERICML_GRAPHCOMPILER_MODIALECT_MOUTILS_H
 
 #include "Support/LLVMCompilerForwardDecls.h"
+#include "Support/LLVMForwardDecls.h"
 #include "Support/MDialect/MAttrs.h"
 #include "Support/ML/DType.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
@@ -22,11 +23,11 @@
 
 #include <type_traits>
 
+namespace M::MO {
+
 //===----------------------------------------------------------------------===//
 // MO Utilities
 //===----------------------------------------------------------------------===//
-
-namespace M::MO {
 
 namespace detail {
 template <typename inT, typename outT>

@@ -32,6 +32,35 @@ mo.graph @conv_to_matmul_static_dims(
 // CHECK-NEXT:   mo.output %[[RES]] : !mo.tensor<[32, 10, 10, 9], f32>
 
 
+mo.graph @conv_to_matmul_with_device(
+  %input: !mo.tensor<[32, 10, 10, 3], f32>,
+  %filter: !mo.tensor<[1, 1, 3, 9], f32>
+) -> !mo.tensor<[32, 10, 10, 9], f32> {
+
+  %ones = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %pads = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %num_groups = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+
+  %res = mo.conv(%input, %filter) [strides = %ones, dilations = %ones, paddings = %pads, num_groups = %num_groups] { device = #M.device_ref<"dev", 0> } : (
+    !mo.tensor<[32, 10, 10, 3], f32>, !mo.tensor<[1, 1, 3, 9], f32>,
+    !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
+  ) -> !mo.tensor<[32, 10, 10, 9], f32>
+
+  mo.output %res : !mo.tensor<[32, 10, 10, 9], f32>
+}
+
+// CHECK:      mo.graph @conv_to_matmul_with_device(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[32, 10, 10, 3], f32>,
+// CHECK-SAME:   %[[FILTER:.*]]: !mo.tensor<[1, 1, 3, 9], f32>
+// CHECK-SAME: ) -> !mo.tensor<[32, 10, 10, 9], f32> no_inline {
+// CHECK-NEXT:   %[[MATMUL_INPUT:.*]] = mo.static.reshape(%[[INPUT]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[32, 10, 10, 3], f32> -> !mo.tensor<[3200, 3], f32>
+// CHECK-NEXT:   %[[MATMUL_WEIGHT:.*]] = mo.static.reshape(%[[FILTER]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[1, 1, 3, 9], f32> -> !mo.tensor<[3, 9], f32>
+// CHECK-NEXT:   %[[MATMUL:.*]] = mo.matmul(%[[MATMUL_INPUT]], %[[MATMUL_WEIGHT]]) {device = #M.device_ref<"dev", 0>}
+// CHECK-SAME:     : (!mo.tensor<[3200, 3], f32>, !mo.tensor<[3, 9], f32>) -> !mo.tensor<[3200, 9], f32>
+// CHECK-NEXT:   %[[RES:.*]] = mo.static.reshape(%[[MATMUL]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[3200, 9], f32> -> !mo.tensor<[32, 10, 10, 9], f32>
+// CHECK-NEXT:   mo.output %[[RES]] : !mo.tensor<[32, 10, 10, 9], f32>
+
+
 mo.graph @conv_to_matmul_dynamic_dims<N, H, W, CI, CO>(
   %input: !mo.tensor<[N, H, W, CI], f32>,
   %filter: !mo.tensor<[1, 1, CI, CO], f32>

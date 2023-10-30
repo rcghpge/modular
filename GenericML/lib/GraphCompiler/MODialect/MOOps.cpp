@@ -13,7 +13,6 @@
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
-#include "GenericML/Support/HostDeviceSpecs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
@@ -41,75 +40,6 @@ using namespace MO;
 //===----------------------------------------------------------------------===//
 // Utilities
 //===----------------------------------------------------------------------===//
-
-DeviceRefAttr MO::getDeviceOrDefault(MOHasDeviceInterface op) {
-  // Check the op annotation.
-  DeviceRefAttr device = op.getDeviceRef();
-  if (device)
-    return device;
-
-  // Fallback to the 'host' device.
-  GraphOp graphOp = op->getParentOfType<GraphOp>();
-  assert(graphOp && "missing containing GraphOp");
-  return getHostDevice(graphOp);
-}
-
-DeviceRefAttr MO::getDeviceOrDefaultAny(Operation *op) {
-  if (auto hasDeviceOp = dyn_cast<MOHasDeviceInterface>(op))
-    return getDeviceOrDefault(hasDeviceOp);
-
-  GraphOp graphOp = op->getParentOfType<GraphOp>();
-  assert(graphOp && "missing containing GraphOp");
-  return getHostDevice(graphOp);
-}
-
-bool MO::isViaHostAny(Operation *op) {
-  if (auto hasDeviceOp = dyn_cast<MOHasDeviceInterface>(op))
-    return hasDeviceOp.isViaHost();
-
-  return false;
-}
-
-DeviceRefAttr MO::getDeviceOrDefault(GraphOp graphOp, TensorType type) {
-  // Check the type annotation.
-  DeviceRefAttr device = type.getDeviceRef();
-  if (device)
-    return device;
-
-  // Fallback to the 'host' device.
-  return getHostDevice(graphOp);
-}
-
-DeviceRefAttr MO::getHostDevice(GraphOp graphOp) {
-  // Check the device specs annotation.
-  DeviceSpecCollectionAttr deviceSpecs = graphOp.getDeviceSpecs();
-  if (deviceSpecs)
-    return deviceSpecs.getHost();
-
-  // Fall back to 'cpu'.
-  return DeviceRefAttr::get(graphOp.getContext(), kCPULabel, 0);
-}
-
-bool MO::isOnHost(Operation *op) {
-  return getDeviceOrDefaultAny(op) ==
-         getHostDevice(op->getParentOfType<GraphOp>());
-}
-
-ErrorOr<DeviceSpecCollectionAttr> MO::getDeviceSpecsOrDefault(GraphOp graphOp) {
-  // Check the device specs annotation.
-  DeviceSpecCollectionAttr deviceSpecs = graphOp.getDeviceSpecs();
-  if (deviceSpecs)
-    return deviceSpecs;
-
-  // Fallback to a description of the host CPU.
-  // CAUTION: Unlike AddDevicesPass, no additional devices will be included.
-  // This is to support unit tests which don't want to deal with devices.
-  ErrorOr<std::unique_ptr<DeviceSpecCollection>> runtimeDeviceSpecsOr =
-      GML::getHostCPUDeviceSpecs();
-  if (runtimeDeviceSpecsOr)
-    return runtimeDeviceSpecsOr.takeError();
-  return fromRuntimeDeviceSpecs(graphOp.getContext(), **runtimeDeviceSpecsOr);
-}
 
 SmallVector<ConstantOp> M::MO::tryGetConstantOpsOfRank(TensorValue val,
                                                        size_t rank) {
@@ -328,6 +258,10 @@ OpFoldResult IndexToTensorOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 // MO_GraphOp support
 //===----------------------------------------------------------------------===//
+
+/// Name of optional attribute holding the #M.device_spec_collection describing
+/// the (virtual) devices available to the graph.
+constexpr StringRef kGraphDeviceSpecCollectionAttrName = "device_specs";
 
 void GraphOp::build(OpBuilder &builder, OperationState &state, StringRef name,
                     TypeRange inputTypes, TypeRange resultTypes) {
