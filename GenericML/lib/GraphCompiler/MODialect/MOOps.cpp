@@ -269,7 +269,7 @@ void M::MO::synchronizeMetadataUpdates(GraphOp op) {
   }
 
   auto funcType = FunctionType::get(ctx, newArgTypes, newResTypes);
-  SignatureType signature = KGEN::IndexRefRemapper::remapToSignature(
+  SignatureType signature = KGEN::SignatureType::remapToSignature(
       op.getInputParams(), op.getResultParams(), funcType);
   NamedAttrList attrs = op->getAttrDictionary();
   attrs.set(op.getSignatureAttrName(), TypeAttr::get(signature));
