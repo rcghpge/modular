@@ -102,6 +102,11 @@ fn test_serialize():
     # CHECK: True
     print(bytes.num_elements() == sizeof[TensorSpec]())
 
+    # CHECK: True
+    print(TensorSpec.from_bytes(bytes.data()) == spec)
+
+    _ = bytes ^
+
 
 fn main():
     test_tensor_shape()
