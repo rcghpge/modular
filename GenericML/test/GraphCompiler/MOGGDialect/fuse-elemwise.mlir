@@ -98,7 +98,7 @@ mo.graph @multipleDiamondPattern(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<
   mo.output %12 : !mo.tensor<[4, 3], f32>
 }
 
-// CHECK: mo.graph @multipleDiamondPattern
+// CHECK-LABEL: mo.graph @multipleDiamondPattern
 // CHECK-NEXT: mogg.kernel (%[[NULL:.*]]) : (%[[ARG1:.*]]: !mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32>
 // CHECK: mogg.lambda @elemwise_compute_lambda = (%[[INDICES:.*]]: !mogg.indices){
 // CHECK-NEXT:    %[[IN:.*]] = mogg.invoke @[[INPUT_LAMBDA:.*]](%[[INDICES]]) {readOnly = true} : !mogg.indices -> !mogg.simd<f32>
@@ -146,7 +146,7 @@ mo.graph @inversePyramid(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[4, 3
 }
 
 
-// CHECK: mo.graph @inversePyramid
+// CHECK-LABEL: mo.graph @inversePyramid
 // CHECK-NEXT: mogg.kernel (%[[NULL:.*]]) : (%[[ARG1:.*]]: !mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32>
 // CHECK: mogg.lambda @elemwise_compute_lambda = (%[[INDICES:.*]]: !mogg.indices){
 // CHECK-NEXT:    %[[IN1:.*]] = mogg.invoke @[[INPUT_LAMBDA:.*]](%[[INDICES]])
@@ -290,8 +290,8 @@ mo.graph @missingInputFusionInterface(%arg0: !mo.tensor<[10], ui32>) -> !mo.tens
     mogg.call "elementwise" [@elemwise_compute_lambda](%5) {single_thread_blocking_override = false} : !mo.tensor<[10], ui32>
     mogg.output %5 : !mo.tensor<[10], ui32>
   } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn"], outputFusionInterface = ["output_0_fn"]}
-  
-  
+
+
   %1 = mogg.kernel (%0) : (%arg1: !mo.tensor<[10], ui32>) -> !mo.tensor<[10], ui32>{
     %5 = mogg.output_placeholders : !mo.tensor<[10], ui32>
     mogg.lambda @input_0_fn = (%arg2: !mogg.indices) -> !mogg.simd<ui32>{
@@ -311,8 +311,8 @@ mo.graph @missingInputFusionInterface(%arg0: !mo.tensor<[10], ui32>) -> !mo.tens
     mogg.call "elementwise" [@elemwise_compute_lambda](%5) {single_thread_blocking_override = false} : !mo.tensor<[10], ui32>
     mogg.output %5 : !mo.tensor<[10], ui32>
   } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn"], outputFusionInterface = ["output_0_fn"]}
-  
-  
+
+
   %2 = mogg.kernel (%0) : (%arg1: !mo.tensor<[10], ui32>) -> !mo.tensor<[10], ui32>{
     %5 = mogg.output_placeholders : !mo.tensor<[10], ui32>
     mogg.lambda @output_0_fn = (%arg2: !mogg.indices, %arg3: !mogg.simd<ui32>){
@@ -328,8 +328,8 @@ mo.graph @missingInputFusionInterface(%arg0: !mo.tensor<[10], ui32>) -> !mo.tens
     mogg.call "elementwise" [@elemwise_compute_lambda](%5) {single_thread_blocking_override = false} : !mo.tensor<[10], ui32>
     mogg.output %5 : !mo.tensor<[10], ui32>
   } {fusionBodyLambda = "elemwise_compute_lambda", outputFusionInterface = ["output_0_fn"]}
-  
-  
+
+
   %3 = mogg.kernel (%1, %2) : (%arg1: !mo.tensor<[10], ui32>, %arg2: !mo.tensor<[10], ui32>) -> !mo.tensor<[10], ui32>{
     %5 = mogg.output_placeholders : !mo.tensor<[10], ui32>
     mogg.lambda @input_0_fn = (%arg3: !mogg.indices) -> !mogg.simd<ui32>{
@@ -375,7 +375,7 @@ mo.graph @missingInputFusionInterface(%arg0: !mo.tensor<[10], ui32>) -> !mo.tens
     mogg.call "elementwise" [@elemwise_compute_lambda](%5) {single_thread_blocking_override = false} : !mo.tensor<[10], ui32>
     mogg.output %5 : !mo.tensor<[10], ui32>
   } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn"], outputFusionInterface = ["output_0_fn"]}
-  
+
   mo.output %4 : !mo.tensor<[10], ui32>
 }
 

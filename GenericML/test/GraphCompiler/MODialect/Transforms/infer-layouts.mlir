@@ -1,8 +1,12 @@
 // RUN: mo-opt %s --infer-layouts | FileCheck %s
 
 
-// CHECK:      mo.graph @chained_conv2d_with_reused_filter(
-// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<NHWC>}>, %[[FILTER:.*]]: !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<RSCF>}>, %[[STRIDES:.*]]: !mo.tensor<[2], si64>, %[[DILATIONS:.*]]: !mo.tensor<[2], si64>, %[[PADDINGS:.*]]: !mo.tensor<[4], si64>, %[[NUM_GROUPS:.*]]: !mo.tensor<[], si64>
+// CHECK-LABEL: mo.graph @chained_conv2d_with_reused_filter(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<NHWC>}>,
+// CHECK-SAME:   %[[FILTER:.*]]: !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<RSCF>}>,
+// CHECK-SAME:   %[[STRIDES:.*]]: !mo.tensor<[2], si64>, %[[DILATIONS:.*]]: !mo.tensor<[2], si64>,
+// CHECK-SAME:   %[[PADDINGS:.*]]: !mo.tensor<[4], si64>,
+// CHECK-SAME:   %[[NUM_GROUPS:.*]]: !mo.tensor<[], si64>
 // CHECK-SAME: ) -> (!mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<NHWC>}>, !mo.tensor<[?, ?, ?, ?], f32>) no_inline {
 mo.graph @chained_conv2d_with_reused_filter(
   %input: !mo.tensor<[?, ?, ?, ?], f32>,
@@ -50,7 +54,7 @@ mo.graph @chained_conv2d_with_reused_filter(
 }
 
 
-// CHECK:      mo.graph @matmul_dyn_weights_in_output(
+// CHECK-LABEL: mo.graph @matmul_dyn_weights_in_output(
 // CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[?, ?], f32>,
 // CHECK-SAME:   %[[W1:.*]]: !mo.tensor<[?, ?], f32, {layout = #mo.layout<KN>}>,
 // CHECK-SAME:   %[[W2:.*]]: !mo.tensor<[?, ?], f32, {layout = #mo.layout<KN>}>

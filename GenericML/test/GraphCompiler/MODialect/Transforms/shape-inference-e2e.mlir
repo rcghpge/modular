@@ -2,8 +2,10 @@
 
 // CHECK-NOT: kgen.func
 
-// CHECK: mo.graph @static_ranks<[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(
-// CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[[D0]], [[D1]]], f32>, %[[ARG1:.*]]: !mo.tensor<[[[D2]], [[D3]]], f32>
+// CHECK-LABEL: mo.graph @static_ranks
+// CHECK-SAME: <[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(
+// CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[[D0]], [[D1]]], f32>,
+// CHECK-SAME: %[[ARG1:.*]]: !mo.tensor<[[[D2]], [[D3]]], f32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]]], f32> no_inline {
 mo.graph @static_ranks(%arg0: !mo.tensor<[?, ?], f32>, %arg1: !mo.tensor<[?, ?], f32>) -> !mo.tensor<?, f32> {
   // CHECK: %[[ARG1REB:.*]] = mo.rebind(%[[ARG1]]) : !mo.tensor<[[[D2]], [[D3]]], f32> -> !mo.tensor<[[[D0]], [[D1]]], f32>
@@ -21,7 +23,8 @@ mo.graph @static_ranks(%arg0: !mo.tensor<[?, ?], f32>, %arg1: !mo.tensor<[?, ?],
   mo.output %3 : !mo.tensor<?, f32>
 }
 
-// CHECK: mo.graph @batch_matmul_static_rank<[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]], [[D4:.*]], [[D5:.*]]>(
+// CHECK-LABEL: mo.graph @batch_matmul_static_rank
+// CHECK-SAME: <[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]], [[D4:.*]], [[D5:.*]]>(
 mo.graph @batch_matmul_static_rank(
   // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[[D0]], [[D1]], [[D2]]], f32>,
   %arg0: !mo.tensor<[?, ?, ?], f32>,
@@ -50,7 +53,8 @@ mo.graph @batch_matmul_static_rank(
   mo.output %out : !mo.tensor<[?, ?, ?], f32>
 }
 
-// CHECK: mo.graph @materialize_gather_axis_0_si32_e2e<[[D0:.*]], [[D1:.*]]>(
+// CHECK-LABEL: mo.graph @materialize_gather_axis_0_si32_e2e
+// CHECK-SAME: <[[D0:.*]], [[D1:.*]]>(
 mo.graph @materialize_gather_axis_0_si32_e2e(
 // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]], 2], f32>,
   %input: !mo.tensor<[?, 2], f32>,
@@ -67,7 +71,8 @@ mo.graph @materialize_gather_axis_0_si32_e2e(
   mo.output %result : !mo.tensor<[?, ?, ?], f32>
 }
 
-// CHECK: mo.graph @materialize_gather_axis_neg_1_si32_e2e<[[D0:.*]], [[D1:.*]]>(
+// CHECK-LABEL: mo.graph @materialize_gather_axis_neg_1_si32_e2e
+// CHECK-SAME: <[[D0:.*]], [[D1:.*]]>(
 mo.graph @materialize_gather_axis_neg_1_si32_e2e(
 // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]], 2], f32>,
   %input: !mo.tensor<[?, 2], f32>,
@@ -84,7 +89,8 @@ mo.graph @materialize_gather_axis_neg_1_si32_e2e(
   mo.output %result : !mo.tensor<[?, ?, ?], f32>
 }
 
-// CHECK: mo.graph @materialize_mean_axis_0_si32_e2e<[[D0:.*]]>(
+// CHECK-LABEL: mo.graph @materialize_mean_axis_0_si32_e2e
+// CHECK-SAME: <[[D0:.*]]>(
 mo.graph @materialize_mean_axis_0_si32_e2e(
 // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]], 2], f32>
   %input: !mo.tensor<[?, 2], f32>
@@ -98,7 +104,8 @@ mo.graph @materialize_mean_axis_0_si32_e2e(
   mo.output %result : !mo.tensor<[?, ?], f32>
 }
 
-// CHECK: mo.graph @materialize_prod_axis_1_si64_e2e<[[D0:.*]]>(
+// CHECK-LABEL: mo.graph @materialize_prod_axis_1_si64_e2e
+// CHECK-SAME: <[[D0:.*]]>(
 mo.graph @materialize_prod_axis_1_si64_e2e(
 // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]], 2], f32>
   %input: !mo.tensor<[?, 2], f32>
@@ -112,7 +119,8 @@ mo.graph @materialize_prod_axis_1_si64_e2e(
   mo.output %result : !mo.tensor<[?, ?], f32>
 }
 
-// CHECK: mo.graph @materialize_sum_axis_neg_1_si64_e2e<[[D0:.*]]>(
+// CHECK-LABEL: mo.graph @materialize_sum_axis_neg_1_si64_e2e
+// CHECK-SAME: <[[D0:.*]]>(
 mo.graph @materialize_sum_axis_neg_1_si64_e2e(
 // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]], 2], f32>
   %input: !mo.tensor<[?, 2], f32>
@@ -126,7 +134,8 @@ mo.graph @materialize_sum_axis_neg_1_si64_e2e(
   mo.output %result : !mo.tensor<[?, ?], f32>
 }
 
-// CHECK: mo.graph @unresolved_rebinds<[[SH0:.*]]: !mosh.ape, [[SH1:.*]]: !mosh.ape -> [[SH2:.*]]: !mosh.ape>(
+// CHECK-LABEL: mo.graph @unresolved_rebinds
+// CHECK-SAME: <[[SH0:.*]]: !mosh.ape, [[SH1:.*]]: !mosh.ape -> [[SH2:.*]]: !mosh.ape>(
 mo.graph @unresolved_rebinds(
   // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[SH0]], f32>, %[[ARG1:.*]]: !mo.tensor<[[SH1]], f32>
   %arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>
@@ -189,7 +198,8 @@ mo.graph @unresolved_rebinds(
   mo.output %5 : !mo.tensor<?, f32>
 }
 
-// CHECK: mo.graph @broadcasted_binary_elwise<[[D15:.*]], [[D16:.*]], [[D17:.*]], [[D18:.*]] -> [[D20:.*]], [[D21:.*]]>(
+// CHECK-LABEL: mo.graph @broadcasted_binary_elwise
+// CHECK-SAME: <[[D15:.*]], [[D16:.*]], [[D17:.*]], [[D18:.*]] -> [[D20:.*]], [[D21:.*]]>(
 mo.graph @broadcasted_binary_elwise(
   // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[[D15]], 12, [[D16]]], f32>,
   // CHECK-SAME: %[[ARG1:.*]]: !mo.tensor<[[[D17]], [[D18]]], f32>
@@ -249,7 +259,8 @@ mo.graph @broadcasted_binary_elwise(
   mo.output %3 : !mo.tensor<[?, ?, ?], f32>
 }
 
-// CHECK: mo.graph @transpose_static_rank<[[D8:.*]], [[D9:.*]], [[D10:.*]], [[D11:.*]]>(
+// CHECK-LABEL: mo.graph @transpose_static_rank
+// CHECK-SAME: <[[D8:.*]], [[D9:.*]], [[D10:.*]], [[D11:.*]]>(
 mo.graph @transpose_static_rank(
   // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[[D8]], [[D9]]], f32>,
   %input0: !mo.tensor<[?, ?], f32>,
@@ -269,7 +280,8 @@ mo.graph @transpose_static_rank(
 // CHECK-NEXT: }
 }
 
-// CHECK: mo.graph @scalar_to_tensor_reshapes_before_staticization<[[D0:.*]], [[D1:.*]]>(
+// CHECK-LABEL: mo.graph @scalar_to_tensor_reshapes_before_staticization
+// CHECK-SAME: <[[D0:.*]], [[D1:.*]]>(
 mo.graph @scalar_to_tensor_reshapes_before_staticization(
   // CHECK-SAME: %[[ARG:.*]]: !mo.tensor<[[[D0]], [[D1]]], si32>
   %arg: !mo.tensor<[?, ?], si32>
@@ -299,9 +311,10 @@ mo.graph @scalar_to_tensor_reshapes_before_staticization(
   mo.output %res : !mo.tensor<[?, ?], si32>
 }
 
-// CHECK: mo.graph @binary_op_asserts<[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(
+// CHECK-LABEL: mo.graph @binary_op_asserts
+// CHECK-SAME: <[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(
 mo.graph @binary_op_asserts(
-  // CHECK-SAME: %[[ARG1:.*]]: !mo.tensor<[[[D0]], [[D1]]], f32>
+  // CHECK-SAME: %[[ARG1:.*]]: !mo.tensor<[[[D0]], [[D1]]], f32>,
   %arg1: !mo.tensor<[?, ?], f32>,
   // CHECK-SAME: %[[ARG2:.*]]: !mo.tensor<[[[D2]], [[D3]]], f32>
   %arg2: !mo.tensor<[?, ?], f32>
@@ -332,7 +345,8 @@ mo.graph @binary_op_asserts(
   mo.output %res : !mo.tensor<[?, ?], f32>
 }
 
-// CHECK: mo.graph @binary_op_no_assert<[[D0:.*]], [[D1:.*]]>(
+// CHECK-LABEL: mo.graph @binary_op_no_assert
+// CHECK-SAME: <[[D0:.*]], [[D1:.*]]>(
 mo.graph @binary_op_no_assert(
   // CHECK-SAME: %[[ARG1:.*]]: !mo.tensor<[[[D0]], [[D1]]], f32>
   %arg1: !mo.tensor<[?, ?], f32>
@@ -414,7 +428,7 @@ mo.graph @linalg_solve_reused_rhs<D0, D1 -> Sh0: !mosh.ape>(
 // CHECK-NEXT: }
 }
 
-// CHECK: mo.graph @slice_neg_stop(
+// CHECK-LABEL: mo.graph @slice_neg_stop(
 mo.graph @slice_neg_stop(
   // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[10], f32>
   %input: !mo.tensor<[10], f32>
@@ -437,7 +451,7 @@ mo.graph @slice_neg_stop(
   mo.output %result : !mo.tensor<[?], f32>
 }
 
-// CHECK: mo.graph @slice_clamped_start_stop_neg_step(
+// CHECK-LABEL: mo.graph @slice_clamped_start_stop_neg_step(
 mo.graph @slice_clamped_start_stop_neg_step(
   // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[10], f32>
   %input: !mo.tensor<[10], f32>
@@ -460,7 +474,7 @@ mo.graph @slice_clamped_start_stop_neg_step(
   mo.output %result : !mo.tensor<[?], f32>
 }
 
-// CHECK: mo.graph @slice_4d(
+// CHECK-LABEL: mo.graph @slice_4d(
 mo.graph @slice_4d(
   // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[10, 20, 30, 40], f32>
   %input: !mo.tensor<[10, 20, 30, 40], f32>
@@ -482,11 +496,11 @@ mo.graph @slice_4d(
   mo.output %result : !mo.tensor<[?, ?, ?, ?], f32>
 }
 
-// CHECK: mo.graph @scatter_nd(
+// CHECK-LABEL: mo.graph @scatter_nd(
 mo.graph @scatter_nd(
   // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[10, 1, 1], f32>,
   %input: !mo.tensor<[10, 1, 1], f32>,
-  // CHECK-SAME: %[[UPDATES:.*]]: !mo.tensor<[5, 1, 1], f32>
+  // CHECK-SAME: %[[UPDATES:.*]]: !mo.tensor<[5, 1, 1], f32>,
   %updates: !mo.tensor<[5, 1, 1], f32>,
   // CHECK-SAME: %[[INDICES_1D:.*]]: !mo.tensor<[5], si32>
   %indices_1d: !mo.tensor<[5], si32>
@@ -506,11 +520,11 @@ mo.graph @scatter_nd(
   mo.output %res : !mo.tensor<[?, ?, ?], f32>
 }
 
-// CHECK: mo.graph @scatter_nd_add(
+// CHECK-LABEL: mo.graph @scatter_nd_add(
 mo.graph @scatter_nd_add(
   // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[10, 1, 1], f32>,
   %input: !mo.tensor<[10, 1, 1], f32>,
-  // CHECK-SAME: %[[UPDATES:.*]]: !mo.tensor<[5, 1, 1], f32>
+  // CHECK-SAME: %[[UPDATES:.*]]: !mo.tensor<[5, 1, 1], f32>,
   %updates: !mo.tensor<[5, 1, 1], f32>,
   // CHECK-SAME: %[[INDICES_1D:.*]]: !mo.tensor<[5], si32>
   %indices_1d: !mo.tensor<[5], si32>
@@ -531,7 +545,7 @@ mo.graph @scatter_nd_add(
 }
 
 
-// CHECK: mo.graph @conv2d_static_input_dims(
+// CHECK-LABEL: mo.graph @conv2d_static_input_dims(
 mo.graph @conv2d_static_input_dims(
   // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[10, 5, 5, 16], f32>
   %input: !mo.tensor<[10, 5, 5, 16], f32>,
@@ -569,7 +583,8 @@ mo.graph @conv2d_static_input_dims(
   mo.output %0 : !mo.tensor<[?, ?, ?, ?], f32>
 }
 
-// CHECK: mo.graph @conv2d_dyn_input_dims<[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(
+// CHECK-LABEL: mo.graph @conv2d_dyn_input_dims
+// CHECK-SAME: <[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(
 mo.graph @conv2d_dyn_input_dims(
   // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]], 20, 30, [[D1]]], f32>
   %input: !mo.tensor<[?, 20, 30, ?], f32>,
@@ -610,7 +625,7 @@ mo.graph @conv2d_dyn_input_dims(
   mo.output %0 : !mo.tensor<[?, ?, ?, ?], f32>
 }
 
-// CHECK: mo.graph @max_pool2d_static_input_dims(
+// CHECK-LABEL: mo.graph @max_pool2d_static_input_dims(
 mo.graph @max_pool2d_static_input_dims(
   // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[10, 5, 5, 16], f32>
   %input: !mo.tensor<[10, 5, 5, 16], f32>
@@ -644,7 +659,8 @@ mo.graph @max_pool2d_static_input_dims(
   mo.output %0 : !mo.tensor<[?, ?, ?, ?], f32>
 }
 
-// CHECK: mo.graph @avg_pool2d_dyn_input_dims<[[D0:.*]], [[D1:.*]]>(
+// CHECK-LABEL: mo.graph @avg_pool2d_dyn_input_dims
+// CHECK-SAME: <[[D0:.*]], [[D1:.*]]>(
 mo.graph @avg_pool2d_dyn_input_dims(
   // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]], 20, 30, [[D1]]], f32>
   %input: !mo.tensor<[?, 20, 30, ?], f32>
@@ -678,7 +694,8 @@ mo.graph @avg_pool2d_dyn_input_dims(
   mo.output %0 : !mo.tensor<[?, ?, ?, ?], f32>
 }
 
-// CHECK: mo.graph @arg_max<[[D1:.*]], [[D2:.*]]>(
+// CHECK-LABEL: mo.graph @arg_max
+// CHECK-SAME: <[[D1:.*]], [[D2:.*]]>(
 // CHECK-SAME: %[[input:.*]]: !mo.tensor<[[[D1]], [[D2]]], si64>
 // CHECK-SAME: ) -> !mo.tensor<[[[D1]], 1], si64> no_inline {
 mo.graph @arg_max(%input: !mo.tensor<[?, ?], si64>) -> !mo.tensor<[?, ?], si64> {
@@ -695,7 +712,8 @@ mo.graph @arg_max(%input: !mo.tensor<[?, ?], si64>) -> !mo.tensor<[?, ?], si64> 
   mo.output %res : !mo.tensor<[?, ?], si64>
 }
 
-// CHECK:      mo.graph @concat<[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]], [[D4:.*]], [[D5:.*]]>(
+// CHECK-LABEL: mo.graph @concat
+// CHECK-SAME: <[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]], [[D4:.*]], [[D5:.*]]>(
 // CHECK-SAME:   %[[INPUT1:.*]]: !mo.tensor<[[[D0]], 1, [[D1]]], f32>,
 // CHECK-SAME:   %[[INPUT2:.*]]: !mo.tensor<[[[D2]], 2, [[D3]]], f32>,
 // CHECK-SAME:   %[[INPUT3:.*]]: !mo.tensor<[[[D4]], 3, [[D5]]], f32>
@@ -729,7 +747,8 @@ mo.graph @concat(
   mo.output %res : !mo.tensor<[?, ?, ?], f32>
 }
 
-// CHECK:      mo.graph @concat_neg_axis<[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]], [[D4:.*]], [[D5:.*]]>(
+// CHECK-LABEL: mo.graph @concat_neg_axis
+// CHECK-SAME: <[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]], [[D4:.*]], [[D5:.*]]>(
 // CHECK-SAME:   %[[INPUT1:.*]]: !mo.tensor<[[[D0]], 1, [[D1]]], f32>,
 // CHECK-SAME:   %[[INPUT2:.*]]: !mo.tensor<[[[D2]], 2, [[D3]]], f32>,
 // CHECK-SAME:   %[[INPUT3:.*]]: !mo.tensor<[[[D4]], 3, [[D5]]], f32>
@@ -763,7 +782,7 @@ mo.graph @concat_neg_axis(
   mo.output %res : !mo.tensor<[?, ?, ?], f32>
 }
 
-// CHECK:      mo.graph @pad(
+// CHECK-LABEL: mo.graph @pad(
 // CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[2, 3], f32>,
 // CHECK-SAME:   %[[CONSTANT:.*]]: !mo.tensor<[], f32>
 // CHECK-SAME: ) -> !mo.tensor<[32, 73], f32> no_inline {
@@ -786,7 +805,8 @@ mo.graph @pad(
   mo.output %res : !mo.tensor<[?, ?], f32>
 }
 
-// CHECK: mo.graph @tile(%[[INPUT:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[20, 60], f32> no_inline {
+// CHECK-LABEL: mo.graph @tile
+// CHECK-SAME: (%[[INPUT:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[20, 60], f32> no_inline {
 mo.graph @tile(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[?, ?], f32> {
 
   // CHECK-NEXT: %[[REPEATS:.*]] = mo.constant {value = #M.dense_array<10, 20> : tensor<2xsi32>} : !mo.tensor<[2], si32>
@@ -803,7 +823,8 @@ mo.graph @tile(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[?, ?], f32> {
   mo.output %res : !mo.tensor<[?, ?], f32>
 }
 
-// CHECK:      mo.graph @partially_parameterized_signature<[[IN:.*]], [[D0:.*]], [[D1:.*]]>(
+// CHECK-LABEL: mo.graph @partially_parameterized_signature
+// CHECK-SAME: <[[IN:.*]], [[D0:.*]], [[D1:.*]]>(
 // CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[[[IN]], [[D0]], [[D1]]], f32>
 // CHECK-SAME: ) -> !mo.tensor<[[[IN]], 1, [[D1]]], f32> no_inline {
 mo.graph @partially_parameterized_signature<in>(
@@ -822,7 +843,8 @@ mo.graph @partially_parameterized_signature<in>(
   mo.output %res : !mo.tensor<[?, ?, ?], f32>
 }
 
-// CHECK:      mo.graph @binary_logical_op<[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(
+// CHECK-LABEL: mo.graph @binary_logical_op
+// CHECK-SAME: <[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(
 // CHECK-SAME:   %[[LHS:.*]]: !mo.tensor<[[[D0]], [[D1]]], bool>,
 // CHECK-SAME:   %[[RHS:.*]]: !mo.tensor<[[[D2]], [[D3]]], bool>
 // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]]], bool>
@@ -848,12 +870,11 @@ mo.graph @binary_logical_op(
 }
 
 // CHECK-LABEL: mo.graph @top_k
-// CHECK-NEXT:   %[[IN:.*]] = mo.constant
-// CHECK-NEXT:   %[[K:.*]] = mo.constant
-// CHECK-NEXT:   %[[AXIS:.*]] = mo.constant
+// CHECK-DAG:    %[[IN:.*]] = mo.constant {value = #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24> : tensor<5x5xsi64>}
+// CHECK-DAG:    %[[K:.*]] = mo.constant {value = #M.dense_array<3> : tensor<si64>}
+// CHECK-DAG:    %[[AXIS:.*]] = mo.constant {value = #M.dense_array<1> : tensor<si64>}
 // CHECK-NEXT:   %[[VALUES:.*]], %[[INDICES:.*]] = mo.top_k(%[[IN]], %[[K]], %[[AXIS]], %[[SORTED:.*]]) : (!mo.tensor<[5, 5], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>) -> (!mo.tensor<[5, 3], si64>, !mo.tensor<[5, 3], si64>)
 // CHECK-NEXT:   mo.output %[[VALUES]], %[[INDICES]] : !mo.tensor<[5, 3], si64>, !mo.tensor<[5, 3], si64>
-// CHECK-NEXT: }
 mo.graph @top_k(%input : !mo.tensor<[5, 5], si64>, %sorted : !mo.tensor<[], bool>) -> (!mo.tensor<[?, ?], si64>, !mo.tensor<[?, ?], si64>) {
   %in = "mo.constant"() {value = #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24> : tensor<5x5xsi64>} : () -> !mo.tensor<[5, 5], si64>
   %K = "mo.constant"() {value = #M.dense_array<3> : tensor<si64>} : () -> !mo.tensor<[], si64>
@@ -864,9 +885,9 @@ mo.graph @top_k(%input : !mo.tensor<[5, 5], si64>, %sorted : !mo.tensor<[], bool
 }
 
 // CHECK-LABEL: mo.graph @bottom_k
-// CHECK-NEXT:   %[[IN:.*]] = mo.constant
-// CHECK-NEXT:   %[[K:.*]] = mo.constant
-// CHECK-NEXT:   %[[AXIS:.*]] = mo.constant
+// CHECK-DAG:    %[[IN:.*]] = mo.constant {value = #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24> : tensor<5x5xsi64>}
+// CHECK-DAG:    %[[K:.*]] = mo.constant {value = #M.dense_array<3> : tensor<si64>}
+// CHECK-DAG:    %[[AXIS:.*]] = mo.constant {value = #M.dense_array<1> : tensor<si64>}
 // CHECK-NEXT:   %[[VALUES:.*]], %[[INDICES:.*]] = mo.bottom_k(%[[IN]], %[[K]], %[[AXIS]], %[[SORTED:.*]]) : (!mo.tensor<[5, 5], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>) -> (!mo.tensor<[5, 3], si64>, !mo.tensor<[5, 3], si64>)
 // CHECK-NEXT:   mo.output %[[VALUES]], %[[INDICES]] : !mo.tensor<[5, 3], si64>, !mo.tensor<[5, 3], si64>
 // CHECK-NEXT: }
