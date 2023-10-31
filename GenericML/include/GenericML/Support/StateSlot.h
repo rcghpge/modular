@@ -20,6 +20,9 @@ namespace M::GML {
 /// may be cached within a number of 'buffer slots' determined when the state
 /// slot is constructed. The state slot may also hold an arbitrary reference
 /// counted payload (which should derive from ReferenceCounted).
+///
+/// TODO: Move the 'buffer slots' out of here into a dedicated payload since
+/// does not extend to non-CPU buffer types.
 class StateSlot {
 public:
   /// Constructs the empty state slot.
@@ -35,7 +38,7 @@ public:
   }
 
   /// Destroy this state slot, dropping the reference to its payload.
-  ~StateSlot() = default;
+  ~StateSlot() { bufferCache.clear(); }
 
   /// Returns true if have a payload.
   operator bool() const { return payload; }

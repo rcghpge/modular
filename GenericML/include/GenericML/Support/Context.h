@@ -37,8 +37,13 @@ public:
   /// Constructs a new context with numSlots uninitialized state slots.
   explicit Context(size_t numSlots) : stateSlots(numSlots) {}
 
-  /// Destroys all state slots in the context.
-  ~Context() = default;
+  /// Destroys all state slots in the context. Slots are destroyed in reverse
+  /// order since later slots may hold implicit references to earlier slots.
+  ~Context() {
+    for (auto itr = stateSlots.rbegin(); itr != stateSlots.rend(); ++itr)
+      itr->~StateSlot();
+    stateSlots.clear();
+  }
 
   /// Returns the number of state slots in the context.
   size_t getNumStateSlots() const { return stateSlots.size(); }

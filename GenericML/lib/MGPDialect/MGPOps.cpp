@@ -201,7 +201,7 @@ std::optional<uint64_t> CpuBufferConstantOp::getOptAlign() {
 }
 
 //===----------------------------------------------------------------------===//
-// CpuBufferCachedOp
+// CpuBufferGetCachedOp
 //===----------------------------------------------------------------------===//
 
 /// Parses a !mgp.cpu.buffer type where the (optional) buffer size is
