@@ -300,7 +300,8 @@ MojoLibraryAnalysis::get(MLIRContext *ctx, const std::string &extraLibPaths) {
 
       // Shape functions.
       INTRINSIC_TO_MOJO("broadcast_to_shape", "$MOGG::broadcast_to_shape"),
-      INTRINSIC_TO_MOJO("concat_shape", "$Concat::concat_shape"),
+      INTRINSIC_TO_MOJO("concat_shape", "$MOGG::concat_shape"),
+      INTRINSIC_TO_MOJO("concat_from_list_shape", "$Concat::concat_shape"),
       INTRINSIC_TO_MOJO("conv_shape", "$Conv::conv_shape"),
       INTRINSIC_TO_MOJO("conv_transpose_shape",
                         "$ConvTranspose::conv_transpose_shape"),

@@ -3556,7 +3556,7 @@ def MO_InvokeShapeFuncOp : MO_TensorOp<"invoke_shape_func", [
   }];
 
   let arguments = (ins
-    Variadic<AnyTypeOf<[MO_Tensor, MO_ShapeLike, MO_RankedScalarIndexTensor]>>:$inputs,
+    Variadic<AnyTypeOf<[MO_Tensor, MO_List]>>:$inputs,
     StrAttr:$shapeFuncName,
     MO_ParamDecls:$outputParamDecls,
     OptionalAttr<DictionaryAttr>:$kgenParams,
@@ -3907,10 +3907,13 @@ def MO_ConcatFromListOp : MO_TensorOp<"concat_from_list", [
     ```
   }];
 
-  let arguments = (ins MO_List:$input, MO_RankedScalarIndexTensor:$axis);
+  let arguments = (ins MO_List:$input,
+                       MO_RankedScalarIndexTensor:$axis,
+                       MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls)
     `[` $axis `:` qualified(type($axis)) `]`
     `(` $input `)` attr-dict `:` qualified(type($input)) `->` qualified(type(results))
   }];
