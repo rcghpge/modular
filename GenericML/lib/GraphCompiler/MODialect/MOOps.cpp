@@ -2924,6 +2924,22 @@ LogicalResult ListInsertOp::verify() {
   return success();
 }
 
+LogicalResult ConcatFromListOp::verify() {
+  auto inputListElementTy =
+      dyn_cast<TensorType>(getInput().getType().getElementType());
+  if (!inputListElementTy)
+    return emitError("input list must contain tensors");
+
+  TensorType outputTy = getType();
+  if (inputListElementTy.getElementType() != outputTy.getElementType()) {
+    return emitError()
+           << "input list tensor dtype must match output tensor dtype: "
+           << inputListElementTy << " v.s. " << outputTy;
+  }
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//

@@ -3880,4 +3880,42 @@ def MO_CustomOp : MO_TensorOp<"custom", [
   }];
 }
 
+def MO_ConcatFromListOp : MO_TensorOp<"concat_from_list", [
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+]> {
+  let summary = "Concat Operation that takes in a list of tensors";
+  let description = [{
+    Concatenate tensors in the input list along a given dimension.
+
+    This op concatenates tensors in the `input` list into an output tensor. The
+    input tensors and output tensors all have the same shape except along the
+    concatenation dimension `axis`. The size of the concatenation dimension in
+    output tensor would have be the sum of sizes of the concatenation dimension
+    in input tensors.
+
+    The value of `axis` follows numpy semantics, e.g., -1 represents the last
+    axis.
+
+    Example:
+
+    ```mlir
+    %list: !mo.list<!mo.tensor<[2, 3], f32>>
+    %axis = mo.constant {
+      value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+    %res = mo.concat_from_list[%axis: !mo.tensor<[], si64>](%list) :
+      !mo.list<!mo.tensor<[2, 3], f32>> -> !mo.tensor<[2, ?], f32>
+    ```
+  }];
+
+  let arguments = (ins MO_List:$input, MO_RankedScalarIndexTensor:$axis);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `[` $axis `:` qualified(type($axis)) `]`
+    `(` $input `)` attr-dict `:` qualified(type($input)) `->` qualified(type(results))
+  }];
+
+  let hasVerifier = 1;
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOOPS_TD
