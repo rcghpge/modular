@@ -168,7 +168,9 @@ loadUserProvidedKernels(ModuleOp baseModule, const std::string &extraLibPaths) {
                                               newSymName);
               return std::nullopt;
             });
-        symbolUpdater.recursivelyReplaceElementsIn(*userModule);
+        symbolUpdater.recursivelyReplaceElementsIn(
+            *userModule, /*replaceAttrs=*/true, /*replaceLocs=*/false,
+            /*replaceTypes=*/true);
         op.setSymName(newSymName);
       }
     }
