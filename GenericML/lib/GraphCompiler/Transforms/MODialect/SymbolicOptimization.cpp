@@ -1046,6 +1046,7 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp
     }
 
     TensorType inputTensorTy = inputTensor.getType();
+    // This avoids creating a binary op with unknown shapes.
     if (inputTensorTy.hasUnknownShape())
       return rewriter.notifyMatchFailure(op, "Shape must be known");
 
@@ -1162,6 +1163,7 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseUnaryOp
     }
 
     auto inputType = inputTensor.getType().cast<TensorType>();
+    // This avoids creating a unary op with unknown shapes.
     if (inputType.hasUnknownShape())
       return rewriter.notifyMatchFailure(op, "Shape must be known");
 
@@ -1221,9 +1223,15 @@ struct SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp
     if (!input1Tensor || !input2Tensor)
       return rewriter.notifyMatchFailure(op, "Null values found in pattern.");
 
-    if (input1Tensor.getType().getDims() != input2Tensor.getType().getDims())
-      return rewriter.notifyMatchFailure(
-          op, "Inputs are not the same shape. Not compatible.");
+    TensorType input1TensorTy = input1Tensor.getType();
+    TensorType input2TensorTy = input2Tensor.getType();
+
+    if (input1TensorTy.getShapeAttr() != input2TensorTy.getShapeAttr())
+      return rewriter.notifyMatchFailure(op, "Inputs shapes must be equal");
+
+    // This avoids creating a binary op with unknown shapes.
+    if (input1TensorTy.hasUnknownShape())
+      return rewriter.notifyMatchFailure(op, "Input shapes must be known");
 
     // TODO(#18823) find a more general solution
     if (isValueFromReshapeThatSqueezesFinalDims(op.getLhsInput()) ||
@@ -1242,7 +1250,7 @@ struct SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp
     newOp.setLhsInput(input1Tensor);
     newOp.setRhsInput(input2Tensor);
     newOp.getResult().setType(
-        input1Tensor.getType().cloneWith(finalOutputType.getDtype()));
+        input1TensorTy.cloneWith(finalOutputType.getDtype()));
     TensorValue output = rewriter.create<ReshapeOpType>(
         op->getLoc(), finalOutputType, newOp.getResult());
 
