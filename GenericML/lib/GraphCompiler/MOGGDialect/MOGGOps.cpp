@@ -268,7 +268,7 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
       /*isViaHost=*/isViaHost(),
       /*inChain=*/loweringState.getExecuteChain(),
       /*execContext=*/loweringState.getExecuteMgpContext(),
-      /*buffers=*/operands,
+      /*args=*/operands,
       /*bufferSemantics=*/operandSemantics,
       /*inDimensions=*/inDimensions,
       /*numOutDimensions=*/static_cast<uint64_t>(getOutputParamDecls().size()),

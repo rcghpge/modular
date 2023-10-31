@@ -176,23 +176,20 @@ struct MOOpPattern : public RewritePattern {
     // Only within the top level graph and not within e.g control flow.
     bool shouldUseJit = record.shouldUseJit();
 
-    auto isDTypeAllowed = [&](Type t) {
-      auto tensor = dyn_cast<MO::TensorType>(t);
-      Type dtype = tensor.getElementType();
+    auto isDTypeAllowed = [&](MO::TensorType tensorTy) {
+      Type dtype = tensorTy.getElementType();
       return MOGG::MOGGTypeTraits::isSupportedMOGGType(dtype);
     };
 
     // Returns true if a type is compatable with jit.
-    auto isShapeAllowed = [&](Type t) {
-      auto tensor = dyn_cast<MO::TensorType>(t);
-
-      if (!tensor || !tensor.hasRank() || tensor.getRank() > kMaxRank ||
-          tensor.hasUnknownShape())
+    auto isShapeAllowed = [&](MO::TensorType tensorTy) {
+      if (!tensorTy || !tensorTy.hasRank() || tensorTy.getRank() > kMaxRank ||
+          tensorTy.hasUnknownShape())
         return false;
 
       // The symbolic shape must be trivial and not a compound expression. I.E
       // N*M.
-      for (TypedAttr symbolicDim : tensor.getDims()) {
+      for (TypedAttr symbolicDim : tensorTy.getDims()) {
         if (!(isa<KGEN::ParamDeclRefAttr>(symbolicDim) ||
               isa<IntegerAttr>(symbolicDim)))
           return false;
@@ -201,21 +198,30 @@ struct MOOpPattern : public RewritePattern {
       return true;
     };
 
-    bool hasCompatibleJITDtypes = true;
-    bool hasCompatibleJITShape = true;
+    bool hasCompatibleTypes = true;
     for (Type t : op->getOperandTypes()) {
-      hasCompatibleJITDtypes &= isDTypeAllowed(t);
-      hasCompatibleJITShape &= isShapeAllowed(t);
+      if (auto tensorTy = dyn_cast<MO::TensorType>(t)) {
+        hasCompatibleTypes &= isDTypeAllowed(tensorTy);
+        hasCompatibleTypes &= isShapeAllowed(tensorTy);
+      } else if (auto listTy = dyn_cast<MO::ListType>(t)) {
+        hasCompatibleTypes &= isa<MO::TensorType>(listTy.getElementType());
+      } else {
+        hasCompatibleTypes = false;
+      }
     }
     for (Type t : op->getResultTypes()) {
-      hasCompatibleJITDtypes &= isDTypeAllowed(t);
-      hasCompatibleJITShape &= isShapeAllowed(t);
+      if (auto tensorTy = dyn_cast<MO::TensorType>(t)) {
+        hasCompatibleTypes &= isDTypeAllowed(tensorTy);
+        hasCompatibleTypes &= isShapeAllowed(tensorTy);
+      } else {
+        hasCompatibleTypes = false;
+      }
     }
 
-    if (shouldUseJit && !(hasCompatibleJITDtypes && hasCompatibleJITShape)) {
+    if (shouldUseJit && !hasCompatibleTypes) {
       std::string errStr;
       llvm::raw_string_ostream os(errStr);
-      os << "Found at least one incompatible DType or shape for a JIT-able "
+      os << "Found at least one incompatible input/output type for a JIT-able "
             "operation which is not supported"
          << ". Operand types: " << op->getOperandTypes()
          << ". Results Types: " << op->getResultTypes();
@@ -272,6 +278,7 @@ void MOToMOGGPass::runOnOperation() {
       MO_TO_ELEMWISE(MO::CastOp),
       MO_TO_ELEMWISE(MO::CeilOp),
       MO_TO_KERNEL(MO::ConcatOp),
+      MO_TO_KERNEL(MO::ConcatFromListOp),
       MO_TO_KERNEL(MO::ConvOp),
       MO_TO_KERNEL(MO::ConvTransposeOp),
       MO_TO_ELEMWISE(MO::CosOp),

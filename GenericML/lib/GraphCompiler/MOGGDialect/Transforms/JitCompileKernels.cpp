@@ -246,6 +246,16 @@ createMangledName(MOGG::KernelOp op,
   DenseMap<Value, std::string> valueToPositionInBlock;
   size_t argIndex = 0;
 
+  auto mangleTensorTy = [&](MO::TensorType tensorTy) -> ErrorOr<std::string> {
+    std::string str;
+    addShapeDimsToName(tensorTy.getTypedShapeAttr(), str, params);
+    auto traitsOr = MOGGTypeTraits::lookupType(tensorTy.getElementType());
+    if (traitsOr.isError())
+      return traitsOr.takeError();
+    str += traitsOr->moggType.getAsString();
+    return str;
+  };
+
   // Get the MLIR block.
   mlir::Block &block = op.getBody().front();
   for (Value v : block.getArguments()) {
@@ -256,12 +266,27 @@ createMangledName(MOGG::KernelOp op,
     name += valueToPositionInBlock[v] + "_";
 
     // Mangle the type into the name.
-    auto tensor = cast<MO::TensorType>(v.getType());
-    addShapeDimsToName(tensor.getTypedShapeAttr(), name, params);
-    auto traitsOr = MOGGTypeTraits::lookupType(tensor.getElementType());
-    if (traitsOr.isError())
-      return traitsOr.takeError();
-    name += traitsOr->moggType.getAsString() + "_";
+    if (auto tensorTy = dyn_cast<MO::TensorType>(v.getType())) {
+      ErrorOr<std::string> strOr = mangleTensorTy(tensorTy);
+      if (strOr.isError())
+        return strOr;
+      name += strOr.get();
+
+    } else if (auto listTy = dyn_cast<MO::ListType>(v.getType())) {
+      name += "list_";
+      if (auto tensorElemTy =
+              dyn_cast<MO::TensorType>(listTy.getElementType())) {
+        ErrorOr<std::string> strOr = mangleTensorTy(tensorElemTy);
+        if (strOr.isError())
+          return strOr;
+        name += strOr.get();
+      }
+
+    } else {
+      return Error("Unsupported input type");
+    }
+
+    name += "_";
   }
 
   // Add the output type as the kernel could reference this independently.

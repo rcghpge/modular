@@ -15,20 +15,44 @@
 
 namespace M::GML {
 
+// Data structures used in MOGG/MGP ABI
+namespace CompiledKernelABI {
+
+// NOTE the layout must match the mojo `ABI_List`
+struct List {
+  size_t numElems;
+  void *elements;
+};
+
+// NOTE the layout must match the mojo `ABI_Tensor`
+struct Tensor {
+  ssize_t *dims;
+  void *dataPtr;
+};
+
+} // namespace CompiledKernelABI
+
 //
 // This is the ABI for calling a compiled kernel:
-//   I = number of input tensor buffers
+//   I = number of input arguments (tensor buffer or list)
 //   O = number of output tensor buffers
 //   N = number of input dimension values (for dynamic dims only)
 //   M = number of output dimension values (for compiled shape functions only)
-//   void* buffers[I + O], ssize_t dims[N + M], OutputChain*
+//   void* args[I + O], ssize_t dims[N + M], OutputChain*
 //
-// Both buffers and dims take inputs followed by outputs. Dimensions known
+// Both args and dims take inputs followed by outputs. Dimensions known
 // statically are already accounted for in the compiled kernel and do not need
 // to be passed in dims.
 //
 // We currently only support static ranks in compiled kernels, so no ranks
 // are passed at runtime.
+//
+// NOTE that standalone tensors are passed throught the ABI with a shape
+// optimization instead of as a `CompiledKernelABI::Tensor`. Specifically, it's
+// passed as a buffer pointer in `void* args[]`, and dynamic dimensions in
+// `ssize_t dims[]`, where dynamic dimensions with the same symbols (e.g., `[D0,
+// D0]`) share the same value from `dims[]`, in hopes to enable more
+// optimization opportunities in downstream compilation.
 //
 using CompiledKernelFn = void(void **, ssize_t *, KGEN::OutputChain *);
 

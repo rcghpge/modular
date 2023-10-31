@@ -992,6 +992,19 @@ static void mgp_cpu_kernel_load_archive(Chain inChain, Context &ctx,
 // mgp.cpu.kernel.execute
 //===----------------------------------------------------------------------===//
 
+/// A runtime representation for `!mgp.list`.
+struct List {
+  SmallVector<AnyAsyncValueRef> elements;
+
+  List copy() {
+    List listCopy;
+    for (const AnyAsyncValueRef &val : elements) {
+      listCopy.elements.push_back(val.copy());
+    }
+    return listCopy;
+  }
+};
+
 static void
 mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
                        Result<Chain> outChain, RemainingResults outDimensions,
@@ -1016,14 +1029,14 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
 #endif
 
   // The operands are:
-  //  [buffer_1, ..., inputBuffer_numBufferArgs,
+  //  [input_1, ..., input_numInputs,
   //   inDimension_1, ..., inDimension_numInDimension]
   StringRef inOutSignature = *cInOutSignature;
-  size_t numBuffers = inOutSignature.size();
+  size_t numInputs = inOutSignature.size();
 #if MODULAR_PARANOID
-  assert(numBuffers <= operands.size() && "invalid buffer signature arity");
+  assert(numInputs <= operands.size() && "invalid buffer signature arity");
 #endif
-  size_t numInDimensions = operands.size() - numBuffers;
+  size_t numInDimensions = operands.size() - numInputs;
 
   // The outDimensions are:
   //  [outDimension_1, ..., outDimension_numOutDimensions]
@@ -1041,27 +1054,62 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
   // Hold on to all the operands until the kernel completes.
   outputChain.transfer(operands.copyAsVector());
 
-  // Put the buffers into the ABI void* array. This will mix the input
-  // and output buffers.
-  SmallVector<void *, 8> bufferPointers;
-  bufferPointers.reserve(numBuffers);
-  for (size_t i = 0; i < numBuffers; ++i) {
+  // NOTE this is needed for managing the memory of what the ABI List structure
+  // references. We don't need this for tensor buffer because that memory is
+  // managed by the runtime `GML::BufferRef` already, and it's passed directly
+  // into the ABI as a `void*` pointer without any conversion.
+  //
+  // Moreover, this is safe since the generated code will execute the conversion
+  // logic (e.g., `to_buffer_list`) in a synchronous and copying manner, and
+  // once that happens, we no longer need to track these memories, and the
+  // underlying kernel could be asynchronous or not.
+  //
+  // TODO remove these once we have a unified representation of values across
+  // the ABI.
+  SmallVector<SmallVector<ssize_t>> dimsMemory;
+  SmallVector<SmallVector<CompiledKernelABI::Tensor>> tensorsMemory;
+  SmallVector<CompiledKernelABI::List> listMemory;
+
+  // Put the kernel arguments into the ABI void* array. This will mix the
+  // input/output buffers, and other types of arguments.
+  SmallVector<void *, 8> inputPointers;
+  inputPointers.reserve(numInputs);
+  for (size_t i = 0; i < numInputs; ++i) {
+    AnyAsyncValueRef &input = operands[i];
 #if MODULAR_PARANOID
     switch (inOutSignature[i]) {
     case 'i': {
-      auto &buffer = operands[i].get<GML::BufferRef>();
-      // Forget the const here since the ABI mixes input and output.
-      bufferPointers.push_back(const_cast<void *>(buffer.getBuffer()));
-      // Record that we'll be reading this buffer while the kernel is in-flight.
-      buffer.collectAccessUses(
-          outputChain.uses,
-          (Twine("kernel(line=") + Twine(loc.decode().line) + ")").str(),
-          LLCL::kReadingResourceUse);
+      if (input.isType<GML::BufferRef>()) {
+        auto &buffer =
+            input
+                .get<GML::BufferRef>()
+            // Record that we'll be reading this buffer while the kernel is
+            // in-flight.
+            buffer.collectAccessUses(
+                outputChain.uses,
+                (Twine("kernel(line=") + Twine(loc.decode().line) + ")").str(),
+                LLCL::kReadingResourceUse);
+
+      } else if (input.isType<List>()) {
+        auto &list = input.get<List>();
+        for (AnyAsyncValueRef &ref : list.elements) {
+          if (ref.isType<GML::Tensor>()) {
+            ref.get<GML::Tensor>().getBufferRef().collectAccessUses(
+                outputChain.uses,
+                (Twine("kernel(line=") + Twine(loc.decode().line) + ")").str(),
+                LLCL::kReadingResourceUse);
+          } else {
+            return std::move(outChain).setToError("Invalid list element type");
+          }
+        }
+
+      } else {
+        return std::move(outChain).setToError("Invalid input type");
+      }
       break;
     }
     case 'o': {
-      auto &buffer = operands[i].get<GML::BufferRef>();
-      bufferPointers.push_back(buffer.getMutableBuffer());
+      auto &buffer = input.get<GML::BufferRef>();
       // Record that we'll be writing this buffers while the kernel is
       // in-flight.
       buffer.collectAccessUses(
@@ -1073,10 +1121,41 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
     default:
       llvm::llvm_unreachable_internal("invalid in/out signature");
     }
-#else // ! MODULAR_PARANOID
-    const void *ptr = operands[i].get<GML::BufferRef>().getBuffer();
-    bufferPointers.push_back(const_cast<void *>(ptr));
-#endif
+#endif // MODULAR_PARANOID
+
+    if (input.isType<GML::BufferRef>()) {
+      const void *ptr = input.get<GML::BufferRef>().getBuffer();
+      // Forget the const here since the ABI mixes input and output.
+      inputPointers.push_back(const_cast<void *>(ptr));
+
+    } else if (input.isType<List>()) {
+      auto &runtimeList = input.get<List>();
+      auto &abiTensors =
+          tensorsMemory.emplace_back(SmallVector<CompiledKernelABI::Tensor>());
+
+      // Convert individual elements to their corresponding ABI structures.
+      for (AnyAsyncValueRef &ref : runtimeList.elements) {
+        if (ref.isType<GML::Tensor>()) {
+          auto &runtimeTensor = ref.get<GML::Tensor>();
+          ssize_t *dims =
+              dimsMemory.emplace_back(runtimeTensor.getSpec().getDimsCopy())
+                  .data();
+          void *data = const_cast<void *>(runtimeTensor.getBuffer());
+          abiTensors.push_back(CompiledKernelABI::Tensor{dims, data});
+
+        } else {
+          return std::move(outChain).setToError("Invalid list element type");
+        }
+      }
+
+      // Convert an entire list to its ABI structure.
+      auto &abiList = listMemory.emplace_back(CompiledKernelABI::List{
+          runtimeList.elements.size(), abiTensors.data()});
+      inputPointers.push_back((void *)&abiList);
+
+    } else {
+      return std::move(outChain).setToError("Invalid input type");
+    }
   }
 
   // Put the runtime dimensions, corresponding to each kernel 'parameter',
@@ -1085,7 +1164,7 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
   SmallVector<ssize_t, 16> dimensions;
   dimensions.resize(numInDimensions + numOutDimensions);
   for (size_t i = 0; i < numInDimensions; ++i)
-    dimensions[i] = operands[numBuffers + i].get<size_t>();
+    dimensions[i] = operands[numInputs + i].get<size_t>();
 #if MODULAR_PARANOID
   for (size_t i = 0; i < numOutDimensions; ++i)
     dimensions[numInDimensions + i] = -1;
@@ -1100,9 +1179,10 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
   //  - Asynchronous kernels will have copied everything out of the three
   //    pointer arguments by the time this call returns.
   //  - Synchronous kernels wil have completed upon return.
-  //  - The dimensions of the bufferPointers and dimensions vectors are known
-  //    at kernel compile time and do not need to be passed at runtime.
-  kernelPtr(bufferPointers.data(), dimensions.data(), &outputChain);
+  //  - The dimensions of the buffers inside inputPointers and dimensions
+  //    vectors are known at kernel compile time and do not need to be passed at
+  //    runtime.
+  kernelPtr(inputPointers.data(), dimensions.data(), &outputChain);
 
   // If the kernel has output dimensions then it must be synchronous and those
   // values can be copied out now.
@@ -1128,19 +1208,6 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
   // this call will be a no-op.
   std::move(outputChain).recordProfilerEntry();
 }
-
-/// A runtime representation for `!mgp.list`.
-struct List {
-  SmallVector<AnyAsyncValueRef> elements;
-
-  List copy() {
-    List listCopy;
-    for (const AnyAsyncValueRef &val : elements) {
-      listCopy.elements.push_back(val.copy());
-    }
-    return listCopy;
-  }
-};
 
 //===----------------------------------------------------------------------===//
 // mgp.list.append

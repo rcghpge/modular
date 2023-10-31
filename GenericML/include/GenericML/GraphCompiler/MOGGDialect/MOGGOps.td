@@ -223,7 +223,7 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [
     Kernels preserve the device of their original MO op.
   }];
 
-  let arguments = (ins Variadic<MO_Tensor>:$operands,
+  let arguments = (ins Variadic<AnyTypeOf<[MO_Tensor, MO_List]>>:$operands,
     MO_ParamDecls:$outputParamDecls,
     OptionalAttr<ArrayAttr>:$inputFusionInterface,
     OptionalAttr<ArrayAttr>:$outputFusionInterface,
@@ -365,7 +365,7 @@ def MOGG_CallOp : MOGG_Op<"call"> {
 
   let arguments = (ins
      StrAttr:$mojoKernelTarget,
-     Variadic<AnyTypeOf<[MOGG_Simd, MO_Tensor, MOGG_Indices, MOGG_Shape]>>:$operands,
+     Variadic<AnyTypeOf<[MOGG_Simd, MO_Tensor, MO_List, MOGG_Indices, MOGG_Shape]>>:$operands,
      OptionalAttr<ArrayAttr>:$params,
      OptionalAttr<DictionaryAttr>:$kgenParams
   );
@@ -567,7 +567,7 @@ def MOGG_ExecuteCompiledOp : MOGG_LowerableOp<"execute_kernel", [
     The ABI and calling primitive depend on the device.
   }];
 
-  let arguments = (ins Variadic<MO_Tensor>:$operands,
+  let arguments = (ins Variadic<AnyTypeOf<[MO_Tensor, MO_List]>>:$operands,
                        StrAttr:$kernelName,
                        ArrayAttr:$usedParams,
                        MO_ParamDecls:$outputParamDecls);

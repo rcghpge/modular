@@ -1024,10 +1024,18 @@ LogicalResult CpuKernelExecuteOp::inferReturnTypes(
 }
 
 LogicalResult CpuKernelExecuteOp::verify() {
-  if (getCInOutSignature().size() != getBuffers().size())
+  InOutSignatureAttr sigAttr = getCInOutSignature();
+  if (sigAttr.size() != getArgs().size())
     return emitOpError() << "expected in/out signature attribute to have arity "
-                         << getBuffers().size() << " but given "
+                         << getArgs().size() << " but given "
                          << getCInOutSignature().size() << ".";
+  for (auto [idx, arg] : llvm::enumerate(getArgs())) {
+    if (!isa<CpuBufferType>(arg.getType()) &&
+        sigAttr[idx] != InOutSignatureAttr::kIn) {
+      return emitOpError() << "non-buffer arg must be read only: "
+                           << arg.getType();
+    }
+  }
   if (getENumOutDimensions() != getOutDimensions().size())
     return emitOpError()
            << "expected number of output dimensions attribute to be "

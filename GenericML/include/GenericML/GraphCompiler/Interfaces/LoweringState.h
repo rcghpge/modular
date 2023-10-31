@@ -479,6 +479,7 @@ struct MOOpLoweringState {
   /// Returns the lowered form for all of the op operands, i.e.,
   /// - !mo.tensor gets lowered to (buffer, spec), and `spec` is excluded if
   ///   `keepTensorSpec == false`.
+  /// - !mo.list gets lowered to !mgp.list
   SmallVector<Value> getLoweredOperands(bool keepTensorSpec = false);
 
   /// Returns the tensor spec to represent the given MO tensor type, accounting

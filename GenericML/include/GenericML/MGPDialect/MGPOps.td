@@ -1770,7 +1770,7 @@ def CpuKernelExecuteOp : MGP_Op<"cpu.kernel.execute", [
   // names.
   let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
-                       Variadic<MGP_CpuBufferType>:$buffers,
+                       Variadic<AnyTypeOf<[MGP_CpuBufferType, MGP_List]>>:$args,
                        Variadic<Index>:$inDimensions,
                        UI64Attr:$aSlot,                                      // 0
                        UI64Attr:$bKernelIndex,                               // 1
@@ -1781,7 +1781,7 @@ def CpuKernelExecuteOp : MGP_Op<"cpu.kernel.execute", [
                       Variadic<Index>:$outDimensions);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $aSlot `,` $bKernelIndex `]` `,`
-    custom<BufferSignature>($buffers, type($buffers), $cInOutSignature) `,`
+    custom<BufferSignature>($args, type($args), $cInOutSignature) `,`
     ( `(` $inDimensions^ `)` `,` )?
     `name` $dKernelName
     ( `,` `out_dims` $eNumOutDimensions^ )? attr-dict
