@@ -8,6 +8,8 @@
 from tensor import TensorShape, TensorSpec
 
 from utils.vector import DynamicVector
+from utils._serialize import _serialize_as_tensor
+
 
 # CHECK: test_tensor_shape
 fn test_tensor_shape():
@@ -91,6 +93,17 @@ fn test_tensor_spec():
     shape_vec._del_old()
 
 
+# CHECK: test_serialize
+fn test_serialize():
+    print("== test_serialize")
+
+    var spec = TensorSpec(DType.float32, 1)
+    let bytes = _serialize_as_tensor(spec)
+    # CHECK: True
+    print(bytes.num_elements() == sizeof[TensorSpec]())
+
+
 fn main():
     test_tensor_shape()
     test_tensor_spec()
+    test_serialize()
