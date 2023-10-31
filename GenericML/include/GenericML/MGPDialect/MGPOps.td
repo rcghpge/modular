@@ -12,6 +12,8 @@
 #define GENERICML_MGPDIALECT_MGPOPS_TD
 
 include "GenericML/MGPDialect/MGPBufferAllocInterface.td"
+include "GenericML/MGPDialect/MGPTensorInterface.td"
+include "GenericML/MGPDialect/MGPTensorSpec.td"
 include "GenericML/MGPDialect/MGPDialect.td"
 include "GenericML/MGPDialect/MGPTypes.td"
 include "GenericML/MGPDialect/MGPAttrs.td"
@@ -1193,6 +1195,7 @@ def CpuTensorSpecDTypeOp : MGP_Op<"cpu.tensor_spec.dtype"> {
 // TODO: Look into representing dynamic buffers more explicitly.
 // E.g. !mgp.cpu.buffer<?> instead of just !mgp.cpu.buffer.
 def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
+    DeclareOpInterfaceMethods<MGP_CreateTensorOpInterface>,
     DeclareOpInterfaceMethods<GRTMayAliasInterface>, // since operand buffer may be moved into result
     TypesMatchWith<"tensorSpec operand must match result tensor type spec",
                    "result", "tensorSpec",
@@ -1287,6 +1290,7 @@ def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
 
 def CpuTensorExtractOp : MGP_Op<"cpu.tensor.extract", [
     Pure,
+    DeclareOpInterfaceMethods<MGP_TensorExtractOpInterface>,
     DeclareOpInterfaceMethods<GRTMayAliasInterface>, // since operand's buffer may be moved into result
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Extracts the tensor spec and buffer of a CPU tensor.";

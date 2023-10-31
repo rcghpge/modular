@@ -11,6 +11,7 @@
 include "GraphRT/MEFDialect/MEFNonStrictInterface.td"
 include "GraphRT/GRTDialect/GRTOpsBase.td"
 include "GraphRT/GRTDialect/GRTControlFlowInterface.td"
+include "GraphRT/GRTDialect/GRTChainInterface.td"
 include "mlir/IR/RegionKindInterface.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
@@ -20,7 +21,8 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 // ChainCreateOp
 //===----------------------------------------------------------------------===//
 
-def ChainCreateOp : GRTOp<"chain.create", [Pure, Commutative]> {
+def ChainCreateOp : GRTOp<"chain.create", [Pure, Commutative,
+    DeclareOpInterfaceMethods<GRT_ChainOpInterface>]> {
   let summary = "Return a ready !mef.chain when all inputs (if any) are ready";
 
   let description = [{

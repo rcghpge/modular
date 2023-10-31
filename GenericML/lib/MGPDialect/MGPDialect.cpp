@@ -6,6 +6,7 @@
 
 #include "GenericML/MGPDialect/MGPDialect.h"
 #include "GenericML/MGPDialect/MGPOps.h"
+#include "GenericML/MGPDialect/MGPTensorInterface.h"
 #include "GraphRT/MEFDialect/MEFDialect.h"
 #include "GraphRT/MIPDialect/MIPDialect.h"
 #include "Support/LLVMCompilerForwardDecls.h"
@@ -23,6 +24,7 @@ void MGPDialect::initialize() {
   registerTypes();
   registerAttributes();
   registerOperations();
+  addInterface<CpuTensorBufferDialectInterface>();
 }
 
 Operation *MGPDialect::materializeConstant(OpBuilder &b, Attribute value,

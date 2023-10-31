@@ -6,6 +6,7 @@
 
 #include "GenericML/MGPDialect/MGPBufferAllocInterface.h"
 
+#include "GenericML/MGPDialect/MGPTypes.h"
 #include "mlir/IR/Operation.h"
 
 //===----------------------------------------------------------------------===//

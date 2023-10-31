@@ -27,6 +27,15 @@ class DType;
 // ODS-Generated Declarations
 //===----------------------------------------------------------------------===//
 
+// MGPTypes depends on MGPTensorTypeInterface which depends on MGPTensorSpec.
+// All the types and type interfaces need to be in the same file so they can see
+// each other's definitions. Trust me, I tried to put them in separate files but
+// it doesn't work.
+#define GET_TYPEDEF_CLASSES
+#include "GenericML/MGPDialect/MGPTensorSpec.h.inc"
+
+#include "GenericML/MGPDialect/MGPTensorTypeInterface.h.inc"
+
 #define GET_TYPEDEF_CLASSES
 #include "GenericML/MGPDialect/MGPTypes.h.inc"
 
