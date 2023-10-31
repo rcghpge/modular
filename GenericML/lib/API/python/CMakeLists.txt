@@ -66,7 +66,18 @@ add_custom_command(
   DEPENDS ${MODULAR_PACKED_WHEEL_NAME}
   COMMENT "Installing Modular Python API wheel."
 )
-add_custom_target(modular-pybind-ext ALL DEPENDS ${MODULAR_PACKED_WHEEL_HASH_FILE})
+# MODULAR_EXCLUDE_PYBIND_EXT_FROM_ALL can be set to avoid including
+# modular-pybind-ext in the 'all' target.  Since building the Python extension
+# currently requires Internet access, this is useful if you are developing
+# without Internet access (e.g. on an airplane).  It also speeds up builds by
+# several seconds, and can be useful even when Internet access is present, as
+# long as the wheel is not needed.
+if(MODULAR_EXCLUDE_PYBIND_EXT_FROM_ALL)
+  set(ext_all)
+else()
+  set(ext_all ALL)
+endif()
+add_custom_target(modular-pybind-ext ${ext_all} DEPENDS ${MODULAR_PACKED_WHEEL_HASH_FILE})
 
 add_dependencies(modular-pybind-ext modular-engine)
 add_subdirectory(bindings/modular/engine)
