@@ -476,8 +476,10 @@ struct MOOpLoweringState {
   /// Returns the bufferized form for the MO tensor value.
   BufferizedTensor getBufferizedInput(Value moTensor);
 
-  /// Returns the bufferized form for all of the op operands.
-  SmallVector<BufferizedTensor> getBufferizedInputs();
+  /// Returns the lowered form for all of the op operands, i.e.,
+  /// - !mo.tensor gets lowered to (buffer, spec), and `spec` is excluded if
+  ///   `keepTensorSpec == false`.
+  SmallVector<Value> getLoweredOperands(bool keepTensorSpec = false);
 
   /// Returns the tensor spec to represent the given MO tensor type, accounting
   /// for any dynamic ranks or dimensions.

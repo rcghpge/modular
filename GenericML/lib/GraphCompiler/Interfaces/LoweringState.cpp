@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/Interfaces/LoweringState.h"
+#include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 
 using namespace M;
 using namespace M::MGP;
@@ -287,10 +288,22 @@ BufferizedTensor MOOpLoweringState::getBufferizedInput(Value moTensor) {
   return BufferizedTensor(buffer, tensorSpec);
 }
 
-SmallVector<BufferizedTensor> MOOpLoweringState::getBufferizedInputs() {
-  return llvm::map_to_vector(
-      opBeingLowered->getOperands(),
-      [&](Value moTensor) { return getBufferizedInput(moTensor); });
+SmallVector<Value> MOOpLoweringState::getLoweredOperands(bool keepTensorSpec) {
+  SmallVector<Value> loweredOperands;
+  for (Value operand : opBeingLowered->getOperands()) {
+    Value loweredInput = loweringState.lookupExecuteLoweredValue(operand);
+
+    if (isa<MO::TensorType>(operand.getType())) {
+      auto [buffer, tensorSpec] = tensorExtract(loweredInput);
+      loweredOperands.push_back(buffer);
+      if (keepTensorSpec)
+        loweredOperands.push_back(tensorSpec);
+
+    } else {
+      loweredOperands.push_back(loweredInput);
+    }
+  }
+  return loweredOperands;
 }
 
 FailureOr<TypedValue<MGP::CpuTensorSpecType>>

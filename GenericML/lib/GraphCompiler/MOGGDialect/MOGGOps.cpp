@@ -35,9 +35,9 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
   MGP::MOOpLoweringState opLoweringState(loweringState, *this,
                                          loweringState.getHostDevice());
 
-  // Gather the input buffers.
-  SmallVector<MGP::BufferizedTensor> bufferizedInputs =
-      opLoweringState.getBufferizedInputs();
+  // Gather lowered input operands.
+  SmallVector<Value> loweredInputOperands =
+      opLoweringState.getLoweredOperands(/*keepTensorSpec=*/true);
 
   // Allocate the output buffers.
   FailureOr<SmallVector<MGP::BufferizedTensor>> bufferizedOutputsOr =
@@ -51,13 +51,10 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
   //    in_buf1, in_spec1, ..., in_bufN, in_specN,
   //    out_buf1, out_spec1, ... out_specM, out_specM]
   SmallVector<Value> operands;
-  operands.reserve(1 +
-                   (bufferizedInputs.size() + bufferizedOutputs.size()) * 2);
+  operands.reserve(1 + loweredInputOperands.size() +
+                   bufferizedOutputs.size() * 2);
   operands.push_back(loweringState.getExecuteChain());
-  for (auto &bufferized : bufferizedInputs) {
-    operands.push_back(bufferized.buffer);
-    operands.push_back(bufferized.tensorSpec);
-  }
+  operands.append(loweredInputOperands);
   for (auto &bufferized : bufferizedOutputs) {
     operands.push_back(bufferized.buffer);
     operands.push_back(bufferized.tensorSpec);
@@ -93,11 +90,11 @@ LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
                                          loweringState.getHostDevice());
 
   // Gather the input buffers.
-  SmallVector<MGP::BufferizedTensor> bufferizedInputs =
-      opLoweringState.getBufferizedInputs();
-  assert(llvm::all_of(bufferizedInputs,
-                      [](const MGP::BufferizedTensor bt) {
-                        return isa<MGP::CpuBufferType>(bt.buffer.getType());
+  SmallVector<Value> loweredOperands = opLoweringState.getLoweredOperands();
+  assert(llvm::all_of(loweredOperands,
+                      [](const Value loweredOperand) {
+                        return isa<MGP::CpuBufferType>(
+                            loweredOperand.getType());
                       }) &&
          "input tensors must be on the CPU");
 
@@ -113,14 +110,10 @@ LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
                       }) &&
          "output tensors must be on the CPU");
 
-  SmallVector<Value> operands;
-  for (auto &bufferizedInput : bufferizedInputs)
-    operands.push_back(bufferizedInput.buffer);
-
   auto concatOp = opLoweringState.create<MGP::CpuBufferConcatOp>(
       /*inChain=*/loweringState.getExecuteChain(),
       /*outBuffer=*/bufferizedOutputs[0].buffer,
-      /*inBuffers=*/operands);
+      /*inBuffers=*/loweredOperands);
 
   // Make sure downstream passes recognise the first buffer arg as an output.
   // CAUTION: This is different from the mop output argument convention used
@@ -223,9 +216,9 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   MGP::MOOpLoweringState opLoweringState(loweringState, *this,
                                          MO::getDeviceOrDefault(*this));
 
-  // Gather the input buffers.
-  SmallVector<MGP::BufferizedTensor> bufferizedInputs =
-      opLoweringState.getBufferizedInputs();
+  // Gather lowered input operands.
+  SmallVector<Value> loweredInputOperands =
+      opLoweringState.getLoweredOperands();
 
   // Allocate the output buffers.
   // At this stage we gate the allocations only on the overall 'execute' block's
@@ -239,23 +232,23 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   SmallVector<MGP::BufferizedTensor> &bufferizedOutputs = *bufferizedOutputsOr;
 
   size_t numOutBuffers = bufferizedOutputs.size();
-  size_t numBuffers = bufferizedInputs.size() + numOutBuffers;
+  size_t numOperands = loweredInputOperands.size() + numOutBuffers;
 
   // We only take the input buffers, we don't need the specs as we just read the
   // used parameters directly.
-  SmallVector<Value> buffers;
-  SmallVector<InOutSignatureAttr::InOutSemantics> bufferSemantics;
-  buffers.reserve(numBuffers);
-  bufferSemantics.reserve(numBuffers);
+  SmallVector<Value> operands;
+  SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics;
+  operands.reserve(numOperands);
+  operandSemantics.reserve(numOperands);
 
-  // Collect the buffers from the input/output tensors.
-  for (MGP::BufferizedTensor &bufferizedInput : bufferizedInputs) {
-    buffers.push_back(bufferizedInput.buffer);
-    bufferSemantics.emplace_back(InOutSignatureAttr::kIn);
+  // Collect the input operands and output buffers.
+  for (Value &loweredInputOperand : loweredInputOperands) {
+    operands.push_back(loweredInputOperand);
+    operandSemantics.emplace_back(InOutSignatureAttr::kIn);
   }
   for (MGP::BufferizedTensor &bufferizedOutput : bufferizedOutputs) {
-    buffers.push_back(bufferizedOutput.buffer);
-    bufferSemantics.emplace_back(InOutSignatureAttr::kOut);
+    operands.push_back(bufferizedOutput.buffer);
+    operandSemantics.emplace_back(InOutSignatureAttr::kOut);
   }
 
   // Add the used kernel parameters.
@@ -275,8 +268,8 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
       /*isViaHost=*/isViaHost(),
       /*inChain=*/loweringState.getExecuteChain(),
       /*execContext=*/loweringState.getExecuteMgpContext(),
-      /*buffers=*/buffers,
-      /*bufferSemantics=*/bufferSemantics,
+      /*buffers=*/operands,
+      /*bufferSemantics=*/operandSemantics,
       /*inDimensions=*/inDimensions,
       /*numOutDimensions=*/static_cast<uint64_t>(getOutputParamDecls().size()),
       /*outDimensions*/ outDimensions);

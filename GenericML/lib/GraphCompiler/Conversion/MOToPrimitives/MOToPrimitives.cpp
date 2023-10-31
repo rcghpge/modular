@@ -683,9 +683,9 @@ MOGraphLowering::lowerStaticReshape(MO::Static::ReshapeOp reshapeOp) {
                                          getDeviceOrDefault(reshapeOp));
 
   // Get the bufferized input.
-  SmallVector<MGP::BufferizedTensor> bufferizedInputs =
-      opLoweringState.getBufferizedInputs();
-  Value buffer = bufferizedInputs[0].buffer;
+  MGP::BufferizedTensor bufferizedInput =
+      opLoweringState.getBufferizedInput(reshapeOp.getInput());
+  Value buffer = bufferizedInput.buffer;
 
   // Create a tensor result with spec matching the result type.
   FailureOr<TypedValue<MGP::CpuTensorSpecType>> tensorSpecOr =
@@ -705,9 +705,9 @@ LogicalResult MOGraphLowering::lowerReshape(MO::ReshapeOp reshapeOp) {
                                          getDeviceOrDefault(reshapeOp));
 
   // Get the bufferized input.
-  SmallVector<MGP::BufferizedTensor> bufferizedInputs =
-      opLoweringState.getBufferizedInputs();
-  Value buffer = bufferizedInputs[0].buffer;
+  MGP::BufferizedTensor bufferizedInput =
+      opLoweringState.getBufferizedInput(reshapeOp.getInput());
+  Value buffer = bufferizedInput.buffer;
 
   FailureOr<TypedValue<MGP::CpuTensorSpecType>> tensorSpecOr =
       opLoweringState.createTensorSpec(reshapeOp.getType());
