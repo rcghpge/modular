@@ -160,8 +160,6 @@ public:
 
 class CpuTypeBuilder : public TypeBuilder {
 public:
-  using TensorType = CpuTensorType;
-
   ~CpuTypeBuilder() override = default;
 
   Type tensorType(MLIRContext *ctx, CpuTensorSpecType tensorSpecType) override {
@@ -174,10 +172,10 @@ public:
 //===----------------------------------------------------------------------===//
 
 /// A BufferBuilder provides methods for building device-dependent buffer,
-/// tensor and kernel. All chains (input and output) must be !mef.chains, even
-/// if the device has a device-specific 'chain' like type. Since an instance
-/// of this class is created for each device in the model, derived classes may
-/// accumulate device-specific lowering state therein.
+/// tensor and kernel ops. All chains (input and output) must be !mef.chains,
+/// even if the device has a device-specific 'chain' like type. Since an
+/// instance of this class is created for each device in the model, derived
+/// classes may accumulate device-specific lowering state therein.
 class BufferBuilder {
 public:
   virtual ~BufferBuilder() = default;
@@ -263,6 +261,40 @@ public:
                 ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
                 SmallVectorImpl<Value> &outDimensions) = 0;
 
+  /// Places the given buffer into a freshly allocated slot within the
+  /// given !mgp.context. Returns the chain which indicates when the buffer
+  /// has been placed, and the index of the slot from which the buffer may
+  /// later be retrieved. Note that the input and output chains are always
+  /// !mef.chain, irrespective of the native chain type for this builder.
+  ///
+  /// Generally this is only appropriate within the 'init' block of an
+  /// mgp.model op.
+  virtual std::pair<TypedValue<MEF::ChainType>, size_t>
+  cache(OpBuilder &initBuilder, Location loc,
+        TypedValue<MEF::ChainType> inChain, ContextCreateOp contextCreateOp,
+        Value buffer) = 0;
+
+  /// Retrieves a buffer of the expected type from the given slot of the given
+  /// !mgp.context. Note that the input chain is always a !mef.chain,
+  /// irrespective of the native chain type for this builder.
+  virtual Value getCached(OpBuilder &builder, Location loc,
+                          TypedValue<MEF::ChainType> inChain,
+                          TypedValue<MGP::ContextType> execContext,
+                          size_t bufferSlot, Type expectedBufferType) = 0;
+
+  /// Returns the join of all the given chain values, which must be all native
+  /// to this builder.
+  virtual Value chainCreate(OpBuilder &builder, Location loc,
+                            ArrayRef<Value> inChains) = 0;
+
+  /// Returns the given chain, in builder native form, as a !mef.chain.
+  virtual TypedValue<MEF::ChainType>
+  toMEFChain(OpBuilder &builder, Location loc, Value inChain) = 0;
+
+  /// Returns the given !mef.chain as a chain in builder native form.
+  virtual Value fromMEFChain(OpBuilder &builder, Location loc,
+                             TypedValue<MEF::ChainType> inChain) = 0;
+
   virtual void vtableAnchor();
 };
 
@@ -320,6 +352,24 @@ public:
                 ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
                 SmallVectorImpl<Value> &outDimensions) override;
 
+  Value chainCreate(OpBuilder &builder, Location loc,
+                    ArrayRef<Value> inChains) override;
+
+  std::pair<TypedValue<MEF::ChainType>, size_t>
+  cache(OpBuilder &builder, Location loc, TypedValue<MEF::ChainType> inChain,
+        ContextCreateOp contextCreateOp, Value buffer) override;
+
+  Value getCached(OpBuilder &builder, Location loc,
+                  TypedValue<MEF::ChainType> inChain,
+                  TypedValue<MGP::ContextType> execContext, size_t slot,
+                  Type expectedBufferType) override;
+
+  TypedValue<MEF::ChainType> toMEFChain(OpBuilder &builder, Location loc,
+                                        Value inChain) override;
+
+  Value fromMEFChain(OpBuilder &builder, Location loc,
+                     TypedValue<MEF::ChainType> inChain) override;
+
   /// Track this compiled kernel as corresponding to this index in the
   /// compiled kernels context.
   void trackCompiledKernel(StringRef name, size_t index) {
@@ -374,6 +424,77 @@ struct BufferizedTensor {
 
   BufferizedTensor(Value buffer, TypedValue<MGP::CpuTensorSpecType> tensorSpec)
       : buffer(buffer), tensorSpec(tensorSpec) {}
+};
+
+//===----------------------------------------------------------------------===//
+// BufferBuilderContext
+//===----------------------------------------------------------------------===//
+
+/// Collects the type and buffer builders for every device in a model.
+class BufferBuilderContext {
+public:
+  BufferBuilderContext(DeviceRefAttr hostDevice) : hostDevice(hostDevice) {}
+
+  /// Register the given type builder for the given device.
+  void registerTypeBuilder(DeviceRefAttr device,
+                           std::unique_ptr<TypeBuilder> typeBuilder) {
+    bool inserted =
+        typeBuilderMap.insert({device, std::move(typeBuilder)}).second;
+    assert(inserted && "a type builder has already been registered for device");
+  }
+
+  /// Returns the type builder to use for device. The builder is owned by
+  /// this object.
+  TypeBuilder *getTypeBuilder(DeviceRefAttr device) const {
+    auto itr = typeBuilderMap.find(device);
+    assert(itr != typeBuilderMap.end() &&
+           "no type builder has been registered for device");
+    return itr->second.get();
+  }
+
+  /// Register the given buffer builder for the given device.
+  void registerBufferBuilder(DeviceRefAttr device,
+                             std::unique_ptr<BufferBuilder> bufferBuilder) {
+    bool inserted =
+        bufferBuilderMap.insert({device, std::move(bufferBuilder)}).second;
+    assert(inserted &&
+           "a buffer builder has already been registered for device");
+  }
+
+  /// Returns the buffer builder to use for device. The builder is owned by
+  /// this object.
+  BufferBuilder *getBufferBuilder(DeviceRefAttr device) const {
+    assert(device);
+    auto itr = bufferBuilderMap.find(device);
+#if MODULAR_DEBUG
+    if (itr == bufferBuilderMap.end()) {
+      llvm::errs() << "no buffer builder has been registered for device "
+                   << device << "\n";
+    }
+#endif
+    assert(itr != bufferBuilderMap.end() &&
+           "no buffer builder has been registered for device");
+    return itr->second.get();
+  }
+
+  /// Return the 'host' device.
+  DeviceRefAttr getHostDevice() const { return hostDevice; }
+
+  /// Returns the buffer builder to use for the 'host' device.
+  BufferBuilder *getHostBufferBuilder() const {
+    return getBufferBuilder(hostDevice);
+  }
+
+private:
+  /// The distinguished 'host' device.
+  DeviceRefAttr hostDevice;
+
+  /// The type builder to use for each device.
+  llvm::DenseMap<DeviceRefAttr, std::unique_ptr<TypeBuilder>> typeBuilderMap;
+
+  /// The buffer builder to use for each device.
+  llvm::DenseMap<DeviceRefAttr, std::unique_ptr<BufferBuilder>>
+      bufferBuilderMap;
 };
 
 } // namespace M::MGP

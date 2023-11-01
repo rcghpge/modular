@@ -42,7 +42,8 @@ public:
   MOGraphLoweringState(M::MO::GraphOp graph,
                        llvm::StringRef compiledFrameworkLabel,
                        size_t minimumCpuAlignment)
-      : graph(graph), common(compiledFrameworkLabel, minimumCpuAlignment),
+      : graph(graph), builderContext(MO::getHostDevice(graph)),
+        common(compiledFrameworkLabel, minimumCpuAlignment),
         init(graph.getContext()), execute(graph.getContext()) {
     // Add converters for MO native types.
     typeConverter.addConversion(
@@ -282,51 +283,33 @@ public:
   /// Register the given type builder for the given device.
   void registerTypeBuilder(DeviceRefAttr device,
                            std::unique_ptr<TypeBuilder> typeBuilder) {
-    bool inserted =
-        typeBuilderMap.insert({device, std::move(typeBuilder)}).second;
-    assert(inserted && "a type builder has already been registered for device");
+    builderContext.registerTypeBuilder(device, std::move(typeBuilder));
   }
 
   /// Returns the type builder to use for device. The builder is owned by
   /// this object.
   TypeBuilder *getTypeBuilder(DeviceRefAttr device) {
-    auto itr = typeBuilderMap.find(device);
-    assert(itr != typeBuilderMap.end() &&
-           "no type builder has been registered for device");
-    return itr->second.get();
+    return builderContext.getTypeBuilder(device);
   }
 
   /// Register the given buffer builder for the given device.
   void registerBufferBuilder(DeviceRefAttr device,
                              std::unique_ptr<BufferBuilder> bufferBuilder) {
-    bool inserted =
-        bufferBuilderMap.insert({device, std::move(bufferBuilder)}).second;
-    assert(inserted &&
-           "a buffer builder has already been registered for device");
+    builderContext.registerBufferBuilder(device, std::move(bufferBuilder));
   }
 
   /// Returns the buffer builder to use for device. The builder is owned by
   /// this object.
   BufferBuilder *getBufferBuilder(DeviceRefAttr device) {
-    assert(device);
-    auto itr = bufferBuilderMap.find(device);
-#if MODULAR_DEBUG
-    if (itr == bufferBuilderMap.end()) {
-      llvm::errs() << "no buffer builder has been registered for device "
-                   << device << "\n";
-    }
-#endif
-    assert(itr != bufferBuilderMap.end() &&
-           "no buffer builder has been registered for device");
-    return itr->second.get();
+    return builderContext.getBufferBuilder(device);
   }
 
   /// Return the 'host' device for this graph.
-  DeviceRefAttr getHostDevice() { return MO::getHostDevice(graph); }
+  DeviceRefAttr getHostDevice() { return builderContext.getHostDevice(); }
 
   /// Returns the buffer builder to use for the 'host' device.
   BufferBuilder *getHostBufferBuilder() {
-    return getBufferBuilder(MO::getHostDevice(graph));
+    return builderContext.getHostBufferBuilder();
   }
 
 private:
@@ -362,12 +345,8 @@ private:
   /// device-specific types.
   TypeConverter typeConverter;
 
-  /// The type builder to use for each device.
-  llvm::DenseMap<DeviceRefAttr, std::unique_ptr<TypeBuilder>> typeBuilderMap;
-
-  /// The buffer builder to use for each device.
-  llvm::DenseMap<DeviceRefAttr, std::unique_ptr<BufferBuilder>>
-      bufferBuilderMap;
+  /// All the type and buffer builders we've registered.
+  BufferBuilderContext builderContext;
 
   CommonState common;
   InitState init;

@@ -42,6 +42,17 @@ struct TensorBufferDialectInterface
   virtual Type createChainType(OpBuilder *builder) = 0;
   virtual Type createBufferType(OpBuilder *builder, Type spec) = 0;
   // virtual Type createTensorType(OpBuilder *builder, Type input) = 0;
+
+  /// Adds to BuilderContext all the type and buffer builder instances
+  /// for the devices relevant to this dialect which are in use in the given
+  /// MGP::ModelOp.
+  virtual void addBuilders(ModelOp modelOp,
+                           BufferBuilderContext &builderContext) = 0;
+
+  /// Returns the device for the given op given the builder context for the
+  /// MGP::ModelOp we are working on.
+  virtual DeviceRefAttr getDevice(const BufferBuilderContext &builderContext,
+                                  Operation *op) = 0;
 };
 
 struct CpuTensorBufferDialectInterface : public TensorBufferDialectInterface {
@@ -53,6 +64,11 @@ struct CpuTensorBufferDialectInterface : public TensorBufferDialectInterface {
   virtual Type createChainType(OpBuilder *builder) override;
   virtual Type createBufferType(OpBuilder *builder, Type tensorType) override;
   // virtual Type createTensorType(OpBuilder *builder, Type input) override;
+
+  void addBuilders(ModelOp modelOp,
+                   BufferBuilderContext &builderContext) override;
+  DeviceRefAttr getDevice(const BufferBuilderContext &builderContext,
+                          Operation *op) override;
 };
 
 } // namespace M::MGP

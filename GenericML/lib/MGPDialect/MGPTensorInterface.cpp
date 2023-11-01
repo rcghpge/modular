@@ -44,4 +44,40 @@ Type CpuTensorBufferDialectInterface::createBufferType(OpBuilder *builder,
       dyn_cast<CpuTensorType>(tensorType).getTensorSpec());
 }
 
+void CpuTensorBufferDialectInterface::addBuilders(
+    ModelOp modelOp, BufferBuilderContext &builderContext) {
+  // The type builder is easy.
+  builderContext.registerTypeBuilder(builderContext.getHostDevice(),
+                                     std::make_unique<CpuTypeBuilder>());
+
+  // For the buffer builder, we need to know which slot holds the compiled
+  // kernels context. We'll leave it as max value if the model has no complied
+  // kernels.
+  size_t slot = ~0;
+  modelOp.walk([&slot](CpuKernelCreateContextOp createContextOp) {
+    assert(slot == (size_t)~0 &&
+           "MGP ModelOp contains multiple mgp.cpu.kernel.create_context ops");
+    slot = createContextOp.getSlot();
+  });
+
+  auto cpuBufferBuilder = std::make_unique<CpuBufferBuilder>(slot);
+
+  // For good hygiene, also recover the compiled kernel name to index map.
+  modelOp.walk([cpuBufferBuilder = cpuBufferBuilder.get()](
+                   CpuKernelLoadArchiveOp loadArchiveOp) {
+    for (auto [index, name] :
+         llvm::enumerate(loadArchiveOp.getCKernelNames())) {
+      cpuBufferBuilder->trackCompiledKernel(name, index);
+    }
+  });
+
+  builderContext.registerBufferBuilder(builderContext.getHostDevice(),
+                                       std::move(cpuBufferBuilder));
+}
+
+DeviceRefAttr CpuTensorBufferDialectInterface::getDevice(
+    const BufferBuilderContext &builderContext, Operation *op) {
+  return builderContext.getHostDevice();
+}
+
 } // namespace M::MGP

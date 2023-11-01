@@ -7,6 +7,7 @@
 #include "GenericML/MGPDialect/BufferBuilder.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
+#include "GraphRT/GRTDialect/GRTOps.h"
 #include "mlir/IR/Builders.h"
 
 using namespace M;
@@ -156,4 +157,48 @@ Value CpuBufferBuilder::kernelExecute(
     outDimensions.emplace_back(outDimension);
 
   return executeOp.getOutChain();
+}
+
+Value CpuBufferBuilder::chainCreate(OpBuilder &builder, Location loc,
+                                    ArrayRef<Value> inChains) {
+  return builder.create<GRT::ChainCreateOp>(
+      loc,
+      /*result=*/MEF::ChainType::get(builder.getContext()),
+      /*operands=*/inChains);
+}
+
+std::pair<TypedValue<MEF::ChainType>, size_t>
+CpuBufferBuilder::cache(OpBuilder &initBuilder, Location loc,
+                        TypedValue<MEF::ChainType> inChain,
+                        ContextCreateOp contextCreateOp, Value buffer) {
+  size_t bufferSlot = contextCreateOp.getNumSlots();
+  contextCreateOp.setNumSlots(bufferSlot + 1);
+  auto cacheOp = initBuilder.create<CpuBufferCacheOp>(
+      loc, /*inChain=*/inChain, /*theContext=*/contextCreateOp,
+      /*buffer=*/buffer, /*slot=*/bufferSlot);
+  return {cacheOp.getOutChain(), bufferSlot};
+}
+
+Value CpuBufferBuilder::getCached(OpBuilder &builder, Location loc,
+                                  TypedValue<MEF::ChainType> inChain,
+                                  TypedValue<MGP::ContextType> execContext,
+                                  size_t bufferSlot, Type expectedBufferType) {
+  auto bufferType = dyn_cast<CpuBufferType>(expectedBufferType);
+  assert(bufferType &&
+         "expected buffer type should be MGP::CpuBufferType for this builder");
+  return builder.create<CpuBufferGetCachedOp>(
+      loc, /*inChain=*/inChain, /*theContext=*/execContext,
+      /*aSlot=*/bufferSlot, /*bRawSize=*/bufferType.getRawSize().getUInt());
+}
+
+TypedValue<MEF::ChainType>
+CpuBufferBuilder::toMEFChain(OpBuilder &builder, Location loc, Value inChain) {
+  assert(isa<MEF::ChainType>(inChain.getType()) &&
+         "chain should be of type MEF::ChainType for this builder");
+  return cast<TypedValue<MEF::ChainType>>(inChain);
+}
+
+Value CpuBufferBuilder::fromMEFChain(OpBuilder &builder, Location loc,
+                                     TypedValue<MEF::ChainType> inChain) {
+  return inChain;
 }

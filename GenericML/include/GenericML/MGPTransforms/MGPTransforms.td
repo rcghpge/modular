@@ -331,20 +331,44 @@ def ConcatInPlacePass : Pass<"concat-in-place", "MGP::ModelOp"> {
 //===----------------------------------------------------------------------===//
 
 def ExecInvariantCodeMotionPass : Pass<"exec-invariant-code-motion", "MGP::ModelOp"> {
-  let summary = "Lifts execute-phase invariant code to init-phase";
+  let summary = "Moves code from the 'execute' to the 'init' blocks.";
   let description = [{
-    This pass examines computations in the exec phase, identifies the ones that
-    are invariant over multiple runs of the exec phase (e.g., with different
-    input arguments), and lift them into the init phase.
+    This pass moves computations which do not depend on the 'execute' block
+    arguments (directly or indirectly) to the 'init' block, using slots in
+    the `!mgp.context` to forward the results, subject to heuristics to:
+      - avoid moving 'trivial' code, where the cost of caching and retrieving
+        the result outweighs the cost of the computation itself;
+      - avoid moving code who's result is awkward to forward within the
+        `!mgp.context`.
+      - avoid caching results which are now only needed within the 'init' block.
 
-    To enable aggressive lifting, it does the following:
-    1. insert minimal buffer cache ops so that ops in the exec phase can still
-       refer to the lifted buffers (which can be allocated buffer or constant).
-    2. wire up ops that consumes/produces chains so that control dependencies
-       are preserved.
-    3. duplicate certain computations to enable more lifting (e.g., to lift a
-       simple spec computation that has unliftable users, we must duplicate the
-       computation because we can't cache spec).
+    Notes:
+      1. We want to lift buffer-producing ops into the 'init' block. In order
+         to reference such lifted buffers in the 'execute' block, we need to
+         leverage the buffer cache mechanism, i.e., cache in the 'init' block,
+         and look up the cache in the 'execute' block. Note that
+          (a). If all users of a lifted buffer are also lifted, we don't cache
+               such buffers, thereby minimizing the number of buffer cache ops
+               inserted.
+          (b). If no user of a buffer op is lifted, we don't lift the buffer op
+               because it merely adds more caching without saving us any
+               computation.
+
+      2. We want to lift ops that modifies the lifted buffers into the init
+         phase (e.g., matmul weights pre-packing). Usually such ops produces a
+         chain; in order to preserve control dependency, we must:
+          (a). Update the 'init' block to output a chain that accounts for the
+               lifted chain.
+          (b). Update the 'execute' block to use the input chain instead of the
+               lifted chain.
+
+      3. We want to lift ops that produce non-buffer outputs. In order to
+         reference such lifted values in the 'execute' block, we need to perform
+         re-computation, i.e., leave a clone of the computation inside the
+         'execute' block, and lift the original computation (unless we introduce
+         caching mechanism for these output types too). For instance, the output
+         spec of matmul weight packing is used by both the lifted packing
+         computation, and the actual matmul computation in the exec phase.
 
     For example:
     ```mlir
