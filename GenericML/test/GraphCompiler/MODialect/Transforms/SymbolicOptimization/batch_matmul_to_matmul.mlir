@@ -77,3 +77,41 @@ mo.graph @bmm_mixed_precision(
   // CHECK-NEXT: mo.output %[[RES_RS]] : !mo.tensor<[4, 3, 3], f32>
   mo.output %res : !mo.tensor<[4, 3, 3], f32>
 }
+
+// CHECK:      mo.graph @bmm_batch_size_one(
+// CHECK-SAME:   %[[A:.*]]: !mo.tensor<[1, 2, 3], f32>
+// CHECK-SAME:   %[[B:.*]]: !mo.tensor<[1, 3, 2], f32>
+// CHECK-SAME: ) -> !mo.tensor<[1, 2, 2], f32> no_inline {
+mo.graph @bmm_batch_size_one(
+  %A: !mo.tensor<[1, 2, 3], f32>,
+  %B: !mo.tensor<[1, 3, 2], f32>
+) -> (!mo.tensor<[1, 2, 2], f32>) {
+
+  // CHECK-NEXT: %[[A_RESHAPE:.*]] = mo.static.reshape(%[[A]]) : !mo.tensor<[1, 2, 3], f32> -> !mo.tensor<[2, 3], f32>
+  // CHECK-NEXT: %[[B_RESHAPE:.*]] = mo.static.reshape(%[[B]]) : !mo.tensor<[1, 3, 2], f32> -> !mo.tensor<[3, 2], f32>
+  // CHECK-NEXT: %[[MATMUL:.*]] = mo.matmul(%[[A_RESHAPE]], %[[B_RESHAPE]]) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[3, 2], f32>) -> !mo.tensor<[2, 2], f32>
+  // CHECK-NEXT: %[[OUTPUT:.*]] = mo.static.reshape(%[[MATMUL]]) : !mo.tensor<[2, 2], f32> -> !mo.tensor<[1, 2, 2], f32>
+  %res = mo.batch_matmul(%A, %B) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 3, 2], f32>) -> !mo.tensor<[1, 2, 2], f32>
+
+  // CHECK-NEXT: mo.output %[[OUTPUT]] : !mo.tensor<[1, 2, 2], f32>
+  mo.output %res : !mo.tensor<[1, 2, 2], f32>
+}
+
+// CHECK:      mo.graph @bmm_batch_size_ones(
+// CHECK-SAME:   %[[A:.*]]: !mo.tensor<[1, 1, 1, 2, 3], f32>
+// CHECK-SAME:   %[[B:.*]]: !mo.tensor<[1, 1, 1, 3, 2], f32>
+// CHECK-SAME: ) -> !mo.tensor<[1, 1, 1, 2, 2], f32> no_inline {
+mo.graph @bmm_batch_size_ones(
+  %A: !mo.tensor<[1, 1, 1, 2, 3], f32>,
+  %B: !mo.tensor<[1, 1, 1, 3, 2], f32>
+) -> (!mo.tensor<[1, 1, 1, 2, 2], f32>) {
+
+  // CHECK-NEXT: %[[A_RESHAPE:.*]] = mo.static.reshape(%[[A]]) : !mo.tensor<[1, 1, 1, 2, 3], f32> -> !mo.tensor<[2, 3], f32>
+  // CHECK-NEXT: %[[B_RESHAPE:.*]] = mo.static.reshape(%[[B]]) : !mo.tensor<[1, 1, 1, 3, 2], f32> -> !mo.tensor<[3, 2], f32>
+  // CHECK-NEXT: %[[MATMUL:.*]] = mo.matmul(%[[A_RESHAPE]], %[[B_RESHAPE]]) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[3, 2], f32>) -> !mo.tensor<[2, 2], f32>
+  // CHECK-NEXT: %[[OUTPUT:.*]] = mo.static.reshape(%[[MATMUL]]) : !mo.tensor<[2, 2], f32> -> !mo.tensor<[1, 1, 1, 2, 2], f32>
+  %res = mo.batch_matmul(%A, %B) : (!mo.tensor<[1, 1, 1, 2, 3], f32>, !mo.tensor<[1, 1, 1, 3, 2], f32>) -> !mo.tensor<[1, 1, 1, 2, 2], f32>
+
+  // CHECK-NEXT: mo.output %[[OUTPUT]] : !mo.tensor<[1, 1, 1, 2, 2], f32>
+  mo.output %res : !mo.tensor<[1, 1, 1, 2, 2], f32>
+}

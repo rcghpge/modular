@@ -294,6 +294,79 @@ struct ConvertBatchMatmulToMatmulPattern
   }
 };
 
+/// A pattern that detects batch matmul batch size one and converts the op to
+/// a normal matmul. Note if the broadcast cannot be sunk, it will be converted
+/// to a reshape.
+///
+/// Example:
+///
+///   lhs : tensor<[1, 1, 3, 2]>
+///   rhs : tensor<[1, 1, 2, 3]>
+///
+///   res   = batch_matmul(lhs, rhs) : ... -> tensor<[1, 1, 2, 2]>
+/// ===>
+///   reshape_lhs = reshape(lhs) : ... -> tensor<[3, 2]>
+///   reshape_rhs = reshape(rhs) : ... -> tensor<[2, 3]>
+///   matmul      = matmul(reshape_lhs, reshape_rhs) : ... -> tensor<[2, 2]>
+///   res         = broadcast_to(matmul) : ... -> tensor<[1, 1, 2, 2]>
+struct ConvertBatchMatmulBatchSizeOneToMatmulPattern
+    : public OpRewritePattern<BatchMatmulOp> {
+  ConvertBatchMatmulBatchSizeOneToMatmulPattern(MLIRContext *ctx)
+      : OpRewritePattern(ctx, 5) {}
+
+  LogicalResult
+  matchAndRewrite(MO::BatchMatmulOp op,
+                  PatternRewriter &commonRewriter) const override {
+    DeviceAwareRewriter rewriter(op, commonRewriter);
+
+    TensorType aType = op.getTensorA().getType();
+    TensorType bType = op.getTensorB().getType();
+
+    if (!aType.hasRank())
+      return rewriter.notifyMatchFailure(
+          op, "rank must be known in order to match");
+
+    auto rank = aType.getRank();
+    // Verifier ensures rank >= 3, so requiredOneDims >= 1
+    auto requiredOneDims = rank - 2;
+
+    for (size_t i = 0, e = (requiredOneDims); i < e; i++)
+      if ((aType.getIntDim(i) != 1) || (aType.getIntDim(i) != 1))
+        return rewriter.notifyMatchFailure(op, "failed to match pattern");
+
+    auto resTy = op.getResult().getType();
+
+    SmallVector<TypedAttr> aShapeDims;
+    SmallVector<TypedAttr> bShapeDims;
+    SmallVector<TypedAttr> resShapeDims;
+    for (auto i = requiredOneDims; i < rank; i++) {
+      aShapeDims.push_back(aType.getDim(i));
+      bShapeDims.push_back(bType.getDim(i));
+      resShapeDims.push_back(resTy.getDim(i));
+    }
+
+    auto shapeTy = rewriter.getType<ShapeType>();
+    auto eltTy = aType.getElementType(); // elt types are all the same
+
+    auto newAType =
+        TensorType::get(MOSH::ShapeAttr::get(aShapeDims, shapeTy), eltTy);
+    auto newBType =
+        TensorType::get(MOSH::ShapeAttr::get(bShapeDims, shapeTy), eltTy);
+    auto newResType =
+        TensorType::get(MOSH::ShapeAttr::get(resShapeDims, shapeTy), eltTy);
+
+    auto newATensor = rewriter.create<Static::ReshapeOp>(op.getLoc(), newAType,
+                                                         op.getTensorA());
+    auto newBTensor = rewriter.create<Static::ReshapeOp>(op.getLoc(), newBType,
+                                                         op.getTensorB());
+
+    auto matmul = rewriter.create<MatmulOp>(op.getLoc(), newResType, newATensor,
+                                            newBTensor);
+    rewriter.replaceOpWithNewOp<Static::BroadcastToOp>(op, resTy, matmul);
+    return success();
+  }
+};
+
 /// A pattern that detects `mo.conv` with 1x1 filter, 1s for strides and
 /// dilations, 0s for paddings, and num_groups=1 and rewrites it into a matmul
 /// with some static reshapes.
@@ -2162,8 +2235,9 @@ struct SymbolicOptimizationPass
     Static::BroadcastToOp::getCanonicalizationPatterns(patterns, context);
 
     // Matmul rewrites.
-    patterns.add<ConvertBatchMatmulToMatmulPattern, ConvToMatmulPattern,
-                 MergeParallelMatmulPattern<MatmulOp>,
+    patterns.add<ConvertBatchMatmulToMatmulPattern,
+                 ConvertBatchMatmulBatchSizeOneToMatmulPattern,
+                 ConvToMatmulPattern, MergeParallelMatmulPattern<MatmulOp>,
                  MergeParallelMatmulPattern<BatchMatmulOp>>(context);
 
     // Split swimming.
