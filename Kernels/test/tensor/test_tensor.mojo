@@ -246,6 +246,41 @@ fn test_image_to_grayscale():
     print(gray_scale_image[255, 255])
 
 
+# CHECK-LABEL: test_pow
+fn test_pow():
+    print("== test_pow")
+    let tensor = Tensor[DType.float32](2, 2)
+    iota(tensor.data(), tensor.num_elements())
+    let tensor_pow_2 = tensor**2
+    # CHECK{LITERAL}: Tensor([[0.0, 1.0],
+    # CHECK{LITERAL}: [2.0, 3.0]]
+    print(tensor)
+    # CHECK{LITERAL}: Tensor([[0.0, 1.0],
+    # CHECK{LITERAL}: [4.0, 9.0]]
+    print(tensor_pow_2)
+
+    let tensor_pow_0 = tensor**0
+    # CHECK{LITERAL}: Tensor([[1.0, 1.0],
+    # CHECK{LITERAL}: [1.0, 1.0]]
+    print(tensor_pow_0)
+
+    var tensor_copy = tensor
+    tensor_copy **= 2
+    # CHECK{LITERAL}: Tensor([[0.0, 1.0],
+    # CHECK{LITERAL}: [2.0, 3.0]]
+    print(tensor)
+    # CHECK{LITERAL}: Tensor([[0.0, 1.0],
+    # CHECK{LITERAL}: [4.0, 9.0]]
+    print(tensor_copy)
+
+    var tensor_pow_neg1 = tensor
+    tensor_pow_neg1[0] = 1.0
+    tensor_pow_neg1 **= -1
+    # CHECK{LITERAL}: Tensor([[1.0, 1.0],
+    # CHECK: [0.5, 0.333{{.*}}]]
+    print(tensor_pow_neg1)
+
+
 # CHECK-LABEL: test_print
 fn test_print():
     print("== test_print")
@@ -293,6 +328,7 @@ fn main():
     test_tensor_rand()
     test_euclidean_distance()
     test_image_to_grayscale()
+    test_pow()
     test_print()
     test_print_small()
     test_print_large()
