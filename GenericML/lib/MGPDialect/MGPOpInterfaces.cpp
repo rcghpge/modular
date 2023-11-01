@@ -4,13 +4,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/MGPDialect/MGPBufferAllocInterface.h"
+#include "GenericML/MGPDialect/MGPOpInterfaces.h"
 
 #include "GenericML/MGPDialect/MGPTypes.h"
 #include "mlir/IR/Operation.h"
 
 //===----------------------------------------------------------------------===//
-// MGPBufferAllocInterface
+// ODS-Generated Declarations
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/MGPDialect/MGPBufferAllocInterface.cpp.inc"
+#include "GenericML/MGPDialect/MGPOpInterfaces.cpp.inc"

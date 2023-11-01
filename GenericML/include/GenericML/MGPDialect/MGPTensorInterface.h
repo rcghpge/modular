@@ -4,24 +4,21 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Interfaces for tensors in the MGP dialect.
+// Dialect-level interfaces for tensors in the MGP dialect.
 //
 //===----------------------------------------------------------------------===//
 
 #ifndef GENERICML_MGPDIALECT_MGPTENSORINTERFACE_H
 #define GENERICML_MGPDIALECT_MGPTENSORINTERFACE_H
 
+#include "GenericML/MGPDialect/BufferBuilder.h"
+#include "GenericML/MGPDialect/MGPOpInterfaces.h"
+#include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPTypes.h"
 #include "GraphRT/GRTDialect/GRTChainInterface.h"
 #include "mlir/IR/DialectInterface.h"
 #include "mlir/IR/OpDefinition.h"
 
-//===----------------------------------------------------------------------===//
-// ODS-Generated Declarations
-//===----------------------------------------------------------------------===//
-
-#define GET_ATTRDEF_CLASSES
-#include "GenericML/MGPDialect/MGPTensorInterface.h.inc"
 namespace M::MGP {
 
 //===----------------------------------------------------------------------===//
@@ -32,6 +29,11 @@ namespace M::MGP {
 /// chains to serialize access to a buffer.
 struct TensorBufferDialectInterface
     : public mlir::DialectInterface::Base<TensorBufferDialectInterface> {
+
+  /// Returns all the dialect interfaces active in the given MGP::ModelOp.
+  static DenseSet<TensorBufferDialectInterface *>
+  getAllInterfaces(ModelOp modelOp);
+
   TensorBufferDialectInterface(Dialect *dialect) : Base(dialect) {}
   virtual MGPTensorExtractOpInterface
   createExtract(OpBuilder *builder, mlir::Location loc, Value tensor) = 0;
@@ -52,6 +54,7 @@ struct CpuTensorBufferDialectInterface : public TensorBufferDialectInterface {
   virtual Type createBufferType(OpBuilder *builder, Type tensorType) override;
   // virtual Type createTensorType(OpBuilder *builder, Type input) override;
 };
-}; // namespace M::MGP
+
+} // namespace M::MGP
 
 #endif // GENERICML_MGPDIALECT_MGPTENSORINTERFACE_H

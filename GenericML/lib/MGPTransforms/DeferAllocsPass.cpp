@@ -43,7 +43,7 @@ class DeferAllocsPass : public impl::DeferAllocsPassBase<DeferAllocsPass> {
     model.getExecute().walk([&](Operation *op) {
       if (movedAllocOps.contains(op))
         return;
-      if (auto allocOp = dyn_cast<MGPBufferAllocInterface>(op)) {
+      if (auto allocOp = dyn_cast<MGPBufferAllocOpInterface>(op)) {
         // For the unique writer to the allocated buffer...
         if (Operation *writerOp = getUniqueWriter(allocOp.getOutBuffer())) {
           // For the input chain(s) to that writer....

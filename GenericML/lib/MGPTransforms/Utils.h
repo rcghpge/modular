@@ -132,10 +132,10 @@ struct ExecuteState {
   /// Returns 'root' chain, ie the first argument to the 'execute' block.
   /// If any non-root chain is ready then the root chain is guaranteed to be
   /// ready, and can thus be ignored.
-  Value getRootChain() const;
+  TypedValue<MEF::ChainType> getRootChain() const;
 
   /// Returns MGP context argument to the 'execute' block.
-  Value getContext() const;
+  TypedValue<MGP::ContextType> getContext() const;
 
   /// Returns the additional arguments to 'execute' block
   iterator_range<mlir::BlockArgument *> getExtraArgs() const;

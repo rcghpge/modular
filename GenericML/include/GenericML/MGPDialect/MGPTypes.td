@@ -12,7 +12,7 @@
 #define GENERICML_MGPDIALECT_MGPTYPES_TD
 
 include "GenericML/MGPDialect/MGPDialect.td"
-include "GenericML/MGPDialect/MGPTensorTypeInterface.td"
+include "GenericML/MGPDialect/MGPTypeInterfaces.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/BuiltinTypeInterfaces.td"
 include "mlir/IR/AttrTypeBase.td"

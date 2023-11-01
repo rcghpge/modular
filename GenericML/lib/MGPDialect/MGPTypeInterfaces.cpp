@@ -7,7 +7,7 @@
 #include "GenericML/MGPDialect/MGPTypes.h"
 
 //===----------------------------------------------------------------------===//
-// MGPTensorTypeInterface
+// ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/MGPDialect/MGPTensorTypeInterface.cpp.inc"
+#include "GenericML/MGPDialect/MGPTypeInterfaces.cpp.inc"

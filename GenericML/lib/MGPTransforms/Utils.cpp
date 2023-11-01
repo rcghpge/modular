@@ -427,10 +427,14 @@ ExecuteState::ExecuteState(MLIRContext *context, Block *execute)
 /// Returns 'root' chain, ie the first argument to the 'execute' block.
 /// If any non-root chain is ready then the root chain is guaranteed to be
 /// ready, and can thus be ignored.
-Value ExecuteState::getRootChain() const { return execute->getArgument(0); }
+TypedValue<MEF::ChainType> ExecuteState::getRootChain() const {
+  return cast<TypedValue<MEF::ChainType>>(execute->getArgument(0));
+}
 
 /// Returns MGP context argument to the 'execute' block.
-Value ExecuteState::getContext() const { return execute->getArgument(1); }
+TypedValue<MGP::ContextType> ExecuteState::getContext() const {
+  return cast<TypedValue<MGP::ContextType>>(execute->getArgument(1));
+}
 
 /// Returns the additional arguments to 'execute' block
 iterator_range<mlir::BlockArgument *> ExecuteState::getExtraArgs() const {

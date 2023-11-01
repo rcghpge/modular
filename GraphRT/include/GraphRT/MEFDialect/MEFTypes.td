@@ -12,6 +12,7 @@
 #define GRAPHRT_MEFDIALECT_MEFTYPES_TD
 
 include "GraphRT/MEFDialect/MEFDialect.td"
+include "GraphRT/MEFDialect/MEFTypeInterfaces.td"
 include "mlir/IR/AttrTypeBase.td"
 
 // Base class for the types in this dialect.
@@ -23,7 +24,7 @@ class MEFType<string mnemonic, list<Trait> traits = [],
 // ChainType
 //===----------------------------------------------------------------------===//
 
-def ChainType : MEFType<"Chain"> {
+def ChainType : MEFType<"Chain", [DeclareTypeInterfaceMethods<MEF_ChainTypeInterface>]> {
   let mnemonic = "chain";
   let summary = "empty value used for control dependence tracking";
   let description = [{

@@ -12,9 +12,8 @@
 #define GENERICML_MGPDIALECT_MGPOPS_H
 
 #include "GenericML/MGPDialect/MGPAttrs.h"
-#include "GenericML/MGPDialect/MGPBufferAllocInterface.h"
 #include "GenericML/MGPDialect/MGPDialect.h"
-#include "GenericML/MGPDialect/MGPTensorInterface.h"
+#include "GenericML/MGPDialect/MGPOpInterfaces.h"
 #include "GenericML/MGPDialect/MGPTypes.h"
 #include "GraphRT/GRTDialect/GRTExtendsLifetimeInterface.h"
 #include "GraphRT/GRTDialect/GRTMayAliasInterface.h"

@@ -18,14 +18,6 @@ using namespace M;
 using namespace MEF;
 
 //===----------------------------------------------------------------------===//
-// Dialect Type Parsing and Printing
-//===----------------------------------------------------------------------===//
-
-// Pull in the dialect definition.
-#define GET_TYPEDEF_CLASSES
-#include "GraphRT/MEFDialect/MEFTypes.cpp.inc"
-
-//===----------------------------------------------------------------------===//
 // Dialect specification.
 //===----------------------------------------------------------------------===//
 

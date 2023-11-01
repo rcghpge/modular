@@ -11,8 +11,7 @@
 #ifndef GENERICML_MGPDIALECT_MGPOPS_TD
 #define GENERICML_MGPDIALECT_MGPOPS_TD
 
-include "GenericML/MGPDialect/MGPBufferAllocInterface.td"
-include "GenericML/MGPDialect/MGPTensorInterface.td"
+include "GenericML/MGPDialect/MGPOpInterfaces.td"
 include "GenericML/MGPDialect/MGPTensorSpec.td"
 include "GenericML/MGPDialect/MGPDialect.td"
 include "GenericML/MGPDialect/MGPTypes.td"
@@ -36,7 +35,10 @@ class MGP_Op<string mnemonic, list<Trait> traits = []> :
 //===----------------------------------------------------------------------===//
 
 def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant", [
-    Pure, ConstantLike, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    Pure,
+    ConstantLike,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>]> {
   let summary = [{
     Creates a buffer hosted on the CPU whose data is aliased with
     the bytes in the given attribute.
@@ -194,7 +196,8 @@ def CpuBufferGetCachedOp : MGP_Op<"cpu.buffer.get_cached", [
 
 def CpuBufferAllocStaticOp : MGP_Op<"cpu.buffer.alloc.static", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<MGPBufferAllocInterface, ["getOutBuffer"]>]> {
+    DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>,
+    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>]> {
   let summary = [{
     Allocates an uninitialized buffer on the CPU with size taken from
     statically known constant.
@@ -241,7 +244,7 @@ def CpuBufferAllocStaticOp : MGP_Op<"cpu.buffer.alloc.static", [
 
 def CpuBufferAllocDynamicOp : MGP_Op<"cpu.buffer.alloc.dynamic", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<MGPBufferAllocInterface, ["getOutBuffer"]>]> {
+    DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>]> {
   let summary = [{
     Allocates an uninitialized buffer on the CPU with size taken from index
     operand.
@@ -284,7 +287,8 @@ def CpuBufferAllocDynamicOp : MGP_Op<"cpu.buffer.alloc.dynamic", [
 
 def CpuBufferAllocSpecOp : MGP_Op<"cpu.buffer.alloc.spec", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<MGPBufferAllocInterface, ["getOutBuffer"]>]> {
+    DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>,
+    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>]> {
   let summary = [{
     Allocates an uninitialized buffer on the CPU with size taken from tensor
     spec operand.
@@ -328,7 +332,7 @@ def CpuBufferAllocSpecOp : MGP_Op<"cpu.buffer.alloc.spec", [
 
 def CpuBufferReallocStaticOp : MGP_Op<"cpu.buffer.realloc.static", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<MGPBufferAllocInterface, ["getOutBuffer"]>]> {
+    DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>]> {
   let summary = [{
     (Re)allocates a cached CPU buffer on the CPU with size taken from
     statically known constant.
@@ -422,7 +426,7 @@ def CpuBufferReallocStaticOp : MGP_Op<"cpu.buffer.realloc.static", [
 
 def CpuBufferReallocDynamicOp : MGP_Op<"cpu.buffer.realloc.dynamic", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<MGPBufferAllocInterface, ["getOutBuffer"]>]> {
+    DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>]> {
   let summary = [{
     (Re)allocates a cached CPU buffer on the CPU with size taken from index
     operand.
@@ -477,7 +481,7 @@ def CpuBufferReallocDynamicOp : MGP_Op<"cpu.buffer.realloc.dynamic", [
 
 def CpuBufferReallocSpecOp : MGP_Op<"cpu.buffer.realloc.spec", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<MGPBufferAllocInterface, ["getOutBuffer"]>]> {
+    DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>]> {
   let summary = [{
     (Re)allocates a cached CPU buffer on the CPU with size taken from operand.
   }];
@@ -1739,7 +1743,8 @@ def CpuKernelLoadArchiveOp : MGP_Op<"cpu.kernel.load_archive"> {
 
 def CpuKernelExecuteOp : MGP_Op<"cpu.kernel.execute", [
     AttrSizedOperandSegments,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<MGP_KernelExecuteOpInterface>]> {
   let summary = "Executes a kernel loaded into the compiled kernel context.";
   let description = [{
     Executes a kernel already loaded into the compiled kernel context at the

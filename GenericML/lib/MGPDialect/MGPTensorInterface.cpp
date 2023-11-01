@@ -12,6 +12,18 @@
 #include "mlir/IR/Builders.h"
 
 namespace M::MGP {
+
+DenseSet<TensorBufferDialectInterface *>
+TensorBufferDialectInterface::getAllInterfaces(ModelOp modelOp) {
+  DenseSet<TensorBufferDialectInterface *> interfaces;
+  modelOp.walk([&interfaces](Operation *op) {
+    if (auto interface =
+            dyn_cast_if_present<TensorBufferDialectInterface>(op->getDialect()))
+      interfaces.insert(interface);
+  });
+  return interfaces;
+}
+
 MGPTensorExtractOpInterface CpuTensorBufferDialectInterface::createExtract(
     OpBuilder *builder, mlir::Location loc, Value tensor) {
   return dyn_cast<MGPTensorExtractOpInterface>(
@@ -31,10 +43,5 @@ Type CpuTensorBufferDialectInterface::createBufferType(OpBuilder *builder,
   return CpuBufferType::get(
       dyn_cast<CpuTensorType>(tensorType).getTensorSpec());
 }
+
 } // namespace M::MGP
-
-//===----------------------------------------------------------------------===//
-// MGPTensorInterface
-//===----------------------------------------------------------------------===//
-
-#include "GenericML/MGPDialect/MGPTensorInterface.cpp.inc"

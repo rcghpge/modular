@@ -4,18 +4,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This defines interfaces on tensor types in the MGP dialect.
+// Interfaces for MGP types which may also be used by other dialects which
+// have similar buffer and tensor types.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_MGPDIALECT_MGPTENSORTYPEINTERFACE_TD
-#define GENERICML_MGPDIALECT_MGPTENSORTYPEINTERFACE_TD
+#ifndef GENERICML_MGPDIALECT_MGPTYPEINTERFACES_TD
+#define GENERICML_MGPDIALECT_MGPTYPEINTERFACES_TD
 
 include "mlir/IR/OpBase.td"
 
 def MGP_TensorTypeInterface : TypeInterface<"MGPTensorTypeInterface"> {
   let description = [{
-    Types that represent runtime tensors.
+    Interface for types which represent runtime tensors.
   }];
   let cppNamespace = "::M::MGP";
   let methods = [
@@ -25,4 +26,4 @@ def MGP_TensorTypeInterface : TypeInterface<"MGPTensorTypeInterface"> {
   ];
 }
 
-#endif  // GENERICML_MGPDIALECT_MGPTENSORTYPEINTERFACE_TD
+#endif  // GENERICML_MGPDIALECT_MGPTYPEINTERFACES_TD

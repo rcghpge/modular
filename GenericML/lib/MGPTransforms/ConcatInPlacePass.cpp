@@ -49,13 +49,13 @@ class ConcatInPlacePass
         return;
 
       if (!llvm::all_of(concatOp.getInBuffers(), [&](Value buffer) {
-            return buffer.getDefiningOp<MGPBufferAllocInterface>();
+            return buffer.getDefiningOp<MGPBufferAllocOpInterface>();
           }))
         // The concat input buffers are not explicitly allocated.
         return;
 
       auto allocOutputOp =
-          concatOp.getOutBuffer().getDefiningOp<MGPBufferAllocInterface>();
+          concatOp.getOutBuffer().getDefiningOp<MGPBufferAllocOpInterface>();
       if (!allocOutputOp)
         // The concat output buffer is not explicitly allocated.
         return;
