@@ -136,50 +136,11 @@ loadUserProvidedKernels(ModuleOp baseModule, const std::string &extraLibPaths) {
                    "auxillary binding library");
     mlir::SymbolTable userSymTable{*userModule};
 
-    // Remap only generators, remapping builtins gets dicier as they are
-    // direct references to binary functions in the stdlib.
-    for (KGEN::GeneratorOp op : userModule->getOps<KGEN::GeneratorOp>()) {
-      // Don't rename any decorators, we only should have one set.
-      if (op.getSymName().startswith("$utils::$_annotations"))
-        continue;
-
-      // We will insert a slightly mangled version of the current name if it
-      // already exists in the mlir file we intend to compile.
-      std::string newSymName = op.getSymName().str();
-
-      // If there's no collision we can copy directly obviously.
-      if (mainSymTable.lookup(newSymName) != nullptr) {
-        // Create a new symbol which is unique in both files.
-        while (mainSymTable.lookup(newSymName) != nullptr ||
-               userSymTable.lookup(newSymName) != nullptr) {
-          newSymName = getUniqueSymbolName(newSymName, mainSymTable);
-          newSymName = getUniqueSymbolName(newSymName, userSymTable);
-        }
-
-        auto oldAttr = FlatSymbolRefAttr::get(userModule->getContext(),
-                                              op.getSymNameAttr());
-
-        // Update any references to the old symbol with the new symbol.
-        mlir::AttrTypeReplacer symbolUpdater;
-        symbolUpdater.addReplacement(
-            [&](FlatSymbolRefAttr attr) -> std::optional<FlatSymbolRefAttr> {
-              if (attr == oldAttr)
-                return FlatSymbolRefAttr::get(userModule->getContext(),
-                                              newSymName);
-              return std::nullopt;
-            });
-        symbolUpdater.recursivelyReplaceElementsIn(
-            *userModule, /*replaceAttrs=*/true, /*replaceLocs=*/false,
-            /*replaceTypes=*/true);
-        op.setSymName(newSymName);
-      }
-    }
-
-    // Copy all the functions over into the new module.
+    // Copy all the functions over into the new module. We will not check if
+    // duplicates are identical and will assume there's no version issues.
     for (mlir::FunctionOpInterface op :
          userModule->getOps<mlir::FunctionOpInterface>()) {
-      // Don't duplicate any decorators or builtin functions, we should only
-      // have one set for all libraries to share.
+      // Don't duplicate any functions.
       if (mainSymTable.lookup(op.getName()) != nullptr)
         continue;
       baseModule.getBody()->push_back(op.clone());
