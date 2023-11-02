@@ -280,6 +280,11 @@ fn test_pow():
     # CHECK: [0.5, 0.333{{.*}}]]
     print(tensor_pow_neg1)
 
+    let tensor_large = Tensor[DType.float32](65)
+    iota(tensor_large.data(), tensor_large.num_elements())
+    # CHECK{LITERAL}: Tensor([[0.0, 1.0, 4.0, ..., 3844.0, 3969.0, 4096.0]]
+    print(tensor_large**2)
+
 
 # CHECK-LABEL: test_print
 fn test_print():
