@@ -128,6 +128,14 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
   compilationOptions.targetCpu = target.getArch();
   compilationOptions.targetFeatures = target.getFeatures();
 
+#ifdef JIT_KERNELS_OPTIMIZATION_LEVEL
+  compilationOptions.optimizationLevel = 0;
+#endif // JIT_KERNELS_OPTIMIZATION_LEVEL
+
+#ifdef JIT_KERNELS_DEBUG_MODE
+  compilationOptions.debugLevel = KGEN::CompilationOptions::kFullDebugInfo;
+#endif // JIT_KERNELS_DEBUG_MODE
+
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmParser();
   llvm::InitializeNativeTargetAsmPrinter();
