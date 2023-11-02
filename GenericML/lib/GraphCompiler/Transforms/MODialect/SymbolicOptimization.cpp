@@ -53,13 +53,13 @@ namespace {
 ///   arg_nonzero = arg_nonzero(flat)      : ...
 ///   res         = arg_nonzero + broadcast(range(...)))
 struct CommuteBroadcastWithFlatennedArgNonzero
-    : OpRewritePattern<ArgNonzeroOp> {
-  using OpRewritePattern::OpRewritePattern;
+    : DeviceAwareRewritePattern<OpRewritePattern, ArgNonzeroOp> {
+  CommuteBroadcastWithFlatennedArgNonzero(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 4) {}
 
   LogicalResult
-  matchAndRewrite(MO::ArgNonzeroOp argNonzeroOp,
-                  PatternRewriter &commonRewriter) const override {
-    DeviceAwareRewriter rewriter(argNonzeroOp, commonRewriter);
+  deviceAwareMatchAndRewrite(MO::ArgNonzeroOp argNonzeroOp,
+                             DeviceAwareRewriter &rewriter) const override {
     Location loc = argNonzeroOp.getLoc();
 
     TensorValue inputVal = argNonzeroOp.getInput();
@@ -223,15 +223,13 @@ struct CommuteBroadcastWithFlatennedArgNonzero
 ///   res_2d   = matmul(flat_lhs, rhs) : ... -> tensor<[12, 3]>
 ///   res      = reshape(res_2d) : ... -> tensor<[4, 3, 3]>
 struct ConvertBatchMatmulToMatmulPattern
-    : public OpRewritePattern<BatchMatmulOp> {
+    : public DeviceAwareRewritePattern<OpRewritePattern, BatchMatmulOp> {
   ConvertBatchMatmulToMatmulPattern(MLIRContext *ctx)
-      : OpRewritePattern(ctx, 4) {}
+      : DeviceAwareRewritePattern(ctx, 4) {}
 
   LogicalResult
-  matchAndRewrite(MO::BatchMatmulOp op,
-                  PatternRewriter &commonRewriter) const override {
-    DeviceAwareRewriter rewriter(op, commonRewriter);
-
+  deviceAwareMatchAndRewrite(MO::BatchMatmulOp op,
+                             DeviceAwareRewriter &rewriter) const override {
     Value input, weight;
     Operation *broadcast = nullptr, *optRebindOp = nullptr;
     auto weightBcastP =
@@ -310,14 +308,13 @@ struct ConvertBatchMatmulToMatmulPattern
 ///   matmul      = matmul(reshape_lhs, reshape_rhs) : ... -> tensor<[2, 2]>
 ///   res         = broadcast_to(matmul) : ... -> tensor<[1, 1, 2, 2]>
 struct ConvertBatchMatmulBatchSizeOneToMatmulPattern
-    : public OpRewritePattern<BatchMatmulOp> {
+    : public DeviceAwareRewritePattern<OpRewritePattern, BatchMatmulOp> {
   ConvertBatchMatmulBatchSizeOneToMatmulPattern(MLIRContext *ctx)
-      : OpRewritePattern(ctx, 5) {}
+      : DeviceAwareRewritePattern(ctx, 5) {}
 
   LogicalResult
-  matchAndRewrite(MO::BatchMatmulOp op,
-                  PatternRewriter &commonRewriter) const override {
-    DeviceAwareRewriter rewriter(op, commonRewriter);
+  deviceAwareMatchAndRewrite(MO::BatchMatmulOp op,
+                             DeviceAwareRewriter &rewriter) const override {
 
     TensorType aType = op.getTensorA().getType();
     TensorType bType = op.getTensorB().getType();
@@ -384,12 +381,13 @@ struct ConvertBatchMatmulBatchSizeOneToMatmulPattern
 ///   filter' = reshape(filter) : tensor<[1, 1, Ci, Co]> -> tensor<[Ci, Co]>
 ///   matmul  = matmul(input', filter')
 ///   res     = reshape(matmul) : ... -> Sh
-struct ConvToMatmulPattern : public OpRewritePattern<ConvOp> {
-  ConvToMatmulPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
+struct ConvToMatmulPattern
+    : public DeviceAwareRewritePattern<OpRewritePattern, ConvOp> {
+  ConvToMatmulPattern(MLIRContext *ctx) : DeviceAwareRewritePattern(ctx, 2) {}
 
   LogicalResult
-  matchAndRewrite(ConvOp op, PatternRewriter &commonRewriter) const override {
-    DeviceAwareRewriter rewriter(op, commonRewriter);
+  deviceAwareMatchAndRewrite(ConvOp op,
+                             DeviceAwareRewriter &rewriter) const override {
 
     // Declare some meta variables.
     TensorValue input = op.getInput();
@@ -472,12 +470,14 @@ struct ConvToMatmulPattern : public OpRewritePattern<ConvOp> {
 ///   res1 = concat[axis_0](res0, t2)
 /// ===>
 ///   res1 = concat[axis_0](t0, t1, t2)
-struct FlattenNestedConcatPattern : public OpRewritePattern<ConcatOp> {
-  FlattenNestedConcatPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
+struct FlattenNestedConcatPattern
+    : public DeviceAwareRewritePattern<OpRewritePattern, ConcatOp> {
+  FlattenNestedConcatPattern(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 2) {}
 
   LogicalResult
-  matchAndRewrite(ConcatOp op, PatternRewriter &commonRewriter) const override {
-    DeviceAwareRewriter rewriter(op, commonRewriter);
+  deviceAwareMatchAndRewrite(ConcatOp op,
+                             DeviceAwareRewriter &rewriter) const override {
 
     // Requires constant axis
     std::optional<int64_t> maybeAxis = tryGetConstantInt(op.getAxis());
@@ -529,13 +529,12 @@ struct FlattenNestedConcatPattern : public OpRewritePattern<ConcatOp> {
 ///   res = pow(input, 2.0)
 /// ===>
 ///   res = input * input
-struct Pow2Pattern : public OpRewritePattern<PowOp> {
-  Pow2Pattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
+struct Pow2Pattern : public DeviceAwareRewritePattern<OpRewritePattern, PowOp> {
+  Pow2Pattern(MLIRContext *ctx) : DeviceAwareRewritePattern(ctx, 2) {}
 
   LogicalResult
-  matchAndRewrite(MO::PowOp op,
-                  PatternRewriter &commonRewriter) const override {
-    DeviceAwareRewriter rewriter(op, commonRewriter);
+  deviceAwareMatchAndRewrite(MO::PowOp op,
+                             DeviceAwareRewriter &rewriter) const override {
     Value input;
     Operation *broadcastOp = nullptr;
     if (!m_Op<PowOp>(m_Any(&input), m_Op<Static::BroadcastToOp>(
@@ -567,13 +566,12 @@ struct Pow2Pattern : public OpRewritePattern<PowOp> {
 ///   res = pow(input, 3.0)
 /// ===>
 ///   res = input * input * input
-struct Pow3Pattern : public OpRewritePattern<PowOp> {
-  Pow3Pattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
+struct Pow3Pattern : public DeviceAwareRewritePattern<OpRewritePattern, PowOp> {
+  Pow3Pattern(MLIRContext *ctx) : DeviceAwareRewritePattern(ctx, 2) {}
 
   LogicalResult
-  matchAndRewrite(MO::PowOp op,
-                  PatternRewriter &commonRewriter) const override {
-    DeviceAwareRewriter rewriter(op, commonRewriter);
+  deviceAwareMatchAndRewrite(MO::PowOp op,
+                             DeviceAwareRewriter &rewriter) const override {
     Value input;
     Operation *broadcastOp = nullptr;
     if (!m_Op<PowOp>(m_Any(&input), m_Op<Static::BroadcastToOp>(
@@ -613,12 +611,13 @@ struct Pow3Pattern : public OpRewritePattern<PowOp> {
 ///   res1 = res#1
 ///   ...
 ///   resN = res#N
-struct GathersToSplitPattern : public OpRewritePattern<GatherOp> {
-  GathersToSplitPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
+struct GathersToSplitPattern
+    : public DeviceAwareRewritePattern<OpRewritePattern, GatherOp> {
+  GathersToSplitPattern(MLIRContext *ctx) : DeviceAwareRewritePattern(ctx, 2) {}
 
   LogicalResult
-  matchAndRewrite(GatherOp op, PatternRewriter &commonRewriter) const override {
-    DeviceAwareRewriter rewriter(op, commonRewriter);
+  deviceAwareMatchAndRewrite(GatherOp op,
+                             DeviceAwareRewriter &rewriter) const override {
 
     TensorValue input = op.getInput();
     TensorType inputTy = input.getType();
@@ -715,13 +714,12 @@ struct GathersToSplitPattern : public OpRewritePattern<GatherOp> {
 ///   res = input * 1/2 * (1 + erf(input/sqrt(2)))
 /// ===>
 ///   res = gelu(input)
-struct GeluPattern : public OpRewritePattern<MulOp> {
-  GeluPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 4) {}
+struct GeluPattern : public DeviceAwareRewritePattern<OpRewritePattern, MulOp> {
+  GeluPattern(MLIRContext *ctx) : DeviceAwareRewritePattern(ctx, 4) {}
 
   LogicalResult
-  matchAndRewrite(MO::MulOp op,
-                  PatternRewriter &commonRewriter) const override {
-    DeviceAwareRewriter rewriter(op, commonRewriter);
+  deviceAwareMatchAndRewrite(MO::MulOp op,
+                             DeviceAwareRewriter &rewriter) const override {
 
     Value input, input_erf;
     Operation *sqrt2Broadcast = nullptr, *invSqrt2Broadcast = nullptr,
@@ -786,14 +784,14 @@ struct GeluPattern : public OpRewritePattern<MulOp> {
 ///
 /// NOTE: (*) means result type or operands of the op were updated
 struct SinkTransposeThroughUnaryOpPattern
-    : public mlir::OpInterfaceRewritePattern<ElementWiseUnary> {
+    : public DeviceAwareRewritePattern<OpInterfaceRewritePattern,
+                                       ElementWiseUnary> {
   SinkTransposeThroughUnaryOpPattern(MLIRContext *ctx)
-      : OpInterfaceRewritePattern(ctx, 2) {}
+      : DeviceAwareRewritePattern(ctx, 2) {}
 
   LogicalResult
-  matchAndRewrite(ElementWiseUnary op,
-                  PatternRewriter &commonRewriter) const override {
-    DeviceAwareRewriter rewriter(op, commonRewriter);
+  deviceAwareMatchAndRewrite(ElementWiseUnary op,
+                             DeviceAwareRewriter &rewriter) const override {
     Value perm;
     Operation *opaqueTransposeOp = nullptr;
     auto unaryP = m_Op<ElementWiseUnary>(
@@ -854,14 +852,14 @@ struct SinkTransposeThroughUnaryOpPattern
 ///
 /// NOTE (*) means result type or operands of the op were updated
 struct SinkTransposeThroughBinaryOpPattern
-    : public mlir::OpInterfaceRewritePattern<ElementWiseBinary> {
+    : public DeviceAwareRewritePattern<OpInterfaceRewritePattern,
+                                       ElementWiseBinary> {
   SinkTransposeThroughBinaryOpPattern(MLIRContext *ctx)
-      : OpInterfaceRewritePattern(ctx, 2) {}
+      : DeviceAwareRewritePattern(ctx, 2) {}
 
   LogicalResult
-  matchAndRewrite(ElementWiseBinary op,
-                  PatternRewriter &commonRewriter) const override {
-    DeviceAwareRewriter rewriter(op, commonRewriter);
+  deviceAwareMatchAndRewrite(ElementWiseBinary op,
+                             DeviceAwareRewriter &rewriter) const override {
     TensorValue input1, input2, perm1, perm2;
     Operation *leftTransposeOp = nullptr, *rightTransposeOp = nullptr;
     auto transpose1P =
@@ -925,9 +923,10 @@ struct SinkTransposeThroughBinaryOpPattern
 ///
 /// NOTE (*) means result type or operands of the op were updated
 struct SinkTransposeThroughStaticBroadcastToOpPattern
-    : public OpRewritePattern<Static::BroadcastToOp> {
+    : public DeviceAwareRewritePattern<OpRewritePattern,
+                                       Static::BroadcastToOp> {
   SinkTransposeThroughStaticBroadcastToOpPattern(MLIRContext *ctx)
-      : OpRewritePattern(ctx, 2) {}
+      : DeviceAwareRewritePattern(ctx, 2) {}
 
   // Return a permutation of `attrs` such that, if it gets permuted via `perm`,
   // it'll become `attrs` again.
@@ -941,9 +940,8 @@ struct SinkTransposeThroughStaticBroadcastToOpPattern
   }
 
   LogicalResult
-  matchAndRewrite(Static::BroadcastToOp op,
-                  PatternRewriter &commonRewriter) const override {
-    DeviceAwareRewriter rewriter(op, commonRewriter);
+  deviceAwareMatchAndRewrite(Static::BroadcastToOp op,
+                             DeviceAwareRewriter &rewriter) const override {
     Value input, perm;
     Operation *opaqueTransposeOp = nullptr;
     auto broadcastP = m_Op<Static::BroadcastToOp>(
@@ -1074,14 +1072,14 @@ static bool isValueFromReshapeThatSqueezesFinalDims(Value val) {
 /// dimensions are the same.
 template <typename ReshapeOpType>
 struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp
-    : public mlir::OpInterfaceRewritePattern<ElementWiseBinary> {
+    : public DeviceAwareRewritePattern<OpInterfaceRewritePattern,
+                                       ElementWiseBinary> {
   SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp(MLIRContext *ctx)
-      : OpInterfaceRewritePattern(ctx, 2) {}
+      : DeviceAwareRewritePattern(ctx, 2) {}
 
   LogicalResult
-  matchAndRewrite(ElementWiseBinary op,
-                  PatternRewriter &commonRewriter) const override {
-    DeviceAwareRewriter rewriter(op, commonRewriter);
+  deviceAwareMatchAndRewrite(ElementWiseBinary op,
+                             DeviceAwareRewriter &rewriter) const override {
 
     // Match pattern and get results.
     TensorValue inputTensor, elemwiseTensor;
@@ -1210,14 +1208,14 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp
 ///                    └──────┘    └──────┘
 template <typename ReshapeOpType>
 struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseUnaryOp
-    : public mlir::OpInterfaceRewritePattern<ElementWiseUnary> {
+    : public DeviceAwareRewritePattern<OpInterfaceRewritePattern,
+                                       ElementWiseUnary> {
   SinkStaticReshapeLikeOpThroughBroadcastedElementwiseUnaryOp(MLIRContext *ctx)
-      : OpInterfaceRewritePattern(ctx, 2) {}
+      : DeviceAwareRewritePattern(ctx, 2) {}
 
   LogicalResult
-  matchAndRewrite(ElementWiseUnary op,
-                  PatternRewriter &commonRewriter) const override {
-    DeviceAwareRewriter rewriter(op, commonRewriter);
+  deviceAwareMatchAndRewrite(ElementWiseUnary op,
+                             DeviceAwareRewriter &rewriter) const override {
     TensorValue inputTensor;
     Operation *reshapeOp = nullptr;
     auto reshapeP = m_Op<ReshapeOpType>(&reshapeOp, m_Any(&inputTensor));
@@ -1276,14 +1274,14 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseUnaryOp
 ///       └──────┘                 └──────┘
 template <typename ReshapeOpType>
 struct SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp
-    : public mlir::OpInterfaceRewritePattern<ElementWiseBinary> {
+    : public DeviceAwareRewritePattern<OpInterfaceRewritePattern,
+                                       ElementWiseBinary> {
   SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp(MLIRContext *ctx)
-      : OpInterfaceRewritePattern(ctx, 2) {}
+      : DeviceAwareRewritePattern(ctx, 2) {}
 
   LogicalResult
-  matchAndRewrite(ElementWiseBinary op,
-                  PatternRewriter &commonRewriter) const override {
-    DeviceAwareRewriter rewriter(op, commonRewriter);
+  deviceAwareMatchAndRewrite(ElementWiseBinary op,
+                             DeviceAwareRewriter &rewriter) const override {
     TensorValue input1Tensor, input2Tensor;
     Operation *reshapeOp1 = nullptr, *reshapeOp2 = nullptr;
     auto reshapeP1 = m_Op<ReshapeOpType>(&reshapeOp1, m_Any(&input1Tensor));
@@ -1355,9 +1353,11 @@ struct SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp
 ///   res1   = reshape(ress#1) : tensor<[1, ...]> -> tensor<[...]>
 ///   ...
 ///   resN   = reshape(ress#1) : tensor<[1, ...]> -> tensor<[...]>
-struct SplitAndSqueezesPattern : public OpRewritePattern<SplitOp> {
+struct SplitAndSqueezesPattern
+    : public DeviceAwareRewritePattern<OpRewritePattern, SplitOp> {
   // TODO(#13349) Generalize or remove this pattern
-  SplitAndSqueezesPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
+  SplitAndSqueezesPattern(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 2) {}
 
   // Check whether `op` is a `mo.static.reshape` (or rebind followed by a
   // reshape) that effectively squeezes the given axis `squeezeAxis`.
@@ -1417,8 +1417,8 @@ struct SplitAndSqueezesPattern : public OpRewritePattern<SplitOp> {
   }
 
   LogicalResult
-  matchAndRewrite(SplitOp op, PatternRewriter &commonRewriter) const override {
-    DeviceAwareRewriter rewriter(op, commonRewriter);
+  deviceAwareMatchAndRewrite(SplitOp op,
+                             DeviceAwareRewriter &rewriter) const override {
     TensorValue input = op.getInput();
     TensorType inputTy = input.getType();
     if (!inputTy.hasRank())
@@ -1515,14 +1515,14 @@ struct SplitAndSqueezesPattern : public OpRewritePattern<SplitOp> {
 };
 
 struct ElementWiseUnaryVectorPattern
-    : public mlir::OpInterfaceRewritePattern<ElementWiseUnary> {
+    : public DeviceAwareRewritePattern<OpInterfaceRewritePattern,
+                                       ElementWiseUnary> {
   ElementWiseUnaryVectorPattern(MLIRContext *ctx)
-      : OpInterfaceRewritePattern(ctx, 2) {}
+      : DeviceAwareRewritePattern(ctx, 2) {}
 
   LogicalResult
-  matchAndRewrite(MO::ElementWiseUnary op,
-                  PatternRewriter &commonRewriter) const override {
-    DeviceAwareRewriter rewriter(op, commonRewriter);
+  deviceAwareMatchAndRewrite(MO::ElementWiseUnary op,
+                             DeviceAwareRewriter &rewriter) const override {
     Location loc = op.getLoc();
     TensorValue input = op.getInput();
 
@@ -1551,14 +1551,14 @@ struct ElementWiseUnaryVectorPattern
 };
 
 struct ElementWiseBinaryVectorPattern
-    : public mlir::OpInterfaceRewritePattern<ElementWiseBinary> {
+    : public DeviceAwareRewritePattern<OpInterfaceRewritePattern,
+                                       ElementWiseBinary> {
   ElementWiseBinaryVectorPattern(MLIRContext *ctx)
-      : OpInterfaceRewritePattern(ctx, 2) {}
+      : DeviceAwareRewritePattern(ctx, 2) {}
 
   LogicalResult
-  matchAndRewrite(MO::ElementWiseBinary op,
-                  PatternRewriter &commonRewriter) const override {
-    DeviceAwareRewriter rewriter(op, commonRewriter);
+  deviceAwareMatchAndRewrite(MO::ElementWiseBinary op,
+                             DeviceAwareRewriter &rewriter) const override {
     Location loc = op.getLoc();
     TensorValue a = op.getLhsInput();
     TensorValue b = op.getRhsInput();
@@ -1588,13 +1588,14 @@ struct ElementWiseBinaryVectorPattern
   }
 };
 
-struct BroadcastReshapePattern : public OpRewritePattern<Static::ReshapeOp> {
-  BroadcastReshapePattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
+struct BroadcastReshapePattern
+    : public DeviceAwareRewritePattern<OpRewritePattern, Static::ReshapeOp> {
+  BroadcastReshapePattern(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 2) {}
 
   LogicalResult
-  matchAndRewrite(Static::ReshapeOp op,
-                  PatternRewriter &commonRewriter) const override {
-    DeviceAwareRewriter rewriter(op, commonRewriter);
+  deviceAwareMatchAndRewrite(Static::ReshapeOp op,
+                             DeviceAwareRewriter &rewriter) const override {
     Value input;
     Operation *broadcastOp = nullptr;
     if (!m_Op<Static::ReshapeOp>(
@@ -1633,13 +1634,13 @@ struct BroadcastReshapePattern : public OpRewritePattern<Static::ReshapeOp> {
 
 /// A pattern that detects a matmul with a vector weight and a constant
 /// input, and transposes it.
-struct GemvPattern : public OpRewritePattern<MatmulOp> {
-  GemvPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
+struct GemvPattern
+    : public DeviceAwareRewritePattern<OpRewritePattern, MatmulOp> {
+  GemvPattern(MLIRContext *ctx) : DeviceAwareRewritePattern(ctx, 2) {}
 
   LogicalResult
-  matchAndRewrite(MO::MatmulOp op,
-                  PatternRewriter &commonRewriter) const override {
-    DeviceAwareRewriter rewriter(op, commonRewriter);
+  deviceAwareMatchAndRewrite(MO::MatmulOp op,
+                             DeviceAwareRewriter &rewriter) const override {
     Location loc = op.getLoc();
     Value a = op.getTensorA();
     Value b = op.getTensorB();
@@ -1672,15 +1673,14 @@ struct GemvPattern : public OpRewritePattern<MatmulOp> {
   }
 };
 
-/// A pattern that replaces a split with several slices to enable fusion. This
-/// is the converse of SliceToSplitPattern.
-struct SplitToSlicePattern : public OpRewritePattern<SplitOp> {
-  SplitToSlicePattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
+/// A pattern that replaces a split with several slices to enable fusion.
+struct SplitToSlicePattern
+    : public DeviceAwareRewritePattern<OpRewritePattern, SplitOp> {
+  SplitToSlicePattern(MLIRContext *ctx) : DeviceAwareRewritePattern(ctx, 2) {}
 
   LogicalResult
-  matchAndRewrite(MO::SplitOp op,
-                  PatternRewriter &commonRewriter) const override {
-    DeviceAwareRewriter rewriter(op, commonRewriter);
+  deviceAwareMatchAndRewrite(MO::SplitOp op,
+                             DeviceAwareRewriter &rewriter) const override {
     Location loc = op.getLoc();
     Value in = op.getInput();
 
@@ -1898,14 +1898,14 @@ struct SliceToSplitPattern : public OpRewritePattern<SliceOp> {
 ///                                            |-> C3
 // clang-format on
 template <typename MatmulOpType>
-struct MergeParallelMatmulPattern : public OpRewritePattern<MatmulOpType> {
+struct MergeParallelMatmulPattern
+    : public DeviceAwareRewritePattern<OpRewritePattern, MatmulOpType> {
   MergeParallelMatmulPattern(MLIRContext *ctx)
-      : OpRewritePattern<MatmulOpType>(ctx, 2) {}
+      : DeviceAwareRewritePattern<OpRewritePattern, MatmulOpType>(ctx, 2) {}
 
   LogicalResult
-  matchAndRewrite(MatmulOpType op,
-                  PatternRewriter &commonRewriter) const override {
-    DeviceAwareRewriter rewriter(op, commonRewriter);
+  deviceAwareMatchAndRewrite(MatmulOpType op,
+                             DeviceAwareRewriter &rewriter) const override {
     // Gather all matmul operations that use the same activations.
     Value activations = op.getInputA();
     SmallVector<MatmulOpType> matmulUsers;
@@ -2046,13 +2046,14 @@ static bool splitWithStaticRankLastDimensionFullUse(SplitOp op) {
 ///          -> elemwise ->
 /// AFTER:
 /// -> elemwise -> split ->
-struct SinkSplitThroughElementwisePattern : public OpRewritePattern<SplitOp> {
+struct SinkSplitThroughElementwisePattern
+    : public DeviceAwareRewritePattern<OpRewritePattern, SplitOp> {
   SinkSplitThroughElementwisePattern(MLIRContext *ctx)
-      : OpRewritePattern(ctx, 2) {}
+      : DeviceAwareRewritePattern(ctx, 2) {}
 
   LogicalResult
-  matchAndRewrite(SplitOp op, PatternRewriter &commonRewriter) const override {
-    DeviceAwareRewriter rewriter(op, commonRewriter);
+  deviceAwareMatchAndRewrite(SplitOp op,
+                             DeviceAwareRewriter &rewriter) const override {
     if (!splitWithStaticRankLastDimensionFullUse(op)) {
       return rewriter.notifyMatchFailure(
           op, "Split op must be statically ranked, operate on last axis and "
@@ -2223,13 +2224,13 @@ struct SinkSplitThroughElementwisePattern : public OpRewritePattern<SplitOp> {
 /// dimension.
 template <typename ReshapeOpType>
 struct SinkSplitThroughStaticReshapeLikeOpsPattern
-    : public OpRewritePattern<SplitOp> {
+    : public DeviceAwareRewritePattern<OpRewritePattern, SplitOp> {
   SinkSplitThroughStaticReshapeLikeOpsPattern(MLIRContext *ctx)
-      : OpRewritePattern(ctx, 2) {}
+      : DeviceAwareRewritePattern<OpRewritePattern, SplitOp>(ctx, 2) {}
 
   LogicalResult
-  matchAndRewrite(SplitOp op, PatternRewriter &commonRewriter) const override {
-    DeviceAwareRewriter rewriter(op, commonRewriter);
+  deviceAwareMatchAndRewrite(SplitOp op,
+                             DeviceAwareRewriter &rewriter) const override {
     if (!splitWithStaticRankLastDimensionFullUse(op)) {
       return rewriter.notifyMatchFailure(
           op, "Split op must be statically ranked, operate on last axis and "
@@ -2474,14 +2475,13 @@ struct SinkSplitThroughStaticReshapeOpPattern
 /// Which is a reduction across dimension 'A' in the original tensor, with
 /// a broadcast with the same initial output shape!
 struct SinkBroadcastsThroughReduction
-    : public OpInterfaceRewritePattern<Reduction> {
+    : public DeviceAwareRewritePattern<OpInterfaceRewritePattern, Reduction> {
   SinkBroadcastsThroughReduction(MLIRContext *ctx)
-      : OpInterfaceRewritePattern(ctx, 2) {}
+      : DeviceAwareRewritePattern(ctx, 2) {}
 
   LogicalResult
-  matchAndRewrite(Reduction op,
-                  PatternRewriter &commonRewriter) const override {
-    DeviceAwareRewriter rewriter(op, commonRewriter);
+  deviceAwareMatchAndRewrite(Reduction op,
+                             DeviceAwareRewriter &rewriter) const override {
     TensorValue input = op.getInput();
     Location loc = op->getLoc();
 
@@ -2584,7 +2584,6 @@ struct SymbolicOptimizationPass
     patterns.add<SinkTransposeThroughUnaryOpPattern,
                  SinkTransposeThroughBinaryOpPattern,
                  SinkTransposeThroughStaticBroadcastToOpPattern>(context);
-    TransposeOp::getCanonicalizationPatterns(patterns, context);
 
     // Reshape/Rebind insertion/swimming.
     patterns.add<
@@ -2602,8 +2601,11 @@ struct SymbolicOptimizationPass
         context);
 
     // Broadcast swimming.
-    patterns.add<CommuteBroadcastWithFlatennedArgNonzero,
-                 SinkBroadcastsThroughReduction>(context);
+    patterns.add<SinkBroadcastsThroughReduction,
+                 CommuteBroadcastWithFlatennedArgNonzero>(context);
+
+    // TODO(24646): Ensure these use device aware rewriter.
+    TransposeOp::getCanonicalizationPatterns(patterns, context);
     Static::BroadcastToOp::getCanonicalizationPatterns(patterns, context);
 
     // Matmul rewrites.

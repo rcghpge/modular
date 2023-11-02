@@ -190,6 +190,71 @@ struct DeviceAwareRewriter {
   }
 };
 
+//===----------------------------------------------------------------------===//
+// DeviceAwarePattern
+//===----------------------------------------------------------------------===//
+
+/// TODO: clean this up, ask C++ geniuses
+/// A drop in replacement for the likes of `OpRewritePattern`,
+/// `OpInterfaceRewritePattern` and the like. Which automatically uses
+/// `DeviceAwareRewriter`.
+///
+/// For example `RewritePatternT` might be `OpRewritePattern<AddOp>`
+/// and `OpT` would be `AddOp`.
+///
+/// Example of use:
+///
+/// ```
+/// struct MyRewrite : public OpInterfaceRewritePattern<Reduction> {
+///   LogicalResult
+///   matchAndRewrite(Reduction op,
+///                   PatternRewriter &commonRewriter) const override {
+///     ...
+///   }
+/// ...
+/// };
+/// ```
+///
+/// Would become:
+///
+/// ```
+/// struct MyRewrite :
+///   public DeviceAwarePattern<OpInterfaceRewritePattern, Reduction>  {
+///
+///   LogicalResult
+///   deviceAwareMatchAndRewrite(Reduction op,
+///                              DeviceAwareRewriter &commonRewriter)
+///                              const override {
+///     ...
+///   }
+/// ...
+/// };
+/// ```
+///
+/// Which will automatically propagate device information correctly.
+template <typename RewritePatternT, typename OpT>
+struct _DeviceAwarePatternShim : public RewritePatternT {
+  using RewritePatternT::RewritePatternT;
+
+  LogicalResult matchAndRewrite(OpT op,
+                                PatternRewriter &commonRewriter) const final {
+    DeviceAwareRewriter rewriter(op, commonRewriter);
+    return deviceAwareMatchAndRewrite(op, rewriter);
+  }
+
+  virtual LogicalResult
+  deviceAwareMatchAndRewrite(OpT op, DeviceAwareRewriter &rewriter) const = 0;
+};
+
+/// Forwards template parameters to `RewritePatternBaseT`, done to avoid
+/// uglier syntax.
+template <template <typename> typename RewritePatternBaseT, typename OpT>
+struct DeviceAwareRewritePattern
+    : _DeviceAwarePatternShim<RewritePatternBaseT<OpT>, OpT> {
+  using _DeviceAwarePatternShim<RewritePatternBaseT<OpT>,
+                                OpT>::_DeviceAwarePatternShim;
+};
+
 } // namespace M::MO
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MODEVICES_H
