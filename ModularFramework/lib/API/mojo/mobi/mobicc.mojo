@@ -83,22 +83,6 @@ alias TypePtr = Pointer[_Type]
 alias TensorTuplePtr = Pointer[_TensorTuple]
 
 
-let _mof_lib_path = getenv("MODULAR_MOF_LIB_PATH", "/dev/null")
-var _lib: DLHandle = DLHandle(_mof_lib_path, RTLD.NOW | RTLD.GLOBAL)
-
-
-fn lib() raises -> DLHandle:
-    if _mof_lib_path == "/dev/null":
-        raise "MODULAR_MOF_LIB_PATH must be set"
-    return _lib
-
-
-fn debug_print_tensors(inout t: TensorTuplePtr) raises:
-    lib().get_function[fn (TensorTuplePtr) -> NoneType](
-        "MOF_debugPrintTensors"
-    )(t)
-
-
 struct Builder:
     """A builder for MO graphs. Wraps functins in the Builder C API."""
 
