@@ -1672,7 +1672,8 @@ struct GemvPattern : public OpRewritePattern<MatmulOp> {
   }
 };
 
-/// A pattern that replaces a split with several slices to enable fusion.
+/// A pattern that replaces a split with several slices to enable fusion. This
+/// is the converse of SliceToSplitPattern.
 struct SplitToSlicePattern : public OpRewritePattern<SplitOp> {
   SplitToSlicePattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
 
@@ -1760,6 +1761,127 @@ struct SplitToSlicePattern : public OpRewritePattern<SplitOp> {
 
     rewriter.eraseOp(op);
     return mlir::success();
+  }
+};
+
+/// A pattern that replaces several slices into one split to enable split
+/// patterns. This is the converse of SplitToSlicePattern.
+struct SliceToSplitPattern : public OpRewritePattern<SliceOp> {
+  SliceToSplitPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
+
+  LogicalResult matchAndRewrite(MO::SliceOp op,
+                                PatternRewriter &rewriter) const override {
+    SmallVector<SliceOp> sliceOps;
+    Value input = op.getInput();
+    for (auto user : input.getUsers()) {
+      if (auto sliceOp = dyn_cast<SliceOp>(user))
+        sliceOps.push_back(sliceOp);
+    }
+
+    if (sliceOps.size() == 1)
+      return rewriter.notifyMatchFailure(op, "Only one slice op");
+
+    if (!llvm::all_of(sliceOps, [](SliceOp sliceOp) {
+          return sliceOp.getStart().getDefiningOp<ConstantOp>() &&
+                 sliceOp.getStop().getDefiningOp<ConstantOp>();
+        })) {
+      return rewriter.notifyMatchFailure(
+          op, "Start and step operands must be constants");
+    }
+
+    auto inputType = input.getType().cast<TensorType>();
+    int64_t sliceDimension;
+    if (!llvm::all_of(sliceOps, [&](SliceOp sliceOp) {
+          auto type = sliceOp.getResult().getType();
+          if (!type.hasRank())
+            return false;
+
+          if (type.hasUnknownShape())
+            return false;
+
+          int64_t differentDimensions = 0;
+          int64_t i = 0;
+          for (auto [before, after] :
+               llvm::zip(inputType.getDims(), type.getDims())) {
+            if (before != after) {
+              sliceDimension = i;
+              ++differentDimensions;
+            }
+            ++i;
+          }
+
+          return differentDimensions == 1;
+        })) {
+      return rewriter.notifyMatchFailure(
+          op, "All slices must have a static rank, a known shape and slice "
+              "through only one dimension");
+    }
+
+    if (llvm::any_of(sliceOps, [&](SliceOp sliceOp) {
+          return sliceOp.getType().getIntDim(sliceDimension) ==
+                 ShapedType::kDynamic;
+        })) {
+      return rewriter.notifyMatchFailure(
+          op, "Sliced dimension must be statically known for all slices");
+    }
+
+    int64_t nElements = 0;
+    for (SliceOp sliceOp : sliceOps)
+      nElements += sliceOp.getType().getIntDim(sliceDimension);
+
+    if (nElements != inputType.getIntDim(sliceDimension)) {
+      return rewriter.notifyMatchFailure(
+          op, "Union of slices must cover all of the input");
+    }
+
+    const auto getSliceValue = [&](Value value) {
+      return SmallVector<APInt>(value.getDefiningOp<ConstantOp>()
+                                    .getValue()
+                                    .cast<IntArrayElementsAttr>()
+                                    .getValues())[sliceDimension]
+          .getSExtValue();
+    };
+
+    std::sort(sliceOps.begin(), sliceOps.end(), [&](SliceOp lhs, SliceOp rhs) {
+      return getSliceValue(lhs.getStart()) < getSliceValue(rhs.getStop());
+    });
+
+    for (uint64_t i = 1; i < sliceOps.size(); ++i) {
+      if (getSliceValue(sliceOps[i].getStart()) <
+          getSliceValue(sliceOps[i - 1].getStop())) {
+        return rewriter.notifyMatchFailure(op, "Slices are overlapping");
+      }
+    }
+
+    Location loc = op.getLoc();
+    rewriter.setInsertionPoint(op);
+
+    SmallVector<Type> splitTypes;
+    for (SliceOp sliceOp : sliceOps)
+      splitTypes.push_back(sliceOp.getType());
+
+    SmallVector<int64_t> splitSizes;
+    for (SliceOp sliceOp : sliceOps) {
+      splitSizes.push_back(getSliceValue(sliceOp.getStop()) -
+                           getSliceValue(sliceOp.getStart()));
+    }
+    auto splitSizesOp = rewriter.create<ConstantOp>(loc, splitSizes);
+
+    SmallVector<Value> originalSliceValues;
+    for (SliceOp sliceOp : sliceOps)
+      originalSliceValues.push_back(sliceOp.getResult());
+
+    auto splitAxis =
+        rewriter.create<ConstantOp>(loc, sliceDimension).getResult();
+
+    auto splitOp = rewriter.create<SplitOp>(
+        loc, splitTypes, input, splitSizesOp.getResult(), splitAxis);
+
+    rewriter.replaceAllUsesWith(originalSliceValues, splitOp.getResults());
+    for (SliceOp sliceOp : sliceOps)
+      rewriter.eraseOp(sliceOp);
+
+    return success();
   }
 };
 
@@ -1888,6 +2010,27 @@ struct MergeParallelMatmulPattern : public OpRewritePattern<MatmulOpType> {
   }
 };
 
+static bool splitWithStaticRankLastDimensionFullUse(SplitOp op) {
+  auto inputType = op.getInput().getType().cast<TensorType>();
+  if (!inputType.hasRank())
+    return false;
+
+  auto axisOr = tryGetConstantInt(op.getAxis());
+  if (!axisOr)
+    return false;
+
+  uint64_t lastAxis = inputType.getRank() - 1;
+  uint64_t axis = *axisOr;
+  if (axis != lastAxis)
+    return false;
+
+  if (op.getNumResults() != llvm::range_size(op->getUsers()) ||
+      op->getNumResults() != llvm::range_size(op->getUses()))
+    return false;
+
+  return true;
+}
+
 /// A pattern that will move a split/ operation after identical elementwise
 /// operations if certain conditions are met
 /// CONDITIONS:
@@ -1910,30 +2053,15 @@ struct SinkSplitThroughElementwisePattern : public OpRewritePattern<SplitOp> {
   LogicalResult
   matchAndRewrite(SplitOp op, PatternRewriter &commonRewriter) const override {
     DeviceAwareRewriter rewriter(op, commonRewriter);
-    auto inputType = op.getInput().getType().cast<TensorType>();
-    if (!inputType.hasRank())
-      return rewriter.notifyMatchFailure(op, "Input must be statically ranked");
-
-    auto axisOr = tryGetConstantInt(op.getAxis());
-    if (!axisOr)
-      return rewriter.notifyMatchFailure(op, "Split axis is not a constant");
-
-    uint64_t lastAxis = inputType.getRank() - 1;
-    uint64_t axis = *axisOr;
-    if (axis != lastAxis)
-      return rewriter.notifyMatchFailure(op, "Split axis must be the last dim");
-
-    if (op.getNumResults() != llvm::range_size(op->getUsers()))
-      return rewriter.notifyMatchFailure(op, "Not all results are used");
+    if (!splitWithStaticRankLastDimensionFullUse(op)) {
+      return rewriter.notifyMatchFailure(
+          op, "Split op must be statically ranked, operate on last axis and "
+              "have one use and one user per result");
+    }
 
     auto firstResultType = op.getResults().front().getType().cast<TensorType>();
     SmallVector<Value> elementwiseValues;
     for (auto result : op.getResults()) {
-      if (!result.hasOneUse()) {
-        return rewriter.notifyMatchFailure(op,
-                                           "Split results must have one use");
-      }
-
       if (result.getType() != firstResultType) {
         return rewriter.notifyMatchFailure(
             op, "Split results don't have the same size");
@@ -2023,6 +2151,8 @@ struct SinkSplitThroughElementwisePattern : public OpRewritePattern<SplitOp> {
 
     Location loc = op.getLoc();
     rewriter.setInsertionPoint(op);
+    auto inputType = op.getInput().getType().cast<TensorType>();
+    uint64_t axis = *tryGetConstantInt(op.getAxis());
     uint64_t lastDimSize =
         inputType.getDims().back().cast<IntegerAttr>().getInt();
 
@@ -2043,7 +2173,7 @@ struct SinkSplitThroughElementwisePattern : public OpRewritePattern<SplitOp> {
       Value broadcast = concatenatedConstants;
       if (broadcastOp) {
         auto broadcastType =
-            broadcastOp.getType().cloneWithNewDim(lastAxis, lastDimSize);
+            broadcastOp.getType().cloneWithNewDim(axis, lastDimSize);
         broadcast = rewriter
                         .create<Static::BroadcastToOp>(loc, broadcastType,
                                                        concatenatedConstants)
@@ -2059,7 +2189,7 @@ struct SinkSplitThroughElementwisePattern : public OpRewritePattern<SplitOp> {
 
     auto elementwiseType =
         firstOwner->getResultTypes().front().cast<TensorType>().cloneWithNewDim(
-            lastAxis, lastDimSize);
+            axis, lastDimSize);
     OperationState elementwiseOpState(loc, firstOwner->getName(),
                                       elementwiseOperands, elementwiseType);
     auto newElementwise = rewriter.create(elementwiseOpState)->getResult(0);
@@ -2089,7 +2219,8 @@ struct SinkSplitThroughElementwisePattern : public OpRewritePattern<SplitOp> {
 };
 
 /// A pattern that will sink a split operation through a reshape-like operation
-/// such as Static::ReshapeOp and RebindOp.
+/// such as Static::ReshapeOp and RebindOp but that do not temper with the split
+/// dimension.
 template <typename ReshapeOpType>
 struct SinkSplitThroughStaticReshapeLikeOpsPattern
     : public OpRewritePattern<SplitOp> {
@@ -2099,27 +2230,17 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
   LogicalResult
   matchAndRewrite(SplitOp op, PatternRewriter &commonRewriter) const override {
     DeviceAwareRewriter rewriter(op, commonRewriter);
-    auto inputType = op.getInput().getType().cast<TensorType>();
-    if (!inputType.hasRank())
-      return rewriter.notifyMatchFailure(op, "Input must be statically ranked");
-
-    auto axisOr = tryGetConstantInt(op.getAxis());
-    if (!axisOr)
-      return rewriter.notifyMatchFailure(op, "Split axis is not a constant");
-    uint64_t axis = *axisOr;
-
-    uint64_t lastAxis = inputType.getRank() - 1;
-    if (axis != lastAxis)
-      return rewriter.notifyMatchFailure(op, "Split axis must be the last dim");
+    if (!splitWithStaticRankLastDimensionFullUse(op)) {
+      return rewriter.notifyMatchFailure(
+          op, "Split op must be statically ranked, operate on last axis and "
+              "have one use and one user per result");
+    }
 
     auto users = op->getUsers();
-    if (llvm::range_size(users) != op.getNumResults())
-      return rewriter.notifyMatchFailure(op, "Not all results are used");
-
     if (!llvm::all_of(users, [](Operation *user) {
           return llvm::isa<ReshapeOpType>(user);
         })) {
-      return rewriter.notifyMatchFailure(op, "Users are not reshapes");
+      return rewriter.notifyMatchFailure(op, "Users are not reshape-like");
     }
 
     auto firstReshapeOutputType =
@@ -2163,6 +2284,7 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
     Location loc = op->getLoc();
     rewriter.setInsertionPoint(op);
 
+    auto inputType = op.getInput().getType().cast<TensorType>();
     auto newReshapeType = firstReshapeOutputType.cloneWithNewDim(
         firstReshapeOutputType.getRank() - 1,
         inputType.getDims().back().cast<IntegerAttr>().getInt());
@@ -2185,7 +2307,120 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
                                 op->getSuccessors());
     auto newSplit = rewriter.create(splitOpState);
 
-    SmallVector<Operation *> reshapeOps(op->getUsers());
+    SmallVector<Operation *> reshapeOps(users);
+    SmallVector<Value> splitResults(newSplit->getResults());
+    for (uint64_t i = 0; i < reshapeOps.size(); ++i) {
+      rewriter.replaceAllUsesWith(reshapeOps[i]->getResult(0), splitResults[i]);
+      rewriter.eraseOp(reshapeOps[i]);
+    }
+
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+};
+
+/// This pattern will sink a split operation through a static reshape operation
+/// that actually tempers with the split dimension. This is a specialized
+/// pattern that rarely occurs but it provides performance improvement to small
+/// BERT models.
+struct SinkSplitThroughStaticReshapeOpPattern
+    : public OpRewritePattern<SplitOp> {
+  SinkSplitThroughStaticReshapeOpPattern(MLIRContext *ctx)
+      : OpRewritePattern(ctx, 2) {}
+
+  LogicalResult matchAndRewrite(SplitOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!splitWithStaticRankLastDimensionFullUse(op)) {
+      return rewriter.notifyMatchFailure(
+          op, "Split op must be statically ranked, operate on last axis and "
+              "have one use and one user per result");
+    }
+
+    // This requirement is not absolutely needed but this pattern is already so
+    // specialized, it is unlikely that it will be applied somewhere else.
+    auto resultTypes = op->getResultTypes();
+    if (!llvm::all_of(resultTypes, [&](Type resultType) {
+          return resultType == resultTypes.front();
+        })) {
+      return rewriter.notifyMatchFailure(op, "Split is not uniform");
+    }
+
+    auto users = op->getUsers();
+    if (!llvm::all_of(users, [&](Operation *user) {
+          auto reshapeOp = llvm::dyn_cast<Static::ReshapeOp>(user);
+          if (!reshapeOp)
+            return false;
+
+          auto type = reshapeOp.getType();
+
+          return type.getRank() &&
+                 type == cast<Static::ReshapeOp>(*users.begin()).getType();
+        })) {
+      return rewriter.notifyMatchFailure(
+          op, "Users must be identical non-scalar reshapes");
+    }
+
+    auto shapeBeforeReshape = op.getType(0).cast<TensorType>().getDims();
+    auto shapeAfterReshape = users.begin()
+                                 ->getResults()
+                                 .front()
+                                 .getType()
+                                 .cast<TensorType>()
+                                 .getDims();
+
+    if (shapeAfterReshape.size() < shapeBeforeReshape.size()) {
+      return rewriter.notifyMatchFailure(
+          op, "Reshape must be expanding dimensions");
+    }
+
+    // Note: There is a massive assumption that the data is row-major. If it
+    // isn't, this breaks.
+    uint64_t firstDimensionThatMismatches;
+    for (firstDimensionThatMismatches = 0;
+         firstDimensionThatMismatches < shapeBeforeReshape.size();
+         ++firstDimensionThatMismatches) {
+      if (shapeBeforeReshape[firstDimensionThatMismatches] !=
+          shapeAfterReshape[firstDimensionThatMismatches])
+        break;
+    }
+
+    // No need to check for static dimensions in the reshaped slice of
+    // dimensions because the MO::Static::ReshapeOp already enforces it.
+
+    Location loc = op->getLoc();
+    rewriter.setInsertionPoint(op);
+
+    auto firstReshapeType = cast<Static::ReshapeOp>(*users.begin()).getType();
+    SmallVector<TypedAttr> newReshapeShape(firstReshapeType.getDims());
+    newReshapeShape[firstDimensionThatMismatches] =
+        rewriter.getIndexAttr(newReshapeShape[firstDimensionThatMismatches]
+                                  .cast<IntegerAttr>()
+                                  .getInt() *
+                              op->getNumResults());
+    auto newReshapeType = TensorType::get(
+        ShapeAttr::get(newReshapeShape, rewriter.getType<MOSH::ShapeType>()),
+        firstReshapeType.getDtype());
+    auto newReshape =
+        rewriter.create<Static::ReshapeOp>(loc, newReshapeType, op.getInput())
+            .getResult();
+
+    SmallVector<Type> newSplitTypes(op.getNumResults(), firstReshapeType);
+    SmallVector<int64_t> newSplitSizes(
+        op.getNumResults(),
+        firstReshapeType.getIntDim(firstDimensionThatMismatches));
+    SmallVector<Value> newSplitOpOperands = op.getOperands();
+    newSplitOpOperands[0] = newReshape;
+    newSplitOpOperands[1] = rewriter.create<ConstantOp>(loc, newSplitSizes);
+    newSplitOpOperands[2] =
+        rewriter.create<ConstantOp>(loc, int64_t(firstDimensionThatMismatches))
+            .getResult();
+    OperationState splitOpState(loc, op->getName(), newSplitOpOperands,
+                                newSplitTypes, op->getAttrs(),
+                                op->getSuccessors());
+    auto newSplit = rewriter.create(splitOpState);
+
+    SmallVector<Operation *> reshapeOps(users);
     SmallVector<Value> splitResults(newSplit->getResults());
     for (uint64_t i = 0; i < reshapeOps.size(); ++i) {
       rewriter.replaceAllUsesWith(reshapeOps[i]->getResult(0), splitResults[i]);
@@ -2341,6 +2576,10 @@ struct SymbolicOptimizationPass
     MLIRContext *context = &getContext();
 
     RewritePatternSet patterns(context);
+    if constexpr (sizeof...(PatternTypes))
+      // Pattern that should execute now.
+      patterns.add<PatternTypes...>(context);
+
     // Transpose swimming.
     patterns.add<SinkTransposeThroughUnaryOpPattern,
                  SinkTransposeThroughBinaryOpPattern,
@@ -2376,16 +2615,13 @@ struct SymbolicOptimizationPass
     // Split swimming.
     patterns.add<SinkSplitThroughStaticReshapeLikeOpsPattern<Static::ReshapeOp>,
                  SinkSplitThroughStaticReshapeLikeOpsPattern<RebindOp>,
-                 SinkSplitThroughElementwisePattern>(context);
+                 SinkSplitThroughElementwisePattern,
+                 SinkSplitThroughStaticReshapeOpPattern>(context);
 
     // Miscellaneous rewrites.
     patterns.add<FlattenNestedConcatPattern, Pow2Pattern, Pow3Pattern,
                  GathersToSplitPattern, GeluPattern, GemvPattern,
                  SplitAndSqueezesPattern>(context);
-
-    if constexpr (sizeof...(PatternTypes))
-      // Pattern that should execute now.
-      patterns.add<PatternTypes...>(context);
 
     if (failed(
             applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
@@ -2400,11 +2636,12 @@ struct SymbolicOptimizationPass
       llvm::dbgs() << "--------------------------------------------\n";
     });
 
-    // First run all the default optimizations.
-    optimizeWithPattern();
+    // First run all the optimizations with slices turned into split when
+    // possible.
+    optimizeWithPattern<SliceToSplitPattern>();
     // Once all split operation patterns have run, convert them to slice and run
-    // all of the other patterns too. This prevents this pattern from preventing
-    // split patterns from occuring because of ordering.
+    // all of the other patterns too. Without it, split patterns would never
+    // apply because they would be turned into slices too early.
     optimizeWithPattern<SplitToSlicePattern>();
 
     LLVM_DEBUG({

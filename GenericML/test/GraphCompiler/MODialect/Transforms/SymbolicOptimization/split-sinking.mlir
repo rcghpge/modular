@@ -158,6 +158,22 @@ mo.graph @reshape(%in: !mo.tensor<[2, 4], f32>) -> (!mo.tensor<[1, 2, 2], f32>, 
   mo.output %3, %4 : !mo.tensor<[1, 2, 2], f32>, !mo.tensor<[1, 2, 2], f32>
 }
 
+// CHECK-LABEL:  mo.graph @reshape_last_dim
+// CHECK-NEXT:    %[[SIZES:.*]] = mo.constant {value = #M.dense_array<2, 2> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+// CHECK-NEXT:    %[[AXIS:.*]] = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[], si64>
+// CHECK-NEXT:    %[[RESHAPE:.*]] = mo.static.reshape(%arg0) : !mo.tensor<[2, 8], f32> -> !mo.tensor<[2, 4, 2], f32>
+// CHECK-NEXT:    %[[SPLIT:.*]]:2 = mo.split[%[[AXIS]] : !mo.tensor<[], si64>] (%[[RESHAPE]], %[[SIZES]]) : (!mo.tensor<[2, 4, 2], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[2, 2, 2], f32>)
+// CHECK-NEXT:    mo.output %[[SPLIT]]#0, %[[SPLIT]]#1 : !mo.tensor<[2, 2, 2], f32>, !mo.tensor<[2, 2, 2], f32>
+
+mo.graph @reshape_last_dim(%in: !mo.tensor<[2, 8], f32>) -> (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[2, 2, 2], f32>) {
+  %0 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %1 = mo.constant {value = #M.dense_array<4, 4> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %2:2 = mo.split[%0 : !mo.tensor<[], si32>] (%in, %1) : (!mo.tensor<[2, 8], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 4], f32>, !mo.tensor<[2, 4], f32>)
+  %3 = mo.static.reshape(%2#0) : !mo.tensor<[2, 4], f32> -> !mo.tensor<[2, 2, 2], f32>
+  %4 = mo.static.reshape(%2#1) : !mo.tensor<[2, 4], f32> -> !mo.tensor<[2, 2, 2], f32>
+  mo.output %3, %4 : !mo.tensor<[2, 2, 2], f32>, !mo.tensor<[2, 2, 2], f32>
+}
+
 // CHECK-LABEL:  mo.graph @no_sinking_different_reshapes
 // CHECK:         mo.slice
 // CHECK-NEXT:    mo.slice
@@ -173,13 +189,13 @@ mo.graph @no_sinking_different_reshapes(%in: !mo.tensor<[2, 4], f32>) -> (!mo.te
   mo.output %3, %4 : !mo.tensor<[1, 2, 2], f32>, !mo.tensor<[4], f32>
 }
 
-// CHECK-LABEL:  mo.graph @no_sinking_reshape_changed_last_dim
+// CHECK-LABEL:  mo.graph @no_sinking_reshape_first_mismatch_not_last_dim
 // CHECK:         mo.slice
 // CHECK-NEXT:    mo.slice
 // CHECK-NEXT:    mo.static.reshape
 // CHECK-NEXT:    mo.static.reshape
 
-mo.graph @no_sinking_reshape_changed_last_dim(%in: !mo.tensor<[2, 4], f32>) -> (!mo.tensor<[4], f32>, !mo.tensor<[4], f32>) {
+mo.graph @no_sinking_reshape_first_mismatch_not_last_dim(%in: !mo.tensor<[2, 4], f32>) -> (!mo.tensor<[4], f32>, !mo.tensor<[4], f32>) {
   %0 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
   %1 = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %2:2 = mo.split[%0 : !mo.tensor<[], si32>] (%in, %1) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
