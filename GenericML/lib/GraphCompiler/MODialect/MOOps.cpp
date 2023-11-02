@@ -1363,7 +1363,8 @@ LogicalResult ArgNonzeroOp::verify() {
   if (!resTy.hasRank() || resTy.getRank() != 2)
     return emitError("mo.arg_nonzero: invalid output shape: rank must be 2");
 
-  if ((inputTy.hasRank() && resTy.getIntDim(1) != (int64_t)inputTy.getRank()) ||
+  if ((inputTy.hasRank() && (int64_t)inputTy.getRank() > 0 &&
+       resTy.getIntDim(1) != (int64_t)inputTy.getRank()) ||
       (!inputTy.hasRank() && !ShapedType::isDynamic(resTy.getIntDim(1))))
     return emitError(
         "mo.arg_nonzero: invalid output shape: inner_dim != input_rank");
