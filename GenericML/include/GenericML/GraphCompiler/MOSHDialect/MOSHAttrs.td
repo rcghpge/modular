@@ -87,6 +87,14 @@ def MOSH_ShapeAttr : KGEN_ExprAttr<"Shape", "ape"> {
     /// without constraints.
     static ErrorOr<ShapeAttr> broadcastShapes(ShapeAttr xSh, ShapeAttr ySh);
 
+    /// Calculate which dimension indices in the final bcastedShape which are
+    /// the result of broadcasting. Returns indices in sorted order.
+    /// E.g. [1, 3, 4, 5].
+    ///
+    /// A dimension is the result of broadcasting if it is a newly introduced
+    /// dim or is the result of a 1 dim becoming a non-one-dim.
+    static ErrorOr<SmallVector<int64_t>> getBroadcastedAxes(ShapeAttr beforeShape, ShapeAttr bcastedShape);
+
     /// Construct a `ShapeAttr` from given integers and shape type, without
     /// considering `mlir::ShapedType::kDynamic` (i.e., all dimensions will be
     /// known integer attributes).

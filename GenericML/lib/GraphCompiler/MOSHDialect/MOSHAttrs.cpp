@@ -258,6 +258,42 @@ ErrorOr<ShapeAttr> ShapeAttr::broadcastShapes(ShapeAttr xSh, ShapeAttr ySh) {
                         xSh.getType());
 }
 
+ErrorOr<SmallVector<int64_t>>
+ShapeAttr::getBroadcastedAxes(ShapeAttr beforeShape, ShapeAttr bcastedShape) {
+  if (beforeShape.hasUnknownDims() || bcastedShape.hasUnknownDims())
+    return Error("We cannot calculate this with unknown dims.");
+
+  ArrayRef<TypedAttr> beforeDims = beforeShape.getValues();
+  ArrayRef<TypedAttr> bcastedDims = bcastedShape.getValues();
+
+  assert(beforeDims.size() <= bcastedDims.size() &&
+         "Broadcasting can only increase rank");
+
+  // we will initially add in reverse sorted order since it's easier
+  // as bcasting rules follow from the innermost dimensions
+  SmallVector<int64_t> answer;
+  for (size_t iter = 0; iter < beforeDims.size(); iter++) {
+    int before_i = beforeDims.size() - iter - 1;
+    int bcasted_i = bcastedDims.size() - iter - 1;
+
+    const TypedAttr &beforeDim = beforeDims[before_i];
+    const TypedAttr &bcastedDim = bcastedDims[bcasted_i];
+
+    if (beforeDim != bcastedDim)
+      answer.push_back(bcasted_i);
+  }
+
+  // add all the newly introduced dims too
+  size_t extraDims = bcastedDims.size() - beforeDims.size();
+  for (size_t iter = 0; iter < extraDims; iter++) {
+    // remember to return in reverse order
+    answer.push_back(extraDims - 1 - iter);
+  }
+
+  std::reverse(answer.begin(), answer.end());
+  return answer;
+}
+
 ShapeAttr ShapeAttr::fromInts(ArrayRef<int64_t> values, ShapeType type) {
   auto idxTy = IndexType::get(type.getContext());
   SmallVector<TypedAttr> newValues =

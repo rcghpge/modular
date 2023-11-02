@@ -2198,6 +2198,138 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
   }
 };
 
+/// Attempts to sink broadcasts through reduction style operators
+///
+/// E.g.
+///
+///   Input                     Input      Axis
+///     │                         │         │
+///     ▼                         │         │
+/// ┌─────────┐                   ▼         ▼
+/// │Broadcast│   Axis           ┌───────────┐
+/// └────┬────┘    │             │ReductionOp│
+///      │         │             └─────┬─────┘
+///      ▼         ▼    ─────►         │
+///     ┌───────────┐                  ▼
+///     │ReductionOp│             ┌─────────┐
+///     └─────┬─────┘             │Broadcast│
+///           │                   └────┬────┘
+///           ▼                        │
+///                                    ▼
+///
+/// This can only be done in certain scenarios generally, most notably as
+/// long as the axis of reduction is done on a dimension which is not modified
+/// in the broadcast.
+///
+/// Why is this possible? One easy way to get an intuition is seeing broadcast
+/// as a "view"/"reindexing" operation of an original buffer.
+///
+/// For example if:
+///    %T1 : !mo.tensor<[A, B, C, 1], f32>
+///    %T2 : mo.static.broadcast_to(%A):
+///         !mo.tensor<[A, B, C, 1], f32> -> !mo.tensor<[P1, A, B, C, P2], f32>
+///
+/// Then T2[p1, a, b, c, p2] == T1[a, b, c, 0] for all valid variables!
+///
+/// Therefore if we are reduce-add across dimension 'A':
+///
+/// T2[p1, 0, b, c, p2] = \sum_i T2[p1, i, b, c, p2]
+///                     = \sum_i T1[i, b, c, 0]
+///
+/// Which is a reduction across dimension 'A' in the original tensor, with
+/// a broadcast with the same initial output shape!
+struct SinkBroadcastsThroughReduction
+    : public OpInterfaceRewritePattern<Reduction> {
+  SinkBroadcastsThroughReduction(MLIRContext *ctx)
+      : OpInterfaceRewritePattern(ctx, 2) {}
+
+  LogicalResult
+  matchAndRewrite(Reduction op,
+                  PatternRewriter &commonRewriter) const override {
+    DeviceAwareRewriter rewriter(op, commonRewriter);
+    TensorValue input = op.getInput();
+    Location loc = op->getLoc();
+
+    auto bcastOp = input.getDefiningOp<Static::BroadcastToOp>();
+    if (!bcastOp)
+      return rewriter.notifyMatchFailure(loc, "Not preceded by broadcast.");
+
+    auto bcastOpInput = bcastOp.getInput();
+    if (!bcastOpInput.getType().hasRank() || !bcastOp.getType().hasRank())
+      return rewriter.notifyMatchFailure(
+          loc, "BCast to be statically ranked to work.");
+
+    std::optional<int64_t> maybeAxis = tryGetConstantInt(op.getAxis());
+    if (!maybeAxis.has_value())
+      return rewriter.notifyMatchFailure(
+          loc, "Need to know axis to perform optimization.");
+    int64_t axis = maybeAxis.value();
+
+    // respect negative axis rules
+    int64_t initialRank = input.getType().getRank();
+    if (axis < -initialRank || axis >= initialRank)
+      return rewriter.notifyMatchFailure(
+          loc, "Axis is not within [-rank, rank - 1]");
+
+    if (axis < 0)
+      axis += input.getType().getRank();
+
+    // Here we want to map the axes we are reducing on in the broadcasted tensor
+    // to on the non-broadcasted input.
+    //
+    // E.g. if we broadcasted [A, B, 1] --> [1, D, A, B, 1]
+    //
+    // And we are reducing along the dim with 'A', then we just need to count
+    // the number of additional broadcasted dimensions before the given axis.
+    // In this case it is 2, since we added axis `1` and `D`.
+    ErrorOr<SmallVector<int64_t>> maybeBcastedAxis =
+        ShapeAttr::getBroadcastedAxes(
+            bcastOp.getInput().getType().getTypedShapeAttr(),
+            bcastOp.getType().getTypedShapeAttr());
+    if (maybeBcastedAxis.isError())
+      return rewriter.notifyMatchFailure(loc, maybeBcastedAxis.getError());
+
+    SmallVector<int64_t> &bcastedAxis = maybeBcastedAxis.get();
+    size_t numBeforeAxis = 0;
+    for (int64_t bcastedDimIndex : bcastedAxis) {
+      // TODO(24589): there are fancier things we can simplify based on the type
+      // of reduction here when we reduce along the broadcasted axis.
+      //
+      // For example, if we are doing reduce.add in this case, we just have to
+      // multiply the old tensor by the size of the broadcast axis and reshape.
+      //
+      // For max/min, the result is invariant to these transforms.
+      // For prod, it becomes pow.
+      if (bcastedDimIndex == axis)
+        return rewriter.notifyMatchFailure(
+            loc,
+            "Cannot optimize if reducing along axes modified by broadcast");
+      if (bcastedDimIndex > axis)
+        break;
+      numBeforeAxis++;
+    }
+
+    // Now we know we are reducing along a non-broadcasted axis, we can elide
+    // the broadcast for later.
+    int64_t newAxis = axis - numBeforeAxis;
+    TensorValue newAxisTensor =
+        rewriter.create<ConstantOp>(op->getLoc(), newAxis);
+    auto clonedReduction = cast<MO::Reduction>(*rewriter.clone(*op));
+    clonedReduction.getInputMutable().assign(bcastOpInput);
+    clonedReduction.getAxisMutable().assign(newAxisTensor);
+
+    TensorType newTy = bcastOpInput.getType()
+                           .cloneWithNewDim(newAxis, 1)
+                           .cloneWith(op.getResult().getType().getDtype());
+    clonedReduction.getResult().setType(newTy);
+
+    rewriter.replaceOpWithNewOp<Static::BroadcastToOp>(
+        op, op.getResult().getType(), clonedReduction.getResult());
+
+    return success();
+  }
+};
+
 struct SymbolicOptimizationPass
     : public MO::impl::SymbolicOptimizationBase<SymbolicOptimizationPass> {
   using SymbolicOptimizationBase::SymbolicOptimizationBase;
@@ -2231,7 +2363,8 @@ struct SymbolicOptimizationPass
         context);
 
     // Broadcast swimming.
-    patterns.add<CommuteBroadcastWithFlatennedArgNonzero>(context);
+    patterns.add<CommuteBroadcastWithFlatennedArgNonzero,
+                 SinkBroadcastsThroughReduction>(context);
     Static::BroadcastToOp::getCanonicalizationPatterns(patterns, context);
 
     // Matmul rewrites.
